@@ -47,7 +47,7 @@ function buildService(trajectoryOverride?: { recordSteps: ReturnType<typeof vi.f
   const promptAssemblyService = {
     assemble: vi.fn().mockResolvedValue({ userPrompt: 'p', systemPrompt: '', hyperparameters: {}, responseFormat: null, resolvedFrom: 'default' }),
   };
-  const harnessPolicyService = { resolveSmrSelection: vi.fn().mockResolvedValue({ provider: 'lm-studio', model: 'm' }) };
+  const harnessPolicyService = { resolveTextSelection: vi.fn().mockResolvedValue({ provider: 'lm-studio', model: 'm' }) };
   const trajectory = trajectoryOverride ?? { recordSteps: vi.fn().mockResolvedValue(undefined) };
 
   const service = new SummaryService(

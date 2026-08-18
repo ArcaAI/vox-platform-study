@@ -8,16 +8,16 @@ import { computeEffectiveTranscript } from '../summarization/TranscriptSource';
 
 const preSummarizeMock = vi.fn();
 const summarizeSyncMock = vi.fn();
-// Mutable — read fresh on every `useSMR()` call, so a mock implementation can
+// Mutable — read fresh on every `useText()` call, so a mock implementation can
 // flip it mid-flight (e.g. before firing `onDelta`) to exercise the streaming
 // preview branch, which is gated on `loading`.
 let mockLoading = false;
 
 // Mock the compat SMR hook so the component talks to controllable fns instead
-// of a real gateway. Only `useSMR` is consumed at runtime; the type-only
+// of a real gateway. Only `useText` is consumed at runtime; the type-only
 // imports resolve against the real `.d.ts`.
 vi.mock('@arcaai/vox/compat', () => ({
-  useSMR: () => ({
+  useText: () => ({
     preSummarize: preSummarizeMock,
     summarizeSync: summarizeSyncMock,
     summarize: summarizeSyncMock,
@@ -291,7 +291,7 @@ describe('SummaryCard', () => {
 
   it('surfaces an SSE error (or a stream-ended-without-result rejection) as toast.error, never a silent stall', async () => {
     stubEmptyDepartmentsFetch();
-    const streamError = new Error('[@arcaai/vox/compat] useSMR: stream ended without a result event');
+    const streamError = new Error('[@arcaai/vox/compat] useText: stream ended without a result event');
     preSummarizeMock.mockRejectedValue(streamError);
 
     const user = userEvent.setup();

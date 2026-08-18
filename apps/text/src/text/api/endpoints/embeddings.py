@@ -80,7 +80,7 @@ async def submit_batch_embedding(
         idempotency_key=idempotency_key,
         payload={"texts": request_body.texts, "provider": request_body.provider},
     )
-    # ShutdownError (503) propagates unwrapped to the shared SmrError handler
+    # ShutdownError (503) propagates unwrapped to the shared TextError handler
     # when the control plane is draining — see WorkerPoolQueue.submit
     # (TASK-725 Task 6).
     await worker_pool_queue.submit(envelope)

@@ -98,7 +98,7 @@ class TestConcurrencyMetric:
         from text.core.metrics import CONCURRENT_REQUESTS
 
         assert CONCURRENT_REQUESTS is not None
-        assert CONCURRENT_REQUESTS._name == "smr_concurrent_requests"
+        assert CONCURRENT_REQUESTS._name == "text_concurrent_requests"
 
 
 # ── Dependency tests ─────────────────────────────────────────────────────────

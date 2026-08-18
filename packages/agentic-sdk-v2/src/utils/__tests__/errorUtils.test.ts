@@ -15,7 +15,6 @@ import {
   withRetry,
   classifyHttpError,
   classifyTextError,
-  classifySmrError,
 } from '../errorUtils';
 import type { RetryOptions } from '../errorUtils';
 import { AgenticError } from '../../types';
@@ -543,8 +542,5 @@ describe('errorUtils', () => {
       expect(classifyTextError({ error_code: 'Forbidden' })).toBe('FORBIDDEN');
     });
 
-    it('keeps classifySmrError as the same-identity deprecated alias', () => {
-      expect(classifySmrError).toBe(classifyTextError);
-    });
   });
 });

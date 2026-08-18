@@ -1,9 +1,9 @@
 """Translation endpoint — POST /api/v1/translate.
 
-SMR's ``translate`` capability. Resolves the named translate provider from the
+Text's ``translate`` capability. Resolves the named translate provider from the
 registry, forwards the per-provider BYOK override (if any), and returns the
 translations plus a courtesy input character count. Behind ``X-Service-Token``
-(the global auth middleware), like every non-exempt SMR route.
+(the global auth middleware), like every non-exempt Text route.
 """
 
 from __future__ import annotations

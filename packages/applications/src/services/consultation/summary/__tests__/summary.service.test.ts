@@ -11,7 +11,14 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { NotFoundException, BadRequestException, ConflictException } from '@nestjs/common';
 import { SummaryService } from '../summary.service';
-import { SysEventType, ContextItemVersionFactory, HarnessAuditAction, ConsultationStatus, NamedEntityFactory, ConsultationEntity } from '@arcaai/domains';
+import {
+  SysEventType,
+  ContextItemVersionFactory,
+  HarnessAuditAction,
+  ConsultationStatus,
+  NamedEntityFactory,
+  ConsultationEntity,
+} from '@arcaai/domains';
 
 /**
  * TASK-711 — `approveSummary` now calls the REAL
@@ -255,7 +262,7 @@ describe('SummaryService', () => {
   let mockConfigService: ReturnType<typeof createMockConfigService>;
   let mockPromptAssemblyService: ReturnType<typeof createMockPromptAssemblyService>;
   // The fail-closed SMR-selection seam every caller funnels through.
-  let mockHarnessPolicyService: { resolveSmrSelection: ReturnType<typeof vi.fn> };
+  let mockHarnessPolicyService: { resolveTextSelection: ReturnType<typeof vi.fn> };
 
   beforeEach(() => {
     vi.clearAllMocks();
@@ -271,7 +278,7 @@ describe('SummaryService', () => {
     mockConfigService = createMockConfigService();
     mockPromptAssemblyService = createMockPromptAssemblyService();
     mockHarnessPolicyService = {
-      resolveSmrSelection: vi.fn().mockResolvedValue({ provider: 'lm-studio', model: 'resolved-medgemma' }),
+      resolveTextSelection: vi.fn().mockResolvedValue({ provider: 'lm-studio', model: 'resolved-medgemma' }),
     };
 
     service = new SummaryService(
@@ -290,6 +297,25 @@ describe('SummaryService', () => {
       undefined, // harnessAuditService (@Optional)
       undefined, // harnessGatewayService (@Optional)
       mockHarnessPolicyService as any, // HarnessPolicyService resolver
+      undefined, // configResolver (@Optional)
+      undefined, // entitlements (@Optional)
+      undefined, // trajectoryService (@Optional)
+      undefined, // aiTaskDefaultService (@Optional)
+      undefined, // transcriptSegmentRepository (@Optional)
+      undefined, // usageLedger (@Optional)
+      undefined, // unitOfWork (@Optional)
+      undefined, // billing (@Optional)
+      undefined, // departmentAgentRepository (@Optional)
+      undefined, // aiModelRepository (@Optional)
+      undefined, // noteGenerationService (@Optional)
+      // TASK-710 (re-opened): `IPhiRedactor` is REQUIRED — `extractEntities`
+      // aborts rather than posting raw PHI to the NLP service. A pass-through
+      // double keeps every pre-existing assertion in this file (which asserts
+      // on the NLP request body / persisted entities) byte-identical, while
+      // still exercising the mandatory call. The dedicated redaction spec
+      // (`summary.service.phi-redaction.task710.test.ts`) owns the assertions
+      // about what is actually posted.
+      { redact: vi.fn(async (text: string) => text) } as any, // phiRedactor
     );
   });
 
@@ -313,7 +339,7 @@ describe('SummaryService', () => {
 
       await service.generateSummary('c-1', { dnaStyleId: 'style-1' } as any);
 
-      expect(mockHarnessPolicyService.resolveSmrSelection).toHaveBeenCalled();
+      expect(mockHarnessPolicyService.resolveTextSelection).toHaveBeenCalled();
       const body = lastSmrBody();
       expect(body.provider).toBe('lm-studio');
       expect(body.model).toBe('resolved-medgemma');
@@ -321,7 +347,7 @@ describe('SummaryService', () => {
 
     // GenerateSummary is a one-shot/finalize path: it must
     // keep resolving the DEFAULT ('finalize') tier, never the live tier, so a
-    // super admin's `smr.live` re-point never leaks into final summaries.
+    // super admin's `text.live` re-point never leaks into final summaries.
     // The tenant id is now resolved EXPLICITLY (never a
     // bare no-arg call trusting the callee's own CLS fallback), so a worker
     // path with unpopulated CLS fails loudly instead of silently serving the
@@ -331,7 +357,7 @@ describe('SummaryService', () => {
 
       await service.generateSummary('c-1', { dnaStyleId: 'style-1' } as any);
 
-      expect(mockHarnessPolicyService.resolveSmrSelection).toHaveBeenCalledWith('tenant-1', 'finalize');
+      expect(mockHarnessPolicyService.resolveTextSelection).toHaveBeenCalledWith('tenant-1', 'finalize');
     });
 
     it('lets a caller-supplied model win over the resolved default', async () => {
@@ -522,7 +548,11 @@ describe('SummaryService', () => {
 
       await service.extractEntities('ctx-item-123');
 
-      expect(mockHttpService.axiosRef.post).toHaveBeenCalledWith(expect.stringContaining('/classify/tokens'), { text: content });
+      expect(mockHttpService.axiosRef.post).toHaveBeenCalledWith(
+        expect.stringContaining('/classify/tokens'),
+        { text: content },
+        expect.objectContaining({ headers: expect.objectContaining({ 'X-Tenant-Id': expect.any(String) }) }),
+      );
     });
 
     // ----- NLP response field mapping -----
@@ -842,6 +872,16 @@ describe('SummaryService', () => {
         undefined, // entitlements
         undefined, // trajectoryService
         aiTaskDefaultService as any,
+        undefined, // transcriptSegmentRepository
+        undefined, // usageLedger
+        undefined, // unitOfWork
+        undefined, // billing
+        undefined, // departmentAgentRepository
+        undefined, // aiModelRepository
+        undefined, // noteGenerationService
+        // TASK-710 — `IPhiRedactor` is a REQUIRED ctor dep; a pass-through
+        // double keeps this fixture's assertions byte-identical.
+        { redact: vi.fn(async (text: string) => text) } as any, // phiRedactor (#27)
       );
 
       mockContextItemRepository.findById.mockResolvedValue(createMockContextItem({ content: 'Patient with Diabetes' }));
@@ -849,10 +889,14 @@ describe('SummaryService', () => {
 
       await serviceWithResolver.extractEntities('ctx-item-123');
 
-      expect(mockHttpService.axiosRef.post).toHaveBeenCalledWith('http://localhost:8864/api/v1/classify/tokens', {
-        text: 'Patient with Diabetes',
-        model_name: 'blaze999/Medical-NER',
-      });
+      expect(mockHttpService.axiosRef.post).toHaveBeenCalledWith(
+        'http://localhost:8864/api/v1/classify/tokens',
+        {
+          text: 'Patient with Diabetes',
+          model_name: 'blaze999/Medical-NER',
+        },
+        expect.objectContaining({ headers: expect.objectContaining({ 'X-Tenant-Id': expect.any(String) }) }),
+      );
     });
 
     it('posts without model_name (fail-open) when AiTaskDefault resolution fails', async () => {
@@ -879,6 +923,16 @@ describe('SummaryService', () => {
         undefined,
         undefined,
         aiTaskDefaultService as any,
+        undefined, // transcriptSegmentRepository
+        undefined, // usageLedger
+        undefined, // unitOfWork
+        undefined, // billing
+        undefined, // departmentAgentRepository
+        undefined, // aiModelRepository
+        undefined, // noteGenerationService
+        // TASK-710 — `IPhiRedactor` is a REQUIRED ctor dep; a pass-through
+        // double keeps this fixture's assertions byte-identical.
+        { redact: vi.fn(async (text: string) => text) } as any, // phiRedactor (#27)
       );
 
       mockContextItemRepository.findById.mockResolvedValue(createMockContextItem({ content: 'Patient with Diabetes' }));
@@ -887,7 +941,11 @@ describe('SummaryService', () => {
       await serviceWithResolver.extractEntities('ctx-item-123');
 
       // extraction proceeds — a registry hiccup never blocks clinical NER.
-      expect(mockHttpService.axiosRef.post).toHaveBeenCalledWith('http://localhost:8864/api/v1/classify/tokens', { text: 'Patient with Diabetes' });
+      expect(mockHttpService.axiosRef.post).toHaveBeenCalledWith(
+        'http://localhost:8864/api/v1/classify/tokens',
+        { text: 'Patient with Diabetes' },
+        expect.objectContaining({ headers: expect.objectContaining({ 'X-Tenant-Id': expect.any(String) }) }),
+      );
     });
 
     it('posts without model_name when no AiTaskDefault service is wired (legacy behavior preserved)', async () => {
@@ -896,7 +954,11 @@ describe('SummaryService', () => {
 
       await service.extractEntities('ctx-item-123');
 
-      expect(mockHttpService.axiosRef.post).toHaveBeenCalledWith('http://localhost:8864/api/v1/classify/tokens', { text: 'Patient with Diabetes' });
+      expect(mockHttpService.axiosRef.post).toHaveBeenCalledWith(
+        'http://localhost:8864/api/v1/classify/tokens',
+        { text: 'Patient with Diabetes' },
+        expect.objectContaining({ headers: expect.objectContaining({ 'X-Tenant-Id': expect.any(String) }) }),
+      );
     });
   });
 
@@ -935,6 +997,25 @@ describe('SummaryService', () => {
         mockClsService as any,
         mockContextItemVersionRepository as any,
         mockPromptAssemblyService as any,
+        undefined, // secretsService
+        undefined, // userProfileRepository
+        undefined, // harnessAuditService
+        undefined, // harnessGatewayService
+        undefined, // harnessPolicyService
+        undefined, // configResolver
+        undefined, // entitlements
+        undefined, // trajectoryService
+        undefined, // aiTaskDefaultService
+        undefined, // transcriptSegmentRepository
+        undefined, // usageLedger
+        undefined, // unitOfWork
+        undefined, // billing
+        undefined, // departmentAgentRepository
+        undefined, // aiModelRepository
+        undefined, // noteGenerationService
+        // TASK-710 — `IPhiRedactor` is a REQUIRED ctor dep; a pass-through
+        // double keeps this fixture's assertions byte-identical.
+        { redact: vi.fn(async (text: string) => text) } as any, // phiRedactor (#27)
       );
 
       mockConsultationRepository.findById.mockResolvedValue(consultationFixture({ id: 'c-1', tenantId: 'tenant-1' }));
@@ -985,6 +1066,25 @@ describe('SummaryService', () => {
         mockClsService as any,
         mockContextItemVersionRepository as any,
         mockPromptAssemblyService as any,
+        undefined, // secretsService
+        undefined, // userProfileRepository
+        undefined, // harnessAuditService
+        undefined, // harnessGatewayService
+        undefined, // harnessPolicyService
+        undefined, // configResolver
+        undefined, // entitlements
+        undefined, // trajectoryService
+        undefined, // aiTaskDefaultService
+        undefined, // transcriptSegmentRepository
+        undefined, // usageLedger
+        undefined, // unitOfWork
+        undefined, // billing
+        undefined, // departmentAgentRepository
+        undefined, // aiModelRepository
+        undefined, // noteGenerationService
+        // TASK-710 — `IPhiRedactor` is a REQUIRED ctor dep; a pass-through
+        // double keeps this fixture's assertions byte-identical.
+        { redact: vi.fn(async (text: string) => text) } as any, // phiRedactor (#27)
       );
 
       mockContextItemRepository.findById.mockResolvedValue(createMockContextItem({ content: 'Patient data' }));
@@ -994,7 +1094,11 @@ describe('SummaryService', () => {
 
       await serviceWithCustomUrl.extractEntities('ctx-item-123');
 
-      expect(mockHttpService.axiosRef.post).toHaveBeenCalledWith(`${customNlpUrl}/api/v1/classify/tokens`, { text: 'Patient data' });
+      expect(mockHttpService.axiosRef.post).toHaveBeenCalledWith(
+        `${customNlpUrl}/api/v1/classify/tokens`,
+        { text: 'Patient data' },
+        expect.objectContaining({ headers: expect.objectContaining({ 'X-Tenant-Id': expect.any(String) }) }),
+      );
     });
 
     it('should call NLP service at /api/v1/classify/tokens (not /classify/tokens)', async () => {
@@ -1020,7 +1124,11 @@ describe('SummaryService', () => {
 
       await service.extractEntities('ctx-item-123');
 
-      expect(mockHttpService.axiosRef.post).toHaveBeenCalledWith('http://localhost:8864/api/v1/classify/tokens', expect.any(Object));
+      expect(mockHttpService.axiosRef.post).toHaveBeenCalledWith(
+        'http://localhost:8864/api/v1/classify/tokens',
+        expect.any(Object),
+        expect.objectContaining({ headers: expect.objectContaining({ 'X-Tenant-Id': expect.any(String) }) }),
+      );
     });
 
     it('should default SMR URL to http://localhost:8862 when ConfigService returns undefined', () => {
@@ -1039,6 +1147,25 @@ describe('SummaryService', () => {
         mockClsService as any,
         mockContextItemVersionRepository as any,
         mockPromptAssemblyService as any,
+        undefined, // secretsService
+        undefined, // userProfileRepository
+        undefined, // harnessAuditService
+        undefined, // harnessGatewayService
+        undefined, // harnessPolicyService
+        undefined, // configResolver
+        undefined, // entitlements
+        undefined, // trajectoryService
+        undefined, // aiTaskDefaultService
+        undefined, // transcriptSegmentRepository
+        undefined, // usageLedger
+        undefined, // unitOfWork
+        undefined, // billing
+        undefined, // departmentAgentRepository
+        undefined, // aiModelRepository
+        undefined, // noteGenerationService
+        // TASK-710 — `IPhiRedactor` is a REQUIRED ctor dep; a pass-through
+        // double keeps this fixture's assertions byte-identical.
+        { redact: vi.fn(async (text: string) => text) } as any, // phiRedactor (#27)
       );
 
       mockConsultationRepository.findById.mockResolvedValue(consultationFixture({ id: 'c-1', tenantId: 'tenant-1' }));
@@ -1077,6 +1204,25 @@ describe('SummaryService', () => {
         mockClsService as any,
         mockContextItemVersionRepository as any,
         mockPromptAssemblyService as any,
+        undefined, // secretsService
+        undefined, // userProfileRepository
+        undefined, // harnessAuditService
+        undefined, // harnessGatewayService
+        undefined, // harnessPolicyService
+        undefined, // configResolver
+        undefined, // entitlements
+        undefined, // trajectoryService
+        undefined, // aiTaskDefaultService
+        undefined, // transcriptSegmentRepository
+        undefined, // usageLedger
+        undefined, // unitOfWork
+        undefined, // billing
+        undefined, // departmentAgentRepository
+        undefined, // aiModelRepository
+        undefined, // noteGenerationService
+        // TASK-710 — `IPhiRedactor` is a REQUIRED ctor dep; a pass-through
+        // double keeps this fixture's assertions byte-identical.
+        { redact: vi.fn(async (text: string) => text) } as any, // phiRedactor (#27)
       );
 
       mockContextItemRepository.findById.mockResolvedValue(createMockContextItem({ content: 'Test' }));
@@ -1134,6 +1280,25 @@ describe('SummaryService', () => {
         mockClsService as any,
         mockContextItemVersionRepository as any,
         mockPromptAssemblyService as any,
+        undefined, // secretsService
+        undefined, // userProfileRepository
+        undefined, // harnessAuditService
+        undefined, // harnessGatewayService
+        undefined, // harnessPolicyService
+        undefined, // configResolver
+        undefined, // entitlements
+        undefined, // trajectoryService
+        undefined, // aiTaskDefaultService
+        undefined, // transcriptSegmentRepository
+        undefined, // usageLedger
+        undefined, // unitOfWork
+        undefined, // billing
+        undefined, // departmentAgentRepository
+        undefined, // aiModelRepository
+        undefined, // noteGenerationService
+        // TASK-710 — `IPhiRedactor` is a REQUIRED ctor dep; a pass-through
+        // double keeps this fixture's assertions byte-identical.
+        { redact: vi.fn(async (text: string) => text) } as any, // phiRedactor (#27)
       );
 
       mockContextItemRepository.findById.mockResolvedValue(createMockContextItem({ content: 'Test' }));
@@ -1159,6 +1324,25 @@ describe('SummaryService', () => {
         mockClsService as any,
         mockContextItemVersionRepository as any,
         mockPromptAssemblyService as any,
+        undefined, // secretsService
+        undefined, // userProfileRepository
+        undefined, // harnessAuditService
+        undefined, // harnessGatewayService
+        undefined, // harnessPolicyService
+        undefined, // configResolver
+        undefined, // entitlements
+        undefined, // trajectoryService
+        undefined, // aiTaskDefaultService
+        undefined, // transcriptSegmentRepository
+        undefined, // usageLedger
+        undefined, // unitOfWork
+        undefined, // billing
+        undefined, // departmentAgentRepository
+        undefined, // aiModelRepository
+        undefined, // noteGenerationService
+        // TASK-710 — `IPhiRedactor` is a REQUIRED ctor dep; a pass-through
+        // double keeps this fixture's assertions byte-identical.
+        { redact: vi.fn(async (text: string) => text) } as any, // phiRedactor (#27)
       );
 
       mockConsultationRepository.findById.mockResolvedValue(consultationFixture({ id: 'c-1', tenantId: 'tenant-1' }));
@@ -1415,6 +1599,25 @@ describe('SummaryService', () => {
         clsWithNoUser as any,
         mockContextItemVersionRepository as any,
         mockPromptAssemblyService as any,
+        undefined, // secretsService
+        undefined, // userProfileRepository
+        undefined, // harnessAuditService
+        undefined, // harnessGatewayService
+        undefined, // harnessPolicyService
+        undefined, // configResolver
+        undefined, // entitlements
+        undefined, // trajectoryService
+        undefined, // aiTaskDefaultService
+        undefined, // transcriptSegmentRepository
+        undefined, // usageLedger
+        undefined, // unitOfWork
+        undefined, // billing
+        undefined, // departmentAgentRepository
+        undefined, // aiModelRepository
+        undefined, // noteGenerationService
+        // TASK-710 — `IPhiRedactor` is a REQUIRED ctor dep; a pass-through
+        // double keeps this fixture's assertions byte-identical.
+        { redact: vi.fn(async (text: string) => text) } as any, // phiRedactor (#27)
       );
 
       const mockItem = createMockContextItem({ id: 'ctx-no-user', content: 'Content' });
@@ -1457,6 +1660,25 @@ describe('SummaryService', () => {
         clsWithNoUser as any,
         mockContextItemVersionRepository as any,
         mockPromptAssemblyService as any,
+        undefined, // secretsService
+        undefined, // userProfileRepository
+        undefined, // harnessAuditService
+        undefined, // harnessGatewayService
+        undefined, // harnessPolicyService
+        undefined, // configResolver
+        undefined, // entitlements
+        undefined, // trajectoryService
+        undefined, // aiTaskDefaultService
+        undefined, // transcriptSegmentRepository
+        undefined, // usageLedger
+        undefined, // unitOfWork
+        undefined, // billing
+        undefined, // departmentAgentRepository
+        undefined, // aiModelRepository
+        undefined, // noteGenerationService
+        // TASK-710 — `IPhiRedactor` is a REQUIRED ctor dep; a pass-through
+        // double keeps this fixture's assertions byte-identical.
+        { redact: vi.fn(async (text: string) => text) } as any, // phiRedactor (#27)
       );
 
       const mockItem = createMockContextItem({
@@ -1642,10 +1864,12 @@ describe('SummaryService', () => {
   describe('cross-aggregate tenant checks', () => {
     describe('generatePreSummary', () => {
       it('throws NotFoundException when parent consultation belongs to another tenant', async () => {
-        mockConsultationRepository.findById.mockResolvedValue(consultationFixture({
-          id: 'c-other',
-          tenantId: 'tenant-OTHER',
-        }));
+        mockConsultationRepository.findById.mockResolvedValue(
+          consultationFixture({
+            id: 'c-other',
+            tenantId: 'tenant-OTHER',
+          }),
+        );
 
         await expect(service.generatePreSummary('c-other', {} as any)).rejects.toThrow(NotFoundException);
         expect(mockHttpService.axiosRef.post).not.toHaveBeenCalled();
@@ -1655,10 +1879,12 @@ describe('SummaryService', () => {
 
     describe('generateSummary', () => {
       it('throws NotFoundException when parent consultation belongs to another tenant', async () => {
-        mockConsultationRepository.findById.mockResolvedValue(consultationFixture({
-          id: 'c-other',
-          tenantId: 'tenant-OTHER',
-        }));
+        mockConsultationRepository.findById.mockResolvedValue(
+          consultationFixture({
+            id: 'c-other',
+            tenantId: 'tenant-OTHER',
+          }),
+        );
 
         await expect(service.generateSummary('c-other', { transcription: 'x' } as any)).rejects.toThrow(NotFoundException);
         expect(mockHttpService.axiosRef.post).not.toHaveBeenCalled();
@@ -1745,12 +1971,14 @@ describe('SummaryService', () => {
         mockContextItemRepository.findById.mockResolvedValue(makeFinalSummary());
         mockContextItemVersionRepository.getVersionsByChangeReason.mockResolvedValue([]);
         mockContextItemVersionRepository.create.mockResolvedValue({ id: 'signed-version-id-1' });
-        mockConsultationRepository.findById.mockResolvedValue(consultationFixture({
-          id: 'consultation-1',
-          tenantId: 'tenant-1',
-          status: ConsultationStatus.PENDING_REVIEW, // TASK-711: OPEN cannot legally reach SIGNED; PENDING_REVIEW can
-          updatedBy: null,
-        }));
+        mockConsultationRepository.findById.mockResolvedValue(
+          consultationFixture({
+            id: 'consultation-1',
+            tenantId: 'tenant-1',
+            status: ConsultationStatus.PENDING_REVIEW, // TASK-711: OPEN cannot legally reach SIGNED; PENDING_REVIEW can
+            updatedBy: null,
+          }),
+        );
         mockConsultationRepository.update.mockResolvedValue({ id: 'consultation-1' });
 
         const result = await gatedService.approveSummary('ctx-item-123');
@@ -1869,12 +2097,14 @@ describe('SummaryService', () => {
         mockContextItemRepository.findById.mockResolvedValue(makeFinalSummary());
         mockContextItemVersionRepository.getVersionsByChangeReason.mockResolvedValue([]);
         mockContextItemVersionRepository.create.mockResolvedValue({ id: 'signed-version-id-1' });
-        mockConsultationRepository.findById.mockResolvedValue(consultationFixture({
-          id: 'consultation-1',
-          tenantId: 'tenant-1',
-          status: ConsultationStatus.PENDING_REVIEW,
-          updatedBy: null,
-        }));
+        mockConsultationRepository.findById.mockResolvedValue(
+          consultationFixture({
+            id: 'consultation-1',
+            tenantId: 'tenant-1',
+            status: ConsultationStatus.PENDING_REVIEW,
+            updatedBy: null,
+          }),
+        );
         mockConsultationRepository.update.mockResolvedValue({ id: 'consultation-1' });
       });
 
@@ -2035,13 +2265,15 @@ describe('SummaryService', () => {
         mockContextItemRepository.findById.mockResolvedValue(makeFinalSummary());
         mockContextItemVersionRepository.getVersionsByChangeReason.mockResolvedValue([]);
         mockContextItemVersionRepository.create.mockResolvedValue({ id: 'signed-version-id-1' });
-        mockConsultationRepository.findById.mockResolvedValue(consultationFixture({
-          id: 'consultation-1',
-          tenantId: 'tenant-1',
-          status: ConsultationStatus.PENDING_REVIEW,
-          updatedBy: null,
-          version: 6,
-        }));
+        mockConsultationRepository.findById.mockResolvedValue(
+          consultationFixture({
+            id: 'consultation-1',
+            tenantId: 'tenant-1',
+            status: ConsultationStatus.PENDING_REVIEW,
+            updatedBy: null,
+            version: 6,
+          }),
+        );
       });
 
       it('CASes the ContextItem row with the caller-supplied expectedVersion and the Consultation row with its own freshly-read version', async () => {
@@ -2050,11 +2282,7 @@ describe('SummaryService', () => {
 
         await gatedService.approveSummary('ctx-item-123', { expectedVersion: 4 });
 
-        expect(mockContextItemRepository.updateWithVersion).toHaveBeenCalledWith(
-          'ctx-item-123',
-          expect.objectContaining({ id: 'ctx-item-123' }),
-          4,
-        );
+        expect(mockContextItemRepository.updateWithVersion).toHaveBeenCalledWith('ctx-item-123', expect.objectContaining({ id: 'ctx-item-123' }), 4);
         expect(mockConsultationRepository.updateWithVersion).toHaveBeenCalledWith(
           'consultation-1',
           expect.objectContaining({ status: ConsultationStatus.SIGNED }),
@@ -2139,12 +2367,14 @@ describe('SummaryService', () => {
         mockContextItemRepository.findById.mockResolvedValue(makeFinalSummary());
         mockContextItemVersionRepository.getVersionsByChangeReason.mockResolvedValue([]);
         mockContextItemVersionRepository.create.mockResolvedValue({ id: 'signed-version-id-1' });
-        mockConsultationRepository.findById.mockResolvedValue(consultationFixture({
-          id: 'consultation-1',
-          tenantId: 'tenant-1',
-          status: ConsultationStatus.PENDING_REVIEW, // TASK-711: OPEN cannot legally reach SIGNED; PENDING_REVIEW can
-          updatedBy: null,
-        }));
+        mockConsultationRepository.findById.mockResolvedValue(
+          consultationFixture({
+            id: 'consultation-1',
+            tenantId: 'tenant-1',
+            status: ConsultationStatus.PENDING_REVIEW, // TASK-711: OPEN cannot legally reach SIGNED; PENDING_REVIEW can
+            updatedBy: null,
+          }),
+        );
         mockConsultationRepository.update.mockResolvedValue({ id: 'consultation-1' });
       });
 
@@ -2251,11 +2481,13 @@ describe('SummaryService', () => {
       });
 
       it('forwards the edit (content + new versionId + editor) when the draft is still DRAFT_PENDING_SENSORS', async () => {
-        mockConsultationRepository.findById.mockResolvedValue(consultationFixture({
-          id: 'consultation-1',
-          tenantId: 'tenant-1',
-          status: ConsultationStatus.DRAFT_PENDING_SENSORS,
-        }));
+        mockConsultationRepository.findById.mockResolvedValue(
+          consultationFixture({
+            id: 'consultation-1',
+            tenantId: 'tenant-1',
+            status: ConsultationStatus.DRAFT_PENDING_SENSORS,
+          }),
+        );
 
         await editService.updateSummary('ctx-edit-1', { content: 'S: edited subjective ... P: edited plan' });
 
@@ -2271,11 +2503,13 @@ describe('SummaryService', () => {
       });
 
       it('does NOT signal when the consultation is not in DRAFT_PENDING_SENSORS', async () => {
-        mockConsultationRepository.findById.mockResolvedValue(consultationFixture({
-          id: 'consultation-1',
-          tenantId: 'tenant-1',
-          status: ConsultationStatus.PENDING_REVIEW,
-        }));
+        mockConsultationRepository.findById.mockResolvedValue(
+          consultationFixture({
+            id: 'consultation-1',
+            tenantId: 'tenant-1',
+            status: ConsultationStatus.PENDING_REVIEW,
+          }),
+        );
 
         await editService.updateSummary('ctx-edit-1', { content: 'edited' });
 
@@ -2291,11 +2525,13 @@ describe('SummaryService', () => {
       });
 
       it('still completes the edit when the harness edit signal throws (best-effort, not rolled back)', async () => {
-        mockConsultationRepository.findById.mockResolvedValue(consultationFixture({
-          id: 'consultation-1',
-          tenantId: 'tenant-1',
-          status: ConsultationStatus.DRAFT_PENDING_SENSORS,
-        }));
+        mockConsultationRepository.findById.mockResolvedValue(
+          consultationFixture({
+            id: 'consultation-1',
+            tenantId: 'tenant-1',
+            status: ConsultationStatus.DRAFT_PENDING_SENSORS,
+          }),
+        );
         mockHarnessGateway.signalEdit.mockRejectedValue(new Error('harness unreachable'));
 
         const result = await editService.updateSummary('ctx-edit-1', { content: 'edited' });
@@ -2461,12 +2697,14 @@ describe('SummaryService', () => {
       mockContextItemRepository.findById.mockResolvedValue(finalSummary);
       mockContextItemVersionRepository.getVersionsByChangeReason.mockResolvedValue([]);
       mockContextItemVersionRepository.create.mockResolvedValue({ id: 'signed-version-enc' });
-      mockConsultationRepository.findById.mockResolvedValue(consultationFixture({
-        id: 'consultation-1',
-        tenantId: 'tenant-1',
-        status: ConsultationStatus.PENDING_REVIEW, // TASK-711: OPEN cannot legally reach SIGNED; PENDING_REVIEW can
-        updatedBy: null,
-      }));
+      mockConsultationRepository.findById.mockResolvedValue(
+        consultationFixture({
+          id: 'consultation-1',
+          tenantId: 'tenant-1',
+          status: ConsultationStatus.PENDING_REVIEW, // TASK-711: OPEN cannot legally reach SIGNED; PENDING_REVIEW can
+          updatedBy: null,
+        }),
+      );
       mockConsultationRepository.update.mockResolvedValue({ id: 'consultation-1' });
       mockContextItemRepository.update.mockResolvedValue({ ...finalSummary });
 
@@ -2512,6 +2750,14 @@ describe('SummaryService', () => {
         aiTaskDefaultService as any,
         undefined, // transcriptSegmentRepository
         usageLedger as any,
+        undefined, // unitOfWork
+        undefined, // billing
+        undefined, // departmentAgentRepository
+        undefined, // aiModelRepository
+        undefined, // noteGenerationService
+        // TASK-710 — REQUIRED redactor; pass-through keeps these usage-ledger
+        // assertions (charCount, model attribution) byte-identical.
+        { redact: vi.fn(async (text: string) => text) } as any, // phiRedactor
       );
 
     it('emits TEXT_UNIT + REQUEST keyed to a freshly generated requestId, with consultationId as attribution', async () => {
@@ -2652,7 +2898,10 @@ describe('SummaryService', () => {
 
       const result = await svc.generatePreSummary('c-1', {});
 
-      expect(mockNoteGenerationService.generate).toHaveBeenCalledWith('PRE_SUMMARY', expect.objectContaining({ consultationId: 'c-1', tenantId: 'tenant-1' }));
+      expect(mockNoteGenerationService.generate).toHaveBeenCalledWith(
+        'PRE_SUMMARY',
+        expect.objectContaining({ consultationId: 'c-1', tenantId: 'tenant-1' }),
+      );
       expect(result).toBeDefined();
     });
 

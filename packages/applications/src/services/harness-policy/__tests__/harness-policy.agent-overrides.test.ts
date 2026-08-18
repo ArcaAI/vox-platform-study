@@ -66,8 +66,8 @@ function tenantOwnRow() {
     gateSlaSeconds: 3600,
     gateEscalationSeconds: 1800,
     toolAllowlist: ['nlp'],
-    smrProvider: 'tenant-prov',
-    smrModel: 'tenant-model',
+    textProvider: 'tenant-prov',
+    textModel: 'tenant-model',
   });
 }
 
@@ -129,7 +129,7 @@ describe('HarnessPolicyService — per-agent harnessOverrides overlay', () => {
         coverageThreshold: 0.9,
         // super-admin-only — must NOT flow through the per-agent overlay
         safetyEnabled: false,
-        smrModel: 'evil-model',
+        textModel: 'evil-model',
       },
     });
 
@@ -137,10 +137,10 @@ describe('HarnessPolicyService — per-agent harnessOverrides overlay', () => {
 
     expect(result.coverageThreshold).toBe(0.9); // tenant-tier key applied
     expect(result.safetyEnabled).toBe(true); // global-only dropped, base preserved
-    expect(result.smrModel).toBe('tenant-model'); // global-only dropped, base preserved
+    expect(result.textModel).toBe('tenant-model'); // global-only dropped, base preserved
     expect(result.overridesSource?.keys).toEqual(['coverageThreshold']);
     expect(result.overridesSource?.keys).not.toContain('safetyEnabled');
-    expect(result.overridesSource?.keys).not.toContain('smrModel');
+    expect(result.overridesSource?.keys).not.toContain('textModel');
     expect(warn).toHaveBeenCalled();
   });
 

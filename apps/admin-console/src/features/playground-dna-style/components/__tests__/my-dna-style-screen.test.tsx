@@ -292,6 +292,9 @@ describe('MyDnaStyleScreen', () => {
     const generate = screen.getByRole('button', { name: 'Generate my style' }) as HTMLButtonElement;
     expect(generate.disabled).toBe(true);
     await waitFor(() => expect((screen.getByRole('switch', { name: 'Use my DNA style' }) as HTMLButtonElement).disabled).toBe(true));
+    // Erasure is 403-gated by the same assertActingAsDoctor check.
+    expect((screen.getByRole('button', { name: 'Erase my profile' }) as HTMLButtonElement).disabled).toBe(true);
+    await waitFor(() => expect((screen.getByRole('button', { name: 'Erase report rep-0' }) as HTMLButtonElement).disabled).toBe(true));
   });
 
   it('drops into the gate state reactively when generate answers 403 (no error toast)', async () => {
@@ -421,6 +424,95 @@ describe('MyDnaStyleScreen', () => {
     // Terminal result closes the single-use stream and refreshes the reads.
     expect(source.closed).toBe(true);
     await waitFor(() => expect(myStyleReads()).toBeGreaterThan(readsBefore));
+  });
+
+  // ─── erasure (INV-240) ────────────────────────────────────
+
+  it('states that erasing is independent of the on/off toggle', async () => {
+    stubDna();
+    renderWithProviders(<MyDnaStyleScreen />);
+
+    expect(await screen.findByRole('heading', { name: 'Erase my DNA profile' })).toBeDefined();
+    // Opting out only stops FUTURE learning — the stored profile keeps being used.
+    expect(screen.getByText(/keeps being injected into your summary prompts/i)).toBeDefined();
+    // ...and erasing does not flip the toggle back.
+    expect(screen.getByText(/the two are independent/i)).toBeDefined();
+    expect(screen.getByText(/a fresh profile will be built from your approved notes/i)).toBeDefined();
+  });
+
+  it('gates the whole-profile erase behind a confirmation, then reports the erased counts', async () => {
+    const calls = stubDna((call) => {
+      if (call.method === 'DELETE' && pathnameOf(call) === '/api/hope/dna-writing-styles/my-style') {
+        return Response.json({ doctorId: 'doc-1', deletedReports: 2, deletedVersions: 5 });
+      }
+      return undefined;
+    });
+    renderWithProviders(<MyDnaStyleScreen />);
+
+    const trigger = (await screen.findByRole('button', { name: 'Erase my profile' })) as HTMLButtonElement;
+    await waitFor(() => expect(trigger.disabled).toBe(false));
+    fireEvent.click(trigger);
+
+    // Confirmation gate: the dialog is up and NOTHING has been requested yet.
+    const dialog = await screen.findByRole('alertdialog');
+    expect(within(dialog).getByText(/cannot be undone/i)).toBeDefined();
+    expect(calls.some((call) => call.method === 'DELETE')).toBe(false);
+
+    // Cancelling still fires nothing.
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Cancel' }));
+    await waitFor(() => expect(screen.queryByRole('alertdialog')).toBeNull());
+    expect(calls.some((call) => call.method === 'DELETE')).toBe(false);
+
+    // Confirming is what performs the erasure.
+    fireEvent.click(screen.getByRole('button', { name: 'Erase my profile' }));
+    const confirmDialog = await screen.findByRole('alertdialog');
+    fireEvent.click(within(confirmDialog).getByRole('button', { name: 'Erase my profile' }));
+
+    await waitFor(() => {
+      const erase = calls.find((call) => call.method === 'DELETE');
+      expect(erase?.url).toBe('/api/hope/dna-writing-styles/my-style');
+      expect(erase?.body).toBeUndefined();
+    });
+    await waitFor(() => expect(toast.success).toHaveBeenCalledWith('Erased 2 reports and 5 versions'));
+    // The erasure refreshes the feature reads (my-style is re-fetched).
+    await waitFor(() => expect(calls.filter((call) => call.method === 'GET' && pathnameOf(call).endsWith('/my-style')).length).toBeGreaterThan(1));
+  });
+
+  it('toasts the failure when the whole-profile erase errors', async () => {
+    stubDna((call) => {
+      if (call.method === 'DELETE' && pathnameOf(call) === '/api/hope/dna-writing-styles/my-style') {
+        return Response.json({ message: 'Erasure failed', statusCode: 500 }, { status: 500 });
+      }
+      return undefined;
+    });
+    renderWithProviders(<MyDnaStyleScreen />);
+
+    const trigger = (await screen.findByRole('button', { name: 'Erase my profile' })) as HTMLButtonElement;
+    await waitFor(() => expect(trigger.disabled).toBe(false));
+    fireEvent.click(trigger);
+    const dialog = await screen.findByRole('alertdialog');
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Erase my profile' }));
+
+    await waitFor(() => expect(toast.error).toHaveBeenCalledWith('Erasure failed'));
+    expect(toast.success).not.toHaveBeenCalled();
+  });
+
+  it('erases a single report after confirmation (DELETE :reportId)', async () => {
+    const calls = stubDna((call) => {
+      if (call.method === 'DELETE' && pathnameOf(call) === '/api/hope/dna-writing-styles/rep-0') {
+        return Response.json({ doctorId: 'doc-1', deletedReports: 1, deletedVersions: 3 });
+      }
+      return undefined;
+    });
+    renderWithProviders(<MyDnaStyleScreen />);
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Erase report rep-0' }));
+    const dialog = await screen.findByRole('alertdialog');
+    expect(calls.some((call) => call.method === 'DELETE')).toBe(false);
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Erase report' }));
+
+    await waitFor(() => expect(calls.some((call) => call.method === 'DELETE' && pathnameOf(call) === '/api/hope/dna-writing-styles/rep-0')).toBe(true));
+    await waitFor(() => expect(toast.success).toHaveBeenCalledWith('Erased 1 report and 3 versions'));
   });
 
   // ─── redaction rules editor ───────────────────────────────

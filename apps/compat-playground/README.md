@@ -277,7 +277,7 @@ endpoint and still works — see
 
 ## Tab 4 — Summarization
 
-[`SummaryCard.tsx`](./src/components/SummaryCard.tsx) orchestrates `useSMR()`
+[`SummaryCard.tsx`](./src/components/SummaryCard.tsx) orchestrates `useText()`
 from `@arcaai/vox/compat`; [`summarization/`](./src/components/summarization/)
 holds the presentational pieces.
 
@@ -393,7 +393,7 @@ src/
 │   ├── BatchUploadTab.tsx            # tab 3 — layout
 │   ├── batch/                        # BatchUploadPanel · BatchJobQueue · BatchJobResult · BatchAllResultsView · BatchResultsPanel
 │   ├── SummarizationTab.tsx          # tab 4 — layout
-│   ├── SummaryCard.tsx               # useSMR() orchestration + streaming toggle
+│   ├── SummaryCard.tsx               # useText() orchestration + streaming toggle
 │   ├── summarization/                # ContextForm · TranscriptSource · SummaryResultView
 │   └── TabExampleCode.tsx            # per-tab source, via import.meta.glob(?raw)
 ├── hooks/

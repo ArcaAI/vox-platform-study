@@ -105,7 +105,7 @@ function makeService(overrides: { entitlements?: unknown } = {}) {
     undefined, // userProfileRepository
     undefined, // harnessAuditService
     undefined, // harnessGatewayService
-    { resolveSmrSelection: vi.fn().mockResolvedValue({ provider: 'openai', model: 'gpt-5' }) } as never,
+    { resolveTextSelection: vi.fn().mockResolvedValue({ provider: 'openai', model: 'gpt-5' }) } as never,
     undefined, // configResolver
     entitlements as never,
     undefined, // trajectoryService
@@ -210,7 +210,7 @@ describe('SummaryService — LLM-token quota pre-flight', () => {
         undefined,
         undefined,
         undefined,
-        { resolveSmrSelection: vi.fn().mockResolvedValue({ provider: 'openai', model: 'gpt-5' }) } as never,
+        { resolveTextSelection: vi.fn().mockResolvedValue({ provider: 'openai', model: 'gpt-5' }) } as never,
         undefined,
         harness.entitlements as never,
         undefined,

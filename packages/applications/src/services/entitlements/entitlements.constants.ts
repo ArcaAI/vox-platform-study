@@ -158,6 +158,26 @@ export interface PlanEntitlementValues {
    * `docs/implementation/TASK-724-Palette-Stt/contracts/palette.md` §Entitlement gate.
    */
   featurePaletteStt: boolean;
+  /**
+   * TASK-705 — may this plan's tenants run the HARNESS AGENTIC LOOP?
+   *
+   * The owner ruling (`docs/architecture/agentic-workflow-platform/owner-decisions-2026-08-17.md`
+   * §2 row 705): *"harness agentic loop is one of the core business, so, lets treat
+   * it as a feature in subscription plan"*. Loop eligibility is therefore
+   * COMMERCIAL — a plan property resolved from the database — and no longer an
+   * environment kill-switch. The operational device survives as a separate,
+   * subtract-only emergency stop (`harness.loop.emergencyStop`); see
+   * `../consultation/consultation-gates.constants.ts`.
+   *
+   * ENFORCING, unlike its display-only neighbours: `LoopContextSignalService`
+   * resolves it on every signal.
+   *
+   * THE SPLIT IS A PRODUCT DECISION, NOT A TECHNICAL ONE. STARTER (the $50 entry
+   * tier, 50 consultations/month) does not include multi-agent loop orchestration;
+   * TRIAL mirrors PRO (Q4: trial = a 1-week PRO experience) so an evaluating
+   * customer sees the capability that sells the platform.
+   */
+  featureAgenticLoop: boolean;
   modelTier: ModelTier;
   rateLimitTier: string;
 }
@@ -191,6 +211,7 @@ const PRO_VALUES: PlanEntitlementValues = {
   featureMonitoringAccess: false,
   featurePlatformDefaultCredential: false,
   featurePaletteStt: true,
+  featureAgenticLoop: true,
   modelTier: 'full',
   rateLimitTier: 'default',
 };
@@ -221,6 +242,7 @@ export const PLAN_ENTITLEMENT_DEFAULTS: Record<TenantPlan, PlanEntitlementValues
     featureMonitoringAccess: false,
     featurePlatformDefaultCredential: false,
     featurePaletteStt: true,
+    featureAgenticLoop: false,
     modelTier: 'base',
     rateLimitTier: 'strict',
   },
@@ -252,6 +274,7 @@ export const PLAN_ENTITLEMENT_DEFAULTS: Record<TenantPlan, PlanEntitlementValues
     featureMonitoringAccess: true,
     featurePlatformDefaultCredential: false,
     featurePaletteStt: true,
+    featureAgenticLoop: true,
     modelTier: 'full_custom',
     rateLimitTier: 'relaxed',
   },

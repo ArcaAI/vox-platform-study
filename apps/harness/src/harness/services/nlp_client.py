@@ -38,10 +38,22 @@ class NlpClient:
         self,
         text: str,
         *,
+        tenant_id: str,
         language: str = "en",
         aggregation_strategy: str = "simple",
     ) -> list[NEREntity]:
-        """Extract medical entities from ``text`` and map them to ``NEREntity``."""
+        """Extract medical entities from ``text`` and map them to ``NEREntity``.
+
+        ``tenant_id`` is MANDATORY (TASK-737): NER model selection is per-tenant
+        (`nlp.ner` `AiTaskDefault`), so a dropped tenant silently runs someone
+        else's model choice. Tenant-less internal work must declare itself with a
+        ``tenantless:<reason>`` marker instead of omitting the header.
+        """
+        if not tenant_id or not tenant_id.strip():
+            raise ValueError(
+                "nlp classify_tokens requires a tenant_id (TASK-737): pass the "
+                "consultation's tenant, or an explicit 'tenantless:<reason>' marker."
+            )
         url = f"{self._base_url}/api/v1/classify/tokens"
         body = {
             "text": text,
@@ -50,7 +62,9 @@ class NlpClient:
         }
         # NLP's ServiceAuthMiddleware requires X-Service-Token whenever NLP_SERVICE_TOKEN
         # is configured — omitted when unset so local dev-bypass keeps working.
-        headers = {"X-Service-Token": self._service_token} if self._service_token else None
+        headers: dict[str, str] = {"X-Tenant-Id": tenant_id.strip()}
+        if self._service_token:
+            headers["X-Service-Token"] = self._service_token
         async with httpx.AsyncClient(transport=self._transport, timeout=self._timeout) as client:
             try:
                 resp = await client.post(url, json=body, headers=headers)

@@ -201,7 +201,33 @@ def main(
         from harness.eval.judge.pdsqi import PDSQI9Judge
         from harness.eval.judge.prompts import OutputMode
         from harness.eval.judge.providers import build_judge_client
+        from harness.eval.judge.selection import (
+            JudgeSelectionUnavailable,
+            resolve_eval_judge_selection,
+        )
         from harness.eval.metrics.faithfulness import build_faithfulness_evaluator
+
+        # Judge SELECTION is DB-resident and fail-closed (owner decision D-B): the
+        # provider/model come from the SYSTEM ``harness.judge`` AiTaskDefault, exactly
+        # as the Temporal runtime resolves them. Env keeps supplying only the
+        # CONNECTION config (base_url / api_key / decoding knobs). There is no env
+        # fallback for the selection — a gate that grades with a different judge than
+        # the platform selects is worse than a gate that refuses to run.
+        try:
+            selection = asyncio.run(resolve_eval_judge_selection())
+        except JudgeSelectionUnavailable as exc:
+            print(f"[eval-gate] FAIL  judge selection unavailable (fail-closed): {exc}")
+            logger.error("eval_gate_judge_selection_unavailable", error=str(exc))
+            return 2
+        judge_config = config.judge.model_copy(
+            update={"provider": selection.provider, "model": selection.model}
+        )
+        config = config.model_copy(update={"judge": judge_config})
+        print(
+            f"[eval-gate] judge selection: {selection.model} "
+            f"(provider={selection.provider}, slug={selection.model_slug}, "
+            f"tier={selection.tier}) — resolved from the database, not the environment"
+        )
 
         client = build_judge_client(config.judge)
         judge = PDSQI9Judge(

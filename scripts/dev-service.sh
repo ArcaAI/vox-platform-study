@@ -54,7 +54,7 @@
 #
 # MACHINE-SPECIFIC MODEL:
 #   LM_STUDIO_MODEL (default: gemma-4-e4b-it-qat) feeds both the SMR default
-#   model and the harness worker's HARNESS_SMR_MODEL. Export it in your shell
+#   model and the harness worker's HARNESS_TEXT_MODEL. Export it in your shell
 #   profile if your LM Studio has a different model loaded.
 # ============================================================================
 
@@ -183,7 +183,7 @@ RELOAD_DIR=""
 # The LM Studio pairing is the ONE application default this script still
 # supplies. It is machine-specific (whichever model your LM Studio has loaded)
 # and it differs from the pydantic defaults — SMR's is `google/gemma-4-e4b`,
-# harness's `smr_provider`/`smr_model` are None. Removed from here it would
+# harness's `text_provider`/`text_model` are None. Removed from here it would
 # silently change which model dev requests, and it has no declaration in the
 # root env files yet. When those env files are generated, this moves to
 # .env.dev and these functions disappear.
@@ -203,12 +203,12 @@ apply_smr_env() {
 }
 
 apply_harness_env() {
-    : "${HARNESS_SMR_PROVIDER:=lm-studio}"
-    : "${HARNESS_SMR_MODEL:=${LM_STUDIO_MODEL}}"
-    export HARNESS_SMR_PROVIDER HARNESS_SMR_MODEL
+    : "${HARNESS_TEXT_PROVIDER:=lm-studio}"
+    : "${HARNESS_TEXT_MODEL:=${LM_STUDIO_MODEL}}"
+    export HARNESS_TEXT_PROVIDER HARNESS_TEXT_MODEL
     ENV_REPORT+=(
-        "HARNESS_SMR_PROVIDER=$HARNESS_SMR_PROVIDER"
-        "HARNESS_SMR_MODEL=$HARNESS_SMR_MODEL"
+        "HARNESS_TEXT_PROVIDER=$HARNESS_TEXT_PROVIDER"
+        "HARNESS_TEXT_MODEL=$HARNESS_TEXT_MODEL"
     )
 }
 

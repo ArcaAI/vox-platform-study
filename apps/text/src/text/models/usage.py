@@ -1,6 +1,6 @@
 """Usage passthrough — what the gateway needs to write a ledger row.
 
-SMR is the only process that knows three things the billing plane cannot
+Text is the only process that knows three things the billing plane cannot
 reconstruct afterwards: WHICH provider actually served the call, WHICH API shape
 it spoke, and the provider's OWN usage object (the one with the cache and
 reasoning breakdown in it). ``UsageDetail`` carries exactly those, and nothing
@@ -31,7 +31,7 @@ own cost basis is a call site that can convert tenant-funded spend into platform
 COGS (or hide platform COGS as never-invoiced notional) with one wrong literal.
 """
 
-# SMR provider key → the API shape that provider speaks.
+# Text provider key → the API shape that provider speaks.
 #
 # Keys are the registry keys registered in ``text.main`` (including the
 # ``azure``/``openai_compat`` aliases), so a lookup never has to guess.
@@ -63,7 +63,7 @@ _DEFAULT_ENDPOINT_KIND = "openai.chat"
 
 
 def endpoint_kind_for(provider: str | None) -> str:
-    """Map an SMR provider key onto the API shape it speaks."""
+    """Map an Text provider key onto the API shape it speaks."""
     return _ENDPOINT_KIND_BY_PROVIDER.get((provider or "").strip().lower(), _DEFAULT_ENDPOINT_KIND)
 
 
@@ -93,7 +93,7 @@ class UsageDetail(BaseModel):
     interrupted: bool = False
     # True when the call ran on a tenant-supplied (BYOK) credential. The gateway
     # turns this into `costBasis: BYOK_NOTIONAL`; it is reported here rather than
-    # re-derived at the gateway because only SMR knows whether the injected
+    # re-derived at the gateway because only Text knows whether the injected
     # override was actually USED (a malformed override degrades to the platform
     # credential).
     byok: bool = False
@@ -365,7 +365,7 @@ def guardrail_usage_from_verdict(verdict: dict[str, Any] | None) -> UsageDetail 
     """Lift the safety plane's own per-call usage out of a validate() verdict.
 
     Guardrail is a peer service with no gateway in front of it, so the ONLY way
-    its LLM spend reaches the billing plane is by riding back on the SMR response
+    its LLM spend reaches the billing plane is by riding back on the Text response
     that triggered it. A verdict without usage (validation disabled, a fail-closed
     outage verdict, an older guardrail build) yields ``None`` — silence, not zeros,
     because a zero row is indistinguishable from a free call.

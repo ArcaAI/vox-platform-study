@@ -165,7 +165,7 @@ describe('ApiHealthController', () => {
   });
 
   describe('GET /health/services', () => {
-    const smrHealthy = {
+    const textHealthy = {
       data: { status: 'healthy', service: 'smr', version: '2.0.0', uptime_seconds: 200, timestamp: '2026-03-02T00:00:00Z', checks: {} },
     };
     const nlpHealthy = {
@@ -186,7 +186,7 @@ describe('ApiHealthController', () => {
 
     it('should return health status for all 6 downstream services', async () => {
       mockHttpService.axiosRef.get
-        .mockResolvedValueOnce(smrHealthy)
+        .mockResolvedValueOnce(textHealthy)
         .mockResolvedValueOnce(nlpHealthy)
         .mockResolvedValueOnce(sttHealthy)
         .mockResolvedValueOnce(ttsHealthy)
@@ -212,7 +212,7 @@ describe('ApiHealthController', () => {
 
     it('should return degraded when some services are down', async () => {
       mockHttpService.axiosRef.get
-        .mockResolvedValueOnce(smrHealthy)
+        .mockResolvedValueOnce(textHealthy)
         .mockRejectedValueOnce(new Error('ECONNREFUSED'))
         .mockResolvedValueOnce(sttHealthy)
         .mockResolvedValueOnce(ttsHealthy)
@@ -245,7 +245,7 @@ describe('ApiHealthController', () => {
     });
 
     it('should include timestamp in response', async () => {
-      mockHttpService.axiosRef.get.mockResolvedValue(smrHealthy);
+      mockHttpService.axiosRef.get.mockResolvedValue(textHealthy);
 
       const result = await controller.checkServices();
 
@@ -255,7 +255,7 @@ describe('ApiHealthController', () => {
 
     it('should include service-name response data from healthy services (sanitised — no version)', async () => {
       mockHttpService.axiosRef.get
-        .mockResolvedValueOnce(smrHealthy)
+        .mockResolvedValueOnce(textHealthy)
         .mockResolvedValueOnce(nlpHealthy)
         .mockResolvedValueOnce(sttHealthy)
         .mockResolvedValueOnce(ttsHealthy)
@@ -275,7 +275,7 @@ describe('ApiHealthController', () => {
 
     it('should include error message for down services', async () => {
       mockHttpService.axiosRef.get
-        .mockResolvedValueOnce(smrHealthy)
+        .mockResolvedValueOnce(textHealthy)
         .mockRejectedValueOnce(new Error('Connection refused'))
         .mockResolvedValueOnce(sttHealthy)
         .mockResolvedValueOnce(guardrailHealthy)
@@ -287,7 +287,7 @@ describe('ApiHealthController', () => {
     });
 
     it('should call correct health endpoints for each service', async () => {
-      mockHttpService.axiosRef.get.mockResolvedValue(smrHealthy);
+      mockHttpService.axiosRef.get.mockResolvedValue(textHealthy);
 
       await controller.checkServices();
 
@@ -304,7 +304,7 @@ describe('ApiHealthController', () => {
   });
 
   describe('GET /health/services/:serviceKey', () => {
-    const smrHealthy = {
+    const textHealthy = {
       data: {
         status: 'healthy',
         service: 'smr',
@@ -316,7 +316,7 @@ describe('ApiHealthController', () => {
     };
 
     it('should return sanitised structured health for a valid service key (no version / no checks)', async () => {
-      mockHttpService.axiosRef.get.mockResolvedValueOnce(smrHealthy);
+      mockHttpService.axiosRef.get.mockResolvedValueOnce(textHealthy);
 
       const result = await controller.checkServiceByKey('smr');
 
@@ -367,14 +367,14 @@ describe('ApiHealthController', () => {
 
     it('should accept all five valid service keys', async () => {
       for (const key of ['smr', 'nlp', 'stt', 'guardrail', 'harness']) {
-        mockHttpService.axiosRef.get.mockResolvedValueOnce(smrHealthy);
+        mockHttpService.axiosRef.get.mockResolvedValueOnce(textHealthy);
         const result = await controller.checkServiceByKey(key);
         expect(result.status).toBeDefined();
       }
     });
 
     it('should include timestamp in response', async () => {
-      mockHttpService.axiosRef.get.mockResolvedValueOnce(smrHealthy);
+      mockHttpService.axiosRef.get.mockResolvedValueOnce(textHealthy);
 
       const result = await controller.checkServiceByKey('smr');
 
@@ -429,7 +429,7 @@ describe('ApiHealthController', () => {
     });
 
     it('strips `version` and `checks` from the public services payload (AC-15: E-3 fix)', async () => {
-      const smrHealthy = {
+      const textHealthy = {
         data: {
           status: 'healthy',
           service: 'smr',
@@ -438,7 +438,7 @@ describe('ApiHealthController', () => {
           checks: { gpu: { status: 'healthy' } },
         },
       };
-      mockHttpService.axiosRef.get.mockResolvedValue(smrHealthy);
+      mockHttpService.axiosRef.get.mockResolvedValue(textHealthy);
 
       const result = await controller.checkServices();
 

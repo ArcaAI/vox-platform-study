@@ -105,6 +105,17 @@ export interface UpdateDnaSettingsRequest {
   expectedVersion?: number;
 }
 
+/**
+ * DnaErasureResponse — the shared body of BOTH erasure routes
+ * (DELETE my-style and DELETE :reportId). Counts are what was actually
+ * soft-deleted, so an idempotent re-run reports zeros.
+ */
+export interface DnaErasureResult {
+  doctorId: string;
+  deletedReports: number;
+  deletedVersions: number;
+}
+
 /** DnaJobResponseDto — POST generate acknowledgement. */
 export interface DnaJob {
   /** BullMQ job id — poll/stream key for progress. */

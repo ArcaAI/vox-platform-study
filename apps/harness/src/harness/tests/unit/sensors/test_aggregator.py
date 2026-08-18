@@ -151,7 +151,7 @@ class TestDegradedAlwaysFlags:
         assert "hypertension" in verdict.claims_flagged
 
     def test_missing_expected_sensor_flags(self):
-        # NLP/SMR degraded -> a sensor never ran -> never auto-PASS.
+        # NLP/Text degraded -> a sensor never ran -> never auto-PASS.
         partial = _all_pass()[:-1]  # drop numeric_dose
         verdict = aggregate(partial, expected=COMPUTATIONAL_SENSOR_NAMES)
         assert verdict.decision is GateDecision.FLAG

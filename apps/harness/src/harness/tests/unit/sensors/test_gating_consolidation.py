@@ -493,14 +493,14 @@ class TestT7SafetyFlagInvariants:
 
 # ===========================================================================
 # T9 — the harness gate fails CLOSED and cannot be replaced by a
-# fail-open SMR/guardrail layer.
+# fail-open Text/guardrail layer.
 # ===========================================================================
 
 
 class TestT9HarnessGateFailsClosed:
     """The harness gate verdict is computed PURELY from the harness sensor results and
     fails CLOSED (degraded / missing-expected -> FLAG). It has NO input by which a
-    fail-OPEN SMR pre-gen gate or guardrail-service verdict (which return safe-on-error)
+    fail-OPEN Text pre-gen gate or guardrail-service verdict (which return safe-on-error)
     could substitute for a fail-closed harness check. WS-4 is governance/config only and
     must never remove this."""
 
@@ -511,6 +511,6 @@ class TestT9HarnessGateFailsClosed:
     def test_degraded_and_missing_inputs_fail_closed_to_flag(self):
         # A degraded run -> FLAG (never auto-PASS).
         assert aggregate(_all_computational_pass(), degraded=True).decision is GateDecision.FLAG
-        # A missing expected sensor (NLP/SMR down) -> FLAG.
+        # A missing expected sensor (NLP/Text down) -> FLAG.
         partial = _all_computational_pass()[:-1]  # drop numeric_dose
         assert aggregate(partial, expected=COMPUTATIONAL_SENSOR_NAMES).decision is GateDecision.FLAG

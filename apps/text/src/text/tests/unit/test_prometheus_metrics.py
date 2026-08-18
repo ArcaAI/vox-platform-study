@@ -181,7 +181,7 @@ class TestGenerateMetricsIntegration:
     async def test_successful_generation_increments_total(self, client):
         """After successful generate, GENERATION_TOTAL with status=completed is incremented."""
         before = _get_sample_value(
-            "smr_generation_total",
+            "text_generation_total",
             {"provider": "ollama", "model": "test-model", "status": "completed"},
         )
         await client.post(
@@ -194,7 +194,7 @@ class TestGenerateMetricsIntegration:
             },
         )
         after = _get_sample_value(
-            "smr_generation_total",
+            "text_generation_total",
             {"provider": "ollama", "model": "test-model", "status": "completed"},
         )
         assert after - before >= 1.0
@@ -203,7 +203,7 @@ class TestGenerateMetricsIntegration:
     async def test_successful_generation_records_latency(self, client):
         """After successful generate, GENERATION_LATENCY has an observation."""
         before = _get_sample_value(
-            "smr_generation_latency_seconds_count",
+            "text_generation_latency_seconds_count",
             {"provider": "ollama", "model": "test-model"},
         )
         await client.post(
@@ -216,7 +216,7 @@ class TestGenerateMetricsIntegration:
             },
         )
         after = _get_sample_value(
-            "smr_generation_latency_seconds_count",
+            "text_generation_latency_seconds_count",
             {"provider": "ollama", "model": "test-model"},
         )
         assert after - before >= 1.0
@@ -225,11 +225,11 @@ class TestGenerateMetricsIntegration:
     async def test_successful_generation_records_tokens(self, client):
         """After successful generate, TOKENS_TOTAL is incremented for both input and output."""
         before_input = _get_sample_value(
-            "smr_tokens_total",
+            "text_tokens_total",
             {"provider": "ollama", "model": "test-model", "direction": "input"},
         )
         before_output = _get_sample_value(
-            "smr_tokens_total",
+            "text_tokens_total",
             {"provider": "ollama", "model": "test-model", "direction": "output"},
         )
         await client.post(
@@ -242,11 +242,11 @@ class TestGenerateMetricsIntegration:
             },
         )
         after_input = _get_sample_value(
-            "smr_tokens_total",
+            "text_tokens_total",
             {"provider": "ollama", "model": "test-model", "direction": "input"},
         )
         after_output = _get_sample_value(
-            "smr_tokens_total",
+            "text_tokens_total",
             {"provider": "ollama", "model": "test-model", "direction": "output"},
         )
         assert after_input - before_input == 10.0
@@ -256,7 +256,7 @@ class TestGenerateMetricsIntegration:
     async def test_failed_generation_increments_errors(self, failing_client):
         """After failed generate, GENERATION_ERRORS is incremented."""
         before = _get_sample_value(
-            "smr_generation_errors_total",
+            "text_generation_errors_total",
             {"provider": "ollama", "model": "test-model", "error_type": "provider_error"},
         )
         resp = await failing_client.post(
@@ -270,7 +270,7 @@ class TestGenerateMetricsIntegration:
         )
         assert resp.status_code == 502
         after = _get_sample_value(
-            "smr_generation_errors_total",
+            "text_generation_errors_total",
             {"provider": "ollama", "model": "test-model", "error_type": "provider_error"},
         )
         assert after - before >= 1.0
@@ -279,7 +279,7 @@ class TestGenerateMetricsIntegration:
     async def test_failed_generation_increments_total_with_failed_status(self, failing_client):
         """After failed generate, GENERATION_TOTAL with status=failed is incremented."""
         before = _get_sample_value(
-            "smr_generation_total",
+            "text_generation_total",
             {"provider": "ollama", "model": "test-model", "status": "failed"},
         )
         await failing_client.post(
@@ -292,7 +292,7 @@ class TestGenerateMetricsIntegration:
             },
         )
         after = _get_sample_value(
-            "smr_generation_total",
+            "text_generation_total",
             {"provider": "ollama", "model": "test-model", "status": "failed"},
         )
         assert after - before >= 1.0
@@ -301,7 +301,7 @@ class TestGenerateMetricsIntegration:
     async def test_active_generations_incremented_and_decremented(self, client):
         """During generation, the active gauge goes up then back down to its original value."""
         gauge_before = _get_sample_value(
-            "smr_active_generations",
+            "text_active_generations",
             {"provider": "ollama"},
         )
         await client.post(
@@ -314,7 +314,7 @@ class TestGenerateMetricsIntegration:
             },
         )
         gauge_after = _get_sample_value(
-            "smr_active_generations",
+            "text_active_generations",
             {"provider": "ollama"},
         )
         assert gauge_after == gauge_before
@@ -323,7 +323,7 @@ class TestGenerateMetricsIntegration:
     async def test_active_generations_decremented_on_failure(self, failing_client):
         """After a failed generation, active gauge returns to its original value."""
         gauge_before = _get_sample_value(
-            "smr_active_generations",
+            "text_active_generations",
             {"provider": "ollama"},
         )
         await failing_client.post(
@@ -336,7 +336,7 @@ class TestGenerateMetricsIntegration:
             },
         )
         gauge_after = _get_sample_value(
-            "smr_active_generations",
+            "text_active_generations",
             {"provider": "ollama"},
         )
         assert gauge_after == gauge_before

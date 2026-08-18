@@ -29,7 +29,7 @@ const MODE_OPTIONS: Array<{ value: TranscriptSourceMode; label: string }> = [
   { value: 'live-plus-context', label: 'Live + additional context' },
 ];
 
-/** Derive the text sent to `useSMR()` from the selected source mode. */
+/** Derive the text sent to `useText()` from the selected source mode. */
 export function computeEffectiveTranscript(mode: TranscriptSourceMode, liveLines: string[], pastedText: string, additionalContext: string): string {
   if (mode === 'pasted') return pastedText;
   const live = liveLines.join('\n');

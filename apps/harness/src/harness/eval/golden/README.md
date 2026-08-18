@@ -7,18 +7,48 @@ scored by `GoldenSetRunner` (`runner.py`). Threshold gating lives in
 
 ## Contents
 
-| File                                 | Provenance                                              | Use                                                             |
-| ------------------------------------ | ------------------------------------------------------- | --------------------------------------------------------------- |
-| `fixtures/synthetic_v0.json`         | synthetic                                               | hermetic CI smoke (default source)                              |
-| `fixtures/curated_v1.json`           | **curated, rubric-derived** (NOT real clinician labels) | exercises the harness end-to-end; **not** a clinical validation |
-| `fixtures/clinical_v1.schema.json`   | —                                                       | JSON Schema (Draft 2020-12) contract for the **real** set       |
-| `fixtures/clinical_v1.template.json` | **TEMPLATE / PLACEHOLDER**                              | copy-me starting point for SMEs; refused by the loader          |
-| `fixtures/clinical_v1.json`          | **real (clinician-authored)**                           | _does not exist yet — the open Phase-0 prerequisite_            |
-| `clinical_v1_spec.md`                | —                                                       | spec + multi-rater labeling protocol + ICC plan                 |
+| File                                  | Provenance                                                     | Use                                                                                |
+| ------------------------------------- | -------------------------------------------------------------- | ---------------------------------------------------------------------------------- |
+| `fixtures/synthetic_v0.json`          | synthetic                                                      | hermetic CI smoke (default source)                                                 |
+| **`fixtures/curated_v2.json`**        | **AI-authored, rubric-literal** — PENDING clinician review     | **the set the release gate runs** (36 cases / 288 ratings, designed 5-level gradient) |
+| `fixtures/curated_v1.json`            | curated, rubric-derived (NOT real clinician labels)            | SUPERSEDED by v2; retained unmutated so historical runs stay interpretable          |
+| `curated_v2_spec.md`                  | —                                                              | v2 design: gradient, labelling rules, taxonomy, stratification, split, PHI posture  |
+| `review/curated_v2_review.md`         | generated from the fixture                                     | the artifact a clinician reviews (case · note · defect · proposed rating · rationale) |
+| `review/curated_v2_amendments.json`   | empty template                                                 | where a reviewer records disagreements                                             |
+| `review/render_review.py`             | —                                                              | regenerates the review artifact from a fixture                                     |
+| `review/apply_amendments.py`          | —                                                              | applies amendments and ships a NEW version (never mutates in place)                |
+| `fixtures/clinical_v1.schema.json`    | —                                                              | JSON Schema (Draft 2020-12) contract for the **real** multi-rater set              |
+| `fixtures/clinical_v1.template.json`  | **TEMPLATE / PLACEHOLDER**                                     | copy-me starting point for SMEs; refused by the loader                             |
+| `fixtures/clinical_v1.json`           | **real (clinician-authored, multi-rater)**                     | _does not exist yet — the open Phase-0 prerequisite_                               |
+| `clinical_v1_spec.md`                 | —                                                              | spec + multi-rater labeling protocol + ICC plan                                    |
 
-> The reported **ICC ≈ 0.821 is judge-vs-rubric over n = 6**, not a clinical
-> validation. A clinically-validated claim requires the real `clinical_v1.json`
-> (N ≥ 132, ≥3 blinded raters/case). See `clinical_v1_spec.md`.
+> **Three distinct provenance tiers, and they are not interchangeable.**
+> `curated_v2` ratings are **AI-authored** and marked `clinician_review_status: pending` —
+> good enough to make the gate a meaningful signal, never good enough to call a clinical
+> validation. Clinician sign-off through `review/` upgrades them to
+> `clinician-reviewed` and ships `curated-v2.1.0`. A clinically-VALIDATED calibration
+> claim still requires `clinical_v1.json` (N ≥ 132, ≥ 3 blinded raters/case, human ICC
+> ≥ 0.75 as a precondition) — see `clinical_v1_spec.md`. The historical
+> **ICC ≈ 0.821 was judge-vs-rubric over n = 6** and is not a clinical validation.
+
+### The v2 review loop, end to end
+
+```bash
+cd apps/harness
+# 1. (re)generate the artifact a clinician reads
+PYTHONPATH=src conda run -n arcaenv python -m harness.eval.golden.review.render_review \
+  --golden-set src/harness/eval/golden/fixtures/curated_v2.json \
+  --output     src/harness/eval/golden/review/curated_v2_review.md
+
+# 2. clinician fills in review/curated_v2_amendments.json (reviewer + date are MANDATORY)
+
+# 3. apply -> a NEW version; the reviewed file is never edited in place
+PYTHONPATH=src conda run -n arcaenv python -m harness.eval.golden.review.apply_amendments \
+  --golden-set src/harness/eval/golden/fixtures/curated_v2.json \
+  --amendments src/harness/eval/golden/review/curated_v2_amendments.json \
+  --version    curated-v2.1.0 \
+  --output     src/harness/eval/golden/fixtures/curated_v2_1.json
+```
 
 ## Sources (`sources.py`)
 

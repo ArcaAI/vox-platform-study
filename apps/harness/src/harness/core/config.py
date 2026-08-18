@@ -11,7 +11,7 @@ import os
 from typing import TYPE_CHECKING
 
 from hope_env import hope_settings_sources, load_env
-from pydantic import Field, SecretStr, field_validator, model_validator
+from pydantic import AliasChoices, Field, SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 # Environments where the in-memory claim-check store is a data-loss bug rather than a
@@ -114,7 +114,7 @@ class PhiConfig(BaseSettings):
     the allowlist of provider identifiers treated as **local, non-egress** calls —
     i.e. the ONLY providers the guard's ``ensure_safe_for_cloud(...)`` skips.
     Every other provider string, including one not yet in this list (an
-    omission, drift, or a provider SMR adds tomorrow), is treated as cloud
+    omission, drift, or a provider Text adds tomorrow), is treated as cloud
     egress and must clear redact-and-confirm before it leaves the box. This is
     a deliberate default-deny inversion: the list enumerates what is *known
     safe*, not what is *known unsafe*, so an unrecognized provider fails
@@ -351,10 +351,43 @@ class Settings(BaseSettings):
     cors_origins: list[str] = Field(default_factory=list)
     cors_enabled: bool = False
 
-    # Inter-service authentication (empty = auth disabled for local dev).
-    # This is the shared HARNESS_SERVICE_TOKEN: it guards the inbound internal
-    # endpoints AND is the ``X-Service-Token`` the api_client presents to apps/api.
+    # ── CANONICAL internal credential (owner decision D-D, 2026-08-17) ──────
+    # ONE shared access token for ALL internal service-to-service communication,
+    # identical across every HOPE service, set by the DevOps engineer, internal use
+    # only. Unprefixed on purpose (`validation_alias` bypasses the env_prefix) —
+    # it belongs to no single service. This is what the service ACCEPTS inbound as
+    # `X-Service-Token` and PRESENTS on every outbound peer call.
+    # The legacy per-service token below stays accepted / used as a zero-cost
+    # backward-compatibility fallback; both empty ⇒ auth bypassed (dev / CI).
+    internal_access_token: SecretStr = Field(
+        default=SecretStr(""), validation_alias=AliasChoices("INTERNAL_ACCESS_TOKEN")
+    )
+
+    # LEGACY per-service credential (empty = auth disabled for local dev).
+    # This is HARNESS_SERVICE_TOKEN: it guards the inbound internal endpoints AND
+    # is the ``X-Service-Token`` the api_client presents to apps/api when the
+    # shared INTERNAL_ACCESS_TOKEN above is unset.
     service_token: SecretStr = SecretStr("")
+
+    @property
+    def accepted_service_tokens(self) -> tuple[str, ...]:
+        """Every token accepted as inbound ``X-Service-Token``, shared token first.
+
+        Empty tuple ⇒ auth is bypassed (local dev / hermetic CI) — the pre-existing
+        behaviour when no token is configured at all.
+        """
+        return tuple(
+            t
+            for t in (
+                self.internal_access_token.get_secret_value(),
+                self.service_token.get_secret_value(),
+            )
+            if t
+        )
+
+    def peer_service_token(self, legacy: SecretStr) -> str:
+        """Token to PRESENT on an outbound peer call: shared first, legacy fallback."""
+        return self.internal_access_token.get_secret_value() or legacy.get_secret_value()
 
     # Dedicated token for the institutional-knowledge ingest
     # endpoint (``POST /internal/knowledge/ingest``). The ingest guard accepts an
@@ -369,7 +402,7 @@ class Settings(BaseSettings):
 
     # -- Loop / gate-adapter --------------------------------------------------
     # Tool-service base URLs the durable loop calls out to.
-    smr_base_url: str = "http://localhost:8862"
+    text_base_url: str = "http://localhost:8862"
     nlp_base_url: str = "http://localhost:8864"
     api_base_url: str = "http://localhost:8868"
     # Peer-service auth: harness's own copy of apps/text's TEXT_SERVICE_TOKEN and
@@ -378,10 +411,15 @@ class Settings(BaseSettings):
     # when it calls apps/text). Each target validates against exactly one configured
     # secret with no OR-fallback, so this must match that target's own value, not
     # HARNESS_SERVICE_TOKEN. Empty = auth disabled (local dev-bypass), same as above.
-    smr_service_token: SecretStr = SecretStr("")
+    text_service_token: SecretStr = SecretStr("")
     nlp_service_token: SecretStr = SecretStr("")
+    # Legacy fallback for the harness→guardrail hop (env HARNESS_GUARDRAIL_SERVICE_TOKEN),
+    # i.e. apps/guardrail's own GUARDRAIL_SERVICE_TOKEN. Superseded by the shared
+    # INTERNAL_ACCESS_TOKEN; before D-D this hop wrongly presented HARNESS_SERVICE_TOKEN,
+    # which apps/guardrail never accepts.
+    guardrail_service_token: SecretStr = SecretStr("")
     # Peer service — the summarization palette's `guardrail.check` node (TASK-720) calls
-    # apps/guardrail directly, mirroring the established `smr_base_url`/`nlp_base_url` bootstrap-
+    # apps/guardrail directly, mirroring the established `text_base_url`/`nlp_base_url` bootstrap-
     # floor pattern (rule 09 §Configuration Tiers: a `*_URL` transport address is the ONE
     # sanctioned kind of hardcoded default). `X-Tenant-Id` is mandatory on every call (TASK-737).
     guardrail_base_url: str = "http://localhost:8863"
@@ -480,13 +518,13 @@ class Settings(BaseSettings):
     model_cache_ttl_seconds: int = 600
     model_cache_max_models: int = 1
 
-    # SMR generation defaults (None => let the SMR service choose).
-    smr_provider: str | None = None
-    smr_model: str | None = None
+    # Text generation defaults (None => let the Text service choose).
+    text_provider: str | None = None
+    text_model: str | None = None
     conversation_language: str = "en"
 
     # Tool-call + Temporal activity timeouts / retry budgets.
-    smr_timeout_s: float = 120.0
+    text_timeout_s: float = 120.0
     nlp_timeout_s: float = 30.0
     api_timeout_s: float = 30.0
     guardrail_timeout_s: float = 30.0

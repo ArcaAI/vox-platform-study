@@ -9,7 +9,7 @@ import {
   SpendStatusResponse,
   periodOf,
 } from '@arcaai/applications';
-import { Authorize } from '../../decorators';
+import { Authorize, ForbidApiKey } from '../../decorators';
 
 /**
  * Tenant self-service billing reads (D8/D12), mounted at
@@ -24,6 +24,15 @@ import { Authorize } from '../../decorators';
 @ApiBearerAuth()
 @ApiTags('billing')
 @Controller('billing')
+// TASK-742 API-KEY-NOTE — CONSERVATIVE DEFAULT, AWAITING OWNER CLASSIFICATION.
+// Reason: self-service billing reads.
+// This route family declared nothing about API-key access, which under the
+// deny-by-default rule is a boot failure. Rather than guess a scope (guessing
+// permissive is how the original gap was created), it is closed explicitly.
+// Reversing it is a one-line change to @RequiredScopes('<scope>') once the
+// owner confirms a real API-key use case — see the TASK-708 README's
+// "Reachability changes awaiting owner review" table.
+@ForbidApiKey()
 export class MyBillingController {
   constructor(
     @Inject(IBillingService) private readonly billing: IBillingService,

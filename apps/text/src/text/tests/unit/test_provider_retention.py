@@ -1,6 +1,6 @@
 """Retention propagation to server-managed engines.
 
-SMR does not hold model weights: the engines it talks to do. Retention
+Text does not hold model weights: the engines it talks to do. Retention
 therefore propagates as a per-request hint rather than an in-process cache:
 
   * LM Studio — `ttl` (seconds) ferried through the OpenAI SDK's sanctioned

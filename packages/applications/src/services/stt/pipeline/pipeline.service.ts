@@ -10,8 +10,9 @@ import { BadRequestException, ForbiddenException, Injectable, NotFoundException,
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { ClsService } from 'nestjs-cls';
 import { parse } from 'yaml';
-import { BaseService } from '../../../common';
+import { BaseService, TENANTLESS, internalServiceHeaders, resolveInternalAccessToken } from '../../../common';
 import { IActiveUserContext } from '../../../interfaces';
+import { SecretsService } from '../../baseServices/_meta/secrets';
 import { IEntitlementsService } from '../../entitlements/IEntitlementsService';
 import { IPipelineService } from './IPipelineService';
 import {
@@ -42,6 +43,9 @@ export class PipelineService extends BaseService implements IPipelineService {
     // Optional (append-only DI); enforces the plan
     // `maxAsrPipelines` quota on create (kill-switch-gated, no-op when OFF).
     @Optional() @Inject(IEntitlementsService) private readonly entitlements?: IEntitlementsService,
+    // Optional + trailing so existing positional constructions keep compiling.
+    // Supplies the shared internal token for the remote YAML validation hop.
+    @Optional() @Inject(SecretsService) private readonly secretsService?: SecretsService,
   ) {
     super(eventEmitter, clsService, ResourceType.AsrPipeline);
   }
@@ -660,12 +664,25 @@ export class PipelineService extends BaseService implements IPipelineService {
 
   private async validateYamlRemotely(yaml: string): Promise<{ valid: boolean; errors?: string[] } | null> {
     try {
-      // URL resolution mirrors serviceHealthMonitoring.service.ts; stt is
-      // gateway-fronted and carries no service-token middleware.
+      // URL resolution mirrors serviceHealthMonitoring.service.ts.
+      //
+      // stt DOES carry service-token middleware (`ServiceAuthMiddleware`, whose
+      // exempt set is metrics/docs/health only) — the previous comment here
+      // claimed the opposite, which is how an unauthenticated call survived.
+      // D-D: the ONE shared `INTERNAL_ACCESS_TOKEN`. TASK-737: pipelines are
+      // tenant-owned rows and this runs on the CLS-backed create/update request
+      // path, so the tenant is present and authoritative.
       const base = process.env.STT_URL || process.env.STT_V2_URL || 'http://localhost:8861';
+      const serviceToken = await resolveInternalAccessToken(this.secretsService, 'INTERNAL_ACCESS_TOKEN');
       const response = await fetch(`${base}/api/v1/pipelines/validate`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: internalServiceHeaders({
+          serviceToken,
+          tenantId: this.tenantId,
+          // A SUPER_ADMIN validating YAML with no working tenant selected is a
+          // real, legitimate no-tenant caller — not a dropped header.
+          tenantlessReason: TENANTLESS.PLATFORM_OPERATOR,
+        }),
         body: JSON.stringify({ config_yaml: yaml }),
         signal: AbortSignal.timeout(3000),
       });

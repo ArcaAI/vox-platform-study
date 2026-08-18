@@ -94,3 +94,43 @@ async def async_client(app) -> AsyncGenerator[AsyncClient, None]:
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as client:
         yield client
+
+
+# ── TASK-737 — default `X-Tenant-Id` on suite-issued requests ────────────────
+#
+# `X-Tenant-Id` is MANDATORY on every internal request carrying tenant-scoped
+# work (owner directive 2026-08-16), and `POST /api/v1/generate` now ENFORCES it
+# with 428. Every real caller sends it.
+#
+# The suite's ~110 pre-existing `/generate` calls, however, are about retries,
+# queueing, circuit breakers, metrics and provider selection — none of them are
+# about the tenant contract, and none set the header. Without a default they all
+# fail 428 for a reason unrelated to what they assert, which is exactly the
+# false-signal failure mode the leaked-`TEXT_SERVICE_TOKEN` note at the top of
+# this file describes: 134 failures, one root cause, none about the code under
+# test. So the harness supplies a tenant the way a real gateway would.
+#
+# It is a DEFAULT, never an override: a test that sets the header (or sets it to
+# a `tenantless:` marker) keeps its own value, so the contract stays assertable.
+# A test that must send NO header — i.e. the one asserting the 428 itself —
+# opts out with `@pytest.mark.no_default_tenant_header`.
+_TEST_TENANT_ID = "11111111-1111-1111-1111-111111111111"
+
+
+@pytest.fixture(autouse=True)
+def _default_tenant_header(request, monkeypatch):
+    """Attach a default `X-Tenant-Id` to every httpx request the suite makes."""
+    if request.node.get_closest_marker("no_default_tenant_header"):
+        return
+
+    original = AsyncClient.request
+
+    async def with_tenant(self, method, url, **kwargs):
+        headers = kwargs.get("headers") or {}
+        # Case-insensitive check: an explicit header from the test always wins.
+        if not any(k.lower() == "x-tenant-id" for k in headers):
+            headers = {**headers, "X-Tenant-Id": _TEST_TENANT_ID}
+            kwargs["headers"] = headers
+        return await original(self, method, url, **kwargs)
+
+    monkeypatch.setattr(AsyncClient, "request", with_tenant)

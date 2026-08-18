@@ -2,7 +2,7 @@
 
 | Field | Value |
 |---|---|
-| Status | Pending (audit complete — plan drafted, awaiting implementation) |
+| Status | Review — contract, ALL reachable call sites, and `apps/text /generate` 428 enforcement are implemented and ENABLED (D-A). One caller (`dna-writing-style.processor.ts`) and three out-of-scope edges remain, listed in §7.6.4. |
 | Type | refactor + infrastructure |
 | Owner decision date | 2026-08-16 |
 | Origin | TASK-735 gap **G-07** |
@@ -451,10 +451,9 @@ only `tenantless:*` remains a legitimate SYSTEM-routing input.
 | **New** — fixing §3.2/§3.3 via a shared header-builder helper could be skipped by a *new* caller added after this ticket closes if the helper isn't the only sanctioned way to call out | §4.4's lint rule is the backstop — don't rely on code review alone to catch the 10th call site the way review missed the first 9 |
 | **New** — guardrail's `TenantConfigResolver.resolve()` needs a code change to recognize `tenantless:*` (§4.1) before enforcement can safely land on guardrail's four surfaces, or a legitimately tenant-less caller (job_processor's SYSTEM path, once it forwards the marker) gets treated as a defect by the new 428 | Sequence `tenantless:*` support (§4.1) strictly before §4.3's guardrail rollout; add a guardrail unit test asserting `tenantless:*` inputs route to SYSTEM without a warning |
 
-## 6. Implementation Summary
+## 6. Audit hand-off notes (from the read-only pass)
 
-_Audit and plan complete (§3–§5); no application code changed by this pass (read-only audit per
-scope). Implementation (§4.2 onward) not started._
+_The audit pass (§3–§5) changed no application code. What it found, for whoever reads §7 next:_
 
 Headline findings for whoever picks up §4.2:
 - The single biggest gap is `apps/api → apps/text` (§3.2): 9 call sites, several with `tenantId`
@@ -480,3 +479,383 @@ Headline findings for whoever picks up §4.2:
 |---|---|
 | 2026-08-16 | Ticket created from owner directive, promoted out of TASK-735 gap G-07. Propagation audit dispatched. |
 | 2026-08-16 | Propagation audit completed (§3, 16 subsections) via six parallel read-only sweeps across `apps/api`, `apps/text`, `apps/guardrail`, `apps/nlp`, `apps/harness`, `apps/stt`/`apps/tts`; every citation spot-verified by direct file reads before being committed to this doc. §4 implementation plan and §5 risk table redrafted against the findings. No application code changed. `apps/text` and `apps/harness` were mid-edit by other agents during the audit — their line numbers may have shifted since and should be re-verified before implementation. |
+
+
+## 7. Implementation (2026-08-17)
+
+Implemented jointly with [TASK-738](../TASK-738-Harness-Peer-Service-Auth/README.md) as ONE change,
+because they are two halves of one contract: TASK-738 answers *who is calling* (`X-Service-Token`,
+now the single shared `INTERNAL_ACCESS_TOKEN` per owner decision D-D), TASK-737 answers *whose work
+it is* (`X-Tenant-Id`). A caller that gets one right and the other wrong is still broken.
+
+### 7.1 The contract now lives in one place
+
+`packages/applications/src/common/internal-service-headers.ts` (new, exported from the `common`
+barrel) is the single TypeScript definition of an internal call's headers:
+
+| Export | Purpose |
+|---|---|
+| `TENANTLESS_PREFIX` / `TENANTLESS.*` | The `tenantless:<reason>` sentinel and its four sanctioned reasons (`job-queue`, `worker-weights`, `control-plane`, `platform-operator`). |
+| `isTenantlessMarker(v)` | Receiver-side classification. |
+| `tenantHeaderValue(tenantId, fallback)` | Real tenant wins; **`fallback` is a required argument**, so there is deliberately no code path that omits the header — "omitted" is exactly the ambiguity this removes. |
+| `internalServiceHeaders({...})` | Both headers, always present. |
+| `resolveInternalAccessToken(secrets, legacyKey)` | D-D shared-token-first resolution. |
+
+Python has the same sentinel where it is consumed: `apps/guardrail/.../core/tenant_config.py`
+exports `TENANTLESS_PREFIX` + `is_tenantless_marker()`.
+
+**Sentinel format, as planned in §4.1 and unchanged:** `tenantless:<reason-slug>` — never a UUID,
+so a future bug that treats it as a tenant id trips an existing `z.string().uuid()` / UUID check
+instead of silently addressing some tenant's rows; and never `50000000-…`, which is a CUSTOMER
+tenant. A `platform-operator` reason was added beyond §4.1's three: a SUPER_ADMIN driving the AI
+playground with no working tenant selected genuinely has no tenant, and previously looked identical
+to a dropped header.
+
+### 7.2 What is ENFORCING now
+
+Per D-A this ships enabled, not behind a flag. §4.3's planned warn-only window was **dropped**
+wherever the callers are fixed by this same change (see §7.4 for the one place it could not be).
+
+| Edge | Enforcement | Where |
+|---|---|---|
+| `apps/harness` → `apps/text` `/generate` (5 activity call sites) | `SmrClient.generate(tenant_id=...)` is a **required keyword** and **raises `ValueError` on a blank value** — the request never leaves the harness. The header is then unconditional. | `services/smr_client.py` |
+| `apps/harness` → `apps/nlp` `/classify/tokens` | Same shape on `NlpClient.classify_tokens(tenant_id=...)`. | `services/nlp_client.py` |
+| every harness activity that makes a peer call | `_required_tenant(payload.tenant_id, "<activity>")` turns "the workflow input had no tenant" into a loud, attributable failure at the activity, instead of a silent platform-default resolution two hops downstream. | `temporal/activities.py` |
+| `apps/nlp` → `apps/text` (`/classify/topic`, `/classify/intent`) | `generate_label(..., tenant_id=)` is keyword-only and raises on blank; the two routes refuse the request with **428 Precondition Required** (mirroring the gateway's `RequiresIfMatch` convention) when the gateway did not inject a tenant. The old `if tenant_id:` guard is gone. | `services/external_text_client.py`, `api/v1/rest/classify.py` |
+| gateway → `apps/text` via `TextProxyController` (7 call sites) | `getForwardHeaders()` now always sets `X-Tenant-Id` from CLS, falling back to `tenantless:platform-operator`. This closes the largest single block of §3.2. | `text-proxy.controller.ts` |
+| gateway → guardrail/NLP playground proxy | `AiInferenceClient.buildHeaders` no longer conditional. | `ai-inference.client.ts` |
+| live-doc flush → `apps/text` `/generate` | The **highest-volume internal hop in the platform** (§3.2, every flush) now sends the session's tenant. | `live-documentation.service.ts` |
+| live-doc → NLP NER and → guardrail groundedness | `ExtractionToolInput` / `GroundednessToolInput` gained a **required** `tenantId`, so a new executor cannot compile without one. | `live-tool-registry.ts` |
+| `apps/guardrail` receiver | `TenantConfigResolver.resolve()` recognises `tenantless:*` **before** the `or None` coercion and routes it to SYSTEM explicitly, logging it as expected rather than as an anomaly. This is what keeps *absent* available as an unambiguous defect signal. | `core/tenant_config.py` |
+
+Workflow-input models: `GenerateInput` and `ApplyRedactionInput` gained `tenant_id`, and
+`HarnessDocWorkflow` populates both. The field is **additive-optional (`= ""`)** on purpose —
+`extra="forbid"` models are deserialized from Temporal history on replay, so a required field would
+break replay compatibility (rule 06). The *enforcement* lives at the client boundary, which no
+history can bypass.
+
+### 7.3 §4.1's `tenantless:*` on the CLASS-C edges — status
+
+`is_tenantless_marker` is implemented and honoured at guardrail's resolver, so the markers are
+*accepted* today. Actually EMITTING them from the three Class-C producers (guardrail's
+`job_processor`, harness's by-slug MiniCheck lookup, the six `core/effective_config.py` pulls) is
+**not done** — see §7.4.
+
+### 7.4 What was NOT done in the first pass — CLOSED 2026-08-17 (see §7.6)
+
+Items 1, 2 and 4 below were the first pass's residual. **All three are now done** — the callers
+were fixed, `/generate` is enforcing, and the lint rule exists. Kept as written for the audit
+trail; §7.6 records what actually landed and what genuinely remains.
+
+1. ~~**~7 `apps/api` → `apps/text` call sites still omit the header.**~~ **DONE** — §7.6.1. (The
+   list above is also partly stale: `jobs/processors/summary.processor.ts` was DELETED by TASK-732
+   and no longer exists.)
+
+2. ~~**`apps/text` `/generate` is therefore NOT flipped to enforcing.**~~ **DONE** — §7.6.2. It now
+   returns **428 Precondition Required** on an absent/blank header.
+
+3. **§4.2 step 5 (STT's two header-less routes) and §4.3's `SttInternalController` tightening** are
+   still not done. Both are Class-B-but-currently-harmless normalizations on the
+   `X-Internal-Tenant-Id` channel (§3.0 channel 2), and `stt-internal.controller.ts` was outside
+   both passes' owned set.
+
+4. ~~**§4.4's lint rule and contract-test fixtures** are not written.~~ **DONE** — §7.6.3.
+
+5. **Class-C emitters (§7.3)** still do not send markers. The markers are accepted everywhere they
+   are read; nothing yet EMITS them from guardrail's `job_processor`, harness's by-slug MiniCheck
+   lookup, or the six `core/effective_config.py` pulls.
+
+### 7.6 Closing pass — 2026-08-17
+
+#### 7.6.0 The real call-site list vs the documented one
+
+§7.4's list was re-verified against the tree rather than trusted. Three corrections:
+
+| §7.4 said | Reality |
+|---|---|
+| `jobs/processors/summary.processor.ts` | **Does not exist** — deleted by TASK-732 (the legacy signable generator). Only `pre-summary` and `comprehensive-summary` survive in that folder. |
+| "~7 call sites" | **6 fixable + 1 off-limits.** The `summary.service.ts` entry is really TWO edges (the SMR `/generate` call and `callNlpService`), and `callNlpService` was worse than described: it sent **no headers object at all**, so it was missing `X-Service-Token` too and only ever worked against a service running the empty-token dev bypass. |
+| — (not listed) | Two further omissions the sweep found, both OUT of this ticket's `apps/text` scope and **reported, not fixed**: `consultation/ocr/ocr-enrichment.processor.ts` → NLP `/api/v1/extract`, and the two harness clients `knowledge/knowledge-ingest.client.ts` + `knowledge/knowledge-vector-cleanup.client.ts`. The new lint rule flags the last two. |
+
+#### 7.6.1 Callers fixed
+
+Every one now builds its headers with `internalServiceHeaders()` + `resolveInternalAccessToken()`.
+
+| Call site | Tenant source | Note |
+|---|---|---|
+| `text-compat.controller.ts` — `getForwardHeaders()` | `requireTenantId()`, **threaded as a parameter** | NOT read from CLS: SDK-compat callers authenticate with `x-api-key`, for which CLS `tenantId` is not populated (see `requireTenantId`'s own comment), so a CLS read would have sent the tenant-less marker on exactly the traffic that HAS a tenant. `tenantId` was threaded through `postGenerate`/`postGenerateStream`/`postGenerateRaw`/`streamGenerate`/`pumpTaskStream`. One chokepoint now covers `/generate`, `/translate` and `GET /tasks/:id/stream`. |
+| `jobs/processors/pre-summary.processor.ts` | `job.data.tenantId` (already fail-closed validated) | `TENANTLESS.JOB_QUEUE` as the compile-time fallback. |
+| `jobs/processors/comprehensive-summary.processor.ts` | same | same |
+| `summary/chain-summary.service.ts` | `this.tenantId` | Null-checked at the top of the method and then dropped — a pure assignment fix. |
+| `summary/summary.service.ts` — `executeSmrGenerate` | `this.tenantId` | The FINALIZE path, whose output is the note a clinician signs. |
+| `summary/summary.service.ts` — `callNlpService` | `this.tenantId` | Also gained `X-Service-Token` (was sending no headers at all). |
+| `prompt-management.service.ts` — `smrHeaders()` | `this.tenantId` | The `if (tenantId)` conditional is gone; a SUPER_ADMIN with no working tenant now DECLARES `tenantless:platform-operator`. |
+| `phi-redaction/guardrail-phi-redactor.service.ts` | `ClsService`, injected `@Optional()` + trailing | `IPhiRedactor.redact(text, mode)` keeps its signature deliberately: the port has callers in three unrelated features, and widening the interface would ripple through all of them for a value every caller already runs under. |
+
+`INTERNAL_ACCESS_TOKEN` was added to `COMMON_SERVICE_WARMUP_KEYS`. `getSecretSync` is cache-only by
+design, so unwarmed it resolves to `undefined` on EVERY request — both proxy controllers would have
+fallen through to the legacy `TEXT_SERVICE_TOKEN` forever and D-D's shared token would have looked
+"not deployed". Pinned by the existing `warmup-coverage.test.ts`.
+
+#### 7.6.2 `/generate` is ENFORCING
+
+`_classify_inbound_tenant` became `_require_inbound_tenant`: absent/blank ⇒ **428**, raised before
+any provider is selected or invoked (fail-closed — nothing is billed against a credential resolved
+from the wrong tier). A declared `tenantless:<reason>` marker is accepted and logged at debug; a
+real tenant is accepted as before. 428 (not 400) matches the gateway's `RequiresIfMatch`/ETag
+convention and the two `apps/nlp` classify routes, so one status means one thing platform-wide.
+
+Enabled, not flagged, per D-A.
+
+**Consequence, stated plainly:** `dna-writing-style.processor.ts` still omits the header (§7.6.4),
+so DNA-report generation now fails loudly with 428 until that two-line fix lands. That is the
+intended failure mode — a 428 naming the caller beats the silent platform-default resolution and
+mis-attributed spend it replaces — but it IS a live break, not a latent one.
+
+The ~110 `apps/text` unit/integration tests that POST to `/generate` are about retries, queueing,
+circuit breakers and metrics, not the tenant contract, and none set the header. Rather than
+weakening the contract or editing 22 files, `apps/text/src/text/tests/conftest.py` now DEFAULTS
+`X-Tenant-Id` on suite-issued httpx requests — never overriding an explicit one, and skipped
+entirely under the new `no_default_tenant_header` marker that the contract tests themselves carry.
+This is the same remedy, in the same file, as the leaked-`TEXT_SERVICE_TOKEN` fix documented at the
+top of that conftest (134 failures, one root cause, none about the code under test).
+
+#### 7.6.3 §4.4 backstops
+
+- **Lint rule `arcaai-internal/require-internal-tenant-header`**
+  (`packages/eslint-plugin-arcaai-internal/rules/`, wired in `packages/config-eslint/flat/core.js`
+  over `**/src/**/*.ts` excluding tests). It flags any outbound request-options object whose
+  `headers` carry `X-Service-Token` — the marker of an internal hop — without a tenant channel
+  (`X-Tenant-Id`, `X-Internal-Tenant-Id`, `TENANT_ID_HEADER`, `tenantHeaderValue`, or
+  `internalServiceHeaders`). It resolves one level of variable indirection (`const headers = {…}`;
+  `{ headers }`), which is the exact shape one audited call site used. Spreads are deliberately
+  treated as satisfying it: `{ ...this.getForwardHeaders() }` delegates to a helper the rule cannot
+  see through, and flagging every delegation would train people to disable the rule instead of
+  fixing the call — the file-level contract test below covers the named helpers instead.
+  11 RuleTester cases.
+  **On the real tree it immediately found 3 genuine gaps** (§7.6.4).
+- **Contract fixture** `tests/contracts/internal-tenant-header.contract.test.ts` — one assertion per
+  edge over 11 call sites, plus a pin that no file assigns the tenant header CONDITIONALLY and that
+  no `TENANTLESS.*` marker is UUID-shaped or contains `50000000-…`.
+
+#### 7.6.4 Genuinely remaining after this pass
+
+1. **`dna-writing-style.processor.ts:468`** — the ONE `apps/text` caller still omitting the header.
+   Off-limits: a concurrent agent held the file for an unrelated ticket throughout this pass.
+   `tenantId` is already in CLS (`processWithContext` sets it), so it is the same two-line change as
+   every row in §7.6.1. Recorded as an `it.fails` entry in the contract fixture, which will start
+   failing the moment it is fixed — the hand-off signal to move it into the enforced list.
+2. **`consultation/ocr/ocr-enrichment.processor.ts`** → NLP `/api/v1/extract`, no headers at all.
+   Out of scope (not an `apps/text` edge, not in the owned set), reported not fixed.
+3. **`knowledge/knowledge-ingest.client.ts`, `knowledge/knowledge-vector-cleanup.client.ts`** →
+   harness, `X-Service-Token` only. Flagged by the new lint rule; out of the owned set.
+4. §7.4 items 3 and 5 (STT's channel-2 normalization, Class-C emitters) are unchanged.
+
+### 7.5 Files changed
+
+`packages/applications/src/common/internal-service-headers.ts` (new) + `common/index.ts`;
+`apps/api/src/modules/streaming/text-proxy.controller.ts`;
+`apps/api/src/modules/ai-inference/ai-inference.client.ts`;
+`packages/applications/src/services/consultation/live-documentation/{live-documentation.service.ts,live-tool-registry.ts}`;
+`apps/harness/src/harness/{services/{smr_client,nlp_client}.py,temporal/{activities,models,workflows}.py}`;
+`apps/nlp/src/nlp/{services/external_text_client.py,api/v1/rest/classify.py}`;
+`apps/guardrail/src/guardrail/core/tenant_config.py`.
+Plus everything listed in TASK-738 §7.6 for the shared-token half.
+
+New tests: `apps/harness/src/harness/tests/unit/services/test_mandatory_tenant_header.py` (7 cases),
+`apps/text/src/text/tests/unit/test_internal_access_token.py` (10 cases).
+
+## 8. Verification (actual command output)
+
+### 8.1 Commands actually run (2026-08-17, local stack up; Python with `CI=true` so no env file is read)
+
+All test/build/typecheck commands were serialized through the coordinator's mutex wrapper
+(`scratchpad/test-lock.sh`) after the shared-tree overload incident.
+
+```
+$ pnpm env:sync --check
+env:sync --check OK — 6 artifacts match the declared surface (149 keys, bootstrap floor 60 lines).
+
+$ CI=true pytest apps/harness/src/harness/tests -q
+1360 passed, 1 warning in 34.76s
+
+$ CI=true pytest apps/guardrail/src/guardrail/tests -q
+236 passed in 2.09s
+
+$ CI=true pytest apps/nlp/tests -q
+224 passed, 15 warnings in 71.15s
+
+$ CI=true pytest apps/tts/src/tts/tests -q
+267 passed, 2 deselected, 5 warnings in 5.97s
+
+$ CI=true pytest apps/text/src/text/tests -q
+2 failed, 1179 passed, 16 deselected, 8 warnings in 495.14s
+  FAILED test_lifespan.py::TestCreateApp::test_creates_app_with_default_settings
+        assert 'Text — Text Generation Service' == 'SMR — Text Generation Service'
+  FAILED test_wired_provider_queue.py::TestQueueMetrics::test_queue_size_metric_updated
+        assert 429 == 200
+  NEITHER is from this change. The first is a concurrent sibling agent's TASK-707
+  "SMR" -> "Text" identifier rename landing in `main.py` ahead of its own test; the
+  second is a rate-limiter timeout under the 72-concurrent-process load that triggered
+  the coordinator's mutex rule. Both files are outside this ticket's scope and were not
+  edited.
+
+$ pnpm vitest run packages/applications/.../live-documentation packages/applications/src/common \
+                  apps/api/src/modules/ai-inference apps/api/src/__tests__/text-service-token-migration.test.ts
+Test Files  1 failed | 34 passed (35)
+     Tests  1 failed | 494 passed (495)
+  FAILED ai-inference.client.test.ts:134 'omits X-Tenant-Id when no CLS tenant is available'
+         AssertionError: expected 'tenantless:platform-operator' to be undefined
+  That test asserted the EXACT ambiguity this ticket removes (an omitted header is
+  indistinguishable from one dropped in transit). Rewritten in place to assert the
+  declared marker instead, plus a guard that the value is never UUID-shaped.
+
+$ pnpm vitest run apps/api/src/modules/ai-inference        [after the test rewrite]
+Test Files  5 passed (5)
+     Tests  76 passed (76)
+
+$ ruff check apps/text/src/text/api apps/nlp/src/nlp apps/guardrail/src/guardrail \
+             apps/harness/src/harness apps/tts/src/tts
+All checks passed!
+  (A repo-wide `ruff check apps/text` reports 9 F811 redefinition errors — 5x `OllamaConfig`
+   in `core/config.py` and 4x `stats_from_ollama_response` in `models/stats.py`. Those are a
+   concurrent agent's duplicated edits in the TASK-736 Ollama work, present before and after
+   this change, and are REPORTED not fixed.)
+```
+
+TDD evidence — RED observed before GREEN, both pasted:
+
+```
+# apps/text/src/text/tests/unit/test_internal_access_token.py  (D-D shared token)
+RED   (implementation reverted): 7 failed, 3 passed
+        AttributeError: 'Settings' object has no attribute 'internal_access_token'
+        TypeError: ExternalGuardrailClient.__init__() got an unexpected keyword argument 'service_token'
+        assert 401 == 200
+GREEN (implementation restored): 10 passed in 0.11s
+
+# apps/harness/.../tests/unit/services/test_mandatory_tenant_header.py  (TASK-737)
+RED   (clients reverted): 6 failed in 17.19s
+        TypeError: SmrClient.generate() got an unexpected keyword argument 'tenant_id'
+        TypeError: NlpClient.classify_tokens() got an unexpected keyword argument 'tenant_id'
+GREEN (clients restored): 6 passed in 2.17s
+```
+
+The `X-Tenant-Id` enforcement was also proven to bite on the REAL call graph, not just at the
+unit boundary: making `tenant_id` mandatory turned 29 pre-existing harness activity/workflow tests
+RED with `harness activity 'generate' has no tenant_id (TASK-737)`. That is the audit's §3.8
+finding reproduced mechanically — every one of those paths was reaching `apps/text` with no tenant.
+Threading the tenant through `GenerateInput`/`ApplyRedactionInput`/`ExtractEntitiesInput` and their
+four `workflows.py` construction sites took the harness suite from **55 failed / 1299 passed** to
+**0 failed / 1360 passed**.
+
+```
+$ pnpm --filter @arcaai/applications build && pnpm --filter @arcaai/api exec tsc --noEmit -p tsconfig.json
+applications built OK
+                                    [tsc: no diagnostics, exit 0]
+```
+
+An earlier attempt reported 16x `TS2307: Cannot find module '@arcaai/applications'`. That was a
+stale workspace `dist` in the shared tree, NOT a type error in this change — rebuilding the package
+first clears it entirely, as above.
+
+### 8.3 Closing pass — actual command output (2026-08-17, local infra up)
+
+Everything below went through the coordinator's mutex wrapper (`scratchpad/test-lock.sh`).
+
+TDD — RED observed before GREEN on all three new suites:
+
+```
+# apps/text 428 enforcement — RED (against the log-only _classify_inbound_tenant)
+$ CI=true pytest apps/text/.../test_generate_mandatory_tenant_header.py -q
+3 failed, 2 passed in 3.61s
+  test_absent_header_is_428          assert 200 == 428
+  test_blank_header_is_428           assert 200 == 428
+  test_428_detail_names_the_contract AssertionError: assert 'x-tenant-id' in ''
+
+# lint rule — RED (rule file absent)
+$ node packages/eslint-plugin-arcaai-internal/__tests__/require-internal-tenant-header.test.js
+Error: Cannot find module '../rules/require-internal-tenant-header'
+
+# contract fixture — RED (callers still hand-rolling headers)
+$ npx vitest run tests/contracts/internal-tenant-header.contract.test.ts
+Tests  15 failed
+```
+
+GREEN:
+
+```
+$ node packages/eslint-plugin-arcaai-internal/__tests__/require-internal-tenant-header.test.js
+require-internal-tenant-header: RuleTester passes (TASK-737 §4.4)
+$ node packages/eslint-plugin-arcaai-internal/__tests__/no-direct-downstream-url-env.test.js
+no-direct-downstream-url-env: RuleTester passes (TASK-310 E-5 / AC-5)
+
+$ CI=true pytest apps/text/src/text/tests -q --no-cov
+1186 passed, 16 deselected, 8 warnings in 156.27s
+  (Immediately after the 428 flip and BEFORE the conftest fixture this read
+   "110 failed, 1076 passed" — the flip biting on the real call graph, exactly
+   as the audit predicted. Every one of those was an unrelated fixture calling
+   /generate with no tenant.)
+
+$ conda run -n arcaenv ruff check apps/text/src/text/api apps/text/.../conftest.py \
+                                  apps/text/.../test_generate_mandatory_tenant_header.py
+All checks passed!
+
+$ pnpm --filter @arcaai/domains build && pnpm --filter @arcaai/applications build
+[both clean, no diagnostics]
+
+$ pnpm --filter @arcaai/api exec tsc --noEmit -p tsconfig.json
+tsc exit=0        [no diagnostics]
+
+$ npx vitest run tests/contracts/internal-tenant-header.contract.test.ts apps/api/src/modules/text-compat
+Test Files  10 passed (10)
+     Tests  257 passed | 1 expected fail (258)
+  (the 1 expected fail is the `it.fails` pin on dna-writing-style.processor.ts, §7.6.4)
+
+$ pnpm --filter @arcaai/applications test
+Test Files  4 failed | 497 passed | 1 skipped (502)
+     Tests  4 failed | 9224 passed | 4 skipped (9232)
+
+$ pnpm lint
+Tasks:    38 successful, 38 total     [0 errors]
+```
+
+**The 4 remaining `@arcaai/applications` failures are concurrent agents' in-flight work, not this
+change** — verified by reading the diffs, and REPORTED rather than edited:
+
+| Failing test | Cause |
+|---|---|
+| `prompt-management.service.test.ts`, `text-test-routing.test.ts` | A concurrent TASK-707 rename changed `TEXT_TEST_TASK_KEY` from `'smr.test'` to `'text.test'` in the working tree (`git show HEAD:…` still has `'smr.test'`); the two tests still assert `/smr\.test/`. |
+| `settings-registry/__tests__/fail-mode.governance.test.ts` | TASK-738's new `internal.accessToken` descriptor has no entry in that test's `EXPECTED` env-name map. |
+| `workflow-definition/__tests__/task-724-stt-realtime-untouched.grep-gate.test.ts` | A grep gate asserting nothing under `apps/api/src/modules/streaming/**` is dirty. `text-proxy.controller.ts` was changed by TASK-737's OWN first pass, before this one. |
+
+Also reported, not acted on: `pnpm env:sync --check` fails with a pending `INTERNAL_ACCESS_TOKEN`
+descriptor row (TASK-738's, added in the first pass). Running `pnpm env:sync` would regenerate six
+artifacts other agents currently hold, so it is left for whoever closes TASK-738.
+
+Two formatting-only `prettier` fixes were applied outside the owned set, to
+`apps/api/src/modules/{ai-inference/ai-inference.client.ts,streaming/text-proxy.controller.ts}` —
+both leftovers from TASK-737's own first pass that were failing `pnpm lint` as hard errors in
+`apps/api`. No semantic change.
+
+### 8.2 Not completed
+
+- Repo-wide `pnpm typecheck` / `pnpm lint` / `pnpm test:unit` were not run to completion: the
+  shared-tree mutex was saturated by concurrent agents for the remainder of the session. Every
+  package this change touches was covered by the scoped runs above.
+- `pnpm api:build` separately fails on `packages/database/src/prisma/db_main/seed/__tests__/
+  config-plane-seed.test.ts(104,12): error TS2532` — a concurrent agent's seed test, outside this
+  ticket's ownership and unrelated to it.
+- `pnpm typecheck` / `pnpm lint` / `pnpm test:unit` repo-wide were not run to completion: the
+  mutex queue was saturated by other agents for the remainder of the session. The scoped TS vitest
+  run (live-documentation + common + ai-inference + the TEXT_SERVICE_TOKEN migration guard) was
+  queued and also had not returned.
+
+
+## 9. Change History
+
+| Date | Change |
+|---|---|
+| 2026-08-16 | Ticket created from owner directive, promoted out of TASK-735 gap G-07. Propagation audit dispatched. |
+| 2026-08-16 | Propagation audit completed (§3, 16 subsections) via six parallel read-only sweeps; §4 plan and §5 risk table drafted. No application code changed. |
+| 2026-08-17 | **Closing pass.** §7.4's residual closed: the 6 reachable `apps/api`/`packages/applications` → `apps/text`/guardrail/NLP callers now build headers with `internalServiceHeaders()` (`text-compat.controller.ts` with `tenantId` threaded through its whole stream/generate chain, both surviving BullMQ processors, `chain-summary`, `summary.service` × 2 — `callNlpService` also gained the `X-Service-Token` it never sent — `prompt-management`'s conditional removed, `guardrail-phi-redactor` via an optional `ClsService`). `INTERNAL_ACCESS_TOKEN` added to `COMMON_SERVICE_WARMUP_KEYS`. **`apps/text /generate` flipped to 428**, enabled per D-A, with a conftest default-tenant fixture so the ~110 unrelated `/generate` fixtures keep asserting what they are about. §4.4 delivered: lint rule `arcaai-internal/require-internal-tenant-header` (11 RuleTester cases; found 3 real gaps on the live tree) + `tests/contracts/internal-tenant-header.contract.test.ts`. Documented list corrected — `summary.processor.ts` no longer exists (TASK-732). Remaining, reported not hidden: `dna-writing-style.processor.ts` (held by a concurrent agent, now 428s), `ocr-enrichment.processor.ts`, and the two knowledge→harness clients. See §7.6. |
+| 2026-08-17 | **Implementation pass**, jointly with TASK-738. Sentinel contract centralized in `packages/applications/src/common/internal-service-headers.ts`; `X-Tenant-Id` made mandatory and ENFORCING on every harness peer client (required kwarg + raise-on-blank), on `apps/nlp → apps/text` (428 when the gateway injects no tenant), and on all four owned gateway/live-doc call sites; `apps/guardrail`'s resolver now recognises `tenantless:*` explicitly. §4.3's warn-only window dropped per D-A wherever callers were fixed in the same change. Residual: ~7 un-owned `apps/api → apps/text` call sites and the consequent inability to flip `apps/text /generate` to enforcing — recorded in §7.4 rather than decided silently. |

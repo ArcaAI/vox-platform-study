@@ -277,7 +277,7 @@ export class SttWsGateway implements OnGatewayConnection, OnGatewayDisconnect, O
       void this.sessionBinding.clear(session.sessionId);
       // A SIGTERM/rolling-deploy teardown is always an
       // abort: no client-driven close was ever received for these sessions.
-      removals.push(this.sessionService.removeSession(session.sessionId, true).catch(() => {}));
+      removals.push(this.sessionService.removeSession(session.sessionId, true, session.tenantId).catch(() => {}));
     }
     this.sessions.clear();
     this.sessionsById.clear();
@@ -1028,7 +1028,7 @@ export class SttWsGateway implements OnGatewayConnection, OnGatewayDisconnect, O
     void this.sessionBinding.clear(session.sessionId);
 
     const interrupted = reason !== 'session closed by client';
-    this.sessionService.removeSession(session.sessionId, interrupted).catch((err) => {
+    this.sessionService.removeSession(session.sessionId, interrupted, session.tenantId).catch((err) => {
       this.logger.warn({
         message: 'Session cleanup failed on finalize',
         sessionId: session.sessionId,
@@ -1036,7 +1036,7 @@ export class SttWsGateway implements OnGatewayConnection, OnGatewayDisconnect, O
       });
       // Park the session for bounded retries
       // instead of leaking it until the STT-v2 inactivity reaper.
-      this.removalRetry.enqueue(session.sessionId, interrupted);
+      this.removalRetry.enqueue(session.sessionId, interrupted, session.tenantId);
     });
   }
 

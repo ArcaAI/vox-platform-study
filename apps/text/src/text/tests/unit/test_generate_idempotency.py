@@ -1,7 +1,7 @@
 """Idempotent synchronous ``/generate``.
 
 A deterministic ``Idempotency-Key`` (set by the harness from ``workflow_run:activity_id``)
-lets a worker-crash re-delivery return the FIRST generation from SMR's Redis instead of
+lets a worker-crash re-delivery return the FIRST generation from Text's Redis instead of
 re-invoking — and re-billing — the model. This closes the cross-process replay path on
 the receiver.
 
@@ -132,9 +132,9 @@ class TestGenerateIdempotency:
         headers = {"Idempotency-Key": "wf-run:act-1"}
         r1 = await client.post("/api/v1/generate", json=_BODY, headers=headers)
 
-        # The completed response is cached under smr:idem:{key} with a bounded TTL.
-        assert await redis_client.get("smr:idem:wf-run:act-1") is not None
-        assert await redis_client.ttl("smr:idem:wf-run:act-1") > 0
+        # The completed response is cached under text:idem:{key} with a bounded TTL.
+        assert await redis_client.get("text:idem:wf-run:act-1") is not None
+        assert await redis_client.ttl("text:idem:wf-run:act-1") > 0
 
         r2 = await client.post("/api/v1/generate", json=_BODY, headers=headers)
         data = r2.json()

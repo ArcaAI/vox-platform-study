@@ -36,7 +36,7 @@
       "$ref": "#/$defs/uuid"
     },
     "type": {
-      "description": "Lowercase dotted event/task type, e.g. `stt.segment.finalized`, `smr.stream.chunk`. Deliberately NOT SysEventType's `SysEvent.ResourceCreated` form -- that is an EventEmitter2 channel name, not a wire type. 2 to 5 dot-separated segments.",
+      "description": "Lowercase dotted event/task type, e.g. `stt.segment.finalized`, `text.stream.chunk`. Deliberately NOT SysEventType's `SysEvent.ResourceCreated` form -- that is an EventEmitter2 channel name, not a wire type. 2 to 5 dot-separated segments.",
       "type": "string",
       "pattern": "^[a-z0-9]+(\\.[a-z0-9_]+){1,4}$",
       "maxLength": 200
@@ -117,11 +117,11 @@
       "schemaVersion": 1,
       "id": "01907d3a-0000-7000-8000-000000000001",
       "tenantId": "00000000-0000-0000-0000-000000000000",
-      "type": "smr.stream.chunk",
+      "type": "text.stream.chunk",
       "occurredAt": "2026-08-16T12:00:00.000Z",
       "correlationId": "req-abc123",
       "causationId": null,
-      "idempotencyKey": "smr:task:t-1:chunk:0",
+      "idempotencyKey": "text:task:t-1:chunk:0",
       "payload": { "type": "chunk", "content": "hello", "data": null }
     },
     {

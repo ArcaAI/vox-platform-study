@@ -355,10 +355,10 @@ model HarnessPolicy {
   safetyProvider String  @default("lm-studio")
   safetyModel    String  @default("granite-guardian-4.1-8b")
 
-  // SMR generation defaults (null => let the SMR service choose). Mirrors
-  // Settings.smr_provider / smr_model.
-  smrProvider String?
-  smrModel    String?
+  // Text-generation defaults (null => let the text service choose). Mirrors
+  // Settings.text_provider / text_model.
+  textProvider String?
+  textModel    String?
 
   // Bounded-regen budget + clinician-gate timing (durable, deterministic).
   // Mirrors Settings.max_regen / gate_sla_seconds / gate_escalation_seconds.
@@ -372,7 +372,7 @@ model HarnessPolicy {
 
   // agentic loop knobs the workflow reads. ADDITIVE + NULLABLE:
   // null ⇒ the harness env/code default applies (per-field fallthrough, mirroring the
-  // smrProvider/smrModel precedent in harness-policy.service.ts). Phase 6 consumes the
+  // textProvider/textModel precedent in harness-policy.service.ts). Phase 6 consumes the
   // behaviour; 3A only makes them DB-editable and threads them onto the effective policy.
   optimisticDeliveryEnabled Boolean?
   atomicFactEnabled         Boolean?

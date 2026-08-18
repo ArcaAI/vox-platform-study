@@ -31,8 +31,8 @@ export interface AgenticPolicy {
   phiFailClosed: boolean;
   safetyProvider: string;
   safetyModel: string;
-  smrProvider: string | null;
-  smrModel: string | null;
+  textProvider: string | null;
+  textModel: string | null;
   maxRegen: number;
   gateSlaSeconds: number;
   gateEscalationSeconds: number;
@@ -69,8 +69,8 @@ export interface UpdateAgenticPolicyRequest {
   phiFailClosed?: boolean;
   safetyProvider?: string;
   safetyModel?: string;
-  smrProvider?: string | null;
-  smrModel?: string | null;
+  textProvider?: string | null;
+  textModel?: string | null;
   maxRegen?: number;
   gateSlaSeconds?: number;
   gateEscalationSeconds?: number;

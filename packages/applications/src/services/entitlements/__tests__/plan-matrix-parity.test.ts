@@ -63,6 +63,7 @@ const MATRIX_FIELDS = [
   'featureMonitoringAccess',
   'featurePlatformDefaultCredential',
   'featurePaletteStt',
+  'featureAgenticLoop',
   'modelTier',
   'rateLimitTier',
 ] as const satisfies readonly (keyof PlanEntitlementValues)[];

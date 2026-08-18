@@ -48,6 +48,13 @@ export const TENANT_LOCKED_POLICY_KEYS = [
   'phiFailClosed',
   'safetyProvider',
   'safetyModel',
+  // TASK-740 D-3: both are in the backend's `SUPER_ADMIN_ONLY_POLICY_KEYS`, so
+  // the tenant PATCH rejects them with a 403. They were rendered unlocked with
+  // no super-admin hint, and because the patch is sparse the 403 fired exactly
+  // when a tenant admin edited one — the same defect class this list was
+  // created for.
+  'textProvider',
+  'textModel',
 ] as const satisfies readonly PolicyField['key'][];
 
 /** The copy shown under every locked control (rule 11 §5: visible reason). */
@@ -77,8 +84,8 @@ export const POLICY_FIELD_GROUPS: PolicyFieldGroup[] = [
   {
     title: 'Generation',
     fields: [
-      { key: 'smrProvider', label: 'SMR provider', kind: 'nullable-text', hint: 'empty = let the SMR service choose' },
-      { key: 'smrModel', label: 'SMR model', kind: 'nullable-text', hint: 'empty = let the SMR service choose' },
+      { key: 'textProvider', label: 'Text-generation provider', kind: 'nullable-text', hint: 'empty = let the text service choose' },
+      { key: 'textModel', label: 'Text-generation model', kind: 'nullable-text', hint: 'empty = let the text service choose' },
       { key: 'maxRegen', label: 'Max regen budget', kind: 'integer' },
     ],
   },

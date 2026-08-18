@@ -1,7 +1,7 @@
 """Guardrail service client — direct peer call to ``apps/guardrail`` (TASK-720).
 
-Mirrors ``smr_client.py``'s shape (thin async ``httpx`` client, one method per endpoint used).
-Unlike SMR, this is the harness's FIRST direct call into ``apps/guardrail`` — no prior client
+Mirrors ``text_client.py``'s shape (thin async ``httpx`` client, one method per endpoint used).
+Unlike Text, this is the harness's FIRST direct call into ``apps/guardrail`` — no prior client
 existed (the harness's own "guardrail" concept, ``harness/temporal/activities.py``'s groundedness/
 safety/citation-verify/atomic-fact sensors, is a locally-computed clinical assurance pass, not a
 call to this service). Rule `.claude/rules/06-python-services.md` §Gateway Integration sanctions

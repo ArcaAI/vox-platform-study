@@ -1,6 +1,6 @@
 """Anthropic (Claude Messages API) LLM provider — first-class tenant-BYO provider.
 
-Maps SMR's ``generate``/``generate_stream`` contract onto the Anthropic Messages
+Maps Text's ``generate``/``generate_stream`` contract onto the Anthropic Messages
 API. The credential arrives per request as a gateway-injected
 ``ProviderOverride`` (tenant BYO key); this adapter mirrors the request-scoped,
 override-wins client pattern of ``azure_openai.py``/``bedrock.py`` with a plain

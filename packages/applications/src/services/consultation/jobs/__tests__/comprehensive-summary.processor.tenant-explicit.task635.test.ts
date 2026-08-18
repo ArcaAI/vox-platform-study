@@ -1,11 +1,11 @@
 /**
  * ComprehensiveSummaryProcessor.callTextService — explicit tenant id
  *
- * `resolveSmrSelection()` used to be called with NO tenantId, relying on
+ * `resolveTextSelection()` used to be called with NO tenantId, relying on
  * `HarnessPolicyService`'s own CLS fallback. `callTextService` now takes the
  * job's already fail-closed-validated `tenantId` as an EXPLICIT parameter
  * (TypeScript-required, no longer optional/implicit) and passes it straight
- * through to `resolveSmrSelection(tenantId, 'finalize')`.
+ * through to `resolveTextSelection(tenantId, 'finalize')`.
  */
 
 import { describe, it, expect, vi } from 'vitest';
@@ -102,10 +102,10 @@ describe('ComprehensiveSummaryProcessor.callTextService — explicit tenant id (
       recordJobComplete: vi.fn(),
       recordJobFailed: vi.fn(),
       recordWaitingDuration: vi.fn(),
-      recordSmrCallDuration: vi.fn(),
+      recordTextCallDuration: vi.fn(),
     };
     const clsService = createMockClsService();
-    const harnessPolicyService = { resolveSmrSelection: vi.fn().mockResolvedValue({ provider: 'lm-studio', model: 'resolved-medgemma' }) };
+    const harnessPolicyService = { resolveTextSelection: vi.fn().mockResolvedValue({ provider: 'lm-studio', model: 'resolved-medgemma' }) };
     const configResolver = { resolvePreferredPromptTemplateId: vi.fn().mockResolvedValue(null) };
     const secretsStub = { encrypt: vi.fn(), decrypt: vi.fn(), getSecretOptional: vi.fn().mockResolvedValue('') };
 
@@ -137,6 +137,6 @@ describe('ComprehensiveSummaryProcessor.callTextService — explicit tenant id (
       } as unknown as GenerateComprehensiveSummaryJobPayload),
     );
 
-    expect(harnessPolicyService.resolveSmrSelection).toHaveBeenCalledWith('tenant-1', 'finalize');
+    expect(harnessPolicyService.resolveTextSelection).toHaveBeenCalledWith('tenant-1', 'finalize');
   });
 });

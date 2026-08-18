@@ -4,10 +4,10 @@ Runs the real activity body in a Temporal ``ActivityEnvironment`` with the
 client factories + ``get_settings`` / ``_phi_redactor`` monkeypatched to
 deterministic fakes (no model load, no network). Pins:
 
-* deterministic-only transform (no SMR call when there are no semantic rewrites);
-* the OPTIONAL SMR semantic-rewrite pass — PHI-egress guarded, idempotency key set,
+* deterministic-only transform (no Text call when there are no semantic rewrites);
+* the OPTIONAL Text semantic-rewrite pass — PHI-egress guarded, idempotency key set,
   JSON schema preserved;
-* **fail CLOSED** — a malformed rule OR a failed required SMR rewrite sets
+* **fail CLOSED** — a malformed rule OR a failed required Text rewrite sets
   ``failed_closed=True`` (the workflow turns that into a forced FLAG), never a
   silent unredacted delivery;
 * the audit manifest never carries removed PHI plaintext.
@@ -23,24 +23,24 @@ from temporalio.testing import ActivityEnvironment
 
 from harness.core.config import PhiConfig, Settings
 from harness.redaction.engine import RedactionRule
-from harness.services.smr_client import SmrGenerationResult, SmrServiceError
+from harness.services.text_client import TextGenerationResult, TextServiceError
 from harness.temporal import activities
 from harness.temporal.models import ApplyRedactionInput, TrajectoryContext
 
 
-class _FakeSmr:
+class _FakeText:
     def __init__(self, content: str = '{"S": "rewritten"}') -> None:
         self.kwargs: dict[str, Any] = {}
         self._content = content
 
-    async def generate(self, **kwargs: Any) -> SmrGenerationResult:
+    async def generate(self, **kwargs: Any) -> TextGenerationResult:
         self.kwargs = kwargs
-        return SmrGenerationResult(content=self._content, model="m", finish_reason="stop")
+        return TextGenerationResult(content=self._content, model="m", finish_reason="stop")
 
 
-class _BoomSmr:
-    async def generate(self, **kwargs: Any) -> SmrGenerationResult:
-        raise SmrServiceError("smr down", after_send=False)
+class _BoomText:
+    async def generate(self, **kwargs: Any) -> TextGenerationResult:
+        raise TextServiceError("text_client down", after_send=False)
 
 
 class _ContractRedactor:
@@ -71,21 +71,21 @@ def env() -> ActivityEnvironment:
 def _input(**kw: Any) -> ApplyRedactionInput:
     base: dict[str, Any] = {"note_text": "Patient works at Acme Corp.", "rules": []}
     base.update(kw)
-    return ApplyRedactionInput(**base)
+    return ApplyRedactionInput(tenant_id="11111111-1111-1111-1111-111111111111", **base)
 
 
 class TestDeterministicOnly:
     @pytest.mark.asyncio
     async def test_no_smr_call_for_deterministic_rules(self, env, monkeypatch):
-        smr = _FakeSmr()
-        monkeypatch.setattr(activities, "_smr_client", lambda s: smr)
+        text_client = _FakeText()
+        monkeypatch.setattr(activities, "_text_client", lambda s: text_client)
         monkeypatch.setattr(activities, "get_settings", _settings)
         rule = RedactionRule(id="emp", type="remove", match="literal", pattern="Acme Corp")
         out = await env.run(activities.apply_redaction, _input(rules=[rule]))
         assert "Acme Corp" not in out.text
         assert out.changed is True
         assert out.failed_closed is False
-        assert smr.kwargs == {}  # SMR never invoked for a deterministic transform
+        assert text_client.kwargs == {}  # Text never invoked for a deterministic transform
 
     @pytest.mark.asyncio
     async def test_empty_rules_is_noop(self, env, monkeypatch):
@@ -108,10 +108,10 @@ class TestFailClosed:
 
     @pytest.mark.asyncio
     async def test_required_smr_rewrite_failure_fails_closed(self, env, monkeypatch):
-        monkeypatch.setattr(activities, "_smr_client", lambda s: _BoomSmr())
+        monkeypatch.setattr(activities, "_text_client", lambda s: _BoomText())
         monkeypatch.setattr(activities, "get_settings", _settings)
         monkeypatch.setattr(activities, "_phi_redactor", lambda: _ContractRedactor())
-        # a rewrite rule with NO replacement ⇒ needs the SMR semantic pass
+        # a rewrite rule with NO replacement ⇒ needs the Text semantic pass
         rule = RedactionRule(
             id="sem", type="rewrite", match="category", pattern="email", note="soften"
         )
@@ -122,12 +122,12 @@ class TestFailClosed:
 class TestSmrRewritePass:
     @pytest.mark.asyncio
     async def test_smr_called_with_idempotency_key_and_egress_guard(self, env, monkeypatch):
-        smr = _FakeSmr(content='{"S": "clean"}')
+        text_client = _FakeText(content='{"S": "clean"}')
         redactor = _ContractRedactor()
-        monkeypatch.setattr(activities, "_smr_client", lambda s: smr)
+        monkeypatch.setattr(activities, "_text_client", lambda s: text_client)
         monkeypatch.setattr(activities, "get_settings", _settings)
         monkeypatch.setattr(activities, "_phi_redactor", lambda: redactor)
-        # a semantic (category) rewrite with no replacement drives the SMR pass
+        # a semantic (category) rewrite with no replacement drives the Text pass
         rule = RedactionRule(
             id="sem", type="rewrite", match="category", pattern="email", note="soften"
         )
@@ -142,7 +142,7 @@ class TestSmrRewritePass:
         )
         assert out.failed_closed is False
         # idempotency key present + egress guard consulted for the cloud provider
-        assert smr.kwargs.get("idempotency_key")
+        assert text_client.kwargs.get("idempotency_key")
         assert any(p == "azure" for _, p in redactor.calls)
 
 

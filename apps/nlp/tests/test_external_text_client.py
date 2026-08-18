@@ -74,7 +74,7 @@ async def test_posts_to_generate_with_prompt_and_returns_content() -> None:
     http = _RecordingClient({"content": "billing", "provider": "lm-studio", "model": "gemma"})
     client = _client(ExternalTextConfig(base_url="http://text.local"), http)
 
-    label = await client.generate_label("Which topic does this note discuss?")
+    label = await client.generate_label("Which topic does this note discuss?", tenant_id="tenant-abc")
 
     assert label == "billing"
     assert http.calls[0]["url"] == "http://text.local/generate"
@@ -87,7 +87,7 @@ async def test_service_token_forwarded_as_header() -> None:
     http = _RecordingClient({"content": "billing"})
     client = _client(ExternalTextConfig(service_token="tok-123"), http)
 
-    await client.generate_label("prompt")
+    await client.generate_label("prompt", tenant_id="tenant-abc")
 
     assert http.calls[0]["headers"]["X-Service-Token"] == "tok-123"
 
@@ -97,7 +97,7 @@ async def test_no_service_token_header_when_unset() -> None:
     http = _RecordingClient({"content": "billing"})
     client = _client(ExternalTextConfig(service_token=""), http)
 
-    await client.generate_label("prompt")
+    await client.generate_label("prompt", tenant_id="tenant-abc")
 
     assert "X-Service-Token" not in http.calls[0]["headers"]
 
@@ -113,13 +113,34 @@ async def test_tenant_id_forwarded_as_header() -> None:
 
 
 @pytest.mark.asyncio
-async def test_tenant_header_absent_when_no_tenant() -> None:
+async def test_blank_tenant_raises_instead_of_omitting_the_header() -> None:
+    """TASK-737 — this test formerly asserted the exact defect it now guards against.
+
+    The old contract omitted `X-Tenant-Id` when the gateway injected no tenant, which
+    made `apps/text` resolve the PLATFORM DEFAULT provider/credential instead of the
+    tenant's own BYOK one — and (TASK-735 derives funding/cost_basis from whichever
+    tier supplied that credential) mis-attribute the spend, with nothing thrown or
+    logged. An absent tenant is a CALLER defect, so it must fail here, loudly, before
+    the request leaves apps/nlp.
+    """
     http = _RecordingClient({"content": "billing"})
     client = _client(ExternalTextConfig(), http)
 
-    await client.generate_label("prompt")
+    with pytest.raises(ValueError, match="tenant_id"):
+        await client.generate_label("prompt", tenant_id="")
 
-    assert "X-Tenant-Id" not in http.calls[0]["headers"]
+    assert http.calls == [], "the request must never leave apps/nlp without a tenant"
+
+
+@pytest.mark.asyncio
+async def test_declared_tenantless_marker_is_forwarded_verbatim() -> None:
+    """Genuinely tenant-less internal work DECLARES itself rather than omitting."""
+    http = _RecordingClient({"content": "billing"})
+    client = _client(ExternalTextConfig(), http)
+
+    await client.generate_label("prompt", tenant_id="tenantless:control-plane")
+
+    assert http.calls[0]["headers"]["X-Tenant-Id"] == "tenantless:control-plane"
 
 
 @pytest.mark.asyncio
@@ -127,7 +148,7 @@ async def test_transient_blip_absorbed_by_bounded_retry() -> None:
     http = _RaiseThenSucceedClient(fail_times=1, payload={"content": "billing"})
     client = _client(ExternalTextConfig(max_retries=2), http)
 
-    label = await client.generate_label("prompt")
+    label = await client.generate_label("prompt", tenant_id="tenant-abc")
 
     assert label == "billing"
     assert http.calls == 2
@@ -139,7 +160,7 @@ async def test_sustained_outage_raises_after_bounded_retries_never_guesses_a_lab
     client = _client(ExternalTextConfig(max_retries=1, retry_backoff_ms=0), http)
 
     with pytest.raises(ExternalTextUnavailableError):
-        await client.generate_label("prompt")
+        await client.generate_label("prompt", tenant_id="tenant-abc")
 
     assert http.calls == 2  # max_retries=1 -> 2 total attempts
 
@@ -150,4 +171,4 @@ async def test_empty_content_raises_rather_than_returning_blank_label() -> None:
     client = _client(ExternalTextConfig(max_retries=0), http)
 
     with pytest.raises(ExternalTextUnavailableError):
-        await client.generate_label("prompt")
+        await client.generate_label("prompt", tenant_id="tenant-abc")

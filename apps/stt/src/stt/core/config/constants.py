@@ -5,8 +5,14 @@ NAMESPACE_STT_CONFIG = "stt.config"
 NAMESPACE_STT_PIPELINES = "stt.pipelines"
 NAMESPACE_STT_MODELS = "stt.models"
 
-# Default tenant ID (system-wide)
-DEFAULT_TENANT_ID = "50000000-0000-0000-0000-000000000000"
+# NOTE: there is deliberately NO `DEFAULT_TENANT_ID` here. It used to hold
+# `50000000-…` labelled "system-wide", which it is not: that is the CUSTOMER
+# tenant "Global" (the platform-admin playground). The runtime cascade is
+# request tenant -> SYSTEM (`00000000-…`) and nothing else, so a constant
+# offering a customer tenant as a default is a cross-tenant leak waiting for its
+# first consumer. It had none when it was removed; do not reintroduce it.
+# See `.claude/rules/00-project-context.md` §"The two reserved tenants are NOT
+# two config tiers".
 SYSTEM_USER_ID = "60000000-0000-0000-0000-000000000000"
 
 # Resource status

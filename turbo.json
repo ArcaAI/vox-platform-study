@@ -209,6 +209,7 @@
         "HOPE_API_TOKEN",
         "HOST",
         "HOSTNAME",
+        "INTERNAL_ACCESS_TOKEN",
         "JWT_SECRET_KEY",
         "LIVE_DOC_GROUNDEDNESS_ENABLED",
         "LOG_FILE_DATE_PATTERN",

@@ -4,7 +4,30 @@
 // (`main`) is integration-only and, per the ticket, is never exercised here —
 // execution against a real database is HUMAN-GATED.
 import { describe, it, expect } from 'vitest';
-import { scanText, countDrugDoseCoOccurrence, isClean, parseScanArgs, validateScanInvocation, EMPTY_SCAN_COUNTS } from '../dna-phi-scan';
+import {
+  scanText,
+  countDrugDoseCoOccurrence,
+  isClean,
+  parseScanArgs,
+  validateScanInvocation,
+  EMPTY_SCAN_COUNTS,
+  scannedLength,
+} from '../dna-phi-scan';
+
+describe('scannedLength', () => {
+  // A row that decrypted to nothing also produces all-zero counts, so a bare
+  // "CLEAN" verdict is ambiguous. `scannedLength` is what separates
+  // "scanned real text and found nothing" from "there was nothing to scan".
+  it('reports 0 for a row that decrypted to nothing', () => {
+    expect(scannedLength(null)).toBe(0);
+    expect(scannedLength(undefined)).toBe(0);
+    expect(scannedLength('')).toBe(0);
+  });
+
+  it('reports the character count of decrypted text without exposing it', () => {
+    expect(scannedLength('abcde')).toBe(5);
+  });
+});
 
 describe('scanText', () => {
   it('returns all-zero counts for null/undefined/empty input', () => {

@@ -69,7 +69,7 @@ export const UiConfigSchema = v.object({
   language: v.optional(v.string(), 'en'),
 });
 
-export const SmrConfigSchema = v.object({
+export const TextConfigSchema = v.object({
   provider: v.optional(v.string(), 'openai'),
   model: v.optional(v.string(), 'gpt-4o'),
 });
@@ -86,7 +86,7 @@ export const AppConfigSchema = v.object({
   audio: v.optional(AudioConfigSchema, {}),
   stt: v.optional(SttConfigSchema, {}),
   ui: v.optional(UiConfigSchema, {}),
-  smr: v.optional(SmrConfigSchema, {}),
+  text: v.optional(TextConfigSchema, {}),
   features: v.optional(FeatureFlagsSchema, {}),
 });
 
@@ -94,9 +94,7 @@ export type AppConfig = v.InferOutput<typeof AppConfigSchema>;
 export type AudioConfig = v.InferOutput<typeof AudioConfigSchema>;
 export type SttConfig = v.InferOutput<typeof SttConfigSchema>;
 export type UiConfig = v.InferOutput<typeof UiConfigSchema>;
-export type SmrConfig = v.InferOutput<typeof SmrConfigSchema>;
-/** Alias of {@link SmrConfig}. Published config path remains `smr`. */
-export type TextConfig = SmrConfig;
+export type TextConfig = v.InferOutput<typeof TextConfigSchema>;
 export type FeatureFlags = v.InferOutput<typeof FeatureFlagsSchema>;
 
 export type DeepPartial<T> = {
@@ -137,8 +135,8 @@ export const CONFIG_PERMISSIONS: Record<string, ConfigFieldMeta> = {
   'ui.density': { permission: 'user', section: 'ui', key: 'density', label: 'UI Density' },
   'ui.language': { permission: 'user', section: 'ui', key: 'language', label: 'UI Language' },
 
-  'smr.provider': { permission: 'admin', section: 'smr', key: 'provider', label: 'Summary Provider' },
-  'smr.model': { permission: 'admin', section: 'smr', key: 'model', label: 'Summary Model' },
+  'text.provider': { permission: 'admin', section: 'text', key: 'provider', label: 'Summary Provider' },
+  'text.model': { permission: 'admin', section: 'text', key: 'model', label: 'Summary Model' },
 
   'features.realTimeTranscription': { permission: 'admin', section: 'features', key: 'realTimeTranscription', label: 'Real-Time Transcription' },
   'features.nerExtraction': { permission: 'admin', section: 'features', key: 'nerExtraction', label: 'NER Extraction' },

@@ -63,14 +63,18 @@ export class SessionRemovalRetryService implements OnModuleDestroy {
    * gateway's `finalizeSession` (an explicit close's removeSession failing
    * is just as retryable as an abort's), so the caller's own `interrupted`
    * determination is the one that matters — never recomputed here.
+   *
+   * `tenantId` rides along for the same reason: the retries are the SAME
+   * internal DELETE, so they must stay as attributable as the first attempt
+   * (TASK-737). Only in-process retries carry it; the Redis set is accounting.
    */
-  enqueue(sessionId: string, interrupted = false): void {
+  enqueue(sessionId: string, interrupted = false, tenantId?: string | null): void {
     if (!sessionId || this.destroyed) {
       return;
     }
 
     void this.persist(sessionId);
-    this.scheduleAttempt(sessionId, 1, interrupted);
+    this.scheduleAttempt(sessionId, 1, interrupted, tenantId);
 
     this.logger.warn({
       message: 'Session removal failed — parked for retry (TASK-351 P1-3)',
@@ -93,7 +97,7 @@ export class SessionRemovalRetryService implements OnModuleDestroy {
     }
   }
 
-  private scheduleAttempt(sessionId: string, attempt: number, interrupted: boolean): void {
+  private scheduleAttempt(sessionId: string, attempt: number, interrupted: boolean, tenantId?: string | null): void {
     if (this.destroyed) {
       return;
     }
@@ -110,18 +114,18 @@ export class SessionRemovalRetryService implements OnModuleDestroy {
     const delayMs = SESSION_REMOVAL_RETRY_BASE_DELAY_MS * 2 ** (attempt - 1);
     const timer = setTimeout(() => {
       this.timers.delete(timer);
-      void this.attempt(sessionId, attempt, interrupted);
+      void this.attempt(sessionId, attempt, interrupted, tenantId);
     }, delayMs);
     (timer as unknown as { unref?: () => void }).unref?.();
     this.timers.add(timer);
   }
 
-  private async attempt(sessionId: string, attempt: number, interrupted: boolean): Promise<void> {
+  private async attempt(sessionId: string, attempt: number, interrupted: boolean, tenantId?: string | null): Promise<void> {
     if (this.destroyed) {
       return;
     }
     try {
-      await this.sessionService.removeSession(sessionId, interrupted);
+      await this.sessionService.removeSession(sessionId, interrupted, tenantId);
       await this.cache.srem(SESSION_REMOVAL_RETRY_SET_KEY, sessionId).catch(() => {});
       this.logger.log({
         message: 'Session removal retry succeeded',
@@ -136,7 +140,7 @@ export class SessionRemovalRetryService implements OnModuleDestroy {
         maxAttempts: SESSION_REMOVAL_RETRY_MAX_ATTEMPTS,
         error: err instanceof Error ? err.message : String(err),
       });
-      this.scheduleAttempt(sessionId, attempt + 1, interrupted);
+      this.scheduleAttempt(sessionId, attempt + 1, interrupted, tenantId);
     }
   }
 }

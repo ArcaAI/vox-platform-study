@@ -372,9 +372,6 @@ export interface TextJobStatus {
   metadata?: Record<string, unknown>;
 }
 
-/** @deprecated Renamed to {@link TextJobStatus} (naming-alignment: `smr` → `text`). Kept as a type alias for one release. */
-export type SMRJobStatus = TextJobStatus;
-
 export interface TestResult {
   test_name: string;
   test_type: string;
@@ -472,9 +469,6 @@ export interface TextRequest {
    */
   onReasoning?: (reasoning: string, accumulated: string) => void;
 }
-
-/** @deprecated Renamed to {@link TextRequest} (naming-alignment: `smr` → `text`). Kept as a type alias for one release. */
-export type SMRRequest = TextRequest;
 
 // =============================================================================
 // Pre-summary

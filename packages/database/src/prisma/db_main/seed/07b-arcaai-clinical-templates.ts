@@ -32,6 +32,19 @@
  * never replaced: rollback is `ARCAAI_CLINICAL_APPROVED_VERSION = 2` (or an
  * `approvedVersionNumber` edit in the console), with no content to restore.
  *
+ * VERSION POLICY (owner decision 2026-08-17, TASK-702): ALL THREE versions stay
+ * allowed and selectable, and **v3 is the default at go-live**. Mind the
+ * asymmetry that makes the second clause load-bearing: v2 and v3 were cleaned
+ * of ICD-10 code-authoring instructions, but **v1 still carries them in 10 of
+ * its 23 bodies** — deliberately, because v1 is a byte-exact port of the
+ * running v1 production deployment whose sha256s are pinned by
+ * `src/__tests__/v1-clinical-prompt-checksums.fixture.ts` and may only change
+ * with clinical/product sign-off. So a rollback to v1 is a legitimate,
+ * EXPLICIT act that re-exposes that wording, and
+ * `seed/__tests__/arcaai-clinical-version-policy.test.ts` exists to make sure
+ * it can never happen SILENTLY: it fails if the approved pin ever lands on a
+ * version that instructs the model to write a diagnostic code.
+ *
  * The verbatim CONTENT strings live in 07b-arcaai-clinical-content.ts (v1),
  * 07b-arcaai-clinical-content-v2.ts (v2) and 07b-arcaai-clinical-content-v3.ts
  * (v3) — all generated, byte-exact. This module owns only the structure/wiring.
@@ -587,9 +600,10 @@ const VERSION_CHANGE_REASON: Record<(typeof ARCAAI_CLINICAL_SEEDED_VERSIONS)[num
 /**
  * Full PromptTemplate rows — APPROVED + approvedVersionNumber-pinned.
  *
- * `content` and the pin both track ARCAAI_CLINICAL_APPROVED_VERSION (2), so the
- * resolver serves the v2 snapshot. The v1 body is unchanged and still seeded as
- * the versionNumber 1 PromptVersion row below.
+ * `content` and the pin both track `ARCAAI_CLINICAL_APPROVED_VERSION` (3), so
+ * the resolver serves the v3 snapshot. The v1 and v2 bodies are unchanged and
+ * still seeded as the versionNumber 1 / 2 `PromptVersion` rows below — all
+ * three versions remain selectable (owner decision 2026-08-17).
  */
 export const ARCAAI_CLINICAL_TEMPLATES = ALL_SPECS.map((spec) => ({
   id: spec.id,
@@ -611,8 +625,9 @@ export const ARCAAI_CLINICAL_TEMPLATES = ALL_SPECS.map((spec) => ({
 }));
 
 /**
- * Two PromptVersion snapshots per template: the original v1 port, retained
- * verbatim, and the v2 hardened body that is now approved. Ordered v1-then-v2 so
+ * THREE PromptVersion snapshots per template: the original v1 port (retained
+ * verbatim, byte-exact against the running v1 deployment), the hardened v2
+ * body, and the v3 body that is now approved and served. Ordered v1→v2→v3 so
  * the seeder writes them in version order.
  */
 export const ARCAAI_CLINICAL_VERSIONS = ARCAAI_CLINICAL_SEEDED_VERSIONS.flatMap((versionNumber) =>

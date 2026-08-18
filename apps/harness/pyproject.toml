@@ -247,6 +247,13 @@ ignore_missing_imports = true
 module = ["deepeval", "deepeval.*"]
 ignore_missing_imports = true
 
+# asyncpg — used ONLY by the offline eval gate's DB-resident judge selection
+# (eval/judge/selection.py), where it is imported LAZILY so the harness SERVICE keeps its
+# deliberate "no DB client" property (rule 06). asyncpg ships no py.typed marker.
+[[tool.mypy.overrides]]
+module = ["asyncpg", "asyncpg.*"]
+ignore_missing_imports = true
+
 # 'atomic-fact' extra — llama-cpp-python (sensors/inferential/minicheck_entailer.py).
 # The submodule pattern is required: the entailer drives llama.cpp's encoder-decoder
 # path via `llama_cpp._internals.LlamaBatch`, which the high-level completion API

@@ -18,7 +18,7 @@ Rule actions (``type``):
 * ``remove`` — delete the matched span.
 * ``rewrite`` — replace the matched span with the rule's literal ``replacement``.
   A ``rewrite`` rule with NO ``replacement`` is a *semantic* rewrite handled by
-  the SMR pass in the activity, NOT here — constructing one for the deterministic
+  the Text pass in the activity, NOT here — constructing one for the deterministic
   engine is a validation error.
 
 Invariants pinned by the unit tests:
@@ -84,7 +84,7 @@ class RedactionRule(BaseModel):
             and self.replacement is None
         ):
             # A deterministic rewrite must carry its replacement. A rewrite with no
-            # replacement is a *semantic* rewrite (SMR pass in the activity); it is
+            # replacement is a *semantic* rewrite (Text pass in the activity); it is
             # never handed to the pure engine, so reject it here.
             raise ValueError(
                 f"rewrite rule {self.id!r} with match={self.match!r} requires a 'replacement'"

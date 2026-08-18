@@ -12,7 +12,7 @@ import { EffectiveSettingsModule } from '../settings-registry/effective-settings
  *
  * imports AiTaskDefaultServiceModule so `IAiTaskDefaultService`
  * is available for the AiTaskDefault-first SMR routing precedence in
- * `resolveSmrSelection` (the injection is @Optional, so this is additive).
+ * `resolveTextSelection` (the injection is @Optional, so this is additive).
  */
 @Module({
   // EffectiveSettingsModule supplies the settings-registry read

@@ -34,6 +34,7 @@ export interface ITenantEntitlementEntity extends IBaseTenantEntity {
   featureMonitoringAccess?: boolean | null;
   featurePlatformDefaultCredential?: boolean | null;
   featurePaletteStt?: boolean | null;
+  featureAgenticLoop?: boolean | null;
   modelTier?: string | null;
   rateLimitTier?: string | null;
   rateLimitPerMinute?: number | null;
@@ -63,6 +64,7 @@ export class TenantEntitlementEntity extends BaseTenantEntity {
   private _featureMonitoringAccess?: ITenantEntitlementEntity['featureMonitoringAccess'];
   private _featurePlatformDefaultCredential?: ITenantEntitlementEntity['featurePlatformDefaultCredential'];
   private _featurePaletteStt?: ITenantEntitlementEntity['featurePaletteStt'];
+  private _featureAgenticLoop?: ITenantEntitlementEntity['featureAgenticLoop'];
   private _modelTier?: ITenantEntitlementEntity['modelTier'];
   private _rateLimitTier?: ITenantEntitlementEntity['rateLimitTier'];
   private _rateLimitPerMinute?: ITenantEntitlementEntity['rateLimitPerMinute'];
@@ -92,6 +94,7 @@ export class TenantEntitlementEntity extends BaseTenantEntity {
     this._featureMonitoringAccess = init.featureMonitoringAccess;
     this._featurePlatformDefaultCredential = init.featurePlatformDefaultCredential;
     this._featurePaletteStt = init.featurePaletteStt;
+    this._featureAgenticLoop = init.featureAgenticLoop;
     this._modelTier = init.modelTier;
     this._rateLimitTier = init.rateLimitTier;
     this._rateLimitPerMinute = init.rateLimitPerMinute;
@@ -279,6 +282,14 @@ export class TenantEntitlementEntity extends BaseTenantEntity {
 
   set featurePaletteStt(value: ITenantEntitlementEntity['featurePaletteStt']) {
     this.setProperty('featurePaletteStt', value);
+  }
+
+  get featureAgenticLoop(): ITenantEntitlementEntity['featureAgenticLoop'] {
+    return this._featureAgenticLoop;
+  }
+
+  set featureAgenticLoop(value: ITenantEntitlementEntity['featureAgenticLoop']) {
+    this.setProperty('featureAgenticLoop', value);
   }
 
   get modelTier(): ITenantEntitlementEntity['modelTier'] {

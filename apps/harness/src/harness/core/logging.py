@@ -1,6 +1,6 @@
 """Structured logging configuration using structlog.
 
-Mirrors the smr logging setup so harness logs are JSON-structured, carry
+Mirrors the text-service logging setup so harness logs are JSON-structured, carry
 OpenTelemetry trace context when tracing is active, and integrate cleanly with
 uvicorn.
 """

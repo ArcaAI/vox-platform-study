@@ -27,8 +27,8 @@ export interface IHarnessPolicyEntity extends IBaseTenantEntity {
   phiFailClosed: boolean;
   safetyProvider: string;
   safetyModel: string;
-  smrProvider?: string | null;
-  smrModel?: string | null;
+  textProvider?: string | null;
+  textModel?: string | null;
   maxRegen: number;
   gateSlaSeconds: number;
   gateEscalationSeconds: number;
@@ -59,8 +59,8 @@ export class HarnessPolicyEntity extends BaseTenantEntity {
   private _phiFailClosed: IHarnessPolicyEntity['phiFailClosed'];
   private _safetyProvider: IHarnessPolicyEntity['safetyProvider'];
   private _safetyModel: IHarnessPolicyEntity['safetyModel'];
-  private _smrProvider?: IHarnessPolicyEntity['smrProvider'];
-  private _smrModel?: IHarnessPolicyEntity['smrModel'];
+  private _textProvider?: IHarnessPolicyEntity['textProvider'];
+  private _textModel?: IHarnessPolicyEntity['textModel'];
   private _maxRegen: IHarnessPolicyEntity['maxRegen'];
   private _gateSlaSeconds: IHarnessPolicyEntity['gateSlaSeconds'];
   private _gateEscalationSeconds: IHarnessPolicyEntity['gateEscalationSeconds'];
@@ -86,8 +86,8 @@ export class HarnessPolicyEntity extends BaseTenantEntity {
     this._phiFailClosed = init.phiFailClosed;
     this._safetyProvider = init.safetyProvider;
     this._safetyModel = init.safetyModel;
-    this._smrProvider = init.smrProvider;
-    this._smrModel = init.smrModel;
+    this._textProvider = init.textProvider;
+    this._textModel = init.textModel;
     this._maxRegen = init.maxRegen;
     this._gateSlaSeconds = init.gateSlaSeconds;
     this._gateEscalationSeconds = init.gateEscalationSeconds;
@@ -182,20 +182,20 @@ export class HarnessPolicyEntity extends BaseTenantEntity {
     this.setProperty('safetyModel', value);
   }
 
-  get smrProvider(): IHarnessPolicyEntity['smrProvider'] {
-    return this._smrProvider;
+  get textProvider(): IHarnessPolicyEntity['textProvider'] {
+    return this._textProvider;
   }
 
-  set smrProvider(value: IHarnessPolicyEntity['smrProvider']) {
-    this.setProperty('smrProvider', value);
+  set textProvider(value: IHarnessPolicyEntity['textProvider']) {
+    this.setProperty('textProvider', value);
   }
 
-  get smrModel(): IHarnessPolicyEntity['smrModel'] {
-    return this._smrModel;
+  get textModel(): IHarnessPolicyEntity['textModel'] {
+    return this._textModel;
   }
 
-  set smrModel(value: IHarnessPolicyEntity['smrModel']) {
-    this.setProperty('smrModel', value);
+  set textModel(value: IHarnessPolicyEntity['textModel']) {
+    this.setProperty('textModel', value);
   }
 
   get maxRegen(): IHarnessPolicyEntity['maxRegen'] {

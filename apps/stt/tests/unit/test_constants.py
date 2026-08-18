@@ -26,10 +26,17 @@ class TestDatabaseNamespaces:
 class TestSystemConstants:
     """Tests for system-level constants."""
 
-    def test_default_tenant_id(self):
-        from stt.core.config.constants import DEFAULT_TENANT_ID
+    def test_there_is_no_default_tenant_id(self):
+        """`50000000-…` is the CUSTOMER tenant "Global", not a platform default.
 
-        assert DEFAULT_TENANT_ID == "50000000-0000-0000-0000-000000000000"
+        The constant used to exist, labelled "system-wide", with no consumer —
+        a cross-tenant leak waiting for its first caller. The cascade is request
+        tenant -> SYSTEM (`00000000-…`); nothing may offer a customer tenant as
+        a fallback.
+        """
+        from stt.core.config import constants
+
+        assert not hasattr(constants, "DEFAULT_TENANT_ID")
 
     def test_system_user_id(self):
         from stt.core.config.constants import SYSTEM_USER_ID

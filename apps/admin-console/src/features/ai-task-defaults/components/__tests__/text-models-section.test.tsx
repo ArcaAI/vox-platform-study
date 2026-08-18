@@ -1,8 +1,8 @@
 /**
  * Tenant "Text models" section.
  *
- * Four `TaskDefaultCard`s (primary smr.live/smr.finalize + optional fallback
- * smr.live.fallback/smr.finalize.fallback), rendered in isolation. The load-
+ * Four `TaskDefaultCard`s (primary text.live/text.finalize + optional fallback
+ * text.live.fallback/text.finalize.fallback), rendered in isolation. The load-
  * bearing behavior: `tenantId` is OMITTED on every card, so every gateway read
  * and OCC write is CLS-pinned to the caller's tenant — NO `tenantId` query
  * param ever appears on the wire.

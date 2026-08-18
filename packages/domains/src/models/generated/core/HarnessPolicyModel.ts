@@ -25,8 +25,8 @@ export class HarnessPolicy extends BaseTenantDataModel {
   public phiFailClosed: boolean;
   public safetyProvider: string;
   public safetyModel: string;
-  public smrProvider: string | null;
-  public smrModel: string | null;
+  public textProvider: string | null;
+  public textModel: string | null;
   public maxRegen: number;
   public gateSlaSeconds: number;
   public gateEscalationSeconds: number;
@@ -56,8 +56,8 @@ export class HarnessPolicy extends BaseTenantDataModel {
     this.phiFailClosed = data.phiFailClosed;
     this.safetyProvider = data.safetyProvider;
     this.safetyModel = data.safetyModel;
-    this.smrProvider = data.smrProvider;
-    this.smrModel = data.smrModel;
+    this.textProvider = data.textProvider;
+    this.textModel = data.textModel;
     this.maxRegen = data.maxRegen;
     this.gateSlaSeconds = data.gateSlaSeconds;
     this.gateEscalationSeconds = data.gateEscalationSeconds;

@@ -166,7 +166,7 @@ describe('SummaryService.generateSummary — finalize lineage', () => {
   // ── RF-4 — finalize LLM precedence, end to end through callTextService ──
   describe('finalize LLM precedence (RF-4)', () => {
     const httpService = createMockHttpService();
-    const resolveSmrSelection = vi.fn().mockResolvedValue({ provider: 'tenant-provider', model: 'tenant-model' });
+    const resolveTextSelection = vi.fn().mockResolvedValue({ provider: 'tenant-provider', model: 'tenant-model' });
 
     /**
      * The full positional constructor: everything before `harnessPolicyService`
@@ -176,7 +176,7 @@ describe('SummaryService.generateSummary — finalize lineage', () => {
       // Positional indices 10…22: secretsService(10) … billing(22).
       const tail: unknown[] = new Array(13).fill(undefined);
       tail[0] = { encrypt: vi.fn(), decrypt: vi.fn(), getSecretOptional: vi.fn().mockResolvedValue('') }; // secretsService
-      tail[4] = { getEffectivePolicy: vi.fn(), resolveSmrSelection, resolveSmrFallbackSelection: vi.fn().mockResolvedValue(null) }; // harnessPolicyService
+      tail[4] = { getEffectivePolicy: vi.fn(), resolveTextSelection, resolveTextFallbackSelection: vi.fn().mockResolvedValue(null) }; // harnessPolicyService
       return new SummaryService(
         contextItemRepository as never,
         { findById: vi.fn().mockResolvedValue({ id: 'c-1', tenantId: 'tenant-1' }), update: vi.fn() } as never,
@@ -196,7 +196,7 @@ describe('SummaryService.generateSummary — finalize lineage', () => {
 
     const smrOptions = () => httpService.axiosRef.post.mock.calls.at(-1)![1] as Record<string, unknown>;
 
-    it("the session agent's finalize override outranks the tenant smr.finalize default", async () => {
+    it("the session agent's finalize override outranks the tenant text.finalize default", async () => {
       withSnapshot({ subType: 'LIVE_SOAP_SNAPSHOT', agent: LINEAGE });
       const svc = buildService({ llmOverrides: { finalize: { aiModelSlug: 'gpt-4-1' } } });
 
@@ -211,7 +211,7 @@ describe('SummaryService.generateSummary — finalize lineage', () => {
 
       await svc.generateSummary('c-1', {} as never, 'user-1');
 
-      expect(resolveSmrSelection).toHaveBeenCalledWith('tenant-1', 'finalize');
+      expect(resolveTextSelection).toHaveBeenCalledWith('tenant-1', 'finalize');
       expect(JSON.stringify(smrOptions())).toContain('tenant-model');
     });
   });

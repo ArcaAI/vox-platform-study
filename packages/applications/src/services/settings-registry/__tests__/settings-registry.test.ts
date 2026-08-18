@@ -160,10 +160,10 @@ describe('HOPE_SETTINGS_REGISTRY (assembled catalog)', () => {
       'models.nlp.ner',
       'models.nlp.classification',
       'models.nlp.diagnosis',
-      'models.smr.live',
-      'models.smr.finalize',
-      'models.smr.live.fallback',
-      'models.smr.finalize.fallback',
+      'models.text.live',
+      'models.text.finalize',
+      'models.text.live.fallback',
+      'models.text.finalize.fallback',
       'models.harness.judge',
     ]) {
       expect(HOPE_SETTINGS_REGISTRY.getOrThrow(key)).toMatchObject({
@@ -177,8 +177,8 @@ describe('HOPE_SETTINGS_REGISTRY (assembled catalog)', () => {
 
   // The two per-tenant SMR fallback keys are TEXT_GENERATION.
   it('maps the smr fallback task keys to TEXT_GENERATION model task types', () => {
-    expect(AI_TASK_MODEL_TASK_TYPES['smr.live.fallback']).toBe(ModelTaskType.TEXT_GENERATION);
-    expect(AI_TASK_MODEL_TASK_TYPES['smr.finalize.fallback']).toBe(ModelTaskType.TEXT_GENERATION);
+    expect(AI_TASK_MODEL_TASK_TYPES['text.live.fallback']).toBe(ModelTaskType.TEXT_GENERATION);
+    expect(AI_TASK_MODEL_TASK_TYPES['text.finalize.fallback']).toBe(ModelTaskType.TEXT_GENERATION);
   });
 
   it('flags nlp.*/harness.* task-model defaults as super-admin-only (editableBy all, globalOnly)', () => {
@@ -202,10 +202,10 @@ describe('HOPE_SETTINGS_REGISTRY (assembled catalog)', () => {
   // descriptor only governs WHO may attempt the write.)
   it('flags smr.* and guardrail.* task-model defaults as tenant-editable (editableBy AiTaskDefault, not globalOnly)', () => {
     for (const key of [
-      'models.smr.live',
-      'models.smr.finalize',
-      'models.smr.live.fallback',
-      'models.smr.finalize.fallback',
+      'models.text.live',
+      'models.text.finalize',
+      'models.text.live.fallback',
+      'models.text.finalize.fallback',
       'models.guardrail.validate',
       'models.guardrail.safety',
       'models.guardrail.groundedness',

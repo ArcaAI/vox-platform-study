@@ -19,13 +19,13 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
-import hmac
 from typing import Any
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
 from tts.catalog.voices import VoiceNotFoundError
 from tts.core.logging import get_logger
+from tts.core.service_auth import dev_bypass_active, token_accepted
 from tts.core.usage import compute_audio_seconds, count_characters, record_usage_metrics
 from tts.providers.base import AudioFormat, SynthesisStream
 from tts.routing.router import AllProvidersUnavailableError
@@ -97,12 +97,27 @@ def _voice_bindings(value: Any) -> dict[str, dict[str, str]] | None:
 
 
 def _authorized(ws: WebSocket) -> bool:
-    """Constant-time X-Service-Token check (empty configured token = dev bypass)."""
-    token: str = ws.app.state.settings.service_token.get_secret_value()
-    if not token:
+    """The HTTP middleware's decision, applied to the WebSocket handshake.
+
+    ``BaseHTTPMiddleware`` never runs for a WebSocket scope, so this is the ONLY
+    gate on this endpoint. It must therefore accept exactly what
+    ``ServiceAuthMiddleware`` accepts — the full ``accepted_service_tokens`` set
+    (shared ``INTERNAL_ACCESS_TOKEN`` first, legacy token as fallback), not the
+    legacy field alone. Reading only the legacy field is what made completing
+    owner decision D-D — set the shared token, delete the legacy variable — open
+    this socket to everyone while HTTP stayed protected.
+    """
+    accepted: tuple[str, ...] = ws.app.state.settings.accepted_service_tokens
+    if dev_bypass_active(accepted):
         return True
-    provided = ws.headers.get("x-service-token", "")
-    return bool(provided) and hmac.compare_digest(provided, token)
+    if token_accepted(ws.headers.get("x-service-token", ""), accepted):
+        return True
+    logger.warning(
+        "tts.auth.ws_rejected",
+        path=ws.url.path,
+        reason="no_token_configured" if not accepted else "invalid_or_missing_token",
+    )
+    return False
 
 
 @router.websocket("/audio/stream")

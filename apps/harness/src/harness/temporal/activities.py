@@ -7,7 +7,7 @@ delegates every side effect here.
 
 ``ping_activity`` is a trivial placeholder that proves the substrate. The
 document-loop activities below are thin wrappers over the typed httpx tool
-clients (NLP/SMR/apps-api) + the pure sensor runner; they read settings at
+clients (NLP/Text/apps-api) + the pure sensor runner; they read settings at
 runtime (allowed in activities) and construct a client per call.
 """
 
@@ -83,7 +83,7 @@ from harness.services.embeddings_client import EmbeddingsClient
 from harness.services.nlp_client import NlpClient
 from harness.services.reranker_client import RerankerClient
 from harness.services.sensor_runner import SensorRunOutput, run_computational_sensors
-from harness.services.smr_client import SmrClient, SmrGenerationResult, SmrServiceError
+from harness.services.text_client import TextClient, TextGenerationResult, TextServiceError
 from harness.temporal.claim_check import (
     ClaimCheckRef,
     build_blob_store,
@@ -200,19 +200,45 @@ async def ping_activity(payload: PingInput) -> PingResult:
 # ---------------------------------------------------------------------------
 
 
+# Owner decision D-D (2026-08-17): every outbound hop PRESENTS the ONE shared
+# `INTERNAL_ACCESS_TOKEN`. The legacy per-target secrets (`HARNESS_NLP_SERVICE_TOKEN`,
+# `HARNESS_TEXT_SERVICE_TOKEN`, `HARNESS_SERVICE_TOKEN`) remain only as the fallback
+# for an environment that has not been migrated yet — `peer_service_token` encodes
+# "shared first, legacy second" in one place so no factory can drift from it.
+# TASK-737 — every peer call out of an activity must carry the tenant its work
+# belongs to. The workflow input models all carry it (required on the newer ones,
+# additive-optional with "" on `GenerateInput`/`ApplyRedactionInput` so an OLD
+# Temporal history still deserializes and replays). This is the one place that
+# turns "the input had no tenant" into a loud, attributable failure instead of a
+# silent platform-default resolution one or two hops downstream.
+#
+# Genuinely tenant-less internal work does NOT come through here — it declares
+# itself with a `tenantless:<reason>` marker, which passes this check untouched.
+def _required_tenant(tenant_id: str | None, activity_name: str) -> str:
+    resolved = (tenant_id or "").strip()
+    if not resolved:
+        raise ValueError(
+            f"harness activity {activity_name!r} has no tenant_id (TASK-737). A peer "
+            "call carrying tenant-scoped work must identify its tenant; an absent one "
+            "is a defect in the workflow that scheduled this activity, not something "
+            "the callee should resolve to a platform default."
+        )
+    return resolved
+
+
 def _nlp_client(settings: Settings) -> NlpClient:
     return NlpClient(
         settings.nlp_base_url,
         timeout=settings.nlp_timeout_s,
-        service_token=settings.nlp_service_token.get_secret_value(),
+        service_token=settings.peer_service_token(settings.nlp_service_token),
     )
 
 
-def _smr_client(settings: Settings) -> SmrClient:
-    return SmrClient(
-        settings.smr_base_url,
-        timeout=settings.smr_timeout_s,
-        service_token=settings.smr_service_token.get_secret_value(),
+def _text_client(settings: Settings) -> TextClient:
+    return TextClient(
+        settings.text_base_url,
+        timeout=settings.text_timeout_s,
+        service_token=settings.peer_service_token(settings.text_service_token),
     )
 
 
@@ -220,7 +246,7 @@ def _api_client(settings: Settings) -> ApiClient:
     return ApiClient(
         settings.api_base_url,
         internal_prefix=settings.api_internal_prefix,
-        service_token=settings.service_token.get_secret_value(),
+        service_token=settings.peer_service_token(settings.service_token),
         timeout=settings.api_timeout_s,
     )
 
@@ -334,10 +360,10 @@ def _trajectory_api_client(settings: Settings) -> ApiClient:
 def _reasoning_tokens(stats: dict[str, Any] | None) -> int:
     """Best-effort reasoning-token count from a ``GenerationStats`` dict.
 
-    ``SmrGenerationResult`` has no dedicated reasoning field yet, so we read it
+    ``TextGenerationResult`` has no dedicated reasoning field yet, so we read it
     defensively from the stats block (top-level ``reasoning_tokens`` or the
     engine-native OpenAI-wire ``completion_tokens_details.reasoning_tokens``). A
-    positive count is the "SMR returned non-empty reasoning" signal for the
+    positive count is the "Text returned non-empty reasoning" signal for the
     ``THINKING`` step; everything is null-safe (missing ⇒ 0 ⇒ no THINKING step).
     """
     if not stats:
@@ -858,7 +884,9 @@ async def extract_entities(payload: ExtractEntitiesInput) -> EntitiesResult:
             return EntitiesResult(entities=priors, reused=True)
     # Resolve the (possibly offloaded) note/transcript before the cold NER pass.
     text = await _resolve_ref(settings, payload.text, payload.text_ref)
-    entities = await _nlp_client(settings).classify_tokens(text, language=payload.language)
+    entities = await _nlp_client(settings).classify_tokens(
+        text, tenant_id=_required_tenant(payload.tenant_id, "extract_entities"), language=payload.language
+    )
     batch.record(
         step_type=STEP_TOOL_CALL,
         name="nlp.extract_entities",
@@ -1117,7 +1145,7 @@ async def persist_entities(payload: PersistEntitiesInput) -> PersistEntitiesResp
 
 @activity.defn
 async def assemble_prompt(payload: AssembleInput) -> AssembleResponse:
-    """Resolve the prompt tier + assemble the SMR payload via apps/api."""
+    """Resolve the prompt tier + assemble the Text payload via apps/api."""
     settings = get_settings()
     started = _now()
     resp = await _api_client(settings).assemble(
@@ -1156,8 +1184,8 @@ async def assemble_prompt(payload: AssembleInput) -> AssembleResponse:
 
 
 @activity.defn
-async def generate(payload: GenerateInput) -> SmrGenerationResult:
-    """Generate the SOAP draft synchronously via the SMR service."""
+async def generate(payload: GenerateInput) -> TextGenerationResult:
+    """Generate the SOAP draft synchronously via the Text service."""
     settings = get_settings()
     started = _now()
     hp = payload.hyperparameters or {}
@@ -1191,10 +1219,10 @@ async def generate(payload: GenerateInput) -> SmrGenerationResult:
     else:
         system_prompt_in = payload.system_prompt
 
-    # Enforce the fail-closed PHI egress guard before any cloud SMR call.
+    # Enforce the fail-closed PHI egress guard before any cloud Text call.
     # Local providers (the default) are a pure pass-through. A fail-closed block
     # raises PhiEgressBlocked, which propagates and fails the workflow — no draft is
-    # ever persisted (the SMR failure-propagation invariant), never a silent leak.
+    # ever persisted (the Text failure-propagation invariant), never a silent leak.
     redactor = _phi_redactor()
     try:
         prompt = ensure_egress_safe(
@@ -1245,7 +1273,8 @@ async def generate(payload: GenerateInput) -> SmrGenerationResult:
         )
 
     try:
-        result = await _smr_client(settings).generate(
+        result = await _text_client(settings).generate(
+            tenant_id=_required_tenant(payload.tenant_id, "generate"),
             prompt=prompt,
             system_prompt=system_prompt,
             provider=payload.provider,
@@ -1255,27 +1284,27 @@ async def generate(payload: GenerateInput) -> SmrGenerationResult:
             top_p=hp.get("top_p"),
             response_format=payload.response_format,
             # A deterministic key (workflow_run:activity_id, stable across
-            # worker-crash re-delivery) so SMR dedups a replayed generate — the durable half
+            # worker-crash re-delivery) so Text dedups a replayed generate — the durable half
             # of the fix on top of the in-process retry narrowing.
             idempotency_key=_idempotency_key(),
         )
-    except SmrServiceError as exc:
-        # ``after_send`` means the request reached SMR and the model MAY have
+    except TextServiceError as exc:
+        # ``after_send`` means the request reached Text and the model MAY have
         # generated — a dropped-read transport loss OR the governor's per-call timeout
-        # firing mid-request (both closed in ``smr_client``). Re-running the activity
+        # firing mid-request (both closed in ``text_client``). Re-running the activity
         # (Temporal ``_GENERATE_RETRY``) would re-invoke the model (double spend + divergent
-        # draft), so mark it non-retryable — the SMR-failure invariant still fails the
+        # draft), so mark it non-retryable — the Text-failure invariant still fails the
         # workflow without a draft. A PRE-send failure propagates unchanged (retryable: the
         # model never ran).
         #
         # Belt-and-braces with the idempotency key above: a genuine worker CRASH mid-activity
         # (no exception to catch) that makes Temporal re-deliver the activity now re-POSTs the
-        # SAME ``Idempotency-Key``, so SMR returns the first generation instead of re-billing.
-        # The one residual (documented, accepted): an SMR 5xx / LM-Studio
+        # SAME ``Idempotency-Key``, so Text returns the first generation instead of re-billing.
+        # The one residual (documented, accepted): an Text 5xx / LM-Studio
         # ``terminated`` 400 arriving AFTER the model ran but BEFORE the response was cached —
         # the governor retries it and there is no cached result to replay.
         if exc.after_send:
-            raise ApplicationError(str(exc), type="SmrResponseLost", non_retryable=True) from exc
+            raise ApplicationError(str(exc), type="TextResponseLost", non_retryable=True) from exc
         raise
 
     # Offload the generated note so the (large) content stays OUT of Temporal
@@ -1289,13 +1318,13 @@ async def generate(payload: GenerateInput) -> SmrGenerationResult:
     )
 
     # LLM_CALL step embeds the ``stats`` verbatim;
-    # a bounded-regen generation bumps ``harness_regen_total``. When SMR returned
+    # a bounded-regen generation bumps ``harness_regen_total``. When Text returned
     # non-empty reasoning, emit a stats-only THINKING step (payloadRef stays null until
     # a capture-payload policy flag is on — which it is not yet).
     # F-19 / F-35 — the backend's generation stats VERBATIM (so any cache
     # counters it reports — ``cached_tokens``, ``prompt_cache_*``, whatever sits
     # in ``engine_native`` — reach the trajectory rollups untouched) plus the
-    # locally measured prompt size. A legacy SMR response with no ``stats`` still
+    # locally measured prompt size. A legacy Text response with no ``stats`` still
     # gets the size fields.
     llm_stats: dict[str, Any] = dict(result.stats or {})
     llm_stats["prompt_chars"] = prompt_chars
@@ -1303,11 +1332,11 @@ async def generate(payload: GenerateInput) -> SmrGenerationResult:
     # The gateway's usage-ledger emission hook (co-emitted on
     # trajectory persistence) needs `provider`/`model` on every LLM_CALL step to
     # attribute cost. AD-1 GenerationStats normally carries both
-    # (``stats.provider``/``stats.model``), but a legacy SMR response with no
+    # (``stats.provider``/``stats.model``), but a legacy Text response with no
     # ``stats`` block (cache hit) would otherwise omit them even though
-    # ``SmrGenerationResult`` itself always carries them at the top level.
+    # ``TextGenerationResult`` itself always carries them at the top level.
     # Backfill only when the stats block didn't already say one — never
-    # overwrite a value SMR actually reported.
+    # overwrite a value Text actually reported.
     if not llm_stats.get("provider") and result.provider:
         llm_stats["provider"] = result.provider
     if not llm_stats.get("model") and result.model:
@@ -1866,12 +1895,12 @@ async def run_inferential_sensors(payload: RunInferentialSensorsInput) -> Infere
 
 
 def _needs_semantic_rewrite(rule: RedactionRule) -> bool:
-    """A ``rewrite`` rule with NO literal ``replacement`` ⇒ the SMR semantic pass."""
+    """A ``rewrite`` rule with NO literal ``replacement`` ⇒ the Text semantic pass."""
     return rule.type == "rewrite" and rule.replacement is None
 
 
 def _build_rewrite_prompt(text: str, rules: list[RedactionRule]) -> str:
-    """A constrained rewrite instruction for the SMR semantic pass.
+    """A constrained rewrite instruction for the Text semantic pass.
 
     The model is told to REMOVE/soften the described spans and change nothing else —
     it must never add clinical content and must return the SAME JSON shape it was given.
@@ -1900,11 +1929,11 @@ async def apply_redaction(payload: ApplyRedactionInput) -> ApplyRedactionResult:
     1. **Deterministic** — literal/regex/category ``remove`` rules and ``rewrite`` rules
        that carry a literal ``replacement``. Pure, replay-neutral. A malformed rule that
        reaches the engine fails CLOSED (see below).
-    2. **Optional SMR semantic rewrite** — ``rewrite`` rules with no literal replacement.
-       One constrained SMR call, PHI-egress guarded + idempotency-keyed exactly like
+    2. **Optional Text semantic rewrite** — ``rewrite`` rules with no literal replacement.
+       One constrained Text call, PHI-egress guarded + idempotency-keyed exactly like
        ``generate``; the output must preserve the note's JSON schema.
 
-    **Fail CLOSED**: if the deterministic engine raises OR a required SMR rewrite cannot be
+    **Fail CLOSED**: if the deterministic engine raises OR a required Text rewrite cannot be
     completed/parsed, the result carries ``failed_closed=True`` (the workflow forces a FLAG).
     A note the doctor expected redacted must never slip through silently. The audit
     ``manifest`` carries spans + counts only — never removed PHI plaintext.
@@ -1959,7 +1988,7 @@ async def apply_redaction(payload: ApplyRedactionInput) -> ApplyRedactionResult:
     working = outcome.text
     manifest = outcome.manifest
 
-    # 2) Optional SMR semantic-rewrite pass — fail closed on ANY failure.
+    # 2) Optional Text semantic-rewrite pass — fail closed on ANY failure.
     if semantic:
         redactor = _phi_redactor()
         prompt = _build_rewrite_prompt(working, semantic)
@@ -1972,17 +2001,18 @@ async def apply_redaction(payload: ApplyRedactionInput) -> ApplyRedactionResult:
                 phi_fail_closed=payload.phi_fail_closed,
                 redactor=redactor,
             )
-            result = await _smr_client(settings).generate(
+            result = await _text_client(settings).generate(
+                tenant_id=_required_tenant(payload.tenant_id, "apply_redaction"),
                 prompt=safe_prompt,
                 provider=payload.provider,
                 model=payload.model,
                 response_format=payload.response_format,
                 idempotency_key=_idempotency_key("redaction"),
             )
-        except (PhiEgressBlocked, SmrServiceError) as exc:
+        except (PhiEgressBlocked, TextServiceError) as exc:
             activity.logger.warning(
                 "harness.redaction.failed_closed",
-                extra={"stage": "smr_rewrite", "reason": str(exc)},
+                extra={"stage": "text_rewrite", "reason": str(exc)},
             )
             return await _emit(
                 ApplyRedactionResult(
@@ -2001,7 +2031,7 @@ async def apply_redaction(payload: ApplyRedactionInput) -> ApplyRedactionResult:
             except (json.JSONDecodeError, TypeError) as exc:
                 activity.logger.warning(
                     "harness.redaction.failed_closed",
-                    extra={"stage": "smr_rewrite_schema", "reason": str(exc)},
+                    extra={"stage": "text_rewrite_schema", "reason": str(exc)},
                 )
                 return await _emit(
                     ApplyRedactionResult(
@@ -2599,7 +2629,8 @@ async def plan_reasoning(payload: PlanLoopInput) -> PlanDecision:
 
     settings = get_settings()
     try:
-        result = await _smr_client(settings).generate(
+        result = await _text_client(settings).generate(
+            tenant_id=_required_tenant(payload.tenant_id, "plan_reasoning"),
             prompt=prompt,
             system_prompt=_PLANNER_SYSTEM_PROMPT,
             temperature=0.0,
@@ -2675,7 +2706,8 @@ async def run_specialist(payload: SpecialistAnalysisInput) -> SpecialistResult:
     )
 
     try:
-        result = await _smr_client(settings).generate(
+        result = await _text_client(settings).generate(
+            tenant_id=_required_tenant(payload.tenant_id, "run_specialist"),
             prompt=prompt,
             system_prompt=_SPECIALIST_SYSTEM_PROMPT,
             temperature=0.0,
@@ -2775,13 +2807,14 @@ async def vision_extract_text(payload: DeriveContextInput) -> DeriveContextResul
 
     Backs `vision.extract_text`, which declared but left dispatching as
     an `unsupported_action` skip. Uses the vision capability shipped in
-    SMR. Its output re-enters the context bus one depth deeper, which is what
+    Text. Its output re-enters the context bus one depth deeper, which is what
     makes image -> text the same mechanism as audio -> transcript.
     """
     settings = get_settings()
     source = await _resolve_derive_text(settings, payload)
     try:
-        result = await _smr_client(settings).generate(
+        result = await _text_client(settings).generate(
+            tenant_id=_required_tenant(payload.tenant_id, "vision_extract_text"),
             prompt=(
                 "Transcribe all legible text in this clinical image verbatim. "
                 "Do not interpret, diagnose or summarise.\n\n"
@@ -2856,7 +2889,9 @@ async def nlp_extract_entities(payload: DeriveContextInput) -> DeriveContextResu
     if not source.strip():
         return DeriveContextResult(derived=False)
     try:
-        entities = await _nlp_client(settings).classify_tokens(source)
+        entities = await _nlp_client(settings).classify_tokens(
+            source, tenant_id=_required_tenant(payload.tenant_id, "nlp_extract_entities")
+        )
     except Exception as exc:  # noqa: BLE001 — a dead branch of the cascade, not an error
         activity.logger.warning(
             "harness.loop.nlp_extract_failed",

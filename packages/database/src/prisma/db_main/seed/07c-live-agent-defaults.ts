@@ -7,7 +7,7 @@
  * `packages/applications/src/services/consultation/live-documentation/live-documentation.service.ts`:
  *
  *   content                            ← `LIVE_SOAP_STABLE_SYSTEM_PREFIX`
- *   metaData.promptConfig.systemPrompt ← the `system_prompt` literal in `callSmr`
+ *   metaData.promptConfig.systemPrompt ← the `system_prompt` literal in `callText`
  *
  * WHY BYTE-IDENTICAL MATTERS. Lane C3 turns the live prompt into a resolved,
  * governed template with a three-tier chain: agent binding → this SYSTEM
@@ -71,7 +71,7 @@ export const SYSTEM_LIVE_SOAP_PROMPT_CONTENT =
   'running clinical note structured as SOAP. ' +
   SOAP_OUTPUT_INSTRUCTION;
 
-/** Byte-for-byte copy of the `system_prompt` literal in `callSmr`. */
+/** Byte-for-byte copy of the `system_prompt` literal in `callText`. */
 export const SYSTEM_LIVE_SOAP_SYSTEM_PROMPT =
   'You are a clinical documentation assistant generating an in-progress, structured SOAP running note. ' +
   'Be concise and faithful to the transcript; never fabricate findings.';

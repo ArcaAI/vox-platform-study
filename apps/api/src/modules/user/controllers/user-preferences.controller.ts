@@ -1,7 +1,7 @@
 import { IUserPreferencesService, UserPreferencesResponse, UpdateUserPreferencesRequest } from '@arcaai/applications';
 import { Controller, Get, Patch, Body, Inject } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth, ApiOperation, ApiResponse } from '@nestjs/swagger';
-import { Authorize } from '../../../decorators';
+import { Authorize, RequiredScopes } from '../../../decorators';
 
 /**
  * Controller for current user's SDK preferences.
@@ -11,6 +11,9 @@ import { Authorize } from '../../../decorators';
 @ApiTags('user')
 @Controller('user/me/preferences')
 @Authorize()
+// TASK-742: maps 1:1 onto the pre-existing, previously unwired
+// `user:preferences:*` scopes that seeded SDK keys already carry.
+@RequiredScopes('user:preferences:write')
 export class UserPreferencesController {
   constructor(
     @Inject(IUserPreferencesService)

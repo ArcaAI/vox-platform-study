@@ -66,11 +66,20 @@ import {
   StreamSessionResponse,
   TranscribeFileRequest,
 } from './dto';
+import { RequiredScopes } from '../../decorators';
 
 @ApiBearerAuth()
 @Authorize()
 @ApiTags('transcription-jobs')
 @Controller('audio/transcription-jobs')
+// TASK-742: the STT job surface the gateway conformance review named as
+// reachable with no authorization check at all (21 routes, 0 scopes). ONE
+// class-level scope, deliberately the STRONGER of the declared `stt:*` pair —
+// the same coarse-grained choice TASK-708 made for `/admin/*`: a uniformly
+// scoped class is mechanically exhaustive, where a per-verb read/write split
+// across 20 methods risks leaving one silently ungated. Splitting the GETs onto
+// `stt:transcription:read` is a precision follow-up, never a widening.
+@RequiredScopes('stt:transcription:write')
 export class TranscriptionJobController {
   private readonly logger = new Logger(TranscriptionJobController.name);
 
@@ -716,7 +725,9 @@ export class TranscriptionJobController {
   @ApiOperation({ summary: 'Close a WebSocket streaming session' })
   @ApiParam({ name: 'sessionId', description: 'Streaming session ID' })
   async closeStreamSession(@Param('sessionId') sessionId: string): Promise<void> {
-    await this.sessionService.removeSession(sessionId);
+    // TASK-737: the CLS tenant this route already authorised against is the
+    // session's owner — thread it so the internal DELETE is attributable.
+    await this.sessionService.removeSession(sessionId, false, this.getTenantId());
     await this.streamSessionTenantBinding.clear(sessionId);
   }
 
@@ -786,7 +797,7 @@ export class TranscriptionJobController {
     }
 
     try {
-      await this.sessionService.switchToFallback(sessionId);
+      await this.sessionService.switchToFallback(sessionId, tenantId);
     } catch (err) {
       const status = (err as { response?: { status?: number } })?.response?.status;
       if (status === 409) {
@@ -825,7 +836,7 @@ export class TranscriptionJobController {
     }
 
     try {
-      await this.sessionService.switchProvider(sessionId, 'primary');
+      await this.sessionService.switchProvider(sessionId, 'primary', this.getTenantId());
     } catch (err) {
       const status = (err as { response?: { status?: number } })?.response?.status;
       if (status === 409) {

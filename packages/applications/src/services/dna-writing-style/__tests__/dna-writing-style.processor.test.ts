@@ -64,12 +64,22 @@ const createMockClsService = () => ({
   run: vi.fn(<T>(fn: () => T): T => fn()),
 });
 
+/**
+ * TASK-710 (re-opened) — `IPhiRedactor` is now a REQUIRED dependency of this
+ * processor (owner directive D-A): an absent redactor ABORTS the job instead of
+ * silently posting the raw cross-patient corpus to SMR. Every fixture below
+ * therefore supplies a pass-through double, which keeps each pre-existing
+ * assertion about the posted prompt byte-identical while exercising the new
+ * mandatory call. The dedicated redaction specs supply their own doubles.
+ */
+const createPassThroughPhiRedactor = () => ({ redact: vi.fn(async (text: string) => text) });
+
 const createMockJobMetrics = () => ({
   recordJobStart: vi.fn().mockReturnValue(vi.fn().mockReturnValue(5.0)),
   recordJobComplete: vi.fn(),
   recordJobFailed: vi.fn(),
   recordWaitingDuration: vi.fn(),
-  recordSmrCallDuration: vi.fn(),
+  recordTextCallDuration: vi.fn(),
 });
 
 const createMockAppSettingsService = (overrides: Record<string, unknown> = {}) => {
@@ -179,7 +189,7 @@ describe('DnaWritingStyleProcessor', () => {
   let mockJobMetrics: ReturnType<typeof createMockJobMetrics>;
   let mockClsService: ReturnType<typeof createMockClsService>;
   let mockContextItemVersionRepo: ReturnType<typeof createMockContextItemVersionRepository>;
-  let mockHarnessPolicyService: { resolveSmrSelection: ReturnType<typeof vi.fn> };
+  let mockHarnessPolicyService: { resolveTextSelection: ReturnType<typeof vi.fn> };
 
   beforeEach(() => {
     vi.clearAllMocks();
@@ -203,7 +213,7 @@ describe('DnaWritingStyleProcessor', () => {
       changeReason === 'approved' ? [{ id: 'v', contextItemId, changeReason: 'approved', versionNumber: 1 }] : [],
     );
     mockHarnessPolicyService = {
-      resolveSmrSelection: vi.fn().mockResolvedValue({ provider: 'lm-studio', model: 'resolved-medgemma' }),
+      resolveTextSelection: vi.fn().mockResolvedValue({ provider: 'lm-studio', model: 'resolved-medgemma' }),
     };
 
     processor = new DnaWritingStyleProcessor(
@@ -222,6 +232,9 @@ describe('DnaWritingStyleProcessor', () => {
       mockClsService as never,
       undefined, // secretsService (@Optional)
       mockHarnessPolicyService as never, // HarnessPolicyService resolver
+      undefined, // configResolver (@Optional)
+      undefined, // promptTemplateRepository (@Optional)
+      createPassThroughPhiRedactor() as never, // phiRedactor (TASK-710 — REQUIRED)
     );
   });
 
@@ -270,7 +283,7 @@ describe('DnaWritingStyleProcessor', () => {
 
       // The SMR gateway now requires an explicit provider+model,
       // resolved via the HarnessPolicy cascade and merged into the payload.
-      expect(mockHarnessPolicyService.resolveSmrSelection).toHaveBeenCalled();
+      expect(mockHarnessPolicyService.resolveTextSelection).toHaveBeenCalled();
       expect(mockHttpService.axiosRef.post).toHaveBeenCalledWith(
         'http://localhost:8862/api/v1/generate',
         {
@@ -349,9 +362,7 @@ describe('DnaWritingStyleProcessor', () => {
       mockHttpService.axiosRef.post.mockResolvedValue(createAxiosSmrResponse('This is plain text analysis, not JSON.'));
       mockDnaReportRepo.findLatestForDoctor.mockResolvedValue(null);
 
-      await expect(processor.process(createMockJob({ textSamples: ['sample'] }) as never)).rejects.toThrow(
-        /unparseable or non-conforming/i,
-      );
+      await expect(processor.process(createMockJob({ textSamples: ['sample'] }) as never)).rejects.toThrow(/unparseable or non-conforming/i);
 
       expect(mockJobService.notifyFailed).toHaveBeenCalledWith('job-1', expect.stringContaining('unparseable or non-conforming'));
       expect(mockDnaReportRepo.create).not.toHaveBeenCalled();
@@ -589,6 +600,11 @@ describe('DnaWritingStyleProcessor', () => {
         customConfig as never,
         mockJobMetrics as never,
         mockClsService as never,
+        undefined, // secretsService (@Optional)
+        undefined, // harnessPolicyService (@Optional)
+        undefined, // configResolver (@Optional)
+        undefined, // promptTemplateRepository (@Optional)
+        createPassThroughPhiRedactor() as never, // phiRedactor (TASK-710 — REQUIRED)
       );
 
       mockPromptService.listPromptTemplates.mockResolvedValue([]);
@@ -624,6 +640,11 @@ describe('DnaWritingStyleProcessor', () => {
         noConfig as never,
         mockJobMetrics as never,
         mockClsService as never,
+        undefined, // secretsService (@Optional)
+        undefined, // harnessPolicyService (@Optional)
+        undefined, // configResolver (@Optional)
+        undefined, // promptTemplateRepository (@Optional)
+        createPassThroughPhiRedactor() as never, // phiRedactor (TASK-710 — REQUIRED)
       );
 
       mockPromptService.listPromptTemplates.mockResolvedValue([]);
@@ -694,6 +715,11 @@ describe('DnaWritingStyleProcessor', () => {
         mockConfigService as never,
         mockJobMetrics as never,
         mockClsService as never,
+        undefined, // secretsService (@Optional)
+        undefined, // harnessPolicyService (@Optional)
+        undefined, // configResolver (@Optional)
+        undefined, // promptTemplateRepository (@Optional)
+        createPassThroughPhiRedactor() as never, // phiRedactor (TASK-710 — REQUIRED)
       );
 
       mockContextItemRepo.findAll.mockResolvedValue([{ id: 'ci-1', content: 'text-1', text: null, type: 'RAW_SUMMARY' }]);
@@ -729,6 +755,11 @@ describe('DnaWritingStyleProcessor', () => {
         mockConfigService as never,
         mockJobMetrics as never,
         mockClsService as never,
+        undefined, // secretsService (@Optional)
+        undefined, // harnessPolicyService (@Optional)
+        undefined, // configResolver (@Optional)
+        undefined, // promptTemplateRepository (@Optional)
+        createPassThroughPhiRedactor() as never, // phiRedactor (TASK-710 — REQUIRED)
       );
 
       mockPromptService.listPromptTemplates.mockResolvedValue([]);
@@ -784,6 +815,11 @@ describe('DnaWritingStyleProcessor', () => {
         mockConfigService as never,
         mockJobMetrics as never,
         mockClsService as never,
+        undefined, // secretsService (@Optional)
+        undefined, // harnessPolicyService (@Optional)
+        undefined, // configResolver (@Optional)
+        undefined, // promptTemplateRepository (@Optional)
+        createPassThroughPhiRedactor() as never, // phiRedactor (TASK-710 — REQUIRED)
       );
 
       mockContextItemRepo.findAll.mockResolvedValue([{ id: 'ci-x', content: 'text', text: null, type: 'RAW_SUMMARY' }]);
@@ -1037,6 +1073,8 @@ describe('DnaWritingStyleProcessor', () => {
         undefined, // secretsService
         mockHarnessPolicyService as never, // harnessPolicyService
         configResolver as never, // configResolver
+        undefined, // promptTemplateRepository (@Optional)
+        createPassThroughPhiRedactor() as never, // phiRedactor (TASK-710 — REQUIRED)
       );
 
     const primeStorageMocks = () => {
@@ -1195,17 +1233,22 @@ describe('DnaWritingStyleProcessor', () => {
       expect(mockJobService.notifyFailed).toHaveBeenCalledWith('job-1', expect.stringContaining('guardrail unreachable'));
     });
 
-    it("without a wired redactor, behavior is unchanged (today's behavior) — the raw corpus is posted", async () => {
-      // The default `processor` fixture (this file's top-level beforeEach) has no
-      // phiRedactor wired, matching every pre-existing test above — production DI
-      // wiring (not a processor-level fallback) is what guarantees a redactor is
-      // present at runtime.
+    /**
+     * TASK-710 (re-opened), owner directive D-A. This assertion is INVERTED
+     * from what it said before: an unwired redactor used to mean "post the raw
+     * corpus unchanged", guarded by `if (this.phiRedactor)`. That is the exact
+     * shape by which hop 1 silently lost its redaction when TASK-732 deleted
+     * `ner.processor.ts` — a dependency whose absence is indistinguishable from
+     * "nothing to redact". The dependency is now REQUIRED (Nest fails at boot
+     * without `PhiRedactionServiceModule`) and the call site aborts.
+     */
+    it('FAIL-CLOSED: an unwired redactor aborts the job — the raw corpus is never posted to SMR', async () => {
+      const proc = buildProcessorWithPhiRedactor(undefined);
       primeStorageMocks();
 
-      await processor.process(createMockJob({ textSamples: ['Sample text unchanged'] }) as never);
+      await expect(proc.process(createMockJob({ textSamples: ['Patient John Smith.'] }) as never)).rejects.toThrow(/redact/i);
 
-      const [, requestBody] = mockHttpService.axiosRef.post.mock.calls[0];
-      expect(requestBody.prompt).toBe('Sample text unchanged');
+      expect(mockHttpService.axiosRef.post).not.toHaveBeenCalled();
     });
   });
 });

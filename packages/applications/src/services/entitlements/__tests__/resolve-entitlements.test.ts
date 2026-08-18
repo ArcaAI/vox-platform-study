@@ -19,6 +19,7 @@ describe('resolveEntitlements', () => {
         monitoringAccess: true,
         platformDefaultCredential: false,
         paletteStt: true,
+        agenticLoop: true,
       });
       expect(r.modelTier).toBe('full_custom');
     });
@@ -48,6 +49,8 @@ describe('resolveEntitlements', () => {
         monitoringAccess: false,
         platformDefaultCredential: false,
         paletteStt: true,
+        // TASK-705 — the loop is the differentiating plan feature; STARTER is out.
+        agenticLoop: false,
       });
       expect(r.modelTier).toBe('base');
       expect(r.rateLimitTier).toBe('strict');
@@ -287,6 +290,58 @@ describe('resolveEntitlements', () => {
         expect(PLAN_ENTITLEMENT_DEFAULTS[plan].featurePlatformDefaultCredential, `${plan} matrix default`).toBe(false);
         expect(resolveEntitlements(plan).features.platformDefaultCredential, `${plan} resolved`).toBe(false);
       }
+    });
+  });
+
+  /*
+   * TASK-705 — the harness agentic loop as a SUBSCRIPTION FEATURE.
+   *
+   * The owner ruling (owner-decisions-2026-08-17.md §2 row 705) makes loop
+   * eligibility commercial: a plan property resolved from the database, not an
+   * environment switch. It resolves through exactly the same three layers as
+   * every other boolean — seeded per-plan default ← plan row ← tri-state tenant
+   * override. The `PlanEntitlement.featureAgenticLoop` /
+   * `TenantEntitlement.featureAgenticLoop` columns now exist, so the per-plan
+   * default lives in `PlanEntitlementValues` alongside every other feature and
+   * the interim `AGENTIC_LOOP_PLAN_DEFAULTS` map is gone.
+   */
+  describe('agenticLoop entitlement (TASK-705)', () => {
+    it('is the differentiating plan feature: off on STARTER, on for TRIAL/PRO/ENTERPRISE', () => {
+      expect(resolveEntitlements(TenantPlan.STARTER).features.agenticLoop).toBe(false);
+      for (const plan of [TenantPlan.TRIAL, TenantPlan.PRO, TenantPlan.ENTERPRISE]) {
+        expect(resolveEntitlements(plan).features.agenticLoop, `${plan}`).toBe(true);
+      }
+      expect(PLAN_ENTITLEMENT_DEFAULTS.STARTER.featureAgenticLoop).toBe(false);
+      for (const plan of [TenantPlan.TRIAL, TenantPlan.PRO, TenantPlan.ENTERPRISE]) {
+        expect(PLAN_ENTITLEMENT_DEFAULTS[plan].featureAgenticLoop, `${plan}`).toBe(true);
+      }
+    });
+
+    it('a null-plan (ungated-legacy) tenant keeps the loop — day-1 posture (D-A)', () => {
+      expect(UNGATED_ENTITLEMENTS.features.agenticLoop).toBe(true);
+      expect(resolveEntitlements(null).features.agenticLoop).toBe(true);
+    });
+
+    it('a plan row overrides the seeded per-plan default', () => {
+      expect(resolveEntitlements(TenantPlan.STARTER, { featureAgenticLoop: true }).features.agenticLoop).toBe(true);
+      expect(resolveEntitlements(TenantPlan.PRO, { featureAgenticLoop: false }).features.agenticLoop).toBe(false);
+    });
+
+    it('a per-tenant override beats the plan in BOTH directions; null = inherit', () => {
+      expect(resolveEntitlements(TenantPlan.STARTER, null, { featureAgenticLoop: true }).features.agenticLoop).toBe(true);
+      expect(resolveEntitlements(TenantPlan.PRO, null, { featureAgenticLoop: false }).features.agenticLoop).toBe(false);
+      expect(resolveEntitlements(TenantPlan.PRO, null, { featureAgenticLoop: null }).features.agenticLoop).toBe(true);
+      expect(resolveEntitlements(TenantPlan.STARTER, null, { featureAgenticLoop: null }).features.agenticLoop).toBe(false);
+    });
+
+    it('never resolves from another tenant: the resolver only ever sees THIS tenant’s rows', () => {
+      // Tenant A is on STARTER with no override; tenant B is on PRO. Resolving A
+      // with A's inputs can never pick up B's plan — the resolver is pure and
+      // takes one tenant's three layers at a time.
+      const a = resolveEntitlements(TenantPlan.STARTER, null, null);
+      const b = resolveEntitlements(TenantPlan.PRO, null, null);
+      expect(a.features.agenticLoop).toBe(false);
+      expect(b.features.agenticLoop).toBe(true);
     });
   });
 });

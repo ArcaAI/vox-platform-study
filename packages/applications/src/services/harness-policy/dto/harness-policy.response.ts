@@ -74,10 +74,10 @@ export class HarnessPolicyResponse {
   safetyModel: string;
 
   @ApiPropertyOptional({ description: 'SMR generation provider id (null = let the SMR service choose).', nullable: true })
-  smrProvider: string | null;
+  textProvider: string | null;
 
   @ApiPropertyOptional({ description: 'SMR generation model id (null = let the SMR service choose).', nullable: true })
-  smrModel: string | null;
+  textModel: string | null;
 
   // ── LLM-as-judge selection (resolved from the SYSTEM-only
   // `harness.judge` AiTaskDefault; SUPER_ADMIN-managed). The harness worker's

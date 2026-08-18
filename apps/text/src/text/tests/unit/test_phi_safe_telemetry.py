@@ -1,8 +1,8 @@
 """PHI-safe telemetry CI guard.
 
 Static allow-list test: cheap, CI-stable, no OTel runtime needed. Scans the
-`smr` source tree for `gen_ai.*` attribute-name string literals -- the OTel
-GenAI semantic-convention namespace SMR stamps onto spans
+`text` source tree for `gen_ai.*` attribute-name string literals -- the OTel
+GenAI semantic-convention namespace Text stamps onto spans
 (`core/observability.py` + `providers/*.py`; grepping the whole monorepo for
 `gen_ai\\.` shows these are the ONLY `gen_ai.*` call-sites in HOPE today,
 research-findings.md §2) -- and asserts every one found is on an explicit
@@ -20,7 +20,7 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
-# The complete set of gen_ai.* attribute names SMR is allowed to stamp onto
+# The complete set of gen_ai.* attribute names Text is allowed to stamp onto
 # spans today (verified against core/observability.py + providers/*.py).
 # Adding a new one is a deliberate, reviewed decision -- confirm it is NOT
 # content-bearing (research-findings.md §2) before adding it here.

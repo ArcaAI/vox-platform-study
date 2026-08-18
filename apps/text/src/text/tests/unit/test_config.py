@@ -23,7 +23,7 @@ from text.core.config import (
 from text.tests.conftest import keyed
 
 
-def _clear_smr_env(monkeypatch):
+def _clear_text_env(monkeypatch):
     """Remove all TEXT_* env vars so pydantic-settings reads only code defaults."""
     for key in list(os.environ):
         if key.startswith("TEXT_"):
@@ -31,13 +31,13 @@ def _clear_smr_env(monkeypatch):
 
 
 @pytest.fixture(autouse=True)
-def _isolate_smr_env(monkeypatch):
-    _clear_smr_env(monkeypatch)
+def _isolate_text_env(monkeypatch):
+    _clear_text_env(monkeypatch)
 
 
 class TestAzureOpenAIConfig:
     def test_defaults(self, monkeypatch):
-        _clear_smr_env(monkeypatch)
+        _clear_text_env(monkeypatch)
         cfg = AzureOpenAIConfig()
         assert cfg.api_key.get_secret_value() == ""
         assert cfg.endpoint == ""
@@ -89,7 +89,7 @@ class TestOpenAIConfig:
     """No compiled-in vendor model default (informational-only field)."""
 
     def test_defaults(self, monkeypatch):
-        _clear_smr_env(monkeypatch)
+        _clear_text_env(monkeypatch)
         cfg = OpenAIConfig()
         assert cfg.default_model == ""
         assert cfg.base_url == "https://api.openai.com/v1"
@@ -99,7 +99,7 @@ class TestAnthropicConfig:
     """No compiled-in vendor model default (informational-only field)."""
 
     def test_defaults(self, monkeypatch):
-        _clear_smr_env(monkeypatch)
+        _clear_text_env(monkeypatch)
         cfg = AnthropicConfig()
         assert cfg.default_model == ""
 
@@ -108,7 +108,7 @@ class TestVertexConfig:
     """No compiled-in vendor model default (informational-only field)."""
 
     def test_defaults(self, monkeypatch):
-        _clear_smr_env(monkeypatch)
+        _clear_text_env(monkeypatch)
         cfg = VertexConfig()
         assert cfg.default_model == ""
         assert cfg.location == "us-central1"
@@ -155,7 +155,7 @@ class TestTelemetryPhiGuardConfig:
     Constructed via keyword args (the `init_settings` source outranks env),
     so these tests do not depend on ambient process env / .env.test content —
     consistent with `AzureOpenAIConfig`/`BedrockConfig` construction tests
-    above. `_isolate_smr_env` (module-level, autouse) only clears `TEXT_*`
+    above. `_isolate_text_env` (module-level, autouse) only clears `TEXT_*`
     names, so this class adds its own autouse isolation for the two bare
     names this config reads.
     """
@@ -194,7 +194,7 @@ class TestTelemetryPhiGuardConfig:
         with pytest.raises(ValidationError):
             TelemetryPhiGuardConfig(node_env="production", genai_capture_message_content="no_content")
 
-    def test_reads_bare_env_names_not_smr_prefixed(self, monkeypatch):
+    def test_reads_bare_env_names_not_service_prefixed(self, monkeypatch):
         # These are cross-process conventions — TEXT_NODE_ENV / TEXT_OTEL_... must
         # NOT be what this class reads (Settings' env_prefix_target="all" would
         # otherwise silently prefix them).
@@ -207,14 +207,14 @@ class TestTelemetryPhiGuardConfig:
         assert cfg.genai_capture_message_content == "NO_CONTENT"
 
     def test_settings_construction_refuses_in_production(self, monkeypatch):
-        _clear_smr_env(monkeypatch)
+        _clear_text_env(monkeypatch)
         monkeypatch.setenv("NODE_ENV", "production")
         monkeypatch.delenv("OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT", raising=False)
         with pytest.raises(ValidationError, match="OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT"):
             Settings()
 
     def test_settings_construction_passes_in_production_when_pinned(self, monkeypatch):
-        _clear_smr_env(monkeypatch)
+        _clear_text_env(monkeypatch)
         monkeypatch.setenv("NODE_ENV", "production")
         monkeypatch.setenv("OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT", "NO_CONTENT")
         s = Settings()
@@ -223,7 +223,7 @@ class TestTelemetryPhiGuardConfig:
 
 class TestSettings:
     def test_defaults(self, monkeypatch):
-        _clear_smr_env(monkeypatch)
+        _clear_text_env(monkeypatch)
         s = Settings()
         assert s.host == "0.0.0.0"
         assert s.port == 8862

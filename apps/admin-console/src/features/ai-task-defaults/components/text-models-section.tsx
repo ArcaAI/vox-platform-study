@@ -1,29 +1,38 @@
 'use client';
 
 import { useId } from 'react';
-import { TEXT_FALLBACK_TASK_KEYS, TEXT_PRIMARY_TASK_KEYS } from '../api/types';
+import { TEXT_FALLBACK_TASK_KEYS, TEXT_PRIMARY_TASK_KEYS, TEXT_TEST_TASK_KEYS } from '../api/types';
 import { TextDefaultProviderControl } from './text-default-provider-control';
 import { TaskDefaultCard } from './task-default-card';
 
 /** Per-key card copy for the primary summarization selections. */
 const PRIMARY_META: Record<(typeof TEXT_PRIMARY_TASK_KEYS)[number], { title: string; description: string }> = {
-  'smr.live': {
+  'text.live': {
     title: 'Live summary model',
     description: 'Provider/model that generates the streaming, in-consultation summary for this tenant.',
   },
-  'smr.finalize': {
+  'text.finalize': {
     title: 'Final summary model',
     description: 'Provider/model that produces the finalized post-consultation summary for this tenant.',
   },
 };
 
+/** Per-key card copy for the prompt-template test bench (TASK-740 D-2). */
+const TEST_META: Record<(typeof TEXT_TEST_TASK_KEYS)[number], { title: string; description: string }> = {
+  'text.test': {
+    title: 'Prompt test-bench model',
+    description:
+      'Provider/model used when this tenant tests a prompt template without picking one explicitly. Resolution is fail-closed: leave it unset and the Test action returns an error.',
+  },
+};
+
 /** Per-key card copy for the OPTIONAL fallback selections. */
 const FALLBACK_META: Record<(typeof TEXT_FALLBACK_TASK_KEYS)[number], { title: string; description: string }> = {
-  'smr.live.fallback': {
+  'text.live.fallback': {
     title: 'Live summary fallback model',
     description: 'Used when the primary live-summary provider fails. Optional — leave unset for no fallback.',
   },
-  'smr.finalize.fallback': {
+  'text.finalize.fallback': {
     title: 'Final summary fallback model',
     description: 'Used when the primary final-summary provider fails. Optional — leave unset for no fallback.',
   },
@@ -62,6 +71,23 @@ export function TextModelsSection() {
         <div className="grid items-start gap-4 lg:grid-cols-2">
           {TEXT_PRIMARY_TASK_KEYS.map((key) => (
             <TaskDefaultCard key={key} taskKey={key} title={PRIMARY_META[key].title} description={PRIMARY_META[key].description} />
+          ))}
+        </div>
+      </section>
+
+      <section aria-labelledby={`${uid}-test`} className="flex flex-col gap-3">
+        <div className="flex flex-col gap-1">
+          <h2 id={`${uid}-test`} className="text-base font-semibold">
+            Prompt test bench
+          </h2>
+          <p className="text-muted-foreground text-sm">
+            Used by the Test action on a prompt template when no provider/model is chosen for the run. This selection is required &mdash; testing a
+            prompt never falls back to the summarization routing.
+          </p>
+        </div>
+        <div className="grid items-start gap-4 lg:grid-cols-2">
+          {TEXT_TEST_TASK_KEYS.map((key) => (
+            <TaskDefaultCard key={key} taskKey={key} title={TEST_META[key].title} description={TEST_META[key].description} />
           ))}
         </div>
       </section>

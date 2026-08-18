@@ -1,13 +1,25 @@
 /**
- * Seed ↔ registry parity for the two consultation-pipeline
- * kill-switches (`harness.loop.enabled`, `consultation.ocr.enabled`).
+ * Seed ↔ registry parity for the consultation-pipeline kill-switch seed
+ * (`11c-consultation-gate-settings.ts`).
  *
- * The owner requirement is "the consultation loop is enabled on day 1, in every
- * environment including local development". The descriptor default CANNOT carry
- * that: `SettingsRegistry.killSwitches()` throws at assembly for any kill-switch
- * whose `default === true` (fail-safe governance). So the switch is turned on
- * the sanctioned way, already used twice in `11-global-setting.ts` for the
- * template-resync sweeps:
+ * ⚠️ TASK-705 CHANGED WHAT THIS FILE GUARDS. It used to hold TWO keys, and its
+ * headline case asserted that `harness.loop.enabled` was seeded `'true'` while
+ * its descriptor default stayed `false` — the sanctioned way to land a
+ * kill-switch ON, since `SettingsRegistry.killSwitches()` throws at assembly for
+ * any kill-switch whose `default === true`.
+ *
+ * That shape was sound in the abstract and wrong for this key. It made the
+ * DATABASE the only carrier of the product intent, in a platform where
+ * `migrate.sh` defaults `RUN_SEED=none` and `hope-v2-dev` pins it to `"none"`
+ * (owner decision 2026-08-09) — so the row was written once, at bootstrap, and
+ * never re-asserted. Loop eligibility is now the tenant's SUBSCRIPTION
+ * ENTITLEMENT (`agenticLoop`; owner decision 2026-08-17 §2 row 705) and the
+ * residual operator stop is `harness.loop.emergencyStop`, whose disarmed
+ * default IS the day-1 state. Nothing about the loop is seeded any more, and
+ * this file now guards ONE key: `consultation.ocr.enabled`, whose ON-by-default
+ * behaviour genuinely does need a seeded row.
+ *
+ * The mechanism the OCR row uses, unchanged:
  *
  *     descriptor default stays OFF   →  absence still resolves OFF (fail-safe)
  *     the seeded ROW carries 'true'  →  every seeded environment comes up ON
@@ -30,14 +42,14 @@ import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { HOPE_SETTINGS_REGISTRY } from '../registry';
 import { TenantSettingsService } from '../tenant-settings.service';
-import { CONSULTATION_OCR_ENABLED_KEY, HARNESS_LOOP_ENABLED_KEY } from '../../consultation/consultation-gates.constants';
+import { CONSULTATION_OCR_ENABLED_KEY, HARNESS_LOOP_EMERGENCY_STOP_KEY } from '../../consultation/consultation-gates.constants';
 
 const SEED_FILE = resolve(
   dirname(fileURLToPath(import.meta.url)),
   '../../../../../database/src/prisma/db_main/seed/11c-consultation-gate-settings.ts',
 );
 
-const GATE_KEYS = [HARNESS_LOOP_ENABLED_KEY, CONSULTATION_OCR_ENABLED_KEY];
+const GATE_KEYS = [CONSULTATION_OCR_ENABLED_KEY];
 
 function seedSource(): string {
   return readFileSync(SEED_FILE, 'utf8');
@@ -67,7 +79,7 @@ function fakeAppSettings(store: Map<string, unknown>) {
 }
 
 describe('consultation-gate seed ↔ registry parity', () => {
-  it('seeds exactly the two consultation-pipeline gate keys', () => {
+  it('seeds exactly the consultation-pipeline gate keys that need a seeded row', () => {
     expect(seededKeys().sort()).toEqual([...GATE_KEYS].sort());
   });
 
@@ -89,10 +101,35 @@ describe('consultation-gate seed ↔ registry parity', () => {
 
   it('seeds the value ON while leaving `defaultValue` at the fail-safe OFF', () => {
     const source = seedSource();
-    // Two rows, both turned on, both resetting to OFF.
-    expect([...source.matchAll(/^\s{4}value: 'true',$/gm)]).toHaveLength(2);
-    expect([...source.matchAll(/^\s{4}defaultValue: 'false',$/gm)]).toHaveLength(2);
+    // One row, turned on, resetting to OFF.
+    expect([...source.matchAll(/^\s{4}value: 'true',$/gm)]).toHaveLength(1);
+    expect([...source.matchAll(/^\s{4}defaultValue: 'false',$/gm)]).toHaveLength(1);
     expect(source).not.toMatch(/^\s{4}value: 'false',$/gm);
+  });
+
+  /*
+   * TASK-705 — the regression guard for the defect this ticket removed. A
+   * seeded `harness.loop.enabled = 'true'` disagreed with its own descriptor
+   * default and was never re-asserted in any environment that does not seed.
+   * Loop eligibility is an entitlement now; re-adding a row here would restore
+   * a second, silently-disagreeing source of truth.
+   */
+  it('never re-introduces a seeded loop gate — eligibility is the subscription entitlement', () => {
+    // Checked against the seeded KEY TABLE, not the file text: the header
+    // comment names the retired key on purpose, to explain why it is gone.
+    expect(seededKeys()).not.toContain('harness.loop.enabled');
+    expect(seededKeys()).not.toContain(HARNESS_LOOP_EMERGENCY_STOP_KEY);
+  });
+
+  // …and the emergency stop is a REGISTERED kill-switch that is simply never
+  // seeded: its disarmed default is the intended state everywhere.
+  it('registers harness.loop.emergencyStop as a disarmed global-kv kill-switch', () => {
+    const descriptor = HOPE_SETTINGS_REGISTRY.get(HARNESS_LOOP_EMERGENCY_STOP_KEY);
+    expect(descriptor).toBeDefined();
+    expect(descriptor!.tier).toBe('global-kv');
+    expect(descriptor!.killSwitch).toBe(true);
+    expect(descriptor!.maxScope).toBe('system');
+    expect(descriptor!.default).toBe(false);
   });
 
   it('writes the same row coordinates the registry write lane resolves', () => {
@@ -120,7 +157,7 @@ describe('consultation-gate seed ↔ registry parity', () => {
   });
 });
 
-describe('the seeded row resolves the gates ON', () => {
+describe('the seeded row resolves the gate ON', () => {
   it('resolves OFF with no row — absence is still fail-safe', () => {
     const settings = new TenantSettingsService(fakeAppSettings(new Map()));
     for (const key of GATE_KEYS) {

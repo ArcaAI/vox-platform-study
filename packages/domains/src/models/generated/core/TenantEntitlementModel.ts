@@ -31,6 +31,7 @@ export class TenantEntitlement extends BaseTenantDataModel {
   public featureMonitoringAccess: boolean | null;
   public featurePlatformDefaultCredential: boolean | null;
   public featurePaletteStt: boolean | null;
+  public featureAgenticLoop: boolean | null;
   public modelTier: string | null;
   public rateLimitTier: string | null;
   public rateLimitPerMinute: number | null;
@@ -63,6 +64,7 @@ export class TenantEntitlement extends BaseTenantDataModel {
     this.featureMonitoringAccess = data.featureMonitoringAccess;
     this.featurePlatformDefaultCredential = data.featurePlatformDefaultCredential;
     this.featurePaletteStt = data.featurePaletteStt;
+    this.featureAgenticLoop = data.featureAgenticLoop;
     this.modelTier = data.modelTier;
     this.rateLimitTier = data.rateLimitTier;
     this.rateLimitPerMinute = data.rateLimitPerMinute;

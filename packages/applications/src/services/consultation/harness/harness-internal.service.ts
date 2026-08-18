@@ -217,7 +217,7 @@ export class HarnessInternalService {
     // `persistDraft`'s `HarnessDraftRequest` carries no token fields, and
     // harness-originated LLM calls are already metered PER-STEP by the
     // agent-trajectory path (WS-F: `harness:step:<sessionId>:<runId>:<seq>`
-    // idempotency keys) — the harness calls SMR via its own `SmrClient`
+    // idempotency keys) — the harness calls SMR via its own `TextClient`
     // directly, never through this gateway's SMR proxy, so the
     // `llm:<requestId>` and `harness:step:<...>` id-spaces are disjoint by
     // construction. Adding emission here would double-bill the same
@@ -918,7 +918,7 @@ export class HarnessInternalService {
           // INTENTIONALLY NOT metered here. `dto`
           // (HarnessDraftRequest) carries no token fields, and this generation
           // is already billed by the agent-trajectory per-step path (WS-F):
-          // the harness calls SMR via its own SmrClient, never through this
+          // the harness calls SMR via its own TextClient, never through this
           // gateway's SMR proxy, so `harness:step:<...>` already covers it.
           // Emitting a second `llm:<...>` row here would double-bill the same
           // generation. See the constructor's `usageLedgerService` doc comment

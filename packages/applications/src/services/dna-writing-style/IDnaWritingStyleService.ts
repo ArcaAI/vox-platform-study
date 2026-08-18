@@ -6,6 +6,7 @@ import {
   DnaDashboardResponse,
   DnaSettingsResponse,
   UpdateDnaSettingsRequest,
+  DnaErasureResponse,
 } from './dto';
 import { RedactionRuleSet } from './redaction-rules';
 
@@ -67,6 +68,10 @@ export abstract class IDnaWritingStyleService {
    * (`isLatest`) report, demoting the previous default. Tenant + owner scoped.
    */
   abstract setDefaultReport(reportId: string): Promise<DnaReportResponse>;
+  /** Erase the caller's OWN learned writing-style profile in full (INV-240). */
+  abstract resetMyDnaProfile(): Promise<DnaErasureResponse>;
+  /** Erase one of the caller's own writing-style reports (404 cross-tenant, 403 cross-doctor). */
+  abstract deleteReport(reportId: string): Promise<DnaErasureResponse>;
   abstract getVersions(reportId: string): Promise<DnaVersionResponse[]>;
   abstract getVersionsForDoctor(reportId: string, doctorId: string): Promise<DnaVersionResponse[]>;
   abstract listReports(filters?: { doctorId?: string; includeDisabled?: boolean }): Promise<DnaReportResponse[]>;

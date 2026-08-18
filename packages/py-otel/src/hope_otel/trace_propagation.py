@@ -9,8 +9,8 @@ see:
   back onto ``stt:result:{sid}``; ``FastAPIInstrumentor`` continues the trace
   for ``POST /internal/streaming/sessions``, but that context dies when the
   HTTP response is written.
-* SMR — ``POST /api/v1/generate`` creates a task whose generation runs
-  asynchronously and appends chunks to ``smr:stream:{task_id}``, while
+* Text — ``POST /api/v1/generate`` creates a task whose generation runs
+  asynchronously and appends chunks to ``text:stream:{task_id}``, while
   ``GET /api/v1/tasks/{id}/stream`` is a SEPARATE request that XREADs those
   chunks and relays them over SSE; ``FastAPIInstrumentor`` continues each
   request independently, so nothing joins the SSE stream to the generation
@@ -21,7 +21,7 @@ utterance; every generated chunk) is an orphan trace. This module carries the
 W3C trace context across those Redis-Stream hops.
 
 WHY IT IS A SHARED PACKAGE, NOT A PER-SERVICE COPY
-STT and SMR originally carried byte-for-byte duplicate copies of this module
+STT and Text originally carried byte-for-byte duplicate copies of this module
 (``apps/stt/src/stt/core/trace_propagation.py`` and
 ``apps/text/src/text/core/trace_propagation.py``) — a deliberate, time-boxed
 tradeoff made while four agents were instrumenting different services

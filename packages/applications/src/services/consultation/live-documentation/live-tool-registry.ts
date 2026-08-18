@@ -35,6 +35,7 @@ import type { ClsService } from 'nestjs-cls';
 import type { SecretsService } from '../../baseServices/_meta/secrets';
 import type { IAiTaskDefaultService } from '../../ai-task-default/IAiTaskDefaultService';
 import type { IActiveUserContext } from '../../../interfaces';
+import { TENANTLESS, internalServiceHeaders, resolveInternalAccessToken } from '../../../common';
 import { resolveNerModelInjection } from '../shared/resolveNerModelSelection';
 import { LIVE_TOOL_KEYS, type LiveToolKey } from '../../departmentAgent/constants';
 import type { ResolvedToolPlan } from './live-agent.port';
@@ -70,6 +71,14 @@ export interface LiveToolDescriptor {
 export interface ExtractionToolInput {
   /** The raw transcript delta (`delta || transcript`) — never generated text. */
   sourceText: string;
+  /**
+   * The consultation's tenant. REQUIRED (TASK-737): every internal call carrying
+   * tenant-scoped work must identify its tenant, and a per-flush value cannot
+   * live on the constructor deps. Widening this with tenant identity does NOT
+   * breach the anti-laundering guarantee above — it is not derived from
+   * generated text.
+   */
+  tenantId: string;
 }
 
 export interface ExtractionToolOutput {
@@ -83,6 +92,8 @@ export interface GroundednessToolInput {
   summary: string;
   /** Transcript (∪ clinician notes) the note is checked against. */
   sourceText: string;
+  /** The consultation's tenant. REQUIRED (TASK-737) — see {@link ExtractionToolInput}. */
+  tenantId: string;
 }
 
 export interface LiveToolExecutor<TInput, TOutput> {
@@ -185,11 +196,22 @@ export class NlpExtractionTool implements ExtractionToolExecutor {
     // so wherever NLP enforces a token (`NLP_SERVICE_TOKEN` non-empty) entity
     // extraction was rejected and the live note silently lost its highlights —
     // the NLP twin of the SMR defect in `callText`.
-    const serviceToken = (await this.deps.secretsService?.getSecretOptional('NLP_SERVICE_TOKEN')) ?? '';
+    // D-D: the ONE shared `INTERNAL_ACCESS_TOKEN`, `NLP_SERVICE_TOKEN` only as the
+    // migration fallback. TASK-737: `X-Tenant-Id` is MANDATORY on this hop — a live
+    // flush always has a tenant, so there is no tenant-less branch to declare here.
+    const serviceToken = await resolveInternalAccessToken(this.deps.secretsService, 'NLP_SERVICE_TOKEN');
     const response = await this.deps.httpService.axiosRef.post(
       `${this.deps.nlpServiceUrl}/api/v1/classify/tokens`,
       { text: input.sourceText, ...modelSelection },
-      { timeout: 30000, signal, headers: { 'Content-Type': 'application/json', 'X-Service-Token': serviceToken } },
+      {
+        timeout: 30000,
+        signal,
+        headers: internalServiceHeaders({
+          serviceToken,
+          tenantId: input.tenantId,
+          tenantlessReason: TENANTLESS.PLATFORM_OPERATOR,
+        }),
+      },
     );
     // Canonical NLP wire shape (apps/nlp schemas/common.py Entity): text / entity_type /
     // position.{start,end} / icd_code (deterministic OntologyLinker; present only for the
@@ -273,13 +295,20 @@ export class GuardrailGroundednessTool implements GroundednessToolExecutor {
     const attempts = Math.max(1, this.deps.maxRetries + 1);
     for (let attempt = 1; attempt <= attempts; attempt++) {
       try {
-        const token = (await this.deps.secretsService?.getSecretOptional('GUARDRAIL_SERVICE_TOKEN')) ?? '';
+        // D-D shared token + TASK-737 mandatory tenant header. Guardrail resolves
+        // per-tenant safety configuration from this header; a dropped one silently
+        // downgrades a tenant that chose a stricter posture to the platform floor.
+        const token = await resolveInternalAccessToken(this.deps.secretsService, 'GUARDRAIL_SERVICE_TOKEN');
         const response = await this.deps.httpService.axiosRef.post(
           `${this.deps.guardrailServiceUrl}/api/guardrail/ground`,
           { summary: input.summary, transcript: input.sourceText },
           {
             timeout: this.deps.timeoutMs,
-            headers: { 'Content-Type': 'application/json', 'X-Service-Token': token },
+            headers: internalServiceHeaders({
+              serviceToken: token,
+              tenantId: input.tenantId,
+              tenantlessReason: TENANTLESS.PLATFORM_OPERATOR,
+            }),
             signal,
           },
         );

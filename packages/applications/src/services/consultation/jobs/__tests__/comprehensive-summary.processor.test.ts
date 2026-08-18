@@ -114,7 +114,7 @@ const createMockJobMetrics = () => ({
   recordJobComplete: vi.fn(),
   recordJobFailed: vi.fn(),
   recordWaitingDuration: vi.fn(),
-  recordSmrCallDuration: vi.fn(),
+  recordTextCallDuration: vi.fn(),
 });
 
 // Mock ClsService. See summary.processor.test.ts for the
@@ -207,7 +207,7 @@ function createProcessor() {
 
   const promptAssemblyService = createMockPromptAssemblyService();
   const harnessPolicyService = {
-    resolveSmrSelection: vi.fn().mockResolvedValue({ provider: 'lm-studio', model: 'resolved-medgemma' }),
+    resolveTextSelection: vi.fn().mockResolvedValue({ provider: 'lm-studio', model: 'resolved-medgemma' }),
   };
   // Doctor-preferred prompt id resolver. Default null keeps existing tests unaffected.
   const configResolver = { resolvePreferredPromptTemplateId: vi.fn().mockResolvedValue(null) };
@@ -272,9 +272,9 @@ describe('ComprehensiveSummaryProcessor', () => {
 
       await mocks.processor.process(createMockJob(createDefaultPayload({ request: { includeNER: false } })));
 
-      expect(mocks.harnessPolicyService.resolveSmrSelection).toHaveBeenCalled();
-      const smrCall = mocks.httpService.axiosRef.post.mock.calls.find((c: unknown[]) => String(c[0]).includes('/api/v1/generate'))!;
-      const body = smrCall[1] as { provider?: string; model?: string };
+      expect(mocks.harnessPolicyService.resolveTextSelection).toHaveBeenCalled();
+      const textCall = mocks.httpService.axiosRef.post.mock.calls.find((c: unknown[]) => String(c[0]).includes('/api/v1/generate'))!;
+      const body = textCall[1] as { provider?: string; model?: string };
       expect(body.provider).toBe('lm-studio');
       expect(body.model).toBe('resolved-medgemma');
     });
@@ -290,14 +290,14 @@ describe('ComprehensiveSummaryProcessor', () => {
         consultations?: any[];
         sections?: any[];
         entities?: Record<string, any[]>;
-        smrResponse?: Record<string, unknown>;
+        textResponse?: Record<string, unknown>;
       } = {},
     ) => {
       const consultation = createConsultation();
       const consultations = overrides.consultations ?? [consultation];
       const sections = overrides.sections ?? [createSection()];
       const entities = overrides.entities ?? {};
-      const smrResponse = overrides.smrResponse ?? {
+      const textResponse = overrides.textResponse ?? {
         summary: 'Comprehensive summary generated.',
         modelName: 'gpt-4o',
         processingTimeMs: 5000,
@@ -309,7 +309,7 @@ describe('ComprehensiveSummaryProcessor', () => {
       mocks.chainSummaryService.resolveLinkedConsultations.mockResolvedValue(consultations);
       mocks.chainSummaryService.gatherSections.mockResolvedValue(sections);
       mocks.chainSummaryService.gatherNamedEntities.mockResolvedValue(entities);
-      mocks.httpService.axiosRef.post.mockResolvedValue({ data: smrResponse });
+      mocks.httpService.axiosRef.post.mockResolvedValue({ data: textResponse });
     };
 
     it('should process comprehensive summary job end-to-end', async () => {
@@ -547,7 +547,7 @@ describe('ComprehensiveSummaryProcessor', () => {
 
     it('should handle SMR returning partial response (no modelName)', async () => {
       setupSuccessfulJob({
-        smrResponse: { summary: 'Minimal response.' },
+        textResponse: { summary: 'Minimal response.' },
       });
 
       const result = await mocks.processor.process(createMockJob(createDefaultPayload({ request: { includeNER: false } })));

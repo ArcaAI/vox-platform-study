@@ -2,7 +2,7 @@
 // AI Task Defaults
 //
 // Per-tenant "default model for task X" selector — the Class-3 generalization
-// of HarnessPolicy.smrProvider/smrModel for non-pipeline AI tasks. One row per
+// of HarnessPolicy.textProvider/textModel for non-pipeline AI tasks. One row per
 // (tenant, taskKey); the reserved SYSTEM tenant `00000000-…` row is the
 // platform default. Resolution (AiTaskDefaultService.getEffective in
 // packages/applications): tenant row → SYSTEM row → consuming service's env
@@ -15,7 +15,7 @@
 // packages/applications/src/services/ai-task-default/constants.ts. For those,
 // tenants only CONSUME the SYSTEM-row platform default and runtime resolution
 // ignores per-tenant override rows. EXCEPTION: the `smr.` prefix
-// `smr.live` / `smr.finalize` and their `.fallback` variants — is tenant-admin
+// `text.live` / `text.finalize` and their `.fallback` variants — is tenant-admin
 // configurable: tenants may write their own rows and runtime resolution honours
 // them (tenant row → SYSTEM row).
 // ============================================================================

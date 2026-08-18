@@ -73,7 +73,11 @@ async def interpreter_guardrail_check(payload: NodeActivityInput) -> NodeActivit
     settings = get_settings()
     client = GuardrailClient(
         settings.guardrail_base_url,
-        service_token=settings.service_token.get_secret_value(),
+        # D-D: the shared `INTERNAL_ACCESS_TOKEN`. `HARNESS_SERVICE_TOKEN` was never
+        # the right credential for this hop (apps/guardrail validates its OWN
+        # `GUARDRAIL_SERVICE_TOKEN`), so the legacy fallback here is deliberately
+        # guardrail's token, not harness's.
+        service_token=settings.peer_service_token(settings.guardrail_service_token),
         timeout=settings.guardrail_timeout_s,
     )
     try:

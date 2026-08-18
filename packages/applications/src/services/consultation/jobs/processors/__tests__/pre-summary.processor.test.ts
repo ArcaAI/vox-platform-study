@@ -45,13 +45,13 @@ function createProcessor(consultation: Record<string, unknown>) {
   };
   const consultationRepository = { findById: vi.fn().mockResolvedValue(consultation) };
   const httpService = { axiosRef: { post: vi.fn().mockResolvedValue({ data: { summary: 'PRE-SUMMARY' } }) } };
-  const configService = { get: vi.fn(() => 'http://smr.test') };
+  const configService = { get: vi.fn(() => 'http://text.test') };
   const jobMetrics = {
     recordJobStart: vi.fn(() => () => 1),
     recordWaitingDuration: vi.fn(),
     recordJobComplete: vi.fn(),
     recordJobFailed: vi.fn(),
-    recordSmrCallDuration: vi.fn(),
+    recordTextCallDuration: vi.fn(),
   };
   const cls = { run: vi.fn(async (fn: () => Promise<unknown>) => fn()), set: vi.fn(), get: vi.fn() };
 

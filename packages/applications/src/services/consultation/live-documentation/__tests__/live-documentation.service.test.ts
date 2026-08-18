@@ -178,7 +178,7 @@ function buildDeps(httpMock = buildHttpMock(), opts: BuildDepsOpts = {}) {
   // Live-doc resolves provider+model via the HarnessPolicy cascade
   // (not env). Default stub resolves successfully so SMR-path tests still flow.
   const harnessPolicyService = opts.harnessPolicyService ?? {
-    resolveSmrSelection: vi.fn().mockResolvedValue({ provider: 'lm-studio', model: 'live-medgemma' }),
+    resolveTextSelection: vi.fn().mockResolvedValue({ provider: 'lm-studio', model: 'live-medgemma' }),
   };
 
   const secretsService = opts.secretsService;
@@ -294,14 +294,14 @@ describe('LiveDocumentationService', () => {
   });
 
   // ------------------------------------------------------------------
-  // TASK-703: `smrFailed` computed internally on a failed SMR call but never
+  // TASK-703: `textFailed` computed internally on a failed SMR call but never
   // attached to the published `LiveSummaryEventDto` — a first-flush failure
   // published an empty note indistinguishable from "nothing said yet", and a
   // later-flush failure froze stale content under a fresh `updatedAt` with no
-  // marker. The published payload must carry `smrFailed: true` in both cases.
+  // marker. The published payload must carry `textFailed: true` in both cases.
   // ------------------------------------------------------------------
-  describe('smrFailed degradation marker (TASK-703)', () => {
-    it('marks a first-flush SMR failure with smrFailed: true (no prior content to freeze)', async () => {
+  describe('textFailed degradation marker (TASK-703)', () => {
+    it('marks a first-flush SMR failure with textFailed: true (no prior content to freeze)', async () => {
       const httpMock = {
         axiosRef: {
           post: vi.fn().mockImplementation((url: string) => {
@@ -318,12 +318,12 @@ describe('LiveDocumentationService', () => {
       const payload = await service.flush(CID);
 
       expect(payload).not.toBeNull();
-      expect(payload!.smrFailed).toBe(true);
+      expect(payload!.textFailed).toBe(true);
       expect(payload!.runningSummary).toBe('');
       expect(payload!.sections).toEqual([]);
     });
 
-    it('marks a later-flush SMR failure with smrFailed: true while freezing the prior content', async () => {
+    it('marks a later-flush SMR failure with textFailed: true while freezing the prior content', async () => {
       let generateCalls = 0;
       const httpMock = {
         axiosRef: {
@@ -344,13 +344,13 @@ describe('LiveDocumentationService', () => {
 
       const firstPayload = await service.flush(CID);
       expect(firstPayload!.runningSummary).toBe('Pt on amlodipine for HTN.');
-      expect(firstPayload!.smrFailed).toBeUndefined();
+      expect(firstPayload!.textFailed).toBeUndefined();
 
       service.ingestSegment(CID, { text: 'Follow-up note.', isFinal: true, segmentId: 's2' });
       const secondPayload = await service.flush(CID, { force: true });
 
       expect(secondPayload).not.toBeNull();
-      expect(secondPayload!.smrFailed).toBe(true);
+      expect(secondPayload!.textFailed).toBe(true);
       // Frozen: retains the last-good content rather than being wiped/blanked.
       expect(secondPayload!.runningSummary).toBe('Pt on amlodipine for HTN.');
     });
@@ -570,18 +570,18 @@ describe('LiveDocumentationService', () => {
       });
     });
 
-    // The live plane routes through the `smr.live`
-    // AiTaskDefault key (not `smr.finalize`); surface that provenance on the
+    // The live plane routes through the `text.live`
+    // AiTaskDefault key (not `text.finalize`); surface that provenance on the
     // flush's stats so the console/ stat cards can show WHICH tier
     // (and therefore which admin-managed model) served this flush.
-    it('stamps metadata.stats.task_key as smr.live (provenance)', async () => {
+    it('stamps metadata.stats.task_key as text.live (provenance)', async () => {
       const { service } = buildDeps(statsHttpMock(POPULATED_STATS));
       service.start({ consultationId: CID, tenantId: TENANT });
       service.ingestSegment(CID, { text: 'hello', isFinal: true, segmentId: 's1' });
 
       const payload = await service.flush(CID);
 
-      expect(payload!.metadata?.stats?.task_key).toBe('smr.live');
+      expect(payload!.metadata?.stats?.task_key).toBe('text.live');
     });
 
     it('publishes the stats to the live-summary channel', async () => {
@@ -744,14 +744,14 @@ describe('LiveDocumentationService', () => {
   describe('overlapping flushes', () => {
     it('drops a stale in-flight generation when a newer flush supersedes it (no out-of-order publish)', async () => {
       const deferred = makeDeferred();
-      let smrCalls = 0;
+      let textCalls = 0;
       const httpMock = {
         axiosRef: {
           post: vi.fn().mockImplementation((url: string) => {
             if (url.includes('/classify/tokens')) return Promise.resolve({ data: { entities: [] } });
             if (url.includes('/generate')) {
-              smrCalls += 1;
-              if (smrCalls === 1) return deferred.promise.then(() => ({ data: { summary: 'STALE first' } }));
+              textCalls += 1;
+              if (textCalls === 1) return deferred.promise.then(() => ({ data: { summary: 'STALE first' } }));
               return Promise.resolve({ data: { summary: 'FRESH second' } });
             }
             return Promise.resolve({ data: {} });
@@ -806,9 +806,9 @@ describe('LiveDocumentationService', () => {
       service.ingestSegment(CID, { text: 'hello', isFinal: true, segmentId: 's1' });
       await service.flush(CID);
 
-      const smrCall = httpMock.axiosRef.post.mock.calls.find((c: unknown[]) => String(c[0]).includes('/generate'))!;
+      const textCall = httpMock.axiosRef.post.mock.calls.find((c: unknown[]) => String(c[0]).includes('/generate'))!;
       const nlpCall = httpMock.axiosRef.post.mock.calls.find((c: unknown[]) => String(c[0]).includes('/classify/tokens'))!;
-      expect((smrCall[2] as { signal?: unknown }).signal).toBeDefined();
+      expect((textCall[2] as { signal?: unknown }).signal).toBeDefined();
       expect((nlpCall[2] as { signal?: unknown }).signal).toBeDefined();
     });
   });
@@ -835,7 +835,7 @@ describe('LiveDocumentationService', () => {
 
     it('sets bounded live SMR params (max_tokens, lower timeout) and resolves provider/model via policy', async () => {
       const harnessPolicyService = {
-        resolveSmrSelection: vi.fn().mockResolvedValue({ provider: 'openai', model: 'fast-model' }),
+        resolveTextSelection: vi.fn().mockResolvedValue({ provider: 'openai', model: 'fast-model' }),
       };
       const { service, httpMock } = buildDeps(buildHttpMock(), {
         config: {
@@ -850,11 +850,11 @@ describe('LiveDocumentationService', () => {
 
       // Provider+model come from the policy cascade (keyed by the session tenant),
       // not LIVE_DOC_TEXT_PROVIDER/MODEL env. The live flush must ask
-      // for the LIVE tier ('smr.live'), not the default finalize tier.
-      expect(harnessPolicyService.resolveSmrSelection).toHaveBeenCalledWith(TENANT, 'live');
-      const smrCall = httpMock.axiosRef.post.mock.calls.find((c: unknown[]) => String(c[0]).includes('/generate'))!;
-      const body = smrCall[1] as { max_tokens?: number; provider?: string; model?: string; response_format?: { type?: string } };
-      const config = smrCall[2] as { timeout?: number };
+      // for the LIVE tier ('text.live'), not the default finalize tier.
+      expect(harnessPolicyService.resolveTextSelection).toHaveBeenCalledWith(TENANT, 'live');
+      const textCall = httpMock.axiosRef.post.mock.calls.find((c: unknown[]) => String(c[0]).includes('/generate'))!;
+      const body = textCall[1] as { max_tokens?: number; provider?: string; model?: string; response_format?: { type?: string } };
+      const config = textCall[2] as { timeout?: number };
       expect(body.max_tokens).toBe(1500);
       expect(body.provider).toBe('openai');
       expect(body.model).toBe('fast-model');
@@ -1442,7 +1442,7 @@ describe('LiveDocumentationService', () => {
       const flushLog = logSpy.mock.calls.find((c) => (c[0] as { message?: string })?.message === 'Live summary flush');
       expect(flushLog).toBeDefined();
       const fields = flushLog![0] as Record<string, unknown>;
-      expect(fields).toHaveProperty('smrLatencyMs');
+      expect(fields).toHaveProperty('textLatencyMs');
       expect(fields).toHaveProperty('flushCount');
       expect(JSON.stringify(fields)).not.toContain('Patient on amlodipine');
     });
@@ -1470,7 +1470,7 @@ describe('LiveDocumentationService', () => {
       expect(snapshot.tenantId).toBe(TENANT);
       expect(snapshot.sessionId).toBe('stt-1');
       expect(snapshot.flushCount).toBe(1);
-      expect(snapshot).toHaveProperty('smrLatencyMs');
+      expect(snapshot).toHaveProperty('textLatencyMs');
       expect(snapshot).toHaveProperty('entityCount');
       expect(typeof snapshot.lastUpdatedAt).toBe('string');
       // PHI-safe: no transcript / summary text in the snapshot.
@@ -1577,7 +1577,7 @@ describe('LiveDocumentationService', () => {
   // ------------------------------------------------------------------
   describe('context drop-out', () => {
     /** Pull the prompt sent to SMR `/generate` on the most recent flush. */
-    const lastSmrPrompt = (httpMock: ReturnType<typeof buildHttpMock>): string => {
+    const lastTextPrompt = (httpMock: ReturnType<typeof buildHttpMock>): string => {
       const calls = httpMock.axiosRef.post.mock.calls.filter((c: unknown[]) => String(c[0]).includes('/generate'));
       return calls.length ? String((calls[calls.length - 1][1] as { prompt?: string }).prompt ?? '') : '';
     };
@@ -1599,7 +1599,7 @@ describe('LiveDocumentationService', () => {
 
       // The add path must produce the SAME notes block as before the re-key:
       // the prompt carries the note text verbatim under the clinician-notes label.
-      expect(lastSmrPrompt(httpMock)).toContain('Clinician notes / labs:\nPatient reports chest pain');
+      expect(lastTextPrompt(httpMock)).toContain('Clinician notes / labs:\nPatient reports chest pain');
     });
 
     it('drops a removed note from the SMR prompt on the next flush, keeping the others', async () => {
@@ -1624,7 +1624,7 @@ describe('LiveDocumentationService', () => {
       });
 
       await service.flush(CID, { force: true });
-      const before = lastSmrPrompt(httpMock);
+      const before = lastTextPrompt(httpMock);
       expect(before).toContain('Allergic to penicillin');
       expect(before).toContain('Patient reports chest pain');
 
@@ -1637,7 +1637,7 @@ describe('LiveDocumentationService', () => {
       });
 
       await service.flush(CID, { force: true });
-      const after = lastSmrPrompt(httpMock);
+      const after = lastTextPrompt(httpMock);
       expect(after).toContain('Allergic to penicillin');
       expect(after).not.toContain('Patient reports chest pain');
     });
@@ -1739,7 +1739,7 @@ describe('LiveDocumentationService', () => {
       (service as unknown as { sessions: Map<string, { contextNotes: TrackedNote[] }> }).sessions.get(consultationId)!.contextNotes;
 
     /** Pull the prompt sent to SMR `/generate` on the most recent flush. */
-    const lastSmrPrompt = (httpMock: ReturnType<typeof buildHttpMock>): string => {
+    const lastTextPrompt = (httpMock: ReturnType<typeof buildHttpMock>): string => {
       const calls = httpMock.axiosRef.post.mock.calls.filter((c: unknown[]) => String(c[0]).includes('/generate'));
       return calls.length ? String((calls[calls.length - 1][1] as { prompt?: string }).prompt ?? '') : '';
     };
@@ -1781,7 +1781,7 @@ describe('LiveDocumentationService', () => {
 
       // The enriched (not the stale placeholder) content reaches the SMR prompt once.
       await service.flush(CID, { force: true });
-      const prompt = lastSmrPrompt(httpMock);
+      const prompt = lastTextPrompt(httpMock);
       expect(prompt).toContain('Hemoglobin 13.5 g/dL; WBC 6.2');
       expect(prompt).not.toContain('lab-scan.pdf (no text layer)');
     });

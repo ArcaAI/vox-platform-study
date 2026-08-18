@@ -18,6 +18,7 @@ import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import type { AxiosError } from 'axios';
 import type { Response } from 'express';
 import { type ProviderFunding, classifyTtsProvider } from './tts-provider-classification';
+import { RequiredScopes } from '../../decorators';
 
 // Raw s16le mono PCM: 2 bytes/sample. WAV carries the same payload behind a
 // fixed 44-byte header. Mirrors tts.core.usage.compute_audio_seconds — kept
@@ -64,6 +65,10 @@ const CONNECT_PHASE_CODES = new Set(['ECONNREFUSED', 'ENOTFOUND']);
 @ApiTags('speech')
 @ApiBearerAuth()
 @Controller('speech')
+// TASK-742: the TTS proxy — the other surface the conformance review named
+// as reachable unauthorized. Gated by the new `tts:*` family rather than an
+// `stt:*` scope, so a transcription key cannot synthesise speech.
+@RequiredScopes('tts:speech:write')
 export class SpeechProxyController {
   private readonly logger = new Logger(SpeechProxyController.name);
 

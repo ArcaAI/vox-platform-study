@@ -1,9 +1,9 @@
-"""SMR cloud providers are BYOK-only: no env credential fallback.
+"""Text cloud providers are BYOK-only: no env credential fallback.
 
 The unified provider-connection plane (AiProviderConnection) is the sole store for
 Azure OpenAI / OpenAI / Anthropic credentials; the gateway resolves tenant → SYSTEM
 and injects the result as a per-request ``ProviderOverride``. This suite locks the
-three guarantees that make that true end-to-end in SMR:
+three guarantees that make that true end-to-end in Text:
 
   1. The three cloud configs NEVER source ``api_key`` from env (the ``TEXT_*_API_KEY``
      vars are dead — removed from turbo globalEnv / Vault policies in this ticket).
@@ -29,7 +29,7 @@ from text.core.config import (
     OpenAIConfig,
     Settings,
 )
-from text.core.exceptions import ProviderCredentialsError, SmrError
+from text.core.exceptions import ProviderCredentialsError, TextError
 from text.models.requests import GenerateRequest
 from text.providers.anthropic import AnthropicProvider
 from text.providers.azure_openai import AzureOpenAIProvider
@@ -98,7 +98,7 @@ class TestGenerateFailsClosedWithoutCredential:
 
     def test_provider_credentials_error_is_smr_error(self):
         exc = ProviderCredentialsError("nope", provider="openai")
-        assert isinstance(exc, SmrError)
+        assert isinstance(exc, TextError)
         assert exc.error_code == "PROVIDER_CREDENTIALS_MISSING"
         assert exc.provider == "openai"
 

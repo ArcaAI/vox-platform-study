@@ -46,7 +46,7 @@ compatibility layer. Unlike the raw-WebSocket demo above, it **is** a
 `@arcaai/vox` consumer: it wraps the tree in a single `<ArcaCompatProvider>` and
 drives the full session → record → live-transcript → stop → summary workflow with
 the v1-named compat hooks (`useArcaSessionManager`, `useAudioCapture`,
-`useArcaSpeechToText`, `useSMR`).
+`useArcaSpeechToText`, `useText`).
 
 It is the runnable companion to
 [`docs/…/TASK-560-…/MIGRATION_GUIDE.md`](../../docs/implementation/TASK-560-v1-v2-consultation-migration/MIGRATION_GUIDE.md).

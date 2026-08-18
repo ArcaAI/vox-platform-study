@@ -121,7 +121,7 @@ function makeHarness(overrides: { usageLedgerService?: unknown; unitOfWorkServic
     recordJobComplete: vi.fn(),
     recordJobFailed: vi.fn(),
     recordWaitingDuration: vi.fn(),
-    recordSmrCallDuration: vi.fn(),
+    recordTextCallDuration: vi.fn(),
   };
   const store = new Map<string, unknown>();
   const clsService = {
@@ -129,7 +129,7 @@ function makeHarness(overrides: { usageLedgerService?: unknown; unitOfWorkServic
     set: vi.fn((key: string, value: unknown) => store.set(key, value)),
     get: vi.fn((key?: string) => (key === undefined ? Object.fromEntries(store) : store.get(key))),
   };
-  const harnessPolicyService = { resolveSmrSelection: vi.fn().mockResolvedValue({ provider: 'lm-studio', model: 'medgemma' }) };
+  const harnessPolicyService = { resolveTextSelection: vi.fn().mockResolvedValue({ provider: 'lm-studio', model: 'medgemma' }) };
   const configResolver = { resolvePreferredPromptTemplateId: vi.fn().mockResolvedValue(null) };
   const usageLedgerService = overrides.usageLedgerService ?? { recordUsage: vi.fn().mockResolvedValue({ outboxIds: ['o-1'], events: 2 }) };
   const unitOfWorkService = overrides.unitOfWorkService ?? { runInTransaction: vi.fn(async (work: (tx: unknown) => Promise<unknown>) => work(TX)) };

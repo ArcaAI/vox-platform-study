@@ -140,7 +140,7 @@ class TestManifestHasNoPhi:
 class TestRuleValidation:
     def test_rewrite_requires_replacement_at_construction(self) -> None:
         # A deterministic rewrite with no replacement is invalid (semantic rewrite
-        # is an SMR concern handled in the activity, not the pure engine).
+        # is an Text concern handled in the activity, not the pure engine).
         with pytest.raises(ValueError):
             RedactionRule(id="x", type="rewrite", match="literal", pattern="a")
 

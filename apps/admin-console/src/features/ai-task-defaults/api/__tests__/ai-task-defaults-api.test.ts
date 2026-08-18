@@ -49,11 +49,11 @@ describe('task keys', () => {
       'nlp.ner',
       'nlp.classification',
       'nlp.diagnosis',
-      'smr.live',
-      'smr.finalize',
+      'text.live',
+      'text.finalize',
       'harness.judge',
-      'smr.live.fallback',
-      'smr.finalize.fallback',
+      'text.live.fallback',
+      'text.finalize.fallback',
     ]);
     expect(SYSTEM_TENANT_ID).toBe('00000000-0000-0000-0000-000000000000');
   });

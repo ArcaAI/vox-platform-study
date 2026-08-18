@@ -1,1 +1,1 @@
-"""SMR Pydantic models."""
+"""Text Pydantic models."""

@@ -17,11 +17,16 @@ from guardrail.core.dependencies import get_resolved_guardian_provider
 from guardrail.core.tenant_config import GuardrailTenantConfig, TenantSelectionVetoedError
 from guardrail.providers.openai_compat import OpenAICompatGuardianProvider
 
+# `X-Tenant-Id` is mandatory on this dependency (428 otherwise), so the fake request
+# supplies one by default — these tests are about DB-config RESOLUTION, not the header.
+# Header enforcement itself is covered by `test_tenant_header_enforcement.py`.
+DEFAULT_TENANT = "11111111-1111-1111-1111-111111111111"
+
 
 class _FakeRequest:
     def __init__(self, state: SimpleNamespace, headers: dict[str, str] | None = None) -> None:
         self.app = SimpleNamespace(state=state)
-        self.headers = headers or {}
+        self.headers = {"X-Tenant-Id": DEFAULT_TENANT, **(headers or {})}
 
 
 class _StubResolver:

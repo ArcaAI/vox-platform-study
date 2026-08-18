@@ -214,19 +214,19 @@ describe('AiTaskDefaultService — SUPER_ADMIN-only governance', () => {
     ctx.repo.findByTenantAndTaskKey.mockResolvedValue(null);
     ctx.repo.create.mockImplementation(async (e: unknown) => e);
 
-    const res = await ctx.svc.upsertRow('smr.live', { modelSlug: 'lms-gemma-4-e2b-it-qat', expectedVersion: 0 });
+    const res = await ctx.svc.upsertRow('text.live', { modelSlug: 'lms-gemma-4-e2b-it-qat', expectedVersion: 0 });
 
     expect(res.modelSlug).toBe('lms-gemma-4-e2b-it-qat');
     expect(ctx.repo.create).toHaveBeenCalledTimes(1);
   });
 
-  it('accepts an smr.finalize write from a tenant admin for their own tenant', async () => {
+  it('accepts an text.finalize write from a tenant admin for their own tenant', async () => {
     const ctx = makeService({ roles: ['TENANT_ADMIN'] });
     ctx.modelRepo.findBySlug.mockResolvedValue(makeModel({ slug: 'lms-gemma-4-e2b-it-qat', taskType: ModelTaskType.TEXT_GENERATION }));
     ctx.repo.findByTenantAndTaskKey.mockResolvedValue(null);
     ctx.repo.create.mockImplementation(async (e: unknown) => e);
 
-    const res = await ctx.svc.upsertRow('smr.finalize', { modelSlug: 'lms-gemma-4-e2b-it-qat', expectedVersion: 0 });
+    const res = await ctx.svc.upsertRow('text.finalize', { modelSlug: 'lms-gemma-4-e2b-it-qat', expectedVersion: 0 });
 
     expect(res.tenantId).toBe(TENANT);
     expect(res.modelSlug).toBe('lms-gemma-4-e2b-it-qat');
@@ -234,13 +234,13 @@ describe('AiTaskDefaultService — SUPER_ADMIN-only governance', () => {
     expect(ctx.repo.create).toHaveBeenCalledWith(expect.objectContaining({ tenantId: TENANT }), undefined);
   });
 
-  it('accepts an smr.finalize.fallback write from a tenant admin', async () => {
+  it('accepts an text.finalize.fallback write from a tenant admin', async () => {
     const ctx = makeService({ roles: ['TENANT_ADMIN'] });
     ctx.modelRepo.findBySlug.mockResolvedValue(makeModel({ slug: 'lms-gemma-4-e2b-it-qat', taskType: ModelTaskType.TEXT_GENERATION }));
     ctx.repo.findByTenantAndTaskKey.mockResolvedValue(null);
     ctx.repo.create.mockImplementation(async (e: unknown) => e);
 
-    const res = await ctx.svc.upsertRow('smr.finalize.fallback', { modelSlug: 'lms-gemma-4-e2b-it-qat', expectedVersion: 0 });
+    const res = await ctx.svc.upsertRow('text.finalize.fallback', { modelSlug: 'lms-gemma-4-e2b-it-qat', expectedVersion: 0 });
 
     expect(res.modelSlug).toBe('lms-gemma-4-e2b-it-qat');
     expect(ctx.repo.create).toHaveBeenCalledTimes(1);

@@ -1,4 +1,4 @@
-"""TDD tests — SMR consumes gateway-injected `provider_overrides` (BYO cloud
+"""TDD tests — Text consumes gateway-injected `provider_overrides` (BYO cloud
 credentials for azure/bedrock).
 
 RED: written before implementation. Verifies:
@@ -218,7 +218,7 @@ class TestBedrockProviderOverrideConsumption:
 class TestProviderOverrideNeverLogged:
     """The gateway/service already guarantee the plaintext key is never
     logged on their side (see the config-plane assessment §Security). This
-    locks the SMR-side half: a failed generation's error/log path must never
+    locks the Text-side half: a failed generation's error/log path must never
     include the raw override key, even incidentally via `str(request_body)`
     in an exception message."""
 

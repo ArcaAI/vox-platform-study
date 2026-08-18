@@ -6,9 +6,10 @@ import { EventEmitter2 } from '@nestjs/event-emitter';
 import { isAxiosError } from 'axios';
 import { ClsService } from 'nestjs-cls';
 import { firstValueFrom } from 'rxjs';
-import { BaseService } from '../../../common';
+import { BaseService, SERVICE_TOKEN_HEADER, TENANTLESS, TENANT_ID_HEADER, resolveInternalAccessToken, tenantHeaderValue } from '../../../common';
 import { IActiveUserContext } from '../../../interfaces';
 import { IConfigService } from '../../baseServices/_meta/config';
+import { SecretsService } from '../../baseServices/_meta/secrets';
 import { IVoiceProfileService } from './IVoiceProfileService';
 import { EnrollVoiceProfileRequest } from './dto';
 
@@ -34,6 +35,8 @@ export class VoiceProfileService extends BaseService implements IVoiceProfileSer
     protected override readonly eventEmitter: EventEmitter2,
     protected override readonly clsService: ClsService<IActiveUserContext>,
     @Optional() @Inject(IConfigService) private readonly configService?: IConfigService,
+    // Optional + trailing so existing positional constructions keep compiling.
+    @Optional() @Inject(SecretsService) private readonly secretsService?: SecretsService,
   ) {
     super(eventEmitter, clsService, ResourceType.UserVoiceProfile);
     this.sttBaseUrl = this.configService?.config?.STT_URL || 'http://localhost:8861';
@@ -155,10 +158,27 @@ export class VoiceProfileService extends BaseService implements IVoiceProfileSer
       formData.append('files', blob, `sample-${i}.wav`);
     }
 
+    // D-D: the ONE shared `INTERNAL_ACCESS_TOKEN`. `apps/stt` now runs
+    // `ServiceAuthMiddleware` and `/internal/voice-profile/extract` is NOT in its
+    // exempt set, so an unauthenticated enrolment 401s in any deployed
+    // environment. TASK-737: `X-Tenant-Id` too — enrolment is a JWT-authenticated
+    // user self-service route, so the CLS tenant is populated and authoritative.
+    //
+    // Built by hand rather than through `internalServiceHeaders()` for ONE
+    // reason: this body is a `FormData`, and that builder always stamps
+    // `Content-Type: application/json`, which would destroy the multipart
+    // boundary axios derives for us.
+    const serviceToken = await resolveInternalAccessToken(this.secretsService, 'INTERNAL_ACCESS_TOKEN');
+    const headers: Record<string, string> = {
+      [SERVICE_TOKEN_HEADER]: serviceToken,
+      [TENANT_ID_HEADER]: tenantHeaderValue(this.tenantId, TENANTLESS.PLATFORM_OPERATOR),
+    };
+
     try {
       const { data } = await firstValueFrom(
         this.httpService.post<ExtractionResponse>(`${this.sttBaseUrl}/internal/voice-profile/extract`, formData, {
           timeout: 60000,
+          headers,
         }),
       );
       return data;

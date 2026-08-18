@@ -121,7 +121,7 @@ export const LIVE_TRANSCRIPTION_EXAMPLE_FILES: ExampleFile[] = [
 /** Tab 3 — department/visit/context → pre-summary → summary, streaming or not. */
 export const SUMMARIZATION_EXAMPLE_FILES: ExampleFile[] = [
   { path: '/src/components/SummarizationTab.tsx', title: 'components/SummarizationTab.tsx — the tab shell', language: 'tsx' },
-  { path: '/src/components/SummaryCard.tsx', title: 'components/SummaryCard.tsx — useSMR() orchestration + streaming toggle', language: 'tsx' },
+  { path: '/src/components/SummaryCard.tsx', title: 'components/SummaryCard.tsx — useText() orchestration + streaming toggle', language: 'tsx' },
   {
     path: '/src/components/summarization/ContextForm.tsx',
     title: 'components/summarization/ContextForm.tsx — department, visit type, clinical context',

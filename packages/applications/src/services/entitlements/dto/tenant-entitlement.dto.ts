@@ -226,6 +226,15 @@ export class UpsertTenantEntitlementRequest {
   @IsBoolean()
   featurePlatformDefaultCredential?: boolean | null;
 
+  @ApiPropertyOptional({
+    description:
+      'Grant (true) / deny (false) / inherit (null) the harness AGENTIC LOOP for this tenant (TASK-705). Inherit resolves the plan value: false on STARTER, true on TRIAL/PRO/ENTERPRISE. The consultation.loop.emergencyStop kill-switch can still subtract it platform-wide.',
+    nullable: true,
+  })
+  @IsOptional()
+  @IsBoolean()
+  featureAgenticLoop?: boolean | null;
+
   @ApiPropertyOptional({ description: 'Override model tier; null = inherit', nullable: true })
   @IsOptional()
   @IsString()

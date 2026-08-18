@@ -14,7 +14,7 @@
         "type": "prometheus",
         "uid": "prometheus"
       },
- "description": "Prefix/prompt-cache hit rate of the backing inference engine (vLLM prefix cache / llama.cpp cache_prompt), re-exported by SMR as the engine-agnostic `smr_engine_cache_hit_rate{engine}` gauge. Phase 4D.2 measures the prompt-reorder (4D.1) cache-friendliness improvement per engine.",
+ "description": "Prefix/prompt-cache hit rate of the backing inference engine (vLLM prefix cache / llama.cpp cache_prompt), re-exported by SMR as the engine-agnostic `text_engine_cache_hit_rate{engine}` gauge. Phase 4D.2 measures the prompt-reorder (4D.1) cache-friendliness improvement per engine.",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -91,7 +91,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "smr_engine_cache_hit_rate{engine=~\"$engine\"}",
+          "expr": "text_engine_cache_hit_rate{engine=~\"$engine\"}",
           "legendFormat": "{{engine}}",
           "refId": "A"
         }
@@ -104,7 +104,7 @@
         "type": "prometheus",
         "uid": "prometheus"
       },
-      "description": "Time-to-first-token p50 from the `smr_time_to_first_token_seconds` histogram. A rising prefix-cache hit rate (left) should pull TTFT p50 down as the stable prompt prefix is served from the engine KV cache instead of re-prefilled. Acceptance TTFT-improvement numbers are owner-run on GPU hardware — this panel is the measurement surface.",
+      "description": "Time-to-first-token p50 from the `text_time_to_first_token_seconds` histogram. A rising prefix-cache hit rate (left) should pull TTFT p50 down as the stable prompt prefix is served from the engine KV cache instead of re-prefilled. Acceptance TTFT-improvement numbers are owner-run on GPU hardware — this panel is the measurement surface.",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -179,7 +179,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "histogram_quantile(0.5, sum by (le, provider) (rate(smr_time_to_first_token_seconds_bucket{provider=~\"$provider\"}[5m])))",
+          "expr": "histogram_quantile(0.5, sum by (le, provider) (rate(text_time_to_first_token_seconds_bucket{provider=~\"$provider\"}[5m])))",
           "legendFormat": "TTFT p50 — {{provider}}",
           "refId": "A"
         },
@@ -188,7 +188,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "histogram_quantile(0.5, sum by (le) (rate(smr_time_to_first_token_seconds_bucket[5m])))",
+          "expr": "histogram_quantile(0.5, sum by (le) (rate(text_time_to_first_token_seconds_bucket[5m])))",
           "legendFormat": "TTFT p50 — fleet",
           "refId": "B"
         }
@@ -213,14 +213,14 @@
           "type": "prometheus",
           "uid": "prometheus"
         },
-        "definition": "label_values(smr_engine_cache_hit_rate, engine)",
+        "definition": "label_values(text_engine_cache_hit_rate, engine)",
         "hide": 0,
         "includeAll": true,
         "label": "Engine",
         "multi": true,
         "name": "engine",
         "options": [],
-        "query": "label_values(smr_engine_cache_hit_rate, engine)",
+        "query": "label_values(text_engine_cache_hit_rate, engine)",
         "refresh": 1,
         "regex": "",
         "skipUrlSync": false,
@@ -237,14 +237,14 @@
           "type": "prometheus",
           "uid": "prometheus"
         },
-        "definition": "label_values(smr_time_to_first_token_seconds_bucket, provider)",
+        "definition": "label_values(text_time_to_first_token_seconds_bucket, provider)",
         "hide": 0,
         "includeAll": true,
         "label": "Provider",
         "multi": true,
         "name": "provider",
         "options": [],
-        "query": "label_values(smr_time_to_first_token_seconds_bucket, provider)",
+        "query": "label_values(text_time_to_first_token_seconds_bucket, provider)",
         "refresh": 1,
         "regex": "",
         "skipUrlSync": false,

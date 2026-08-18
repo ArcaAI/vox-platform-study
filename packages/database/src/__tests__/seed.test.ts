@@ -2839,8 +2839,8 @@ describe('Phase 2 — seedHarnessPolicy (SMR default + WORM)', () => {
   };
 
   it('exposes the agreed SMR defaults (lm-studio + gemma-4-e2b-it-qat)', () => {
-    expect(SYSTEM_HARNESS_POLICY_TEXT_DEFAULTS.smrProvider).toBe('lm-studio');
-    expect(SYSTEM_HARNESS_POLICY_TEXT_DEFAULTS.smrModel).toBe('gemma-4-e2b-it-qat');
+    expect(SYSTEM_HARNESS_POLICY_TEXT_DEFAULTS.textProvider).toBe('lm-studio');
+    expect(SYSTEM_HARNESS_POLICY_TEXT_DEFAULTS.textModel).toBe('gemma-4-e2b-it-qat');
   });
 
   it('creates the SYSTEM policy row with the SMR defaults and writes a WORM change (beforeJson=null)', async () => {
@@ -2852,16 +2852,16 @@ describe('Phase 2 — seedHarnessPolicy (SMR default + WORM)', () => {
 
     expect(client.harnessPolicy.create).toHaveBeenCalledTimes(1);
     expect(created[0].data.tenantId).toBe(SYSTEM_TENANT_ID);
-    expect(created[0].data.smrProvider).toBe('lm-studio');
-    expect(created[0].data.smrModel).toBe('gemma-4-e2b-it-qat');
+    expect(created[0].data.textProvider).toBe('lm-studio');
+    expect(created[0].data.textModel).toBe('gemma-4-e2b-it-qat');
 
     // WORM audit entry (HarnessPolicyChange) recorded for the default-set.
     expect(client.harnessPolicyChange.create).toHaveBeenCalledTimes(1);
     const change = changes[0].data;
     expect(change.tenantId).toBe(SYSTEM_TENANT_ID);
     expect(change.beforeJson).toBeNull();
-    expect((change.afterJson as Record<string, unknown>).smrProvider).toBe('lm-studio');
-    expect((change.afterJson as Record<string, unknown>).smrModel).toBe('gemma-4-e2b-it-qat');
+    expect((change.afterJson as Record<string, unknown>).textProvider).toBe('lm-studio');
+    expect((change.afterJson as Record<string, unknown>).textModel).toBe('gemma-4-e2b-it-qat');
     expect(change.changedBy).toBe(SYSTEM_USER_ID);
   });
 
@@ -2870,8 +2870,8 @@ describe('Phase 2 — seedHarnessPolicy (SMR default + WORM)', () => {
       id: 'existing-id',
       tenantId: SYSTEM_TENANT_ID,
       version: 3,
-      smrProvider: 'lm-studio',
-      smrModel: 'gemma-4-e2b-it-qat',
+      textProvider: 'lm-studio',
+      textModel: 'gemma-4-e2b-it-qat',
     });
     const result = await seedHarnessPolicy(client as never);
 
@@ -2887,8 +2887,8 @@ describe('Phase 2 — seedHarnessPolicy (SMR default + WORM)', () => {
       id: 'existing-id',
       tenantId: SYSTEM_TENANT_ID,
       version: 1,
-      smrProvider: null,
-      smrModel: null,
+      textProvider: null,
+      textModel: null,
       safetyModel: 'granite-guardian-4.1-8b',
     });
     const result = await seedHarnessPolicy(client as never);
@@ -2898,13 +2898,13 @@ describe('Phase 2 — seedHarnessPolicy (SMR default + WORM)', () => {
 
     expect(client.harnessPolicy.update).toHaveBeenCalledTimes(1);
     // Writes ONLY the two SMR columns (does not clobber other admin knobs).
-    expect(Object.keys(updated[0].data).sort()).toEqual(['smrModel', 'smrProvider']);
-    expect(updated[0].data.smrProvider).toBe('lm-studio');
-    expect(updated[0].data.smrModel).toBe('gemma-4-e2b-it-qat');
+    expect(Object.keys(updated[0].data).sort()).toEqual(['textModel', 'textProvider']);
+    expect(updated[0].data.textProvider).toBe('lm-studio');
+    expect(updated[0].data.textModel).toBe('gemma-4-e2b-it-qat');
 
     const change = changes[0].data;
-    expect((change.beforeJson as Record<string, unknown>).smrModel).toBeNull();
-    expect((change.afterJson as Record<string, unknown>).smrModel).toBe('gemma-4-e2b-it-qat');
+    expect((change.beforeJson as Record<string, unknown>).textModel).toBeNull();
+    expect((change.afterJson as Record<string, unknown>).textModel).toBe('gemma-4-e2b-it-qat');
     // The audit snapshot preserves untouched knobs (granite safety model).
     expect((change.afterJson as Record<string, unknown>).safetyModel).toBe('granite-guardian-4.1-8b');
   });

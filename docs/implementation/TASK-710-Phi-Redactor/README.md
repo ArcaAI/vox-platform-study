@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Status** | Completed — Tasks 1–5 done and green; Task 0's Decision #12 (pseudonymization mechanism) confirmed against `apps/nlp`'s actual entity-linking behavior and finalized 2026-08-16; Task 6 backed by a real, measured GLiNER benchmark, and the timeout/memory risk it flagged now FIXED by server-side chunking (§7 "Task 6 follow-up", 2026-08-16) |
+| **Status** | Completed (re-opened and re-closed 2026-08-17) — hop 1 had SILENTLY REGRESSED: it was wired into `jobs/processors/ner.processor.ts`, which TASK-732 deleted, leaving the surviving synchronous path (`SummaryService.extractEntities`) posting raw PHI to the NLP service. Re-wired there, both hops' redactors promoted from `@Optional()` to REQUIRED (owner directive D-A), and a grep-gate added so the same deletion-shaped regression cannot recur silently. See §7 "Re-opened 2026-08-17". Original Wave-1 Tasks 1–5 done and green; Task 0's Decision #12 (pseudonymization mechanism) confirmed against `apps/nlp`'s actual entity-linking behavior and finalized 2026-08-16; Task 6 backed by a real, measured GLiNER benchmark, and the timeout/memory risk it flagged now FIXED by server-side chunking (§7 "Task 6 follow-up", 2026-08-16) |
 | **Wave** | 1 · **Size** | L |
 | **Epic slug** | `phi-redactor` |
 | **Depends on** | TASK-706 (`egress-failclose`) |
@@ -156,6 +156,16 @@ const response = await this.httpService.axiosRef.post(
 - [x] `GateEditExemplar` mining test suite shows the corpus mines a non-empty exemplar for a fixture edit pair, confirming the previously-inert path is now un-blocked (without modifying `gate-edit-mining.service.ts`'s own logic) — this was already covered by the pre-existing mock-redactor test suite (`gate-edit-mining.service.test.ts`), re-verified green with the `mode` param now threaded through; production wiring is what actually un-blocks it (§7 Task 3)
 - [x] Lint clean across affected `packages/applications` files (targeted `eslint` run, not the repo-root `pnpm lint` aggregate — sibling agents share this tree and the orchestrator runs root aggregates) — 0 errors, 0 new warnings (§7 "Full regression check")
 - [x] Actual command output pasted for each of the above (§7)
+
+**Re-open (2026-08-17) — additional acceptance criteria:**
+
+- [x] TDD RED observed for the hop-1 fix before any implementation (3/3 failing) — output in §7 "Re-opened"
+- [x] `SummaryService.extractEntities` posts pseudonymized text; clinical terms survive; raw identifiers do not
+- [x] Both hops fail closed on a THROWING redactor and on an ABSENT redactor (NLP/SMR never called)
+- [x] `IPhiRedactor` is a REQUIRED (non-`@Optional()`) injection at both wired hops
+- [x] Grep-gate present and green; its `@Optional()` assertion demonstrated RED against hop 2 before that fix
+- [x] Every changed/added test file green, plus `tsc --noEmit`, `build`, and targeted `eslint` — output pasted in §7
+- [ ] Whole-package `vitest run` sweep — NOT completed; the shared tree was being mutated by ~26 concurrent sibling agents and the box was saturated (see §7 "Not cleanly verifiable")
 
 ## 6. Risks & Open Questions
 
@@ -500,6 +510,248 @@ chunk budget is sized from the benchmark curve above rather than from observed c
 is what the `guardrail.redact.chunkChars` knob exists for — the value can be retuned from
 production evidence without a code change.
 
+### Re-opened 2026-08-17 — hop 1 had silently regressed (TASK-732 fallout)
+
+**The defect.** Task 4 above wired hop 1 into
+`packages/applications/src/services/consultation/jobs/processors/ner.processor.ts`.
+**TASK-732 deleted that file** (its grep-gate,
+`consultation/__tests__/legacy-generator-absent.grep-gate.test.ts`, now asserts it stays
+deleted). The redaction went with it. The surviving synchronous NER path —
+`SummaryService.extractEntities()` — called `this.callNlpService(contextItem.content)` with
+RAW content and never had redaction at all, because in Wave 1 it simply was not one of the two
+named hops. Net effect: PHI reached `apps/nlp` unredacted on the only remaining NER path, and
+finding A-02 was effectively re-opened. Not one test noticed, because every test asserting
+redaction lived in the deleted file's suite and was deleted with it.
+
+That is the load-bearing lesson, and it drove all three changes below: **a redaction hop
+attached to one call site dies with that call site, and a dependency whose absence is a silent
+no-op cannot tell you it died.**
+
+**Change 1 — hop 1 re-wired onto the surviving path.**
+`SummaryService.extractEntities` now calls `await this.phiRedactor.redact(contextItem.content,
+'pseudonymize')` and posts the result. Mode is unchanged from Task 0's decision
+(`pseudonymize`, not `full`): NER exists to extract clinical entities and GLiNER's `PII_LABELS`
+never cover them, so medication/condition spans survive verbatim. `SummaryServiceModule` now
+imports `PhiRedactionServiceModule`.
+
+**Change 2 — the redactor is REQUIRED, not `@Optional()` (owner directive D-A).** This was the
+deliberate reconsideration the re-open asked for, and the answer changed from Wave 1's.
+
+Wave 1 injected the redactor as `@Optional() @Inject(IPhiRedactor)` at both hops, with call
+sites guarded by `if (this.phiRedactor)`, and §7 Task 4 explicitly recorded the reasoning:
+absence degrades to prior behaviour, and "the production safety guarantee instead comes from
+`ConsultationJobServiceModule` always importing `PhiRedactionServiceModule`". **The regression
+above is exactly that reasoning failing.** The guarantee lived in a module import, an import is
+one line, and when TASK-732 deleted the module's consumer nothing anywhere said the PHI
+guarantee had just been dropped. `@Optional()` made "no redactor configured" and "no redaction
+needed" indistinguishable — for a PHI dependency, that is the wrong default at any time, and
+under D-A (no production data; ship day-1-complete rather than degrade-gracefully) there is no
+longer even a migration argument for it.
+
+Both hops therefore now inject `@Inject(IPhiRedactor)` **without** `@Optional()`, and both call
+sites **throw** when it is absent:
+
+| Layer | Guarantee |
+|---|---|
+| Nest DI | A module graph missing `PhiRedactionServiceModule` fails at **boot** with `UnknownDependenciesException`, loudly, instead of running redaction-free |
+| Call site | `extractEntities` / `DnaWritingStyleProcessor` throw rather than proceed — belt to the DI braces, and the only thing a non-DI construction path (tests) can hit |
+| Redactor itself | `GuardrailPhiRedactor` already throws on transport error, non-2xx, or a body without a string `sanitized_text` — never echoes the input back (unchanged) |
+
+The TypeScript `?` marker is retained on both parameters so the pre-existing positional
+`new SummaryService(...)` / `new DnaWritingStyleProcessor(...)` fixtures keep compiling (12 unit
+specs plus `apps/api/tests/integration/summary-provenance.spec.ts`, which is outside this
+ticket's file scope). **The `?` is a compile-time convenience only — it is not a runtime
+escape**, because both call sites throw on absence. Fixtures that actually exercise the redacted
+paths were updated to supply a double.
+
+**Change 3 — hop 2 (`dna-writing-style.processor.ts`) carried the identical latent defect, and
+it is fixed.** Verification of hop 2 found it still wired and still calling
+`redact(samples, 'full')` — but behind `@Optional()` + `if (this.phiRedactor)`, i.e. the same
+shape that let hop 1 vanish. A module graph that lost the import would have posted the raw,
+**cross-patient** corpus to SMR silently. Since this is a real defect of the same class (not a
+speculative hardening), it was fixed in the same way. Its unit test that asserted the old
+fail-open behaviour (*"without a wired redactor, behavior is unchanged — the raw corpus is
+posted"*) is **inverted** to assert the abort.
+
+**Change 4 — a grep-gate so this cannot recur silently.**
+`packages/applications/src/services/consultation/__tests__/nlp-egress-redacted.grep-gate.test.ts`
+(new), modelled directly on `legacy-generator-absent.grep-gate.test.ts` — same `node:fs` source
+walk (never imports, so a bypass is caught even when it compiles), same comment-stripping, same
+"every assertion names its ticket" convention. Five assertions:
+
+1. every live-code file in `packages/applications/src` reaching an NLP **text** endpoint
+   (`/api/v1/classify/{tokens,topic,intent}`) also references `phiRedactor` — or appears in an
+   explicit `ALLOWED` list **with a written reason**;
+2. `extractEntities` specifically never posts `contextItem.content`, and the `'pseudonymize'`
+   call is present;
+3. neither wired hop injects the redactor with `@Optional()`;
+4. every module providing an `IPhiRedactor` consumer imports `PhiRedactionServiceModule`;
+5. sanity: the scanned tree is non-empty.
+
+The allow-list is the point: adding an unredacted NLP egress now requires editing this gate,
+which is precisely the review moment that was missing when TASK-732 removed the hop. It
+currently holds the live-documentation SSE loop (explicitly out of scope per §1 — the tightest
+latency budget in the system) and four doc-comment-only matches. Assertion 3 is what **caught**
+hop 2's defect above; it failed RED against the then-current tree before that fix landed.
+
+`/api/v1/extract` (NLP OCR) is deliberately NOT in the gate's endpoint pattern: it posts an
+uploaded FILE as multipart, not consultation text, and redacting an image/PDF is a different
+problem with a different owner.
+
+**Known caveat, stated rather than buried — NER offsets are relative to the REDACTED text.**
+`NamedEntity.startOffset`/`endOffset` are returned by NLP against the pseudonymized string, and
+pseudonymization changes lengths (`John Doe` → `[PERSON_1]`), so offsets can drift from the
+stored raw `ContextItem.content` for any entity appearing after a masked span. This is inherited
+behaviour, not new: the deleted `ner.processor.ts` had exactly the same property from Wave 1.
+Fixing it needs an offset re-mapping built from the spans `/api/guardrail/redact` already
+returns (it responds with `entities: [{label,start,end,score}]`, which this client currently
+discards) and is a deliberate follow-up, not something silently absorbed here.
+
+**Files changed (2026-08-17 re-open):**
+- `packages/applications/src/services/consultation/summary/summary.service.ts` — import, required ctor param #27, redact-before-NLP in `extractEntities`
+- `packages/applications/src/services/consultation/summary/summary.service.module.ts` — imports `PhiRedactionServiceModule`
+- `packages/applications/src/services/consultation/summary/__tests__/summary.service.phi-redaction.task710.test.ts` — NEW (3 tests, RED first)
+- `packages/applications/src/services/consultation/summary/__tests__/summary.service.test.ts` — fixture supplies a pass-through redactor
+- `packages/applications/src/services/consultation/__tests__/nlp-egress-redacted.grep-gate.test.ts` — NEW (grep-gate, 5 assertions)
+- `packages/applications/src/services/dna-writing-style/dna-writing-style.processor.ts` — redactor promoted to REQUIRED; call site throws on absence
+- `packages/applications/src/services/dna-writing-style/__tests__/dna-writing-style.processor.test.ts` — pass-through double in 8 fixtures; fail-open test inverted to fail-closed
+- `packages/applications/src/services/dna-writing-style/__tests__/dna-writing-style.processor.phi-containment.test.ts` — pass-through double in its fixture
+
+No changes to `apps/guardrail` (the endpoint and its auth were already correct — see the D-D
+note below), no Prisma schema changes, no new env vars.
+
+**Verification — actual output (2026-08-17 re-open).**
+
+TDD RED, observed BEFORE any implementation (all three, for the right reason — the redaction call
+did not exist, so nothing threw and NLP was reached):
+
+```
+$ npx vitest run src/services/consultation/summary/__tests__/summary.service.phi-redaction.task710.test.ts
+ FAIL  ... > posts PSEUDONYMIZED text to the NLP service, never the raw content
+ FAIL  ... > aborts fail-closed when the redactor throws — NLP is never called
+        AssertionError: promise resolved "undefined" instead of rejecting
+ FAIL  ... > aborts fail-closed when NO redactor is wired — NLP is never called
+        AssertionError: promise resolved "undefined" instead of rejecting
+
+ Test Files  1 failed (1)
+      Tests  3 failed (3)
+```
+
+GREEN after the fix:
+
+```
+$ npx vitest run src/services/consultation/summary/__tests__/summary.service.phi-redaction.task710.test.ts
+ Test Files  1 passed (1)
+      Tests  3 passed (3)
+```
+
+Grep-gate RED against the then-current tree (this is what CAUGHT hop 2's latent defect — the
+assertion was written for hop 1 and hop 2 failed it):
+
+```
+$ npx vitest run src/services/consultation/__tests__/nlp-egress-redacted.grep-gate.test.ts
+ FAIL  ... > the PHI redactor dependencies are NOT @Optional() on either wired hop (owner directive D-A)
+AssertionError: TASK-710 / D-A: a PHI redactor injected with @Optional() degrades SILENTLY to
+unredacted egress when the module graph loses `PhiRedactionServiceModule`. ...
+[ { "file": "services/dna-writing-style/dna-writing-style.processor.ts", "hop": "hop 2 — DNA corpus → SMR" } ]
+ Test Files  1 failed (1)
+      Tests  1 failed | 4 passed (5)
+```
+
+Grep-gate GREEN after hop 2 was fixed:
+
+```
+$ npx vitest run src/services/consultation/__tests__/nlp-egress-redacted.grep-gate.test.ts
+ Test Files  1 passed (1)
+      Tests  5 passed (5)
+   Duration  3.85s
+```
+
+Both grep-gates together (TASK-732's `legacy-generator-absent` gate stays green — this ticket's
+fix does not reintroduce anything it forbids) plus the hop-1 spec:
+
+```
+$ npx vitest run src/services/consultation/__tests__/nlp-egress-redacted.grep-gate.test.ts \
+    src/services/consultation/summary/__tests__/summary.service.phi-redaction.task710.test.ts \
+    src/services/consultation/__tests__/legacy-generator-absent.grep-gate.test.ts
+ Test Files  3 passed (3)
+      Tests  14 passed (14)
+```
+
+The pre-existing suite for the file most affected by the required-dependency change:
+
+```
+$ npx vitest run src/services/consultation/summary/__tests__/summary.service.test.ts
+ Test Files  1 passed (1)
+      Tests  102 passed (102)
+```
+
+Typecheck and build:
+
+```
+$ npx tsc --noEmit          (packages/applications)
+(no output — clean)
+
+$ pnpm --filter @arcaai/applications build
+> rimraf dist tsconfig.tsbuildinfo && tsc
+(no output — clean)
+```
+
+Lint, scoped to the files this re-open changed (package-scoped rather than the repo-root
+aggregate — ~26 sibling agents share this working tree this session):
+
+```
+$ npx eslint <the 4 changed non-test source files> --no-warn-ignored
+✖ 5 problems (0 errors, 5 warnings)
+```
+All 5 warnings are in `dna-writing-style.processor.ts` and none belong to this diff: four are
+pre-existing `eslint-comments/require-description` on untouched `eslint-disable` lines, and the
+fifth (`prettier/prettier` at :264) is inside a concurrent sibling agent's in-flight TASK-700
+edit to the same file. Zero warnings on `summary.service.ts`, `summary.service.module.ts`, and
+the new grep-gate.
+
+**Not cleanly verifiable this session, stated plainly rather than glossed:** the full
+`packages/applications` suite could not be pinned to a stable green because ~26 sibling agents
+are editing this shared working tree concurrently and the box is saturated (load average
+peaked at 139 with 75 concurrent `vitest` processes; runs that normally take ~4 min did not
+start executing at all).
+
+Specifically **NOT run to completion**: the whole-package `vitest run`. Every file this ticket
+owns or changed WAS run and is green (outputs above and below). What is missing is only the
+whole-package sweep against the other ~490 files, which siblings are actively mutating anyway.
+
+The two DNA files this ticket changed (8 fixtures given a pass-through double, one fail-open
+test inverted to fail-closed), run together after the final edit:
+
+```
+$ npx vitest run src/services/dna-writing-style/__tests__/dna-writing-style.processor.test.ts \
+    src/services/dna-writing-style/__tests__/dna-writing-style.processor.phi-containment.test.ts
+ Test Files  2 passed (2)
+      Tests  53 passed (53)
+```
+
+Two full-suite runs during this session failed on causes that are demonstrably NOT this diff and
+that appeared and disappeared as siblings saved files:
+`settings-registry/descriptors/consultation-gates.descriptors.ts` throwing
+`ReferenceError: HARNESS_LOOP_EMERGENCY_STOP_KEY is not defined` at import (breaking every suite
+that transitively imports the registry — since fixed by that agent), and
+`workflow-definition/__tests__/task-724-stt-realtime-untouched.grep-gate.test.ts` failing because
+a different agent touched `apps/*/streaming/**`. Every test file this ticket owns or changed was
+run individually and is green, with the output pasted above.
+
+**D-D check (single shared internal access token) — one gap, in another agent's territory.**
+Guardrail's inbound side is already correct: `ServiceAuthMiddleware` validates against
+`Settings.accepted_service_tokens` (`apps/guardrail/src/guardrail/core/config.py:339-352`),
+which is `(internal_access_token, service_token)` — the shared `INTERNAL_ACCESS_TOKEN` FIRST,
+legacy per-service token as fallback — so `/api/guardrail/redact` accepts the shared token with
+no change. The **outbound TypeScript** side has not been migrated: `GuardrailPhiRedactor`
+presents `GUARDRAIL_SERVICE_TOKEN` (`guardrail-phi-redactor.service.ts:61`), and there is no
+`INTERNAL_ACCESS_TOKEN` reader anywhere in `packages/applications` or `apps/api` yet, though
+`turbo.json` and the `.env.sample` files already declare the variable. This is **not currently
+broken** (guardrail's legacy fallback still authenticates the call) and per-peer-client auth
+headers are owned by the concurrent TASK-738 agent, so it was deliberately NOT changed here —
+no per-service token was invented. Reported rather than patched.
+
 ### Full regression check
 
 **Original Wave-1 run (2026-08-16, Tasks 1–5):**
@@ -563,4 +815,5 @@ None. No Prisma schema changes in this ticket.
 | 2026-08-16 | Ticket authored | Claude (ticket-authoring session) |
 | 2026-08-16 | Tasks 1–5 implemented and verified green (guardrail redact endpoint, `GuardrailPhiRedactor`, both hops wired). Task 0's Decision #12 (pseudonymization mechanism) recorded as a flagged PROVISIONAL choice, not resolved — remains HUMAN-GATED pending validation against `apps/nlp`'s entity-linking behavior. Task 6 recorded as an estimate (no live GLiNER available). Session stopped cleanly at the Decision #12 boundary as instructed. | Claude (execution session) |
 | 2026-08-16 | Decision #12 finalized: read the real `ontology_linker.py`, `token_classifier.py`, `assertion.py` and confirmed the already-implemented stable per-label token mechanism is correct, but on a corrected rationale (the ontology linker has no coreference machinery to benefit — clinical-term preservation is structural to GLiNER's PII taxonomy in either mode; token diversity instead protects the downstream transformer NER model). Corrected both docstrings (`redact.py`, `IPhiRedactor.ts`) accordingly — no behavioral code change. Task 6 re-run as a real measured benchmark (local infra up, cached ONNX weights present): Hop 1 confirmed no regression risk at realistic transcript sizes; Hop 2 found a genuine, previously-undetected risk — at the DNA processor's own default `maxContextChars=100,000`, extrapolated latency/memory would likely exceed `GuardrailPhiRedactor`'s fixed 30s HTTP timeout and available worker memory, flagged as a follow-up (not fixed in this ticket — out of Task 6's docs-only file scope). Also closed out §6 risks #2–#5 (breaking-change migration, TASK-700 sequencing, route-imprecision recurrence, decrypt-and-scan scope) with concrete verification against the live tree. Full regression re-run green (applications: 9117/9121 tests; guardrail: 213/213). Status moved Review → Completed. | Claude (finalization session) |
+| 2026-08-17 | **RE-OPENED and re-closed — hop 1 had silently regressed.** TASK-732 deleted `jobs/processors/ner.processor.ts`, the only file hop 1 was ever wired into, so the redaction disappeared with it and the surviving synchronous path (`SummaryService.extractEntities`) posted RAW `contextItem.content` to `apps/nlp`; finding A-02 was effectively re-opened and no test caught it (they were deleted with the file). Fixed: (1) hop 1 re-wired onto `extractEntities` with `redact(content, 'pseudonymize')` and `SummaryServiceModule` importing `PhiRedactionServiceModule`; (2) **`@Optional()` reconsidered and REVERSED per owner directive D-A** — the redactor is now a REQUIRED injection at BOTH hops (Nest fails at boot without the module) and both call sites throw on absence, because Wave 1's "the module import is the guarantee" reasoning is exactly what failed here; (3) hop 2 (`dna-writing-style.processor.ts`) was found carrying the identical latent defect (`@Optional()` + `if (this.phiRedactor)` ⇒ silent raw cross-patient corpus to SMR) and fixed the same way, with its fail-open unit test inverted to fail-closed; (4) new grep-gate `consultation/__tests__/nlp-egress-redacted.grep-gate.test.ts` (modelled on `legacy-generator-absent.grep-gate.test.ts`) fails the build if any NLP text call site bypasses the redactor, if either hop re-acquires `@Optional()`, or if a consuming module drops the import — its assertion #3 is what caught hop 2. TDD RED observed for all 3 new hop-1 tests before implementation. Known caveat recorded, not hidden: NER offsets are relative to the redacted text (inherited from the deleted processor, follow-up). D-D gap reported, not patched: guardrail ACCEPTS the shared `INTERNAL_ACCESS_TOKEN` already, but `GuardrailPhiRedactor` still PRESENTS the legacy `GUARDRAIL_SERVICE_TOKEN` — works today via guardrail's fallback; the TS-side migration belongs to the concurrent TASK-738 agent. | Claude (TASK-710 re-open session) |
 | 2026-08-16 | Task 6's flagged risk RESOLVED (follow-up session; no new ticket — appended here per the fixes-to-existing-tickets rule). Root cause was an unbounded single `extract_entities` call, so the fix is server-side chunking in `/api/guardrail/redact` (whitespace-boundary partition, sequential per-chunk extraction, offsets re-based onto the submitted document, pseudonymize tokens assigned after merge) rather than shrinking the DNA corpus cap — which stays at 100,000, leaving `dna-writing-style.processor.ts` untouched. Both new knobs are DB-tier `global-kv` registry keys a platform admin manages, NOT env vars (owner directive this session): `guardrail.redact.chunkChars` (default 4,000, pulled over `/internal/effective-config`) and `phiRedaction.requestTimeoutMs` (default 120,000, replacing the hardcoded 30,000). Re-benchmarked with the real GLiNER at the full 100,000-char cap — actually run this time, not extrapolated: 9.7s / 2.85GB peak against the previous 30-45s / 30-45GB projection, with an identical entity count (3,364) at every chunk size, i.e. no coverage cost. Verified: guardrail 219/219 pytest (was 213 — 6 new chunking tests), ruff + black + mypy clean on changed files; applications 9,122 tests / 491 files green, `build` green, targeted `eslint` 0 errors 0 warnings. NOT verified: production corpus sizes / job SLAs were unreachable from this session, so the chunk budget is sized from the benchmark curve, not observed production data — retunable via the registry key without a code change. | Claude (follow-up session) |

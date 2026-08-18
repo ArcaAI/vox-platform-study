@@ -11,7 +11,7 @@ import {
 import { Body, Controller, Delete, Get, Inject, Param, Patch, Post, Query, Res } from '@nestjs/common';
 import { ApiBearerAuth, ApiHeader, ApiOperation, ApiParam, ApiQuery, ApiResponse, ApiTags } from '@nestjs/swagger';
 import type { Response } from 'express';
-import { Authorize, CanManage, ExpectedVersion, RequiresIfMatch, RequiredScopes } from '../../decorators';
+import { Authorize, CanManage, ExpectedVersion, RequiresIfMatch, RequiredScopes, ForbidApiKey } from '../../decorators';
 
 /**
  * Admin CRUD + governance for tenant-declared consultation context
@@ -172,6 +172,15 @@ export class ConsultationContextSchemaAdminController {
 @ApiTags('tenant')
 @Controller('tenant/me/context-schema')
 @Authorize()
+// TASK-742 API-KEY-NOTE — CONSERVATIVE DEFAULT, AWAITING OWNER CLASSIFICATION.
+// Reason: self-service tenant context-schema read.
+// This route family declared nothing about API-key access, which under the
+// deny-by-default rule is a boot failure. Rather than guess a scope (guessing
+// permissive is how the original gap was created), it is closed explicitly.
+// Reversing it is a one-line change to @RequiredScopes('<scope>') once the
+// owner confirms a real API-key use case — see the TASK-708 README's
+// "Reachability changes awaiting owner review" table.
+@ForbidApiKey()
 export class MyTenantContextSchemaController {
   constructor(
     @Inject(IConsultationContextSchemaService)

@@ -164,7 +164,7 @@ test.describe.serial('prompt-template test bench (tenant_admin · __GLOBAL__)', 
     });
     // BUG-018: fully deterministic — a dry run never touches SMR, so this is a
     // hard assertion, not a generation-gated one. (A 400 here means no
-    // `smr.test` AiTaskDefault is configured in the stack — a real regression.)
+    // `text.test` AiTaskDefault is configured in the stack — a real regression.)
     expect(GENERATION_SUCCESS_STATUSES, `dry-run submit → ${res.status()}`).toContain(res.status());
     const ack = (await res.json()) as PromptTestAck;
     expect(ack.mode).toBe('dry-run');

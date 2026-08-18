@@ -139,7 +139,7 @@ describe('DepartmentAgentService', () => {
           name: 'X',
           slug: 'x',
           promptTemplateId: 'tpl-1',
-          harnessOverrides: { maxRegen: 2, smrProvider: 'azure' },
+          harnessOverrides: { maxRegen: 2, textProvider: 'azure' },
         }),
       ).rejects.toThrow(/super-admin-only/);
     });

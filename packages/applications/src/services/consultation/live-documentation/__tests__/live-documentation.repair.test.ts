@@ -66,7 +66,7 @@ function buildService(http: ReturnType<typeof buildRepairHttpMock>) {
     unsubscribeFromResults: vi.fn(),
   };
   const configService = { get: vi.fn().mockReturnValue(undefined) };
-  const harnessPolicyService = { resolveSmrSelection: vi.fn().mockResolvedValue({ provider: 'lm-studio', model: 'live-medgemma' }) };
+  const harnessPolicyService = { resolveTextSelection: vi.fn().mockResolvedValue({ provider: 'lm-studio', model: 'live-medgemma' }) };
   const trajectory = { recordSteps: vi.fn().mockResolvedValue(undefined) };
 
   const service = new LiveDocumentationService(

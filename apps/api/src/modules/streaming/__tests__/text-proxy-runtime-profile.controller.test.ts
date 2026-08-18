@@ -36,7 +36,7 @@ function build(profileResolver?: { resolveProfile: ReturnType<typeof vi.fn> }) {
   const http = { axiosRef: { post: vi.fn().mockResolvedValue({ data: { content: 'ok' } }), get: vi.fn() } };
   const cls = { get: vi.fn(() => 'tenant-abc'), getId: vi.fn(() => 'req-1') };
   const config = { getConfigValue: vi.fn(() => 'http://localhost:8862') };
-  const selection = { resolveSmrSelection: vi.fn(async () => ({ provider: 'lm-studio', model: 'gemma-4' })) };
+  const selection = { resolveTextSelection: vi.fn(async () => ({ provider: 'lm-studio', model: 'gemma-4' })) };
 
   const ctrl = new TextProxyController(
     http as any,

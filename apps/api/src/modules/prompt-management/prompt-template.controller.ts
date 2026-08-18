@@ -8,7 +8,7 @@ import {
 } from '@arcaai/applications';
 import { Body, Controller, Delete, Get, Inject, Param, Patch, Post, Put, Query } from '@nestjs/common';
 import { ApiBearerAuth, ApiHeader, ApiOperation, ApiParam, ApiQuery, ApiResponse, ApiTags } from '@nestjs/swagger';
-import { Authorize, ExpectedVersion, RequiresIfMatch } from '../../decorators';
+import { Authorize, ExpectedVersion, RequiresIfMatch, ForbidApiKey } from '../../decorators';
 
 /**
  * End-user (clinician) prompt-template plane.
@@ -35,6 +35,15 @@ import { Authorize, ExpectedVersion, RequiresIfMatch } from '../../decorators';
 @ApiBearerAuth()
 @ApiTags('prompt-templates')
 @Controller('prompt-templates')
+// TASK-742 API-KEY-NOTE — CONSERVATIVE DEFAULT, AWAITING OWNER CLASSIFICATION.
+// Reason: personal (USER_PERSONAL) template self-service; TASK-708 flagged it as needing confirmation.
+// This route family declared nothing about API-key access, which under the
+// deny-by-default rule is a boot failure. Rather than guess a scope (guessing
+// permissive is how the original gap was created), it is closed explicitly.
+// Reversing it is a one-line change to @RequiredScopes('<scope>') once the
+// owner confirms a real API-key use case — see the TASK-708 README's
+// "Reachability changes awaiting owner review" table.
+@ForbidApiKey()
 export class PromptTemplateController {
   constructor(
     @Inject(IPromptManagementService)

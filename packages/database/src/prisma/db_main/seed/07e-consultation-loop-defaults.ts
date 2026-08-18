@@ -4,7 +4,8 @@
  *
  * ## Why this file exists
  *
- * A prior change turned the SIGNALLING gate (`harness.loop.enabled`) on, so a real
+ * A prior change turned the SIGNALLING gate on (that gate is now the `agenticLoop`
+ * subscription entitlement composed with `harness.loop.emergencyStop` — TASK-705), so a real
  * `context.added` now starts `ConsultationLoopWorkflow`. The workflow then
  * completed `phase: "DISABLED"`, because its pinned config's `enabled` is
  * DERIVED, never stored

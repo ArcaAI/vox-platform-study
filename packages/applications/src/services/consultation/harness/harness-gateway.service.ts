@@ -134,8 +134,8 @@ export interface HarnessConsultationEndingSignal {
   conversationLanguage?: string;
   dnaStyleId?: string;
   template?: string;
-  smrProvider?: string;
-  smrModel?: string;
+  textProvider?: string;
+  textModel?: string;
 }
 
 /**

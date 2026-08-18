@@ -8,8 +8,8 @@ import { SYSTEM_TENANT_ID, SYSTEM_USER_ID } from './00-constants';
  * GLOBAL-DEFAULT HarnessPolicy row that the clinical documentation loop reads
  * via its `fetch_policy` activity (apps/harness). This seed sets the SMR
  * generation default on that row:
- *   - smrProvider = 'lm-studio'
- *   - smrModel    = 'gemma-4-e2b-it-qat'
+ *   - textProvider = 'lm-studio'
+ *   - textModel    = 'gemma-4-e2b-it-qat'
  * (both were NULL → "let the SMR service choose"; the model
  * default moved from `gemma-4-e2b-it-sft-rlvr-medical` to the owner-declared
  * platform default `gemma-4-e2b-it-qat` — registry row `lms-gemma-4-e2b-it-qat`).
@@ -28,10 +28,10 @@ import { SYSTEM_TENANT_ID, SYSTEM_USER_ID } from './00-constants';
 
 /** The agreed SMR system default (overrides the NULL "service chooses"). */
 export const SYSTEM_HARNESS_POLICY_TEXT_DEFAULTS = {
-  smrProvider: 'lm-studio',
+  textProvider: 'lm-studio',
   // Owner decision (2026-07-17) — the platform summarization
   // default is gemma-4-e2b-it-qat (was gemma-4-e2b-it-sft-rlvr-medical).
-  smrModel: 'gemma-4-e2b-it-qat',
+  textModel: 'gemma-4-e2b-it-qat',
 } as const;
 
 /**
@@ -52,8 +52,8 @@ const HARNESS_POLICY_KNOB_DEFAULTS = {
   phiFailClosed: true,
   safetyProvider: 'lm-studio',
   safetyModel: 'granite-guardian-4.1-8b',
-  smrProvider: null as string | null,
-  smrModel: null as string | null,
+  textProvider: null as string | null,
+  textModel: null as string | null,
   maxRegen: 2,
   gateSlaSeconds: 86400,
   gateEscalationSeconds: 43200,
@@ -91,13 +91,13 @@ export const seedHarnessPolicy = async (
 ): Promise<{ success: true; action: 'created' | 'updated' | 'noop'; changeWritten: boolean }> => {
   console.log('Seeding SYSTEM HarnessPolicy SMR default (TASK-356 Phase 2)...');
 
-  const { smrProvider, smrModel } = SYSTEM_HARNESS_POLICY_TEXT_DEFAULTS;
+  const { textProvider, textModel } = SYSTEM_HARNESS_POLICY_TEXT_DEFAULTS;
   const existing = await client.harnessPolicy.findFirst({
     where: { tenantId: SYSTEM_TENANT_ID },
   });
 
   // Idempotent: the SMR default is already set — nothing to write or audit.
-  if (existing && existing.smrProvider === smrProvider && existing.smrModel === smrModel) {
+  if (existing && existing.textProvider === textProvider && existing.textModel === textModel) {
     console.log('  SYSTEM HarnessPolicy SMR default already set, skipping');
     return { success: true, action: 'noop', changeWritten: false };
   }
@@ -108,8 +108,8 @@ export const seedHarnessPolicy = async (
     const created = await client.harnessPolicy.create({
       data: {
         tenantId: SYSTEM_TENANT_ID,
-        smrProvider,
-        smrModel,
+        textProvider,
+        textModel,
         createdBy: SYSTEM_USER_ID,
       },
     });
@@ -132,7 +132,7 @@ export const seedHarnessPolicy = async (
   const before = snapshotKnobs(existing as Record<string, unknown>);
   const updated = await client.harnessPolicy.update({
     where: { id: (existing as { id: string }).id },
-    data: { smrProvider, smrModel },
+    data: { textProvider, textModel },
   });
   await client.harnessPolicyChange.create({
     data: {

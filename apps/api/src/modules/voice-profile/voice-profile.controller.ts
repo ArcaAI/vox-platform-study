@@ -19,7 +19,7 @@ import { FilesInterceptor } from '@nestjs/platform-express';
 import { ApiBearerAuth, ApiConsumes, ApiOperation, ApiParam, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { ClsService } from 'nestjs-cls';
 import { TenantOwnedResource } from '../../common';
-import { Authorize } from '../../decorators';
+import { Authorize, ForbidApiKey } from '../../decorators';
 import { EnrollBodyDto, VoiceProfileResponse } from './dto';
 
 const MAX_AUDIO_SIZE = 10 * 1024 * 1024; // 10 MB per file
@@ -28,6 +28,15 @@ const MAX_FILES = 3;
 @ApiBearerAuth()
 @ApiTags('voice-profile')
 @Controller('voice-profile')
+// TASK-742 API-KEY-NOTE — CONSERVATIVE DEFAULT, AWAITING OWNER CLASSIFICATION.
+// Reason: voice enrolment; ownership-checked but with no dedicated scope, and reached today by the browser SDK over JWT.
+// This route family declared nothing about API-key access, which under the
+// deny-by-default rule is a boot failure. Rather than guess a scope (guessing
+// permissive is how the original gap was created), it is closed explicitly.
+// Reversing it is a one-line change to @RequiredScopes('<scope>') once the
+// owner confirms a real API-key use case — see the TASK-708 README's
+// "Reachability changes awaiting owner review" table.
+@ForbidApiKey()
 export class VoiceProfileController {
   constructor(
     @Inject(IVoiceProfileService)

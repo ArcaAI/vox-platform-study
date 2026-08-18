@@ -45,27 +45,48 @@ class ExternalTextClient:
         *,
         settings: ExternalTextConfig,
         http_client: httpx.AsyncClient,
+        service_token: str | None = None,
     ) -> None:
         self.settings = settings
         self.http_client = http_client
         self.base_url = settings.base_url.rstrip("/")
+        # Owner decision D-D (2026-08-17): the caller resolves the ONE shared
+        # `INTERNAL_ACCESS_TOKEN` and passes it here. `None` ⇒ fall back to the
+        # legacy per-pair `NLP_EXTERNAL_TEXT_SERVICE_TOKEN` on the config, so an
+        # un-migrated environment (and every existing test) keeps working.
+        self._service_token = (
+            service_token if service_token is not None else settings.service_token.get_secret_value()
+        )
 
     async def generate_label(
         self,
         prompt: str,
         system_prompt: str | None = None,
-        tenant_id: str | None = None,
+        *,
+        tenant_id: str,
     ) -> str:
         """Post `prompt` to `text`'s `/generate` and return the generated
         label (the response's `content`, stripped). Raises
         `ExternalTextUnavailableError` when the retry budget is exhausted or
         the response carries no usable content — never guesses a label."""
         headers: dict[str, str] = {"Content-Type": "application/json"}
-        service_token = self.settings.service_token.get_secret_value()
-        if service_token:
-            headers["X-Service-Token"] = service_token
-        if tenant_id:
-            headers["X-Tenant-Id"] = tenant_id
+        if self._service_token:
+            headers["X-Service-Token"] = self._service_token
+        # TASK-737 — MANDATORY, and keyword-only above so it cannot be forgotten.
+        # `text` resolves the tenant's BYOK provider/credential from this header and
+        # TASK-735 derives funding/cost_basis from whichever tier supplied it, so a
+        # silently-omitted tenant mis-configures AND mis-bills the call. The former
+        # `if tenant_id:` guard made exactly that outcome invisible.
+        # Tenant-less internal work declares itself with a `tenantless:<reason>`
+        # marker; a blank value is a caller defect and raises.
+        resolved_tenant = (tenant_id or "").strip()
+        if not resolved_tenant:
+            raise ValueError(
+                "external text generate_label requires a tenant_id (TASK-737): the "
+                "gateway must inject it, or the caller must declare "
+                "'tenantless:<reason>'. An absent tenant is a caller defect."
+            )
+        headers["X-Tenant-Id"] = resolved_tenant
 
         body: dict[str, Any] = {"prompt": prompt, "stream": False}
         if system_prompt:

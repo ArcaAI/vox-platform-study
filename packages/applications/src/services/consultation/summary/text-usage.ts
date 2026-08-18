@@ -39,7 +39,7 @@ export interface TextUsageDetail {
   /** Correlation id, for log/trace joins. Never used as a billing key. */
   requestId: string | null;
   /** SMR's OWN provider key — translate with {@link toLedgerProvider} before emitting. */
-  smrProvider: string;
+  textProvider: string;
   model: string;
   endpointKind: LlmEndpointKind;
   interrupted: boolean;
@@ -81,8 +81,8 @@ const SELF_HOSTED_PROVIDERS: ReadonlySet<string> = new Set(['ollama', 'lm-studio
  * runtime, and failing closed here would drop real usage — real money — to
  * protect a naming convention.
  */
-export function toLedgerProvider(smrProvider: string): string {
-  const key = (smrProvider ?? '').trim().toLowerCase();
+export function toLedgerProvider(textProvider: string): string {
+  const key = (textProvider ?? '').trim().toLowerCase();
   return LEDGER_PROVIDER_BY_TEXT_KEY[key] ?? key;
 }
 
@@ -109,7 +109,7 @@ export function parseTextUsageDetail(raw: unknown): TextUsageDetail | null {
   return {
     taskId: typeof block.task_id === 'string' ? block.task_id : '',
     requestId: typeof block.request_id === 'string' && block.request_id.length > 0 ? block.request_id : null,
-    smrProvider: typeof block.provider === 'string' ? block.provider : '',
+    textProvider: typeof block.provider === 'string' ? block.provider : '',
     model: typeof block.model === 'string' ? block.model : '',
     endpointKind: endpointKind as LlmEndpointKind,
     interrupted: block.interrupted === true,
@@ -146,7 +146,7 @@ export function buildLlmUsageInput(params: BuildLlmUsageParams): UsageEventBatch
   const units = normalizeUnits(usage);
   if (units.length === 0) return null;
 
-  const provider = toLedgerProvider(usage.smrProvider);
+  const provider = toLedgerProvider(usage.textProvider);
 
   return {
     common: {
@@ -198,7 +198,7 @@ export function buildGuardrailUsageInput(params: BuildGuardrailUsageParams): Usa
   if (units.length === 0) return null;
 
   const requestId = usage.taskId || usage.requestId || params.fallbackRequestId || '';
-  const provider = toLedgerProvider(usage.smrProvider);
+  const provider = toLedgerProvider(usage.textProvider);
 
   return {
     common: {
@@ -297,7 +297,7 @@ export function buildLlmUsageInputFromTokenCounts(params: BuildLlmUsageFromToken
  * breakdown is a rate imprecision; losing the event is lost revenue.
  */
 function normalizeUnits(usage: TextUsageDetail): ReturnType<typeof toUsageUnitQuantities> {
-  const fromRaw = usage.raw ? toUsageUnitQuantities(normalizeLlmUsage(toLedgerProvider(usage.smrProvider), usage.endpointKind, usage.raw)) : [];
+  const fromRaw = usage.raw ? toUsageUnitQuantities(normalizeLlmUsage(toLedgerProvider(usage.textProvider), usage.endpointKind, usage.raw)) : [];
   if (fromRaw.length > 0) return fromRaw;
 
   return toUsageUnitQuantities({

@@ -26,6 +26,32 @@ logger = get_logger(__name__)
 router = APIRouter(prefix="/classify", tags=["NLP REST Classify"])
 
 
+def _require_tenant(tenant_id: str | None, task: str) -> None:
+    """TASK-737 — refuse tenant-scoped work that arrives with no tenant.
+
+    `X-Tenant-Id` is MANDATORY on every internal request carrying tenant-scoped
+    work (owner directive 2026-08-16); on this surface the gateway injects it into
+    the request BODY rather than a header (`apps/nlp` reads no inbound tenant
+    header anywhere). Either way the rule is the same: an absent tenant is a defect
+    in the CALLER, not something this service should paper over by delegating to
+    `text` with no tenant — which would resolve the platform default provider and
+    mis-attribute the spend, silently.
+
+    428 (not 400) mirrors the gateway's `RequiresIfMatch` convention: a mandatory
+    request precondition is missing.
+    """
+    if not (tenant_id or "").strip():
+        logger.error(f"nlp.tenant_header.missing task={task}")
+        raise HTTPException(
+            status_code=428,
+            detail=(
+                "tenant_id is required for tenant-scoped classification (TASK-737). "
+                "The gateway must inject it; declare 'tenantless:<reason>' for "
+                "genuinely tenant-less internal work."
+            ),
+        )
+
+
 @router.post("/text", response_model=TextClassificationResponse)
 async def classify_text(
     request: TextClassificationRequest,
@@ -151,10 +177,17 @@ async def classify_topic(
     if external_text_client is None:
         raise HTTPException(status_code=503, detail="Topic classification is not available")
 
+    # TASK-737 — the gateway MUST inject `tenant_id`; topic/intent delegation is
+    # per-tenant work (the instruction list is the tenant's own taxonomy), so an
+    # absent tenant is a CALLER defect and is refused rather than silently
+    # delegated to `text` with no tenant.
+    _require_tenant(request.tenant_id, "topic")
     prompt = _build_topic_prompt(request.text, request.instructions)
     try:
         async with inference_bound:
-            label = await external_text_client.generate_label(prompt, tenant_id=request.tenant_id)
+            label = await external_text_client.generate_label(
+                prompt, tenant_id=str(request.tenant_id)
+            )
         return TopicClassificationResponse(predicted_topic=label, available_topics=request.instructions)
     except ExternalTextUnavailableError as e:
         logger.error(f"Topic classification upstream (text) unavailable: {str(e)}")
@@ -185,10 +218,13 @@ async def classify_intent(
     if external_text_client is None:
         raise HTTPException(status_code=503, detail="Intent classification is not available")
 
+    _require_tenant(request.tenant_id, "intent")  # TASK-737 — see /topic above.
     prompt = _build_intent_prompt(request.text, request.instructions)
     try:
         async with inference_bound:
-            label = await external_text_client.generate_label(prompt, tenant_id=request.tenant_id)
+            label = await external_text_client.generate_label(
+                prompt, tenant_id=str(request.tenant_id)
+            )
         return IntentClassificationResponse(predicted_intent=label, available_intents=request.instructions)
     except ExternalTextUnavailableError as e:
         logger.error(f"Intent classification upstream (text) unavailable: {str(e)}")

@@ -84,7 +84,7 @@ function makeService() {
     // `.env.test` sets SECRETS_PROVIDER=vault, under which the PHI guard is
     // fail-closed and refuses to persist without a secrets service.
     { getSecretOptional: vi.fn().mockResolvedValue('') } as never,
-    { resolveSmrSelection: vi.fn().mockResolvedValue({ provider: 'lm-studio', model: 'medgemma' }) } as never,
+    { resolveTextSelection: vi.fn().mockResolvedValue({ provider: 'lm-studio', model: 'medgemma' }) } as never,
     undefined, // configResolver
     usageLedger as never,
     unitOfWork as never,

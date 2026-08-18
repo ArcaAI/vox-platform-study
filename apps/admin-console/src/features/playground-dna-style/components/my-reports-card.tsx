@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { IconDna, IconStar } from '@tabler/icons-react';
+import { IconDna, IconStar, IconTrash } from '@tabler/icons-react';
 import { toast } from 'sonner';
 import { cn } from '@arcaai/ui';
 import { Badge } from '@arcaai/ui/components/shadcn/badge';
@@ -10,10 +10,12 @@ import { Card, CardAction, CardContent, CardHeader } from '@arcaai/ui/components
 import { Skeleton } from '@arcaai/ui/components/shadcn/skeleton';
 import { Spinner } from '@arcaai/ui/components/shadcn/spinner';
 import { GatewayError } from '@/shared/api';
+import { ConfirmDialog } from '@/shared/confirm/confirm-dialog';
 import { formatDateTime } from '@/shared/format';
 import { EmptyState } from '@/shared/state/empty-state';
 import { ErrorState } from '@/shared/state/error-state';
-import { useMyReports, useMyVersions, useSetDefaultReport } from '../api';
+import { useEraseMyReport, useMyReports, useMyVersions, useSetDefaultReport } from '../api';
+import { erasureSummary } from './dna-erasure-card';
 
 /** GET :reportId/versions — the DnaVersion history, newest first (frame 53). */
 function VersionTimeline({ reportId }: { reportId: string }) {
@@ -58,15 +60,47 @@ function VersionTimeline({ reportId }: { reportId: string }) {
  * DnaVersion timeline below. The timeline follows the my-style report until
  * a row is picked.
  */
-export function MyReportsCard({ reports, myStyleReportId }: { reports: ReturnType<typeof useMyReports>; myStyleReportId: string | null }) {
+export function MyReportsCard({
+  reports,
+  myStyleReportId,
+  gated,
+  onGate,
+}: {
+  reports: ReturnType<typeof useMyReports>;
+  myStyleReportId: string | null;
+  gated: boolean;
+  onGate: () => void;
+}) {
   const setDefault = useSetDefaultReport();
+  const erase = useEraseMyReport();
   const [selected, setSelected] = useState<string | null>(null);
+  const [eraseTarget, setEraseTarget] = useState<string | null>(null);
   const selectedId = selected ?? myStyleReportId;
 
   function handleSetDefault(reportId: string) {
     setDefault.mutate(reportId, {
       onSuccess: () => toast.success('Default report updated'),
       onError: (error) => toast.error(error instanceof GatewayError ? error.message : 'Could not set the default report.'),
+    });
+  }
+
+  /** Single-report erasure (DELETE :reportId) — same 403 gate as the rest. */
+  function handleErase() {
+    if (!eraseTarget) return;
+    erase.mutate(eraseTarget, {
+      onSuccess: (result) => {
+        setEraseTarget(null);
+        setSelected(null);
+        toast.success(erasureSummary(result));
+      },
+      onError: (error) => {
+        setEraseTarget(null);
+        if (error instanceof GatewayError && error.status === 403) {
+          onGate();
+          return;
+        }
+        toast.error(error instanceof GatewayError ? error.message : 'Could not erase the report.');
+      },
     });
   }
 
@@ -118,6 +152,16 @@ export function MyReportsCard({ reports, myStyleReportId }: { reports: ReturnTyp
                   Set default
                 </Button>
               ) : null}
+              <Button
+                variant="ghost"
+                size="icon"
+                aria-label={`Erase report ${report.id}`}
+                onClick={() => setEraseTarget(report.id)}
+                disabled={gated || erase.isPending}
+                className="text-destructive hover:text-destructive"
+              >
+                {erase.isPending && erase.variables === report.id ? <Spinner /> : <IconTrash aria-hidden />}
+              </Button>
             </li>
           );
         })}
@@ -146,6 +190,23 @@ export function MyReportsCard({ reports, myStyleReportId }: { reports: ReturnTyp
           )}
         </div>
       </CardContent>
+      <ConfirmDialog
+        open={eraseTarget !== null}
+        onOpenChange={(open) => {
+          if (!open && !erase.isPending) setEraseTarget(null);
+        }}
+        title="Erase this report"
+        description={
+          <>
+            This permanently erases report <span className="text-foreground font-mono font-medium">{eraseTarget}</span> and all of its versions. Your
+            other reports and your DNA on/off toggle are left untouched. It cannot be undone.
+          </>
+        }
+        confirmLabel="Erase report"
+        destructive
+        isPending={erase.isPending}
+        onConfirm={handleErase}
+      />
     </Card>
   );
 }

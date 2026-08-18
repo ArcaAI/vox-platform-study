@@ -22,7 +22,7 @@ export function SummarizationTab() {
       {/* R2 — the tab ends with its own source, nothing from the other two tabs. */}
       <TabExampleCode
         files={SUMMARIZATION_EXAMPLE_FILES}
-        description="How useSMR() is driven: department/visit/context inputs, the transcript source selector, and both the streaming and single-response paths."
+        description="How useText() is driven: department/visit/context inputs, the transcript source selector, and both the streaming and single-response paths."
       />
     </div>
   );

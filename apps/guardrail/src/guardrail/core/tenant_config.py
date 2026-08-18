@@ -117,6 +117,28 @@ TASK_KEY_GUARDRAIL_GROUNDEDNESS = "guardrail.groundedness"
 # Platform-wide rows live on the SYSTEM tenant (house rule: NULL-tenant is banned).
 SYSTEM_TENANT_ID = "00000000-0000-0000-0000-000000000000"
 
+# TASK-737 — a DECLARED tenant-less internal call.
+#
+# Some internal work genuinely has no tenant (the platform-wide async
+# `job_processor`, whose Redis job envelope has no tenant column at all; a by-slug
+# model-weight lookup; a control-plane pull). Before this marker those calls were
+# INDISTINGUISHABLE from an `X-Tenant-Id` dropped in transit, and this resolver had
+# to guess. Guessing is what made the failure mode invisible: because a tenant may
+# only TIGHTEN relative to SYSTEM, resolving SYSTEM on an absent header silently
+# downgrades a tenant that chose a stricter safety posture to the platform floor,
+# with no error raised anywhere.
+#
+# The value is deliberately NOT UUID-shaped, so a future bug that treats it as a
+# real tenant id trips an existing UUID check instead of addressing some tenant's
+# rows. `tenantless:` alone is not enough — the reason slug is REQUIRED so a log
+# line naming the value explains itself.
+TENANTLESS_PREFIX = "tenantless:"
+
+
+def is_tenantless_marker(tenant_id: str | None) -> bool:
+    """True when the caller DECLARED it has no tenant (vs. simply omitting one)."""
+    return bool(tenant_id) and str(tenant_id).strip().startswith(TENANTLESS_PREFIX)
+
 # Internal keys of the resolved per-tenant field map (cache entries).
 KEY_PROVIDER = "provider"
 KEY_MODEL = "model"
@@ -348,7 +370,19 @@ class TenantConfigResolver:
         A blank/absent ``tenant_id`` resolves SYSTEM directly — never a customer
         tenant (see the module docstring).
         """
-        requested = (tenant_id or "").strip() or None
+        raw = (tenant_id or "").strip()
+        # A DECLARED tenant-less call routes to SYSTEM explicitly, and is NOT an
+        # anomaly. Recognising it here — before the `or None` coercion — is what
+        # keeps "absent" available as an unambiguous defect signal: after TASK-737
+        # every legitimate caller either names a tenant or names its reason.
+        if is_tenantless_marker(raw):
+            logger.debug(
+                "guardrail.tenant.declared_tenantless",
+                marker=raw,
+                task_key=task_key,
+            )
+            raw = ""
+        requested = raw or None
         primary_tenant = requested or SYSTEM_TENANT_ID
 
         keys = await self._get_for_tenant(primary_tenant, task_key)

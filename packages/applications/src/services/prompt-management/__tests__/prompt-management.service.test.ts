@@ -1709,7 +1709,7 @@ describe('PromptManagementService', () => {
     });
 
     const defaultTaskDefaults = () => ({
-      getEffective: vi.fn().mockResolvedValue({ taskKey: 'smr.test', model: { provider: 'lm-studio', sourceUri: 'resolved-medgemma' } }),
+      getEffective: vi.fn().mockResolvedValue({ taskKey: 'text.test', model: { provider: 'lm-studio', sourceUri: 'resolved-medgemma' } }),
     });
 
     const buildTextService = (
@@ -1794,14 +1794,14 @@ describe('PromptManagementService', () => {
     });
 
     // ── model selection ──────────────────────────────────
-    it('resolves provider+model via the smr.test AiTaskDefault and posts both to SMR', async () => {
+    it('resolves provider+model via the text.test AiTaskDefault and posts both to SMR', async () => {
       const existing = createMockTemplateEntity({ id: 'tpl-1', version: 1, content: 'Summarize {{topic}}' });
       mockTemplateRepo.findById.mockResolvedValue(existing);
       const { svc, httpMock, aiTaskDefaultService } = buildTextService(wordsOfLength(60));
 
       const ack = await svc.startPromptTemplateTest('tpl-1', { variables: { topic: 'asthma' } } as never);
 
-      expect(aiTaskDefaultService.getEffective).toHaveBeenCalledWith('smr.test', 'tenant-1');
+      expect(aiTaskDefaultService.getEffective).toHaveBeenCalledWith('text.test', 'tenant-1');
       const [, payload] = httpMock.axiosRef.post.mock.calls[0];
       expect((payload as { provider?: string }).provider).toBe('lm-studio');
       expect((payload as { model?: string }).model).toBe('resolved-medgemma');
@@ -2074,7 +2074,7 @@ describe('PromptManagementService', () => {
     });
 
     // ─── provider selection, dry-run/version, golden-case ───
-    describe('provider/model selection (smr.test routing tier)', () => {
+    describe('provider/model selection (text.test routing tier)', () => {
       it('forwards an explicit caller-supplied provider/model pair to SMR verbatim', async () => {
         const existing = createMockTemplateEntity({ id: 'tpl-1', version: 1 });
         mockTemplateRepo.findById.mockResolvedValue(existing);
@@ -2115,14 +2115,14 @@ describe('PromptManagementService', () => {
       });
 
       // ── BUG-018 test 5/6: fail-closed miss, and miss ≠ error ──
-      it('fails closed with a BadRequestException naming smr.test when nothing resolves', async () => {
+      it('fails closed with a BadRequestException naming text.test when nothing resolves', async () => {
         const existing = createMockTemplateEntity({ id: 'tpl-1', version: 1 });
         mockTemplateRepo.findById.mockResolvedValue(existing);
         const aiTaskDefaultService = { getEffective: vi.fn().mockResolvedValue({ modelSlug: null, source: null, model: null }) };
         const { svc, httpMock } = buildTextService(wordsOfLength(60), { aiTaskDefaultService });
 
         await expect(svc.startPromptTemplateTest('tpl-1', {} as never)).rejects.toThrow(BadRequestException);
-        await expect(svc.startPromptTemplateTest('tpl-1', {} as never)).rejects.toThrow(/smr\.test/);
+        await expect(svc.startPromptTemplateTest('tpl-1', {} as never)).rejects.toThrow(/text\.test/);
         expect(httpMock.axiosRef.post).not.toHaveBeenCalled();
       });
 

@@ -33,6 +33,54 @@ if TYPE_CHECKING:
     GuardianLike = OpenAICompatGuardianProvider
 
 
+# ---------------------------------------------------------------------------
+# `X-Tenant-Id` is MANDATORY on tenant-scoped work (owner directive 2026-08-16).
+#
+# Guardrail decisions must be ATTRIBUTABLE. Every read site here used to be a bare
+# `request.headers.get("X-Tenant-Id")` with no None-check, so an absent header resolved
+# the SYSTEM row — and because a tenant may only TIGHTEN relative to SYSTEM, that
+# silently served the LOOSEST admissible posture to a tenant that had chosen a stricter
+# one, with no error anywhere. An absent header is a defect in the CALLER.
+#
+# 428 (not 400) is the platform-wide spelling for a missing request PRECONDITION: the
+# gateway's `RequiresIfMatch` uses it, and `apps/nlp` + `apps/text` already return it for
+# exactly this condition. One status code, one meaning.
+#
+# The DECLARED `tenantless:<reason>` marker is the sanctioned exception — genuinely
+# tenant-less internal work (a platform job queue, a control-plane pull) says so instead
+# of arriving indistinguishable from a header dropped in transit. That distinction is
+# precisely what makes ABSENT safe to refuse.
+# ---------------------------------------------------------------------------
+
+
+def require_tenant_id(request: Request) -> str:
+    """Return the declared tenant (or `tenantless:` marker); refuse absence with 428.
+
+    Fails CLOSED and EARLY — before any model selection, credential resolution or engine
+    call — so a mis-attributed request never resolves config from the wrong tier.
+    """
+    from fastapi import HTTPException
+
+    raw = (request.headers.get("X-Tenant-Id") or "").strip()
+    if not raw:
+        logger.error(
+            "guardrail.tenant_header.missing",
+            detail=(
+                "internal request carried no X-Tenant-Id; refusing rather than resolving "
+                "the SYSTEM floor and silently loosening a tenant's safety posture. This "
+                "is a CALLER defect."
+            ),
+        )
+        raise HTTPException(
+            status_code=428,
+            detail=(
+                "X-Tenant-Id is required on requests carrying tenant-scoped work. "
+                "Declare 'tenantless:<reason>' for genuinely tenant-less internal work."
+            ),
+        )
+    return raw
+
+
 def get_settings(request: Request) -> Settings:
     """Retrieve settings from app.state (set during lifespan)."""
     return cast("Settings", request.app.state.settings)
@@ -68,6 +116,9 @@ async def get_resolved_guardian_provider(request: Request) -> GuardianLike:
     """
     from fastapi import HTTPException
 
+    # 428 before anything else: attribution is required whether or not DB config is on.
+    tenant_id = require_tenant_id(request)
+
     settings = request.app.state.settings
     default_provider: GuardianLike = request.app.state.guardian_provider
 
@@ -87,7 +138,6 @@ async def get_resolved_guardian_provider(request: Request) -> GuardianLike:
         resolve_guardian_engine,
     )
 
-    tenant_id = request.headers.get("X-Tenant-Id")
     try:
         tenant_cfg = await resolver.resolve(tenant_id)
     except TenantSelectionVetoedError as exc:
@@ -364,10 +414,11 @@ async def get_gliner_model_id(request: Request) -> str:
 
     from guardrail.core.tenant_config import TASK_KEY_GUARDRAIL_SAFETY
 
+    tenant_id = require_tenant_id(request)  # 428 before any DB selection
     try:
         return await _resolve_aux_model_id(
             request.app.state,
-            request.headers.get("X-Tenant-Id"),
+            tenant_id,
             TASK_KEY_GUARDRAIL_SAFETY,
         )
     except ModelUnavailableError as exc:
@@ -392,6 +443,10 @@ async def acquire_groundedness_verifier(
     """
     from guardrail.services.groundedness_nli import GroundednessNliVerifier
 
+    # 428 first: a groundedness verdict is a tenant-scoped safety decision, and the
+    # test seam below must not become a way to skip attribution.
+    tenant_id = require_tenant_id(request)
+
     app_state = request.app.state
     pre_seeded = getattr(app_state, "groundedness_verifier", None)
     if pre_seeded is not None:
@@ -407,7 +462,7 @@ async def acquire_groundedness_verifier(
     from guardrail.core.tenant_config import TASK_KEY_GUARDRAIL_GROUNDEDNESS
 
     model_id = await _resolve_aux_model_id(
-        app_state, request.headers.get("X-Tenant-Id"), TASK_KEY_GUARDRAIL_GROUNDEDNESS
+        app_state, tenant_id, TASK_KEY_GUARDRAIL_GROUNDEDNESS
     )
     config = settings.groundedness.model_copy(update={"model_id": model_id})
     await refresh_model_cache_retention(app_state)

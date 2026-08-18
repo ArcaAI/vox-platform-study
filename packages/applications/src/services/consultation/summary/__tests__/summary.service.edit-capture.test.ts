@@ -115,7 +115,7 @@ const makeMocks = () => ({
     assemble: vi.fn().mockResolvedValue({ userPrompt: 'p', systemPrompt: '', hyperparameters: {}, responseFormat: null, resolvedFrom: 'default' }),
   },
   harnessAudit: { append: vi.fn().mockResolvedValue({ id: 'a-1' }) },
-  harnessPolicy: { resolveSmrSelection: vi.fn().mockResolvedValue({ provider: 'lm-studio', model: 'medgemma' }) },
+  harnessPolicy: { resolveTextSelection: vi.fn().mockResolvedValue({ provider: 'lm-studio', model: 'medgemma' }) },
 });
 
 const build = (m: ReturnType<typeof makeMocks>, configResolver?: unknown) =>

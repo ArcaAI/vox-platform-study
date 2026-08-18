@@ -1,10 +1,10 @@
-"""Centralized exception hierarchy for SMR."""
+"""Centralized exception hierarchy for Text."""
 
 from __future__ import annotations
 
 
-class SmrError(Exception):
-    """Base exception for SMR."""
+class TextError(Exception):
+    """Base exception for Text."""
 
     def __init__(self, message: str, *, error_code: str = "INTERNAL_ERROR"):
         self.message = message
@@ -12,7 +12,7 @@ class SmrError(Exception):
         super().__init__(message)
 
 
-class ProviderError(SmrError):
+class ProviderError(TextError):
     """Error from an LLM provider."""
 
     def __init__(self, message: str, *, provider: str = "unknown"):
@@ -28,7 +28,7 @@ class ProviderTimeoutError(ProviderError):
         self.error_code = "PROVIDER_TIMEOUT"
 
 
-class RateLimitError(SmrError):
+class RateLimitError(TextError):
     """Rate limit exceeded."""
 
     def __init__(self, message: str = "Rate limit exceeded", *, retry_after: float | None = None):
@@ -36,7 +36,7 @@ class RateLimitError(SmrError):
         super().__init__(message, error_code="RATE_LIMITED")
 
 
-class InputValidationError(SmrError):
+class InputValidationError(TextError):
     """Input validation failed."""
 
     def __init__(self, message: str):
@@ -46,7 +46,7 @@ class InputValidationError(SmrError):
 class ModelNotSelectedError(InputValidationError):
     """No model resolved for a cloud-provider generation request.
 
-    SMR is a stateless gateway (see ``core/config.py``): the gateway resolves
+    Text is a stateless gateway (see ``core/config.py``): the gateway resolves
     the tenant/task model (``AiTaskDefault``) and injects it on every request.
     Provider/model SELECTION is ``failMode=closed`` (Configuration Tiers,
     ``09-infrastructure-devops.md``) — a cloud provider adapter must never
@@ -76,7 +76,7 @@ class VisionNotSupportedError(InputValidationError):
         self.error_code = "VISION_NOT_SUPPORTED"
 
 
-class ProviderCredentialsError(SmrError):
+class ProviderCredentialsError(TextError):
     """No usable credential for a cloud provider generation request.
 
     cloud providers (Azure OpenAI / OpenAI / Anthropic) are BYOK — the
@@ -101,7 +101,7 @@ class ProviderCredentialsError(SmrError):
         super().__init__(message, error_code="PROVIDER_CREDENTIALS_MISSING")
 
 
-class CircuitOpenError(SmrError):
+class CircuitOpenError(TextError):
     """Circuit breaker is open for the requested provider."""
 
     def __init__(
@@ -111,7 +111,7 @@ class CircuitOpenError(SmrError):
         super().__init__(message, error_code="CIRCUIT_OPEN")
 
 
-class QueueFullError(SmrError):
+class QueueFullError(TextError):
     """Provider queue is at capacity."""
 
     def __init__(self, message: str = "Queue is full", *, provider: str = "unknown"):
@@ -119,7 +119,7 @@ class QueueFullError(SmrError):
         super().__init__(message, error_code="QUEUE_FULL")
 
 
-class QueueTimeoutError(SmrError):
+class QueueTimeoutError(TextError):
     """Timed out waiting in provider queue."""
 
     def __init__(self, message: str = "Queue wait timed out", *, provider: str = "unknown"):
@@ -127,14 +127,14 @@ class QueueTimeoutError(SmrError):
         super().__init__(message, error_code="QUEUE_TIMEOUT")
 
 
-class ShutdownError(SmrError):
+class ShutdownError(TextError):
     """Service is shutting down."""
 
     def __init__(self, message: str = "Service is shutting down"):
         super().__init__(message, error_code="SHUTTING_DOWN")
 
 
-class ConcurrencyLimitError(SmrError):
+class ConcurrencyLimitError(TextError):
     """Too many concurrent requests."""
 
     def __init__(self, message: str = "Too many concurrent requests", *, provider: str = "unknown"):
@@ -142,14 +142,14 @@ class ConcurrencyLimitError(SmrError):
         super().__init__(message, error_code="CONCURRENCY_LIMIT")
 
 
-class ContentBlockedError(SmrError):
+class ContentBlockedError(TextError):
     """Content blocked by guardrails."""
 
     def __init__(self, message: str = "Content blocked by safety filter"):
         super().__init__(message, error_code="CONTENT_BLOCKED")
 
 
-class ProviderNotFoundError(SmrError):
+class ProviderNotFoundError(TextError):
     """Requested provider is not registered."""
 
     def __init__(self, message: str, *, provider: str = "unknown"):
@@ -157,7 +157,7 @@ class ProviderNotFoundError(SmrError):
         super().__init__(message, error_code="PROVIDER_NOT_FOUND")
 
 
-class PoolUnhealthyError(SmrError):
+class PoolUnhealthyError(TextError):
     """Requested provider pool is known-unhealthy and no usable fallback was supplied.
 
     Raised by ``services/pool_router.resolve_pool_route`` (TASK-725 Task 2) when the

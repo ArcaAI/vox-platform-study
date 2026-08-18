@@ -153,9 +153,6 @@ export function classifyTextError(
   }
 }
 
-/** @deprecated Use {@link classifyTextError}. Same identity. */
-export const classifySmrError = classifyTextError;
-
 // =============================================================================
 // Retry Utility (extracted from useArca — HOOK-07)
 // =============================================================================

@@ -40,7 +40,7 @@ list of hand-maintained twins it was built to stop growing.
 | `parseAsyncEnvelope<T>(value)` | Refuse-if-unknown parse. Returns `null` for ANY conformance problem, including an unknown `schemaVersion` — the caller MUST NOT proceed on `null`. |
 | `ClaimCheckRef` / `claimCheckRefProblems(value)` | The claim-check shape, reused verbatim from `apps/harness/src/harness/temporal/claim_check.py:64-80`. |
 | `MAX_IDEMPOTENCY_KEY_LENGTH`, `idempotencyKeyProblems(key)` | The idempotency-key grammar, reused verbatim from `usageLedger/idempotency-keys.ts`. |
-| `AsyncIdempotencyKey` | Intent-derived key recipes (`sttSegment`, `smrChunk`, `workflowNode`, `webhookDelivery`) — see the design doc §3.5 recipe table. |
+| `AsyncIdempotencyKey` | Intent-derived key recipes (`sttSegment`, `textChunk`, `workflowNode`, `webhookDelivery`) — see the design doc §3.5 recipe table. |
 | `encodeResumeToken(transport, cursor)` / `decodeResumeToken(token)` | The opaque `base64url(JSON({v,t,c}))` resume-token convention (§3.6). |
 | `RESUME_FROM_BEGINNING` | The well-known `"0-0"` Redis "from the start" sentinel. |
 | `assertAsyncConformance(producer)` | The reusable conformance suite (see below). Never throws — returns a problem list; empty means the producer conforms. |

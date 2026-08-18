@@ -12,9 +12,11 @@ import { ModelCategory, ModelTaskType, ModelType, AiModelSource, AiModelFormat }
  * `tests/contracts/ai-model-providers.contract.test.ts`.
  */
 export const AI_MODEL_PROVIDERS = [
-  // Ollama removed entirely (TASK-736, owner directive 2026-08-16) — deliberately
-  // absent, not merely disabled. Mirrors the canonical seed list in
+  // `ollama` is selectable with no platform-seeded catalog rows — the provider
+  // logic stays, the model catalog went (TASK-736, owner decision 2026-08-17).
+  // Mirrors the canonical seed list in
   // packages/database/.../seed/ai-models/shared.ts, which this is pinned to.
+  'ollama',
   'lm-studio',
   'azure',
   'bedrock',
@@ -33,7 +35,7 @@ export const AI_MODEL_PROVIDERS = [
  * ENUMERATE (`admin/ai-models/discovery`). Cloud providers have nothing to
  * "discover", so the register action refuses them.
  */
-export const DISCOVERABLE_AI_MODEL_PROVIDERS = ['lm-studio', 'vllm', 'llama-cpp'] as const;
+export const DISCOVERABLE_AI_MODEL_PROVIDERS = ['ollama', 'lm-studio', 'vllm', 'llama-cpp'] as const;
 
 export class CreateModelRequest {
   @ApiProperty({

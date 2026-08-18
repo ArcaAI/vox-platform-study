@@ -24,12 +24,12 @@ def require_model(model: str | None, *, provider: str) -> str:
     The five cloud sub-configs (``core/config.py``) carry no runtime
     fallback model — provider/model SELECTION is ``failMode=closed``, so an
     unresolved value must raise, never substitute a vendor model. Local
-    built-in engines (LM Studio/OpenAICompat, vLLM, llama.cpp) do NOT call
-    this guard; they keep their topology-level model default.
+    built-in engines (Ollama, LM Studio/OpenAICompat, vLLM, llama.cpp) do
+    NOT call this guard; they keep their topology-level model default.
     """
     if not model or not model.strip():
         raise ModelNotSelectedError(
-            f"No model selected for provider '{provider}': SMR does not "
+            f"No model selected for provider '{provider}': Text does not "
             "substitute a default cloud model — the caller must supply "
             "'model' (resolved via AiTaskDefault upstream).",
             provider=provider,

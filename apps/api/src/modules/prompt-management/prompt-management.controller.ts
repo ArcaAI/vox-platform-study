@@ -279,7 +279,7 @@ export class PromptManagementController {
   @ApiOperation({
     summary: 'Submit a prompt-template test run (returns immediately)',
     description:
-      'Assembles the prompt, resolves the `smr.test` provider/model and submits a ' +
+      'Assembles the prompt, resolves the `text.test` provider/model and submits a ' +
       'STREAMING generation job to SMR, returning an ack in well under a second. ' +
       'Open the returned `streamUrl` over SSE for tokens, then call ' +
       '`POST :id/test/finalize` with the `taskId` to score and persist. ' +
@@ -287,7 +287,7 @@ export class PromptManagementController {
       'This route no longer writes, so it carries NO `If-Match` requirement.',
   })
   @ApiParam({ name: 'id', description: 'Prompt template ID', type: String })
-  @ApiResponse({ status: 400, description: 'No `smr.test` model configured, or an invalid provider/model pair.' })
+  @ApiResponse({ status: 400, description: 'No `text.test` model configured, or an invalid provider/model pair.' })
   @ApiResponse({ status: 404, description: 'Template not found' })
   async testTemplate(@Param('id') id: string, @Body() request: TestPromptTemplateRequest): Promise<PromptTestAckResponse> {
     return this.promptService.startPromptTemplateTest(id, request);

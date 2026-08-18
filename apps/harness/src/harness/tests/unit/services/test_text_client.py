@@ -1,8 +1,8 @@
-"""Tests for the SMR tool client (POST /api/v1/generate, stream:false).
+"""Tests for the Text tool client (POST /api/v1/generate, stream:false).
 
 The client
 must always send ``stream:false``, pass the SOAP ``response_format`` through
-untouched, omit unset optional hyperparameters, and parse the SMR
+untouched, omit unset optional hyperparameters, and parse the Text
 ``GenerateResponse`` (content/model/usage/latency_ms/finish_reason).
 """
 
@@ -14,7 +14,7 @@ import json
 import httpx
 import pytest
 
-from harness.services.smr_client import SmrClient, SmrServiceError
+from harness.services.text_client import TextClient, TextServiceError
 
 
 def _capture(content: str = '{"subjective": "ok"}'):
@@ -39,11 +39,11 @@ def _capture(content: str = '{"subjective": "ok"}'):
     return seen, handler
 
 
-class TestSmrClient:
+class TestTextClient:
     @pytest.mark.asyncio
     async def test_generate_posts_stream_false_and_passes_response_format(self):
         seen, handler = _capture()
-        client = SmrClient("http://smr:8862", transport=httpx.MockTransport(handler))
+        client = TextClient("http://smr:8862", transport=httpx.MockTransport(handler))
         response_format = {
             "type": "json_schema",
             "json_schema": {"type": "object", "properties": {"subjective": {"type": "string"}}},
@@ -51,6 +51,7 @@ class TestSmrClient:
         }
 
         await client.generate(
+            tenant_id="11111111-1111-1111-1111-111111111111",
             prompt="Summarize the consult.",
             system_prompt="You are a clinical scribe.",
             response_format=response_format,
@@ -75,9 +76,9 @@ class TestSmrClient:
     @pytest.mark.asyncio
     async def test_generate_parses_response(self):
         _seen, handler = _capture(content='{"subjective": "Patient reports cough."}')
-        client = SmrClient("http://smr:8862", transport=httpx.MockTransport(handler))
+        client = TextClient("http://smr:8862", transport=httpx.MockTransport(handler))
 
-        result = await client.generate(prompt="hi")
+        result = await client.generate(tenant_id="11111111-1111-1111-1111-111111111111", prompt="hi")
 
         assert result.content == '{"subjective": "Patient reports cough."}'
         assert result.model == "gpt-4o"
@@ -89,9 +90,9 @@ class TestSmrClient:
     @pytest.mark.asyncio
     async def test_generate_includes_provider_and_model_when_set(self):
         seen, handler = _capture()
-        client = SmrClient("http://smr:8862", transport=httpx.MockTransport(handler))
+        client = TextClient("http://smr:8862", transport=httpx.MockTransport(handler))
 
-        await client.generate(prompt="hi", provider="azure-openai", model="gpt-4o", top_p=0.9)
+        await client.generate(tenant_id="11111111-1111-1111-1111-111111111111", prompt="hi", provider="azure-openai", model="gpt-4o", top_p=0.9)
 
         body = json.loads(seen["request"].content)
         assert body["provider"] == "azure-openai"
@@ -101,12 +102,12 @@ class TestSmrClient:
     @pytest.mark.asyncio
     async def test_generate_attaches_idempotency_key_header(self):
         # The durable generate carries a deterministic Idempotency-Key so
-        # SMR can dedup a worker-crash replay instead of re-billing the model. Mirrors the
+        # Text can dedup a worker-crash replay instead of re-billing the model. Mirrors the
         # api_client header contract (``Idempotency-Key``), not a body field.
         seen, handler = _capture()
-        client = SmrClient("http://smr:8862", transport=httpx.MockTransport(handler))
+        client = TextClient("http://smr:8862", transport=httpx.MockTransport(handler))
 
-        await client.generate(prompt="hi", idempotency_key="wf-run-1:generate")
+        await client.generate(tenant_id="11111111-1111-1111-1111-111111111111", prompt="hi", idempotency_key="wf-run-1:generate")
 
         req = seen["request"]
         assert req.headers["Idempotency-Key"] == "wf-run-1:generate"
@@ -117,22 +118,22 @@ class TestSmrClient:
     async def test_generate_omits_idempotency_header_when_unset(self):
         # No key supplied → no header (preserve the wire shape for non-durable calls).
         seen, handler = _capture()
-        client = SmrClient("http://smr:8862", transport=httpx.MockTransport(handler))
+        client = TextClient("http://smr:8862", transport=httpx.MockTransport(handler))
 
-        await client.generate(prompt="hi")
+        await client.generate(tenant_id="11111111-1111-1111-1111-111111111111", prompt="hi")
 
         assert "idempotency-key" not in seen["request"].headers
 
     @pytest.mark.asyncio
     async def test_generate_attaches_service_token_header(self):
-        # SMR's ServiceAuthMiddleware requires X-Service-Token whenever
+        # Text's ServiceAuthMiddleware requires X-Service-Token whenever
         # TEXT_SERVICE_TOKEN is configured — the client must present it.
         seen, handler = _capture()
-        client = SmrClient(
+        client = TextClient(
             "http://smr:8862", service_token="tok-1", transport=httpx.MockTransport(handler)
         )
 
-        await client.generate(prompt="hi")
+        await client.generate(tenant_id="11111111-1111-1111-1111-111111111111", prompt="hi")
 
         assert seen["request"].headers["X-Service-Token"] == "tok-1"
 
@@ -140,15 +141,15 @@ class TestSmrClient:
     async def test_generate_omits_service_token_header_when_unset(self):
         # No token configured (local dev-bypass case) → no header sent.
         seen, handler = _capture()
-        client = SmrClient("http://smr:8862", transport=httpx.MockTransport(handler))
+        client = TextClient("http://smr:8862", transport=httpx.MockTransport(handler))
 
-        await client.generate(prompt="hi")
+        await client.generate(tenant_id="11111111-1111-1111-1111-111111111111", prompt="hi")
 
         assert "x-service-token" not in seen["request"].headers
 
 
-class TestSmrClientStats:
-    """the client captures the SMR ``stats`` block onto the
+class TestTextClientStats:
+    """the client captures the Text ``stats`` block onto the
     parsed result as an additive, backward-compatible field. ``stats`` may be null on a
     legacy cache hit — the client must degrade to ``None`` and never throw."""
 
@@ -184,17 +185,17 @@ class TestSmrClientStats:
                 },
             )
 
-        client = SmrClient("http://smr:8862", transport=httpx.MockTransport(handler))
-        result = await client.generate(prompt="hi")
+        client = TextClient("http://smr:8862", transport=httpx.MockTransport(handler))
+        result = await client.generate(tenant_id="11111111-1111-1111-1111-111111111111", prompt="hi")
         assert result.stats == stats
 
     @pytest.mark.asyncio
     async def test_stats_is_none_when_absent(self):
-        # Legacy cache-hit path: SMR returns no ``stats`` block → the client degrades
+        # Legacy cache-hit path: Text returns no ``stats`` block → the client degrades
         # to None (never raises over missing stats).
         _seen, handler = _capture()
-        client = SmrClient("http://smr:8862", transport=httpx.MockTransport(handler))
-        result = await client.generate(prompt="hi")
+        client = TextClient("http://smr:8862", transport=httpx.MockTransport(handler))
+        result = await client.generate(tenant_id="11111111-1111-1111-1111-111111111111", prompt="hi")
         assert result.stats is None
 
 
@@ -222,9 +223,9 @@ class TestGenerateLostResponseNoReinvoke:
             calls["n"] += 1
             raise exc_factory(request)
 
-        client = SmrClient("http://smr-c104:8862", transport=httpx.MockTransport(handler))
-        with pytest.raises(SmrServiceError) as ei:
-            await client.generate(prompt="Summarize the consult.")
+        client = TextClient("http://smr-c104:8862", transport=httpx.MockTransport(handler))
+        with pytest.raises(TextServiceError) as ei:
+            await client.generate(tenant_id="11111111-1111-1111-1111-111111111111", prompt="Summarize the consult.")
         # The prompt reached the model EXACTLY once — never re-invoked.
         assert calls["n"] == 1
         # The error is tagged as a post-send failure so the activity can mark the
@@ -242,9 +243,9 @@ class TestGenerateLostResponseNoReinvoke:
             calls["n"] += 1
             raise httpx.ConnectError("connection refused", request=request)
 
-        client = SmrClient("http://smr-c104b:8862", transport=httpx.MockTransport(handler))
-        with pytest.raises(SmrServiceError) as ei:
-            await client.generate(prompt="hi")
+        client = TextClient("http://smr-c104b:8862", transport=httpx.MockTransport(handler))
+        with pytest.raises(TextServiceError) as ei:
+            await client.generate(tenant_id="11111111-1111-1111-1111-111111111111", prompt="hi")
         assert calls["n"] == 3  # retried to the budget (pre-send is safe)
         assert ei.value.after_send is False
 
@@ -264,12 +265,12 @@ class TestGenerateLostResponseNoReinvoke:
             await asyncio.sleep(0.5)  # hang past the 0.05s per-call timeout
             return httpx.Response(200, json={"content": "{}"})
 
-        client = SmrClient("http://smr-c104c:8862", transport=httpx.MockTransport(handler))
-        with pytest.raises((SmrServiceError, TimeoutError)) as ei:
-            await client.generate(prompt="Summarize the consult.")
+        client = TextClient("http://smr-c104c:8862", transport=httpx.MockTransport(handler))
+        with pytest.raises((TextServiceError, TimeoutError)) as ei:
+            await client.generate(tenant_id="11111111-1111-1111-1111-111111111111", prompt="Summarize the consult.")
         # The model was invoked EXACTLY once — the per-call timeout is not re-issued.
         assert calls["n"] == 1
-        # Surfaces as a non-retryable post-send SMR failure (so the activity marks the
+        # Surfaces as a non-retryable post-send Text failure (so the activity marks the
         # Temporal retry non-retryable too), NOT a bare retryable TimeoutError.
-        assert isinstance(ei.value, SmrServiceError)
+        assert isinstance(ei.value, TextServiceError)
         assert ei.value.after_send is True

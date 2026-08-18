@@ -1,6 +1,6 @@
 """Google Vertex AI (Gemini) LLM provider — first-class tenant-BYO provider.
 
-Maps SMR's ``generate``/``generate_stream`` contract onto the ``google-genai``
+Maps Text's ``generate``/``generate_stream`` contract onto the ``google-genai``
 Vertex client. A Vertex client is bound to a ``(project, location)`` pair; the
 tenant BYO credential is a service-account JSON (``ProviderOverride.api_key``)
 plus its ``project``/``location``. Mirrors the request-scoped, override-wins

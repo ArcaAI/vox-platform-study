@@ -185,13 +185,13 @@ export class LiveSummaryStatsDto {
 
   @ApiPropertyOptional({
     description:
-      "The AiTaskDefault routing key this flush's SMR call resolved through (TASK-552 Lane B) — 'smr.live' for the live running-note tier. Lets the console/stat cards show WHICH tier (and therefore which admin-managed model) actually served this flush, distinct from the one-shot/finalize tier.",
+      "The AiTaskDefault routing key this flush's SMR call resolved through (TASK-552 Lane B) — 'text.live' for the live running-note tier. Lets the console/stat cards show WHICH tier (and therefore which admin-managed model) actually served this flush, distinct from the one-shot/finalize tier.",
   })
   task_key?: string | null;
 
   @ApiPropertyOptional({
     description:
-      "TASK-635 — whether this flush's model came from the session agent's frozen `llmOverrides.live` ('agent-override') or from the tenant's per-flush `smr.live` AiTaskDefault ('task-default').",
+      "TASK-635 — whether this flush's model came from the session agent's frozen `llmOverrides.live` ('agent-override') or from the tenant's per-flush `text.live` AiTaskDefault ('task-default').",
   })
   selection_source?: string | null;
 }
@@ -292,7 +292,7 @@ export class LiveSummaryEventDto {
     description:
       'True when the most recent SMR generation call failed. `runningSummary`/`sections` reflect the last successfully generated content (or are empty on a first-flush failure) — never fabricated. Clients should render a visible degraded/stale indicator rather than treating the payload as fresh.',
   })
-  smrFailed?: boolean;
+  textFailed?: boolean;
 
   @ApiProperty({ description: 'ISO-8601 timestamp of when this snapshot was produced' })
   updatedAt: string;

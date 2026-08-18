@@ -69,7 +69,7 @@ model DepartmentAgent {
   //   { live?: { aiModelSlug }, finalize?: { aiModelSlug } }   (OD-3b)
   // Validated against ENABLED TEXT_GENERATION AiModel rows at write time;
   // read-time precedence is agent override → tenant AiTaskDefault
-  // (smr.live / smr.finalize) → fail-closed. NEVER one global field — a
+  // (text.live / text.finalize) → fail-closed. NEVER one global field — a
   // low-latency live model must not silently drive finalize (RF-4).
   llmOverrides Json? @db.JsonB
 

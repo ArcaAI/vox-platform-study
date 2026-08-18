@@ -123,7 +123,13 @@ describe('AiInferenceClient — URL resolution', () => {
     }
   });
 
-  it('omits X-Tenant-Id when no CLS tenant is available (internal/service calls)', async () => {
+  it('DECLARES tenant-less-ness instead of omitting X-Tenant-Id when there is no CLS tenant', async () => {
+    // TASK-737 — this test previously asserted the exact ambiguity the ticket removes.
+    // An omitted header was indistinguishable from one dropped in transit, so the
+    // receiving service had to guess; and because tenants may only TIGHTEN relative to
+    // SYSTEM, guessing silently downgraded a stricter tenant to the platform floor.
+    // This surface backs the Agent Playground, which a SUPER_ADMIN legitimately drives
+    // with no working tenant selected — a real tenant-less caller, which must now say so.
     const cls = { get: vi.fn(() => undefined) };
     const client = new AiInferenceClient(httpService as never, undefined, undefined, cls as never);
     axiosPost.mockResolvedValue({ data: {} });
@@ -131,7 +137,10 @@ describe('AiInferenceClient — URL resolution', () => {
     await client.classifyTokens({ text: 'x' });
 
     const [, , options] = axiosPost.mock.calls[0];
-    expect(options?.headers?.['X-Tenant-Id']).toBeUndefined();
+    expect(options?.headers?.['X-Tenant-Id']).toBe('tenantless:platform-operator');
+    // Never UUID-shaped: a future bug that treats it as a tenant id must trip an
+    // existing uuid check rather than address some tenant's rows.
+    expect(options?.headers?.['X-Tenant-Id']).not.toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-/i);
   });
 
   it('suggestDiagnosis POSTs the NLP /api/v1/diagnosis/suggestions endpoint', async () => {

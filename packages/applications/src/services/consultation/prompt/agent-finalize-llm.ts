@@ -2,15 +2,15 @@
  * The FINALIZE half of the per-task agent LLM override.
  *
  * Precedence (RF-4, binding): agent `llmOverrides.finalize` → the tenant's
- * `smr.finalize` AiTaskDefault → fail-closed. This helper owns only the first
+ * `text.finalize` AiTaskDefault → fail-closed. This helper owns only the first
  * step; the tenant tier and the Wave-1 A4 single fallback retry stay exactly
- * where they are (`HarnessPolicyService.resolveSmrSelection` /
- * `resolveSmrFallbackSelection`), untouched.
+ * where they are (`HarnessPolicyService.resolveTextSelection` /
+ * `resolveTextFallbackSelection`), untouched.
  *
  * WHY A FREE FUNCTION AND NOT A METHOD ON THE LIVE RESOLVER. The live resolver
  * (`LiveAgentResolutionService.resolveLiveLlm`) is the `live` half and is
  * deliberately FAIL-OPEN — a running consultation must never be failed by a
- * model-selection problem, and degrading to the tenant `smr.live` default is
+ * model-selection problem, and degrading to the tenant `text.live` default is
  * today's behaviour. Finalize is the opposite posture: model SELECTION is
  * FAIL-CLOSED (rule 09 §Configuration Tiers — an unresolved selection raises,
  * nothing is substituted), because silently finalizing a clinical note on a
@@ -59,7 +59,7 @@ export async function resolveAgentFinalizeSelection(
     llmOverrides = agent?.llmOverrides ?? null;
   } catch (error) {
     deps.logger?.warn({
-      message: 'Session agent could not be loaded for the finalize LLM override — using the tenant smr.finalize default',
+      message: 'Session agent could not be loaded for the finalize LLM override — using the tenant text.finalize default',
       agentId,
       error: error instanceof Error ? error.message : String(error),
     });
@@ -75,7 +75,7 @@ export async function resolveAgentFinalizeSelection(
     throw new ServiceUnavailableException(`The session agent's configured finalize model '${slug}' is not available`);
   }
   // The catalog seeds `azure`; SMR registers it as `azure-openai`
-  // (mirrors HarnessPolicyService.resolveSmrSelection and resolveLiveLlm).
+  // (mirrors HarnessPolicyService.resolveTextSelection and resolveLiveLlm).
   const provider = model.provider === 'azure' ? 'azure-openai' : (model.provider ?? '');
   if (!provider) {
     throw new ServiceUnavailableException(`The session agent's configured finalize model '${slug}' has no provider`);

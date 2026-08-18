@@ -48,7 +48,7 @@ class TestSubmit:
         assert msg_id == "1234567890-0"
         mock_redis.xadd.assert_awaited_once()
         stream_key = mock_redis.xadd.call_args.args[0]
-        assert stream_key == "smr:workerpool:embedding"
+        assert stream_key == "text:workerpool:embedding"
 
     @pytest.mark.asyncio
     async def test_submit_serializes_the_full_envelope(self, mock_redis, envelope):
@@ -99,7 +99,7 @@ class TestDepth:
         depth = await queue.depth(WorkerTaskType.EMBEDDING)
 
         assert depth == 7
-        mock_redis.xlen.assert_awaited_once_with("smr:workerpool:embedding")
+        mock_redis.xlen.assert_awaited_once_with("text:workerpool:embedding")
 
 
 class TestClaimAndAck:
@@ -109,7 +109,7 @@ class TestClaimAndAck:
 
         raw = envelope.model_dump_json()
         mock_redis.xreadgroup.return_value = [
-            ("smr:workerpool:embedding", [("111-0", {"envelope": raw})])
+            ("text:workerpool:embedding", [("111-0", {"envelope": raw})])
         ]
         queue = WorkerPoolQueue(redis=mock_redis)
 
@@ -150,5 +150,5 @@ class TestClaimAndAck:
         await queue.ack(WorkerTaskType.EMBEDDING, "111-0")
 
         mock_redis.xack.assert_awaited_once_with(
-            "smr:workerpool:embedding", "smr:workerpool:embedding:workers", "111-0"
+            "text:workerpool:embedding", "text:workerpool:embedding:workers", "111-0"
         )

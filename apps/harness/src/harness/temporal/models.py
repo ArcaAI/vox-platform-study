@@ -14,7 +14,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import AliasChoices, BaseModel, ConfigDict, Field
 
 from harness.guides.retrieval.retriever import RetrievedChunk
 from harness.redaction.engine import RedactionManifest, RedactionRule
@@ -105,9 +105,20 @@ class HarnessDocWorkflowInput(BaseModel):
     # marker, no command — so old histories replay byte-identically.
     redaction_rules: list[RedactionRule] = Field(default_factory=list)
     template: str | None = None
-    # SMR generation defaults (None => SMR service default).
-    smr_provider: str | None = None
-    smr_model: str | None = None
+    # Text generation defaults (None => Text service default).
+    # TASK-740 renamed these from ``smr_provider``/``smr_model``. These payloads are
+    # RECORDED IN TEMPORAL HISTORY, so a bare rename makes every pre-740 history fail
+    # to decode ("Failed decoding arguments") on replay — or, on an ``extra="ignore"``
+    # model, silently lose the selection. The legacy key is a VALIDATION alias ONLY:
+    # nothing serializes it, so new histories record ``text_provider``/``text_model``
+    # and only old ones are read through it. Remove once no pre-740 history can still
+    # be replayed (rule 06 §Temporal — replay compatibility).
+    text_provider: str | None = Field(
+        default=None, validation_alias=AliasChoices("text_provider", "smr_provider")
+    )
+    text_model: str | None = Field(
+        default=None, validation_alias=AliasChoices("text_model", "smr_model")
+    )
     gate: HarnessGateConfig = Field(default_factory=HarnessGateConfig)
 
 
@@ -294,11 +305,22 @@ class HarnessPolicy(BaseModel):
     phi_fail_closed: bool = True
     safety_provider: str = "lm-studio"
     safety_model: str = "granite-guardian-4.1-8b"
-    smr_provider: str | None = None
-    smr_model: str | None = None
+    # TASK-740 renamed these from ``smr_provider``/``smr_model``. These payloads are
+    # RECORDED IN TEMPORAL HISTORY, so a bare rename makes every pre-740 history fail
+    # to decode ("Failed decoding arguments") on replay — or, on an ``extra="ignore"``
+    # model, silently lose the selection. The legacy key is a VALIDATION alias ONLY:
+    # nothing serializes it, so new histories record ``text_provider``/``text_model``
+    # and only old ones are read through it. Remove once no pre-740 history can still
+    # be replayed (rule 06 §Temporal — replay compatibility).
+    text_provider: str | None = Field(
+        default=None, validation_alias=AliasChoices("text_provider", "smr_provider")
+    )
+    text_model: str | None = Field(
+        default=None, validation_alias=AliasChoices("text_model", "smr_model")
+    )
     # LLM-as-judge selection resolved from the SYSTEM ``AiTaskDefault``
     # key ``harness.judge`` (SUPER_ADMIN-owned). NULLABLE by design (like
-    # ``smr_provider``): ``None`` ⇒ the SYSTEM default is missing/disabled, and the
+    # ``text_provider``): ``None`` ⇒ the SYSTEM default is missing/disabled, and the
     # inferential pass FAILS CLOSED (degrades) rather than falling back to the
     # env ``HARNESS_JUDGE_PROVIDER``/``HARNESS_JUDGE_MODEL`` selection — env carries
     # only the judge CONNECTION config (base_url/api_key), never the selection.
@@ -369,10 +391,10 @@ class HarnessPolicy(BaseModel):
             phi_fail_closed=_get("phiFailClosed", defaults.phi_fail_closed),
             safety_provider=_get("safetyProvider", defaults.safety_provider),
             safety_model=_get("safetyModel", defaults.safety_model),
-            # smr_provider/smr_model are intentionally nullable (None => SMR default).
-            smr_provider=data.get("smrProvider"),
-            smr_model=data.get("smrModel"),
-            # judge selection is nullable pass-through (like smr_*): a
+            # text_provider/text_model are intentionally nullable (None => Text default).
+            text_provider=data.get("textProvider"),
+            text_model=data.get("textModel"),
+            # judge selection is nullable pass-through (like text_*): a
             # null ``judgeProvider``/``judgeModel`` from apps/api means the SYSTEM
             # ``harness.judge`` default is missing → the inferential pass fails closed.
             # NO env fallback here (that would re-introduce env-based selection).
@@ -597,9 +619,16 @@ class GenerateInput(BaseModel):
 
     prompt: str
     system_prompt: str | None = None
+    # TASK-737 — the tenant this work belongs to, forwarded as `X-Tenant-Id` on the
+    # outbound Text call. ADDITIVE-OPTIONAL (default "") so an old history still
+    # deserializes and replays; going forward every workflow populates it. An empty
+    # value reaching `TextClient.generate` is a CALLER defect and raises there rather
+    # than silently resolving the platform default.
+    tenant_id: str = ""
+
     # OPTIONAL out-of-band refs for the (large) prompts, carried
     # alongside the inline fields. The ``generate`` activity resolves inline-or-ref at
-    # entry before the PHI-egress guard + SMR call. Additive-optional ⇒ replay-safe (an
+    # entry before the PHI-egress guard + Text call. Additive-optional ⇒ replay-safe (an
     # old input deserializes them to None ⇒ the inline prompt path, byte-identical).
     prompt_ref: ClaimCheckRef | None = None
     system_prompt_ref: ClaimCheckRef | None = None
@@ -1017,7 +1046,7 @@ class ApplyRedactionInput(BaseModel):
     legacy history) makes the transform a no-op — byte-identical to the prior
     behaviour — so the workflow insertion is safe behind its ``workflow.patched``
     era. The note is threaded inline-or-ref (same claim-check contract as the other
-    text-carrying activities); the SMR fields drive the OPTIONAL semantic-rewrite pass.
+    text-carrying activities); the Text fields drive the OPTIONAL semantic-rewrite pass.
     """
 
     model_config = ConfigDict(extra="forbid")
@@ -1025,7 +1054,14 @@ class ApplyRedactionInput(BaseModel):
     note_text: str
     note_text_ref: ClaimCheckRef | None = None
     rules: list[RedactionRule] = Field(default_factory=list)
-    # SMR context for the optional semantic-rewrite pass (rewrite rules with NO
+    # TASK-737 — the tenant this work belongs to, forwarded as `X-Tenant-Id` on the
+    # outbound Text call. ADDITIVE-OPTIONAL (default "") so an old history still
+    # deserializes and replays; going forward every workflow populates it. An empty
+    # value reaching `TextClient.generate` is a CALLER defect and raises there rather
+    # than silently resolving the platform default.
+    tenant_id: str = ""
+
+    # Text context for the optional semantic-rewrite pass (rewrite rules with NO
     # literal replacement). The PHI-egress guard + idempotency key mirror ``generate``.
     response_format: dict[str, Any] | None = None
     provider: str | None = None
@@ -1040,7 +1076,7 @@ class ApplyRedactionResult(BaseModel):
     """Output of ``apply_redaction``: the transformed note + its audit manifest.
 
     ``failed_closed`` is True when the transform could NOT be confirmed (a
-    malformed rule reached the engine, or the required SMR rewrite pass failed).
+    malformed rule reached the engine, or the required Text rewrite pass failed).
     The workflow turns ``failed_closed`` into a forced FLAG — a note the doctor
     expected redacted must never slip through silently. The manifest carries spans
     + counts only, NEVER removed PHI plaintext.
@@ -1318,8 +1354,19 @@ class LoopFinalizeRequest(BaseModel):
     conversation_language: str = "en"
     dna_style_id: str | None = None
     template: str | None = None
-    smr_provider: str | None = None
-    smr_model: str | None = None
+    # TASK-740 renamed these from ``smr_provider``/``smr_model``. These payloads are
+    # RECORDED IN TEMPORAL HISTORY, so a bare rename makes every pre-740 history fail
+    # to decode ("Failed decoding arguments") on replay — or, on an ``extra="ignore"``
+    # model, silently lose the selection. The legacy key is a VALIDATION alias ONLY:
+    # nothing serializes it, so new histories record ``text_provider``/``text_model``
+    # and only old ones are read through it. Remove once no pre-740 history can still
+    # be replayed (rule 06 §Temporal — replay compatibility).
+    text_provider: str | None = Field(
+        default=None, validation_alias=AliasChoices("text_provider", "smr_provider")
+    )
+    text_model: str | None = Field(
+        default=None, validation_alias=AliasChoices("text_model", "smr_model")
+    )
 
 
 class ConsultationEndingSignal(BaseModel):

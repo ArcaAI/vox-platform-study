@@ -12,8 +12,8 @@ import { IsOptional, IsString, IsInt, IsBoolean, IsUUID, Min } from 'class-valid
  * now belong.
  *
  *  - `provider`/`model` — caller-selected LLM (forwarded verbatim; omit both to
- *    resolve the `smr.test` AiTaskDefault, tenant row → SYSTEM row. There is no
- *    `smr.finalize` fallback: that was harness coupling, removed here).
+ *    resolve the `text.test` AiTaskDefault, tenant row → SYSTEM row. There is no
+ *    `text.finalize` fallback: that was harness coupling, removed here).
  *  - `dryRun` — assemble and return the prompt WITHOUT generating anything at
  *    all (no SMR call, no job, no tokens billed).
  *  - `versionNumber` — test an immutable pinned `PromptVersion` snapshot
@@ -44,7 +44,7 @@ export class TestPromptTemplateRequest {
   @ApiPropertyOptional({
     description:
       'Caller-selected LLM provider, forwarded to SMR verbatim (must be paired with `model`). ' +
-      'Omit both to resolve the `smr.test` AiTaskDefault (tenant row → SYSTEM row).',
+      'Omit both to resolve the `text.test` AiTaskDefault (tenant row → SYSTEM row).',
     example: 'lm-studio',
   })
   @IsOptional()

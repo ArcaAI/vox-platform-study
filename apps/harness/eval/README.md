@@ -51,6 +51,38 @@ conda run -n arcaenv python -m harness.eval.ci \
   --output eval-report.json
 ```
 
+## The golden set the gate runs: `curated-v2.0.0`
+
+Full design spec: `src/harness/eval/golden/curated_v2_spec.md`. Summary:
+
+| | |
+|---|---|
+| Size | 12 synthetic source consultations → **36 cases** (12 `quality` + 24 `calibration`) → **288 paired ratings** (v1: 18 / 144) |
+| Gradient | 5 designed levels, each with a named anchor exemplar: **L5** gold · **L4** presentation-only · **L3** one wrong-context misalignment or one pertinent omission · **L2** one major seeded error · **L1** multiple major errors + structural collapse |
+| Seeded taxonomy | one class per L2–L4 variant so a failure is attributable: `omission_material` (7) · `fabrication` (6) · `dose_error` (4) · `temporal_error` (4) · `laterality_error` (3) · `misattribution` (3) · `false_negation` (3) · plus `verbosity`, `uncited_assertion`, `under_synthesis`, `omission_potentially_pertinent` |
+| Stratification | 12 specialties · length short 12 / medium 15 / long 9 · complexity low 12 / moderate 15 / high 9 |
+| Split | `dev` 24 / `holdout` 12, stratified — so a threshold or labelling rule can never be tuned on the cases used to validate it |
+| Provenance | **AI-authored, rubric-literal, `clinician_review_status: pending`.** Never presented as a clinician rating. |
+| PHI | PHI-free **by construction** — no names/dates/addresses, generic subjects, obviously-synthetic `SYN-####` record tags. Locked by a regex test. |
+| Review | `golden/review/curated_v2_review.md` (generated) → `curated_v2_amendments.json` → `apply_amendments.py` → ships **`curated-v2.1.0`**, never an in-place edit |
+
+**Why it was rebuilt.** v1's `quality` lane was 12 good notes, so a judge that answers
+"good" to every good note looks correct — judge SD was exactly `0.000` and that lane
+contributed nothing to a variance-ratio statistic. v2 designs the spread in: reference SD
+is **1.313** across 288 ratings, and every score point 1–5 is exercised.
+
+`curated_v1.json` is retained **unmutated** so the 2026-06-07 and 2026-08-17 runs stay
+interpretable against the exact set they scored.
+
+### What was deliberately NOT done
+
+`curated_v2` is **not** the clinician-authored `clinical_v1` set and does not replace it.
+Multi-rater labelling with adjudication and a human-ICC precondition (`clinical_v1_spec.md`:
+N ≥ 132, ≥ 3 blinded raters/case, ICC_human ≥ 0.75) cannot be AI-generated — its content
+*is* inter-human disagreement. v2 is the best set obtainable without a clinician panel, and
+is explicitly the **input** to one. See `curated_v2_spec.md` §10 for the full applied/skipped
+table.
+
 ## Golden-set lanes — quality vs calibration
 
 A `GoldenCase.role` field separates two genuinely different eval purposes so the
@@ -138,6 +170,39 @@ carries `allow_failure: true` — it will never redden an ordinary shared-CI pip
 supported way to get a real, blocking PASS/FAIL verdict before merging harness-generator
 changes is to run it locally, against your own running LM Studio instance:
 
+### One command
+
+```bash
+apps/harness/eval/run-gate.sh
+```
+
+That is the whole supported path. The script **resolves the judge from the database**
+(SYSTEM `harness.judge`, fail-closed — no hardcoded model id), preflights the backend,
+**warm-loads the model**, ensures the loaded context has room for prompt + reasoning +
+JSON (reloading at `JUDGE_CTX` if not), runs `python -m harness.eval.ci` over
+**`curated_v2.json`**, then runs the promptfoo contract step **on the same set**, and exits
+with the gate's own status (`0` PASS / `1` FAIL / `2` backend or selection unavailable) so
+any scheduler surfaces a failure.
+
+Overridable via env: `JUDGE_BASE_URL`, `GOLDEN_SET`, `OUTPUT`, `CONDA_ENV`, `JUDGE_CTX`,
+`LMS_BIN`, `PYTHON_BIN`, plus any `HARNESS_JUDGE_*` / `HARNESS_EVAL_*` variable (the script
+only supplies defaults). `JUDGE_MODEL` is also overridable, but **setting it bypasses the
+DB-resident selection** — use it only to A/B a candidate judge, never as the standing
+configuration. `PYTHON_BIN` is an escape hatch for shells where the `conda` function is
+unavailable; point it at `~/miniconda3/envs/arcaenv/bin/python`.
+
+> **Warm-load matters more than anything else here.** LM Studio JIT-loads a model on
+> first use. Measured 2026-08-17 on the owner's instance: the **cold** call took **19.9 s**
+> and the very next **warm** call took **0.098 s** — a 200× difference for the same
+> 2-token request. Three earlier sessions measured the cold call, extrapolated ~16-20 s
+> per judge call across ~50-70 calls, and concluded the run needed 20-45+ minutes; it does
+> not. `run-gate.sh` pays that load once up front and prints both numbers so the mistake
+> cannot be repeated.
+
+### The underlying invocation
+
+`run-gate.sh` is a thin wrapper — nothing is hidden in it. The equivalent raw command:
+
 ```bash
 cd apps/harness
 PYTHONPATH=src \
@@ -159,11 +224,309 @@ conda run -n arcaenv python -m harness.eval.ci \
 Requires LM Studio running locally with `google/gemma-4-e4b` loaded and served at
 `:1234` (`curl http://localhost:1234/v1/models` should list it). `HARNESS_EVAL_CASE_CONCURRENCY=1`
 matches LM Studio's single-process, no-parallel-decode-slots reality — see
-`harness.core.llm_concurrency`'s own default cap. See TASK-713 README §7 "Local run —
-measured wall-clock and per-metric result" for the actual measured runtime and outcome
-of this exact command, run to completion against the owner's real LM Studio instance.
+`harness.core.llm_concurrency`'s own default cap.
 
-## Live gate results — LM Studio `google/gemma-4-e4b` on `curated_v1` (18 cases)
+**Swapping the judge backend is a config change, not a code edit.** Every selection knob
+above is an env var; `harness.eval.judge.providers.build_judge_client` dispatches on
+`HARNESS_JUDGE_PROVIDER` and raises (fail-closed, never a silent local fallback) when the
+chosen provider's config is incomplete. Point `JUDGE_BASE_URL` at vLLM, or set
+`HARNESS_JUDGE_PROVIDER=azure|bedrock` with that provider's variables, and no Python
+changes.
+
+### When to run it — so a non-blocking gate does not die unnoticed
+
+`harness-eval-gate` is `allow_failure: true` behind an opt-in, so nothing in shared CI will
+ever tell you this gate rotted. Two habits replace that:
+
+| Trigger | Who | Why |
+|---|---|---|
+| **Before merging** any change to the harness generator, its prompts, the judge config, or `curated_v1.json` | the author | This is the change class the gate exists to catch; the MR pipeline will not catch it for you. |
+| **On a periodic cadence** (weekly is the current expectation) on a machine that already runs LM Studio | whoever owns that machine | Catches drift from a model/LM-Studio upgrade rather than from a code change. Either `cron`/`launchd` invoking `run-gate.sh` (it exits non-zero on FAIL, so a mail-on-failure cron entry is sufficient), or a **scheduled GitLab pipeline** with `RUN_INFRA_TESTS=true` on a runner that can reach `:1234` — the job definition already supports that with no further change. |
+
+Record any run whose verdict differs from the table below in
+`docs/implementation/TASK-713-Harness-Eval-Gate/README.md` §7, with its date.
+
+## Live gate results — CURRENT run (2026-08-18, `curated-v2.0.0`): **FAIL on ICC — 0.7306**
+
+Full run via `run-gate.sh` against the owner's live LM Studio, judge resolved from the DB
+(`gemma-4-e4b-it-qat`, SYSTEM `harness.judge`), **36/36 cases scored, 0 dropped**, sequential,
+**wall clock 3555 s (59.3 min)**.
+
+```
+[eval-gate] judge selection: gemma-4-e4b-it-qat (provider=openai_compat,
+            slug=lms-gemma-4-e4b-it-qat, tier=system) — resolved from the database
+2026-08-18 02:06:41 [info  ] eval_gate_complete
+  aggregates={'pdsqi_citation': 4.4167, 'pdsqi_accurate': 4.8333, 'pdsqi_thorough': 4.8333,
+   'pdsqi_useful': 5.0, 'pdsqi_organized': 5.0, 'pdsqi_comprehensible': 5.0,
+   'pdsqi_succinct': 4.9167, 'pdsqi_synthesized': 5.0, 'pdsqi_mean': 4.875,
+   'faithfulness': 0.99375, 'icc': 0.730609029424829, 'gwet_ac2': 0.919597839640613}
+  failures=['icc=0.7306 < 0.8 (Gwet AC2=0.9196, n=288)']
+  golden_set_version=curated-v2.0.0 judge_model=gemma-4-e4b-it-qat status=FAIL
+
+[eval-gate] FAIL  report=eval-report-curated-v2.json
+  - FAILED: icc=0.7306 < 0.8 (Gwet AC2=0.9196, n=288)
+step 1 wall clock: 3555s   exit=1
+
+── 5/5 promptfoo output-contract ──  ✓ 36 passed (100%)  0 failed  0 errors
+
+════ eval gate summary ════
+step 1 (PDSQI/faithfulness/ICC): FAIL  (3555s)
+step 2 (promptfoo contract):     PASS
+```
+
+| Metric | Threshold | 2026-08-18 (`curated_v2`) | 2026-08-17 (`curated_v1`) | Gate |
+| --- | --- | --- | --- | --- |
+| `pdsqi_accurate` | ≥ 4.0 | 4.833 | 5.00 | ✅ |
+| `pdsqi_thorough` | ≥ 4.0 | 4.833 | 5.00 | ✅ |
+| `pdsqi_mean` | ≥ 4.0 | 4.875 | 5.00 | ✅ |
+| `faithfulness` | ≥ 0.85 | 0.9938 | 0.9920 | ✅ |
+| `icc` | ≥ 0.8 | **0.7306** | 0.6568 | ❌ |
+| `gwet_ac2` | (reported) | 0.9196 | 0.9439 | — |
+| n (paired ratings) | — | **288** | 144 | — |
+| **Gate status** | | **FAIL** | FAIL | ❌ |
+
+**The gate still fails, and that is reported as-is.** No threshold was moved, `icc_gate_enabled`
+was not touched, and no case was dropped. What changed is that the failure is now
+*informative*: ICC rose 0.6568 → 0.7306 on twice the ratings, and the residual gap is
+localised to two specific judge behaviours (below) rather than to a reference set that
+could not discriminate.
+
+### Decomposition (`python -m harness.eval.calibration.breakdown`, offline, no model calls)
+
+| stratum | n | ICC(2,1) | Gwet AC2 | judge mean | ref mean | judge SD | ref SD | exact | within 1 |
+|---|---|---|---|---|---|---|---|---|---|
+| ALL | 288 | +0.7306 | 0.9196 | 4.455 | 4.323 | 1.131 | 1.262 | 0.729 | 0.899 |
+| lane=quality | 96 | +0.0000 | 0.9807 | 4.875 | 5.000 | 0.528 | **0.000** | 0.938 | 0.958 |
+| lane=calibration | 192 | +0.7286 | 0.8664 | 4.245 | 3.984 | 1.285 | 1.431 | 0.625 | 0.870 |
+| **split=dev** | 192 | +0.7045 | 0.9236 | 4.505 | 4.380 | 1.073 | 1.187 | 0.734 | 0.911 |
+| **split=holdout** | 96 | **+0.7682** | 0.9113 | 4.354 | 4.208 | 1.240 | 1.399 | 0.719 | 0.875 |
+| level=L5 | 96 | +0.0000 | 0.9807 | 4.875 | 5.000 | 0.528 | 0.000 | 0.938 | 0.958 |
+| level=L4 | 40 | +0.3628 | 0.9249 | 4.775 | 4.450 | 0.577 | 0.846 | 0.625 | 0.925 |
+| level=L3 | 48 | +0.2540 | 0.9121 | 4.667 | 4.583 | 0.859 | 0.710 | 0.667 | 0.875 |
+| level=L2 | 72 | +0.6953 | 0.9049 | 4.347 | 4.319 | 1.189 | 1.231 | 0.722 | 0.931 |
+| level=L1 | 32 | +0.5878 | **0.6497** | **2.719** | **1.750** | 1.529 | 1.107 | **0.344** | 0.656 |
+| complexity=low | 96 | +0.6652 | 0.9510 | 4.677 | 4.552 | 0.827 | 0.961 | 0.792 | 0.948 |
+| complexity=moderate | 120 | +0.8009 | 0.9355 | 4.467 | 4.275 | 1.173 | 1.315 | 0.733 | 0.908 |
+| complexity=high | 72 | +0.6580 | 0.8335 | 4.139 | 4.097 | 1.335 | 1.474 | 0.639 | 0.819 |
+
+| dimension | n | ICC(2,1) | Gwet AC2 | judge mean | ref mean | judge SD | exact |
+|---|---|---|---|---|---|---|---|
+| `accurate` | 36 | **+0.8661** | 0.9111 | 3.861 | 3.667 | 1.496 | 0.694 |
+| `useful` | 36 | **+0.8653** | 0.9784 | 4.694 | 4.556 | 0.951 | 0.833 |
+| `organized` | 36 | +0.7974 | 0.9579 | 4.722 | 4.444 | 0.849 | 0.806 |
+| `synthesized` | 36 | +0.7929 | 0.8660 | 4.111 | 3.722 | 1.282 | 0.472 |
+| `thorough` | 36 | +0.6451 | 0.9010 | 4.583 | 4.306 | 0.937 | 0.778 |
+| `citation` | 36 | +0.5932 | 0.8035 | 3.861 | 4.500 | 1.588 | 0.750 |
+| `succinct` | 36 | +0.1482 | 0.9453 | 4.806 | 4.694 | **0.401** | 0.694 |
+| `comprehensible` | 36 | **−0.0000** | 0.9603 | 5.000 | 4.694 | **0.000** | 0.806 |
+
+### What the failure now says
+
+1. **The zero-variance lane inverted, which is the intended outcome.** In v1 the *judge*
+   was constant on the quality lane (`judge SD 0.000`). Now the *reference* is constant
+   there by design (all L5 anchors are 5s) and the judge varies (`judge SD 0.528`, exact
+   agreement 0.938). A lane with no reference variance still contributes 0 to ICC — that is
+   arithmetic, not a defect — but it no longer hides an indiscriminate judge.
+2. **The held-out split validates the labelling rules.** `holdout` ICC **0.7682** is
+   *higher* than `dev` **0.7045**. The rules in `curated_v2_spec.md` §3 were not fitted to
+   the cases they are judged on.
+3. **The residual is concentrated in two presentation dimensions where the judge has almost
+   no dynamic range.** `comprehensible` is a literal `5` on all 36 cases (`judge SD 0.000` →
+   ICC −0.0000) and `succinct` is 5 on all but a few (`SD 0.401` → ICC 0.148). The
+   clinically load-bearing dimensions agree well: `accurate` **0.8661**, `useful` 0.8653,
+   `organized` 0.7974, `synthesized` 0.7929.
+4. **The judge will not use the bottom of the scale on catastrophic notes.** On the four L1
+   anchors it scores mean **2.719** against a reference of **1.750** (exact agreement 0.344,
+   AC2 0.6497). Across the whole set, 11 of the 40 ratings where the reference is ≤ 2 have
+   the judge ≥ 2 points more generous — 7 of those 11 are L1.
+5. **It is not a fixable offset.** De-biasing the judge's systematic **+0.1319** leniency
+   lifts ICC only 0.7306 → **0.7350**; Pearson r is **0.7387**. The residual is genuine rank
+   disagreement.
+
+Diagnostics (**not** the gate — the gate is the pooled 288-rating figure above):
+excluding `comprehensible` + `succinct` gives ICC 0.7577 (n = 216); excluding the L1 cases
+gives 0.5517 (n = 256) — i.e. the L1 anchors are *helping*, and removing them would make
+things worse, so "drop the inconvenient cases" is not even locally tempting here.
+
+### Do NOT "fix" this by moving the threshold
+
+Unchanged from the 2026-08-17 reasoning, and now with more evidence behind it. 0.7306 is a
+real, well-defined reading against a literature-derived 0.80 bar. The honest next steps are
+judge-side or reference-side, and both are stated rather than taken:
+
+- **Clinician review of `curated-v2.0.0`** (the workflow is built and the artifact is
+  generated — `golden/review/curated_v2_review.md`). The single highest-impact question is
+  spec §5 rule **R3**; measured, the judge is *harsher* on `citation` than R3 assumes
+  (judge mean 3.861 vs reference 4.500), so a clinician ruling either way moves 36 ratings.
+- **A judge with usable dynamic range on `comprehensible`/`succinct` and on the 1–2 end.**
+  That is a model decision the owner has explicitly deferred (keep `gemma-4-e4b-it-qat` for
+  local development), so it is recorded, not acted on.
+
+## Live gate results — PREVIOUS run (2026-08-17, `curated-v1.0.0`): **FAIL on ICC — 0.6568**
+
+Run to completion on 2026-08-17 against the owner's live LM Studio instance, via the
+supported path above (`google/gemma-4-e4b`, `curated_v1.json`, 18/18 cases scored, 0
+dropped, sequential). **Wall clock 36.7 min** (2200 s) — but the machine carried a load
+average of 40–77 from concurrent agent work at the time, so treat that as an upper bound,
+not the clean-machine number.
+
+```
+[eval-gate] FAIL  report=eval-report.json
+  - FAILED: icc=0.6568 < 0.8 (Gwet AC2=0.9439, n=144)
+```
+
+| Metric | Threshold | 2026-08-17 (current) | 2026-06-07 (historical) | Gate |
+| --- | --- | --- | --- | --- |
+| `pdsqi_accurate` | ≥ 4.0 | **5.00** | 5.00 | ✅ |
+| `pdsqi_thorough` | ≥ 4.0 | **5.00** | 5.00 | ✅ |
+| `pdsqi_mean` | ≥ 4.0 | **5.00** | 4.86 | ✅ |
+| `faithfulness` | ≥ 0.85 | **0.9920** | 0.990 | ✅ |
+| `icc` (judge ↔ curated ref) | ≥ 0.8 | **0.6568** | 0.821 | ❌ |
+| `gwet_ac2` | (reported) | 0.9439 | 0.963 | — |
+| **Gate status** | | **FAIL** | PASS | ❌ |
+
+Step 2 of the gate (promptfoo output-contract, offline mock provider) **passes**: 18/18,
+0 failed, 0 errors.
+
+### Why it fails — the ceiling effect, decomposed
+
+Recomputing ICC per lane from the same report (offline, `harness.eval.calibration`):
+
+| Lane | n | ICC | Gwet AC2 | judge mean | ref mean | bias | judge SD | ref SD |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| quality | 96 | **+0.0000** | 0.9861 | 5.000 | 4.812 | +0.188 | **0.000** | 0.392 |
+| calibration | 48 | +0.6412 | 0.7955 | 4.312 | 3.792 | +0.521 | 1.291 | 1.487 |
+| all | 144 | **+0.6568** | 0.9439 | 4.771 | 4.472 | +0.299 | 0.808 | 1.031 |
+
+- **The quality lane has zero judge variance.** The judge scored a literal `5` on all 8
+  Likert dimensions of all 12 quality cases (`judge SD = 0.000`), while the reference
+  labels vary 4.62–4.88. ICC(2,1) is a variance-ratio statistic, so a constant rater
+  contributes exactly 0 — this lane cannot help ICC no matter how good the agreement is
+  (Gwet AC2, which is robust to that skew, reads 0.9861 on the same data).
+- **The judge does discriminate where it matters.** On the calibration lane it caught
+  every planted flaw: `c01` fabrication → `accurate` 2 / `synthesized` 1; `c02` omission →
+  `thorough` 1; `c03` verbose+uncited → `citation` 1 / `succinct` 1; `c06` falsified dose →
+  `accurate` 2. That is the discriminative behaviour the gate exists to check, and it works.
+- **It is not merely a calibration offset.** Removing the judge's systematic +0.299
+  leniency lifts ICC only 0.6568 → 0.6910; Pearson r is 0.7100. So the residual is genuine
+  rank/scale disagreement with the reference labels, not a shift a recalibration would fix.
+
+### Do NOT "fix" this by moving the threshold
+
+`EvalConfig.icc_gate_enabled=false` exists for a *different* situation — a judge whose ICC
+is structurally uninformative (the rejected Qwen backend measured ≈ `-8.3e-17`, and
+`icc_threshold` is validated to `[0,1]`, so no legal value could ever admit it). That is
+not this. **0.6568 is a real, well-defined, moderate reliability reading**, and 0.8 is
+drawn from the PDSQI-9 literature (reasoning judge ≈ 0.818; see
+`calibration/reliability.py`). Lowering the bar or disabling the gate here would convert a
+true negative into a green light. The gate is working; it is reporting that this judge is
+not release-grade against this reference set.
+
+The honest resolutions, none of which is threshold surgery, are the ones this file already
+names as open: a **real clinician-authored golden set** (see _Label provenance_ below), or
+a **larger reasoning-capable judge** with enough dynamic range for ICC to be meaningful.
+
+### Reproducibility caveat on the historical PASS
+
+The 2026-06-07 PASS is genuine but was measured with the judge loaded at **4096-token
+context** (`max_tokens` 3072); on 2026-08-17 the same model loaded at its full **131072**
+(`max_tokens` 16384), and `synthesized` — the dimension carrying the quality lane's
+variance — moved from **3.92** to **5.00**. This section previously attributed that move to
+the context length. **That hypothesis was tested on 2026-08-18 and is FALSE.** See the
+context-length finding immediately below; the real cause is the judge MODEL.
+
+## Context-length finding (measured 2026-08-18): context does not change the scores
+
+Hypothesis under test: the judge's collapse to a flat `5` tracks the loaded context window
+(4096 discriminating, 131072 not). **Falsified.**
+
+Method: the same six `curated_v1` cases, the same prompt, `temperature=0`, `seed=7`, the
+judge unloaded and reloaded at each context via `lms load -c <n>`, scores read from the
+raw response. `loaded_context_length` confirmed from LM Studio's `/api/v0/models` after
+each load, so the number is the one the server actually applied.
+
+| case | 4096 | 8192 | 32768 | 131072 |
+| --- | --- | --- | --- | --- |
+| `curated-q01-fammed-pharyngitis` | 5,5,5,5,5,5,5,5 | 5,5,5,5,5,5,5,5 | 5,5,5,5,5,5,5,5 | 5,5,5,5,5,5,5,5 |
+| `curated-q02-im-diabetes-complete` | 5,5,4,5,5,5,5,3 | 5,5,4,5,5,5,5,3 | 5,5,4,5,5,5,5,3 | 5,5,4,5,5,5,5,3 |
+| `curated-q05-obgyn-prenatal` | 5,5,5,5,5,5,5,3 | 5,5,5,5,5,5,5,3 | 5,5,5,5,5,5,5,3 | 5,5,5,5,5,5,5,3 |
+| `curated-c01-fabrication-mi` | 4,1,1,5,5,5,5,3 | 4,1,1,5,5,5,5,3 | 4,1,1,5,5,5,5,3 | 4,1,1,5,5,5,5,3 |
+| `curated-c02-omission-diabetes` | 5,5,1,5,5,5,4,3 | 5,5,1,5,5,5,4,3 | 5,5,1,5,5,5,4,3 | 5,5,1,5,5,5,4,3 |
+| `curated-c06-falsified-dose` | **TRUNCATED** | 5,2,4,5,5,5,5,3 | 5,2,4,5,5,5,5,3 | 5,2,4,5,5,5,5,3 |
+
+(dimension order: citation, accurate, thorough, useful, organized, comprehensible,
+succinct, synthesized. Judge = `gemma-4-e4b-it-qat`.)
+
+**Every score is byte-identical across a 32× range of context window.** Latency is
+likewise flat (19.8–32.2 s/call at every size; the two slowest 4096 readings, 43.9 s and
+45.3 s, are the first two calls after a reload and are warm-up, not context cost).
+
+The one real effect of a small window is **truncation, and it is silent**. This judge
+spends 1319–1963 completion tokens on a hidden reasoning pass before emitting the JSON. At
+4096, `curated-c06` needed prompt 2142 + completion 1954 = **4096 exactly** → `finish_reason:
+length` → unparseable JSON → `GoldenSetRunner` drops the case and the run's `n` silently
+shrinks. So context must be pinned for **headroom**, never for calibration. `run-gate.sh`
+now pins 8192 with `max_tokens` 4096 (prompt ≈ 2100–2400, so ~2× headroom over the largest
+completion observed) and reloads the model if the loaded window is too small.
+
+### What actually caused the flat 5.00 — the model
+
+Same six cases, same 8192 context, same prompt, only the model id changed:
+
+| case | `google/gemma-4-e4b` (what the gate ran) | `gemma-4-e4b-it-qat` (owner's choice) |
+| --- | --- | --- |
+| `curated-q01-fammed-pharyngitis` | 5,5,5,5,5,5,5,**5** | 5,5,5,5,5,5,5,**5** |
+| `curated-q02-im-diabetes-complete` | 5,5,5,5,5,5,5,**5** | 5,5,**4**,5,5,5,5,**3** |
+| `curated-q05-obgyn-prenatal` | 5,5,5,5,5,5,5,**5** | 5,5,5,5,5,5,5,**3** |
+| `curated-c01-fabrication-mi` | 5,2,3,5,5,5,5,1 | 4,1,1,5,5,5,5,3 |
+| `curated-c02-omission-diabetes` | 5,5,1,4,5,5,5,4 | 5,5,1,5,5,5,4,3 |
+| `curated-c06-falsified-dose` | 4,2,5,5,5,5,5,3 | 5,2,4,5,5,5,5,3 |
+
+`google/gemma-4-e4b` returns a flat `5` on **all 8 dimensions of all 3 quality cases** —
+exactly the zero-variance signature that drove `icc → 0.0000` on the quality lane.
+`gemma-4-e4b-it-qat` does not: it varies on `thorough` and `synthesized` on the same
+inputs. It is also roughly **1.8× faster** (20–32 s vs 41–57 s per call).
+
+The owner's 3b-1b decision to keep `gemma-4-e4b-it-qat` and rebuild the reference set is
+therefore supported by measurement, and the gate had been running a **different model**
+(`google/gemma-4-e4b`) than the platform's own `harness.judge` selection. That divergence
+is now structurally impossible: the gate resolves provider+model from the SYSTEM
+`harness.judge` `AiTaskDefault` and fails closed (see _Judge selection_ below).
+
+## Judge selection is DB-resident and fail-closed
+
+Owner decision D-B: a model id is never an env var and never a literal in code. The
+Temporal runtime already honoured this; the eval gate did not — `run-gate.sh` carried
+`JUDGE_MODEL="${JUDGE_MODEL:-google/gemma-4-e4b}"`, so the gate could grade with a judge
+the platform does not select. That is exactly what had happened.
+
+`harness/eval/judge/selection.py` now resolves the same row the runtime resolves:
+
+```
+AiTaskDefault(taskKey='harness.judge', ENABLED) -> modelSlug
+  -> AiModel(slug, ENABLED) -> (provider, sourceUri)
+```
+
+- **Order is tenant → SYSTEM, two tiers.** With no request tenant (the gate's normal case)
+  it resolves SYSTEM only, never a customer tenant.
+- **Fail closed.** Missing / disabled / unreachable / unknown-provider ⇒
+  `JudgeSelectionUnavailable` and exit 2. There is deliberately no env fallback.
+- Env still supplies the **connection** config (`base_url`, `api_key`, decoding knobs) — the
+  same selection-vs-connection split the runtime uses.
+- The read is a direct, read-only SQL query with `asyncpg` **lazily imported**, so the
+  harness *service* keeps its deliberate "no DB client" property (rule 06) and only this
+  offline tool pays for it. Same sanctioned-exception shape as
+  `apps/guardrail/core/tenant_config.py`.
+
+```bash
+# what the gate will use, without running it
+PYTHONPATH=src conda run -n arcaenv python -m harness.eval.judge.selection --field model
+```
+
+## Live gate results (HISTORICAL, 2026-06-07) — LM Studio `google/gemma-4-e4b` on `curated_v1` (18 cases)
+
+> **Superseded as the ticket's primary evidence** by the 2026-08-17 run above, which does
+> not reproduce this PASS. Retained verbatim as the historical record.
 
 This is also the exact backend/config `harness-eval-gate` (`.gitlab/ci/test.yml`, TASK-713)
 targets when someone opts in locally — the job is gated behind `RUN_INFRA_TESTS=true` AND

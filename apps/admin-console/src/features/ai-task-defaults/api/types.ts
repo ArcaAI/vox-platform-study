@@ -20,13 +20,21 @@ export const AI_TASK_KEYS = [
   'nlp.ner',
   'nlp.classification',
   'nlp.diagnosis',
-  'smr.live',
-  'smr.finalize',
+  // TASK-740 D-2: the mirror had drifted again — these four backend keys were
+  // missing, so no console surface showed them. `nlp.sentiment`/`nlp.toxicity`/
+  // `vlm.extract` are read-only here (super-admin or platform-managed); the
+  // tenant-editable one, `text.test`, gets its own card below.
+  'nlp.sentiment',
+  'nlp.toxicity',
+  'text.live',
+  'text.finalize',
+  'text.test',
   'harness.judge',
+  'vlm.extract',
   // the text-generation fallback selections are their own tenant-editable keys
   // (opt-in; an unset key means no fallback runs).
-  'smr.live.fallback',
-  'smr.finalize.fallback',
+  'text.live.fallback',
+  'text.finalize.fallback',
 ] as const;
 export type AiTaskKey = (typeof AI_TASK_KEYS)[number];
 
@@ -34,20 +42,31 @@ export type AiTaskKey = (typeof AI_TASK_KEYS)[number];
  * Text-generation primary selection keys — tenant-editable. The provider/model
  * this tenant uses for the streaming (live) and finalized summaries.
  */
-export const TEXT_PRIMARY_TASK_KEYS = ['smr.live', 'smr.finalize'] as const;
+export const TEXT_PRIMARY_TASK_KEYS = ['text.live', 'text.finalize'] as const;
+
+/**
+ * The prompt-template test-bench selection — tenant-editable, and its own
+ * concern (authoring, not clinical documentation), so it is rendered apart from
+ * the summarization keys rather than folded into them.
+ *
+ * TASK-740 D-2: this key was seeded and backend-live but had NO console surface
+ * at all, while `resolveTestTextTarget` is fail-CLOSED — so an unconfigured
+ * tenant got a `BadRequestException` for a value it had no way to set.
+ */
+export const TEXT_TEST_TASK_KEYS = ['text.test'] as const;
 
 /**
  * Text-generation fallback selection keys — tenant-editable, OPTIONAL. Used only
  * when the primary provider fails; an unset key means no fallback runs.
  */
-export const TEXT_FALLBACK_TASK_KEYS = ['smr.live.fallback', 'smr.finalize.fallback'] as const;
+export const TEXT_FALLBACK_TASK_KEYS = ['text.live.fallback', 'text.finalize.fallback'] as const;
 
 /**
  * Keys shown in the tenant read-only "Effective models" table: everything that
  * stays SUPER_ADMIN-only on write (guardrail / nlp / harness). Text generation
  * moved to its own tenant-editable "Text models" section, so it is excluded here.
  */
-export const READ_ONLY_TASK_KEYS: readonly AiTaskKey[] = AI_TASK_KEYS.filter((key) => !key.startsWith('smr.'));
+export const READ_ONLY_TASK_KEYS: readonly AiTaskKey[] = AI_TASK_KEYS.filter((key) => !key.startsWith('text.'));
 
 /** Reserved SYSTEM tenant owning the platform-default rows. */
 export const SYSTEM_TENANT_ID = '00000000-0000-0000-0000-000000000000';

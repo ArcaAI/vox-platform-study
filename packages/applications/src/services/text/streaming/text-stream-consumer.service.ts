@@ -13,7 +13,7 @@ export interface TextStreamChunk {
  * TextStreamConsumerService
  *
  * Reads SMR task chunks directly from Redis Streams:
- * - Stream key: `smr:stream:{taskId}` (matches Python TaskManager._STREAM_KEY_PREFIX)
+ * - Stream key: `text:stream:{taskId}` (matches Python TaskManager._STREAM_KEY_PREFIX)
  * - Each entry has a `data` field containing JSON-serialized StreamChunk
  * - StreamChunk has: `type` (string), `data` (dict)
  *
@@ -80,7 +80,7 @@ export class TextStreamConsumerService implements OnModuleDestroy {
     const ctrl = { abort: false };
     this.activeSubscriptions.set(taskId, ctrl);
 
-    const streamKey = `smr:stream:${taskId}`;
+    const streamKey = `text:stream:${taskId}`;
     const startId = lastEventId || '0-0';
 
     this.readChunkStream(streamKey, startId, taskId, subject, ctrl).catch((error) => {

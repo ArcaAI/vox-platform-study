@@ -1,20 +1,20 @@
 /**
- * LoopContextSignalService Unit Tests.
+ * LoopContextSignalService Unit Tests — PAYLOAD, IDEMPOTENCE, BEST-EFFORT.
  *
- * The new @OnEvent(ContextAdded) consumer that signals the
- * (future) consultation loop workflow via HarnessGatewayService.
- * signalContextAdded.
+ * The @OnEvent(ContextAdded) consumer that signals `ConsultationLoopWorkflow`
+ * via `HarnessGatewayService.signalContextAdded`.
  *
- * The gate is no longer the `HARNESS_LOOP_ENABLED` env flag but the
- * `harness.loop.enabled` `global-kv` kill-switch, resolved per call. These
- * fixtures therefore drive a real `TenantSettingsService` over a fake settings
- * cache; the CASES are unchanged (unset / off / on), only the tier is. The
- * runtime-flip, default-OFF and failMode properties the new tier buys are
- * covered in `../../__tests__/consultation-gates.tier-compliance.test.ts`.
+ * SCOPE SPLIT (TASK-705). The GATE moved out of this file. Whether a signal is
+ * allowed at all is now a composition of the tenant's `agenticLoop` subscription
+ * entitlement and the `harness.loop.emergencyStop` platform veto, pinned in
+ * `./loop-entitlement-gate.test.ts`; the setting-TIER properties (runtime flip,
+ * disarmed default, failMode) stay in
+ * `../../__tests__/consultation-gates.tier-compliance.test.ts`. What is left
+ * here is everything that happens AFTER the gate says yes, so every fixture
+ * below is deliberately fully permitted: entitled tenant, no emergency.
  *
  * Covers:
- *   - no-op when the loop is not enabled (no stored value / stored false)
- *   - signals the gateway when enabled
+ *   - the exact outbound payload shape
  *   - idempotent under duplicate emission (same consultationId + contextItemId
  *     + timestamp signals exactly once)
  *   - a fresh emission for the SAME contextItemId (e.g. OCR re-emit with new
@@ -23,26 +23,28 @@
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { TenantSettingsService } from '../../../settings-registry/tenant-settings.service';
-import { HARNESS_LOOP_ENABLED_KEY } from '../../consultation-gates.constants';
 import { LoopContextSignalService } from '../loop-context-signal.service';
 import type { ContextAddedPayload } from '../../events';
 
-// NOTE: no default value here — `buildDeps(undefined)` must leave the stored
-// setting genuinely ABSENT (a default param would silently substitute a
-// fallback for an explicit `undefined` argument too), which is the case that
-// proves the descriptor's default-OFF is what answers.
-function buildDeps(loopEnabled?: boolean) {
+/** A fully-permitted service: entitled tenant, no emergency stop stored. */
+function buildDeps() {
   const harnessGatewayService = {
     signalContextAdded: vi.fn().mockResolvedValue({ signaled: true }),
     signalConsultationEnding: vi.fn().mockResolvedValue({ signaled: true }),
     signalLoopCancel: vi.fn().mockResolvedValue({ signaled: true }),
   };
   const appSettings = {
-    getValueFromCache: (key: string) => (key === HARNESS_LOOP_ENABLED_KEY && loopEnabled !== undefined ? loopEnabled : null),
+    // No stored row for `harness.loop.emergencyStop` — its disarmed default answers.
+    getValueFromCache: () => null,
     getTenantValueFromCache: () => null,
   };
   const tenantSettings = new TenantSettingsService(appSettings as any);
-  const service = new LoopContextSignalService(harnessGatewayService as any, tenantSettings);
+  const service = new LoopContextSignalService(
+    harnessGatewayService as any,
+    tenantSettings,
+    { isFeatureEnabled: vi.fn(async () => true) } as any,
+    { get: (key: string) => (key === 'tenantId' ? 'tenant-1' : null) } as any,
+  );
   return { service, harnessGatewayService, tenantSettings };
 }
 
@@ -62,24 +64,8 @@ describe('LoopContextSignalService', () => {
     vi.clearAllMocks();
   });
 
-  it('is a no-op when harness.loop.enabled has no stored value (defaults OFF)', async () => {
-    const { service, harnessGatewayService } = buildDeps(undefined);
-
-    await service.handleContextAdded(payload());
-
-    expect(harnessGatewayService.signalContextAdded).not.toHaveBeenCalled();
-  });
-
-  it('is a no-op when harness.loop.enabled is stored false', async () => {
-    const { service, harnessGatewayService } = buildDeps(false);
-
-    await service.handleContextAdded(payload());
-
-    expect(harnessGatewayService.signalContextAdded).not.toHaveBeenCalled();
-  });
-
-  it('signals the harness gateway when harness.loop.enabled is stored true', async () => {
-    const { service, harnessGatewayService } = buildDeps(true);
+  it('signals the harness gateway with the full outbound payload', async () => {
+    const { service, harnessGatewayService } = buildDeps();
 
     await service.handleContextAdded(
       payload({ subType: 'LAB_RESULT', contentPreview: 'BP elevated' }),
@@ -101,7 +87,7 @@ describe('LoopContextSignalService', () => {
   // Payload completeness: kindKey/occurredAt/depth/content now
   // ride the outbound signal.
   it('forwards kindKey, occurredAt (the payload timestamp), depth, and the fuller content field', async () => {
-    const { service, harnessGatewayService } = buildDeps(true);
+    const { service, harnessGatewayService } = buildDeps();
 
     await service.handleContextAdded(
       payload({
@@ -124,7 +110,7 @@ describe('LoopContextSignalService', () => {
   });
 
   it('defaults depth to 0 when the payload carries no depth', async () => {
-    const { service, harnessGatewayService } = buildDeps(true);
+    const { service, harnessGatewayService } = buildDeps();
 
     await service.handleContextAdded(payload({ depth: undefined }));
 
@@ -135,7 +121,7 @@ describe('LoopContextSignalService', () => {
   });
 
   it('is idempotent under duplicate emission (identical payload signals exactly once)', async () => {
-    const { service, harnessGatewayService } = buildDeps(true);
+    const { service, harnessGatewayService } = buildDeps();
     const event = payload();
 
     await service.handleContextAdded(event);
@@ -146,7 +132,7 @@ describe('LoopContextSignalService', () => {
   });
 
   it('signals again for a re-emission of the SAME contextItemId carrying a new timestamp (OCR enrichment re-emit — not a duplicate)', async () => {
-    const { service, harnessGatewayService } = buildDeps(true);
+    const { service, harnessGatewayService } = buildDeps();
 
     await service.handleContextAdded(payload({ timestamp: '2026-08-11T10:00:00.000Z', contentPreview: 'placeholder' }));
     await service.handleContextAdded(payload({ timestamp: '2026-08-11T10:00:05.000Z', contentPreview: 'OCR text' }));
@@ -155,7 +141,7 @@ describe('LoopContextSignalService', () => {
   });
 
   it('never throws when the gateway call fails (best-effort — the context-add path must not break)', async () => {
-    const { service, harnessGatewayService } = buildDeps(true);
+    const { service, harnessGatewayService } = buildDeps();
     harnessGatewayService.signalContextAdded.mockRejectedValue(new Error('harness unreachable'));
 
     await expect(service.handleContextAdded(payload())).resolves.toBeUndefined();
@@ -163,16 +149,8 @@ describe('LoopContextSignalService', () => {
 
   // The two lifecycle-boundary signal callers.
   describe('signalConsultationEnding', () => {
-    it('is a no-op when the loop is not configured', async () => {
-      const { service, harnessGatewayService } = buildDeps(undefined);
-
-      await service.signalConsultationEnding('consultation-1', { reason: 'recording_stopped' });
-
-      expect(harnessGatewayService.signalConsultationEnding).not.toHaveBeenCalled();
-    });
-
-    it('forwards the payload to the harness gateway when enabled', async () => {
-      const { service, harnessGatewayService } = buildDeps(true);
+    it('forwards the payload to the harness gateway', async () => {
+      const { service, harnessGatewayService } = buildDeps();
 
       await service.signalConsultationEnding('consultation-1', { reason: 'recording_stopped', persistSnapshot: true });
 
@@ -183,7 +161,7 @@ describe('LoopContextSignalService', () => {
     });
 
     it('never throws when the gateway call fails (best-effort)', async () => {
-      const { service, harnessGatewayService } = buildDeps(true);
+      const { service, harnessGatewayService } = buildDeps();
       harnessGatewayService.signalConsultationEnding.mockRejectedValue(new Error('harness unreachable'));
 
       await expect(service.signalConsultationEnding('consultation-1', {})).resolves.toBeUndefined();
@@ -191,16 +169,8 @@ describe('LoopContextSignalService', () => {
   });
 
   describe('signalLoopCancel', () => {
-    it('is a no-op when the loop is not configured', async () => {
-      const { service, harnessGatewayService } = buildDeps(undefined);
-
-      await service.signalLoopCancel('consultation-1', { reason: 'abandoned' });
-
-      expect(harnessGatewayService.signalLoopCancel).not.toHaveBeenCalled();
-    });
-
-    it('forwards the payload to the harness gateway when enabled', async () => {
-      const { service, harnessGatewayService } = buildDeps(true);
+    it('forwards the payload to the harness gateway', async () => {
+      const { service, harnessGatewayService } = buildDeps();
 
       await service.signalLoopCancel('consultation-1', { reason: 'abandoned' });
 
@@ -208,7 +178,7 @@ describe('LoopContextSignalService', () => {
     });
 
     it('never throws when the gateway call fails (best-effort)', async () => {
-      const { service, harnessGatewayService } = buildDeps(true);
+      const { service, harnessGatewayService } = buildDeps();
       harnessGatewayService.signalLoopCancel.mockRejectedValue(new Error('harness unreachable'));
 
       await expect(service.signalLoopCancel('consultation-1', {})).resolves.toBeUndefined();

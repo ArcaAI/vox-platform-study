@@ -3,7 +3,7 @@ import { Controller, Get, HttpCode, HttpStatus, Inject, Logger, NotFoundExceptio
 import { ApiOperation, ApiParam, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { HttpService } from '@nestjs/axios';
 import { Throttle } from '@nestjs/throttler';
-import { Public } from '../../decorators';
+import { Public, ForbidApiKey } from '../../decorators';
 import { GracefulShutdownService, IGracefulShutdownService } from '../../services';
 import { CanAny } from '../../decorators';
 
@@ -51,6 +51,15 @@ interface ServiceProbeResult {
 // tighter cap. Kubernetes probe schedules sit well below 30/min.
 @Throttle({ default: { limit: 30, ttl: 60000 } })
 @Controller('health')
+// TASK-742 API-KEY-NOTE — CONSERVATIVE DEFAULT, AWAITING OWNER CLASSIFICATION.
+// Reason: the two non-@Public() health routes are downstream-service probes gated on manage:all/read:TenantTelemetry.
+// This route family declared nothing about API-key access, which under the
+// deny-by-default rule is a boot failure. Rather than guess a scope (guessing
+// permissive is how the original gap was created), it is closed explicitly.
+// Reversing it is a one-line change to @RequiredScopes('<scope>') once the
+// owner confirms a real API-key use case — see the TASK-708 README's
+// "Reachability changes awaiting owner review" table.
+@ForbidApiKey()
 export class ApiHealthController {
   private readonly logger = new Logger(ApiHealthController.name);
   private readonly downstreamServices: DownstreamService[];

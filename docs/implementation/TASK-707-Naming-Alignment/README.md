@@ -1216,6 +1216,116 @@ in-progress work belonging to other Group A/B tasks**:
 - SKIPPED as instructed (local Postgres/Redis/etc. down): `pnpm test:integration`,
   `pnpm test:up:api` + `pnpm test:e2e`.
 
+## 7.99 Closing verification — 2026-08-17 (SUPER_ADMIN consolidation)
+
+Independent read-only re-verification of the owner directive *"SUPER_ADMIN is a supreme user,
+manage the platform, consolidate global admins, to super admin — we use only that term"*
+([owner-decisions-2026-08-17.md](../../architecture/agentic-workflow-platform/owner-decisions-2026-08-17.md) §2, ticket 707).
+Nothing was edited during this pass; it is a verification of the landed state.
+
+**Verdict: CLEAN. Zero real remnants. TASK-707 Group B is closed.**
+
+### `GLOBAL_ADMIN` sweep
+
+153 total occurrences across tracked files (excluding `docs/archive/**` and the standard
+exclusions). Every one classified:
+
+| Category | Count | Disposition |
+|---|---|---|
+| This ticket's own README | 104 | In scope, historical inventory — keep |
+| Other `docs/implementation/TASK-*` READMEs | 28 | Out of scope |
+| Deliberate NEGATIVE tests | 13 | **Correct — must stay** |
+| Migration SQL history | 3 | **Never edit a committed migration** |
+| Guard comments naming the retired alias as *rejected* | 3 | Keep — they document *why* |
+| False positives / anti-false-positive guards | 2 | Keep |
+| **REAL REMNANTS** | **0** | — |
+
+Negative tests confirmed at `apps/admin-console/src/server/__tests__/session.test.ts:117-118`,
+`apps/admin-console/src/shared/auth/__tests__/ability.test.ts:61-62`,
+`packages/applications/src/common/__tests__/tenant-guards.test.ts:288-289`,
+`packages/database/src/__tests__/seed.test.ts:498-500`, and
+`packages/tools/src/gen-dev-token/users.test.ts:6,10,13,15`.
+
+**Authoritative docs are clean**: zero hits for `GLOBAL_ADMIN`, `Global Admin`, or `global admin`
+in `.claude/rules/**`, `docs/architecture/**`, `docs/operations/**`.
+
+**Correction to this README's own §Current truth**: it states *"`20260817000000_init` still creates
+the old enum label (do not edit init)"*. That is **no longer accurate** — `…_init/migration.sql:170`
+now reads `CREATE TYPE "core"."ChangelogAudience" AS ENUM ('ALL', 'SUPER_ADMIN', 'TENANT_ADMIN')`.
+The `20260817180000_…` rename is therefore a guarded no-op on a fresh database and exists only for
+databases that already carried the old label. Both files stay as they are; only the description above
+was wrong.
+
+### Canonical role — single `SUPER_ADMIN`
+
+`ELEVATED_ROLES` has exactly **three** definition sites (the ticket speculated about a fourth):
+
+| File:line | Value |
+|---|---|
+| `packages/applications/src/common/tenant-guards.ts:37` | `[SUPER_ADMIN_ROLE]`, `SUPER_ADMIN_ROLE = 'SUPER_ADMIN'` (`:28`) |
+| `apps/api/src/database/tenant-context.provider.ts:43` | `[SUPER_ADMIN_ROLE]` |
+| `apps/admin-console/src/shared/auth/ability.ts:17` | `['SUPER_ADMIN'] as const` |
+
+`packages/applications/src/services/tenant/constants.ts` does **not** define its own — it defines
+`SUPER_ADMIN_ROLE = 'SUPER_ADMIN'` (`:26`) and only *mentions* `ELEVATED_ROLES` in a doc comment.
+
+- Seeded roles (`seed/03-role.ts:89-104`): exactly one elevated role, `name: 'SUPER_ADMIN'`,
+  `externalName: 'Super Administrator'`, `isSystemRole: true`. No `GLOBAL_ADMIN` row.
+- Seeded users (`seed/91-user.ts:121,124`): only `super_admin` carries it. No `global_admin` user;
+  locked by `seed/__tests__/seed.test.ts:47-52`.
+- `ChangelogAudience` = `ALL | SUPER_ADMIN | TENANT_ADMIN`, and all four mirrors agree:
+  `enums.prisma:647-653`, `packages/domains/src/enums/generated/ChangelogAudience.ts:5-9`,
+  `apps/admin-console/src/features/changelog/api/types.ts:7`, consumed at
+  `packages/applications/src/services/changelog/changelog.service.ts:286-289`.
+- SDK: `packages/agentic-sdk-v2/src/hooks/useAuth.ts:19` →
+  `IMPERSONATION_ROLES = ['SUPER_ADMIN', 'TENANT_ADMIN']`. `packages/vox-node` carries no role
+  logic at all (zero hits either way).
+
+### `GLOBAL_TENANT_ADMIN_MENU_ORDER` — confirmed a TENANT, not the retired role
+
+Defined `seed/00-constants.ts:676`, value `85000000-0000-0000-0000-000000000051` (unchanged).
+`seed/11-global-setting.ts:419,438` passes it as `adminMenuOrder` inside
+`tenantSettings(SEED_TENANT_ID, …)`, and `SEED_TENANT_ID = '50000000-0000-0000-0000-000000000000'`
+— the **Global customer tenant**. Its sibling `ARCAAI_ADMIN_MENU_ORDER` (`:677`) does the same for
+the ArcaAI tenant at `11-global-setting.ts:458`. The row itself is
+`namespace: 'arcaai-admin', key: 'menuOrder'` — admin-console left-nav ordering, nothing
+role-related. `seed-global-settings.test.ts:82-85` carries an explicit special case so the generic
+`${prefix}_${suffix}` key builder cannot reconstruct the retired token.
+**The reading in the brief is correct; do not touch it.**
+
+### Frozen `smr.*` identifiers — producer/consumer CONSISTENT
+
+Verified (no renames proposed — these are deliberately frozen):
+
+- Seeded `AiTaskDefault.taskKey` values (`seed/16-ai-task-default.ts:89,95,110`, all
+  `tenantId: SYSTEM_TENANT_ID`): `smr.live`, `smr.finalize`, `smr.test`.
+- Readers agree exactly: `AI_TASK_KEYS`
+  (`packages/applications/src/services/ai-task-default/constants.ts:35-51`),
+  `harness-policy.service.ts:40-42,52-56`, `model-defaults.descriptors.ts:64,68,74,78,87`,
+  `apps/admin-console/src/features/ai-task-defaults/api/types.ts`, and — critically across the
+  language boundary — `apps/harness/src/harness/temporal/interpreter/nodes/text_generate.py:55`
+  `_ALLOWED_TASK_KEYS = {"smr.finalize", "smr.live", "smr.test"}`.
+- `HarnessPolicy.smrProvider`/`smrModel` (`harness.prisma:360-361`) are bridged explicitly, not
+  accidentally: `apps/harness/.../api/endpoints/internal.py:109-110,209-210` uses
+  `Field(alias="smrProvider"/"smrModel")` and `temporal/models.py:373-374` reads the same camelCase
+  wire names. Domain trio + admin-console editors all agree.
+- **No breaking mismatch.** Two benign, documented gaps: `smr.test.fallback` exists only to satisfy
+  a `Record<TextRoutingTask, string>` exhaustiveness check and is unreachable (every production
+  caller passes `'finalize'`); `smr.live.fallback`/`smr.finalize.fallback` are registered and read
+  but deliberately unseeded (per-tenant opt-in, fail-open, stated at `16-ai-task-default.ts:85`).
+
+### Two optional, non-blocking observations (not fixed — out of this ticket's scope)
+
+1. `apps/api/tests/e2e/task-658-context-schema-plane.spec.ts:155-157` names a local variable
+   `globalAdmin`, reviving the retired term — and more interestingly assigns a **`tenant_admin`**
+   token (via `SEEDED_USERS.admin`, `tests/helpers/e2e.helper.ts:85-89`) to a variable called
+   `superAdminToken`. The naming is cosmetic; the token/intent mismatch may be a real test-correctness
+   question for whoever owns TASK-658.
+2. If the string `GLOBAL_ADMIN` is to appear nowhere outside tests and migrations, the only remaining
+   live-source occurrences are three explanatory guard comments (`ability.ts:14`,
+   `tenant-guards.ts:47`, `packages/applications/README.md:114`). Recommendation: **keep them** —
+   they document why the alias is rejected.
+
 ## 8. Change History
 
 | Date | Change | By |
@@ -1229,4 +1339,5 @@ in-progress work belonging to other Group A/B tasks**:
 | 2026-08-16 | Task 12 (full verification pass) — DONE, with findings. Fixed ~35 files' worth of stale import-specifier breakage (trivial, mechanical — files/dirs already renamed by the in-flight Group A sweep, only the importing path string lagged) that was blocking `pnpm api:build` (6 TS2307 errors → 0) and inflating `pnpm test:unit` failures (17 failed files/11 failed tests → 4 failed files/7 failed tests). `pnpm --filter @arcaai/database test` 1233/1237, `pnpm --filter @arcaai/vox build test` 4174/4174, `pnpm --filter @arcaai/admin-console build lint test` all green (1419/1419 tests), `pnpm typecheck` clean (39/39, 0 errors), `pnpm lint` 31/34 tasks (1 unrelated pre-existing prettier error in a concurrently-edited e2e spec, not naming-related). `pnpm text:test` FAILS (script doesn't exist — Task 3 not started); confirmed conda itself works fine via `pnpm <svc>:*` scripts. Identified and reported (not fixed, substantive/out-of-scope) the full remaining gap: Group A Tasks 2/3 not started (env vars, root package.json scripts), Task 5's CI/uv-workspace/`.github/services.json` portion not started (verified `uv lock --dry-run` would silently drop the `smr` package from the lockfile), Task 6's internal-identifier renames not started beyond the SDK half, Task 7's docs sweep not started, `packages/database`'s non-seed GLOBAL_ADMIN slice not started (the direct cause of the 4 remaining `seed.test.ts` failures). Noted `apps/api`'s GLOBAL_ADMIN slice appears to have landed concurrently (not documented in this README's Task 9/10 entries yet). See §7 for the full account. | T2 sonnet-5 (Task 12 executor) |
 | 2026-08-17 | Docs+scripts+docker+identifier sweep (Task 7 / live-docs half): live docs now teach `apps/text`, `text.main:app`, conda `arcaenv`, `pnpm text:dev` / `text:test` / `text:test:managed` / `test:up:text`, `stack:dev -- text`, CI `test-text`/`build-text`, Grafana files `text-*.json` (UIDs still `smr-*`), Nest classes `TextProxyController` / `TextCompatController`. Frozen wire identifiers (`/api/smr/...`, `serviceKey: smr`, `smr_*` metrics, Redis `smr:stream:`, Vault `hope-smr`, tag prefix `SMR-`, task keys `smr.live`/`smr.finalize`, `useSMR` alias, `ChangelogAudience.GLOBAL_ADMIN`, `HARNESS_SMR_*`) left untouched. Historical inventory counts in this README unchanged. | T1 docs executor |
 | 2026-08-17 | Scripts CLI: canonical token `text` in `dev-stack.sh` / `start-test-app.sh` / `test-stack.sh` / `test-run.sh` / `setup-python-env.sh`; `smr` remaps with a stderr warning. `package.json` `test:up:text` added; `test:up:smr` now starts `text`. Docker: `uv sync --package text`, `uvicorn text.main:app`. Helper: `SERVICE_CONFIGS.text` / `text.main:app`. Identifiers: `SmrProxyController` → `TextProxyController` (and sibling Nest/application symbols). Group B leftovers: `gen-dev-token` roles `'SUPER_ADMIN'`; cross-tenant fixture role literal `'SUPER_ADMIN'`; Role.name data migration re-authored at `20260817120000_task_707_rename_global_admin_role_to_super_admin` (UPDATE-only, not applied this session). | 2026-08-17 naming sweep |
+| 2026-08-17 | **Closing verification (read-only, no edits to code).** Independent re-sweep against owner decision 707 confirms the consolidation is TRUE everywhere: 153 `GLOBAL_ADMIN` occurrences classified, **0 real remnants** — all are negative tests (13), committed migration SQL (3), guard comments naming the alias as rejected (3), other tickets' READMEs (28), this README's own historical inventory (104), or false positives (2). `ELEVATED_ROLES` confirmed at exactly 3 sites, all `['SUPER_ADMIN']` (the speculated 4th site does not exist — `services/tenant/constants.ts` only defines `SUPER_ADMIN_ROLE`). Seeds carry one elevated role (`externalName: 'Super Administrator'`) and one `super_admin` user; no `global_admin`. `ChangelogAudience` agrees across all four mirrors. `GLOBAL_TENANT_ADMIN_MENU_ORDER` re-confirmed as the GLOBAL **tenant**'s menu-order key (sibling `ARCAAI_ADMIN_MENU_ORDER`), not the retired role. Frozen `smr.*` identifiers verified producer/consumer-consistent across the TS↔Python boundary, incl. `text_generate.py`'s `_ALLOWED_TASK_KEYS` matching the three seeded task keys and the `Field(alias="smrProvider"/"smrModel")` bridge — 0 breaking mismatches, 2 benign documented gaps. **Corrected a factual error in this README's own §Current truth**: `20260817000000_init` no longer creates the old enum label (it already creates `SUPER_ADMIN`), so the follow-up rename is a guarded no-op on fresh DBs. See §7.99. Two optional non-blocking observations logged there. | TASK-700/707 closing-verification agent |
 | 2026-08-17 | SUPER_ADMIN consolidation current-truth pass. Role/user: seed-only; `task_707_rename_global_admin*` Role migrations deleted (do not restore). Extra seed user `global_admin` removed. `ChangelogAudience` enum-only migration `20260817180000_rename_changelog_audience_global_admin_to_super_admin` is the schema change. No JWT alias for `'GLOBAL_ADMIN'`. Identifiers `SUPER_ADMIN_ONLY_*` / `assertSuperAdmin` / `useIsSuperAdmin`. Impersonation codes `CALLER_NOT_SUPER_ADMIN` / `TARGET_IS_SUPER_ADMIN` kept. `SEED_GLOBAL_SETTING_IDS.GLOBAL_ADMIN_MENU_ORDER` → `GLOBAL_TENANT_ADMIN_MENU_ORDER` (GLOBAL tenant menu-order UUID; value unchanged). Ticket status Completed. | identifier leftover rename |

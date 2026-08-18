@@ -20,7 +20,7 @@
 // default that "off" cannot express), so it is not `killSwitch: true` and it does
 // not join `CONSULTATION_GATE_SETTINGS`.
 //
-// PINNED, NOT LIVE. Unlike `harness.loop.enabled` — which is resolved on EVERY
+// PINNED, NOT LIVE. Unlike `harness.loop.emergencyStop` — which is resolved on EVERY
 // signal precisely so a misbehaving loop can be stopped mid-flight — this value
 // is read ONCE, when `LoopConfigService` resolves the config the workflow pins
 // at start, and is then frozen for the whole consultation. It has

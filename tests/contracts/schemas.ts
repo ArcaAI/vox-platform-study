@@ -133,7 +133,7 @@ export const SmrSyncSummaryRequestSchema = z.object({
 /**
  * SMR Summary Response Schema
  */
-export const SmrSummaryResponseSchema = z.object({
+export const TextSummaryResponseSchema = z.object({
   session_id: z.string(),
   summary: z.any(), // Complex nested structure
   created_at: z.string(),
@@ -250,7 +250,7 @@ export type SttTaskStatusResponse = z.infer<typeof SttTaskStatusResponseSchema>;
 
 export type SmrHealthResponse = z.infer<typeof SmrHealthResponseSchema>;
 export type SmrSyncSummaryRequest = z.infer<typeof SmrSyncSummaryRequestSchema>;
-export type SmrSummaryResponse = z.infer<typeof SmrSummaryResponseSchema>;
+export type SmrSummaryResponse = z.infer<typeof TextSummaryResponseSchema>;
 export type SmrPreSummaryRequest = z.infer<typeof SmrPreSummaryRequestSchema>;
 export type SmrPreSummaryResponse = z.infer<typeof SmrPreSummaryResponseSchema>;
 export type SmrJobResponse = z.infer<typeof SmrJobResponseSchema>;

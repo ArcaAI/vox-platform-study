@@ -68,7 +68,7 @@ const LIVE_TOOL_KEY_SET: ReadonlySet<string> = new Set(LIVE_TOOL_KEYS);
  * The `TextRoutingTask` subset an agent may override. Deliberately NOT one
  * global field: a low-latency live model must never silently drive
  * finalize, so the override is keyed per task and each key falls back
- * independently to the tenant's `AiTaskDefault` (`smr.live` / `smr.finalize`).
+ * independently to the tenant's `AiTaskDefault` (`text.live` / `text.finalize`).
  */
 export const AGENT_LLM_OVERRIDE_TASKS = ['live', 'finalize'] as const;
 

@@ -1,6 +1,6 @@
 """TDD tests for provider key consistency.
 
-Ensures the SMR runtime uses tenant-facing provider keys
+Ensures the Text runtime uses tenant-facing provider keys
 (azure-openai, lm-studio) instead of internal-only keys (azure, openai_compat).
 """
 
@@ -112,7 +112,7 @@ class TestMainLifespanProviderKeys:
         time, and this test asserted it was absent. The BYOK model inverted
         that: a pure-BYOK tenant has no platform endpoint (its credential
         arrives per request as a provider override), so gating registration
-        made SMR answer 404 for a VALID override. Azure/openai/anthropic/vertex
+        made Text answer 404 for a VALID override. Azure/openai/anthropic/vertex
         now register unconditionally and fail closed where the credential is
         actually needed — ``_client_for`` raises ProviderCredentialsError (503)
         when there is neither an override nor a platform client.

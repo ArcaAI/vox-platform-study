@@ -1,7 +1,7 @@
 /**
  * Finalize LLM precedence.
  *
- * agent `llmOverrides.finalize` → tenant `smr.finalize` AiTaskDefault →
+ * agent `llmOverrides.finalize` → tenant `text.finalize` AiTaskDefault →
  * fail-closed. Model SELECTION is fail-CLOSED on finalize (rule 09
  * §Configuration Tiers), which is the deliberate opposite of the live side's
  * fail-open `resolveLiveLlm` — a clinical note must not be finalized on a

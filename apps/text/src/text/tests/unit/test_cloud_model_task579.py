@@ -1,7 +1,7 @@
-"""SMR cloud provider/model SELECTION is failMode=closed.
+"""Text cloud provider/model SELECTION is failMode=closed.
 
 Program: docs/implementation/SOTA-Track/2026-07-28-provider-plane-day1-defaults-followups.md
-(finding F3). Ticket: docs/implementation/TASK-579-SMR-Cloud-Default-Model-Fail-Closed/README.md
+(finding F3). Ticket: docs/implementation/TASK-579-Text-Cloud-Default-Model-Fail-Closed/README.md
 
 Decision A (owner-confirmed): the five CLOUD sub-configs (Azure/Bedrock/OpenAI/
 Anthropic/Vertex) carry no compiled-in vendor ``default_model`` and a cloud

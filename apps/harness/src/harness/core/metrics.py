@@ -1,6 +1,6 @@
 """harness Prometheus metrics for the ordered trajectory.
 
-The harness had no Prometheus registry of its own (only SMR did). These are the
+The harness had no Prometheus registry of its own (only Text did). These are the
 fleet aggregates for the ordered spine: per-step wall-clock duration (labelled by
 ``step_type``/``name``), the bounded-regen counter, and the gate-verdict counter.
 

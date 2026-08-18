@@ -63,7 +63,7 @@ describe('SessionRemovalRetryService', () => {
   it('retries with backoff and clears the Redis entry once a retry succeeds', async () => {
     mockSessionService.removeSession.mockRejectedValueOnce(new Error('stt down')).mockResolvedValueOnce(undefined);
 
-    service.enqueue('sess-retry');
+    service.enqueue('sess-retry', false, 'tenant-retry');
 
     // Attempt 1 after the base delay — fails.
     await vi.advanceTimersByTimeAsync(SESSION_REMOVAL_RETRY_BASE_DELAY_MS);
@@ -73,7 +73,9 @@ describe('SessionRemovalRetryService', () => {
     // Attempt 2 after the doubled delay — succeeds and clears the entry.
     await vi.advanceTimersByTimeAsync(SESSION_REMOVAL_RETRY_BASE_DELAY_MS * 2);
     expect(mockSessionService.removeSession).toHaveBeenCalledTimes(2);
-    expect(mockSessionService.removeSession).toHaveBeenCalledWith('sess-retry', false);
+    // TASK-737: a retry is the SAME internal DELETE, so it stays as
+    // attributable as the first attempt — the tenant rides along unchanged.
+    expect(mockSessionService.removeSession).toHaveBeenCalledWith('sess-retry', false, 'tenant-retry');
     expect(mockCache.srem).toHaveBeenCalledWith(SESSION_REMOVAL_RETRY_SET_KEY, 'sess-retry');
   });
 
@@ -84,13 +86,13 @@ describe('SessionRemovalRetryService', () => {
   it('threads interrupted:true through every retry attempt', async () => {
     mockSessionService.removeSession.mockRejectedValueOnce(new Error('stt down')).mockResolvedValueOnce(undefined);
 
-    service.enqueue('sess-abort-retry', true);
+    service.enqueue('sess-abort-retry', true, 'tenant-abort');
 
     await vi.advanceTimersByTimeAsync(SESSION_REMOVAL_RETRY_BASE_DELAY_MS);
-    expect(mockSessionService.removeSession).toHaveBeenNthCalledWith(1, 'sess-abort-retry', true);
+    expect(mockSessionService.removeSession).toHaveBeenNthCalledWith(1, 'sess-abort-retry', true, 'tenant-abort');
 
     await vi.advanceTimersByTimeAsync(SESSION_REMOVAL_RETRY_BASE_DELAY_MS * 2);
-    expect(mockSessionService.removeSession).toHaveBeenNthCalledWith(2, 'sess-abort-retry', true);
+    expect(mockSessionService.removeSession).toHaveBeenNthCalledWith(2, 'sess-abort-retry', true, 'tenant-abort');
   });
 
   it('stops after the bounded number of attempts and logs an error (entry left for ops)', async () => {
@@ -113,7 +115,9 @@ describe('SessionRemovalRetryService', () => {
     service.enqueue('sess-redis-blip');
     await vi.advanceTimersByTimeAsync(SESSION_REMOVAL_RETRY_BASE_DELAY_MS);
 
-    expect(mockSessionService.removeSession).toHaveBeenCalledWith('sess-redis-blip', false);
+    // No tenant threaded by this caller: the service declares `tenantless:job-queue`
+    // downstream rather than omitting the header (see StreamingSessionService).
+    expect(mockSessionService.removeSession).toHaveBeenCalledWith('sess-redis-blip', false, undefined);
   });
 
   it('cancels pending retries on module destroy', async () => {

@@ -28,7 +28,7 @@ function makeService(opts: {
 }) {
   const get = opts.smrError ? vi.fn().mockRejectedValue(opts.smrError) : vi.fn().mockResolvedValue({ data: opts.smr ?? [] });
   const httpService = { axiosRef: { get } } as never;
-  const configService = { getConfigValue: vi.fn().mockReturnValue('http://smr.test') } as never;
+  const configService = { getConfigValue: vi.fn().mockReturnValue('http://text.test') } as never;
   const create = opts.create ?? vi.fn().mockResolvedValue({ id: 'new-id', slug: 's' });
   const aiModelService = {
     getAllForAdmin: vi.fn().mockResolvedValue(opts.dbRows ?? []),

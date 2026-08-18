@@ -1,8 +1,8 @@
-"""SMR cross-service per-model metrics.
+"""Text cross-service per-model metrics.
 
 Proves the standardized ``model_running_instances`` gauge and
-``model_inference_latency_seconds`` histogram (emitted alongside SMR's existing
-``smr_generation_*`` metrics) increment via the shared tracker. The generate
+``model_inference_latency_seconds`` histogram (emitted alongside Text's existing
+``text_generation_*`` metrics) increment via the shared tracker. The generate
 endpoint inc/dec/observe these with model = the request model (e.g. gemma-4-e4b).
 """
 

@@ -196,7 +196,7 @@ test.describe('harness workflows filters and detail (frame 38)', () => {
     await firstSession.click();
     await expect(firstSession).toHaveAttribute('aria-expanded', 'true');
     await expect(card.getByText('Flushes')).toBeVisible();
-    await expect(card.getByText('SMR latency')).toBeVisible();
+    await expect(card.getByText('Text latency')).toBeVisible();
   });
 
   test('refresh reloads the grid without an error', async ({ page }) => {

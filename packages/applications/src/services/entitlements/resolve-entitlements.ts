@@ -76,6 +76,21 @@ export interface ResolvedFeatures {
    * from the seeded default matrix.
    */
   paletteStt: boolean;
+  /**
+   * TASK-705 — may this tenant run the HARNESS AGENTIC LOOP
+   * (`ConsultationLoopWorkflow`: the multi-agent drain, per-agent timeout
+   * isolation and adjudication layer that sits above live documentation)?
+   *
+   * ENFORCED, like `platformDefaultCredential` and unlike the three display-only
+   * booleans: `LoopContextSignalService` consults it before every
+   * `ContextAdded` / `consultation-ending` / `loop-cancel` signal, so a tenant
+   * whose plan does not include it never starts a loop workflow at all.
+   *
+   * Resolves plan row → seeded `PlanEntitlementValues.featureAgenticLoop` →
+   * per-tenant `TenantEntitlement.featureAgenticLoop` override, exactly like its
+   * neighbours: `false` on STARTER, `true` on TRIAL/PRO/ENTERPRISE.
+   */
+  agenticLoop: boolean;
 }
 
 export interface ResolvedEntitlements {
@@ -121,6 +136,8 @@ export interface PlanEntitlementInput {
   /** No DB column yet — see `ResolvedFeatures.paletteStt`'s doc comment (TASK-724). Always
    *  `undefined` on a real Prisma row today; kept optional so a future column is a pure addition. */
   featurePaletteStt?: boolean;
+  /** TASK-705 — does this plan include the harness agentic loop? */
+  featureAgenticLoop?: boolean;
   modelTier?: string;
   rateLimitTier?: string;
 }
@@ -154,6 +171,8 @@ export interface TenantEntitlementOverrideInput {
   featurePlatformDefaultCredential?: boolean | null;
   /** No DB column yet — see `PlanEntitlementInput.featurePaletteStt`. */
   featurePaletteStt?: boolean | null;
+  /** TASK-705 — tri-state: `true` grant / `false` deny / `null` inherit the plan. */
+  featureAgenticLoop?: boolean | null;
   modelTier?: string | null;
   rateLimitTier?: string | null;
   rateLimitPerMinute?: number | null;
@@ -196,7 +215,23 @@ export const UNGATED_ENTITLEMENTS: ResolvedEntitlements = {
    * fail-closed gate this exists to be. Pinned by
    * `__tests__/resolve-entitlements.test.ts`.
    */
-  features: { dnaReports: true, voiceEnrollment: true, monitoringAccess: true, platformDefaultCredential: false, paletteStt: true },
+  /*
+   * TASK-705 — `agenticLoop` is `true` here, on the DISPLAY-flag side of the
+   * asymmetry above, and deliberately so despite being enforced. A null-plan
+   * tenant has no subscription to read an answer out of, and D-A (owner
+   * decisions, 2026-08-17) requires the loop ENABLED for day-1 rather than
+   * parked behind a flag. The thing it gates is orchestration quality, not
+   * platform SPEND — the reason `platformDefaultCredential` must fail closed —
+   * and the platform emergency stop remains available either way.
+   */
+  features: {
+    dnaReports: true,
+    voiceEnrollment: true,
+    monitoringAccess: true,
+    platformDefaultCredential: false,
+    paletteStt: true,
+    agenticLoop: true,
+  },
   modelTier: 'full_custom',
   rateLimitTier: 'relaxed',
   rateLimitPerMinute: null,
@@ -254,6 +289,7 @@ export function resolveEntitlements(
     featureMonitoringAccess: pick(planRow?.featureMonitoringAccess, seeded.featureMonitoringAccess),
     featurePlatformDefaultCredential: pick(planRow?.featurePlatformDefaultCredential, seeded.featurePlatformDefaultCredential),
     featurePaletteStt: pick(planRow?.featurePaletteStt, seeded.featurePaletteStt),
+    featureAgenticLoop: pick(planRow?.featureAgenticLoop, seeded.featureAgenticLoop),
     modelTier: pick(planRow?.modelTier, seeded.modelTier) as ModelTier,
     rateLimitTier: pick(planRow?.rateLimitTier, seeded.rateLimitTier),
   };
@@ -287,6 +323,7 @@ export function resolveEntitlements(
       monitoringAccess: pick(override?.featureMonitoringAccess, base.featureMonitoringAccess),
       platformDefaultCredential: pick(override?.featurePlatformDefaultCredential, base.featurePlatformDefaultCredential),
       paletteStt: pick(override?.featurePaletteStt, base.featurePaletteStt),
+      agenticLoop: pick(override?.featureAgenticLoop, base.featureAgenticLoop),
     },
     modelTier: pick(override?.modelTier, base.modelTier) as ModelTier,
     rateLimitTier: pick(override?.rateLimitTier, base.rateLimitTier),

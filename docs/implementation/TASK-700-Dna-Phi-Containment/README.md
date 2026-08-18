@@ -382,15 +382,19 @@ confirms every seeded ArcaAI doctor already has a DNA report row.
       Task 5's regression test (`blocks a doctor who opted out via BOTH...`) and the flipped Task 1 test 2
 - [x] The DNA_ANALYSIS SMR call now sends a non-null `response_format`; a non-conforming SMR
       response now fails the job instead of persisting — verified by Task 1/3's tests
-- [x] Task 6's script is authored and unit-tested but **not executed** against any real database as
-      part of this ticket's automated completion — execution remains HUMAN-GATED and is logged
-      separately when the user authorizes it
+- [x] Task 6's script is authored, unit-tested, **and EXECUTED** (2026-08-17, local dev DB + Vault,
+      human gate lifted by owner decision D-A). 15/15 rows clean; verdict **latent control gap, not a
+      live incident** — see §7.5 for the real output and the honest limits of that result
+- [x] Schema resolution FAILS CLOSED — an unresolved `DNA_OUTPUT_SCHEMA` aborts the job before the
+      model is called, instead of degrading to the permissive parser that persisted raw model prose
+      (§7.6; residual test-fixture-only branch reported, not hidden)
+- [x] INV-240 reset/delete path implemented across service → API → SDK → admin console (§7.7)
 
 ## 6. Risks & Open Questions
 
-- **HUMAN-GATED**: Task 6's execution against the actual deployed ArcaAI tenant database. This is
-  the single highest-value open item from the assessment (§3.2: "One query decides it") and must
-  not be run without the user's explicit authorization and a named target environment.
+- ~~**HUMAN-GATED**: Task 6's execution against the actual deployed ArcaAI tenant database.~~
+  **RESOLVED 2026-08-17** — owner decision D-A lifted the gate for LOCAL databases; executed against
+  the local dev DB, result in §7.5. There is no deployed tenant database to scan (no production data).
 - **Schema design risk**: an overly narrow `DNA_OUTPUT_SCHEMA` (Task 2) could make the DNA feature
   useless (no room to express real stylistic nuance) or an overly permissive one could leave a
   free-text escape hatch. The executing agent should sanity-check the schema against a few sample
@@ -419,6 +423,8 @@ confirms every seeded ArcaAI doctor already has a DNA report row.
   directly. Also noted by TASK-733: no reset/delete route exists for DNA profiles (INV-240), and
   `dnaStyleEnabled`'s settings descriptor declares `failMode: 'open-to-default'` while the runtime
   is fail-closed — reconcile the descriptor while in this code.
+  **Both resolved**: the `smr-proxy` bypass and the `failMode` mismatch were closed in the 2026-08-16
+  pass (§7.1); the missing reset/delete route (INV-240) was implemented on 2026-08-17 (§7.7).
 
 ## 7. Implementation Summary
 
@@ -567,12 +573,257 @@ the §6 scope addition (`@arcaai/api`).
   helper functions (`authenticateVaultClient`, `transitDecrypt`) rather than duplicating them, per the
   ticket's explicit preference.
 
-### 7.5 Human-gated (not executed)
+### 7.5 Task 6 EXECUTED — 2026-08-17 (human gate lifted)
 
-- **Task 6 execution** (`pnpm --filter @arcaai/database dna:phi-scan -- --tenantId <arcaai-tenant-id>`
-  against a real database + Vault). Requires the user's explicit go-ahead, a named target environment,
-  and `SECRETS_PROVIDER=vault` + Vault credentials supplied by the user/an authorized operator. Not run
-  in this session. Record the clean/dirty outcome here once it is.
+The gate is lifted by owner decision D-A / §2 ticket 700: *"No production data — free to review and
+complete the work fully, including running the scan locally."* The scan was run against the LOCAL dev
+database (`localhost:5432/hope`) with `SECRETS_PROVIDER=vault` against local Vault (`:8200`, transit
+key `hope-phi`). Read-only; no row was written.
+
+#### Scope actually covered
+
+`core."DnaWritingStyleReport"` holds **15 rows** across two tenants, every one carrying ciphertext:
+
+```
+$ docker exec hope-postgres psql .../hope \
+    -c 'SELECT count(*) AS total, count("encryptedStyleText") AS with_ciphertext FROM core."DnaWritingStyleReport";' \
+    -c 'SELECT "tenantId", count(*) FROM core."DnaWritingStyleReport" GROUP BY 1;'
+ total | with_ciphertext
+-------+-----------------
+    15 |              15
+
+               tenantId               | count
+--------------------------------------+-------
+ 50000000-0000-0000-0000-000000000000 |     8
+ 50000000-0000-0000-0000-000000000001 |     7
+```
+
+#### Real output (both tenants, 2026-08-17)
+
+```
+$ SECRETS_PROVIDER=vault VAULT_ADDR=http://localhost:8200 VAULT_ROLE_ID=… VAULT_SECRET_ID=… \
+    pnpm --filter @arcaai/database exec tsx scripts/dna-phi-scan.ts \
+      --tenantId 50000000-0000-0000-0000-000000000000
+
+CLEAN  id=73000000-0000-0000-0000-000000000001 … scannedChars=118 mrnShaped=0 dobShaped=0 drugDoseCoOccurrence=0 nameProxy=0
+CLEAN  id=73000000-0000-0000-0000-000000000002 … scannedChars=246 mrnShaped=0 dobShaped=0 drugDoseCoOccurrence=0 nameProxy=0
+CLEAN  id=73000000-0000-0000-0000-000000000003 … scannedChars=232 mrnShaped=0 dobShaped=0 drugDoseCoOccurrence=0 nameProxy=0
+CLEAN  id=73000000-0000-0000-0000-000000000004 … scannedChars=170 mrnShaped=0 dobShaped=0 drugDoseCoOccurrence=0 nameProxy=0
+CLEAN  id=73000000-0000-0000-0000-000000000005 … scannedChars=266 mrnShaped=0 dobShaped=0 drugDoseCoOccurrence=0 nameProxy=0
+CLEAN  id=73000000-0000-0000-0000-000000000006 … scannedChars=333 mrnShaped=0 dobShaped=0 drugDoseCoOccurrence=0 nameProxy=0
+CLEAN  id=73000000-0000-0000-0000-000000000007 … scannedChars=272 mrnShaped=0 dobShaped=0 drugDoseCoOccurrence=0 nameProxy=0
+CLEAN  id=73000000-0000-0000-0000-000000000008 … scannedChars=268 mrnShaped=0 dobShaped=0 drugDoseCoOccurrence=0 nameProxy=0
+
+8 row(s) scanned — 0 dirty, 8 clean (0 of which decrypted to nothing and therefore prove nothing). 1905 character(s) of decrypted styleText examined in total.
+
+$ … --tenantId 50000000-0000-0000-0000-000000000001
+
+CLEAN  id=73000000-0000-0000-0001-000000000001 … scannedChars=231 mrnShaped=0 dobShaped=0 drugDoseCoOccurrence=0 nameProxy=0
+CLEAN  id=73000000-0000-0000-0001-000000000002 … scannedChars=269 mrnShaped=0 dobShaped=0 drugDoseCoOccurrence=0 nameProxy=0
+CLEAN  id=73000000-0000-0000-0001-000000000003 … scannedChars=263 mrnShaped=0 dobShaped=0 drugDoseCoOccurrence=0 nameProxy=0
+CLEAN  id=73000000-0000-0000-0001-000000000004 … scannedChars=301 mrnShaped=0 dobShaped=0 drugDoseCoOccurrence=0 nameProxy=0
+CLEAN  id=73000000-0000-0000-0001-000000000005 … scannedChars=271 mrnShaped=0 dobShaped=0 drugDoseCoOccurrence=0 nameProxy=0
+CLEAN  id=73000000-0000-0000-0001-000000000006 … scannedChars=278 mrnShaped=0 dobShaped=0 drugDoseCoOccurrence=0 nameProxy=0
+CLEAN  id=73000000-0000-0000-0001-000000000007 … scannedChars=299 mrnShaped=0 dobShaped=0 drugDoseCoOccurrence=0 nameProxy=0
+
+7 row(s) scanned — 0 dirty, 7 clean (0 of which decrypted to nothing and therefore prove nothing). 1912 character(s) of decrypted styleText examined in total.
+```
+
+**15/15 rows decrypted successfully and were scanned in full — 3,817 characters of real plaintext
+examined. 0 dirty across all four heuristic categories.**
+
+#### Tool change made during this run (so the result means something)
+
+The scan originally reported only per-category counts. A row that decrypted to **nothing** produces
+the same all-zero counts as a row scanned in full, so "CLEAN" alone could not distinguish
+*"scanned real text and found no PHI"* from *"there was nothing to scan"* — exactly the conflation
+this ticket must not make. Added the pure helper `scannedLength()` plus a `scannedChars` column, an
+`EMPTY` verdict label, and a summary line that states outright how many rows *"decrypted to nothing
+and therefore prove nothing"*. It reports a LENGTH only — never text, never a matched substring, so
+the no-plaintext-on-stdout discipline is intact. Two unit tests added (RED observed:
+`TypeError: scannedLength is not a function`).
+
+#### VERDICT: **latent control gap — NOT a live incident**
+
+Per the assessment's §3.2 decision rule (*clean rows → latent control gap; dirty rows → live
+incident*), the rows are clean, so this is a **latent control gap**. But the clean result is the
+weaker half of the reason, and the ticket should not overclaim it:
+
+1. **All 15 rows are seed fixtures, not model output.** Their ids are the deterministic seed
+   constants in `packages/database/src/prisma/db_main/seed/08-dna-writing-style.ts` (e.g.
+   `styleText: 'Dr. Smith initially used casual, abbreviated documentation…'`). The scan therefore
+   proves *the seeded corpus is clean*; it does **not** prove any LLM-generated profile was clean,
+   because this database contains none.
+2. **The decisive fact is upstream of the scan**: per owner decision D-A there is **no production
+   data and no live tenant traffic at all** — nothing has ever generated a real DNA profile from
+   real notes. There is no population in which a live incident could exist.
+
+So: "no PHI found" is true of what was scanned, and separately there was never a live corpus to
+contaminate. Both statements are needed; neither alone is the verdict. The exposure this ticket
+closes was always **forward-going**, and the containment below is what actually closes it.
+
+### 7.6 Forward-going containment — re-verified, and one fail-OPEN hole found and closed
+
+Re-verified each claimed control against the live tree and the live dev DB:
+
+| Control | Status |
+|---|---|
+| Closed-vocabulary `DNA_OUTPUT_SCHEMA` (6 enums + one `maxLength`-capped string, `additionalProperties:false`, all `required`) | ✅ present, `seed/07-prompt-template.ts:71` |
+| Attached to **BOTH** template copies | ✅ `TEMPLATE_IDS.DNA_ANALYSIS` (`:457`) and `CUSTOMER_TEMPLATE_IDS.ARCAAI_DNA` (`:2370`) |
+| …and actually persisted for both tenants | ✅ verified in the dev DB — both `DNA_ANALYSIS` rows return `has_schema = t` |
+| `styleText` rendered deterministically from validated fields, never raw model JSON | ✅ `buildStyleTextFromSchema`, processor `:272` |
+| Client-side schema validation (not trusting `strict:true`) | ✅ `conformsToSchema` checks `required` / closed props / `enum` / `maxLength` |
+| Parser hard-fails instead of persisting raw output | ⚠️ **only when a schema resolved** — see below |
+| Opt-out gate ABOVE the `textSamples` bypass | ✅ processor `:129-139`, hoisted out of the `else` branch; covered by a regression test asserting BOTH paths |
+
+**The hole:** `outputSchema` resolution degraded to `null` on failure, and a `null` schema selected a
+permissive branch that did `styleText = obj.styleText ?? smrResponse.content` — persisting the
+model's raw prose verbatim, which is defect #2 from §1 in full. Its own comment admitted it:
+*"A schema-read failure degrades to `null` (unconstrained legacy parsing) rather than failing the
+job."* Four ways to reach it, three of them reachable in a real deployment: a tenant-authored
+`DNA_ANALYSIS` template with no `promptConfig`; no `DNA_ANALYSIS` template resolving at all (the
+fallback-prompt path); a throwing schema read; and the repository being unwired (test fixtures only —
+Nest always supplies it).
+
+It was justified as backward compatibility for un-migrated tenants. Under D-A there are none, so it
+was a fail-open hole wearing a compat label — precisely the *"ship it half-enabled and decide later"*
+posture D-A voids.
+
+**Fixed:** schema resolution is now treated like provider/model SELECTION (`failMode: closed`, rule
+09) — once the processor is *capable* of resolving a schema, one is MANDATORY, and an unresolved
+schema fails the job before the model is ever called. RED was observed first: the three new tests
+failed with `promise resolved "{ reportId: 'new-report-id', …}"` — i.e. the pre-fix processor
+**succeeded and persisted** a response containing `Patient John Doe, MRN: 88421, DOB 03/14/1985, on
+metformin 500mg`.
+
+One pre-existing test encoded the old behaviour (`omits response_format entirely when the resolved
+template has no schema`) and was flipped to `never calls the model at all when the resolved template
+has no schema`.
+
+**Residual, reported not hidden:** the permissive branch still exists for the case where
+`promptTemplateRepository` is unwired, which only the pre-schema positional test fixtures do (41
+tests in `dna-writing-style.processor.test.ts`). Making the repository non-optional — the same
+treatment `IPhiRedactor` just received — would delete the branch outright, at the cost of rewriting
+those fixtures. Left as follow-up rather than half-done.
+
+### 7.7 DNA profile reset / delete — INV-240 implemented (was out of scope, now in scope under D-A)
+
+§6 recorded *"no reset/delete route exists for DNA profiles (INV-240)"* as an out-of-scope gap. D-A
+puts it in scope. Opting out only stops FUTURE learning; without erasure the already-learned profile
+stays stored and keeps being injected into every summary that doctor generates, so INV-167
+("reversible by the clinician") was not actually satisfied by the toggle alone.
+
+**Backend** (`packages/applications`, rule 04):
+
+- `resetMyDnaProfile()` — erases the CALLER's entire profile: every report plus every version.
+  Self-service by construction (subject is always `requestUserId`, so there is no id to smuggle).
+  Idempotent. Re-asserts tenant ownership on each row rather than trusting the client extension.
+- `deleteReport(reportId)` — erases one owned report + its versions.
+- Both go through `eraseReports()`: **soft delete only** (never hard delete, rule 03), one
+  `SysEventType.ResourceDeleted` broadcast per report with `{ kind: 'dna-profile-reset', doctorId }`.
+- Tenancy posture: cross-TENANT id → **404** via `assertReportInScope` (never 403 — existence stays
+  hidden); same-tenant but ANOTHER doctor's row → **403** (a genuine privilege boundary, mirroring
+  `setDefaultReport`).
+- New `DnaErasureResponse` DTO — counts only; the erased text is never echoed back.
+
+**API** (`apps/api`, rule 05): `DELETE dna-writing-styles/my-style` and
+`DELETE dna-writing-styles/:reportId`, both under the existing class-level `@Authorize()` with an
+`// AUTH-NOTE:` explaining the owner-scoped self-service shape (requiring `delete` would lock
+clinicians out of erasing their own profile — the same pattern rule 05 documents for personal prompt
+templates). Both call `assertActingAsDoctor()` so a non-impersonating admin cannot act under their own
+account. Literal `my-style` route is declared before `:reportId` so it is not shadowed.
+
+**SDK** (`packages/agentic-sdk-v2`, D-E): `DNA_STYLE_ENDPOINTS.RESET_MY_STYLE` / `.DELETE_REPORT`,
+`useDnaStyle().resetMyStyle()` / `.deleteReport()`, new `DnaErasureResult` type exported from the
+types barrel. Both clear locally cached `style`/`versions` so an erased profile stops rendering.
+
+**Admin console** (D-E): new `DnaErasureCard` at the bottom of the DNA playground screen plus a
+per-row erase in `MyReportsCard`, both behind the shared `ConfirmDialog` (destructive actions require
+confirmation, rule 11 §5), `<Spinner />` in flight, `toast.success()` with the real counts /
+`toast.error()` on failure, semantic tokens only, both themes. Copy states plainly that erasing does
+NOT change the on/off toggle — the two are independent, so a fresh profile is rebuilt if learning is
+still enabled.
+
+### 7.8 D-B configuration audit (this area only)
+
+No env var in the DNA path holds something that belongs in DB/Vault:
+
+| Value | Where it comes from | Correct tier? |
+|---|---|---|
+| `TEXT_URL` | `configService.get('TEXT_URL')`, processor `:91` | ✅ `env` — a bootstrap TRANSPORT address, the one sanctioned default class (rule 09) |
+| `dna-regen.max-samples`, `dna-regen.max-context-chars` | `appSettingsService.getValueWithDefault` | ✅ `global-kv` tuning knobs |
+| Provider + model selection | `HarnessPolicyService.resolveSmrSelection()` → `AiTaskDefault`, tenant → SYSTEM | ✅ `db-config`; **no hardcoded engine/model anywhere in this path** |
+| Prompt content + output schema | `PromptTemplate.content` / `.metaData.promptConfig`, tenant-resolved | ✅ `db-config` |
+| `TEXT_SERVICE_TOKEN` | `secretsService.getSecretOptional(...)` | ✅ `vault-kv` |
+
+`grep -n "process\.env" packages/applications/src/services/dna-writing-style/*.ts apps/api/src/modules/dna-writing-style/*.ts` returns **nothing**. No new env var was introduced by this work.
+
+### 7.9 Verification — actual command output (2026-08-17)
+
+All test/build/lint commands were run through the coordinator's mutex wrapper
+(`scratchpad/test-lock.sh`) after the one-command-at-a-time rule was issued.
+
+```
+$ test-lock.sh … npx tsc --noEmit    (packages/applications)   → OK
+$ test-lock.sh … npx tsc --noEmit    (packages/database)       → OK
+$ test-lock.sh … npx tsc --noEmit    (apps/api)                → OK
+$ test-lock.sh … npx tsc --noEmit    (packages/agentic-sdk-v2) → OK
+
+$ test-lock.sh … npx vitest run src/services/dna-writing-style      (applications)
+ Test Files  9 passed (9)
+      Tests  226 passed (226)
+
+$ test-lock.sh … npx vitest run src/modules/dna-writing-style/      (apps/api)
+      Tests  65 passed (65)
+
+$ test-lock.sh … npx vitest run src/hooks/__tests__/useDnaStyle     (sdk)
+      Tests  75 passed (75)
+
+$ test-lock.sh … npx vitest run scripts/ src/__tests__/seed.test.ts (database)
+      Tests  442 passed (442)
+
+$ pnpm --filter @arcaai/database test
+ Test Files  52 passed (52)
+      Tests  1271 passed (1271)
+
+$ test-lock.sh … npx prettier --check 'src/services/dna-writing-style/**/*.ts'
+All matched files use Prettier code style!
+
+$ test-lock.sh pnpm --filter @arcaai/admin-console exec vitest run playground-dna-style
+ Test Files  4 passed (4)
+      Tests  41 passed (41)
+$ test-lock.sh pnpm --filter @arcaai/admin-console lint     → exited 0 (green app-wide)
+```
+
+**Full `packages/applications` suite: 3 failed | 9214 passed | 4 skipped (9221).** All three failures
+are a SIBLING agent's `INTERNAL_ACCESS_TOKEN` work (D-D single shared internal token) in
+`apps/api/src/modules/streaming/text-proxy.controller.ts:319`, none in this ticket's files:
+
+- `secrets/__tests__/warmup-coverage.test.ts` — `INTERNAL_ACCESS_TOKEN` read via `getSecretSync` without being added to `COMMON_SERVICE_WARMUP_KEYS`
+- `settings-registry/__tests__/fail-mode.governance.test.ts` — new `internal.accessToken` descriptor has no expected-env-name entry
+- `workflow-definition/__tests__/task-724-stt-realtime-untouched.grep-gate.test.ts` — grep gate tripped by that same edit under `apps/api/src/modules/streaming/**`
+
+Reported to the coordinator rather than edited (outside this ticket's ownership).
+
+**Repo-wide `pnpm typecheck` / `pnpm lint` aggregates were NOT run clean end-to-end**: a sibling was
+mid-rebuild of `@arcaai/ui`, which produces ~404 unrelated `TS2305`/`TS7031` errors across 62
+admin-console files. Per-package typechecks for every package this ticket touches are pasted above
+and are clean; the admin-console agent separately confirmed zero errors in its own new files.
+
+### 7.10 Process disclosure
+
+Two `git stash push`/`pop` pairs were used to capture RED evidence (§7.2's original precedent, and
+the reset/delete RED proof) **before** the coordinator's later directive forbidding `git stash` in
+this shared tree. Both were popped back and the affected files verified present on disk. No further
+stash was used, and the standing `stash@{0}` entry (which contains a mix of sibling work and some of
+this ticket's files) was left untouched for the coordinator to resolve. Baseline reads from here on
+use `git show <ref>:<path>`.
+
+### 7.11 Human-gated (resolved)
+
+- **Task 6 execution** — gate LIFTED by owner decision (D-A / §2 ticket 700) and **executed**
+  against the local dev database on 2026-08-17. Outcome recorded in §7.5: 15/15 rows clean, verdict
+  **latent control gap, not a live incident**.
 
 ## 8. Change History
 
@@ -580,4 +831,5 @@ the §6 scope addition (`@arcaai/api`).
 |---|---|---|
 | 2026-08-16 | Ticket authored | T3/T4 authoring agent (Claude, sonnet-5) |
 | 2026-08-16 | Scope addition: `smr-proxy` raw-`styleText` bypass (found during TASK-733 authoring) + descriptor `failMode` mismatch + missing reset route noted | Program coordinator (Fable 5) |
+| 2026-08-17 | **Human gate lifted (owner decision D-A / §2 ticket 700) — Task 6 EXECUTED.** Scan run against the LOCAL dev DB + Vault: 15/15 `DnaWritingStyleReport` rows across both tenants decrypted and scanned in full (3,817 chars), **0 dirty**. Verdict: **latent control gap, NOT a live incident** — and stated honestly, since all 15 rows are seed fixtures rather than model output, so the decisive fact is that there is no production data at all, not merely that the scan came back clean. Hardened the scan tool so the result is meaningful: added `scannedLength()`/`scannedChars` + an `EMPTY` verdict so "scanned real text and found nothing" can no longer be confused with "there was nothing to scan" (length only — never text or matched substrings; RED observed). **Found and closed a fail-OPEN hole the ticket had claimed closed**: an unresolved output schema silently selected the permissive parser and persisted the model's raw prose (`styleText = obj.styleText ?? smrResponse.content`), reachable via a tenant-authored schema-less template, a missing DNA_ANALYSIS template, or a throwing schema read; schema resolution now fails closed (RED observed — the pre-fix processor persisted a response containing an MRN/DOB/drug-dose string). Verified both template copies (SYSTEM default AND the ArcaAI tenant's own) carry the schema in the live dev DB. **Implemented INV-240** (previously logged as out of scope): `resetMyDnaProfile()` + `deleteReport()` — soft delete, `ResourceDeleted` broadcast per report, 404-over-403 cross-tenant / 403 cross-doctor — exposed as `DELETE dna-writing-styles/my-style` and `DELETE dna-writing-styles/:reportId`, with SDK (`resetMyStyle`/`deleteReport`, `DnaErasureResult`) and admin-console (`DnaErasureCard` + per-row erase, confirm-gated) surfaces per D-E. D-B audit of this area: clean, no misplaced env config, no new env var. Gates: per-package typechecks clean (applications/database/api/sdk); DNA suites 226 + 65 + 75 + 442 green; `@arcaai/database` 1271/1271; admin-console playground 41/41 + lint green. 3 `packages/applications` failures traced to a sibling's `INTERNAL_ACCESS_TOKEN` work and reported, not edited. See §7.5-§7.11. | TASK-700/707 closing agent |
 | 2026-08-16 | Implemented Tasks 1-5 (schema-constrained DNA output, hard-fail parser, opt-out gate hoisted to cover both paths, regression suite) + Task 6 authored/unit-tested (not executed) + §6 scope addition (smr-proxy routed through `getEffectiveStyleText`, `dnaStyleEnabled` descriptor `failMode` reconciled to `'closed'`). RED→GREEN evidence captured via `git stash`. All scoped tests/build/typecheck/lint green for `@arcaai/applications`, `@arcaai/database`, and `@arcaai/api`. Status → Completed. Missing reset route (INV-240) remains out of scope, not addressed. | T2/T3 executing agent (Claude, sonnet-5) |

@@ -30,7 +30,7 @@ import {
 import { FileInterceptor } from '@nestjs/platform-express';
 import { ApiBearerAuth, ApiConsumes, ApiOperation, ApiParam, ApiQuery, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { TenantOwnedResource } from '../../common';
-import { CanCreate, CanDelete, CanRead, CanUpdate } from '../../decorators';
+import { CanCreate, CanDelete, CanRead, CanUpdate, RequiredScopes } from '../../decorators';
 import {
   BucketInfoResponse,
   BucketWithFilesResponse,
@@ -50,6 +50,10 @@ const PRESIGNED_GET_EXPIRY_SECONDS = 3600;
 @ApiBearerAuth()
 @ApiTags('storage')
 @Controller('storage')
+// TASK-742: wires the `media:file:*` scopes, declared in the registry since
+// its inception but never referenced by any route. Stronger of the pair at
+// class level (see TranscriptionJobController for the reasoning).
+@RequiredScopes('media:file:write')
 export class StorageController {
   constructor(
     // Tenant-aware data plane: object create/list/presign/delete + bucket

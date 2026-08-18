@@ -1,7 +1,7 @@
 """Tests for the harness loop / gate-adapter configuration additions (Lane I).
 
 The durable loop
-needs the SMR/NLP/api base URLs, the (configurable) apps/api internal-harness
+needs the Text/NLP/api base URLs, the (configurable) apps/api internal-harness
 path prefix, the bounded-regen budget, and the gate SLA / escalation durations.
 """
 
@@ -14,10 +14,10 @@ from harness.core.config import Settings
 # HARNESS_* keys these tests assert *code defaults* for. Importing ``harness.main``
 # (via the test conftest) eagerly loads the gitignored dev ``.env`` into
 # ``os.environ`` (module-level ``app = create_app()`` -> ``get_settings()`` ->
-# ``_load_dotenv_into_environ()``), so a dev box that points e.g. SMR at a
+# ``_load_dotenv_into_environ()``), so a dev box that points e.g. Text at a
 # non-standard port would otherwise leak into these default assertions.
 _DEFAULTED_ENV_KEYS = (
-    "HARNESS_SMR_BASE_URL",
+    "HARNESS_TEXT_BASE_URL",
     "HARNESS_NLP_BASE_URL",
     "HARNESS_API_BASE_URL",
     "HARNESS_API_INTERNAL_PREFIX",
@@ -36,7 +36,7 @@ class TestLoopConfigDefaults:
 
     def test_tool_service_base_urls_default_to_local_ports(self):
         s = Settings()
-        assert s.smr_base_url == "http://localhost:8862"
+        assert s.text_base_url == "http://localhost:8862"
         assert s.nlp_base_url == "http://localhost:8864"
         assert s.api_base_url == "http://localhost:8868"
 
@@ -67,11 +67,11 @@ class TestHarnessServiceToken:
 class TestLoopConfigEnvOverride:
     def test_env_overrides_apply(self, monkeypatch):
         monkeypatch.setenv("HARNESS_MAX_REGEN", "5")
-        monkeypatch.setenv("HARNESS_SMR_BASE_URL", "http://smr:9999")
+        monkeypatch.setenv("HARNESS_TEXT_BASE_URL", "http://smr:9999")
         monkeypatch.setenv("HARNESS_API_INTERNAL_PREFIX", "/api/v1/internal/harness")
         s = Settings()
         assert s.max_regen == 5
-        assert s.smr_base_url == "http://smr:9999"
+        assert s.text_base_url == "http://smr:9999"
         assert s.api_internal_prefix == "/api/v1/internal/harness"
 
 

@@ -1,10 +1,10 @@
-"""Control-plane values reach SMR's live runtime state.
+"""Control-plane values reach Text's live runtime state.
 
 Two things are locked here:
   1. A refreshed `maxConcurrent`/`timeoutS` actually moves the live semaphore and
      timeout map (without swapping the semaphore object).
   2. The stateless-gateway contract is NOT eroded — effective-config must never
-     introduce provider/model selection into SMR.
+     introduce provider/model selection into Text.
 """
 
 from __future__ import annotations
@@ -152,7 +152,7 @@ class TestRefreshRuntimeLimits:
 
 
 class TestStatelessGatewayContract:
-    """SMR must not learn to select a provider/model from its own config."""
+    """Text must not learn to select a provider/model from its own config."""
 
     def test_apply_ignores_any_model_selection_field_that_appears(self) -> None:
         semaphores = {"ollama": ResizableSemaphore(4)}

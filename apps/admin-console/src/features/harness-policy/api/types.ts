@@ -27,8 +27,8 @@ export interface HarnessPolicy {
   phiFailClosed: boolean;
   safetyProvider: string;
   safetyModel: string;
-  smrProvider: string | null;
-  smrModel: string | null;
+  textProvider: string | null;
+  textModel: string | null;
   maxRegen: number;
   gateSlaSeconds: number;
   gateEscalationSeconds: number;
@@ -39,7 +39,7 @@ export interface HarnessPolicy {
 
 /**
  * PATCH body (UpdateHarnessPolicyRequest): sparse patch — omit = unchanged;
- * `null` clears smrProvider/smrModel/toolAllowlist. `reason` is the free-text
+ * `null` clears textProvider/textModel/toolAllowlist. `reason` is the free-text
  * note recorded on the WORM HarnessPolicyChange row. `expectedVersion` is
  * folded from If-Match server-side; the client sends both.
  */
@@ -54,8 +54,8 @@ export interface UpdateHarnessPolicyRequest {
   phiFailClosed?: boolean;
   safetyProvider?: string;
   safetyModel?: string;
-  smrProvider?: string | null;
-  smrModel?: string | null;
+  textProvider?: string | null;
+  textModel?: string | null;
   maxRegen?: number;
   gateSlaSeconds?: number;
   gateEscalationSeconds?: number;

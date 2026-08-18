@@ -22,7 +22,7 @@ from temporalio.testing import ActivityEnvironment
 from harness.core.config import ClaimCheckConfig, Settings
 from harness.sensors.base import NEREntity
 from harness.services.api_client import DraftResponse
-from harness.services.smr_client import SmrGenerationResult
+from harness.services.text_client import TextGenerationResult
 from harness.temporal import activities
 from harness.temporal.claim_check import InMemoryBlobStore, load_blob, store_blob
 from harness.temporal.models import (
@@ -49,14 +49,14 @@ def env() -> ActivityEnvironment:
     return ActivityEnvironment()
 
 
-class _FakeSmr:
+class _FakeText:
     def __init__(self, content: str) -> None:
         self.kwargs: dict[str, Any] = {}
         self._content = content
 
-    async def generate(self, **kwargs: Any) -> SmrGenerationResult:
+    async def generate(self, **kwargs: Any) -> TextGenerationResult:
         self.kwargs = kwargs
-        return SmrGenerationResult(content=self._content, model="m", finish_reason="stop")
+        return TextGenerationResult(content=self._content, model="m", finish_reason="stop")
 
 
 class _FakeApiPersist:
@@ -72,7 +72,7 @@ class _FakeNlp:
     def __init__(self) -> None:
         self.text: str | None = None
 
-    async def classify_tokens(self, text: str, *, language: str = "en") -> list[NEREntity]:
+    async def classify_tokens(self, text: str, *, tenant_id: str = "", language: str = "en") -> list[NEREntity]:
         self.text = text
         return [NEREntity(text="hypertension", type="DISEASE", start=0, end=12)]
 
@@ -84,9 +84,9 @@ class TestGenerateOffloadsNote:
         store = InMemoryBlobStore()
         monkeypatch.setattr(activities, "get_settings", lambda: _settings())
         monkeypatch.setattr(activities, "build_blob_store", lambda cc: store)
-        monkeypatch.setattr(activities, "_smr_client", lambda s: _FakeSmr(_BIG_NOTE))
+        monkeypatch.setattr(activities, "_text_client", lambda s: _FakeText(_BIG_NOTE))
 
-        result = await env.run(activities.generate, GenerateInput(prompt="P"))
+        result = await env.run(activities.generate, GenerateInput(tenant_id="11111111-1111-1111-1111-111111111111", prompt="P"))
 
         assert result.content == ""  # inline emptied — note not serialized into history
         assert result.content_ref is not None
@@ -99,9 +99,9 @@ class TestGenerateOffloadsNote:
         store = InMemoryBlobStore()
         monkeypatch.setattr(activities, "get_settings", lambda: _settings(min_bytes=100_000))
         monkeypatch.setattr(activities, "build_blob_store", lambda cc: store)
-        monkeypatch.setattr(activities, "_smr_client", lambda s: _FakeSmr("small"))
+        monkeypatch.setattr(activities, "_text_client", lambda s: _FakeText("small"))
 
-        result = await env.run(activities.generate, GenerateInput(prompt="P"))
+        result = await env.run(activities.generate, GenerateInput(tenant_id="11111111-1111-1111-1111-111111111111", prompt="P"))
 
         assert result.content == "small"
         assert result.content_ref is None
@@ -112,9 +112,9 @@ class TestGenerateOffloadsNote:
         store = InMemoryBlobStore()
         monkeypatch.setattr(activities, "get_settings", lambda: _settings(enabled=False))
         monkeypatch.setattr(activities, "build_blob_store", lambda cc: store)
-        monkeypatch.setattr(activities, "_smr_client", lambda s: _FakeSmr(_BIG_NOTE))
+        monkeypatch.setattr(activities, "_text_client", lambda s: _FakeText(_BIG_NOTE))
 
-        result = await env.run(activities.generate, GenerateInput(prompt="P"))
+        result = await env.run(activities.generate, GenerateInput(tenant_id="11111111-1111-1111-1111-111111111111", prompt="P"))
 
         assert result.content == _BIG_NOTE
         assert result.content_ref is None
@@ -124,14 +124,14 @@ class TestGenerateOffloadsNote:
         """Consume: the prompt is resolved inline-or-ref and the RAG block folded in."""
         store = InMemoryBlobStore()
         prompt_ref = await store_blob("BASE PROMPT", store=store, bucket=_BUCKET)
-        fake = _FakeSmr("small")
+        fake = _FakeText("small")
         monkeypatch.setattr(activities, "get_settings", lambda: _settings(min_bytes=100_000))
         monkeypatch.setattr(activities, "build_blob_store", lambda cc: store)
-        monkeypatch.setattr(activities, "_smr_client", lambda s: fake)
+        monkeypatch.setattr(activities, "_text_client", lambda s: fake)
 
         await env.run(
             activities.generate,
-            GenerateInput(prompt="", prompt_ref=prompt_ref, prompt_block="[[kb:1]] chunk"),
+            GenerateInput(tenant_id="11111111-1111-1111-1111-111111111111", prompt="", prompt_ref=prompt_ref, prompt_block="[[kb:1]] chunk"),
         )
         # generate resolved the offloaded prompt AND folded in the StrictCitations block.
         assert fake.kwargs["prompt"] == "BASE PROMPT\n\n[[kb:1]] chunk"
@@ -140,13 +140,14 @@ class TestGenerateOffloadsNote:
     async def test_folds_segment_citations_block_when_refs_provided(self, env, monkeypatch):
         """generate folds a [[seg:<id>]] StrictCitations block when refs given."""
         seg_id = "11111111-1111-1111-1111-111111111111"
-        fake = _FakeSmr("small")
+        fake = _FakeText("small")
         monkeypatch.setattr(activities, "get_settings", lambda: _settings(min_bytes=100_000))
-        monkeypatch.setattr(activities, "_smr_client", lambda s: fake)
+        monkeypatch.setattr(activities, "_text_client", lambda s: fake)
 
         await env.run(
             activities.generate,
             GenerateInput(
+                tenant_id="11111111-1111-1111-1111-111111111111",
                 prompt="BASE PROMPT",
                 segment_citations=[
                     SegmentCitationRef(id=seg_id, speaker="CLINICIAN", t0_ms=0, t1_ms=500)
@@ -199,7 +200,7 @@ class TestConsumersResolveInlineOrRef:
         monkeypatch.setattr(activities, "_nlp_client", lambda s: nlp)
 
         result = await env.run(
-            activities.extract_entities, ExtractEntitiesInput(text="", text_ref=ref)
+            activities.extract_entities, ExtractEntitiesInput(tenant_id="11111111-1111-1111-1111-111111111111", text="", text_ref=ref)
         )
         assert nlp.text == _BIG_NOTE  # the NLP client saw the resolved (full) note
         assert [e.text for e in result.entities] == ["hypertension"]

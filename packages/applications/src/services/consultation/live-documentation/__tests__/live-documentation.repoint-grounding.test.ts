@@ -127,7 +127,7 @@ function buildDeps(httpMock = buildHttpMock()) {
   };
   const configService = { get: vi.fn().mockReturnValue(undefined) };
   const harnessPolicyService = {
-    resolveSmrSelection: vi.fn().mockResolvedValue({ provider: 'lm-studio', model: 'live-medgemma' }),
+    resolveTextSelection: vi.fn().mockResolvedValue({ provider: 'lm-studio', model: 'live-medgemma' }),
   };
 
   const service = new LiveDocumentationService(

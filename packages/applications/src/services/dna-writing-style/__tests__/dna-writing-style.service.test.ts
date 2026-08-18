@@ -47,12 +47,15 @@ const createMockDnaReportRepository = () => ({
   findPaginated: vi.fn().mockResolvedValue({ data: [], count: 0 }),
   // Ciphertext decryption — returns the plaintext view.
   decryptFieldsFromEntity: vi.fn(),
+  // Erasure (INV-240) — soft delete only; DNA rows are never hard-deleted.
+  softDelete: vi.fn(),
   $: vi.fn(),
 });
 
 const createMockDnaVersionRepository = () => ({
   findAll: vi.fn().mockResolvedValue([]),
   create: vi.fn(),
+  softDelete: vi.fn(),
 });
 
 // Usage-record source for the aggregate dashboard.
@@ -1659,6 +1662,115 @@ describe('DnaWritingStyleService', () => {
       await expect(svc.setDnaEnabled('doctor-id-1', { enabled: true })).rejects.toThrow(BadRequestException);
       expect(policy.setDnaStyleForDoctor).not.toHaveBeenCalled();
       expect(mockEventEmitter.emit).not.toHaveBeenCalled();
+    });
+  });
+
+  // ─── Erasure: reset / delete the clinician's own DNA profile (INV-240) ─────
+  //
+  // INV-167 makes style learning "opt-in and REVERSIBLE by the clinician", and
+  // INV-241 requires exemplars to be scrubbed on erasure. Opting out only stops
+  // FUTURE learning; without these paths the profile already learned stays
+  // stored and keeps being injected into every summary the doctor generates.
+
+  describe('resetMyDnaProfile', () => {
+    it('soft-deletes every report the caller owns, plus each report version', async () => {
+      mockReportRepo.findAllForDoctor.mockResolvedValue([
+        createMockReportEntity({ id: 'report-1', doctorId: 'user-id-1' }),
+        createMockReportEntity({ id: 'report-2', doctorId: 'user-id-1', isLatest: false }),
+      ]);
+      mockVersionRepo.findAll.mockImplementation(async ({ filters }: { filters: { dnaReportId: string } }) =>
+        filters.dnaReportId === 'report-1' ? [createMockVersionEntity({ id: 'v-1' }), createMockVersionEntity({ id: 'v-2' })] : [],
+      );
+
+      const result = await service.resetMyDnaProfile();
+
+      expect(result).toEqual({ doctorId: 'user-id-1', deletedReports: 2, deletedVersions: 2 });
+      expect(mockReportRepo.softDelete).toHaveBeenCalledWith('report-1');
+      expect(mockReportRepo.softDelete).toHaveBeenCalledWith('report-2');
+      expect(mockVersionRepo.softDelete).toHaveBeenCalledWith('v-1');
+      expect(mockVersionRepo.softDelete).toHaveBeenCalledWith('v-2');
+    });
+
+    it('broadcasts a ResourceDeleted SysEvent per erased report', async () => {
+      mockReportRepo.findAllForDoctor.mockResolvedValue([createMockReportEntity({ id: 'report-1', doctorId: 'user-id-1' })]);
+
+      await service.resetMyDnaProfile();
+
+      expect(mockEventEmitter.emit).toHaveBeenCalledWith(
+        'SysEvent.ResourceDeleted',
+        expect.objectContaining({
+          resourceId: 'report-1',
+          data: expect.objectContaining({ kind: 'dna-profile-reset', doctorId: 'user-id-1' }),
+        }),
+      );
+    });
+
+    it('is idempotent — a doctor with no profile resets to zero without error or broadcast', async () => {
+      mockReportRepo.findAllForDoctor.mockResolvedValue([]);
+
+      const result = await service.resetMyDnaProfile();
+
+      expect(result).toEqual({ doctorId: 'user-id-1', deletedReports: 0, deletedVersions: 0 });
+      expect(mockReportRepo.softDelete).not.toHaveBeenCalled();
+      expect(mockEventEmitter.emit).not.toHaveBeenCalled();
+    });
+
+    it('never erases a row belonging to another tenant', async () => {
+      mockReportRepo.findAllForDoctor.mockResolvedValue([
+        createMockReportEntity({ id: 'mine', doctorId: 'user-id-1', tenantId: 'tenant-1' }),
+        createMockReportEntity({ id: 'foreign', doctorId: 'user-id-1', tenantId: 'tenant-2' }),
+      ]);
+
+      const result = await service.resetMyDnaProfile();
+
+      expect(result.deletedReports).toBe(1);
+      expect(mockReportRepo.softDelete).toHaveBeenCalledWith('mine');
+      expect(mockReportRepo.softDelete).not.toHaveBeenCalledWith('foreign');
+    });
+
+    it('throws BadRequestException when no tenant is in context (nothing erased)', async () => {
+      mockClsService.get.mockImplementation((key: string) => (key === 'user' ? { id: 'user-id-1' } : null));
+
+      await expect(service.resetMyDnaProfile()).rejects.toThrow(BadRequestException);
+      expect(mockReportRepo.softDelete).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('deleteReport', () => {
+    it('soft-deletes a single owned report and its versions, and broadcasts', async () => {
+      mockReportRepo.findById.mockResolvedValue(createMockReportEntity({ id: 'report-1', doctorId: 'user-id-1' }));
+      mockVersionRepo.findAll.mockResolvedValue([createMockVersionEntity({ id: 'v-1' })]);
+
+      const result = await service.deleteReport('report-1');
+
+      expect(result).toEqual({ doctorId: 'user-id-1', deletedReports: 1, deletedVersions: 1 });
+      expect(mockReportRepo.softDelete).toHaveBeenCalledWith('report-1');
+      expect(mockVersionRepo.softDelete).toHaveBeenCalledWith('v-1');
+      expect(mockEventEmitter.emit).toHaveBeenCalledWith(
+        'SysEvent.ResourceDeleted',
+        expect.objectContaining({ resourceId: 'report-1', data: expect.objectContaining({ kind: 'dna-profile-reset' }) }),
+      );
+    });
+
+    it('returns 404 (not 403) for a report belonging to another tenant', async () => {
+      mockReportRepo.findById.mockResolvedValue(createMockReportEntity({ id: 'foreign', tenantId: 'tenant-2', doctorId: 'user-id-1' }));
+
+      await expect(service.deleteReport('foreign')).rejects.toThrow(NotFoundException);
+      expect(mockReportRepo.softDelete).not.toHaveBeenCalled();
+    });
+
+    it('throws NotFoundException for an unknown report id', async () => {
+      mockReportRepo.findById.mockResolvedValue(null);
+
+      await expect(service.deleteReport('nope')).rejects.toThrow(NotFoundException);
+      expect(mockReportRepo.softDelete).not.toHaveBeenCalled();
+    });
+
+    it("refuses to erase another doctor's report in the same tenant", async () => {
+      mockReportRepo.findById.mockResolvedValue(createMockReportEntity({ id: 'other-doc', doctorId: 'someone-else' }));
+
+      await expect(service.deleteReport('other-doc')).rejects.toThrow(ForbiddenException);
+      expect(mockReportRepo.softDelete).not.toHaveBeenCalled();
     });
   });
 });

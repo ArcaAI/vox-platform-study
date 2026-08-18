@@ -3,7 +3,7 @@
  *
  * A convenience writer over the EXISTING per-key `PUT
  * admin/ai-task-defaults/row?taskKey=` endpoint. The load-bearing behavior: one
- * model choice fans out to `smr.live` + `smr.finalize` (primary), an optional
+ * model choice fans out to `text.live` + `text.finalize` (primary), an optional
  * fallback fans out to their `.fallback` keys, every write is OCC (If-Match) and
  * CLS-pinned (no `tenantId` on the wire).
  */
@@ -95,7 +95,7 @@ describe('TextDefaultProviderControl', () => {
     expect((apply as HTMLButtonElement).disabled).toBe(true);
   });
 
-  it('applies one primary model to smr.live + smr.finalize with If-Match, and no fallback writes', async () => {
+  it('applies one primary model to text.live + text.finalize with If-Match, and no fallback writes', async () => {
     const calls = stubFetch();
     renderWithProviders(<TextDefaultProviderControl />);
 
@@ -109,7 +109,7 @@ describe('TextDefaultProviderControl', () => {
     });
     const puts = calls.filter((c) => c.method === 'PUT');
     const keys = puts.map((p) => new URL(p.url, 'http://test.local').searchParams.get('taskKey')).sort();
-    expect(keys).toEqual(['smr.finalize', 'smr.live']);
+    expect(keys).toEqual(['text.finalize', 'text.live']);
     for (const put of puts) {
       expect(put.headers.get('if-match')).toBe('"0"');
       expect((put.body as Record<string, unknown>).expectedVersion).toBe(0);
@@ -130,7 +130,7 @@ describe('TextDefaultProviderControl', () => {
       .filter((c) => c.method === 'PUT')
       .map((p) => new URL(p.url, 'http://test.local').searchParams.get('taskKey'))
       .sort();
-    expect(keys).toEqual(['smr.finalize', 'smr.finalize.fallback', 'smr.live', 'smr.live.fallback']);
+    expect(keys).toEqual(['text.finalize', 'text.finalize.fallback', 'text.live', 'text.live.fallback']);
   });
 
   it('is CLS-pinned — no request carries a tenantId query param', async () => {

@@ -30,6 +30,14 @@ export const COMMON_SERVICE_WARMUP_KEYS = [
   'S3_ACCESS_KEY',
   'S3_SECRET_KEY',
   'TEXT_SERVICE_TOKEN',
+  // D-D — the ONE shared internal access token. Read through `getSecretSync` on
+  // the two gateway→Text proxy paths that cannot await
+  // (`TextProxyController`/`TextCompatController.getForwardHeaders`), and
+  // `getSecretSync` is cache-only by design: unwarmed, it resolves to undefined
+  // on EVERY request, so those hops would silently fall through to the legacy
+  // `TEXT_SERVICE_TOKEN` forever and the shared token would appear "not
+  // deployed". Pinned by `warmup-coverage.test.ts`.
+  'INTERNAL_ACCESS_TOKEN',
   // Read ONLY through `getSecretSync` (SpeechProxyController.getForwardHeaders,
   // TtsWsGateway.openBridge) — both are on paths that cannot await. Because
   // `getSecretSync` is cache-only by design, an unwarmed key resolves to

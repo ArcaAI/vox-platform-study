@@ -41,7 +41,7 @@
  *   - per-field validation semantics (types, ranges, UUID) →
  *     `prompt-management/__tests__/test-prompt-template.request.test.ts`
  *   - caller-supplied provider/model forwarded verbatim + the
- *     `smr.test` → `smr.finalize` cascade → `prompt-management/__tests__/smr-test-routing.test.ts`
+ *     `text.test` → `text.finalize` cascade → `prompt-management/__tests__/smr-test-routing.test.ts`
  *   - dry-run persistence/OCC neutrality, `versionNumber` snapshot targeting,
  *     `goldenCaseId` XOR/404 → `prompt-management/__tests__/prompt-management.service.test.ts`
  *     and the e2e spec `apps/api/tests/e2e/task-635-prompt-test-bench.spec.ts`

@@ -16,6 +16,7 @@ import { AiTaskDefaultServiceModule } from '../../ai-task-default/ai-task-defaul
 import { UsageLedgerServiceModule } from '../../usageLedger/usage-ledger.service.module';
 import { BillingServiceModule } from '../../billing/billing.service.module';
 import { NoteGenerationServiceModule } from '../note-generation/note-generation.service.module';
+import { PhiRedactionServiceModule } from '../../phi-redaction/phi-redaction.service.module';
 
 @Module({
   // HarnessAuditServiceModule supplies the WORM audit trail
@@ -51,6 +52,12 @@ import { NoteGenerationServiceModule } from '../note-generation/note-generation.
     // (see summary.service.ts for the HUMAN-GATED note on why sync
     // generateSummary does not short-circuit to harness).
     NoteGenerationServiceModule,
+    // TASK-710 hop 1 — supplies `IPhiRedactor` for `extractEntities`, which
+    // pseudonymizes before posting to the NLP service. SummaryService injects
+    // it WITHOUT `@Optional()`, so this import is load-bearing: dropping it
+    // fails module initialization loudly rather than silently leaking raw PHI
+    // (the failure mode TASK-732's deletion of `ner.processor.ts` re-opened).
+    PhiRedactionServiceModule,
   ],
   providers: [
     PromptAssemblyService,

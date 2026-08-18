@@ -189,9 +189,9 @@ class TestExceptionHierarchy:
     """Custom exception classes have correct attributes and inheritance."""
 
     def test_smr_error_base(self):
-        from text.core.exceptions import SmrError
+        from text.core.exceptions import TextError
 
-        err = SmrError("boom")
+        err = TextError("boom")
         assert err.message == "boom"
         assert err.error_code == "INTERNAL_ERROR"
         assert str(err) == "boom"
@@ -232,13 +232,13 @@ class TestExceptionHierarchy:
             ProviderError,
             ProviderTimeoutError,
             RateLimitError,
-            SmrError,
+            TextError,
         )
 
-        assert issubclass(ProviderError, SmrError)
+        assert issubclass(ProviderError, TextError)
         assert issubclass(ProviderTimeoutError, ProviderError)
-        assert issubclass(RateLimitError, SmrError)
-        assert issubclass(InputValidationError, SmrError)
+        assert issubclass(RateLimitError, TextError)
+        assert issubclass(InputValidationError, TextError)
 
 
 # ═══════════════════════════════════════════════════════════════════════════

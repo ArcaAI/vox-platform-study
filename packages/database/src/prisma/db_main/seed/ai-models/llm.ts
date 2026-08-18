@@ -9,9 +9,11 @@ import { AiModelFormat, AiModelSource, ModelCategory, ModelTaskType, ModelType, 
  * provider-native identifier actually sent to the runtime (LM Studio model
  * name, Azure model id, Bedrock model id); `slug` stays the stable registry
  * key. New rows use the fresh `80000000-…-0007-…` id block (0001–0006 are
- * occupied by the legacy audio/LLM/browser blocks). Ollama was removed
- * entirely (owner directive 2026-08-16) — every `ollama-*` row was deleted
- * and its slug moved to `retired.ts`.
+ * occupied by the legacy audio/LLM/browser blocks). Every `ollama-*` row was
+ * deleted and its slug moved to `retired.ts` — the platform standardises on one
+ * LM Studio model and ships no Ollama model opinion. The `ollama` PROVIDER is
+ * still selectable (owner decision 2026-08-17); a tenant that runs its own
+ * Ollama registers its own `AiModel` row against it.
  *
  * ## LM Studio identifiers — the invariant, and the two states a row may be in
  *
@@ -79,7 +81,7 @@ export const LLM_AI_MODELS: AiModelSeed[] = [
     name: 'Gemma 4 E2B IT QAT (LM Studio)',
     slug: 'lms-gemma-4-e2b-it-qat',
     description:
-      'Google Gemma 4 E2B instruction-tuned QAT via LM Studio — the platform default text/summarization model (HarnessPolicy SYSTEM smrModel).',
+      'Google Gemma 4 E2B instruction-tuned QAT via LM Studio — the platform default text/summarization model (HarnessPolicy SYSTEM textModel).',
     category: ModelCategory.NLP,
     taskType: ModelTaskType.TEXT_GENERATION,
     modelType: ModelType.QUANTIZED_MODEL,

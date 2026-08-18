@@ -126,8 +126,8 @@ describe('playground-llm client', () => {
   it('builds the gateway stream path + ticket scope (never a BFF-proxied stream URL)', () => {
     expect(taskStreamPath('t-5531')).toBe('text/tasks/t-5531/stream');
     expect(taskStreamPath('t 1')).toBe('text/tasks/t%201/stream');
-    // Must match @StreamScope({ namespace: 'smr_task', param: 'taskId' }).
-    expect(taskStreamScope('t-5531')).toBe('smr_task:t-5531');
+    // Must match @StreamScope({ namespace: 'text_task', param: 'taskId' }).
+    expect(taskStreamScope('t-5531')).toBe('text_task:t-5531');
     expect(taskStreamPath('t-5531')).not.toContain('/api/hope/');
   });
 });

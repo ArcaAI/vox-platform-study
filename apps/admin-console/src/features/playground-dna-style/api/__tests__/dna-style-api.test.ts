@@ -10,6 +10,8 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   dnaJobStreamPath,
+  eraseMyReport,
+  eraseMyStyle,
   generateMyStyle,
   getDnaJobStatus,
   getDnaSettings,
@@ -99,6 +101,25 @@ describe('playground dna style client', () => {
     await setDefaultReport('rep-2');
     expect(calls.map((call) => `${call.method} ${call.url}`)).toEqual(['PATCH /api/hope/dna-writing-styles/rep-2/default']);
     expect(calls[0].body).toBeUndefined();
+  });
+
+  it('erases the whole learned profile through DELETE my-style (no body)', async () => {
+    const calls = installFetchMock(() => Response.json({ doctorId: 'doc-1', deletedReports: 2, deletedVersions: 5 }));
+    const result = await eraseMyStyle();
+    expect(calls.map((call) => `${call.method} ${call.url}`)).toEqual(['DELETE /api/hope/dna-writing-styles/my-style']);
+    expect(calls[0].body).toBeUndefined();
+    expect(result).toEqual({ doctorId: 'doc-1', deletedReports: 2, deletedVersions: 5 });
+  });
+
+  it('erases ONE owned report through DELETE :reportId (escaping the id)', async () => {
+    const calls = installFetchMock(() => Response.json({ doctorId: 'doc-1', deletedReports: 1, deletedVersions: 3 }));
+    const result = await eraseMyReport('rep-1');
+    await eraseMyReport('rep/1');
+    expect(calls.map((call) => `${call.method} ${call.url}`)).toEqual([
+      'DELETE /api/hope/dna-writing-styles/rep-1',
+      'DELETE /api/hope/dna-writing-styles/rep%2F1',
+    ]);
+    expect(result.deletedReports).toBe(1);
   });
 
   it('reads the version timeline of a report', async () => {

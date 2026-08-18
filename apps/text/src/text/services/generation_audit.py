@@ -26,7 +26,7 @@ class GenerationAuditEvent:
     # Which tenant the generation was performed for (the forwarded
     # ``X-Tenant-Id``). Without it an audit record can say what was spent but not
     # by whom, which is the one question a consumption review always asks.
-    # Optional because SMR also serves untenanted internal callers.
+    # Optional because Text also serves untenanted internal callers.
     tenant_id: str | None = None
 
 
@@ -34,7 +34,7 @@ class GenerationAuditLogger:
     """Emits structured generation.audit events via structlog."""
 
     def log_generation(self, event: GenerationAuditEvent) -> None:
-        logger = structlog.get_logger("smr.audit.generation")
+        logger = structlog.get_logger("text.audit.generation")
         payload = dataclasses.asdict(event)
 
         if event.status == "failed":

@@ -28,6 +28,7 @@ import {
   DnaDashboardResponse,
   DnaSettingsResponse,
   UpdateDnaSettingsRequest,
+  DnaErasureResponse,
 } from './dto';
 import { DnaWritingStyleDtoMapper } from './dna-writing-style.dto.mapper';
 import { RedactionRuleSet, validateRedactionRuleSet } from './redaction-rules';
@@ -457,6 +458,90 @@ export class DnaWritingStyleService extends BaseService implements IDnaWritingSt
     });
 
     return DnaWritingStyleDtoMapper.toReportResponse(updated);
+  }
+
+  /**
+   * Erase the CALLER'S OWN learned writing-style profile in full — every
+   * report plus every historical version (INV-240 / INV-241).
+   *
+   * Opting out (`PUT /dna-writing-styles/settings`) only stops FUTURE
+   * learning; the profile already learned stays stored and keeps being
+   * injected into the doctor's summary prompts. INV-167 requires style
+   * learning to be "reversible by the clinician", which is only true with an
+   * erasure path, so this is the other half of the opt-out.
+   *
+   * Self-service by construction: the subject is always `requestUserId`, so
+   * there is no id to smuggle and no way to erase someone else's profile.
+   * Idempotent — a doctor with no profile resets to zero counts.
+   */
+  async resetMyDnaProfile(): Promise<DnaErasureResponse> {
+    const tenantId = this.tenantId;
+    if (!tenantId) {
+      throw new BadRequestException('Tenant ID is required');
+    }
+    const doctorId = this.requestUserId;
+    if (!doctorId) {
+      throw new BadRequestException('User context is required');
+    }
+
+    const reports = await this.dnaReportRepository.findAllForDoctor(doctorId);
+    // Defense in depth: the extended client already scopes reads by tenant,
+    // but erasure is destructive enough to re-assert it here rather than
+    // trust the extension to have been applied.
+    const owned = (reports ?? []).filter((report) => report.tenantId === tenantId);
+
+    return this.eraseReports(owned, doctorId);
+  }
+
+  /**
+   * Erase ONE of the caller's own writing-style reports (and its versions).
+   * Complements {@link resetMyDnaProfile} for a doctor who wants to drop a
+   * single bad snapshot rather than the whole profile.
+   *
+   * Cross-tenant ids surface as 404 (never 403) via
+   * {@link assertReportInScope}, so the API never reveals that a record
+   * exists for another tenant. A same-tenant report owned by a DIFFERENT
+   * doctor is a genuine privilege boundary, not an existence question, so it
+   * is a 403 — mirroring `setDefaultReport`.
+   */
+  async deleteReport(reportId: string): Promise<DnaErasureResponse> {
+    const report = await this.dnaReportRepository.findById(reportId);
+    if (!report) throw new NotFoundException(`DNA report ${reportId} not found`);
+    this.assertReportInScope(report, reportId);
+
+    const userId = this.requestUserId;
+    if (report.doctorId !== userId) {
+      throw new ForbiddenException("Cannot erase another doctor's DNA writing-style report");
+    }
+
+    return this.eraseReports([report], report.doctorId ?? userId);
+  }
+
+  /**
+   * Soft-delete the given reports and each of their versions, broadcasting one
+   * `ResourceDeleted` per report. Soft delete (never hard delete) per
+   * `03-domain-layer.md`: the rows stay auditable while dropping out of every
+   * read path, and `getEffectiveStyleText` therefore stops injecting them.
+   */
+  private async eraseReports(reports: { id: string; doctorId?: string | null }[], doctorId: string): Promise<DnaErasureResponse> {
+    let deletedVersions = 0;
+
+    for (const report of reports) {
+      const versions = await this.dnaVersionRepository.findAll({ filters: { dnaReportId: report.id } });
+      for (const version of versions ?? []) {
+        await this.dnaVersionRepository.softDelete(version.id);
+        deletedVersions++;
+      }
+
+      await this.dnaReportRepository.softDelete(report.id);
+
+      this.broadcastSysEvent(SysEventType.ResourceDeleted, {
+        resourceId: report.id,
+        data: { kind: 'dna-profile-reset', doctorId },
+      });
+    }
+
+    return { doctorId, deletedReports: reports.length, deletedVersions };
   }
 
   /**

@@ -47,7 +47,7 @@ import * as bcrypt from 'bcryptjs';
 import { randomBytes } from 'crypto';
 import { ClsService } from 'nestjs-cls';
 import { StreamSessionTenantBindingService } from '../../common';
-import { Authorize, Public } from '../../decorators';
+import { Authorize, Public, ForbidApiKey } from '../../decorators';
 import {
   LoginRequest,
   LoginResponse,
@@ -82,6 +82,12 @@ const SUPER_ADMIN_ROLE = 'SUPER_ADMIN';
 // throttler instead.
 @ApiTags('auth')
 @Controller('auth')
+// TASK-742: session lifecycle for interactive humans (login/logout/me/
+// refresh/impersonate/stream-ticket). Nonsensical for a credential that IS the
+// authentication — and `/auth/stream-ticket` mints SSE/WS tickets bound to a
+// session. TASK-708's Task 3 table bucketed this (c); it was left out of that
+// ticket's `/admin/*`-only approval and is closed here.
+@ForbidApiKey()
 export class AuthController {
   private readonly logger = new Logger(AuthController.name);
 

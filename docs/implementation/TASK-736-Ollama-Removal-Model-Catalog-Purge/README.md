@@ -1,10 +1,10 @@
-# TASK-736 — Remove Ollama entirely; purge the gemma3 / llama3.2 / qwen catalog; standardise on `gemma-4-e2b-it-qat`
+# TASK-736 — Purge the Ollama model catalog (provider logic RETAINED); standardise on `gemma-4-e2b-it-qat`
 
 | Field | Value |
 |---|---|
-| Status | In Progress (Phase D — `apps/harness` — completed 2026-08-16; Phases A/B/C/E/F owned by concurrent agents) |
+| Status | Review (revised scope implemented 2026-08-17 — provider restored, catalog purged; see §10) |
 | Type | refactor + infrastructure |
-| Owner decision date | 2026-08-16 |
+| Owner decision date | 2026-08-16, **REVISED 2026-08-17** (see §1) |
 | Depends on | TASK-735 (overlapping files — see §6 Sequencing) |
 | Affects | `apps/text`, `apps/guardrail`, `apps/harness`, `apps/api`, `apps/admin-console`, `packages/database` seeds, `turbo.json`, every `.env*`, docs |
 
@@ -12,19 +12,56 @@
 
 ## 1. Requirement Analysis
 
-Owner directive, 2026-08-16:
+> **⚠ THIS TICKET'S CORE REQUIREMENT WAS REVERSED BY THE OWNER ON 2026-08-17.**
+> Everything below §2 was written against the superseded 2026-08-16 directive and is
+> retained as the record of what was analysed and executed under it. Where the two
+> conflict, **this section wins**.
 
-- **R1 — Ollama is removed completely**, including its model catalog rows. Not deprecated, not
-  disabled-by-default: removed.
-- **R2 — One LM Studio model is the dev + deployment default everywhere**, and every
-  `gemma3` / `llama3.2` / `qwen` model-catalog row and configuration default goes with Ollama.
-  Owner-resolved 2026-08-16: the model is **`gemma-4-e2b-it-qat`** (slug `lms-gemma-4-e2b-it-qat`),
-  applied to the agentic loop AND `smr.live` / `smr.finalize` / `smr.test` / `harness.judge`.
-  A separate production model set will be decided later and is out of scope here.
+### R1 (CURRENT) — Ollama provider LOGIC stays; only the Ollama MODEL CATALOG is removed
 
-Both follow from the standing configuration rules (`.claude/rules/00-project-context.md`
-§Configuration Principles): a model catalog nobody serves is dead config, and an engine kept
-"just in case" is an ungoverned surface.
+Owner decision, 2026-08-17
+(`docs/architecture/agentic-workflow-platform/owner-decisions-2026-08-17.md` §2, row 736):
+
+> "ollama provider logic must be available, however, model catalog related to ollama
+>  must be removed."
+
+Concretely, the target state is a provider that is **fully selectable but ships no
+platform model opinion**:
+
+| Stays (provider logic) | Goes (model catalog) |
+|---|---|
+| The `apps/text` adapter, its config, and its registry registration | Every `ollama-*` `AiModel` seed row |
+| `ollama` in `AI_MODEL_PROVIDERS` (seed) and the gateway `@IsIn` DTO allow-lists | Any `AiTaskDefault` binding to an Ollama model |
+| `ollama` in `DISCOVERABLE_AI_MODEL_PROVIDERS` — discovery is how a BYO tenant registers what its own server reports | The `TEXT_OLLAMA_DEFAULT_MODEL` env var and any compiled-in Ollama model id |
+| The SYSTEM `AiProviderConnection` row (the endpoint a tenant inherits or overrides) | — |
+| `'ollama'` in `packages/types/src/llm.ts` and the admin-console provider options | — |
+
+The pairing is not a contradiction, it is **BYO**: the platform standardises on one
+LM Studio model (R2, unchanged), so it has no opinion about which Ollama model to run.
+A tenant that brings its own Ollama endpoint brings its own `AiModel` row and
+`AiTaskDefault` with it. This is precisely the tenant → SYSTEM cascade of
+`.claude/rules/09-infrastructure-devops.md` §Tenant-first resolution: **absence of a
+platform default is a legitimate state**, not a gap.
+
+It also keeps the ticket consistent with D-B: a model id is `db-config`, never an env
+var and never a literal in code. The restored `OllamaConfig.default_model` is therefore
+`""` (matching `VllmConfig` / `LlamaCppConfig`), **not** the `"gemma4:e2b-it-qat"` the
+pre-deletion file carried — the one deliberate divergence from git history in this
+restore.
+
+### R1 (SUPERSEDED) — "Ollama is removed completely"
+
+The original 2026-08-16 R1 read: *"Ollama is removed completely, including its model
+catalog rows. Not deprecated, not disabled-by-default: removed."* A prior pass executed
+it and got partway (see §9 for exactly how far). That directive is **void**; do not
+restore work that implements it.
+
+### R2 (UNCHANGED) — one LM Studio model is the dev + deployment default everywhere
+
+The model is **`gemma-4-e2b-it-qat`** (slug `lms-gemma-4-e2b-it-qat`), applied to the
+agentic loop AND `smr.live` / `smr.finalize` / `smr.test` / `harness.judge`. Every
+`gemma3` / `llama3.2` / `qwen` model-catalog row goes with the Ollama catalog. A separate
+production model set will be decided later and is out of scope here.
 
 ## 2. Current State — measured footprint (2026-08-16)
 
@@ -241,7 +278,7 @@ phases until those lanes land**:
 | **Q4** | ~~Is any deployment currently running an ollama provider?~~ | **Resolved 2026-08-16: no — there is no Ollama anywhere.** Phase D's fail-fast validator change ships with the rest; no coordinated release needed. |
 | **Q5** | The dev LM Studio serves qwen, medgemma, bonsai and other models the HOPE catalog does not list. Should the catalog track the instance, or stay a curated subset? | Curated subset. The catalog is what HOPE *offers*; the instance is what happens to be *installed*. Q3's defect came from assuming the two agree — the new verification check asserts catalog ⊆ instance, deliberately not equality. |
 
-## 8. Implementation Summary
+## 8. Implementation Summary — Phase D, under the SUPERSEDED 2026-08-16 scope
 
 **Phase D (`apps/harness`) — Completed 2026-08-16.** Phases A/B/C/E/F are owned by
 concurrent agents (packages/database, apps/text, apps/guardrail) and are out of
@@ -318,3 +355,199 @@ touched.
 | 2026-08-16 | Ticket created from owner directive. Footprint measured (282 ollama files / 92 model-name files); STT Cadence Gemma-3 backbone identified as an explicit non-goal; retired-slug ledger identified as the correct removal mechanism; model-id naming drift documented. |
 | 2026-08-16 | Q1–Q3 resolved: `gemma-4-e2b-it-qat` for all bindings. Model id verified against the LIVE LM Studio catalog, which **overturned** the ticket's own §2.3 analysis and the seed's provenance comment: `google/gemma-4-e4b-qat` is not served by the instance. Live defect recorded (§2.4 — `HARNESS_JUDGE_MODEL` points at an unservable id). Seed already carries the chosen model, so R2's catalog work collapses to assertions + comment deletion. |
 | 2026-08-16 | **Phase D implemented** (`apps/harness`, this ticket's only phase with no TASK-735 dependency): `_SAFETY_PROVIDERS` and `PhiConfig.local_providers` drop `"ollama"` (fail-fast / more-conservative directions respectively); `JudgeProvider.OLLAMA` removed and the judge default converged on `gemma-4-e2b-it-qat`; dead ollama-transport branches removed from `GraniteGuardianClient`/`GraniteGroundednessJudge` (a required consequence of the `_SAFETY_PROVIDERS` change, not originally itemized); `.env.sample`, `README.md`, `eval/README.md`, and `scripts/task_330_phase3_cite_verify_check.py` swept. `pnpm harness:lint`/`:typecheck` clean; `pnpm harness:test` green modulo 4 pre-existing, unrelated env-leak failures. |
+
+---
+
+## 10. Implementation Summary — REVISED scope (2026-08-17)
+
+### 10.1 What the tree actually looked like, vs the revised target
+
+A prior pass executed the superseded "remove everything" R1 and got partway. Measured on
+2026-08-17 (commit `180d5cda` is the removal commit; it is an ancestor of `HEAD`):
+
+| Surface | State found | Revised target | Verdict |
+|---|---|---|---|
+| `apps/text/src/text/providers/ollama.py` | **DELETED** | present | ✗ restore |
+| `apps/text` `OllamaConfig`, `Settings.ollama` | **DELETED** | present | ✗ restore |
+| `apps/text` `_OLLAMA` stop table + `stats_from_ollama_response` | **DELETED** | present | ✗ restore |
+| `apps/text/main.py` registration + `provider_configs` | **DELETED** | present | ✗ restore |
+| `apps/text/.../test_ollama_provider.py` | **DELETED** | present | ✗ restore |
+| `AI_MODEL_PROVIDERS` (seed `shared.ts`) | ollama removed | ollama present | ✗ restore |
+| `AI_MODEL_PROVIDERS` (gateway DTO) | ollama removed | ollama present | ✗ restore |
+| `DISCOVERABLE_AI_MODEL_PROVIDERS` | ollama removed | ollama present | ✗ restore |
+| SYSTEM `AiProviderConnection` llm:ollama | row deleted (11 → 10) | row present (11) | ✗ restore |
+| `packages/types/src/llm.ts` `LLMProvider` union | `'ollama'` **still present** | present | ✓ already correct |
+| admin-console `RUNTIME_PROVIDER_OPTIONS` | `'ollama'` **still present** | present | ✓ already correct |
+| `seed/ai-models/llm.ts` — `ollama-*` catalog rows | **all deleted** | deleted | ✓ already correct |
+| `retired.ts` ledger | 14 `ollama-*` slugs, incl. the 3 purged | same | ✓ already correct |
+| `TEXT_OLLAMA_*` env vars | all removed | connection vars only, **no model id** | ~ partially restore |
+
+The two surfaces the audit flagged as "still carry `'ollama'`" — the type union and the
+console options — were **never debt**. Under the revised scope they are the correct
+state, and they were left untouched.
+
+Also found, and deliberately NOT restored (out of this ticket's file ownership, and
+contradicted by standing design):
+
+- `apps/guardrail/src/guardrail/providers/ollama.py` — deleted by the same commit.
+  Guardrail **owns policy, not engines** (TASK-735: it delegates judgement to `apps/text` /
+  `apps/nlp`). Restoring an engine adapter there would re-create the thing 735 removed.
+  Ollama reaches guardrail *through* `apps/text`, which is exactly what the restore enables.
+- `apps/harness` `_SAFETY_PROVIDERS` / `PhiConfig.local_providers` / `JudgeProvider.OLLAMA`.
+  Owned by the Phase D agent (§8). **Reported, not edited** — see §10.5.
+
+### 10.2 Files changed
+
+**Restored provider logic (`apps/text`)** — recovered with `git show 180d5cda^:<path>`,
+never re-typed:
+
+| File | Change |
+|---|---|
+| `src/text/providers/ollama.py` | Restored **byte-identical** to its pre-deletion content (273 lines). |
+| `src/text/tests/unit/test_ollama_provider.py` | Restored byte-identical (347 lines, 14 tests). |
+| `src/text/models/stats.py` | `_OLLAMA` `done_reason` table, its `_PROVIDER_TABLES` entry, and `stats_from_ollama_response` restored byte-identical. |
+| `src/text/core/config.py` | `OllamaConfig` restored + `Settings.ollama` field; module/`TeiEmbedConfig`/retention docstrings re-mention Ollama. **One deliberate divergence from history: `default_model` is `""`, not `"gemma4:e2b-it-qat"`** (D-B — see §1). |
+| `src/text/main.py` | `_register_provider_factories` registration restored (`if settings.ollama.base_url:`), plus the two `provider_configs` entries that size the semaphore/rate-limiter pools. |
+| `src/text/providers/base.py` | `require_model` docstring re-lists Ollama among the local engines that skip the fail-closed guard. |
+| `.env.sample`, `apps/text/.env.sample` | New commented `TEXT_OLLAMA_` block (base_url / timeout / max_concurrent / queue_backoff), mirroring the vLLM block. **Deliberately no `TEXT_OLLAMA_DEFAULT_MODEL`** — a model id is `db-config`, not env (D-B). No `turbo.json#globalEnv` entry is needed: these are Python-service keys, read via `hope_env`, and outside `declaredTsSurfaceKeys()`. |
+
+**Provider selectable end-to-end (D-E)**
+
+| File | Change |
+|---|---|
+| `packages/database/.../seed/ai-models/shared.ts` | `'ollama'` restored to `AI_MODEL_PROVIDERS`; the "removed entirely" comment replaced with the selectable-but-catalogless rationale. |
+| `packages/applications/.../dto/create-model.request.ts` | `'ollama'` restored to `AI_MODEL_PROVIDERS` **and** `DISCOVERABLE_AI_MODEL_PROVIDERS`. Discovery matters *more* for Ollama now: with no seeded rows, discovery is the only way a BYO tenant registers what its server reports. |
+| `packages/database/.../seed/17-ai-provider-connection.ts` | SYSTEM `llm:ollama` row restored (id `87000000-…-0001`, `baseUrl` `http://localhost:11434`, enabled, keyless) + docstring. |
+| `packages/types/src/llm.ts`, admin-console `model-meta.ts` | **Untouched** — already correct. |
+
+**Catalog stays purged (comment truth-up only, no data change)**
+
+`seed/ai-models/retired.ts` and `seed/ai-models/llm.ts` — reworded from "Ollama removed
+entirely" to "model catalog purged, provider retained", so the ledger explains *why* the
+slugs are retired (no platform model opinion) rather than asserting a fact that is no
+longer true.
+
+**Tests**
+
+| File | Change | Classification |
+|---|---|---|
+| `seed/__tests__/ollama-provider-retained.test.ts` | **NEW.** 6 tests pinning both halves at once: `ollama` is in `AI_MODEL_PROVIDERS`, has a keyless enabled SYSTEM connection; **and** no `AiModel` row is on `ollama`, no slug starts `ollama-`, every purged slug is in the retired ledger, ledger ∩ catalog = ∅. | product legitimately changed |
+| `seed/__tests__/config-plane-seed.test.ts` | `BUILT_IN_LOCAL_LLM_PROVIDERS` gains `ollama`; "four built-in-local rows" → "five"; the `never seeds an ollama connection row` assertion **replaced** by one asserting the row exists and is keyless. | **product legitimately changed** — the old assertion encoded the superseded directive verbatim. Rigor is unchanged: it still asserts an exact enabled-set equality, and the keyless invariant is now asserted where it previously was not. |
+| `apps/api/tests/e2e/ai-provider-connections.spec.ts` | `toHaveLength(10)` → `(11)`; `BUILTIN_LOCAL` gains `ollama`; title and comment updated. | **product legitimately changed** — the seed genuinely emits 11 rows again. Not weakened: still an exact count plus a per-row `enabled`/`hasKey` assertion and an exact enabled-set equality. |
+| `apps/api/tests/e2e/ai-model-discovery.spec.ts` | `SERVER_MANAGED` gains `ollama`; comment rewritten. | **product legitimately changed** — the DTO allow-list accepts it again. |
+
+**No assertion was weakened, deleted, or `skip`ped in either ticket.** Every changed
+expectation is an equality that still fails on the wrong value; the only edits are to
+*which* value is correct.
+
+### 10.3 Verification (real output, run 2026-08-17 through the shared test mutex)
+
+```
+$ CI=true pnpm text:lint
+All checks passed!
+
+$ CI=true pnpm text:typecheck
+Success: no issues found in 74 source files
+
+$ CI=true pnpm text:test
+apps/text/src/text/tests/unit/test_ollama_provider.py::TestOllamaProviderInit::test_creates_with_config PASSED
+… 14/14 test_ollama_provider tests PASSED …
+==== 1 failed, 1180 passed, 16 deselected, 8 warnings in 165.28s (0:02:45) ====
+FAILED test_lifespan.py::TestCreateApp::test_creates_app_with_default_settings
+  - AssertionError: assert 'Text — Text ...' == 'SMR — Text G...'
+```
+
+The single failure is **pre-existing and unrelated** — proven, not assumed:
+`git show HEAD:apps/text/src/text/main.py` already reads `title="Text — …"` while
+`git show HEAD:…/test_lifespan.py` still asserts `"SMR — …"`. It is leftover TASK-707
+naming debt (`b1bc867f0`); neither file is touched by this ticket.
+
+```
+$ pnpm typecheck
+ Tasks:    43 successful, 43 total          ← fully green
+
+$ pnpm --filter @arcaai/database test
+ Test Files  53 passed (53)
+      Tests  1278 passed (1278)
+
+$ pnpm env:sync --check
+env:sync --check OK — 6 artifacts match the declared surface (149 keys, bootstrap floor 60 lines).
+```
+
+**Seed proven against the LOCAL dev DB** (permitted by D-A — no production data):
+
+```
+$ pnpm db:seed
+Database seeding completed                                   (exit 0)
+
+$ docker exec hope-postgres psql -U postgres -d hope -t -c "…"
+ llm connections: 11
+ ollama conn enabled: true
+ ollama AiModel rows (live): 0
+ ollama-* rows (any status): 0
+ llm providers seeded: anthropic,azure,bedrock,built-in,llama-cpp,lm-studio,ollama,openai,sarvam,vertex,vllm
+```
+
+That is the revised target expressed as data: the provider is present and enabled with a
+configurable endpoint, and its model catalog is empty.
+
+### 10.4 A real defect this session introduced, and how it was closed
+
+Because several agents share this working tree and one reverted this session's edits, the
+edits were made replayable by an idempotent apply script. **Two of its anchors survived
+their own insertion**, so each replay appended another copy: `apps/text/models/stats.py`
+reached **5 copies** of `_OLLAMA` and `stats_from_ollama_response`, and
+`core/config.py` / `main.py` reached 5 copies of `OllamaConfig` and the registration
+block. Python permits redefinition (last one wins), so it imported and **the test suite
+passed anyway** — it would have shipped silently.
+
+Closed by rebuilding `stats.py` deterministically from `git show HEAD:` plus the two
+blocks extracted verbatim from `git show 180d5cda^:`, asserting single copies **and**
+byte-identity with history; collapsing the `config.py` / `main.py` duplicates; and
+hardening the script (`already-applied` is now checked *before* `needs-applying`, and the
+`stats.py` entries were dropped entirely). Proven idempotent: three consecutive replays
+report `applied=0 already-applied=22` and the counts stay at 1.
+
+Worth recording as a lesson rather than a footnote: an anchor-based patch script is only
+idempotent if the anchor is *consumed* by its own replacement, and a duplication that the
+language tolerates will not be caught by any test you already have.
+
+### 10.5 Gate failures OUTSIDE this ticket's ownership — reported, not edited
+
+| Gate | Failure | Owner |
+|---|---|---|
+| `pnpm lint` | `@arcaai/api#lint` — 2 `prettier/prettier` errors in `apps/api/src/modules/streaming/text-proxy.controller.ts` (import block + line 319), around `internalServiceHeaders` / `resolveInternalAccessToken` / `TENANTLESS` | TASK-737/738 (in flight) |
+| `pnpm test:unit` | 6 files / 19 tests: `secrets/__tests__/warmup-coverage.test.ts` (`INTERNAL_ACCESS_TOKEN @ text-proxy.controller.ts:319` unwarmed), `settings-registry/__tests__/fail-mode.governance.test.ts`, `workflow-definition/__tests__/task-724-stt-realtime-untouched.grep-gate.test.ts`, `eslint-plugin-arcaai-internal/__tests__/require-internal-tenant-header.test.js`, `tests/contracts/internal-tenant-header.contract.test.ts`, `scripts/__tests__/env-sync.test.ts` | TASK-735/737/738/724 |
+| `apps/text` pytest | `test_lifespan.py` title assertion (see §10.3) | TASK-707 |
+
+On `scripts/__tests__/env-sync.test.ts` specifically (`expected 149 to be less than or
+equal to 148`) — **checked, and it is not this ticket's**: `declaredTsSurfaceKeys()` reads
+the bootstrap floor plus `apps/api`/`apps/admin-console`/`packages/tools` `.env.sample`
+only. The 149th key is `INTERNAL_ACCESS_TOKEN` in `apps/api/.env.sample` (D-D). The
+`TEXT_OLLAMA_*` vars added here are Python-service keys in `.env.sample` /
+`apps/text/.env.sample`, both outside that set — and `pnpm env:sync --check` is clean.
+
+### 10.6 Not done
+
+- **`apps/harness`** still rejects `ollama` in `_SAFETY_PROVIDERS`, omits it from
+  `PhiConfig.local_providers`, and has no `JudgeProvider.OLLAMA`. Under the revised scope
+  a tenant BYO-ing Ollama *for harness safety/judge selection* would still be refused.
+  Files are outside this ticket's ownership; needs an owner call on whether harness
+  safety/judge selection should accept Ollama at all, given TASK-735 routes judgement
+  through `apps/text` (where it now works).
+- **`apps/guardrail`** — see §10.1; deliberately not restored.
+- **`RUNTIME_PROVIDER_OPTIONS`** (admin-console) still lists only 6 of the 11 canonical
+  providers (missing `openai`/`anthropic`/`vertex`/`vllm`/`llama-cpp`). Pre-existing drift
+  against its own "mirrors AI_MODEL_PROVIDERS" comment; `ollama` is correctly present, so
+  it was left alone rather than widened under an unrelated ticket.
+- **E2E not executed.** `apps/api/tests/e2e/*.spec.ts` were edited but the Playwright
+  suite was not run — it needs `pnpm test:up:api` against the isolated test stack, and the
+  shared tree/test mutex was contended. The two edited specs are asserted-against by the
+  local seed evidence in §10.3 (11 rows, ollama enabled) but **have not been run**.
+
+### Change History (continued)
+
+| Date | Change |
+|---|---|
+| 2026-08-17 | **Scope REVERSED by owner** (`owner-decisions-2026-08-17.md` §2 row 736): Ollama provider logic stays available; only the model catalog is removed. §1 Requirement Analysis rewritten so the ticket stops contradicting the product; §8 relabelled as the record of the superseded scope. |
+| 2026-08-17 | **Revised scope implemented.** `apps/text` Ollama adapter, config, stats mapper, registry wiring and unit tests restored from `180d5cda^` (byte-identical, except `default_model` → `""` per D-B). `ollama` restored to `AI_MODEL_PROVIDERS` (seed + DTO), `DISCOVERABLE_AI_MODEL_PROVIDERS`, and the SYSTEM `AiProviderConnection` seed (11 llm rows again). Model catalog confirmed still purged and the retired ledger intact; ledger/catalog comments truthed-up. New `ollama-provider-retained.test.ts` pins both halves; 3 superseded assertions updated (config-plane seed + 2 e2e specs) with the product-changed vs assertion-weakened distinction recorded in §10.2. Verified: text lint/mypy clean, 1180 passed (1 pre-existing TASK-707 failure), `pnpm typecheck` 43/43, database 1278 passed, `db:seed` green against the local dev DB with DB-level proof. A self-inflicted 5×-duplication defect in `stats.py`/`config.py`/`main.py` was found and closed (§10.4). |

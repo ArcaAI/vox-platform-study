@@ -10,7 +10,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from hope_env import BuildInfoReader
 from hope_env.service_registration import start_registration, stop_registration
 
-from stt.core.config.settings import get_settings
+from stt.core.config.settings import Settings, get_settings
 from stt.core.database.connection import close_database, initialize_database
 from stt.core.logging import get_logger, setup_logging
 from stt.core.messaging.broker import close_redis, initialize_redis
@@ -232,25 +232,49 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     logger.info("STT Service shutdown complete")
 
 
-def create_app() -> FastAPI:
+def create_app(settings_override: Settings | None = None) -> FastAPI:
     """Create and configure the FastAPI application."""
+    # `settings_override` mirrors text/tts/guardrail's factory so a test can
+    # build an app around a specific configuration; production still uses the
+    # module-level singleton.
+    app_settings = settings_override if settings_override is not None else settings
+
     app = FastAPI(
         title="STT Service",
         description="High-availability Speech-to-Text service with multi-model support",
-        version=settings.app_version,
-        docs_url="/api/v1/docs" if settings.debug else None,
-        redoc_url="/api/v1/redoc" if settings.debug else None,
+        version=app_settings.app_version,
+        docs_url="/api/v1/docs" if app_settings.debug else None,
+        redoc_url="/api/v1/redoc" if app_settings.debug else None,
         lifespan=lifespan,
     )
 
+    # The auth middleware reads its accepted tokens from here, so the app object
+    # — not an import-time global — decides who gets in.
+    app.state.settings = app_settings
+
     # Middleware (LIFO order: last-added runs first)
-    app.add_middleware(
-        CORSMiddleware,
-        allow_origins=settings.cors_origins,
-        allow_credentials=True,
-        allow_methods=["*"],
-        allow_headers=["*"],
-    )
+    #
+    # Inbound service auth is added FIRST so it runs LAST of the three below —
+    # i.e. INSIDE CORS, matching apps/tts. A browser preflight carries no
+    # `X-Service-Token` (custom headers are never sent on OPTIONS), so an
+    # outermost CORSMiddleware is what keeps a configured CORS origin working
+    # at all; auth still gates every real request.
+    from stt.core.middleware.auth import ServiceAuthMiddleware
+    from stt.core.service_auth import is_local_environment
+
+    # A deployed process with no internal credential serves NOTHING but its
+    # probes. Say so loudly at boot: the operator's symptom is otherwise a
+    # uniformly 401-ing service with no explanation.
+    if not app_settings.accepted_service_tokens and not is_local_environment():
+        logger.error(
+            "stt.auth.no_internal_token_configured",
+            detail=(
+                "INTERNAL_ACCESS_TOKEN is unset in a deployed environment; "
+                "all non-exempt routes will be rejected"
+            ),
+        )
+
+    app.add_middleware(ServiceAuthMiddleware)
 
     from stt.core.middleware.logging import RequestLoggingMiddleware
 
@@ -260,6 +284,15 @@ def create_app() -> FastAPI:
 
     app.add_middleware(RequestIDMiddleware)
 
+    if app_settings.cors_origins:
+        app.add_middleware(
+            CORSMiddleware,
+            allow_origins=app_settings.cors_origins,
+            allow_credentials=True,
+            allow_methods=["*"],
+            allow_headers=["*"],
+        )
+
     # Register routers
     app.include_router(health_router, prefix="/api/v1", tags=["Health"])
     app.include_router(internal_router, tags=["Internal"])
@@ -268,18 +301,18 @@ def create_app() -> FastAPI:
     app.include_router(voice_profile_router, tags=["Voice Profile"])
 
     # OpenTelemetry (must be after routers for FastAPIInstrumentor)
-    if settings.otel_enabled:
+    if app_settings.otel_enabled:
         from stt.core.telemetry import setup_telemetry
 
         _telemetry_result = setup_telemetry(
             app,
-            endpoint=settings.otel_exporter_endpoint,
-            service_name=settings.otel_service_name,
+            endpoint=app_settings.otel_exporter_endpoint,
+            service_name=app_settings.otel_service_name,
         )
         app.state.telemetry = _telemetry_result
 
     # Prometheus metrics
-    if settings.metrics_enabled:
+    if app_settings.metrics_enabled:
         from prometheus_fastapi_instrumentator import Instrumentator
 
         Instrumentator().instrument(app).expose(app, endpoint="/metrics")

@@ -28,7 +28,7 @@ import { buildGuardrailUsageInput, buildLlmUsageInput, parseTextUsageDetail, typ
 import { HarnessPolicyService } from '../../../harness-policy/harness-policy.service';
 import { ConfigResolver } from '../../../config-resolver';
 import { IActiveUserContext } from '../../../../interfaces';
-import { assertEqualTenants, createWorkerSession } from '../../../../common';
+import { TENANTLESS, assertEqualTenants, createWorkerSession, internalServiceHeaders, resolveInternalAccessToken } from '../../../../common';
 import { IUsageLedgerService } from '../../../usageLedger';
 import { INoteGenerationService, GenerationTrigger } from '../../note-generation';
 
@@ -224,7 +224,7 @@ export class ComprehensiveSummaryProcessor extends WorkerHost {
         // Step 4: Call SMR service (60%)
         await this.jobService.notifyProgress(jobId, 60, 'Generating comprehensive summary with AI');
 
-        const smrResponse = await this.callTextService(
+        const textResponse = await this.callTextService(
           consultation,
           sections,
           aggregatedEntities,
@@ -237,7 +237,7 @@ export class ComprehensiveSummaryProcessor extends WorkerHost {
         // Step 5: Save results (85%)
         await this.jobService.notifyProgress(jobId, 85, 'Saving results');
 
-        const contextItem = ContextItemFactory.CreateRawSummary(tenantId, consultationId, smrResponse.summary, resolvedRequest.dnaStyleId, userId);
+        const contextItem = ContextItemFactory.CreateRawSummary(tenantId, consultationId, textResponse.summary, resolvedRequest.dnaStyleId, userId);
 
         // Encrypt the generated summary text into `encryptedContent`
         // before persistence — the plaintext `content` column was dropped by the
@@ -252,13 +252,13 @@ export class ComprehensiveSummaryProcessor extends WorkerHost {
         const summaryMeta = SummaryMetaFactory.CreateSummaryMeta({
           tenantId,
           contextItemId: savedContext.id,
-          aiModelId: smrResponse.modelName,
-          processingTimeMs: smrResponse.processingTimeMs,
-          inputTokens: smrResponse.inputTokens,
-          outputTokens: smrResponse.outputTokens,
+          aiModelId: textResponse.modelName,
+          processingTimeMs: textResponse.processingTimeMs,
+          inputTokens: textResponse.inputTokens,
+          outputTokens: textResponse.outputTokens,
         });
         await this.encryptBestEffort('SummaryMeta', () => this.summaryMetaRepository.encryptFieldsIntoEntity(summaryMeta, this.secretsService!));
-        await this.persistSummaryMetaWithUsage(summaryMeta, smrResponse, {
+        await this.persistSummaryMetaWithUsage(summaryMeta, textResponse, {
           tenantId,
           consultationId,
           doctorId: consultation.doctorId,
@@ -272,10 +272,10 @@ export class ComprehensiveSummaryProcessor extends WorkerHost {
           sourceConsultationIds: allConsultationIds,
           sectionCount: sections.length,
           summaryMeta: {
-            aiModelId: smrResponse.modelName,
-            processingTimeMs: smrResponse.processingTimeMs,
-            inputTokens: smrResponse.inputTokens,
-            outputTokens: smrResponse.outputTokens,
+            aiModelId: textResponse.modelName,
+            processingTimeMs: textResponse.processingTimeMs,
+            inputTokens: textResponse.inputTokens,
+            outputTokens: textResponse.outputTokens,
           },
           namedEntities: aggregatedEntities,
         };
@@ -291,7 +291,7 @@ export class ComprehensiveSummaryProcessor extends WorkerHost {
           contextItemId: savedContext.id,
           sectionCount: sections.length,
           sourceConsultationCount: allConsultationIds.length,
-          processingTimeMs: smrResponse.processingTimeMs,
+          processingTimeMs: textResponse.processingTimeMs,
         });
 
         return result;
@@ -342,7 +342,7 @@ export class ComprehensiveSummaryProcessor extends WorkerHost {
     preferredPromptTemplateId: string | null | undefined,
     // The tenant id `process` already fail-closed
     // validated (job.data.tenantId) is threaded through EXPLICITLY here
-    // rather than trusting `resolveSmrSelection()`'s own CLS fallback, so
+    // rather than trusting `resolveTextSelection()`'s own CLS fallback, so
     // this call can never silently serve the SYSTEM default model.
     tenantId: string,
     jobId?: string,
@@ -396,13 +396,13 @@ export class ComprehensiveSummaryProcessor extends WorkerHost {
     });
 
     try {
-      const smrStart = Date.now();
+      const textStart = Date.now();
       // Resolve the tenant's effective {provider, model} and merge as the
       // base so a caller-supplied model wins.
       let options = request.options;
       if (this.harnessPolicyService) {
-        const { provider, model } = await this.harnessPolicyService.resolveSmrSelection(tenantId, 'finalize');
-        options = { smrProvider: provider, smrModel: model, ...request.options };
+        const { provider, model } = await this.harnessPolicyService.resolveTextSelection(tenantId, 'finalize');
+        options = { textProvider: provider, textModel: model, ...request.options };
       }
       const textPayload = buildTextGeneratePayload(assembledPrompt, options, {
         dnaStyleId: request.dnaStyleId,
@@ -415,16 +415,20 @@ export class ComprehensiveSummaryProcessor extends WorkerHost {
         promptResolvedFrom: assembledPrompt.resolvedFrom,
         promptHyperparameters: assembledPrompt.hyperparameters,
       });
-      const smrServiceToken = (await this.secretsService?.getSecretOptional('TEXT_SERVICE_TOKEN')) ?? '';
+      // D-D: the ONE shared `INTERNAL_ACCESS_TOKEN` (`TEXT_SERVICE_TOKEN` is only the
+      // migration fallback). TASK-737: `X-Tenant-Id` is MANDATORY — `tenantId` is in
+      // scope and was used for `resolveTextSelection` one line above, then dropped.
+      const serviceToken = await resolveInternalAccessToken(this.secretsService, 'TEXT_SERVICE_TOKEN');
       const response = await this.httpService.axiosRef.post(`${this.textServiceUrl}/api/v1/generate`, textPayload, {
         timeout: 180000,
-        headers: {
-          'Content-Type': 'application/json',
-          'X-Service-Token': smrServiceToken,
-          ...(jobId && { 'X-Request-ID': jobId }),
-        },
+        headers: internalServiceHeaders({
+          serviceToken,
+          tenantId,
+          tenantlessReason: TENANTLESS.JOB_QUEUE,
+          extra: jobId ? { 'X-Request-ID': jobId } : undefined,
+        }),
       });
-      this.jobMetrics.recordSmrCallDuration(JobQueue.GenerateComprehensiveSummary, 'smr', (Date.now() - smrStart) / 1000);
+      this.jobMetrics.recordTextCallDuration(JobQueue.GenerateComprehensiveSummary, 'smr', (Date.now() - textStart) / 1000);
       const data = response.data as { usage_detail?: unknown; guardrail_usage?: unknown };
       return {
         ...mapTextGenerateResponse(response.data),
@@ -461,12 +465,12 @@ export class ComprehensiveSummaryProcessor extends WorkerHost {
    */
   private async persistSummaryMetaWithUsage(
     summaryMeta: Parameters<SummaryMetaRepository['create']>[0],
-    smrResponse: { usage: TextUsageDetail | null; guardrailUsage: TextUsageDetail | null },
+    textResponse: { usage: TextUsageDetail | null; guardrailUsage: TextUsageDetail | null },
     attribution: { tenantId: string; consultationId: string; doctorId?: string | null; departmentId?: string | null },
   ): Promise<void> {
-    const llmInput = smrResponse.usage
+    const llmInput = textResponse.usage
       ? buildLlmUsageInput({
-          usage: smrResponse.usage,
+          usage: textResponse.usage,
           tenantId: attribution.tenantId,
           operation: 'generate',
           consultationId: attribution.consultationId,
@@ -474,14 +478,14 @@ export class ComprehensiveSummaryProcessor extends WorkerHost {
           departmentId: attribution.departmentId,
         })
       : null;
-    const guardrailInput = smrResponse.guardrailUsage
+    const guardrailInput = textResponse.guardrailUsage
       ? buildGuardrailUsageInput({
-          usage: smrResponse.guardrailUsage,
+          usage: textResponse.guardrailUsage,
           tenantId: attribution.tenantId,
           consultationId: attribution.consultationId,
           doctorId: attribution.doctorId,
           departmentId: attribution.departmentId,
-          fallbackRequestId: smrResponse.usage?.taskId ?? null,
+          fallbackRequestId: textResponse.usage?.taskId ?? null,
         })
       : null;
 

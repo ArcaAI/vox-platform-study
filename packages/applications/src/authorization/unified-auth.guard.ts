@@ -107,19 +107,97 @@ export const JWT_AUTH_GUARD = Symbol('JWT_AUTH_GUARD');
 const UNIFIED_AUTH_RESULT = Symbol('unifiedAuthResult');
 
 /**
+ * Client-facing denial message for an API-key caller on a route that is not an
+ * API-key surface.
+ *
+ * DELIBERATELY IDENTICAL for both denial reasons — `@ForbidApiKey()` ("declared
+ * never") and the deny-by-default rule ("route declares no `@RequiredScopes`").
+ * A caller must not be able to probe which routes merely lack a declaration
+ * versus which were deliberately closed; the two are distinguished only in the
+ * server-side log (`reason: 'forbid_api_key'` vs `'no_scopes_declared'`).
+ */
+const API_KEY_ROUTE_DENIED_MESSAGE = 'This route does not accept API-key authentication';
+
+/**
+ * The CASL verdict for a set of `@Authorize()`-declared permissions.
+ *
+ * Extracted so the JWT path (`handleJwtPostAuth`) and the API-key path
+ * (`enforceApiKeyAbilities`) compute the SAME verdict from the SAME metadata —
+ * the two must never drift, or `@Authorize(...)` would mean something different
+ * depending on how the caller authenticated, which is precisely the defect
+ * TASK-742 closed.
+ */
+function evaluatePermissions(
+  ability: AppAbility,
+  required: RequiredPermission[],
+  mode: PermissionMode,
+): { allowed: boolean; missing: string[]; message: string } {
+  const results = required.map((permission) => ({
+    permission,
+    allowed: ability.can(permission.action, permission.subject),
+  }));
+
+  const allowed = mode === 'AND' ? results.every((r) => r.allowed) : results.some((r) => r.allowed);
+  if (allowed) {
+    return { allowed: true, missing: [], message: '' };
+  }
+
+  const denied = results.filter((r) => !r.allowed);
+  const missing =
+    mode === 'AND' ? denied.map((d) => `${d.permission.action}:${d.permission.subject}`) : required.map((p) => `${p.action}:${p.subject}`);
+  const message = mode === 'AND' ? `Missing permissions: ${missing.join(', ')}` : `Requires at least one of: ${missing.join(', ')}`;
+
+  return { allowed: false, missing, message };
+}
+
+/**
  * UnifiedAuthGuard — single guard replacing JwtAuthGuard + ApiKeyGuard + EitherAuthGuard + AuthorizationGuard.
  *
  * Processing order:
  * 1. Skip if @Public() metadata is set
  * 2. Try API key (headers: apikey, api-key, x-api-key):
  *    - Validate key: status, expiration, IP allowlist
+ *    - Reject if the route is `@ForbidApiKey()`
  *    - Check rate limit
- *    - Check required scopes
+ *    - Require an explicit `@RequiredScopes(...)` declaration and a matching
+ *      scope on the key (DENY BY DEFAULT — see `enforceApiKeyScopes`)
  *    - Set CLS context
+ *    - Enforce the route's CASL permissions against the key's BOUND PRINCIPAL
+ *      (see `enforceApiKeyAbilities`)
  * 3. Try JWT (Authorization: Bearer):
  *    - Validate via Passport strategy
  *    - Check CASL permissions
  * 4. Both failed → 401
+ *
+ * ─── Authorization model on the API-key path (TASK-742) ───────────────────
+ *
+ * An API-key request is authorized by **scopes AND abilities**, in that order,
+ * both mandatory:
+ *
+ * - **Scopes** bound the CREDENTIAL: what the key was minted to do. Declared
+ *   per route by `@RequiredScopes(...)`; a route with no declaration is not an
+ *   API-key surface at all and is refused outright.
+ * - **Abilities** bound the PRINCIPAL: what the user the key is linked to may
+ *   do, evaluated with exactly the same `REQUIRED_PERMISSIONS_KEY` metadata and
+ *   AND/OR mode the JWT path uses. A credential must never be able to do more
+ *   than the human it belongs to.
+ *
+ * They compose as a conjunction, never as a fallback: a missing scope
+ * declaration is NEVER rescued by CASL, and a held scope NEVER substitutes for
+ * a missing ability. (Falling back to CASL when scopes are absent was
+ * considered and rejected — it would silently grant an API key the full ability
+ * set of whatever user it is attached to on every currently-undeclared route,
+ * the exact opposite of "a key scoped to X cannot invoke anything else".)
+ *
+ * The ability computed for an API-key caller is used as a GATE ONLY: it is
+ * deliberately NOT written to `request.ability` or CLS `userAbility`. Several
+ * services read CLS `userAbility` and treat its absence as "not privileged"
+ * (`ApiKeyService.callerCanManageAllKeys`, `PromptManagementService`), so
+ * publishing it would WIDEN those paths for API-key callers as a side effect of
+ * a narrowing change. Gate now, publish never — any future decision to expose
+ * the ability to API-key callers must be made on its own merits.
+ *
+ * The JWT path is untouched by all of the above.
  */
 @Injectable()
 export class UnifiedAuthGuard implements CanActivate {
@@ -269,6 +347,8 @@ export class UnifiedAuthGuard implements CanActivate {
       this.cls.set('tenantId', apiKeyEntity.tenantId);
     }
 
+    await this.enforceApiKeyAbilities(context, request, apiKeyEntity, method, path);
+
     this.logger.debug({
       message: 'API key authenticated',
       keyId: apiKeyEntity.id,
@@ -290,16 +370,42 @@ export class UnifiedAuthGuard implements CanActivate {
   private enforceApiKeyNotForbidden(context: ExecutionContext): void {
     const forbidden = this.reflector.getAllAndOverride<boolean>(API_KEY_FORBIDDEN, [context.getHandler(), context.getClass()]);
     if (forbidden === true) {
-      throw new ForbiddenException('This route does not accept API-key authentication');
+      this.logger.warn({ message: 'API key denied', reason: 'forbid_api_key' });
+      throw new ForbiddenException(API_KEY_ROUTE_DENIED_MESSAGE);
     }
   }
 
+  /**
+   * DENY BY DEFAULT (TASK-742).
+   *
+   * A route is reachable by an API key only if it EXPLICITLY declares what an
+   * API key may do there — i.e. carries `@RequiredScopes(...)` at the method or
+   * class level. No declaration means "not an API-key surface", and the request
+   * is refused.
+   *
+   * This inverts the previous behaviour, which returned early and PERMITTED
+   * whenever no scopes were declared. Because CASL was (and, for undeclared
+   * routes, still is) never reached on this path, that early return meant any
+   * valid key bearing any trivial scope reached every undeclared route with no
+   * authorization decision made at all.
+   *
+   * The boot-time audit `auditEveryApiKeyReachableRouteDeclaresScopes`
+   * (`apps/api/src/bootstrap/api-key-surface-audit.ts`) enforces the same
+   * invariant statically, so a route that would be denied here fails the boot
+   * instead of surprising a caller at runtime.
+   */
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   private enforceApiKeyScopes(context: ExecutionContext, apiKeyEntity: any): void {
     const requiredScopes = this.reflector.getAllAndOverride<string[]>(API_KEY_REQUIRED_SCOPES, [context.getHandler(), context.getClass()]);
 
     if (!requiredScopes || requiredScopes.length === 0) {
-      return;
+      this.logger.warn({
+        message: 'API key denied',
+        reason: 'no_scopes_declared',
+        keyId: apiKeyEntity?.id,
+        tenantId: apiKeyEntity?.tenantId,
+      });
+      throw new ForbiddenException(API_KEY_ROUTE_DENIED_MESSAGE);
     }
 
     const hasRequiredScope = requiredScopes.some((scope) => this.apiKeyService.hasScope(apiKeyEntity, scope));
@@ -315,9 +421,98 @@ export class UnifiedAuthGuard implements CanActivate {
     }
   }
 
+  /**
+   * The SECOND half of the API-key authorization conjunction (TASK-742): the
+   * route's own `@Authorize()`/`@CanXxx()` permissions, evaluated against the
+   * ability of the user the key is BOUND to.
+   *
+   * Runs only after `enforceApiKeyScopes` has already established that this is
+   * a declared API-key surface and that the key holds a matching scope, so it
+   * can never widen anything — it only ever removes reach a scope would
+   * otherwise have granted.
+   *
+   * Semantics deliberately mirror `handleJwtPostAuth` exactly (same metadata
+   * key, same AND/OR mode, same message shape), so `@Authorize(...)` means the
+   * same thing on both paths instead of being inert on this one. Two
+   * API-key-specific rules:
+   *
+   * - A route declaring NO permissions is not gated here (the scope was the
+   *   whole decision), matching the JWT path's own `required.length === 0`
+   *   early return.
+   * - A key with no linked `userId` has no principal, so a principal-scoped
+   *   permission cannot be satisfied and the request is refused. Fail closed:
+   *   the alternative — skipping the check for unlinked keys — would make an
+   *   unbound credential strictly MORE powerful than a bound one.
+   *
+   * The ability is used as a gate and then discarded; see this class's doc
+   * comment for why it is never published to `request.ability` / CLS.
+   */
+  private async enforceApiKeyAbilities(
+    context: ExecutionContext,
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- same request shape as handleApiKeyAuth's own `request: any` param.
+    request: any,
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- ApiKeyEntity is consumed structurally here; matches this file's existing apiKeyEntity: any convention.
+    apiKeyEntity: any,
+    method: string,
+    path: string,
+  ): Promise<void> {
+    const required = this.reflector.getAllAndOverride<RequiredPermission[]>(REQUIRED_PERMISSIONS_KEY, [context.getHandler(), context.getClass()]);
+
+    if (!required || required.length === 0) {
+      return;
+    }
+
+    if (!apiKeyEntity?.userId) {
+      this.logger.warn({
+        message: 'API key denied',
+        reason: 'key_not_linked_to_user',
+        keyId: apiKeyEntity?.id,
+        method,
+        path,
+      });
+      throw new ForbiddenException('This API key is not linked to a user, so the permissions this route requires cannot be evaluated');
+    }
+
+    const mode = this.reflector.getAllAndOverride<PermissionMode>(PERMISSION_MODE_KEY, [context.getHandler(), context.getClass()]) || 'AND';
+
+    let ability: AppAbility;
+    try {
+      ability = await this.policyEngine.buildAbility({
+        userId: apiKeyEntity.userId,
+        tenantId: apiKeyEntity.tenantId || undefined,
+        params: request?.params,
+      });
+    } catch (error) {
+      this.logger.error({
+        message: 'Ability build failed',
+        keyId: apiKeyEntity.id,
+        userId: apiKeyEntity.userId,
+        method,
+        path,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      throw new ForbiddenException('Authorization failed');
+    }
+
+    const verdict = evaluatePermissions(ability, required, mode);
+    if (!verdict.allowed) {
+      this.logger.warn({
+        message: 'Access denied',
+        reason: 'api_key_principal_lacks_permission',
+        keyId: apiKeyEntity.id,
+        userId: apiKeyEntity.userId,
+        method,
+        path,
+        mode,
+        deniedPermissions: verdict.missing,
+      });
+      throw new ForbiddenException(verdict.message);
+    }
+  }
+
   // ─── JWT Auth Path ─────────────────────────────────────────────────
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- same ApiKeyEntity structural-consumption convention as enforceApiKeyScopes above.
   private async handleJwtPostAuth(context: ExecutionContext, request: any, method: string, path: string): Promise<boolean> {
     const user = request.user || this.cls.get('user');
 
@@ -370,28 +565,18 @@ export class UnifiedAuthGuard implements CanActivate {
     // `allowed` — see `runCaslShadowChecks`'s own guarantees.
     await this.runCaslShadowChecks(context, request, ability, required, method, path);
 
-    const results = required.map((permission) => ({
-      permission,
-      allowed: ability.can(permission.action, permission.subject),
-    }));
+    const verdict = evaluatePermissions(ability, required, mode);
 
-    const allowed = mode === 'AND' ? results.every((r) => r.allowed) : results.some((r) => r.allowed);
-
-    if (!allowed) {
-      const denied = results.filter((r) => !r.allowed);
-      const missing =
-        mode === 'AND' ? denied.map((d) => `${d.permission.action}:${d.permission.subject}`) : required.map((p) => `${p.action}:${p.subject}`);
-      const message = mode === 'AND' ? `Missing permissions: ${missing.join(', ')}` : `Requires at least one of: ${missing.join(', ')}`;
-
+    if (!verdict.allowed) {
       this.logger.warn({
         message: 'Access denied',
         userId: user.id,
         method,
         path,
         mode,
-        deniedPermissions: missing,
+        deniedPermissions: verdict.missing,
       });
-      throw new ForbiddenException(message);
+      throw new ForbiddenException(verdict.message);
     }
 
     return true;

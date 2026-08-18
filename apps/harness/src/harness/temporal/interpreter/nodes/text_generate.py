@@ -7,14 +7,21 @@ from a Python harness activity (the existing ``ApiClient`` only reaches the
 ``X-Service-Token``-guarded ``/internal/harness/*`` routes) — but the CORRECT fix is not inventing
 one. ``apps/harness/src/harness/temporal/activities.py``'s own, already-shipped ``generate``
 activity (the one ``HarnessDocWorkflow`` uses for the exact same purpose) already establishes the
-sanctioned pattern: fetch the effective policy via ``ApiClient.get_policy`` (which resolves
-``smrProvider``/``smrModel`` server-side, honouring the tenant → SYSTEM cascade), then call
-``SmrClient.generate`` DIRECTLY — never through the gateway. This activity reuses exactly that
+sanctioned pattern: fetch the effective policy via ``ApiClient.get_policy``, then call
+``TextClient.generate`` DIRECTLY — never through the gateway.
+
+**``config.taskKey`` SELECTS the model (TASK-740 D-1).** This node used to validate ``taskKey``
+and then ignore it, resolving from the ``HarnessPolicy`` provider/model columns — so every
+``generate.text`` node in every workflow resolved the SAME model whatever its task key, and the
+seeded ``AiTaskDefault`` rows were inert on this path (they were honoured only on the TypeScript
+path). The key is now threaded to ``get_policy`` as ``taskKey``, and the gateway overlays
+``textProvider``/``textModel`` from the ``AiTaskDefault`` row for that key, tenant → SYSTEM. An
+unresolved key leaves the policy columns in place, so a tenant with no opinion still runs. This activity reuses exactly that
 pattern rather than a second, gateway-routed one. Rule `06-python-services.md` §Gateway
 Integration sanctions direct peer calls to `apps/text` from a Python service.
 
-**No default provider/model** — mirrors SMR's own fail-closed 422 (`generate.py:315-320`,
-cited in README §2): an unresolved ``smrProvider``/``smrModel`` degrades this node rather than
+**No default provider/model** — mirrors the text service's own fail-closed 422 (`generate.py:315-320`,
+cited in README §2): an unresolved ``textProvider``/``textModel`` degrades this node rather than
 guessing one.
 
 **Prompt assembly** reads ``bound_inputs`` (threaded from upstream nodes via the compiled
@@ -41,8 +48,8 @@ from harness.core.config import get_settings
 from harness.guards.phi.egress import ensure_egress_safe
 from harness.guards.phi.redactor import PhiEgressBlocked
 from harness.services.api_client import ApiServiceError
-from harness.services.smr_client import SmrServiceError
-from harness.temporal.activities import _api_client, _phi_redactor, _smr_client
+from harness.services.text_client import TextServiceError
+from harness.temporal.activities import _api_client, _phi_redactor, _text_client
 from harness.temporal.interpreter.models import NodeActivityInput, NodeActivityResult
 from harness.temporal.interpreter.nodes._shared import (
     STATUS_ERROR,
@@ -52,7 +59,7 @@ from harness.temporal.interpreter.nodes._shared import (
 )
 from harness.temporal.models import HarnessPolicy
 
-_ALLOWED_TASK_KEYS = {"smr.finalize", "smr.live", "smr.test"}
+_ALLOWED_TASK_KEYS = {"text.finalize", "text.live", "text.test"}
 
 
 def _assemble_prompt(bound_inputs: dict[str, Any]) -> str | None:
@@ -95,7 +102,7 @@ async def interpreter_text_generate(payload: NodeActivityInput) -> NodeActivityR
         )
         return NodeActivityResult(
             status="DEGRADED",
-            reason=f"config.taskKey {task_key!r} is not a recognized smr task key",
+            reason=f"config.taskKey {task_key!r} is not a recognized text task key",
         )
 
     user_prompt = _assemble_prompt(payload.bound_inputs)
@@ -110,7 +117,7 @@ async def interpreter_text_generate(payload: NodeActivityInput) -> NodeActivityR
     settings = get_settings()
     api_client = _api_client(settings)
     try:
-        raw_policy = await api_client.get_policy(payload.tenant_id)
+        raw_policy = await api_client.get_policy(payload.tenant_id, task_key=task_key)
     except ApiServiceError as exc:
         await record_and_flush(
             payload, status=STATUS_ERROR, started=started, error_code="policy_fetch_unreachable"
@@ -120,14 +127,14 @@ async def interpreter_text_generate(payload: NodeActivityInput) -> NodeActivityR
         )
 
     policy = HarnessPolicy.from_api(raw_policy)
-    provider, model = policy.smr_provider, policy.smr_model
+    provider, model = policy.text_provider, policy.text_model
     if not provider or not model:
-        # Mirrors SMR's own fail-closed 422 ("SMR has no default model") — never substitute one.
+        # Mirrors the text service's own fail-closed 422 ("no default model") — never substitute one.
         await record_and_flush(
-            payload, status=STATUS_ERROR, started=started, error_code="no_smr_selection"
+            payload, status=STATUS_ERROR, started=started, error_code="no_text_selection"
         )
         return NodeActivityResult(
-            status="DEGRADED", reason="no smr provider/model resolved for this tenant"
+            status="DEGRADED", reason="no text provider/model resolved for this tenant"
         )
 
     redactor = _phi_redactor()
@@ -159,9 +166,13 @@ async def interpreter_text_generate(payload: NodeActivityInput) -> NodeActivityR
         )
         return NodeActivityResult(status="DEGRADED", reason=f"phi egress blocked: {exc}")
 
-    smr = _smr_client(settings)
+    text_client = _text_client(settings)
     try:
-        result = await smr.generate(
+        result = await text_client.generate(
+            # TASK-737 — `NodeActivityInput.tenant_id` is required on the interpreter's
+            # own input model, so it is always available here; forwarding it is the
+            # whole fix. The client raises on a blank value.
+            tenant_id=payload.tenant_id,
             prompt=safe_prompt,
             system_prompt=safe_system_prompt,
             provider=provider,
@@ -171,11 +182,11 @@ async def interpreter_text_generate(payload: NodeActivityInput) -> NodeActivityR
             top_p=config.get("topP"),
             response_format=config.get("responseFormat"),
         )
-    except SmrServiceError as exc:
+    except TextServiceError as exc:
         await record_and_flush(
-            payload, status=STATUS_ERROR, started=started, error_code="smr_generate_failed"
+            payload, status=STATUS_ERROR, started=started, error_code="text_generate_failed"
         )
-        return NodeActivityResult(status="DEGRADED", reason=f"smr generate failed: {exc}")
+        return NodeActivityResult(status="DEGRADED", reason=f"text generate failed: {exc}")
 
     await record_and_flush(payload, status=STATUS_OK, started=started)
     return NodeActivityResult(

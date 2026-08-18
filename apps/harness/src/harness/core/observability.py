@@ -45,7 +45,7 @@ logger = get_logger(__name__)
 _SERVICE_VERSION = "0.1.0"
 
 # Health/docs/metrics endpoints are noise in a trace backend — excluded the
-# same way SMR excludes them (apps/text/src/text/core/observability.py).
+# same way Text excludes them (apps/text/src/text/core/observability.py).
 _EXCLUDED_URLS = (
     "/api/v1/health,"
     "/api/v1/health/live,"

@@ -3,6 +3,10 @@
 Runs `hivetrace/gliner-guard-uniencoder-onnx` via gliner2-onnx (no PyTorch).
 CPU-bound inference is offloaded to a thread-pool executor so it never blocks
 the asyncio event loop.
+
+Fail posture — FAIL-CLOSED: a runtime failure raises
+:class:`~guardrail.core.errors.GuardrailUndeterminedError` rather than returning
+``{"safe": True}``. A DECLARED ``enabled=False`` keeps its documented bypass.
 """
 
 from __future__ import annotations
@@ -12,6 +16,7 @@ from concurrent.futures import ThreadPoolExecutor
 from typing import Any, cast
 
 from guardrail.core.config import GlinerConfig
+from guardrail.core.errors import REASON_ENGINE_ERROR, GuardrailUndeterminedError
 from guardrail.core.logging import get_logger
 
 logger = get_logger(__name__)
@@ -234,13 +239,11 @@ class GlinerProvider:
                 guardrail_type,
             )
         except Exception as e:
+            # FAIL-CLOSED: an ONNX/runtime failure produced no classification, so there is
+            # no verdict to report. Matches :meth:`extract_pii_entities` directly above,
+            # which has always raised rather than answer "no PII found" for a failed run.
             logger.error("gliner.error", error=str(e), guardrail_type=guardrail_type)
-            return {
-                "safe": True,  # Fail open
-                "issues": ["error"],
-                "confidence": 0.0,
-                "error": str(e),
-            }
+            raise GuardrailUndeterminedError(REASON_ENGINE_ERROR, str(e)) from e
 
     async def batch_analyze(
         self,

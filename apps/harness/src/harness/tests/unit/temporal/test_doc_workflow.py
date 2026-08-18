@@ -702,8 +702,8 @@ class TestPolicyInjection:
             coverage_threshold=0.55,
             groundedness_threshold=0.42,
             safety_enabled=False,
-            smr_provider="azure",
-            smr_model="gpt-4o",
+            text_provider="azure",
+            text_model="gpt-4o",
         )
         config = StubConfig(verdicts=["PASS"], policy=policy)
         async with await _env() as env:
@@ -741,7 +741,7 @@ class TestPolicyInjection:
     @pytest.mark.asyncio
     async def test_input_smr_overrides_policy_default(self):
         recorder = StubRecorder()
-        policy = HarnessPolicy(smr_provider="azure", smr_model="gpt-4o")
+        policy = HarnessPolicy(text_provider="azure", text_model="gpt-4o")
         config = StubConfig(verdicts=["PASS"], policy=policy)
         async with await _env() as env:
             tq = f"harness-test-{uuid.uuid4()}"
@@ -753,7 +753,7 @@ class TestPolicyInjection:
             ):
                 handle = await env.client.start_workflow(
                     HarnessDocWorkflow.run,
-                    _input(smr_provider="lm-studio", smr_model="local-llm"),
+                    _input(text_provider="lm-studio", text_model="local-llm"),
                     id=f"harness-doc-{uuid.uuid4()}",
                     task_queue=tq,
                 )
@@ -1418,7 +1418,7 @@ class TestDegradation:
                 with pytest.raises(WorkflowFailureError):
                     await handle.result()
 
-        # Never silently downgrade: no draft on SMR failure.
+        # Never silently downgrade: no draft on Text failure.
         assert recorder.calls["persist_draft"] == 0
 
 
@@ -1574,8 +1574,8 @@ class TestProgressFeed:
     async def test_workflow_failure_emits_terminal_failed_event_then_propagates(self):
         """On workflow failure the feed must not freeze.
 
-        SMR exhausts its retries -> the workflow MUST still fail (no draft is
-        ever persisted on SMR failure), but a best-effort terminal `failed`
+        Text exhausts its retries -> the workflow MUST still fail (no draft is
+        ever persisted on Text failure), but a best-effort terminal `failed`
         event is emitted first so the API closes the SSE feed instead of
         leaving an `active` stage lying for the snapshot TTL.
         """
@@ -1599,7 +1599,7 @@ class TestProgressFeed:
                 with pytest.raises(WorkflowFailureError):
                     await handle.result()
 
-        # No draft on SMR failure (unchanged degradation contract).
+        # No draft on Text failure (unchanged degradation contract).
         assert recorder.calls["persist_draft"] == 0
         # The feed got a terminal `failed` event after the stages that ran.
         stages = [p.stage for p in recorder.progress_inputs]

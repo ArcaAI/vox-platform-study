@@ -38,7 +38,7 @@ class ProviderInfo(BaseModel):
     supports_vision: bool = False
     # Per-provider probe outcome, populated by the /providers
     # endpoint (not by the providers themselves). Additive/optional so the
-    # gateway fallback mapper and the SMR contract test stay compatible.
+    # gateway fallback mapper and the Text contract test stay compatible.
     probe_status: str | None = None
     probe_latency_ms: int | None = None
     probe_error: str | None = None
@@ -47,7 +47,7 @@ class ProviderInfo(BaseModel):
     # `PoolHealthTracker` `/generate`'s degrade-routing check consults (Task 2)
     # — `None` means nobody has health-checked this provider yet (distinct
     # from `False`, which means the LAST check failed). `in_flight_requests`
-    # mirrors the `smr_active_generations` gauge for this provider.
+    # mirrors the `text_active_generations` gauge for this provider.
     pool_health: bool | None = None
     pool_health_checked_at: str | None = None
     in_flight_requests: int = 0

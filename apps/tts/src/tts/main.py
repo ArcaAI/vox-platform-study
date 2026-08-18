@@ -176,6 +176,19 @@ def create_app(settings_override: Settings | None = None) -> FastAPI:
     app.state.router = TTSRouter(registry, catalog, settings)
 
     from tts.api.middleware.auth import ServiceAuthMiddleware
+    from tts.core.service_auth import is_local_environment
+
+    # A deployed process with no internal credential serves NOTHING but its
+    # probes (HTTP 401, WS close 4401). Say so loudly at boot: the operator's
+    # symptom is otherwise a uniformly 401-ing service with no explanation.
+    if not settings.accepted_service_tokens and not is_local_environment():
+        logger.error(
+            "tts.auth.no_internal_token_configured",
+            detail=(
+                "INTERNAL_ACCESS_TOKEN is unset in a deployed environment; "
+                "all non-exempt HTTP and WebSocket traffic will be rejected"
+            ),
+        )
 
     app.add_middleware(ServiceAuthMiddleware)
 

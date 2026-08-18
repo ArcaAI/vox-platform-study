@@ -69,9 +69,9 @@ describe('JobMetricsService', () => {
     });
   });
 
-  describe('recordSmrCallDuration', () => {
+  describe('recordTextCallDuration', () => {
     it('should record SMR call duration without error', () => {
-      service.recordSmrCallDuration('GenerateSummary', 'smr-v1', 3.0);
+      service.recordTextCallDuration('GenerateSummary', 'smr-v1', 3.0);
     });
   });
 
@@ -79,7 +79,7 @@ describe('JobMetricsService', () => {
     it('should track a complete successful job lifecycle', () => {
       const endTimer = service.recordJobStart('GenerateSummary');
       service.recordWaitingDuration('GenerateSummary', 0.5);
-      service.recordSmrCallDuration('GenerateSummary', 'smr-v1', 2.0);
+      service.recordTextCallDuration('GenerateSummary', 'smr-v1', 2.0);
       const duration = endTimer();
       expect(duration).toBeGreaterThanOrEqual(0);
       service.recordJobComplete('GenerateSummary', 'SummaryProcessor', duration);
@@ -97,9 +97,9 @@ describe('JobMetricsService', () => {
       const timer2 = service.recordJobStart('GeneratePreSummary');
       const timer3 = service.recordJobStart('GenerateDnaReport');
 
-      service.recordSmrCallDuration('GenerateSummary', 'smr-v1', 1.5);
-      service.recordSmrCallDuration('GeneratePreSummary', 'smr-v1', 2.0);
-      service.recordSmrCallDuration('GenerateDnaReport', 'smr', 3.0);
+      service.recordTextCallDuration('GenerateSummary', 'smr-v1', 1.5);
+      service.recordTextCallDuration('GeneratePreSummary', 'smr-v1', 2.0);
+      service.recordTextCallDuration('GenerateDnaReport', 'smr', 3.0);
 
       const d1 = timer1();
       const d2 = timer2();

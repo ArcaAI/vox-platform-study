@@ -60,7 +60,7 @@ vi.mock('@arcaai/vox/compat', () => ({
     switchToPipeline: vi.fn(),
     switchToDefault: vi.fn(),
   }),
-  useSMR: () => ({
+  useText: () => ({
     preSummarize: vi.fn(),
     summarize: vi.fn(),
     summarizeSync: vi.fn(),

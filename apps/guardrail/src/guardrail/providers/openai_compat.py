@@ -12,7 +12,15 @@ and reads ``data["choices"][0]["message"]["content"]``.
 - Medical-context validation uses a generic JSON prompt path (Granite Guardian is not
   suited to free-form JSON).
 
-Timeout/error handling is fail-open at the provider level.
+Fail posture — FAIL-CLOSED. A verdict this provider could not compute raises
+:class:`~guardrail.core.errors.GuardrailUndeterminedError`; it is NEVER downgraded to
+``{"safe": True}`` / ``{"is_medical": True}``. That inversion (a timeout used to return
+``safe`` with the comment *"Fail open for timeout"*) opened the gate exactly when the
+system was most stressed, and contradicts the product brief's *"Guardrails … fail-closed
+on generation"*. See ``guardrail.core.errors`` for where the verdict is re-formed.
+
+A DECLARED ``enabled=False`` / ``guardian_enabled=False`` bypass is untouched: an
+operator disabling an engine is a configuration decision, not an inability to answer.
 """
 
 from __future__ import annotations
@@ -25,6 +33,13 @@ from typing import Any, cast
 import httpx
 
 from guardrail.core.config import OpenAICompatConfig
+from guardrail.core.errors import (
+    REASON_ENGINE_ERROR,
+    REASON_INVALID_RESPONSE,
+    REASON_TIMEOUT,
+    REASON_UNSUPPORTED,
+    GuardrailUndeterminedError,
+)
 from guardrail.core.logging import get_logger
 from guardrail.core.metrics import record_guardrail_call, track_model_inference
 from guardrail.providers._granite import GRANITE_CRITERIA, build_guardian_block, parse_score
@@ -147,22 +162,15 @@ class OpenAICompatProvider:
             if self.use_granite and guardrail_type in _GRANITE_TYPES:
                 return await self._analyze_granite(text, guardrail_type)
             return await self._analyze_generic(text, guardrail_type)
-        except httpx.TimeoutException:
+        except httpx.TimeoutException as exc:
+            # FAIL-CLOSED. The engine rendered no verdict, so there is none to report.
             logger.error("openai_compat.timeout", guardrail_type=guardrail_type)
-            return {
-                "safe": True,  # Fail open for timeout
-                "issues": ["timeout"],
-                "confidence": 0.0,
-                "error": "Request timeout",
-            }
+            raise GuardrailUndeterminedError(REASON_TIMEOUT, "engine request timed out") from exc
+        except GuardrailUndeterminedError:
+            raise
         except Exception as e:
             logger.error("openai_compat.error", error=str(e), guardrail_type=guardrail_type)
-            return {
-                "safe": True,  # Fail open for errors
-                "issues": ["error"],
-                "confidence": 0.0,
-                "error": str(e),
-            }
+            raise GuardrailUndeterminedError(REASON_ENGINE_ERROR, str(e)) from e
 
     async def _analyze_granite(self, text: str, guardrail_type: str) -> dict[str, Any]:
         """Run a single Granite Guardian BYOC check and parse the <score> verdict."""
@@ -176,17 +184,16 @@ class OpenAICompatProvider:
         score = parse_score(content)
 
         if score is None:
+            # The model answered without a <score> tag — it rendered NO verdict. Reporting
+            # `safe` here was the same fail-open as the timeout branch, one layer down.
             logger.warning(
                 "openai_compat.invalid_score",
                 guardrail_type=guardrail_type,
                 content=content[:100],
             )
-            return {
-                "safe": True,
-                "issues": ["invalid_response"],
-                "confidence": 0.0,
-                "stats": stats.to_dict(),
-            }
+            raise GuardrailUndeterminedError(
+                REASON_INVALID_RESPONSE, f"no <score> verdict in {guardrail_type} response"
+            )
 
         unsafe = score == "yes"
         return {
@@ -248,8 +255,11 @@ class OpenAICompatProvider:
             safe = content_upper == "CLEAN"
             issues = ["prompt_injection"] if not safe else []
         else:
-            safe = True
-            issues = []
+            # No prompt exists for this check, so nothing was actually asked. Answering
+            # `safe` would be a verdict invented out of an unsupported request.
+            raise GuardrailUndeterminedError(
+                REASON_UNSUPPORTED, f"no generic prompt for guardrail_type {guardrail_type!r}"
+            )
 
         return {
             "safe": safe,
@@ -344,7 +354,9 @@ class OpenAICompatGuardianProvider:
 
         if not self.enabled:
             return {
-                "is_medical": True,  # Fail open when disabled
+                # DECLARED bypass, not a fail-open: an operator turned the guardian off.
+                # Every FAILURE path below raises instead (see the module docstring).
+                "is_medical": True,
                 "confidence": 1.0,
                 "context_type": "unknown",
                 "reasoning": "Guardian validation disabled",
@@ -406,24 +418,16 @@ class OpenAICompatGuardianProvider:
 
             return validation_result
 
-        except httpx.TimeoutException:
+        except httpx.TimeoutException as exc:
+            # FAIL-CLOSED, same rule as the content path: an un-run validation is not
+            # evidence that the text is medical.
             logger.error("guardian.timeout", model=self.model)
-            return {
-                "is_medical": True,  # Fail open on timeout
-                "confidence": 0.0,
-                "context_type": "unknown",
-                "reasoning": "Validation timeout",
-                "error": "timeout",
-            }
+            raise GuardrailUndeterminedError(REASON_TIMEOUT, "guardian request timed out") from exc
+        except GuardrailUndeterminedError:
+            raise
         except Exception as e:
             logger.error("guardian.error", error=str(e), model=self.model)
-            return {
-                "is_medical": True,  # Fail open on error
-                "confidence": 0.0,
-                "context_type": "unknown",
-                "reasoning": "Validation error",
-                "error": str(e),
-            }
+            raise GuardrailUndeterminedError(REASON_ENGINE_ERROR, str(e)) from e
 
     def _parse_validation_response(self, content: str) -> dict[str, Any]:
         """Parse JSON response from the guardian model."""
@@ -445,6 +449,11 @@ class OpenAICompatGuardianProvider:
             }
 
         except (json.JSONDecodeError, KeyError, ValueError) as e:
+            # Deliberately NOT converted to `GuardrailUndeterminedError` by the fail-closed
+            # sweep. Unlike the timeout/error branches, this is not a fabricated verdict:
+            # `_keyword_based_validation` is a deterministic classifier that computes an
+            # answer from the text and readily returns `is_medical=False`. It degrades the
+            # QUALITY of the verdict, it does not invent a permissive one.
             logger.warning("guardian.invalid_response", content=content[:200], error=str(e))
             return self._keyword_based_validation(content)
 

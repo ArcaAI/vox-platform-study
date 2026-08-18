@@ -109,10 +109,14 @@ class VetoStubResolver:
         raise TenantSelectionVetoedError(tenant_id=tenant_id or "", task_key=task_key)
 
 
+# `X-Tenant-Id` is mandatory on every tenant-scoped route (428 otherwise).
+TEST_TENANT = "11111111-1111-1111-1111-111111111111"
+
+
 async def _post(app: FastAPI, path: str, body: dict[str, Any]) -> Any:
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as client:
-        return await client.post(path, json=body)
+        return await client.post(path, json=body, headers={"X-Tenant-Id": TEST_TENANT})
 
 
 # ── ModelCache: TTL clamp, lazy load, single-flight, idle eviction, pinning ─

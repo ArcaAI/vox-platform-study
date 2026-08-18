@@ -1,8 +1,8 @@
 """Retention propagation helpers for server-managed engines.
 
-SMR holds no model weights: LM Studio does. So "retention" here is a
+Text holds no model weights: LM Studio does. So "retention" here is a
 per-request HINT forwarded to the engine, not an in-process cache. The product
-clamp is imported from the shared contract so SMR can never drift from the
+clamp is imported from the shared contract so Text can never drift from the
 services that do own a cache.
 
 `DEFAULT_RETENTION_TTL_S` is a BOOTSTRAP FALLBACK only — the runtime value

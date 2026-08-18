@@ -1,4 +1,4 @@
-"""Consolidated OpenTelemetry setup for SMR.
+"""Consolidated OpenTelemetry setup for Text.
 
 Manages traces, logs, and auto-instrumentation.  Replaces the traces-only
 ``telemetry.py`` module (which is kept as a compatibility shim).

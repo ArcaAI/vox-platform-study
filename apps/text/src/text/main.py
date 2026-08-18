@@ -1,4 +1,4 @@
-"""SMR — Text Generation Service.
+"""Text — Text Generation Service.
 
 FastAPI application with lifespan-managed shared resources.
 """
@@ -30,14 +30,14 @@ def _register_provider_factories(
 ) -> None:
     """Register LAZY provider factories gated ONLY by connection config.
 
-    SMR selects nothing from env: the gateway injects the DB-resolved
+    Text selects nothing from env: the gateway injects the DB-resolved
     ``{provider, model}`` on each request. Here we register a *factory* per
     provider whose CONNECTION config is present; the (network/SDK-bearing)
     instance is built on the first request that selects it (``registry.get``),
     never at startup. A provider with no connection config is never registered,
     so a request naming it fails closed with a 404 — there is no ENABLE flag.
 
-    Local engines (LM Studio / vLLM / llama.cpp) always carry a default
+    Local engines (LM Studio / Ollama / vLLM / llama.cpp) always carry a default
     ``base_url`` so they are always available; Azure additionally requires an
     endpoint + api_key; Bedrock requires a region.
     """
@@ -67,6 +67,11 @@ def _register_provider_factories(
             _shared(lambda: OpenAICompatProvider(settings.openai_compat)),
         )
 
+    if settings.ollama.base_url:
+        from text.providers.ollama import OllamaProvider
+
+        _register(("ollama",), lambda: OllamaProvider(settings.ollama, http_client))
+
     if settings.bedrock.region:
         from text.providers.bedrock import BedrockProvider
 
@@ -82,7 +87,7 @@ def _register_provider_factories(
     # Azure was previously gated on ``settings.azure.endpoint`` — but a
     # pure-BYOK tenant has NO platform endpoint (it lives in the tenant's
     # AiProviderConnection row and rides the per-request override), so the gate
-    # made SMR answer 404 for a valid BYOK override — the exact failure openai/
+    # made Text answer 404 for a valid BYOK override — the exact failure openai/
     # anthropic/vertex already avoid by registering unconditionally. A keyless/
     # endpoint-less call with no override fails closed with
     # ProviderCredentialsError (503), never a 404.
@@ -114,7 +119,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
     setup_logging(settings.log_level)
 
-    logger.info("smr.starting", host=settings.host, port=settings.port, debug=settings.debug)
+    logger.info("text.starting", host=settings.host, port=settings.port, debug=settings.debug)
 
     http_client = httpx.AsyncClient(
         limits=httpx.Limits(
@@ -149,9 +154,13 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         app.state.guardrail_client = ExternalGuardrailClient(
             settings=settings.external_guardrail,
             http_client=http_client,
+            # Owner decision D-D: PRESENT the one shared `INTERNAL_ACCESS_TOKEN`;
+            # the legacy per-pair `TEXT_EXTERNAL_GUARDRAIL_SERVICE_TOKEN` is only
+            # the fallback for an environment that has not migrated yet.
+            service_token=settings.peer_service_token(settings.external_guardrail.service_token),
         )
         logger.info(
-            "smr.guardrail_client_initialized",
+            "text.guardrail_client_initialized",
             enabled=settings.external_guardrail.enabled,
             base_url=settings.external_guardrail.base_url,
             max_retries=settings.external_guardrail.max_retries,
@@ -209,6 +218,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
     rate_limiters: dict[str, RateLimitTracker] = {}
     provider_configs = {
+        "ollama": settings.ollama,
         "azure-openai": settings.azure,
         "azure": settings.azure,
         "bedrock": settings.bedrock,
@@ -252,6 +262,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
     if not app.state.provider_semaphores:
         provider_configs = {
+            "ollama": settings.ollama,
             "azure-openai": settings.azure,
             "azure": settings.azure,
             "bedrock": settings.bedrock,
@@ -316,19 +327,19 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             environment=settings.otel_deployment_environment,
         )
     except Exception as exc:  # noqa: BLE001 - registration must never block boot
-        logger.warning("smr.service_release_registration_failed", error=str(exc))
+        logger.warning("text.service_release_registration_failed", error=str(exc))
 
-    logger.info("smr.started", providers=registry.list_providers())
+    logger.info("text.started", providers=registry.list_providers())
     yield
 
     shutdown_mgr = app.state.shutdown_manager
     if shutdown_mgr is not None:
-        logger.info("smr.draining_tasks", active=shutdown_mgr.active_count)
+        logger.info("text.draining_tasks", active=shutdown_mgr.active_count)
         timed_out = await shutdown_mgr.wait_for_shutdown(timeout=30.0)
         if timed_out:
-            logger.warning("smr.drain_timeout", remaining=shutdown_mgr.active_count)
+            logger.warning("text.drain_timeout", remaining=shutdown_mgr.active_count)
 
-    logger.info("smr.shutting_down")
+    logger.info("text.shutting_down")
     await stop_registration(app.state.service_release_task)
     await http_client.aclose()
     if redis_client and hasattr(redis_client, "aclose"):
@@ -343,7 +354,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
     shutdown_opentelemetry(app)
 
-    logger.info("smr.shutdown_complete")
+    logger.info("text.shutdown_complete")
 
 
 def create_app(settings_override: Settings | None = None) -> FastAPI:

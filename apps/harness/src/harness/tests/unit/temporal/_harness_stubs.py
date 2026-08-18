@@ -3,7 +3,7 @@
 Replace every real activity (same registered name) with a deterministic stub so
 the workflow tests exercise pure orchestration — bounded regen, the gate
 wait-condition + SLA escalation, and the degradation paths — without any
-network/NLP/SMR I/O. Not collected by pytest (does not match ``test_*``).
+network/NLP/Text I/O. Not collected by pytest (does not match ``test_*``).
 """
 
 from __future__ import annotations
@@ -31,7 +31,7 @@ from harness.services.api_client import (
     RetractDraftResponse,
 )
 from harness.services.sensor_runner import SensorRunOutput
-from harness.services.smr_client import SmrGenerationResult
+from harness.services.text_client import TextGenerationResult
 from harness.temporal.claim_check import ClaimCheckRef
 from harness.temporal.models import (
     ApplyRedactionInput,
@@ -400,7 +400,7 @@ def make_stub_activities(config: StubConfig, recorder: StubRecorder) -> list:
         )
 
     @activity.defn(name="generate")
-    async def generate(payload: GenerateInput) -> SmrGenerationResult:
+    async def generate(payload: GenerateInput) -> TextGenerationResult:
         recorder.calls["generate"] += 1
         recorder.generate_inputs.append(payload)
         if config.generate_fails:
@@ -410,7 +410,7 @@ def make_stub_activities(config: StubConfig, recorder: StubRecorder) -> list:
         content, content_ref = (
             ("", _stub_ref("note")) if config.claim_check else (config.note_content, None)
         )
-        return SmrGenerationResult(
+        return TextGenerationResult(
             content=content,
             content_ref=content_ref,
             model="gpt-4o",

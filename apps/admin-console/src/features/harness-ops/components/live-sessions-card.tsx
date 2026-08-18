@@ -32,7 +32,7 @@ function LiveSessionDetail({ consultationId }: { consultationId: string }) {
       <StatItem label="Flushes">{formatNumber(stats.flushCount)}</StatItem>
       <StatItem label="Generation">{formatNumber(stats.generation)}</StatItem>
       <StatItem label="Stale drops">{formatNumber(stats.staleDropCount)}</StatItem>
-      <StatItem label="SMR latency">{formatNumber(stats.smrLatencyMs)} ms</StatItem>
+      <StatItem label="Text latency">{formatNumber(stats.textLatencyMs)} ms</StatItem>
       <StatItem label="NLP latency">{formatNumber(stats.nlpLatencyMs)} ms</StatItem>
       <StatItem label="Entities">{formatNumber(stats.entityCount)}</StatItem>
       <StatItem label="Sections">{formatNumber(stats.sectionCount)}</StatItem>
@@ -43,7 +43,7 @@ function LiveSessionDetail({ consultationId }: { consultationId: string }) {
 }
 
 function SessionRow({ session, expanded, onToggle }: { session: LiveSessionStats; expanded: boolean; onToggle: () => void }) {
-  const degraded = session.smrFailed || session.nlpFailed;
+  const degraded = session.textFailed || session.nlpFailed;
   return (
     <li className="rounded-md border">
       <button
@@ -62,7 +62,7 @@ function SessionRow({ session, expanded, onToggle }: { session: LiveSessionStats
         </span>
         {degraded ? (
           <StatusBadge
-            label={session.smrFailed && session.nlpFailed ? 'SMR + NLP failing' : session.smrFailed ? 'SMR failing' : 'NLP failing'}
+            label={session.textFailed && session.nlpFailed ? 'Text + NLP failing' : session.textFailed ? 'Text failing' : 'NLP failing'}
             colorRole="warning"
             icon={<IconAlertTriangle aria-hidden />}
           />

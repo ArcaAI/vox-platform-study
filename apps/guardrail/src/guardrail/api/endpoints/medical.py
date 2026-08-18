@@ -1,4 +1,15 @@
-"""Medical validation endpoints for Guardian service."""
+"""Medical validation endpoints for Guardian service.
+
+Fail posture — FAIL-CLOSED. A validation that never reached a verdict is **503** on
+``/medical/validate`` and a per-element ``is_medical=false`` on the batch route; it is
+never ``is_medical=true``. This matters concretely: ``apps/text`` gates every
+``/generate`` on this endpoint with ``require_medical``, so the old
+``is_medical=True  # Fail open on timeout`` shipped an unmoderated PHI prompt whenever
+the guardian was slow. 503 rather than a 200 carrying ``is_medical=false`` because
+``text`` maps a not-allowed 200 to a **422 content rejection** and a transport failure to
+a retryable **503** — a timeout is the latter, and telling a clinician their note was
+rejected on its content would be a lie.
+"""
 
 from __future__ import annotations
 
@@ -6,7 +17,7 @@ import time
 from datetime import UTC, datetime
 from typing import Any
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
 from guardrail.core.config import Settings
@@ -15,7 +26,11 @@ from guardrail.core.dependencies import (
     get_resolved_guardian_provider,
     get_settings,
 )
+from guardrail.core.errors import GuardrailUndeterminedError
+from guardrail.core.logging import get_logger
 from guardrail.providers.openai_compat import OpenAICompatGuardianProvider
+
+logger = get_logger(__name__)
 
 router = APIRouter()
 
@@ -85,6 +100,8 @@ async def validate_medical_context(
 
     This is the primary endpoint for medical context validation.
     Use this before sending content to medical documentation services.
+
+    Fails closed with 503 when no verdict could be computed (see the module docstring).
     """
     start_time = time.monotonic()
 
@@ -93,37 +110,30 @@ async def validate_medical_context(
             text=request.text,
             include_reasoning=request.include_reasoning,
         )
+    except GuardrailUndeterminedError as exc:
+        raise HTTPException(status_code=503, detail=exc.as_detail()) from exc
+    except Exception as exc:
+        # FAIL-CLOSED backstop. PHI-safe: the error TYPE only, never the validated text.
+        logger.error("guardrail.medical_validate.failed", error=type(exc).__name__)
+        raise HTTPException(
+            status_code=503,
+            detail="medical validation failed — refusing to report 'is_medical'",
+        ) from exc
 
-        processing_time = (time.monotonic() - start_time) * 1000
+    processing_time = (time.monotonic() - start_time) * 1000
 
-        return MedicalValidationResponse(
-            is_medical=result.get("is_medical", False),
-            confidence=result.get("confidence", 0.0),
-            context_type=result.get("context_type", "unknown"),
-            reasoning=result.get("reasoning") if request.include_reasoning else None,
-            matched_keywords=result.get("matched_keywords"),
-            processing_time_ms=processing_time,
-            request_id=request.request_id or f"med_val_{int(time.time() * 1000)}",
-            timestamp=datetime.now(UTC).isoformat(),
-            error=result.get("error"),
-            stats=_stats_of(result),
-        )
-
-    except Exception as e:
-        processing_time = (time.monotonic() - start_time) * 1000
-
-        return MedicalValidationResponse(
-            is_medical=True,  # Fail open
-            confidence=0.0,
-            context_type="unknown",
-            reasoning="Validation error occurred",
-            matched_keywords=None,
-            processing_time_ms=processing_time,
-            request_id=request.request_id or f"med_val_{int(time.time() * 1000)}",
-            timestamp=datetime.now(UTC).isoformat(),
-            error=str(e),
-            stats=None,
-        )
+    return MedicalValidationResponse(
+        is_medical=result.get("is_medical", False),
+        confidence=result.get("confidence", 0.0),
+        context_type=result.get("context_type", "unknown"),
+        reasoning=result.get("reasoning") if request.include_reasoning else None,
+        matched_keywords=result.get("matched_keywords"),
+        processing_time_ms=processing_time,
+        request_id=request.request_id or f"med_val_{int(time.time() * 1000)}",
+        timestamp=datetime.now(UTC).isoformat(),
+        error=result.get("error"),
+        stats=_stats_of(result),
+    )
 
 
 @router.post("/medical/validate/batch", response_model=list[MedicalValidationResponse])
@@ -132,67 +142,64 @@ async def validate_batch_medical_context(
     settings: Settings = Depends(get_settings),
     guardian_provider: GuardianLike = Depends(get_resolved_guardian_provider),
 ) -> list[MedicalValidationResponse]:
-    """Validate multiple texts for medical context."""
+    """Validate multiple texts for medical context.
+
+    Per-element fail-closed, for the same reason as ``/guardrail/analyze/batch``: a
+    multiplex cannot collapse to one status code, so an unresolved element is
+    ``is_medical=false`` rather than voiding the resolved ones.
+    """
     start_time = time.monotonic()
 
     try:
         results = await guardian_provider.batch_validate(request.texts)
+    except Exception as exc:
+        logger.error("guardrail.medical_validate_batch.failed", error=type(exc).__name__)
+        raise HTTPException(
+            status_code=503,
+            detail="medical batch validation failed — refusing to report 'is_medical'",
+        ) from exc
 
-        processing_time = (time.monotonic() - start_time) * 1000
+    processing_time = (time.monotonic() - start_time) * 1000
+    per_item_ms = processing_time / len(request.texts) if request.texts else processing_time
 
-        responses = []
-        for i, result in enumerate(results):
-            if isinstance(result, Exception):
-                responses.append(
-                    MedicalValidationResponse(
-                        is_medical=True,  # Fail open
-                        confidence=0.0,
-                        context_type="unknown",
-                        reasoning="Validation error",
-                        matched_keywords=None,
-                        processing_time_ms=processing_time / len(request.texts),
-                        request_id=f"{request.request_id or 'batch'}_{i}",
-                        timestamp=datetime.now(UTC).isoformat(),
-                        error=str(result),
-                        stats=None,
-                    )
-                )
-            else:
-                responses.append(
-                    MedicalValidationResponse(
-                        is_medical=result.get("is_medical", False),
-                        confidence=result.get("confidence", 0.0),
-                        context_type=result.get("context_type", "unknown"),
-                        reasoning=result.get("reasoning"),
-                        matched_keywords=result.get("matched_keywords"),
-                        processing_time_ms=processing_time / len(request.texts),
-                        request_id=f"{request.request_id or 'batch'}_{i}",
-                        timestamp=datetime.now(UTC).isoformat(),
-                        error=result.get("error"),
-                        stats=_stats_of(result),
-                    )
-                )
-
-        return responses
-
-    except Exception as e:
-        processing_time = (time.monotonic() - start_time) * 1000
-
-        return [
-            MedicalValidationResponse(
-                is_medical=True,  # Fail open
-                confidence=0.0,
-                context_type="unknown",
-                reasoning="Batch validation error",
-                matched_keywords=None,
-                processing_time_ms=processing_time / len(request.texts),
-                request_id=f"{request.request_id or 'batch'}_{i}",
-                timestamp=datetime.now(UTC).isoformat(),
-                error=str(e),
-                stats=None,
+    responses = []
+    for i, result in enumerate(results):
+        if isinstance(result, Exception):
+            logger.error(
+                "guardrail.medical_validate_batch.item_undetermined",
+                error=type(result).__name__,
             )
-            for i in range(len(request.texts))
-        ]
+            responses.append(
+                MedicalValidationResponse(
+                    is_medical=False,  # FAIL-CLOSED: no verdict is not "medical"
+                    confidence=0.0,
+                    context_type="unknown",
+                    reasoning="Validation undetermined",
+                    matched_keywords=None,
+                    processing_time_ms=per_item_ms,
+                    request_id=f"{request.request_id or 'batch'}_{i}",
+                    timestamp=datetime.now(UTC).isoformat(),
+                    error=str(result),
+                    stats=None,
+                )
+            )
+        else:
+            responses.append(
+                MedicalValidationResponse(
+                    is_medical=result.get("is_medical", False),
+                    confidence=result.get("confidence", 0.0),
+                    context_type=result.get("context_type", "unknown"),
+                    reasoning=result.get("reasoning"),
+                    matched_keywords=result.get("matched_keywords"),
+                    processing_time_ms=per_item_ms,
+                    request_id=f"{request.request_id or 'batch'}_{i}",
+                    timestamp=datetime.now(UTC).isoformat(),
+                    error=result.get("error"),
+                    stats=_stats_of(result),
+                )
+            )
+
+    return responses
 
 
 @router.get("/medical/config", response_model=dict[str, Any])

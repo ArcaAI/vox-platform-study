@@ -18,6 +18,9 @@ import {
   SecretsService,
   isSuperAdmin,
   TextRequestEnrichmentService,
+  TENANTLESS,
+  TENANT_ID_HEADER,
+  tenantHeaderValue,
 } from '@arcaai/applications';
 import type { IBlobStorageService as IBlobStorageServiceType } from '@arcaai/applications';
 import {
@@ -55,6 +58,7 @@ import type { AxiosError } from 'axios';
 import type { Response } from 'express';
 import { ClsService } from 'nestjs-cls';
 import { StreamScope } from '../auth/decorators/stream-scope.decorator';
+import { RequiredScopes } from '../../decorators';
 
 interface TextResponseFormat {
   type: 'text' | 'json' | 'json_schema';
@@ -175,6 +179,10 @@ interface ProviderListingEntry {
 @ApiTags('text')
 @ApiBearerAuth()
 @Controller('text')
+// TASK-742: the streaming summarization surface parallel to the already-scoped
+// `TextCompatController` (`/api/smr/api/v1`), which uses this same scope for
+// the identical capability — kept in step deliberately.
+@RequiredScopes('consultation:report:write')
 export class TextProxyController {
   private readonly logger = new Logger(TextProxyController.name);
 
@@ -248,7 +256,7 @@ export class TextProxyController {
   private async applyTextModelSelection<T extends { provider?: string; model?: string }>(target: T): Promise<T> {
     if (!target.model && this.harnessPolicyService) {
       const tenantId = this.clsService.get('tenantId');
-      const { provider, model } = await this.harnessPolicyService.resolveSmrSelection(tenantId);
+      const { provider, model } = await this.harnessPolicyService.resolveTextSelection(tenantId);
       target.provider = provider;
       target.model = model;
     }
@@ -295,14 +303,30 @@ export class TextProxyController {
     return this.configService.getConfigValue('TEXT_URL');
   }
 
+  /**
+   * Headers for every gateway→SMR hop out of this controller.
+   *
+   * TASK-737: `X-Tenant-Id` is MANDATORY here. It was omitted UNCONDITIONALLY on
+   * all seven call sites below, so SMR resolved `x_tenant_id=None` and fell back to
+   * the platform default — never applying the tenant's own BYOK provider/credential,
+   * and (because TASK-735 derives `funding`/`cost_basis` from whichever tier supplied
+   * the credential) mis-attributing the spend, with nothing thrown or logged anywhere.
+   *
+   * A SUPER_ADMIN driving these routes with no working tenant selected genuinely has
+   * no tenant; that case DECLARES itself with the `tenantless:platform-operator`
+   * marker rather than sending nothing, so an absent header stays unambiguously a bug.
+   *
+   * D-D: the token is the ONE shared `INTERNAL_ACCESS_TOKEN`; `TEXT_SERVICE_TOKEN` is
+   * consulted only as the migration fallback. Both lookups are the SYNC cache read
+   * warmed at bootstrap, preserving the existing fail-open-on-miss behaviour.
+   */
   private getForwardHeaders(): Record<string, string> {
+    const serviceToken =
+      this.secretsService?.getSecretSync('INTERNAL_ACCESS_TOKEN') || this.secretsService?.getSecretSync('TEXT_SERVICE_TOKEN') || '';
     const headers: Record<string, string> = {
       'Content-Type': 'application/json',
+      [TENANT_ID_HEADER]: tenantHeaderValue(this.clsService?.get('tenantId'), TENANTLESS.PLATFORM_OPERATOR),
     };
-    // Sync lookup against the cache warmed at
-    // bootstrap. Same fail-open behavior on miss (no header set) we had
-    // when the env var was unset.
-    const serviceToken = this.secretsService?.getSecretSync('TEXT_SERVICE_TOKEN');
     if (serviceToken) {
       headers['X-Service-Token'] = serviceToken;
     }
@@ -583,11 +607,11 @@ export class TextProxyController {
 
   @Get('tasks/:taskId/stream')
   @Authorize()
-  @StreamScope({ namespace: 'smr_task', param: 'taskId' })
+  @StreamScope({ namespace: 'text_task', param: 'taskId' })
   @ApiOperation({
     summary: 'Stream task chunks via SSE from SMR',
     description:
-      'Server-Sent Events stream. Accepts either `Authorization: Bearer <jwt>` or a single-use `?ticket=<ticket>` issued by `POST /auth/stream-ticket` with scope `smr_task:<taskId>`.',
+      'Server-Sent Events stream. Accepts either `Authorization: Bearer <jwt>` or a single-use `?ticket=<ticket>` issued by `POST /auth/stream-ticket` with scope `text_task:<taskId>`.',
   })
   @ApiParam({ name: 'taskId', description: 'Task ID to stream' })
   async streamTaskEvents(
@@ -1140,7 +1164,7 @@ export class TextProxyController {
     // default marked) when the cascade is unresolved.
     let defaultSelection: { provider: string; model: string } | undefined;
     try {
-      defaultSelection = await this.harnessPolicyService?.resolveSmrSelection(tenantId);
+      defaultSelection = await this.harnessPolicyService?.resolveTextSelection(tenantId);
     } catch {
       defaultSelection = undefined;
     }

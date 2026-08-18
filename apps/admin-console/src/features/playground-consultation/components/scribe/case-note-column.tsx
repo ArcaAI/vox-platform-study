@@ -248,7 +248,7 @@ export function CaseNoteColumn(props: CaseNoteColumnProps) {
                 : 'Drafts appear here after a session'}
           </p>
         </div>
-        {showLive && live?.smrFailed ? (
+        {showLive && live?.textFailed ? (
           <Badge variant="destructive" className="shrink-0 gap-1.5" aria-live="polite">
             <IconShieldExclamation aria-hidden className="size-3.5" />
             Note assistant unavailable — showing last update

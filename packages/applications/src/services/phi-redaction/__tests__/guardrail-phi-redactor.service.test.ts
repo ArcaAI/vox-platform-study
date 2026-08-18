@@ -15,6 +15,8 @@ function makeService(opts?: {
   useDefaultUrl?: boolean;
   secretsService?: { getSecretOptional: ReturnType<typeof vi.fn> };
   timeoutSetting?: number;
+  /** TASK-737 — the CLS tenant this hop must put on the wire. */
+  clsTenantId?: string | null;
 }) {
   const post = opts?.post ?? vi.fn().mockResolvedValue({ data: { sanitized_text: '[PERSON_1] has a cough.' } });
   const httpService = { axiosRef: { post } } as never;
@@ -23,10 +25,12 @@ function makeService(opts?: {
   } as never;
   const secretsService = opts?.secretsService ?? { getSecretOptional: vi.fn().mockResolvedValue('svc-token-abc') };
   const appSettingsService =
-    opts?.timeoutSetting === undefined
-      ? undefined
-      : ({ getValueWithDefault: vi.fn().mockReturnValue(opts.timeoutSetting) } as never);
-  const service = new GuardrailPhiRedactor(httpService, configService, secretsService as never, appSettingsService);
+    opts?.timeoutSetting === undefined ? undefined : ({ getValueWithDefault: vi.fn().mockReturnValue(opts.timeoutSetting) } as never);
+  // `clsTenantId: undefined` ⇒ no ClsService at all (the pre-TASK-737 fixture
+  // arity), which must still produce a DECLARED marker rather than no header.
+  const clsService =
+    opts?.clsTenantId === undefined ? undefined : ({ get: vi.fn((key: string) => (key === 'tenantId' ? opts.clsTenantId : null)) } as never);
+  const service = new GuardrailPhiRedactor(httpService, configService, secretsService as never, appSettingsService, clsService);
   return { service, post, secretsService, appSettingsService };
 }
 
@@ -37,7 +41,10 @@ describe('GuardrailPhiRedactor', () => {
     const result = await service.redact('John Smith has a cough.', 'pseudonymize');
 
     expect(result).toBe('[PERSON_1] has a cough.');
-    expect(secretsService.getSecretOptional).toHaveBeenCalledWith('GUARDRAIL_SERVICE_TOKEN');
+    // D-D: the ONE shared `INTERNAL_ACCESS_TOKEN` is asked for FIRST;
+    // `GUARDRAIL_SERVICE_TOKEN` is only the migration fallback, so with a shared
+    // token configured it is never consulted.
+    expect(secretsService.getSecretOptional).toHaveBeenCalledWith('INTERNAL_ACCESS_TOKEN');
     expect(post).toHaveBeenCalledWith(
       'http://guardrail.test:8863/api/guardrail/redact',
       { text: 'John Smith has a cough.', mode: 'pseudonymize' },
@@ -52,11 +59,7 @@ describe('GuardrailPhiRedactor', () => {
 
     await service.redact('some corpus text', 'full');
 
-    expect(post).toHaveBeenCalledWith(
-      expect.any(String),
-      expect.objectContaining({ mode: 'full' }),
-      expect.anything(),
-    );
+    expect(post).toHaveBeenCalledWith(expect.any(String), expect.objectContaining({ mode: 'full' }), expect.anything());
   });
 
   // ── Request timeout: admin-managed, generous by default ──
@@ -104,6 +107,42 @@ describe('GuardrailPhiRedactor', () => {
       expect.anything(),
       expect.objectContaining({ headers: expect.objectContaining({ 'X-Service-Token': '' }) }),
     );
+  });
+
+  // TASK-737 — this hop carried NO tenant at all, so guardrail resolved SYSTEM.
+  // Because tenants may only TIGHTEN relative to SYSTEM, that silently redacted a
+  // stricter tenant's PHI at the platform FLOOR with nothing logged anywhere.
+  describe('X-Tenant-Id (TASK-737)', () => {
+    it('sends the CLS tenant on the redact hop', async () => {
+      const { service, post } = makeService({ clsTenantId: 'tenant-alpha' });
+
+      await service.redact('John Smith has a cough.', 'pseudonymize');
+
+      expect(post).toHaveBeenCalledWith(
+        expect.any(String),
+        expect.anything(),
+        expect.objectContaining({ headers: expect.objectContaining({ 'X-Tenant-Id': 'tenant-alpha' }) }),
+      );
+    });
+
+    it('DECLARES tenant-less rather than omitting the header when CLS has no tenant', async () => {
+      const { service, post } = makeService({ clsTenantId: null });
+
+      await service.redact('text', 'full');
+
+      const headers = post.mock.calls[0][2].headers as Record<string, string>;
+      // The distinction this ticket exists for: a declared marker, never absence.
+      expect(headers['X-Tenant-Id']).toBe('tenantless:platform-operator');
+      expect(headers['X-Tenant-Id']).not.toMatch(/^[0-9a-f-]{36}$/i);
+    });
+
+    it('still declares a marker when no ClsService is wired at all', async () => {
+      const { service, post } = makeService();
+
+      await service.redact('text', 'full');
+
+      expect((post.mock.calls[0][2].headers as Record<string, string>)['X-Tenant-Id']).toBe('tenantless:platform-operator');
+    });
   });
 
   it('FAIL-CLOSED: rethrows on a transport error — never falls back to the raw text', async () => {

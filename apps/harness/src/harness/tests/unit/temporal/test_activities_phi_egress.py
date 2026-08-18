@@ -7,8 +7,8 @@ activity body in a Temporal ``ActivityEnvironment`` with the client factories +
 to deterministic fakes (no model load, no network), and asserts the cloud-bound
 call site is gated:
 
-* ``generate`` — T1 cloud+block (SMR NOT called), T2 cloud (SMR gets CLEANED text),
-  T3 local (SMR gets ORIGINAL), T4 ``phi_enabled=False`` (bypass), T7 block logs.
+* ``generate`` — T1 cloud+block (Text NOT called), T2 cloud (Text gets CLEANED text),
+  T3 local (Text gets ORIGINAL), T4 ``phi_enabled=False`` (bypass), T7 block logs.
 * ``run_inferential_sensors`` — T6 cloud safety (Granite gets REDACTED note),
   cloud block (whole pass degrades, Granite NOT called), local (no redaction).
 """
@@ -24,18 +24,18 @@ from temporalio.testing import ActivityEnvironment
 from harness.core.config import PhiConfig, SafetyGuardConfig, Settings
 from harness.eval.config import JudgeConfig, JudgeProvider
 from harness.guards.phi import PhiEgressBlocked
-from harness.services.smr_client import SmrGenerationResult
+from harness.services.text_client import TextGenerationResult
 from harness.temporal import activities
 from harness.temporal.models import GenerateInput, RunInferentialSensorsInput
 
 
-class _FakeSmr:
+class _FakeText:
     def __init__(self) -> None:
         self.kwargs: dict[str, Any] = {}
 
-    async def generate(self, **kwargs: Any) -> SmrGenerationResult:
+    async def generate(self, **kwargs: Any) -> TextGenerationResult:
         self.kwargs = kwargs
-        return SmrGenerationResult(content="DRAFT", model="m", finish_reason="stop")
+        return TextGenerationResult(content="DRAFT", model="m", finish_reason="stop")
 
 
 class _StubJudge:
@@ -111,24 +111,24 @@ def _infer_input(**kw: Any) -> RunInferentialSensorsInput:
 class TestGeneratePhiEgress:
     @pytest.mark.asyncio
     async def test_cloud_phi_blocks_generate_and_skips_smr(self, env, monkeypatch):
-        # T1: cloud + fail-closed block ⇒ SMR client never called.
-        smr = _FakeSmr()
-        monkeypatch.setattr(activities, "_smr_client", lambda s: smr)
+        # T1: cloud + fail-closed block ⇒ Text client never called.
+        text_client = _FakeText()
+        monkeypatch.setattr(activities, "_text_client", lambda s: text_client)
         monkeypatch.setattr(activities, "get_settings", _gen_settings)
         monkeypatch.setattr(activities, "_phi_redactor", lambda: _ContractRedactor(block=True))
 
         with pytest.raises(PhiEgressBlocked):
             await env.run(
                 activities.generate,
-                GenerateInput(prompt="John Smith has HTN", provider="azure"),
+                GenerateInput(tenant_id="11111111-1111-1111-1111-111111111111", prompt="John Smith has HTN", provider="azure"),
             )
-        assert smr.kwargs == {}, "SMR must not be called when egress is blocked"
+        assert text_client.kwargs == {}, "Text must not be called when egress is blocked"
 
     @pytest.mark.asyncio
     async def test_cloud_calls_smr_with_cleaned_text(self, env, monkeypatch):
-        # T2: cloud egress ⇒ SMR receives the redacted prompt + system prompt.
-        smr = _FakeSmr()
-        monkeypatch.setattr(activities, "_smr_client", lambda s: smr)
+        # T2: cloud egress ⇒ Text receives the redacted prompt + system prompt.
+        text_client = _FakeText()
+        monkeypatch.setattr(activities, "_text_client", lambda s: text_client)
         monkeypatch.setattr(activities, "get_settings", _gen_settings)
         monkeypatch.setattr(
             activities,
@@ -139,17 +139,18 @@ class TestGeneratePhiEgress:
         await env.run(
             activities.generate,
             GenerateInput(
+                tenant_id="11111111-1111-1111-1111-111111111111",
                 prompt="John Smith has HTN", system_prompt="Sys John Smith", provider="azure"
             ),
         )
-        assert smr.kwargs["prompt"] == "<PERSON> has HTN"
-        assert smr.kwargs["system_prompt"] == "Sys <PERSON>"
+        assert text_client.kwargs["prompt"] == "<PERSON> has HTN"
+        assert text_client.kwargs["system_prompt"] == "Sys <PERSON>"
 
     @pytest.mark.asyncio
     async def test_local_provider_passthrough_to_smr(self, env, monkeypatch):
-        # T3: a local provider ⇒ SMR receives the ORIGINAL text (no redaction).
-        smr = _FakeSmr()
-        monkeypatch.setattr(activities, "_smr_client", lambda s: smr)
+        # T3: a local provider ⇒ Text receives the ORIGINAL text (no redaction).
+        text_client = _FakeText()
+        monkeypatch.setattr(activities, "_text_client", lambda s: text_client)
         monkeypatch.setattr(activities, "get_settings", _gen_settings)
         monkeypatch.setattr(
             activities,
@@ -159,31 +160,31 @@ class TestGeneratePhiEgress:
 
         await env.run(
             activities.generate,
-            GenerateInput(prompt="John Smith has HTN", provider="lm-studio"),
+            GenerateInput(tenant_id="11111111-1111-1111-1111-111111111111", prompt="John Smith has HTN", provider="lm-studio"),
         )
-        assert smr.kwargs["prompt"] == "John Smith has HTN"
+        assert text_client.kwargs["prompt"] == "John Smith has HTN"
 
     @pytest.mark.asyncio
     async def test_phi_disabled_bypasses_guard(self, env, monkeypatch):
         # T4: phi_enabled=False ⇒ egress allowed unredacted; redactor untouched.
-        smr = _FakeSmr()
+        text_client = _FakeText()
         redactor = _ContractRedactor(block=True)  # would block if ever consulted
-        monkeypatch.setattr(activities, "_smr_client", lambda s: smr)
+        monkeypatch.setattr(activities, "_text_client", lambda s: text_client)
         monkeypatch.setattr(activities, "get_settings", _gen_settings)
         monkeypatch.setattr(activities, "_phi_redactor", lambda: redactor)
 
         await env.run(
             activities.generate,
-            GenerateInput(prompt="John Smith has HTN", provider="azure", phi_enabled=False),
+            GenerateInput(tenant_id="11111111-1111-1111-1111-111111111111", prompt="John Smith has HTN", provider="azure", phi_enabled=False),
         )
-        assert smr.kwargs["prompt"] == "John Smith has HTN"
+        assert text_client.kwargs["prompt"] == "John Smith has HTN"
         assert redactor.calls == []
 
     @pytest.mark.asyncio
     async def test_block_emits_structured_log(self, env, monkeypatch, caplog):
         # T7: a block emits a structured ``harness.phi_egress.blocked`` warning.
-        smr = _FakeSmr()
-        monkeypatch.setattr(activities, "_smr_client", lambda s: smr)
+        text_client = _FakeText()
+        monkeypatch.setattr(activities, "_text_client", lambda s: text_client)
         monkeypatch.setattr(activities, "get_settings", _gen_settings)
         monkeypatch.setattr(activities, "_phi_redactor", lambda: _ContractRedactor(block=True))
 
@@ -191,7 +192,7 @@ class TestGeneratePhiEgress:
             with pytest.raises(PhiEgressBlocked):
                 await env.run(
                     activities.generate,
-                    GenerateInput(prompt="John Smith has HTN", provider="azure"),
+                    GenerateInput(tenant_id="11111111-1111-1111-1111-111111111111", prompt="John Smith has HTN", provider="azure"),
                 )
         assert any("phi_egress" in r.getMessage() for r in caplog.records)
 
