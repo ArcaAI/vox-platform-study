@@ -79,7 +79,20 @@ import './third-party-public-routes';
  * Adding a name here is an OWNER decision, not a way to make a boot failure go
  * away: the alternative — declaring the scope A1 asks for — is one line.
  */
-export const BUSINESS_PLANE_KEY_FORBIDDEN: ReadonlySet<string> = new Set(['AuthController', 'VoiceProfileController', 'DnaWritingStyleController']);
+export const BUSINESS_PLANE_KEY_FORBIDDEN: ReadonlySet<string> = new Set([
+  'AuthController',
+  'VoiceProfileController',
+  'DnaWritingStyleController',
+  // TASK-760: the 308 shim for the retired `voice-profile` prefix. A shim copies
+  // its target's auth posture verbatim, so it inherits `VoiceProfileController`'s
+  // exemption and must inherit its entry here too — otherwise the audit reads a
+  // faithful shim as an unexplained hole and refuses to boot, which is exactly
+  // what it did. Dies with the shim in `ALL-2.0.0`.
+  //
+  // API-KEY-NOTE: voice biometrics. Same reason as the target: a long-lived static
+  // credential must not reach an enrolment or activation surface for a user's voice.
+  'VoiceProfileRedirectShimController',
+]);
 
 /** `/admin/...` — A2's plane (TASK-757). Matched on the JOINED route path. */
 const ADMIN_ROUTE_RE = /^\/admin(\/|$)/;
