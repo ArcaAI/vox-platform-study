@@ -811,7 +811,12 @@ export const seedUser = async (client: CorePrismaClient) => {
         where: { id: userData.id },
         update: {
           username: userData.username,
-          password: userData.password ?? defaultPassword,
+          // TASK-763 — `password` is deliberately ABSENT from the update
+          // branch. It used to be here, which meant every re-seed of a shared
+          // dev/test box silently reset a rotated password back to the
+          // documented demo value. Create-time still applies it (below), so a
+          // fresh database is unchanged; an existing account now keeps
+          // whatever it was last set to.
           isServiceAccount: userData.isServiceAccount,
           tags: userData.tags,
           lastLoginAt: userData.lastLoginAt,

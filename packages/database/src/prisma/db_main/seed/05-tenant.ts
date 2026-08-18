@@ -15,7 +15,15 @@ const GLOBAL_TENANT = {
   id: SEED_TENANT_ID,
   name: 'Global',
   key: '__GLOBAL__',
-  description: 'System-wide default tenant — do not remove',
+  // TASK-763 — was 'System-wide default tenant — do not remove', which is the
+  // exact "default tenant" framing `.claude/rules/00-project-context.md`
+  // §"The two reserved tenants are NOT two config tiers" exists to stop. This
+  // is a CUSTOMER tenant used as a platform-admin playground; the runtime
+  // cascade is request tenant → SYSTEM, and this id must never appear in it.
+  // (Several runtime constants still DO treat it as a platform tier — see the
+  // TASK-763 README §Owner Decisions; correcting the row's own description is
+  // the part that belongs to the seed.)
+  description: 'Global — a CUSTOMER tenant used as the platform-admin playground for trialling configuration before promoting it into the SYSTEM tier. Not a config tier; never a runtime fallback.',
 };
 
 const CUSTOMER_TENANTS = [

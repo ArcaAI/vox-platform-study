@@ -397,6 +397,29 @@ export const DEFAULT_POLICIES: DefaultPolicy[] = [
       { action: 'manage', subject: 'ResourceSubscription', conditions: { targetUserId: '${user.id}' } },
       // Read tenant info
       { action: 'read', subject: 'Tenant', conditions: { id: '${context.tenantId}' } },
+      // TASK-763 — two READER-PLANE abilities that exist ONLY to make the
+      // TASK-756 minting ceiling agree with the routes that already exist.
+      //
+      // `ChangelogController` (`/changelog/*`) and `MyTenantContextSchemaController`
+      // (`/tenant/me/context-schema`) are both `@Authorize()` with NO ability:
+      // any authenticated user may call them, and the row-level filtering lives
+      // in the service. But TASK-758 gave each a business-plane scope
+      // (`platform:changelog:read`, `tenant:context-schema:read`), and
+      // `ApiKeyService.assertScopeCeiling` refuses to mint a scope whose implied
+      // CASL pair the CALLER does not hold. No seeded policy granted
+      // `read:ChangelogEntry` at all, and `read:ConsultationContextSchema` only
+      // via the tenant-admin `manage:` grant — so a clinician could USE both
+      // surfaces in a session but could not mint an SDK key for either, and
+      // `platform:changelog:read` was unmintable by anyone below SUPER_ADMIN.
+      //
+      // Granted here (the "every authenticated user" policy) rather than in
+      // `tenant-full-access`, because that is exactly the audience the two
+      // routes already have. Neither widens any request-time surface: the only
+      // routes declaring these subjects are the ADMIN controllers, and both
+      // require `manage:` (`@CanManage('ChangelogEntry')`,
+      // `@CanManage('ConsultationContextSchema')`), which `read` does not imply.
+      { action: 'read', subject: 'ChangelogEntry' },
+      { action: 'read', subject: 'ConsultationContextSchema', conditions: { tenantId: '${context.tenantId}' } },
     ],
   },
   {
