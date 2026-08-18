@@ -11,7 +11,7 @@ import { generateId, ModelTaskType } from '@arcaai/domains';
 import { BadRequestException, Body, Controller, Inject, Logger, Optional, Post, ServiceUnavailableException } from '@nestjs/common';
 import { ApiBearerAuth, ApiOkResponse, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { ClsService } from 'nestjs-cls';
-import { Authorize, ForbidApiKey } from '../../decorators';
+import { Authorize, RequiredScopes } from '../../decorators';
 import { AiInferenceClient } from './ai-inference.client';
 import { AnalyzeGuardrailRequest } from './dto/analyze-guardrail.request';
 import { ClassifyIntentRequest } from './dto/classify-intent.request';
@@ -46,15 +46,12 @@ const CLINICIAN_ROLES = ['DOCTOR', 'SPECIALIST', 'CONSULTANT'];
 @ApiTags('ai-inference')
 @ApiBearerAuth()
 @Controller('ai')
-// TASK-742 API-KEY-NOTE — CONSERVATIVE DEFAULT, AWAITING OWNER CLASSIFICATION.
-// Reason: functional inference proxy (guardrail/NLP); TASK-708 bucketed it (b) — "needs a real scope, not an admin one" — but no such scope exists yet.
-// This route family declared nothing about API-key access, which under the
-// deny-by-default rule is a boot failure. Rather than guess a scope (guessing
-// permissive is how the original gap was created), it is closed explicitly.
-// Reversing it is a one-line change to @RequiredScopes('<scope>') once the
-// owner confirms a real API-key use case — see the TASK-708 README's
-// "Reachability changes awaiting owner review" table.
-@ForbidApiKey()
+// API-KEY-NOTE: policy A1 (JWT + API key on the business plane). A stateless
+// inference proxy over Guardrail/NLP is a core capability an integrator calls
+// headlessly — no tenant-owned resource is read, only caller-supplied text.
+// The `@Authorize()` on each route is re-evaluated against the key's bound
+// user by `enforceApiKeyAbilities`, so the scope widens reach, never authority.
+@RequiredScopes('ai:inference:write')
 export class AiInferenceController {
   private readonly logger = new Logger(AiInferenceController.name);
 

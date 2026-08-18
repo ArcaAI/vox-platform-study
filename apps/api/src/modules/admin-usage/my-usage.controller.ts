@@ -2,7 +2,7 @@ import { BadRequestException, Controller, Get, Inject, Query } from '@nestjs/com
 import { ApiBearerAuth, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { ClsService } from 'nestjs-cls';
 import { BudgetBurndownResponse, IActiveUserContext, IUsageAnalyticsService, UsageSummaryResponse, periodOf } from '@arcaai/applications';
-import { Authorize, ForbidApiKey } from '../../decorators';
+import { Authorize, RequiredScopes } from '../../decorators';
 import { BudgetBurndownQuery, MyUsageSummaryQuery } from './dto';
 
 /**
@@ -13,18 +13,21 @@ import { BudgetBurndownQuery, MyUsageSummaryQuery } from './dto';
  * tenant, no `tenantId` override, foreign ids are structurally impossible
  * (there is no by-id route here). READ-ONLY by construction.
  */
+/**
+ * TASK-758 — the counterpart to `/user/me/*`'s bound-user rule: the bare
+ * "mine" surfaces resolve to the key's TENANT, via the CLS `tenantId` the
+ * guard sets from `apiKeyEntity.tenantId`. Different resolution, so it gets
+ * its own sentence rather than a shared one.
+ */
+const ME_IS_THE_KEY_TENANT = "Under API-key authentication this resolves to the key's **tenant**.";
+
 @ApiBearerAuth()
 @ApiTags('usage')
 @Controller('usage')
-// TASK-742 API-KEY-NOTE — CONSERVATIVE DEFAULT, AWAITING OWNER CLASSIFICATION.
-// Reason: self-service usage reads.
-// This route family declared nothing about API-key access, which under the
-// deny-by-default rule is a boot failure. Rather than guess a scope (guessing
-// permissive is how the original gap was created), it is closed explicitly.
-// Reversing it is a one-line change to @RequiredScopes('<scope>') once the
-// owner confirms a real API-key use case — see the TASK-708 README's
-// "Reachability changes awaiting owner review" table.
-@ForbidApiKey()
+// API-KEY-NOTE: policy A1. Same posture and same scope as the sibling
+// billing reads: the key's OWN tenant, no `tenantId` override, no by-id
+// route, read-only. An integrator needs this to watch its own burn rate.
+@RequiredScopes('tenant:account:read')
 export class MyUsageController {
   constructor(
     @Inject(IUsageAnalyticsService) private readonly usageAnalytics: IUsageAnalyticsService,
@@ -33,7 +36,10 @@ export class MyUsageController {
 
   @Get('me/summary')
   @Authorize(['read', 'Tenant'])
-  @ApiOperation({ summary: "The caller's own tenant's usage summary for a billing period. Defaults to the current UTC month." })
+  @ApiOperation({
+    summary: "The caller's own tenant's usage summary for a billing period. Defaults to the current UTC month.",
+    description: ME_IS_THE_KEY_TENANT,
+  })
   @ApiResponse({ status: 200, type: UsageSummaryResponse })
   summary(@Query() query: MyUsageSummaryQuery): Promise<UsageSummaryResponse> {
     return this.usageAnalytics.getUsageSummary(this.ownTenantId(), query.period ?? periodOf(new Date()).label);
@@ -41,7 +47,10 @@ export class MyUsageController {
 
   @Get('me/burndown')
   @Authorize(['read', 'Tenant'])
-  @ApiOperation({ summary: 'Allowances vs month-to-date usage vs days elapsed, with a linear exceed projection. Defaults to the current UTC month.' })
+  @ApiOperation({
+    summary: 'Allowances vs month-to-date usage vs days elapsed, with a linear exceed projection. Defaults to the current UTC month.',
+    description: ME_IS_THE_KEY_TENANT,
+  })
   @ApiResponse({ status: 200, type: BudgetBurndownResponse })
   burndown(@Query() query: BudgetBurndownQuery): Promise<BudgetBurndownResponse> {
     return this.usageAnalytics.getBudgetBurndown(this.ownTenantId(), query.period ?? periodOf(new Date()).label);

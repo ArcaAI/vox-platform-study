@@ -2,7 +2,7 @@ import { BadRequestException, Controller, Get, Inject } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { ClsService } from 'nestjs-cls';
 import { EntitlementCapabilitiesResponse, IActiveUserContext, IEntitlementsService } from '@arcaai/applications';
-import { Authorize, ForbidApiKey } from '../../decorators';
+import { Authorize, RequiredScopes } from '../../decorators';
 
 /**
  * Tenant self-service entitlements snapshot.
@@ -13,18 +13,21 @@ import { Authorize, ForbidApiKey } from '../../decorators';
  * `/tenant/me` self-view. Global-admins manage other tenants via the
  * `/admin/entitlements/*` surface, not here (no silent global fallback).
  */
+/**
+ * TASK-758 — the counterpart to `/user/me/*`'s bound-user rule: the bare
+ * "mine" surfaces resolve to the key's TENANT, via the CLS `tenantId` the
+ * guard sets from `apiKeyEntity.tenantId`. Different resolution, so it gets
+ * its own sentence rather than a shared one.
+ */
+const ME_IS_THE_KEY_TENANT = "Under API-key authentication this resolves to the key's **tenant**.";
+
 @ApiTags('entitlements')
 @ApiBearerAuth()
 @Controller('entitlements')
-// TASK-742 API-KEY-NOTE — CONSERVATIVE DEFAULT, AWAITING OWNER CLASSIFICATION.
-// Reason: self-service entitlement reads.
-// This route family declared nothing about API-key access, which under the
-// deny-by-default rule is a boot failure. Rather than guess a scope (guessing
-// permissive is how the original gap was created), it is closed explicitly.
-// Reversing it is a one-line change to @RequiredScopes('<scope>') once the
-// owner confirms a real API-key use case — see the TASK-708 README's
-// "Reachability changes awaiting owner review" table.
-@ForbidApiKey()
+// API-KEY-NOTE: policy A1. An integrator must be able to read the ceiling it
+// is working against; sharing `tenant:account:read` with billing and usage
+// keeps the three self-service reads one grant, not three.
+@RequiredScopes('tenant:account:read')
 export class MyEntitlementsController {
   constructor(
     @Inject(IEntitlementsService)
@@ -34,7 +37,10 @@ export class MyEntitlementsController {
 
   @Get('me')
   @Authorize(['read', 'Tenant'])
-  @ApiOperation({ summary: "Capability/usage snapshot for the caller's own tenant (limits, usage, meters, features, trial clock)." })
+  @ApiOperation({
+    summary: "Capability/usage snapshot for the caller's own tenant (limits, usage, meters, features, trial clock).",
+    description: ME_IS_THE_KEY_TENANT,
+  })
   @ApiResponse({ status: 200, type: EntitlementCapabilitiesResponse })
   @ApiResponse({ status: 400, description: 'No tenant context present.' })
   me(): Promise<EntitlementCapabilitiesResponse> {

@@ -14,21 +14,25 @@ import { ValueType } from '@arcaai/domains';
 import { Controller, Get, Patch, Body, Inject, BadRequestException, ParseArrayPipe } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth, ApiOperation, ApiResponse, ApiHeader } from '@nestjs/swagger';
 import { ClsService } from 'nestjs-cls';
-import { Authorize, ExpectedVersion, RequiresIfMatch, ForbidApiKey } from '../../decorators';
+import { Authorize, ExpectedVersion, RequiresIfMatch, RequiredScopes } from '../../decorators';
+
+/**
+ * TASK-758 — the counterpart to `/user/me/*`'s bound-user rule: the bare
+ * "mine" surfaces resolve to the key's TENANT, via the CLS `tenantId` the
+ * guard sets from `apiKeyEntity.tenantId`. Different resolution, so it gets
+ * its own sentence rather than a shared one.
+ */
+const ME_IS_THE_KEY_TENANT = "Under API-key authentication this resolves to the key's **tenant**.";
 
 @ApiBearerAuth()
 @ApiTags('tenant')
 @Controller('tenant')
 @Authorize()
-// TASK-742 API-KEY-NOTE — CONSERVATIVE DEFAULT, AWAITING OWNER CLASSIFICATION.
-// Reason: self-describing tenant read/write.
-// This route family declared nothing about API-key access, which under the
-// deny-by-default rule is a boot failure. Rather than guess a scope (guessing
-// permissive is how the original gap was created), it is closed explicitly.
-// Reversing it is a one-line change to @RequiredScopes('<scope>') once the
-// owner confirms a real API-key use case — see the TASK-708 README's
-// "Reachability changes awaiting owner review" table.
-@ForbidApiKey()
+// API-KEY-NOTE: policy A1. Tenant self-description, resolving to the KEY'S
+// TENANT. Read at class level; the one mutating route (PATCH me/config)
+// narrows to `tenant:profile:write` on the handler itself, so a read-only
+// integration key cannot reach it even though it shares this controller.
+@RequiredScopes('tenant:profile:read')
 export class MyTenantController {
   constructor(
     @Inject(ITenantService)
@@ -45,7 +49,7 @@ export class MyTenantController {
    * silent global fallback.
    */
   @Get('me')
-  @ApiOperation({ summary: 'Get current tenant information' })
+  @ApiOperation({ summary: 'Get current tenant information', description: ME_IS_THE_KEY_TENANT })
   @ApiResponse({ status: 200, description: 'Tenant information retrieved successfully', type: TenantResponse })
   @ApiResponse({ status: 400, description: 'Bad request - no tenant context' })
   async me(): Promise<TenantResponse> {
@@ -60,7 +64,7 @@ export class MyTenantController {
    * fallback for super-admins).
    */
   @Get('me/config')
-  @ApiOperation({ summary: 'Get current tenant configuration' })
+  @ApiOperation({ summary: 'Get current tenant configuration', description: ME_IS_THE_KEY_TENANT })
   @ApiResponse({ status: 200, description: 'Tenant configuration retrieved successfully', type: PaginatedTenantConfigResponse })
   @ApiResponse({ status: 400, description: 'Bad request - no tenant context' })
   async myConfig(): Promise<PaginatedTenantConfigResponse> {
@@ -91,6 +95,11 @@ export class MyTenantController {
    */
   @Patch('me/config')
   @Authorize(['update', 'Tenant'])
+  // The one mutating route on an otherwise read-only self-service controller,
+  // so it narrows past the class-level `tenant:profile:read`. Method metadata
+  // WINS over class metadata (`getAllAndOverride([handler, class])`), which is
+  // what makes a read-only key structurally unable to reach this handler.
+  @RequiredScopes('tenant:profile:write')
   @RequiresIfMatch()
   @ApiOperation({
     summary: 'Update current tenant configuration',
@@ -104,7 +113,8 @@ export class MyTenantController {
       'choice) for bulk updates, OR omit per-row body fields and rely on the ' +
       'header alone for single-row updates. The body-field `expectedVersion` ' +
       'remains required by the DTO as the documented fallback for service-to-' +
-      'service callers, but the header takes precedence when set.',
+      'service callers, but the header takes precedence when set.\n\n' +
+      ME_IS_THE_KEY_TENANT,
   })
   @ApiHeader({
     name: 'If-Match',

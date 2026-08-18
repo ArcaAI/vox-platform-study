@@ -7,7 +7,7 @@ import {
 } from '@arcaai/applications';
 import { Body, Controller, Get, HttpCode, HttpStatus, Inject, Post, Query } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
-import { Authorize, ForbidApiKey } from '../../decorators';
+import { Authorize, RequiredScopes } from '../../decorators';
 
 /**
  * Reader surface for the curated release notes (/, frozen
@@ -22,15 +22,10 @@ import { Authorize, ForbidApiKey } from '../../decorators';
 @ApiTags('changelog')
 @Controller('changelog')
 @Authorize()
-// TASK-742 API-KEY-NOTE — CONSERVATIVE DEFAULT, AWAITING OWNER CLASSIFICATION.
-// Reason: informational, human-facing changelog acknowledgement.
-// This route family declared nothing about API-key access, which under the
-// deny-by-default rule is a boot failure. Rather than guess a scope (guessing
-// permissive is how the original gap was created), it is closed explicitly.
-// Reversing it is a one-line change to @RequiredScopes('<scope>') once the
-// owner confirms a real API-key use case — see the TASK-708 README's
-// "Reachability changes awaiting owner review" table.
-@ForbidApiKey()
+// API-KEY-NOTE: policy A1. Reader plane over curated release notes;
+// visibility is a property of the ROW (its `audience`), filtered in the
+// service against the key's bound user exactly as it is for a session.
+@RequiredScopes('platform:changelog:read')
 export class ChangelogController {
   constructor(
     @Inject(IChangelogService)
