@@ -112,7 +112,7 @@ const SHIMS: Shim[] = [
   { method: 'get', from: `${V1}/user/me/departments`, to: `${V1}/users/me/departments` },
   { method: 'get', from: `${V1}/tenant/me`, to: `${V1}/tenants/me` },
   { method: 'get', from: `${V1}/tenant/me/config`, to: `${V1}/tenants/me/config` },
-  { method: 'patch', from: `${V1}/tenant/me/config`, to: `${V1}/tenants/me/config` },
+  { method: 'patch', from: `${V1}/tenant/me/config`, to: `${V1}/tenants/me/config`, asTenantAdmin: true },
   { method: 'get', from: `${V1}/tenant/me/context-schema`, to: `${V1}/tenants/me/context-schema` },
   { method: 'get', from: `${V1}/entitlements/me`, to: `${V1}/tenants/me/entitlements` },
   { method: 'get', from: `${V1}/billing/me/invoices`, to: `${V1}/tenants/me/invoices` },
@@ -138,8 +138,13 @@ const SHIMS: Shim[] = [
 test.describe('TASK-760 — every retired URI answers 308 with a Location', () => {
   for (const shim of SHIMS) {
     test(`${shim.method.toUpperCase()} ${shim.from} → 308 ${shim.to}`, async ({ request }) => {
+      // A shim copies its target's auth posture verbatim, INCLUDING the CASL
+      // ability — so it answers 403 to a caller who could not perform the write
+      // at the new path either. That is the same answer the target gives, but it
+      // means the 308 contract can only be observed by an authorised caller.
+      // `PATCH tenants/me/config` needs `update:Tenant`, which a DOCTOR lacks.
       const response = await request[shim.method](shim.from, {
-        headers: bearer(doctorToken),
+        headers: bearer(shim.asTenantAdmin ? tenantAdminToken : doctorToken),
         maxRedirects: 0,
         ...(shim.method === 'get' ? {} : { data: {} }),
       });
