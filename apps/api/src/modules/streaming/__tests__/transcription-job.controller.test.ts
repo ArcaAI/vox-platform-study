@@ -96,6 +96,7 @@ const createMockStreamSessionTenantBinding = () => ({
   bind: vi.fn().mockResolvedValue(undefined),
   bindSessionMeta: vi.fn().mockResolvedValue(undefined),
   lookup: vi.fn().mockResolvedValue(null),
+  lookupBinding: vi.fn().mockResolvedValue(null),
   lookupSessionMeta: vi.fn().mockResolvedValue(null),
   clear: vi.fn().mockResolvedValue(undefined),
 });
@@ -669,14 +670,15 @@ describe('TranscriptionJobController', () => {
   });
 
   // ------------------------------------------------------------------------
-  // createStreamSession binds sessionId → tenantId
+  // createStreamSession binds sessionId → { tenantId, userId }
   // in the gateway-side `StreamSessionTenantBindingService` so the
-  // interceptor can 404 cross-tenant probes on closeStreamSession.
+  // interceptor can 404 cross-tenant AND cross-user probes on
+  // closeStreamSession and its siblings.
   // closeStreamSession clears the binding after the downstream remove
   // succeeds.
   // ------------------------------------------------------------------------
   describe('StreamSessionTenantBindingService integration', () => {
-    it('createStreamSession binds the returned sessionId to the caller tenant', async () => {
+    it('createStreamSession binds the returned sessionId to the caller tenant AND the creating user', async () => {
       mockSessionService.createSession.mockResolvedValueOnce({
         sessionId: 'sess-xyz',
         status: 'ACTIVE',
@@ -686,7 +688,7 @@ describe('TranscriptionJobController', () => {
 
       await controller.createStreamSession({ pipelineId: 'pipeline-1' } as CreateStreamSessionRequest);
 
-      expect(mockStreamSessionTenantBinding.bind).toHaveBeenCalledWith('sess-xyz', 'tenant-1');
+      expect(mockStreamSessionTenantBinding.bind).toHaveBeenCalledWith('sess-xyz', 'tenant-1', 'user-1');
     });
 
     it('closeStreamSession clears the binding after a successful downstream remove', async () => {
@@ -810,7 +812,7 @@ describe('TranscriptionJobController', () => {
 
       expect(mockEntitlements.assertConcurrencyQuota).toHaveBeenCalledWith('tenant-1');
       expect(mockSessionService.createSession).toHaveBeenCalledWith(expect.objectContaining({ tenantId: 'tenant-1' }));
-      expect(mockStreamSessionTenantBinding.bind).toHaveBeenCalledWith('sess-ga', 'tenant-1');
+      expect(mockStreamSessionTenantBinding.bind).toHaveBeenCalledWith('sess-ga', 'tenant-1', 'admin-1');
     });
 
     // Regression guard in the other direction: a tenant-bound caller whose CLS

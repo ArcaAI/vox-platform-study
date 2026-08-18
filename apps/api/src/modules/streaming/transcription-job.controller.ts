@@ -659,10 +659,11 @@ export class TranscriptionJobController {
     }
 
     // Three independent writes (parallelized):
-    //  - Persist the sessionId → tenantId mapping so
-    //    the global `TenantOwnedResourceInterceptor` can 404 cross-tenant
-    //    probes against `DELETE /stream/session/:sessionId`. Default 24h TTL
-    //    matches the longest reasonable streaming-session lifetime.
+    //  - Persist the sessionId → { tenantId, userId } mapping so
+    //    the global `TenantOwnedResourceInterceptor` can 404 cross-tenant AND
+    //    cross-user probes against `DELETE /stream/session/:sessionId` and its
+    //    siblings. Default 24h TTL matches the longest reasonable
+    //    streaming-session lifetime.
     //  - Persist session meta (negotiated sampleRate) so
     //    the WS gateway forwards audio at the real rate, not hardcoded 16000.
     //  - Mint a one-shot stream ticket scoped to this session.
@@ -674,7 +675,10 @@ export class TranscriptionJobController {
         tenantId,
         scope: `stt_session:${result.sessionId}`,
       }),
-      this.streamSessionTenantBinding.bind(result.sessionId, tenantId),
+      // The binding records the OWNING USER as well as the tenant: a live
+      // session belongs to one clinician, and every gate downstream (ticket
+      // mint, refresh-ticket, WS handshake, close/switch) compares against it.
+      this.streamSessionTenantBinding.bind(result.sessionId, tenantId, user?.id ?? null),
       this.streamSessionTenantBinding.bindSessionMeta(result.sessionId, { sampleRate }),
     ]);
 

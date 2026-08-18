@@ -124,7 +124,7 @@ describe('SttCompatController streaming integration', () => {
         sampleRate: 44100,
       }),
     );
-    expect(sessionBinding.bind).toHaveBeenCalledWith('session_123456789', 'tenant-1');
+    expect(sessionBinding.bind).toHaveBeenCalledWith('session_123456789', 'tenant-1', 'user-1');
     expect(sessionBinding.bindSessionMeta).toHaveBeenCalledWith('session_123456789', { sampleRate: 44100 });
     expect(sessionMetadata.setLanguage).toHaveBeenCalledWith('session_123456789', 'en-US');
   });

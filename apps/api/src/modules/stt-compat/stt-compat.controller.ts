@@ -149,7 +149,11 @@ export class SttCompatController {
       }
 
       await Promise.all([
-        sessionBinding.bind(body.session_id, tenantId),
+        // The v1-compat plane authenticates a MACHINE identity (API key), so
+        // the recorded owner is whatever user the key resolves to; its own
+        // gateway still gates on the tenant. Recorded for fidelity — the
+        // native per-user gates never see compat sessions.
+        sessionBinding.bind(body.session_id, tenantId, userId ?? null),
         sessionBinding.bindSessionMeta(body.session_id, { sampleRate: body.audioSettings.sampleRate }),
         this.sessionMetadataService?.setLanguage(body.session_id, body.language),
       ]);

@@ -35,7 +35,7 @@ export type TenantOwnedResourceModelName =
   | 'Consultation'
   | 'TranscriptionJob'
   // Opaque STT streaming session. The
-  // interceptor resolves the sessionId → tenantId mapping through
+  // interceptor resolves the sessionId → { tenantId, userId } mapping through
   // `StreamSessionTenantBindingService`, NOT a Prisma repository — the
   // session row lives in STT / Redis, not the API gateway DB.
   | 'StreamSession';
@@ -49,8 +49,10 @@ export interface TenantOwnedResourceOptions {
    * Lookup strategy:
    *   - `'id'` (default) → repository.findById(paramValue)
    *   - `'name'`         → repository.findByName(paramValue)  (TenantBucket only)
-   *   - `'session'`      → StreamSessionTenantBindingService.lookup(paramValue)
-   *                        (StreamSession only)
+   *   - `'session'`      → StreamSessionTenantBindingService.lookupBinding(paramValue)
+   *                        (StreamSession only). Always asserts the owning
+   *                        USER as well as the tenant — a live streaming
+   *                        session is not a tenant-wide resource.
    */
   lookup?: 'id' | 'name' | 'session';
   scope?: 'tenant' | 'creator' | 'super-admin';

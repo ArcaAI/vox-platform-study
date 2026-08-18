@@ -72,6 +72,8 @@ export class TenantOwnedResourceInterceptor implements NestInterceptor {
     // Drives the `StreamSession` resolver branch.
     // The binding is written by `TranscriptionJobController.createStreamSession`
     // and removed by `closeStreamSession` — the interceptor only reads it.
+    // It carries `{ tenantId, userId }`, so this branch asserts BOTH the
+    // owning tenant and the owning user.
     private readonly streamSessionTenantBinding: StreamSessionTenantBindingService,
   ) {}
 
@@ -145,7 +147,7 @@ export class TenantOwnedResourceInterceptor implements NestInterceptor {
         await this.assertVoiceProfileOwnership(paramValue);
         return;
       case 'StreamSession':
-        // SessionId → tenantId lookup via the
+        // SessionId → { tenantId, userId } lookup via the
         // gateway-side binding service (the session itself lives in
         // STT / Redis, not Prisma — there is no repository to call).
         await this.assertStreamSessionOwnership(paramValue, callerTenantId);
@@ -159,9 +161,30 @@ export class TenantOwnedResourceInterceptor implements NestInterceptor {
     }
   }
 
+  /**
+   * A live STT streaming session belongs to ONE user, not to the tenant at
+   * large. This branch gates `refresh-ticket`, `close`, `switch-to-fallback`
+   * and `switch-to-primary`; while the comparison was tenant-only, any
+   * colleague who learned a sessionId could refresh the ticket for a live
+   * consultation, close it mid-dictation, or swap its engine underneath the
+   * clinician.
+   *
+   * Both halves 404 (never 403): a foreign-tenant session and a colleague's
+   * session must be indistinguishable from one that does not exist. A binding
+   * with NO recorded owner (a legacy record — see the binding service's
+   * ROLLOUT note) is "owner unproven" and denied, mirroring how a legacy
+   * `ConsultationJob` row with no `userId` is handled under `scope: 'creator'`.
+   *
+   * There is deliberately no super-admin bypass: a live clinical audio socket
+   * is precisely the surface where a silent extra listener is the harm.
+   */
   private async assertStreamSessionOwnership(sessionId: string, callerTenantId: string): Promise<void> {
-    const boundTenantId = await this.streamSessionTenantBinding.lookup(sessionId);
-    if (boundTenantId === null || boundTenantId !== callerTenantId) {
+    const binding = await this.streamSessionTenantBinding.lookupBinding(sessionId);
+    if (binding === null || binding.tenantId !== callerTenantId) {
+      throw new NotFoundException(RESOURCE_NOT_FOUND);
+    }
+    const callerUserId = this.cls.get('user')?.id;
+    if (!callerUserId || typeof callerUserId !== 'string' || !binding.userId || binding.userId !== callerUserId) {
       throw new NotFoundException(RESOURCE_NOT_FOUND);
     }
   }

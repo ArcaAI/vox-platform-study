@@ -33,6 +33,16 @@
  *   - a never-minted ticket is rejected at the WS handshake with the
  *     generic 4401 close (no tenant material on the wire).
  *
+ * SAME-TENANT HIJACK. The gates above compared the TENANT only, so a
+ * colleague — same tenant, different user — sailed through every one of them:
+ * mint a ticket for a live consultation, connect, and the audio-ingest +
+ * transcript stream is transplanted onto the attacker's socket. The binding
+ * now records the owning USER too. The `doctor` / `doctor2` seeded pair (both
+ * in tenant __GLOBAL__) is that exact probe, run against the four enforcement
+ * points that are visible over HTTP: mint, refresh-ticket, close, and switch.
+ * The WS handshake leg is unreachable black-box once the mint refuses, and is
+ * pinned in `src/modules/streaming/__tests__/stt-ws.gateway.test.ts`.
+ *
  * Live-stack requirement: the mint fail-closed probes need only the API +
  * Redis. The live-session group additionally needs STT running (session
  * create forwards to it) — those tests skip with an explicit reason when the
@@ -130,12 +140,18 @@ async function mintTicket(
 
 test.describe('C4-01 — stt_session stream-ticket tenant binding', () => {
   let doctorToken: string;
+  /** A COLLEAGUE of `doctor`: same tenant (__GLOBAL__), different user. */
+  let colleagueToken: string;
   let arcaaiSuperAdminToken: string;
 
   test.beforeAll(async ({ request }) => {
     const doctorLogin = await loginUser(request, SEEDED_USERS.doctor.username, SEEDED_USERS.doctor.password, DEFAULT_TENANT_KEY);
     expect(doctorLogin, 'doctor login (__GLOBAL__) failed').toBeTruthy();
     doctorToken = doctorLogin!.token;
+
+    const colleagueLogin = await loginUser(request, SEEDED_USERS.doctor2.username, SEEDED_USERS.doctor2.password, DEFAULT_TENANT_KEY);
+    expect(colleagueLogin, 'doctor2 login (__GLOBAL__) failed').toBeTruthy();
+    colleagueToken = colleagueLogin!.token;
 
     const arcaaiLogin = await loginUser(request, SEEDED_USERS.superAdmin.username, SEEDED_USERS.superAdmin.password, 'ARCAAI');
     expect(arcaaiLogin, 'super_admin login (ARCAAI) failed').toBeTruthy();
@@ -222,6 +238,52 @@ test.describe('C4-01 — stt_session stream-ticket tenant binding', () => {
       expect(handshake.code).toBe(WS_AUTH_FAILED_CODE);
       expect(handshake.reason).toBe(WS_GENERIC_AUTH_REASON);
       expect(String(handshake.reason)).not.toMatch(/tenant/i);
+    });
+
+    // -----------------------------------------------------------------
+    // SAME TENANT, DIFFERENT USER — the hijack. `doctor2` is a colleague of
+    // `doctor` inside __GLOBAL__, so every one of these probes passed the
+    // tenant-only gate and returned 200/204 before the owner was recorded.
+    // Each must now be indistinguishable from a session that does not exist.
+    // -----------------------------------------------------------------
+    test('COLLEAGUE mint (same tenant, different user) → 404, no ticket (pre-fix: 200)', async ({ request }) => {
+      test.skip(!sessionId, `streaming session unavailable (is STT running?): ${sessionCreateFailure}`);
+      const { status, body } = await mintTicket(request, colleagueToken, `stt_session:${sessionId}`);
+      expect(status).toBe(404);
+      expect(body.ticket).toBeUndefined();
+      // 404-over-403: the refusal must not disclose that the session exists
+      // or who owns it.
+      expect(String(body.message ?? '')).not.toMatch(/tenant|owner|user/i);
+    });
+
+    test('COLLEAGUE refresh-ticket → 404, no ticket (pre-fix: 200)', async ({ request }) => {
+      test.skip(!sessionId, `streaming session unavailable (is STT running?): ${sessionCreateFailure}`);
+      const response = await request.post(`/api/v1/audio/transcription-jobs/stream/session/${sessionId}/refresh-ticket`, {
+        headers: { Authorization: `Bearer ${colleagueToken}` },
+      });
+      expect(response.status()).toBe(404);
+      expect((await response.text()).toLowerCase()).not.toContain('ticket');
+    });
+
+    test('COLLEAGUE switch-to-fallback → 404 (pre-fix: reached the switch)', async ({ request }) => {
+      test.skip(!sessionId, `streaming session unavailable (is STT running?): ${sessionCreateFailure}`);
+      const response = await request.post(`/api/v1/audio/transcription-jobs/stream/session/${sessionId}/switch-to-fallback`, {
+        headers: { Authorization: `Bearer ${colleagueToken}` },
+      });
+      expect(response.status()).toBe(404);
+    });
+
+    test('COLLEAGUE close → 404, and the OWNER can still mint afterwards (the session survived)', async ({ request }) => {
+      test.skip(!sessionId, `streaming session unavailable (is STT running?): ${sessionCreateFailure}`);
+      const response = await request.delete(`/api/v1/audio/transcription-jobs/stream/session/${sessionId}`, {
+        headers: { Authorization: `Bearer ${colleagueToken}` },
+      });
+      expect(response.status()).toBe(404);
+
+      // Silent DoS regression: the refused close must not have torn the
+      // session down underneath its owner.
+      const { status } = await mintTicket(request, doctorToken, `stt_session:${sessionId}`);
+      expect(status).toBe(200);
     });
 
     test('after the cross-tenant probes, the owner can still mint for the session (no collateral damage)', async ({ request }) => {

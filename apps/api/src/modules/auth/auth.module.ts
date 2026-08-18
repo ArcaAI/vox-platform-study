@@ -44,8 +44,8 @@ import { StreamTicketModule } from './stream-ticket.module';
     StreamTicketModule,
     // Exposes `StreamSessionTenantBindingService` so the
     // stream-ticket mint can 404 `stt_session:*` scopes whose session is not
-    // bound to the caller's tenant (same instance the WS gateway and the
-    // DELETE-route interceptor consult). NestJS dedupes the module instance
+    // bound to the caller's tenant AND user (same instance the WS gateway and
+    // the DELETE-route interceptor consult). NestJS dedupes the module instance
     // with the AppModule/StreamingModule imports.
     TenantOwnedResourceModule,
     // FederatedAuthService (OIDC login round-trip + JIT provisioning).
