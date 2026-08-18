@@ -17,7 +17,7 @@ import { ClsService } from 'nestjs-cls';
 import { Authorize, ExpectedVersion, RequiresIfMatch, RequiredScopes } from '../../decorators';
 
 /**
- * TASK-758 — the counterpart to `/user/me/*`'s bound-user rule: the bare
+ * TASK-758 — the counterpart to `/users/me/*`'s bound-user rule: the bare
  * "mine" surfaces resolve to the key's TENANT, via the CLS `tenantId` the
  * guard sets from `apiKeyEntity.tenantId`. Different resolution, so it gets
  * its own sentence rather than a shared one.
@@ -26,10 +26,10 @@ const ME_IS_THE_KEY_TENANT = "Under API-key authentication this resolves to the 
 
 @ApiBearerAuth()
 @ApiTags('tenant')
-@Controller('tenant')
+@Controller('tenants/me')
 @Authorize()
 // API-KEY-NOTE: policy A1. Tenant self-description, resolving to the KEY'S
-// TENANT. Read at class level; the one mutating route (PATCH me/config)
+// TENANT. Read at class level; the one mutating route (PATCH config)
 // narrows to `tenant:profile:write` on the handler itself, so a read-only
 // integration key cannot reach it even though it shares this controller.
 @RequiredScopes('tenant:profile:read')
@@ -48,7 +48,7 @@ export class MyTenantController {
    * the /admin/tenants endpoints to manage other tenants instead of relying on a
    * silent global fallback.
    */
-  @Get('me')
+  @Get()
   @ApiOperation({ summary: 'Get current tenant information', description: ME_IS_THE_KEY_TENANT })
   @ApiResponse({ status: 200, description: 'Tenant information retrieved successfully', type: TenantResponse })
   @ApiResponse({ status: 400, description: 'Bad request - no tenant context' })
@@ -63,7 +63,7 @@ export class MyTenantController {
    * Responds with 400 when no tenant context is present (no silent global
    * fallback for super-admins).
    */
-  @Get('me/config')
+  @Get('config')
   @ApiOperation({ summary: 'Get current tenant configuration', description: ME_IS_THE_KEY_TENANT })
   @ApiResponse({ status: 200, description: 'Tenant configuration retrieved successfully', type: PaginatedTenantConfigResponse })
   @ApiResponse({ status: 400, description: 'Bad request - no tenant context' })
@@ -76,7 +76,7 @@ export class MyTenantController {
     // (platform capability AND tenant toggle) as a synthetic, read-only config
     // row keyed `enable-local-raw-capture`. The SDK maps it into
     // `audio.captureRawAudio`; the user cannot override it (admin-owned in the
-    // cascade). It is appended here so it scopes to GET /tenant/me/config only.
+    // cascade). It is appended here so it scopes to GET /tenants/me/config only.
     const effective = await this.tenantFrontendConfigService.resolveEffectiveLocalRawCapture(tenantId);
     const rawCaptureRow = this.buildLocalRawCaptureRow(tenantId, effective);
 
@@ -93,7 +93,7 @@ export class MyTenantController {
    * Responds with 400 when no tenant context is present (no silent global
    * fallback for super-admins).
    */
-  @Patch('me/config')
+  @Patch('config')
   @Authorize(['update', 'Tenant'])
   // The one mutating route on an otherwise read-only self-service controller,
   // so it narrows past the class-level `tenant:profile:read`. Method metadata

@@ -73,7 +73,7 @@ function stubRoutes({ sets = SETS, cases = CASES, permissions = MANAGE_RULES, cu
   return installFetchStub((call: RecordedCall) => {
     // The ability read is itself a POST, so it is answered before `custom`
     // gets a chance to blanket-fail write calls.
-    if (call.url === '/api/hope/rbac/check/my-permissions') {
+    if (call.url === '/api/hope/users/me/permission-checks') {
       return { userId: 'u-1', tenantId: 'tnt-1', permissions };
     }
     const handled = custom?.(call);

@@ -4,7 +4,7 @@
  * filters produce (the NEW gateway BRACKET grammar `field[op]:value` joined by
  * `;`), grid selection + bulk actions, CSV export, and the create POST.
  *
- * The grid persists per-user layout via `GET user/me/settings`, so `settingsResponse`
+ * The grid persists per-user layout via `GET users/me/settings`, so `settingsResponse`
  * answers it and assertions locate the list request by URL rather than call index.
  */
 
@@ -81,9 +81,9 @@ interface RecordedCall {
   body: unknown;
 }
 
-/** Best-effort per-user grid-layout persistence (`user/me/settings`) — no saved layout in tests. */
+/** Best-effort per-user grid-layout persistence (`users/me/settings`) — no saved layout in tests. */
 function settingsResponse(url: string, init?: RequestInit): Response | undefined {
-  if (!url.includes('/user/me/settings')) return undefined;
+  if (!url.includes('/users/me/settings')) return undefined;
   return (init?.method ?? 'GET') === 'GET' ? Response.json([]) : Response.json({ ok: true });
 }
 
@@ -133,7 +133,7 @@ function stubListFetch(overrides?: (url: string, init?: RequestInit) => Response
   });
 }
 
-/** The gateway list request (skips the interleaved `user/me/settings` layout GET). */
+/** The gateway list request (skips the interleaved `users/me/settings` layout GET). */
 function listCall(calls: RecordedCall[]): RecordedCall {
   const call = calls.find((entry) => entry.method === 'GET' && entry.url.includes('/admin/users?'));
   if (!call) throw new Error('no /admin/users GET recorded');

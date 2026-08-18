@@ -5,7 +5,7 @@
  *
  * The three resizable columns (consultations / live session / case note) are a
  * personalized interface setting: sizes persist per user through the SDK's own
- * `useUserSettings` hook (`PATCH user/me/settings/:namespace/:key`), the same
+ * `useUserSettings` hook (`PATCH users/me/settings/:namespace/:key`), the same
  * per-user settings plane the data-grid layout uses. Persistence is BEST-EFFORT
  * — a miss or a rejected save must never block or break the screen, so the hook
  * falls back to {@link DEFAULT_SCRIBE_SIZES} and swallows failures.

@@ -8,7 +8,7 @@ import type { UpdateUserSettingRequest, UserDepartment, UserSetting } from '@/fe
 import type { UpdateUserPreferencesRequest, UserPreferences } from './types';
 
 export function getMyTenant(): Promise<Tenant> {
-  return getJson('tenant/me');
+  return getJson('tenants/me');
 }
 
 /**
@@ -16,35 +16,35 @@ export function getMyTenant(): Promise<Tenant> {
  * `enable-local-raw-capture` row). ETag captured for the bulk PATCH.
  */
 export function listMyTenantConfigs(params?: ListParams): Promise<WithEtag<Paginated<TenantConfig>>> {
-  return getWithEtag('tenant/me/config', params);
+  return getWithEtag('tenants/me/config', params);
 }
 
 /** Bulk PATCH with If-Match (the header folds onto every row server-side). */
 export async function updateMyTenantConfigs(updates: UpdateTenantConfigItem[], etag: string): Promise<Paginated<TenantConfig>> {
-  return (await request<Paginated<TenantConfig>>('tenant/me/config', { method: 'PATCH', body: updates, etag })).data;
+  return (await request<Paginated<TenantConfig>>('tenants/me/config', { method: 'PATCH', body: updates, etag })).data;
 }
 
 export function getMyEntitlements(): Promise<EntitlementCapabilities> {
-  return getJson('entitlements/me');
+  return getJson('tenants/me/entitlements');
 }
 
 export function listMySettings(): Promise<UserSetting[]> {
-  return getJson('user/me/settings');
+  return getJson('users/me/settings');
 }
 
 export function updateMySetting(namespace: string, key: string, body: UpdateUserSettingRequest): Promise<UserSetting> {
-  return patchJson(`user/me/settings/${encodeURIComponent(namespace)}/${encodeURIComponent(key)}`, body);
+  return patchJson(`users/me/settings/${encodeURIComponent(namespace)}/${encodeURIComponent(key)}`, body);
 }
 
 export function getMyPreferences(): Promise<UserPreferences> {
-  return getJson('user/me/preferences');
+  return getJson('users/me/preferences');
 }
 
 /** The caller's own department(s), incl. while impersonated. */
 export function getMyDepartments(): Promise<UserDepartment[]> {
-  return getJson('user/me/departments');
+  return getJson('users/me/departments');
 }
 
 export function updateMyPreferences(body: UpdateUserPreferencesRequest): Promise<UserPreferences> {
-  return patchJson('user/me/preferences', body);
+  return patchJson('users/me/preferences', body);
 }

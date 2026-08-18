@@ -41,7 +41,7 @@ describe('ExceptionInterceptor — OptimisticConcurrencyException -> 412', () =>
   function createMockContext(overrides: { method?: string; url?: string } = {}): ExecutionContext {
     const request = {
       method: overrides.method ?? 'PATCH',
-      url: overrides.url ?? '/api/v1/tenant/me/config',
+      url: overrides.url ?? '/api/v1/tenants/me/config',
     };
     return {
       switchToHttp: () => ({
@@ -321,7 +321,7 @@ describe('ExceptionInterceptor — ProviderCredentialVetoedException → 409', (
 
   function createMockContext(): ExecutionContext {
     return {
-      switchToHttp: () => ({ getRequest: () => ({ method: 'POST', url: '/api/v1/text/generate' }), getResponse: () => ({}) }),
+      switchToHttp: () => ({ getRequest: () => ({ method: 'POST', url: '/api/v1/text-generations/generate' }), getResponse: () => ({}) }),
     } as unknown as ExecutionContext;
   }
 
@@ -431,7 +431,7 @@ describe('ExceptionInterceptor — optimistic_lock_conflict_total counter', () =
   function createMockContext(overrides: { method?: string; url?: string; routePath?: string } = {}): ExecutionContext {
     const request: any = {
       method: overrides.method ?? 'PATCH',
-      url: overrides.url ?? '/api/v1/tenant/me/config',
+      url: overrides.url ?? '/api/v1/tenants/me/config',
     };
     if (overrides.routePath !== undefined) {
       request.route = { path: overrides.routePath };
@@ -879,7 +879,7 @@ describe('ExceptionInterceptor — string-bodied HttpException keeps its status'
 
   const ctx = () =>
     ({
-      switchToHttp: () => ({ getRequest: () => ({ method: 'POST', url: '/api/v1/ai/nlp/topic' }), getResponse: () => ({}) }),
+      switchToHttp: () => ({ getRequest: () => ({ method: 'POST', url: '/api/v1/text-analyses/topic' }), getResponse: () => ({}) }),
     }) as unknown as ExecutionContext;
   const handlerFor = (err: unknown): CallHandler => ({ handle: () => throwError(() => err) });
 

@@ -133,8 +133,8 @@ function renderProvider() {
 }
 
 /**
- * Router serving `/auth/me`, `/tenant/me/config`, and
- * `/tenant/me/context-schema` — the latter branching on whether the request
+ * Router serving `/auth/me`, `/tenants/me/config`, and
+ * `/tenants/me/context-schema` — the latter branching on whether the request
  * carries `?departmentId=`, returning a DIFFERENT `contextSchemaVersionId`
  * for the department-scoped vs. tenant-scoped bundle so tests can assert
  * which one won.
@@ -145,7 +145,7 @@ function handlerFor(
 ): FetchHandler {
   return async (url) => {
     if (url.endsWith('/auth/me')) return jsonResponse(me);
-    if (url.includes('/tenant/me/context-schema')) {
+    if (url.includes('/tenants/me/context-schema')) {
       contextSchemaCalls.push(url);
       const isDepartmentScoped = url.includes('departmentId=');
       const versionId = isDepartmentScoped ? versions.department : versions.tenant;
@@ -161,7 +161,7 @@ function handlerFor(
         etag: `"${versionId}"`,
       });
     }
-    if (url.includes('/tenant/me/config')) return jsonResponse({ defaultSttModel: null, features: {} });
+    if (url.includes('/tenants/me/config')) return jsonResponse({ defaultSttModel: null, features: {} });
     return jsonResponse({});
   };
 }

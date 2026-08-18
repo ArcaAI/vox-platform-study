@@ -14,7 +14,7 @@ describe('can', () => {
     expect(can(rules, 'read', 'Consultation')).toBe(false);
   });
 
-  it('splits comma-joined actions from POST /rbac/check/my-permissions', () => {
+  it('splits comma-joined actions from POST /users/me/permission-checks', () => {
     expect(can(rules, 'update', 'Tenant')).toBe(true);
     expect(can(rules, 'read', 'Tenant')).toBe(true);
     expect(can(rules, 'delete', 'Tenant')).toBe(false);

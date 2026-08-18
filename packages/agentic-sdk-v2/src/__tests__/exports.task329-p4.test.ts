@@ -40,6 +40,6 @@ describe('local voice-embedding exports (core barrel)', () => {
   it('keeps the existing backend voice provider intact (not replaced)', async () => {
     const core = await import('../core.js');
     expect(typeof core.useVoiceEmbedding).toBe('function');
-    expect(core.VOICE_EMBEDDING_ENDPOINTS.enroll).toBe('/voice-profile/enroll');
+    expect(core.VOICE_EMBEDDING_ENDPOINTS.enroll).toBe('/voice-profiles/enroll');
   });
 });

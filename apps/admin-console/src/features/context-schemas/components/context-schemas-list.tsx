@@ -107,7 +107,7 @@ export function ContextSchemasList() {
         <EmptyState
           icon={IconSchema}
           title="No context schemas yet"
-          description="Create a schema, declare its kinds, and publish a version — clients discover it at GET /tenant/me/context-schema."
+          description="Create a schema, declare its kinds, and publish a version — clients discover it at GET /tenants/me/context-schema."
           action={
             <Button onClick={() => setCreating(true)}>
               <IconPlus aria-hidden />

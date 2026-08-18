@@ -1,12 +1,12 @@
 /**
  * @arcaai/vox - useVoiceEmbedding Hook
  *
- * Targets the real `/voice-profile` API surface:
- *   POST   /voice-profile/enroll              (multipart, up to 3 files)
- *   GET    /voice-profile                     (current user's profiles)
- *   DELETE /voice-profile/:id                 (by profile id, not user id)
- *   PATCH  /voice-profile/:id/activate
- *   PATCH  /voice-profile/:id/deactivate
+ * Targets the real `/voice-profiles` API surface:
+ *   POST   /voice-profiles/enroll              (multipart, up to 3 files)
+ *   GET    /voice-profiles                    (current user's profiles)
+ *   DELETE /voice-profiles/:id                 (by profile id, not user id)
+ *   PATCH  /voice-profiles/:id/activate
+ *   PATCH  /voice-profiles/:id/deactivate
  *
  * Replaces the legacy `/users/:userId/voice-embedding` flow which 100% 404'd.
  */

@@ -163,22 +163,22 @@ export class ConsultationContextSchemaAdminController {
  * its own controller; this follows that convention.
  *
  * Gated with a bare `@Authorize()` — any authenticated caller in the tenant,
- * the same posture as the sibling `/tenant/me/*` reads. A clinician's client
+ * the same posture as the sibling `/tenants/me/*` reads. A clinician's client
  * has to read this to build its workflow at session open, so requiring an
  * admin ability here would make the feature unreachable by its actual
  * consumer.
  */
 /**
- * TASK-758 — `tenant/me/*` resolves to the key's TENANT (the CLS `tenantId`
+ * TASK-758 — `tenants/me/*` resolves to the key's TENANT (the CLS `tenantId`
  * `UnifiedAuthGuard` sets from `apiKeyEntity.tenantId`), NOT to the key's bound
- * user the way `/user/me/*` does. Two different resolutions behind the same
+ * user the way `/users/me/*` does. Two different resolutions behind the same
  * `me` segment, so each says which one it is.
  */
 const ME_IS_THE_KEY_TENANT = "Under API-key authentication this resolves to the key's **tenant**.";
 
 @ApiBearerAuth()
 @ApiTags('tenant')
-@Controller('tenant/me/context-schema')
+@Controller('tenants/me/context-schema')
 @Authorize()
 // API-KEY-NOTE: policy A1. Schema DISCOVERY — without it an integrator
 // cannot build a valid consultation-context payload, which makes the whole

@@ -107,7 +107,7 @@ function session() {
 }
 
 function defaultHandler(call: RecordedCall): Response | undefined {
-  if (call.url.includes('/user/me/settings')) {
+  if (call.url.includes('/users/me/settings')) {
     return call.method === 'GET' ? Response.json([]) : Response.json({ ok: true });
   }
   if (call.method !== 'GET') return undefined;

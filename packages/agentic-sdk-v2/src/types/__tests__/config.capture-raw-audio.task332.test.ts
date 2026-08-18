@@ -2,7 +2,7 @@
  * TDD tests for the local raw-capture flag in TenantAudioConfig.
  *
  * The server appends a synthetic `enable-local-raw-capture` GlobalSetting row
- * (namespace `feature-flags`) to GET /tenant/me/config carrying the
+ * (namespace `feature-flags`) to GET /tenants/me/config carrying the
  * server-computed effective boolean (platform capability AND tenant toggle).
  * `parseTenantConfig` must surface it as `captureRawAudio` so the provider can
  * map it into `tenantOverrides.audio.captureRawAudio`.

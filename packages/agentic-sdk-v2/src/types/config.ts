@@ -858,7 +858,7 @@ export interface TenantFeatureFlags {
 /**
  * Tenant-scoped audio/AI configuration parsed from GlobalSetting records.
  *
- * The SDK fetches `GET /tenant/me/config` at initialization (the server resolves
+ * The SDK fetches `GET /tenants/me/config` at initialization (the server resolves
  * the tenant from the JWT token) and transforms the flat key-value list into
  * this structured interface.
  *
@@ -925,7 +925,7 @@ export const TENANT_CONFIG_KEYS = {
   ENABLE_CROSS_CHAIN_SUMMARY: 'enable-cross-chain-summary',
   // Server-computed effective flag (platform capability AND tenant
   // toggle) for local raw-stream audio capture. Surfaced via GET
-  // /tenant/me/config and mapped into audio.captureRawAudio (admin-owned;
+  // /tenants/me/config and mapped into audio.captureRawAudio (admin-owned;
   // user preferences cannot override it).
   ENABLE_LOCAL_RAW_CAPTURE: 'enable-local-raw-capture',
   LOCAL_ASR_MODELS: 'local-asr-models',

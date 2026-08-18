@@ -114,7 +114,7 @@ export function ProvidersCard({
         ) : null}
         <CatalogList
           title="Text providers"
-          endpoint="GET /text/providers"
+          endpoint="GET /text-generations/providers"
           items={providers}
           isLoading={providersLoading}
           error={providersError}
@@ -122,7 +122,7 @@ export function ProvidersCard({
         />
         <CatalogList
           title="Guardrail providers"
-          endpoint="GET /text/guardrail-providers"
+          endpoint="GET /text-generations/guardrail-providers"
           items={guardrails}
           isLoading={guardrailsLoading}
           error={guardrailsError}

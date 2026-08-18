@@ -95,7 +95,7 @@ describe('useTaskStream', () => {
     expect(mintCalls[0].url).toBe('/api/auth/stream-ticket');
     expect(mintCalls[0].body).toEqual({ scope: 'text_task:t-5531' });
 
-    expect(source.url).toContain('/api/v1/text/tasks/t-5531/stream');
+    expect(source.url).toContain('/api/v1/text-generations/tasks/t-5531/stream');
     expect(source.url).toContain('ticket=tkt-1');
     // The BFF stream tunnel is gone — streams go straight to the gateway.
     expect(source.url).not.toContain('/api/hope/');

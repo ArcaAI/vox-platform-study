@@ -147,14 +147,14 @@ const GATE_EDIT_EXPORT: GateEditCorpusExport = { tenantId: 'tnt-1', reviewStatus
 function stubRoutes(overrides: { audit?: Response | HarnessAuditList; workingTenantId?: string | null } = {}) {
   return installFetchStub(({ url }: RecordedCall) => {
     if (url === '/api/auth/session') return sessionPayload({ workingTenantId: overrides.workingTenantId });
-    if (url === '/api/hope/rbac/check/my-permissions') {
+    if (url === '/api/hope/users/me/permission-checks') {
       return { userId: 'u-1', tenantId: 'tnt-1', permissions: [{ action: 'manage', subject: 'HarnessEval' }] };
     }
     if (url.startsWith('/api/hope/admin/harness/gate-edit-exemplars')) return GATE_EDIT_EXPORT;
     if (url.startsWith('/api/hope/admin/harness/golden-sets')) return GOLDEN_SETS;
     // Best-effort per-user grid-layout persistence: the eval-runs grid
     // loads its layout on mount; no saved layout in tests.
-    if (url.includes('/user/me/settings')) return [];
+    if (url.includes('/users/me/settings')) return [];
     if (url.startsWith('/api/hope/admin/harness/audit')) return overrides.audit ?? AUDIT;
     if (url.startsWith('/api/hope/admin/harness/eval-runs?')) return EVAL_RUNS;
     if (url === '/api/hope/admin/harness/eval-runs/run-1') return EVAL_RUN_DETAIL;

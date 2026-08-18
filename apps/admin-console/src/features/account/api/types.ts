@@ -1,11 +1,11 @@
 /**
  * Self-service surfaces every authenticated console user can reach:
- * tenant/me, entitlements/me, user/me settings + preferences.
+ * tenants/me, tenants/me/entitlements, user/me settings + preferences.
  */
 
 export type WorkflowMode = 'local' | 'remote';
 
-/** GET /user/me/preferences (UserPreferencesResponse). */
+/** GET /users/me/preferences (UserPreferencesResponse). */
 export interface UserPreferences {
   workflowMode?: WorkflowMode;
   language?: string;
@@ -35,7 +35,7 @@ export interface LocalWorkflowConfig {
   voiceProfile?: { autoActivateLatest?: boolean; similarityThreshold?: number; useBackendAnchor?: boolean };
 }
 
-/** PATCH /user/me/preferences body (remoteConfig is NOT settable). */
+/** PATCH /users/me/preferences body (remoteConfig is NOT settable). */
 export interface UpdateUserPreferencesRequest {
   workflowMode?: WorkflowMode;
   language?: string;

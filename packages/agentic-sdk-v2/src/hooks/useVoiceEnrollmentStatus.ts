@@ -42,7 +42,7 @@ export interface UseVoiceEnrollmentStatusReturn {
 export interface VoiceEnrollmentChecker {
   /**
    * Returns true iff the current user has at least one ACTIVE voice profile.
-   * MAY perform a network call (e.g. `GET /voice-profile`) on first invocation.
+   * MAY perform a network call (e.g. `GET /voice-profiles`) on first invocation.
    */
   checkHasActiveProfile(): Promise<boolean>;
 }

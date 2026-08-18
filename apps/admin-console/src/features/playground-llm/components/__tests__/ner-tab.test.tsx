@@ -1,6 +1,6 @@
 /**
  * Agent Playground NER tab. fetch is stubbed at the network
- * boundary; covers the idle prompt, the extract flow (POST to the ai/nlp
+ * boundary; covers the idle prompt, the extract flow (POST to the text-analyses
  * proxy), the entity list, and the empty result.
  */
 
@@ -65,7 +65,7 @@ describe('NerTab', () => {
     expect(screen.getByText(/model ner-2.1/i)).toBeDefined();
 
     await waitFor(() => {
-      const call = calls.find((c) => c.url === '/api/hope/ai/nlp/entities');
+      const call = calls.find((c) => c.url === '/api/hope/text-analyses/entities');
       expect(call?.method).toBe('POST');
       expect(call?.body).toEqual({ text: 'Prescribed aspirin for a headache.' });
     });

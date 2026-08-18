@@ -50,24 +50,24 @@ describe('accountKeys', () => {
 });
 
 describe('account client (self-service)', () => {
-  it('reads tenant/me surfaces incl. the config ETag for the bulk PATCH', async () => {
+  it('reads tenants/me surfaces incl. the config ETag for the bulk PATCH', async () => {
     const calls = installFetchMock();
     await getMyTenant();
     const configs = await listMyTenantConfigs({ page: 0 });
     await getMyEntitlements();
     expect(calls.map((call) => `${call.method} ${call.url}`)).toEqual([
-      'GET /api/hope/tenant/me',
-      'GET /api/hope/tenant/me/config?page=0',
-      'GET /api/hope/entitlements/me',
+      'GET /api/hope/tenants/me',
+      'GET /api/hope/tenants/me/config?page=0',
+      'GET /api/hope/tenants/me/entitlements',
     ]);
     expect(configs.etag).toBe('"4"');
   });
 
-  it('PATCHes tenant/me/config with If-Match (header folds onto every row)', async () => {
+  it('PATCHes tenants/me/config with If-Match (header folds onto every row)', async () => {
     const calls = installFetchMock();
     await updateMyTenantConfigs([{ id: 'cfg-1', value: 'on', expectedVersion: 4 }], '"4"');
     expect(calls[0].method).toBe('PATCH');
-    expect(calls[0].url).toBe('/api/hope/tenant/me/config');
+    expect(calls[0].url).toBe('/api/hope/tenants/me/config');
     expect(calls[0].headers.get('if-match')).toBe('"4"');
     expect(calls[0].body).toEqual([{ id: 'cfg-1', value: 'on', expectedVersion: 4 }]);
   });
@@ -79,10 +79,10 @@ describe('account client (self-service)', () => {
     await getMyPreferences();
     await updateMyPreferences({ workflowMode: 'local', language: 'sv-SE' });
     expect(calls.map((call) => `${call.method} ${call.url}`)).toEqual([
-      'GET /api/hope/user/me/settings',
-      'PATCH /api/hope/user/me/settings/ui/theme',
-      'GET /api/hope/user/me/preferences',
-      'PATCH /api/hope/user/me/preferences',
+      'GET /api/hope/users/me/settings',
+      'PATCH /api/hope/users/me/settings/ui/theme',
+      'GET /api/hope/users/me/preferences',
+      'PATCH /api/hope/users/me/preferences',
     ]);
     expect(calls[3].body).toEqual({ workflowMode: 'local', language: 'sv-SE' });
   });

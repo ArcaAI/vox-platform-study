@@ -107,7 +107,7 @@ function makePersistUserPreferencesToStorage(nsRef: { current: string }) {
 //
 // ADDITIVE server sync of the user-pref tier. SDK prefs live under the
 // server-owned `arcaai-sdk` namespace with DOT-PATH keys (e.g. `stt.language`),
-// mirroring the read path (GET /user/me/settings → reconstruct by splitting the
+// mirroring the read path (GET /users/me/settings → reconstruct by splitting the
 // key on `.`) and the existing `selectedPipelineId` persistence in usePipelines.
 // =============================================================================
 
@@ -122,7 +122,7 @@ const SDK_SETTINGS_NAMESPACE = 'arcaai-sdk';
 const SERVER_PREF_SYNC_DEBOUNCE_MS = 500;
 
 /**
- * `dataType` sent on `PATCH /user/me/settings/:ns/:key`. These are the
+ * `dataType` sent on `PATCH /users/me/settings/:ns/:key`. These are the
  * server's `ValueType` enum members (PascalCase) — the WRITE DTO validates
  * with `@IsEnum(ValueType)`, and the read-side reconstruction upper-cases the
  * stored type before comparing, so they round-trip correctly.
@@ -163,7 +163,7 @@ function flattenUserPrefsToLeaves(prefs: DeepPartial<AppConfig>, prefix = ''): S
 
 /**
  * Build a debounced server-sync persist callback. Flattens the user-pref tier
- * and PATCHes each leaf to `/user/me/settings/arcaai-sdk/{dotPath}`. Each PATCH
+ * and PATCHes each leaf to `/users/me/settings/arcaai-sdk/{dotPath}`. Each PATCH
  * is best-effort: a failure is logged and the loop continues, and nothing here
  * ever throws (a failed sync must not break local-storage persistence).
  *
@@ -609,7 +609,7 @@ export function AgenticProvider({ config, children }: AgenticProviderProps) {
         }
         // The assigned remote ASR pipeline is resolved per-user
         // server-side (per-user admin override -> tenant default -> global) and
-        // returned on GET /user/me/preferences as `remoteConfig.pipelineId`.
+        // returned on GET /users/me/preferences as `remoteConfig.pipelineId`.
         // Surface it as an admin-owned tenant-tier override
         // (stt.transcriptionPipelineId is permission:'admin' in
         // CONFIG_PERMISSIONS), so the cascade's stripLockedAndAdminPaths keeps
@@ -847,7 +847,7 @@ export function AgenticProvider({ config, children }: AgenticProviderProps) {
             // the INCOMING identity. The mount-time init() (deps []) is the only
             // other place that calls `configManager.setTenantConfig`, and it
             // injects the per-user server-resolved remote ASR pipeline
-            // (`remoteConfig.pipelineId` from GET /user/me/preferences) into
+            // (`remoteConfig.pipelineId` from GET /users/me/preferences) into
             // `stt.transcriptionPipelineId`. init() runs ONCE with the MOUNTING
             // identity (e.g. the admin), so on a same-tab user/impersonation
             // switch the cascade kept the previous user's tenant tier — leaving
@@ -942,7 +942,7 @@ export function AgenticProvider({ config, children }: AgenticProviderProps) {
 
         // While impersonating, the playground is the SINGLE
         // writer of the user-pref tier: it loads the impersonated user's REAL
-        // backend prefs (GET /user/me/settings via the doctor JWT) read-only.
+        // backend prefs (GET /users/me/settings via the doctor JWT) read-only.
         // `loadUserPreferences()` is LOCAL-IDB-ONLY (the impersonated user has no
         // namespace on the admin's machine) and `clearUserPreferences()` wipes the
         // tier — running either here would race with / clobber those backend prefs

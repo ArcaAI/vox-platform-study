@@ -1,7 +1,7 @@
 /**
  * SDK endpoint constants drift fixes
  *
- * Locks the contract decisions D2 (voice-profile, Option B), D3 (user-settings
+ * Locks the contract decisions D2 (voice-profiles, Option B), D3 (user-settings
  * reduction), D4 (pipeline validate path), and the typed `USER_ROLES` tuple
  * agreed for GAP-04 / W0-10. Tests are written RED-first; constants source
  * is updated until every assertion below passes.
@@ -13,25 +13,25 @@ import { describe, expect, it } from 'vitest';
 import { PIPELINE_ENDPOINTS, USER_ROLES, USER_SETTINGS_ENDPOINTS, VOICE_EMBEDDING_ENDPOINTS, type UserRole } from '../constants';
 
 // ---------------------------------------------------------------------------
-// W0-7 / GAP-02 — voice-profile (D2)
+// W0-7 / GAP-02 — voice-profiles (D2)
 // ---------------------------------------------------------------------------
 
-describe('VOICE_EMBEDDING_ENDPOINTS targets /voice-profile API', () => {
+describe('VOICE_EMBEDDING_ENDPOINTS targets /voice-profiles API', () => {
   it('exposes static `enroll` path for multipart upload', () => {
-    expect(VOICE_EMBEDDING_ENDPOINTS.enroll).toBe('/voice-profile/enroll');
+    expect(VOICE_EMBEDDING_ENDPOINTS.enroll).toBe('/voice-profiles/enroll');
   });
 
   it("exposes static `list` path for the current user's profiles", () => {
-    expect(VOICE_EMBEDDING_ENDPOINTS.list).toBe('/voice-profile');
+    expect(VOICE_EMBEDDING_ENDPOINTS.list).toBe('/voice-profiles');
   });
 
-  it('exposes a `delete(profileId)` builder rooted at /voice-profile/', () => {
-    expect(VOICE_EMBEDDING_ENDPOINTS.delete('p-1')).toBe('/voice-profile/p-1');
+  it('exposes a `delete(profileId)` builder rooted at /voice-profiles/', () => {
+    expect(VOICE_EMBEDDING_ENDPOINTS.delete('p-1')).toBe('/voice-profiles/p-1');
   });
 
   it('encodes special characters in profile id', () => {
     const dangerous = 'id/with?special#chars&more=true';
-    expect(VOICE_EMBEDDING_ENDPOINTS.delete(dangerous)).toBe('/voice-profile/' + encodeURIComponent(dangerous));
+    expect(VOICE_EMBEDDING_ENDPOINTS.delete(dangerous)).toBe('/voice-profiles/' + encodeURIComponent(dangerous));
   });
 
   it('does not expose the deprecated /users/:userId/voice-embedding paths', () => {
@@ -54,17 +54,17 @@ describe('VOICE_EMBEDDING_ENDPOINTS targets /voice-profile API', () => {
 
 describe('USER_SETTINGS_ENDPOINTS reduced to list + updateByKey', () => {
   it('exposes static `list` path', () => {
-    expect(USER_SETTINGS_ENDPOINTS.list).toBe('/user/me/settings');
+    expect(USER_SETTINGS_ENDPOINTS.list).toBe('/users/me/settings');
   });
 
   it('exposes `updateByKey(namespace, key)` builder', () => {
-    expect(USER_SETTINGS_ENDPOINTS.updateByKey('display', 'theme')).toBe('/user/me/settings/display/theme');
+    expect(USER_SETTINGS_ENDPOINTS.updateByKey('display', 'theme')).toBe('/users/me/settings/display/theme');
   });
 
   it('encodes special characters in namespace and key', () => {
     const ns = 'a/ns?with#chars';
     const k = 'k=with&chars';
-    expect(USER_SETTINGS_ENDPOINTS.updateByKey(ns, k)).toBe('/user/me/settings/' + encodeURIComponent(ns) + '/' + encodeURIComponent(k));
+    expect(USER_SETTINGS_ENDPOINTS.updateByKey(ns, k)).toBe('/users/me/settings/' + encodeURIComponent(ns) + '/' + encodeURIComponent(k));
   });
 
   it('keys are exactly {list, updateByKey} (no GET, CREATE, UPDATE-by-id, MY_SETTINGS)', () => {

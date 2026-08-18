@@ -10,7 +10,7 @@
  *           — backs the grid's `pageMode: 'cursor'` + the SDK
  *             `extractCursorPaginated` / `useAuditLog().listByCursor` normalizer.
  *   - D8  → per-user grid-layout persistence under the `ui.data-grid`
- *           user-settings namespace (PATCH /user/me/settings/ui.data-grid/:key).
+ *           user-settings namespace (PATCH /users/me/settings/ui.data-grid/:key).
  *
  * This spec covers ONLY the cursor contract (D7), which is **not** exercised by
  * any sibling spec. The **D8** persistence round-trip (PATCH/GET/upsert + the

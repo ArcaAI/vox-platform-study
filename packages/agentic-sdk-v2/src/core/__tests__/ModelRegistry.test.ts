@@ -313,7 +313,7 @@ describe('ModelRegistry', () => {
       const registry = new ModelRegistry({}, mockApiClient, mockLogger);
       await registry.loadTenantConfig();
 
-      expect(mockFetch).toHaveBeenCalledWith(expect.stringContaining('/tenant/me/config'), expect.any(Object));
+      expect(mockFetch).toHaveBeenCalledWith(expect.stringContaining('/tenants/me/config'), expect.any(Object));
       expect(mockFetch).not.toHaveBeenCalledWith(expect.stringContaining('/admin/'), expect.any(Object));
     });
 

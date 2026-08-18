@@ -15,7 +15,7 @@
  *     super-admin-only on write — a tenant admin PUT → 403).
  *  2. `nlp.topic`/`nlp.intent` — tenant-writable instructions
  *     (`TenantNlpTaskInstructionsAdminController`, `/admin/nlp-task-instructions`)
- *     flow through the gateway proxy (`/ai/nlp/topic`, `/ai/nlp/intent`) into
+ *     flow through the gateway proxy (`/text-analyses/topic`, `/text-analyses/intent`) into
  *     the response, proving the instructions are the ones ACTUALLY used, not
  *     just that the endpoint 200s.
  *  3. Cross-tenant instructions read/write → 404 (the tenant-scope extension's
@@ -28,7 +28,7 @@
  *    `nlp.sentiment`/`nlp.toxicity` (reuses whatever fixture slug the
  *    existing `nlp.classification`/`nlp.diagnosis` e2e coverage seeds).
  *  - A reachable `text` service with a working default provider — the
- *    `/ai/nlp/topic`/`/ai/nlp/intent` assertions need a REAL LLM completion,
+ *    `/text-analyses/topic`/`/text-analyses/intent` assertions need a REAL LLM completion,
  *    not just DB/API; if no provider is configured these two tests should be
  *    expected to fail closed with 503 rather than 200 in a minimal CI infra
  *    profile. Skip/adjust them for environments without a configured `text`
@@ -215,7 +215,7 @@ test.describe('TASK-729 — nlp.topic / nlp.intent (open-taxonomy, tenant-writab
 
   // Requires a reachable `text` service with a configured default provider —
   // skip/adjust in an infra profile without one (see file header).
-  test('the tenant instructions ACTUALLY flow into the /ai/nlp/topic proxy response', async ({ request }) => {
+  test('the tenant instructions ACTUALLY flow into the /text-analyses/topic proxy response', async ({ request }) => {
     const topics = ['billing', 'appointments', 'medical_records'];
     const existing = await readInstructionsRow(request, tenantAdminToken, 'nlp.topic');
     await request.put(`${NLP_INSTRUCTIONS_BASE}/row?taskKey=nlp.topic`, {
@@ -234,7 +234,7 @@ test.describe('TASK-729 — nlp.topic / nlp.intent (open-taxonomy, tenant-writab
     // completion — accept that here rather than hard-failing on missing,
     // out-of-scope infra. When the provider IS reachable (full local/CI stack),
     // this still fully verifies the tenant's topic list constrains the result.
-    expect([200, 503], 'POST /ai/nlp/topic').toContain(resp.status());
+    expect([200, 503], 'POST /text-analyses/topic').toContain(resp.status());
     if (resp.status() === 200) {
       const body = (await resp.json()) as { predicted_topic: string; available_topics: string[] };
       // The predicted label must be constrained to the tenant's OWN list — proves
@@ -245,7 +245,7 @@ test.describe('TASK-729 — nlp.topic / nlp.intent (open-taxonomy, tenant-writab
     }
   });
 
-  test('a tenant with NO configured topic list gets 503 from /ai/nlp/topic (fail-closed)', async ({ request }) => {
+  test('a tenant with NO configured topic list gets 503 from /text-analyses/topic (fail-closed)', async ({ request }) => {
     // A freshly-provisioned tenant (or one that never wrote a row) has a
     // version:0 placeholder — the NLP endpoint refuses to guess.
     const ga = await loginUser(request, SEEDED_USERS.superAdmin.username, SEEDED_USERS.superAdmin.password, 'ARCAAI');

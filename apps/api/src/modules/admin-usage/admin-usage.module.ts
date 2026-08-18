@@ -3,6 +3,7 @@ import { ShadowMeteringServiceModule, UsageAnalyticsServiceModule } from '@arcaa
 
 import { AdminReconciliationController } from './admin-reconciliation.controller';
 import { AdminUsageController } from './admin-usage.controller';
+import { MyUsageRedirectShimController } from './my-usage-redirect.shim.controller';
 import { MyUsageController } from './my-usage.controller';
 
 /**
@@ -12,6 +13,6 @@ import { MyUsageController } from './my-usage.controller';
  */
 @Module({
   imports: [UsageAnalyticsServiceModule, ShadowMeteringServiceModule],
-  controllers: [AdminUsageController, AdminReconciliationController, MyUsageController],
+  controllers: [AdminUsageController, AdminReconciliationController, MyUsageController, MyUsageRedirectShimController],
 })
 export class AdminUsageApiModule {}

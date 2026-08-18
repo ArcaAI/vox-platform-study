@@ -6,7 +6,7 @@
  * `SKIP_DB_PRECHECK=true API_URL=http://localhost:8968`). Each flow is a real
  * HTTP round-trip with the seeded `super_admin` (cross-tenant operator).
  *
- *  1. D8 grid-layout persistence — `PATCH /user/me/settings/ui.data-grid/:key`
+ *  1. D8 grid-layout persistence — `PATCH /users/me/settings/ui.data-grid/:key`
  *     persists a layout under the `ui.data-grid` namespace and a re-PATCH
  *     upserts the SAME row (no duplicate). Also pins the wire contract that the
  *     admin grid adapter must satisfy: `value` is a JSON **string** — an object
@@ -95,13 +95,13 @@ test.describe('admin features (D8 persistence, Users sort/filter/search, media)'
   test('D8: PATCH ui.data-grid persists a JSON-string layout and GET reflects it', async ({ request }) => {
     const layout = JSON.stringify({ density: 'compact', order: ['username', 'email'], sizing: { username: 240 } });
 
-    const patch = await request.patch(`/api/v1/user/me/settings/${GRID_NAMESPACE}/${GRID_KEY}`, {
+    const patch = await request.patch(`/api/v1/users/me/settings/${GRID_NAMESPACE}/${GRID_KEY}`, {
       headers: { Authorization: `Bearer ${token}` },
       data: { value: layout },
     });
     expect(patch.status(), 'PATCH ui.data-grid (string value)').toBe(200);
 
-    const get = await authGet(request, '/api/v1/user/me/settings', token);
+    const get = await authGet(request, '/api/v1/users/me/settings', token);
     expect(get.status()).toBe(200);
     const settings = (await get.json()) as UserSetting[];
     const entry = settings.find((s) => s.namespace === GRID_NAMESPACE && s.key === GRID_KEY);
@@ -111,13 +111,13 @@ test.describe('admin features (D8 persistence, Users sort/filter/search, media)'
 
   test('D8: re-PATCH upserts the same setting (no duplicate row)', async ({ request }) => {
     const next = JSON.stringify({ density: 'comfortable', order: ['email', 'username'] });
-    const patch = await request.patch(`/api/v1/user/me/settings/${GRID_NAMESPACE}/${GRID_KEY}`, {
+    const patch = await request.patch(`/api/v1/users/me/settings/${GRID_NAMESPACE}/${GRID_KEY}`, {
       headers: { Authorization: `Bearer ${token}` },
       data: { value: next },
     });
     expect(patch.status()).toBe(200);
 
-    const get = await authGet(request, '/api/v1/user/me/settings', token);
+    const get = await authGet(request, '/api/v1/users/me/settings', token);
     const settings = (await get.json()) as UserSetting[];
     const matches = settings.filter((s) => s.namespace === GRID_NAMESPACE && s.key === GRID_KEY);
     expect(matches.length, 'exactly one row per (namespace,key) — upsert not insert').toBe(1);
@@ -128,7 +128,7 @@ test.describe('admin features (D8 persistence, Users sort/filter/search, media)'
     // The settings `value` is `@IsString()` + validated via JSON.parse. The
     // admin grid adapter therefore JSON.stringify()s the layout; sending the
     // raw object 400s — the defect that broke D8 saves end-to-end.
-    const patch = await request.patch(`/api/v1/user/me/settings/${GRID_NAMESPACE}/${GRID_KEY}`, {
+    const patch = await request.patch(`/api/v1/users/me/settings/${GRID_NAMESPACE}/${GRID_KEY}`, {
       headers: { Authorization: `Bearer ${token}` },
       data: { value: { density: 'compact' } },
     });

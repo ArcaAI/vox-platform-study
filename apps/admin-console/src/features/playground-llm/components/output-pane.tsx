@@ -23,7 +23,7 @@ interface OutputPaneProps {
   stream: TaskStreamState;
   /** Generate POST in flight (sync ack not yet received). */
   isPending: boolean;
-  /** Post-mortem GET /text/tasks/:taskId after a transport drop. */
+  /** Post-mortem GET /text-generations/tasks/:taskId after a transport drop. */
   postMortem: TextTask | undefined;
   /** Effective provider/model for the in-flight stream request (streams never echo it back). */
   streamProviderModel: string;
@@ -90,7 +90,7 @@ function ResultSummary({
   );
 }
 
-/** Admin-only `_debug` assembly meta (debug: true on /text/generate/assembled). */
+/** Admin-only `_debug` assembly meta (debug: true on /text-generations/generate/assembled). */
 function AssemblyMetaPanel({ debug }: { debug: AssembledDebugMeta }) {
   const rows: Array<[string, string | undefined]> = [
     ['Type', debug.type],
@@ -280,7 +280,7 @@ export function OutputPane({
                   providerModel={`${recovered.provider} · ${recovered.model}`}
                 />
                 <p className="text-muted-foreground text-xs">
-                  {`Stream dropped after completion, content recovered via GET /text/tasks/${recovered.task_id}.`}
+                  {`Stream dropped after completion, content recovered via GET /text-generations/tasks/${recovered.task_id}.`}
                 </p>
               </>
             ) : null}

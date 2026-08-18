@@ -25,7 +25,7 @@ const ME_IS_THE_BOUND_USER =
 
 @ApiBearerAuth()
 @ApiTags('user')
-@Controller('user/me/departments')
+@Controller('users/me/departments')
 @Authorize()
 // API-KEY-NOTE: policy A1. A `me` surface: resolves to the key's BOUND USER,
 // never to its tenant (see the OpenAPI description on the route). Reuses

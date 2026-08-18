@@ -93,7 +93,7 @@ const DEFINITION: WorkflowDefinitionSlice = {
 function stubRoutes(overrides: { trace?: RunTrace } = {}) {
   return installFetchStub(({ url, method }: RecordedCall) => {
     if (url === '/api/auth/session') return sessionPayload({});
-    if (url.includes('/user/me/settings')) return method === 'GET' ? [] : { ok: true };
+    if (url.includes('/users/me/settings')) return method === 'GET' ? [] : { ok: true };
     if (url.startsWith(`/api/hope/admin/workflow-runs/${RUN_ID}/trace`)) return overrides.trace ?? TRACE;
     if (url.startsWith('/api/hope/admin/workflow-definitions/wfv-1')) return DEFINITION;
     return { success: true };

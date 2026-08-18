@@ -81,7 +81,7 @@ function installFetchStub(
         body: typeof init?.body === 'string' ? JSON.parse(init.body) : undefined,
       });
       if (url === '/api/auth/session') return Response.json(session);
-      if (url.includes('/user/me/settings')) return method === 'GET' ? Response.json([]) : Response.json({ success: true });
+      if (url.includes('/users/me/settings')) return method === 'GET' ? Response.json([]) : Response.json({ success: true });
       if (url === '/api/hope/admin/allowed-origins/posture') return Response.json(posture);
       return handler(url, method);
     }),

@@ -12,7 +12,9 @@ import { test, expect } from '@playwright/test';
 import { SEEDED_API_KEY_SERVICE_ACCOUNT } from '../../../../tests/helpers';
 
 /**
- * Real RBAC check routes — `@Controller('rbac/check')` in
+ * Real RBAC check routes — `PermissionCheckController`
+ * (`users/me/permission-checks`) and `UserPermissionCheckController`
+ * (`users/:id/permission-checks`) in
  * apps/api/src/modules/rbac/permission-check.controller.ts.
  *
  * This spec previously targeted `/rbac/permissions/effective`,
@@ -20,9 +22,27 @@ import { SEEDED_API_KEY_SERVICE_ACCOUNT } from '../../../../tests/helpers';
  * have ever existed. Every assertion behind them sat inside an
  * `if (status === 200)` guard, so ~9 tests passed vacuously against a 404.
  */
-const MY_PERMISSIONS_ROUTE = '/api/v1/rbac/check/my-permissions';
-const CHECK_BULK_ROUTE = '/api/v1/rbac/check/bulk';
-const CHECK_ROUTE = '/api/v1/rbac/check';
+const MY_PERMISSIONS_ROUTE = '/api/v1/users/me/permission-checks';
+const CHECK_BULK_ROUTE = (userId: string) => `/api/v1/users/${userId}/permission-checks/bulk`;
+const CHECK_ROUTE = (userId: string) => `/api/v1/users/${userId}/permission-checks`;
+
+/**
+ * TASK-760 — `POST /rbac/check[/bulk]` became `POST /users/:id/permission-checks[/bulk]`.
+ *
+ * The retired paths carried NO user in the URI (the target defaulted to the
+ * caller, or came from the body's optional `userId`), so the resource form
+ * needs the caller's own id. It is the JWT `sub`, decoded here rather than
+ * fetched so the test does not depend on a second endpoint. The old paths
+ * still answer 308 for one release, but a spec that leans on the redirect is
+ * testing the shim, not the route — so these specs address the new URI
+ * directly.
+ */
+function callerId(token: string): string {
+  const payload = JSON.parse(Buffer.from(token.split('.')[1], 'base64url').toString('utf8')) as { sub?: string; id?: string };
+  const id = payload.sub ?? payload.id;
+  if (!id) throw new Error('JWT carries no subject claim');
+  return id;
+}
 
 interface EffectivePermission {
   action: string;
@@ -205,10 +225,7 @@ test.describe('Authorization Flow', () => {
         headers: { 'X-API-Key': SEEDED_API_KEY_SERVICE_ACCOUNT },
       });
 
-      expect(
-        permResponse.status(),
-        'a key scoped only to internal:stt:worker must not reach a business-plane route',
-      ).toBe(403);
+      expect(permResponse.status(), 'a key scoped only to internal:stt:worker must not reach a business-plane route').toBe(403);
       const body = await permResponse.json();
       expect(JSON.stringify(body)).not.toContain('manage');
     });
@@ -289,7 +306,7 @@ test.describe('Authorization Flow', () => {
   test.describe('Permission Logic (AND/OR)', () => {
     test('should enforce AND logic - all permissions required', async ({ request }) => {
       // Check if nurse has specific permissions
-      const checkResponse = await request.post(CHECK_BULK_ROUTE, {
+      const checkResponse = await request.post(CHECK_BULK_ROUTE(callerId(nurseToken)), {
         headers: { Authorization: `Bearer ${nurseToken}` },
         data: {
           permissions: [
@@ -307,7 +324,7 @@ test.describe('Authorization Flow', () => {
 
     test('should support OR logic - any permission sufficient', async ({ request }) => {
       // Check multiple permissions
-      const checkResponse = await request.post(CHECK_BULK_ROUTE, {
+      const checkResponse = await request.post(CHECK_BULK_ROUTE(callerId(doctorToken)), {
         headers: { Authorization: `Bearer ${doctorToken}` },
         data: {
           permissions: [
@@ -411,15 +428,15 @@ test.describe('Authorization Flow', () => {
   test.describe('Authorization Cache Behavior', () => {
     test('should return consistent results for same user', async ({ request }) => {
       // Make multiple requests to the RBAC check endpoint
-      // Note: The actual endpoint is POST /api/rbac/check/my-permissions
+      // Note: The actual endpoint is POST /api/users/me/permission-checks
       const responses = await Promise.all([
-        request.post('/api/v1/rbac/check/my-permissions', {
+        request.post('/api/v1/users/me/permission-checks', {
           headers: { Authorization: `Bearer ${superAdminToken}` },
         }),
-        request.post('/api/v1/rbac/check/my-permissions', {
+        request.post('/api/v1/users/me/permission-checks', {
           headers: { Authorization: `Bearer ${superAdminToken}` },
         }),
-        request.post('/api/v1/rbac/check/my-permissions', {
+        request.post('/api/v1/users/me/permission-checks', {
           headers: { Authorization: `Bearer ${superAdminToken}` },
         }),
       ]);
@@ -489,7 +506,7 @@ test.describe('Authorization Flow', () => {
 
     test('doctor should be able to manage own profile', async ({ request }) => {
       // Check user-profile-own policy
-      const checkResponse = await request.post(CHECK_BULK_ROUTE, {
+      const checkResponse = await request.post(CHECK_BULK_ROUTE(callerId(doctorToken)), {
         headers: { Authorization: `Bearer ${doctorToken}` },
         data: {
           permissions: [
@@ -509,7 +526,7 @@ test.describe('Authorization Flow', () => {
 
     test('nurse should be able to manage own profile', async ({ request }) => {
       // Check user-profile-own policy
-      const checkResponse = await request.post(CHECK_BULK_ROUTE, {
+      const checkResponse = await request.post(CHECK_BULK_ROUTE(callerId(nurseToken)), {
         headers: { Authorization: `Bearer ${nurseToken}` },
         data: {
           permissions: [
@@ -527,7 +544,7 @@ test.describe('Authorization Flow', () => {
     });
 
     test('doctor should be able to create API keys', async ({ request }) => {
-      const checkResponse = await request.post(CHECK_ROUTE, {
+      const checkResponse = await request.post(CHECK_ROUTE(callerId(doctorToken)), {
         headers: { Authorization: `Bearer ${doctorToken}` },
         data: { action: 'create', subject: 'ApiKey' },
       });
@@ -539,7 +556,7 @@ test.describe('Authorization Flow', () => {
     });
 
     test('nurse should NOT be able to create API keys', async ({ request }) => {
-      const checkResponse = await request.post(CHECK_ROUTE, {
+      const checkResponse = await request.post(CHECK_ROUTE(callerId(nurseToken)), {
         headers: { Authorization: `Bearer ${nurseToken}` },
         data: { action: 'create', subject: 'ApiKey' },
       });

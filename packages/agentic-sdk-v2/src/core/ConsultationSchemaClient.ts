@@ -1,7 +1,7 @@
 /**
  * @arcaai/vox - ConsultationSchemaClient
  *
- * Fetches the tenant's discovery bundle from `GET /tenant/me/context-schema`
+ * Fetches the tenant's discovery bundle from `GET /tenants/me/context-schema`
  * The RESOLVED, PINNED `ConsultationContextSchema`
  * declaration a client builds its workflow from, never simply the latest
  * published version.

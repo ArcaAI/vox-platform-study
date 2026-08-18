@@ -13,7 +13,7 @@
  *     `enforceApiKeyScopes` 403 message shape. Conversion widened WHICH
  *     credential class may reach the route, not WHAT any key may do.
  *  3. **The `me` decision, proven rather than asserted.** A key bound to user
- *     A reading `/user/me/settings` gets A's rows; an unbound SERVICE_ACCOUNT
+ *     A reading `/users/me/settings` gets A's rows; an unbound SERVICE_ACCOUNT
  *     key is refused outright by `enforceApiKeyAbilities`.
  *
  * Plus the exemption list's own contract: the three reasoned exemptions still
@@ -68,20 +68,20 @@ test.describe('TASK-758 — business-plane auth model (policy A1)', () => {
   // ==========================================================================
 
   const REACHABLE: Array<{ name: string; scope: string; path: string }> = [
-    { name: 'MyTenantController (GET /tenant/me)', scope: 'tenant:profile:read', path: '/api/v1/tenant/me' },
-    { name: 'MyBillingController (GET /billing/me/invoices)', scope: 'tenant:account:read', path: '/api/v1/billing/me/invoices' },
-    { name: 'MyUsageController (GET /usage/me/summary)', scope: 'tenant:account:read', path: '/api/v1/usage/me/summary' },
-    { name: 'MyEntitlementsController (GET /entitlements/me)', scope: 'tenant:account:read', path: '/api/v1/entitlements/me' },
+    { name: 'MyTenantController (GET /tenants/me)', scope: 'tenant:profile:read', path: '/api/v1/tenants/me' },
+    { name: 'MyBillingController (GET /tenants/me/invoices)', scope: 'tenant:account:read', path: '/api/v1/tenants/me/invoices' },
+    { name: 'MyUsageController (GET /tenants/me/usage-summary)', scope: 'tenant:account:read', path: '/api/v1/tenants/me/usage-summary' },
+    { name: 'MyEntitlementsController (GET /tenants/me/entitlements)', scope: 'tenant:account:read', path: '/api/v1/tenants/me/entitlements' },
     { name: 'ChangelogController (GET /changelog)', scope: 'platform:changelog:read', path: '/api/v1/changelog' },
     { name: 'AudioPipelinePublicController (GET /audio/pipelines)', scope: 'stt:model:read', path: '/api/v1/audio/pipelines' },
     { name: 'PromptTemplateController (GET /prompt-templates/available)', scope: 'prompt:template:read', path: '/api/v1/prompt-templates/available' },
     {
-      name: 'MyTenantContextSchemaController (GET /tenant/me/context-schema)',
+      name: 'MyTenantContextSchemaController (GET /tenants/me/context-schema)',
       scope: 'tenant:context-schema:read',
-      path: '/api/v1/tenant/me/context-schema',
+      path: '/api/v1/tenants/me/context-schema',
     },
-    { name: 'UserSettingsController (GET /user/me/settings)', scope: 'user:settings:read', path: '/api/v1/user/me/settings' },
-    { name: 'UserDepartmentsMeController (GET /user/me/departments)', scope: 'user:profile:read', path: '/api/v1/user/me/departments' },
+    { name: 'UserSettingsController (GET /users/me/settings)', scope: 'user:settings:read', path: '/api/v1/users/me/settings' },
+    { name: 'UserDepartmentsMeController (GET /users/me/departments)', scope: 'user:profile:read', path: '/api/v1/users/me/departments' },
   ];
 
   for (const { name, scope, path } of REACHABLE) {
@@ -102,22 +102,22 @@ test.describe('TASK-758 — business-plane auth model (policy A1)', () => {
   // 2 — the conversion is not a blanket grant
   // ==========================================================================
 
-  test('a key without the scope still gets the enforceApiKeyScopes 403 (GET /tenant/me)', async ({ request }) => {
+  test('a key without the scope still gets the enforceApiKeyScopes 403 (GET /tenants/me)', async ({ request }) => {
     const key = await createScopedApiKey(request, adminToken, ['consultation:session:read'], 'task-758-noscope');
     createdApiKeyIds.push(key.id);
 
-    const response = await request.get('/api/v1/tenant/me', { headers: { 'X-API-Key': key.rawKey, Accept: 'application/json' } });
+    const response = await request.get('/api/v1/tenants/me', { headers: { 'X-API-Key': key.rawKey, Accept: 'application/json' } });
 
     expect(response.status()).toBe(403);
     const body = await response.json();
     expect(body.message).toContain('API key does not have required scope(s): tenant:profile:read');
   });
 
-  test('the read scope does not reach the write route — PATCH /tenant/me/config needs tenant:profile:write', async ({ request }) => {
+  test('the read scope does not reach the write route — PATCH /tenants/me/config needs tenant:profile:write', async ({ request }) => {
     const key = await createScopedApiKey(request, adminToken, ['tenant:profile:read'], 'task-758-readonly');
     createdApiKeyIds.push(key.id);
 
-    const response = await request.patch('/api/v1/tenant/me/config', {
+    const response = await request.patch('/api/v1/tenants/me/config', {
       headers: { 'X-API-Key': key.rawKey, Accept: 'application/json', 'If-Match': '"1"' },
       data: { configs: [] },
     });
@@ -127,11 +127,11 @@ test.describe('TASK-758 — business-plane auth model (policy A1)', () => {
     expect(body.message).toContain('API key does not have required scope(s): tenant:profile:write');
   });
 
-  test('the read scope does not reach the write route — PATCH /user/me/settings needs user:settings:write', async ({ request }) => {
+  test('the read scope does not reach the write route — PATCH /users/me/settings needs user:settings:write', async ({ request }) => {
     const key = await createScopedApiKey(request, adminToken, ['user:settings:read'], 'task-758-settings-readonly');
     createdApiKeyIds.push(key.id);
 
-    const response = await request.patch('/api/v1/user/me/settings/arcaai-sdk/task758Probe', {
+    const response = await request.patch('/api/v1/users/me/settings/arcaai-sdk/task758Probe', {
       headers: { 'X-API-Key': key.rawKey, Accept: 'application/json' },
       data: { value: 'probe' },
     });
@@ -150,8 +150,8 @@ test.describe('TASK-758 — business-plane auth model (policy A1)', () => {
     createdApiKeyIds.push(key.id);
 
     const [viaKey, viaJwt] = await Promise.all([
-      request.get('/api/v1/user/me/settings', { headers: { 'X-API-Key': key.rawKey, Accept: 'application/json' } }),
-      request.get('/api/v1/user/me/settings', { headers: { Authorization: `Bearer ${adminToken}`, Accept: 'application/json' } }),
+      request.get('/api/v1/users/me/settings', { headers: { 'X-API-Key': key.rawKey, Accept: 'application/json' } }),
+      request.get('/api/v1/users/me/settings', { headers: { Authorization: `Bearer ${adminToken}`, Accept: 'application/json' } }),
     ]);
 
     expect(viaKey.status()).toBe(200);
@@ -167,8 +167,8 @@ test.describe('TASK-758 — business-plane auth model (policy A1)', () => {
     expect(keyRows.length).toBe(jwtRows.length);
   });
 
-  test('an unbound SERVICE_ACCOUNT key cannot use a /user/me/* route (enforceApiKeyAbilities fails closed)', async ({ request }) => {
-    const response = await request.get('/api/v1/user/me/departments', {
+  test('an unbound SERVICE_ACCOUNT key cannot use a /users/me/* route (enforceApiKeyAbilities fails closed)', async ({ request }) => {
+    const response = await request.get('/api/v1/users/me/departments', {
       headers: { 'X-API-Key': SEEDED_API_KEY_SERVICE_ACCOUNT, Accept: 'application/json' },
     });
 
@@ -180,7 +180,7 @@ test.describe('TASK-758 — business-plane auth model (policy A1)', () => {
   // ==========================================================================
 
   const EXEMPT: Array<{ name: string; path: string }> = [
-    { name: 'VoiceProfileController', path: '/api/v1/voice-profile' },
+    { name: 'VoiceProfileController', path: '/api/v1/voice-profiles' },
     // `dna-writing-styles` has no root GET — probe a real route, or Nest 404s on an
     // unmatched path BEFORE any guard runs and the exemption is never exercised.
     { name: 'DnaWritingStyleController', path: '/api/v1/dna-writing-styles/settings' },
@@ -215,7 +215,7 @@ test.describe('TASK-758 — business-plane auth model (policy A1)', () => {
     const key = await createScopedApiKey(request, adminToken, ['tenant:account:read'], 'task-758-crosstenant');
     createdApiKeyIds.push(key.id);
 
-    const response = await request.get('/api/v1/billing/me/invoices/00000000-0000-0000-0000-000000000000', {
+    const response = await request.get('/api/v1/tenants/me/invoices/00000000-0000-0000-0000-000000000000', {
       headers: { 'X-API-Key': key.rawKey, Accept: 'application/json' },
     });
 

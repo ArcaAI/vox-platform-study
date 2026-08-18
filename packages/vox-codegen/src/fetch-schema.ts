@@ -1,6 +1,6 @@
 /**
  * Fetches the SAME discovery bundle `@arcaai/vox` reads at session start
- * `GET /tenant/me/context-schema` — as a super-admin
+ * `GET /tenants/me/context-schema` — as a super-admin
  * "manage as tenant" call: `Authorization: Bearer <token>` for a
  * SUPER_ADMIN whose JWT carries an empty tenant binding, plus
  * `X-Tenant-Id: <tenantId>` to select the target tenant
@@ -44,7 +44,7 @@ function normalizeBaseUrl(baseUrl: string): string {
 function buildUrl(options: FetchConsultationSchemaOptions): string {
   const base = normalizeBaseUrl(options.baseUrl);
   const query = options.departmentId ? `?departmentId=${encodeURIComponent(options.departmentId)}` : '';
-  return `${base}${API_PREFIX}/tenant/me/context-schema${query}`;
+  return `${base}${API_PREFIX}/tenants/me/context-schema${query}`;
 }
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {

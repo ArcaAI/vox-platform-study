@@ -140,7 +140,7 @@ One row per HTTP controller and WebSocket gateway. Sorted by API count descendin
 | BillingAdminController | `api/v1/admin/billing/invoices` | 7 | JWT only | forbidden (@ForbidApiKey) | manage:BillingInvoice | Mutations SUPER_ADMIN in service. |
 | PoliciesController | `api/v1/admin/rbac/policies` | 7 | JWT only | forbidden (@ForbidApiKey) | manage:Policy (GETs CanAny read\|manage) | Break-glass on protected deletes. |
 | TenantTtsConfigAdminController | `api/v1/admin/tts-config` | 7 | JWT only | forbidden (@ForbidApiKey) | read/manage:TenantTtsConfig | Catalog + credentials. |
-| TextProxyController | `api/v1/text` | 7 | JWT + API key | consultation:report:write | @Authorize() | Hand-rolled SSE on GET tasks/:taskId/stream (StreamScope text_task). |
+| TextProxyController | `api/v1/text-generations` | 7 | JWT + API key | consultation:report:write | @Authorize() | Hand-rolled SSE on GET tasks/:taskId/stream (StreamScope text_task). |
 | WebhookController | `api/v1/admin/webhooks` | 7 | JWT only | forbidden (@ForbidApiKey) | manage:Webhook (deliveries read:WebhookRunHistory) | Rotate-secret OCC. |
 | ApiHealthController | `api/v1/health` | 4 | Public | forbidden (inert — every route is @Public) | none (all @Public) | PUBLIC-ONLY since TASK-759: /, /live, /ready, /startup. No longer "Mixed" — the two CASL-gated /services routes moved to AdminHealthServicesController. |
 | AuditLogController | `api/v1/admin/audit-logs` | 6 | JWT only | forbidden (@ForbidApiKey) | read:AuditLog | Non-SUPER_ADMIN needs tenant context. |
@@ -148,7 +148,7 @@ One row per HTTP controller and WebSocket gateway. Sorted by API count descendin
 | SttWsGateway | `/ws/stt/stream (no api/v1)` | 6 | Stream ticket | no — ?ticket= scoped stt_session:<id> | n/a — Nest APP_GUARD does not run | Raw ws. Origin check + Redis tenant binding. Binary + JSON audio/stop/resume/close. |
 | TenantAllowedOriginController | `api/v1/admin/allowed-origins` | 6 | JWT only | forbidden (@ForbidApiKey) | manage:TenantAllowedOrigin | Wildcard origins SUPER_ADMIN in service. |
 | TenantStorageConfigAdminController | `api/v1/admin/tenants/storage/config` | 6 | JWT only | forbidden (@ForbidApiKey) | manage\|update:Tenant; methods Can*:Storage | Platform default routes SUPER_ADMIN in service. |
-| AiInferenceController | `api/v1/ai` | 5 | JWT + API key | `ai:inference:write` | @Authorize() | Guardrail + NLP proxy. |
+| AiInferenceController | `api/v1/text-analyses` | 5 | JWT + API key | `ai:inference:write` | @Authorize() | Guardrail + NLP proxy. |
 | AiRuntimeProfileController | `api/v1/admin/ai-runtime-profiles` | 5 | JWT only | forbidden (@ForbidApiKey) | manage:all | SUPER_ADMIN / SYSTEM rows. |
 | AuthSsoController | `api/v1/auth/sso` | 5 | Public | n/a | none (@Public) | OIDC + SAML start/callback/ACS. Throttled. |
 | KnowledgeController | `api/v1/admin/knowledge/documents` | 5 | JWT only | forbidden (@ForbidApiKey) | manage:KnowledgeDocument (chunks → read) | Qdrant cleanup fail-closed on delete. |
@@ -156,7 +156,7 @@ One row per HTTP controller and WebSocket gateway. Sorted by API count descendin
 | PromptTemplateController | `api/v1/prompt-templates` | 5 | JWT + API key | `prompt:template:read` | read:PromptTemplate (writes owner-gated in service) | Clinician plane — AUTH-NOTE: declared read, ownership in service. |
 | SchedulerAdminController | `api/v1/admin/schedulers` | 5 | JWT only | forbidden (@ForbidApiKey) | manage:all | Pause/resume/cron/toggle. |
 | TtsWsGateway | `/ws/tts/stream (no api/v1)` | 5 | Fail-closed Origin check, then stream ticket | no — ?ticket= scoped tts_session:<id> | n/a — APP_GUARD does not run | No Redis tenant-binding cross-check — no server-side TTS session resource exists to bind (TASK-755). Quota close 4429. |
-| VoiceProfileController | `api/v1/voice-profile` | 5 | JWT only | forbidden | per-verb UserVoiceProfile | TenantOwnedResource on mutate/delete. |
+| VoiceProfileController | `api/v1/voice-profiles` | 5 | JWT only | forbidden | per-verb UserVoiceProfile | TenantOwnedResource on mutate/delete. |
 | WorkflowTestFixtureController | `api/v1/admin/workflow-test-fixtures` | 5 | JWT only | forbidden (@ForbidApiKey) | manage:WorkflowTestFixture |  |
 | WorkflowsController | `api/v1/workflows` | 5 | JWT + API key | workflow:definition:read / workflow:run:read\|write | per-route WorkflowDefinition / WorkflowRun | Hand-rolled SSE on run stream. Heavy throttle on invoke. |
 | AdminUsageController | `api/v1/admin/usage` | 4 | JWT only | forbidden (@ForbidApiKey) | manage:UsageAnalytics | top-tenants SUPER_ADMIN in service. |
@@ -176,14 +176,14 @@ One row per HTTP controller and WebSocket gateway. Sorted by API count descendin
 | AgentPromotionController | `api/v1/admin/agent-promotions` | 3 | JWT only | forbidden (@ForbidApiKey) | manage:DepartmentAgent | POST requires manage in both tenants (service). |
 | AgentTrajectoryController | `api/v1/admin/agent-trajectory` | 3 | JWT only | forbidden (@ForbidApiKey) | read:AgentTrajectory |  |
 | AiServiceAdminController | `api/v1/admin/ai-services` | 3 | JWT only | forbidden (@ForbidApiKey) | manage:all | Read-only guardrail/NLP status proxy. |
-| AudioPipelinePublicController | `api/v1/audio/pipelines` | 3 | JWT + API key | `stt:model:read` | @Authorize() | Read-only catalog for clinicians. |
+| AudioPipelineCatalogController | `api/v1/audio/pipelines` | 3 | JWT + API key | `stt:model:read` | @Authorize() | Read-only catalog for clinicians. |
 | ChangelogAdminController | `api/v1/admin/changelog` | 3 | JWT only | forbidden (@ForbidApiKey) | manage:ChangelogEntry | SUPER_ADMIN in service. |
 | ChangelogController | `api/v1/changelog` | 3 | JWT + API key | `platform:changelog:read` | @Authorize() (any authenticated user) | Reader plane. |
 | ConsentGrantController | `api/v1/admin/consent-grants` | 3 | JWT only | forbidden | manage:ConsentGrant | Human-only consent admin. `@ForbidApiKey()`. |
 | ConsultationJobController | `api/v1/consultations/jobs` | 3 | JWT + API key | consultation:session:read | @Authorize() | 1 SSE + TenantOwnedResource. |
-| MyBillingController | `api/v1/billing` | 3 | JWT + API key | `tenant:account:read` | read:Tenant | CLS tenant only. 404-over-403 on foreign invoice. |
-| MyTenantController | `api/v1/tenant` | 3 | JWT + API key | `tenant:profile:read` | @Authorize(); PATCH update:Tenant |  |
-| PermissionCheckController | `api/v1/rbac/check` | 3 | JWT + API key | `user:profile:read` | @Authorize(); other-user checks need manage:User |  |
+| MyBillingController | `api/v1/tenants/me` | 3 | JWT + API key | `tenant:account:read` | read:Tenant | CLS tenant only. 404-over-403 on foreign invoice. |
+| MyTenantController | `api/v1/tenants/me` | 3 | JWT + API key | `tenant:profile:read` | @Authorize(); PATCH update:Tenant |  |
+| PermissionCheckController | `api/v1/users/me/permission-checks` + `api/v1/users/:id/permission-checks` | 3 | JWT + API key | `user:profile:read` | @Authorize(); other-user checks need manage:User |  |
 | PipelinePolicyAdminController | `api/v1/admin/harness/pipeline-policy` | 3 | JWT only | forbidden (@ForbidApiKey) | read/manage:PipelinePolicy |  |
 | PlatformMetricsController | `api/v1/admin/platform` | 3 | JWT only | forbidden (@ForbidApiKey) | manage:PlatformMetrics | SUPER_ADMIN via manage:all. |
 | RateCardAdminController | `api/v1/admin/billing/rate-card` | 3 | JWT only | forbidden (@ForbidApiKey) | manage:AiPriceBook | Mutations SUPER_ADMIN in service. |
@@ -192,7 +192,7 @@ One row per HTTP controller and WebSocket gateway. Sorted by API count descendin
 | SttCompatController | `api/stt (prefix excluded)` | 3 | JWT + API key | stt:stream:write | @Authorize() | Live paths: POST /api/stt/{start_session,switch,stop_session}. |
 | WorkflowRunController | `api/v1/admin/workflow-runs` | 3 | JWT only | forbidden (@ForbidApiKey) | read:WorkflowRun | Working-tenant CLS required. |
 | AiModelDiscoveryController | `api/v1/admin/ai-models` | 2 | JWT only | forbidden (@ForbidApiKey) | manage:all |  |
-| MyUsageController | `api/v1/usage` | 2 | JWT + API key | `tenant:account:read` | read:Tenant | No tenantId override. |
+| MyUsageController | `api/v1/tenants/me` | 2 | JWT + API key | `tenant:account:read` | read:Tenant | No tenantId override. |
 | NlpTaskInstructionsAdminController | `api/v1/admin/nlp-task-instructions` | 2 | JWT only | forbidden (@ForbidApiKey) | read/manage:TenantNlpTaskInstructions | No class @Authorize; per-handler CASL. |
 | PrismaStudioController | `api/v1/admin/pstudio` | 2 | JWT only | forbidden (@ForbidApiKey) | manage:PrismaStudio | HTML shell + BFF POST. Not public. |
 | RegisterController | `api/v1/auth` | 2 | Public | n/a | none | 404 if self-signup flag off. Throttled. |
@@ -202,21 +202,21 @@ One row per HTTP controller and WebSocket gateway. Sorted by API count descendin
 | SpeechProxyController | `api/v1/speech` | 2 | JWT + API key | tts:speech:write | @Authorize() | Synthesize may be SSE or audio bytes. |
 | TenantFrontendConfigAdminController | `api/v1/admin/tenant-frontend-config` | 2 | JWT only | forbidden (@ForbidApiKey) | manage\|update:Tenant |  |
 | TextCompatController | `api/smr/api/v1 (prefix excluded)` | 2 | JWT + API key | consultation:report:write | @Authorize() | POST /api/smr/api/v1/{summary/sync,presummary}. SSE if body.stream===true. |
-| UserPreferencesController | `api/v1/user/me/preferences` | 2 | JWT + API key | user:preferences:write | @Authorize() | Self CLS user. |
-| UserSettingsController | `api/v1/user/me/settings` | 2 | JWT + API key | `user:settings:read` | @Authorize() |  |
+| UserPreferencesController | `api/v1/users/me/preferences` | 2 | JWT + API key | user:preferences:write | @Authorize() | Self CLS user. |
+| UserSettingsController | `api/v1/users/me/settings` | 2 | JWT + API key | `user:settings:read` | @Authorize() |  |
 | AdminImpersonationController | `api/v1/admin/users` | 1 | JWT only | forbidden | manage:all | SUPER_ADMIN impersonation. Throttled. |
 | AgenticAdminController | `api/v1/admin/agentic` | 1 | JWT only | forbidden (@ForbidApiKey) | @Authorize() + manage:HarnessPolicy | GET instructions. |
 | ConsentInternalController | `api/v1/internal/consent` | 1 | Service token | n/a — X-Service-Token (HarnessServiceTokenGuard) | skipped (@Public) | POST assert. |
 | DepartmentAgentResyncController | `api/v1/admin/department-agents` | 1 | JWT only | forbidden (@ForbidApiKey) | manage:Tenant | SUPER_ADMIN resync. |
 | EffectiveConfigController | `api/v1/internal/effective-config` | 1 | Service token | n/a — X-Service-Token (InternalServiceTokenGuard) | skipped (@Public) |  |
 | ForgotPasswordController | `api/v1/auth` | 1 | Public | n/a | none | Throttled 5/min. |
-| MyEntitlementsController | `api/v1/entitlements` | 1 | JWT + API key | `tenant:account:read` | read:Tenant |  |
-| MyTenantContextSchemaController | `api/v1/tenant/me/context-schema` | 1 | JWT + API key | `tenant:context-schema:read` | @Authorize() | Same file as ConsultationContextSchemaAdminController. |
+| MyEntitlementsController | `api/v1/tenants/me` | 1 | JWT + API key | `tenant:account:read` | read:Tenant |  |
+| MyTenantContextSchemaController | `api/v1/tenants/me/context-schema` | 1 | JWT + API key | `tenant:context-schema:read` | @Authorize() | Same file as ConsultationContextSchemaAdminController. |
 | PasswordResetController | `api/v1/users/password-reset` | 1 | Public | n/a | none | POST complete. Token in body. |
 | PrismaStudioStatusController | `api/v1/admin/pstudio/status` | 1 | JWT only | forbidden (@ForbidApiKey) | manage:PrismaStudio |  |
 | TenantPipelineResyncController | `api/v1/admin/tenants` | 1 | JWT only | forbidden (@ForbidApiKey) | manage:Tenant | SUPER_ADMIN. |
 | TenantProvisionController | `api/v1/admin/tenants` | 1 | JWT only | forbidden (@ForbidApiKey) | manage:Tenant | SUPER_ADMIN. |
-| UserDepartmentsMeController | `api/v1/user/me/departments` | 1 | JWT + API key | `user:profile:read` | @Authorize() |  |
+| UserDepartmentsMeController | `api/v1/users/me/departments` | 1 | JWT + API key | `user:profile:read` | @Authorize() |  |
 | UserRolesController | `api/v1/users` | 1 | JWT + API key | `user:profile:read` | @Authorize(); :id must equal caller |  |
 | WorkflowNodeController | `api/v1/admin/workflow-nodes` | 1 | JWT only | forbidden (@ForbidApiKey) | read:WorkflowDefinition | Read-only registry. |
 
@@ -921,20 +921,20 @@ Every live HTTP `@Controller` class. Paths include `/api/v1` except prefix-exclu
 ### TextProxyController
 
 - **File:** `src/modules/streaming/text-proxy.controller.ts`
-- **Prefix:** `text` → `api/v1/text`
+- **Prefix:** `text-generations` → `api/v1/text-generations`
 - **api_count:** 7
 - **Auth model:** JWT + API key
 - **API key:** `consultation:report:write`
 - **JWT / other:** @Authorize()
 - **Notes:** Hand-rolled SSE on GET tasks/:taskId/stream (StreamScope text_task).
 
-- `POST /api/v1/text/generate` — jwt (empty `@Authorize()`) — apikey yes — generate
-- `GET /api/v1/text/tasks/:taskId` — jwt (empty `@Authorize()`) — apikey yes — getTaskStatus
-- `POST /api/v1/text/tasks/:taskId/cancel` — jwt (empty `@Authorize()`) — apikey yes — cancelTask
-- `GET /api/v1/text/tasks/:taskId/stream` — jwt (empty `@Authorize()`) — streamTaskEvents — extras: SSE (`text/event-stream`); `@StreamScope({namespace:'text_task'})`; JWT or `?ticket=`
-- `POST /api/v1/text/generate/assembled` — jwt (empty `@Authorize()`) — apikey yes — generateAssembled
-- `GET /api/v1/text/providers` — jwt (empty `@Authorize()`) — apikey yes — getProviders
-- `GET /api/v1/text/guardrail-providers` — jwt (empty `@Authorize()`) — apikey yes — getGuardrailProviders
+- `POST /api/v1/text-generations/generate` — jwt (empty `@Authorize()`) — apikey yes — generate
+- `GET /api/v1/text-generations/tasks/:taskId` — jwt (empty `@Authorize()`) — apikey yes — getTaskStatus
+- `POST /api/v1/text-generations/tasks/:taskId/cancel` — jwt (empty `@Authorize()`) — apikey yes — cancelTask
+- `GET /api/v1/text-generations/tasks/:taskId/stream` — jwt (empty `@Authorize()`) — streamTaskEvents — extras: SSE (`text/event-stream`); `@StreamScope({namespace:'text_task'})`; JWT or `?ticket=`
+- `POST /api/v1/text-generations/generate/assembled` — jwt (empty `@Authorize()`) — apikey yes — generateAssembled
+- `GET /api/v1/text-generations/providers` — jwt (empty `@Authorize()`) — apikey yes — getProviders
+- `GET /api/v1/text-generations/guardrail-providers` — jwt (empty `@Authorize()`) — apikey yes — getGuardrailProviders
 
 ### WebhookController
 
@@ -1055,18 +1055,18 @@ The two CASL-gated downstream probes that used to sit here — `GET /api/v1/heal
 ### AiInferenceController
 
 - **File:** `src/modules/ai-inference/ai-inference.controller.ts`
-- **Prefix:** `ai` → `api/v1/ai`
+- **Prefix:** `text-analyses` → `api/v1/text-analyses` (+ `SafetyCheckController` at `api/v1/safety-checks`)
 - **api_count:** 5
 - **Auth model:** JWT + API key
 - **API key:** `ai:inference:write`
 - **JWT / other:** @Authorize()
 - **Notes:** Guardrail + NLP proxy.
 
-- `POST /api/v1/ai/guardrail/analyze` — jwt `@Authorize()` — apikey no ForbidApiKey — `analyzeGuardrail`
-- `POST /api/v1/ai/nlp/entities` — jwt `@Authorize()` — apikey no ForbidApiKey — `extractEntities`
-- `POST /api/v1/ai/nlp/diagnosis` — jwt `@Authorize()` — apikey no ForbidApiKey — `suggestDiagnosis`
-- `POST /api/v1/ai/nlp/topic` — jwt `@Authorize()` — apikey no ForbidApiKey — `classifyTopic`
-- `POST /api/v1/ai/nlp/intent` — jwt `@Authorize()` — apikey no ForbidApiKey — `classifyIntent`
+- `POST /api/v1/safety-checks` — jwt `@Authorize()` — apikey no ForbidApiKey — `analyzeGuardrail`
+- `POST /api/v1/text-analyses/entities` — jwt `@Authorize()` — apikey no ForbidApiKey — `extractEntities`
+- `POST /api/v1/text-analyses/diagnosis` — jwt `@Authorize()` — apikey no ForbidApiKey — `suggestDiagnosis`
+- `POST /api/v1/text-analyses/topic` — jwt `@Authorize()` — apikey no ForbidApiKey — `classifyTopic`
+- `POST /api/v1/text-analyses/intent` — jwt `@Authorize()` — apikey no ForbidApiKey — `classifyIntent`
 
 ### AiRuntimeProfileController
 
@@ -1167,18 +1167,18 @@ The two CASL-gated downstream probes that used to sit here — `GET /api/v1/heal
 ### VoiceProfileController
 
 - **File:** `src/modules/voice-profile/voice-profile.controller.ts`
-- **Prefix:** `voice-profile` → `api/v1/voice-profile`
+- **Prefix:** `voice-profiles` → `api/v1/voice-profiles`
 - **api_count:** 5
 - **Auth model:** JWT only
 - **API key:** `forbidden`
 - **JWT / other:** per-verb UserVoiceProfile
 - **Notes:** TenantOwnedResource on mutate/delete.
 
-- `POST /api/v1/voice-profile/enroll` — jwt create:UserVoiceProfile — apikey no — enroll
-- `GET /api/v1/voice-profile` — jwt read:UserVoiceProfile — apikey no — list
-- `PATCH /api/v1/voice-profile/:id/activate` — jwt update:UserVoiceProfile — apikey no — activate — extras: TenantOwnedResource
-- `PATCH /api/v1/voice-profile/:id/deactivate` — jwt update:UserVoiceProfile — apikey no — deactivate — extras: TenantOwnedResource
-- `DELETE /api/v1/voice-profile/:id` — jwt delete:UserVoiceProfile — apikey no — deleteById — extras: TenantOwnedResource
+- `POST /api/v1/voice-profiles/enroll` — jwt create:UserVoiceProfile — apikey no — enroll
+- `GET /api/v1/voice-profiles` — jwt read:UserVoiceProfile — apikey no — list
+- `PATCH /api/v1/voice-profiles/:id/activate` — jwt update:UserVoiceProfile — apikey no — activate — extras: TenantOwnedResource
+- `PATCH /api/v1/voice-profiles/:id/deactivate` — jwt update:UserVoiceProfile — apikey no — deactivate — extras: TenantOwnedResource
+- `DELETE /api/v1/voice-profiles/:id` — jwt delete:UserVoiceProfile — apikey no — deleteById — extras: TenantOwnedResource
 
 ### WorkflowTestFixtureController
 
@@ -1427,7 +1427,7 @@ The two CASL-gated downstream probes that used to sit here — `GET /api/v1/heal
 - `GET /api/v1/admin/ai-services/guardrail/config` — jwt manage:all — apikey yes `admin:ai-service:manage` — `guardrailConfig`
 - `GET /api/v1/admin/ai-services/nlp/status` — jwt manage:all — apikey yes `admin:ai-service:manage` — `nlpStatus`
 
-### AudioPipelinePublicController
+### AudioPipelineCatalogController
 
 - **File:** `src/modules/pipeline/audio-pipeline-public.controller.ts`
 - **Prefix:** `audio/pipelines` → `api/v1/audio/pipelines`
@@ -1500,42 +1500,42 @@ The two CASL-gated downstream probes that used to sit here — `GET /api/v1/heal
 ### MyBillingController
 
 - **File:** `src/modules/billing/my-billing.controller.ts`
-- **Prefix:** `billing` → `api/v1/billing`
+- **Prefix:** `tenants/me` → `api/v1/tenants/me` (invoices/spend)
 - **api_count:** 3
 - **Auth model:** JWT + API key
 - **API key:** `tenant:account:read`
 - **JWT / other:** read:Tenant
 - **Notes:** CLS tenant only. 404-over-403 on foreign invoice.
 
-- `GET /api/v1/billing/me/invoices` — jwt `read:Tenant` — apikey `tenant:account:read` — CLS tenant
-- `GET /api/v1/billing/me/invoices/:id` — jwt `read:Tenant` — apikey `tenant:account:read` — 404-over-403
-- `GET /api/v1/billing/me/spend` — jwt `read:Tenant` — apikey `tenant:account:read` — optional `?period=`
+- `GET /api/v1/tenants/me/invoices` — jwt `read:Tenant` — apikey `tenant:account:read` — CLS tenant
+- `GET /api/v1/tenants/me/invoices/:id` — jwt `read:Tenant` — apikey `tenant:account:read` — 404-over-403
+- `GET /api/v1/tenants/me/spend` — jwt `read:Tenant` — apikey `tenant:account:read` — optional `?period=`
 
 ### MyTenantController
 
 - **File:** `src/modules/tenant/my-tenant.controller.ts`
-- **Prefix:** `tenant` → `api/v1/tenant`
+- **Prefix:** `tenants/me` → `api/v1/tenants/me`
 - **api_count:** 3
 - **Auth model:** JWT + API key
 - **API key:** `tenant:profile:read`
 - **JWT / other:** @Authorize(); PATCH update:Tenant
 
-- `GET /api/v1/tenant/me` — jwt authenticated — apikey `tenant:profile:read` — CLS tenant
-- `GET /api/v1/tenant/me/config` — jwt authenticated — apikey `tenant:profile:read` — appends synthetic `enable-local-raw-capture`
-- `PATCH /api/v1/tenant/me/config` — jwt **`update:Tenant`** — apikey `tenant:profile:read` — `@RequiresIfMatch` OCC
+- `GET /api/v1/tenants/me` — jwt authenticated — apikey `tenant:profile:read` — CLS tenant
+- `GET /api/v1/tenants/me/config` — jwt authenticated — apikey `tenant:profile:read` — appends synthetic `enable-local-raw-capture`
+- `PATCH /api/v1/tenants/me/config` — jwt **`update:Tenant`** — apikey `tenant:profile:read` — `@RequiresIfMatch` OCC
 
 ### PermissionCheckController
 
 - **File:** `src/modules/rbac/permission-check.controller.ts`
-- **Prefix:** `rbac/check` → `api/v1/rbac/check`
+- **Prefix:** `users/me/permission-checks` + `users/:id/permission-checks`
 - **api_count:** 3
 - **Auth model:** JWT + API key
 - **API key:** `user:profile:read`
 - **JWT / other:** @Authorize(); other-user checks need manage:User
 
-- `POST /api/v1/rbac/check` — jwt authenticated — apikey `user:profile:read` — checking another `userId` requires `manage:User` (imperative)
-- `POST /api/v1/rbac/check/bulk` — jwt authenticated — apikey `user:profile:read` — same other-user gate
-- `POST /api/v1/rbac/check/my-permissions` — jwt authenticated — apikey `user:profile:read`
+- `POST /api/v1/users/:id/permission-checks` — jwt authenticated — apikey `user:profile:read` — checking another `userId` requires `manage:User` (imperative)
+- `POST /api/v1/users/:id/permission-checks/bulk` — jwt authenticated — apikey `user:profile:read` — same other-user gate
+- `POST /api/v1/users/me/permission-checks` — jwt authenticated — apikey `user:profile:read`
 
 ### PipelinePolicyAdminController
 
@@ -1647,15 +1647,15 @@ The two CASL-gated downstream probes that used to sit here — `GET /api/v1/heal
 ### MyUsageController
 
 - **File:** `src/modules/admin-usage/my-usage.controller.ts`
-- **Prefix:** `usage` → `api/v1/usage`
+- **Prefix:** `tenants/me` → `api/v1/tenants/me` (usage-summary/usage-burndown)
 - **api_count:** 2
 - **Auth model:** JWT + API key
 - **API key:** `tenant:account:read`
 - **JWT / other:** read:Tenant
 - **Notes:** No tenantId override.
 
-- `GET /api/v1/usage/me/summary` — jwt `read:Tenant` — apikey `tenant:account:read` — CLS tenant (no override)
-- `GET /api/v1/usage/me/burndown` — jwt `read:Tenant` — apikey `tenant:account:read` — CLS tenant
+- `GET /api/v1/tenants/me/usage-summary` — jwt `read:Tenant` — apikey `tenant:account:read` — CLS tenant (no override)
+- `GET /api/v1/tenants/me/usage-burndown` — jwt `read:Tenant` — apikey `tenant:account:read` — CLS tenant
 
 ### NlpTaskInstructionsAdminController
 
@@ -1774,27 +1774,27 @@ The two CASL-gated downstream probes that used to sit here — `GET /api/v1/heal
 ### UserPreferencesController
 
 - **File:** `src/modules/user/controllers/user-preferences.controller.ts`
-- **Prefix:** `user/me/preferences` → `api/v1/user/me/preferences`
+- **Prefix:** `users/me/preferences` → `api/v1/users/me/preferences`
 - **api_count:** 2
 - **Auth model:** JWT + API key
 - **API key:** `user:preferences:write`
 - **JWT / other:** @Authorize()
 - **Notes:** Self CLS user.
 
-- `GET /api/v1/user/me/preferences` — jwt auth — apikey yes — getPreferences
-- `PATCH /api/v1/user/me/preferences` — jwt auth — apikey yes — updatePreferences
+- `GET /api/v1/users/me/preferences` — jwt auth — apikey yes — getPreferences
+- `PATCH /api/v1/users/me/preferences` — jwt auth — apikey yes — updatePreferences
 
 ### UserSettingsController
 
 - **File:** `src/modules/user/controllers/user-settings.controller.ts`
-- **Prefix:** `user/me/settings` → `api/v1/user/me/settings`
+- **Prefix:** `users/me/settings` → `api/v1/users/me/settings`
 - **api_count:** 2
 - **Auth model:** JWT + API key
 - **API key:** `user:settings:read`
 - **JWT / other:** @Authorize()
 
-- `GET /api/v1/user/me/settings` — jwt auth — apikey no — getMySettings
-- `PATCH /api/v1/user/me/settings/:namespace/:key` — jwt auth — apikey no — updateSetting
+- `GET /api/v1/users/me/settings` — jwt auth — apikey no — getMySettings
+- `PATCH /api/v1/users/me/settings/:namespace/:key` — jwt auth — apikey no — updateSetting
 
 ### AdminImpersonationController
 
@@ -1870,25 +1870,25 @@ The two CASL-gated downstream probes that used to sit here — `GET /api/v1/heal
 ### MyEntitlementsController
 
 - **File:** `src/modules/entitlements/my-entitlements.controller.ts`
-- **Prefix:** `entitlements` → `api/v1/entitlements`
+- **Prefix:** `tenants/me` → `api/v1/tenants/me` (entitlements)
 - **api_count:** 1
 - **Auth model:** JWT + API key
 - **API key:** `tenant:account:read`
 - **JWT / other:** read:Tenant
 
-- `GET /api/v1/entitlements/me` — jwt `read:Tenant` — apikey `tenant:account:read` — CLS tenant
+- `GET /api/v1/tenants/me/entitlements` — jwt `read:Tenant` — apikey `tenant:account:read` — CLS tenant
 
 ### MyTenantContextSchemaController
 
 - **File:** `src/modules/consultation-context-schema/consultation-context-schema.controller.ts`
-- **Prefix:** `tenant/me/context-schema` → `api/v1/tenant/me/context-schema`
+- **Prefix:** `tenants/me/context-schema` → `api/v1/tenants/me/context-schema`
 - **api_count:** 1
 - **Auth model:** JWT + API key
 - **API key:** `tenant:context-schema:read`
 - **JWT / other:** @Authorize()
 - **Notes:** Same file as ConsultationContextSchemaAdminController.
 
-- `GET /api/v1/tenant/me/context-schema` — jwt `@Authorize()` — apikey no ForbidApiKey — `getEffective`
+- `GET /api/v1/tenants/me/context-schema` — jwt `@Authorize()` — apikey no ForbidApiKey — `getEffective`
 
 ### PasswordResetController
 
@@ -1940,13 +1940,13 @@ The two CASL-gated downstream probes that used to sit here — `GET /api/v1/heal
 ### UserDepartmentsMeController
 
 - **File:** `src/modules/user/controllers/user-departments-me.controller.ts`
-- **Prefix:** `user/me/departments` → `api/v1/user/me/departments`
+- **Prefix:** `users/me/departments` → `api/v1/users/me/departments`
 - **api_count:** 1
 - **Auth model:** JWT + API key
 - **API key:** `user:profile:read`
 - **JWT / other:** @Authorize()
 
-- `GET /api/v1/user/me/departments` — jwt auth — apikey no (ForbidApiKey) — myDepartments
+- `GET /api/v1/users/me/departments` — jwt auth — apikey no (ForbidApiKey) — myDepartments
 
 ### UserRolesController
 
@@ -2091,7 +2091,7 @@ Nine `@Sse()` handlers (always paired with `@Get`, counted as one HTTP handler e
 |---|---|---|---|---|
 | WorkflowsController | GET | `/api/v1/workflows/:slug/runs/:runId/stream` | JWT/API-key `workflow:run:read` or ticket `workflow_run:<runId>` | poll `getRunStatus` every 2s |
 | WorkflowSandboxRunController | GET | `/api/v1/admin/workflow-definitions/:definitionId/sandbox-runs/:runId/stream` | JWT admin scope or ticket `workflow_run:<runId>` | same poll pattern |
-| TextProxyController | GET | `/api/v1/text/tasks/:taskId/stream` | JWT/ticket `text_task:<taskId>` + class `consultation:report:write` | byte-pipe to text service SSE |
+| TextProxyController | GET | `/api/v1/text-generations/tasks/:taskId/stream` | JWT/ticket `text_task:<taskId>` + class `consultation:report:write` | byte-pipe to text service SSE |
 | TextCompatController | POST | `/api/smr/api/v1/summary/sync` | JWT/API-key `consultation:report:write` | SSE iff `body.stream===true`; no ticket |
 | TextCompatController | POST | `/api/smr/api/v1/presummary` | JWT/API-key `consultation:report:write` | SSE iff `body.stream===true`; no ticket |
 | SpeechProxyController | POST | `/api/v1/speech/synthesize` | JWT/API-key `tts:speech:write` | may be SSE or audio bytes |

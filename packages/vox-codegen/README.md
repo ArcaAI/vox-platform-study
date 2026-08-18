@@ -2,7 +2,7 @@
 
 Build-time TypeScript codegen CLI for a tenant's `ConsultationContextSchema`
 (TASK-668). Emits named TS types from the SAME discovery bundle `@arcaai/vox`
-reads at session start (`GET /tenant/me/context-schema`, TASK-658/661) — an
+reads at session start (`GET /tenants/me/context-schema`, TASK-658/661) — an
 **accessory to runtime discovery, never a replacement**. A tenant can publish
 a new kind between two runs of this generator; the SDK's
 `useConsultationSchema()` remains the wire contract, and this file will not
@@ -91,7 +91,7 @@ Options:
   -h, --help              Show this help
 ```
 
-**Auth.** The CLI calls `GET /tenant/me/context-schema` as a super-admin
+**Auth.** The CLI calls `GET /tenants/me/context-schema` as a super-admin
 "manage as tenant" request: `Authorization: Bearer <token>` for a
 SUPER_ADMIN whose JWT carries an empty tenant binding, plus
 `X-Tenant-Id: <tenantId>` — the same elevation path

@@ -20,7 +20,7 @@ import { matchNavEntry, NAV_SECTIONS, visibleNavEntries } from '@/shared/navigat
 
 /**
  * Ability-driven navigation: sections and entries render only when
- * POST /rbac/check/my-permissions grants them (and the screen exists —
+ * POST /users/me/permission-checks grants them (and the screen exists —
  * unimplemented routes stay hidden behind the design gate).
  *
  * Collapsible to an icon-only rail (`collapsible="icon"`): every entry leads

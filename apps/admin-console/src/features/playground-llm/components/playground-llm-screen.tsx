@@ -2,7 +2,7 @@
 
 /**
  * Frame 54 / artboard 4f — Agent Playground (tier 50–59, matrix row 38). The
- * Text generation tab: prompt + generate via the `text/*` gateway proxy
+ * Text generation tab: prompt + generate via the `text-generations/*` gateway proxy
  * (sync or streaming, assembled mode with the admin-only debug meta,
  * provider/guardrail catalogs with the elevated __GLOBAL__ view; streaming
  * rides a same-origin BFF-proxied EventSource — see use-task-stream.ts). The
@@ -175,7 +175,7 @@ export function PlaygroundLlmScreen() {
   return (
     <WorkingTenantGate
       title="Agent Playground"
-      meta={<span>POST /text/generate · SSE /text/tasks/:taskId/stream · providers from the tenant catalog</span>}
+      meta={<span>POST /text-generations/generate · SSE /text-generations/tasks/:taskId/stream · providers from the tenant catalog</span>}
       description="Playground generations run inside a tenant’s provider catalog and HarnessPolicy. Pick a working tenant from the switcher in the top bar."
     >
       <PlaygroundLlmBody />

@@ -71,13 +71,13 @@ describe('voice profiles client', () => {
   it('lists the caller profiles (own-account plane, no admin prefix)', async () => {
     const calls = installFetchMock(() => Response.json([]));
     await listVoiceProfiles();
-    expect(calls.map((call) => `${call.method} ${call.url}`)).toEqual(['GET /api/hope/voice-profile']);
+    expect(calls.map((call) => `${call.method} ${call.url}`)).toEqual(['GET /api/hope/voice-profiles']);
   });
 
   it('enrolls with a multipart body: repeated `files` field plus optional `label`', async () => {
     const calls = installFetchMock(() => Response.json({ id: 'vp-1' }, { status: 201 }));
     await enrollVoiceProfile({ files: [audioFile('greeting.wav', 8, 'audio/wav'), audioFile('reading.webm')], label: 'Quiet room' });
-    expect(calls.map((call) => `${call.method} ${call.url}`)).toEqual(['POST /api/hope/voice-profile/enroll']);
+    expect(calls.map((call) => `${call.method} ${call.url}`)).toEqual(['POST /api/hope/voice-profiles/enroll']);
 
     const body = calls[0].body;
     expect(body).toBeInstanceOf(FormData);
@@ -105,8 +105,8 @@ describe('voice profiles client', () => {
     const activated = await activateVoiceProfile('vp-1');
     const deactivated = await deactivateVoiceProfile('vp-2');
     expect(calls.map((call) => `${call.method} ${call.url}`)).toEqual([
-      'PATCH /api/hope/voice-profile/vp-1/activate',
-      'PATCH /api/hope/voice-profile/vp-2/deactivate',
+      'PATCH /api/hope/voice-profiles/vp-1/activate',
+      'PATCH /api/hope/voice-profiles/vp-2/deactivate',
     ]);
     expect(activated.success).toBe(true);
     expect(deactivated.success).toBe(true);
@@ -115,7 +115,7 @@ describe('voice profiles client', () => {
   it('deletes a profile and returns the removed row', async () => {
     const calls = installFetchMock(() => Response.json({ id: 'vp-1', isActive: false }));
     const removed = await deleteVoiceProfile('vp-1');
-    expect(calls.map((call) => `${call.method} ${call.url}`)).toEqual(['DELETE /api/hope/voice-profile/vp-1']);
+    expect(calls.map((call) => `${call.method} ${call.url}`)).toEqual(['DELETE /api/hope/voice-profiles/vp-1']);
     expect(removed.id).toBe('vp-1');
   });
 
@@ -125,9 +125,9 @@ describe('voice profiles client', () => {
     await deactivateVoiceProfile('vp 2');
     await deleteVoiceProfile('vp#3');
     expect(calls.map((call) => call.url)).toEqual([
-      '/api/hope/voice-profile/vp%2F1/activate',
-      '/api/hope/voice-profile/vp%202/deactivate',
-      '/api/hope/voice-profile/vp%233',
+      '/api/hope/voice-profiles/vp%2F1/activate',
+      '/api/hope/voice-profiles/vp%202/deactivate',
+      '/api/hope/voice-profiles/vp%233',
     ]);
   });
 });

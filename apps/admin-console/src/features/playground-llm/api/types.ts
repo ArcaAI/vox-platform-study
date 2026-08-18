@@ -12,7 +12,7 @@ export interface TextProviderModel {
   size?: string;
 }
 
-/** GET text/providers | text/guardrail-providers row. */
+/** GET text-generations/providers | text-generations/guardrail-providers row. */
 export interface TextProvider {
   name: string;
   models: TextProviderModel[];
@@ -27,7 +27,7 @@ export interface TextResponseFormat {
   strict?: boolean;
 }
 
-/** POST text/generate body (TextGenerateRequest on the gateway). */
+/** POST text-generations/generate body (TextGenerateRequest on the gateway). */
 export interface GenerateTextRequest {
   prompt: string;
   system_prompt?: string;
@@ -102,7 +102,7 @@ export interface ListPromptTemplatesParams {
 export type AssembledGenerationType = 'pre-summary' | 'summary';
 export type AssembledVisitType = 'new_visit' | 'referral';
 
-/** POST text/generate/assembled body — EXACTLY one of context_item_ids | message. */
+/** POST text-generations/generate/assembled body — EXACTLY one of context_item_ids | message. */
 export interface AssembledGenerateRequest {
   type: AssembledGenerationType;
   visit_type?: AssembledVisitType;
@@ -134,7 +134,7 @@ export interface AssembledDebugMeta {
 
 export type AssembledGenerateResponse = GenerateOutcome & { _debug?: AssembledDebugMeta };
 
-/** GET text/tasks/:taskId (text-generation TaskResponse) — also the cancel response body. */
+/** GET text-generations/tasks/:taskId (text-generation TaskResponse) — also the cancel response body. */
 export interface TextTask {
   task_id: string;
   status: string;
@@ -152,7 +152,7 @@ export interface TextTask {
   total_tokens: number;
 }
 
-/** SSE frame on GET text/tasks/:taskId/stream (text-generation StreamChunk; named events). */
+/** SSE frame on GET text-generations/tasks/:taskId/stream (text-generation StreamChunk; named events). */
 export interface TextStreamFrame {
   type: 'chunk' | 'reasoning' | 'meta' | 'done' | 'error' | 'usage';
   content?: string | null;

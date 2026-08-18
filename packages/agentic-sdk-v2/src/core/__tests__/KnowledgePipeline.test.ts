@@ -267,7 +267,7 @@ describe('KnowledgePipeline', () => {
       await expect(pipeline.triggerNER()).rejects.toThrow('No text provided for NER extraction');
     });
 
-    it('should throw when location is backend (not yet wired in this SDK, even though the gateway now exposes POST /api/v1/ai/nlp/entities)', async () => {
+    it('should throw when location is backend (not yet wired in this SDK, even though the gateway now exposes POST /api/v1/text-analyses/entities)', async () => {
       const pipeline = new KnowledgePipeline(
         { ner: { enabled: true, location: 'backend', triggerMode: 'manual' } },
         mockApiClient as AgenticClient,

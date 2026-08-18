@@ -15,7 +15,7 @@ import type { PaginationParams } from '../types/common';
 /**
  * Namespace + key used to persist the doctor's chosen
  * pipeline through the existing UserSettings backend
- * (`PATCH /user/me/settings/:namespace/:key`). The server-side validator
+ * (`PATCH /users/me/settings/:namespace/:key`). The server-side validator
  * in `UserSettingsController` rejects cross-tenant pipeline ids.
  */
 export const SELECTED_PIPELINE_SETTING = {
@@ -97,7 +97,7 @@ export interface UsePipelinesReturn {
   getBySlug: (slug: string) => Promise<Pipeline>;
   /**
    * Set the active pipeline. Also persists the choice to
-   * `PATCH /user/me/settings/arcaai-sdk/selectedPipelineId`. Backwards
+   * `PATCH /users/me/settings/arcaai-sdk/selectedPipelineId`. Backwards
    * compatible: the return type is `Promise<void>`, but synchronous callers
    * that drop the promise still get the immediate local-state update.
    */

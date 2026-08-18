@@ -7,6 +7,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { BadRequestException } from '@nestjs/common';
 import { AiInferenceController } from '../ai-inference.controller';
+import { SafetyCheckController } from '../safety-check.controller';
 
 function makeController(
   aiTaskDefaults?: { getEffective: ReturnType<typeof vi.fn> },
@@ -47,9 +48,17 @@ const effectiveWithModel = (taskKey: string, sourceUri: string) => ({
   },
 });
 
-describe('AiInferenceController — guardrail', () => {
+// TASK-760 — the guardrail route moved off `AiInferenceController` (prefix
+// `ai`) onto its own `SafetyCheckController` (prefix `safety-checks`). The
+// mapping under test is unchanged; only which class owns it moved.
+function makeSafetyController() {
+  const client = { analyzeGuardrail: vi.fn() };
+  return { controller: new SafetyCheckController(client as never), client };
+}
+
+describe('SafetyCheckController — guardrail', () => {
   it('maps guardrailType → guardrail_type and returns the verdict verbatim', async () => {
-    const { controller, client } = makeController();
+    const { controller, client } = makeSafetyController();
     const verdict = { safe: true, issues: [], confidence: 0.1 };
     client.analyzeGuardrail.mockResolvedValue(verdict);
 
@@ -60,7 +69,7 @@ describe('AiInferenceController — guardrail', () => {
   });
 
   it('defaults guardrail_type to comprehensive when omitted', async () => {
-    const { controller, client } = makeController();
+    const { controller, client } = makeSafetyController();
     client.analyzeGuardrail.mockResolvedValue({});
     await controller.analyzeGuardrail({ text: 'hello' });
     expect(client.analyzeGuardrail).toHaveBeenCalledWith({ text: 'hello', guardrail_type: 'comprehensive' });

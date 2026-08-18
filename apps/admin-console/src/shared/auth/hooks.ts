@@ -30,14 +30,14 @@ interface MyPermissionsResponse {
 }
 
 /**
- * The caller's effective CASL rules from POST /rbac/check/my-permissions
+ * The caller's effective CASL rules from POST /users/me/permission-checks
  * (via the BFF proxy). Drives menu visibility and <RequirePermission>.
  */
 export function usePermissions() {
   return useQuery({
     queryKey: ['auth', 'permissions'],
     queryFn: async () => {
-      const data = await fetchJson<MyPermissionsResponse>('/api/hope/rbac/check/my-permissions', { method: 'POST' });
+      const data = await fetchJson<MyPermissionsResponse>('/api/hope/users/me/permission-checks', { method: 'POST' });
       return data.permissions;
     },
     staleTime: 60_000,

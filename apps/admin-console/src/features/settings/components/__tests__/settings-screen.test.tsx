@@ -86,10 +86,10 @@ function stubFetch({ rows = SETTINGS, permissions = MANAGE_ALL, session = SESSIO
       calls.push(call);
       const handled = custom?.(call);
       if (handled) return handled;
-      // The grid persists per-user layout via `user/me/settings` — no saved layout in tests.
-      if (call.url.includes('/user/me/settings')) return call.method === 'GET' ? Response.json([]) : Response.json({ ok: true });
+      // The grid persists per-user layout via `users/me/settings` — no saved layout in tests.
+      if (call.url.includes('/users/me/settings')) return call.method === 'GET' ? Response.json([]) : Response.json({ ok: true });
       if (call.url === '/api/auth/session') return Response.json(session);
-      if (call.url === '/api/hope/rbac/check/my-permissions') {
+      if (call.url === '/api/hope/users/me/permission-checks') {
         return Response.json({ userId: 'u-1', tenantId: null, permissions });
       }
       // Detail read for the drawer (fresh ETag).

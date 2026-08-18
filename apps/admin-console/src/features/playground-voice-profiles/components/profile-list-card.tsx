@@ -56,7 +56,7 @@ function ProfileRow({ profile, onToggle, onDelete, isBusy }: { profile: VoicePro
 }
 
 /**
- * Frame 52 profile list — the caller's own biometric rows (GET /voice-profile)
+ * Frame 52 profile list — the caller's own biometric rows (GET /voice-profiles)
  * with the active badge, instant activate/deactivate toggles (invalidate, no
  * optimistic write) and delete behind a destructive confirm (biometric
  * removal, frame 05 pattern).
@@ -95,7 +95,7 @@ export function ProfileListCard({ query, onEnroll }: { query: ReturnType<typeof 
           <h2 className="text-sm leading-none font-semibold">My profiles</h2>
           <CardAction>
             <span aria-hidden className="text-muted-foreground font-mono text-xs">
-              GET /voice-profile
+              GET /voice-profiles
             </span>
           </CardAction>
         </CardHeader>

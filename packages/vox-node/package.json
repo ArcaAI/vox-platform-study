@@ -1,6 +1,6 @@
 {
   "name": "@arcaai/vox-node",
-  "version": "2.0.7",
+  "version": "3.0.0",
   "description": "HOPE server-side Node SDK \u2014 non-browser client for the HOPE gateway (summarization, consultations, jobs)",
   "type": "commonjs",
   "main": "./dist/index.js",

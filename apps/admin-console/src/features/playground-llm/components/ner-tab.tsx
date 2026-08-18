@@ -14,7 +14,7 @@ import type { NerResult } from '../api/types';
 
 /**
  * Agent Playground → NER tab. Input → medical entity list via the
- * `ai/nlp/entities` gateway proxy (NLP token classification). Runs under the
+ * `text-analyses/entities` gateway proxy (NLP token classification). Runs under the
  * caller's own account (user-plane `@Authorize()`).
  */
 export function NerTab() {

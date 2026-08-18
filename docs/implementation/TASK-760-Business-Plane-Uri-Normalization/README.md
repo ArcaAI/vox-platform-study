@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Status** | Pending |
+| **Status** | Review |
 | **Owner** | Platform / Architecture |
 | **Date** | 2026-08-18 |
 | **Type** | refactor (breaking wire change) |
@@ -382,7 +382,86 @@ be treated as binding:
 
 ## 6. Implementation Summary
 
-pending
+**Status: shipped (gateway + SDK + admin console + e2e). E2E NOT EXECUTED — see "Not verified" below.**
+
+### 6.1 What changed at the gateway
+
+One new primitive: `apps/api/src/common/redirect-shim.ts` — `redirect308(req, res, targetPath)`,
+the single implementation of the retired-URI redirect. It writes `Location` and `308`, carrying the
+query string across verbatim, in library-specific (`@Res()`) mode so no interceptor runs over a
+response that has no representation. Exported from `apps/api/src/common/index.ts`.
+
+| # | Retired prefix | New prefix | Moved controller | Shim controller (deleted in `ALL-2.0.0`) |
+|---|---|---|---|---|
+| 1 | `user/me/preferences` | `users/me/preferences` | `user-preferences.controller.ts:24` | `user/controllers/user-me-redirect.shim.controller.ts` |
+| 2 | `user/me/settings` | `users/me/settings` | `user-settings.controller.ts:41` | ” |
+| 3 | `user/me/departments` | `users/me/departments` | `user-departments-me.controller.ts:28` | ” |
+| 4 | `tenant` (`me`, `me/config`) | `tenants/me` (`` , `config`) | `tenant/my-tenant.controller.ts:29,51,66,96` | `tenant/my-tenant-redirect.shim.controller.ts` |
+| 5 | `tenant/me/context-schema` | `tenants/me/context-schema` | `consultation-context-schema.controller.ts` | `consultation-context-schema-redirect.shim.controller.ts` |
+| 6 | `billing/me/{invoices[/:id],spend}` | `tenants/me/{invoices[/:id],spend}` | `billing/my-billing.controller.ts:34,46,54,62` | `billing/my-billing-redirect.shim.controller.ts` |
+| 7 | `usage/me/{summary,burndown}` | `tenants/me/usage-{summary,burndown}` | `admin-usage/my-usage.controller.ts:26,37,48` | `admin-usage/my-usage-redirect.shim.controller.ts` |
+| 8 | `entitlements/me` | `tenants/me/entitlements` | `entitlements/my-entitlements.controller.ts:26,38` | `entitlements/my-entitlements-redirect.shim.controller.ts` |
+| 9 | `voice-profile` | `voice-profiles` | `voice-profile/voice-profile.controller.ts:30` | `voice-profile/voice-profile-redirect.shim.controller.ts` |
+| 10 | `rbac/check{,/bulk,/my-permissions}` | `users/me/permission-checks` + `users/:id/permission-checks[/bulk]` | `rbac/permission-check.controller.ts:26,91` | `rbac/permission-check-redirect.shim.controller.ts` |
+| 11 | `ai/guardrail/analyze` | `safety-checks` | **new** `ai-inference/safety-check.controller.ts` | `ai-inference/ai-inference-redirect.shim.controller.ts` |
+| 12 | `ai/nlp/*` | `text-analyses/*` | `ai-inference/ai-inference.controller.ts:53` | ” |
+| 13 | `text` | `text-generations` | `streaming/text-proxy.controller.ts:181` | `streaming/text-proxy-redirect.shim.controller.ts` |
+| 14 | — (class rename only) | `audio/pipelines` **unchanged** | `pipeline/audio-pipeline-catalog.controller.ts` — `AudioPipelineCatalogController` | n/a |
+
+Every shim reproduces its target's auth posture verbatim (`@Authorize`, `@RequiredScopes`,
+`@ForbidApiKey`), so an unauthenticated caller is rejected AT the shim and never redirected onward.
+Three decorators are deliberately NOT reproduced, each for a stated reason in the file:
+`@RequiresIfMatch()` (the precondition belongs to the write, which happens at the target),
+`@TenantOwnedResource` (it resolves a row; the shim reads none), and `@StreamScope` (it authorises
+opening a stream; the shim opens none).
+
+### 6.2 Decisions taken during implementation, beyond D-1..D-4
+
+- **`rbac/check` shape.** §3 step 6's mapping is ambiguous for the single/bulk checks: the retired
+  paths carried NO user in the URI (the target came from the body's optional `userId`, defaulting to
+  the caller), so `users/:id/permission-checks` has to get an id from somewhere. Resolution:
+  `:id` supplies the DEFAULT target and the body's `userId` still wins when present, which is
+  byte-identical to the old behaviour and lets the shim redirect `POST /rbac/check` to
+  `users/<callerId>/permission-checks` without changing WHICH user is checked. The shim reads the
+  caller from CLS.
+- **`AiInferenceController` keeps its class name.** Splitting `ai` needed a second controller, and
+  the obvious rename of the remainder was rejected: `apps/api/src/bootstrap/__tests__/business-plane-apikey-exemptions.test.ts`
+  imports the class by name and `src/bootstrap/**` is owned concurrently by TASK-761. Only the new
+  `SafetyCheckController` was added; the NLP half kept its class name and gained a comment saying why.
+- **`AudioPipelinePublicController` rename left a 4-line compat re-export** at the old file path
+  (`pipeline/audio-pipeline-public.controller.ts`) for the same reason — that bootstrap test imports
+  the old symbol from the old path. The re-export is marked `@deprecated` and names TASK-761 as its
+  deleter. This is the one place the ticket's "class rename only" is not a clean single-file change.
+
+### 6.3 Consumers updated in lockstep
+
+| Consumer | What changed |
+|---|---|
+| `@arcaai/vox` | `src/core/constants.ts` (every affected constant), ~30 doc comments across `core/`, `hooks/`, `providers/`, `types/`, and the tests that pinned the old literals (`constants.task210/265/323/392`, `ConsultationSchemaClient`, `ModelRegistry`, `AgenticProvider.*`, `useVoiceEmbedding`, `useUserSettings`, `usePipelines`, …). New contract test: `src/core/__tests__/constants.task760.test.ts`. |
+| `@arcaai/vox-node` | No code change — verified: its only paths are the fenced `api/smr/api/v1` compat surface and `consultations/*`. Takes the MAJOR with the family. |
+| `apps/admin-console` | 78 files. Call sites: `features/account/api/client.ts`, `features/agents/api/client.ts`, `features/playground-voice-profiles/api/client.ts`, `features/playground-llm/api/{client,inference-client}.ts`, `shared/auth/hooks.ts`, `shared/catalog/hooks.ts`, `shared/data/grid-persistence.ts`, `shared/streams/use-task-stream.ts`. Plus on-screen path captions and ~40 test fetch stubs. |
+| `apps/example` | Unaffected — verified (only `audio/transcription-jobs/*`). |
+| **`packages/vox-codegen`** | **MISSING FROM §5's blast-radius table** — found by a repo-wide sweep, not by the ticket. Its CLI fetches `GET /tenant/me/context-schema` (`src/fetch-schema.ts:47`, plus `src/types.ts`, `README.md` and three assertions in `src/__tests__/fetch-schema.test.ts`). Updated. This is the second time §5 has proven incomplete. |
+| `packages/applications` | Two service READMEs quoting `PATCH /api/v1/tenant/me/config`, and one sanction entry in `services/workflow-definition/__tests__/task-724-stt-realtime-untouched.grep-gate.test.ts` — that gate fails on ANY working-tree change under `apps/api/src/modules/streaming/**` and asks, in its own header, for an explicit recorded decision rather than a bypass. Two entries added (the new shim + its module registration) with the reason. |
+| `apps/api/tests/e2e` | 17 specs updated. `authorization.spec.ts` and `rbac.spec.ts` needed more than a literal swap — they address the new by-id permission-check URI directly and decode the caller id from the JWT `sub`, rather than letting Playwright follow the 308 (which would test the shim, not the route). New spec: `task-760-uri-normalization.spec.ts`. |
+
+### 6.4 Tests
+
+| Test | File | Covers |
+|---|---|---|
+| T-1 | `apps/api/src/__tests__/controller-route-renames.test.ts` | 114 assertions: every new `@Controller` literal, the absence of every retired one, all 10 shim files (prefix + `redirect308` + no 301/302/307 + the `DELETE IN ALL-2.0.0` comment), the class rename with `PATH_METADATA` still `audio/pipelines`, and the compat scope fence. |
+| T-2 | `apps/api/src/modules/user/controllers/__tests__/users-me-route-precedence.test.ts` | The mandated collision. Drives real HTTP through BOTH orderings — the correct one AND the wrong one, so the silent failure (`:id === 'me'`) is demonstrated, not merely guarded. Also pins the `controllers: [...]` order in `rbac.module.ts` and `user.module.ts`. |
+| — | `apps/api/src/common/__tests__/redirect-shim.test.ts` | 31 assertions over the real shim controllers: 308 exactly, `Location` per route, query string preserved, path params preserved and percent-encoded, and the caller-id resolution on `rbac/check`. Added because the e2e suite could not be run (below). |
+| T-5 | `packages/agentic-sdk-v2/src/core/__tests__/constants.task760.test.ts` | Every new constant literal + a negative sweep proving no code line in `constants.ts` still carries a retired path. |
+| T-3/T-4 | `apps/api/tests/e2e/task-760-uri-normalization.spec.ts` | New URIs resolve; 28 retired URIs answer 308 with the right `Location`; query/param preservation; anonymous callers 401 AT the shim; and the scope fence (`api/smr/api/v1`, `api/stt`, `ws /stt` unredirected). |
+
+### 6.5 Not verified
+
+`pnpm test:e2e` was **not run**: nothing was listening on port 8968 at implementation time, and the
+gateway would need a rebuild for the new routes to exist. `task-760-uri-normalization.spec.ts` and
+the 17 updated specs are therefore authored-and-typechecked but unexecuted. `redirect-shim.test.ts`
+covers the redirect mechanics without infrastructure, but it does not exercise the guard chain, so
+the "401 AT the shim" assertions remain unverified at runtime.
 
 ---
 
@@ -392,3 +471,6 @@ pending
 |---|---|
 | 2026-08-18 | Created. Documented business-plane URI shape drift from `api-design-conformance-review.md` §2.6/§3.5, verified every prefix and consumer call site against source, enumerated the per-rename blast radius across `@arcaai/vox` / `apps/admin-console` (and verified `@arcaai/vox-node` + `apps/example` are unaffected), and recorded four blocking owner decisions (D-1 self-plane split, D-2 capability names, D-3 `speech` correction, D-4 redirect-deletion release). Status: Pending. |
 | 2026-08-18 | **Owner decisions recorded.** Scope: **full normalization with 308 redirect shims** (not deferred, not naming-only) — accepted with its ~30 SDK sites / ~20 admin-console sites / 20 e2e specs blast radius. **D-1 resolved: TWO aliases** — `/users/me/**` for user-scoped and `/tenants/me/**` for tenant-scoped; a single `users/me` alias is rejected because `billing`/`usage`/`entitlements`/`tenant` are `read:Tenant`-scoped and would assert false ownership. **D-3 resolved: `speech` does NOT move** — its backing service is `apps/tts`, so it is already capability-shaped; only `ai` and `text` are renamed. **D-2 (target names for `ai`/`text`) remains OPEN** and still blocks step 7 only. The `/users/me/roles` vs `UserRolesController` `@Get(':id/roles')` collision must be pinned by test before the alias lands. |
+| 2026-08-18 | **Implemented.** Full normalization with 308 shims across 13 rename groups + 1 class rename; `redirect308` helper added; two self aliases (`users/me/**`, `tenants/me/**`); `ai` split into `safety-checks` + `text-analyses`; `text` → `text-generations`; `speech` left alone (D-3); `rbac/check` → two resource collections. Consumers updated in lockstep: `@arcaai/vox` constants + ~30 doc comments + 6 pinning tests, `apps/admin-console` (78 files), 17 e2e specs. SDK family bumped 2.0.7 → **3.0.0** with an old→new path table in `packages/agentic-sdk-v2/CHANGELOG.md`. Docs regenerated (`api-controller-inventory.md`, `api-controller-groupings.md`) and a decision note appended to `api-design-conformance-review.md` §3.5. Evidence: `pnpm --filter @arcaai/api test` 3314 passed / 4 skipped; `pnpm api:build` green; `@arcaai/vox` 4205 passed (1 pre-existing failure, `DNA_STYLE_ENDPOINTS` key count, reproduced at HEAD); `@arcaai/admin-console` 1582 passed (5 pre-existing failures, reproduced at HEAD); lint clean except one pre-existing prettier error in `task-762-service-account-cross-tenant.spec.ts`. **E2E not executed** — no listener on 8968; the gateway needs a rebuild. Status → Review. |
+| 2026-08-18 | **Boundary notes for the concurrent tickets.** (a) TASK-764 owns `task-658-context-schema-plane.spec.ts`, which still targets the retired `tenant/me/context-schema`; it will pass through the 308 shim but should be retargeted at `tenants/me/context-schema`. (b) TASK-761 owns `src/bootstrap/__tests__/business-plane-apikey-exemptions.test.ts`, which imports `AudioPipelinePublicController` from `pipeline/audio-pipeline-public.controller`; a 4-line `@deprecated` re-export keeps it compiling, and TASK-761 should retarget the import at `./audio-pipeline-catalog.controller` and delete that file. |
+| 2026-08-18 | **§5 blast-radius table was incomplete again.** A repo-wide sweep found `packages/vox-codegen` (CLI fetching `GET /tenant/me/context-schema`) — absent from §2.3. Also updated: `packages/applications` service READMEs, `apps/api/CHANGELOG.md` (BREAKING entry with the old→new table), `apps/api/README.md`, `apps/api/docs/{01,05}-*.md`, `apps/text/README.md`, `docs/architecture/overview.md`, `docs/traceability-matrix.md`, `docs/traceability/ai-models-providers.md`. TASK-724's streaming grep-gate needed two sanction entries (it guards the whole `apps/api/src/modules/streaming/**` tree, which the `text` → `text-generations` rename touches). |

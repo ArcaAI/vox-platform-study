@@ -3,7 +3,7 @@
  *
  * Verifies that calling `select(id)` not only updates local state but also
  * persists the choice to the existing UserSettings backend via
- * `PATCH /user/me/settings/arcaai-sdk/selectedPipelineId`. The acceptance
+ * `PATCH /users/me/settings/arcaai-sdk/selectedPipelineId`. The acceptance
  * criterion requires that backend ownership of the
  * selected pipeline is enforced server-side (validator).
  *
@@ -43,7 +43,7 @@ describe('usePipelines.select — persistence', () => {
     vi.clearAllMocks();
   });
 
-  it('issues PATCH /user/me/settings/arcaai-sdk/selectedPipelineId with the chosen id', async () => {
+  it('issues PATCH /users/me/settings/arcaai-sdk/selectedPipelineId with the chosen id', async () => {
     const data = [
       { id: 'p-1', name: 'Default', slug: 'default' },
       { id: 'p-2', name: 'Fast', slug: 'fast' },

@@ -40,7 +40,7 @@ export interface UpdatePlanEntitlementRequest extends EntitlementLimits {
   expectedVersion: number;
 }
 
-/** GET /admin/entitlements/tenants/:tenantId (and GET /entitlements/me). */
+/** GET /admin/entitlements/tenants/:tenantId (and GET /tenants/me/entitlements). */
 export interface EntitlementCapabilities {
   tenantId: string;
   plan?: TenantPlan | null;

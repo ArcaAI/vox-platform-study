@@ -52,7 +52,7 @@ const EMPTY_PAGE: WorkflowRunsPage = { data: [], nextCursor: null, hasMore: fals
 function stubRoutes(overrides: { runs?: WorkflowRunsPage; workingTenantId?: string | null } = {}) {
   return installFetchStub(({ url, method }: RecordedCall) => {
     if (url === '/api/auth/session') return sessionPayload({ workingTenantId: overrides.workingTenantId });
-    if (url.includes('/user/me/settings')) return method === 'GET' ? [] : { ok: true };
+    if (url.includes('/users/me/settings')) return method === 'GET' ? [] : { ok: true };
     if (url.startsWith('/api/hope/admin/workflow-runs?')) return overrides.runs ?? RUNS_PAGE;
     return { success: true };
   });

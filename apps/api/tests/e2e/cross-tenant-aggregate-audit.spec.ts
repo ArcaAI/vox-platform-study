@@ -5,7 +5,7 @@
  * `@TenantOwnedResource(...)` decorator protects, so reviewers and CI
  * dashboards can verify tenant isolation in one suite. The per-controller
  * specs
- * (`{consultation-job,tenant-bucket,storage,voice-profile,
+ * (`{consultation-job,tenant-bucket,storage,voice-profiles,
  *  transcription-job}-cross-tenant.spec.ts`) carry the deeper assertions;
  * this file only confirms each protected route returns 404 (not 200 / 500)
  * for an out-of-tenant probe.
@@ -85,16 +85,16 @@ const CASES: ReadonlyArray<ProbeCase> = [
     expectStatuses: [404],
   },
   {
-    name: 'W3.7 — PATCH voice-profile/:id/activate',
+    name: 'W3.7 — PATCH voice-profiles/:id/activate',
     method: 'PATCH',
-    path: `/api/v1/voice-profile/${UUIDV7_PROBE}/activate`,
+    path: `/api/v1/voice-profiles/${UUIDV7_PROBE}/activate`,
     principal: 'doctor',
     expectStatuses: [404],
   },
   {
-    name: 'W3.7 — DELETE voice-profile/:id',
+    name: 'W3.7 — DELETE voice-profiles/:id',
     method: 'DELETE',
-    path: `/api/v1/voice-profile/${UUIDV7_PROBE}`,
+    path: `/api/v1/voice-profiles/${UUIDV7_PROBE}`,
     principal: 'doctor',
     expectStatuses: [404],
   },

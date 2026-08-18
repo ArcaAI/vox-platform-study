@@ -86,7 +86,7 @@ export function PromptEditorCard({
     <Card className="gap-4">
       <CardHeader>
         <CardTitle>Prompt</CardTitle>
-        <CardDescription>POST /text/generate — assembled mode posts /text/generate/assembled instead</CardDescription>
+        <CardDescription>POST /text-generations/generate — assembled mode posts /text-generations/generate/assembled instead</CardDescription>
       </CardHeader>
       <CardContent className="flex flex-col gap-4">
         <div className="flex flex-col gap-2">

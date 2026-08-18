@@ -227,12 +227,12 @@ export function listDepartmentAgentVersions(id: string): Promise<DepartmentAgent
 /**
  * The RESOLVED consultation context schema a department's loop
  * config must pick `subscribedKinds`/`writeScope` from — `GET
- * tenant/me/context-schema`, the client-discovery sibling of `/tenant/me/config`
+ * tenants/me/context-schema`, the client-discovery sibling of `/tenants/me/config`
  * (never the admin CRUD surface, which is its own feature). A tenant
  * with nothing configured gets a 200 with null fields, not a 404.
  */
 export function getResolvedContextSchema(departmentId?: string): Promise<ResolvedContextSchemaBundle> {
-  return getJson('tenant/me/context-schema', departmentId ? { departmentId } : undefined);
+  return getJson('tenants/me/context-schema', departmentId ? { departmentId } : undefined);
 }
 
 // ---------------------------------------------------------------------------

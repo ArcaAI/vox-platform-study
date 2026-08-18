@@ -70,7 +70,7 @@ interface StubOptions {
 
 function stubRoutes({ candidates = EXPORT, permissions = MANAGE_RULES, custom }: StubOptions = {}) {
   return installFetchStub((call: RecordedCall) => {
-    if (call.url === '/api/hope/rbac/check/my-permissions') {
+    if (call.url === '/api/hope/users/me/permission-checks') {
       return { userId: 'u-1', tenantId: 'tnt-1', permissions };
     }
     const handled = custom?.(call);

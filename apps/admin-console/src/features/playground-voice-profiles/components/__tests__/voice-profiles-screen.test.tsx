@@ -65,7 +65,7 @@ function stubFetch(handler: FetchHandler = () => undefined): RecordedCall[] {
         handler(call, parsed) ??
         (call.method === 'GET' && parsed.pathname === '/api/auth/session'
           ? Response.json({ user: { username: 'admin' } })
-          : call.method === 'GET' && parsed.pathname === '/api/hope/voice-profile'
+          : call.method === 'GET' && parsed.pathname === '/api/hope/voice-profiles'
             ? Response.json(PROFILES)
             : undefined);
       if (!response) throw new Error(`Unhandled fetch: ${call.method} ${call.url}`);
@@ -76,7 +76,7 @@ function stubFetch(handler: FetchHandler = () => undefined): RecordedCall[] {
 }
 
 function listCalls(calls: RecordedCall[]): RecordedCall[] {
-  return calls.filter((call) => call.method === 'GET' && new URL(call.url, 'http://test.local').pathname === '/api/hope/voice-profile');
+  return calls.filter((call) => call.method === 'GET' && new URL(call.url, 'http://test.local').pathname === '/api/hope/voice-profiles');
 }
 
 /** Minimal MediaRecorder fake: stop() flushes one webm blob then fires onstop. */
@@ -165,7 +165,7 @@ describe('VoiceProfilesScreen', () => {
 
   it('shows the empty state when no profiles are enrolled', async () => {
     stubFetch((call, parsed) => {
-      if (call.method === 'GET' && parsed.pathname === '/api/hope/voice-profile') return Response.json([]);
+      if (call.method === 'GET' && parsed.pathname === '/api/hope/voice-profiles') return Response.json([]);
       return undefined;
     });
     renderWithProviders(<VoiceProfilesScreen />);
@@ -176,7 +176,7 @@ describe('VoiceProfilesScreen', () => {
 
   it('shows the list error state with a retry that refetches', async () => {
     const calls = stubFetch((call, parsed) => {
-      if (call.method === 'GET' && parsed.pathname === '/api/hope/voice-profile') {
+      if (call.method === 'GET' && parsed.pathname === '/api/hope/voice-profiles') {
         return Response.json({ message: 'Voice profile API unreachable' }, { status: 503 });
       }
       return undefined;
@@ -265,7 +265,7 @@ describe('VoiceProfilesScreen', () => {
   it('enrolls via multipart POST with the label, toasts, resets the wizard and refetches the list', async () => {
     const enrolled = profile({ id: 'vp-3', label: 'Front desk mic' });
     const calls = stubFetch((call, parsed) => {
-      if (call.method === 'POST' && parsed.pathname === '/api/hope/voice-profile/enroll') {
+      if (call.method === 'POST' && parsed.pathname === '/api/hope/voice-profiles/enroll') {
         return Response.json(enrolled, { status: 201 });
       }
       return undefined;
@@ -281,10 +281,10 @@ describe('VoiceProfilesScreen', () => {
     fireEvent.click(submitButton());
 
     await waitFor(() => {
-      const enroll = calls.find((call) => call.method === 'POST' && call.url.includes('/voice-profile/enroll'));
+      const enroll = calls.find((call) => call.method === 'POST' && call.url.includes('/voice-profiles/enroll'));
       expect(enroll).toBeDefined();
     });
-    const enrollCall = calls.find((call) => call.method === 'POST' && call.url.includes('/voice-profile/enroll'));
+    const enrollCall = calls.find((call) => call.method === 'POST' && call.url.includes('/voice-profiles/enroll'));
     const body = enrollCall?.body as FormData;
     expect(body).toBeInstanceOf(FormData);
     expect(body.getAll('files')).toHaveLength(1);
@@ -299,7 +299,7 @@ describe('VoiceProfilesScreen', () => {
 
   it('surfaces an enroll failure as an error toast and keeps the staged samples', async () => {
     stubFetch((call, parsed) => {
-      if (call.method === 'POST' && parsed.pathname === '/api/hope/voice-profile/enroll') {
+      if (call.method === 'POST' && parsed.pathname === '/api/hope/voice-profiles/enroll') {
         return Response.json({ message: 'Audio too short for enrollment' }, { status: 400 });
       }
       return undefined;
@@ -345,7 +345,7 @@ describe('VoiceProfilesScreen', () => {
 
   it('deactivates the active profile via PATCH :id/deactivate and refetches', async () => {
     const calls = stubFetch((call, parsed) => {
-      if (call.method === 'PATCH' && parsed.pathname === '/api/hope/voice-profile/vp-1/deactivate') {
+      if (call.method === 'PATCH' && parsed.pathname === '/api/hope/voice-profiles/vp-1/deactivate') {
         return Response.json({ success: true });
       }
       return undefined;
@@ -355,14 +355,14 @@ describe('VoiceProfilesScreen', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Deactivate Default profile' }));
 
-    await waitFor(() => expect(calls.some((call) => call.method === 'PATCH' && call.url.includes('/voice-profile/vp-1/deactivate'))).toBe(true));
+    await waitFor(() => expect(calls.some((call) => call.method === 'PATCH' && call.url.includes('/voice-profiles/vp-1/deactivate'))).toBe(true));
     await waitFor(() => expect(toast.success).toHaveBeenCalled());
     await waitFor(() => expect(listCalls(calls)).toHaveLength(2));
   });
 
   it('activates an inactive profile via PATCH :id/activate', async () => {
     const calls = stubFetch((call, parsed) => {
-      if (call.method === 'PATCH' && parsed.pathname === '/api/hope/voice-profile/vp-2/activate') {
+      if (call.method === 'PATCH' && parsed.pathname === '/api/hope/voice-profiles/vp-2/activate') {
         return Response.json({ success: true });
       }
       return undefined;
@@ -372,12 +372,12 @@ describe('VoiceProfilesScreen', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Set active Untitled profile' }));
 
-    await waitFor(() => expect(calls.some((call) => call.method === 'PATCH' && call.url.includes('/voice-profile/vp-2/activate'))).toBe(true));
+    await waitFor(() => expect(calls.some((call) => call.method === 'PATCH' && call.url.includes('/voice-profiles/vp-2/activate'))).toBe(true));
   });
 
   it('deletes only after the destructive confirm dialog is accepted', async () => {
     const calls = stubFetch((call, parsed) => {
-      if (call.method === 'DELETE' && parsed.pathname === '/api/hope/voice-profile/vp-1') {
+      if (call.method === 'DELETE' && parsed.pathname === '/api/hope/voice-profiles/vp-1') {
         return Response.json(PROFILES[0]);
       }
       return undefined;
@@ -398,7 +398,7 @@ describe('VoiceProfilesScreen', () => {
     const reopened = await screen.findByRole('alertdialog');
     fireEvent.click(within(reopened).getByRole('button', { name: /delete profile/i }));
 
-    await waitFor(() => expect(calls.some((call) => call.method === 'DELETE' && call.url.includes('/voice-profile/vp-1'))).toBe(true));
+    await waitFor(() => expect(calls.some((call) => call.method === 'DELETE' && call.url.includes('/voice-profiles/vp-1'))).toBe(true));
     await waitFor(() => expect(toast.success).toHaveBeenCalled());
     await waitFor(() => expect(listCalls(calls)).toHaveLength(2));
   });

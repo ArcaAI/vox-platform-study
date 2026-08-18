@@ -7,14 +7,14 @@ import { BudgetBurndownQuery, MyUsageSummaryQuery } from './dto';
 
 /**
  * Tenant self-service usage reads (D8), mounted at
- * `/usage/me/*` (global prefix → `/api/v1/usage/me/*`).
+ * `/tenants/me/usage-*` (global prefix → `/api/v1/tenants/me/usage-*`).
  *
  * Same posture as `MyBillingController` — `read Tenant`, always the CLS
  * tenant, no `tenantId` override, foreign ids are structurally impossible
  * (there is no by-id route here). READ-ONLY by construction.
  */
 /**
- * TASK-758 — the counterpart to `/user/me/*`'s bound-user rule: the bare
+ * TASK-758 — the counterpart to `/users/me/*`'s bound-user rule: the bare
  * "mine" surfaces resolve to the key's TENANT, via the CLS `tenantId` the
  * guard sets from `apiKeyEntity.tenantId`. Different resolution, so it gets
  * its own sentence rather than a shared one.
@@ -23,7 +23,7 @@ const ME_IS_THE_KEY_TENANT = "Under API-key authentication this resolves to the 
 
 @ApiBearerAuth()
 @ApiTags('usage')
-@Controller('usage')
+@Controller('tenants/me')
 // API-KEY-NOTE: policy A1. Same posture and same scope as the sibling
 // billing reads: the key's OWN tenant, no `tenantId` override, no by-id
 // route, read-only. An integrator needs this to watch its own burn rate.
@@ -34,7 +34,7 @@ export class MyUsageController {
     private readonly cls: ClsService<IActiveUserContext>,
   ) {}
 
-  @Get('me/summary')
+  @Get('usage-summary')
   @Authorize(['read', 'Tenant'])
   @ApiOperation({
     summary: "The caller's own tenant's usage summary for a billing period. Defaults to the current UTC month.",
@@ -45,7 +45,7 @@ export class MyUsageController {
     return this.usageAnalytics.getUsageSummary(this.ownTenantId(), query.period ?? periodOf(new Date()).label);
   }
 
-  @Get('me/burndown')
+  @Get('usage-burndown')
   @Authorize(['read', 'Tenant'])
   @ApiOperation({
     summary: 'Allowances vs month-to-date usage vs days elapsed, with a linear exceed projection. Defaults to the current UTC month.',

@@ -148,7 +148,7 @@ export function EnrollmentCard({ ref }: { ref?: Ref<HTMLDivElement> }) {
     <Card ref={ref} tabIndex={-1} className="gap-4">
       <CardHeader>
         <h2 className="text-sm leading-none font-semibold">Enroll a profile</h2>
-        {/* The POST /voice-profile/enroll hint lives in the screen footer. */}
+        {/* The POST /voice-profiles/enroll hint lives in the screen footer. */}
         {recorder.phase === 'recording' ? (
           <CardAction>
             <span role="status">

@@ -1,63 +1,14 @@
-import { PipelineResponse, PipelineService } from '@arcaai/applications';
-import { Controller, NotFoundException, Param } from '@nestjs/common';
-import { ApiBearerAuth, ApiParam, ApiResponse, ApiTags } from '@nestjs/swagger';
-import { ApiEndpoint, Authorize, RequiredScopes } from '../../decorators';
-
-@ApiBearerAuth()
-@ApiTags('audio-pipelines')
-@Controller('audio/pipelines')
-@Authorize()
-// API-KEY-NOTE: policy A1. Read-only ASR pipeline catalog — REUSES the
-// existing `stt:model:read` rather than minting a scope of its own: this is
-// the pipeline half of the same "what can I transcribe with" question the
-// STT model list answers, and a key issued to transcribe already needs it.
-@RequiredScopes('stt:model:read')
-export class AudioPipelinePublicController {
-  constructor(private readonly pipelineService: PipelineService) {}
-
-  @ApiEndpoint({
-    returnedModel: PipelineResponse,
-    multi: true,
-  })
-  async fetchAll(): Promise<PipelineResponse[]> {
-    return this.pipelineService.getAll();
-  }
-
-  /**
-   * Public read-by-id (tenant-scoped via `getById`).
-   *
-   * Cross-tenant lookups return 404 (not 403) to avoid existence leaks.
-   */
-  @ApiEndpoint({
-    returnedModel: PipelineResponse,
-    path: ':id',
-    by: ['id'],
-  })
-  @ApiParam({ name: 'id', description: 'Pipeline ID', type: String })
-  @ApiResponse({ status: 404, description: 'Pipeline not found' })
-  async fetchById(@Param('id') id: string): Promise<PipelineResponse> {
-    const pipeline = await this.pipelineService.getById(id);
-    if (!pipeline) {
-      throw new NotFoundException(`Pipeline ${id} not found`);
-    }
-    return pipeline;
-  }
-
-  /**
-   * Public read-by-slug (tenant-scoped via `getBySlug`).
-   */
-  @ApiEndpoint({
-    returnedModel: PipelineResponse,
-    path: 'slug/:slug',
-    by: ['slug'],
-  })
-  @ApiParam({ name: 'slug', description: 'Pipeline slug', type: String })
-  @ApiResponse({ status: 404, description: 'Pipeline not found' })
-  async fetchBySlug(@Param('slug') slug: string): Promise<PipelineResponse> {
-    const pipeline = await this.pipelineService.getBySlug(slug);
-    if (!pipeline) {
-      throw new NotFoundException(`Pipeline ${slug} not found`);
-    }
-    return pipeline;
-  }
-}
+/**
+ * TASK-760 compatibility re-export — DELETE WITH TASK-761.
+ *
+ * The controller moved to `audio-pipeline-catalog.controller.ts` and the class
+ * is now `AudioPipelineCatalogController` (drift D-E: the old name read as
+ * "the `@Public()` one", which it never was). This alias exists for exactly
+ * one reason: `src/bootstrap/__tests__/business-plane-apikey-exemptions.test.ts`
+ * imports the old symbol from this path, and `src/bootstrap/**` is owned by
+ * TASK-761 concurrently — TASK-760 must not edit it. TASK-761 should retarget
+ * that import at `./audio-pipeline-catalog.controller` and delete this file.
+ *
+ * @deprecated use `AudioPipelineCatalogController`.
+ */
+export { AudioPipelineCatalogController as AudioPipelinePublicController } from './audio-pipeline-catalog.controller';

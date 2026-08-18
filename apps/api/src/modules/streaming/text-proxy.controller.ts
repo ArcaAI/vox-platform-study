@@ -178,7 +178,7 @@ interface ProviderListingEntry {
 // third time.
 @ApiTags('text')
 @ApiBearerAuth()
-@Controller('text')
+@Controller('text-generations')
 // TASK-742: the streaming summarization surface parallel to the already-scoped
 // `TextCompatController` (`/api/smr/api/v1`), which uses this same scope for
 // the identical capability — kept in step deliberately.

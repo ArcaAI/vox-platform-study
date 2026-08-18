@@ -1,5 +1,5 @@
 /**
- * AudioPipelinePublicController
+ * AudioPipelineCatalogController
  *
  * Public (non-admin) pipeline read endpoints must exist so the SDK can
  * resolve a pipeline by id or slug without `manage:AsrPipeline` privileges.
@@ -10,11 +10,11 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { PATH_METADATA, METHOD_METADATA } from '@nestjs/common/constants';
 import { NotFoundException, RequestMethod } from '@nestjs/common';
-import { AudioPipelinePublicController } from '../audio-pipeline-public.controller';
+import { AudioPipelineCatalogController } from '../audio-pipeline-catalog.controller';
 
-describe('AudioPipelinePublicController', () => {
+describe('AudioPipelineCatalogController', () => {
   let pipelineService: any;
-  let controller: AudioPipelinePublicController;
+  let controller: AudioPipelineCatalogController;
 
   beforeEach(() => {
     pipelineService = {
@@ -22,16 +22,16 @@ describe('AudioPipelinePublicController', () => {
       getById: vi.fn(),
       getBySlug: vi.fn(),
     };
-    controller = new AudioPipelinePublicController(pipelineService);
+    controller = new AudioPipelineCatalogController(pipelineService);
   });
 
   it('class-level @Controller path stays audio/pipelines', () => {
-    const path = Reflect.getMetadata(PATH_METADATA, AudioPipelinePublicController);
+    const path = Reflect.getMetadata(PATH_METADATA, AudioPipelineCatalogController);
     expect(path).toBe('audio/pipelines');
   });
 
   it('exposes GET :id (fetchById)', () => {
-    const handler = (AudioPipelinePublicController.prototype as any).fetchById;
+    const handler = (AudioPipelineCatalogController.prototype as any).fetchById;
     expect(typeof handler).toBe('function');
 
     const path = Reflect.getMetadata(PATH_METADATA, handler);
@@ -41,7 +41,7 @@ describe('AudioPipelinePublicController', () => {
   });
 
   it('exposes GET slug/:slug (fetchBySlug)', () => {
-    const handler = (AudioPipelinePublicController.prototype as any).fetchBySlug;
+    const handler = (AudioPipelineCatalogController.prototype as any).fetchBySlug;
     expect(typeof handler).toBe('function');
 
     const path = Reflect.getMetadata(PATH_METADATA, handler);

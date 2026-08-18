@@ -11,6 +11,44 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### BREAKING — TASK-760 (business-plane URI normalization)
+
+Thirteen business-plane prefixes were renamed and one controller class was
+renamed. **Every retired path answers `308 Permanent Redirect` for ONE
+release**; `ALL-2.0.0` deletes the shims, after which they 404.
+
+308 specifically, never 301/302: RFC 7231 §6.4.2/§6.4.3 permit a client
+following a 301/302 to rewrite a POST into a GET, which silently drops the
+request body. 308 (RFC 7538) preserves method and body.
+
+| Retired | New |
+|---|---|
+| `user/me/{preferences,settings,departments}` | `users/me/{…}` |
+| `tenant/me[/config]` | `tenants/me[/config]` |
+| `tenant/me/context-schema` | `tenants/me/context-schema` |
+| `entitlements/me` | `tenants/me/entitlements` |
+| `billing/me/{invoices[/:id],spend}` | `tenants/me/{invoices[/:id],spend}` |
+| `usage/me/{summary,burndown}` | `tenants/me/usage-{summary,burndown}` |
+| `voice-profile[/…]` | `voice-profiles[/…]` |
+| `rbac/check` · `rbac/check/bulk` | `users/:id/permission-checks[/bulk]` |
+| `rbac/check/my-permissions` | `users/me/permission-checks` |
+| `ai/guardrail/analyze` | `safety-checks` |
+| `ai/nlp/{entities,diagnosis,topic,intent}` | `text-analyses/{…}` |
+| `text/…` | `text-generations/…` |
+
+Two self aliases, not one: `users/me/**` is USER-owned, `tenants/me/**` is
+TENANT-owned (`read:Tenant`, CLS tenant). Under an API key that distinction is
+load-bearing — `users/me` resolves to the key's bound user, `tenants/me` to the
+key's tenant.
+
+Unchanged on purpose: `speech/*` (its backing service is `apps/tts`, so the
+prefix already names a capability), `users/password-reset/*`, `audio/pipelines/*`,
+and the frozen v1 compat surfaces `api/smr/api/v1`, `api/stt` and `ws /stt`.
+
+Also renamed, class only — `AudioPipelinePublicController` →
+`AudioPipelineCatalogController`. It never carried `@Public()`; the path
+`audio/pipelines` is unchanged.
+
 ### Added — TASK-302 Stream D (optimistic locking on config writes)
 
 A new RFC 7232 `ETag` / `If-Match` contract on admin-edited config writes,

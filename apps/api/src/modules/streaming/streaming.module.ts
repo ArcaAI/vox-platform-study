@@ -24,6 +24,7 @@ import { TenantOwnedResourceModule } from '../../common';
 import { AdminTranscriptionJobController } from './admin-transcription-job.controller';
 import { SessionRemovalRetryService } from './session-removal-retry.service';
 import { TextProxyController } from './text-proxy.controller';
+import { TextProxyRedirectShimController } from './text-proxy-redirect.shim.controller';
 import { SttWsGateway } from './stt-ws.gateway';
 import { TranscriptionJobController } from './transcription-job.controller';
 
@@ -87,7 +88,7 @@ import { TranscriptionJobController } from './transcription-job.controller';
     // ungated) repository row directly.
     DnaWritingStyleServiceModule,
   ],
-  controllers: [TranscriptionJobController, AdminTranscriptionJobController, TextProxyController],
+  controllers: [TranscriptionJobController, AdminTranscriptionJobController, TextProxyController, TextProxyRedirectShimController],
   // SessionRemovalRetryService resolves
   // `StreamingSessionService` from StreamingSessionServiceModule above and
   // `IRedisCacheService` from the @Global() RedisCacheModule registration.

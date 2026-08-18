@@ -1,6 +1,6 @@
 /**
  * Agent Playground Guardrails tab. fetch is stubbed at the network
- * boundary; covers the idle prompt, the analyze flow (POST to the ai/guardrail
+ * boundary; covers the idle prompt, the analyze flow (POST to the safety-checks
  * proxy), and the safe/unsafe verdict with issues + confidence.
  */
 
@@ -58,7 +58,7 @@ describe('GuardrailsTab', () => {
     expect(screen.getByText(/confidence 91%/i)).toBeDefined();
 
     await waitFor(() => {
-      const call = calls.find((c) => c.url === '/api/hope/ai/guardrail/analyze');
+      const call = calls.find((c) => c.url === '/api/hope/safety-checks');
       expect(call?.method).toBe('POST');
       expect(call?.body).toEqual({ text: 'Patient MRN 12345', guardrailType: 'pii_detection' });
     });

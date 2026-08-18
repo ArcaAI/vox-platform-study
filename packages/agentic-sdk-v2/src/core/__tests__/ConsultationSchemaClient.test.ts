@@ -23,7 +23,7 @@ describe('fetchConsultationSchema', () => {
     apiClient = new AgenticClient({ baseUrl: 'http://test', apiKey: 'key' }, logger);
   });
 
-  it('parses a configured tenant bundle from GET /tenant/me/context-schema', async () => {
+  it('parses a configured tenant bundle from GET /tenants/me/context-schema', async () => {
     const raw = {
       schemaId: 'schema-1',
       slug: 'default',
@@ -41,7 +41,7 @@ describe('fetchConsultationSchema', () => {
     expect(bundle.schemaId).toBe('schema-1');
     expect(bundle.contextSchemaVersionId).toBe('version-2');
     expect(bundle.etag).toBe('"2"');
-    expect(mockFetch).toHaveBeenCalledWith('http://test/tenant/me/context-schema', expect.anything());
+    expect(mockFetch).toHaveBeenCalledWith('http://test/tenants/me/context-schema', expect.anything());
   });
 
   it('resolves to the unconfigured bundle (never throws) on a 500', async () => {
@@ -78,6 +78,6 @@ describe('fetchConsultationSchema', () => {
 
     await fetchConsultationSchema(apiClient, logger, { departmentId: 'dept-1' });
 
-    expect(mockFetch).toHaveBeenCalledWith('http://test/tenant/me/context-schema?departmentId=dept-1', expect.anything());
+    expect(mockFetch).toHaveBeenCalledWith('http://test/tenants/me/context-schema?departmentId=dept-1', expect.anything());
   });
 });

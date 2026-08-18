@@ -39,8 +39,8 @@ describe('isAdminPlanePath', () => {
     expect(isAdminPlanePath('/consultations')).toBe(false);
     expect(isAdminPlanePath('/dna-writing-styles/mine')).toBe(false);
     expect(isAdminPlanePath('/audio/pipelines')).toBe(false); // read plane
-    expect(isAdminPlanePath('/tenant/me/config')).toBe(false); // @Authorize() route
-    expect(isAdminPlanePath('/user/me/settings')).toBe(false);
+    expect(isAdminPlanePath('/tenants/me/config')).toBe(false); // @Authorize() route
+    expect(isAdminPlanePath('/users/me/settings')).toBe(false);
     expect(isAdminPlanePath('/auth/impersonate')).toBe(false);
     expect(isAdminPlanePath('/administrators')).toBe(false); // not a /admin/ segment
   });

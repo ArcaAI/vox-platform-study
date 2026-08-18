@@ -1,7 +1,7 @@
 /**
  * Optimistic-locking e2e.
  *
- * Proves that two concurrent PATCHes against `/api/v1/tenant/me/config`
+ * Proves that two concurrent PATCHes against `/api/v1/tenants/me/config`
  * carrying the same `expectedVersion` produce a clean winner/loser pair:
  * one returns 200 with `version + 1`, the other returns 412 Precondition
  * Failed carrying `currentVersion` so the client can replay against the
@@ -28,7 +28,7 @@ import { test, expect, request as playwrightRequest } from '@playwright/test';
 import { createTestDataRegistry, loginSeededUsers, cleanupTestData, type TestDataRegistry } from '../../../../tests/helpers';
 
 // Hit the admin-tenants/configs route with super-admin credentials so we
-// can target a specific non-GLOBAL tenant. Picking `/tenant/me/config`
+// can target a specific non-GLOBAL tenant. Picking `/tenants/me/config`
 // would require a non-super-admin token bound to a non-GLOBAL tenant —
 // the test seed's `tenant_admin` is bound to `__GLOBAL__` and the Phase 0
 // guard rightly rejects writes to `__GLOBAL__` from non-super-admins.
@@ -71,7 +71,7 @@ test.describe(`Optimistic locking — PATCH /admin/tenants/configs/${TENANT_KEY}
     const getRes = await request.get(PATH, {
       headers: { Authorization: `Bearer ${superAdminToken}` },
     });
-    expect(getRes.status(), 'tenant_admin must be able to read /tenant/me/config').toBe(200);
+    expect(getRes.status(), 'tenant_admin must be able to read /tenants/me/config').toBe(200);
     const body = (await getRes.json()) as { data: ConfigRow[] };
 
     // Prefer a known-editable, non-locked setting; fall back to any row
@@ -186,7 +186,7 @@ test.describe(`Optimistic locking — PATCH /admin/tenants/configs/${TENANT_KEY}
 // The body-field `expectedVersion` is NOT a substitute here — that's the
 // service-to-service fallback for routes that don't opt into the header
 // contract; once a route opts in, the header is mandatory.
-test.describe(`@RequiresIfMatch contract — PATCH /tenant/me/config (Stream D Phase D)`, () => {
+test.describe(`@RequiresIfMatch contract — PATCH /tenants/me/config (Stream D Phase D)`, () => {
   let superAdminToken: string;
 
   test.beforeAll(async ({ request }) => {
@@ -200,7 +200,7 @@ test.describe(`@RequiresIfMatch contract — PATCH /tenant/me/config (Stream D P
     // pipeline BEFORE the controller body runs. Any authenticated request
     // without `If-Match` to a `@RequiresIfMatch()`-annotated route must
     // 428, regardless of whether `expectedVersion` is in the body.
-    const res = await request.patch('/api/v1/tenant/me/config', {
+    const res = await request.patch('/api/v1/tenants/me/config', {
       headers: { Authorization: `Bearer ${superAdminToken}` },
       data: [{ id: 'placeholder-id-doesnt-matter', value: 'x', expectedVersion: 1 }],
     });
@@ -219,7 +219,7 @@ test.describe(`@RequiresIfMatch contract — PATCH /tenant/me/config (Stream D P
     // (tenant context, locked-row check, OCC conflict) is OUT of scope
     // for D.3 — those are exercised by the C.5/C.6 e2e and the D.3.2
     // header-takes-precedence test below.
-    const res = await request.patch('/api/v1/tenant/me/config', {
+    const res = await request.patch('/api/v1/tenants/me/config', {
       headers: {
         Authorization: `Bearer ${superAdminToken}`,
         'If-Match': '"1"',
@@ -232,7 +232,7 @@ test.describe(`@RequiresIfMatch contract — PATCH /tenant/me/config (Stream D P
   });
 
   test('PATCH with malformed If-Match (no quotes) returns 400', async ({ request }) => {
-    const res = await request.patch('/api/v1/tenant/me/config', {
+    const res = await request.patch('/api/v1/tenants/me/config', {
       headers: {
         Authorization: `Bearer ${superAdminToken}`,
         'If-Match': '7',
@@ -245,7 +245,7 @@ test.describe(`@RequiresIfMatch contract — PATCH /tenant/me/config (Stream D P
   test('PATCH with weak If-Match (W/"7") returns 400', async ({ request }) => {
     // RFC 7232 §2.3.2: weak comparators are not allowed for `If-Match`.
     // The extractor rejects them as 400.
-    const res = await request.patch('/api/v1/tenant/me/config', {
+    const res = await request.patch('/api/v1/tenants/me/config', {
       headers: {
         Authorization: `Bearer ${superAdminToken}`,
         'If-Match': 'W/"7"',

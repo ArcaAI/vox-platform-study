@@ -1,5 +1,5 @@
 /**
- * Text-generation playground calls (matrix row 38) over the `text/*` gateway
+ * Text-generation playground calls (matrix row 38) over the `text-generations/*` gateway
  * proxy. Bodies go through to the Python service verbatim — keep them
  * snake_case exactly as typed in ./types.ts.
  */
@@ -19,7 +19,7 @@ import type {
 
 /** Tenant catalog by default; `tenantKey: '__GLOBAL__'` is SUPER_ADMIN-only (403 otherwise). */
 export function listProviders(tenantKey?: string): Promise<TextProvider[]> {
-  return getJson('text/providers', tenantKey ? { tenantKey } : undefined);
+  return getJson('text-generations/providers', tenantKey ? { tenantKey } : undefined);
 }
 
 /**
@@ -32,7 +32,7 @@ export function listPromptTemplates(params?: ListPromptTemplatesParams): Promise
 }
 
 export function listGuardrailProviders(tenantKey?: string): Promise<TextProvider[]> {
-  return getJson('text/guardrail-providers', tenantKey ? { tenantKey } : undefined);
+  return getJson('text-generations/guardrail-providers', tenantKey ? { tenantKey } : undefined);
 }
 
 /**
@@ -42,20 +42,20 @@ export function listGuardrailProviders(tenantKey?: string): Promise<TextProvider
  * them — and the service fails CLOSED with 422 when nothing resolves.
  */
 export function generateText(body: GenerateTextRequest): Promise<GenerateOutcome> {
-  return postJson('text/generate', body);
+  return postJson('text-generations/generate', body);
 }
 
 /** Server-side prompt assembly; `debug: true` is admin-only (403 otherwise). */
 export function generateAssembled(body: AssembledGenerateRequest): Promise<AssembledGenerateResponse> {
-  return postJson('text/generate/assembled', body);
+  return postJson('text-generations/generate/assembled', body);
 }
 
 export function getTask(taskId: string): Promise<TextTask> {
-  return getJson(`text/tasks/${encodeURIComponent(taskId)}`);
+  return getJson(`text-generations/tasks/${encodeURIComponent(taskId)}`);
 }
 
 export function cancelTask(taskId: string): Promise<TextTask> {
-  return postJson(`text/tasks/${encodeURIComponent(taskId)}/cancel`);
+  return postJson(`text-generations/tasks/${encodeURIComponent(taskId)}/cancel`);
 }
 
 /**
@@ -64,7 +64,7 @@ export function cancelTask(taskId: string): Promise<TextTask> {
  * ticket. Streams never traverse the BFF proxy.
  */
 export function taskStreamPath(taskId: string): string {
-  return `text/tasks/${encodeURIComponent(taskId)}/stream`;
+  return `text-generations/tasks/${encodeURIComponent(taskId)}/stream`;
 }
 
 /**

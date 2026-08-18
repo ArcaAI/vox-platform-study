@@ -101,7 +101,6 @@ describe('Unchanged controller paths (no rename needed)', () => {
     // only the two CASL-gated `/services` routes off it, into
     // `AdminHealthServicesController` (asserted below).
     ['health/health.controller.ts', 'health'],
-    ['rbac/permission-check.controller.ts', 'rbac/check'],
     ['storage/storage.controller.ts', 'storage'],
   ];
 
@@ -195,7 +194,7 @@ describe('Complete controller inventory', () => {
     // plane. HARD MOVE: the pre-move prefixes are gone, not aliased.
     ['monitoring/monitoring.controller.ts', 'admin/monitoring'],
     ['health/admin-health-services.controller.ts', 'admin/health/services'],
-    ['rbac/permission-check.controller.ts', 'rbac/check'],
+    ['rbac/permission-check.controller.ts', 'users/me/permission-checks'],
     ['storage/storage.controller.ts', 'storage'],
   ];
 
@@ -229,6 +228,126 @@ describe('Complete controller inventory', () => {
       const path = extractControllerPath(source);
       expect(path).not.toBeNull();
       expect(path).not.toContain('//');
+    }
+  });
+});
+
+// ─── TASK-760 — business-plane URI normalization ─────────────────────────
+//
+// Every entry here is a BREAKING wire change. The old prefix must be gone
+// from the moved controller (it survives only on a dedicated 308 shim
+// controller, asserted separately below).
+
+describe('TASK-760 business-plane route renames', () => {
+  const cases: [string, string, string][] = [
+    ['user/controllers/user-preferences.controller.ts', 'users/me/preferences', 'user/me/preferences'],
+    ['user/controllers/user-settings.controller.ts', 'users/me/settings', 'user/me/settings'],
+    ['user/controllers/user-departments-me.controller.ts', 'users/me/departments', 'user/me/departments'],
+    ['tenant/my-tenant.controller.ts', 'tenants/me', 'tenant'],
+    ['billing/my-billing.controller.ts', 'tenants/me', 'billing'],
+    ['admin-usage/my-usage.controller.ts', 'tenants/me', 'usage'],
+    ['entitlements/my-entitlements.controller.ts', 'tenants/me', 'entitlements'],
+    ['voice-profile/voice-profile.controller.ts', 'voice-profiles', 'voice-profile'],
+    ['rbac/permission-check.controller.ts', 'users/me/permission-checks', 'rbac/check'],
+    ['ai-inference/ai-inference.controller.ts', 'text-analyses', 'ai'],
+    ['streaming/text-proxy.controller.ts', 'text-generations', 'text'],
+  ];
+
+  it.each(cases)('%s should use @Controller("%s")', (file, expectedPath) => {
+    const source = readController(file);
+    const actual = extractControllerPath(source);
+    expect(actual).toBe(expectedPath);
+  });
+
+  it.each(cases)('%s should NOT still declare the retired path "%s"', (file, _expected, oldPath) => {
+    const source = readController(file);
+    expect(source).not.toMatch(new RegExp(`@Controller\\(\\s*['"]${oldPath.replace(/\//g, '\\/')}['"]\\s*\\)`));
+  });
+
+  // The second (tenant-scoped) controller inside the context-schema file.
+  it('MyTenantContextSchemaController moves to tenants/me/context-schema', () => {
+    const source = readController('consultation-context-schema/consultation-context-schema.controller.ts');
+    expect(source).toContain("@Controller('tenants/me/context-schema')");
+    expect(source).not.toContain("@Controller('tenant/me/context-schema')");
+  });
+
+  it('the ai prefix is split into safety-checks + text-analyses', () => {
+    const safety = readController('ai-inference/safety-check.controller.ts');
+    expect(extractControllerPath(safety)).toBe('safety-checks');
+    const nlp = readController('ai-inference/ai-inference.controller.ts');
+    expect(nlp).not.toContain("@Post('nlp/");
+    expect(nlp).not.toContain("@Post('guardrail/analyze')");
+  });
+
+  it('speech is deliberately NOT moved (decision D-3 — apps/tts, already capability-shaped)', () => {
+    const source = readController('speech/speech-proxy.controller.ts');
+    expect(extractControllerPath(source)).toBe('speech');
+  });
+});
+
+describe('TASK-760 redirect shims answer 308 on every retired prefix', () => {
+  const shims: [string, string][] = [
+    ['user/controllers/user-me-redirect.shim.controller.ts', 'user/me'],
+    ['tenant/my-tenant-redirect.shim.controller.ts', 'tenant'],
+    ['billing/my-billing-redirect.shim.controller.ts', 'billing'],
+    ['admin-usage/my-usage-redirect.shim.controller.ts', 'usage'],
+    ['entitlements/my-entitlements-redirect.shim.controller.ts', 'entitlements'],
+    ['voice-profile/voice-profile-redirect.shim.controller.ts', 'voice-profile'],
+    ['rbac/permission-check-redirect.shim.controller.ts', 'rbac/check'],
+    ['consultation-context-schema/consultation-context-schema-redirect.shim.controller.ts', 'tenant/me/context-schema'],
+    ['ai-inference/ai-inference-redirect.shim.controller.ts', 'ai'],
+    ['streaming/text-proxy-redirect.shim.controller.ts', 'text'],
+  ];
+
+  it.each(shims)('%s keeps the retired prefix "%s"', (file, expectedPath) => {
+    const source = readController(file);
+    expect(extractControllerPath(source)).toBe(expectedPath);
+  });
+
+  it.each(shims)('%s redirects with 308 only (never 301/302/307)', (file) => {
+    const source = readController(file);
+    expect(source).toContain('redirect308');
+    expect(source).not.toMatch(/\b30[127]\b/);
+  });
+
+  it.each(shims)('%s names the release that deletes it', (file) => {
+    const source = readController(file);
+    expect(source).toMatch(/DELETE IN ALL-2\.0\.0/);
+  });
+});
+
+describe('TASK-760 class rename — AudioPipelinePublicController lied about @Public()', () => {
+  it('exports AudioPipelineCatalogController, not AudioPipelinePublicController', () => {
+    const source = readController('pipeline/audio-pipeline-catalog.controller.ts');
+    expect(source).toContain('export class AudioPipelineCatalogController');
+    expect(source).not.toContain('AudioPipelinePublicController');
+  });
+
+  it('keeps PATH_METADATA at audio/pipelines — the class rename must not move the path', async () => {
+    const { AudioPipelineCatalogController } = await import('../modules/pipeline/audio-pipeline-catalog.controller');
+    expect(Reflect.getMetadata(PATH_METADATA, AudioPipelineCatalogController)).toBe('audio/pipelines');
+  });
+});
+
+describe('TASK-760 scope fence — compat surfaces are untouched', () => {
+  const frozen: [string, string][] = [
+    ['text-compat/text-compat.controller.ts', 'api/smr/api/v1'],
+    ['stt-compat/stt-compat.controller.ts', 'api/stt'],
+  ];
+
+  it.each(frozen)('%s still declares the frozen prefix "%s"', (file, expectedPath) => {
+    const source = readController(file);
+    expect(extractControllerPath(source)).toBe(expectedPath);
+  });
+
+  it('the stt-compat websocket gateway still binds ws /stt', () => {
+    const source = readController('stt-compat/stt-compat.gateway.ts');
+    expect(source).toMatch(/path:\s*'\/stt'/);
+  });
+
+  it('no compat file carries a redirect shim', () => {
+    for (const file of ['text-compat/text-compat.controller.ts', 'stt-compat/stt-compat.controller.ts']) {
+      expect(readController(file)).not.toContain('redirect308');
     }
   });
 });

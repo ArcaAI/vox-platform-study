@@ -13,7 +13,7 @@ function jsonResponse(body: unknown, init: { ok?: boolean; status?: number; stat
 }
 
 describe('fetchConsultationSchemaBundle', () => {
-  it('sends Authorization + X-Tenant-Id and hits the tenant/me/context-schema endpoint', async () => {
+  it('sends Authorization + X-Tenant-Id and hits the tenants/me/context-schema endpoint', async () => {
     const fetchImpl = vi.fn().mockResolvedValue(jsonResponse({ schemaId: null, slug: null, name: null, versionNumber: null, contextSchemaVersionId: null, checksum: null, definition: null, etag: 'none' }));
 
     await fetchConsultationSchemaBundle({
@@ -25,7 +25,7 @@ describe('fetchConsultationSchemaBundle', () => {
 
     expect(fetchImpl).toHaveBeenCalledTimes(1);
     const [url, init] = fetchImpl.mock.calls[0] as [string, RequestInit];
-    expect(url).toBe('http://localhost:8868/api/v1/tenant/me/context-schema');
+    expect(url).toBe('http://localhost:8868/api/v1/tenants/me/context-schema');
     expect((init.headers as Record<string, string>).Authorization).toBe('Bearer jwt-token');
     expect((init.headers as Record<string, string>)['X-Tenant-Id']).toBe('tenant-1');
   });
@@ -41,7 +41,7 @@ describe('fetchConsultationSchemaBundle', () => {
     });
 
     const [url] = fetchImpl.mock.calls[0] as [string];
-    expect(url).toBe('http://localhost:8868/api/v1/tenant/me/context-schema');
+    expect(url).toBe('http://localhost:8868/api/v1/tenants/me/context-schema');
   });
 
   it('appends departmentId as a query parameter when provided', async () => {
@@ -56,7 +56,7 @@ describe('fetchConsultationSchemaBundle', () => {
     });
 
     const [url] = fetchImpl.mock.calls[0] as [string];
-    expect(url).toBe('http://localhost:8868/api/v1/tenant/me/context-schema?departmentId=dept-1');
+    expect(url).toBe('http://localhost:8868/api/v1/tenants/me/context-schema?departmentId=dept-1');
   });
 
   it('parses a fully populated bundle', async () => {

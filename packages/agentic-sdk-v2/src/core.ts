@@ -664,7 +664,7 @@ export { PersonalizationManager, type PreferencesChangeCallback } from './core/P
 //
 // In-browser speaker-embedding provider (Transformers.js WavLM `*-sv`) that
 // sits ALONGSIDE the backend `useVoiceEmbedding`. Persists via the existing
-// `/voice-profile/enroll` path; caches the local embedding tenant/user-scoped;
+// `/voice-profiles/enroll` path; caches the local embedding tenant/user-scoped;
 // "quick test" = cosine similarity vs the enrolled embedding(s).
 
 export { useLocalVoiceEmbedding } from './hooks';

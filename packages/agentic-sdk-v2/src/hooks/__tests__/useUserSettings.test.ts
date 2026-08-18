@@ -64,7 +64,7 @@ describe('useUserSettings (reduced surface)', () => {
       });
 
       expect(mockGet).toHaveBeenCalledWith(USER_SETTINGS_ENDPOINTS.list);
-      expect(mockGet).toHaveBeenCalledWith('/user/me/settings');
+      expect(mockGet).toHaveBeenCalledWith('/users/me/settings');
       expect(result.current.settings).toEqual(data);
       expect(resp).toEqual(data);
     });
@@ -120,7 +120,7 @@ describe('useUserSettings (reduced surface)', () => {
   });
 
   describe('updateByKey', () => {
-    it('PATCHes /user/me/settings/:namespace/:key with the value payload', async () => {
+    it('PATCHes /users/me/settings/:namespace/:key with the value payload', async () => {
       const updated = { id: 'us-1', namespace: 'display', key: 'theme', value: 'dark' };
       mockPatch.mockResolvedValue(updated);
       const { result } = renderHook(() => useUserSettings());
@@ -131,7 +131,7 @@ describe('useUserSettings (reduced surface)', () => {
       });
 
       expect(mockPatch).toHaveBeenCalledWith(USER_SETTINGS_ENDPOINTS.updateByKey('display', 'theme'), { value: 'dark' });
-      expect(mockPatch).toHaveBeenCalledWith('/user/me/settings/display/theme', { value: 'dark' });
+      expect(mockPatch).toHaveBeenCalledWith('/users/me/settings/display/theme', { value: 'dark' });
       expect(resp).toEqual(updated);
     });
 
@@ -143,7 +143,7 @@ describe('useUserSettings (reduced surface)', () => {
         await result.current.updateByKey('flags', 'features', { beta: true, level: 3 });
       });
 
-      expect(mockPatch).toHaveBeenCalledWith('/user/me/settings/flags/features', { value: { beta: true, level: 3 } });
+      expect(mockPatch).toHaveBeenCalledWith('/users/me/settings/flags/features', { value: { beta: true, level: 3 } });
     });
 
     it('encodes special characters in namespace and key', async () => {
@@ -155,7 +155,7 @@ describe('useUserSettings (reduced surface)', () => {
       });
 
       const [endpoint] = mockPatch.mock.calls[0];
-      expect(endpoint).toBe('/user/me/settings/a%2Fns/k%3D1');
+      expect(endpoint).toBe('/users/me/settings/a%2Fns/k%3D1');
     });
 
     it('sets error on failure', async () => {

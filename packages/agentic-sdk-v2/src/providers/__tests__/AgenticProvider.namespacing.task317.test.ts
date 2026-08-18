@@ -144,7 +144,7 @@ function meHandler(me: { id?: string; tenantId?: string; departmentId?: string }
     if (url.endsWith('/auth/me')) return jsonResponse(me);
     // Array-less payload → parseTenantConfig yields no defaultSttModel, so the
     // registry does NOT auto-select/persist at mount (keeps pre-login clean).
-    if (url.includes('/tenant/me')) return jsonResponse({ defaultSttModel: null, features: {} });
+    if (url.includes('/tenants/me')) return jsonResponse({ defaultSttModel: null, features: {} });
     return jsonResponse({});
   };
 }

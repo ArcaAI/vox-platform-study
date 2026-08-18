@@ -187,6 +187,23 @@ Make the requester binding real, in this order:
 - Rename `AudioPipelinePublicController` — it is not public.
 - **There is no redirect convention in `apps/api`** — zero `@Redirect`, zero 301/308, zero `deprecated: true`. The one-release-redirect rule is a Next.js page convention (`13-nextjs-apps.md`) with no gateway equivalent. Treat a hard move as the default and make any deprecation window an explicit owner decision.
 
+**Status (TASK-760, 2026-08-18) — SHIPPED, with the owner decisions recorded here rather than by editing the finding above.**
+
+| # | Decision | Outcome |
+|---|---|---|
+| Scope | Full normalization **with** 308 redirect shims, not a hard move | Each shim carries `// TASK-760 redirect shim — DELETE IN ALL-2.0.0` and is deleted by that release. This settles the "no redirect convention in `apps/api`" gap above: there is one now, and `src/common/redirect-shim.ts` is its single implementation. |
+| D-1 | **Two aliases, not one** | `/users/me/**` for user-owned surfaces; `/tenants/me/**` for tenant-owned (`tenants/me`, `/config`, `/context-schema`, `/entitlements`, `/invoices[/:id]`, `/spend`, `/usage-summary`, `/usage-burndown`). A single `users/me` alias was rejected: the bare surfaces are `read:Tenant`/CLS-tenant-scoped. |
+| D-2 | `ai` is **split**; `text` is renamed | `ai/guardrail/analyze` → `safety-checks` (new `SafetyCheckController`); `ai/nlp/*` → `text-analyses/*`; `text` → `text-generations`. `ai` was one prefix over two capabilities, named after neither. |
+| D-3 | **`speech` does NOT move** | Its backing service is `apps/tts`, so the prefix is already capability-shaped — it is the target naming style, not an offender. The finding's grouping of `speech` with `ai`/`text` is corrected here. |
+| D-4 | Redirects are deleted in **`ALL-2.0.0`** | Named in every shim comment, per the one-release convention. |
+| rbac | `rbac/check` → two resource collections | `POST /users/me/permission-checks` (the caller's effective permission set) and `POST /users/:id/permission-checks[/bulk]` (a check against a named user; another user still needs `manage:User`). The retired path carried no user in the URI, so its 308 resolves the CALLER into the by-id collection and the body's optional `userId` rides through unchanged — behaviour is byte-identical. |
+| D-E | `AudioPipelinePublicController` → `AudioPipelineCatalogController` | Class only; `audio/pipelines` is unchanged. |
+
+The route-collision hazard the finding names is real and is pinned by
+`apps/api/src/modules/user/controllers/__tests__/users-me-route-precedence.test.ts`, which drives
+real HTTP through both the correct and the WRONG registration order so the failure mode is
+demonstrated, not merely guarded against.
+
 ### 3.6 Enforce in CI, not review
 
 Every rule above is mechanically checkable. Add boot-time/lint gates: admin prefix ⇒ no `@RequiredScopes`; internal prefix ⇒ service-token guard; business prefix ⇒ either `@RequiredScopes` or a justified `@ForbidApiKey()`. The deny-by-default route audit already proves this pattern works.
@@ -216,5 +233,5 @@ Every rule above is mechanically checkable. Add boot-time/lint gates: admin pref
 | 4 | ~~§3.1 step 2 — `@ForbidApiKey()` across admin + reserve scopes + boot audit~~ — **DONE** (TASK-757) | Medium; 3 e2e specs to rewrite |
 | 5 | ~~§2.5 prefix moves (`monitoring`, `health/services`)~~ — **DONE** (TASK-759). Hard move, no redirect: verified there is no `@Redirect`/301/308/`deprecated: true` precedent anywhere in `apps/api`, and no consumer outside this repo. | Low; pre-launch |
 | 6 | ~~§3.3 A1 rollout with exemption list~~ — **DONE** (TASK-758); the list is down to 3 controllers | Low |
-| 7 | §3.5 business-plane normalization | Low, broad diff |
+| 7 | ~~§3.5 business-plane normalization~~ — **DONE** (TASK-760) | Low, broad diff |
 | 8 | Compat surfaces (A3) | Deferred — dedicated deprecation ticket |
