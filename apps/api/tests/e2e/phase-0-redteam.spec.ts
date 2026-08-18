@@ -30,11 +30,11 @@ test.describe('Phase 0 — Item 1+2: mass-assignment chain', () => {
     expect(tenantAdminLogin.status(), 'tenant_admin login failed').toBe(200);
     tenantAdminToken = (await tenantAdminLogin.json()).token;
 
-    // Defense-in-depth gated PATCH /tenant/me/config behind
+    // Defense-in-depth gated PATCH /tenants/me/config behind
     // `update:Tenant` — a DOCTOR token no longer reaches the ValidationPipe at
     // all (see the dedicated 403 test below), so the mass-assignment chain is
     // now proven through tenant_admin, the caller actually authorized to PATCH.
-    const configs = await request.get('/api/v1/tenant/me/config?limit=200&page=1', {
+    const configs = await request.get('/api/v1/tenants/me/config?limit=200&page=1', {
       headers: { Authorization: `Bearer ${tenantAdminToken}` },
     });
     expect(configs.status(), 'tenant config fetch failed').toBe(200);
@@ -48,8 +48,8 @@ test.describe('Phase 0 — Item 1+2: mass-assignment chain', () => {
   // A non-elevated end-user (DOCTOR) must never reach the
   // config write at all: the authorization guard rejects it before the
   // ValidationPipe (and therefore before mass-assignment checking) runs.
-  test('PATCH /tenant/me/config as a non-admin end-user is blocked with 403 (defense-in-depth)', async ({ request }) => {
-    const response = await request.patch('/api/v1/tenant/me/config', {
+  test('PATCH /tenants/me/config as a non-admin end-user is blocked with 403 (defense-in-depth)', async ({ request }) => {
+    const response = await request.patch('/api/v1/tenants/me/config', {
       headers: {
         Authorization: `Bearer ${doctorToken}`,
         'If-Match': '"1"',
@@ -59,12 +59,12 @@ test.describe('Phase 0 — Item 1+2: mass-assignment chain', () => {
     expect(response.status(), 'non-admin PATCH must be blocked before reaching mass-assignment validation').toBe(403);
   });
 
-  test('PATCH /tenant/me/config with extra fields (key, tenantId, locked) is rejected with 400', async ({ request }) => {
+  test('PATCH /tenants/me/config with extra fields (key, tenantId, locked) is rejected with 400', async ({ request }) => {
     // The route is guarded by @RequiresIfMatch, so a
     // valid strong-validator If-Match is required to clear the 428 gate and let
     // the request reach the ValidationPipe — which is where the mass-assignment
     // (smuggled key/locked/tenantId/defaultValue) is rejected with 400.
-    const response = await request.patch('/api/v1/tenant/me/config', {
+    const response = await request.patch('/api/v1/tenants/me/config', {
       headers: {
         Authorization: `Bearer ${tenantAdminToken}`,
         'If-Match': `"${tenantAdminConfigVersion}"`,
@@ -86,7 +86,7 @@ test.describe('Phase 0 — Item 1+2: mass-assignment chain', () => {
   });
 
   test('after rejection, the underlying setting is unchanged', async ({ request }) => {
-    const after = await request.get('/api/v1/tenant/me/config?limit=200&page=1', {
+    const after = await request.get('/api/v1/tenants/me/config?limit=200&page=1', {
       headers: { Authorization: `Bearer ${tenantAdminToken}` },
     });
     const body = await after.json();

@@ -131,11 +131,11 @@ function renderProvider() {
   return captured.api;
 }
 
-/** Bundles a `/tenant/me/context-schema` response for a given tenant + a small `meHandler`-shaped router. */
+/** Bundles a `/tenants/me/context-schema` response for a given tenant + a small `meHandler`-shaped router. */
 function handlerFor(me: { id?: string; tenantId?: string; departmentId?: string }, schemaVersionByTenant: Record<string, string>): FetchHandler {
   return async (url) => {
     if (url.endsWith('/auth/me')) return jsonResponse(me);
-    if (url.includes('/tenant/me/context-schema')) {
+    if (url.includes('/tenants/me/context-schema')) {
       contextSchemaCallCount += 1;
       const tenantId = me.tenantId ?? TENANT_A;
       const versionId = schemaVersionByTenant[tenantId];
@@ -151,7 +151,7 @@ function handlerFor(me: { id?: string; tenantId?: string; departmentId?: string 
         etag: `"${versionId}"`,
       });
     }
-    if (url.includes('/tenant/me/config')) return jsonResponse({ defaultSttModel: null, features: {} });
+    if (url.includes('/tenants/me/config')) return jsonResponse({ defaultSttModel: null, features: {} });
     return jsonResponse({});
   };
 }

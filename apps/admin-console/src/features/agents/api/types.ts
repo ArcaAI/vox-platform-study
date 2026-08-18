@@ -201,7 +201,7 @@ export interface PromptTestAck {
   assembledPrompt: string;
   /** Present on `mode: 'stream'` only. */
   taskId?: string;
-  /** Gateway SSE path (`text/tasks/<taskId>/stream`); `mode: 'stream'` only. */
+  /** Gateway SSE path (`text-generations/tasks/<taskId>/stream`); `mode: 'stream'` only. */
   streamUrl?: string;
 }
 
@@ -485,7 +485,7 @@ export interface UpdateDepartmentAgentRequest {
 
 // ---------------------------------------------------------------------------
 // Resolved consultation context schema — READ-ONLY, minimal
-// projection of `GET /tenant/me/context-schema`. `subscribedKinds`/`writeScope`
+// projection of `GET /tenants/me/context-schema`. `subscribedKinds`/`writeScope`
 // must be picked from HERE, never typed free-hand: the
 // server cross-checks every referenced key against exactly this resolved
 // definition and rejects an unknown one. Owned by this
@@ -500,7 +500,7 @@ export interface ResolvedContextEntry {
   primitive?: string;
 }
 
-/** `GET tenant/me/context-schema?departmentId=` (ConsultationContextSchemaBundleResponse). */
+/** `GET tenants/me/context-schema?departmentId=` (ConsultationContextSchemaBundleResponse). */
 export interface ResolvedContextSchemaBundle {
   schemaId: string | null;
   versionNumber: number | null;

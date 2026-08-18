@@ -1,6 +1,6 @@
 /**
  * Cross-tenant posture for the usage-analytics surface
- * (AdminUsageController `admin/usage/*` + MyUsageController `usage/me/*`),
+ * (AdminUsageController `admin/usage/*` + MyUsageController `tenants/me/usage-*`),
  * following the pattern (see `ai-task-defaults-cross-tenant.spec.ts`
  * and `task-615-billing-cross-tenant.spec.ts` for the canonical probe shape).
  *
@@ -15,7 +15,7 @@
  *      tenant admin gets 403 regardless of params — the "super-admin-only
  *      action" pattern from rule 05, distinct from 404-over-403.
  *
- * The tenant self-service twin (`usage/me/summary`) is positively probed for the
+ * The tenant self-service twin (`tenants/me/usage-summary`) is positively probed for the
  * tenant admin and negatively for the super admin (who is told to use the
  * `/admin/usage` endpoints — 400).
  *
@@ -26,7 +26,7 @@ import { test, expect } from '@playwright/test';
 import { SEEDED_USERS, DEFAULT_TENANT_KEY, loginUser } from '../../../../tests/helpers';
 
 const ADMIN_USAGE = '/api/v1/admin/usage';
-const MY_USAGE = '/api/v1/usage/me';
+const MY_USAGE = '/api/v1/tenants/me/usage';
 
 /** The tenant the GLOBAL admin acts on by default — foreign to the DEFAULT_TENANT_KEY tenant admin. */
 const FOREIGN_TENANT_KEY = 'ARCAAI';
@@ -98,21 +98,21 @@ test.describe('Usage-analytics cross-tenant posture', () => {
     expect(resp.status()).toBe(200);
   });
 
-  test('GET usage/me/summary — tenant admin reads its OWN usage -> 200, no foreign leak', async ({ request }) => {
-    const resp = await request.get(`${MY_USAGE}/summary`, { headers: bearer(tenantAdminToken) });
+  test('GET tenants/me/usage-summary — tenant admin reads its OWN usage -> 200, no foreign leak', async ({ request }) => {
+    const resp = await request.get(`${MY_USAGE}-summary`, { headers: bearer(tenantAdminToken) });
     expect(resp.status()).toBe(200);
     expect(JSON.stringify(await resp.json())).not.toContain(foreignTenantId);
   });
 
-  // `/usage/me/*` reads the CALLER's own tenant and nothing else
+  // `/tenants/me/usage-*` reads the CALLER's own tenant and nothing else
   // (`MyUsageController.ownTenantId()` reads the CLS tenant, with no `tenantId`
   // override and no by-id route). A super admin logs in against a working
   // tenant, so that context IS present and the read legitimately returns that
   // tenant's own usage — the 400 fires only when there is no tenant context at
   // all. What matters for the cross-tenant posture is that the foreign tenant
   // never appears, which is asserted here exactly as for the tenant admin.
-  test('GET usage/me/summary — super admin reads its WORKING tenant, never a foreign one', async ({ request }) => {
-    const resp = await request.get(`${MY_USAGE}/summary`, { headers: bearer(superAdminToken) });
+  test('GET tenants/me/usage-summary — super admin reads its WORKING tenant, never a foreign one', async ({ request }) => {
+    const resp = await request.get(`${MY_USAGE}-summary`, { headers: bearer(superAdminToken) });
     expect(resp.status()).toBe(200);
     expect(JSON.stringify(await resp.json())).not.toContain(foreignTenantId);
   });

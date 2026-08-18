@@ -13,6 +13,73 @@ _Nothing yet._
 
 ---
 
+## [3.0.0] — 2026-08-18
+
+### BREAKING — TASK-760 (business-plane URI normalization)
+
+Every gateway path the SDK publishes as an endpoint constant has been
+normalized. **This is a wire change, which is why it is a MAJOR** — the
+constants in `src/core/constants.ts` are a public export, so an integrator that
+imported them is affected even if it never wrote a path by hand.
+`@arcaai/vox-node` takes the same version with no code change (its only paths
+are the frozen `api/smr/api/v1` compat surface and `consultations/*`, neither
+of which moved).
+
+**The gateway answers `308 Permanent Redirect` on every retired path for ONE
+release** — `ALL-2.0.0` deletes the shims. 308 preserves method and body, so an
+un-upgraded client keeps working; a client still on the old paths after
+`ALL-2.0.0` will get 404s.
+
+| Retired path | New path | Why |
+|---|---|---|
+| `GET/PATCH /user/me/preferences` | `/users/me/preferences` | plural collection |
+| `GET /user/me/settings` | `/users/me/settings` | plural collection |
+| `PATCH /user/me/settings/:namespace/:key` | `/users/me/settings/:namespace/:key` | plural collection |
+| `GET /user/me/departments` | `/users/me/departments` | plural collection |
+| `GET /tenant/me` | `/tenants/me` | plural collection |
+| `GET/PATCH /tenant/me/config` | `/tenants/me/config` | plural collection |
+| `GET /tenant/me/context-schema` | `/tenants/me/context-schema` | plural collection |
+| `GET /entitlements/me` | `/tenants/me/entitlements` | one tenant self alias |
+| `GET /billing/me/invoices[/:id]` | `/tenants/me/invoices[/:id]` | one tenant self alias |
+| `GET /billing/me/spend` | `/tenants/me/spend` | one tenant self alias |
+| `GET /usage/me/summary` | `/tenants/me/usage-summary` | one tenant self alias |
+| `GET /usage/me/burndown` | `/tenants/me/usage-burndown` | one tenant self alias |
+| `POST /voice-profile/enroll` | `/voice-profiles/enroll` | plural collection |
+| `GET /voice-profile` | `/voice-profiles` | plural collection |
+| `PATCH /voice-profile/:id/{activate,deactivate}` | `/voice-profiles/:id/{activate,deactivate}` | plural collection |
+| `DELETE /voice-profile/:id` | `/voice-profiles/:id` | plural collection |
+| `POST /rbac/check` | `POST /users/:id/permission-checks` | verb-as-resource → resource |
+| `POST /rbac/check/bulk` | `POST /users/:id/permission-checks/bulk` | verb-as-resource → resource |
+| `POST /rbac/check/my-permissions` | `POST /users/me/permission-checks` | verb-as-resource → resource |
+| `POST /ai/guardrail/analyze` | `POST /safety-checks` | `ai` named neither capability it hosted |
+| `POST /ai/nlp/{entities,diagnosis,topic,intent}` | `POST /text-analyses/{…}` | ditto |
+| `POST /text/generate[/assembled]` | `/text-generations/generate[/assembled]` | `text` was the name of a service |
+| `GET /text/tasks/:id[/stream]` | `/text-generations/tasks/:id[/stream]` | ditto |
+| `POST /text/tasks/:id/cancel` | `/text-generations/tasks/:id/cancel` | ditto |
+| `GET /text/{providers,guardrail-providers}` | `/text-generations/{…}` | ditto |
+
+**Two self aliases, not one.** `/users/me/**` is for USER-owned surfaces;
+`/tenants/me/**` is for TENANT-owned ones. Billing, usage, entitlements and
+tenant config are `read:Tenant` and resolve from the CLS tenant — folding them
+under `users/me` would assert that a tenant's invoices belong to the calling
+user. Under an API key the distinction is load-bearing: `users/me` resolves to
+the key's BOUND USER, `tenants/me` to the key's TENANT.
+
+**Deliberately unchanged:** `/speech/*` (its backing service is `apps/tts`, so
+the prefix already names a capability, not a service), `/users/password-reset/*`,
+`/audio/pipelines/*`, and the frozen v1 compat surface `api/smr/api/v1`.
+
+### Migration
+
+Import the endpoint constants instead of writing literals — they moved with the
+gateway and nothing else in the SDK's public API changed:
+
+```ts
+import { MY_TENANT_ENDPOINTS, VOICE_EMBEDDING_ENDPOINTS, TEXT_ENDPOINTS } from '@arcaai/vox/core';
+```
+
+---
+
 ## [2.0.4] — 2026-08-05
 
 ### Added / Changed — TASK-612 (external-microphone / injected-stream hardening)

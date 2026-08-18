@@ -28,7 +28,7 @@ export interface TextTokenUsage {
   total_tokens: number;
 }
 
-/** SSE frame on GET text/tasks/:taskId/stream (SMR StreamChunk; named events). */
+/** SSE frame on GET text-generations/tasks/:taskId/stream (SMR StreamChunk; named events). */
 export interface TextStreamFrame {
   type: 'chunk' | 'reasoning' | 'meta' | 'done' | 'error' | 'usage';
   content?: string | null;
@@ -40,7 +40,7 @@ export interface TextStreamFrame {
  * consumer of an SMR generation job (LLM playground, prompt-template test).
  */
 export function taskStreamPath(taskId: string): string {
-  return `text/tasks/${encodeURIComponent(taskId)}/stream`;
+  return `text-generations/tasks/${encodeURIComponent(taskId)}/stream`;
 }
 
 /** Ticket scope — must match the route's `@StreamScope({ namespace: 'text_task' })`. */

@@ -83,8 +83,8 @@ function stubFetch(handler: (url: string) => Response | undefined): RecordedCall
       const url = String(input);
       const method = init?.method ?? 'GET';
       calls.push({ url, method });
-      // Best-effort per-user grid-layout persistence (`user/me/settings`) — no saved layout in tests.
-      if (url.includes('/user/me/settings')) return method === 'GET' ? Response.json([]) : Response.json({ ok: true });
+      // Best-effort per-user grid-layout persistence (`users/me/settings`) — no saved layout in tests.
+      if (url.includes('/users/me/settings')) return method === 'GET' ? Response.json([]) : Response.json({ ok: true });
       const response = handler(url);
       if (!response) throw new Error(`Unhandled fetch: ${method} ${url}`);
       return response;

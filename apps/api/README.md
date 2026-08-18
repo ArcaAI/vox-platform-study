@@ -51,7 +51,7 @@ The HOPE API Gateway serves as the central entry point for all client requests i
 
 - **AI Service Integration**
   - **STT (Speech-to-Text)**: Real-time audio transcription via the `streaming` module (`/api/v1/audio/...`)
-  - **Text (formerly SMR)**: Medical conversation summarization proxied by `TextProxyController` in the `streaming` module (`/api/v1/text/...`)
+  - **Text (formerly SMR)**: Medical conversation summarization proxied by `TextProxyController` in the `streaming` module (`/api/v1/text-generations/...`)
   - **NLP**: Entity extraction / medical terminology — downstream Python service (port 8864), health-monitored; no gateway proxy route
   - **Guardrail**: Safety/guardrail engine (port 8863) — health-monitored downstream
   - **Harness**: Clinical Documentation Harness (port 8866) — health-monitored downstream; admin/observability via `harness-admin` (`/api/v1/admin/harness/...`)
@@ -341,9 +341,9 @@ All public API endpoints follow the pattern `/api/v1/<domain>`:
 | Prefix                | Purpose                     | Example                            |
 | --------------------- | --------------------------- | ---------------------------------- |
 | `/api/v1/audio/...`   | STT (Speech-to-Text)        | `/api/v1/audio/transcription-jobs` |
-| `/api/v1/text/...`    | SMR (Summarization)         | `/api/v1/text/generate`            |
+| `/api/v1/text-generations/...`    | SMR (Summarization)         | `/api/v1/text-generations/generate`            |
 | `/api/v1/admin/...`   | Tenant admin endpoints      | `/api/v1/admin/settings`           |
-| `/api/v1/user/me/...` | Current user endpoints      | `/api/v1/user/me/settings`         |
+| `/api/v1/users/me/...` | Current user endpoints      | `/api/v1/users/me/settings`         |
 | `/internal/...`       | Internal service-to-service | `/internal/stt`                    |
 
 ### API Endpoints
@@ -385,7 +385,7 @@ WS     /stt                                    # WebSocket for real-time STT
 #### Text Service (formerly SMR)
 
 ```
-ALL  /api/v1/text/**                      # TextProxyController (modules/streaming) → Text service (:8862)
+ALL  /api/v1/text-generations/**                      # TextProxyController (modules/streaming) → Text service (:8862)
 ```
 
 > **NLP** is a downstream Python service (`:8864`) that the gateway health-monitors via `/api/v1/health/services`; it has **no** gateway proxy route or WebSocket.
@@ -426,8 +426,8 @@ ALL                   /api/v1/admin/dna-writing-styles/... # DNA writing styles 
 #### User Self-Service Endpoints
 
 ```
-GET/PATCH /api/v1/user/me/...              # User preferences
-GET/PATCH /api/v1/user/me/settings/...     # User settings
+GET/PATCH /api/v1/users/me/...              # User preferences
+GET/PATCH /api/v1/users/me/settings/...     # User settings
 ```
 
 ### Authentication
@@ -481,8 +481,8 @@ apps/api/
 │   │   ├── streaming/            # STT audio (/api/v1/audio) + SMR proxy (/api/v1/text) + STT WebSocket
 │   │   ├── tenant/               # Tenant management         → /api/v1/admin/tenants
 │   │   ├── user/                 # User management
-│   │   ├── user-preferences/     # User preferences          → /api/v1/user/me
-│   │   └── user-settings/        # User settings             → /api/v1/user/me/settings
+│   │   ├── user-preferences/     # User preferences          → /api/v1/users/me
+│   │   └── user-settings/        # User settings             → /api/v1/users/me/settings
 │   │
 │   ├── shared/                    # Shared base classes
 │   │   └── base-proxy.controller.ts  # Abstract proxy controller

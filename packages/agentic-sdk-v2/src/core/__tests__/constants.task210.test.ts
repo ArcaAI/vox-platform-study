@@ -37,22 +37,24 @@ import {
 } from '../constants';
 
 // =============================================================================
-// PERSONALIZATION_ENDPOINTS: /users/me -> /user/me
+// PERSONALIZATION_ENDPOINTS: /user/me -> /users/me (TASK-760 reverses TASK-210)
 // =============================================================================
 
 describe('SDK v2 route standardization', () => {
-  describe('PERSONALIZATION_ENDPOINTS (users/me -> user/me)', () => {
-    it('should use /user/me/preferences for GET_PREFERENCES', () => {
-      expect(PERSONALIZATION_ENDPOINTS.GET_PREFERENCES).toBe('/user/me/preferences');
+  describe('PERSONALIZATION_ENDPOINTS (user/me -> users/me)', () => {
+    it('should use /users/me/preferences for GET_PREFERENCES', () => {
+      expect(PERSONALIZATION_ENDPOINTS.GET_PREFERENCES).toBe('/users/me/preferences');
     });
 
-    it('should use /user/me/preferences for UPDATE_PREFERENCES', () => {
-      expect(PERSONALIZATION_ENDPOINTS.UPDATE_PREFERENCES).toBe('/user/me/preferences');
+    it('should use /users/me/preferences for UPDATE_PREFERENCES', () => {
+      expect(PERSONALIZATION_ENDPOINTS.UPDATE_PREFERENCES).toBe('/users/me/preferences');
     });
 
-    it('should NOT use the old /users/me path', () => {
-      expect(PERSONALIZATION_ENDPOINTS.GET_PREFERENCES).not.toContain('/users/me');
-      expect(PERSONALIZATION_ENDPOINTS.UPDATE_PREFERENCES).not.toContain('/users/me');
+    // TASK-760 reversed TASK-210 here: the self plane moved INTO the plural
+    // `users` collection, so the stale shape is now the SINGULAR `/user/me`.
+    it('should NOT use the retired singular /user/me path', () => {
+      expect(PERSONALIZATION_ENDPOINTS.GET_PREFERENCES).not.toMatch(/^\/user\/me\//);
+      expect(PERSONALIZATION_ENDPOINTS.UPDATE_PREFERENCES).not.toMatch(/^\/user\/me\//);
     });
   });
 
@@ -212,13 +214,13 @@ describe('SDK v2 route standardization', () => {
   });
 
   // ===========================================================================
-  // USER_SETTINGS_ENDPOINTS: /user-settings -> /user/me/settings
+  // USER_SETTINGS_ENDPOINTS: /user-settings -> /users/me/settings
   // ===========================================================================
 
-  describe('USER_SETTINGS_ENDPOINTS (/user-settings -> /user/me/settings)', () => {
+  describe('USER_SETTINGS_ENDPOINTS (/user-settings -> /users/me/settings)', () => {
     // This surface was reduced to { list, updateByKey }
-    it('should use /user/me/settings for list', () => {
-      expect(USER_SETTINGS_ENDPOINTS.list).toBe('/user/me/settings');
+    it('should use /users/me/settings for list', () => {
+      expect(USER_SETTINGS_ENDPOINTS.list).toBe('/users/me/settings');
     });
 
     it('should NOT contain /user-settings path', () => {
@@ -420,10 +422,10 @@ describe('SDK v2 route standardization', () => {
       expect(STORAGE_ENDPOINTS.HEALTH).toBe('/storage/health');
     });
 
-    it('VOICE_EMBEDDING_ENDPOINTS targets the /voice-profile API', () => {
-      expect(VOICE_EMBEDDING_ENDPOINTS.enroll).toBe('/voice-profile/enroll');
-      expect(VOICE_EMBEDDING_ENDPOINTS.list).toBe('/voice-profile');
-      expect(VOICE_EMBEDDING_ENDPOINTS.delete('p-1')).toBe('/voice-profile/p-1');
+    it('VOICE_EMBEDDING_ENDPOINTS targets the /voice-profiles API', () => {
+      expect(VOICE_EMBEDDING_ENDPOINTS.enroll).toBe('/voice-profiles/enroll');
+      expect(VOICE_EMBEDDING_ENDPOINTS.list).toBe('/voice-profiles');
+      expect(VOICE_EMBEDDING_ENDPOINTS.delete('p-1')).toBe('/voice-profiles/p-1');
     });
   });
 
@@ -783,9 +785,9 @@ describe('SDK v2 route standardization', () => {
       expect(matches).toHaveLength(0);
     });
 
-    it('should not contain /users/me/preferences in any code line', () => {
+    it('should not contain the retired singular /user/me/preferences in any code line', () => {
       const code = codeLines(constantsSource);
-      const matches = code.filter((l) => l.includes('/users/me/preferences'));
+      const matches = code.filter((l) => l.includes('/user/me/preferences'));
       expect(matches).toHaveLength(0);
     });
 
@@ -904,9 +906,9 @@ describe('SDK v2 route standardization', () => {
       expect(PIPELINE_ENDPOINTS.CREATE).toMatch(/^\/admin\//);
     });
 
-    it('user self-service endpoints should use /user/me/ prefix', () => {
-      expect(PERSONALIZATION_ENDPOINTS.GET_PREFERENCES).toMatch(/^\/user\/me\//);
-      expect(USER_SETTINGS_ENDPOINTS.list).toMatch(/^\/user\/me\//);
+    it('user self-service endpoints should use /users/me/ prefix', () => {
+      expect(PERSONALIZATION_ENDPOINTS.GET_PREFERENCES).toMatch(/^\/users\/me\//);
+      expect(USER_SETTINGS_ENDPOINTS.list).toMatch(/^\/users\/me\//);
     });
 
     it('WS_STREAM should NOT use /audio/ prefix (WebSocket bypasses global prefix)', () => {
@@ -919,9 +921,9 @@ describe('SDK v2 route standardization', () => {
       expect(ROLE_ENDPOINTS.USER_ROLES('u-1')).not.toMatch(/^\/admin\//);
     });
 
-    it('MY_TENANT_ENDPOINTS should use /tenant/me/ prefix (auth-based, not admin)', () => {
-      expect(MY_TENANT_ENDPOINTS.INFO).toMatch(/^\/tenant\/me/);
-      expect(MY_TENANT_ENDPOINTS.CONFIG).toMatch(/^\/tenant\/me\//);
+    it('MY_TENANT_ENDPOINTS should use /tenants/me/ prefix (auth-based, not admin)', () => {
+      expect(MY_TENANT_ENDPOINTS.INFO).toMatch(/^\/tenants\/me/);
+      expect(MY_TENANT_ENDPOINTS.CONFIG).toMatch(/^\/tenants\/me\//);
       expect(MY_TENANT_ENDPOINTS.INFO).not.toMatch(/^\/admin\//);
       expect(MY_TENANT_ENDPOINTS.CONFIG).not.toMatch(/^\/admin\//);
     });

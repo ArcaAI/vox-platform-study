@@ -1,9 +1,9 @@
 /**
  * TDD screen tests for frame 25 (tenant half — Tenant profile),
- * redesign: three tabs (Organization identity from GET /tenant/me, Plan & usage
- * from GET /entitlements/me, Settings with a category sub-nav over the editable
- * tenant/me/config rows). Settings saves send per-row If-Match over PATCH
- * /tenant/me/config (OCC alert on 412), and the frame's NoTenant variant covers
+ * redesign: three tabs (Organization identity from GET /tenants/me, Plan & usage
+ * from GET /tenants/me/entitlements, Settings with a category sub-nav over the editable
+ * tenants/me/config rows). Settings saves send per-row If-Match over PATCH
+ * /tenants/me/config (OCC alert on 412), and the frame's NoTenant variant covers
  * tenant-less super admins.
  */
 
@@ -92,7 +92,7 @@ const LOCKED_CONFIG: TenantConfig = {
   version: 7,
 };
 
-/** The synthetic read-only row GET /tenant/me/config appends (id '', version 0). */
+/** The synthetic read-only row GET /tenants/me/config appends (id '', version 0). */
 const SYNTHETIC_CONFIG: TenantConfig = {
   ...EDITABLE_CONFIG,
   id: '',
@@ -177,22 +177,22 @@ function stubViewport(tier: 'desktop' | 'mobile') {
   );
 }
 
-/** URL-branching happy-path handler; /tenant/me/config must match before /tenant/me. */
+/** URL-branching happy-path handler; the deeper /tenants/me/* leaves must match before the bare /tenants/me. */
 function happyHandler(overrides: { tenant?: () => Response; configPatch?: () => Response; session?: SafeSession } = {}): Handler {
   return (url, method) => {
     if (url.includes('/api/auth/session')) return Response.json(overrides.session ?? ELEVATED_SESSION);
-    if (url.includes('/tenant/me/config')) {
+    if (url.includes('/tenants/me/config')) {
       if (method === 'PATCH') return (overrides.configPatch ?? (() => Response.json(CONFIG_PAGE)))();
       return Response.json(CONFIG_PAGE);
     }
-    if (url.includes('/tenant/me')) return (overrides.tenant ?? (() => Response.json(TENANT)))();
-    if (url.includes('/entitlements/me')) return Response.json(ENTITLEMENTS);
+    if (url.includes('/tenants/me/entitlements')) return Response.json(ENTITLEMENTS);
+    if (url.includes('/tenants/me')) return (overrides.tenant ?? (() => Response.json(TENANT)))();
     throw new Error(`Unexpected fetch in test: ${method} ${url}`);
   };
 }
 
 function configGetCalls(calls: RecordedCall[]): number {
-  return calls.filter((call) => call.method === 'GET' && call.url.includes('/tenant/me/config')).length;
+  return calls.filter((call) => call.method === 'GET' && call.url.includes('/tenants/me/config')).length;
 }
 
 afterEach(() => {
@@ -282,7 +282,7 @@ describe('TenantProfileScreen', () => {
 
     await waitFor(() => expect(calls.filter((call) => call.method === 'PATCH')).toHaveLength(1));
     const patch = calls.find((call) => call.method === 'PATCH');
-    expect(patch?.url).toBe('/api/hope/tenant/me/config');
+    expect(patch?.url).toBe('/api/hope/tenants/me/config');
     expect(patch?.headers.get('if-match')).toBe('"3"');
     expect(patch?.body).toEqual([{ id: 'cfg-1', value: '60', expectedVersion: 3 }]);
   });
@@ -344,7 +344,7 @@ describe('TenantProfileScreen', () => {
     expect(screen.queryByRole('region', { name: 'Organization' })).toBeNull();
   });
 
-  it('surfaces a block error with retry when tenant/me fails unexpectedly', async () => {
+  it('surfaces a block error with retry when tenants/me fails unexpectedly', async () => {
     let tenantAttempts = 0;
     stubFetch(
       happyHandler({
@@ -375,7 +375,7 @@ describe('TenantProfileScreen', () => {
 
       await screen.findByRole('region', { name: 'Organization' });
       expect(screen.queryByRole('tab', { name: 'Plan & usage' })).toBeNull();
-      expect(calls.some((call) => call.url.includes('/entitlements/me'))).toBe(false);
+      expect(calls.some((call) => call.url.includes('/tenants/me/entitlements'))).toBe(false);
     });
 
     it('shows only the organization name and status, hiding key/plan/description/tags/timestamps', async () => {

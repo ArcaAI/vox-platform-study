@@ -29,7 +29,7 @@ export interface ConfigManagerOptions {
   onPersistUserPreferences?: (prefs: DeepPartial<AppConfig>) => Promise<void>;
   /**
    * OPTIONAL additive server sync of the user-pref tier
-   * (e.g. debounced `PATCH /user/me/settings`). Runs ALONGSIDE
+   * (e.g. debounced `PATCH /users/me/settings`). Runs ALONGSIDE
    * `onPersistUserPreferences` and is gated by the SAME read-only
    * short-circuit, so an admin's edits while impersonating never
    * reach the impersonated user's server profile. A rejection here is

@@ -298,7 +298,7 @@ export class ModelRegistry {
   /**
    * Load tenant configuration from the auth-based endpoint and apply model selections.
    *
-   * Fetches `GET /tenant/me/config` (the server resolves the tenant from the
+   * Fetches `GET /tenants/me/config` (the server resolves the tenant from the
    * JWT token), parses the flat key-value settings into a structured
    * `TenantAudioConfig`, and auto-selects the default STT model if the slug
    * matches a built-in model.

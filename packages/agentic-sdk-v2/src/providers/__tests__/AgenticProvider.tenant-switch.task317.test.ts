@@ -146,7 +146,7 @@ function renderProvider() {
 function meHandler(me: { id?: string; tenantId?: string; departmentId?: string }): FetchHandler {
   return async (url) => {
     if (url.endsWith('/auth/me')) return jsonResponse(me);
-    if (url.includes('/tenant/me')) return jsonResponse({ defaultSttModel: null, features: {} });
+    if (url.includes('/tenants/me')) return jsonResponse({ defaultSttModel: null, features: {} });
     return jsonResponse({});
   };
 }

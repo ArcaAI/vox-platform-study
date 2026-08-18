@@ -6,7 +6,7 @@ under `apps/api/src/modules/tenant/`:
 
 - `@Controller('admin/tenants')` — admin CRUD over the Tenant model.
 - `@Controller('tenant')` — `me`-scoped self-management
-  (`PATCH /api/v1/tenant/me`, `PATCH /api/v1/tenant/me/config`).
+  (`PATCH /api/v1/tenants/me`, `PATCH /api/v1/tenants/me/config`).
 
 ## Concurrency Model
 
@@ -31,7 +31,7 @@ When `count === 0` we re-fetch to disambiguate `DataNotFoundException` from
 ### Bulk writes
 
 `TenantService.updateTenantConfigs` writes multiple `GlobalSetting` rows in a
-single `PATCH /api/v1/tenant/me/config`. The whole batch is atomic under a
+single `PATCH /api/v1/tenants/me/config`. The whole batch is atomic under a
 single `$transaction`: any single 412 rolls every row back; the caller
 re-fetches all rows before re-submitting (the SDK's `ConfigManager` does
 this automatically via the typed `ConfigConflictError`).

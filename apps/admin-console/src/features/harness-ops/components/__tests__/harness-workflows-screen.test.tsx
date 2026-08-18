@@ -75,7 +75,7 @@ function stubRoutes(overrides: { workflows?: Response | HarnessWorkflowList; wor
   return installFetchStub(({ url, method }: RecordedCall) => {
     if (url === '/api/auth/session') return sessionPayload({ workingTenantId: overrides.workingTenantId });
     // Best-effort per-user grid-layout persistence: no saved layout in tests.
-    if (url.includes('/user/me/settings')) return method === 'GET' ? [] : { ok: true };
+    if (url.includes('/users/me/settings')) return method === 'GET' ? [] : { ok: true };
     if (url.startsWith('/api/hope/admin/harness/workflows?')) return overrides.workflows ?? WORKFLOWS;
     if (method === 'POST' && url.endsWith('/signal')) return { ...ACTION_ACK, action: 'signal' };
     if (method === 'POST' && url.endsWith('/cancel')) return { ...ACTION_ACK, action: 'cancel' };

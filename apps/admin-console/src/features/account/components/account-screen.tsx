@@ -65,8 +65,8 @@ function AccountSkeleton() {
 /**
  * Frame 25 (account half) — Account (/account, tier 20-29). The caller's own
  * surfaces: BFF session identity, raw "my settings" rows saved per row to
- * PATCH /user/me/settings/:namespace/:key, and the preferences form over
- * PATCH /user/me/preferences (real fields: workflowMode/language/dnaStyleId;
+ * PATCH /users/me/settings/:namespace/:key, and the preferences form over
+ * PATCH /users/me/preferences (real fields: workflowMode/language/dnaStyleId;
  * pipeline assignment and voice profile are read-only).
  */
 export function AccountScreen() {
@@ -140,7 +140,7 @@ export function AccountScreen() {
           start={<span>{isBusy ? 'Refreshing' : 'Up to date'}</span>}
           end={
             <span aria-hidden className="font-mono">
-              GET /user/me/*
+              GET /users/me/*
             </span>
           }
         />
@@ -192,7 +192,7 @@ export function AccountScreen() {
                 My settings
               </h2>
               <p className="text-muted-foreground text-sm">
-                Raw key-value settings written by the apps you use. Saves go to PATCH /user/me/settings/:namespace/:key.
+                Raw key-value settings written by the apps you use. Saves go to PATCH /users/me/settings/:namespace/:key.
               </p>
             </div>
             {settingsQuery.isPending ? (

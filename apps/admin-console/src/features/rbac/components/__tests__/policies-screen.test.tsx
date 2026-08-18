@@ -46,9 +46,9 @@ interface RecordedCall {
   body: unknown;
 }
 
-/** Best-effort per-user grid-layout persistence (`user/me/settings`) — no saved layout in tests. */
+/** Best-effort per-user grid-layout persistence (`users/me/settings`) — no saved layout in tests. */
 function settingsResponse(url: string, method: string): Response | undefined {
-  if (!url.includes('/user/me/settings')) return undefined;
+  if (!url.includes('/users/me/settings')) return undefined;
   return method === 'GET' ? Response.json([]) : Response.json({ ok: true });
 }
 
@@ -60,7 +60,7 @@ function stubFetch(handler: (url: string, method: string) => Response | undefine
       const url = String(input);
       const method = init?.method ?? 'GET';
       calls.push({ url, method, body: typeof init?.body === 'string' ? JSON.parse(init.body) : undefined });
-      // The grid persists per-user layout via `user/me/settings`; answer it before the handler.
+      // The grid persists per-user layout via `users/me/settings`; answer it before the handler.
       const response = settingsResponse(url, method) ?? handler(url, method);
       if (!response) throw new Error(`Unhandled fetch: ${method} ${url}`);
       return response;
@@ -69,7 +69,7 @@ function stubFetch(handler: (url: string, method: string) => Response | undefine
   return calls;
 }
 
-/** The gateway list request (skips the interleaved `user/me/settings` layout GET). */
+/** The gateway list request (skips the interleaved `users/me/settings` layout GET). */
 function listRequest(calls: RecordedCall[]): URL {
   const call = calls.find((entry) => entry.method === 'GET' && entry.url.includes('/admin/rbac/policies') && !entry.url.includes('/validate'));
   if (!call) throw new Error('no /admin/rbac/policies GET recorded');

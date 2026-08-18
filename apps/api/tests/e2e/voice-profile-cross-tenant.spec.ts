@@ -3,8 +3,8 @@
  *
  * Without the ownership guard
  * (`docs/multi-tenancy-audit/04-api-design-review.md`),
- * `PATCH /voice-profile/:id/activate`, `:id/deactivate`, and
- * `DELETE /voice-profile/:id` would forward the supplied id to the
+ * `PATCH /voice-profiles/:id/activate`, `:id/deactivate`, and
+ * `DELETE /voice-profiles/:id` would forward the supplied id to the
  * service without verifying that the caller owned the profile — any
  * authenticated user with `update:UserVoiceProfile` could enable,
  * disable, or soft-delete any other user's voice profile.
@@ -31,7 +31,7 @@
  * wire (DEF-C3).
  *
  * Live-stack requirement: this spec depends on the dev stack PLUS the
- * STT service for `/voice-profile/extract` (called by
+ * STT service for `/voice-profiles/extract` (called by
  * `VoiceProfileService.enroll`). If STT is unreachable, the
  * enrolment in `beforeAll` 5xxs and every dependent test is reported
  * as a setup failure — the cross-user assertion intentionally does
@@ -104,7 +104,7 @@ test.describe('AC-2/AC-3 — UserVoiceProfile ownership genuine probe (AC-11)', 
     // to surface the setup failure rather than degrade to a
     // synthetic-id assertion.
     const audio = createSilenceWav(4);
-    const enrollResp = await request.post('/api/v1/voice-profile/enroll', {
+    const enrollResp = await request.post('/api/v1/voice-profiles/enroll', {
       headers: { Authorization: `Bearer ${doctorToken}` },
       multipart: {
         label: 'task-309-cross-user-probe',
@@ -130,35 +130,35 @@ test.describe('AC-2/AC-3 — UserVoiceProfile ownership genuine probe (AC-11)', 
       // Best-effort cleanup; the test does NOT assert success so
       // a failure here doesn't mask the cross-user contract.
       await request
-        .delete(`/api/v1/voice-profile/${profileId}`, {
+        .delete(`/api/v1/voice-profiles/${profileId}`, {
           headers: { Authorization: `Bearer ${doctorToken}` },
         })
         .catch(() => undefined);
     }
   });
 
-  test('PATCH /voice-profile/:id/activate from a different user → 404', async ({ request }) => {
+  test('PATCH /voice-profiles/:id/activate from a different user → 404', async ({ request }) => {
     test.skip(!profileId, 'enrolment failed — see beforeAll warning; STT may be unavailable');
-    const response = await request.patch(`/api/v1/voice-profile/${profileId}/activate`, { headers: { Authorization: `Bearer ${doctor2Token}` } });
+    const response = await request.patch(`/api/v1/voice-profiles/${profileId}/activate`, { headers: { Authorization: `Bearer ${doctor2Token}` } });
     expect(response.status()).toBe(404);
     const body = await response.json();
     expect(String(body.message ?? '')).not.toMatch(/user|owner|tenant/i);
   });
 
-  test('PATCH /voice-profile/:id/deactivate from a different user → 404', async ({ request }) => {
+  test('PATCH /voice-profiles/:id/deactivate from a different user → 404', async ({ request }) => {
     test.skip(!profileId, 'enrolment failed — see beforeAll warning; STT may be unavailable');
-    const response = await request.patch(`/api/v1/voice-profile/${profileId}/deactivate`, { headers: { Authorization: `Bearer ${doctor2Token}` } });
+    const response = await request.patch(`/api/v1/voice-profiles/${profileId}/deactivate`, { headers: { Authorization: `Bearer ${doctor2Token}` } });
     expect(response.status()).toBe(404);
   });
 
-  test('DELETE /voice-profile/:id from a different user → 404 (no 200 leak)', async ({ request }) => {
+  test('DELETE /voice-profiles/:id from a different user → 404 (no 200 leak)', async ({ request }) => {
     test.skip(!profileId, 'enrolment failed — see beforeAll warning; STT may be unavailable');
-    const response = await request.delete(`/api/v1/voice-profile/${profileId}`, { headers: { Authorization: `Bearer ${doctor2Token}` } });
+    const response = await request.delete(`/api/v1/voice-profiles/${profileId}`, { headers: { Authorization: `Bearer ${doctor2Token}` } });
     expect(response.status()).toBe(404);
   });
 
   test('synthetic uuidv7 profileId from owner → 404 (DEF-C3: same shape as cross-user 404)', async ({ request }) => {
-    const response = await request.patch(`/api/v1/voice-profile/${SYNTHETIC_PROFILE_ID}/activate`, {
+    const response = await request.patch(`/api/v1/voice-profiles/${SYNTHETIC_PROFILE_ID}/activate`, {
       headers: { Authorization: `Bearer ${doctorToken}` },
     });
     expect(response.status()).toBe(404);

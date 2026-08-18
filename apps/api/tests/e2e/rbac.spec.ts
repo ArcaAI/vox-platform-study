@@ -572,18 +572,33 @@ test.describe('RBAC Controllers', () => {
 
   // ============================================================================
   // Permission Check Controller Tests
-  // Note: Actual endpoints are at /api/rbac/check, /api/rbac/check/bulk, /api/rbac/check/my-permissions
+  // TASK-760 — the verb-as-resource `rbac/check` RPC became two resource
+  // collections: `POST /users/me/permission-checks` (the caller's effective
+  // permission set) and `POST /users/:id/permission-checks[/bulk]` (a check
+  // against a named user; another user still needs `manage:User`). The retired
+  // paths answer 308 for one release, but these assertions address the new
+  // URIs directly — following a redirect would test the shim, not the route.
+  //
+  // The by-id routes need the caller's own id, which the retired paths never
+  // carried; it is the JWT `sub`, decoded here rather than fetched so the spec
+  // does not depend on a second endpoint.
+  function callerId(token: string): string {
+    const payload = JSON.parse(Buffer.from(token.split('.')[1], 'base64url').toString('utf8')) as { sub?: string; id?: string };
+    const id = payload.sub ?? payload.id;
+    if (!id) throw new Error('JWT carries no subject claim');
+    return id;
+  }
   // ============================================================================
 
   test.describe('Permission Check Controller', () => {
-    test.describe('POST /rbac/check', () => {
+    test.describe('POST /users/:id/permission-checks', () => {
       test('should return 401 without authentication', async ({ request }) => {
         if (!rbacEndpointsAvailable) {
           test.skip();
           return;
         }
 
-        const response = await request.post('/api/v1/rbac/check', {
+        const response = await request.post('/api/v1/users/00000000-0000-0000-0000-000000000001/permission-checks', {
           data: { action: 'read', subject: 'User' },
         });
 
@@ -596,7 +611,7 @@ test.describe('RBAC Controllers', () => {
           return;
         }
 
-        const response = await request.post('/api/v1/rbac/check', {
+        const response = await request.post(`/api/v1/users/${callerId(superAdminToken)}/permission-checks`, {
           headers: { Authorization: `Bearer ${superAdminToken}` },
           data: { action: 'manage', subject: 'all' },
         });
@@ -614,7 +629,7 @@ test.describe('RBAC Controllers', () => {
           return;
         }
 
-        const response = await request.post('/api/v1/rbac/check', {
+        const response = await request.post(`/api/v1/users/${callerId(userToken)}/permission-checks`, {
           headers: { Authorization: `Bearer ${userToken}` },
           data: { action: 'manage', subject: 'Role' },
         });
@@ -626,14 +641,14 @@ test.describe('RBAC Controllers', () => {
       });
     });
 
-    test.describe('POST /rbac/check/bulk', () => {
+    test.describe('POST /users/:id/permission-checks/bulk', () => {
       test('should check multiple permissions at once', async ({ request }) => {
         if (!rbacEndpointsAvailable || !superAdminToken) {
           test.skip();
           return;
         }
 
-        const response = await request.post('/api/v1/rbac/check/bulk', {
+        const response = await request.post(`/api/v1/users/${callerId(superAdminToken)}/permission-checks/bulk`, {
           headers: { Authorization: `Bearer ${superAdminToken}` },
           data: {
             permissions: [
@@ -659,14 +674,14 @@ test.describe('RBAC Controllers', () => {
       });
     });
 
-    test.describe('POST /rbac/check/my-permissions', () => {
+    test.describe('POST /users/me/permission-checks', () => {
       test('should return current user effective permissions', async ({ request }) => {
         if (!rbacEndpointsAvailable || !superAdminToken) {
           test.skip();
           return;
         }
 
-        const response = await request.post('/api/v1/rbac/check/my-permissions', {
+        const response = await request.post('/api/v1/users/me/permission-checks', {
           headers: { Authorization: `Bearer ${superAdminToken}` },
         });
 
@@ -684,11 +699,11 @@ test.describe('RBAC Controllers', () => {
           return;
         }
 
-        const adminResponse = await request.post('/api/v1/rbac/check/my-permissions', {
+        const adminResponse = await request.post('/api/v1/users/me/permission-checks', {
           headers: { Authorization: `Bearer ${superAdminToken}` },
         });
 
-        const userResponse = await request.post('/api/v1/rbac/check/my-permissions', {
+        const userResponse = await request.post('/api/v1/users/me/permission-checks', {
           headers: { Authorization: `Bearer ${userToken}` },
         });
 
@@ -748,7 +763,7 @@ test.describe('RBAC Controllers', () => {
       expect(policiesResponse.status()).toBe(200);
 
       // Super admin should be able to check permissions (POST may return 200 or 201)
-      const permissionsResponse = await request.post('/api/v1/rbac/check/my-permissions', {
+      const permissionsResponse = await request.post('/api/v1/users/me/permission-checks', {
         headers: { Authorization: `Bearer ${superAdminToken}` },
       });
       expect([200, 201]).toContain(permissionsResponse.status());
@@ -761,7 +776,7 @@ test.describe('RBAC Controllers', () => {
       }
 
       // Admin should be able to access tenant-scoped resources
-      const response = await request.post('/api/v1/rbac/check/my-permissions', {
+      const response = await request.post('/api/v1/users/me/permission-checks', {
         headers: { Authorization: `Bearer ${adminToken}` },
       });
 

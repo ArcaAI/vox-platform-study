@@ -536,7 +536,7 @@ interface ProxyControllerConfig {
 ### TextProxyController (Text Proxy)
 
 **Location**: `src/modules/streaming/text-proxy.controller.ts`
-**Route**: `text` → `/api/v1/text/**`
+**Route**: `text` → `/api/v1/text-generations/**`
 
 **Proxy Configuration:**
 

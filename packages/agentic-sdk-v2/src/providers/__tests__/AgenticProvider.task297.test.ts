@@ -117,14 +117,14 @@ describe('AgenticProvider', () => {
         const me = await mePromise;
         return jsonResponse(me);
       }
-      // `/tenant/me/config` specifically — added a SIBLING endpoint
-      // `/tenant/me/context-schema`, which also matches a loose
-      // `includes('/tenant/me')` check and would otherwise double-count here.
-      if (url.includes('/tenant/me/config')) {
+      // `/tenants/me/config` specifically — added a SIBLING endpoint
+      // `/tenants/me/context-schema`, which also matches a loose
+      // `includes('/tenants/me')` check and would otherwise double-count here.
+      if (url.includes('/tenants/me/config')) {
         tenantCfgCalls += 1;
         return jsonResponse({ defaultSttModel: 'whisper-base', features: {} });
       }
-      if (url.includes('/tenant/me/context-schema')) {
+      if (url.includes('/tenants/me/context-schema')) {
         return jsonResponse({ etag: 'none' });
       }
       return jsonResponse({});
@@ -154,7 +154,7 @@ describe('AgenticProvider', () => {
       if (url.endsWith('/auth/me')) {
         return jsonResponse({ message: 'unauthorized' }, 401);
       }
-      if (url.includes('/tenant/me')) {
+      if (url.includes('/tenants/me')) {
         return jsonResponse({ defaultSttModel: 'whisper-base', features: {} });
       }
       return jsonResponse({});
@@ -174,7 +174,7 @@ describe('AgenticProvider', () => {
         calledMe = true;
         return jsonResponse({});
       }
-      if (url.includes('/tenant/me')) {
+      if (url.includes('/tenants/me')) {
         return jsonResponse({ defaultSttModel: null, features: {} });
       }
       return jsonResponse({});

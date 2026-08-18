@@ -33,7 +33,7 @@ const TERMINAL_TASK_STATUSES = new Set(['completed', 'failed', 'cancelled']);
 
 /**
  * Post-mortem read for the frame 54 error variant: "task FAILED → GET
- * /text/tasks/:taskId". Acts as the stream finalizer: while the dropped task
+ * /text-generations/tasks/:taskId". Acts as the stream finalizer: while the dropped task
  * is still non-terminal upstream it keeps polling so the pane can recover the
  * full content once the task completes server-side.
  */

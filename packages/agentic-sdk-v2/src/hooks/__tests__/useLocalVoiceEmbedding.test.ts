@@ -5,7 +5,7 @@
  *   - extracts a speaker embedding in-browser via an injected (mocked) embedder
  *     — the heavy ONNX model never loads in tests,
  *   - persists the profile through the EXISTING enroll path (the mocked
- *     `useVoiceEmbedding().enroll` client → `POST /voice-profile/enroll`),
+ *     `useVoiceEmbedding().enroll` client → `POST /voice-profiles/enroll`),
  *   - caches the local embedding (tenant/user-namespaced) keyed to the returned
  *     profile id, and
  *   - "quick tests" a fresh clip via cosine similarity against the cache.
@@ -89,7 +89,7 @@ describe('useLocalVoiceEmbedding (LOCAL provider)', () => {
   });
 
   describe('enroll', () => {
-    it('persists via the EXISTING backend enroll client (POST /voice-profile/enroll)', async () => {
+    it('persists via the EXISTING backend enroll client (POST /voice-profiles/enroll)', async () => {
       const embedder = fakeEmbedder();
       const { result } = renderHook(() => useLocalVoiceEmbedding({ embedder }));
 

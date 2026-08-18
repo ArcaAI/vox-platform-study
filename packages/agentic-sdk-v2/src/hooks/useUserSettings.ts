@@ -1,8 +1,8 @@
 /**
  * @arcaai/vox - useUserSettings Hook
  *
- * Reduced surface — the API only implements `GET /user/me/settings` and
- * `PATCH /user/me/settings/:namespace/:key`. Earlier methods (get(id), create,
+ * Reduced surface — the API only implements `GET /users/me/settings` and
+ * `PATCH /users/me/settings/:namespace/:key`. Earlier methods (get(id), create,
  * update(id), getMySettings) targeted routes that do not exist and have been
  * removed.
  */

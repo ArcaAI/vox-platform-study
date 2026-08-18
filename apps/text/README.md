@@ -134,5 +134,5 @@ Grafana dashboard **files** are `infrastructure/grafana/dashboards/text-overview
 
 | Surface | Location |
 |---|---|
-| Raw LLM proxy | `TextProxyController` — `apps/api/src/modules/streaming/text-proxy.controller.ts` (`@Controller('text')`) |
+| Raw LLM proxy | `TextProxyController` — `apps/api/src/modules/streaming/text-proxy.controller.ts` (`@Controller('text-generations')`) |
 | v1 summarization compat | `TextCompatController` — `apps/api/src/modules/text-compat/` (HTTP paths under `/api/smr/...` stay) |

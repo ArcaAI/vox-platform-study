@@ -39,7 +39,7 @@ afterEach(() => {
 });
 
 describe('createGridLayoutPersistenceAdapter — load', () => {
-  it('GETs user/me/settings and parses the matching ui.data-grid row into GridLayoutState', async () => {
+  it('GETs users/me/settings and parses the matching ui.data-grid row into GridLayoutState', async () => {
     const calls = installFetchMock(() =>
       Response.json([
         { namespace: 'ui.theme', key: 'tenants', value: '{"noise":true}' },
@@ -52,7 +52,7 @@ describe('createGridLayoutPersistenceAdapter — load', () => {
     const result = await adapter.load(UI_DATA_GRID_NAMESPACE, 'tenants');
 
     expect(calls).toHaveLength(1);
-    expect(`${calls[0].method} ${calls[0].url}`).toBe('GET /api/hope/user/me/settings');
+    expect(`${calls[0].method} ${calls[0].url}`).toBe('GET /api/hope/users/me/settings');
     expect(result).toEqual(layout);
   });
 
@@ -156,7 +156,7 @@ describe('createGridLayoutPersistenceAdapter — request dedup & cache', () => {
 });
 
 describe('createGridLayoutPersistenceAdapter — save', () => {
-  it('PATCHes user/me/settings/<namespace>/<gridId> with a JSON-stringified value body', async () => {
+  it('PATCHes users/me/settings/<namespace>/<gridId> with a JSON-stringified value body', async () => {
     const calls = installFetchMock(() => Response.json({}));
     const adapter = createGridLayoutPersistenceAdapter();
 
@@ -164,7 +164,7 @@ describe('createGridLayoutPersistenceAdapter — save', () => {
 
     expect(calls).toHaveLength(1);
     expect(calls[0].method).toBe('PATCH');
-    expect(calls[0].url).toBe('/api/hope/user/me/settings/ui.data-grid/tenants');
+    expect(calls[0].url).toBe('/api/hope/users/me/settings/ui.data-grid/tenants');
     expect(calls[0].body).toEqual({ value: JSON.stringify(layout) });
   });
 

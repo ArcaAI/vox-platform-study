@@ -110,26 +110,26 @@ describe('Endpoint Constants', () => {
   });
 
   describe('TEXT_ENDPOINTS (smr-proxy.controller.ts @Controller("text"))', () => {
-    it('GENERATE is /text/generate', () => {
-      expect(TEXT_ENDPOINTS.GENERATE).toBe('/text/generate');
+    it('GENERATE is /text-generations/generate', () => {
+      expect(TEXT_ENDPOINTS.GENERATE).toBe('/text-generations/generate');
     });
-    it('GENERATE_ASSEMBLED is /text/generate/assembled', () => {
-      expect(TEXT_ENDPOINTS.GENERATE_ASSEMBLED).toBe('/text/generate/assembled');
+    it('GENERATE_ASSEMBLED is /text-generations/generate/assembled', () => {
+      expect(TEXT_ENDPOINTS.GENERATE_ASSEMBLED).toBe('/text-generations/generate/assembled');
     });
-    it('PROVIDERS is /text/providers', () => {
-      expect(TEXT_ENDPOINTS.PROVIDERS).toBe('/text/providers');
+    it('PROVIDERS is /text-generations/providers', () => {
+      expect(TEXT_ENDPOINTS.PROVIDERS).toBe('/text-generations/providers');
     });
-    it('TASK(id) is /text/tasks/:id', () => {
-      expect(TEXT_ENDPOINTS.TASK('t-1')).toBe('/text/tasks/t-1');
+    it('TASK(id) is /text-generations/tasks/:id', () => {
+      expect(TEXT_ENDPOINTS.TASK('t-1')).toBe('/text-generations/tasks/t-1');
     });
-    it('TASK_CANCEL(id) is /text/tasks/:id/cancel', () => {
-      expect(TEXT_ENDPOINTS.TASK_CANCEL('t-1')).toBe('/text/tasks/t-1/cancel');
+    it('TASK_CANCEL(id) is /text-generations/tasks/:id/cancel', () => {
+      expect(TEXT_ENDPOINTS.TASK_CANCEL('t-1')).toBe('/text-generations/tasks/t-1/cancel');
     });
-    it('TASK_STREAM(id) is /text/tasks/:id/stream', () => {
-      expect(TEXT_ENDPOINTS.TASK_STREAM('t-1')).toBe('/text/tasks/t-1/stream');
+    it('TASK_STREAM(id) is /text-generations/tasks/:id/stream', () => {
+      expect(TEXT_ENDPOINTS.TASK_STREAM('t-1')).toBe('/text-generations/tasks/t-1/stream');
     });
     it('encodes the task id path param', () => {
-      expect(TEXT_ENDPOINTS.TASK('a/b')).toBe(`/text/tasks/${encodeURIComponent('a/b')}`);
+      expect(TEXT_ENDPOINTS.TASK('a/b')).toBe(`/text-generations/tasks/${encodeURIComponent('a/b')}`);
     });
   });
 

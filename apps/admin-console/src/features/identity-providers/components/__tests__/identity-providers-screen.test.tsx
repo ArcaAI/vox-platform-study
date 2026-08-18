@@ -87,7 +87,7 @@ function session(overrides: Partial<{ workingTenantId: string | null }> = {}) {
 const pathOf = (call: RecordedCall) => new URL(call.url, 'http://test.local').pathname;
 
 function settingsResponse(call: RecordedCall): Response | undefined {
-  if (!call.url.includes('/user/me/settings')) return undefined;
+  if (!call.url.includes('/users/me/settings')) return undefined;
   return call.method === 'GET' ? Response.json([]) : Response.json({ ok: true });
 }
 

@@ -156,7 +156,7 @@ This document tracks the implementation status of the HOPE API Gateway, providin
 
 #### Text Service — Port 8862
 
-- [x] **TextProxyController** (in `streaming` module): Proxy to Text service at `/api/v1/text`
+- [x] **TextProxyController** (in `streaming` module): Proxy to Text service at `/api/v1/text-generations`
 
 #### NLP Service — Port 8864
 
@@ -174,8 +174,8 @@ This document tracks the implementation status of the HOPE API Gateway, providin
 
 #### User Self-Service Endpoints
 
-- [x] **UserPreferencesController**: User preferences (`/api/v1/user/me`)
-- [x] **UserSettingsController**: User settings (`/api/v1/user/me/settings`)
+- [x] **UserPreferencesController**: User preferences (`/api/v1/users/me`)
+- [x] **UserSettingsController**: User settings (`/api/v1/users/me/settings`)
 
 ### 🟡 Planned
 

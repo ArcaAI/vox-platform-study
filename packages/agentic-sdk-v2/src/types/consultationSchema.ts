@@ -2,7 +2,7 @@
  * @arcaai/vox - Consultation Context Schema Types
  *
  * Client-side mirror of the discovery bundle served by
- * `GET /tenant/me/context-schema`. The server resolves the
+ * `GET /tenants/me/context-schema`. The server resolves the
  * tenant's (optionally department-scoped) PINNED `ConsultationContextSchema`
  * declaration — never simply the latest published version — and returns it
  * as a flat envelope plus the raw `definition` JSON document.
@@ -13,7 +13,7 @@
  * `contextSchemaVersionId`, `checksum`, `etag`) has a FIXED shape the SDK can
  * commit to at compile time, so it is parsed with `valibot` (already a
  * bundled dependency — see `ConfigSchema.ts`/`ModelRegistry.ts`) exactly like
- * `parseTenantConfig` guards `GET /tenant/me/config`.
+ * `parseTenantConfig` guards `GET /tenants/me/config`.
  *
  * `definition.kinds[]` is TENANT-AUTHORED and open-ended by design: a tenant can
  * declare new kinds, new optional fields, or a `deprecated` block at any time
@@ -143,7 +143,7 @@ const CONSULTATION_SCHEMA_BUNDLE_SCHEMA = v.object({
 });
 
 /**
- * Parse a raw `GET /tenant/me/context-schema` response into a
+ * Parse a raw `GET /tenants/me/context-schema` response into a
  * `ConsultationSchemaBundle`. Never throws: a response that doesn't match
  * the envelope shape is treated exactly like "no schema configured" — the
  * SAME fallback `ConsultationSchemaClient.fetchConsultationSchema` uses for a

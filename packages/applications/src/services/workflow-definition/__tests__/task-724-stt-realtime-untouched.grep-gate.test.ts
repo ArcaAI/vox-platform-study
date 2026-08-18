@@ -69,6 +69,24 @@ const SANCTIONED_LATER_CHANGES: ReadonlyArray<{ readonly path: string; readonly 
     ticket: 'TASK-757',
     why: 'admin plane becomes JWT-only — decorator swap only, no execution surface',
   },
+  // TASK-760 (business-plane URI normalization) — `TextProxyController` moves off the
+  // service-named `text` prefix onto the capability-named `text-generations`. This is the TEXT
+  // proxy, not the STT realtime path: the WS gateway, the Redis-Streams bridge and
+  // `transcription-job.controller.ts` are untouched by this ticket, and TASK-724's actual claim
+  // (the STT palette adds no new execution surface) is unaffected. The shim below is a
+  // redirect-only controller — it answers 308 and closes; it proxies nothing.
+  // `text-proxy.controller.ts` itself is already sanctioned above (TASK-737/738); TASK-760's
+  // change to it is the `@Controller` literal only, no handler body.
+  {
+    path: 'apps/api/src/modules/streaming/text-proxy-redirect.shim.controller.ts',
+    ticket: 'TASK-760',
+    why: '308 redirect shim for the retired `text` prefix — deleted in ALL-2.0.0',
+  },
+  {
+    path: 'apps/api/src/modules/streaming/streaming.module.ts',
+    ticket: 'TASK-760',
+    why: 'registers the redirect shim above',
+  },
 ];
 
 const SANCTIONED_PATHS: ReadonlySet<string> = new Set(SANCTIONED_LATER_CHANGES.map((entry) => entry.path));

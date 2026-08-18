@@ -1,6 +1,6 @@
 /**
  * Minimal local mirror of the discovery bundle served by
- * `GET /tenant/me/context-schema` and re-declared client-side
+ * `GET /tenants/me/context-schema` and re-declared client-side
  * in `@arcaai/vox`'s `src/types/consultationSchema.ts`.
  *
  * Hand-typed here rather than imported from `@arcaai/vox`, for the same

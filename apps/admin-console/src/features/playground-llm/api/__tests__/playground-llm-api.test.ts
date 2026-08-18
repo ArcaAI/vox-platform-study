@@ -54,8 +54,8 @@ describe('playground-llm client', () => {
     await listProviders();
     await listProviders('__GLOBAL__');
     expect(calls.map((call) => `${call.method} ${call.url}`)).toEqual([
-      'GET /api/hope/text/providers',
-      'GET /api/hope/text/providers?tenantKey=__GLOBAL__',
+      'GET /api/hope/text-generations/providers',
+      'GET /api/hope/text-generations/providers?tenantKey=__GLOBAL__',
     ]);
   });
 
@@ -64,8 +64,8 @@ describe('playground-llm client', () => {
     await listGuardrailProviders();
     await listGuardrailProviders('__GLOBAL__');
     expect(calls.map((call) => `${call.method} ${call.url}`)).toEqual([
-      'GET /api/hope/text/guardrail-providers',
-      'GET /api/hope/text/guardrail-providers?tenantKey=__GLOBAL__',
+      'GET /api/hope/text-generations/guardrail-providers',
+      'GET /api/hope/text-generations/guardrail-providers?tenantKey=__GLOBAL__',
     ]);
   });
 
@@ -81,7 +81,7 @@ describe('playground-llm client', () => {
       stream: true,
     });
     expect(calls).toHaveLength(1);
-    expect(`${calls[0].method} ${calls[0].url}`).toBe('POST /api/hope/text/generate');
+    expect(`${calls[0].method} ${calls[0].url}`).toBe('POST /api/hope/text-generations/generate');
     expect(calls[0].body).toEqual({
       prompt: 'Summarize',
       system_prompt: 'You are a clinical summarizer.',
@@ -104,7 +104,7 @@ describe('playground-llm client', () => {
       debug: true,
       stream: false,
     });
-    expect(`${calls[0].method} ${calls[0].url}`).toBe('POST /api/hope/text/generate/assembled');
+    expect(`${calls[0].method} ${calls[0].url}`).toBe('POST /api/hope/text-generations/generate/assembled');
     expect(calls[0].body).toEqual({
       type: 'pre-summary',
       visit_type: 'new_visit',
@@ -120,12 +120,12 @@ describe('playground-llm client', () => {
     const calls = installFetchMock();
     await getTask('t-5531');
     await cancelTask('t-5531');
-    expect(calls.map((call) => `${call.method} ${call.url}`)).toEqual(['GET /api/hope/text/tasks/t-5531', 'POST /api/hope/text/tasks/t-5531/cancel']);
+    expect(calls.map((call) => `${call.method} ${call.url}`)).toEqual(['GET /api/hope/text-generations/tasks/t-5531', 'POST /api/hope/text-generations/tasks/t-5531/cancel']);
   });
 
   it('builds the gateway stream path + ticket scope (never a BFF-proxied stream URL)', () => {
-    expect(taskStreamPath('t-5531')).toBe('text/tasks/t-5531/stream');
-    expect(taskStreamPath('t 1')).toBe('text/tasks/t%201/stream');
+    expect(taskStreamPath('t-5531')).toBe('text-generations/tasks/t-5531/stream');
+    expect(taskStreamPath('t 1')).toBe('text-generations/tasks/t%201/stream');
     // Must match @StreamScope({ namespace: 'text_task', param: 'taskId' }).
     expect(taskStreamScope('t-5531')).toBe('text_task:t-5531');
     expect(taskStreamPath('t-5531')).not.toContain('/api/hope/');

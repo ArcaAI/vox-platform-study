@@ -18,3 +18,4 @@ export {
   type StreamSessionMeta,
   type StreamSessionBinding,
 } from './stream-session-tenant-binding.service';
+export { redirect308, API_V1_PREFIX } from './redirect-shim';

@@ -5,10 +5,10 @@ import type { SchedulerInfo } from '../../api/types';
 import { SchedulersScreen } from '../schedulers-screen';
 import { installFetchStub, type FetchHandler, type RecordedCall } from './fetch-stub';
 
-/** Layout persistence reads GET user/me/settings on mount; tests have no saved layout. */
+/** Layout persistence reads GET users/me/settings on mount; tests have no saved layout. */
 function stubFetch(handle: FetchHandler): RecordedCall[] {
   return installFetchStub((call) => {
-    if (call.url.includes('/user/me/settings')) return call.method === 'GET' ? [] : { success: true };
+    if (call.url.includes('/users/me/settings')) return call.method === 'GET' ? [] : { success: true };
     return handle(call);
   });
 }

@@ -13,8 +13,8 @@
 import { test, expect } from '@playwright/test';
 import { SEEDED_USERS, loginUser } from '../../../../tests/helpers';
 
-const GUARDRAIL_ROUTE = '/api/v1/ai/guardrail/analyze';
-const NER_ROUTE = '/api/v1/ai/nlp/entities';
+const GUARDRAIL_ROUTE = '/api/v1/safety-checks';
+const NER_ROUTE = '/api/v1/text-analyses/entities';
 
 test.describe('AI inference proxy (/ai/*)', () => {
   let token: string;

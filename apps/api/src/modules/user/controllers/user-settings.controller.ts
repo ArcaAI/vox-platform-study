@@ -38,7 +38,7 @@ const ME_IS_THE_BOUND_USER =
 
 @ApiBearerAuth()
 @ApiTags('user')
-@Controller('user/me/settings')
+@Controller('users/me/settings')
 @Authorize()
 // API-KEY-NOTE: policy A1. Direct sibling of the already-keyed
 // `UserPreferencesController` (the typed view over these same rows). Read at

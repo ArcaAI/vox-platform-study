@@ -9,6 +9,8 @@ import { HttpModule } from '@nestjs/axios';
 import { Module } from '@nestjs/common';
 import { AiInferenceClient } from './ai-inference.client';
 import { AiInferenceController } from './ai-inference.controller';
+import { AiInferenceRedirectShimController } from './ai-inference-redirect.shim.controller';
+import { SafetyCheckController } from './safety-check.controller';
 
 /**
  * AiInferenceModule — the user-plane `/ai/*` inference proxy over the
@@ -36,7 +38,7 @@ import { AiInferenceController } from './ai-inference.controller';
     UsageLedgerServiceModule,
     TenantNlpTaskInstructionsServiceModule,
   ],
-  controllers: [AiInferenceController],
+  controllers: [AiInferenceController, SafetyCheckController, AiInferenceRedirectShimController],
   providers: [AiInferenceClient],
 })
 export class AiInferenceModule {}

@@ -8,7 +8,7 @@
 import { deleteJson, getJson, patchJson, request } from '@/shared/api';
 import type { EnrollVoiceProfileInput, VoiceProfile, VoiceProfileToggleResponse } from './types';
 
-const BASE = 'voice-profile';
+const BASE = 'voice-profiles';
 
 /** Gateway caps on POST /enroll (FilesInterceptor + ParseFilePipe). */
 export const MAX_SAMPLES = 3;
@@ -17,7 +17,7 @@ export const MAX_SAMPLE_BYTES = 10 * 1024 * 1024;
 export const MAX_LABEL_LENGTH = 100;
 
 /**
- * POST /voice-profile/enroll — multipart with the repeated `files` field and
+ * POST /voice-profiles/enroll — multipart with the repeated `files` field and
  * an optional `label`. The shared core skips the JSON content-type for
  * FormData bodies so fetch derives the multipart boundary itself.
  */

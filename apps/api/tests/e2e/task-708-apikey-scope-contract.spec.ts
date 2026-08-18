@@ -483,7 +483,7 @@ test.describe('TASK-708 — API-key scope contract (locks in current behavior)',
       const key = await createScopedApiKey(request, superAdminToken, ['*'], 'task-742-forbid-wildcard');
       createdApiKeyIds.push(key.id);
 
-      const response = await request.get('/api/v1/voice-profile', {
+      const response = await request.get('/api/v1/voice-profiles', {
         headers: { 'X-API-Key': key.rawKey, Accept: 'application/json' },
       });
 
@@ -493,7 +493,7 @@ test.describe('TASK-708 — API-key scope contract (locks in current behavior)',
     });
 
     test('the same @ForbidApiKey() route is still reachable with a session JWT (the marker is API-key-specific)', async ({ request }) => {
-      const response = await request.get('/api/v1/voice-profile', {
+      const response = await request.get('/api/v1/voice-profiles', {
         headers: { Authorization: `Bearer ${adminToken}`, Accept: 'application/json' },
       });
 

@@ -3,8 +3,8 @@
  *
  * Implements the `@arcaai/ui` `GridLayoutPersistenceAdapter` port over the
  * existing per-user settings BFF endpoints:
- *   - load  → `GET  user/me/settings`  (find the `ui.data-grid/<gridId>` row)
- *   - save  → `PATCH user/me/settings/ui.data-grid/<gridId>`
+ *   - load  → `GET  users/me/settings`  (find the `ui.data-grid/<gridId>` row)
+ *   - save  → `PATCH users/me/settings/ui.data-grid/<gridId>`
  *
  * It lives in `shared/data` (not a feature module) and talks to the shared HTTP
  * core directly. Both operations are BEST-EFFORT: personalization must never
@@ -29,7 +29,7 @@ export const UI_DATA_GRID_NAMESPACE = 'ui.data-grid';
 /** Max serialized bytes the gateway accepts for a `ui.data-grid` value. */
 export const UI_DATA_GRID_MAX_BYTES = 16384;
 
-/** Minimal shape of a `GET user/me/settings` row (a subset of the feature `UserSetting`). */
+/** Minimal shape of a `GET users/me/settings` row (a subset of the feature `UserSetting`). */
 interface UserSettingRow {
   namespace?: string;
   key: string;
@@ -53,7 +53,7 @@ export function createGridLayoutPersistenceAdapter(): GridLayoutPersistenceAdapt
     if (cached && Date.now() - cached.at <= SETTINGS_CACHE_TTL_MS) return cached.rows;
     if (!pending) {
       const startedGeneration = generation;
-      const request = getJson<UserSettingRow[]>('user/me/settings')
+      const request = getJson<UserSettingRow[]>('users/me/settings')
         .then((rows) => {
           const list = Array.isArray(rows) ? rows : [];
           if (startedGeneration === generation) cached = { rows: list, at: Date.now() };
@@ -101,7 +101,7 @@ export function createGridLayoutPersistenceAdapter(): GridLayoutPersistenceAdapt
         return;
       }
       try {
-        await patchJson(`user/me/settings/${encodeURIComponent(namespace)}/${encodeURIComponent(key)}`, { value: serialized });
+        await patchJson(`users/me/settings/${encodeURIComponent(namespace)}/${encodeURIComponent(key)}`, { value: serialized });
         // The server rows changed — drop the cache so the next screen's
         // grid loads the layout just saved here.
         cached = null;
@@ -114,7 +114,7 @@ export function createGridLayoutPersistenceAdapter(): GridLayoutPersistenceAdapt
 
 /**
  * One adapter instance per client session — a stable ref shared by every grid
- * so the persistence load/save effect never churns and the `GET user/me/settings`
+ * so the persistence load/save effect never churns and the `GET users/me/settings`
  * read is issued through a single code path. Both `AdminDataGrid` and screens
  * that render `VirtualizedDataGrid` directly (fixed-height embedded lists) use it.
  */
@@ -125,7 +125,7 @@ export const sharedGridLayoutPersistence: GridLayoutPersistenceAdapter = sharedA
  * Drop the shared settings cache. Session flows call this next to
  * `queryClient.invalidateQueries()` whenever the caller IDENTITY changes
  * (impersonation start/revoke, login) — the cached rows belong to the previous
- * user. A working-tenant switch keeps the same user, and `user/me/settings`
+ * user. A working-tenant switch keeps the same user, and `users/me/settings`
  * is user-keyed, so it does not need this.
  */
 export function invalidateGridLayoutCache(): void {

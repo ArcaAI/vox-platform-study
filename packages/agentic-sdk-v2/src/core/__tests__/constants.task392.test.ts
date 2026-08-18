@@ -34,7 +34,7 @@ describe('ENTITLEMENTS_ENDPOINTS', () => {
   });
 
   it('keeps the tenant self-view on the user plane (active token)', () => {
-    expect(ENTITLEMENTS_ENDPOINTS.ME).toBe('/entitlements/me');
+    expect(ENTITLEMENTS_ENDPOINTS.ME).toBe('/tenants/me/entitlements');
     expect(isAdminPlanePath(ENTITLEMENTS_ENDPOINTS.ME)).toBe(false);
   });
 });

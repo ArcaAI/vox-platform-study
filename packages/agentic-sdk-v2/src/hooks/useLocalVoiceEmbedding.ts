@@ -8,7 +8,7 @@
  *   1. Extract a speaker embedding locally with Transformers.js (WavLM `*-sv`)
  *      — the audio is processed entirely on the client.
  *   2. Persist the profile through the EXISTING enroll path by delegating to
- *      `useVoiceEmbedding().enroll` (multipart `POST /voice-profile/enroll`), so
+ *      `useVoiceEmbedding().enroll` (multipart `POST /voice-profiles/enroll`), so
  *      the profile row (+ optional label) lands in the DB exactly as before
  *      (the server computes/stores its own embedding; schema unchanged).
  *   3. Cache the LOCAL embedding tenant/user-namespaced (encrypted) keyed to the

@@ -49,7 +49,7 @@ describe('useVoiceEnrollmentStatus', () => {
     renderHook(() => useVoiceEnrollmentStatus());
 
     await waitFor(() => {
-      expect(mockStore.apiClient.get).toHaveBeenCalledWith('/voice-profile');
+      expect(mockStore.apiClient.get).toHaveBeenCalledWith('/voice-profiles');
     });
   });
 
@@ -98,7 +98,7 @@ describe('useVoiceEnrollmentStatus', () => {
 
       const hasActive = await checker.checkHasActiveProfile();
 
-      expect(apiClient.get).toHaveBeenCalledWith('/voice-profile');
+      expect(apiClient.get).toHaveBeenCalledWith('/voice-profiles');
       expect(hasActive).toBe(true);
     });
 

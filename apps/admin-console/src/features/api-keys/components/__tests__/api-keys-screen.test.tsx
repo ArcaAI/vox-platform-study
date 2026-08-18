@@ -88,8 +88,8 @@ function stubFetch(custom?: (call: RecordedCall) => Response | undefined, rows: 
       calls.push(call);
       const handled = custom?.(call);
       if (handled) return handled;
-      // The grid persists per-user layout via `user/me/settings` — no saved layout in tests.
-      if (call.url.includes('/user/me/settings')) return call.method === 'GET' ? Response.json([]) : Response.json({ ok: true });
+      // The grid persists per-user layout via `users/me/settings` — no saved layout in tests.
+      if (call.url.includes('/users/me/settings')) return call.method === 'GET' ? Response.json([]) : Response.json({ ok: true });
       if (call.url.includes('/admin/api-keys/scopes')) return Response.json(SCOPES);
       if (call.url.includes('/usage')) return Response.json(USAGE);
       if (call.method === 'GET' && call.url.startsWith('/api/hope/admin/api-keys')) return Response.json(envelope(rows));

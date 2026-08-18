@@ -4,7 +4,7 @@
  * Front-end contract for the DB-backed plan-entitlements system:
  *   - super-admin: kill-switch, plan-matrix CRUD, per-tenant override + snapshot,
  *     explicit downgrade, manual trial-expiry sweep (`/admin/entitlements/*`);
- *   - tenant self-view: capability/usage snapshot (`/entitlements/me`).
+ *   - tenant self-view: capability/usage snapshot (`/tenants/me/entitlements`).
  *
  * Mirrors `useApiKeys`/`useGlobalSettings`: composes `useApiOperation` for
  * loading/error, holds the platform matrix + kill-switch in local state for the
@@ -45,7 +45,7 @@ export interface ResolvedFeatures {
   monitoringAccess: boolean;
 }
 
-/** Read-only capability/usage snapshot (`GET /admin/entitlements/tenants/:id` and `/entitlements/me`). */
+/** Read-only capability/usage snapshot (`GET /admin/entitlements/tenants/:id` and `/tenants/me/entitlements`). */
 export interface EntitlementCapabilities {
   tenantId: string;
   plan?: EntitlementPlan | null;

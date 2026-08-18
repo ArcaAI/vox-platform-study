@@ -151,11 +151,11 @@ describe('constants', () => {
 
   describe('PERSONALIZATION_ENDPOINTS', () => {
     it('should have GET_PREFERENCES endpoint', () => {
-      expect(PERSONALIZATION_ENDPOINTS.GET_PREFERENCES).toBe('/user/me/preferences');
+      expect(PERSONALIZATION_ENDPOINTS.GET_PREFERENCES).toBe('/users/me/preferences');
     });
 
     it('should have UPDATE_PREFERENCES endpoint', () => {
-      expect(PERSONALIZATION_ENDPOINTS.UPDATE_PREFERENCES).toBe('/user/me/preferences');
+      expect(PERSONALIZATION_ENDPOINTS.UPDATE_PREFERENCES).toBe('/users/me/preferences');
     });
   });
 
@@ -412,11 +412,11 @@ describe('constants', () => {
 
   describe('MY_TENANT_ENDPOINTS', () => {
     it('should have INFO endpoint for tenant basic info', () => {
-      expect(MY_TENANT_ENDPOINTS.INFO).toBe('/tenant/me');
+      expect(MY_TENANT_ENDPOINTS.INFO).toBe('/tenants/me');
     });
 
     it('should have CONFIG endpoint for tenant configuration', () => {
-      expect(MY_TENANT_ENDPOINTS.CONFIG).toBe('/tenant/me/config');
+      expect(MY_TENANT_ENDPOINTS.CONFIG).toBe('/tenants/me/config');
     });
 
     it('should use static paths (no tenantId parameter)', () => {

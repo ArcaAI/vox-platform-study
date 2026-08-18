@@ -123,7 +123,7 @@ function baseHandler(
   if (call.method === 'GET' && path === '/api/hope/admin/harness/golden-sets') {
     return Response.json({ items: [], total: 0 });
   }
-  if (call.method === 'GET' && path === '/api/hope/tenant/me/context-schema') {
+  if (call.method === 'GET' && path === '/api/hope/tenants/me/context-schema') {
     return Response.json(RESOLVED_SCHEMA);
   }
   if (call.method === 'GET' && path === '/api/hope/admin/department-agents') {
@@ -164,7 +164,7 @@ describe('LoopConfigTab', () => {
 
   it('renders a fail-closed message and no pickable kinds when the department has no resolved schema', async () => {
     stubFetch((call) => {
-      if (pathnameOf(call) === '/api/hope/tenant/me/context-schema') {
+      if (pathnameOf(call) === '/api/hope/tenants/me/context-schema') {
         return Response.json({ schemaId: null, versionNumber: null, definition: null, etag: '"none"' });
       }
       return baseHandler(agent(), call);

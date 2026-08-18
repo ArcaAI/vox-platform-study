@@ -1,9 +1,9 @@
 /**
  * useVoiceEmbedding Hook Tests
  *
- * Rewritten against the real `/voice-profile` API.
+ * Rewritten against the real `/voice-profiles` API.
  * Enrollment posts multipart via `apiClient.postFormData()`. Listing GETs
- * `/voice-profile`. Deletion targets `/voice-profile/:profileId` (profile id,
+ * `/voice-profiles`. Deletion targets `/voice-profiles/:profileId` (profile id,
  * not user id).
  *
  * @vitest-environment jsdom
@@ -81,7 +81,7 @@ describe('useVoiceEmbedding (voice-profile rewrite)', () => {
       expect(mockStore.apiClient.postFormData).toHaveBeenCalledOnce();
       const [endpoint, formData] = mockStore.apiClient.postFormData.mock.calls[0];
       expect(endpoint).toBe(VOICE_EMBEDDING_ENDPOINTS.enroll);
-      expect(endpoint).toBe('/voice-profile/enroll');
+      expect(endpoint).toBe('/voice-profiles/enroll');
       expect(formData).toBeInstanceOf(FormData);
       expect(resp).toEqual(enrolled);
     });
@@ -155,7 +155,7 @@ describe('useVoiceEmbedding (voice-profile rewrite)', () => {
         resp = await result.current.list();
       });
 
-      expect(mockStore.apiClient.get).toHaveBeenCalledWith('/voice-profile');
+      expect(mockStore.apiClient.get).toHaveBeenCalledWith('/voice-profiles');
       expect(result.current.profiles).toEqual(profiles);
       expect(resp).toEqual(profiles);
     });
@@ -182,7 +182,7 @@ describe('useVoiceEmbedding (voice-profile rewrite)', () => {
         await result.current.delete('profile-abc');
       });
 
-      expect(mockStore.apiClient.delete).toHaveBeenCalledWith('/voice-profile/profile-abc');
+      expect(mockStore.apiClient.delete).toHaveBeenCalledWith('/voice-profiles/profile-abc');
     });
 
     it('removes the deleted profile from the cached profiles list', async () => {
@@ -374,7 +374,7 @@ describe('useVoiceEmbedding (voice-profile rewrite)', () => {
         await result.current.activate('p-1');
       });
 
-      expect(mockStore.apiClient.patch).toHaveBeenCalledWith('/voice-profile/p-1/activate');
+      expect(mockStore.apiClient.patch).toHaveBeenCalledWith('/voice-profiles/p-1/activate');
       expect(result.current.profiles).toEqual([
         { id: 'p-1', isActive: true },
         { id: 'p-2', isActive: false },
@@ -382,7 +382,7 @@ describe('useVoiceEmbedding (voice-profile rewrite)', () => {
     });
 
     it('uses VOICE_EMBEDDING_ENDPOINTS.activate factory', async () => {
-      expect(VOICE_EMBEDDING_ENDPOINTS.activate('p-1')).toBe('/voice-profile/p-1/activate');
+      expect(VOICE_EMBEDDING_ENDPOINTS.activate('p-1')).toBe('/voice-profiles/p-1/activate');
     });
   });
 
@@ -406,7 +406,7 @@ describe('useVoiceEmbedding (voice-profile rewrite)', () => {
         await result.current.deactivate('p-1');
       });
 
-      expect(mockStore.apiClient.patch).toHaveBeenCalledWith('/voice-profile/p-1/deactivate');
+      expect(mockStore.apiClient.patch).toHaveBeenCalledWith('/voice-profiles/p-1/deactivate');
       expect(result.current.profiles).toEqual([
         { id: 'p-1', isActive: false },
         { id: 'p-2', isActive: false },

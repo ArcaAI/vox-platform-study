@@ -191,8 +191,8 @@ export const ENTITY_ENDPOINTS = {
  * Personalization endpoints
  */
 export const PERSONALIZATION_ENDPOINTS = {
-  GET_PREFERENCES: '/user/me/preferences',
-  UPDATE_PREFERENCES: '/user/me/preferences',
+  GET_PREFERENCES: '/users/me/preferences',
+  UPDATE_PREFERENCES: '/users/me/preferences',
 } as const;
 
 /**
@@ -375,14 +375,14 @@ export const TENANT_ENDPOINTS = {
  * so no tenantId path parameter is needed.
  */
 export const MY_TENANT_ENDPOINTS = {
-  INFO: '/tenant/me',
-  CONFIG: '/tenant/me/config',
+  INFO: '/tenants/me',
+  CONFIG: '/tenants/me/config',
   /**
    * Discovery bundle for the caller tenant's PINNED `ConsultationContextSchema`
    * A deliberate sibling of `CONFIG` above, not an
    * addition to it — see `ConsultationSchemaClient.ts`.
    */
-  CONTEXT_SCHEMA: '/tenant/me/context-schema',
+  CONTEXT_SCHEMA: '/tenants/me/context-schema',
 } as const;
 
 // =============================================================================
@@ -659,20 +659,22 @@ export const ENTITLEMENTS_ENDPOINTS = {
   TENANT_OVERRIDE: (tenantId: string) => `/admin/entitlements/tenants/${encodeURIComponent(tenantId)}/override`,
   TENANT_DOWNGRADE: (tenantId: string) => `/admin/entitlements/tenants/${encodeURIComponent(tenantId)}/downgrade`,
   TRIAL_EXPIRY_RUN: '/admin/entitlements/trial-expiry/run',
-  // Tenant self-view (user plane)
-  ME: '/entitlements/me',
+  // Tenant self-view (business plane). TASK-760 moved this off the bare
+  // `entitlements/me` onto the tenant self alias — it is `read:Tenant`,
+  // CLS-tenant-scoped, so it belongs under `tenants/me`, not `users/me`.
+  ME: '/tenants/me/entitlements',
 } as const;
 
 /**
  * User settings endpoints.
  *
- * The API only exposes two real routes — `GET /user/me/settings` and
- * `PATCH /user/me/settings/:namespace/:key`. The previous shape (CRUD by id,
+ * The API only exposes two real routes — `GET /users/me/settings` and
+ * `PATCH /users/me/settings/:namespace/:key`. The previous shape (CRUD by id,
  * MY_SETTINGS by userId) targeted routes that do not exist.
  */
 export const USER_SETTINGS_ENDPOINTS = {
-  list: '/user/me/settings',
-  updateByKey: (namespace: string, key: string) => `/user/me/settings/${encodeURIComponent(namespace)}/${encodeURIComponent(key)}`,
+  list: '/users/me/settings',
+  updateByKey: (namespace: string, key: string) => `/users/me/settings/${encodeURIComponent(namespace)}/${encodeURIComponent(key)}`,
 } as const;
 
 /**
@@ -1027,22 +1029,22 @@ export const TENANT_FRONTEND_CONFIG_ENDPOINTS = {
  * Text-generation proxy endpoints.
  *
  * Controller: `apps/api/src/modules/streaming/text-proxy.controller.ts`
- * (`@Controller('text')`). `GENERATE_ASSEMBLED` runs server-side prompt
+ * (`@Controller('text-generations')`). `GENERATE_ASSEMBLED` runs server-side prompt
  * assembly (DNA-styled + attachment-aware); `GENERATE` is the raw passthrough.
  */
 export const TEXT_ENDPOINTS = {
   /** Generate text (raw passthrough; sync or streaming) */
-  GENERATE: '/text/generate',
+  GENERATE: '/text-generations/generate',
   /** Generate text with server-side prompt assembly */
-  GENERATE_ASSEMBLED: '/text/generate/assembled',
+  GENERATE_ASSEMBLED: '/text-generations/generate/assembled',
   /** List configured LLM providers */
-  PROVIDERS: '/text/providers',
+  PROVIDERS: '/text-generations/providers',
   /** Get a text-generation task's status */
-  TASK: (id: string) => `/text/tasks/${encodeURIComponent(id)}`,
+  TASK: (id: string) => `/text-generations/tasks/${encodeURIComponent(id)}`,
   /** Cancel a running text-generation task */
-  TASK_CANCEL: (id: string) => `/text/tasks/${encodeURIComponent(id)}/cancel`,
+  TASK_CANCEL: (id: string) => `/text-generations/tasks/${encodeURIComponent(id)}/cancel`,
   /** Stream a text-generation task's chunks via SSE */
-  TASK_STREAM: (id: string) => `/text/tasks/${encodeURIComponent(id)}/stream`,
+  TASK_STREAM: (id: string) => `/text-generations/tasks/${encodeURIComponent(id)}/stream`,
 } as const;
 
 // =============================================================================
@@ -1097,17 +1099,17 @@ export const DEFAULT_NER_CONFIG = {
 /**
  * Voice profile endpoints.
  *
- * Matches `VoiceProfileController` at `@Controller('voice-profile')`. Replaces
+ * Matches `VoiceProfileController` at `@Controller('voice-profiles')`. Replaces
  * the previous `/users/:userId/voice-embedding` shape, which never had a
  * matching API controller. Enrollment uses multipart/form-data via
  * `apiClient.postFormData()`. Deletion is keyed by **profile id**, not user id.
  */
 export const VOICE_EMBEDDING_ENDPOINTS = {
-  enroll: '/voice-profile/enroll',
-  list: '/voice-profile',
-  delete: (profileId: string) => `/voice-profile/${encodeURIComponent(profileId)}`,
-  activate: (profileId: string) => `/voice-profile/${encodeURIComponent(profileId)}/activate`,
-  deactivate: (profileId: string) => `/voice-profile/${encodeURIComponent(profileId)}/deactivate`,
+  enroll: '/voice-profiles/enroll',
+  list: '/voice-profiles',
+  delete: (profileId: string) => `/voice-profiles/${encodeURIComponent(profileId)}`,
+  activate: (profileId: string) => `/voice-profiles/${encodeURIComponent(profileId)}/activate`,
+  deactivate: (profileId: string) => `/voice-profiles/${encodeURIComponent(profileId)}/deactivate`,
 } as const;
 
 /**

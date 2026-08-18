@@ -1,8 +1,8 @@
 /**
  * TDD screen tests for frame 25 (account half — Account): identity from the
  * BFF session, per-row "My settings" edits over PATCH
- * /user/me/settings/:namespace/:key, and the preferences form over PATCH
- * /user/me/preferences (real fields only: workflowMode/language/dnaStyleId).
+ * /users/me/settings/:namespace/:key, and the preferences form over PATCH
+ * /users/me/preferences (real fields only: workflowMode/language/dnaStyleId).
  */
 
 import { cleanup, fireEvent, screen, waitFor, within } from '@testing-library/react';
@@ -108,13 +108,13 @@ function stubFetch(handler: Handler): RecordedCall[] {
 function happyHandler(overrides: { settings?: () => Response; session?: SafeSession; departments?: UserDepartment[] } = {}): Handler {
   return (url, method) => {
     if (url === '/api/auth/session') return Response.json(overrides.session ?? SESSION);
-    if (url.includes('/user/me/settings/')) return Response.json({ ...SETTING, value: 'pipe-2' });
-    if (url.includes('/user/me/settings')) return (overrides.settings ?? (() => Response.json([SETTING])))();
-    if (url.includes('/user/me/preferences')) {
+    if (url.includes('/users/me/settings/')) return Response.json({ ...SETTING, value: 'pipe-2' });
+    if (url.includes('/users/me/settings')) return (overrides.settings ?? (() => Response.json([SETTING])))();
+    if (url.includes('/users/me/preferences')) {
       if (method === 'PATCH') return Response.json(PREFERENCES);
       return Response.json(PREFERENCES);
     }
-    if (url.includes('/user/me/departments')) return Response.json(overrides.departments ?? []);
+    if (url.includes('/users/me/departments')) return Response.json(overrides.departments ?? []);
     throw new Error(`Unexpected fetch in test: ${method} ${url}`);
   };
 }
@@ -174,7 +174,7 @@ describe('AccountScreen', () => {
 
     await waitFor(() => expect(calls.filter((call) => call.method === 'PATCH')).toHaveLength(1));
     const patch = calls.find((call) => call.method === 'PATCH');
-    expect(patch?.url).toBe('/api/hope/user/me/settings/arcaai-sdk/selectedPipelineId');
+    expect(patch?.url).toBe('/api/hope/users/me/settings/arcaai-sdk/selectedPipelineId');
     expect(patch?.body).toEqual({ value: 'pipe-2' });
     await waitFor(() => expect(vi.mocked(toast.success)).toHaveBeenCalled());
   });
@@ -193,7 +193,7 @@ describe('AccountScreen', () => {
     fireEvent.change(language, { target: { value: 'nb-NO' } });
     fireEvent.click(within(preferences).getByRole('button', { name: 'Save preferences' }));
 
-    await waitFor(() => expect(calls.filter((call) => call.method === 'PATCH' && call.url === '/api/hope/user/me/preferences')).toHaveLength(1));
+    await waitFor(() => expect(calls.filter((call) => call.method === 'PATCH' && call.url === '/api/hope/users/me/preferences')).toHaveLength(1));
     const patch = calls.find((call) => call.method === 'PATCH');
     expect(patch?.body).toEqual({ workflowMode: 'local', language: 'nb-NO' });
     await waitFor(() => expect(vi.mocked(toast.success)).toHaveBeenCalledWith('Preferences saved'));

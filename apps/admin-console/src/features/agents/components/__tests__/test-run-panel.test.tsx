@@ -1,6 +1,6 @@
 /**
  * Test Bench extensions to `TestRunPanel`: provider/model
- * picker (fed by the `text/providers` catalog via the shared
+ * picker (fed by the `text-generations/providers` catalog via the shared
  * `useTextProviders` hook), the "Paste sample" / "Golden case" example-data
  * toggle (XOR payload), the dry-run switch (default ON), and the version
  * selector. Covers the POST :id/test request body the panel actually sends —
@@ -104,7 +104,7 @@ function defaultHandler(tpl: PromptTemplate, call: RecordedCall): Response | und
   if (call.method === 'GET' && path === '/api/hope/admin/departments') {
     return Response.json([]);
   }
-  if (call.method === 'GET' && path === '/api/hope/text/providers') {
+  if (call.method === 'GET' && path === '/api/hope/text-generations/providers') {
     return Response.json(PROVIDERS);
   }
   if (call.method === 'GET' && path === '/api/hope/admin/harness/golden-sets') {
@@ -124,7 +124,7 @@ function defaultHandler(tpl: PromptTemplate, call: RecordedCall): Response | und
             model: 'gpt-4o',
             assembledPrompt: 'ASSEMBLED PROMPT TEXT',
             taskId: 'task-9',
-            streamUrl: 'text/tasks/task-9/stream',
+            streamUrl: 'text-generations/tasks/task-9/stream',
           },
     );
   }

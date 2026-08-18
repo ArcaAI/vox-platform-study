@@ -27,7 +27,7 @@ const MAX_FILES = 3;
 
 @ApiBearerAuth()
 @ApiTags('voice-profile')
-@Controller('voice-profile')
+@Controller('voice-profiles')
 // API-KEY-NOTE — REASONED EXEMPTION from policy A1 (JWT + API key on the
 // business plane), recorded by TASK-758 and policed by
 // `BUSINESS_PLANE_KEY_FORBIDDEN` (bootstrap/business-plane-apikey-exemptions-audit.ts).

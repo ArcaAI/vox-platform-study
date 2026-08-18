@@ -14,7 +14,7 @@
  * `azure` row:
  *
  *   1. Tenant A sets an ENABLED bedrock BYO credential, then calls
- *      `POST /api/v1/text/generate` with `provider: 'bedrock'`. The
+ *      `POST /api/v1/text-generations/generate` with `provider: 'bedrock'`. The
  *      credential the gateway forwards downstream as
  *      `provider_overrides.bedrock` must match exactly what tenant A
  *      configured.
@@ -50,7 +50,7 @@ import * as http from 'node:http';
 import { DEFAULT_TENANT_KEY, SEEDED_USERS, loginUser } from '../../../../tests/helpers';
 
 const ADMIN_BASE = '/api/v1/admin/ai-providers';
-const GENERATE_ROUTE = '/api/v1/text/generate';
+const GENERATE_ROUTE = '/api/v1/text-generations/generate';
 const ARCAAI_TENANT_KEY = 'ARCAAI';
 
 const TEXT_STUB_ENABLED = process.env.E2E_TEXT_STUB === '1';

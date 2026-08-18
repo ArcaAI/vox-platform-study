@@ -11,10 +11,10 @@ vi.mock('next/navigation', () => ({
   useRouter: () => ({ push, replace: vi.fn(), refresh: vi.fn(), back: vi.fn(), prefetch: vi.fn() }),
 }));
 
-/** Layout persistence reads GET user/me/settings on mount; tests have no saved layout. */
+/** Layout persistence reads GET users/me/settings on mount; tests have no saved layout. */
 function stubFetch(handle: FetchHandler): RecordedCall[] {
   return installFetchStub((call) => {
-    if (call.url.includes('/user/me/settings')) return call.method === 'GET' ? [] : { success: true };
+    if (call.url.includes('/users/me/settings')) return call.method === 'GET' ? [] : { success: true };
     return handle(call);
   });
 }

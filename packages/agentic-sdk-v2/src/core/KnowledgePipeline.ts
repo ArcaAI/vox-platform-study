@@ -447,14 +447,14 @@ export class KnowledgePipeline {
     }
 
     // Phase 0 (0.8) — the API gateway DOES expose NER now
-    // (`POST /api/v1/ai/nlp/entities`, AiInferenceController);
+    // (`POST /api/v1/text-analyses/entities`, AiInferenceController);
     // this KnowledgePipeline just hasn't been wired to call it yet. Fail fast
     // with that accurate limitation rather than the previous (now false)
     // claim that no such gateway endpoint exists.
     if (stage.location === 'backend') {
       throw new Error(
         'Backend NER is not yet wired in this SDK (the API gateway does expose ' +
-          'POST /api/v1/ai/nlp/entities). Set KnowledgePipeline ner.location to ' +
+          'POST /api/v1/text-analyses/entities). Set KnowledgePipeline ner.location to ' +
           '"browser" (recommended) or disable NER.',
       );
     }

@@ -44,7 +44,7 @@ function stubConfigFetch(): void {
     'fetch',
     vi.fn(async (input: string | URL | Request) => {
       const url = String(input);
-      if (url.includes('/tenant/me/config')) return Response.json(CONFIG_PAGE);
+      if (url.includes('/tenants/me/config')) return Response.json(CONFIG_PAGE);
       throw new Error(`Unexpected fetch in test: ${url}`);
     }),
   );

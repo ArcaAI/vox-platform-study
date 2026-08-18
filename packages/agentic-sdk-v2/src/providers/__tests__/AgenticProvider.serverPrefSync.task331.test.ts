@@ -3,13 +3,13 @@
  *
  * Before this fix the production `AgenticProvider` wired ONLY local-storage
  * persistence (`makePersistUserPreferencesToStorage`) — a user's SDK prefs
- * never reached `PATCH /user/me/settings`, so they never synced to the
+ * never reached `PATCH /users/me/settings`, so they never synced to the
  * doctor's real/server profile or other devices.
  *
  * Fix: an ADDITIVE, debounced server sync. When NOT impersonating
  * (`ConfigManager.readOnly === false`), each changed user-pref LEAF is
  * flattened to a dot-path and PATCHed to
- * `/user/me/settings/arcaai-sdk/{dotPath}` with the stringified value and the
+ * `/users/me/settings/arcaai-sdk/{dotPath}` with the stringified value and the
  * correct `dataType`. Local-storage persistence is untouched (server sync is
  * additive) and a failed PATCH never breaks it.
  *
@@ -136,12 +136,12 @@ const TENANT_A = 'tenant-1';
 const ADMIN = 'admin-77';
 const DOCTOR = 'doctor-99';
 
-const SDK_NS = '/user/me/settings/arcaai-sdk/';
+const SDK_NS = '/users/me/settings/arcaai-sdk/';
 
 function meHandler(me: { id?: string; tenantId?: string; departmentId?: string }): FetchHandler {
   return async (url) => {
     if (url.endsWith('/auth/me')) return jsonResponse(me);
-    if (url.includes('/tenant/me')) return jsonResponse({ defaultSttModel: null, features: {} });
+    if (url.includes('/tenants/me')) return jsonResponse({ defaultSttModel: null, features: {} });
     return jsonResponse({});
   };
 }
@@ -170,7 +170,7 @@ function findPatch(dotPath: string): PatchCall | undefined {
 }
 
 describe('doc-07 F5a — AgenticProvider server preference sync', () => {
-  it('PATCHes each user-pref leaf to /user/me/settings/arcaai-sdk/{dotPath} with value + dataType when NOT impersonating', async () => {
+  it('PATCHes each user-pref leaf to /users/me/settings/arcaai-sdk/{dotPath} with value + dataType when NOT impersonating', async () => {
     handler = meHandler({ id: ADMIN, tenantId: TENANT_A });
     const store = renderProvider();
     await waitFor(() => expect(store.getState().configReady).toBe(true), { timeout: 2000 });

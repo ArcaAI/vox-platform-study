@@ -132,7 +132,7 @@ function baseHandler(call: RecordedCall): Response | undefined {
   const path = pathOf(call);
   if (path === '/api/auth/session') return Response.json(session());
   if (path === '/api/hope/admin/departments') return Response.json([]);
-  if (path.includes('/user/me/settings')) return call.method === 'GET' ? Response.json([]) : Response.json({ ok: true });
+  if (path.includes('/users/me/settings')) return call.method === 'GET' ? Response.json([]) : Response.json({ ok: true });
   return undefined;
 }
 

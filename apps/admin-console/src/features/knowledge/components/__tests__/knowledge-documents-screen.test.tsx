@@ -65,7 +65,7 @@ const CHUNKS_PAGE = { data: [chunk()], count: 1, limit: 10, page: 0 };
 function stubRoutes(overrides: { docs?: typeof DOCS_PAGE; workingTenantId?: string | null; extra?: (call: RecordedCall) => Response | unknown } = {}) {
   return installFetchStub((call) => {
     if (call.url === '/api/auth/session') return sessionPayload({ workingTenantId: overrides.workingTenantId });
-    if (call.url.includes('/user/me/settings')) return call.method === 'GET' ? [] : { ok: true };
+    if (call.url.includes('/users/me/settings')) return call.method === 'GET' ? [] : { ok: true };
     if (call.url.startsWith('/api/hope/admin/knowledge/documents/doc-1/chunks')) return CHUNKS_PAGE;
     if (call.url.startsWith('/api/hope/admin/knowledge/documents/doc-1/archive') && call.method === 'POST') return knowledgeDocument({ status: 'ARCHIVED' });
     if (call.url.startsWith('/api/hope/admin/knowledge/documents/doc-1') && call.method === 'DELETE') return knowledgeDocument();

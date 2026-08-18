@@ -402,12 +402,12 @@ test.describe.serial('departments CRUD (D1) + member assignment (D4)', () => {
 // =============================================================================
 test.describe('working-tenant context /tenant/me (F8)', () => {
   test('F8: a cross-tenant operator with no working tenant gets 400 (no silent fallback)', async ({ request }) => {
-    const res = await authGet(request, '/api/v1/tenant/me', superToken);
+    const res = await authGet(request, '/api/v1/tenants/me', superToken);
     expect(res.status(), 'super-admin operator must pick a tenant — no global fallback').toBe(400);
   });
 
   test('F8: a tenant-admin resolves their working tenant', async ({ request }) => {
-    const res = await authGet(request, '/api/v1/tenant/me', tenantAdminToken);
+    const res = await authGet(request, '/api/v1/tenants/me', tenantAdminToken);
     expect(res.status()).toBe(200);
     const body = (await res.json()) as Tenant;
     expect(body.key).toBe(DEFAULT_TENANT_KEY);

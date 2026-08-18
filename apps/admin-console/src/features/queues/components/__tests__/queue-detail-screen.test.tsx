@@ -59,8 +59,8 @@ const JOBS_URL = `${QUEUE_URL}/jobs`;
 
 function stubQueueRoutes() {
   return installFetchStub(({ url, method }) => {
-    // AdminDataGrid persists per-user layout via user/me/settings — no saved layout in tests.
-    if (url.includes('/user/me/settings')) return method === 'GET' ? [] : { success: true };
+    // AdminDataGrid persists per-user layout via users/me/settings — no saved layout in tests.
+    if (url.includes('/users/me/settings')) return method === 'GET' ? [] : { success: true };
     if (url === QUEUE_URL) return QUEUE;
     if (url.startsWith(`${JOBS_URL}?`)) {
       const envelope: PaginatedJobs = { items: JOBS, total: 2, page: 0, limit: 25 };

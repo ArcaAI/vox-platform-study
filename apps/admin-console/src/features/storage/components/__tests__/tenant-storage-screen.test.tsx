@@ -133,7 +133,7 @@ function defaultHandler(call: RecordedCall): Response | undefined {
   const path = parsed.pathname;
   // Best-effort per-user grid-layout persistence: the buckets grid
   // loads (GET) and debounce-saves (PATCH) its layout; tests carry no saved layout.
-  if (path.includes('/user/me/settings')) {
+  if (path.includes('/users/me/settings')) {
     return call.method === 'GET' ? Response.json([]) : Response.json({ ok: true });
   }
   if (call.method !== 'GET') return undefined;

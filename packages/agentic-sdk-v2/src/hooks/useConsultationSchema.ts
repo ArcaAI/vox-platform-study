@@ -3,7 +3,7 @@
  *
  * Read-only view over the SESSION-PINNED consultation context schema bundle
  * `AgenticProvider` fetches at mount (and re-fetches on a same-tab tenant
- * switch) from `GET /tenant/me/context-schema`. This hook does
+ * switch) from `GET /tenants/me/context-schema`. This hook does
  * NOT fetch — the discovery fetch is owned by the provider so every consumer
  * in the tree observes the SAME pinned version for the life of the session,
  * which is what makes `X-Context-Schema-Version` on `useArcaSession().addContext()`

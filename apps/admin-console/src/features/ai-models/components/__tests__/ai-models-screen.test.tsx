@@ -80,9 +80,9 @@ function stubFetch(handler: (url: string, method: string) => Response | Promise<
         headers: new Headers(init?.headers),
         body: typeof init?.body === 'string' ? JSON.parse(init.body) : undefined,
       });
-      // Best-effort per-user grid-layout persistence (`user/me/settings`) — no saved
+      // Best-effort per-user grid-layout persistence (`users/me/settings`) — no saved
       // layout in tests. Answered before the handler so it never trips list branches.
-      if (url.includes('/user/me/settings')) return method === 'GET' ? Response.json([]) : Response.json({ ok: true });
+      if (url.includes('/users/me/settings')) return method === 'GET' ? Response.json([]) : Response.json({ ok: true });
       return handler(url, method);
     }),
   );

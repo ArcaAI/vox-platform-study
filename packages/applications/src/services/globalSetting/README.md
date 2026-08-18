@@ -8,7 +8,7 @@ a row mutates.
 
 The HTTP surface for SUPER_ADMIN edits is the play-studio area
 (`apps/api/src/modules/pstudio/`); per-tenant edits flow through
-`TenantService.updateTenantConfigs` (`PATCH /api/v1/tenant/me/config`).
+`TenantService.updateTenantConfigs` (`PATCH /api/v1/tenants/me/config`).
 
 ## Concurrency Model
 

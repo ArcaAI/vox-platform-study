@@ -21,7 +21,7 @@ const ME_IS_THE_BOUND_USER =
 
 @ApiBearerAuth()
 @ApiTags('user')
-@Controller('user/me/preferences')
+@Controller('users/me/preferences')
 @Authorize()
 // TASK-742: maps 1:1 onto the pre-existing, previously unwired
 // `user:preferences:*` scopes that seeded SDK keys already carry.

@@ -13,7 +13,6 @@ import { ApiBearerAuth, ApiOkResponse, ApiOperation, ApiTags } from '@nestjs/swa
 import { ClsService } from 'nestjs-cls';
 import { Authorize, RequiredScopes } from '../../decorators';
 import { AiInferenceClient } from './ai-inference.client';
-import { AnalyzeGuardrailRequest } from './dto/analyze-guardrail.request';
 import { ClassifyIntentRequest } from './dto/classify-intent.request';
 import { ClassifyTopicRequest } from './dto/classify-topic.request';
 import { ExtractEntitiesRequest } from './dto/extract-entities.request';
@@ -26,9 +25,15 @@ import { SuggestDiagnosisRequest } from './dto/suggest-diagnosis.request';
 const CLINICIAN_ROLES = ['DOCTOR', 'SPECIALIST', 'CONSULTANT'];
 
 /**
- * AiInferenceController — the USER-PLANE `/ai/*` inference proxy over
- * the Guardrail and NLP Python services, backing the Agent Playground's
- * Guardrails and NER tabs (matrix row 38). `@Authorize()` (no permission pair):
+ * AiInferenceController — the USER-PLANE `/text-analyses/*` proxy over the
+ * NLP Python service, backing the Agent Playground's NER tab (matrix row 38).
+ *
+ * TASK-760 (decision D-2) — this used to be mounted at the bare `ai` prefix and
+ * carried the guardrail check too. `ai` was one prefix over two unrelated
+ * capabilities, named after neither: a SAFETY VERDICT on caller-supplied text
+ * (now `safety-checks`, `SafetyCheckController`) and a set of LINGUISTIC
+ * ANALYSES of caller-supplied text (here). The class name is deliberately
+ * unchanged — it is referenced by the boot-audit fixtures owned by TASK-761. `@Authorize()` (no permission pair):
  * any authenticated caller — SUPER_ADMIN or TENANT_ADMIN acting under their
  * OWN account — may call it, mirroring `TextProxyController` (`/text/*`). These
  * are stateless inference calls over caller-supplied text — no tenant-owned
@@ -45,7 +50,7 @@ const CLINICIAN_ROLES = ['DOCTOR', 'SPECIALIST', 'CONSULTANT'];
  */
 @ApiTags('ai-inference')
 @ApiBearerAuth()
-@Controller('ai')
+@Controller('text-analyses')
 // API-KEY-NOTE: policy A1 (JWT + API key on the business plane). A stateless
 // inference proxy over Guardrail/NLP is a core capability an integrator calls
 // headlessly — no tenant-owned resource is read, only caller-supplied text.
@@ -75,7 +80,7 @@ export class AiInferenceController {
     // tenantId is resolvable, so emission simply doesn't happen (see below).
     @Optional() private readonly cls?: ClsService<IActiveUserContext>,
     // Emits the `ner.extract` usage row for the playground
-    // `/ai/nlp/entities` proxy — the ONE NER call site with no consultation
+    // `/text-analyses/entities` proxy — the ONE NER call site with no consultation
     // attribution. Optional + trailing so existing positional fixtures keep
     // compiling; absent ⇒ no emission (fail-open — metering must never block
     // the playground tool).
@@ -90,20 +95,7 @@ export class AiInferenceController {
     private readonly tenantNlpTaskInstructionsService?: ITenantNlpTaskInstructionsService,
   ) {}
 
-  @Post('guardrail/analyze')
-  @Authorize()
-  @ApiOperation({
-    summary: 'Run a content-safety / PII / prompt-injection check on the supplied text (proxied to the Guardrail service).',
-  })
-  @ApiOkResponse({ description: 'Upstream guardrail verdict `{ safe, issues[], confidence, ... }`, proxied verbatim.' })
-  async analyzeGuardrail(@Body() body: AnalyzeGuardrailRequest): Promise<Record<string, unknown>> {
-    return this.client.analyzeGuardrail({
-      text: body.text,
-      guardrail_type: body.guardrailType ?? 'comprehensive',
-    });
-  }
-
-  @Post('nlp/entities')
+  @Post('entities')
   @Authorize()
   @ApiOperation({
     summary: 'Extract medical entities (NER) from the supplied text (proxied to the NLP token-classification endpoint).',
@@ -183,7 +175,7 @@ export class AiInferenceController {
     return user.id;
   }
 
-  @Post('nlp/diagnosis')
+  @Post('diagnosis')
   @Authorize()
   @ApiOperation({
     summary: 'Derive diagnosis suggestions from the supplied clinical text (proxied to the NLP diagnosis endpoint).',
@@ -204,7 +196,7 @@ export class AiInferenceController {
     });
   }
 
-  @Post('nlp/topic')
+  @Post('topic')
   @Authorize()
   @ApiOperation({
     summary: 'Classify text into one of the caller tenant configured topics (open-taxonomy, delegated by NLP to text).',
@@ -224,7 +216,7 @@ export class AiInferenceController {
     });
   }
 
-  @Post('nlp/intent')
+  @Post('intent')
   @Authorize()
   @ApiOperation({
     summary: 'Classify text into one of the caller tenant configured intents (open-taxonomy, delegated by NLP to text).',

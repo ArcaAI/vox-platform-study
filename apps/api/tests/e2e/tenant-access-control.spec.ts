@@ -101,7 +101,7 @@ test.describe('Tenant Access Control', () => {
 
   test.describe('Issue #3: /tenant/me requires CLS tenant context', () => {
     test('super_admin without tenant context gets 400 from GET /tenant/me (no silent global fallback)', async ({ request }) => {
-      const response = await request.get('/api/v1/tenant/me', {
+      const response = await request.get('/api/v1/tenants/me', {
         headers: { Authorization: `Bearer ${superAdminTokenWithoutTenant}` },
       });
 

@@ -1,7 +1,7 @@
 /**
  * Client-side categorization for the tenant Settings tab.
  *
- * Tenant config rows (GET /tenant/me/config) carry no category metadata, so
+ * Tenant config rows (GET /tenants/me/config) carry no category metadata, so
  * the Settings sub-nav groups them here from key/namespace conventions. The
  * mapping is a pure function (unknown → `general`) and the ordered category
  * list drives the rail. `controlFor` picks the type-appropriate control for a

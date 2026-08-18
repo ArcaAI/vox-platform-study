@@ -165,7 +165,7 @@ function stubFetch({ session = TENANT_SESSION, permissions = ALL, effectiveFails
       const raw = String(input);
       calls.push({ url: raw, method });
       if (raw === '/api/auth/session') return Response.json(session);
-      if (raw === '/api/hope/rbac/check/my-permissions') return Response.json({ userId: 'u-1', tenantId: 'tnt-1', permissions });
+      if (raw === '/api/hope/users/me/permission-checks') return Response.json({ userId: 'u-1', tenantId: 'tnt-1', permissions });
 
       const url = new URL(raw, 'http://test.local');
       const path = url.pathname;

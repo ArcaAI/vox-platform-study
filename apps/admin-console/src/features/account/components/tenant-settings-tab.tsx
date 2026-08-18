@@ -121,7 +121,7 @@ function SettingsSkeleton() {
 /**
  * Settings tab: a category rail (chip row on mobile) plus a
  * focused form pane. Editable rows draft locally; a per-category save bar fires
- * sequential per-row PATCH /tenant/me/config with per-row If-Match (the gateway
+ * sequential per-row PATCH /tenants/me/config with per-row If-Match (the gateway
  * route is `@RequiresIfMatch()` and applies the header version to every row, so
  * a single heterogeneous batch is impossible — see the ticket README). A 412
  * stops the run, keeps drafts ("no silent loss") and reloads versions.

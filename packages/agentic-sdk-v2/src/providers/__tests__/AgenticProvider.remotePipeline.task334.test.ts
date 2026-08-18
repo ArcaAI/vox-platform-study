@@ -3,7 +3,7 @@
  *
  * The assigned remote ASR pipeline is resolved per-user server-side
  * (admin override -> tenant default -> global) and returned on
- * `GET /user/me/preferences` as `remoteConfig.pipelineId`. The provider must
+ * `GET /users/me/preferences` as `remoteConfig.pipelineId`. The provider must
  * surface it into `resolvedConfig.stt.transcriptionPipelineId` via the
  * admin/tenant tier so the consultation panel runs the correct pipeline
  * instead of falling back to the hardcoded default, and so a user preference
@@ -109,10 +109,10 @@ function defaultHandler(url: string): Promise<Response> {
   if (url.endsWith('/auth/me')) {
     return Promise.resolve(jsonResponse({ id: 'user-1', tenantId: 'tenant-1' }));
   }
-  if (url.includes('/tenant/me')) {
+  if (url.includes('/tenants/me')) {
     return Promise.resolve(jsonResponse({ defaultSttModel: 'whisper-base', features: {} }));
   }
-  if (url.includes('/user/me/preferences')) {
+  if (url.includes('/users/me/preferences')) {
     return Promise.resolve(jsonResponse({ remoteConfig: { pipelineId: REMOTE_PIPELINE_ID, assignedBy: 'admin' } }));
   }
   return Promise.resolve(jsonResponse({}));
@@ -148,7 +148,7 @@ describe('remote pipeline-id population', () => {
 
   it('omits the override when no remote pipeline is assigned (field stays undefined)', async () => {
     handler = async (url) => {
-      if (url.includes('/user/me/preferences')) {
+      if (url.includes('/users/me/preferences')) {
         return jsonResponse({});
       }
       return defaultHandler(url);
@@ -178,8 +178,8 @@ describe('remote pipeline-id population', () => {
     // Mount as an ADMIN with NO assigned pipeline (remoteConfig empty).
     handler = async (url) => {
       if (url.endsWith('/auth/me')) return jsonResponse({ id: 'admin-1', tenantId: 'tenant-1' });
-      if (url.includes('/tenant/me')) return jsonResponse({ defaultSttModel: 'whisper-base', features: {} });
-      if (url.includes('/user/me/preferences')) return jsonResponse({});
+      if (url.includes('/tenants/me')) return jsonResponse({ defaultSttModel: 'whisper-base', features: {} });
+      if (url.includes('/users/me/preferences')) return jsonResponse({});
       return jsonResponse({});
     };
 
@@ -191,8 +191,8 @@ describe('remote pipeline-id population', () => {
     const DOCTOR_PIPELINE = 'pipe-doctor-streamable';
     handler = async (url) => {
       if (url.endsWith('/auth/me')) return jsonResponse({ id: 'doctor-2', tenantId: 'tenant-1' });
-      if (url.includes('/tenant/me')) return jsonResponse({ defaultSttModel: 'whisper-base', features: {} });
-      if (url.includes('/user/me/preferences')) {
+      if (url.includes('/tenants/me')) return jsonResponse({ defaultSttModel: 'whisper-base', features: {} });
+      if (url.includes('/users/me/preferences')) {
         return jsonResponse({ remoteConfig: { pipelineId: DOCTOR_PIPELINE, assignedBy: 'admin' } });
       }
       return jsonResponse({});

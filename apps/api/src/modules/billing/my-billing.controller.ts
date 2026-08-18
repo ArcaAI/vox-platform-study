@@ -13,16 +13,16 @@ import { Authorize, RequiredScopes } from '../../decorators';
 
 /**
  * Tenant self-service billing reads (D8/D12), mounted at
- * `/billing/me/*` (global prefix → `/api/v1/billing/me/*`).
+ * `/tenants/me/*` (global prefix → `/api/v1/tenants/me/*`).
  *
- * Gated with `read Tenant` — the same posture as `/entitlements/me`: a tenant
+ * Gated with `read Tenant` — the same posture as `/tenants/me/entitlements`: a tenant
  * user sees ONLY their own tenant's invoices and spend. A foreign invoice id
  * reads as 404 (never 403). Super Admins use `/admin/billing/*`, not here.
  *
  * READ-ONLY by construction: no mutation route exists on this controller.
  */
 /**
- * TASK-758 — the counterpart to `/user/me/*`'s bound-user rule: the bare
+ * TASK-758 — the counterpart to `/users/me/*`'s bound-user rule: the bare
  * "mine" surfaces resolve to the key's TENANT, via the CLS `tenantId` the
  * guard sets from `apiKeyEntity.tenantId`. Different resolution, so it gets
  * its own sentence rather than a shared one.
@@ -31,7 +31,7 @@ const ME_IS_THE_KEY_TENANT = "Under API-key authentication this resolves to the 
 
 @ApiBearerAuth()
 @ApiTags('billing')
-@Controller('billing')
+@Controller('tenants/me')
 // API-KEY-NOTE: policy A1. Self-service invoice/spend reads an integrator
 // needs to meter its own consumption. Resolves to the KEY'S TENANT (the CLS
 // `tenantId` the guard sets from the key), never to a tenant it names; a
@@ -43,7 +43,7 @@ export class MyBillingController {
     private readonly cls: ClsService<IActiveUserContext>,
   ) {}
 
-  @Get('me/invoices')
+  @Get('invoices')
   @Authorize(['read', 'Tenant'])
   @ApiOperation({ summary: "The caller's own tenant's invoices, newest period first.", description: ME_IS_THE_KEY_TENANT })
   @ApiResponse({ status: 200, type: BillingInvoiceSummaryResponse, isArray: true })
@@ -51,7 +51,7 @@ export class MyBillingController {
     return this.billing.listInvoices(this.ownTenantId());
   }
 
-  @Get('me/invoices/:id')
+  @Get('invoices/:id')
   @Authorize(['read', 'Tenant'])
   @ApiOperation({ summary: 'One of my invoices (lines, memos, BYOK notional spend). A foreign id → 404.', description: ME_IS_THE_KEY_TENANT })
   @ApiResponse({ status: 200, type: BillingInvoiceResponse })
@@ -59,7 +59,7 @@ export class MyBillingController {
     return this.billing.getInvoice(this.ownTenantId(), id);
   }
 
-  @Get('me/spend')
+  @Get('spend')
   @Authorize(['read', 'Tenant'])
   @ApiOperation({
     summary: 'Month-to-date usage-and-spend snapshot vs my spend limit. Defaults to the current period.',

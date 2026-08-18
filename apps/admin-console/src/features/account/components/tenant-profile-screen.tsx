@@ -60,7 +60,7 @@ const ALL_TABS = [
 ] as const;
 
 /**
- * GET /tenant/me answers 400 for a session without tenant context (and a
+ * GET /tenants/me answers 400 for a session without tenant context (and a
  * cross-tenant read would surface as 404) — both mean "pick a working
  * tenant", not a failure (frame 25 NoTenant variant).
  */
@@ -197,7 +197,7 @@ function PlanUsagePanel() {
  * Self-service view of the working tenant, reframed into three tabs:
  * Organization (read-only identity — no self-serve tenant PATCH exists), Plan &
  * usage (entitlement/usage snapshot), and Settings (category sub-nav over the
- * editable tenant/me/config rows). Tenant-less super admins get the frame's
+ * editable tenants/me/config rows). Tenant-less super admins get the frame's
  * NoTenant empty state.
  */
 export function TenantProfileScreen() {
@@ -236,7 +236,7 @@ export function TenantProfileScreen() {
       start={<span>{isBusy ? 'Refreshing' : 'Up to date'}</span>}
       end={
         <span aria-hidden className="font-mono">
-          GET /tenant/me
+          GET /tenants/me
         </span>
       }
     />

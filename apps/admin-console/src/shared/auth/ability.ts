@@ -1,6 +1,6 @@
 /**
  * Client-side mirror of the gateway's CASL authorization semantics, hydrated
- * from POST /rbac/check/my-permissions. Drives menu visibility and
+ * from POST /users/me/permission-checks. Drives menu visibility and
  * <RequirePermission> only — the server remains the enforcement point.
  */
 export interface PermissionRule {

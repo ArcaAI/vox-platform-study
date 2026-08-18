@@ -3,7 +3,7 @@
  *
  * The effective transcription mode is resolved per-user SERVER-SIDE in
  * UserPreferencesService (locked ⇒ tenant default; unlocked ⇒ workflowMode) and
- * returned on `GET /user/me/preferences` as `transcriptionMode`. The provider
+ * returned on `GET /users/me/preferences` as `transcriptionMode`. The provider
  * must surface it into `resolvedConfig.stt.transcriptionMode` via the admin/
  * tenant tier so the clinical workspace branches LOCAL vs BACKEND, and so a user
  * preference cannot override it (the field is `permission: 'admin'`).
@@ -105,10 +105,10 @@ function handlerWithMode(transcriptionMode?: 'LOCAL' | 'BACKEND'): FetchHandler 
     if (url.endsWith('/auth/me')) {
       return Promise.resolve(jsonResponse({ id: 'user-1', tenantId: 'tenant-1' }));
     }
-    if (url.includes('/tenant/me')) {
+    if (url.includes('/tenants/me')) {
       return Promise.resolve(jsonResponse({ defaultSttModel: 'whisper-base', features: {} }));
     }
-    if (url.includes('/user/me/preferences')) {
+    if (url.includes('/users/me/preferences')) {
       return Promise.resolve(jsonResponse(transcriptionMode ? { transcriptionMode, transcriptionModeLocked: true } : {}));
     }
     return Promise.resolve(jsonResponse({}));

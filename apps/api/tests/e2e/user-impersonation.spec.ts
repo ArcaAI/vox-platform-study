@@ -12,7 +12,7 @@
  *      tenant) AND the true actor (`impersonatedBy`), with `impersonate-` jti
  *      and a ~30m default expiry (clamped override honoured).
  *   B. Act-as — the token resolves auth context to the TARGET (`/auth/me`),
- *      reads tenant-scoped data, and a WRITE (PATCH /user/me/preferences)
+ *      reads tenant-scoped data, and a WRITE (PATCH /users/me/preferences)
  *      lands an audit row whose `metadata.impersonatedBy` records the actor
  *      (provenance threading through BaseService → SysEvent → AuditLog).
  *   C. Lifecycle audit — forced USER_IMPERSONATION_STARTED/ENDED rows
@@ -166,13 +166,13 @@ test.describe.serial('B — act-as + write provenance', () => {
   });
 
   test('B2 — tenant-scoped read works as the target', async ({ request }) => {
-    const prefs = await request.get('/api/v1/user/me/preferences', { headers: bearer(session.token) });
+    const prefs = await request.get('/api/v1/users/me/preferences', { headers: bearer(session.token) });
     expect(prefs.status(), 'target-scoped read → 200').toBe(200);
   });
 
   test('B3 — a write succeeds and its audit row carries the impersonator (metadata.impersonatedBy)', async ({ request }) => {
     const marker = `t401-provenance-${UNIQUE}`;
-    const write = await request.patch('/api/v1/user/me/preferences', {
+    const write = await request.patch('/api/v1/users/me/preferences', {
       headers: bearer(session.token),
       data: { custom: { t401Marker: marker } },
     });
