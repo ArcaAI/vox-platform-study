@@ -189,7 +189,20 @@ Make the requester binding real, in this order:
 
 ### 3.6 Enforce in CI, not review
 
-Every rule above is mechanically checkable. Add boot-time/lint gates: admin prefix ⇒ no `@RequiredScopes`; internal prefix ⇒ service-token guard; business prefix ⇒ either `@RequiredScopes` or an `// AUTH-NOTE:`-justified `@ForbidApiKey()`. The deny-by-default route audit already proves this pattern works.
+Every rule above is mechanically checkable. Add boot-time/lint gates: admin prefix ⇒ no `@RequiredScopes`; internal prefix ⇒ service-token guard; business prefix ⇒ either `@RequiredScopes` or a justified `@ForbidApiKey()`. The deny-by-default route audit already proves this pattern works.
+
+**Status (TASK-761, 2026-08-18) — all four gates are live, with three corrections to the wording above.**
+
+| Gate | Mechanism | Where |
+|---|---|---|
+| admin ⇒ no `@RequiredScopes` | boot audit (derived sweep) | `auditAdminControllersDeclareNoApiKeyScopes` — shipped with TASK-757 |
+| internal ⇒ service-token guard | boot audit — **already existed** since TASK-708 | `auditInternalRoutesOffApiKeySurface`; TASK-761's delta is a test that FREEZES `RESERVED_INTERNAL_SCOPE_CONTROLLERS` at its single member, which nothing previously constrained |
+| business ⇒ scope, or justified forbid | **split**: boot audits for presence + named exemption, lint for the justification | `api-key-surface-audit.ts` + `business-plane-apikey-exemptions-audit.ts`, plus `arcaai-internal/require-api-key-justification` |
+| WS owner binding | boot audit for the DECLARATION + named regression specs for the behaviour | `ws-gateway-owner-audit.ts` |
+
+1. **The justification half cannot be a boot audit.** A reason is a comment; `tsc` strips comments before any Nest metadata exists, so no `Reflector` can read one. It is a lint rule, and that is not an implementation preference — it is the only mechanism that sees source text.
+2. **The marker is `// API-KEY-NOTE`, not `// AUTH-NOTE`** (owner decision, 2026-08-18). The two are deliberately distinct: `API-KEY-NOTE` classifies a surface's API-key posture; `AUTH-NOTE` is `.claude/rules/05-nestjs-api.md`'s marker for a permission decorator that understates the real gate. Every business-plane `@ForbidApiKey()` in the tree already carried `API-KEY-NOTE`, so there was no comment migration.
+3. **WebSocket gateways are Nest PROVIDERS, not controllers.** Every audit in `apps/api/src/bootstrap/` walked `moduleRef.controllers` and was therefore blind to all three gateways. The WS gate walks `moduleRef.providers`, and it pins only the declaration — no metadata check can prove a runtime owner comparison, so claiming otherwise would ship a gate stronger in name than in fact.
 
 ---
 
@@ -200,8 +213,8 @@ Every rule above is mechanically checkable. Add boot-time/lint gates: admin pref
 | 1 | ~~§2.1 WS hijack + §3.4 items 1-4, 7~~ — **DONE**, commit `e3f3713fb` (TASK-754) | Security — was first |
 | 2 | §3.1 step 1 — privilege ceiling on key minting | Security — small, self-contained |
 | 3 | ~~§3.4 items 5-6 — TTS origin + `tts_session` ownership~~ — **DONE** (TASK-755) | Low |
-| 4 | §3.1 step 2 — `@ForbidApiKey()` across admin + reserve scopes + boot audit | Medium; 3 e2e specs to rewrite |
+| 4 | ~~§3.1 step 2 — `@ForbidApiKey()` across admin + reserve scopes + boot audit~~ — **DONE** (TASK-757) | Medium; 3 e2e specs to rewrite |
 | 5 | ~~§2.5 prefix moves (`monitoring`, `health/services`)~~ — **DONE** (TASK-759). Hard move, no redirect: verified there is no `@Redirect`/301/308/`deprecated: true` precedent anywhere in `apps/api`, and no consumer outside this repo. | Low; pre-launch |
-| 6 | §3.3 A1 rollout with exemption list | Low |
+| 6 | ~~§3.3 A1 rollout with exemption list~~ — **DONE** (TASK-758); the list is down to 3 controllers | Low |
 | 7 | §3.5 business-plane normalization | Low, broad diff |
 | 8 | Compat surfaces (A3) | Deferred — dedicated deprecation ticket |

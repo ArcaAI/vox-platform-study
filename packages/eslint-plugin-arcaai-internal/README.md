@@ -2,7 +2,7 @@
 
 Repo-internal ESLint plugin hosting ARCAAI's custom lint rules. `@arcaai/config-eslint` registers it as a plain flat-config plugin object under the `arcaai-internal` namespace (`flat/core.js`, TASK-418), so rule IDs are `arcaai-internal/<rule>`. The rules encode HOPE's layering guarantees: controllers and modules in `apps/api` must go through services/repositories and the typed config service rather than reaching into Prisma or `process.env` directly.
 
-Last updated: 2026-07-05
+Last updated: 2026-08-18
 
 ## Rules
 
@@ -34,12 +34,45 @@ const url = process.env['STT_V2_URL']; // ERROR (dual-read window)
 const url = this.configService.getConfigValue('TEXT_URL'); // OK
 ```
 
+### arcaai-internal/require-api-key-justification
+
+Requires an `// API-KEY-NOTE` carrying a written reason on every **business-plane** `@ForbidApiKey()` (class- or method-level) in a controller file.
+
+Why: policy A1 (TASK-758) says a non-`admin` route is JWT + API key, so `@ForbidApiKey()` on the business plane is a REASONED EXEMPTION rather than a default. The boot audits already pin the mechanical halves — `api-key-surface-audit.ts` pins that every route declares *something*, and `business-plane-apikey-exemptions-audit.ts` pins that the exemption is NAMED — but a *reason* is a comment, and `tsc` strips comments long before any Nest metadata exists. No `Reflector` can ever read one, which is why this half of gate G3 is lint and not a boot audit (TASK-761 §3.1).
+
+Only the business plane is judged. `admin/*` is JWT-only by blanket policy A2 (~70 controllers, one structural reason, already enforced by `auditAdminControllersDeclareNoApiKeyScopes`), and `internal/*` is off the API-key surface entirely — demanding 70 copies of one sentence would teach pasting, not thinking. A `@Controller(...)` whose path argument is not a string literal **fails closed**: an unprovable plane is not an exempt one.
+
+```typescript
+@Controller('voice-profile')
+@ForbidApiKey()                      // ERROR — missingApiKeyNote
+export class VoiceProfileController {}
+
+@Controller('voice-profile')
+// API-KEY-NOTE
+@ForbidApiKey()                      // ERROR — emptyApiKeyNote (a marker is not a reason)
+export class VoiceProfileController {}
+
+@Controller('voice-profile')
+// API-KEY-NOTE — enrolment audio IS a biometric identifier, and a tenant API
+// key has no MFA, no session expiry and no revocation-on-logout. JWT only.
+@ForbidApiKey()                      // OK
+export class VoiceProfileController {}
+
+@Controller('admin/tenants')
+@ForbidApiKey()                      // OK — A2 is blanket policy, not a per-controller judgement
+export class TenantController {}
+```
+
+`// AUTH-NOTE` does **not** satisfy this rule (owner decision, 2026-08-18). The two markers stay distinct: `API-KEY-NOTE` classifies the API-key posture of a surface, `AUTH-NOTE` is the `.claude/rules/05-nestjs-api.md` marker for "the permission decorator understates the real gate". Accepting either would let an explanation of a CASL gate stand in as an explanation of an API-key decision.
+
 ## How It Is Wired (verified)
 
 `@arcaai/config-eslint` depends on this package (`workspace:*`) and its `flat/core.js` enables the rules via scoped config entries:
 
 - `arcaai-internal/no-controller-direct-prisma`: `error` for `**/modules/**/*.controller.ts` — in practice only `apps/api` matches this path shape.
 - `arcaai-internal/no-direct-downstream-url-env`: `error` for `**/modules/**/*.ts`.
+- `arcaai-internal/require-internal-tenant-header`: `error` for `**/src/**/*.ts` (tests excluded).
+- `arcaai-internal/require-api-key-justification`: `error` for `**/modules/**/*.controller.ts` (tests excluded).
 
 In `packages/*` these surface as warnings (`flat/library.js` loads `eslint-plugin-only-warn`); in `apps/api` (`flat/nestjs.js`) they are hard errors.
 
@@ -52,6 +85,8 @@ Each rule has RuleTester pins in [`__tests__/`](./__tests__/) covering violation
 ```bash
 node packages/eslint-plugin-arcaai-internal/__tests__/no-controller-direct-prisma.test.js
 node packages/eslint-plugin-arcaai-internal/__tests__/no-direct-downstream-url-env.test.js
+node packages/eslint-plugin-arcaai-internal/__tests__/require-internal-tenant-header.test.js
+node packages/eslint-plugin-arcaai-internal/__tests__/require-api-key-justification.test.js
 ```
 
 ## Adding a Rule

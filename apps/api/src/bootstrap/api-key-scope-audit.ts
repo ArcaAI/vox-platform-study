@@ -143,7 +143,7 @@ const INTERNAL_ROUTE_RE = /^\/(api\/v\d+\/)?internal\//;
  * intentionally a closed allow-list, not "any guard at all", so a
  * `@UseGuards(SomeUnrelatedGuard)` typo doesn't silently satisfy the audit).
  */
-const RECOGNISED_SERVICE_TOKEN_GUARD_NAMES: ReadonlySet<string> = new Set([
+export const RECOGNISED_SERVICE_TOKEN_GUARD_NAMES: ReadonlySet<string> = new Set([
   'InternalServiceTokenGuard',
   'HarnessServiceTokenGuard',
   'ServiceReleaseTokenGuard',
@@ -168,8 +168,17 @@ const RECOGNISED_SERVICE_TOKEN_GUARD_NAMES: ReadonlySet<string> = new Set([
  * `@RequiredScopes` with a scope under the reserved `internal:` root, which no
  * tenant SDK/WEBHOOK/INTEGRATION key is ever issued and which prefix matching
  * cannot cross. Removing that decorator fails boot exactly like the guard case.
+ *
+ * FROZEN AT ONE MEMBER (TASK-761 gate G2, decision D-3). Policing the exemption
+ * never constrained its SIZE: adding a second name here is a one-line change
+ * that silently re-opens the API-key path under `/internal/*` for that
+ * controller, with no boot failure and nothing in the diff louder than a
+ * string. `api-key-scope-audit.test.ts` therefore pins the exact membership, so
+ * widening it requires editing a test — which forces the discussion into review
+ * rather than letting it happen by accident. Exported for that pin only; it is
+ * not part of any runtime contract.
  */
-const RESERVED_INTERNAL_SCOPE_CONTROLLERS: ReadonlySet<string> = new Set(['SttInternalController']);
+export const RESERVED_INTERNAL_SCOPE_CONTROLLERS: ReadonlySet<string> = new Set(['SttInternalController']);
 
 const RESERVED_INTERNAL_SCOPE_PREFIX = 'internal:';
 

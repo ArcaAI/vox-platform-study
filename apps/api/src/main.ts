@@ -11,6 +11,7 @@ import { auditEveryApiKeyReachableRouteDeclaresScopes } from './bootstrap/api-ke
 import { auditBusinessPlaneApiKeyExemptions } from './bootstrap/business-plane-apikey-exemptions-audit';
 import { auditConsentRouteCoverage } from './bootstrap/consent-route-coverage-audit';
 import { auditServiceAccountSurface } from './bootstrap/service-account-surface-audit';
+import { auditWebSocketGatewayOwnerBinding } from './bootstrap/ws-gateway-owner-audit';
 import { assertGenaiContentCaptureDisabled } from './bootstrap/genai-content-capture-audit';
 import { assertJwtSecretNotPlaceholder } from './bootstrap/jwt-secret-placeholder-audit';
 // CORS helpers live in `cors.config.ts` so the dev / staging / production
@@ -354,6 +355,15 @@ async function bootstrap() {
   //   G  a route declaring @RequiredSvcScopes never also forbids machines, and
   //      never names a scope outside the registry.
   auditServiceAccountSurface(app);
+
+  // Refuses to start if a `@WebSocketGateway()` class is not classified in
+  // `WS_OWNER_BOUND_GATEWAYS` (TASK-761 G4). Structural note: this is the ONLY
+  // audit here that walks `moduleRef.providers` — Nest registers gateways as
+  // providers, so every `.controllers` sweep above is blind to all three of
+  // them, and always has been. It pins the DECLARATION (a WS surface cannot
+  // ship without someone answering "may THIS caller drive THIS stream?"), never
+  // the behaviour; the behaviour is pinned by the specs each entry names.
+  auditWebSocketGatewayOwnerBinding(app);
 
   // KEEP-ALIVE MUST OUTLIVE THE UPSTREAM PROXY'S IDLE TIMEOUT.
   //

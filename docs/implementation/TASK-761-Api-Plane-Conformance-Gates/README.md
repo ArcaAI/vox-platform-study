@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Status** | Pending |
+| **Status** | Completed |
 | **Owner** | Platform / Architecture |
 | **Date** | 2026-08-18 |
 | **Type** | infrastructure (enforcement; no behavioural change to any route) |
@@ -336,7 +336,64 @@ it inspects an object literal's keys and accepts a set of sanctioned identifiers
 
 ## 5. Implementation Summary
 
-pending
+**Status: Completed, 2026-08-18.** Two gates were BUILT, one was PINNED, one was ABSORBED
+whole. The scope shrank sharply between writing this ticket and implementing it, because
+TASK-757/758/759/755 all landed in between — §5.3 lists what in §§1-4 above is now obsolete.
+
+### 5.1 Per-gate outcome
+
+| Gate | Outcome | Mechanism, and why that mechanism |
+|---|---|---|
+| **G1** admin ⇒ no `@RequiredScopes` | **ABSORBED — already built, nothing added** | `auditAdminControllersDeclareNoApiKeyScopes` (`apps/api/src/bootstrap/admin-scope-audit.ts:279-334`) shipped with TASK-757 under the exact name §4 step 4 reserved, wired at `main.ts:311`. Its own suite already covers all eight of T-6's cases (`admin-scope-audit.test.ts:50-175`), including the `api/v1/admin/...` explicit-prefix case and the "business plane is A1's job" negative. Building a second copy in `api-key-surface-audit.ts` was explicitly NOT done: two identical rules over the same metadata produce two boot errors for one defect. |
+| **G2** internal ⇒ service-token guard | **PINNED — the audit existed; the exemption's SIZE did not** | Boot audit `auditInternalRoutesOffApiKeySurface` unchanged. The real gap was that `RESERVED_INTERNAL_SCOPE_CONTROLLERS` was a mutable module-private `Set`: adding a second name silently re-opens the API-key path under `/internal/*`, with no boot failure and nothing in a diff louder than a string. Now exported and frozen by a test (D-3). |
+| **G3** business ⇒ scope or justified forbid | **BUILT — the justification half only, as a LINT rule** | The presence half (`api-key-surface-audit.ts`, TASK-742) and the named-exemption half (`business-plane-apikey-exemptions-audit.ts`, TASK-758) are resolved Nest metadata and already existed. The justification is a COMMENT — `tsc` strips comments before metadata exists, so no `Reflector` anywhere can ever read one. That is not a preference between two workable mechanisms; lint is the only thing in this repo that reads source text. |
+| **G4** WS owner binding | **BUILT — declaration audit + named specs, with the limit stated** | New `ws-gateway-owner-audit.ts` walking `moduleRef.providers`. It pins that every `@WebSocketGateway()` class is classified and names the spec proving it; it does NOT claim to prove behaviour. A lint rule was rejected: "checks the owner" is a comparison between a live session field and a consumed ticket, spelled differently in each gateway — a regex pretending to be an invariant. |
+
+### 5.2 Files changed
+
+**New**
+
+| File | What |
+|---|---|
+| `packages/eslint-plugin-arcaai-internal/rules/require-api-key-justification.js` | G3 lint rule. Judges the BUSINESS plane only: reads the enclosing class's `@Controller(...)` path literal, skips `admin/` (blanket policy A2, ~70 controllers, one structural reason) and `internal/` (off the API-key surface entirely), and **fails closed on a non-literal path** — an unprovable plane is not an exempt one. Accepts `API-KEY-NOTE` only; requires ≥12 characters of prose after separators are stripped, so `// API-KEY-NOTE:` and `// API-KEY-NOTE — ` are rejected as rubber stamps. Handles class- and method-level decorators, and finds the marker anywhere in the decorator region (above `@Controller` counts, not just above `@ForbidApiKey()`). |
+| `packages/eslint-plugin-arcaai-internal/__tests__/require-api-key-justification.test.js` | 9 valid + 6 invalid RuleTester cases, plus two real-tree assertions: the four business-plane `@ForbidApiKey()` controllers lint clean **and** stripping the marker out of the real `auth.controller.ts` produces exactly one report (without that second half, "lints clean" is indistinguishable from "the rule never fired"). |
+| `apps/api/src/bootstrap/ws-gateway-owner-audit.ts` | G4 audit + `WS_OWNER_BOUND_GATEWAYS` closed registry (`enforced` / `no-owned-session` / `compat-exempt`, each with a `regressionSpec` path and a paragraph of reasoning). |
+| `apps/api/src/bootstrap/__tests__/ws-gateway-owner-audit.test.ts` | 7 tests: real gateways pass; an unregistered gateway throws by name; plain providers ignored; all offenders in one error; membership and each classification pinned; **every named `regressionSpec` exists on disk** (a registry citing a deleted test reads as proof while proving nothing). |
+| `apps/api/src/__tests__/bootstrap-audit-wiring.test.ts` | T-8. Asserts all ten audits are imported from `./bootstrap/*` AND called in `bootstrap()`. Comments are stripped before matching — the first draft did not do this and stayed green when the call was commented out, which is precisely the disabled-gate failure it exists to catch. |
+
+**Modified**
+
+| File:line | Change |
+|---|---|
+| `apps/api/src/bootstrap/api-key-scope-audit.ts:146,172` | Exported `RECOGNISED_SERVICE_TOKEN_GUARD_NAMES` and `RESERVED_INTERNAL_SCOPE_CONTROLLERS` for the D-3 pin, with the freeze rationale added to the carve-out docstring. |
+| `apps/api/src/bootstrap/__tests__/api-key-scope-audit.test.ts:294-330` | The D-3 freeze pin (exact membership, size 1) and a softer pin on the guard allow-list. |
+| `apps/api/src/main.ts:14,358-366` | Wired `auditWebSocketGatewayOwnerBinding(app)` after `auditServiceAccountSurface(app)`, with a note that it is the only audit here walking `providers`. |
+| `packages/eslint-plugin-arcaai-internal/index.js:26` | Registered the rule. |
+| `packages/config-eslint/flat/core.js:207-225` | Enabled it as `error` on `**/modules/**/*.controller.ts`, tests excluded — hard errors in `apps/api` per `flat/nestjs.js`. |
+| `apps/api/src/modules/voice-profile/voice-profile-redirect.shim.controller.ts:12` | One-token edit: the TASK-760 shim (uncommitted sibling work) already carried a full written rationale for reproducing `@ForbidApiKey()`; it just lacked the marker. Prefixed the existing sentence with `API-KEY-NOTE —`. **This is the only file outside this ticket's scope that was touched, and it is exactly the class of defect G3 exists to catch — a correct decision recorded in prose no tool could find.** |
+| `docs/architecture/api-design-conformance-review.md` §3.6, §4 | Recorded the four-gate status table and the three corrections to §3.6's original wording; marked sequencing rows 4 and 6 done. |
+| `packages/eslint-plugin-arcaai-internal/README.md`, `packages/config-eslint/README.md` | Rule documentation. |
+
+### 5.3 What in this ticket is now obsolete
+
+Written 2026-08-18 morning; implemented the same day, after four related tickets landed.
+
+| §  | Now reads wrong because |
+|---|---|
+| §1.2 G1 "**To build**" | It was built by TASK-757 (commit `30d9651c6`), under the reserved name, with its own eight-case suite. Nothing was added. |
+| §2.2 "`ADMIN_SCOPED_CONTROLLERS` … 64 entries, of which exactly one expects `'FORBID'`" | Inverted by TASK-757: **70 entries, all `'FORBID'`**. The list's remaining job is noticing a controller that vanishes from the module graph, which the sweep structurally cannot see. |
+| §2.4 "**17 files** … 16 of 17 already carry `API-KEY-NOTE`" | TASK-758 converted the business plane to scopes. **Four** files keep `@ForbidApiKey()` there (`auth`, `voice-profile`, `dna-writing-styles`, `health` — the last being `@Public()` throughout), and `BUSINESS_PLANE_KEY_FORBIDDEN` names three. All four carry the marker, so D-2 cost nothing, exactly as predicted. |
+| §2.5 / §3.2 step 3 / §4 "`TtsWsGateway` is registered `pending` and the audit fails outside development" | **Obsolete — TASK-755 landed** (commit `a259245ea`). `tts-ws.gateway.ts` now has a fail-closed CSWSH origin gate that runs before the ticket is parsed, and its own docstring (`:52-54`) records the classification: *"Unlike STT there is no server-side session resource to own"*. It is registered `no-owned-session`, not `pending`. A `pending` state was deliberately NOT implemented — nothing is pending, and a state whose only purpose is deferral is a hole waiting for the next author. |
+| §3.3 T-5 "(new or extend the existing gateway suite)" | Already exists and is green: the `session OWNER enforced at the WS handshake` describe in `stt-ws.gateway.test.ts:424-550` covers the same-tenant/different-user ticket, the legacy no-owner record, the rebind refusal, and the owner's own supersede. Named as `SttWsGateway`'s `regressionSpec` rather than duplicated. |
+| §3.3 T-7 "RED until TASK-757 lands" | TASK-757 landed; `admin-scope-audit.test.ts:170` is the real-tree case and is green. |
+| §4 "The review is updated: append to §3.6 …" | Done, and expanded — §3.6's own instruction to use `// AUTH-NOTE:` was corrected there, since leaving it would keep pointing future readers at the rejected marker. |
+
+### 5.4 Deliberately not done
+
+- **No second admin sweep.** §4 step 4's `api-key-surface-audit.ts` copy would duplicate G1.
+- **No comment migration.** Owner decision D-2: the existing business-plane comments stand.
+- **No `pending` classification in the WS registry.** See §5.3.
+- **No URI renames** (TASK-760), **no seed edits**, **no destructive DB commands.**
 
 ---
 
@@ -346,3 +403,4 @@ pending
 |---|---|
 | 2026-08-18 | Created. Specified four mechanical conformance gates from `api-design-conformance-review.md` §3.6, modelled on the existing `apps/api/src/bootstrap/` audits. Verified against source: **G2 already exists** (`api-key-scope-audit.ts:173-247`, including the policed `SttInternalController` carve-out at `:168`), **G3's presence half already exists** platform-wide (`api-key-surface-audit.ts:84-109`) so only the justification half is new, **G4's STT half already landed** (commit `e3f3713fb`, `stt-ws.gateway.ts:746-763`) while TTS has no origin or owner check at all, and **gateways are Nest *providers***, invisible to every existing `moduleRef.controllers` sweep. Recorded the boot-audit-vs-lint split with a per-gate reason, and four blocking decisions (D-1 G1 sequencing, D-2 `AUTH-NOTE` vs `API-KEY-NOTE` — 16 of 17 business controllers already carry the latter, D-3 freezing the internal carve-out set, D-4 authoritative WS registry). Status: Pending. |
 | 2026-08-18 | **Owner decision recorded — D-2 resolved: KEEP BOTH MARKERS, distinct meanings.** `// API-KEY-NOTE` = API-key classification (accepted by gate G3); `// AUTH-NOTE` = the rule-05 "decorator understates the real gate" case. The G3 lint accepts `API-KEY-NOTE` with non-empty prose, so the 16 existing business-plane comments stand as-is — **no comment migration**. A rule accepting either marker is explicitly rejected: it would collapse a distinction that answers two different questions. T-2 should therefore assert the no-migration outcome. D-1, D-3, D-4 remain open. |
+| 2026-08-18 | **Implemented and completed.** Built 2 gates, pinned 1, absorbed 1. **G1 absorbed** — `auditAdminControllersDeclareNoApiKeyScopes` had already shipped with TASK-757 under the reserved name, fully tested; no second copy built. **G2 pinned** — exported `RESERVED_INTERNAL_SCOPE_CONTROLLERS` and froze it at `['SttInternalController']` by test (D-3 answered: frozen); the audit itself was untouched. **G3 built as a lint rule** — `arcaai-internal/require-api-key-justification`, business plane only, `API-KEY-NOTE` only, fail-closed on a non-literal controller path; the real tree needed zero comment changes, confirming D-2's prediction. **G4 built** — `ws-gateway-owner-audit.ts`, the first audit in the directory to walk `moduleRef.providers` (D-4 answered: authoritative closed allow-list). Remaining decisions resolved: **D-1** moot (TASK-757 landed, so G1 is outright and already green). Evidence: 225 api test files / 3160 tests pass (the one failing file, `controller-route-renames.test.ts`, is a sibling agent's uncommitted TASK-760 work importing controllers that do not exist yet); `pnpm api:build` green; `apps/api` lint shows 0 errors from this work (8 remaining are pre-existing/in-flight `prettier/prettier` in TASK-760 files and two committed e2e specs); all four RuleTester suites pass. One out-of-scope file touched — the new TASK-760 voice-profile redirect shim, whose written rationale lacked only the marker token. §5.3 lists what in this document is now obsolete, chiefly the `TtsWsGateway`-as-`pending` plan, which TASK-755 superseded. |

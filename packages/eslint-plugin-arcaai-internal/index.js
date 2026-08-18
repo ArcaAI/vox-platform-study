@@ -23,5 +23,6 @@ module.exports = {
     'no-controller-direct-prisma': require('./rules/no-controller-direct-prisma'),
     'no-direct-downstream-url-env': require('./rules/no-direct-downstream-url-env'),
     'require-internal-tenant-header': require('./rules/require-internal-tenant-header'),
+    'require-api-key-justification': require('./rules/require-api-key-justification'),
   },
 };
