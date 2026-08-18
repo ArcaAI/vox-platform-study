@@ -13,7 +13,7 @@ import {
 import { Controller, ForbiddenException, Get, Inject, Param, Query, StreamableFile } from '@nestjs/common';
 import { ApiBearerAuth, ApiOkResponse, ApiOperation, ApiParam, ApiProduces, ApiQuery, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { ClsService } from 'nestjs-cls';
-import { ApiEndpoint, CanRead, RequiredScopes } from '../../decorators';
+import { ApiEndpoint, CanRead, ForbidApiKey } from '../../decorators';
 import { buildTableExport } from '../../shared/table-export';
 
 /**
@@ -35,7 +35,7 @@ import { buildTableExport } from '../../shared/table-export';
  */
 @ApiTags('admin-audit-logs')
 @ApiBearerAuth()
-@RequiredScopes('admin:audit:read')
+@ForbidApiKey()
 @Controller('admin/audit-logs')
 // Read-only by design — auditors must never mutate audit data.
 @CanRead('AuditLog')

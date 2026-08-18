@@ -1,7 +1,7 @@
 import { Controller, Get, Post, Put, Patch, Delete, Body, Param, Query, HttpCode, HttpStatus, Inject, NotFoundException } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagger';
 import { IRbacRoleService, IUserRoleAssignmentService } from '@arcaai/applications';
-import { CanCreate, CanManage, CanAny, RequiredScopes } from '../../decorators';
+import { CanCreate, CanManage, CanAny, ForbidApiKey } from '../../decorators';
 import {
   BreakGlassDto,
   CreateRoleDto,
@@ -27,7 +27,7 @@ import {
  */
 @ApiTags('RBAC - Roles')
 @ApiBearerAuth()
-@RequiredScopes('admin:role:write')
+@ForbidApiKey()
 @Controller('admin/rbac/roles')
 @CanManage('Role')
 export class RolesController {

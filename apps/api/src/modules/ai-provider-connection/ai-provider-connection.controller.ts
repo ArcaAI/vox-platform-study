@@ -10,7 +10,7 @@ import {
 import { BadRequestException, Body, Controller, Delete, Get, Inject, Param, Put, Query } from '@nestjs/common';
 import { ApiBearerAuth, ApiHeader, ApiOperation, ApiParam, ApiQuery, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { ClsService } from 'nestjs-cls';
-import { CanManage, CanRead, ExpectedVersion, RequiresIfMatch, RequiredScopes } from '../../decorators';
+import { CanManage, CanRead, ExpectedVersion, RequiresIfMatch, ForbidApiKey } from '../../decorators';
 import { resolveScopedTenantId } from '../../shared/tenant-scope';
 
 /** Validate the `:service` path segment against the frozen C5 vocabulary. */
@@ -56,7 +56,7 @@ function assertProviderService(value: string): ProviderService {
  */
 @ApiTags('Admin: Provider Connections')
 @ApiBearerAuth()
-@RequiredScopes('admin:ai-provider:manage')
+@ForbidApiKey()
 @Controller('admin/providers')
 export class ProviderConnectionController {
   constructor(
@@ -168,7 +168,7 @@ export class ProviderConnectionController {
  */
 @ApiTags('Admin: AI Provider Connections (legacy alias)')
 @ApiBearerAuth()
-@RequiredScopes('admin:ai-provider:manage')
+@ForbidApiKey()
 @Controller('admin/ai-providers')
 export class AiProviderConnectionController {
   private static readonly SERVICE: ProviderService = 'llm';

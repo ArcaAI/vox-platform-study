@@ -34,8 +34,28 @@ describe('ApiKeyController', () => {
 
       expect(result).toHaveProperty('STT');
       expect(result).toHaveProperty('Consultation');
-      expect(result).toHaveProperty('Admin');
       expect(result).toHaveProperty('Wildcard');
+    });
+
+    /**
+     * TASK-757 (policy A2) — the admin plane is JWT-only, so every `admin:*`
+     * and `webhook:*` scope is RESERVED: refused at grant time and dropped from
+     * this catalog. Both categories vanish entirely rather than appearing
+     * empty, because advertising a scope the platform will always refuse to
+     * mint is worse than not listing it.
+     */
+    it('does not advertise the reserved Admin / Webhook families', () => {
+      const result = controller.getAvailableScopes();
+
+      expect(result).not.toHaveProperty('Admin');
+      expect(result).not.toHaveProperty('Webhook');
+
+      const wildcard = (result['Wildcard'] as Array<{ scope: string }>).map((s) => s.scope);
+      expect(wildcard).not.toContain('admin:*');
+      expect(wildcard).not.toContain('webhook:*');
+      // The bare '*' stays — it is the platform SERVICE_ACCOUNT wildcard for
+      // /internal/*, made inert on admin by @ForbidApiKey() alone.
+      expect(wildcard).toContain('*');
     });
 
     it('should include scope and description in each category entry', () => {

@@ -2,7 +2,7 @@ import { AgenticInstructionsResponse, IActiveUserContext, IAgenticInstructionsSe
 import { BadRequestException, Controller, Get, Inject, NotFoundException, Query } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiQuery, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { ClsService } from 'nestjs-cls';
-import { Authorize, CanManage, RequiredScopes } from '../../decorators';
+import { Authorize, CanManage, ForbidApiKey } from '../../decorators';
 
 /**
  * AgenticAdminController — the super-admin control
@@ -28,7 +28,7 @@ import { Authorize, CanManage, RequiredScopes } from '../../decorators';
  */
 @ApiBearerAuth()
 @ApiTags('admin-agentic')
-@RequiredScopes('admin:agentic:manage')
+@ForbidApiKey()
 @Controller('admin/agentic')
 @Authorize()
 export class AgenticAdminController {

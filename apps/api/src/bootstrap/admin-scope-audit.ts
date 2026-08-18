@@ -1,24 +1,52 @@
 /**
- * Boot-time audit (TASK-708 Task 5): every `/admin/*` controller this
- * ticket's Task 4 sweep gave a `@RequiredScopes(...)` (or `@ForbidApiKey()`)
- * gate must keep carrying it. Mirrors `auditApiKeyRequiredScopes`'s pattern
- * (`api-key-scope-audit.ts`) — a fixed, explicit, named list read via a
- * plain `Reflector` off the real controller classes, not a gateway-wide
- * `ModulesContainer` sweep — but tracked as ITS OWN list (`ADMIN_SCOPED_CONTROLLERS`)
- * rather than folded into `SDK_DAY1_SCOPED_ROUTES`, per that audit's own
- * docstring: it is deliberately narrow to "the HOPE Node SDK's day-1
- * surface", and this is a DIFFERENT surface (`/admin/*`) closed by a
- * DIFFERENT ticket for a DIFFERENT reason (owner-approved scope narrowing,
- * not an SDK day-1 contract).
+ * Boot-time audit for policy **A2** (TASK-757): `/api/v1/admin/*` is a
+ * **JWT-only** plane. API keys are prohibited there, so an `admin/`-prefixed
+ * route must carry `@ForbidApiKey()` and must never declare `@RequiredScopes`.
  *
- * CLASS-level, not method-level: TASK-708 Task 4 applied one
- * `@RequiredScopes(...)` per controller (coarse-grained by design — see the
- * ticket README §7 for the reasoning), so this audit checks
- * `API_KEY_REQUIRED_SCOPES`/`API_KEY_FORBIDDEN` metadata on the CONTROLLER
- * CLASS, not on individual handler methods.
+ * This file previously enforced the OPPOSITE invariant (TASK-708 Task 5: each
+ * named admin controller keeps its named `@RequiredScopes` value). A2 inverts
+ * it. The 56 `admin:*` scope strings were NOT deleted — they are reserved in
+ * `apikey-scopes.registry.ts` (refused at grant time, dropped from the
+ * advertised catalog) and remain the vocabulary TASK-762's service-account
+ * plane reuses. Deletion would not have stopped regrowth anyway:
+ * `@RequiredScopes` takes a RAW STRING and `enforceApiKeyScopes` never consults
+ * the registry, so only enforcement stops a new admin controller from inventing
+ * `admin:new-thing:manage`. That enforcement is `auditAdminControllersDeclareNoApiKeyScopes`
+ * below.
+ *
+ * ─── Two audits, deliberately different in kind ────────────────────────────
+ *
+ * 1. `auditAdminControllersDeclareNoApiKeyScopes(app)` — **the derived sweep,
+ *    and the gate that actually holds the line.** Walks `ModulesContainer` and
+ *    reads resolved metadata through the app's own `Reflector`, so it sees
+ *    exactly what `UnifiedAuthGuard` sees — including class-level decorators,
+ *    which Nest does NOT copy onto handlers. A brand-new admin controller is
+ *    caught on the day it is written, with no list to update.
+ *
+ * 2. `auditAdminScopedControllers()` — **the named list**, collapsed so every
+ *    entry expects `'FORBID'`. It catches a different failure the sweep
+ *    structurally cannot: a controller that stops being registered in any
+ *    module disappears from the sweep entirely, but its absence from a
+ *    registered module is still a change worth noticing. Kept for that reason,
+ *    not as the primary gate — the hand-transcribed version of this list
+ *    silently policed only 63 of 65 admin controllers, because
+ *    `KnowledgeController` and `WorkflowSandboxRunController` were never
+ *    transcribed into it. That drift is precisely the argument for (1).
+ *
+ * CLASS-level, not method-level, for the named list: TASK-708 Task 4 applied
+ * one decorator per controller and A2 replaces it in place, so the named audit
+ * reads metadata off the CONTROLLER CLASS. The derived sweep reads BOTH levels.
  */
-import { Reflector } from '@nestjs/core';
-import { API_KEY_REQUIRED_SCOPES, API_KEY_FORBIDDEN } from '@arcaai/applications';
+import type { INestApplicationContext } from '@nestjs/common';
+import { PATH_METADATA, METHOD_METADATA } from '@nestjs/common/constants';
+import { MetadataScanner, Reflector } from '@nestjs/core';
+import { ModulesContainer } from '@nestjs/core/injector/modules-container';
+import { API_KEY_REQUIRED_SCOPES, API_KEY_FORBIDDEN, SKIP_AUTH_KEY } from '@arcaai/applications';
+
+// Side-effect import — patches @Public() onto third-party controllers we cannot
+// decorate at the source. Must run before the walk, exactly as
+// `admin-route-permission-audit.ts` requires.
+import './third-party-public-routes';
 
 import { RateLimitAdminController } from '../modules/admin-rate-limit/rate-limit-admin.controller';
 import { AdminReconciliationController } from '../modules/admin-usage/admin-reconciliation.controller';
@@ -41,6 +69,7 @@ import { RateCardAdminController } from '../modules/billing/rate-card-admin.cont
 import { ChangelogAdminController } from '../modules/changelog/changelog-admin.controller';
 import { ConsultationContextSchemaAdminController } from '../modules/consultation-context-schema/consultation-context-schema.controller';
 import { AdminConsultationController } from '../modules/consultation/admin-consultation.controller';
+import { ConsentGrantController } from '../modules/consent/consent.controller';
 import { DepartmentAgentResyncController } from '../modules/department-agent/department-agent-resync.controller';
 import { DepartmentAgentController } from '../modules/department-agent/department-agent.controller';
 import { DepartmentController } from '../modules/department/department.controller';
@@ -48,6 +77,7 @@ import { DnaWritingStyleAdminController } from '../modules/dna-writing-style/dna
 import { EntitlementsAdminController } from '../modules/entitlements/entitlements-admin.controller';
 import { GlobalSettingController } from '../modules/global-setting/global-setting.controller';
 import { HarnessAdminController } from '../modules/harness-admin/harness-admin.controller';
+import { KnowledgeController } from '../modules/knowledge/knowledge.controller';
 import { AdminHealthServicesController } from '../modules/health/admin-health-services.controller';
 import { McpAdminController } from '../modules/mcp-admin/mcp-admin.controller';
 import { MonitoringController } from '../modules/monitoring/monitoring.controller';
@@ -85,6 +115,8 @@ import { WebhookController } from '../modules/webhook/webhook.controller';
 import { WorkflowDefinitionController } from '../modules/workflow-definition/workflow-definition.controller';
 import { WorkflowNodeController } from '../modules/workflow-node/workflow-node.controller';
 import { WorkflowRunController } from '../modules/workflow-run/workflow-run.controller';
+import { ServiceAccountController } from '../modules/service-account/service-account.controller';
+import { WorkflowSandboxRunController } from '../modules/workflow-sandbox-run/workflow-sandbox-run.controller';
 import { WorkflowTestFixtureController } from '../modules/workflow-test-fixture/workflow-test-fixture.controller';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any -- constructor signature is intentionally unconstrained; only class-level metadata is ever read off it
@@ -92,113 +124,228 @@ type ControllerClass = new (...args: any[]) => unknown;
 
 interface ScopedController {
   controller: ControllerClass;
-  /** Expected @RequiredScopes(...) value, or 'FORBID' for @ForbidApiKey(). */
-  expect: string | 'FORBID';
+  /**
+   * Under A2 the only legal value is `'FORBID'` (`@ForbidApiKey()`). The union
+   * is kept so the audit can still describe — and reject — a controller that
+   * has REGROWN a `@RequiredScopes` declaration, rather than silently ignoring
+   * one.
+   */
+  expect: 'FORBID';
 }
 
 /** The `/admin/*` surface TASK-708 Task 4 closed. */
+/**
+ * Every `admin/`-prefixed controller registered in the gateway — **70** of
+ * them, all expecting `'FORBID'`.
+ *
+ * Under A2 there is no per-controller scope VALUE left to pin, so the list's
+ * remaining job is to notice a controller that vanishes from the module graph
+ * (which the derived sweep cannot see, because it only walks what is
+ * registered). It also closes the transcription gap in the TASK-708 original:
+ * `KnowledgeController`, `WorkflowSandboxRunController`, `ConsentGrantController`
+ * and `ServiceAccountController` were all absent from it.
+ *
+ * `auditAdminControllersDeclareNoApiKeyScopes` is what stops REGROWTH; this
+ * list cannot, and must not be mistaken for the gate.
+ */
 export const ADMIN_SCOPED_CONTROLLERS: ScopedController[] = [
-  { controller: RateLimitAdminController, expect: 'admin:rate-limit:manage' },
-  { controller: AdminReconciliationController, expect: 'admin:usage:manage' },
-  { controller: AdminUsageController, expect: 'admin:usage:manage' },
-  { controller: AgentPromotionController, expect: 'admin:agent-promotion:manage' },
-  { controller: AgentTrajectoryController, expect: 'admin:agent-trajectory:read' },
-  { controller: AgenticAdminController, expect: 'admin:agentic:manage' },
-  { controller: AiModelAdminController, expect: 'admin:ai-model:manage' },
-  { controller: AiModelDiscoveryController, expect: 'admin:ai-model:manage' },
-  { controller: ProviderConnectionController, expect: 'admin:ai-provider:manage' },
-  { controller: AiProviderConnectionController, expect: 'admin:ai-provider:manage' },
-  { controller: AiRuntimeProfileController, expect: 'admin:ai-runtime-profile:manage' },
-  { controller: AiServiceAdminController, expect: 'admin:ai-service:manage' },
-  { controller: AiTaskDefaultAdminController, expect: 'admin:ai-task-default:manage' },
-  { controller: ApiKeyController, expect: 'admin:apikey:write' },
-  { controller: AuditLogController, expect: 'admin:audit:read' },
-  { controller: AdminImpersonationController, expect: 'FORBID' },
-  { controller: BillingAdminController, expect: 'admin:billing:manage' },
-  { controller: RateCardAdminController, expect: 'admin:billing:manage' },
-  { controller: ChangelogAdminController, expect: 'admin:changelog:manage' },
-  { controller: ConsultationContextSchemaAdminController, expect: 'admin:consultation-context-schema:manage' },
-  { controller: AdminConsultationController, expect: 'admin:consultation-admin:manage' },
-  { controller: DepartmentAgentResyncController, expect: 'admin:department-agent:manage' },
-  { controller: DepartmentAgentController, expect: 'admin:department-agent:manage' },
-  { controller: DepartmentController, expect: 'admin:department:manage' },
-  { controller: DnaWritingStyleAdminController, expect: 'admin:dna-writing-style:manage' },
-  { controller: EntitlementsAdminController, expect: 'admin:entitlement:manage' },
-  { controller: GlobalSettingController, expect: 'admin:settings:manage' },
-  { controller: HarnessAdminController, expect: 'admin:harness:manage' },
-  { controller: McpAdminController, expect: 'admin:mcp-server:manage' },
-  { controller: NlpTaskInstructionsAdminController, expect: 'admin:nlp-task-instructions:manage' },
-  { controller: NotificationController, expect: 'admin:notification:manage' },
-  { controller: PipelinePolicyAdminController, expect: 'admin:pipeline-policy:manage' },
-  { controller: AudioPipelineController, expect: 'admin:audio-pipeline:manage' },
-  { controller: PlatformMetricsController, expect: 'admin:platform-metrics:read' },
-  { controller: PromptManagementController, expect: 'admin:prompt-template:manage' },
-  { controller: PrismaStudioStatusController, expect: 'admin:pstudio:manage' },
-  { controller: PrismaStudioController, expect: 'admin:pstudio:manage' },
-  { controller: QueueAdminController, expect: 'admin:queue:manage' },
-  { controller: SchedulerAdminController, expect: 'admin:scheduler:manage' },
-  { controller: PoliciesController, expect: 'admin:rbac-policy:write' },
-  { controller: RolesController, expect: 'admin:role:write' },
-  { controller: ResourceSubscriptionController, expect: 'admin:resource-subscription:manage' },
-  { controller: ServiceReleaseAdminController, expect: 'admin:service-release:manage' },
-  { controller: SettingsCatalogController, expect: 'admin:settings:manage' },
-  { controller: SettingsRegistryWriteController, expect: 'admin:settings:manage' },
-  { controller: StorageAccessKeyController, expect: 'admin:storage-key:manage' },
-  { controller: AdminTranscriptionJobController, expect: 'admin:transcription-job:read' },
-  { controller: TenantAllowedOriginController, expect: 'admin:allowed-origin:manage' },
-  { controller: TenantBucketController, expect: 'admin:tenant-storage:manage' },
-  { controller: TenantFrontendConfigAdminController, expect: 'admin:tenant-frontend-config:manage' },
-  { controller: TenantIdpConfigAdminController, expect: 'admin:tenant-idp-config:manage' },
-  { controller: TenantStorageConfigAdminController, expect: 'admin:tenant-storage:manage' },
-  { controller: TenantSttConfigAdminController, expect: 'admin:tenant-stt-config:manage' },
-  { controller: TenantTtsConfigAdminController, expect: 'admin:tenant-tts-config:manage' },
-  { controller: TenantPipelineResyncController, expect: 'admin:tenant:write' },
-  { controller: TenantProvisionController, expect: 'admin:tenant:write' },
-  { controller: TenantController, expect: 'admin:tenant:write' },
-  { controller: UserDepartmentsController, expect: 'admin:user:write' },
-  { controller: UserController, expect: 'admin:user:write' },
-  { controller: WebhookController, expect: 'webhook:event:write' },
-  { controller: WorkflowDefinitionController, expect: 'admin:workflow-definition:manage' },
-  { controller: WorkflowNodeController, expect: 'admin:workflow-node:read' },
-  { controller: WorkflowRunController, expect: 'admin:workflow-run:read' },
-  { controller: WorkflowTestFixtureController, expect: 'admin:workflow-test-fixture:manage' },
-
-  // TASK-759 (rule P2) filed two administrative capabilities that were
-  // sitting on business prefixes onto the admin plane. Neither declares
-  // `@RequiredScopes` — both were already `@ForbidApiKey()` under TASK-742's
-  // conservative default, which IS the A2 outcome the admin plane requires —
-  // so they are pinned here as 'FORBID', the same shape as
-  // `AdminImpersonationController` above. Listing them is what stops a later
-  // edit from silently re-opening an admin surface to API keys.
-  { controller: MonitoringController, expect: 'FORBID' },
+  { controller: AdminConsultationController, expect: 'FORBID' },
   { controller: AdminHealthServicesController, expect: 'FORBID' },
+  { controller: AdminImpersonationController, expect: 'FORBID' },
+  { controller: AdminReconciliationController, expect: 'FORBID' },
+  { controller: AdminTranscriptionJobController, expect: 'FORBID' },
+  { controller: AdminUsageController, expect: 'FORBID' },
+  { controller: AgentPromotionController, expect: 'FORBID' },
+  { controller: AgentTrajectoryController, expect: 'FORBID' },
+  { controller: AgenticAdminController, expect: 'FORBID' },
+  { controller: AiModelAdminController, expect: 'FORBID' },
+  { controller: AiModelDiscoveryController, expect: 'FORBID' },
+  { controller: AiProviderConnectionController, expect: 'FORBID' },
+  { controller: AiRuntimeProfileController, expect: 'FORBID' },
+  { controller: AiServiceAdminController, expect: 'FORBID' },
+  { controller: AiTaskDefaultAdminController, expect: 'FORBID' },
+  { controller: ApiKeyController, expect: 'FORBID' },
+  { controller: AudioPipelineController, expect: 'FORBID' },
+  { controller: AuditLogController, expect: 'FORBID' },
+  { controller: BillingAdminController, expect: 'FORBID' },
+  { controller: ChangelogAdminController, expect: 'FORBID' },
+  { controller: ConsentGrantController, expect: 'FORBID' },
+  { controller: ConsultationContextSchemaAdminController, expect: 'FORBID' },
+  { controller: DepartmentAgentController, expect: 'FORBID' },
+  { controller: DepartmentAgentResyncController, expect: 'FORBID' },
+  { controller: DepartmentController, expect: 'FORBID' },
+  { controller: DnaWritingStyleAdminController, expect: 'FORBID' },
+  { controller: EntitlementsAdminController, expect: 'FORBID' },
+  { controller: GlobalSettingController, expect: 'FORBID' },
+  { controller: HarnessAdminController, expect: 'FORBID' },
+  { controller: KnowledgeController, expect: 'FORBID' },
+  { controller: McpAdminController, expect: 'FORBID' },
+  { controller: MonitoringController, expect: 'FORBID' },
+  { controller: NlpTaskInstructionsAdminController, expect: 'FORBID' },
+  { controller: NotificationController, expect: 'FORBID' },
+  { controller: PipelinePolicyAdminController, expect: 'FORBID' },
+  { controller: PlatformMetricsController, expect: 'FORBID' },
+  { controller: PoliciesController, expect: 'FORBID' },
+  { controller: PrismaStudioController, expect: 'FORBID' },
+  { controller: PrismaStudioStatusController, expect: 'FORBID' },
+  { controller: PromptManagementController, expect: 'FORBID' },
+  { controller: ProviderConnectionController, expect: 'FORBID' },
+  { controller: QueueAdminController, expect: 'FORBID' },
+  { controller: RateCardAdminController, expect: 'FORBID' },
+  { controller: RateLimitAdminController, expect: 'FORBID' },
+  { controller: ResourceSubscriptionController, expect: 'FORBID' },
+  { controller: RolesController, expect: 'FORBID' },
+  { controller: SchedulerAdminController, expect: 'FORBID' },
+  { controller: ServiceAccountController, expect: 'FORBID' },
+  { controller: ServiceReleaseAdminController, expect: 'FORBID' },
+  { controller: SettingsCatalogController, expect: 'FORBID' },
+  { controller: SettingsRegistryWriteController, expect: 'FORBID' },
+  { controller: StorageAccessKeyController, expect: 'FORBID' },
+  { controller: TenantAllowedOriginController, expect: 'FORBID' },
+  { controller: TenantBucketController, expect: 'FORBID' },
+  { controller: TenantController, expect: 'FORBID' },
+  { controller: TenantFrontendConfigAdminController, expect: 'FORBID' },
+  { controller: TenantIdpConfigAdminController, expect: 'FORBID' },
+  { controller: TenantPipelineResyncController, expect: 'FORBID' },
+  { controller: TenantProvisionController, expect: 'FORBID' },
+  { controller: TenantStorageConfigAdminController, expect: 'FORBID' },
+  { controller: TenantSttConfigAdminController, expect: 'FORBID' },
+  { controller: TenantTtsConfigAdminController, expect: 'FORBID' },
+  { controller: UserController, expect: 'FORBID' },
+  { controller: UserDepartmentsController, expect: 'FORBID' },
+  { controller: WebhookController, expect: 'FORBID' },
+  { controller: WorkflowDefinitionController, expect: 'FORBID' },
+  { controller: WorkflowNodeController, expect: 'FORBID' },
+  { controller: WorkflowRunController, expect: 'FORBID' },
+  { controller: WorkflowSandboxRunController, expect: 'FORBID' },
+  { controller: WorkflowTestFixtureController, expect: 'FORBID' },
 ];
 
 export function auditAdminScopedControllers(controllers: ScopedController[] = ADMIN_SCOPED_CONTROLLERS): void {
   const reflector = new Reflector();
   const offenders: string[] = [];
 
-  for (const { controller, expect } of controllers) {
-    if (expect === 'FORBID') {
-      const forbidden = reflector.getAllAndOverride<boolean>(API_KEY_FORBIDDEN, [controller]);
-      if (forbidden !== true) {
-        offenders.push(`${controller.name} is on the TASK-708 admin bucket-(c) list but carries no @ForbidApiKey() metadata.`);
-      }
-      continue;
+  for (const { controller } of controllers) {
+    const forbidden = reflector.getAllAndOverride<boolean>(API_KEY_FORBIDDEN, [controller]);
+    if (forbidden !== true) {
+      offenders.push(
+        `${controller.name} is an /admin/* controller but carries no @ForbidApiKey() metadata. ` +
+          `Policy A2 (TASK-757): the admin plane is JWT-only.`,
+      );
     }
 
+    // A controller could carry BOTH — `@ForbidApiKey()` wins at runtime, but a
+    // stray `@RequiredScopes` is dead metadata that reads as "API keys reach
+    // this", so it is an authoring error either way.
     const scopes = reflector.getAllAndOverride<string[]>(API_KEY_REQUIRED_SCOPES, [controller]);
-    if (!Array.isArray(scopes) || scopes.length === 0) {
+    if (Array.isArray(scopes) && scopes.length > 0) {
       offenders.push(
-        `${controller.name} is on the TASK-708 /admin/* scope-closure list but carries no @RequiredScopes(...) metadata. ` + `Expected '${expect}'.`,
+        `${controller.name} is an /admin/* controller and still declares @RequiredScopes(${scopes.join(', ')}). ` +
+          `Policy A2 (TASK-757) prohibits API keys on the admin plane; remove the decorator.`,
       );
-    } else if (!scopes.includes(expect)) {
-      offenders.push(`${controller.name} carries @RequiredScopes(${scopes.join(', ')}) but TASK-708 expected it to include '${expect}'.`);
     }
   }
 
   if (offenders.length > 0) {
     const list = offenders.map((o) => `  - ${o}`).join('\n');
-    throw new Error(`TASK-708: refused to start — ${offenders.length} /admin/* controller(s) lost their API-key scope gate:\n${list}`);
+    throw new Error(`TASK-757: refused to start — ${offenders.length} /admin/* controller(s) violate policy A2 (JWT-only):\n${list}`);
   }
+}
+
+/** `admin/...`, tolerating an explicitly spelled-out global prefix. */
+const ADMIN_ROUTE_RE = /^\/(?:api\/v\d+\/)?admin(\/|$)/;
+
+/**
+ * Policy **A2**, derived — the gate that survives new controllers.
+ *
+ * Walks every registered route and fails the boot when an `admin/`-prefixed
+ * route resolves a non-empty `API_KEY_REQUIRED_SCOPES`. Reads through the app's
+ * own `Reflector` with `getAllAndOverride([methodRef, ControllerClass])`, so it
+ * sees exactly what `UnifiedAuthGuard` sees at request time — including
+ * class-level decorators, which Nest does NOT copy onto route handlers.
+ *
+ * `@Public()` routes are skipped: authentication never runs on them, so there
+ * is no credential class to have an opinion about (they are covered by
+ * `admin-route-permission-audit.ts` instead).
+ *
+ * This does NOT check that a declaration is PRESENT — that is
+ * `auditEveryApiKeyReachableRouteDeclaresScopes`'s job (TASK-742) and stays
+ * there. The two compose: TASK-742 says "declare something", A2 says "on the
+ * admin plane the only legal something is `@ForbidApiKey()`".
+ */
+export function auditAdminControllersDeclareNoApiKeyScopes(app: INestApplicationContext): void {
+  const modulesContainer = app.get(ModulesContainer);
+  const reflector = app.get(Reflector);
+  const metadataScanner = new MetadataScanner();
+
+  const offenders: string[] = [];
+
+  for (const moduleRef of modulesContainer.values()) {
+    for (const wrapper of moduleRef.controllers.values()) {
+      const ControllerClass = wrapper.metatype as (new (...args: unknown[]) => unknown) | undefined;
+      const instance = wrapper.instance as Record<string, unknown> | undefined;
+      if (!ControllerClass || !instance) continue;
+
+      const proto = Object.getPrototypeOf(instance) as Record<string, unknown> | null;
+      if (!proto) continue;
+
+      const controllerPath = readControllerPath(ControllerClass);
+
+      for (const methodName of metadataScanner.getAllMethodNames(proto)) {
+        const methodRef = proto[methodName];
+        if (typeof methodRef !== 'function') continue;
+
+        const httpMethodCode = Reflect.getMetadata(METHOD_METADATA, methodRef);
+        if (httpMethodCode === undefined) continue;
+
+        const fullPath = joinPath(controllerPath, readMethodPath(methodRef));
+        if (!ADMIN_ROUTE_RE.test(fullPath)) continue;
+
+        const skipAuth = reflector.getAllAndOverride<boolean>(SKIP_AUTH_KEY, [methodRef, ControllerClass]);
+        const legacyPublic = reflector.getAllAndOverride<boolean>('isPublic', [methodRef, ControllerClass]);
+        if (skipAuth === true || legacyPublic === true) continue;
+
+        const scopes = reflector.getAllAndOverride<string[]>(API_KEY_REQUIRED_SCOPES, [methodRef, ControllerClass]);
+        if (!Array.isArray(scopes) || scopes.length === 0) continue;
+
+        offenders.push(
+          `Route ${fullPath} on ${ControllerClass.name}.${methodName} declares @RequiredScopes(${scopes.join(', ')}) ` +
+            `on the admin plane. Policy A2 (TASK-757): /api/v1/admin/* is JWT-only — API keys are prohibited there, ` +
+            `and every admin:* scope is inert at runtime because @ForbidApiKey() is checked before the scope check. ` +
+            `Replace the decorator with @ForbidApiKey(). If this surface genuinely needs a machine credential, that ` +
+            `is TASK-762's service-account plane (@RequiredSvcScopes), not a tenant API key.`,
+        );
+      }
+    }
+  }
+
+  if (offenders.length > 0) {
+    const list = offenders.map((o) => `  - ${o}`).join('\n');
+    throw new Error(`TASK-757: refused to start — ${offenders.length} admin-plane route(s) declare @RequiredScopes:\n${list}`);
+  }
+}
+
+function readControllerPath(controllerClass: new (...args: unknown[]) => unknown): string {
+  const raw = Reflect.getMetadata(PATH_METADATA, controllerClass);
+  if (typeof raw === 'string') return raw;
+  if (Array.isArray(raw) && raw.length > 0 && typeof raw[0] === 'string') return raw[0];
+  return '';
+}
+
+function readMethodPath(methodRef: unknown): string {
+  const raw = Reflect.getMetadata(PATH_METADATA, methodRef as object);
+  if (typeof raw === 'string') return raw;
+  if (Array.isArray(raw) && raw.length > 0 && typeof raw[0] === 'string') return raw[0];
+  return '';
+}
+
+function joinPath(controllerPath: string, methodPath: string): string {
+  const normalize = (segment: string): string => {
+    if (!segment) return '';
+    return segment.startsWith('/') ? segment : `/${segment}`;
+  };
+  const a = normalize(controllerPath).replace(/\/+$/, '');
+  const b = normalize(methodPath).replace(/\/+$/, '');
+  const joined = `${a}${b}` || '/';
+  return joined.startsWith('/') ? joined : `/${joined}`;
 }

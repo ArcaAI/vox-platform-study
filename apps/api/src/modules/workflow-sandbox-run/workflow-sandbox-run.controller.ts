@@ -8,7 +8,7 @@ import {
 import { Body, Controller, Get, HttpCode, HttpStatus, Inject, Param, Post, Res } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiParam, ApiResponse, ApiTags } from '@nestjs/swagger';
 import type { Response } from 'express';
-import { CanCreate, CanRead, CanUpdate, RequiredScopes } from '../../decorators';
+import { CanCreate, CanRead, CanUpdate, ForbidApiKey } from '../../decorators';
 import { StreamScope } from '../auth/decorators/stream-scope.decorator';
 import { WorkflowSandboxStreamService } from './workflow-sandbox-stream.service';
 
@@ -20,17 +20,19 @@ import { WorkflowSandboxStreamService } from './workflow-sandbox-stream.service'
  * Session-JWT admin console ONLY — unlike `WorkflowsController` (TASK-722's exposure plane,
  * `/workflows/:slug/…`, API-key or JWT, published-only, always `sandbox: false`), this surface
  * runs ANY (DRAFT or published) version of the tenant's OWN `WorkflowDefinition`, always
- * `sandbox: true`. Gated with the SAME `admin:workflow-definition:manage` scope
- * `WorkflowDefinitionController` uses — a sandbox test run is, in spirit, a definition-testing
- * action, and reusing an already-registered scope avoids growing the scope registry for a
- * surface with no API-key consumer.
+ * `sandbox: true`.
+ *
+ * The class-level `@RequiredScopes('admin:workflow-definition:manage')` it used to carry
+ * contradicted that "Session-JWT ONLY" claim outright — the conformance review named it as
+ * unenforced drift. Policy A2 (TASK-757) makes the whole `/api/v1/admin/*` plane JWT-only, so
+ * `@ForbidApiKey()` now MEANS what the sentence above always said.
  *
  * Tenancy is service-enforced (rule 04): `WorkflowSandboxRunService` resolves `tenantId`
  * exclusively from CLS; a cross-tenant/unknown `definitionId` or `runId` -> 404 (never 403).
  */
 @ApiBearerAuth()
 @ApiTags('admin-workflow-sandbox-runs')
-@RequiredScopes('admin:workflow-definition:manage')
+@ForbidApiKey()
 @Controller('admin/workflow-definitions/:definitionId/sandbox-runs')
 export class WorkflowSandboxRunController {
   constructor(

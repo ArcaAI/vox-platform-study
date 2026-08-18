@@ -1,56 +1,217 @@
 /**
- * Boot-time audit — TASK-708 Task 5 regression guard for the `/admin/*`
- * scope-closure sweep (Task 4). Mirrors `api-key-scope-audit.test.ts`'s
- * structure for `auditApiKeyRequiredScopes`.
+ * Boot-time audit — policy **A2** (TASK-757): `/api/v1/admin/*` is a JWT-only
+ * plane, so an `admin/`-prefixed route must NEVER declare `@RequiredScopes`.
+ *
+ * This file replaces TASK-708 Task 5's regression guard, which asserted the
+ * exact opposite (that each named admin controller KEPT a named
+ * `@RequiredScopes` value). The invariant is inverted, not relaxed.
+ *
+ * Two audits, deliberately different in kind:
+ *
+ * - `auditAdminControllersDeclareNoApiKeyScopes(app)` — the DERIVED sweep, and
+ *   the one that actually holds the line. It walks `ModulesContainer` and reads
+ *   resolved metadata, so a brand-new admin controller nobody added to any list
+ *   is caught on the day it is written. A hand-transcribed list cannot do that:
+ *   the previous one silently policed 63 of 65 controllers because
+ *   `KnowledgeController` and `WorkflowSandboxRunController` were never
+ *   transcribed into it.
+ * - `auditAdminScopedControllers()` — the NAMED list, collapsed to all-`FORBID`.
+ *   It catches a different failure: a controller that stops being registered in
+ *   any module (and so vanishes from the sweep entirely) while its class still
+ *   exists. Kept for that reason, not as the primary gate.
  */
 import { describe, it, expect } from 'vitest';
-import { RequiredScopes, ForbidApiKey } from '../../decorators';
-import { auditAdminScopedControllers, ADMIN_SCOPED_CONTROLLERS } from '../admin-scope-audit';
+import { Controller, Get } from '@nestjs/common';
+import { Reflector } from '@nestjs/core';
+import { ModulesContainer } from '@nestjs/core/injector/modules-container';
+import { RequiredScopes, ForbidApiKey, Public, Authorize } from '../../decorators';
+import { auditAdminScopedControllers, auditAdminControllersDeclareNoApiKeyScopes, ADMIN_SCOPED_CONTROLLERS } from '../admin-scope-audit';
 
-describe('boot-time /admin/* scope-closure audit (TASK-708 Task 5)', () => {
-  it('passes for every REAL /admin/* controller TASK-708 Task 4 scoped', () => {
+/** Same shortcut the sibling audit tests use: real metadata, no DI graph. */
+function buildFakeAppFromRealControllers(
+  controllers: Array<new (...args: never[]) => unknown>,
+): Parameters<typeof auditAdminControllersDeclareNoApiKeyScopes>[0] {
+  const wrappers = controllers.map((ControllerClass) => ({
+    metatype: ControllerClass,
+    instance: Object.create(ControllerClass.prototype) as Record<string, unknown>,
+  }));
+  const modulesContainer = new Map([['synthetic', { controllers: new Map(wrappers.map((w, i) => [i, w])) }]]);
+  const reflector = new Reflector();
+
+  return {
+    get: (token: unknown) => {
+      if (token === ModulesContainer) return modulesContainer;
+      if (token === Reflector) return reflector;
+      throw new Error(`unexpected token: ${String(token)}`);
+    },
+  } as unknown as Parameters<typeof auditAdminControllersDeclareNoApiKeyScopes>[0];
+}
+
+describe('A2 — admin plane declares no API-key scopes (TASK-757, derived sweep)', () => {
+  it('FAILS an admin-prefixed controller that declares @RequiredScopes', () => {
+    @Controller('admin/things')
+    @RequiredScopes('admin:tenant:read')
+    class AdminScoped {
+      @Get()
+      @Authorize(['read', 'Tenant'])
+      list() {}
+    }
+
+    expect(() => auditAdminControllersDeclareNoApiKeyScopes(buildFakeAppFromRealControllers([AdminScoped]))).toThrow(
+      /AdminScoped[\s\S]*admin:tenant:read/,
+    );
+  });
+
+  it('FAILS a METHOD-level @RequiredScopes on an admin controller (class-level absence is not enough)', () => {
+    @Controller('admin/things')
+    @ForbidApiKey()
+    class AdminMethodScoped {
+      @Get()
+      @RequiredScopes('admin:tenant:read')
+      list() {}
+    }
+
+    expect(() => auditAdminControllersDeclareNoApiKeyScopes(buildFakeAppFromRealControllers([AdminMethodScoped]))).toThrow(/AdminMethodScoped/);
+  });
+
+  it('PASSES an admin-prefixed controller carrying @ForbidApiKey()', () => {
+    @Controller('admin/things')
+    @ForbidApiKey()
+    class AdminForbidden {
+      @Get()
+      @Authorize(['read', 'Tenant'])
+      list() {}
+    }
+
+    expect(() => auditAdminControllersDeclareNoApiKeyScopes(buildFakeAppFromRealControllers([AdminForbidden]))).not.toThrow();
+  });
+
+  it('PASSES a business-plane controller declaring @RequiredScopes — A1 (TASK-758) owns that plane, not A2', () => {
+    @Controller('things')
+    @RequiredScopes('consultation:session:read')
+    class BusinessScoped {
+      @Get()
+      @Authorize(['read', 'Consultation'])
+      list() {}
+    }
+
+    expect(() => auditAdminControllersDeclareNoApiKeyScopes(buildFakeAppFromRealControllers([BusinessScoped]))).not.toThrow();
+  });
+
+  /**
+   * The global prefix is applied by `main.ts`, not by `@Controller`, so the
+   * registered path is normally bare `admin/...`. A controller that spells the
+   * prefix out explicitly must still be detected — the same tolerance
+   * `INTERNAL_ROUTE_RE` needs in `api-key-scope-audit.ts`.
+   */
+  it('detects an explicitly api/v1-prefixed admin controller', () => {
+    @Controller('api/v1/admin/things')
+    @RequiredScopes('admin:tenant:read')
+    class PrefixedAdminScoped {
+      @Get()
+      @Authorize(['read', 'Tenant'])
+      list() {}
+    }
+
+    expect(() => auditAdminControllersDeclareNoApiKeyScopes(buildFakeAppFromRealControllers([PrefixedAdminScoped]))).toThrow(/PrefixedAdminScoped/);
+  });
+
+  it('does not match a controller merely PREFIXED by the word admin (administration/...)', () => {
+    @Controller('administration/things')
+    @RequiredScopes('consultation:session:read')
+    class NotAdmin {
+      @Get()
+      @Authorize(['read', 'Consultation'])
+      list() {}
+    }
+
+    expect(() => auditAdminControllersDeclareNoApiKeyScopes(buildFakeAppFromRealControllers([NotAdmin]))).not.toThrow();
+  });
+
+  it('ignores a @Public() admin route — authentication never runs, so there is no credential class to judge', () => {
+    @Controller('admin/things')
+    class PublicAdmin {
+      @Get()
+      @Public()
+      @RequiredScopes('admin:tenant:read')
+      probe() {}
+    }
+
+    expect(() => auditAdminControllersDeclareNoApiKeyScopes(buildFakeAppFromRealControllers([PublicAdmin]))).not.toThrow();
+  });
+
+  it('lists every offender in one error', () => {
+    @Controller('admin/a')
+    @RequiredScopes('admin:tenant:read')
+    class OffenderA {
+      @Get()
+      @Authorize(['read', 'Tenant'])
+      list() {}
+    }
+
+    @Controller('admin/b')
+    @RequiredScopes('admin:user:read')
+    class OffenderB {
+      @Get()
+      @Authorize(['read', 'User'])
+      list() {}
+    }
+
+    expect(() => auditAdminControllersDeclareNoApiKeyScopes(buildFakeAppFromRealControllers([OffenderA, OffenderB]))).toThrow(
+      /OffenderA[\s\S]*OffenderB/,
+    );
+  });
+
+  /**
+   * The real-tree case. This is the assertion that actually proves the
+   * 65-controller sweep landed — everything above only proves the audit's
+   * logic.
+   */
+  it('passes against every REAL admin controller in the named list', () => {
+    expect(() =>
+      auditAdminControllersDeclareNoApiKeyScopes(buildFakeAppFromRealControllers(ADMIN_SCOPED_CONTROLLERS.map((c) => c.controller))),
+    ).not.toThrow();
+  });
+});
+
+describe('boot-time /admin/* named-surface audit (TASK-757, collapsed to FORBID)', () => {
+  it('passes for every REAL /admin/* controller', () => {
     expect(() => auditAdminScopedControllers()).not.toThrow();
   });
 
-  it('covers every controller exactly once per the Task 3/4 classification (no accidental duplicates dropped)', () => {
-    expect(ADMIN_SCOPED_CONTROLLERS.length).toBeGreaterThanOrEqual(60);
+  it('expects FORBID for every entry — no admin controller may declare a scope any more', () => {
+    expect(ADMIN_SCOPED_CONTROLLERS.every((c) => c.expect === 'FORBID')).toBe(true);
+  });
+
+  /**
+   * The two controllers the hand-transcribed TASK-708 list silently missed,
+   * plus `ConsentGrantController`, which was absent though harmless (it was
+   * already forbidden). Their absence is exactly why the derived sweep above
+   * exists; listing them here closes the transcription gap as well.
+   */
+  it('covers all 70 admin-prefixed controllers, including the three the TASK-708 list missed', () => {
     const names = ADMIN_SCOPED_CONTROLLERS.map((c) => c.controller.name);
     expect(new Set(names).size).toBe(names.length);
+    expect(names).toContain('KnowledgeController');
+    expect(names).toContain('WorkflowSandboxRunController');
+    expect(names).toContain('ConsentGrantController');
+    expect(ADMIN_SCOPED_CONTROLLERS.length).toBe(70);
   });
 
-  it('throws when a scoped controller loses its @RequiredScopes(...) metadata', () => {
+  it('throws when a listed controller loses its @ForbidApiKey() metadata', () => {
     class Orphan {}
 
-    expect(() => auditAdminScopedControllers([{ controller: Orphan, expect: 'admin:tenant:write' }])).toThrow(
-      /Orphan[\s\S]*no @RequiredScopes/,
-    );
+    expect(() => auditAdminScopedControllers([{ controller: Orphan, expect: 'FORBID' }])).toThrow(/Orphan[\s\S]*no @ForbidApiKey/);
   });
 
-  it('throws when a scoped controller carries the WRONG scope (drifted, not just dropped)', () => {
-    @RequiredScopes('admin:user:write')
-    class Drifted {}
-
-    expect(() => auditAdminScopedControllers([{ controller: Drifted, expect: 'admin:tenant:write' }])).toThrow(
-      /Drifted[\s\S]*expected it to include 'admin:tenant:write'/,
-    );
-  });
-
-  it('passes when the controller carries the expected scope (sanity — not a false negative)', () => {
+  it('throws when a listed controller has REGROWN a @RequiredScopes declaration', () => {
     @RequiredScopes('admin:tenant:write')
-    class Scoped {}
+    class Regrown {}
 
-    expect(() => auditAdminScopedControllers([{ controller: Scoped, expect: 'admin:tenant:write' }])).not.toThrow();
+    expect(() => auditAdminScopedControllers([{ controller: Regrown, expect: 'FORBID' }])).toThrow(/Regrown[\s\S]*admin:tenant:write/);
   });
 
-  it('throws when a FORBID-listed controller loses its @ForbidApiKey() metadata', () => {
-    class OrphanForbid {}
-
-    expect(() => auditAdminScopedControllers([{ controller: OrphanForbid, expect: 'FORBID' }])).toThrow(
-      /OrphanForbid[\s\S]*no @ForbidApiKey/,
-    );
-  });
-
-  it('passes when a FORBID-listed controller carries @ForbidApiKey() (sanity)', () => {
+  it('passes when a listed controller carries @ForbidApiKey() (sanity — not a false negative)', () => {
     @ForbidApiKey()
     class ForbiddenOk {}
 
@@ -63,8 +224,8 @@ describe('boot-time /admin/* scope-closure audit (TASK-708 Task 5)', () => {
 
     expect(() =>
       auditAdminScopedControllers([
-        { controller: OrphanA, expect: 'admin:tenant:write' },
-        { controller: OrphanB, expect: 'admin:user:write' },
+        { controller: OrphanA, expect: 'FORBID' },
+        { controller: OrphanB, expect: 'FORBID' },
       ]),
     ).toThrow(/OrphanA[\s\S]*OrphanB|OrphanB[\s\S]*OrphanA/);
   });

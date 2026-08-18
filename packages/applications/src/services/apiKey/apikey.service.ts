@@ -25,7 +25,7 @@ import { IEntitlementsService } from '../entitlements/IEntitlementsService';
 import { TenantSettingsService } from '../settings-registry/tenant-settings.service';
 import { SUPER_ADMIN_ROLE } from '../tenant/constants';
 import { CreateApiKeyResult, IApiKeyService } from './IApiKeyService';
-import { resolveImpliedPermissions } from './apikey-scopes.registry';
+import { isReservedScope, resolveImpliedPermissions } from './apikey-scopes.registry';
 import { CreateApiKeyRequest, UpdateApiKeyRequest } from './dto';
 
 /**
@@ -312,6 +312,11 @@ export class ApiKeyService extends BaseService implements IApiKeyService {
       }
     }
 
+    // TASK-757 (policy A2) — reserved scopes are never grantable. Checked
+    // BEFORE the ceiling, because it is unconditional: the ceiling has a
+    // SUPER_ADMIN fast path and this deliberately does not.
+    this.assertNoReservedScopes(request.scopes);
+
     // TASK-756 — privilege ceiling. Runs BEFORE any key material exists: a
     // refused mint must leave nothing behind.
     this.assertScopeCeiling(request.scopes);
@@ -538,7 +543,17 @@ export class ApiKeyService extends BaseService implements IApiKeyService {
       // `scopes` is a Json column on the entity; only a string[] can have been
       // written by this service, but narrow defensively rather than cast.
       const alreadyHeld = new Set<string>(Array.isArray(apiKey.scopes) ? apiKey.scopes.filter((s): s is string => typeof s === 'string') : []);
-      this.assertScopeCeiling((request.scopes ?? []).filter((scope) => !alreadyHeld.has(scope)));
+      const added = (request.scopes ?? []).filter((scope) => !alreadyHeld.has(scope));
+
+      // TASK-757 (policy A2) — the reserved-scope rule on UPDATE is a WIDENING
+      // rule, applied to `added` only. A membership rule would reject a rename
+      // `PATCH` on any pre-existing key whose stored array already contains
+      // `admin:*` (the dev-seeded SERVICE_ACCOUNT shape), on a field the caller
+      // never touched. Narrowing away a reserved scope, or re-sending the
+      // stored array unchanged, must both keep working.
+      this.assertNoReservedScopes(added);
+
+      this.assertScopeCeiling(added);
     }
 
     // Apply changes using entity change tracking
@@ -1141,6 +1156,43 @@ export class ApiKeyService extends BaseService implements IApiKeyService {
     if (this.isSuperAdmin()) return true;
     const ability = this.clsService.get('userAbility') as { can?: (action: string, subject: string) => boolean } | undefined;
     return !!ability && typeof ability.can === 'function' && ability.can('manage', 'ApiKey');
+  }
+
+  /**
+   * TASK-757 (policy A2) — refuse to GRANT a reserved scope.
+   *
+   * `/api/v1/admin/*` is JWT-only: every admin controller carries
+   * `@ForbidApiKey()`, which `UnifiedAuthGuard` checks BEFORE the scope check,
+   * so an `admin:*` or `webhook:*` scope on a key can never authorize
+   * anything. Minting one would issue a credential the platform is guaranteed
+   * to refuse — a silent, confusing failure at request time instead of a clear
+   * one at grant time.
+   *
+   * NO SUPER_ADMIN FAST PATH, unlike `assertScopeCeiling` below. The ceiling
+   * asks "may this caller grant this much power?" — a question a super admin
+   * legitimately answers yes to. A2 asks "may a long-lived static bearer
+   * credential reach the admin plane at all?", and the answer is no for
+   * everyone until TASK-762 lands a real machine-credential class. A super
+   * admin who could opt out would be re-creating exactly the credential class
+   * this policy removes.
+   *
+   * The registry entries are RESERVED, not deleted: `isValidScope` still
+   * recognises them so stored keys stay readable, and they remain the
+   * vocabulary TASK-762 reuses.
+   *
+   * Throws `ForbiddenException` (403) — a policy boundary, not the
+   * cross-tenant 404-over-403 posture.
+   */
+  private assertNoReservedScopes(scopes: string[] | null | undefined): void {
+    if (!scopes || scopes.length === 0) return;
+
+    const reserved = scopes.filter((scope) => isReservedScope(scope));
+    if (reserved.length > 0) {
+      throw new ForbiddenException(
+        `Cannot grant reserved API key scope(s): ${reserved.join(', ')}. ` +
+          `The /api/v1/admin/* plane is JWT-only, so these scopes can never authorize a request.`,
+      );
+    }
   }
 
   /**

@@ -6,7 +6,7 @@ import { SwaggerModule } from '@nestjs/swagger';
 import { AppModule } from './app.module';
 import { auditAdminRoutePermissions } from './bootstrap/admin-route-permission-audit';
 import { auditApiKeyRequiredScopes, auditInternalRoutesOffApiKeySurface } from './bootstrap/api-key-scope-audit';
-import { auditAdminScopedControllers } from './bootstrap/admin-scope-audit';
+import { auditAdminScopedControllers, auditAdminControllersDeclareNoApiKeyScopes } from './bootstrap/admin-scope-audit';
 import { auditEveryApiKeyReachableRouteDeclaresScopes } from './bootstrap/api-key-surface-audit';
 import { auditBusinessPlaneApiKeyExemptions } from './bootstrap/business-plane-apikey-exemptions-audit';
 import { auditConsentRouteCoverage } from './bootstrap/consent-route-coverage-audit';
@@ -305,9 +305,14 @@ async function bootstrap() {
   // `/internal/*` controller forgetting the guard.
   auditInternalRoutesOffApiKeySurface(app);
 
-  // Refuses to start if any `/admin/*` controller TASK-708 Task 4 gave a
-  // `@RequiredScopes(...)`/`@ForbidApiKey()` gate loses it — the regression
-  // guard for the owner-approved admin-surface scope narrowing.
+  // Policy A2 (TASK-757): `/api/v1/admin/*` is JWT-only. The DERIVED sweep is
+  // the gate that survives new controllers — it fails the boot when any
+  // admin-prefixed route declares `@RequiredScopes`, with no list to maintain.
+  auditAdminControllersDeclareNoApiKeyScopes(app);
+
+  // The named-list companion: every admin controller the gateway registers is
+  // pinned as `@ForbidApiKey()`. Catches a controller disappearing from the
+  // module graph, which the sweep above structurally cannot see.
   auditAdminScopedControllers();
 
   // Refuses to start if ANY non-`@Public()` route declares neither

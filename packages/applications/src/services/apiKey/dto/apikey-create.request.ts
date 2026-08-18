@@ -1,6 +1,6 @@
 import { ApiProperty } from '@nestjs/swagger';
 import { IsString, IsOptional, IsEnum, IsArray, IsInt, IsDateString, MaxLength, Min, ArrayMinSize, Validate } from 'class-validator';
-import { ValidScopesConstraint } from '../validators/valid-scopes.validator';
+import { NoReservedScopesConstraint, ValidScopesConstraint } from '../validators/valid-scopes.validator';
 import { ApiKeyType } from '@arcaai/domains';
 import { BaseRequest } from '../../../common';
 
@@ -20,6 +20,11 @@ export class CreateApiKeyRequest extends BaseRequest {
   @IsString({ each: true })
   @ArrayMinSize(1, { message: 'At least one scope is required' })
   @Validate(ValidScopesConstraint)
+  // TASK-757 (policy A2) — reserved (`admin:*`, `webhook:*`) scopes cannot be
+  // granted. CREATE only: every scope here is new, so a membership-style
+  // constraint is correct. The UPDATE equivalent is a widening-DELTA check in
+  // `ApiKeyService.update()`, because a constraint cannot see the stored key.
+  @Validate(NoReservedScopesConstraint)
   scopes: string[];
 
   @ApiProperty({ description: 'Array of allowed IP addresses', required: false, type: [String] })

@@ -1,7 +1,7 @@
 import { IWorkflowDefinitionService, WorkflowNodeRegistryResponse } from '@arcaai/applications';
 import { Controller, Get, Inject } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
-import { CanRead, RequiredScopes } from '../../decorators';
+import { CanRead, ForbidApiKey } from '../../decorators';
 
 /**
  * WorkflowNodeController — read-only projection of `WORKFLOW_NODE_REGISTRY`
@@ -17,7 +17,7 @@ import { CanRead, RequiredScopes } from '../../decorators';
  */
 @ApiBearerAuth()
 @ApiTags('admin-workflow-nodes')
-@RequiredScopes('admin:workflow-node:read')
+@ForbidApiKey()
 @Controller('admin/workflow-nodes')
 @CanRead('WorkflowDefinition')
 export class WorkflowNodeController {

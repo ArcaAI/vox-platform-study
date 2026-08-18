@@ -29,7 +29,7 @@ import {
 import { Body, Controller, ForbiddenException, Get, NotFoundException, Param, Patch, Post, Query } from '@nestjs/common';
 import { ApiBearerAuth, ApiHeader, ApiOperation, ApiParam, ApiQuery, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { ClsService } from 'nestjs-cls';
-import { Authorize, ExpectedVersion, RequiresIfMatch, RequiredScopes } from '../../decorators';
+import { Authorize, ExpectedVersion, RequiresIfMatch, ForbidApiKey } from '../../decorators';
 import { resolveScopedTenantId, resolveScopedTenantIdOptional } from '../../shared/tenant-scope';
 import { HarnessOpsClient, HarnessWorkflowActionResult, HarnessWorkflowDetail, HarnessWorkflowListResult } from './harness-ops.client';
 import {
@@ -65,7 +65,7 @@ import {
  */
 @ApiBearerAuth()
 @ApiTags('admin-harness')
-@RequiredScopes('admin:harness:manage')
+@ForbidApiKey()
 @Controller('admin/harness')
 @Authorize()
 export class HarnessAdminController {

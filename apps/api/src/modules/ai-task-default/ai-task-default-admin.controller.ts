@@ -13,7 +13,7 @@ import {
 import { BadRequestException, Body, Controller, Get, Inject, Put, Query } from '@nestjs/common';
 import { ApiBearerAuth, ApiExtraModels, ApiHeader, ApiOperation, ApiQuery, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { ClsService } from 'nestjs-cls';
-import { CanManage, CanRead, ExpectedVersion, RequiresIfMatch, RequiredScopes } from '../../decorators';
+import { CanManage, CanRead, ExpectedVersion, RequiresIfMatch, ForbidApiKey } from '../../decorators';
 import { resolveScopedTenantId } from '../../shared/tenant-scope';
 
 /**
@@ -54,7 +54,7 @@ import { resolveScopedTenantId } from '../../shared/tenant-scope';
 @ApiBearerAuth()
 @ApiTags('admin-ai-task-defaults')
 @ApiExtraModels(EffectiveAiTaskDefaultResponse)
-@RequiredScopes('admin:ai-task-default:manage')
+@ForbidApiKey()
 @Controller('admin/ai-task-defaults')
 export class AiTaskDefaultAdminController {
   constructor(

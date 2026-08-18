@@ -1,7 +1,7 @@
 import { Controller, Get, Inject, Logger, Query } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiQuery, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { IPlatformMetricsService, PlatformMetricsResponse, OpenSocketsResponse, ConsumptionRollupResponse } from '@arcaai/applications';
-import { CanManage, RequiredScopes } from '../../decorators';
+import { CanManage, ForbidApiKey } from '../../decorators';
 
 /**
  * Platform runtime metrics surface.
@@ -18,7 +18,7 @@ import { CanManage, RequiredScopes } from '../../decorators';
  */
 @ApiBearerAuth()
 @ApiTags('admin-platform-metrics')
-@RequiredScopes('admin:platform-metrics:read')
+@ForbidApiKey()
 @Controller('admin/platform')
 @CanManage('PlatformMetrics')
 export class PlatformMetricsController {

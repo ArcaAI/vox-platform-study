@@ -21,6 +21,26 @@
  * This is the same shape as `RESERVED_INTERNAL_SCOPE_CONTROLLERS`
  * (`api-key-scope-audit.ts`): a POLICED exemption, not a hole.
  *
+ * ─── The TASK-759 deferral set is gone (TASK-757 close-out) ────────────────
+ *
+ * A second set, `BUSINESS_PLANE_KEY_FORBIDDEN_DEFERRED`, once named
+ * `MonitoringController` and `ApiHealthController` — two administrative
+ * capabilities sitting on business prefixes that A1 had no opinion about while
+ * TASK-759 was in flight. TASK-759 has landed (commit `7155c14d4`) and both are
+ * now handled structurally rather than by name:
+ *
+ * - `MonitoringController` moved to `@Controller('admin/monitoring')`, so the
+ *   `ADMIN_ROUTE_RE` skip below covers it — it is A2's plane now.
+ * - `ApiHealthController` kept only its four `@Public()` probes (the CASL-gated
+ *   ops routes became `AdminHealthServicesController` at `admin/health/services`),
+ *   so the `@Public()` skip below covers it.
+ *
+ * The set had therefore become stale-but-inert, which is the worst state for a
+ * named exemption list: it looked like a live carve-out while covering nothing.
+ * Deleted rather than left to rot. Both controllers are pinned as `'FORBID'` in
+ * `ADMIN_SCOPED_CONTROLLERS` (`admin-scope-audit.ts`) and policed by A2's
+ * derived sweep.
+ *
  * ─── What this does NOT check ──────────────────────────────────────────────
  *
  * Presence of a declaration is `auditEveryApiKeyReachableRouteDeclaresScopes`'s
@@ -61,24 +81,6 @@ import './third-party-public-routes';
  */
 export const BUSINESS_PLANE_KEY_FORBIDDEN: ReadonlySet<string> = new Set(['AuthController', 'VoiceProfileController', 'DnaWritingStyleController']);
 
-/**
- * Controllers whose classification belongs to **TASK-759**, not to A1.
- *
- * Both are administrative capabilities that happen to sit on a business prefix
- * — `MonitoringController` (`/monitoring`) and the two CASL-gated ops routes
- * on `ApiHealthController` (`/health/services*`) are gated
- * `@CanAny(['manage','all'], ['read','TenantTelemetry'])`. They are not
- * business routes, so A1 has no opinion on them; TASK-759 moves them onto the
- * plane they belong to and this set is deleted with that move.
- *
- * Kept SEPARATE from the reasoned exemptions above so "deferred to another
- * ticket" can never be read as "we reasoned about this and chose to exempt
- * it". Entries are not policed for staleness on purpose: TASK-759 is in
- * flight, and a stale-entry check here would fail the boot the moment it
- * lands rather than when someone re-reads this file.
- */
-export const BUSINESS_PLANE_KEY_FORBIDDEN_DEFERRED: ReadonlySet<string> = new Set(['MonitoringController', 'ApiHealthController']);
-
 /** `/admin/...` — A2's plane (TASK-757). Matched on the JOINED route path. */
 const ADMIN_ROUTE_RE = /^\/admin(\/|$)/;
 
@@ -95,9 +97,7 @@ export function auditBusinessPlaneApiKeyExemptions(app: INestApplicationContext)
       const instance = wrapper.instance as Record<string, unknown> | undefined;
       if (!ControllerClass || !instance) continue;
 
-      if (BUSINESS_PLANE_KEY_FORBIDDEN.has(ControllerClass.name) || BUSINESS_PLANE_KEY_FORBIDDEN_DEFERRED.has(ControllerClass.name)) {
-        continue;
-      }
+      if (BUSINESS_PLANE_KEY_FORBIDDEN.has(ControllerClass.name)) continue;
 
       const proto = Object.getPrototypeOf(instance) as Record<string, unknown> | null;
       if (!proto) continue;
