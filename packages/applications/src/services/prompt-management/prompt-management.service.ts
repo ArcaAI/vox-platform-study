@@ -7,7 +7,7 @@ import { EventEmitter2 } from '@nestjs/event-emitter';
 // Server-side prompt-version diff. Same `diff` (jsdiff)
 // engine the SDK used client-side, so the combined line diff is byte-identical.
 import { diffLines, createPatch } from 'diff';
-import { encryptPhiFields } from '../../common';
+import { TENANTLESS, encryptPhiFields, internalServiceHeaders, resolveInternalAccessToken } from '../../common';
 import { EvalPromotionGateService } from '../eval/eval-promotion-gate.service';
 import {
   PromptTemplateRepository,
@@ -83,9 +83,9 @@ const FULL_SCORE_WORD_COUNT = 50;
 
 // BUG-018 — the AiTaskDefault key that selects the model a prompt-template test
 // run uses. Resolved DIRECTLY through `IAiTaskDefaultService` (tenant row →
-// SYSTEM row); there is no `smr.finalize` fallback any more — that hop was
+// SYSTEM row); there is no `text.finalize` fallback any more — that hop was
 // harness coupling and is what made every test run on the platform's LM Studio.
-const TEXT_TEST_TASK_KEY = 'smr.test';
+const TEXT_TEST_TASK_KEY = 'text.test';
 
 // SMR's terminal success state (`TaskStatus.COMPLETED` in
 // `apps/text/src/text/models/task.py`).
@@ -178,7 +178,7 @@ export class PromptManagementService extends BaseService implements IPromptManag
     @Optional() private readonly httpService?: HttpService,
     @Optional() private readonly configService?: ConfigService,
     @Optional() @Inject(SecretsService) private readonly secretsService?: SecretsService,
-    // BUG-018 — resolves the effective `smr.test` model DIRECTLY from the
+    // BUG-018 — resolves the effective `text.test` model DIRECTLY from the
     // AiTaskDefault control plane. This slot used to hold the harness policy
     // service; a prompt-authoring tool has no business reading harness policy,
     // and that coupling is what silently ran every test on the platform model.
@@ -876,7 +876,7 @@ export class PromptManagementService extends BaseService implements IPromptManag
    *   supplied, or a caller-supplied provider/model pair is partial/unknown.
    * @throws NotFoundException — unknown/cross-tenant template, missing
    *   `versionNumber`, or unknown/cross-tenant `goldenCaseId` (404-over-403).
-   * @throws BadRequestException — `smr.test` resolves to nothing (fail-closed).
+   * @throws BadRequestException — `text.test` resolves to nothing (fail-closed).
    */
   async startPromptTemplateTest(id: string, dto: TestPromptTemplateRequest): Promise<PromptTestAckResponse> {
     if (dto.sampleInput !== undefined && dto.goldenCaseId !== undefined) {
@@ -1181,10 +1181,10 @@ export class PromptManagementService extends BaseService implements IPromptManag
    *     required together) — forwarded VERBATIM (mirrors
    *     `applyTextModelSelection`'s "caller-pinned model wins" semantics),
    *     after validating it against the ENABLED AiModel registry.
-   *  2. The `smr.test` AiTaskDefault, read DIRECTLY from
+   *  2. The `text.test` AiTaskDefault, read DIRECTLY from
    *     `IAiTaskDefaultService.getEffective` — whose own cascade is tenant row
    *     → SYSTEM row. That cascade is the ONLY fallback: the old
-   *     `smr.test → smr.finalize` hop went through the harness policy service
+   *     `text.test → text.finalize` hop went through the harness policy service
    *     and was pure harness coupling (it is also what silently ran every test
    *     on the platform's LM Studio model).
    *
@@ -1195,7 +1195,7 @@ export class PromptManagementService extends BaseService implements IPromptManag
    *
    * @throws ArgumentInvalidException — only one of provider/model supplied,
    *   or the supplied pair does not match an ENABLED registry row.
-   * @throws BadRequestException — `smr.test` resolves to nothing.
+   * @throws BadRequestException — `text.test` resolves to nothing.
    */
   private async resolveTestSmrTarget(override: { provider?: string; model?: string }): Promise<{ provider: string; model: string }> {
     if (override.provider !== undefined || override.model !== undefined) {
@@ -1319,7 +1319,7 @@ export class PromptManagementService extends BaseService implements IPromptManag
     }
     // Gateway-relative SSE path (`TextProxyController` mounts `text/*`), not the
     // service-relative `stream_url` SMR reports — the browser talks to the
-    // gateway, with a `smr_task:<taskId>`-scoped single-use ticket.
+    // gateway, with a `text_task:<taskId>`-scoped single-use ticket.
     return { taskId, streamUrl: `text/tasks/${taskId}/stream` };
   }
 
@@ -1356,12 +1356,25 @@ export class PromptManagementService extends BaseService implements IPromptManag
     return data.content ?? '';
   }
 
+  /**
+   * D-D: the ONE shared `INTERNAL_ACCESS_TOKEN` (`TEXT_SERVICE_TOKEN` is only the
+   * migration fallback). TASK-737: `X-Tenant-Id` is no longer CONDITIONAL.
+   *
+   * The old `if (tenantId) headers['X-Tenant-Id'] = tenantId` was the narrower
+   * half of the audit's Class-B finding: this bench has a legitimate no-tenant
+   * caller (a SUPER_ADMIN driving it with no working tenant selected), and the
+   * conditional made that case indistinguishable from a header dropped in
+   * transit. It now DECLARES itself instead — `tenantless:platform-operator` —
+   * which is what lets `apps/text` treat an ABSENT header as an unambiguous
+   * caller defect and refuse it with 428.
+   */
   private async smrHeaders(): Promise<Record<string, string>> {
-    const token = (await this.secretsService?.getSecretOptional('TEXT_SERVICE_TOKEN')) ?? '';
-    const headers: Record<string, string> = { 'Content-Type': 'application/json', 'X-Service-Token': token };
-    const tenantId = this.tenantId;
-    if (tenantId) headers['X-Tenant-Id'] = tenantId;
-    return headers;
+    const serviceToken = await resolveInternalAccessToken(this.secretsService, 'TEXT_SERVICE_TOKEN');
+    return internalServiceHeaders({
+      serviceToken,
+      tenantId: this.tenantId,
+      tenantlessReason: TENANTLESS.PLATFORM_OPERATOR,
+    });
   }
 
   /**

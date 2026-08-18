@@ -1,4 +1,4 @@
-"""Unit tests for the SMR ExternalGuardrailClient.
+"""Unit tests for the Text ExternalGuardrailClient.
 
 httpx is fully mocked — covers tenant-header propagation, the medical verdict
 mapping, and the degrade-safe → fail-CLOSED posture when the guardrail

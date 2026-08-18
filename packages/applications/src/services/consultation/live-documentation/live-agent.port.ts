@@ -115,7 +115,7 @@ export interface FrozenLiveAgentSnapshot {
   /** The SMR `system_prompt` served on every flush. */
   systemPrompt: string;
   toolPlan: ResolvedToolPlan;
-  /** Frozen per-task LLM override; null ⇒ per-flush `resolveSmrSelection(tenantId,'live')` as today. */
+  /** Frozen per-task LLM override; null ⇒ per-flush `resolveTextSelection(tenantId,'live')` as today. */
   liveLlm: { provider: string; model: string } | null;
   frozenAt: string;
 }

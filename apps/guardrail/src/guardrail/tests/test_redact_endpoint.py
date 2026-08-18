@@ -136,10 +136,16 @@ def _app(
     return app
 
 
+# `X-Tenant-Id` is mandatory on every tenant-scoped route (428 otherwise), so the
+# helper supplies one by default; tests about the header pass their own.
+TEST_TENANT = "11111111-1111-1111-1111-111111111111"
+
+
 async def _post(app: FastAPI, body: dict[str, Any], headers: dict[str, str] | None = None) -> Any:
     transport = ASGITransport(app=app)
+    merged = {"X-Tenant-Id": TEST_TENANT, **(headers or {})}
     async with AsyncClient(transport=transport, base_url="http://test") as client:
-        return await client.post(REDACT_PATH, json=body, headers=headers)
+        return await client.post(REDACT_PATH, json=body, headers=merged)
 
 
 # ── Contract: entities + sanitized_text ──

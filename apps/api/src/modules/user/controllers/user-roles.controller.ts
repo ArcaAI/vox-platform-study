@@ -8,7 +8,7 @@ import {
 import { Controller, ForbiddenException, Get, Inject, Param, Query } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiParam, ApiQuery, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { ClsService } from 'nestjs-cls';
-import { Authorize } from '../../../decorators';
+import { Authorize, ForbidApiKey } from '../../../decorators';
 
 /**
  * Controller for the current user's role assignments (self-only).
@@ -22,6 +22,15 @@ import { Authorize } from '../../../decorators';
 @ApiTags('user')
 @Controller('users')
 @Authorize()
+// TASK-742 API-KEY-NOTE — CONSERVATIVE DEFAULT, AWAITING OWNER CLASSIFICATION.
+// Reason: privilege-relevant role-assignment read; TASK-708 bucketed it (b) with no non-admin scope available.
+// This route family declared nothing about API-key access, which under the
+// deny-by-default rule is a boot failure. Rather than guess a scope (guessing
+// permissive is how the original gap was created), it is closed explicitly.
+// Reversing it is a one-line change to @RequiredScopes('<scope>') once the
+// owner confirms a real API-key use case — see the TASK-708 README's
+// "Reachability changes awaiting owner review" table.
+@ForbidApiKey()
 export class UserRolesController {
   constructor(
     @Inject(IUserRoleAssignmentService)

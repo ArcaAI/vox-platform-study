@@ -37,7 +37,7 @@ describe('StreamingSessionService', () => {
 
     await service.checkAvailability();
 
-    expect(httpService.get).toHaveBeenCalledWith('http://stt.internal:9000/internal/streaming/availability', { timeout: 5000 });
+    expect(httpService.get).toHaveBeenCalledWith('http://stt.internal:9000/internal/streaming/availability', expect.objectContaining({ timeout: 5000 }));
   });
 
   it('falls back to localhost when STT_URL is missing', async () => {
@@ -57,7 +57,7 @@ describe('StreamingSessionService', () => {
 
     await service.checkAvailability();
 
-    expect(httpService.get).toHaveBeenCalledWith('http://localhost:8861/internal/streaming/availability', { timeout: 5000 });
+    expect(httpService.get).toHaveBeenCalledWith('http://localhost:8861/internal/streaming/availability', expect.objectContaining({ timeout: 5000 }));
   });
 
   it('returns null when createSession gets 503 at capacity', async () => {
@@ -90,7 +90,7 @@ describe('StreamingSessionService', () => {
         sample_rate: 16000,
         user_id: 'user-1',
       }),
-      { timeout: 15000 },
+      expect.objectContaining({ timeout: 15000 }),
     );
   });
 
@@ -110,7 +110,7 @@ describe('StreamingSessionService', () => {
 
     const result = await service.getSessionStatus('s-2');
 
-    expect(httpService.get).toHaveBeenCalledWith('http://stt.internal:9000/internal/streaming/sessions/s-2', { timeout: 5000 });
+    expect(httpService.get).toHaveBeenCalledWith('http://stt.internal:9000/internal/streaming/sessions/s-2', expect.objectContaining({ timeout: 5000 }));
     expect(result).toEqual({
       sessionId: 's-2',
       status: 'active',
@@ -130,7 +130,7 @@ describe('StreamingSessionService', () => {
     expect(httpService.post).toHaveBeenCalledWith(
       'http://stt.internal:9000/internal/streaming/sessions/s-4/switch',
       { target: 'fallback' },
-      { timeout: 5000 },
+      expect.objectContaining({ timeout: 5000 }),
     );
   });
 
@@ -144,7 +144,7 @@ describe('StreamingSessionService', () => {
     expect(httpService.post).toHaveBeenCalledWith(
       'http://stt.internal:9000/internal/streaming/sessions/s-5/switch',
       { target: 'primary' },
-      { timeout: 5000 },
+      expect.objectContaining({ timeout: 5000 }),
     );
   });
 
@@ -158,7 +158,7 @@ describe('StreamingSessionService', () => {
     expect(httpService.post).toHaveBeenCalledWith(
       'http://stt.internal:9000/internal/streaming/sessions/s-6/switch',
       { target: 'fallback' },
-      { timeout: 5000 },
+      expect.objectContaining({ timeout: 5000 }),
     );
   });
 
@@ -188,7 +188,7 @@ describe('StreamingSessionService', () => {
       expect.objectContaining({
         audio_bucket_name: 'hope-audio-arcaai',
       }),
-      { timeout: 15000 },
+      expect.objectContaining({ timeout: 15000 }),
     );
   });
 
@@ -209,7 +209,7 @@ describe('StreamingSessionService', () => {
     expect(httpService.post).toHaveBeenCalledWith(
       'http://stt.internal:9000/internal/streaming/sessions',
       expect.objectContaining({ language_mode: 'ml-en' }),
-      { timeout: 15000 },
+      expect.objectContaining({ timeout: 15000 }),
     );
   });
 
@@ -225,7 +225,7 @@ describe('StreamingSessionService', () => {
     expect(httpService.post).toHaveBeenCalledWith(
       'http://stt.internal:9000/internal/streaming/sessions',
       expect.objectContaining({ language_mode: null }),
-      { timeout: 15000 },
+      expect.objectContaining({ timeout: 15000 }),
     );
   });
 
@@ -246,7 +246,7 @@ describe('StreamingSessionService', () => {
     expect(httpService.post).toHaveBeenCalledWith(
       'http://stt.internal:9000/internal/streaming/sessions',
       expect.objectContaining({ start_on: 'fallback' }),
-      { timeout: 15000 },
+      expect.objectContaining({ timeout: 15000 }),
     );
   });
 
@@ -262,7 +262,7 @@ describe('StreamingSessionService', () => {
     expect(httpService.post).toHaveBeenCalledWith(
       'http://stt.internal:9000/internal/streaming/sessions',
       expect.objectContaining({ start_on: null }),
-      { timeout: 15000 },
+      expect.objectContaining({ timeout: 15000 }),
     );
   });
 
@@ -282,7 +282,7 @@ describe('StreamingSessionService', () => {
 
     const result = await service.getLanguageModes();
 
-    expect(httpService.get).toHaveBeenCalledWith('http://stt.internal:9000/internal/streaming/language-modes', { timeout: 5000 });
+    expect(httpService.get).toHaveBeenCalledWith('http://stt.internal:9000/internal/streaming/language-modes', expect.objectContaining({ timeout: 5000 }));
     expect(result.modes.map((m) => m.id)).toEqual(['en', 'ml-en']);
   });
 
@@ -366,7 +366,7 @@ describe('StreamingSessionService', () => {
       expect(httpService.post).toHaveBeenCalledWith(
         'http://stt.internal:9000/internal/streaming/sessions',
         expect.objectContaining({ auto_switch_enabled: false, consecutive_failure_threshold: 4 }),
-        { timeout: 15000 },
+        expect.objectContaining({ timeout: 15000 }),
       );
     });
 
@@ -381,7 +381,7 @@ describe('StreamingSessionService', () => {
       expect(httpService.post).toHaveBeenCalledWith(
         'http://stt.internal:9000/internal/streaming/sessions',
         expect.objectContaining({ auto_switch_enabled: null, consecutive_failure_threshold: null }),
-        { timeout: 15000 },
+        expect.objectContaining({ timeout: 15000 }),
       );
     });
 
@@ -396,7 +396,7 @@ describe('StreamingSessionService', () => {
       expect(httpService.post).toHaveBeenCalledWith(
         'http://stt.internal:9000/internal/streaming/sessions',
         expect.objectContaining({ auto_switch_enabled: true }),
-        { timeout: 15000 },
+        expect.objectContaining({ timeout: 15000 }),
       );
     });
   });

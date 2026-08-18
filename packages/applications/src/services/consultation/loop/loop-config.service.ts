@@ -150,7 +150,7 @@ export class LoopConfigService extends BaseService implements ILoopConfigService
    *
    * Read HERE, once per consultation, because this is the resolution the
    * workflow PINS at start — not per signal, the way the
-   * `harness.loop.enabled` kill-switch is. `resolvePlatform` is the platform
+   * `harness.loop.emergencyStop` veto is. `resolvePlatform` is the platform
    * lane (`maxScope: 'system'`) and is synchronous: it reads the in-memory
    * settings cache and does no I/O.
    *

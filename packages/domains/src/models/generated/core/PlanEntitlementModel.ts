@@ -31,6 +31,7 @@ export class PlanEntitlement extends BaseDataModel {
   public featureMonitoringAccess: boolean;
   public featurePlatformDefaultCredential: boolean;
   public featurePaletteStt: boolean;
+  public featureAgenticLoop: boolean;
   public modelTier: string;
   public rateLimitTier: string;
   public resourceStatus: Enums.ResourceStatusType;
@@ -62,6 +63,7 @@ export class PlanEntitlement extends BaseDataModel {
     this.featureMonitoringAccess = data.featureMonitoringAccess;
     this.featurePlatformDefaultCredential = data.featurePlatformDefaultCredential;
     this.featurePaletteStt = data.featurePaletteStt;
+    this.featureAgenticLoop = data.featureAgenticLoop;
     this.modelTier = data.modelTier;
     this.rateLimitTier = data.rateLimitTier;
     this.resourceStatus = data.resourceStatus;

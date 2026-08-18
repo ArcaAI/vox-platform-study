@@ -1,9 +1,9 @@
 """Retirement contract for the inline regex guardrails.
 
 The inline regex-based prompt-injection scanner and its guardrail audit
-logger have been retired from the SMR service. The harness
+logger have been retired from the Text service. The harness
 (Granite Guardian safety + groundedness + fail-closed PHI) is now the
-authoritative safety/guardrail layer, so SMR no longer ships its own
+authoritative safety/guardrail layer, so Text no longer ships its own
 regex content filters.
 
 These tests pin the removal so the regex guardrail surface is not

@@ -37,7 +37,7 @@ class TestCreateApp:
         from text.main import create_app
 
         app = create_app(settings_override=Settings())
-        assert app.title == "SMR — Text Generation Service"
+        assert app.title == "Text — Text Generation Service"
 
     def test_creates_app_with_custom_settings(self, settings):
         from text.main import create_app

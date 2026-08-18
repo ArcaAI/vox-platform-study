@@ -43,6 +43,9 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     app.state.external_text_client = ExternalTextClient(
         settings=settings.external_text,
         http_client=app.state.external_text_http_client,
+        # Owner decision D-D: PRESENT the one shared `INTERNAL_ACCESS_TOKEN`; the
+        # legacy `NLP_EXTERNAL_TEXT_SERVICE_TOKEN` is only the migration fallback.
+        service_token=settings.service.peer_service_token(settings.external_text.service_token),
     )
 
     setup_opentelemetry(app)

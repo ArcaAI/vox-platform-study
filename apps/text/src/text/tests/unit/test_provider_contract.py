@@ -1,6 +1,6 @@
 """shared provider-contract suite (dev/prod parity).
 
-Parametrized over EVERY registered SMR provider (LM Studio / generic
+Parametrized over EVERY registered Text provider (LM Studio / generic
 ``openai_compat``, Azure OpenAI, Bedrock) with stub fakes, this suite
 locks the invariants every provider MUST hold so a future production-inference
 provider (e.g. ``vllm`` + ``llama_cpp``) can be added to ``ADAPTERS`` and must

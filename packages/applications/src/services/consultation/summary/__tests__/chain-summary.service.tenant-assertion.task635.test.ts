@@ -1,12 +1,12 @@
 /**
  * ChainSummaryService.callTextService — explicit tenant assertion
  *
- * `resolveSmrSelection()` used to be called with NO tenantId, relying on
+ * `resolveTextSelection()` used to be called with NO tenantId, relying on
  * `HarnessPolicyService`'s own CLS fallback — a worker/CLS-less caller could
  * silently be served the SYSTEM default model instead of the tenant's. The
  * call site now resolves `this.tenantId` (BaseService CLS getter) EXPLICITLY
  * and throws `BadRequestException('Tenant ID is required')` when absent,
- * rather than ever reaching `resolveSmrSelection()` with an implicit/empty
+ * rather than ever reaching `resolveTextSelection()` with an implicit/empty
  * tenant.
  */
 
@@ -98,7 +98,7 @@ function createService(clsTenantId: string | null) {
     }),
   };
   const secretsService = { encrypt: vi.fn(), decrypt: vi.fn(), getSecretOptional: vi.fn().mockResolvedValue('') };
-  const harnessPolicyService = { resolveSmrSelection: vi.fn().mockResolvedValue({ provider: 'lm-studio', model: 'resolved-medgemma' }) };
+  const harnessPolicyService = { resolveTextSelection: vi.fn().mockResolvedValue({ provider: 'lm-studio', model: 'resolved-medgemma' }) };
   const configResolver = { resolvePreferredPromptTemplateId: vi.fn().mockResolvedValue(null) };
 
   const service = new ChainSummaryService(
@@ -125,7 +125,7 @@ describe('ChainSummaryService.callTextService — explicit tenant assertion (B-0
 
     await service.generateComprehensiveSummary('consultation-A', { includeNER: false });
 
-    expect(harnessPolicyService.resolveSmrSelection).toHaveBeenCalledWith('tenant-1', 'finalize');
+    expect(harnessPolicyService.resolveTextSelection).toHaveBeenCalledWith('tenant-1', 'finalize');
   });
 
   it('throws BadRequestException (not a silent SYSTEM default) when CLS has no tenant', async () => {
@@ -134,7 +134,7 @@ describe('ChainSummaryService.callTextService — explicit tenant assertion (B-0
     await expect(service.generateComprehensiveSummary('consultation-A', { includeNER: false })).rejects.toThrow(BadRequestException);
     await expect(service.generateComprehensiveSummary('consultation-A', { includeNER: false })).rejects.toThrow(/Tenant ID is required/);
 
-    expect(harnessPolicyService.resolveSmrSelection).not.toHaveBeenCalled();
+    expect(harnessPolicyService.resolveTextSelection).not.toHaveBeenCalled();
     expect(httpService.axiosRef.post).not.toHaveBeenCalled();
   });
 });

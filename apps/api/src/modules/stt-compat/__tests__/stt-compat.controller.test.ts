@@ -131,7 +131,7 @@ describe('SttCompatController streaming integration', () => {
 
   it('stops and clears a v2 streaming session', async () => {
     const sessionService = { removeSession: vi.fn().mockResolvedValue(undefined) };
-    const sessionBinding = { clear: vi.fn().mockResolvedValue(undefined) };
+    const sessionBinding = { clear: vi.fn().mockResolvedValue(undefined), lookup: vi.fn().mockResolvedValue('tenant-1') };
     const integrated = new SttCompatController(undefined, sessionService as any, sessionBinding as any);
 
     const response = await integrated.stopSession({ size: 4 } as Express.Multer.File, {
@@ -141,7 +141,9 @@ describe('SttCompatController streaming integration', () => {
       bit_depth: 16,
     });
 
-    expect(sessionService.removeSession).toHaveBeenCalledWith('session_123456789');
+    // TASK-737: the tenant comes from the session's own binding, not CLS — this
+    // compat surface is API-key authenticated.
+    expect(sessionService.removeSession).toHaveBeenCalledWith('session_123456789', false, 'tenant-1');
     expect(sessionBinding.clear).toHaveBeenCalledWith('session_123456789');
     expect(response).toMatchObject({
       message: 'Session stopped and audio saved',
@@ -310,14 +312,14 @@ describe('SttCompatController.switchSession (C3)', () => {
   it('maps default→fallback and echoes active:default', async () => {
     const { controller, sessionService } = wire();
     const res = await controller.switchSession({ session_id: 's1', target: 'default' }, headers);
-    expect(sessionService.switchProvider).toHaveBeenCalledWith('s1', 'fallback');
+    expect(sessionService.switchProvider).toHaveBeenCalledWith('s1', 'fallback', 'tenant-1');
     expect(res).toEqual({ switched: true, active: 'default' });
   });
 
   it('maps pipeline→primary and echoes active:pipeline (no fallback-config check)', async () => {
     const { controller, sessionService, sttConfig } = wire();
     const res = await controller.switchSession({ session_id: 's1', target: 'pipeline' }, headers);
-    expect(sessionService.switchProvider).toHaveBeenCalledWith('s1', 'primary');
+    expect(sessionService.switchProvider).toHaveBeenCalledWith('s1', 'primary', 'tenant-1');
     expect(sttConfig.getEffective).not.toHaveBeenCalled();
     expect(res).toEqual({ switched: true, active: 'pipeline' });
   });

@@ -88,7 +88,7 @@
 // control and an approval gate, not a scalar/array setting. A future
 // PromptTemplate-backed criteria set for guardrail would need: a
 // `PromptTemplate` category dedicated to guardrail judge criteria (mirroring
-// how `smr.finalize`/`smr.test` already resolve a template tenant-first), a
+// how `text.finalize`/`text.test` already resolve a template tenant-first), a
 // SYSTEM-authored default template seeded at the platform floor, and the same
 // tighten-only posture this file gives thresholds — a tenant-authored
 // criteria template would need review against the SYSTEM template rather

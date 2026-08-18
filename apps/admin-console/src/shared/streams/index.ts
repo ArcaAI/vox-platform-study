@@ -3,8 +3,8 @@ export {
   useTaskStream,
   taskStreamPath,
   taskStreamScope,
-  type SmrStreamFrame,
-  type SmrTokenUsage,
+  type TextStreamFrame,
+  type TextTokenUsage,
   type TaskStreamState,
   type TaskStreamStatus,
 } from './use-task-stream';

@@ -14,7 +14,6 @@ export {
   isRetriableError,
   classifyHttpError,
   classifyTextError,
-  classifySmrError,
 } from './errorUtils';
 
 // Secure storage (SEC-02)

@@ -321,7 +321,7 @@ class TestTTFTMetric:
         from text.core.metrics import TTFT_SECONDS
 
         assert TTFT_SECONDS is not None
-        assert TTFT_SECONDS._name == "smr_time_to_first_token_seconds"
+        assert TTFT_SECONDS._name == "text_time_to_first_token_seconds"
         labeled = TTFT_SECONDS.labels(provider="test", model="test-model")
         assert labeled is not None
 

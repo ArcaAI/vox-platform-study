@@ -69,12 +69,29 @@ class TestClassifyTopic:
         assert "appointments" in fake.calls[0]["prompt"]
         assert fake.calls[0]["tenant_id"] == "t1"
 
+    def test_missing_tenant_is_refused_with_428(self, app_and_client):
+        """TASK-737 — tenant-scoped work with no tenant is a CALLER defect.
+
+        The gateway injects `tenant_id` into the body on this surface (apps/nlp reads
+        no inbound tenant header anywhere). Delegating to `text` without one would
+        resolve the platform default provider and mis-attribute the spend, silently —
+        so it is refused, and `text` is never called. 428 mirrors the gateway's
+        `RequiresIfMatch` convention for a missing mandatory precondition.
+        """
+        _, client, fake = app_and_client
+        resp = client.post(
+            "/api/v1/classify/topic",
+            json={"text": "hello", "instructions": ["billing"]},
+        )
+        assert resp.status_code == 428
+        assert fake.calls == []
+
     def test_upstream_unavailable_maps_to_503(self, app_and_client):
         _, client, fake = app_and_client
         fake.raise_error = True
         resp = client.post(
             "/api/v1/classify/topic",
-            json={"text": "hello", "instructions": ["billing"]},
+            json={"text": "hello", "instructions": ["billing"], "tenant_id": "t1"},
         )
         assert resp.status_code == 503
 
@@ -91,7 +108,7 @@ class TestClassifyIntent:
         fake.label = "schedule_appointment"
         resp = client.post(
             "/api/v1/classify/intent",
-            json={"text": "book me an appointment", "instructions": ["schedule_appointment", "cancel_appointment"]},
+            json={"text": "book me an appointment", "instructions": ["schedule_appointment", "cancel_appointment"], "tenant_id": "t1"},
         )
         assert resp.status_code == 200
         body = resp.json()

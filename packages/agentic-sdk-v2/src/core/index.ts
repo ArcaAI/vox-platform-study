@@ -22,7 +22,6 @@ export {
   type AudioConfig,
   type SttConfig,
   type UiConfig,
-  type SmrConfig,
   type TextConfig,
   type FeatureFlags,
   type DeepPartial,

@@ -8,7 +8,7 @@ import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
  * under a second:
  *
  *  - `mode: 'stream'` — SMR accepted a streaming generation job. Open
- *    `streamUrl` (SSE, single-use stream ticket, `smr_task:<taskId>` scope) to
+ *    `streamUrl` (SSE, single-use stream ticket, `text_task:<taskId>` scope) to
  *    render tokens, then call `POST :id/test/finalize` with the `taskId` to
  *    score and persist the result.
  *  - `mode: 'dry-run'` — NOTHING was generated. `assembledPrompt` is the fully

@@ -323,6 +323,38 @@ class Settings(BaseSettings):
         validation_alias=AliasChoices("GUARDRAIL_SERVICE_TOKEN"),
     )
 
+    # ── CANONICAL internal credential (owner decision D-D, 2026-08-17) ──────
+    # ONE shared access token for ALL internal service-to-service communication,
+    # identical across every HOPE service, set by the DevOps engineer, internal use
+    # only. Unprefixed on purpose (`validation_alias` bypasses the env_prefix) —
+    # it belongs to no single service. This is what the service ACCEPTS inbound as
+    # `X-Service-Token` and PRESENTS on every outbound peer call.
+    # The legacy per-service token below stays accepted / used as a zero-cost
+    # backward-compatibility fallback; both empty ⇒ auth bypassed (dev / CI).
+    internal_access_token: SecretStr = Field(
+        default=SecretStr(""), validation_alias=AliasChoices("INTERNAL_ACCESS_TOKEN")
+    )
+
+    @property
+    def accepted_service_tokens(self) -> tuple[str, ...]:
+        """Every token accepted as inbound ``X-Service-Token``, shared token first.
+
+        Empty tuple ⇒ auth is bypassed (local dev / hermetic CI) — the pre-existing
+        behaviour when no token is configured at all.
+        """
+        return tuple(
+            t
+            for t in (
+                self.internal_access_token.get_secret_value(),
+                self.service_token.get_secret_value(),
+            )
+            if t
+        )
+
+    def peer_service_token(self, legacy: SecretStr) -> str:
+        """Token to PRESENT on an outbound peer call: shared first, legacy fallback."""
+        return self.internal_access_token.get_secret_value() or legacy.get_secret_value()
+
     # Where the control plane lives (env GUARDRAIL_V2_GATEWAY_URL).
     # This is BOOTSTRAP TRANSPORT (the address of the config source), NOT config
     # authority: the retention knobs themselves come from the effective-config

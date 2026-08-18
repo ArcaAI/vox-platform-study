@@ -1404,7 +1404,7 @@ describe('HarnessInternalService', () => {
   //
   // Harness-originated generations are already metered PER-STEP by the
   // agent-trajectory path (WS-F, `harness:step:<...>` idempotency keys) —
-  // the harness calls SMR via SmrClient directly, never through this
+  // the harness calls SMR via TextClient directly, never through this
   // gateway's own SMR proxy, so the `llm:<requestId>` and
   // `harness:step:<...>` id-spaces are disjoint by construction (WS-F wave-1
   // report). HarnessDraftRequest also carries no token fields (`dto` here

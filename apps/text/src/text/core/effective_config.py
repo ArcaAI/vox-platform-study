@@ -1,8 +1,8 @@
-"""Effective-config pull client (smr).
+"""Effective-config pull client (text service).
 
 Pulls this service's SERVICE-LEVEL knobs from the gateway
 (`GET /api/v1/internal/effective-config?service=smr`) instead of taking them from
-env. Model/provider SELECTION is unaffected — SMR remains a stateless gateway and
+env. Model/provider SELECTION is unaffected — Text remains a stateless gateway and
 still receives `{provider, model}` per request (see `core/config.py`).
 
 Mechanics are the guardrail `TenantConfigResolver`'s, over HTTP instead of SQL:
@@ -90,7 +90,7 @@ class EffectiveConfigSnapshot:
     def retention(self) -> dict[str, int]:
         """The idle-retention TTL forwarded to engines.
 
-        SMR owns no cache; this value becomes LM Studio's `ttl`. An
+        Text owns no cache; this value becomes LM Studio's `ttl`. An
         omitted/null/non-positive value means "keep the env/bootstrap value"
         — never coerced into a real number.
         """
@@ -219,7 +219,7 @@ class EffectiveConfigClient:
             # Logged ONCE per TTL window (the caller only reaches here on expiry),
             # so a persistently-down gateway cannot flood the logs either.
             logger.warning(
-                "smr.effective_config.fetch_error",
+                "text.effective_config.fetch_error",
                 service=self._service,
                 error=str(exc),
                 error_type=type(exc).__name__,

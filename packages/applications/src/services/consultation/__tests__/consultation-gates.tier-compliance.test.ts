@@ -1,6 +1,16 @@
 /**
  * Configuration-tier compliance for the two consultation-pipeline
- * kill-switches (`harness.loop.enabled`, `consultation.ocr.enabled`).
+ * kill-switches (`harness.loop.emergencyStop`, `consultation.ocr.enabled`).
+ *
+ * TASK-705 renamed the first of those and INVERTED its polarity:
+ * `harness.loop.enabled` (armed = signalling) became
+ * `harness.loop.emergencyStop` (armed = halted), because loop ELIGIBILITY moved
+ * to the tenant's subscription entitlement and what is left here is purely an
+ * operator's stop. Every tier property below is unchanged by that — a
+ * kill-switch still ships disarmed, still flips without a restart, still fails
+ * open to its declared default — which is exactly why this file survives the
+ * rename with its four cases intact and only the polarity of the loop
+ * assertions reversed.
  *
  * These four cases are the contract the migration off `process.env` has to buy.
  * They are written against the REAL `TenantSettingsService` over a fake
@@ -23,7 +33,7 @@ import { ArgumentInvalidException } from '@arcaai/exceptions';
 import { ContextItemType } from '@arcaai/domains';
 import { TenantSettingsService } from '../../settings-registry/tenant-settings.service';
 import { HOPE_SETTINGS_REGISTRY } from '../../settings-registry/registry';
-import { CONSULTATION_OCR_ENABLED_KEY, HARNESS_LOOP_ENABLED_KEY } from '../consultation-gates.constants';
+import { CONSULTATION_OCR_ENABLED_KEY, HARNESS_LOOP_EMERGENCY_STOP_KEY } from '../consultation-gates.constants';
 import { LoopContextSignalService } from '../loop/loop-context-signal.service';
 import { OcrEnrichmentProcessor } from '../ocr/ocr-enrichment.processor';
 import type { ContextAddedPayload } from '../events';
@@ -54,6 +64,12 @@ function loopPayload(overrides: Partial<ContextAddedPayload> = {}): ContextAdded
   };
 }
 
+/**
+ * TASK-705 — every case in this file is about the SETTING TIER, so the tenant is
+ * always entitled here and the emergency stop is the only variable. The
+ * composition rule itself (entitlement × stop) is pinned separately, in
+ * `../loop/__tests__/loop-entitlement-gate.test.ts`.
+ */
 function buildLoopService(store: Map<string, unknown>) {
   const harnessGatewayService = {
     signalContextAdded: vi.fn().mockResolvedValue({ signaled: true }),
@@ -61,7 +77,12 @@ function buildLoopService(store: Map<string, unknown>) {
     signalLoopCancel: vi.fn().mockResolvedValue({ signaled: true }),
   };
   const tenantSettings = new TenantSettingsService(fakeAppSettings(store));
-  const service = new LoopContextSignalService(harnessGatewayService as never, tenantSettings);
+  const service = new LoopContextSignalService(
+    harnessGatewayService as never,
+    tenantSettings,
+    { isFeatureEnabled: vi.fn(async () => true) } as never,
+    { get: (key: string) => (key === 'tenantId' ? 'tenant-1' : null) } as never,
+  );
   return { service, harnessGatewayService, tenantSettings };
 }
 
@@ -99,35 +120,35 @@ describe('Consultation-gate tier compliance', () => {
 
   // ── 1. A kill-switch flips at runtime, with no restart ────────────────────
   describe('runtime flip (no restart)', () => {
-    it('harness.loop.enabled starts OFF and begins signalling once the stored value flips', async () => {
+    it('harness.loop.emergencyStop halts an entitled tenant the moment the stored value flips ON', async () => {
       const store = new Map<string, unknown>();
       const { service, harnessGatewayService } = buildLoopService(store);
 
-      await service.handleContextAdded(loopPayload({ contextItemId: 'ctx-off' }));
-      expect(harnessGatewayService.signalContextAdded).not.toHaveBeenCalled();
+      await service.handleContextAdded(loopPayload({ contextItemId: 'ctx-before' }));
+      expect(harnessGatewayService.signalContextAdded).toHaveBeenCalledTimes(1);
 
       // An operator write + `app-settings:invalidate` push — NOT a restart.
-      store.set(HARNESS_LOOP_ENABLED_KEY, true);
+      store.set(HARNESS_LOOP_EMERGENCY_STOP_KEY, true);
 
-      await service.handleContextAdded(loopPayload({ contextItemId: 'ctx-on' }));
+      await service.handleContextAdded(loopPayload({ contextItemId: 'ctx-during' }));
       expect(harnessGatewayService.signalContextAdded).toHaveBeenCalledTimes(1);
     });
 
-    it('harness.loop.enabled stops signalling again when flipped back OFF', async () => {
-      const store = new Map<string, unknown>([[HARNESS_LOOP_ENABLED_KEY, true]]);
+    it('harness.loop.emergencyStop resumes signalling once the incident is cleared', async () => {
+      const store = new Map<string, unknown>([[HARNESS_LOOP_EMERGENCY_STOP_KEY, true]]);
       const { service, harnessGatewayService } = buildLoopService(store);
 
       await service.handleContextAdded(loopPayload({ contextItemId: 'ctx-a' }));
-      expect(harnessGatewayService.signalContextAdded).toHaveBeenCalledTimes(1);
+      expect(harnessGatewayService.signalContextAdded).not.toHaveBeenCalled();
 
-      store.set(HARNESS_LOOP_ENABLED_KEY, false);
+      store.set(HARNESS_LOOP_EMERGENCY_STOP_KEY, false);
 
       await service.handleContextAdded(loopPayload({ contextItemId: 'ctx-b' }));
       expect(harnessGatewayService.signalContextAdded).toHaveBeenCalledTimes(1);
     });
 
     it('the lifecycle-boundary loop signals honour the same live gate', async () => {
-      const store = new Map<string, unknown>();
+      const store = new Map<string, unknown>([[HARNESS_LOOP_EMERGENCY_STOP_KEY, true]]);
       const { service, harnessGatewayService } = buildLoopService(store);
 
       await service.signalConsultationEnding('consultation-1');
@@ -135,7 +156,7 @@ describe('Consultation-gate tier compliance', () => {
       expect(harnessGatewayService.signalConsultationEnding).not.toHaveBeenCalled();
       expect(harnessGatewayService.signalLoopCancel).not.toHaveBeenCalled();
 
-      store.set(HARNESS_LOOP_ENABLED_KEY, true);
+      store.set(HARNESS_LOOP_EMERGENCY_STOP_KEY, false);
 
       await service.signalConsultationEnding('consultation-1');
       await service.signalLoopCancel('consultation-1');
@@ -157,7 +178,7 @@ describe('Consultation-gate tier compliance', () => {
     });
 
     it('reads the gate on EVERY event rather than caching it on the instance', async () => {
-      const store = new Map<string, unknown>([[HARNESS_LOOP_ENABLED_KEY, true]]);
+      const store = new Map<string, unknown>([[HARNESS_LOOP_EMERGENCY_STOP_KEY, true]]);
       let reads = 0;
       const tenantSettings = new TenantSettingsService(fakeAppSettings(store, () => (reads += 1)));
       const service = new LoopContextSignalService(
@@ -174,7 +195,7 @@ describe('Consultation-gate tier compliance', () => {
 
   // ── 2. Kill-switches default OFF with no stored value ─────────────────────
   describe('defaults OFF', () => {
-    it.each([HARNESS_LOOP_ENABLED_KEY, CONSULTATION_OCR_ENABLED_KEY])(
+    it.each([HARNESS_LOOP_EMERGENCY_STOP_KEY, CONSULTATION_OCR_ENABLED_KEY])(
       '%s resolves false from the code default when nothing is stored',
       (key) => {
         const resolver = new TenantSettingsService(fakeAppSettings(new Map()));
@@ -184,7 +205,7 @@ describe('Consultation-gate tier compliance', () => {
       },
     );
 
-    it.each([HARNESS_LOOP_ENABLED_KEY, CONSULTATION_OCR_ENABLED_KEY])('%s is a registered kill-switch', (key) => {
+    it.each([HARNESS_LOOP_EMERGENCY_STOP_KEY, CONSULTATION_OCR_ENABLED_KEY])('%s is a registered kill-switch', (key) => {
       const descriptor = HOPE_SETTINGS_REGISTRY.getOrThrow(key);
       expect(descriptor.killSwitch).toBe(true);
       expect(descriptor.tier).toBe('global-kv');
@@ -195,20 +216,20 @@ describe('Consultation-gate tier compliance', () => {
       // Asserts the invariant is live for the WHOLE catalog, including the two
       // keys this ticket adds — `killSwitches()` throws on a default-ON switch.
       const switches = HOPE_SETTINGS_REGISTRY.killSwitches();
-      expect(switches.map((d) => d.key)).toEqual(expect.arrayContaining([HARNESS_LOOP_ENABLED_KEY, CONSULTATION_OCR_ENABLED_KEY]));
+      expect(switches.map((d) => d.key)).toEqual(expect.arrayContaining([HARNESS_LOOP_EMERGENCY_STOP_KEY, CONSULTATION_OCR_ENABLED_KEY]));
       expect(switches.every((d) => d.default !== true)).toBe(true);
     });
   });
 
   // ── 3. failMode: absent value vs backend error ────────────────────────────
   describe('declared failMode', () => {
-    it.each([HARNESS_LOOP_ENABLED_KEY, CONSULTATION_OCR_ENABLED_KEY])('%s declares open-to-default', (key) => {
+    it.each([HARNESS_LOOP_EMERGENCY_STOP_KEY, CONSULTATION_OCR_ENABLED_KEY])('%s declares open-to-default', (key) => {
       expect(HOPE_SETTINGS_REGISTRY.getOrThrow(key).failMode).toBe('open-to-default');
     });
 
     it('an ABSENT value falls back to the descriptor default (open-to-default)', () => {
       const resolver = new TenantSettingsService(fakeAppSettings(new Map()));
-      expect(resolver.resolvePlatform(HARNESS_LOOP_ENABLED_KEY).value).toBe(false);
+      expect(resolver.resolvePlatform(HARNESS_LOOP_EMERGENCY_STOP_KEY).value).toBe(false);
     });
 
     it('a BACKEND ERROR propagates — it is never disguised as "the default"', () => {
@@ -235,8 +256,8 @@ describe('Consultation-gate tier compliance', () => {
 
   // ── 4. Regression: previous effective state ⇒ previous behaviour ──────────
   describe('regression at the previous effective state', () => {
-    it('loop signalling with the gate ON sends the identical payload it sent before', async () => {
-      const store = new Map<string, unknown>([[HARNESS_LOOP_ENABLED_KEY, true]]);
+    it('loop signalling with no emergency in progress sends the identical payload it sent before', async () => {
+      const store = new Map<string, unknown>();
       const { service, harnessGatewayService } = buildLoopService(store);
 
       await service.handleContextAdded(loopPayload({ subType: 'LAB_RESULT', contentPreview: 'BP elevated' }));
@@ -254,8 +275,8 @@ describe('Consultation-gate tier compliance', () => {
       });
     });
 
-    it('loop de-duplication still holds with the gate ON', async () => {
-      const store = new Map<string, unknown>([[HARNESS_LOOP_ENABLED_KEY, true]]);
+    it('loop de-duplication still holds with no emergency in progress', async () => {
+      const store = new Map<string, unknown>();
       const { service, harnessGatewayService } = buildLoopService(store);
 
       await service.handleContextAdded(loopPayload());
@@ -264,12 +285,13 @@ describe('Consultation-gate tier compliance', () => {
       expect(harnessGatewayService.signalContextAdded).toHaveBeenCalledTimes(1);
     });
 
-    it('loop signalling stays best-effort with the gate ON (a gateway failure never throws)', async () => {
-      const store = new Map<string, unknown>([[HARNESS_LOOP_ENABLED_KEY, true]]);
-      const tenantSettings = new TenantSettingsService(fakeAppSettings(store));
+    it('loop signalling stays best-effort (a gateway failure never throws)', async () => {
+      const tenantSettings = new TenantSettingsService(fakeAppSettings(new Map()));
       const service = new LoopContextSignalService(
         { signalContextAdded: vi.fn().mockRejectedValue(new Error('harness down')) } as never,
         tenantSettings,
+        { isFeatureEnabled: vi.fn(async () => true) } as never,
+        { get: () => 'tenant-1' } as never,
       );
 
       await expect(service.handleContextAdded(loopPayload())).resolves.toBeUndefined();
@@ -300,8 +322,15 @@ describe('Consultation-gate tier compliance', () => {
     // grep for `process.env`: setting the retired variables must have no effect
     // whatsoever, in either direction.
     it('neither gate is read from process.env any more', async () => {
-      const previous = { loop: process.env.HARNESS_LOOP_ENABLED, ocr: process.env.OCR_ENABLED };
-      process.env.HARNESS_LOOP_ENABLED = 'true';
+      const previous = {
+        loop: process.env.HARNESS_LOOP_ENABLED,
+        stop: process.env.HARNESS_LOOP_EMERGENCY_STOP,
+        ocr: process.env.OCR_ENABLED,
+      };
+      // Both the retired variable and a plausible new one, set to the value
+      // that would change the outcome if either were ever consulted.
+      process.env.HARNESS_LOOP_ENABLED = 'false';
+      process.env.HARNESS_LOOP_EMERGENCY_STOP = 'true';
       process.env.OCR_ENABLED = 'true';
       try {
         const store = new Map<string, unknown>();
@@ -311,11 +340,15 @@ describe('Consultation-gate tier compliance', () => {
         await service.handleContextAdded(loopPayload());
         await processor.handleContextAdded(ocrPayload());
 
-        expect(harnessGatewayService.signalContextAdded).not.toHaveBeenCalled();
+        // The env says "stopped"; the control plane says otherwise, and the
+        // control plane is the only thing either reader consults.
+        expect(harnessGatewayService.signalContextAdded).toHaveBeenCalledTimes(1);
         expect(contextItemRepository.findById).not.toHaveBeenCalled();
       } finally {
         if (previous.loop === undefined) delete process.env.HARNESS_LOOP_ENABLED;
         else process.env.HARNESS_LOOP_ENABLED = previous.loop;
+        if (previous.stop === undefined) delete process.env.HARNESS_LOOP_EMERGENCY_STOP;
+        else process.env.HARNESS_LOOP_EMERGENCY_STOP = previous.stop;
         if (previous.ocr === undefined) delete process.env.OCR_ENABLED;
         else process.env.OCR_ENABLED = previous.ocr;
       }

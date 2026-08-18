@@ -29,7 +29,7 @@ from text.core.exceptions import (
     QueueTimeoutError,
     RateLimitError,
     ShutdownError,
-    SmrError,
+    TextError,
 )
 from text.models.task import TaskState, TaskStatus
 from text.providers.base import ProviderRegistry
@@ -38,8 +38,8 @@ from text.providers.base import ProviderRegistry
 # Helpers
 # ---------------------------------------------------------------------------
 
-_ALL_EXCEPTIONS: list[tuple[type[SmrError], str]] = [
-    (SmrError, "INTERNAL_ERROR"),
+_ALL_EXCEPTIONS: list[tuple[type[TextError], str]] = [
+    (TextError, "INTERNAL_ERROR"),
     (ProviderError, "PROVIDER_ERROR"),
     (ProviderTimeoutError, "PROVIDER_TIMEOUT"),
     (RateLimitError, "RATE_LIMITED"),
@@ -115,13 +115,13 @@ def settings():
 class TestExceptionInheritance:
     @pytest.mark.parametrize("exc_cls,_code", _ALL_EXCEPTIONS)
     def test_all_exceptions_inherit_from_smr_error(self, exc_cls, _code):
-        assert issubclass(exc_cls, SmrError)
+        assert issubclass(exc_cls, TextError)
 
 
 class TestExceptionErrorCodes:
     @pytest.mark.parametrize("exc_cls,expected_code", _ALL_EXCEPTIONS)
     def test_exception_error_codes(self, exc_cls, expected_code):
-        if exc_cls in (SmrError, InputValidationError, ContentBlockedError, ShutdownError):
+        if exc_cls in (TextError, InputValidationError, ContentBlockedError, ShutdownError):
             exc = exc_cls("test")
         elif exc_cls in (
             ProviderError,
@@ -163,7 +163,7 @@ class TestExceptionAttributes:
         assert exc.provider == "bedrock"
 
     def test_exception_message_preserved(self):
-        exc = SmrError("custom message")
+        exc = TextError("custom message")
         assert exc.message == "custom message"
         assert str(exc) == "custom message"
 
@@ -290,7 +290,7 @@ class TestExceptionHandlerStatusCodes:
     async def test_handler_returns_500_for_base_smr_error(self):
         from text.core.exception_handlers import text_exception_handler
 
-        exc = SmrError("generic")
+        exc = TextError("generic")
         resp = await text_exception_handler(MagicMock(), exc)
         assert resp.status_code == 500
 
@@ -361,7 +361,7 @@ class TestExceptionHandlerRegistration:
 
         app = create_app(settings_override=settings)
         handlers = app.exception_handlers
-        assert SmrError in handlers
+        assert TextError in handlers
 
 
 # ===========================================================================

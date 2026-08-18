@@ -46,8 +46,12 @@ class Settings(BaseSettings):
             return v.upper()
         return v
 
-    # CORS
-    cors_origins: list[str] = Field(default_factory=lambda: ["*"])
+    # CORS — EMPTY by default. stt handles PHI audio, and the browser never
+    # talks to :8861 directly (the gateway fronts every route), so there is no
+    # origin this service can name for itself. `["*"]` was the shipped default;
+    # an operator with a genuine direct-browser need sets CORS_ORIGINS
+    # explicitly rather than inheriting a wildcard nobody chose.
+    cors_origins: list[str] = Field(default_factory=list)
 
     # Database (read-only)
     database_url: str = Field(
@@ -139,6 +143,39 @@ class Settings(BaseSettings):
         default="core.windows.net",
         description="Default Azure storage endpoint suffix.",
     )
+
+    # ── CANONICAL internal credential (owner decision D-D, 2026-08-17) ──────
+    # ONE shared access token for ALL internal service-to-service communication,
+    # identical across every HOPE service, set by the DevOps engineer, internal
+    # use only. This is what stt ACCEPTS inbound as `X-Service-Token`.
+    #
+    # Unlike the other five services there is NO legacy `STT_SERVICE_TOKEN` to
+    # fall back to — documented as deliberate in the settings registry ("There is
+    # no `STT_SERVICE_TOKEN`"): stt authenticates OUTBOUND to the gateway with
+    # `X-Internal-Service-Key` + `api_gateway_key` below, which is a registered
+    # ApiKey row rather than a free-form shared secret and is therefore not an
+    # inbound credential. Minting one to complete the pattern would grow the
+    # bootstrap env floor that D-B says must not grow.
+    #
+    # Empty ⇒ inbound auth bypassed, but ONLY in a local/dev environment; see
+    # `stt.core.service_auth`.
+    internal_access_token: SecretStr = Field(
+        default=SecretStr(""),
+        validation_alias=AliasChoices("INTERNAL_ACCESS_TOKEN"),
+        description="Shared internal service access token accepted as X-Service-Token.",
+    )
+
+    @property
+    def accepted_service_tokens(self) -> tuple[str, ...]:
+        """Every token accepted as inbound ``X-Service-Token``.
+
+        A tuple (rather than a scalar) to match the other five services'
+        `accepted_service_tokens` contract, so the middleware here is the same
+        code shape and a fallback credential could be appended without touching
+        a call site. Empty ⇒ nothing is configured.
+        """
+        shared = self.internal_access_token.get_secret_value()
+        return (shared,) if shared else ()
 
     # API Gateway (internal communication)
     api_gateway_url: str = Field(

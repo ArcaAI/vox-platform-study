@@ -25,7 +25,7 @@ The gateway can inject a credential from two tiers — the caller tenant's own
 connection row, or the SYSTEM-tenant platform default — and they are the same
 bytes on the wire with opposite economics. Tenant-funded spend is metered
 notionally and never invoiced; platform-funded spend is real COGS the platform
-must recover. SMR must therefore be TOLD which it was, not left to infer it
+must recover. Text must therefore be TOLD which it was, not left to infer it
 from the presence of an override.
 """
 

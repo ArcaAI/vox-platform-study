@@ -5,6 +5,8 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEventStream, type StreamStatus } from '@/shared/streams';
 import {
   dnaJobStreamPath,
+  eraseMyReport,
+  eraseMyStyle,
   generateMyStyle,
   getDnaJobStatus,
   getDnaSettings,
@@ -55,6 +57,30 @@ export function useSetDefaultReport() {
   return useMutation({
     mutationFn: (reportId: string) => setDefaultReport(reportId),
     // Root-level: the default flip changes my-style AND the mine rows.
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: playgroundDnaKeys.root }),
+  });
+}
+
+/**
+ * Erases the caller's whole learned profile. Root-level invalidation: the
+ * erasure empties my-style, the mine rows AND every versions timeline. The
+ * settings query lives under the same root and is deliberately refetched too
+ * — it must still read the UNCHANGED toggle (erase and opt-out are
+ * independent), which is exactly what the refetch proves.
+ */
+export function useEraseMyStyle() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: () => eraseMyStyle(),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: playgroundDnaKeys.root }),
+  });
+}
+
+/** Erases ONE owned report; same root-level invalidation (mine + versions). */
+export function useEraseMyReport() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (reportId: string) => eraseMyReport(reportId),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: playgroundDnaKeys.root }),
   });
 }

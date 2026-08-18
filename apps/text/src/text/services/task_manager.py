@@ -15,8 +15,8 @@ from text.models.task import TaskState, TaskStatus
 
 logger = structlog.get_logger(__name__)
 
-_TASK_KEY_PREFIX = "smr:task:"
-_STREAM_KEY_PREFIX = "smr:stream:"
+_TASK_KEY_PREFIX = "text:task:"
+_STREAM_KEY_PREFIX = "text:stream:"
 
 _UPDATE_TASK_LUA = """
 local key = KEYS[1]

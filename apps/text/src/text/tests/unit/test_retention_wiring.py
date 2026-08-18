@@ -1,4 +1,4 @@
-"""Control-plane retention reaches the live SMR providers.
+"""Control-plane retention reaches the live Text providers.
 
 The provider objects are lazily built and memoized by `ProviderRegistry`, so
 retention has to be (re-)applied on every refresh rather than only at

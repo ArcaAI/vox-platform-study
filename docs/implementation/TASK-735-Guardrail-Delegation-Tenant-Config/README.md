@@ -395,6 +395,29 @@ the control plane, then delete the env fields. Blocked on G-01 (there is still n
 read surface for `db-config`), so the interim state — pydantic defaults, no env declared — is
 acceptable and is the least-bad option meanwhile. Fold into Phase 4.
 
+**G-09 — the engine stack this ticket is deleting was ALSO failing open (fixed separately,
+2026-08-17).** Every engine path answered a failure with a permissive verdict: an LLM
+timeout returned `{"safe": True, "issues": ["timeout"]}` (`openai_compat.py:150-156`, comment
+*"Fail open for timeout"*), and the same shape appeared in nine more branches across
+`openai_compat.py`, `gliner.py`, `guardrails.py` and `medical.py` — including
+`/medical/validate`, which `apps/text` gates every `/generate` on. Contradicted the product
+brief's *"Guardrails … fail-closed on generation"*.
+
+Fixed in its own P0 ticket rather than inside a phase here, because it must not wait on the
+delegation work: engines now raise `GuardrailUndeterminedError`
+(`guardrail/core/errors.py`), single-item routes answer 503, batch routes mark the element.
+**Two consequences for this ticket:**
+
+1. **Phase 2b inherits a posture, it does not invent one.** The delegated client's declared
+   fail posture (plan step 2b.2: exhausted budget ⇒ `allowed: False`) is now the SAME rule the
+   in-process engines follow, so repointing `/medical/validate` at `text` is a transport
+   change only — the wire contract, including the 503, is already what the client must produce.
+2. **`X-Tenant-Id` enforcement (G-07's "interim until TASK-737 lands") is no longer interim.**
+   It landed with the same fix: 428 on absence at all three dependency read sites, the
+   `tenantless:<reason>` marker as the declared exception, and async jobs now stamping their
+   submitting tenant instead of passing `tenant_id=None`. G-07's caveat can be treated as
+   closed for `apps/guardrail`.
+
 ## 6c. Interaction with TASK-736 (Ollama removal)
 
 TASK-736 removes Ollama platform-wide. Its Phase C is largely absorbed by this ticket's Phase 2
@@ -563,6 +586,55 @@ it is pollution, the leak predates this ticket and needs its own issue.
 
 ### Phases 2b, 3, 5, 6 — not started
 
+### Delegation scope re-measured 2026-08-17 (from the fail-closed ticket)
+
+Written by the agent that fixed the fail-open safety gate (§6b G-09 below). It touched
+every engine path, so this is a MEASURED inventory of what Phases 2b/3/6 have to move —
+not an estimate, and not a re-plan. Three of the findings change the plan's shape.
+
+**Finding 1 — the five-vendor LLM content-analysis stack has ZERO production callers.**
+`OpenAICompatProvider.analyze_content` (the Granite BYOC path, `_analyze_granite` /
+`_analyze_generic` / `_analyze_comprehensive`, plus `_granite.py`'s criteria and
+`<guardian>` template) is reachable from **no endpoint and no job**. A grep of
+`apps/guardrail/src` for `.analyze_content(` outside tests returns only `gliner.py`'s
+method and its GLiNER call sites; `get_content_provider` is consumed by exactly one
+place — `api/endpoints/health.py:41`, which calls `health_check()`, not `analyze_content`.
+`/guardrail/analyze`, `/guardrail/analyze/batch` and the async job all run **GLiNER**.
+
+Consequence for Phase 2: what is actually LIVE on the LLM wire is only
+`OpenAICompatGuardianProvider.validate_medical_context` behind `/medical/validate` +
+`/medical/validate/batch`. So Phase 2b's delegation surface is **one method and two
+routes**, and the rest of `openai_compat.py` (~330 of its 546 lines) plus `_granite.py`
+is dead weight that can be DELETED without a replacement client at all. The plan's step
+2b.3 ("repoint `medical/validate`, `medical/validate/batch` and the LLM path of
+`guardrail/analyze`") over-scopes: there is no LLM path of `guardrail/analyze` to repoint.
+
+**Finding 2 — three stacks, and only two of them need `text`/`nlp` at all.**
+
+| Stack | Live surface | Where it must go | Real difficulty |
+|---|---|---|---|
+| LLM guardian (`openai_compat.py` `OpenAICompatGuardianProvider`, ~200 live lines) | `/medical/validate`, `/medical/validate/batch` | `text` `POST /generate/internal/judge` (Phase 2a, **already shipped**) | **Low.** The route exists, its contract is written down in §7 Phase 2a, and the peer-client shape exists twice in-tree. The verdict shape on guardrail's wire must not move — `text`'s gate maps 422-vs-503 off it. |
+| GLiNER ONNX (`gliner.py`, 266 lines; 4 hardcoded taxonomies at `:22-70`) | `/guardrail/analyze`, `/analyze/batch`, `/guardrail/redact`, async jobs | `nlp` `/classify/{tokens,text}` | **High, and redaction is why.** `/guardrail/redact` needs byte-exact `start`/`end` offsets back (`_apply_mask` slices the original string) and re-chunks long text at `guardrail.redact.chunkChars`, remapping offsets per chunk. A span-offset contract across a network hop is the hard part; the label taxonomies are the easy part. |
+| MiniCheck GGUF NLI (`groundedness_scorer_minicheck.py`, 233 lines, bound to llama.cpp **private** internals `._model`/`._ctx`/`llama_model_decoder_start_token` at `:142-207`) | `/guardrail/ground` | `nlp` (Phase 6) | **Highest.** The private-API binding moves verbatim or is rewritten; either way it lands in `nlp`, which does not host GGUF today. It is also duplicated work: `apps/harness` hosts its own MiniCheck-class NLI (`sensors/inferential/` + `minicheck_entailer.py`) and deliberately does NOT call this endpoint, so Phase 6 should decide whether ONE NLI host serves both rather than moving guardrail's copy next to a second one. |
+
+**Finding 3 — engine sub-configs are down to five, and one inheritance bug is still live.**
+`core/config.py` now declares `OpenAICompatConfig` and four subclasses
+(`AzureOpenAIConfig`, `BedrockConfig`, `VLLMConfig`, `LlamaCppConfig`) — `OllamaConfig` is
+already gone. All four subclasses **inherit the six `granite-guardian-4.1-8b` defaults**
+while their own docstrings say Azure/Bedrock do not host Granite. Deleting the stack
+(Phase 2) removes the bug; until then it stands.
+
+**What did NOT need to change, and should not be re-litigated.** The tenant→SYSTEM
+cascade, the tenant-keyed cache, the DISABLED-row veto and the fail-closed model
+selection are all correct as landed in Phase 1, and the fail-closed work built on them
+unchanged. Guardrail keeping POLICY (verdict shape, thresholds, taxonomies, fail posture)
+while delegating INFERENCE remains the right split — it is what made the fail-closed fix
+possible in one service.
+
+**Sequencing note.** Do Phase 2b before Phase 3. Phase 2b is now small (Finding 1) and
+deletes the largest file; Phase 3 carries the offset-contract risk and deserves the
+uncluttered tree.
+
 ## 8. Change History
 
 | Date | Change |
@@ -570,3 +642,4 @@ it is pollution, the leak predates this ticket and needs its own issue.
 | 2026-08-16 | Ticket created. Current-state audit of `apps/guardrail` against the two new owner configuration rules; plan drafted; `.claude/rules/00`, `06`, `09` updated with the rules this ticket enforces. |
 | 2026-08-16 | Owner resolved D1–D5: reuse the `llm` connection · tenant may tighten only (entitlement floor) · guardrail keeps its own task keys · all six phases in scope · criteria live in the PromptTemplate plane. Phase 6 rewritten from optional to in-scope. |
 | 2026-08-16 | Phase 0 landed: `guardrail.` removed from `GLOBAL_ADMIN_ONLY_TASK_PREFIXES`; `models.guardrail.*` descriptors retarget to tenant-editable; `entitlements.featureGuardrailModelSelection` catalogued (not yet enforced — G-05); `AiTaskDefaultService.upsertRow` gains the platform-approved-list floor (`assertGuardrailModelApproved`, 403). Tests, API/e2e copy and admin-console copy updated to match. |
+| 2026-08-17 | Assessment only, no code in this ticket: §7 gains "Delegation scope re-measured 2026-08-17" (the LLM content-analysis stack has zero production callers, so Phase 2b is one method + two routes; GLiNER's span-offset contract is the hard part of Phase 3; MiniCheck's llama.cpp private-API binding plus harness's duplicate NLI host is the hard part of Phase 6) and §6b gains **G-09** (the engine stack was also failing OPEN; fixed in its own P0 ticket, which also closed G-07's `X-Tenant-Id` interim). |

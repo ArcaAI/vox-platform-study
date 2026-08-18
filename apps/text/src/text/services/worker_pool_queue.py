@@ -3,7 +3,7 @@
 Redis Streams + a consumer group per ``task_type``, mirroring
 ``services/task_manager.TaskManager``'s existing Redis-Streams usage rather than
 introducing a new broker (design.md D7 — contract-over-broker). Key prefix
-``smr:workerpool:{task_type}`` — the SAME ``smr:`` prefix TaskManager/idempotency-
+``text:workerpool:{task_type}`` — the SAME ``text:`` prefix TaskManager/idempotency-
 cache keys already use (metric/key names are not yet ``text:`` post-TASK-707;
 see design-notes.md §(c)).
 
@@ -26,7 +26,7 @@ from text.services.shutdown_manager import ShutdownManager
 
 logger = structlog.get_logger(__name__)
 
-_STREAM_KEY_PREFIX = "smr:workerpool:"
+_STREAM_KEY_PREFIX = "text:workerpool:"
 _GROUP_SUFFIX = ":workers"
 
 

@@ -30,9 +30,12 @@ export interface IStreamingSessionService {
    * Get the status of an existing streaming session.
    *
    * @param sessionId - The session identifier
+   * @param tenantId - Owning tenant, threaded by callers that hold one so the
+   *   internal hop carries `X-Tenant-Id` (TASK-737). Omit ONLY on paths whose
+   *   envelope genuinely has no tenant — those declare `tenantless:job-queue`.
    * @returns Session status or null if not found
    */
-  getSessionStatus(sessionId: string): Promise<StreamingSessionStatus | null>;
+  getSessionStatus(sessionId: string, tenantId?: string | null): Promise<StreamingSessionStatus | null>;
 
   /**
    * Trigger a mid-session engine switch.
@@ -43,15 +46,17 @@ export interface IStreamingSessionService {
    *
    * @param sessionId - The session identifier
    * @param target - The engine to switch to ('primary' | 'fallback')
+   * @param tenantId - Owning tenant for the internal hop's `X-Tenant-Id`.
    */
-  switchProvider(sessionId: string, target: 'primary' | 'fallback'): Promise<void>;
+  switchProvider(sessionId: string, target: 'primary' | 'fallback', tenantId?: string | null): Promise<void>;
 
   /**
    * Back-compat alias for `switchProvider(sessionId, 'fallback')`.
    *
    * @param sessionId - The session identifier
+   * @param tenantId - Owning tenant for the internal hop's `X-Tenant-Id`.
    */
-  switchToFallback(sessionId: string): Promise<void>;
+  switchToFallback(sessionId: string, tenantId?: string | null): Promise<void>;
 
   /**
    * Finalize and remove a streaming session.
@@ -65,6 +70,9 @@ export interface IStreamingSessionService {
    *
    * @param sessionId - The session identifier
    * @param interrupted - Whether this teardown is an abort, not an explicit close (default false)
+   * @param tenantId - Owning tenant for the internal hop's `X-Tenant-Id`. The
+   *   background teardown paths (SIGTERM sweep, removal-retry drain) hold none
+   *   and therefore declare `tenantless:job-queue` instead of omitting it.
    */
-  removeSession(sessionId: string, interrupted?: boolean): Promise<void>;
+  removeSession(sessionId: string, interrupted?: boolean, tenantId?: string | null): Promise<void>;
 }

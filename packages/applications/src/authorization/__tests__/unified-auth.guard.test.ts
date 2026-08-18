@@ -56,8 +56,17 @@ describe('UnifiedAuthGuard', () => {
   beforeEach(() => {
     vi.clearAllMocks();
 
+    // TASK-742: the API-key path now DENIES any route that declares no
+    // `@RequiredScopes(...)`, so a bare "everything is undefined" reflector no
+    // longer represents an API-key-reachable route — it represents a route that
+    // is not an API-key surface at all. Every API-key test in THIS file is
+    // about some other concern (rate limiting, CLS wiring, IP extraction, error
+    // wrapping, idempotency), so the default now presents a route that IS a
+    // declared API-key surface. The deny-by-default rule itself is pinned
+    // exhaustively in `unified-auth.guard.deny-by-default.test.ts`; tests below
+    // that install their own `mockImplementation` still control it completely.
     reflector = {
-      getAllAndOverride: vi.fn().mockReturnValue(undefined),
+      getAllAndOverride: vi.fn((key: string) => (key === API_KEY_REQUIRED_SCOPES ? ['read:data'] : undefined)),
     } as unknown as Reflector;
 
     apiKeyService = {

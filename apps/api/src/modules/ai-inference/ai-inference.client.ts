@@ -1,6 +1,13 @@
 import { HttpService } from '@nestjs/axios';
 import { HttpException, Inject, Injectable, Logger, Optional, ServiceUnavailableException } from '@nestjs/common';
-import { IActiveUserContext, IConfigService, SecretsService } from '@arcaai/applications';
+import {
+  IActiveUserContext,
+  IConfigService,
+  SecretsService,
+  TENANTLESS,
+  internalServiceHeaders,
+  resolveInternalAccessToken,
+} from '@arcaai/applications';
 import { isAxiosError } from 'axios';
 import { ClsService } from 'nestjs-cls';
 
@@ -101,20 +108,19 @@ export class AiInferenceClient {
    * silently downgrading a PHI-bearing hop to unauthenticated HTTP.
    */
   private async buildHeaders(secretKey: 'GUARDRAIL_SERVICE_TOKEN' | 'NLP_SERVICE_TOKEN'): Promise<Record<string, string>> {
-    const token = (await this.secretsService?.getSecretOptional(secretKey)) ?? '';
-    const headers: Record<string, string> = {
-      'Content-Type': 'application/json',
-      'X-Service-Token': token,
-    };
-    // Tenant context for per-tenant model-default resolution in the
-    // receiving service. Omitted (not empty) without a CLS tenant: the services
-    // treat a missing tenant as "use the platform default", so this hop stays
-    // usable for internal/service callers.
-    const tenantId = this.cls?.get('tenantId');
-    if (tenantId) {
-      headers['X-Tenant-Id'] = tenantId;
-    }
-    return headers;
+    // D-D: the ONE shared `INTERNAL_ACCESS_TOKEN`; `secretKey` is the migration
+    // fallback. Still ALWAYS attached, even empty, so the receiver rejects it
+    // (fail-closed) rather than the PHI-bearing hop downgrading to unauthenticated.
+    const token = await resolveInternalAccessToken(this.secretsService, secretKey);
+    // TASK-737: `X-Tenant-Id` is now MANDATORY, not conditional. This route backs
+    // the Agent Playground, which a SUPER_ADMIN legitimately drives with no working
+    // tenant selected — previously indistinguishable from a header dropped in
+    // transit, so the receiver had to guess. It now DECLARES itself instead.
+    return internalServiceHeaders({
+      serviceToken: token,
+      tenantId: this.cls?.get('tenantId'),
+      tenantlessReason: TENANTLESS.PLATFORM_OPERATOR,
+    });
   }
 
   private async post(

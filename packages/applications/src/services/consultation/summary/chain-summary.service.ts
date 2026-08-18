@@ -19,7 +19,7 @@ import { ComprehensiveSummaryRequest, ComprehensiveSummaryResponse, ChainSection
 import { buildTextGeneratePayload, mapTextGenerateResponse } from './text-generate';
 import { buildLlmUsageInput, parseTextUsageDetail, type TextUsageDetail } from './text-usage';
 import { IUsageLedgerService } from '../../usageLedger/IUsageLedgerService';
-import { BaseService, assertParentInScope, encryptPhiFields } from '../../../common';
+import { BaseService, TENANTLESS, assertParentInScope, encryptPhiFields, internalServiceHeaders, resolveInternalAccessToken } from '../../../common';
 import { IActiveUserContext } from '../../../interfaces';
 import { PromptAssemblyService } from '../prompt/prompt-assembly.service';
 import { SecretsService } from '../../baseServices/_meta/secrets';
@@ -193,10 +193,10 @@ export class ChainSummaryService extends BaseService {
     const smrInput = await this.composeSmrInput(consultation, sections, aggregatedEntities, request, preferredPromptTemplateId);
 
     // Step 5: Call SMR service
-    const smrResponse = await this.callTextService(smrInput);
+    const textResponse = await this.callTextService(smrInput);
 
     // Step 6: Store as ContextItem(RAW_SUMMARY) on the requesting consultation
-    const contextItem = ContextItemFactory.CreateRawSummary(tenantId, consultationId, smrResponse.summary, request.dnaStyleId, userId ?? 'system');
+    const contextItem = ContextItemFactory.CreateRawSummary(tenantId, consultationId, textResponse.summary, request.dnaStyleId, userId ?? 'system');
 
     // Encrypt the generated summary text into `encryptedContent`
     // before persistence — the plaintext `content` column was dropped by the
@@ -210,13 +210,13 @@ export class ChainSummaryService extends BaseService {
     const summaryMeta = SummaryMetaFactory.CreateSummaryMeta({
       tenantId,
       contextItemId: savedContext.id,
-      aiModelId: smrResponse.modelName ?? smrResponse.llmProvider,
-      processingTimeMs: smrResponse.processingTimeMs,
-      inputTokens: smrResponse.inputTokens,
-      outputTokens: smrResponse.outputTokens,
+      aiModelId: textResponse.modelName ?? textResponse.llmProvider,
+      processingTimeMs: textResponse.processingTimeMs,
+      inputTokens: textResponse.inputTokens,
+      outputTokens: textResponse.outputTokens,
     });
     await this.encryptBestEffort('SummaryMeta', () => this.summaryMetaRepository.encryptFieldsIntoEntity(summaryMeta, this.secretsService!));
-    await this.persistSummaryMetaWithUsage(summaryMeta, smrResponse.usage, {
+    await this.persistSummaryMetaWithUsage(summaryMeta, textResponse.usage, {
       tenantId,
       consultationId,
       doctorId: consultation.doctorId,
@@ -241,7 +241,7 @@ export class ChainSummaryService extends BaseService {
       contextItemId: savedContext.id,
       sectionCount: sections.length,
       sourceConsultationCount: allConsultationIds.length,
-      processingTimeMs: smrResponse.processingTimeMs,
+      processingTimeMs: textResponse.processingTimeMs,
     });
 
     return {
@@ -250,10 +250,10 @@ export class ChainSummaryService extends BaseService {
       type: savedContext.type,
       content: savedContext.content ?? '',
       structuredData: {
-        modelName: smrResponse.modelName ?? smrResponse.llmProvider,
-        processingTimeMs: smrResponse.processingTimeMs,
-        inputTokens: smrResponse.inputTokens,
-        outputTokens: smrResponse.outputTokens,
+        modelName: textResponse.modelName ?? textResponse.llmProvider,
+        processingTimeMs: textResponse.processingTimeMs,
+        inputTokens: textResponse.inputTokens,
+        outputTokens: textResponse.outputTokens,
       },
       sourceConsultationIds: allConsultationIds,
       sectionCount: sections.length,
@@ -621,7 +621,7 @@ export class ChainSummaryService extends BaseService {
     usage: TextUsageDetail | null;
   }> {
     // The tenant id is resolved EXPLICITLY (B-04), OUTSIDE the try/catch
-    // below — never a bare no-arg call trusting `resolveSmrSelection`'s own
+    // below — never a bare no-arg call trusting `resolveTextSelection`'s own
     // CLS fallback, so a worker path with unpopulated CLS fails loudly with
     // a clear message instead of either silently serving the SYSTEM default
     // model or having that failure masked by the generic SMR-call catch.
@@ -634,17 +634,26 @@ export class ChainSummaryService extends BaseService {
       // default) as the base so a caller-supplied model still wins.
       let options = payload.options;
       if (this.harnessPolicyService) {
-        const { provider, model } = await this.harnessPolicyService.resolveSmrSelection(this.tenantId!, 'finalize');
-        options = { smrProvider: provider, smrModel: model, ...payload.options };
+        const { provider, model } = await this.harnessPolicyService.resolveTextSelection(this.tenantId!, 'finalize');
+        options = { textProvider: provider, textModel: model, ...payload.options };
       }
       const textPayload = buildTextGeneratePayload(payload.assembledPrompt, options, payload.context);
-      const smrServiceToken = (await this.secretsService?.getSecretOptional('TEXT_SERVICE_TOKEN')) ?? '';
+      // D-D: the ONE shared `INTERNAL_ACCESS_TOKEN` (`TEXT_SERVICE_TOKEN` is only
+      // the migration fallback). TASK-737: `X-Tenant-Id` is MANDATORY — the tenant
+      // was null-checked at the top of this method and then DROPPED, so Text
+      // resolved the platform-default provider instead of this tenant's BYOK
+      // credential and TASK-735's derived `funding`/`cost_basis` ran against the
+      // wrong tier. `this.tenantId` is non-null here whenever the policy service
+      // is wired; the declared marker covers the no-policy-service fixture path so
+      // the header is never simply absent.
+      const serviceToken = await resolveInternalAccessToken(this.secretsService, 'TEXT_SERVICE_TOKEN');
       const response = await this.httpService.axiosRef.post(`${this.textServiceUrl}/api/v1/generate`, textPayload, {
         timeout: 180000,
-        headers: {
-          'Content-Type': 'application/json',
-          'X-Service-Token': smrServiceToken,
-        },
+        headers: internalServiceHeaders({
+          serviceToken,
+          tenantId: this.tenantId,
+          tenantlessReason: TENANTLESS.PLATFORM_OPERATOR,
+        }),
       });
       const data = response.data as { usage_detail?: unknown } | null;
       return { ...mapTextGenerateResponse(response.data), usage: parseTextUsageDetail(data?.usage_detail) };

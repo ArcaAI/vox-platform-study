@@ -92,7 +92,7 @@ function buildService(opts: {
     redisSubscriber as never,
     undefined,
     opts.contextItemRepository as never,
-    (opts.harnessPolicyService ?? { resolveSmrSelection: vi.fn().mockResolvedValue({ provider: 'vllm', model: 'gemma' }) }) as never,
+    (opts.harnessPolicyService ?? { resolveTextSelection: vi.fn().mockResolvedValue({ provider: 'vllm', model: 'gemma' }) }) as never,
     // A SecretsService stand-in: `.env.test` runs SECRETS_PROVIDER=vault, under
     // which `encryptPhiFields` FAILS CLOSED rather than persisting plaintext PHI.
     // Without one the durable-snapshot write is (correctly) refused.
@@ -192,7 +192,7 @@ describe('C3-T1 — default-prompt parity (the unconfigured tenant sees zero cha
 
   it('an agent llmOverrides.live selection is served FROZEN, bypassing the per-flush tenant resolve (RF-4)', async () => {
     const calls: TextCall[] = [];
-    const harnessPolicyService = { resolveSmrSelection: vi.fn().mockResolvedValue({ provider: 'vllm', model: 'tenant-default' }) };
+    const harnessPolicyService = { resolveTextSelection: vi.fn().mockResolvedValue({ provider: 'vllm', model: 'tenant-default' }) };
     const resolver: Partial<ILiveAgentResolver> = {
       resolveForSession: vi.fn().mockResolvedValue(agentSnapshot({ liveLlm: { provider: 'llama-cpp', model: 'fast-live-model' } })),
     };
@@ -204,12 +204,12 @@ describe('C3-T1 — default-prompt parity (the unconfigured tenant sees zero cha
 
     expect(calls[0].provider).toBe('llama-cpp');
     expect(calls[0].model).toBe('fast-live-model');
-    expect(harnessPolicyService.resolveSmrSelection).not.toHaveBeenCalled();
+    expect(harnessPolicyService.resolveTextSelection).not.toHaveBeenCalled();
   });
 
   it('with NO agent override the per-flush tenant AiTaskDefault resolve is preserved exactly', async () => {
     const calls: TextCall[] = [];
-    const harnessPolicyService = { resolveSmrSelection: vi.fn().mockResolvedValue({ provider: 'vllm', model: 'tenant-default' }) };
+    const harnessPolicyService = { resolveTextSelection: vi.fn().mockResolvedValue({ provider: 'vllm', model: 'tenant-default' }) };
     const resolver: Partial<ILiveAgentResolver> = { resolveForSession: vi.fn().mockResolvedValue(agentSnapshot({ liveLlm: null })) };
     const service = buildService({ http: recordingHttpMock(calls), resolver, harnessPolicyService });
     service.start({ consultationId: CID, tenantId: TENANT });
@@ -219,8 +219,8 @@ describe('C3-T1 — default-prompt parity (the unconfigured tenant sees zero cha
     service.ingestSegment(CID, { text: 'fever', isFinal: true, segmentId: 's2' });
     await service.flush(CID);
 
-    expect(harnessPolicyService.resolveSmrSelection).toHaveBeenCalledTimes(2);
-    expect(harnessPolicyService.resolveSmrSelection).toHaveBeenCalledWith(TENANT, 'live');
+    expect(harnessPolicyService.resolveTextSelection).toHaveBeenCalledTimes(2);
+    expect(harnessPolicyService.resolveTextSelection).toHaveBeenCalledWith(TENANT, 'live');
     expect(calls[1].model).toBe('tenant-default');
   });
 });

@@ -27,6 +27,7 @@ import type { AudioConfig, StartSessionResponse } from './dto/start-session.resp
 import type { SwitchSessionResponse } from './dto/switch-session.response';
 import { StopSessionRequest } from './dto/stop-session.request';
 import type { StopSessionResponse } from './dto/stop-session.response';
+import { RequiredScopes } from '../../decorators';
 
 /** The caller identity resolved from the request / API key / CLS. */
 type ResolvedCaller = {
@@ -58,6 +59,9 @@ const DEFAULT_AUDIO_CONFIG: AudioConfig = {
 @ApiTags('stt-compat')
 @ApiBearerAuth()
 @Controller('api/stt')
+// TASK-742: v1-compat STT session surface (start/switch/stop) — streaming
+// control, so the stream scope rather than the transcription-record one.
+@RequiredScopes('stt:stream:write')
 export class SttCompatController {
   private readonly logger = new Logger(SttCompatController.name);
 
@@ -218,7 +222,7 @@ export class SttCompatController {
     }
 
     try {
-      await this.sessionService.switchProvider(body.session_id, target);
+      await this.sessionService.switchProvider(body.session_id, target, tenantId);
     } catch (err) {
       const status = (err as { response?: { status?: number } })?.response?.status;
       if (status === 409) {
@@ -295,7 +299,11 @@ export class SttCompatController {
   @UseInterceptors(FileInterceptor('audio_file'))
   async stopSession(@UploadedFile() audioFile: Express.Multer.File | undefined, @Body() body: StopSessionRequest): Promise<StopSessionResponse> {
     if (this.sessionService && this.sessionBinding) {
-      await this.sessionService.removeSession(body.session_id);
+      // TASK-737: this compat route is API-key authenticated, so CLS is not a
+      // reliable tenant source here (the text-compat trap). The session's own
+      // binding — written by `start_session` and cleared one line below — is.
+      const boundTenant = await this.sessionBinding.lookup(body.session_id).catch(() => null);
+      await this.sessionService.removeSession(body.session_id, false, boundTenant);
       await this.sessionBinding.clear(body.session_id);
     }
     await this.sessionMetadataService?.clear(body.session_id);

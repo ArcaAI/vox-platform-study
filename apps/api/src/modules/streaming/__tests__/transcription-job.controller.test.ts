@@ -567,7 +567,7 @@ describe('TranscriptionJobController', () => {
 
       await controller.closeStreamSession('sess-1');
 
-      expect(mockSessionService.removeSession).toHaveBeenCalledWith('sess-1');
+      expect(mockSessionService.removeSession).toHaveBeenCalledWith('sess-1', false, 'tenant-1');
     });
   });
 
@@ -694,7 +694,7 @@ describe('TranscriptionJobController', () => {
 
       await controller.closeStreamSession('sess-xyz');
 
-      expect(mockSessionService.removeSession).toHaveBeenCalledWith('sess-xyz');
+      expect(mockSessionService.removeSession).toHaveBeenCalledWith('sess-xyz', false, 'tenant-1');
       expect(mockStreamSessionTenantBinding.clear).toHaveBeenCalledWith('sess-xyz');
     });
   });

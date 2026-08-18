@@ -107,7 +107,7 @@ function makeService(overrides: { usageLedger?: unknown; unitOfWork?: unknown } 
     undefined, // userProfileRepository
     undefined, // harnessAuditService
     undefined, // harnessGatewayService
-    { resolveSmrSelection: vi.fn().mockResolvedValue({ provider: 'openai', model: 'gpt-5' }) } as never,
+    { resolveTextSelection: vi.fn().mockResolvedValue({ provider: 'openai', model: 'gpt-5' }) } as never,
     undefined, // configResolver
     undefined, // entitlements
     undefined, // trajectoryService

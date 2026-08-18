@@ -91,7 +91,7 @@ class TestAtomicUpdateTTL:
 
         await tm.update_task(task.task_id, status=TaskStatus.RUNNING)
 
-        ttl = await redis_client.ttl(f"smr:task:{task.task_id}")
+        ttl = await redis_client.ttl(f"text:task:{task.task_id}")
         assert ttl > 0
         assert ttl <= 120
 

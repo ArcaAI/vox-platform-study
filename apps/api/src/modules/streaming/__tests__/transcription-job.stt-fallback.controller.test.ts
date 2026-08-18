@@ -31,7 +31,13 @@ const createMockSessionService = () => ({
   switchProvider: vi.fn().mockResolvedValue(undefined),
   getLanguageModes: vi.fn().mockResolvedValue({ modes: [] }),
 });
-const createMockCls = () => ({ get: vi.fn().mockReturnValue({ id: 'user-1', tenantId: 'tenant-1' }) });
+// Key-AWARE: `getTenantId()` reads the CLS `tenantId` key first and falls back
+// to `user.tenantId`. A mock that returns the user object for EVERY key made
+// `getTenantId()` hand back an object, which stayed invisible while the value
+// was only passed to other mocks.
+const createMockCls = () => ({
+  get: vi.fn((key: string) => (key === 'tenantId' ? 'tenant-1' : { id: 'user-1', tenantId: 'tenant-1' })),
+});
 const createMockBlobStorage = () => ({ resolveDescriptor: vi.fn().mockResolvedValue(null), putObject: vi.fn() });
 const createMockTenantBucketService = () => ({ getBucketBySlug: vi.fn(), getBucketByName: vi.fn(), getBucketByPurpose: vi.fn() });
 const createMockPipelineService = () => ({
@@ -203,7 +209,7 @@ describe('TranscriptionJobController.switchStreamSessionToFallback', () => {
   it('requests the switch and returns {switched:true} on the happy path', async () => {
     const { controller, mocks } = build();
     await expect(controller.switchStreamSessionToFallback('sess-1')).resolves.toEqual({ switched: true });
-    expect(mocks.sessionService.switchToFallback).toHaveBeenCalledWith('sess-1');
+    expect(mocks.sessionService.switchToFallback).toHaveBeenCalledWith('sess-1', 'tenant-1');
   });
 
   it('maps an apps/stt 409 (already switched / no fallback) to a ConflictException', async () => {
@@ -219,7 +225,7 @@ describe('TranscriptionJobController.switchStreamSessionToPrimary', () => {
   it('requests the primary-direction switch and returns {switched:true} on the happy path', async () => {
     const { controller, mocks } = build();
     await expect(controller.switchStreamSessionToPrimary('sess-1')).resolves.toEqual({ switched: true });
-    expect(mocks.sessionService.switchProvider).toHaveBeenCalledWith('sess-1', 'primary');
+    expect(mocks.sessionService.switchProvider).toHaveBeenCalledWith('sess-1', 'primary', 'tenant-1');
   });
 
   it('needs no fallback-config precheck (never reads sttConfig.getEffective)', async () => {

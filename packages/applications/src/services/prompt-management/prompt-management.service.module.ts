@@ -15,7 +15,7 @@ import { EvalServiceModule } from '../eval/eval.service.module';
 @Module({
   // HttpModule + ConfigModule wire the SMR/text-generation client
   // used by the prompt-test endpoint (mirrors SummaryServiceModule).
-  // BUG-018: AiTaskDefaultServiceModule supplies the `smr.test` model resolver
+  // BUG-018: AiTaskDefaultServiceModule supplies the `text.test` model resolver
   // (replacing the harness policy module — the test bench is not harness), and
   // TextRequestServiceModule supplies the shared tenant-credential + runtime-profile
   // enrichment the SMR proxy uses.

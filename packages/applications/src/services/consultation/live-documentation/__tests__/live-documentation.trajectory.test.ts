@@ -59,7 +59,7 @@ function buildService(opts: { config?: Record<string, unknown>; trajectory?: unk
   };
   const config = opts.config ?? {};
   const configService = { get: vi.fn().mockImplementation((key: string) => config[key]) };
-  const harnessPolicyService = { resolveSmrSelection: vi.fn().mockResolvedValue({ provider: 'lm-studio', model: 'live-medgemma' }) };
+  const harnessPolicyService = { resolveTextSelection: vi.fn().mockResolvedValue({ provider: 'lm-studio', model: 'live-medgemma' }) };
   const trajectory = opts.trajectory ?? { recordSteps: vi.fn().mockResolvedValue(undefined) };
   const http = opts.http ?? buildHttpMock();
 

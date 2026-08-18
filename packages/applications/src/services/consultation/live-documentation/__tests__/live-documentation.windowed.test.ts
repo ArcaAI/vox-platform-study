@@ -62,7 +62,7 @@ function buildService(stored: Record<string, unknown> = {}) {
     { subscribeToChannel: vi.fn(), unsubscribeFromChannel: vi.fn() } as never,
     undefined as never,
     undefined as never,
-    { resolveSmrSelection: vi.fn().mockResolvedValue({ provider: 'lm-studio', model: 'm' }) } as never,
+    { resolveTextSelection: vi.fn().mockResolvedValue({ provider: 'lm-studio', model: 'm' }) } as never,
     undefined as never,
     undefined as never,
     { resolveEffective } as never,

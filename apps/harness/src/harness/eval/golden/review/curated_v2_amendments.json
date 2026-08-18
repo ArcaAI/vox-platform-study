@@ -1,0 +1,7 @@
+{
+  "_comment": "EMPTY TEMPLATE. Fill this in during clinician review, then run apply_amendments.py. Until a reviewer's name and date are present, apply_amendments.py refuses to run - an unattributed rating cannot be called clinician-reviewed.",
+  "reviewer": "",
+  "reviewed_at": "",
+  "accept_all_unlisted": false,
+  "amendments": []
+}

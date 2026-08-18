@@ -29,7 +29,7 @@ from harness.services.api_client import (
     RecordGateResponse,
     RetractDraftResponse,
 )
-from harness.services.smr_client import SmrGenerationResult, SmrServiceError
+from harness.services.text_client import TextGenerationResult, TextServiceError
 from harness.temporal import activities
 from harness.temporal.models import (
     AssembleInput,
@@ -53,18 +53,18 @@ class _FakeNlp:
     def __init__(self) -> None:
         self.calls: list[tuple[str, str]] = []
 
-    async def classify_tokens(self, text: str, *, language: str = "en") -> list[NEREntity]:
+    async def classify_tokens(self, text: str, *, tenant_id: str = "", language: str = "en") -> list[NEREntity]:
         self.calls.append((text, language))
         return [NEREntity(text="hypertension", type="DISEASE", start=0, end=12)]
 
 
-class _FakeSmr:
+class _FakeText:
     def __init__(self) -> None:
         self.kwargs: dict[str, Any] = {}
 
-    async def generate(self, **kwargs: Any) -> SmrGenerationResult:
+    async def generate(self, **kwargs: Any) -> TextGenerationResult:
         self.kwargs = kwargs
-        return SmrGenerationResult(content="DRAFT", model="m", finish_reason="stop")
+        return TextGenerationResult(content="DRAFT", model="m", finish_reason="stop")
 
 
 class _FakeApi:
@@ -159,15 +159,15 @@ def env() -> ActivityEnvironment:
 
 
 class TestToolClientFactoriesSendServiceToken:
-    """Regression guard: ``_smr_client``/``_nlp_client`` must build their clients
+    """Regression guard: ``_text_client``/``_nlp_client`` must build their clients
     with the configured peer-service token, or every real ``generate``/
     ``classify_tokens`` call 401s against a non-dev-bypass apps/text or apps/nlp
     (the bug this ticket fixes — the hermetic activity tests above stub these
     factories entirely, so they never would have caught it)."""
 
-    def test_smr_client_carries_the_configured_token(self) -> None:
-        settings = Settings(smr_service_token="tok-smr")
-        client = activities._smr_client(settings)
+    def test_text_client_carries_the_configured_token(self) -> None:
+        settings = Settings(text_service_token="tok-smr")
+        client = activities._text_client(settings)
         assert client._service_token == "tok-smr"
 
     def test_nlp_client_carries_the_configured_token(self) -> None:
@@ -178,8 +178,8 @@ class TestToolClientFactoriesSendServiceToken:
     def test_clients_carry_no_token_when_unset(self) -> None:
         # Explicit empty, not a bare Settings() — the ambient .env.dev/.env.test
         # legitimately set these to real secrets, so this stays hermetic.
-        settings = Settings(smr_service_token="", nlp_service_token="")
-        assert activities._smr_client(settings)._service_token == ""
+        settings = Settings(text_service_token="", nlp_service_token="")
+        assert activities._text_client(settings)._service_token == ""
         assert activities._nlp_client(settings)._service_token == ""
 
 
@@ -189,7 +189,7 @@ class TestExtractEntities:
         fake = _FakeNlp()
         monkeypatch.setattr(activities, "_nlp_client", lambda s: fake)
         result = await env.run(
-            activities.extract_entities, ExtractEntitiesInput(text="hi", language="vi")
+            activities.extract_entities, ExtractEntitiesInput(tenant_id="11111111-1111-1111-1111-111111111111", text="hi", language="vi")
         )
         assert [e.text for e in result.entities] == ["hypertension"]
         assert result.reused is False
@@ -269,7 +269,7 @@ class TestExtractEntities:
         monkeypatch.setattr(activities, "_nlp_client", lambda s: nlp)
         monkeypatch.setattr(activities, "_api_client", lambda s: api)
         result = await env.run(
-            activities.extract_entities, ExtractEntitiesInput(text="note", language="en")
+            activities.extract_entities, ExtractEntitiesInput(tenant_id="11111111-1111-1111-1111-111111111111", text="note", language="en")
         )
         assert result.reused is False
         assert nlp.calls == [("note", "en")]
@@ -297,12 +297,13 @@ class TestExtractEntities:
 class TestGenerate:
     @pytest.mark.asyncio
     async def test_unpacks_hyperparameters_and_passes_response_format(self, env, monkeypatch):
-        fake = _FakeSmr()
-        monkeypatch.setattr(activities, "_smr_client", lambda s: fake)
+        fake = _FakeText()
+        monkeypatch.setattr(activities, "_text_client", lambda s: fake)
         rf = {"type": "json_schema", "json_schema": {"type": "object"}}
         result = await env.run(
             activities.generate,
             GenerateInput(
+                tenant_id="11111111-1111-1111-1111-111111111111",
                 prompt="P",
                 system_prompt="S",
                 response_format=rf,
@@ -323,8 +324,8 @@ class TestGenerate:
 
     @pytest.mark.asyncio
     async def test_threads_smr_stats_onto_activity_result(self, env, monkeypatch):
-        """the generate activity result carries the SMR
-        ``stats`` block (additive field on ``SmrGenerationResult``; command-neutral —
+        """the generate activity result carries the Text
+        ``stats`` block (additive field on ``TextGenerationResult``; command-neutral —
         no new workflow command). Phase 2 trajectory emitters read it off the result."""
         stats = {
             "stop_reason": "stop",
@@ -341,13 +342,13 @@ class TestGenerate:
         }
 
         class _StatsSmr:
-            async def generate(self, **kwargs: Any) -> SmrGenerationResult:
-                return SmrGenerationResult(
+            async def generate(self, **kwargs: Any) -> TextGenerationResult:
+                return TextGenerationResult(
                     content="DRAFT", model="m", finish_reason="stop", stats=stats
                 )
 
-        monkeypatch.setattr(activities, "_smr_client", lambda s: _StatsSmr())
-        result = await env.run(activities.generate, GenerateInput(prompt="P"))
+        monkeypatch.setattr(activities, "_text_client", lambda s: _StatsSmr())
+        result = await env.run(activities.generate, GenerateInput(tenant_id="11111111-1111-1111-1111-111111111111", prompt="P"))
         assert result.content == "DRAFT"
         assert result.stats == stats
 
@@ -355,14 +356,14 @@ class TestGenerate:
     async def test_passes_stable_idempotency_key_across_reruns(self, env, monkeypatch):
         """The generate activity supplies a deterministic Idempotency-Key
         (``workflow_run:activity_id`` via ``_idempotency_key``) so a worker-crash re-delivery
-        reuses it and SMR dedups the replay instead of re-billing the model. The key is stable
+        reuses it and Text dedups the replay instead of re-billing the model. The key is stable
         across re-runs of the SAME logical activity (ActivityEnvironment fixes the ids)."""
-        fake = _FakeSmr()
-        monkeypatch.setattr(activities, "_smr_client", lambda s: fake)
+        fake = _FakeText()
+        monkeypatch.setattr(activities, "_text_client", lambda s: fake)
 
-        await env.run(activities.generate, GenerateInput(prompt="P"))
+        await env.run(activities.generate, GenerateInput(tenant_id="11111111-1111-1111-1111-111111111111", prompt="P"))
         first_key = fake.kwargs["idempotency_key"]
-        await env.run(activities.generate, GenerateInput(prompt="P"))
+        await env.run(activities.generate, GenerateInput(tenant_id="11111111-1111-1111-1111-111111111111", prompt="P"))
         second_key = fake.kwargs["idempotency_key"]
 
         # _idempotency_key() → workflow_run_id:activity_id (ActivityEnvironment defaults).
@@ -372,32 +373,32 @@ class TestGenerate:
 
 
 class TestGeneratePostSendFailure:
-    """A post-send SMR failure (the model may have generated) must be
+    """A post-send Text failure (the model may have generated) must be
     NON-retryable at the Temporal layer too, so ``_GENERATE_RETRY`` never re-runs the
     activity (a re-run re-invokes the model). A pre-send failure stays retryable — the
-    model never ran, so a retry is safe (and the SMR-down invariant still fails the loop)."""
+    model never ran, so a retry is safe (and the Text-down invariant still fails the loop)."""
 
     @pytest.mark.asyncio
     async def test_post_send_failure_raises_non_retryable(self, env, monkeypatch):
         class _LostSmr:
-            async def generate(self, **kw: Any) -> SmrGenerationResult:
-                raise SmrServiceError("response lost after dispatch", after_send=True)
+            async def generate(self, **kw: Any) -> TextGenerationResult:
+                raise TextServiceError("response lost after dispatch", after_send=True)
 
-        monkeypatch.setattr(activities, "_smr_client", lambda s: _LostSmr())
+        monkeypatch.setattr(activities, "_text_client", lambda s: _LostSmr())
         with pytest.raises(ApplicationError) as ei:
-            await env.run(activities.generate, GenerateInput(prompt="P"))
+            await env.run(activities.generate, GenerateInput(tenant_id="11111111-1111-1111-1111-111111111111", prompt="P"))
         assert ei.value.non_retryable is True
 
     @pytest.mark.asyncio
     async def test_pre_send_failure_propagates_as_retryable(self, env, monkeypatch):
         class _DownSmr:
-            async def generate(self, **kw: Any) -> SmrGenerationResult:
-                raise SmrServiceError("connection refused", after_send=False)
+            async def generate(self, **kw: Any) -> TextGenerationResult:
+                raise TextServiceError("connection refused", after_send=False)
 
-        monkeypatch.setattr(activities, "_smr_client", lambda s: _DownSmr())
+        monkeypatch.setattr(activities, "_text_client", lambda s: _DownSmr())
         # Propagates unchanged (NOT wrapped non-retryable) → Temporal retries per policy.
-        with pytest.raises(SmrServiceError):
-            await env.run(activities.generate, GenerateInput(prompt="P"))
+        with pytest.raises(TextServiceError):
+            await env.run(activities.generate, GenerateInput(tenant_id="11111111-1111-1111-1111-111111111111", prompt="P"))
 
 
 class _FakePolicyApi:

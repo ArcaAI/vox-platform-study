@@ -6,6 +6,7 @@ import httpx
 import pytest
 
 from guardrail.core.config import OpenAICompatConfig
+from guardrail.core.errors import GuardrailUndeterminedError
 from guardrail.providers.openai_compat import (
     OpenAICompatGuardianProvider,
     OpenAICompatProvider,
@@ -108,14 +109,14 @@ async def test_score_parsing_per_type(guardrail_type: str, issue: str) -> None:
 
 
 @pytest.mark.asyncio
-async def test_unparseable_score_fails_open() -> None:
+async def test_unparseable_score_fails_closed() -> None:
+    """A response with no <score> tag rendered NO verdict — it must not read as safe."""
     provider = _provider(_FakeChatClient("the model rambled without a score tag"))
 
-    result = await provider.analyze_content("text", "prompt_injection")
+    with pytest.raises(GuardrailUndeterminedError) as exc:
+        await provider.analyze_content("text", "prompt_injection")
 
-    assert result["safe"] is True
-    assert result["issues"] == ["invalid_response"]
-    assert result["confidence"] == 0.0
+    assert exc.value.reason == "invalid_response"
 
 
 @pytest.mark.asyncio
@@ -130,25 +131,24 @@ async def test_comprehensive_combines_checks() -> None:
 
 
 @pytest.mark.asyncio
-async def test_timeout_fails_open() -> None:
+async def test_timeout_fails_closed() -> None:
     provider = _provider(_RaisingClient(httpx.TimeoutException("boom")))
 
-    result = await provider.analyze_content("text", "content_safety")
+    with pytest.raises(GuardrailUndeterminedError) as exc:
+        await provider.analyze_content("text", "content_safety")
 
-    assert result["safe"] is True
-    assert result["issues"] == ["timeout"]
-    assert result["error"] == "Request timeout"
+    assert exc.value.reason == "timeout"
 
 
 @pytest.mark.asyncio
-async def test_unexpected_error_fails_open() -> None:
+async def test_unexpected_error_fails_closed() -> None:
     provider = _provider(_RaisingClient(ValueError("kaboom")))
 
-    result = await provider.analyze_content("text", "content_safety")
+    with pytest.raises(GuardrailUndeterminedError) as exc:
+        await provider.analyze_content("text", "content_safety")
 
-    assert result["safe"] is True
-    assert result["issues"] == ["error"]
-    assert "kaboom" in result["error"]
+    assert exc.value.reason == "engine_error"
+    assert "kaboom" in exc.value.detail
 
 
 @pytest.mark.asyncio
@@ -199,13 +199,13 @@ async def test_guardian_parses_json() -> None:
 
 
 @pytest.mark.asyncio
-async def test_guardian_fails_open_on_timeout() -> None:
+async def test_guardian_fails_closed_on_timeout() -> None:
     guardian = OpenAICompatGuardianProvider(
         settings=OpenAICompatConfig(),
         http_client=_RaisingClient(httpx.TimeoutException("boom")),  # type: ignore[arg-type]
     )
 
-    result = await guardian.validate_medical_context("text")
+    with pytest.raises(GuardrailUndeterminedError) as exc:
+        await guardian.validate_medical_context("text")
 
-    assert result["is_medical"] is True
-    assert result["error"] == "timeout"
+    assert exc.value.reason == "timeout"

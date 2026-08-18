@@ -202,6 +202,7 @@ export type {
 
 // DNA Writing Style types (SDK-207 WS-4)
 export type {
+  DnaErasureResult,
   DnaGenerateInput,
   DnaJobResult,
   DnaJobStatus,

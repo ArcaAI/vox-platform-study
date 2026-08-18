@@ -2,7 +2,7 @@ import { BadRequestException, Controller, Get, Inject } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { ClsService } from 'nestjs-cls';
 import { EntitlementCapabilitiesResponse, IActiveUserContext, IEntitlementsService } from '@arcaai/applications';
-import { Authorize } from '../../decorators';
+import { Authorize, ForbidApiKey } from '../../decorators';
 
 /**
  * Tenant self-service entitlements snapshot.
@@ -16,6 +16,15 @@ import { Authorize } from '../../decorators';
 @ApiTags('entitlements')
 @ApiBearerAuth()
 @Controller('entitlements')
+// TASK-742 API-KEY-NOTE — CONSERVATIVE DEFAULT, AWAITING OWNER CLASSIFICATION.
+// Reason: self-service entitlement reads.
+// This route family declared nothing about API-key access, which under the
+// deny-by-default rule is a boot failure. Rather than guess a scope (guessing
+// permissive is how the original gap was created), it is closed explicitly.
+// Reversing it is a one-line change to @RequiredScopes('<scope>') once the
+// owner confirms a real API-key use case — see the TASK-708 README's
+// "Reachability changes awaiting owner review" table.
+@ForbidApiKey()
 export class MyEntitlementsController {
   constructor(
     @Inject(IEntitlementsService)

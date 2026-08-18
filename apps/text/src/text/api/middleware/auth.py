@@ -33,18 +33,22 @@ class ServiceAuthMiddleware(BaseHTTPMiddleware):
     """Require a valid X-Service-Token for non-exempt endpoints."""
 
     async def dispatch(self, request: Request, call_next: RequestResponseEndpoint) -> Response:
-        service_token: str = request.app.state.settings.service_token.get_secret_value()
+        # Owner decision D-D (2026-08-17): the CANONICAL credential is the single
+        # shared `INTERNAL_ACCESS_TOKEN`. The legacy per-service `TEXT_SERVICE_TOKEN`
+        # stays accepted as a zero-cost backward-compatibility fallback — not a
+        # second design. Both empty ⇒ auth bypassed (local dev / hermetic CI).
+        accepted: tuple[str, ...] = request.app.state.settings.accepted_service_tokens
 
-        if not service_token:
+        if not accepted:
             return await call_next(request)
 
         if request.url.path in EXEMPT_PATHS:
             return await call_next(request)
 
         provided = request.headers.get("X-Service-Token", "")
-        if not provided or not hmac.compare_digest(provided, service_token):
+        if not provided or not any(hmac.compare_digest(provided, t) for t in accepted):
             logger.warning(
-                "smr.auth.rejected",
+                "text.auth.rejected",
                 path=request.url.path,
                 reason="invalid_or_missing_token",
             )

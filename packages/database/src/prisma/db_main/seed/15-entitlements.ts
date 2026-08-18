@@ -180,6 +180,10 @@ interface PlanEntitlementSeed {
   // platform capability, not a premium add-on. Kept in sync by
   // `packages/applications/src/services/entitlements/__tests__/plan-matrix-parity.test.ts`.
   featurePaletteStt: boolean;
+  // Does this plan include the harness AGENTIC LOOP (TASK-705)? `false` on
+  // STARTER (premium capability), `true` on TRIAL/PRO/ENTERPRISE. Kept in sync by
+  // `packages/applications/src/services/entitlements/__tests__/plan-matrix-parity.test.ts`.
+  featureAgenticLoop: boolean;
   modelTier: string;
   rateLimitTier: string;
 }
@@ -210,6 +214,7 @@ const PRO_VALUES = {
   featureMonitoringAccess: false,
   featurePlatformDefaultCredential: false,
   featurePaletteStt: true,
+  featureAgenticLoop: true,
   modelTier: 'full',
   rateLimitTier: 'default',
 };
@@ -249,6 +254,7 @@ export const PLAN_ENTITLEMENTS: PlanEntitlementSeed[] = [
     featureMonitoringAccess: false,
     featurePlatformDefaultCredential: false,
     featurePaletteStt: true,
+    featureAgenticLoop: false,
     modelTier: 'base',
     rateLimitTier: 'strict',
   },
@@ -283,6 +289,7 @@ export const PLAN_ENTITLEMENTS: PlanEntitlementSeed[] = [
     featureMonitoringAccess: true,
     featurePlatformDefaultCredential: false,
     featurePaletteStt: true,
+    featureAgenticLoop: true,
     modelTier: 'full_custom',
     rateLimitTier: 'relaxed',
   },

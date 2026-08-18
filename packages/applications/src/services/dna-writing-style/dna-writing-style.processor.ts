@@ -19,7 +19,7 @@ import {
   JobQueue,
 } from '@arcaai/domains';
 import { PromptManagementService } from '../prompt-management/prompt-management.service';
-import { encryptPhiFields } from '../../common';
+import { TENANTLESS, encryptPhiFields, internalServiceHeaders, resolveInternalAccessToken } from '../../common';
 import { HarnessPolicyService } from '../harness-policy/harness-policy.service';
 import { ConfigResolver } from '../config-resolver';
 import { IConsultationJobService } from '../consultation/jobs/consultation-job.service';
@@ -69,18 +69,25 @@ export class DnaWritingStyleProcessor extends WorkerHost {
     // `PromptTemplateResponse` DTO from `promptManagementService` does not
     // surface `metaData`; mirrors the `live-agent-resolution.service.ts`
     // precedent). Optional + trailing so existing positional fixtures keep
-    // their arity; when unset, DNA generation falls back to the pre-Phase-7
-    // unconstrained-JSON parsing (legacy fixtures / templates with no schema).
+    // their arity. Nest ALWAYS supplies it in production, and once supplied a
+    // resolvable schema is MANDATORY — see the fail-closed guard in
+    // `processWithContext`. Only the pre-schema positional test fixtures ever
+    // leave it unset, and only they still reach the permissive parser.
     @Optional() @Inject(PromptTemplateRepository) private readonly promptTemplateRepository?: PromptTemplateRepository,
     // PHI redaction seam (TASK-710, hop 2: approved-notes corpus → SMR).
-    // Optional + trailing so existing positional fixtures keep their arity;
-    // production DI (DnaWritingStyleServiceModule) always supplies it via
-    // PhiRedactionServiceModule. FULL redaction — the DNA profile is a
-    // retained, cross-patient artifact (see IPhiRedactor's mode doc), not
-    // pseudonymization. Fail-closed: a throwing redactor propagates into the
-    // existing outer catch and aborts the job (mirrors the opt-out throw
-    // above); it never falls back to the unredacted corpus.
-    @Optional() @Inject(IPhiRedactor) private readonly phiRedactor?: IPhiRedactor,
+    // FULL redaction — the DNA profile is a retained, cross-patient artifact
+    // (see IPhiRedactor's mode doc), not pseudonymization.
+    //
+    // NO LONGER `@Optional()` (owner directive D-A, 2026-08-17). It was, and
+    // the call site below correspondingly guarded with `if (this.phiRedactor)`
+    // — meaning a module graph that lost `PhiRedactionServiceModule` would
+    // have posted the raw cross-patient corpus to SMR SILENTLY. That is
+    // precisely how hop 1 regressed when TASK-732 deleted `ner.processor.ts`,
+    // so the same shape is closed here: Nest now REQUIRES the provider (a
+    // missing import fails at boot) and the call site throws rather than
+    // skipping. The TypeScript `?` marker is retained only so the positional
+    // `new DnaWritingStyleProcessor(...)` fixtures keep compiling.
+    @Inject(IPhiRedactor) private readonly phiRedactor?: IPhiRedactor,
   ) {
     super();
     this.textServiceUrl = this.configService.get<string>('TEXT_URL') ?? 'http://localhost:8862';
@@ -208,9 +215,10 @@ export class DnaWritingStyleProcessor extends WorkerHost {
       // automatic corpus) populated `samples` — the branch itself is TASK-700's
       // territory, not touched here. Fail-closed by propagation: a throwing
       // redactor falls into the existing outer catch below and aborts the job.
-      if (this.phiRedactor) {
-        samples = await this.phiRedactor.redact(samples, 'full');
+      if (!this.phiRedactor) {
+        throw new Error('PHI redactor is not available; refusing to send an unredacted DNA corpus to SMR');
       }
+      samples = await this.phiRedactor.redact(samples, 'full');
 
       await job.updateProgress(20);
       this.jobService.notifyProgress(job.data.jobId, 20, 'Loading DNA analysis prompt');
@@ -221,10 +229,19 @@ export class DnaWritingStyleProcessor extends WorkerHost {
       // The `PromptTemplateResponse` DTO does not surface `metaData` (it is
       // internal prompt config, not part of the admin-console-facing
       // contract), so read the entity directly — same pattern as
-      // `live-agent-resolution.service.ts`'s `systemPromptFor`. A schema-read
-      // failure degrades to `null` (unconstrained legacy parsing) rather than
-      // failing the job — the schema is a containment IMPROVEMENT, not itself
-      // a new single point of failure.
+      // `live-agent-resolution.service.ts`'s `systemPromptFor`.
+      //
+      // FAIL-CLOSED (owner directive D-A, 2026-08-17). This read previously
+      // degraded to `null` on any failure, and a null schema then selected a
+      // permissive parsing branch that persisted the model's RAW prose as
+      // `styleText` — the very defect this containment exists to close, still
+      // reachable whenever a template carried no schema, no template resolved
+      // at all, the repository was unwired, or this read threw. That branch
+      // was justified as backward compatibility for un-migrated tenants; with
+      // no production data there are none, so it was a fail-OPEN hole wearing
+      // a compat label. Schema resolution is now treated like provider/model
+      // SELECTION (`failMode: closed`, rule 09): unresolved ⇒ raise, never
+      // substitute a permissive default.
       let outputSchema: Record<string, unknown> | null = null;
       if (resolvedTemplate && this.promptTemplateRepository) {
         try {
@@ -235,9 +252,26 @@ export class DnaWritingStyleProcessor extends WorkerHost {
         }
       }
 
+      // Once this processor is CAPABLE of resolving a schema, one is MANDATORY.
+      // `promptTemplateRepository` is a required provider in
+      // `DnaWritingStyleServiceModule`, so in production this branch always
+      // applies; the `@Optional()` marker exists only so the positional
+      // `new DnaWritingStyleProcessor(...)` fixtures that predate schema
+      // resolution keep their arity. That leaves exactly three ways a real
+      // deployment could reach the permissive parser below — a tenant-authored
+      // DNA template with no `promptConfig`, no DNA_ANALYSIS template at all
+      // (fallback prompt), or a throwing schema read — and all three now fail
+      // the job instead.
+      if (this.promptTemplateRepository && !outputSchema) {
+        const reason = 'DNA analysis output schema could not be resolved; refusing to generate an unconstrained writing-style profile';
+        this.logger.error(`${reason} (template=${resolvedTemplate?.id ?? 'none'})`);
+        this.jobService.notifyFailed(job.data.jobId, reason);
+        throw new Error(reason);
+      }
+
       await job.updateProgress(40);
       this.jobService.notifyProgress(job.data.jobId, 40, 'Generating DNA analysis');
-      const smrResponse = await this.callText(samples, systemPrompt, outputSchema);
+      const textResponse = await this.callText(samples, systemPrompt, outputSchema);
 
       await job.updateProgress(80);
       this.jobService.notifyProgress(job.data.jobId, 80, 'Storing results');
@@ -247,7 +281,7 @@ export class DnaWritingStyleProcessor extends WorkerHost {
 
       let parsed: unknown;
       try {
-        parsed = JSON.parse(smrResponse.content);
+        parsed = JSON.parse(textResponse.content);
       } catch {
         this.jobService.notifyFailed(job.data.jobId, 'DNA analysis returned an unparseable or non-conforming response');
         throw new Error('DNA analysis returned an unparseable or non-conforming response');
@@ -277,7 +311,7 @@ export class DnaWritingStyleProcessor extends WorkerHost {
         // mapping for backward compatibility.
         const obj = parsed as Record<string, unknown>;
         reportData = (obj.reportData as Record<string, unknown> | undefined) ?? obj;
-        styleText = typeof obj.styleText === 'string' ? obj.styleText : smrResponse.content;
+        styleText = typeof obj.styleText === 'string' ? obj.styleText : textResponse.content;
       } else {
         // Valid JSON but not an object (e.g. a bare string/number/array) and
         // no schema to validate against — nothing safe to persist.
@@ -403,14 +437,14 @@ export class DnaWritingStyleProcessor extends WorkerHost {
     usage?: { prompt_tokens: number; completion_tokens: number; total_tokens: number };
     latency_ms?: number;
   }> {
-    const smrStart = Date.now();
+    const textStart = Date.now();
     // SMR is a stateless gateway with no model default; resolve the
     // tenant's effective {provider, model} (CLS tenant set by processWithContext)
     // and pass both explicitly on the generate call.
     let provider: string | undefined;
     let model: string | undefined;
     if (this.harnessPolicyService) {
-      ({ provider, model } = await this.harnessPolicyService.resolveSmrSelection());
+      ({ provider, model } = await this.harnessPolicyService.resolveTextSelection());
     }
     const response = await this.httpService.axiosRef.post(
       `${this.textServiceUrl}/api/v1/generate`,
@@ -431,13 +465,19 @@ export class DnaWritingStyleProcessor extends WorkerHost {
       },
       {
         timeout: 120000,
-        headers: {
-          'Content-Type': 'application/json',
-          'X-Service-Token': (await this.secretsService?.getSecretOptional('TEXT_SERVICE_TOKEN')) ?? '',
-        },
+        // TASK-737 — the tenant is MANDATORY on this hop: `apps/text /generate`
+        // answers 428 without it. `processWithContext` puts the job's tenant in
+        // CLS (see `process`), so it is always present for real work; the
+        // JOB_QUEUE marker is the declared fallback rather than an absent header,
+        // which would be indistinguishable from one dropped in transit.
+        headers: internalServiceHeaders({
+          serviceToken: await resolveInternalAccessToken(this.secretsService, 'TEXT_SERVICE_TOKEN'),
+          tenantId: this.clsService.get<string>('tenantId'),
+          tenantlessReason: TENANTLESS.JOB_QUEUE,
+        }),
       },
     );
-    this.jobMetrics.recordSmrCallDuration(JobQueue.GenerateDnaReport, 'smr', (Date.now() - smrStart) / 1000);
+    this.jobMetrics.recordTextCallDuration(JobQueue.GenerateDnaReport, 'smr', (Date.now() - textStart) / 1000);
     return response.data;
   }
 

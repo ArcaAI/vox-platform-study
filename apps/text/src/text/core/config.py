@@ -1,8 +1,8 @@
-"""SMR configuration using pydantic-settings.
+"""Text configuration using pydantic-settings.
 
-SMR is a stateless gateway: it does NOT select a provider or model
+Text is a stateless gateway: it does NOT select a provider or model
 from env. The gateway (apps/api) injects ``{provider, model}`` (DB-driven) on
-every request; SMR only needs each provider's CONNECTION config (base_url /
+every request; Text only needs each provider's CONNECTION config (base_url /
 api_key / region / tuning). There is deliberately NO ``*_ENABLED`` selection
 flag — a provider is available iff its connection config is present, and it is
 instantiated lazily on first use (see ``main.py`` / ``ProviderRegistry``).
@@ -20,8 +20,8 @@ as informational metadata for the ``/providers`` listing. Provider/model
 SELECTION is ``failMode=closed``: a cloud generate request that resolves no
 model raises ``ModelNotSelectedError`` (``providers/base.py`` ``require_model``)
 instead of silently substituting a vendor model. Local/built-in engines
-(``OpenAICompatConfig``, ``VllmConfig``, ``LlamaCppConfig``) are unaffected —
-their model default is acceptable built-in topology.
+(``OllamaConfig``, ``OpenAICompatConfig``, ``VllmConfig``, ``LlamaCppConfig``)
+are unaffected — their model default is acceptable built-in topology.
 """
 
 from __future__ import annotations
@@ -39,6 +39,38 @@ _SETTINGS_ALIASES = SettingsConfigDict(
     env_prefix_target="all",
     populate_by_name=True,
 )
+
+
+class OllamaConfig(BaseSettings):
+    """Ollama provider configuration.
+
+    Ollama is a supported SELF-HOST engine (owner decision 2026-08-17: the
+    provider logic stays available even though the platform ships no Ollama
+    model catalog). Same "always available, no ENABLE flag" convention as the
+    other local engines — a topology-level ``base_url`` is always present, so
+    ``_register_provider_factories`` (``main.py``) registers it unconditionally.
+
+    ``default_model`` is deliberately EMPTY, unlike ``OpenAICompatConfig``'s.
+    The platform seeds no Ollama catalog row, so it has no model opinion to
+    encode here; a compiled-in id would be exactly the hardcoded configuration
+    `.claude/rules/00-project-context.md` §Configuration Principles forbids. The
+    model arrives with the request (gateway-resolved from the tenant's own
+    ``AiModel`` / ``AiTaskDefault``); this field is retained only as
+    informational metadata for the ``/providers`` listing.
+    """
+
+    # Init > host env > secrets_dir (Vault Agent) > .env.<NODE_ENV> > default.
+    settings_customise_sources = hope_settings_sources
+
+    model_config = SettingsConfigDict(env_prefix="TEXT_OLLAMA_")
+
+    base_url: str = "http://localhost:11434"
+    default_model: str = ""
+    # Bootstrap fallback; runtime value comes from the control plane
+    # (effective-config). Applies to `timeout_s` and `max_concurrent` below.
+    timeout_s: int = 300
+    max_concurrent: int = 4
+    queue_backoff_s: float = 2.0
 
 
 class AzureOpenAIConfig(BaseSettings):
@@ -117,8 +149,8 @@ class OpenAICompatConfig(BaseSettings):
     # `google/gemma-4-e4b-qat`), so anything reaching this default got a 400
     # "Failed to load model". The same missing `-qat` reached the AiModel
     # catalogue and broke `harness.judge`.
-    # Set to the model the SYSTEM AiTaskDefault actually selects for smr.live /
-    # smr.finalize, and the one pre-loaded on the dev host. Verified served:
+    # Set to the model the SYSTEM AiTaskDefault actually selects for text.live /
+    # text.finalize, and the one pre-loaded on the dev host. Verified served:
     # `curl http://<lmstudio>:1234/v1/models`.
     default_model: str = "gemma-4-e2b-it-qat"
     # Bootstrap fallbacks; runtime values come from the control plane.
@@ -267,7 +299,7 @@ class VertexConfig(BaseSettings):
 class SarvamConfig(BaseSettings):
     """Sarvam AI translation provider configuration — BYOK-ONLY.
 
-    SMR's ``translate`` capability routes to Sarvam's REST ``/translate``
+    Text's ``translate`` capability routes to Sarvam's REST ``/translate``
     endpoint. Sarvam is BYOK-only: the api_key NEVER comes from env — it always
     arrives per request as a ``ProviderOverride`` (the gateway resolves it from
     the tenant/super-admin provider-connection). This config therefore carries
@@ -288,7 +320,8 @@ class TeiEmbedConfig(BaseSettings):
     """`tei-embed` (HuggingFace text-embeddings-inference) provider configuration.
 
     Local, self-hosted embedding engine — same "always available, no ENABLE
-    flag" convention as the other local engines (LM Studio/vLLM/llama.cpp):
+    flag" convention as the other local engines (Ollama/LM Studio/vLLM/
+    llama.cpp):
     a topology-level default `base_url` is always present, so
     `_register_provider_factories` (`main.py`) registers it unconditionally
     (TASK-725 §2.7: `text` has no embedding capability today; this is net
@@ -382,6 +415,32 @@ class JudgeConfig(BaseSettings):
     timeout_s: int = 60
     failure_threshold: int = 5
     recovery_timeout_s: float = 30.0
+
+
+class InternalAccessConfig(BaseSettings):
+    """THE canonical internal service credential (owner decision D-D, 2026-08-17).
+
+    ONE shared access token for ALL internal service-to-service communication,
+    identical across every HOPE service, set by the DevOps engineer, internal use
+    only. It is what this service ACCEPTS as inbound ``X-Service-Token`` and what
+    it PRESENTS on every outbound peer call.
+
+    Unprefixed on purpose: it belongs to no single service. ``Settings`` applies
+    ``env_prefix="TEXT_"`` with ``env_prefix_target="all"``, which would turn a
+    root-level field into ``TEXT_INTERNAL_ACCESS_TOKEN`` — a name nothing else
+    reads — so this nested config carries no prefix of its own, exactly like
+    :class:`TelemetryPhiGuardConfig` above.
+
+    The legacy ``TEXT_SERVICE_TOKEN`` / ``TEXT_EXTERNAL_GUARDRAIL_SERVICE_TOKEN``
+    remain accepted as a zero-cost backward-compatibility fallback; they are not a
+    second design and are expected to be dropped once this one value is deployed.
+    """
+
+    settings_customise_sources = hope_settings_sources
+
+    model_config = SettingsConfigDict(populate_by_name=True)
+
+    token: SecretStr = Field(default=SecretStr(""), validation_alias="INTERNAL_ACCESS_TOKEN")
 
 
 class TelemetryPhiGuardConfig(BaseSettings):
@@ -508,10 +567,38 @@ class Settings(BaseSettings):
         default=False, validation_alias=AliasChoices("CORS_ENABLED", "V2_CORS_ENABLED")
     )
 
-    # Inter-service authentication (empty = auth disabled for local dev)
+    # LEGACY per-service inter-service credential (empty = auth disabled for local
+    # dev). Superseded by the shared `INTERNAL_ACCESS_TOKEN` (owner decision D-D);
+    # still ACCEPTED inbound and used as the outbound fallback so an environment
+    # that has not migrated yet keeps working.
     service_token: SecretStr = Field(
         default=SecretStr(""), validation_alias=AliasChoices("SERVICE_TOKEN", "V2_SERVICE_TOKEN")
     )
+
+    @property
+    def internal_access_token(self) -> SecretStr:
+        """The CANONICAL shared internal credential (``INTERNAL_ACCESS_TOKEN``)."""
+        return self.internal_access.token
+
+    @property
+    def accepted_service_tokens(self) -> tuple[str, ...]:
+        """Every token accepted as inbound ``X-Service-Token``, shared-first.
+
+        Empty tuple ⇒ auth is bypassed (local dev / hermetic CI), which is the
+        pre-existing behaviour when no token is configured at all.
+        """
+        return tuple(
+            t
+            for t in (
+                self.internal_access_token.get_secret_value(),
+                self.service_token.get_secret_value(),
+            )
+            if t
+        )
+
+    def peer_service_token(self, legacy: SecretStr) -> str:
+        """Token to PRESENT on an outbound peer call: shared first, legacy fallback."""
+        return self.internal_access_token.get_secret_value() or legacy.get_secret_value()
 
     # Where the control plane lives. This is BOOTSTRAP TRANSPORT (the
     # address of the config source), NOT config authority: service-level knobs
@@ -576,6 +663,7 @@ class Settings(BaseSettings):
     )
 
     # Sub-configs (loaded from their own env prefixes)
+    ollama: OllamaConfig = Field(default_factory=OllamaConfig)
     azure: AzureOpenAIConfig = Field(default_factory=AzureOpenAIConfig)
     bedrock: BedrockConfig = Field(default_factory=BedrockConfig)
     openai: OpenAIConfig = Field(default_factory=OpenAIConfig)
@@ -587,6 +675,8 @@ class Settings(BaseSettings):
     sarvam: SarvamConfig = Field(default_factory=SarvamConfig)
     tei_embed: TeiEmbedConfig = Field(default_factory=TeiEmbedConfig)
     external_guardrail: ExternalGuardrailConfig = Field(default_factory=ExternalGuardrailConfig)
+    # THE canonical internal credential — see `InternalAccessConfig` (owner decision D-D).
+    internal_access: InternalAccessConfig = Field(default_factory=InternalAccessConfig)
     # Raises at construction time (propagates out of
     # `Settings()` -> `get_settings()` -> `create_app()`) when NODE_ENV=production
     # and OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT is not pinned.
@@ -609,7 +699,7 @@ class Settings(BaseSettings):
     )
 
     # Model retention hint forwarded to SERVER-MANAGED engines
-    # (LM Studio `ttl`). SMR holds no weights of its own, so
+    # (Ollama `keep_alive`, LM Studio `ttl`). Text holds no weights of its own, so
     # this is propagation, not a cache.
     #
     # BOOTSTRAP FALLBACK ONLY — the runtime value comes from the control plane

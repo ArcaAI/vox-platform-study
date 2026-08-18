@@ -5,7 +5,7 @@ import {
   AudioConfigSchema,
   SttConfigSchema,
   UiConfigSchema,
-  SmrConfigSchema,
+  TextConfigSchema,
   FeatureFlagsSchema,
   SYSTEM_DEFAULTS,
   CONFIG_PERMISSIONS,
@@ -21,7 +21,7 @@ describe('ConfigSchema', () => {
       expect(SYSTEM_DEFAULTS).toHaveProperty('audio');
       expect(SYSTEM_DEFAULTS).toHaveProperty('stt');
       expect(SYSTEM_DEFAULTS).toHaveProperty('ui');
-      expect(SYSTEM_DEFAULTS).toHaveProperty('smr');
+      expect(SYSTEM_DEFAULTS).toHaveProperty('text');
       expect(SYSTEM_DEFAULTS).toHaveProperty('features');
     });
 
@@ -137,8 +137,8 @@ describe('ConfigSchema', () => {
         'ui.theme',
         'ui.density',
         'ui.language',
-        'smr.provider',
-        'smr.model',
+        'text.provider',
+        'text.model',
         'features.realTimeTranscription',
         'features.nerExtraction',
         'features.dnaStyle',

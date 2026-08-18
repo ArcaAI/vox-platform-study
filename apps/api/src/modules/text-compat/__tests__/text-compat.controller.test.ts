@@ -64,7 +64,7 @@ const sseEventData = (res: ReturnType<typeof createMockRes>, event: string): unk
 };
 
 /** Build one SMR SSE frame the way `apps/text` emits it. */
-const smrFrame = (type: string, extra: Record<string, unknown> = {}): string => `event: ${type}\ndata: ${JSON.stringify({ type, ...extra })}\n\n`;
+const textFrame = (type: string, extra: Record<string, unknown> = {}): string => `event: ${type}\ndata: ${JSON.stringify({ type, ...extra })}\n\n`;
 
 /** Let the mocked stream's buffered `data`/`end` events flush to the handler. */
 const flushStream = () => new Promise((r) => setImmediate(r));
@@ -82,9 +82,9 @@ const createMockSecrets = () => ({
   getSecretSync: vi.fn((key: string) => (key === 'TEXT_SERVICE_TOKEN' ? 'svc-token-123' : undefined)),
 });
 const createMockHarnessPolicy = () => ({
-  resolveSmrSelection: vi.fn(async () => ({ provider: 'lm-studio', model: 'gemma-4' })),
+  resolveTextSelection: vi.fn(async () => ({ provider: 'lm-studio', model: 'gemma-4' })),
   // Per-tenant fallback resolver (fail-open — null = no fallback configured).
-  resolveSmrFallbackSelection: vi.fn(async (): Promise<{ provider: string; model: string } | null> => null),
+  resolveTextFallbackSelection: vi.fn(async (): Promise<{ provider: string; model: string } | null> => null),
 });
 
 // Department→governed-template resolver. Default returns undefined
@@ -269,7 +269,7 @@ describe('TextCompatController', () => {
 
       await invokeSummary(syncRequest(), { apiKey: { tenantId: 'tenant-from-key' } } as any);
 
-      expect(policy.resolveSmrSelection).toHaveBeenCalledWith('tenant-from-key');
+      expect(policy.resolveTextSelection).toHaveBeenCalledWith('tenant-from-key');
     });
 
     // The default path now assembles through `buildV1SummaryPrompt`, so the
@@ -412,9 +412,9 @@ describe('TextCompatController', () => {
       expect(translateCall![1].texts).toEqual(['What brings you in?', 'Chest tightness.']);
       expect(translateCall![1].provider).toBe('sarvam');
       expect(translateCall![1].provider_overrides.sarvam.api_key).toBe('byok');
-      const smrCall = calls.find((c: unknown[]) => String(c[0]).includes('/api/v1/generate'));
-      expect(smrCall![1].prompt).toContain('EN:What brings you in?');
-      expect(smrCall![1].prompt).toContain('EN:Chest tightness.');
+      const textCall = calls.find((c: unknown[]) => String(c[0]).includes('/api/v1/generate'));
+      expect(textCall![1].prompt).toContain('EN:What brings you in?');
+      expect(textCall![1].prompt).toContain('EN:Chest tightness.');
     });
 
     // Sarvam stays enabled, but its output is no longer the only text
@@ -442,13 +442,13 @@ describe('TextCompatController', () => {
 
       await ctrl.summarySync(syncRequest({ translate_to_english: true }), {} as never, createMockRes() as never);
 
-      const smrCall = httpLocal.axiosRef.post.mock.calls.find((c: unknown[]) => String(c[0]).includes('/api/v1/generate'));
+      const textCall = httpLocal.axiosRef.post.mock.calls.find((c: unknown[]) => String(c[0]).includes('/api/v1/generate'));
       // The translation is what the note is written from...
-      expect(smrCall![1].prompt).toContain('EN:What brings you in?');
+      expect(textCall![1].prompt).toContain('EN:What brings you in?');
       // ...and the speaker's own words travel with it, marked as such.
-      expect(smrCall![1].prompt).toContain('(original, untranslated): What brings you in?');
+      expect(textCall![1].prompt).toContain('(original, untranslated): What brings you in?');
       // The system prompt must tell the model which line wins on a conflict.
-      expect(smrCall![1].system_prompt).toMatch(/take the value from the original line/i);
+      expect(textCall![1].system_prompt).toMatch(/take the value from the original line/i);
     });
 
     // DNA writing style on the API-KEY path. CLS `tenantId` is empty
@@ -477,8 +477,8 @@ describe('TextCompatController', () => {
       // The tenant reached the resolver instead of being re-derived from an empty CLS...
       expect(dna.getEffectiveStyleText).toHaveBeenCalledWith('doc-9', 'tenant-1');
       // ...and the style actually landed in the prompt the model sees.
-      const smrCall = httpLocal.axiosRef.post.mock.calls.find((c: unknown[]) => String(c[0]).includes('/api/v1/generate'));
-      expect(smrCall![1].system_prompt).toContain('Terse, active voice, no abbreviations.');
+      const textCall = httpLocal.axiosRef.post.mock.calls.find((c: unknown[]) => String(c[0]).includes('/api/v1/generate'));
+      expect(textCall![1].system_prompt).toContain('Terse, active voice, no abbreviations.');
     });
 
     // An English consultation never reaches the translate step, so nothing about
@@ -501,9 +501,9 @@ describe('TextCompatController', () => {
 
       const calls = httpLocal.axiosRef.post.mock.calls;
       expect(calls.some((c: unknown[]) => String(c[0]).includes('/api/v1/translate'))).toBe(false);
-      const smrCall = calls.find((c: unknown[]) => String(c[0]).includes('/api/v1/generate'));
-      expect(smrCall![1].prompt).not.toContain('(original');
-      expect(smrCall![1].system_prompt).not.toContain('machine translation');
+      const textCall = calls.find((c: unknown[]) => String(c[0]).includes('/api/v1/generate'));
+      expect(textCall![1].prompt).not.toContain('(original');
+      expect(textCall![1].system_prompt).not.toContain('machine translation');
     });
 
     // (owner decision 2026-08-10): Sarvam fires for ANY non-English
@@ -555,8 +555,8 @@ describe('TextCompatController', () => {
       // fidelity, it is not what guarantees the output language. Under the v1
       // assembly the requirement rides v1's OWN `{conversation_language}`
       // placeholder rather than a separate appended directive.
-      const smrCall = httpLocal.axiosRef.post.mock.calls.find((c: unknown[]) => String(c[0]).includes('/api/v1/generate'));
-      expect(smrCall![1].prompt).toContain('Use the English for all values');
+      const textCall = httpLocal.axiosRef.post.mock.calls.find((c: unknown[]) => String(c[0]).includes('/api/v1/generate'));
+      expect(textCall![1].prompt).toContain('Use the English for all values');
     });
 
     it('forces the summary OUTPUT language to English when the transcript is translated (AC: EN summary from a non-English transcript)', async () => {
@@ -600,17 +600,17 @@ describe('TextCompatController', () => {
       const res = createMockRes();
       await ctrl.summarySync(mlBody, {} as never, res as never);
 
-      const smrCall = httpLocal.axiosRef.post.mock.calls.find((c: unknown[]) => String(c[0]).includes('/api/v1/generate'));
-      expect(smrCall![1].prompt).toContain('EN:ചോദ്യം'); // transcript translated
+      const textCall = httpLocal.axiosRef.post.mock.calls.find((c: unknown[]) => String(c[0]).includes('/api/v1/generate'));
+      expect(textCall![1].prompt).toContain('EN:ചോദ്യം'); // transcript translated
       // Survives the v1 assembly: rather than appending a directive
       // that competes with the department template's own "content in
       // conversation language" clause, `{conversation_language}` — the very
       // token that clause defers to — is substituted with English, so v1's own
       // monolingual-policy lines carry the requirement.
-      expect(smrCall![1].prompt).toContain('CONVERSATION LANGUAGE:\nEnglish');
-      expect(smrCall![1].prompt).toContain('Use the English for all values');
-      expect(smrCall![1].prompt).not.toContain('Malayalam');
-      expect(smrCall![1].system_prompt).not.toContain('Malayalam');
+      expect(textCall![1].prompt).toContain('CONVERSATION LANGUAGE:\nEnglish');
+      expect(textCall![1].prompt).toContain('Use the English for all values');
+      expect(textCall![1].prompt).not.toContain('Malayalam');
+      expect(textCall![1].system_prompt).not.toContain('Malayalam');
     });
 
     it('falls back to the ORIGINAL transcript when translation fails (fail-open)', async () => {
@@ -634,8 +634,8 @@ describe('TextCompatController', () => {
       const res = createMockRes();
       await ctrl.summarySync(syncRequest({ translate_to_english: true }), {} as never, res as never);
 
-      const smrCall = httpLocal.axiosRef.post.mock.calls.find((c: unknown[]) => String(c[0]).includes('/api/v1/generate'));
-      expect(smrCall![1].prompt).toContain('What brings you in?'); // original, untranslated
+      const textCall = httpLocal.axiosRef.post.mock.calls.find((c: unknown[]) => String(c[0]).includes('/api/v1/generate'));
+      expect(textCall![1].prompt).toContain('What brings you in?'); // original, untranslated
       expect(res.jsonBody).toBeTruthy(); // summary still produced
     });
 
@@ -745,13 +745,13 @@ describe('TextCompatController', () => {
 
     // (a) primary fails + resolver returns a target → ONE retry on that provider/model.
     it('retries ONCE on the tenant-configured fallback provider/model on an upstream LLM error', async () => {
-      policy.resolveSmrFallbackSelection.mockResolvedValue({ provider: 'azure-openai', model: 'gpt-4o-foundry' });
+      policy.resolveTextFallbackSelection.mockResolvedValue({ provider: 'azure-openai', model: 'gpt-4o-foundry' });
       http.axiosRef.post.mockRejectedValueOnce({ response: { status: 500, data: 'llm boom' } }).mockResolvedValueOnce({ data: { content: good } });
 
       const res = await invokeSummary(syncRequest());
 
       // Resolver consulted with the CLS tenant + the finalize task.
-      expect(policy.resolveSmrFallbackSelection).toHaveBeenCalledWith('tenant-1', 'finalize');
+      expect(policy.resolveTextFallbackSelection).toHaveBeenCalledWith('tenant-1', 'finalize');
       expect(http.axiosRef.post).toHaveBeenCalledTimes(2);
       const [, fbBody] = http.axiosRef.post.mock.calls[1];
       expect(fbBody.provider).toBe('azure-openai');
@@ -763,7 +763,7 @@ describe('TextCompatController', () => {
     });
 
     it('retries on the tenant fallback when the primary content is unparseable', async () => {
-      policy.resolveSmrFallbackSelection.mockResolvedValue({ provider: 'azure-openai', model: 'gpt-4o-foundry' });
+      policy.resolveTextFallbackSelection.mockResolvedValue({ provider: 'azure-openai', model: 'gpt-4o-foundry' });
       http.axiosRef.post.mockResolvedValueOnce({ data: { content: 'not json' } }).mockResolvedValueOnce({ data: { content: good } });
 
       const res = await invokeSummary(syncRequest());
@@ -774,17 +774,17 @@ describe('TextCompatController', () => {
 
     it('resolves the fallback tenant from the authenticated API key when CLS has no tenant', async () => {
       cls.get.mockImplementation((key: string) => (key === 'tenantId' ? undefined : undefined));
-      policy.resolveSmrFallbackSelection.mockResolvedValue({ provider: 'azure-openai', model: 'gpt-4o-foundry' });
+      policy.resolveTextFallbackSelection.mockResolvedValue({ provider: 'azure-openai', model: 'gpt-4o-foundry' });
       http.axiosRef.post.mockRejectedValueOnce({ response: { status: 500 } }).mockResolvedValueOnce({ data: { content: good } });
 
       await invokeSummary(syncRequest(), { apiKey: { tenantId: 'tenant-from-key' } } as any);
 
-      expect(policy.resolveSmrFallbackSelection).toHaveBeenCalledWith('tenant-from-key', 'finalize');
+      expect(policy.resolveTextFallbackSelection).toHaveBeenCalledWith('tenant-from-key', 'finalize');
     });
 
     // (b) primary fails + resolver returns null → NO retry, original error surfaced.
     it('does not retry when the tenant has no fallback configured (resolver returns null)', async () => {
-      policy.resolveSmrFallbackSelection.mockResolvedValue(null);
+      policy.resolveTextFallbackSelection.mockResolvedValue(null);
       http.axiosRef.post.mockRejectedValue({ response: { status: 500 } });
 
       await expect(invokeSummary(syncRequest())).rejects.toBeInstanceOf(HttpException);
@@ -793,7 +793,7 @@ describe('TextCompatController', () => {
 
     // (c) resolver target + fallback ALSO fails → surface the ORIGINAL primary error.
     it('surfaces the ORIGINAL primary error when the tenant fallback also fails', async () => {
-      policy.resolveSmrFallbackSelection.mockResolvedValue({ provider: 'azure-openai', model: 'gpt-4o-foundry' });
+      policy.resolveTextFallbackSelection.mockResolvedValue({ provider: 'azure-openai', model: 'gpt-4o-foundry' });
       http.axiosRef.post
         .mockRejectedValueOnce({ response: { status: 502, data: 'primary' } })
         .mockRejectedValueOnce({ response: { status: 500, data: 'fallback' } });
@@ -811,18 +811,18 @@ describe('TextCompatController', () => {
 
     // (d) connect-phase primary failure → resolver NOT consulted, no retry.
     it('does not consult the resolver or fall back when SMR is unreachable (connect-phase failure)', async () => {
-      policy.resolveSmrFallbackSelection.mockResolvedValue({ provider: 'azure-openai', model: 'gpt-4o-foundry' });
+      policy.resolveTextFallbackSelection.mockResolvedValue({ provider: 'azure-openai', model: 'gpt-4o-foundry' });
       http.axiosRef.post.mockRejectedValue({ code: 'ECONNREFUSED' });
 
       await expect(invokeSummary(syncRequest())).rejects.toBeInstanceOf(HttpException);
-      expect(policy.resolveSmrFallbackSelection).not.toHaveBeenCalled();
+      expect(policy.resolveTextFallbackSelection).not.toHaveBeenCalled();
       const fbCalls = http.axiosRef.post.mock.calls.filter(([, body]) => body.provider === 'azure-openai');
       expect(fbCalls).toHaveLength(0);
     });
 
     it('does not fall back to itself when the primary provider already is the fallback provider', async () => {
-      policy.resolveSmrSelection.mockResolvedValue({ provider: 'azure-openai', model: 'gpt-4o-foundry' });
-      policy.resolveSmrFallbackSelection.mockResolvedValue({ provider: 'azure-openai', model: 'gpt-4o-other' });
+      policy.resolveTextSelection.mockResolvedValue({ provider: 'azure-openai', model: 'gpt-4o-foundry' });
+      policy.resolveTextFallbackSelection.mockResolvedValue({ provider: 'azure-openai', model: 'gpt-4o-other' });
       http.axiosRef.post.mockRejectedValue({ response: { status: 500 } });
 
       await expect(invokeSummary(syncRequest())).rejects.toBeInstanceOf(HttpException);
@@ -904,25 +904,25 @@ describe('TextCompatController', () => {
     });
 
     it('pre-summary retries the tenant fallback provider on a provider-side failure (parity with summary)', async () => {
-      policy.resolveSmrFallbackSelection.mockResolvedValue({ provider: 'azure-openai', model: 'gpt-4o-foundry' });
+      policy.resolveTextFallbackSelection.mockResolvedValue({ provider: 'azure-openai', model: 'gpt-4o-foundry' });
       http.axiosRef.post
         .mockRejectedValueOnce({ response: { status: 500 } }) // primary provider error
         .mockResolvedValueOnce({ data: { content: '**Confirmed & Provisional Diagnoses**\n- HTN' } }); // fallback ok
 
       const res = await invokePresummary({ current_department: 'Cardiology' } as PreSummaryRequest);
 
-      expect(policy.resolveSmrFallbackSelection).toHaveBeenCalledWith('tenant-1', 'finalize');
+      expect(policy.resolveTextFallbackSelection).toHaveBeenCalledWith('tenant-1', 'finalize');
       expect(http.axiosRef.post).toHaveBeenCalledTimes(2);
       expect(http.axiosRef.post.mock.calls[1][1].provider).toBe('azure-openai');
       expect(res.pre_summary).toContain('HTN');
     });
 
     it('pre-summary does not fall back when SMR is unreachable (connect-phase failure)', async () => {
-      policy.resolveSmrFallbackSelection.mockResolvedValue({ provider: 'azure-openai', model: 'gpt-4o-foundry' });
+      policy.resolveTextFallbackSelection.mockResolvedValue({ provider: 'azure-openai', model: 'gpt-4o-foundry' });
       http.axiosRef.post.mockRejectedValue({ code: 'ECONNREFUSED' });
 
       await expect(invokePresummary({ current_department: 'Cardiology' } as PreSummaryRequest)).rejects.toBeInstanceOf(HttpException);
-      expect(policy.resolveSmrFallbackSelection).not.toHaveBeenCalled();
+      expect(policy.resolveTextFallbackSelection).not.toHaveBeenCalled();
     });
   });
 
@@ -935,37 +935,37 @@ describe('TextCompatController', () => {
     it('rejects summary/sync with UnauthorizedException and makes NO SMR call when no tenant resolves', async () => {
       await expect(invokeSummary(syncRequest())).rejects.toBeInstanceOf(UnauthorizedException);
       expect(http.axiosRef.post).not.toHaveBeenCalled();
-      expect(policy.resolveSmrSelection).not.toHaveBeenCalled();
+      expect(policy.resolveTextSelection).not.toHaveBeenCalled();
     });
 
     it('rejects presummary with UnauthorizedException and makes NO SMR call when no tenant resolves', async () => {
       await expect(invokePresummary({ current_department: 'Cardiology' } as PreSummaryRequest)).rejects.toBeInstanceOf(UnauthorizedException);
       expect(http.axiosRef.post).not.toHaveBeenCalled();
-      expect(policy.resolveSmrSelection).not.toHaveBeenCalled();
+      expect(policy.resolveTextSelection).not.toHaveBeenCalled();
     });
 
-    it('passes the resolved tenant (never undefined) to resolveSmrSelection', async () => {
+    it('passes the resolved tenant (never undefined) to resolveTextSelection', async () => {
       http.axiosRef.post.mockResolvedValue({ data: { content: JSON.stringify({ chief_complaint: 'x', summary: 'y' }) } });
       await invokeSummary(syncRequest(), { apiKey: { tenantId: 'tenant-xyz' } });
-      expect(policy.resolveSmrSelection).toHaveBeenCalledWith('tenant-xyz');
-      expect(policy.resolveSmrSelection).not.toHaveBeenCalledWith(undefined);
+      expect(policy.resolveTextSelection).toHaveBeenCalledWith('tenant-xyz');
+      expect(policy.resolveTextSelection).not.toHaveBeenCalledWith(undefined);
     });
   });
 
   describe('Streaming (stream:true)', () => {
     // Drive a summary stream: primary START ok → task_id, then feed SMR frames.
     const runSummaryStream = async (frames: string[]) => {
-      const smrStream = new PassThrough();
+      const textStream = new PassThrough();
       http.axiosRef.post.mockResolvedValue({ data: { task_id: 't1', status: 'streaming' } });
-      http.axiosRef.get.mockResolvedValue({ data: smrStream });
+      http.axiosRef.get.mockResolvedValue({ data: textStream });
       const res = createMockRes();
       // The handler now awaits the stream to completion (required so the
       // pre-content fallback can observe the outcome), so the frames must be
       // written WHILE it is pending — PassThrough buffers them until the pump
       // attaches its reader.
       const done = controller.summarySync(syncRequest({ stream: true }), {} as never, res as never);
-      for (const f of frames) smrStream.write(f);
-      smrStream.end();
+      for (const f of frames) textStream.write(f);
+      textStream.end();
       await done;
       await flushStream();
       return res;
@@ -973,9 +973,9 @@ describe('TextCompatController', () => {
 
     it('sets text/event-stream headers, forwards each chunk as a delta, and emits a terminal result', async () => {
       const res = await runSummaryStream([
-        smrFrame('chunk', { content: '{"chief_complaint":"x",' }),
-        smrFrame('chunk', { content: '"summary":"y"}' }),
-        smrFrame('done'),
+        textFrame('chunk', { content: '{"chief_complaint":"x",' }),
+        textFrame('chunk', { content: '"summary":"y"}' }),
+        textFrame('done'),
       ]);
 
       expect(res.headers['Content-Type']).toBe('text/event-stream');
@@ -998,15 +998,15 @@ describe('TextCompatController', () => {
     });
 
     it('presummary stream:true emits markdown deltas and a terminal 5-section PreSummaryResponse', async () => {
-      const smrStream = new PassThrough();
+      const textStream = new PassThrough();
       http.axiosRef.post.mockResolvedValue({ data: { task_id: 't2' } });
-      http.axiosRef.get.mockResolvedValue({ data: smrStream });
+      http.axiosRef.get.mockResolvedValue({ data: textStream });
       const res = createMockRes();
 
       const done = controller.presummary({ current_department: 'Cardiology', stream: true } as PreSummaryRequest, {} as never, res as never);
-      smrStream.write(smrFrame('chunk', { content: '**Confirmed & Provisional Diagnoses**\n- Hypertension' }));
-      smrStream.write(smrFrame('done'));
-      smrStream.end();
+      textStream.write(textFrame('chunk', { content: '**Confirmed & Provisional Diagnoses**\n- Hypertension' }));
+      textStream.write(textFrame('done'));
+      textStream.end();
       await done;
       await flushStream();
 
@@ -1018,22 +1018,22 @@ describe('TextCompatController', () => {
     });
 
     it('retries the tenant fallback provider on a stream START failure, then streams from it', async () => {
-      policy.resolveSmrFallbackSelection.mockResolvedValue({ provider: 'azure-openai', model: 'gpt-4o-foundry' });
-      const smrStream = new PassThrough();
+      policy.resolveTextFallbackSelection.mockResolvedValue({ provider: 'azure-openai', model: 'gpt-4o-foundry' });
+      const textStream = new PassThrough();
       http.axiosRef.post
         .mockRejectedValueOnce({ response: { status: 500 } }) // primary START (before any bytes)
         .mockResolvedValueOnce({ data: { task_id: 't3' } }); // fallback START ok
-      http.axiosRef.get.mockResolvedValue({ data: smrStream });
+      http.axiosRef.get.mockResolvedValue({ data: textStream });
       const res = createMockRes();
 
       const done = controller.summarySync(syncRequest({ stream: true }), {} as never, res as never);
-      smrStream.write(smrFrame('chunk', { content: '{"chief_complaint":"x","summary":"y"}' }));
-      smrStream.write(smrFrame('done'));
-      smrStream.end();
+      textStream.write(textFrame('chunk', { content: '{"chief_complaint":"x","summary":"y"}' }));
+      textStream.write(textFrame('done'));
+      textStream.end();
       await done;
       await flushStream();
 
-      expect(policy.resolveSmrFallbackSelection).toHaveBeenCalledWith('tenant-1', 'finalize');
+      expect(policy.resolveTextFallbackSelection).toHaveBeenCalledWith('tenant-1', 'finalize');
       const [, fbBody] = http.axiosRef.post.mock.calls[1];
       expect(fbBody.provider).toBe('azure-openai');
       expect(fbBody.stream).toBe(true);
@@ -1042,7 +1042,7 @@ describe('TextCompatController', () => {
     });
 
     it('emits a single error event (no task stream opened) when START fails with no fallback', async () => {
-      policy.resolveSmrFallbackSelection.mockResolvedValue(null);
+      policy.resolveTextFallbackSelection.mockResolvedValue(null);
       http.axiosRef.post.mockRejectedValue({ response: { status: 500 } });
       const res = createMockRes();
 
@@ -1059,8 +1059,8 @@ describe('TextCompatController', () => {
 
     it('surfaces a mid-stream SMR error frame as a PHI-redacted error event (no upstream content on the wire)', async () => {
       const res = await runSummaryStream([
-        smrFrame('chunk', { content: '{"partial":' }),
-        smrFrame('error', { content: 'SECRET_PHI_LEAK', data: { note: 'SECRET_PHI_LEAK' } }),
+        textFrame('chunk', { content: '{"partial":' }),
+        textFrame('error', { content: 'SECRET_PHI_LEAK', data: { note: 'SECRET_PHI_LEAK' } }),
       ]);
 
       const out = written(res);
@@ -1071,9 +1071,9 @@ describe('TextCompatController', () => {
 
     it('forwards SMR reasoning frames to the client as a separate `reasoning` event, never mixed into the result', async () => {
       const res = await runSummaryStream([
-        smrFrame('reasoning', { content: 'Weighing the differential…' }),
-        smrFrame('chunk', { content: '{"chief_complaint":"x","summary":"y"}' }),
-        smrFrame('done'),
+        textFrame('reasoning', { content: 'Weighing the differential…' }),
+        textFrame('chunk', { content: '{"chief_complaint":"x","summary":"y"}' }),
+        textFrame('done'),
       ]);
 
       expect(written(res)).toContain('event: reasoning');
@@ -1166,15 +1166,15 @@ describe('TextCompatController', () => {
 
       it('logs on the STREAMING path too', async () => {
         const body = { ...populated(), stream: true } as PreSummaryRequest;
-        const smrStream = new PassThrough();
+        const textStream = new PassThrough();
         http.axiosRef.post.mockResolvedValue({ data: { task_id: 't-log' } });
-        http.axiosRef.get.mockResolvedValue({ data: smrStream });
+        http.axiosRef.get.mockResolvedValue({ data: textStream });
         const res = createMockRes();
 
         const done = controller.presummary(body, {} as never, res as never);
-        smrStream.write(smrFrame('chunk', { content: '**Confirmed & Provisional Diagnoses**\n- HTN' }));
-        smrStream.write(smrFrame('done'));
-        smrStream.end();
+        textStream.write(textFrame('chunk', { content: '**Confirmed & Provisional Diagnoses**\n- HTN' }));
+        textStream.write(textFrame('done'));
+        textStream.end();
         await done;
         await flushStream();
 
@@ -1291,15 +1291,15 @@ describe('TextCompatController', () => {
 
       it('logs on the STREAMING path too', async () => {
         const body = { ...populated(), stream: true } as SyncSummaryRequest;
-        const smrStream = new PassThrough();
+        const textStream = new PassThrough();
         http.axiosRef.post.mockResolvedValue({ data: { task_id: 't-log-summary' } });
-        http.axiosRef.get.mockResolvedValue({ data: smrStream });
+        http.axiosRef.get.mockResolvedValue({ data: textStream });
         const res = createMockRes();
 
         const done = controller.summarySync(body, {} as never, res as never);
-        smrStream.write(smrFrame('chunk', { content: '{"chief_complaint":"x","summary":"y"}' }));
-        smrStream.write(smrFrame('done'));
-        smrStream.end();
+        textStream.write(textFrame('chunk', { content: '{"chief_complaint":"x","summary":"y"}' }));
+        textStream.write(textFrame('done'));
+        textStream.end();
         await done;
         await flushStream();
 

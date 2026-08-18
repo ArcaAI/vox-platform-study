@@ -1,4 +1,4 @@
-"""Apply control-plane limits to SMR's live runtime state.
+"""Apply control-plane limits to Text's live runtime state.
 
 The bridge between the effective-config pull client and the objects the request
 path actually uses: per-provider concurrency semaphores and request timeouts.
@@ -7,7 +7,7 @@ Two invariants:
   * **Env fallback is the floor.** A provider absent from the snapshot, or
     carrying a null/invalid value, keeps whatever its env/pydantic config set.
     A down gateway therefore leaves the service byte-identical to today.
-  * **Selection stays out.** Only capacity and timeout are applied. SMR does not
+  * **Selection stays out.** Only capacity and timeout are applied. Text does not
     select a provider or model (`core/config.py` module docstring) — any
     selection-shaped field in the payload is deliberately inert here.
 """
@@ -76,7 +76,7 @@ def apply_provider_retention(snapshot: EffectiveConfigSnapshot, registry: Any) -
             apply(retention)
         except Exception as exc:  # noqa: BLE001 — never break a request path
             logger.warning(
-                "smr.effective_config.retention_apply_error",
+                "text.effective_config.retention_apply_error",
                 provider=name,
                 error=str(exc),
                 error_type=type(exc).__name__,
@@ -92,12 +92,12 @@ def _resize(provider: str, semaphore: ResizableSemaphore, limit: int) -> None:
     except ValueError:
         # A nonsensical served value must never take a provider offline.
         logger.warning(
-            "smr.effective_config.invalid_max_concurrent", provider=provider, value=limit
+            "text.effective_config.invalid_max_concurrent", provider=provider, value=limit
         )
         return
 
     logger.info(
-        "smr.effective_config.semaphore_resized",
+        "text.effective_config.semaphore_resized",
         provider=provider,
         previous=previous,
         current=limit,
@@ -135,5 +135,5 @@ async def refresh_runtime_limits(state: Any) -> None:
             apply_provider_retention(snapshot, registry)
     except Exception as exc:  # noqa: BLE001 — a config refresh may never break a request
         logger.warning(
-            "smr.effective_config.apply_error", error=str(exc), error_type=type(exc).__name__
+            "text.effective_config.apply_error", error=str(exc), error_type=type(exc).__name__
         )

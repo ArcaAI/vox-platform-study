@@ -11,6 +11,19 @@ import pytest_asyncio
 _FIXTURES_DIR = Path(__file__).parent / "fixtures"
 
 
+def _service_auth_headers(app) -> dict[str, str]:
+    """Present the shared internal token when the app is configured to want one.
+
+    These suites drive the real ASGI app in-process, so they go through
+    `ServiceAuthMiddleware` like any other caller. With no token configured
+    (the normal local/CI case) this is empty and the dev bypass applies; a
+    developer who exports `INTERNAL_ACCESS_TOKEN` gets a client that
+    authenticates instead of a suite that 401s.
+    """
+    accepted = app.state.settings.accepted_service_tokens
+    return {"X-Service-Token": accepted[0]} if accepted else {}
+
+
 @pytest.fixture(scope="session")
 def event_loop() -> Generator[asyncio.AbstractEventLoop, None, None]:
     """Create event loop for async tests."""
@@ -205,6 +218,7 @@ async def configured_app(postgres_container, redis_container, minio_container):
     async with AsyncClient(
         transport=ASGITransport(app=app),
         base_url="http://test",
+        headers=_service_auth_headers(app),
     ) as client:
         yield client
 
@@ -352,6 +366,7 @@ async def real_audio_client():
     async with AsyncClient(
         transport=ASGITransport(app=app),
         base_url="http://test",
+        headers=_service_auth_headers(app),
         timeout=180.0,  # whisper-large-v3-turbo: ~14s MPS, ~60s CPU + model load
     ) as client:
         yield client

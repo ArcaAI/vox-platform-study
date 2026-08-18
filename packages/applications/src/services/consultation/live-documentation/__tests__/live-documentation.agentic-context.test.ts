@@ -54,7 +54,7 @@ function buildService(stored: Record<string, unknown> = {}, env: Record<string, 
   };
   const redisSubscriber = { subscribeToChannel: vi.fn(), unsubscribeFromChannel: vi.fn() };
   const configService = { get: vi.fn((key: string) => env[key]) };
-  const harnessPolicyService = { resolveSmrSelection: vi.fn().mockResolvedValue({ provider: 'lm-studio', model: 'm' }) };
+  const harnessPolicyService = { resolveTextSelection: vi.fn().mockResolvedValue({ provider: 'lm-studio', model: 'm' }) };
 
   // Mirrors the real facade: a stored value reports sourceScope 'global-kv';
   // otherwise the descriptor default under 'code-default'.

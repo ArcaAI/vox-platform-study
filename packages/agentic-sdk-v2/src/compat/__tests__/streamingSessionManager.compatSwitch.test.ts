@@ -7,7 +7,7 @@
  * though it exercises a core class, because `StreamingSessionManager.ts` is
  * one of the two core files Lane D owns exclusively. Verifies the hard
  * requirement of contract C3: with compat mode enabled, `switchProvider(...)`
- * POSTs the LITERAL `/api/stt/switch` shim (mirroring how `useSMR` derives its
+ * POSTs the LITERAL `/api/stt/switch` shim (mirroring how `useText` derives its
  * shim origin) with `target: 'pipeline' | 'default'`; with compat mode OFF
  * (the default — every native SDK consumer), each direction hits its native
  * route via `apiClient` — `SWITCH_TO_FALLBACK` for `'fallback'` and, since

@@ -2,7 +2,7 @@ import { BadRequestException, Controller, Get, Inject, Query } from '@nestjs/com
 import { ApiBearerAuth, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { ClsService } from 'nestjs-cls';
 import { BudgetBurndownResponse, IActiveUserContext, IUsageAnalyticsService, UsageSummaryResponse, periodOf } from '@arcaai/applications';
-import { Authorize } from '../../decorators';
+import { Authorize, ForbidApiKey } from '../../decorators';
 import { BudgetBurndownQuery, MyUsageSummaryQuery } from './dto';
 
 /**
@@ -16,6 +16,15 @@ import { BudgetBurndownQuery, MyUsageSummaryQuery } from './dto';
 @ApiBearerAuth()
 @ApiTags('usage')
 @Controller('usage')
+// TASK-742 API-KEY-NOTE — CONSERVATIVE DEFAULT, AWAITING OWNER CLASSIFICATION.
+// Reason: self-service usage reads.
+// This route family declared nothing about API-key access, which under the
+// deny-by-default rule is a boot failure. Rather than guess a scope (guessing
+// permissive is how the original gap was created), it is closed explicitly.
+// Reversing it is a one-line change to @RequiredScopes('<scope>') once the
+// owner confirms a real API-key use case — see the TASK-708 README's
+// "Reachability changes awaiting owner review" table.
+@ForbidApiKey()
 export class MyUsageController {
   constructor(
     @Inject(IUsageAnalyticsService) private readonly usageAnalytics: IUsageAnalyticsService,

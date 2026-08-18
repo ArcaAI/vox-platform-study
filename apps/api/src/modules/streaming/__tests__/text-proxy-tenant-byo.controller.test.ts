@@ -32,7 +32,7 @@ function build(
   const cls = { get: vi.fn((k: string) => (k === 'tenantId' ? 'tenant-abc' : undefined)), getId: vi.fn(() => 'req-1') };
   const config = { getConfigValue: vi.fn(() => 'http://localhost:8862') };
   const selection = {
-    resolveSmrSelection: vi.fn(async () => {
+    resolveTextSelection: vi.fn(async () => {
       if (opts.selectionThrows) throw new Error('no default model configured');
       return { provider: 'azure', model: 'gpt-4o-mini' };
     }),

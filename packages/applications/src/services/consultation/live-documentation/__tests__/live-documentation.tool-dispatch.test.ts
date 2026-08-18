@@ -80,7 +80,7 @@ function buildService(opts: { http: unknown; env?: Record<string, unknown>; reso
     redisSubscriber as never,
     undefined,
     undefined,
-    { resolveSmrSelection: vi.fn().mockResolvedValue({ provider: 'vllm', model: 'gemma' }) } as never,
+    { resolveTextSelection: vi.fn().mockResolvedValue({ provider: 'vllm', model: 'gemma' }) } as never,
     { encrypt: vi.fn(), decrypt: vi.fn(), getSecretOptional: vi.fn().mockResolvedValue('svc-token') } as never,
     undefined,
     undefined,

@@ -153,7 +153,7 @@ describe('CaseNoteColumn', () => {
     expect(screen.getByText('98%')).toBeTruthy();
   });
 
-  it('shows a degraded indicator and freezes the prior content when smrFailed is true (TASK-703)', () => {
+  it('shows a degraded indicator and freezes the prior content when textFailed is true (TASK-703)', () => {
     render(
       <CaseNoteColumn
         {...baseProps({
@@ -165,7 +165,7 @@ describe('CaseNoteColumn', () => {
             sections: [{ title: 'Subjective', content: 'Pt on amlodipine for HTN.' }],
             entities: [],
             updatedAt: 'now',
-            smrFailed: true,
+            textFailed: true,
           },
         })}
       />,

@@ -75,8 +75,8 @@ export const AsyncIdempotencyKey = {
   /** STT finalized segment: `stt:session:<sessionId>:seg:<utteranceIndex>`. */
   sttSegment: (sessionId: string, utteranceIndex: number): string => `stt:session:${requireId(sessionId, 'sessionId')}:seg:${utteranceIndex}`,
 
-  /** SMR stream chunk: `smr:task:<taskId>:chunk:<sequence>`. */
-  smrChunk: (taskId: string, sequence: number): string => `smr:task:${requireId(taskId, 'taskId')}:chunk:${sequence}`,
+  /** SMR stream chunk: `text:task:<taskId>:chunk:<sequence>`. */
+  textChunk: (taskId: string, sequence: number): string => `text:task:${requireId(taskId, 'taskId')}:chunk:${sequence}`,
 
   /** Workflow node completion (TASK-718): `wf:run:<runId>:node:<nodeId>:<attemptGeneration>`. */
   workflowNode: (runId: string, nodeId: string, attemptGeneration: number): string =>

@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Status** | Review |
+| **Status** | Completed (2026-08-17 — owner decision closed the v1 blocker; version policy pinned) |
 | **Wave** | 0 · **Size** | M |
 | **Epic slug** | `icd10-prompt-containment` |
 | **Depends on** | — (seed edits + data migration; migration for tenant-customized rows is human-gated) |
@@ -509,3 +509,145 @@ $ grep -ri "ICD-10\|ICD10" packages/database/src/prisma/db_main/seed/07-prompt-t
 |---|---|---|
 | 2026-08-16 | Ticket authored | T3/T4 authoring agent (Claude, sonnet-5) |
 | 2026-08-16 | Implemented Tasks 1-5: golden containment test, base-catalog + ArcaAI v2/v3 content fixes, author-only migration script + unit tests, full-suite regression green (51 files / 1237 tests). ArcaAI v1 corpus left unfixed and documented as an allow-listed exception (blocked by a pre-existing, out-of-ticket-scope fidelity fixture requiring clinical/product sign-off). `--apply` against any real database remains human-gated and was not run. See §7 for full deviation notes. | Execution agent (Claude, sonnet-5) |
+
+---
+
+## 9. Owner Decision 2026-08-17 — all versions allowed, v3 is the default
+
+`docs/architecture/agentic-workflow-platform/owner-decisions-2026-08-17.md` §2, row 702:
+
+> "**Allow all current prompt versions.** v3 becomes the default at go-live. The v1
+>  sign-off blocker is dissolved."
+
+This **resolves** §7 Deviation 2 and the §6 open questions rather than deferring them —
+but it resolves them in the *opposite* direction to what Deviation 2 assumed. Deviation 2
+treated v1's unfixed ICD-10 wording as debt awaiting clinical sign-off. It is not debt:
+v1 is a **byte-exact port of the running v1 production deployment**, deliberately frozen,
+and the owner has now confirmed it stays selectable as-is. Nothing about v1 needs to
+change. What needed to change is that the *intent* was implicit — nothing in the tree
+said "v3 is the default" or stopped that from quietly becoming false.
+
+### 9.1 Current state — established, not assumed (2026-08-17)
+
+| Fact | Evidence |
+|---|---|
+| v2 and v3 are clean of ICD-10 wording | `grep -c 'ICD-10\|ICD10'` → `0` on `07b-arcaai-clinical-content-v2.ts` and `-v3.ts` |
+| v1 still carries it, in 10 of 23 bodies | same grep → `10` on `07b-arcaai-clinical-content.ts` |
+| v1 was edited then reverted to a zero diff | `git status --porcelain` on the three content files → empty |
+| v3 is what is served | `ARCAAI_CLINICAL_APPROVED_VERSION = 3` (`07b-arcaai-clinical-templates.ts:537`) |
+| The checksum fixture matches what v1 actually serves | `v1-clinical-prompt-fidelity.test.ts` **passes** — because v1 is byte-identical to the pinned production port. No fixture edit was needed or made. |
+
+So the fixture is already consistent with what is served, for the strongest possible
+reason: the content it pins is unmodified.
+
+### 9.2 The residual clinical-safety consideration, stated plainly
+
+**All versions allowed + v1 still instructs code authoring = a version that violates
+INV-065/066 remains reachable.** That is a real consideration and it is not hypothetical:
+`ARCAAI_CLINICAL_APPROVED_VERSION = 1` is a one-line change, and
+`PromptTemplate.approvedVersionNumber` is editable from the admin console.
+
+The v1 wording was **not** silently changed — the owner decision explicitly keeps all
+versions, and v1's fixture header requires clinical/product sign-off before its hashes may
+move. Instead, the distinction that matters is drawn where it belongs:
+
+> v1 may exist. v1 may be rolled back to **on purpose**, as an explicit and auditable act.
+> v1 must never become the default **silently**.
+
+### 9.3 The guard
+
+New: `packages/database/src/prisma/db_main/seed/__tests__/arcaai-clinical-version-policy.test.ts`
+(7 tests). It asserts, in three groups:
+
+1. **All current versions stay available** — exactly versions 1, 2, 3 are seeded; every
+   version covers every template (so any pin is a complete corpus); no seeded body is empty.
+2. **v3 is the go-live default** — `ARCAAI_CLINICAL_APPROVED_VERSION === 3`, and every
+   template's `content`, `currentVersionNumber` **and** `approvedVersionNumber` agree with
+   the pin and with the matching `PromptVersion` snapshot (the F-01/F-02 integrity path).
+3. **The default may never be a code-authoring version** — asserted against *the pin*, not
+   against the literal `3`, so moving the pin to 1 or 2 is what fires it. Plus a test that
+   records the residual risk truthfully (v1 still has exactly 10 affected bodies, and the
+   pin is not 1), which forces a deliberate update if v1 is ever cleaned.
+
+**The guard was proven to bite** — the test passed on first run, so RED was demonstrated by
+temporarily setting the pin to 1:
+
+```
+$ # ARCAAI_CLINICAL_APPROVED_VERSION = 1 (temporary)
+× pins the approved version at 3
+× serves no ICD-10 authoring instruction at the approved pin
+× records the residual risk truthfully: v1 remains selectable AND still carries the wording
+AssertionError: expected 1 to be 3
+AssertionError: the default-served corpus must never instruct the model to write a
+                diagnostic code: expected [ …(10) ] to deeply equal []
+ Tests  3 failed | 4 passed (7)
+$ # pin restored to 3
+```
+
+Honest note on ordering: this test is a **regression lock on an already-correct state**, not
+a red-green driver — the product already satisfied the owner decision. The RED above is a
+deliberate, reverted mutation, and is labelled as such rather than presented as TDD.
+
+### 9.4 Documentation truth-up
+
+`07b-arcaai-clinical-templates.ts` carried three stale comments that described the
+pre-v3 world and would have misled the next reader:
+
+- the `ARCAAI_CLINICAL_TEMPLATES` docstring said the pin was `(2)` and "the resolver serves
+  the v2 snapshot" → now states `(3)`/v3, and that all three versions remain selectable;
+- the `ARCAAI_CLINICAL_VERSIONS` docstring said "**Two** PromptVersion snapshots per
+  template" → now three, ordered v1→v2→v3;
+- the module header now carries an explicit **VERSION POLICY** paragraph recording the owner
+  decision, the v1/v2-v3 asymmetry, *why* v1 is frozen (the sha256 fixture + sign-off gate),
+  and the pointer to the guard.
+
+### 9.5 Verification
+
+```
+$ pnpm --filter @arcaai/database exec vitest run \
+    src/prisma/db_main/seed/__tests__/arcaai-clinical-version-policy.test.ts \
+    src/__tests__/v1-clinical-prompt-fidelity.test.ts \
+    src/prisma/db_main/seed/__tests__/icd10-prompt-containment.test.ts
+ Test Files  3 passed (3)
+      Tests  34 passed (34)
+
+$ pnpm --filter @arcaai/database test
+ Test Files  53 passed (53)
+      Tests  1278 passed (1278)
+
+$ pnpm --filter @arcaai/database typecheck
+> tsc --noEmit                      # no output — success
+
+$ pnpm typecheck
+ Tasks:    43 successful, 43 total
+
+$ pnpm db:seed
+Database seeding completed          (exit 0, local dev DB)
+```
+
+### 9.6 Files changed
+
+| File | Change |
+|---|---|
+| `seed/__tests__/arcaai-clinical-version-policy.test.ts` | **NEW** — 7 tests pinning the version policy (§9.3). |
+| `seed/07b-arcaai-clinical-templates.ts` | Comments only (§9.4). **No content, pin, or wiring change.** |
+| `07b-arcaai-clinical-content{,-v2,-v3}.ts` | **Untouched.** |
+| `src/__tests__/v1-clinical-prompt-checksums.fixture.ts` | **Untouched** — already consistent; its own header forbids editing hashes to make a test pass, and no test failed. |
+
+### 9.7 Not done
+
+- The underlying INV-065/066 requirement — *no code without a tool-verified match* — is still
+  not met by any prompt-level change, and was never in scope (§1). Containment removes the
+  instruction to author codes; it does not add verification. The MCP `validate_codes`
+  mechanism remains post-hoc, opt-in, and has no terminology server registered.
+- Task 4's migration script (`migrate-icd10-prompt-instructions.ts`) `--apply` was still not
+  executed. The local dev DB is seeded fresh, so it has no drifted rows to migrate; a
+  deployed database would.
+- v1's 10 affected bodies are unchanged **by decision**. If the platform ever needs v1 clean,
+  that is a separate ticket requiring clinical/product sign-off to move the pinned hashes.
+
+## 10. Change History (continued)
+
+| Date | Change | By |
+|---|---|---|
+| 2026-08-17 | **Owner decision applied**: all current prompt versions allowed, v3 default at go-live — dissolving the §7 Deviation 2 blocker (v1 stays frozen as a byte-exact production port, by decision, not as debt). Established current state with evidence (v2/v3 clean, v1 = 10 hits, zero diff, pin = 3, fidelity fixture passing). Added `arcaai-clinical-version-policy.test.ts` (7 tests) making the intent durable: all three versions available, v3 pinned, and — the guard — the *approved pin* may never resolve to a corpus containing code-authoring wording; proven to fail when the pin is temporarily set to 1. Truthed-up three stale comments in `07b-arcaai-clinical-templates.ts`. No prompt content, pin, or checksum fixture was altered. Status → Completed. | Execution agent (Claude, Opus 5) |

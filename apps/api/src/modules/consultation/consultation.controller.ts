@@ -151,6 +151,13 @@ class OkResponseDto {
 @ApiTags('consultations')
 @Controller('consultations')
 @Authorize()
+// TASK-742: CLASS-level default for the ~42 consultation routes that carried
+// no API-key declaration (context items, transcriptions, highlights, recording
+// control, streams, entity extraction). The 11 summarization/session routes
+// that already carry their own finer method-level @RequiredScopes are
+// UNAFFECTED — Reflector.getAllAndOverride takes the method's value first, so
+// this only fills the gaps.
+@RequiredScopes('consultation:session:write')
 export class ConsultationController {
   private readonly logger = new Logger(ConsultationController.name);
 
@@ -185,8 +192,10 @@ export class ConsultationController {
     // dedicated Redis subscriber for the trajectory SSE relay.
     private readonly redisSubscriber: RedisSubscriberService,
     // Best-effort consultation-loop lifecycle signals
-    // (`signalConsultationEnding`/`signalLoopCancel`); gated behind
-    // `HARNESS_LOOP_ENABLED` and never lets a harness failure surface here.
+    // (`signalConsultationEnding`/`signalLoopCancel`); gated inside that service
+    // by the tenant's `agenticLoop` subscription entitlement composed with the
+    // `harness.loop.emergencyStop` platform veto (TASK-705), and never lets a
+    // harness failure surface here.
     private readonly loopContextSignalService: LoopContextSignalService,
   ) {}
 
@@ -588,9 +597,10 @@ export class ConsultationController {
     await this.liveDocumentationService.stop(id, { persistSnapshot: request?.persistSnapshot });
     const consultation = await this.consultationService.stopRecording(id);
     // Tell the consultation loop the recording stopped so it can
-    // drain, run its ending actions, and finalize. Best-effort (no-op when
-    // HARNESS_LOOP_ENABLED is off, swallows a failed harness call) — never
-    // lets a loop-signal hiccup break the recording-stop response.
+    // drain, run its ending actions, and finalize. Best-effort (a no-op when the
+    // tenant is not entitled to the loop or the platform emergency stop is
+    // engaged, and it swallows a failed harness call) — never lets a
+    // loop-signal hiccup break the recording-stop response.
     await this.loopContextSignalService.signalConsultationEnding(id, {
       reason: 'recording_stopped',
       persistSnapshot: request?.persistSnapshot ?? true,

@@ -16,7 +16,7 @@ from typing import TYPE_CHECKING, Any
 if TYPE_CHECKING:
     from harness.services.api_client import AssembleResponse, DraftResponse
     from harness.services.sensor_runner import SensorRunOutput
-    from harness.services.smr_client import SmrGenerationResult
+    from harness.services.text_client import TextGenerationResult
 
 from temporalio import workflow
 from temporalio.common import RetryPolicy
@@ -288,7 +288,7 @@ class HarnessDocWorkflow:
     -> record the GATE_DECISION audit.
 
     Fail-safe: NLP unavailable degrades to a forced human review (never auto-PASS);
-    SMR failure propagates (never silently downgrade — no draft is persisted).
+    Text failure propagates (never silently downgrade — no draft is persisted).
     """
 
     def __init__(self) -> None:
@@ -411,7 +411,7 @@ class HarnessDocWorkflow:
             # Without a terminal event the feed freezes on the
             # last `active` stage (and the Redis snapshot lies for its full TTL)
             # whenever the loop fails. Emit a best-effort `failed` terminal so
-            # the API closes the SSE stream, then ALWAYS re-raise — an SMR
+            # the API closes the SSE stream, then ALWAYS re-raise — an Text
             # failure must still fail the workflow, never be swallowed.
             # `except Exception` deliberately excludes cancellation
             # (asyncio.CancelledError is a BaseException): a cancelled run is
@@ -480,7 +480,7 @@ class HarnessDocWorkflow:
                 # workflow start (document:start -> input), and the effective-policy read
                 # here makes it a policy-overridable knob: the effective policy value wins WHEN NON-NULL,
                 # else the input-snapshotted default governs (per-field fallthrough, same
-                # rationale as ``smr_provider``). Both are read from deterministic
+                # rationale as ``text_provider``). Both are read from deterministic
                 # workflow state (never env) ⇒ replay-safe; no new command / patch marker.
                 optimistic_delivery_enabled=(
                     policy.optimistic_delivery_enabled
@@ -505,8 +505,8 @@ class HarnessDocWorkflow:
             phi_enabled = policy.phi_enabled
             phi_fail_closed = policy.phi_fail_closed
             # The workflow input wins over the policy default when it specifies a model.
-            smr_provider = inp.smr_provider or policy.smr_provider
-            smr_model = inp.smr_model or policy.smr_model
+            text_provider = inp.text_provider or policy.text_provider
+            text_model = inp.text_model or policy.text_model
             # LLM-as-judge selection from the SYSTEM harness.judge policy,
             # snapshotted here so the inferential activity builds the judge
             # deterministically across replay. None ⇒ the activity fails closed (no
@@ -536,8 +536,8 @@ class HarnessDocWorkflow:
             # No policy ⇒ the fail-closed code defaults govern the guard.
             phi_enabled = True
             phi_fail_closed = True
-            smr_provider = inp.smr_provider
-            smr_model = inp.smr_model
+            text_provider = inp.text_provider
+            text_model = inp.text_model
             # no policy ⇒ no SYSTEM judge selection ⇒ the inferential pass
             # fails closed (never falls back to an env-selected judge).
             judge_provider = None
@@ -811,6 +811,7 @@ class HarnessDocWorkflow:
             generated = await workflow.execute_activity(
                 generate,
                 GenerateInput(
+                    tenant_id=inp.tenant_id,
                     prompt=assembled.user_prompt,
                     prompt_ref=assembled.user_prompt_ref,
                     system_prompt=assembled.system_prompt,
@@ -818,8 +819,8 @@ class HarnessDocWorkflow:
                     prompt_block=retrieved.prompt_block,
                     response_format=assembled.response_format,
                     hyperparameters=assembled.hyperparameters,
-                    provider=smr_provider,
-                    model=smr_model,
+                    provider=text_provider,
+                    model=text_model,
                     phi_enabled=phi_enabled,
                     phi_fail_closed=phi_fail_closed,
                     # critique from the prior iteration (None on the
@@ -839,6 +840,7 @@ class HarnessDocWorkflow:
                 note_extracted = await workflow.execute_activity(
                     extract_entities,
                     ExtractEntitiesInput(
+                        tenant_id=inp.tenant_id,
                         text=generated.content,
                         # thread the offloaded-note ref (None ⇒ inline note).
                         text_ref=generated.content_ref,
@@ -1006,12 +1008,13 @@ class HarnessDocWorkflow:
             redaction = await workflow.execute_activity(
                 apply_redaction,
                 ApplyRedactionInput(
+                    tenant_id=inp.tenant_id,
                     note_text=generated.content,
                     note_text_ref=generated.content_ref,
                     rules=list(inp.redaction_rules),
                     response_format=assembled.response_format,
-                    provider=smr_provider,
-                    model=smr_model,
+                    provider=text_provider,
+                    model=text_model,
                     phi_enabled=phi_enabled,
                     phi_fail_closed=phi_fail_closed,
                     trajectory=self._traj(inp),
@@ -1051,6 +1054,7 @@ class HarnessDocWorkflow:
                     red_extracted = await workflow.execute_activity(
                         extract_entities,
                         ExtractEntitiesInput(
+                            tenant_id=inp.tenant_id,
                             text=generated.content,
                             text_ref=generated.content_ref,
                             language=inp.conversation_language,
@@ -1089,7 +1093,7 @@ class HarnessDocWorkflow:
             # loop above DELIBERATELY UNTOUCHED (the post-delivery re-delivery + regen
             # mirror it here rather than re-entering it). Both close over the pre-loop locals.
             async def _deliver_early(
-                gen_: SmrGenerationResult,
+                gen_: TextGenerationResult,
                 sens_: SensorRunOutput,
                 asm_: AssembleResponse,
                 reduced_: bool,
@@ -1136,7 +1140,7 @@ class HarnessDocWorkflow:
                 )
 
             async def _regen_compute() -> (
-                tuple[AssembleResponse, SmrGenerationResult, SensorRunOutput, bool]
+                tuple[AssembleResponse, TextGenerationResult, SensorRunOutput, bool]
             ):
                 """One regen pass (assemble → generate → extract → run_sensors).
 
@@ -1163,6 +1167,7 @@ class HarnessDocWorkflow:
                 gen_ = await workflow.execute_activity(
                     generate,
                     GenerateInput(
+                        tenant_id=inp.tenant_id,
                         prompt=asm_.user_prompt,
                         prompt_ref=asm_.user_prompt_ref,
                         system_prompt=asm_.system_prompt,
@@ -1170,8 +1175,8 @@ class HarnessDocWorkflow:
                         prompt_block=retrieved.prompt_block,
                         response_format=asm_.response_format,
                         hyperparameters=asm_.hyperparameters,
-                        provider=smr_provider,
-                        model=smr_model,
+                        provider=text_provider,
+                        model=text_model,
                         phi_enabled=phi_enabled,
                         phi_fail_closed=phi_fail_closed,
                         # critique from the pre-regen verdict (set by the
@@ -1191,6 +1196,7 @@ class HarnessDocWorkflow:
                     ne_ = await workflow.execute_activity(
                         extract_entities,
                         ExtractEntitiesInput(
+                            tenant_id=inp.tenant_id,
                             text=gen_.content,
                             text_ref=gen_.content_ref,
                             language=inp.conversation_language,
@@ -2450,8 +2456,8 @@ class ConsultationLoopWorkflow:
             conversation_language=request.conversation_language,
             dna_style_id=request.dna_style_id,
             template=request.template,
-            smr_provider=request.smr_provider,
-            smr_model=request.smr_model,
+            text_provider=request.text_provider,
+            text_model=request.text_model,
         )
 
         try:
@@ -2478,7 +2484,7 @@ class ConsultationLoopWorkflow:
                 # dashboard; re-raising as cancellation ends it as CANCELED,
                 # which is what actually happened.
                 raise asyncio.CancelledError from exc
-            # A child that genuinely FAILED (SMR down, sensors unavailable) is a
+            # A child that genuinely FAILED (Text down, sensors unavailable) is a
             # different matter: that is its own recorded outcome with its own
             # remediation, and it must not also fail the orchestrator that asked
             # for it.

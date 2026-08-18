@@ -6,12 +6,12 @@ Mirrors ``…/observability/__tests__/trace-propagation.task636.test.ts`` under
 The two suites share the SAME golden traceparent literal. The Python side runs
 it through the REAL ``TraceContextTextMapPropagator``, so this file is what
 proves the TypeScript carrier is a genuine W3C carrier and not merely
-self-consistent — the gateway writes the audio/control streams, STT and SMR
+self-consistent — the gateway writes the audio/control streams, STT and Text
 read them, and a wire-format disagreement would silently sever every trace.
 
 This is the ONE copy of these tests (previously duplicated verbatim in
 ``apps/stt/tests/test_trace_propagation_task636.py`` alongside the module it
-tested — see ``packages/py-otel/README.md``). STT's and SMR's own test suites
+tested — see ``packages/py-otel/README.md``). STT's and Text's own test suites
 still cover their service-specific glue (Redis Stream field shapes, SSE
 chunk relaying) against this shared module.
 """

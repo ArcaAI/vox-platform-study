@@ -9,7 +9,7 @@
  * Typical use:
  *   const tts = useTtsStream();
  *   await tts.open({ voice: 'en-female-1' });   // resolves once the server is ready
- *   for await (const token of smrStream) tts.pushText(token);
+ *   for await (const token of textStream) tts.pushText(token);
  *   tts.end();                                   // server drains + fires onEnded
  */
 

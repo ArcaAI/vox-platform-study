@@ -19,6 +19,8 @@ export * from './phi-field-encryption';
 export * from './storage-uri';
 export * from './tenant-guards';
 export * from './telemetry-scope';
+// The internal service-to-service call contract (X-Service-Token + mandatory X-Tenant-Id).
+export * from './internal-service-headers';
 export * from './transcript-provenance';
 export * from './typed-event-emitter';
 export * from './worker-session';

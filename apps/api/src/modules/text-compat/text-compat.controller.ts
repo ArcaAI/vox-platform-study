@@ -7,7 +7,9 @@ import {
   IProviderConnectionService,
   RequiredScopes,
   SecretsService,
+  TENANTLESS,
   assertProviderAvailable,
+  internalServiceHeaders,
 } from '@arcaai/applications';
 import { HttpService } from '@nestjs/axios';
 import { Body, Controller, HttpException, HttpStatus, Inject, Logger, Optional, Post, Req, Res, UnauthorizedException } from '@nestjs/common';
@@ -215,7 +217,7 @@ export class TextCompatController {
       const response = await this.httpService.axiosRef.post(
         url,
         { texts, source_language: 'auto', target_language: 'en-IN', provider: 'sarvam', provider_overrides: providerOverrides },
-        { headers: this.getForwardHeaders(), timeout: 60_000 },
+        { headers: this.getForwardHeaders(tenantId), timeout: 60_000 },
       );
       const translations = (response.data as { translations?: unknown })?.translations;
       if (!Array.isArray(translations) || translations.length !== segments.length) {
@@ -468,7 +470,7 @@ export class TextCompatController {
     // per-tenant fallback covers unparseable content, not just transport errors.
     let primaryError: unknown;
     try {
-      const generated = await this.postGenerate(baseRequest, 'Summary generation');
+      const generated = await this.postGenerate(baseRequest, 'Summary generation', tenantId);
       return buildResponse(generated.content, generated, baseRequest);
     } catch (err) {
       primaryError = err;
@@ -482,7 +484,7 @@ export class TextCompatController {
     // the tenant has no fallback configured the resolver returns `null` (fail-open)
     // and no fallback runs — the same effect as the retired env-unset path.
     if (this.isFallbackEligible(primaryError)) {
-      const fallback = await this.harnessPolicyService.resolveSmrFallbackSelection(tenantId, 'finalize');
+      const fallback = await this.harnessPolicyService.resolveTextFallbackSelection(tenantId, 'finalize');
       // Skip a same-provider fallback (retrying the identical provider cannot help).
       if (fallback && fallback.provider !== baseRequest.provider) {
         const fallbackRequest: TextGenerateRequest = { ...baseRequest, provider: fallback.provider, model: fallback.model };
@@ -490,7 +492,7 @@ export class TextCompatController {
         // credential (the spread copied the primary's, if any). follow-up.
         await this.attachLlmByok(fallbackRequest, tenantId);
         try {
-          const generated = await this.postGenerate(fallbackRequest, 'Summary generation (tenant fallback)');
+          const generated = await this.postGenerate(fallbackRequest, 'Summary generation (tenant fallback)', tenantId);
           this.logger.warn({
             message: 'Primary SMR summary generation failed; served via tenant-configured fallback',
             fallbackProvider: fallback.provider,
@@ -532,10 +534,11 @@ export class TextCompatController {
       res,
       baseRequest,
       'Summary generation',
+      tenantId,
       (content, req) => buildResponse(content, {}, req),
       async (primaryError, primaryRequest) => {
         if (!this.isFallbackEligible(primaryError)) return null;
-        const fallback = await this.harnessPolicyService.resolveSmrFallbackSelection(tenantId, 'finalize');
+        const fallback = await this.harnessPolicyService.resolveTextFallbackSelection(tenantId, 'finalize');
         if (fallback && fallback.provider !== primaryRequest.provider) {
           this.logger.warn({
             message: 'Primary SMR summary stream start failed; retrying via tenant-configured fallback',
@@ -619,24 +622,24 @@ export class TextCompatController {
       doctorId: body.doctor_id,
     });
     const dnaStyleText = await this.resolveDnaStyleText(body.doctor_id, tenantId);
-    const smrRequest = this.buildPreSummaryRequest(body, governed, dnaStyleText);
-    await this.applyTextModelSelection(smrRequest, tenantId);
+    const textRequest = this.buildPreSummaryRequest(body, governed, dnaStyleText);
+    await this.applyTextModelSelection(textRequest, tenantId);
 
     let primaryError: unknown;
     try {
-      const generated = await this.postGenerate(smrRequest, 'Pre-summary generation');
+      const generated = await this.postGenerate(textRequest, 'Pre-summary generation', tenantId);
       return mapGenerateToV1PreSummary(generated.content, new Date());
     } catch (err) {
       primaryError = err;
     }
 
     if (this.isFallbackEligible(primaryError)) {
-      const fallback = await this.harnessPolicyService.resolveSmrFallbackSelection(tenantId, 'finalize');
-      if (fallback && fallback.provider !== smrRequest.provider) {
-        const fallbackRequest: TextGenerateRequest = { ...smrRequest, provider: fallback.provider, model: fallback.model };
+      const fallback = await this.harnessPolicyService.resolveTextFallbackSelection(tenantId, 'finalize');
+      if (fallback && fallback.provider !== textRequest.provider) {
+        const fallbackRequest: TextGenerateRequest = { ...textRequest, provider: fallback.provider, model: fallback.model };
         await this.attachLlmByok(fallbackRequest, tenantId); // Follow-up: fallback provider's BYOK
         try {
-          const generated = await this.postGenerate(fallbackRequest, 'Pre-summary generation (tenant fallback)');
+          const generated = await this.postGenerate(fallbackRequest, 'Pre-summary generation (tenant fallback)', tenantId);
           this.logger.warn({
             message: 'Primary SMR pre-summary generation failed; served via tenant-configured fallback',
             fallbackProvider: fallback.provider,
@@ -669,16 +672,17 @@ export class TextCompatController {
       doctorId: body.doctor_id,
     });
     const dnaStyleText = await this.resolveDnaStyleText(body.doctor_id, tenantId);
-    const smrRequest = this.buildPreSummaryRequest(body, governed, dnaStyleText);
-    await this.applyTextModelSelection(smrRequest, tenantId);
+    const textRequest = this.buildPreSummaryRequest(body, governed, dnaStyleText);
+    await this.applyTextModelSelection(textRequest, tenantId);
     await this.streamGenerate(
       res,
-      smrRequest,
+      textRequest,
       'Pre-summary generation',
+      tenantId,
       (content) => mapGenerateToV1PreSummary(content, new Date()),
       async (primaryError, primaryRequest) => {
         if (!this.isFallbackEligible(primaryError)) return null;
-        const fallback = await this.harnessPolicyService.resolveSmrFallbackSelection(tenantId, 'finalize');
+        const fallback = await this.harnessPolicyService.resolveTextFallbackSelection(tenantId, 'finalize');
         if (fallback && fallback.provider !== primaryRequest.provider) {
           this.logger.warn({
             message: 'Primary SMR pre-summary stream start failed; retrying via tenant-configured fallback',
@@ -796,7 +800,7 @@ export class TextCompatController {
   }
 
   private async applyTextModelSelection(request: TextGenerateRequest, tenantId: string): Promise<void> {
-    const selection = await this.harnessPolicyService.resolveSmrSelection(tenantId);
+    const selection = await this.harnessPolicyService.resolveTextSelection(tenantId);
     request.provider = selection.provider;
     request.model = selection.model;
     await this.attachLlmByok(request, tenantId);
@@ -810,7 +814,7 @@ export class TextCompatController {
    * `provider_overrides` entry, or SMR fails closed with ProviderCredentialsError
    * (503). Local engines (lm-studio/ollama) resolve to no override and are
    * unaffected. `azure-openai` de-aliases to the `azure` connection key
-   * (`resolveSmrSelection`/`resolveSmrFallbackSelection` map azure→azure-openai
+   * (`resolveTextSelection`/`resolveTextFallbackSelection` map azure→azure-openai
    * for SMR's registry; the connection plane is keyed by `azure`). The override
    * is keyed by `request.provider` so SMR's adapter (`provider_overrides[provider]`)
    * finds it. Fail-open: a resolver error leaves the request unchanged (SMR then
@@ -861,14 +865,37 @@ export class TextCompatController {
     return this.configService.getConfigValue('TEXT_URL');
   }
 
-  private getForwardHeaders(): Record<string, string> {
-    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-    // Fail-open on a cache miss (no header), matching TextProxyController.
-    const serviceToken = this.secretsService?.getSecretSync('TEXT_SERVICE_TOKEN');
-    if (serviceToken) {
-      headers['X-Service-Token'] = serviceToken;
-    }
-    return headers;
+  /**
+   * Headers for every gateway→Text hop out of this v1-compat controller
+   * (`/generate`, `/translate`, `GET /tasks/:id/stream`).
+   *
+   * TASK-737: `X-Tenant-Id` was omitted UNCONDITIONALLY here, so Text resolved
+   * `x_tenant_id=None` and fell back to the platform default — never applying the
+   * tenant's own BYOK provider/credential, and (because TASK-735 derives
+   * `funding`/`cost_basis` from whichever tier supplied that credential)
+   * mis-attributing the spend, with nothing thrown or logged anywhere.
+   *
+   * `tenantId` is REQUIRED and is threaded from `requireTenantId()` — it is
+   * deliberately NOT read from CLS here. SDK-compat callers authenticate with
+   * `x-api-key`, for which CLS `tenantId` is not populated (see
+   * `requireTenantId`'s own note); reading CLS would have sent the tenant-less
+   * marker on exactly the traffic that HAS a tenant. Every route on this
+   * controller already resolves it and 401s without one, so there is no path
+   * here that legitimately lacks a tenant — the marker is a compile-time
+   * fallback only.
+   *
+   * D-D: the token is the ONE shared `INTERNAL_ACCESS_TOKEN`; `TEXT_SERVICE_TOKEN`
+   * is consulted only as the migration fallback. Both are the SYNC cache read
+   * warmed at bootstrap, preserving the existing fail-open-on-miss behaviour.
+   */
+  private getForwardHeaders(tenantId: string): Record<string, string> {
+    const serviceToken =
+      this.secretsService?.getSecretSync('INTERNAL_ACCESS_TOKEN') || this.secretsService?.getSecretSync('TEXT_SERVICE_TOKEN') || '';
+    return internalServiceHeaders({
+      serviceToken,
+      tenantId,
+      tenantlessReason: TENANTLESS.PLATFORM_OPERATOR,
+    });
   }
 
   private isConnectPhaseFailure(err: unknown): boolean {
@@ -884,8 +911,8 @@ export class TextCompatController {
    * billable call). Throws the RAW transport error on exhaustion so callers can
    * classify it (fallback eligibility / error-shape mapping).
    */
-  private async postGenerate(request: TextGenerateRequest, label: string): Promise<TextGenerateResponse> {
-    const data = await this.postGenerateRaw(request, label);
+  private async postGenerate(request: TextGenerateRequest, label: string, tenantId: string): Promise<TextGenerateResponse> {
+    const data = await this.postGenerateRaw(request, label, tenantId);
     return data as TextGenerateResponse;
   }
 
@@ -895,8 +922,8 @@ export class TextCompatController {
    * the RAW transport error on exhaustion (so the streaming START can classify it
    * for the per-tenant fallback).
    */
-  private async postGenerateStream(request: TextGenerateRequest, label: string): Promise<string> {
-    const data = (await this.postGenerateRaw({ ...request, stream: true }, label)) as { task_id?: string };
+  private async postGenerateStream(request: TextGenerateRequest, label: string, tenantId: string): Promise<string> {
+    const data = (await this.postGenerateRaw({ ...request, stream: true }, label, tenantId)) as { task_id?: string };
     const taskId = data?.task_id;
     if (!taskId) {
       throw new Error('SMR did not return a task_id for the streaming request');
@@ -909,7 +936,7 @@ export class TextCompatController {
    * provably never reached SMR — safe for the non-idempotent billable call).
    * Returns the raw response body; throws the RAW transport error on exhaustion.
    */
-  private async postGenerateRaw(request: TextGenerateRequest, label: string): Promise<unknown> {
+  private async postGenerateRaw(request: TextGenerateRequest, label: string, tenantId: string): Promise<unknown> {
     const base = this.getTextBaseUrl();
     const maxRetries = 2;
 
@@ -917,7 +944,7 @@ export class TextCompatController {
     for (let attempt = 0; attempt <= maxRetries; attempt++) {
       try {
         const response = await this.httpService.axiosRef.post(`${base}/api/v1/generate`, request, {
-          headers: this.getForwardHeaders(),
+          headers: this.getForwardHeaders(tenantId),
           timeout: 120_000,
         });
         return response.data;
@@ -954,8 +981,10 @@ export class TextCompatController {
    */
   private async streamGenerate(
     res: Response,
-    smrRequest: TextGenerateRequest,
+    textRequest: TextGenerateRequest,
     label: string,
+    // TASK-737 — the tenant every gateway→Text hop below must carry.
+    tenantId: string,
     buildResult: (content: string, req: TextGenerateRequest) => object,
     resolveStartFallback?: (primaryError: unknown, primaryRequest: TextGenerateRequest) => Promise<TextGenerateRequest | null>,
   ): Promise<void> {
@@ -972,15 +1001,15 @@ export class TextCompatController {
     // START phase: POST /generate (stream:true). A pre-stream failure may retry
     // once on the tenant fallback (summary only); an exhausted START → error.
     let taskId: string | undefined;
-    let startedRequest = smrRequest;
+    let startedRequest = textRequest;
     let usedFallback = false;
     try {
-      taskId = await this.postGenerateStream(smrRequest, label);
+      taskId = await this.postGenerateStream(textRequest, label, tenantId);
     } catch (primaryError) {
-      const fallbackRequest = resolveStartFallback ? await resolveStartFallback(primaryError, smrRequest) : null;
+      const fallbackRequest = resolveStartFallback ? await resolveStartFallback(primaryError, textRequest) : null;
       if (fallbackRequest) {
         try {
-          taskId = await this.postGenerateStream(fallbackRequest, `${label} (tenant fallback)`);
+          taskId = await this.postGenerateStream(fallbackRequest, `${label} (tenant fallback)`, tenantId);
           startedRequest = fallbackRequest;
           usedFallback = true;
         } catch {
@@ -1003,7 +1032,15 @@ export class TextCompatController {
     // parity with the non-stream path. Retry is disabled once we are already on a
     // fallback provider or none is configured.
     const allowRetry = !!resolveStartFallback && !usedFallback;
-    let outcome = await this.pumpTaskStream(res, taskId, label, (content) => buildResult(content, startedRequest), heartbeatTimer, allowRetry);
+    let outcome = await this.pumpTaskStream(
+      res,
+      taskId,
+      label,
+      tenantId,
+      (content) => buildResult(content, startedRequest),
+      heartbeatTimer,
+      allowRetry,
+    );
     if (outcome === 'error_pre_content') {
       // The primary stream was ACCEPTED (202) but the provider failed before any
       // content — e.g. LM Studio is down. `resolveStartFallback` (which logs the
@@ -1011,13 +1048,21 @@ export class TextCompatController {
       // once on the tenant fallback; nothing has reached the client, so this is
       // clean. A synthetic error drives its eligibility check down the
       // parse/mapping branch (a provider-side failure, not an unreachable SMR).
-      const fallbackRequest = resolveStartFallback ? await resolveStartFallback(new Error(`${label} stream produced no content`), smrRequest) : null;
+      const fallbackRequest = resolveStartFallback ? await resolveStartFallback(new Error(`${label} stream produced no content`), textRequest) : null;
       let retried = false;
-      if (fallbackRequest && fallbackRequest.provider !== smrRequest.provider) {
+      if (fallbackRequest && fallbackRequest.provider !== textRequest.provider) {
         try {
-          const fallbackTaskId = await this.postGenerateStream(fallbackRequest, `${label} (tenant fallback)`);
+          const fallbackTaskId = await this.postGenerateStream(fallbackRequest, `${label} (tenant fallback)`, tenantId);
           startedRequest = fallbackRequest;
-          outcome = await this.pumpTaskStream(res, fallbackTaskId, label, (content) => buildResult(content, startedRequest), heartbeatTimer, false);
+          outcome = await this.pumpTaskStream(
+            res,
+            fallbackTaskId,
+            label,
+            tenantId,
+            (content) => buildResult(content, startedRequest),
+            heartbeatTimer,
+            false,
+          );
           retried = true;
         } catch {
           // fall through to finalize the error below
@@ -1040,6 +1085,7 @@ export class TextCompatController {
     res: Response,
     taskId: string,
     label: string,
+    tenantId: string,
     buildResult: (content: string) => object,
     heartbeatTimer: ReturnType<typeof setInterval>,
     allowPreContentRetry: boolean,
@@ -1049,7 +1095,7 @@ export class TextCompatController {
     let upstream;
     try {
       upstream = await this.httpService.axiosRef.get(`${base}/api/v1/tasks/${taskId}/stream`, {
-        headers: { ...this.getForwardHeaders(), Accept: 'text/event-stream' },
+        headers: { ...this.getForwardHeaders(tenantId), Accept: 'text/event-stream' },
         responseType: 'stream',
         timeout: STREAM_READ_TIMEOUT_MS,
       });

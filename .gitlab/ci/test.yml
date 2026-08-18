@@ -663,7 +663,7 @@ harness-eval-gate:
     # §Configuration): explicit CI variables, never a silent fallback to
     # config.py's shared `JudgeConfig.model` code default (currently
     # `gemma-4-e2b-it-qat`, TASK-736's cross-cutting owner-standardized
-    # default for smr.live/finalize/test/harness.judge — deliberately NOT
+    # default for text.live/finalize/test/harness.judge — deliberately NOT
     # changed by this ticket, see README §7 "Why config.py's default was not
     # touched"). This job's judge model is TASK-713's own explicit choice.
     HARNESS_JUDGE_PROVIDER: "openai_compat"
@@ -675,11 +675,14 @@ harness-eval-gate:
     HARNESS_JUDGE_MODEL: "google/gemma-4-e4b"
     HARNESS_JUDGE_TEMPERATURE: "0.0"
     HARNESS_JUDGE_SEED: "7"
-    # gemma-4-e4b is loaded at 4096-token context on the owner's LM Studio
-    # instance; a completion budget above the loaded ctx makes LM Studio
-    # reject/terminate the request (`400 {'error':'terminated'}` — README
-    # §"Operational notes for gemma-4-e4b on LM Studio"). 3072 leaves room
-    # for the prompt within that 4096 ceiling.
+    # The completion budget must stay <= the judge's LOADED context window, or
+    # LM Studio rejects/terminates the request (`400 {'error':'terminated'}` —
+    # README §"Operational notes for gemma-4-e4b on LM Studio"). The 3072 this
+    # job once used was sized for a 4096-ctx load; measured 2026-08-17 on the
+    # owner's instance, gemma-4-e4b loads at its full 131072 ctx (max 131072),
+    # so 16384 is comfortably within the ceiling. `apps/harness/eval/run-gate.sh`
+    # re-checks this at run time against the endpoint's reported
+    # `loaded_context_length` and warns rather than failing 10 minutes in.
     HARNESS_JUDGE_MAX_TOKENS: "16384"
     HARNESS_JUDGE_OUTPUT_MODE: "score"
     HARNESS_JUDGE_SUPPRESS_REASONING: "true"
@@ -688,6 +691,16 @@ harness-eval-gate:
     # faithfulness claim-extract/verify json_mode calls to succeed at all.
     HARNESS_JUDGE_OPENAI_COMPAT_JSON_RESPONSE_FORMAT: "text"
     HARNESS_JUDGE_TIMEOUT_S: "90"
+    # Step 2 (promptfoo) reads its cases from HARNESS_GOLDEN_SET_PATH and
+    # otherwise falls back to the 5-case `synthetic_v0.json`. Unset, the two
+    # steps of this job silently scored DIFFERENT golden sets — step 1 the
+    # 18-case curated_v1, step 2 the 5-case synthetic_v0 — despite
+    # promptfooconfig.yaml's own comment claiming they stay on the same set
+    # (found 2026-08-17 running the gate end to end; TASK-713 README §7).
+    # Pinned here so both steps score the same 18 cases. ABSOLUTE on purpose:
+    # tests.py does a bare `Path(override)`, and step 2 runs after
+    # `cd eval/promptfoo`, so a repo-relative value would not resolve.
+    HARNESS_GOLDEN_SET_PATH: "$CI_PROJECT_DIR/apps/harness/src/harness/eval/golden/fixtures/curated_v1.json"
     # LM Studio is one desktop-app process, not a multi-slot server like the
     # rejected llama.cpp container — no parallel decode slots to exploit.
     # harness.core.llm_concurrency's own default cap is 1 for exactly this
@@ -697,17 +710,32 @@ harness-eval-gate:
     #
     # TASK-713 Task 3 — release-gate thresholds: EvalConfig's CODE DEFAULTS
     # (icc_threshold=0.8, faithfulness_threshold=0.85, pdsqi_*_threshold=4.0,
-    # icc_gate_enabled=true) are used UNCHANGED — no CI override. Real
-    # measured run against curated_v1.json on LM Studio google/gemma-4-e4b
-    # (README §7 "Live gate results", corroborated by this ticket's fresh
-    # run): pdsqi_accurate/thorough=5.00, pdsqi_mean=4.86 (all clear 4.0),
-    # icc=0.821 (clears 0.8), faithfulness=0.990 (clears 0.85) — gate PASSES
-    # cleanly on the code defaults. Unlike the rejected Qwen2.5-1.5B backend
-    # (which needed faithfulness lowered to 0.65 and the ICC gate disabled
-    # outright — a small non-reasoning judge's ceiling-effect problem),
-    # gemma-4-e4b is calibrated enough on this golden set that no threshold
-    # surgery is needed. See README §7 for the fresh wall-clock + score
-    # table from this ticket's own run.
+    # icc_gate_enabled=true) are used UNCHANGED — no CI override.
+    #
+    # HONEST CURRENT STATE (measured 2026-08-17, full 18-case run to
+    # completion against the owner's live LM Studio; README §7 and
+    # apps/harness/eval/README.md §"Live gate results — CURRENT run"):
+    # this gate currently **FAILS** on `icc=0.6568 < 0.8`
+    # (Gwet AC2=0.9439, n=144). Everything else clears with margin:
+    # pdsqi_accurate/thorough/mean=5.00, faithfulness=0.9920.
+    # An earlier 2026-06-07 run recorded icc=0.821/PASS; it does NOT
+    # reproduce — that PASS depended on the judge being loaded at 4096 ctx,
+    # where `synthesized` averaged 3.92 and supplied the quality lane's
+    # variance. At the 131072 ctx the model now loads at, the judge scores a
+    # flat 5 on every quality dimension (judge SD = 0.000), so the quality
+    # lane contributes exactly 0 to a variance-ratio statistic.
+    #
+    # The thresholds are deliberately NOT relaxed to make this green.
+    # `HARNESS_EVAL_ICC_GATE_ENABLED=false` exists for a judge whose ICC is
+    # structurally uninformative (the rejected Qwen backend measured ~-8.3e-17,
+    # outside what the [0,1]-validated icc_threshold could ever admit). 0.6568
+    # is not that: it is a real, moderate reliability reading against a bar
+    # taken from the PDSQI-9 literature (reasoning judge ~0.818, see
+    # calibration/reliability.py). Disabling or lowering it here would launder
+    # a true negative into a pass. The gate is working; it is reporting that
+    # this judge is not release-grade against this reference set. The open
+    # resolutions are a real clinician-authored golden set or a
+    # reasoning-capable judge — see README §7.
   cache:
     - key: pip-harness-eval-gate
       paths:

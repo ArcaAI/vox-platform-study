@@ -12,7 +12,7 @@ import { describe, it, expect, beforeEach } from 'vitest';
 import { ExecutionContext, ForbiddenException } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import { UnifiedAuthGuard } from '../unified-auth.guard';
-import { ForbidApiKey, Authorize } from '../decorators';
+import { ForbidApiKey, Authorize, RequiredScopes } from '../decorators';
 import { PolicyEngine } from '../policy.engine';
 
 class DummyImpersonationController {
@@ -22,6 +22,10 @@ class DummyImpersonationController {
 
   @Authorize(['read', 'User'])
   ordinaryRoute() {}
+
+  /** Same controller, but an explicitly declared API-key surface (TASK-742). */
+  @RequiredScopes('user:profile:read')
+  scopedSibling() {}
 }
 
 const createMockContext = (handler: () => void) => {
@@ -75,7 +79,28 @@ describe('UnifiedAuthGuard + @ForbidApiKey()', () => {
     await expect(guard.canActivate(createMockContext(DummyImpersonationController.prototype.impersonate))).rejects.toThrow(ForbiddenException);
   });
 
-  it('leaves a route WITHOUT @ForbidApiKey() unaffected', async () => {
-    await expect(guard.canActivate(createMockContext(DummyImpersonationController.prototype.ordinaryRoute))).resolves.toBe(true);
+  /**
+   * TASK-742 — this assertion CHANGED, and the product changed with it.
+   *
+   * `ordinaryRoute` carries `@Authorize(['read','User'])` and NO
+   * `@RequiredScopes(...)`. It used to resolve `true` for any authenticated key,
+   * which is exactly the fail-open defect: `@Authorize` was inert on the
+   * API-key path, so the route had no authorization check at all. Under
+   * deny-by-default it is refused — not by `@ForbidApiKey()` (which this file
+   * is about) but by the absence of an API-key declaration.
+   *
+   * The property this test still guards is that the two denials are DISTINCT
+   * mechanisms: `@ForbidApiKey()` denies even a scoped route, whereas this route
+   * denies only because nothing was declared — grant it a scope and it opens
+   * again, as `scopedSibling` proves. That distinction is what would be lost if
+   * someone deleted `@ForbidApiKey()` believing deny-by-default subsumes it.
+   */
+  it('denies a route WITHOUT @ForbidApiKey() that also declares no scopes (deny-by-default, a different mechanism)', async () => {
+    await expect(guard.canActivate(createMockContext(DummyImpersonationController.prototype.ordinaryRoute))).rejects.toThrow(ForbiddenException);
+  });
+
+  it('but a route that DECLARES a scope is reachable — proving the denial above is not @ForbidApiKey()', async () => {
+    apiKeyService.authenticateByRawKey = async () => buildApiKey(['user:profile:read']);
+    await expect(guard.canActivate(createMockContext(DummyImpersonationController.prototype.scopedSibling))).resolves.toBe(true);
   });
 });

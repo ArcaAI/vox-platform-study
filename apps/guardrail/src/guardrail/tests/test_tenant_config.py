@@ -20,12 +20,14 @@ from guardrail.core.tenant_config import (
     KEY_PROVIDER,
     SYSTEM_TENANT_ID,
     TASK_KEY_GUARDRAIL_VALIDATE,
+    TENANTLESS_PREFIX,
     AiModelRead,
     AiTaskDefaultRead,
     GuardrailTenantConfig,
     TenantConfigResolver,
     TenantSelectionVetoedError,
     build_guardian_provider,
+    is_tenantless_marker,
     resolve_guardian_engine,
 )
 
@@ -762,3 +764,59 @@ def test_ollama_provider_modules_are_gone() -> None:
     for module in ("guardrail.providers.ollama", "guardrail.providers.guardian"):
         with pytest.raises(ModuleNotFoundError):
             importlib.import_module(module)
+
+
+# ---------------------------------------------------------------------------
+# TASK-737 — a DECLARED tenant-less call is not the same thing as a missing one
+# ---------------------------------------------------------------------------
+
+
+def test_tenantless_marker_is_recognized_and_is_never_uuid_shaped() -> None:
+    """The marker must fail any `looksLikeUuid()` check by construction.
+
+    That is the whole reason it is `tenantless:<reason>` and not a reserved UUID:
+    a future bug that treats it as a real tenant id trips existing validation
+    instead of silently addressing some tenant's rows. It must also never be the
+    `50000000-…` "Global" CUSTOMER tenant.
+    """
+    assert is_tenantless_marker("tenantless:job-queue")
+    assert is_tenantless_marker("tenantless:control-plane")
+    assert not is_tenantless_marker(TENANT_A)
+    assert not is_tenantless_marker(SYSTEM_TENANT_ID)
+    assert not is_tenantless_marker("")
+    assert not is_tenantless_marker(None)
+    assert not is_tenantless_marker("50000000-0000-0000-0000-000000000000")
+
+    import uuid
+
+    for reason in ("job-queue", "worker-weights", "control-plane", "platform-operator"):
+        with pytest.raises(ValueError):
+            uuid.UUID(f"{TENANTLESS_PREFIX}{reason}")
+
+
+@pytest.mark.asyncio
+async def test_declared_tenantless_call_resolves_system_not_a_customer_tenant() -> None:
+    """A `tenantless:*` marker routes to SYSTEM — explicitly, not by None-coercion.
+
+    The distinction matters for what it leaves behind: once declared tenant-less
+    work carries a marker, an ABSENT header is unambiguously a caller defect, which
+    is what makes §4.5's later tightening possible at all.
+    """
+    rows = [
+        _row(SYSTEM_TENANT_ID, SYSTEM_TENANT_ID, "lm-studio", "granite-guardian-4.1-8b"),
+        _row(TENANT_A, SYSTEM_TENANT_ID, "vllm", "tenant-chosen-guardian"),
+    ]
+    cfg = await _db_resolver(rows).resolve("tenantless:job-queue")
+
+    assert cfg.provider == "lm-studio", "must not pick up a customer tenant's row"
+    assert cfg.model == "granite-guardian-4.1-8b"
+
+
+@pytest.mark.asyncio
+async def test_tenantless_marker_resolves_identically_to_an_absent_tenant() -> None:
+    rows = [_row(SYSTEM_TENANT_ID, SYSTEM_TENANT_ID, "lm-studio", "granite-guardian-4.1-8b")]
+
+    declared = await _db_resolver(rows).resolve("tenantless:control-plane")
+    absent = await _db_resolver(rows).resolve(None)
+
+    assert (declared.provider, declared.model) == (absent.provider, absent.model)

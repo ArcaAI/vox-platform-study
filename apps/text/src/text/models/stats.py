@@ -1,7 +1,7 @@
 """One normalized generation-stats contract for every LLM call.
 
 ``GenerationStats`` is the single shape the Agentic SOTA program relies on
-everywhere: SMR responses, trajectory ``LLM_CALL`` steps,
+everywhere: Text responses, trajectory ``LLM_CALL`` steps,
 Prometheus aggregates, and OTel GenAI spans. It captures stop reason (normalized
 + raw), total time, time-to-first-token, tokens/second, token counts, provider
 identity, and a raw engine-native timings/usage blob for audit.
@@ -45,6 +45,14 @@ _OPENAI_WIRE: dict[str, str] = {
     "function_call": "tool_call",
 }
 
+# Ollama ``done_reason``.
+_OLLAMA: dict[str, str] = {
+    "stop": "stop",
+    "length": "length",
+    "load": "other",
+    "unload": "other",
+}
+
 # Bedrock converse ``stopReason``.
 _BEDROCK: dict[str, str] = {
     "end_turn": "stop",
@@ -64,7 +72,7 @@ _LLAMA_CPP: dict[str, str] = {
     "limit": "length",
 }
 
-# Which wire table each SMR provider key resolves to. vLLM and LM Studio speak
+# Which wire table each Text provider key resolves to. vLLM and LM Studio speak
 # the OpenAI wire; llama.cpp has its own. Unknown providers default to the
 # OpenAI-wire table (the portability layer).
 _PROVIDER_TABLES: dict[str, dict[str, str]] = {
@@ -76,6 +84,7 @@ _PROVIDER_TABLES: dict[str, dict[str, str]] = {
     "azure-openai": _OPENAI_WIRE,
     "azure_openai": _OPENAI_WIRE,
     "azure": _OPENAI_WIRE,
+    "ollama": _OLLAMA,
     "bedrock": _BEDROCK,
     "aws_bedrock": _BEDROCK,
     "llama-cpp": _LLAMA_CPP,
@@ -210,6 +219,55 @@ def stats_from_openai_usage(
         total_tokens=total,
         total_ms=total_ms,
         ttft_ms=ttft_ms,
+        engine_native=engine_native,
+    )
+
+
+def stats_from_ollama_response(
+    *,
+    provider: str,
+    model: str,
+    data: dict[str, Any],
+    total_ms: int,
+    ttft_ms: int | None = None,
+) -> GenerationStats:
+    """Map an Ollama ``/api/generate`` response object.
+
+    Ollama reports durations in NANOSECONDS. Engine-preferred throughput is
+    ``eval_count / eval_duration_seconds``; the raw duration/count blob is kept
+    in ``engine_native`` for audit.
+    """
+    data = data or {}
+    eval_count = int(data.get("eval_count", 0) or 0)
+    prompt_eval = int(data.get("prompt_eval_count", 0) or 0)
+    eval_duration_ns = data.get("eval_duration") or 0
+    done_reason = data.get("done_reason") or "stop"
+
+    tps: float | None = None
+    if eval_count and eval_duration_ns and eval_duration_ns > 0:
+        tps = round(eval_count / (eval_duration_ns / 1_000_000_000), 3)
+
+    native_keys = (
+        "total_duration",
+        "load_duration",
+        "prompt_eval_count",
+        "prompt_eval_duration",
+        "eval_count",
+        "eval_duration",
+        "done_reason",
+    )
+    engine_native = {k: data[k] for k in native_keys if k in data} or None
+
+    return build_generation_stats(
+        provider=provider,
+        model=model,
+        raw_stop_reason=done_reason,
+        prompt_tokens=prompt_eval,
+        predicted_tokens=eval_count,
+        total_tokens=prompt_eval + eval_count,
+        total_ms=total_ms,
+        ttft_ms=ttft_ms,
+        tokens_per_second=tps,
         engine_native=engine_native,
     )
 

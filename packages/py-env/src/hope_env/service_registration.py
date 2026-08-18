@@ -68,7 +68,7 @@ def normalize_environment(raw: str | None) -> str:
     Every service already computes an environment string of its own — the
     gateway's `NODE_ENV` (`development|test|staging|production`), harness's
     `HARNESS_ENVIRONMENT` (free string, default `"development"`), nlp's
-    `Environment` enum (`development|staging|production`), smr/tts's
+    `Environment` enum (`development|staging|production`), text/tts's
     `otel_deployment_environment` (`DEPLOYMENT_ENVIRONMENT` or `NODE_ENV`,
     default `"development"`) — none of them are spelled `dev`/`staging`/
     `prod` verbatim. This is a values-only projection of that EXISTING

@@ -30,7 +30,7 @@
 import { EDITABLE_BY_NONE, SettingDescriptor } from '../registry.types';
 
 /** Shared shape for an SMR cloud-provider connection-config variable. */
-function smrProviderEnv(key: string, label: string, description: string, defaultValue?: unknown): SettingDescriptor {
+function textProviderEnv(key: string, label: string, description: string, defaultValue?: unknown): SettingDescriptor {
   return {
     key,
     tier: 'env',
@@ -48,18 +48,18 @@ function smrProviderEnv(key: string, label: string, description: string, default
 
 export const TEXT_PROVIDER_CONNECTION_SETTINGS: SettingDescriptor[] = [
   // ── OpenAI (TEXT_OPENAI_) ──────────────────────────────────────────────────
-  smrProviderEnv(
+  textProviderEnv(
     'textOpenai.baseUrl',
     'SMR OpenAI base URL',
     'OpenAI API base URL for SMR’s platform-fallback OpenAI client (`OpenAIConfig.base_url`). Override for an OpenAI-compatible gateway; a tenant BYO connection may override it per request.',
     'https://api.openai.com/v1',
   ),
-  smrProviderEnv(
+  textProviderEnv(
     'textOpenai.organization',
     'SMR OpenAI organization',
     'Optional OpenAI organization id sent by SMR’s platform-fallback client (`OpenAIConfig.organization`). Unset ⇒ the account default organization.',
   ),
-  smrProviderEnv(
+  textProviderEnv(
     'textOpenai.defaultModel',
     'SMR OpenAI default model',
     'Empty by design (TASK-579): provider/model SELECTION is fail-closed — `OpenAIConfig.default_model` has no compiled-in vendor value, and an unresolved model raises (`require_model()`) rather than being substituted. Informational only (providers listing).',
@@ -67,13 +67,13 @@ export const TEXT_PROVIDER_CONNECTION_SETTINGS: SettingDescriptor[] = [
   ),
 
   // ── Anthropic (TEXT_ANTHROPIC_) ────────────────────────────────────────────
-  smrProviderEnv(
+  textProviderEnv(
     'textAnthropic.baseUrl',
     'SMR Anthropic base URL',
     'Anthropic API base URL for SMR’s platform-fallback client (`AnthropicConfig.base_url`). Empty ⇒ the SDK default (`https://api.anthropic.com`); a tenant BYO connection may override it per request.',
     '',
   ),
-  smrProviderEnv(
+  textProviderEnv(
     'textAnthropic.defaultModel',
     'SMR Anthropic default model',
     'Empty by design (TASK-579): provider/model SELECTION is fail-closed — `AnthropicConfig.default_model` has no compiled-in vendor value, and an unresolved model raises (`require_model()`) rather than being substituted. Informational only (providers listing).',
@@ -81,19 +81,19 @@ export const TEXT_PROVIDER_CONNECTION_SETTINGS: SettingDescriptor[] = [
   ),
 
   // ── Google Vertex AI (TEXT_VERTEX_) ────────────────────────────────────────
-  smrProviderEnv(
+  textProviderEnv(
     'textVertex.project',
     'SMR Vertex project',
     'GCP project id for SMR’s platform-fallback Vertex client (`VertexConfig.project`). Empty ⇒ no platform fallback (Vertex is then usable only via a tenant BYO service-account connection). A Vertex client is bound to a `(project, location)`; a tenant override supplies its own.',
     '',
   ),
-  smrProviderEnv(
+  textProviderEnv(
     'textVertex.location',
     'SMR Vertex location',
     'GCP location/region for SMR’s platform-fallback Vertex client (`VertexConfig.location`), e.g. `us-central1`.',
     'us-central1',
   ),
-  smrProviderEnv(
+  textProviderEnv(
     'textVertex.defaultModel',
     'SMR Vertex default model',
     'Empty by design (TASK-579): provider/model SELECTION is fail-closed — `VertexConfig.default_model` has no compiled-in vendor value, and an unresolved model raises (`require_model()`) rather than being substituted. Informational only (providers listing).',

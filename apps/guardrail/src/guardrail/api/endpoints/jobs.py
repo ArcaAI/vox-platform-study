@@ -8,10 +8,21 @@ from typing import Any, cast
 from fastapi import APIRouter, Depends, HTTPException, Path
 from pydantic import BaseModel, Field
 
-from guardrail.core.dependencies import get_job_processor
+from guardrail.core.dependencies import get_job_processor, require_tenant_id
 from guardrail.services.job_processor import JobProcessor
 
 router = APIRouter()
+
+# ---------------------------------------------------------------------------
+# Every route here is TENANT-SCOPED.
+#
+# Job ids are caller-supplied (`request_id`), so they are guessable — reading a
+# guardrail verdict must never be possible on a job id alone. `X-Tenant-Id` is required
+# (428 when absent, the same precondition spelling as the submit route) and compared to
+# the tenant stamped on the job at submit time. A mismatch returns 404, NOT 403: the
+# platform hides cross-tenant existence (`00-project-context.md` 404-over-403). 403 here
+# would confirm the job exists, which is the leak this closes.
+# ---------------------------------------------------------------------------
 
 
 class JobStatus(BaseModel):
@@ -38,11 +49,12 @@ class JobList(BaseModel):
 @router.get("/jobs/status/{job_id}", response_model=JobStatus)
 async def get_job_status(
     job_id: str = Path(..., description="Job ID to retrieve"),
+    tenant_id: str = Depends(require_tenant_id),
     job_processor: JobProcessor = Depends(get_job_processor),
 ) -> JobStatus:
-    """Get the status of a specific guardrail analysis job."""
+    """Get the status of a specific guardrail analysis job owned by the calling tenant."""
     try:
-        job_status = await job_processor.get_job_status(job_id)
+        job_status = await job_processor.get_job_status(job_id, tenant_id=tenant_id)
 
         if not job_status:
             raise HTTPException(
@@ -66,14 +78,16 @@ async def list_jobs(
     status: str | None = None,
     limit: int = 50,
     offset: int = 0,
+    tenant_id: str = Depends(require_tenant_id),
     job_processor: JobProcessor = Depends(get_job_processor),
 ) -> JobList:
-    """List guardrail analysis jobs with optional filtering."""
+    """List the calling tenant's guardrail analysis jobs, with optional filtering."""
     try:
         jobs_data = await job_processor.list_jobs(
             status=status,
             limit=limit,
             offset=offset,
+            tenant_id=tenant_id,
         )
 
         return JobList(**jobs_data)
@@ -88,11 +102,12 @@ async def list_jobs(
 @router.delete("/jobs/cancel/{job_id}", response_model=dict[str, str])
 async def cancel_job(
     job_id: str = Path(..., description="Job ID to cancel"),
+    tenant_id: str = Depends(require_tenant_id),
     job_processor: JobProcessor = Depends(get_job_processor),
 ) -> dict[str, str]:
-    """Cancel a pending or processing guardrail analysis job."""
+    """Cancel a pending or processing job owned by the calling tenant."""
     try:
-        success = await job_processor.cancel_job(job_id)
+        success = await job_processor.cancel_job(job_id, tenant_id=tenant_id)
 
         if not success:
             raise HTTPException(
@@ -118,11 +133,12 @@ async def cancel_job(
 @router.get("/jobs/result/{job_id}", response_model=dict[str, Any])
 async def get_job_result(
     job_id: str = Path(..., description="Job ID to retrieve result for"),
+    tenant_id: str = Depends(require_tenant_id),
     job_processor: JobProcessor = Depends(get_job_processor),
 ) -> dict[str, Any]:
-    """Get the result of a completed guardrail analysis job."""
+    """Get the result of a completed job owned by the calling tenant."""
     try:
-        job_status = await job_processor.get_job_status(job_id)
+        job_status = await job_processor.get_job_status(job_id, tenant_id=tenant_id)
 
         if not job_status:
             raise HTTPException(
@@ -155,11 +171,12 @@ async def get_job_result(
 
 @router.get("/jobs/stats", response_model=dict[str, Any])
 async def get_job_stats(
+    tenant_id: str = Depends(require_tenant_id),
     job_processor: JobProcessor = Depends(get_job_processor),
 ) -> dict[str, Any]:
-    """Get statistics about guardrail analysis jobs."""
+    """Get statistics about the calling tenant's guardrail analysis jobs."""
     try:
-        stats = await job_processor.get_job_stats()
+        stats = await job_processor.get_job_stats(tenant_id=tenant_id)
 
         return {
             "timestamp": datetime.now(UTC).isoformat(),

@@ -106,8 +106,8 @@ class StartDocumentRequest(BaseModel):
     conversation_language: str = Field(default="en", alias="conversationLanguage")
     dna_style_id: str | None = Field(default=None, alias="dnaStyleId")
     template: str | None = Field(default=None)
-    smr_provider: str | None = Field(default=None, alias="smrProvider")
-    smr_model: str | None = Field(default=None, alias="smrModel")
+    text_provider: str | None = Field(default=None, alias="textProvider")
+    text_model: str | None = Field(default=None, alias="textModel")
     # DNA redaction/rewrite rules resolved + decrypted gateway-side
     # (tenant + doctor double-gate). Default [] ⇒ the workflow's apply_redaction
     # insertion is a no-op (byte-identical to the prior start). Each entry is
@@ -206,8 +206,8 @@ class LoopEndingRequest(BaseModel):
     conversation_language: str = Field(default="en", alias="conversationLanguage")
     dna_style_id: str | None = Field(default=None, alias="dnaStyleId")
     template: str | None = Field(default=None)
-    smr_provider: str | None = Field(default=None, alias="smrProvider")
-    smr_model: str | None = Field(default=None, alias="smrModel")
+    text_provider: str | None = Field(default=None, alias="textProvider")
+    text_model: str | None = Field(default=None, alias="textModel")
 
 
 class LoopCancelRequest(BaseModel):
@@ -250,8 +250,8 @@ async def start_document(
         conversation_language=body.conversation_language,
         dna_style_id=body.dna_style_id,
         template=body.template,
-        smr_provider=body.smr_provider,
-        smr_model=body.smr_model,
+        text_provider=body.text_provider,
+        text_model=body.text_model,
         # Parse each rule dict into a RedactionRule (validates the JSON shape at the
         # boundary; a malformed rule 422s here rather than failing closed mid-workflow).
         redaction_rules=[RedactionRule.model_validate(r) for r in body.redaction_rules],
@@ -521,8 +521,8 @@ async def signal_consultation_ending(
                 conversation_language=body.conversation_language,
                 dna_style_id=body.dna_style_id,
                 template=body.template,
-                smr_provider=body.smr_provider,
-                smr_model=body.smr_model,
+                text_provider=body.text_provider,
+                text_model=body.text_model,
             ),
         ),
     )

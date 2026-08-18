@@ -2,7 +2,7 @@
 
 This is the ONE Python implementation of the monorepo's env-file contract. It
 replaces the four near-identical ``_load_dotenv_into_environ()`` copies that
-used to live in ``apps/{smr,harness,guardrail,tts}/…/core/config.py`` and the
+used to live in ``apps/{text,harness,guardrail,tts}/…/core/config.py`` and the
 bare ``dotenv.load_dotenv()`` calls in ``apps/nlp``.
 
 Those copies read the monorepo-root ``.env`` and NEVER ``.env.dev`` — so

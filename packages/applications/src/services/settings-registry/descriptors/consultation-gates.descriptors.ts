@@ -14,37 +14,48 @@
 // `OCR_ENABLED` DEFAULTED TO ENABLED (`ocr-enrichment.processor.ts` treated
 // unset as on, and only an explicit falsey string disabled it). A kill-switch
 // MUST default OFF, so the migrated key defaults `false` and server-side OCR
-// enrichment is now OPT-IN. `harness.loop.enabled` is unaffected: it already
-// defaulted OFF, so its effective state is unchanged.
+// enrichment is now OPT-IN.
+//
+// TASK-705 — `harness.loop.enabled` is GONE, replaced by
+// `harness.loop.emergencyStop`. It was two devices wearing one key: commercial
+// eligibility (now the `agenticLoop` subscription entitlement, resolved from
+// the database per tenant) and an operational stop (what remains here, with the
+// polarity flipped so its disarmed default and the day-1 product requirement
+// finally agree). The full reasoning is next to the key itself, in
+// `../../consultation/consultation-gates.constants.ts`.
 
 import {
   CONSULTATION_GATE_DEFAULTS,
   CONSULTATION_OCR_ENABLED_KEY,
   CONSULTATION_REQUIRE_PRIMED_BEFORE_RECORDING_KEY,
   CONSULTATION_SESSION_TIMEOUT_MINUTES_KEY,
-  HARNESS_LOOP_ENABLED_KEY,
+  HARNESS_LOOP_EMERGENCY_STOP_KEY,
 } from '../../consultation/consultation-gates.constants';
 import { SettingDescriptor } from '../registry.types';
 
 export const CONSULTATION_GATE_SETTINGS: SettingDescriptor[] = [
+  // TASK-705 — the loop's OPERATIONAL stop. Its commercial counterpart is the
+  // `agenticLoop` subscription entitlement, which is not a setting at all.
   {
-    key: HARNESS_LOOP_ENABLED_KEY,
+    key: HARNESS_LOOP_EMERGENCY_STOP_KEY,
     tier: 'global-kv',
     dataType: 'boolean',
     sensitivity: 'internal',
-    // Platform-only: the gate decides whether this DEPLOYMENT runs the loop at
-    // all. Per-tenant / per-consultation loop POLICY is a separate concern
-    // (`ILoopConfigService`), not a cascade level of this switch.
+    // Platform-only, and load-bearing: this is the operator's stop for the whole
+    // DEPLOYMENT. Per-TENANT loop eligibility is the subscription entitlement
+    // (`ResolvedFeatures.agenticLoop`), and per-consultation loop POLICY is
+    // `ILoopConfigService` — neither is a cascade level of this switch, which is
+    // why a row planted under a tenant must never govern it.
     maxScope: 'system',
     editableBy: 'GlobalSetting',
     globalOnly: true,
     failMode: 'open-to-default',
     killSwitch: true,
     category: 'Feature Flags',
-    label: 'Consultation loop signalling',
+    label: 'Consultation loop emergency stop',
     description:
-      'Enables `LoopContextSignalService` — the ContextAdded / consultation-ending / loop-cancel signals sent to the `ConsultationLoopWorkflow` in apps/harness. Resolved on EVERY signal, so an operator can stop a misbehaving loop without a redeploy. Defaults OFF (fail-safe rollout). Replaces the `HARNESS_LOOP_ENABLED` env flag, which was read once in the service constructor and was never declared in `.env.sample` or `turbo.json#globalEnv`, so it could not be turned on through the supported config path at all.',
-    default: CONSULTATION_GATE_DEFAULTS[HARNESS_LOOP_ENABLED_KEY],
+      'PLATFORM-WIDE EMERGENCY STOP for the harness agentic loop. Set it to true to halt `LoopContextSignalService` — the ContextAdded / consultation-ending / loop-cancel signals sent to `ConsultationLoopWorkflow` in apps/harness — for every tenant at once, with no redeploy; it is resolved on EVERY signal. Defaults OFF, meaning NO emergency in progress: a tenant whose subscription plan includes the loop (`agenticLoop` entitlement) runs it. This switch can only ever SUBTRACT — disengaging it never grants the loop to a tenant whose plan does not include it. Replaces `harness.loop.enabled`, which conflated commercial eligibility with an operational stop and consequently shipped a code default (false) that disagreed with its own seeded row (true).',
+    default: CONSULTATION_GATE_DEFAULTS[HARNESS_LOOP_EMERGENCY_STOP_KEY],
   },
   {
     key: CONSULTATION_OCR_ENABLED_KEY,

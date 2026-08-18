@@ -119,6 +119,23 @@ export const PLATFORM_SECRET_SETTINGS: SettingDescriptor[] = [
   // `X-Service-Token` hop in BOTH directions (gateway → service, and service →
   // gateway `/api/v1/internal/effective-config` via `InternalServiceTokenGuard`).
   platformSecret(
+    'internal.accessToken',
+    'Internal access token',
+    'THE canonical internal service-to-service credential (owner decision D-D, 2026-08-17): **one** shared access token, ' +
+      'identical across every service, set by the DevOps engineer, internal use only. It is presented and accepted as ' +
+      '`X-Service-Token` on every internal hop — gateway↔text/nlp/guardrail/harness/tts and every peer-to-peer hop ' +
+      '(harness→text/nlp/guardrail, text→guardrail, nlp→text). ' +
+      'There is deliberately NO per-service and NO per-pair token in the target state: the `*_SERVICE_TOKEN` family below ' +
+      '(`TEXT_`, `NLP_`, `GUARDRAIL_`, `HARNESS_`, `TTS_`, and harness’s outbound `HARNESS_TEXT_`/`HARNESS_NLP_`) is retained ' +
+      'ONLY as a zero-cost backward-compatibility fallback — every inbound middleware accepts EITHER this token or its own ' +
+      'legacy secret, and every outbound client PREFERS this token and falls back to its legacy per-target secret when unset. ' +
+      'Set this one variable and the legacy family can all be dropped. ' +
+      'This is the sanctioned env-var exception to D-B (configuration lives in the DB) — it is bootstrap-floor auth material, ' +
+      'delivered from Vault in deployed environments. NOT the same thing as `HARNESS_INTERNAL_SERVICE_TOKEN`, which gates ' +
+      'the harness knowledge-ingest endpoint only, nor `API_GATEWAY_KEY`, which must be a real ApiKey row (see below).',
+    'Service Tokens',
+  ),
+  platformSecret(
     'text.serviceToken',
     'Text service token',
     "Shared secret on the gateway↔SMR hop. SMR reads it as `settings.service_token` under its `TEXT_` pydantic prefix; the gateway resolves the same name for outbound proxying and for `InternalServiceTokenGuard`'s inbound check.",

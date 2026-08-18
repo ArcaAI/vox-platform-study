@@ -1,1 +1,1 @@
-"""SMR API endpoints."""
+"""Text API endpoints."""

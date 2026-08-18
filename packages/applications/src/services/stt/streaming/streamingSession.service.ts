@@ -3,7 +3,9 @@ import { Inject, Injectable, Logger, Optional } from '@nestjs/common';
 import { firstValueFrom } from 'rxjs';
 import { AiCapability, AiCostBasis, AiDeploymentKind, AiUsageUnit } from '@arcaai/domains';
 import { IConfigService } from '../../baseServices/_meta/config';
+import { SecretsService } from '../../baseServices/_meta/secrets';
 import { IUsageLedgerService, UsageIdempotencyKey } from '../../usageLedger';
+import { TENANTLESS, TenantlessReason, internalServiceHeaders, resolveInternalAccessToken } from '../../../common';
 import { IStreamingSessionService } from './IStreamingSessionService';
 import {
   CreateStreamingSessionRequest,
@@ -12,6 +14,19 @@ import {
   StreamingSessionStatus,
   StreamingSessionTeardownSummary,
 } from './dto';
+
+/**
+ * Declared reason for the session-scoped hops that legitimately hold no tenant.
+ *
+ * Session teardown is reached from three background paths that carry only a
+ * session id — the SIGTERM/rolling-deploy sweep in `SttWsGateway`, the Redis
+ * `stt:session-removal:retry` set drained by `SessionRemovalRetryService`, and
+ * the compat gateway's disconnect handler. Their envelopes have no tenant
+ * column, which is exactly `TENANTLESS.JOB_QUEUE`. Every caller that DOES hold
+ * a tenant threads it explicitly — declaring tenant-less-ness with a tenant one
+ * line above is the failure this contract exists to prevent.
+ */
+const SESSION_TENANTLESS_REASON = TENANTLESS.JOB_QUEUE;
 
 /**
  * StreamingSessionService
@@ -45,6 +60,11 @@ export class StreamingSessionService implements IStreamingSessionService {
     // and any DI graph that doesn't wire the ledger) keeps compiling —
     // emission is simply skipped when this is absent.
     @Optional() @Inject(IUsageLedgerService) private readonly usageLedgerService?: IUsageLedgerService,
+    // Optional + trailing so every existing positional construction keeps
+    // compiling. `apps/stt` now runs `ServiceAuthMiddleware`, so an unwired
+    // secrets service means an EMPTY token — sent anyway, and rejected by stt,
+    // rather than the hop silently downgrading to unauthenticated HTTP.
+    @Optional() @Inject(SecretsService) private readonly secretsService?: SecretsService,
   ) {
     this.sttBaseUrl = this.configService?.config?.STT_URL || 'http://localhost:8861';
     this.logger.log({
@@ -54,12 +74,32 @@ export class StreamingSessionService implements IStreamingSessionService {
   }
 
   /**
+   * Build the `X-Service-Token` + `X-Tenant-Id` pair for one hop to stt.
+   *
+   * D-D: the ONE shared `INTERNAL_ACCESS_TOKEN` (there has never been an
+   * `STT_SERVICE_TOKEN` — `platform-secrets.descriptors.ts` says so explicitly —
+   * so the legacy key is passed only to satisfy the shared resolver's signature
+   * and never resolves to anything).
+   */
+  private async sttHeaders(tenantId: string | null | undefined, tenantlessReason: TenantlessReason): Promise<Record<string, string>> {
+    const serviceToken = await resolveInternalAccessToken(this.secretsService, 'INTERNAL_ACCESS_TOKEN');
+    return internalServiceHeaders({ serviceToken, tenantId, tenantlessReason });
+  }
+
+  /**
    * Check if the STT streaming module is available and has capacity.
+   *
+   * A platform capability probe: it asks the STT process about its own
+   * capacity, not about any tenant's work, so it DECLARES itself tenant-less
+   * rather than borrowing a caller's tenant.
    */
   async checkAvailability(): Promise<StreamingAvailability> {
     try {
       const { data } = await firstValueFrom(
-        this.httpService.get<StreamingAvailability>(`${this.sttBaseUrl}/internal/streaming/availability`, { timeout: 5000 }),
+        this.httpService.get<StreamingAvailability>(`${this.sttBaseUrl}/internal/streaming/availability`, {
+          timeout: 5000,
+          headers: await this.sttHeaders(null, TENANTLESS.CONTROL_PLANE),
+        }),
       );
       return data;
     } catch (error) {
@@ -83,11 +123,18 @@ export class StreamingSessionService implements IStreamingSessionService {
    * Backend-authoritative source of truth for the SDK picker. The catalog is
    * static, so a short timeout + a safe empty fallback keep this read cheap and
    * non-fatal when STT is briefly unreachable.
+   *
+   * Platform-wide and identical for every tenant, so — like
+   * {@link checkAvailability} — it DECLARES itself tenant-less instead of
+   * attaching whichever tenant happened to ask for the picker.
    */
   async getLanguageModes(): Promise<SttLanguageModeCatalog> {
     try {
       const { data } = await firstValueFrom(
-        this.httpService.get<SttLanguageModeCatalog>(`${this.sttBaseUrl}/internal/streaming/language-modes`, { timeout: 5000 }),
+        this.httpService.get<SttLanguageModeCatalog>(`${this.sttBaseUrl}/internal/streaming/language-modes`, {
+          timeout: 5000,
+          headers: await this.sttHeaders(null, TENANTLESS.CONTROL_PLANE),
+        }),
       );
       return { modes: data?.modes ?? [] };
     } catch (error) {
@@ -146,7 +193,13 @@ export class StreamingSessionService implements IStreamingSessionService {
             // echoes it on the teardown summary so the usage row is repriceable.
             channel_count: dto.channelCount ?? 1,
           },
-          { timeout: 15000 },
+          {
+            timeout: 15000,
+            // The session's own tenant is REQUIRED on the DTO and is already in
+            // the body as `tenant_id`; the header is the transport-level half of
+            // the same fact, so the fallback below is structurally unreachable.
+            headers: await this.sttHeaders(dto.tenantId, SESSION_TENANTLESS_REASON),
+          },
         ),
       );
 
@@ -199,11 +252,18 @@ export class StreamingSessionService implements IStreamingSessionService {
 
   /**
    * Get the status of an existing streaming session.
+   *
+   * `tenantId` is threaded by callers that hold one (the compat gateway
+   * resolves it from the session binding before handshake); omitted only on
+   * paths whose envelope genuinely carries no tenant.
    */
-  async getSessionStatus(sessionId: string): Promise<StreamingSessionStatus | null> {
+  async getSessionStatus(sessionId: string, tenantId?: string | null): Promise<StreamingSessionStatus | null> {
     try {
       const { data } = await firstValueFrom(
-        this.httpService.get<StreamingSessionStatus>(`${this.sttBaseUrl}/internal/streaming/sessions/${sessionId}`, { timeout: 5000 }),
+        this.httpService.get<StreamingSessionStatus>(`${this.sttBaseUrl}/internal/streaming/sessions/${sessionId}`, {
+          timeout: 5000,
+          headers: await this.sttHeaders(tenantId, SESSION_TENANTLESS_REASON),
+        }),
       );
 
       return {
@@ -235,16 +295,22 @@ export class StreamingSessionService implements IStreamingSessionService {
    * session) and 409 (target unavailable — no fallback, primary never loaded, or
    * already on that engine) are surfaced to the caller.
    */
-  async switchProvider(sessionId: string, target: 'primary' | 'fallback'): Promise<void> {
-    await firstValueFrom(this.httpService.post(`${this.sttBaseUrl}/internal/streaming/sessions/${sessionId}/switch`, { target }, { timeout: 5000 }));
+  async switchProvider(sessionId: string, target: 'primary' | 'fallback', tenantId?: string | null): Promise<void> {
+    await firstValueFrom(
+      this.httpService.post(
+        `${this.sttBaseUrl}/internal/streaming/sessions/${sessionId}/switch`,
+        { target },
+        { timeout: 5000, headers: await this.sttHeaders(tenantId, SESSION_TENANTLESS_REASON) },
+      ),
+    );
     this.logger.log({ message: 'Streaming session engine switch requested', sessionId, target });
   }
 
   /**
    * Back-compat alias for `switchProvider(sessionId, 'fallback')`.
    */
-  async switchToFallback(sessionId: string): Promise<void> {
-    await this.switchProvider(sessionId, 'fallback');
+  async switchToFallback(sessionId: string, tenantId?: string | null): Promise<void> {
+    await this.switchProvider(sessionId, 'fallback', tenantId);
   }
 
   /**
@@ -263,12 +329,13 @@ export class StreamingSessionService implements IStreamingSessionService {
    * key, so a duplicate teardown is a no-op at the ledger, never a double
    * charge.
    */
-  async removeSession(sessionId: string, interrupted = false): Promise<void> {
+  async removeSession(sessionId: string, interrupted = false, tenantId?: string | null): Promise<void> {
     let summary: StreamingSessionTeardownSummary | undefined;
     try {
       const response = await firstValueFrom(
         this.httpService.delete<StreamingSessionTeardownSummary | undefined>(`${this.sttBaseUrl}/internal/streaming/sessions/${sessionId}`, {
           timeout: 30000,
+          headers: await this.sttHeaders(tenantId, SESSION_TENANTLESS_REASON),
         }),
       );
       summary = response.status === 200 ? response.data : undefined;

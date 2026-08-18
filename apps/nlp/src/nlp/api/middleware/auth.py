@@ -41,16 +41,20 @@ class ServiceAuthMiddleware(BaseHTTPMiddleware):
     """Require a valid X-Service-Token for non-exempt endpoints."""
 
     async def dispatch(self, request: Request, call_next: RequestResponseEndpoint) -> Response:
-        service_token: str = settings.service.service_token.get_secret_value()
+        # Owner decision D-D (2026-08-17): the CANONICAL credential is the single
+        # shared `INTERNAL_ACCESS_TOKEN`; the legacy per-service token stays
+        # accepted as a zero-cost backward-compatibility fallback. Both empty ⇒
+        # auth bypassed (local dev / hermetic CI), unchanged.
+        accepted: tuple[str, ...] = settings.service.accepted_service_tokens
 
-        if not service_token:
+        if not accepted:
             return await call_next(request)
 
         if request.url.path in EXEMPT_PATHS:
             return await call_next(request)
 
         provided = request.headers.get("X-Service-Token", "")
-        if not provided or not hmac.compare_digest(provided, service_token):
+        if not provided or not any(hmac.compare_digest(provided, t) for t in accepted):
             logger.warning(
                 "nlp.auth.rejected path=%s reason=invalid_or_missing_token",
                 request.url.path,
@@ -75,13 +79,14 @@ async def enforce_service_token_ws(websocket: WebSocket) -> bool:
     Returns ``True`` when the handler may accept the connection; ``False`` when the
     socket has been closed and the handler must return without accepting.
     """
-    service_token: str = settings.service.service_token.get_secret_value()
+    # Same shared-then-legacy acceptance as the HTTP middleware (owner decision D-D).
+    accepted: tuple[str, ...] = settings.service.accepted_service_tokens
 
-    if not service_token:
+    if not accepted:
         return True
 
     provided = websocket.headers.get("x-service-token", "")
-    if not provided or not hmac.compare_digest(provided, service_token):
+    if not provided or not any(hmac.compare_digest(provided, t) for t in accepted):
         logger.warning(
             "nlp.auth.ws_rejected path=%s reason=invalid_or_missing_token",
             websocket.url.path,

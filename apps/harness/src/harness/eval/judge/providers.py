@@ -34,16 +34,16 @@ def _secret_value(value: object) -> str:
 
 # ---------------------------------------------------------------------------
 # generation-stats capture for the judge/sensor LLM
-# clients. These call their OWN LLM endpoints (not SMR), so they can't reuse
-# SMR's ``GenerationStats`` model (a separate uv package); instead they capture
-# the equivalent native fields into an AD-1-shaped dict mirroring the SMR
+# clients. These call their OWN LLM endpoints (not Text), so they can't reuse
+# Text's ``GenerationStats`` model (a separate uv package); instead they capture
+# the equivalent native fields into an AD-1-shaped dict mirroring the Text
 # ``stats`` field names, for Phase 2 trajectory ``LLM_CALL`` / ``GUARDRAIL``
 # steps. Every builder is null-safe: a response that omits usage / finish
 # reason must NEVER throw — counts fall back to zero and the stop reason to a
 # null-safe normalized value.
 # ---------------------------------------------------------------------------
 
-# Per-wire raw→normalized stop-reason tables (subset mirroring smr.models.stats
+# Per-wire raw→normalized stop-reason tables (subset mirroring text.models.stats
 # for the wires these clients speak: OpenAI-compatible, Bedrock converse).
 _OPENAI_WIRE_STOP: dict[str, str] = {
     "stop": "stop",
@@ -103,7 +103,7 @@ def build_llm_call_stats(
 ) -> dict[str, Any]:
     """Assemble an AD-1-shaped stats dict from already-extracted native fields.
 
-    Mirrors ``smr.models.stats.GenerationStats`` field names. ``tokens_per_second``
+    Mirrors ``text.models.stats.GenerationStats`` field names. ``tokens_per_second``
     is used verbatim when the engine reports it; otherwise it is computed from client
     timing (predicted / decode-time), and left ``None`` when nothing can be divided.
     """

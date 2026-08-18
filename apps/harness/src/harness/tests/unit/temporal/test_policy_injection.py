@@ -48,8 +48,8 @@ _POLICY_JSON: dict[str, Any] = {
     "phiFailClosed": False,
     "safetyProvider": "ollama",
     "safetyModel": "granite-guardian-x",
-    "smrProvider": "azure",
-    "smrModel": "gpt-4o",
+    "textProvider": "azure",
+    "textModel": "gpt-4o",
     "judgeProvider": "openai_compat",
     "judgeModel": "google/gemma-4-e4b",
     "maxRegen": 4,
@@ -78,8 +78,8 @@ class TestHarnessPolicyModel:
         assert policy.phi_fail_closed is False
         assert policy.safety_provider == "ollama"
         assert policy.safety_model == "granite-guardian-x"
-        assert policy.smr_provider == "azure"
-        assert policy.smr_model == "gpt-4o"
+        assert policy.text_provider == "azure"
+        assert policy.text_model == "gpt-4o"
         # the SYSTEM harness.judge selection maps straight through.
         assert policy.judge_provider == "openai_compat"
         assert policy.judge_model == "google/gemma-4-e4b"
@@ -100,9 +100,9 @@ class TestHarnessPolicyModel:
 
     def test_from_api_tolerates_missing_optional_fields(self):
         # A code-default policy may omit nullable model fields -> degrade-safe defaults.
-        policy = HarnessPolicy.from_api({"smrProvider": None, "smrModel": None})
-        assert policy.smr_provider is None
-        assert policy.smr_model is None
+        policy = HarnessPolicy.from_api({"textProvider": None, "textModel": None})
+        assert policy.text_provider is None
+        assert policy.text_model is None
         # absent judge selection ⇒ None (inferential pass fails closed).
         assert policy.judge_provider is None
         assert policy.judge_model is None
@@ -141,7 +141,7 @@ class TestFetchPolicyActivity:
         assert isinstance(result, HarnessPolicy)
         assert result.coverage_threshold == 0.6
         assert result.max_regen == 4
-        assert result.smr_provider == "azure"
+        assert result.text_provider == "azure"
 
     @pytest.mark.asyncio
     async def test_fetch_policy_forwards_consultation_id(self, env, monkeypatch):

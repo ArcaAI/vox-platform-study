@@ -1,1 +1,1 @@
-"""SMR services."""
+"""Text services."""

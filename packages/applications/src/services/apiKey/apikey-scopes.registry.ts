@@ -10,6 +10,16 @@ export const API_KEY_SCOPE_REGISTRY: Record<string, ScopeDefinition> = {
   'stt:stream:write': { description: 'Stream audio for real-time transcription', category: 'STT' },
   'stt:model:read': { description: 'View available STT models', category: 'STT' },
 
+  // TTS Service (TASK-742). The `/speech/*` proxy was one of the surfaces the
+  // gateway conformance review named as reachable with NO authorization check
+  // at all, because the API-key path permitted any route declaring no scopes.
+  // Follows the same `<area>:<resource>:<action>` grammar as the `stt:*` family
+  // above rather than borrowing an `stt:` scope: a key issued to transcribe
+  // audio has no business synthesising speech, and reusing `stt:*` here would
+  // have silently granted exactly that.
+  'tts:speech:write': { description: 'Synthesize speech from text', category: 'TTS' },
+  'tts:voice:read': { description: 'List available TTS voices', category: 'TTS' },
+
   // Consultation
   'consultation:session:read': { description: 'Read consultation sessions', category: 'Consultation' },
   'consultation:session:write': { description: 'Create and manage consultation sessions', category: 'Consultation' },
@@ -135,6 +145,7 @@ export const API_KEY_SCOPE_REGISTRY: Record<string, ScopeDefinition> = {
 
   // Wildcards
   'stt:*': { description: 'Full STT service access', category: 'Wildcard' },
+  'tts:*': { description: 'Full TTS service access', category: 'Wildcard' },
   'consultation:*': { description: 'Full consultation access', category: 'Wildcard' },
   'user:*': { description: 'Full user self-service access', category: 'Wildcard' },
   'media:*': { description: 'Full media access', category: 'Wildcard' },

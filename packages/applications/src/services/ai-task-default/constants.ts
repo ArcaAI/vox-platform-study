@@ -3,21 +3,23 @@ import { ModelTaskType } from '@arcaai/domains';
 /**
  * The AI tasks whose default model is selected through
  * `AiTaskDefault` rows (the Class-3 generalization of
- * `HarnessPolicy.smrProvider/smrModel` for non-pipeline tasks). Extensible:
+ * `HarnessPolicy.textProvider/textModel` for non-pipeline tasks). Extensible:
  * new keys are added here + a compatibility mapping below + a
  * `models.<taskKey>` descriptor in the settings registry.
  */
-// `smr.live` / `smr.finalize` route the two SMR generation
+// `text.live` / `text.finalize` route the two SMR generation
 // flows (live-documentation delta vs. final/comprehensive summary). They are the
-// AiTaskDefault-first precedence source for `HarnessPolicyService.resolveSmrSelection`.
-// `smr.live.fallback` / `smr.finalize.fallback` are the per-tenant,
-// opt-in fallback selections `resolveSmrFallbackSelection` reads (fail-OPEN: no
+// AiTaskDefault-first precedence source for `HarnessPolicyService.resolveTextSelection`.
+// `text.live.fallback` / `text.finalize.fallback` are the per-tenant,
+// opt-in fallback selections `resolveTextFallbackSelection` reads (fail-OPEN: no
 // row ⇒ no fallback). SMR selection is tenant-admin configurable (NOT in
 // `SUPER_ADMIN_ONLY_TASK_PREFIXES`).
-// `smr.test` routes the tenant-admin prompt-template test
-// bench when the caller does not supply an explicit provider/model pair;
-// `PromptManagementService.callTextGenerate` falls back to `smr.finalize` when
-// `smr.test` is unconfigured for the tenant.
+// `text.test` routes the tenant-admin prompt-template test bench when the
+// caller does not supply an explicit provider/model pair. TASK-740 D-5: this
+// comment used to describe a `text.test → text.finalize` fallback hop. There is
+// no such hop — `PromptManagementService` resolves `text.test` DIRECTLY and
+// fails CLOSED (BadRequestException naming the key) when it is unconfigured, so
+// that testing a prompt never silently reads clinical-documentation routing.
 // additive keys moving the last env-selected surfaces into the DB
 // control plane: `guardrail.safety` (GLiNER content-safety detector),
 // `guardrail.groundedness` (MiniCheck NLI fact-checker), `harness.judge`
@@ -41,11 +43,11 @@ export const AI_TASK_KEYS = [
   'nlp.diagnosis',
   'nlp.sentiment',
   'nlp.toxicity',
-  'smr.live',
-  'smr.finalize',
-  'smr.live.fallback',
-  'smr.finalize.fallback',
-  'smr.test',
+  'text.live',
+  'text.finalize',
+  'text.live.fallback',
+  'text.finalize.fallback',
+  'text.test',
   'harness.judge',
   'vlm.extract',
 ] as const;
@@ -72,13 +74,13 @@ export const AI_TASK_MODEL_TASK_TYPES: Record<AiTaskKey, ModelTaskType> = {
   'nlp.sentiment': ModelTaskType.TEXT_CLASSIFICATION,
   'nlp.toxicity': ModelTaskType.TEXT_CLASSIFICATION,
   // SMR generation models are text-generation models in the registry.
-  'smr.live': ModelTaskType.TEXT_GENERATION,
-  'smr.finalize': ModelTaskType.TEXT_GENERATION,
+  'text.live': ModelTaskType.TEXT_GENERATION,
+  'text.finalize': ModelTaskType.TEXT_GENERATION,
   // per-tenant SMR fallback selections — same task type.
-  'smr.live.fallback': ModelTaskType.TEXT_GENERATION,
-  'smr.finalize.fallback': ModelTaskType.TEXT_GENERATION,
+  'text.live.fallback': ModelTaskType.TEXT_GENERATION,
+  'text.finalize.fallback': ModelTaskType.TEXT_GENERATION,
   // prompt-template test-bench routing — same task type.
-  'smr.test': ModelTaskType.TEXT_GENERATION,
+  'text.test': ModelTaskType.TEXT_GENERATION,
   // the harness LLM-as-judge is a text-generation model.
   'harness.judge': ModelTaskType.TEXT_GENERATION,
   // vision extraction — image + text in, text out.
@@ -94,7 +96,7 @@ export const AI_TASK_MODEL_TASK_TYPES: Record<AiTaskKey, ModelTaskType> = {
  * - `harness.`
  *
  * NOTE: `smr.` is intentionally NOT here. SMR summarization model
- * selection — primary (`smr.live` / `smr.finalize`) AND per-tenant fallback
+ * selection — primary (`text.live` / `text.finalize`) AND per-tenant fallback
  * (`smr.<task>.fallback`) — is tenant-admin configurable: `getEffective`
  * honours per-tenant override rows and `upsertRow` permits tenant writes.
  *

@@ -11,7 +11,7 @@ import { DNA_STYLE_ENDPOINTS } from '../core/constants';
 import { SSEClient, type SSEApiClient } from '../core/SSEClient';
 import { withIdempotencyKey } from '../utils/idempotency';
 import { appendFilters } from '../utils/urlUtils';
-import type { DnaReport, DnaStyleVersion, DnaGenerateInput, DnaUpdateInput, DnaJobStatus } from '../types';
+import type { DnaReport, DnaStyleVersion, DnaGenerateInput, DnaUpdateInput, DnaJobStatus, DnaErasureResult } from '../types';
 
 /**
  * Filters for the admin cross-user report list. A super admin
@@ -81,6 +81,15 @@ export interface UseDnaStyleReturn {
   /** Fetch the doctor's own report history (owner-scoped). */
   getMyReports: () => Promise<DnaReport[]>;
   getVersions: (reportId: string) => Promise<DnaStyleVersion[]>;
+  /**
+   * Erase the caller's ENTIRE learned writing-style profile (every report and
+   * every version). Idempotent. Independent of the DNA on/off toggle: erasing
+   * does not opt the clinician out, so a fresh profile is rebuilt from their
+   * approved notes if learning is still enabled.
+   */
+  resetMyStyle: () => Promise<DnaErasureResult>;
+  /** Erase ONE of the caller's own reports and its versions. */
+  deleteReport: (reportId: string) => Promise<DnaErasureResult>;
   /**
    * Resolve two version snapshots of a report for a side-by-side
    * diff. Reuses the versions endpoint and returns the matched `left`/`right`.
@@ -169,6 +178,29 @@ export function useDnaStyle(): UseDnaStyleReturn {
       execute<DnaReport>('setDefault', async (client) => {
         const data = await client.patch<DnaReport>(DNA_STYLE_ENDPOINTS.SET_DEFAULT(reportId), {});
         setStyle(data);
+        return data;
+      }),
+    [execute],
+  );
+
+  // Erasure — the other half of the opt-out (the toggle only stops FUTURE
+  // learning). Clears local state so the UI stops showing an erased profile.
+  const resetMyStyle = useCallback(
+    (): Promise<DnaErasureResult> =>
+      execute<DnaErasureResult>('resetMyStyle', async (client) => {
+        const data = await client.delete<DnaErasureResult>(DNA_STYLE_ENDPOINTS.RESET_MY_STYLE);
+        setStyle(null);
+        setVersions([]);
+        return data;
+      }),
+    [execute],
+  );
+
+  const deleteReport = useCallback(
+    (reportId: string): Promise<DnaErasureResult> =>
+      execute<DnaErasureResult>('deleteReport', async (client) => {
+        const data = await client.delete<DnaErasureResult>(DNA_STYLE_ENDPOINTS.DELETE_REPORT(reportId));
+        setVersions([]);
         return data;
       }),
     [execute],
@@ -426,6 +458,8 @@ export function useDnaStyle(): UseDnaStyleReturn {
     generateFromHistory,
     update,
     setDefault,
+    resetMyStyle,
+    deleteReport,
     getMyReports,
     getVersions,
     getVersionDiff,

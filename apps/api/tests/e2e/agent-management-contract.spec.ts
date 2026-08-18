@@ -305,7 +305,7 @@ test.describe.serial('agent management backend contract (arcaai_admin · ARCAAI)
       data: { sampleInput: 'Patient reports chest pain for 2 days.', variables: { department: 'Cardiology', transcript: 'CC: chest pain.' } },
     });
     // Prompt assembly + provider resolution are deterministic; reaching SMR is
-    // not (the test stack may not run it, and a missing `smr.test` model is a
+    // not (the test stack may not run it, and a missing `text.test` model is a
     // documented 400). Assert the shape only when the ack was actually issued.
     expect(res.status(), 'the run is not OCC-gated ⇒ never 428').not.toBe(428);
 
@@ -321,7 +321,7 @@ test.describe.serial('agent management backend contract (arcaai_admin · ARCAAI)
       // Stream mode hands back the handle the finalize call needs.
       if (ack.mode === 'stream') expect(typeof ack.taskId).toBe('string');
     } else {
-      // Authored — SMR unreachable, or no `smr.test` model configured (400).
+      // Authored — SMR unreachable, or no `text.test` model configured (400).
       console.warn(`[task-382] prompt test run returned ${res.status()} — SMR/model selection unavailable; the no-428 contract is verified.`);
     }
   });

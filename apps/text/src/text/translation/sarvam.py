@@ -1,6 +1,6 @@
 """Sarvam AI translate provider — plain httpx, no vendor SDK.
 
-Ported into SMR from the former ``apps/stt`` helper (that STT copy is being
+Ported into Text from the former ``apps/stt`` helper (that STT copy is being
 deleted by a separate task — do NOT import from STT). Translates each text via
 Sarvam's REST ``/translate`` endpoint.
 

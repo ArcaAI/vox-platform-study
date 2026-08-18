@@ -132,7 +132,7 @@ function defaultHandler(tpl: PromptTemplate, call: RecordedCall): Response | und
     return Response.json({ id: 'tr-1', score: 0.9, output: 'note', testedAt: '2026-08-01T00:00:00.000Z', version: tpl.version + 1 });
   }
   if (call.method === 'POST' && path === '/api/auth/stream-ticket') {
-    return Response.json({ ticket: 'tkt-1', expiresAt: Date.now() + 30_000, scope: 'smr_task:task-9' });
+    return Response.json({ ticket: 'tkt-1', expiresAt: Date.now() + 30_000, scope: 'text_task:task-9' });
   }
   return undefined;
 }

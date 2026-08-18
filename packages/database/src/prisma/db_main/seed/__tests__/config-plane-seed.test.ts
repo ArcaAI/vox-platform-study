@@ -43,7 +43,7 @@ import { SYSTEM_AI_RUNTIME_PROFILES } from '../18-ai-runtime-profile';
  * rows enabled Day-1. `sarvam`/`azure`/`bedrock`/`openai`/`anthropic`/
  * `vertex` are cloud providers and stay disabled (they need a tenant key).
  */
-const BUILT_IN_LOCAL_LLM_PROVIDERS = ['lm-studio', 'built-in', 'vllm', 'llama-cpp'] as const;
+const BUILT_IN_LOCAL_LLM_PROVIDERS = ['ollama', 'lm-studio', 'built-in', 'vllm', 'llama-cpp'] as const;
 
 /** True iff the row is one of the enabled-Day-1 built-in-local llm engines. */
 const isBuiltInLocalLlm = (c: { service: string; provider: string }): boolean =>
@@ -83,17 +83,26 @@ describe('AiProviderConnection SYSTEM seed rows', () => {
     SYSTEM_AI_PROVIDER_CONNECTIONS.forEach((c) => expect(c.tenantId).toBe(SYSTEM_TENANT_ID));
   });
 
-  it('enables exactly the four built-in-local llm rows Day-1 (seed-authoritative)', () => {
+  it('enables exactly the five built-in-local llm rows Day-1 (seed-authoritative)', () => {
     const enabled = SYSTEM_AI_PROVIDER_CONNECTIONS.filter((c) => c.enabled)
       .map((c) => `${c.service}:${c.provider}`)
       .sort();
-    expect(enabled).toEqual(['llm:built-in', 'llm:llama-cpp', 'llm:lm-studio', 'llm:vllm']);
+    expect(enabled).toEqual(['llm:built-in', 'llm:llama-cpp', 'llm:lm-studio', 'llm:ollama', 'llm:vllm']);
   });
 
-  it('never seeds an ollama connection row (TASK-736 — Ollama removed entirely)', () => {
-    SYSTEM_AI_PROVIDER_CONNECTIONS.forEach((c) => {
-      expect(c.provider).not.toBe('ollama');
-    });
+  /*
+   * TASK-736 REVISED (owner decision 2026-08-17): the previous assertion here
+   * was `never seeds an ollama connection row`, encoding the superseded
+   * "Ollama removed entirely" directive. The product changed, not the test's
+   * rigor: the connection row is REQUIRED so a tenant can point the platform at
+   * its own Ollama, while the MODEL CATALOG stays purged — the pair is pinned
+   * by `ollama-provider-retained.test.ts`.
+   */
+  it('seeds the ollama connection row keyless, so the endpoint is configurable without a platform key', () => {
+    const ollama = SYSTEM_AI_PROVIDER_CONNECTIONS.filter((c) => c.provider === 'ollama');
+    expect(ollama).toHaveLength(1);
+    expect(ollama[0]!.service).toBe('llm');
+    expect(ollama[0]!.encryptedApiKey ?? null).toBeNull();
   });
 
   it('enables every built-in-local llm engine', () => {

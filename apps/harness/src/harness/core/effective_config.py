@@ -1,6 +1,6 @@
 """Effective-config pull client (harness).
 
-Structurally identical to `guardrail` / `nlp` / `smr` / `stt` against the
+Structurally identical to `guardrail` / `nlp` / `text` / `stt` against the
 same frozen contract, exposing the ONLY subset harness consumes:
 `retention.{ttlSeconds,maxModels}` for the MiniCheck entailer cache.
 

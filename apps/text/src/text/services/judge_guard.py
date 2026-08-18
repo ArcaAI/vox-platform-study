@@ -30,17 +30,17 @@ from collections.abc import Iterator
 from contextlib import contextmanager
 from contextvars import ContextVar
 
-from text.core.exceptions import SmrError
+from text.core.exceptions import TextError
 
 _IN_JUDGE_SCOPE: ContextVar[bool] = ContextVar("text_in_judge_scope", default=False)
 
 
-class GuardrailRecursionError(SmrError):
+class GuardrailRecursionError(TextError):
     """The moderation gate was reached from inside a judge call.
 
     Always a wiring defect, never a runtime condition: it means the safety
     plane's own judgement call would have been gated on the safety plane. Mapped
-    to 500 by the shared handler (``SmrError``) — there is nothing a caller can
+    to 500 by the shared handler (``TextError``) — there is nothing a caller can
     retry or reconfigure to make it succeed.
     """
 

@@ -40,11 +40,11 @@ envelope = {
     "schemaVersion": 1,
     "id": "01907d3a-0000-7000-8000-000000000001",
     "tenantId": "00000000-0000-0000-0000-000000000000",
-    "type": "smr.stream.chunk",
+    "type": "text.stream.chunk",
     "occurredAt": "2026-08-16T12:00:00.000Z",
     "correlationId": "req-1",
     "causationId": None,
-    "idempotencyKey": AsyncIdempotencyKey.smr_chunk("task-1", 0),
+    "idempotencyKey": AsyncIdempotencyKey.text_chunk("task-1", 0),
     "payload": {"type": "chunk", "content": "hello"},
 }
 
@@ -62,7 +62,7 @@ parsed = parse_async_envelope(envelope)            # None on ANY conformance pro
 | `parse_async_envelope(value)` | Refuse-if-unknown parse. Returns `None` for ANY conformance problem. |
 | `ClaimCheckRef` | The claim-check shape, reused verbatim from `apps/harness/src/harness/temporal/claim_check.py:64-80`. |
 | `MAX_IDEMPOTENCY_KEY_LENGTH`, `idempotency_key_problems(key)` | The idempotency-key grammar. |
-| `AsyncIdempotencyKey` | Intent-derived key recipes (`stt_segment`, `smr_chunk`, `workflow_node`, `webhook_delivery`). |
+| `AsyncIdempotencyKey` | Intent-derived key recipes (`stt_segment`, `text_chunk`, `workflow_node`, `webhook_delivery`). |
 | `encode_resume_token(transport, cursor)` / `decode_resume_token(token)` | The opaque resume-token convention — same base64url alphabet as the TS twin, so tokens are cross-language decodable. |
 | `RESUME_FROM_BEGINNING` | The well-known `"0-0"` Redis sentinel. |
 

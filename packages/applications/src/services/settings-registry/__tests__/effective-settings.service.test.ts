@@ -225,14 +225,14 @@ describe('EffectiveSettingsService', () => {
     it('closed: an unresolved value raises instead of substituting a default', async () => {
       const getEffective = vi.fn(async () => ({
         tenantId: 'tnt-1',
-        taskKey: 'smr.live',
+        taskKey: 'text.live',
         modelSlug: null,
         source: null,
         configJson: null,
         model: null,
       }));
       const svc = serviceWith(resolved(), { getEffective });
-      await expect(svc.resolveEffective('models.smr.live', CTX)).rejects.toBeInstanceOf(ArgumentInvalidException);
+      await expect(svc.resolveEffective('models.text.live', CTX)).rejects.toBeInstanceOf(ArgumentInvalidException);
     });
 
     it('closed does NOT swallow a backend error — transport failures still propagate', async () => {
@@ -240,7 +240,7 @@ describe('EffectiveSettingsService', () => {
         throw new Error('db unreachable');
       });
       const svc = serviceWith(resolved(), { getEffective });
-      await expect(svc.resolveEffective('models.smr.live', CTX)).rejects.toThrow(/db unreachable/);
+      await expect(svc.resolveEffective('models.text.live', CTX)).rejects.toThrow(/db unreachable/);
     });
   });
 });

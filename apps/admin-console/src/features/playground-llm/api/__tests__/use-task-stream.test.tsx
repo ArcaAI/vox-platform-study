@@ -1,7 +1,7 @@
 /**
  * useTaskStream — the text-generation task SSE consumed through the house ticket flow:
  * `useEventStream` mints a single-use scope-bound ticket via the BFF and the
- * browser connects DIRECTLY to the gateway (`smr_task:<taskId>`, matching the
+ * browser connects DIRECTLY to the gateway (`text_task:<taskId>`, matching the
  * route's `@StreamScope`). These tests lock that transport (no `/api/hope/`
  * stream tunnel), the replay contract (every (re)connect replays from 0-0, so
  * automatic reconnects are disabled and reopen() resets the accumulation), and
@@ -64,7 +64,7 @@ function stubTicketMint(): void {
     vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
       mintCalls.push({ url: String(input), body: typeof init?.body === 'string' ? JSON.parse(init.body) : undefined });
       counter += 1;
-      return Response.json({ ticket: `tkt-${counter}`, expiresAt: Date.now() + 30_000, scope: 'smr_task:x' });
+      return Response.json({ ticket: `tkt-${counter}`, expiresAt: Date.now() + 30_000, scope: 'text_task:x' });
     }),
   );
 }
@@ -85,7 +85,7 @@ afterEach(() => {
 });
 
 describe('useTaskStream', () => {
-  it('mints an smr_task ticket and connects DIRECTLY to the gateway (never the BFF tunnel)', async () => {
+  it('mints an text_task ticket and connects DIRECTLY to the gateway (never the BFF tunnel)', async () => {
     renderHook(() => useTaskStream('t-5531'));
 
     await waitFor(() => expect(FakeEventSource.instances).toHaveLength(1));
@@ -93,7 +93,7 @@ describe('useTaskStream', () => {
 
     expect(mintCalls).toHaveLength(1);
     expect(mintCalls[0].url).toBe('/api/auth/stream-ticket');
-    expect(mintCalls[0].body).toEqual({ scope: 'smr_task:t-5531' });
+    expect(mintCalls[0].body).toEqual({ scope: 'text_task:t-5531' });
 
     expect(source.url).toContain('/api/v1/text/tasks/t-5531/stream');
     expect(source.url).toContain('ticket=tkt-1');

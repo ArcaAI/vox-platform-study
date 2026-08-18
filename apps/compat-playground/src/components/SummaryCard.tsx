@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Badge, Button, Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle, Label, Skeleton, Switch } from '@arcaai/ui';
-import { useSMR, type SummaryResponse } from '@arcaai/vox/compat';
+import { useText, type SummaryResponse } from '@arcaai/vox/compat';
 import { toast } from 'sonner';
 import { saveStoredConfig, type PlaygroundConfig } from '../lib/config-store';
 import { usePlaygroundSession } from '../context/playground-session';
@@ -23,7 +23,7 @@ const EMPTY_CONTEXT: ClinicalContextValues = {
 
 /**
  * The pre-summarization → summarization surface for the Summarization tab,
- * wired to the v1-compat SMR API through `useSMR()`. Orchestrator: owns every
+ * wired to the v1-compat SMR API through `useText()`. Orchestrator: owns every
  * piece of state and the two request handlers; `ContextForm`,
  * `TranscriptSource`, and the `SummaryResultView` family (
  * split, ~467 LOC → 4 files) are presentational.
@@ -32,11 +32,11 @@ const EMPTY_CONTEXT: ClinicalContextValues = {
  * governed instruction template), add clinical context, pre-summarize, then
  * summarize the transcript with the pre-summary folded into context. R10:
  * the streaming toggle threads `{stream:true, onDelta}` through to the
- * already-shipped SDK/gateway SSE path — see `useSMR.ts` and
+ * already-shipped SDK/gateway SSE path — see `useText.ts` and
  * `smr-compat.controller.ts`.
  */
 export function SummaryCard({ config }: SummaryCardProps) {
-  const { preSummarize, summarizeSync, loading } = useSMR();
+  const { preSummarize, summarizeSync, loading } = useText();
 
   // The live caption comes from the console-wide session context, NOT a prop:
   // this card lives in the Summarization tab while the transcript is produced
@@ -146,7 +146,7 @@ export function SummaryCard({ config }: SummaryCardProps) {
       toast.success('Pre-summary ready.');
     } catch (err) {
       // Covers both an SSE `error` frame (rejects with `data.detail`) and the
-      // "stream ended without a result event" guard in `useSMR` — both throw a
+      // "stream ended without a result event" guard in `useText` — both throw a
       // plain `Error`, so this single catch surfaces either as a toast, never
       // a silent stall.
       toast.error(err instanceof Error ? err.message : 'Pre-summary failed');
@@ -204,8 +204,8 @@ export function SummaryCard({ config }: SummaryCardProps) {
       <CardHeader>
         <CardTitle>Summarization</CardTitle>
         <CardDescription>
-          Pre-summarize the clinical context, then summarize the transcript through <code className="font-mono text-xs">useSMR()</code> (v1-compat SMR
-          API). Pick a real tenant department so the gateway can match a governed instruction template.
+          Pre-summarize the clinical context, then summarize the transcript through <code className="font-mono text-xs">useText()</code> (the
+          v1-compat API). Pick a real tenant department so the gateway can match a governed instruction template.
         </CardDescription>
       </CardHeader>
 

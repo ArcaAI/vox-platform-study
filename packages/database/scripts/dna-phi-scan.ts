@@ -148,6 +148,20 @@ export function scanText(text: string | null | undefined): ScanCounts {
   };
 }
 
+/**
+ * Character count of the decrypted value that was actually scanned. PURE.
+ *
+ * A row whose `styleText` decrypted to nothing produces the same all-zero
+ * {@link ScanCounts} as a row that was scanned in full and found clean — so a
+ * bare "CLEAN" verdict is ambiguous on its own. This length is reported
+ * alongside the counts so a reader can tell "scanned N characters, found
+ * nothing" from "there was nothing to scan". It is a LENGTH only: it never
+ * exposes the text or any substring of it.
+ */
+export function scannedLength(text: string | null | undefined): number {
+  return text ? text.length : 0;
+}
+
 export function isClean(counts: ScanCounts): boolean {
   return counts.mrnShaped === 0 && counts.dobShaped === 0 && counts.drugDoseCoOccurrence === 0 && counts.nameProxy === 0;
 }
@@ -206,6 +220,8 @@ export interface RowScanResult {
   id: string;
   tenantId: string;
   doctorId: string;
+  /** Characters of decrypted `styleText` actually scanned. 0 = nothing to scan. */
+  scannedChars: number;
   counts: ScanCounts;
   clean: boolean;
 }
@@ -242,13 +258,19 @@ function printResults(results: RowScanResult[], asJson: boolean): void {
   }
   for (const r of results) {
     console.log(
-      `${r.clean ? 'CLEAN' : 'DIRTY'}  id=${r.id} tenantId=${r.tenantId} doctorId=${r.doctorId} ` +
-        `mrnShaped=${r.counts.mrnShaped} dobShaped=${r.counts.dobShaped} ` +
+      `${r.scannedChars === 0 ? 'EMPTY' : r.clean ? 'CLEAN' : 'DIRTY'}  id=${r.id} tenantId=${r.tenantId} doctorId=${r.doctorId} ` +
+        `scannedChars=${r.scannedChars} mrnShaped=${r.counts.mrnShaped} dobShaped=${r.counts.dobShaped} ` +
         `drugDoseCoOccurrence=${r.counts.drugDoseCoOccurrence} nameProxy=${r.counts.nameProxy}`,
     );
   }
   const dirty = results.filter((r) => !r.clean).length;
-  console.log(`\n${results.length} row(s) scanned — ${dirty} dirty, ${results.length - dirty} clean.`);
+  const empty = results.filter((r) => r.scannedChars === 0).length;
+  const scannedChars = results.reduce((sum, r) => sum + r.scannedChars, 0);
+  console.log(
+    `\n${results.length} row(s) scanned — ${dirty} dirty, ${results.length - dirty} clean ` +
+      `(${empty} of which decrypted to nothing and therefore prove nothing). ` +
+      `${scannedChars} character(s) of decrypted styleText examined in total.`,
+  );
 }
 
 // ───────────────────────────────── main ───────────────────────────────────────
@@ -311,8 +333,16 @@ export async function main(argv: string[] = process.argv, env: NodeJS.ProcessEnv
     const results: RowScanResult[] = [];
     for (const row of rows) {
       const decrypted = await decryptField(row as unknown as Record<string, unknown>, styleTextSpec, decrypt);
-      const counts = scanText(typeof decrypted.value === 'string' ? decrypted.value : null);
-      results.push({ id: row.id, tenantId: row.tenantId, doctorId: row.doctorId, counts, clean: isClean(counts) });
+      const value = typeof decrypted.value === 'string' ? decrypted.value : null;
+      const counts = scanText(value);
+      results.push({
+        id: row.id,
+        tenantId: row.tenantId,
+        doctorId: row.doctorId,
+        scannedChars: scannedLength(value),
+        counts,
+        clean: isClean(counts),
+      });
     }
 
     printResults(results, args.json);

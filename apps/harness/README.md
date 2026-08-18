@@ -68,7 +68,7 @@ apps/harness/
 │   │   ├── inferential/           # 4 model-backed gate sensors (Phase 2/3/E2)
 │   │   ├── registry.py            # canonical computational-sensor order + factory
 │   │   └── aggregator.py          # pure verdict aggregator (PASS / REGEN / FLAG policy)
-│   ├── services/                  # typed httpx tool clients: api_client, smr_client, nlp_client,
+│   ├── services/                  # typed httpx tool clients: api_client, text_client, nlp_client,
 │   │   │                          #   embeddings_client, reranker_client, sensor_runner, provenance
 │   ├── temporal/
 │   │   ├── workflows.py           # HarnessPingWorkflow + HarnessDocWorkflow — deterministic bodies

@@ -11,7 +11,7 @@ import {
 import { BadRequestException, Body, Controller, Get, Inject, Param, Patch, UnauthorizedException } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth, ApiOperation, ApiResponse, ApiParam } from '@nestjs/swagger';
 import { ClsService } from 'nestjs-cls';
-import { Authorize } from '../../../decorators';
+import { Authorize, ForbidApiKey } from '../../../decorators';
 
 /**
  * Setting namespace/key reserved for the doctor's chosen pipeline. The
@@ -28,6 +28,15 @@ const SELECTED_PIPELINE_KEY = 'selectedPipelineId';
 @ApiTags('user')
 @Controller('user/me/settings')
 @Authorize()
+// TASK-742 API-KEY-NOTE — CONSERVATIVE DEFAULT, AWAITING OWNER CLASSIFICATION.
+// Reason: self-service settings; distinct from the user:preferences:* scopes and with no scope of its own.
+// This route family declared nothing about API-key access, which under the
+// deny-by-default rule is a boot failure. Rather than guess a scope (guessing
+// permissive is how the original gap was created), it is closed explicitly.
+// Reversing it is a one-line change to @RequiredScopes('<scope>') once the
+// owner confirms a real API-key use case — see the TASK-708 README's
+// "Reachability changes awaiting owner review" table.
+@ForbidApiKey()
 export class UserSettingsController {
   constructor(
     @Inject(IUserSettingsService)

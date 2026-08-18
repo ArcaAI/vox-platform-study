@@ -2,7 +2,7 @@
 
 Each activity is called directly (mirrors ``test_config_loader.py``'s calling convention for
 ``interpreter.load_config`` — no ``ActivityEnvironment`` wrapper needed since none of these
-activities read ``temporalio.activity.info()``). External clients (``ApiClient``, ``SmrClient``,
+activities read ``temporalio.activity.info()``). External clients (``ApiClient``, ``TextClient``,
 ``GuardrailClient``, the claim-check blob store) are monkeypatched at the name each node module
 imported them under (Python binds a local name at import time, so the patch target is the NODE
 module, never the origin module).
@@ -16,7 +16,7 @@ import pytest
 
 from harness.services.api_client import ApiServiceError, ResolvedPromptTemplateResponse
 from harness.services.guardrail_client import GuardrailAnalysis, GuardrailServiceError
-from harness.services.smr_client import SmrGenerationResult, SmrServiceError
+from harness.services.text_client import TextGenerationResult, TextServiceError
 from harness.temporal.interpreter.models import NodeActivityInput
 from harness.temporal.interpreter.nodes import context_binding as context_binding_mod
 from harness.temporal.interpreter.nodes import deliver as deliver_mod
@@ -183,32 +183,36 @@ class TestTemplateRef:
 
 
 class TestTextGenerate:
+    """``generate.text`` — TASK-740 D-1: ``config.taskKey`` must SELECT the model."""
+
     @pytest.mark.asyncio
-    async def test_posts_to_smr_with_the_resolved_provider_and_model_and_no_default(
+    async def test_posts_to_text_with_the_resolved_provider_and_model_and_no_default(
         self, monkeypatch
     ):
         captured: dict[str, Any] = {}
+        captured_policy_args: dict[str, Any] = {}
 
         class _FakeApi:
-            async def get_policy(self, tenant_id):
+            async def get_policy(self, tenant_id, consultation_id=None, task_key=None):
+                captured_policy_args["task_key"] = task_key
                 return {
-                    "smrProvider": "lm-studio",
-                    "smrModel": "some-model",
+                    "textProvider": "lm-studio",
+                    "textModel": "some-model",
                     "phiEnabled": False,
                     "phiFailClosed": True,
                 }
 
-        class _FakeSmr:
+        class _FakeText:
             async def generate(self, **kwargs):
                 captured.update(kwargs)
-                return SmrGenerationResult(
+                return TextGenerationResult(
                     content="the summary", provider="lm-studio", model="some-model"
                 )
 
         monkeypatch.setattr(text_generate_mod, "_api_client", lambda s: _FakeApi())
-        monkeypatch.setattr(text_generate_mod, "_smr_client", lambda s: _FakeSmr())
+        monkeypatch.setattr(text_generate_mod, "_text_client", lambda s: _FakeText())
         payload = _input(
-            {"taskKey": "smr.finalize"},
+            {"taskKey": "text.finalize"},
             bound_inputs={"in": {"source_text": "the source text"}},
         )
         result = await text_generate_mod.interpreter_text_generate(payload)
@@ -221,38 +225,48 @@ class TestTextGenerate:
         assert captured["provider"] == "lm-studio"
         assert captured["model"] == "some-model"
         assert "the source text" in captured["prompt"]
+        # D-1: the task key is threaded to the gateway so the AiTaskDefault row
+        # for THAT key selects the model. Before TASK-740 it was validated and
+        # then dropped, so every node resolved the same model.
+        assert captured_policy_args["task_key"] == "text.finalize"
 
     @pytest.mark.asyncio
     async def test_no_default_model_degrades_rather_than_guessing(self, monkeypatch):
+        captured_policy_args: dict[str, Any] = {}
+
         class _FakeApi:
-            async def get_policy(self, tenant_id):
-                return {"smrProvider": None, "smrModel": None}
+            async def get_policy(self, tenant_id, consultation_id=None, task_key=None):
+                captured_policy_args["task_key"] = task_key
+                return {"textProvider": None, "textModel": None}
 
         monkeypatch.setattr(text_generate_mod, "_api_client", lambda s: _FakeApi())
-        payload = _input({"taskKey": "smr.finalize"}, bound_inputs={"in": {"source_text": "x"}})
+        payload = _input({"taskKey": "text.finalize"}, bound_inputs={"in": {"source_text": "x"}})
         result = await text_generate_mod.interpreter_text_generate(payload)
         assert result.status == "DEGRADED"
-        assert "no smr provider/model" in (result.reason or "").lower()
+        assert "no text provider/model" in (result.reason or "").lower()
 
     @pytest.mark.asyncio
     async def test_no_bound_text_degrades(self):
-        payload = _input({"taskKey": "smr.finalize"}, bound_inputs={})
+        payload = _input({"taskKey": "text.finalize"}, bound_inputs={})
         result = await text_generate_mod.interpreter_text_generate(payload)
         assert result.status == "DEGRADED"
 
     @pytest.mark.asyncio
-    async def test_smr_failure_degrades(self, monkeypatch):
-        class _FakeApi:
-            async def get_policy(self, tenant_id):
-                return {"smrProvider": "lm-studio", "smrModel": "m"}
+    async def test_text_failure_degrades(self, monkeypatch):
+        captured_policy_args: dict[str, Any] = {}
 
-        class _FailingSmr:
+        class _FakeApi:
+            async def get_policy(self, tenant_id, consultation_id=None, task_key=None):
+                captured_policy_args["task_key"] = task_key
+                return {"textProvider": "lm-studio", "textModel": "m"}
+
+        class _FailingText:
             async def generate(self, **kwargs):
-                raise SmrServiceError("smr down")
+                raise TextServiceError("text service down")
 
         monkeypatch.setattr(text_generate_mod, "_api_client", lambda s: _FakeApi())
-        monkeypatch.setattr(text_generate_mod, "_smr_client", lambda s: _FailingSmr())
-        payload = _input({"taskKey": "smr.finalize"}, bound_inputs={"in": {"source_text": "x"}})
+        monkeypatch.setattr(text_generate_mod, "_text_client", lambda s: _FailingText())
+        payload = _input({"taskKey": "text.finalize"}, bound_inputs={"in": {"source_text": "x"}})
         result = await text_generate_mod.interpreter_text_generate(payload)
         assert result.status == "DEGRADED"
 
@@ -394,7 +408,7 @@ class TestDeliver:
 
 def test_harness_policy_from_api_reads_smr_selection():
     """Sanity check on the assumption `text_generate.py` depends on: `HarnessPolicy.from_api`
-    maps the raw camelCase policy JSON's `smrProvider`/`smrModel` onto snake_case fields."""
-    policy = HarnessPolicy.from_api({"smrProvider": "lm-studio", "smrModel": "m", "version": 1})
-    assert policy.smr_provider == "lm-studio"
-    assert policy.smr_model == "m"
+    maps the raw camelCase policy JSON's `textProvider`/`textModel` onto snake_case fields."""
+    policy = HarnessPolicy.from_api({"textProvider": "lm-studio", "textModel": "m", "version": 1})
+    assert policy.text_provider == "lm-studio"
+    assert policy.text_model == "m"

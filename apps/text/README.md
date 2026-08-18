@@ -118,11 +118,11 @@ These are **live** names, not leftovers to “fix” in code or docs that descri
 |---|---|
 | Health `service` field | `smr` |
 | Effective-config query | `?service=smr` |
-| Redis streams | `smr:stream:` (DB 3) |
-| Prometheus metrics | `smr_*` (e.g. `smr_generation_total`, `smr_engine_cache_hit_rate`) |
+| Redis streams | `text:stream:` (DB 3) |
+| Prometheus metrics | `smr_*` (e.g. `text_generation_total`, `text_engine_cache_hit_rate`) |
 | OTEL service name (image default) | `smr` (`TEXT_OTEL_SERVICE_NAME`) |
 | Compat HTTP (gateway) | `/api/smr/api/v1/presummary`, `/api/smr/api/v1/summary/sync` |
-| Task keys | `smr.live`, `smr.finalize`, `smr.test` |
+| Task keys | `text.live`, `text.finalize`, `text.test` |
 | Vault AppRole | `hope-smr` |
 | Release tag prefix | `SMR-` (image name is `text`) |
 

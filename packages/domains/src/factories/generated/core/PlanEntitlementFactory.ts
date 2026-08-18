@@ -31,6 +31,7 @@ export interface CreatePlanEntitlementProps extends BaseEntityFactoryCreateProps
   featureMonitoringAccess?: IPlanEntitlementEntity['featureMonitoringAccess'];
   featurePlatformDefaultCredential?: IPlanEntitlementEntity['featurePlatformDefaultCredential'];
   featurePaletteStt?: IPlanEntitlementEntity['featurePaletteStt'];
+  featureAgenticLoop?: IPlanEntitlementEntity['featureAgenticLoop'];
   modelTier?: IPlanEntitlementEntity['modelTier'];
   rateLimitTier?: IPlanEntitlementEntity['rateLimitTier'];
 
@@ -78,6 +79,7 @@ export class PlanEntitlementFactory {
       // TASK-724: `true` by default — STT palette authoring is a core platform
       // capability, mirrors the Prisma column's own @default(true).
       featurePaletteStt: props.featurePaletteStt ?? true,
+      featureAgenticLoop: props.featureAgenticLoop ?? true,
       modelTier: props.modelTier ?? 'full',
       rateLimitTier: props.rateLimitTier ?? 'default',
     });

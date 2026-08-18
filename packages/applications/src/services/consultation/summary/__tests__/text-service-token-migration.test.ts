@@ -30,9 +30,17 @@ describe('TEXT_SERVICE_TOKEN migration (Phase 3 Task 3.4)', () => {
       });
 
       it('reads TEXT_SERVICE_TOKEN via SecretsService', () => {
-        // Allow optional chaining (?.) for sites that fall back when the
-        // SecretsService is not provided in tests.
-        expect(src).toMatch(/secretsService\??\.(getSecretOptional|getSecret|getSecretSync)\(['"]TEXT_SERVICE_TOKEN['"]/);
+        // Two accepted shapes:
+        //  - the original direct read (optional chaining allowed, for sites that
+        //    fall back when SecretsService is not provided in tests);
+        //  - `resolveInternalAccessToken(secrets, 'TEXT_SERVICE_TOKEN')` — the
+        //    D-D shared-token resolver, which asks SecretsService for the ONE
+        //    `INTERNAL_ACCESS_TOKEN` first and keeps `TEXT_SERVICE_TOKEN` as the
+        //    migration fallback. Both go through SecretsService, which is what
+        //    this gate is actually pinning; neither reads `process.env`.
+        expect(src).toMatch(
+          /(secretsService\??\.(getSecretOptional|getSecret|getSecretSync)\(['"]TEXT_SERVICE_TOKEN['"]|resolveInternalAccessToken\([^)]*['"]TEXT_SERVICE_TOKEN['"])/,
+        );
       });
     });
   }

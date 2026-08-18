@@ -26,8 +26,8 @@ export const HARNESS_POLICY_DEFAULTS = {
   phiFailClosed: true,
   safetyProvider: 'lm-studio',
   safetyModel: 'granite-guardian-4.1-8b',
-  smrProvider: null as string | null,
-  smrModel: null as string | null,
+  textProvider: null as string | null,
+  textModel: null as string | null,
   maxRegen: 2,
   gateSlaSeconds: 86400,
   gateEscalationSeconds: 43200,
@@ -60,8 +60,8 @@ export interface CreateHarnessPolicyProps extends BaseEntityFactoryCreateProps {
   phiFailClosed?: IHarnessPolicyEntity['phiFailClosed'];
   safetyProvider?: IHarnessPolicyEntity['safetyProvider'];
   safetyModel?: IHarnessPolicyEntity['safetyModel'];
-  smrProvider?: IHarnessPolicyEntity['smrProvider'];
-  smrModel?: IHarnessPolicyEntity['smrModel'];
+  textProvider?: IHarnessPolicyEntity['textProvider'];
+  textModel?: IHarnessPolicyEntity['textModel'];
   maxRegen?: IHarnessPolicyEntity['maxRegen'];
   gateSlaSeconds?: IHarnessPolicyEntity['gateSlaSeconds'];
   gateEscalationSeconds?: IHarnessPolicyEntity['gateEscalationSeconds'];
@@ -114,8 +114,8 @@ export class HarnessPolicyFactory {
       phiFailClosed: props.phiFailClosed ?? d.phiFailClosed,
       safetyProvider: props.safetyProvider ?? d.safetyProvider,
       safetyModel: props.safetyModel ?? d.safetyModel,
-      smrProvider: props.smrProvider ?? d.smrProvider,
-      smrModel: props.smrModel ?? d.smrModel,
+      textProvider: props.textProvider ?? d.textProvider,
+      textModel: props.textModel ?? d.textModel,
       maxRegen: props.maxRegen ?? d.maxRegen,
       gateSlaSeconds: props.gateSlaSeconds ?? d.gateSlaSeconds,
       gateEscalationSeconds: props.gateEscalationSeconds ?? d.gateEscalationSeconds,

@@ -50,7 +50,7 @@ async def _async_stream_chunks(chunks):
         yield c
 
 
-def _clear_smr_env(monkeypatch):
+def _clear_text_env(monkeypatch):
     for key in list(os.environ):
         if key.startswith("TEXT_"):
             monkeypatch.delenv(key, raising=False)
@@ -61,7 +61,7 @@ def _clear_smr_env(monkeypatch):
 # ---------------------------------------------------------------------------
 
 
-def _clear_smr_env(monkeypatch):
+def _clear_text_env(monkeypatch):
     """Remove all TEXT_* env vars so pydantic-settings reads only code defaults."""
     import os
 
@@ -78,7 +78,7 @@ class TestOpenAICompatConfig:
 
         from text.core.config import OpenAICompatConfig
 
-        _clear_smr_env(monkeypatch)
+        _clear_text_env(monkeypatch)
         cfg = OpenAICompatConfig()
         assert cfg.base_url == "http://localhost:1234/v1"
         # Must be an id LM Studio actually serves — sent verbatim as the wire
@@ -89,10 +89,10 @@ class TestOpenAICompatConfig:
         assert cfg.organization is None
 
     def test_openai_compat_config_api_key_is_secret(self, monkeypatch):
-        _clear_smr_env(monkeypatch)
+        _clear_text_env(monkeypatch)
         from text.core.config import OpenAICompatConfig
 
-        _clear_smr_env(monkeypatch)
+        _clear_text_env(monkeypatch)
         cfg = OpenAICompatConfig()
         assert isinstance(cfg.api_key, SecretStr)
         assert cfg.api_key.get_secret_value() == "not-needed"

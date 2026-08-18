@@ -1,4 +1,4 @@
-"""SMR usage metering: audit truth + gateway passthrough.
+"""Text usage metering: audit truth + gateway passthrough.
 
 Three defects are locked down here:
 

@@ -52,7 +52,7 @@ import { buildTextGeneratePayload, mapTextGenerateResponse, type LegacyTextSumma
 import { buildGuardrailUsageInput, buildLlmUsageInput, parseTextUsageDetail, type TextUsageDetail } from './text-usage';
 import { IUsageLedgerService } from '../../usageLedger/IUsageLedgerService';
 import type { UsageOperation } from '../../usageLedger/vocabulary';
-import { BaseService, assertParentInScope, encryptPhiFields } from '../../../common';
+import { BaseService, TENANTLESS, assertParentInScope, encryptPhiFields, internalServiceHeaders, resolveInternalAccessToken } from '../../../common';
 import { IActiveUserContext } from '../../../interfaces';
 import { PromptAssemblyService } from '../prompt/prompt-assembly.service';
 import { SecretsService } from '../../baseServices/_meta/secrets';
@@ -71,6 +71,7 @@ import { collectCitedSegmentIds } from '../lib/transcript-segments';
 import { generateJsonWithRepair, looksLikeJsonObject, parsesAsJsonObject, type JsonRepairCall } from '../shared/bounded-json-repair';
 import { IAiTaskDefaultService } from '../../ai-task-default/IAiTaskDefaultService';
 import { INoteGenerationService, GenerationTrigger } from '../note-generation';
+import { IPhiRedactor } from '../../gate-edit-mining/IPhiRedactor';
 
 /**
  * the AD-1 GenerationStats headline fields the summary
@@ -125,7 +126,7 @@ interface TextCallPayload {
   /**
    * The session agent's frozen `llmOverrides.finalize`
    * selection, when it named one. Takes precedence over the tenant's
-   * `smr.finalize` AiTaskDefault; the A4 fallback retry stays tenant-configured.
+   * `text.finalize` AiTaskDefault; the A4 fallback retry stays tenant-configured.
    */
   agentLlm?: { provider: string; model: string } | null;
 }
@@ -238,7 +239,7 @@ export class SummaryService extends BaseService implements ISummaryService {
     // the session agent's `llmOverrides.finalize` slug, and the AiModel catalog
     // row it names. Optional + trailing so existing positional test fixtures
     // compile; unwired ⇒ no override is ever applied and the tenant
-    // `smr.finalize` AiTaskDefault decides exactly as before.
+    // `text.finalize` AiTaskDefault decides exactly as before.
     @Optional() @Inject(DepartmentAgentRepository) private readonly departmentAgentRepository?: DepartmentAgentRepository,
     @Optional() @Inject(AiModelRepository) private readonly aiModelRepository?: AiModelRepository,
     // TASK-704 seam. `generatePreSummary` calls `noteGenerationService.generate`
@@ -257,6 +258,23 @@ export class SummaryService extends BaseService implements ISummaryService {
     // instead, purely to log the resolved harnessEnabled for observability.
     // Optional + trailing so existing positional fixtures keep compiling.
     @Optional() @Inject(INoteGenerationService) private readonly noteGenerationService?: INoteGenerationService,
+    // TASK-710 hop 1 — PHI redaction before the synchronous NER call.
+    //
+    // DELIBERATELY NOT `@Optional()` (owner directive D-A, 2026-08-17: no
+    // production data yet, so ship day-1-complete rather than
+    // degrade-gracefully). Nest therefore REQUIRES this provider: a deployment
+    // whose module graph forgot `PhiRedactionServiceModule` fails loudly at
+    // boot instead of silently posting raw PHI to `apps/nlp`. The TypeScript
+    // `?` marker is retained ONLY so the pre-existing positional
+    // `new SummaryService(...)` fixtures (12 unit specs plus one apps/api
+    // integration spec) keep compiling — it is NOT a licence to run without a
+    // redactor: `extractEntities` throws when it is absent (see below), so
+    // there is no code path on which unredacted content reaches NLP.
+    //
+    // This closes the hole TASK-732 re-opened: hop 1 was originally wired into
+    // `jobs/processors/ner.processor.ts`, which TASK-732 deleted, leaving this
+    // synchronous path posting `contextItem.content` raw (finding A-02).
+    @Inject(IPhiRedactor) private readonly phiRedactor?: IPhiRedactor,
   ) {
     super(eventEmitter, clsService, ResourceType.ContextItem);
     this.textServiceUrl = this.configService.get<string>('TEXT_URL') ?? 'http://localhost:8862';
@@ -367,7 +385,7 @@ export class SummaryService extends BaseService implements ISummaryService {
     });
 
     // Call SMR service
-    const smrResponse = await this.callTextService({
+    const textResponse = await this.callTextService({
       assembledPrompt,
       options: request.options,
       context: {
@@ -379,7 +397,7 @@ export class SummaryService extends BaseService implements ISummaryService {
     });
 
     // Create pre-summary context item
-    const contextItem = ContextItemFactory.CreatePreSummary(tenantId, consultationId, smrResponse.summary, request.dnaStyleId, userId ?? 'system');
+    const contextItem = ContextItemFactory.CreatePreSummary(tenantId, consultationId, textResponse.summary, request.dnaStyleId, userId ?? 'system');
 
     // Encrypt the generated pre-summary text into
     // `encryptedContent` before persistence — the plaintext `content` column was
@@ -394,12 +412,12 @@ export class SummaryService extends BaseService implements ISummaryService {
     const summaryMeta = SummaryMetaFactory.CreateSummaryMeta({
       tenantId,
       contextItemId: savedContext.id,
-      aiModelId: smrResponse.modelName ?? smrResponse.llmProvider,
-      processingTimeMs: smrResponse.processingTimeMs,
-      inputTokens: smrResponse.inputTokens,
-      outputTokens: smrResponse.outputTokens,
-      cacheHit: smrResponse.cacheHit,
-      qualityScore: smrResponse.qualityScore,
+      aiModelId: textResponse.modelName ?? textResponse.llmProvider,
+      processingTimeMs: textResponse.processingTimeMs,
+      inputTokens: textResponse.inputTokens,
+      outputTokens: textResponse.outputTokens,
+      cacheHit: textResponse.cacheHit,
+      qualityScore: textResponse.qualityScore,
       promptResolvedFrom: assembledPrompt.resolvedFrom,
       resolvedPromptId: assembledPrompt.promptId,
     });
@@ -408,13 +426,13 @@ export class SummaryService extends BaseService implements ISummaryService {
     // as `contextItem.currentVersionNumber = 1` above); the factory does not yet
     // expose these props. Null/absent stats (legacy idempotency-cache hit) leaves
     // the columns null — never fabricated.
-    if (smrResponse.stats) {
-      summaryMeta.stopReason = smrResponse.stats.stop_reason ?? null;
-      summaryMeta.ttftMs = smrResponse.stats.ttft_ms ?? null;
-      summaryMeta.tokensPerSecond = smrResponse.stats.tokens_per_second ?? null;
+    if (textResponse.stats) {
+      summaryMeta.stopReason = textResponse.stats.stop_reason ?? null;
+      summaryMeta.ttftMs = textResponse.stats.ttft_ms ?? null;
+      summaryMeta.tokensPerSecond = textResponse.stats.tokens_per_second ?? null;
     }
     await this.encryptBestEffort('SummaryMeta', () => this.summaryMetaRepository.encryptFieldsIntoEntity(summaryMeta, this.secretsService!));
-    await this.persistSummaryMetaWithUsage(summaryMeta, smrResponse, 'presummarize', {
+    await this.persistSummaryMetaWithUsage(summaryMeta, textResponse, 'presummarize', {
       tenantId,
       consultationId,
       doctorId: consultation.doctorId,
@@ -434,8 +452,8 @@ export class SummaryService extends BaseService implements ISummaryService {
       consultationId,
       summaryId: savedContext.id,
       name: 'pre-summary',
-      stats: smrResponse.stats,
-      durationMs: smrResponse.processingTimeMs,
+      stats: textResponse.stats,
+      durationMs: textResponse.processingTimeMs,
     });
 
     return SummaryDtoMapper.toResponse(savedContext);
@@ -605,11 +623,11 @@ export class SummaryService extends BaseService implements ISummaryService {
     });
 
     // Call SMR service
-    const smrResponse = await this.callTextService({
+    const textResponse = await this.callTextService({
       assembledPrompt,
       options: request.options,
       // Agent `llmOverrides.finalize` outranks the tenant
-      // `smr.finalize` AiTaskDefault. Fail-CLOSED: a named-but-unusable model
+      // `text.finalize` AiTaskDefault. Fail-CLOSED: a named-but-unusable model
       // raises rather than silently finalizing on the tenant default.
       agentLlm: await resolveAgentFinalizeSelection(
         { departmentAgentRepository: this.departmentAgentRepository, aiModelRepository: this.aiModelRepository, logger: this.logger },
@@ -626,7 +644,7 @@ export class SummaryService extends BaseService implements ISummaryService {
     });
 
     // Create summary context item
-    const contextItem = ContextItemFactory.CreateRawSummary(tenantId, consultationId, smrResponse.summary, effectiveDnaStyleId, userId ?? 'system');
+    const contextItem = ContextItemFactory.CreateRawSummary(tenantId, consultationId, textResponse.summary, effectiveDnaStyleId, userId ?? 'system');
     // Pin the AI draft to v1 so the immutable
     // `ai_draft_v1` snapshot below IS version 1 and the doctor's first edit
     // becomes v2 (no `@@unique([contextItemId, versionNumber])` collision).
@@ -644,12 +662,12 @@ export class SummaryService extends BaseService implements ISummaryService {
     const summaryMeta = SummaryMetaFactory.CreateSummaryMeta({
       tenantId,
       contextItemId: savedContext.id,
-      aiModelId: smrResponse.modelName ?? smrResponse.llmProvider,
-      processingTimeMs: smrResponse.processingTimeMs,
-      inputTokens: smrResponse.inputTokens,
-      outputTokens: smrResponse.outputTokens,
-      cacheHit: smrResponse.cacheHit,
-      qualityScore: smrResponse.qualityScore,
+      aiModelId: textResponse.modelName ?? textResponse.llmProvider,
+      processingTimeMs: textResponse.processingTimeMs,
+      inputTokens: textResponse.inputTokens,
+      outputTokens: textResponse.outputTokens,
+      cacheHit: textResponse.cacheHit,
+      qualityScore: textResponse.qualityScore,
       promptResolvedFrom: assembledPrompt.resolvedFrom,
       resolvedPromptId: assembledPrompt.promptId,
       // Session-agent lineage. `sessionAgentPromptVersion`
@@ -667,13 +685,13 @@ export class SummaryService extends BaseService implements ISummaryService {
     // as `contextItem.currentVersionNumber = 1` above); the factory does not yet
     // expose these props. Null/absent stats (legacy idempotency-cache hit) leaves
     // the columns null — never fabricated.
-    if (smrResponse.stats) {
-      summaryMeta.stopReason = smrResponse.stats.stop_reason ?? null;
-      summaryMeta.ttftMs = smrResponse.stats.ttft_ms ?? null;
-      summaryMeta.tokensPerSecond = smrResponse.stats.tokens_per_second ?? null;
+    if (textResponse.stats) {
+      summaryMeta.stopReason = textResponse.stats.stop_reason ?? null;
+      summaryMeta.ttftMs = textResponse.stats.ttft_ms ?? null;
+      summaryMeta.tokensPerSecond = textResponse.stats.tokens_per_second ?? null;
     }
     await this.encryptBestEffort('SummaryMeta', () => this.summaryMetaRepository.encryptFieldsIntoEntity(summaryMeta, this.secretsService!));
-    await this.persistSummaryMetaWithUsage(summaryMeta, smrResponse, 'generate', {
+    await this.persistSummaryMetaWithUsage(summaryMeta, textResponse, 'generate', {
       tenantId,
       consultationId,
       doctorId: consultation.doctorId,
@@ -699,8 +717,8 @@ export class SummaryService extends BaseService implements ISummaryService {
       consultationId,
       summaryId: savedContext.id,
       name: 'generate',
-      stats: smrResponse.stats,
-      durationMs: smrResponse.processingTimeMs,
+      stats: textResponse.stats,
+      durationMs: textResponse.processingTimeMs,
     });
 
     return SummaryDtoMapper.toResponse(savedContext);
@@ -725,13 +743,13 @@ export class SummaryService extends BaseService implements ISummaryService {
    */
   private async persistSummaryMetaWithUsage(
     summaryMeta: Parameters<SummaryMetaRepository['create']>[0],
-    smrResponse: { usage: TextUsageDetail | null; guardrailUsage: TextUsageDetail | null },
+    textResponse: { usage: TextUsageDetail | null; guardrailUsage: TextUsageDetail | null },
     operation: UsageOperation,
     attribution: SummaryUsageAttribution,
   ): Promise<void> {
-    const llmInput = smrResponse.usage
+    const llmInput = textResponse.usage
       ? buildLlmUsageInput({
-          usage: smrResponse.usage,
+          usage: textResponse.usage,
           tenantId: attribution.tenantId,
           operation,
           consultationId: attribution.consultationId,
@@ -739,14 +757,14 @@ export class SummaryService extends BaseService implements ISummaryService {
           departmentId: attribution.departmentId,
         })
       : null;
-    const guardrailInput = smrResponse.guardrailUsage
+    const guardrailInput = textResponse.guardrailUsage
       ? buildGuardrailUsageInput({
-          usage: smrResponse.guardrailUsage,
+          usage: textResponse.guardrailUsage,
           tenantId: attribution.tenantId,
           consultationId: attribution.consultationId,
           doctorId: attribution.doctorId,
           departmentId: attribution.departmentId,
-          fallbackRequestId: smrResponse.usage?.taskId ?? null,
+          fallbackRequestId: textResponse.usage?.taskId ?? null,
         })
       : null;
 
@@ -1366,7 +1384,23 @@ export class SummaryService extends BaseService implements ISummaryService {
       throw new BadRequestException('Context item has no content for entity extraction');
     }
 
-    const nerResponse = await this.callNlpService(contextItem.content);
+    // TASK-710 hop 1 — pseudonymize BEFORE the text leaves this process.
+    // `pseudonymize` (not `full`): NER exists to extract the clinical entities,
+    // and GLiNER's PII taxonomy never covers medication/condition spans, so
+    // they survive verbatim while identifiers become stable `[PERSON_1]`-style
+    // tokens (see `IPhiRedactor`'s mode doc).
+    //
+    // Fail-closed on BOTH failure shapes, with no silent fallback to raw text:
+    //  - redactor unwired  → throw here (the dependency is non-`@Optional()`,
+    //                        so in production this is unreachable — it is the
+    //                        belt to the DI braces, not the primary guard);
+    //  - redactor throws   → propagate, aborting before `callNlpService`.
+    if (!this.phiRedactor) {
+      throw new BusinessException('PHI redactor is not available; refusing to send unredacted content to the NLP service');
+    }
+    const redactedContent = await this.phiRedactor.redact(contextItem.content, 'pseudonymize');
+
+    const nerResponse = await this.callNlpService(redactedContent);
     const entities = nerResponse.entities ?? [];
 
     let savedCount = 0;
@@ -1454,11 +1488,11 @@ export class SummaryService extends BaseService implements ISummaryService {
   /**
    * The single SMR call path for finalize (B-03 / B-04). Resolves the
    * tenant's effective {provider, model} EXPLICITLY (never relies on
-   * `resolveSmrSelection()`'s own CLS fallback — a worker path with
+   * `resolveTextSelection()`'s own CLS fallback — a worker path with
    * unpopulated CLS must fail loudly, not silently serve the SYSTEM
    * default), then runs the request with the SAME bounded corrective-JSON
    * retry as before. On a provider-side failure, retries EXACTLY ONCE
-   * against the tenant's configured `smr.finalize.fallback` selection
+   * against the tenant's configured `text.finalize.fallback` selection
    * (mirrors `smr-compat.controller.ts#computeSummary`'s fallback shape);
    * an unconfigured/no-op fallback propagates the ORIGINAL error.
    */
@@ -1474,21 +1508,21 @@ export class SummaryService extends BaseService implements ISummaryService {
     let options = payload.options;
     if (this.harnessPolicyService && tenantId) {
       // Precedence: agent `llmOverrides.finalize` (frozen at the
-      // live session's agent) → tenant `smr.finalize` AiTaskDefault. The A4
+      // live session's agent) → tenant `text.finalize` AiTaskDefault. The A4
       // fallback retry below stays TENANT-configured either way — an agent
       // override names the primary, never the fallback.
-      const { provider, model } = payload.agentLlm ?? (await this.harnessPolicyService.resolveSmrSelection(tenantId, 'finalize'));
-      options = { smrProvider: provider, smrModel: model, ...payload.options };
+      const { provider, model } = payload.agentLlm ?? (await this.harnessPolicyService.resolveTextSelection(tenantId, 'finalize'));
+      options = { textProvider: provider, textModel: model, ...payload.options };
     }
 
     try {
       return await this.executeSmrGenerate(payload, options);
     } catch (primaryError) {
       if (tenantId && this.harnessPolicyService && this.isSmrFallbackEligible(primaryError)) {
-        const fallback = await this.harnessPolicyService.resolveSmrFallbackSelection(tenantId, 'finalize');
-        const primaryProvider = (options as Record<string, unknown> | undefined)?.smrProvider;
+        const fallback = await this.harnessPolicyService.resolveTextFallbackSelection(tenantId, 'finalize');
+        const primaryProvider = (options as Record<string, unknown> | undefined)?.textProvider;
         if (fallback && fallback.provider !== primaryProvider) {
-          const fallbackOptions = { ...options, smrProvider: fallback.provider, smrModel: fallback.model };
+          const fallbackOptions = { ...options, textProvider: fallback.provider, textModel: fallback.model };
           try {
             const result = await this.executeSmrGenerate(payload, fallbackOptions);
             this.logger.warn({
@@ -1534,7 +1568,19 @@ export class SummaryService extends BaseService implements ISummaryService {
    */
   private async executeSmrGenerate(payload: TextCallPayload, options: Record<string, unknown> | undefined): Promise<TextCallResult> {
     const textPayload = buildTextGeneratePayload(payload.assembledPrompt, options, payload.context);
-    const smrServiceToken = (await this.secretsService?.getSecretOptional('TEXT_SERVICE_TOKEN')) ?? '';
+    // D-D: the ONE shared `INTERNAL_ACCESS_TOKEN` (`TEXT_SERVICE_TOKEN` is only the
+    // migration fallback). TASK-737: `X-Tenant-Id` is MANDATORY on this hop — this
+    // is the FINALIZE path, whose output is the note a clinician signs, and it
+    // reached Text with no tenant at all, so the tenant's BYOK provider/credential
+    // was never resolved and the derived `funding`/`cost_basis` was attributed to
+    // the platform tier instead. Both headers are built once, here, by the shared
+    // contract rather than a hand-rolled literal.
+    const serviceToken = await resolveInternalAccessToken(this.secretsService, 'TEXT_SERVICE_TOKEN');
+    const smrHeaders = internalServiceHeaders({
+      serviceToken,
+      tenantId: this.tenantId,
+      tenantlessReason: TENANTLESS.PLATFORM_OPERATOR,
+    });
 
     // The finalize path now carries the SAME bounded corrective
     // retry as the live-doc flush. Before this, a structured request
@@ -1550,12 +1596,7 @@ export class SummaryService extends BaseService implements ISummaryService {
         const response = await this.httpService.axiosRef.post(
           `${this.textServiceUrl}/api/v1/generate`,
           { ...textPayload, prompt: corrective ? `${basePrompt}${corrective}` : basePrompt },
-          {
-            headers: {
-              'Content-Type': 'application/json',
-              'X-Service-Token': smrServiceToken,
-            },
-          },
+          { headers: smrHeaders },
         );
         const mapped = mapTextGenerateResponse(response.data);
         const data = response.data as { usage_detail?: unknown; guardrail_usage?: unknown } | null;
@@ -1761,7 +1802,23 @@ export class SummaryService extends BaseService implements ISummaryService {
       // admin's re-point governs this synchronous clinical NER path too, not
       // just the playground. Fail-open: {} on any resolution hiccup.
       const modelSelection = await resolveNerModelInjection(this.aiTaskDefaultService, this.clsService, this.logger);
-      const response = await this.httpService.axiosRef.post(`${this.nlpServiceUrl}/api/v1/classify/tokens`, { text, ...modelSelection });
+      // TASK-737/738: this call sent NO headers object at all — neither the
+      // service token (so it only ever worked against an NLP with the empty-token
+      // dev bypass) nor the tenant. NLP delegates tenant-scoped classification on
+      // to Text, so an absent tenant propagates two hops before resolving the
+      // platform default, silently.
+      const serviceToken = await resolveInternalAccessToken(this.secretsService, 'NLP_SERVICE_TOKEN');
+      const response = await this.httpService.axiosRef.post(
+        `${this.nlpServiceUrl}/api/v1/classify/tokens`,
+        { text, ...modelSelection },
+        {
+          headers: internalServiceHeaders({
+            serviceToken,
+            tenantId: this.tenantId,
+            tenantlessReason: TENANTLESS.PLATFORM_OPERATOR,
+          }),
+        },
+      );
       return { ...response.data, modelUsed: modelSelection.model_name ?? null };
     } catch (error) {
       throw new BadRequestException(`Failed to call NLP service: ${error}`);

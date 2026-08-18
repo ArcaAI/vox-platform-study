@@ -128,7 +128,7 @@ describe('TextProxyController', () => {
 
   describe('POST /text/generate', () => {
     it('should proxy synchronous generation to SMR', async () => {
-      const smrResponse = {
+      const textResponse = {
         data: {
           task_id: 'task-1',
           status: 'completed',
@@ -141,7 +141,7 @@ describe('TextProxyController', () => {
           created_at: '2026-03-02T00:00:00Z',
         },
       };
-      mockHttpService.axiosRef.post.mockResolvedValue(smrResponse);
+      mockHttpService.axiosRef.post.mockResolvedValue(textResponse);
 
       const body = {
         prompt: 'Generate a summary',
@@ -161,14 +161,14 @@ describe('TextProxyController', () => {
     });
 
     it('should proxy streaming generation and return task info with stream_url', async () => {
-      const smrResponse = {
+      const textResponse = {
         data: {
           task_id: 'task-stream-1',
           status: 'running',
           stream_url: '/api/v1/tasks/task-stream-1/stream',
         },
       };
-      mockHttpService.axiosRef.post.mockResolvedValue(smrResponse);
+      mockHttpService.axiosRef.post.mockResolvedValue(textResponse);
 
       const body = {
         prompt: 'Generate a summary',
@@ -304,7 +304,7 @@ describe('TextProxyController', () => {
   // fall back to the HarnessPolicy cascade. When neither is available it forwards
   // to SMR, which is the fail-closed 422 authority (no in-proxy default).
   describe('SMR model selection', () => {
-    const buildWithResolver = (resolver: { resolveSmrSelection: ReturnType<typeof vi.fn> }) =>
+    const buildWithResolver = (resolver: { resolveTextSelection: ReturnType<typeof vi.fn> }) =>
       new TextProxyController(
         mockHttpService as any,
         mockTenantService as any,
@@ -321,61 +321,61 @@ describe('TextProxyController', () => {
       );
 
     it('passes a caller-supplied model through without resolving (SDK fidelity)', async () => {
-      const resolver = { resolveSmrSelection: vi.fn() };
+      const resolver = { resolveTextSelection: vi.fn() };
       const ctrl = buildWithResolver(resolver);
       mockHttpService.axiosRef.post.mockResolvedValue({ data: { content: 'ok' } });
 
       await ctrl.generate({ prompt: 'p', provider: 'lm-studio', model: 'caller-pinned', stream: false });
 
-      expect(resolver.resolveSmrSelection).not.toHaveBeenCalled();
+      expect(resolver.resolveTextSelection).not.toHaveBeenCalled();
       const body = mockHttpService.axiosRef.post.mock.calls[0][1];
       expect(body.provider).toBe('lm-studio');
       expect(body.model).toBe('caller-pinned');
     });
 
     it('resolves provider+model via policy when the caller omits the model', async () => {
-      const resolver = { resolveSmrSelection: vi.fn().mockResolvedValue({ provider: 'ollama', model: 'granite4:latest' }) };
+      const resolver = { resolveTextSelection: vi.fn().mockResolvedValue({ provider: 'ollama', model: 'granite4:latest' }) };
       const ctrl = buildWithResolver(resolver);
       mockHttpService.axiosRef.post.mockResolvedValue({ data: { content: 'ok' } });
 
       await ctrl.generate({ prompt: 'p', stream: false });
 
-      expect(resolver.resolveSmrSelection).toHaveBeenCalled();
+      expect(resolver.resolveTextSelection).toHaveBeenCalled();
       const body = mockHttpService.axiosRef.post.mock.calls[0][1];
       expect(body.provider).toBe('ollama');
       expect(body.model).toBe('granite4:latest');
     });
 
     it('FAILS CLOSED (rethrows) when model is omitted and policy is unresolved', async () => {
-      const resolver = { resolveSmrSelection: vi.fn().mockRejectedValue(new BadRequestException('unresolved')) };
+      const resolver = { resolveTextSelection: vi.fn().mockRejectedValue(new BadRequestException('unresolved')) };
       const ctrl = buildWithResolver(resolver);
 
       await expect(ctrl.generate({ prompt: 'p', stream: false })).rejects.toBeInstanceOf(BadRequestException);
-      expect(resolver.resolveSmrSelection).toHaveBeenCalled();
+      expect(resolver.resolveTextSelection).toHaveBeenCalled();
       expect(mockHttpService.axiosRef.post).not.toHaveBeenCalled();
     });
 
     it('generate/assembled resolves provider+model when the caller omits the model', async () => {
-      const resolver = { resolveSmrSelection: vi.fn().mockResolvedValue({ provider: 'ollama', model: 'granite4:latest' }) };
+      const resolver = { resolveTextSelection: vi.fn().mockResolvedValue({ provider: 'ollama', model: 'granite4:latest' }) };
       const ctrl = buildWithResolver(resolver);
       mockHttpService.axiosRef.post.mockResolvedValue({ data: { task_id: 't', status: 'completed', content: 'ok' } });
 
       await ctrl.generateAssembled({ type: 'summary', message: 'hello' });
 
-      expect(resolver.resolveSmrSelection).toHaveBeenCalled();
+      expect(resolver.resolveTextSelection).toHaveBeenCalled();
       const body = mockHttpService.axiosRef.post.mock.calls[0][1];
       expect(body.provider).toBe('ollama');
       expect(body.model).toBe('granite4:latest');
     });
 
     it('generate/assembled passes a caller-supplied model through without resolving', async () => {
-      const resolver = { resolveSmrSelection: vi.fn() };
+      const resolver = { resolveTextSelection: vi.fn() };
       const ctrl = buildWithResolver(resolver);
       mockHttpService.axiosRef.post.mockResolvedValue({ data: { task_id: 't', status: 'completed', content: 'ok' } });
 
       await ctrl.generateAssembled({ type: 'summary', message: 'hello', provider: 'lm-studio', model: 'qwen3.5-4b' });
 
-      expect(resolver.resolveSmrSelection).not.toHaveBeenCalled();
+      expect(resolver.resolveTextSelection).not.toHaveBeenCalled();
       const body = mockHttpService.axiosRef.post.mock.calls[0][1];
       expect(body.provider).toBe('lm-studio');
       expect(body.model).toBe('qwen3.5-4b');
@@ -600,14 +600,14 @@ describe('TextProxyController', () => {
 
   describe('POST /text/generate with structured output', () => {
     it('should forward json response_format to SMR', async () => {
-      const smrResponse = {
+      const textResponse = {
         data: {
           task_id: 'task-json-1',
           status: 'completed',
           content: '{"key": "value"}',
         },
       };
-      mockHttpService.axiosRef.post.mockResolvedValue(smrResponse);
+      mockHttpService.axiosRef.post.mockResolvedValue(textResponse);
 
       const body = {
         prompt: 'Return JSON',
@@ -627,14 +627,14 @@ describe('TextProxyController', () => {
     });
 
     it('should forward json_schema response_format to SMR', async () => {
-      const smrResponse = {
+      const textResponse = {
         data: {
           task_id: 'task-schema-1',
           status: 'completed',
           content: '{"name": "test"}',
         },
       };
-      mockHttpService.axiosRef.post.mockResolvedValue(smrResponse);
+      mockHttpService.axiosRef.post.mockResolvedValue(textResponse);
 
       const body = {
         prompt: 'Return structured data',
@@ -666,14 +666,14 @@ describe('TextProxyController', () => {
     });
 
     it('should forward streaming request with json_schema to SMR', async () => {
-      const smrResponse = {
+      const textResponse = {
         data: {
           task_id: 'task-stream-schema-1',
           status: 'running',
           stream_url: '/api/v1/tasks/task-stream-schema-1/stream',
         },
       };
-      mockHttpService.axiosRef.post.mockResolvedValue(smrResponse);
+      mockHttpService.axiosRef.post.mockResolvedValue(textResponse);
 
       const body = {
         prompt: 'Return structured data',
@@ -711,7 +711,7 @@ describe('TextProxyController', () => {
   const buildProvidersController = (opts: {
     aiModels?: { getByTaskTypeSharedRead: ReturnType<typeof vi.fn> };
     aiTaskDefaults?: { getEffective: ReturnType<typeof vi.fn> };
-    harnessPolicy?: { resolveSmrSelection: ReturnType<typeof vi.fn> };
+    harnessPolicy?: { resolveTextSelection: ReturnType<typeof vi.fn> };
   }) =>
     new TextProxyController(
       mockHttpService as any,
@@ -762,14 +762,14 @@ describe('TextProxyController', () => {
               }),
             ],
       );
-      const harnessPolicy = { resolveSmrSelection: vi.fn().mockResolvedValue({ provider: 'lm-studio', model: 'gemma-4-e2b-it-qat' }) };
+      const harnessPolicy = { resolveTextSelection: vi.fn().mockResolvedValue({ provider: 'lm-studio', model: 'gemma-4-e2b-it-qat' }) };
       const ctrl = buildProvidersController({ aiModels, harnessPolicy });
 
       const result = await ctrl.getProviders();
 
       expect(aiModels.getByTaskTypeSharedRead).toHaveBeenCalledWith(ModelTaskType.TEXT_GENERATION);
       expect(aiModels.getByTaskTypeSharedRead).toHaveBeenCalledWith(ModelTaskType.SUMMARIZATION);
-      expect(harnessPolicy.resolveSmrSelection).toHaveBeenCalledWith('tenant-1');
+      expect(harnessPolicy.resolveTextSelection).toHaveBeenCalledWith('tenant-1');
       expect(result).toEqual([
         {
           name: 'lm-studio',
@@ -808,7 +808,7 @@ describe('TextProxyController', () => {
     it('marks no default when the HarnessPolicy cascade is unresolved (fail-open)', async () => {
       const aiModels = createMockAiModelService();
       aiModels.getByTaskTypeSharedRead.mockResolvedValue([registryRow({ slug: 's', provider: 'ollama', sourceUri: 'qwen3.5:2b' })]);
-      const harnessPolicy = { resolveSmrSelection: vi.fn().mockRejectedValue(new BadRequestException('unresolved')) };
+      const harnessPolicy = { resolveTextSelection: vi.fn().mockRejectedValue(new BadRequestException('unresolved')) };
       const ctrl = buildProvidersController({ aiModels, harnessPolicy });
 
       const result = await ctrl.getProviders();
@@ -884,13 +884,13 @@ describe('TextProxyController', () => {
       mockTenantService.fetchByCodeName.mockResolvedValue({ id: 'global-tenant' });
       const aiModels = createMockAiModelService();
       aiModels.getByTaskTypeSharedRead.mockResolvedValue([registryRow({ slug: 's', provider: 'ollama', sourceUri: 'qwen3.5:2b' })]);
-      const harnessPolicy = { resolveSmrSelection: vi.fn().mockResolvedValue({ provider: 'ollama', model: 'qwen3.5:2b' }) };
+      const harnessPolicy = { resolveTextSelection: vi.fn().mockResolvedValue({ provider: 'ollama', model: 'qwen3.5:2b' }) };
       const ctrl = buildProvidersController({ aiModels, harnessPolicy });
 
       const result = await ctrl.getProviders('__GLOBAL__');
 
       expect(mockTenantService.fetchByCodeName).toHaveBeenCalledWith('__GLOBAL__');
-      expect(harnessPolicy.resolveSmrSelection).toHaveBeenCalledWith('global-tenant');
+      expect(harnessPolicy.resolveTextSelection).toHaveBeenCalledWith('global-tenant');
       expect(result).toHaveLength(1);
     });
 
@@ -939,13 +939,13 @@ describe('TextProxyController', () => {
       });
       const aiModels = createMockAiModelService();
       aiModels.getByTaskTypeSharedRead.mockResolvedValue([registryRow({ slug: 's', provider: 'ollama', sourceUri: 'qwen3.5:2b' })]);
-      const harnessPolicy = { resolveSmrSelection: vi.fn().mockResolvedValue({ provider: 'ollama', model: 'qwen3.5:2b' }) };
+      const harnessPolicy = { resolveTextSelection: vi.fn().mockResolvedValue({ provider: 'ollama', model: 'qwen3.5:2b' }) };
       const ctrl = buildProvidersController({ aiModels, harnessPolicy });
 
       await ctrl.getProviders();
 
       expect(mockTenantService.fetchByCodeName).not.toHaveBeenCalled();
-      expect(harnessPolicy.resolveSmrSelection).toHaveBeenCalledWith('tenant-cls');
+      expect(harnessPolicy.resolveTextSelection).toHaveBeenCalledWith('tenant-cls');
     });
   });
 
@@ -1835,6 +1835,6 @@ describe('TextProxyController - SSE stream scope', () => {
     // presented ticket, which is what forced the console's BFF-tunnel workaround.
     const scope = Reflect.getMetadata(STREAM_SCOPE_METADATA, TextProxyController.prototype.streamTaskEvents);
 
-    expect(scope).toEqual({ namespace: 'smr_task', param: 'taskId' });
+    expect(scope).toEqual({ namespace: 'text_task', param: 'taskId' });
   });
 });

@@ -168,15 +168,15 @@ describe('R-C2 — the LLM is the default set by the tenant admin', () => {
    * "silent SYSTEM default" leak) — and must route on the finalize task.
    */
   let harnessPolicyService: {
-    resolveSmrSelection: ReturnType<typeof vi.fn>;
-    resolveSmrFallbackSelection: ReturnType<typeof vi.fn>;
+    resolveTextSelection: ReturnType<typeof vi.fn>;
+    resolveTextFallbackSelection: ReturnType<typeof vi.fn>;
   };
   let controller: TextCompatController;
 
   beforeEach(() => {
     harnessPolicyService = {
-      resolveSmrSelection: vi.fn(async () => ({ provider: 'lm-studio', model: 'tenant-default-model' })),
-      resolveSmrFallbackSelection: vi.fn(async () => null),
+      resolveTextSelection: vi.fn(async () => ({ provider: 'lm-studio', model: 'tenant-default-model' })),
+      resolveTextFallbackSelection: vi.fn(async () => null),
     };
     controller = new TextCompatController(
       { axiosRef: { post: vi.fn(), get: vi.fn() } } as never,
@@ -196,10 +196,10 @@ describe('R-C2 — the LLM is the default set by the tenant admin', () => {
       'tenant-1',
     );
 
-    expect(harnessPolicyService.resolveSmrSelection).toHaveBeenCalledTimes(1);
-    const [tenantArg, taskArg] = harnessPolicyService.resolveSmrSelection.mock.calls[0];
+    expect(harnessPolicyService.resolveTextSelection).toHaveBeenCalledTimes(1);
+    const [tenantArg, taskArg] = harnessPolicyService.resolveTextSelection.mock.calls[0];
     expect(tenantArg).toBe('tenant-1');
-    // `HarnessPolicyService.resolveSmrSelection(tenantId?, task: TextRoutingTask = 'finalize')`
+    // `HarnessPolicyService.resolveTextSelection(tenantId?, task: TextRoutingTask = 'finalize')`
     // — compat relies on the default, so either spelling is conformant. What is
     // NOT conformant is 'live' or 'test'.
     expect(taskArg === undefined || taskArg === 'finalize').toBe(true);
@@ -210,7 +210,7 @@ describe('R-C2 — the LLM is the default set by the tenant admin', () => {
     // `requireTenantId` is the guard; with no CLS tenant, no api key and no user
     // it must reject rather than let the policy resolver fall back to SYSTEM.
     expect(() => (controller as unknown as { requireTenantId: (r?: object) => string }).requireTenantId(undefined)).toThrow();
-    expect(harnessPolicyService.resolveSmrSelection).not.toHaveBeenCalled();
+    expect(harnessPolicyService.resolveTextSelection).not.toHaveBeenCalled();
   });
 });
 

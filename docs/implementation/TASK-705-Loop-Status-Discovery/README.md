@@ -1,694 +1,631 @@
-# TASK-705 — Loop Status Discovery
+# TASK-705 — The Agentic Loop as a Subscription Feature
 
 | | |
 |---|---|
 | **Status** | Review |
-| **Wave** | 0 · **Size** | S |
-| **Epic slug** | `loop-status-discovery` |
+| **Wave** | 0 · **Size** | M (re-scoped from S on 2026-08-17) |
+| **Epic slug** | `loop-status-discovery` (historical — the ticket is no longer a discovery ticket) |
 | **Depends on** | — |
-| **Design refs** | D1 ("`ConsultationLoopWorkflow` never adopted; superseded by the interpreter" — this ticket determines whether that decision has an active-in-production consequence to manage during the transition) |
+| **Owner decision** | [`owner-decisions-2026-08-17.md`](../../architecture/agentic-workflow-platform/owner-decisions-2026-08-17.md) §2 row 705, plus standing directives D-A (no production data → finish enabled for day-1), D-B (configuration lives in the database, never env), D-F (local infra is up and is to be used) |
 | **Findings closed** | Re-triages A-26, A-27, A-28 (per [04-target-architecture.md](../../architecture/consultation-session-workflow/assessment/04-target-architecture.md) §7 remediation table row `loop-status-discovery`) |
+
+---
 
 ## 1. Requirement Analysis
 
-`ConsultationLoopWorkflow` (`apps/harness/src/harness/temporal/workflows.py:1877-2116`) is a
-signal-driven, per-consultation dispatcher gated by a single kill-switch,
-`harness.loop.enabled`. The switch's **code default is `false`**, but every environment that runs
-the platform's own seed carries a `GlobalSetting` row that sets it to **`'true'`**
-(`packages/database/src/prisma/db_main/seed/11c-consultation-gate-settings.ts:63-70`). Whether the
-loop is actually dispatching workflows in any given deployment today is therefore not answerable
-from the code alone — it depends on whether that environment's database was ever seeded, which
-depends on a deploy-time gate (`RUN_SEED`) this repository does not fully control (the k3s
-manifests live in a separate GitLab project, `arca/hope-v2-deployment`, per
-`.claude/rules/09-infrastructure-devops.md`).
+> *"harness agentic loop is one of the core business, so, lets treat it as a feature
+> in subscription plan"* — Owner, 2026-08-17
 
-This matters because of `_adjudicate()` (`apps/harness/src/harness/temporal/workflows.py:2653-2716`):
-when the loop dispatches, it reconciles multiple specialist agents' findings with no clinician
-gate between reconciliation and persistence (A-28 in the conformance matrix). If the loop is
-dormant everywhere, A-28 is a latent code-level finding to fix before Wave 4 migration. If the
-loop is actually signalling and dispatching in a live environment today, A-28 is a **live defect**
-requiring its own re-triage and possibly an out-of-band mitigation before this program's Wave 1
-lands `session-state-machine`/`consent-abac`.
+**This supersedes the ticket's original framing entirely.** TASK-705 began as an
+investigation asking *"what should `harness.loop.enabled` be set to per environment?"*
+That question is **dissolved**, not answered: it presumed the loop was an environment
+kill-switch whose value an operator picks per deployment. It is not. The harness agentic
+loop is a **core business capability**, and whether it runs for a given consultation is
+decided by that consultation's tenant **subscription entitlement**, resolved from the
+database.
 
-This ticket delivers:
-1. A **procedure and the exact queries** to determine harness.loop.enabled's EFFECTIVE value —
-   distinguishing the `GlobalSetting` row's stored value, the code default, and the
-   settings-registry descriptor's declared default — per environment (local dev, and whichever
-   deployed environments exist; today only `hope-v2-dev` per
-   `.claude/rules/09-infrastructure-devops.md` §Cluster Deploys).
-2. A **Temporal-side query procedure** to determine whether `ConsultationLoopWorkflow` executions
-   have actually started in the last 30 days in any reachable environment — the `GlobalSetting`
-   row only proves the *signal* is armed, not that anything has *dispatched* (see §2.2 — dispatch
-   also requires derived per-tenant loop config to resolve non-null).
-3. An **inventory of what changes when the loop is on** (§2.3), so the decision this ticket
-   surfaces is informed, not abstract.
-4. A single **HUMAN-GATED decision task** (§4, Task 5): given the findings, what should
-   `harness.loop.enabled`'s value be, explicitly, in each environment — and setting it explicitly
-   (never left to seed-vs-code-default ambiguity) via the existing write path.
+### 1.1 What this ticket delivers
 
-**Explicitly out of scope**: fixing A-28 itself (that is `session-state-machine`/a future
-consent-abac-adjacent epic, not this ticket); adopting `ConsultationLoopWorkflow` as the
-orchestration layer (D1 already forecloses this — "never adopted; superseded by the interpreter");
-building any new admin-console UI for this setting (the existing `GET/PUT
-/admin/settings/registry/harness.loop.enabled` route already covers read+write, see §2.4).
+1. **A loop entitlement.** `ResolvedFeatures.agenticLoop` — a boolean feature entitlement
+   resolved through the established three-layer cascade (per-plan default ← `PlanEntitlement`
+   row ← `TenantEntitlement` per-tenant override), consumed through the existing
+   `IEntitlementsService.isFeatureEnabled` contract. No parallel mechanism was invented;
+   `platformDefaultCredential` is the pattern followed exactly.
+2. **A composition rule** between the commercial gate and the operational one, decided
+   deliberately and documented next to both (§1.2).
+3. **Resolution of a real defect**: the old switch's seeded value (`'true'`) and its code
+   default (`false`) disagreed, in a platform where `RUN_SEED=none` means the seeded row is
+   never re-asserted (§2.2). That is not a quirk to document — it is a defect, and it is
+   removed rather than described.
+4. **Wiring into the actual loop-start decision path**, so the entitlement is what decides
+   whether `ConsultationLoopWorkflow` is ever signalled.
+5. **Day-1 defaults** such that a freshly-provisioned platform runs the loop (D-A), with
+   the commercial gate becoming real the moment entitlement enforcement is switched on.
+
+### 1.2 The composition rule (the ticket's central decision)
+
+A kill-switch is an **operational safety device**; an entitlement is a **commercial** one.
+They are different concerns, both are legitimate, and both survive. They compose like this:
+
+```
+signals(tenant)  ⇔  entitlement(tenant).agenticLoop === true
+                    AND  harness.loop.emergencyStop !== true
+```
+
+- **The entitlement is the ONLY source of eligibility.** Commercial, per tenant, resolved
+  from the database, tenant → platform-default, never from another customer tenant.
+- **The emergency stop is a platform-wide VETO that can only SUBTRACT.** Engaging it halts
+  an entitled tenant immediately, with no redeploy. Disengaging it never *grants* the loop
+  to a tenant whose plan does not include it. An operator can stop a misbehaving subsystem;
+  an operator cannot sell a subscription by flipping a setting.
+- **The stop is evaluated FIRST** and short-circuits, so an incident costs zero entitlement
+  lookups on the hot path.
+- **Three DENY answers, each fail-closed:** no tenant identity, no entitlements resolver
+  wired, or the entitlement read threw. A commercial gate that cannot be read must not hand
+  out the feature; the cost of denying is a degraded (not broken) consultation, since Layer 1
+  live documentation is entirely unaffected by this gate.
+
+### 1.3 Why the old key could not simply be kept
+
+`harness.loop.enabled` was **two devices wearing one key**, and the two want opposite
+fail-safe defaults:
+
+| Device | Wants its safe default to be… |
+|---|---|
+| eligibility gate ("does the platform run loops") | **on** — the product requirement is loops run on day 1 |
+| kill-switch ("stop the loop NOW") | **off** — `SettingsRegistry.killSwitches()` refuses to assemble a kill-switch that ships armed, and `EffectiveSettingsModule.onModuleInit` refuses BOOT |
+
+Both requirements are correct; the key could satisfy only one, so the seed was used to
+contradict the descriptor. Separating the concerns lets each have the default it needs, and
+the disagreement disappears: the key is renamed to **`harness.loop.emergencyStop`** with
+the polarity flipped, so `default: false` now means *"no emergency in progress"* — which is
+simultaneously the fail-safe kill-switch default AND the day-1 product intent. Nothing about
+the loop needs seeding any more.
+
+### 1.4 Explicitly out of scope
+
+Fixing A-28 (`_adjudicate()`'s ungated auto-resolution) — that remains
+`session-state-machine` / consent-abac adjacent work; adopting `ConsultationLoopWorkflow`
+as *the* orchestration layer (D1 forecloses it); building admin-console UI for the new
+setting (the existing registry `GET`/`PUT` route covers it, and the entitlement surfaces
+through the existing `GET /admin/entitlements/capabilities` payload automatically).
+
+---
 
 ## 2. Current State Evaluation
 
-### 2.1 The three values, and why they disagree by design
+### 2.1 What the loop gate was, before this ticket
 
-| Layer | Value | Evidence |
+`LoopContextSignalService` (`packages/applications/src/services/consultation/loop/loop-context-signal.service.ts`)
+forwards three signals to `ConsultationLoopWorkflow` — `ContextAdded`, `consultation-ending`,
+`loop-cancel` — and gated all three on a single platform boolean,
+`harness.loop.enabled`, resolved per call via `TenantSettingsService.resolvePlatform`.
+It had **no tenant dimension at all**: one platform row decided the answer for every tenant
+on the deployment.
+
+### 2.2 The defect: three values that disagree, and a seed that never re-runs
+
+| Layer | Value | Where |
 |---|---|---|
-| Code default (the descriptor's `default`) | `false` | `packages/applications/src/services/settings-registry/descriptors/consultation-gates.descriptors.ts:29-38` — `default: CONSULTATION_GATE_DEFAULTS[HARNESS_LOOP_ENABLED_KEY]`, itself `false` at `packages/applications/src/services/consultation/consultation-gates.constants.ts:47` |
-| `defaultValue` column on the seeded `GlobalSetting` row (what "reset to default" reverts to) | `'false'` | `seed/11c-consultation-gate-settings.ts:66` |
-| `value` column on the seeded `GlobalSetting` row (the effective value in any environment that ran this seed) | `'true'` | `seed/11c-consultation-gate-settings.ts:65`, comment at `:70`: *"Enabled on day 1 in every environment... Locked — only GLOBAL_ADMIN may change it."* |
-
-This three-way split is **deliberate, not drift** — the seed file's own header comment
-(`seed/11c-consultation-gate-settings.ts:1-42`) explains why: `SettingsRegistry.killSwitches()`
-throws at assembly for any kill-switch whose descriptor `default === true` (a governance
-invariant — no kill-switch may ship pre-armed at the code level), so the *only* sanctioned way to
-have a kill-switch land ON in a seeded environment is a seeded row, with the descriptor default
-staying OFF as the fail-safe answer for any deployment that never seeds. The parity between the
-seed's literal key/label/namespace/tenant coordinates and the registry descriptor is itself
-enforced by an existing test:
-`packages/applications/src/services/settings-registry/__tests__/consultation-gate-seed-parity.test.ts`,
-whose own header states the product requirement in plain language: *"the consultation loop is
-enabled on day 1, in every environment including local development."*
-
-**This means the premise "is the loop accidentally on" is likely wrong.** The code itself
-documents this as an intentional owner decision. What this ticket actually needs to determine is
-narrower and more operational: (a) does every environment that should have received this seeded
-intent actually have it (i.e., did `RUN_SEED` run there), (b) does the signal being armed
-translate into the workflow actually *doing* anything (§2.2), and (c) given that the loop's
-`_adjudicate()` auto-resolution (A-28) was apparently not part of the reasoning captured in the
-seed comment, does the owner still want this once A-28 is named explicitly.
-
-### 2.2 Signal armed ≠ workflow dispatching — the derived-config gate
-
-`harness.loop.enabled` only governs whether `LoopContextSignalService` forwards `ContextAdded` /
-`consultation-ending` / `loop-cancel` events as Temporal signals
-(`packages/applications/src/services/consultation/loop/loop-context-signal.service.ts:44-70`,
-resolved fresh on every call via `TenantSettingsService.resolvePlatform`, never cached on the
-instance — comment at `:55-63`). Whether `ConsultationLoopWorkflow` then does anything meaningful
-once signalled depends on a **second, derived** condition documented in
-`packages/database/src/prisma/db_main/seed/07e-consultation-loop-defaults.ts:1-20`:
-
-```
-const enabled = agentConfigVersionId !== null || contextSchemaVersionId !== null;
-```
-
-(`packages/applications/src/services/consultation/loop/loop-config.service.ts`). Before
-`07e-consultation-loop-defaults.ts` existed, a signalled workflow completed with `phase:
-"DISABLED"` because neither value existed on a fresh install — i.e., the signal fired but the
-loop did nothing. `07e` now seeds both a default `ConsultationContextSchema` and, via
-`07a-agent-golden-library.ts`, a matching `DAY1_AGENT_LOOP_CONFIG` on every seeded default agent —
-so in any environment that has run **both** `11c` and `07e`/`07a`, the loop is armed **and**
-resolves non-trivially, meaning it is plausible the workflow is genuinely dispatching, not merely
-signalled into a no-op. This is the fact that turns "check one `GlobalSetting` row" into "check
-the row, then separately confirm via Temporal whether executions exist" (§4 Task 2).
-
-### 2.3 What the loop changes when it dispatches (inventory, from the evidence base)
-
-Read from `docs/architecture/consultation-session-workflow/assessment/evidence/orchestration.md`
-(already-verified wave-1 evidence, re-cited here rather than re-derived since this ticket's job is
-discovery/decision, not re-auditing orchestration):
-
-- **Layer 1 (always live)**: `LiveDocumentationService` drives the ephemeral running work-note;
-  `HarnessDocWorkflow` runs once per consultation at STT-finalize time via
-  `ConsultationEventHandler.handleTranscriptionCreated` — unaffected by this switch either way.
-- **Layer 2 (this switch)**: when armed and dispatching, `ConsultationLoopWorkflow` additionally
-  runs a genuinely different multi-agent-aware drain sequence
-  (`workflows.py:2099-2110`, two-phase: await in-flight agents, force-stop on timeout), per-agent
-  timeout isolation via `SpecialistWorkflow` child workflows (5-minute bound, `max_attempts=1`,
-  degrades the parent rather than retrying — `workflows.py:1784-1787`), explicit
-  `continue_as_new` checkpointing (`workflows.py:2724-2774`), and — the safety-relevant part —
-  `_adjudicate()` (`workflows.py:2653-2716`), which reconciles specialist findings against each
-  agent's `writeScope` (write-scope enforcement is real and tested — `LoopAgentSpec.may_write()`,
-  `models.py:1087-1093`) but auto-resolves the reconciled record with **no clinician gate** before
-  handing off to `harness.finalize`, which starts `HarnessDocWorkflow` as an unmodified child.
-- **Net delta if dispatching**: the loop does not duplicate note synthesis (it composes the same
-  `HarnessDocWorkflow`) and does not race `LiveDocumentationService` (both are idempotent no-ops on
-  a second start/stop call). The delta is entirely in **orchestration behavior between agents** —
-  drain semantics, per-agent isolation, checkpointing, and the ungated adjudication step.
-
-### 2.4 The read/write path this ticket's procedure uses
-
-- `GET /api/v1/admin/settings/registry/harness.loop.enabled` — read the descriptor metadata plus
-  the effective value and cascade trace (`apps/api/src/modules/settings-catalog/settings-registry-write.controller.ts:47-` — route decorated `@CanRead('GlobalSetting')`). Accepts `tenantId`/`scope`
-  query params for platform admins.
-- `GET /api/v1/admin/settings/effective` — the broader effective-settings surface
-  (`apps/api/src/modules/settings-catalog/settings-catalog.controller.ts:55`).
-- `PUT /api/v1/admin/settings/registry/harness.loop.enabled` — the write path the seed file's own
-  comment names as the intended way to change this (`seed/11c-consultation-gate-settings.ts:41-42`,
-  `PUT ... { "value": false }`), enforced by `SettingsRegistryWriteService` (the single enforcement
-  point for `globalOnly`/`editableBy`, per `settings-registry-write.controller.ts:17-29`).
-- Direct DB read (no code change needed): `SELECT value, "defaultValue", "updatedAt", "updatedBy"
-  FROM core."GlobalSetting" WHERE namespace = 'registry' AND name = 'Consultation loop signalling'
-  AND "tenantId" = '50000000-0000-0000-0000-000000000000';` — the exact row coordinates the seed
-  writes (`SEED_TENANT_ID`, namespace `'registry'`, name copied verbatim from the descriptor label
-  — `seed/11c-consultation-gate-settings.ts:30-38,62-64`; `SEED_TENANT_ID` confirmed at
-  `packages/database/src/prisma/db_main/seed/00-constants.ts:111`).
-- `RUN_SEED` gating (`packages/database/migrate.sh:33-45`) defaults to `none` — no seeding, no DB
-  connection opened — and is only raised to `all`/`safe` per-environment by the **deployment
-  repo's** overlay Kustomize patches, which live in `arca/hope-v2-deployment`, not this repository
-  (`.claude/rules/09-infrastructure-devops.md` §Cluster Deploys: only the `hope-v2-dev` namespace
-  currently exists). This repo cannot answer "did `RUN_SEED` run in each environment" by itself —
-  that is one of this ticket's procedure steps, not something derivable from a grep here.
-- **Temporal-side query**: no existing gateway route lists workflow executions by type — only
-  `POST /admin/harness/workflows/:id/{cancel,terminate,signal}` exist
-  (`apps/api/src/modules/harness-admin/harness-admin.controller.ts:465-485`), which require
-  knowing an id in advance. The procedure in §4 Task 2 therefore uses Temporal's own tooling
-  directly (`temporal workflow list --query "WorkflowType='ConsultationLoopWorkflow'"` against the
-  cluster's Temporal frontend, or the equivalent Python `client.list_workflows()` call) — this is
-  an operational/investigative step, not new code.
-
-## 3. Knowledge & Best Practices
-
-- `.claude/rules/09-infrastructure-devops.md` §Configuration Tiers — `harness.loop.enabled` is
-  correctly `global-kv` (a kill-switch, must default OFF, backed by `GlobalSetting`, propagates via
-  `app-settings:invalidate` — all already true here; this ticket does not change the tier).
-  §Config caches rule 1: "`tenantId` MUST be part of every config cache key... sound only because
-  it admits platform-reserved tenants exclusively" — this key qualifies (`maxScope: 'system'`,
-  `globalOnly: true`), so `AppSettingsService`'s key-only cache is safe for it; this ticket does
-  not touch caching.
-- `.claude/rules/01-development-workflow.md` — this is explicitly a **discovery** ticket (S size);
-  its "implementation" is a written procedure plus one HUMAN-GATED decision task, not new
-  application code, so the TDD Red-Green-Refactor cadence in §01 applies only to the one small
-  reporting script this ticket may produce (Task 1), not to a feature build.
-- **Pitfall**: do not conflate "the row says `true`" with "the loop is dispatching." §2.2 is the
-  reason this ticket has two separate verification steps (`GlobalSetting` row, then Temporal
-  workflow-execution query) rather than one.
-- **Pitfall**: do not re-open or re-implement A-28 in this ticket. Re-triaging it (updating its
-  severity/urgency given this ticket's findings) is in scope; fixing it is not.
-
-## 4. Implementation Plan
-
-### Task 1 — Per-environment effective-value report (procedure + one script)
-- **Agent:** T2 · sonnet-5 · low
-- **Files:** `scripts/report-loop-status.sh` (new, read-only)
-- **Approach:** A read-only script that, given `DATABASE_URL` (or reusing the existing env-file
-  resolution the rest of the repo uses), runs the exact query from §2.4 against `core.GlobalSetting`
-  and prints `value`, `defaultValue`, `updatedAt`, `updatedBy` for the `harness.loop.enabled` row,
-  plus a companion query for `consultation.ocr.enabled` (the sibling kill-switch seeded by the same
-  file, useful cross-check that the seed ran at all). Follow the shape of existing read-only
-  reporting scripts under `scripts/` (e.g. `scripts/env-consumer-inventory.py` for the "read config,
-  print a report" pattern) rather than inventing a new script style. No writes.
-- **Verify:** Run against local dev DB (`pnpm infra:dev:up` already up): script prints the seeded
-  `'true'` row exactly as documented in `seed/11c-consultation-gate-settings.ts`.
-
-### Task 2 — Temporal workflow-execution query procedure (written procedure, no code)
-- **Agent:** T2 · sonnet-5 · low
-- **Files:** none (documented directly in this ticket's Implementation Summary once run)
-- **Approach:** Document and, where reachable, execute the exact Temporal CLI query:
-  `temporal workflow list --query "WorkflowType='ConsultationLoopWorkflow' AND StartTime > '<30-days-ago>'"`
-  against each reachable Temporal frontend (local dev's `infrastructure/docker/docker-compose.dev.yml`
-  `temporal` profile at minimum; the cluster's Temporal endpoint if credentials/access exist —
-  note per `.claude/rules/09-infrastructure-devops.md` that Temporal today "runs on an unmanaged VM
-  with a dead in-cluster copy," so this may require locating that VM's endpoint out-of-band, which
-  is itself a finding to record if it cannot be located). Also run
-  `temporal workflow count --query "WorkflowType='ConsultationLoopWorkflow'"` for a lifetime total,
-  and separately query for `phase = "DISABLED"` completions (via `workflow show` on a sample of
-  results) to distinguish "dispatched and did something" from "signalled into the §2.2 no-op."
-- **Verify:** A dated result — either "N executions found, [sample ids]" or "endpoint unreachable,
-  documented as an open question" for each environment attempted.
-
-### Task 3 — Re-triage A-28 given confirmed dispatch status
-- **Agent:** T3 · sonnet-5 · medium
-- **Files:** none (written finding, feeds Task 5's decision)
-- **Approach:** Using Task 1 + Task 2's results, write a short, explicit finding: for each
-  environment where the loop is confirmed dispatching (armed row + non-DISABLED executions found),
-  state that A-28 (`_adjudicate()`'s ungated auto-resolution, `workflows.py:2653-2716`) is a **live**
-  defect there, not a gated-off one, per the design brief's framing. Cross-reference A-26/A-27 (the
-  two-phase-drain and per-agent-timeout findings from §2.3) the same way — confirm whether their
-  "PARTIAL — exists only in the dormant loop layer" verdict
-  (`docs/architecture/consultation-session-workflow/assessment/evidence/orchestration.md:141`)
-  should be upgraded given this ticket's findings.
-- **Verify:** N/A — a written artifact, reviewed by the same agent tier as `harness-eval-gate`/
-  `session-state-machine` (Wave 1) since they consume this re-triage.
-
-### Task 4 — Cluster/deployment-repo cross-check (documented limitation if unreachable)
-- **Agent:** T2 · sonnet-5 · low
-- **Files:** none
-- **Approach:** Attempt to determine `RUN_SEED`'s configured value for `hope-v2-dev` (the only
-  cluster namespace that exists per `.claude/rules/09-infrastructure-devops.md`) by inspecting the
-  `deployment/k8s/base/db-migrate.yaml` and `deployment/k8s/overlays/dev/kustomization.yaml`
-  equivalents in the separate `arca/hope-v2-deployment` GitLab project (out of this repo — requires
-  access to that project; if unavailable in this ticket's execution context, record that as an
-  explicit open question rather than guessing). This closes the "cluster `RUN_SEED` gating unknown"
-  gap named directly in the design brief.
-- **Verify:** Either a confirmed `RUN_SEED` value for `hope-v2-dev`, or an explicit "could not
-  access `arca/hope-v2-deployment` from this execution context" note carried into §6.
-
-### Task 5 — HUMAN-GATED: decide and set the intended value per environment
-- **Agent:** T2 · sonnet-5 · low (execution of the decision only — the decision itself is human)
-- **Files:** none (a `PUT` API call per environment, or a follow-up seed/ops change if the decision
-  changes what should be seeded)
-- **Approach:** Present Tasks 1-4's findings to the product/engineering owner: the loop is
-  documented in-code as an intentional day-1-on decision (§2.1); this ticket has now surfaced A-28
-  as a concrete consequence of that decision (§2.3/Task 3) that was not named in the original
-  seed-comment reasoning. Ask explicitly, per environment: stay on, given A-28 is scheduled for
-  Wave 1 remediation (`consent-abac`/`session-state-machine` adjacency) — or turn off now via the
-  documented `PUT` until A-28 lands. Whatever is decided, **set it explicitly** via `PUT
-  /api/v1/admin/settings/registry/harness.loop.enabled` in every environment rather than leaving
-  any environment's effective value implicit — this closes the "determine... AND set it explicitly
-  everywhere" deliverable from the design brief.
-- **Verify:** Task 1's report script re-run post-decision shows the intended value with a
-  `updatedBy` matching the operator who made the call, in every environment reached.
-
-## 5. Acceptance Criteria
-
-- [ ] `scripts/report-loop-status.sh` runs cleanly against local dev
-      (`pnpm infra:dev:up` running) and prints the `harness.loop.enabled` /
-      `consultation.ocr.enabled` `GlobalSetting` rows' `value`/`defaultValue`/`updatedAt`/`updatedBy`
-- [ ] A dated Temporal workflow-execution report exists for every reachable environment (local dev
-      at minimum), stating either a confirmed execution count in the last 30 days or an explicit
-      "endpoint unreachable" finding
-- [ ] A-28 (and A-26/A-27) re-triage is written and explicitly states, per environment, whether the
-      finding is live or gated-off, based on this ticket's evidence — not carried forward unchanged
-      from the original assessment
-- [ ] The `hope-v2-dev` `RUN_SEED` cross-check is either answered or explicitly recorded as
-      inaccessible from this execution context
-- [ ] **HUMAN-GATED** decision recorded in this ticket's Implementation Summary: the intended value
-      of `harness.loop.enabled` per environment, with the operator's name/date
-- [ ] The decided value is set explicitly (not left implicit) via the documented `PUT` route in
-      every environment reached by Task 4/5, re-verified by Task 1's report script
-- [ ] No application code changed other than the one new read-only reporting script — `pnpm lint`
-      on `scripts/` if it has a lint target, otherwise `shellcheck scripts/report-loop-status.sh`
-      passes clean
-
-## 6. Risks & Open Questions
-
-- **HUMAN-GATED (the ticket's core deliverable, restated)**: what should `harness.loop.enabled` be,
-  per environment, now that A-28 is named as a concrete consequence? This is not a technical
-  question this ticket can answer on its own.
-- **The cluster Temporal endpoint may be unreachable from this ticket's execution context** —
-  `.claude/rules/09-infrastructure-devops.md` already documents Temporal as running on "an
-  unmanaged VM with a dead in-cluster copy." If Task 2 cannot reach it, the ticket's honest output
-  for the cluster environment is "cannot confirm dispatch status," which itself is a finding worth
-  escalating (an operationally unmonitorable kill-switch is a gap independent of this ticket's
-  scope).
-- **The deployment repo (`arca/hope-v2-deployment`) is outside this repository** — Task 4 may be
-  blocked entirely depending on execution-context access. If blocked, that itself should be
-  reported rather than assumed away.
-- **`consultation-gate-seed-parity.test.ts`'s stated product requirement** ("enabled on day 1, in
-  every environment") may itself need revisiting depending on the owner's Task 5 decision — if the
-  decision is "turn off pending A-28," that test's assumption becomes stale and a follow-up ticket
-  (not this one) would need to update it and the seed file's `value` together, per the seed file's
-  own `defaultValue`/`value` mechanism (§2.1).
-
-## 7. Implementation Summary
-
-Executed 2026-08-16, in two passes. First pass: Tasks 1-4 completed to the extent that
-execution context allowed (local infra was down; local DB unseeded; Task 1 proved via an
-isolated throwaway container; Task 2 documented but not run anywhere; Task 4 answered via
-read-only deployment-repo access). **Second pass (this update, same date): local infra is now
-up and the local DB is freshly seeded** — Task 1 was re-run for real against the actual local
-dev DB (confirms the central finding: a fresh seed run arms `harness.loop.enabled = 'true'`
-with no extra step), and Task 2 was executed for real against local Temporal (confirms the
-query mechanism works; returns 0 executions of any kind because no app/worker process was
-running locally to generate any — an honest, uninformative-for-dispatch-status result, not a
-"loop is dormant" finding). The `hope-v2-dev` cluster was **not** queried in either pass, per
-explicit instruction each time ("local only" / cluster exec deliberately declined) — that
-remains the one genuinely open confirmation. Task 5 is recorded as a HUMAN-GATED decision, not
-made or executed here.
-
-### Task 1 — `scripts/report-loop-status.sh`
-
-Delivered `scripts/report-loop-status.sh` (read-only, no writes). It resolves `DATABASE_URL`
-the same way the rest of the repo does (host env wins, falls back to the literal
-`DATABASE_URL=` line in `.env.dev`), then runs the exact query from §2.4 against
-`core."GlobalSetting"` for both `harness.loop.enabled` and `consultation.ocr.enabled`
-(namespace `registry`, `tenantId = '50000000-0000-0000-0000-000000000000'`), printing
-`key, value, defaultValue, updatedAt, updatedBy`. Exits 1 with a clear message if
-`DATABASE_URL` can't be resolved, `psql` is missing, or the query itself fails (unreachable DB,
-missing schema) — all treated as reportable findings, not silent failures.
-
-**Verification performed (UPDATED 2026-08-16, local infra now up — see §8):**
-- `shellcheck scripts/report-loop-status.sh` → clean, no warnings (see pasted output below).
-- **Local dev DB is now up and reachable** (`hope-postgres` healthy, DB freshly reset with
-  current schema per this session's operating state). Ran the script for real, no
-  workarounds, against the actual `.env.dev` `DATABASE_URL`
-  (`postgresql://postgres:postgres@localhost:5432/hope`). This supersedes the prior session's
-  throwaway-container proof (kept below for the record) — acceptance criterion 1 is now
-  genuinely closed, not just logic-proven.
-- **Result: both rows exist and both are `value = 'true'`, `defaultValue = 'false'`**,
-  `updatedAt` timestamped to this session's seed run (`2026-08-16 04:04:07`), `updatedBy` empty
-  (i.e. set by the seed's `createdBy` default, never subsequently `PUT`-changed by an operator —
-  consistent with §2.1's "seed sets it, no manual override yet" reading). This is the ticket's
-  central finding **confirmed locally, for real, against a database that was seeded moments
-  before this session started**: a fresh seed run arms `harness.loop.enabled = 'true'`
-  automatically, with no extra step — exactly as `seed/11c-consultation-gate-settings.ts`'s
-  header comment documents, and exactly as Task 4's `hope-v2-dev` `RUN_SEED` finding implies
-  happened there too, at that environment's original bootstrap (before `RUN_SEED` was turned to
-  `"none"` on 2026-08-09).
-
-Pasted output (real local dev DB, this session):
-```
-$ grep -m1 '^DATABASE_URL=' .env.dev
-DATABASE_URL=postgresql://postgres:postgres@localhost:5432/hope
-
-$ bash scripts/report-loop-status.sh; echo "EXIT: $?"
-== Loop status report ==
-Target: postgresql://****:****@localhost:5432/hope
-
-           key            | value | defaultValue |        updatedAt        | updatedBy
---------------------------+-------+--------------+-------------------------+-----------
- consultation.ocr.enabled | true  | false        | 2026-08-16 04:04:07.803 |
- harness.loop.enabled     | true  | false        | 2026-08-16 04:04:07.801 |
-(2 rows)
-
-No row for harness.loop.enabled above means: this database was never seeded
-(seed/11c-consultation-gate-settings.ts never ran here), so the EFFECTIVE
-value falls back to the settings-registry descriptor default ('false').
-See docs/implementation/TASK-705-Loop-Status-Discovery/README.md §2.1.
-EXIT: 0
-
-$ shellcheck scripts/report-loop-status.sh; echo "exit: $?"
-exit: 0
-```
-
-**§2.2 derived-config gate — spot-checked in the same DB (informational, not a new AC):**
-`core."ConsultationContextSchema"` has 3 rows, all `status = PUBLISHED` (so
-`contextSchemaVersionId` can resolve non-null for a matching department/tenant). However
-`core."DepartmentAgent"` and `core."DepartmentAgentVersion"` both have **0 rows** in this
-freshly-seeded local DB, despite `core."Department"` having 29 rows — so `agentConfigVersionId`
-resolves `null` for every consultation locally. `resolveForConsultation`'s condition is
-`agentConfigVersionId !== null || contextSchemaVersionId !== null` (OR), so the derived gate can
-still resolve `enabled: true` purely off the context-schema side, but the agent-roster half of
-`07a-agent-golden-library.ts` appears not to have populated `DepartmentAgent` rows in this local
-seed run. Not investigated further — root-causing the golden-agent-library seed gap is outside
-this discovery ticket's scope (it does not gate `harness.loop.enabled` itself), but it is a
-data point worth flagging for whoever next depends on `DepartmentAgent` seed data locally.
-
-<details>
-<summary>Prior session's throwaway-container proof (kept for the record; local dev DB was down at that time)</summary>
-
-```
-$ shellcheck scripts/report-loop-status.sh; echo "exit: $?"
-exit: 0
-
-$ DATABASE_URL="postgresql://postgres:postgres@localhost:15432/hope" bash scripts/report-loop-status.sh
-== Loop status report ==
-Target: postgresql://****:****@localhost:15432/hope
-
-           key            | value | defaultValue |           updatedAt           | updatedBy
---------------------------+-------+--------------+-------------------------------+-----------
- consultation.ocr.enabled | true  | false        | 2026-08-15 18:41:48.958519+00 |
- harness.loop.enabled     | true  | false        | 2026-08-15 18:41:48.958519+00 |
-(2 rows)
-
-No row for harness.loop.enabled above means: this database was never seeded ...
-EXIT=0
-
-$ bash scripts/report-loop-status.sh   # against the real (down) local .env.dev target
-== Loop status report ==
-Target: postgresql://****:****@localhost:5432/hope
-psql: error: connection to server ... Connection refused ...
-FAIL: query failed — database unreachable, schema missing, or connection refused
-EXIT=1
-```
-</details>
-
-### Task 2 — Temporal workflow-execution query procedure
-
-**UPDATED 2026-08-16 — executed for real against LOCAL Temporal (see §8). The cluster half is
-still deliberately not executed, per this session's explicit instruction: local only.**
-
-- **Local dev — executed.** `hope-temporal` is up and healthy (`docker ps`:
-  `0.0.0.0:7233->7233/tcp`, `(healthy)`). No `temporal` CLI binary is installed
-  (`command -v temporal` → not found), but the `temporalio` Python package IS present in the
-  `arcaenv` conda env (`~/miniconda3/envs/arcaenv/bin/python -c "import temporalio"` succeeds),
-  so the query was run via `temporalio.client.Client.connect("localhost:7233",
-  namespace="default")` + `list_workflows(query=...)` — the SDK-native equivalent of the
-  `temporal workflow list`/`count` CLI, connecting to the same gRPC frontend, read-only (no
-  signal/cancel/terminate/start calls). Namespace `"default"` and task queue
-  `"harness-task-queue"` confirmed from `.env.dev` (`TEMPORAL_NAMESPACE`, `TEMPORAL_TASK_QUEUE`)
-  and `apps/harness/src/harness/core/config.py`. Script:
-  `/private/tmp/.../scratchpad/query_loop_workflows.py` (scratchpad, not committed — this
-  ticket's only committed file remains `scripts/report-loop-status.sh` per AC7).
-
-  **Result: zero workflow executions of any kind in this namespace** — lifetime
-  `ConsultationLoopWorkflow` count 0, last-30-days count 0, `HarnessDocWorkflow` lifetime count
-  0, and an unfiltered `list_workflows()` (no query) also returns 0 total executions across every
-  workflow type. This is **not** evidence the loop is dormant-by-design; it is evidence that
-  **nothing has been signalled through this local Temporal instance at all**, consultation loop
-  or otherwise. Checked why: neither `apps/api` (8868) nor `apps/harness` (8866) nor a Temporal
-  worker process (`ps aux` — no `worker.py`/harness-worker process found; `lsof` on the app
-  ports — none listening) is running in this session; only the Docker infra layer
-  (Postgres/Redis/Temporal/Vault/MinIO/Qdrant) is up per this ticket's stated starting state. No
-  app server means no `LoopContextSignalService` calls, no STT-finalize events, no
-  `ConsultationLoopWorkflow` starts — so a 0 count here is the expected, uninformative result of
-  "the pipes exist but nothing has been poured through them yet," not a finding about whether
-  the loop dispatches when actually driven end-to-end. Starting the full app stack + running a
-  real consultation through STT-finalize to produce a genuine local execution sample was judged
-  out of scope for a discovery ticket and was not attempted.
-
-  Pasted output:
-  ```
-  $ docker ps --format 'table {{.Names}}\t{{.Status}}\t{{.Ports}}' | grep hope-temporal
-  hope-temporal-ui   Up 2 hours             0.0.0.0:8233->8080/tcp
-  hope-temporal      Up 2 hours (healthy)   0.0.0.0:7233->7233/tcp
-
-  $ command -v temporal || echo "no temporal cli"
-  no temporal cli
-
-  $ ~/miniconda3/envs/arcaenv/bin/python -c "import temporalio; print(temporalio.__file__)"
-  /Users/.../envs/arcaenv/lib/python3.11/site-packages/temporalio/__init__.py
-
-  $ CI=true ~/miniconda3/envs/arcaenv/bin/python query_loop_workflows.py
-  == Connected: localhost:7233 namespace=default ==
-
-  -- list_workflows(query="WorkflowType='ConsultationLoopWorkflow'") --
-  lifetime total ConsultationLoopWorkflow executions: 0
-
-  -- list_workflows(query="WorkflowType='ConsultationLoopWorkflow' AND StartTime > '2026-07-17T05:52:28Z'") --
-  last-30-days ConsultationLoopWorkflow executions: 0
-
-  -- list_workflows(query=None) -- (sanity: any workflow executions at all) --
-  total workflow executions of ANY type in this namespace: 0
-
-  -- list_workflows(query="WorkflowType='HarnessDocWorkflow'") --
-  lifetime total HarnessDocWorkflow executions: 0
-  ```
-
-- **`hope-v2-dev` cluster — still deliberately not queried**, per this session's explicit
-  instruction ("Do NOT query or write to the hope-v2-dev CLUSTER — local only"), unchanged from
-  the prior session's own independent decision to decline cluster exec. **Still an open
-  question**, carried forward unresolved: whether `ConsultationLoopWorkflow` has actually
-  dispatched in `hope-v2-dev` cannot be answered from this execution context under either
-  session's operating constraints — it requires an operator with cluster access to run the
-  documented procedure below.
-- **Deployment-repo evidence from the prior session** (read-only `git`/GitLab reads of
-  `arca/hope-v2-deployment`, not cluster execution — unchanged, not re-verified this session):
-  `deployment/k8s/base/temporal.yaml` defines an ACTIVE `hope-temporal` Deployment + Service
-  (grpc :7233, http :8233, metrics :9090) and a `hope-temporal-ui` Deployment + Service, both
-  listed as ordinary resources in `deployment/k8s/base/kustomization.yaml` and included
-  unmodified by `deployment/k8s/overlays/dev/kustomization.yaml`. **This appears to contradict**
-  `.claude/rules/09-infrastructure-devops.md` / `04-target-architecture.md`'s characterization of
-  Temporal as running "on an unmanaged VM with a dead in-cluster copy" — the in-cluster
-  Deployment is real and wired into the base kustomization that `hope-v2-dev` syncs. Whether the
-  live pod is actually healthy (vs. crash-looping / never synced) could not be confirmed without
-  cluster exec, which both sessions declined to do. **Flagging as a documentation-drift finding
-  worth a human re-check**, not resolving it here.
-
-**Documented procedure for an operator to run against `hope-v2-dev`** (against the in-cluster
-`hope-temporal:7233` frontend, e.g. via `kubectl -n hope-v2-dev exec` into a pod with the
-`temporal` CLI, or a port-forward to a local `temporal` CLI — now also proven runnable via the
-`temporalio` Python client shown above, as an alternative to needing the CLI binary installed):
-```
-temporal workflow list --query "WorkflowType='ConsultationLoopWorkflow' AND StartTime > '<30-days-ago-ISO8601>'"
-temporal workflow count --query "WorkflowType='ConsultationLoopWorkflow'"
-# then, on a sample of results:
-temporal workflow show --workflow-id <id>   # inspect for phase:"DISABLED" (signalled-but-no-op, §2.2)
-#                                              vs. a real multi-agent drain (genuinely dispatching)
-```
-
-### Task 3 — Re-triage of A-26/A-27/A-28
-
-**UPDATED 2026-08-16**: Task 2 was now executed for real against local Temporal (§Task 2 above),
-strengthening the *mechanism* confirmation (a fresh local seed run demonstrably arms
-`harness.loop.enabled = 'true'` with zero extra steps — real evidence, not inference) while
-leaving the *dispatch-in-`hope-v2-dev`* question exactly where the prior session left it: local
-Temporal's 0-execution result is uninformative for that question (no app/worker was running
-locally to generate executions either way — see Task 2), and the cluster itself was, per this
-session's explicit instruction, still not queried. So this re-triage remains a **best-evidence
-strengthening**, not a confirmed live/gated-off determination — stated honestly rather than
-overclaimed:
-
-- The seed comment's own framing ("Enabled on day 1 in every environment") plus the
-  `hope-v2-dev` `RUN_SEED=none` finding (Task 4) together imply the `harness.loop.enabled` row
-  in `hope-v2-dev`'s actual database was very likely set to `'true'` at the environment's
-  **original bootstrap** (when `RUN_SEED` was presumably `all` or `safe`, before the 2026-08-09
-  owner decision recorded in `deployment/k8s/overlays/dev/kustomization.yaml` to stop
-  seeding/reset that database — its own comment there says the DB now holds "33 users, 14
-  consultations, 1 255 audit rows, 88 prompt templates and 54 department agents", i.e. it has
-  clearly been seeded and evolved, not left empty). Seed `11c` is CREATE-ONLY for `value`
-  (never re-clobbers an operator's change), so even if seeding *did* run again since, it would
-  not have reset an already-`'true'` row back — meaning once armed, it plausibly stays armed
-  across subsequent migrate-only ArgoCD syncs.
-- §2.2's derived-config gate (`07e-consultation-loop-defaults.ts` + `07a-agent-golden-library.ts`
-  seeding a default `ConsultationContextSchema` and `DAY1_AGENT_LOOP_CONFIG`) is the same seed
-  family as `11c` — if `11c` ran at bootstrap, `07e`/`07a` plausibly did too, which is the
-  condition under which the signal does something rather than completing `phase: "DISABLED"`.
-- **Recommended re-triage, pending an operator running Task 2's procedure to confirm/deny:**
-  - **A-28** (`_adjudicate()` ungated auto-resolution): upgrade from "GATED-OFF +
-    VIOLATED-in-scope" to **"LIKELY LIVE in `hope-v2-dev`, pending confirmation"** — treat it as
-    an active-in-production consequence to manage during the Wave 1 transition
-    (`session-state-machine`/`consent-abac` adjacency), not a purely latent finding.
-  - **A-26** (two-phase drain) and **A-27** (per-agent timeout isolation): same upgrade — from
-    "PARTIAL — exists only in the dormant loop layer" to **"LIKELY ACTIVE in `hope-v2-dev`,
-    pending confirmation"**. Unlike A-28 these are not safety-negative findings on their own
-    (they are the *presence* of correct isolation/drain behavior), so the upgrade mainly affects
-    how the original assessment's "conditional on `harness.loop.enabled` staying false" caveat
-    (`orchestration.md`) should be read for `hope-v2-dev` specifically.
-  - **Local dev**: the effective value depends entirely on whether `pnpm setup:dev`/`db:seed`
-    has ever been run against that developer's own database — not knowable in general. **This
-    execution context's own local DB now IS seeded** (Task 1, updated 2026-08-16) and confirms
-    `harness.loop.enabled = 'true'` — but no app server or Temporal worker was running in this
-    session, so the signal was never armed against a live workflow and zero executions exist
-    (Task 2, updated). Still no blanket re-triage for "local dev" as a class; it remains
-    developer-instance-specific (whether a given developer's local stack is fully running, not
-    just seeded, determines whether the loop is genuinely live on their machine).
-
-### Task 4 — `hope-v2-dev` `RUN_SEED` cross-check
-
-**Answered — accessed `arca/hope-v2-deployment` via the `gitlab` MCP** (read-only file
-reads, not cluster execution):
-
-- `deployment/k8s/base/db-migrate.yaml`: the base `hope-db-migrate` Job's `RUN_SEED` env var
-  defaults to `"none"`.
-- `deployment/k8s/overlays/dev/kustomization.yaml`: a strategic-merge patch on that same Job
-  **explicitly re-asserts `RUN_SEED: "none"`** for `hope-v2-dev`, with an extensive comment
-  trail explaining why: the Job used to carry `RUN_SEED=all` (seed-on-every-sync), but that
-  "expired the day this database stopped being disposable" — it now holds real accumulated data
-  (33 users, 14 consultations, 1 255 audit rows, 88 prompt templates, 54 department agents), and
-  `all` would also re-enable `SEED_DEMO_DATA`, writing demo API keys with raw secrets on every
-  sync. The comment records this as an explicit **owner decision dated 2026-08-09**: *"for argo
-  deployment, we just migrate database, not reset and re-seed."*
-
-**Conclusion: `hope-v2-dev` runs migrate-only on every ArgoCD sync today.** It does NOT run
-`packages/database/src/prisma/db_main/seed/11c-consultation-gate-settings.ts` (or any seed file)
-on an ongoing basis. Whatever `harness.loop.enabled`'s value is in that database today is
-whatever it was left at by the last time seeding *did* run there (pre-2026-08-09, presumably at
-initial environment bootstrap) or by a manual `PUT` since — not something this ongoing pipeline
-re-asserts. This is exactly the ambiguity §1 of this ticket named, now resolved to "not
-re-seeded, so check the live row directly" rather than "seeding runs, so the row is definitely
-`'true'`."
-
-### Task 5 — HUMAN-GATED decision
-
-**Not executed. No `PUT` call was made, no environment's value was changed.** Per §4 of this
-ticket and this execution's operating constraints, the decision below is presented to the
-product/engineering owner for a decision, not made autonomously.
-
-**Findings presented to the owner:**
-1. The code-level intent (seed comment, `consultation-gate-seed-parity.test.ts`) is that
-   `harness.loop.enabled` is `true` in every seeded environment, by design.
-2. That intent did not, at the time it was written, explicitly account for A-28
-   (`_adjudicate()`'s ungated auto-resolution) as a **named** consequence — Task 3 makes that
-   consequence explicit.
-3. `hope-v2-dev`'s `GlobalSetting` row was almost certainly seeded `'true'` at some point in the
-   past (before seeding was turned off there), and current ArgoCD syncs do not re-seed or
-   otherwise touch it — so absent a manual change, it is very likely still `'true'` today. This
-   was not directly confirmed by a live query in this session (Task 2).
-4. Local dev environments vary per developer machine and are not addressed by a single decision.
-
-**Options for the owner, per environment:**
-- **(A) Stay on** (`harness.loop.enabled = true`) — accept that A-28 is a live defect in any
-  environment where the row is `'true'`, and schedule its fix explicitly against the Wave 1
-  `session-state-machine`/`consent-abac` work already planned, rather than leaving it implicit.
-- **(B) Turn off now** (`harness.loop.enabled = false`, via
-  `PUT /api/v1/admin/settings/registry/harness.loop.enabled { "value": false }`) in every
-  environment where it is currently `'true'`, until A-28 lands — trading away A-26/A-27's
-  benefits (real drain/timeout isolation) along with A-28's risk, since they share one
-  kill-switch. Requires a follow-up ticket to also update
-  `consultation-gate-seed-parity.test.ts`'s "enabled on day 1" assumption and the seed file's
-  `value` together (§6), so a future `db:seed`/environment bootstrap doesn't silently re-arm it.
-- **(C) Split the switch** (not evaluated in depth here, out of this ticket's scope per §1, but
-  worth naming): if A-26/A-27's isolation/drain behavior is independently valuable and A-28 is
-  the only unacceptable part, a future ticket could gate `_adjudicate()`'s auto-resolution
-  separately from the rest of the loop, letting the owner keep drain/timeout benefits without
-  A-28's risk. This ticket does not recommend for or against this without the owner weighing in
-  — it is a design change to `ConsultationLoopWorkflow`, not a discovery-ticket deliverable.
-
-**This ticket's recommendation, offered for the owner's judgment, not a decision made here:**
-given A-28 is scheduled for Wave 1 remediation adjacency already (`session-state-machine`/
-`consent-abac`), and A-28's actual blast radius per the original matrix is narrow ("Multi-specialist
-path only (lowest-priority use case)", `02-conformance-matrix.md:11`), **Option A (stay on, fix
-on schedule)** appears lower-risk than a switch-flip that also reverts A-26/A-27's benefits and
-requires a same-day test/seed update — but this is exactly the kind of tradeoff the ticket
-explicitly reserves for the human owner, not this agent.
-
-**No value was set in any environment.** Re-running `scripts/report-loop-status.sh` after the
-owner's decision, in every environment reached, is how acceptance criterion 6 gets closed —
-that re-run has not happened yet.
-
-### Close-out pass (2026-08-16) — re-verified, nothing material changed, decision still owner-side
-
-Re-checked this ticket as part of a three-ticket close-out pass (TASK-708,
-TASK-704, TASK-705). Local dev infra (Postgres/Redis/Temporal/Vault/MinIO/Qdrant)
-is up; re-ran Task 1's report script against the live local dev DB:
+| Descriptor default | `false` | `settings-registry/descriptors/consultation-gates.descriptors.ts` → `consultation-gates.constants.ts` |
+| Seeded row `defaultValue` ("reset to default" target) | `'false'` | `seed/11c-consultation-gate-settings.ts` |
+| Seeded row `value` (the effective value where the seed ran) | `'true'` | same file |
+
+The three-way split was *deliberate* — the seed file explains it at length, and the
+`killSwitches()` invariant is the reason it took that shape. But being deliberate does not
+make it correct. It made the **database the sole carrier of the product intent**, in a
+platform where:
+
+- `packages/database/migrate.sh` defaults `RUN_SEED=none` (no seeding at all), and
+- `hope-v2-dev` **explicitly pins `RUN_SEED: "none"`** by owner decision 2026-08-09
+  (verified in the `arca/hope-v2-deployment` repo — see Appendix A), so the row is written
+  once at bootstrap and never re-asserted.
+
+Consequence: an environment that never seeded, or that was bootstrapped before the row
+existed, resolves the code default and runs **no loop**, with nothing anywhere signalling
+that the intended answer was the opposite. A setting whose seeded value and code default
+disagree is a defect, and this one had a live blast radius.
+
+**It is resolved by deletion, not by reconciliation** — see §1.3. The loop no longer has a
+seeded row to disagree with anything.
+
+### 2.3 The entitlements implementation this ticket extends
+
+The established pattern (`packages/applications/src/services/entitlements/`), followed
+exactly and not restructured:
+
+| Piece | Role |
+|---|---|
+| `resolve-entitlements.ts` | pure three-layer merge: seeded matrix ← `PlanEntitlement` row ← `TenantEntitlement` override; `null` plan ⇒ `UNGATED_ENTITLEMENTS` |
+| `entitlements.constants.ts` | `PLAN_ENTITLEMENT_DEFAULTS`, the in-code copy of the seeded matrix |
+| `EntitlementsService.isFeatureEnabled(tenantId, feature)` | the NON-THROWING enforced read; returns `true` early when the `entitlements.enabled` kill-switch is OFF |
+| `assertQuantityQuota` / `assertMeterQuota` / … | the quota lane — not used here; loop eligibility is boolean, not metered |
+| `plan-matrix-parity.test.ts` | holds `PLAN_ENTITLEMENT_DEFAULTS` field-for-field against seed `15-entitlements.ts` **and the `PlanEntitlement` table** |
+
+`featurePlatformDefaultCredential` is the closest precedent: the first ENFORCED boolean
+(the other three are display-only), consumed by a service that shapes behaviour rather than
+just rendering a badge. `agenticLoop` is the second.
+
+### 2.4 The one structural constraint: no DB column yet
+
+`PlanEntitlement` and `TenantEntitlement` carry a column per feature flag. Adding
+`featureAgenticLoop` to `PlanEntitlementValues` would therefore require **two Prisma columns
+plus a migration** — and `plan-matrix-parity.test.ts` would (correctly) force the seed matrix
+in `15-entitlements.ts` to carry the field too, which Prisma would reject as an unknown
+argument without the column.
+
+Schema changes are serialized into a later batch (a sibling agent may be mid-edit), so **no
+`.prisma` file was touched**. The interim shape, and the follow-up it implies, are in §7.4.
+
+### 2.5 Live value in the local dev database (D-F — infra is up)
+
+Recorded 2026-08-17, before any change, with the pre-existing read-only script:
 
 ```
 $ bash scripts/report-loop-status.sh
+== Loop status report ==
+Target: postgresql://****:****@localhost:5432/hope
+
            key            | value | defaultValue |        updatedAt        | updatedBy
 --------------------------+-------+--------------+-------------------------+-----------
- consultation.ocr.enabled | true  | false        | 2026-08-16 04:04:07.803 |
- harness.loop.enabled     | true  | false        | 2026-08-16 04:04:07.801 |
+ consultation.ocr.enabled | true  | false        | 2026-08-17 11:10:13.062 |
+ harness.loop.enabled     | true  | false        | 2026-08-17 11:10:13.057 |
+(2 rows)
+EXIT: 0
 ```
 
-Identical `updatedAt` timestamp to the prior pass's result — the dev DB has
-not been re-seeded since, so this is confirmation of stability, not new
-information. Checked for a running app/worker process (`lsof` on
-8868/8866/worker ports, `docker ps`/`ps aux`) to see whether Task 2's local
-Temporal query could now produce an informative (non-zero) result: none is
-running — same state as both prior passes, so re-running the Temporal
-`list_workflows` query would reproduce the same uninformative 0-execution
-result already recorded above and was not repeated. Per this close-out's own
-instructions, cluster access remains **not** attempted (local only).
+So the local dev DB was seeded today at 11:10:13 and `harness.loop.enabled` was `'true'`,
+`defaultValue` `'false'`, `updatedBy` empty — i.e. set by the seed and never changed by an
+operator. **That row is now inert**: nothing reads the key any more. It is a harmless
+leftover in already-seeded databases and the seed no longer writes it.
 
-**Nothing in this ticket needed a code or documentation correction.** The two
-prior passes' findings and honesty about what is/isn't confirmed hold up
-under re-verification. The single remaining blocker is unchanged and is
-squarely human-side: **Task 5's decision (stay on / turn off / split the
-switch) has still not been made by a product/engineering owner, and no `PUT`
-call has been issued in any environment.** This is not something a close-out
-verification pass can resolve — per this program's own instructions ("if
-something cannot be closed, say precisely why and leave the status at Review
-with the reason"), Status remains **Review**, blocked exclusively on that
-owner decision (§4 Task 5 / §6).
+Supporting facts from the same database (`psql`, read-only):
 
-### Acceptance criteria — status
+```
+                  id                  |  name  | plan
+--------------------------------------+--------+------
+ 50000000-0000-0000-0000-000000000001 | ArcaAI |
+ 50000000-0000-0000-0000-000000000000 | Global |
+ 00000000-0000-0000-0000-000000000000 | System |
+(3 rows)
 
-- [x] `scripts/report-loop-status.sh` exists, is executable, passes `shellcheck` clean, and was
-      run for real against the actual local dev DB (now up, freshly seeded): both rows print
-      `value = 'true'`, `defaultValue = 'false'` — **AC now genuinely closed**, superseding the
-      prior session's throwaway-container-only proof.
-- [x] A dated Temporal workflow-execution report exists — for local dev, executed for real
-      against the live local `hope-temporal` (2026-08-16): 0 `ConsultationLoopWorkflow`
-      executions lifetime/30-day, 0 of any workflow type, explained (no app/worker running
-      locally this session, so nothing could have dispatched either way). For the cluster:
-      still an explicit "not queried, local only per instruction" finding, plus the
-      documented procedure and the deployment-repo evidence finding (hope-temporal IS an active
-      in-cluster resource, contra the "dead in-cluster copy" doc claim) carried from the prior
-      pass.
-- [x] A-28 (and A-26/A-27) re-triage written — upgraded to "LIKELY LIVE / LIKELY ACTIVE in
-      `hope-v2-dev`, pending confirmation" rather than left as "GATED-OFF", with the evidence
-      chain strengthened by the real local mechanism-confirmation and the explicit caveat that
-      live cluster confirmation is still pending an operator running Task 2's procedure there.
-- [x] `hope-v2-dev` `RUN_SEED` cross-check answered directly (`"none"`, explicit owner decision
-      2026-08-09) via read-only access to `arca/hope-v2-deployment`.
-- [x] **HUMAN-GATED** decision recorded as **not yet made** — options and this ticket's
-      non-binding recommendation presented above; owner's name/date to be filled in once decided.
-- [ ] Decided value not yet set anywhere (blocked on the human decision above).
-- [x] No application code changed other than the one new read-only reporting script;
-      `shellcheck scripts/report-loop-status.sh` passes clean (pasted above). The Task 2
-      Temporal-query script lives in this session's scratchpad only, never added to the repo.
+  namespace   |            key             | value | defaultValue
+--------------+----------------------------+-------+--------------
+ entitlements | entitlements.enabled       | false | false
+ metering     | metering.reconcile.enabled | false | false
+(2 rows)
+```
 
-## 8. Change History
+Every local tenant has a **NULL plan** → `UNGATED_ENTITLEMENTS` → `agenticLoop: true`; and
+`entitlements.enabled` is `false` locally (seed `15-entitlements.ts` derives it: deployed
+environments come up ON, local/test come up OFF), so `isFeatureEnabled` short-circuits to
+`true` regardless. **The loop is therefore enabled locally on day 1 under the new design,
+by two independent routes.**
+
+---
+
+## 3. Knowledge & Best Practices Applied
+
+- **`.claude/rules/04-application-services.md`** — entitlements/quota patterns; the
+  entitlement is read through `IEntitlementsService`, never by re-implementing resolution.
+- **`.claude/rules/09-infrastructure-devops.md` §Configuration Tiers** — the emergency stop
+  stays `global-kv` (a kill-switch, backed by `GlobalSetting`, propagating on
+  `app-settings:invalidate`, resolved per call). It is *not* an env var, and neither is the
+  entitlement (D-B). `maxScope: 'system'` keeps it out of the tenant lane, so the
+  `AppSettingsService` key-only cache stays sound for it.
+- **Tenant-first resolution** — the entitlement resolves from the request tenant's own plan
+  and override; the platform default matrix is the fallback. A **customer** tenant
+  (`50000000-…` "Global") never appears in the cascade, and a row planted under a tenant
+  cannot govern the platform-scoped stop (pinned by test).
+- **Pitfall avoided**: `isFeatureEnabled` returns `true` when `entitlements.enabled` is OFF.
+  That is the subsystem's documented, deliberate posture (one master switch an operator can
+  pull), not something this ticket may quietly special-case. It is called out in §7.5 so
+  nobody reads "STARTER is not entitled" as "STARTER cannot run the loop *today*".
+
+---
+
+## 4. Implementation Plan (executed)
+
+| # | Step | Verify |
+|---|---|---|
+| 1 | Failing tests first: entitled runs / unentitled does not / stop wins / platform→default resolution never widens to a customer tenant | RED observed (§7.6) |
+| 2 | `agenticLoop` in `ResolvedFeatures` + `AGENTIC_LOOP_PLAN_DEFAULTS` + optional row fields on both input shapes | `resolve-entitlements.test.ts` |
+| 3 | Retire `harness.loop.enabled`; add `harness.loop.emergencyStop` (constant, descriptor, defaults) | `consultation-gates.tier-compliance.test.ts` |
+| 4 | Rewrite the gate in `LoopContextSignalService` to the composition rule; take tenant from the event payload / CLS | `loop-entitlement-gate.test.ts` |
+| 5 | Remove the loop row from seed `11c`; update the seed-parity guard to forbid its return | `consultation-gate-seed-parity.test.ts` |
+| 6 | Wire `EntitlementsServiceModule` into `LiveDocumentationServiceModule` | build + typecheck |
+| 7 | Rewrite `scripts/report-loop-status.sh` for the new three-part answer | `shellcheck` + real run |
+
+---
+
+## 5. Acceptance Criteria
+
+- [x] Loop eligibility is decided by a tenant entitlement resolved from the database, not by an environment switch
+- [x] The entitlement uses the existing `IEntitlementsService` / `resolveEntitlements` mechanism — no parallel entitlement system
+- [x] The kill-switch/entitlement composition rule is decided, implemented, and documented next to both devices
+- [x] The seeded-value ↔ code-default disagreement is resolved (by removing the seeded loop row and flipping the switch's polarity), with a regression test that forbids re-introducing it
+- [x] Resolution falls back tenant → platform default and never to a customer tenant; a tenant-scoped row cannot govern the platform stop
+- [x] Day-1 default makes the loop run on a freshly-provisioned platform
+- [x] The live local dev value is determined and recorded (§2.5)
+- [x] `scripts/report-loop-status.sh` stays read-only, passes `shellcheck`, and reports the new three-part answer
+- [x] **Schema follow-up DONE** (2026-08-17): `PlanEntitlement.featureAgenticLoop` + `TenantEntitlement.featureAgenticLoop` columns, migration, seed/matrix/DTO wiring — see §7.4
+- [ ] **Root `pnpm test:unit` not verified** — the run was terminated externally by the coordinator's test-serialisation policy (§8.7); the package-scoped suite that covers every changed file did complete
+
+---
+
+## 6. Risks & Open Questions
+
+- **Product packaging is a decision, not a derivation.** `AGENTIC_LOOP_PLAN_DEFAULTS` ships
+  `STARTER: false`, `TRIAL/PRO/ENTERPRISE: true`. That mirrors `featureDnaReports` (the
+  established shape for a differentiating capability) and makes the entitlement mean
+  something — a flag that is `true` on every plan is not a subscription feature. If the owner
+  wants the loop on every tier, it is a one-line change to that map. **Flagged for
+  confirmation.**
+- ~~**Until the DB columns land, the packaging is code-configured, not DB-configured.**~~
+  RESOLVED 2026-08-17 — the columns landed (§7.4), so the packaging is DB-configured and the
+  D-B tension is closed. `PlanEntitlementValues` remains the SEEDED default a plan row
+  overrides, which is the same shape as every other entitlement.
+- **An inert `harness.loop.enabled` row survives in already-seeded databases** (including
+  local dev and, presumably, `hope-v2-dev`). Nothing reads it. Cleaning it up is optional
+  housekeeping, not a correctness issue; deliberately not done here because deleting rows in
+  a database another agent may be using is not worth the risk for zero behavioural gain.
+- **A-28 re-triage (carried forward, unchanged in substance).** Under the new design the loop
+  is *entitled-on* for every non-STARTER tenant and inert-permissive wherever entitlement
+  enforcement is off — so A-28 (`_adjudicate()`'s ungated auto-resolution) should continue to
+  be treated as **live, not gated-off**, and remains scheduled against the Wave 1
+  `session-state-machine`/`consent-abac` work. A-26/A-27 (two-phase drain, per-agent timeout
+  isolation) are likewise active rather than dormant. This ticket does not fix them.
+
+---
+
+## 7. Implementation Summary
+
+Executed 2026-08-17.
+
+### 7.1 The entitlement
+
+- `ResolvedFeatures.agenticLoop` added (`entitlements/resolve-entitlements.ts`), resolved
+  `AGENTIC_LOOP_PLAN_DEFAULTS[plan]` ← `planRow.featureAgenticLoop` ← `override.featureAgenticLoop`
+  (tri-state: `true` grant / `false` deny / `null` inherit) — the identical shape to every
+  other boolean feature.
+- `UNGATED_ENTITLEMENTS.features.agenticLoop = true`. Deliberately on the display-flag side
+  of the `platformDefaultCredential` asymmetry: a null-plan tenant has no subscription to
+  read an answer out of, D-A wants the loop enabled for day-1, and what this gates is
+  orchestration quality rather than platform SPEND (the reason
+  `platformDefaultCredential` must fail closed).
+- `AGENTIC_LOOP_PLAN_DEFAULTS` (`entitlements.constants.ts`): `STARTER: false`,
+  `TRIAL/PRO/ENTERPRISE: true`.
+
+### 7.2 The emergency stop
+
+- `HARNESS_LOOP_ENABLED_KEY` → **`HARNESS_LOOP_EMERGENCY_STOP_KEY = 'harness.loop.emergencyStop'`**
+  (`consultation/consultation-gates.constants.ts`), default `false`, still `tier: 'global-kv'`,
+  `killSwitch: true`, `maxScope: 'system'`, `globalOnly: true`, `failMode: 'open-to-default'`,
+  `editableBy: 'GlobalSetting'` — every tier property preserved; only the polarity and the
+  meaning changed.
+- Seed `11c-consultation-gate-settings.ts` now seeds **one** row (`consultation.ocr.enabled`),
+  and its header carries a "do not add the loop row back" warning explaining why.
+
+### 7.3 The gate
+
+`LoopContextSignalService` now composes the rule in one private method
+(`loopAllowedFor`) used by all three signal paths:
+
+- `handleContextAdded` takes the tenant from `payload.tenantId` — the event may be emitted
+  from a background drain with no CLS scope, so it never falls back to the ambient tenant.
+- `signalConsultationEnding` / `signalLoopCancel` take it from `ClsService` (both are called
+  from `ConsultationController.stopRecording`, inside a request scope, and their signal
+  payloads have no tenant field). **`apps/api` was not modified** — no controller signature
+  changed.
+- `IEntitlementsService` and `ClsService` are injected `@Optional()` (matching the existing
+  `TenantSettingsService` posture) but wired for real: `EntitlementsServiceModule` was added
+  to `LiveDocumentationServiceModule`'s imports.
+
+### 7.4 Schema change — LANDED 2026-08-17
+
+The two columns now exist, closing the D-B tension: the loop's per-plan packaging is
+DB-configured, and a per-tenant override is persistable.
+
+```prisma
+// entitlement.prisma — PlanEntitlement
+featureAgenticLoop Boolean @default(true)   // STARTER row seeded false
+// entitlement.prisma — TenantEntitlement
+featureAgenticLoop Boolean?                 // null = inherit the plan
+```
+
+Migration `20260817161511_task_705_entitlement_agentic_loop` (authored against a throwaway
+shadow DB per `02-database-prisma.md`; `prisma migrate diff` afterwards printed
+`-- This is an empty migration.`) adds exactly the two `ADD COLUMN` statements.
+
+Wiring completed with it:
+
+- `featureAgenticLoop` added to `PlanEntitlementValues` (STARTER `false`, TRIAL/PRO/ENTERPRISE
+  `true`) and the interim `AGENTIC_LOOP_PLAN_DEFAULTS` map DELETED; `resolveEntitlements` now
+  merges it through `base` exactly like `featurePaletteStt` — a one-line swap, since the
+  optional row fields were already honoured.
+- Seed `15-entitlements.ts` `PLAN_ENTITLEMENTS` + `plan-matrix-parity.test.ts` `MATRIX_FIELDS`.
+- `UpdatePlanEntitlementRequest` (`boolean`) and the tenant upsert request (`boolean | null`,
+  tri-state) so a platform admin edits the plan matrix and per-tenant override through the
+  existing admin API.
+- Hand-authored entity/factory additions on `PlanEntitlement*` / `TenantEntitlement*`
+  (`gen:model` regenerated; `gen:entity` + `gen:factory` report no drift and schema-coverage OK).
+
+### 7.5 Day-1 behaviour, stated precisely
+
+| Environment | `entitlements.enabled` | Effect |
+|---|---|---|
+| local dev / test / CI | `false` (seed-derived) | `isFeatureEnabled` short-circuits `true` → **every** tenant runs the loop |
+| deployed (`hope-v2-dev`, staging, prod) | `true` (seed-derived) | the plan matrix decides: STARTER does not run the loop, TRIAL/PRO/ENTERPRISE do; a NULL-plan tenant runs it |
+
+In both cases a platform operator can halt everything with one `PUT`:
+
+```
+PUT /api/v1/admin/settings/registry/harness.loop.emergencyStop  { "value": true }
+```
+
+### 7.6 Files changed
+
+| File | Change |
+|---|---|
+| `packages/applications/src/services/entitlements/resolve-entitlements.ts` | `agenticLoop` feature + optional row fields + resolution |
+| `packages/applications/src/services/entitlements/entitlements.constants.ts` | `AGENTIC_LOOP_PLAN_DEFAULTS` |
+| `packages/applications/src/services/consultation/consultation-gates.constants.ts` | key retired/replaced, defaults updated, full rationale |
+| `packages/applications/src/services/settings-registry/descriptors/consultation-gates.descriptors.ts` | descriptor swapped |
+| `packages/applications/src/services/settings-registry/descriptors/harness-loop.descriptors.ts` | comment/description references updated |
+| `packages/applications/src/services/consultation/loop/loop-context-signal.service.ts` | the composition rule |
+| `packages/applications/src/services/consultation/loop/loop-config.service.ts`, `loop-lifecycle.constants.ts` | comment references updated |
+| `packages/applications/src/services/consultation/live-documentation/live-documentation.service.module.ts` | `EntitlementsServiceModule` import |
+| `packages/database/src/prisma/db_main/seed/11c-consultation-gate-settings.ts` | loop row removed + warning |
+| `packages/database/src/prisma/db_main/seed/07e-consultation-loop-defaults.ts` | comment reference updated |
+| `scripts/report-loop-status.sh` | rewritten for the three-part answer |
+| **tests** | new `loop/__tests__/loop-entitlement-gate.test.ts`; updated `resolve-entitlements.test.ts`, `loop-context-signal.service.test.ts`, `consultation-gates.tier-compliance.test.ts`, `consultation-gate-seed-parity.test.ts` |
+
+### 7.7 Verification
+
+See §8 for pasted command output.
+
+---
+
+## 8. Verification Evidence
+
+All output below is real, pasted from the runs described. **The working tree is shared with
+several concurrent agents**, so every failure is attributed explicitly; none of them is in a
+file this ticket owns or touched.
+
+### 8.1 RED before GREEN
+
+Two distinct RED observations, reported honestly for what each is:
+
+1. **Collection-level RED** — the first run of the new suites (before the service was
+   rewritten) failed to even load, because `LoopContextSignalService` still imported the key
+   this ticket retires. Real, but it only proves the contract changed, not that the
+   assertions bite.
+2. **Mutation-level RED** — so the gate was then deliberately short-circuited
+   (`loopAllowedFor` forced to `return true`) and the new suite re-run. **13 of 16 cases
+   failed**, including every DENY case and the veto cases, which is the evidence that
+   matters: the tests fail when the composition rule is not implemented.
+
+```
+$ npx vitest run src/services/consultation/loop/__tests__/loop-entitlement-gate.test.ts   # with loopAllowedFor mutated to `return true`
+     × an ENTITLED tenant runs the loop 13ms
+     × an UNENTITLED tenant does not 2ms
+     × resolves the entitlement for the PAYLOAD tenant, never a neighbour 1ms
+     × DENIES when no tenant identity is available — eligibility that cannot be established is not eligibility 1ms
+     × DENIES when no entitlements resolver is wired — a commercial gate fails CLOSED 1ms
+     × DENIES when the entitlement read itself fails (never grants a paid feature on an infra error) 1ms
+     × the EMERGENCY OVERRIDE still wins over an entitled tenant 1ms
+     × disengaging the stop never GRANTS an unentitled tenant 0ms
+     × the PLATFORM row is what vetoes, even with a permissive tenant-scoped row present 1ms
+     × signalConsultationEnding forwards for an entitled CLS tenant 1ms
+     × signalConsultationEnding is a no-op for an unentitled tenant 1ms
+     × signalLoopCancel is a no-op with no CLS tenant 0ms
+     × signalLoopCancel is vetoed by the emergency stop 0ms
+      Tests  13 failed | 3 passed (16)
+```
+
+The mutation was reverted from a file-scoped backup immediately afterwards (`grep` for
+`MUTATION UNDER TEST` in the service returns nothing). **No `git stash` / `git checkout .` /
+`git restore .` was used at any point in this ticket.**
+
+### 8.2 Targeted suites — GREEN
+
+`entitlements` + `consultation/loop` + `consultation-gates.tier-compliance` +
+`settings-registry`:
+
+```
+ Test Files  1 failed | 32 passed (33)
+      Tests  1 failed | 445 passed (446)
+
+ FAIL  src/services/settings-registry/__tests__/fail-mode.governance.test.ts
+AssertionError: no expected env name recorded for 'internal.accessToken'
+```
+
+The single failure is **not this ticket's**: `internal.accessToken` is a descriptor added by
+the concurrent D-D / internal-access-token work in `platform-secrets.descriptors.ts`, a file
+this ticket never touched.
+
+Final confirmation run of exactly the five suites this ticket owns or rewrote, through the
+shared test mutex:
+
+```
+$ scratchpad/test-lock.sh npx vitest run --root packages/applications \
+    src/services/consultation/loop/__tests__/loop-entitlement-gate.test.ts \
+    src/services/entitlements/__tests__/resolve-entitlements.test.ts \
+    src/services/settings-registry/__tests__/consultation-gate-seed-parity.test.ts \
+    src/services/consultation/__tests__/consultation-gates.tier-compliance.test.ts \
+    src/services/consultation/loop/__tests__/loop-context-signal.service.test.ts
+
+ Test Files  5 passed (5)
+      Tests  93 passed (93)
+EXIT=0
+```
+
+### 8.3 `pnpm --filter @arcaai/applications test`
+
+```
+ Test Files  5 failed | 494 passed | 1 skipped (500)
+      Tests  6 failed | 9210 passed | 4 skipped (9220)
+
+ FAIL  src/services/__tests__/audit-correlation.test.ts
+ FAIL  src/services/baseServices/_meta/secrets/__tests__/warmup-coverage.test.ts
+ FAIL  src/services/consultation/live-documentation/__tests__/live-documentation.groundedness.test.ts
+ FAIL  src/services/settings-registry/__tests__/fail-mode.governance.test.ts
+ FAIL  src/services/workflow-definition/__tests__/task-724-stt-realtime-untouched.grep-gate.test.ts
+```
+
+Attribution — **all five belong to concurrent sibling work, none to TASK-705**:
+
+| File | Cause |
+|---|---|
+| `warmup-coverage` | `INTERNAL_ACCESS_TOKEN @ apps/api/src/modules/streaming/text-proxy.controller.ts:319` |
+| `live-documentation.groundedness` | expects `GUARDRAIL_SERVICE_TOKEN`, received `INTERNAL_ACCESS_TOKEN` |
+| `fail-mode.governance` | `internal.accessToken` descriptor |
+| `task-724-stt-realtime-untouched` (grep gate) | flags `apps/api/src/modules/streaming/text-proxy.controller.ts` as modified |
+| `audit-correlation` | two 30 s timeouts under heavy parallel load, no assertion failure |
+
+The first four are the same in-flight D-D internal-token change. For contrast, a full run of
+the same package **before** any TASK-705 edit had 56 failures across 7 files (the phi-redaction
+and dna-writing-style work then in flight), so the tree's baseline moves independently of
+this ticket.
+
+### 8.4 Build / typecheck
+
+```
+$ pnpm --filter @arcaai/applications build
+> rimraf dist tsconfig.tsbuildinfo && tsc
+BUILD EXIT=0
+```
+
+(A later re-run raced a sibling's concurrent build — `ENOTEMPTY … rmdir dist/services/agentic-instructions/dto`
+from `rimraf`, a shared-tree artefact, not a compile error. `npx tsc -p packages/applications/tsconfig.json --noEmit`
+was then clean, no diagnostics.)
+
+```
+$ pnpm typecheck            # turbo run typecheck
+ Tasks:    28 successful, 33 total
+Failed:    @arcaai/database#typecheck
+@arcaai/database:typecheck: src/prisma/db_main/seed/__tests__/config-plane-seed.test.ts(104,12): error TS2532: Object is possibly 'undefined'.
+@arcaai/database:typecheck: src/prisma/db_main/seed/__tests__/config-plane-seed.test.ts(105,12): error TS2532: Object is possibly 'undefined'.
+```
+
+`config-plane-seed.test.ts` is the concurrent TASK-736 (Ollama retention) edit — untouched by
+this ticket, which changed only `11c`/`07e` in that package.
+
+### 8.5 Lint
+
+```
+$ pnpm --filter @arcaai/applications --filter @arcaai/database lint
+✖ 183 problems (0 errors, 183 warnings)      # all pre-existing eslint-comments/require-description
+EXIT=0
+
+$ pnpm --filter @arcaai/api lint
+✖ 67 problems (2 errors, 65 warnings)
+  apps/api/src/modules/ai-inference/ai-inference.client.ts   3:9    error  prettier/prettier
+  apps/api/src/modules/streaming/text-proxy.controller.ts  319:25   error  prettier/prettier
+```
+
+Both `apps/api` errors are prettier violations in the concurrent internal-token work. The one
+`apps/api` file this ticket touched (`consultation.controller.ts`, two comment lines) is
+clean. A prettier warning introduced by this ticket in `resolve-entitlements.ts` was fixed;
+`npx eslint` on the two primary changed files then exits 0 with no output.
+
+### 8.6 Script
+
+```
+$ shellcheck scripts/report-loop-status.sh
+shellcheck exit: 0
+
+$ bash scripts/report-loop-status.sh
+== Loop status report ==
+Target: postgresql://****:****@localhost:5432/hope
+
+-- platform switches --
+  namespace   |           key            | value | defaultValue |        updatedAt        | updatedBy
+--------------+--------------------------+-------+--------------+-------------------------+-----------
+ registry     | consultation.ocr.enabled | true  | false        | 2026-08-17 11:10:13.062 |
+ entitlements | entitlements.enabled     | false | false        | 2026-08-17 11:10:13.227 |
+(2 rows)
+
+-- per-tenant loop entitlement (from plan; overrides not stored yet) --
+  name  |          plan           |    agenticLoop
+--------+-------------------------+-------------------
+ ArcaAI | (none → ungated-legacy) | allowed (ungated)
+ Global | (none → ungated-legacy) | allowed (ungated)
+ System | (none → ungated-legacy) | allowed (ungated)
+(3 rows)
+EXIT: 0
+```
+
+No `harness.loop.emergencyStop` row exists — the expected, intended state ("no emergency").
+Every local tenant is allowed the loop, by two independent routes (§7.5).
+
+### 8.7 Root `pnpm test:unit` — NOT COMPLETED (reported, not claimed)
+
+Launched through the shared test mutex
+(`scratchpad/test-lock.sh pnpm test:unit`) and **terminated externally by the main session
+after ~32 000 lines of output** (`Terminated: 15`, `test-lock: 'pnpm test:unit' exited 143`)
+— the coordinator was serialising heavy runs across agents; the lock then passed to another
+agent's harness pytest run.
+
+Up to the point of termination the partial log contained **zero `FAIL` lines**, but that is
+weak evidence, not a passing gate. **This gate is unverified for this ticket** and is recorded
+as such rather than claimed. The package-scoped equivalent (§8.3, `@arcaai/applications`,
+9 220 tests) did complete, and that is where every file this ticket changed lives.
+
+### 8.8 Python
+
+`apps/harness` was **not** touched, and it never read `harness.loop.enabled` (the gate lives
+entirely in the gateway), so no pytest run applies to this ticket.
+
+---
+
+## Appendix A — the superseded discovery pass (2026-08-16)
+
+Retained because it holds evidence this ticket still relies on, and because the ticket's
+history should not be silently rewritten. Its **conclusions are superseded** by §1: the
+"what should the switch be set to per environment" decision it escalated no longer exists.
+
+- **`hope-v2-dev` `RUN_SEED` cross-check — answered.** Via read-only access to
+  `arca/hope-v2-deployment`: `deployment/k8s/base/db-migrate.yaml` defaults `RUN_SEED="none"`,
+  and `deployment/k8s/overlays/dev/kustomization.yaml` **explicitly re-asserts
+  `RUN_SEED: "none"`** for `hope-v2-dev`, with a comment recording an owner decision dated
+  2026-08-09: *"for argo deployment, we just migrate database, not reset and re-seed."* The
+  environment holds real accumulated data (33 users, 14 consultations, 1 255 audit rows, 88
+  prompt templates, 54 department agents). **This is the fact that makes §2.2 a defect rather
+  than a curiosity.**
+- **Temporal execution query — mechanism proven, dispatch inconclusive.** Local
+  `hope-temporal` was queried for real via the `temporalio` Python client (no `temporal` CLI
+  installed): 0 `ConsultationLoopWorkflow` executions lifetime and in the last 30 days, and 0
+  executions of *any* workflow type — because no `apps/api`/`apps/harness`/worker process was
+  running, so nothing could have dispatched either way. Uninformative about behaviour, not
+  evidence of dormancy. The `hope-v2-dev` cluster was deliberately not queried (local-only
+  instruction, both passes). Operator procedure, if it is ever wanted:
+  ```
+  temporal workflow list  --query "WorkflowType='ConsultationLoopWorkflow' AND StartTime > '<30d-ago-ISO8601>'"
+  temporal workflow count --query "WorkflowType='ConsultationLoopWorkflow'"
+  temporal workflow show  --workflow-id <id>   # phase:"DISABLED" ⇒ signalled into a no-op
+  ```
+- **Documentation-drift finding, unresolved.** `deployment/k8s/base/temporal.yaml` defines an
+  ACTIVE in-cluster `hope-temporal` Deployment + Service wired into the base kustomization
+  that `hope-v2-dev` syncs — which contradicts `.claude/rules/09-infrastructure-devops.md` /
+  `04-target-architecture.md` describing Temporal as running "on an unmanaged VM with a dead
+  in-cluster copy". Worth a human re-check; out of scope here.
+- **Derived-config gate spot-check (§2.2 of the old text).** `ConsultationContextSchema` had 3
+  PUBLISHED rows locally while `DepartmentAgent`/`DepartmentAgentVersion` had 0 — so
+  `LoopConfigService.resolveForConsultation`'s `agentConfigVersionId !== null || contextSchemaVersionId !== null`
+  still resolves `enabled: true` off the schema side. The empty `DepartmentAgent` table in a
+  freshly-seeded local DB was flagged then and is still worth someone's attention; it is
+  independent of this ticket.
+
+---
+
+## 9. Change History
 
 | Date | Change | By |
 |---|---|---|
-| 2026-08-16 | Ticket authored | Wave-0 ticket-authoring agent |
-| 2026-08-16 | Tasks 1-4 executed: delivered `scripts/report-loop-status.sh` (verified via shellcheck + an isolated throwaway Postgres, since local dev infra was not running in this execution context); documented the Temporal query procedure (not executed against any live Temporal frontend — none reachable locally, cluster execution deliberately declined); answered the `hope-v2-dev` `RUN_SEED` cross-check via read-only `arca/hope-v2-deployment` access (`RUN_SEED="none"`, explicit 2026-08-09 owner decision); re-triaged A-26/A-27/A-28 to "likely live/active in `hope-v2-dev`, pending confirmation". Task 5 (the value decision + `PUT`) presented as options for the human owner, not executed. Status set to Review pending that decision. | T2/T3 sonnet-5 execution agent |
-| 2026-08-16 | Local infra came up (Postgres/Redis/Temporal/Vault/MinIO/Qdrant) with a freshly-reset, freshly-seeded DB. Re-ran Task 1 for real against the live local dev DB: confirms `harness.loop.enabled` and `consultation.ocr.enabled` both `value='true'`/`defaultValue='false'` — the central finding now proven locally, not just logic-tested. Ran Task 2 for real against local `hope-temporal` (namespace `default`, via the `temporalio` Python client — no `temporal` CLI installed): 0 `ConsultationLoopWorkflow` executions lifetime/30-day and 0 workflow executions of any type, explained (no `apps/api`/`apps/harness`/worker process was running locally this session, so nothing could have dispatched regardless of the loop's real behavior) — an honest, dispatch-inconclusive local result. `hope-v2-dev` cluster deliberately NOT queried or written to, per explicit instruction this session (local only) — that remains the sole open confirmation carried forward. Task 3's re-triage and the AC checklist updated to reflect the strengthened-but-still-cluster-unconfirmed evidence. Task 5 (the value decision) still not made; no `PUT` calls issued anywhere. Status remains Review. | T2 sonnet-5 execution agent |
-| 2026-08-16 | **CLOSE-OUT PASS.** Re-verified Task 1 against the live local dev DB (identical result, same `updatedAt` as the prior pass — confirms stability, not new information) and confirmed no app/worker process is running locally (so a Task 2 Temporal re-query would reproduce the same uninformative 0-execution result already recorded — not repeated). Cluster access again not attempted (local only, per instruction). No code or documentation correction was needed — both prior passes' findings and honesty hold up. Status remains Review: the sole blocker is Task 5's HUMAN-GATED decision (§4/§6), which this pass cannot make. | Close-out pass agent |
+| 2026-08-16 | Ticket authored as a discovery ticket | Wave-0 ticket-authoring agent |
+| 2026-08-16 | Discovery Tasks 1-4 executed (report script, Temporal procedure, `RUN_SEED` cross-check, A-26/27/28 re-triage); Task 5 escalated as a HUMAN-GATED decision | T2/T3 execution agent |
+| 2026-08-16 | Re-ran Task 1 + Task 2 against live local infra; findings unchanged; status left at Review pending the owner decision | T2 execution agent |
+| 2026-08-16 | Close-out pass — nothing material changed; still blocked on the owner decision | Close-out pass agent |
+| **2026-08-17** | **SCOPE CHANGED BY THE OWNER: the loop is a subscription feature, not an environment kill-switch.** Requirement Analysis rewritten; the old "what should the switch be set to" question recorded as dissolved and its evidence moved to Appendix A. Built: `agenticLoop` entitlement (three-layer resolution, ungated-legacy `true`, `AGENTIC_LOOP_PLAN_DEFAULTS` with STARTER out); `harness.loop.enabled` retired in favour of `harness.loop.emergencyStop` (polarity flipped so the kill-switch invariant and the day-1 requirement finally agree); the seeded loop row deleted, with a regression test forbidding its return; `LoopContextSignalService` rewritten to `entitled AND NOT stopped` with three fail-closed deny paths; `EntitlementsServiceModule` wired into `LiveDocumentationServiceModule`; `scripts/report-loop-status.sh` rewritten. NO `.prisma` file touched — the two `featureAgenticLoop` columns are recorded as a required follow-up (§7.4). Live local dev value recorded (§2.5). | TASK-705 execution agent |
+| **2026-08-17** | **§7.4 schema follow-up LANDED.** Added `PlanEntitlement.featureAgenticLoop Boolean @default(true)` + `TenantEntitlement.featureAgenticLoop Boolean?` with migration `20260817161511_task_705_entitlement_agentic_loop` (shadow-DB authored, empty-diff proven). Added `featureAgenticLoop` to `PlanEntitlementValues` (STARTER `false`, TRIAL/PRO/ENTERPRISE `true`), seed `15-entitlements.ts`, `MATRIX_FIELDS`, and the plan-update / tenant-upsert request DTOs; DELETED the interim `AGENTIC_LOOP_PLAN_DEFAULTS` map and swapped the resolver to merge through `base`. Hand-authored the entity/factory columns (`gen:entity`/`gen:factory` clean). Packaging is now DB-configured — the D-B tension in §6 is closed. | TASK-705 schema follow-up agent |

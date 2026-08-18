@@ -227,6 +227,14 @@ export class UpdatePlanEntitlementRequest {
   @IsBoolean()
   featurePlatformDefaultCredential?: boolean;
 
+  @ApiPropertyOptional({
+    description:
+      "Does this plan include the harness AGENTIC LOOP (TASK-705)? ENFORCED, not display-only — LoopContextSignalService resolves it before every loop signal. false on STARTER, true on TRIAL/PRO/ENTERPRISE.",
+  })
+  @IsOptional()
+  @IsBoolean()
+  featureAgenticLoop?: boolean;
+
   @ApiPropertyOptional({ description: 'Model-access tier (base | full | full_custom)' })
   @IsOptional()
   @IsString()

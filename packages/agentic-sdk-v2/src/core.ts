@@ -566,8 +566,6 @@ export {
   RATE_LIMIT_ADMIN_ENDPOINTS,
   ROLE_ENDPOINTS,
   SERVICE_HEALTH_ENDPOINTS,
-  /** @deprecated Renamed to {@link TEXT_ENDPOINTS}. Kept for one release. */
-  SMR_ENDPOINTS,
   STORAGE_ENDPOINTS,
   STORAGE_KEY_ENDPOINTS,
   STT_ENDPOINTS,
@@ -608,7 +606,6 @@ export {
   // SMR error → AgenticErrorCode classification helpers.
   classifyHttpError,
   classifyTextError,
-  classifySmrError,
   // SDK-207 WS-4: Diff utilities
   computeDiff,
   computePromptDiff,

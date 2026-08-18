@@ -10,7 +10,7 @@ import { z } from 'zod';
 import {
   SmrHealthResponseSchema,
   SmrSyncSummaryRequestSchema,
-  SmrSummaryResponseSchema,
+  TextSummaryResponseSchema,
   SmrPreSummaryRequestSchema,
   SmrPreSummaryResponseSchema,
   SmrJobResponseSchema,
@@ -196,7 +196,7 @@ describe('SMR Service Contract', () => {
 
   describe('Summary Response Contract', () => {
     it('should validate summary response schema', () => {
-      const result = SmrSummaryResponseSchema.safeParse(mockSmrResponses.summary);
+      const result = TextSummaryResponseSchema.safeParse(mockSmrResponses.summary);
 
       expect(result.success).toBe(true);
       if (result.success) {
@@ -213,7 +213,7 @@ describe('SMR Service Contract', () => {
         processing_time_ms: 500,
       };
 
-      const result = SmrSummaryResponseSchema.safeParse(minimalResponse);
+      const result = TextSummaryResponseSchema.safeParse(minimalResponse);
       expect(result.success).toBe(true);
     });
 
@@ -232,7 +232,7 @@ describe('SMR Service Contract', () => {
         model_name: 'langflow:flow-123',
       };
 
-      const result = SmrSummaryResponseSchema.safeParse(responseWithTokens);
+      const result = TextSummaryResponseSchema.safeParse(responseWithTokens);
       expect(result.success).toBe(true);
     });
   });
@@ -424,7 +424,7 @@ describe('SMR Service Contract', () => {
 
     it('should ensure API Gateway can parse SMR summary response', () => {
       // Simulates what SMR service returns
-      const smrResponse = {
+      const textResponse = {
         session_id: 'session-gateway-test',
         summary: {
           clinical_summary: {
@@ -440,7 +440,7 @@ describe('SMR Service Contract', () => {
         model_name: 'gpt-4',
       };
 
-      const result = SmrSummaryResponseSchema.safeParse(smrResponse);
+      const result = TextSummaryResponseSchema.safeParse(textResponse);
       expect(result.success).toBe(true);
     });
 
@@ -461,7 +461,7 @@ describe('SMR Service Contract', () => {
         model_name: 'langflow:flow-summary-v1',
       };
 
-      const result = SmrSummaryResponseSchema.safeParse(langflowResponse);
+      const result = TextSummaryResponseSchema.safeParse(langflowResponse);
       expect(result.success).toBe(true);
     });
   });
@@ -474,7 +474,7 @@ describe('SMR Service Contract', () => {
         analytics: { word_count: 500 },
       };
 
-      const result = SmrSummaryResponseSchema.safeParse(responseWithExtraFields);
+      const result = TextSummaryResponseSchema.safeParse(responseWithExtraFields);
       expect(result.success).toBe(true);
     });
 
@@ -486,7 +486,7 @@ describe('SMR Service Contract', () => {
         // missing session_id
       };
 
-      const result = SmrSummaryResponseSchema.safeParse(missingRequiredField);
+      const result = TextSummaryResponseSchema.safeParse(missingRequiredField);
       expect(result.success).toBe(false);
     });
   });

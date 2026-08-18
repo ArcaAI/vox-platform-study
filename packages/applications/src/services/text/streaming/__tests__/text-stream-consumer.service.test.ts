@@ -116,8 +116,8 @@ describe('TextStreamConsumerService', () => {
       const doneChunk = JSON.stringify({ type: 'done', data: {} });
 
       mockXread
-        .mockResolvedValueOnce([['smr:stream:task-1', [['1-0', ['data', textChunk]]]]])
-        .mockResolvedValueOnce([['smr:stream:task-1', [['2-0', ['data', doneChunk]]]]]);
+        .mockResolvedValueOnce([['text:stream:task-1', [['1-0', ['data', textChunk]]]]])
+        .mockResolvedValueOnce([['text:stream:task-1', [['2-0', ['data', doneChunk]]]]]);
 
       await service.connect();
 
@@ -150,8 +150,8 @@ describe('TextStreamConsumerService', () => {
       const doneChunk = JSON.stringify({ type: 'done', data: {} });
 
       mockXread
-        .mockResolvedValueOnce([['smr:stream:task-2', [['1-0', ['other_field', 'value']]]]])
-        .mockResolvedValueOnce([['smr:stream:task-2', [['2-0', ['data', doneChunk]]]]]);
+        .mockResolvedValueOnce([['text:stream:task-2', [['1-0', ['other_field', 'value']]]]])
+        .mockResolvedValueOnce([['text:stream:task-2', [['2-0', ['data', doneChunk]]]]]);
 
       await service.connect();
 
@@ -174,8 +174,8 @@ describe('TextStreamConsumerService', () => {
       const doneChunk = JSON.stringify({ type: 'done', data: {} });
 
       mockXread
-        .mockResolvedValueOnce([['smr:stream:task-3', [['1-0', ['data', 'not-valid-json']]]]])
-        .mockResolvedValueOnce([['smr:stream:task-3', [['2-0', ['data', doneChunk]]]]]);
+        .mockResolvedValueOnce([['text:stream:task-3', [['1-0', ['data', 'not-valid-json']]]]])
+        .mockResolvedValueOnce([['text:stream:task-3', [['2-0', ['data', doneChunk]]]]]);
 
       await service.connect();
 
@@ -197,7 +197,7 @@ describe('TextStreamConsumerService', () => {
     it('should complete on error chunk type', async () => {
       const errorChunk = JSON.stringify({ type: 'error', data: { message: 'failed' } });
 
-      mockXread.mockResolvedValueOnce([['smr:stream:task-4', [['1-0', ['data', errorChunk]]]]]);
+      mockXread.mockResolvedValueOnce([['text:stream:task-4', [['1-0', ['data', errorChunk]]]]]);
 
       await service.connect();
 
@@ -223,8 +223,8 @@ describe('TextStreamConsumerService', () => {
       const doneChunk = JSON.stringify({ type: 'done', data: {} });
 
       mockXread
-        .mockResolvedValueOnce([['smr:stream:task-5', [['1-0', ['data', noTypeChunk]]]]])
-        .mockResolvedValueOnce([['smr:stream:task-5', [['2-0', ['data', doneChunk]]]]]);
+        .mockResolvedValueOnce([['text:stream:task-5', [['1-0', ['data', noTypeChunk]]]]])
+        .mockResolvedValueOnce([['text:stream:task-5', [['2-0', ['data', doneChunk]]]]]);
 
       await service.connect();
 

@@ -50,7 +50,7 @@ class TestGenerateLifecycle:
         assert resp.status_code == 200
         task_id = resp.json()["task_id"]
 
-        raw = await redis_client.get(f"smr:task:{task_id}")
+        raw = await redis_client.get(f"text:task:{task_id}")
         assert raw is not None
         import json
 
@@ -156,7 +156,7 @@ class TestStreamingLifecycle:
             if task_resp.json()["status"] in ("completed", "failed"):
                 break
 
-        entries = await redis_client.xrange(f"smr:stream:{task_id}")
+        entries = await redis_client.xrange(f"text:stream:{task_id}")
         assert len(entries) > 0
 
         import json

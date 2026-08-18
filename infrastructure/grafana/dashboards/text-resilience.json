@@ -89,7 +89,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "smr_circuit_breaker_state",
+          "expr": "text_circuit_breaker_state",
           "legendFormat": "{{provider}}",
           "refId": "A"
         }
@@ -179,7 +179,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "smr_circuit_breaker_state",
+          "expr": "text_circuit_breaker_state",
           "legendFormat": "{{provider}}",
           "refId": "A"
         }
@@ -266,7 +266,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "rate(smr_rate_limit_rejections_total[5m])",
+          "expr": "rate(text_rate_limit_rejections_total[5m])",
           "legendFormat": "{{provider}}",
           "refId": "A"
         }
@@ -331,7 +331,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "sum(rate(smr_rate_limit_rejections_total[5m])) / sum(rate(smr_generation_total[5m]))",
+          "expr": "sum(rate(text_rate_limit_rejections_total[5m])) / sum(rate(text_generation_total[5m]))",
           "legendFormat": "Rejection Ratio",
           "refId": "A"
         }
@@ -418,7 +418,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "smr_queue_size",
+          "expr": "text_queue_size",
           "legendFormat": "{{provider}}",
           "refId": "A"
         }
@@ -505,7 +505,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "histogram_quantile(0.5, sum by (le, provider) (rate(smr_queue_wait_seconds_bucket[5m])))",
+          "expr": "histogram_quantile(0.5, sum by (le, provider) (rate(text_queue_wait_seconds_bucket[5m])))",
           "legendFormat": "p50 - {{provider}}",
           "refId": "A"
         },
@@ -514,7 +514,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "histogram_quantile(0.95, sum by (le, provider) (rate(smr_queue_wait_seconds_bucket[5m])))",
+          "expr": "histogram_quantile(0.95, sum by (le, provider) (rate(text_queue_wait_seconds_bucket[5m])))",
           "legendFormat": "p95 - {{provider}}",
           "refId": "B"
         }
@@ -592,7 +592,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "smr_provider_health",
+          "expr": "text_provider_health",
           "legendFormat": "{{provider}}",
           "refId": "A"
         }
@@ -679,7 +679,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "histogram_quantile(0.5, sum by (le, provider) (rate(smr_health_check_latency_seconds_bucket[5m])))",
+          "expr": "histogram_quantile(0.5, sum by (le, provider) (rate(text_health_check_latency_seconds_bucket[5m])))",
           "legendFormat": "p50 - {{provider}}",
           "refId": "A"
         },
@@ -688,7 +688,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "histogram_quantile(0.95, sum by (le, provider) (rate(smr_health_check_latency_seconds_bucket[5m])))",
+          "expr": "histogram_quantile(0.95, sum by (le, provider) (rate(text_health_check_latency_seconds_bucket[5m])))",
           "legendFormat": "p95 - {{provider}}",
           "refId": "B"
         }
@@ -713,14 +713,14 @@
           "type": "prometheus",
           "uid": "prometheus"
         },
-        "definition": "label_values(smr_generation_total, provider)",
+        "definition": "label_values(text_generation_total, provider)",
         "hide": 0,
         "includeAll": true,
         "label": "Provider",
         "multi": true,
         "name": "provider",
         "options": [],
-        "query": "label_values(smr_generation_total, provider)",
+        "query": "label_values(text_generation_total, provider)",
         "refresh": 1,
         "regex": "",
         "skipUrlSync": false,

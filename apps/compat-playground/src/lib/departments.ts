@@ -5,7 +5,7 @@
  * so the gateway's Workstream-A resolver can match it (by code, name, or v1
  * synonym) to a governed instruction template. We hit the admin listing route
  * directly with the same `x-api-key` the `<ArcaCompatProvider>` was configured
- * with — the SDK's `useSMR` uses the identical auth parity.
+ * with — the SDK's `useText` uses the identical auth parity.
  *
  * The global prefix is `api/v1`, so the URL is
  * `{apiEndpoint}/api/v1/admin/departments`. The controller

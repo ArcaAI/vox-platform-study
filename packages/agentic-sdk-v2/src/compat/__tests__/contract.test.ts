@@ -11,7 +11,7 @@
  *  - type-level (`expectTypeOf`) — the hook return interfaces expose the v1
  *    members with the v1 signatures;
  *  - runtime — the compat barrel exports the v1 hook names, `mapV2StatusToV1`
- * honors the frozen status mapping, and `useSMR` passes the shim response through UNCHANGED.
+ * honors the frozen status mapping, and `useText` passes the shim response through UNCHANGED.
  */
 
 import { describe, it, expect, beforeEach, vi, expectTypeOf } from 'vitest';
@@ -20,19 +20,19 @@ import { renderHook, act } from '@testing-library/react';
 // Public compat surface (the barrel a migrating app imports).
 import * as compat from '../../compat';
 import {
-  useSMR,
+  useText,
   mapV2StatusToV1,
   type UseArcaSessionManagerReturn,
   type UseArcaSessionManagerProps,
   type UseAudioCaptureReturn,
   type UseArcaSpeechToTextReturn,
-  type UseSMRReturn,
+  type UseTextReturn,
   type UseArcaSttProviderReturn,
   type MedicalSession,
   type SessionStatus,
   type SummaryResponse,
   type PreSummaryResponse,
-  type SMRRequest,
+  type TextRequest,
   type PreSummaryRequest,
   type V1SdkConfig,
 } from '../../compat';
@@ -53,7 +53,7 @@ describe('@arcaai/vox/compat barrel', () => {
     expect(typeof compat.useArcaSessionManager).toBe('function');
     expect(typeof compat.useAudioCapture).toBe('function');
     expect(typeof compat.useArcaSpeechToText).toBe('function');
-    expect(typeof compat.useSMR).toBe('function');
+    expect(typeof compat.useText).toBe('function');
     expect(typeof compat.mapV2StatusToV1).toBe('function');
   });
 });
@@ -119,18 +119,18 @@ describe('audio + STT hook shapes', () => {
 // ===========================================================================
 // Type-level: / SMR hook contract + v1 response shapes.
 // ===========================================================================
-describe('useSMR contract + v1 response shapes', () => {
+describe('useText contract + v1 response shapes', () => {
   it('exposes summarize/summarizeSync/summarizeAsync/preSummarize', () => {
-    expectTypeOf<UseSMRReturn['summarize']>().returns.resolves.toEqualTypeOf<SummaryResponse>();
-    expectTypeOf<UseSMRReturn['summarizeSync']>().returns.resolves.toEqualTypeOf<SummaryResponse>();
-    expectTypeOf<UseSMRReturn['preSummarize']>().returns.resolves.toEqualTypeOf<PreSummaryResponse>();
-    expectTypeOf<UseSMRReturn['loading']>().toEqualTypeOf<boolean>();
+    expectTypeOf<UseTextReturn['summarize']>().returns.resolves.toEqualTypeOf<SummaryResponse>();
+    expectTypeOf<UseTextReturn['summarizeSync']>().returns.resolves.toEqualTypeOf<SummaryResponse>();
+    expectTypeOf<UseTextReturn['preSummarize']>().returns.resolves.toEqualTypeOf<PreSummaryResponse>();
+    expectTypeOf<UseTextReturn['loading']>().toEqualTypeOf<boolean>();
   });
 
-  it('SMRRequest carries text + preferred per-turn segments (F2)', () => {
-    expectTypeOf<SMRRequest['text']>().toEqualTypeOf<string>();
-    expectTypeOf<SMRRequest>().toHaveProperty('segments');
-    expectTypeOf<SMRRequest>().toHaveProperty('useEnhancedFormat');
+  it('TextRequest carries text + preferred per-turn segments (F2)', () => {
+    expectTypeOf<TextRequest['text']>().toEqualTypeOf<string>();
+    expectTypeOf<TextRequest>().toHaveProperty('segments');
+    expectTypeOf<TextRequest>().toHaveProperty('useEnhancedFormat');
   });
 
   it('SummaryResponse honors the v1 envelope (session_id/summary/created_at)', () => {
@@ -205,10 +205,10 @@ describe('useArcaSttProvider return shape', () => {
 });
 
 // ===========================================================================
-// Runtime: useSMR response pass-through — the shim body is returned
+// Runtime: useText response pass-through — the shim body is returned
 // UNCHANGED to the app (no re-mapping / key-stripping on the SDK side).
 // ===========================================================================
-describe('useSMR response pass-through', () => {
+describe('useText response pass-through', () => {
   const mockClient = {
     getBaseUrl: vi.fn(() => 'https://api.arcaai.com/api/v1'),
     getApiKey: vi.fn(() => 'tenant-key-123'),
@@ -245,7 +245,7 @@ describe('useSMR response pass-through', () => {
     };
     fetchMock.mockResolvedValue({ ok: true, status: 200, json: async () => shimBody });
 
-    const { result } = renderHook(() => useSMR());
+    const { result } = renderHook(() => useText());
     let out: SummaryResponse | undefined;
     await act(async () => {
       out = await result.current.summarizeSync({ text: 'Doctor: hi\nPatient: chest pain', useEnhancedFormat: false });
@@ -263,7 +263,7 @@ describe('useSMR response pass-through', () => {
     };
     fetchMock.mockResolvedValue({ ok: true, status: 200, json: async () => preBody });
 
-    const { result } = renderHook(() => useSMR());
+    const { result } = renderHook(() => useText());
     let out: PreSummaryResponse | undefined;
     await act(async () => {
       out = await result.current.preSummarize({ current_department: 'Cardiology' });

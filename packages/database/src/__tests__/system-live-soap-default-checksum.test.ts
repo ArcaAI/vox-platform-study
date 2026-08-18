@@ -6,7 +6,7 @@
  * `packages/applications/src/services/consultation/live-documentation/__tests__/live-soap-prompt-checksum.test.ts`,
  * which pins the SAME two hashes against the in-code constants
  * (`LIVE_SOAP_STABLE_SYSTEM_PREFIX` and the `system_prompt` literal in
- * `callSmr`). Together the two tests are a byte-equality proof across the
+ * `callText`). Together the two tests are a byte-equality proof across the
  * package boundary without a cross-package import — `packages/database` cannot
  * depend on `packages/applications` (wrong dependency direction), and the seed
  * modules are not part of this package's public exports.
@@ -54,7 +54,7 @@ describe('-T1 — SYSTEM live-summarization default prompt byte lock', () => {
     ).toBe(PINNED_PROMPT_SHA256);
   });
 
-  it('SYSTEM_LIVE_SOAP_SYSTEM_PROMPT matches the pinned sha256 of the callSmr system_prompt literal', () => {
+  it('SYSTEM_LIVE_SOAP_SYSTEM_PROMPT matches the pinned sha256 of the callText system_prompt literal', () => {
     expect(sha256Hex(SYSTEM_LIVE_SOAP_SYSTEM_PROMPT)).toBe(PINNED_SYSTEM_PROMPT_SHA256);
   });
 

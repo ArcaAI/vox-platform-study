@@ -38,7 +38,15 @@ const DNA_TEST_SCHEMA = {
     toneFormality: { type: 'string', enum: ['casual', 'neutral', 'formal'] },
     confidenceScores: { type: 'object', additionalProperties: { type: 'number', minimum: 0, maximum: 1 } },
   },
-  required: ['sentenceStructure', 'verbosity', 'listVsNarrative', 'sectionOrderPreference', 'abbreviationFrequency', 'toneFormality', 'confidenceScores'],
+  required: [
+    'sentenceStructure',
+    'verbosity',
+    'listVsNarrative',
+    'sectionOrderPreference',
+    'abbreviationFrequency',
+    'toneFormality',
+    'confidenceScores',
+  ],
 };
 
 const VALID_PROFILE = {
@@ -79,7 +87,7 @@ const createMockJobMetrics = () => ({
   recordJobComplete: vi.fn(),
   recordJobFailed: vi.fn(),
   recordWaitingDuration: vi.fn(),
-  recordSmrCallDuration: vi.fn(),
+  recordTextCallDuration: vi.fn(),
 });
 const createMockAppSettingsService = () => ({
   getValueWithDefault: vi.fn(<T>(_key: string, defaultValue: T): T => defaultValue),
@@ -93,7 +101,12 @@ vi.mock('@arcaai/domains', async () => {
   return {
     ...actual,
     DnaWritingStyleReportFactory: {
-      CreateDnaWritingStyleReport: vi.fn((data: Record<string, unknown>) => ({ ...data, id: 'new-report-id', createdAt: new Date(), updatedAt: new Date() })),
+      CreateDnaWritingStyleReport: vi.fn((data: Record<string, unknown>) => ({
+        ...data,
+        id: 'new-report-id',
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      })),
     },
     DnaWritingStyleVersionFactory: {
       CreateDnaWritingStyleVersion: vi.fn((data: Record<string, unknown>) => ({ ...data, id: 'new-version-id', createdAt: new Date() })),
@@ -150,7 +163,7 @@ describe('DnaWritingStyleProcessor — PHI containment (TASK-700)', () => {
   let mockJobMetrics: ReturnType<typeof createMockJobMetrics>;
   let mockClsService: ReturnType<typeof createMockClsService>;
   let mockContextItemVersionRepo: ReturnType<typeof createMockContextItemVersionRepository>;
-  let mockHarnessPolicyService: { resolveSmrSelection: ReturnType<typeof vi.fn> };
+  let mockHarnessPolicyService: { resolveTextSelection: ReturnType<typeof vi.fn> };
   let mockConfigResolver: ReturnType<typeof createMockConfigResolver>;
 
   const buildProcessor = () =>
@@ -172,6 +185,11 @@ describe('DnaWritingStyleProcessor — PHI containment (TASK-700)', () => {
       mockHarnessPolicyService as never,
       mockConfigResolver as never,
       mockPromptTemplateRepo as never,
+      // TASK-710 (re-opened): `IPhiRedactor` is a REQUIRED dependency now — an
+      // absent redactor aborts the job rather than posting the raw
+      // cross-patient corpus to SMR. Pass-through double keeps this file's
+      // TASK-700 assertions byte-identical.
+      { redact: vi.fn(async (text: string) => text) } as never,
     );
 
   const primeTemplateWithSchema = () => {
@@ -211,7 +229,7 @@ describe('DnaWritingStyleProcessor — PHI containment (TASK-700)', () => {
     mockContextItemVersionRepo.getVersionsByChangeReason.mockImplementation(async (contextItemId: string, changeReason: string) =>
       changeReason === 'approved' ? [{ id: 'v', contextItemId, changeReason: 'approved', versionNumber: 1 }] : [],
     );
-    mockHarnessPolicyService = { resolveSmrSelection: vi.fn().mockResolvedValue({ provider: 'lm-studio', model: 'resolved-medgemma' }) };
+    mockHarnessPolicyService = { resolveTextSelection: vi.fn().mockResolvedValue({ provider: 'lm-studio', model: 'resolved-medgemma' }) };
     mockConfigResolver = createMockConfigResolver();
     primeStorageMocks();
   });
@@ -232,15 +250,17 @@ describe('DnaWritingStyleProcessor — PHI containment (TASK-700)', () => {
     });
   });
 
-  it('omits response_format entirely when the resolved template has no schema', async () => {
+  // FLIPPED: this previously asserted that a schema-less template simply
+  // omitted `response_format` and generated anyway. That WAS the fail-open
+  // hole — an unconstrained generation whose raw prose became the persisted,
+  // cross-patient-injected `styleText`. A schema-less template must now abort
+  // before the model is ever called.
+  it('never calls the model at all when the resolved template has no schema', async () => {
     mockPromptService.listPromptTemplates.mockResolvedValue([{ id: 'tpl-legacy', content: 'Analyze.', category: 'DNA_ANALYSIS' }]);
     mockPromptTemplateRepo.findById.mockResolvedValue({ id: 'tpl-legacy', metaData: null });
-    mockHttpService.axiosRef.post.mockResolvedValue(createAxiosSmrResponse('{"reportData":{},"styleText":"Legacy"}'));
 
-    await buildProcessor().process(createMockJob({ textSamples: ['sample'] }) as never);
-
-    const [, requestBody] = mockHttpService.axiosRef.post.mock.calls[0];
-    expect(requestBody).not.toHaveProperty('response_format');
+    await expect(buildProcessor().process(createMockJob({ textSamples: ['sample'] }) as never)).rejects.toThrow(/schema/i);
+    expect(mockHttpService.axiosRef.post).not.toHaveBeenCalled();
   });
 
   // ─── Task 5 test 1: PHI-shaped input cannot persist ────────────────────────
@@ -334,5 +354,54 @@ describe('DnaWritingStyleProcessor — PHI containment (TASK-700)', () => {
     const [, requestBody] = mockHttpService.axiosRef.post.mock.calls[0];
     expect(requestBody.prompt).toContain('Approved summary body');
     expect(requestBody.prompt).not.toContain('Pending summary body');
+  });
+
+  // ─── Fail-closed when NO schema resolves ──────────────────────────────────
+  //
+  // The schema is the whole containment mechanism: without it the model's raw
+  // prose becomes the persisted, cross-patient-injected `styleText`. Any path
+  // that leaves `outputSchema` null must therefore FAIL the job, not fall back
+  // to permissive parsing. Under owner decision D-A (no production data, no
+  // un-migrated tenants) there is nothing left for the permissive branch to be
+  // backward-compatible WITH, so it is a fail-open hole, not a compat shim.
+
+  const PHI_BEARING_RESPONSE = JSON.stringify({
+    styleText: 'Writes like the note for Patient John Doe, MRN: 88421, DOB 03/14/1985, on metformin 500mg.',
+  });
+
+  const expectNothingPersisted = () => {
+    expect(mockDnaReportRepo.create).not.toHaveBeenCalled();
+    expect(mockDnaReportRepo.update).not.toHaveBeenCalled();
+    expect(mockDnaVersionRepo.create).not.toHaveBeenCalled();
+  };
+
+  it('hard-fails when the resolved DNA template carries no output schema', async () => {
+    mockPromptService.listPromptTemplates.mockResolvedValue([
+      { id: 'dna-tpl-no-schema', content: 'Analyze.', category: 'DNA_ANALYSIS', currentVersionNumber: 3 },
+    ]);
+    mockPromptTemplateRepo.findById.mockResolvedValue({ id: 'dna-tpl-no-schema', metaData: {} });
+    mockHttpService.axiosRef.post.mockResolvedValue(createAxiosSmrResponse(PHI_BEARING_RESPONSE));
+
+    await expect(buildProcessor().process(createMockJob({ textSamples: ['sample'] }) as never)).rejects.toThrow(/schema/i);
+    expectNothingPersisted();
+  });
+
+  it('hard-fails when no DNA_ANALYSIS template resolves at all (fallback prompt)', async () => {
+    mockPromptService.listPromptTemplates.mockResolvedValue([]);
+    mockHttpService.axiosRef.post.mockResolvedValue(createAxiosSmrResponse(PHI_BEARING_RESPONSE));
+
+    await expect(buildProcessor().process(createMockJob({ textSamples: ['sample'] }) as never)).rejects.toThrow(/schema/i);
+    expectNothingPersisted();
+  });
+
+  it('hard-fails when the template-schema read throws instead of degrading to permissive parsing', async () => {
+    mockPromptService.listPromptTemplates.mockResolvedValue([
+      { id: 'dna-tpl-boom', content: 'Analyze.', category: 'DNA_ANALYSIS', currentVersionNumber: 3 },
+    ]);
+    mockPromptTemplateRepo.findById.mockRejectedValue(new Error('db down'));
+    mockHttpService.axiosRef.post.mockResolvedValue(createAxiosSmrResponse(PHI_BEARING_RESPONSE));
+
+    await expect(buildProcessor().process(createMockJob({ textSamples: ['sample'] }) as never)).rejects.toThrow(/schema/i);
+    expectNothingPersisted();
   });
 });

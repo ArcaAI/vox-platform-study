@@ -1,1 +1,1 @@
-"""SMR LLM providers."""
+"""Text LLM providers."""

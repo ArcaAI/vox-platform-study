@@ -134,6 +134,14 @@ model PlanEntitlement {
   // premium add-on, unlike featureDnaReports/featureVoiceEnrollment.
   featurePaletteStt Boolean @default(true)
 
+  // Does this plan include the harness AGENTIC LOOP (TASK-705)? Enforcing, not
+  // display-only: `LoopContextSignalService` resolves it on every signal, and a
+  // `false` here suppresses the ContextAdded / consultation-ending / loop-cancel
+  // signals sent to `ConsultationLoopWorkflow`. `false` on STARTER (the loop is
+  // a premium capability), `true` on TRIAL/PRO/ENTERPRISE. Composed with the
+  // `consultation.loop.emergencyStop` kill-switch, which can only SUBTRACT.
+  featureAgenticLoop Boolean @default(true)
+
   // model access tier (clone-subset, Q8) + rate-limit tier (Q7)
   modelTier     String @default("full")
   rateLimitTier String @default("default")
@@ -222,6 +230,10 @@ model TenantEntitlement {
   // Per-tenant override of PlanEntitlement.featurePaletteStt (null = inherit
   // the plan default, which is `true` on every seeded plan).
   featurePaletteStt Boolean?
+
+  // Per-tenant override of PlanEntitlement.featureAgenticLoop (null = inherit
+  // the plan default, which is `false` on STARTER and `true` elsewhere).
+  featureAgenticLoop Boolean?
 
   // model + rate-limit overrides (null = inherit) — Q7 "increase on demand"
   modelTier          String?

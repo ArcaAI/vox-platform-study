@@ -33,8 +33,48 @@
 // `turbo.json#globalEnv`, so neither was ever settable through the supported
 // config path in any HOPE environment (see the audit table).
 
-/** `GlobalSetting` key for the consultation-loop signal gate. */
-export const HARNESS_LOOP_ENABLED_KEY = 'harness.loop.enabled';
+/**
+ * TASK-705 — the consultation loop's PLATFORM EMERGENCY STOP.
+ *
+ * REPLACES `harness.loop.enabled`, and the polarity flip is the whole point.
+ *
+ * WHAT WENT WRONG WITH THE OLD KEY. It tried to be two things at once —
+ * commercial eligibility AND an operational stop — and the two want opposite
+ * fail-safe defaults, which is exactly the defect it shipped with:
+ *
+ *   descriptor default   `false`   (the kill-switch invariant: never ship armed)
+ *   seeded row value     `'true'`  (the product requirement: on for day 1)
+ *
+ * Those two disagree, and nothing reconciles them. Worse, they disagree
+ * SILENTLY in the direction that matters: `packages/database/migrate.sh`
+ * defaults `RUN_SEED=none`, and `hope-v2-dev` explicitly pins it to `"none"`
+ * (owner decision 2026-08-09), so the row that carries the real intent is never
+ * re-asserted. An environment that never seeds — or one seeded before the row
+ * existed — resolves the code default and runs no loop, with no signal that the
+ * intended answer was the opposite.
+ *
+ * THE FIX IS TO SEPARATE THE TWO CONCERNS AND GIVE EACH ITS OWN DEFAULT.
+ * Eligibility is now the tenant's SUBSCRIPTION ENTITLEMENT
+ * (`ResolvedFeatures.agenticLoop`, resolved tenant-plan → platform matrix from
+ * the database — owner decision 2026-08-17 §2 row 705). What is left here is a
+ * pure operational device, and with NEGATIVE polarity its fail-safe default and
+ * the day-1 product requirement finally agree:
+ *
+ *   default `false`  =  no emergency in progress  =  entitled tenants run
+ *   set     `true`   =  stop every loop, platform-wide, no redeploy
+ *
+ * So there is nothing left to seed, and nothing left to disagree about. The
+ * `killSwitch: true` classification is retained and honest: the switch still
+ * ships DISARMED, which is what `SettingsRegistry.killSwitches()` enforces.
+ *
+ * COMPOSITION RULE (pinned by `loop/__tests__/loop-entitlement-gate.test.ts`):
+ *
+ *     signals(tenant) ⇔ entitlement(tenant).agenticLoop AND NOT emergencyStop
+ *
+ * The stop can only ever SUBTRACT. Engaging it stops an entitled tenant;
+ * disengaging it never grants an unentitled one.
+ */
+export const HARNESS_LOOP_EMERGENCY_STOP_KEY = 'harness.loop.emergencyStop';
 
 /** `GlobalSetting` key for the server-side OCR-enrichment gate. */
 export const CONSULTATION_OCR_ENABLED_KEY = 'consultation.ocr.enabled';
@@ -65,7 +105,8 @@ export const CONSULTATION_SESSION_TIMEOUT_MINUTES_KEY = 'consultation.state.sess
  * OFF (fail-safe default; a kill-switch must not require a redeploy).
  */
 export const CONSULTATION_GATE_DEFAULTS = {
-  [HARNESS_LOOP_ENABLED_KEY]: false,
+  // `false` = no emergency in progress. Disarmed, and therefore not a veto.
+  [HARNESS_LOOP_EMERGENCY_STOP_KEY]: false,
   [CONSULTATION_OCR_ENABLED_KEY]: false,
   [CONSULTATION_REQUIRE_PRIMED_BEFORE_RECORDING_KEY]: false,
   [CONSULTATION_SESSION_TIMEOUT_MINUTES_KEY]: 1440,

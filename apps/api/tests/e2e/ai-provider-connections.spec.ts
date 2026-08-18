@@ -38,18 +38,19 @@ test.describe('AI provider connections', () => {
 
   const auth = () => ({ Authorization: `Bearer ${superAdminToken}` });
 
-  test('seeds ten SYSTEM llm connections: built-in-local enabled, cloud disabled, all keyless', async ({ request }) => {
+  test('seeds eleven SYSTEM llm connections: built-in-local enabled, cloud disabled, all keyless', async ({ request }) => {
     const res = await request.get(`/api/v1/admin/ai-providers?tenantId=${SYSTEM_TENANT_ID}`, { headers: auth() });
     expect(res.status()).toBe(200);
 
     // Seed-authoritative: the built-in-local engines are the enabled
     // Day-1 default; cloud/BYO providers stay disabled until a tenant keys them.
-    // Ollama was removed entirely as a provider (TASK-736, owner directive 2026-08-16),
-    // dropping the seeded llm connections from eleven to ten.
-    const BUILTIN_LOCAL = new Set(['lm-studio', 'built-in', 'vllm', 'llama-cpp']);
+    // TASK-736 REVISED (owner decision 2026-08-17): Ollama's provider logic is
+    // retained, so its SYSTEM connection row is back and the llm connection
+    // count returns to eleven. Only its MODEL CATALOG rows stay purged.
+    const BUILTIN_LOCAL = new Set(['ollama', 'lm-studio', 'built-in', 'vllm', 'llama-cpp']);
 
     const rows = await res.json();
-    expect(rows).toHaveLength(10);
+    expect(rows).toHaveLength(11);
     for (const row of rows) {
       expect(row.hasKey, `${row.provider} must seed keyless`).toBe(false);
       expect(row.enabled, `${row.provider} enabled-state must match built-in-local posture`).toBe(BUILTIN_LOCAL.has(row.provider));

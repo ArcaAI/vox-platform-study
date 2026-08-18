@@ -154,7 +154,7 @@ describe('DepartmentAgentService', () => {
 
     it('a regression harnessOverrides super-admin-only key is still rejected (400)', async () => {
       await expect(
-        service.create({ ...baseCreateDto, harnessOverrides: { maxRegen: 2, smrProvider: 'azure' } }),
+        service.create({ ...baseCreateDto, harnessOverrides: { maxRegen: 2, textProvider: 'azure' } }),
       ).rejects.toThrow(/super-admin-only/);
     });
   });

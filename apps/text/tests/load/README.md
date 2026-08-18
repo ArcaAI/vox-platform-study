@@ -91,10 +91,10 @@ Then open http://localhost:8089 and configure users/spawn rate.
 
 SMR exposes Prometheus metrics at `GET /metrics`. Correlate load test runs with:
 
-- `smr_rate_limit_rejections_total`
-- `smr_circuit_breaker_state`
-- `smr_concurrent_requests`
-- `smr_queue_size`
+- `text_rate_limit_rejections_total`
+- `text_circuit_breaker_state`
+- `text_concurrent_requests`
+- `text_queue_size`
 
 ## User Classes
 

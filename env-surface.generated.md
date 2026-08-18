@@ -11,13 +11,13 @@ disagree with those declarations.
 
 | Metric | Value |
 |---|---:|
-| Declared keys (distinct) | 148 |
-| … of which required (`failMode: closed`) | 32 |
-| … of which secret | 31 |
+| Declared keys (distinct) | 149 |
+| … of which required (`failMode: closed`) | 33 |
+| … of which secret | 32 |
 | … tier `env` | 112 |
 | … tier `global-kv` | 9 |
-| … tier `vault-kv` | 27 |
-| `turbo.json#globalEnv` entries | 164 |
+| … tier `vault-kv` | 28 |
+| `turbo.json#globalEnv` entries | 165 |
 
 ## Variables
 
@@ -59,6 +59,7 @@ disagree with those declarations.
 | `HARNESS_SERVICE_TOKEN` | `vault-kv` | yes | `CHANGE_ME` | `apps/api` | Shared secret on the gateway↔harness hop. Fetched on demand (not a warmup key) by `HarnessOpsClient` / `HarnessGatewayService` / `HarnessServiceTokenGuard`. It MUST equal the harness process’s own `HARNESS_SERVICE_TOKEN`, or every `/api/v1/internal/harness/*` call 401s. |
 | `HARNESS_URL` | `env` | no | `http://localhost:8866` | `apps/api` | Clinical Documentation Harness base URL (apps/harness, port 8866). |
 | `HARNESS_WARM_START_ENABLED` | `env` | no | `false` | `apps/harness` | Env FALLBACK for harness warm-start; `HarnessInternalService` treats the DB/policy value as the authority and consults this only when that is absent. Being a fallback for a policy value is itself an argument for moving it out of env. |
+| `INTERNAL_ACCESS_TOKEN` | `vault-kv` | yes | `CHANGE_ME` | `apps/api` | THE canonical internal service-to-service credential (owner decision D-D, 2026-08-17): **one** shared access token, identical across every service, set by the DevOps engineer, internal use only. It is presented and accepted as `X-Service-Token` on every internal hop — gateway↔text/nlp/guardrail/harness/tts and every peer-to-peer hop (harness→text/nlp/guardrail, text→guardrail, nlp→text). There is deliberately NO per-service and NO per-pair token in the target state: the `*_SERVICE_TOKEN` family below (`TEXT_`, `NLP_`, `GUARDRAIL_`, `HARNESS_`, `TTS_`, and harness’s outbound `HARNESS_TEXT_`/`HARNESS_NLP_`) is retained ONLY as a zero-cost backward-compatibility fallback — every inbound middleware accepts EITHER this token or its own legacy secret, and every outbound client PREFERS this token and falls back to its legacy per-target secret when unset. Set this one variable and the legacy family can all be dropped. This is the sanctioned env-var exception to D-B (configuration lives in the DB) — it is bootstrap-floor auth material, delivered from Vault in deployed environments. NOT the same thing as `HARNESS_INTERNAL_SERVICE_TOKEN`, which gates the harness knowledge-ingest endpoint only, nor `API_GATEWAY_KEY`, which must be a real ApiKey row (see below). |
 | `JWT_SECRET_KEY` | `vault-kv` | yes | `CHANGE_ME` | `apps/api` | HS256 signing secret for gateway-issued access tokens. Warmed at boot; `apps/api/src/main.ts` refuses to start when it is still a placeholder. Rotating it invalidates every outstanding access token immediately (they are short-lived, so the blast radius is one token TTL). |
 | `LIVE_DOC_GROUNDEDNESS_ENABLED` | `env` | no | `false` | `apps/api` | Gates the output-side groundedness check on the live-documentation path. Read once in the `LiveDocumentationService` constructor as `=== "true"`, so a change needs a restart — the clearest instant-fan-out candidate in this file. |
 | `LOG_FILE_DATE_PATTERN` | `env` | no | `yyyy-MM-dd` | `apps/api` | Date pattern in rotated log file names. |

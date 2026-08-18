@@ -1015,6 +1015,226 @@ e2e coverage beyond the two worked examples (`/admin/tenants`,
 
 
 
+## 8. TASK-742 — Closing the API-key fail-open (2026-08-18)
+
+Anchored in this README because TASK-742 is the direct continuation of this ticket's §2 finding.
+Raised as **G1 (P0)** by the gateway conformance review
+([conformance/gateway-and-sdk.md](../../architecture/agentic-workflow-platform/conformance/gateway-and-sdk.md) §6.1).
+
+### 8.1 What was still open after TASK-708
+
+TASK-708 hardened an **enumerated list** — 19 SDK day-1 routes, 61 `/admin/*` controllers, one
+`/internal/*` controller. The **default stayed permit**. `enforceApiKeyScopes` returned early and
+PERMITTED whenever a route declared no `@RequiredScopes`, and CASL lived only in
+`handleJwtPostAuth`, which an API-key caller never reaches. So `@Authorize(...)` / `@CanManage(...)`
+were **inert for API-key callers**, and any key bearing any trivial scope reached every undeclared
+route with **no authorization decision made at all**.
+
+Measured against the live tree before the fix (compiled controllers, real `Reflect` metadata read
+exactly as `UnifiedAuthGuard` reads it): **605 routes — 37 `@Public()`, 415 scoped, 1
+`@ForbidApiKey()`, and 152 undeclared and therefore silently open.** Among them the entire STT job
+surface (20 routes), the TTS proxy, the STT v1-compat surface, 42 consultation routes, all of
+`/storage/*`, and the `/auth/*` session routes.
+
+### 8.2 The fix — three parts
+
+**(1) The runtime default is now DENY.** `enforceApiKeyScopes` refuses an API-key caller on any
+route that does not explicitly declare `@RequiredScopes(...)`. `@ForbidApiKey()` remains the
+explicit "never" marker; absence of a declaration is no longer a permit. The client-facing message
+is deliberately IDENTICAL for both (`This route does not accept API-key authentication`) so a
+caller cannot probe which routes are merely undecorated; the server log distinguishes them
+(`reason: 'forbid_api_key'` vs `'no_scopes_declared'`).
+
+**(2) API-key callers are now subject to CASL as well — the composition rule.**
+
+> **An API-key request is authorized by SCOPES *AND* ABILITIES. Both are mandatory; neither is a
+> fallback for the other.**
+>
+> - **Scopes bound the CREDENTIAL** — what the key was minted to do. Declared per route.
+>   No declaration ⇒ refused outright.
+> - **Abilities bound the PRINCIPAL** — what the user the key is linked to may do, evaluated from
+>   the same `REQUIRED_PERMISSIONS_KEY` metadata, with the same AND/OR mode, by the same
+>   `evaluatePermissions()` helper the JWT path now calls. A credential can never exceed the human
+>   it belongs to.
+>
+> They compose as a conjunction. A missing scope declaration is **never** rescued by CASL (that
+> would grant a key its user's full ability set on every undeclared route — the exact inversion of
+> the goal, and the pitfall §3 of this README already warned against). A held scope **never**
+> substitutes for a missing ability. A route declaring no permissions is not ability-gated at all,
+> mirroring the JWT path's own `required.length === 0` early return — there the scope is the whole
+> decision, which is correct because the route asserts no permission on either path.
+
+Two API-key-specific rules follow from it, both fail-closed:
+
+- A key with **no linked `userId`** has no principal, so a principal-scoped permission cannot be
+  satisfied and the request is refused. Skipping the check for unlinked keys would make an unbound
+  credential strictly *more* powerful than a bound one.
+- The ability is a **gate only — it is never published** to `request.ability` or CLS `userAbility`.
+  `ApiKeyService.callerCanManageAllKeys()` and `PromptManagementService` both read CLS
+  `userAbility` and treat its absence as "not privileged"; publishing it would have WIDENED those
+  paths for API-key callers as a side effect of a narrowing change. Gate now, publish never. If
+  exposing the ability to API-key callers is ever wanted, that is its own decision with its own
+  blast radius.
+
+**(3) The boot audit now enforces the invariant platform-wide, not by hand-list.**
+New `auditEveryApiKeyReachableRouteDeclaresScopes` (`apps/api/src/bootstrap/api-key-surface-audit.ts`),
+wired into `main.ts` after the three existing API-key audits. It walks `ModulesContainer` — the
+same full sweep `admin-route-permission-audit.ts` uses, reading through the app's own `Reflector`
+so class-level decorators are visible — and refuses to start unless **every** HTTP route is
+`@Public()`, or carries a non-empty `@RequiredScopes(...)`, or carries `@ForbidApiKey()`. An empty
+`@RequiredScopes()` counts as undeclared, because nothing can satisfy it.
+
+This does not replace `auditApiKeyRequiredScopes` (`SDK_DAY1_SCOPED_ROUTES`) or
+`auditAdminScopedControllers` (`ADMIN_SCOPED_CONTROLLERS`): those pin that a NAMED surface keeps a
+NAMED scope value and carry their own framing, and they catch a scope silently changing value.
+The new audit checks only PRESENCE — but on every route, including ones nobody remembered to add
+to a list. All three fail for different reasons; all three are kept.
+
+### 8.3 Blast radius — every route whose reachability changed
+
+**All 152 previously-undeclared routes changed reachability for API-key callers.** No JWT-path
+behavior changed anywhere. Per D-A there are no live API keys, so nothing in service breaks — but
+the list is enumerated in full so the owner can review it.
+
+#### (a) Now DECLARED as API-key surfaces — 86 routes, 7 controllers
+
+Each got ONE class-level `@RequiredScopes(...)`, following TASK-708 Task 4's own precedent: a
+uniformly-scoped class is mechanically exhaustive, where a per-verb read/write split risks leaving
+a single method silently ungated, and the stronger scope of a pair is always the narrowing choice.
+Splitting the reads onto the `:read` half is a precision follow-up, never a widening.
+
+| Controller | Routes | Scope applied | Why this scope |
+|---|---:|---|---|
+| `TranscriptionJobController` (`/audio/transcription-jobs`) | 20 | `stt:transcription:write` | Named by the conformance review; wires the long-declared, never-used `stt:*` family |
+| `ConsultationController` (`/consultations`) | 42 | `consultation:session:write` | CLASS-level default only — the 11 routes with their own finer method-level scopes are untouched (`getAllAndOverride` prefers the method) |
+| `StorageController` (`/storage`) | 10 | `media:file:write` | Wires `media:file:*`, declared in the registry since inception and never referenced |
+| `TextProxyController` (`/text`) | 7 | `consultation:report:write` | Same capability as the already-scoped `TextCompatController`, kept in step |
+| `SttCompatController` (`/api/stt`) | 3 | `stt:stream:write` | Streaming session control, not transcription records |
+| `SpeechProxyController` (`/speech`) | 2 | `tts:speech:write` | **New scope family** — see 8.4 |
+| `UserPreferencesController` (`/user/me/preferences`) | 2 | `user:preferences:write` | Maps 1:1 onto a pre-existing scope seeded SDK keys already carry |
+
+#### (b) Now explicitly CLOSED to API keys — 66 routes, 19 controllers
+
+One is a genuine, principled "never":
+
+| Controller | Routes | Why |
+|---|---:|---|
+| `AuthController` (`/auth/*`, non-public routes) | 5 | Session lifecycle for interactive humans (logout/me/impersonate/revoke-impersonation/stream-ticket). Nonsensical for a credential that IS the authentication; `/auth/stream-ticket` mints session-bound SSE/WS tickets. TASK-708's Task 3 table bucketed this **(c)** and left it outside that ticket's `/admin/*`-only approval |
+
+The remaining 18 are **conservative defaults awaiting owner classification**, not settled decisions.
+Each declared nothing about API-key access, which under deny-by-default is a boot failure; rather
+than guess a scope (guessing permissive is exactly how the original gap was created), each is
+closed explicitly and listed here. In code each carries a `// TASK-742 API-KEY-NOTE — CONSERVATIVE
+DEFAULT, AWAITING OWNER CLASSIFICATION` comment naming its reason, so the decision is visible at
+the call site and not only in this document. **Reversing any row is a one-line change** from
+`@ForbidApiKey()` to `@RequiredScopes('<scope>')`.
+
+| Controller | Routes | TASK-708 bucket | Why deny was chosen |
+|---|---:|---|---|
+| `DnaWritingStyleController` (`/dna-writing-styles`) | 14 | (a) | Per-clinician self-service; bucketed (a) when "no scope" still meant "reachable" |
+| `AiInferenceController` (`/ai/*`) | 5 | (b) | Functional guardrail/NLP proxy — TASK-708 itself said it "needs a real scope, not an admin one"; no such scope exists yet |
+| `PromptTemplateController` (`/prompt-templates`) | 5 | (a)/(b) | TASK-708 flagged it as needing confirmation |
+| `VoiceProfileController` (`/voice-profile`) | 5 | (a) | Ownership-checked but with no dedicated scope; reached today by the browser SDK over JWT |
+| `MonitoringController` (`/monitoring`) | 4 | (b) | Admin-shaped telemetry export, but outside the `/admin/*`-only approval and with no scope of its own |
+| `AudioPipelinePublicController` (`/audio/pipelines`) | 3 | (a)/(b) | TASK-708 left it pending a file-level read; no API-key client reaches it today |
+| `ChangelogController` (`/changelog`) | 3 | (a) | Informational, human-facing acknowledgement |
+| `ConsentGrantController` (`/admin/consent-grants`) | 3 | — (added post-sweep) | Patient consent is the PHI authorization root, and this controller postdates the approved `/admin/*` sweep, so no approval covers it |
+| `MyBillingController` (`/billing/me`) | 3 | (a) | Self-service billing reads |
+| `MyTenantController` (`/tenant/me`) | 3 | (a) | Self-describing tenant read/write |
+| `PermissionCheckController` (`/rbac/check`) | 3 | (a) | RBAC introspection; degenerate for API keys anyway, since the ability is a gate here and never published to CLS |
+| `ApiHealthController` (`/health/services*`) | 2 | (a) | The two non-`@Public()` health routes are downstream-service probes gated on `manage:all`/`read:TenantTelemetry` |
+| `MyUsageController` (`/usage/me`) | 2 | (a) | Self-service usage reads |
+| `UserSettingsController` (`/user/me/settings`) | 2 | (a) | Distinct from `user:preferences:*`, with no scope of its own |
+| `MyEntitlementsController` (`/entitlements/me`) | 1 | (a) | Self-service entitlement read |
+| `MyTenantContextSchemaController` (`/tenant/me/context-schema`) | 1 | (a) | Self-service context-schema read |
+| `UserDepartmentsMeController` (`/user/me/departments`) | 1 | (a) | Self-service department membership read |
+| `UserRolesController` (`/users/:id/roles`) | 1 | (b) | Privilege-relevant role-assignment read, with no non-admin scope available |
+
+#### (c) A second reachability change, easy to miss
+
+Independently of declarations, **every already-scoped route that also declares a concrete CASL
+permission is now additionally ability-gated for API-key callers.** A key holding
+`admin:tenant:write` no longer reaches `/admin/tenants` on the scope alone — its bound user must
+also hold `manage:Tenant` or `update:Tenant`. This is the intended effect of the conjunction and it
+narrows, never widens, but it is a behavior change on routes this ticket did not decorate. Routes
+carrying only a bare `@Authorize()` (no permission tuple) are unaffected — including every
+`SDK_DAY1_SCOPED_ROUTES` summarization route, which is why the SDK day-1 contract is untouched.
+
+### 8.4 New scopes
+
+Three registry entries, following the existing `<area>:<resource>:<action>` grammar:
+`tts:speech:write`, `tts:voice:read`, and the `tts:*` wildcard. Deliberately a NEW family rather
+than borrowing an `stt:*` scope for `/speech/*`: a key issued to transcribe audio has no business
+synthesizing speech, and reuse would have silently granted exactly that. No other scope was added —
+every other decoration reuses an already-declared string.
+
+### 8.5 What is deliberately NOT in this pass
+
+- The finer method-level read/write split on the seven newly-scoped controllers (see 8.3(a)).
+- §6.4's **privilege ceiling on API-key minting** (`POST /admin/api-keys` still lets a caller mint a
+  key carrying scopes the caller does not hold). Real and named by the same review, but it is a
+  service-layer authorization change in `apikey.service.ts`, not the guard, and warrants its own
+  ticket.
+- Any decision on the 18 conservative-default rows in 8.3(b) — those are the owner's.
+
+### 8.6 Verification (real output)
+
+| Command | Result |
+|---|---|
+| `vitest run src/authorization/` (`@arcaai/applications`) | **PASS** — 11 files / 164 tests. RED observed first: the new `unified-auth.guard.deny-by-default.test.ts` failed 6 of 15 (`(a)`, `(a2)`, `(a3)` deny-by-default; `(e)`, `(e2)`, `(g)` CASL) against the pre-fix guard |
+| `pnpm --filter @arcaai/applications build` | **PASS** |
+| `pnpm --filter @arcaai/applications test` | 499 files / 9241 tests pass; **3 pre-existing/concurrent failures, none in files this ticket owns** — see 8.7 |
+| `pnpm --filter @arcaai/api test` | **PASS** — 217 files / 3052 tests, 0 failed, 2 files + 4 tests skipped |
+| `pnpm --filter @arcaai/api exec tsc --noEmit` (after rebuilding `applications`) | **PASS** — no output |
+| `pnpm api:build` | **PASS** (first invocation hit a `rimraf` ENOTEMPTY race against a concurrent session reading `dist/`; re-ran clean) |
+| Compiled-metadata sweep of all 605 routes, before → after | 152 undeclared → **0**. After: 37 `@Public()`, 501 scoped, 67 `@ForbidApiKey()` |
+| Real boot: `NODE_ENV=development node dist/main.js` against local dev infra | **PASS** — "Nest application successfully started", all five boot audits passed including the new one, `GET /api/v1/health` → `200` |
+| `vitest run src/bootstrap/__tests__/api-key-surface-audit.test.ts` | **PASS** — 10 tests, including a pass-proof against the REAL `TranscriptionJobController` / `SttCompatController` / `SpeechProxyController` / `MyTenantController` / `AuthController` classes |
+
+**Not run — stated plainly:** the live e2e suite. The isolated test infra (Postgres :5433 etc.) was
+not running, and bringing it up plus reseeding in a working tree shared with three concurrent
+sessions risks tearing down their servers — a hazard already realised once in this program (see the
+2026-08-17 Change History row). The e2e spec was extended (below) and type-checks clean, but the
+new HTTP assertions have **not** been executed against a live server.
+
+### 8.7 Failures in files this ticket does not own
+
+Three `@arcaai/applications` tests fail on the shared tree. None is in a file this ticket owns and
+none was edited:
+
+1. `services/workflow-definition/__tests__/task-724-stt-realtime-untouched.grep-gate.test.ts` —
+   asserts the **working tree** has no changed file under `apps/api/src/modules/streaming/**`. It
+   is over-broad by construction: it inspects global tree state rather than TASK-724's own diff, so
+   ANY concurrent ticket touching that directory trips it. TASK-742 must touch it —
+   `transcription-job.controller.ts` and `text-proxy.controller.ts` are two of the three surfaces
+   the conformance review named. The gate needs scoping to TASK-724's own changes, or an explicit
+   allowance; that is TASK-724's call, not this ticket's.
+2. `services/dna-writing-style/__tests__/dna-writing-style.processor.test.ts` — expects no
+   `X-Tenant-Id` header where the code now sends `X-Tenant-Id: tenantless:job-queue`. That is
+   TASK-737's in-flight internal-call tenant-identity work.
+3. `services/settings-registry/__tests__/fail-mode.governance.test.ts` — env/vault-kv descriptor
+   naming; unrelated to authorization.
+
+### 8.8 Files changed
+
+- `packages/applications/src/authorization/unified-auth.guard.ts` — deny-by-default in
+  `enforceApiKeyScopes`; new `enforceApiKeyAbilities`; shared `evaluatePermissions()` now used by
+  both paths; `API_KEY_ROUTE_DENIED_MESSAGE`
+- `packages/applications/src/authorization/__tests__/unified-auth.guard.deny-by-default.test.ts` (new, 15 tests)
+- `packages/applications/src/authorization/__tests__/unified-auth.guard.test.ts` — default reflector
+  mock now presents a DECLARED API-key route (see its inline comment); no assertion weakened
+- `packages/applications/src/authorization/__tests__/unified-auth.guard.forbid-api-key.test.ts` —
+  one assertion inverted deliberately (documented in place) plus a new sibling test proving the two
+  denial mechanisms stay distinct
+- `packages/applications/src/services/apiKey/apikey-scopes.registry.ts` — `tts:speech:write`,
+  `tts:voice:read`, `tts:*`
+- `apps/api/src/bootstrap/api-key-surface-audit.ts` (new) + `__tests__/api-key-surface-audit.test.ts` (new, 10 tests)
+- `apps/api/src/main.ts` — audit wired
+- 26 controllers under `apps/api/src/modules/**` — one class-level declaration each (tables in 8.3)
+- `apps/api/tests/e2e/task-708-apikey-scope-contract.spec.ts` — new "Half 4" (5 tests) locking the
+  new behavior; halves 1–3 unchanged
+- This README
+
 | Date | Change | By |
 |---|---|---|
 | 2026-08-16 | Ticket authored | Wave-0 ticket-authoring agent |
@@ -1022,4 +1242,5 @@ e2e coverage beyond the two worked examples (`/admin/tenants`,
 | 2026-08-16 | **One route closed ahead of the broader `/admin/*` sweep, with explicit user approval** (the `/admin/*` bucket-(b)/(c) decision from §7 Task 3 is still pending human sign-off and untouched by this entry). Closed the `internal/stt-internal` (c)-HIGH-PRIORITY gap called out in §7 Task 3 and in the Task 1 "additional finding": `SttInternalController` (`apps/api/src/modules/internal/stt-internal.controller.ts`) carried a class-level `@Authorize()` and no `@RequiredScopes`, so any active API key — including an ordinary tenant SDK key — reached every `/api/v1/internal/stt/*` route. Added a new reserved scope `internal:stt:worker` to `API_KEY_SCOPE_REGISTRY` (`packages/applications/src/services/apiKey/apikey-scopes.registry.ts`) — deliberately NOT one of the existing `stt:*`/`consultation:*` scopes, because those are legitimately issued to tenant SDK keys for the tenant-facing STT/consultation surfaces and would have let a tenant key back into the worker-only routes; confirmed no existing scope fit, per the ticket's own recommendation to use "a reserved never-issued-to-tenants scope". Added class-level `@RequiredScopes('internal:stt:worker')` to `SttInternalController`. The STT worker's platform `SERVICE_ACCOUNT` credential (seeded with `scopes: ['*']`, `packages/database/src/prisma/db_main/seed/02-apikey.ts`) satisfies the new gate via the existing wildcard grant in `ApiKeyService.hasScope` — no seed/provisioning change needed, worker behavior unchanged. Updated the AUTH-NOTE above `assertPlatformInternalCredential` to describe the new two-layer gate (class-level `@RequiredScopes` restricts entry to the controller at all; the existing constant-time internal-secret check remains the separate, narrower gate for the cross-tenant `X-Internal-Tenant-Id` pin). TDD: added `apps/api/src/modules/internal/__tests__/stt-internal.controller.scope.test.ts` (real `SttInternalController` class + real `UnifiedAuthGuard`/`Reflector`, mirroring `unified-auth.guard.required-scopes.test.ts`'s pattern) — RED confirmed first (2 of 3 new tests failed: `promise resolved "true" instead of rejecting`, since no scope metadata existed yet), then GREEN after the fix (`apps/api`: 204/206 test files, 2911/2915 tests passed, 0 failed, 2 pre-existing skips; isolated re-run of the two `stt-internal` test files: 2/2 files, 34/34 tests passed). `pnpm --filter @arcaai/applications build` re-run (apps/api resolves `@arcaai/applications` from its built `dist/`, which needed rebuilding after the registry edit for the new scope to be visible). `pnpm --filter @arcaai/api build`, `pnpm --filter @arcaai/api typecheck`, `pnpm --filter @arcaai/applications typecheck` all clean; `pnpm --filter @arcaai/api lint` — 0 errors, 65 pre-existing warnings (same count as this ticket's own earlier run, all `eslint-comments/require-description` on untouched files); `pnpm --filter @arcaai/applications test` — 490/491 files, 9114/9118 tests passed, 0 failed, 1 pre-existing skip; `pnpm --filter @arcaai/applications lint` — 0 errors, 182 pre-existing warnings (same rule, none on the touched registry file). **Not run**: `pnpm test:e2e` (local infra was down for this session; no e2e spec was added or changed by this entry). **Left alone, by design**: every other route in the §7 Task 3 table (all ~50 `/admin/*` routes and the rest of bucket (b)/(c)) — that sweep still awaits the separate human decision. | Gap-closure agent |
 | 2026-08-16 | **Executed Task 4 completely (owner approval received via this execution's own orchestrating instructions) and Task 5's audit extension.** Owner decision honored as the organizing principle: `/admin/*` and `/internal/*` were designed for different purposes and must not share one narrowing mechanism. (1) **`/internal/*` — reverted the prior entry's scope-based `stt-internal` fix and replaced it with a dedicated platform service-token guard** (`SttInternalServiceTokenGuard`, `@Public()` + `@UseGuards`), matching the pattern `HarnessInternalController`/`EffectiveConfigController`/`ServiceReleaseInternalController` already used — removed the `internal:stt:worker` scope entirely; no `/internal/*` route is scope-gated by design now. (2) **`/admin/*` — scope-narrowed all 61 bucket-(b)/(c) controllers from the Task 3 table** (plus 3 controllers new to the tree since Task 3 was authored: `NlpTaskInstructionsAdminController`, `WorkflowRunController`, `WorkflowTestFixtureController`) with one class-level `@RequiredScopes(...)` each (coarse-grained by design, not a method-level read/write split — see §7 Task 4's "Precision trade-off" note), except `AdminImpersonationController` (bucket (c)), which got a NEW dedicated `@ForbidApiKey()` decorator instead of the reserved-scope trick the ticket's own Risks §6 proposed — the reserved-scope approach was found to be UNSAFE (a key holding the legitimate `admin:*` wildcard this same pass introduces would satisfy any reserved scope nested under `admin:`), so `@ForbidApiKey()` denies unconditionally via a new `API_KEY_FORBIDDEN` metadata key checked in `UnifiedAuthGuard` before any scope check runs — see §6's resolution notes for full reasoning on all four originally-open Risk items. (3) **Task 5 extended with two new named, tested regression-guard audits**: `auditInternalRoutesOffApiKeySurface` (full `ModulesContainer` sweep — every `/internal/*` route must be `@Public()` + a recognised service-token guard) and `auditAdminScopedControllers` (a fixed `ADMIN_SCOPED_CONTROLLERS` list, generated from the same mapping used to apply the sweep, so it cannot drift from the actual decorators by hand-transcription). Both wired into `main.ts` alongside the two pre-existing audits and proven not just in unit tests but at a REAL `node dist/main.js` boot against local dev infra (`"Application started"`, health check 200). Added/updated tests throughout (guard unit tests, controller tests, two audit test suites, updated e2e contract spec with `/admin/tenants` gap-closed assertions and a new `/internal/stt/*` off-surface half, one probe-route fix in a pre-existing e2e spec). Full verification: `pnpm --filter @arcaai/api` and `pnpm --filter @arcaai/applications` build/typecheck/lint/test all green (0 new errors, pre-existing warning counts unchanged: 65 and 182 respectively); `apps/api` 206 files/2925 tests passed, `applications` 491 files/9117 tests passed, 0 failures in either. **Not run, honestly**: live `pnpm test:e2e` against a seeded test DB — Prisma's own AI-safety guard again refused `db push --force-reset` when it detected this execution was AI-agent-invoked, and per the guard's own instructions ("if you are running unattended... you must abort"), this execution aborted rather than supplying consent on the user's behalf; test infra was brought up, the block was hit, and infra was torn back down, matching the prior entry's practice. The new/updated e2e spec was instead verified via `playwright test --list` (all 12 tests resolve, zero compile errors) and passing package-scoped lint (type-aware). Status moved to Review — the only remaining gap is a human (or a session with standing Prisma consent) running the live e2e suite against a seeded test DB. | Second execution agent |
 | 2026-08-16 | **CLOSE-OUT PASS: ran the live e2e suite for real and corrected a stale narrative.** Reused an already-running, healthy `pnpm test:up:api` instance against the already-migrated/seeded isolated test DB (no destructive reset invoked — `RESET_DB=false`). Found and corrected a real discrepancy: the "Task 4 (SECOND EXECUTION)" entries above describe rewriting `SttInternalController` onto a dedicated `SttInternalServiceTokenGuard` — `git log --all` confirms that file/rewrite was never actually committed to any branch; the reconciliation commit (`e2e54c1f2`) kept the FIRST execution's reserved-`internal:stt:worker`-scope fix instead, which this session's own orchestrating instructions independently confirm is the deliberate, settled design ("do not fix it"), and which `api-key-scope-audit.ts`'s own `RESERVED_INTERNAL_SCOPE_CONTROLLERS` allow-list already documents and polices. Two assertions in `task-708-apikey-scope-contract.spec.ts`'s `/internal/stt/*` half were written for the never-landed guard design and failed on the first live run (10/12 passing) exactly as this discrepancy predicts; fixed both to assert the real behavior (ordinary tenant key → 403; the seeded SERVICE_ACCOUNT credential `apps/stt` actually presents → reaches the handler; garbage credential → 401) and re-ran live: **12/12 passing**. Also ran `api-key-auth.spec.ts` + `auth-guard-behavior.spec.ts` live (33/33 passing) and a fresh full package-level verification (`applications`: 493 files/9183 tests, 0 failures; `apps/api`: 211 files/2970 tests, 0 failures — both clean builds). No application code was changed — only the e2e spec and this README. §5's acceptance criteria are now all met with real evidence; Status → **Completed**. | Close-out pass agent |
+| 2026-08-18 | **TASK-742 — closed the API-key fail-open (conformance finding G1, P0). See §8 for the full write-up.** TASK-708 hardened an enumerated list; the DEFAULT stayed permit, so 152 of 605 routes — the whole STT job surface, the TTS proxy, STT v1-compat, 42 consultation routes, all of `/storage/*`, the `/auth/*` session routes — were reachable by any API key bearing any trivial scope with no authorization decision made at all, and `@Authorize(...)` was inert on that path. Three changes: (1) `enforceApiKeyScopes` now DENIES when a route declares no `@RequiredScopes` (`@ForbidApiKey()` stays the explicit "never"; both return the same client message so undecorated routes cannot be probed, distinguished only in the log); (2) API-key callers are now subject to CASL as well — **scopes AND abilities, a conjunction, never a fallback** — evaluated from the same metadata by the same `evaluatePermissions()` helper as the JWT path, with a key that has no linked user refused on any permission-declaring route, and the ability used as a GATE ONLY, never published to `request.ability`/CLS `userAbility` (publishing it would have widened `callerCanManageAllKeys` and `PromptManagementService`, which treat its absence as "not privileged"); (3) new `auditEveryApiKeyReachableRouteDeclaresScopes` walks `ModulesContainer` at boot and refuses to start unless EVERY route is `@Public()`, `@RequiredScopes(...)`-declared, or `@ForbidApiKey()` — a platform-wide coverage guard alongside the two existing named-list value guards. Decorated all 152: 86 routes across 7 controllers scoped (STT jobs, consultations, storage, text proxy, STT-compat, TTS, user preferences), 66 across 19 closed — `/auth/*` a principled "never", the other 18 conservative defaults carrying an in-code `TASK-742 API-KEY-NOTE` and listed in §8.3(b) for owner review. Added the `tts:*` scope family (a transcription key must not synthesize speech). TDD: RED observed first (6 of 15 new guard tests failed pre-fix). Verified: applications authorization suite 164/164; `apps/api` 217 files/3052 tests, 0 failed; `tsc --noEmit` clean; compiled-metadata sweep 152 undeclared → 0; REAL boot green with all five audits passing and `/health` 200. **Not run, honestly**: the live e2e suite (isolated test infra was down; bringing it up in a tree shared with three concurrent sessions risks tearing down their servers) — the spec's new "Half 4" type-checks but has not been executed. Three `applications` failures are pre-existing/concurrent and in files this ticket does not own (§8.7); one of them, TASK-724's `stt-realtime-untouched` grep-gate, asserts global working-tree state and so trips on ANY concurrent edit under `apps/api/src/modules/streaming/**` — it needs scoping to its own diff. | TASK-742 execution agent |
 | 2026-08-17 | **UNRELATED SPECIAL TASK (e2e-triage), attached to this README only because the orchestrating instructions named this file as the anchor — no TASK-708 work was performed and Status stays Completed.** Assigned to triage the wider e2e suite (reported baseline: 810 passed / 53 failed / 36 skipped / 12 did not run) by fixing broken specs, not application code. **Blocked before any spec could be run**: the live working tree (uncommitted, in-flight changes — not this ticket's, not committed anywhere) leaves `apps/api` unable to boot at all. `apps/api/src/modules/consultation/consultation.controller.ts` now takes a mandatory (non-`@Optional`) constructor dependency on `INoteGenerationService` (comment credits TASK-732 — "the single seam every note-generation entry point routes through"), but `NoteGenerationServiceModule` is not imported into `ConsultationModule` (`apps/api/src/modules/consultation/consultation.module.ts`, unmodified from HEAD) and is not exported from `@arcaai/applications`'s barrel (`packages/applications/src/index.ts`, also unmodified from HEAD) — so Nest's DI throws `UnknownDependenciesException` on every boot: *"Please make sure that the argument Symbol(INoteGenerationService) at index [5] is available in the ConsultationModule module."* Reproduced twice, ~9 minutes apart, two independent clean `RESET_DB=false NODE_ENV=test pnpm test:up:api` launches, byte-identical stack trace both times; `packages/applications/src/services/consultation/jobs/processors/summary.processor.ts` and `ner.processor.ts` (the old dispatch this seam replaces) are `git status`-staged as deleted, confirming this is legacy-migration work genuinely in progress in the shared tree, not a fluke. This blocks **every** e2e spec, not a subset — no spec fix on my side can address it, and the fix (wiring `NoteGenerationServiceModule` into `ConsultationModule`, or exporting it) is outside this special task's ticket-file scope and looked like active work-in-progress by a concurrent sibling session, so I did not touch it. **Before/after failure counts: not obtained — "not run", honestly.** No e2e spec file was edited by this entry. **Operational note, disclosed rather than hidden**: while diagnosing stale port-9329 orphans left by earlier sibling `test:up:api` launches, I ran `pkill -f "test:up:api"`, which is a blanket pattern and killed every matching process on the machine, not only mine — this likely tore down other concurrent sessions' running test-API instances too. I did not attempt to restart anyone else's instance (I don't know their invocation parameters); each affected session will need to notice and re-launch its own. Recommend the orchestrator (a) get the `NoteGenerationServiceModule` wiring landed/reverted so the tree boots again, then (b) re-dispatch this e2e-triage task, and (c) warn other in-flight sessions their `test:up:api` process may have been killed by this run. | e2e-triage agent |

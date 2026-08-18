@@ -1,8 +1,24 @@
-# TASK-714 — Legacy Generator Safety Floor (Deliberately Capped, Deleted by TASK-732)
+# TASK-714 — Legacy Generator Safety Floor (Deliberately Capped, DELETED by TASK-732)
+
+> **⚠ READ THIS FIRST — the mechanism described below is NO LONGER LIVE.**
+> TASK-732 deleted `summary.processor.ts` (and with it `applyLegacySafetyFloor()`,
+> `legacy-dosage-check.util.ts` and their tests) on schedule, together with the legacy
+> signable generator the floor existed to cap. **That deletion is this ticket completing,
+> not this ticket regressing** — §1 and §7 both stated up front that every line was
+> throwaway, sized to the exposure window, and owned by TASK-732's diff.
+> The rest of this document is written in the present tense as it was during
+> implementation; read it as a historical record. What is live TODAY:
+> `SummaryService.approveSummary`'s `signedBeforeAssurance` guard reads `SummaryMeta`
+> rows written by the **harness** path only (`harness-internal.service.ts::persistDraft`),
+> because the legacy path that used to write them no longer exists.
+> Permanence is enforced by
+> `packages/applications/src/services/consultation/__tests__/legacy-generator-absent.grep-gate.test.ts`
+> assertion #5, which fails if `legacy-dosage-check` / `checkDosageParity` /
+> `applyLegacySafetyFloor` ever reappear in live code.
 
 | | |
 |---|---|
-| **Status** | Review |
+| **Status** | Completed (superseded) — the floor shipped as designed, served its exposure window, and was DELETED by TASK-732 exactly as D1 planned. Nothing in this ticket is live code today; it is kept as the record of why the floor existed and why its removal is a completion rather than a regression. |
 | **Wave** | 1 · **Size** | S |
 | **Epic slug** | `legacy-safety-floor` |
 | **Depends on** | TASK-704 (`generator-entry-point-seam`) |
@@ -107,6 +123,11 @@ At :959, `signedBeforeAssurance` only appends a `SIGNED_BEFORE_ASSURANCE` WORM a
 
 ## 5. Acceptance Criteria
 
+*(All were met at implementation time and verified with the output in §7. They are written in
+the present tense as of that date; every one of them describes code TASK-732 has since deleted —
+see the banner at the top of this file. Do not read a checked box here as a statement about the
+tree today.)*
+
 - [x] `pnpm --filter @arcaai/applications test` green, including the new floor tests — 483 files / 9040 tests passed, 4 skipped
 - [x] `pnpm --filter @arcaai/applications build` green — clean, no output
 - [x] A legacy-generated note now produces a `SummaryMeta` row with `assuranceCompletedAt` set — `signedBeforeAssurance` is no longer vacuously false — unit-tested
@@ -128,7 +149,7 @@ At :959, `signedBeforeAssurance` only appends a `SIGNED_BEFORE_ASSURANCE` WORM a
 
 ## 7. Implementation Summary
 
-**⚠ This code is throwaway, deleted by TASK-732 (`legacy-migration-deletion`) in the same epic that retires the legacy generator (D1, `design.md`).** Do not treat it as a permanent feature or extend it beyond what's below — see §6 "the classic risk" note, restated here for whoever reads this after the fact.
+**⚠ This code WAS throwaway and HAS BEEN deleted by TASK-732 (`legacy-migration-deletion`), in the same epic that retired the legacy generator (D1, `design.md`) — exactly as planned.** Everything described in this section existed between its implementation date and TASK-732's deletion; none of it is in the tree today. The §6 "the classic risk" note (that a temporary floor becomes the permanent product) did NOT materialise: the floor was removed on schedule. The description below is preserved verbatim as the record of what the floor did while it was live.
 
 **Task 1 (insertion point).** TASK-704 had already landed by execution time (commit `fc463b6f9` and the wave-0 commit precede this ticket). `NoteGenerationService.generate()` (`packages/applications/src/services/consultation/note-generation/note-generation.service.ts`) is a pure **decision** seam — on `{generator: 'legacy'}` it returns without side effects and `SummaryProcessor.process()` falls through to run its own body starting at line ~126 (post-seam-check). That fall-through body — after the `ContextItem` (RAW_SUMMARY) is created — is exactly the "legacy branch" this ticket targets, confirming §2's Task-1 fallback prediction was unnecessary: the seam and the insertion point are the same code today.
 
@@ -207,4 +228,5 @@ All 183 warnings are pre-existing, in files this ticket never touched (`eslint-c
 | Date | Change | By |
 |---|---|---|
 | 2026-08-16 | Ticket authored | Claude (ticket-authoring session) |
+| 2026-08-17 | **Closed out as superseded.** Recorded that TASK-732 DELETED this floor BY DESIGN — `summary.processor.ts` (with `applyLegacySafetyFloor()`), `legacy-dosage-check.util.ts` and both test files are gone from the tree, along with the legacy signable generator they capped. That is D1 phase 3 completing, not a regression: §1/§7 always designated this code throwaway and named TASK-732 as its owner. Verified on the live tree: `packages/applications/src/services/consultation/jobs/processors/` contains neither `summary.processor.ts` nor `legacy-dosage-check.util.ts`, and `legacy-generator-absent.grep-gate.test.ts` assertion #5 now fails the build if `legacy-dosage-check` / `checkDosageParity` / `applyLegacySafetyFloor` reappear in live code. Added a top-of-file banner and re-tensed the §5/§7 wording that read as though the mechanism were still live (it is not — `signedBeforeAssurance` is now fed only by the harness path's `SummaryMeta` write). Status: Review → Completed (superseded). No code changed by this entry. | Claude (TASK-710/714 session) |
 | 2026-08-16 | Implemented: SummaryMeta write + status flip + dosage-parity check (native TS, `legacy-dosage-check.util.ts`) + groundedness advisory (reused `GuardrailGroundednessTool`) + WORM `GENERATE` event, all inside `SummaryProcessor.applyLegacySafetyFloor()`. TDD RED confirmed for both the dosage util and the processor floor before implementation; full `@arcaai/applications` suite green after (483 files / 9040 tests). Build, typecheck, lint all clean with zero new warnings. DB transaction wrapping deliberately deferred — see §7 "Deliberately NOT done". Status → Review. | Claude (T2 execution session) |

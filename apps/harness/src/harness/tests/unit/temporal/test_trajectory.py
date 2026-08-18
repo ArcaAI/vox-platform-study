@@ -35,7 +35,7 @@ from harness.services.api_client import (
     TrajectoryReportResponse,
 )
 from harness.services.sensor_runner import SensorRunOutput
-from harness.services.smr_client import SmrGenerationResult
+from harness.services.text_client import TextGenerationResult
 from harness.temporal import activities
 from harness.temporal.models import (
     FetchPolicyInput,
@@ -173,16 +173,16 @@ class TestActivityEmission:
         }
 
         class _StatsSmr:
-            async def generate(self, **kwargs: Any) -> SmrGenerationResult:
-                return SmrGenerationResult(
+            async def generate(self, **kwargs: Any) -> TextGenerationResult:
+                return TextGenerationResult(
                     content="DRAFT", model="m", finish_reason="stop", stats=stats
                 )
 
         cap = _CapTraj()
-        monkeypatch.setattr(activities, "_smr_client", lambda s: _StatsSmr())
+        monkeypatch.setattr(activities, "_text_client", lambda s: _StatsSmr())
         monkeypatch.setattr(activities, "_trajectory_api_client", lambda s: cap)
 
-        await env.run(activities.generate, GenerateInput(prompt="P", trajectory=_traj_ctx(seq=32)))
+        await env.run(activities.generate, GenerateInput(tenant_id="11111111-1111-1111-1111-111111111111", prompt="P", trajectory=_traj_ctx(seq=32)))
 
         assert _pairs(cap.steps) == [("LLM_CALL", "generate")]
         step = cap.steps[0]
@@ -196,13 +196,13 @@ class TestActivityEmission:
     async def test_generate_backfills_provider_model_when_stats_omits_them(self, env, monkeypatch):
         """The gateway's usage-ledger emission hook needs
         `provider`/`model` on every LLM_CALL step to attribute cost. A legacy /
-        cache-hit SMR response with no `stats` block still carries `provider`/
-        `model` on `SmrGenerationResult` itself — backfill from there so the
+        cache-hit Text response with no `stats` block still carries `provider`/
+        `model` on `TextGenerationResult` itself — backfill from there so the
         step is never missing the two fields the ledger emitter requires."""
 
         class _NoStatsSmr:
-            async def generate(self, **kwargs: Any) -> SmrGenerationResult:
-                return SmrGenerationResult(
+            async def generate(self, **kwargs: Any) -> TextGenerationResult:
+                return TextGenerationResult(
                     content="DRAFT",
                     model="claude-sonnet-5",
                     provider="anthropic",
@@ -211,10 +211,10 @@ class TestActivityEmission:
                 )
 
         cap = _CapTraj()
-        monkeypatch.setattr(activities, "_smr_client", lambda s: _NoStatsSmr())
+        monkeypatch.setattr(activities, "_text_client", lambda s: _NoStatsSmr())
         monkeypatch.setattr(activities, "_trajectory_api_client", lambda s: cap)
 
-        await env.run(activities.generate, GenerateInput(prompt="P", trajectory=_traj_ctx(seq=10)))
+        await env.run(activities.generate, GenerateInput(tenant_id="11111111-1111-1111-1111-111111111111", prompt="P", trajectory=_traj_ctx(seq=10)))
 
         step = cap.steps[0]
         assert step.stats["provider"] == "anthropic"
@@ -223,14 +223,14 @@ class TestActivityEmission:
     @pytest.mark.asyncio
     async def test_generate_never_overwrites_stats_provider_and_model(self, env, monkeypatch):
         """A `stats` block that already reports `provider`/`model` wins — the
-        backfill only fills a gap, it never second-guesses what SMR actually
+        backfill only fills a gap, it never second-guesses what Text actually
         reported (which may legitimately differ from the requested provider/
         model, e.g. a fallback)."""
         stats = {"stop_reason": "stop", "provider": "lm-studio", "model": "reported-model"}
 
         class _StatsSmr:
-            async def generate(self, **kwargs: Any) -> SmrGenerationResult:
-                return SmrGenerationResult(
+            async def generate(self, **kwargs: Any) -> TextGenerationResult:
+                return TextGenerationResult(
                     content="DRAFT",
                     model="top-level-model",
                     provider="top-level-provider",
@@ -238,10 +238,10 @@ class TestActivityEmission:
                 )
 
         cap = _CapTraj()
-        monkeypatch.setattr(activities, "_smr_client", lambda s: _StatsSmr())
+        monkeypatch.setattr(activities, "_text_client", lambda s: _StatsSmr())
         monkeypatch.setattr(activities, "_trajectory_api_client", lambda s: cap)
 
-        await env.run(activities.generate, GenerateInput(prompt="P", trajectory=_traj_ctx(seq=11)))
+        await env.run(activities.generate, GenerateInput(tenant_id="11111111-1111-1111-1111-111111111111", prompt="P", trajectory=_traj_ctx(seq=11)))
 
         step = cap.steps[0]
         assert step.stats["provider"] == "lm-studio"
@@ -258,14 +258,14 @@ class TestActivityEmission:
         }
 
         class _ReasoningSmr:
-            async def generate(self, **kwargs: Any) -> SmrGenerationResult:
-                return SmrGenerationResult(content="DRAFT", model="m", stats=stats)
+            async def generate(self, **kwargs: Any) -> TextGenerationResult:
+                return TextGenerationResult(content="DRAFT", model="m", stats=stats)
 
         cap = _CapTraj()
-        monkeypatch.setattr(activities, "_smr_client", lambda s: _ReasoningSmr())
+        monkeypatch.setattr(activities, "_text_client", lambda s: _ReasoningSmr())
         monkeypatch.setattr(activities, "_trajectory_api_client", lambda s: cap)
 
-        await env.run(activities.generate, GenerateInput(prompt="P", trajectory=_traj_ctx(seq=64)))
+        await env.run(activities.generate, GenerateInput(tenant_id="11111111-1111-1111-1111-111111111111", prompt="P", trajectory=_traj_ctx(seq=64)))
 
         assert _pairs(cap.steps) == [("LLM_CALL", "generate"), ("THINKING", "reasoning")]
         llm, thinking = cap.steps
@@ -278,17 +278,17 @@ class TestActivityEmission:
     @pytest.mark.asyncio
     async def test_generate_regen_increments_regen_metric(self, env, monkeypatch):
         class _Smr:
-            async def generate(self, **kwargs: Any) -> SmrGenerationResult:
-                return SmrGenerationResult(content="DRAFT", model="m")
+            async def generate(self, **kwargs: Any) -> TextGenerationResult:
+                return TextGenerationResult(content="DRAFT", model="m")
 
         cap = _CapTraj()
-        monkeypatch.setattr(activities, "_smr_client", lambda s: _Smr())
+        monkeypatch.setattr(activities, "_text_client", lambda s: _Smr())
         monkeypatch.setattr(activities, "_trajectory_api_client", lambda s: cap)
 
         before = REGISTRY.get_sample_value("harness_regen_total") or 0.0
         # is_regen=True ⇒ this generation is a bounded-regen iteration.
         await env.run(
-            activities.generate, GenerateInput(prompt="P", trajectory=_traj_ctx(is_regen=True))
+            activities.generate, GenerateInput(tenant_id="11111111-1111-1111-1111-111111111111", prompt="P", trajectory=_traj_ctx(is_regen=True))
         )
         after = REGISTRY.get_sample_value("harness_regen_total") or 0.0
         assert after - before == pytest.approx(1.0)
@@ -370,16 +370,16 @@ class TestActivityEmission:
 
 
 class _FakeNlp:
-    async def classify_tokens(self, text: str, *, language: str = "en") -> list[NEREntity]:
+    async def classify_tokens(self, text: str, *, tenant_id: str = "", language: str = "en") -> list[NEREntity]:
         return [NEREntity(text="hypertension", type="DISEASE", start=0, end=12)]
 
 
-class _FakeSmr:
+class _FakeText:
     def __init__(self, stats: dict[str, Any] | None) -> None:
         self._stats = stats
 
-    async def generate(self, **kwargs: Any) -> SmrGenerationResult:
-        return SmrGenerationResult(
+    async def generate(self, **kwargs: Any) -> TextGenerationResult:
+        return TextGenerationResult(
             content=_OK_NOTE, model="gpt-4o", provider="azure-openai", stats=self._stats
         )
 
@@ -388,7 +388,7 @@ class _FakeApi:
     async def get_policy(
         self, tenant_id: str, consultation_id: str | None = None
     ) -> dict[str, Any]:
-        # code-default policy (safety on, phi on, no custom SMR model) but
+        # code-default policy (safety on, phi on, no custom Text model) but
         # WITH the SYSTEM harness.judge selection, so the real inferential pass builds
         # the (stubbed) judge instead of failing closed on a missing selection.
         # Accepts the consultation_id the workflow now threads through.
@@ -434,7 +434,7 @@ def _pass_sensor_output(**kwargs: Any) -> SensorRunOutput:
     )
 
 
-def _patch_real_activity_clients(monkeypatch, cap, *, smr_stats=None, traj=None) -> None:
+def _patch_real_activity_clients(monkeypatch, cap, *, text_stats=None, traj=None) -> None:
     """Stub every tool client the real activities reach, hermetically."""
     monkeypatch.setattr(
         activities,
@@ -443,7 +443,7 @@ def _patch_real_activity_clients(monkeypatch, cap, *, smr_stats=None, traj=None)
     )
     monkeypatch.setattr(activities, "_api_client", lambda s: _FakeApi())
     monkeypatch.setattr(activities, "_nlp_client", lambda s: _FakeNlp())
-    monkeypatch.setattr(activities, "_smr_client", lambda s: _FakeSmr(smr_stats))
+    monkeypatch.setattr(activities, "_text_client", lambda s: _FakeText(text_stats))
     monkeypatch.setattr(activities, "_progress_api_client", lambda s: _FakeProgressApi())
     monkeypatch.setattr(activities, "_build_runtime_judge", lambda *a, **k: _StubJudge())
     monkeypatch.setattr(
@@ -473,13 +473,13 @@ class TestWorkflowOrderedSpine:
     @pytest.mark.asyncio
     async def test_happy_path_emits_exact_ordered_step_sequence(self, monkeypatch):
         cap = _CapTraj()
-        smr_stats = {
+        text_stats = {
             "stop_reason": "stop",
             "total_ms": 900,
             "provider": "azure-openai",
             "model": "gpt-4o",
         }
-        _patch_real_activity_clients(monkeypatch, cap, smr_stats=smr_stats)
+        _patch_real_activity_clients(monkeypatch, cap, text_stats=text_stats)
 
         env = await start_time_skipping(data_converter=pydantic_data_converter)
         async with env:
@@ -532,7 +532,7 @@ class TestWorkflowOrderedSpine:
         # The LLM_CALL step carries the AD-1 stats (verbatim) plus the F-19
         # prompt-size observability fields measured on the dispatched prompt.
         llm = next(s for s in cap.steps if s.step_type == "LLM_CALL")
-        assert {k: llm.stats[k] for k in smr_stats} == smr_stats
+        assert {k: llm.stats[k] for k in text_stats} == text_stats
         assert llm.stats["prompt_chars"] > 0
         assert llm.stats["prompt_tokens_est"] == llm.stats["prompt_chars"] // 4
 

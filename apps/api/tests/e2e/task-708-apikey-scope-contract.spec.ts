@@ -47,6 +47,17 @@
  *     key (and any platform `'*'`-wildcard key, by the same wildcard
  *     semantics proven in half 2) reaches the handler.
  *
+ *  4. "TASK-742 — fail closed" — the DEFAULT changed, not just one route.
+ *     `enforceApiKeyScopes` used to return early and PERMIT when a route
+ *     declared no `@RequiredScopes`, and CASL was never evaluated on the
+ *     API-key path, so any key bearing any trivial scope reached every
+ *     undeclared route with no authorization decision at all. It now denies.
+ *     This half asserts the observable consequence on three surfaces the
+ *     gateway conformance review named: `/audio/transcription-jobs` (20
+ *     routes, 0 scopes), `/speech/*` (TTS), and an `@ForbidApiKey()` route.
+ *     Half 2's assertions are UNCHANGED by TASK-742 — `/admin/tenants` was
+ *     already declared, so the new default never applied to it.
+ *
  * Prerequisites: API server running against the test DB
  * (`pnpm test:up:api`), seeded (`pnpm test:db:seed`).
  */
@@ -298,6 +309,92 @@ test.describe('TASK-708 — API-key scope contract (locks in current behavior)',
       });
 
       expect(response.status()).toBe(401);
+    });
+  });
+
+  // ==========================================================================
+  // Half 4 — TASK-742: the API-key path now FAILS CLOSED.
+  //
+  // Half 2 closed ONE route family by adding a scope to it. TASK-742 closed the
+  // DEFAULT: a route that declares no `@RequiredScopes(...)` refuses API keys
+  // outright, so "we forgot to scope it" no longer means "anyone with any key
+  // may call it". The three surfaces below were all reachable, unauthorized, by
+  // any key bearing any trivial scope before that change.
+  //
+  // Note what CANNOT be asserted here and why that is correct: there is no
+  // longer any live route with no declaration to point an HTTP request at — the
+  // boot audit `auditEveryApiKeyReachableRouteDeclaresScopes`
+  // (`apps/api/src/bootstrap/api-key-surface-audit.ts`) refuses to start the
+  // server while one exists. The runtime rule itself ("absent declaration ⇒
+  // deny") is pinned in
+  // `packages/applications/src/authorization/__tests__/unified-auth.guard.deny-by-default.test.ts`;
+  // what this half proves is the OBSERVABLE consequence on the routes that
+  // changed.
+  // ==========================================================================
+
+  test.describe('TASK-742 — surfaces that were unauthorized-reachable are now gated', () => {
+    test('STT jobs (/audio/transcription-jobs, 20 routes, previously 0 scopes): an out-of-scope key is 403', async ({ request }) => {
+      const key = await createScopedApiKey(request, adminToken, ['consultation:report:write'], 'task-742-stt-jobs-denied');
+      createdApiKeyIds.push(key.id);
+
+      const response = await request.get('/api/v1/audio/transcription-jobs', {
+        headers: { 'X-API-Key': key.rawKey, Accept: 'application/json' },
+      });
+
+      expect(response.status()).toBe(403);
+      const body = await response.json();
+      expect(body.message).toContain('API key does not have required scope(s): stt:transcription:write');
+    });
+
+    test('STT jobs: an stt:transcription:write-scoped key passes the gate', async ({ request }) => {
+      const key = await createScopedApiKey(request, adminToken, ['stt:transcription:write'], 'task-742-stt-jobs-allowed');
+      createdApiKeyIds.push(key.id);
+
+      const response = await request.get('/api/v1/audio/transcription-jobs', {
+        headers: { 'X-API-Key': key.rawKey, Accept: 'application/json' },
+      });
+
+      // Any non-403 proves the guard admitted it; the handler's own status is
+      // not this spec's concern.
+      expect(response.status()).not.toBe(403);
+      expect(response.status()).not.toBe(401);
+    });
+
+    test('TTS (/speech/synthesize, previously 0 scopes): an STT-scoped key cannot synthesize speech', async ({ request }) => {
+      const key = await createScopedApiKey(request, adminToken, ['stt:transcription:write'], 'task-742-tts-denied');
+      createdApiKeyIds.push(key.id);
+
+      const response = await request.post('/api/v1/speech/synthesize', {
+        headers: { 'X-API-Key': key.rawKey, Accept: 'application/json' },
+        data: { text: 'hello' },
+      });
+
+      expect(response.status()).toBe(403);
+      const body = await response.json();
+      // The whole point of giving TTS its own `tts:*` family rather than
+      // reusing an `stt:*` scope: a transcription key is not a synthesis key.
+      expect(body.message).toContain('API key does not have required scope(s): tts:speech:write');
+    });
+
+    test('an @ForbidApiKey() surface (/tenant/me) refuses even the "*" wildcard key', async ({ request }) => {
+      const key = await createScopedApiKey(request, adminToken, ['*'], 'task-742-forbid-wildcard');
+      createdApiKeyIds.push(key.id);
+
+      const response = await request.get('/api/v1/tenant/me', {
+        headers: { 'X-API-Key': key.rawKey, Accept: 'application/json' },
+      });
+
+      expect(response.status()).toBe(403);
+      const body = await response.json();
+      expect(body.message).toContain('does not accept API-key authentication');
+    });
+
+    test('the same @ForbidApiKey() route is still reachable with a session JWT (the marker is API-key-specific)', async ({ request }) => {
+      const response = await request.get('/api/v1/tenant/me', {
+        headers: { Authorization: `Bearer ${adminToken}`, Accept: 'application/json' },
+      });
+
+      expect(response.status()).toBe(200);
     });
   });
 });

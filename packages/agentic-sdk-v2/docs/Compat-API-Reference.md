@@ -16,7 +16,7 @@
 - [1. `useArcaSessionManager`](#1-usearcasessionmanager)
 - [2. `useAudioCapture`](#2-useaudiocapture)
 - [3. `useArcaSpeechToText`](#3-usearcaspeechtotext)
-- [4. `useSMR`](#4-usesmr)
+- [4. `useText`](#4-usesmr)
 - [5. `useArcaSttProvider`](#5-usearcasttprovider)
 - [6. `useArcaSttLanguageModes`](#6-usearcasttlanguagemodes)
 - [7. `useArcaBatchTranscription`](#7-usearcabatchtranscription)
@@ -71,7 +71,7 @@ same `@arcaai/vox` package (see [Entry-bundle isolation](#entry-bundle-isolation
 below), not a separate install:
 
 ```ts
-import { ArcaCompatProvider, useSMR, type V1SdkConfig } from '@arcaai/vox/compat';
+import { ArcaCompatProvider, useText, type V1SdkConfig } from '@arcaai/vox/compat';
 ```
 
 Every compat module carries `"use client"` — in a Next.js App Router consumer,
@@ -323,19 +323,19 @@ const job = await getTranscriptionStatus(taskId);           // → Transcription
 
 - `onStatus` (a previously-frozen-but-unwired v1 prop) also fires `'reconnecting'`/`'reconnected'` on transport reconnects, `'provider_switched'` with `{ fromPipeline, toPipeline }` on any STT engine switch, and — TASK-612 Lane D — `'no_audio_signal'` when the silent-uplink watchdog detects a sustained zero-level streaming session, followed by `'audio_signal_restored'` on recovery. Each of that pair fires **once per transition, never on mount**. See [§8 External microphones & injected streams](#8-external-microphones--injected-streams) for what trips the watchdog and how long it takes. All of the above is additive behavior on an existing optional prop; apps that never pass `onStatus` are unaffected.
 
-## 4. `useSMR`
+## 4. `useText`
 
 v1 summary hook, reproduced against the gateway's v1-compat SMR shim (`apps/api`'s `smr-compat` module, `@Controller('api/smr/api/v1')`).
 
 ```ts
-function useSMR(props?: {
+function useText(props?: {
   sessionId?: string;
   onComplete?: (summary: SummaryResponse) => void;
   onError?: (error: ErrorInfo) => void;
 }): {
-  summarize: (request: SMRRequest) => Promise<SummaryResponse>; // alias of summarizeSync
-  summarizeSync: (request: SMRRequest) => Promise<SummaryResponse>;
-  summarizeAsync: (request: SMRRequest) => Promise<SMRJobStatus>; // best-effort, not part of the frozen v1 contract
+  summarize: (request: TextRequest) => Promise<SummaryResponse>; // alias of summarizeSync
+  summarizeSync: (request: TextRequest) => Promise<SummaryResponse>;
+  summarizeAsync: (request: TextRequest) => Promise<TextJobStatus>; // best-effort, not part of the frozen v1 contract
   preSummarize: (request: PreSummaryRequest) => Promise<PreSummaryResponse>;
   loading: boolean;
   error: string | null;
@@ -355,9 +355,9 @@ function useSMR(props?: {
 - **Real per-turn `conversation_segments`** are always built — from `request.segments` when supplied, otherwise split from `request.text` per non-empty line (a fixed v1 defect: v1 collapsed the entire transcript into one `speaker: 'user'` blob). Lines shaped `"Speaker: text"` (speaker name ≤ 40 chars before the colon) are parsed to keep the speaker label; everything else defaults to `speaker: 'user'`.
 - `summarizeAsync` calls `/summary/async`, which is **explicitly not part of the reproduced v1 shim contract** — treat it as best-effort and prefer `summarizeSync`.
 - **Tenant context is mandatory** — the endpoint rejects with `401 "Tenant context is required"` if no tenant resolves from the API key / `X-Tenant-Id`. There is no v1-style SYSTEM-tenant default fallback.
-- **DNA writing-style (TASK-599):** set `SMRRequest.doctorId` (summary) or `PreSummaryRequest.doctorId` to forward a top-level `doctor_id` alongside the legacy `session_data.session_metadata.doctor_id`. When the tenant+doctor DNA gate is on, the gateway applies that doctor's DNA writing-style to the prompt; omitted ⇒ department + visit-type prompting only, unchanged from before TASK-599.
-- **Translate-to-English (TASK-600):** set `SMRRequest.translateToEnglish: true` to have the gateway translate the transcript to English via Sarvam **before** summarizing — sent on the wire as top-level `translate_to_english: true` (omitted when unset/false). **Summary-only** — there is no pre-summary equivalent. **Fail-open:** if translation fails, the gateway summarizes the original transcript rather than erroring. When translation succeeds, the gateway also forces the summary's output-language directive to English, overriding whatever language the source session was tagged with.
-- **Streaming (opt-in):** pass `{ stream: true, onDelta }` on `SMRRequest`/`PreSummaryRequest`. The hook switches to SSE parsing:
+- **DNA writing-style (TASK-599):** set `TextRequest.doctorId` (summary) or `PreSummaryRequest.doctorId` to forward a top-level `doctor_id` alongside the legacy `session_data.session_metadata.doctor_id`. When the tenant+doctor DNA gate is on, the gateway applies that doctor's DNA writing-style to the prompt; omitted ⇒ department + visit-type prompting only, unchanged from before TASK-599.
+- **Translate-to-English (TASK-600):** set `TextRequest.translateToEnglish: true` to have the gateway translate the transcript to English via Sarvam **before** summarizing — sent on the wire as top-level `translate_to_english: true` (omitted when unset/false). **Summary-only** — there is no pre-summary equivalent. **Fail-open:** if translation fails, the gateway summarizes the original transcript rather than erroring. When translation succeeds, the gateway also forces the summary's output-language directive to English, overriding whatever language the source session was tagged with.
+- **Streaming (opt-in):** pass `{ stream: true, onDelta }` on `TextRequest`/`PreSummaryRequest`. The hook switches to SSE parsing:
   - `event: delta` (`data: {"text": "..."}`) → fires `onDelta(delta, accumulated)`, where `accumulated` is the running concatenation including this delta.
   - `event: reasoning` (`data: {"text": "..."}`) → fires `onReasoning(reasoning, accumulated)` when supplied, on a channel kept **separate** from `onDelta`/the final result. A reasoning-capable model's chain-of-thought (Azure `reasoning_content`, Anthropic thinking blocks, LM Studio reasoning deltas) lands here — never mixed into the answer text. Callers that don't pass `onReasoning` simply never see these frames; nothing else changes.
   - `event: result` → resolves the promise with the same v1-shaped body the non-streaming path returns.
@@ -365,7 +365,7 @@ function useSMR(props?: {
   Omitting `stream` (or setting it `false`) is **byte-identical** to the existing single-JSON-response path — nothing changes for callers who don't opt in.
 - **Reasoning models on the non-streaming path too:** even without `stream:true`, a model that inlines its chain-of-thought as `<think>…</think>`/`<thinking>…</thinking>` ahead of the JSON answer has those blocks stripped server-side before parsing (and, failing a direct parse, the gateway falls back to extracting the last brace-balanced `{...}` object) — so a reasoning model's preamble no longer breaks summary parsing.
 - **BYOK credential errors (TASK-602):** the gateway no longer holds env-level cloud-provider credentials — a tenant's Azure/OpenAI/Anthropic selection (primary or fallback) must have a BYOK connection configured, or the call fails closed with a `503` (`ProviderCredentialsError`) surfaced through the normal `onError`/thrown-`Error` path. Local engines (LM Studio/Ollama) are unaffected.
-- **`max_tokens` ceiling:** both `SMRRequest`/`PreSummaryRequest` map to a gateway DTO capped at `1–32768` (raised from `32000`); a value outside that range is rejected by the gateway's validation pipe before it reaches the LLM.
+- **`max_tokens` ceiling:** both `TextRequest`/`PreSummaryRequest` map to a gateway DTO capped at `1–32768` (raised from `32000`); a value outside that range is rejected by the gateway's validation pipe before it reaches the LLM.
 
 ## 5. `useArcaSttProvider`
 
@@ -657,9 +657,9 @@ above — which is about hooks — doesn't apply to them).
 
 `compat.ts` re-exports the following types verbatim from the frozen v1 contract (`compat/types.ts`), so a v1 app keeps compiling against familiar names:
 
-`V1SdkConfig`, `V1AudioSettings`, `ErrorInfo`, `SessionStatus`, `MedicalSession`, `SessionMetadata`, `PatientInfo`, `ProviderInfo`, `AudioDeviceStatus`, `SummaryResponse`, `MedicalSummary` (union of `EnhancedMedicalSummary | SimplifiedMedicalSummary | SoapMedicalSummary`), `EnhancedMedicalSummary`, `SimplifiedMedicalSummary`, `SoapMedicalSummary`, `SMRRequest`, `SMRJobStatus`, `ConversationSegmentInput`, `TestResult`, `PreviousVisitRecord`, `PreSummaryRequest`, `PreSummaryResponse`, `StructuredPreSummary`, `PreSummarySection`, `PreSummarySectionItem`, `ProviderSwitchInfo`.
+`V1SdkConfig`, `V1AudioSettings`, `ErrorInfo`, `SessionStatus`, `MedicalSession`, `SessionMetadata`, `PatientInfo`, `ProviderInfo`, `AudioDeviceStatus`, `SummaryResponse`, `MedicalSummary` (union of `EnhancedMedicalSummary | SimplifiedMedicalSummary | SoapMedicalSummary`), `EnhancedMedicalSummary`, `SimplifiedMedicalSummary`, `SoapMedicalSummary`, `TextRequest`, `TextJobStatus`, `ConversationSegmentInput`, `TestResult`, `PreviousVisitRecord`, `PreSummaryRequest`, `PreSummaryResponse`, `StructuredPreSummary`, `PreSummarySection`, `PreSummarySectionItem`, `ProviderSwitchInfo`.
 
-`SMRRequest`/`PreSummaryRequest` themselves are frozen shapes (TASK-560 §5), but keep growing ADDITIVE, no-v1-ancestor fields with no effect on callers who omit them: `stream`/`onDelta` (TASK-589), `onReasoning` (streaming reasoning-model chain-of-thought), `doctorId` (TASK-599 — DNA writing-style), and `translateToEnglish` on `SMRRequest` only (TASK-600 — Sarvam translate-before-summarize).
+`TextRequest`/`PreSummaryRequest` themselves are frozen shapes (TASK-560 §5), but keep growing ADDITIVE, no-v1-ancestor fields with no effect on callers who omit them: `stream`/`onDelta` (TASK-589), `onReasoning` (streaming reasoning-model chain-of-thought), `doctorId` (TASK-599 — DNA writing-style), and `translateToEnglish` on `TextRequest` only (TASK-600 — Sarvam translate-before-summarize).
 
 `ErrorInfo` shape (used across every compat hook's `onError`):
 ```ts
@@ -681,7 +681,7 @@ Documented in [`TASK-560 README §6`](../../../docs/implementation/TASK-560-v1-v
 | --- | --- | --- |
 | A1 | Hardcoded default `apiKey`/`encryptionKey` when config omitted them | `mapV1ConfigToAgenticConfig` throws instead — a real key is always required |
 | F1 | Binary WS audio frames could arrive corrupted | Moot — v2 owns transport entirely; `sendAudioData` never sends audio |
-| F2 | Whole transcript collapsed into one `speaker: 'user'` conversation segment | `useSMR` always builds real per-turn segments |
+| F2 | Whole transcript collapsed into one `speaker: 'user'` conversation segment | `useText` always builds real per-turn segments |
 | I1 | Two unrelated session ids used interchangeably | v2 has one canonical `Consultation.id` |
 | I2 | No confidence score on v1 transcripts | v2's `TranscriptSegment.confidence` is exposed in delivered metadata |
 
@@ -708,7 +708,7 @@ Documented in [`TASK-560 README §6`](../../../docs/implementation/TASK-560-v1-v
 | `src/compat/useAudioCapture.ts` | |
 | `src/compat/useArcaSpeechToText.ts` | |
 | `src/compat/speechToTextMetadata.ts` | Pure metadata helpers (`composeDeliveredMetadata`, `pickMetadataForFinal`, etc.) |
-| `src/compat/useSMR.ts` | |
+| `src/compat/useText.ts` | |
 | `src/compat/useArcaSttProvider.ts` | |
 | `src/compat/useArcaBatchTranscription.ts` | Batch/file upload queue (TASK-603) |
 | `src/hooks/useArcaSttLanguageModes.ts` | Re-exported via `compat.ts` |

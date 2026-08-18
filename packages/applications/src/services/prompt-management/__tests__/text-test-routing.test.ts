@@ -1,14 +1,14 @@
 /**
- * `smr.test` routing tier for the prompt-template test bench.
+ * `text.test` routing tier for the prompt-template test bench.
  *
  * Two halves:
  *  1. The additive registration points the bench depends on outside the service
  *     itself — the AiTaskDefault task key + its model-task-type mapping (+
- *     tenant-write eligibility), and the `models.smr.test` settings-registry
+ *     tenant-write eligibility), and the `models.text.test` settings-registry
  *     descriptor.
  *  2. BUG-018 — model resolution reads `IAiTaskDefaultService.getEffective`
  *     DIRECTLY. The harness policy service is not injected and never consulted,
- *     there is no `smr.finalize` fallback, and a MISS (fail-closed 400) is
+ *     there is no `text.finalize` fallback, and a MISS (fail-closed 400) is
  *     distinguished from a lookup ERROR (rethrown).
  */
 import { describe, it, expect, vi } from 'vitest';
@@ -18,18 +18,18 @@ import { AI_TASK_KEYS, AI_TASK_MODEL_TASK_TYPES, isSuperAdminOnlyTaskKey } from 
 import { MODEL_DEFAULT_SETTINGS } from '../../settings-registry/descriptors/model-defaults.descriptors';
 import { PromptManagementService } from '../prompt-management.service';
 
-describe('smr.test routing tier', () => {
-  it('registers smr.test as an AiTaskDefault task key mapped to TEXT_GENERATION', () => {
-    expect(AI_TASK_KEYS).toContain('smr.test');
-    expect(AI_TASK_MODEL_TASK_TYPES['smr.test']).toBe(ModelTaskType.TEXT_GENERATION);
+describe('text.test routing tier', () => {
+  it('registers text.test as an AiTaskDefault task key mapped to TEXT_GENERATION', () => {
+    expect(AI_TASK_KEYS).toContain('text.test');
+    expect(AI_TASK_MODEL_TASK_TYPES['text.test']).toBe(ModelTaskType.TEXT_GENERATION);
   });
 
-  it('keeps smr.test tenant-writable (NOT under SUPER_ADMIN_ONLY_TASK_PREFIXES)', () => {
-    expect(isSuperAdminOnlyTaskKey('smr.test')).toBe(false);
+  it('keeps text.test tenant-writable (NOT under SUPER_ADMIN_ONLY_TASK_PREFIXES)', () => {
+    expect(isSuperAdminOnlyTaskKey('text.test')).toBe(false);
   });
 
-  it('registers the models.smr.test descriptor as tenant-editable db-config, fail-closed', () => {
-    const descriptor = MODEL_DEFAULT_SETTINGS.find((d) => d.key === 'models.smr.test');
+  it('registers the models.text.test descriptor as tenant-editable db-config, fail-closed', () => {
+    const descriptor = MODEL_DEFAULT_SETTINGS.find((d) => d.key === 'models.text.test');
     expect(descriptor).toBeDefined();
     expect(descriptor).toMatchObject({
       tier: 'db-config',
@@ -81,17 +81,17 @@ describe('prompt-test model resolution (BUG-018 harness decoupling)', () => {
     return { svc, post };
   };
 
-  it('resolves {provider, model} from getEffective("smr.test", tenantId) and never touches harness policy', async () => {
+  it('resolves {provider, model} from getEffective("text.test", tenantId) and never touches harness policy', async () => {
     const getEffective = vi.fn().mockResolvedValue({
-      taskKey: 'smr.test',
+      taskKey: 'text.test',
       model: { provider: 'lm-studio', sourceUri: 'medgemma-27b' },
     });
     const { svc, post } = buildService({ getEffective });
 
     const ack = await svc.startPromptTemplateTest('tpl-1', {} as never);
 
-    expect(getEffective).toHaveBeenCalledWith('smr.test', 'tenant-1');
-    // No second lookup — the smr.finalize hop is gone.
+    expect(getEffective).toHaveBeenCalledWith('text.test', 'tenant-1');
+    // No second lookup — the text.finalize hop is gone.
     expect(getEffective).toHaveBeenCalledTimes(1);
     expect(ack.provider).toBe('lm-studio');
     expect(ack.model).toBe('medgemma-27b');
@@ -110,11 +110,11 @@ describe('prompt-test model resolution (BUG-018 harness decoupling)', () => {
     expect(ack.model).toBe('gpt-4o');
   });
 
-  it('MISS: smr.test resolves to nothing → BadRequestException naming the key, no SMR call', async () => {
-    const getEffective = vi.fn().mockResolvedValue({ taskKey: 'smr.test', modelSlug: null, source: null, model: null });
+  it('MISS: text.test resolves to nothing → BadRequestException naming the key, no SMR call', async () => {
+    const getEffective = vi.fn().mockResolvedValue({ taskKey: 'text.test', modelSlug: null, source: null, model: null });
     const { svc, post } = buildService({ getEffective });
 
-    await expect(svc.startPromptTemplateTest('tpl-1', {} as never)).rejects.toThrow(/smr\.test/);
+    await expect(svc.startPromptTemplateTest('tpl-1', {} as never)).rejects.toThrow(/text\.test/);
     await expect(svc.startPromptTemplateTest('tpl-1', {} as never)).rejects.toThrow(BadRequestException);
     expect(post).not.toHaveBeenCalled();
   });

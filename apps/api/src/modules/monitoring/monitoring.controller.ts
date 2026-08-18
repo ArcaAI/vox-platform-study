@@ -1,7 +1,7 @@
 import { Controller, Get, Inject, Logger, NotFoundException, Param } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiParam, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { Throttle } from '@nestjs/throttler';
-import { CanAny } from '../../decorators';
+import { CanAny, ForbidApiKey } from '../../decorators';
 import { IServiceHealthMonitoringService } from '@arcaai/applications';
 import { HeartbeatRecord, ServiceUptime, SessionsResponse, UptimeResponse } from './dto';
 
@@ -17,6 +17,15 @@ import { HeartbeatRecord, ServiceUptime, SessionsResponse, UptimeResponse } from
 @CanAny(['manage', 'all'], ['read', 'TenantTelemetry'])
 @Throttle({ default: { limit: 300, ttl: 60000 } })
 @Controller('monitoring')
+// TASK-742 API-KEY-NOTE — CONSERVATIVE DEFAULT, AWAITING OWNER CLASSIFICATION.
+// Reason: admin-shaped telemetry export; outside TASK-708 s /admin/*-only approval and has no scope of its own.
+// This route family declared nothing about API-key access, which under the
+// deny-by-default rule is a boot failure. Rather than guess a scope (guessing
+// permissive is how the original gap was created), it is closed explicitly.
+// Reversing it is a one-line change to @RequiredScopes('<scope>') once the
+// owner confirms a real API-key use case — see the TASK-708 README's
+// "Reachability changes awaiting owner review" table.
+@ForbidApiKey()
 export class MonitoringController {
   private readonly logger = new Logger(MonitoringController.name);
 

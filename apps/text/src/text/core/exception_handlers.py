@@ -21,7 +21,7 @@ from text.core.exceptions import (
     QueueTimeoutError,
     RateLimitError,
     ShutdownError,
-    SmrError,
+    TextError,
 )
 
 _STATUS_MAP: dict[type, int] = {
@@ -38,18 +38,18 @@ _STATUS_MAP: dict[type, int] = {
     ConcurrencyLimitError: 503,
     ProviderTimeoutError: 502,
     ProviderError: 502,
-    SmrError: 500,
+    TextError: 500,
 }
 
 
-def _get_status_code(exc: SmrError) -> int:
+def _get_status_code(exc: TextError) -> int:
     for exc_type, code in _STATUS_MAP.items():
         if isinstance(exc, exc_type):
             return code
     return 500
 
 
-def _get_headers(exc: SmrError) -> dict[str, str] | None:
+def _get_headers(exc: TextError) -> dict[str, str] | None:
     if isinstance(exc, RateLimitError) and exc.retry_after is not None:
         return {"Retry-After": str(int(exc.retry_after) + 1)}
     if isinstance(exc, CircuitOpenError):
@@ -61,7 +61,7 @@ def _get_headers(exc: SmrError) -> dict[str, str] | None:
     return None
 
 
-async def text_exception_handler(request: Request, exc: SmrError) -> JSONResponse:
+async def text_exception_handler(request: Request, exc: TextError) -> JSONResponse:
     status = _get_status_code(exc)
     headers = _get_headers(exc)
 
@@ -79,5 +79,5 @@ async def text_exception_handler(request: Request, exc: SmrError) -> JSONRespons
 
 def register_exception_handlers(app: FastAPI) -> None:
     # Starlette types handlers as (Request, Exception) -> Response; ours narrows
-    # exc to SmrError (it is only registered for SmrError), which mypy flags.
-    app.add_exception_handler(SmrError, text_exception_handler)  # type: ignore[arg-type]
+    # exc to TextError (it is only registered for TextError), which mypy flags.
+    app.add_exception_handler(TextError, text_exception_handler)  # type: ignore[arg-type]

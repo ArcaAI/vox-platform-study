@@ -75,13 +75,20 @@ export const ModelType = {
 
 /**
  * Canonical serving-provider identifiers. String column (not a
- * Prisma enum) to match `HarnessPolicy.smrProvider` / the guardrail provider
+ * Prisma enum) to match `HarnessPolicy.textProvider` / the guardrail provider
  * switch; the DTO layer validates with `@IsIn(AI_MODEL_PROVIDERS)`.
  *
- * Ollama was removed entirely (TASK-736, owner directive 2026-08-16) — it is
- * deliberately absent from this list, not merely disabled.
+ * `ollama` is a SELECTABLE provider with NO platform-seeded catalog rows, and
+ * that pairing is deliberate (TASK-736, owner decision 2026-08-17: "ollama
+ * provider logic must be available, however, model catalog related to ollama
+ * must be removed"). It reverses the 2026-08-16 directive that removed the
+ * provider outright. The platform ships no Ollama model because it standardises
+ * on one LM Studio model; a tenant that brings its own Ollama endpoint supplies
+ * its own `AiModel` row and `AiTaskDefault`. Pinned by
+ * `seed/__tests__/ollama-provider-retained.test.ts`.
  */
 export const AI_MODEL_PROVIDERS = [
+  'ollama',
   'lm-studio',
   'azure',
   'bedrock',

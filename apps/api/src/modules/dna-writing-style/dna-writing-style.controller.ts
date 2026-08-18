@@ -6,6 +6,7 @@ import {
   GenerateDnaReportRequest,
   UpdateDnaReportRequest,
   UpdateDnaSettingsRequest,
+  DnaErasureResponse,
   HttpMethod,
   type DnaJobResponse,
   type RedactionRuleSet,
@@ -22,6 +23,7 @@ import {
   UnauthorizedException,
   Get,
   Put,
+  Delete,
   Sse,
   type MessageEvent,
 } from '@nestjs/common';
@@ -42,13 +44,22 @@ import type { IActiveUserContext } from '@arcaai/applications';
 import { Observable } from 'rxjs';
 // `@RequiresIfMatch()` + `@ExpectedVersion()` gate the
 // OCC-enforced doctor self-edit PATCH route below (mirrors the admin controller).
-import { ApiEndpoint, Authorize, RequiresIfMatch, ExpectedVersion } from '../../decorators';
+import { ApiEndpoint, Authorize, RequiresIfMatch, ExpectedVersion, ForbidApiKey } from '../../decorators';
 import { getDnaJobStatus, streamDnaJobStatus } from './dna-writing-style-job-stream';
 
 @ApiBearerAuth()
 @ApiTags('dna-writing-styles')
 @Controller('dna-writing-styles')
 @Authorize()
+// TASK-742 API-KEY-NOTE — CONSERVATIVE DEFAULT, AWAITING OWNER CLASSIFICATION.
+// Reason: per-clinician self-service; TASK-708 bucketed it (a) when absence-of-scopes still meant "reachable".
+// This route family declared nothing about API-key access, which under the
+// deny-by-default rule is a boot failure. Rather than guess a scope (guessing
+// permissive is how the original gap was created), it is closed explicitly.
+// Reversing it is a one-line change to @RequiredScopes('<scope>') once the
+// owner confirms a real API-key use case — see the TASK-708 README's
+// "Reachability changes awaiting owner review" table.
+@ForbidApiKey()
 export class DnaWritingStyleController {
   constructor(
     @Inject(IDnaWritingStyleService)
@@ -246,6 +257,58 @@ export class DnaWritingStyleController {
   @ApiResponse({ status: 404, description: 'Report not found' })
   async setDefault(@Param('reportId') reportId: string): Promise<DnaReportResponse> {
     return this.dnaService.setDefaultReport(reportId);
+  }
+
+  // ─── Erasure — the other half of the opt-out (INV-240 / INV-241) ──────────
+  //
+  // `PUT settings { enabled: false }` only stops FUTURE learning; the profile
+  // already learned stays stored and keeps being injected into this doctor's
+  // summary prompts. INV-167 requires style learning to be reversible BY THE
+  // CLINICIAN, which needs an erasure path, not just a toggle.
+  //
+  // AUTH-NOTE: declared with the class-level `@Authorize()` (any authenticated
+  // user) because the subject is ALWAYS the caller — the service derives the
+  // doctor from CLS, so there is no id to smuggle and nothing to widen. This is
+  // the same owner-scoped self-service shape as `my-style` / `settings`, and it
+  // matches rule 05's "owner-scoped self-service write declared with the
+  // ability the clinician actually holds" pattern: requiring `delete` would
+  // lock clinicians out of erasing their own profile.
+  @Delete('my-style')
+  @ApiOperation({
+    summary: "Erase the caller doctor's entire learned DNA writing-style profile",
+    description:
+      'Soft-deletes every DNA writing-style report the caller owns, plus each report version. The profile stops ' +
+      'being injected into subsequent summaries immediately. Idempotent — a doctor with no profile gets zero counts. ' +
+      'This does NOT change the on/off toggle: erase and opt out are independent, so a doctor may erase and keep ' +
+      'learning enabled (a fresh profile is then built from their approved notes).',
+  })
+  @ApiResponse({ status: 200, description: 'Erasure counts', type: DnaErasureResponse })
+  @ApiResponse({ status: 403, description: 'An admin not acting as a doctor cannot erase a profile under their own account.' })
+  async resetMyStyle(): Promise<DnaErasureResponse> {
+    // Mirror `generate`/`setSettings`: a non-impersonating admin must not act
+    // on a DNA profile under their OWN account.
+    this.assertActingAsDoctor();
+    return this.dnaService.resetMyDnaProfile();
+  }
+
+  // AUTH-NOTE: as above — class-level `@Authorize()`, owner-scoped. The
+  // service enforces BOTH boundaries on the supplied id: a cross-TENANT report
+  // is 404 (never 403 — the 404-over-403 posture hides existence), while a
+  // same-tenant report owned by another doctor is a genuine privilege 403.
+  @Delete(':reportId')
+  @ApiOperation({
+    summary: "Erase one of the caller doctor's DNA writing-style reports",
+    description:
+      'Soft-deletes a single owned report and its versions — for dropping one bad snapshot rather than the whole ' +
+      'profile. Use `DELETE my-style` to erase everything.',
+  })
+  @ApiParam({ name: 'reportId', description: 'Report ID', type: String })
+  @ApiResponse({ status: 200, description: 'Erasure counts', type: DnaErasureResponse })
+  @ApiResponse({ status: 403, description: "Cannot erase another doctor's report" })
+  @ApiResponse({ status: 404, description: 'Report not found (also returned for a report in another tenant)' })
+  async deleteReport(@Param('reportId') reportId: string): Promise<DnaErasureResponse> {
+    this.assertActingAsDoctor();
+    return this.dnaService.deleteReport(reportId);
   }
 
   @ApiEndpoint({

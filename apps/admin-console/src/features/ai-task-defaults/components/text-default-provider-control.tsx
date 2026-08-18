@@ -62,7 +62,7 @@ function ControlSkeleton() {
  * admin/ai-task-defaults/row?taskKey=` endpoint: pick ONE model and apply it, in
  * a single action, to every text-generation task this tenant controls — the
  * primary live + final summaries — with an OPTIONAL matching fallback applied to
- * `smr.live.fallback` + `smr.finalize.fallback`.
+ * `text.live.fallback` + `text.finalize.fallback`.
  *
  * It reuses `usePutTaskDefaultRow` (the same OCC/If-Match path the per-key cards
  * below use) and issues the individual writes sequentially, each carrying its own
@@ -75,12 +75,12 @@ function ControlSkeleton() {
  */
 export function TextDefaultProviderControl() {
   const uid = useId();
-  const liveRow = useTaskDefaultRow('smr.live');
-  const finalizeRow = useTaskDefaultRow('smr.finalize');
-  const liveFallbackRow = useTaskDefaultRow('smr.live.fallback');
-  const finalizeFallbackRow = useTaskDefaultRow('smr.finalize.fallback');
-  const primaryOptionsQuery = useTaskModelOptions('smr.live');
-  const fallbackOptionsQuery = useTaskModelOptions('smr.live.fallback');
+  const liveRow = useTaskDefaultRow('text.live');
+  const finalizeRow = useTaskDefaultRow('text.finalize');
+  const liveFallbackRow = useTaskDefaultRow('text.live.fallback');
+  const finalizeFallbackRow = useTaskDefaultRow('text.finalize.fallback');
+  const primaryOptionsQuery = useTaskModelOptions('text.live');
+  const fallbackOptionsQuery = useTaskModelOptions('text.live.fallback');
   const mutation = usePutTaskDefaultRow();
 
   const [primaryModel, setPrimaryModel] = useState('');
@@ -114,12 +114,12 @@ export function TextDefaultProviderControl() {
     // Each write carries its OWN key's ETag; writing one key never invalidates
     // another key's version, so these captured ETags stay valid across the loop.
     const writes: { taskKey: AiTaskKey; etag: string | null; modelSlug: string }[] = [
-      { taskKey: 'smr.live', etag: liveRow.data!.etag, modelSlug: primaryModel },
-      { taskKey: 'smr.finalize', etag: finalizeRow.data!.etag, modelSlug: primaryModel },
+      { taskKey: 'text.live', etag: liveRow.data!.etag, modelSlug: primaryModel },
+      { taskKey: 'text.finalize', etag: finalizeRow.data!.etag, modelSlug: primaryModel },
     ];
     if (fallbackModel) {
-      writes.push({ taskKey: 'smr.live.fallback', etag: liveFallbackRow.data!.etag, modelSlug: fallbackModel });
-      writes.push({ taskKey: 'smr.finalize.fallback', etag: finalizeFallbackRow.data!.etag, modelSlug: fallbackModel });
+      writes.push({ taskKey: 'text.live.fallback', etag: liveFallbackRow.data!.etag, modelSlug: fallbackModel });
+      writes.push({ taskKey: 'text.finalize.fallback', etag: finalizeFallbackRow.data!.etag, modelSlug: fallbackModel });
     }
     try {
       for (const write of writes) {

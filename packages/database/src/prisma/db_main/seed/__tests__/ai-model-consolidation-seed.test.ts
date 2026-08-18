@@ -665,10 +665,10 @@ describe('AiTaskDefault SYSTEM seed', () => {
     'nlp.ner': 'TOKEN_CLASSIFICATION',
     'nlp.classification': 'TEXT_CLASSIFICATION',
     // SMR generation routing keys.
-    'smr.live': 'TEXT_GENERATION',
-    'smr.finalize': 'TEXT_GENERATION',
+    'text.live': 'TEXT_GENERATION',
+    'text.finalize': 'TEXT_GENERATION',
     // BUG-018 — prompt-template Test routing, independent of harness.
-    'smr.test': 'TEXT_GENERATION',
+    'text.test': 'TEXT_GENERATION',
     // guardrail safety/groundedness, harness judge, diagnosis.
     'guardrail.safety': 'TOKEN_CLASSIFICATION',
     'guardrail.groundedness': 'TEXT_CLASSIFICATION',
@@ -699,12 +699,12 @@ describe('AiTaskDefault SYSTEM seed', () => {
     expect(byKey.get('nlp.diagnosis')?.modelSlug).toBe('symps-disease-bert-v3-c41');
     // SMR live/finalize routing, both mapped to the
     // current SYSTEM SMR default registry slug.
-    expect(byKey.get('smr.live')?.modelSlug).toBe('lms-gemma-4-e2b-it-qat');
-    expect(byKey.get('smr.finalize')?.modelSlug).toBe('lms-gemma-4-e2b-it-qat');
+    expect(byKey.get('text.live')?.modelSlug).toBe('lms-gemma-4-e2b-it-qat');
+    expect(byKey.get('text.finalize')?.modelSlug).toBe('lms-gemma-4-e2b-it-qat');
     // BUG-018 — the prompt-template Test key. Seeded so the Test path
     // resolves through AiTaskDefault ALONE and never falls through to the
-    // harness `smr.finalize` cascade to find a model.
-    expect(byKey.get('smr.test')?.modelSlug).toBe('lms-gemma-4-e2b-it-qat');
+    // harness `text.finalize` cascade to find a model.
+    expect(byKey.get('text.test')?.modelSlug).toBe('lms-gemma-4-e2b-it-qat');
     // guardrail safety/groundedness + harness judge selection.
     expect(byKey.get('guardrail.safety')?.modelSlug).toBe('gliner-guard-uniencoder-onnx');
     expect(byKey.get('guardrail.groundedness')?.modelSlug).toBe('minicheck-flan-t5-large');
@@ -775,12 +775,12 @@ describe('AiTaskDefault SYSTEM seed', () => {
 
 describe('companion seed updates', () => {
   it('moves the SYSTEM HarnessPolicy SMR default to gemma-4-e2b-it-qat (provider lm-studio)', () => {
-    expect(SYSTEM_HARNESS_POLICY_TEXT_DEFAULTS.smrProvider).toBe('lm-studio');
-    expect(SYSTEM_HARNESS_POLICY_TEXT_DEFAULTS.smrModel).toBe('gemma-4-e2b-it-qat');
+    expect(SYSTEM_HARNESS_POLICY_TEXT_DEFAULTS.textProvider).toBe('lm-studio');
+    expect(SYSTEM_HARNESS_POLICY_TEXT_DEFAULTS.textModel).toBe('gemma-4-e2b-it-qat');
   });
 
   it('keeps the new SMR default resolvable against the registry (lm-studio row, matching sourceUri)', () => {
-    const row = catalog.find((m) => m.provider === 'lm-studio' && m.sourceUri === SYSTEM_HARNESS_POLICY_TEXT_DEFAULTS.smrModel);
+    const row = catalog.find((m) => m.provider === 'lm-studio' && m.sourceUri === SYSTEM_HARNESS_POLICY_TEXT_DEFAULTS.textModel);
     expect(row).toBeDefined();
     expect(row?.slug).toBe('lms-gemma-4-e2b-it-qat');
   });

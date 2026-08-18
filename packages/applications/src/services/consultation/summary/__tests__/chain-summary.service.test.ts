@@ -161,7 +161,7 @@ function createService() {
   const clsService = createMockClsService();
   const promptAssemblyService = createMockPromptAssemblyService();
   const harnessPolicyService = {
-    resolveSmrSelection: vi.fn().mockResolvedValue({ provider: 'lm-studio', model: 'resolved-medgemma' }),
+    resolveTextSelection: vi.fn().mockResolvedValue({ provider: 'lm-studio', model: 'resolved-medgemma' }),
   };
   // Doctor-preferred prompt id resolver. Defaults to null so the
   // existing fixtures (no doctor preference) are unaffected.
@@ -228,7 +228,7 @@ describe('ChainSummaryService', () => {
 
       await mocks.service.generateComprehensiveSummary('consultation-A', { includeNER: false });
 
-      expect(mocks.harnessPolicyService.resolveSmrSelection).toHaveBeenCalled();
+      expect(mocks.harnessPolicyService.resolveTextSelection).toHaveBeenCalled();
       const body = mocks.httpService.axiosRef.post.mock.calls[0][1] as { provider?: string; model?: string };
       expect(body.provider).toBe('lm-studio');
       expect(body.model).toBe('resolved-medgemma');

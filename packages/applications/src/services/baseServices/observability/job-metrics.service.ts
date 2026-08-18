@@ -85,7 +85,7 @@ export class JobMetricsService implements OnModuleInit {
     this.jobWaitingDuration.labels(queue).observe(waitSeconds);
   }
 
-  recordSmrCallDuration(queue: string, provider: string, durationSeconds: number): void {
+  recordTextCallDuration(queue: string, provider: string, durationSeconds: number): void {
     this.jobSmrCallDuration.labels(queue, provider).observe(durationSeconds);
   }
 }

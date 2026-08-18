@@ -3,7 +3,7 @@ from enum import IntEnum, StrEnum
 from typing import Any
 
 from hope_env import build_hope_sources, hope_settings_sources, load_env
-from pydantic import Field, SecretStr
+from pydantic import AliasChoices, Field, SecretStr
 from pydantic.fields import FieldInfo
 from pydantic_settings import BaseSettings, PydanticBaseSettingsSource, SettingsConfigDict
 
@@ -146,10 +146,41 @@ class NLPServiceConfig(BaseSettings):
         == "true"
     )
 
-    # Inter-service authentication. Reads NLP_SERVICE_TOKEN via the
-    # env_prefix below — the exact key the gateway provisions. Empty by default
-    # so local dev / hermetic CI bypass auth; a set value enforces the header.
+    # ── CANONICAL internal credential (owner decision D-D, 2026-08-17) ──────
+    # ONE shared access token for ALL internal service-to-service communication,
+    # identical across every HOPE service, set by the DevOps engineer, internal use
+    # only. Unprefixed on purpose (`validation_alias` bypasses the env_prefix) —
+    # it belongs to no single service. This is what the service ACCEPTS inbound as
+    # `X-Service-Token` and PRESENTS on every outbound peer call.
+    # The legacy per-service token below stays accepted / used as a zero-cost
+    # backward-compatibility fallback; both empty ⇒ auth bypassed (dev / CI).
+    internal_access_token: SecretStr = Field(
+        default=SecretStr(""), validation_alias=AliasChoices("INTERNAL_ACCESS_TOKEN")
+    )
+
+    # LEGACY per-service credential. Reads NLP_SERVICE_TOKEN via the env_prefix
+    # below — superseded by INTERNAL_ACCESS_TOKEN above, kept as the fallback.
     service_token: SecretStr = SecretStr("")
+
+    @property
+    def accepted_service_tokens(self) -> tuple[str, ...]:
+        """Every token accepted as inbound ``X-Service-Token``, shared token first.
+
+        Empty tuple ⇒ auth is bypassed (local dev / hermetic CI) — the pre-existing
+        behaviour when no token is configured at all.
+        """
+        return tuple(
+            t
+            for t in (
+                self.internal_access_token.get_secret_value(),
+                self.service_token.get_secret_value(),
+            )
+            if t
+        )
+
+    def peer_service_token(self, legacy: SecretStr) -> str:
+        """Token to PRESENT on an outbound peer call: shared first, legacy fallback."""
+        return self.internal_access_token.get_secret_value() or legacy.get_secret_value()
 
     # Where the control plane lives (env NLP_GATEWAY_URL). This is
     # BOOTSTRAP TRANSPORT (the address of the config source), NOT config

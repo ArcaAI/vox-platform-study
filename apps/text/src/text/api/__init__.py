@@ -1,1 +1,1 @@
-"""SMR API."""
+"""Text API."""

@@ -171,6 +171,10 @@ python_functions = ["test_*"]
 asyncio_mode = "auto"
 markers = [
     "e2e: End-to-end tests requiring real LLM providers (deselect with '-m \"not e2e\"')",
+    # TASK-737 — opt OUT of conftest's default `X-Tenant-Id` injection, for the
+    # tests that assert the mandatory-header contract itself (an absent header
+    # must reach the endpoint and get a 428).
+    "no_default_tenant_header: send requests with no X-Tenant-Id (TASK-737 contract tests)",
 ]
 
 # Coverage configuration

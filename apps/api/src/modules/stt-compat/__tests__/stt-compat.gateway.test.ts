@@ -405,7 +405,7 @@ describe('SttCompatGateway', () => {
     );
     await client.handlers.close();
 
-    expect(sessionService.removeSession).toHaveBeenCalledWith('session-1', true);
+    expect(sessionService.removeSession).toHaveBeenCalledWith('session-1', true, 'tenant-1');
   });
 
   it('does not attempt removal on disconnect when no session was ever established', async () => {

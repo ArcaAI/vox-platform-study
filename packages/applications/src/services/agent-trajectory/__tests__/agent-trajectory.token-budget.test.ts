@@ -2,7 +2,7 @@
  * AgentTrajectoryService — token + $ accounting.
  *
  * The substrate for per-run budgets was already complete and already ignored:
- * `SmrGenerationResult.stats` carries token counts, the harness forwards it
+ * `TextGenerationResult.stats` carries token counts, the harness forwards it
  * verbatim onto every LLM_CALL step (`activities.py:1003-1008`), and
  * `AgentTrajectoryStep.stats` persists it — but `parseGenerationStats` read only
  * three keys (`ttft_ms`, `tokens_per_second`, `stop_reason`) and threw the tokens

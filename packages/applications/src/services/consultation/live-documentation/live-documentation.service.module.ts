@@ -10,6 +10,7 @@ import { LiveDocumentationService } from './live-documentation.service';
 import { OcrEnrichmentProcessor } from '../ocr/ocr-enrichment.processor';
 import { LoopContextSignalService } from '../loop/loop-context-signal.service';
 import { HarnessGatewayServiceModule } from '../harness/harness-gateway.service.module';
+import { EntitlementsServiceModule } from '../../entitlements/entitlements.service.module';
 import { HarnessPolicyServiceModule } from '../../harness-policy/harness-policy.service.module';
 import { AgentTrajectoryServiceModule } from '../../agent-trajectory/agent-trajectory.service.module';
 import { EffectiveSettingsModule } from '../../settings-registry/effective-settings.module';
@@ -69,6 +70,12 @@ import { LiveAgentResolutionServiceModule } from '../prompt/live-agent-resolutio
     LiveAgentResolutionServiceModule,
     // Outbound apps/api -> apps/harness adapter LoopContextSignalService signals through.
     HarnessGatewayServiceModule,
+    // TASK-705 — resolves the @Optional IEntitlementsService that decides loop
+    // ELIGIBILITY. The harness agentic loop is packaged as a subscription
+    // feature (`agenticLoop`), so `LoopContextSignalService` asks the tenant's
+    // plan before every signal. Absent ⇒ the gate fails CLOSED, which is why
+    // this import is not optional in practice even though the dep is.
+    EntitlementsServiceModule,
   ],
   providers: [LiveDocumentationService, RedisSubscriberService, OcrEnrichmentProcessor, LoopContextSignalService],
   exports: [LiveDocumentationService, LoopContextSignalService],

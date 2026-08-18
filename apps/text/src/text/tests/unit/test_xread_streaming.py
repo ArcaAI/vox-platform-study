@@ -104,7 +104,7 @@ class TestReadChunksBlocking:
         mock_redis.xread = AsyncMock(
             return_value=[
                 (
-                    b"smr:stream:task-123",
+                    b"text:stream:task-123",
                     [
                         (b"1-0", {b"data": _chunk_json("chunk", content="Hello")}),
                         (b"2-0", {b"data": _chunk_json("done", data={"finish_reason": "stop"})}),
@@ -129,7 +129,7 @@ class TestReadChunksBlocking:
         assert chunk_1.data == {"finish_reason": "stop"}
 
         mock_redis.xread.assert_awaited_once_with(
-            {"smr:stream:task-123": "0-0"},
+            {"text:stream:task-123": "0-0"},
             block=5000,
             count=100,
         )
@@ -151,7 +151,7 @@ class TestReadChunksBlocking:
         mock_redis.xread = AsyncMock(
             return_value=[
                 (
-                    b"smr:stream:task-789",
+                    b"text:stream:task-789",
                     [
                         (b"5-0", {b"data": _chunk_json("chunk", content="World")}),
                     ],
@@ -167,7 +167,7 @@ class TestReadChunksBlocking:
         assert result[0][1].content == "World"
 
         mock_redis.xread.assert_awaited_once_with(
-            {"smr:stream:task-789": "4-0"},
+            {"text:stream:task-789": "4-0"},
             block=5000,
             count=100,
         )
@@ -178,7 +178,7 @@ class TestReadChunksBlocking:
         mock_redis.xread = AsyncMock(
             return_value=[
                 (
-                    b"smr:stream:task-b",
+                    b"text:stream:task-b",
                     [
                         (b"10-0", {b"data": b'{"type":"chunk","content":"bytes data"}'}),
                     ],
@@ -201,7 +201,7 @@ class TestReadChunksBlocking:
         mock_redis.xread = AsyncMock(
             return_value=[
                 (
-                    "smr:stream:task-s",
+                    "text:stream:task-s",
                     [
                         ("20-0", {"data": '{"type":"chunk","content":"string keys"}'}),
                     ],

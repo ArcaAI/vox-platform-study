@@ -11,7 +11,7 @@ from __future__ import annotations
 import base64
 import json
 
-#: The well-known Redis "from the beginning" sentinel — also SMR's ``stream.py:35`` default.
+#: The well-known Redis "from the beginning" sentinel — also Text's ``stream.py:35`` default.
 RESUME_FROM_BEGINNING = "0-0"
 
 

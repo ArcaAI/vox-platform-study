@@ -98,13 +98,13 @@ export function buildTextGeneratePayload(
   const temperature = pickNumber(options, 'temperature') ?? pickNumber(assembledPrompt.hyperparameters, 'temperature');
   const maxTokens = pickNumber(options, 'max_tokens', 'maxTokens') ?? pickNumber(assembledPrompt.hyperparameters, 'max_tokens', 'maxTokens');
   const topP = pickNumber(options, 'top_p', 'topP') ?? pickNumber(assembledPrompt.hyperparameters, 'top_p', 'topP');
-  const provider = pickString(options, 'provider', 'smrProvider', 'defaultSmrProvider');
+  const provider = pickString(options, 'provider', 'textProvider');
 
   return {
     prompt: assembledPrompt.userPrompt,
     system_prompt: assembledPrompt.systemPrompt,
     provider,
-    model: pickString(options, 'model', 'smrModel', 'defaultSmrModel'),
+    model: pickString(options, 'model', 'textModel'),
     temperature,
     max_tokens: maxTokens,
     top_p: topP,

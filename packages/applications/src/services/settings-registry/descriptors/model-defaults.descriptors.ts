@@ -61,30 +61,31 @@ const META: Record<AiTaskKey, { label: string; description: string }> = {
     description: 'Default text-classification model used for toxicity classification (super admins only).',
   },
   // SMR generation routing (tenant-admin configurable).
-  'smr.live': {
+  'text.live': {
     label: 'SMR live-summary model',
     description: 'Default text-generation model for the live-documentation delta summariser.',
   },
-  'smr.finalize': {
+  'text.finalize': {
     label: 'SMR final-summary model',
     description: 'Default text-generation model for the final/comprehensive summary generator.',
   },
   // per-tenant SMR fallback selections (opt-in). No SYSTEM default;
-  // when unset, no fallback runs (`resolveSmrFallbackSelection` returns null).
-  'smr.live.fallback': {
+  // when unset, no fallback runs (`resolveTextFallbackSelection` returns null).
+  'text.live.fallback': {
     label: 'SMR live-summary fallback model',
     description: 'Fallback text-generation model for the live-documentation delta summariser when the primary provider fails.',
   },
-  'smr.finalize.fallback': {
+  'text.finalize.fallback': {
     label: 'SMR final-summary fallback model',
     description: 'Fallback text-generation model for the final/comprehensive summary generator when the primary provider fails.',
   },
   // prompt-template test-bench routing (tenant-admin
-  // configurable, same governance class as smr.live/smr.finalize). Consulted
+  // configurable, same governance class as text.live/text.finalize). Consulted
   // only when the caller does not supply an explicit provider/model pair on
-  // `POST admin/prompt-templates/:id/test`; falls back to `smr.finalize` when
-  // unset for the tenant.
-  'smr.test': {
+  // `POST admin/prompt-templates/:id/test`. TASK-740 D-5: fail-CLOSED when unset
+  // for the tenant — there is no `text.finalize` fallback hop (removed
+  // deliberately; this comment described behaviour that no longer existed).
+  'text.test': {
     label: 'SMR prompt-test-bench model',
     description: 'Default text-generation model for the tenant-admin prompt-template test bench, when the caller does not select a provider/model.',
   },

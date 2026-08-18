@@ -22,14 +22,14 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useEventStream } from './use-event-stream';
 
 /** SMR token accounting carried by the terminal `usage` frame. */
-export interface SmrTokenUsage {
+export interface TextTokenUsage {
   prompt_tokens: number;
   completion_tokens: number;
   total_tokens: number;
 }
 
 /** SSE frame on GET text/tasks/:taskId/stream (SMR StreamChunk; named events). */
-export interface SmrStreamFrame {
+export interface TextStreamFrame {
   type: 'chunk' | 'reasoning' | 'meta' | 'done' | 'error' | 'usage';
   content?: string | null;
   data?: Record<string, unknown> | null;
@@ -43,9 +43,9 @@ export function taskStreamPath(taskId: string): string {
   return `text/tasks/${encodeURIComponent(taskId)}/stream`;
 }
 
-/** Ticket scope — must match the route's `@StreamScope({ namespace: 'smr_task' })`. */
+/** Ticket scope — must match the route's `@StreamScope({ namespace: 'text_task' })`. */
 export function taskStreamScope(taskId: string): string {
-  return `smr_task:${taskId}`;
+  return `text_task:${taskId}`;
 }
 
 export type TaskStreamStatus = 'idle' | 'connecting' | 'streaming' | 'done' | 'failed' | 'error' | 'closed';
@@ -57,7 +57,7 @@ export interface TaskStreamState {
   /** Accumulated reasoning/thinking text (same replay-reset rule as content). */
   reasoning: string;
   chunkCount: number;
-  usage: SmrTokenUsage | null;
+  usage: TextTokenUsage | null;
   finishReason: string | null;
   error: string | null;
   /** Manual reattach after a transport drop (native auto-retry is disabled). */
@@ -70,7 +70,7 @@ interface StreamFields {
   content: string;
   reasoning: string;
   chunkCount: number;
-  usage: SmrTokenUsage | null;
+  usage: TextTokenUsage | null;
   finishReason: string | null;
   error: string | null;
 }
@@ -88,9 +88,9 @@ const TEXT_EVENTS = ['chunk', 'reasoning', 'usage', 'done', 'error'] as const;
 /** Statuses that end the stream — these outrank the live transport status. */
 const TERMINAL_STATUSES = new Set<TaskStreamStatus>(['done', 'failed', 'closed']);
 
-function parseFrame(data: string): SmrStreamFrame | null {
+function parseFrame(data: string): TextStreamFrame | null {
   try {
-    return JSON.parse(data) as SmrStreamFrame;
+    return JSON.parse(data) as TextStreamFrame;
   } catch {
     return null;
   }
@@ -134,7 +134,7 @@ export function useTaskStream(taskId: string | null): TaskStreamState {
           case 'reasoning':
             return { ...base, status: base.status ?? 'streaming', reasoning: base.reasoning + (frame.content ?? '') };
           case 'usage':
-            return frame.data ? { ...base, usage: frame.data as unknown as SmrTokenUsage } : base;
+            return frame.data ? { ...base, usage: frame.data as unknown as TextTokenUsage } : base;
           case 'done': {
             const reason = frame.data?.finish_reason;
             return { ...base, status: 'done', finishReason: typeof reason === 'string' ? reason : base.finishReason };

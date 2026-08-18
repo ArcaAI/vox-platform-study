@@ -1,19 +1,27 @@
 /**
  * Consultation-Gate Settings Seed
  *
- * Turns the two consultation-pipeline kill-switches ON for every environment
- * that seeds — including a fresh local `pnpm setup:dev`:
+ * Turns the consultation-pipeline kill-switch ON for every environment that
+ * seeds — including a fresh local `pnpm setup:dev`:
  *
- *   harness.loop.enabled      the ContextAdded / consultation-ending /
- *                             loop-cancel signals sent to the
- *                             `ConsultationLoopWorkflow` in apps/harness
  *   consultation.ocr.enabled  the in-cluster PyMuPDF + RapidOCR pass that fills
  *                             `ContextItem.metaData.extractedText`
  *
- * WHY A SEEDED ROW AND NOT A DESCRIPTOR DEFAULT. Both keys are registered
- * kill-switches, and `SettingsRegistry.killSwitches()` THROWS at assembly for
- * any kill-switch whose `default === true`. That invariant is not in the way of
- * this ticket — it is the reason the shape below is correct:
+ * ⚠️ TASK-705 — `harness.loop.enabled` USED TO BE SEEDED HERE AND IS NOT ANY
+ * MORE. Do not add it back. Seeding it `'true'` while its descriptor declared
+ * `false` was a real defect, not a clever workaround: the two disagreed, and
+ * `migrate.sh` defaults `RUN_SEED=none` (with `hope-v2-dev` pinning it to
+ * `"none"` by owner decision 2026-08-09), so the row carrying the real intent
+ * was never re-asserted anywhere. Loop eligibility is now the tenant's
+ * SUBSCRIPTION ENTITLEMENT (`agenticLoop`, resolved from `PlanEntitlement` /
+ * `TenantEntitlement` — owner decision 2026-08-17 §2 row 705), and what remains
+ * of the operational device is `harness.loop.emergencyStop`, whose disarmed
+ * `false` default IS the intended day-1 state. There is nothing left to seed.
+ *
+ * WHY A SEEDED ROW AND NOT A DESCRIPTOR DEFAULT (for the OCR gate below). It is
+ * a registered kill-switch, and `SettingsRegistry.killSwitches()` THROWS at
+ * assembly for any kill-switch whose `default === true`. That invariant is not
+ * in the way — it is the reason the shape below is correct:
  *
  *   descriptor default stays OFF  →  an unseeded / half-provisioned deployment
  *                                    still resolves OFF, which is fail-safe
@@ -40,8 +48,11 @@
  * what makes `pnpm db:seed` safe against a live database, and it is enforced
  * repo-wide by `seed/__tests__/seed-idempotency.test.ts`.
  *
- * Disabling either switch afterwards is one call, no redeploy:
- *   PUT /api/v1/admin/settings/registry/harness.loop.enabled  { "value": false }
+ * Disabling the switch afterwards is one call, no redeploy:
+ *   PUT /api/v1/admin/settings/registry/consultation.ocr.enabled  { "value": false }
+ *
+ * The loop's emergency stop is pulled the same way, in the opposite direction:
+ *   PUT /api/v1/admin/settings/registry/harness.loop.emergencyStop { "value": true }
  */
 import type { CorePrismaClient } from '../../../client';
 import { ValueType } from '../../../generated/core-prisma-client/client.js';
@@ -65,14 +76,6 @@ interface GateSeed {
 }
 
 const GATES: GateSeed[] = [
-  {
-    key: 'harness.loop.enabled',
-    name: 'Consultation loop signalling',
-    value: 'true',
-    defaultValue: 'false',
-    description:
-      'Enables LoopContextSignalService — the ContextAdded / consultation-ending / loop-cancel signals sent to the ConsultationLoopWorkflow in apps/harness. Enabled on day 1 in every environment. Signalling is best-effort: with the harness or Temporal unreachable the consultation lifecycle is unaffected. Locked — only SUPER_ADMIN may change it.',
-  },
   {
     key: 'consultation.ocr.enabled',
     name: 'Server-side OCR enrichment',

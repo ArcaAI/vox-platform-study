@@ -49,17 +49,6 @@ export type { UseArcaSpeechToTextProps, UseArcaSpeechToTextReturn } from './comp
 export { useText } from './compat/useText';
 export type { UseTextOptions, UseTextReturn } from './compat/useText';
 
-/**
- * @deprecated Renamed to `useText` (naming-alignment: `smr` → `text`; see
- * `docs/architecture/agentic-workflow-platform/design.md` D8). Kept as a
- * one-release re-export, mirroring `.claude/rules/13-nextjs-apps.md`'s
- * "retired routes keep a `redirect()` page for one release" precedent.
- * Import `useText` instead — this export will be REMOVED next release.
- */
-export { useSMR } from './compat/useSMR';
-/** @deprecated Renamed to `UseTextOptions`/`UseTextReturn`. Kept for one release. */
-export type { UseSMROptions, UseSMRReturn } from './compat/useSMR';
-
 // Batch / file transcription. Compat-NATIVE: v1 had only the
 // single-file `uploadAudioFile()` on `useArcaSpeechToText` (still honoured, and
 // now real); this is the multi-file queue with per-file progress and live
@@ -107,10 +96,6 @@ export type {
   SoapMedicalSummary,
   TextRequest,
   TextJobStatus,
-  /** @deprecated Renamed to {@link TextRequest}. Kept for one release. */
-  SMRRequest,
-  /** @deprecated Renamed to {@link TextJobStatus}. Kept for one release. */
-  SMRJobStatus,
   ConversationSegmentInput,
   TestResult,
   PreviousVisitRecord,

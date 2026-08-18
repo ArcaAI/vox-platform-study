@@ -30,8 +30,8 @@ describe('AsyncIdempotencyKey — intent-derived recipes (§3.5 recipe table)', 
     expect(AsyncIdempotencyKey.sttSegment('sess-1', 3)).toBe('stt:session:sess-1:seg:3');
   });
 
-  it('smrChunk: smr:task:<taskId>:chunk:<sequence>', () => {
-    expect(AsyncIdempotencyKey.smrChunk('task-1', 7)).toBe('smr:task:task-1:chunk:7');
+  it('textChunk: text:task:<taskId>:chunk:<sequence>', () => {
+    expect(AsyncIdempotencyKey.textChunk('task-1', 7)).toBe('text:task:task-1:chunk:7');
   });
 
   it('workflowNode: wf:run:<runId>:node:<nodeId>:<attemptGeneration>', () => {
@@ -43,10 +43,10 @@ describe('AsyncIdempotencyKey — intent-derived recipes (§3.5 recipe table)', 
   });
 
   it('is a pure function — the same intent always yields the same key', () => {
-    expect(AsyncIdempotencyKey.smrChunk('task-1', 7)).toBe(AsyncIdempotencyKey.smrChunk('task-1', 7));
+    expect(AsyncIdempotencyKey.textChunk('task-1', 7)).toBe(AsyncIdempotencyKey.textChunk('task-1', 7));
   });
 
   it('throws on a blank intent id rather than silently collapsing every event onto one key', () => {
-    expect(() => AsyncIdempotencyKey.smrChunk('  ', 0)).toThrow(/taskId is required/);
+    expect(() => AsyncIdempotencyKey.textChunk('  ', 0)).toThrow(/taskId is required/);
   });
 });

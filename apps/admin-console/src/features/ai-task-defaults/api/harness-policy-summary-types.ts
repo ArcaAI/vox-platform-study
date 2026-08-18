@@ -27,8 +27,8 @@ export interface HarnessPolicySummary {
   phiFailClosed: boolean;
   safetyProvider: string;
   safetyModel: string;
-  smrProvider: string | null;
-  smrModel: string | null;
+  textProvider: string | null;
+  textModel: string | null;
   maxRegen: number;
   gateSlaSeconds: number;
   gateEscalationSeconds: number;
@@ -63,8 +63,11 @@ export const HARNESS_POLICY_FIELD_CONTROLS: HarnessPolicyFieldControl[] = [
   { key: 'phiFailClosed', label: 'PHI fail-closed', controlledBy: 'super-admin' },
   { key: 'safetyProvider', label: 'Safety provider', controlledBy: 'super-admin' },
   { key: 'safetyModel', label: 'Safety model', controlledBy: 'super-admin' },
-  { key: 'smrProvider', label: 'Text-generation provider', controlledBy: 'tenant' },
-  { key: 'smrModel', label: 'Text-generation model', controlledBy: 'tenant' },
+  // TASK-740 D-3: both are `SUPER_ADMIN_ONLY_POLICY_KEYS` on the backend — the
+  // tenant PATCH 403s them — so labelling them tenant-controlled was a lie in
+  // the second of the two places that made it.
+  { key: 'textProvider', label: 'Text-generation provider', controlledBy: 'super-admin' },
+  { key: 'textModel', label: 'Text-generation model', controlledBy: 'super-admin' },
   { key: 'maxRegen', label: 'Max regen budget', controlledBy: 'tenant' },
   { key: 'gateSlaSeconds', label: 'Gate SLA (seconds)', controlledBy: 'tenant' },
   { key: 'gateEscalationSeconds', label: 'Gate escalation (seconds)', controlledBy: 'tenant' },

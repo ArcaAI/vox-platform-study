@@ -29,7 +29,7 @@ from hope_env.service_registration import (
 SAMPLE_BUILD_INFO = BuildInfo(
     service="smr",
     version="2.1.0",
-    release_tag="SMR-2.1.0",
+    release_tag="Text-2.1.0",
     git_branch="main",
     git_commit_sha="0ab258f9c1d2e3f4a5b6c7d8e9f0011223344557",
     build_at="2026-08-09T11:22:33Z",
@@ -74,7 +74,7 @@ class TestBuildPayload:
         assert payload == {
             "service": "smr",
             "version": "2.1.0",
-            "releaseTag": "SMR-2.1.0",
+            "releaseTag": "Text-2.1.0",
             "gitBranch": "main",
             "gitCommitSha": "0ab258f9c1d2e3f4a5b6c7d8e9f0011223344557",
             "buildAt": "2026-08-09T11:22:33Z",

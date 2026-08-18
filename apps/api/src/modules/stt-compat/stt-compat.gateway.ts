@@ -19,6 +19,8 @@ type LegacyMetadata = Record<string, unknown>;
 type LegacySession = {
   client: WebSocket;
   sessionId: string;
+  /** Owning tenant, proven at handshake — threaded onto the teardown hop. */
+  tenantId: string;
   sampleRate: number;
   sequence: number;
   language?: string;
@@ -81,7 +83,7 @@ export class SttCompatGateway implements OnGatewayConnection, OnGatewayDisconnec
       return;
     }
 
-    const status = await this.sessionService.getSessionStatus(sessionId).catch((error) => {
+    const status = await this.sessionService.getSessionStatus(sessionId, tenantId).catch((error) => {
       this.logger.warn({
         message: 'Legacy STT WebSocket session lookup failed',
         sessionId,
@@ -104,6 +106,7 @@ export class SttCompatGateway implements OnGatewayConnection, OnGatewayDisconnec
     const session: LegacySession = {
       client,
       sessionId,
+      tenantId,
       sampleRate: meta?.sampleRate ?? DEFAULT_SAMPLE_RATE,
       sequence: 0,
       language: language ?? undefined,
@@ -143,7 +146,7 @@ export class SttCompatGateway implements OnGatewayConnection, OnGatewayDisconnec
     // the usage-attribution summary, silently losing that session's usage.
     // Fire-and-forget, mirroring the native WS gateway's finalizeSession
     // posture; `interrupted: true` since no explicit stop was ever received.
-    this.sessionService.removeSession(session.sessionId, true).catch((err: unknown) => {
+    this.sessionService.removeSession(session.sessionId, true, session.tenantId).catch((err: unknown) => {
       this.logger.warn({
         message: 'Legacy STT session removal failed on disconnect',
         sessionId: session.sessionId,

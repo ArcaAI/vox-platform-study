@@ -1,4 +1,4 @@
-"""SMR is a stateless gateway with NO model default.
+"""Text is a stateless gateway with NO model default.
 
 RED-first tests for the fail-closed contract:
   * POST /api/v1/generate with a missing/blank model ⇒ HTTP 422 (no silent default).

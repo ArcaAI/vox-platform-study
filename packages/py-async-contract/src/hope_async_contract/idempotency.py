@@ -62,9 +62,9 @@ class AsyncIdempotencyKey:
         )
 
     @staticmethod
-    def smr_chunk(task_id: str, sequence: int) -> str:
-        """``smr:task:<taskId>:chunk:<sequence>``."""
-        return f"smr:task:{_require_id(task_id, 'task_id')}:chunk:{sequence}"
+    def text_chunk(task_id: str, sequence: int) -> str:
+        """``text:task:<taskId>:chunk:<sequence>``."""
+        return f"text:task:{_require_id(task_id, 'task_id')}:chunk:{sequence}"
 
     @staticmethod
     def workflow_node(run_id: str, node_id: str, attempt_generation: int) -> str:

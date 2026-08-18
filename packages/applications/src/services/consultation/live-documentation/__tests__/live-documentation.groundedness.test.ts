@@ -120,7 +120,7 @@ function buildDeps(httpMock = buildHttpMock(), opts: BuildDepsOpts = {}) {
   const config = opts.config ?? {};
   const configService = { get: vi.fn().mockImplementation((key: string) => config[key]) };
   const harnessPolicyService = {
-    resolveSmrSelection: vi.fn().mockResolvedValue({ provider: 'lm-studio', model: 'live-medgemma' }),
+    resolveTextSelection: vi.fn().mockResolvedValue({ provider: 'lm-studio', model: 'live-medgemma' }),
   };
   const secretsService = opts.secretsService;
 
@@ -216,6 +216,28 @@ describe('LiveDocumentationService — output groundedness gate', () => {
     expect(body.summary).toBe(TWO_SEGMENT_SUMMARY); // the generated note, not the prompt
     expect(body.transcript).toBe('Patient on amlodipine'); // the source transcript
     expect(config.headers['X-Service-Token']).toBe('guard-tok');
+    // Owner decision D-D: the CANONICAL credential is looked up FIRST; the legacy
+    // per-service `GUARDRAIL_SERVICE_TOKEN` is only the migration fallback.
+    expect(secretsService.getSecretOptional).toHaveBeenCalledWith('INTERNAL_ACCESS_TOKEN');
+    // TASK-737: `X-Tenant-Id` is mandatory on this hop — guardrail resolves the
+    // tenant's own safety configuration from it.
+    expect(config.headers['X-Tenant-Id']).toBe(TENANT);
+  });
+
+  it('falls back to GUARDRAIL_SERVICE_TOKEN when the shared INTERNAL_ACCESS_TOKEN is unset', async () => {
+    const httpMock = buildHttpMock();
+    const secretsService = {
+      getSecretOptional: vi.fn(async (key: string) => (key === 'GUARDRAIL_SERVICE_TOKEN' ? 'legacy-guard-tok' : undefined)),
+    };
+    const { service } = buildDeps(httpMock, { config: ENABLED_CONFIG, secretsService });
+    service.start({ consultationId: CID, tenantId: TENANT });
+    service.ingestSegment(CID, { text: 'Patient on amlodipine', isFinal: true, segmentId: 's1' });
+
+    await service.flush(CID);
+
+    const [, , config] = groundCalls(httpMock)[0] as [string, unknown, { headers: Record<string, string> }];
+    expect(config.headers['X-Service-Token']).toBe('legacy-guard-tok');
+    expect(secretsService.getSecretOptional).toHaveBeenCalledWith('INTERNAL_ACCESS_TOKEN');
     expect(secretsService.getSecretOptional).toHaveBeenCalledWith('GUARDRAIL_SERVICE_TOKEN');
   });
 
@@ -388,7 +410,7 @@ describe('LiveDocumentationService — output groundedness gate', () => {
     const firstGroundGate = new Promise<void>((resolve) => {
       releaseFirstGround = resolve;
     });
-    let smrCalls = 0;
+    let textCalls = 0;
     const httpMock = {
       axiosRef: {
         post: vi.fn().mockImplementation((url: string) => {
@@ -399,8 +421,8 @@ describe('LiveDocumentationService — output groundedness gate', () => {
           }
           if (url.includes('/classify/tokens')) return Promise.resolve({ data: { entities: [] } });
           if (url.includes('/generate')) {
-            smrCalls += 1;
-            return Promise.resolve({ data: { summary: smrCalls === 1 ? 'STALE first' : 'FRESH second' } });
+            textCalls += 1;
+            return Promise.resolve({ data: { summary: textCalls === 1 ? 'STALE first' : 'FRESH second' } });
           }
           return Promise.resolve({ data: {} });
         }),

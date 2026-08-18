@@ -6,9 +6,10 @@
  * admin-impersonated doctor session works identically.
  */
 
-import { getJson, getWithEtag, patchJson, patchWithEtag, postJson, putJson, request, versionFromEtag } from '@/shared/api';
+import { deleteJson, getJson, getWithEtag, patchJson, patchWithEtag, postJson, putJson, request, versionFromEtag } from '@/shared/api';
 import type { WithEtag } from '@/shared/api';
 import type {
+  DnaErasureResult,
   DnaJob,
   DnaJobStatus,
   DnaReport,
@@ -52,6 +53,26 @@ export async function updateMyReport(reportId: string, patch: UpdateMyReportRequ
 /** Promotes one of the caller's reports to the active/default (no If-Match). */
 export function setDefaultReport(reportId: string): Promise<DnaReport> {
   return patchJson(`${BASE}/${encodeURIComponent(reportId)}/default`);
+}
+
+/**
+ * Erases the caller's ENTIRE learned DNA profile (every owned report + every
+ * version). Idempotent — no profile yields zero counts, not a 404. This is
+ * the OTHER half of opting out: the settings toggle only stops FUTURE
+ * learning, so an un-erased profile keeps being injected into summary
+ * prompts. It deliberately does NOT flip the toggle.
+ */
+export function eraseMyStyle(): Promise<DnaErasureResult> {
+  return deleteJson<DnaErasureResult>(`${BASE}/my-style`);
+}
+
+/**
+ * Erases ONE owned report and its versions — dropping a single bad snapshot
+ * rather than the whole profile. 404 for a report in another tenant
+ * (404-over-403: "not yours"), 403 for another doctor's report in this one.
+ */
+export function eraseMyReport(reportId: string): Promise<DnaErasureResult> {
+  return deleteJson<DnaErasureResult>(`${BASE}/${encodeURIComponent(reportId)}`);
 }
 
 export function listMyVersions(reportId: string): Promise<DnaVersion[]> {

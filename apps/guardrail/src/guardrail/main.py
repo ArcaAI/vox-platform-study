@@ -133,9 +133,12 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         from guardrail.core.dependencies import pinned_gliner_provider
         from guardrail.services.job_processor import JobProcessor
 
-        # Jobs carry no tenant; SYSTEM selection resolves regardless of tenant.
-        def _gliner_for_job() -> object:
-            return pinned_gliner_provider(app.state, tenant_id=None)
+        # A job carries the tenant that SUBMITTED it (stamped by
+        # `/guardrail/analyze/async`, which now refuses an absent `X-Tenant-Id` with
+        # 428). Model selection therefore resolves tenant-first for deferred work too,
+        # instead of the old `tenant_id=None` that silently pinned every job to SYSTEM.
+        def _gliner_for_job(tenant_id: str | None) -> object:
+            return pinned_gliner_provider(app.state, tenant_id=tenant_id)
 
         app.state.job_processor = JobProcessor(
             redis=redis_client,

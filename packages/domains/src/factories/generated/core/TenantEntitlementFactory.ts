@@ -30,6 +30,7 @@ export interface CreateTenantEntitlementProps extends BaseEntityFactoryCreatePro
   featureMonitoringAccess?: ITenantEntitlementEntity['featureMonitoringAccess'];
   featurePlatformDefaultCredential?: ITenantEntitlementEntity['featurePlatformDefaultCredential'];
   featurePaletteStt?: ITenantEntitlementEntity['featurePaletteStt'];
+  featureAgenticLoop?: ITenantEntitlementEntity['featureAgenticLoop'];
   modelTier?: ITenantEntitlementEntity['modelTier'];
   rateLimitTier?: ITenantEntitlementEntity['rateLimitTier'];
   rateLimitPerMinute?: ITenantEntitlementEntity['rateLimitPerMinute'];
@@ -79,6 +80,7 @@ export class TenantEntitlementFactory {
       featurePlatformDefaultCredential: props.featurePlatformDefaultCredential ?? null,
       // `null` = inherit the plan default (TASK-724).
       featurePaletteStt: props.featurePaletteStt ?? null,
+      featureAgenticLoop: props.featureAgenticLoop ?? null,
       modelTier: props.modelTier ?? null,
       rateLimitTier: props.rateLimitTier ?? null,
       rateLimitPerMinute: props.rateLimitPerMinute ?? null,

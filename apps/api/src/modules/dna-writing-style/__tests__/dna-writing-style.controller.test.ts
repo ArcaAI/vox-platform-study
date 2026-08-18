@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { NotFoundException } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import { REQUIRES_IF_MATCH_KEY } from '../../../decorators';
 import { DnaWritingStyleController } from '../dna-writing-style.controller';
@@ -37,6 +38,9 @@ const createMockDnaService = () => ({
   // Per-doctor DNA on/off settings.
   getDnaSettings: vi.fn(),
   setDnaEnabled: vi.fn(),
+  // Erasure (INV-240) — the other half of the opt-out.
+  resetMyDnaProfile: vi.fn(),
+  deleteReport: vi.fn(),
 });
 
 const createMockClsService = (userId: string | null = 'doctor-1', session: { roles?: string[]; impersonatedBy?: string } = {}) => ({
@@ -371,6 +375,50 @@ describe('DnaWritingStyleController', () => {
       const ctrlNoUser = new DnaWritingStyleController(mockDnaService as any, noUserCls as any, mockDnaQueue as any);
 
       await expect(ctrlNoUser.generate({ textSamples: ['note'] } as any)).rejects.toThrow('User context not available');
+    });
+  });
+
+  // ─── Erasure routes (INV-240) ────────────────────────────────────────────
+
+  describe('resetMyStyle (DELETE my-style)', () => {
+    it('delegates to the service and returns erasure counts', async () => {
+      const doctorCls = createMockClsService('doctor-1', { roles: ['DOCTOR'] });
+      const ctrl = new DnaWritingStyleController(mockDnaService as any, doctorCls as any, mockDnaQueue as any);
+      mockDnaService.resetMyDnaProfile.mockResolvedValue({ doctorId: 'doctor-1', deletedReports: 2, deletedVersions: 3 });
+
+      const result = await ctrl.resetMyStyle();
+
+      expect(mockDnaService.resetMyDnaProfile).toHaveBeenCalledTimes(1);
+      expect(result).toEqual({ doctorId: 'doctor-1', deletedReports: 2, deletedVersions: 3 });
+    });
+
+    it('refuses a non-impersonating admin acting under their own account', async () => {
+      const adminCls = createMockClsService('admin-1', { roles: ['TENANT_ADMIN'] });
+      const ctrl = new DnaWritingStyleController(mockDnaService as any, adminCls as any, mockDnaQueue as any);
+
+      await expect(ctrl.resetMyStyle()).rejects.toThrow();
+      expect(mockDnaService.resetMyDnaProfile).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('deleteReport (DELETE :reportId)', () => {
+    it('passes the reportId through to the service', async () => {
+      const doctorCls = createMockClsService('doctor-1', { roles: ['DOCTOR'] });
+      const ctrl = new DnaWritingStyleController(mockDnaService as any, doctorCls as any, mockDnaQueue as any);
+      mockDnaService.deleteReport.mockResolvedValue({ doctorId: 'doctor-1', deletedReports: 1, deletedVersions: 1 });
+
+      const result = await ctrl.deleteReport('report-9');
+
+      expect(mockDnaService.deleteReport).toHaveBeenCalledWith('report-9');
+      expect(result.deletedReports).toBe(1);
+    });
+
+    it('propagates the service 404 for a cross-tenant report (no 403 leak)', async () => {
+      const doctorCls = createMockClsService('doctor-1', { roles: ['DOCTOR'] });
+      const ctrl = new DnaWritingStyleController(mockDnaService as any, doctorCls as any, mockDnaQueue as any);
+      mockDnaService.deleteReport.mockRejectedValue(new NotFoundException('DNA report foreign not found'));
+
+      await expect(ctrl.deleteReport('foreign')).rejects.toThrow(NotFoundException);
     });
   });
 });

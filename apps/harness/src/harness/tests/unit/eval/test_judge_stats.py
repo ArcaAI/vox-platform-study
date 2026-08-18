@@ -1,7 +1,7 @@
 """Judge-client generation-stats capture.
 
 The judge backends call their own LLM endpoints (LM Studio / vLLM / Azure /
-Bedrock), NOT SMR, so they capture the equivalent native fields (usage / finish
+Bedrock), NOT Text, so they capture the equivalent native fields (usage / finish
 reason / latency) into an AD-1-shaped ``last_stats`` dict for Phase 2 trajectory
 ``LLM_CALL`` steps. Capture is null-safe: a response that omits usage / finish
 reason must never throw — counts fall back to zero and the stop reason to a

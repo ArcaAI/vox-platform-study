@@ -5,7 +5,7 @@ cloud LLM egress, so the fail-closed :class:`~harness.guards.phi.redactor.PhiRed
 is enforced at a single, replay-safe boundary rather than scattered across call sites:
 
 * :func:`ensure_egress_safe` — gate a single string (the ``generate`` prompt /
-  system prompt before the SMR call).
+  system prompt before the Text call).
 * :func:`ensure_inferential_egress_safe` — fan the gate across every cloud-bound
   field of the inferential pass (the Granite-screened note + the judge-bound
   transcript, per-claim hypotheses & evidence quotes, and knowledge chunks),

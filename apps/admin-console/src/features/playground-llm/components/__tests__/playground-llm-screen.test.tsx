@@ -156,7 +156,7 @@ function defaultHandler(call: RecordedCall, parsed: URL): Response | undefined {
   // the BFF; the stream itself connects directly to the gateway.
   if (call.method === 'POST' && parsed.pathname === '/api/auth/stream-ticket') {
     ticketCounter += 1;
-    return Response.json({ ticket: `tkt-${ticketCounter}`, expiresAt: Date.now() + 30_000, scope: 'smr_task:t-5531' });
+    return Response.json({ ticket: `tkt-${ticketCounter}`, expiresAt: Date.now() + 30_000, scope: 'text_task:t-5531' });
   }
   if (call.method !== 'GET') return undefined;
   const path = parsed.pathname;
@@ -302,7 +302,7 @@ describe('PlaygroundLlmScreen', () => {
     // House SSE posture: a single-use ticket scoped to the route's
     // @StreamScope, then a DIRECT gateway connection (never the BFF tunnel).
     const mint = calls.find((call) => call.url.includes('/api/auth/stream-ticket'));
-    expect(mint?.body).toEqual({ scope: 'smr_task:t-5531' });
+    expect(mint?.body).toEqual({ scope: 'text_task:t-5531' });
     expect(source.url).toContain('/api/v1/text/tasks/t-5531/stream');
     expect(source.url).toContain('ticket=');
     expect(source.url).not.toContain('/api/hope/');

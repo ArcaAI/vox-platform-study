@@ -11,6 +11,7 @@ import { useSession } from '@/shared/auth';
 import { CanvasHeader, PlaygroundCanvas } from '@/features/playground-shared/components/playground-canvas';
 import { WorkingTenantGate } from '@/shared/tenant-scope/working-tenant-gate';
 import { useDnaJobProgress, useDnaSettings, useGenerateMyStyle, useMyRedactionRules, useMyReports, useMyStyle } from '../api';
+import { DnaErasureCard } from './dna-erasure-card';
 import { DnaRedactionCard } from './dna-redaction-card';
 import { DnaSettingsCard } from './dna-settings-card';
 import { GeneratePane } from './generate-pane';
@@ -99,8 +100,9 @@ function MyDnaStyleBody() {
         }
       />
       {/* Centered flow (\u00a74): gate/status \u2192 settings \u2192 current style \u2192
-                generate \u2192 history. The gate remains the DESIGNED assertActingAsDoctor
-                state; switching persona now happens in the top-bar persona control. */}
+                generate \u2192 history \u2192 erasure. The gate remains the DESIGNED
+                assertActingAsDoctor state; switching persona now happens in the top-bar
+                persona control. Erasure sits LAST, after the history it destroys. */}
       <ImpersonationGatePanel session={safe} gated={gated} />
       <DnaSettingsCard settings={settings} gated={gated} onGate={() => setGateHit(true)} />
       <MyStyleCard myStyle={myStyle} settings={settings} gated={gated} onGenerate={handleGenerate} generatePending={generate.isPending} />
@@ -114,7 +116,8 @@ function MyDnaStyleBody() {
         activeJobId={activeJobId}
         progress={progress}
       />
-      <MyReportsCard reports={mine} myStyleReportId={myStyle.data?.data.id ?? null} />
+      <MyReportsCard reports={mine} myStyleReportId={myStyle.data?.data.id ?? null} gated={gated} onGate={() => setGateHit(true)} />
+      <DnaErasureCard reports={mine} settings={settings} gated={gated} onGate={() => setGateHit(true)} />
     </PlaygroundCanvas>
   );
 }

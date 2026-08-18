@@ -57,9 +57,12 @@ interface DiscoveryResponse {
   probedAt: string;
 }
 
-// Ollama was removed entirely as a provider (TASK-736, owner directive 2026-08-16),
-// so it is no longer a discoverable engine and the DTO allow-list rejects it.
-const SERVER_MANAGED = ['lm-studio', 'vllm', 'llama-cpp'];
+// TASK-736 REVISED (owner decision 2026-08-17): Ollama's provider logic stays
+// available, so it is still a server-managed, discoverable engine and the DTO
+// allow-list accepts it. Only its MODEL CATALOG rows were purged — which is why
+// discovery matters for it: a tenant running its own Ollama has no seeded rows
+// and registers what its server actually reports.
+const SERVER_MANAGED = ['ollama', 'lm-studio', 'vllm', 'llama-cpp'];
 
 function auth(token: string) {
   return { Authorization: `Bearer ${token}` };

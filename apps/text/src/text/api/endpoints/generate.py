@@ -109,7 +109,7 @@ logger = get_logger(__name__)
 _DEFAULT_TIMEOUT_S = 120.0
 
 # How long a completed generation stays replay-cached under
-# ``smr:idem:{key}``. Bounded so Redis never grows unboundedly, and comfortably longer
+# ``text:idem:{key}``. Bounded so Redis never grows unboundedly, and comfortably longer
 # than any worker-crash → Temporal activity re-delivery window (the replay this dedups).
 _IDEMPOTENCY_TTL_S = 86_400  # 24h
 
@@ -265,6 +265,62 @@ def _get_provider_timeout(settings: Settings, provider_name: str) -> float:
 router = APIRouter(tags=["generate"])
 
 
+# TASK-737 — inbound tenant enforcement for the `/generate` surface.
+#
+# `X-Tenant-Id` is MANDATORY on every internal request carrying tenant-scoped work
+# (owner directive 2026-08-16), and this is the busiest such surface in the platform.
+# It resolves the tenant's BYOK provider/credential from this header, and TASK-735
+# derives `funding`/`cost_basis` from whichever tier supplied that credential — so a
+# dropped header mis-CONFIGURES and mis-BILLS the call in one move, with nothing
+# thrown or logged. That silence was the actual defect.
+#
+# This surface is now ENFORCING (owner decision D-A: finish properly and enabled for
+# day-1, no half-enabled flag). The earlier pass could only LOG here, because the
+# gateway callers listed in TASK-737 §7.4 still omitted the header and refusing them
+# would have taken down exactly the clinical traffic this ticket protects. Those
+# callers now send it, so the correct order — FIX THE CALLERS, THEN RAISE HERE — is
+# complete.
+#
+# 428 (not 400) mirrors the gateway's own `RequiresIfMatch`/ETag convention: a
+# mandatory request PRECONDITION is missing. It matches the two `apps/nlp` classify
+# routes already enforcing this, so one status code means one thing platform-wide.
+#
+# A DECLARED `tenantless:<reason>` marker is a legitimate value: some internal work
+# genuinely has no tenant (a platform-wide job queue, a control-plane pull), and it
+# says so rather than arriving indistinguishable from a header dropped in transit.
+# That distinction is precisely what makes ABSENT safe to refuse.
+_TENANTLESS_PREFIX = "tenantless:"
+
+
+def _require_inbound_tenant(x_tenant_id: str | None) -> None:
+    """Accept a real tenant or a DECLARED tenant-less marker; refuse absence.
+
+    Fails CLOSED — raised before any provider is selected or invoked, so a
+    tenant-less request never bills a credential resolved from the wrong tier.
+    """
+    raw = (x_tenant_id or "").strip()
+    if not raw:
+        logger.error(
+            "text.tenant_header.missing",
+            surface="/api/v1/generate",
+            detail=(
+                "internal request carried no X-Tenant-Id; refusing rather than "
+                "resolving the platform default provider and mis-attributing the "
+                "spend. This is a CALLER defect (TASK-737)."
+            ),
+        )
+        raise HTTPException(
+            status_code=428,
+            detail=(
+                "X-Tenant-Id is required on internal requests carrying tenant-scoped "
+                "work (TASK-737). Declare 'tenantless:<reason>' for genuinely "
+                "tenant-less internal work."
+            ),
+        )
+    if raw.startswith(_TENANTLESS_PREFIX):
+        logger.debug("text.tenant_header.declared_tenantless", marker=raw)
+
+
 @router.post(
     "/generate",
     response_model=None,
@@ -302,6 +358,8 @@ async def generate(
     if shutdown_manager and shutdown_manager.is_shutting_down:
         raise ShutdownError("Service is shutting down — not accepting new requests.")
 
+    _require_inbound_tenant(x_tenant_id)
+
     # Degrade-away-from-unhealthy routing (TASK-725 Task 2, design.md Services
     # program): a provider the LAST `/health` check marked unhealthy is never
     # blindly dispatched into. Reroutes to `fallback_provider` when the
@@ -322,7 +380,7 @@ async def generate(
     )
 
     # Idempotent replay. A deterministic Idempotency-Key (set by the harness
-    # from workflow_run:activity_id — globally unique per logical generate; the apps/api SMR
+    # from workflow_run:activity_id — globally unique per logical generate; the apps/api Text
     # proxy strips any client-supplied header, so no tenant scoping is required here, though a
     # tenant prefix would be a cheap defense-in-depth if that ever changes) makes a worker-crash
     # re-delivery return the FIRST generation instead of re-invoking — and re-billing — the
@@ -331,7 +389,7 @@ async def generate(
     # returning. The lookup is strictly BEST-EFFORT: no key, no Redis wired, OR a Redis read
     # error all fall through to normal generation — a dedup-store outage must degrade to
     # "generate" (the documented residual), never fail an otherwise-serviceable request.
-    cache_key = f"smr:idem:{idempotency_key}" if idempotency_key else None
+    cache_key = f"text:idem:{idempotency_key}" if idempotency_key else None
     if cache_key is not None and redis_client is not None:
         try:
             cached = await redis_client.get(cache_key)
@@ -359,14 +417,14 @@ async def generate(
 
     ctx = structlog.contextvars.get_contextvars()
 
-    # SMR is a stateless gateway with no default model. The
+    # Text is a stateless gateway with no default model. The
     # caller (API/harness) resolves and supplies the model on every request;
     # a missing/blank model fails closed with a 422 (no silent default).
     model = request_body.model
     if model is None or not model.strip():
         raise HTTPException(
             status_code=422,
-            detail="Field 'model' is required: SMR has no default model.",
+            detail="Field 'model' is required: Text has no default model.",
         )
 
     rate_limiter = rate_limiters.get(request_body.provider)

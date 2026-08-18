@@ -47,7 +47,7 @@ function buildService(httpMock: unknown) {
   };
   const redisSubscriber = { subscribeToChannel: vi.fn(), unsubscribeFromChannel: vi.fn() };
   const configService = { get: vi.fn().mockImplementation((k: string) => (({ LIVE_DOC_MIN_INTERVAL_MS: '0' }) as Record<string, unknown>)[k]) };
-  const harnessPolicyService = { resolveSmrSelection: vi.fn().mockResolvedValue({ provider: 'vllm', model: 'gemma-4-e4b' }) };
+  const harnessPolicyService = { resolveTextSelection: vi.fn().mockResolvedValue({ provider: 'vllm', model: 'gemma-4-e4b' }) };
   return new LiveDocumentationService(
     httpMock as any,
     configService as any,

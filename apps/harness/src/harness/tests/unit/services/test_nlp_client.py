@@ -58,7 +58,7 @@ class TestNlpClient:
         seen, handler = _capture()
         client = NlpClient("http://nlp:8864", transport=httpx.MockTransport(handler))
 
-        await client.classify_tokens("Patient has diabetes and chest pain")
+        await client.classify_tokens("Patient has diabetes and chest pain", tenant_id="11111111-1111-1111-1111-111111111111")
 
         req = seen["request"]
         assert req.method == "POST"
@@ -75,7 +75,7 @@ class TestNlpClient:
         _seen, handler = _capture()
         client = NlpClient("http://nlp:8864", transport=httpx.MockTransport(handler))
 
-        entities = await client.classify_tokens("Patient has diabetes and chest pain")
+        entities = await client.classify_tokens("Patient has diabetes and chest pain", tenant_id="11111111-1111-1111-1111-111111111111")
 
         assert all(isinstance(e, NEREntity) for e in entities)
         assert entities[0] == NEREntity(text="diabetes", type="DISEASE", start=12, end=20)
@@ -90,7 +90,7 @@ class TestNlpClient:
             "http://nlp:8864", service_token="tok-1", transport=httpx.MockTransport(handler)
         )
 
-        await client.classify_tokens("Patient has diabetes")
+        await client.classify_tokens("Patient has diabetes", tenant_id="11111111-1111-1111-1111-111111111111")
 
         assert seen["request"].headers["X-Service-Token"] == "tok-1"
 
@@ -100,7 +100,7 @@ class TestNlpClient:
         seen, handler = _capture()
         client = NlpClient("http://nlp:8864", transport=httpx.MockTransport(handler))
 
-        await client.classify_tokens("Patient has diabetes")
+        await client.classify_tokens("Patient has diabetes", tenant_id="11111111-1111-1111-1111-111111111111")
 
         assert "x-service-token" not in seen["request"].headers
 
@@ -133,7 +133,7 @@ class TestNlpClient:
             )
 
         client = NlpClient("http://nlp:8864", transport=httpx.MockTransport(handler))
-        entities = await client.classify_tokens("patient takes metformin")
+        entities = await client.classify_tokens("patient takes metformin", tenant_id="11111111-1111-1111-1111-111111111111")
 
         assert len(entities) == 1
         ent = entities[0]

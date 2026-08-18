@@ -37,10 +37,14 @@ describe('R-C1 — the compat SDK exposes no live-summarization hook', () => {
     expect(offenders).toEqual([]);
   });
 
-  it('ships exactly the summarization entry point v1 had — `useSMR` — and no live sibling', () => {
-    const summarizationExports = exportedNames.filter((name) => /^use.*(SMR|Summar)/i.test(name));
+  it('ships exactly the summarization entry point v1 had — `useText` — and no live sibling', () => {
+    // TASK-740 eliminated the `smr` identifier, so the deprecated `useSMR` alias
+    // is gone and `useText` is the only name left to match. The predicate hunted
+    // for `SMR`/`Summar`, which now matches nothing — it has to name the entry
+    // point it is guarding, or the assertion silently stops guarding anything.
+    const summarizationExports = exportedNames.filter((name) => /^use(Text|.*Summar)/i.test(name));
 
-    expect(summarizationExports).toEqual(['useSMR']);
+    expect(summarizationExports).toEqual(['useText']);
   });
 
   it('exposes recording-time hooks for TRANSCRIPT only', () => {
@@ -67,5 +71,5 @@ describe('R-C1 — the compat SDK exposes no live-summarization hook', () => {
 //   the compat entry bundle is the exact place a convenience re-export would be
 //   tempting, cf. the `useArcaSttLanguageModes` precedent).
 // * R-N2 — after C5: no compat-side assertion expected (finalize lineage is a
-//   server-side property); revisit only if the compat `useSMR` response DTO is
+//   server-side property); revisit only if the compat `useText` response DTO is
 //   enriched with agent lineage.

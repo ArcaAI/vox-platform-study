@@ -27,35 +27,45 @@ import { HarnessOverridesSource, HarnessPolicyResponse, HarnessPolicySource, Upd
 
 /**
  * the SMR routing tasks the loop discriminates on:
- *  - `live`     → the live-documentation delta summariser (`smr.live`).
- *  - `finalize` → the final/comprehensive summary generator (`smr.finalize`).
- *  - `test`     → the tenant-admin prompt-template test bench (`smr.test`,
+ *  - `live`     → the live-documentation delta summariser (`text.live`).
+ *  - `finalize` → the final/comprehensive summary generator (`text.finalize`).
+ *  - `test`     → the tenant-admin prompt-template test bench (`text.test`,
  * — falls back to `finalize` at the CALLER when unresolved.
- * `resolveSmrSelection` consults the matching `AiTaskDefault` key FIRST, then
- * falls back to the legacy `HarnessPolicy.smrProvider/smrModel` cascade.
+ * `resolveTextSelection` consults the matching `AiTaskDefault` key FIRST, then
+ * falls back to the legacy `HarnessPolicy.textProvider/textModel` cascade.
  */
 export type TextRoutingTask = 'live' | 'finalize' | 'test';
 
 const TEXT_TASK_KEY: Record<TextRoutingTask, string> = {
-  live: 'smr.live',
-  finalize: 'smr.finalize',
-  test: 'smr.test',
+  live: 'text.live',
+  finalize: 'text.finalize',
+  test: 'text.test',
 };
 
 /**
- * The per-tenant, opt-in SMR fallback selection keys. Tenant-admin
- * configurable (the `smr.` prefix is NOT in `SUPER_ADMIN_ONLY_TASK_PREFIXES`);
- * `resolveSmrFallbackSelection` reads these fail-OPEN (no row ⇒ null ⇒ no
+ * The tasks that HAVE a fallback tier. `test` deliberately does not: the
+ * prompt-template test bench is authoring, not clinical documentation, so a
+ * failed test surfaces rather than silently re-running on another model.
+ */
+type TextFallbackTask = Exclude<TextRoutingTask, 'test'>;
+
+/**
+ * The per-tenant, opt-in text fallback selection keys. Tenant-admin
+ * configurable (the `text.` prefix is NOT in `SUPER_ADMIN_ONLY_TASK_PREFIXES`);
+ * `resolveTextFallbackSelection` reads these fail-OPEN (no row ⇒ null ⇒ no
  * fallback runs — the same effect as the removed `TEXT_FALLBACK_*` env being
  * unset). No SYSTEM default is seeded.
+ *
+ * TASK-740 D-4: this map used to carry a third entry, `text.test.fallback`,
+ * purely to satisfy a `Record<TextRoutingTask, string>` exhaustiveness check —
+ * an unregistered, unseeded literal that was not in `AI_TASK_KEYS` and that no
+ * caller could reach. Narrowing the key type to {@link TextFallbackTask} deletes
+ * the literal instead of documenting it, so the map cannot name an unregistered
+ * key again.
  */
-const TEXT_FALLBACK_TASK_KEY: Record<TextRoutingTask, string> = {
-  live: 'smr.live.fallback',
-  finalize: 'smr.finalize.fallback',
-  // Present only for the Record<TextRoutingTask, string> exhaustiveness check —
-  // no AiTaskDefault key is registered for it and no caller resolves fallback
-  // for the 'test' task (has no fallback tier).
-  test: 'smr.test.fallback',
+const TEXT_FALLBACK_TASK_KEY: Record<TextFallbackTask, string> = {
+  live: 'text.live.fallback',
+  finalize: 'text.finalize.fallback',
 };
 
 /**
@@ -72,7 +82,7 @@ const JUDGE_TASK_KEY = 'harness.judge';
  * `openai_compat` (the harness JudgeProvider enum has no `lm-studio` member).
  * Every other provider the judge supports already matches its enum value
  * (`ollama` / `vllm` / `llama-cpp` / `azure` / `bedrock`), so it passes through.
- * Mirrors the `azure → azure-openai` alias `resolveSmrSelection` applies.
+ * Mirrors the `azure → azure-openai` alias `resolveTextSelection` applies.
  */
 function toJudgeProvider(provider: string): string {
   return provider === 'lm-studio' ? 'openai_compat' : provider;
@@ -106,8 +116,8 @@ export interface HarnessPolicyKnobs {
   phiFailClosed: boolean;
   safetyProvider: string;
   safetyModel: string;
-  smrProvider: string | null;
-  smrModel: string | null;
+  textProvider: string | null;
+  textModel: string | null;
   maxRegen: number;
   gateSlaSeconds: number;
   gateEscalationSeconds: number;
@@ -149,8 +159,8 @@ export interface HarnessPolicyKnobs {
 const SUPER_ADMIN_ONLY_POLICY_KEYS = [
   'safetyProvider',
   'safetyModel',
-  'smrProvider',
-  'smrModel',
+  'textProvider',
+  'textModel',
   'optimisticDeliveryEnabled',
   'atomicFactEnabled',
   'retrievalEnabled',
@@ -190,8 +200,8 @@ function entityToKnobs(e: HarnessPolicyEntity): HarnessPolicyKnobs {
     phiFailClosed: e.phiFailClosed,
     safetyProvider: e.safetyProvider,
     safetyModel: e.safetyModel,
-    smrProvider: e.smrProvider ?? null,
-    smrModel: e.smrModel ?? null,
+    textProvider: e.textProvider ?? null,
+    textModel: e.textModel ?? null,
     maxRegen: e.maxRegen,
     gateSlaSeconds: e.gateSlaSeconds,
     gateEscalationSeconds: e.gateEscalationSeconds,
@@ -262,7 +272,7 @@ export class HarnessPolicyService {
     // non-Vault deployments degrade to plaintext WORM change rows.
     @Optional() @Inject(SecretsService) private readonly secretsService?: SecretsService,
     // optional so existing fixtures keep their 4/5-arg
-    // construction; when absent, `resolveSmrSelection` uses only the legacy
+    // construction; when absent, `resolveTextSelection` uses only the legacy
     // HarnessPolicy cascade (the AiTaskDefault-first path is a no-op).
     @Optional() @Inject(IAiTaskDefaultService) private readonly aiTaskDefaultService?: IAiTaskDefaultService,
     // The SYSTEM-shared MCP registry the worker resolves tool
@@ -313,7 +323,7 @@ export class HarnessPolicyService {
    * had been receiving `[]` forever because nothing ever populated it.
    *
    * Best-effort by design: a registry read failure yields an empty list rather
-   * than sinking the whole effective-policy read (mirrors `resolveSmrSelection`
+   * than sinking the whole effective-policy read (mirrors `resolveTextSelection`
    * and `resolveJudgeSelection`). An empty list simply means nothing is callable.
    */
   private async resolveMcpServers(): Promise<McpServerResponse[]> {
@@ -370,11 +380,28 @@ export class HarnessPolicyService {
    * tenant → department-agent overrides (most specific wins). The overlay is
    * best-effort and never sinks the policy read; with no consultationId the
    * result is byte-identical to the prior behaviour.
+   *
+   * When `opts.taskKey` is supplied (TASK-740 D-1) the `AiTaskDefault` row for
+   * that key — resolved tenant → SYSTEM by `AiTaskDefaultService.getEffective` —
+   * overlays `textProvider`/`textModel` on whichever policy row wins. Same
+   * best-effort contract as the judge overlay: an unresolved key leaves the
+   * policy columns in place. Without a taskKey the result is byte-identical to
+   * the prior behaviour.
    */
-  async getEffectivePolicy(tenantId?: string, opts?: { consultationId?: string }): Promise<HarnessPolicyResponse> {
+  async getEffectivePolicy(tenantId?: string, opts?: { consultationId?: string; taskKey?: string }): Promise<HarnessPolicyResponse> {
     const tid = tenantId ?? this.callerTenantId;
     if (!tid) throw new BadRequestException('Tenant ID is required');
     const consultationId = opts?.consultationId;
+    // D-1: the task key SELECTS the model. Resolved once and overlaid on every
+    // return path below, exactly like `judge` — null ⇒ keep the policy columns.
+    const taskSelection = opts?.taskKey ? await this.resolveTextSelectionForKey(opts.taskKey, tid) : null;
+    const applyTaskSelection = (resp: HarnessPolicyResponse): HarnessPolicyResponse => {
+      if (taskSelection) {
+        resp.textProvider = taskSelection.provider;
+        resp.textModel = taskSelection.model;
+      }
+      return resp;
+    };
 
     // the judge provider/model come from the SYSTEM-only
     // `harness.judge` AiTaskDefault, independent of which policy row wins. Resolve
@@ -404,7 +431,7 @@ export class HarnessPolicyService {
       resp.judgeModel = judge.judgeModel;
       resp.mcpServers = mcpServers;
       resp.tokenBudgetPerRun = tokenBudgetPerRun;
-      return this.applyAgentOverrides(resp, tid, consultationId);
+      return this.applyAgentOverrides(applyTaskSelection(resp), tid, consultationId);
     }
 
     const sys = await this.policyRepository.findSystemDefault();
@@ -414,7 +441,7 @@ export class HarnessPolicyService {
       resp.judgeModel = judge.judgeModel;
       resp.mcpServers = mcpServers;
       resp.tokenBudgetPerRun = tokenBudgetPerRun;
-      return this.applyAgentOverrides(resp, tid, consultationId);
+      return this.applyAgentOverrides(applyTaskSelection(resp), tid, consultationId);
     }
 
     const resp = codeDefaultResponse(tid);
@@ -422,7 +449,7 @@ export class HarnessPolicyService {
     resp.judgeModel = judge.judgeModel;
     resp.mcpServers = mcpServers;
     resp.tokenBudgetPerRun = tokenBudgetPerRun;
-    return this.applyAgentOverrides(resp, tid, consultationId);
+    return this.applyAgentOverrides(applyTaskSelection(resp), tid, consultationId);
   }
 
   /**
@@ -498,7 +525,7 @@ export class HarnessPolicyService {
    * model's provider normalised to a `JudgeProvider` value. Best-effort: a
    * missing/misconfigured key (or an un-wired AiTaskDefault service in fixtures)
    * yields `{ null, null }` so the harness falls back to its env/code default —
-   * never sinks the effective-policy read (mirrors `resolveSmrSelection`).
+   * never sinks the effective-policy read (mirrors `resolveTextSelection`).
    */
   private async resolveJudgeSelection(tenantId?: string): Promise<{ judgeProvider: string | null; judgeModel: string | null }> {
     if (!this.aiTaskDefaultService) return { judgeProvider: null, judgeModel: null };
@@ -518,84 +545,90 @@ export class HarnessPolicyService {
   }
 
   /**
-   * The single fail-closed SMR-selection seam every TS
+   * Resolve ONE `AiTaskDefault` task key into a `{ provider, model }` pair,
+   * tenant → SYSTEM (the cascade `AiTaskDefaultService.getEffective` owns).
+   *
+   * The single place the task key is turned into a model. Both the fail-closed
+   * seam (`resolveTextSelection`), the fail-open fallback seam
+   * (`resolveTextFallbackSelection`) and the D-1 `getEffectivePolicy` overlay
+   * funnel through it, so the `azure → azure-openai` runtime alias and the
+   * "an enabled model needs BOTH provider and sourceUri" rule cannot drift
+   * between them.
+   *
+   * Best-effort by contract: returns `null` when the AiTaskDefault service is
+   * un-wired, the key resolves to no enabled model, or the lookup throws. Each
+   * caller decides what `null` means (throw / no fallback / keep the policy
+   * columns) — this method never decides for them.
+   */
+  private async resolveTextSelectionForKey(taskKey: string, tenantId?: string): Promise<{ provider: string; model: string } | null> {
+    if (!this.aiTaskDefaultService) return null;
+    try {
+      const eff = await this.aiTaskDefaultService.getEffective(taskKey, tenantId);
+      const model = eff.model;
+      if (model?.provider && model.sourceUri) {
+        // Catalog seeds `azure`; the text service registers `azure-openai`.
+        return { provider: model.provider === 'azure' ? 'azure-openai' : model.provider, model: model.sourceUri };
+      }
+    } catch (error) {
+      this.logger.warn({
+        message: `AiTaskDefault lookup failed for '${taskKey}' — the caller's own fallback applies`,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+    return null;
+  }
+
+  /**
+   * The single fail-closed text-selection seam every TS
    * `/api/v1/generate` caller funnels through. Resolves the effective policy
    * (tenant own → SYSTEM default → code default, with the B1 field-level
    * fallthrough) and returns a GUARANTEED-non-null `{ provider, model }`.
    *
    * Throws when the cascade yields no provider/model so the admin-managed
-   * default can never be silently bypassed (SMR itself also fail-closes with a
-   * 422).
+   * default can never be silently bypassed (the text service itself also
+   * fail-closes with a 422).
    *
    * Model-routing precedence: the
-   * `AiTaskDefault` key for the task (`smr.live` / `smr.finalize`) is consulted
+   * `AiTaskDefault` key for the task (`text.live` / `text.finalize`) is consulted
    * FIRST. When it resolves to an ENABLED model, its `{ provider, sourceUri }`
-   * wins (sourceUri is the provider-native identifier actually sent to SMR).
-   * The legacy `HarnessPolicy.smrProvider/smrModel` cascade is the documented
-   * fallback for tenants that have not migrated to AiTaskDefault. SMR stays
-   * a stateless gateway; the caller model resolved here is authority.
+   * wins (sourceUri is the provider-native identifier actually sent to the text
+   * service). The legacy `HarnessPolicy.textProvider/textModel` cascade is the
+   * documented fallback for tenants that have not migrated to AiTaskDefault. The
+   * text service stays a stateless gateway; the model resolved here is authority.
    */
-  async resolveSmrSelection(tenantId?: string, task: TextRoutingTask = 'finalize'): Promise<{ provider: string; model: string }> {
-    // Precedence 1 — AiTaskDefault (when wired). A resolved model's sourceUri is
-    // the provider-native id SMR expects; provider is the canonical runtime.
-    if (this.aiTaskDefaultService) {
-      try {
-        const eff = await this.aiTaskDefaultService.getEffective(TEXT_TASK_KEY[task], tenantId);
-        const model = eff.model;
-        if (model?.provider && model.sourceUri) {
-          // Catalog seeds `azure`; SMR registers `azure-openai`.
-          const provider = model.provider === 'azure' ? 'azure-openai' : model.provider;
-          return { provider, model: model.sourceUri };
-        }
-      } catch (error) {
-        // A misconfigured/unknown task key must not sink the legacy path.
-        this.logger.warn({
-          message: `AiTaskDefault SMR routing lookup failed for '${TEXT_TASK_KEY[task]}' — falling back to HarnessPolicy cascade`,
-          error: error instanceof Error ? error.message : String(error),
-        });
-      }
-    }
+  async resolveTextSelection(tenantId?: string, task: TextRoutingTask = 'finalize'): Promise<{ provider: string; model: string }> {
+    // Precedence 1 — AiTaskDefault (when wired), tenant → SYSTEM.
+    const selected = await this.resolveTextSelectionForKey(TEXT_TASK_KEY[task], tenantId);
+    if (selected) return selected;
 
-    // Precedence 2 — legacy HarnessPolicy.smrProvider/smrModel cascade.
+    // Precedence 2 — legacy HarnessPolicy.textProvider/textModel cascade.
     const effective = await this.getEffectivePolicy(tenantId);
-    if (!effective.smrProvider || !effective.smrModel) {
+    if (!effective.textProvider || !effective.textModel) {
       throw new BadRequestException(
-        'No SMR model is configured for this tenant. Configure the AiTaskDefault `smr.finalize`/`smr.live` key or set HarnessPolicy.smrProvider/smrModel on the tenant or the SYSTEM default.',
+        'No text-generation model is configured for this tenant. Configure the AiTaskDefault `text.finalize`/`text.live` key or set HarnessPolicy.textProvider/textModel on the tenant or the SYSTEM default.',
       );
     }
-    return { provider: effective.smrProvider, model: effective.smrModel };
+    return { provider: effective.textProvider, model: effective.textModel };
   }
 
   /**
-   * Resolve the tenant's per-tenant SMR FALLBACK selection for a task
-   * (`smr.<task>.fallback`) via `AiTaskDefault`. Mirrors `resolveSmrSelection`'s
+   * Resolve the tenant's per-tenant text FALLBACK selection for a task
+   * (`text.<task>.fallback`) via `AiTaskDefault`. Shares
+   * {@link resolveTextSelectionForKey} with the primary seam, so the
    * provider/model derivation (the model's `sourceUri` is the provider-native id
-   * SMR expects; `azure` normalises to `azure-openai`), but is fail-OPEN by
-   * contract: it returns `null` — never throws — when the AiTaskDefault service
-   * is un-wired, the key resolves to no enabled model, or the lookup errors.
-   * A `null` means the caller runs no fallback (the same effect as the removed
-   * `TEXT_FALLBACK_*` env being unset). Fallback is per-tenant opt-in: there is
-   * NO SYSTEM default, so an un-configured tenant gets `null`.
+   * the text service expects; `azure` normalises to `azure-openai`) cannot drift
+   * between the two tiers.
+   *
+   * Fail-OPEN by contract: `null` — never a throw — when the AiTaskDefault
+   * service is un-wired, the key resolves to no enabled model, or the lookup
+   * errors. A `null` means the caller runs no fallback (the same effect as the
+   * removed `TEXT_FALLBACK_*` env being unset). Fallback is per-tenant opt-in:
+   * there is NO SYSTEM default, so an un-configured tenant gets `null`.
+   *
+   * `task` excludes `'test'` — the test bench has no fallback tier (D-4).
    */
-  async resolveSmrFallbackSelection(tenantId?: string, task: TextRoutingTask = 'finalize'): Promise<{ provider: string; model: string } | null> {
-    if (!this.aiTaskDefaultService) return null;
-    try {
-      const eff = await this.aiTaskDefaultService.getEffective(TEXT_FALLBACK_TASK_KEY[task], tenantId);
-      const model = eff.model;
-      if (model?.provider && model.sourceUri) {
-        // Catalog seeds `azure`; SMR registers `azure-openai` (mirrors resolveSmrSelection).
-        const provider = model.provider === 'azure' ? 'azure-openai' : model.provider;
-        return { provider, model: model.sourceUri };
-      }
-    } catch (error) {
-      // Fail-OPEN: a misconfigured/unknown fallback key must never sink the
-      // caller — no fallback simply runs.
-      this.logger.warn({
-        message: `AiTaskDefault SMR fallback lookup failed for '${TEXT_FALLBACK_TASK_KEY[task]}' — no fallback will run`,
-        error: error instanceof Error ? error.message : String(error),
-      });
-    }
-    return null;
+  async resolveTextFallbackSelection(tenantId?: string, task: TextFallbackTask = 'finalize'): Promise<{ provider: string; model: string } | null> {
+    return this.resolveTextSelectionForKey(TEXT_FALLBACK_TASK_KEY[task], tenantId);
   }
 
   /** The SYSTEM-tenant GLOBAL-DEFAULT policy (platform editor reads this). */

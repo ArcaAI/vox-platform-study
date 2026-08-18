@@ -274,7 +274,7 @@ describe('useArcaSttProvider', () => {
       'mapV2StatusToV1',
       'useAudioCapture',
       'useArcaSpeechToText',
-      'useSMR',
+      'useText',
     ]) {
       expect(typeof (compat as Record<string, unknown>)[name]).toBe('function');
     }

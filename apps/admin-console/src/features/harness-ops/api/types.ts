@@ -358,9 +358,9 @@ export interface LiveSessionStats {
   lastUpdatedAt: string;
   flushCount: number;
   generation: number;
-  smrLatencyMs: number;
+  textLatencyMs: number;
   nlpLatencyMs: number;
-  smrFailed: boolean;
+  textFailed: boolean;
   nlpFailed: boolean;
   staleDropCount: number;
   entityCount: number;

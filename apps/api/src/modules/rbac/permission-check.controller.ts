@@ -3,7 +3,7 @@ import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagg
 import { PolicyEngine } from '@arcaai/applications';
 import { ClsService } from 'nestjs-cls';
 import { IActiveUserContext } from '@arcaai/applications';
-import { Authorize } from '../../decorators';
+import { Authorize, ForbidApiKey } from '../../decorators';
 import { CheckPermissionDto, CheckPermissionsBulkDto, CheckPermissionResponse, CheckPermissionsBulkResponse, MyPermissionsResponse } from './dto';
 
 /**
@@ -15,6 +15,15 @@ import { CheckPermissionDto, CheckPermissionsBulkDto, CheckPermissionResponse, C
 @ApiTags('RBAC - Permission Check')
 @ApiBearerAuth()
 @Controller('rbac/check')
+// TASK-742 API-KEY-NOTE — CONSERVATIVE DEFAULT, AWAITING OWNER CLASSIFICATION.
+// Reason: RBAC introspection; degenerate for API keys anyway (the ability is a gate here, never published to CLS) and not a credential concern.
+// This route family declared nothing about API-key access, which under the
+// deny-by-default rule is a boot failure. Rather than guess a scope (guessing
+// permissive is how the original gap was created), it is closed explicitly.
+// Reversing it is a one-line change to @RequiredScopes('<scope>') once the
+// owner confirms a real API-key use case — see the TASK-708 README's
+// "Reachability changes awaiting owner review" table.
+@ForbidApiKey()
 export class PermissionCheckController {
   private readonly logger = new Logger(PermissionCheckController.name);
 

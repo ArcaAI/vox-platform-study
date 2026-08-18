@@ -252,7 +252,21 @@ export class HarnessInternalController {
     required: false,
     description: 'Optional — overlay the consultation department default agent tenant-tier harnessOverrides.',
   })
-  async getEffectivePolicy(@Query('tenantId') tenantId?: string, @Query('consultationId') consultationId?: string): Promise<HarnessPolicyResponse> {
+  // TASK-740 D-1 — the `generate.text` interpreter node passes its
+  // `config.taskKey` so the AiTaskDefault row for THAT key (tenant → SYSTEM)
+  // selects `textProvider`/`textModel`. Before this, every workflow node
+  // resolved the same model regardless of task key and the seeded rows were
+  // inert on the Python path. Omitted ⇒ byte-identical prior behaviour.
+  @ApiQuery({
+    name: 'taskKey',
+    required: false,
+    description: 'Optional — resolve textProvider/textModel from the AiTaskDefault row for this task key (e.g. `text.live`).',
+  })
+  async getEffectivePolicy(
+    @Query('tenantId') tenantId?: string,
+    @Query('consultationId') consultationId?: string,
+    @Query('taskKey') taskKey?: string,
+  ): Promise<HarnessPolicyResponse> {
     if (!tenantId) {
       throw new BadRequestException('tenantId query parameter is required');
     }
@@ -267,7 +281,7 @@ export class HarnessInternalController {
     // the precedent for getting this wrong first).
     return this.cls.run(async () => {
       this.cls.set('tenantId', tenantId);
-      return this.harnessPolicyService.getEffectivePolicy(tenantId, { consultationId });
+      return this.harnessPolicyService.getEffectivePolicy(tenantId, { consultationId, taskKey });
     });
   }
 

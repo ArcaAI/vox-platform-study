@@ -1,4 +1,4 @@
-"""Response models for the SMR API."""
+"""Response models for the Text API."""
 
 from __future__ import annotations
 

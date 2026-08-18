@@ -66,7 +66,7 @@ export abstract class IPromptManagementService {
   abstract assignToDepartment(dto: AssignDepartmentPromptRequest): Promise<DepartmentResponse>;
   /**
    * BUG-018 — SUBMIT a test run. Assembles the prompt, resolves
-   * `{provider, model}` from the `smr.test` AiTaskDefault (or the caller's
+   * `{provider, model}` from the `text.test` AiTaskDefault (or the caller's
    * explicit pair) and submits a STREAMING generation job to SMR, returning
    * immediately. `dryRun` returns the assembled prompt and calls SMR not at all.
    * Never awaits the completion — the 2–3½ minute blocking call was the CDN 524.

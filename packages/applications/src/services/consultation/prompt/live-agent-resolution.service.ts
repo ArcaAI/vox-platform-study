@@ -235,7 +235,7 @@ export class LiveAgentResolutionService implements ILiveAgentResolver {
    *
    * FAIL-OPEN (live posture): an unknown, disabled, or wrong-task slug logs and
    * degrades to null, which puts the session back on the per-flush tenant
-   * `smr.live` AiTaskDefault — today's behavior. Contrast the finalize side,
+   * `text.live` AiTaskDefault — today's behavior. Contrast the finalize side,
    * where model SELECTION is fail-closed.
    */
   private async resolveLiveLlm(llmOverrides: unknown): Promise<{ provider: string; model: string } | null> {
@@ -247,19 +247,19 @@ export class LiveAgentResolutionService implements ILiveAgentResolver {
       const model = models[0];
       if (!model || model.taskType !== ModelTaskType.TEXT_GENERATION || !model.sourceUri) {
         this.logger.warn({
-          message: 'Agent llmOverrides.live names an unusable model — falling back to the tenant smr.live default',
+          message: 'Agent llmOverrides.live names an unusable model — falling back to the tenant text.live default',
           slug,
         });
         return null;
       }
       // The catalog seeds `azure`; SMR registers it as `azure-openai`
-      // (mirrors HarnessPolicyService.resolveSmrSelection).
+      // (mirrors HarnessPolicyService.resolveTextSelection).
       const provider = model.provider === 'azure' ? 'azure-openai' : (model.provider ?? '');
       if (!provider) return null;
       return { provider, model: model.sourceUri };
     } catch (error) {
       this.logger.warn({
-        message: 'Failed to resolve the agent live-LLM override — falling back to the tenant smr.live default',
+        message: 'Failed to resolve the agent live-LLM override — falling back to the tenant text.live default',
         slug,
         error: error instanceof Error ? error.message : String(error),
       });

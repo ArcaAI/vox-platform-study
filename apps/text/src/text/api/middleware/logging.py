@@ -14,7 +14,7 @@ class RequestLoggingMiddleware(BaseHTTPMiddleware):
     """Log request start, completion, and failure with latency."""
 
     async def dispatch(self, request: Request, call_next: RequestResponseEndpoint) -> Response:
-        logger = structlog.get_logger("smr.access")
+        logger = structlog.get_logger("text.access")
         start = time.monotonic()
         method = request.method
         path = request.url.path

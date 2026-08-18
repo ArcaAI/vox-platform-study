@@ -12,7 +12,7 @@ Design notes:
   than blocking a promotion for minutes. Large sets belong on the future Temporal
   lane (out of scope here).
 * **Provenance, not generation.** The endpoint JUDGES the notes supplied on each
-  case (``generated_note``); it does not itself run SMR generation (that needs the
+  case (``generated_note``); it does not itself run Text generation (that needs the
   LLM lane and is not hermetic). The ``promptTemplateId`` / ``promptVersion`` /
   ``promptVersionNumber`` fields are recorded as provenance and echoed back so
   apps/api can attribute the persisted ``EvalRun`` to the promotion that triggered it.

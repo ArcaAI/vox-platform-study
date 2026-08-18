@@ -186,6 +186,25 @@ module.exports = [
         },
     },
     {
+        // TASK-737 §4.4 — every outbound internal service call that sends
+        // `X-Service-Token` must also carry a tenant channel. The propagation
+        // audit found NINE `apps/api` → `apps/text` call sites that omitted
+        // `X-Tenant-Id` entirely, several with a `tenantId` local in scope one
+        // line above the HTTP call, and code review caught none of them. This
+        // rule is the backstop against the tenth.
+        //
+        // Scope is every TS source in the gateway and the application-services
+        // package — both host peer clients, and the audit found gaps in each.
+        // Tests are excluded: a fixture asserting the PRE-fix shape (or a stub
+        // client that never reaches a real service) is not a call site.
+        name: 'arcaai/internal-calls-require-tenant-header',
+        files: ['**/src/**/*.ts'],
+        ignores: ['**/__tests__/**', '**/*.test.ts', '**/*.spec.ts', '**/tests/**'],
+        rules: {
+            'arcaai-internal/require-internal-tenant-header': 'error',
+        },
+    },
+    {
         name: 'arcaai/house-rules',
         rules: {
             // Parity shim for the typescript-eslint v7 → v8 move: v7

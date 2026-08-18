@@ -9,7 +9,7 @@ import { IsArray, IsBoolean, IsInt, IsNumber, IsOptional, IsString, Max, MaxLeng
  * integers. `expectedVersion` is the OCC token (folded from the `If-Match`
  * header by the controller; body fallback for service-to-service callers).
  *
- * Sending `null` for `smrProvider` / `smrModel` / `toolAllowlist` explicitly
+ * Sending `null` for `textProvider` / `textModel` / `toolAllowlist` explicitly
  * clears the field ("let the service choose" / "no tool restriction"); OMITTING
  * a field leaves it unchanged.
  */
@@ -80,13 +80,13 @@ export class UpdateHarnessPolicyRequest {
   @IsOptional()
   @IsString()
   @MaxLength(100)
-  smrProvider?: string | null;
+  textProvider?: string | null;
 
   @ApiPropertyOptional({ description: 'SMR generation model id (null = let the SMR service choose).', nullable: true })
   @IsOptional()
   @IsString()
   @MaxLength(200)
-  smrModel?: string | null;
+  textModel?: string | null;
 
   @ApiPropertyOptional({ description: 'Bounded-regen budget (non-negative integer).', minimum: 0, example: 2 })
   @IsOptional()

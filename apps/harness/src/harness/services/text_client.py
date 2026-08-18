@@ -1,8 +1,8 @@
-"""SMR tool client — text generation via ``POST /api/v1/generate`` (stream:false).
+"""Text tool client — text generation via ``POST /api/v1/generate`` (stream:false).
 
 The harness always generates synchronously (``stream:false``) and passes the
 activated SOAP ``response_format`` through untouched. Unset optional
-hyperparameters are omitted so the SMR service applies its own defaults.
+hyperparameters are omitted so the Text service applies its own defaults.
 """
 
 from __future__ import annotations
@@ -16,21 +16,21 @@ from harness.core.llm_concurrency import LlmCallTimeout, governed_request
 from harness.temporal.claim_check import ClaimCheckRef
 
 
-class SmrServiceError(RuntimeError):
-    """The SMR service was unreachable or returned a non-2xx response.
+class TextServiceError(RuntimeError):
+    """The Text service was unreachable or returned a non-2xx response.
 
-    ``after_send`` is True when the request reached SMR and the model MAY have generated —
+    ``after_send`` is True when the request reached Text and the model MAY have generated —
     so retrying would re-invoke it. It is set for the two dispatch-then-lost
     paths this client closes: a read-side transport failure (``_POST_SEND_ERRORS``) and the
     governor's per-call ``LlmCallTimeout`` firing mid-request. ``generate`` also makes the
     Temporal retry non-retryable for these, so neither the governor nor ``_GENERATE_RETRY``
     re-issues them.
 
-    NOT covered by ``after_send`` (still retried, pre-existing / lower risk): an SMR 5xx or
+    NOT covered by ``after_send`` (still retried, pre-existing / lower risk): an Text 5xx or
     the LM-Studio ``terminated`` 400 that arrives AFTER the model ran — the governor retries
-    those. A deterministic ``Idempotency-Key`` (see ``generate``) lets SMR
+    those. A deterministic ``Idempotency-Key`` (see ``generate``) lets Text
     dedup a replayed generate — closing the worker-crash re-delivery path; the residual is a
-    5xx after the model ran but before SMR cached the response. A pre-send failure sets
+    5xx after the model ran but before Text cached the response. A pre-send failure sets
     ``after_send=False`` (safe to retry).
     """
 
@@ -39,28 +39,28 @@ class SmrServiceError(RuntimeError):
         self.after_send = after_send
 
 
-# Read-side httpx failures: the request bytes were fully sent, so SMR MAY have run the
+# Read-side httpx failures: the request bytes were fully sent, so Text MAY have run the
 # model before the response was lost. Retrying re-invokes generation. WRITE/
 # connect/pool failures are PRE-send (the model never saw the prompt) and stay retryable.
 _POST_SEND_ERRORS = (httpx.ReadTimeout, httpx.ReadError, httpx.RemoteProtocolError)
 
 
-class _SmrResponseLost(RuntimeError):
+class _TextResponseLost(RuntimeError):
     """Sentinel for a post-send transport failure (prompt delivered, response lost).
 
     Raised out of the governed ``_send`` with a deliberately MARKER-FREE message so the
     per-endpoint governor's ``is_retryable`` returns False and does NOT re-POST it (a
     re-POST is a second generation). ``generate`` converts it to
-    ``SmrServiceError(after_send=True)``.
+    ``TextServiceError(after_send=True)``.
     """
 
     def __init__(self, cause: Exception) -> None:
-        super().__init__("smr response lost after prompt dispatch; not re-issued")
+        super().__init__("text response lost after prompt dispatch; not re-issued")
         self.cause = cause
 
 
-class SmrGenerationResult(BaseModel):
-    """Parsed SMR ``GenerateResponse`` (the fields the loop needs)."""
+class TextGenerationResult(BaseModel):
+    """Parsed Text ``GenerateResponse`` (the fields the loop needs)."""
 
     model_config = ConfigDict(extra="ignore")
 
@@ -77,18 +77,18 @@ class SmrGenerationResult(BaseModel):
     usage: dict[str, Any] = Field(default_factory=dict)
     latency_ms: int = 0
     finish_reason: str = ""
-    # the normalized ``GenerationStats`` block SMR now returns
+    # the normalized ``GenerationStats`` block Text now returns
     # (stop reason + raw, total/TTFT ms, tokens/second, token counts, engine-native blob).
-    # Captured verbatim as a dict (the SMR wire shape) — the harness does not depend on the
-    # smr model. Additive-optional default None ⇒ replay-safe: an old ``generate`` activity
-    # result deserializes it to None, and a legacy SMR cache hit that omits ``stats`` stays
+    # Captured verbatim as a dict (the Text wire shape) — the harness does not depend on the
+    # text model. Additive-optional default None ⇒ replay-safe: an old ``generate`` activity
+    # result deserializes it to None, and a legacy Text cache hit that omits ``stats`` stays
     # None (never throws over missing stats). The generate activity returns this model, so the
     # field threads through to the activity result command-neutrally (no new workflow command).
     stats: dict[str, Any] | None = None
 
 
-class SmrClient:
-    """Thin async client for the SMR synchronous generate endpoint."""
+class TextClient:
+    """Thin async client for the Text synchronous generate endpoint."""
 
     def __init__(
         self,
@@ -106,6 +106,7 @@ class SmrClient:
     async def generate(
         self,
         *,
+        tenant_id: str,
         prompt: str,
         system_prompt: str | None = None,
         provider: str | None = None,
@@ -116,8 +117,26 @@ class SmrClient:
         response_format: dict[str, Any] | None = None,
         context: dict[str, Any] | None = None,
         idempotency_key: str | None = None,
-    ) -> SmrGenerationResult:
-        """Generate a completion synchronously and parse the response."""
+    ) -> TextGenerationResult:
+        """Generate a completion synchronously and parse the response.
+
+        ``tenant_id`` is MANDATORY (TASK-737 owner directive, 2026-08-16). Text
+        resolves the tenant's BYOK provider/credential from ``X-Tenant-Id`` and
+        TASK-735 derives ``funding``/``cost_basis`` from whichever tier supplied
+        that credential — so a dropped tenant mis-CONFIGURES *and* mis-BILLS the
+        call, with nothing thrown or logged anywhere. It is passed positionally
+        by nobody: every caller must name it.
+
+        Genuinely tenant-less internal work declares itself with a
+        ``tenantless:<reason>`` marker; a blank value is a CALLER defect and
+        raises here rather than being papered over downstream.
+        """
+        if not tenant_id or not tenant_id.strip():
+            raise ValueError(
+                "text generate requires a tenant_id (TASK-737): pass the consultation's "
+                "tenant, or an explicit 'tenantless:<reason>' marker for genuinely "
+                "tenant-less work. An absent tenant is a caller defect."
+            )
         url = f"{self._base_url}/api/v1/generate"
         body: dict[str, Any] = {"prompt": prompt, "stream": False}
         if system_prompt is not None:
@@ -137,16 +156,19 @@ class SmrClient:
         if context is not None:
             body["context"] = context
 
-        # A deterministic key lets SMR dedup a replayed generate (a
+        # A deterministic key lets Text dedup a replayed generate (a
         # worker-crash re-delivery) without re-invoking — and re-billing — the model. Sent
         # as a header (the api_client Idempotency-Key contract), never in the LLM body.
         headers: dict[str, str] = {}
         if idempotency_key:
             headers["Idempotency-Key"] = idempotency_key
-        # SMR's ServiceAuthMiddleware requires X-Service-Token whenever TEXT_SERVICE_TOKEN
+        # Text's ServiceAuthMiddleware requires X-Service-Token whenever TEXT_SERVICE_TOKEN
         # is configured — omitted when unset so local dev-bypass keeps working.
         if self._service_token:
             headers["X-Service-Token"] = self._service_token
+        # MANDATORY tenant identity (TASK-737). Unconditional by construction —
+        # the guard above already rejected a blank value.
+        headers["X-Tenant-Id"] = tenant_id.strip()
 
         async with httpx.AsyncClient(transport=self._transport, timeout=self._timeout) as client:
 
@@ -154,33 +176,33 @@ class SmrClient:
                 try:
                     resp = await client.post(url, json=body, headers=headers)
                 except _POST_SEND_ERRORS as exc:
-                    # The prompt reached SMR (bytes sent) but the response was
+                    # The prompt reached Text (bytes sent) but the response was
                     # lost. The model MAY have run — do NOT let the governor re-POST it.
-                    raise _SmrResponseLost(exc) from exc
+                    raise _TextResponseLost(exc) from exc
                 resp.raise_for_status()
                 return resp
 
-            # Per-endpoint governor (the SMR/LM Studio box): bounded rate-limit-aware retry
+            # Per-endpoint governor (the Text/LM Studio box): bounded rate-limit-aware retry
             # on a transient generation failure before the loop's own retry. generate is
             # NON-idempotent, so ``retry_on_timeout=False`` makes a per-call governor
             # timeout terminal, and a post-send read loss is surfaced as
-            # ``_SmrResponseLost`` (marker-free) — the governor NEVER re-invokes the model
+            # ``_TextResponseLost`` (marker-free) — the governor NEVER re-invokes the model
             # after the prompt is dispatched. Pre-send failures still retry.
             try:
                 resp = await governed_request(self._base_url, _send, retry_on_timeout=False)
-            except _SmrResponseLost as exc:
-                raise SmrServiceError(
-                    f"smr generate failed (response lost after dispatch): {exc.cause}",
+            except _TextResponseLost as exc:
+                raise TextServiceError(
+                    f"text generate failed (response lost after dispatch): {exc.cause}",
                     after_send=True,
                 ) from exc.cause
             except LlmCallTimeout as exc:
                 # The per-call governor timeout fired mid-request — the model may already
                 # be running, so treat it as a post-send failure (never re-issued).
-                raise SmrServiceError(
-                    f"smr generate failed (per-call timeout; not re-issued): {exc}",
+                raise TextServiceError(
+                    f"text generate failed (per-call timeout; not re-issued): {exc}",
                     after_send=True,
                 ) from exc
             except httpx.HTTPError as exc:
-                raise SmrServiceError(f"smr generate failed: {exc}") from exc
+                raise TextServiceError(f"text generate failed: {exc}") from exc
             data = resp.json()
-        return SmrGenerationResult.model_validate(data)
+        return TextGenerationResult.model_validate(data)

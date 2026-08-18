@@ -210,6 +210,12 @@ export const DNA_STYLE_ENDPOINTS = {
   // Promote a historical report to the doctor's active/default
   // (`isLatest`) report. Owner + tenant scoped.
   SET_DEFAULT: (reportId: string) => `/dna-writing-styles/${encodeURIComponent(reportId)}/default`,
+  // Erasure — the other half of the DNA opt-out. Opting out only stops FUTURE
+  // learning; the already-learned profile stays stored and keeps being injected
+  // into the doctor's summary prompts until it is erased. Owner-scoped: the
+  // subject is always the caller.
+  RESET_MY_STYLE: '/dna-writing-styles/my-style',
+  DELETE_REPORT: (reportId: string) => `/dna-writing-styles/${encodeURIComponent(reportId)}`,
   VERSIONS: (reportId: string) => `/dna-writing-styles/${encodeURIComponent(reportId)}/versions`,
   ADMIN_LIST: '/admin/dna-writing-styles',
   ADMIN_JOB_STATUS: (jobId: string) => `/admin/dna-writing-styles/jobs/${encodeURIComponent(jobId)}`,
@@ -1025,15 +1031,6 @@ export const TEXT_ENDPOINTS = {
   /** Stream a text-generation task's chunks via SSE */
   TASK_STREAM: (id: string) => `/text/tasks/${encodeURIComponent(id)}/stream`,
 } as const;
-
-/**
- * @deprecated Renamed to {@link TEXT_ENDPOINTS} (naming-alignment: `smr` →
- * `text`; see `docs/architecture/agentic-workflow-platform/design.md` D8).
- * Kept as a one-release alias, mirroring `.claude/rules/13-nextjs-apps.md`'s
- * "retired routes keep a `redirect()` page for one release" precedent. This
- * export will be REMOVED next release — use `TEXT_ENDPOINTS` instead.
- */
-export const SMR_ENDPOINTS = TEXT_ENDPOINTS;
 
 // =============================================================================
 // Plugin Defaults

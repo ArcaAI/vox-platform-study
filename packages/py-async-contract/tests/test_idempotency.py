@@ -41,7 +41,7 @@ class TestAsyncIdempotencyKey:
         )
 
     def test_smr_chunk(self) -> None:
-        assert AsyncIdempotencyKey.smr_chunk("task-1", 7) == "smr:task:task-1:chunk:7"
+        assert AsyncIdempotencyKey.text_chunk("task-1", 7) == "text:task:task-1:chunk:7"
 
     def test_workflow_node(self) -> None:
         assert (
@@ -55,10 +55,10 @@ class TestAsyncIdempotencyKey:
         )
 
     def test_is_a_pure_function(self) -> None:
-        assert AsyncIdempotencyKey.smr_chunk(
+        assert AsyncIdempotencyKey.text_chunk(
             "task-1", 7
-        ) == AsyncIdempotencyKey.smr_chunk("task-1", 7)
+        ) == AsyncIdempotencyKey.text_chunk("task-1", 7)
 
     def test_throws_on_a_blank_intent_id(self) -> None:
         with pytest.raises(ValueError, match="task_id is required"):
-            AsyncIdempotencyKey.smr_chunk("  ", 0)
+            AsyncIdempotencyKey.text_chunk("  ", 0)

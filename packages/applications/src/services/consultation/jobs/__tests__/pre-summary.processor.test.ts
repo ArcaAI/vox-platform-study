@@ -75,7 +75,7 @@ const createMockJobMetrics = () => ({
   recordJobComplete: vi.fn(),
   recordJobFailed: vi.fn(),
   recordWaitingDuration: vi.fn(),
-  recordSmrCallDuration: vi.fn(),
+  recordTextCallDuration: vi.fn(),
 });
 
 // Mock ClsService. See summary.processor.test.ts for the
@@ -191,7 +191,7 @@ describe('PreSummaryProcessor', () => {
   let mockPromptAssemblyService: ReturnType<typeof createMockPromptAssemblyService>;
   let mockJobMetrics: ReturnType<typeof createMockJobMetrics>;
   let mockClsService: ReturnType<typeof createMockClsService>;
-  let mockHarnessPolicyService: { resolveSmrSelection: ReturnType<typeof vi.fn> };
+  let mockHarnessPolicyService: { resolveTextSelection: ReturnType<typeof vi.fn> };
 
   beforeEach(() => {
     vi.clearAllMocks();
@@ -206,7 +206,7 @@ describe('PreSummaryProcessor', () => {
     mockJobMetrics = createMockJobMetrics();
     mockClsService = createMockClsService();
     mockHarnessPolicyService = {
-      resolveSmrSelection: vi.fn().mockResolvedValue({ provider: 'lm-studio', model: 'resolved-medgemma' }),
+      resolveTextSelection: vi.fn().mockResolvedValue({ provider: 'lm-studio', model: 'resolved-medgemma' }),
     };
 
     processor = new PreSummaryProcessor(
@@ -289,9 +289,9 @@ describe('PreSummaryProcessor', () => {
         } as GeneratePreSummaryJobPayload),
       );
 
-      expect(mockHarnessPolicyService.resolveSmrSelection).toHaveBeenCalled();
-      const smrCall = mockHttpService.axiosRef.post.mock.calls.find((c: unknown[]) => String(c[0]).includes('/api/v1/generate'))!;
-      const body = smrCall[1] as { provider?: string; model?: string };
+      expect(mockHarnessPolicyService.resolveTextSelection).toHaveBeenCalled();
+      const textCall = mockHttpService.axiosRef.post.mock.calls.find((c: unknown[]) => String(c[0]).includes('/api/v1/generate'))!;
+      const body = textCall[1] as { provider?: string; model?: string };
       expect(body.provider).toBe('lm-studio');
       expect(body.model).toBe('resolved-medgemma');
     });
@@ -426,6 +426,11 @@ describe('PreSummaryProcessor', () => {
           headers: {
             'Content-Type': 'application/json',
             'X-Service-Token': '',
+            // TASK-737 — the job's own fail-closed-validated tenant. It was in
+            // scope (and used for `resolveSmrSelection` one line above the HTTP
+            // call) but never reached the wire, so Text resolved the platform
+            // default provider for a job that HAS a tenant.
+            'X-Tenant-Id': 'tenant-1',
             'X-Request-ID': 'job-789',
           },
         },

@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Status** | Review (2026-08-17, fourth session — OWNER DECISION on CI-provisioning implemented: run the gate LOCALLY, not on a self-hosted CI runner — it is a local/scheduled quality check, not a blocking shared-CI job. `harness-eval-gate` in `.gitlab/ci/test.yml` now carries BOTH the `RUN_INFRA_TESTS=true` opt-in gate AND an explicit `allow_failure: true`, with a comment recording why; `apps/harness/eval/README.md` gained a "Run the release gate locally (the supported path)" section with the exact command. A fresh full 18-case local reproduction against the owner's live LM Studio `google/gemma-4-e4b` instance was launched this session, confirmed reachable and mid-run with real successful calls (live `TCP ESTABLISHED` to `localhost:1234`, ~16.5s per trivial smoke completion observed), but — like the prior session's attempt — did NOT finish within this session's available turn budget; reported honestly, not fabricated, §7 "Local run attempt, this session". The release-gate PASS/FAIL evidence this ticket ships on remains the real, dated `apps/harness/eval/README.md` run (2026-06-07, identical model + golden set, PASS on every metric) — unchanged from the prior pass. Remaining/gated: a completed fresh wall-clock measurement for `google/gemma-4-e4b` specifically, and a real GitLab CI pipeline run (no CI access from any session)) |
+| **Status** | Review (2026-08-18, **sixth session — golden set rebuilt to best practice, judge selection made DB-resident, gate re-run: STILL FAILS, honestly**). Owner decision 3b-1b (keep `gemma-4-e4b-it-qat`, rebuild the reference set) implemented in full. Measured result: **`icc = 0.7306 < 0.8` on n = 288** (Gwet AC2 0.9196), 36/36 cases scored, 0 dropped, 3555 s wall clock; every other metric clears with margin (`pdsqi_mean` 4.875, `accurate`/`thorough` 4.833, `faithfulness` 0.9938); step 2 promptfoo **PASS 36/36**. Up from 0.6568 on half the ratings, and the failure is now specific: held-out ICC (**0.7682**) EXCEEDS dev (0.7045) so the labelling rules generalise; `accurate` 0.8661 / `useful` 0.8653 / `organized` 0.7974 / `synthesized` 0.7929 agree well; the residual is `comprehensible` (judge SD **0.000** — a literal 5 on all 36 cases) and `succinct` (SD 0.401), plus systematic leniency at the 1–2 end (L1 judge mean 2.719 vs reference 1.750). De-biasing lifts ICC only to 0.7350 (Pearson r 0.7387), so it is rank disagreement, not an offset. **Two prior hypotheses were tested and falsified**: context length does NOT change the judge's scores (byte-identical at 4096 / 8192 / 32768 / 131072 — it only causes silent truncation below ~6.5k), and the flat 5.00 was the MODEL — the gate had been grading with `google/gemma-4-e4b`, which returns a flat 5 on every quality case, rather than the platform's own `harness.judge` selection. That divergence is now structurally impossible: `harness/eval/judge/selection.py` resolves provider+model from the SYSTEM `AiTaskDefault` (tenant → SYSTEM, fail-closed, no new env var, `asyncpg` lazily imported so the SERVICE keeps its no-DB-client property). **Nothing was laundered**: thresholds untouched, `icc_gate_enabled` untouched, no case dropped, judge not swapped, anchored lever left off. Remaining: clinician review of `curated-v2.0.0` (artifact + amendment path built and waiting), or a judge with usable dynamic range — both owner/clinical decisions, not engineering fixes. |
 | **Wave** | 1 · **Size** | M |
 | **Epic slug** | `harness-eval-gate` |
 | **Depends on** | — |
@@ -177,13 +177,13 @@ Its own justification (:119-122) is that image builds are idempotent/content-add
 
 - [x] Task 0's judge-backend decision recorded and approved (HUMAN-GATED) before implementation proceeds — §6, owner-approved
 - [x] `harness-eval-gate` is wired to a real, owner-approved judge backend and is a real blocking gate whenever it runs — **CORRECTED this pass**: it is once again behind an explicit `RUN_INFRA_TESTS=true` opt-in (NOT unconditionally on every ordinary pipeline), because the corrected backend (LM Studio) has no CI-runnable image for a shared runner — see §7 "Task 0 correction" for why this is the honest state, not a regression, and the two paths that would let it run unconditionally
-- [x] `harness-eval-gate` reaches a real judge backend and produces genuine PASS/FAIL verdicts (not a connection error) — **CORRECTED this pass**: the real backend is now LM Studio `google/gemma-4-e4b`, not the rejected Qwen2.5-1.5B/llama.cpp. Evidence: the dated, in-repo `apps/harness/eval/README.md` "Live gate results" run (real, PASS on every metric) plus this session's fresh reproduction against the owner's actual live instance — see §7 "Fresh run outcome" for the captured result
+- [x] `harness-eval-gate` reaches a real judge backend and produces genuine PASS/FAIL verdicts (not a connection error) — **CLOSED FOR REAL, fifth session**: both steps run end to end against LM Studio `google/gemma-4-e4b`; step 1 returned a genuine **FAIL** verdict with full per-case scores (18/18 scored, 0 dropped), step 2 a genuine PASS (18/18). A real verdict — including an unwelcome one — is exactly what this criterion asked for
 - [x] `harness-eval-gate` has `allow_failure` removed (or narrowed to an explicit, reviewed exception) and blocks the pipeline on a below-threshold note — removed
-- [x] A deliberately degraded golden-set case fails the job; the existing `curated_v1.json` cases pass it — degraded-case failure still proven by Task 1's real-backend-independent stub test (untouched code, re-verified green this session). **CORRECTED this pass**: the existing cases pass on `EvalConfig`'s UNCHANGED code-default thresholds (no CI recalibration needed for `google/gemma-4-e4b` — §7 "Thresholds"), evidenced by the real dated `apps/harness/eval/README.md` run plus this session's fresh reproduction. GATED: not proven via a GitLab CI pipeline run (no CI access) — see "Remaining/gated work" below.
+- [ ] A deliberately degraded golden-set case fails the job; the existing `curated_v1.json` cases pass it — **FALSIFIED, fifth session.** First half holds: degraded-case failure is proven by Task 1's stub test (re-verified green, 209 passed). Second half does **not**: run to completion 2026-08-17 on the code-default thresholds, `curated_v1.json` **FAILS** the gate on `icc=0.6568 < 0.8`. The prior two passes asserted this criterion from the 2026-06-07 run; it does not reproduce (§7 "The real run"). Left unchecked deliberately — closing it requires an owner/clinical decision on the judge or the reference labels, not a code change.
 - [x] `pnpm harness:test` (the hermetic suite) remains green and unaffected — confirms no live-backend dependency leaked into hermetic tests — §7, this session: 1279 passed / 4 pre-existing unrelated failures in 169.90s
 - [x] Flake policy distinguishes judge-backend transport failures (bounded retry) from genuine below-threshold verdicts (never retried) — done in the prior session, unchanged
 - [x] `pnpm harness:lint`, `pnpm harness:typecheck` clean — §7
-- [x] Paste actual CI job output (or a local reproduction via `python -m harness.eval.ci` against the chosen backend) before marking Complete — §7: the real, dated `apps/harness/eval/README.md` run against `google/gemma-4-e4b` (PASS on every metric) plus this session's live reachability/smoke-completion verification against the owner's actual LM Studio instance; this session's own full 18-case reproduction did not complete within the available time, reported honestly rather than fabricated — see §7 "Fresh run outcome"
+- [x] Paste actual CI job output (or a local reproduction via `python -m harness.eval.ci` against the chosen backend) before marking Complete — **CLOSED FOR REAL, fifth session**: §7 "The real run" pastes the verbatim `eval_gate_complete` structlog line and the `[eval-gate] FAIL` verdict from a completed 18/18-case run, plus the promptfoo step's `18 passed (100%)`. No prior-session number is re-cited as fresh evidence
 
 ## 6. Risks & Open Questions
 
@@ -197,8 +197,504 @@ Its own justification (:119-122) is that image builds are idempotent/content-add
 
 ## 7. Implementation Summary
 
-**This pass (2026-08-17, fourth session — OWNER DECISION: run locally, not on a
-self-hosted runner):** the owner answered the CI-provisioning fork the third session
+## SIXTH SESSION (2026-08-18) — golden set rebuilt to best practice; gate re-run; **still FAILS, honestly**
+
+Owner decision 3b-1b: *"keep using gemma-4-e4b-it-qat for current local development,
+combine with an AI generated Clinician-authored golden set following best practices."*
+So the judge was NOT swapped and no threshold was relaxed — the **reference set** was
+rebuilt, the judge selection was made DB-resident, and the gate was re-run.
+
+**Headline: the gate FAILS at `icc = 0.7306 < 0.8`.** That is reported as the result, not
+worked around. It is a materially better failure than the previous 0.6568 on half the
+ratings, and — the point of the exercise — it now says something specific and actionable.
+
+### 7.6.1 The context-length hypothesis was tested and is FALSE
+
+§7 (fifth session) attributed the judge's flat `5.00` on `synthesized` to the loaded
+context window (4096 discriminating, 131072 not). Measured this session: same six cases,
+same prompt, `temperature=0`, `seed=7`, model unloaded and reloaded at each context via
+`lms load -c <n>`, `loaded_context_length` confirmed from `/api/v0/models` after each load.
+
+| case | 4096 | 8192 | 32768 | 131072 |
+|---|---|---|---|---|
+| `curated-q01-fammed-pharyngitis` | 5,5,5,5,5,5,5,5 | 5,5,5,5,5,5,5,5 | 5,5,5,5,5,5,5,5 | 5,5,5,5,5,5,5,5 |
+| `curated-q02-im-diabetes-complete` | 5,5,4,5,5,5,5,3 | 5,5,4,5,5,5,5,3 | 5,5,4,5,5,5,5,3 | 5,5,4,5,5,5,5,3 |
+| `curated-q05-obgyn-prenatal` | 5,5,5,5,5,5,5,3 | 5,5,5,5,5,5,5,3 | 5,5,5,5,5,5,5,3 | 5,5,5,5,5,5,5,3 |
+| `curated-c01-fabrication-mi` | 4,1,1,5,5,5,5,3 | 4,1,1,5,5,5,5,3 | 4,1,1,5,5,5,5,3 | 4,1,1,5,5,5,5,3 |
+| `curated-c02-omission-diabetes` | 5,5,1,5,5,5,4,3 | 5,5,1,5,5,5,4,3 | 5,5,1,5,5,5,4,3 | 5,5,1,5,5,5,4,3 |
+| `curated-c06-falsified-dose` | **TRUNCATED** | 5,2,4,5,5,5,5,3 | 5,2,4,5,5,5,5,3 | 5,2,4,5,5,5,5,3 |
+
+(citation, accurate, thorough, useful, organized, comprehensible, succinct, synthesized.)
+
+**Every score is byte-identical across a 32x range of context.** Latency is flat too
+(19.8-32.2 s/call at every size). The one real effect of a small window is **silent
+truncation**: this judge spends 1319-1963 completion tokens on a hidden reasoning pass, and
+at 4096 `curated-c06` needed prompt 2142 + completion 1954 = **4096 exactly** ->
+`finish_reason: length` -> unparseable -> `GoldenSetRunner` DROPS the case and `n` shrinks
+without comment. Context is therefore pinned for HEADROOM, not calibration: `run-gate.sh`
+now uses 8192 with `max_tokens` 4096 and reloads the model if the window is too small.
+
+### 7.6.2 What actually caused the flat 5.00 — the MODEL, and the gate was running the wrong one
+
+Same six cases, same 8192 context, same prompt; only the model id changed:
+
+| case | `google/gemma-4-e4b` (what the gate ran) | `gemma-4-e4b-it-qat` (owner's choice) |
+|---|---|---|
+| `curated-q01` | 5,5,5,5,5,5,5,**5** | 5,5,5,5,5,5,5,**5** |
+| `curated-q02` | 5,5,5,5,5,5,5,**5** | 5,5,**4**,5,5,5,5,**3** |
+| `curated-q05` | 5,5,5,5,5,5,5,**5** | 5,5,5,5,5,5,5,**3** |
+| `curated-c01` | 5,2,3,5,5,5,5,1 | 4,1,1,5,5,5,5,3 |
+| `curated-c02` | 5,5,1,4,5,5,5,4 | 5,5,1,5,5,5,4,3 |
+| `curated-c06` | 4,2,5,5,5,5,5,3 | 5,2,4,5,5,5,5,3 |
+
+`google/gemma-4-e4b` returns a flat `5` on all 8 dimensions of all 3 quality cases — the
+exact zero-variance signature that drove quality-lane ICC to `+0.0000`.
+`gemma-4-e4b-it-qat` does not, and is ~1.8x faster (20-32 s vs 41-57 s per call).
+
+The deeper problem this exposed: **the gate had been grading with a different judge than
+the platform selects.** `run-gate.sh` carried `JUDGE_MODEL="${JUDGE_MODEL:-google/gemma-4-e4b}"`
+while the SYSTEM `harness.judge` `AiTaskDefault` pointed elsewhere.
+
+### 7.6.3 Judge selection is now DB-resident and fail-closed (D-B)
+
+New `harness/eval/judge/selection.py` resolves the same row the Temporal runtime resolves:
+`AiTaskDefault(taskKey='harness.judge', ENABLED) -> modelSlug -> AiModel(slug, ENABLED) ->
+(provider, sourceUri)`.
+
+- **tenant -> SYSTEM, two tiers.** With no request tenant it resolves SYSTEM only, never a
+  customer tenant.
+- **Fail closed** — missing / disabled / unreachable / unknown-provider raises
+  `JudgeSelectionUnavailable` and the gate exits 2. No env fallback for the selection.
+- Env still supplies **connection** config only (`base_url`, `api_key`, decoding knobs).
+- `asyncpg` is imported **lazily**, so the harness SERVICE keeps its deliberate "no DB
+  client" property (rule 06) and only this offline tool pays for it — the same sanctioned
+  exception shape as `apps/guardrail/core/tenant_config.py`.
+- **No new env var was introduced.**
+- The SYSTEM row was pointed at the owner's model:
+  `AiTaskDefault(harness.judge).modelSlug` `lms-gemma-4-e4b` -> **`lms-gemma-4-e4b-it-qat`**
+  (`_version` 1 -> 2), which resolves to `AiModel.sourceUri = gemma-4-e4b-it-qat`.
+  Verified live: `python -m harness.eval.judge.selection --field model` ->
+  `gemma-4-e4b-it-qat`, `--field tier` -> `system`.
+
+### 7.6.4 The rebuilt golden set — `curated-v2.0.0`
+
+Design spec: `apps/harness/src/harness/eval/golden/curated_v2_spec.md`.
+
+| | |
+|---|---|
+| Size | 12 synthetic source consultations -> **36 cases** (12 `quality` + 24 `calibration`) -> **288 paired ratings** (v1: 18 / 144) |
+| Gradient | 5 levels with a named anchor exemplar each: L5 gold, L4 presentation-only, L3 wrong-context/one pertinent omission, L2 one major seeded error, L1 multiple major + structural collapse. Reference SD **1.313**; every score point 1-5 exercised |
+| Taxonomy | one class per L2-L4 variant so failures are attributable: `omission_material` 7, `fabrication` 6, `dose_error` 4, `temporal_error` 4, `laterality_error` 3, `misattribution` 3, `false_negation` 3, plus `verbosity`, `uncited_assertion`, `under_synthesis`, `omission_potentially_pertinent` |
+| Stratification | 12 specialties; length short 12 / medium 15 / long 9; complexity low 12 / moderate 15 / high 9 |
+| Split | `dev` 24 / `holdout` 12, stratified across lane and level |
+| Provenance | **AI-authored, rubric-literal, `clinician_review_status: pending`** on every case, with a per-case `label_rationale` naming the rule that produced it. Never presented as a clinician rating |
+| PHI | PHI-free **by construction** (no names/dates/addresses; generic subjects; obviously-synthetic `SYN-####` tags), locked by a regex test |
+| Versioning | v1 retained **unmutated**; clinician amendments ship as `curated-v2.1.0`, never an in-place edit |
+
+Labelling was done by **rule, not case by case** (spec §3, R1-R7), so a reviewer can check
+seven rules instead of 288 numbers. The one rule that changed from v1 — **R3: a content
+error does NOT lower `citation`** — moves 8 cases by 3 points and is flagged as the single
+highest-impact clinician-review question. It was decided from the rubric text BEFORE the set
+was scored, and applied uniformly across both splits.
+
+**Clinician review workflow (built, not just described):**
+`review/curated_v2_review.md` (1636 lines, generated by `review/render_review.py`: per case
+the sources, the note, the seeded defect, the proposed rating and its rationale, plus an
+accept/amend block) -> `review/curated_v2_amendments.json` -> `review/apply_amendments.py`,
+which refuses an unattributed amendment, applies only the named dimensions, flips
+`label_provenance` to `clinician-reviewed`, and writes a **new version to a new file**.
+
+**Consciously skipped, and why** (spec §10): multi-rater human labelling with adjudication
+and a human-ICC precondition (the `clinical_v1` protocol) — it cannot be AI-generated
+because its content *is* inter-human disagreement; real de-identified transcripts (no
+production data exists, D-A); blinding author from labeller (both are the same AI process,
+so it would be theatre); judge-model diversity (out of scope by owner decision).
+
+### 7.6.5 The measured run — verbatim
+
+`run-gate.sh`, judge resolved from the DB, **36/36 cases scored, 0 dropped**, sequential,
+**wall clock 3555 s (59.3 min)**.
+
+```
+[eval-gate] judge selection: gemma-4-e4b-it-qat (provider=openai_compat,
+            slug=lms-gemma-4-e4b-it-qat, tier=system) - resolved from the database
+2026-08-18 02:06:41 [info  ] eval_gate_complete
+  aggregates={'pdsqi_citation': 4.4167, 'pdsqi_accurate': 4.8333, 'pdsqi_thorough': 4.8333,
+   'pdsqi_useful': 5.0, 'pdsqi_organized': 5.0, 'pdsqi_comprehensible': 5.0,
+   'pdsqi_succinct': 4.9167, 'pdsqi_synthesized': 5.0, 'pdsqi_mean': 4.875,
+   'faithfulness': 0.99375, 'icc': 0.730609029424829, 'gwet_ac2': 0.919597839640613}
+  failures=['icc=0.7306 < 0.8 (Gwet AC2=0.9196, n=288)']
+  golden_set_version=curated-v2.0.0 judge_model=gemma-4-e4b-it-qat status=FAIL
+
+[eval-gate] FAIL  report=eval-report-curated-v2.json
+  - FAILED: icc=0.7306 < 0.8 (Gwet AC2=0.9196, n=288)
+step 1 wall clock: 3555s   exit=1
+
+- 5/5 promptfoo output-contract -  36 passed (100%)  0 failed  0 errors
+════ eval gate summary ════
+step 1 (PDSQI/faithfulness/ICC): FAIL  (3555s)
+step 2 (promptfoo contract):     PASS
+```
+
+| Metric | Threshold | 2026-08-18 (`curated_v2`) | 2026-08-17 (`curated_v1`) | Gate |
+|---|---|---|---|---|
+| `pdsqi_accurate` | >= 4.0 | 4.833 | 5.00 | PASS |
+| `pdsqi_thorough` | >= 4.0 | 4.833 | 5.00 | PASS |
+| `pdsqi_mean` | >= 4.0 | 4.875 | 5.00 | PASS |
+| `faithfulness` | >= 0.85 | 0.9938 | 0.9920 | PASS |
+| `icc` | >= 0.8 | **0.7306** | 0.6568 | **FAIL** |
+| `gwet_ac2` | (reported) | 0.9196 | 0.9439 | - |
+| n | - | **288** | 144 | - |
+| **Gate** | | **FAIL** | FAIL | **FAIL** |
+
+### 7.6.6 What the failure now says (decomposed offline, no extra model calls)
+
+| stratum | n | ICC(2,1) | Gwet AC2 | judge mean | ref mean | judge SD | ref SD | exact | within 1 |
+|---|---|---|---|---|---|---|---|---|---|
+| ALL | 288 | +0.7306 | 0.9196 | 4.455 | 4.323 | 1.131 | 1.262 | 0.729 | 0.899 |
+| lane=quality | 96 | +0.0000 | 0.9807 | 4.875 | 5.000 | 0.528 | **0.000** | 0.938 | 0.958 |
+| lane=calibration | 192 | +0.7286 | 0.8664 | 4.245 | 3.984 | 1.285 | 1.431 | 0.625 | 0.870 |
+| **split=dev** | 192 | +0.7045 | 0.9236 | 4.505 | 4.380 | 1.073 | 1.187 | 0.734 | 0.911 |
+| **split=holdout** | 96 | **+0.7682** | 0.9113 | 4.354 | 4.208 | 1.240 | 1.399 | 0.719 | 0.875 |
+| level=L5 / L4 / L3 / L2 / L1 | 96/40/48/72/32 | +0.0000 / +0.3628 / +0.2540 / +0.6953 / +0.5878 | 0.9807 / 0.9249 / 0.9121 / 0.9049 / **0.6497** | 4.875 / 4.775 / 4.667 / 4.347 / **2.719** | 5.000 / 4.450 / 4.583 / 4.319 / **1.750** | - | - | - | - |
+| complexity low / moderate / high | 96/120/72 | +0.6652 / +0.8009 / +0.6580 | 0.9510 / 0.9355 / 0.8335 | - | - | - | - | - | - |
+
+| dimension | ICC(2,1) | judge SD | judge mean | ref mean |
+|---|---|---|---|---|
+| `accurate` | **+0.8661** | 1.496 | 3.861 | 3.667 |
+| `useful` | **+0.8653** | 0.951 | 4.694 | 4.556 |
+| `organized` | +0.7974 | 0.849 | 4.722 | 4.444 |
+| `synthesized` | +0.7929 | 1.282 | 4.111 | 3.722 |
+| `thorough` | +0.6451 | 0.937 | 4.583 | 4.306 |
+| `citation` | +0.5932 | 1.588 | 3.861 | 4.500 |
+| `succinct` | +0.1482 | **0.401** | 4.806 | 4.694 |
+| `comprehensible` | **-0.0000** | **0.000** | 5.000 | 4.694 |
+
+1. **The zero-variance lane inverted — the intended outcome.** In v1 the JUDGE was constant
+   on the quality lane; now the REFERENCE is (all L5 anchors are 5s) and the judge varies
+   (SD 0.528, exact agreement 0.938). A lane with no reference variance still contributes 0
+   to a variance ratio, but it can no longer hide an indiscriminate judge.
+2. **The held-out split validates the labelling rules**: `holdout` **0.7682** > `dev`
+   **0.7045**. The rules were not fitted to the cases judging them.
+3. **The residual is concentrated in two presentation dimensions with no dynamic range.**
+   `comprehensible` is a literal 5 on all 36 cases (SD 0.000 -> ICC -0.0000); `succinct` is
+   5 on nearly all (SD 0.401 -> 0.148). The clinically load-bearing dimensions agree well.
+4. **The judge will not use the bottom of the scale.** On the four L1 anchors it scores mean
+   2.719 against a reference of 1.750 (exact agreement 0.344, AC2 0.6497). Across the set,
+   11 of the 40 ratings where the reference is <= 2 have the judge >= 2 points more generous;
+   7 of those 11 are L1.
+5. **Not an offset.** De-biasing the judge's +0.1319 leniency lifts ICC only to **0.7350**;
+   Pearson r **0.7387**.
+
+Diagnostics (NOT the gate): excluding `comprehensible` + `succinct` gives 0.7577 (n=216);
+excluding L1 gives 0.5517 (n=256) - the L1 anchors HELP, so "drop inconvenient cases" is not
+even locally tempting.
+
+### 7.6.7 Nothing was laundered
+
+- Thresholds untouched (`icc_threshold` 0.8, `faithfulness` 0.85, PDSQI 4.0).
+- `icc_gate_enabled` untouched (still `True`).
+- No case dropped: 36/36 scored.
+- The judge was not swapped (owner decision), and the anchored-rubric lever
+  (`HARNESS_JUDGE_ANCHORED`) was left OFF so the reported number is the default config.
+- The gate reports a true negative. That is the gate working.
+
+### 7.6.8 Open / not done
+
+- **The ICC failure itself.** Two named, evidence-backed next steps, neither taken here:
+  (a) clinician review of `curated-v2.0.0` - the artifact and the amendment path are built
+  and waiting; the highest-impact question is rule R3, where the judge is measurably
+  HARSHER on `citation` (3.861) than the rule assumes (4.500), so a ruling either way moves
+  36 ratings; (b) a judge with usable range on `comprehensible`/`succinct` and at the 1-2
+  end - deferred by the owner's decision to keep `gemma-4-e4b-it-qat` locally.
+- **`.gitlab/ci/test.yml` `harness-eval-gate` is stale and was NOT edited** (file outside
+  this ticket's ownership and concurrently held by a sibling agent). Three one-line follow-ups
+  when it is free: `HARNESS_GOLDEN_SET_PATH` and the two `--golden-set`/echo references at
+  lines ~703/756/757 should point at `curated_v2.json`; `HARNESS_JUDGE_MODEL` (line ~675) is
+  now INERT (DB selection wins) and should be deleted with a comment rather than left to
+  mislead; `HARNESS_JUDGE_MAX_TOKENS: "16384"` (line ~686) exceeds a pinned 8192 context and
+  should be 4096.
+- **A real GitLab CI pipeline run** - unchanged, no CI access, and out of scope per the
+  owner's local-only decision.
+- **Clean-machine wall clock.** 3555 s was measured with a sibling agent's test suites
+  running concurrently (load average peaked at 110 during the run).
+
+### 7.6.9 Verification actually run (all gates through the coordinator mutex; the gate run itself outside it, per the carve-out)
+
+```
+$ test-lock.sh env CI=true pytest apps/harness/src/harness/tests/ -q
+1402 passed, 1 warning in 64.56s          # whole harness suite green; the 19 sibling-owned
+                                          # TASK-737 failures from session 5 are gone
+
+$ test-lock.sh env CI=true pytest apps/harness/src/harness/tests/unit/eval/ -q
+251 passed in 2.17s                       # was 209; +42 new eval tests
+
+$ test-lock.sh env CI=true ruff check apps/harness/src/
+All checks passed!
+
+$ test-lock.sh env CI=true mypy --config-file apps/harness/pyproject.toml apps/harness/src/
+Success: no issues found in 124 source files
+
+$ python -m harness.eval.judge.selection --field model    # DB-resident selection, live
+gemma-4-e4b-it-qat
+
+$ promptfoo eval -c promptfooconfig.yaml   # step 2 on curated_v2, offline mock provider
+Running 36 test cases ...  36 passed (100%)  0 failed  0 errors
+```
+
+**TDD honesty note.** `test_curated_v2_golden_set.py` produced a genuine observed RED that
+changed the design: `test_designed_quality_gradient_spans_the_scale` failed on
+`assert 4.45 > 4.583` (L4 mean below L3 mean), which surfaced that PDSQI docks `succinct` to
+2 for a clinically harmless verbose note. The fix was to state the actual design claim - the
+CLINICAL chain L5 > L3 > L2 > L1 is monotone, and L4 is a separate presentation-only band
+with its own contract (`test_L4_is_the_presentation_only_band`) - and to document it in spec
+§2. `test_calibration_breakdown.py` also went RED first on a `within_one` arithmetic error in
+the test itself. The tests for `selection.py` and the review workflow were written AFTER
+their modules and did **not** have an observed RED; stating that plainly rather than
+implying a clean red-green cycle throughout.
+
+
+## FIFTH SESSION (2026-08-17) — the gate was run end to end, and it FAILS
+
+Three prior sessions ended with "the run did not finish." It finished this time. The
+verdict is a **FAIL**, and that is reported here as the ticket's primary evidence,
+replacing the 2026-06-07 run it previously shipped on.
+
+### Why the previous three sessions could not finish it (the actual cause)
+
+Not a slow model — a **cold-start measurement mistaken for per-call latency**. LM Studio
+JIT-loads a model on first request. Measured this session, before anything else:
+
+```
+$ curl -sf http://localhost:1234/api/v0/models      # BEFORE any call
+{'id': 'google/gemma-4-e4b', 'state': 'not-loaded', 'max_context_length': 131072,
+ 'loaded_context_length': None, 'type': 'vlm'}
+
+$ time curl -s .../v1/chat/completions -d '{...,"messages":[{"role":"user","content":"Say OK"}],"max_tokens":10}'
+{"choices":[{"message":{"content":"OK"},"finish_reason":"stop"}], ...}
+19.910 total          # <- COLD: this is the model LOADING, not a judge call
+
+$ time curl -s .../v1/chat/completions -d '<the identical request>'
+0.098 total           # <- WARM: 200x faster
+
+$ curl -sf http://localhost:1234/api/v0/models      # AFTER
+LOADED: {'id': 'google/gemma-4-e4b', 'loaded_context_length': 131072}
+```
+
+The fourth session recorded "≈16.5 s wall-clock for a trivial 18-prompt-token round trip"
+and extrapolated a "~20-45+ minute floor" from it. That number was the one-time model
+load, paid once, not a per-call cost. `apps/harness/eval/run-gate.sh` now pays it up front
+and prints both figures so this cannot recur.
+
+### The real run — verbatim output
+
+Launched 22:31:27, completed 23:08:07 local (**2200 s = 36.7 min**), sequential
+(`HARNESS_EVAL_CASE_CONCURRENCY=1`), 18/18 cases scored, 0 dropped. Caveat on the wall
+clock: the machine carried a **load average of 40–77** from concurrent agent work, so 36.7
+min is an upper bound, not a clean-machine figure. (Independently corroborated: a 2-case
+subset run through `run-gate.sh` took 226 s = 113 s/case, which extrapolates to ≈ 34 min
+for 18 — consistent with the 36.7 min measured.) Scores are unaffected by load
+(`temperature=0`, `seed=7`; a contended call would have raised `JudgeConnectionError` and
+aborted, not silently changed a score).
+
+```
+2026-08-17 23:08:07 [info     ] eval_gate_complete
+  aggregates={'pdsqi_citation': 5.0, 'pdsqi_accurate': 5.0, 'pdsqi_thorough': 5.0,
+   'pdsqi_useful': 5.0, 'pdsqi_organized': 5.0, 'pdsqi_comprehensible': 5.0,
+   'pdsqi_succinct': 5.0, 'pdsqi_synthesized': 5.0, 'pdsqi_mean': 5.0,
+   'faithfulness': 0.9920454545454546, 'icc': 0.6568339310270441,
+   'gwet_ac2': 0.9438703447007273}
+  failures=['icc=0.6568 < 0.8 (Gwet AC2=0.9439, n=144)']
+  golden_set_version=curated-v1.0.0 judge_model=google/gemma-4-e4b status=FAIL
+  thresholds={'faithfulness': 0.85, 'pdsqi_accurate': 4.0, 'pdsqi_thorough': 4.0,
+   'pdsqi_mean': 4.0, 'icc': 0.8}
+
+[eval-gate] FAIL  report=eval-report.json
+  - FAILED: icc=0.6568 < 0.8 (Gwet AC2=0.9439, n=144)
+```
+
+Step 2 of the same gate (promptfoo output-contract, offline mock provider):
+
+```
+Running 18 test cases (up to 4 at a time)...
+✓ Eval complete (ID: eval-lQu-2026-08-17T16:14:08)
+  ✓ 18 passed (100%)
+  0 failed (0%)
+  0 errors (0%)
+```
+
+| Metric | Threshold | 2026-08-17 (this run) | 2026-06-07 (historical) | Gate |
+|---|---|---|---|---|
+| `pdsqi_accurate` | ≥ 4.0 | 5.00 | 5.00 | ✅ |
+| `pdsqi_thorough` | ≥ 4.0 | 5.00 | 5.00 | ✅ |
+| `pdsqi_mean` | ≥ 4.0 | 5.00 | 4.86 | ✅ |
+| `faithfulness` | ≥ 0.85 | 0.9920 | 0.990 | ✅ |
+| `icc` | ≥ 0.8 | **0.6568** | 0.821 | ❌ |
+| `gwet_ac2` | (reported) | 0.9439 | 0.963 | — |
+| **Gate** | | **FAIL** | PASS | ❌ |
+
+### Diagnosis — computed from the report, not guessed
+
+Recomputed ICC per lane offline using `harness.eval.calibration.reliability` on the same
+report (no extra model calls):
+
+| Lane | n | ICC | Gwet AC2 | judge mean | ref mean | bias | judge SD | ref SD |
+|---|---|---|---|---|---|---|---|---|
+| quality | 96 | **+0.0000** | 0.9861 | 5.000 | 4.812 | +0.188 | **0.000** | 0.392 |
+| calibration | 48 | +0.6412 | 0.7955 | 4.312 | 3.792 | +0.521 | 1.291 | 1.487 |
+| all | 144 | **+0.6568** | 0.9439 | 4.771 | 4.472 | +0.299 | 0.808 | 1.031 |
+
+1. **Zero judge variance on the quality lane.** The judge returned a literal `5` on all 8
+   Likert dimensions of all 12 quality cases. ICC(2,1) is a variance ratio, so a constant
+   rater contributes exactly 0 — that lane cannot lift ICC however well it agrees (Gwet
+   AC2, robust to this skew, reads 0.9861 on the same numbers).
+2. **The judge discriminates correctly where the gate is actually testing it.** Every
+   planted flaw on the calibration lane was caught: `c01` fabrication → `accurate` 2 /
+   `synthesized` 1; `c02` omission → `thorough` 1; `c03` verbose+uncited → `citation` 1 /
+   `succinct` 1; `c06` falsified dose → `accurate` 2. The gate's discriminative power is
+   intact — this is not a broken judge.
+3. **Not merely a calibration offset.** De-biasing the judge by its systematic +0.299
+   lifts ICC only 0.6568 → 0.6910; Pearson r = 0.7100. The residual is genuine rank/scale
+   disagreement with the reference labels, which a recalibration would not fix.
+4. **Why 2026-06-07 passed and today does not.** That run had the judge loaded at **4096**
+   ctx (`max_tokens` 3072); today it loads at its full **131072** (`max_tokens` 16384). The
+   one metric that moved is precisely the one carrying the quality lane's variance:
+   `synthesized` averaged **3.92** in June, **5.00** now. June's ICC of 0.821 therefore
+   depended on the judge being *harsher* on one dimension under a constrained context.
+   `apps/harness/eval/README.md`'s own "ICC = 0.821 is fragile … over only 6 calibration
+   cases" caveat was correct, and that number must not be quoted as a stable property.
+
+### Why the threshold was NOT moved to make this green
+
+`EvalConfig.icc_gate_enabled=false` exists in this codebase for a different situation: a
+judge whose ICC is *structurally uninformative* (the rejected Qwen2.5-1.5B measured
+≈ `-8.3e-17`, and `icc_threshold` is validated to `[0, 1]`, so no legal value could ever
+admit it). **This is not that case.** 0.6568 is a real, well-defined, moderate reliability
+reading, and 0.8 comes from the PDSQI-9 literature (reasoning judge ≈ 0.818 —
+`calibration/reliability.py` docstring). Disabling the gate or lowering the bar here would
+convert a true negative into a green light, which is the exact failure mode this ticket
+exists to remove. **The gate is working. It is telling us the judge is not release-grade
+against this reference set.**
+
+That is an owner/clinical decision, not an engineering one. The two honest resolutions are
+already named as open prerequisites in `apps/harness/eval/README.md`:
+(a) the **real clinician-authored golden set** (the current `clinician_pdsqi` labels are
+curated/rubric-derived, not real clinician ratings), or (b) a **larger reasoning-capable
+judge** with enough dynamic range for ICC to be meaningful.
+
+### Second real defect found by running it: the two steps graded different golden sets
+
+Step 2 resolves its cases from `HARNESS_GOLDEN_SET_PATH` and otherwise falls back to the
+**5-case `synthetic_v0.json`** (`eval/promptfoo/tests.py:22`). Neither the CI job nor the
+documented local command set that variable, so step 1 scored the 18-case `curated_v1` while
+step 2 scored 5 different cases — despite `promptfooconfig.yaml`'s own comment claiming
+"Keeps promptfoo and the Python gate on the same set." Observed directly: the first
+promptfoo invocation this session reported `Running 5 test cases`.
+
+Fixed by pinning `HARNESS_GOLDEN_SET_PATH` in the `harness-eval-gate` job (absolute —
+`tests.py` does a bare `Path(override)` and the step runs after `cd eval/promptfoo`) and in
+`run-gate.sh`. Verified: `Running 18 test cases … 18 passed (100%)`.
+
+### What changed in this session
+
+| File | Change |
+|---|---|
+| `apps/harness/eval/run-gate.sh` | **NEW.** The single supported command. Preflights the backend, warm-loads the model (the trap above), checks `max_tokens` against the endpoint's reported `loaded_context_length`, runs **both** gate steps on the **same** golden set, prints a timed summary, exits non-zero on FAIL so a cron/scheduler surfaces it. |
+| `.gitlab/ci/test.yml` (`harness-eval-gate` only) | Added `HARNESS_GOLDEN_SET_PATH` so both steps grade the same set; corrected the stale `max_tokens` comment (it justified `3072` for a 4096-ctx load while the value is `16384`; measured load is 131072); replaced the "gate PASSES cleanly" threshold comment with the measured FAIL and the reasoning for not relaxing it. |
+| `apps/harness/eval/README.md` | New "Live gate results — CURRENT run (2026-08-17): FAIL on ICC" section with the lane decomposition; the 2026-06-07 table retitled HISTORICAL and marked superseded; the supported-path section rewritten around `run-gate.sh` with the cold/warm warning and a "when to run it" cadence table. |
+
+### Structure / config-residency review (task item 3)
+
+- **Judge, metrics, golden set are complete**, not stubs: `judge/{base,pdsqi,prompts,providers}`,
+  `metrics/{concept_f1,deepeval_metrics,faithfulness,harm_weighted}`,
+  `calibration/{pairing,reliability}`, `golden/{runner,sources,fixtures}`; 23 test modules,
+  **209 tests** in `unit/eval`. `curated_v1.json` verified: 18 cases, exactly 12 `quality` /
+  6 `calibration`, all 18 carrying `clinician_pdsqi` and `source_documents`.
+- **A backend change is genuinely a config change.** `build_judge_client`
+  (`judge/providers.py`) dispatches solely on `config.provider` and raises for missing
+  azure/bedrock config — fail-closed, never a silent local fallback. Swapping LM Studio →
+  vLLM → Azure → Bedrock is env only; no Python edit. Confirmed by reading the dispatch, not
+  assumed.
+- **Thresholds are meaningful, not placeholders.** Each has literature provenance
+  (ICC(2,1) Shrout & Fleiss, release bar from the PDSQI-9 reasoning-judge ≈0.818; Gwet AC2
+  from Gwet 2014) **and** a test proving it discriminates:
+  `test_ci_gate.py::test_fails_on_low_faithfulness`, `::test_fails_on_low_pdsqi_accuracy`,
+  `::test_icc_below_threshold_blocks_release`, plus
+  `test_ci_gate_wiring.py::test_main_exits_nonzero_when_one_curated_v1_case_is_degraded`.
+  This session's run is itself the strongest evidence: a threshold that fires on real data
+  is not a placeholder.
+- **D-B (config-resident selection).** At **runtime** the judge selection is DB-resident and
+  fail-closed: `temporal/activities.py:1706-1755` takes `judge_provider`/`judge_model` from
+  the SYSTEM `harness.judge` `AiTaskDefault` snapshotted onto the workflow input and
+  degrades the pass when absent — it never falls back to env. `get_runtime_judge_config()`
+  (`core/config.py:655`) supplies **connection** config only. The eval gate's
+  `HARNESS_JUDGE_*` variables are invocation parameters for an offline developer tool that
+  deliberately touches no database (`ci.py` docstring: results "never to Postgres"), so no
+  DB read is appropriate there and **no new env var was introduced** by this session.
+
+### Verification actually run (fifth session)
+
+All test/lint/typecheck commands were run through the coordinator's mutex wrapper
+(`scratchpad/test-lock.sh`). The eval-gate run itself was run **outside** the lock per the
+coordinator's explicit carve-out (it is I/O-bound on `:1234`, not a test suite).
+
+```
+$ test-lock.sh env CI=true pnpm harness:test
+19 failed, 1341 passed, 1 warning in 46.86s
+
+$ test-lock.sh env CI=true pytest apps/harness/src/harness/tests/unit/eval/ -q --no-cov
+209 passed in 1.86s
+
+$ test-lock.sh env CI=true pnpm harness:lint
+All checks passed!
+
+$ test-lock.sh env CI=true pnpm harness:typecheck
+Success: no issues found in 119 source files
+
+$ eval/run-gate.sh                    # guard paths
+FAILED: no judge backend at http://localhost:9999/v1        # JUDGE_BASE_URL=…:9999 -> exit 2
+FAILED: 'not-a-real-model' is not served at …/v1            # JUDGE_MODEL=bogus  -> exit 2
+
+$ GOLDEN_SET=<2-case subset> eval/run-gate.sh   # full script, end to end
+1/5 preflight  OK — google/gemma-4-e4b is served.
+2/5 warm-load  first (cold, includes model load): 23s   second (warm): 0s
+3/5 context    loaded context = 131072 tokens, HARNESS_JUDGE_MAX_TOKENS = 16384
+4/5 step 1     [eval-gate] FAIL  - FAILED: icc=0.4864 < 0.8 (Gwet AC2=0.7760, n=16)   (226s)
+5/5 step 2     Running 2 test cases … ✓ 2 passed (100%)      # <- same set as step 1
+════ eval gate summary ════  step 1 FAIL (226s) · step 2 PASS
+
+$ python -c "yaml.load('.gitlab/ci/test.yml', <loader stubbing !reference>)"
+allow_failure: True
+retry: {'max': 2, 'when': ['runner_system_failure', 'stuck_or_timeout_failure']}
+rules: [RUN_INFRA_TESTS!=true -> never, SKIP_TESTS==true -> never, SKIP_TESTS_PY==true -> never, <ref>]
+golden set var: $CI_PROJECT_DIR/apps/harness/src/harness/eval/golden/fixtures/curated_v1.json
+```
+
+**The 19 `pnpm harness:test` failures are NOT this ticket's** and no eval file is among
+them. All 19 are in two sibling-owned files —
+`unit/services/test_smr_client.py` (14) and `unit/services/test_nlp_client.py` (5) — every
+one a `TypeError: … missing 1 required keyword-only argument: 'tenant_id'` from TASK-737's
+in-flight tenant-header work. Reported to the coordinator rather than edited, per
+instruction. (An earlier unlocked run of the same suite under load average 102 reported 54
+failures; that result is discarded as contaminated — the locked run is the real one.)
+
+### Remaining / genuinely open after this session
+
+- **The ICC failure itself.** Needs an owner/clinical decision — real clinician-rated
+  golden set, or a reasoning-capable judge. Deliberately not papered over with a threshold
+  change.
+- **A real GitLab CI pipeline run** of `harness-eval-gate` — still no CI access from any
+  session, and per the owner's local-only decision this is out of scope for "making the
+  gate real".
+- **Task 5** (layer-gate table row in `.claude/rules/01-development-workflow.md`) —
+  still proposed, not applied; that file is outside this ticket's ownership.
+- **Cloud judge-backend Vault wiring** — documented pattern, not provisioned; unchanged.
+- **A clean-machine wall-clock number.** 36.7 min was measured under load average 40-77.
+
+---
+
+**Fourth session (2026-08-17) — OWNER DECISION: run locally, not on a
+self-hosted runner:** the owner answered the CI-provisioning fork the third session
 left open (Path (a) self-hosted runner vs. Path (b) local/scheduled) — **Path (b)**:
 "run the gate LOCALLY, not on a self-hosted CI runner. The eval gate is a
 local/scheduled quality check, NOT a blocking shared-CI job." This pass:
@@ -852,3 +1348,5 @@ Path (a)/(b) choice above.
 | 2026-08-16 | Owner decided Task 0 (self-hosted local judge in a CI service container). Implemented Tasks 2/3: `services:` block running `llama.cpp:server` + `Qwen2.5-1.5B-Instruct-GGUF` wired into `harness-eval-gate`, `RUN_INFRA_TESTS` gate and `allow_failure: true` both removed. Added case-level concurrency to `GoldenSetRunner` (TDD, 5 new tests) and a malformed-JSON tolerance fix to `FaithfulnessEvaluator`'s claim extractor/verifier (TDD, 2 new tests) — the latter a real robustness gap the live judge backend surfaced and would otherwise have crashed the entire gate run. Measured real wall-clock against the live backend three times (4-way concurrency: reproduced a genuine timeout failure; 2-way concurrency: 375.2s clean full run; `anchored=true`: reproduced runaway generation, abandoned) and recalibrated `EvalConfig` thresholds against the real, measured score distribution (`faithfulness_threshold` 0.85→0.65 via CI env; new `icc_gate_enabled` flag added and set `false` in CI, since the measured ICC's ceiling-effect near-zero value is outside what the existing `[0,1]`-validated `icc_threshold` could ever be recalibrated to accommodate — see §7 for the full reasoning). Status set to Review pending a real GitLab CI pipeline run (no CI access from this session). | Claude (execution session 2) |
 | 2026-08-16 | **CORRECTION**: owner rejected the llama.cpp/Qwen2.5-1.5B judge backend — "do not use llama.cpp for judgement, we use LM Studio and google/gemma-4-e4b." Removed the `services:` block from `harness-eval-gate` entirely; re-wired `HARNESS_JUDGE_*` to the LM-Studio-shaped `openai_compat` endpoint (`http://localhost:1234/v1`, `HARNESS_JUDGE_MODEL=google/gemma-4-e4b`), matching operational settings `apps/harness/eval/README.md` documents for this model (`HARNESS_JUDGE_MAX_TOKENS=3072`, `HARNESS_JUDGE_OPENAI_COMPAT_JSON_RESPONSE_FORMAT=text`). Removed the concurrency (`HARNESS_LLM_MAX_CONCURRENCY`/`HARNESS_EVAL_CASE_CONCURRENCY=2`) and threshold-surgery (`HARNESS_EVAL_FAITHFULNESS_THRESHOLD`/`HARNESS_EVAL_ICC_GATE_ENABLED`) overrides the rejected backend needed — `google/gemma-4-e4b` passes on `EvalConfig`'s unchanged code defaults per the real, dated `apps/harness/eval/README.md` "Live gate results" run (PASS on every metric). Restored `RUN_INFRA_TESTS=true` as an opt-in gate — LM Studio has no CI-runnable container image, so the job cannot reach a judge on an ordinary shared runner; documented two viable CI-provisioning paths (self-hosted runner vs. local/scheduled) for the owner to choose, not decided here. Deliberately did NOT change `config.py`'s `JudgeConfig.model` code default or `.env.sample` (both `gemma-4-e2b-it-qat`, a same-day cross-cutting decision from the concurrently-landed TASK-735/736/737, pinned by its own test) — the CI job's explicit `HARNESS_JUDGE_MODEL` env var is the correct, fail-closed lever for this ticket's own judge choice per `06-python-services.md` §Configuration, and traced the runtime inferential-sensor path to confirm it reads the DB-driven `harness.judge` AiTaskDefault policy, never this code default, so there is no collision. Verified live against the owner's actual running LM Studio instance (model listed, smoke completion succeeded); launched a full 18-case local reproduction which did not finish within this session's available time (reported honestly, not fabricated — see §7 "Fresh run outcome"). `pnpm harness:lint`/`harness:typecheck` clean; full hermetic `pnpm harness:test` suite: 1279 passed / 4 pre-existing unrelated failures in 169.90s. Status remains Review — pending the owner's CI-provisioning path choice and a real GitLab CI pipeline run (no CI access from this session). | Claude (execution session 3 — correction) |
 | 2026-08-17 | **OWNER DECISION implemented**: run the gate LOCALLY, not on a self-hosted CI runner — a local/scheduled quality check, not a blocking shared-CI job. `.gitlab/ci/test.yml`'s `harness-eval-gate` now carries `allow_failure: true` in addition to the existing `RUN_INFRA_TESTS=true` opt-in `rules:` gate, both commented with the owner's reasoning. `apps/harness/eval/README.md` gained a "Run the release gate locally (the supported path)" section with the exact command. Reconfirmed LM Studio reachability and the `google/gemma-4-e4b` model live (fresh `curl`/model-list/smoke-completion, ~16.5s for a trivial 2-token completion — consistent with the prior session's own observation). Launched a fresh full 18-case local reproduction in the background; confirmed genuine live progress (`lsof` showed an `ESTABLISHED` connection to the LM Studio port throughout, process alive and consuming CPU across multiple checks) but — like the third session's attempt — it did NOT complete within this session's available turn budget. Reported honestly rather than fabricated, with a reasoned (not measured) ~20-45+ minute wall-clock floor derived from the two real partial observations across sessions — see §7 "Local run attempt, this session". `pnpm harness:lint`/`harness:typecheck` clean this session (no Python source touched); YAML-parse-verified `allow_failure`/`retry`/`rules` on the job. Status remains Review — the CI-provisioning question is now answered and implemented; what remains gated is a completed fresh wall-clock measurement (an unattended/background run, consistent with the "local/scheduled" posture just adopted, would close this out) and a real GitLab CI pipeline run (still no CI access from any session, and now explicitly out of scope per the owner's local-only decision). | Claude (execution session 4) |
+| 2026-08-17 | **THE GATE WAS RUN END TO END FOR THE FIRST TIME — AND IT FAILS.** Root-caused why three prior sessions stalled: LM Studio JIT-loads a model on first request, so the "~16.5 s per trivial call" they measured was a **one-time cold load**, not per-call latency (measured this session: cold 19.910 s, warm **0.098 s**, same request; model was `state: not-loaded` beforehand). Warm-loaded the model, then ran the full gate: step 1 (`harness.eval.ci`, `curated_v1.json`, 18/18 scored, 0 dropped, 2200 s / 36.7 min wall clock under load average 40-77) → **FAIL, `icc=0.6568 < 0.8`** (Gwet AC2 0.9439, n=144); `pdsqi_accurate`/`thorough`/`mean` = 5.00, `faithfulness` = 0.9920 all clear. Step 2 (promptfoo) → PASS 18/18. **The 2026-06-07 PASS does not reproduce**; demoted to HISTORICAL in `apps/harness/eval/README.md` and no longer the ticket's evidence. Diagnosed the failure offline from the report (no extra model calls): the judge returns a flat `5` on all 8 dimensions of all 12 quality cases (`judge SD = 0.000`), so that lane contributes exactly 0 to the variance-ratio ICC — quality lane ICC `+0.0000` / AC2 0.9861, calibration lane ICC `+0.6412`, all-144 ICC `+0.6568`; de-biasing the judge's +0.299 leniency lifts it only to 0.6910 (Pearson r 0.7100), so it is genuine rank disagreement, not an offset. The June PASS depended on the judge being loaded at 4096 ctx where `synthesized` averaged 3.92; at today's 131072 ctx it scores 5.00. **Thresholds deliberately NOT relaxed** — `icc_gate_enabled=false` was built for a structurally uninformative ICC (Qwen ≈ -8.3e-17, outside the `[0,1]` validator); 0.6568 is a real moderate reading against a literature-derived bar, so disabling it would launder a true negative into a pass. Escalated as an owner/clinical decision (real clinician golden set, or a reasoning-capable judge). Second real defect found by actually running it: **the gate's two steps graded different golden sets** — step 2 fell back to the 5-case `synthetic_v0` (observed: `Running 5 test cases`) because nothing set `HARNESS_GOLDEN_SET_PATH`, despite `promptfooconfig.yaml` claiming otherwise; pinned it (absolute path) in the CI job and `run-gate.sh`, verified `Running 18 test cases … 18 passed (100%)`. Added **`apps/harness/eval/run-gate.sh`** as the single supported command (preflight → warm-load → ctx check → both steps on one golden set → timed summary → non-zero exit for schedulers), plus a "when to run it" cadence table in `apps/harness/eval/README.md`. Corrected two stale `.gitlab/ci/test.yml` comments (a `max_tokens` note justifying 3072 for a 4096-ctx load while the value is 16384; the "gate PASSES cleanly" threshold note). Verified structure/config-residency: judge/metrics/golden-set complete (209 eval tests; fixture is 18 cases, 12/6 split), backend swap is env-only via `build_judge_client`'s fail-closed dispatch, every threshold has literature provenance **and** a discriminating test, and runtime judge SELECTION is DB-driven + fail-closed (`temporal/activities.py:1706-1755`) with env supplying connection config only — no new env var added. Gates under the coordinator's mutex: `harness:lint` clean, `harness:typecheck` clean (119 files), `unit/eval` 209 passed, full `harness:test` 19 failed / 1341 passed — **all 19 in sibling-owned `test_smr_client.py`/`test_nlp_client.py`, every one a TASK-737 `missing keyword-only argument: 'tenant_id'`**, zero eval files; reported to the coordinator, not edited. Status remains Review — pending the owner's decision on the ICC failure. | Claude (execution session 5) |
+| 2026-08-18 | **GOLDEN SET REBUILT TO BEST PRACTICE; JUDGE SELECTION MADE DB-RESIDENT; GATE RE-RUN — STILL FAILS (`icc=0.7306 < 0.8`, n=288, Gwet AC2 0.9196), reported as a true negative.** Implemented owner decision 3b-1b. (1) **Falsified the context-length hypothesis** with a real sweep — the same six cases at 4096/8192/32768/131072 return BYTE-IDENTICAL PDSQI vectors and flat latency; the only effect of a small window is SILENT TRUNCATION (`curated-c06` hit prompt 2142 + completion 1954 = 4096 exactly → `finish_reason: length` → case dropped, `n` shrinks unnoticed). Context is now pinned for HEADROOM (8192 / `max_tokens` 4096) with an auto-reload in `run-gate.sh`. (2) **Found the real cause of the flat 5.00: the MODEL.** At identical context, `google/gemma-4-e4b` returns a flat 5 on all 8 dimensions of every quality case while `gemma-4-e4b-it-qat` varies (and is ~1.8× faster) — and the gate had been running `google/gemma-4-e4b` via a hardcoded `run-gate.sh` default, i.e. a DIFFERENT judge than the platform's `harness.judge` selection. (3) **Closed that with D-B compliance**: new `harness/eval/judge/selection.py` resolves provider+model from the SYSTEM `AiTaskDefault` → `AiModel` (tenant→SYSTEM, fail-closed, exit 2 on absence, no env fallback, NO new env var; `asyncpg` lazily imported so the harness SERVICE keeps its deliberate no-DB-client property); `run-gate.sh` and `ci.py` wired to it; the SYSTEM row repointed `lms-gemma-4-e4b` → `lms-gemma-4-e4b-it-qat`. (4) **Built `curated-v2.0.0`**: 12 synthetic source consultations → 36 cases → **288 paired ratings** (v1: 18/144), a designed 5-level gradient with a named anchor per score point (reference SD 1.313, all of 1–5 exercised), a 7-class seeded clinical error taxonomy with one class per L2–L4 variant (each ≥3 occurrences), stratification over 12 specialties × length × complexity, a stratified `dev` 24 / `holdout` 12 split, AI-authored rubric-literal provenance marked `clinician_review_status: pending` on every case with a per-case rationale, and PHI-free-by-construction content locked by a regex test; v1 retained UNMUTATED. Labelling is by RULE (spec §3 R1–R7) so a reviewer checks 7 rules, not 288 numbers; the one changed rule (R3 — a content error does not lower `citation`) was decided from the rubric text BEFORE scoring and applied uniformly across both splits. (5) **Built the clinician review workflow**: a generated 1636-line `review/curated_v2_review.md` (sources · note · seeded defect · proposed rating · rationale · accept/amend block), an amendments file, and `apply_amendments.py` which refuses an unattributed amendment, applies only named dimensions, flips provenance to `clinician-reviewed`, and ships a NEW version rather than mutating in place. (6) **Ran the gate end to end**: 36/36 scored, 0 dropped, 3555 s; `pdsqi_mean` 4.875 / `accurate` 4.833 / `thorough` 4.833 / `faithfulness` 0.9938 all clear; **`icc=0.7306` FAILS**; step 2 promptfoo PASS 36/36. Decomposed offline: **holdout 0.7682 > dev 0.7045** (rules generalise), `accurate` 0.8661 / `useful` 0.8653 / `organized` 0.7974 / `synthesized` 0.7929, residual concentrated in `comprehensible` (judge SD **0.000**) and `succinct` (0.401) plus L1 leniency (judge 2.719 vs ref 1.750); de-biased ICC only 0.7350, Pearson r 0.7387. **Nothing laundered** — thresholds, `icc_gate_enabled`, the judge model and the anchored lever all untouched; no case dropped. Gates: full `harness:test` **1402 passed / 0 failed**, `unit/eval` **251 passed** (was 209, +42 new), `harness:lint` clean, `harness:typecheck` clean (124 files). TDD note recorded honestly: the golden-set contract test produced a genuine observed RED that changed the design (L4 mean below L3 → L4 restated as a presentation-only band with its own contract); the `selection.py` and review-workflow tests were written after their modules with no observed RED. Status remains Review — the ICC failure is a real signal needing clinician review or a judge decision, not an engineering fix. | Claude (execution session 6) |

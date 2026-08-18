@@ -106,6 +106,18 @@ export interface DnaJobStatus {
   error?: string;
 }
 
+/**
+ * Result of erasing a clinician's learned writing-style profile.
+ *
+ * Counts only — the erased profile text is PHI-derived and is never echoed
+ * back by the gateway.
+ */
+export interface DnaErasureResult {
+  doctorId: string;
+  deletedReports: number;
+  deletedVersions: number;
+}
+
 // =============================================================================
 // Response Variants
 // =============================================================================

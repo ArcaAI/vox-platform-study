@@ -237,8 +237,6 @@ describe('ModelRegistry', () => {
       const defaults: Record<string, { value: string; namespace: string }> = {
         'default-stt-model': { value: 'whisper-large-v3', namespace: 'stt' },
         'vad-sensitivity': { value: '0.7', namespace: 'stt' },
-        'default-smr-provider': { value: 'ollama', namespace: 'smr' },
-        'default-smr-model': { value: 'llama3.1:8b', namespace: 'smr' },
         'default-language': { value: 'en', namespace: 'general' },
         'enable-real-time-transcription': { value: 'true', namespace: 'feature-flags' },
         'enable-ner-extraction': { value: 'true', namespace: 'feature-flags' },
@@ -269,8 +267,6 @@ describe('ModelRegistry', () => {
 
       expect(config.defaultSttModel).toBe('whisper-large-v3');
       expect(config.vadSensitivity).toBe(0.7);
-      expect(config.defaultSmrProvider).toBe('ollama');
-      expect(config.defaultSmrModel).toBe('llama3.1:8b');
       expect(config.defaultLanguage).toBe('en');
     });
 

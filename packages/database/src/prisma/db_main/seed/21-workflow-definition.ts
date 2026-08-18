@@ -95,7 +95,7 @@ const GRAPH = {
     {
       id: 'n_gen',
       type: 'generate.text',
-      config: { taskKey: 'smr.finalize', onError: 'fail' },
+      config: { taskKey: 'text.finalize', onError: 'fail' },
     },
     {
       id: 'n_guard',

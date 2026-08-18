@@ -95,8 +95,8 @@ describe('HarnessPolicyService', () => {
       const own = HarnessPolicyFactory.CreateHarnessPolicy({
         tenantId: TENANT,
         coverageThreshold: 0.55,
-        smrProvider: 'tenant-prov',
-        smrModel: 'tenant-model',
+        textProvider: 'tenant-prov',
+        textModel: 'tenant-model',
       });
       policyRepository.findForExactTenant.mockResolvedValue(own);
       policyRepository.findSystemDefault.mockResolvedValue(null);
@@ -142,13 +142,13 @@ describe('HarnessPolicyService', () => {
         tenantId: TENANT,
         coverageThreshold: 0.55,
         // Pre-Phase-2 tenant row: SMR selection was never set.
-        smrProvider: null,
-        smrModel: null,
+        textProvider: null,
+        textModel: null,
       });
       const sys = HarnessPolicyFactory.CreateHarnessPolicy({
         tenantId: SYSTEM_TENANT_ID,
-        smrProvider: 'lm-studio',
-        smrModel: 'gemma-4-e2b-it-sft-rlvr-medical',
+        textProvider: 'lm-studio',
+        textModel: 'gemma-4-e2b-it-sft-rlvr-medical',
       });
       policyRepository.findForExactTenant.mockResolvedValue(own);
       policyRepository.findSystemDefault.mockResolvedValue(sys);
@@ -158,28 +158,28 @@ describe('HarnessPolicyService', () => {
       // Still the tenant's own row (source unchanged) but SMR fields inherited.
       expect(result.source).toBe('tenant');
       expect(result.coverageThreshold).toBe(0.55);
-      expect(result.smrProvider).toBe('lm-studio');
-      expect(result.smrModel).toBe('gemma-4-e2b-it-sft-rlvr-medical');
+      expect(result.textProvider).toBe('lm-studio');
+      expect(result.textModel).toBe('gemma-4-e2b-it-sft-rlvr-medical');
     });
 
     it('SYSTEM SMR selection wins over a non-null tenant-row SMR field', async () => {
       const own = HarnessPolicyFactory.CreateHarnessPolicy({
         tenantId: TENANT,
-        smrProvider: 'ollama',
-        smrModel: 'tenant-pinned-model',
+        textProvider: 'ollama',
+        textModel: 'tenant-pinned-model',
       });
       const sys = HarnessPolicyFactory.CreateHarnessPolicy({
         tenantId: SYSTEM_TENANT_ID,
-        smrProvider: 'lm-studio',
-        smrModel: 'gemma-4-e2b-it-sft-rlvr-medical',
+        textProvider: 'lm-studio',
+        textModel: 'gemma-4-e2b-it-sft-rlvr-medical',
       });
       policyRepository.findForExactTenant.mockResolvedValue(own);
       policyRepository.findSystemDefault.mockResolvedValue(sys);
 
       const result = await service.getEffectivePolicy();
 
-      expect(result.smrProvider).toBe('lm-studio');
-      expect(result.smrModel).toBe('gemma-4-e2b-it-sft-rlvr-medical');
+      expect(result.textProvider).toBe('lm-studio');
+      expect(result.textModel).toBe('gemma-4-e2b-it-sft-rlvr-medical');
     });
   });
 
@@ -242,32 +242,32 @@ describe('HarnessPolicyService', () => {
   });
 
   // ── the fail-closed SMR selection seam ──
-  describe('resolveSmrSelection', () => {
+  describe('resolveTextSelection', () => {
     it('returns {provider, model} resolved from the SYSTEM-default cascade', async () => {
       const sys = HarnessPolicyFactory.CreateHarnessPolicy({
         tenantId: SYSTEM_TENANT_ID,
-        smrProvider: 'lm-studio',
-        smrModel: 'gemma-4-e2b-it-sft-rlvr-medical',
+        textProvider: 'lm-studio',
+        textModel: 'gemma-4-e2b-it-sft-rlvr-medical',
       });
       policyRepository.findForExactTenant.mockResolvedValue(null);
       policyRepository.findSystemDefault.mockResolvedValue(sys);
 
-      const result = await service.resolveSmrSelection();
+      const result = await service.resolveTextSelection();
 
       expect(result).toEqual({ provider: 'lm-studio', model: 'gemma-4-e2b-it-sft-rlvr-medical' });
     });
 
     it('resolves a null-SMR tenant row to the SYSTEM default (field-level fallthrough)', async () => {
-      const own = HarnessPolicyFactory.CreateHarnessPolicy({ tenantId: TENANT, smrProvider: null, smrModel: null });
+      const own = HarnessPolicyFactory.CreateHarnessPolicy({ tenantId: TENANT, textProvider: null, textModel: null });
       const sys = HarnessPolicyFactory.CreateHarnessPolicy({
         tenantId: SYSTEM_TENANT_ID,
-        smrProvider: 'lm-studio',
-        smrModel: 'gemma-4-e2b-it-sft-rlvr-medical',
+        textProvider: 'lm-studio',
+        textModel: 'gemma-4-e2b-it-sft-rlvr-medical',
       });
       policyRepository.findForExactTenant.mockResolvedValue(own);
       policyRepository.findSystemDefault.mockResolvedValue(sys);
 
-      const result = await service.resolveSmrSelection();
+      const result = await service.resolveTextSelection();
 
       expect(result).toEqual({ provider: 'lm-studio', model: 'gemma-4-e2b-it-sft-rlvr-medical' });
     });
@@ -276,46 +276,46 @@ describe('HarnessPolicyService', () => {
       policyRepository.findForExactTenant.mockResolvedValue(null);
       policyRepository.findSystemDefault.mockResolvedValue(null);
 
-      await expect(service.resolveSmrSelection()).rejects.toBeInstanceOf(BadRequestException);
+      await expect(service.resolveTextSelection()).rejects.toBeInstanceOf(BadRequestException);
     });
 
     it('throws (fail-closed) when the tenant row and the SYSTEM default both leave SMR null', async () => {
-      const own = HarnessPolicyFactory.CreateHarnessPolicy({ tenantId: TENANT, smrProvider: null, smrModel: null });
+      const own = HarnessPolicyFactory.CreateHarnessPolicy({ tenantId: TENANT, textProvider: null, textModel: null });
       policyRepository.findForExactTenant.mockResolvedValue(own);
       policyRepository.findSystemDefault.mockResolvedValue(null);
 
-      await expect(service.resolveSmrSelection()).rejects.toBeInstanceOf(BadRequestException);
+      await expect(service.resolveTextSelection()).rejects.toBeInstanceOf(BadRequestException);
     });
   });
 
   // AiTaskDefault-first SMR routing.
-  describe('resolveSmrSelection — AiTaskDefault precedence', () => {
-    it('consults the smr.finalize AiTaskDefault FIRST and returns its {provider, sourceUri}', async () => {
+  describe('resolveTextSelection — AiTaskDefault precedence', () => {
+    it('consults the text.finalize AiTaskDefault FIRST and returns its {provider, sourceUri}', async () => {
       const svc = makeServiceWithAiTaskDefault();
       aiTaskDefaultService.getEffective.mockResolvedValue({
-        taskKey: 'smr.finalize',
+        taskKey: 'text.finalize',
         modelSlug: 'lms-gemma-4-e2b-it-qat',
         source: 'system',
         model: { provider: 'lm-studio', sourceUri: 'gemma-4-e2b-it-qat' },
       });
 
-      const result = await svc.resolveSmrSelection('tenant-1');
+      const result = await svc.resolveTextSelection('tenant-1');
 
-      expect(aiTaskDefaultService.getEffective).toHaveBeenCalledWith('smr.finalize', 'tenant-1');
+      expect(aiTaskDefaultService.getEffective).toHaveBeenCalledWith('text.finalize', 'tenant-1');
       expect(result).toEqual({ provider: 'lm-studio', model: 'gemma-4-e2b-it-qat' });
       // AiTaskDefault won — the legacy policy cascade must not be consulted.
       expect(policyRepository.findForExactTenant).not.toHaveBeenCalled();
     });
 
-    it('maps the live task to the smr.live key', async () => {
+    it('maps the live task to the text.live key', async () => {
       const svc = makeServiceWithAiTaskDefault();
       aiTaskDefaultService.getEffective.mockResolvedValue({
         model: { provider: 'lm-studio', sourceUri: 'gemma-4-e2b-it-qat' },
       });
 
-      await svc.resolveSmrSelection('tenant-1', 'live');
+      await svc.resolveTextSelection('tenant-1', 'live');
 
-      expect(aiTaskDefaultService.getEffective).toHaveBeenCalledWith('smr.live', 'tenant-1');
+      expect(aiTaskDefaultService.getEffective).toHaveBeenCalledWith('text.live', 'tenant-1');
     });
 
     it('falls back to the legacy HarnessPolicy cascade when AiTaskDefault resolves no model', async () => {
@@ -323,13 +323,13 @@ describe('HarnessPolicyService', () => {
       aiTaskDefaultService.getEffective.mockResolvedValue({ model: null });
       const sys = HarnessPolicyFactory.CreateHarnessPolicy({
         tenantId: SYSTEM_TENANT_ID,
-        smrProvider: 'lm-studio',
-        smrModel: 'legacy-model',
+        textProvider: 'lm-studio',
+        textModel: 'legacy-model',
       });
       policyRepository.findForExactTenant.mockResolvedValue(null);
       policyRepository.findSystemDefault.mockResolvedValue(sys);
 
-      const result = await svc.resolveSmrSelection('tenant-1');
+      const result = await svc.resolveTextSelection('tenant-1');
 
       expect(result).toEqual({ provider: 'lm-studio', model: 'legacy-model' });
     });
@@ -339,46 +339,46 @@ describe('HarnessPolicyService', () => {
       aiTaskDefaultService.getEffective.mockRejectedValue(new Error('unknown task key'));
       const sys = HarnessPolicyFactory.CreateHarnessPolicy({
         tenantId: SYSTEM_TENANT_ID,
-        smrProvider: 'ollama',
-        smrModel: 'granite4:latest',
+        textProvider: 'ollama',
+        textModel: 'granite4:latest',
       });
       policyRepository.findForExactTenant.mockResolvedValue(null);
       policyRepository.findSystemDefault.mockResolvedValue(sys);
 
-      const result = await svc.resolveSmrSelection('tenant-1');
+      const result = await svc.resolveTextSelection('tenant-1');
 
       expect(result).toEqual({ provider: 'ollama', model: 'granite4:latest' });
     });
   });
 
   // Tenant-configurable SMR fallback selection (fail-OPEN).
-  describe('resolveSmrFallbackSelection', () => {
-    it('resolves the smr.finalize.fallback key to {provider, sourceUri} when a model is enabled', async () => {
+  describe('resolveTextFallbackSelection', () => {
+    it('resolves the text.finalize.fallback key to {provider, sourceUri} when a model is enabled', async () => {
       const svc = makeServiceWithAiTaskDefault();
       aiTaskDefaultService.getEffective.mockResolvedValue({
-        taskKey: 'smr.finalize.fallback',
+        taskKey: 'text.finalize.fallback',
         modelSlug: 'lms-gemma-4-e2b-it-qat',
         source: 'tenant',
         model: { provider: 'lm-studio', sourceUri: 'gemma-4-e2b-it-qat' },
       });
 
-      const result = await svc.resolveSmrFallbackSelection('tenant-1');
+      const result = await svc.resolveTextFallbackSelection('tenant-1');
 
-      expect(aiTaskDefaultService.getEffective).toHaveBeenCalledWith('smr.finalize.fallback', 'tenant-1');
+      expect(aiTaskDefaultService.getEffective).toHaveBeenCalledWith('text.finalize.fallback', 'tenant-1');
       expect(result).toEqual({ provider: 'lm-studio', model: 'gemma-4-e2b-it-qat' });
       // Fallback resolution never consults the legacy policy cascade.
       expect(policyRepository.findForExactTenant).not.toHaveBeenCalled();
     });
 
-    it('maps the live task to the smr.live.fallback key', async () => {
+    it('maps the live task to the text.live.fallback key', async () => {
       const svc = makeServiceWithAiTaskDefault();
       aiTaskDefaultService.getEffective.mockResolvedValue({
         model: { provider: 'lm-studio', sourceUri: 'gemma-4-e2b-it-qat' },
       });
 
-      await svc.resolveSmrFallbackSelection('tenant-1', 'live');
+      await svc.resolveTextFallbackSelection('tenant-1', 'live');
 
-      expect(aiTaskDefaultService.getEffective).toHaveBeenCalledWith('smr.live.fallback', 'tenant-1');
+      expect(aiTaskDefaultService.getEffective).toHaveBeenCalledWith('text.live.fallback', 'tenant-1');
     });
 
     it('normalizes an azure provider to azure-openai', async () => {
@@ -387,7 +387,7 @@ describe('HarnessPolicyService', () => {
         model: { provider: 'azure', sourceUri: 'gpt-4o-mini' },
       });
 
-      const result = await svc.resolveSmrFallbackSelection('tenant-1');
+      const result = await svc.resolveTextFallbackSelection('tenant-1');
 
       expect(result).toEqual({ provider: 'azure-openai', model: 'gpt-4o-mini' });
     });
@@ -396,7 +396,7 @@ describe('HarnessPolicyService', () => {
       const svc = makeServiceWithAiTaskDefault();
       aiTaskDefaultService.getEffective.mockResolvedValue({ model: null });
 
-      const result = await svc.resolveSmrFallbackSelection('tenant-1');
+      const result = await svc.resolveTextFallbackSelection('tenant-1');
 
       expect(result).toBeNull();
       // Fail-OPEN: the legacy cascade is NOT a fallback for the fallback key.
@@ -407,7 +407,7 @@ describe('HarnessPolicyService', () => {
       const svc = makeServiceWithAiTaskDefault();
       aiTaskDefaultService.getEffective.mockRejectedValue(new Error('unknown task key'));
 
-      const result = await svc.resolveSmrFallbackSelection('tenant-1');
+      const result = await svc.resolveTextFallbackSelection('tenant-1');
 
       expect(result).toBeNull();
     });
@@ -415,7 +415,7 @@ describe('HarnessPolicyService', () => {
     it('returns null when the AiTaskDefault service is not wired (fixtures)', async () => {
       const svc = makeService();
 
-      const result = await svc.resolveSmrFallbackSelection('tenant-1');
+      const result = await svc.resolveTextFallbackSelection('tenant-1');
 
       expect(result).toBeNull();
     });
@@ -442,8 +442,8 @@ describe('HarnessPolicyService', () => {
     it('overlays SYSTEM agentic knobs over tenant-row values on the effective policy', async () => {
       const own = HarnessPolicyFactory.CreateHarnessPolicy({
         tenantId: TENANT,
-        smrProvider: 'lm-studio',
-        smrModel: 'm',
+        textProvider: 'lm-studio',
+        textModel: 'm',
         optimisticDeliveryEnabled: true,
         maxEditReruns: 3,
         retrievalEnabled: false,
@@ -468,7 +468,7 @@ describe('HarnessPolicyService', () => {
     });
 
     it('rejects a tenant updatePolicy that patches agentic/selection knobs (403)', async () => {
-      const own = HarnessPolicyFactory.CreateHarnessPolicy({ tenantId: TENANT, smrProvider: 'lm-studio', smrModel: 'm' });
+      const own = HarnessPolicyFactory.CreateHarnessPolicy({ tenantId: TENANT, textProvider: 'lm-studio', textModel: 'm' });
       policyRepository.findForExactTenant.mockResolvedValue(own);
 
       await expect(service.updatePolicy({ atomicFactEnabled: true, maxEditReruns: 5, expectedVersion: 1 } as never, 1)).rejects.toBeInstanceOf(

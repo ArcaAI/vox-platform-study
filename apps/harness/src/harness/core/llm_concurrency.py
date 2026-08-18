@@ -160,7 +160,7 @@ class LlmCallTimeout(TimeoutError):
     Subclasses ``TimeoutError`` so :func:`is_retryable` still classifies it transient
     (idempotent governed calls keep retrying a hung call as before). The distinct type
     lets :func:`governed_request` recognise the per-call timeout specifically and, for a
-    NON-idempotent caller (``retry_on_timeout=False`` — e.g. SMR generate), treat it as
+    NON-idempotent caller (``retry_on_timeout=False`` — e.g. Text generate), treat it as
     terminal: the request may have already reached the model, so re-issuing it would
     re-invoke a non-idempotent operation.
     """
@@ -302,7 +302,7 @@ async def governed_request(
     ``terminated`` 400; gives up after ``max_attempts`` and re-raises the last error,
     so the caller's existing degrade path owns the final (fail-safe) outcome.
 
-    ``retry_on_timeout``: a NON-idempotent ``operation`` (e.g. SMR generate)
+    ``retry_on_timeout``: a NON-idempotent ``operation`` (e.g. Text generate)
     passes ``False`` so a per-call :class:`LlmCallTimeout` is TERMINAL — the request may
     have already reached and run the model, and the per-call ``asyncio.timeout`` cannot
     tell pre-send from post-send, so re-issuing it risks a second (divergent) generation.

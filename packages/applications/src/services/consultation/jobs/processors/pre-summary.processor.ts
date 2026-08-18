@@ -15,7 +15,14 @@ import { buildTextGeneratePayload, mapTextGenerateResponse } from '../../summary
 import { HarnessPolicyService } from '../../../harness-policy/harness-policy.service';
 import { ConfigResolver } from '../../../config-resolver';
 import { IActiveUserContext } from '../../../../interfaces';
-import { assertEqualTenants, createWorkerSession, encryptPhiFields } from '../../../../common';
+import {
+  TENANTLESS,
+  assertEqualTenants,
+  createWorkerSession,
+  encryptPhiFields,
+  internalServiceHeaders,
+  resolveInternalAccessToken,
+} from '../../../../common';
 import { INoteGenerationService, GenerationTrigger } from '../../note-generation';
 
 // TASK-732 R-2 boundary (owner decision, deletion-manifest.md §5): KEPT,
@@ -184,7 +191,7 @@ export class PreSummaryProcessor extends WorkerHost {
         // Step 2: Calling AI service (30%)
         await this.jobService.notifyProgress(jobId, 30, 'Generating pre-summary with AI');
 
-        const smrResponse = await this.callTextService(
+        const textResponse = await this.callTextService(
           assembledPrompt,
           {
             ...request,
@@ -201,7 +208,7 @@ export class PreSummaryProcessor extends WorkerHost {
         // Step 3: Saving results (70%)
         await this.jobService.notifyProgress(jobId, 70, 'Saving results');
 
-        const contextItem = ContextItemFactory.CreatePreSummary(tenantId, consultationId, smrResponse.summary, request.dnaStyleId, userId);
+        const contextItem = ContextItemFactory.CreatePreSummary(tenantId, consultationId, textResponse.summary, request.dnaStyleId, userId);
 
         // Encrypt the generated pre-summary text into `encryptedContent`
         // before persistence — the plaintext `content` column was dropped by the
@@ -218,10 +225,10 @@ export class PreSummaryProcessor extends WorkerHost {
           contextItemId: savedContext.id,
           content: savedContext.content,
           summaryMeta: {
-            aiModelId: smrResponse.modelName,
-            processingTimeMs: smrResponse.processingTimeMs,
-            inputTokens: smrResponse.inputTokens,
-            outputTokens: smrResponse.outputTokens,
+            aiModelId: textResponse.modelName,
+            processingTimeMs: textResponse.processingTimeMs,
+            inputTokens: textResponse.inputTokens,
+            outputTokens: textResponse.outputTokens,
           },
         };
 
@@ -234,7 +241,7 @@ export class PreSummaryProcessor extends WorkerHost {
           message: 'Pre-summary job completed',
           jobId,
           contextItemId: savedContext.id,
-          processingTimeMs: smrResponse.processingTimeMs,
+          processingTimeMs: textResponse.processingTimeMs,
         });
 
         return result;
@@ -272,7 +279,7 @@ export class PreSummaryProcessor extends WorkerHost {
     request: GeneratePreSummaryJobPayload['request'],
     // The tenant id `process` already fail-closed
     // validated (job.data.tenantId) is threaded through EXPLICITLY here
-    // rather than trusting `resolveSmrSelection()`'s own CLS fallback, so
+    // rather than trusting `resolveTextSelection()`'s own CLS fallback, so
     // this call can never silently serve the SYSTEM default model.
     tenantId: string,
     jobId?: string,
@@ -285,28 +292,34 @@ export class PreSummaryProcessor extends WorkerHost {
     outputTokens?: number;
   }> {
     try {
-      const smrStart = Date.now();
+      const textStart = Date.now();
       // Resolve the tenant's effective {provider, model} and merge as the
       // base so a caller-supplied model wins.
       let options = request.options;
       if (this.harnessPolicyService) {
-        const { provider, model } = await this.harnessPolicyService.resolveSmrSelection(tenantId, 'finalize');
-        options = { smrProvider: provider, smrModel: model, ...request.options };
+        const { provider, model } = await this.harnessPolicyService.resolveTextSelection(tenantId, 'finalize');
+        options = { textProvider: provider, textModel: model, ...request.options };
       }
       const textPayload = buildTextGeneratePayload(assembledPrompt, options, {
         dnaStyleId: request.dnaStyleId,
         summaryType: 'pre-summary',
       });
-      const smrServiceToken = (await this.secretsService?.getSecretOptional('TEXT_SERVICE_TOKEN')) ?? '';
+      // D-D: the ONE shared `INTERNAL_ACCESS_TOKEN` (`TEXT_SERVICE_TOKEN` is only the
+      // migration fallback). TASK-737: `X-Tenant-Id` is MANDATORY — `tenantId` is the
+      // fail-closed-validated `job.data.tenantId` already threaded in above and used
+      // one line earlier for `resolveTextSelection`, then dropped before the HTTP call,
+      // so Text resolved the platform default provider for a job that HAS a tenant.
+      const serviceToken = await resolveInternalAccessToken(this.secretsService, 'TEXT_SERVICE_TOKEN');
       const response = await this.httpService.axiosRef.post(`${this.textServiceUrl}/api/v1/generate`, textPayload, {
         timeout: 120000,
-        headers: {
-          'Content-Type': 'application/json',
-          'X-Service-Token': smrServiceToken,
-          ...(jobId && { 'X-Request-ID': jobId }),
-        },
+        headers: internalServiceHeaders({
+          serviceToken,
+          tenantId,
+          tenantlessReason: TENANTLESS.JOB_QUEUE,
+          extra: jobId ? { 'X-Request-ID': jobId } : undefined,
+        }),
       });
-      this.jobMetrics.recordSmrCallDuration(JobQueue.GeneratePreSummary, 'smr', (Date.now() - smrStart) / 1000);
+      this.jobMetrics.recordTextCallDuration(JobQueue.GeneratePreSummary, 'smr', (Date.now() - textStart) / 1000);
       return mapTextGenerateResponse(response.data);
     } catch (error) {
       this.logger.error({

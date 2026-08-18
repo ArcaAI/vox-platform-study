@@ -7,6 +7,7 @@ import { AppModule } from './app.module';
 import { auditAdminRoutePermissions } from './bootstrap/admin-route-permission-audit';
 import { auditApiKeyRequiredScopes, auditInternalRoutesOffApiKeySurface } from './bootstrap/api-key-scope-audit';
 import { auditAdminScopedControllers } from './bootstrap/admin-scope-audit';
+import { auditEveryApiKeyReachableRouteDeclaresScopes } from './bootstrap/api-key-surface-audit';
 import { auditConsentRouteCoverage } from './bootstrap/consent-route-coverage-audit';
 import { assertGenaiContentCaptureDisabled } from './bootstrap/genai-content-capture-audit';
 import { assertJwtSecretNotPlaceholder } from './bootstrap/jwt-secret-placeholder-audit';
@@ -306,6 +307,15 @@ async function bootstrap() {
   // `@RequiredScopes(...)`/`@ForbidApiKey()` gate loses it — the regression
   // guard for the owner-approved admin-surface scope narrowing.
   auditAdminScopedControllers();
+
+  // Refuses to start if ANY non-`@Public()` route declares neither
+  // `@RequiredScopes(...)` nor `@ForbidApiKey()` (TASK-742). The two audits
+  // above pin that a NAMED surface keeps a NAMED scope; this one pins that no
+  // route ANYWHERE is left undeclared. `UnifiedAuthGuard`'s API-key path now
+  // fails closed, so an undeclared route already refuses every API key at
+  // runtime — this turns that into a boot-time authoring error instead of a
+  // production 403.
+  auditEveryApiKeyReachableRouteDeclaresScopes(app);
 
   // Refuses to start if any route taking a `:patientId` route param lacks
   // both `@RequiresConsent(...)` and `@ConsentExempt(...)` (TASK-712,

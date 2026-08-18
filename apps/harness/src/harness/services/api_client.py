@@ -315,7 +315,10 @@ class ApiClient:
             return cast("dict[str, Any]", resp.json())
 
     async def get_policy(
-        self, tenant_id: str, consultation_id: str | None = None
+        self,
+        tenant_id: str,
+        consultation_id: str | None = None,
+        task_key: str | None = None,
     ) -> dict[str, Any]:
         """Read the effective harness policy for ``tenant_id`` (worker fetch).
 
@@ -330,10 +333,18 @@ class ApiClient:
                 response SHAPE is unchanged (same keys, different values, plus an additive
                 ``overridesSource`` provenance field). Omitted ⇒ byte-identical prior
                 request, so other gateway callers are unaffected.
+
+                TASK-740 D-1: when ``task_key`` is supplied the gateway resolves
+                ``textProvider``/``textModel`` from the ``AiTaskDefault`` row for THAT key
+                (tenant → SYSTEM) instead of serving the ``HarnessPolicy`` columns. This is
+                what makes a workflow node's ``config.taskKey`` actually select a model;
+                without it every node resolved the same one. Omitted ⇒ unchanged behaviour.
         """
         params: dict[str, Any] = {"tenantId": tenant_id}
         if consultation_id:
             params["consultationId"] = consultation_id
+        if task_key:
+            params["taskKey"] = task_key
         return await self._get("/policy", params)
 
     async def get_resolved_prompt_template(

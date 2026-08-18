@@ -6,7 +6,7 @@ import { SYSTEM_TENANT_ID, SYSTEM_USER_ID } from './00-constants';
  *
  * Seeds the SYSTEM-tenant (`00000000-…`) platform defaults for the
  * non-pipeline AI tasks — the Class-3 generalization of
- * `HarnessPolicy.smrProvider/smrModel`:
+ * `HarnessPolicy.textProvider/textModel`:
  *
  *   - guardrail.validate   → granite-guardian-4.1-8b     (GUARDRAIL row)
  *   - nlp.ner              → medical-ner                 (TOKEN_CLASSIFICATION row)
@@ -27,7 +27,7 @@ import { SYSTEM_TENANT_ID, SYSTEM_USER_ID } from './00-constants';
  * ignores per-tenant override rows. EXCEPTION: the `smr.` prefix is
  * tenant-admin configurable — the SYSTEM rows below are still seeded as the
  * platform default, but tenants may override them with their own rows. The
- * per-tenant `smr.live.fallback` / `smr.finalize.fallback` keys are opt-in and
+ * per-tenant `text.live.fallback` / `text.finalize.fallback` keys are opt-in and
  * deliberately have NO SYSTEM seed row (unset ⇒ no fallback runs).
  *
  * CREATE-ONLY: an existing (tenantId, taskKey) row is NEVER overwritten — the
@@ -77,37 +77,37 @@ export const SYSTEM_AI_TASK_DEFAULTS: AiTaskDefaultSeed[] = [
     modelSlug: 'symps-disease-bert-v3-c41',
   },
   // SMR generation routing, mapped to the CURRENT SMR
-  // default (HarnessPolicy SYSTEM smrProvider/smrModel = lm-studio /
+  // default (HarnessPolicy SYSTEM textProvider/textModel = lm-studio /
   // gemma-4-e2b-it-qat, registry slug `lms-gemma-4-e2b-it-qat`). Both live and
   // finalize point at the same platform default today; a super admin OR a
   // tenant admin may split or override them later.
-  // `resolveSmrSelection` consults these keys FIRST. NOTE: the per-tenant
+  // `resolveTextSelection` consults these keys FIRST. NOTE: the per-tenant
   // `smr.<task>.fallback` keys are opt-in and intentionally NOT seeded here.
   {
     id: '86000000-0000-0000-0000-000000000004',
     tenantId: SYSTEM_TENANT_ID,
-    taskKey: 'smr.live',
+    taskKey: 'text.live',
     modelSlug: 'lms-gemma-4-e2b-it-qat',
   },
   {
     id: '86000000-0000-0000-0000-000000000005',
     tenantId: SYSTEM_TENANT_ID,
-    taskKey: 'smr.finalize',
+    taskKey: 'text.finalize',
     modelSlug: 'lms-gemma-4-e2b-it-qat',
   },
   // BUG-018 — the prompt-template Test button's own routing key. It exists so
   // the Test path resolves through AiTaskDefault ALONE: before this row the
   // key was consulted, missed, and the caller fell through to the HARNESS
-  // `smr.finalize` cascade to find any model at all — which is how a tenant
+  // `text.finalize` cascade to find any model at all — which is how a tenant
   // that had selected Azure OpenAI still ran every template test on the
   // platform's LM Studio gemma. Testing a prompt is prompt-authoring, not
   // clinical documentation; it must not read harness policy to pick a model.
   // Seeded at the same platform default so behaviour is unchanged for tenants
-  // that never override it; a tenant admin may repoint `smr.test` freely.
+  // that never override it; a tenant admin may repoint `text.test` freely.
   {
     id: '86000000-0000-0000-0000-000000000010',
     tenantId: SYSTEM_TENANT_ID,
-    taskKey: 'smr.test',
+    taskKey: 'text.test',
     modelSlug: 'lms-gemma-4-e2b-it-qat',
   },
   // Guardrail selection moved out of env into the DB control plane

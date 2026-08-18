@@ -6,7 +6,7 @@
  * 1. session → `useArcaSessionManager` (createSession + startSession)
  * 2. record → `useAudioCapture` (mic) + `useArcaSpeechToText` (live transcript)
  * 3. stop → stopTranscription + stopRecording + endSession
- * 4. summary → `useSMR().summarizeSync` → render the Enhanced summary
+ * 4. summary → `useText().summarizeSync` → render the Enhanced summary
  *
  * This component is deliberately framework-light (plain React + inline styles) so
  * a v1 team recognizes their own code. The ONLY structural change from a v1 app is
@@ -22,7 +22,7 @@ import {
   useAudioCapture,
   useArcaSpeechToText,
   useArcaSttProvider,
-  useSMR,
+  useText,
   type EnhancedMedicalSummary,
   type SummaryResponse,
 } from '@arcaai/vox/compat';
@@ -118,7 +118,7 @@ export function CompatConsultation({ provider: initialProvider = 'azure', apiBas
   const activeProviderLabel = provider.activeProvider?.name ?? selectedProviderLabel;
 
   // 4. Summary — same path + x-api-key as v1; sends real per-turn segments.
-  const smr = useSMR({ sessionId: mgr.session?.id });
+  const smr = useText({ sessionId: mgr.session?.id });
 
   const startSttSession = async (sessionId: string): Promise<void> => {
     const base = (apiBaseUrl ?? '').replace(/\/$/, '');

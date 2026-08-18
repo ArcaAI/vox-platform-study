@@ -128,8 +128,17 @@ async def test_batch_endpoint_surfaces_stats_per_text() -> None:
 
 @pytest.mark.asyncio
 async def test_failed_validation_reports_no_stats_rather_than_zeros() -> None:
-    """A validation that never reached a model spent nothing. A zero-token stats
-    block is indistinguishable from a free call — silence is the honest answer."""
+    """A validation that never reached a model spent nothing, and it also rendered no
+    verdict — so there is no 200 body to carry stats at all.
+
+    This used to assert a 200 with ``error`` set and ``stats=None``. That 200 was the
+    fail-open (``is_medical=True  # Fail open``); the honest answer is now a 503, and the
+    "never report zero tokens for a call that never happened" guarantee survives as
+    "report no body at all". The positive half of the guarantee — a REAL call always
+    carries its stats — is covered by the tests above.
+    """
+    from fastapi import HTTPException
+
     from guardrail.api.endpoints.medical import (
         MedicalValidationRequest,
         validate_medical_context,
@@ -138,14 +147,14 @@ async def test_failed_validation_reports_no_stats_rather_than_zeros() -> None:
     guardian = AsyncMock()
     guardian.validate_medical_context = AsyncMock(side_effect=RuntimeError("engine down"))
 
-    response = await validate_medical_context(
-        MedicalValidationRequest(text="x"),
-        settings=MagicMock(),
-        guardian_provider=guardian,
-    )
+    with pytest.raises(HTTPException) as exc:
+        await validate_medical_context(
+            MedicalValidationRequest(text="x"),
+            settings=MagicMock(),
+            guardian_provider=guardian,
+        )
 
-    assert response.error == "engine down"
-    assert response.stats is None
+    assert exc.value.status_code == 503
 
 
 @pytest.mark.asyncio

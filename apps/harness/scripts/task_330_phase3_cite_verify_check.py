@@ -5,14 +5,14 @@ REAL models, against the LIVE seeded tenant-A hypertension chunk:
 
   retrieve (live hybrid: bge-m3 + Qdrant + TEI reranker)
     -> build_strict_citations_block   (REAL prompt block)
-    -> generate SOAP note              (LM Studio gemma-4-e2b-it-qat == HARNESS_SMR_MODEL)
+    -> generate SOAP note              (LM Studio gemma-4-e2b-it-qat == HARNESS_TEXT_MODEL)
     -> NER over note + transcript      (REAL NlpClient, :8864)
     -> build_citations_map             (REAL strict [[kb:]] parser, hallucinated ids dropped)
     -> CitationVerifySensor.arun       (REAL sensor + REAL LM Studio judge, threshold 0.8)
 
 The generation model is invoked directly over LM Studio's OpenAI-compatible chat API
 — it is the SAME model id the harness SMR activity calls (apps/harness/.env
-HARNESS_SMR_PROVIDER=lm-studio, HARNESS_SMR_MODEL=gemma-4-e2b-it-qat); only the SMR
+HARNESS_TEXT_PROVIDER=lm-studio, HARNESS_TEXT_MODEL=gemma-4-e2b-it-qat); only the SMR
 HTTP wrapper is bypassed so we don't need the separate :8872 live-verification SMR
 instance for this proof.
 
@@ -39,7 +39,7 @@ from harness.temporal.activities import _build_runtime_judge, _hybrid_retriever
 
 TENANT_A = "50000000-0000-0000-0000-000000000000"
 LM_STUDIO_CHAT = "http://localhost:1234/v1/chat/completions"
-TEXT_MODEL = "gemma-4-e2b-it-qat"  # == HARNESS_SMR_MODEL
+TEXT_MODEL = "gemma-4-e2b-it-qat"  # == HARNESS_TEXT_MODEL
 
 # A hypertension follow-up consultation that topically overlaps the seeded
 # institutional protocol, so the retriever has something meaningful to cite.
@@ -116,7 +116,7 @@ async def main() -> None:
     print("\n=== 2. STRICT-CITATIONS BLOCK (real) ===")
     print("  " + block.splitlines()[0][:120] + " ...")
 
-    # 3) Generate the SOAP note (LM Studio gemma-4-e2b-it-qat == HARNESS_SMR_MODEL).
+    # 3) Generate the SOAP note (LM Studio gemma-4-e2b-it-qat == HARNESS_TEXT_MODEL).
     soap = await _generate_soap(block)
     note_text = "\n".join(f"{k.upper()}: {v}" for k, v in soap.items())
     print("\n=== 3. GENERATED SOAP NOTE (gemma-4-e2b-it-qat) ===")

@@ -83,8 +83,8 @@ test.describe('AiTaskDefault admin surface (cross-tenant + guardrail governance)
     expect(Array.isArray(body)).toBe(true);
     // The full registry (AI_TASK_KEYS, ai-task-default/constants.ts):
     // guardrail.validate/safety/groundedness, nlp.ner/classification/diagnosis
-    // + TASK-729's nlp.sentiment/toxicity, smr.live/finalize + the
-    // tenant-configurable smr.*.fallback keys + smr.test, harness.judge, and
+    // + TASK-729's nlp.sentiment/toxicity, text.live/finalize + the
+    // tenant-configurable smr.*.fallback keys + text.test, harness.judge, and
     // vlm.extract.
     expect(body.map((e) => e.taskKey)).toEqual([
       'guardrail.validate',
@@ -95,11 +95,11 @@ test.describe('AiTaskDefault admin surface (cross-tenant + guardrail governance)
       'nlp.diagnosis',
       'nlp.sentiment',
       'nlp.toxicity',
-      'smr.live',
-      'smr.finalize',
-      'smr.live.fallback',
-      'smr.finalize.fallback',
-      'smr.test',
+      'text.live',
+      'text.finalize',
+      'text.live.fallback',
+      'text.finalize.fallback',
+      'text.test',
       'harness.judge',
       'vlm.extract',
     ]);
@@ -177,20 +177,20 @@ test.describe('AiTaskDefault admin surface (cross-tenant + guardrail governance)
     expect(JSON.stringify(await resp.json())).toContain('super administrators only');
   });
 
-  test('Tenant admin CAN write an smr.* key (smr.finalize) for their OWN tenant → 200', async ({ request }) => {
+  test('Tenant admin CAN write an smr.* key (text.finalize) for their OWN tenant → 200', async ({ request }) => {
     // `smr.` left SUPER_ADMIN_ONLY_TASK_PREFIXES: the smr.* keys are
     // now tenant-admin configurable. Unlike the guardrail/nlp negative probes
     // above, this write is accepted for the caller's own CLS-pinned tenant. On a
     // fresh seed the tenant row is a version-0 placeholder, so this PUT travels
     // the `If-Match: "0"` create lane (the service CAS decides create-vs-412).
-    const row = await readRowVersion(request, tenantAdminToken, 'smr.finalize');
-    const resp = await request.put(`${BASE}/row?taskKey=smr.finalize`, {
+    const row = await readRowVersion(request, tenantAdminToken, 'text.finalize');
+    const resp = await request.put(`${BASE}/row?taskKey=text.finalize`, {
       headers: { Authorization: `Bearer ${tenantAdminToken}`, 'If-Match': `"${row.version}"` },
       data: { modelSlug: 'lms-gemma-4-e2b-it-qat' },
     });
     expect(resp.status()).toBe(200);
     const updated = (await resp.json()) as AiTaskDefaultRow;
-    expect(updated.taskKey).toBe('smr.finalize');
+    expect(updated.taskKey).toBe('text.finalize');
     expect(updated.modelSlug).toBe('lms-gemma-4-e2b-it-qat');
     // Written into the tenant admin's OWN tenant, not SYSTEM.
     expect(updated.tenantId).not.toBe('00000000-0000-0000-0000-000000000000');

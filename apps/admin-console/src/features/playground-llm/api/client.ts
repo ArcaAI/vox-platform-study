@@ -69,9 +69,9 @@ export function taskStreamPath(taskId: string): string {
 
 /**
  * Ticket scope for a task stream. Must match the route's `@StreamScope`
- * declaration (`{ namespace: 'smr_task', param: 'taskId' }`) or the gateway
+ * declaration (`{ namespace: 'text_task', param: 'taskId' }`) or the gateway
  * rejects the minted ticket.
  */
 export function taskStreamScope(taskId: string): string {
-  return `smr_task:${taskId}`;
+  return `text_task:${taskId}`;
 }

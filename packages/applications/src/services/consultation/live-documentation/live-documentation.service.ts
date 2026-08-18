@@ -17,7 +17,7 @@ import { IRedisCacheService } from '../../baseServices/redis';
 import { IAgentTrajectoryService } from '../../agent-trajectory/IAgentTrajectoryService';
 import type { CreateAgentTrajectoryStepInput } from '../../agent-trajectory/dto';
 import { SecretsService } from '../../baseServices/_meta/secrets';
-import { encryptPhiFields } from '../../../common';
+import { TENANTLESS, encryptPhiFields, internalServiceHeaders, resolveInternalAccessToken } from '../../../common';
 import { IActiveUserContext } from '../../../interfaces';
 import { RedisSubscriberService } from '../../stt/realtime/redisSubscriber.service';
 import { StreamingAudioBridgeService } from '../../stt/streaming/streamingAudioBridge.service';
@@ -373,8 +373,8 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
   private readonly durableSnapshotMs: number;
   private readonly smrMaxTokens: number;
   private readonly smrTimeoutMs: number;
-  private readonly smrProvider?: string;
-  private readonly smrModel?: string;
+  private readonly textProvider?: string;
+  private readonly textModel?: string;
   private readonly statsTtl: number;
   private readonly groundednessEnabled: boolean;
   private readonly groundednessTimeoutMs: number;
@@ -454,8 +454,8 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
     // Bounded live-generation params (P0-B).
     this.smrMaxTokens = Number(this.configService.get('LIVE_DOC_TEXT_MAX_TOKENS') ?? 8192);
     this.smrTimeoutMs = Number(this.configService.get('LIVE_DOC_TEXT_TIMEOUT_MS') ?? 20000);
-    this.smrProvider = this.configService.get<string>('LIVE_DOC_TEXT_PROVIDER') || undefined;
-    this.smrModel = this.configService.get<string>('LIVE_DOC_TEXT_MODEL') || undefined;
+    this.textProvider = this.configService.get<string>('LIVE_DOC_TEXT_PROVIDER') || undefined;
+    this.textModel = this.configService.get<string>('LIVE_DOC_TEXT_MODEL') || undefined;
     // TTL on the per-session Redis stats snapshot + active set. A
     // crashed/quiet session falls out of the admin "live" list after this window;
     // refreshed on every flush so an actively-flushing session stays visible.
@@ -1089,11 +1089,11 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
     // service is down.
     let sections = session.lastPayload?.sections ?? [];
     let runningSummary = priorNote;
-    let smrFailed = false;
-    let smrLatencyMs = 0;
+    let textFailed = false;
+    let textLatencyMs = 0;
     // AD-1 generation stats for this flush (null unless SMR
     // returned a stats block); surfaced on the payload as `metadata.stats`.
-    let smrStats: LiveSummaryStatsDto | null = null;
+    let textStats: LiveSummaryStatsDto | null = null;
     // bounded JSON auto-repair telemetry. When the first
     // structured response is not valid SOAP JSON we do EXACTLY ONE corrective
     // retry; the repair SMR call is recorded as its own ordered LLM_CALL step.
@@ -1126,8 +1126,8 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
       if (isStale()) return this.dropStale(session);
 
       const [firstCall, repairCall] = outcome.calls;
-      smrLatencyMs = firstCall.latencyMs;
-      smrStats = firstCall.stats;
+      textLatencyMs = firstCall.latencyMs;
+      textStats = firstCall.stats;
       smrRepaired = outcome.repaired;
       if (repairCall) {
         repairLatencyMs = repairCall.latencyMs;
@@ -1144,7 +1144,7 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
       }
     } catch (error) {
       if (isStale()) return this.dropStale(session);
-      smrFailed = true;
+      textFailed = true;
       this.logger.warn({ message: 'SMR running-summary call failed', consultationId, error: error instanceof Error ? error.message : String(error) });
     }
 
@@ -1176,7 +1176,7 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
     try {
       if (nerSourceText && (nerEnabled || vitalsEnabled)) {
         nlpRan = true;
-        const nlpResult = await this.toolRegistry.extraction().execute({ sourceText: nerSourceText }, signal);
+        const nlpResult = await this.toolRegistry.extraction().execute({ sourceText: nerSourceText, tenantId: session.tenantId }, signal);
         extracted = nerEnabled ? nlpResult.entities : [];
         flushVitals = vitalsEnabled ? nlpResult.vitals : undefined;
         nlpLatencyMs = Date.now() - nlpStartedAt;
@@ -1203,7 +1203,7 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
       const groundednessStartedAt = Date.now();
       groundedness = await this.toolRegistry
         .guardrail()
-        .execute({ summary: runningSummary, sourceText: notes ? `${transcript}\n${notes}` : transcript }, signal);
+        .execute({ summary: runningSummary, sourceText: notes ? `${transcript}\n${notes}` : transcript, tenantId: session.tenantId }, signal);
       groundednessLatencyMs = Date.now() - groundednessStartedAt;
       if (isStale()) return this.dropStale(session);
     }
@@ -1242,11 +1242,11 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
       // code-default tier there is no agent identity to report, and inventing a
       // metadata block there would change the published shape for a tenant that
       // configured nothing (the C3 behavior-identical invariant).
-      ...(smrStats || agentMetadata
-        ? { metadata: { ...(smrStats ? { stats: smrStats } : {}), ...(agentMetadata ? { agent: agentMetadata } : {}) } }
+      ...(textStats || agentMetadata
+        ? { metadata: { ...(textStats ? { stats: textStats } : {}), ...(agentMetadata ? { agent: agentMetadata } : {}) } }
         : {}),
       ...(vitals ? { vitals } : {}),
-      ...(smrFailed ? { smrFailed: true } : {}),
+      ...(textFailed ? { textFailed: true } : {}),
       updatedAt: new Date().toISOString(),
     };
 
@@ -1261,9 +1261,9 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
       consultationId,
       generation: myGeneration,
       flushCount: session.flushCount,
-      smrLatencyMs,
+      textLatencyMs,
       nlpLatencyMs,
-      smrFailed,
+      textFailed,
       nlpFailed,
       entityCount: entities.length,
       sectionCount: sections.length,
@@ -1279,9 +1279,9 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
     // live console can observe this (possibly cross-instance) session.
     await this.publishStats(session, {
       generation: myGeneration,
-      smrLatencyMs,
+      textLatencyMs,
       nlpLatencyMs,
-      smrFailed,
+      textFailed,
       nlpFailed,
       entityCount: entities.length,
       sectionCount: sections.length,
@@ -1292,9 +1292,9 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
     // trajectory failure NEVER breaks the live flush (recordFlushTrajectory
     // swallows + logs). Runs after the payload is published/persisted.
     await this.recordFlushTrajectory(session, {
-      smrStats,
-      smrFailed,
-      smrLatencyMs,
+      textStats,
+      textFailed,
+      textLatencyMs,
       smrRepaired,
       repairStats,
       repairLatencyMs,
@@ -1321,9 +1321,9 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
   private async recordFlushTrajectory(
     session: LiveSession,
     ctx: {
-      smrStats: LiveSummaryStatsDto | null;
-      smrFailed: boolean;
-      smrLatencyMs: number;
+      textStats: LiveSummaryStatsDto | null;
+      textFailed: boolean;
+      textLatencyMs: number;
       /** whether the bounded JSON auto-repair retry ran. */
       smrRepaired: boolean;
       repairStats: LiveSummaryStatsDto | null;
@@ -1354,11 +1354,11 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
         seq: session.trajectorySeq++,
         stepType: AgentStepType.LLM_CALL,
         name: 'flush',
-        status: ctx.smrFailed ? AgentStepStatus.ERROR : AgentStepStatus.OK,
-        startedAt: new Date(now - ctx.smrLatencyMs),
+        status: ctx.textFailed ? AgentStepStatus.ERROR : AgentStepStatus.OK,
+        startedAt: new Date(now - ctx.textLatencyMs),
         endedAt: new Date(now),
-        durationMs: ctx.smrLatencyMs,
-        stats: (ctx.smrStats ?? undefined) as CreateAgentTrajectoryStepInput['stats'],
+        durationMs: ctx.textLatencyMs,
+        stats: (ctx.textStats ?? undefined) as CreateAgentTrajectoryStepInput['stats'],
         // WHICH agent/prompt version produced this flush (additive).
         ...(session.agentSnapshot
           ? {
@@ -2019,24 +2019,24 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
     // legacy LIVE_DOC_TEXT_PROVIDER/MODEL env); fall back to env only when the
     // resolver is not wired (kept for non-DI construction paths).
     //
-    // This is the LIVE tier: ask for the 'smr.live' routing key so a
+    // This is the LIVE tier: ask for the 'text.live' routing key so a
     // super admin can point the low-latency running-note model at something smaller
     // than the end-of-visit finalize model. Omitting the task argument defaults to
-    // 'finalize', which is what left `smr.live` inert despite being seeded+registered.
+    // 'finalize', which is what left `text.live` inert despite being seeded+registered.
     //
     // An agent's `llmOverrides.live` wins and is served FROZEN
     // (resolved once at session start), so a live session's model can never
     // drift mid-consultation. WITHOUT an override the per-flush tenant resolve
     // below runs exactly as before, which is what keeps an admin re-point
     // landing on the next flush for unconfigured tenants.
-    let provider = this.smrProvider;
-    let model = this.smrModel;
+    let provider = this.textProvider;
+    let model = this.textModel;
     let selectionSource: 'agent-override' | 'task-default' = 'task-default';
     if (agent?.liveLlm) {
       ({ provider, model } = agent.liveLlm);
       selectionSource = 'agent-override';
     } else if (this.harnessPolicyService) {
-      ({ provider, model } = await this.harnessPolicyService.resolveSmrSelection(tenantId, 'live'));
+      ({ provider, model } = await this.harnessPolicyService.resolveTextSelection(tenantId, 'live'));
     }
     // `response_format: json_schema` makes json-schema-capable providers return a
     // deterministic SOAP object (parsed by parseSoapJson); ollama ignores it so we
@@ -2065,23 +2065,29 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
     // trips SMR's bypass. Same resolution the sibling SMR callers use
     // (`prompt-management.service.ts`, `dna-writing-style.processor.ts`); `??
     // ''` preserves the dev bypass when no secret is configured.
-    const serviceToken = (await this.secretsService?.getSecretOptional('TEXT_SERVICE_TOKEN')) ?? '';
+    // D-D: the ONE shared `INTERNAL_ACCESS_TOKEN` (`TEXT_SERVICE_TOKEN` is only the
+    // migration fallback). TASK-737: `X-Tenant-Id` is MANDATORY — SMR resolves the
+    // tenant's BYOK provider/credential from it, and TASK-735 derives
+    // `funding`/`cost_basis` from whichever tier supplied that credential, so a
+    // dropped header mis-bills silently as well as mis-configuring the call. This is
+    // the highest-volume internal hop in the platform (every live-doc flush).
+    const serviceToken = await resolveInternalAccessToken(this.secretsService, 'TEXT_SERVICE_TOKEN');
     const response = await this.httpService.axiosRef.post(`${this.textServiceUrl}/api/v1/generate`, payload, {
       timeout: this.smrTimeoutMs,
-      headers: { 'Content-Type': 'application/json', 'X-Service-Token': serviceToken },
+      headers: internalServiceHeaders({ serviceToken, tenantId, tenantlessReason: TENANTLESS.PLATFORM_OPERATOR }),
       signal,
     });
     const stats = this.parseGenerationStats(response.data);
     // Stamp WHICH AiTaskDefault routing key served this
-    // flush (`smr.live`, never `smr.finalize` — this method is the live tier
-    // exclusively, see the `resolveSmrSelection(tenantId, 'live')` call above).
+    // flush (`text.live`, never `text.finalize` — this method is the live tier
+    // exclusively, see the `resolveTextSelection(tenantId, 'live')` call above).
     // SMR itself has no notion of this key; it only echoes back the
     // provider/model it actually ran, so the tier provenance is stamped here.
     return {
       text: mapTextGenerateResponse(response.data).summary,
       // `selection_source` is additive telemetry: it says WHETHER the frozen
       // agent override or the per-flush tenant default chose this model.
-      stats: stats ? { ...stats, task_key: 'smr.live', selection_source: selectionSource } : null,
+      stats: stats ? { ...stats, task_key: 'text.live', selection_source: selectionSource } : null,
       structured: includeResponseFormat,
     };
   }
@@ -2236,9 +2242,9 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
     session: LiveSession,
     metrics: {
       generation: number;
-      smrLatencyMs: number;
+      textLatencyMs: number;
       nlpLatencyMs: number;
-      smrFailed: boolean;
+      textFailed: boolean;
       nlpFailed: boolean;
       entityCount: number;
       sectionCount: number;
@@ -2253,9 +2259,9 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
       lastUpdatedAt: new Date().toISOString(),
       flushCount: session.flushCount,
       generation: metrics.generation,
-      smrLatencyMs: metrics.smrLatencyMs,
+      textLatencyMs: metrics.textLatencyMs,
       nlpLatencyMs: metrics.nlpLatencyMs,
-      smrFailed: metrics.smrFailed,
+      textFailed: metrics.textFailed,
       nlpFailed: metrics.nlpFailed,
       staleDropCount: session.staleDropCount,
       entityCount: metrics.entityCount,
