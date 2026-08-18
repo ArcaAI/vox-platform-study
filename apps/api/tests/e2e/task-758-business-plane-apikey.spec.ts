@@ -181,7 +181,9 @@ test.describe('TASK-758 — business-plane auth model (policy A1)', () => {
 
   const EXEMPT: Array<{ name: string; path: string }> = [
     { name: 'VoiceProfileController', path: '/api/v1/voice-profile' },
-    { name: 'DnaWritingStyleController', path: '/api/v1/dna-writing-styles' },
+    // `dna-writing-styles` has no root GET — probe a real route, or Nest 404s on an
+    // unmatched path BEFORE any guard runs and the exemption is never exercised.
+    { name: 'DnaWritingStyleController', path: '/api/v1/dna-writing-styles/settings' },
     { name: 'AuthController', path: '/api/v1/auth/me' },
   ];
 
