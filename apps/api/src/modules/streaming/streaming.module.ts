@@ -44,8 +44,11 @@ import { TranscriptionJobController } from './transcription-job.controller';
     // Supplies `IOriginRegistry` to `SttWsGateway`'s CSWSH
     // handshake check. Browsers do NOT apply CORS to WebSockets, so this is the
     // only place the allow-list reaches the socket path. The gateway injects it
-    // `@Optional()` and fails OPEN, so omitting this import does not break the
-    // build or any test — it just silently disables the check.
+    // `@Optional()` and fails CLOSED (TASK-610 reversed the original fail-OPEN
+    // posture; see `stt-ws.gateway.ts#isOriginAllowed`), so omitting this
+    // import does not break the build — it refuses every browser origin
+    // instead. Corrected under TASK-755, which mirrored this wiring into
+    // `speech.module.ts`.
     OriginRegistryServiceModule,
     // Registry-backed providers listings on TextProxyController:
     // AiModelService lists ENABLED rows per taskType; AiTaskDefaultService

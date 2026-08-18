@@ -122,7 +122,7 @@ One row per HTTP controller and WebSocket gateway. Sorted by API count descendin
 | McpAdminController | `api/v1/admin/mcp-servers` | 5 | JWT + API key | admin:mcp-server:manage | read/manage:McpServer | Writes SUPER_ADMIN-only in service. |
 | PromptTemplateController | `api/v1/prompt-templates` | 5 | JWT only | forbidden | read:PromptTemplate (writes owner-gated in service) | Clinician plane — AUTH-NOTE: declared read, ownership in service. |
 | SchedulerAdminController | `api/v1/admin/schedulers` | 5 | JWT + API key | admin:scheduler:manage | manage:all | Pause/resume/cron/toggle. |
-| TtsWsGateway | `/ws/tts/stream (no api/v1)` | 5 | Stream ticket | no — ?ticket= scoped tts_session:<id> | n/a — APP_GUARD does not run | No Redis tenant-binding cross-check. Quota close 4429. |
+| TtsWsGateway | `/ws/tts/stream (no api/v1)` | 5 | Fail-closed Origin check, then stream ticket | no — ?ticket= scoped tts_session:<id> | n/a — APP_GUARD does not run | No Redis tenant-binding cross-check — no server-side TTS session resource exists to bind (TASK-755). Quota close 4429. |
 | VoiceProfileController | `api/v1/voice-profile` | 5 | JWT only | forbidden | per-verb UserVoiceProfile | TenantOwnedResource on mutate/delete. |
 | WorkflowTestFixtureController | `api/v1/admin/workflow-test-fixtures` | 5 | JWT + API key | admin:workflow-test-fixture:manage | manage:WorkflowTestFixture |  |
 | WorkflowsController | `api/v1/workflows` | 5 | JWT + API key | workflow:definition:read / workflow:run:read\|write | per-route WorkflowDefinition / WorkflowRun | Hand-rolled SSE on run stream. Heavy throttle on invoke. |
@@ -1985,7 +1985,13 @@ Server→client: `ready`, `resumed` / `resume_failed`, `transcript` (+`seq`), `s
 
 **Connect:** `/ws/tts/stream?sessionId=&ticket=`
 
-Auth: consume ticket; scope `tts_session:<sessionId>`. **No** Redis tenant-binding cross-check (no server-side TTS session resource). Then `assertMeterQuota(monthlyTtsCharacters, 0)` → close `4429` if over. Upstream hop injects `X-Service-Token`.
+Connect sequence, in order:
+
+1. **Origin / CSWSH check** (TASK-755 G-1) — runs FIRST, before `sessionId`/`ticket` parsing, so a hostile origin never burns a ticket. Registry-backed (`IOriginRegistry`), fail-CLOSED on an absent / empty / throwing registry under the greppable `origin_registry_unavailable` reason; an ordinary refusal logs `origin_registry_miss`. The enforcement switch is read from `cors.config.ts#isOriginEnforcementEnabled` — never re-resolved locally, so the WS gate can never disagree with the HTTP gate. A **missing/empty** `Origin` header is ALLOWED (non-browser caller). Rejection closes with the gateway's existing generic `4401`, byte-identical to every other handshake rejection.
+2. **Ticket consumption** — scope `tts_session:<sessionId>`. **No** Redis tenant-binding cross-check, and this is not a gap: there is no server-side TTS session resource to bind. Each connect opens its own socket-keyed bridge, so two connections sharing a `sessionId` cannot see or displace each other. If TTS ever gains a session-create route, this note expires and the STT binding must be mirrored here (TASK-755 §Design decision, Option B).
+3. **Quota pre-flight** — `assertMeterQuota(monthlyTtsCharacters, 0)` → close `4429` if over.
+
+Upstream hop injects `X-Service-Token`.
 
 | Handler | Client-facing | Protocol |
 |---|---|---|

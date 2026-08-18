@@ -544,4 +544,143 @@ describe('AuthController.issueStreamTicket', () => {
       expect(issueTicket).toHaveBeenCalled();
     });
   });
+
+  // `tts_session:<sessionId>` (TASK-755 G-2): the LAST stream-ticket scope
+  // prefix with no branch at mint. Deliberately NOT an ownership check —
+  // Option A ("document-and-assert"): TTS has no server-side session resource
+  // to look up, so this asserts only what is knowable (well-formed bounded id
+  // + an active tenant). See `assertTtsSessionScopeShape` for the full
+  // rationale and the trigger that would upgrade this to Option B.
+  describe('tts_session scope shape (TASK-755 G-2)', () => {
+    it('mints a well-formed tts_session ticket for a caller with an active tenant, scope preserved', async () => {
+      const issueTicket = vi.fn(async () => ({ ticket: 'tkt', expiresAt: 1, scope: 'tts_session:sess-1' }));
+      const { controller } = buildController({
+        cls: { get: (key: string) => (key === 'user' ? { id: 'user-1', tenantId: 'tenant-1' } : null) },
+        streamTicketService: { issueTicket, consumeTicket: vi.fn() },
+      });
+
+      const result = await controller.issueStreamTicket({ scope: 'tts_session:sess-1' });
+
+      expect(issueTicket).toHaveBeenCalledWith(expect.objectContaining({ userId: 'user-1', tenantId: 'tenant-1', scope: 'tts_session:sess-1' }));
+      expect(result.scope).toBe('tts_session:sess-1');
+    });
+
+    it('mints for a crypto.randomUUID() session id (the shape the SDK actually sends)', async () => {
+      const scope = 'tts_session:0f9c1e2a-7b3d-4c8e-9a11-5d6e7f801234';
+      const issueTicket = vi.fn(async () => ({ ticket: 'tkt', expiresAt: 1, scope }));
+      const { controller } = buildController({
+        cls: { get: (key: string) => (key === 'user' ? { id: 'user-1', tenantId: 'tenant-1' } : null) },
+        streamTicketService: { issueTicket, consumeTicket: vi.fn() },
+      });
+
+      await controller.issueStreamTicket({ scope });
+
+      expect(issueTicket).toHaveBeenCalledWith(expect.objectContaining({ scope }));
+    });
+
+    it('mints for the SDK non-crypto fallback id shape (`tts-<ts>-<rand>`)', async () => {
+      const scope = 'tts_session:tts-1755500000000-123456789';
+      const issueTicket = vi.fn(async () => ({ ticket: 'tkt', expiresAt: 1, scope }));
+      const { controller } = buildController({
+        cls: { get: (key: string) => (key === 'user' ? { id: 'user-1', tenantId: 'tenant-1' } : null) },
+        streamTicketService: { issueTicket, consumeTicket: vi.fn() },
+      });
+
+      await controller.issueStreamTicket({ scope });
+
+      expect(issueTicket).toHaveBeenCalledWith(expect.objectContaining({ scope }));
+    });
+
+    it('rejects an empty-suffix tts_session scope with NotFoundException and never mints', async () => {
+      const issueTicket = vi.fn();
+      const { controller } = buildController({
+        cls: { get: (key: string) => (key === 'user' ? { id: 'user-1', tenantId: 'tenant-1' } : null) },
+        streamTicketService: { issueTicket, consumeTicket: vi.fn() },
+      });
+
+      await expect(controller.issueStreamTicket({ scope: 'tts_session:' })).rejects.toThrow(NotFoundException);
+      expect(issueTicket).not.toHaveBeenCalled();
+    });
+
+    it('rejects a malformed (character-illegal) session id and never mints', async () => {
+      const issueTicket = vi.fn();
+      const { controller } = buildController({
+        cls: { get: (key: string) => (key === 'user' ? { id: 'user-1', tenantId: 'tenant-1' } : null) },
+        streamTicketService: { issueTicket, consumeTicket: vi.fn() },
+      });
+
+      await expect(controller.issueStreamTicket({ scope: 'tts_session:../../etc/passwd' })).rejects.toThrow(NotFoundException);
+      expect(issueTicket).not.toHaveBeenCalled();
+    });
+
+    it('rejects an unbounded (over-long) session id and never mints', async () => {
+      const issueTicket = vi.fn();
+      const { controller } = buildController({
+        cls: { get: (key: string) => (key === 'user' ? { id: 'user-1', tenantId: 'tenant-1' } : null) },
+        streamTicketService: { issueTicket, consumeTicket: vi.fn() },
+      });
+
+      await expect(controller.issueStreamTicket({ scope: `tts_session:${'a'.repeat(129)}` })).rejects.toThrow(NotFoundException);
+      expect(issueTicket).not.toHaveBeenCalled();
+    });
+
+    it('fail-closed: throws NotFoundException and never mints when the caller has no active tenant', async () => {
+      const issueTicket = vi.fn();
+      const { controller } = buildController({
+        cls: { get: (key: string) => (key === 'user' ? { id: 'user-1', tenantId: '' } : null) },
+        streamTicketService: { issueTicket, consumeTicket: vi.fn() },
+      });
+
+      await expect(controller.issueStreamTicket({ scope: 'tts_session:sess-1' })).rejects.toThrow(NotFoundException);
+      expect(issueTicket).not.toHaveBeenCalled();
+    });
+
+    it('uses the same rejection message as the stt_session branch (no cross-scope enumeration signal)', async () => {
+      const { controller } = buildController({
+        cls: { get: (key: string) => (key === 'user' ? { id: 'user-1', tenantId: 'tenant-1' } : null) },
+        streamTicketService: { issueTicket: vi.fn(), consumeTicket: vi.fn() },
+        // Default binding lookup returns null ⇒ the stt_session branch 404s.
+      });
+
+      const ttsErr = await controller.issueStreamTicket({ scope: 'tts_session:' }).catch((e: Error) => e);
+      const sttErr = await controller.issueStreamTicket({ scope: 'stt_session:sess-1' }).catch((e: Error) => e);
+
+      expect(ttsErr).toBeInstanceOf(NotFoundException);
+      expect(sttErr).toBeInstanceOf(NotFoundException);
+      expect((ttsErr as Error).message).toBe((sttErr as Error).message);
+    });
+
+    it('does NOT touch the session-binding or run lookups for tts_session scopes (paths stay independent)', async () => {
+      const issueTicket = vi.fn(async () => ({ ticket: 't', expiresAt: 1, scope: 'tts_session:sess-1' }));
+      const lookupBinding = vi.fn();
+      const getRun = vi.fn();
+      const findById = vi.fn();
+      const { controller } = buildController({
+        cls: { get: (key: string) => (key === 'user' ? { id: 'user-1', tenantId: 'tenant-1' } : null) },
+        streamTicketService: { issueTicket, consumeTicket: vi.fn() },
+        streamSessionTenantBinding: { lookupBinding },
+        workflowRunService: { getRun },
+        consultationRepository: { findById },
+      });
+
+      await controller.issueStreamTicket({ scope: 'tts_session:sess-1' });
+
+      expect(lookupBinding).not.toHaveBeenCalled();
+      expect(getRun).not.toHaveBeenCalled();
+      expect(findById).not.toHaveBeenCalled();
+      expect(issueTicket).toHaveBeenCalled();
+    });
+
+    it('leaves non-tts scopes untouched — an ordinary consultation_job scope still mints', async () => {
+      const issueTicket = vi.fn(async () => ({ ticket: 't', expiresAt: 1, scope: 'consultation_job:job-1' }));
+      const { controller } = buildController({
+        cls: { get: (key: string) => (key === 'user' ? { id: 'user-1', tenantId: 'tenant-1' } : null) },
+        streamTicketService: { issueTicket, consumeTicket: vi.fn() },
+      });
+
+      await controller.issueStreamTicket({ scope: 'consultation_job:job-1' });
+
+      expect(issueTicket).toHaveBeenCalled();
+    });
+  });
 });

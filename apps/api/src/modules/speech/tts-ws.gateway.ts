@@ -2,6 +2,7 @@ import {
   EffectiveTtsConfigResponse,
   IConfigService,
   IEntitlementsService,
+  IOriginRegistry,
   IProviderConnectionService,
   ITenantTtsConfigService,
   IUsageLedgerService,
@@ -15,6 +16,7 @@ import { Inject, Logger, Optional } from '@nestjs/common';
 import { OnGatewayConnection, OnGatewayDisconnect, WebSocketGateway } from '@nestjs/websockets';
 import type { IncomingMessage } from 'http';
 import WebSocket from 'ws';
+import { isOriginEnforcementEnabled } from '../../cors.config';
 import { StreamTicketService } from '../auth/stream-ticket.service';
 // The classifier + self-hosted allow-list used to exist as a
 // verbatim copy here AND in SpeechProxyController. One definition now.
@@ -130,9 +132,107 @@ export class TtsWsGateway implements OnGatewayConnection, OnGatewayDisconnect {
     // positional test fixtures keep compiling; absent (or no tenantId on the
     // ticket) ⇒ no check.
     @Optional() @Inject(IEntitlementsService) private readonly entitlementsService?: IEntitlementsService,
+    // TASK-755 G-1 — CSWSH guard: registry-backed allow-list for the `Origin`
+    // header, the same reverse index `cors.config.ts` consults. Optional and
+    // TRAILING so existing positional test fixtures keep compiling; see
+    // `isOriginAllowed` for the fail-CLOSED posture when it is absent.
+    @Optional() @Inject(IOriginRegistry) private readonly originRegistry?: IOriginRegistry,
   ) {}
 
+  /**
+   * Registry lookup backing the CSWSH guard (TASK-755 G-1). Ported from
+   * `SttWsGateway.isOriginAllowed` (TASK-610) with identical semantics and the
+   * identical, greppable log reasons — one operator vocabulary across all
+   * three enforcement surfaces (HTTP CORS, STT WS, TTS WS).
+   *
+   * Fails CLOSED on an unavailable registry (absent / empty / throwing) under
+   * the systemic `origin_registry_unavailable` reason, kept distinct from the
+   * ordinary per-origin `origin_registry_miss` a populated registry's "no"
+   * produces. A registry that is PRESENT but EMPTY (`size() === 0` — unseeded
+   * table, every row deleted) "has nothing to say" and therefore denies
+   * exactly as `has()` would for every origin; it only logs under the systemic
+   * reason instead.
+   *
+   * THE ARGUMENT FOR ALIGNING THIS WITH THE HTTP CORS PATH is a property of
+   * WEBSOCKETS, not of STT: browsers exempt the WS handshake from CORS
+   * entirely, so nothing upstream has checked `Origin` by the time this
+   * gateway runs — this is the one surface `cors.config.ts` cannot cover. (The
+   * STT gateway's own comments argue for alignment with the HTTP path; they
+   * never mention TTS. The reasoning transfers verbatim, but it is made here
+   * for the first time.) `credentials: false` on the CORS side means a
+   * cross-origin socket carries no ambient credentials to ride, so this is a
+   * defence-in-depth layer rather than the tenant-isolation control — that
+   * remains the single-use ticket consumed below.
+   *
+   * The enforcement switch is READ from `cors.config.ts` rather than resolved
+   * here, so this gate can never disagree with the HTTP gate about whether
+   * enforcement is on. While it is off, every origin is admitted and the
+   * registry is never consulted.
+   *
+   * Runs only in `handleConnection`, on the initial handshake — established
+   * sockets are never re-checked.
+   */
+  private isOriginAllowed(origin: string): boolean {
+    if (!isOriginEnforcementEnabled()) {
+      return true;
+    }
+
+    if (!this.originRegistry) {
+      this.logger.warn({
+        message: 'TTS WS handshake — origin registry unavailable, denying (no bootstrap fallback, aligned with the HTTP CORS path)',
+        origin,
+        reason: 'origin_registry_unavailable',
+      });
+      return false;
+    }
+    try {
+      if (this.originRegistry.size() === 0) {
+        this.logger.warn({
+          message: 'TTS WS handshake — origin registry empty, denying (no bootstrap fallback, aligned with the HTTP CORS path)',
+          origin,
+          reason: 'origin_registry_unavailable',
+        });
+        return false;
+      }
+      const registered = this.originRegistry.has(origin);
+      if (!registered) {
+        this.logger.warn({
+          message: 'TTS WS handshake — origin not registered',
+          origin,
+          reason: 'origin_registry_miss',
+        });
+      }
+      return registered;
+    } catch (err) {
+      this.logger.warn({
+        message: 'TTS WS handshake — origin registry lookup failed, denying (no bootstrap fallback, aligned with the HTTP CORS path)',
+        origin,
+        reason: 'origin_registry_unavailable',
+        error: err instanceof Error ? err.message : String(err),
+      });
+      return false;
+    }
+  }
+
   async handleConnection(client: WebSocket, req: IncomingMessage): Promise<void> {
+    // TASK-755 G-1 — CSWSH guard, FIRST, before sessionId/ticket parsing, so a
+    // hostile origin never burns a ticket and never reaches the quota
+    // pre-flight. Mirrors the CORS callback's pre-auth position.
+    //
+    // No `Origin` header → ALLOW. A missing header means a non-browser caller
+    // (server-to-server, CLI); CSWSH is specifically an attack that rides a
+    // VICTIM BROWSER's auto-attached `Origin`, so a request without one cannot
+    // be that attack. This mirrors the HTTP CORS posture, which also lets
+    // no-Origin through.
+    const origin = req.headers?.origin;
+    if (typeof origin === 'string' && origin.length > 0 && !this.isOriginAllowed(origin)) {
+      // Through the ordinary `reject` helper so the close code and reason stay
+      // the gateway's single generic 4401 — byte-identical to the
+      // missing-ticket and scope-mismatch rejections (no enumeration signal),
+      // and never the quota 4429.
+      return this.reject(client, 'unregistered origin');
+    }
+
     const url = new URL(req.url || '', 'http://localhost');
     const sessionId = url.searchParams.get('sessionId');
     const ticket = url.searchParams.get('ticket');
