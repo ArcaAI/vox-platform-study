@@ -14,9 +14,8 @@ path "secret/data/hope/GUARDRAIL_SERVICE_TOKEN" {
   capabilities = ["read"]
 }
 
-path "secret/data/hope/GUARDRAIL_VLLM_API_KEY" {
-  capabilities = ["read"]
-}
+# GUARDRAIL_VLLM_API_KEY removed (TASK-735): guardrail hosts no LLM engine and so
+# holds no vendor credential — judgement is delegated to apps/text.
 
 path "secret/data/hope/REDIS_PASS" {
   capabilities = ["read"]
