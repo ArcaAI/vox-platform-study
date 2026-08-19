@@ -8,17 +8,31 @@ import { RedactedValue, redact, redactHeaders } from '../redact';
 const SECRET = 'sk-live-should-never-leak-abcdef123456';
 
 describe('redactHeaders', () => {
-  it('masks Authorization, X-API-Key, X-Service-Token, and Cookie', () => {
+  it('masks Authorization, X-API-Key, X-Service-Token, X-Service-Account-Token, and Cookie', () => {
     const result = redactHeaders({
       Authorization: `Bearer ${SECRET}`,
       'X-API-Key': SECRET,
       'X-Service-Token': SECRET,
+      'X-Service-Account-Token': SECRET,
       Cookie: 'session=abc123',
     });
     expect(result.get('authorization')).toBe('[REDACTED]');
     expect(result.get('x-api-key')).toBe('[REDACTED]');
     expect(result.get('x-service-token')).toBe('[REDACTED]');
+    expect(result.get('x-service-account-token')).toBe('[REDACTED]');
     expect(result.get('cookie')).toBe('[REDACTED]');
+  });
+
+  it('masks the service-account token when a proxy echoes it back on a response', () => {
+    // `HopeAPIError` stores RESPONSE headers; a debugging proxy that reflects
+    // the request's credential header is the leak path this covers (the same
+    // rationale errors.ts gives for redacting on the way IN).
+    const error = fromResponse(
+      new Response('{}', { status: 401, headers: { 'x-service-account-token': SECRET } }),
+      {},
+    );
+    expect(error.headers?.get('x-service-account-token')).toBe('[REDACTED]');
+    expect(JSON.stringify([...(error.headers ?? new Headers()).entries()])).not.toContain(SECRET);
   });
 
   it('is case-insensitive on the header name', () => {
