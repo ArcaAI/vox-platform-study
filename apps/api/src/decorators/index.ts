@@ -36,5 +36,8 @@ export {
   ConsentExempt,
   REQUIRES_CONSENT_KEY,
   CONSENT_EXEMPT_KEY,
+  // CASL instance evaluation (TASK-712 Phase 5) — opts a route into
+  // resolving the subject INSTANCE its seeded `conditions` compare against.
+  ResolveSubjectInstance,
 } from '@arcaai/applications';
-export type { RequiresConsentOptions, RequiresConsentMetadata } from '@arcaai/applications';
+export type { RequiresConsentOptions, RequiresConsentMetadata, SubjectResolverContext } from '@arcaai/applications';

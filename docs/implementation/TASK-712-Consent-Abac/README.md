@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Status** | Partial — Pass 5 (2026-08-19): Phase 5 Task 15 (ENFORCE) is built. The guard now carries a real enforce path — an explicit per-`(action, subject)` allow-list (`CASL_ENFORCED_PAIRS`) whose instance-aware verdict is AUTHORITATIVE (403) for listed pairs, with every other pair keeping Task 14's shadow semantics unchanged. **The list ships EMPTY**, and that is the finding of this pass, not an omission: shadow mode was wired to zero production routes, so no pair has a measurement to enforce against, and the two candidates `casl-blast-radius.md` §7 ranked highest are both structurally DISQUALIFIED (see §7 Pass 5). `getAccessibleBy` remains unwired. Phases 0–4 and 6 done. |
+| **Status** | Partial — Pass 6 (2026-08-19): Phase 5 Task 15 is now COMPLETE for one subject and the rollout is unblocked. Three things landed: (a) `SubjectInstanceResolver` gained DEPENDENCY ACCESS (a `SubjectResolverContext` second argument backed by `ModuleRef`), without which a resolver could never load a row; (b) a **bug fix in `PolicyEngine.can`** — its instance branch called CASL's 3-argument `can(action, subject, field)`, which THROWS for an object, so instance-aware evaluation had never once returned a verdict at any of its four production call sites; (c) shadow mode wired to **10 real routes** (`ApiKey` ×6, `Role` ×4), so `casl_shadow_divergence_total` can finally move. `CASL_ENFORCED_PAIRS` now contains **`read`/`update`/`delete` on `ApiKey`**, justified by exhaustive offline evidence built from the REAL seeded `DEFAULT_POLICIES`. `Consultation`, `UserVoiceProfile` and `Role` remain DECLINED with reasons (§7 Pass 6). `getAccessibleBy` remains unwired — its precondition (zero divergence over a measured period) needs the counter to run in a real environment first. Phases 0–4 and 6 done. |
 | **Wave** | 1 · **Size** | XL |
 | **Epic slug** | `consent-abac` |
 | **Depends on** | — (independent; TASK-711 supplies the `PRIMED` state this gate naturally attaches to, but neither blocks the other) |
@@ -806,6 +806,196 @@ Evidence rule: **paste actual command output** for every box. "Done" without out
 
 ## 7. Implementation Summary
 
+### Pass 6 (2026-08-19) — resolver DI, shadow wiring, and the first ENFORCED pair
+
+Orchestrator instruction for this pass: give `SubjectInstanceResolver` service access (the owner
+authorizes the Task 14 contract change), wire shadow to REAL routes, then enforce only the pairs
+that genuinely qualify — with two hard constraints (never enforce a `@TenantOwnedResource`-protected
+subject; never enforce `Consultation` unless its post-guard fallback is provably reachable first),
+and an explicit licence to enforce NOTHING if nothing qualifies.
+
+#### 1. The resolver-DI decision, and the tradeoff
+
+**Chosen: a `SubjectResolverContext` second argument, backed by an `@Optional() ModuleRef`.**
+`SubjectInstanceResolver` is now `(request, ctx) => instance | undefined`, where `ctx.get(token)`
+resolves any provider from anywhere in the container (`{ strict: false }` — the guard is an
+`APP_GUARD` in the root module while the services resolvers want live in feature modules).
+
+*The tradeoff, stated plainly:* this hands route-declared code an escape hatch into the DI container
+on the authentication hot path, and a careless resolver can now issue an unbounded query on every
+gated request. Three things bound it, and all three are tested: the decorator stays **opt-in per
+route** (an undecorated route resolves nothing and loads no row); the whole path stays **fail-open**
+(a missing container, an unresolvable token, a throwing resolver, and an `undefined` instance each
+yield no divergence and NO denial — Task 14's three fail-open paths are intact and re-pinned, plus
+the two new failure modes DI introduces); and a resolver is expected to reuse a read the handler
+makes anyway. The cost is real and accepted: `GET /admin/api-keys/:id` now performs the `fetchById`
+twice, on an admin surface, deliberately.
+
+*The alternative the ticket named was rejected as structurally impossible, not merely worse.*
+"Resolve in a preceding interceptor and stash the instance on the request" cannot work: **NestJS runs
+every guard BEFORE any interceptor.** That is the same ordering fact that disqualifies
+`UserVoiceProfile` from enforcement (DEF-C3), so an interceptor could only ever populate a request the
+guard has already finished with. Injecting concrete services into the guard directly was also
+rejected — the guard lives in `packages/applications` and would have to depend on every feature module
+that ever wants a resolver.
+
+#### 2. The bug that made the measure phase impossible anyway
+
+Wiring the first real route surfaced something the previous passes could not see, because every test
+double encoded the same wrong assumption:
+
+```
+The 3rd, `field` parameter is expected to be a string.
+```
+
+`PolicyEngine.can(ability, action, subject, resource)` implemented its instance branch as
+`ability.can(action, subject, resource)`. CASL's **third parameter is a FIELD NAME**, not a subject
+instance — so that branch never returned a verdict; it **threw, every time**. It threw at all four
+production call sites (`permission-check.controller.ts:139,201`; `consultation.controller.ts:280,329`)
+and inside `evaluateShadowVerdict`, where the guard's fail-open `catch` swallowed it. So even a
+correctly wired shadow route would have produced **no signal at all** — the measure phase was blocked
+by a second, deeper cause than the missing DI.
+
+The fix is the supported CASL API: tag the plain object with its subject type first,
+`ability.can(action, subject(type, obj))`, because a detached object carries no type CASL can infer.
+`casl-conditions.shadow.test.ts`'s ability double was updated to the real 2-argument convention
+(its old 3-argument shape was encoding the bug); no assertion in it changed.
+
+#### 3. Shadow wired to 10 real routes
+
+| Subject | Routes | Why this one |
+|---|---|---|
+| `ApiKey` | `admin/api-keys/:id` — `fetchById`, `update`, `delete`, `revoke`, `rotate`, `getUsage` | `casl-blast-radius.md` §7 step 2's "own resource" set. Identity-shaped (`{ tenantId, userId }`), decorator-gated today, no interceptor, no post-guard fallback |
+| `Role` | `admin/rbac/roles/:id` — `findOne`, `update`, `patch`, `remove` | §7 step 3. The `isSystemRole` rules are the widest-blast-radius hazard, which is exactly why they get shadow and NOT enforcement |
+
+The `Role` resolver deliberately returns an instance with **no `tenantId`** (`RbacRoleRecord` does not
+carry the column). That is the §3 hazard shape itself — a `tenantId`-less instance denies a
+`{ tenantId }` condition — and it is safe only because `Role` is shadow-only. A `would_deny`
+divergence there is the signal, not a caller bug.
+
+#### 4. Enforced: `read`/`update`/`delete` on `ApiKey` — and the evidence
+
+`CASL_ENFORCED_PAIRS` = `{ read:ApiKey, update:ApiKey, delete:ApiKey }`.
+
+R1's contract is shadow → MEASURE → enforce, and a production measurement cannot be taken from a
+development worktree. Rather than enforce on a static survey (the exact R1 failure mode) or wait
+indefinitely, this pass substitutes an **exhaustive offline measurement** for one subject:
+`casl-conditions.enforce-apikey.test.ts` imports the REAL seeded `DEFAULT_POLICIES` (never
+transcribed), builds an ability per principal shape, and pins the entire verdict table through the
+same `PolicyEngine.can` the guard calls:
+
+| Principal | Instance | Today | After the flip |
+|---|---|---|---|
+| own-keys-only (`api-key-own-manage`) | own key | allow | allow |
+| own-keys-only | **another user's key, same tenant** | **allow** | **DENY (403)** |
+| own-keys-only | key with `userId = null` (platform key) | allow | DENY (403) |
+| tenant admin (`manage:ApiKey { tenantId }`) | any key in tenant | allow | allow |
+| super admin (`manage all`) | any key | allow | allow |
+
+Exactly one row changes, in the narrowing direction, and it is precisely the in-tenant privilege gap
+`casl-blast-radius.md` §4 lists first. The exhaustive form is sufficient **here** because the instance
+shape is closed: the resolver is authored in this ticket, returns `{ tenantId, userId }` from the full
+row, and is the only instance this pair can ever see — the partial-projection hazard of §3 cannot
+arise. Cross-tenant ids never reach the verdict at all: `fetchById` reads through the tenant-scoped
+client, throws, the fail-open path swallows it, and the handler answers its ordinary **404**. The
+denial is a `ForbiddenException` — **403, a privilege boundary**, never the 404-over-403 posture.
+
+`list:ApiKey` is deliberately absent: a collection route has no single instance.
+
+#### 5. Declined, with reasons
+
+- **`Consultation` (`read`/`manage`) — DECLINED, constraint honoured.** `verifyConsultationAccess`
+  runs a post-guard, DB-backed shared-patient fallback ("Layer 2", flag-gated on
+  `enable-consultation-sharing`) that the guard cannot see. A guard-level denial 403s **before** it
+  runs, turning a legitimate shared-patient read into an outage. The constraint asked for proof the
+  fallback is reachable first; it is not reachable from the guard by construction, so the pair stays
+  declined. Shadow was not wired here either — its by-id routes are `@TenantOwnedResource`-protected,
+  so a resolver would mostly measure the interceptor rather than CASL.
+- **`UserVoiceProfile` (`update`/`delete`) — DECLINED, constraint honoured (DEF-C3).** The
+  `userId = ${user.id}` boundary is already enforced by
+  `TenantOwnedResourceInterceptor.assertVoiceProfileOwnership`, which answers **404** so probing
+  another user's profile id is indistinguishable from probing a non-existent one. Guards run before
+  interceptors, so enforcing would pre-empt that and downgrade a deliberate 404 into an
+  existence-leaking 403. The generalisation is recorded in the code: **a subject protected by
+  `@TenantOwnedResource` must never be added to `CASL_ENFORCED_PAIRS`.** (`IVoiceProfileService` also
+  has no `fetchById`, so even shadow wiring would have meant a new service method for a pair that can
+  never be enforced — not worth it.)
+- **`Role` — DECLINED for now, SHADOW wired.** Nothing structural disqualifies it, but it is the most
+  heavily decorated hazard subject (13+ files) and its resolver returns a `tenantId`-less instance.
+  This is the pair the counter exists for: enforce it after the metric has run in a real environment,
+  not before.
+- **`Media` / `UserMedia` / `UserProfile` / `UserSettings` — not wired at all.**
+  `casl-blast-radius.md` §7 step 4 found no decorator-gated route reaching them (and `UserSettings`'s
+  rule provably orphaned behind a bare `@Authorize()`). Wiring a resolver onto a route that never
+  calls `ability.can()` produces no signal.
+
+#### 6. `getAccessibleBy` — still unwired, precondition still unmet
+
+Its stated precondition is a resource whose `read` pair has shown **zero divergence for a measured
+period**. `casl_shadow_divergence_total` starts collecting only once these 10 routes serve real
+traffic, so no resource satisfies it yet — including `ApiKey`, whose evidence is offline and covers
+per-row verdicts, not the row-filter a list query needs. Wiring it now would be the same
+enforce-without-measurement mistake in a different place.
+
+**Known limitation, disclosed:** `runCaslInstanceChecks` reads ONE resolver per route and applies it
+to every required permission. Correct for all 10 routes wired here (each names a single subject), but
+a future route with two different subjects would compare one instance against both. It also means a
+`@CanAny(...)` (OR-mode) route with an enforced pair could be denied on one alternative while the
+other allows — harmless today (`Role`, the only OR-mode route wired, is not enforced) and worth
+fixing before any OR-mode pair is enforced.
+
+**Files touched this pass** (8 modified, 2 created):
+
+- `packages/applications/src/authorization/unified-auth.guard.ts` — `SubjectResolverContext`, the
+  `ModuleRef` constructor param, the resolver's second argument
+- `packages/applications/src/authorization/policy.engine.ts` — the `can()` subject-tagging fix;
+  `CASL_ENFORCED_PAIRS` populated with the three `ApiKey` pairs
+- `packages/applications/src/authorization/index.ts` — `SubjectResolverContext` export
+- `packages/applications/src/authorization/__tests__/casl-conditions.shadow.test.ts` — ability double
+  corrected to CASL's real 2-argument convention (no assertion changed)
+- `packages/applications/src/authorization/__tests__/casl-conditions.enforce.test.ts` — the
+  "ships empty" pin replaced by the three-pair pin
+- `packages/applications/src/authorization/__tests__/casl-conditions.resolver-di.test.ts` — **new**, 4 tests
+- `packages/applications/src/authorization/__tests__/casl-conditions.enforce-apikey.test.ts` — **new**, 6 tests
+- `apps/api/src/decorators/index.ts` — re-export `ResolveSubjectInstance` + `SubjectResolverContext`
+- `apps/api/src/modules/api-key/api-key.controller.ts` — resolver + 6 route decorations
+- `apps/api/src/modules/rbac/roles.controller.ts` — resolver + 4 route decorations
+
+No migration, no seed change, no database touched.
+
+**Verification evidence (Pass 6):**
+
+- **RED confirmed twice, before each implementation.**
+  `casl-conditions.resolver-di.test.ts` before the DI change — **2 failed | 2 passed (4)**
+  (`expected "vi.fn()" to be called with arguments: [ Array(4) ]` — the resolver got one argument).
+  `casl-conditions.enforce-apikey.test.ts` before the `can()` fix and the list change —
+  **4 failed | 2 passed (6)**, and its failure message is what exposed the CASL bug
+  (`The 3rd, \`field\` parameter is expected to be a string`).
+- `packages/applications/src/authorization` — **16 files / 202 tests passed** (was 186 pre-pass).
+- `pnpm --filter @arcaai/applications test` — **515 files / 9541 tests passed, 4 skipped**, plus the
+  **same 1 pre-existing unrelated failure** Pass 5 recorded: `s3.service.secret-gate.test.ts`
+  ("initializes when credentials come from SecretsService and NO GlobalSetting rows exist"). Proven
+  pre-existing by checking `packages/applications/src` + `apps/api/src` out at the base commit
+  `cf11d5a80` and re-running that file alone — **fails identically** (`expected false to be true`).
+- `pnpm --filter @arcaai/applications build` — clean. `… typecheck` (`tsc --noEmit`) — clean.
+- `npx tsc --noEmit -p apps/api/tsconfig.json` — clean.
+- `NODE_ENV=test npx vitest run apps/api/src` — **234 files / 3749 tests passed**, plus 2 suites that
+  failed to COLLECT on `Cannot find module '@arcaai/async-contract'` — a worktree build-order
+  artifact, not a code failure: after `pnpm --filter @arcaai/async-contract build` those same suites
+  run **3 files / 39 tests passed**.
+- `pnpm --filter @arcaai/applications lint` — **184 problems (0 errors, 184 warnings)**, byte-identical
+  to the count at base commit `cf11d5a80` ⇒ **zero new findings**.
+- `pnpm --filter @arcaai/api lint` — **64 problems (0 errors, 64 warnings)**.
+- E2E deliberately NOT run (orchestrator instruction). No database was reset, dropped, or re-seeded.
+
+**Worktree incident, disclosed.** Mid-pass an external process deleted every tracked file in this
+worktree (3,200+ deletions, then the directory itself). The worktree was recreated from
+`wt/task-712b` @ `cf11d5a80` and all ten file changes reapplied verbatim, then committed immediately
+before re-running verification. Every number above was produced on the reconstructed tree. Nothing in
+the main repository was affected.
+
+---
+
 ### Pass 5 (2026-08-19) — Phase 5 Task 15 (ENFORCE)
 
 Orchestrator instruction for this pass: implement Task 15 (ENFORCE); the owner authorizes flipping
@@ -1339,6 +1529,7 @@ restarted; the file was internally consistent again within seconds.
 | 2026-08-16 | Ticket authored | ticket-writer agent (Wave-1 clinical architecture) |
 | 2026-08-16 | Pass 1 — reduced-scope execution: `ConsentGrant` model + domain trio and the `assertConsent`/`checkConsent` ABAC choke point built and tested; no enforcement wired; legacy-consent posture (Q2) left undecided and unseeded. | execution agent (orchestrator-scoped subagent) |
 | 2026-08-16 | Pass 2 — HTTP consent enforcement turned ON BY DEFAULT: fixed the partial-unique-active-grant index (Pass 1's was a plain `@@unique` that would have permanently blocked revoke-then-regrant); implemented the Q2 legacy-grant backfill inside the migration transaction; built `@RequiresConsent`/`@ConsentExempt` + `PatientConsentGuard` (unconditional `APP_GUARD`) + `ConsentExceptionFilter` (found and fixed a real 500-instead-of-403 bug — guards run before interceptors); decorated the four gated HTTP routes; added a narrowed boot-time coverage audit; built the `/admin/consent-grants` CRUD controller; added `ConsentUnavailableException` (R4); wrote and ran `consent-abac.spec.ts` (7/7 passing against a live API + DB, with the migration/backfill proven on a throwaway `hope_shadow` DB first); confirmed no regression in the pre-existing `task-635-live-agent-lineage.spec.ts`. CASL (Phase 5), non-HTTP/harness enforcement (Phase 4), and the WORM ledger writer remain explicitly deferred. See §7 for full verification evidence. | execution agent (orchestrator-scoped subagent) |
+| 2026-08-19 | Pass 6 — Phase 5 Task 15 unblocked and first pair ENFORCED. (1) `SubjectInstanceResolver` gained dependency access via a `SubjectResolverContext` second argument backed by an `@Optional() ModuleRef`; the interceptor-stash alternative was rejected as structurally impossible (guards run before interceptors) and all five fail-open paths are tested. (2) **Bug fix**: `PolicyEngine.can`'s instance branch called CASL's 3-argument `can(action, subject, field)`, which THROWS for an object — instance-aware evaluation had never returned a verdict at any of its four production call sites, and the guard's fail-open catch hid it; fixed by tagging the instance with `subject(type, obj)`. (3) Shadow wired to 10 real routes (`ApiKey` ×6 enforced-candidate, `Role` ×4 measure-only), so `casl_shadow_divergence_total` can finally move. (4) `CASL_ENFORCED_PAIRS` = `read`/`update`/`delete` on `ApiKey`, justified by exhaustive offline evidence built from the REAL seeded `DEFAULT_POLICIES` (whole verdict table pinned: one row changes, in the narrowing direction). `Consultation` (post-guard shared-patient fallback), `UserVoiceProfile` (`@TenantOwnedResource` 404, DEF-C3) and `Role` (widest blast radius, shadow-first) DECLINED with reasons. `getAccessibleBy` still unwired — precondition unmet. TDD with RED observed twice. See §7 Pass 6. | execution agent (orchestrator-scoped subagent) |
 | 2026-08-19 | Pass 5 — Phase 5 Task 15 (ENFORCE) built: `CASL_ENFORCED_PAIRS` + `PolicyEngine.isEnforcedPair`/`recordEnforceDenial` (`casl_enforce_denial_total` metric, `casl.enforce.denial` event) + `UnifiedAuthGuard.runCaslInstanceChecks` (Task 14's shadow hook renamed and extended to return enforced denials, applied only after the type-only verdict already allowed, so enforcement can only narrow; denial is a 403 privilege boundary, and all three fail-open paths are preserved). `casl-conditions.enforce.test.ts` (11 tests) written test-first with RED confirmed. **The enforce list ships EMPTY** — shadow mode was wired to zero production routes so no pair has a measurement, and both of `casl-blast-radius.md` §7's top candidates are structurally disqualified: `Consultation` has a post-guard shared-patient fallback the guard cannot see, and `UserVoiceProfile`'s user boundary is already enforced as a deliberate 404 by `TenantOwnedResourceInterceptor` (guards run before interceptors, so enforcing would downgrade it to an existence-leaking 403 — a security regression). Generalised into a rule recorded in the code: a subject protected by `@TenantOwnedResource` must never be enforced at the guard. `getAccessibleBy` still unwired (its precondition is a measured period of zero divergence). Blocker for the next pass disclosed: `SubjectInstanceResolver` receives only the request and cannot load a row, so the measure phase needs a resolver-DI decision first. See §7 Pass 5. | execution agent (orchestrator-scoped subagent) |
 | 2026-08-16 | Pass 4 — Phase 5 SCOPE ONLY: `casl-blast-radius.md` produced from a real live query against `hope` dev Postgres (82 conditioned rule entries / 65 `(subject, action)` pairs / 16 identity-shaped hazard pairs, each cross-referenced against `apps/api/src/modules/**`'s decorators — including finding `UserSettings`'s seeded rule fully orphaned by a bare `@Authorize()` route); Task 14 CASL SHADOW mode built and unit-tested (`PolicyEngine.evaluateShadowVerdict`/`recordShadowDivergence`, `UnifiedAuthGuard.runCaslShadowChecks` + the new opt-in `@ResolveSubjectInstance` decorator, `casl_shadow_divergence_total` metric + `casl.shadow.divergence` log event) — wired to ZERO production routes, so it changes no request's outcome. Task 15 (enforce, `getAccessibleBy`) explicitly not started, per the owner's R1 shadow→measure→enforce directive. Guard, decorator, routes, model, services, WORM ledger, and Phase 4 (all complete from prior passes) were not touched. See §7 Pass 4. | execution agent (orchestrator-scoped subagent) |
 | 2026-08-16 | Pass 3 — Phase 4 non-HTTP enforcement, the WORM ledger writer, and Phase 6's dedicated seed built: `HarnessAuditEvent.consultationId` made nullable (migration proven empty-diff on a shadow DB, hash-compatibility proven with a fixed golden-hash test) so `ConsentGrantService.create()`/`revoke()` could append real `CONSENT_GIVEN`/`CONSENT_WITHDRAWN` WORM rows; built the gateway-internal `POST /internal/consent/assert` endpoint + the harness's `ConsentClient` (TTL-cached, fail-closed) + consent gating in `call_mcp_tool` (raises, step 0.5) and `retrieve_context` (degrades, matching its own existing contract); threaded `external_patient_id` end-to-end from `NoteGenerationService` through the harness workflow input for the first time; built `22-consent-grant.ts` (Phase 6) seeding the three purposes the Pass-2 legacy backfill did not cover, verified idempotent against a live `hope_test` database; fixed a downstream null-safety consequence in the admin-console's harness-audit types/components. CASL (Phase 5) untouched, per instruction. See §7 Pass 3 for full verification evidence, including what remains disclosed-and-deferred (the `ConsultationLoopWorkflow` finalize-child identity gap, cross-process cache invalidation, and `casl-blast-radius.md`). | execution agent (orchestrator-scoped subagent) |

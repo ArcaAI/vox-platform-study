@@ -22,7 +22,12 @@ export {
   SUBJECT_INSTANCE_RESOLVER_KEY,
   ResolveSubjectInstance,
 } from './unified-auth.guard';
-export type { SubjectInstanceResolver, IServiceAccountAuthenticator, ServiceAccountPrincipalLike } from './unified-auth.guard';
+export type {
+  SubjectInstanceResolver,
+  SubjectResolverContext,
+  IServiceAccountAuthenticator,
+  ServiceAccountPrincipalLike,
+} from './unified-auth.guard';
 
 // Decorators
 export {
