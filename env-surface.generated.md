@@ -11,13 +11,13 @@ disagree with those declarations.
 
 | Metric | Value |
 |---|---:|
-| Declared keys (distinct) | 148 |
+| Declared keys (distinct) | 158 |
 | … of which required (`failMode: closed`) | 32 |
 | … of which secret | 31 |
-| … tier `env` | 112 |
+| … tier `env` | 122 |
 | … tier `global-kv` | 9 |
 | … tier `vault-kv` | 27 |
-| `turbo.json#globalEnv` entries | 164 |
+| `turbo.json#globalEnv` entries | 174 |
 
 ## Variables
 
@@ -58,6 +58,7 @@ disagree with those declarations.
 | `HARNESS_SERVICE_TOKEN` | `vault-kv` | yes | `CHANGE_ME` | `apps/api` | Shared secret on the gateway↔harness hop. Fetched on demand (not a warmup key) by `HarnessOpsClient` / `HarnessGatewayService` / `HarnessServiceTokenGuard`. It MUST equal the harness process’s own `HARNESS_SERVICE_TOKEN`, or every `/api/v1/internal/harness/*` call 401s. |
 | `HARNESS_URL` | `env` | no | `http://localhost:8866` | `apps/api` | Clinical Documentation Harness base URL (apps/harness, port 8866). |
 | `HARNESS_WARM_START_ENABLED` | `env` | no | `false` | `apps/harness` | Env FALLBACK for harness warm-start; `HarnessInternalService` treats the DB/policy value as the authority and consults this only when that is absent. Being a fallback for a policy value is itself an argument for moving it out of env. |
+| `HF_HOME` | `env` | no | — | `apps/nlp` | Filesystem root the Hugging Face libraries use for their model cache, read out of `os.environ` by `huggingface_hub` / `gliner2` after `hope_env.load_env()` populates it. WHERE weights are cached, never WHICH checkpoint runs. It MUST be declared rather than inherited from an operator login shell: `~/.zshrc` is sourced by INTERACTIVE shells only, so services, CI jobs and coding agents never see it and every download silently lands in `~/.cache/huggingface`. Unset = the Hugging Face default. |
 | `INTERNAL_ACCESS_TOKEN` | `vault-kv` | yes | `CHANGE_ME` | `apps/api` | THE canonical internal service-to-service credential (owner decision D-D, 2026-08-17): **one** shared access token, identical across every service, set by the DevOps engineer, internal use only. It is presented and accepted as `X-Service-Token` on every internal hop — gateway↔text/nlp/guardrail/harness/tts and every peer-to-peer hop (harness→text/nlp/guardrail, text→guardrail, nlp→text). There is deliberately NO per-service and NO per-pair token in the target state: the `*_SERVICE_TOKEN` family below (`TEXT_`, `NLP_`, `GUARDRAIL_`, `HARNESS_`, `TTS_`, and harness’s outbound `HARNESS_TEXT_`/`HARNESS_NLP_`) is retained ONLY as a zero-cost backward-compatibility fallback — every inbound middleware accepts EITHER this token or its own legacy secret, and every outbound client PREFERS this token and falls back to its legacy per-target secret when unset. Set this one variable and the legacy family can all be dropped. This is the sanctioned env-var exception to D-B (configuration lives in the DB) — it is bootstrap-floor auth material, delivered from Vault in deployed environments. NOT the same thing as `HARNESS_INTERNAL_SERVICE_TOKEN`, which gates the harness knowledge-ingest endpoint only, nor `API_GATEWAY_KEY`, which must be a real ApiKey row (see below). |
 | `JWT_SECRET_KEY` | `vault-kv` | yes | `CHANGE_ME` | `apps/api` | HS256 signing secret for gateway-issued access tokens. Warmed at boot; `apps/api/src/main.ts` refuses to start when it is still a placeholder. Rotating it invalidates every outstanding access token immediately (they are short-lived, so the blast radius is one token TTL). |
 | `LIVE_DOC_GROUNDEDNESS_ENABLED` | `env` | no | `false` | `apps/api` | Gates the output-side groundedness check on the live-documentation path. Read once in the `LiveDocumentationService` constructor as `=== "true"`, so a change needs a restart — the clearest instant-fan-out candidate in this file. |
@@ -86,6 +87,15 @@ disagree with those declarations.
 | `MQTT_USER` | `env` | no | — | `apps/api` | MQTT broker username. The password is a `vault-kv` secret (`MQTT_PASS`). |
 | `NEST_DEBUG` | `env` | no | `false` | `apps/api` | Enables NestJS-internal debug logging. |
 | `NEXT_PUBLIC_API_HOST` | `env` | no | `http://localhost:8868` | `apps/admin-console` | Origin the BROWSER connects to directly for SSE/WS streams (authenticated with single-use stream tickets). Inlined into the client bundle by Next.js, so it must be non-secret (`src/config/public-env.ts`). |
+| `NLP_INFERENCE_BATCH_LINGER_MS` | `env` | no | `5` | `apps/nlp` | How long an otherwise-idle NLP request waits for company before dispatching. This is the ENTIRE latency price of batching — keep it well under the p50 forward pass. |
+| `NLP_INFERENCE_BATCH_MAX_SIZE` | `env` | no | `8` | `apps/nlp` | Maximum items coalesced into one NLP forward pass. |
+| `NLP_INFERENCE_MAX_CONCURRENT` | `env` | no | `4` | `apps/nlp` | Concurrent forward passes across all NLP models (bootstrap fallback; the runtime value comes from the control plane). |
+| `NLP_INFERENCE_MAX_INFLIGHT_BATCHES` | `env` | no | `2` | `apps/nlp` | Concurrent forward passes against ONE NLP model. |
+| `NLP_INFERENCE_QUEUE_MAX_DEPTH` | `env` | no | `256` | `apps/nlp` | Bounded NLP inference queue depth; at the bound the service sheds with 503 + `Retry-After` instead of growing until OOM. |
+| `NLP_INFERENCE_QUEUE_MAX_WAIT_SECONDS` | `env` | no | `20` | `apps/nlp` | Wait ceiling for a queued NLP inference item; exceeding it sheds with 503 rather than serving a stale answer. |
+| `NLP_MODEL_CACHE_MAX_MODELS` | `env` | no | `3` | `apps/nlp` | LRU ceiling on resident NLP models. |
+| `NLP_MODEL_CACHE_TTL_SECONDS` | `env` | no | `600` | `apps/nlp` | Idle TTL before an NLP model is evicted from the in-process cache. |
+| `NLP_MODEL_LOCAL_ROOTS` | `env` | no | `` | `apps/nlp` | Optional allow-list of filesystem roots a configured LOCAL model path must resolve inside. Unset = unrestricted, deliberately and documented. |
 | `NLP_PORT` | `env` | no | `8864` | `apps/nlp` | Port apps/nlp binds. |
 | `NLP_SERVICE_TOKEN` | `vault-kv` | yes | `CHANGE_ME` | `apps/api` | Shared secret on the gateway↔NLP hop (`X-Service-Token`). |
 | `NLP_URL` | `env` | no | `http://localhost:8864` | `apps/api` | Medical-NLP base URL (apps/nlp, port 8864). |
