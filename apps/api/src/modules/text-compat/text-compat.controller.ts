@@ -310,7 +310,7 @@ export class TextCompatController {
   // TASK-767 — the standalone summarization feature over the FROZEN v1 wire
   // contract. Declared per-route rather than at class level, mirroring the
   // `@RequiredScopes` placement above; adding it changes no path, no verb and
-  // no payload (pinned by `__tests__/compat-wire-contract.test.ts`).
+  // no payload (pinned by `src/modules/__tests__/task-767-compat-wire-contract.test.ts`).
   @RequiredSvcScopes('svc:consultation:report:write')
   @ApiOperation({ summary: 'v1-compatible synchronous medical summary (stateless shim over SMR /generate)' })
   async summarySync(@Body() body: SyncSummaryRequest, @Req() request: RequestWithAuth, @Res() res: Response): Promise<void> {
@@ -845,21 +845,32 @@ export class TextCompatController {
 
   /**
    * Resolve the mandatory V2 Core tenant context: CLS-bound tenant → the
-   * authenticated API key's tenant → the authenticated JWT user's own tenant.
+   * authenticated API key's tenant → the authenticated JWT user's own tenant →
+   * the service account's working tenant (TASK-767).
    * The last fallback matters on these compat routes specifically: they are
    * EXCLUDED from the `api/v1` global prefix, so the JWT strategy's CLS
    * population (the "single source of truth" that normally sets CLS `tenantId`
    * for a Bearer caller) is not wired for them — the working-tenant elevation in
-   * `ContextInterceptor` is likewise a no-op here. `request.user` / `request.apiKey`,
-   * however, are set DIRECTLY on the Express request by the auth pipeline on every
-   * route, so we read the tenant off the request — exactly as the `apiKey` branch
-   * already does. Rejects with `401 Tenant context is required` when none is
+   * `ContextInterceptor` is likewise a no-op here. `request.user` / `request.apiKey`
+   * / `request.serviceAccount`, however, are set DIRECTLY on the Express request by
+   * the auth pipeline on every route, so we read the tenant off the request —
+   * exactly as the `apiKey` branch already does.
+   *
+   * TASK-767 added the `serviceAccount` branch, and it is not cosmetic: the
+   * machine credential class carries NO `request.user` (deliberately — a machine's
+   * actions must not be recorded against a person) and no `request.apiKey`, so
+   * without it every service-account call to this frozen surface 401s here even
+   * though `UnifiedAuthGuard` authenticated it and wrote the working tenant into
+   * CLS. Measured on a live gateway before the fix; the CLS write is simply not
+   * visible from a prefix-excluded route, which is the same reason the two
+   * branches above exist. Rejects with `401 Tenant context is required` when none is
    * present — no SYSTEM-default leak (M4); a super-admin's EMPTY tenant
    * still trips it (they must act through a tenant-scoped credential).
    * Defense-in-depth: a correctly tenant-scoped key or JWT never trips it.
    */
   private requireTenantId(authRequest?: RequestWithAuth): string {
-    const tenantId = this.clsService.get('tenantId') ?? authRequest?.apiKey?.tenantId ?? authRequest?.user?.tenantId;
+    const tenantId =
+      this.clsService.get('tenantId') ?? authRequest?.apiKey?.tenantId ?? authRequest?.user?.tenantId ?? authRequest?.serviceAccount?.workingTenantId;
     if (!tenantId) {
       throw new UnauthorizedException('Tenant context is required');
     }

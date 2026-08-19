@@ -300,7 +300,14 @@ describe('the three exemptions carry a decision, not the TASK-742 deferral', () 
   it.each(files)('%s carries an API-KEY-NOTE stating the decision', async (_name, relative) => {
     const { readFileSync } = await import('node:fs');
     const { join } = await import('node:path');
-    const source = readFileSync(join(process.cwd(), relative), 'utf8');
+
+    // Anchor on cwd, which vitest sets to either the monorepo root (root
+    // workspace run) or `apps/api` (filtered run). `import.meta.url` would be
+    // the obvious anchor but this app compiles as CommonJS, so it fails
+    // `tsc --noEmit` — and typecheck is a gate.
+    const cwd = process.cwd();
+    const apiRoot = cwd.endsWith(join('apps', 'api')) ? cwd : join(cwd, 'apps', 'api');
+    const source = readFileSync(join(apiRoot, relative), 'utf8');
 
     expect(source).toContain('// API-KEY-NOTE');
     expect(source).not.toContain('AWAITING OWNER CLASSIFICATION');
