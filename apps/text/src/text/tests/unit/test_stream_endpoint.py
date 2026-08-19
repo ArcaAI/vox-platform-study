@@ -18,6 +18,7 @@ from __future__ import annotations
 from unittest.mock import AsyncMock
 
 import pytest
+from hope_async_contract import decode_resume_token
 from httpx import ASGITransport, AsyncClient
 
 from text.core.config import Settings
@@ -198,3 +199,69 @@ class TestStreamEndpointSSE:
             resp = await client.get("/api/v1/tasks/t1/stream")
         assert resp.status_code == 200
         assert "data" in resp.text
+
+
+class TestStreamEndpointResumeTokenTask717:
+    """TASK-717: the SSE `id:` is an opaque resume token; `Last-Event-ID` accepts both forms."""
+
+    @pytest.mark.asyncio
+    async def test_emitted_ids_are_resume_tokens_wrapping_the_redis_cursor(self, settings):
+        tm = AsyncMock()
+        tm.get_task = AsyncMock(
+            return_value=TaskState(task_id="t1", status=TaskStatus.RUNNING, provider="p", model="m")
+        )
+        tm.read_chunk_entries_blocking = AsyncMock(
+            return_value=[("7-0", StreamChunk(type="done", data={}), {})]
+        )
+
+        app = _build_app(settings, tm)
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            resp = await client.get("/api/v1/tasks/t1/stream")
+
+        emitted = next(
+            line.removeprefix("id: ") for line in resp.text.splitlines() if line.startswith("id: ")
+        )
+        decoded = decode_resume_token(emitted)
+        assert decoded == {"transport": "redis-stream", "cursor": "7-0"}
+
+    @pytest.mark.asyncio
+    async def test_legacy_raw_last_event_id_still_resumes(self, settings):
+        """A caller storing an OLD raw Redis message id keeps working during rollout."""
+        tm = AsyncMock()
+        tm.get_task = AsyncMock(
+            return_value=TaskState(task_id="t1", status=TaskStatus.COMPLETED, provider="p", model="m")
+        )
+        tm.read_chunk_entries_blocking = AsyncMock(return_value=[])
+
+        app = _build_app(settings, tm)
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            resp = await client.get(
+                "/api/v1/tasks/t1/stream", headers={"last-event-id": "42-0"}
+            )
+
+        assert resp.status_code == 200
+        tm.read_chunk_entries_blocking.assert_awaited_with("t1", last_id="42-0", block_ms=5000)
+
+    @pytest.mark.asyncio
+    async def test_opaque_resume_token_decodes_to_its_cursor(self, settings):
+        """A caller storing the NEW opaque token resumes from the wrapped cursor."""
+        from hope_async_contract import encode_resume_token
+
+        tm = AsyncMock()
+        tm.get_task = AsyncMock(
+            return_value=TaskState(task_id="t1", status=TaskStatus.COMPLETED, provider="p", model="m")
+        )
+        tm.read_chunk_entries_blocking = AsyncMock(return_value=[])
+
+        token = encode_resume_token("redis-stream", "42-0")
+        app = _build_app(settings, tm)
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            resp = await client.get(
+                "/api/v1/tasks/t1/stream", headers={"last-event-id": token}
+            )
+
+        assert resp.status_code == 200
+        tm.read_chunk_entries_blocking.assert_awaited_with("t1", last_id="42-0", block_ms=5000)
