@@ -138,8 +138,20 @@ export interface AiModelSeed {
   memorySizeMb: number;
   computeType: string;
   tags: string[];
-  /** Per-model extras: TTS `{voices}`, Azure LLM `{azureDeployment}`. */
-  metaData?: { voices?: TtsVoiceBinding[]; azureDeployment?: string; ttsProvider?: string };
+  /**
+   * Per-model extras: TTS `{voices}`, Azure LLM `{azureDeployment}`, guardrail
+   * `{policy}` (TASK-777 — `apps/guardrail/src/guardrail/core/policy.py`'s
+   * governed key table, resolved through the same tenant → SYSTEM cascade as
+   * model selection; a key declared `failMode: closed` there — e.g.
+   * `medicalValidationCriteria` — is NOT a code default and MUST be seeded here
+   * or the resolving endpoint fails closed with 503).
+   */
+  metaData?: {
+    voices?: TtsVoiceBinding[];
+    azureDeployment?: string;
+    ttsProvider?: string;
+    policy?: Record<string, string | number>;
+  };
   /** Only set when a row must seed in a non-default status (indic-f5). */
   resourceStatus?: ResourceStatusType;
 }
