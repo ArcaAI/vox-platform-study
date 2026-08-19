@@ -212,6 +212,21 @@ class RetrievalConfig(BaseSettings):
     reranker_timeout_s: float = 30.0
     qdrant_timeout_s: float = 10.0
 
+    @field_validator("qdrant_api_key", mode="before")
+    @classmethod
+    def _empty_api_key_is_absent(cls, v: object) -> object:
+        """An empty env var means ABSENT, not "the empty credential".
+
+        `.env.dev`/`.env.sample` spell an unset optional as `KEY=`, which pydantic
+        would otherwise bind as `SecretStr("")` — and "" is itself a credential to
+        Qdrant, so it must never reach the client (see the field comment above and
+        `KnowledgeQdrantStore`'s `api_key=None` unauthenticated path).
+        """
+        if v is None:
+            return None
+        raw = v.get_secret_value() if isinstance(v, SecretStr) else v
+        return None if isinstance(raw, str) and raw == "" else v
+
     @field_validator("embeddings_dim", "top_k_retrieval", "top_k_rerank", "rrf_k")
     @classmethod
     def _positive(cls, v: int) -> int:
@@ -615,6 +630,21 @@ class Settings(BaseSettings):
         or os.getenv("NODE_ENV")
         or "development"
     )
+
+    @field_validator("otel_deployment_environment", mode="before")
+    @classmethod
+    def _blank_environment_resolves(cls, v: object) -> object:
+        """An empty `HARNESS_OTEL_DEPLOYMENT_ENVIRONMENT=` re-enters the chain.
+
+        A bound "" would win over the default_factory and tag every span with an
+        EMPTY environment — the same class of defect as a hardcoded "production",
+        just failing the other way: unattributable spans instead of mislabelled
+        ones. `.env.dev` and `.env.sample` both ship the key blank, which is how
+        they spell "let the service resolve it".
+        """
+        if isinstance(v, str) and v.strip() == "":
+            return os.getenv("DEPLOYMENT_ENVIRONMENT") or os.getenv("NODE_ENV") or "development"
+        return v
     otel_insecure: bool = True
 
     metrics_enabled: bool = True

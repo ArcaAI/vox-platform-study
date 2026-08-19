@@ -254,6 +254,21 @@ class Settings(BaseSettings):
     otel_insecure: bool = True
     otel_logs_enabled: bool = True
 
+    @field_validator("otel_deployment_environment", mode="before")
+    @classmethod
+    def _blank_environment_resolves(cls, v: object) -> object:
+        """An empty `TTS_OTEL_DEPLOYMENT_ENVIRONMENT=` re-enters the chain above.
+
+        `.env.dev`/`.env.sample` ship the key blank — that is how they spell "let
+        the service resolve it" — but a bound "" wins over the default_factory and
+        tags every span with an EMPTY environment. Same defect class as the
+        hardcoded "production" this field already guards against, failing the
+        other way: unattributable spans rather than mislabelled ones.
+        """
+        if isinstance(v, str) and v.strip() == "":
+            return os.getenv("DEPLOYMENT_ENVIRONMENT") or os.getenv("NODE_ENV") or "development"
+        return v
+
     @field_validator("log_level")
     @classmethod
     def _normalise_log_level(cls, v: str) -> str:

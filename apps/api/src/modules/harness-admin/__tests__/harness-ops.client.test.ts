@@ -14,7 +14,11 @@ function makeClient(getEnv: (key: string) => string | undefined = () => undefine
   const axiosRef = { get: vi.fn(), post: vi.fn() };
   const httpService = { axiosRef } as any;
   const configService = { get: vi.fn((key: string) => getEnv(key)) } as any;
-  const secretsService = { getSecretOptional: vi.fn().mockResolvedValue('svc-token') } as any;
+  // Legacy-only environment: the shared INTERNAL_ACCESS_TOKEN is unset, so the
+  // client must fall back to HARNESS_SERVICE_TOKEN.
+  const secretsService = {
+    getSecretOptional: vi.fn(async (key: string) => (key === 'HARNESS_SERVICE_TOKEN' ? 'svc-token' : undefined)),
+  } as any;
   const client = new HarnessOpsClient(httpService, configService, secretsService);
   return { client, axiosRef, secretsService };
 }
@@ -32,9 +36,22 @@ describe('HarnessOpsClient', () => {
     expect(url).toBe('http://harness:9000/api/v1/internal/harness/workflows');
     expect(opts.params).toMatchObject({ tenantId: 't1', status: 'RUNNING', limit: 25 });
     expect(opts.headers['X-Service-Token']).toBe('svc-token');
+    expect(secretsService.getSecretOptional).toHaveBeenCalledWith('INTERNAL_ACCESS_TOKEN');
     expect(secretsService.getSecretOptional).toHaveBeenCalledWith('HARNESS_SERVICE_TOKEN');
     expect(result.items).toEqual([{ workflowId: 'wf-1' }]);
     expect(result.nextPageToken).toBe('np');
+  });
+
+  it('prefers the shared INTERNAL_ACCESS_TOKEN over the legacy per-service token', async () => {
+    const { client, axiosRef, secretsService } = makeClient();
+    secretsService.getSecretOptional.mockImplementation(async (key: string) =>
+      key === 'INTERNAL_ACCESS_TOKEN' ? 'shared-token' : 'svc-token',
+    );
+    axiosRef.get.mockResolvedValue({ data: {} });
+
+    await client.listWorkflows();
+
+    expect(axiosRef.get.mock.calls[0][1].headers['X-Service-Token']).toBe('shared-token');
   });
 
   it('falls back to HARNESS_URL then localhost:8866', async () => {
