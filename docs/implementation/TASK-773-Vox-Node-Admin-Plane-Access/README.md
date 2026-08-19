@@ -188,7 +188,7 @@ The third group is the finding. These controllers sit on the admin plane but hav
 
 | Controller | Route | What it actually carries |
 |---|---|---|
-| `WebhookController` | `admin/webhooks` | `@RequiredScopes('webhook:event:write')` — a `webhook:*` scope, not `admin:*`. TASK-757 reserved the three `webhook:` strings *because* their only consumer sits at `admin/webhooks`, but the `svc:` registry derives only the concrete `admin:*` family, so **no `svc:webhook:event:write` twin exists**. |
+| `WebhookController` | `admin/webhooks` | Was gated by `webhook:event:write` — a `webhook:*` scope, not `admin:*` — which TASK-757 stripped and reserved along with the `admin:*` ones (it does not *carry* the decorator today; corrected 2026-08-19). The `svc:` registry derived only the concrete `admin:*` family, so **no `svc:webhook:event:write` twin existed**. |
 | `MonitoringController` | `admin/monitoring` | Never class-level scope-gated at all — `@CanAny` ability decorators only. |
 | `AdminHealthServicesController` | `admin/health/services` | Same: `@CanAny`, never scope-gated. TASK-759 moved it here off the public `health` prefix. |
 
@@ -198,17 +198,33 @@ vice-versa"* — it reconciles the two **registries**. It says nothing about whe
 `admin:*` scope names. The gap is real and pre-existing; TASK-773 is simply the first work that
 had to enumerate controllers rather than scopes.
 
-**Open decision O-1 (blocks unit A3, not the sweep).** For each of the three, either:
+**O-1 RESOLVED (owner, 2026-08-19): open `admin/webhooks`; close the other two.**
 
-- **(a) extend the derivation** — add `webhook:event:write` to a sources list the way
-  `STANDALONE_FEATURE_SCOPE_SOURCES` does, and mint `admin:monitoring:read` /
-  `admin:health:read` scopes so the existing renamespacing picks them up; or
-- **(b) leave them machine-closed** — `@ForbidServiceAccount()`, same as the D-3 three.
+`admin/webhooks` is opened via a **third derived family** —
+`ADMIN_PLANE_PRE_CONVENTION_SCOPE_SOURCES = ['webhook:event:write']` — rather than by stretching
+`STANDALONE_FEATURE_SCOPE_SOURCES`, whose name means "standalone *business*-plane features an end
+user drives through the SDK (STT, summarization)" and would then carry contents it denies. Each
+family keeps a closed source list; assertion D reconciles non-admin `svc:` scopes against their
+union and names both constants in the failure, so an undeclared scope is told which family it
+should have joined. `svc:webhook:event:write` resolves to `[{ manage, Webhook }]` — the identical
+`implies` the API-key path used on the same route.
 
-Doing nothing is not available: unit A3 strengthens boot audit G to its full every-route form,
-which **fails the boot** on any service-account-reachable route declaring neither a `svc:` scope
-nor `@ForbidServiceAccount()`. All three must land on one side or the other before A3 can pass.
-The 64-controller sweep is unaffected and proceeds meanwhile.
+> **Deliberate and asserted:** `svc:admin:*` does **not** reach webhooks. That wildcard expands
+> over the `svc:admin:` prefix, not "the admin plane", so this area is granted explicitly or not
+> at all. It surprises people, which is exactly why it carries a test.
+
+`admin/monitoring` and `admin/health/services` are closed with `@ForbidServiceAccount()`. Both are
+operator telemetry whose value is in a person looking at it, not rows an integration can act on;
+the health fan-out is additionally a 4–6-call outbound SSRF amplifier, which is the last surface
+to hand to a credential that can be driven in a loop.
+
+**Open item O-2 (new, low priority).** `GET admin/webhooks/:id/deliveries` is
+`@Authorize(['read','WebhookRunHistory'])`, an ability `svc:webhook:event:write` does not imply —
+so a service account reaches webhook CRUD but is 403'd on the delivery log. That is byte-identical
+to what an API key holding `webhook:event:write` already got, so the machine class mirrors the
+human-delegated one exactly: the derivation principle working as designed, not a defect. Exposing
+the delivery log needs a second source scope (`webhook:event:read`) plus a route-level
+declaration — a new decision, not a code-review call.
 
 ### 2.7 `@arcaai/vox-node` today
 
@@ -357,6 +373,26 @@ TDD throughout (RED observed before GREEN). Phases A and B are API-side and **bl
 
 **D-3 — the three §2.6 surfaces stay machine-closed.** See §2.6.
 
+**D-5 — service-account impersonation is NOT built (owner, 2026-08-19).** Raised at the gate and
+declined: machines never impersonate, and a human super-admin remains the only path. Recorded here
+with what it *would* have cost, so the question is not re-opened from scratch:
+
+- A service account cannot call it today by **two independent gates** — `impersonate` requires the
+  caller to be SUPER_ADMIN, and `isSuperAdmin()` is deliberately `false` for machine principals
+  (TASK-757 pinned that with a regression test precisely so a future "fix" could not reopen every
+  super-admin route).
+- It **mints a user JWT** (`createJwt`), time-boxed ~30 min and non-refreshable. Once through, the
+  caller authenticates on the *JWT* branch with the **target user's abilities** — entirely outside
+  the `svc:` scope system. An impersonation scope would therefore mean "become any non-super-admin
+  user for 30 minutes": a service account holding only `svc:admin:user:read` could impersonate a
+  tenant admin and perform tenant-admin writes.
+- Existing bounds that would have helped: the target may be neither a SUPER_ADMIN nor a service
+  account. Attribution mostly works already (`impersonatedBy` lands in `metaData`), but the token
+  payload has no shape for a *machine* actor, so that would need adding.
+
+Cost, had it been approved: a new scope, a caller-check change, a token-payload change, and
+attribution plumbing — a privilege-boundary redesign, not a decorator.
+
 **D-4 — the SDK family bumps in lockstep to `3.0.1`.**
 
 > **Superseded mechanism (corrected 2026-08-19).** This decision was taken when
@@ -407,3 +443,4 @@ not one as originally written. That is the intended cost of lockstep, not an ove
 | 2026-08-19 | **Created.** Verified against the working tree that policy A2 (TASK-757) structurally forbids the literal requirement — `@ForbidApiKey()` on all 69 admin controllers, 56 `admin:*` scopes reserved and refused at grant time, and a derived boot audit failing startup on any admin route declaring `@RequiredScopes`. Established that TASK-762's service account is the sanctioned machine path and is **complete on both the credential and vocabulary axes** (opaque token on `X-Service-Account-Token`, exchange at `POST /auth/service-token`, all 56 `svc:admin:*` twins derived and audited by assertion D), and that the **only** gap is route declarations: zero admin controllers carry `@RequiredSvcScopes`, and deny-by-default therefore refuses every machine caller. Confirmed boot audit G's own `NOTE ON SCOPE` explicitly defers its full form to this cutover. Established that the controller→scope mapping is mechanically recoverable from `276f96a32`. Recorded owner decisions **D-1** (service account, not API keys) and **D-2** (all 70 areas), and flagged assumption **A-1** (three surfaces stay machine-closed for self-replication, impersonation-attribution, and consent reasons). Sized the SDK gap: vox-node is 3 resources / ~15 methods against a ~350-route admin surface, so the surface is **generated from a cross-checked Nest-metadata + OpenAPI manifest** rather than hand-authored, per the repo's derive-don't-transcribe rule. Status: **Pending** — awaiting the Phase 3 approval gate. |
 | 2026-08-19 | **Approval-gate decisions recorded.** **D-3** — the three surfaces in §2.6 (`admin/service-accounts`, `AdminImpersonationController`, `ConsentGrantController`) stay machine-closed; what was assumption A-1 is now a decision, and re-opening any of them is a new owner decision rather than a code-review call. **D-4** — the SDK family bumps in lockstep to **3.0.1** via the existing `scripts/publish-sdk.sh 3.0.1`, which applies one version across every family package; `@arcaai/vox` ships a no-op release at that version, which is the intended cost of lockstep. Recorded that 3.0.1 is a PATCH number carrying additive functionality (strict semver would say 3.1.0) — deliberate, owner's call, and immaterial to consumers since both `^3.0.0` and `~3.0.0` resolve it; the CHANGELOG carries the surface description instead. §6 restructured into resolved decisions vs. the one still-open question (a service-account rate-limit tier). Phase E2 made concrete. Status remains **Pending** — no code written, awaiting go-ahead on Phase A. |
 | 2026-08-19 | **Wave 0 delivered; coverage arithmetic corrected; O-1 opened.** Executed in worktree `task-773-svc-admin` per `PARALLEL-EXECUTION.md`. **A1** extracted the 64-row controller→scope fixture from `276f96a32` (`apps/api/src/bootstrap/__tests__/fixtures/task-773-admin-scope-map.ts`) with a colocated test; count independently re-verified against `git show` (64 removed `admin:*` decorators) and against the live `@ForbidApiKey()` set. Its cross-check produced the finding now recorded as **§2.8**: the 70 admin controllers split THREE ways, not two — 64 mechanically wireable, 3 machine-closed by D-3, and **3 with no `admin:*` scope to renamespace** (`WebhookController` carries `webhook:event:write`; `MonitoringController` and `AdminHealthServicesController` were never class-level scope-gated). Boot audit D could not have caught this: it reconciles the two scope REGISTRIES, never controllers-to-scopes. Opened **O-1** — extend the derivation or close the three — which blocks unit A3 (whose strengthened audit G fails the boot on any route declaring neither) but not the 64-controller sweep. **C** delivered the service-account credential in `@arcaai/vox-node`: lazy exchange, single-flight refresh with a clamped skew margin, one-shot recovery from mid-flight revocation, and redaction of both secret and token. Verified independently: 196 tests pass (was 173), `package.json` unchanged with zero runtime dependencies intact, header emitted via a shared `SERVICE_ACCOUNT_TOKEN_HEADER` constant. Two wire findings recorded: the exchange response's `tokenType: 'Bearer'` is misleading — `UnifiedAuthGuard` reads ONLY `x-service-account-token`, so presenting it as `Authorization: Bearer` gets it parsed as a user JWT and 401s, which is why the transport got a second hook rather than reusing the existing bearer one; and supplying `tenantId` alongside `serviceAccount` now throws at construction rather than being silently dropped, since the working tenant binds at exchange. |
+| 2026-08-19 | **Phase A complete — the admin plane accepts service accounts.** Waves 1–2 delivered per `PARALLEL-EXECUTION.md`. **A4** added boot audit **H**: fixture-driven, it requires each of the 64 controllers to declare exactly the `svc:` twin of the `admin:*` scope TASK-757 removed from it. Written and observed **RED across all 64 before any sweep agent ran** — that observation is only obtainable before the sweep, which is why the audit was ordered first. It exists because assertion G structurally cannot see a MIS-assignment (G checks presence and registry membership, so a real-but-wrong scope passes it); a paired test drives the same synthetic app through both and shows H throwing where G does not. **A2** swept all 64 declarations across 63 files via six parallel agents on disjoint file lists. Gate: a new `task-773-admin-plane-svc-declarations.test.ts` imports every shipped controller class and reads the declaration back off Nest **metadata** — not source text, since a grep would match a comment or a commented-out line — 65/65 pass; full `apps/api` suite 3725 passed / 10 skipped, zero failures (3660 baseline + 65). **O-1 resolved** (see §2.8): `admin/webhooks` opened through a third derived family `ADMIN_PLANE_PRE_CONVENTION_SCOPE_SOURCES`, with assertion D growing an arm that reconciles non-admin `svc:` scopes against the union of the declared families; `admin/monitoring` and `admin/health/services` closed with `@ForbidServiceAccount()`. **D-5 recorded**: service-account impersonation declined, with its two blocking gates and its real cost written down so the question is not re-litigated from scratch. **O-2 opened** (low priority): the webhook delivery log stays 403 for machines, byte-identical to the API-key path. Corrected a premise in §2.8 — `WebhookController` does not *carry* `webhook:event:write`; TASK-757 stripped it along with the `admin:*` ones. Also landed in this phase: **B1/B2** offline `openapi.json` emission (451 paths / 579 operations; cross-checked against 647 live routes, the 68-route gap being exactly the `@ApiExcludeEndpoint` set — zero drift) with a fidelity spike returning **GO** at 80.5% request-typed / 85.3% response-typed against a 70/70 threshold; and **D2**, the hand-authored `AdminResource` base, which surfaced the load-bearing pagination finding now recorded in its doc comments: the gateway echoes RAW query values for `page`/`limit`, so the obvious read-response-and-increment loop is broken against this API and `listAll` must drive pagination from the request side. |
