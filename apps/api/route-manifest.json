@@ -4029,8 +4029,8 @@
       "controller": "TenantController",
       "handler": "fetchByCodeName",
       "method": "GET",
-      "path": "/api/v1/admin/tenants/code-name/{code}-name",
-      "routePath": "/admin/tenants/code-name/:code-name",
+      "path": "/api/v1/admin/tenants/code-name/{codeName}",
+      "routePath": "/admin/tenants/code-name/:codeName",
       "svcScopes": [
         "svc:admin:tenant:write"
       ],

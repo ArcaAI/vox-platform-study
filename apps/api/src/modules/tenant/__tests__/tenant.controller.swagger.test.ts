@@ -84,12 +84,19 @@ describe('TenantController - OpenAPI/Swagger metadata', () => {
   });
 
   describe('fetchByCodeName', () => {
-    it('should have @ApiParam for code-name', () => {
+    // Was `expect(names).toContain('code-name')`, which pinned a real defect:
+    // path-to-regexp parameter names are `[A-Za-z0-9_]+`, so the old
+    // `:code-name` bound a parameter called `code` followed by the LITERAL
+    // `-name`, and `@Param('code-name')` named a parameter that could not
+    // exist. The route 404'd at its advertised URL and passed `undefined` at
+    // the one that matched.
+    it('should have @ApiParam for codeName', () => {
       const params = getMethodMetadata(SWAGGER.API_PARAMETERS, 'fetchByCodeName');
       expect(params).toBeDefined();
       const pathParams = params.filter((p: any) => p.in === 'path');
       const names = pathParams.map((p: any) => p.name);
-      expect(names).toContain('code-name');
+      expect(names).toContain('codeName');
+      expect(names).not.toContain('code-name');
     });
 
     it('should have @ApiResponse for 404 (not found)', () => {

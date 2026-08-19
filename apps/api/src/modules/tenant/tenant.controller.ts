@@ -172,12 +172,24 @@ export class TenantController {
 
   @ApiEndpoint({
     returnedModel: TenantResponse,
-    path: 'code-name/:code-name',
+    // The route parameter is `:codeName`, NOT `:code-name`. path-to-regexp
+    // parameter names are `[A-Za-z0-9_]+`, so a hyphen TERMINATES the name:
+    // `:code-name` binds a parameter called `code` followed by the literal text
+    // `-name`. That made this route unreachable at the URL it advertises (the
+    // literal suffix was required) and, on a URL that did match, left
+    // `@Param('code-name')` naming a parameter that cannot exist — so the
+    // service was called with `undefined`. Swagger rendered the truth the whole
+    // time, as `/admin/tenants/code-name/{code}-name`.
+    path: 'code-name/:codeName',
+    // Description prose only — `by` is joined into the generated Swagger summary
+    // by `getDescription`, and is not a parameter binding. "code-name" is the
+    // right human phrasing for the concept, so it deliberately does not track
+    // the parameter's identifier.
     by: ['code-name'],
   })
-  @ApiParam({ name: 'code-name', description: 'Tenant code name', type: String })
+  @ApiParam({ name: 'codeName', description: 'Tenant code name', type: String })
   @ApiResponse({ status: 404, description: 'Tenant not found' })
-  async fetchByCodeName(@Param('code-name') codeName: string): Promise<TenantResponse> {
+  async fetchByCodeName(@Param('codeName') codeName: string): Promise<TenantResponse> {
     const result = await this.tenantService.fetchByCodeName(codeName);
     // Guard runs AFTER the lookup because code-name is not the same as the
     // tenant's UUID — we need the loaded row's `id` to compare against the

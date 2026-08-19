@@ -37393,14 +37393,14 @@
         ]
       }
     },
-    "/api/v1/admin/tenants/code-name/{code}-name": {
+    "/api/v1/admin/tenants/code-name/{codeName}": {
       "get": {
         "operationId": "TenantController_fetchByCodeName",
         "parameters": [
           {
             "description": "Tenant code name",
             "in": "path",
-            "name": "code-name",
+            "name": "codeName",
             "required": true,
             "schema": {
               "type": "string"
