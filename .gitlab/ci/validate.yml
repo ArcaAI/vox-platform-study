@@ -161,6 +161,56 @@ env-drift-check:
     - !reference [.skip-on-dev-2-1, rules]
     - !reference [.rules-env-declarations, rules]
 
+# ── vox-node admin surface drift gate (TASK-773) ─────────────────────────────
+# The same shape as the three `generate-*-check` gates above, for
+# `@arcaai/vox-node`'s ~380-method `/api/v1/admin/**` surface.
+#
+# That surface is GENERATED from two committed artifacts — `apps/api/route-manifest.json`
+# (a Nest `ModulesContainer` walk: route existence, verb, path, `@RequiredSvcScopes`,
+# `@RequiresIfMatch`) cross-checked against `apps/api/openapi.json` (request/response
+# types from the DTOs). This gate re-runs the generator and fails on ANY difference,
+# which catches both directions of drift: a hand-edit to a generated module, and a
+# generated module that is stale because a route or DTO moved under it. Generation is
+# idempotent by construction — no timestamps, no environment values, total ordering
+# everywhere — so a clean tree produces a byte-identical result.
+#
+# Reconcile with `pnpm --filter @arcaai/vox-node gen:admin`. If the ROUTES changed
+# rather than the generator, re-emit the inputs first (`pnpm api:route-manifest`,
+# `pnpm api:openapi`) and commit those too.
+#
+# No database, no Prisma client and no gateway boot: the generator reads the two
+# committed JSON artifacts and writes TypeScript. That is the entire reason the
+# manifest is emitted by `apps/api` and checked in rather than walked here.
+
+generate-vox-node-admin-check:
+  stage: validate
+  extends: .node-base
+  needs:
+    - job: install-node
+      optional: true
+  script:
+    - pnpm --filter @arcaai/vox-node gen:admin:check
+  rules:
+    - !reference [.skip-on-dev-2-1, rules]
+    - !reference [.rules-always, rules]
+    - !reference [.rules-cicd-always, rules]
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+      changes:
+        paths:
+          - apps/api/openapi.json
+          - apps/api/route-manifest.json
+          - packages/vox-node-codegen/**/*
+          - packages/vox-node/src/resources/admin/**/*
+        compare_to: refs/heads/main
+    - if: $PIPELINE_TYPE == "dev"
+    - if: $PIPELINE_TYPE == "staging" || $PIPELINE_TYPE == "main" || $PIPELINE_TYPE == "feature"
+      changes:
+        - apps/api/openapi.json
+        - apps/api/route-manifest.json
+        - packages/vox-node-codegen/**/*
+        - packages/vox-node/src/resources/admin/**/*
+    - if: $PIPELINE_TYPE == "release_sdk"
+
 # ── Python linting (ruff) ───────────────────────────────────────────────────
 
 lint-python:

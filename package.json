@@ -56,6 +56,7 @@
     "api:lint": "turbo run lint --filter=@arcaai/api",
     "api:lint:fix": "turbo run lint:fix --filter=@arcaai/api",
     "api:openapi": "pnpm api:build && pnpm --filter @arcaai/api openapi",
+    "api:route-manifest": "pnpm api:build && pnpm --filter @arcaai/api route-manifest",
     "api:start": "pnpm --filter @arcaai/api start",
     "api:test": "turbo run test --filter=@arcaai/api",
     "api:test:cov": "pnpm --filter @arcaai/api test:cov",

@@ -28,6 +28,28 @@ export type {
   WaitForOptions,
 } from './resources';
 
+/**
+ * The service-account credential shape (TASK-773 Phase C). Exported HERE, not
+ * only from `core/`, because `HopeClientOptions.serviceAccount` is typed with
+ * it: without this line an integrator can construct the client but cannot
+ * NAME the type they are constructing it from — no `const creds:
+ * ServiceAccountCredentials = …` in their own config module, and no way to
+ * type a helper that returns one.
+ */
+export type { ServiceAccountCredentials } from './core/service-account-token';
+
+/**
+ * The `/api/v1/admin/**` surface (TASK-773): the hand-authored
+ * {@link AdminResource} base, the {@link AdminNamespace} that `hope.admin` is
+ * an instance of, and the 52 generated per-area resources.
+ *
+ * Five admin controllers are deliberately ABSENT and stay absent by owner
+ * decision — see `resources/admin/index.ts` for the table naming each decision.
+ */
+export * from './resources/admin';
+/** Request/response types for every generated admin method, derived from the gateway's DTOs. */
+export type * from './resources/admin/schemas';
+
 export {
   APIConnectionError,
   APITimeoutError,

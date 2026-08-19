@@ -1,11 +1,15 @@
 {
-  "name": "@arcaai/vox-node",
-  "version": "3.0.0",
-  "description": "HOPE server-side Node SDK \u2014 non-browser client for the HOPE gateway (summarization, consultations, jobs)",
+  "name": "@arcaai/vox-node-codegen",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Build-time generator for @arcaai/vox-node's /api/v1/admin/** resource surface (TASK-773) — never a dependency of the published SDK.",
   "type": "commonjs",
   "main": "./dist/index.js",
   "module": "./dist/index.mjs",
   "types": "./dist/index.d.ts",
+  "bin": {
+    "vox-node-codegen": "./dist/cli.js"
+  },
   "exports": {
     ".": {
       "import": {
@@ -35,32 +39,19 @@
     "lint": "eslint src",
     "lint:fix": "eslint src --fix",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run --passWithNoTests",
+    "test": "vitest run",
     "test:watch": "vitest",
-    "test:cov": "vitest run --coverage",
-    "check:exports": "attw --pack . && publint",
-    "gen:admin": "tsx ../vox-node-codegen/src/cli.ts",
-    "gen:admin:check": "tsx ../vox-node-codegen/src/cli.ts --check"
+    "test:cov": "vitest run --coverage"
   },
-  "peerDependencies": {
-    "@opentelemetry/api": "^1.9.1"
-  },
-  "peerDependenciesMeta": {
-    "@opentelemetry/api": {
-      "optional": true
-    }
+  "dependencies": {
+    "prettier": "^3.9.6"
   },
   "devDependencies": {
     "@arcaai/config-eslint": "workspace:*",
-    "@arcaai/vox-node-codegen": "workspace:*",
     "@arcaai/config-ts": "workspace:*",
-    "@arethetypeswrong/cli": "^0.18.5",
-    "@opentelemetry/api": "^1.9.1",
     "@types/node": "^26.2.0",
-    "publint": "^0.3.23",
     "rimraf": "^6.1.3",
     "tsup": "^8.5.1",
-    "tsx": "^4.23.12",
     "typescript": "^5.9.3",
     "vitest": "^4.1.10"
   },
@@ -68,15 +59,10 @@
     "arcaai",
     "hope",
     "vox",
-    "sdk",
-    "node",
-    "server"
+    "codegen",
+    "cli"
   ],
   "license": "MIT",
-  "publishConfig": {
-    "access": "restricted",
-    "registry": "https://npm.pkg.github.com"
-  },
   "repository": {
     "type": "git",
     "url": "git+https://github.com/ArcaAI/project-hope.git"

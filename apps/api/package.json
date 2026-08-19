@@ -13,6 +13,7 @@
     "clean": "rimraf dist *.tsbuildinfo",
     "nuke": "rimraf dist node_modules .turbo *.tsbuildinfo",
     "openapi": "NODE_ENV=production JWT_SECRET_KEY=offline-openapi-emit-placeholder DATABASE_URL=postgresql://openapi:openapi@127.0.0.1:1/openapi_offline DIRECT_URL=postgresql://openapi:openapi@127.0.0.1:1/openapi_offline REDIS_HOST=127.0.0.1 REDIS_PORT=1 node dist/scripts/emit-openapi.js",
+    "route-manifest": "NODE_ENV=production JWT_SECRET_KEY=offline-route-manifest-emit-placeholder DATABASE_URL=postgresql://openapi:openapi@127.0.0.1:1/openapi_offline DIRECT_URL=postgresql://openapi:openapi@127.0.0.1:1/openapi_offline REDIS_HOST=127.0.0.1 REDIS_PORT=1 node dist/scripts/emit-route-manifest.js",
     "lint": "eslint \"{src,tests}/**/*.ts\"",
     "lint:fix": "eslint \"{src,tests}/**/*.ts\" --fix",
     "typecheck": "tsc --noEmit",
