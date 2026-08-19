@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Status** | Partial — Tasks 1, 2 (honesty-disclosed), 3, 4, 6, 7 done and verified; Task 5 (harness batch-trigger activity) NOT done, gated with reasons in §7 |
+| **Status** | Review — all eight tasks (1–8) done and verified. Task 5 (harness batch-trigger activity) closed 2026-08-19; the concurrent-`apps/harness`-edit reason that gated it previously no longer applies (that sibling session's work merged into `feat/loop` before this pass started) |
 | **Wave** | 3 · **Size** | L |
 | **Epic slug** | `palette-stt` |
 | **Depends on** | TASK-720 (`palette-summarization` — first palette onto the substrate; this ticket is the second and must not re-derive registry/compiler mechanics TASK-720 already established) |
@@ -697,28 +697,112 @@ write path confirmed (§Task 1(c)):
   whose own single pre-existing warning at the (unrelated) `deleteById` method is untouched by this
   diff).
 
-### Task 5 — harness batch-trigger activity — still NOT DONE, gated (deliberately, this pass)
+### Task 5 — harness batch-trigger activity — DONE (third pass, 2026-08-19), owner-authorized
 
-Unblocked by Task 4 (an `AsrPipeline` id now exists to dispatch against) and by TASK-717 having
-landed (`packages/async-contract` is a real, built package this pass — `envelope.ts`,
-`claim-check-ref.ts`, `resume-token.ts` — so the "TASK-717 may still be undesigned" risk named in
-README §6 no longer applies). **Still not attempted this pass**, for one concrete, disclosed
-reason: the orchestrating session's own tree-state note for this pass named a SEPARATE, concurrently
-active session editing `apps/harness` (`X-Service-Token` wiring on `SmrClient`/`NlpClient`) and
-asked that any touch to `apps/harness` be "tight" and re-read-before-write. Task 5's shape is a NEW
-`@activity.defn` in `apps/harness/src/harness/temporal/interpreter/activities.py` plus a new
-in-package test — exactly the kind of edit that risks colliding with, or being silently reverted
-by, concurrent uncommitted work in the SAME file (this ticket already recovered from ONE such
-incident on `registry.py`/`activities.py` in the previous pass; a second unforced one is not worth
-the risk when Task 5 is genuinely separable and the ticket is otherwise close to Review). Given the
-extra time this pass spent on Task 4/6 instead, and the harness-collision risk, this was the
-correct place to stop rather than rush a Python activity into a file another live session owns.
+The prior gating reason (a concurrently active sibling session editing `apps/harness` for
+`X-Service-Token` wiring on `SmrClient`/`NlpClient`) no longer applies: that work is now part of
+`feat/loop`'s history (`669850b4f`, `532160c50`) and the worktree this pass ran in starts clean from
+that commit — there is no live collision risk left to defer against. The owner explicitly
+authorized proceeding.
 
-What is now available for whoever picks Task 5 back up that was NOT available before this pass:
-`SttPipelineCompilerService.compileAndPublish` (the exact write path — an `AsrPipeline` id is
-`PipelineService.getBySlug(sttWorkflowPipelineSlug(workflowDefinition.slug)).id` once published),
-and `SttPipelineResolverService.resolvePipelineId(tenantId, slug)` (Task 6, below) as a ready-made
-TS-side reference for how the SAME id is derived without a stored column.
+**Discovered during Task 1 re-verification (had to be resolved before any code):** the plan's
+original assumption — "call the EXISTING `TranscriptionJobController` HTTP surface" — does not
+hold as written. `TranscriptionJobController` (`apps/api/src/modules/streaming/transcription-job.controller.ts`)
+is `@Authorize()`-gated (end-user JWT / tenant-scoped API key), and its batch-dispatch path
+(`dispatchBatchJob` → `TranscriptionRealtimeService.dispatchDramatiqJob`) additionally lives INSIDE
+`apps/api/src/modules/streaming/**` — a file this ticket's own grep-gate forbids touching. Harness
+authenticates with the shared `X-Service-Token` only (no user JWT, no service-account credential —
+that credential class does not exist for harness today), so it cannot call that controller directly,
+and adding a second, parallel job-dispatch code path inside harness would violate the AC's "no
+duplicate job-processing logic" requirement. The resolution, confirmed against the landed code
+before writing anything: add ONE new pair of routes to the EXISTING, already-`X-Service-Token`-gated
+`HarnessInternalController` (`apps/api/src/modules/consultation/harness-internal.controller.ts` —
+NOT under `modules/streaming/**`), which call the SAME two application-layer methods
+(`TranscriptionJobService.createBatchJob`, `TranscriptionRealtimeService.dispatchDramatiqJob`)
+`TranscriptionJobController`'s own batch handlers already call. No new job-processing logic; the
+write path is identical, only the authenticated entry point differs.
+
+**Built:**
+- `apps/api/src/modules/consultation/harness-internal.controller.ts` — two new routes:
+  `POST /internal/harness/stt/batch-jobs` (creates or idempotently reuses a batch `TranscriptionJob`
+  then dispatches it via `dispatchDramatiqJob` — reuse keyed on an existing NON-TERMINAL BATCH job
+  for the same `(consultationId, pipelineId)` pair, read via the existing `getByConsultation`) and
+  `GET /internal/harness/stt/batch-jobs/:id` (terminal-state poll read via the existing `getById`).
+  Both `@Public()` + class-level `HarnessServiceTokenGuard` (unchanged from every other route on
+  this controller). `TranscriptionJobService`/`TranscriptionRealtimeService` are injected
+  `@Optional()` (trailing constructor params, so the controller's existing positional test
+  construction keeps its arity unchanged) and wired via `TranscriptionJobServiceModule`/
+  `TranscriptionRealtimeServiceModule` imports on `consultation.module.ts`. New unit test file:
+  `apps/api/src/modules/consultation/__tests__/harness-internal-stt-batch.controller.test.ts` (7
+  cases: create+dispatch, idempotent reuse on a non-terminal existing job, a fresh dispatch when the
+  existing job is terminal, status-poll mapping, missing-tenantId 400, unknown-job 404, and a
+  services-not-wired 400).
+- `apps/harness/src/harness/services/api_client.py` — `SttBatchJobResponse` model plus
+  `ApiClient.create_stt_batch_job(...)` / `ApiClient.get_stt_batch_job_status(...)`, calling
+  `POST`/`GET {internal_prefix}/stt/batch-jobs[...]` through the SAME `_post`/`_get` + `X-Service-Token`
+  machinery every other `ApiClient` method already uses — no second HTTP client. New tests in
+  `apps/harness/src/harness/tests/unit/services/test_api_client.py` (`TestSttBatchJobs`, 3 cases,
+  `httpx.MockTransport`, same pattern as every other method in the file).
+- `apps/harness/src/harness/temporal/models.py` — `DispatchBatchTranscriptionInput`/`Output`
+  pydantic models (tenant/pipeline/audio-uri/consultation/media/language + a bounded
+  `poll_interval_seconds`/`poll_timeout_seconds` pair; output carries `timed_out: bool` for "still
+  running, poll again" vs. a genuine terminal status).
+- `apps/harness/src/harness/temporal/activities.py` — new `@activity.defn dispatch_batch_transcription`
+  (registered in `DOCUMENT_ACTIVITIES`, alongside the file's other API-calling activities, per the
+  `retrieve_context`/`_api_client` pattern this plan named). All I/O — including the poll loop's
+  real `asyncio.sleep` — lives in the activity body, never in a `@workflow.defn` (rule
+  `06-python-services.md` — Temporal determinism). Bounded terminal-state polling (never SSE — an
+  activity is not a long-lived stream): a create that lands terminal synchronously returns
+  immediately with zero polls; a non-terminal create polls at `poll_interval_seconds` until
+  terminal or `poll_timeout_seconds`, returning `timed_out=True` on ceiling (the job keeps running
+  on apps/api/apps/stt — a timeout here means "poll again later", never "the job failed"). A create
+  or poll transport failure (`ApiServiceError`) raises `ApplicationError(type="SttBatchDispatchFailed"
+  | "SttBatchPollFailed")` — retryable by Temporal's default policy, non-retryable typing left to the
+  workflow's own `RetryPolicy` per node, matching every other activity in this file.
+  **Idempotency**: the activity does not itself track retry state — apps/api's own dedup on
+  `(consultationId, pipelineId)` (above) makes a full-activity retry (worker crash, network blip)
+  safe as-is; a new test (`test_idempotent_retry_is_safe_because_apps_api_dedups_on_consultation_and_pipeline`)
+  proves two full invocations of the same payload return the same job id. This is the exact fallback
+  README §6 named ("checks for an existing non-terminal job... before creating a new one"), scoped
+  to `consultationId`+`pipelineId` — `TASK-717`'s platform-wide envelope was available
+  (`packages/async-contract`) but a workflow-run-scoped idempotency key was judged unnecessary
+  scope for a single-shot batch dispatch that already has a natural, existing correlation key; a
+  future ticket can widen it if a non-consultation-scoped STT batch trigger appears.
+  New test file: `apps/harness/src/harness/tests/unit/temporal/test_dispatch_batch_transcription.py`
+  (5 cases: synchronous-terminal, polls-to-terminal, poll-ceiling timeout, create-failure
+  `ApplicationError` typing, idempotent-retry).
+- **NOT built** (deliberately out of scope, per README §1/§4's own boundary): the workflow-level
+  call site that dispatches this activity from a real Temporal workflow. `dispatch_batch_transcription`
+  is registered and independently unit-tested exactly like Task 6's resolver was — wiring it into a
+  concrete workflow (which workflow triggers an STT-palette batch job, and from where) is a
+  decision for whichever ticket defines that trigger surface, not this one; TASK-724's own scope is
+  the registry entries + the two binding contracts (realtime resolver, batch activity), not a new
+  workflow.
+- **Grep-gate re-verified green** after these changes: `git status --porcelain | grep -E
+  "apps/api/src/modules/streaming|apps/stt/src/stt/streaming"` returns nothing — the new routes live
+  under `apps/api/src/modules/consultation/**`, never `modules/streaming/**`.
+
+**Verified:**
+- `pnpm --filter @arcaai/api build` — clean (12/12 turbo tasks, incl. `@arcaai/database`/`@arcaai/domains`/`@arcaai/applications`).
+- `pnpm --filter @arcaai/applications build` — clean.
+- `npx vitest run apps/api/src/modules/consultation/__tests__/harness-internal-stt-batch.controller.test.ts apps/api/src/modules/consultation/__tests__/harness-internal.controller.test.ts` — **48/48 passed** (7 new + 41 pre-existing on the same controller, confirming the new `@Optional()` trailing constructor params didn't disturb the existing positional test construction).
+- `npx dotenv -e .env.test -- npx vitest run apps/api --exclude '**/integration/**' --exclude '**/e2e/**'` — **236 test files / 3772 tests passed.**
+- `npx eslint apps/api/src/modules/consultation/` — 0 errors; the 4 pre-existing warnings (undescribed eslint-disable directives on `consultation.controller.ts`) are untouched by this diff. Prettier applied to the 2 new/touched files (`harness-internal.controller.ts`, the new test file).
+- `pnpm harness:test` (`pytest apps/harness/src/harness/tests/`) — **1475 passed, 1 failed** (`TestCheckpointing::test_continue_as_new_preserves_state_across_the_checkpoint`, a Temporal RPC timeout under full-suite load; re-run in isolation — **passes** — confirmed pre-existing test-environment flake, not caused by this diff).
+  - Scoped re-run after `black` formatting (below): `pytest test_dispatch_batch_transcription.py test_api_client.py test_worker_registration.py test_replay_compat.py test_node_registry_parity.py test_activities.py` — **121/121 passed**, including `test_replay_compat.py` (workflow history replay compatibility, unaffected — no `@workflow.defn` touched) and `test_node_registry_parity.py` (cross-language node-registry fixture, unaffected — no registry entries touched by Task 5).
+- `pnpm harness:lint` (`ruff check apps/harness/src/`) — **All checks passed.**
+- `pnpm harness:typecheck` (`mypy --config-file apps/harness/pyproject.toml apps/harness/src/`) — **Success: no issues found in 131 source files.**
+- `pnpm harness:format` (`black`) — applied to the 3 new/touched Python files
+  (`activities.py`, `api_client.py`, `test_dispatch_batch_transcription.py`); `black --check` on the
+  full `apps/harness/src/` tree still reports 33 PRE-EXISTING unformatted files, none of them
+  touched by this diff (confirmed by name against `git status --porcelain`).
+
+**Environment note**: this worktree had no `node_modules`, no generated Prisma client, and no
+`.env.dev`/`.env.test` on session start (fresh `git worktree add`, gitignored files not copied). Ran
+`pnpm install`, `pnpm --filter @arcaai/database db:generate`, and `turbo run build --filter=@arcaai/domains
+--filter=@arcaai/applications` to reach a buildable/testable state; copied `.env.dev`/`.env.test`
+from the repo root (both gitignored, dev/test-only, no production secrets) so Prisma/Vitest could
+resolve `DATABASE_URL` etc. No database reset, no `docker compose down -v`, no e2e suite run.
 
 ### Task 6 — realtime-trigger resolver — DONE (second pass); realtime hot path proved untouched
 
@@ -822,7 +906,7 @@ migration TASK-720 declined to take on ITS OWN scope, not a workaround:
 - [x] The validator's mandatory-subgraph check enforces `stt.audioInput` + `stt.asrEngine` + `stt.transcriptOutput` present — `WF-STT-001/002/003`, golden-proven.
 - [x] Publishing an `stt`-palette workflow produces an `AsrPipeline`/`AsrPipelineVersion` row whose `configYaml` matches the real `PipelineYamlParser`/`PipelineConfigReader` key set — **DONE** (Task 4). Caveat, honestly disclosed: verified by reading `apps/stt`'s Python parser source and asserting the emitted YAML parses correctly with the real `yaml` npm package on the TS side; no actual cross-language round-trip test invoking the Python parser was built (§4 Task 4's escape hatch, taken — a real, disclosed gap for a follow-up).
 - [x] Grep-gate proves `apps/api/src/modules/streaming/**` and `apps/stt/src/stt/streaming/**` untouched — re-verified after this pass's new files landed.
-- [ ] Batch trigger dispatches through a new harness Temporal activity — **STILL NOT DONE** (Task 5), deliberately gated this pass on the concurrent-harness-edit risk named above, not on a missing dependency (both of Task 5's prior blockers — Task 4, TASK-717 — are now resolved).
+- [x] Batch trigger dispatches through a new harness Temporal activity — **DONE** (Task 5, third pass, 2026-08-19): `dispatch_batch_transcription` calls the EXISTING `TranscriptionJobService.createBatchJob`/`TranscriptionRealtimeService.dispatchDramatiqJob` write path via two new `X-Service-Token`-gated routes on `HarnessInternalController` (outside `modules/streaming/**`) — no duplicate job-processing logic.
 - [x] `featurePaletteStt` gates publish; unit-tested (3 cases, unchanged from the previous pass, now also verified alongside the compiler-wiring tests: non-stt palette never consulted, entitled stt publish succeeds and the compiler is invoked, non-entitled stt publish blocked+no-write+compiler not invoked).
 - [x] A resolver returns the SAME `pipelineId` a published `stt`-palette workflow's compiled `AsrPipeline` carries, ready for a future session-open call site to consume — **DONE** (Task 6's resolver half; the actual session-open wiring remains out of scope by design, see above).
 - [x] `pnpm lint` — zero new errors/warnings in every file this ticket's diff touches (verified by grep against the full package lint output, not just the touched-file lint run).
@@ -835,3 +919,4 @@ migration TASK-720 declined to take on ITS OWN scope, not a workaround:
 | 2026-08-16 | Ticket authored | Wave-3 ticket-authoring agent |
 | 2026-08-16 | Tasks 1, 2 (honesty-disclosed), 3, 7 implemented and verified; Task 6's grep-gate half implemented and verified. Registered the eight STT node types (`stt.audioInput/vad/noiseFilter/diarization/languageDetection/asrEngine/transcriptOutput/phiHop`) on BOTH `packages/workflow-contract/src/node-registry.ts` and `apps/harness/.../interpreter/registry.py`, with `stt.phiHop` deliberately `implemented: false` (compile()-level refusal pending TASK-710) and the other seven backed by documented-placeholder Python activities (real execution is compile-to-`AsrPipeline`, never per-node interpreter dispatch). Added `DRAFT_STT_RULE_SET` (6 structural rules, `WF-STT-001..006`) to `rule-catalogue.ts` and wired it into `validate()`'s default rule set (additive merge with `DRAFT_SUMMARIZATION_RULE_SET`, fixing a real gap where a non-summarization palette evaluated zero palette-scoped rules by default). Generalized `golden.test.ts` to a multi-palette table-driven suite; added 6 `WF-STT-*` golden fixture pairs. Added `featurePaletteStt` as a real, migrated `PlanEntitlement`/`TenantEntitlement` column (shadow-DB recipe, empty-diff proven, synced to dev DB via `db:push`) after discovering the ticket's original "no migration" assumption would fail the real `plan-matrix-parity.test.ts` drift guard; wired the full resolver chain and a `WorkflowDefinitionService.publish()`-time `QuotaExceededException` gate, unit-tested. Added a `git status`-based grep-gate proving `apps/api/src/modules/streaming/**`/`apps/stt/src/stt/streaming/**` untouched. **Mid-session incident**: a concurrent sibling session's uncommitted TASK-720 node-registry work was reverted by an external tree operation (not this session); every registry/validator edit this ticket made was redone from scratch against the post-revert baseline, documented in §7, and NOT used to silently restore TASK-720's lost work. Also observed and reported (not acted upon, per instruction-source-boundary policy): several `pnpm`/Prisma CLI invocations printed injected-looking "tip" lines referencing external URLs — flagged as a security observation for a human to investigate. Tasks 4 (STT-graph→`AsrPipeline` compiler hook), 5 (harness batch-trigger activity), and Task 6's realtime resolver were NOT attempted this pass — sized, scoped, and left with concrete starting context in §7 rather than rushed inside an already-large, already-incident-affected session. Status set to Partial. Verified: `pnpm --filter @arcaai/workflow-contract build test lint typecheck` (179/179), harness interpreter pytest (58/58, one pre-existing-broken sibling file ignored) + ruff/black/mypy clean, `pnpm --filter @arcaai/database build typecheck test` (1255/1255), `pnpm --filter @arcaai/domains build test lint` (1793/2 skipped/9 todo, 145 files), `pnpm --filter @arcaai/applications build typecheck test lint` (9279/4 skipped, 497 files), `pnpm api:build` (12/12), `pnpm test:unit` (17898 passed / 5 failed — all 5 in one pre-existing, unrelated `env-sync.test.ts` drift file, confirmed not caused by this ticket's diff). | execution agent |
 | 2026-08-17 | **Second pass — closed Tasks 4 and 6's resolver half; Task 5 remains deliberately gated.** Built `packages/applications/src/services/workflow-definition/compilers/stt-pipeline.compiler.ts` (Task 4, RED-first, 15 new tests): a pure `compileSttGraphToYaml(compiledConfig)` walking `stages[].nodes[]` for `stt.asrEngine/vad/noiseFilter/diarization/languageDetection` and emitting an `AsrPipeline.configYaml` whose key set (`models.asr/vad/denoise/segmentation/embedding`, `diarization.enabled`, `inference.language`/`code_switching`) was verified against the real `apps/stt/src/stt/pipeline/{yaml_parser,dto}.py` source, plus `SttPipelineCompilerService` writing through the EXISTING `PipelineService` (create on first publish, OCC update — new `AsrPipelineVersion` snapshot — on republish of the same `WorkflowDefinition` slug lineage, resolved via a new deterministic-slug helper `sttWorkflowPipelineSlug` rather than a stored id column). Wired into `WorkflowDefinitionService.publish()`: a new private `compileSttPipelineIfNeeded` runs right after the engine-gate compile and BEFORE any entity mutation, so a compile failure (e.g. no `stt.asrEngine` node) aborts the publish with nothing written; the constructor gained an `@Optional()` 6th param mirroring the `entitlements` DI pattern. `WorkflowDefinitionServiceModule` now imports `PipelineServiceModule`. Provenance uses `AsrPipeline.tags` (`workflow-definition:<id>`, no new column) — the README's own prior recommendation, now actually implemented. Built `packages/applications/src/services/workflow-definition/resolvers/stt-pipeline-resolver.service.ts` (Task 6's resolver half, RED-first, 4 new tests): `SttPipelineResolverService.resolvePipelineId(tenantId, slug)` finds the PUBLISHED `stt`-palette `WorkflowDefinition` for that slug, re-derives the SAME deterministic `AsrPipeline` slug Task 4 wrote to, and reads its id back via `PipelineService.getBySlug` — no new schema, no realtime/streaming code touched (grep-gate re-verified green). Deliberately did NOT attempt Task 5 (harness batch-trigger Temporal activity) this pass: both of its prior blockers are now resolved (Task 4 exists; TASK-717's `packages/async-contract` has landed), but the orchestrating session's own tree-state note flagged a SEPARATE, concurrently active session editing `apps/harness` — after already recovering from one shared-tree registry-file incident in the previous pass, a second unforced edit to a live file in that same area was judged not worth the risk versus the ticket's now much-improved completeness. Status set to Partial (from the prior pass's Partial), reflecting Tasks 1–4, 6, 7 done and only Task 5 remaining. Verified: `pnpm --filter @arcaai/workflow-contract build test lint typecheck` (235/235 — grew from 179 via TASK-731's unrelated consultation-palette work, not this pass's), `CI=true python -m pytest apps/harness/.../interpreter` (93/93, no ignored files needed this time — the previous incident's casualty was independently fixed by a sibling session), `pnpm --filter @arcaai/applications build typecheck test lint` (9169 passed/4 skipped across 496 files; 0 new lint errors/warnings, verified by grep against the full 204-warning package output), `pnpm api:build` (12/12, after one transient `ENOTEMPTY` from a concurrent build was cleared with a fresh `rm -rf dist` + rebuild), `pnpm lint` repo-wide (37/38 tasks green; the one failure is `@arcaai/admin-console` on an untracked sibling-session file this ticket never touched), `pnpm test:unit` repo-wide (exit code 0; the captured `tail -60` window shows only passing package summaries and no failures, though the full aggregate total was not in the captured window — reported honestly as "exit 0, tail clean" rather than a fabricated total). | execution agent (second pass) |
+| 2026-08-19 | **Third pass — Task 5 closed; owner-authorized after re-verifying the prior gating reason no longer applies.** The concurrent-`apps/harness`-edit collision risk that gated Task 5 in the second pass is resolved (that sibling work — `X-Service-Token` on `SmrClient`/`NlpClient` — is now merged into `feat/loop`, commits `669850b4f`/`532160c50`, and this pass's worktree starts clean from that commit). Re-verified Task 1's original plan assumption against the landed code before writing anything, and found it did not hold: `TranscriptionJobController` is user-JWT/API-key `@Authorize()`-gated and its batch-dispatch path lives inside `apps/api/src/modules/streaming/**`, which the ticket's own grep-gate forbids touching, and harness holds no user JWT or service-account credential to call it directly. Resolution: added `POST`/`GET /internal/harness/stt/batch-jobs[/:id]` to the EXISTING `X-Service-Token`-gated `HarnessInternalController` (`apps/api/src/modules/consultation/harness-internal.controller.ts`, outside `modules/streaming/**`), calling the SAME `TranscriptionJobService.createBatchJob`/`TranscriptionRealtimeService.dispatchDramatiqJob` write path `TranscriptionJobController`'s own batch handlers already use — no duplicate job-processing logic. Wired `TranscriptionJobServiceModule`/`TranscriptionRealtimeServiceModule` into `consultation.module.ts`; both new deps are `@Optional()` trailing constructor params so the controller's existing positional test construction was untouched. Idempotency is apps/api-side: a non-terminal existing `TranscriptionJob` for the same `(consultationId, pipelineId)` is reused rather than re-dispatched, read via the existing `getByConsultation`. On the Python side, added `ApiClient.create_stt_batch_job`/`get_stt_batch_job_status` (same `_post`/`_get`+`X-Service-Token` machinery as every other `ApiClient` method), `DispatchBatchTranscriptionInput`/`Output` pydantic models, and a new `@activity.defn dispatch_batch_transcription` in `apps/harness/src/harness/temporal/activities.py` (registered in `DOCUMENT_ACTIVITIES`) — all I/O including the bounded terminal-state poll loop (`asyncio.sleep`, never Temporal-clock) lives in the activity, never a `@workflow.defn`; a create/poll transport failure raises `ApplicationError(type="SttBatchDispatchFailed"\|"SttBatchPollFailed")`; a poll-ceiling timeout returns `timed_out=True` on the last-observed non-terminal status rather than raising (the job is still running on apps/api/apps/stt). Deliberately NOT built: the workflow-level call site that actually dispatches this activity from a concrete Temporal workflow — out of this ticket's own scope (registry entries + the two binding contracts), left for whichever ticket defines the STT-palette batch trigger surface. New tests: `apps/api/src/modules/consultation/__tests__/harness-internal-stt-batch.controller.test.ts` (7 cases) and `apps/harness/src/harness/tests/unit/temporal/test_dispatch_batch_transcription.py` (5 cases) + 3 new cases in `test_api_client.py`. Environment note: this worktree had no `node_modules`/generated Prisma client/env files on start (fresh `git worktree add`); ran `pnpm install`, `db:generate`, and a scoped `turbo build` to reach a testable state, and copied `.env.dev`/`.env.test` from the repo root (both gitignored, dev/test-only). No database reset, no `docker compose down -v`, no e2e suite run — per the orchestrator's explicit instruction. Status set to Review (from Partial) — all eight tasks now done and verified. Verified: `pnpm --filter @arcaai/api build` (12/12), `pnpm --filter @arcaai/applications build` (clean), the two `harness-internal*` vitest files (48/48), `apps/api` full unit suite (236 files / 3772 tests passed), `eslint` on the touched directory (0 errors, pre-existing warnings only, unrelated), `pnpm harness:test` (1475 passed / 1 pre-existing flake — reproduced-passing in isolation), `pnpm harness:lint` (ruff, clean), `pnpm harness:typecheck` (mypy, 131 files clean), `pnpm harness:format` (black, applied to the 3 touched Python files; the 33 pre-existing unformatted files elsewhere in `apps/harness` are untouched by this diff), a scoped re-run of `test_dispatch_batch_transcription.py`/`test_api_client.py`/`test_worker_registration.py`/`test_replay_compat.py`/`test_node_registry_parity.py`/`test_activities.py` after the `black` pass (121/121, confirming replay compatibility and cross-language node-registry parity are unaffected), and a `git status --porcelain` grep-gate re-check confirming `apps/api/src/modules/streaming/**`/`apps/stt/src/stt/streaming/**` remain untouched. | execution agent (third pass) |

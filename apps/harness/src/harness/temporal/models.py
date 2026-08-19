@@ -706,6 +706,52 @@ class RetrievedContext(BaseModel):
     prompt_block: str = ""
 
 
+class DispatchBatchTranscriptionInput(BaseModel):
+    """Inputs for the ``dispatch_batch_transcription`` activity (TASK-724 Task 5).
+
+    ``pipeline_id`` is the resolved ``AsrPipeline`` id a published STT
+    `WorkflowDefinition` compiled to (TASK-724 Task 4's
+    ``SttPipelineCompilerService.compileAndPublish`` write path, or
+    ``SttPipelineResolverService.resolvePipelineId`` re-deriving the same id).
+    ``consultation_id`` doubles as the idempotency correlation key: apps/api
+    reuses an existing non-terminal BATCH job for the same
+    (``consultation_id``, ``pipeline_id``) pair instead of dispatching a second
+    one, so a retried/re-delivered activity attempt is safe as-is.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    tenant_id: str
+    pipeline_id: str
+    audio_uri: str
+    consultation_id: str | None = None
+    media_id: str | None = None
+    language: str | None = None
+    # Bounded terminal-state poll. Platform-capped ("tenants tighten, never
+    # exceed" — design.md); the activity itself owns the ceiling, never Temporal's
+    # own StartToClose (which would abandon the dispatched job mid-transcription
+    # rather than surface a clean timeout).
+    poll_interval_seconds: float = 5.0
+    poll_timeout_seconds: float = 900.0
+
+
+class DispatchBatchTranscriptionOutput(BaseModel):
+    """Output of ``dispatch_batch_transcription``: the terminal job state."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    job_id: str
+    status: str
+    progress: int = 0
+    error_message: str | None = None
+    error_code: str | None = None
+    # True when the poll ceiling was hit before the job reached a terminal
+    # state — the job is still QUEUED/PROCESSING on apps/api, not failed; the
+    # caller decides whether to keep polling in a follow-up activity or
+    # surface a timeout to the workflow.
+    timed_out: bool = False
+
+
 class RunSensorsInput(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
