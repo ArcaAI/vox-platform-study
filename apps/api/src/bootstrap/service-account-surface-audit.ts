@@ -54,6 +54,7 @@ import {
   SERVICE_ACCOUNT_SCOPE_REGISTRY,
   SKIP_AUTH_KEY,
   API_KEY_SCOPE_REGISTRY,
+  ADMIN_PLANE_PRE_CONVENTION_SVC_SCOPES,
   STANDALONE_FEATURE_SVC_SCOPES,
   resolveServiceAccountImpliedPermissions,
   toServiceAccountScope,
@@ -194,13 +195,22 @@ export function auditNoInternalControllerDeclaresSvcScopes(app: INestApplication
  * Assertion D — no orphan scopes, no ungated admin areas, no ability-less scope.
  *
  * The registry DERIVES `svc:admin:<area>` from every concrete `admin:<area>`
- * scope, and (TASK-767) `svc:<feature>` from each named standalone business
- * scope, so the first two checks normally hold by construction. They are
+ * scope, (TASK-767) `svc:<feature>` from each named standalone business scope,
+ * and (TASK-773 / O-1) `svc:<area>` from each admin-plane area whose gating
+ * scope predates the `admin:<area>` convention — today just
+ * `webhook:event:write` at `admin/webhooks`. The first two checks normally hold
+ * by construction. They are
  * asserted anyway because "holds by construction" is a property of today's
  * `buildRegistry()`: the day someone hand-adds a `svc:*` entry, this is what
  * catches it.
  *
- * The THIRD check is TASK-767's addition and it pins a different failure —
+ * Each non-admin family is checked against its OWN closed source list rather
+ * than against their union-as-a-blob, so a `svc:` scope that belongs to neither
+ * still fails the boot with the name of the constant it should have been
+ * declared in. That separation is the point: it is what stops "somewhere in a
+ * sources list" becoming the justification for a machine grant.
+ *
+ * The LAST check is TASK-767's addition and it pins a different failure —
  * the one the TASK-766 seed note calls out. `hasServiceAccountScope` is pure
  * string matching, so a registered scope carrying NO implied ability still
  * satisfies `enforceServiceAccountScopes`, while `serviceAccountPolicyRules`
@@ -213,23 +223,28 @@ export function auditSvcScopeCoverage(): void {
   const adminScopes = Object.keys(API_KEY_SCOPE_REGISTRY).filter((s) => s.startsWith('admin:') && !s.endsWith(':*'));
   const svcScopes = Object.keys(SERVICE_ACCOUNT_SCOPE_REGISTRY).filter((s) => !s.endsWith(':*'));
   const svcAdminScopes = svcScopes.filter((s) => s.startsWith(toServiceAccountScope('admin:')));
-  const svcStandaloneScopes = svcScopes.filter((s) => !s.startsWith(toServiceAccountScope('admin:')));
+  const svcNonAdminScopes = svcScopes.filter((s) => !s.startsWith(toServiceAccountScope('admin:')));
 
   const uncovered = adminScopes.filter((s) => !SERVICE_ACCOUNT_SCOPE_REGISTRY[toServiceAccountScope(s)]);
   const orphans = svcAdminScopes.filter((s) => !adminScopes.includes(s.slice('svc:'.length)));
-  // The standalone family is closed: exactly the declared sources, nothing else.
+  // Both non-admin families are closed: exactly the declared sources, nothing else.
   const missingStandalone = STANDALONE_FEATURE_SVC_SCOPES.filter((s) => !SERVICE_ACCOUNT_SCOPE_REGISTRY[s]);
-  const unexpectedStandalone = svcStandaloneScopes.filter((s) => !STANDALONE_FEATURE_SVC_SCOPES.includes(s));
+  const missingPreConvention = ADMIN_PLANE_PRE_CONVENTION_SVC_SCOPES.filter((s) => !SERVICE_ACCOUNT_SCOPE_REGISTRY[s]);
+  const declaredNonAdmin = new Set([...STANDALONE_FEATURE_SVC_SCOPES, ...ADMIN_PLANE_PRE_CONVENTION_SVC_SCOPES]);
+  const unexpectedNonAdmin = svcNonAdminScopes.filter((s) => !declaredNonAdmin.has(s));
   const abilityless = Object.keys(SERVICE_ACCOUNT_SCOPE_REGISTRY).filter((s) => resolveServiceAccountImpliedPermissions(s).length === 0);
 
   const problems: string[] = [];
   if (uncovered.length > 0) problems.push(`admin areas with no svc:* scope: ${uncovered.join(', ')}`);
   if (orphans.length > 0) problems.push(`svc:admin:* scopes mapping to no live admin area: ${orphans.join(', ')}`);
   if (missingStandalone.length > 0) problems.push(`declared standalone-feature scopes missing from the registry: ${missingStandalone.join(', ')}`);
-  if (unexpectedStandalone.length > 0)
+  if (missingPreConvention.length > 0)
+    problems.push(`declared admin-plane pre-convention scopes missing from the registry: ${missingPreConvention.join(', ')}`);
+  if (unexpectedNonAdmin.length > 0)
     problems.push(
-      `non-admin svc:* scopes not declared in STANDALONE_FEATURE_SCOPE_SOURCES: ${unexpectedStandalone.join(', ')}. ` +
-        `Add the source scope there so the ability mapping is derived, never hand-written.`,
+      `non-admin svc:* scopes declared in neither STANDALONE_FEATURE_SCOPE_SOURCES nor ADMIN_PLANE_PRE_CONVENTION_SCOPE_SOURCES: ${unexpectedNonAdmin.join(', ')}. ` +
+        `Add the source scope to the family it actually belongs to — standalone BUSINESS-plane features, or an ADMIN-plane area whose gating scope ` +
+        `predates the admin:<area> convention — so the ability mapping is derived, never hand-written.`,
     );
   if (abilityless.length > 0)
     problems.push(
@@ -238,7 +253,7 @@ export function auditSvcScopeCoverage(): void {
     );
 
   if (problems.length > 0) {
-    throw new Error(`TASK-762/767: refused to start — svc:* scope coverage is broken:\n${problems.map((p) => `  - ${p}`).join('\n')}`);
+    throw new Error(`TASK-762/767/773: refused to start — svc:* scope coverage is broken:\n${problems.map((p) => `  - ${p}`).join('\n')}`);
   }
 }
 
@@ -388,10 +403,13 @@ export function auditServiceAccountReachableRoutesAreDeclared(app: INestApplicat
  * ─── Deliberately NOT covered ───────────────────────────────────────────────
  *
  * Three `admin/`-prefixed controllers had no `admin:*` scope to renamespace and
- * are absent from the fixture pending an owner decision: `WebhookController`
- * (`admin/webhooks`, gated by `webhook:event:write` — a different scope family),
- * `MonitoringController` and `AdminHealthServicesController` (ability-gated
- * only). Three more are machine-CLOSED by owner decision D-3 and must never
+ * stay absent from the fixture, which records the 64-controller sweep only.
+ * Owner decision **O-1** (2026-08-19) settled them separately: `WebhookController`
+ * (`admin/webhooks`) is OPEN, declaring `svc:webhook:event:write` from the
+ * pre-convention family (`ADMIN_PLANE_PRE_CONVENTION_SCOPE_SOURCES`, reconciled
+ * by assertion D); `MonitoringController` and `AdminHealthServicesController`
+ * are CLOSED with `@ForbidServiceAccount()`. Three more are machine-CLOSED by
+ * owner decision D-3 and must never
  * appear here: `ServiceAccountController` (no self-replication),
  * `AdminImpersonationController`, `ConsentGrantController`. Because this audit
  * is driven ENTIRELY by the fixture's rows, all six are ignored by construction

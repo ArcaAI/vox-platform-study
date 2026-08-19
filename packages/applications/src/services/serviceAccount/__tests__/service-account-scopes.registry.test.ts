@@ -16,6 +16,8 @@
 import { describe, it, expect } from 'vitest';
 import { API_KEY_SCOPE_REGISTRY, isValidScope } from '../../apiKey/apikey-scopes.registry';
 import {
+  ADMIN_PLANE_PRE_CONVENTION_SCOPE_SOURCES,
+  ADMIN_PLANE_PRE_CONVENTION_SVC_SCOPES,
   SERVICE_ACCOUNT_SCOPE_REGISTRY,
   STANDALONE_FEATURE_SCOPE_SOURCES,
   STANDALONE_FEATURE_SVC_SCOPES,
@@ -39,10 +41,10 @@ describe('SERVICE_ACCOUNT_SCOPE_REGISTRY', () => {
     for (const adminScope of adminScopes) {
       expect(SERVICE_ACCOUNT_SCOPE_REGISTRY[toServiceAccountScope(adminScope)], `no svc:* scope covers ${adminScope}`).toBeDefined();
     }
-    // …and nothing beyond them, apart from the two wildcards and the TASK-767
-    // standalone-feature family.
+    // …and nothing beyond them, apart from the two wildcards, the TASK-767
+    // standalone-feature family and the TASK-773 pre-convention family.
     const nonWildcard = Object.keys(SERVICE_ACCOUNT_SCOPE_REGISTRY).filter((s) => !s.endsWith(':*'));
-    expect(nonWildcard.length).toBe(adminScopes.length + STANDALONE_FEATURE_SVC_SCOPES.length);
+    expect(nonWildcard.length).toBe(adminScopes.length + STANDALONE_FEATURE_SVC_SCOPES.length + ADMIN_PLANE_PRE_CONVENTION_SVC_SCOPES.length);
   });
 
   it('every non-wildcard scope declares at least one implied permission (no fail-open ceiling)', () => {
@@ -136,6 +138,91 @@ describe('STANDALONE_FEATURE_SVC_SCOPES (TASK-767)', () => {
     expect(hasServiceAccountScope(['svc:stt:stream:write'], 'svc:consultation:report:write')).toBe(false);
     expect(hasServiceAccountScope(['svc:consultation:report:write'], 'svc:stt:transcription:write')).toBe(false);
     expect(hasServiceAccountScope(['svc:stt:transcription:write'], 'svc:admin:user:write')).toBe(false);
+  });
+});
+
+/**
+ * TASK-773 (owner decision O-1) — the admin-plane PRE-CONVENTION family.
+ *
+ * `WebhookController` sits at `admin/webhooks` but is gated by
+ * `webhook:event:write`, a scope minted before the `admin:<area>` convention
+ * existed. The `svc:admin:*` derivation cannot see it, so opening the area to
+ * machines needs its own DERIVED family — kept separate from
+ * `STANDALONE_FEATURE_SCOPE_SOURCES` (business plane) so neither constant's
+ * name lies about what it holds, and separate from the `svc:admin:*` prefix so
+ * that wildcard's meaning does not silently widen.
+ *
+ * The three properties asserted here are exactly the ones that would break
+ * quietly: membership, disjointness from the API-key registry, and a NON-EMPTY
+ * ability resolution (the TASK-766 trap — a scope that passes the string guard
+ * and is then refused by CASL).
+ */
+describe('ADMIN_PLANE_PRE_CONVENTION_SVC_SCOPES (TASK-773 / O-1)', () => {
+  it('every declared source is a real API-key scope — the family is DERIVED, never invented', () => {
+    for (const source of ADMIN_PLANE_PRE_CONVENTION_SCOPE_SOURCES) {
+      expect(API_KEY_SCOPE_REGISTRY[source], `${source} is not an API-key scope`).toBeDefined();
+    }
+  });
+
+  it('holds exactly the webhook admin area O-1 opened', () => {
+    expect([...ADMIN_PLANE_PRE_CONVENTION_SCOPE_SOURCES]).toEqual(['webhook:event:write']);
+    expect([...ADMIN_PLANE_PRE_CONVENTION_SVC_SCOPES]).toEqual(['svc:webhook:event:write']);
+  });
+
+  it('each one is registered and implies EXACTLY what its API-key source implies', () => {
+    for (const source of ADMIN_PLANE_PRE_CONVENTION_SCOPE_SOURCES) {
+      const svcScope = toServiceAccountScope(source);
+      expect(isValidServiceAccountScope(svcScope), `${svcScope} must be a registry member`).toBe(true);
+      expect(resolveServiceAccountImpliedPermissions(svcScope)).toEqual(API_KEY_SCOPE_REGISTRY[source]!.implies);
+    }
+  });
+
+  it('resolves to a NON-EMPTY ability set on both halves (boot audit D, TASK-766 trap)', () => {
+    for (const svcScope of ADMIN_PLANE_PRE_CONVENTION_SVC_SCOPES) {
+      expect(resolveServiceAccountImpliedPermissions(svcScope).length, `${svcScope} grants nothing`).toBeGreaterThan(0);
+      expect(serviceAccountPolicyRules([svcScope])).toEqual([{ action: 'manage', subject: 'Webhook' }]);
+    }
+  });
+
+  it('is DISJOINT from the API-key registry in both directions', () => {
+    for (const source of ADMIN_PLANE_PRE_CONVENTION_SCOPE_SOURCES) {
+      expect(isValidScope(toServiceAccountScope(source)), `${toServiceAccountScope(source)} must NOT be an API-key scope`).toBe(false);
+      expect(isValidServiceAccountScope(source), `${source} must NOT be a service-account scope`).toBe(false);
+    }
+  });
+
+  it('is disjoint from the standalone-feature family — one scope, one family, one justification', () => {
+    for (const svcScope of ADMIN_PLANE_PRE_CONVENTION_SVC_SCOPES) {
+      expect(STANDALONE_FEATURE_SVC_SCOPES).not.toContain(svcScope);
+    }
+  });
+
+  it('svc:admin:* does NOT reach it — the admin wildcard means the admin: PREFIX, not the admin plane', () => {
+    // The deliberate consequence of keeping the families separate: a machine
+    // identity holding `svc:admin:*` still cannot write webhooks. The scope is
+    // granted explicitly or not at all, which is the non-widening property the
+    // registry header exists to protect.
+    for (const svcScope of ADMIN_PLANE_PRE_CONVENTION_SVC_SCOPES) {
+      expect(svcScope.startsWith('svc:admin:')).toBe(false);
+      expect(hasServiceAccountScope(['svc:admin:*'], svcScope), `svc:admin:* must not reach ${svcScope}`).toBe(false);
+    }
+  });
+
+  it('svc:* DOES reach it — the unrestricted platform wildcard is unrestricted', () => {
+    for (const svcScope of ADMIN_PLANE_PRE_CONVENTION_SVC_SCOPES) {
+      expect(hasServiceAccountScope(['svc:*'], svcScope)).toBe(true);
+    }
+  });
+
+  it('holding it reaches no other area', () => {
+    expect(hasServiceAccountScope(['svc:webhook:event:write'], 'svc:admin:user:write')).toBe(false);
+    expect(hasServiceAccountScope(['svc:webhook:event:write'], 'svc:stt:stream:write')).toBe(false);
+    expect(hasServiceAccountScope(['svc:admin:user:write'], 'svc:webhook:event:write')).toBe(false);
+  });
+
+  it('the reserved read twin is NOT minted — deny-by-default, silence is a refusal', () => {
+    expect(isValidServiceAccountScope('svc:webhook:event:read')).toBe(false);
+    expect(isValidServiceAccountScope('svc:webhook:*')).toBe(false);
   });
 });
 

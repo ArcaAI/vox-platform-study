@@ -3,7 +3,7 @@ import { Controller, Get, Inject, Logger, NotFoundException, Param } from '@nest
 import { ApiBearerAuth, ApiOperation, ApiParam, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { HttpService } from '@nestjs/axios';
 import { Throttle } from '@nestjs/throttler';
-import { CanAny, ForbidApiKey } from '../../decorators';
+import { CanAny, ForbidApiKey, ForbidServiceAccount } from '../../decorators';
 import { redactTopology } from '../../filters/downstream-error';
 
 interface DownstreamService {
@@ -63,6 +63,17 @@ interface ServiceProbeResult {
 // "admin plane, therefore JWT-only" rather than "undeclared, therefore
 // closed" — so this comment is expected to be replaced, not the decorator.
 @ForbidApiKey()
+// SVC-NOTE (TASK-773, owner decision O-1) — CLOSED to the machine class.
+// This is a positive decision about the surface, not the "undeclared, therefore
+// closed" default the API-key note above records. A downstream-probe fan-out is
+// operator telemetry a human reads on the monitoring screen to answer "is the
+// platform healthy right now" — the payload is deliberately sanitised for that
+// audience and carries no rows an integration could act on. It is also a
+// 4-6-call outbound SSRF amplifier (hence the throttle), which is the last
+// surface to hand to a credential that can be driven in a loop. So
+// deny-by-default stands and the area is deliberately absent from the generated
+// SDK surface. Re-opening it is a new owner decision, not a code-review call.
+@ForbidServiceAccount()
 export class AdminHealthServicesController {
   private readonly logger = new Logger(AdminHealthServicesController.name);
   private readonly downstreamServices: DownstreamService[];
