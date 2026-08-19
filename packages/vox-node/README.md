@@ -1,8 +1,9 @@
 # @arcaai/vox-node
 
 The HOPE **server-side Node SDK** — a typed client for the HOPE gateway's
-summarization and consultation-summary surfaces, for backend engineers who
-need to call HOPE from a Node service, script, or worker.
+summarization and consultation-summary surfaces, plus the full **administration
+plane** (`hope.admin.*`, 52 areas), for backend engineers who need to call HOPE
+from a Node service, script, or worker.
 
 ## What this is, and what it is NOT
 
@@ -72,12 +73,25 @@ runnable version.
 
 ## Auth
 
-Every request needs one of:
+The SDK supports **two credential classes**, and which one you hold decides
+which half of the platform you can reach. Pick one — supplying both throws at
+construction, because the gateway rejects a request carrying two.
 
-- **`apiKey`** — sent as `X-API-Key`. This is the default and expected path
-  for a server-side integration; the gateway's `UnifiedAuthGuard` binds the
-  request's tenant from the key itself, so a Node service needs nothing else
-  (no browser session, no stream tickets).
+| | **API key** | **Service account** |
+|---|---|---|
+| Option | `apiKey` | `serviceAccount` |
+| Header | `X-API-Key` | `X-Service-Account-Token` |
+| Reaches the business plane | yes | yes, for the standalone features |
+| Reaches `/admin/*` | **never** | **yes** — this is the only way |
+| Issued by | a tenant admin | a **platform** super-admin |
+| Shape | one long-lived secret | `clientId` + `clientSecret`, exchanged for a short-lived token |
+
+### API key
+
+Sent as `X-API-Key`. The expected path for ordinary server-side work; the
+gateway's `UnifiedAuthGuard` binds the request's tenant from the key itself, so
+a Node service needs nothing else (no browser session, no stream tickets).
+
 - **`tenantId`** — sent as `X-Tenant-Id`, on top of `apiKey`. Only meaningful
   for **super-admin** API keys, which are not bound to a single tenant; a
   tenant-scoped key ignores this header (its own tenant always wins).
@@ -89,6 +103,51 @@ const hope = new HopeClient({
   // tenantId: process.env.HOPE_TENANT_ID, // super-admin keys only
 });
 ```
+
+An API key **cannot reach `/admin/*` under any scope**, including `*`. That is
+policy, not an oversight: every admin controller carries `@ForbidApiKey()`,
+which is checked *before* the scope check, and a boot audit fails the gateway's
+startup if an admin route ever declares an API-key scope again. Use a service
+account.
+
+### Service account
+
+The platform's machine identity, and the only credential that reaches the
+administration plane. You hold a `clientId` and a `clientSecret`; the SDK
+exchanges them at `POST /auth/service-token` for an opaque, short-lived token
+(~15 min) and presents it as `X-Service-Account-Token`.
+
+```ts
+const hope = new HopeClient({
+  baseUrl: process.env.HOPE_API_URL!,
+  serviceAccount: {
+    clientId: process.env.HOPE_SVC_CLIENT_ID!,
+    clientSecret: process.env.HOPE_SVC_CLIENT_SECRET!,
+  },
+});
+
+const page = await hope.admin.tenant.list({ query: { page: 0, limit: 50 } });
+```
+
+**The exchange is invisible to you.** Construction never touches the network;
+the first call exchanges lazily, the token is cached and refreshed on a margin
+*before* expiry, concurrent calls during a refresh collapse to a single
+exchange, and a token revoked mid-flight is re-exchanged once and the call
+retried. Neither the secret nor the token can reach a log line or an error
+message.
+
+> **`workingTenantId` binds at EXCHANGE time, not per request.** This is the one
+> place API-key intuition misleads. With a key you may send `X-Tenant-Id` per
+> call; a service-account token *carries* its working tenant, fixed when the
+> token was minted, and the SDK never sends `X-Tenant-Id` alongside it. Pass
+> `serviceAccount.workingTenantId` to choose it at exchange; omit it and a
+> platform account resolves the SYSTEM tenant. Supplying top-level `tenantId`
+> together with `serviceAccount` throws at construction rather than being
+> silently dropped.
+
+Service accounts are issued by a super-admin through
+`POST /api/v1/admin/service-accounts`, and the secret is shown **once**. There
+is no recovery path — rotate to get a new one.
 
 Local dev keys are seeded by
 [`packages/database/src/prisma/db_main/seed/02-apikey.ts`](../database/src/prisma/db_main/seed/02-apikey.ts) —
@@ -130,6 +189,84 @@ the methods you actually call:
 > route the SDK calls was equally unenforced before this scope-decorator work
 > landed). Don't assume a narrowly-scoped key is blocked from these two
 > calls; it is not.
+
+## The admin plane — `hope.admin.*`
+
+52 administration areas, reachable **only** with a service account. The surface
+is generated from the gateway's own route metadata and OpenAPI document, and a
+CI gate fails on any drift between them, so it cannot silently fall behind the
+API.
+
+Areas are named after the **scope** they need, not the URL, so the property you
+call and the grant you must ask for are one substitution apart:
+
+```
+svc:admin:tenant-tts-config:manage   →   hope.admin.tenantTtsConfig
+```
+
+Every resource declares its `svcScope`, and a 403 names it — which is the single
+most common integration failure, so the error tells you what to request.
+
+### Scopes
+
+A service account is granted an explicit set. Two rules that surprise people:
+
+- **`svc:admin:*` does not reach everything on the admin plane.** It expands
+  over the `svc:admin:` prefix, so `hope.admin.webhookEvent`
+  (`svc:webhook:event:write` — a scope predating the `admin:*` convention) is
+  granted separately or not at all.
+- **`svc:*` reaches both**, and is correspondingly blunt.
+
+### Areas that are deliberately absent
+
+Five admin areas are machine-closed by owner decision and have **no** generated
+methods, because a method that always 403s is worse than no method:
+
+| Area | Why |
+|---|---|
+| `admin/service-accounts` | Self-replication — a machine must not mint another machine |
+| Impersonation | A machine assuming a person's identity defeats audit attribution: `AuditLog` records exactly one actor, human *or* machine, never both |
+| `admin/consent-grants` | Consent is an act of a person |
+| `admin/monitoring` | Operator telemetry, read by a human on the console |
+| `admin/health/services` | Same, and a fan-out that would amplify an SSRF if driven in a loop |
+
+### Pagination
+
+Every list method comes in two forms. `list()` returns one page; `listIterate()`
+walks all of them.
+
+```ts
+for await (const tenant of hope.admin.tenant.listIterate()) { /* ... */ }
+```
+
+Prefer the iterator. **Do not hand-roll a page loop off the response's `page`
+and `limit`** — the gateway echoes back the *raw* query values, so omitting them
+returns `page: undefined, limit: undefined` over a page that really was limited
+to 10, and one endpoint returns `limit: 0` outright. The iterator drives
+pagination from the request side for exactly this reason.
+
+### Optimistic concurrency
+
+Writes to versioned resources require `If-Match`, and **the row is the
+precondition** — there is nothing to capture from a header:
+
+```ts
+const tenant = await hope.admin.tenant.get(id);
+await hope.admin.tenant.update(id, { name: 'New' }, { ifMatch: tenant });
+```
+
+`ifMatch` is a required property on those methods, so forgetting it is a compile
+error rather than a runtime 428. A stale precondition throws `VersionConflictError`
+(HTTP 412) carrying the current version. Note that list responses carry no ETag
+at all — one validator cannot represent N rows — which is why the row, not a
+header, is the precondition.
+
+### Errors
+
+- **404 can mean "not yours".** The platform answers cross-tenant reads with 404
+  rather than 403, deliberately, so a missing resource and someone else's
+  resource are indistinguishable. Do not treat it as proof the record is gone.
+- **403 means your service account lacks the scope**, and the message names it.
 
 ## The two summarization families
 
