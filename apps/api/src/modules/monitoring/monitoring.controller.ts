@@ -1,7 +1,7 @@
 import { Controller, Get, Inject, Logger, NotFoundException, Param } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiParam, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { Throttle } from '@nestjs/throttler';
-import { CanAny, ForbidApiKey } from '../../decorators';
+import { CanAny, ForbidApiKey, ForbidServiceAccount } from '../../decorators';
 import { IServiceHealthMonitoringService } from '@arcaai/applications';
 import { HeartbeatRecord, ServiceUptime, SessionsResponse, UptimeResponse } from './dto';
 
@@ -28,6 +28,16 @@ import { HeartbeatRecord, ServiceUptime, SessionsResponse, UptimeResponse } from
 // classification — the plane classifies it. No key-based consumer ever
 // existed on this surface, so the move breaks nothing.
 @ForbidApiKey()
+// SVC-NOTE (TASK-773, owner decision O-1) — CLOSED to the machine class.
+// Like `@ForbidApiKey()` above, this is a decision about WHAT the surface is,
+// not a conservative default awaiting classification. Uptime, heartbeats and
+// session counts are operator telemetry: their consumer is a human reading the
+// admin console's monitoring screen, and the value of the data is in a person
+// looking at it. There is no integration a machine identity would drive here,
+// so deny-by-default stands and the area is deliberately absent from the
+// generated SDK surface — an integrator gets no method that would always 403.
+// Re-opening it is a new owner decision, not a code-review call.
+@ForbidServiceAccount()
 export class MonitoringController {
   private readonly logger = new Logger(MonitoringController.name);
 

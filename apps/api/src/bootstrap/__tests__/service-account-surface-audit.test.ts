@@ -18,6 +18,7 @@ import {
   Public,
   RequiredSvcScopes,
   SERVICE_ACCOUNT_SCOPE_REGISTRY,
+  ADMIN_PLANE_PRE_CONVENTION_SVC_SCOPES,
   STANDALONE_FEATURE_SVC_SCOPES,
   resolveServiceAccountImpliedPermissions,
   toServiceAccountScope,
@@ -141,15 +142,24 @@ describe('D — svc:* scope coverage', () => {
     expect(() => auditSvcScopeCoverage()).not.toThrow();
   });
 
-  // TASK-767 widened D from "admin coverage" to three checks. The registry
-  // derives everything, so none of these can be provoked without mutating it —
-  // assert the properties D now depends on instead, so a future hand-added
-  // entry that breaks one is caught here as well as at boot.
-  it('the non-admin svc: scopes are exactly the declared standalone family', () => {
+  // TASK-767 widened D from "admin coverage" to three checks; TASK-773 (O-1)
+  // added the pre-convention family as a SECOND non-admin source list, each
+  // reconciled against its own constant so an undeclared scope names the family
+  // it should have joined. The registry derives everything, so none of these can
+  // be provoked without mutating it — assert the properties D now depends on
+  // instead, so a future hand-added entry that breaks one is caught here as well
+  // as at boot.
+  it('the non-admin svc: scopes are exactly the two declared source families', () => {
     const nonAdmin = Object.keys(SERVICE_ACCOUNT_SCOPE_REGISTRY)
       .filter((s) => !s.endsWith(':*') && !s.startsWith('svc:admin:'))
       .sort();
-    expect(nonAdmin).toEqual([...STANDALONE_FEATURE_SVC_SCOPES].sort());
+    expect(nonAdmin).toEqual([...STANDALONE_FEATURE_SVC_SCOPES, ...ADMIN_PLANE_PRE_CONVENTION_SVC_SCOPES].sort());
+  });
+
+  it('the two non-admin families are disjoint — every scope has exactly one justification', () => {
+    for (const scope of ADMIN_PLANE_PRE_CONVENTION_SVC_SCOPES) {
+      expect(STANDALONE_FEATURE_SVC_SCOPES).not.toContain(scope);
+    }
   });
 
   it('no registry scope — wildcards included — resolves to zero abilities', () => {
@@ -350,7 +360,9 @@ describe('H — every swept admin controller declares its svc:admin:<area> twin'
   });
 
   it('THROWS when a controller declares the twin AND @ForbidServiceAccount()', () => {
-    const lines = offenderLines(() => auditAdminControllersDeclareCorrectSvcScope(fakeApp(sweptAdminPlane({ AuditLogController: { forbid: true } }))));
+    const lines = offenderLines(() =>
+      auditAdminControllersDeclareCorrectSvcScope(fakeApp(sweptAdminPlane({ AuditLogController: { forbid: true } }))),
+    );
 
     expect(lines).toHaveLength(1);
     expect(lines[0]).toContain('AuditLogController');

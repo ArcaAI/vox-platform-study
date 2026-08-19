@@ -11,7 +11,7 @@ import {
 } from '@arcaai/applications';
 import { Body, Controller, Delete, Get, Inject, Param, Patch, Post, Query } from '@nestjs/common';
 import { ApiBearerAuth, ApiHeader, ApiOperation, ApiParam, ApiQuery, ApiResponse, ApiTags } from '@nestjs/swagger';
-import { Authorize, CanManage, ExpectedVersion, RequiresIfMatch, ForbidApiKey } from '../../decorators';
+import { Authorize, CanManage, ExpectedVersion, RequiresIfMatch, ForbidApiKey, RequiredSvcScopes } from '../../decorators';
 import { CreateWebhookResponse } from './dto';
 
 /**
@@ -28,6 +28,17 @@ import { CreateWebhookResponse } from './dto';
 @ApiBearerAuth()
 @ApiTags('admin-webhooks')
 @ForbidApiKey()
+// SVC-NOTE (TASK-773, owner decision O-1) — OPEN to the machine class, via the
+// PRE-CONVENTION scope family. This controller is admin-plane but was never
+// gated by an `admin:<area>` scope: the scope TASK-757 stripped from it was
+// `webhook:event:write`, minted before that convention existed and reserved
+// (not deleted) precisely BECAUSE its only consumer is this route. The
+// `svc:admin:*` derivation therefore cannot see it, so the machine twin is
+// derived by `ADMIN_PLANE_PRE_CONVENTION_SCOPE_SOURCES` instead — off the same
+// API-key definition, implying the same `manage:Webhook` the human-credential
+// path used here. Consequence worth knowing: `svc:admin:*` does NOT expand into
+// this scope, so the area is granted explicitly or not at all.
+@RequiredSvcScopes('svc:webhook:event:write')
 @Controller('admin/webhooks')
 @CanManage('Webhook')
 export class WebhookController {

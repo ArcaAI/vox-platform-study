@@ -29,20 +29,26 @@
  * scope vocabulary TASK-757 puts in reserve (renamespaced `svc:admin:*` or
  * mapped 1:1)").
  *
- * ─── TASK-767: a SECOND derived family, on the business plane ───────────────
+ * ─── TASK-767 / TASK-773: further derived families ─────────────────────────
  *
- * The registry now holds two families, both renamespaced from
- * `API_KEY_SCOPE_REGISTRY` and neither hand-written:
+ * The registry now holds three families, all renamespaced from
+ * `API_KEY_SCOPE_REGISTRY` and none hand-written:
  *
  *   `svc:admin:<area>`  — every concrete `admin:*` scope (TASK-762, above)
  *   `svc:<feature>`     — the standalone STT + summarization scopes
  *                         (TASK-767, {@link STANDALONE_FEATURE_SCOPE_SOURCES})
+ *   `svc:<area>`        — admin-plane areas whose gating scope PREDATES the
+ *                         `admin:<area>` convention (TASK-773 decision O-1,
+ *                         {@link ADMIN_PLANE_PRE_CONVENTION_SCOPE_SOURCES})
  *
  * They are kept as separate families rather than one blanket derivation of the
  * whole API-key registry because the `svc:admin:*` WILDCARD must keep meaning
- * exactly "the administration plane": widening it to every business scope by
+ * exactly "scopes spelled `svc:admin:`": widening it to every business scope by
  * accident is the kind of silent grant this class exists to prevent, and the
  * seeded ArcaAI account holds admin scopes explicitly for the same reason.
+ * Each family therefore declares its own closed source list, and boot-audit
+ * assertion D reconciles the registry against ALL THREE — a `svc:` scope
+ * belonging to none of them fails the boot rather than existing quietly.
  */
 import { API_KEY_SCOPE_REGISTRY, type ImpliedPermission, type ScopeDefinition } from '../apiKey/apikey-scopes.registry';
 
@@ -111,6 +117,86 @@ export const STANDALONE_FEATURE_SCOPE_SOURCES = ['stt:transcription:write', 'stt
 /** The renamespaced form of {@link STANDALONE_FEATURE_SCOPE_SOURCES}. */
 export const STANDALONE_FEATURE_SVC_SCOPES: readonly string[] = STANDALONE_FEATURE_SCOPE_SOURCES.map(toServiceAccountScope);
 
+/**
+ * TASK-773 (owner decision **O-1**, 2026-08-19) — the ADMIN-PLANE
+ * PRE-CONVENTION scopes, the THIRD `svc:` family.
+ *
+ * ─── The finding this exists for ────────────────────────────────────────────
+ *
+ * TASK-773 §2.8 enumerated CONTROLLERS rather than scopes for the first time
+ * and found three admin-plane controllers with nothing for the `svc:admin:*`
+ * derivation to consume. `WebhookController` is one of them: it sits at
+ * `admin/webhooks` but is gated by `@RequiredScopes('webhook:event:write')` —
+ * a scope minted before the `admin:<area>` naming convention existed. TASK-757
+ * reserved the three `webhook:` strings *precisely because* their only consumer
+ * is that admin controller, so the area is administration by every test except
+ * the spelling of its scope. O-1 opens it to the machine class; the other two
+ * (`MonitoringController`, `AdminHealthServicesController`) are closed with
+ * `@ForbidServiceAccount()` and appear nowhere in this file.
+ *
+ * ─── Why a THIRD family and not one more line in the second ─────────────────
+ *
+ * Adding `webhook:event:write` to {@link STANDALONE_FEATURE_SCOPE_SOURCES}
+ * would have been one line, and it would have been the wrong line: that
+ * constant means "standalone BUSINESS-plane features an end user drives through
+ * the SDK/compat surfaces (STT, summarization)", and `admin/webhooks` is
+ * neither standalone nor business-plane. A constant whose name no longer
+ * describes its contents is exactly how the next reader mis-derives the next
+ * scope — and the boot audit would then be reconciling against a lie. The
+ * header's own reasoning applies unchanged: families are kept apart so that
+ * membership stays a justified decision per scope rather than a side effect of
+ * where a string was convenient to type.
+ *
+ * ─── The deliberate consequence ─────────────────────────────────────────────
+ *
+ * `svc:admin:*` does NOT reach `svc:webhook:event:write` — the wildcard expands
+ * over the `svc:admin:` PREFIX, not over "the admin plane". So this area is
+ * granted explicitly or not at all, which is the same non-widening posture the
+ * standalone family has and the same reason the seeded ArcaAI account
+ * (`seed/94-service-account.ts`) enumerates its `svc:admin:<area>` scopes
+ * instead of holding a wildcard. Widening the wildcard to cover it would be a
+ * new owner decision, not a refactor.
+ *
+ * ─── Why DERIVED, like the other two ────────────────────────────────────────
+ *
+ * Same TASK-766 trap: `hasServiceAccountScope` is pure string matching, so a
+ * hand-written `svc:` entry with no `implies` passes the scope guard and is
+ * then refused by CASL. Deriving from the API-key scope that already gates the
+ * SAME route lands both halves in one edit, with the identical ability
+ * (`manage:Webhook`) the human-credential path uses.
+ *
+ * `webhook:event:read` is deliberately ABSENT: `WebhookController` is gated as
+ * a whole by the write scope, so a read-only twin would grant nothing extra and
+ * deny-by-default means silence is a refusal, not an oversight.
+ */
+export const ADMIN_PLANE_PRE_CONVENTION_SCOPE_SOURCES = ['webhook:event:write'] as const;
+
+/** The renamespaced form of {@link ADMIN_PLANE_PRE_CONVENTION_SCOPE_SOURCES}. */
+export const ADMIN_PLANE_PRE_CONVENTION_SVC_SCOPES: readonly string[] = ADMIN_PLANE_PRE_CONVENTION_SCOPE_SOURCES.map(toServiceAccountScope);
+
+/**
+ * Renamespace one declared source family into the registry. Shared by both
+ * source-list families so they cannot drift in how a `svc:` row is built: the
+ * description, the category and — the load-bearing part — the `implies` all
+ * come from the API-key definition, never from this file.
+ */
+function deriveFamilyInto(registry: Record<string, ScopeDefinition>, sources: readonly string[], constantName: string): void {
+  for (const source of sources) {
+    const def = API_KEY_SCOPE_REGISTRY[source];
+    if (!def) {
+      throw new Error(
+        `${constantName} names '${source}', which is not in API_KEY_SCOPE_REGISTRY. ` +
+          `Every svc: family is DERIVED from the API-key scope that gates the same route; it cannot be invented here.`,
+      );
+    }
+    registry[toServiceAccountScope(source)] = {
+      description: `${def.description} (machine identity)`,
+      category: 'ServiceAccount',
+      implies: def.implies,
+    };
+  }
+}
+
 function buildRegistry(): Record<string, ScopeDefinition> {
   const registry: Record<string, ScopeDefinition> = {};
 
@@ -127,26 +213,14 @@ function buildRegistry(): Record<string, ScopeDefinition> {
     };
   }
 
-  // TASK-767 — the standalone-feature family, derived from the SAME API-key
-  // definition the human-credential path uses on the same route, so the scope
-  // and its abilities can never disagree. A source name that stops existing in
+  // The two source-list families, each derived from the SAME API-key definition
+  // the human-credential path uses on the same route, so the scope and its
+  // abilities can never disagree. A source name that stops existing in
   // `API_KEY_SCOPE_REGISTRY` is a module-load crash, not a silently missing
   // registry row that `hasServiceAccountScope` would then accept as a bare
   // string while CASL refused it.
-  for (const source of STANDALONE_FEATURE_SCOPE_SOURCES) {
-    const def = API_KEY_SCOPE_REGISTRY[source];
-    if (!def) {
-      throw new Error(
-        `TASK-767: STANDALONE_FEATURE_SCOPE_SOURCES names '${source}', which is not in API_KEY_SCOPE_REGISTRY. ` +
-          `The svc: standalone family is DERIVED from the API-key scope that gates the same route; it cannot be invented here.`,
-      );
-    }
-    registry[toServiceAccountScope(source)] = {
-      description: `${def.description} (machine identity)`,
-      category: 'ServiceAccount',
-      implies: def.implies,
-    };
-  }
+  deriveFamilyInto(registry, STANDALONE_FEATURE_SCOPE_SOURCES, 'STANDALONE_FEATURE_SCOPE_SOURCES'); // TASK-767
+  deriveFamilyInto(registry, ADMIN_PLANE_PRE_CONVENTION_SCOPE_SOURCES, 'ADMIN_PLANE_PRE_CONVENTION_SCOPE_SOURCES'); // TASK-773 / O-1
 
   // Wildcards carry `[]` and are resolved by EXPANSION in
   // `resolveServiceAccountImpliedPermissions`, never by a literal of their own —
