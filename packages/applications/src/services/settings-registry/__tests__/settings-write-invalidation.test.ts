@@ -65,6 +65,8 @@ const buildBus = () => {
 const cls = {
   get: vi.fn((key?: string) => (key === 'user' ? { id: 'super-admin', roles: ['SUPER_ADMIN'], tenantId: GLOBAL_TENANT_ID } : undefined)),
   set: vi.fn(),
+  // `cacheAppSettings` reads outside the request CLS context; pass through.
+  exit: vi.fn((fn: () => unknown) => fn()),
 };
 const scheduler = { addCronJob: vi.fn(), getCronJob: vi.fn(), deleteCronJob: vi.fn() };
 

@@ -310,8 +310,21 @@ export class AppSettingsService implements IAppSettingsService, OnModuleInit {
       // Create new cache map
       const newCache = new Map<string, GlobalSettingEntity>();
 
-      // Fetch all global settings from database
-      const fetchedSettings = await this.globalSettingRepository.findAll({});
+      // Fetch all global settings from database.
+      //
+      // PLATFORM READ — deliberately performed OUTSIDE the caller's CLS
+      // context. This one query feeds BOTH lanes (the platform key-only map
+      // AND every customer tenant's `registry` overrides), so it must see all
+      // tenants. The tenant-scope Prisma extension filters by the ambient CLS
+      // tenant and passes through only when NO tenant is in context — being
+      // SUPER_ADMIN is not a bypass once a tenant is set. Every admin write
+      // path calls `refreshCache()` IN-REQUEST, so without this exit a refresh
+      // triggered by a tenant admin (or by a super admin with a working tenant
+      // selected) replaced the platform cache with that one tenant's rows,
+      // blanking every platform key process-wide until the 45s cron — which
+      // already runs outside CLS — repaired it. `cls.exit()` gives the cron's
+      // context to the in-request path too.
+      const fetchedSettings = await this.clsService.exit(() => this.globalSettingRepository.findAll({}));
 
       // (Defect 2) — drop soft-DELETED rows at the SERVICE layer.
       // The repository's DELETED filtering is an invisible property of which

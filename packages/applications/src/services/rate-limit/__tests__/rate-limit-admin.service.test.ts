@@ -3,7 +3,7 @@ import { BadRequestException } from '@nestjs/common';
 import { ValueType } from '@arcaai/domains';
 import { RateLimitAdminService } from '../rate-limit-admin.service';
 
-const cache = new Map<string, { id: string; version: number }>();
+const cache = new Map<string, { id: string; version: number; value?: string }>();
 const values = new Map<string, unknown>();
 
 const appSettings = {
@@ -20,18 +20,86 @@ const appSettings = {
   validateSettingValue: vi.fn(() => true),
 };
 
+/**
+ * Tenant id visible to the GlobalSetting write path at the moment it is
+ * called. The tenant-scope Prisma extension reads the AMBIENT CLS tenant, so
+ * this is what decides whether the platform-owned `rate-limit.*` row is
+ * reachable.
+ */
+let tenantSeenByWrite: string | undefined;
+
 const globalSettings = {
-  update: vi.fn().mockResolvedValue({}),
-  create: vi.fn().mockResolvedValue({}),
+  update: vi.fn(() => {
+    tenantSeenByWrite = clsStore.tenantId;
+    return Promise.resolve({});
+  }),
+  create: vi.fn(() => {
+    tenantSeenByWrite = clsStore.tenantId;
+    return Promise.resolve({});
+  }),
 };
 
-const makeService = () => new RateLimitAdminService(globalSettings as any, appSettings as any);
+/**
+ * Minimal `ClsService` double with nestjs-cls's `ifNested: 'inherit'`
+ * semantics: `run()` starts from a COPY of the active store, so a `set()`
+ * inside it never leaks back out to the caller's scope.
+ */
+let clsStore: { tenantId?: string } = {};
+const cls = {
+  get: vi.fn((key: string) => (clsStore as Record<string, unknown>)[key]),
+  set: vi.fn((key: string, value: unknown) => {
+    (clsStore as Record<string, unknown>)[key] = value;
+  }),
+  run: vi.fn(async (fn: () => unknown) => {
+    const outer = clsStore;
+    clsStore = { ...outer };
+    try {
+      return await fn();
+    } finally {
+      clsStore = outer;
+    }
+  }),
+};
+
+const makeService = () => new RateLimitAdminService(globalSettings as any, appSettings as any, cls as any);
 
 describe('RateLimitAdminService', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     cache.clear();
     values.clear();
+    clsStore = {};
+    tenantSeenByWrite = undefined;
+  });
+
+  /**
+   * Regression: a SUPER_ADMIN with a WORKING TENANT selected sends
+   * `X-Tenant-Id`, so CLS carries that customer tenant and the tenant-scope
+   * Prisma extension filters `GlobalSetting` to it — super-admin status only
+   * bypasses the filter when NO tenant is in context. The `rate-limit.*` rows
+   * are owned by the platform tenant, so every write 404'd
+   * ("Resource not found"). Each write must therefore run in a nested CLS
+   * scope pinned to the platform tenant, and must leave the caller's scope
+   * untouched.
+   */
+  describe('platform-tenant pinning (working-tenant regression)', () => {
+    it('writes under the platform tenant even when a working tenant is active', async () => {
+      clsStore.tenantId = '50000000-0000-0000-0000-000000000001';
+      cache.set('rate-limit.tier.default.limit', { id: 'gs-tier', version: 1 });
+
+      await makeService().setTier('default', { limit: 10000 });
+
+      expect(tenantSeenByWrite).toBe('50000000-0000-0000-0000-000000000000');
+      expect(clsStore.tenantId).toBe('50000000-0000-0000-0000-000000000001');
+    });
+
+    it('pins the create path too', async () => {
+      clsStore.tenantId = '50000000-0000-0000-0000-000000000001';
+
+      await makeService().setEnabled(false);
+
+      expect(tenantSeenByWrite).toBe('50000000-0000-0000-0000-000000000000');
+    });
   });
 
   describe('setEnabled', () => {
@@ -77,6 +145,23 @@ describe('RateLimitAdminService', () => {
     it('rejects a non-positive / non-integer limit', async () => {
       await expect(makeService().setTier('default', { limit: 0 })).rejects.toBeInstanceOf(BadRequestException);
       await expect(makeService().setTier('default', { limit: 1.5 })).rejects.toBeInstanceOf(BadRequestException);
+    });
+
+    /**
+     * The admin screen submits `limit` AND `ttl` together, so an edit that
+     * changes only one of them sends the other unchanged. `GlobalSettingService.update`
+     * throws `ArgumentInvalidException` ("No changes to write to.") on a no-op
+     * write, which surfaced as a 400 that failed the whole request AFTER the
+     * changed field had already been persisted — a half-applied edit.
+     */
+    it('skips a field whose stored value already matches, instead of failing the request', async () => {
+      cache.set('rate-limit.tier.default.limit', { id: 'gs-limit', version: 1, value: '250' });
+      cache.set('rate-limit.tier.default.ttl', { id: 'gs-ttl', version: 1, value: '60000' });
+
+      await makeService().setTier('default', { limit: 250, ttl: 30000 });
+
+      expect(globalSettings.update).toHaveBeenCalledTimes(1);
+      expect(globalSettings.update).toHaveBeenCalledWith('gs-ttl', { value: '30000', expectedVersion: 1 });
     });
 
     it('persists a valid tier limit as an Integer row', async () => {
