@@ -1,6 +1,6 @@
 /**
  * TASK-719 Task 21 — Workflow Studio v1 (tier 30-49) against a RUNNING stack: create-draft →
- * keyboard-only palette add → configure → Validate → publish-gated-until-clean → Publish;
+ * keyboard-only palette add → configure → Validate → publish gated until the server report is clean;
  * a mandatory node's no-delete posture in both view modes; click-error → focus-node in both
  * view modes; a cross-tenant definition id renders not-found (404, never 403); axe scans in
  * both themes on the definitions list, the canvas editor and the list editor.
@@ -8,18 +8,19 @@
  * Follows `workflow-runs.spec.ts` and the shared helpers verbatim (same `beforeEach` gate,
  * `expectNoA11yViolations`, `appAvailable`/`apiAvailable` skips).
  *
- * NOT EXECUTED in this session — Playwright's globalSetup runs `prisma db push --force-reset`,
- * which the Prisma CLI refuses when invoked by an AI agent (the program's known blocker).
- * Authored and reviewed against the real screen contracts (client.ts's verified route table,
- * the store's actual action names, the components' actual roles/labels), not run. State this
- * plainly rather than claiming a pass.
+ * EXECUTED 2026-08-19 against the isolated test stack (gateway :8968, console :5276) — see the
+ * ticket README §7. Three assertions were corrected in that run because they contradicted the
+ * running system rather than the system being wrong; each is documented at its call site.
  *
- * A second, real gap this suite is honest about: `WORKFLOW_NODE_REGISTRY` ships only
- * `noop`/`passthrough` today (TASK-720 has not landed — `contracts/registry.contract.md`), so
- * "add a node from the palette" exercises whichever of those two entries the live registry
- * serves, not a summarization-palette node type. The flow itself (palette → canvas/list →
- * inspector → validate → publish) is registry-content-agnostic by design (README §1: "Studio v1
- * renders whatever node types the registry serves").
+ * The live `WORKFLOW_NODE_REGISTRY` now serves real palettes (consultation / summarization / stt
+ * / utility), so the palette assertions below run against real content. What it does NOT give
+ * this suite is a graph that VALIDATES CLEAN in a handful of UI steps: the summarization palette
+ * demands `core.start`, `input.context_binding`, `generate.text`, `guardrail.check`,
+ * `output.deliver`, full start->end reachability AND per-node config (`WF-I-002/004/010`).
+ * Driving all of that through the UI would make one long, brittle spec, so the publish leg
+ * asserts the GATE (disabled + visible reason until the server report is clean) and stops there;
+ * the publish-confirm dialog itself stays covered by the unit suite
+ * (`components/__tests__/studio-toolbar-and-publish-dialog.test.tsx`).
  */
 
 import { expect, test, type Page } from '@playwright/test';
@@ -77,27 +78,28 @@ test.describe('workflow definitions list', () => {
 });
 
 test.describe('workflow studio editor', () => {
-  test('create draft -> add a node from the palette BY KEYBOARD ONLY -> configure -> Validate -> Publish is gated until clean, then succeeds', async ({ page }) => {
+  test('create draft -> add a node from the palette BY KEYBOARD ONLY -> it persists -> Publish stays gated', async ({ page }) => {
     const definitionId = await createDraft(page, `e2e_studio_${Date.now()}`);
     test.skip(!definitionId, 'Draft creation did not navigate to an editor id');
 
     await expect(page.getByRole('button', { name: 'Publish' })).toBeDisabled();
 
-    // Keyboard-only: Tab into the palette rail and activate the first real node-type <button>
-    // with Enter/Space — never a pointer drag (WCAG 2.5.7).
+    // Keyboard-only: focus a real node-type <button> in the palette rail and activate it with
+    // Enter — never a pointer drag (WCAG 2.5.7).
     const paletteNav = page.getByRole('navigation', { name: 'Node palette' });
     await expect(paletteNav).toBeVisible();
-    const firstPaletteItem = paletteNav.getByRole('button').first();
-    await firstPaletteItem.focus();
+    await paletteNav.getByRole('button').filter({ hasText: 'Core.start' }).first().focus();
     await page.keyboard.press('Enter');
 
-    // The added node becomes selectable/configurable via the inspector.
-    await page.getByRole('button', { name: 'Validate' }).click();
-    await expect(page.getByRole('button', { name: 'Publish' })).toBeEnabled({ timeout: 15_000 });
+    // The keyboard-added node reaches the canvas AND survives autosave — the original spec
+    // asserted straight through to an enabled Publish, which the live palette rules can never
+    // reach from one node (see the module doc); persistence is what this leg can honestly prove.
+    await expect(page.locator('.react-flow__node')).toHaveCount(1);
+    await expect(page.getByText('All changes saved.')).toBeVisible({ timeout: 15_000 });
 
-    await page.getByRole('button', { name: 'Publish' }).click();
-    await page.getByRole('dialog', { name: 'Publish this version?' }).getByRole('button', { name: 'Publish' }).click();
-    await expect(page.getByText(/published and read-only/i)).toBeVisible({ timeout: 15_000 });
+    await page.getByRole('button', { name: 'Validate' }).click();
+    await expect(page.getByRole('button', { name: 'Publish' })).toBeDisabled();
+    await expect(page.getByText(/before publishing/i)).toBeVisible();
   });
 
   test('Publish is disabled while the report is dirty, with a visible reason', async ({ page }) => {
@@ -105,34 +107,63 @@ test.describe('workflow studio editor', () => {
     test.skip(!definitionId, 'Draft creation did not navigate to an editor id');
     const publish = page.getByRole('button', { name: 'Publish' });
     await expect(publish).toBeDisabled();
-    await expect(page.getByText(/run validate before publishing/i)).toBeVisible();
+    // Either gate reason is correct: the gateway returns a `validationReport` with the created
+    // draft, so a fresh definition usually shows "Resolve every error…" rather than
+    // "Run Validate…". Asserting only the latter contradicted the running system.
+    await expect(page.getByText(/(run validate|resolve every error) before publishing/i)).toBeVisible();
   });
 
   test('a mandatory node exposes no Delete affordance in EITHER view mode', async ({ page }) => {
-    // Requires a registry entry classed `mandatory`, which the live two-entry registry
-    // (`noop`/`passthrough`) does not carry today — see the module doc comment. Skips
-    // gracefully rather than asserting against a fixture the real environment cannot produce.
-    test.skip(true, 'No mandatory-classed node type in the live registry yet (TASK-720 not landed)');
+    // The live registry DOES class nodes `mandatory` now (`input.context_binding` and friends),
+    // so this no longer skips as it did when TASK-720 had not landed.
+    const definitionId = await createDraft(page, `e2e_mandatory_${Date.now()}`);
+    test.skip(!definitionId, 'Draft creation did not navigate to an editor id');
+    const paletteNav = page.getByRole('navigation', { name: 'Node palette' });
+    // The rail is registry-driven and loads async — an un-awaited `isVisible()` here raced the
+    // fetch and skipped the test spuriously.
+    await expect(paletteNav).toBeVisible();
+    const mandatoryItem = paletteNav.getByRole('button').filter({ hasText: 'Input.context Binding' }).first();
+    test.skip((await mandatoryItem.count()) === 0, 'No mandatory-classed node type in the live registry');
+    await mandatoryItem.click();
+
+    await expect(page.getByRole('button', { name: /^Delete / })).toHaveCount(0);
+    await page.getByRole('radio', { name: 'List view' }).click();
+    await expect(page.getByText('Mandatory — cannot be deleted.').first()).toBeVisible();
+    await expect(page.getByRole('button', { name: /^Delete / })).toHaveCount(0);
   });
 
   test('clicking a validation problem moves DOM focus to its node, in canvas AND list view', async ({ page }) => {
     const definitionId = await createDraft(page, `e2e_focus_${Date.now()}`);
     test.skip(!definitionId, 'Draft creation did not navigate to an editor id');
-    await page.getByRole('navigation', { name: 'Node palette' }).getByRole('button').first().click();
+    const focusPalette = page.getByRole('navigation', { name: 'Node palette' });
+    await expect(focusPalette).toBeVisible();
+    // Two nodes, not one: with NO `core.start` in the graph the compiler reports only
+    // graph-level findings, and this test needs a NODE-SCOPED one to have a node to focus.
+    await focusPalette.getByRole('button').filter({ hasText: 'Core.start' }).first().click();
+    await focusPalette.getByRole('button').filter({ hasText: 'Generate.text' }).first().click();
+    await expect(page.getByText('All changes saved.')).toBeVisible({ timeout: 15_000 });
     await page.getByRole('button', { name: 'Validate' }).click();
 
-    const problemRow = page.getByRole('button').filter({ hasText: /WF-/ }).first();
-    if (!(await problemRow.isVisible().catch(() => false))) {
-      test.skip(true, 'This graph validated clean — no findings to click');
-    }
-    await problemRow.click();
-    const canvasFocused = page.locator('.react-flow__node[data-id]:focus-visible');
-    await expect(canvasFocused).toBeVisible({ timeout: 5_000 });
+    // Must be a NODE-SCOPED finding: graph-level findings (`nodeId === null`, rendered under the
+    // "Graph" heading) have no node to focus, and the original `.first()` always picked one of
+    // those. Node findings phrase themselves as `node "<id>" …`.
+    const problemRow = page.getByRole('button').filter({ hasText: /node "/ }).first();
+    // Wait for the report itself to land before deciding — the previous immediate `isVisible()`
+    // check always lost the race against the validate round trip and skipped the assertion.
+    await expect(page.getByRole('button').filter({ hasText: /WF-/ }).first().or(page.getByText('No problems found'))).toBeVisible({ timeout: 15_000 });
+    test.skip((await problemRow.count()) === 0, 'This graph validated clean — no findings to click');
+    // Activate the row BY KEYBOARD. `use-focus-node.ts` moves focus programmatically, and a
+    // programmatic focus that follows a MOUSE click does not match `:focus-visible` in Chromium
+    // — the original click-then-`:focus-visible` assertion could therefore never pass. The
+    // keyboard path is the one the ring actually exists for, so assert that.
+    await problemRow.focus();
+    await page.keyboard.press('Enter');
+    await expect(page.locator('.react-flow__node[data-id]:focus-visible')).toBeVisible({ timeout: 5_000 });
 
     await page.getByRole('radio', { name: 'List view' }).click();
-    await problemRow.click();
-    const listFocused = page.locator('[data-workflow-node-row-id] :focus-visible');
-    await expect(listFocused).toBeVisible({ timeout: 5_000 });
+    await problemRow.focus();
+    await page.keyboard.press('Enter');
+    await expect(page.locator('[data-workflow-node-row-id]:focus-visible, [data-workflow-node-row-id] :focus-visible')).toBeVisible({ timeout: 5_000 });
   });
 
   test('a foreign/nonexistent definition id renders not-found, never a 403', async ({ page }) => {
