@@ -92,6 +92,72 @@ const TOOLS_ENV_SETTINGS: SettingDescriptor[] = [
     },
 ];
 
+/**
+ * `apps/nlp`'s own bootstrap-floor knobs (TASK-778).
+ *
+ * WHY THEY ARE DECLARED HERE AND NOT IN `HOPE_SETTINGS_REGISTRY`: the registry
+ * is the GATEWAY's catalog, and the header above records the deliberate
+ * boundary — the six Python services' `.env.sample` files are hand-maintained
+ * pydantic-settings surfaces this generator cannot import. But
+ * `turbo.json#globalEnv` is a cache-correctness declaration for the WHOLE repo,
+ * so a Python-read variable that is missing from it is undeclared all the same.
+ * These nine were hand-added straight to `turbo.json` and would therefore be
+ * deleted by the next `pnpm env:sync` — declaring them is what makes the
+ * generator idempotent over them.
+ *
+ * They render into NO `.env.sample`: `apps/nlp/.env.sample` already documents
+ * them and is inlined verbatim into the consolidated root file. They contribute
+ * to `globalEnv` and to the generated docs table only.
+ *
+ * Every one is TRANSPORT or GEOMETRY — queue bounds, batch geometry, cache
+ * retention, a filesystem root. None selects a model, a label set or a
+ * threshold; those stay `AiTaskDefault` x `AiModel` per
+ * `00-project-context.md` §Configuration Principles.
+ */
+const PYTHON_SERVICE_ENV_SETTINGS: SettingDescriptor[] = [
+    {
+        key: 'hfHome',
+        tier: 'env',
+        dataType: 'string',
+        sensitivity: 'internal',
+        maxScope: 'system',
+        editableBy: 'none',
+        failMode: 'open-to-default',
+        category: 'Bootstrap',
+        label: 'Hugging Face cache root',
+        description:
+            'Filesystem root the Hugging Face libraries use for their model cache, read out of `os.environ` by `huggingface_hub` / `gliner2` after `hope_env.load_env()` populates it. ' +
+            'WHERE weights are cached, never WHICH checkpoint runs. It MUST be declared rather than inherited from an operator login shell: `~/.zshrc` is sourced by INTERACTIVE shells only, so services, CI jobs and coding agents never see it and every download silently lands in `~/.cache/huggingface`. ' +
+            'Unset = the Hugging Face default.',
+        sampleValue: '/Volumes/aillusion/huggingface',
+    },
+    ...(
+        [
+            ['nlp.inference.maxConcurrent', 'Concurrent forward passes across all NLP models (bootstrap fallback; the runtime value comes from the control plane).', 4],
+            ['nlp.inference.batchMaxSize', 'Maximum items coalesced into one NLP forward pass.', 8],
+            ['nlp.inference.batchLingerMs', 'How long an otherwise-idle NLP request waits for company before dispatching. This is the ENTIRE latency price of batching — keep it well under the p50 forward pass.', 5],
+            ['nlp.inference.queueMaxDepth', 'Bounded NLP inference queue depth; at the bound the service sheds with 503 + `Retry-After` instead of growing until OOM.', 256],
+            ['nlp.inference.queueMaxWaitSeconds', 'Wait ceiling for a queued NLP inference item; exceeding it sheds with 503 rather than serving a stale answer.', 20],
+            ['nlp.inference.maxInflightBatches', 'Concurrent forward passes against ONE NLP model.', 2],
+            ['nlp.modelCache.ttlSeconds', 'Idle TTL before an NLP model is evicted from the in-process cache.', 600],
+            ['nlp.modelCache.maxModels', 'LRU ceiling on resident NLP models.', 3],
+            ['nlp.model.localRoots', 'Optional allow-list of filesystem roots a configured LOCAL model path must resolve inside. Unset = unrestricted, deliberately and documented.', ''],
+        ] as const
+    ).map(([key, description, defaultValue]): SettingDescriptor => ({
+        key,
+        tier: 'env',
+        dataType: typeof defaultValue === 'number' ? 'number' : 'string',
+        sensitivity: 'internal',
+        maxScope: 'system',
+        editableBy: 'none',
+        failMode: 'open-to-default',
+        category: 'NLP service',
+        label: key,
+        description,
+        default: defaultValue,
+    })),
+];
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Render model
 // ─────────────────────────────────────────────────────────────────────────────
@@ -189,11 +255,13 @@ const platformSurface = [...apiDeclared, ...registryEnvSupplied.filter((v) => !a
 
 const adminConsoleSurface = ADMIN_CONSOLE_ENV_SETTINGS.map(fromAdminConsole);
 const toolsSurface = TOOLS_ENV_SETTINGS.map((d) => fromDescriptor(d, 'packages/tools'));
+/** Declared for `globalEnv` + docs only — rendered into no `.env.sample` (see the list's doc comment). */
+const pythonServiceSurface = PYTHON_SERVICE_ENV_SETTINGS.map((d) => fromDescriptor(d, 'apps/nlp'));
 
 /** Every declared key, deduplicated by name — the surface this generator counts. */
 export const declaredSurface: EnvVar[] = (() => {
     const byName = new Map<string, EnvVar>();
-    for (const v of [...bootstrapFloor, ...platformSurface, ...adminConsoleSurface, ...toolsSurface]) {
+    for (const v of [...bootstrapFloor, ...platformSurface, ...adminConsoleSurface, ...toolsSurface, ...pythonServiceSurface]) {
         if (!byName.has(v.name)) byName.set(v.name, v);
     }
     return [...byName.values()];

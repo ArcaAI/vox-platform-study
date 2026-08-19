@@ -109,9 +109,14 @@ export const NLP_AI_MODELS: AiModelSeed[] = [
     metaData: {
       // English only (owner directive) — the model card also lists fr/es/de/it/pt/nl.
       languages: ['en'],
-      // What `apps/nlp` may ask this checkpoint to do. This row is extraction
-      // ONLY: it has no classification head, so a `guardrail.safety` selection
-      // pointing here would fail at inference rather than mis-answer.
+      // What `apps/nlp` may ask this checkpoint to do. Extraction ONLY — and
+      // this list is LOAD-BEARING, not documentation, because the runtime will
+      // NOT catch a mis-selection for us. Probed against the real weights
+      // (2026-08-20): `classify_text` on this checkpoint does not raise, it
+      // ANSWERS, and answers badly — it called a polite clinical question
+      // "unsafe" at 0.77 confidence and a plain refusal "unsafe" at 0.998.
+      // A `guardrail.safety` selection pointing here therefore produces
+      // confident false positives, not an error. The catalog is the only gate.
       capabilities: ['extract_entities'],
       labelTaxonomy: {
         threshold: 0.5,
@@ -191,9 +196,11 @@ export const NLP_AI_MODELS: AiModelSeed[] = [
           // sensitive dates
           'sensitive_date', 'document_date', 'expiration_date', 'transaction_date',
         ],
-        // The six moderation tasks, verbatim from the GLiGuard card — the
-        // same schema `gliguard-llm-guardrails-300m` serves, so a selection can
-        // move between the two rows without a policy rewrite.
+        // The six moderation tasks. NOTE (probed 2026-08-20): these are NOT a
+        // schema baked into the checkpoint — `gliner2.classify_text` BUILDS a
+        // schema from the task names and labels the caller passes, and an empty
+        // label list raises. So the taxonomy is caller-supplied configuration
+        // end to end, which is exactly why it lives on this row.
         benignLabels: ['benign', 'safe', 'compliance'],
         tasks: {
           prompt_safety: { labels: ['safe', 'unsafe'], multi_label: false },
@@ -259,15 +266,20 @@ export const NLP_AI_MODELS: AiModelSeed[] = [
       // multilingual safety requirement CANNOT be met by this checkpoint — the
       // limit is recorded on the row rather than discovered in production.
       languages: ['en'],
-      // Classification ONLY — no entity extraction (model card, confirmed
-      // against the weights). Never select this row for `guardrail.pii`.
+      // Classification ONLY. Probed against the real weights (2026-08-20):
+      // `extract_entities` does not raise either — it returns an EMPTY list for
+      // every label, which on the redaction path is indistinguishable from
+      // "scanned, found nothing". Selecting this row for `guardrail.pii` would
+      // therefore silently disable redaction. Never do it.
       capabilities: ['classify_text'],
       labelTaxonomy: {
         threshold: 0.4,
         // Labels that mean "clean" and must never be reported as an issue.
         benignLabels: ['benign', 'safe', 'compliance'],
-        // Task names are the model's own schema keys; labels are verbatim from
-        // the model card. Guardrail maps guardrail_type → subset of these.
+        // Task names are CALLER-SUPPLIED, not the model's own schema keys
+        // (probed 2026-08-20 — `classify_text` conditions on whatever names and
+        // labels it is handed). Labels are verbatim from the model card.
+        // Guardrail maps guardrail_type → subset of these.
         tasks: {
           prompt_safety: { labels: ['safe', 'unsafe'], multi_label: false },
           prompt_toxicity: {
