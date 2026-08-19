@@ -17,11 +17,13 @@ import { ApiTags, ApiBearerAuth, ApiHeader, ApiParam, ApiQuery, ApiResponse, Api
 import { InjectQueue } from '@nestjs/bullmq';
 import { Queue } from 'bullmq';
 import { Observable } from 'rxjs';
+import { ClsService } from 'nestjs-cls';
+import type { IActiveUserContext } from '@arcaai/applications';
 // `@RequiresIfMatch()` + `@ExpectedVersion()` gate the
 // OCC-enforced PATCH route below (mirrors PromptManagementController).
 import { ApiEndpoint, Authorize, RequiresIfMatch, ExpectedVersion, ForbidApiKey, RequiredSvcScopes } from '../../decorators';
 import { StreamScope } from '../auth/decorators/stream-scope.decorator';
-import { getDnaJobStatus, streamDnaJobStatus } from './dna-writing-style-job-stream';
+import { getDnaJobStatus, streamDnaJobStatus, type DnaJobAccess } from './dna-writing-style-job-stream';
 
 @ApiBearerAuth()
 @ApiTags('admin-dna-writing-styles')
@@ -42,6 +44,7 @@ export class DnaWritingStyleAdminController {
     private readonly dnaService: IDnaWritingStyleService,
     @InjectQueue(JobQueue.GenerateDnaReport)
     private readonly dnaQueue: Queue,
+    private readonly cls: ClsService<IActiveUserContext>,
   ) {}
 
   // DNA aggregate dashboard. Declared before the param-less list
@@ -181,13 +184,24 @@ export class DnaWritingStyleAdminController {
     return this.dnaService.getVersions(reportId);
   }
 
+  /**
+   * Finding C-01 — `manage:DnaWritingStyleReport` is TENANT-scoped, but the
+   * BullMQ job lookup was not, so a tenant-A admin could read a tenant-B job's
+   * `returnvalue`. The job's stamped `tenantId` must equal the caller's active
+   * tenant. No `doctorId`: an admin legitimately administers every doctor in
+   * their own tenant.
+   */
+  private jobAccess(): DnaJobAccess {
+    return { tenantId: this.cls.get('tenantId') ?? null };
+  }
+
   @Get('jobs/:jobId')
   @ApiOperation({ summary: 'Get DNA generation job status' })
   @ApiParam({ name: 'jobId', description: 'BullMQ job ID', type: String })
   @ApiResponse({ status: 200, description: 'Job status', type: DnaJobStatusResponseDto })
   @ApiResponse({ status: 404, description: 'Job not found' })
   async getJobStatus(@Param('jobId') jobId: string): Promise<DnaJobStatusResponseDto> {
-    return getDnaJobStatus(this.dnaQueue, jobId);
+    return getDnaJobStatus(this.dnaQueue, jobId, this.jobAccess());
   }
 
   // @StreamScope lets single-use tickets from
@@ -207,6 +221,6 @@ export class DnaWritingStyleAdminController {
   @ApiParam({ name: 'jobId', description: 'BullMQ job ID', type: String })
   @ApiResponse({ status: 200, description: 'SSE job status stream' })
   streamJobStatus(@Param('jobId') jobId: string): Observable<MessageEvent> {
-    return streamDnaJobStatus(this.dnaQueue, jobId);
+    return streamDnaJobStatus(this.dnaQueue, jobId, this.jobAccess());
   }
 }

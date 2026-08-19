@@ -1,7 +1,7 @@
 import { Inject, Injectable, Logger, MessageEvent } from '@nestjs/common';
 import { InjectQueue } from '@nestjs/bullmq';
 import { Queue } from 'bullmq';
-import { Observable, map, takeWhile, finalize } from 'rxjs';
+import { Observable, map, takeWhile } from 'rxjs';
 import { uuidv7 } from 'uuidv7';
 import { JobQueue } from '@arcaai/domains';
 import { IRedisCacheService } from '../../baseServices/redis';
@@ -326,6 +326,7 @@ export class ConsultationJobService implements IConsultationJobService {
       // Track inner subscription so we can tear it down when the
       // outer Observable is unsubscribed (e.g. client disconnects).
       let innerSubscription: { unsubscribe(): void } | null = null;
+      let cancelled = false;
 
       this.getJobStatus(jobId)
         .then(async (currentStatus) => {
@@ -387,14 +388,6 @@ export class ConsultationJobService implements IConsultationJobService {
                 return true;
               }
             }, true), // Include the terminal event
-            finalize(() => {
-              this.logger.log({
-                message: 'SSE stream finalized — cleaning up Redis subscription',
-                jobId,
-                channel,
-              });
-              this.redisSubscriber.unsubscribeFromChannel(channel);
-            }),
           );
 
           innerSubscription = sseStream$.subscribe({
@@ -402,6 +395,9 @@ export class ConsultationJobService implements IConsultationJobService {
             error: (err) => subscriber.error(err),
             complete: () => subscriber.complete(),
           });
+          // Teardown may have run while the status read / SUBSCRIBE were in
+          // flight — release what we just created or the refcount leaks.
+          if (cancelled) innerSubscription.unsubscribe();
         })
         .catch((error) => {
           this.logger.error({
@@ -415,12 +411,13 @@ export class ConsultationJobService implements IConsultationJobService {
           subscriber.complete();
         });
 
-      // Teardown: when the outer Observable is unsubscribed,
-      // unsubscribe the inner stream so finalize() fires.
+      // Teardown: when the outer Observable is unsubscribed, release the inner
+      // stream so the REFCOUNTED finalize inside `subscribeToChannel` fires.
+      // Never call `unsubscribeFromChannel` here: it force-completes the SHARED
+      // per-channel Subject and starves every other viewer of the same job.
       return () => {
-        if (innerSubscription) {
-          innerSubscription.unsubscribe();
-        }
+        cancelled = true;
+        innerSubscription?.unsubscribe();
       };
     });
   }

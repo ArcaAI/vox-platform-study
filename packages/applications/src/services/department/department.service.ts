@@ -308,6 +308,11 @@ export class DepartmentService extends BaseService implements IDepartmentService
     const { expectedVersion, ...editableDto } = dto;
     await this.updateEntity(department, editableDto as UpdateDepartmentRequest);
 
+    // OCC precondition BEFORE the no-changes short-circuit: a stale client must
+    // get 412 ("you are stale, refetch"), not 400/200, even when the payload
+    // would change nothing. RFC 7232 evaluates preconditions independently of
+    // the payload; the CAS below still guards concurrent writers.
+    this.assertExpectedVersion(department, expectedVersion);
     if (!department.hasChanges) {
       throw new ArgumentInvalidException('No changes to write to.');
     }
@@ -362,6 +367,11 @@ export class DepartmentService extends BaseService implements IDepartmentService
     // Default DNA writing-style prompt slot.
     if (dto.dnaWritingStylePromptId !== undefined) department.dnaWritingStylePromptId = dto.dnaWritingStylePromptId;
 
+    // OCC precondition BEFORE the no-changes short-circuit: a stale client must
+    // get 412 ("you are stale, refetch"), not 400/200, even when the payload
+    // would change nothing. RFC 7232 evaluates preconditions independently of
+    // the payload; the CAS below still guards concurrent writers.
+    this.assertExpectedVersion(department, dto.expectedVersion);
     if (!department.hasChanges) {
       throw new ArgumentInvalidException('No changes to write to.');
     }

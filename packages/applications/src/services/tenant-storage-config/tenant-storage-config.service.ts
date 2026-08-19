@@ -189,8 +189,21 @@ export class TenantStorageConfigService extends BaseService implements ITenantSt
     }
     // `hasChanges` is checked BEFORE stamping `updatedBy` — stamping first
     // would make every no-op PUT look like a change and burn a version.
+    // OCC precondition BEFORE the no-changes short-circuit: a stale client must
+    // get 412 ("you are stale, refetch"), not 400/200, even when the payload
+    // would change nothing. RFC 7232 evaluates preconditions independently of
+    // the payload; the CAS below still guards concurrent writers.
+    this.assertExpectedVersion(existing, dto.expectedVersion);
     if (!existing.hasChanges) {
-      throw new BadRequestException('No changes to write to the platform storage default.');
+      // PUT is idempotent by contract (RFC 9110 §9.2.2): re-sending a value that is
+      // already stored must yield the SAME observable result as the first send, not a
+      // 400. Returning the current representation satisfies BOTH that and the
+      // phantom-write rule — no version bump, no `updatedAt` rewrite, no
+      // ResourceUpdated event. (PATCH routes keep throwing `ArgumentInvalidException`;
+      // there "you sent me nothing to change" IS the documented answer.)
+      // The OCC precondition above has already run, so a STALE token still gets 412
+      // rather than a misleading 200.
+      return TenantStorageConfigDtoMapper.toResponse(existing);
     }
     existing.updatedBy = this.requestUserId ?? undefined;
     this.validateOrThrow(existing);

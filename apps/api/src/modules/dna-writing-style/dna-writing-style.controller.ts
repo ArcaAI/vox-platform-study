@@ -45,7 +45,7 @@ import { Observable } from 'rxjs';
 // `@RequiresIfMatch()` + `@ExpectedVersion()` gate the
 // OCC-enforced doctor self-edit PATCH route below (mirrors the admin controller).
 import { ApiEndpoint, Authorize, RequiresIfMatch, ExpectedVersion, ForbidApiKey } from '../../decorators';
-import { getDnaJobStatus, streamDnaJobStatus } from './dna-writing-style-job-stream';
+import { getDnaJobStatus, streamDnaJobStatus, type DnaJobAccess } from './dna-writing-style-job-stream';
 
 @ApiBearerAuth()
 @ApiTags('dna-writing-styles')
@@ -55,7 +55,10 @@ import { getDnaJobStatus, streamDnaJobStatus } from './dna-writing-style-job-str
 // business plane), recorded by TASK-758 and policed by
 // `BUSINESS_PLANE_KEY_FORBIDDEN` (bootstrap/business-plane-apikey-exemptions-audit.ts).
 // A clinician's PERSONAL writing model. The owner/doctor checks live in the
-// service (see the AUTH-NOTEs there), so the class-level `@Authorize()`
+// service (see the AUTH-NOTEs there) — and, for the two `jobs/:jobId` routes
+// that talk to BullMQ directly instead of going through the service, in
+// `dna-writing-style-job-stream.ts` (finding C-01: the rationale and the code
+// had diverged; those routes carried NO owner check at all). Either way the class-level `@Authorize()`
 // understates the real gate — converting would hand a long-lived static
 // credential a principal's private model on the strength of a bare
 // authenticated check. JWT only.
@@ -327,21 +330,42 @@ export class DnaWritingStyleController {
     return this.dnaService.getVersionsForDoctor(reportId, this.getDoctorId());
   }
 
+  /**
+   * The caller's identity as the DNA job routes see it: active (CLS) tenant +
+   * own user id. Both are compared against the owner fields stamped on the job
+   * payload at enqueue time (finding C-01).
+   */
+  private jobAccess(): DnaJobAccess {
+    return { tenantId: this.cls.get('tenantId') ?? null, doctorId: this.getDoctorId() };
+  }
+
+  // AUTH-NOTE: declared with the class-level bare `@Authorize()` (any
+  // authenticated user) DELIBERATELY — there is no ability that expresses
+  // "your own generation job", and requiring one would lock clinicians out of
+  // polling a job they just started. OWNERSHIP, not permission, is the gate,
+  // and it is enforced below by `jobAccess()` + `assertDnaJobAccess`: the job
+  // payload's `tenantId` must equal the caller's active tenant and its
+  // `doctorId`/`userId` must be the caller. This is the same owner-scoped
+  // self-service shape as `my-style` / `settings` (rule 05 §Imperative
+  // Privilege Checks). Before this check existed, the bare `@Authorize()` was
+  // the WHOLE gate and any authenticated user could read any doctor's
+  // writing-style model by guessing a sequential BullMQ job id (finding C-01).
   @Get('jobs/:jobId')
   @ApiOperation({ summary: 'Get current user DNA generation job status' })
   @ApiParam({ name: 'jobId', description: 'BullMQ job ID', type: String })
   @ApiResponse({ status: 200, description: 'Job status', type: DnaJobStatusResponseDto })
-  @ApiResponse({ status: 404, description: 'Job not found' })
+  @ApiResponse({ status: 404, description: 'Job not found (also returned for a job owned by another doctor or tenant)' })
   async getJobStatus(@Param('jobId') jobId: string): Promise<DnaJobStatusResponseDto> {
-    return getDnaJobStatus(this.dnaQueue, jobId);
+    return getDnaJobStatus(this.dnaQueue, jobId, this.jobAccess());
   }
 
+  // AUTH-NOTE: as above — ownership is the gate, enforced per emission.
   @Get('jobs/:jobId/stream')
   @Sse()
   @ApiOperation({ summary: 'Stream current user DNA generation job status via SSE' })
   @ApiParam({ name: 'jobId', description: 'BullMQ job ID', type: String })
   @ApiResponse({ status: 200, description: 'SSE job status stream' })
   streamJobStatus(@Param('jobId') jobId: string): Observable<MessageEvent> {
-    return streamDnaJobStatus(this.dnaQueue, jobId);
+    return streamDnaJobStatus(this.dnaQueue, jobId, this.jobAccess());
   }
 }

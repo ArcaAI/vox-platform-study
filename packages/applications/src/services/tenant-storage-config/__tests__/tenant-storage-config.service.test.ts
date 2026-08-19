@@ -359,24 +359,34 @@ describe('TenantStorageConfigService', () => {
       expect(eventEmitter.emit).toHaveBeenCalledWith(SysEventType.ResourceUpdated, expect.any(Object));
     });
 
-    it('rejects an update that changes nothing', async () => {
+    it('re-PUTting the stored platform default is idempotent — current row back, nothing written', async () => {
       const platform = systemDefaultEntity();
-      const { service } = build({
+      const updateWithVersion = vi.fn();
+      const { service, eventEmitter } = build({
         cls: superAdminCls(),
-        configRepo: { findSystemDefault: vi.fn().mockResolvedValue(platform) },
+        configRepo: { findSystemDefault: vi.fn().mockResolvedValue(platform), updateWithVersion },
       });
 
-      await expect(
-        service.upsertPlatformDefault({
-          provider: platform.provider,
-          topology: platform.topology,
-          endpoint: platform.endpoint,
-          region: platform.region,
-          forcePathStyle: platform.forcePathStyle,
-          credentialsRef: platform.credentialsRef,
-          expectedVersion: platform.version,
-        }),
-      ).rejects.toBeInstanceOf(BadRequestException);
+      const payload = {
+        provider: platform.provider,
+        topology: platform.topology,
+        endpoint: platform.endpoint,
+        region: platform.region,
+        forcePathStyle: platform.forcePathStyle,
+        credentialsRef: platform.credentialsRef,
+        expectedVersion: platform.version,
+      };
+
+      // PUT is idempotent (RFC 9110 §9.2.2): re-sending the stored value returns
+      // the CURRENT representation, unchanged — no write, no version bump, no
+      // ResourceUpdated event. A stale `expectedVersion` still 412s.
+      const first = await service.upsertPlatformDefault(payload);
+      const second = await service.upsertPlatformDefault(payload);
+
+      expect(second).toEqual(first);
+      expect(platform.version).toBe(1);
+      expect(updateWithVersion).not.toHaveBeenCalled();
+      expect(eventEmitter.emit).not.toHaveBeenCalledWith(SysEventType.ResourceUpdated, expect.anything());
     });
 
     it('never accepts inline credentials — only a credentialsRef reaches the row', async () => {

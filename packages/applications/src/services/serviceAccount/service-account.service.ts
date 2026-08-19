@@ -200,6 +200,11 @@ export class ServiceAccountService extends BaseService {
 
     const previous = ServiceAccountDtoMapper.toResponse(entity);
     await this.updateEntity(entity, dto);
+    // OCC precondition BEFORE the no-changes short-circuit: a stale client must
+    // get 412 ("you are stale, refetch"), not 400/200, even when the payload
+    // would change nothing. RFC 7232 evaluates preconditions independently of
+    // the payload; the CAS below still guards concurrent writers.
+    this.assertExpectedVersion(entity, expectedVersion);
     if (!entity.hasChanges) {
       throw new BadRequestException('No changes supplied');
     }

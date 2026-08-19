@@ -157,6 +157,11 @@ export class WorkflowAssignmentService extends BaseService implements IWorkflowA
     if (existing) {
       const beforeSlug = existing.workflowDefinitionSlug;
       existing.workflowDefinitionSlug = dto.workflowDefinitionSlug;
+      // OCC precondition BEFORE the no-changes short-circuit: a stale client must
+      // get 412 ("you are stale, refetch"), not 400/200, even when the payload
+      // would change nothing. RFC 7232 evaluates preconditions independently of
+      // the payload; the CAS below still guards concurrent writers.
+      this.assertExpectedVersion(existing, expectedVersion ?? dto.expectedVersion);
       if (!existing.hasChanges) {
         return WorkflowAssignmentDtoMapper.toResponse(existing); // idempotent no-op — nothing to write or audit.
       }

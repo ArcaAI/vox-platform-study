@@ -7,8 +7,9 @@ import {
   UserServiceModule,
   WorkflowRunServiceModule,
 } from '@arcaai/applications';
-import { CoreDatabaseModule } from '@arcaai/domains';
+import { CoreDatabaseModule, JobQueue } from '@arcaai/domains';
 import { Module } from '@nestjs/common';
+import { BullModule } from '@nestjs/bullmq';
 import { TenantOwnedResourceModule } from '../../common';
 import { AdminImpersonationController } from './admin-impersonation.controller';
 import { AuthController } from './auth.controller';
@@ -56,6 +57,9 @@ import { StreamTicketModule } from './stream-ticket.module';
     // `IWorkflowRunService.getRun` already 404s a foreign-tenant runId; reused here rather than
     // adding a second lookup path.
     WorkflowRunServiceModule,
+    // Finding H-02 — the DNA generation queue, so the stream-ticket mint can
+    // assert `dna_job:<jobId>` ownership from the job payload before issuing.
+    BullModule.registerQueue({ name: JobQueue.GenerateDnaReport }),
   ],
   // AdminImpersonationController adds the super-admin-only
   // `POST /admin/users/:id/impersonate` mint alongside the legacy

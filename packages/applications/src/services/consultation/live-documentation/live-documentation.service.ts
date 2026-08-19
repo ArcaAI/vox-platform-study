@@ -3,7 +3,7 @@ import { HttpService } from '@nestjs/axios';
 import { ConfigService } from '@nestjs/config';
 import { OnEvent } from '@nestjs/event-emitter';
 import { ClsService } from 'nestjs-cls';
-import { Observable, ReplaySubject, type Subscription, filter, interval, map, merge, takeWhile } from 'rxjs';
+import { Observable, type Subscription } from 'rxjs';
 import {
   AgentSessionKind,
   AgentStepStatus,
@@ -17,7 +17,14 @@ import { IRedisCacheService } from '../../baseServices/redis';
 import { IAgentTrajectoryService } from '../../agent-trajectory/IAgentTrajectoryService';
 import type { CreateAgentTrajectoryStepInput } from '../../agent-trajectory/dto';
 import { SecretsService } from '../../baseServices/_meta/secrets';
-import { TENANTLESS, encryptPhiFields, internalServiceHeaders, resolveInternalAccessToken } from '../../../common';
+import {
+  TENANTLESS,
+  closedFlagTerminal,
+  encryptPhiFields,
+  internalServiceHeaders,
+  resolveInternalAccessToken,
+  sseFromRedisChannel,
+} from '../../../common';
 import { IActiveUserContext } from '../../../interfaces';
 import { RedisSubscriberService } from '../../stt/realtime/redisSubscriber.service';
 import { StreamingAudioBridgeService } from '../../stt/streaming/streamingAudioBridge.service';
@@ -1474,70 +1481,14 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
    *   viewer out tears the Redis subscription down.
    */
   subscribeToLiveSummary(consultationId: string): Observable<MessageEvent> {
-    const channel = this.channel(consultationId);
-
-    return new Observable<MessageEvent>((subscriber) => {
-      let inner: Subscription | null = null;
-      let bridgeSub: Subscription | null = null;
-
-      (async () => {
-        const messages$ = await this.redisSubscriber.subscribeToChannel(channel);
-        // Buffer channel events while the snapshot read is in flight; replayed
-        // into the relay below so ordering stays snapshot-first.
-        const bridge = new ReplaySubject<string>();
-        bridgeSub = messages$.subscribe(bridge);
-
-        const snapshot = await this.cacheService.get(this.snapshotKey(consultationId));
-        const snapshotUpdatedAt = this.parseLiveSummaryUpdatedAt(snapshot);
-        if (snapshot) {
-          subscriber.next({ data: snapshot } as MessageEvent);
-        }
-
-        const relay$ = bridge.pipe(
-          // De-dupe: safePublish stores the snapshot BEFORE publishing, so a
-          // buffered event can be the very state the snapshot already carried.
-          filter((raw: string) => !this.isDuplicateOfLiveSummarySnapshot(raw, snapshotUpdatedAt)),
-          map((raw: string): MessageEvent => ({ data: raw }) as MessageEvent),
-        );
-
-        const heartbeat$ = interval(this.heartbeatMs).pipe(
-          map((): MessageEvent => ({ data: JSON.stringify({ type: 'heartbeat', ts: new Date().toISOString() }) }) as MessageEvent),
-        );
-
-        // takeWhile sits on the MERGED stream (not just the relay) so the
-        // terminal `closed` event completes the whole SSE stream — the infinite
-        // heartbeat interval would otherwise keep `merge` alive.
-        const stream$ = merge(relay$, heartbeat$).pipe(
-          takeWhile((event: MessageEvent) => {
-            try {
-              return JSON.parse(event.data as string).closed !== true;
-            } catch {
-              return true;
-            }
-          }, true), // include the terminal `closed` event
-        );
-
-        inner = stream$.subscribe({
-          next: (event) => subscriber.next(event),
-          error: (err) => subscriber.error(err),
-          complete: () => subscriber.complete(),
-        });
-      })().catch((error) => {
-        this.logger.error({
-          message: 'Failed to initialise live-summary SSE subscription',
-          consultationId,
-          error: error instanceof Error ? error.message : String(error),
-        });
-        subscriber.next({ data: JSON.stringify({ error: 'Failed to subscribe to live summary', consultationId }) } as MessageEvent);
-        subscriber.complete();
-      });
-
-      return () => {
-        inner?.unsubscribe();
-        // Releasing the bridge drives the refcounted channel cleanup (last
-        // viewer out tears the Redis subscription down).
-        bridgeSub?.unsubscribe();
-      };
+    return sseFromRedisChannel(this.redisSubscriber, this.logger, {
+      channel: this.channel(consultationId),
+      heartbeatMs: this.heartbeatMs,
+      loadSnapshot: () => this.cacheService.get(this.snapshotKey(consultationId)),
+      isDuplicateOfSnapshot: (raw, snapshot) => this.isDuplicateOfLiveSummarySnapshot(raw, this.parseLiveSummaryUpdatedAt(snapshot)),
+      isTerminal: closedFlagTerminal,
+      setupErrorPayload: JSON.stringify({ error: 'Failed to subscribe to live summary', consultationId }),
+      logContext: { consultationId },
     });
   }
 

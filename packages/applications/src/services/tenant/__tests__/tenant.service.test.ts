@@ -238,6 +238,7 @@ const createMockGlobalSettingEntity = (
     deletedAt: Date | null;
     hasChanges: boolean;
     changes: Record<string, unknown>;
+    version: number;
   }> = {},
 ) => {
   const entity: Record<string, unknown> & { value: string } = {
@@ -259,6 +260,11 @@ const createMockGlobalSettingEntity = (
     deletedAt: overrides.deletedAt ?? null,
     hasChanges: overrides.hasChanges ?? false,
     changes: overrides.changes ?? {},
+    // A real `GlobalSettingEntity` always carries a `_version` (default 1). The
+    // mock omitted it, so `entity.version` was `undefined` and any supplied
+    // `expectedVersion` compared unequal once the OCC precondition moved ahead
+    // of the no-changes guard. Mirror the entity rather than the omission.
+    version: overrides.version ?? 1,
     toObject: vi.fn(),
   };
   (entity.toObject as ReturnType<typeof vi.fn>).mockReturnValue({

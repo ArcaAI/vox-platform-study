@@ -7,7 +7,7 @@
 
 import { describe, it, expect, beforeEach, vi, type Mock } from 'vitest';
 import { Queue, Job } from 'bullmq';
-import { Observable, Subject } from 'rxjs';
+import { Observable, Subject, finalize } from 'rxjs';
 import { MessageEvent } from '@nestjs/common';
 import { ConsultationJobService } from '../consultation-job.service';
 import { JobQueue } from '@arcaai/domains';
@@ -1065,7 +1065,11 @@ describe('ConsultationJobService', () => {
       mockCacheService.get.mockResolvedValue(JSON.stringify(runningStatus));
 
       const subject = new Subject<string>();
-      mockRedisSubscriber.subscribeToChannel.mockResolvedValue(subject.asObservable());
+      // Mirrors the refcounted finalize inside `subscribeToChannel`: releasing the
+      // returned observable — never `unsubscribeFromChannel` — is what tears the
+      // shared channel down (M-02: an explicit call starves concurrent viewers).
+      const channelReleased = vi.fn();
+      mockRedisSubscriber.subscribeToChannel.mockResolvedValue(subject.asObservable().pipe(finalize(channelReleased)));
 
       const events: MessageEvent[] = [];
       service.subscribeToJobUpdates('job-123').subscribe({
@@ -1086,7 +1090,8 @@ describe('ConsultationJobService', () => {
 
       await new Promise((r) => setTimeout(r, 50));
 
-      expect(mockRedisSubscriber.unsubscribeFromChannel).toHaveBeenCalledWith('consultation_job_updates:job-123');
+      expect(channelReleased).toHaveBeenCalled();
+      expect(mockRedisSubscriber.unsubscribeFromChannel).not.toHaveBeenCalled();
     });
 
     it('should handle getJobStatus error gracefully', async () => {
@@ -1148,7 +1153,11 @@ describe('ConsultationJobService', () => {
       mockCacheService.get.mockResolvedValue(JSON.stringify(runningStatus));
 
       const subject = new Subject<string>();
-      mockRedisSubscriber.subscribeToChannel.mockResolvedValue(subject.asObservable());
+      // Mirrors the refcounted finalize inside `subscribeToChannel`: releasing the
+      // returned observable — never `unsubscribeFromChannel` — is what tears the
+      // shared channel down (M-02: an explicit call starves concurrent viewers).
+      const channelReleased = vi.fn();
+      mockRedisSubscriber.subscribeToChannel.mockResolvedValue(subject.asObservable().pipe(finalize(channelReleased)));
 
       const events: MessageEvent[] = [];
       let completed = false;
@@ -1178,7 +1187,8 @@ describe('ConsultationJobService', () => {
       const lastEvent = JSON.parse(events[events.length - 1].data as string);
       expect(lastEvent.status).toBe('FAILED');
       expect(lastEvent.error).toBe('NLP timeout');
-      expect(mockRedisSubscriber.unsubscribeFromChannel).toHaveBeenCalledWith('consultation_job_updates:job-123');
+      expect(channelReleased).toHaveBeenCalled();
+      expect(mockRedisSubscriber.unsubscribeFromChannel).not.toHaveBeenCalled();
     });
 
     it('should handle Redis subscribeToChannel rejection gracefully', async () => {
@@ -1234,7 +1244,11 @@ describe('ConsultationJobService', () => {
       mockCacheService.get.mockResolvedValue(JSON.stringify(runningStatus));
 
       const subject = new Subject<string>();
-      mockRedisSubscriber.subscribeToChannel.mockResolvedValue(subject.asObservable());
+      // Mirrors the refcounted finalize inside `subscribeToChannel`: releasing the
+      // returned observable — never `unsubscribeFromChannel` — is what tears the
+      // shared channel down (M-02: an explicit call starves concurrent viewers).
+      const channelReleased = vi.fn();
+      mockRedisSubscriber.subscribeToChannel.mockResolvedValue(subject.asObservable().pipe(finalize(channelReleased)));
 
       const events: MessageEvent[] = [];
       const subscription = service.subscribeToJobUpdates('job-123').subscribe({
@@ -1262,7 +1276,8 @@ describe('ConsultationJobService', () => {
       await new Promise((r) => setTimeout(r, 50));
 
       // finalize should have triggered cleanup
-      expect(mockRedisSubscriber.unsubscribeFromChannel).toHaveBeenCalledWith('consultation_job_updates:job-123');
+      expect(channelReleased).toHaveBeenCalled();
+      expect(mockRedisSubscriber.unsubscribeFromChannel).not.toHaveBeenCalled();
 
       // Further messages should not reach the client
       subject.next(

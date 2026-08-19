@@ -20,13 +20,58 @@ const mockEventEmitter = {
   emit: vi.fn(),
 };
 
-// Mock BaseEntity for testing
+// Mock BaseEntity for testing.
+//
+// Mirrors the real `BaseEntity` change-tracking contract closely enough to be
+// meaningful: every setter routes through a `setProperty` that compares with
+// `Object.is` and only records a change on a genuine value transition, and
+// `hasChanges` reflects the tracked set. A mock with plain public fields would
+// silently pass regardless of when `updatedBy` is stamped, which is exactly the
+// behaviour under test here.
 class MockEntity {
   private _changes: Record<string, unknown> = {};
-  public updatedBy: string | null = null;
+  private _updatedBy: string | null = null;
+  private _name: string | null = null;
+  private _value: number | null = null;
+
+  private setProperty(propertyName: string, value: unknown) {
+    const internal = `_${propertyName}` as '_updatedBy' | '_name' | '_value';
+    if (!Object.is((this as any)[internal], value)) {
+      (this as any)[internal] = value;
+      this._changes[propertyName] = value;
+    }
+  }
+
+  get updatedBy(): string | null {
+    return this._updatedBy;
+  }
+
+  set updatedBy(value: string | null) {
+    this.setProperty('updatedBy', value);
+  }
+
+  get name(): string | null {
+    return this._name;
+  }
+
+  set name(value: string | null) {
+    this.setProperty('name', value);
+  }
+
+  get value(): number | null {
+    return this._value;
+  }
+
+  set value(v: number | null) {
+    this.setProperty('value', v);
+  }
 
   get changes() {
     return this._changes;
+  }
+
+  get hasChanges() {
+    return Object.keys(this._changes).length > 0;
   }
 
   setChange(key: string, value: unknown) {
@@ -394,6 +439,58 @@ describe('BaseService', () => {
       await service.testUpdateEntity(entity, changes);
 
       expect(entity.updatedBy).toBeNull();
+    });
+
+    // F-01. The `updatedBy` stamp used to run BEFORE the DTO changes were
+    // applied. Because the stamp routes through change tracking, a semantically
+    // empty update on a row whose previous editor was somebody else (or on a
+    // freshly created row, where `updatedBy` is still NULL) registered
+    // `updatedBy` as a real change — so `hasChanges` was true, every
+    // caller's `if (!entity.hasChanges) throw` guard was bypassed, and the
+    // no-op write committed: version bump, `updatedAt` rewrite, and a
+    // ResourceUpdated audit row for a request that changed nothing. The
+    // identical request then returned 400 on the SECOND attempt, because by
+    // then the stamp was value-identical. The contract was history-dependent.
+    //
+    // The stamp is now applied only when the DTO staged a real change, so an
+    // empty update is deterministically empty regardless of row history.
+    it('does not stamp updatedBy when the change set is semantically empty (fresh row)', async () => {
+      const entity = new MockEntity(); // updatedBy === null, as on a freshly created row
+      mockClsService.get.mockImplementation((key: string) => (key === 'user' ? { id: 'user-123' } : null));
+
+      await service.testUpdateEntity(entity, {});
+
+      expect(entity.updatedBy).toBeNull();
+      expect(entity.hasChanges).toBe(false);
+      expect(entity.changes).toEqual({});
+    });
+
+    it('does not stamp updatedBy when a different user submits a no-op update', async () => {
+      const entity = new MockEntity();
+      entity.updatedBy = 'previous-editor';
+      // Clear the tracked change so the entity looks like a row loaded from the DB.
+      for (const key of Object.keys(entity.changes)) delete (entity.changes as Record<string, unknown>)[key];
+
+      mockClsService.get.mockImplementation((key: string) => (key === 'user' ? { id: 'user-123' } : null));
+
+      await service.testUpdateEntity(entity, { name: undefined });
+
+      expect(entity.updatedBy).toBe('previous-editor');
+      expect(entity.hasChanges).toBe(false);
+    });
+
+    it('still stamps updatedBy when the DTO carries a real change', async () => {
+      const entity = new MockEntity();
+      entity.updatedBy = 'previous-editor';
+      for (const key of Object.keys(entity.changes)) delete (entity.changes as Record<string, unknown>)[key];
+
+      mockClsService.get.mockImplementation((key: string) => (key === 'user' ? { id: 'user-123' } : null));
+
+      await service.testUpdateEntity(entity, { name: 'New Name' });
+
+      expect(entity.name).toBe('New Name');
+      expect(entity.updatedBy).toBe('user-123');
+      expect(entity.changes).toEqual({ name: 'New Name', updatedBy: 'user-123' });
     });
   });
 });

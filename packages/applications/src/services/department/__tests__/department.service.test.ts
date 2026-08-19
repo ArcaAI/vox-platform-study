@@ -577,6 +577,59 @@ describe('DepartmentService', () => {
       const updatedBroadcasts = mockEventEmitter.emit.mock.calls.filter(([eventName]: [string]) => eventName === SysEventType.ResourceUpdated);
       expect(updatedBroadcasts).toHaveLength(0);
     });
+
+    // OCC PRECONDITION ORDERING. The version check must run BEFORE the
+    // no-changes guard, because the CAS (the only other place the version is
+    // compared) sits after it. A stale client sending a payload that happens to
+    // change nothing would otherwise get 400 "fix your body" — or, on the bulk
+    // endpoints that `continue` instead of throwing, a silent 200 — when the
+    // correct answer is 412 "you are stale, refetch". RFC 7232 evaluates
+    // preconditions independently of whether the payload would change anything.
+    describe('OCC precondition ordering vs. the no-changes guard', () => {
+      it('no-op payload + STALE expectedVersion => 412, not 400, and no write', async () => {
+        const { OptimisticConcurrencyException } = await import('@arcaai/exceptions');
+        const department = createMockDepartmentEntityWithChanges({
+          id: 'dept-1',
+          hasChanges: false, // nothing staged: the payload changes nothing
+          changes: {},
+          version: 4,
+        });
+        mockDepartmentRepository.findById.mockResolvedValue(department);
+
+        await expect(service.update('dept-1', { expectedVersion: 999 } as any)).rejects.toBeInstanceOf(OptimisticConcurrencyException);
+        // The precondition failed, so the guard never ran and nothing was written.
+        expect(mockDepartmentRepository.updateWithVersion).not.toHaveBeenCalled();
+      });
+
+      it('no-op payload + CURRENT expectedVersion => the existing 400, and no write', async () => {
+        const { ArgumentInvalidException } = await import('@arcaai/exceptions');
+        const department = createMockDepartmentEntityWithChanges({
+          id: 'dept-1',
+          hasChanges: false,
+          changes: {},
+          version: 4,
+        });
+        mockDepartmentRepository.findById.mockResolvedValue(department);
+
+        await expect(service.update('dept-1', { expectedVersion: 4 } as any)).rejects.toThrow(ArgumentInvalidException);
+        await expect(service.update('dept-1', { expectedVersion: 4 } as any)).rejects.toThrow('No changes to write to.');
+        expect(mockDepartmentRepository.updateWithVersion).not.toHaveBeenCalled();
+      });
+
+      it('real change + STALE expectedVersion => 412 raised before the repository is touched', async () => {
+        const { OptimisticConcurrencyException } = await import('@arcaai/exceptions');
+        const department = createMockDepartmentEntityWithChanges({
+          id: 'dept-1',
+          hasChanges: true,
+          changes: { name: 'Renamed' },
+          version: 4,
+        });
+        mockDepartmentRepository.findById.mockResolvedValue(department);
+
+        await expect(service.update('dept-1', { name: 'Renamed', expectedVersion: 999 } as any)).rejects.toBeInstanceOf(OptimisticConcurrencyException);
+        expect(mockDepartmentRepository.updateWithVersion).not.toHaveBeenCalled();
+      });
+    });
   });
 
   describe('updatePromptConfig', () => {

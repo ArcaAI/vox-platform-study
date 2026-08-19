@@ -2,30 +2,44 @@ import { ApiProperty } from '@nestjs/swagger';
 import { IsInt, Min, IsOptional } from 'class-validator';
 import { Transform } from 'class-transformer';
 
+/**
+ * The offset-pagination defaults (TASK-776 F-02). Applied here, at the DTO
+ * layer, so the RAW (post-transform) `page`/`limit` already equal the
+ * EFFECTIVE values applied to the query — a single source of truth shared by
+ * the Swagger `default` annotations below, `withFormattedPaginatedProps`
+ * (`../paginatedQueryParamConverters.ts`, which imports these), and every
+ * response envelope that echoes back `props.page`/`props.limit` unchanged.
+ * Previously the default only existed downstream in
+ * `withFormattedPaginatedProps` (`props.limit || DEFAULT_PAGE_SIZE`), so an
+ * omitted `limit` queried 10 rows but echoed `limit: 0` in the envelope.
+ */
+export const DEFAULT_PAGE = 0;
+export const DEFAULT_PAGE_SIZE = 10;
+
 export class PaginatedQuery {
   @IsOptional()
   @ApiProperty({
     description: 'Page number (starting from 0)',
     example: 0,
     required: false,
-    default: 0,
+    default: DEFAULT_PAGE,
   })
   @Transform(({ value }) => parseInt(value, 10))
   @IsInt()
   @Min(0)
-  page?: number;
+  page?: number = DEFAULT_PAGE;
 
   @IsOptional()
   @ApiProperty({
     description: 'Number of items per page (10, 20, or 50)',
     example: 10,
     required: false,
-    default: 10,
+    default: DEFAULT_PAGE_SIZE,
   })
   @Transform(({ value }) => parseInt(value, 10))
   @IsInt()
   @Min(1)
-  limit?: number;
+  limit?: number = DEFAULT_PAGE_SIZE;
 
   @IsOptional()
   @ApiProperty({

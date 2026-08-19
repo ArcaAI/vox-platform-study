@@ -975,6 +975,11 @@ export class TenantService extends BaseService implements ITenantService {
     const { expectedVersion, ...editableRequest } = request;
     this.updateEntity(tenant, editableRequest as UpdateTenantRequest);
 
+    // OCC precondition BEFORE the no-changes short-circuit: a stale client must
+    // get 412 ("you are stale, refetch"), not 400/200, even when the payload
+    // would change nothing. RFC 7232 evaluates preconditions independently of
+    // the payload; the CAS below still guards concurrent writers.
+    this.assertExpectedVersion(tenant, expectedVersion);
     if (!tenant.hasChanges) {
       throw new ArgumentInvalidException(`No changes to write to.`);
     }
@@ -1296,6 +1301,11 @@ export class TenantService extends BaseService implements ITenantService {
         // `previousVersion === newVersion` and break audit correlation.
         const previousVersion = existingConfig.version;
 
+        // OCC precondition BEFORE the no-changes short-circuit: a stale client must
+        // get 412 ("you are stale, refetch"), not 400/200, even when the payload
+        // would change nothing. RFC 7232 evaluates preconditions independently of
+        // the payload; the CAS below still guards concurrent writers.
+        this.assertExpectedVersion(existingConfig, config.expectedVersion, 'globalSetting');
         if (!existingConfig.hasChanges) {
           results.push(existingConfig);
           previousVersions.push(previousVersion);

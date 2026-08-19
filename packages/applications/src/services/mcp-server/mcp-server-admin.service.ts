@@ -115,6 +115,11 @@ export class McpServerAdminService extends BaseService implements IMcpServerAdmi
     if (dto.enabled !== undefined) changes.enabled = dto.enabled;
 
     await this.updateEntity(existing, changes);
+    // OCC precondition BEFORE the no-changes short-circuit: a stale client must
+    // get 412 ("you are stale, refetch"), not 400/200, even when the payload
+    // would change nothing. RFC 7232 evaluates preconditions independently of
+    // the payload; the CAS below still guards concurrent writers.
+    this.assertExpectedVersion(existing, expectedVersion);
     if (!existing.hasChanges) {
       throw new ArgumentInvalidException('No changes to write.');
     }

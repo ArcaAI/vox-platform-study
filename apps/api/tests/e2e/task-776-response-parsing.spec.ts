@@ -193,18 +193,18 @@ test.describe('TASK-776: response parsing — ETag / If-Match OCC + pagination',
         }),
       );
       expect(body.page).toBe(0);
-      // DIVERGENCE: the briefed contract states the offset `limit` default is 10.
-      // Verified live: the SERVICE does apply a page size of 10 (`body.data.length`
-      // is capped at 10 below), but the response envelope's `limit` FIELD itself
-      // echoes back `0`, not `10`, when the query string omits `limit` entirely
-      // (`PaginatedQuery.limit` is `@IsOptional()` with only a Swagger-metadata
-      // `default: 10` — that default is documentation only; it is never applied to
-      // the actual bound value, so the unset case flows through as `undefined` ->
-      // JSON `0`). Only an EXPLICIT `?limit=N` populates the envelope's `limit`
-      // field with N (see the next test). Asserting the documented `limit: 10`
-      // default against this route fails against the live API — assert the real
-      // shape instead.
-      expect(body.limit).toBe(0);
+      // F-02 (fixed): the offset `limit` default is 10, and the response
+      // envelope's `limit` FIELD now echoes the EFFECTIVE page size actually
+      // applied, not the raw (pre-default) query value. Previously
+      // `PaginatedQuery.limit` carried only a Swagger-metadata `default: 10`
+      // that was never applied to the bound value, so an omitted `?limit=`
+      // flowed through as `undefined` -> JSON `0` even though the service
+      // queried 10 rows — a client paginating off the echoed `limit` would
+      // compute its next offset from 0 and loop forever. The default is now
+      // applied at the DTO layer itself (`PaginatedQuery.limit = DEFAULT_PAGE_SIZE`,
+      // `packages/applications/src/common/dto/paginated.query.ts`), so the raw
+      // and effective values coincide.
+      expect(body.limit).toBe(10);
       expect(body.data.length).toBeLessThanOrEqual(10);
     });
 
