@@ -164,9 +164,12 @@ describe('ADMIN_PLANE_PRE_CONVENTION_SVC_SCOPES (TASK-773 / O-1)', () => {
     }
   });
 
-  it('holds exactly the webhook admin area O-1 opened', () => {
-    expect([...ADMIN_PLANE_PRE_CONVENTION_SCOPE_SOURCES]).toEqual(['webhook:event:write']);
-    expect([...ADMIN_PLANE_PRE_CONVENTION_SVC_SCOPES]).toEqual(['svc:webhook:event:write']);
+  it('holds exactly the webhook admin area O-1 opened, both halves (O-2)', () => {
+    // O-1 opened `:write` only and pinned `:read` as deliberately un-minted.
+    // O-2 (owner, 2026-08-19) mints the read half too, so the delivery log is
+    // reachable by a read-only grant. Order is the source list's own.
+    expect([...ADMIN_PLANE_PRE_CONVENTION_SCOPE_SOURCES]).toEqual(['webhook:event:read', 'webhook:event:write']);
+    expect([...ADMIN_PLANE_PRE_CONVENTION_SVC_SCOPES]).toEqual(['svc:webhook:event:read', 'svc:webhook:event:write']);
   });
 
   it('each one is registered and implies EXACTLY what its API-key source implies', () => {
@@ -180,7 +183,11 @@ describe('ADMIN_PLANE_PRE_CONVENTION_SVC_SCOPES (TASK-773 / O-1)', () => {
   it('resolves to a NON-EMPTY ability set on both halves (boot audit D, TASK-766 trap)', () => {
     for (const svcScope of ADMIN_PLANE_PRE_CONVENTION_SVC_SCOPES) {
       expect(resolveServiceAccountImpliedPermissions(svcScope).length, `${svcScope} grants nothing`).toBeGreaterThan(0);
-      expect(serviceAccountPolicyRules([svcScope])).toEqual([{ action: 'manage', subject: 'Webhook' }]);
+      // Each half carries its API-key source's abilities verbatim — the derivation
+      // never invents one. `:read` must include `read:WebhookRunHistory`, or it
+      // would clear the scope gate on the delivery log and then be 403'd by CASL
+      // (the TASK-766 trap this assertion exists to catch).
+      expect(serviceAccountPolicyRules([svcScope])).toEqual(API_KEY_SCOPE_REGISTRY[svcScope.slice('svc:'.length)]!.implies);
     }
   });
 
@@ -220,9 +227,16 @@ describe('ADMIN_PLANE_PRE_CONVENTION_SVC_SCOPES (TASK-773 / O-1)', () => {
     expect(hasServiceAccountScope(['svc:admin:user:write'], 'svc:webhook:event:write')).toBe(false);
   });
 
-  it('the reserved read twin is NOT minted — deny-by-default, silence is a refusal', () => {
-    expect(isValidServiceAccountScope('svc:webhook:event:read')).toBe(false);
+  it('mints the read twin (O-2) but still no wildcard — silence remains a refusal', () => {
+    // O-1 refused `:read` because nothing needed it; O-2 gave it a consumer
+    // (`GET admin/webhooks/:id/deliveries`). The WILDCARD stays un-minted: a
+    // family opens one named scope at a time, never a prefix.
+    expect(isValidServiceAccountScope('svc:webhook:event:read')).toBe(true);
     expect(isValidServiceAccountScope('svc:webhook:*')).toBe(false);
+  });
+
+  it('the read half implies the delivery-log ability its only route demands', () => {
+    expect(resolveServiceAccountImpliedPermissions('svc:webhook:event:read')).toContainEqual({ action: 'read', subject: 'WebhookRunHistory' });
   });
 });
 

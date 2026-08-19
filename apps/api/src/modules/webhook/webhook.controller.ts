@@ -81,6 +81,15 @@ export class WebhookController {
 
   @Get(':id/deliveries')
   @Authorize(['read', 'WebhookRunHistory'])
+  // O-2: the delivery log additionally accepts the `:read` half of this
+  // controller's scope pair. BOTH are listed because
+  // `enforceServiceAccountScopes` is `required.some(...)` — declaring `:read`
+  // alone would revoke this route from every existing `:write` grant.
+  // Sound because `webhook:event:read` implies `read:WebhookRunHistory` (the
+  // ability this route's `@Authorize` demands), so a `:read`-only token clears
+  // the scope gate AND the CASL gate rather than passing the first and being
+  // refused by the second.
+  @RequiredSvcScopes('svc:webhook:event:read', 'svc:webhook:event:write')
   @ApiOperation({
     summary: "List a webhook's delivery log (newest-first)",
     description:
