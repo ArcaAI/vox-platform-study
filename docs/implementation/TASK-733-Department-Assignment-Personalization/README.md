@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Status** | Pending |
+| **Status** | In Progress — Phase A (half (a)) backend COMPLETE; Task 6 (screen) blocked on the design gate; Phase B remains HARD-GATED |
 | **Wave** | 4 · **Size** | M |
 | **Epic slug** | `department-assignment-personalization` |
 | **Depends on** | TASK-700 (`dna-phi-containment`) — **half (b) is HARD-GATED on its decrypt-and-scan returning clean AND its containment tasks having shipped**; TASK-731 (`palette-consultation`) — half (a) assigns consultation workflow definitions, which must exist first. Soft: TASK-710 (`phi-redactor`) hop 2, TASK-718 (`workflow-interpreter`) dispatcher, TASK-719 (`workflow-studio-v1`) for the screen. |
@@ -729,10 +729,124 @@ the **department tier is already in its cascade walk**. A DEPARTMENT-scope `Pipe
 
 ## 7. Implementation Summary
 
-_(Empty at authoring — filled during execution.)_
+**Executed 2026-08-19 on `feat/loop` @ `a6daa9157`.** Phase A Tasks 1–4 are complete. Task 5,
+Task 6 and all of Phase B are blocked — see "Not done, and why" below.
+
+### 7.1 What was built (Phase A, half (a))
+
+| Layer | Files |
+|---|---|
+| Database | `packages/database/src/prisma/db_main/workflow-assignment.prisma` (new — `WorkflowAssignment` + `WorkflowAssignmentChange`), `.../migrations/20260819120000_task_733_workflow_assignment/migration.sql` (new), `.../db_main/audit.prisma` (`ResourceType.WorkflowAssignment`), `src/extensions/tenant-scope.ts` (both models -> `TENANT_SCOPED_MODELS`), `src/client.ts` (`WorkflowAssignmentChange` -> `MODELS_WITHOUT_SOFT_DELETE`) |
+| Domain | `packages/domains/src/{models,entities,factories,mappers,repositories}/generated/core/WorkflowAssignment*.ts` + `WorkflowAssignmentChange*.ts`, barrels, `enums/generated/ResourceType.ts`, `common/databaseServices/core/core.database.module.ts` |
+| Services | `packages/applications/src/services/workflow-assignment/**` (interface + service + module + DTO mapper + DTOs + 2 test files), `services/index.ts` barrel |
+| API | `apps/api/src/modules/workflow-assignment/**` (controller + module + tests), `apps/api/src/app.module.ts` |
+| Generated artifacts | `apps/api/route-manifest.json`, `apps/api/openapi.json`, `packages/vox-node/src/resources/admin/**` (regenerated; `gen:admin:check` reports no drift) |
+| Tests updated | `packages/database/src/__tests__/soft-delete-extension.test.ts`, `packages/database/src/extensions/__tests__/tenant-scope.test.ts` (allow-list expectation lists) |
+
+Design decisions worth recording:
+
+- **`WorkflowAssignment` mirrors `PipelinePolicy`'s `(scope, scopeId)` shape and REUSES
+  `PipelinePolicyScope`** rather than declaring a parallel enum, so `walkCascade` from
+  `settings-registry/scope-cascade` resolves it unchanged. No fourth cascade was written.
+- **The platform-default tier is `null`, not a SYSTEM-tenant assignment row.** §4 Task 2 says
+  `WorkflowAssignment` must NOT be added to `SYSTEM_SHARED_READ_MODELS`, so a SYSTEM assignment
+  row is not readable from a tenant context by construction. `resolve()` therefore returns
+  `{ workflowDefinitionSlug: null, source: 'platform-default' }` when no tier has an opinion, and
+  the CALLER keeps its own platform-default resolution (the seed clone path). This is the one
+  place the implementation had to make the plan's wording concrete; it preserves both the stated
+  tier order and the stated tenancy posture.
+- **The WORM change log is a sibling table, not `PipelinePolicyChange` reuse** (§4 Task 4's
+  fallback), because the payload is a slug pair, not a toggle snapshot. It carries no encryption
+  columns: a workflow slug is a configuration identifier, never PHI.
+- **`REVOKE UPDATE, DELETE` is deliberately absent** from the migration, and the migration says
+  so: the equivalent grant DDL for `PipelinePolicyChange`/`HarnessPolicyChange` did not survive
+  the 2026-08-17 squash, and inventing a role name here would be a guess. Append-only is enforced
+  the same way it is for those two today (no update/delete surface on the repository).
+  Restoring the DB-privilege layer for all three change logs is a follow-up.
+- **Authorization reuses `@CanManage('WorkflowDefinition')` + `svc:admin:workflow-definition:manage`**
+  — assignment is a definition-governance act, not a new subject.
+
+### 7.2 Verification evidence (actual output)
+
+Migration authored against a THROWAWAY shadow DB (`hope_shadow_733`, created and dropped; the dev
+DB was never touched):
+
+```
+$ pnpm --filter @arcaai/database db:migrate:deploy      # against hope_shadow_733
+  └─ 20260819120000_task_733_workflow_assignment/
+    └─ migration.sql
+All migrations have been successfully applied.
+
+$ npx prisma migrate diff --from-config-datasource --to-schema src/prisma/db_main --script
+Loaded Prisma config from prisma.config.ts.
+-- This is an empty migration.
+```
+
+Generator gates:
+
+```
+$ pnpm gen:model:check    check: no drift — 169 generated file(s) match the committed files.
+$ pnpm gen:entity:check   check: no drift — 99 generated file(s) match the committed files.
+                          Schema coverage OK: 97 entity artifact(s) cover every persisted column of 101 Prisma model(s)
+$ pnpm gen:factory:check  check: no drift — 99 generated file(s) match the committed files.
+                          Schema coverage OK: 97 factory artifact(s) cover every persisted column of 101 Prisma model(s)
+$ pnpm --filter @arcaai/vox-node gen:admin:check
+                          [vox-node-codegen] no drift (52 areas, 390 routes, 353 schemas)
+```
+
+`pnpm gen:mapper` was NOT run (`git diff packages/domains/src/mappers/generated/core/` shows only
+the two new files + the barrel line).
+
+RED → GREEN on Task 1's resolution tests:
+
+```
+# RED (service did not exist yet)
+FAIL  src/services/workflow-assignment/__tests__/workflow-assignment.resolution.test.ts
+Error: Cannot find module '../workflow-assignment.service'
+ Test Files  1 failed (1)
+
+# GREEN
+ Test Files  2 passed (2)
+      Tests  13 passed (13)
+```
+
+Layer gates:
+
+```
+$ pnpm --filter @arcaai/database test       Test Files  58 passed (58)     Tests  1541 passed (1541)
+$ pnpm --filter @arcaai/domains build       (tsc, clean)
+$ pnpm --filter @arcaai/domains test        Test Files  147 passed | 2 skipped (149)   Tests  1810 passed
+$ pnpm --filter @arcaai/applications build  (tsc, clean)
+$ pnpm --filter @arcaai/applications test   Test Files  1 failed | 512 passed | 1 skipped (514)
+                                            Tests  1 failed | 9517 passed (9522)
+$ pnpm api:build                            Tasks: 12 successful, 12 total
+$ apps/api vitest run                       Test Files  238 passed | 2 skipped (240)   Tests  3770 passed
+$ pnpm --filter @arcaai/vox-node test       Test Files  18 passed (18)     Tests  233 passed (233)
+$ typecheck: @arcaai/{domains,applications,api,vox-node}   all clean
+$ lint: @arcaai/{database,domains,applications,api}        no errors, no new warnings
+```
+
+The ONE applications failure is `s3.service.secret-gate.test.ts > initializes when credentials
+come from SecretsService and NO GlobalSetting rows exist`. It is **pre-existing**: it fails
+identically with this ticket's changes stashed (`git stash push -- packages/applications
+packages/domains packages/database apps/api` → same single failure). Out of scope.
+
+Not run: `pnpm test:integration` / `pnpm test:e2e` (live test infra + a running gateway are the
+orchestrator's to start), and the `apps/compat-playground` / `apps/quick-compat-app` /
+`packages/ui` suites (owner directive, 2026-08-19).
+
+### 7.3 Not done, and why
+
+| Item | State |
+|---|---|
+| **Task 5 — wire the dispatcher** | **STOPPED AND FLAGGED, as §4 Task 5 instructs.** TASK-731 has not landed: `NoteGenerationService` (`packages/applications/src/services/consultation/note-generation/note-generation.service.ts`, 196 lines) contains no workflow/palette resolution at all, and the node registry carries `summarization` + `stt` only — there is no `consultation` palette to resolve. Building a parallel dispatch was explicitly forbidden. `IWorkflowAssignmentService.resolve()` is ready for the one-line hop when TASK-731 lands. |
+| **Task 6 — Studio assignment-matrix screen** | **BLOCKED on the design gate** (rule 12 §2 gate 2 — no screen before its Figma frames are approved; no frame inventory exists for it). §6 R-8 anticipates exactly this and puts the backend first, which is what shipped. |
+| **Phase B Tasks 8–12** | **HARD-GATED on Task 7**, which is a human verdict. `reenable-gate.md` was authored with the evidence status verified against the tree. Findings worth surfacing: **Task 8 (the §2.7 ungated injection path), Task 9 (the `failMode` declaration) and Task 10 (the reset path) are ALREADY CLOSED on `feat/loop` by other work** — the proxy now routes through the gated `getEffectiveStyleText` (`text-proxy.controller.ts:1041-1045`), `pipeline.descriptors.ts:74-76` declares `dnaStyleEnabled` as `'closed'`, and both DNA controllers now carry `@Delete` routes. Task 11 is additionally blocked on TASK-731; Task 12 is deferred with the gate. |
+| **A DB-level `REVOKE` on the change log** | Deliberately omitted (see §7.1); a follow-up should restore it for all three change logs together. |
 
 ## 8. Change History
 
 | Date | Change | By |
 |---|---|---|
 | 2026-08-16 | Ticket authored | Claude (Wave-4 ticket-authoring agent) |
+| 2026-08-19 | Phase A implemented (Tasks 1–4): `WorkflowAssignment` + `WorkflowAssignmentChange` model/migration/domain trio, `WorkflowAssignmentService` (cascade resolution via `walkCascade` + OCC CRUD + WORM audit), `/api/v1/admin/workflow-assignments` controller, regenerated route-manifest/openapi/vox-node admin artifacts. Task 5 STOPPED (TASK-731 not landed), Task 6 blocked on the design gate, Phase B gate document authored unsigned — and Tasks 8/9/10 found already closed by other work on `feat/loop`. | Claude (implementing agent) |

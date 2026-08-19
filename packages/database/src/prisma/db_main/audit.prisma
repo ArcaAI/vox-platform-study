@@ -317,5 +317,14 @@ enum ResourceType {
   // rotation and revocation broadcasts against this resourceType.
   ServiceAccount
 
+  // Per-scope workflow assignment (TASK-733). WHICH workflow definition
+  // governs a tenant/department for a palette — a governance act distinct
+  // from the definition it points at, so it is its own audited resource
+  // (WorkflowAssignmentService broadcasts on create/update/delete). Its
+  // append-only sibling WorkflowAssignmentChange is DELIBERATELY ABSENT as
+  // its own ResourceType: change rows are written as part of the assignment
+  // mutation they record, exactly as PipelinePolicyChange is.
+  WorkflowAssignment
+
   @@schema("core")
 }
