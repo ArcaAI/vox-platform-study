@@ -55,6 +55,13 @@ describe('buildUrl', () => {
       );
     });
 
+    it.each(['api/stt/start_session', 'api/stt/switch', 'api/stt/stop_session'])(
+      'does not prefix POST /%s (v1-compat STT session lifecycle)',
+      (path) => {
+        expect(buildUrl('http://localhost:8868', path)).toBe(`http://localhost:8868/${path}`);
+      },
+    );
+
     it('does not prefix when the exempt path has a leading slash', () => {
       expect(buildUrl('http://localhost:8868', '/api/smr/api/v1/presummary')).toBe(
         'http://localhost:8868/api/smr/api/v1/presummary',
