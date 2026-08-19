@@ -163,22 +163,38 @@ class TestToolClientFactoriesSendServiceToken:
     with the configured peer-service token, or every real ``generate``/
     ``classify_tokens`` call 401s against a non-dev-bypass apps/text or apps/nlp
     (the bug this ticket fixes — the hermetic activity tests above stub these
-    factories entirely, so they never would have caught it)."""
+    factories entirely, so they never would have caught it).
+
+    Since the one-shared-token migration the factories resolve through
+    ``Settings.peer_service_token``: the shared ``INTERNAL_ACCESS_TOKEN`` wins and
+    the per-peer ``*_SERVICE_TOKEN`` is the fallback. Every case below therefore
+    pins ``internal_access_token`` explicitly — the ambient `.env.dev`/`.env.test`
+    legitimately set it to a real secret, and an unpinned one would silently
+    decide the assertion."""
 
     def test_text_client_carries_the_configured_token(self) -> None:
-        settings = Settings(text_service_token="tok-smr")
+        settings = Settings(internal_access_token="", text_service_token="tok-smr")
         client = activities._text_client(settings)
         assert client._service_token == "tok-smr"
 
     def test_nlp_client_carries_the_configured_token(self) -> None:
-        settings = Settings(nlp_service_token="tok-nlp")
+        settings = Settings(internal_access_token="", nlp_service_token="tok-nlp")
         client = activities._nlp_client(settings)
         assert client._service_token == "tok-nlp"
+
+    def test_shared_token_wins_over_the_legacy_peer_token(self) -> None:
+        settings = Settings(
+            internal_access_token="shared-tok",
+            text_service_token="tok-smr",
+            nlp_service_token="tok-nlp",
+        )
+        assert activities._text_client(settings)._service_token == "shared-tok"
+        assert activities._nlp_client(settings)._service_token == "shared-tok"
 
     def test_clients_carry_no_token_when_unset(self) -> None:
         # Explicit empty, not a bare Settings() — the ambient .env.dev/.env.test
         # legitimately set these to real secrets, so this stays hermetic.
-        settings = Settings(text_service_token="", nlp_service_token="")
+        settings = Settings(internal_access_token="", text_service_token="", nlp_service_token="")
         assert activities._text_client(settings)._service_token == ""
         assert activities._nlp_client(settings)._service_token == ""
 

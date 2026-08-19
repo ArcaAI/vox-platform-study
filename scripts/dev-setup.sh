@@ -83,7 +83,9 @@ PG_SUPERUSER="$(read_env POSTGRES_USER postgres)"
 bold "── Step 1/6: starting infrastructure ($TIER_LABEL) ──────"
 # Use the full dev-infra wrapper so Temporal + rag (and optional -o/-e) come up
 # alongside core + vault.
-"$SCRIPT_DIR/dev-infra.sh" up "${INFRA_FLAGS[@]+"${INFRA_FLAGS[@]}"}"
+# SKIP_VAULT_RECONCILE: dev-infra.sh reconciles Vault itself (so `stack:dev` /
+# `infra:dev:up` are self-sufficient); here steps 4 and 6 do it after the DB work.
+SKIP_VAULT_RECONCILE=1 "$SCRIPT_DIR/dev-infra.sh" up "${INFRA_FLAGS[@]+"${INFRA_FLAGS[@]}"}"
 
 bold "── Step 2/6: waiting for Postgres + Vault to be ready ───────────────"
 ready=0

@@ -138,7 +138,15 @@ class _FakeClient:
 
 
 def _settings(token: str = "") -> Settings:
-    return Settings(service_token=SecretStr(token), log_level="debug")
+    # Both credentials pinned: the guard accepts the shared INTERNAL_ACCESS_TOKEN
+    # as well as the legacy per-service one, and the developer's .env.dev sets the
+    # shared one — leaving it unpinned would arm a guard the default case builds
+    # deliberately unarmed.
+    return Settings(
+        service_token=SecretStr(token),
+        internal_access_token=SecretStr(token),
+        log_level="debug",
+    )
 
 
 @pytest_asyncio.fixture

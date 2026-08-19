@@ -178,6 +178,53 @@ warn_inference_preflight() {
     echo ""
 }
 
+# ---------------------------------------------------------------------------
+# Reconcile Vault with .env.dev after the containers are up.
+#
+# The dev Vault runs in dev mode: its storage is IN-MEMORY, so every recreation
+# of `hope-vault` (infra:dev:down/up, a Docker restart, a reboot) wipes kv-v2
+# back to the placeholder values dev-init.sh seeds by hand, and mints a fresh
+# AppRole role_id. Nothing in the app layer can detect that: the gateway happily
+# reads `dev-harness-service-token-change-me` from Vault while apps/harness reads
+# the real token from .env.dev, and every internal hop 401s at REQUEST time, far
+# from the cause.
+#
+# So the reconcile belongs HERE — on the one path every entry point goes through
+# (`setup:dev`, `stack:dev`, `infra:dev:up`) — not only in dev-setup.sh's step 6.
+# Both scripts are idempotent; dev-setup.sh sets SKIP_VAULT_RECONCILE=1 because
+# it runs them itself after the DB work.
+reconcile_vault() {
+    [ "${SKIP_VAULT_RECONCILE:-0}" = "1" ] && return 0
+    [ -f "$SOURCE_ENV_FILE" ] || return 0
+
+    local root_token="${VAULT_DEV_ROOT_TOKEN:-root}"
+    local ready=0
+    for _ in $(seq 1 60); do
+        if docker exec "${VAULT_CONTAINER:-hope-vault}" sh -lc \
+            "export VAULT_ADDR=http://127.0.0.1:8200 VAULT_TOKEN=${root_token}; vault read -field=role_id auth/approle/role/hope-app/role-id" \
+            >/dev/null 2>&1; then
+            ready=1
+            break
+        fi
+        sleep 2
+    done
+    if [ "$ready" != "1" ]; then
+        echo "WARNING: Vault did not become ready — skipping credential reconcile." >&2
+        echo "         Re-run 'pnpm setup:dev' once Vault is up." >&2
+        return 0
+    fi
+
+    echo ""
+    echo "Reconciling Vault with .env.dev (AppRole creds + kv-v2 secrets)..."
+    "$SCRIPT_DIR/refresh-vault-creds.sh"
+    # The seed script derives its key list from the BUILT settings registry and
+    # fails rather than falling back to a stale hardcoded list, so build on miss.
+    if [ ! -f "$REPO_ROOT/packages/applications/dist/services/settings-registry/descriptors/platform-secrets.descriptors.js" ]; then
+        pnpm --filter @arcaai/applications build
+    fi
+    "$SCRIPT_DIR/vault-seed-secrets.sh" --env-file "$SOURCE_ENV_FILE"
+}
+
 print_cmd() {
     local mode="$1"
     shift
@@ -200,6 +247,7 @@ case "$ACTION" in
         docker compose --env-file "$ENV_FILE" "${UP_PROFILES[@]}" -f "$COMPOSE_CORE" -f "$COMPOSE_DEV" up -d
         echo ""
         docker compose --env-file "$ENV_FILE" "${ALL_PROFILES[@]}" -f "$COMPOSE_CORE" -f "$COMPOSE_DEV" ps
+        reconcile_vault
         echo ""
         echo "Temporal UI:  http://localhost:${TEMPORAL_UI_PORT:-8233}   gRPC: localhost:${TEMPORAL_PORT:-7233}"
         echo "Vault UI:     http://localhost:8200"

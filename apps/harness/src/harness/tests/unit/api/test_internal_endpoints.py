@@ -27,6 +27,11 @@ _HEADERS = {"X-Service-Token": _TOKEN}
 def _build(service_token: str = _TOKEN, *, optimistic_delivery_enabled: bool = False):
     settings = Settings(
         service_token=SecretStr(service_token),
+        # The guard accepts EITHER the shared INTERNAL_ACCESS_TOKEN or the legacy
+        # per-service one, so the shared token has to be pinned here too — the
+        # developer's own .env.dev sets it, and it would otherwise leak in and
+        # arm a guard these cases build deliberately unarmed.
+        internal_access_token=SecretStr(service_token),
         log_level="debug",
         optimistic_delivery_enabled=optimistic_delivery_enabled,
     )

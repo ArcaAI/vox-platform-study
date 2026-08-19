@@ -1,7 +1,7 @@
 import { HttpService } from '@nestjs/axios';
 import { HttpException, Inject, Injectable, Logger, Optional, ServiceUnavailableException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { SecretsService } from '@arcaai/applications';
+import { SecretsService, resolveInternalAccessToken } from '@arcaai/applications';
 import { isAxiosError } from 'axios';
 
 import { describeCauseForOperator } from '../../filters/downstream-error';
@@ -159,7 +159,11 @@ export class HarnessOpsClient {
   }
 
   private async buildHeaders(): Promise<Record<string, string>> {
-    const token = (await this.secretsService?.getSecretOptional('HARNESS_SERVICE_TOKEN')) ?? '';
+    // Shared `INTERNAL_ACCESS_TOKEN` first, legacy `HARNESS_SERVICE_TOKEN` as the
+    // compatibility fallback — the same resolution every other internal client
+    // uses. Reading the legacy key directly made this the one hop that could not
+    // move to the shared credential.
+    const token = await resolveInternalAccessToken(this.secretsService, 'HARNESS_SERVICE_TOKEN');
     return {
       'Content-Type': 'application/json',
       'X-Service-Token': token,

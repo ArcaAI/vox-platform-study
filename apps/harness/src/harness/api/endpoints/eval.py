@@ -49,15 +49,21 @@ def require_service_token(
     request: Request,
     x_service_token: str | None = Header(default=None, alias="X-Service-Token"),
 ) -> None:
-    """Reject the request unless ``X-Service-Token`` matches the shared secret.
+    """Reject the request unless ``X-Service-Token`` matches an accepted secret.
 
-    Constant-time comparison. An empty configured token means auth is disabled
-    (local dev) and every caller is allowed through.
+    Accepts the canonical shared ``INTERNAL_ACCESS_TOKEN`` OR the legacy
+    ``HARNESS_SERVICE_TOKEN``, via :attr:`Settings.accepted_service_tokens` —
+    the same both-tokens posture ``knowledge.py`` already implements. Reading
+    ``harness_service_token`` alone made this surface the one inbound guard that
+    rejected a caller presenting the shared token. Constant-time comparison; no
+    configured token at all means auth is disabled (local dev / hermetic CI).
     """
-    expected = _settings(request).harness_service_token.get_secret_value()
-    if not expected:
+    accepted = _settings(request).accepted_service_tokens
+    if not accepted:
         return
-    if not x_service_token or not secrets.compare_digest(x_service_token, expected):
+    if not x_service_token or not any(
+        secrets.compare_digest(x_service_token, tok) for tok in accepted
+    ):
         raise HTTPException(status_code=401, detail="invalid or missing service token")
 
 
