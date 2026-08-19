@@ -236,7 +236,22 @@ export const API_KEY_SCOPE_REGISTRY: Record<string, ScopeDefinition> = {
   'webhook:event:read': {
     description: 'Read webhook events',
     category: 'Webhook',
-    implies: [{ action: 'read', subject: 'Webhook' }],
+    // TASK-773 / O-2 — `read:WebhookRunHistory` belongs here. The scope is named
+    // "read webhook EVENTS" and the delivery log IS the event record
+    // (`GET admin/webhooks/:id/deliveries`, `@Authorize(['read','WebhookRunHistory'])`),
+    // so a holder that could read the subscription but not its deliveries was
+    // under-specified rather than deliberately narrowed. Completing it here —
+    // instead of widening the route to accept `read:Webhook` — is what keeps the
+    // fix off the human plane: route decorators are shared by every principal
+    // class, whereas `implies` reaches only credentials whose abilities are
+    // BUILT from scopes. Human abilities come from DB policies
+    // (`tenant-full-access` is the only one granting `read:WebhookRunHistory`),
+    // so no role gains anything; and `admin/webhooks` is `@ForbidApiKey()`, so
+    // no API key can reach the route regardless.
+    implies: [
+      { action: 'read', subject: 'Webhook' },
+      { action: 'read', subject: 'WebhookRunHistory' },
+    ],
     reserved: true,
   },
   'webhook:event:write': {

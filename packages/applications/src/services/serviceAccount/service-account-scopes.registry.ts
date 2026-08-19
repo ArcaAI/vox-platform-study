@@ -169,7 +169,7 @@ export const STANDALONE_FEATURE_SVC_SCOPES: readonly string[] = STANDALONE_FEATU
  * a whole by the write scope, so a read-only twin would grant nothing extra and
  * deny-by-default means silence is a refusal, not an oversight.
  */
-export const ADMIN_PLANE_PRE_CONVENTION_SCOPE_SOURCES = ['webhook:event:write'] as const;
+export const ADMIN_PLANE_PRE_CONVENTION_SCOPE_SOURCES = ['webhook:event:read', 'webhook:event:write'] as const;
 
 /** The renamespaced form of {@link ADMIN_PLANE_PRE_CONVENTION_SCOPE_SOURCES}. */
 export const ADMIN_PLANE_PRE_CONVENTION_SVC_SCOPES: readonly string[] = ADMIN_PLANE_PRE_CONVENTION_SCOPE_SOURCES.map(toServiceAccountScope);
