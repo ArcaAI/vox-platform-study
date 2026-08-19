@@ -196,6 +196,11 @@ export const MODELS_WITHOUT_SOFT_DELETE: ReadonlySet<string> = new Set([
   // AgentTrajectoryStep above (hard-retention history, no `resourceStatus`
   // column, no soft delete).
   'WorkflowRun',
+  // WorkflowAssignmentChange (TASK-733) is the append-only WORM change log
+  // for workflow assignments — no `resourceStatus` column and no soft delete
+  // (rows are immutable; the migration REVOKEs UPDATE/DELETE from the app
+  // role), the same shape as HarnessAuditEvent above.
+  'WorkflowAssignmentChange',
 ]);
 
 /**

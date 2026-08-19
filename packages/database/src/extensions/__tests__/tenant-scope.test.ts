@@ -122,7 +122,12 @@ describe('TENANT_SCOPED_MODELS allow-list', () => {
     // nlp.topic/nlp.intent instruction content). Ordinary tenant-owned rows,
     // deliberately NOT SYSTEM-shared (unlike AiTaskDefault, there is no
     // SYSTEM-tenant platform-default row for this model).
-    expect(TENANT_SCOPED_MODELS.size).toBe(81);
+    // 81 → 83: adds WorkflowAssignment + WorkflowAssignmentChange (TASK-733 —
+    // WHICH definition governs a tenant/department for a palette, and its
+    // append-only change log). Ordinary tenant-owned rows, deliberately NOT
+    // SYSTEM-shared: the platform-default tier is the tenant's own active
+    // published definition, never a SYSTEM assignment row read cross-tenant.
+    expect(TENANT_SCOPED_MODELS.size).toBe(83);
   });
 
   // The usage ledger, its outbox, the rollups and the whole billing

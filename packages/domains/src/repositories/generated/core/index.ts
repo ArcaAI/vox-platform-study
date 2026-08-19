@@ -141,3 +141,5 @@ export * from './ConsentGrantRepository';
 export * from './WorkflowTestFixtureRepository';
 export * from './WorkflowRunRepository';
 export * from './WorkflowDefinitionRepository';
+export * from './WorkflowAssignmentRepository';
+export * from './WorkflowAssignmentChangeRepository';
