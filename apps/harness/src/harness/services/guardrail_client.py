@@ -33,6 +33,15 @@ from __future__ import annotations
 import httpx
 from pydantic import BaseModel, ConfigDict
 
+#: Path prefix apps/guardrail mounts its analyze/redact routes under. Both call sites here
+#: previously omitted the `/api` segment and therefore addressed paths the service does not
+#: route: `/guardrail/analyze` and `/guardrail/redact` both answer 404, while
+#: `/api/guardrail/analyze` and `/api/guardrail/redact` reach the handlers (422 on an empty body).
+#: Observed on a live run — `guardrail.check` DEGRADED with "guardrail analyze failed: Client
+#: error '404 Not Found'", which then starved `output.deliver` of bound content. Kept as one
+#: constant so the two methods cannot drift apart again.
+_GUARDRAIL_PREFIX = "/api/guardrail"
+
 
 class GuardrailServiceError(RuntimeError):
     """The guardrail service was unreachable, timed out, or returned a non-2xx response."""
@@ -105,7 +114,7 @@ class GuardrailClient:
     ) -> GuardrailAnalysis:
         """Analyze ``text`` for safety issues. Raises :class:`GuardrailServiceError` on any
         transport/HTTP failure — never returns a synthesized result for one (see module doc)."""
-        url = f"{self._base_url}/guardrail/analyze"
+        url = f"{self._base_url}{_GUARDRAIL_PREFIX}/analyze"
         body: dict[str, object] = {"text": text, "guardrail_type": guardrail_type}
         if request_id:
             body["request_id"] = request_id
@@ -138,7 +147,7 @@ class GuardrailClient:
         """Sanitize `text` per `mode` (`'pseudonymize'` or `'full'`). Raises
         :class:`GuardrailServiceError` on ANY transport/HTTP failure — never returns a
         synthesized/unredacted result for one (see module doc; mirrors `analyze()`)."""
-        url = f"{self._base_url}/guardrail/redact"
+        url = f"{self._base_url}{_GUARDRAIL_PREFIX}/redact"
         body: dict[str, object] = {"text": text, "mode": mode}
         if request_id:
             body["request_id"] = request_id

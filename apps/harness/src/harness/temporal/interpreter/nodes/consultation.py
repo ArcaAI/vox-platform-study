@@ -1,23 +1,20 @@
-"""Consultation-palette node activities (TASK-731 Task 4/9 — a partial pass, see README §7).
+"""Consultation-palette node activities — the consent gate, the PHI hop, and the HITL-gate
+placeholder (TASK-731 Task 4/9).
 
-Only THREE of the palette's thirteen node types are wired to real code this pass:
-``consultation.consentGate``, ``consultation.phiHop`` (both genuinely new — README §2.3's two
-"missing compile target" gaps, resolved per `contracts/palette-contract.md` §4a/§4b), and
-``consultation.hitlGate`` (a documented `implemented: false` PLACEHOLDER — the same mechanism
-`stt_placeholder.py`'s `interpreter_stt_phi_hop` uses — because the durable-wait interpreter
-extension (Phase B) has not been implemented yet; see the ticket README §7 for why).
+``consultation.consentGate`` and ``consultation.phiHop`` are real: they wrap the existing
+``_check_consent`` helper and ``GuardrailClient.redact()`` respectively, per
+`contracts/palette-contract.md` §4a/§4b. ``consultation.hitlGate``'s activity here is deliberately NOT its
+execution path: Phase B landed the durable wait as a child workflow
+(`interpreter/gate_workflow.py`), and the compiler lifts every `gate`-classed node out of
+`stages` into `gates`, so the interpreter starts `ConsultationGateWorkflow` for it instead of
+dispatching an activity. The callable below stays because `NodeSpec.activity` requires one and
+because `activity_name` is the S-4 cross-check anchor — reaching it means a routing bug.
 
-The remaining ten node types (`captureBinding`, `extractEntities`, `bindTerminology`,
-`retrieveEvidence`, `assemblePrompt`, `synthesize`, `sensors`, `inferentialSensors`,
-`persistDraft`, `finalizeAssurance`) each have a REAL, already-shipped, already-tested compile
-target in `harness.temporal.activities` (see `contracts/node-types.md`'s node table for the exact
-activity + `models.py` input-model file:line for each) — building their own thin
-`NodeActivityInput -> NodeActivityResult` interpreter wrappers (mirroring this file's two real
-examples, or `nodes/text_generate.py`'s reimplementation-over-lower-level-clients pattern) is
-real, disclosed, NOT-YET-DONE follow-up work, not a design gap. Registering them here without a
-carefully-verified field-by-field mapping to each activity's own bespoke Pydantic input model
-under this pass's time budget was judged a worse outcome than leaving them fully specified in
-`contracts/node-types.md` and not yet wired.
+The palette's other ten node types were left unwired by TASK-731 and are now implemented in
+`consultation_{capture,nlp,compose,verify,persist}.py`, grouped by pipeline stage — each a thin
+`NodeActivityInput -> NodeActivityResult` wrapper over the already-shipped activity
+`contracts/node-types.md`'s node table names as its compile target, following the two real
+examples in this file. Shared identity/binding helpers live in `_consultation_shared.py`.
 """
 
 from __future__ import annotations
@@ -151,23 +148,23 @@ def _extract_text(bound_inputs: dict[str, Any]) -> str | None:
     return None
 
 
-_HITL_GATE_NOT_IMPLEMENTED = (
-    "consultation.hitlGate is registered `implemented: false` — the interpreter's durable-wait "
-    "extension (Phase B: an approval/edit signal pair or a child-workflow delegation, see "
-    "contracts/palette-contract.md §2) has not been implemented yet. compile() therefore refuses "
-    "ANY graph containing this node type (identical to unregistered — WF-C-002), so this activity "
-    "can only be reached by a bug bypassing that registry gate. If it ever is, it DEGRADES and "
-    "names exactly why — it NEVER returns a result that could be read as an approval (the "
+_HITL_GATE_NOT_AN_ACTIVITY = (
+    "consultation.hitlGate is a `kind=\"child_workflow\"` node: the compiler lifts every "
+    "`gate`-classed node out of `stages` into `gates`, and `WorkflowInterpreter._run_gate` starts "
+    "`ConsultationGateWorkflow` for it (see interpreter/gate_workflow.py). This activity is never "
+    "the execution path — it exists because `NodeSpec.activity` requires a callable and because "
+    "`activity_name` is the S-4 cross-check anchor. Reaching it means a routing bug; it DEGRADES "
+    "and names why, and it NEVER returns a result that could be read as an approval (the "
     "03-compliance-posture.md §3 forgery shape this must never resemble)."
 )
 
 
 @activity.defn(name="interpreter.consultation_hitl_gate")
 async def interpreter_consultation_hitl_gate(payload: NodeActivityInput) -> NodeActivityResult:
-    """N-13 ``consultation.hitlGate`` — PLACEHOLDER, `implemented: false`. See module docstring
-    and `contracts/node-types.md`'s "implemented: false" section."""
+    """N-13 ``consultation.hitlGate`` — NOT the gate's execution path. See the module docstring
+    and `_HITL_GATE_NOT_AN_ACTIVITY`."""
     started = now()
     await record_and_flush(
         payload, status=STATUS_ERROR, started=started, error_code="not_a_real_execution_path"
     )
-    return NodeActivityResult(status="DEGRADED", reason=_HITL_GATE_NOT_IMPLEMENTED)
+    return NodeActivityResult(status="DEGRADED", reason=_HITL_GATE_NOT_AN_ACTIVITY)

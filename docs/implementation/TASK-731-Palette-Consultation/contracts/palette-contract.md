@@ -68,7 +68,42 @@ same reason README §1.2 gives.
 ## 2. The interpreter-semantics decision (§2.6 options A/B/C)
 
 **Decision: Option (B) — delegate the gate to the existing, replay-fixtured `HarnessDocWorkflow`
-gate machinery as a child workflow.** This is the README's own carried recommendation; this pass
+gate machinery as a child workflow.**
+
+> **CORRECTION (2026-08-19, Phase B implementation).** The decision below stands on its
+> *reasoning* and was implemented on it; the specific delegation target did not survive contact
+> with the code. §2's own stated falsifier — "TASK-718's `contracts/versioning.md` rules turn out
+> to forbid a parent from starting a non-declared child workflow kind" — was re-confirmed and is
+> **fine**: `versioning.md` carries no such prohibition, only rule 3's requirement that a new
+> command in the shared loop ships behind a `workflow.patched` gate (which the interpreter side
+> now carries as `task-731-hitl-gate`).
+>
+> The actual blocker is more basic and was not anticipated here: **`HarnessDocWorkflow` has no
+> gate-only entry point.** `HarnessDocWorkflow.run` is a single ~1,100-line method that fetches
+> policy, extracts entities, retrieves evidence, assembles a prompt, generates, runs both sensor
+> passes and persists a draft *before* reaching `self._phase = "GATE"` (`workflows.py:1539`).
+> Starting it as a child to "just wait at the gate" would re-run that whole pipeline and persist
+> a SECOND draft for a consultation the interpreter's graph has already persisted one for — a
+> competing writer, not a delegation. The "reuses that code UNCHANGED" premise of the table below
+> is therefore false as written.
+>
+> **What shipped instead:** a new `@workflow.defn`, `ConsultationGateWorkflow`
+> (`apps/harness/src/harness/temporal/interpreter/gate_workflow.py`), which keeps every axis the
+> table below actually decided on — the interpreter's signal surface stays `cancel`-only for
+> every palette (the decisive axis against option (A)); the gate is a child, addressed at the
+> deterministic id `f"{run_id}-gate"`; and the audited side effects (`escalate_gate`,
+> `record_gate_decision`) are reused verbatim. Being a NEW type is what makes it safe to write at
+> all: a type with no recorded histories has no era to stay compatible with, which is exactly the
+> precedent `ConsultationLoopWorkflow` set (`workflows.py:1634`). What is re-expressed rather
+> than reused is the ~40-line wait/escalate/abandon shape — not the audited writes, and not the
+> "timeout never signs" property, which `test_gate_workflow.py::TestTimeoutNeverSigns` now pins
+> directly against a time-skipping server.
+>
+> Also not implemented, deliberately: the `edit` signal. It exists on `HarnessDocWorkflow` to
+> re-run the optimistic-assurance pass against an edited note; the interpreter walks a linear
+> compiled graph with no loop back to synthesis, so accepting one would imply a capability that
+> does not exist. A clinician who edits and then signs is carried by the approval's
+> `contextItemVersionId`. This is the README's own carried recommendation; this pass
 defends it explicitly rather than adopting it by inertia.
 
 ### Why (B), argued against (A) and (C)

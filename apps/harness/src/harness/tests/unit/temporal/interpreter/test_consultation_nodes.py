@@ -1,8 +1,10 @@
-"""TASK-731 Phase C/D — registry + node-activity tests for the consultation palette.
+"""TASK-731 Phase C/D — node-activity tests for the three node types `nodes/consultation.py`
+owns: `consultation.consentGate`, `consultation.phiHop` (both `implemented: true`) and
+`consultation.hitlGate` (`implemented: false` — Phase B not built).
 
-Only THREE node types are registered this pass (see `nodes/consultation.py`'s module docstring
-and the ticket README §7): `consultation.consentGate`, `consultation.phiHop` (both
-`implemented: true`), `consultation.hitlGate` (`implemented: false` — Phase B not built).
+The palette's other ten node types are covered by `test_consultation_pipeline_nodes.py`, and the
+registry-shape assertions over the full thirteen live in
+`packages/workflow-contract/src/__tests__/consultation-node-registry.test.ts`.
 """
 
 from __future__ import annotations
@@ -20,6 +22,9 @@ _CONSULTATION_KEYS = ("consultation.consentGate", "consultation.hitlGate", "cons
 
 
 class TestConsultationRegistryShape:
+    """Scoped to the three keys THIS module implements — the full-palette registry shape is
+    asserted in consultation-node-registry.test.ts and test_consultation_pipeline_nodes.py."""
+
     def test_all_three_keys_present(self):
         for key in _CONSULTATION_KEYS:
             assert key in NODE_REGISTRY
@@ -30,10 +35,14 @@ class TestConsultationRegistryShape:
         assert NODE_REGISTRY["consultation.hitlGate"].critical is True
         assert NODE_REGISTRY["consultation.phiHop"].critical is False
 
-    def test_hitl_gate_is_not_implemented_and_is_external_write(self):
+    def test_hitl_gate_is_a_child_workflow_node(self):
+        # Phase B landed: the gate is implemented, but NOT as an activity dispatch —
+        # `kind="child_workflow"` routes it to `ConsultationGateWorkflow` (gate_workflow.py).
         spec = NODE_REGISTRY["consultation.hitlGate"]
-        assert spec.implemented is False
+        assert spec.implemented is True
+        assert spec.kind == "child_workflow"
         assert spec.external_write is True
+        assert spec.critical is True
 
     def test_consent_gate_and_phi_hop_are_implemented(self):
         assert NODE_REGISTRY["consultation.consentGate"].implemented is True
@@ -174,12 +183,24 @@ class TestPhiHopActivity:
         assert result.status == "DEGRADED"
 
 
-class TestHitlGatePlaceholder:
+class TestHitlGateActivityIsNotTheExecutionPath:
+    """`consultation.hitlGate` is a `kind="child_workflow"` node: the compiler lifts it out of
+    `stages` into `gates`, and `WorkflowInterpreter._run_gate` starts `ConsultationGateWorkflow`
+    for it. This activity exists only because `NodeSpec.activity` requires a callable and because
+    `activity_name` is the S-4 cross-check anchor — reaching it means a routing bug."""
+
     @pytest.mark.asyncio
-    async def test_placeholder_never_returns_succeeded(self):
-        # 03-compliance-posture.md §3 — a sandboxed/placeholder gate must never read as approved.
+    async def test_it_never_returns_succeeded(self):
+        # 03-compliance-posture.md §3 — a gate reached by mistake must never read as approved.
         payload = _payload(node_type="consultation.hitlGate")
         result = await nodes_consultation.interpreter_consultation_hitl_gate(payload)
         assert result.status != "SUCCEEDED"
         assert result.status == "DEGRADED"
-        assert "implemented: false" in result.reason
+        assert result.output is None
+
+    @pytest.mark.asyncio
+    async def test_it_names_the_real_execution_path(self):
+        payload = _payload(node_type="consultation.hitlGate")
+        result = await nodes_consultation.interpreter_consultation_hitl_gate(payload)
+        assert "child_workflow" in result.reason
+        assert "ConsultationGateWorkflow" in result.reason

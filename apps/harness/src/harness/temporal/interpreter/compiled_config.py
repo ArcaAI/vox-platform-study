@@ -225,13 +225,31 @@ def parse_and_verify(raw: str) -> CompiledWorkflowConfig:
             "checksum_mismatch", f"expected {claimed_checksum}, computed {recomputed}"
         )
 
+    # Gate admission (TASK-731 Phase B). This used to be a blanket `gates != []` refusal
+    # ("HITL gate execution is out of scope for this interpreter version"). The interpreter now
+    # executes ONE blocking gate as a child workflow, so the refusal narrows rather than
+    # disappearing — every shape the interpreter cannot faithfully execute is still refused
+    # loudly at admission, never silently walked past.
     gates = parsed.get("gates")
-    if gates != []:
+    if not isinstance(gates, list):
+        raise InterpreterConfigError("invalid_shape", "compiledConfig.gates is not a list")
+    if len(gates) > caps.MAX_GATES:
         raise InterpreterConfigError(
-            "gates_not_supported_v1",
-            f"compiledConfig carries {len(gates) if isinstance(gates, list) else 'non-list'} "
-            "gate(s); HITL gate execution is out of scope for this interpreter version",
+            "too_many_gates",
+            f"compiledConfig carries {len(gates)} gates; at most {caps.MAX_GATES} is supported "
+            "(the validator's own SINGLE_ENTRY rule on the gate node type enforces this "
+            "upstream — a config reaching here with more is a compiler bug)",
         )
+    for gate in gates:
+        if not isinstance(gate, dict):
+            raise InterpreterConfigError("invalid_shape", "compiledConfig.gates[] entry is not an object")
+        if gate.get("blocking") is not True:
+            # A non-blocking gate would mean "carry on without the human", which is a different
+            # authority model, not a variation of this one. Refused rather than approximated.
+            raise InterpreterConfigError(
+                "non_blocking_gate_not_supported",
+                f"gate {gate.get('nodeId')!r} declares blocking=False; only a blocking gate is supported",
+            )
 
     stages = parsed.get("stages") or []
     if len(stages) > caps.MAX_STAGES:

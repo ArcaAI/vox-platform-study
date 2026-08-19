@@ -23,7 +23,7 @@ pass-through") is identical; only the node set and compile targets are consultat
 | N-10 | `consultation.inferentialSensors` | `optional` | `false` | `false` | `true` | `interpreter.consultation_inferential_sensors` | `nodes/consultation.inferentialSensors.schema.json` |
 | N-11 | `consultation.persistDraft` | `mandatory` | `false` | **`true`** | `true` | `interpreter.consultation_persist_draft` | `nodes/consultation.persistDraft.schema.json` |
 | N-12 | `consultation.finalizeAssurance` | `mandatory` | `false` | **`true`** | `true` | `interpreter.consultation_finalize_assurance` | `nodes/consultation.finalizeAssurance.schema.json` |
-| N-13 | `consultation.hitlGate` | `mandatory` | **`true`** | **`true`** | **`false`** (Phase B not yet implemented — see below) | `interpreter.consultation_hitl_gate` | `nodes/consultation.hitlGate.schema.json` |
+| N-13 | `consultation.hitlGate` | `mandatory` | **`true`** | **`true`** | `true` (Phase B landed 2026-08-19 — see below) | `interpreter.consultation_hitl_gate` (anchor only; dispatched as a CHILD WORKFLOW) | `nodes/consultation.hitlGate.schema.json` |
 
 Deliberately **not registered** (palette-contract.md §3/§5): `consultation.priming` (no compile
 target — deferred like Vision, R-4), `consultation.vision*` (no substrate — deferred, §1.3/§5).
@@ -34,7 +34,21 @@ deferred to TASK-722 by TASK-718's own R-6; this ticket does not wire a `palette
 entitlement column, matching the STT/Summarization precedent's OWN per-palette gate living at
 `WorkflowDefinitionService.publish()`, not in the registry.
 
-## `implemented: false` on `consultation.hitlGate` — the load-bearing gap, stated precisely
+## `consultation.hitlGate` — RESOLVED (Phase B, 2026-08-19)
+
+The section below described the gap while it was open. It is kept as written because it states
+the consequence precisely and that consequence was real for the whole of Phase A/C/D. **It no
+longer holds:** `consultation.hitlGate` is `implemented: true`, backed by
+`ConsultationGateWorkflow` (`interpreter/gate_workflow.py`) — a CHILD workflow, not the activity
+named in the table. The compiler lifts every `gate`-classed node out of `stages` into `gates`,
+the interpreter's admission now accepts exactly one blocking gate, and
+`WorkflowInterpreter._run_gate` starts the child for it. A consultation graph containing the gate
+compiles, validates and PUBLISHES (verified end to end against live infra: 10 compiled stages +
+1 compiled gate, `status: PUBLISHED`, `isActive: true`). The registry entry's `activityName`
+remains declared because it is the S-4 cross-check anchor; the activity itself degrades if ever
+reached, naming the real path.
+
+### Historical — the gap as it stood before Phase B
 
 `compile()` treats an `implemented: false` entry identically to an unregistered node type (`WF-C-002`)
 — refusing the ENTIRE graph, not just the one node. Concretely:

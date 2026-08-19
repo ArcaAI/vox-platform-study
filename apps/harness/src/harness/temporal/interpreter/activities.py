@@ -31,6 +31,26 @@ from harness.temporal.interpreter.nodes.consultation import (
     interpreter_consultation_hitl_gate,
     interpreter_consultation_phi_hop,
 )
+from harness.temporal.interpreter.nodes.consultation_capture import (
+    interpreter_consultation_capture_binding,
+)
+from harness.temporal.interpreter.nodes.consultation_compose import (
+    interpreter_consultation_assemble_prompt,
+    interpreter_consultation_retrieve_evidence,
+    interpreter_consultation_synthesize,
+)
+from harness.temporal.interpreter.nodes.consultation_nlp import (
+    interpreter_consultation_bind_terminology,
+    interpreter_consultation_extract_entities,
+)
+from harness.temporal.interpreter.nodes.consultation_persist import (
+    interpreter_consultation_finalize_assurance,
+    interpreter_consultation_persist_draft,
+)
+from harness.temporal.interpreter.nodes.consultation_verify import (
+    interpreter_consultation_inferential_sensors,
+    interpreter_consultation_sensors,
+)
 from harness.temporal.interpreter.nodes.context_binding import interpreter_context_binding
 from harness.temporal.interpreter.nodes.deliver import interpreter_deliver
 from harness.temporal.interpreter.nodes.guardrail_check import interpreter_guardrail_check
@@ -107,9 +127,42 @@ async def interpreter_passthrough(payload: NodeActivityInput) -> NodeActivityRes
     return NodeActivityResult(status="SUCCEEDED", output=dict(payload.config))
 
 
+# ---------------------------------------------------------------------------
+# Graph boundary markers (palette-agnostic). `core.start`/`core.end` are the two
+# node types the palette-independent structural rules WF-S-002/003/004/007 are
+# written against; before they were registered, NO graph in ANY palette could
+# satisfy them. They execute NOTHING — the whole point is that a marker is not
+# work — but they must be dispatchable, because compile() refuses any graph
+# containing an unimplemented node type, which would leave every graph
+# unpublishable for a different reason. Same shape as noop, deliberately.
+# ---------------------------------------------------------------------------
+
+
+@activity.defn(name="interpreter.core_start")
+async def interpreter_core_start(payload: NodeActivityInput) -> NodeActivityResult:
+    """The graph's entry marker. Executes nothing; records one NODE trajectory step so a run
+    trace shows where the walk began."""
+    started = _now()
+    await _record_and_flush(payload, status=STATUS_OK, started=started)
+    return NodeActivityResult(status="SUCCEEDED")
+
+
+@activity.defn(name="interpreter.core_end")
+async def interpreter_core_end(payload: NodeActivityInput) -> NodeActivityResult:
+    """The graph's terminal marker. Executes nothing — in particular it is NOT a delivery or
+    persistence step; whatever the graph produced was already written by its own
+    `external_write` node before the walk reached here."""
+    started = _now()
+    await _record_and_flush(payload, status=STATUS_OK, started=started)
+    return NodeActivityResult(status="SUCCEEDED")
+
+
 NODE_ACTIVITIES: list[Callable[..., Any]] = [
     interpreter_noop,
     interpreter_passthrough,
+    # Graph boundary markers (palette-agnostic) — see above.
+    interpreter_core_start,
+    interpreter_core_end,
     # Summarization palette (TASK-720 Task 4/5) — see nodes/{context_binding,template_ref,
     # text_generate,guardrail_check,deliver}.py.
     interpreter_context_binding,
@@ -126,9 +179,21 @@ NODE_ACTIVITIES: list[Callable[..., Any]] = [
     interpreter_stt_asr_engine,
     interpreter_stt_transcript_output,
     interpreter_stt_phi_hop,
-    # Consultation palette (TASK-731 Task 9, partial pass) — see nodes/consultation.py.
+    # Consultation palette — all 13 node types. consentGate/phiHop/hitlGate came from TASK-731
+    # (nodes/consultation.py); the other ten are the wrappers that complete the palette, grouped
+    # by pipeline stage in nodes/consultation_{capture,nlp,compose,verify,persist}.py.
     interpreter_consultation_consent_gate,
+    interpreter_consultation_capture_binding,
+    interpreter_consultation_extract_entities,
+    interpreter_consultation_bind_terminology,
     interpreter_consultation_phi_hop,
+    interpreter_consultation_retrieve_evidence,
+    interpreter_consultation_assemble_prompt,
+    interpreter_consultation_synthesize,
+    interpreter_consultation_sensors,
+    interpreter_consultation_inferential_sensors,
+    interpreter_consultation_persist_draft,
+    interpreter_consultation_finalize_assurance,
     interpreter_consultation_hitl_gate,
 ]
 
