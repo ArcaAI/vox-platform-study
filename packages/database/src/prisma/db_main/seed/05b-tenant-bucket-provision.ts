@@ -14,16 +14,28 @@
 import { CreateBucketCommand, HeadBucketCommand, S3Client } from '@aws-sdk/client-s3';
 import type { CorePrismaClient } from '../../../client';
 
+/**
+ * `??` is not enough here: `MINIO_ENDPOINT` ships BLANK in `.env.dev` (it is a
+ * pre-seed bootstrap fallback), so `process.env.MINIO_ENDPOINT ?? default`
+ * yields `''` and the endpoint becomes a bare `http://` — the client throws,
+ * this step warns-and-skips, and every bucket row ends up with no physical
+ * bucket behind it. Treat blank as unset.
+ */
+function env(name: string, fallback: string): string {
+  const value = process.env[name];
+  return value === undefined || value.trim() === '' ? fallback : value.trim();
+}
+
 function makeS3Client(): S3Client {
-  const endpointRaw = process.env.MINIO_ENDPOINT ?? 'localhost:9000';
-  const useSsl = (process.env.MINIO_USE_SSL ?? 'false').toLowerCase() === 'true';
+  const endpointRaw = env('MINIO_ENDPOINT', 'localhost:9000');
+  const useSsl = env('MINIO_USE_SSL', 'false').toLowerCase() === 'true';
   const endpoint = /^https?:\/\//.test(endpointRaw) ? endpointRaw : `${useSsl ? 'https' : 'http'}://${endpointRaw}`;
   return new S3Client({
     endpoint,
-    region: process.env.MINIO_REGION ?? 'us-east-1',
+    region: env('MINIO_REGION', 'us-east-1'),
     credentials: {
-      accessKeyId: process.env.MINIO_ACCESS_KEY ?? 'minio_admin',
-      secretAccessKey: process.env.MINIO_SECRET_KEY ?? 'minio_admin',
+      accessKeyId: env('MINIO_ACCESS_KEY', 'minio_admin'),
+      secretAccessKey: env('MINIO_SECRET_KEY', 'minio_admin'),
     },
     forcePathStyle: true,
     maxAttempts: 2,
