@@ -231,7 +231,7 @@ def build_model_cache_metrics_sink() -> PrometheusMetricsSink:
 
 
 # ---------------------------------------------------------------------------
-# Inference queue / backpressure metrics (TASK-776)
+# Inference queue / backpressure metrics (TASK-778)
 # ---------------------------------------------------------------------------
 # The platform target is >= 100 concurrent consultation sessions. Batching and
 # bounded queues only hold that target if the bounds can be TUNED FROM EVIDENCE,

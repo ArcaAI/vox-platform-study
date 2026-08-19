@@ -1,4 +1,4 @@
-"""Per-model coalescing dispatch for the guardrail plane (TASK-776).
+"""Per-model coalescing dispatch for the guardrail plane (TASK-778).
 
 `nlp.core.batching.MicroBatcher` is the generic primitive; this module binds one
 batcher per (weight slot, verb) and defines the GROUP KEY — the answer to "which

@@ -1,4 +1,4 @@
-"""TASK-776 — the 100-concurrent-session load driver. Repeatable, and REAL.
+"""TASK-778 — the 100-concurrent-session load driver. Repeatable, and REAL.
 
 The platform target is >= 100 concurrent consultation sessions. This driver
 measures it end to end: 100 concurrent HTTP requests through the real FastAPI

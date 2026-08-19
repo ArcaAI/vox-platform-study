@@ -63,7 +63,7 @@ def test_pii_spans_are_byte_exact_document_offsets(client, monkeypatch):
     text = "Call Jane Roe at jane@roe.example."
 
     class FakeGuard:
-        # TASK-776: the route drives the runtime's BATCH verb so concurrent
+        # TASK-778: the route drives the runtime's BATCH verb so concurrent
         # requests share one forward pass. The single-text contract this file
         # originally pinned survives unchanged at the HTTP layer — which is what
         # `apps/guardrail`'s `NlpGuardClient` depends on.

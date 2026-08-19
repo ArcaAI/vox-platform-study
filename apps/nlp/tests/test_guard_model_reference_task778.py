@@ -1,4 +1,4 @@
-"""TASK-776 (owner addition) — a model reference is a HUB ID **or** a LOCAL PATH.
+"""TASK-778 (owner addition) — a model reference is a HUB ID **or** a LOCAL PATH.
 
 The gliner2 loader takes either form. The catalog must therefore let a super
 admin (SYSTEM tier) and a tenant admin (tenant tier) store either, and nlp must

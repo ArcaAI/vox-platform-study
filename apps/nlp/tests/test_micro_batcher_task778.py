@@ -1,4 +1,4 @@
-"""TASK-776 — the coalescing micro-batcher that carries the 100-session target.
+"""TASK-778 — the coalescing micro-batcher that carries the 100-session target.
 
 `gliner2` exposes `batch_extract_entities` / `batch_classify_text`, which run N
 texts through ONE forward pass. Before this ticket every guard request took its

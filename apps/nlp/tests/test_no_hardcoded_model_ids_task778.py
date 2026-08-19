@@ -1,4 +1,4 @@
-"""TASK-776 — model ids are CONFIG, never Python literals.
+"""TASK-778 — model ids are CONFIG, never Python literals.
 
 `apps/nlp` is the EXECUTOR of the safety plane. Every weight identity arrives
 per request, resolved by the caller from `AiTaskDefault` ⋈ `AiModel`
@@ -31,7 +31,7 @@ SRC = Path(__file__).resolve().parents[1] / "src"
 # — a settings field with a live model default is a hardcoded value wearing a
 # config costume — but they belong to the NER/diagnosis plane, not the safety
 # plane, and removing them changes how the singleton NER model loads. Recorded
-# in the TASK-776 README §2.2 as a pre-existing finding rather than silently
+# in the TASK-778 README §2.2 as a pre-existing finding rather than silently
 # widened into this ticket.
 FORBIDDEN_MODEL_ID = re.compile(r"(?<![\w/-])(?:fastino|nvhf|hivetrace)/[A-Za-z0-9._-]+")
 

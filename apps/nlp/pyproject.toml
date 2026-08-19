@@ -204,7 +204,7 @@ python_functions = ["test_*"]
 asyncio_mode = "auto"
 markers = [
     "e2e: End-to-end tests requiring real NLP models (deselect with '-m \"not e2e\"')",
-    # TASK-776 throughput driver. Deselected from the normal suite because a
+    # TASK-778 throughput driver. Deselected from the normal suite because a
     # throughput measurement on a shared runner measures the runner, not the code.
     "load: Throughput/backpressure load driver (deselect with '-m \"not load\"')",
 ]
