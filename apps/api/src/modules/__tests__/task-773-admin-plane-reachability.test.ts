@@ -155,29 +155,31 @@ describe('TASK-773 — admin-plane guard-level reachability (real controllers, r
       await expect(guard.canActivate(makeContext(DepartmentController))).resolves.toBe(true);
     });
 
-    it('the VC2-named route (GET /api/v1/admin/tenants) is reachable by the scope it ACTUALLY declares', async () => {
-      // Finding, recorded for the reader: verification criterion 2 in the
-      // ticket README names `svc:admin:tenant:read` as the illustrative scope
-      // for this route. No controller in the shipped tree declares that exact
-      // string — `TenantController` (which owns `GET /admin/tenants`) carries
-      // ONE class-level scope, `svc:admin:tenant:write`, covering both its read
-      // and write routes (mirroring the class-level `@CanAny(['manage','Tenant'],
-      // ['update','Tenant'])` posture already on the controller). A principal
-      // holding only `svc:admin:tenant:read` would NOT satisfy `svc:admin:
-      // tenant:write` (siblings, not parent/child — `hasServiceAccountScope`'s
-      // matching is exact/parent/wildcard only) and would be REFUSED here. This
-      // test therefore pins the scope the shipped route actually honors.
+    it('GET /api/v1/admin/tenants is reachable by EITHER half of the scope pair (O-4)', async () => {
+      // History, because this test previously asserted the opposite. Verification
+      // criterion 2 named `svc:admin:tenant:read` for this route, and when A6 was
+      // written NO controller declared that string: `TenantController` carried one
+      // class-level `svc:admin:tenant:write` covering reads and writes alike, so a
+      // `:read`-only principal was REFUSED here. That gap became O-3/O-4.
+      //
+      // O-4 closed it. The read routes now declare the PAIR at method level, so
+      // both halves reach them — the pair rather than `:read` alone precisely so
+      // this assertion's `:write` case keeps passing, since
+      // `enforceServiceAccountScopes` is `required.some(...)` and a lone `:read`
+      // would have revoked the route from every existing `:write` grant.
       serviceAccounts.authenticateByToken.mockResolvedValue(principal({ scopes: ['svc:admin:tenant:write'] }));
       await expect(guard.canActivate(makeContext(TenantController, TenantController.prototype.fetchAll))).resolves.toBe(true);
 
-      await expect(
-        guard.canActivate(
-          (() => {
-            serviceAccounts.authenticateByToken.mockResolvedValue(principal({ scopes: ['svc:admin:tenant:read'] }));
-            return makeContext(TenantController, TenantController.prototype.fetchAll);
-          })(),
-        ),
-      ).rejects.toBeInstanceOf(ForbiddenException);
+      serviceAccounts.authenticateByToken.mockResolvedValue(principal({ scopes: ['svc:admin:tenant:read'] }));
+      await expect(guard.canActivate(makeContext(TenantController, TenantController.prototype.fetchAll))).resolves.toBe(true);
+    });
+
+    it('a WRITE route still demands the write half — :read does not widen into mutation', async () => {
+      // The other side of O-4, and the reason the pair is method-level only: a
+      // read-only grant must not reach a mutation. `delete` carries no method-level
+      // svc declaration, so it inherits the class-level `svc:admin:tenant:write`.
+      serviceAccounts.authenticateByToken.mockResolvedValue(principal({ scopes: ['svc:admin:tenant:read'] }));
+      await expect(guard.canActivate(makeContext(TenantController, TenantController.prototype.delete))).rejects.toBeInstanceOf(ForbiddenException);
     });
   });
 

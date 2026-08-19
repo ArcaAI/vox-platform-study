@@ -110,6 +110,8 @@ export class TenantController {
   })
   @ApiQuery({ name: 'page', required: false, type: Number })
   @ApiQuery({ name: 'pageSize', required: false, type: Number })
+  @CanAny(['manage', 'Tenant'], ['update', 'Tenant'], ['read', 'AdminTenantDirectory'])
+  @RequiredSvcScopes('svc:admin:tenant:read', 'svc:admin:tenant:write')
   async fetchAll(@Query() queryParams: PaginatedQuery): Promise<PaginatedTenantResponse> {
     // `Tenant` rows are NOT covered by the tenantScopeFilter Prisma
     // extension, and the class-level `@CanAny(['manage','Tenant'],['update','Tenant'])`
@@ -140,6 +142,8 @@ export class TenantController {
     by: ['createdByUserId'],
   })
   @ApiParam({ name: 'userId', description: 'User ID', type: String })
+  @CanAny(['manage', 'Tenant'], ['update', 'Tenant'], ['read', 'AdminTenantDirectory'])
+  @RequiredSvcScopes('svc:admin:tenant:read', 'svc:admin:tenant:write')
   async fetchByUserId(@Param('userId') userId: string, @Query() queryParams: PaginatedQuery): Promise<PaginatedTenantResponse> {
     const result = await this.tenantService.fetchAllCreatedByUser({
       ...queryParams,
@@ -153,6 +157,8 @@ export class TenantController {
   @ApiParam({ name: 'id', description: 'Tenant ID', type: String })
   @ApiResponse({ status: 200, description: 'Tenant usage statistics', type: TenantUsageResponse })
   @ApiResponse({ status: 404, description: 'Tenant not found' })
+  @CanAny(['manage', 'Tenant'], ['update', 'Tenant'], ['read', 'AdminTenantDirectory'])
+  @RequiredSvcScopes('svc:admin:tenant:read', 'svc:admin:tenant:write')
   async getUsage(@Param('id') id: string): Promise<TenantUsageResponse> {
     this.assertTenantInScope(id);
     return this.tenantService.getUsageStats(id);
@@ -165,6 +171,8 @@ export class TenantController {
   })
   @ApiParam({ name: 'id', description: 'Tenant ID', type: String })
   @ApiResponse({ status: 404, description: 'Tenant not found' })
+  @CanAny(['manage', 'Tenant'], ['update', 'Tenant'], ['read', 'AdminTenantDirectory'])
+  @RequiredSvcScopes('svc:admin:tenant:read', 'svc:admin:tenant:write')
   async fetchById(@Param('id') id: string): Promise<TenantResponse> {
     const result = await this.tenantService.fetchById(id);
     return TenantDtoMapper.ToResponse(result);
@@ -189,6 +197,8 @@ export class TenantController {
   })
   @ApiParam({ name: 'codeName', description: 'Tenant code name', type: String })
   @ApiResponse({ status: 404, description: 'Tenant not found' })
+  @CanAny(['manage', 'Tenant'], ['update', 'Tenant'], ['read', 'AdminTenantDirectory'])
+  @RequiredSvcScopes('svc:admin:tenant:read', 'svc:admin:tenant:write')
   async fetchByCodeName(@Param('codeName') codeName: string): Promise<TenantResponse> {
     const result = await this.tenantService.fetchByCodeName(codeName);
     // Guard runs AFTER the lookup because code-name is not the same as the
@@ -317,6 +327,8 @@ export class TenantController {
   @ApiParam({ name: 'id', description: 'Tenant ID', type: String })
   @ApiResponse({ status: 200, description: 'Tenant tags' })
   @ApiResponse({ status: 404, description: 'Tenant not found' })
+  @CanAny(['manage', 'Tenant'], ['update', 'Tenant'], ['read', 'AdminTenantDirectory'])
+  @RequiredSvcScopes('svc:admin:tenant:read', 'svc:admin:tenant:write')
   async getTags(@Param('id') id: string): Promise<{ tags: string[] }> {
     this.assertTenantInScope(id);
     const result = await this.tenantService.fetchById(id);
@@ -341,6 +353,8 @@ export class TenantController {
     multi: true,
   })
   @ApiParam({ name: 'identifier', description: 'Tenant ID or code name', type: String })
+  @CanAny(['manage', 'Tenant'], ['update', 'Tenant'], ['read', 'AdminTenantDirectory'])
+  @RequiredSvcScopes('svc:admin:tenant:read', 'svc:admin:tenant:write')
   async fetchTenantConfigs(@Param('identifier') identifier: string, @Query() queryParams: PaginatedQuery): Promise<PaginatedTenantConfigResponse> {
     this.assertConfigInScope(identifier);
     const result = await this.tenantService.fetchTenantConfigs({
