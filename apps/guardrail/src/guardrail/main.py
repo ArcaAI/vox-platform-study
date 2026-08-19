@@ -6,6 +6,7 @@ FastAPI application with OpenAI-compatible LLM engines and job queue processing.
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import os
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
@@ -17,10 +18,119 @@ from fastapi.middleware.cors import CORSMiddleware
 from hope_env import BuildInfoReader
 from hope_env.service_registration import start_registration, stop_registration
 
+from guardrail.core.breaker import CircuitBreaker, FailPosture
+from guardrail.core.concurrency import AdmissionGate
 from guardrail.core.config import Settings, get_settings
 from guardrail.core.logging import get_logger, setup_logging
+from guardrail.core.metrics import record_config_cache_event
 
 logger = get_logger(__name__)
+
+
+def build_http_client(settings: Settings) -> httpx.AsyncClient:
+    """The ONE shared peer client — bounded pool, every timeout phase explicit.
+
+    A per-request client would open a fresh TCP+TLS handshake per delegation and
+    defeat keep-alive entirely; a single unbounded one lets a stalled peer consume
+    the process. Both bounds live here so there is exactly one place to read them.
+    """
+    t = settings.transport
+    return httpx.AsyncClient(
+        limits=httpx.Limits(
+            max_connections=t.max_connections,
+            max_keepalive_connections=t.max_keepalive_connections,
+            keepalive_expiry=t.keepalive_expiry_s,
+        ),
+        timeout=httpx.Timeout(
+            connect=t.connect_timeout_s,
+            read=t.read_timeout_s,
+            write=t.write_timeout_s,
+            # BOUNDED (TASK-777 B-1): pool exhaustion surfaces as a fast failure
+            # the admission gate can turn into a declared 503, not a silent stall.
+            pool=t.pool_timeout_s,
+        ),
+    )
+
+
+def build_admission_gates(settings: Settings) -> dict[str, AdmissionGate]:
+    """The service's declared concurrency bounds, one gate per work class."""
+    t = settings.transport
+    return {
+        "request": AdmissionGate(
+            name="request",
+            max_concurrent=t.max_concurrent_requests,
+            max_wait_s=t.max_queue_wait_s,
+        ),
+        "batch": AdmissionGate(
+            name="batch",
+            max_concurrent=t.max_batch_concurrency,
+            max_wait_s=t.max_queue_wait_s,
+        ),
+    }
+
+
+def build_circuit_breakers(settings: Settings) -> dict[str, CircuitBreaker]:
+    """One breaker per peer, each with its fail posture DECLARED here."""
+    t = settings.transport
+    return {
+        # A moderation verdict has a safe default; guardrail's routes already map
+        # the resulting exception to a fail-closed 503 / per-element undetermined.
+        peer: CircuitBreaker(
+            name=peer,
+            posture=FailPosture.FAIL_CLOSED,
+            failure_threshold=t.breaker_failure_threshold,
+            recovery_timeout_s=t.breaker_recovery_timeout_s,
+        )
+        for peer in ("text", "nlp")
+    }
+
+
+CONFIG_INVALIDATION_CHANNEL = "arca:guardrail-config:invalidate"
+
+
+async def _config_invalidation_listener(app: FastAPI) -> None:
+    """Drop cached per-tenant config when the control plane says it changed.
+
+    **Invalidation is the propagation path; the TTL is a bounded-staleness safety
+    net** (rule 09 §Config caches). Message payload is either ``"*"`` (drop all) or
+    a tenant id, optionally ``"<tenant_id>|<task_key>"``. The listener never fails
+    the service: a Redis outage simply degrades propagation back to the TTL.
+    """
+    resolver = getattr(app.state, "tenant_config_resolver", None)
+    if resolver is None:
+        return
+    try:
+        pubsub = app.state.redis.pubsub()
+        await pubsub.subscribe(CONFIG_INVALIDATION_CHANNEL)
+    except Exception as exc:  # noqa: BLE001 — propagation degrades to the TTL
+        logger.warning("guardrail.config_invalidation.unavailable", error=str(exc))
+        return
+
+    try:
+        async for message in pubsub.listen():
+            if message.get("type") != "message":
+                continue
+            payload = str(message.get("data") or "").strip()
+            if not payload or payload == "*":
+                dropped = resolver.invalidate()
+            else:
+                tenant, _, task_key = payload.partition("|")
+                dropped = resolver.invalidate(
+                    tenant_id=tenant or None, task_key=task_key or None
+                )
+            record_config_cache_event("invalidated")
+            logger.info(
+                "guardrail.config_invalidated", payload=payload, dropped=dropped
+            )
+    except asyncio.CancelledError:
+        raise
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("guardrail.config_invalidation.stopped", error=str(exc))
+    finally:
+        try:
+            await pubsub.aclose()
+        except Exception:  # noqa: BLE001
+            pass
 
 
 @asynccontextmanager
@@ -37,15 +147,13 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         debug=settings.debug,
     )
 
-    # HTTP client for external calls
-    http_client = httpx.AsyncClient(
-        limits=httpx.Limits(
-            max_connections=settings.httpx_max_connections,
-            max_keepalive_connections=settings.httpx_max_keepalive,
-        ),
-        timeout=httpx.Timeout(300.0),
-    )
+    # The ONE shared peer client: bounded pool, every timeout phase explicit.
+    http_client = build_http_client(settings)
     app.state.http_client = http_client
+
+    # Declared concurrency bounds + per-peer breakers (TASK-777 Lane B).
+    app.state.admission_gates = build_admission_gates(settings)
+    app.state.circuit_breakers = build_circuit_breakers(settings)
 
     # Redis client for job queue and caching
     redis_client = aioredis.from_url(settings.redis.redis_url, decode_responses=True)
@@ -124,6 +232,11 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         )
         logger.info("guardrail.job_processor_started")
 
+    # Config invalidation listener — the propagation path for a policy change.
+    app.state.config_invalidation_task = asyncio.create_task(
+        _config_invalidation_listener(app)
+    )
+
     # Self-registration: fire-and-forget, bounded-timeout, NEVER
     # blocks or fails boot. Reuses the shared `http_client` above. Guardrail
     # has no dedicated `environment` settings field; `DEPLOYMENT_ENVIRONMENT`
@@ -149,6 +262,12 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     logger.info("guardrail.shutting_down")
 
     await stop_registration(app.state.service_release_task)
+
+    invalidation_task = getattr(app.state, "config_invalidation_task", None)
+    if invalidation_task is not None:
+        invalidation_task.cancel()
+        with contextlib.suppress(asyncio.CancelledError, Exception):
+            await invalidation_task
 
     if hasattr(app.state, "job_processor") and app.state.job_processor:
         await app.state.job_processor.stop()
@@ -209,6 +328,7 @@ def create_app() -> FastAPI:
     from guardrail.api.endpoints.jobs import router as jobs_router
     from guardrail.api.endpoints.medical import router as medical_router
     from guardrail.api.endpoints.redact import router as redact_router
+    from guardrail.api.endpoints.screen import router as screen_router
 
     app.include_router(health_router, prefix="/api", tags=["health"])
     # Every other python service exposes health at /api/v1/health; alias it here
@@ -223,6 +343,8 @@ def create_app() -> FastAPI:
     app.include_router(groundedness_router, prefix="/api", tags=["groundedness"])
     # Tenant-facing PHI redactor (TASK-710) — behind X-Service-Token.
     app.include_router(redact_router, prefix="/api", tags=["guardrails"])
+    # Bidirectional screening (TASK-777 Lane C) — inbound prompt + outbound response.
+    app.include_router(screen_router, prefix="/api/v1", tags=["screening"])
     app.include_router(jobs_router, prefix="/api", tags=["jobs"])
 
     # OpenTelemetry tracing. Default-OFF: both the master

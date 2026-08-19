@@ -75,6 +75,7 @@ class TestGuardianProviderEmitsPerModelMetrics:
             provider="lm-studio",
             model="guardian-1",
             tenant_id="11111111-1111-1111-1111-111111111111",
+            criteria="you are a medical context validator",
         )
         labels = {"service": "guardrail", "model": provider.model}
         before_count = _val("model_inference_latency_seconds_count", labels)

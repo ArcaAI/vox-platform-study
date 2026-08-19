@@ -30,6 +30,7 @@ still always means a model actually computed it.
 from __future__ import annotations
 
 import asyncio
+from collections.abc import Sequence
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -101,6 +102,37 @@ class SafetyAnalyzer:
         self._safety_client = safety_client
         self._pii_client = pii_client
 
+    # ── the seam `services/screening.py` composes over ───────────────────
+
+    async def classify_tasks(
+        self, task_names: Sequence[str], text: str
+    ) -> dict[str, Any]:
+        """Run exactly the named moderation tasks, from the resolved taxonomy.
+
+        `analyze_content` collapses labels into guardrail's legacy
+        `safe`/`issues` shape; the bidirectional screener needs the labels
+        THEMSELVES, per task, to build an attributable per-check record. Both read
+        the same registry-sourced task schema — a task the taxonomy does not
+        declare is simply absent from the result, never invented.
+        """
+        wanted = {
+            name: spec for name, spec in self.policy.tasks.items() if name in task_names
+        }
+        if not wanted:
+            return {}
+        if self._safety_client is None:
+            raise GuardrailUndeterminedError(
+                REASON_ENGINE_ERROR,
+                "no safety model is selected (guardrail.safety) — refusing to report 'safe'",
+            )
+        results: dict[str, Any] = await self._safety_client.classify(wanted, text)
+        return results
+
+    def model_for(self, check: str) -> str:
+        """Which model answers a given check — part of every attributable verdict."""
+        client = self._pii_client if check == "pii_leak" else self._safety_client
+        return str(getattr(client, "model_id", "") or "")
+
     # ── PII spans (the `/guardrail/redact` path) ─────────────────────────
 
     async def extract_pii_entities(self, text: str) -> list[Any]:
@@ -170,9 +202,24 @@ class SafetyAnalyzer:
         }
 
     async def batch_analyze(
-        self, texts: list[str], guardrail_type: str = "comprehensive"
+        self,
+        texts: list[str],
+        guardrail_type: str = "comprehensive",
+        gate: Any = None,
     ) -> list[Any]:
-        """Analyze many texts concurrently; per-element failures stay per-element."""
+        """Analyze many texts concurrently; per-element failures stay per-element.
+
+        BOUNDED when a gate is supplied (TASK-777 B-4): the list is caller-supplied,
+        so a bare `gather` lets one request fan out arbitrarily wide against the
+        peers — the classic way a single client takes a shared safety plane down.
+        """
+        if gate is not None:
+            bounded: list[Any] = await gate.map(
+                lambda text: self.analyze_content(text, guardrail_type),
+                texts,
+                return_exceptions=True,
+            )
+            return bounded
         return list(
             await asyncio.gather(
                 *(self.analyze_content(text, guardrail_type) for text in texts),
