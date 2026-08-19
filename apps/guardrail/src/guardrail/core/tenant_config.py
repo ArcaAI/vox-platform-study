@@ -11,8 +11,9 @@ short TTL cache (~60s).
        widens to the SYSTEM tenant's rows, preferring the tenant's own
        ``AiTaskDefault`` row over the SYSTEM row for the same task key
     2. the SYSTEM tenant's rows (``00000000-…``) — the platform default tier
-    3. env default (handled by the caller via ``settings.engine``), for TUNING
-       only; provider/model selection stays fail-closed
+    3. the provider-level ``AiRuntimeProfile`` row, for TUNING only; provider
+       and model SELECTION stays fail-closed (there is no env engine left to
+       fall back to — guardrail hosts no LLM, TASK-735 Phase 2b)
 
 A request with **no** ``X-Tenant-Id`` has no tenant context and therefore
 resolves SYSTEM only. It must never act as some customer tenant.
@@ -99,7 +100,7 @@ from sqlalchemy.ext.asyncio import (
 )
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
-from guardrail.core.config import OpenAICompatConfig, Settings
+from guardrail.core.config import Settings
 from guardrail.core.logging import get_logger
 
 logger = get_logger(__name__)
@@ -139,6 +140,7 @@ def is_tenantless_marker(tenant_id: str | None) -> bool:
     """True when the caller DECLARED it has no tenant (vs. simply omitting one)."""
     return bool(tenant_id) and str(tenant_id).strip().startswith(TENANTLESS_PREFIX)
 
+
 # Internal keys of the resolved per-tenant field map (cache entries).
 KEY_PROVIDER = "provider"
 KEY_MODEL = "model"
@@ -154,17 +156,6 @@ KEY_LOCAL_PATH = "local-path"
 KEY_CHECKSUM = "checksum"
 KEY_SOURCE = "source"
 KEY_SOURCE_REVISION = "source-revision"
-
-# Provider switch value -> Settings sub-config attr. adds the
-# production self-host engines vllm / llama-cpp (OpenAI-compatible wire).
-# Every remaining engine speaks the OpenAI-compatible wire.
-_PROVIDER_TO_ATTR = {
-    "lm-studio": "openai_compat",
-    "vllm": "vllm",
-    "llama-cpp": "llama_cpp",
-    "azure": "azure",
-    "bedrock": "bedrock",
-}
 
 
 class TenantSelectionVetoedError(Exception):
@@ -706,67 +697,44 @@ class TenantConfigResolver:
         self._cache.clear()
 
 
-def resolve_guardian_engine(
-    settings: Settings, tenant_cfg: GuardrailTenantConfig
-) -> tuple[str, OpenAICompatConfig]:
-    """Map a resolved per-tenant config onto a concrete engine sub-config.
+def build_judge_client(
+    settings: Settings,
+    tenant_cfg: GuardrailTenantConfig,
+    http_client: Any,
+    tenant_id: str,
+    provider_overrides: dict[str, Any] | None = None,
+) -> Any:
+    """Build the delegated guardian for a resolved per-tenant selection.
 
-    base_url / api_key still come from env (the DB only carries provider, model
-    and the non-secret azure deployment name). Returns the effective provider
-    switch value and an engine config with the model overridden.
+    Guardrail hosts no engine (TASK-735 Phase 2b): this returns a
+    :class:`~guardrail.services.external_text_client.TextJudgeClient` pointed at
+    ``apps/text``'s isolated judge lane. The DB supplies the provider/model pair
+    — the ONLY selection input — and the provider-level runtime profile supplies
+    optional tuning; an absent profile leaves the policy defaults in force.
+
+    ``base_url`` and ``api_key`` are deliberately absent from the argument list.
+    The endpoint is `text`'s (bootstrap transport) and the tenant's credential
+    travels only as an opaque ``provider_overrides`` blob.
     """
-    provider = (tenant_cfg.provider or settings.provider).strip().lower()
-    if provider not in _PROVIDER_TO_ATTR:
-        provider = settings.provider
+    from guardrail.services.external_text_client import TextJudgeClient
 
-    base = settings.engine_for(provider)
-
-    # For Azure the deployment name addresses the model on the gateway, so it
-    # takes precedence over a generic model name.
-    model = tenant_cfg.model
-    if provider == "azure" and tenant_cfg.azure_deployment:
+    provider = (tenant_cfg.provider or "").strip()
+    model = tenant_cfg.model or ""
+    # Azure addresses the model by DEPLOYMENT name on the gateway, so it wins
+    # over a generic model name when the row carries one.
+    if provider.lower() == "azure" and tenant_cfg.azure_deployment:
         model = tenant_cfg.azure_deployment
 
-    # Provider-level runtime-profile tuning. Applied INDEPENDENTLY of
-    # the model override: a profile may tune an engine that still uses its env
-    # model. Every field is optional, so an absent profile changes nothing.
-    update: dict[str, Any] = {}
-    if tenant_cfg.temperature is not None:
-        update["temperature"] = tenant_cfg.temperature
-    if tenant_cfg.max_tokens is not None:
-        update["max_tokens"] = tenant_cfg.max_tokens
-    if tenant_cfg.timeout_s is not None:
-        update["timeout_s"] = tenant_cfg.timeout_s
-
-    if model:
-        update.update(
-            {
-                "guardrail_model": model,
-                "content_safety_model": model,
-                "pii_detection_model": model,
-                "prompt_injection_model": model,
-                "comprehensive_model": model,
-                "guardian_model": model,
-            }
-        )
-
-    if not update:
-        return provider, base
-
-    return provider, base.model_copy(update=update)
-
-
-def build_guardian_provider(
-    provider: str,
-    engine: OpenAICompatConfig,
-    http_client: object,
-) -> object:
-    """Instantiate the guardian provider for ``provider`` (mirrors lifespan).
-
-    Every supported engine speaks the OpenAI-compatible wire, so ``provider`` is
-    accepted for symmetry with the lifespan wiring and logging rather than to
-    branch on.
-    """
-    from guardrail.providers.openai_compat import OpenAICompatGuardianProvider
-
-    return OpenAICompatGuardianProvider(settings=engine, http_client=http_client)  # type: ignore[arg-type]
+    return TextJudgeClient(
+        base_url=settings.text_url,
+        http_client=http_client,
+        service_token=settings.peer_service_token(settings.service_token),
+        provider=provider,
+        model=model,
+        tenant_id=tenant_id,
+        policy=settings.judge,
+        temperature=tenant_cfg.temperature,
+        max_tokens=tenant_cfg.max_tokens,
+        timeout_s=float(tenant_cfg.timeout_s) if tenant_cfg.timeout_s is not None else None,
+        provider_overrides=provider_overrides,
+    )

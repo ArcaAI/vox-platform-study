@@ -18,8 +18,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from guardrail.core.config import OpenAICompatConfig
-from guardrail.providers.openai_compat import OpenAICompatGuardianProvider
+from guardrail.services.external_text_client import TextJudgeClient
 
 
 class _FakeResponse:
@@ -41,27 +40,47 @@ class _FakeClient:
         return _FakeResponse(self.payload)
 
 
+def _judge_client(payload: dict[str, Any]) -> TextJudgeClient:
+    """The judge is a DELEGATION since TASK-735 Phase 2b — the metering guarantee
+    is unchanged: guardrail's spend still rides back on its own verdict, because
+    guardrail is still the peer service with no gateway in front of it."""
+    return TextJudgeClient(
+        base_url="http://text:8862",
+        http_client=_FakeClient(payload),
+        service_token="tok",
+        provider="lm-studio",
+        model="guardian-1",
+        tenant_id="11111111-1111-1111-1111-111111111111",
+    )
+
+
 _VALID_JSON = (
     '{"is_medical": true, "confidence": 0.95, "context_type": "clinical", "reasoning": "note"}'
 )
 
 
-def _openai_body(usage: dict[str, Any] | None = None) -> dict[str, Any]:
+def _judge_body(usage: dict[str, Any] | None = None) -> dict[str, Any]:
+    """One `text` judge response. `usage` is spelled the way `text`'s
+    `GenerationStats` spells it (`prompt_tokens` / `completion_tokens`)."""
     body: dict[str, Any] = {
-        "choices": [{"message": {"content": _VALID_JSON}, "finish_reason": "stop"}]
+        "content": _VALID_JSON,
+        "provider": "lm-studio",
+        "model": "guardian-1",
+        "latency_ms": 12,
+        "finish_reason": "stop",
     }
     if usage is not None:
-        body["usage"] = usage
+        body["stats"] = {"stop_reason": "stop", **usage}
     return body
 
 
 # ---------------------------------------------------------------------------
 # 1. The endpoint threw the stats away
 #
-# (The Ollama-guardian arm of this suite went with the engine in TASK-736. The
-# guarantee it carried — a stats problem must never fail a safety check — is
-# engine-independent and still covered for the surviving OpenAI-compatible wire
-# by `test_openai_compat_stats.py`.)
+# (The Ollama-guardian arm of this suite went with the engine in TASK-736, and the
+# OpenAI-compat arm with TASK-735 Phase 2b. The guarantee they carried — a stats
+# problem must never fail a safety check — is engine-independent and now lives on
+# the delegating client, whose stats mapping is null-safe by contract.)
 # ---------------------------------------------------------------------------
 
 
@@ -159,17 +178,14 @@ async def test_failed_validation_reports_no_stats_rather_than_zeros() -> None:
 
 @pytest.mark.asyncio
 async def test_judge_path_stats_reach_the_endpoint_shape() -> None:
-    """End-to-end over the OpenAI-compat judge: provider → result → response."""
+    """End-to-end over the delegated judge: `text` response → verdict → DTO."""
     from guardrail.api.endpoints.medical import (
         MedicalValidationRequest,
         validate_medical_context,
     )
 
-    provider = OpenAICompatGuardianProvider(
-        OpenAICompatConfig(base_url="http://localhost:1234/v1", guardian_enabled=True),
-        _FakeClient(
-            _openai_body({"prompt_tokens": 77, "completion_tokens": 9, "total_tokens": 86})
-        ),
+    provider = _judge_client(
+        _judge_body({"prompt_tokens": 77, "completion_tokens": 9, "total_tokens": 86})
     )
 
     response = await validate_medical_context(
@@ -236,15 +252,12 @@ def test_record_guardrail_call_counts_both_directions() -> None:
 async def test_judge_call_increments_the_token_counter() -> None:
     from guardrail.core.metrics import GUARDRAIL_TOKENS_TOTAL
 
-    provider = OpenAICompatGuardianProvider(
-        OpenAICompatConfig(base_url="http://localhost:1234/v1", guardian_enabled=True),
-        _FakeClient(_openai_body({"prompt_tokens": 50, "completion_tokens": 6})),
-    )
+    provider = _judge_client(_judge_body({"prompt_tokens": 50, "completion_tokens": 6}))
     model = provider.model
 
     def _read(direction: str) -> float:
         return GUARDRAIL_TOKENS_TOTAL.labels(
-            provider="openai_compat", model=model, direction=direction
+            provider="lm-studio", model=model, direction=direction
         )._value.get()
 
     before_in, before_out = _read("input"), _read("output")

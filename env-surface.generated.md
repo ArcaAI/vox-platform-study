@@ -11,13 +11,13 @@ disagree with those declarations.
 
 | Metric | Value |
 |---|---:|
-| Declared keys (distinct) | 149 |
-| … of which required (`failMode: closed`) | 33 |
-| … of which secret | 32 |
+| Declared keys (distinct) | 148 |
+| … of which required (`failMode: closed`) | 32 |
+| … of which secret | 31 |
 | … tier `env` | 112 |
 | … tier `global-kv` | 9 |
-| … tier `vault-kv` | 28 |
-| `turbo.json#globalEnv` entries | 165 |
+| … tier `vault-kv` | 27 |
+| `turbo.json#globalEnv` entries | 164 |
 
 ## Variables
 
@@ -47,7 +47,6 @@ disagree with those declarations.
 | `GUARDRAIL_SERVICE_TOKEN` | `vault-kv` | yes | `CHANGE_ME` | `apps/api` | Shared secret on the gateway↔guardrail hop (`X-Service-Token`). |
 | `GUARDRAIL_URL` | `env` | no | `http://localhost:8863` | `apps/api` | Safety-engine base URL (apps/guardrail, port 8863). |
 | `GUARDRAIL_V2_GROUNDEDNESS_ENABLED` | `env` | no | `false` | `apps/guardrail` | Gates the guardrail NLI groundedness gate (`GUARDRAIL_V2_GROUNDEDNESS_` prefix). OFF is the dev/hermetic-CI bypass: the gate answers honestly with `unverified` and never loads a model. Fail posture is FAIL-CLOSED throughout — a disabled gate, an un-staged model and a scoring error all degrade to `unverified`, and no path yields `grounded` without the model actually entailing the segment. Turning it ON requires the self-hosted MiniCheck-class model staged on the host (no cloud PHI). |
-| `GUARDRAIL_VLLM_API_KEY` | `vault-kv` | yes | `CHANGE_ME` | `apps/guardrail` | Bearer credential for guardrail's vLLM OpenAI-compatible endpoint (`GUARDRAIL_VLLM_` prefix). Self-hosted endpoints commonly accept a placeholder, but it is still a credential and is classified as one. |
 | `HARNESS_ATOMIC_FACT_ENABLED` | `env` | no | `false` | `apps/harness` | Gates the `run_inferential_sensors` atomic-fact path. Same policy-overrides-env shape as the NER-priors flag. |
 | `HARNESS_CLAIM_CHECK_ACCESS_KEY` | `vault-kv` | yes | `CHANGE_ME` | `apps/harness` | S3/MinIO access key for the harness claim-check blob store. The offloaded payloads are clinical content, so the store is SELF-HOSTED by contract — this credential must never address a cloud bucket. |
 | `HARNESS_CLAIM_CHECK_ENABLED` | `env` | no | `true` | `apps/harness` | Moves large clinical blobs OUT of Temporal workflow history into a self-hosted content-addressed store, protecting the ~50 MB history budget. DEFAULTS **ON**, and is therefore NOT marked `killSwitch` — it is a PROTECTION, so turning it off REMOVES a safeguard (unbounded history growth) rather than disabling an enforcement path. Marking it a kill-switch would violate the defaults-OFF invariant and fail registry assembly. Same polarity as `rate-limit.enabled`. Turning it off is a deliberate acceptance of unbounded Temporal history, exactly as the harness startup validator states. |

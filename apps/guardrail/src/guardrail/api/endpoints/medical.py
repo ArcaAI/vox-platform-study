@@ -22,19 +22,20 @@ from pydantic import BaseModel, Field
 
 from guardrail.core.config import Settings
 from guardrail.core.dependencies import (
-    get_guardian_provider,
     get_resolved_guardian_provider,
     get_settings,
 )
 from guardrail.core.errors import GuardrailUndeterminedError
 from guardrail.core.logging import get_logger
-from guardrail.providers.openai_compat import OpenAICompatGuardianProvider
+from guardrail.services.external_text_client import TextJudgeClient
 
 logger = get_logger(__name__)
 
 router = APIRouter()
 
-GuardianLike = OpenAICompatGuardianProvider
+# The "guardian" is a DELEGATION, not an engine: guardrail owns the criteria, the
+# confidence floor and the verdict shape; `apps/text` runs the model.
+GuardianLike = TextJudgeClient
 
 
 class MedicalValidationRequest(BaseModel):
@@ -206,23 +207,33 @@ async def validate_batch_medical_context(
 async def get_medical_validation_config(
     settings: Settings = Depends(get_settings),
 ) -> dict[str, Any]:
-    """Get current medical validation configuration."""
-    engine = settings.engine
+    """Report the medical-validation POLICY.
+
+    Provider and model are deliberately absent: they are resolved per TENANT at
+    request time from ``AiTaskDefault``, so there is no one answer to report from
+    a process-wide config route.
+    """
+    judge = settings.judge
     return {
-        "provider": settings.provider,
-        "guardian_enabled": engine.guardian_enabled,
-        "guardian_model": engine.guardian_model,
-        "min_confidence": engine.guardian_min_confidence,
-        "temperature": engine.guardian_temperature,
-        "max_tokens": engine.guardian_max_tokens,
+        "delegate": "text",
+        "min_confidence": judge.min_confidence,
+        "temperature": judge.temperature,
+        "max_tokens": judge.max_tokens,
+        "timeout_s": judge.timeout_s,
+        "max_attempts": judge.max_attempts,
     }
 
 
 @router.get("/medical/health", response_model=dict[str, Any])
 async def medical_validation_health(
-    guardian_provider: GuardianLike = Depends(get_guardian_provider),
+    guardian_provider: GuardianLike = Depends(get_resolved_guardian_provider),
 ) -> dict[str, Any]:
-    """Check medical validation service health."""
+    """Check medical validation health — i.e. the delegation to ``apps/text``.
+
+    Uses the RESOLVED guardian (so it reports the tenant's own selection and
+    honours the same 428 / veto / fail-closed rules as the validate route)
+    instead of a process-wide env-configured engine, which no longer exists.
+    """
     health = await guardian_provider.health_check()
 
     return {

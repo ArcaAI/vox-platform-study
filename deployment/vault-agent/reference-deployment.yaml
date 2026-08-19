@@ -83,9 +83,9 @@ spec:
         vault.hashicorp.com/agent-inject-secret-GUARDRAIL_SERVICE_TOKEN: 'secret/data/hope/GUARDRAIL_SERVICE_TOKEN'
         vault.hashicorp.com/agent-inject-template-GUARDRAIL_SERVICE_TOKEN: |
           {{- with secret "secret/data/hope/GUARDRAIL_SERVICE_TOKEN" -}}{{ .Data.data.value }}{{- end -}}
-        vault.hashicorp.com/agent-inject-secret-GUARDRAIL_VLLM_API_KEY: 'secret/data/hope/GUARDRAIL_VLLM_API_KEY'
-        vault.hashicorp.com/agent-inject-template-GUARDRAIL_VLLM_API_KEY: |
-          {{- with secret "secret/data/hope/GUARDRAIL_VLLM_API_KEY" -}}{{ .Data.data.value }}{{- end -}}
+        # GUARDRAIL_VLLM_API_KEY was removed (TASK-735): guardrail hosts no LLM
+        # engine and therefore holds no vendor credential — judgement is delegated
+        # to apps/text, which resolves the tenant's own key.
         # The value below is a Vault PATH, not a password — but the
         # `hope-redis-password` rule matches `REDIS_PASS:` followed by 12+
         # non-space characters, which every kv path for that secret is. The
