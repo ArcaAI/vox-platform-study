@@ -300,6 +300,11 @@ export class DepartmentAgentService extends BaseService implements IDepartmentAg
     }
     agent.updatedBy = userId ?? null;
 
+    // OCC precondition BEFORE the no-changes short-circuit: a stale client must
+    // get 412 ("you are stale, refetch"), not 400/200, even when the payload
+    // would change nothing. RFC 7232 evaluates preconditions independently of
+    // the payload; the CAS below still guards concurrent writers.
+    this.assertExpectedVersion(agent, dto.expectedVersion);
     if (!agent.hasChanges) {
       throw new ArgumentInvalidException('No changes to write to.');
     }

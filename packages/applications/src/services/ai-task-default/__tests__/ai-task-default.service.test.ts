@@ -433,14 +433,34 @@ describe('AiTaskDefaultService — upsertRow OCC + sys-events', () => {
     );
   });
 
-  it('throws when there are no changes to write', async () => {
+  it('re-PUTting the value already stored is idempotent: 200 with the current row, no write, no event', async () => {
     const ctx = makeService({ roles: ['SUPER_ADMIN'] });
     ctx.modelRepo.findBySlug.mockResolvedValue(makeModel({ slug: 'medical-ner', taskType: ModelTaskType.TOKEN_CLASSIFICATION }));
-    // Same editor + same slug → nothing changes, the guard fires.
     const row = AiTaskDefaultFactory.CreateAiTaskDefault({ tenantId: TENANT, taskKey: 'nlp.ner', modelSlug: 'medical-ner', updatedBy: 'u1' });
     ctx.repo.findByTenantAndTaskKey.mockResolvedValue(row);
 
-    await expect(ctx.svc.upsertRow('nlp.ner', { modelSlug: 'medical-ner', expectedVersion: 1 })).rejects.toBeInstanceOf(ArgumentInvalidException);
+    // PUT is idempotent (RFC 9110 §9.2.2): re-sending the value that is already
+    // stored returns the CURRENT representation, unchanged — same observable
+    // result as the first send. No write, no version bump, no ResourceUpdated
+    // event. (A stale `expectedVersion` still 412s; that is asserted separately.)
+    const first = await ctx.svc.upsertRow('nlp.ner', { modelSlug: 'medical-ner', expectedVersion: 1 });
+    const second = await ctx.svc.upsertRow('nlp.ner', { modelSlug: 'medical-ner', expectedVersion: 1 });
+
+    expect(first.modelSlug).toBe('medical-ner');
+    expect(second).toEqual(first);
+    expect(row.version).toBe(1); // version never burned
+    expect(ctx.repo.updateWithVersion).not.toHaveBeenCalled();
+    expect(ctx.emitter.emit).not.toHaveBeenCalledWith(SysEventType.ResourceUpdated, expect.anything());
+  });
+
+  it('a no-op PUT with a STALE expectedVersion is still 412, not a silent idempotent 200', async () => {
+    const ctx = makeService({ roles: ['SUPER_ADMIN'] });
+    ctx.modelRepo.findBySlug.mockResolvedValue(makeModel({ slug: 'medical-ner', taskType: ModelTaskType.TOKEN_CLASSIFICATION }));
+    const row = AiTaskDefaultFactory.CreateAiTaskDefault({ tenantId: TENANT, taskKey: 'nlp.ner', modelSlug: 'medical-ner', updatedBy: 'u1' });
+    ctx.repo.findByTenantAndTaskKey.mockResolvedValue(row);
+
+    await expect(ctx.svc.upsertRow('nlp.ner', { modelSlug: 'medical-ner', expectedVersion: 999 })).rejects.toBeInstanceOf(OptimisticConcurrencyException);
+    expect(ctx.repo.updateWithVersion).not.toHaveBeenCalled();
   });
 
   it('honors an explicit tenantId override (super admin acting on another tenant)', async () => {

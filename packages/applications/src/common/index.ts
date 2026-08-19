@@ -2,9 +2,12 @@ export * from './dto';
 export * from './env';
 export * from './decorators';
 export * from './build-info';
+// Shared SSE relay over a refcounted Redis pub/sub channel.
+export * from './sse/redis-channel-sse';
 
 export * from './apiResponseType.enum';
 export * from './applyChangesToEntity';
+export * from './assertExpectedVersion';
 export * from './authenticateJwt';
 export * from './base.service';
 export * from './cursorPagination';

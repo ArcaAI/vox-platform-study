@@ -4,6 +4,7 @@ import { Injectable } from '@nestjs/common';
 import { IActiveUserContext, IBaseService, IServiceAccountPrincipal } from '../interfaces';
 import { BaseEntity, ResourceType, SysEvent, SysEventType, SendContactMessageEvent, generateId } from '@arcaai/domains';
 import { applyChangesToEntity, ChangeFieldHandlers } from './applyChangesToEntity';
+import { assertExpectedVersion } from './assertExpectedVersion';
 import { UserSession } from '../services';
 
 /**
@@ -120,12 +121,44 @@ export abstract class BaseService implements IBaseService {
     customHandlers?: ChangeFieldHandlers<T, K>,
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
   ): Promise<Record<string, any>> {
-    if (this.requestUser) {
-      entity.updatedBy = this.requestUser?.id;
-    }
+    // F-01 — ORDER IS LOAD-BEARING. The DTO changes are applied FIRST, and the
+    // `updatedBy` stamp only follows if something was actually staged.
+    //
+    // `updatedBy` routes through `BaseEntity.setProperty`, which records a
+    // change on any genuine value transition. Stamping BEFORE applying the DTO
+    // therefore manufactured a change out of thin air whenever the stamp was a
+    // real transition (NULL -> userId on a freshly created row, or a change of
+    // editor). A semantically empty request then sailed past every caller's
+    // `if (!entity.hasChanges) throw new ArgumentInvalidException('No changes
+    // to write to.')` guard and committed: `_version` bumped, `updatedAt`
+    // rewritten, and a ResourceUpdated sys-event/audit row emitted for a
+    // request that changed nothing. Worse, the SAME request returned 400 on the
+    // second attempt (by then the stamp was value-identical), so the documented
+    // contract was history-dependent — and every no-op write silently
+    // invalidated other clients' ETags, producing spurious 412s and audit noise
+    // in a healthcare compliance trail.
+    //
+    // Applying first makes emptiness a property of the request alone. A genuine
+    // update still stamps `updatedBy` exactly as before; `entity.hasChanges` is
+    // also true when the CALLER staged changes on the entity before invoking
+    // this method, so those keep their stamp too.
     await applyChangesToEntity(entity, changes, customHandlers);
 
+    if (entity.hasChanges && this.requestUser) {
+      entity.updatedBy = this.requestUser.id;
+    }
+
     return entity.changes;
+  }
+
+  /**
+   * Instance shim over the shared {@link assertExpectedVersion} helper, which
+   * carries the full rationale. Defaults the error's model name to this
+   * service's `resourceType`; pass `model` explicitly when the service mutates a
+   * different model (e.g. tenant config -> GlobalSetting).
+   */
+  protected assertExpectedVersion(entity: BaseEntity, expectedVersion?: number | null, model?: string): void {
+    assertExpectedVersion(entity, expectedVersion, model ?? String(this.resourceType));
   }
 
   get requestUser(): UserSession | null {

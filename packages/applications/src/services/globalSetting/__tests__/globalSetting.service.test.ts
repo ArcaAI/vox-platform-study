@@ -94,6 +94,7 @@ const createMockGlobalSettingEntity = (
     updatedAt: Date;
     hasChanges: boolean;
     changes: Record<string, unknown>;
+    version: number;
     resourceStatus: ResourceStatus;
     deletedAt: Date | null;
     deletedBy: string | null;
@@ -113,6 +114,11 @@ const createMockGlobalSettingEntity = (
     updatedAt: overrides.updatedAt ?? new Date('2026-01-30T10:00:00Z'),
     hasChanges: overrides.hasChanges ?? false,
     changes: overrides.changes ?? {},
+    // A real `GlobalSettingEntity` always carries a `_version` (default 1);
+    // the mock omitted it, so `entity.version` was `undefined` and any
+    // `expectedVersion` compared unequal once the OCC precondition moved ahead
+    // of the no-changes guard. Mirror the entity instead of the omission.
+    version: overrides.version ?? 1,
     resourceStatus: overrides.resourceStatus ?? ResourceStatus.ENABLED,
     deletedAt: overrides.deletedAt ?? null,
     deletedBy: overrides.deletedBy ?? null,

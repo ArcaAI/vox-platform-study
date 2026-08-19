@@ -78,14 +78,13 @@ export class ExceptionInterceptor implements NestInterceptor {
           });
 
           // Map Prisma codes to RFC-correct HTTP statuses at the interceptor
-          // (the registered handler — the `PrismaClientExceptionFilter` is
-          // dead code because it isn't wired as APP_FILTER), so clients can
-          // distinguish a duplicate (409) from a missing row (404) from a
-          // generic validation failure (400). The `error` labels mirror the
-          // filter's labels so any future filter-revival doesn't introduce a
-          // body-shape skew. Sanitisation is preserved: only the label
-          // changes per code; `err.meta` and raw `err.message` never reach
-          // the client.
+          // — the single registered handler for Prisma errors (there is no
+          // separate Prisma exception filter; TASK-776 F-03 removed the
+          // unwired, dead `PrismaClientExceptionFilter` in favor of this
+          // one mechanism) — so clients can distinguish a duplicate (409)
+          // from a missing row (404) from a generic validation failure
+          // (400). Sanitisation is preserved: only the label changes per
+          // code; `err.meta` and raw `err.message` never reach the client.
           const { status, label } = mapPrismaCodeToHttp(err.code);
           return throwError(
             () =>
@@ -419,12 +418,10 @@ export class ExceptionInterceptor implements NestInterceptor {
 
 // Prisma error code → HTTP status mapping.
 //
-// Mirrors the labels in `apps/api/src/filters/prisma.filter.ts` so the
-// dead filter and the live interceptor produce identical body shapes —
-// if/when the filter is wired up (or the interceptor's branch is
-// removed), the response contract doesn't shift. Any code outside the
-// table below falls back to 400 / 'Bad Request' to preserve the legacy
-// generic-default behaviour.
+// This is the single Prisma-mapping mechanism (TASK-776 F-03 deleted the
+// unwired `PrismaClientExceptionFilter`). Any code outside the table below
+// falls back to 400 / 'Bad Request' to preserve the legacy generic-default
+// behaviour.
 // Entitlements capability → HTTP status.
 //
 //   - rolling-monthly METER caps (Q5)         → 429 Too Many Requests
@@ -466,6 +463,18 @@ function mapPrismaCodeToHttp(code: string): { status: HttpStatus; label: string 
   switch (code) {
     case 'P2002':
       return { status: HttpStatus.CONFLICT, label: 'Unique constraint violation' };
+    // TASK-776 F-06: NOT structurally dead. `Repository.updateWithVersion`
+    // (the OCC path most PATCH routes use) issues `updateMany`, which never
+    // throws P2025 on zero matched rows — and most services `findById` first,
+    // surfacing a `DataNotFoundException` (→404) before Prisma is ever
+    // touched, so this branch is unreachable on THAT path specifically.
+    // But `Repository.update`, `delete`, `softDelete`, and `restore`
+    // (`packages/domains/src/common/repository.ts`) all issue a single-row
+    // Prisma `update`/`delete`, which DOES throw P2025 when 0 rows match —
+    // reachable via an ordinary TOCTOU race: a caller's pre-read
+    // (`findById`) succeeds, then a concurrent delete/soft-delete removes
+    // the row before this write lands. Kept as defense-in-depth for that
+    // race window, not deleted.
     case 'P2025':
       return { status: HttpStatus.NOT_FOUND, label: 'Not found' };
     case 'P2003':

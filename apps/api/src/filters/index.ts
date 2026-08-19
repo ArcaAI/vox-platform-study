@@ -1,5 +1,4 @@
 export * from './data-not-found.filter';
-export * from './prisma.filter';
 export * from './consent.filter';
 // TASK-768 — the downstream-failure classifier + the only client-facing body
 // builder for a failed call to a Python service. Not a Nest filter: it is the

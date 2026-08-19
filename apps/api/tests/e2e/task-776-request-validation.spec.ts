@@ -174,34 +174,37 @@ test.describe('TASK-776: request validation', () => {
       const dept = trackDepartment(await created.json());
       expect(dept.version).toBe(1);
 
-      // DEFECT (TASK-776 F-01) — the `hasChanges` guard is UNREACHABLE on the
-      // FIRST no-op PATCH of a freshly created row.
+      // TASK-776 F-01 (FIXED) — a semantically empty update is now
+      // DETERMINISTICALLY rejected, on the first PATCH of a freshly created row
+      // as much as on any later one.
       //
-      // `BaseService.updateEntity()` stamps `entity.updatedBy = requestUser.id`
-      // BEFORE applying the DTO (packages/applications/src/common/base.service.ts
-      // :123-125). On a new row `updatedBy` is NULL, so that stamp is a real
-      // value transition; change-tracking records it, `hasChanges` is true, and
-      // the guard at department.service.ts:311 never fires. The write commits:
-      // 200, `_version` 1 -> 2, `updatedAt` rewritten, and a ResourceUpdated
-      // sys-event broadcast for a request that changed nothing the client asked
-      // to change.
+      // `BaseService.updateEntity()` used to stamp `entity.updatedBy =
+      // requestUser.id` BEFORE applying the DTO. That stamp routes through
+      // change tracking, so on a new row (`updatedBy` NULL) it was a real value
+      // transition: `hasChanges` became true, the guard at
+      // department.service.ts:311 never fired, and the no-op write committed
+      // (200, `_version` 1 -> 2, `updatedAt` rewritten, ResourceUpdated audit
+      // row) — while the IDENTICAL second request returned 400, because by then
+      // the stamp was value-identical. The contract was history-dependent, and
+      // each phantom write invalidated other clients' ETags.
       //
-      // Once `updatedBy` is populated the stamp is value-identical, setProperty
-      // records no change, and the guard behaves as documented. The contract is
-      // therefore HISTORY-DEPENDENT: the identical request yields 200 or 400
-      // depending on who wrote the row last. Both halves are asserted so that
-      // fixing the guard fails the first assertion loudly rather than silently.
+      // The stamp now follows the DTO application and only runs when a real
+      // change was staged, so both attempts below behave the same.
       const first = await request.patch(`/api/v1/admin/departments/${dept.id}`, {
         headers: { ...auth(tenantAdminToken), 'If-Match': '"1"' },
         data: { expectedVersion: 1 },
       });
-      expect(first.status()).toBe(200); // DIVERGENCE: documented contract says 400
-      expect((await first.json()).version).toBe(2); // the no-op burned a version
+      expect(first.status()).toBe(400);
+      expect(await first.json()).toMatchObject({
+        message: 'No changes to write to.',
+        code: 'GENERIC.ARGUMENT_INVALID',
+      });
 
-      // Second identical no-op: `updatedBy` is stable now, so the guard fires.
+      // No write happened: the version is untouched, so `If-Match: "1"` is still
+      // the current ETag and the second identical no-op behaves identically.
       const res = await request.patch(`/api/v1/admin/departments/${dept.id}`, {
-        headers: { ...auth(tenantAdminToken), 'If-Match': '"2"' },
-        data: { expectedVersion: 2 },
+        headers: { ...auth(tenantAdminToken), 'If-Match': '"1"' },
+        data: { expectedVersion: 1 },
       });
       expect(res.status()).toBe(400);
       const body = await res.json();

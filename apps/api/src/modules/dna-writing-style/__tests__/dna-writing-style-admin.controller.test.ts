@@ -61,7 +61,11 @@ describe('DnaWritingStyleAdminController', () => {
     vi.clearAllMocks();
     mockDnaService = createMockDnaService();
     mockDnaQueue = createMockDnaQueue();
-    controller = new DnaWritingStyleAdminController(mockDnaService as any, mockDnaQueue as any);
+    // C-01: the admin job routes read the caller's ACTIVE tenant from CLS
+    // and compare it with the tenantId stamped on the job payload.
+    controller = new DnaWritingStyleAdminController(mockDnaService as any, mockDnaQueue as any, {
+      get: (key: string) => (key === 'tenantId' ? 'tenant-1' : undefined),
+    } as any);
   });
 
   // ─── Repository-level pagination ──────────────────────────────────────
@@ -367,6 +371,7 @@ describe('DnaWritingStyleAdminController', () => {
     it('should return completed status when job is finished', async () => {
       mockDnaQueue.getJob.mockResolvedValue({
         id: 'job-1',
+        data: { tenantId: 'tenant-1', doctorId: 'doctor-1', userId: 'doctor-1' },
         getState: vi.fn().mockResolvedValue('completed'),
         returnvalue: { reportId: 'report-1' },
         failedReason: undefined,
@@ -382,6 +387,7 @@ describe('DnaWritingStyleAdminController', () => {
     it('should return processing status when job is active', async () => {
       mockDnaQueue.getJob.mockResolvedValue({
         id: 'job-2',
+        data: { tenantId: 'tenant-1', doctorId: 'doctor-1', userId: 'doctor-1' },
         getState: vi.fn().mockResolvedValue('active'),
         returnvalue: undefined,
         failedReason: undefined,
@@ -396,6 +402,7 @@ describe('DnaWritingStyleAdminController', () => {
     it('should return failed status with error when job failed', async () => {
       mockDnaQueue.getJob.mockResolvedValue({
         id: 'job-3',
+        data: { tenantId: 'tenant-1', doctorId: 'doctor-1', userId: 'doctor-1' },
         getState: vi.fn().mockResolvedValue('failed'),
         returnvalue: undefined,
         failedReason: 'SMR service unavailable',
@@ -411,6 +418,7 @@ describe('DnaWritingStyleAdminController', () => {
     it('should return queued status when job is waiting', async () => {
       mockDnaQueue.getJob.mockResolvedValue({
         id: 'job-4',
+        data: { tenantId: 'tenant-1', doctorId: 'doctor-1', userId: 'doctor-1' },
         getState: vi.fn().mockResolvedValue('waiting'),
         returnvalue: undefined,
         failedReason: undefined,

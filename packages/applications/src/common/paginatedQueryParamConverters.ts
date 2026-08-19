@@ -1,6 +1,6 @@
 import { BadRequestException } from '@nestjs/common';
 import { DbFilters, DefaultDbFieldType, ICountProps, IFindAllProps } from '@arcaai/domains';
-import { PaginatedQuery } from './dto';
+import { PaginatedQuery, DEFAULT_PAGE, DEFAULT_PAGE_SIZE } from './dto';
 import { FilterFieldSpec, FilterFieldTypeMap, FilterFieldTypeSource, resolveFilterFieldTypes } from './modelFilterTypes';
 
 export function deserializeSearchFieldString(searchFieldsString: string): string[] {
@@ -300,13 +300,18 @@ export function deserializeSortString(sortString: string): { [key: string]: 'asc
   return sortObjects;
 }
 
-export const DEFAULT_PAGE_SIZE = 10;
+// Re-exported so existing `DEFAULT_PAGE_SIZE`/`DEFAULT_PAGE` imports from this
+// module keep working. `PaginatedQuery` (`./dto/paginated.query.ts`) is the
+// single source of truth for the values — it also applies them as the DTO's
+// own runtime defaults (TASK-776 F-02), so the raw `page`/`limit` a client
+// omits already equal what is used here.
+export { DEFAULT_PAGE, DEFAULT_PAGE_SIZE };
 export const PAGE_SIZE_OPTIONS = [10, 20, 50] as const;
 
 export function withFormattedPaginatedProps<T>(props: PaginatedQuery, fieldTypes?: FilterFieldTypeSource): IFindAllProps<T> {
   return {
-    page: props.page || 0,
-    limit: props.limit || DEFAULT_PAGE_SIZE,
+    page: props.page ?? DEFAULT_PAGE,
+    limit: props.limit ?? DEFAULT_PAGE_SIZE,
     search: props.search,
     searchFields: props.searchFields ? deserializeSearchFieldString(props.searchFields) : undefined,
     filters: props.filters ? deserializeFilterString(props.filters, fieldTypes) : undefined,

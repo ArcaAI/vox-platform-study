@@ -13,6 +13,13 @@
  * 401 — unknown ids may still 404 from the pre-stream ownership guard or
  * terminate the stream immediately); a ticket for a DIFFERENT resource id
  * must be rejected with 401.
+ *
+ * NOTE (C-01/H-02): `dna_job:` mint is now ownership-asserted. It used to
+ * accept ANY job id from any caller, which is the cross-tenant hole those
+ * findings closed — a synthetic id like `e2e-dna-job-419` minted a usable
+ * ticket for a job the caller did not own. This spec therefore enqueues a
+ * REAL job owned by the caller's tenant instead of inventing an id. Do not
+ * "fix" a 404 here by loosening the mint.
  */
 import { test, expect } from '@playwright/test';
 import { SEEDED_USERS } from '../../../../tests/helpers';
@@ -42,6 +49,29 @@ async function mintTicket(request: any, token: string, scope: string): Promise<s
 
 test.describe('stream-ticket scopes', () => {
   test.describe('GET /admin/dna-writing-styles/jobs/:jobId/stream', () => {
+    // A REAL job, owned by a clinician in the same tenant as the admin below.
+    let realJobId: string;
+
+    test.beforeAll(async ({ request }) => {
+      const doctorLogin = await request.post('/api/v1/auth/login', {
+        data: {
+          username: SEEDED_USERS.doctor.username,
+          password: SEEDED_USERS.doctor.password,
+          tenantKey: '__GLOBAL__',
+        },
+      });
+      expect(doctorLogin.status(), 'doctor login failed').toBe(200);
+      const doctorToken = (await doctorLogin.json()).token as string;
+
+      const generated = await request.post('/api/v1/dna-writing-styles/generate', {
+        headers: { Authorization: `Bearer ${doctorToken}` },
+        data: {},
+      });
+      expect(generated.status(), 'DNA generate must enqueue a job').toBeLessThan(300);
+      realJobId = (await generated.json()).jobId as string;
+      expect(realJobId, 'a real jobId is required — mint is ownership-asserted').toBeTruthy();
+    });
+
     test('returns 401 without authentication or ticket', async ({ request }) => {
       const response = await request.get('/api/v1/admin/dna-writing-styles/jobs/some-job/stream');
       expect(response.status()).toBe(401);
@@ -49,20 +79,29 @@ test.describe('stream-ticket scopes', () => {
 
     test('accepts a single-use ticket scoped dna_job:<jobId>', async ({ request }) => {
       const token = await login(request);
-      const ticket = await mintTicket(request, token, 'dna_job:e2e-dna-job-419');
+      const ticket = await mintTicket(request, token, `dna_job:${realJobId}`);
 
-      const sseResponse = await request.get(`/api/v1/admin/dna-writing-styles/jobs/e2e-dna-job-419/stream?ticket=${encodeURIComponent(ticket)}`);
-      // The unknown job may terminate the stream immediately (404/stream
-      // error), but the ticket must not be rejected by the auth guard.
+      const sseResponse = await request.get(`/api/v1/admin/dna-writing-styles/jobs/${realJobId}/stream?ticket=${encodeURIComponent(ticket)}`);
       expect(sseResponse.status()).not.toBe(401);
     });
 
     test('rejects a ticket minted for a different job id', async ({ request }) => {
       const token = await login(request);
-      const ticket = await mintTicket(request, token, 'dna_job:other-job');
+      // Bound to the real job, then presented on a different job's stream.
+      const ticket = await mintTicket(request, token, `dna_job:${realJobId}`);
 
       const sseResponse = await request.get(`/api/v1/admin/dna-writing-styles/jobs/e2e-dna-job-419/stream?ticket=${encodeURIComponent(ticket)}`);
       expect(sseResponse.status()).toBe(401);
+    });
+
+    test('C-01: minting a dna_job ticket for a job you do NOT own is refused', async ({ request }) => {
+      const token = await login(request);
+      const response = await request.post('/api/v1/auth/stream-ticket', {
+        headers: { Authorization: `Bearer ${token}` },
+        data: { scope: 'dna_job:e2e-dna-job-419' },
+      });
+      // 404-over-403: indistinguishable from a job that does not exist.
+      expect(response.status()).toBe(404);
     });
   });
 

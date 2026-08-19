@@ -415,11 +415,20 @@ export class UnifiedAuthGuard implements CanActivate {
       }
     }
 
-    // SSE set token in query param
-    if (!request.headers?.authorization && request.query?.token) {
-      request.headers = request.headers || {};
-      request.headers.authorization = `Bearer ${request.query.token}`;
-    }
+    // H-01 — there is deliberately NO query-parameter credential path here.
+    // This block used to rewrite `?token=<value>` into an
+    // `Authorization: Bearer <value>` header. Its comment said "SSE", but it
+    // was gated on nothing — not `SSE_METADATA`, not `@StreamScope`, not the
+    // path — so a long-lived session JWT appended to ANY of the gateway's
+    // routes authenticated. Query strings land in CDN access logs, browser
+    // history, `Referer` headers and session-replay recordings, so one leaked
+    // log line handed over a session-lifetime credential for the whole API.
+    // That is exactly what the single-use stream-ticket subsystem
+    // (`apps/api/src/modules/auth/stream-ticket.service.ts`) exists to prevent.
+    // The supported browser-`EventSource` path is `?ticket=<single-use ticket>`,
+    // scope-checked in `apps/api/src/guards/jwtauth.guard.ts`; both SDK stream
+    // clients already mint tickets and no consumer sends `?token=`.
+    // Do not reintroduce a query-parameter credential path.
 
     if (this.jwtAuthGuard) {
       try {

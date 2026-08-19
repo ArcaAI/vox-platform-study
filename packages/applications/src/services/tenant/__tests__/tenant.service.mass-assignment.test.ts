@@ -101,6 +101,11 @@ const createMockSetting = (overrides: Partial<MockSetting> = {}): MockSetting =>
   deletedAt: null,
   hasChanges: overrides.hasChanges ?? false,
   changes: overrides.changes ?? {},
+  // A real `GlobalSettingEntity` always carries a `_version` (default 1). The
+  // mock omitted it, so `entity.version` was `undefined` and any supplied
+  // `expectedVersion` compared unequal once the OCC precondition moved ahead of
+  // the no-changes guard. Mirror the entity rather than the omission.
+  version: (overrides.version as number | undefined) ?? 1,
   toObject: vi.fn().mockReturnValue({ id: overrides.id, value: overrides.value }),
 });
 

@@ -1,5 +1,6 @@
 import { Inject, Injectable, Logger, type MessageEvent } from '@nestjs/common';
-import { Observable, ReplaySubject, type Subscription, filter, interval, map, merge, takeWhile } from 'rxjs';
+import { Observable } from 'rxjs';
+import { closedFlagTerminal, sseFromRedisChannel } from '../../../common/sse/redis-channel-sse';
 import { IRedisCacheService } from '../../baseServices/redis';
 import { RedisSubscriberService } from '../../stt/realtime/redisSubscriber.service';
 import type { HarnessAssuranceAck, HarnessAssuranceClaimDto, HarnessAssuranceEventDto, HarnessAssuranceEventRequest } from './dto';
@@ -122,61 +123,14 @@ export class HarnessAssuranceService {
    * event, with a periodic heartbeat. Mirrors `HarnessProgressService.subscribeToProgress`.
    */
   subscribeToAssurance(consultationId: string): Observable<MessageEvent> {
-    const channel = this.channel(consultationId);
-
-    return new Observable<MessageEvent>((subscriber) => {
-      let inner: Subscription | null = null;
-      let bridgeSub: Subscription | null = null;
-
-      (async () => {
-        const messages$ = await this.redisSubscriber.subscribeToChannel(channel);
-        const bridge = new ReplaySubject<string>();
-        bridgeSub = messages$.subscribe(bridge);
-
-        const snapshot = await this.cacheService.get(this.snapshotKey(consultationId));
-        const snapshotUpdatedAt = this.parseUpdatedAt(snapshot);
-        if (snapshot) {
-          subscriber.next({ data: snapshot } as MessageEvent);
-        }
-
-        const relay$ = bridge.pipe(
-          filter((raw: string) => !this.isDuplicateOfSnapshot(raw, snapshotUpdatedAt)),
-          map((raw: string): MessageEvent => ({ data: raw }) as MessageEvent),
-        );
-
-        const heartbeat$ = interval(this.HEARTBEAT_MS).pipe(
-          map((): MessageEvent => ({ data: JSON.stringify({ type: 'heartbeat', ts: new Date().toISOString() }) }) as MessageEvent),
-        );
-
-        const stream$ = merge(relay$, heartbeat$).pipe(
-          takeWhile((event: MessageEvent) => {
-            try {
-              return JSON.parse(event.data as string).closed !== true;
-            } catch {
-              return true;
-            }
-          }, true), // include the terminal `closed` event
-        );
-
-        inner = stream$.subscribe({
-          next: (event) => subscriber.next(event),
-          error: (err) => subscriber.error(err),
-          complete: () => subscriber.complete(),
-        });
-      })().catch((error) => {
-        this.logger.error({
-          message: 'Failed to initialise harness-assurance SSE subscription',
-          consultationId,
-          error: error instanceof Error ? error.message : String(error),
-        });
-        subscriber.next({ data: JSON.stringify({ error: 'Failed to subscribe to harness assurance', consultationId }) } as MessageEvent);
-        subscriber.complete();
-      });
-
-      return () => {
-        inner?.unsubscribe();
-        bridgeSub?.unsubscribe();
-      };
+    return sseFromRedisChannel(this.redisSubscriber, this.logger, {
+      channel: this.channel(consultationId),
+      heartbeatMs: this.HEARTBEAT_MS,
+      loadSnapshot: () => this.cacheService.get(this.snapshotKey(consultationId)),
+      isDuplicateOfSnapshot: (raw, snapshot) => this.isDuplicateOfSnapshot(raw, this.parseUpdatedAt(snapshot)),
+      isTerminal: closedFlagTerminal,
+      setupErrorPayload: JSON.stringify({ error: 'Failed to subscribe to harness assurance', consultationId }),
+      logContext: { consultationId },
     });
   }
 

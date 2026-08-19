@@ -360,6 +360,11 @@ export class WebhookService extends BaseService implements IWebhookService {
     const { expectedVersion, ...editableRequest } = request;
     this.updateEntity(webhook, editableRequest as UpdateWebhookRequest);
 
+    // OCC precondition BEFORE the no-changes short-circuit: a stale client must
+    // get 412 ("you are stale, refetch"), not 400/200, even when the payload
+    // would change nothing. RFC 7232 evaluates preconditions independently of
+    // the payload; the CAS below still guards concurrent writers.
+    this.assertExpectedVersion(webhook, expectedVersion);
     if (!webhook.hasChanges) {
       throw new ArgumentInvalidException(`No changes to write to.`);
     }

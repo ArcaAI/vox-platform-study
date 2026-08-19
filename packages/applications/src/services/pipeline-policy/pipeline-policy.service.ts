@@ -11,6 +11,7 @@ import {
   PipelinePolicyScope,
   SYSTEM_TENANT_ID,
 } from '@arcaai/domains';
+import { assertExpectedVersion } from '../../common/assertExpectedVersion';
 import { isSuperAdmin } from '../../common/tenant-guards';
 import { IActiveUserContext } from '../../interfaces';
 import { SecretsService } from '../baseServices/_meta/secrets';
@@ -182,6 +183,11 @@ export class PipelinePolicyService {
     if (existing) {
       const before = entityToToggles(existing);
       applyTogglesToEntity(existing, dto);
+      // OCC precondition BEFORE the no-changes short-circuit: a stale client must
+      // get 412 ("you are stale, refetch"), not 400/200, even when the payload
+      // would change nothing. RFC 7232 evaluates preconditions independently of
+      // the payload; the CAS below still guards concurrent writers.
+      assertExpectedVersion(existing, expectedVersion, 'pipelinePolicy');
       if (!existing.hasChanges) {
         return toResponse(existing); // idempotent no-op — nothing to write or audit.
       }
@@ -311,6 +317,11 @@ export class PipelinePolicyService {
       // Bracket assignment invokes the prototype setter, so the write is tracked
       // (only a real value change marks the row dirty → idempotent no-op below).
       (existing as unknown as Record<string, unknown>).dnaStyleEnabled = enabled;
+      // OCC precondition BEFORE the no-changes short-circuit: a stale client must
+      // get 412 ("you are stale, refetch"), not 400/200, even when the payload
+      // would change nothing. RFC 7232 evaluates preconditions independently of
+      // the payload; the CAS below still guards concurrent writers.
+      assertExpectedVersion(existing, expectedVersion, 'pipelinePolicy');
       if (!existing.hasChanges) {
         return this.settingsAfterWrite(tenantId, doctorId, existing.version); // idempotent
       }

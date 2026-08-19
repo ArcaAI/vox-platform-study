@@ -272,6 +272,11 @@ export class GlobalSettingService extends BaseService implements IGlobalSettingS
     const previousVersion = globalSetting.version;
     this.updateEntity(globalSetting, request);
 
+    // OCC precondition BEFORE the no-changes short-circuit: a stale client must
+    // get 412 ("you are stale, refetch"), not 400/200, even when the payload
+    // would change nothing. RFC 7232 evaluates preconditions independently of
+    // the payload; the CAS below still guards concurrent writers.
+    this.assertExpectedVersion(globalSetting, request.expectedVersion);
     if (!globalSetting.hasChanges) {
       throw new ArgumentInvalidException(`No changes to write to.`);
     }
@@ -445,6 +450,11 @@ export class GlobalSettingService extends BaseService implements IGlobalSettingS
 
     const previousVersion = globalSetting.version;
     await this.updateEntity(globalSetting, { value: request.newValue });
+    // OCC precondition BEFORE the no-changes short-circuit: a stale client must
+    // get 412 ("you are stale, refetch"), not 400/200, even when the payload
+    // would change nothing. RFC 7232 evaluates preconditions independently of
+    // the payload; the CAS below still guards concurrent writers.
+    this.assertExpectedVersion(globalSetting, request.expectedVersion);
     if (!globalSetting.hasChanges) {
       throw new BadRequestException('The replacement value matches the current secret — nothing to rotate.');
     }

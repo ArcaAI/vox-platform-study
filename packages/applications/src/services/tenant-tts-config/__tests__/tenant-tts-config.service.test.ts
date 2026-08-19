@@ -87,12 +87,26 @@ describe('TenantTtsConfigService', () => {
     expect(ctx.emitter.emit).toHaveBeenCalledWith(SysEventType.ResourceUpdated, expect.any(Object));
   });
 
-  it('upsert throws when there are no changes to write', async () => {
-    // Same editor + no spec fields → even the updatedBy stamp is a no-op, so the
-    // entity is genuinely unchanged and the guard fires.
+  it('upsert with nothing to write is an idempotent PUT — current row back, no write, no event', async () => {
+    // PUT is idempotent (RFC 9110 §9.2.2): a payload that changes nothing returns
+    // the CURRENT representation rather than a 400, and burns no version.
     const row = TenantTtsConfigFactory.CreateTenantTtsConfig({ tenantId: TENANT, updatedBy: 'u1' });
     ctx.repo.findByTenantId.mockResolvedValue(row);
-    await expect(ctx.svc.upsertRow(TENANT, { expectedVersion: 1 })).rejects.toBeInstanceOf(ArgumentInvalidException);
+
+    const first = await ctx.svc.upsertRow(TENANT, { expectedVersion: 1 });
+    const second = await ctx.svc.upsertRow(TENANT, { expectedVersion: 1 });
+
+    expect(second).toEqual(first);
+    expect(row.version).toBe(1);
+    expect(ctx.repo.updateWithVersion).not.toHaveBeenCalled();
+    expect(ctx.emitter.emit).not.toHaveBeenCalledWith(SysEventType.ResourceUpdated, expect.anything());
+  });
+
+  it('a no-op upsert with a STALE expectedVersion is still 412', async () => {
+    const row = TenantTtsConfigFactory.CreateTenantTtsConfig({ tenantId: TENANT, updatedBy: 'u1' });
+    ctx.repo.findByTenantId.mockResolvedValue(row);
+    await expect(ctx.svc.upsertRow(TENANT, { expectedVersion: 999 })).rejects.toBeInstanceOf(OptimisticConcurrencyException);
+    expect(ctx.repo.updateWithVersion).not.toHaveBeenCalled();
   });
 });
 

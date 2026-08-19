@@ -1,5 +1,6 @@
 import { BadRequestException, ForbiddenException, Inject, Injectable, Logger, Optional } from '@nestjs/common';
 import { OptimisticConcurrencyException } from '@arcaai/exceptions';
+import { assertExpectedVersion } from '../../common/assertExpectedVersion';
 import { ClsService } from 'nestjs-cls';
 import {
   ConsultationRepository,
@@ -680,6 +681,11 @@ export class HarnessPolicyService {
     if (own) {
       const before = entityToKnobs(own);
       applyKnobsToEntity(own, dto);
+      // OCC precondition BEFORE the no-changes short-circuit: a stale client must
+      // get 412 ("you are stale, refetch"), not 400/200, even when the payload
+      // would change nothing. RFC 7232 evaluates preconditions independently of
+      // the payload; the CAS below still guards concurrent writers.
+      assertExpectedVersion(own, expectedVersion, 'harnessPolicy');
       if (!own.hasChanges) {
         // Idempotent no-op edit — nothing to write or audit.
         return toResponse(own, source);

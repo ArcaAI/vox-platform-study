@@ -25,6 +25,8 @@ function buildController(
     consultationRepository?: { findById: ReturnType<typeof vi.fn> };
     streamSessionTenantBinding?: { lookupBinding: ReturnType<typeof vi.fn> };
     workflowRunService?: { getRun: ReturnType<typeof vi.fn> };
+    dnaQueue?: { getJob: ReturnType<typeof vi.fn> };
+    policyEngine?: { buildAbility: ReturnType<typeof vi.fn> };
   } = {},
 ) {
   const cls = opts.cls ?? { get: () => null };
@@ -41,6 +43,10 @@ function buildController(
   const streamSessionTenantBinding = opts.streamSessionTenantBinding ?? { lookupBinding: vi.fn().mockResolvedValue(null) };
   // Default fail-closed: no run resolvable for any (tenantId, runId).
   const workflowRunService = opts.workflowRunService ?? { getRun: vi.fn().mockRejectedValue(new Error('not found')) };
+  // H-02: default fail-closed — no DNA job resolvable for any id.
+  const dnaQueue = opts.dnaQueue ?? { getJob: vi.fn().mockResolvedValue(null) };
+  // H-02: default fail-closed — the caller holds no ability at all.
+  const policyEngine = opts.policyEngine ?? { buildAbility: vi.fn().mockResolvedValue({ can: () => false }) };
 
   return {
     controller: new AuthController(
@@ -62,12 +68,16 @@ function buildController(
       consultationRepository as never, // consultationRepository
       streamSessionTenantBinding as never, // streamSessionTenantBinding
       workflowRunService as never, // workflowRunService (TASK-722)
+      dnaQueue as never, // dnaQueue (finding H-02)
+      policyEngine as never, // policyEngine (finding H-02 — admin arm of the dna_job mint)
     ),
     streamTicketService,
     jwtRevocationService,
     consultationRepository,
     streamSessionTenantBinding,
     workflowRunService,
+    dnaQueue,
+    policyEngine,
   };
 }
 
@@ -115,12 +125,14 @@ describe('AuthController.issueStreamTicket', () => {
       streamTicketService: { issueTicket, consumeTicket: vi.fn() },
     });
 
-    await controller.issueStreamTicket({ scope: 's' });
+    // H-02: a bare 's' is no longer a mintable scope (fail-closed registry);
+    // this test is about the tenant fallback, so use a real known scope.
+    await controller.issueStreamTicket({ scope: 'consultation_job:job-1' });
 
     expect(issueTicket).toHaveBeenCalledWith({
       userId: 'user-1',
       tenantId: 'tenant-from-cls',
-      scope: 's',
+      scope: 'consultation_job:job-1',
       impersonatedBy: null,
     });
   });
@@ -682,5 +694,191 @@ describe('AuthController.issueStreamTicket', () => {
 
       expect(issueTicket).toHaveBeenCalled();
     });
+  });
+});
+
+
+/**
+ * Finding H-02 — `dna_job:<jobId>` mint-time ownership, and a scope registry
+ * that fails CLOSED on an unrecognised namespace.
+ */
+describe('AuthController.issueStreamTicket — dna_job ownership (H-02)', () => {
+  const OWNED = { tenantId: 'tenant-1', doctorId: 'user-1', userId: 'user-1' };
+  const jobWith = (data: unknown) => ({
+    getJob: vi.fn(async () => ({ id: 'job-1', data, progress: 10, returnvalue: undefined, failedReason: undefined, getState: async () => 'active' })),
+  });
+  const callerCls = { get: (key: string) => (key === 'user' ? { id: 'user-1', tenantId: 'tenant-1' } : null) };
+
+  it('mints a dna_job ticket for the job OWNER', async () => {
+    const issueTicket = vi.fn(async () => ({ ticket: 't', expiresAt: 1, scope: 'dna_job:job-1' }));
+    const { controller } = buildController({
+      cls: callerCls,
+      streamTicketService: { issueTicket, consumeTicket: vi.fn() },
+      dnaQueue: jobWith(OWNED),
+    });
+
+    await controller.issueStreamTicket({ scope: 'dna_job:job-1' });
+
+    expect(issueTicket).toHaveBeenCalledWith(expect.objectContaining({ userId: 'user-1', scope: 'dna_job:job-1' }));
+  });
+
+  it("throws NotFoundException and never mints for a COLLEAGUE's job (same tenant, different doctor)", async () => {
+    const issueTicket = vi.fn();
+    const { controller } = buildController({
+      cls: callerCls,
+      streamTicketService: { issueTicket, consumeTicket: vi.fn() },
+      dnaQueue: jobWith({ tenantId: 'tenant-1', doctorId: 'victim', userId: 'victim' }),
+    });
+
+    await expect(controller.issueStreamTicket({ scope: 'dna_job:job-1' })).rejects.toThrow(NotFoundException);
+    expect(issueTicket).not.toHaveBeenCalled();
+  });
+
+  // The mint is the UNION of the doctor rule and the admin rule, because the
+  // scope string does not say which surface the ticket is for. Applying only
+  // the doctor rule left the ADMIN SSE route unmintable — dead for the Admin
+  // Console, which can read the same job over HTTP. The route still re-asserts
+  // the surface-specific rule at consume time.
+  const adminCls = (tenantId: string) => ({
+    get: (key: string) => {
+      if (key === 'user') return { id: 'admin-1', tenantId };
+      if (key === 'tenantId') return tenantId;
+      return null;
+    },
+  });
+  // `POST /auth/stream-ticket` is a bare `@Authorize()` route, so the auth
+  // guard never builds an ability for it and CLS carries none — the mint asks
+  // the PolicyEngine directly.
+  const adminEngine = { buildAbility: vi.fn().mockResolvedValue({ can: (a: string, sub: string) => a === 'manage' && sub === 'DnaWritingStyleReport' }) };
+
+  it("a same-tenant admin holding manage:DnaWritingStyleReport CAN mint for a clinician's job", async () => {
+    const issueTicket = vi.fn(async () => ({ ticket: 't', expiresAt: 1, scope: 'dna_job:job-1' }));
+    const { controller } = buildController({
+      cls: adminCls('tenant-1'),
+      streamTicketService: { issueTicket, consumeTicket: vi.fn() },
+      dnaQueue: jobWith({ tenantId: 'tenant-1', doctorId: 'some-doctor', userId: 'some-doctor' }),
+      policyEngine: adminEngine,
+    });
+
+    await controller.issueStreamTicket({ scope: 'dna_job:job-1' });
+
+    expect(issueTicket).toHaveBeenCalledWith(expect.objectContaining({ userId: 'admin-1', scope: 'dna_job:job-1' }));
+  });
+
+  it('an admin in a DIFFERENT tenant CANNOT mint (the admin arm is tenant-bound)', async () => {
+    const issueTicket = vi.fn();
+    const { controller } = buildController({
+      cls: adminCls('tenant-OTHER'),
+      streamTicketService: { issueTicket, consumeTicket: vi.fn() },
+      dnaQueue: jobWith({ tenantId: 'tenant-1', doctorId: 'some-doctor', userId: 'some-doctor' }),
+      policyEngine: adminEngine,
+    });
+
+    await expect(controller.issueStreamTicket({ scope: 'dna_job:job-1' })).rejects.toThrow(NotFoundException);
+    expect(issueTicket).not.toHaveBeenCalled();
+  });
+
+  it('a same-tenant user WITHOUT the admin ability still cannot mint for a colleague (C-01 stays closed)', async () => {
+    const issueTicket = vi.fn();
+    const { controller } = buildController({
+      cls: callerCls,
+      streamTicketService: { issueTicket, consumeTicket: vi.fn() },
+      dnaQueue: jobWith({ tenantId: 'tenant-1', doctorId: 'victim', userId: 'victim' }),
+    });
+
+    await expect(controller.issueStreamTicket({ scope: 'dna_job:job-1' })).rejects.toThrow(NotFoundException);
+    expect(issueTicket).not.toHaveBeenCalled();
+  });
+
+  it('an admin ability does NOT rescue a cross-tenant legacy payload (fail closed survives the union)', async () => {
+    const issueTicket = vi.fn();
+    const { controller } = buildController({
+      cls: adminCls('tenant-1'),
+      streamTicketService: { issueTicket, consumeTicket: vi.fn() },
+      dnaQueue: jobWith({ jobId: 'job-1' }),
+      policyEngine: adminEngine,
+    });
+
+    await expect(controller.issueStreamTicket({ scope: 'dna_job:job-1' })).rejects.toThrow(NotFoundException);
+    expect(issueTicket).not.toHaveBeenCalled();
+  });
+
+  it("throws NotFoundException and never mints for another tenant's job", async () => {
+    const issueTicket = vi.fn();
+    const { controller } = buildController({
+      cls: callerCls,
+      streamTicketService: { issueTicket, consumeTicket: vi.fn() },
+      dnaQueue: jobWith({ tenantId: 'tenant-OTHER', doctorId: 'user-1', userId: 'user-1' }),
+    });
+
+    await expect(controller.issueStreamTicket({ scope: 'dna_job:job-1' })).rejects.toThrow(NotFoundException);
+    expect(issueTicket).not.toHaveBeenCalled();
+  });
+
+  it('fail-closed: a legacy job payload with no owner fields never mints', async () => {
+    const issueTicket = vi.fn();
+    const { controller } = buildController({
+      cls: callerCls,
+      streamTicketService: { issueTicket, consumeTicket: vi.fn() },
+      dnaQueue: jobWith({ jobId: 'job-1' }),
+    });
+
+    await expect(controller.issueStreamTicket({ scope: 'dna_job:job-1' })).rejects.toThrow(NotFoundException);
+    expect(issueTicket).not.toHaveBeenCalled();
+  });
+
+  it('fail-closed: an unknown job id never mints', async () => {
+    const issueTicket = vi.fn();
+    const { controller } = buildController({
+      cls: callerCls,
+      streamTicketService: { issueTicket, consumeTicket: vi.fn() },
+    });
+
+    await expect(controller.issueStreamTicket({ scope: 'dna_job:nope' })).rejects.toThrow(NotFoundException);
+    expect(issueTicket).not.toHaveBeenCalled();
+  });
+});
+
+describe('AuthController.issueStreamTicket — scope registry fails closed (H-02)', () => {
+  const callerCls = { get: (key: string) => (key === 'user' ? { id: 'user-1', tenantId: 'tenant-1' } : null) };
+
+  it('rejects an unrecognised scope namespace instead of minting it', async () => {
+    const issueTicket = vi.fn();
+    const { controller } = buildController({ cls: callerCls, streamTicketService: { issueTicket, consumeTicket: vi.fn() } });
+
+    await expect(controller.issueStreamTicket({ scope: 'totally_made_up:res-1' })).rejects.toThrow(NotFoundException);
+    expect(issueTicket).not.toHaveBeenCalled();
+  });
+
+  it('rejects a scope with no namespace separator at all', async () => {
+    const issueTicket = vi.fn();
+    const { controller } = buildController({ cls: callerCls, streamTicketService: { issueTicket, consumeTicket: vi.fn() } });
+
+    await expect(controller.issueStreamTicket({ scope: 's' })).rejects.toThrow(NotFoundException);
+    expect(issueTicket).not.toHaveBeenCalled();
+  });
+
+  it.each(['transcription_job:t-1', 'text_task:task-1'])('still mints the known namespace %s', async (scope) => {
+    const issueTicket = vi.fn(async () => ({ ticket: 't', expiresAt: 1, scope }));
+    const { controller } = buildController({ cls: callerCls, streamTicketService: { issueTicket, consumeTicket: vi.fn() } });
+
+    await controller.issueStreamTicket({ scope });
+
+    expect(issueTicket).toHaveBeenCalledWith(expect.objectContaining({ scope }));
+  });
+
+  it('consultation_job stays exempt from ownership lookup and still mints', async () => {
+    const issueTicket = vi.fn(async () => ({ ticket: 't', expiresAt: 1, scope: 'consultation_job:job-1' }));
+    const findById = vi.fn();
+    const { controller } = buildController({
+      cls: callerCls,
+      streamTicketService: { issueTicket, consumeTicket: vi.fn() },
+      consultationRepository: { findById },
+    });
+
+    await controller.issueStreamTicket({ scope: 'consultation_job:job-1' });
+
+    expect(findById).not.toHaveBeenCalled();
+    expect(issueTicket).toHaveBeenCalled();
   });
 });

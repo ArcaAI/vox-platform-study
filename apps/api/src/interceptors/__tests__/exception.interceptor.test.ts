@@ -685,11 +685,10 @@ describe('Prisma error sanitisation (audit)', () => {
 // ───────────────────────────────────────────────────────────────────────────
 // Prisma error code → HTTP status mapping.
 //
-// The `PrismaClientExceptionFilter` has the proper code-to-status branches
-// but never runs, because the interceptor runs first and converts the error
-// before any filter sees it. The code-to-status mapping lives in the
-// interceptor (the single registered handler) so clients see the
-// classification matching RFC semantics:
+// The code-to-status mapping lives in the interceptor — the single
+// registered handler for Prisma errors (TASK-776 F-03 deleted the unwired
+// `PrismaClientExceptionFilter`) — so clients see the classification
+// matching RFC semantics:
 //   P2002 (unique constraint)        → 409 Conflict
 //   P2025 (record not found)         → 404 Not Found
 //   P2003 (foreign key constraint)   → 400 Bad Request

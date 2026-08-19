@@ -117,17 +117,20 @@ describe('TenantNlpTaskInstructionsService', () => {
       expect(ctx.repo.updateWithVersion).not.toHaveBeenCalled();
     });
 
-    it('rejects a no-op update (no instructionsJson change, no requestUser to stamp updatedBy)', async () => {
-      // BaseService.updateEntity stamps `updatedBy` from the request user, which
-      // itself registers as a tracked change — so an authenticated no-op call
-      // would legitimately proceed (only updatedBy changes). To isolate the
-      // "genuinely nothing changed" guard, this case runs unauthenticated
-      // (mirrors a system/internal caller), where updatedBy is never stamped.
-      ctx = makeService({ user: null });
+    it('a no-op update is an idempotent PUT: returns the current row, writes nothing', async () => {
+      // `updateEntity` only stamps `updatedBy` when the DTO staged a real change,
+      // so a genuinely empty payload leaves the entity untouched on any caller,
+      // authenticated or not.
       const existing = makeRow({ instructionsJson: ['same'] });
       ctx.repo.findByTenantAndTaskKey.mockResolvedValue(existing);
 
-      await expect(ctx.svc.upsertRow('nlp.topic', { expectedVersion: existing.version })).rejects.toThrow(ArgumentInvalidException);
+    // PUT is idempotent (RFC 9110 §9.2.2): re-sending the value that is already
+    // stored returns the CURRENT representation, unchanged — same observable
+    // result as the first send. No write, no version bump, no ResourceUpdated
+    // event. (A stale `expectedVersion` still 412s; that is asserted separately.)
+      const res = await ctx.svc.upsertRow('nlp.topic', { expectedVersion: existing.version });
+
+      expect(res.instructionsJson).toEqual(['same']);
       expect(ctx.repo.updateWithVersion).not.toHaveBeenCalled();
     });
   });

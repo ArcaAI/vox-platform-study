@@ -10,7 +10,7 @@ import {
 } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { ClsService } from 'nestjs-cls';
-import { ArgumentInvalidException, OptimisticConcurrencyException } from '@arcaai/exceptions';
+import { OptimisticConcurrencyException } from '@arcaai/exceptions';
 import {
   AiProviderConnectionEntity,
   AiProviderConnectionFactory,
@@ -195,7 +195,15 @@ export class AiProviderConnectionService extends BaseService implements IProvide
 
     await this.updateEntity(existing, changes);
     if (!existing.hasChanges) {
-      throw new ArgumentInvalidException('No changes to write to.');
+      // PUT is idempotent by contract (RFC 9110 §9.2.2): re-sending a value that is
+      // already stored must yield the SAME observable result as the first send, not a
+      // 400. Returning the current representation satisfies BOTH that and the
+      // phantom-write rule — no version bump, no `updatedAt` rewrite, no
+      // ResourceUpdated event. (PATCH routes keep throwing `ArgumentInvalidException`;
+      // there "you sent me nothing to change" IS the documented answer.)
+      // The OCC precondition above has already run, so a STALE token still gets 412
+      // rather than a misleading 200.
+      return AiProviderConnectionDtoMapper.toResponse(existing);
     }
 
     const previousVersion = existing.version;

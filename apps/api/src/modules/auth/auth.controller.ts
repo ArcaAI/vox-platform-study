@@ -8,15 +8,18 @@ import {
   IUserRoleAssignmentService,
   IUserService,
   IWorkflowRunService,
+  PolicyEngine,
   SecretsService,
   createJwt,
   // Password rotation surfaced at login (warning-only).
   isPasswordExpired,
   resolvePasswordPolicy,
 } from '@arcaai/applications';
+import type { AppAbility } from '@arcaai/applications';
 import {
   ConsultationRepository,
   EventTypes,
+  JobQueue,
   ResourceStatusType,
   ResourceType,
   RoleRepository,
@@ -46,6 +49,9 @@ import { Throttle } from '@nestjs/throttler';
 import * as bcrypt from 'bcryptjs';
 import { randomBytes } from 'crypto';
 import { ClsService } from 'nestjs-cls';
+import { InjectQueue } from '@nestjs/bullmq';
+import { Queue } from 'bullmq';
+import { getDnaJobStatus } from '../dna-writing-style/dna-writing-style-job-stream';
 import { type StreamSessionBinding, StreamSessionTenantBindingService } from '../../common';
 import { Authorize, Public, ForbidApiKey } from '../../decorators';
 import {
@@ -126,6 +132,18 @@ export class AuthController {
     private readonly streamSessionTenantBinding: StreamSessionTenantBindingService,
     // Mint-time tenant-ownership check for `workflow_run:<runId>` tickets (TASK-722 Task 7).
     @Inject(IWorkflowRunService) private readonly workflowRunService: IWorkflowRunService,
+    // Finding H-02 — mint-time ownership check for `dna_job:<jobId>` tickets.
+    // The DNA job payload is the only record of who a generation belongs to
+    // (there is no row until the worker finishes), so the queue itself is the
+    // lookup surface, exactly as the SSE route's own gate uses it.
+    // TS-optional + trailing so the existing positional unit fixtures keep
+    // their arity; production DI always supplies it (AuthModule registers the
+    // queue). An absent queue fails CLOSED below — it can never mean "allow".
+    @InjectQueue(JobQueue.GenerateDnaReport) private readonly dnaQueue?: Queue,
+    // Builds the caller's ability for the admin arm of the `dna_job:` mint —
+    // see `assertDnaJobScopeOwnership` for why CLS cannot supply it here.
+    // TS-optional + trailing for the same positional-fixture reason.
+    private readonly policyEngine?: PolicyEngine,
   ) {}
 
   /**
@@ -950,6 +968,16 @@ export class AuthController {
     // and what would make it possible.
     this.assertTtsSessionScopeShape(body.scope, tenantId);
 
+    // Finding H-02 — `dna_job:<jobId>` had NO branch here. The job's
+    // `returnvalue` is a clinician's private writing-style model and the queue
+    // is global with enumerable ids, so the ticket must only be mintable by the
+    // job's owner (same tenant + same doctor as stamped on the payload).
+    await this.assertDnaJobScopeOwnership(body.scope, tenantId, user.id);
+
+    // Finding H-02 — LAST, after every branch above: an unrecognised scope
+    // namespace is rejected rather than silently minted.
+    AuthController.assertKnownScopeNamespace(body.scope);
+
     const issued = await this.streamTicketService.issueTicket({
       userId: user.id,
       tenantId,
@@ -1074,6 +1102,131 @@ export class AuthController {
       await this.workflowRunService.getRun(activeTenantId, runId);
     } catch {
       throw new NotFoundException('Run not found');
+    }
+  }
+
+  /** Scope prefix for DNA generation job SSE tickets (`dna_job:<jobId>`). */
+  private static readonly DNA_JOB_SCOPE_PREFIX = 'dna_job:';
+
+  /**
+   * Finding H-02 — mint-time ownership for `dna_job:<jobId>`.
+   *
+   * The scope string `dna_job:<id>` does NOT encode which surface the ticket
+   * will be used on: the SAME scope authenticates the clinician's own
+   * `dna-writing-styles/jobs/:jobId/stream` and the admin console's
+   * `admin/dna-writing-styles/jobs/:jobId/stream`. Applying only the doctor
+   * rule here made the admin SSE route unmintable — and therefore dead — for
+   * the one consumer that has it (an admin can read the job over HTTP but
+   * could never open its stream).
+   *
+   * So the mint is the UNION of the two surface rules — allow when EITHER
+   *   (a) the caller is the owning clinician (payload `doctorId`/`userId`), OR
+   *   (b) the caller's active tenant matches the job's `tenantId` AND the
+   *       caller holds `manage:DnaWritingStyleReport`, the ability the admin
+   *       route itself requires.
+   * Anything else is denied, still 404-over-403.
+   *
+   * This is safe because MINT IS THE COARSE GATE AND THE ROUTE IS THE PRECISE
+   * ONE: `streamDnaJobStatus` re-asserts the surface-specific rule on every
+   * emission with the ticket-restored CLS identity, so a ticket minted under
+   * (b) still cannot open the DOCTOR route for a job the caller does not own,
+   * and neither arm crosses a tenant. Never weaken that route assertion to
+   * compensate for anything here.
+   *
+   * Both arms delegate to the SAME `getDnaJobStatus` assertion the routes use,
+   * so mint and consume can never disagree about who owns a job — including
+   * its fail-closed treatment of a legacy payload with no owner fields.
+   * Non-`dna_job` scopes pass through untouched.
+   */
+  private async assertDnaJobScopeOwnership(scope: string, activeTenantId: string | null, callerUserId: string): Promise<void> {
+    if (!scope?.startsWith(AuthController.DNA_JOB_SCOPE_PREFIX)) {
+      return;
+    }
+    const jobId = scope.slice(AuthController.DNA_JOB_SCOPE_PREFIX.length);
+    if (!jobId || !this.dnaQueue) {
+      throw new NotFoundException('Job not found');
+    }
+
+    // (a) owning clinician — tenant AND doctor must match.
+    try {
+      await getDnaJobStatus(this.dnaQueue, jobId, { tenantId: activeTenantId, doctorId: callerUserId });
+      return;
+    } catch {
+      // Fall through to the admin arm.
+    }
+
+    // (b) tenant admin — tenant match plus the admin route's own ability.
+    //
+    // The ability is built HERE rather than read from CLS `userAbility`:
+    // `UnifiedAuthGuard.handleJwtPostAuth` returns early for a route whose
+    // required-permission list is empty, and `POST /auth/stream-ticket` is a
+    // bare `@Authorize()` route — so CLS carries no ability on this path and a
+    // CLS read would silently deny every admin. Fail closed if the engine is
+    // unavailable.
+    let ability: AppAbility;
+    try {
+      ability = await this.policyEngine.buildAbility({ userId: callerUserId, tenantId: activeTenantId ?? undefined });
+    } catch {
+      throw new NotFoundException('Job not found');
+    }
+    if (!ability.can('manage', 'DnaWritingStyleReport')) {
+      throw new NotFoundException('Job not found');
+    }
+    try {
+      // No `doctorId` — the admin surface's rule is tenant-only, exactly as
+      // `DnaWritingStyleAdminController.jobAccess()` computes it.
+      await getDnaJobStatus(this.dnaQueue, jobId, { tenantId: activeTenantId });
+    } catch {
+      throw new NotFoundException('Job not found');
+    }
+  }
+
+  /**
+   * Finding H-02 — the ticket-scope REGISTRY, and it fails CLOSED.
+   *
+   * Before this, `issueStreamTicket` had a branch per known namespace and an
+   * implicit "anything else is fine" default: a scope nobody had ever declared
+   * was minted unchecked, and every new SSE route inherited that default until
+   * somebody remembered to add a branch (which is exactly how `dna_job:` and
+   * `text_task:` came to have none). The default is now DENY.
+   *
+   * The list mirrors the live `@StreamScope({ namespace })` declarations plus
+   * the two WS namespaces that have no decorator (`stt_session`, `tts_session`).
+   * `consultation_*` is admitted as a family because
+   * `assertConsultationScopeOwnership` already ownership-checks every member,
+   * known or future, fail-closed.
+   *
+   * `text_task:` is knowingly listed WITHOUT an ownership branch: closing it
+   * needs an upstream change in `apps/text` and is tracked separately. Listing
+   * it keeps it working and makes its debt explicit rather than invisible.
+   *
+   * Adding an SSE route means adding its namespace HERE (and, unless ownership
+   * is enforced at consume time, a mint-time assertion above).
+   */
+  private static readonly KNOWN_SCOPE_NAMESPACES: ReadonlySet<string> = new Set([
+    'dna_job',
+    'workflow_run',
+    'transcription_job',
+    'stt_session',
+    'tts_session',
+    // No mint-time ownership check yet — see the note above.
+    'text_task',
+  ]);
+
+  /** Prefix admitting the ownership-checked `consultation_*` family. */
+  private static readonly CONSULTATION_SCOPE_PREFIX = 'consultation_';
+
+  private static assertKnownScopeNamespace(scope: string): void {
+    const match = /^([a-z][a-z0-9_]*):(.+)$/.exec(scope ?? '');
+    if (!match) {
+      throw new NotFoundException('Resource not found');
+    }
+    const namespace = match[1];
+    if (namespace.startsWith(AuthController.CONSULTATION_SCOPE_PREFIX)) {
+      return;
+    }
+    if (!AuthController.KNOWN_SCOPE_NAMESPACES.has(namespace)) {
+      throw new NotFoundException('Resource not found');
     }
   }
 

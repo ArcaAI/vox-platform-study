@@ -158,3 +158,102 @@ every run.
 |---|---|
 | 2026-08-19 | Initial implementation: manifest extended, 5 e2e specs (75 tests), 66 controller unit tests, rules updated (`05-nestjs-api.md` §API Test Standard, `01-development-workflow.md`, rules `README.md` v6.5.0). Six findings recorded. |
 | 2026-08-19 | Test hygiene: added worker-local id-tracked cleanup to the two department-creating specs after observing cross-worker deletion flake; purged 123 leaked rows from earlier runs; verified idempotency over three consecutive runs. |
+
+## Follow-up findings (post-fix review round)
+
+Recorded from the REST and SSE/WebSocket reviews plus full-suite triage. Severity is as verified
+against the running gateway, not as claimed.
+
+| Id | Severity | Finding | Status |
+|---|---|---|---|
+| **C-01** | CRITICAL | DNA job status/stream looked jobs up in a global BullMQ queue with NO tenant/doctor check and returned `job.returnvalue` (`{reportId, reportData, styleText}`). Route carried `requiredPermissions: []`, so ANY authenticated user in ANY tenant could read it; BullMQ ids default to sequential integers, so the space is enumerable. | **Fixed + verified** — owner 200 / non-owner 404 at route and ticket-mint |
+| **H-01** | HIGH | `?token=` rewrite in `unified-auth.guard.ts` was gated on nothing — a full session JWT in a query string authenticated ALL 656 routes, defeating the stream-ticket subsystem (query strings reach CDN logs, browser history, `Referer`). | **Fixed + verified** — `?token=<JWT>` now 401; `?ticket=` unaffected |
+| **H-02** | HIGH | Stream-ticket scope registry was fail-OPEN: `dna_job:` and `text_task:` had no mint-time ownership branch. | **Fixed** — registry fails closed; `dna_job:` asserted; `text_task:` debt explicit |
+| **M-01** | MEDIUM | SSE subscription setup raced teardown in 5 places: an aborted request leaked a Redis channel refcount permanently (StrictMode double-mount, nav-during-load, reconnect storms). | **Fixed** — one shared `sseFromRedisChannel` helper replaces 5 copies |
+| **M-02** | MEDIUM | `consultation-job.service` force-completed a SHARED per-channel Subject, silently freezing every other viewer's stream. Same anti-pattern already fixed in 4 sibling services. | **Fixed** |
+| **REST H-1** | HIGH | OCC is per-route, not per-resource: 49 of 88 PATCH/PUT routes are last-write-wins, and 8 aggregates are internally mixed (`PATCH /consultations/:id` unprotected while `prime`/`close`/`reopen` on the same row are). GETs emit an ETag, so clients are told the resource is conditionally updatable, then handed an unconditional write. | **Open** — breaking to fix; phased plan in the review |
+| **REST H-2** | HIGH | Four incompatible error body shapes; `statusCode` absent from OCC 412s, `correlationId` absent from 404s, machine-readable `code` only on domain exceptions. | **Open** — fixable additively, non-breaking |
+| **F-07** | MEDIUM | Nine sub-collection routes return `200` with an empty payload for a NONEXISTENT parent (`/admin/users/{missing}/roles`). Client cannot distinguish "no roles" from "no such user". Not a leak. | **Open** |
+| **F-08** | — | Superseded by F-09 — the cursor `500` is not a keyset/race bug; it is the PHI decrypt crash below. | **Closed, merged into F-09** |
+| **F-09** | **HIGH** | **PHI decrypt crashes every audit read that includes an audited PHI-entity mutation.** `phi-read-decrypt.ts` `collectNode` matches `PHI_CIPHERTEXT_FIELDS` **by key name anywhere in the object graph** and recurses into arbitrary nested JSON — including `AuditLog.data`/`previousData` snapshots. Those snapshots JSON-serialize entity `Buffer`s as `{"type":"Buffer","data":[…]}`, so the walker finds e.g. `encryptedContent`, assumes a `Uint8Array`, and calls `Buffer.from(object)` → `TypeError [ERR_INVALID_ARG_TYPE]` → bare **500** (no `correlationId` — it escapes `ExceptionInterceptor`). | **Open** |
+
+### Regressions introduced by our own fixes (caught by the FULL suite, not the targeted runs)
+
+| Id | Cause | Status |
+|---|---|---|
+| **R-1** | F-01 moved the `hasChanges` guard ahead of the CAS, so a no-op payload skips the OCC precondition entirely: unchanged value + stale `expectedVersion` returned 200 instead of 412 (`tenant.service.ts:1291-1310`). Generalizes to every `if (!hasChanges) throw` service, which now 400s where it used to 412. | **Being fixed** — precondition must be evaluated before the no-changes short-circuit |
+| **R-2** | C-01's mint applied the doctor-ownership rule to BOTH surfaces, so a tenant admin could read a job (200) but never mint a ticket for it (404) — making the admin SSE route dead for the Admin Console. | **Fixed + verified** — mint is now the union of both surface rules; route still re-asserts the precise one |
+
+### F-09 detail (verified 2026-08-19)
+
+Stack: `Buffer.from` → `collectNode` (`packages/domains/src/common/phi-read-decrypt.ts:166`) →
+`decryptPhiRows:195` → `AuditLogRepository.findAll` → `AuditLogService.exportFiltered`.
+
+Offending stored value, straight from the test DB:
+```json
+"encryptedContent": {"data": [118, 97, 117, 108, 116, 58, 118, 49, …], "type": "Buffer"}
+```
+
+**All three audit read paths fail** once an affected row lands in the page — this is data-dependent,
+not route-dependent:
+
+| Route | Result |
+|---|---|
+| `GET /admin/audit-logs?page=40&limit=20` (offset) | **500** (pages 0–25 fine) |
+| `GET /admin/audit-logs/cursor` | **500** at page 2 of the walk |
+| `GET /admin/audit-logs/export?format=csv\|xlsx\|pdf` | **500** on all three |
+
+Why it matters in production: any audited mutation of a PHI entity (ContextItem, Highlight,
+NamedEntity, SummaryMeta, TranscriptionJob …) writes a snapshot containing serialized ciphertext
+buffers. From then on, every audit read whose page includes that row returns 500. On a healthcare
+platform the audit trail is a compliance surface — it failing closed-with-a-500 is an availability
+defect, and it is guaranteed to occur rather than merely possible.
+
+**Second-order concern worth an owner decision:** the name-based match is unscoped. On a value
+shaped as real bytes rather than the `{type:'Buffer'}` JSON form, the same code path would
+*succeed* — decrypting PHI ciphertext into an audit-log response. The crash is currently the only
+thing preventing that. Any fix should scope the match to the model's declared ciphertext columns
+rather than matching bare key names anywhere in the graph, and should stop recursing into opaque
+JSON payload columns entirely.
+
+Not caused by this ticket — `phi-read-decrypt.ts` is untouched here; our test traffic merely
+generated the audit rows that expose it.
+
+### Final full-suite attribution (2026-08-19, 1048 passed / 12 failed / 45 skipped)
+
+Every remaining failure was attributed. **None is caused by the changes in this ticket.**
+
+| Cause | Count | Specs |
+|---|---|---|
+| **F-09** (PHI decrypt crash, pre-existing) | 7 | `admin-fetchall-cross-tenant` (audit-logs), `shared-component-contracts` (cursor), `task-776-response-parsing` (cursor), `super-admin-backend-backlog` export ×4 |
+| **Dirty-DB / spec self-pollution** (pre-existing spec defects) | 3 | `role-members-cross-tenant` M4, `task-615-invoice-lifecycle` idempotency, `task-729-nlp-task-expansion` topic list |
+| **Environment** | 1 | `super-admin-ops-surfaces` — asserts `ENABLE_PRISMA_STUDIO` is unset |
+| **Another session's in-flight edits** | 1 | `task-635-prompt-test-bench` (`prompt-management` is being modified concurrently) |
+
+Evidence for the dirty-DB group, which is the one most likely to be misread as a cross-tenant leak:
+`role-members-cross-tenant` M4 asserts a tenant admin sees 0 members of the SUPER_ADMIN role. It
+sees 8. The DB holds **16** SUPER_ADMIN assignments scoped to the Global CUSTOMER tenant
+(`50000000-…-0000`) versus 1 on SYSTEM — and all 16 were created between 15:00 and 17:00 on
+2026-08-19, i.e. during this session's own test runs. The seed ships none. Tenant scoping is
+working correctly; the specs create SUPER_ADMIN assignments and never clean them up. Same shape for
+`task-729` (asserts `version === 0`, i.e. row must not exist, then creates it — passes once per DB)
+and `task-615` (asserts invoice idempotency against a period a prior run already invoiced).
+
+### Regressions introduced and then fixed within this ticket
+
+All three were caught ONLY by the full 1123-test suite; every targeted run was green.
+
+| Id | Regression | Resolution |
+|---|---|---|
+| **R-1** | F-01 moved the `hasChanges` guard ahead of the CAS, so a no-op payload skipped the OCC precondition entirely (unchanged value + stale `expectedVersion` → 200 instead of 412). | New shared `assertExpectedVersion` applied at 26 call sites; ordering is now precondition (412) → no-changes → write. Verified: unchanged+stale 412, changed+stale 412, unchanged+current 200 with no version burn. |
+| **R-2** | C-01's ticket mint applied the doctor-ownership rule to BOTH surfaces, so a tenant admin could read a DNA job (200) but never mint a ticket for it (404) — the admin SSE route was dead for the Admin Console. | Mint is now the union of the two surface rules; the route still re-asserts the precise one. Verified: owner 200, same-tenant admin 200, non-owner clinician 404. |
+| **R-3** | F-01 broke **PUT idempotency** — an identical repeat PUT returned 400 `No changes to write to.`, violating RFC 9110 §9.2.2 on 7 upsert routes an independent REST review had verified as idempotent. | No-changes behavior is now decided by HTTP method: PUT upserts return 200 + current representation (no write, no version bump, no sys-event); PATCH keeps the 400 contract. Verified: 3 identical PUTs → 200/200/200, version stable, stale → still 412. |
+
+### Test-isolation notes
+
+The e2e suite is run with `RESET_DB=false` against a test DB shared with several concurrent
+sessions. Consequences observed and worth knowing before triaging a red suite:
+
+- `task-776-response-parsing` cursor case fails in the full run but passes in isolation — cross-spec interference, not a defect.
+- `agentic-policy`'s stale-`If-Match` test hardcodes `If-Match: "999"` and races a sibling test that CREATES the policy row; the first edit creates rather than updates, so the precondition never applies. Order-dependent, pre-existing.
+- Continuous audit-log writes from the suite itself are what expose F-08.

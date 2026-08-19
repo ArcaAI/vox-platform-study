@@ -1,5 +1,6 @@
 import { Inject, Injectable, Logger, type MessageEvent } from '@nestjs/common';
-import { Observable, ReplaySubject, type Subscription, filter, interval, map, merge, takeWhile } from 'rxjs';
+import { Observable } from 'rxjs';
+import { closedFlagTerminal, sseFromRedisChannel } from '../../../common/sse/redis-channel-sse';
 import { IRedisCacheService } from '../../baseServices/redis';
 import { RedisSubscriberService } from '../../stt/realtime/redisSubscriber.service';
 import {
@@ -94,70 +95,14 @@ export class HarnessProgressService {
    * Subject and starve every other concurrent viewer of the same consultation.
    */
   subscribeToProgress(consultationId: string): Observable<MessageEvent> {
-    const channel = this.channel(consultationId);
-
-    return new Observable<MessageEvent>((subscriber) => {
-      let inner: Subscription | null = null;
-      let bridgeSub: Subscription | null = null;
-
-      (async () => {
-        const messages$ = await this.redisSubscriber.subscribeToChannel(channel);
-        // Buffer channel events while the snapshot read is in flight; replayed
-        // into the relay below so ordering stays snapshot-first.
-        const bridge = new ReplaySubject<string>();
-        bridgeSub = messages$.subscribe(bridge);
-
-        const snapshot = await this.cacheService.get(this.snapshotKey(consultationId));
-        const snapshotUpdatedAt = this.parseUpdatedAt(snapshot);
-        if (snapshot) {
-          subscriber.next({ data: snapshot } as MessageEvent);
-        }
-
-        const relay$ = bridge.pipe(
-          // De-dupe: reportProgress stores the snapshot BEFORE publishing, so a
-          // buffered event can be the very state the snapshot already carried.
-          filter((raw: string) => !this.isDuplicateOfSnapshot(raw, snapshotUpdatedAt)),
-          map((raw: string): MessageEvent => ({ data: raw }) as MessageEvent),
-        );
-
-        const heartbeat$ = interval(this.HEARTBEAT_MS).pipe(
-          map((): MessageEvent => ({ data: JSON.stringify({ type: 'heartbeat', ts: new Date().toISOString() }) }) as MessageEvent),
-        );
-
-        // takeWhile sits on the MERGED stream (not just the relay) so the
-        // terminal `closed` event completes the whole SSE stream — the
-        // infinite heartbeat interval would otherwise keep `merge` alive.
-        const stream$ = merge(relay$, heartbeat$).pipe(
-          takeWhile((event: MessageEvent) => {
-            try {
-              return JSON.parse(event.data as string).closed !== true;
-            } catch {
-              return true;
-            }
-          }, true), // include the terminal `closed` event
-        );
-
-        inner = stream$.subscribe({
-          next: (event) => subscriber.next(event),
-          error: (err) => subscriber.error(err),
-          complete: () => subscriber.complete(),
-        });
-      })().catch((error) => {
-        this.logger.error({
-          message: 'Failed to initialise harness-progress SSE subscription',
-          consultationId,
-          error: error instanceof Error ? error.message : String(error),
-        });
-        subscriber.next({ data: JSON.stringify({ error: 'Failed to subscribe to harness progress', consultationId }) } as MessageEvent);
-        subscriber.complete();
-      });
-
-      return () => {
-        inner?.unsubscribe();
-        // Releasing the bridge drives the refcounted channel cleanup (last
-        // viewer out tears the Redis subscription down).
-        bridgeSub?.unsubscribe();
-      };
+    return sseFromRedisChannel(this.redisSubscriber, this.logger, {
+      channel: this.channel(consultationId),
+      heartbeatMs: this.HEARTBEAT_MS,
+      loadSnapshot: () => this.cacheService.get(this.snapshotKey(consultationId)),
+      isDuplicateOfSnapshot: (raw, snapshot) => this.isDuplicateOfSnapshot(raw, this.parseUpdatedAt(snapshot)),
+      isTerminal: closedFlagTerminal,
+      setupErrorPayload: JSON.stringify({ error: 'Failed to subscribe to harness progress', consultationId }),
+      logContext: { consultationId },
     });
   }
 

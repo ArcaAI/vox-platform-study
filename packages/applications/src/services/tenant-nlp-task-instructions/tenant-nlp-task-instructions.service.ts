@@ -74,9 +74,11 @@ export class TenantNlpTaskInstructionsService extends BaseService implements ITe
     }
 
     await this.updateEntity(existing, dto.instructionsJson !== undefined ? { instructionsJson: dto.instructionsJson } : {});
-    if (!existing.hasChanges) {
-      throw new ArgumentInvalidException('No changes to write to.');
-    }
+    // OCC precondition BEFORE the no-changes short-circuit: a stale client must
+    // get 412 ("you are stale, refetch"), not 400/200, even when the payload
+    // would change nothing. RFC 7232 evaluates preconditions independently of
+    // the payload; the CAS below still guards concurrent writers.
+    this.assertExpectedVersion(existing, dto.expectedVersion);
     if (dto.expectedVersion === undefined) {
       // A CAS update without a token cannot be verified — surface it as a
       // concurrency error (the gateway's @RequiresIfMatch 428s before this).
@@ -84,6 +86,17 @@ export class TenantNlpTaskInstructionsService extends BaseService implements ITe
         expectedVersion: dto.expectedVersion,
         currentVersion: existing.version,
       });
+    }
+    // PUT is idempotent by contract (RFC 9110 §9.2.2): re-sending a value that is
+    // already stored must yield the SAME observable result as the first send, not a
+    // 400. Returning the current representation satisfies BOTH that and the
+    // phantom-write rule — no version bump, no `updatedAt` rewrite, no
+    // ResourceUpdated event. (PATCH routes keep throwing `ArgumentInvalidException`;
+    // there "you sent me nothing to change" IS the documented answer.)
+    // The OCC precondition above has already run, so a STALE token still gets 412
+    // rather than a misleading 200.
+    if (!existing.hasChanges) {
+      return TenantNlpTaskInstructionsDtoMapper.toResponse(existing);
     }
     const previousVersion = existing.version;
     const updated = await this.repository.updateWithVersion(existing.id, existing, dto.expectedVersion);

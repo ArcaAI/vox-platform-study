@@ -46,6 +46,8 @@ const createMockDnaService = () => ({
 const createMockClsService = (userId: string | null = 'doctor-1', session: { roles?: string[]; impersonatedBy?: string } = {}) => ({
   get: vi.fn((key: string) => {
     if (key === 'user') return userId ? { id: userId, tenantId: 'tenant-1', ...session } : null;
+    // C-01: the job routes read the ACTIVE tenant to gate job ownership.
+    if (key === 'tenantId') return 'tenant-1';
     return undefined;
   }),
 });
@@ -295,6 +297,8 @@ describe('DnaWritingStyleController', () => {
     it('should return completed status when job is finished', async () => {
       mockDnaQueue.getJob.mockResolvedValue({
         id: 'job-1',
+        // C-01 owner fields stamped at enqueue time.
+        data: { tenantId: 'tenant-1', doctorId: 'doctor-1', userId: 'doctor-1' },
         getState: vi.fn().mockResolvedValue('completed'),
         returnvalue: { reportId: 'report-1' },
         failedReason: undefined,
@@ -310,6 +314,7 @@ describe('DnaWritingStyleController', () => {
     it('should return processing status when job is active', async () => {
       mockDnaQueue.getJob.mockResolvedValue({
         id: 'job-2',
+        data: { tenantId: 'tenant-1', doctorId: 'doctor-1', userId: 'doctor-1' },
         getState: vi.fn().mockResolvedValue('active'),
         returnvalue: undefined,
         failedReason: undefined,

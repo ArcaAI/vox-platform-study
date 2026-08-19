@@ -107,6 +107,11 @@ export class ConsentGrantService extends BaseService implements IConsentGrantSer
 
     entity.revoke(this.requestUser?.id ?? 'system', request.reason ?? null);
 
+    // OCC precondition BEFORE the no-changes short-circuit: a stale client must
+    // get 412 ("you are stale, refetch"), not 400/200, even when the payload
+    // would change nothing. RFC 7232 evaluates preconditions independently of
+    // the payload; the CAS below still guards concurrent writers.
+    this.assertExpectedVersion(entity, request.expectedVersion);
     if (!entity.hasChanges) {
       throw new ArgumentInvalidException('Grant is already revoked.');
     }
