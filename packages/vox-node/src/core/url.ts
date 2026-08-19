@@ -4,12 +4,15 @@
  * This is the single most important piece of the transport: get it wrong and
  * every request 404s. The gateway (`apps/api/src/main.ts`) sets a global
  * route prefix of `api/v1` on every controller EXCEPT a short, exact,
- * literal-path exclusion list — the v1-compat summarization shims (the
- * renamed `text` service's frozen `smr`-legacy routes), which keep their
+ * literal-path exclusion list — the v1-compat shims, which keep their
  * pre-existing v1 URLs so legacy clients don't have to change anything:
  *
- *   - `POST /api/smr/api/v1/presummary`
- *   - `POST /api/smr/api/v1/summary/sync`
+ *   - `POST /api/smr/api/v1/presummary`      (summarization; the renamed
+ *   - `POST /api/smr/api/v1/summary/sync`     `text` service's frozen
+ *                                             `smr`-legacy routes)
+ *   - `POST /api/stt/start_session`          (speech-to-text session
+ *   - `POST /api/stt/switch`                  lifecycle — TASK-742)
+ *   - `POST /api/stt/stop_session`
  *
  * Everything else (e.g. `consultations/:id/summary`) DOES get the `api/v1`
  * prefix. Naively prepending `api/v1` to every path would turn the compat
@@ -21,9 +24,21 @@
  * `api/v1` global prefix. Kept as a literal set — matching `main.ts`'s own
  * `exclude: [...]` array — rather than a pattern, because the exclusion is
  * itself a short, exact list, not a rule ("everything under `api/smr/`" would
- * be wrong: only these two routes are compat shims).
+ * be wrong: only these exact routes are compat shims).
+ *
+ * The `api/stt/*` entries are unreachable from THIS SDK today — it ships no
+ * speech-to-text resource, and its zero-dependency, non-audio posture means it
+ * is not getting one. They are carried anyway because this set is a verbatim
+ * mirror of `main.ts`'s `exclude: [...]`: a partial mirror is the failure mode
+ * that turns a future STT call into a silent `/api/v1/api/stt/...` 404.
  */
-const PREFIX_EXEMPT_PATHS: ReadonlySet<string> = new Set(['api/smr/api/v1/presummary', 'api/smr/api/v1/summary/sync']);
+const PREFIX_EXEMPT_PATHS: ReadonlySet<string> = new Set([
+  'api/smr/api/v1/presummary',
+  'api/smr/api/v1/summary/sync',
+  'api/stt/start_session',
+  'api/stt/switch',
+  'api/stt/stop_session',
+]);
 
 /** The gateway's global route prefix (`app.setGlobalPrefix('api/v1', ...)`). */
 const API_PREFIX = 'api/v1';
