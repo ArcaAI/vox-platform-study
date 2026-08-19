@@ -67,7 +67,17 @@ export interface WorkflowCanvasProps {
   onNodesChange?: (nodes: WorkflowCanvasNode[]) => void;
   onEdgesChange?: (edges: WorkflowCanvasEdge[]) => void;
   onConnect?: (connection: WorkflowConnectRequest) => void;
+  /**
+   * Drag-time connection guard. React Flow calls it while the pointer is still dragging, so an
+   * invalid target is refused visually (the handle stops accepting the drop) rather than only
+   * after `onConnect` fires and the consumer toasts a rejection. Same predicate the consumer's
+   * store uses for the committed `connect`, so the two can never disagree.
+   */
+  isValidConnection?: (connection: WorkflowConnectRequest) => boolean;
   onSelect?: (nodeId: string | null) => void;
+  /** Rendered centred over an EMPTY canvas (no nodes). The composite ships no copy of its own —
+   *  the consumer supplies the empty state so it can match the rest of its screen. */
+  emptyState?: ReactNode;
   /** Never removes a node itself — the consumer decides (and may refuse for a `mandatory` node). */
   onDeleteRequest?: (nodeId: string) => void;
   'aria-label': string;

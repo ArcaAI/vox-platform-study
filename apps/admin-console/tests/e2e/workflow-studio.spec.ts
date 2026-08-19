@@ -59,7 +59,10 @@ test.describe('workflow definitions list', () => {
   test('shows the header, fill-height grid and a New definition action', async ({ page }) => {
     await page.goto('/workflow-studio');
     await waitForListSettled(page);
-    await expect(page.getByRole('button', { name: 'New definition' })).toBeVisible();
+    // Two CTAs legitimately carry this name: the pinned header action, and the grid's
+    // empty-state action when the working tenant has no definitions yet. Which of them exists
+    // is DATA-dependent, so the assertion targets the header one, which is always present.
+    await expect(page.getByRole('button', { name: 'New definition' }).first()).toBeVisible();
   });
 
   test('has no WCAG 2.2 AA violations (light)', async ({ page }) => {
@@ -197,5 +200,57 @@ test.describe('workflow studio editor', () => {
     // synced to `?view=` via nuqs as the plan specified — so there is no URL assertion here.
     await page.getByRole('radio', { name: 'List view' }).click();
     await expectNoA11yViolations(page);
+  });
+});
+
+test.describe('workflow studio editor — reflow and editing affordances (2026-08-19 UX pass)', () => {
+  test('at 200 % zoom (640x400 CSS px) the panels stack and stay usable, with no horizontal scrolling', async ({ page }) => {
+    const definitionId = await createDraft(page, `e2e_reflow_${Date.now()}`);
+    test.skip(!definitionId, 'Draft creation did not navigate to an editor id');
+
+    await page.setViewportSize({ width: 640, height: 400 });
+    await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
+
+    // 1.4.10: no two-dimensional scrolling.
+    const overflowsHorizontally = await page.evaluate(() => document.documentElement.scrollWidth > document.documentElement.clientWidth + 1);
+    expect(overflowsHorizontally).toBe(false);
+
+    // The regression this locks: before the stacking fix, the fixed-height flex row squeezed
+    // both the palette rail and the canvas to ~59 px tall at this size.
+    const palette = page.getByRole('complementary', { name: 'Node palette panel' });
+    const canvas = page.locator('[data-slot="workflow-canvas"]');
+    for (const panel of [palette, canvas]) {
+      const box = await panel.boundingBox();
+      expect(box).not.toBeNull();
+      expect(box!.height).toBeGreaterThan(180);
+    }
+
+    // And the palette is still operable at that zoom — its filter and at least one node button.
+    await expect(page.getByLabel('Filter nodes')).toBeVisible();
+  });
+
+  test('undo/redo round-trips a palette add, by button and by keyboard', async ({ page }) => {
+    const definitionId = await createDraft(page, `e2e_undo_${Date.now()}`);
+    test.skip(!definitionId, 'Draft creation did not navigate to an editor id');
+
+    const undo = page.getByRole('button', { name: /^Undo/ });
+    const redo = page.getByRole('button', { name: /^Redo/ });
+    await expect(undo).toBeDisabled();
+
+    await page.getByRole('radio', { name: 'List view' }).click();
+    const rows = page.getByRole('list', { name: 'Workflow graph, list view' }).locator('li');
+    const before = await rows.count();
+
+    const firstNode = page.getByRole('navigation', { name: 'Node palette' }).getByRole('button').filter({ hasNotText: /Filter/ }).first();
+    await firstNode.click();
+    await expect(rows).toHaveCount(before + 1);
+
+    await expect(undo).toBeEnabled();
+    await undo.click();
+    await expect(rows).toHaveCount(before);
+
+    await expect(redo).toBeEnabled();
+    await page.keyboard.press('Control+Shift+z');
+    await expect(rows).toHaveCount(before + 1);
   });
 });
