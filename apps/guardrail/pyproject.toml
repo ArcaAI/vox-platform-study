@@ -45,14 +45,11 @@ dependencies = [
     # SQLAlchemy has no `asyncpg` extra — the async driver must be declared explicitly.
     "sqlalchemy[asyncio]>=2.0.52",
     "asyncpg>=0.31.0",
-    # GLiNER ONNX — content safety, adversarial, PII detection
-    "gliner2-onnx",
-    "transformers>=5.0",
-    "onnxruntime>=1.28.0",
-    # MinIO-compatible client for `s3://` model sources. Imported
-    # LAZILY inside `core/model_source.py::_make_s3_client`, so a deployment
-    # that never declares an s3:// source_uri never imports it.
-    "minio>=7.2.20",
+    # NO ML RUNTIME. TASK-735 Phases 3 & 6 moved the GLiNER detector and the
+    # MiniCheck GGUF scorer into `apps/nlp`, and weight staging went with them:
+    # `gliner2-onnx`, `transformers`, `onnxruntime` and `minio` are all gone.
+    # Guardrail is policy + HTTP now, and must stay that way (rule 06: "do not
+    # grow a second inference stack").
     # --- Shared runtime contracts ---
     "hope-runtime-models",
     # --- Shared env-file loader: NODE_ENV -> .env.<env>, host env wins ---
@@ -84,13 +81,8 @@ test = [
     "fakeredis[lua]>=2.37.0",
 ]
 
-# Self-hosted MiniCheck-Flan-T5 GGUF groundedness scorer (owner directive
-# 2026-07-11 — GGUF/llama.cpp backend). OPTIONAL: the scorer lazy-imports llama_cpp and
-# the gate is default-OFF, so base installs / CI skip it. Enable on a staging host with
-# `uv sync --extra groundedness` (or `pip install 'guardrail[groundedness]'`).
-groundedness = [
-    "llama-cpp-python>=0.3.2",
-]
+# The `groundedness` extra is GONE (TASK-735 Phase 6): the MiniCheck GGUF and its
+# llama-cpp-python dependency moved to `apps/nlp` with the weights.
 
 lint = [
     "black>=26.1.0",
@@ -147,17 +139,11 @@ exclude = "/tests/"
 
 [[tool.mypy.overrides]]
 
-# `llama_cpp.*` (not just `llama_cpp`): the MiniCheck scorer drives llama.cpp's
-# encoder-decoder path via `llama_cpp._internals.LlamaBatch`, which the high-level
-# completion API omits for T5 graphs. That private handle is version-sensitive by
-# design and is validated end-to-end on the host by `verify_calibration()`.
+# `gliner2_onnx`, `llama_cpp*` and `minio` are gone with the models and the weight
+# staging they served (TASK-735 Phases 3 & 6).
 module = [
     "prometheus_client",
     "prometheus_fastapi_instrumentator",
-    "gliner2_onnx",
-    "llama_cpp",
-    "llama_cpp.*",
-    "minio",
 ]
 ignore_missing_imports = true
 

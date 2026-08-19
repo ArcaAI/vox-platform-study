@@ -18,7 +18,7 @@ from guardrail.core.logging import get_logger
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator
 
-    from guardrail.providers.gliner import GlinerProvider
+    from guardrail.services.safety_analyzer import SafetyAnalyzer
 
 logger = get_logger(__name__)
 
@@ -26,26 +26,26 @@ logger = get_logger(__name__)
 class JobProcessor:
     """Processes guardrail analysis jobs using Redis-backed priority queues.
 
-    the GLiNER provider is loaded lazily and DB-selected. In the
-    running service a ``gliner_provider_resolver`` (a pinned-context factory) is
-    injected so a booted worker holds no GLiNER weights; it acquires + pins the
+    the safety analyzer is built per job and DB-selected. In the
+    running service an ``analyzer_resolver`` (a per-job factory) is
+    injected so a booted worker holds no weights at all; it builds the
     DB-selected provider only while a claimed job runs, and a missing DB
     selection fails the job closed. Tests may still inject a concrete
-    ``gliner_provider`` directly.
+    ``analyzer`` directly.
     """
 
     def __init__(
         self,
         redis: aioredis.Redis,
-        gliner_provider: GlinerProvider | None = None,
+        analyzer: SafetyAnalyzer | None = None,
         max_concurrent: int = 4,
-        gliner_provider_resolver: (
-            Callable[[str | None], AbstractAsyncContextManager[GlinerProvider]] | None
+        analyzer_resolver: (
+            Callable[[str | None], AbstractAsyncContextManager[SafetyAnalyzer]] | None
         ) = None,
     ) -> None:
         self.redis: Any = redis
-        self.gliner_provider = gliner_provider
-        self._gliner_provider_resolver = gliner_provider_resolver
+        self.analyzer = analyzer
+        self._analyzer_resolver = analyzer_resolver
         self.max_concurrent = max_concurrent
         self.processing = False
         self.semaphore = asyncio.Semaphore(max_concurrent)
@@ -136,7 +136,9 @@ class JobProcessor:
         """
         if tenant_id is None:
             return True
-        return bool(job_data.get("tenant_id")) and job_data.get("tenant_id") == tenant_id
+        return (
+            bool(job_data.get("tenant_id")) and job_data.get("tenant_id") == tenant_id
+        )
 
     async def get_job_status(
         self, job_id: str, tenant_id: str | None = None
@@ -148,7 +150,9 @@ class JobProcessor:
         so the 404-over-403 posture is what stops existence itself from leaking.
         """
 
-        status_data: dict[str, Any] = await self.redis.hgetall(f"{self.status_key_prefix}{job_id}")
+        status_data: dict[str, Any] = await self.redis.hgetall(
+            f"{self.status_key_prefix}{job_id}"
+        )
 
         if not status_data:
             return None
@@ -358,7 +362,9 @@ class JobProcessor:
                 await self.redis.zrem(self.processing_queue, job_id)
                 continue
 
-            priority_score = int(status_data.get("priority_score", self.priority_map["normal"]))
+            priority_score = int(
+                status_data.get("priority_score", self.priority_map["normal"])
+            )
             created_at_ms = int(status_data.get("created_at_ms", "0") or "0")
             await self.redis.hset(
                 f"{self.status_key_prefix}{job_id}",
@@ -379,22 +385,26 @@ class JobProcessor:
         return float(priority_score * 10000000000000 - created_at_ms)
 
     @asynccontextmanager
-    async def _acquire_gliner(self, tenant_id: str | None = None) -> AsyncIterator[GlinerProvider]:
-        """Yield the GLiNER provider for a job — DB-resolved + pinned when wired.
+    async def _acquire_analyzer(
+        self, tenant_id: str | None = None
+    ) -> AsyncIterator[SafetyAnalyzer]:
+        """Yield the safety analyzer for a job — DB-resolved per job when wired.
 
         Uses the injected pinned-context resolver in the running service (lazy,
         DB-selected, fail-closed) and falls back to a directly-injected provider
         for tests. ``tenant_id`` is the job's SUBMITTING tenant, so model selection
         resolves tenant-first exactly as the synchronous route does.
         """
-        if self._gliner_provider_resolver is not None:
-            async with self._gliner_provider_resolver(tenant_id) as provider:
+        if self._analyzer_resolver is not None:
+            async with self._analyzer_resolver(tenant_id) as provider:
                 yield provider
-        elif self.gliner_provider is not None:
-            async with nullcontext(self.gliner_provider) as provider:
+        elif self.analyzer is not None:
+            async with nullcontext(self.analyzer) as provider:
                 yield provider
         else:  # pragma: no cover - construction guarantees one is set
-            raise RuntimeError("JobProcessor has no GLiNER provider or resolver configured")
+            raise RuntimeError(
+                "JobProcessor has no safety analyzer or resolver configured"
+            )
 
     def _create_processing_task(self, job_id: str) -> asyncio.Task[None]:
         """Create a task to process a job."""
@@ -409,7 +419,9 @@ class JobProcessor:
 
         try:
             async with self.semaphore:
-                status_data = await self.redis.hgetall(f"{self.status_key_prefix}{job_id}")
+                status_data = await self.redis.hgetall(
+                    f"{self.status_key_prefix}{job_id}"
+                )
                 if not status_data:
                     await self.redis.zrem(self.processing_queue, job_id)
                     return
@@ -423,11 +435,13 @@ class JobProcessor:
                 guardrail_type = status_data.get("guardrail_type", "comprehensive")
                 tenant_id = status_data.get("tenant_id") or None
 
-                logger.info("job_processor.job_started", job_id=job_id, tenant_id=tenant_id)
+                logger.info(
+                    "job_processor.job_started", job_id=job_id, tenant_id=tenant_id
+                )
 
                 start_time = time.monotonic()
-                async with self._acquire_gliner(tenant_id) as gliner_provider:
-                    result = await gliner_provider.analyze_content(
+                async with self._acquire_analyzer(tenant_id) as analyzer:
+                    result = await analyzer.analyze_content(
                         text=text,
                         guardrail_type=guardrail_type,
                     )
@@ -436,10 +450,14 @@ class JobProcessor:
                 result["processing_time_ms"] = processing_time
                 result["timestamp"] = datetime.now(UTC).isoformat()
 
-                latest_status = await self.redis.hgetall(f"{self.status_key_prefix}{job_id}")
+                latest_status = await self.redis.hgetall(
+                    f"{self.status_key_prefix}{job_id}"
+                )
                 if latest_status.get("status") == "cancelled":
                     await self.redis.zrem(self.processing_queue, job_id)
-                    logger.info("job_processor.job_cancelled_during_processing", job_id=job_id)
+                    logger.info(
+                        "job_processor.job_cancelled_during_processing", job_id=job_id
+                    )
                     return
 
                 await self.redis.hset(

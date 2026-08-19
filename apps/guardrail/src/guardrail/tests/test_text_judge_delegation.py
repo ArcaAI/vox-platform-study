@@ -86,7 +86,11 @@ def _judge_body(content: str = _VERDICT) -> dict[str, Any]:
             "total_ms": 42,
             "stop_reason": "stop",
         },
-        "usage_detail": {"provider": "lm-studio", "model": "guardian-1", "cost_basis": "INTERNAL"},
+        "usage_detail": {
+            "provider": "lm-studio",
+            "model": "guardian-1",
+            "cost_basis": "INTERNAL",
+        },
     }
 
 
@@ -109,7 +113,9 @@ def _client(http_client: Any, **overrides: Any) -> TextJudgeClient:
 
 
 @pytest.mark.asyncio
-async def test_posts_to_the_isolated_judge_lane_with_service_and_tenant_headers() -> None:
+async def test_posts_to_the_isolated_judge_lane_with_service_and_tenant_headers() -> (
+    None
+):
     http = _RecordingClient()
     await _client(http).validate_medical_context("chest pain, BP 140/90")
 
@@ -159,8 +165,12 @@ async def test_parses_the_verdict_and_rides_usage_back_for_billing() -> None:
 
 
 @pytest.mark.asyncio
-async def test_unparseable_judgement_degrades_to_the_deterministic_keyword_classifier() -> None:
-    http = _RecordingClient(_judge_body("the patient has a clear diagnosis, no JSON here"))
+async def test_unparseable_judgement_degrades_to_the_deterministic_keyword_classifier() -> (
+    None
+):
+    http = _RecordingClient(
+        _judge_body("the patient has a clear diagnosis, no JSON here")
+    )
     result = await _client(http).validate_medical_context("note")
 
     # NOT a fabricated permissive verdict: a deterministic classifier that readily
@@ -183,7 +193,9 @@ async def test_text_outage_raises_rather_than_reporting_is_medical() -> None:
 
 
 @pytest.mark.asyncio
-async def test_batch_returns_per_item_exceptions_rather_than_voiding_the_batch() -> None:
+async def test_batch_returns_per_item_exceptions_rather_than_voiding_the_batch() -> (
+    None
+):
     class _Flaky:
         def __init__(self) -> None:
             self.n = 0
@@ -201,7 +213,9 @@ async def test_batch_returns_per_item_exceptions_rather_than_voiding_the_batch()
 
 @pytest.mark.asyncio
 async def test_declared_disable_is_a_bypass_not_a_failure() -> None:
-    result = await _client(_RecordingClient(), enabled=False).validate_medical_context("x")
+    result = await _client(_RecordingClient(), enabled=False).validate_medical_context(
+        "x"
+    )
     assert result["is_medical"] is True
     assert "disabled" in result["reasoning"].lower()
 
@@ -213,11 +227,21 @@ async def test_declared_disable_is_a_bypass_not_a_failure() -> None:
 
 def test_no_engine_subconfig_survives_on_settings() -> None:
     settings = Settings()
-    for attr in ("openai_compat", "vllm", "llama_cpp", "azure", "bedrock", "engine", "provider"):
+    for attr in (
+        "openai_compat",
+        "vllm",
+        "llama_cpp",
+        "azure",
+        "bedrock",
+        "engine",
+        "provider",
+    ):
         assert not hasattr(settings, attr), f"engine surface {attr!r} must be gone"
 
 
-def test_guardrail_api_key_env_vars_populate_nothing(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_guardrail_api_key_env_vars_populate_nothing(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     """Shaped after `apps/text`'s BYOK credential test: a vendor key in guardrail's
     env is not a configuration surface, it is a leak waiting to happen."""
     for var in (

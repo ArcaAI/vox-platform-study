@@ -19,7 +19,7 @@ PHI hygiene: this module NEVER logs summary or transcript text — counts/sizes/
 
 The scorer is injectable (``NliScorer`` protocol) so tests run hermetically with a tiny
 deterministic stub. The production MiniCheck-class scorer requires the model staged on the
-host (see ``load_default_scorer``); until it is staged the default factory raises
+host and is served by ``apps/nlp``; until it is staged the delegated scorer raises
 ``NliModelUnavailableError`` and the gate degrades honestly.
 """
 
@@ -27,9 +27,9 @@ from __future__ import annotations
 
 import re
 import time
-from collections.abc import Callable, Iterator, Sequence
+from collections.abc import Iterator, Sequence
 from dataclasses import dataclass, field
-from typing import Literal, Protocol
+from typing import Any, Literal, Protocol
 
 from guardrail.core.config import GroundednessConfig
 from guardrail.core.logging import get_logger
@@ -59,8 +59,12 @@ class NliScorer(Protocol):
     text — track guardrail). Scores are in ``[0, 1]`` and returned in input order.
     """
 
-    def score_pairs(self, pairs: Sequence[tuple[str, str]]) -> Sequence[float]:
-        """Return one entailment score per ``(source, claim)`` pair, in order."""
+    def score_pairs(self, pairs: Sequence[tuple[str, str]]) -> Any:
+        """Return one entailment score per ``(source, claim)`` pair, in order.
+
+        May be sync (an in-process scorer, as in tests) or async (the delegated
+        `apps/nlp` client, TASK-735 Phase 6) — the verifier awaits when needed.
+        """
         ...
 
 
@@ -117,20 +121,10 @@ def split_segments(summary: str) -> list[tuple[str, int, int]]:
     return segments
 
 
-def load_default_scorer(config: GroundednessConfig) -> NliScorer:
-    """Production scorer factory — the self-hosted MiniCheck-Flan-T5 GGUF (llama.cpp).
-
-    Delegates to ``load_minicheck_scorer`` (owner directive 2026-07-11: GGUF backend).
-    That loader is FAIL-CLOSED: a missing local ``model_path``, missing llama-cpp-python,
-    an unloadable model, or a failed calibration self-check all raise
-    ``NliModelUnavailableError``, and the verifier degrades to ``unverified`` verdicts.
-    Track guardrail: self-hosted, explicit local staging only — clinical text must not
-    leave the host and the gate never auto-downloads weights. Imported lazily so this
-    module has no llama.cpp import edge.
-    """
-    from guardrail.services.groundedness_scorer_minicheck import load_minicheck_scorer
-
-    return load_minicheck_scorer(config)
+# There is deliberately NO default scorer factory. TASK-735 Phase 6 moved the
+# MiniCheck GGUF into `apps/nlp`; guardrail loads nothing and is HANDED a scorer
+# (the `apps/nlp` client) by `core/dependencies.acquire_groundedness_verifier`.
+# A verifier constructed without one degrades honestly to `unverified`.
 
 
 def _chunked(
@@ -148,17 +142,22 @@ class GroundednessNliVerifier:
         self,
         config: GroundednessConfig,
         scorer: NliScorer | None = None,
-        scorer_factory: Callable[[GroundednessConfig], NliScorer] | None = None,
+        *,
+        # The model identity is no longer a config field (it was a hardcoded
+        # hardcoded MiniCheck GGUF default): it is the resolved `guardrail.groundedness`
+        # selection, passed in per request. Empty ⇒ the gate reports no model,
+        # which is exactly what a degraded verdict should say.
+        model_id: str = "",
     ) -> None:
         self._config = config
         self._scorer = scorer
-        self._scorer_factory = scorer_factory or load_default_scorer
+        self._model_id = model_id or getattr(scorer, "model_id", "") or ""
 
     @property
     def model_id(self) -> str:
-        return self._config.model_id
+        return self._model_id
 
-    def verify(self, summary: str, transcript: str) -> GroundednessResult:
+    async def verify(self, summary: str, transcript: str) -> GroundednessResult:
         """Verify each summary segment against the transcript. Never raises; never
         returns ``grounded`` from a degrade/error path (fail-closed)."""
         started = time.monotonic()
@@ -167,11 +166,12 @@ class GroundednessNliVerifier:
         def degrade(reason: str) -> GroundednessResult:
             return GroundednessResult(
                 segments=[
-                    SegmentVerdict(text, UNVERIFIED, start, end) for text, start, end in spans
+                    SegmentVerdict(text, UNVERIFIED, start, end)
+                    for text, start, end in spans
                 ],
                 checked=False,
                 reason=reason,
-                model_id=self._config.model_id,
+                model_id=self._model_id,
                 elapsed_ms=(time.monotonic() - started) * 1000,
                 throughput_docs_per_min=None,
             )
@@ -180,30 +180,27 @@ class GroundednessNliVerifier:
             return degrade(REASON_DISABLED)
 
         scorer = self._scorer
-        if scorer is None:
-            try:
-                scorer = self._scorer_factory(self._config)
-            except Exception as exc:
-                # MINOR-1 (applied when the real loader landed): ANY factory failure —
-                # not just NliModelUnavailableError — degrades FAIL-CLOSED to `unverified`
-                # at the verifier level (defence in depth beyond the endpoint backstop).
-                # PHI-safe: counts + error type only, never the clinical text.
-                logger.warning(
-                    "guardrail.groundedness.model_unavailable",
-                    model_id=self._config.model_id,
-                    segment_count=len(spans),
-                    error=type(exc).__name__,
-                )
-                return degrade(REASON_MODEL_UNAVAILABLE)
-            self._scorer = scorer
+        if (
+            scorer is None
+        ):  # No scorer was supplied — the `guardrail.groundedness` selection did
+            # not produce one. FAIL-CLOSED to `unverified`; never `grounded`.
+            logger.warning(
+                "guardrail.groundedness.model_unavailable",
+                model_id=self._model_id,
+                segment_count=len(spans),
+            )
+            return degrade(REASON_MODEL_UNAVAILABLE)
 
         capped = spans[: max(0, self._config.max_segments)]
         scores: list[float] = []
         try:
             for batch in _chunked(capped, self._config.batch_size):
-                batch_scores = list(
-                    scorer.score_pairs([(transcript, text) for text, _, _ in batch])
+                raw_scores = scorer.score_pairs(
+                    [(transcript, text) for text, _, _ in batch]
                 )
+                if hasattr(raw_scores, "__await__"):
+                    raw_scores = await raw_scores
+                batch_scores = list(raw_scores)
                 if len(batch_scores) != len(batch):
                     raise ValueError("NLI scorer returned a mismatched score count")
                 scores.extend(batch_scores)
@@ -212,7 +209,7 @@ class GroundednessNliVerifier:
             # (no partially-grounded output from an error path). PHI-safe log.
             logger.warning(
                 "guardrail.groundedness.scoring_failed",
-                model_id=self._config.model_id,
+                model_id=self._model_id,
                 segment_count=len(spans),
                 error=type(exc).__name__,
             )
@@ -236,12 +233,14 @@ class GroundednessNliVerifier:
         )
 
         elapsed_s = time.monotonic() - started
-        throughput = (len(capped) / elapsed_s) * 60.0 if capped and elapsed_s > 0 else None
+        throughput = (
+            (len(capped) / elapsed_s) * 60.0 if capped and elapsed_s > 0 else None
+        )
         return GroundednessResult(
             segments=segments,
             checked=True,
             reason=REASON_CHECKED,
-            model_id=self._config.model_id,
+            model_id=self._model_id,
             elapsed_ms=elapsed_s * 1000,
             throughput_docs_per_min=throughput,
         )

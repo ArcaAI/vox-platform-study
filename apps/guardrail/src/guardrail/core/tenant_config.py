@@ -86,6 +86,7 @@ here without one would be dead code, so it is deliberately not added yet.
 
 from __future__ import annotations
 
+import json
 import time
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -109,10 +110,16 @@ logger = get_logger(__name__)
 TASK_KEY_GUARDRAIL_VALIDATE = "guardrail.validate"
 
 # aux-model selection keys (SYSTEM AiTaskDefault ⋈ AiModel):
-#   guardrail.safety       → GLiNER content-safety detector (TOKEN_CLASSIFICATION)
-#   guardrail.groundedness → MiniCheck NLI groundedness scorer (TEXT_CLASSIFICATION)
-# The runtime model id is the joined AiModel row's sourceUri (never the slug).
+#   guardrail.safety       → LLM-safety moderation model (six tasks)
+#   guardrail.pii          → PII span model (English only)
+#   guardrail.groundedness → NLI entailment scorer
+# The runtime model id is the joined AiModel row's sourceUri (never the slug), and
+# the model's LABEL TAXONOMY rides along in `AiModel._metadata.labelTaxonomy` — so a
+# taxonomy is resolved through the SAME tenant → SYSTEM cascade as the selection it
+# belongs to, which is what makes it configuration rather than a Python literal.
+# The models themselves run in `apps/nlp` (TASK-735 Phases 3 & 6).
 TASK_KEY_GUARDRAIL_SAFETY = "guardrail.safety"
+TASK_KEY_GUARDRAIL_PII = "guardrail.pii"
 TASK_KEY_GUARDRAIL_GROUNDEDNESS = "guardrail.groundedness"
 
 # Platform-wide rows live on the SYSTEM tenant (house rule: NULL-tenant is banned).
@@ -145,6 +152,8 @@ def is_tenantless_marker(tenant_id: str | None) -> bool:
 KEY_PROVIDER = "provider"
 KEY_MODEL = "model"
 KEY_AZURE_DEPLOYMENT = "azure-deployment"
+# The selected model's declared label taxonomy, JSON-encoded (the cache holds strings).
+KEY_LABEL_TAXONOMY = "label-taxonomy"
 # Provider-level runtime-profile tuning, cached alongside the
 # selection keys so a profile read costs no extra round-trip or TTL window.
 KEY_TEMPERATURE = "temperature"
@@ -259,6 +268,10 @@ class GuardrailTenantConfig:
     provider: str | None = None
     model: str | None = None
     azure_deployment: str | None = None
+    # The selected model's declared label taxonomy (`AiModel._metadata.labelTaxonomy`).
+    # `None` = the row has no opinion, which for a taxonomy is FAIL-CLOSED at the
+    # call site: guardrail carries no built-in label list to fall back on.
+    label_taxonomy: dict[str, Any] | None = None
     # The tenant the primary lookup targeted (request tenant or default tenant).
     source_tenant_id: str | None = None
     # Provider-level runtime profile (``core."AiRuntimeProfile"``).
@@ -284,6 +297,17 @@ class _CacheEntry:
     # every cache hit within the TTL — it must never be read back as `keys`
     # (which would look like silent fall-through to "no opinion").
     vetoed: bool = False
+
+
+def _decode_taxonomy(value: str | None) -> dict[str, Any] | None:
+    """Decode the cached taxonomy blob; unparseable ⇒ None (fail closed upstream)."""
+    if not value:
+        return None
+    try:
+        decoded = json.loads(value)
+    except (TypeError, ValueError):
+        return None
+    return decoded if isinstance(decoded, dict) else None
 
 
 def _as_float(value: str | None) -> float | None:
@@ -386,6 +410,7 @@ class TenantConfigResolver:
             provider=_clean(keys.get(KEY_PROVIDER)),
             model=_clean(keys.get(KEY_MODEL)),
             azure_deployment=_clean(keys.get(KEY_AZURE_DEPLOYMENT)),
+            label_taxonomy=_decode_taxonomy(keys.get(KEY_LABEL_TAXONOMY)),
             source_tenant_id=source,
             temperature=_as_float(keys.get(KEY_TEMPERATURE)),
             max_tokens=_as_int(keys.get(KEY_MAX_TOKENS)),
@@ -396,45 +421,9 @@ class TenantConfigResolver:
             source_revision=_clean(keys.get(KEY_SOURCE_REVISION)),
         )
 
-    async def resolve_model_source(self, tenant_id: str | None, task_key: str) -> Any | None:
-        """The weight identity behind a task key (`None` if unselected)."""
-        from .model_source import ModelWeightIdentity
-
-        cfg = await self.resolve(tenant_id, task_key)
-        if not cfg.model and not cfg.local_path:
-            return None
-
-        return ModelWeightIdentity(
-            slug=task_key,
-            source_uri=cfg.model or "",
-            source=cfg.source,
-            source_revision=cfg.source_revision,
-            local_path=cfg.local_path,
-            checksum=cfg.checksum,
-        )
-
-    async def resolve_model_source_by_slug(self, slug: str) -> Any | None:
-        """Weight identity for a model SLUG (no task key required).
-
-        Not every weight consumer has an `AiTaskDefault` key: harness's
-        atomic-fact MiniCheck use, for instance, is keyed only by slug. This
-        reuses the same TTL cache so a by-slug read costs no more than a
-        task-key read.
-        """
-        from .model_source import ModelWeightIdentity
-
-        keys = await self._get_for_tenant(SYSTEM_TENANT_ID, f"slug::{slug}")
-        if not keys:
-            return None
-
-        return ModelWeightIdentity(
-            slug=slug,
-            source_uri=_clean(keys.get(KEY_MODEL)) or "",
-            source=_clean(keys.get(KEY_SOURCE)),
-            source_revision=_clean(keys.get(KEY_SOURCE_REVISION)),
-            local_path=_clean(keys.get(KEY_LOCAL_PATH)),
-            checksum=_clean(keys.get(KEY_CHECKSUM)),
-        )
+    # `resolve_model_source` / `resolve_model_source_by_slug` are GONE (TASK-735
+    # Phase 6): weight STAGING moved to `apps/nlp` with the weights. Guardrail
+    # forwards the registry's `localPath` verbatim and never materialises a file.
 
     async def resolve_model_id(
         self,
@@ -486,7 +475,9 @@ class TenantConfigResolver:
             )
             keys = {}
 
-        self._cache[cache_key] = _CacheEntry(keys=keys, expires_at=now + self._cache_ttl_s)
+        self._cache[cache_key] = _CacheEntry(
+            keys=keys, expires_at=now + self._cache_ttl_s
+        )
         return keys
 
     async def _load_from_db(
@@ -519,7 +510,9 @@ class TenantConfigResolver:
             )
 
         task_default_scope = (
-            [SYSTEM_TENANT_ID, tenant_id] if tenant_id != SYSTEM_TENANT_ID else [SYSTEM_TENANT_ID]
+            [SYSTEM_TENANT_ID, tenant_id]
+            if tenant_id != SYSTEM_TENANT_ID
+            else [SYSTEM_TENANT_ID]
         )
 
         async with self._session_factory() as session:
@@ -562,7 +555,9 @@ class TenantConfigResolver:
             raise TenantSelectionVetoedError(tenant_id=tenant_id, task_key=task_key)
 
         enabled_rows = [r for r in rows if r.default_resource_status == "ENABLED"]
-        row = min(enabled_rows, key=lambda r: self._row_rank(r, tenant_id), default=None)
+        row = min(
+            enabled_rows, key=lambda r: self._row_rank(r, tenant_id), default=None
+        )
         if row is None:
             return {}
 
@@ -575,6 +570,9 @@ class TenantConfigResolver:
         deployment = meta.get("azureDeployment")
         if isinstance(deployment, str) and deployment.strip():
             keys[KEY_AZURE_DEPLOYMENT] = deployment
+        taxonomy = meta.get("labelTaxonomy")
+        if isinstance(taxonomy, dict) and taxonomy:
+            keys[KEY_LABEL_TAXONOMY] = json.dumps(taxonomy)
 
         # Weight-source columns. Absent values are simply not
         # set, so the caller's env fallback still applies.
@@ -601,7 +599,9 @@ class TenantConfigResolver:
                 )
         return keys
 
-    async def _load_model_by_slug(self, slug: str, model_scope: list[str]) -> dict[str, str]:
+    async def _load_model_by_slug(
+        self, slug: str, model_scope: list[str]
+    ) -> dict[str, str]:
         """Read one ENABLED `AiModel` row by slug (no task-key join)."""
         async with self._session_factory() as session:
             result = await session.execute(
@@ -735,6 +735,8 @@ def build_judge_client(
         policy=settings.judge,
         temperature=tenant_cfg.temperature,
         max_tokens=tenant_cfg.max_tokens,
-        timeout_s=float(tenant_cfg.timeout_s) if tenant_cfg.timeout_s is not None else None,
+        timeout_s=(
+            float(tenant_cfg.timeout_s) if tenant_cfg.timeout_s is not None else None
+        ),
         provider_overrides=provider_overrides,
     )

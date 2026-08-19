@@ -53,13 +53,17 @@ async def redis_down_client():
 
 class TestGuardrailReadiness:
     @pytest.mark.asyncio
-    async def test_ready_returns_200_when_redis_healthy(self, healthy_client: AsyncClient) -> None:
+    async def test_ready_returns_200_when_redis_healthy(
+        self, healthy_client: AsyncClient
+    ) -> None:
         resp = await healthy_client.get("/api/health/ready")
         assert resp.status_code == 200
         assert resp.json()["ready"] is True
 
     @pytest.mark.asyncio
-    async def test_ready_returns_503_when_redis_down(self, redis_down_client: AsyncClient) -> None:
+    async def test_ready_returns_503_when_redis_down(
+        self, redis_down_client: AsyncClient
+    ) -> None:
         """The k8s probe only reads the status code — a 200 body with
         `ready: false` never removes the pod from Service endpoints."""
         resp = await redis_down_client.get("/api/health/ready")
@@ -67,7 +71,9 @@ class TestGuardrailReadiness:
         assert resp.json()["ready"] is False
 
     @pytest.mark.asyncio
-    async def test_live_always_returns_200(self, redis_down_client: AsyncClient) -> None:
+    async def test_live_always_returns_200(
+        self, redis_down_client: AsyncClient
+    ) -> None:
         """Liveness is a pure process check — must stay 200 even when Redis is down."""
         resp = await redis_down_client.get("/api/health/live")
         assert resp.status_code == 200

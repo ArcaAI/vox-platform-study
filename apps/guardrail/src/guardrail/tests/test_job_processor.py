@@ -58,14 +58,20 @@ async def provider():
 
 @pytest.fixture
 async def processor(redis_client, provider):
-    return JobProcessor(redis=redis_client, gliner_provider=provider, max_concurrent=2)
+    return JobProcessor(redis=redis_client, analyzer=provider, max_concurrent=2)
 
 
 @pytest.mark.asyncio
-async def test_claim_pending_jobs_prioritizes_high_priority(processor: JobProcessor) -> None:
-    low_job_id = await processor.submit_job("low-text", priority="low", request_id="job-low")
+async def test_claim_pending_jobs_prioritizes_high_priority(
+    processor: JobProcessor,
+) -> None:
+    low_job_id = await processor.submit_job(
+        "low-text", priority="low", request_id="job-low"
+    )
     await asyncio.sleep(0.001)
-    high_job_id = await processor.submit_job("high-text", priority="high", request_id="job-high")
+    high_job_id = await processor.submit_job(
+        "high-text", priority="high", request_id="job-high"
+    )
 
     claimed = await processor._claim_pending_jobs()
 
@@ -121,7 +127,9 @@ async def test_requeue_stale_jobs_returns_processing_job_to_pending(
 async def test_process_job_completes_and_persists_result(
     processor: JobProcessor, redis_client, provider: RecordingProvider
 ) -> None:
-    job_id = await processor.submit_job("process-me", request_id="job-process", priority="high")
+    job_id = await processor.submit_job(
+        "process-me", request_id="job-process", priority="high"
+    )
     claimed = await processor._claim_pending_jobs()
 
     assert claimed == [job_id]

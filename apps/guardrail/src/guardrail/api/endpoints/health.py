@@ -18,18 +18,6 @@ from guardrail.core.dependencies import (
 router = APIRouter()
 
 
-def _gliner_status(request: Request) -> dict[str, Any]:
-    """Report the lazy GLiNER cache state.
-
-    GLiNER is loaded lazily on first `/guardrail/analyze`, so a booted worker
-    intentionally holds no weights — this is NEVER a degraded condition. Report
-    which DB-selected model ids are currently resident.
-    """
-    cache = getattr(request.app.state, "gliner_cache", None)
-    loaded = cache.cached_models() if cache is not None else []
-    return {"status": "lazy", "loaded_models": loaded, "loaded": bool(loaded)}
-
-
 @router.get("/health", response_model=dict[str, Any])
 async def health_check(
     request: Request,
@@ -67,8 +55,14 @@ async def health_check(
         "base_url": settings.text_url,
     }
 
-    # GLiNER is lazy — report cache state without degrading health.
-    health_status["checks"]["gliner"] = _gliner_status(request)
+    # Classification / NER / entailment are delegated too (TASK-735 Phases 3 & 6):
+    # guardrail holds ZERO resident model weights. Same posture as the judge above —
+    # report the delegation target, never probe a peer on a liveness poll.
+    health_status["checks"]["classification"] = {
+        "status": "delegated",
+        "delegate": "nlp",
+        "base_url": settings.nlp_url,
+    }
 
     return health_status
 
@@ -79,8 +73,8 @@ async def readiness_check(
 ) -> dict[str, Any] | JSONResponse:
     """Readiness check - service is ready to accept traffic.
 
-    readiness no longer depends on GLiNER being loaded (it loads
-    lazily on first request); only the Redis dependency is checked.
+    Readiness does not depend on any model: guardrail loads none (every model runs
+    in `apps/nlp` or `apps/text`). Only the Redis dependency is checked.
 
     Must return a non-200 status on failure — the k8s readiness probe only
     inspects the status code, not the body, so a 200 with `ready: false`

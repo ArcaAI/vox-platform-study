@@ -12,7 +12,8 @@ import { SYSTEM_TENANT_ID, SYSTEM_USER_ID } from './00-constants';
  *   - nlp.ner              → medical-ner                 (TOKEN_CLASSIFICATION row)
  * - nlp.classification → nlp-doc-type-classifier (TEXT_CLASSIFICATION, DISABLED placeholder — )
  * - nlp.diagnosis → symps-disease-bert-v3-c41 (TEXT_CLASSIFICATION row — )
- * - guardrail.safety → gliner-guard-uniencoder-onnx (TOKEN_CLASSIFICATION row — )
+ * - guardrail.safety → gliguard-llm-guardrails-300m (LLM safety moderation, six tasks)
+ * - guardrail.pii → gliner2-privacy-filter-pii-multi (PII spans; English only)
  * - guardrail.groundedness → minicheck-flan-t5-large (TEXT_CLASSIFICATION row — )
  * - harness.judge → lms-gemma-4-e4b (TEXT_GENERATION row; owner directive 2026-08-16)
  *
@@ -112,11 +113,22 @@ export const SYSTEM_AI_TASK_DEFAULTS: AiTaskDefaultSeed[] = [
   },
   // Guardrail selection moved out of env into the DB control plane
   // (Phase B). Both keys are SUPER_ADMIN-only.
+  // TASK-735 Phase 3 — the safety plane is TWO selections now, because the
+  // owner-specified models are two different models: moderation and PII are
+  // different jobs. Both RUN IN `apps/nlp`; `apps/guardrail` holds no weights.
+  // Their label taxonomies ride on the `AiModel._metadata.labelTaxonomy` of the
+  // rows below, resolved through the same tenant → SYSTEM cascade.
   {
     id: '86000000-0000-0000-0000-000000000006',
     tenantId: SYSTEM_TENANT_ID,
     taskKey: 'guardrail.safety',
-    modelSlug: 'gliner-guard-uniencoder-onnx',
+    modelSlug: 'gliguard-llm-guardrails-300m',
+  },
+  {
+    id: '86000000-0000-0000-0000-000000000011',
+    tenantId: SYSTEM_TENANT_ID,
+    taskKey: 'guardrail.pii',
+    modelSlug: 'gliner2-privacy-filter-pii-multi',
   },
   {
     id: '86000000-0000-0000-0000-000000000007',

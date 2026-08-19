@@ -14,7 +14,7 @@ class JudgePolicy(BaseModel):
 
     Deliberately a plain ``BaseModel``, NOT ``BaseSettings``: none of these is an
     env var. Guardrail's five engine sub-configs used to live here — six
-    ``granite-guardian-4.1-8b`` model defaults, four vendor ``base_url``s and an
+    six hardcoded model defaults, four vendor ``base_url``s and an
     ``api_key`` literal — and every one of them was configuration wearing an env
     costume (`.claude/rules/00-project-context.md` §Configuration Principles).
     Engine, model and credential now come from the control plane: the
@@ -47,35 +47,31 @@ class JudgePolicy(BaseModel):
     max_input_chars: int = 2000
 
 
-class GlinerConfig(BaseSettings):
-    """GLiNER ONNX provider configuration for content safety/adversarial/PII."""
-
-    # Init > host env > secrets_dir (Vault Agent) > .env.<NODE_ENV> > default.
-    settings_customise_sources = hope_settings_sources
-
-    model_config = SettingsConfigDict(env_prefix="GUARDRAIL_GLINER_")
-
-    enabled: bool = True
-    model_id: str = "hivetrace/gliner-guard-uniencoder-onnx"
-    precision: str = "fp32"
-    providers: list[str] = Field(
-        default_factory=lambda: ["CPUExecutionProvider"],
-    )
-    classification_threshold: float = 0.4
-    pii_threshold: float = 0.5
-    max_workers: int = 2  # Thread-pool size for CPU-bound inference
+# There is deliberately NO `GlinerConfig`. Guardrail hosts no GLiNER runtime
+# (TASK-735 Phase 3): content-safety classification and PII span extraction are
+# delegated to `apps/nlp`, which owns NER/classification for the platform. The
+# model ids and the four label taxonomies that used to live in `providers/gliner.py`
+# are CONFIG: they are SYSTEM-tenant `AiModel` rows (`guardrail.safety` /
+# `guardrail.pii`), resolved tenant-first and fail-closed. Thresholds that remain
+# POLICY reach the analyzer through `SafetyPolicy`, never through env.
 
 
 class GroundednessConfig(BaseSettings):
-    """Live output-side NLI groundedness gate.
+    """Live output-side NLI groundedness POLICY.
 
-    ``False`` (default) is the dev / hermetic-CI
-    bypass — the gate answers honestly with ``unverified`` verdicts and never loads a
-    model; ``True`` is the clinical enforce posture and requires the SELF-HOSTED
-    MiniCheck-class NLI model staged on the host (track guardrail: no cloud PHI).
-    Fail posture is FAIL-CLOSED throughout: a disabled gate, an un-staged model, or a
-    scoring error all degrade to ``unverified`` — no path ever yields ``grounded``
-    without the model actually entailing the segment.
+    ``False`` (default) is the dev / hermetic-CI bypass — the gate answers honestly
+    with ``unverified`` verdicts and loads nothing; ``True`` is the clinical enforce
+    posture. Fail posture is FAIL-CLOSED throughout: a disabled gate, an unreachable
+    `apps/nlp`, or a scoring error all degrade to ``unverified`` — no path ever
+    yields ``grounded`` without a model actually entailing the segment.
+
+    TASK-735 Phase 6 — the MiniCheck GGUF, its weight path, its cache dir and its
+    llama.cpp runtime knobs (``model_id``, ``model_file``, ``model_path``,
+    ``model_cache_dir``, ``n_ctx``, ``n_threads``, ``n_gpu_layers``) are GONE from
+    here. The weights now live in `apps/nlp`, and the model identity is the
+    `guardrail.groundedness` `AiTaskDefault` selection — resolved per request,
+    tenant-first, fail-closed. What is left is the POLICY guardrail owns: whether
+    the gate is on, what score counts as grounded, and how much it will score.
     """
 
     # Init > host env > secrets_dir (Vault Agent) > .env.<NODE_ENV> > default.
@@ -85,45 +81,18 @@ class GroundednessConfig(BaseSettings):
 
     enabled: bool = False
 
-    # Self-hosted NLI entailment model — MiniCheck-Flan-T5-Large, GGUF/llama.cpp backend
-    # (owner directive 2026-07-11). `model_id`/`model_file` are provenance + logging;
-    # the scorer loads from the explicit local `model_path` (no network pull in the
-    # clinical gate). >500 docs/min live-loop target; Q6 quant is CPU-friendly.
-    model_id: str = "nvhf/MiniCheck-Flan-T5-Large-Q6_K-GGUF"
-    model_file: str = "minicheck-flan-t5-large-q6_k.gguf"
-    # Explicit local .gguf path.
-    # BOOTSTRAP FALLBACK ONLY. The runtime value now comes from
-    # the `AiModel` registry row (`minicheck-flan-t5-large`): `localPath` first,
-    # then a resolvable `file://` / `s3://` `sourceUri`. This env var is used when
-    # the registry carries no path, which keeps deployments working
-    # byte-for-byte. Unset in BOTH places ⇒ fail-closed to 'unverified', unchanged.
-    model_path: str | None = None
-    # Cache dir for weights materialised from an `s3://` source_uri.
-    model_cache_dir: str = "/models/guardrail-cache"
-    # llama.cpp runtime knobs (CPU-default: the Q6 quant needs no GPU).
-    # n_ctx = 512 matches Flan-T5's training context (`n_ctx_train`); MiniCheck itself
-    # windows long documents to ~512-token chunks, so a larger context only wastes the
-    # encoder KV alloc and trips llama.cpp's `n_ctx_seq > n_ctx_train` overflow warning.
-    n_ctx: int = 512
-    n_threads: int | None = None
-    n_gpu_layers: int = 0
-
     # A segment is `grounded` only when its entailment score >= this threshold.
-    # Bounded to [0,1] so a fat-fingered threshold (e.g. a
-    # negative or >1 value) is rejected at startup ("fail fast") rather than silently
-    # marking everything grounded on an honest checked:true response (a config fail-open
-    # on a clinical gate).
-    # Annotated (not a Field default) so a plain `0.5` default keeps GroundednessConfig
-    # zero-arg constructible for mypy — a bare `Field(0.5, ...)` default makes the model
-    # look arg-required without the pydantic mypy plugin and breaks the parent's
-    # `default_factory=GroundednessConfig` typing. Same ge/le validation as before.
+    # Bounded to [0,1] so a fat-fingered threshold is rejected at startup ("fail
+    # fast") rather than silently marking everything grounded.
+    # Annotated (not a Field default) so a plain `0.5` default keeps
+    # GroundednessConfig zero-arg constructible for mypy.
     entailment_threshold: Annotated[float, Field(ge=0.0, le=1.0)] = 0.5
 
-    # Segments per scorer batch — the throughput lever for the >500 docs/min target.
+    # Segments per delegated batch — the throughput lever.
     batch_size: int = 16
 
-    # Hard per-request bound on scored segments; excess segments degrade to `unverified`
-    # (never silently skipped as if verified).
+    # Hard per-request bound on scored segments; excess segments degrade to
+    # `unverified` (never silently skipped as if verified).
     max_segments: int = 200
 
 
@@ -248,13 +217,16 @@ class Settings(BaseSettings):
         validation_alias=AliasChoices("TEXT_URL", "GUARDRAIL_V2_TEXT_URL"),
     )
 
-    # Bootstrap credentials for `s3://` model sources (MinIO-compatible).
-    # All optional: unset simply means an `s3://` source_uri errors cleanly and the
-    # caller falls back to its env path. Env names: GUARDRAIL_V2_MODEL_S3_*.
-    model_s3_endpoint: str | None = None
-    model_s3_access_key: SecretStr | None = None
-    model_s3_secret_key: SecretStr | None = None
-    model_s3_secure: bool = True
+    # Where `apps/nlp` lives — guardrail's classification/NER executor after
+    # TASK-735 Phase 3. BOOTSTRAP TRANSPORT (an address), not config authority:
+    # read from the repo-wide `NLP_URL`, so guardrail adds no env var of its own.
+    nlp_url: str = Field(
+        default="http://localhost:8864",
+        validation_alias=AliasChoices("NLP_URL", "GUARDRAIL_V2_NLP_URL"),
+    )
+
+    # The `s3://` model-source bootstrap credentials are GONE (Phase 6): weight
+    # staging moved to `apps/nlp` together with the weights themselves.
 
     # Application
     host: str = "0.0.0.0"
@@ -322,7 +294,7 @@ class Settings(BaseSettings):
 
     # Aux-model cache policy. Infra tuning only — cache-policy bounds,
     # NOT model selection. Idle TTL is clamped to the product window [60s, 3600s]
-    # so both GLiNER and MiniCheck release when idle. `model_cache_max_models`
+    # so delegated-model metadata releases when idle. `model_cache_max_models`
     # bounds how many distinct model ids are held per aux cache.
     # Bootstrap fallback ONLY; the runtime value comes from the
     # control plane (`guardrail.modelCache.{ttlSeconds,maxModels}`), consumed via
@@ -338,7 +310,6 @@ class Settings(BaseSettings):
 
     # Sub-configs
     judge: JudgePolicy = Field(default_factory=JudgePolicy)
-    gliner: GlinerConfig = Field(default_factory=GlinerConfig)
     groundedness: GroundednessConfig = Field(default_factory=GroundednessConfig)
     redis: RedisConfig = Field(default_factory=RedisConfig)
     queue: QueueConfig = Field(default_factory=QueueConfig)

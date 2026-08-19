@@ -2,7 +2,7 @@
 
 Hermetic: the app is built with ``create_app()`` and driven over an ASGI transport
 WITHOUT entering the lifespan (no Redis / real ONNX weights). A fake GLiNER
-provider is pre-seeded onto ``app.state.gliner_cache`` (same pattern as
+analyzer stub is injected through `get_safety_analyzer` (same pattern as
 ``test_aux_model_selection.py``) so the endpoint's PII-extraction seam is
 exercised without loading real weights.
 
@@ -21,9 +21,9 @@ from typing import Any
 from fastapi import FastAPI
 from httpx import ASGITransport, AsyncClient
 
+from guardrail.core.dependencies import get_safety_analyzer
 from guardrail.core.effective_config import EffectiveConfigSnapshot
 from guardrail.main import create_app
-from guardrail.services.model_cache import ModelCache
 
 REDACT_PATH = "/api/guardrail/redact"
 
@@ -41,7 +41,9 @@ def _entity(
     idx = -1
     for _ in range(occurrence + 1):
         idx = source.index(needle, idx + 1)
-    return FakeEntity(text=needle, label=label, start=idx, end=idx + len(needle), score=score)
+    return FakeEntity(
+        text=needle, label=label, start=idx, end=idx + len(needle), score=score
+    )
 
 
 PERSON_1 = _entity(TEXT, "person", "John Doe", occurrence=0)
@@ -109,7 +111,11 @@ class FakeEffectiveConfigClient:
         self._chunk_chars = chunk_chars
 
     async def get(self) -> EffectiveConfigSnapshot:
-        raw = {"redaction": {"chunkChars": self._chunk_chars}} if self._chunk_chars else {}
+        raw = (
+            {"redaction": {"chunkChars": self._chunk_chars}}
+            if self._chunk_chars
+            else {}
+        )
         return EffectiveConfigSnapshot(raw=raw, ok=True)
 
 
@@ -134,10 +140,12 @@ def _app(
     if chunk_chars is not None:
         app.state.effective_config_client = FakeEffectiveConfigClient(chunk_chars)
 
-    async def factory(model_id: str) -> Any:
-        return provider if provider is not None else FakeGlinerRedactor(entities)
-
-    app.state.gliner_cache = ModelCache(factory=factory, ttl_seconds=60, max_size=2)
+    if not db_config_enabled:
+        # TASK-735 Phase 3 — the models run in `apps/nlp`; the analyzer is the
+        # seam the endpoint now depends on, so tests inject it there instead of
+        # seeding a local model cache (guardrail has none).
+        stub = provider if provider is not None else FakeGlinerRedactor(entities)
+        app.dependency_overrides[get_safety_analyzer] = lambda: stub
     return app
 
 
@@ -146,7 +154,9 @@ def _app(
 TEST_TENANT = "11111111-1111-1111-1111-111111111111"
 
 
-async def _post(app: FastAPI, body: dict[str, Any], headers: dict[str, str] | None = None) -> Any:
+async def _post(
+    app: FastAPI, body: dict[str, Any], headers: dict[str, str] | None = None
+) -> Any:
     transport = ASGITransport(app=app)
     merged = {"X-Tenant-Id": TEST_TENANT, **(headers or {})}
     async with AsyncClient(transport=transport, base_url="http://test") as client:
@@ -177,7 +187,9 @@ async def test_full_mode_masks_every_flagged_span_generically() -> None:
         assert TEXT[entity["start"] : entity["end"]] == expected.text
 
 
-async def test_pseudonymize_mode_preserves_clinical_terms_and_masks_identifiers() -> None:
+async def test_pseudonymize_mode_preserves_clinical_terms_and_masks_identifiers() -> (
+    None
+):
     resp = await _post(_app(), {"text": TEXT, "mode": "pseudonymize"})
 
     assert resp.status_code == 200
@@ -206,7 +218,8 @@ async def test_empty_text_returns_no_entities_and_identity_sanitized_text() -> N
 
 async def test_text_with_no_pii_is_returned_unchanged() -> None:
     resp = await _post(
-        _app(entities=[]), {"text": "Patient reports hypertension.", "mode": "pseudonymize"}
+        _app(entities=[]),
+        {"text": "Patient reports hypertension.", "mode": "pseudonymize"},
     )
 
     assert resp.status_code == 200
@@ -314,7 +327,9 @@ async def test_chunk_boundaries_never_split_a_word() -> None:
     chunking could silently weaken redaction. Splits land on whitespace."""
     provider = ScanningGlinerRedactor("John Doe")
 
-    await _post(_app(provider=provider, chunk_chars=200), {"text": LONG_TEXT, "mode": "full"})
+    await _post(
+        _app(provider=provider, chunk_chars=200), {"text": LONG_TEXT, "mode": "full"}
+    )
 
     # Every seam (end of chunk N / start of chunk N+1) falls on whitespace.
     assert len(provider.seen_chunks) > 1, "fixture must actually be chunked"
@@ -328,7 +343,8 @@ async def test_pseudonymize_tokens_stay_stable_across_chunk_boundaries() -> None
     provider = ScanningGlinerRedactor("John Doe")
 
     resp = await _post(
-        _app(provider=provider, chunk_chars=200), {"text": LONG_TEXT, "mode": "pseudonymize"}
+        _app(provider=provider, chunk_chars=200),
+        {"text": LONG_TEXT, "mode": "pseudonymize"},
     )
 
     sanitized = resp.json()["sanitized_text"]
@@ -342,13 +358,17 @@ async def test_short_input_is_a_single_unchunked_call() -> None:
     endpoint — one call, whole document, offsets already global."""
     provider = ScanningGlinerRedactor("John Doe")
 
-    resp = await _post(_app(provider=provider, chunk_chars=200), {"text": TEXT, "mode": "full"})
+    resp = await _post(
+        _app(provider=provider, chunk_chars=200), {"text": TEXT, "mode": "full"}
+    )
 
     assert resp.status_code == 200
     assert provider.seen_chunks == [TEXT]
 
 
-async def test_chunk_size_falls_back_to_the_code_default_when_control_plane_is_silent() -> None:
+async def test_chunk_size_falls_back_to_the_code_default_when_control_plane_is_silent() -> (
+    None
+):
     """No client / no opinion ⇒ the built-in budget applies. A control-plane
     miss must never mean "unbounded"."""
     provider = ScanningGlinerRedactor("John Doe")

@@ -51,12 +51,11 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any, Literal
 
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, Field
 
-from guardrail.core.dependencies import get_gliner_model_id, pinned_gliner_provider
+from guardrail.core.dependencies import ModelUnavailableError, get_safety_analyzer
 from guardrail.core.logging import get_logger
-from guardrail.services.model_cache import ModelUnavailableError
 
 logger = get_logger(__name__)
 
@@ -89,7 +88,7 @@ _CHUNK_SEPARATORS = ("\n\n---\n\n", "\n\n", "\n", ". ", " ")
 class _Span:
     """One PII span with offsets re-based onto the SUBMITTED document.
 
-    GLiNER reports offsets relative to whatever string it was handed, so a
+    The PII model reports offsets relative to whatever string it was handed, so a
     chunked extraction yields chunk-local offsets. Normalizing to this type at
     the extraction seam means everything downstream (`_apply_mask`, the response
     model) works in document coordinates only.
@@ -148,7 +147,9 @@ def _split_for_extraction(text: str, chunk_chars: int) -> list[str]:
 class RedactEntityModel(BaseModel):
     """One masked PII span; offsets index the SUBMITTED `text`."""
 
-    label: str = Field(..., description="GLiNER PII label, e.g. person, date_of_birth, email")
+    label: str = Field(
+        ..., description="GLiNER PII label, e.g. person, date_of_birth, email"
+    )
     start: int = Field(..., description="Character offset start within `text`")
     end: int = Field(..., description="Character offset end within `text`")
     score: float = Field(..., description="Confidence score (0.0-1.0)")
@@ -175,10 +176,13 @@ class RedactResponse(BaseModel):
         ..., description="`text` with every flagged PII span masked per `mode`"
     )
     entities: list[RedactEntityModel] = Field(
-        ..., description="The PII spans that were masked — offsets index the ORIGINAL `text`"
+        ...,
+        description="The PII spans that were masked — offsets index the ORIGINAL `text`",
     )
     mode: RedactMode
-    processing_time_ms: float = Field(..., description="Processing time in milliseconds")
+    processing_time_ms: float = Field(
+        ..., description="Processing time in milliseconds"
+    )
     request_id: str = Field(..., description="Request ID for tracking")
     timestamp: str = Field(..., description="Redaction timestamp")
 
@@ -209,7 +213,7 @@ async def _resolve_chunk_chars(app_state: Any) -> int:
         return _DEFAULT_CHUNK_CHARS
 
 
-async def _extract_spans(gliner_provider: Any, text: str, chunk_chars: int) -> list[_Span]:
+async def _extract_spans(analyzer: Any, text: str, chunk_chars: int) -> list[_Span]:
     """Extract PII spans over bounded chunks, in document coordinates.
 
     Chunks are processed SEQUENTIALLY on purpose: running them concurrently
@@ -221,7 +225,7 @@ async def _extract_spans(gliner_provider: Any, text: str, chunk_chars: int) -> l
     spans: list[_Span] = []
     offset = 0
     for chunk in _split_for_extraction(text, chunk_chars):
-        entities = await gliner_provider.extract_pii_entities(chunk)
+        entities = await analyzer.extract_pii_entities(chunk)
         for entity in entities or []:
             spans.append(
                 _Span(
@@ -265,7 +269,11 @@ def _apply_mask(text: str, entities: list[_Span], mode: RedactMode) -> str:
 
 
 @router.post("/guardrail/redact", response_model=RedactResponse)
-async def redact_text(request: RedactRequest, http_request: Request) -> RedactResponse:
+async def redact_text(
+    request: RedactRequest,
+    http_request: Request,
+    analyzer: Any = Depends(get_safety_analyzer),
+) -> RedactResponse:
     """Redact PII from `text` per `mode`. Fail-closed: never 200 with unredacted text.
 
     the GLiNER model is DB-selected (``guardrail.safety`` — the SAME
@@ -278,14 +286,12 @@ async def redact_text(request: RedactRequest, http_request: Request) -> RedactRe
     start_time = time.monotonic()
     app_state = http_request.app.state
 
-    model_id = await get_gliner_model_id(http_request)  # raises HTTPException(503) when missing
+    # `get_safety_analyzer` already raised 428 (no tenant) / 503 (no selection or
+    # no taxonomy) before this body ran.
     chunk_chars = await _resolve_chunk_chars(app_state)
 
     try:
-        async with pinned_gliner_provider(
-            app_state, http_request.headers.get("X-Tenant-Id"), model_id=model_id
-        ) as gliner_provider:
-            entities = await _extract_spans(gliner_provider, request.text, chunk_chars)
+        entities = await _extract_spans(analyzer, request.text, chunk_chars)
     except ModelUnavailableError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
     except Exception as exc:

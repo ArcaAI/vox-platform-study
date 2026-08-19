@@ -1,3 +1,4 @@
+import asyncio
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -176,6 +177,9 @@ _CACHE_GLOBALS = (
     "_token_classifier_cache_instance",
     "_text_classifier_cache_instance",
     "_medical_suggester_cache_instance",
+    # TASK-735 Phases 3 & 6 — the guardrail-class models moved here.
+    "_gliner2_guard_cache_instance",
+    "_entailment_scorer_cache_instance",
 )
 
 
@@ -376,5 +380,90 @@ async def pinned_medical_suggester(
         except Exception as e:
             raise ModelUnavailableError(str(e)) from e
         yield service
+    finally:
+        await cache.unpin(key)
+
+
+# ---------------------------------------------------------------------------
+# Guardrail-class models (TASK-735 Phases 3 & 6).
+#
+# `apps/guardrail` holds ZERO resident weights: its GLiNER detector and its
+# MiniCheck groundedness scorer live here now, behind the same per-slot,
+# idle-TTL, pin-while-active cache the NER/classifier models use. Both are
+# selected BY THE CALLER (`AiTaskDefault` ⋈ `AiModel`, tenant-first) and
+# arrive per request — no model id is named in this file.
+# ---------------------------------------------------------------------------
+
+
+async def _create_gliner2_guard(cache_key: str) -> Any:
+    from nlp.services.gliner2_guard import Gliner2GuardService
+
+    model_name, model_path = _split_cache_key(cache_key)
+    service = Gliner2GuardService(
+        weights_source=_weights_source(model_name, model_path), model_id=model_name
+    )
+    # GLiNER2 load is blocking/CPU-bound — keep the event loop responsive.
+    await asyncio.to_thread(service.load)
+    return service
+
+
+async def _create_entailment_scorer(cache_key: str) -> Any:
+    from nlp.services.entailment_scorer import MiniCheckLoadSpec, load_minicheck_scorer
+
+    model_name, model_path = _split_cache_key(cache_key)
+    # The clinical gate NEVER auto-downloads: the GGUF must be staged, and the
+    # path comes from the caller's registry row, not from an env var here.
+    spec = MiniCheckLoadSpec(model_id=model_name, model_path=model_path)
+    return await asyncio.to_thread(load_minicheck_scorer, spec)
+
+
+def _gliner2_guard_cache() -> ModelCache[Any]:
+    if globals().get("_gliner2_guard_cache_instance") is None:
+        globals()["_gliner2_guard_cache_instance"] = ModelCache(
+            factory=_create_gliner2_guard, name="nlp_gliner2_guard", **_retention_kwargs()
+        )
+    return cast("ModelCache[Any]", globals()["_gliner2_guard_cache_instance"])
+
+
+def _entailment_scorer_cache() -> ModelCache[Any]:
+    if globals().get("_entailment_scorer_cache_instance") is None:
+        globals()["_entailment_scorer_cache_instance"] = ModelCache(
+            factory=_create_entailment_scorer, name="nlp_entailment_scorer", **_retention_kwargs()
+        )
+    return cast("ModelCache[Any]", globals()["_entailment_scorer_cache_instance"])
+
+
+@asynccontextmanager
+async def pinned_gliner2_guard(
+    model_name: str, model_path: str | None = None
+) -> AsyncIterator[Any]:
+    """Resolve + lazily load + pin the GLiNER2 guard runtime for one request."""
+    key = _model_cache_key(model_name, model_path)
+    cache = _gliner2_guard_cache()
+    await cache.pin(key)
+    try:
+        try:
+            service = await cache.get(key)
+        except Exception as e:
+            raise ModelUnavailableError(str(e)) from e
+        yield service
+    finally:
+        await cache.unpin(key)
+
+
+@asynccontextmanager
+async def pinned_entailment_scorer(
+    model_name: str, model_path: str | None = None
+) -> AsyncIterator[Any]:
+    """Resolve + lazily load + pin the MiniCheck NLI scorer for one request."""
+    key = _model_cache_key(model_name, model_path)
+    cache = _entailment_scorer_cache()
+    await cache.pin(key)
+    try:
+        try:
+            scorer = await cache.get(key)
+        except Exception as e:
+            raise ModelUnavailableError(str(e)) from e
+        yield scorer
     finally:
         await cache.unpin(key)
