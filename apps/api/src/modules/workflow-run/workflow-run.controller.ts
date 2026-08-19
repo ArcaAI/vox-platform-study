@@ -11,7 +11,7 @@ import {
 import { Body, Controller, ForbiddenException, Get, Inject, Param, Post, Query } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiParam, ApiQuery, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { ClsService } from 'nestjs-cls';
-import { Authorize, CanRead, ForbidApiKey, RequiredSvcScopes } from '../../decorators';
+import { Authorize, CanRead, ForbidApiKey, ForbidServiceAccount, RequiredSvcScopes } from '../../decorators';
 import { ListWorkflowRunsQuery } from './dto';
 
 /**
@@ -137,6 +137,19 @@ export class WorkflowRunController {
    */
   @Post(':runId/gate/approve')
   @Authorize(['update', 'Consultation'])
+  // SVC-NOTE (TASK-773) — CLOSED to the machine class, OVERRIDING the class-level
+  // `@RequiredSvcScopes('svc:admin:workflow-run:read')`. Reading a runs list must
+  // never imply the authority to sign, as the AUTH-NOTE above already says; a
+  // clinician decision on clinical content is the same category of act that keeps
+  // impersonation and consent grants machine-closed under decision D-3.
+  //
+  // This changes no behaviour — a service account was already refused here, since
+  // `svc:admin:workflow-run:read` implies `read:WorkflowRun`, not the
+  // `update:Consultation` this route demands. It changes WHY: a declared boundary
+  // instead of an accident of CASL, which is the difference between a rule and a
+  // coincidence. It also drops `approveRunGate` from the generated SDK surface,
+  // where it would otherwise ship as a method that can only ever 403.
+  @ForbidServiceAccount()
   @ApiOperation({
     summary: "Release the run's human-approval gate with a clinician decision.",
     description:

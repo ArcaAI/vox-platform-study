@@ -338,9 +338,36 @@ export function auditTokenExchangeRouteIsPublicAndGuarded(app: INestApplicationC
  *
  *   Every `admin/`-prefixed route must declare EITHER a `svc:*` scope OR
  *   `@ForbidServiceAccount()`. Additionally, whatever it declares must be
- *   self-consistent: not both at once (G's original contradiction check), only
- *   registry-known scopes, and — unit A5 — every declared scope must resolve
- *   through `serviceAccountPolicyRules` to at least one CASL ability.
+ *   self-consistent: not both AT THE SAME LEVEL, only registry-known scopes,
+ *   and — unit A5 — every declared scope must resolve through
+ *   `serviceAccountPolicyRules` to at least one CASL ability.
+ *
+ * ─── "At the same level", and why it is not "at all" ────────────────────────
+ *
+ * This check originally rejected a scope and a `@ForbidServiceAccount()` on the
+ * same ROUTE however they got there, because it read both keys through
+ * `getAllAndOverride` and so could not see where each came from. That flattening
+ * made one legitimate and useful shape unexpressible:
+ *
+ *   @RequiredSvcScopes('svc:admin:workflow-run:read')   // on the CLASS
+ *   class WorkflowRunController {
+ *     @ForbidServiceAccount()                           // on ONE method
+ *     approveRunGate() {}                               // "…except this one"
+ *   }
+ *
+ * That is an OVERRIDE, not a conflict, and it is exactly what the runtime does:
+ * `UnifiedAuthGuard` resolves FORBIDDEN with `getAllAndOverride([handler,
+ * class])` — method first — and checks it BEFORE the scope gate, so the route is
+ * closed to machines while its siblings stay open. Refusing the shape forced a
+ * controller to be all-or-nothing for the machine class, which is wrong for
+ * precisely the routes most worth closing: a single mutation on an otherwise
+ * readable admin area (`approveRunGate` signs clinical content).
+ *
+ * So the audit now reads each key at BOTH levels and flags only a level that
+ * declares both — which no resolution order can reconcile — while computing the
+ * EFFECTIVE posture the same way the guard does. This is strictly more precise
+ * than the old rule, not weaker: every same-level contradiction it used to catch
+ * still fails the boot.
  *
  * ─── Where the admin/business boundary is drawn, and why ────────────────────
  *
@@ -402,11 +429,48 @@ export function auditServiceAccountReachableRoutesAreDeclared(app: INestApplicat
     // An EMPTY array is not a declaration: `enforceServiceAccountScopes` denies
     // on `required.length === 0` exactly as it does on absent metadata, so a
     // zero-arg `@RequiredSvcScopes()` typo must read as undeclared here too.
-    const raw = reflector.getAllAndOverride<string[]>(SERVICE_ACCOUNT_REQUIRED_SCOPES, [route.methodRef, route.ControllerClass]);
-    const scopes = Array.isArray(raw) ? raw : [];
-    const forbidden = reflector.getAllAndOverride<boolean>(SERVICE_ACCOUNT_FORBIDDEN, [route.methodRef, route.ControllerClass]) === true;
+    // Read each key at BOTH levels rather than flattening with
+    // `getAllAndOverride`, because the contradiction rule below has to tell an
+    // OVERRIDE from a genuine conflict and a flattened read cannot. Assertion H
+    // reads origin the same way and for the same reason.
+    const methodScopesRaw = Reflect.getMetadata(SERVICE_ACCOUNT_REQUIRED_SCOPES, route.methodRef) as unknown;
+    const classScopesRaw = Reflect.getMetadata(SERVICE_ACCOUNT_REQUIRED_SCOPES, route.ControllerClass) as unknown;
+    const methodScopes = Array.isArray(methodScopesRaw) ? (methodScopesRaw as string[]) : undefined;
+    const classScopes = Array.isArray(classScopesRaw) ? (classScopesRaw as string[]) : undefined;
+    const methodForbid = Reflect.getMetadata(SERVICE_ACCOUNT_FORBIDDEN, route.methodRef) === true;
+    const classForbid = Reflect.getMetadata(SERVICE_ACCOUNT_FORBIDDEN, route.ControllerClass) === true;
 
-    if (scopes.length === 0) {
+    // A single level declaring BOTH is incoherent — it says "machines may reach
+    // this, using these scopes" and "no machine may reach this" in one breath,
+    // and no resolution order can make sense of it. Checked per level, before
+    // the effective posture is computed, so the offender names the level.
+    const sameLevelConflict = (methodScopes && methodScopes.length > 0 && methodForbid) || (classScopes && classScopes.length > 0 && classForbid);
+    if (sameLevelConflict) {
+      const level = methodScopes && methodScopes.length > 0 && methodForbid ? 'the METHOD' : 'the CONTROLLER CLASS';
+      const conflicting = methodScopes && methodScopes.length > 0 && methodForbid ? methodScopes : classScopes!;
+      offenders.push(
+        `${route.ControllerClass.name}.${route.methodName} (${route.fullPath}) declares @RequiredSvcScopes(${conflicting.join(', ')}) AND ` +
+          `@ForbidServiceAccount() on ${level}. These contradict at the same level: the route advertises itself as machine-reachable while ` +
+          `denying every machine token, and no resolution order can reconcile them. Remove one. (Declaring them at DIFFERENT levels is legal and ` +
+          `means something else — see below.)`,
+      );
+      continue;
+    }
+
+    // Effective posture, mirroring `getAllAndOverride`'s first-defined-wins —
+    // which is exactly what `UnifiedAuthGuard` resolves at request time, per key
+    // and independently. A method-level `@ForbidServiceAccount()` over a
+    // class-level scope is therefore a real, working OVERRIDE: "this controller
+    // is machine-reachable EXCEPT this route". The guard honours it (it checks
+    // FORBIDDEN before the scope gate, and resolves it method-first), so the
+    // audit must too. Refusing that shape — as this assertion originally did —
+    // forced a controller to be all-or-nothing for the machine class, which is
+    // wrong for exactly the routes most worth closing: a single mutation on an
+    // otherwise readable admin area.
+    const forbidden = methodForbid || classForbid;
+    const scopes = methodScopes ?? classScopes ?? [];
+
+    if (scopes.length === 0 || forbidden) {
       if (forbidden) continue; // an explicit, deliberate "never"
       if (!isAdminPath(route.controllerPath)) continue; // business plane — implicit deny-by-default, see header
       if (isPublicRoute(reflector, route)) continue; // the guard returns before the machine path
@@ -418,14 +482,6 @@ export function auditServiceAccountReachableRoutesAreDeclared(app: INestApplicat
           `missed or a deliberate closure nobody wrote down. Add @RequiredSvcScopes(toServiceAccountScope('admin:<area>')) if a machine identity ` +
           `legitimately administers this area, or @ForbidServiceAccount() if it is a human-only surface (record the decision in the comment, ` +
           `as MonitoringController does).`,
-      );
-      continue;
-    }
-
-    if (forbidden) {
-      offenders.push(
-        `${route.ControllerClass.name}.${route.methodName} (${route.fullPath}) declares @RequiredSvcScopes(${scopes.join(', ')}) AND @ForbidServiceAccount(). ` +
-          `These contradict: the route advertises itself as machine-reachable while denying every machine token. Remove one.`,
       );
       continue;
     }
@@ -588,7 +644,7 @@ export function auditAdminControllersDeclareCorrectSvcScope(app: INestApplicatio
     // Collapse the controller's routes into the DISTINCT postures they resolve
     // to, so a class-level miss reports one line rather than one per route,
     // while a method-level override that differs still gets its own line.
-    const byPosture = new Map<string, { declared: string[]; methodLevel: boolean; forbidden: boolean; routes: RouteInfo[] }>();
+    const byPosture = new Map<string, { declared: string[]; methodLevel: boolean; forbidden: boolean; methodForbid: boolean; routes: RouteInfo[] }>();
     for (const route of routes) {
       const raw = reflector.getAllAndOverride<string[]>(SERVICE_ACCOUNT_REQUIRED_SCOPES, [route.methodRef, route.ControllerClass]);
       const declared = Array.isArray(raw) ? [...new Set(raw)].sort() : [];
@@ -598,14 +654,19 @@ export function auditAdminControllersDeclareCorrectSvcScope(app: INestApplicatio
       // (b) is permitted on a method ONLY.
       const methodLevel = Array.isArray(Reflect.getMetadata(SERVICE_ACCOUNT_REQUIRED_SCOPES, route.methodRef));
       const forbidden = reflector.getAllAndOverride<boolean>(SERVICE_ACCOUNT_FORBIDDEN, [route.methodRef, route.ControllerClass]) === true;
+      // Forbid ORIGIN, for the same reason the scope origin is read above. A
+      // method-level `@ForbidServiceAccount()` OVERRIDES the class twin —
+      // "machine-reachable except this route" — which the runtime honours and
+      // assertion G permits. Only a CLASS declaring both is irreconcilable.
+      const methodForbid = Reflect.getMetadata(SERVICE_ACCOUNT_FORBIDDEN, route.methodRef) === true;
 
-      const key = `${forbidden ? 'forbidden' : 'open'}|${methodLevel ? 'method' : 'class'}|${declared.join(',')}`;
+      const key = `${forbidden ? 'forbidden' : 'open'}|${methodForbid ? 'm' : 'c'}|${methodLevel ? 'method' : 'class'}|${declared.join(',')}`;
       const bucket = byPosture.get(key);
       if (bucket) bucket.routes.push(route);
-      else byPosture.set(key, { declared, methodLevel, forbidden, routes: [route] });
+      else byPosture.set(key, { declared, methodLevel, forbidden, methodForbid, routes: [route] });
     }
 
-    for (const { declared, methodLevel, forbidden, routes: affected } of byPosture.values()) {
+    for (const { declared, methodLevel, forbidden, methodForbid, routes: affected } of byPosture.values()) {
       const isTwinAlone = declared.length === 1 && declared[0] === expected;
       const isPermittedPair =
         methodLevel &&
@@ -613,7 +674,11 @@ export function auditAdminControllersDeclareCorrectSvcScope(app: INestApplicatio
         declared.length === permittedPair.length &&
         declared.every((scope, index) => scope === permittedPair[index]);
       const correctScopes = isTwinAlone || isPermittedPair;
-      if (correctScopes && !forbidden) continue;
+      // A METHOD-level forbid over a correct class twin is a deliberate,
+      // working closure of one route, not a defect — see the note at
+      // `methodForbid` above. A CLASS-level one alongside the twin still falls
+      // through to the contradiction arm below.
+      if (correctScopes && (!forbidden || methodForbid)) continue;
 
       const where = `${row.controllerClass}.${affected[0].methodName} (${affected[0].fullPath})${affected.length > 1 ? ` and ${affected.length - 1} further route(s) on the same controller` : ''}`;
 
