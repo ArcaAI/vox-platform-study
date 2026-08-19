@@ -70,6 +70,30 @@ class EffectiveConfigSnapshot:
             key: value for key, raw in mapping.items() if (value := _positive_int(raw)) is not None
         }
 
+    def warm_models(self) -> list[tuple[str, str | None]]:
+        """The models to load at BOOT, as `(model_name, model_path)` pairs.
+
+        Model identity is configuration, so the warm set can only come from the
+        control plane — there is no env var and no literal for it here. An
+        absent, failed or malformed entry yields NOTHING rather than a guessed
+        default: warming the wrong weights would silently serve the wrong model
+        for a whole process lifetime.
+        """
+        entries = self.raw.get("warmModels")
+        if not isinstance(entries, list):
+            return []
+
+        warm: list[tuple[str, str | None]] = []
+        for entry in entries:
+            if not isinstance(entry, dict):
+                continue
+            name = entry.get("modelName")
+            if not isinstance(name, str) or not name.strip():
+                continue
+            path = entry.get("modelPath")
+            warm.append((name, path if isinstance(path, str) and path.strip() else None))
+        return warm
+
 
 def _positive_int(value: Any) -> int | None:
     # `bool` is an `int` subclass — exclude it, or `True` would become 1.

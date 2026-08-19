@@ -63,16 +63,22 @@ def test_pii_spans_are_byte_exact_document_offsets(client, monkeypatch):
     text = "Call Jane Roe at jane@roe.example."
 
     class FakeGuard:
-        def extract_entities(self, t, labels, threshold):
-            start = t.index("jane@roe.example")
+        # TASK-778: the route drives the runtime's BATCH verb so concurrent
+        # requests share one forward pass. The single-text contract this file
+        # originally pinned survives unchanged at the HTTP layer — which is what
+        # `apps/guardrail`'s `NlpGuardClient` depends on.
+        async def batch_extract_entities(self, texts, labels, threshold, batch_size=8):
             return [
-                {
-                    "label": "email",
-                    "start": start,
-                    "end": start + len("jane@roe.example"),
-                    "score": 0.99,
-                    "text": "jane@roe.example",
-                }
+                [
+                    {
+                        "label": "email",
+                        "start": t.index("jane@roe.example"),
+                        "end": t.index("jane@roe.example") + len("jane@roe.example"),
+                        "score": 0.99,
+                        "text": "jane@roe.example",
+                    }
+                ]
+                for t in texts
             ]
 
     import nlp.api.v1.rest.guard as guard_module
@@ -96,8 +102,11 @@ def test_pii_spans_are_byte_exact_document_offsets(client, monkeypatch):
 
 def test_classify_returns_the_tasks_it_was_asked_for(client, monkeypatch):
     class FakeGuard:
-        def classify_text(self, t, tasks, threshold):
-            return {"prompt_safety": "unsafe", "jailbreak_detection": ["prompt_injection"]}
+        async def batch_classify_text(self, texts, tasks, threshold, batch_size=8):
+            return [
+                {"prompt_safety": "unsafe", "jailbreak_detection": ["prompt_injection"]}
+                for _ in texts
+            ]
 
     import nlp.api.v1.rest.guard as guard_module
 
@@ -129,7 +138,7 @@ def test_a_runtime_failure_is_503_never_an_empty_result(client, monkeypatch):
     """An inference error must NOT read back as 'no PII found' (rule 06)."""
 
     class BrokenGuard:
-        def extract_entities(self, t, labels, threshold):
+        async def batch_extract_entities(self, texts, labels, threshold, batch_size=8):
             raise RuntimeError("onnx exploded")
 
     import nlp.api.v1.rest.guard as guard_module

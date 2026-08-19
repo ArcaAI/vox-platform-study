@@ -62,6 +62,10 @@ async def http_exception_handler(request: Request, exc: Exception) -> JSONRespon
         return JSONResponse(
             status_code=exc.status_code,
             content={"error": exc.detail, "status_code": exc.status_code},
+            # Headers the raiser set are part of the contract, not decoration:
+            # a shed 503 without its `Retry-After` tells the caller nothing
+            # about whether to back off or give up (TASK-778).
+            headers=exc.headers,
         )
     logger.error(f"Unexpected error: {str(exc)}", exc_info=True)
     return JSONResponse(

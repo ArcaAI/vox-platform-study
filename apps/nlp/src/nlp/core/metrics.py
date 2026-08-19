@@ -228,3 +228,63 @@ def build_model_cache_metrics_sink() -> PrometheusMetricsSink:
         resident_models=MODEL_CACHE_RESIDENT_MODELS,
         resident_bytes_estimate=MODEL_CACHE_RESIDENT_BYTES_ESTIMATE,
     )
+
+
+# ---------------------------------------------------------------------------
+# Inference queue / backpressure metrics (TASK-778)
+# ---------------------------------------------------------------------------
+# The platform target is >= 100 concurrent consultation sessions. Batching and
+# bounded queues only hold that target if the bounds can be TUNED FROM EVIDENCE,
+# so the three numbers an operator needs are Prometheus-scrapable here:
+#   * how deep the queue is right now  (are we saturated?)
+#   * how long items wait in it        (is the ceiling right?)
+#   * what we shed and why             (is shedding load, or is a bound wrong?)
+# Batch size is included because a batcher that never coalesces is a batcher
+# whose linger window is too short — invisible without this histogram.
+
+NLP_INFERENCE_QUEUE_DEPTH = Gauge(
+    "nlp_inference_queue_depth",
+    "Items waiting for a forward pass, by batcher (excludes in-flight batches).",
+    ["batcher"],
+)
+
+NLP_INFERENCE_QUEUE_WAIT_SECONDS = Histogram(
+    "nlp_inference_queue_wait_seconds",
+    "Time an inference request spent queued before its forward pass began.",
+    ["batcher"],
+    buckets=[0.001, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0, 10.0, 30.0],
+)
+
+NLP_INFERENCE_BATCH_SIZE = Histogram(
+    "nlp_inference_batch_size",
+    "Items coalesced into one forward pass, by batcher.",
+    ["batcher"],
+    buckets=[1, 2, 4, 8, 16, 32, 64],
+)
+
+NLP_INFERENCE_REJECTIONS_TOTAL = Counter(
+    "nlp_inference_rejections",
+    "Inference requests SHED rather than served, by route and declared reason.",
+    ["route", "reason"],
+)
+
+
+def observe_batch_size(batcher: str, size: int) -> None:
+    """Record one coalesced forward pass."""
+    NLP_INFERENCE_BATCH_SIZE.labels(batcher=batcher).observe(size)
+
+
+def observe_queue_wait(batcher: str, seconds: float) -> None:
+    """Record how long one request waited before its pass began."""
+    NLP_INFERENCE_QUEUE_WAIT_SECONDS.labels(batcher=batcher).observe(max(seconds, 0.0))
+
+
+def record_rejection(route: str, reason: str) -> None:
+    """Count one SHED request. `reason` is declared, never 'unknown'."""
+    NLP_INFERENCE_REJECTIONS_TOTAL.labels(route=route, reason=reason).inc()
+
+
+def publish_queue_depths(depths: dict[str, int]) -> None:
+    """Publish current queue depth per batcher onto the gauge."""
+    for batcher, depth in depths.items():
+        NLP_INFERENCE_QUEUE_DEPTH.labels(batcher=batcher).set(depth)
