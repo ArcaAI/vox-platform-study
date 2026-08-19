@@ -10,6 +10,7 @@
 import { APIConnectionError, APITimeoutError, fromResponse } from './errors';
 import type { HeaderInput } from './redact';
 import { executeWithRetry } from './retry';
+import { SERVICE_ACCOUNT_TOKEN_HEADER } from './service-account-token';
 import type { QueryValue } from './url';
 import { buildUrl } from './url';
 
@@ -47,7 +48,28 @@ export interface TransportConfig {
    * provider). A falsy return omits the header for that request.
    */
   getToken?: () => string | undefined | Promise<string | undefined>;
-  /** Sent as `X-Tenant-Id` on every request, when set (super-admin API keys only — see `.claude/rules/13-nextjs-apps.md`). */
+  /**
+   * When set, called on every request to obtain a service-account token, sent
+   * as `X-Service-Account-Token` (`core/service-account-token.ts`). May be
+   * async; a falsy return omits the header for that request.
+   *
+   * DELIBERATELY a second hook rather than a reuse of {@link getToken}, even
+   * though the shapes are identical. `getToken` means one specific thing on
+   * the wire — `Authorization: Bearer`, which the gateway reads as a USER JWT
+   * and tries to verify as one. A service-account token is opaque and belongs
+   * to a different credential class, and `UnifiedAuthGuard` selects its branch
+   * on WHICH HEADER arrived. Collapsing the two into one hook plus a header
+   * parameter would make "which credential class am I?" a configuration value
+   * that a call site can get wrong — and a guard that resolves the wrong class
+   * is an authentication bypass, which is precisely why the gateway gave the
+   * third class its own header. Two hooks, two headers, no decision to make.
+   *
+   * The gateway also refuses a request presenting two credential classes at
+   * once, so this is never set alongside {@link apiKey}; `HopeClient` enforces
+   * that at construction.
+   */
+  getServiceAccountToken?: () => string | undefined | Promise<string | undefined>;
+  /** Sent as `X-Tenant-Id` on every request, when set (super-admin API keys only — see `.claude/rules/13-nextjs-apps.md`). Never set alongside {@link getServiceAccountToken}: a service-account token carries its working tenant, bound at exchange. */
   tenantId?: string;
   /** Default per-request timeout in ms. Default `60_000`. */
   timeoutMs?: number;
@@ -104,6 +126,10 @@ async function buildHeaders(config: TransportConfig, options: TransportRequestOp
   if (config.getToken) {
     const token = await config.getToken();
     if (token) headers.set('Authorization', `Bearer ${token}`);
+  }
+  if (config.getServiceAccountToken) {
+    const serviceAccountToken = await config.getServiceAccountToken();
+    if (serviceAccountToken) headers.set(SERVICE_ACCOUNT_TOKEN_HEADER, serviceAccountToken);
   }
   if (config.tenantId) headers.set('X-Tenant-Id', config.tenantId);
   if (options.headers) {

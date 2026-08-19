@@ -171,6 +171,45 @@ D-2 is "all 70 areas", but three surfaces are named in the guard's own documenta
 > deliberately absent from the generated SDK surface (§5, D5), so an integrator gets no method
 > that would always 403. Re-opening any of them is a new owner decision, not a code-review call.
 
+### 2.8 The 70 admin controllers do not decompose the way D-2 assumed
+
+Established by the A1 fixture extraction (2026-08-19), cross-checked against `276f96a32` and the
+live tree. The arithmetic closes exactly, and it splits **three ways**, not two:
+
+| Group | Count | Disposition |
+|---|---|---|
+| Carried a class-level `@RequiredScopes('admin:<area>')` that TASK-757 removed | **64** | Mechanically wireable — `@RequiredSvcScopes(toServiceAccountScope(row.adminScope))`. This is the fixture, and the sweep. |
+| Machine-CLOSED by owner decision **D-3** | **3** | `ServiceAccountController`, `AdminImpersonationController`, `ConsentGrantController`. Get `@ForbidServiceAccount()`. |
+| **No `admin:*` scope to renamespace** | **3** | **Needs an owner decision — see below.** |
+| | **70** | |
+
+The third group is the finding. These controllers sit on the admin plane but have nothing for the
+`svc:admin:<area>` derivation to consume:
+
+| Controller | Route | What it actually carries |
+|---|---|---|
+| `WebhookController` | `admin/webhooks` | `@RequiredScopes('webhook:event:write')` — a `webhook:*` scope, not `admin:*`. TASK-757 reserved the three `webhook:` strings *because* their only consumer sits at `admin/webhooks`, but the `svc:` registry derives only the concrete `admin:*` family, so **no `svc:webhook:event:write` twin exists**. |
+| `MonitoringController` | `admin/monitoring` | Never class-level scope-gated at all — `@CanAny` ability decorators only. |
+| `AdminHealthServicesController` | `admin/health/services` | Same: `@CanAny`, never scope-gated. TASK-759 moved it here off the public `health` prefix. |
+
+**Why boot audit D did not catch this.** D asserts *"every `admin:*` scope has a `svc:` twin and
+vice-versa"* — it reconciles the two **registries**. It says nothing about whether every admin
+**controller** is covered by a scope, and these three are precisely the controllers that no
+`admin:*` scope names. The gap is real and pre-existing; TASK-773 is simply the first work that
+had to enumerate controllers rather than scopes.
+
+**Open decision O-1 (blocks unit A3, not the sweep).** For each of the three, either:
+
+- **(a) extend the derivation** — add `webhook:event:write` to a sources list the way
+  `STANDALONE_FEATURE_SCOPE_SOURCES` does, and mint `admin:monitoring:read` /
+  `admin:health:read` scopes so the existing renamespacing picks them up; or
+- **(b) leave them machine-closed** — `@ForbidServiceAccount()`, same as the D-3 three.
+
+Doing nothing is not available: unit A3 strengthens boot audit G to its full every-route form,
+which **fails the boot** on any service-account-reachable route declaring neither a `svc:` scope
+nor `@ForbidServiceAccount()`. All three must land on one side or the other before A3 can pass.
+The 64-controller sweep is unaffected and proceeds meanwhile.
+
 ### 2.7 `@arcaai/vox-node` today
 
 Version 3.0.0, zero runtime dependencies, Node ≥ 22 / Bun / Deno / edge.
@@ -367,3 +406,4 @@ not one as originally written. That is the intended cost of lockstep, not an ove
 |---|---|
 | 2026-08-19 | **Created.** Verified against the working tree that policy A2 (TASK-757) structurally forbids the literal requirement — `@ForbidApiKey()` on all 69 admin controllers, 56 `admin:*` scopes reserved and refused at grant time, and a derived boot audit failing startup on any admin route declaring `@RequiredScopes`. Established that TASK-762's service account is the sanctioned machine path and is **complete on both the credential and vocabulary axes** (opaque token on `X-Service-Account-Token`, exchange at `POST /auth/service-token`, all 56 `svc:admin:*` twins derived and audited by assertion D), and that the **only** gap is route declarations: zero admin controllers carry `@RequiredSvcScopes`, and deny-by-default therefore refuses every machine caller. Confirmed boot audit G's own `NOTE ON SCOPE` explicitly defers its full form to this cutover. Established that the controller→scope mapping is mechanically recoverable from `276f96a32`. Recorded owner decisions **D-1** (service account, not API keys) and **D-2** (all 70 areas), and flagged assumption **A-1** (three surfaces stay machine-closed for self-replication, impersonation-attribution, and consent reasons). Sized the SDK gap: vox-node is 3 resources / ~15 methods against a ~350-route admin surface, so the surface is **generated from a cross-checked Nest-metadata + OpenAPI manifest** rather than hand-authored, per the repo's derive-don't-transcribe rule. Status: **Pending** — awaiting the Phase 3 approval gate. |
 | 2026-08-19 | **Approval-gate decisions recorded.** **D-3** — the three surfaces in §2.6 (`admin/service-accounts`, `AdminImpersonationController`, `ConsentGrantController`) stay machine-closed; what was assumption A-1 is now a decision, and re-opening any of them is a new owner decision rather than a code-review call. **D-4** — the SDK family bumps in lockstep to **3.0.1** via the existing `scripts/publish-sdk.sh 3.0.1`, which applies one version across every family package; `@arcaai/vox` ships a no-op release at that version, which is the intended cost of lockstep. Recorded that 3.0.1 is a PATCH number carrying additive functionality (strict semver would say 3.1.0) — deliberate, owner's call, and immaterial to consumers since both `^3.0.0` and `~3.0.0` resolve it; the CHANGELOG carries the surface description instead. §6 restructured into resolved decisions vs. the one still-open question (a service-account rate-limit tier). Phase E2 made concrete. Status remains **Pending** — no code written, awaiting go-ahead on Phase A. |
+| 2026-08-19 | **Wave 0 delivered; coverage arithmetic corrected; O-1 opened.** Executed in worktree `task-773-svc-admin` per `PARALLEL-EXECUTION.md`. **A1** extracted the 64-row controller→scope fixture from `276f96a32` (`apps/api/src/bootstrap/__tests__/fixtures/task-773-admin-scope-map.ts`) with a colocated test; count independently re-verified against `git show` (64 removed `admin:*` decorators) and against the live `@ForbidApiKey()` set. Its cross-check produced the finding now recorded as **§2.8**: the 70 admin controllers split THREE ways, not two — 64 mechanically wireable, 3 machine-closed by D-3, and **3 with no `admin:*` scope to renamespace** (`WebhookController` carries `webhook:event:write`; `MonitoringController` and `AdminHealthServicesController` were never class-level scope-gated). Boot audit D could not have caught this: it reconciles the two scope REGISTRIES, never controllers-to-scopes. Opened **O-1** — extend the derivation or close the three — which blocks unit A3 (whose strengthened audit G fails the boot on any route declaring neither) but not the 64-controller sweep. **C** delivered the service-account credential in `@arcaai/vox-node`: lazy exchange, single-flight refresh with a clamped skew margin, one-shot recovery from mid-flight revocation, and redaction of both secret and token. Verified independently: 196 tests pass (was 173), `package.json` unchanged with zero runtime dependencies intact, header emitted via a shared `SERVICE_ACCOUNT_TOKEN_HEADER` constant. Two wire findings recorded: the exchange response's `tokenType: 'Bearer'` is misleading — `UnifiedAuthGuard` reads ONLY `x-service-account-token`, so presenting it as `Authorization: Bearer` gets it parsed as a user JWT and 401s, which is why the transport got a second hook rather than reusing the existing bearer one; and supplying `tenantId` alongside `serviceAccount` now throws at construction rather than being silently dropped, since the working tenant binds at exchange. |

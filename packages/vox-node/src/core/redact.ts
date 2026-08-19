@@ -18,8 +18,16 @@
 
 const REDACTED_PLACEHOLDER = '[REDACTED]';
 
-/** Header names (lowercase) whose VALUE is always replaced by {@link redactHeaders}. */
-const SENSITIVE_HEADER_NAMES: ReadonlySet<string> = new Set(['authorization', 'x-api-key', 'x-service-token', 'cookie']);
+/**
+ * Header names (lowercase) whose VALUE is always replaced by
+ * {@link redactHeaders} — one entry per credential class the platform can put
+ * on the wire: `authorization` (user JWT), `x-api-key` (tenant API key),
+ * `x-service-token` (internal peer-service secret), and
+ * `x-service-account-token` (the machine credential — `core/service-account-token.ts`).
+ * Adding a credential header without adding it here is how a secret reaches a
+ * log line, since `HopeAPIError` stores response headers verbatim otherwise.
+ */
+const SENSITIVE_HEADER_NAMES: ReadonlySet<string> = new Set(['authorization', 'x-api-key', 'x-service-token', 'x-service-account-token', 'cookie']);
 
 /**
  * Anything the `Headers` constructor itself accepts. `@types/node`'s fetch
@@ -46,12 +54,18 @@ export function redactHeaders(headers: HeaderInput | null | undefined): Headers 
   return result;
 }
 
-// The well-known symbol Node's `util.inspect` looks for. Referenced via
-// `Symbol.for` (the well-known symbol registry) instead of `import 'node:util'`
-// — this package ships zero runtime dependencies and no Node-builtin imports,
-// so it also works unmodified on Bun/Deno/edge runtimes that implement the
-// same registry lookup without shipping `node:util` at all.
-const NODE_INSPECT_CUSTOM = Symbol.for('nodejs.util.inspect.custom');
+/**
+ * The well-known symbol Node's `util.inspect` looks for. Referenced via
+ * `Symbol.for` (the well-known symbol registry) instead of
+ * `import 'node:util'` — this package ships zero runtime dependencies and no
+ * Node-builtin imports, so it also works unmodified on Bun/Deno/edge runtimes
+ * that implement the same registry lookup without shipping `node:util` at all.
+ *
+ * Exported so any other class that must be un-loggable (e.g.
+ * `core/service-account-token.ts`'s provider) installs the SAME hook rather
+ * than re-deriving the symbol and drifting from it.
+ */
+export const NODE_INSPECT_CUSTOM = Symbol.for('nodejs.util.inspect.custom');
 
 /**
  * Wraps a value so it can never be accidentally logged. `toString()`,

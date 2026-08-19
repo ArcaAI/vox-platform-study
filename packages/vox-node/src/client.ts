@@ -12,6 +12,8 @@
  * says what it actually talks to.
  */
 
+import { ServiceAccountTokenProvider } from './core/service-account-token';
+import type { ServiceAccountCredentials } from './core/service-account-token';
 import { Transport } from './core/transport';
 import { ConsultationsResource, JobsResource, SummarizationResource } from './resources';
 
@@ -40,9 +42,28 @@ export interface HopeLogger {
 export interface HopeClientOptions {
   /** e.g. `http://localhost:8868`. */
   baseUrl: string;
-  /** Sent as `X-API-Key` on every request. */
+  /** Sent as `X-API-Key` on every request. Mutually exclusive with {@link serviceAccount}. */
   apiKey?: string;
-  /** Sent as `X-Tenant-Id` on every request — super-admin API keys only. */
+  /**
+   * Authenticate as a SERVICE ACCOUNT — HOPE's machine credential, and the
+   * only machine path to the `/api/v1/admin/*` plane (a tenant API key is
+   * refused there by policy, not by omission).
+   *
+   * The SDK exchanges `(clientId, clientSecret)` for a short-lived opaque
+   * token on first use and keeps it fresh; you never handle the token.
+   *
+   * **`workingTenantId` binds at TOKEN EXCHANGE, not per request** — unlike
+   * `tenantId`, which travels on every API-key request. One client acts on one
+   * working tenant for its lifetime; construct a second client to act on
+   * another. Full rationale in `core/service-account-token.ts`.
+   *
+   * Mutually exclusive with both {@link apiKey} (the gateway refuses two
+   * credential classes on one request) and {@link tenantId} (which would be a
+   * second, conflicting statement of tenancy). Both combinations throw at
+   * construction.
+   */
+  serviceAccount?: ServiceAccountCredentials;
+  /** Sent as `X-Tenant-Id` on every request — super-admin API keys only. Not used with {@link serviceAccount}. */
   tenantId?: string;
   /** Default `2`. */
   maxRetries?: number;
@@ -75,14 +96,51 @@ export class HopeClient {
     if (!options.baseUrl) {
       throw new Error('HopeClient requires a non-empty `baseUrl` (e.g. "http://localhost:8868").');
     }
+    // The gateway rejects a request presenting two credential classes
+    // (`UnifiedAuthGuard`), and would rather 401 than silently prefer one.
+    // Failing HERE turns that runtime refusal into a programming error the
+    // integrator sees on the first construction rather than the first call.
+    if (options.apiKey && options.serviceAccount) {
+      throw new Error(
+        'HopeClient accepts exactly one credential: `apiKey` OR `serviceAccount`, never both — the gateway rejects a request carrying two credential classes.',
+      );
+    }
+    // Not an oversight to be lenient about: an integrator setting `tenantId`
+    // alongside a service account is acting on the API-key intuition that
+    // tenancy is per-request. It is not — it is bound at token exchange — so
+    // this option would be silently ignored, which is the worst outcome.
+    if (options.tenantId && options.serviceAccount) {
+      throw new Error(
+        '`tenantId` is not used with a service account: the working tenant is bound at TOKEN EXCHANGE, not per request. Set `serviceAccount.workingTenantId` instead.',
+      );
+    }
+
+    const serviceAccountTokens = options.serviceAccount
+      ? new ServiceAccountTokenProvider({
+          // A SEPARATE, credential-less transport for the exchange call, given
+          // the RAW `fetch` rather than the 401-recovering wrapper below — an
+          // exchange that 401s must surface as "bad credentials", never
+          // trigger another exchange.
+          transport: new Transport({
+            baseUrl: options.baseUrl,
+            maxRetries: options.maxRetries,
+            timeoutMs: options.timeout,
+            fetch: options.fetch,
+          }),
+          credentials: options.serviceAccount,
+        })
+      : undefined;
 
     const transport = new Transport({
       baseUrl: options.baseUrl,
       apiKey: options.apiKey,
+      getServiceAccountToken: serviceAccountTokens && (() => serviceAccountTokens.getToken()),
       tenantId: options.tenantId,
       maxRetries: options.maxRetries,
       timeoutMs: options.timeout,
-      fetch: options.fetch,
+      // The wrapper re-exchanges once and retries once on a 401 — the
+      // mid-flight-revocation path; see `ServiceAccountTokenProvider.authenticatedFetch`.
+      fetch: serviceAccountTokens ? serviceAccountTokens.authenticatedFetch(options.fetch ?? fetch) : options.fetch,
     });
 
     this.summarization = new SummarizationResource(transport);

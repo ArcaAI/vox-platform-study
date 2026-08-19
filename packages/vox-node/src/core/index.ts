@@ -25,7 +25,10 @@ export {
   parseRetryAfterMs,
 } from './errors';
 
-export { RedactedValue, redact, redactHeaders } from './redact';
+export { NODE_INSPECT_CUSTOM, RedactedValue, redact, redactHeaders } from './redact';
+
+export type { ServiceAccountCredentials, ServiceAccountTokenExchangeResponse, ServiceAccountTokenProviderOptions } from './service-account-token';
+export { SERVICE_ACCOUNT_TOKEN_HEADER, SERVICE_ACCOUNT_TOKEN_PATH, ServiceAccountTokenProvider } from './service-account-token';
 
 export type { BackoffOptions, ExecuteWithRetryOptions, ShouldRetryInput } from './retry';
 export { computeBackoffDelayMs, executeWithRetry, shouldRetry } from './retry';
