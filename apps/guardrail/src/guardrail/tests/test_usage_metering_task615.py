@@ -51,6 +51,7 @@ def _judge_client(payload: dict[str, Any]) -> TextJudgeClient:
         provider="lm-studio",
         model="guardian-1",
         tenant_id="11111111-1111-1111-1111-111111111111",
+        criteria="you are a medical context validator",
     )
 
 

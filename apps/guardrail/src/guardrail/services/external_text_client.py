@@ -26,81 +26,42 @@ from __future__ import annotations
 
 import asyncio
 import json
+import time
 from typing import Any, cast
 
+from guardrail.core.breaker import BreakerOpenError, CircuitBreaker
 from guardrail.core.config import JudgePolicy
 from guardrail.core.errors import (
     REASON_ENGINE_ERROR,
+    REASON_INVALID_RESPONSE,
     REASON_TIMEOUT,
     GuardrailUndeterminedError,
 )
 from guardrail.core.logging import get_logger
-from guardrail.core.metrics import record_guardrail_call, track_model_inference
+from guardrail.core.metrics import (
+    observe_peer_latency,
+    record_guardrail_call,
+    track_model_inference,
+)
 from guardrail.providers.stats import GuardrailCallStats, normalize_stop_reason
 
 logger = get_logger(__name__)
 
 JUDGE_PATH = "/api/v1/generate/internal/judge"
 
-# The medical-context criteria. Policy, not engine — Phase 4 moves it to the
-# PromptTemplate plane (versioned, approval-gated, tenant-overridable); until
-# that lands it stays HERE, in the service that owns the verdict, rather than
-# following the deleted engine adapters out of the tree.
-MEDICAL_VALIDATION_CRITERIA = (
-    "You are a medical context validator. Your task is to determine if the provided text "
-    "is related to medical documentation, clinical notes, patient care, or healthcare services. "
-    "Analyze the text and respond ONLY with a JSON object in this exact format:\n"
-    '{"is_medical": true/false, "confidence": 0.0-1.0, '
-    '"context_type": "clinical/administrative/general", "reasoning": "brief explanation"}\n\n'
-    "Medical context includes: patient records, clinical notes, diagnoses, treatments, "
-    "medications, symptoms, medical procedures, healthcare consultations, referrals, "
-    "prescriptions, vital signs, medical history, physical examinations, lab results, "
-    "imaging reports, care plans, discharge summaries.\n\n"
-    "Non-medical context includes: general conversation, business documents, technical "
-    "documentation, entertainment content, personal communications unrelated to healthcare."
-)
-
-_MEDICAL_KEYWORDS = (
-    "patient",
-    "diagnosis",
-    "treatment",
-    "medication",
-    "clinical",
-    "medical",
-    "doctor",
-    "physician",
-    "nurse",
-    "hospital",
-    "clinic",
-    "symptom",
-    "condition",
-    "prescription",
-    "therapy",
-    "examination",
-    "vital signs",
-    "chief complaint",
-    "history of present illness",
-    "assessment",
-    "plan",
-    "transcript",
-    "case note",
-    "summary",
-    "referral",
-    "visit",
-    "encounter",
-    "procedure",
-    "surgery",
-    "lab",
-    "imaging",
-    "radiology",
-    "pathology",
-    "biopsy",
-    "discharge",
-    "admission",
-    "consultation",
-    "follow-up",
-)
-
+# There is deliberately NO criteria constant here and NO keyword taxonomy.
+#
+# The criteria text DECIDES a clinical verdict, so it is configuration with a
+# declared fail-CLOSED posture (`core/policy.py`, key `medicalValidationCriteria`,
+# stored on the registry row's `_metadata.policy` and resolved through the same
+# two-tier `request tenant → SYSTEM` cascade as the model selection). A judge with
+# no criteria is not a lenient judge — it is no judge at all, so absence raises.
+#
+# The 40-term `_MEDICAL_KEYWORDS` fallback that used to live here is gone with it
+# (TASK-777 A-4). It scored the RAW MODEL OUTPUT, so a caller who could steer the
+# judge into emitting prose containing two clinical words earned `is_medical: true`
+# without any model having judged the input — a hardcoded taxonomy and a prompt-
+# injection bypass in the same twelve lines.
 
 def _stats_from_judge(payload: dict[str, Any], provider: str, model: str) -> GuardrailCallStats:
     """Map `text`'s `GenerationStats` onto guardrail's AD-1 mirror.
@@ -149,12 +110,15 @@ class TextJudgeClient:
         provider: str,
         model: str,
         tenant_id: str,
+        criteria: str,
         policy: JudgePolicy | None = None,
+        min_confidence: float | None = None,
         temperature: float | None = None,
         max_tokens: int | None = None,
         timeout_s: float | None = None,
         max_attempts: int | None = None,
         provider_overrides: dict[str, Any] | None = None,
+        breaker: CircuitBreaker | None = None,
         enabled: bool = True,
     ) -> None:
         resolved_tenant = (tenant_id or "").strip()
@@ -166,7 +130,21 @@ class TextJudgeClient:
                 "TextJudgeClient requires a tenant_id: the caller must forward "
                 "X-Tenant-Id or declare 'tenantless:<reason>'."
             )
+        resolved_criteria = (criteria or "").strip()
+        if not resolved_criteria:
+            # Same construction-time invariant as the tenant: a client that cannot
+            # be built is a client that cannot render an unattributable or
+            # uncriteria'd verdict.
+            raise ValueError(
+                "TextJudgeClient requires `criteria`: the text that decides the "
+                "verdict is configuration (policy key 'medicalValidationCriteria', "
+                "failMode=closed) and has no code default."
+            )
+        self.criteria = resolved_criteria
         self.policy = policy or JudgePolicy()
+        self.min_confidence = (
+            self.policy.min_confidence if min_confidence is None else min_confidence
+        )
         self.base_url = base_url.rstrip("/")
         self.http_client = http_client
         self._service_token = service_token
@@ -178,6 +156,7 @@ class TextJudgeClient:
         self.timeout_s = self.policy.timeout_s if timeout_s is None else timeout_s
         self.max_attempts = self.policy.max_attempts if max_attempts is None else max_attempts
         self.provider_overrides = provider_overrides
+        self.breaker = breaker
         self.enabled = enabled
 
     # -- wire ---------------------------------------------------------------
@@ -202,10 +181,8 @@ class TextJudgeClient:
         if self.provider_overrides:
             body["provider_overrides"] = self.provider_overrides
 
-        attempts = max(1, self.max_attempts)
-        last_error = ""
-        timed_out = False
-        for attempt in range(attempts):
+        async def _once() -> dict[str, Any]:
+            started = time.monotonic()
             try:
                 with track_model_inference(self.model):
                     response = await self.http_client.post(
@@ -216,6 +193,21 @@ class TextJudgeClient:
                     )
                     response.raise_for_status()
                 return cast(dict[str, Any], response.json())
+            finally:
+                observe_peer_latency("text", "judge", time.monotonic() - started)
+
+        attempts = max(1, self.max_attempts)
+        last_error = ""
+        timed_out = False
+        for attempt in range(attempts):
+            try:
+                if self.breaker is not None:
+                    return await self.breaker.call(_once)
+                return await _once()
+            except BreakerOpenError as exc:
+                # Known-down peer: shed rather than amplify. Still fail-CLOSED below.
+                last_error = str(exc)
+                break
             except Exception as exc:  # noqa: BLE001 — every failure is fail-CLOSED below
                 last_error = str(exc)
                 timed_out = "timeout" in type(exc).__name__.lower()
@@ -255,7 +247,7 @@ class TextJudgeClient:
 
         payload = await self._judge(
             prompt=f"Analyze this text for medical context:\n\n{text[: self.policy.max_input_chars]}",
-            system_prompt=MEDICAL_VALIDATION_CRITERIA,
+            system_prompt=self.criteria,
         )
         content = str(payload.get("content") or "").strip()
         result = self._parse_verdict(content)
@@ -276,11 +268,19 @@ class TextJudgeClient:
             completion_tokens=stats.predicted_tokens,
         )
 
-        if result["confidence"] < self.policy.min_confidence:
+        if result["confidence"] < self.min_confidence:
+            # ENFORCED, not merely logged (TASK-777 A-6). A verdict the model is not
+            # confident in is a verdict that was not rendered: returning it as if it
+            # had cleared the floor made the floor decorative.
             logger.warning(
                 "guardrail.judge.low_confidence",
                 confidence=result["confidence"],
-                threshold=self.policy.min_confidence,
+                threshold=self.min_confidence,
+            )
+            raise GuardrailUndeterminedError(
+                REASON_INVALID_RESPONSE,
+                f"judge confidence {result['confidence']:.2f} is below the configured "
+                f"floor {self.min_confidence:.2f}",
             )
         # `include_reasoning` is honoured by the ROUTE (it shapes the response
         # DTO); the verdict itself always carries the model's reasoning so the
@@ -288,6 +288,12 @@ class TextJudgeClient:
         return result
 
     def _parse_verdict(self, content: str) -> dict[str, Any]:
+        """Interpret the judge's JSON. A response we cannot read is UNDETERMINED.
+
+        There is no synthesised fallback: the alternative computes an answer from
+        text the model produced, which is attacker-influenceable and reads on the
+        wire exactly like a judged verdict.
+        """
         try:
             parsed = json.loads(content)
             confidence = max(0.0, min(1.0, float(parsed.get("confidence", 0.0))))
@@ -298,24 +304,11 @@ class TextJudgeClient:
                 "reasoning": parsed.get("reasoning", ""),
             }
         except (json.JSONDecodeError, KeyError, ValueError, TypeError) as exc:
-            # Deliberately NOT undetermined: unlike a transport failure, this
-            # degrades the QUALITY of the verdict rather than inventing a
-            # permissive one — the keyword classifier computes an answer from the
-            # text and readily returns False.
-            logger.warning("guardrail.judge.invalid_response", error=str(exc))
-            return self._keyword_verdict(content)
-
-    @staticmethod
-    def _keyword_verdict(text: str) -> dict[str, Any]:
-        lowered = text.lower()
-        matched = [kw for kw in _MEDICAL_KEYWORDS if kw in lowered]
-        return {
-            "is_medical": len(matched) >= 2,
-            "confidence": min(len(matched) / 5.0, 1.0),
-            "context_type": "clinical" if len(matched) >= 2 else "general",
-            "reasoning": f"Keyword-based validation: {len(matched)} medical terms found",
-            "matched_keywords": matched[:5],
-        }
+            logger.warning("guardrail.judge.invalid_response", error=type(exc).__name__)
+            raise GuardrailUndeterminedError(
+                REASON_INVALID_RESPONSE,
+                "the judge lane returned a response that is not a parseable verdict",
+            ) from exc
 
     async def batch_validate(self, texts: list[str]) -> list[dict[str, Any]]:
         """Validate many texts; per-item failures come back as exceptions.

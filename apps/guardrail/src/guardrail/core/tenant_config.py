@@ -86,6 +86,7 @@ here without one would be dead code, so it is deliberately not added yet.
 
 from __future__ import annotations
 
+import asyncio
 import json
 import time
 from collections.abc import Callable
@@ -103,6 +104,7 @@ from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 from guardrail.core.config import Settings
 from guardrail.core.logging import get_logger
+from guardrail.core.metrics import record_config_cache_event
 
 logger = get_logger(__name__)
 
@@ -154,6 +156,12 @@ KEY_MODEL = "model"
 KEY_AZURE_DEPLOYMENT = "azure-deployment"
 # The selected model's declared label taxonomy, JSON-encoded (the cache holds strings).
 KEY_LABEL_TAXONOMY = "label-taxonomy"
+# The selected model's declared POLICY blob, JSON-encoded (TASK-777 A-3/A-5).
+# Thresholds and verdict-deciding criteria are configuration, and they ride the
+# registry row for the same reason the taxonomy does: it is the one plane already
+# resolved through the two-tier `request tenant → SYSTEM` cascade. See
+# `core/policy.py` for the governed key set and the per-key `failMode`.
+KEY_POLICY = "policy"
 # Provider-level runtime-profile tuning, cached alongside the
 # selection keys so a profile read costs no extra round-trip or TTL window.
 KEY_TEMPERATURE = "temperature"
@@ -272,6 +280,11 @@ class GuardrailTenantConfig:
     # `None` = the row has no opinion, which for a taxonomy is FAIL-CLOSED at the
     # call site: guardrail carries no built-in label list to fall back on.
     label_taxonomy: dict[str, Any] | None = None
+    # The selected model's declared POLICY blob (`AiModel._metadata.policy`).
+    # `None` = the row has no opinion; what that MEANS is declared per key in
+    # `core/policy.py` (fail-closed for criteria, open-to-default for tuning) —
+    # never decided at the call site.
+    policy: dict[str, Any] | None = None
     # The tenant the primary lookup targeted (request tenant or default tenant).
     source_tenant_id: str | None = None
     # Provider-level runtime profile (``core."AiRuntimeProfile"``).
@@ -366,6 +379,12 @@ class TenantConfigResolver:
         self._cache_ttl_s = cache_ttl_s
         self._time = time_func
         self._cache: dict[str, _CacheEntry] = {}
+        # Single-flight (TASK-777 A-1). One in-flight load per `task_key::tenant_id`;
+        # every other coroutine that misses the same key AWAITS that load instead of
+        # issuing its own. Without it, the opening burst of N consultation sessions is
+        # N identical `AiTaskDefault ⋈ AiModel` queries against a pool_size=5 engine.
+        # Keyed identically to the cache, so coalescing can never merge two tenants.
+        self._in_flight: dict[str, asyncio.Future[dict[str, str]]] = {}
 
     async def resolve(
         self,
@@ -411,6 +430,7 @@ class TenantConfigResolver:
             model=_clean(keys.get(KEY_MODEL)),
             azure_deployment=_clean(keys.get(KEY_AZURE_DEPLOYMENT)),
             label_taxonomy=_decode_taxonomy(keys.get(KEY_LABEL_TAXONOMY)),
+            policy=_decode_taxonomy(keys.get(KEY_POLICY)),
             source_tenant_id=source,
             temperature=_as_float(keys.get(KEY_TEMPERATURE)),
             max_tokens=_as_int(keys.get(KEY_MAX_TOKENS)),
@@ -451,10 +471,46 @@ class TenantConfigResolver:
         cache_key = f"{task_key}::{tenant_id}"
         entry = self._cache.get(cache_key)
         if entry is not None and entry.expires_at > now:
+            record_config_cache_event("hit")
             if entry.vetoed:
                 raise TenantSelectionVetoedError(tenant_id=tenant_id, task_key=task_key)
             return entry.keys
 
+        # SINGLE-FLIGHT (TASK-777 A-1). A load is already running for this exact
+        # key — await it rather than starting a second one. `shield` is deliberately
+        # NOT used: if the leader is cancelled the followers see the cancellation and
+        # retry, which is correct for a request-scoped read.
+        running = self._in_flight.get(cache_key)
+        if running is not None:
+            record_config_cache_event("coalesced")
+            return await asyncio.shield(running)
+
+        record_config_cache_event("miss")
+
+        loop = asyncio.get_running_loop()
+        future: asyncio.Future[dict[str, str]] = loop.create_future()
+        self._in_flight[cache_key] = future
+        try:
+            keys = await self._load_and_cache(tenant_id, task_key, cache_key, now)
+        except BaseException as exc:
+            if not future.done():
+                future.set_exception(exc)
+            # Every waiter must observe the SAME outcome the leader did — a
+            # coalesced load that resolved some callers and failed others would be
+            # worse than no coalescing at all.
+            future.exception()  # mark retrieved; waiters still see it via `await`
+            raise
+        else:
+            if not future.done():
+                future.set_result(keys)
+            return keys
+        finally:
+            self._in_flight.pop(cache_key, None)
+
+    async def _load_and_cache(
+        self, tenant_id: str, task_key: str, cache_key: str, now: float
+    ) -> dict[str, str]:
+        """The leader's half of :meth:`_get_for_tenant` — load, then cache."""
         try:
             keys = await self._load_from_db(tenant_id, task_key)
         except TenantSelectionVetoedError:
@@ -573,6 +629,9 @@ class TenantConfigResolver:
         taxonomy = meta.get("labelTaxonomy")
         if isinstance(taxonomy, dict) and taxonomy:
             keys[KEY_LABEL_TAXONOMY] = json.dumps(taxonomy)
+        policy = meta.get("policy")
+        if isinstance(policy, dict) and policy:
+            keys[KEY_POLICY] = json.dumps(policy)
 
         # Weight-source columns. Absent values are simply not
         # set, so the caller's env fallback still applies.
@@ -696,6 +755,40 @@ class TenantConfigResolver:
         """Drop all cached entries (test/admin helper)."""
         self._cache.clear()
 
+    def invalidate(
+        self, *, tenant_id: str | None = None, task_key: str | None = None
+    ) -> int:
+        """Drop cached entries; return how many were dropped.
+
+        **Invalidation is the propagation path; the TTL is a bounded-staleness
+        safety net** (rule 09 §Config caches). Before TASK-777 guardrail had no
+        invalidation at all, so a platform admin tightening a safety threshold
+        waited out the full TTL window on every node — with the loosest admissible
+        posture still being served meanwhile.
+
+        Scope narrows as arguments are supplied: no arguments drop everything, a
+        `tenant_id` drops that tenant's entries across all task keys, and both drop
+        exactly one entry. A VETO entry is dropped like any other — the veto is
+        re-established by the next load, from the row that still declares it.
+        """
+        if tenant_id is None and task_key is None:
+            dropped = len(self._cache)
+            self._cache.clear()
+            return dropped
+
+        doomed = [
+            key
+            for key in self._cache
+            # The cache key is `f"{task_key}::{tenant_id}"`; split from the RIGHT so a
+            # task key containing "::" (the `slug::` pseudo-keys do) still parses.
+            for cached_task, _, cached_tenant in [key.rpartition("::")]
+            if (tenant_id is None or cached_tenant == tenant_id)
+            and (task_key is None or cached_task == task_key)
+        ]
+        for key in doomed:
+            self._cache.pop(key, None)
+        return len(doomed)
+
 
 def build_judge_client(
     settings: Settings,
@@ -703,6 +796,7 @@ def build_judge_client(
     http_client: Any,
     tenant_id: str,
     provider_overrides: dict[str, Any] | None = None,
+    breaker: Any = None,
 ) -> Any:
     """Build the delegated guardian for a resolved per-tenant selection.
 
@@ -716,7 +810,15 @@ def build_judge_client(
     The endpoint is `text`'s (bootstrap transport) and the tenant's credential
     travels only as an opaque ``provider_overrides`` blob.
     """
+    from guardrail.core.policy import GuardrailPolicy
     from guardrail.services.external_text_client import TextJudgeClient
+
+    # POLICY, resolved through the same two-tier cascade as the selection above
+    # (TASK-777 A-3/A-5). `require_criteria` is fail-CLOSED: an unseeded criteria
+    # string raises `GuardrailUndeterminedError`, which the route maps to 503.
+    policy = GuardrailPolicy.from_blob(
+        tenant_cfg.policy, source_tenant_id=tenant_cfg.source_tenant_id
+    )
 
     provider = (tenant_cfg.provider or "").strip()
     model = tenant_cfg.model or ""
@@ -732,11 +834,14 @@ def build_judge_client(
         provider=provider,
         model=model,
         tenant_id=tenant_id,
+        criteria=policy.require_criteria("medicalValidationCriteria"),
         policy=settings.judge,
+        min_confidence=policy.judge_min_confidence,
         temperature=tenant_cfg.temperature,
         max_tokens=tenant_cfg.max_tokens,
         timeout_s=(
             float(tenant_cfg.timeout_s) if tenant_cfg.timeout_s is not None else None
         ),
         provider_overrides=provider_overrides,
+        breaker=breaker,
     )

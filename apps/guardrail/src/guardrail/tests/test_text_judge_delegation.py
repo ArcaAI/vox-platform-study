@@ -102,6 +102,8 @@ def _client(http_client: Any, **overrides: Any) -> TextJudgeClient:
         "provider": "lm-studio",
         "model": "guardian-1",
         "tenant_id": "11111111-1111-1111-1111-111111111111",
+        # Criteria is CONFIG (TASK-777 A-3) — the client refuses to construct without it.
+        "criteria": "you are a medical context validator",
     }
     kwargs.update(overrides)
     return TextJudgeClient(**kwargs)
@@ -165,18 +167,21 @@ async def test_parses_the_verdict_and_rides_usage_back_for_billing() -> None:
 
 
 @pytest.mark.asyncio
-async def test_unparseable_judgement_degrades_to_the_deterministic_keyword_classifier() -> (
-    None
-):
+async def test_unparseable_judgement_is_undetermined_not_a_keyword_guess() -> None:
+    """TASK-777 A-4 — REVERSED from the behaviour this test used to pin.
+
+    The old `_keyword_verdict` fallback scored the RAW MODEL OUTPUT against a
+    hardcoded 40-term taxonomy. It was defended as "deterministic, and readily
+    answers False", but the text it scored is attacker-influenceable: prose
+    containing two clinical words earned `is_medical: true` with no model having
+    judged the INPUT, and the result was indistinguishable on the wire from a real
+    verdict. A response we cannot read is now simply undetermined.
+    """
     http = _RecordingClient(
         _judge_body("the patient has a clear diagnosis, no JSON here")
     )
-    result = await _client(http).validate_medical_context("note")
-
-    # NOT a fabricated permissive verdict: a deterministic classifier that readily
-    # answers False. It degrades quality, it does not invent permission.
-    assert result["is_medical"] is True
-    assert result["matched_keywords"]
+    with pytest.raises(GuardrailUndeterminedError):
+        await _client(http).validate_medical_context("note")
 
 
 # ---------------------------------------------------------------------------

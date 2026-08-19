@@ -12,6 +12,8 @@ an env engine sub-config — the tuning contract is unchanged, its destination m
 
 from __future__ import annotations
 
+from dataclasses import replace
+
 import pytest
 
 from guardrail.core.config import Settings
@@ -23,7 +25,15 @@ def settings() -> Settings:
     return Settings()
 
 
+# TASK-777 A-3: the criteria that decides the verdict is CONFIG (policy key
+# `medicalValidationCriteria`, failMode=closed) with no code default, so the
+# resolved config must carry one before a judge can be built at all.
+_POLICY = {"medicalValidationCriteria": "you are a medical context validator"}
+
+
 def _judge(settings: Settings, cfg: GuardrailTenantConfig):
+    if cfg.policy is None:
+        cfg = replace(cfg, policy=_POLICY)
     return build_judge_client(settings, cfg, http_client=object(), tenant_id="t-1")
 
 
