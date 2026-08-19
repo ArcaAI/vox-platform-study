@@ -11,7 +11,7 @@ import {
   S3Client,
 } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
-import { Logger } from '@nestjs/common';
+import { Logger, NotFoundException } from '@nestjs/common';
 import { Readable } from 'stream';
 
 import { StorageProvider } from '@arcaai/types';
@@ -66,20 +66,46 @@ export class S3BlobProvider implements IBlobStorageProvider {
     });
   }
 
+  /**
+   * Runs a bucket-scoped S3 call, translating S3's `NoSuchBucket` into a
+   * `NotFoundException` so it leaves the gateway as a 404 instead of an
+   * unmapped 500. A bucket row can legitimately outlive — or precede — its
+   * physical bucket (a seeded `TenantBucket` whose MinIO bucket was never
+   * provisioned is the case that motivated this), and "the bucket isn't there"
+   * is a not-found answer, not a server fault.
+   *
+   * Every other driver error propagates untouched: a connection failure or a
+   * permission denial must NOT be reported to the caller as "not found".
+   * `bucketExists` deliberately keeps using the raw client — it answers a
+   * boolean and inspects the error itself.
+   */
+  private async forBucket<T>(bucket: string, run: () => Promise<T>): Promise<T> {
+    try {
+      return await run();
+    } catch (error) {
+      if ((error as { name?: string })?.name === 'NoSuchBucket') {
+        throw new NotFoundException(`Bucket '${bucket}' does not exist`);
+      }
+      throw error;
+    }
+  }
+
   async putObject(params: PutObjectParams): Promise<void> {
-    await this.client.send(
-      new PutObjectCommand({
-        Bucket: params.bucket,
-        Key: params.key,
-        Body: params.body,
-        ContentType: params.contentType,
-        Metadata: params.metadata,
-      }),
+    await this.forBucket(params.bucket, () =>
+      this.client.send(
+        new PutObjectCommand({
+          Bucket: params.bucket,
+          Key: params.key,
+          Body: params.body,
+          ContentType: params.contentType,
+          Metadata: params.metadata,
+        }),
+      ),
     );
   }
 
   async getObject(params: GetObjectParams): Promise<Buffer> {
-    const response = await this.client.send(new GetObjectCommand({ Bucket: params.bucket, Key: params.key }));
+    const response = await this.forBucket(params.bucket, () => this.client.send(new GetObjectCommand({ Bucket: params.bucket, Key: params.key })));
     if (!response.Body) {
       throw new Error(`Object not found: ${params.bucket}/${params.key}`);
     }
@@ -87,7 +113,7 @@ export class S3BlobProvider implements IBlobStorageProvider {
   }
 
   async getObjectStream(params: GetObjectParams): Promise<Readable> {
-    const response = await this.client.send(new GetObjectCommand({ Bucket: params.bucket, Key: params.key }));
+    const response = await this.forBucket(params.bucket, () => this.client.send(new GetObjectCommand({ Bucket: params.bucket, Key: params.key })));
     if (!response.Body) {
       throw new Error(`Object not found: ${params.bucket}/${params.key}`);
     }
@@ -95,17 +121,19 @@ export class S3BlobProvider implements IBlobStorageProvider {
   }
 
   async deleteObject(params: DeleteObjectParams): Promise<void> {
-    await this.client.send(new DeleteObjectCommand({ Bucket: params.bucket, Key: params.key }));
+    await this.forBucket(params.bucket, () => this.client.send(new DeleteObjectCommand({ Bucket: params.bucket, Key: params.key })));
   }
 
   async listObjects(params: ListObjectsParams): Promise<ListObjectsResult> {
-    const response = await this.client.send(
-      new ListObjectsV2Command({
-        Bucket: params.bucket,
-        Prefix: params.prefix,
-        ContinuationToken: params.continuationToken,
-        MaxKeys: params.maxKeys,
-      }),
+    const response = await this.forBucket(params.bucket, () =>
+      this.client.send(
+        new ListObjectsV2Command({
+          Bucket: params.bucket,
+          Prefix: params.prefix,
+          ContinuationToken: params.continuationToken,
+          MaxKeys: params.maxKeys,
+        }),
+      ),
     );
 
     const objects = (response.Contents ?? []).map((item) => ({
@@ -138,7 +166,7 @@ export class S3BlobProvider implements IBlobStorageProvider {
   }
 
   async deleteBucket(bucket: string): Promise<void> {
-    await this.client.send(new DeleteBucketCommand({ Bucket: bucket }));
+    await this.forBucket(bucket, () => this.client.send(new DeleteBucketCommand({ Bucket: bucket })));
   }
 
   async bucketExists(bucket: string): Promise<boolean> {
@@ -156,18 +184,20 @@ export class S3BlobProvider implements IBlobStorageProvider {
   }
 
   async setLifecycle(bucket: string, rules: LifecycleRule[]): Promise<void> {
-    await this.client.send(
-      new PutBucketLifecycleConfigurationCommand({
-        Bucket: bucket,
-        LifecycleConfiguration: {
-          Rules: rules.map((rule) => ({
-            ID: rule.id,
-            Filter: { Prefix: rule.prefix ?? '' },
-            Status: rule.enabled ? 'Enabled' : 'Disabled',
-            ...(rule.expirationDays !== undefined ? { Expiration: { Days: rule.expirationDays } } : {}),
-          })),
-        },
-      }),
+    await this.forBucket(bucket, () =>
+      this.client.send(
+        new PutBucketLifecycleConfigurationCommand({
+          Bucket: bucket,
+          LifecycleConfiguration: {
+            Rules: rules.map((rule) => ({
+              ID: rule.id,
+              Filter: { Prefix: rule.prefix ?? '' },
+              Status: rule.enabled ? 'Enabled' : 'Disabled',
+              ...(rule.expirationDays !== undefined ? { Expiration: { Days: rule.expirationDays } } : {}),
+            })),
+          },
+        }),
+      ),
     );
   }
 

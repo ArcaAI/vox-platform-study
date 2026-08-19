@@ -7,6 +7,7 @@
  */
 
 import { describe, it, expect, beforeEach, vi, Mock } from 'vitest';
+import { NotFoundException } from '@nestjs/common';
 import { StorageProvider } from '@arcaai/types';
 
 // Shared send spy — reassigned per test. `mock`-prefixed so vitest allows it
@@ -259,6 +260,48 @@ describe('S3BlobProvider', () => {
           ],
         },
       });
+    });
+  });
+
+  // A bucket row can outlive (or precede) its physical bucket — that is exactly
+  // how a seeded TenantBucket with no MinIO bucket behind it used to answer 500.
+  // A missing bucket is a NOT-FOUND condition, so it surfaces as NotFoundException
+  // (404) rather than an unmapped driver error.
+  describe('NoSuchBucket mapping', () => {
+    function noSuchBucket(): Error {
+      const error = new Error('The specified bucket does not exist');
+      error.name = 'NoSuchBucket';
+      (error as { $metadata?: { httpStatusCode?: number } }).$metadata = { httpStatusCode: 404 };
+      return error;
+    }
+
+    it('maps NoSuchBucket to NotFoundException on listObjects', async () => {
+      mockSend.mockRejectedValue(noSuchBucket());
+      await expect(provider.listObjects({ bucket: 'missing' })).rejects.toBeInstanceOf(NotFoundException);
+    });
+
+    it('names the bucket in the message', async () => {
+      mockSend.mockRejectedValue(noSuchBucket());
+      await expect(provider.listObjects({ bucket: 'missing' })).rejects.toThrow(/missing/);
+    });
+
+    it('maps NoSuchBucket on object operations too', async () => {
+      mockSend.mockRejectedValue(noSuchBucket());
+      await expect(provider.putObject({ bucket: 'missing', key: 'k', body: Buffer.from('x') })).rejects.toBeInstanceOf(
+        NotFoundException,
+      );
+      await expect(provider.deleteObject({ bucket: 'missing', key: 'k' })).rejects.toBeInstanceOf(NotFoundException);
+    });
+
+    it('leaves unrelated driver errors untouched', async () => {
+      mockSend.mockRejectedValue(new Error('connection refused'));
+      await expect(provider.listObjects({ bucket: 'b' })).rejects.toThrow('connection refused');
+      await expect(provider.listObjects({ bucket: 'b' })).rejects.not.toBeInstanceOf(NotFoundException);
+    });
+
+    it('does not change bucketExists, which answers false rather than throwing', async () => {
+      mockSend.mockRejectedValue(noSuchBucket());
+      await expect(provider.bucketExists('missing')).resolves.toBe(false);
     });
   });
 

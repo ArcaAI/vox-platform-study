@@ -9,10 +9,24 @@
 # tree (stale `^0.1.0` peers + a vox pinned to a med-ner that was never
 # published).
 #
-# WHY THIS EXISTS rather than `pnpm changeset publish`: the CI `publish-sdk`
-# job calls changesets, but the repo has NO `.changeset/` directory, so that
-# job cannot work as written. Manual publishing is the only path that runs
-# today. If changesets is ever configured, prefer it and retire this script.
+# STATUS: SUPERSEDED — break-glass only.
+#
+# This existed because the CI `publish-sdk` job called changesets while the repo
+# had no `.changeset/` directory, so that job could not work and manual
+# publishing was the only path that ran. Its own instruction was: "if changesets
+# is ever configured, prefer it and retire this script."
+#
+# Changesets IS configured now (`.changeset/config.json`, `pnpm changeset`), and
+# it enforces the SDK lockstep mechanically via its `fixed` group rather than by
+# you typing the same version eight times. So:
+#
+#   - NORMAL RELEASE: do not use this. Run `pnpm changeset` with your change and
+#     let CI version and publish. See docs/operations/release-runbook.md §3.
+#   - BREAK-GLASS: still useful if a changesets publish fails part-way and one
+#     package must be pushed by hand. Run with `--dry-run` first.
+#
+# Hand-typing a version is what let @arcaai/pipeline sit at 2.0.6 while the rest
+# of the family moved to 3.0.0 — the exact drift the `fixed` group now prevents.
 #
 # USAGE:
 #   ./scripts/publish-sdk.sh <version> [--dry-run] [--yes] [--skip-build]
