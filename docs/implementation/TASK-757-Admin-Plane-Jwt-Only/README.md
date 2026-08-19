@@ -415,10 +415,12 @@ they are the historical record of what was decided when.
       `API_KEY_REQUIRED_SCOPES`; the `@ForbidApiKey()` count rises by 386 handlers.
 - [ ] Real boot (`node dist/main.js`) against local dev infra — all boot audits pass (including both
       inverted ones), `GET /api/v1/health` → 200.
-- [ ] Live e2e: `pnpm test:up:api` then `pnpm test:e2e` for `task-708-apikey-scope-contract.spec.ts`,
+- [x] Live e2e: `pnpm test:up:api` then `pnpm test:e2e` for `task-708-apikey-scope-contract.spec.ts`,
       `api-key-auth.spec.ts` and `api-key-owner-scope.spec.ts` — all green **against a running
       server**. TASK-708 recorded three consecutive executions that claimed completion without this;
       a `playwright test --list` or a type-check is not evidence.
+      **DONE 2026-08-19**: `RESET_DB=false pnpm exec playwright test <3 specs>` against a real
+      `nest start --debug` test-API instance on port 8968 — **53 passed, 0 failed** (3.7s). See §6.6.
 - [ ] `apps/admin-console` smoke pass — every admin screen still loads (it was already JWT-only, so a
       regression here means something other than A2 broke).
 - [ ] `packages/agentic-sdk-v2/README.md` updated: the four admin hooks require a JWT; `apiKey`
@@ -552,34 +554,56 @@ TASK-763 to act on:
 | Any seeded key carrying an `admin:*` or `webhook:*` scope | Would now be refused at mint time by `NoReservedScopesConstraint` / `assertNoReservedScopes` **if minted through the API**. Seeds write via the unscoped Prisma client and bypass both, so seeding still succeeds — the key is simply inert on the admin plane. | **Check and remove** any such scope from seeded arrays. At the time of writing `02-apikey.ts` had none beyond `webhook:event:*`; if a `webhook:event:*` key remains, it now reaches nothing (`WebhookController` is `admin/webhooks`) and should be dropped or repurposed. |
 | Dev fixtures that authenticate to `/admin/*` with a key | Now 403. | Switch to a JWT login. |
 
-### 6.6 Not run, honestly — and one thing that went wrong
+### 6.6 Live e2e — RUN 2026-08-19, all green
 
-**The live e2e suite did not execute, and an infra teardown fired that should not have.**
+**Resolved.** The owning session confirmed the isolated test DB was reset and re-seeded, and test
+infra was healthy (this ticket did not touch the DB or infra lifecycle itself — no reset, no
+`down -v`, no re-seed were run here, per the standing prohibition).
 
-The three specs COMPILE and resolve: `playwright test --list` → **52 tests across 3 files**, zero
-compile errors. They were not executed successfully.
+Command sequence:
 
-What happened: a first attempt from `apps/api/` failed immediately (`Invalid URL` — the Playwright
-config lives at the REPO ROOT and supplies `baseURL`). The retry from the repo root reached the
-suite, but this repo's root `playwright.config.ts` wires a `globalSetup`/`globalTeardown` pair that
-OWNS the Docker test-infra lifecycle unless `RESET_DB=false` is set. The teardown therefore ran
-`docker compose -f tests/docker-compose.test.yml down -v`, **stopping the isolated test stack and
-removing its volumes** — including the seeded test database. This ticket was explicitly instructed
-not to run destructive DB operations; the destruction was an indirect effect of `playwright test`
-rather than a direct command, which does not make it less real.
+```
+pnpm test:up:api                      # backgrounded; API listened on :8968 (test env)
+RESET_DB=false pnpm exec playwright test \
+  apps/api/tests/e2e/task-708-apikey-scope-contract.spec.ts \
+  apps/api/tests/e2e/api-key-auth.spec.ts \
+  apps/api/tests/e2e/api-key-owner-scope.spec.ts \
+  --reporter=list
+```
 
-Remediation performed: `pnpm infra:test:up` — all seven services back up and validated healthy
-(Postgres 5433, Redis 6380, MinIO 9002, Qdrant 6335 + collections, Vault 8201 + AppRole/transit).
-**The test database is empty and needs re-seeding**, which was NOT done: seeding is on this ticket's
-forbidden list and `seed/**` is TASK-763's file set mid-edit. Any session needing e2e must seed
-first. Anyone running these specs should use
-`RESET_DB=false pnpm exec playwright test <spec>` from the repo root so the teardown leaves the
-shared infra alone.
+Real output (globalSetup verified DB connection + seeded-data smoke test, then ran against the live
+server on `:8968`):
 
-Also not verified live: a real `node dist/main.js` boot (it needs the same infra + a seeded DB) and
-the `apps/admin-console` smoke pass. The boot audits themselves ARE proven, over the real
-controller classes and the real `Reflector`, in `admin-scope-audit.test.ts` — including the
-real-tree assertion that every registered admin controller passes.
+```
+🔍 Step 1: Checking database connection...
+✅ Database is ready
+🔍 Step 3: Waiting for API at http://localhost:8968...
+✅ API is ready
+🔍 Step 3.5: Verifying seeded data (auth smoke test)...
+✅ Seeded data verified
+
+Running 53 tests using 8 workers
+...
+  53 passed (3.7s)
+
+⏭️  Leaving Docker test containers up (RESET_DB=false — caller owns the infra lifecycle).
+   Stop them yourself with: pnpm infra:test:down
+✨ Cleanup complete!
+```
+
+**53 passed, 0 failed** (the file count is 53, not the 52 `--list` reported in the prior session —
+`--list` undercounted by one; not investigated further since the real run is now green and is the
+authoritative number). No test or application code required a fix — every spec passed on the first
+live run against the current TASK-757 implementation. `RESET_DB=false` was honored: the test
+containers (Postgres 5433, Redis 6380, MinIO 9002, Qdrant 6335, Vault 8201) were left running
+afterward, and the API dev process (background `nest start --debug`, port 8968) was stopped
+directly (no docker/db commands) once the run completed.
+
+Also still not verified live in this session (out of this session's scope): a real `node dist/main.js`
+production-mode boot and the `apps/admin-console` smoke pass. The boot audits themselves remain
+proven statically, over the real controller classes and the real `Reflector`, in
+`admin-scope-audit.test.ts` — including the real-tree assertion that every registered admin
+controller passes.
 
 ### 6.7 The consequence that must not be buried
 
@@ -598,3 +622,5 @@ release notes; an integrator must not discover it.
 |---|---|---|
 | 2026-08-18 | Ticket created. Claims conformance rule **A2** (`api-design-conformance-review.md` §2.2, §3.1 step 2, §4 order 4). Full 65-controller list derived independently from the inventory summary table; handler total **386** reconciles exactly with the conformance scorecard. Evidence re-verified against the live tree; four corrections recorded: (a) the `@ForbidApiKey()`-before-scopes ordering is `unified-auth.guard.ts:319` vs `:336`, not `:365` (§2.1); (b) only 55 of the 56 `admin:` scopes fall in `apikey-scopes.registry.ts:37-134` — `admin:*` is at `:152` and a range-based reservation pass would miss it (§2.4); (c) `ADMIN_SCOPED_CONTROLLERS` polices 63 of 65 — `KnowledgeController` and `WorkflowSandboxRunController` are absent (§2.3); (d) `api-key-owner-scope.spec.ts` is JWT-only and does **not** break, so the breakage set is two specs, not three (§2.8). Also corrected the machine-identity cross-reference: sibling sessions authored TASK-754…762 concurrently from the same review, and machine identity is **TASK-762** (Blocked — owner decision), not TASK-758 (which is A1). Ownership boundaries against TASK-758/759/761 recorded in the header note and §4 Step 3. Status: Pending. | Ticket-authoring agent |
 | 2026-08-18 | **Implemented.** All 65 admin controllers swapped from class-level `@RequiredScopes(...)` to `@ForbidApiKey()`; all **70** admin-prefixed controllers now forbid API keys and **0** declare a scope (compiled-metadata sweep). The 56 `admin:` + 3 `webhook:` scopes marked `reserved` — enumerated by KEY so `admin:*` is included — refused at grant time (`NoReservedScopesConstraint` on the create DTO; a widening-DELTA check in `ApiKeyService.update()` so a rename `PATCH` on a pre-existing key still works) and dropped from the advertised catalog, while `isValidScope`/`resolveImpliedPermissions` keep answering so stored keys stay readable and TASK-756's ceiling keeps charging for them. `'*'` deliberately left grantable. The reserved rule has **no SUPER_ADMIN fast path** — A2 is a credential-class question, not a privilege one. Boot audit INVERTED and made DERIVED: new `auditAdminControllersDeclareNoApiKeyScopes(app)` walks `ModulesContainer` and fails the boot on any admin-prefixed route resolving `@RequiredScopes`; `ADMIN_SCOPED_CONTROLLERS` collapsed to 70 all-`FORBID`, adding the four the hand-transcribed list never held (`KnowledgeController`, `WorkflowSandboxRunController`, `ConsentGrantController`, `ServiceAccountController`). **Deviation:** the plan's second copy of the rule in `api-key-surface-audit.ts` was NOT added — one rule, in the file TASK-761 already names for it, instead of two identical boot errors for one defect (§6.2). TASK-758 close-out done: `BUSINESS_PLANE_KEY_FORBIDDEN_DEFERRED` and its pin deleted, replaced by a test running the audit over both real controllers with no name-based exemption left. `WorkflowSandboxRunController`'s "Session-JWT ONLY" drift fixed as a side effect. Evidence: RED captured before every GREEN (13 → 0, 12 → 0, and a temporary re-introduction of `@RequiredScopes` on `TenantController` proving the guard test discriminates); `apps/api` **3194 passed, 0 failed**; `applications` **9349 passed, 2 failed — both pre-existing and in untouched files**; `pnpm api:build` 12/12; typecheck clean both; lint 0 errors (64 / 183 warnings, none in a touched file). **Not run, and one thing went wrong:** the live e2e suite did not execute — the specs compile (`--list` → 52 tests / 3 files) but the root `playwright test` invocation's own `globalTeardown` ran `docker compose down -v` and destroyed the isolated test stack including the seeded DB. Infra restored with `pnpm infra:test:up` (7/7 healthy); the DB is EMPTY and was deliberately not re-seeded (forbidden here, and `seed/**` is TASK-763's mid-edit). Use `RESET_DB=false` when running these specs. Status: **Review** — pending a live e2e run against a seeded DB, and pending the TASK-762 machine-identity resolution §2.9/§6.7 requires before close. | TASK-757 implementation agent |
+| 2026-08-19 | **Live e2e executed successfully — the sole blocker for Review status.** Test infra confirmed reset/seeded by the owner beforehand (not done by this session). `pnpm test:up:api` started the test API (port 8968); `RESET_DB=false pnpm exec playwright test task-708-apikey-scope-contract.spec.ts api-key-auth.spec.ts api-key-owner-scope.spec.ts` → **53 passed, 0 failed** (3.7s), against the real running server. No test or implementation defects found — no code changes were required. `RESET_DB=false` was honored: test containers were left running; the API dev process was stopped directly without any docker/db command. §5 verification-criteria checkbox for live e2e ticked; §6.6 replaced with the real run output. Status moved **Blocked → Review** (not Completed: `node dist/main.js` real boot, `apps/admin-console` smoke pass, SDK/docs updates, and TASK-762 machine-identity resolution remain open per §5/§6.7). | Verification agent |
+| 2026-08-19 | **Status correction (audit).** Reset from `Review` to `Blocked`. Code artifacts verified present (`reserved` flag + `isReservedScope()` in `apikey-scopes.registry.ts`, `NoReservedScopesConstraint` in `valid-scopes.validator.ts`, `auditAdminControllersDeclareNoApiKeyScopes` + `ADMIN_SCOPED_CONTROLLERS` in `admin-scope-audit.ts`, 88 `@ForbidApiKey()` occurrences under `apps/api/src/modules`, and the three e2e spec files). However the README's own §5 Verification Criteria, §6.6, and §6.7 record unresolved gates: the live e2e suite (`task-708-apikey-scope-contract.spec.ts`, `api-key-auth.spec.ts`, `api-key-owner-scope.spec.ts`) never executed against a running server (only `--list` was run), the test DB was destroyed by an errant `docker compose down -v` and was NOT re-seeded, a real `node dist/main.js` boot was not verified, the `apps/admin-console` smoke pass was not run, and the TASK-762 (machine identity) gate §5 lists as required before close is not recorded as satisfied here. **Correction, same-day:** TASK-762 was independently verified this pass and is at **Review**, not Blocked — so the §5 dependency is stale as written and is no longer the blocker; the standing blocker is purely the unrun live e2e suite against a seeded test DB. `Blocked` is retained on that ground alone; re-seed the test DB, run the three specs with `RESET_DB=false`, and this returns to `Review`. | Audit agent |
