@@ -115,6 +115,10 @@ publish-sdk:
     - echo "Building publishable packages..."
     - pnpm turbo build --filter=@arcaai/utils
     - pnpm turbo build --filter=@arcaai/types
+    # Runtime dependency of @arcaai/vox (`workspace:*`), so it is published with the
+    # family — a consumer installing @arcaai/vox must be able to resolve it. It was
+    # missing from this list, which would have shipped a broken install.
+    - pnpm turbo build --filter=@arcaai/json-schema-subset
     - pnpm turbo build --filter=@arcaai/pipeline
     - pnpm turbo build --filter=@arcaai/room
     - pnpm turbo build --filter=@arcaai/vad

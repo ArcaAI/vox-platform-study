@@ -1,0 +1,25 @@
+{
+  "$schema": "https://unpkg.com/@changesets/config@3.0.0/schema.json",
+  "changelog": "@changesets/cli/changelog",
+  "commit": false,
+  "baseBranch": "dev",
+  "access": "restricted",
+  "updateInternalDependencies": "patch",
+  "fixed": [
+    [
+      "@arcaai/vox",
+      "@arcaai/vox-node",
+      "@arcaai/room",
+      "@arcaai/stt",
+      "@arcaai/vad",
+      "@arcaai/noise-filter",
+      "@arcaai/med-ner",
+      "@arcaai/pipeline"
+    ]
+  ],
+  "ignore": [
+    "@arcaai/async-contract",
+    "@arcaai/vox-codegen",
+    "@arcaai/workflow-contract"
+  ]
+}

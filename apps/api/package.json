@@ -122,5 +122,6 @@
     "ts-node": "^10.9.2",
     "tsc-alias": "^1.9.1",
     "typescript": "^5.9.3"
-  }
+  },
+  "private": true
 }
