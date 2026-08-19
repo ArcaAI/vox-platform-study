@@ -20,9 +20,11 @@ import {
   SERVICE_ACCOUNT_SCOPE_REGISTRY,
   STANDALONE_FEATURE_SVC_SCOPES,
   resolveServiceAccountImpliedPermissions,
+  toServiceAccountScope,
 } from '@arcaai/applications';
 
 import {
+  auditAdminControllersDeclareCorrectSvcScope,
   auditNoAdminControllerUsesServiceTokenGuard,
   auditNoInternalControllerDeclaresSvcScopes,
   auditServiceAccountControllerForbidsBothClasses,
@@ -30,8 +32,17 @@ import {
   auditSvcScopeCoverage,
   auditTokenExchangeRouteIsPublicAndGuarded,
 } from '../service-account-surface-audit';
+import { TASK_773_ADMIN_SCOPE_MAP, type AdminScopeMapRow } from './fixtures/task-773-admin-scope-map';
 import { ServiceAccountController } from '../../modules/service-account/service-account.controller';
 import { ServiceAccountTokenController } from '../../modules/service-account/service-account-token.controller';
+// The six admin-prefixed controllers deliberately absent from the fixture —
+// imported REAL, so this test breaks if one is later given a svc:* scope
+// without a fixture row (or a fixture row without the decorator).
+import { WebhookController } from '../../modules/webhook/webhook.controller';
+import { MonitoringController } from '../../modules/monitoring/monitoring.controller';
+import { AdminHealthServicesController } from '../../modules/health/admin-health-services.controller';
+import { AdminImpersonationController } from '../../modules/auth/admin-impersonation.controller';
+import { ConsentGrantController } from '../../modules/consent/consent.controller';
 
 /** Same shortcut the sibling audit tests use: real metadata, no DI graph. */
 function fakeApp(controllers: Array<new (...args: never[]) => unknown>) {
@@ -229,5 +240,170 @@ describe('G — svc:* route declarations are self-consistent', () => {
 
   it('passes for the real controllers (no svc:* declarations yet — TASK-757 lands them)', () => {
     expect(() => auditServiceAccountReachableRoutesAreDeclared(fakeApp([ServiceAccountController, ServiceAccountTokenController]))).not.toThrow();
+  });
+});
+
+// ─── H (TASK-773) ───────────────────────────────────────────────────────────
+
+/**
+ * The synthetic module set for H is built FROM the fixture rather than from a
+ * handful of hand-picked controllers, because H's whole subject IS the fixture:
+ * a test that only ever exercised two rows would not notice the audit silently
+ * skipping the other 62.
+ *
+ * Each synthetic controller extends one decorated base — so it carries real
+ * `@Controller`/`@Get` metadata through the prototype chain, which is what
+ * `walkRoutes` and `Reflector` read — and is given the fixture row's class
+ * NAME, the key the audit joins on. The `svc:*` declaration is applied with the
+ * REAL `RequiredSvcScopes` decorator, including its decoration-time registry
+ * validation; metadata is never written by hand here.
+ */
+@Controller('admin/synthetic')
+class SyntheticAdminBase {
+  @Get()
+  list() {}
+}
+
+type SyntheticPosture = { scopes?: string[]; forbid?: boolean };
+
+function syntheticController(row: AdminScopeMapRow, posture: SyntheticPosture = {}) {
+  const scopes = posture.scopes ?? [toServiceAccountScope(row.adminScope)];
+  const named = { [row.controllerClass]: class extends SyntheticAdminBase {} };
+  const ControllerClass = named[row.controllerClass];
+
+  if (scopes.length > 0) RequiredSvcScopes(...scopes)(ControllerClass);
+  if (posture.forbid) ForbidServiceAccount()(ControllerClass);
+
+  return ControllerClass as unknown as new (...args: never[]) => unknown;
+}
+
+/** The whole fixture, correctly swept — with `overrides` replacing named rows. */
+function sweptAdminPlane(overrides: Record<string, SyntheticPosture | 'omit'> = {}) {
+  const controllers: Array<new (...args: never[]) => unknown> = [];
+  for (const row of TASK_773_ADMIN_SCOPE_MAP) {
+    const override = overrides[row.controllerClass];
+    if (override === 'omit') continue;
+    controllers.push(syntheticController(row, override ?? {}));
+  }
+  return controllers;
+}
+
+/** The offender lines of a thrown audit error — one per problem found. */
+function offenderLines(run: () => void): string[] {
+  try {
+    run();
+  } catch (error) {
+    return (error as Error).message.split('\n').slice(1);
+  }
+  throw new Error('expected the audit to throw, but it passed');
+}
+
+describe('H — every swept admin controller declares its svc:admin:<area> twin', () => {
+  it('PASSES on a correctly swept plane — the audit is not merely always-failing', () => {
+    expect(() => auditAdminControllersDeclareCorrectSvcScope(fakeApp(sweptAdminPlane()))).not.toThrow();
+  });
+
+  it('THROWS when the sweep MISSED a controller (no svc:* scope at all)', () => {
+    const lines = offenderLines(() => auditAdminControllersDeclareCorrectSvcScope(fakeApp(sweptAdminPlane({ TenantController: { scopes: [] } }))));
+
+    expect(lines).toHaveLength(1);
+    expect(lines[0]).toContain('TenantController');
+    expect(lines[0]).toContain('declares NO svc:* scope');
+    expect(lines[0]).toContain("expected exactly ['svc:admin:tenant:write']");
+  });
+
+  it('THROWS when the sweep MIS-ASSIGNED a scope — a registry-known twin belonging to a DIFFERENT admin area', () => {
+    // The realistic copy-paste: TenantController keeps the line it was pasted
+    // from, so it ends up gated by the DEPARTMENT area's twin. Every string
+    // here is real — `svc:admin:department:manage` is in the registry, resolves
+    // to abilities, and satisfies `@RequiredSvcScopes`'s own validation.
+    const misassigned = { TenantController: { scopes: [toServiceAccountScope('admin:department:manage')] } };
+    const lines = offenderLines(() => auditAdminControllersDeclareCorrectSvcScope(fakeApp(sweptAdminPlane(misassigned))));
+
+    expect(lines).toHaveLength(1);
+    expect(lines[0]).toContain('TenantController');
+    expect(lines[0]).toContain('declares the WRONG svc:* scope');
+    expect(lines[0]).toContain("expected exactly ['svc:admin:tenant:write']");
+    expect(lines[0]).toContain("found ['svc:admin:department:manage']");
+  });
+
+  it('and assertion G is BLIND to that same mis-assignment — which is why H exists', () => {
+    const misassigned = { TenantController: { scopes: [toServiceAccountScope('admin:department:manage')] } };
+    const app = fakeApp(sweptAdminPlane(misassigned));
+
+    // G sees a registry-known scope on a route that does not forbid machines,
+    // and is satisfied. It has no notion of WHICH area a controller belongs to.
+    expect(() => auditServiceAccountReachableRoutesAreDeclared(app)).not.toThrow();
+    expect(() => auditAdminControllersDeclareCorrectSvcScope(app)).toThrow(/WRONG svc:\* scope/);
+  });
+
+  it('THROWS when a controller WIDENS beyond its own twin (correct scope plus a second area)', () => {
+    const widened = {
+      WorkflowRunController: { scopes: [toServiceAccountScope('admin:workflow-run:read'), toServiceAccountScope('admin:tenant:write')] },
+    };
+    const lines = offenderLines(() => auditAdminControllersDeclareCorrectSvcScope(fakeApp(sweptAdminPlane(widened))));
+
+    expect(lines).toHaveLength(1);
+    expect(lines[0]).toContain('WorkflowRunController');
+    expect(lines[0]).toContain('declares the WRONG svc:* scope');
+    expect(lines[0]).toContain('svc:admin:tenant:write');
+  });
+
+  it('THROWS when a controller declares the twin AND @ForbidServiceAccount()', () => {
+    const lines = offenderLines(() => auditAdminControllersDeclareCorrectSvcScope(fakeApp(sweptAdminPlane({ AuditLogController: { forbid: true } }))));
+
+    expect(lines).toHaveLength(1);
+    expect(lines[0]).toContain('AuditLogController');
+    expect(lines[0]).toContain('@ForbidServiceAccount()');
+    expect(lines[0]).toContain('contradict');
+  });
+
+  it('THROWS when the fixture names a controller no module registers (a rename or deletion)', () => {
+    const lines = offenderLines(() => auditAdminControllersDeclareCorrectSvcScope(fakeApp(sweptAdminPlane({ DepartmentController: 'omit' }))));
+
+    expect(lines).toHaveLength(1);
+    expect(lines[0]).toContain('DepartmentController');
+    expect(lines[0]).toContain('is not registered by any module');
+  });
+
+  it('reports EVERY offender in one boot failure, not just the first', () => {
+    const lines = offenderLines(() =>
+      auditAdminControllersDeclareCorrectSvcScope(
+        fakeApp(
+          sweptAdminPlane({
+            TenantController: { scopes: [] },
+            UserController: { scopes: [toServiceAccountScope('admin:department:manage')] },
+            AuditLogController: 'omit',
+          }),
+        ),
+      ),
+    );
+
+    expect(lines).toHaveLength(3);
+    expect(lines.join('\n')).toContain('TenantController');
+    expect(lines.join('\n')).toContain('UserController');
+    expect(lines.join('\n')).toContain('AuditLogController');
+  });
+
+  it('IGNORES the six admin controllers deliberately absent from the fixture', () => {
+    // Three have no `admin:*` scope to renamespace and await an owner decision
+    // (WebhookController carries `webhook:event:write`; the other two are
+    // ability-gated only); three are machine-CLOSED by owner decision D-3. None
+    // may be required to carry a svc:* scope, and the fixture-driven loop must
+    // not invent one for them just because their path starts with `admin/`.
+    const absent = [
+      WebhookController,
+      MonitoringController,
+      AdminHealthServicesController,
+      ServiceAccountController,
+      AdminImpersonationController,
+      ConsentGrantController,
+    ] as unknown as Array<new (...args: never[]) => unknown>;
+
+    for (const Absent of absent) {
+      expect(TASK_773_ADMIN_SCOPE_MAP.some((row) => row.controllerClass === Absent.name)).toBe(false);
+    }
+
+    expect(() => auditAdminControllersDeclareCorrectSvcScope(fakeApp([...sweptAdminPlane(), ...absent]))).not.toThrow();
   });
 });
