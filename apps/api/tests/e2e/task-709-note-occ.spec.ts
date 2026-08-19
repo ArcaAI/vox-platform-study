@@ -19,17 +19,19 @@
  *
  * Environment. Requires the test API at `process.env.API_URL` (default
  * `http://localhost:8968`) and a seeded test database — see
- * `tests/setup/playwright.global-setup.ts`. The summary/approve cases
+ * `tests/setup/playwright.global-setup.ts`. The `PATCH :id/summary` cases
  * additionally require a reachable `apps/text` (SMR) so `generateSummary`
  * can produce the RAW_SUMMARY row the OCC assertions run against (mirrors
- * the FULL-loop dependency documented in `harness-gate.spec.ts`).
+ * the FULL-loop dependency documented in `harness-gate.spec.ts`); the
+ * approve cases instead need `HARNESS_SERVICE_TOKEN` — see the TASK-772
+ * banner above that block for why.
  *
- * NOT RUN in this authoring session — local infra (Postgres/Redis/API) is
- * down per the execution constraints for this ticket. This file is
- * authored against the live contract (routes, DTOs, exception mapping) but
- * has not been executed; treat it as RED until a live run confirms it.
+ * TASK-772 — this file was authored blind ("treat it as RED until a live run
+ * confirms it") and that live run never happened: the summary block's
+ * `beforeAll` timed out on the real summarization before any of its tests
+ * executed. It has since been run green end to end.
  */
-import { test, expect } from '@playwright/test';
+import { test, expect, type APIRequestContext } from '@playwright/test';
 import { SEEDED_USERS, DEFAULT_TENANT_KEY, loginUser } from '../../../../tests/helpers';
 
 function bearer(token: string): Record<string, string> {
@@ -46,6 +48,25 @@ interface SummaryBody {
   id: string;
   version: number;
   content: string;
+}
+
+interface ConsultationBody {
+  id: string;
+  version: number;
+  status?: string;
+  tenantId?: string;
+}
+
+/** The tenant UUID carried in the access token's payload. */
+function tenantIdFromToken(token: string): string {
+  const payload = JSON.parse(Buffer.from(token.split('.')[1] ?? '', 'base64url').toString('utf8')) as { tenantId?: string };
+  return payload.tenantId ?? '';
+}
+
+async function getConsultation(request: APIRequestContext, token: string, id: string): Promise<ConsultationBody> {
+  const res = await request.get(`/api/v1/consultations/${id}`, { headers: bearer(token) });
+  expect(res.status(), `GET /consultations/${id}`).toBe(200);
+  return (await res.json()) as ConsultationBody;
 }
 
 // SERIAL: this file's `beforeAll` performs stateful writes (opening consultations,
@@ -134,7 +155,7 @@ test.describe('TASK-709 — OCC on PATCH :id/context/:contextId', () => {
   });
 });
 
-test.describe('TASK-709 — OCC on PATCH :id/summary/:summaryId and POST :id/summary/:contextItemId/approve', () => {
+test.describe('TASK-709 — OCC on PATCH :id/summary/:summaryId', () => {
   // Requires a reachable apps/text (SMR) to actually generate a summary —
   // see the file-level doc comment.
   //
@@ -156,6 +177,16 @@ test.describe('TASK-709 — OCC on PATCH :id/summary/:summaryId and POST :id/sum
     const login = await loginUser(request, SEEDED_USERS.doctor.username, SEEDED_USERS.doctor.password, DEFAULT_TENANT_KEY);
     expect(login, 'doctor login failed').toBeTruthy();
     token = login!.token;
+
+    // This hook performs a REAL summarization (apps/text → the configured LLM),
+    // which the 30s global `timeout` in playwright.config.ts does not cover: a
+    // single `POST /api/v1/generate` was observed at 34.6s here (20.8s of model
+    // latency plus queueing behind the other parallel workers), so the hook
+    // timed out and Playwright charged it to the first test in this block —
+    // reading as an OCC regression rather than a slow generator. Same reasoning
+    // and same remedy as the real-generation blocks in
+    // `task-635-live-agent-lineage.spec.ts`.
+    test.setTimeout(180_000);
 
     const opened = await request.post('/api/v1/consultations/open', {
       headers: bearer(token),
@@ -224,6 +255,139 @@ test.describe('TASK-709 — OCC on PATCH :id/summary/:summaryId and POST :id/sum
     const loserBody = await loser.json();
     expect(loserBody.code).toBe('PERSISTENCE.CONCURRENCY_CONFLICT');
   });
+});
+
+// =============================================================================
+// TASK-772 — approve OCC, on a consultation that is actually SIGNABLE.
+//
+// These two cases used to live in the block above, against the consultation it
+// opens and leaves in `OPEN`. That made the 412 case unreachable: `approve`
+// asserts sign legality BEFORE it evaluates the version CAS
+// (`SummaryService.approveSummary` → `consultation.transitionTo(SIGNED)`), and
+// `OPEN` is deliberately NOT a legal predecessor of `SIGNED` — the matrix in
+// `ConsultationEntity.ts` lists exactly `DRAFT_PENDING_SENSORS`,
+// `PENDING_REVIEW` and `TIMED_OUT`. So the route answered
+// `409 Illegal consultation state transition: OPEN → SIGNED` for a stale AND
+// for a fresh `If-Match` alike; the assertion never reached the OCC path it
+// claims to cover. (The 428 case passed only because `@RequiresIfMatch()` is a
+// guard and fires before the handler runs at all.)
+//
+// The defect stayed invisible because the block's `beforeAll` timed out on the
+// real summarization before these tests ever ran — see the `test.setTimeout`
+// note above and this file's header ("treat it as RED until a live run
+// confirms it"; that live run never happened).
+//
+// Reaching a signable state needs the harness: since TASK-732 deleted
+// `SummaryProcessor.applyLegacySafetyFloor`, `persistDraft` is the ONLY
+// remaining writer of `PENDING_REVIEW`/`DRAFT_PENDING_SENSORS`. So this block
+// walks the real lifecycle `OPEN → PRIMED → RECORDING → DRAINING` over the
+// public routes and then drives the service-token-guarded
+// `internal/harness/consultations/:id/draft` directly — the same technique
+// `consultation-state-machine.spec.ts` uses — which both promotes the
+// consultation to `PENDING_REVIEW` and creates the summary ContextItem the OCC
+// assertions run against. No apps/harness process is involved: that endpoint
+// is the gateway's own inbound half of the adapter.
+// =============================================================================
+const HARNESS_SERVICE_TOKEN = process.env.HARNESS_SERVICE_TOKEN ?? '';
+
+test.describe('TASK-709 — OCC on POST :id/summary/:contextItemId/approve', () => {
+  let token: string;
+  let consultationId = '';
+  let summaryId = '';
+  let skipReason = '';
+
+  test.beforeAll(async ({ request }) => {
+    if (!HARNESS_SERVICE_TOKEN) {
+      skipReason = 'HARNESS_SERVICE_TOKEN is not set — cannot drive the consultation to a signable state';
+      console.warn(`[TASK-772] ${skipReason}`);
+      return;
+    }
+
+    const login = await loginUser(request, SEEDED_USERS.doctor.username, SEEDED_USERS.doctor.password, DEFAULT_TENANT_KEY);
+    expect(login, 'doctor login failed').toBeTruthy();
+    token = login!.token;
+
+    // Recording a consent grant is an ADMIN surface (`/admin/consent-grants`);
+    // the doctor who runs the consultation cannot write one. Same split as
+    // `consent-abac.spec.ts`.
+    const adminLogin = await loginUser(request, SEEDED_USERS.admin.username, SEEDED_USERS.admin.password, DEFAULT_TENANT_KEY);
+    expect(adminLogin, 'tenant admin login failed').toBeTruthy();
+    const adminToken = adminLogin!.token;
+
+    const patientId = `task-709-approve-${Date.now()}`;
+    const opened = await request.post('/api/v1/consultations/open', {
+      headers: bearer(token),
+      data: { patientId },
+    });
+    expect([200, 201], 'POST /consultations/open').toContain(opened.status());
+    const openedBody = (await opened.json()) as { id: string; version: number; tenantId?: string };
+    consultationId = openedBody.id;
+
+    // The capture stages are consent-gated (TASK-712 `@RequiresConsent`), so
+    // record an AI_DOCUMENTATION grant first or `prime` answers
+    // `403 DOMAIN.CONSENT_DENIED (no_grant)`. Same shape as `consent-abac.spec.ts`.
+    const granted = await request.post('/api/v1/admin/consent-grants', {
+      headers: bearer(adminToken),
+      data: { externalPatientId: patientId, purpose: 'AI_DOCUMENTATION', grantMethod: 'VERBAL_ATTESTED' },
+    });
+    expect([200, 201], 'POST /admin/consent-grants').toContain(granted.status());
+
+    // OPEN -> PRIMED -> RECORDING -> DRAINING over the public lifecycle routes.
+    const primed = await request.post(`/api/v1/consultations/${consultationId}/prime`, {
+      headers: { ...bearer(token), 'If-Match': `"${openedBody.version}"` },
+    });
+    if (primed.status() >= 300) {
+      skipReason = `POST :id/prime returned ${primed.status()} — cannot stage a signable consultation. body: ${await primed.text()}`;
+      console.warn(`[TASK-772] ${skipReason}`);
+      return;
+    }
+    const started = await request.post(`/api/v1/consultations/${consultationId}/recording/start`, { headers: bearer(token) });
+    if (started.status() >= 300) {
+      skipReason = `POST :id/recording/start returned ${started.status()}. body: ${await started.text()}`;
+      console.warn(`[TASK-772] ${skipReason}`);
+      return;
+    }
+    const stopped = await request.post(`/api/v1/consultations/${consultationId}/recording/stop`, { headers: bearer(token) });
+    if (stopped.status() >= 300) {
+      skipReason = `POST :id/recording/stop returned ${stopped.status()}. body: ${await stopped.text()}`;
+      console.warn(`[TASK-772] ${skipReason}`);
+      return;
+    }
+
+    // DRAINING -> PENDING_REVIEW, and the draft ContextItem the OCC cases edit.
+    // `tenantId` must be the tenant UUID the gateway re-establishes CLS from —
+    // NOT the login tenant KEY (`__GLOBAL__`), and `ConsultationResponse` does
+    // not carry it. The JWT does, so read it from there.
+    const tenantId = tenantIdFromToken(token);
+    expect(tenantId, 'could not read tenantId from the doctor JWT').toBeTruthy();
+    const draft = await request.post(`/api/v1/internal/harness/consultations/${consultationId}/draft`, {
+      headers: { 'X-Service-Token': HARNESS_SERVICE_TOKEN },
+      data: { tenantId, content: '{"subjective":"s","objective":"o","assessment":"a","plan":"p"}' },
+    });
+    if (draft.status() >= 300) {
+      skipReason = `internal harness draft returned ${draft.status()} — consultation not promoted to PENDING_REVIEW. body: ${await draft.text()}`;
+      console.warn(`[TASK-772] ${skipReason}`);
+      return;
+    }
+
+    const latest = await request.get(`/api/v1/consultations/${consultationId}/summary/latest`, { headers: bearer(token) });
+    expect(latest.status(), 'the harness draft must be readable as the latest summary').toBe(200);
+    summaryId = ((await latest.json()) as SummaryBody).id;
+  });
+
+  test.afterAll(async ({ request }) => {
+    if (!consultationId) return;
+    await request.delete(`/api/v1/consultations/${consultationId}`, { headers: bearer(token) }).catch(() => undefined);
+  });
+
+  test('the staged consultation is in a state where approve is legal', async ({ request }) => {
+    test.skip(!summaryId, skipReason);
+    const status = (await getConsultation(request, token, consultationId)).status;
+    expect(
+      ['PENDING_REVIEW', 'DRAFT_PENDING_SENSORS', 'TIMED_OUT'],
+      'approve OCC is only observable from a legal predecessor of SIGNED — otherwise the 409 legality check fires first',
+    ).toContain(status);
+  });
 
   test('POST :id/summary/:contextItemId/approve without If-Match returns 428', async ({ request }) => {
     test.skip(!summaryId, skipReason);
@@ -250,7 +414,7 @@ test.describe('TASK-709 — OCC on PATCH :id/summary/:summaryId and POST :id/sum
       headers: { ...bearer(token), 'If-Match': `"${staleVersion}"` },
       data: { expectedVersion: staleVersion },
     });
-    expect(approve.status()).toBe(412);
+    expect(approve.status(), await approve.text()).toBe(412);
     const approveBody = await approve.json();
     expect(approveBody.code).toBe('PERSISTENCE.CONCURRENCY_CONFLICT');
   });

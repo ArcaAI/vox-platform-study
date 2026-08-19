@@ -1321,6 +1321,15 @@ export class ConsultationController {
       throw new ServiceUnavailableException(`Note generation is temporarily unavailable for this consultation (seam reason: ${decision.reason})`);
     }
 
+    // Publish the job-status record for the harness's own correlation id.
+    // The seam dispatches straight to apps/harness without touching BullMQ, so
+    // nothing else writes it — and without it the jobId returned below is
+    // unresolvable: `GET /consultations/jobs/:jobId` (plus `/cancel` and
+    // `/stream`) 404s inside `TenantOwnedResourceInterceptor`, which reads
+    // `getJobStatus` for its tenancy check. The legacy queue path deleted in
+    // TASK-732 used to create this record.
+    await this.consultationJobService.registerHarnessNoteJob(decision.harnessJobId, consultationId, tenantId, userId);
+
     return new AsyncJobResponseDto({
       jobId: decision.harnessJobId,
       status: 'pending',

@@ -18,16 +18,24 @@ import type { IAppSettingsService } from '../../../_meta/';
 // All existing tests construct S3Service with just AppSettings, so we
 // provide a default getSecretSync mock that returns the standard test
 // keys. Individual tests can override this to verify cache-miss behavior.
+const resolveTestSecret = (key: string): string | undefined => {
+  if (key === 'S3_ACCESS_KEY') return 'test-access-key';
+  if (key === 'S3_SECRET_KEY') return 'test-secret-key';
+  return undefined;
+};
 const buildDefaultSecretsMock = () => ({
-  getSecretSync: vi.fn((key: string) => {
-    if (key === 'S3_ACCESS_KEY') return 'test-access-key';
-    if (key === 'S3_SECRET_KEY') return 'test-secret-key';
-    return undefined;
-  }),
+  getSecretSync: vi.fn(resolveTestSecret),
+  // The configuration GATE resolves credentials through the async
+  // `getSecretOptional` so a cold cache loads instead of reporting
+  // "not configured"; `getS3Configuration` still reads the sync path.
+  getSecretOptional: vi.fn(async (key: string) => resolveTestSecret(key)),
 });
 function makeService(
   appSettings: IAppSettingsService,
-  secrets: { getSecretSync: (k: string) => string | undefined } = buildDefaultSecretsMock(),
+  secrets: {
+    getSecretSync: (k: string) => string | undefined;
+    getSecretOptional: (k: string) => Promise<string | undefined>;
+  } = buildDefaultSecretsMock(),
 ): S3Service {
   return new S3Service(appSettings, secrets as any);
 }
