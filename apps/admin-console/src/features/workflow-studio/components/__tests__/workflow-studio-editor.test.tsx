@@ -96,12 +96,14 @@ describe('WorkflowStudioEditor — view mode <-> URL (Task 16 remainder)', () =>
     const onUrlUpdate = vi.fn();
     renderWithProviders(<WorkflowStudioEditor definition={definition()} etag='"1"' registryNodes={[]} />, { onUrlUpdate });
 
-    expect(screen.queryByText(/no nodes yet/i)).toBeNull(); // canvas is up, not the list editor's empty state
+    // Both editors now carry a "No nodes yet" empty state, so the discriminator is the copy:
+    // the canvas one points at the palette, the list one at "add a node from the palette to start".
+    expect(screen.getByText(/switch to the list view/i)).toBeTruthy(); // canvas is up, not the list editor
 
     // Radix `ToggleGroupItem` renders `role="radio"` inside the `radiogroup` toolbar, not "button".
     fireEvent.click(screen.getByRole('radio', { name: 'List view' }));
 
-    expect(await screen.findByText(/no nodes yet/i)).toBeTruthy();
+    expect(await screen.findByText(/to start building this workflow/i)).toBeTruthy();
     await waitFor(() => expect(onUrlUpdate).toHaveBeenCalled());
     const lastCall = onUrlUpdate.mock.calls.at(-1)?.[0] as { searchParams: URLSearchParams };
     expect(lastCall.searchParams.get('view')).toBe('list');
@@ -110,7 +112,7 @@ describe('WorkflowStudioEditor — view mode <-> URL (Task 16 remainder)', () =>
   it('hydrates the store from ?view=list on mount (shareable deep link)', async () => {
     installFetchMock();
     renderWithProviders(<WorkflowStudioEditor definition={definition()} etag='"1"' registryNodes={[]} />, { searchParams: '?view=list' });
-    expect(await screen.findByText(/no nodes yet/i)).toBeTruthy();
+    expect(await screen.findByText(/to start building this workflow/i)).toBeTruthy();
   });
 });
 

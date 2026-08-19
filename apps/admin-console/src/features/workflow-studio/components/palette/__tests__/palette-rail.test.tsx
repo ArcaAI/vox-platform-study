@@ -2,7 +2,7 @@
  * `PaletteRail` (TASK-719 Task 12) — registry-driven, safety class always visible, adding a
  * node works without dragging (WCAG 2.5.7: each item is a real `<button>`).
  */
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import { axe } from 'vitest-axe';
 import { describe, expect, it, vi } from 'vitest';
 import { PaletteRail } from '../palette-rail';
@@ -78,5 +78,21 @@ describe('PaletteRail', () => {
   it('0 axe violations', async () => {
     const { container } = render(<PaletteRail descriptors={[NOOP, MANDATORY, GATED, UNIMPLEMENTED]} onAddNode={vi.fn()} />);
     expect(await axe(container)).toHaveNoViolations();
+  });
+});
+
+describe('PaletteRail filter (TASK-719 UX pass)', () => {
+  it('narrows the list by humanized label, announces the count, and shows an empty state', () => {
+    render(<PaletteRail descriptors={[NOOP, MANDATORY]} onAddNode={vi.fn()} />);
+    expect(screen.getByText('2 of 2 node types')).toBeTruthy();
+
+    const search = screen.getByLabelText('Filter nodes');
+    fireEvent.change(search, { target: { value: 'guardrail' } });
+    expect(screen.getByText('1 of 2 node types')).toBeTruthy();
+    expect(screen.queryByRole('button', { name: /^Noop/ })).toBeNull();
+
+    fireEvent.change(search, { target: { value: 'zzz' } });
+    expect(screen.getByText('No matching node types')).toBeTruthy();
+    expect(screen.getByText('0 of 2 node types')).toBeTruthy();
   });
 });
