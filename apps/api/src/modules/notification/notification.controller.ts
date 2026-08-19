@@ -8,7 +8,7 @@ import {
 } from '@arcaai/applications';
 import { Body, Controller, Delete, Get, Inject, Param, Patch, Query } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiParam, ApiQuery, ApiResponse, ApiTags } from '@nestjs/swagger';
-import { CanManage, ForbidApiKey } from '../../decorators';
+import { CanManage, ForbidApiKey, RequiredSvcScopes } from '../../decorators';
 
 /**
  * NotificationController — admin read/update/delete surface
@@ -23,6 +23,7 @@ import { CanManage, ForbidApiKey } from '../../decorators';
 @ApiBearerAuth()
 @ApiTags('admin-notifications')
 @ForbidApiKey()
+@RequiredSvcScopes('svc:admin:notification:manage')
 @Controller('admin/notifications')
 @CanManage('Notification')
 export class NotificationController {

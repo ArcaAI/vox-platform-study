@@ -27,6 +27,7 @@ import {
   ExpectedVersion,
   RequiresIfMatch,
   ForbidApiKey,
+  RequiredSvcScopes,
 } from '../../decorators';
 
 /**
@@ -52,6 +53,7 @@ import {
 @ApiBearerAuth()
 @ApiTags('admin-global-settings')
 @ForbidApiKey()
+@RequiredSvcScopes('svc:admin:settings:manage')
 @Controller('admin/settings')
 @CanManage('GlobalSetting')
 export class GlobalSettingController {

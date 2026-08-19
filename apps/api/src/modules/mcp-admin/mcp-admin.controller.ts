@@ -9,7 +9,7 @@ import {
 import { Body, Controller, Delete, Get, Inject, Param, Patch, Post, Query } from '@nestjs/common';
 import { ApiBearerAuth, ApiHeader, ApiOperation, ApiParam, ApiQuery, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { ClsService } from 'nestjs-cls';
-import { Authorize, CanManage, CanRead, ExpectedVersion, RequiresIfMatch, ForbidApiKey } from '../../decorators';
+import { Authorize, CanManage, CanRead, ExpectedVersion, RequiresIfMatch, ForbidApiKey, RequiredSvcScopes } from '../../decorators';
 import { resolveScopedTenantIdOptional } from '../../shared/tenant-scope';
 
 /**
@@ -37,6 +37,7 @@ import { resolveScopedTenantIdOptional } from '../../shared/tenant-scope';
 @ApiBearerAuth()
 @ApiTags('admin-mcp-servers')
 @ForbidApiKey()
+@RequiredSvcScopes('svc:admin:mcp-server:manage')
 @Controller('admin/mcp-servers')
 @Authorize()
 export class McpAdminController {

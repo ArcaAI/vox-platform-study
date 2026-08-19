@@ -11,7 +11,7 @@ import {
   SpendStatusResponse,
 } from '@arcaai/applications';
 import { BillingInvoiceStatus } from '@arcaai/domains';
-import { CanManage, ExpectedVersion, RequiresIfMatch, ForbidApiKey } from '../../decorators';
+import { CanManage, ExpectedVersion, RequiresIfMatch, ForbidApiKey, RequiredSvcScopes } from '../../decorators';
 import { resolveScopedTenantId } from '../../shared/tenant-scope';
 
 /**
@@ -36,6 +36,7 @@ import { resolveScopedTenantId } from '../../shared/tenant-scope';
 @ApiBearerAuth()
 @ApiTags('admin-billing-invoices')
 @ForbidApiKey()
+@RequiredSvcScopes('svc:admin:billing:manage')
 @Controller('admin/billing/invoices')
 @CanManage('BillingInvoice')
 export class BillingAdminController {

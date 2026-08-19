@@ -2,7 +2,7 @@ import { Body, Controller, Delete, Get, HttpCode, HttpStatus, Inject, Param, Pos
 import { ApiBearerAuth, ApiOkResponse, ApiOperation, ApiParam, ApiTags } from '@nestjs/swagger';
 import { IJobAdminService, IQueueAdminService, type BulkActionResult, type PaginatedJobResult } from '@arcaai/applications';
 import type { JobDetail, QueueStats, RedisHealthInfo } from '@arcaai/domains';
-import { Authorize, ForbidApiKey } from '../../decorators';
+import { Authorize, ForbidApiKey, RequiredSvcScopes } from '../../decorators';
 import {
   BulkActionResultResponse,
   BulkJobActionRequest,
@@ -37,6 +37,7 @@ import { QueueNamePipe } from './pipes/queue-name.pipe';
 @ApiBearerAuth()
 @Authorize(['manage', 'all'])
 @ForbidApiKey()
+@RequiredSvcScopes('svc:admin:queue:manage')
 @Controller('admin/queues')
 export class QueueAdminController {
   constructor(

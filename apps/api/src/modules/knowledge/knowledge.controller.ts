@@ -7,7 +7,7 @@ import {
 } from '@arcaai/applications';
 import { Controller, Delete, Get, Inject, Param, Post, Query } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiParam, ApiResponse, ApiTags } from '@nestjs/swagger';
-import { Authorize, CanManage, ForbidApiKey } from '../../decorators';
+import { Authorize, CanManage, ForbidApiKey, RequiredSvcScopes } from '../../decorators';
 
 /**
  * Admin governance for the institutional-RAG knowledge corpus, at
@@ -29,6 +29,7 @@ import { Authorize, CanManage, ForbidApiKey } from '../../decorators';
 @ApiBearerAuth()
 @ApiTags('admin-knowledge')
 @ForbidApiKey()
+@RequiredSvcScopes('svc:admin:knowledge:manage')
 @Controller('admin/knowledge/documents')
 @CanManage('KnowledgeDocument')
 export class KnowledgeController {

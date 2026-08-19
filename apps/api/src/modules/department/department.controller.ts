@@ -15,11 +15,12 @@ import { ApiTags, ApiBearerAuth, ApiHeader, ApiOperation, ApiParam, ApiQuery, Ap
 import { ClsService } from 'nestjs-cls';
 // `@RequiresIfMatch()` + `@ExpectedVersion()`
 // gate the OCC-enforced PATCH routes on this controller.
-import { ApiEndpoint, Authorize, CanManage, RequiresIfMatch, ExpectedVersion, ForbidApiKey } from '../../decorators';
+import { ApiEndpoint, Authorize, CanManage, RequiresIfMatch, ExpectedVersion, ForbidApiKey, RequiredSvcScopes } from '../../decorators';
 
 @ApiBearerAuth()
 @ApiTags('admin-departments')
 @ForbidApiKey()
+@RequiredSvcScopes('svc:admin:department:manage')
 @Controller('admin/departments')
 @CanManage('Department')
 export class DepartmentController {

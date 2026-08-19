@@ -8,7 +8,7 @@ import {
   SupersedeSellRateRequest,
 } from '@arcaai/applications';
 import { AiCapability, AiPriceRowKind, AiUsageUnit, TenantPlan } from '@arcaai/domains';
-import { CanManage, ExpectedVersion, RequiresIfMatch, ForbidApiKey } from '../../decorators';
+import { CanManage, ExpectedVersion, RequiresIfMatch, ForbidApiKey, RequiredSvcScopes } from '../../decorators';
 
 /**
  * SELL rate-card admin surface (D10/D12), mounted at
@@ -26,6 +26,7 @@ import { CanManage, ExpectedVersion, RequiresIfMatch, ForbidApiKey } from '../..
 @ApiBearerAuth()
 @ApiTags('admin-billing-rate-card')
 @ForbidApiKey()
+@RequiredSvcScopes('svc:admin:billing:manage')
 @Controller('admin/billing/rate-card')
 @CanManage('AiPriceBook')
 export class RateCardAdminController {

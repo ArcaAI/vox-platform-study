@@ -10,7 +10,7 @@ import {
   TenantOnboardingDtoMapper,
   TenantProvisionResponse,
 } from '@arcaai/applications';
-import { ApiEndpoint, CanManage, ForbidApiKey } from '../../decorators';
+import { ApiEndpoint, CanManage, ForbidApiKey, RequiredSvcScopes } from '../../decorators';
 
 /**
  * Global-admin create-tenant-with-admin. A SEPARATE
@@ -22,6 +22,7 @@ import { ApiEndpoint, CanManage, ForbidApiKey } from '../../decorators';
 @ApiBearerAuth()
 @ApiTags('admin-tenants')
 @ForbidApiKey()
+@RequiredSvcScopes('svc:admin:tenant:write')
 @Controller('admin/tenants')
 export class TenantProvisionController {
   constructor(

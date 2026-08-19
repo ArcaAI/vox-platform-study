@@ -11,7 +11,7 @@ import {
   UpdatePlanEntitlementRequest,
   UpsertTenantEntitlementRequest,
 } from '@arcaai/applications';
-import { Authorize, ForbidApiKey } from '../../decorators';
+import { Authorize, ForbidApiKey, RequiredSvcScopes } from '../../decorators';
 import { EntitlementsEnabledResponse, SetEnforcementEnabledRequest, TriggerDowngradeRequest } from './dto';
 
 /**
@@ -33,6 +33,7 @@ import { EntitlementsEnabledResponse, SetEnforcementEnabledRequest, TriggerDowng
 @ApiBearerAuth()
 @Authorize(['manage', 'all'])
 @ForbidApiKey()
+@RequiredSvcScopes('svc:admin:entitlement:manage')
 @Controller('admin/entitlements')
 export class EntitlementsAdminController {
   constructor(

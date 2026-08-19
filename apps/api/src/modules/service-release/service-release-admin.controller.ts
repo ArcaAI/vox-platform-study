@@ -7,7 +7,7 @@ import {
 } from '@arcaai/applications';
 import { Controller, Get, Inject, Param, Query } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiParam, ApiQuery, ApiResponse, ApiTags } from '@nestjs/swagger';
-import { CanAny, ForbidApiKey } from '../../decorators';
+import { CanAny, ForbidApiKey, RequiredSvcScopes } from '../../decorators';
 
 /**
  * ServiceReleaseAdminController.
@@ -22,6 +22,7 @@ import { CanAny, ForbidApiKey } from '../../decorators';
 @ApiBearerAuth()
 @ApiTags('admin-service-releases')
 @ForbidApiKey()
+@RequiredSvcScopes('svc:admin:service-release:manage')
 @Controller('admin/service-releases')
 @CanAny(['manage', 'all'], ['read', 'TenantTelemetry'])
 export class ServiceReleaseAdminController {

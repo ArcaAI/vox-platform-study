@@ -13,11 +13,12 @@ import {
 import { Controller, Body, Param, Query, Post, Get, Inject } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth, ApiHeader, ApiOperation, ApiParam, ApiQuery, ApiResponse } from '@nestjs/swagger';
 // `@RequiresIfMatch()` + `@ExpectedVersion()` gate the OCC-enforced PATCH route.
-import { ApiEndpoint, CanManage, RequiresIfMatch, ExpectedVersion, ForbidApiKey } from '../../decorators';
+import { ApiEndpoint, CanManage, RequiresIfMatch, ExpectedVersion, ForbidApiKey, RequiredSvcScopes } from '../../decorators';
 
 @ApiBearerAuth()
 @ApiTags('admin-department-agents')
 @ForbidApiKey()
+@RequiredSvcScopes('svc:admin:department-agent:manage')
 @Controller('admin/department-agents')
 // M-12: DepartmentAgent is a DEDICATED CASL subject (not HarnessPolicy reuse).
 @CanManage('DepartmentAgent')

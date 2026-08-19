@@ -10,7 +10,7 @@ import {
   UsageTimeseriesResponse,
   periodOf,
 } from '@arcaai/applications';
-import { CanManage, ForbidApiKey } from '../../decorators';
+import { CanManage, ForbidApiKey, RequiredSvcScopes } from '../../decorators';
 import { resolveScopedTenantId } from '../../shared/tenant-scope';
 import { CostPerEncounterQuery, TopTenantsQuery, UsageSummaryQuery, UsageTimeseriesQuery as UsageTimeseriesQueryDto } from './dto';
 
@@ -37,6 +37,7 @@ import { CostPerEncounterQuery, TopTenantsQuery, UsageSummaryQuery, UsageTimeser
 @ApiBearerAuth()
 @ApiTags('admin-usage')
 @ForbidApiKey()
+@RequiredSvcScopes('svc:admin:usage:manage')
 @Controller('admin/usage')
 @CanManage('UsageAnalytics')
 export class AdminUsageController {
