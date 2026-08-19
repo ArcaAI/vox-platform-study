@@ -32,6 +32,14 @@ dependencies = [
     "pydantic-settings>=2.15.0",
     # --- NLP / ML ---
     "spacy>=3.8.15",
+    # GLiNER2 — hosts the guardrail-plane models (TASK-735 Phase 3):
+    # PII spans and multi-task LLM-safety moderation. Model IDS are NOT pinned
+    # here: they are SYSTEM `AiModel` rows the caller resolves and sends.
+    "gliner2",
+    # llama.cpp for the MiniCheck GGUF NLI scorer (TASK-735 Phase 6). Imported
+    # LAZILY in `services/entailment_scorer.py`, so a deployment that never
+    # scores entailment never loads it.
+    "llama-cpp-python>=0.3.0",
     "transformers>=4.48.0",
     "torch>=2.1.0",
     "numpy>=2.0.0",
@@ -149,7 +157,21 @@ warn_unused_ignores = true
 warn_return_any = true
 
 [[tool.mypy.overrides]]
-module = ["transformers", "torch", "spacy", "passlib.*", "jose.*", "minio"]
+# `gliner2` and `llama_cpp*` arrived with the guardrail-plane models (TASK-735
+# Phases 3 & 6). `llama_cpp.*` (not just `llama_cpp`) because the MiniCheck scorer
+# drives llama.cpp's encoder-decoder path via `llama_cpp._internals.LlamaBatch`,
+# which the high-level completion API omits for T5 graphs.
+module = [
+    "transformers",
+    "torch",
+    "spacy",
+    "passlib.*",
+    "jose.*",
+    "minio",
+    "gliner2",
+    "llama_cpp",
+    "llama_cpp.*",
+]
 ignore_missing_imports = true
 
 [[tool.mypy.overrides]]

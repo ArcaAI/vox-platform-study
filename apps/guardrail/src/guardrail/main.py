@@ -30,7 +30,12 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
     setup_logging(settings.log_level)
 
-    logger.info("guardrail.starting", host=settings.host, port=settings.port, debug=settings.debug)
+    logger.info(
+        "guardrail.starting",
+        host=settings.host,
+        port=settings.port,
+        debug=settings.debug,
+    )
 
     # HTTP client for external calls
     http_client = httpx.AsyncClient(
@@ -90,27 +95,26 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     # `AiTaskDefault` selection, so there is nothing process-wide to construct —
     # and no env-configured engine to fall back to.
 
-    # GLiNER is NO LONGER loaded here. Its runtime model id is
-    # DB-selected (SYSTEM `guardrail.safety`) and loaded lazily on first
-    # `/guardrail/analyze` through the idle-TTL aux-model cache, so a freshly
-    # booted worker holds ZERO GLiNER weights. The cache lives on app.state and
-    # is created on first use by the request/job resolvers.
+    # No aux models are loaded here either. TASK-735 Phases 3 & 6 moved the GLiNER
+    # detector and the MiniCheck groundedness scorer into `apps/nlp` along with
+    # their model cache and weight staging, so guardrail holds ZERO resident model
+    # weights in ANY process, at any point in its lifetime.
 
     # Initialize job queue processor
     if not hasattr(app.state, "job_processor") or app.state.job_processor is None:
-        from guardrail.core.dependencies import pinned_gliner_provider
+        from guardrail.core.dependencies import pinned_safety_analyzer
         from guardrail.services.job_processor import JobProcessor
 
         # A job carries the tenant that SUBMITTED it (stamped by
         # `/guardrail/analyze/async`, which now refuses an absent `X-Tenant-Id` with
         # 428). Model selection therefore resolves tenant-first for deferred work too,
         # instead of the old `tenant_id=None` that silently pinned every job to SYSTEM.
-        def _gliner_for_job(tenant_id: str | None) -> object:
-            return pinned_gliner_provider(app.state, tenant_id=tenant_id)
+        def _analyzer_for_job(tenant_id: str | None) -> object:
+            return pinned_safety_analyzer(app.state, tenant_id=tenant_id)
 
         app.state.job_processor = JobProcessor(
             redis=redis_client,
-            gliner_provider_resolver=_gliner_for_job,  # type: ignore[arg-type]
+            analyzer_resolver=_analyzer_for_job,  # type: ignore[arg-type]
             max_concurrent=settings.queue.max_concurrent,
         )
 
@@ -152,11 +156,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     if hasattr(app.state, "job_processor_task") and app.state.job_processor_task:
         await app.state.job_processor_task
 
-    # release any lazily-loaded aux models (GLiNER / MiniCheck).
-    if getattr(app.state, "gliner_cache", None) is not None:
-        await app.state.gliner_cache.clear()
-    if getattr(app.state, "groundedness_scorer_cache", None) is not None:
-        await app.state.groundedness_scorer_cache.clear()
+    # No aux-model caches to drain: guardrail holds no resident weights.
 
     if hasattr(app.state, "http_client") and app.state.http_client:
         await app.state.http_client.aclose()
@@ -215,7 +215,9 @@ def create_app() -> FastAPI:
     # too (same router/handler) so callers using the v1 path don't 404 while
     # /api/health keeps working for existing callers.
     app.include_router(health_router, prefix="/api/v1", tags=["health"])
-    app.include_router(medical_router, prefix="/api", tags=["medical"])  # Primary endpoint
+    app.include_router(
+        medical_router, prefix="/api", tags=["medical"]
+    )  # Primary endpoint
     app.include_router(guardrails_router, prefix="/api", tags=["guardrails"])
     # Live output-side groundedness gate — behind X-Service-Token.
     app.include_router(groundedness_router, prefix="/api", tags=["groundedness"])

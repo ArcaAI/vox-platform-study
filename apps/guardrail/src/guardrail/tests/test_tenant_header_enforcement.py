@@ -28,8 +28,8 @@ from fastapi import HTTPException
 
 from guardrail.core.dependencies import (
     acquire_groundedness_verifier,
-    get_gliner_model_id,
     get_resolved_guardian_provider,
+    get_safety_analyzer,
 )
 
 TENANT = "11111111-1111-1111-1111-111111111111"
@@ -46,18 +46,18 @@ def _request(headers: dict[str, str]) -> Any:
 
 
 @pytest.mark.asyncio
-async def test_gliner_model_id_refuses_an_absent_tenant_header() -> None:
+async def test_safety_analyzer_refuses_an_absent_tenant_header() -> None:
     with pytest.raises(HTTPException) as exc:
-        await get_gliner_model_id(_request({}))
+        await get_safety_analyzer(_request({}))
 
     assert exc.value.status_code == 428
 
 
 @pytest.mark.asyncio
-async def test_gliner_model_id_refuses_a_blank_tenant_header() -> None:
+async def test_safety_analyzer_refuses_a_blank_tenant_header() -> None:
     """Whitespace is absence wearing a costume."""
     with pytest.raises(HTTPException) as exc:
-        await get_gliner_model_id(_request({"X-Tenant-Id": "   "}))
+        await get_safety_analyzer(_request({"X-Tenant-Id": "   "}))
 
     assert exc.value.status_code == 428
 
@@ -90,9 +90,14 @@ async def test_declared_tenantless_marker_is_accepted() -> None:
     """Genuinely tenant-less internal work DECLARES itself and is let through."""
     request = _request({"X-Tenant-Id": TENANTLESS})
     request.app.state.settings.db.db_config_enabled = False
-    request.app.state.settings.gliner.model_id = "env-model"
 
-    assert await get_gliner_model_id(request) == "env-model"
+    # The marker passes the 428 gate; the call then fails CLOSED on SELECTION
+    # (503) because guardrail names no model in code — which is the point: the
+    # declared exception buys attribution, never a hardcoded fallback.
+    with pytest.raises(HTTPException) as exc:
+        await get_safety_analyzer(request)
+
+    assert exc.value.status_code == 503
 
 
 # ── the async job plane carries its tenant instead of dropping it ───────────
@@ -100,7 +105,10 @@ async def test_declared_tenantless_marker_is_accepted() -> None:
 
 @pytest.mark.asyncio
 async def test_async_analyze_refuses_an_absent_tenant_header() -> None:
-    from guardrail.api.endpoints.guardrails import GuardrailRequest, analyze_content_async
+    from guardrail.api.endpoints.guardrails import (
+        GuardrailRequest,
+        analyze_content_async,
+    )
 
     with pytest.raises(HTTPException) as exc:
         await analyze_content_async(
@@ -115,7 +123,10 @@ async def test_async_analyze_refuses_an_absent_tenant_header() -> None:
 @pytest.mark.asyncio
 async def test_async_analyze_records_the_submitting_tenant_on_the_job() -> None:
     """A job that outlives its request must still say whose decision it was."""
-    from guardrail.api.endpoints.guardrails import GuardrailRequest, analyze_content_async
+    from guardrail.api.endpoints.guardrails import (
+        GuardrailRequest,
+        analyze_content_async,
+    )
 
     job_processor = AsyncMock()
     job_processor.submit_job = AsyncMock(return_value="job-1")
@@ -139,7 +150,9 @@ async def test_job_processor_resolves_the_model_for_the_jobs_tenant() -> None:
     seen: list[str | None] = []
 
     class _Provider:
-        async def analyze_content(self, text: str, guardrail_type: str) -> dict[str, Any]:
+        async def analyze_content(
+            self, text: str, guardrail_type: str
+        ) -> dict[str, Any]:
             return {"safe": True, "issues": [], "confidence": 1.0}
 
     class _Resolver:
@@ -161,7 +174,7 @@ async def test_job_processor_resolves_the_model_for_the_jobs_tenant() -> None:
     )
     processor = JobProcessor(
         redis=redis,
-        gliner_provider_resolver=_Resolver(),  # type: ignore[arg-type]
+        analyzer_resolver=_Resolver(),  # type: ignore[arg-type]
         max_concurrent=1,
     )
 

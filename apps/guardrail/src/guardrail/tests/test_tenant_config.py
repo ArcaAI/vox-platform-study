@@ -100,7 +100,10 @@ async def test_resolve_unknown_tenant_and_no_system_rows_returns_empty() -> None
     cfg = await r.resolve(TENANT_A)
 
     assert cfg == GuardrailTenantConfig(
-        provider=None, model=None, azure_deployment=None, source_tenant_id=SYSTEM_TENANT_ID
+        provider=None,
+        model=None,
+        azure_deployment=None,
+        source_tenant_id=SYSTEM_TENANT_ID,
     )
 
 
@@ -170,7 +173,12 @@ async def test_cache_valid_within_ttl() -> None:
 
 @pytest.mark.asyncio
 async def test_resolve_vetoed_tenant_never_falls_through_to_system() -> None:
-    data = {SYSTEM_TENANT_ID: {KEY_PROVIDER: "lm-studio", KEY_MODEL: "granite-guardian-4.1-8b"}}
+    data = {
+        SYSTEM_TENANT_ID: {
+            KEY_PROVIDER: "lm-studio",
+            KEY_MODEL: "granite-guardian-4.1-8b",
+        }
+    }
     r = _resolver(data)
     r.veto_on = {TENANT_A}
 
@@ -327,7 +335,9 @@ def _client(cfg: GuardrailTenantConfig, settings: Settings | None = None):
 
 
 def test_selection_is_sent_to_text_verbatim() -> None:
-    client = _client(GuardrailTenantConfig(provider="lm-studio", model="my-custom-guardian"))
+    client = _client(
+        GuardrailTenantConfig(provider="lm-studio", model="my-custom-guardian")
+    )
 
     assert client.provider == "lm-studio"
     assert client.model == "my-custom-guardian"
@@ -335,7 +345,9 @@ def test_selection_is_sent_to_text_verbatim() -> None:
 
 def test_provider_switch_is_passed_through_not_mapped_to_a_local_engine() -> None:
     """`text` owns the adapter registry; guardrail must not second-guess the name."""
-    client = _client(GuardrailTenantConfig(provider="vllm", model="self-hosted-guardian"))
+    client = _client(
+        GuardrailTenantConfig(provider="vllm", model="self-hosted-guardian")
+    )
 
     assert client.provider == "vllm"
     assert client.model == "self-hosted-guardian"
@@ -344,7 +356,9 @@ def test_provider_switch_is_passed_through_not_mapped_to_a_local_engine() -> Non
 def test_azure_deployment_takes_precedence_over_the_model_name() -> None:
     client = _client(
         GuardrailTenantConfig(
-            provider="azure", model="ignored-model", azure_deployment="prod-guardian-deploy"
+            provider="azure",
+            model="ignored-model",
+            azure_deployment="prod-guardian-deploy",
         )
     )
 
@@ -421,7 +435,9 @@ def _row(
     )
 
 
-def _db_resolver(rows: list | None = None, exc: Exception | None = None) -> TenantConfigResolver:
+def _db_resolver(
+    rows: list | None = None, exc: Exception | None = None
+) -> TenantConfigResolver:
     return TenantConfigResolver(
         session_factory=lambda: _FakeSession(rows, exc),
         cache_ttl_s=60,
@@ -434,7 +450,9 @@ async def test_db_tenant_task_default_wins_over_system_row() -> None:
     # AiTaskDefault row wins over the SYSTEM row for the same task key — the
     # defect this ticket fixes (previously the query pinned to SYSTEM only).
     rows = [
-        _row(SYSTEM_TENANT_ID, SYSTEM_TENANT_ID, "lm-studio", "granite-guardian-4.1-8b"),
+        _row(
+            SYSTEM_TENANT_ID, SYSTEM_TENANT_ID, "lm-studio", "granite-guardian-4.1-8b"
+        ),
         _row(TENANT_A, SYSTEM_TENANT_ID, "vllm", "tenant-chosen-guardian"),
     ]
     cfg = await _db_resolver(rows).resolve(TENANT_A)
@@ -446,7 +464,9 @@ async def test_db_tenant_task_default_wins_over_system_row() -> None:
 @pytest.mark.asyncio
 async def test_db_system_row_used_when_tenant_has_none() -> None:
     # Absence (no tenant-owned row) defers entirely to SYSTEM — "no opinion".
-    rows = [_row(SYSTEM_TENANT_ID, SYSTEM_TENANT_ID, "lm-studio", "granite-guardian-4.1-8b")]
+    rows = [
+        _row(SYSTEM_TENANT_ID, SYSTEM_TENANT_ID, "lm-studio", "granite-guardian-4.1-8b")
+    ]
     cfg = await _db_resolver(rows).resolve(TENANT_A)
 
     assert cfg.provider == "lm-studio"
@@ -458,7 +478,9 @@ async def test_db_tenant_disabled_row_vetoes_selection() -> None:
     # DISABLED tenant row ⇒ veto, never a fold-through to the SYSTEM row —
     # even though a perfectly usable SYSTEM row exists.
     rows = [
-        _row(SYSTEM_TENANT_ID, SYSTEM_TENANT_ID, "lm-studio", "granite-guardian-4.1-8b"),
+        _row(
+            SYSTEM_TENANT_ID, SYSTEM_TENANT_ID, "lm-studio", "granite-guardian-4.1-8b"
+        ),
         _row(
             TENANT_A,
             SYSTEM_TENANT_ID,
@@ -556,7 +578,9 @@ async def test_db_azure_deployment_read_from_metadata() -> None:
 
 @pytest.mark.asyncio
 async def test_db_metadata_without_deployment_leaves_it_unset() -> None:
-    rows = [_row(TENANT_A, SYSTEM_TENANT_ID, "azure", "gpt-5.4-mini", meta={"other": "x"})]
+    rows = [
+        _row(TENANT_A, SYSTEM_TENANT_ID, "azure", "gpt-5.4-mini", meta={"other": "x"})
+    ]
     cfg = await _db_resolver(rows).resolve(TENANT_A)
 
     assert cfg.azure_deployment is None
@@ -633,7 +657,10 @@ async def test_resolve_no_header_resolves_system_only() -> None:
     # SYSTEM tier — it must never silently act as the Global customer tenant.
     data = {
         SYSTEM_TENANT_ID: {KEY_PROVIDER: "azure", KEY_MODEL: "system-model"},
-        GLOBAL_CUSTOMER_TENANT: {KEY_PROVIDER: "lm-studio", KEY_MODEL: "playground-model"},
+        GLOBAL_CUSTOMER_TENANT: {
+            KEY_PROVIDER: "lm-studio",
+            KEY_MODEL: "playground-model",
+        },
     }
     r = _resolver(data)
 
@@ -679,7 +706,9 @@ async def test_tenant_without_rows_widens_to_system_not_the_global_customer() ->
 async def test_global_customer_tenant_config_never_serves_another_tenant() -> None:
     # The Global playground holds a selection; SYSTEM holds none. A different
     # tenant must resolve EMPTY, not inherit one customer's trial config.
-    data = {GLOBAL_CUSTOMER_TENANT: {KEY_PROVIDER: "azure", KEY_MODEL: "playground-model"}}
+    data = {
+        GLOBAL_CUSTOMER_TENANT: {KEY_PROVIDER: "azure", KEY_MODEL: "playground-model"}
+    }
     r = _resolver(data)
 
     cfg = await r.resolve(TENANT_A)
@@ -694,7 +723,10 @@ def test_resolver_exposes_no_default_tenant_knob() -> None:
     # second knob for it is exactly the ungoverned surface the rules ban.
     import inspect
 
-    assert "default_tenant_id" not in inspect.signature(TenantConfigResolver.__init__).parameters
+    assert (
+        "default_tenant_id"
+        not in inspect.signature(TenantConfigResolver.__init__).parameters
+    )
 
 
 def test_database_config_has_no_default_tenant_id_field(monkeypatch) -> None:
@@ -723,7 +755,15 @@ def test_no_engine_switch_map_survives() -> None:
 
 
 def test_settings_has_no_engine_subconfig_at_all() -> None:
-    for engine in ("ollama", "openai_compat", "vllm", "llama_cpp", "azure", "bedrock", "provider"):
+    for engine in (
+        "ollama",
+        "openai_compat",
+        "vllm",
+        "llama_cpp",
+        "azure",
+        "bedrock",
+        "provider",
+    ):
         assert engine not in Settings.model_fields
 
 
@@ -777,7 +817,9 @@ async def test_declared_tenantless_call_resolves_system_not_a_customer_tenant() 
     is what makes §4.5's later tightening possible at all.
     """
     rows = [
-        _row(SYSTEM_TENANT_ID, SYSTEM_TENANT_ID, "lm-studio", "granite-guardian-4.1-8b"),
+        _row(
+            SYSTEM_TENANT_ID, SYSTEM_TENANT_ID, "lm-studio", "granite-guardian-4.1-8b"
+        ),
         _row(TENANT_A, SYSTEM_TENANT_ID, "vllm", "tenant-chosen-guardian"),
     ]
     cfg = await _db_resolver(rows).resolve("tenantless:job-queue")
@@ -788,7 +830,9 @@ async def test_declared_tenantless_call_resolves_system_not_a_customer_tenant() 
 
 @pytest.mark.asyncio
 async def test_tenantless_marker_resolves_identically_to_an_absent_tenant() -> None:
-    rows = [_row(SYSTEM_TENANT_ID, SYSTEM_TENANT_ID, "lm-studio", "granite-guardian-4.1-8b")]
+    rows = [
+        _row(SYSTEM_TENANT_ID, SYSTEM_TENANT_ID, "lm-studio", "granite-guardian-4.1-8b")
+    ]
 
     declared = await _db_resolver(rows).resolve("tenantless:control-plane")
     absent = await _db_resolver(rows).resolve(None)

@@ -42,11 +42,15 @@ class KeywordOverlapScorer:
         scores: list[float] = []
         for source, claim in pairs:
             source_words = set(re.findall(r"[a-z0-9]+", source.lower()))
-            claim_words = [w for w in re.findall(r"[a-z0-9]+", claim.lower()) if len(w) > 2]
+            claim_words = [
+                w for w in re.findall(r"[a-z0-9]+", claim.lower()) if len(w) > 2
+            ]
             if not claim_words:
                 scores.append(0.0)
                 continue
-            scores.append(sum(1 for w in claim_words if w in source_words) / len(claim_words))
+            scores.append(
+                sum(1 for w in claim_words if w in source_words) / len(claim_words)
+            )
         return scores
 
 
@@ -59,7 +63,13 @@ class ExplodingVerifier:
         raise RuntimeError("verifier exploded")
 
 
-def _app(*, enabled: bool = True, seed_stub_scorer: bool = False, token: str = "") -> FastAPI:
+def _app(
+    *,
+    enabled: bool = True,
+    seed_stub_scorer: bool = False,
+    seed_scorerless_verifier: bool = False,
+    token: str = "",
+) -> FastAPI:
     """Build the app (no lifespan), configure the gate, optionally seed a stub verifier."""
     app = create_app()
     app.state.settings.service_token = SecretStr(token)
@@ -78,6 +88,15 @@ def _app(*, enabled: bool = True, seed_stub_scorer: bool = False, token: str = "
         app.state.groundedness_verifier = GroundednessNliVerifier(
             app.state.settings.groundedness, scorer=KeywordOverlapScorer()
         )
+    elif seed_scorerless_verifier:
+        # TASK-735 Phase 6 — the "model unavailable" state is no longer "the local
+        # GGUF is unstaged" (guardrail hosts no weights): it is a verifier that
+        # ended up with no usable scorer. Seeded explicitly so this test still
+        # exercises the DEGRADE path; a MISSING registry selection is a different
+        # condition with its own 503 contract (see below).
+        app.state.groundedness_verifier = GroundednessNliVerifier(
+            app.state.settings.groundedness, scorer=None
+        )
     return app
 
 
@@ -86,7 +105,9 @@ def _app(*, enabled: bool = True, seed_stub_scorer: bool = False, token: str = "
 TEST_TENANT = "11111111-1111-1111-1111-111111111111"
 
 
-async def _post(app: FastAPI, body: dict[str, Any], headers: dict[str, str] | None = None) -> Any:
+async def _post(
+    app: FastAPI, body: dict[str, Any], headers: dict[str, str] | None = None
+) -> Any:
     transport = ASGITransport(app=app)
     merged = {"X-Tenant-Id": TEST_TENANT, **(headers or {})}
     async with AsyncClient(transport=transport, base_url="http://test") as client:
@@ -147,12 +168,25 @@ async def test_ground_is_behind_service_token() -> None:
 # ── Degrade paths: the endpoint must NEVER mark grounded on an error path ──
 
 
+async def test_ground_503s_when_the_registry_selection_is_missing() -> None:
+    """A MISSING `guardrail.groundedness` selection is 503, not a silent degrade."""
+    app = _app(enabled=True, seed_stub_scorer=False)
+
+    resp = await _post(app, {"summary": SUPPORTED_CLAIM, "transcript": TRANSCRIPT})
+
+    assert resp.status_code == 503
+
+
 async def test_ground_degrades_to_unverified_when_model_unavailable() -> None:
-    """enabled=True but the NLI model is not staged → every segment ``unverified``."""
-    app = _app(enabled=True, seed_stub_scorer=False)  # default factory raises
+    """A selected-but-unusable scorer → every segment ``unverified``, never grounded."""
+    app = _app(enabled=True, seed_scorerless_verifier=True)
 
     resp = await _post(
-        app, {"summary": f"{SUPPORTED_CLAIM} {HALLUCINATED_CLAIM}", "transcript": TRANSCRIPT}
+        app,
+        {
+            "summary": f"{SUPPORTED_CLAIM} {HALLUCINATED_CLAIM}",
+            "transcript": TRANSCRIPT,
+        },
     )
 
     assert resp.status_code == 200
@@ -183,7 +217,11 @@ async def test_ground_never_marks_grounded_when_verifier_raises() -> None:
     app.state.groundedness_verifier = ExplodingVerifier()
 
     resp = await _post(
-        app, {"summary": f"{SUPPORTED_CLAIM} {HALLUCINATED_CLAIM}", "transcript": TRANSCRIPT}
+        app,
+        {
+            "summary": f"{SUPPORTED_CLAIM} {HALLUCINATED_CLAIM}",
+            "transcript": TRANSCRIPT,
+        },
     )
 
     assert resp.status_code == 200

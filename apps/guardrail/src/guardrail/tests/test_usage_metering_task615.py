@@ -54,9 +54,7 @@ def _judge_client(payload: dict[str, Any]) -> TextJudgeClient:
     )
 
 
-_VALID_JSON = (
-    '{"is_medical": true, "confidence": 0.95, "context_type": "clinical", "reasoning": "note"}'
-)
+_VALID_JSON = '{"is_medical": true, "confidence": 0.95, "context_type": "clinical", "reasoning": "note"}'
 
 
 def _judge_body(usage: dict[str, Any] | None = None) -> dict[str, Any]:
@@ -164,7 +162,9 @@ async def test_failed_validation_reports_no_stats_rather_than_zeros() -> None:
     )
 
     guardian = AsyncMock()
-    guardian.validate_medical_context = AsyncMock(side_effect=RuntimeError("engine down"))
+    guardian.validate_medical_context = AsyncMock(
+        side_effect=RuntimeError("engine down")
+    )
 
     with pytest.raises(HTTPException) as exc:
         await validate_medical_context(
@@ -273,5 +273,9 @@ def test_record_guardrail_call_never_raises_on_odd_input() -> None:
     from guardrail.core.metrics import record_guardrail_call
 
     record_guardrail_call(
-        provider="", model=None, status="error", prompt_tokens=None, completion_tokens=-3
+        provider="",
+        model=None,
+        status="error",
+        prompt_tokens=None,
+        completion_tokens=-3,
     )

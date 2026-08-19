@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import asyncio
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from typing import TYPE_CHECKING, Any, cast
@@ -10,8 +9,6 @@ from typing import TYPE_CHECKING, Any, cast
 from fastapi import Request
 
 from guardrail.core.logging import get_logger
-from guardrail.core.metrics import build_model_cache_metrics_sink
-from guardrail.services.model_cache import ModelCache, ModelUnavailableError
 
 logger = get_logger(__name__)
 
@@ -20,10 +17,11 @@ if TYPE_CHECKING:
     import redis.asyncio as aioredis
 
     from guardrail.core.config import Settings
-    from guardrail.providers.gliner import GlinerProvider
+    from guardrail.services.external_nlp_client import NlpGuardClient as NlpGuardClientT
     from guardrail.services.external_text_client import TextJudgeClient
-    from guardrail.services.groundedness_nli import GroundednessNliVerifier, NliScorer
+    from guardrail.services.groundedness_nli import GroundednessNliVerifier
     from guardrail.services.job_processor import JobProcessor
+    from guardrail.services.safety_analyzer import SafetyAnalyzer
 
     # Guardrail hosts no engine: the "guardian" is a delegation to `apps/text`.
     GuardianLike = TextJudgeClient
@@ -180,258 +178,194 @@ def get_job_processor(request: Request) -> JobProcessor:
 
 
 # ---------------------------------------------------------------------------
-# lazy, DB-selected aux models (GLiNER + MiniCheck) with idle-TTL.
+# Delegated aux models (TASK-735 Phases 3 & 6).
 #
-# GLiNER (content safety) and MiniCheck (groundedness) are NOT loaded in the
-# lifespan. Their runtime model id is resolved per request from the SYSTEM
-# ``AiTaskDefault`` registry (``guardrail.safety`` / ``guardrail.groundedness``)
-# and the instance is loaded on the fly through a bounded, idle-TTL model cache
-# (pinned for the request). Model IDENTITY is DB-only and fails closed — there
-# is no env fallback except the ``db_config_enabled=False`` dev escape hatch
-# (mirrors ``get_resolved_guardian_provider``). Precision / thresholds / thread
-# and staging paths remain infra tuning.
+# Guardrail holds ZERO resident model weights. The GLiNER runtime and the
+# MiniCheck GGUF scorer moved to `apps/nlp` together with their model cache and
+# their weight staging; what stays here is POLICY plus a bounded peer client.
+#
+# Two selections, both `AiTaskDefault` ⋈ `AiModel`, both tenant-first with
+# SYSTEM as the platform fallback, both FAIL-CLOSED:
+#
+#   `guardrail.safety`       — the LLM-safety moderation model (six tasks)
+#   `guardrail.pii`          — the PII span model (English only)
+#   `guardrail.groundedness` — the NLI entailment model
+#
+# The label TAXONOMY travels with the selection: it is `AiModel._metadata`'s
+# `labelTaxonomy`, resolved through the very same two-tier cascade. That is
+# what makes it configuration rather than a Python literal — a platform admin
+# edits the SYSTEM row, a tenant may carry its own, and an unresolved taxonomy
+# fails closed instead of substituting a built-in list.
 # ---------------------------------------------------------------------------
 
 
-# Retention comes from the control plane, not env.
-#
-# Two halves, both required: a cache built AFTER a refresh is born with the
-# current values (`_retention_kwargs`), and a cache that is ALREADY LIVE adopts
-# later changes (`apply_model_cache_retention`). Applying only at construction
-# would leave the admin knob dead for every resident cache —
-_RETENTION_STATE_ATTR = "model_cache_retention"
-_CACHE_ATTRS = ("gliner_cache", "groundedness_scorer_cache")
+class SelectionUnavailableError(RuntimeError):
+    """A required registry selection is missing/vetoed — callers map this to 503."""
 
 
-def _retention_kwargs(app_state: Any) -> dict[str, int]:
-    """Resolved retention: the control-plane value when known, else settings."""
-    settings = app_state.settings
-    current: dict[str, int] = getattr(app_state, _RETENTION_STATE_ATTR, None) or {}
-    return {
-        "ttl_seconds": current.get("ttl_seconds", settings.model_cache_ttl_s),
-        "max_size": current.get("max_models", settings.model_cache_max_models),
-    }
+# Kept as the public name the endpoints import; nothing loads a model any more.
+ModelUnavailableError = SelectionUnavailableError
 
 
-def _live_caches(app_state: Any) -> list[ModelCache[Any]]:
-    """Every INSTANTIATED aux cache (never forces construction)."""
-    return [cache for attr in _CACHE_ATTRS if (cache := getattr(app_state, attr, None)) is not None]
+async def _resolve_selection(
+    app_state: Any, tenant_id: str | None, task_key: str
+) -> Any:
+    """Resolve one task key's model identity + taxonomy, tenant-first, fail-closed.
 
-
-def apply_model_cache_retention(app_state: Any, retention: dict[str, int]) -> None:
-    """Adopt control-plane retention across both aux caches.
-
-    An ABSENT key keeps the current value, so a gateway outage leaves behaviour
-    byte-identical. Resident models are never dropped — the new limits take
-    effect on the next sweep or access. The product clamp [60, 3600] is
-    re-applied inside the shared cache (defense in depth).
+    There is NO env fallback and no `db_config_enabled` escape hatch: guardrail
+    names no model in code, so without the registry there is nothing to name.
     """
-    ttl_seconds = retention.get("ttl_seconds")
-    max_models = retention.get("max_models")
-    if ttl_seconds is None and max_models is None:
-        return
-
-    current: dict[str, int] = dict(getattr(app_state, _RETENTION_STATE_ATTR, None) or {})
-    current.update(
-        {k: v for k, v in retention.items() if k in ("ttl_seconds", "max_models") and v is not None}
-    )
-    setattr(app_state, _RETENTION_STATE_ATTR, current)
-
-    for cache in _live_caches(app_state):
-        cache.configure(ttl_seconds=ttl_seconds, max_size=max_models)
-
-
-async def refresh_model_cache_retention(app_state: Any) -> None:
-    """Pull the control-plane retention (cached; cheap) and apply it.
-
-    NEVER raises: a safety request must not fail because the config plane is
-    unavailable. No client, or no opinion from the control plane, ⇒ the env
-    values stay in force — exactly the env-only behaviour.
-    """
-    client = getattr(app_state, "effective_config_client", None)
-    if client is None:
-        return
-
-    try:
-        snapshot = await client.get()
-        apply_model_cache_retention(app_state, snapshot.retention())
-    except Exception as exc:  # noqa: BLE001 — a config refresh may never break a request
-        logger.warning(
-            "guardrail.effective_config.apply_error",
-            error=str(exc),
-            error_type=type(exc).__name__,
-        )
-
-
-def get_gliner_cache(app_state: Any) -> ModelCache[GlinerProvider]:
-    """Return (lazily creating) the per-app GLiNER aux-model cache."""
-    cache = getattr(app_state, "gliner_cache", None)
-    if cache is None:
-        settings = app_state.settings
-
-        async def factory(model_id: str) -> GlinerProvider:
-            from guardrail.providers.gliner import GlinerProvider
-
-            cfg = settings.gliner.model_copy(update={"model_id": model_id})
-            provider = GlinerProvider(config=cfg)
-            # ONNX load is blocking/CPU-bound — keep the event loop responsive.
-            await asyncio.to_thread(provider.load)
-            return provider
-
-        cache = ModelCache(
-            factory=factory,
-            metrics=build_model_cache_metrics_sink(),
-            **_retention_kwargs(app_state),
-        )
-        app_state.gliner_cache = cache
-    return cast("ModelCache[GlinerProvider]", cache)
-
-
-def get_groundedness_scorer_cache(app_state: Any) -> ModelCache[NliScorer]:
-    """Return (lazily creating) the per-app MiniCheck groundedness scorer cache."""
-    cache = getattr(app_state, "groundedness_scorer_cache", None)
-    if cache is None:
-        settings = app_state.settings
-
-        async def factory(model_id: str) -> NliScorer:
-            from guardrail.services.groundedness_scorer_minicheck import (
-                load_minicheck_scorer,
-            )
-
-            # The weight path is resolved DB-first (registry
-            # `localPath` / file:// / s3://) with the env path as fallback. The
-            # clinical-gate posture is unchanged: `allow_network=False` inside
-            # the resolver means an hf:-only row never auto-downloads.
-            update: dict[str, Any] = {"model_id": model_id}
-            resolver = getattr(app_state, "tenant_config_resolver", None)
-            if resolver is not None:
-                from guardrail.core.model_source import (
-                    ModelSourceConfig,
-                    resolve_groundedness_model_path,
-                )
-
-                resolved_path = await resolve_groundedness_model_path(
-                    resolver,
-                    env_path=settings.groundedness.model_path,
-                    tenant_id=None,
-                    config=ModelSourceConfig(
-                        cache_dir=settings.groundedness.model_cache_dir,
-                        s3_endpoint=settings.model_s3_endpoint,
-                        s3_access_key=(
-                            settings.model_s3_access_key.get_secret_value()
-                            if settings.model_s3_access_key
-                            else None
-                        ),
-                        s3_secret_key=(
-                            settings.model_s3_secret_key.get_secret_value()
-                            if settings.model_s3_secret_key
-                            else None
-                        ),
-                        s3_secure=settings.model_s3_secure,
-                    ),
-                )
-                update["model_path"] = resolved_path
-
-            cfg = settings.groundedness.model_copy(update=update)
-            # Loading a GGUF under llama.cpp is blocking — offload it.
-            return await asyncio.to_thread(load_minicheck_scorer, cfg)
-
-        cache = ModelCache(
-            factory=factory,
-            metrics=build_model_cache_metrics_sink(),
-            **_retention_kwargs(app_state),
-        )
-        app_state.groundedness_scorer_cache = cache
-    return cast("ModelCache[NliScorer]", cache)
-
-
-async def _resolve_aux_model_id(app_state: Any, tenant_id: str | None, task_key: str) -> str:
-    """Resolve an aux-model runtime id from the SYSTEM ``AiTaskDefault`` registry.
-
-    Fail-closed: raises :class:`ModelUnavailableError` when DB selection is
-    missing (mapped to HTTP 503 by callers). The ``db_config_enabled=False``
-    dev escape hatch returns the env-configured id (same posture as the guardian
-    resolver); it never applies in the default DB-on deployment.
-    """
-    from guardrail.core.tenant_config import (
-        TASK_KEY_GUARDRAIL_GROUNDEDNESS,
-        TASK_KEY_GUARDRAIL_SAFETY,
-    )
-
     settings = cast("Settings", app_state.settings)
-
     if not settings.db.db_config_enabled:
-        if task_key == TASK_KEY_GUARDRAIL_SAFETY:
-            return settings.gliner.model_id
-        if task_key == TASK_KEY_GUARDRAIL_GROUNDEDNESS:
-            return settings.groundedness.model_id
-        raise ModelUnavailableError(f"no env id for task key {task_key!r}")
+        raise SelectionUnavailableError(
+            f"{task_key!r} selection requires DB config; guardrail names no model in code."
+        )
 
     resolver = getattr(app_state, "tenant_config_resolver", None)
     if resolver is None:
-        raise ModelUnavailableError(
+        raise SelectionUnavailableError(
             f"AiTaskDefault for {task_key!r} is unavailable (resolver not wired)."
         )
 
     from guardrail.core.tenant_config import TenantSelectionVetoedError
 
     try:
-        model_id: str | None = await resolver.resolve_model_id(tenant_id, task_key)
+        cfg = await resolver.resolve(tenant_id, task_key)
     except TenantSelectionVetoedError as exc:
-        # Tenant-first resolution (TASK-735 Phase 1): a DISABLED tenant row is
-        # a VETO — fail closed the same way a missing selection does, never a
-        # silent fold-through to the SYSTEM row.
-        raise ModelUnavailableError(
+        # A DISABLED tenant row is a VETO (Phase 1) — never a silent fold-through
+        # to the SYSTEM row.
+        raise SelectionUnavailableError(
             f"{task_key!r} selection is DISABLED for tenant {exc.tenant_id!r} (veto) — "
             "not falling through to the SYSTEM default."
         ) from exc
-    if not model_id:
-        raise ModelUnavailableError(f"AiTaskDefault for {task_key!r} is missing. Run db:seed.")
-    return model_id
+
+    if not cfg.model:
+        raise SelectionUnavailableError(
+            f"AiTaskDefault for {task_key!r} is missing. Run db:seed."
+        )
+    return cfg
+
+
+def _nlp_client(
+    app_state: Any,
+    tenant_id: str,
+    cfg: Any,
+    *,
+    labels: list[str] | None = None,
+    threshold: float = 0.5,
+) -> NlpGuardClientT:
+    """Build a tenant-bound `apps/nlp` client for one resolved selection."""
+    from guardrail.services.external_nlp_client import NlpGuardClient
+
+    settings = cast("Settings", app_state.settings)
+    return NlpGuardClient(
+        base_url=settings.nlp_url,
+        service_token=settings.peer_service_token(settings.service_token),
+        http_client=app_state.http_client,
+        tenant_id=tenant_id,
+        model_id=cfg.model,
+        model_path=cfg.local_path,
+        labels=labels,
+        threshold=threshold,
+        timeout_s=float(cfg.timeout_s or settings.judge.timeout_s),
+    )
+
+
+def _taxonomy(cfg: Any) -> dict[str, Any]:
+    """The registry row's declared label taxonomy (`{}` when it has no opinion)."""
+    taxonomy = getattr(cfg, "label_taxonomy", None)
+    return taxonomy if isinstance(taxonomy, dict) else {}
+
+
+async def build_safety_analyzer(app_state: Any, tenant_id: str) -> SafetyAnalyzer:
+    """Resolve both safety selections + their taxonomies and bind the analyzer.
+
+    Fail-closed on every step: an unresolved selection or an unresolved taxonomy
+    raises rather than substituting a built-in label list.
+    """
+    from guardrail.core.tenant_config import (
+        TASK_KEY_GUARDRAIL_PII,
+        TASK_KEY_GUARDRAIL_SAFETY,
+    )
+    from guardrail.services.safety_analyzer import SafetyAnalyzer, SafetyPolicy
+
+    safety_cfg = await _resolve_selection(
+        app_state, tenant_id, TASK_KEY_GUARDRAIL_SAFETY
+    )
+    pii_cfg = await _resolve_selection(app_state, tenant_id, TASK_KEY_GUARDRAIL_PII)
+
+    safety_taxonomy = _taxonomy(safety_cfg)
+    pii_taxonomy = _taxonomy(pii_cfg)
+
+    tasks = safety_taxonomy.get("tasks")
+    if not isinstance(tasks, dict) or not tasks:
+        raise SelectionUnavailableError(
+            "the guardrail.safety model row declares no `labelTaxonomy.tasks` — the "
+            "moderation taxonomy is configuration and has no code default (fail-closed)."
+        )
+    pii_labels = pii_taxonomy.get("labels")
+    if not isinstance(pii_labels, list) or not pii_labels:
+        raise SelectionUnavailableError(
+            "the guardrail.pii model row declares no `labelTaxonomy.labels` — the PII "
+            "taxonomy is configuration and has no code default (fail-closed)."
+        )
+
+    benign = safety_taxonomy.get("benignLabels")
+    policy_kwargs: dict[str, Any] = {
+        "tasks": {str(k): dict(v) for k, v in tasks.items() if isinstance(v, dict)},
+        "pii_labels": [str(label) for label in pii_labels],
+    }
+    if isinstance(benign, list) and benign:
+        policy_kwargs["benign_labels"] = frozenset(str(b).lower() for b in benign)
+    for source, key in (
+        (pii_taxonomy, "pii_threshold"),
+        (safety_taxonomy, "classification_threshold"),
+    ):
+        value = source.get("threshold")
+        if isinstance(value, (int, float)) and not isinstance(value, bool):
+            policy_kwargs[key] = float(value)
+
+    policy = SafetyPolicy(**policy_kwargs)
+    return SafetyAnalyzer(
+        policy,
+        safety_client=_nlp_client(
+            app_state, tenant_id, safety_cfg, threshold=policy.classification_threshold
+        ),
+        pii_client=_nlp_client(
+            app_state,
+            tenant_id,
+            pii_cfg,
+            labels=policy.pii_labels,
+            threshold=policy.pii_threshold,
+        ),
+    )
 
 
 @asynccontextmanager
-async def pinned_gliner_provider(
-    app_state: Any, tenant_id: str | None = None, model_id: str | None = None
-) -> AsyncIterator[GlinerProvider]:
-    """Resolve + lazily load + pin the GLiNER provider for a request/job.
+async def pinned_safety_analyzer(
+    app_state: Any, tenant_id: str | None = None, analyzer: Any = None
+) -> AsyncIterator[SafetyAnalyzer]:
+    """Yield the safety analyzer for a request/job.
 
-    ``model_id`` may be pre-resolved (e.g. by the ``get_gliner_model_id``
-    dependency) to avoid a second DB lookup; otherwise it is resolved here.
-    Raises :class:`ModelUnavailableError` when the ``guardrail.safety`` DB
-    selection is missing (HTTP endpoints map it to 503; the job processor marks
-    the job failed). The resolved model is pinned so idle-TTL / LRU can't evict
-    it mid-flight, and unpinned when the block exits.
+    Kept as a context manager because the call sites are unchanged from when a
+    model instance had to be PINNED against eviction. Nothing is pinned now —
+    there is nothing resident to evict — but the seam stays so a future change
+    of transport does not ripple through every endpoint again.
     """
-    from guardrail.core.tenant_config import TASK_KEY_GUARDRAIL_SAFETY
-
-    if model_id is None:
-        model_id = await _resolve_aux_model_id(app_state, tenant_id, TASK_KEY_GUARDRAIL_SAFETY)
-    # Read-triggered retention refresh (TTL-cached, single-flight, fail-safe) —
-    # a service that never analyzes never polls.
-    await refresh_model_cache_retention(app_state)
-    cache = get_gliner_cache(app_state)
-    await cache.pin(model_id)
-    try:
-        yield await cache.get(model_id)
-    finally:
-        await cache.unpin(model_id)
+    if analyzer is not None:
+        yield analyzer
+        return
+    yield await build_safety_analyzer(app_state, tenant_id or "")
 
 
-async def get_gliner_model_id(request: Request) -> str:
-    """FastAPI dependency: DB-resolve the GLiNER model id (fail-closed → 503)."""
+async def get_safety_analyzer(request: Request) -> SafetyAnalyzer:
+    """FastAPI dependency: 428 on absent tenant, 503 on an unresolved selection."""
     from fastapi import HTTPException
 
-    from guardrail.core.tenant_config import TASK_KEY_GUARDRAIL_SAFETY
-
-    tenant_id = require_tenant_id(request)  # 428 before any DB selection
+    tenant_id = require_tenant_id(request)  # 428 before any registry read
     try:
-        return await _resolve_aux_model_id(
-            request.app.state,
-            tenant_id,
-            TASK_KEY_GUARDRAIL_SAFETY,
-        )
-    except ModelUnavailableError as exc:
+        return await build_safety_analyzer(request.app.state, tenant_id)
+    except SelectionUnavailableError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
 
 
@@ -439,18 +373,20 @@ async def get_gliner_model_id(request: Request) -> str:
 async def acquire_groundedness_verifier(
     request: Request,
 ) -> AsyncIterator[GroundednessNliVerifier]:
-    """Yield a groundedness verifier, DB-selecting + pinning MiniCheck when enabled.
+    """Yield a groundedness verifier backed by `apps/nlp`'s entailment scorer.
 
     Resolution order:
       1. a pre-seeded ``app.state.groundedness_verifier`` (test seam) is used verbatim;
-      2. a disabled gate builds a verifier that degrades honestly (no DB / no model);
-      3. otherwise the ``guardrail.groundedness`` DB selection drives the model id
-         (fail-closed :class:`ModelUnavailableError` when missing) and the MiniCheck
-         scorer is lazily loaded + pinned via the idle-TTL cache. If the model is
-         configured but not staged/loadable, the verifier degrades to ``unverified``
-         (fail-closed groundedness) rather than 503 — 503 is reserved for a MISSING
-         DB selection.
+      2. a disabled gate builds a verifier that degrades honestly (no selection needed);
+      3. otherwise the ``guardrail.groundedness`` selection drives the model id and a
+         tenant-bound `apps/nlp` client scores the segments.
+
+    An UNRESOLVED selection is 503. An `apps/nlp` outage is NOT: the verifier
+    degrades to ``unverified`` — fail-closed groundedness never reads as
+    ``grounded``, and a scoring outage must not take the whole route down.
     """
+    from fastapi import HTTPException
+
     from guardrail.services.groundedness_nli import GroundednessNliVerifier
 
     # 428 first: a groundedness verdict is a tenant-scoped safety decision, and the
@@ -465,26 +401,19 @@ async def acquire_groundedness_verifier(
 
     settings = app_state.settings
     if not settings.groundedness.enabled:
-        # Dev/CI bypass — degrades to `groundedness_disabled`, no model needed.
+        # Dev/CI bypass — degrades to `groundedness_disabled`, no selection needed.
         yield GroundednessNliVerifier(settings.groundedness)
         return
 
     from guardrail.core.tenant_config import TASK_KEY_GUARDRAIL_GROUNDEDNESS
 
-    model_id = await _resolve_aux_model_id(app_state, tenant_id, TASK_KEY_GUARDRAIL_GROUNDEDNESS)
-    config = settings.groundedness.model_copy(update={"model_id": model_id})
-    await refresh_model_cache_retention(app_state)
-    cache = get_groundedness_scorer_cache(app_state)
-    await cache.pin(model_id)
     try:
-        try:
-            scorer = await cache.get(model_id)
-        except Exception:
-            # DB identity known but the GGUF is not staged/loadable → degrade
-            # fail-closed to `unverified` (the verifier's default factory reports
-            # `nli_model_unavailable`); never a 503 and never `grounded`.
-            yield GroundednessNliVerifier(config)
-            return
-        yield GroundednessNliVerifier(config, scorer=scorer)
-    finally:
-        await cache.unpin(model_id)
+        cfg = await _resolve_selection(
+            app_state, tenant_id, TASK_KEY_GUARDRAIL_GROUNDEDNESS
+        )
+    except SelectionUnavailableError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+    yield GroundednessNliVerifier(
+        settings.groundedness, scorer=_nlp_client(app_state, tenant_id, cfg)
+    )

@@ -14,7 +14,10 @@ from fastapi import HTTPException
 
 from guardrail.core.config import Settings
 from guardrail.core.dependencies import get_resolved_guardian_provider
-from guardrail.core.tenant_config import GuardrailTenantConfig, TenantSelectionVetoedError
+from guardrail.core.tenant_config import (
+    GuardrailTenantConfig,
+    TenantSelectionVetoedError,
+)
 
 # `X-Tenant-Id` is mandatory on this dependency (428 otherwise), so the fake request
 # supplies one by default — these tests are about DB-config RESOLUTION, not the header.
@@ -23,7 +26,9 @@ DEFAULT_TENANT = "11111111-1111-1111-1111-111111111111"
 
 
 class _FakeRequest:
-    def __init__(self, state: SimpleNamespace, headers: dict[str, str] | None = None) -> None:
+    def __init__(
+        self, state: SimpleNamespace, headers: dict[str, str] | None = None
+    ) -> None:
         self.app = SimpleNamespace(state=state)
         self.headers = {"X-Tenant-Id": DEFAULT_TENANT, **(headers or {})}
 
@@ -46,7 +51,9 @@ class _VetoStubResolver:
 
     async def resolve(self, tenant_id):  # noqa: ANN001
         self.seen_tenant = tenant_id
-        raise TenantSelectionVetoedError(tenant_id=tenant_id, task_key="guardrail.validate")
+        raise TenantSelectionVetoedError(
+            tenant_id=tenant_id, task_key="guardrail.validate"
+        )
 
 
 def test_db_config_enabled_defaults_true(monkeypatch) -> None:
@@ -83,7 +90,9 @@ async def test_db_config_disabled_fails_closed_rather_than_inventing_a_model() -
 async def test_db_config_enabled_overrides_model_from_tenant() -> None:
     settings = Settings()
     settings.db.db_config_enabled = True
-    resolver = _StubResolver(GuardrailTenantConfig(provider="lm-studio", model="tenant-guardian-x"))
+    resolver = _StubResolver(
+        GuardrailTenantConfig(provider="lm-studio", model="tenant-guardian-x")
+    )
 
     state = SimpleNamespace(
         settings=settings,

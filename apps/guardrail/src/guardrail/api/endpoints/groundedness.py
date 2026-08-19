@@ -13,14 +13,17 @@ actually entail. PHI hygiene: summary/transcript text is never logged.
 
 from __future__ import annotations
 
-import asyncio
 import time
 from datetime import UTC, datetime
+from typing import Any
 
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, Field
 
-from guardrail.core.dependencies import acquire_groundedness_verifier
+from guardrail.core.dependencies import (
+    ModelUnavailableError,
+    acquire_groundedness_verifier,
+)
 from guardrail.core.logging import get_logger
 from guardrail.services.groundedness_nli import (
     GROUNDED,
@@ -30,7 +33,6 @@ from guardrail.services.groundedness_nli import (
     SegmentVerdict,
     split_segments,
 )
-from guardrail.services.model_cache import ModelUnavailableError
 
 logger = get_logger(__name__)
 
@@ -40,13 +42,17 @@ router = APIRouter()
 class GroundednessSegmentModel(BaseModel):
     """Verdict for one summary segment; offsets index the submitted ``summary``."""
 
-    text: str = Field(..., description="The segment text (a stripped substring of `summary`)")
+    text: str = Field(
+        ..., description="The segment text (a stripped substring of `summary`)"
+    )
     verdict: str = Field(..., description="grounded | ungrounded | unverified")
     grounded: bool = Field(
         ...,
         description="STRICT: true only for a verified-grounded verdict — never on a degrade path",
     )
-    score: float | None = Field(None, description="Entailment score (0.0-1.0) when the model ran")
+    score: float | None = Field(
+        None, description="Entailment score (0.0-1.0) when the model ran"
+    )
     start: int = Field(..., description="Character offset start within `summary`")
     end: int = Field(..., description="Character offset end within `summary`")
 
@@ -62,27 +68,37 @@ class GroundRequest(BaseModel):
     """Request model for output-side groundedness verification."""
 
     summary: str = Field(..., description="Generated summary/note text to verify")
-    transcript: str = Field(..., description="Source transcript the summary must be grounded in")
+    transcript: str = Field(
+        ..., description="Source transcript the summary must be grounded in"
+    )
     request_id: str | None = Field(None, description="Optional request ID for tracking")
 
 
 class GroundResponse(BaseModel):
     """Response model for output-side groundedness verification."""
 
-    segments: list[GroundednessSegmentModel] = Field(..., description="Per-segment verdicts")
+    segments: list[GroundednessSegmentModel] = Field(
+        ..., description="Per-segment verdicts"
+    )
     flagged_spans: list[FlaggedSpanModel] = Field(
-        default_factory=list, description="Offsets of the ungrounded segments within `summary`"
+        default_factory=list,
+        description="Offsets of the ungrounded segments within `summary`",
     )
     checked: bool = Field(..., description="Whether the NLI model actually ran")
     reason: str = Field(
         ...,
         description="checked | groundedness_disabled | nli_model_unavailable | nli_error",
     )
-    model_id: str = Field(..., description="The self-hosted NLI model this gate is configured for")
-    throughput_docs_per_min: float | None = Field(
-        None, description="Measured segments/min for this batched run (None on degrade paths)"
+    model_id: str = Field(
+        ..., description="The self-hosted NLI model this gate is configured for"
     )
-    processing_time_ms: float = Field(..., description="Processing time in milliseconds")
+    throughput_docs_per_min: float | None = Field(
+        None,
+        description="Measured segments/min for this batched run (None on degrade paths)",
+    )
+    processing_time_ms: float = Field(
+        ..., description="Processing time in milliseconds"
+    )
     request_id: str = Field(..., description="Request ID for tracking")
     timestamp: str = Field(..., description="Verification timestamp")
 
@@ -98,18 +114,21 @@ async def ground_summary(
     their mark before the clinician reads them. Degrades fail-closed: an unavailable or
     erroring verifier yields ``unverified`` segments — never silently ``grounded``.
 
-    the MiniCheck model is DB-selected (``guardrail.groundedness``) and
-    loaded lazily on first use; a MISSING DB selection fails closed with HTTP 503,
-    while a configured-but-unstaged model degrades to ``unverified``.
+    The NLI model is DB-selected (``guardrail.groundedness``, tenant-first) and RUNS
+    IN ``apps/nlp``; a MISSING DB selection fails closed with HTTP 503, while an
+    unreachable or unstaged model degrades to ``unverified`` — never ``grounded``.
     """
     start_time = time.monotonic()
 
     try:
         async with acquire_groundedness_verifier(http_request) as verifier:
             try:
-                # The scorer is CPU/GPU-bound — keep the event loop responsive (rule 06).
-                result = await asyncio.to_thread(
-                    verifier.verify, request.summary, request.transcript
+                # TASK-735 Phase 6 — the scorer is a NETWORK call to `apps/nlp` now,
+                # not in-process CPU work, so it is awaited directly rather than
+                # offloaded to a thread. `_maybe_await` keeps a synchronous verifier
+                # (the in-process test seam) working through the same call site.
+                result = await _maybe_await(
+                    verifier.verify(request.summary, request.transcript)
                 )
             except Exception as exc:
                 # FAIL-CLOSED backstop for an unexpected verifier crash: every segment
@@ -122,7 +141,8 @@ async def ground_summary(
                 spans = split_segments(request.summary)
                 result = GroundednessResult(
                     segments=[
-                        SegmentVerdict(text, UNVERIFIED, start, end) for text, start, end in spans
+                        SegmentVerdict(text, UNVERIFIED, start, end)
+                        for text, start, end in spans
                     ],
                     checked=False,
                     reason=REASON_ERROR,
@@ -149,7 +169,8 @@ async def ground_summary(
             for segment in result.segments
         ],
         flagged_spans=[
-            FlaggedSpanModel(start=start, end=end) for start, end in result.flagged_spans
+            FlaggedSpanModel(start=start, end=end)
+            for start, end in result.flagged_spans
         ],
         checked=result.checked,
         reason=result.reason,
@@ -159,3 +180,10 @@ async def ground_summary(
         request_id=request.request_id or f"ground_{int(time.time() * 1000)}",
         timestamp=datetime.now(UTC).isoformat(),
     )
+
+
+async def _maybe_await(value: Any) -> Any:
+    """Accept both a sync verifier (test seam) and the async production one."""
+    if hasattr(value, "__await__"):
+        return await value
+    return value

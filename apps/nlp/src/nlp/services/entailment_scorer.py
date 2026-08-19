@@ -1,4 +1,10 @@
-"""Self-hosted MiniCheck (Flan-T5-Large) groundedness scorer — llama.cpp / GGUF backend.
+"""Self-hosted MiniCheck (Flan-T5-Large) NLI entailment scorer — llama.cpp / GGUF backend.
+
+MOVED here from `apps/guardrail` (TASK-735 Phase 6): `apps/nlp` owns inference,
+`apps/guardrail` owns the groundedness POLICY (threshold, segment cap, verdict
+shape, fail-closed degradation) and calls this service per segment batch. The
+model id and staged weights path arrive PER REQUEST from guardrail's
+`guardrail.groundedness` `AiTaskDefault` selection — neither is named here.
 
 Implements the ``NliScorer`` seam (``groundedness_nli.py``) using the GGUF quant
 ``nvhf/MiniCheck-Flan-T5-Large-Q6_K-GGUF`` run under llama.cpp (owner directive
@@ -37,10 +43,14 @@ from __future__ import annotations
 
 import math
 from collections.abc import Callable, Sequence
+from dataclasses import dataclass
 
-from guardrail.core.config import GroundednessConfig
-from guardrail.core.logging import get_logger
-from guardrail.services.groundedness_nli import NliModelUnavailableError, NliScorer
+from nlp.core.logging import get_logger
+
+
+class NliModelUnavailableError(RuntimeError):
+    """The NLI scorer could not be loaded or self-validated — fail closed."""
+
 
 logger = get_logger(__name__)
 
@@ -57,7 +67,8 @@ _EOS = "</s>"
 # Published model-card reference pair (lytang/MiniCheck-Flan-T5-Large) — the
 # calibration gate's ground truth. raw_prob ≈ 0.981 (supported) / ≈ 0.007 (unsupported).
 _CAL_DOC = (
-    "A group of students gather in the school library to study for their " "upcoming final exams."
+    "A group of students gather in the school library to study for their "
+    "upcoming final exams."
 )
 _CAL_SUPPORTED_CLAIM = "The students are preparing for an examination."
 _CAL_UNSUPPORTED_CLAIM = "The students are on vacation."
@@ -169,13 +180,33 @@ def _make_llama_logit_fn(llama: object) -> LogitFn:
         dec_batch = LlamaBatch(n_tokens=1, embd=0, n_seq_max=1, verbose=False)
         dec_batch.set_batch([dec_start], n_past=0, logits_all=False)
         ctx.decode(dec_batch)  # one decoder step; set_batch marks it logits=True
-        logits = np.ctypeslib.as_array(ctx.get_logits(), shape=(n_vocab,)).astype(np.float64)
-        return float(logits[MINICHECK_LABEL_TOKEN_NO]), float(logits[MINICHECK_LABEL_TOKEN_YES])
+        logits = np.ctypeslib.as_array(ctx.get_logits(), shape=(n_vocab,)).astype(
+            np.float64
+        )
+        return float(logits[MINICHECK_LABEL_TOKEN_NO]), float(
+            logits[MINICHECK_LABEL_TOKEN_YES]
+        )
 
     return logit_fn
 
 
-def load_minicheck_scorer(config: GroundednessConfig) -> NliScorer:
+@dataclass(frozen=True)
+class MiniCheckLoadSpec:
+    """Everything needed to load one MiniCheck GGUF — all caller-supplied.
+
+    `model_id` and `model_path` come from guardrail's registry resolution
+    (`AiModel.sourceUri` / `.localPath`); the llama.cpp knobs are infra tuning
+    owned by this service. No field carries a model identity default.
+    """
+
+    model_id: str
+    model_path: str | None
+    n_ctx: int = 512
+    n_threads: int | None = None
+    n_gpu_layers: int = 0
+
+
+def load_minicheck_scorer(config: MiniCheckLoadSpec) -> LlamaCppMiniCheckScorer:
     """Load the GGUF MiniCheck scorer; raise ``NliModelUnavailableError`` on any failure.
 
     Fail-closed + no network: requires an explicit local ``model_path`` (stage the
@@ -185,8 +216,8 @@ def load_minicheck_scorer(config: GroundednessConfig) -> NliScorer:
     """
     if not config.model_path:
         raise NliModelUnavailableError(
-            f"MiniCheck GGUF '{config.model_id}' ({config.model_file}) is not staged: set "
-            "GUARDRAIL_V2_GROUNDEDNESS_MODEL_PATH to the local .gguf (no network pull in "
+            f"MiniCheck GGUF '{config.model_id}' is not staged: the registry row must carry "
+            "a resolvable localPath / file:// / s3:// weights source (no network pull in "
             "the clinical gate). Fail-closed to 'unverified'."
         )
 
@@ -194,7 +225,7 @@ def load_minicheck_scorer(config: GroundednessConfig) -> NliScorer:
         from llama_cpp import Llama
     except ImportError as exc:
         raise NliModelUnavailableError(
-            "llama-cpp-python is not installed; install the guardrail 'groundedness' extra "
+            "llama-cpp-python is not installed; install the nlp 'entailment' extra "
             "to enable the MiniCheck GGUF scorer (fail-closed to 'unverified')."
         ) from exc
 
@@ -225,9 +256,5 @@ def load_minicheck_scorer(config: GroundednessConfig) -> NliScorer:
             f"MiniCheck GGUF calibration raised {type(exc).__name__} — fail-closed to "
             "'unverified'."
         ) from exc
-    logger.info(
-        "guardrail.groundedness.minicheck_loaded",
-        model_id=config.model_id,
-        model_file=config.model_file,
-    )
+    logger.info(f"nlp.entailment.minicheck_loaded model_id={config.model_id}")
     return scorer

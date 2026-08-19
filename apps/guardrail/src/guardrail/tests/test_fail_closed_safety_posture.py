@@ -34,9 +34,7 @@ import httpx
 import pytest
 from fastapi import HTTPException
 
-from guardrail.core.config import GlinerConfig
 from guardrail.core.errors import GuardrailUndeterminedError
-from guardrail.providers.gliner import GlinerProvider
 from guardrail.services.external_text_client import TextJudgeClient
 
 
@@ -117,13 +115,23 @@ async def test_guardian_error_raises_instead_of_is_medical_true() -> None:
 
 
 @pytest.mark.asyncio
-async def test_gliner_runtime_error_raises_instead_of_returning_safe() -> None:
-    provider = GlinerProvider(config=GlinerConfig())
-    provider.runtime = MagicMock()
-    provider.runtime.classify.side_effect = RuntimeError("onnx exploded")
+async def test_delegated_classification_error_raises_instead_of_returning_safe() -> (
+    None
+):
+    """TASK-735 Phase 3 — the same posture now that `apps/nlp` runs the model."""
+    from guardrail.services.safety_analyzer import SafetyAnalyzer, SafetyPolicy
+
+    class _RaisingNlp:
+        async def classify(self, tasks: Any, text: str) -> Any:
+            raise GuardrailUndeterminedError("engine_error", "nlp exploded")
+
+    analyzer = SafetyAnalyzer(
+        SafetyPolicy(tasks={"prompt_safety": {"labels": ["safe", "unsafe"]}}),
+        safety_client=_RaisingNlp(),  # type: ignore[arg-type]
+    )
 
     with pytest.raises(GuardrailUndeterminedError) as exc:
-        await provider.analyze_content("text", "content_safety")
+        await analyzer.analyze_content("text", "content_safety")
 
     assert exc.value.reason == "engine_error"
 
@@ -145,25 +153,23 @@ async def test_declared_disable_remains_a_bypass_not_a_failure() -> None:
 # ── 3. endpoints translate an undetermined verdict fail-closed ─────────────
 
 
-class _UndeterminedGliner:
-    async def analyze_content(self, text: str, guardrail_type: str = "comprehensive") -> Any:
+class _UndeterminedAnalyzer:
+    async def analyze_content(
+        self, text: str, guardrail_type: str = "comprehensive"
+    ) -> Any:
         raise GuardrailUndeterminedError("timeout", "engine timed out")
 
     async def batch_analyze(
         self, texts: list[str], guardrail_type: str = "comprehensive"
     ) -> list[Any]:
-        return [GuardrailUndeterminedError("timeout", "engine timed out") for _ in texts]
+        return [
+            GuardrailUndeterminedError("timeout", "engine timed out") for _ in texts
+        ]
 
 
 def _app_state_with(provider: Any) -> Any:
-    """A minimal `app.state` whose pinned-GLiNER cache yields `provider`."""
-    from guardrail.services.model_cache import ModelCache
-
-    async def factory(model_id: str) -> Any:
-        return provider
-
+    """A minimal `app.state` (kept for the redact/job call sites)."""
     state = MagicMock()
-    state.gliner_cache = ModelCache(factory=factory)
     state.effective_config_client = None
     return state
 
@@ -173,14 +179,14 @@ async def test_analyze_endpoint_503s_rather_than_answering_safe() -> None:
     from guardrail.api.endpoints.guardrails import GuardrailRequest, analyze_content
 
     http_request = MagicMock()
-    http_request.app.state = _app_state_with(_UndeterminedGliner())
+    http_request.app.state = _app_state_with(None)
     http_request.headers = {"X-Tenant-Id": "11111111-1111-1111-1111-111111111111"}
 
     with pytest.raises(HTTPException) as exc:
         await analyze_content(
             GuardrailRequest(text="x", guardrail_type="content_safety"),
             http_request,
-            model_id="some-model",
+            analyzer=_UndeterminedAnalyzer(),  # type: ignore[arg-type]
         )
 
     assert exc.value.status_code == 503
@@ -191,13 +197,13 @@ async def test_analyze_batch_marks_the_item_undetermined_not_safe() -> None:
     from guardrail.api.endpoints.guardrails import BatchGuardrailRequest, analyze_batch
 
     http_request = MagicMock()
-    http_request.app.state = _app_state_with(_UndeterminedGliner())
+    http_request.app.state = _app_state_with(None)
     http_request.headers = {"X-Tenant-Id": "11111111-1111-1111-1111-111111111111"}
 
     responses = await analyze_batch(
         BatchGuardrailRequest(texts=["a", "b"], guardrail_type="content_safety"),
         http_request,
-        model_id="some-model",
+        analyzer=_UndeterminedAnalyzer(),  # type: ignore[arg-type]
     )
 
     assert [r.safe for r in responses] == [False, False]

@@ -19,15 +19,15 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, Field
 
 from guardrail.core.dependencies import (
-    get_gliner_model_id,
+    ModelUnavailableError,
     get_job_processor,
-    pinned_gliner_provider,
+    get_safety_analyzer,
     require_tenant_id,
 )
 from guardrail.core.errors import ISSUE_UNDETERMINED, GuardrailUndeterminedError
 from guardrail.core.logging import get_logger
 from guardrail.services.job_processor import JobProcessor
-from guardrail.services.model_cache import ModelUnavailableError
+from guardrail.services.safety_analyzer import SafetyAnalyzer
 
 logger = get_logger(__name__)
 
@@ -53,9 +53,13 @@ class GuardrailResponse(BaseModel):
     """Response model for guardrail analysis."""
 
     safe: bool = Field(..., description="Whether the content is safe")
-    issues: list[str] = Field(default_factory=list, description="List of detected issues")
+    issues: list[str] = Field(
+        default_factory=list, description="List of detected issues"
+    )
     confidence: float = Field(..., description="Confidence score (0.0-1.0)")
-    processing_time_ms: float = Field(..., description="Processing time in milliseconds")
+    processing_time_ms: float = Field(
+        ..., description="Processing time in milliseconds"
+    )
     request_id: str = Field(..., description="Request ID for tracking")
     timestamp: str = Field(..., description="Analysis timestamp")
     error: str | None = Field(None, description="Error message if analysis failed")
@@ -76,27 +80,23 @@ class BatchGuardrailRequest(BaseModel):
 async def analyze_content(
     request: GuardrailRequest,
     http_request: Request,
-    model_id: str = Depends(get_gliner_model_id),
+    analyzer: SafetyAnalyzer = Depends(get_safety_analyzer),
 ) -> GuardrailResponse:
     """Analyze content for safety issues in real-time.
 
-    The GLiNER model is DB-selected (``guardrail.safety``) and loaded lazily on first
-    use; a missing DB selection fails closed with 503 (raised by ``get_gliner_model_id``
-    before this body). A load or inference failure ALSO fails closed with 503 — this
-    route can no longer answer 200/``safe`` for a check that never ran.
+    The models are DB-selected (``guardrail.safety`` + ``guardrail.pii``, tenant-first)
+    and RUN IN ``apps/nlp`` (TASK-735 Phase 3); a missing selection or taxonomy fails
+    closed with 503 (raised by ``get_safety_analyzer`` before this body). A delegation
+    failure ALSO fails closed with 503 — this route can never answer 200/``safe`` for a
+    check that did not run.
     """
     start_time = time.monotonic()
 
     try:
-        async with pinned_gliner_provider(
-            http_request.app.state,
-            http_request.headers.get("X-Tenant-Id"),
-            model_id=model_id,
-        ) as gliner_provider:
-            result = await gliner_provider.analyze_content(
-                text=request.text,
-                guardrail_type=request.guardrail_type,
-            )
+        result = await analyzer.analyze_content(
+            text=request.text,
+            guardrail_type=request.guardrail_type,
+        )
     except GuardrailUndeterminedError as exc:
         raise HTTPException(status_code=503, detail=exc.as_detail()) from exc
     except ModelUnavailableError as exc:
@@ -105,7 +105,8 @@ async def analyze_content(
         # FAIL-CLOSED backstop. PHI-safe: log the error TYPE, never the analysed text.
         logger.error("guardrail.analyze.failed", error=type(exc).__name__)
         raise HTTPException(
-            status_code=503, detail="guardrail analysis failed — refusing to report 'safe'"
+            status_code=503,
+            detail="guardrail analysis failed — refusing to report 'safe'",
         ) from exc
 
     processing_time = (time.monotonic() - start_time) * 1000
@@ -126,9 +127,9 @@ async def analyze_content(
 async def analyze_batch(
     request: BatchGuardrailRequest,
     http_request: Request,
-    model_id: str = Depends(get_gliner_model_id),
+    analyzer: SafetyAnalyzer = Depends(get_safety_analyzer),
 ) -> list[GuardrailResponse]:
-    """Analyze multiple texts for safety issues (DB-selected, lazily loaded GLiNER).
+    """Analyze multiple texts for safety issues (DB-selected, delegated to `apps/nlp`).
 
     A batch is a multiplex: one unresolved element must neither void the resolved ones
     nor collapse the response to a single status code. So an element whose verdict could
@@ -139,30 +140,30 @@ async def analyze_batch(
     start_time = time.monotonic()
 
     try:
-        async with pinned_gliner_provider(
-            http_request.app.state,
-            http_request.headers.get("X-Tenant-Id"),
-            model_id=model_id,
-        ) as gliner_provider:
-            results = await gliner_provider.batch_analyze(
-                texts=request.texts,
-                guardrail_type=request.guardrail_type,
-            )
+        results = await analyzer.batch_analyze(
+            texts=request.texts,
+            guardrail_type=request.guardrail_type,
+        )
     except ModelUnavailableError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
     except Exception as exc:
         logger.error("guardrail.analyze_batch.failed", error=type(exc).__name__)
         raise HTTPException(
-            status_code=503, detail="guardrail batch analysis failed — refusing to report 'safe'"
+            status_code=503,
+            detail="guardrail batch analysis failed — refusing to report 'safe'",
         ) from exc
 
     processing_time = (time.monotonic() - start_time) * 1000
-    per_item_ms = processing_time / len(request.texts) if request.texts else processing_time
+    per_item_ms = (
+        processing_time / len(request.texts) if request.texts else processing_time
+    )
 
     responses = []
     for i, result in enumerate(results):
         if isinstance(result, Exception):
-            logger.error("guardrail.analyze_batch.item_undetermined", error=type(result).__name__)
+            logger.error(
+                "guardrail.analyze_batch.item_undetermined", error=type(result).__name__
+            )
             responses.append(
                 GuardrailResponse(
                     safe=False,  # FAIL-CLOSED: no verdict is not a pass

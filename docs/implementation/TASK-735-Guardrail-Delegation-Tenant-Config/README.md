@@ -2,7 +2,7 @@
 
 | Field | Value |
 |---|---|
-| Status | In Progress (Phases 0, 1, 2a, 2b, 4-TS landed; Phase 5 landed for the LLM plane; Phases 3 and 6 not started) |
+| Status | In Progress (Phases 0, 1, 2a, 2b, 3, 4-TS, 6 landed; Phase 5 landed for the LLM plane; Phase 4's Python half remains, blocked on G-01) |
 | Type | refactor + infrastructure |
 | Owner decision date | 2026-08-16 |
 | Affects | `apps/guardrail`, `apps/text`, `apps/nlp`, `packages/applications`, `apps/admin-console`, `turbo.json` |
@@ -646,7 +646,163 @@ pass-through (plan step 5.1) is NOT wired, so today every judgement is served by
 credential `text` resolves for the tenant itself. That is correct behaviour, not a leak, but
 it is not yet BYOK *through guardrail*.
 
+### Phases 3 & 6 — GLiNER and MiniCheck move to `apps/nlp` (landed 2026-08-19)
+
+**Guardrail now holds ZERO resident model weights.** The three deletions the plan
+called for all landed, plus their staging machinery:
+
+| Deleted from `apps/guardrail` | Why |
+|---|---|
+| `providers/gliner.py` (269 lines, 4 hardcoded taxonomies) | NER/classification belongs to `apps/nlp` (rule 06) |
+| `services/groundedness_scorer_minicheck.py` | `git mv`'d to `apps/nlp/src/nlp/services/entailment_scorer.py` |
+| `services/model_cache.py`, `core/model_source.py` | nothing resident to cache; weight staging moved with the weights |
+| `GlinerConfig` (whole class), `GroundednessConfig`'s `model_id`/`model_file`/`model_path`/`model_cache_dir`/`n_ctx`/`n_threads`/`n_gpu_layers` | model identity + runtime knobs are not guardrail's |
+| `Settings.model_s3_*`, the `groundedness` extra, deps `gliner2-onnx` / `transformers` / `onnxruntime` / `minio` | guardrail is policy + HTTP now |
+
+**What `apps/nlp` gained** — three executor routes under `/api/v1/guard`, plus their
+services and cache slots:
+
+| Route | Backing | Contract |
+|---|---|---|
+| `POST /guard/pii` | `services/gliner2_guard.py` (GLiNER2 `extract_entities`) | byte-exact document offsets back |
+| `POST /guard/classify` | same runtime, `classify_text` with the caller's task schema | returns ONLY the tasks requested |
+| `POST /guard/entailment` | `services/entailment_scorer.py` (MiniCheck GGUF, moved verbatim) | raw `P(entailed)` per pair |
+
+Every route receives `model_name` (+ optional `model_path`) and its label taxonomy
+FROM THE CALLER — the same shape `/classify/{text,tokens}` already used. `apps/nlp`
+names no model and carries no label set. Fail posture: 428 with no tenant, 503 on an
+unresolved selection or taxonomy, 503 on a runtime failure (never an empty result that
+reads as "nothing found"). Both models load lazily through the existing per-slot
+idle-TTL, pin-while-active cache — so `apps/nlp` also holds no weights until first use.
+
+**What `apps/guardrail` kept** — POLICY, and only policy:
+
+* `services/safety_analyzer.py` — which moderation tasks a `guardrail_type` runs, how
+  per-task labels collapse into the `safe`/`issues`/`confidence` verdict, the
+  fail-closed posture. This is what is left of `gliner.py` after the weights left.
+* `services/groundedness_nli.py` — the entailment threshold, the segment cap, the
+  verdict shape, the degrade-to-`unverified` contract. It no longer loads anything:
+  `load_default_scorer` is gone and the verifier is HANDED a scorer.
+* `services/external_nlp_client.py::NlpGuardClient` — the peer client. `X-Service-Token`
+  + `X-Tenant-Id`, and the tenant is a **construction-time invariant**: the client
+  refuses to exist without one, so an unattributable safety decision cannot be made.
+  Bounded retry budget owned by guardrail (not the callee). No `api_key` parameter.
+* `/guardrail/redact`'s chunking, offset re-basing and masking — unchanged. The
+  span-offset contract survives the network hop and is pinned by a test on both sides.
+
+**Owner-specified models, wired as CONFIG (the load-bearing part).**
+
+| Task key | `AiModel` slug | `sourceUri` |
+|---|---|---|
+| `guardrail.safety` | `gliguard-llm-guardrails-300m` | `fastino/gliguard-LLMGuardrails-300M` |
+| `guardrail.pii` (NEW) | `gliner2-privacy-filter-pii-multi` | `fastino/gliner2-privacy-filter-PII-multi` |
+
+The safety plane is TWO selections now because the owner specified two different
+models doing two different jobs. `guardrail.pii` is a new task key; `guardrail.safety`
+is repointed off the retired `gliner-guard-uniencoder-onnx` row.
+
+Both were RESEARCHED against their model cards before wiring, not assumed. Findings:
+
+* Both are `gliner2` (PyTorch `GLiNER2.from_pretrained`), **not** `gliner2-onnx` — a
+  different package from the one guardrail had installed. `apps/nlp` gains `gliner2`;
+  guardrail loses `gliner2-onnx`. (`uv lock`: +`gliner2` 1.3.2, −`gliner2-onnx` 0.1.1.)
+* PII: `extract_entities(text, labels, threshold, include_confidence=True,
+  include_spans=True)`, **42** entity types, 7 languages. Per the owner directive the
+  seed pins `metaData.languages = ['en']` — English only, though the model is multilingual.
+* Safety: `classify_text(text, {task: {labels, multi_label, cls_threshold}},
+  threshold=…)`. The card declares **exactly the six task names the directive names** —
+  `prompt_safety`, `prompt_toxicity`, `jailbreak_detection`, `response_safety`,
+  `response_toxicity`, `response_refusal`. No contradiction to report; all six are
+  seeded with their verbatim label sets (15 toxicity categories, 12 jailbreak types,
+  binary safety, refusal/compliance).
+* The model card does not formally document `extract_entities`' return field names, so
+  `_span_fields` accepts both the mapping and attribute shapes and **drops** any entity
+  without usable integer offsets rather than guessing — redaction slices the original
+  string with those numbers, so a wrong offset is worse than a visible miss.
+
+**Proof the model ids and taxonomies are not hardcoded.** Three enforced claims:
+
+1. `test_settings_name_no_model_and_no_label_taxonomy` — `Settings` exposes no `gliner`
+   sub-config, `GroundednessConfig` has no `model_id`/`model_path`, and `config.py`
+   contains none of `hivetrace/`, `fastino/`, `MiniCheck-Flan-T5`, `gliner-guard`,
+   `jailbreak_detection`, `prompt_safety`.
+2. `test_no_model_id_or_taxonomy_literal_anywhere_in_guardrail_source` — a repo-grep
+   over every non-test `.py` in `apps/guardrail/src` for `hivetrace/`, `fastino/`,
+   `nvhf/`, `granite-guardian`, `gemma3:`. Currently empty.
+3. `build_safety_analyzer` raises `SelectionUnavailableError` (→ 503) when a registry
+   row declares no `labelTaxonomy`. There is no built-in list to fall back to, so the
+   only way the taxonomy can be wrong is for an admin to have made it wrong.
+
+**How selection resolves.** Unchanged mechanism, extended payload:
+`AiTaskDefault` ⋈ `AiModel`, **request tenant → SYSTEM, two tiers**, DISABLED tenant row
+is a veto (503), missing selection is 503, `"Global"` (`50000000-…`) never appears. The
+new part is that the label taxonomy rides on `AiModel._metadata.labelTaxonomy`
+(`KEY_LABEL_TAXONOMY`, JSON-encoded into the existing tenant-keyed cache), so a taxonomy
+is resolved by *the same cascade that chose the model it belongs to*. That is what makes
+it configuration: a platform admin edits the SYSTEM row, a tenant may carry its own, and
+`seedAiModels` re-syncs `metaData` on re-seed (the precedent is `tts` voice catalogs).
+The `db_config_enabled=False` dev escape hatch fails CLOSED here too — with no DB there
+is no model to name, and naming one in code is the thing this ticket removes.
+
+**Deviations from the plan, recorded rather than silent:**
+
+* **`guardrail.pii` is a new task key.** The plan assumed one GLiNER model served both
+  PII and content safety. The owner-specified models split that in two, so the selection
+  did too. `guardrail_type="pii_detection"` now consults only the PII model.
+* **`GroundednessNliVerifier.verify` became `async`.** The scorer is a network call now,
+  not in-process CPU work, so `/guardrail/ground`'s `asyncio.to_thread(verifier.verify, …)`
+  was actively wrong. Both call sites tolerate a sync verifier so the in-process test
+  seam still works.
+* **The endpoint-level "model unavailable" test changed meaning.** "The local GGUF is
+  unstaged" is not a state guardrail can be in any more. The 503 case is now a MISSING
+  registry selection and the degrade case is a verifier with no usable scorer — split
+  into two tests, both pinned.
+* **`redact_text` takes the analyzer through `Depends`** instead of calling the resolver
+  inline, so it is overridable in tests now that there is no local cache to seed.
+* **`guardrail`'s aux-cache retention plumbing is deleted** (`apply_model_cache_retention`,
+  `refresh_model_cache_retention`, `test_effective_config_retention.py`) — there are no
+  caches left to retune. The TS `EffectiveConfigService` still SERVES a `retention` group
+  for `guardrail`; it simply has no consumer now. Left alone deliberately (contract
+  change, different lane) — noted here so it is not mistaken for an oversight.
+* **Confidence is categorical, not fabricated.** The delegated surface returns labels,
+  not calibrated per-label scores, so `analyze_content` reports 1.0 clean / 0.0 flagged
+  rather than inventing a mean. The verdict is what callers gate on.
+
+**Still open after this phase:** Phase 4's Python half (thresholds + judge tuning as
+`guardrail.policy.*` reads) is still blocked on **G-01** — there is no tenant-cascade
+read surface for `db-config` keys. The thresholds that ship here therefore travel in
+`labelTaxonomy.threshold` / `.cls_threshold` alongside the labels they gate, which is
+resolvable today through the same cascade; `SafetyPolicy`'s remaining code defaults are
+the bootstrap floor for a row that declares no threshold. Phase 5's gateway-side
+`provider_overrides` population is also still unwired (recorded under Phase 5).
+
+**The seed was NOT run.** Only the seed SOURCE changed
+(`ai-models/nlp.ts`, `16-ai-task-default.ts`). A `pnpm db:seed` (or a cold reseed) is
+required before the new selections resolve in a live environment — `seedAiTaskDefault`
+is CREATE-ONLY, so the repointed `guardrail.safety` row only takes effect on a cold seed
+or an explicit admin edit; `guardrail.pii` is a new key and will be created.
+
+**Evidence (this worktree, 2026-08-19):**
+
+```
+guardrail pytest ............ 196 passed
+nlp       pytest ............ 232 passed   (8 new, apps/nlp/tests/test_guard_endpoints.py)
+ruff check apps/{guardrail,nlp}/src ....... All checks passed!
+mypy apps/guardrail ......... Success: no issues found in 29 source files
+mypy apps/nlp ............... Success: no issues found in 50 source files
+uv lock ..................... Resolved 488 packages; +gliner2 1.3.2, -gliner2-onnx 0.1.1
+pnpm --filter @arcaai/database test ....... 1541 passed (1541)
+pnpm --filter @arcaai/applications test ... 76 failed | 1800 passed | 4 skipped
+```
+
+The 76 `@arcaai/applications` failures are **PRE-EXISTING and unrelated**, proven by
+measurement rather than inference: `git stash -u` + re-run on the untouched tree gives
+the byte-identical `76 failed | 1800 passed | 4 skipped (1880)`. This is the same
+suite-stability problem §7 "Suite-stability finding" already flags, now larger; it is
+not caused by this change and is not fixed by it.
+
 ### Phases 3 and 6 — not started
+
 
 Phase 3 (GLiNER → `nlp`, with the byte-exact span-offset contract) and Phase 6 (MiniCheck
 groundedness → `nlp`, with the llama.cpp private-API binding and the `apps/harness` duplicate
@@ -712,4 +868,5 @@ uncluttered tree.
 | 2026-08-16 | Ticket created. Current-state audit of `apps/guardrail` against the two new owner configuration rules; plan drafted; `.claude/rules/00`, `06`, `09` updated with the rules this ticket enforces. |
 | 2026-08-16 | Owner resolved D1–D5: reuse the `llm` connection · tenant may tighten only (entitlement floor) · guardrail keeps its own task keys · all six phases in scope · criteria live in the PromptTemplate plane. Phase 6 rewritten from optional to in-scope. |
 | 2026-08-16 | Phase 0 landed: `guardrail.` removed from `GLOBAL_ADMIN_ONLY_TASK_PREFIXES`; `models.guardrail.*` descriptors retarget to tenant-editable; `entitlements.featureGuardrailModelSelection` catalogued (not yet enforced — G-05); `AiTaskDefaultService.upsertRow` gains the platform-approved-list floor (`assertGuardrailModelApproved`, 403). Tests, API/e2e copy and admin-console copy updated to match. |
+| 2026-08-19 | **Phases 3 and 6 landed.** GLiNER and MiniCheck moved OUT of `apps/guardrail` into `apps/nlp` behind three new `/api/v1/guard/{pii,classify,entailment}` executor routes; `providers/gliner.py`, `services/groundedness_scorer_minicheck.py`, `services/model_cache.py`, `core/model_source.py`, `GlinerConfig` and the groundedness weight/runtime fields are DELETED, together with the `gliner2-onnx`/`transformers`/`onnxruntime`/`minio` dependencies — guardrail now holds zero resident model weights. New `services/external_nlp_client.py::NlpGuardClient` (mandatory `X-Tenant-Id` as a construction invariant, bounded retry, declared fail-closed posture) and `services/safety_analyzer.py` (the policy half of the old provider). Owner-specified models seeded as SYSTEM `AiModel` rows with their verbatim label taxonomies in `metaData.labelTaxonomy`: `fastino/gliguard-LLMGuardrails-300M` (`guardrail.safety`, six tasks) and `fastino/gliner2-privacy-filter-PII-multi` (`guardrail.pii`, NEW key, English only). Model ids and taxonomies are resolved tenant → SYSTEM and fail closed; three tests enforce their absence from code. `GroundednessNliVerifier.verify` is now async. Phase 4's Python half stays blocked on G-01. |
 | 2026-08-17 | Assessment only, no code in this ticket: §7 gains "Delegation scope re-measured 2026-08-17" (the LLM content-analysis stack has zero production callers, so Phase 2b is one method + two routes; GLiNER's span-offset contract is the hard part of Phase 3; MiniCheck's llama.cpp private-API binding plus harness's duplicate NLI host is the hard part of Phase 6) and §6b gains **G-09** (the engine stack was also failing OPEN; fixed in its own P0 ticket, which also closed G-07's `X-Tenant-Id` interim). |

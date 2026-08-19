@@ -1,0 +1,112 @@
+"""Guardrail-class model schemas (TASK-735 Phases 3 & 6).
+
+`apps/nlp` is the EXECUTOR for the guardrail plane, never its policy owner
+(decision D3). Every request here carries, from the caller:
+
+* the runtime model id (`model_name`, the resolved `AiModel.sourceUri`) and
+  optional staged weights path (`model_path`) — exactly the shape
+  `/classify/{text,tokens}` already uses;
+* the LABEL TAXONOMY / task schema to run — guardrail resolves it tenant-first
+  from the registry and owns it as policy;
+* the `tenant_id` the work is attributable to.
+
+Nothing in this module carries a model id, a label set or a threshold of its
+own: those are configuration, and configuration does not live in code
+(`.claude/rules/00-project-context.md` §Configuration Principles).
+"""
+
+from __future__ import annotations
+
+from pydantic import BaseModel, Field
+
+
+class _GuardModelSelection(BaseModel):
+    """The caller-resolved weight identity + attribution shared by every route."""
+
+    model_name: str | None = Field(
+        default=None,
+        description="Resolved AiModel.sourceUri. Absent ⇒ 503 (selection is fail-closed).",
+    )
+    model_path: str | None = Field(
+        default=None,
+        description="Optional staged weights directory (AiModel.localPath)",
+    )
+    tenant_id: str | None = Field(
+        default=None,
+        description="Tenant the decision is attributable to. Absent ⇒ 428.",
+    )
+
+
+# ── PII / entity spans (GLiNER2) ─────────────────────────────────────────
+
+
+class GuardPiiRequest(_GuardModelSelection):
+    text: str = Field(..., description="Text to scan")
+    labels: list[str] = Field(
+        default_factory=list,
+        description="The PII label taxonomy to detect (caller policy). Empty ⇒ 503.",
+    )
+    threshold: float = Field(
+        default=0.5, ge=0.0, le=1.0, description="Caller-supplied detection threshold"
+    )
+
+
+class GuardEntity(BaseModel):
+    """One detected span. Offsets index the SUBMITTED `text` byte-exactly."""
+
+    label: str
+    start: int
+    end: int
+    score: float
+    text: str
+
+
+class GuardPiiResponse(BaseModel):
+    entities: list[GuardEntity]
+    model_version: str
+
+
+# ── Safety / moderation classification (GLiNER2 classify_text) ───────────
+
+
+class GuardTaskSpec(BaseModel):
+    """One classification task, exactly as the caller's policy defines it."""
+
+    labels: list[str] = Field(..., min_length=1)
+    multi_label: bool = Field(default=False)
+    cls_threshold: float | None = Field(default=None, ge=0.0, le=1.0)
+
+
+class GuardClassifyRequest(_GuardModelSelection):
+    text: str = Field(..., description="Text to moderate")
+    tasks: dict[str, GuardTaskSpec] = Field(
+        default_factory=dict,
+        description="task name → label spec (caller policy). Empty ⇒ 503.",
+    )
+    threshold: float = Field(default=0.5, ge=0.0, le=1.0)
+
+
+class GuardClassifyResponse(BaseModel):
+    #: task name → a single label (single-label) or a list (multi-label). Only
+    #: the tasks that were REQUESTED appear; nothing is invented.
+    results: dict[str, str | list[str]]
+    model_version: str
+
+
+# ── NLI entailment (MiniCheck) ───────────────────────────────────────────
+
+
+class GuardEntailmentPair(BaseModel):
+    document: str
+    claim: str
+
+
+class GuardEntailmentRequest(_GuardModelSelection):
+    pairs: list[GuardEntailmentPair] = Field(default_factory=list)
+
+
+class GuardEntailmentResponse(BaseModel):
+    #: `P(claim entailed by document)` per pair, in request order. The caller
+    #: (guardrail) owns the threshold that turns a score into a verdict.
+    scores: list[float]
+    model_version: str
