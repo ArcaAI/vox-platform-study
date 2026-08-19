@@ -19,6 +19,7 @@ import type { RunNodeRollup, WorkflowGraph } from '../api/types';
 import { toCanvasGraph } from '../lib/graph-layout';
 import { correlateRollupsToGraphNodes } from '../lib/rollup-correlation';
 import { FailurePanel } from './failure-panel';
+import { GateApprovalPanel } from './gate-approval-panel';
 import { NodeRunBadge } from './node-run-badge';
 import { RunNodeDetailDrawer } from './run-node-detail-drawer';
 import { RunStatusBadge } from './run-status-badge';
@@ -147,7 +148,16 @@ function TraceBody({ runId }: { runId: string }) {
           }
         />
       }
-      statusBanner={<FailurePanel run={run} nodes={nodes} />}
+      statusBanner={
+        <div className="flex flex-col gap-2">
+          {/* The gate sits ABOVE the failure summary: a run waiting on a human is an action the
+              clinician must take now, whereas the failure panel is a report on what already
+              happened. `GateApprovalPanel` renders nothing unless the gate is genuinely
+              waiting. */}
+          <GateApprovalPanel run={run} />
+          <FailurePanel run={run} nodes={nodes} />
+        </div>
+      }
       footer={
         <StatusFooter
           start={<span>{isLive ? 'Live · polling while running' : 'Terminal run — not polling'}</span>}

@@ -380,7 +380,7 @@ describe('HarnessGatewayService', () => {
 
       expect(mockHttpService.axiosRef.post).toHaveBeenCalledTimes(1);
       const [url, body, options] = mockHttpService.axiosRef.post.mock.calls[0];
-      expect(url).toBe('http://harness:8866/api/v1/workflow-runs:start');
+      expect(url).toBe('http://harness:8866/api/v1/internal/workflow-runs:start');
       expect(body).toEqual({
         runId: 'run-1',
         sessionId: 'workflow-interpreter-run-1',
@@ -428,7 +428,7 @@ describe('HarnessGatewayService', () => {
 
       expect(mockHttpService.axiosRef.get).toHaveBeenCalledTimes(1);
       const [url, options] = mockHttpService.axiosRef.get.mock.calls[0];
-      expect(url).toBe('http://harness:8866/api/v1/workflow-runs/run-1');
+      expect(url).toBe('http://harness:8866/api/v1/internal/workflow-runs/run-1');
       expect(options.headers['X-Service-Token']).toBe('tok');
       expect(options.timeout).toBe(15_000);
       expect(result.status).toBe('RUNNING');
@@ -444,7 +444,7 @@ describe('HarnessGatewayService', () => {
 
       expect(mockHttpService.axiosRef.post).toHaveBeenCalledTimes(1);
       const [url, body, options] = mockHttpService.axiosRef.post.mock.calls[0];
-      expect(url).toBe('http://harness:8866/api/v1/workflow-runs/run-1:cancel');
+      expect(url).toBe('http://harness:8866/api/v1/internal/workflow-runs/run-1:cancel');
       expect(body).toEqual({});
       expect(options.headers['X-Service-Token']).toBe('tok');
       expect(options.timeout).toBe(15_000);

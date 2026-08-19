@@ -20,6 +20,7 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { ArgumentInvalidException, QuotaExceededException } from '@arcaai/exceptions';
 import { SysEventType, WorkflowDefinitionStatus } from '@arcaai/domains';
+import { WORKFLOW_NODE_REGISTRY } from '@arcaai/workflow-contract';
 import { WorkflowDefinitionService } from '../workflow-definition.service';
 
 const mockClsService = { get: vi.fn(), set: vi.fn() };
@@ -535,34 +536,18 @@ describe('WorkflowDefinitionService', () => {
     it('projects WORKFLOW_NODE_REGISTRY, sorted, with a registryChecksum', async () => {
       const result = await service.listNodes();
 
-      // TASK-720 populated the five summarization-palette node types alongside the TASK-734
-      // seed entries; TASK-724 added the eight STT-palette node types; TASK-731 added three
-      // consultation-palette node types (consentGate/phiHop/hitlGate — the palette's other ten
-      // node types are not yet registered, see that ticket's README §7) — this projection is a
-      // live read of WORKFLOW_NODE_REGISTRY, so it must track that registry's real contents, not
-      // a stale snapshot. (2026-08-17 close-out pass: TASK-720's five entries, briefly dropped
-      // from the registry by an external tree operation, were restored — see that ticket's
-      // README §7.)
-      expect(result.nodes.map((n) => n.type)).toEqual([
-        'consultation.consentGate',
-        'consultation.hitlGate',
-        'consultation.phiHop',
-        'generate.text',
-        'guardrail.check',
-        'input.context_binding',
-        'noop',
-        'output.deliver',
-        'passthrough',
-        'prompt.template_ref',
-        'stt.asrEngine',
-        'stt.audioInput',
-        'stt.diarization',
-        'stt.languageDetection',
-        'stt.noiseFilter',
-        'stt.phiHop',
-        'stt.transcriptOutput',
-        'stt.vad',
-      ]);
+      // Derived from the registry, NOT a hardcoded key list. This assertion used to spell out
+      // every key, which made it a snapshot that went stale on every palette addition (it was
+      // pinned at 18 keys through the consultation palette's completion and the addition of the
+      // core.start/core.end boundary markers) without ever catching a real defect — the thing it
+      // is actually here to prove is that `listNodes` is a LIVE, SORTED, complete projection of
+      // whatever the registry currently holds, and that survives palette growth.
+      const expectedKeys = Object.values(WORKFLOW_NODE_REGISTRY)
+        .map((descriptor) => descriptor.key)
+        .sort((a, b) => a.localeCompare(b));
+
+      expect(result.nodes.map((n) => n.type)).toEqual(expectedKeys);
+      expect(result.nodes.length).toBeGreaterThan(0);
       expect(result.registryChecksum).toMatch(/^[0-9a-f]{64}$/);
     });
   });

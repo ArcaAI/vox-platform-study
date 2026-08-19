@@ -133,3 +133,27 @@ export interface WorkflowDefinitionSlice {
   status: string;
   graph: Record<string, unknown>;
 }
+
+/**
+ * Live HITL-gate state for a run (TASK-731 Phase B), mirrored off
+ * `RunGateStateResponse` (`packages/applications/.../dto/run-gate.ts`).
+ *
+ * `waiting` is the ONLY field an Approve affordance may key off. `exists: false` is the normal
+ * answer for every run without a gate — a 200, never an error.
+ */
+export interface RunGateState {
+  runId: string;
+  exists: boolean;
+  waiting: boolean;
+  phase?: string;
+  escalations?: number;
+  approved?: boolean;
+}
+
+/** Body for the approve call. There is deliberately NO clinician field — the signer is the
+ *  acting user, resolved server-side; a caller must not be able to name someone else. */
+export interface ApproveRunGateBody {
+  decision?: 'SIGNED' | 'REJECTED';
+  contextItemVersionId?: string;
+  attestationHash?: string;
+}

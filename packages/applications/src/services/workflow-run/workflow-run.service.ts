@@ -1,4 +1,4 @@
-import { BadRequestException, Inject, Injectable, Logger, NotFoundException, Optional } from '@nestjs/common';
+import { BadRequestException, Inject, Injectable, Logger, NotFoundException, Optional, ServiceUnavailableException } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { ClsService } from 'nestjs-cls';
 import { ResourceType, WorkflowRunEntity, WorkflowRunFactory, WorkflowRunRepository, WorkflowRunStatus } from '@arcaai/domains';
@@ -7,13 +7,16 @@ import { buildCursorFindAllProps, clampCursorLimit, CursorPage, decodeCursor, MA
 import { IActiveUserContext } from '../../interfaces';
 import { AgentTrajectoryStepResponse, IAgentTrajectoryService } from '../agent-trajectory';
 import { IAppSettingsService } from '../baseServices/_meta/appSettings/IAppSettingsService';
+import { HarnessGatewayService } from '../consultation/harness/harness-gateway.service';
 import {
+  ApproveRunGateInput,
   GetRunTraceOptions,
   ListWorkflowRunsFilters,
   ListWorkflowRunsOptions,
   RecordRunFinishedInput,
   RecordRunStartedInput,
   RunNodeRollupResponse,
+  RunGateStateResponse,
   RunTraceResponse,
   WorkflowRunResponse,
 } from './dto';
@@ -120,6 +123,9 @@ export class WorkflowRunService extends BaseService implements IWorkflowRunServi
     // `agentic.trajectory.*` keys the retention cron reads (never a second
     // source of truth for the window).
     @Optional() @Inject(IAppSettingsService) private readonly appSettingsService?: IAppSettingsService,
+    // Optional for the same reason. The gate's LIVE state is deliberately not in the read
+    // model — see `IWorkflowRunService.getRunGate`.
+    @Optional() private readonly harnessGatewayService?: HarnessGatewayService,
   ) {
     // Telemetry exemption — never broadcasts, so the ResourceType is inert
     // (same placeholder-constructor posture as AgentTrajectoryService).
@@ -163,6 +169,71 @@ export class WorkflowRunService extends BaseService implements IWorkflowRunServi
   async getRun(tenantId: string, runId: string): Promise<WorkflowRunResponse> {
     const entity = await this.findRunOrThrow(tenantId, runId);
     return WorkflowRunDtoMapper.toResponse(entity);
+  }
+
+  async getRunGate(tenantId: string, runId: string): Promise<RunGateStateResponse> {
+    // Tenancy FIRST, before anything is asked of the harness: a cross-tenant run id must 404
+    // here, not leak the existence of another tenant's gate through a downstream error.
+    await this.findRunOrThrow(tenantId, runId);
+
+    if (!this.harnessGatewayService) {
+      throw new ServiceUnavailableException('Harness gateway is not configured');
+    }
+
+    try {
+      const state = await this.harnessGatewayService.getWorkflowRunGate(runId);
+      return new RunGateStateResponse({
+        runId,
+        exists: state.exists,
+        waiting: state.waiting,
+        phase: state.phase,
+        escalations: state.escalations,
+        approved: state.approved,
+      });
+    } catch (error) {
+      // A harness outage must not read as "no gate here" — that would silently hide a run
+      // genuinely waiting on a clinician. Surface it.
+      this.logger.warn({ message: 'Harness gate state read failed', runId, error: (error as Error)?.message });
+      throw new ServiceUnavailableException('Could not read the gate state for this run');
+    }
+  }
+
+  async approveRunGate(tenantId: string, runId: string, input: ApproveRunGateInput): Promise<RunGateStateResponse> {
+    await this.findRunOrThrow(tenantId, runId);
+
+    if (!this.harnessGatewayService) {
+      throw new ServiceUnavailableException('Harness gateway is not configured');
+    }
+
+    // The signer is the ACTING user, resolved here — never a field a caller can set. A body
+    // that could name the clinician is the forgery shape `03-compliance-posture.md` §3 forbids,
+    // which is why `ApproveRunGateInput` has no such field to read.
+    const clinicianId = this.requestUserId;
+    if (!clinicianId) {
+      throw new BadRequestException('No acting user to record as the approving clinician');
+    }
+
+    // Refuse to "approve" something that is not waiting. Signalling a decided or absent gate
+    // would return success while reaching nothing — the caller must not be told a note was
+    // signed when it was not.
+    const before = await this.getRunGate(tenantId, runId);
+    if (!before.exists) {
+      throw new BadRequestException('This run has no human-approval gate');
+    }
+    if (!before.waiting) {
+      throw new BadRequestException(`This run's gate is not waiting for a decision (phase: ${before.phase ?? 'unknown'})`);
+    }
+
+    await this.harnessGatewayService.approveWorkflowRunGate(runId, {
+      decision: input.decision ?? 'SIGNED',
+      clinicianId,
+      contextItemVersionId: input.contextItemVersionId,
+      attestationHash: input.attestationHash,
+      tenantId,
+    });
+
+    this.logger.log({ message: 'Workflow run gate approved', runId, tenantId, clinicianId, decision: input.decision ?? 'SIGNED' });
+    return this.getRunGate(tenantId, runId);
   }
 
   async getRunTrace(tenantId: string, runId: string, options: GetRunTraceOptions = {}): Promise<RunTraceResponse> {
