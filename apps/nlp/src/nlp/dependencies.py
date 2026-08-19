@@ -396,11 +396,19 @@ async def pinned_medical_suggester(
 
 
 async def _create_gliner2_guard(cache_key: str) -> Any:
+    from nlp.core.guard_model_reference import resolve_guard_weights_source
     from nlp.services.gliner2_guard import Gliner2GuardService
 
     model_name, model_path = _split_cache_key(cache_key)
+    # NOT `_weights_source`: that helper (mirrored from apps/stt) treats a
+    # set-but-missing path as a warning and falls through to the hub id, which
+    # for the safety plane means silently serving a different model than the
+    # admin configured — and pulling it from the internet on a host that
+    # deliberately staged its weights. The guard plane fails CLOSED instead
+    # (owner addition, TASK-776); the reference may be a hub id OR a local path.
     service = Gliner2GuardService(
-        weights_source=_weights_source(model_name, model_path), model_id=model_name
+        weights_source=resolve_guard_weights_source(model_name, model_path),
+        model_id=model_name,
     )
     # GLiNER2 load is blocking/CPU-bound — keep the event loop responsive.
     await asyncio.to_thread(service.load)
