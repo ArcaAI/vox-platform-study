@@ -57,6 +57,13 @@ class ThrottleTestController {
     return { ok: 'strict-optin' };
   }
 
+  /** TASK-773 — used only by the credential-class parity block at the end. */
+  @Throttle({ default: { limit: 3, ttl: 60000 } })
+  @Get('parity')
+  parity() {
+    return { ok: 'parity' };
+  }
+
   @SkipThrottle()
   @Get('skip')
   skip() {
@@ -528,5 +535,62 @@ describe('TieredThrottlerGuard (per-tenant DB rate limits)', () => {
       expect((await hit('/lane-i/clamped', TENANT_NORMAL)).status).toBe(200);
     }
     expect(settings.getTierForTenant('default', TENANT_NORMAL).limit).toBe(1000);
+  });
+});
+
+/**
+ * TASK-773 — the three credential classes are rate-limited IDENTICALLY.
+ *
+ * Owner decision, 2026-08-19: a service account gets the same rate-limit
+ * treatment as every other caller — no tier of its own. That is already true,
+ * but only by ABSENCE: nothing in `throttle/` mentions a credential class, and
+ * `TieredThrottlerGuard` overrides no `getTracker`, so every caller shares the
+ * IP-keyed bucket NestJS supplies by default.
+ *
+ * "True because nobody wrote the branch" is the state this ticket has repeatedly
+ * had to convert into something declared, so it is pinned here. If someone later
+ * keys buckets per credential — a reasonable thing to want, since one machine
+ * integration can saturate a bucket its tenant's humans then share — this test
+ * fails and they have to make the decision deliberately rather than inherit it.
+ *
+ * Note the one asymmetry that is NOT a decision and cannot be fixed here:
+ * `extractTenantIdPreAuth` resolves a tenant by DECODING A JWT, so per-tenant
+ * plan limits apply to JWT callers only. An API key and a service-account token
+ * are both OPAQUE — resolving either to a tenant means a DB/Redis lookup, which
+ * is exactly what a pre-auth throttle guard must not do. So both fall to the
+ * global tier, together, for the same structural reason.
+ */
+describe('TieredThrottlerGuard — credential-class parity (TASK-773)', () => {
+  let app: INestApplication;
+  const prevEnabled = process.env.RATE_LIMIT_ENABLED;
+
+  beforeAll(async () => {
+    process.env.RATE_LIMIT_ENABLED = 'true';
+    const moduleRef = await Test.createTestingModule({
+      imports: [ThrottleConfigModule],
+      controllers: [ThrottleTestController],
+      providers: [{ provide: APP_GUARD, useClass: TieredThrottlerGuard }],
+    }).compile();
+    app = moduleRef.createNestApplication();
+    await app.init();
+  });
+
+  afterAll(async () => {
+    if (app) await app.close();
+    if (prevEnabled === undefined) delete process.env.RATE_LIMIT_ENABLED;
+    else process.env.RATE_LIMIT_ENABLED = prevEnabled;
+  });
+
+  it('all three credential classes draw on ONE shared bucket, not one each', async () => {
+    // `/t/parity` allows 3. Spend them one per credential class: if each class
+    // had its own bucket, all three would sit at 1/3 and a fourth call would
+    // pass. It must not.
+    expect((await request(app.getHttpServer()).get('/t/parity')).status).toBe(200);
+    expect((await request(app.getHttpServer()).get('/t/parity').set('X-API-Key', 'k_test')).status).toBe(200);
+    expect((await request(app.getHttpServer()).get('/t/parity').set('X-Service-Account-Token', 'sat_test')).status).toBe(200);
+
+    // Fourth call — refused whichever credential it carries.
+    expect((await request(app.getHttpServer()).get('/t/parity').set('X-Service-Account-Token', 'sat_test')).status).toBe(429);
+    expect((await request(app.getHttpServer()).get('/t/parity')).status).toBe(429);
   });
 });
