@@ -16,6 +16,14 @@ import { ClsService } from 'nestjs-cls';
 import { Observable, throwError } from 'rxjs';
 import { catchError } from 'rxjs/operators';
 
+import {
+  DOWNSTREAM_RETRY_AFTER_SECONDS,
+  buildDownstreamErrorBody,
+  capabilityForPath,
+  classifyDownstreamFailure,
+  describeCauseForOperator,
+  downstreamStatusFor,
+} from '../filters/downstream-error';
 import { optimisticLockConflictTotal, routeLabel } from '../observability/metrics';
 
 @Injectable()
@@ -27,6 +35,7 @@ export class ExceptionInterceptor implements NestInterceptor {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   intercept(context: ExecutionContext, next: CallHandler): Observable<any> {
     const request = context.switchToHttp().getRequest();
+    const response = context.switchToHttp().getResponse();
     let requestId: string | undefined;
     let userId: string | undefined;
     let tenantId: string | undefined;
@@ -320,6 +329,59 @@ export class ExceptionInterceptor implements NestInterceptor {
           return throwError(() => new HttpException(err.toJSON(), HttpStatus.INTERNAL_SERVER_ERROR));
         }
 
+        // TASK-768 — a failed call to a downstream Python service (text, stt,
+        // guardrail, nlp, tts, harness).
+        //
+        // This branch is the SINGLE place a downstream failure becomes a
+        // client-facing body. It exists because the alternative — each call
+        // site composing its own message — is exactly how
+        // `Failed to call SMR service: connect ECONNREFUSED 127.0.0.1:8862`
+        // reached callers as a 400.
+        //
+        // It deliberately runs LAST, on errors nothing else claimed, and skips
+        // anything that is already an `HttpException` or a `BaseException`. That
+        // ordering is what makes it a safety net rather than an override: a
+        // service that has a considered mapping keeps it, while a raw
+        // `AxiosError` that no call site caught at all — the
+        // `HarnessGatewayService` case, which used to render as an opaque 500 —
+        // still lands on the right status without that service having to know
+        // this module exists.
+        if (!(err instanceof HttpException) && !(err instanceof BaseException)) {
+          const kind = classifyDownstreamFailure(err);
+          if (kind) {
+            const status = downstreamStatusFor(kind, err?.response?.status);
+            const capability = capabilityForPath(path);
+
+            // The operator half of the contract: host, port, errno, upstream
+            // status and the whole cause fan-out, keyed by the SAME
+            // correlationId the client is handed below. Never the upstream
+            // response body — it can echo the assembled clinical prompt.
+            this.logger.error({
+              message: 'Downstream service call failed',
+              ...baseContext,
+              correlationId: requestId,
+              downstreamFailureKind: kind,
+              capability,
+              status,
+              ...describeCauseForOperator(err),
+            });
+
+            if (status === HttpStatus.SERVICE_UNAVAILABLE) {
+              setRetryAfter(response);
+            }
+
+            return throwError(() => new HttpException(buildDownstreamErrorBody({ status, capability, correlationId: requestId }), status));
+          }
+        }
+
+        // Every 503 leaving the gateway backs the caller off, including the ones
+        // a controller or service raised directly (e.g. the seam-resolution
+        // branch in `consultation.controller.ts`). Without this, whether a
+        // client retried correctly depended on which layer noticed the outage.
+        if (err instanceof HttpException && err.getStatus() === HttpStatus.SERVICE_UNAVAILABLE) {
+          setRetryAfter(response);
+        }
+
         // Ensure correlationId is set
         if (!err.correlationId) {
           err.correlationId = requestId;
@@ -413,4 +475,18 @@ function mapPrismaCodeToHttp(code: string): { status: HttpStatus; label: string 
     default:
       return { status: HttpStatus.BAD_REQUEST, label: 'Bad Request' };
   }
+}
+
+/**
+ * Set `Retry-After` on a 503, unless something upstream already chose a value.
+ *
+ * Written straight onto the response rather than into the body because
+ * `Retry-After` is a header by definition (RFC 9110 §10.2.3) and because the
+ * interceptor rethrows — Nest's default filter writes the status and body but
+ * leaves headers already set on the response intact.
+ */
+function setRetryAfter(response: { setHeader?: (name: string, value: string) => void; getHeader?: (name: string) => unknown } | undefined): void {
+  if (typeof response?.setHeader !== 'function') return;
+  if (typeof response.getHeader === 'function' && response.getHeader('Retry-After') !== undefined) return;
+  response.setHeader('Retry-After', String(DOWNSTREAM_RETRY_AFTER_SECONDS));
 }

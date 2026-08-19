@@ -251,16 +251,22 @@ test.describe.serial('prompt-template test bench (tenant_admin · __GLOBAL__)', 
       const ack = (await res.json()) as PromptTestAck;
       expect(ack.provider).toBe(KNOWN_PROVIDER);
       expect(ack.model).toBe(KNOWN_MODEL);
-    } else if (res.status() === 400) {
-      // `callTextGenerate` wraps ANY axios failure (incl. SMR unreachable) as a
-      // 400 too, so a bare status check can't tell "known pair wrongly
-      // rejected" apart from "SMR is down in this stack". Read the message:
-      // `assertKnownSmrModel` throws a distinct "Unknown or disabled
-      // provider/model pair" ArgumentInvalidException BEFORE the SMR call —
-      // if we see that instead of the SMR-call wrapper, the pair really was
-      // rejected and this is a genuine contract failure.
-      const body = await res.text().catch(() => '');
-      expect(body, `a KNOWN pair (${KNOWN_PROVIDER}/${KNOWN_MODEL}) must not be rejected as unknown/disabled`).toMatch(/Failed to call SMR service/i);
+    } else {
+      // TASK-768 made this branch decisive. Previously an unreachable SMR ALSO
+      // produced a 400 (`Failed to call SMR service: connect ECONNREFUSED
+      // 127.0.0.1:8862`), so a bare status check could not tell "known pair
+      // wrongly rejected" apart from "SMR is down in this stack" and the test
+      // had to read the message. Now the two are different statuses: an absent
+      // dependency is 503, and 400 can only mean `assertKnownSmrModel` rejected
+      // the pair before the SMR call — a genuine contract failure.
+      expect(res.status(), `a KNOWN pair (${KNOWN_PROVIDER}/${KNOWN_MODEL}) must not be rejected as unknown/disabled`).not.toBe(400);
+
+      if (res.status() === 503) {
+        // The dependency is absent — and it must say so without naming itself.
+        const body = await res.text().catch(() => '');
+        expect(body, 'a 503 must not carry the internal host:port').not.toMatch(/ECONNREFUSED|\d{1,3}(?:\.\d{1,3}){3}|:88\d{2}\b/);
+        expect(res.headers()['retry-after'], 'every 503 backs the caller off').toBeTruthy();
+      }
     }
   });
 

@@ -9,6 +9,8 @@ import {
   resolveInternalAccessToken,
 } from '@arcaai/applications';
 import { isAxiosError } from 'axios';
+
+import { describeCauseForOperator } from '../../filters/downstream-error';
 import { ClsService } from 'nestjs-cls';
 
 const DEFAULT_GUARDRAIL_URL = 'http://localhost:8863';
@@ -23,6 +25,8 @@ const NLP_TIMEOUT_MS = 15_000;
 // forwarded to the console — only the upstream status is preserved. Mirrors the
 // smr-proxy posture.
 const UPSTREAM_ERROR_MESSAGE = 'The AI inference service returned an error.';
+/** TASK-768 — opaque transport-failure message. Names the capability, never the topology. */
+const TRANSPORT_ERROR_MESSAGE = 'AI text analysis is temporarily unavailable. Please retry.';
 
 /**
  * AiInferenceClient — the OUTBOUND half of the user-plane
@@ -154,8 +158,12 @@ export class AiInferenceClient {
       this.logger.warn({ message: 'AI inference upstream error (body redacted — may contain PHI)', action, status });
       return new HttpException(UPSTREAM_ERROR_MESSAGE, status);
     }
-    const message = error instanceof Error ? error.message : String(error);
-    this.logger.error({ message: 'AI inference transport error', action, error: message });
-    return new ServiceUnavailableException(`AI inference request failed (${action}): ${message}`);
+    // TASK-768: the transport branch used to interpolate the axios message into
+    // the client body — i.e. `connect ECONNREFUSED 127.0.0.1:8864`. The cause
+    // stays in the log (with the correlationId the client also gets); the client
+    // gets a stable, opaque message. `Retry-After` is added by
+    // `ExceptionInterceptor` for every 503 leaving the gateway.
+    this.logger.error({ message: 'AI inference transport error', action, ...describeCauseForOperator(error) });
+    return new ServiceUnavailableException(TRANSPORT_ERROR_MESSAGE);
   }
 }

@@ -256,6 +256,11 @@ describe('env/vault-kv descriptor keys resolve to the real variable names', () =
     'harness.nerPriorsEnabled': 'HARNESS_NER_PRIORS_ENABLED',
     'harness.atomicFactEnabled': 'HARNESS_ATOMIC_FACT_ENABLED',
     'harness.claimCheck.enabled': 'HARNESS_CLAIM_CHECK_ENABLED',
+    // THE canonical internal service-to-service credential (owner decision
+    // D-D, 2026-08-17) — one shared token on every internal hop. The legacy
+    // per-service `*_SERVICE_TOKEN` entries above are retained only as a
+    // backward-compatibility fallback, so both appear here during the overlap.
+    'internal.accessToken': 'INTERNAL_ACCESS_TOKEN',
   };
 
   /**

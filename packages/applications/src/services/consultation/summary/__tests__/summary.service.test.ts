@@ -763,11 +763,20 @@ describe('SummaryService', () => {
       await expect(service.extractEntities('ctx-ws')).rejects.toThrow(BadRequestException);
     });
 
-    it('should throw BadRequestException when NLP service call fails', async () => {
+    // TASK-768: this used to assert a `BadRequestException` whose message was
+    // `Failed to call NLP service: ${error}` — a 400 blaming the caller for an
+    // absent dependency, carrying the NLP host:port. The service now RETHROWS
+    // the cause unchanged; the gateway boundary
+    // (`apps/api/src/filters/downstream-error.ts`, applied by
+    // `ExceptionInterceptor`) classifies it into 503/502/4xx and is the only
+    // thing that builds a client-facing body.
+    it('rethrows the underlying cause when the NLP service call fails, without wrapping it in a 400', async () => {
       mockContextItemRepository.findById.mockResolvedValue(createMockContextItem({ content: 'Valid content' }));
-      mockHttpService.axiosRef.post.mockRejectedValue(new Error('Connection refused'));
+      const cause = Object.assign(new Error('connect ECONNREFUSED 127.0.0.1:8864'), { code: 'ECONNREFUSED' });
+      mockHttpService.axiosRef.post.mockRejectedValue(cause);
 
-      await expect(service.extractEntities('ctx-item-123')).rejects.toThrow(BadRequestException);
+      await expect(service.extractEntities('ctx-item-123')).rejects.toBe(cause);
+      await expect(service.extractEntities('ctx-item-123')).rejects.not.toBeInstanceOf(BadRequestException);
     });
 
     // ----- Entities without optional fields -----

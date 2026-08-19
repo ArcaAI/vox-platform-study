@@ -55,10 +55,12 @@ import {
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiExcludeEndpoint, ApiOperation, ApiParam, ApiTags } from '@nestjs/swagger';
 import type { AxiosError } from 'axios';
+
+import { classifyDownstreamFailure, downstreamStatusFor } from '../../filters/downstream-error';
 import type { Response } from 'express';
 import { ClsService } from 'nestjs-cls';
 import { StreamScope } from '../auth/decorators/stream-scope.decorator';
-import { RequiredScopes } from '../../decorators';
+import { RequiredScopes, RequiredSvcScopes } from '../../decorators';
 
 interface TextResponseFormat {
   type: 'text' | 'json' | 'json_schema';
@@ -183,6 +185,11 @@ interface ProviderListingEntry {
 // `TextCompatController` (`/api/smr/api/v1`), which uses this same scope for
 // the identical capability — kept in step deliberately.
 @RequiredScopes('consultation:report:write')
+// TASK-767 — the standalone summarization/text-generation feature, reachable by
+// the third credential class. Renamespaced from the `consultation:report:write`
+// above, and deliberately the SAME scope the compat sibling declares: one
+// capability, one grant, whichever door the caller uses.
+@RequiredSvcScopes('svc:consultation:report:write')
 export class TextProxyController {
   private readonly logger = new Logger(TextProxyController.name);
 
@@ -380,7 +387,12 @@ export class TextProxyController {
       return new HttpException({ detail: fallbackMessage }, status);
     }
 
-    return new HttpException({ detail: fallbackMessage }, HttpStatus.BAD_GATEWAY);
+    // TASK-768: no upstream status means the peer never answered — a TRANSPORT
+    // failure, which is 503 (retryable), not 502 (the peer answered badly). The
+    // status now comes from the shared classifier so this controller and the
+    // gateway boundary can never disagree; the v1 body SHAPE is unchanged.
+    const kind = classifyDownstreamFailure(err);
+    return new HttpException({ detail: fallbackMessage }, kind ? downstreamStatusFor(kind) : HttpStatus.BAD_GATEWAY);
   }
 
   private async withRetry<T>(

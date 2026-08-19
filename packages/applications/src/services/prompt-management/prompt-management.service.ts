@@ -1310,7 +1310,16 @@ export class PromptManagementService extends BaseService implements IPromptManag
       });
       data = response.data ?? {};
     } catch (error) {
-      throw new BadRequestException(`Failed to call SMR service: ${error}`);
+      // TASK-768: was `BadRequestException(\`Failed to call SMR service: ${error}\`)`.
+      // That is the exact body the TASK-764 evidence captured — a 400 naming
+      // `connect ECONNREFUSED 127.0.0.1:8862`. Rethrow the cause; the gateway
+      // boundary (`downstream-error.ts` via `ExceptionInterceptor`) owns the
+      // status and the client-facing message.
+      this.logger.error({
+        message: 'SMR generation-job submission failed; rethrowing the cause for the gateway boundary to classify',
+        causeMessage: error instanceof Error ? error.message : String(error),
+      });
+      throw error;
     }
 
     const taskId = data.task_id;
@@ -1346,7 +1355,13 @@ export class PromptManagementService extends BaseService implements IPromptManag
       if (status === 404) {
         throw new NotFoundException(`Generation task ${taskId} not found`);
       }
-      throw new BadRequestException(`Failed to call SMR service: ${error}`);
+      // TASK-768 — as above. The 404 branch stays: that is a considered mapping
+      // of an upstream status, not a composed cause string.
+      this.logger.error({
+        message: 'SMR task-output read failed; rethrowing the cause for the gateway boundary to classify',
+        causeMessage: error instanceof Error ? error.message : String(error),
+      });
+      throw error;
     }
 
     const state = data.status ?? 'unknown';

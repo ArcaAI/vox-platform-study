@@ -4,6 +4,12 @@ import { ConfigService } from '@nestjs/config';
 import { SecretsService } from '@arcaai/applications';
 import { isAxiosError } from 'axios';
 
+import { describeCauseForOperator } from '../../filters/downstream-error';
+
+/** TASK-768 — opaque stand-ins. The cause goes to the log; the client gets these. */
+const UPSTREAM_ERROR_MESSAGE = 'The harness service returned an error.';
+const TRANSPORT_ERROR_MESSAGE = 'Note generation is temporarily unavailable. Please retry.';
+
 /**
  * Base path of the harness admin surface. The
  * Python agent builds matching endpoints under this prefix on apps/harness; the
@@ -168,11 +174,17 @@ export class HarnessOpsClient {
   private toHttpError(error: unknown, action: string): HttpException {
     if (isAxiosError(error) && error.response) {
       this.logger.warn({ message: 'Harness ops upstream error', action, status: error.response.status });
-      const body = error.response.data ?? { message: error.message };
+      // TASK-768: the `?? { message: error.message }` fallback meant an EMPTY
+      // upstream body fell back to the axios message — `connect ECONNREFUSED
+      // 127.0.0.1:8866`. An absent body now yields an opaque one; the upstream's
+      // own body is still forwarded (this is a super-admin ops surface whose
+      // contract is to surface the harness's own error), and its status is kept.
+      const body = error.response.data ?? { message: UPSTREAM_ERROR_MESSAGE };
       return new HttpException(body as string | Record<string, unknown>, error.response.status);
     }
-    const message = error instanceof Error ? error.message : String(error);
-    this.logger.error({ message: 'Harness ops transport error', action, error: message });
-    return new ServiceUnavailableException(`Harness ops request failed (${action}): ${message}`);
+    this.logger.error({ message: 'Harness ops transport error', action, ...describeCauseForOperator(error) });
+    // TASK-768: was `\`Harness ops request failed (${action}): ${message}\``,
+    // which leaked the harness host:port. Cause to the log, capability to the client.
+    return new ServiceUnavailableException(TRANSPORT_ERROR_MESSAGE);
   }
 }

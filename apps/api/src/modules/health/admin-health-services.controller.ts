@@ -4,6 +4,7 @@ import { ApiBearerAuth, ApiOperation, ApiParam, ApiResponse, ApiTags } from '@ne
 import { HttpService } from '@nestjs/axios';
 import { Throttle } from '@nestjs/throttler';
 import { CanAny, ForbidApiKey } from '../../decorators';
+import { redactTopology } from '../../filters/downstream-error';
 
 interface DownstreamService {
   key: string;
@@ -200,10 +201,15 @@ export class AdminHealthServicesController {
         url: `${svc.url}${svc.healthEndpoint}`,
         error: err instanceof Error ? err.message : String(err),
       });
+      // TASK-768: this is a 200 body, but it is still client-facing — it used
+      // to hand the admin console `connect ECONNREFUSED 127.0.0.1:8862`. The
+      // REASON is the whole point of a health screen, so the string is kept and
+      // only the topology is stripped: the errno survives, the host/port/URL do
+      // not. The unredacted cause remains in the operator log just above.
       return {
         status: 'down',
         service: svc.name,
-        error: err instanceof Error ? err.message : String(err),
+        error: redactTopology(err instanceof Error ? err.message : String(err)),
       };
     }
   }

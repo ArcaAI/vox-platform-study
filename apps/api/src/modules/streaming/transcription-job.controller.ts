@@ -66,7 +66,7 @@ import {
   StreamSessionResponse,
   TranscribeFileRequest,
 } from './dto';
-import { RequiredScopes } from '../../decorators';
+import { RequiredScopes, RequiredSvcScopes } from '../../decorators';
 
 @ApiBearerAuth()
 @Authorize()
@@ -80,6 +80,25 @@ import { RequiredScopes } from '../../decorators';
 // across 20 methods risks leaving one silently ungated. Splitting the GETs onto
 // `stt:transcription:read` is a precision follow-up, never a widening.
 @RequiredScopes('stt:transcription:write')
+// TASK-767 — the standalone speech-to-text feature, reachable by the THIRD
+// credential class as well. The `svc:` scope is renamespaced from the very
+// `stt:transcription:write` above (`STANDALONE_FEATURE_SCOPE_SOURCES`), so a
+// machine identity reaches exactly the routes a scoped tenant key does.
+//
+// SVC-NOTE — four routes on this class stay 404 for a machine, BY DESIGN.
+// `stream/session/:sessionId/{DELETE,refresh-ticket,switch-to-fallback,
+// switch-to-primary}` carry `@TenantOwnedResource('StreamSession')`, whose
+// `assertStreamSessionOwnership` requires a CLS `user.id` and compares it to
+// the session's owning clinician (TASK-754, fail-closed on an ownerless
+// binding). A service-account principal deliberately sets no CLS `user` — the
+// whole point of the class is that a machine's actions are not recorded against
+// a person — so it can never satisfy that check, and the WS handshake refuses
+// the socket for the same reason (`stt-ws.gateway.ts`: ticket user must equal
+// the binding owner). Creating a session and driving BATCH transcription work;
+// the live WebSocket lifecycle does not. Giving machines an owner identity is
+// an owner decision, recorded in the TASK-767 README, not something to paper
+// over here.
+@RequiredSvcScopes('svc:stt:transcription:write')
 export class TranscriptionJobController {
   private readonly logger = new Logger(TranscriptionJobController.name);
 

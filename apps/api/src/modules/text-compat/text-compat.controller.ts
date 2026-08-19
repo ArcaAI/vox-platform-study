@@ -6,6 +6,7 @@ import {
   IDnaWritingStyleService,
   IProviderConnectionService,
   RequiredScopes,
+  RequiredSvcScopes,
   SecretsService,
   TENANTLESS,
   assertProviderAvailable,
@@ -306,6 +307,11 @@ export class TextCompatController {
   @Post('summary/sync')
   @Authorize()
   @RequiredScopes('consultation:report:write')
+  // TASK-767 — the standalone summarization feature over the FROZEN v1 wire
+  // contract. Declared per-route rather than at class level, mirroring the
+  // `@RequiredScopes` placement above; adding it changes no path, no verb and
+  // no payload (pinned by `__tests__/compat-wire-contract.test.ts`).
+  @RequiredSvcScopes('svc:consultation:report:write')
   @ApiOperation({ summary: 'v1-compatible synchronous medical summary (stateless shim over SMR /generate)' })
   async summarySync(@Body() body: SyncSummaryRequest, @Req() request: RequestWithAuth, @Res() res: Response): Promise<void> {
     // Mandatory V2 Core context: resolve-or-reject tenant BEFORE any SMR call,
@@ -580,6 +586,7 @@ export class TextCompatController {
   @Post('presummary')
   @Authorize()
   @RequiredScopes('consultation:report:write')
+  @RequiredSvcScopes('svc:consultation:report:write')
   @ApiOperation({ summary: 'v1-compatible department-aware pre-summary (stateless shim over SMR /generate)' })
   async presummary(@Body() body: PreSummaryRequest, @Req() request: RequestWithAuth, @Res() res: Response): Promise<void> {
     // Mandatory V2 Core context: resolve-or-reject tenant BEFORE any SMR call.
@@ -1294,13 +1301,18 @@ export class TextCompatController {
       code: axiosError?.code,
       correlationId: this.clsService.getId(),
     });
+    // TASK-768: this branch is reached only when SMR never answered — a
+    // transport failure — so the status is 503, not 500. The v1 body SHAPE
+    // (`{ error, requestId, timestamp }`) is FROZEN: `@arcaai/vox-node` parses
+    // it. Only the status changes, and `ExceptionInterceptor` adds `Retry-After`
+    // to it like every other 503 leaving the gateway.
     return new HttpException(
       {
         error: 'SMR service unavailable',
         requestId: this.clsService.getId(),
         timestamp: new Date().toISOString(),
       },
-      HttpStatus.INTERNAL_SERVER_ERROR,
+      HttpStatus.SERVICE_UNAVAILABLE,
     );
   }
 

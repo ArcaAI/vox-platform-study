@@ -1540,7 +1540,20 @@ export class SummaryService extends BaseService implements ISummaryService {
           }
         }
       }
-      throw new BadRequestException(`Failed to call SMR service: ${primaryError}`);
+      // TASK-768: this used to be
+      // `BadRequestException(\`Failed to call SMR service: ${primaryError}\`)`,
+      // which answered 400 for an ABSENT dependency and handed the caller
+      // `connect ECONNREFUSED 127.0.0.1:8862`. Rethrow the CAUSE instead: the
+      // gateway boundary (`apps/api/src/filters/downstream-error.ts`, applied by
+      // `ExceptionInterceptor`) classifies it — transport ⇒ 503, upstream 5xx ⇒
+      // 502, upstream 4xx propagated — and is the only thing that builds the
+      // client-facing body. This service must not, and cannot: it is one layer
+      // below the HTTP contract and its other callers are queue processors.
+      this.logger.error({
+        message: 'SMR finalize call failed; rethrowing the cause for the gateway boundary to classify',
+        causeMessage: primaryError instanceof Error ? primaryError.message : String(primaryError),
+      });
+      throw primaryError;
     }
   }
 
@@ -1821,7 +1834,14 @@ export class SummaryService extends BaseService implements ISummaryService {
       );
       return { ...response.data, modelUsed: modelSelection.model_name ?? null };
     } catch (error) {
-      throw new BadRequestException(`Failed to call NLP service: ${error}`);
+      // TASK-768 — see `callSmrWithTenantFallback`: rethrow the cause, let the
+      // gateway boundary classify and build the body. Composing a message here
+      // is what leaked the NLP host:port as a 400.
+      this.logger.error({
+        message: 'NLP token-classification call failed; rethrowing the cause for the gateway boundary to classify',
+        causeMessage: error instanceof Error ? error.message : String(error),
+      });
+      throw error;
     }
   }
 }

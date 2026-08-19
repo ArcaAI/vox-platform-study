@@ -16,6 +16,8 @@ import { ClsService } from 'nestjs-cls';
 import { Body, Controller, Get, HttpException, HttpStatus, Inject, Logger, Optional, Post, Res } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import type { AxiosError } from 'axios';
+
+import { classifyDownstreamFailure, downstreamStatusFor } from '../../filters/downstream-error';
 import type { Response } from 'express';
 import { type ProviderFunding, classifyTtsProvider } from './tts-provider-classification';
 import { RequiredScopes } from '../../decorators';
@@ -184,7 +186,10 @@ export class SpeechProxyController {
     if (typeof status === 'number') {
       return new HttpException({ detail: fallbackMessage }, status);
     }
-    return new HttpException({ detail: fallbackMessage }, HttpStatus.BAD_GATEWAY);
+    // TASK-768 — see `text-proxy.controller.ts`: no upstream status ⇒ transport
+    // failure ⇒ 503, from the shared classifier. Body shape unchanged.
+    const kind = classifyDownstreamFailure(err);
+    return new HttpException({ detail: fallbackMessage }, kind ? downstreamStatusFor(kind) : HttpStatus.BAD_GATEWAY);
   }
 
   private async withRetry<T>(

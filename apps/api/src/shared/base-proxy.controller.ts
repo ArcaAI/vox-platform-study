@@ -5,6 +5,8 @@ import { type IncomingMessage, ServerResponse } from 'http';
 import type { Socket } from 'net';
 import { createProxyMiddleware, fixRequestBody } from 'http-proxy-middleware';
 
+import { redactTopology } from '../filters/downstream-error';
+
 export interface ProxyControllerConfig {
   serviceUrl: string;
   serviceName: string;
@@ -105,12 +107,19 @@ export abstract class BaseProxyController {
             }
 
             if (res instanceof ServerResponse && !res.headersSent) {
+              // TASK-768: `errorDetail` is `err.message || err.code` — i.e.
+              // `connect ECONNREFUSED 127.0.0.1:8862`. It stays in `logPayload`
+              // above (operator) and is redacted out of the body (client). The
+              // status is 503, not 502: a proxy `error` event means the peer was
+              // never reached. This class has no production subclasses today,
+              // but it is the template the next proxy will be copied from —
+              // which is exactly why it must not model the leak.
               const body = JSON.stringify({
                 error: `${config.serviceName} service unavailable`,
-                detail: errorDetail,
+                detail: redactTopology(errorDetail),
                 timestamp: new Date().toISOString(),
               });
-              res.writeHead(502, {
+              res.writeHead(503, {
                 'Content-Type': 'application/json',
                 'Content-Length': Buffer.byteLength(body),
               });
