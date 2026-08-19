@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Status** | Partial — Pass 4 (2026-08-16): Phase 5's Task 2 (`casl-blast-radius.md`, a real live-query survey) and Task 14 (CASL condition-evaluation SHADOW mode — instrumented, unit-tested, wired to zero production routes) are now built, on top of Pass 3's Phase 4/WORM-writer/Phase-6-seed work and Pass 2's HTTP enforcement (ON BY DEFAULT). Phases 0–4 and 6 done; Phase 5 is now SHADOW-only (Task 15 — enforce + `getAccessibleBy` wiring — is explicitly NOT started, per the owner's R1 shadow→measure→enforce directive). See §7 Pass 4. |
+| **Status** | Partial — Pass 5 (2026-08-19): Phase 5 Task 15 (ENFORCE) is built. The guard now carries a real enforce path — an explicit per-`(action, subject)` allow-list (`CASL_ENFORCED_PAIRS`) whose instance-aware verdict is AUTHORITATIVE (403) for listed pairs, with every other pair keeping Task 14's shadow semantics unchanged. **The list ships EMPTY**, and that is the finding of this pass, not an omission: shadow mode was wired to zero production routes, so no pair has a measurement to enforce against, and the two candidates `casl-blast-radius.md` §7 ranked highest are both structurally DISQUALIFIED (see §7 Pass 5). `getAccessibleBy` remains unwired. Phases 0–4 and 6 done. |
 | **Wave** | 1 · **Size** | XL |
 | **Epic slug** | `consent-abac` |
 | **Depends on** | — (independent; TASK-711 supplies the `PRIMED` state this gate naturally attaches to, but neither blocks the other) |
@@ -696,6 +696,18 @@ Evidence rule: **paste actual command output** for every box. "Done" without out
       skipped — no regression. `pnpm --filter @arcaai/applications build` clean; `pnpm api:build`
       12/12 tasks succeeded; `apps/api` unit suite re-run: 212 files / 3007 tests passed, no
       regression. Task 15 (enforce, `getAccessibleBy` wiring) explicitly NOT started**
+- [x] Phase 5 Task 15 — CASL ENFORCE mechanism built, unit-tested, and shipped with an EMPTY
+      enforce list — **Pass 5 (new criterion, this pass): `CASL_ENFORCED_PAIRS` +
+      `PolicyEngine.isEnforcedPair`/`recordEnforceDenial` (`casl_enforce_denial_total` metric,
+      `casl.enforce.denial` event) + `UnifiedAuthGuard.runCaslInstanceChecks` (renamed from
+      `runCaslShadowChecks`, now returning enforced denials the caller applies AFTER the type-only
+      verdict, so enforcement can only NARROW). `casl-conditions.enforce.test.ts` 11/11 passing —
+      RED confirmed first (5 failed / 6 passed before implementation). Full
+      `@arcaai/applications` authorization suite 186/186; package suite 9518 passed / 1 pre-existing
+      unrelated failure (`s3.service.secret-gate.test.ts`, proven pre-existing by re-running it on a
+      stashed tree); `apps/api` unit suite 234 files / 3759 tests passed; lint identical to baseline
+      (184 warnings, 0 errors); typecheck clean. NO pair enforced, and `getAccessibleBy` still
+      unwired — see §7 Pass 5 for why both are correct outcomes rather than gaps**
 - [x] `casl-blast-radius.md` (Task 2) produced from a real live query against the local `Policy`
       table — **Pass 4: `hope` dev Postgres, 2026-08-16 — 82 rule entries carrying `conditions`
       across 21 policies (65 distinct `(subject, action)` pairs), 16 identity-shaped (the real
@@ -793,6 +805,103 @@ Evidence rule: **paste actual command output** for every box. "Done" without out
 ---
 
 ## 7. Implementation Summary
+
+### Pass 5 (2026-08-19) — Phase 5 Task 15 (ENFORCE)
+
+Orchestrator instruction for this pass: implement Task 15 (ENFORCE); the owner authorizes flipping
+shadow mode to enforce; enforce must match what shadow mode measured, no scope creep.
+
+**What was built.** The enforce mechanism, complete and tested:
+
+1. **`CASL_ENFORCED_PAIRS`** (`policy.engine.ts`) — the explicit, per-`(action, subject)` allow-list.
+   A pair in this set, on a route that opted into `@ResolveSubjectInstance(...)`, has its
+   instance-aware verdict promoted to AUTHORITATIVE. `PolicyEngine.isEnforcedPair(action, subject)`
+   is the single decision point.
+2. **`PolicyEngine.recordEnforceDenial`** — `casl_enforce_denial_total` (Prometheus `Counter`,
+   labels `action`/`subject`, on the shared `register` alongside `casl_shadow_divergence_total`) and
+   the `casl.enforce.denial` structured log event. Recorded by the guard only once a denial is
+   actually APPLIED, so the counter means "denied BECAUSE of enforce" rather than "would also have
+   been denied anyway".
+3. **`UnifiedAuthGuard.runCaslInstanceChecks`** — Task 14's `runCaslShadowChecks`, renamed and
+   extended to RETURN enforced denials instead of only recording divergences. The caller applies
+   them **after** `evaluatePermissions` has already allowed, so enforcement can only NARROW: an
+   instance verdict that would ALLOW never rescues a type-only deny. The denial is a
+   `ForbiddenException` — **403, a privilege boundary**, never the 404-over-403 cross-tenant
+   posture. All three of Task 14's fail-open paths hold unchanged for enforced pairs: no resolver,
+   a resolver returning `undefined`, and a throwing resolver each yield NO denial. A broken
+   resolver is a diagnostics bug, never an outage.
+
+**What is NOT enforced, and why that is the correct outcome.** `CASL_ENFORCED_PAIRS` ships **empty**.
+
+- **The measurement does not exist.** R1's contract is shadow → MEASURE → enforce, and Task 15's own
+  approach text says to flip "only for the `(action, subject)` pairs Task 2's shadow measurement
+  showed zero divergence on". Pass 4 wired `@ResolveSubjectInstance` to **zero production routes**
+  and said so explicitly, so `casl_shadow_divergence_total` has never been incremented. The set of
+  pairs with zero *measured* divergence is empty by construction — they have no measurement at all,
+  which is not the same thing as a clean one. Enforcing on the strength of a static survey is
+  precisely the R1 risk this rollout exists to avoid.
+- **Candidate 1 — `read`/`manage:Consultation` (§7 step 1) is DISQUALIFIED.**
+  `consultation.controller.ts`'s `verifyConsultationAccess` runs a post-guard, DB-backed
+  shared-patient fallback (its documented "Layer 2", gated on the `enable-consultation-sharing`
+  flag) that the guard cannot see. A guard-level instance denial would 403 **before** that fallback
+  ever runs, turning a legitimate shared-patient read into an outage. The survey called this the
+  subject where the flip "would converge with, not diverge from, existing behavior" — that is true
+  of Layer 1b and false of Layer 2, and Layer 2 is the half that decides.
+- **Candidate 2 — `update`/`delete:UserVoiceProfile` (§7 step 2's strongest candidate) is
+  DISQUALIFIED, and this is a security finding.** The `userId = ${user.id}` boundary those routes
+  need is **already enforced**, by `TenantOwnedResourceInterceptor.assertVoiceProfileOwnership`
+  (`apps/api/src/common/tenant-owned-resource.interceptor.ts`), which deliberately answers **404**
+  so probing another user's profile id is indistinguishable from probing a non-existent one
+  (DEF-C3). **Guards run before interceptors** — a fact this ticket already established in Pass 2 —
+  so enforcing this pair would pre-empt that check and downgrade a deliberate 404 into an
+  existence-leaking **403**. That is a regression, not a tightening.
+- **The generalisation, recorded in the code:** *a subject already protected by
+  `@TenantOwnedResource` must never be added to `CASL_ENFORCED_PAIRS`*, because the guard precedes
+  the interceptor and would replace its 404-over-403 posture with a 403.
+
+**`getAccessibleBy` remains unwired**, per `casl-blast-radius.md` §7 step 5: a list query is
+migrated only after its resource's `read` pair has shown zero divergence *for a measured period*.
+With zero measurement, that precondition is unmet for every resource.
+
+**What the next pass needs (the real blocker).** Enforcement cannot advance until shadow mode has
+actually measured something, and that requires opting real routes into `@ResolveSubjectInstance`.
+One concrete obstacle found this pass: `SubjectInstanceResolver` receives only the raw request, so a
+resolver can build an instance from `params`/`body` but **cannot load a row** — it has no DI. Every
+identity-shaped hazard in §4 needs the row. Giving the resolver access to a service (a `ModuleRef`
+argument, or resolving the instance in a preceding interceptor and stashing it on the request) is
+the prerequisite for the measure phase, and is deliberately NOT built here — it changes the Task 14
+contract and belongs to its own decision.
+
+**Files touched this pass** (three modified, one created):
+
+- `packages/applications/src/authorization/policy.engine.ts`
+- `packages/applications/src/authorization/unified-auth.guard.ts`
+- `packages/applications/src/authorization/__tests__/casl-conditions.shadow.test.ts` (test-double
+  shape only — the Task 14 mocks gained `isEnforcedPair`/`recordEnforceDenial`; no assertion changed)
+- `packages/applications/src/authorization/__tests__/casl-conditions.enforce.test.ts` (new, 11 tests)
+
+Nothing outside `packages/applications/src/authorization/` was modified: no controller was
+decorated, no route changed, no seed, no migration, no barrel export beyond what the enforce
+constants required.
+
+**Verification evidence (Pass 5):**
+
+- `NODE_ENV=test npx vitest run …/casl-conditions.enforce.test.ts` **before** implementing —
+  **5 failed | 6 passed (11)** (RED confirmed).
+- Same file after — **11/11 passing**; whole `authorization/` directory **186/186**.
+- `pnpm --filter @arcaai/applications build` — clean (`tsc`, via `--filter …^...` chain).
+- `pnpm --filter @arcaai/applications test` — **511 files / 9518 tests passed, 1 skipped**, plus
+  **1 pre-existing unrelated failure**: `s3.service.secret-gate.test.ts` ("initializes when
+  credentials come from SecretsService and NO GlobalSetting rows exist"). Proven pre-existing by
+  `git stash -u` + re-running that file alone on the untouched tree — **fails identically**.
+- `NODE_ENV=test npx vitest run apps/api/src` — **234 files / 3759 tests passed**, 0 failed.
+- `pnpm --filter @arcaai/applications lint` — **184 problems (0 errors, 184 warnings)**, byte-identical
+  to the same command on a stashed tree ⇒ **zero new findings**.
+- `pnpm --filter @arcaai/applications typecheck` — clean.
+- E2E deliberately NOT run: a sibling session owns the shared test API (orchestrator instruction).
+  No database was reset, dropped, or re-seeded.
+
+---
 
 ### Pass 4 (2026-08-16) — Phase 5 SHADOW mode + `casl-blast-radius.md`
 
@@ -1230,5 +1339,6 @@ restarted; the file was internally consistent again within seconds.
 | 2026-08-16 | Ticket authored | ticket-writer agent (Wave-1 clinical architecture) |
 | 2026-08-16 | Pass 1 — reduced-scope execution: `ConsentGrant` model + domain trio and the `assertConsent`/`checkConsent` ABAC choke point built and tested; no enforcement wired; legacy-consent posture (Q2) left undecided and unseeded. | execution agent (orchestrator-scoped subagent) |
 | 2026-08-16 | Pass 2 — HTTP consent enforcement turned ON BY DEFAULT: fixed the partial-unique-active-grant index (Pass 1's was a plain `@@unique` that would have permanently blocked revoke-then-regrant); implemented the Q2 legacy-grant backfill inside the migration transaction; built `@RequiresConsent`/`@ConsentExempt` + `PatientConsentGuard` (unconditional `APP_GUARD`) + `ConsentExceptionFilter` (found and fixed a real 500-instead-of-403 bug — guards run before interceptors); decorated the four gated HTTP routes; added a narrowed boot-time coverage audit; built the `/admin/consent-grants` CRUD controller; added `ConsentUnavailableException` (R4); wrote and ran `consent-abac.spec.ts` (7/7 passing against a live API + DB, with the migration/backfill proven on a throwaway `hope_shadow` DB first); confirmed no regression in the pre-existing `task-635-live-agent-lineage.spec.ts`. CASL (Phase 5), non-HTTP/harness enforcement (Phase 4), and the WORM ledger writer remain explicitly deferred. See §7 for full verification evidence. | execution agent (orchestrator-scoped subagent) |
+| 2026-08-19 | Pass 5 — Phase 5 Task 15 (ENFORCE) built: `CASL_ENFORCED_PAIRS` + `PolicyEngine.isEnforcedPair`/`recordEnforceDenial` (`casl_enforce_denial_total` metric, `casl.enforce.denial` event) + `UnifiedAuthGuard.runCaslInstanceChecks` (Task 14's shadow hook renamed and extended to return enforced denials, applied only after the type-only verdict already allowed, so enforcement can only narrow; denial is a 403 privilege boundary, and all three fail-open paths are preserved). `casl-conditions.enforce.test.ts` (11 tests) written test-first with RED confirmed. **The enforce list ships EMPTY** — shadow mode was wired to zero production routes so no pair has a measurement, and both of `casl-blast-radius.md` §7's top candidates are structurally disqualified: `Consultation` has a post-guard shared-patient fallback the guard cannot see, and `UserVoiceProfile`'s user boundary is already enforced as a deliberate 404 by `TenantOwnedResourceInterceptor` (guards run before interceptors, so enforcing would downgrade it to an existence-leaking 403 — a security regression). Generalised into a rule recorded in the code: a subject protected by `@TenantOwnedResource` must never be enforced at the guard. `getAccessibleBy` still unwired (its precondition is a measured period of zero divergence). Blocker for the next pass disclosed: `SubjectInstanceResolver` receives only the request and cannot load a row, so the measure phase needs a resolver-DI decision first. See §7 Pass 5. | execution agent (orchestrator-scoped subagent) |
 | 2026-08-16 | Pass 4 — Phase 5 SCOPE ONLY: `casl-blast-radius.md` produced from a real live query against `hope` dev Postgres (82 conditioned rule entries / 65 `(subject, action)` pairs / 16 identity-shaped hazard pairs, each cross-referenced against `apps/api/src/modules/**`'s decorators — including finding `UserSettings`'s seeded rule fully orphaned by a bare `@Authorize()` route); Task 14 CASL SHADOW mode built and unit-tested (`PolicyEngine.evaluateShadowVerdict`/`recordShadowDivergence`, `UnifiedAuthGuard.runCaslShadowChecks` + the new opt-in `@ResolveSubjectInstance` decorator, `casl_shadow_divergence_total` metric + `casl.shadow.divergence` log event) — wired to ZERO production routes, so it changes no request's outcome. Task 15 (enforce, `getAccessibleBy`) explicitly not started, per the owner's R1 shadow→measure→enforce directive. Guard, decorator, routes, model, services, WORM ledger, and Phase 4 (all complete from prior passes) were not touched. See §7 Pass 4. | execution agent (orchestrator-scoped subagent) |
 | 2026-08-16 | Pass 3 — Phase 4 non-HTTP enforcement, the WORM ledger writer, and Phase 6's dedicated seed built: `HarnessAuditEvent.consultationId` made nullable (migration proven empty-diff on a shadow DB, hash-compatibility proven with a fixed golden-hash test) so `ConsentGrantService.create()`/`revoke()` could append real `CONSENT_GIVEN`/`CONSENT_WITHDRAWN` WORM rows; built the gateway-internal `POST /internal/consent/assert` endpoint + the harness's `ConsentClient` (TTL-cached, fail-closed) + consent gating in `call_mcp_tool` (raises, step 0.5) and `retrieve_context` (degrades, matching its own existing contract); threaded `external_patient_id` end-to-end from `NoteGenerationService` through the harness workflow input for the first time; built `22-consent-grant.ts` (Phase 6) seeding the three purposes the Pass-2 legacy backfill did not cover, verified idempotent against a live `hope_test` database; fixed a downstream null-safety consequence in the admin-console's harness-audit types/components. CASL (Phase 5) untouched, per instruction. See §7 Pass 3 for full verification evidence, including what remains disclosed-and-deferred (the `ConsultationLoopWorkflow` finalize-child identity gap, cross-process cache invalidation, and `casl-blast-radius.md`). | execution agent (orchestrator-scoped subagent) |
