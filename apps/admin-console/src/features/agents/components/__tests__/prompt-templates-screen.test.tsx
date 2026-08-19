@@ -274,6 +274,8 @@ describe('PromptTemplatesScreen', () => {
       stubTemplates();
       renderWithProviders(<PromptTemplatesScreen />);
 
+      // The matrix carries a programmatic name (it was an unnamed <table>).
+      expect(await screen.findByRole('table', { name: 'Summary instructions by department and visit type' })).toBeDefined();
       expect(await screen.findByRole('columnheader', { name: /Summary — New referral/ })).toBeDefined();
       expect(screen.getByRole('columnheader', { name: /Summary — Re-visit/ })).toBeDefined();
       expect(screen.getByRole('cell', { name: 'CARD' })).toBeDefined();

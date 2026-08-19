@@ -1,6 +1,7 @@
 'use client';
 
 import type { ReactNode } from 'react';
+import { IconX } from '@tabler/icons-react';
 import { Sheet, SheetContent, SheetDescription, SheetFooter, SheetHeader, SheetTitle } from '@arcaai/ui/components/shadcn/sheet';
 import { cx } from '@/shared/cx';
 
@@ -43,14 +44,47 @@ export interface DetailDrawerProps {
   footer?: ReactNode;
   /** Desktop width. Mobile is always full-screen. */
   size?: DetailDrawerSize;
+  /**
+   * When set, closing is blocked and this string is the REASON, shown to the
+   * user. Blocking silently is the anti-pattern this prop exists to prevent: a
+   * close control that stays focusable and clickable while doing nothing is an
+   * affordance without a function (WCAG 4.1.2 name/role/**value**), and for the
+   * duration of a hung request it leaves the drawer with no exit at all.
+   * Passing a reason disables the control properly — `disabled` + `aria-disabled`
+   * + an accessible name carrying the reason — so its state is legible rather
+   * than mysterious (rule 11 §5: "disabled buttons need a visible reason").
+   */
+  closeBlockedReason?: string;
   className?: string;
   children: ReactNode;
 }
 
-export function DetailDrawer({ open, onOpenChange, title, badges, meta, tabs, footer, size = 'md', className, children }: DetailDrawerProps) {
+export function DetailDrawer({
+  open,
+  onOpenChange,
+  title,
+  badges,
+  meta,
+  tabs,
+  footer,
+  size = 'md',
+  className,
+  closeBlockedReason,
+  children,
+}: DetailDrawerProps) {
+  const closeBlocked = Boolean(closeBlockedReason);
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent
+        showCloseButton={!closeBlocked}
+        // Esc and outside-click are suppressed the SAME way and for the same
+        // reason as the button, so all three exits agree with one another.
+        onEscapeKeyDown={(event) => {
+          if (closeBlocked) event.preventDefault();
+        }}
+        onPointerDownOutside={(event) => {
+          if (closeBlocked) event.preventDefault();
+        }}
         className={cx(
           // Mobile: full-screen sheet. Desktop (md+): constrained right slide-over.
           'flex h-svh w-full max-w-none flex-col gap-0 sm:max-w-none md:h-full',
@@ -58,6 +92,17 @@ export function DetailDrawer({ open, onOpenChange, title, badges, meta, tabs, fo
           className,
         )}
       >
+        {closeBlocked ? (
+          <button
+            type="button"
+            disabled
+            aria-disabled="true"
+            className="ring-offset-background absolute top-4 right-4 rounded-xs opacity-50"
+          >
+            <IconX aria-hidden className="size-4" />
+            <span className="sr-only">Close — unavailable: {closeBlockedReason}</span>
+          </button>
+        ) : null}
         <SheetHeader className="shrink-0 gap-1.5 border-b">
           <SheetTitle className="flex flex-wrap items-center gap-2 pr-8">
             {title}

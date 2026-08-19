@@ -8,6 +8,7 @@ import { PlaygroundBanner } from '@/shared/page/playground-banner';
 import { PageHeader } from '@/shared/page/page-header';
 import { SandboxBanner } from '@/shared/page/sandbox-banner';
 import { ScreenTemplate } from '@/shared/page/screen-template';
+import { StatusFooter } from '@/shared/page/status-footer';
 import { useWorkflowDefinitions } from '../api/hooks';
 import { FixturePicker } from './fixture-picker';
 import { NodeRunInspector } from './node-run-inspector';
@@ -72,6 +73,25 @@ export function WorkbenchScreen() {
         </div>
       }
       contentMode="scroll"
+      footer={
+        // The run id is deliberately NOT URL state (see above), so it exists
+        // only for this visit — pinning it keeps it reachable while the node
+        // inspector scrolls, and names what the inspector is inspecting.
+        <StatusFooter
+          start={
+            runId
+              ? 'Sandbox run started — the node inspector follows this run'
+              : 'No sandbox run this visit — pick a definition and a fixture, then run'
+          }
+          end={
+            runId ? (
+              <span className="font-mono" title={runId}>
+                run {runId}
+              </span>
+            ) : null
+          }
+        />
+      }
     >
       <div className="flex flex-col gap-6">
         <RunPanel definitionId={definitionId} fixtureId={fixtureId} onRunIdChange={setRunId} />

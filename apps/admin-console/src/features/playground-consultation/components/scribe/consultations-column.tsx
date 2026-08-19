@@ -206,7 +206,7 @@ export function ConsultationsColumn({ rows, isLoading, error, selectedId, onSele
                       <span className="flex items-baseline justify-between gap-2">
                         <span className="truncate text-sm font-semibold">{row.patientId}</span>
                         {row.createdAt ? (
-                          <span className="text-muted-foreground shrink-0 font-mono text-[11px]">{formatDateTime(row.createdAt)}</span>
+                          <span className="text-muted-foreground shrink-0 font-mono text-2xs">{formatDateTime(row.createdAt)}</span>
                         ) : null}
                       </span>
                       <span className="flex items-center gap-1.5">

@@ -44,7 +44,7 @@ export function FailurePanel({ run, nodes }: { run: WorkflowRun; nodes: RunNodeR
             {errorNodes.length > 0 ? (
               <div className="flex flex-wrap gap-1">
                 {errorNodes.map((node) => (
-                  <Badge key={`${node.nodeType}-${node.order}`} variant="destructive" className="text-[10px]">
+                  <Badge key={`${node.nodeType}-${node.order}`} variant="destructive" className="text-2xs">
                     {node.nodeType}
                   </Badge>
                 ))}
@@ -77,7 +77,7 @@ export function FailurePanel({ run, nodes }: { run: WorkflowRun; nodes: RunNodeR
             A timeout force-stops that node only — it does not by itself mean the run failed.
             <div className="flex flex-wrap gap-1">
               {timeoutNodes.map((node) => (
-                <Badge key={`${node.nodeType}-${node.order}`} variant="secondary" className="text-[10px]">
+                <Badge key={`${node.nodeType}-${node.order}`} variant="secondary" className="text-2xs">
                   {node.nodeType}
                 </Badge>
               ))}

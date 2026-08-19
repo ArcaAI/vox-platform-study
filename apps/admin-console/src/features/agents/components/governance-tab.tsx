@@ -133,7 +133,7 @@ function AggregateScoreBadges({ aggregates }: { aggregates: unknown }) {
   return (
     <span className="flex flex-wrap gap-1">
       {entries.map(([key, value]) => (
-        <Badge key={key} variant="outline" className="font-mono text-[10px]">
+        <Badge key={key} variant="outline" className="font-mono text-2xs">
           {key}: {Math.round(value * 100) / 100}
         </Badge>
       ))}

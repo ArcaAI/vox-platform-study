@@ -65,7 +65,7 @@ describe('EffectiveHarnessPolicyCard', () => {
     expect(screen.getByText('Safety provider')).toBeDefined();
     expect(screen.getByText('azure')).toBeDefined();
     expect(screen.getAllByText('tenant').length).toBeGreaterThan(0);
-    expect(screen.getAllByText('super admin').length).toBe(5); // TENANT_LOCKED_POLICY_KEYS count
+    expect(screen.getAllByText('super admin').length).toBe(7); // TENANT_LOCKED_POLICY_KEYS count (TASK-740 D-3 added textProvider + textModel)
   });
 
   it('is read-only — no inputs, switches or save controls anywhere on the card', async () => {
@@ -79,6 +79,15 @@ describe('EffectiveHarnessPolicyCard', () => {
     // The one button on the card is a plain-href deep link to the owning editor.
     const link = screen.getByRole('link', { name: /edit tenant-controlled values/i });
     expect(link.getAttribute('href')).toBe('/harness/policy');
+  });
+
+  it('exposes the scrollable policy table as a named, keyboard-reachable region', async () => {
+    stubFetch(policy());
+    renderWithProviders(<EffectiveHarnessPolicyCard />);
+
+    await screen.findByText('Entity faithfulness threshold');
+    const region = screen.getByRole('region', { name: 'Effective harness policy' });
+    expect(region.getAttribute('tabindex')).toBe('0');
   });
 
   it('surfaces an error state with retry when the read fails', async () => {

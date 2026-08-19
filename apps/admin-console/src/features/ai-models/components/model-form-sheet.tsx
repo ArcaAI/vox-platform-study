@@ -6,13 +6,14 @@ import { Button } from '@arcaai/ui/components/shadcn/button';
 import { Input } from '@arcaai/ui/components/shadcn/input';
 import { Label } from '@arcaai/ui/components/shadcn/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@arcaai/ui/components/shadcn/select';
-import { Sheet, SheetContent, SheetDescription, SheetFooter, SheetHeader, SheetTitle } from '@arcaai/ui/components/shadcn/sheet';
 import { Skeleton } from '@arcaai/ui/components/shadcn/skeleton';
 import { Spinner } from '@arcaai/ui/components/shadcn/spinner';
 import { Textarea } from '@arcaai/ui/components/shadcn/textarea';
 import { GatewayError } from '@/shared/api';
+import { ConfirmDialog } from '@/shared/confirm/confirm-dialog';
 import { CopyButton } from '@/shared/copy-button';
 import { cx } from '@/shared/cx';
+import { DetailDrawer } from '@/shared/detail/detail-drawer';
 import { OccConflictAlert } from '@/shared/occ/occ-alert';
 import { ErrorState } from '@/shared/state/error-state';
 import { useCreateModel, useModel, useUpdateModel } from '../api/hooks';
@@ -158,201 +159,10 @@ function EnumSelect<T extends string>({
   );
 }
 
-/**
- * Register/edit form (frame 15). Field state initializes from the loaded row
- * once; a reload after a 412 refreshes the ETag WITHOUT clobbering local
- * edits (the OCC alert promises "your unsaved edits are kept locally").
- */
-function ModelForm({
-  initial,
-  etag,
-  onDone,
-  onCancel,
-  onReloadLatest,
-}: {
-  initial?: AiModel;
-  etag?: string;
-  onDone: () => void;
-  onCancel: () => void;
-  onReloadLatest?: () => void;
-}) {
-  const uid = useId();
-  const [values, setValues] = useState<ModelFormValues>(() => toValues(initial));
-  const createMutation = useCreateModel();
-  const updateMutation = useUpdateModel();
-  const isEdit = initial !== undefined;
-  const isPending = createMutation.isPending || updateMutation.isPending;
-
-  function set<K extends keyof ModelFormValues>(key: K, value: ModelFormValues[K]) {
-    setValues((current) => ({ ...current, [key]: value }));
-  }
-
-  function handleSubmit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    const body = toRequest(values);
-    if (isEdit) {
-      updateMutation.mutate(
-        { id: initial.id, patch: body, etag: etag ?? '' },
-        {
-          onSuccess: () => {
-            toast.success('Model updated');
-            onDone();
-          },
-          onError: (error) => {
-            // OCC conflicts render the inline alert instead.
-            if (!isOccError(error)) toast.error(error.message);
-          },
-        },
-      );
-    } else {
-      createMutation.mutate(body, {
-        onSuccess: () => {
-          toast.success('Model registered');
-          onDone();
-        },
-        onError: (error) => toast.error(error.message),
-      });
-    }
-  }
-
-  function handleReloadLatest() {
-    updateMutation.reset();
-    onReloadLatest?.();
-  }
-
-  return (
-    <form onSubmit={handleSubmit} className="flex min-h-0 flex-1 flex-col">
-      <div className="grid min-h-0 flex-1 auto-rows-min grid-cols-1 content-start gap-4 overflow-y-auto p-4 sm:grid-cols-2">
-        <Field id={`${uid}-name`} label="Name" required className="sm:col-span-2">
-          <Input id={`${uid}-name`} value={values.name} onChange={(event) => set('name', event.target.value)} required />
-        </Field>
-        <Field id={`${uid}-slug`} label="Slug" required className="sm:col-span-2">
-          <Input
-            id={`${uid}-slug`}
-            value={values.slug}
-            onChange={(event) => set('slug', event.target.value)}
-            required
-            className="font-mono"
-            placeholder="whisper-large-v4"
-          />
-        </Field>
-        <Field id={`${uid}-description`} label="Description" className="sm:col-span-2">
-          <Textarea id={`${uid}-description`} value={values.description} onChange={(event) => set('description', event.target.value)} rows={2} />
-        </Field>
-        <Field id={`${uid}-category`} label="Category" required>
-          <EnumSelect id={`${uid}-category`} value={values.category} onChange={(value) => set('category', value)} options={CATEGORY_OPTIONS} />
-        </Field>
-        <Field id={`${uid}-model-type`} label="Model type" required>
-          <EnumSelect id={`${uid}-model-type`} value={values.modelType} onChange={(value) => set('modelType', value)} options={MODEL_TYPE_OPTIONS} />
-        </Field>
-        <Field id={`${uid}-task-type`} label="Task type" required className="sm:col-span-2">
-          <Input
-            id={`${uid}-task-type`}
-            value={values.taskType}
-            onChange={(event) => set('taskType', event.target.value)}
-            required
-            className="font-mono"
-            placeholder="AUTOMATIC_SPEECH_RECOGNITION"
-          />
-        </Field>
-        <Field id={`${uid}-source`} label="Source" required>
-          <EnumSelect
-            id={`${uid}-source`}
-            value={values.source}
-            onChange={(value) => set('source', value)}
-            options={SOURCE_OPTIONS}
-            labels={SOURCE_LABELS}
-          />
-        </Field>
-        <Field id={`${uid}-format`} label="Format" required>
-          <EnumSelect id={`${uid}-format`} value={values.format} onChange={(value) => set('format', value)} options={FORMAT_OPTIONS} />
-        </Field>
-        <Field id={`${uid}-provider`} label="Runtime provider">
-          <Select
-            value={values.provider === '' ? PROVIDER_NONE : values.provider}
-            onValueChange={(next) => set('provider', next === PROVIDER_NONE ? '' : next)}
-          >
-            <SelectTrigger id={`${uid}-provider`} className="w-full">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value={PROVIDER_NONE}>(none)</SelectItem>
-              {RUNTIME_PROVIDER_OPTIONS.map((provider) => (
-                <SelectItem key={provider} value={provider} className="font-mono">
-                  {provider}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </Field>
-        <Field id={`${uid}-architecture`} label="Architecture">
-          <Input
-            id={`${uid}-architecture`}
-            value={values.architecture}
-            onChange={(event) => set('architecture', event.target.value)}
-            className="font-mono"
-            placeholder="gemma4"
-          />
-        </Field>
-        <Field id={`${uid}-source-uri`} label="Source URI" required className="sm:col-span-2">
-          <Input
-            id={`${uid}-source-uri`}
-            value={values.sourceUri}
-            onChange={(event) => set('sourceUri', event.target.value)}
-            required
-            className="font-mono"
-            placeholder="openai/whisper-large-v4"
-          />
-        </Field>
-        <Field id={`${uid}-source-revision`} label="Source revision">
-          <Input
-            id={`${uid}-source-revision`}
-            value={values.sourceRevision}
-            onChange={(event) => set('sourceRevision', event.target.value)}
-            className="font-mono"
-          />
-        </Field>
-        <Field id={`${uid}-memory`} label="Memory size (MB)">
-          <Input
-            id={`${uid}-memory`}
-            type="number"
-            min={0}
-            value={values.memorySizeMb}
-            onChange={(event) => set('memorySizeMb', event.target.value)}
-          />
-        </Field>
-        <Field id={`${uid}-compute-type`} label="Compute type">
-          <Input
-            id={`${uid}-compute-type`}
-            value={values.computeType}
-            onChange={(event) => set('computeType', event.target.value)}
-            placeholder="float16"
-          />
-        </Field>
-        <Field id={`${uid}-tags`} label="Tags (comma-separated)">
-          <Input id={`${uid}-tags`} value={values.tags} onChange={(event) => set('tags', event.target.value)} placeholder="stt, fallback" />
-        </Field>
-      </div>
-      <SheetFooter className="border-t">
-        {isEdit ? <OccConflictAlert error={updateMutation.error} onReload={handleReloadLatest} /> : null}
-        <div className="flex justify-end gap-2">
-          <Button type="button" variant="outline" onClick={onCancel} disabled={isPending}>
-            Cancel
-          </Button>
-          <Button type="submit" disabled={isPending}>
-            {isPending ? <Spinner /> : null}
-            {isEdit ? 'Save changes' : 'Register model'}
-          </Button>
-        </div>
-      </SheetFooter>
-    </form>
-  );
-}
-
 /** Skeleton mirroring the form layout while the edited row loads (rule 10). */
 function ModelFormSkeleton() {
   return (
-    <div className="grid grid-cols-1 content-start gap-4 p-4 sm:grid-cols-2">
+    <div className="grid grid-cols-1 content-start gap-4 sm:grid-cols-2">
       <div className="flex flex-col gap-2 sm:col-span-2">
         <Skeleton className="h-4 w-16" />
         <Skeleton className="h-9 w-full" />
@@ -372,9 +182,25 @@ function ModelFormSkeleton() {
 }
 
 /**
- * Register/edit drawer (frame 15). Edit mode reads `{ data, etag }` through
- * useModel so the PATCH carries If-Match + expectedVersion; a 412 surfaces
- * the OCC alert with "reload latest" (which refreshes the ETag in place).
+ * Which row the local field state was seeded from. `closed`/`pending`/`create`
+ * all seed the empty form; `row:<id>` seeds from the loaded model. A refetch
+ * after a 412 keeps the same `row:<id>`, so the ETag refreshes WITHOUT
+ * clobbering local edits (the OCC alert promises "your unsaved edits are kept
+ * locally") — the guarantee the retired `key={model.id}` remount used to give.
+ */
+function seedKeyOf(open: boolean, isEdit: boolean, model: AiModel | null): string {
+  if (!open) return 'closed';
+  if (!isEdit) return 'create';
+  return model ? `row:${model.id}` : 'pending';
+}
+
+/**
+ * Register/edit drawer (frame 15), hosted in the console-wide DetailDrawer:
+ * fields in the scrolling body, actions in the pinned footer (submit reaches
+ * the form through `form={formId}`). Edit mode reads `{ data, etag }` through
+ * useModel so the PATCH carries If-Match + expectedVersion; a 412 surfaces the
+ * OCC alert with "reload latest" (which refreshes the ETag in place). Closing
+ * with unsaved edits asks before discarding them.
  */
 export function ModelFormSheet({
   open,
@@ -386,51 +212,267 @@ export function ModelFormSheet({
   /** null = register mode. */
   modelId: string | null;
 }) {
+  const uid = useId();
+  const formId = `${uid}-form`;
   const isEdit = modelId !== null;
   const detail = useModel(modelId ?? '');
   const model = detail.data?.data ?? null;
+  const etag = detail.data?.etag ?? '';
 
+  const createMutation = useCreateModel();
+  const updateMutation = useUpdateModel();
+  const isPending = createMutation.isPending || updateMutation.isPending;
+
+  const [values, setValues] = useState<ModelFormValues>(() => toValues());
+  const [baseline, setBaseline] = useState<ModelFormValues>(() => toValues());
+  const [seededFor, setSeededFor] = useState<string>('closed');
+  const [discarding, setDiscarding] = useState(false);
+
+  // Seed during render (never in an effect): the fields must already hold the
+  // loaded row on the commit that first shows them.
+  const seedKey = seedKeyOf(open, isEdit, model);
+  if (seedKey !== seededFor) {
+    const seeded = seedKey.startsWith('row:') && model ? toValues(model) : toValues();
+    setSeededFor(seedKey);
+    setValues(seeded);
+    setBaseline(seeded);
+  }
+
+  const isDirty = JSON.stringify(values) !== JSON.stringify(baseline);
+  const showForm = !isEdit || (!detail.isPending && !detail.error && model !== null);
+
+  function set<K extends keyof ModelFormValues>(key: K, value: ModelFormValues[K]) {
+    setValues((current) => ({ ...current, [key]: value }));
+  }
+
+  /** Closes for real and drops mutation state so a reopen starts clean. */
   function close() {
+    setDiscarding(false);
+    createMutation.reset();
+    updateMutation.reset();
     onOpenChange(false);
   }
 
+  /** Esc / overlay / Cancel — never discards unsaved edits without asking. */
+  function handleOpenChange(next: boolean) {
+    if (next) {
+      onOpenChange(true);
+      return;
+    }
+    // Blocked while a mutation is in flight. The DetailDrawer is told WHY via
+    // `closeBlockedReason`, so the close control is properly disabled and named
+    // rather than staying focusable and silently doing nothing (WCAG 4.1.2).
+    if (isPending) return;
+    if (isDirty) {
+      setDiscarding(true);
+      return;
+    }
+    close();
+  }
+
+  function handleSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const body = toRequest(values);
+    if (isEdit && model) {
+      updateMutation.mutate(
+        { id: model.id, patch: body, etag },
+        {
+          onSuccess: () => {
+            toast.success('Model updated');
+            close();
+          },
+          onError: (error) => {
+            // OCC conflicts render the inline alert instead.
+            if (!isOccError(error)) toast.error(error.message);
+          },
+        },
+      );
+      return;
+    }
+    createMutation.mutate(body, {
+      onSuccess: () => {
+        toast.success('Model registered');
+        close();
+      },
+      onError: (error) => toast.error(error.message),
+    });
+  }
+
+  function handleReloadLatest() {
+    updateMutation.reset();
+    void detail.refetch();
+  }
+
   return (
-    <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent className="flex w-full flex-col gap-0 sm:max-w-xl">
-        <SheetHeader className="border-b">
-          <SheetTitle>{isEdit ? 'Edit model' : 'Register model'}</SheetTitle>
-          <SheetDescription>
-            {isEdit ? 'Changes are saved with optimistic concurrency (If-Match).' : 'Register a model so tenants can be assigned to it.'}
-          </SheetDescription>
-          {isEdit && model ? (
-            <div className="text-muted-foreground flex items-center gap-1 text-xs">
-              <span className="font-mono">{model.id}</span>
-              <CopyButton value={model.id} label="Copy model id" />
+    <>
+      <DetailDrawer
+        closeBlockedReason={isPending ? 'Saving the model — wait for it to finish.' : undefined}
+        open={open}
+        onOpenChange={handleOpenChange}
+        title={isEdit ? 'Edit model' : 'Register model'}
+        meta={
+          <>
+            <span>{isEdit ? 'Changes are saved with optimistic concurrency (If-Match).' : 'Register a model so tenants can be assigned to it.'}</span>
+            {isEdit && model ? (
+              <>
+                <span className="font-mono">{model.id}</span>
+                <CopyButton value={model.id} label="Copy model id" />
+              </>
+            ) : null}
+          </>
+        }
+        footer={
+          showForm ? (
+            <div className="flex w-full flex-col gap-2">
+              {isEdit ? <OccConflictAlert error={updateMutation.error} onReload={handleReloadLatest} /> : null}
+              <div className="flex justify-end gap-2">
+                <Button type="button" variant="outline" onClick={() => handleOpenChange(false)} disabled={isPending}>
+                  Cancel
+                </Button>
+                <Button type="submit" form={formId} disabled={isPending}>
+                  {isPending ? <Spinner /> : null}
+                  {isEdit ? 'Save changes' : 'Register model'}
+                </Button>
+              </div>
             </div>
-          ) : null}
-        </SheetHeader>
-        {!isEdit ? (
-          <ModelForm onDone={close} onCancel={close} />
-        ) : detail.isPending ? (
+          ) : null
+        }
+      >
+        {!open ? null : isEdit && detail.isPending ? (
           <ModelFormSkeleton />
-        ) : detail.error || !model ? (
-          <div className="p-4">
-            <ErrorState
-              error={detail.error ?? new GatewayError(404, 'This model does not exist or is outside your access scope.')}
-              onRetry={() => void detail.refetch()}
-            />
-          </div>
-        ) : (
-          <ModelForm
-            key={model.id}
-            initial={model}
-            etag={detail.data?.etag ?? ''}
-            onDone={close}
-            onCancel={close}
-            onReloadLatest={() => void detail.refetch()}
+        ) : isEdit && !showForm ? (
+          <ErrorState
+            error={detail.error ?? new GatewayError(404, 'This model does not exist or is outside your access scope.')}
+            onRetry={() => void detail.refetch()}
           />
+        ) : (
+          <form id={formId} onSubmit={handleSubmit} className="grid auto-rows-min grid-cols-1 content-start gap-4 sm:grid-cols-2">
+            <Field id={`${uid}-name`} label="Name" required className="sm:col-span-2">
+              <Input id={`${uid}-name`} value={values.name} onChange={(event) => set('name', event.target.value)} required />
+            </Field>
+            <Field id={`${uid}-slug`} label="Slug" required className="sm:col-span-2">
+              <Input
+                id={`${uid}-slug`}
+                value={values.slug}
+                onChange={(event) => set('slug', event.target.value)}
+                required
+                className="font-mono"
+                placeholder="whisper-large-v4"
+              />
+            </Field>
+            <Field id={`${uid}-description`} label="Description" className="sm:col-span-2">
+              <Textarea id={`${uid}-description`} value={values.description} onChange={(event) => set('description', event.target.value)} rows={2} />
+            </Field>
+            <Field id={`${uid}-category`} label="Category" required>
+              <EnumSelect id={`${uid}-category`} value={values.category} onChange={(value) => set('category', value)} options={CATEGORY_OPTIONS} />
+            </Field>
+            <Field id={`${uid}-model-type`} label="Model type" required>
+              <EnumSelect
+                id={`${uid}-model-type`}
+                value={values.modelType}
+                onChange={(value) => set('modelType', value)}
+                options={MODEL_TYPE_OPTIONS}
+              />
+            </Field>
+            <Field id={`${uid}-task-type`} label="Task type" required className="sm:col-span-2">
+              <Input
+                id={`${uid}-task-type`}
+                value={values.taskType}
+                onChange={(event) => set('taskType', event.target.value)}
+                required
+                className="font-mono"
+                placeholder="AUTOMATIC_SPEECH_RECOGNITION"
+              />
+            </Field>
+            <Field id={`${uid}-source`} label="Source" required>
+              <EnumSelect
+                id={`${uid}-source`}
+                value={values.source}
+                onChange={(value) => set('source', value)}
+                options={SOURCE_OPTIONS}
+                labels={SOURCE_LABELS}
+              />
+            </Field>
+            <Field id={`${uid}-format`} label="Format" required>
+              <EnumSelect id={`${uid}-format`} value={values.format} onChange={(value) => set('format', value)} options={FORMAT_OPTIONS} />
+            </Field>
+            <Field id={`${uid}-provider`} label="Runtime provider">
+              <Select
+                value={values.provider === '' ? PROVIDER_NONE : values.provider}
+                onValueChange={(next) => set('provider', next === PROVIDER_NONE ? '' : next)}
+              >
+                <SelectTrigger id={`${uid}-provider`} className="w-full">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={PROVIDER_NONE}>(none)</SelectItem>
+                  {RUNTIME_PROVIDER_OPTIONS.map((provider) => (
+                    <SelectItem key={provider} value={provider} className="font-mono">
+                      {provider}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </Field>
+            <Field id={`${uid}-architecture`} label="Architecture">
+              <Input
+                id={`${uid}-architecture`}
+                value={values.architecture}
+                onChange={(event) => set('architecture', event.target.value)}
+                className="font-mono"
+                placeholder="gemma4"
+              />
+            </Field>
+            <Field id={`${uid}-source-uri`} label="Source URI" required className="sm:col-span-2">
+              <Input
+                id={`${uid}-source-uri`}
+                value={values.sourceUri}
+                onChange={(event) => set('sourceUri', event.target.value)}
+                required
+                className="font-mono"
+                placeholder="openai/whisper-large-v4"
+              />
+            </Field>
+            <Field id={`${uid}-source-revision`} label="Source revision">
+              <Input
+                id={`${uid}-source-revision`}
+                value={values.sourceRevision}
+                onChange={(event) => set('sourceRevision', event.target.value)}
+                className="font-mono"
+              />
+            </Field>
+            <Field id={`${uid}-memory`} label="Memory size (MB)">
+              <Input
+                id={`${uid}-memory`}
+                type="number"
+                min={0}
+                value={values.memorySizeMb}
+                onChange={(event) => set('memorySizeMb', event.target.value)}
+              />
+            </Field>
+            <Field id={`${uid}-compute-type`} label="Compute type">
+              <Input
+                id={`${uid}-compute-type`}
+                value={values.computeType}
+                onChange={(event) => set('computeType', event.target.value)}
+                placeholder="float16"
+              />
+            </Field>
+            <Field id={`${uid}-tags`} label="Tags (comma-separated)">
+              <Input id={`${uid}-tags`} value={values.tags} onChange={(event) => set('tags', event.target.value)} placeholder="stt, fallback" />
+            </Field>
+          </form>
         )}
-      </SheetContent>
-    </Sheet>
+      </DetailDrawer>
+      <ConfirmDialog
+        open={discarding}
+        onOpenChange={(next) => setDiscarding(next)}
+        title="Discard unsaved changes?"
+        description="This drawer has edits that have not been saved. Closing it discards them."
+        confirmLabel="Discard changes"
+        destructive
+        onConfirm={close}
+      />
+    </>
   );
 }

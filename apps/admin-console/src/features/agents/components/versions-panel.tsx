@@ -83,12 +83,12 @@ export function VersionsPanel({ template }: { template: PromptTemplate }) {
                  */}
                 <span className="flex w-32 shrink-0 gap-1">
                   {version.versionNumber === template.approvedVersionNumber ? (
-                    <Badge variant="default" className="text-[10px]">
+                    <Badge variant="default" className="text-2xs">
                       serving
                     </Badge>
                   ) : null}
                   {version.versionNumber === template.currentVersionNumber ? (
-                    <Badge variant="secondary" className="text-[10px]">
+                    <Badge variant="secondary" className="text-2xs">
                       draft
                     </Badge>
                   ) : null}

@@ -249,11 +249,14 @@ describe('WS-4 endpoint constants', () => {
   // ===========================================================================
 
   describe('structural completeness', () => {
-    it('DNA_STYLE_ENDPOINTS should have exactly 16 keys', () => {
+    it('DNA_STYLE_ENDPOINTS should have exactly 18 keys', () => {
       // MINE + SET_DEFAULT were added for the playground, and
       // ADMIN_BY_DOCTOR + ADMIN_VERSIONS for admin cross-user PHI reads.
+      // RESET_MY_STYLE + DELETE_REPORT are the erasure half of the DNA
+      // opt-out (TASK-760) — opting out stops future learning; erasure
+      // removes the already-learned profile.
       const keys = Object.keys(DNA_STYLE_ENDPOINTS);
-      expect(keys).toHaveLength(16);
+      expect(keys).toHaveLength(18);
       expect(keys).toEqual(
         expect.arrayContaining([
           'GENERATE',
@@ -264,12 +267,16 @@ describe('WS-4 endpoint constants', () => {
           'MINE',
           'UPDATE',
           'SET_DEFAULT',
+          'RESET_MY_STYLE',
+          'DELETE_REPORT',
           'VERSIONS',
           'ADMIN_LIST',
           'ADMIN_JOB_STATUS',
           'ADMIN_JOB_STREAM',
           'ADMIN_DASHBOARD',
           'BY_DOCTOR',
+          'ADMIN_BY_DOCTOR',
+          'ADMIN_VERSIONS',
         ]),
       );
     });

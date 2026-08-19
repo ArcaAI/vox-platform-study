@@ -436,7 +436,7 @@ function SliderRow({ config, value, onChange, trackClassName, fillClassName, han
           'isolate h-12',
           isDragging
             ? '[&>span]:transition-[left,transform] [&>span]:duration-45 [&>span]:ease-linear'
-            : '[&>span]:transition-[left,transform] [&>span]:duration-90 [&>span]:ease-[cubic-bezier(0.22,1,0.36,1)]',
+            : '[&>span]:transition-[left,transform] [&>span]:duration-90 [&>span]:ease-emphasized',
           '[&>span]:will-change-[left,transform]',
           'motion-reduce:[&>span]:transition-none',
           disabled && 'pointer-events-none opacity-50',
@@ -465,7 +465,7 @@ function SliderRow({ config, value, onChange, trackClassName, fillClassName, han
           <div
             className={cn(
               'absolute inset-0 will-change-[clip-path]',
-              isDragging ? 'transition-[clip-path] duration-45 ease-linear' : 'transition-[clip-path] duration-90 ease-[cubic-bezier(0.22,1,0.36,1)]',
+              isDragging ? 'transition-[clip-path] duration-45 ease-linear' : 'transition-[clip-path] duration-90 ease-emphasized',
               'motion-reduce:transition-none',
               resolvedFillClassName ?? 'bg-primary/30 dark:bg-primary/40',
             )}
@@ -505,9 +505,7 @@ function SliderRow({ config, value, onChange, trackClassName, fillClassName, han
         <div
           className={cn(
             'squircle pointer-events-none absolute inset-0 rounded-sm',
-            isDragging
-              ? 'transition-[opacity,background] duration-45 ease-linear'
-              : 'transition-[opacity,background] duration-90 ease-[cubic-bezier(0.22,1,0.36,1)]',
+            isDragging ? 'transition-[opacity,background] duration-45 ease-linear' : 'transition-[opacity,background] duration-90 ease-emphasized',
             'motion-reduce:transition-none',
           )}
           style={{
@@ -522,7 +520,7 @@ function SliderRow({ config, value, onChange, trackClassName, fillClassName, han
           className={cn(
             'group/thumb z-0 block w-3 shrink-0 cursor-grab rounded-sm',
             'relative bg-transparent outline-none',
-            'transition-[height,opacity] duration-150 ease-[var(--cubic-ease-in-out)]',
+            'transition-[height,opacity] duration-150 ease-in-out',
             'focus-visible:outline-ring focus-visible:outline-2 focus-visible:outline-offset-1',
             'active:cursor-grabbing',
             'disabled:pointer-events-none disabled:opacity-50',
@@ -553,7 +551,7 @@ function SliderRow({ config, value, onChange, trackClassName, fillClassName, han
                 <span
                   className={cn(
                     'absolute top-0 left-1/2',
-                    'transition-all duration-100 ease-[var(--cubic-ease-in-out)]',
+                    'transition-all duration-100 ease-in-out',
                     isActive ? (gap > 0 ? 'rounded-full' : 'rounded-t-full') : 'rounded-t-sm',
                     isDragging ? 'w-2' : isActive ? 'w-1.5' : 'w-px',
                     resolvedHandleClassName ?? 'bg-primary',
@@ -567,7 +565,7 @@ function SliderRow({ config, value, onChange, trackClassName, fillClassName, han
                 <span
                   className={cn(
                     'absolute bottom-0 left-1/2',
-                    'transition-all duration-100 ease-[var(--cubic-ease-in-out)]',
+                    'transition-all duration-100 ease-in-out',
                     isActive ? (gap > 0 ? 'rounded-full' : 'rounded-b-full') : 'rounded-b-sm',
                     isDragging ? 'w-2' : isActive ? 'w-1.5' : 'w-px',
                     resolvedHandleClassName ?? 'bg-primary',

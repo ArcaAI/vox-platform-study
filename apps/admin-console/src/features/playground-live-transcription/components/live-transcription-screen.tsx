@@ -11,6 +11,8 @@ import { Skeleton } from '@arcaai/ui/components/shadcn/skeleton';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@arcaai/ui/components/shadcn/tabs';
 import { useSession } from '@/shared/auth';
 import { CanvasHeader, PlaygroundCanvas } from '@/features/playground-shared/components/playground-canvas';
+import { ScreenTemplate } from '@/shared/page/screen-template';
+import { StatusFooter } from '@/shared/page/status-footer';
 import { WorkingTenantGate } from '@/shared/tenant-scope/working-tenant-gate';
 import { useLiveSttSession, usePlaygroundPipelines } from '../api';
 import type { LiveSttStatus } from '../api';
@@ -78,80 +80,100 @@ function ScreenBody() {
   }
 
   return (
-    <PlaygroundCanvas className="max-w-[1100px]">
-      <CanvasHeader
-        title="Live Transcription"
-        description={'Streaming session \u00b7 runs under your own account'}
-        actions={
-          busy ? (
-            <Button variant="outline" onClick={handleStop} disabled={live.status === 'stopping'}>
-              <IconPlayerStopFilled aria-hidden />
-              Stop session
-            </Button>
-          ) : (
-            <Button onClick={handleStart} disabled={!canStart}>
-              <IconPlayerPlayFilled aria-hidden />
-              Start session
-            </Button>
-          )
+    <Tabs className="flex min-h-0 flex-1 flex-col" value={tab} onValueChange={(next) => void setTabParam(next === 'streaming' ? null : next)}>
+      <ScreenTemplate
+        header={
+          <div className="mx-auto w-full max-w-[1100px] px-4">
+            <CanvasHeader
+              title="Live Transcription"
+              description={'Streaming session \u00b7 runs under your own account'}
+              actions={
+                busy ? (
+                  <Button variant="outline" onClick={handleStop} disabled={live.status === 'stopping'}>
+                    <IconPlayerStopFilled aria-hidden />
+                    Stop session
+                  </Button>
+                ) : (
+                  <Button onClick={handleStart} disabled={!canStart}>
+                    <IconPlayerPlayFilled aria-hidden />
+                    Start session
+                  </Button>
+                )
+              }
+            />
+          </div>
         }
-      />
-      <Tabs className="flex min-h-0 flex-1 flex-col gap-4" value={tab} onValueChange={(next) => void setTabParam(next === 'streaming' ? null : next)}>
-        <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
-          {/* No control to point at while the picker is unavailable. */}
-          <Label htmlFor={pickerFailed ? undefined : 'pipeline-picker'}>Pipeline</Label>
-          {pickerFailed ? (
-            <div role="status" className="border-destructive/40 flex items-center gap-2 rounded-md border px-3 py-1.5">
-              <IconAlertTriangle aria-hidden className="text-destructive size-4 shrink-0" />
-              <span className="text-sm">
-                Pipelines did not load{' '}
-                <span className="text-muted-foreground">
-                  {'·'} GET /audio/pipelines
+        toolbar={
+          <div className="mx-auto flex w-full max-w-[1100px] flex-wrap items-center gap-x-3 gap-y-2 px-4">
+            {/* No control to point at while the picker is unavailable. */}
+            <Label htmlFor={pickerFailed ? undefined : 'pipeline-picker'}>Pipeline</Label>
+            {pickerFailed ? (
+              <div role="status" className="border-destructive/40 flex items-center gap-2 rounded-md border px-3 py-1.5">
+                <IconAlertTriangle aria-hidden className="text-destructive size-4 shrink-0" />
+                <span className="text-sm">
+                  Pipelines did not load <span className="text-muted-foreground">{'·'} GET /audio/pipelines</span>
                 </span>
-              </span>
-              <Button variant="outline" size="sm" aria-label="Retry loading pipelines" onClick={() => void pipelinesQuery.refetch()}>
-                <IconRefresh aria-hidden />
-                Retry
-              </Button>
-            </div>
-          ) : pipelinesQuery.isPending ? (
-            <Skeleton className="h-9 w-64" />
-          ) : (
-            <NativeSelect
-              id="pipeline-picker"
-              className="w-64"
-              value={pipelineId ?? ''}
-              onChange={(event) => setPipelineChoice(event.target.value || null)}
-              disabled={busy || pipelines.length === 0}
-            >
-              {pipelines.length === 0 ? <NativeSelectOption value="">No pipelines available</NativeSelectOption> : null}
-              {pipelines.map((pipeline) => (
-                <NativeSelectOption key={pipeline.id} value={pipeline.id}>
-                  {pipeline.name}
-                  {pipeline.isDefault ? ' \u00b7 default' : ''}
-                </NativeSelectOption>
-              ))}
-            </NativeSelect>
-          )}
-          <span className="text-muted-foreground text-xs">{FOOTER_STATUS[live.status]}</span>
-          {live.session ? (
-            <span className="text-muted-foreground ml-auto font-mono text-xs" title={live.session.sessionId}>
-              session {live.session.sessionId}
-            </span>
-          ) : null}
-        </div>
-        <TabsList variant="line">
-          <TabsTrigger value="streaming">Streaming session</TabsTrigger>
-          <TabsTrigger value="batch">Batch upload</TabsTrigger>
-        </TabsList>
-        <TabsContent value="streaming">
-          <StreamingTab live={live} pipelineName={selectedPipeline?.name ?? null} canStart={canStart} onStart={handleStart} />
-        </TabsContent>
-        <TabsContent value="batch">
-          <BatchTab pipelineId={pipelineId} />
-        </TabsContent>
-      </Tabs>
-    </PlaygroundCanvas>
+                <Button variant="outline" size="sm" aria-label="Retry loading pipelines" onClick={() => void pipelinesQuery.refetch()}>
+                  <IconRefresh aria-hidden />
+                  Retry
+                </Button>
+              </div>
+            ) : pipelinesQuery.isPending ? (
+              <Skeleton className="h-9 w-64" />
+            ) : (
+              <NativeSelect
+                id="pipeline-picker"
+                className="w-64"
+                value={pipelineId ?? ''}
+                onChange={(event) => setPipelineChoice(event.target.value || null)}
+                disabled={busy || pipelines.length === 0}
+              >
+                {pipelines.length === 0 ? <NativeSelectOption value="">No pipelines available</NativeSelectOption> : null}
+                {pipelines.map((pipeline) => (
+                  <NativeSelectOption key={pipeline.id} value={pipeline.id}>
+                    {pipeline.name}
+                    {pipeline.isDefault ? ' \u00b7 default' : ''}
+                  </NativeSelectOption>
+                ))}
+              </NativeSelect>
+            )}
+          </div>
+        }
+        tabs={
+          <div className="mx-auto w-full max-w-[1100px] px-4">
+            <TabsList variant="line">
+              <TabsTrigger value="streaming">Streaming session</TabsTrigger>
+              <TabsTrigger value="batch">Batch upload</TabsTrigger>
+            </TabsList>
+          </div>
+        }
+        footer={
+          // The session-lifecycle line and the session id were already
+          // written as footer content (`FOOTER_STATUS`) but rendered inline in
+          // the toolbar; they now ride the pinned status bar so they stay
+          // visible while the transcript scrolls.
+          <StatusFooter
+            start={FOOTER_STATUS[live.status]}
+            end={
+              live.session ? (
+                <span className="font-mono" title={live.session.sessionId}>
+                  session {live.session.sessionId}
+                </span>
+              ) : null
+            }
+          />
+        }
+      >
+        <PlaygroundCanvas className="max-w-[1100px]">
+          <TabsContent value="streaming">
+            <StreamingTab live={live} pipelineName={selectedPipeline?.name ?? null} canStart={canStart} onStart={handleStart} />
+          </TabsContent>
+          <TabsContent value="batch">
+            <BatchTab pipelineId={pipelineId} />
+          </TabsContent>
+        </PlaygroundCanvas>
+      </ScreenTemplate>
+    </Tabs>
   );
 }
 
@@ -159,6 +181,11 @@ function ScreenBody() {
  * Frame 51 — Live transcription playground (matrix row 35). Tenant context
  * is required: streaming sessions bind `user.tenantId`, so an elevated
  * session without a working tenant gets the NoTenant gate.
+ *
+ * Frame: `ScreenTemplate` (rule 11 §1) in `scroll` mode, wrapped in `<Tabs>`
+ * so the pinned `tabs` region shares context with the panels in `children`.
+ * The pipeline picker is the `toolbar`; the session-lifecycle line and session
+ * id are the pinned `StatusFooter`.
  */
 export function LiveTranscriptionScreen() {
   return (

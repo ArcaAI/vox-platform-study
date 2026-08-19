@@ -228,7 +228,13 @@ function GoldenCasePicker({
           <CommandInput placeholder="Search golden cases…" />
           <CommandList>
             {casesQuery.isFetching ? (
-              <div className="text-muted-foreground py-6 text-center text-sm">Loading…</div>
+              // Rule 10: skeleton rows matching the CommandItem list this
+              // replaces (one line each, ragged widths like real labels).
+              <div aria-hidden="true" className="flex flex-col gap-2 p-2">
+                <Skeleton className="h-6 w-full" />
+                <Skeleton className="h-6 w-5/6" />
+                <Skeleton className="h-6 w-2/3" />
+              </div>
             ) : cases.length === 0 ? (
               <div className="text-muted-foreground py-6 text-center text-sm">No cases in this set.</div>
             ) : (

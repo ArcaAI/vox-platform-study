@@ -286,9 +286,11 @@ export function PipelinePolicyScreen() {
                 <Table aria-label="Pipeline policy scope rows">
                   <TableHeader>
                     <TableRow>
-                      <TableHead className="font-mono text-xs">Scope</TableHead>
+                      <TableHead scope="col" className="font-mono text-xs">
+                        Scope
+                      </TableHead>
                       {TOGGLE_COLUMNS.map((column) => (
-                        <TableHead key={column.key} className="font-mono text-xs">
+                        <TableHead scope="col" key={column.key} className="font-mono text-xs">
                           {column.heading}
                         </TableHead>
                       ))}
@@ -297,7 +299,19 @@ export function PipelinePolicyScreen() {
                   <TableBody>
                     {visibleRows.map((matrixRow) => (
                       <TableRow key={matrixRow.tier} className="cursor-pointer" onClick={() => setSelectedTier(matrixRow.tier)}>
-                        <TableCell className="font-mono text-xs">{matrixRow.label}</TableCell>
+                        {/* The row-wide onClick is a pointer affordance only; the scope
+                            cell carries a real <button> so the editor is reachable by
+                            keyboard too (WCAG 2.1.1). Both call the same setter. */}
+                        <TableHead scope="row" className="h-auto p-0 font-normal">
+                          <button
+                            type="button"
+                            className="focus-visible:ring-ring/50 w-full px-2 py-2 text-left font-mono text-xs focus-visible:ring-[3px] focus-visible:outline-none"
+                            aria-pressed={selectedTier === matrixRow.tier}
+                            onClick={() => setSelectedTier(matrixRow.tier)}
+                          >
+                            {matrixRow.label}
+                          </button>
+                        </TableHead>
                         {TOGGLE_COLUMNS.map((column) => (
                           <TableCell key={column.key} className="font-mono text-xs">
                             {matrixRow.pending ? (

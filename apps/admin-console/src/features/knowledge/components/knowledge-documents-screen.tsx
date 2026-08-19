@@ -7,6 +7,13 @@
  * scope: it does not exist in the code today). Tenant-scoped: elevated
  * sessions must pick a working tenant before any query mounts; tenant admins
  * are pinned and pass straight through (`WorkingTenantGate`).
+ *
+ * This file is the tenant gate only — it holds no page frame by design. The
+ * `ScreenTemplate` (`contentMode="fill"` around the `VirtualizedDataGrid`) and
+ * its `StatusFooter` live one level down in `KnowledgeDocumentsList`, past the
+ * gate, so the NoTenant state renders the gate's own frame instead. Wrapping a
+ * second `ScreenTemplate` here would nest two page frames (and two scroll
+ * containers) — see rule 11 §1.
  */
 
 import { WorkingTenantGate } from '@/shared/tenant-scope/working-tenant-gate';

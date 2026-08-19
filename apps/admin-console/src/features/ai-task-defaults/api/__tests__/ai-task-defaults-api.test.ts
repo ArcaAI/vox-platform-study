@@ -39,22 +39,37 @@ afterEach(() => {
 
 describe('task keys', () => {
   // This mirror had drifted to 3 keys while the backend carried 9; then
-  // added the two text-generation fallback keys (11 total). It must stay in lockstep with
-  // AI_TASK_KEYS in packages/applications/src/services/ai-task-default/constants.ts.
+  // added the two text-generation fallback keys (11 total); then TASK-740 D-2
+  // added the four that were still missing — `nlp.sentiment`, `nlp.toxicity`,
+  // `text.test` and `vlm.extract` — bringing both lists to 15. It must stay in
+  // lockstep with AI_TASK_KEYS in
+  // packages/applications/src/services/ai-task-default/constants.ts.
+  //
+  // Compared as a SET: the two lists carry the same keys but group them in a
+  // different order (the backend keeps the fallbacks next to their primaries,
+  // the console mirror groups them with the other tenant-editable keys). Order
+  // is not part of the contract here — membership is — so asserting the sorted
+  // keys keeps this a real drift guard without failing on a harmless reordering.
   it('mirrors all backend task keys (incl. the text-generation fallback keys) and the SYSTEM tenant id', () => {
-    expect(AI_TASK_KEYS).toEqual([
-      'guardrail.validate',
-      'guardrail.safety',
-      'guardrail.groundedness',
-      'nlp.ner',
-      'nlp.classification',
-      'nlp.diagnosis',
-      'text.live',
-      'text.finalize',
-      'harness.judge',
-      'text.live.fallback',
-      'text.finalize.fallback',
-    ]);
+    expect([...AI_TASK_KEYS].sort()).toEqual(
+      [
+        'guardrail.validate',
+        'guardrail.safety',
+        'guardrail.groundedness',
+        'nlp.ner',
+        'nlp.classification',
+        'nlp.diagnosis',
+        'nlp.sentiment',
+        'nlp.toxicity',
+        'text.live',
+        'text.finalize',
+        'text.live.fallback',
+        'text.finalize.fallback',
+        'text.test',
+        'harness.judge',
+        'vlm.extract',
+      ].sort(),
+    );
     expect(SYSTEM_TENANT_ID).toBe('00000000-0000-0000-0000-000000000000');
   });
 });

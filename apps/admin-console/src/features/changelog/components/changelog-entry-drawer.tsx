@@ -7,6 +7,7 @@ import { Button } from '@arcaai/ui/components/shadcn/button';
 import { Input } from '@arcaai/ui/components/shadcn/input';
 import { Label } from '@arcaai/ui/components/shadcn/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@arcaai/ui/components/shadcn/select';
+import { Skeleton } from '@arcaai/ui/components/shadcn/skeleton';
 import { Spinner } from '@arcaai/ui/components/shadcn/spinner';
 import { Textarea } from '@arcaai/ui/components/shadcn/textarea';
 import { GatewayError } from '@/shared/api';
@@ -111,7 +112,28 @@ export function ChangelogEntryDrawer({ open, onOpenChange, entryId }: { open: bo
       }
     >
       {isLoading && isEditing ? (
-        <div className="text-muted-foreground text-sm">Loading…</div>
+        // Rule 10: the skeleton mirrors the loaded form — three label+input
+        // pairs, the severity/audience row, then the flex-1 markdown body.
+        <div aria-hidden="true" className="flex flex-col gap-4">
+          {[0, 1, 2].map((field) => (
+            <div key={field} className="flex flex-col gap-1.5">
+              <Skeleton className="h-4 w-32" />
+              <Skeleton className="h-9 w-full" />
+            </div>
+          ))}
+          <div className="flex flex-wrap gap-4">
+            {[0, 1].map((field) => (
+              <div key={field} className="flex flex-1 flex-col gap-1.5">
+                <Skeleton className="h-4 w-20" />
+                <Skeleton className="h-9 w-full" />
+              </div>
+            ))}
+          </div>
+          <div className="flex min-h-0 flex-1 flex-col gap-1.5">
+            <Skeleton className="h-4 w-40" />
+            <Skeleton className="min-h-[240px] w-full flex-1" />
+          </div>
+        </div>
       ) : (
         <div className="flex flex-col gap-4">
           <div className="flex flex-col gap-1.5">

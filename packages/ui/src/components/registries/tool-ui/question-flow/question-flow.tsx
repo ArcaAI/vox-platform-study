@@ -31,7 +31,7 @@ function ProgressBar({ current, total }: ProgressBarProps) {
           <div
             className={cn(
               'absolute inset-0 origin-left rounded-full bg-primary',
-              'motion-safe:transition-transform motion-safe:duration-300 motion-safe:ease-[var(--cubic-ease-in-out)]',
+              'motion-safe:transition-transform motion-safe:duration-300 motion-safe:ease-in-out',
               i < current ? 'scale-x-100' : 'scale-x-0',
             )}
           />
@@ -321,12 +321,12 @@ function StepBodyContent({
         'flex flex-col gap-4',
         isExiting && [
           'absolute inset-0',
-          'motion-safe:animate-out motion-safe:fade-out motion-safe:blur-out-sm motion-safe:duration-250 motion-safe:ease-[var(--cubic-ease-in-out)] motion-safe:fill-mode-forwards',
+          'motion-safe:animate-out motion-safe:fade-out motion-safe:blur-out-sm motion-safe:duration-250 motion-safe:ease-emphasized motion-safe:fill-mode-forwards',
           exitClass,
         ],
         !isExiting &&
           isTransitioning && [
-            'motion-safe:animate-in motion-safe:fade-in motion-safe:blur-in-sm motion-safe:duration-250 motion-safe:ease-[var(--cubic-ease-in-out)] motion-safe:fill-mode-both',
+            'motion-safe:animate-in motion-safe:fade-in motion-safe:blur-in-sm motion-safe:duration-250 motion-safe:ease-emphasized motion-safe:fill-mode-both',
             enterClass,
           ],
       )}

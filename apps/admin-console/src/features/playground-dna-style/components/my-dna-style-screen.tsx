@@ -9,8 +9,11 @@ import { Spinner } from '@arcaai/ui/components/shadcn/spinner';
 import { GatewayError } from '@/shared/api';
 import { useSession } from '@/shared/auth';
 import { CanvasHeader, PlaygroundCanvas } from '@/features/playground-shared/components/playground-canvas';
+import { ScreenTemplate } from '@/shared/page/screen-template';
+import { StatusFooter } from '@/shared/page/status-footer';
 import { WorkingTenantGate } from '@/shared/tenant-scope/working-tenant-gate';
 import { useDnaJobProgress, useDnaSettings, useGenerateMyStyle, useMyRedactionRules, useMyReports, useMyStyle } from '../api';
+import type { DnaJobStatus } from '../api';
 import { DnaErasureCard } from './dna-erasure-card';
 import { DnaRedactionCard } from './dna-redaction-card';
 import { DnaSettingsCard } from './dna-settings-card';
@@ -28,6 +31,26 @@ function splitTextSamples(samplesText: string): string[] {
     .split(/\n\s*\n/)
     .map((sample) => sample.trim())
     .filter(Boolean);
+}
+
+/**
+ * The one line the footer status bar carries — generation is the page's only
+ * async verb. Deliberately no percentage: `GeneratePane` owns the progress
+ * readout, and the pinned footer must not repeat it (it would double-announce
+ * every SSE tick through the footer's polite live region).
+ */
+function footerStatus(gated: boolean, queuing: boolean, job: DnaJobStatus | null): string {
+  if (gated) return 'Read-only — generation and settings need a doctor context';
+  if (queuing) return 'Queuing the generation job…';
+  if (!job) return 'Idle — no generation this session';
+  switch (job.status) {
+    case 'completed':
+      return 'Generation complete — your style was updated';
+    case 'failed':
+      return job.error ? `Generation failed — ${job.error}` : 'Generation failed';
+    default:
+      return 'Generating your style…';
+  }
 }
 
 function MyDnaStyleBody() {
@@ -76,49 +99,68 @@ function MyDnaStyleBody() {
   }
 
   return (
-    <PlaygroundCanvas>
-      <CanvasHeader
-        title="My DNA Writing Style"
-        description={'Your personal writing style \u00b7 versioned \u00b7 generation streams over SSE'}
-        badges={
-          mine.data ? (
-            <span className="text-muted-foreground text-xs">
-              {mine.data.length} {mine.data.length === 1 ? 'report' : 'reports'}
-            </span>
-          ) : mine.isPending ? (
-            <Skeleton className="h-4 w-16" />
-          ) : null
-        }
-        actions={
-          <>
-            {gated ? <span className="text-muted-foreground text-xs">Requires acting as a doctor</span> : null}
-            <Button onClick={handleGenerate} disabled={gated || generate.isPending}>
-              {generate.isPending ? <Spinner /> : <IconBolt aria-hidden />}
-              Generate my style
-            </Button>
-          </>
-        }
-      />
-      {/* Centered flow (\u00a74): gate/status \u2192 settings \u2192 current style \u2192
+    <ScreenTemplate
+      header={
+        <div className="mx-auto w-full max-w-[760px] px-4">
+          <CanvasHeader
+            title="My DNA Writing Style"
+            description={'Your personal writing style \u00b7 versioned \u00b7 generation streams over SSE'}
+            badges={
+              mine.data ? (
+                <span className="text-muted-foreground text-xs">
+                  {mine.data.length} {mine.data.length === 1 ? 'report' : 'reports'}
+                </span>
+              ) : mine.isPending ? (
+                <Skeleton className="h-4 w-16" />
+              ) : null
+            }
+            actions={
+              <>
+                {gated ? <span className="text-muted-foreground text-xs">Requires acting as a doctor</span> : null}
+                <Button onClick={handleGenerate} disabled={gated || generate.isPending}>
+                  {generate.isPending ? <Spinner /> : <IconBolt aria-hidden />}
+                  Generate my style
+                </Button>
+              </>
+            }
+          />
+        </div>
+      }
+      footer={
+        <StatusFooter
+          start={footerStatus(gated, generate.isPending, progress.job)}
+          end={
+            activeJobId ? (
+              <span className="font-mono" title={activeJobId}>
+                job {activeJobId}
+              </span>
+            ) : null
+          }
+        />
+      }
+    >
+      <PlaygroundCanvas>
+        {/* Centered flow (\u00a74): gate/status \u2192 settings \u2192 current style \u2192
                 generate \u2192 history \u2192 erasure. The gate remains the DESIGNED
                 assertActingAsDoctor state; switching persona now happens in the top-bar
                 persona control. Erasure sits LAST, after the history it destroys. */}
-      <ImpersonationGatePanel session={safe} gated={gated} />
-      <DnaSettingsCard settings={settings} gated={gated} onGate={() => setGateHit(true)} />
-      <MyStyleCard myStyle={myStyle} settings={settings} gated={gated} onGenerate={handleGenerate} generatePending={generate.isPending} />
-      <DnaRedactionCard myStyle={myStyle} redaction={redaction} settings={settings} gated={gated} />
-      <GeneratePane
-        samplesText={samplesText}
-        onSamplesTextChange={setSamplesText}
-        onGenerate={handleGenerate}
-        isPending={generate.isPending}
-        gated={gated}
-        activeJobId={activeJobId}
-        progress={progress}
-      />
-      <MyReportsCard reports={mine} myStyleReportId={myStyle.data?.data.id ?? null} gated={gated} onGate={() => setGateHit(true)} />
-      <DnaErasureCard reports={mine} settings={settings} gated={gated} onGate={() => setGateHit(true)} />
-    </PlaygroundCanvas>
+        <ImpersonationGatePanel session={safe} gated={gated} />
+        <DnaSettingsCard settings={settings} gated={gated} onGate={() => setGateHit(true)} />
+        <MyStyleCard myStyle={myStyle} settings={settings} gated={gated} onGenerate={handleGenerate} generatePending={generate.isPending} />
+        <DnaRedactionCard myStyle={myStyle} redaction={redaction} settings={settings} gated={gated} />
+        <GeneratePane
+          samplesText={samplesText}
+          onSamplesTextChange={setSamplesText}
+          onGenerate={handleGenerate}
+          isPending={generate.isPending}
+          gated={gated}
+          activeJobId={activeJobId}
+          progress={progress}
+        />
+        <MyReportsCard reports={mine} myStyleReportId={myStyle.data?.data.id ?? null} gated={gated} onGate={() => setGateHit(true)} />
+        <DnaErasureCard reports={mine} settings={settings} gated={gated} onGate={() => setGateHit(true)} />
+      </PlaygroundCanvas>
+    </ScreenTemplate>
   );
 }
 
@@ -128,6 +170,10 @@ function MyDnaStyleBody() {
  * is the separate frame 33 feature). Tenant-scoped: elevated sessions need a
  * working tenant before any query mounts; tenant admins pass straight
  * through (tenant-pinned).
+ *
+ * Frame: `ScreenTemplate` (rule 11 §1) in `scroll` mode — the canvas header
+ * and the generation status bar are pinned, the centered card flow scrolls
+ * between them.
  */
 export function MyDnaStyleScreen() {
   return (

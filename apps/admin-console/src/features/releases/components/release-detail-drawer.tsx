@@ -97,7 +97,7 @@ function ChangesTab({ release }: { release: ServiceRelease }) {
             {group.items.map((item) => (
               <li key={item.sha + item.subject} className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5 text-sm">
                 {item.breaking ? (
-                  <Badge variant="destructive" className="text-[10px]">
+                  <Badge variant="destructive" className="text-2xs">
                     Breaking
                   </Badge>
                 ) : null}

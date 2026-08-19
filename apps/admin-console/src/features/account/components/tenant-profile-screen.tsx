@@ -146,13 +146,13 @@ function PlanUsagePanel() {
     <div className="flex flex-col gap-3">
       <p className="text-muted-foreground text-sm">Resolved limits and live usage for this tenant. Limits are managed by the platform team.</p>
       <div className="flex flex-wrap items-center gap-2">
-        <Badge variant="outline" className="text-muted-foreground font-mono text-[10px]">
+        <Badge variant="outline" className="text-muted-foreground font-mono text-2xs">
           model: {capabilities.modelTier}
         </Badge>
-        <Badge variant="outline" className="text-muted-foreground font-mono text-[10px]">
+        <Badge variant="outline" className="text-muted-foreground font-mono text-2xs">
           rate tier: {capabilities.rateLimitTier}
         </Badge>
-        <Badge variant="outline" className="text-muted-foreground font-mono text-[10px]">
+        <Badge variant="outline" className="text-muted-foreground font-mono text-2xs">
           enforcement: {capabilities.enforcementEnabled ? 'on' : 'off'}
         </Badge>
         {capabilities.trial.isTrial ? (

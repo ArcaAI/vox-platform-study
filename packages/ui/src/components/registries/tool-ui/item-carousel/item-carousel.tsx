@@ -150,7 +150,7 @@ function CarouselNavButton({ direction, visible, onClick }: { direction: ScrollD
       className={cn(
         'pointer-events-none scale-90 border-none opacity-0',
         'bg-background/60 absolute inset-y-0 z-20 my-auto hidden h-[6cqh] min-h-[50px] rounded-2xl backdrop-blur-lg',
-        'transition-[opacity,transform] duration-250 ease-[cubic-bezier(0.16,1,0.3,1)] motion-reduce:transition-none',
+        'transition-[opacity,transform] duration-250 ease-emphasized motion-reduce:transition-none',
         '@md:flex',
         isLeft ? 'left-1.5' : 'right-1.5',
         visible &&

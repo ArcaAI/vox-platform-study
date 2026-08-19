@@ -58,10 +58,10 @@ export function LiveConfigTab() {
         <Badge variant={config.enabled ? 'default' : 'destructive'}>
           {config.enabled ? 'Engine enabled' : 'Engine disabled (kill-switch engaged)'}
         </Badge>
-        <Badge variant="outline" className="font-mono text-[10px]">
+        <Badge variant="outline" className="font-mono text-2xs">
           env default: {config.envDefault ? 'enabled' : 'disabled'}
         </Badge>
-        <Badge variant="outline" className="font-mono text-[10px]">
+        <Badge variant="outline" className="font-mono text-2xs">
           source: {config.source}
         </Badge>
         {config.updatedAt ? <span className="text-muted-foreground text-xs">overridden {formatRelativeTime(config.updatedAt)}</span> : null}

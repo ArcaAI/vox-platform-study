@@ -71,7 +71,7 @@ export function SttLanguageModePicker({
                 <span className="flex items-center gap-2">
                   {selected.label}
                   {selected.kind === 'code_switch' && (
-                    <Badge variant="secondary" className="text-[10px] leading-tight">
+                    <Badge variant="secondary" className="text-2xs leading-tight">
                       Bilingual
                     </Badge>
                   )}
@@ -86,12 +86,12 @@ export function SttLanguageModePicker({
                 <span className="flex items-center gap-2">
                   {mode.label}
                   {mode.kind === 'code_switch' && (
-                    <Badge variant="secondary" className="text-[10px] leading-tight">
+                    <Badge variant="secondary" className="text-2xs leading-tight">
                       Bilingual
                     </Badge>
                   )}
                   {mode.kind === 'auto' && (
-                    <Badge variant="outline" className="text-[10px] leading-tight">
+                    <Badge variant="outline" className="text-2xs leading-tight">
                       Auto
                     </Badge>
                   )}

@@ -86,12 +86,12 @@ export function UpdatePlanCard({ currentPlan, plans, onPlanChange, className, ti
                             {plan.title}
                           </Label>
                           {plan.badge && (
-                            <Badge variant="secondary" className="h-5 flex-shrink-0 px-1.5 py-0 text-[10px] sm:h-auto sm:px-2 sm:py-0.5 sm:text-xs">
+                            <Badge variant="secondary" className="h-5 flex-shrink-0 px-1.5 py-0 text-2xs sm:h-auto sm:px-2 sm:py-0.5 sm:text-xs">
                               {plan.badge}
                             </Badge>
                           )}
                         </div>
-                        <p className="text-muted-foreground mt-1 text-[11px] leading-relaxed sm:text-xs">{plan.description}</p>
+                        <p className="text-muted-foreground mt-1 text-2xs leading-relaxed sm:text-xs">{plan.description}</p>
                         {plan.features.length > 0 && (
                           <div className="pt-2 sm:pt-3">
                             <div className="flex flex-wrap gap-1.5 sm:gap-2">
@@ -101,7 +101,7 @@ export function UpdatePlanCard({ currentPlan, plans, onPlanChange, className, ti
                                   className="bg-muted/20 border-border/30 flex flex-shrink-0 items-center gap-1.5 rounded-md border px-2 py-1 sm:gap-2 sm:rounded-lg"
                                 >
                                   <div className="bg-primary h-1 w-1 flex-shrink-0 rounded-full sm:h-1.5 sm:w-1.5" />
-                                  <span className="text-muted-foreground text-[10px] leading-none whitespace-nowrap sm:text-xs">{feature.name}</span>
+                                  <span className="text-muted-foreground text-2xs leading-none whitespace-nowrap sm:text-xs">{feature.name}</span>
                                 </div>
                               ))}
                             </div>
@@ -113,7 +113,7 @@ export function UpdatePlanCard({ currentPlan, plans, onPlanChange, className, ti
                       <div className="text-base leading-tight font-bold sm:text-xl sm:font-semibold">
                         {parseFloat(getCurrentPrice(plan)) >= 0 ? `${plan.currency}${getCurrentPrice(plan)}` : getCurrentPrice(plan)}
                       </div>
-                      <div className="text-muted-foreground mt-0.5 text-[10px] sm:text-xs">/{isYearly ? 'year' : 'month'}</div>
+                      <div className="text-muted-foreground mt-0.5 text-2xs sm:text-xs">/{isYearly ? 'year' : 'month'}</div>
                     </div>
                   </div>
                 </motion.div>

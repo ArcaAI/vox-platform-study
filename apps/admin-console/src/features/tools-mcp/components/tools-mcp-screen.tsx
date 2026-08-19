@@ -33,11 +33,11 @@ function LoadingTable() {
 
 function AuthPresence({ authRef }: { authRef?: string | null }) {
   return authRef ? (
-    <Badge variant="secondary" className="text-[10px]">
+    <Badge variant="secondary" className="text-2xs">
       Configured
     </Badge>
   ) : (
-    <Badge variant="outline" className="text-[10px]">
+    <Badge variant="outline" className="text-2xs">
       None
     </Badge>
   );
@@ -50,7 +50,7 @@ function AllowlistCell({ allowlist }: { allowlist?: string[] | null }) {
   return (
     <div className="flex flex-wrap gap-1">
       {allowlist.map((tool) => (
-        <Badge key={tool} variant="outline" className="font-mono text-[10px]">
+        <Badge key={tool} variant="outline" className="font-mono text-2xs">
           {tool}
         </Badge>
       ))}
@@ -170,13 +170,13 @@ function ToolsMcpBody() {
             <Table aria-label="MCP servers">
               <TableHeader>
                 <TableRow>
-                  <TableHead>Name</TableHead>
-                  <TableHead>Base URL</TableHead>
-                  <TableHead>PHI</TableHead>
-                  <TableHead>Allowlist</TableHead>
-                  <TableHead>Auth</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead className="text-right">Actions</TableHead>
+                  <TableHead scope="col">Name</TableHead>
+                  <TableHead scope="col">Base URL</TableHead>
+                  <TableHead scope="col">PHI</TableHead>
+                  <TableHead scope="col">Allowlist</TableHead>
+                  <TableHead scope="col">Auth</TableHead>
+                  <TableHead scope="col">Status</TableHead>
+                  <TableHead scope="col" className="text-right">Actions</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -190,7 +190,7 @@ function ToolsMcpBody() {
                     </TableCell>
                     <TableCell className="max-w-[220px] truncate font-mono text-xs">{server.baseUrl}</TableCell>
                     <TableCell>
-                      <Badge variant="outline" className="font-mono text-[10px]">
+                      <Badge variant="outline" className="font-mono text-2xs">
                         {server.phiBoundary}
                       </Badge>
                     </TableCell>
@@ -201,7 +201,7 @@ function ToolsMcpBody() {
                       <AuthPresence authRef={server.authRef} />
                     </TableCell>
                     <TableCell>
-                      <Badge variant={server.enabled ? 'secondary' : 'outline'} className="text-[10px]">
+                      <Badge variant={server.enabled ? 'secondary' : 'outline'} className="text-2xs">
                         {server.enabled ? 'Enabled' : 'Disabled'}
                       </Badge>
                     </TableCell>

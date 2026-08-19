@@ -66,10 +66,10 @@ export function AgenticContextTab() {
         <Table aria-label="Agentic context settings catalog">
           <TableHeader>
             <TableRow>
-              <TableHead className="font-mono text-xs">Key</TableHead>
-              <TableHead className="font-mono text-xs">Value</TableHead>
-              <TableHead className="font-mono text-xs">Source</TableHead>
-              <TableHead className="sr-only">Actions</TableHead>
+              <TableHead scope="col" className="font-mono text-xs">Key</TableHead>
+              <TableHead scope="col" className="font-mono text-xs">Value</TableHead>
+              <TableHead scope="col" className="font-mono text-xs">Source</TableHead>
+              <TableHead scope="col" className="sr-only">Actions</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>

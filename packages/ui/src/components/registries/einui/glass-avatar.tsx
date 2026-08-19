@@ -14,11 +14,7 @@ const GlassAvatar = React.forwardRef<
     )}
     <AvatarPrimitive.Root
       ref={ref}
-      className={cn(
-        'relative flex h-10 w-10 shrink-0 overflow-hidden rounded-full',
-        'border-2 border-white/30 shadow-[0_4px_16px_rgba(0,0,0,0.2)]',
-        className,
-      )}
+      className={cn('relative flex h-10 w-10 shrink-0 overflow-hidden rounded-full', 'border-2 border-white/30 shadow-raised', className)}
       {...props}
     />
   </div>

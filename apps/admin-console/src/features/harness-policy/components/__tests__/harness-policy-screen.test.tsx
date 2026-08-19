@@ -284,7 +284,18 @@ describe('HarnessPolicyScreen', () => {
     // SUPER_ADMIN_ONLY_POLICY_KEYS before this ticket, yet the tenant tab
     // still offered them as editable inputs whose save could only 403 — the
     // same defect A-1c fixes for the three toggles.
-    const LOCKED = ['Safety guardrail', 'PHI detection', 'PHI fail-closed', 'Safety provider', 'Safety model'];
+    // Mirrors TENANT_LOCKED_POLICY_KEYS in ../policy-fields.ts, by rendered
+    // label. TASK-740 D-3 locked textProvider/textModel too — both sit in the
+    // backend's SUPER_ADMIN_ONLY_POLICY_KEYS, so a tenant edit could only 403.
+    const LOCKED = [
+      'Safety guardrail',
+      'PHI detection',
+      'PHI fail-closed',
+      'Safety provider',
+      'Safety model',
+      'Text-generation provider',
+      'Text-generation model',
+    ];
 
     it.each(LOCKED)('renders %s disabled on the tenant tab', async (label) => {
       stubFetch({ session: TENANT_ADMIN_SESSION });

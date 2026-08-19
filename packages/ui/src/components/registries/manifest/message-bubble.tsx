@@ -115,7 +115,7 @@ export function MessageBubble({ data, appearance, control }: MessageBubbleProps)
           </div>
         )}
         <div className={cn('flex items-center gap-1 mt-1', isOwn && 'justify-end')}>
-          {time && <span className="text-[10px] text-muted-foreground">{time}</span>}
+          {time && <span className="text-2xs text-muted-foreground">{time}</span>}
           {isOwn && status && (
             <span className="text-muted-foreground">
               {status === 'sent' && <Check className="h-3 w-3" />}
@@ -213,7 +213,7 @@ export function ImageMessageBubble({ data, appearance, control }: ImageMessageBu
           </div>
         )}
         <div className={cn('flex items-center gap-1 mt-1', isOwn && 'justify-end')}>
-          {time && <span className="text-[10px] text-muted-foreground">{time}</span>}
+          {time && <span className="text-2xs text-muted-foreground">{time}</span>}
           {isOwn && status && (
             <span className="text-muted-foreground">
               {status === 'sent' && <Check className="h-3 w-3" />}
@@ -407,7 +407,7 @@ export function MessageWithReactions({ data, actions, appearance }: MessageWithR
           </DropdownMenu>
         </div>
         <div className={cn('flex items-center gap-1 mt-1', isOwn && 'justify-end')}>
-          {time && <span className="text-[10px] text-muted-foreground">{time}</span>}
+          {time && <span className="text-2xs text-muted-foreground">{time}</span>}
         </div>
       </div>
     </div>
@@ -555,7 +555,7 @@ export function VoiceMessageBubble({ data, appearance, control }: VoiceMessageBu
           </div>
         </div>
         <div className={cn('flex items-center gap-1 mt-1', isOwn && 'justify-end')}>
-          {time && <span className="text-[10px] text-muted-foreground">{time}</span>}
+          {time && <span className="text-2xs text-muted-foreground">{time}</span>}
           {isOwn && status && (
             <span className="text-muted-foreground">
               {status === 'sent' && <Check className="h-3 w-3" />}

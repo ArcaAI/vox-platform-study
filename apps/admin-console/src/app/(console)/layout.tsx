@@ -33,7 +33,7 @@ export default async function ConsoleLayout({ children }: { children: ReactNode 
                         pinned ABOVE the scroll boundary (frame 07; rule 11 §App Shell).
                         The inset owns the height (h-svh overflow-hidden) so the window
                         never scrolls; only the region below does. */}
-          <div className="bg-background relative z-40 shrink-0">
+          <div className="bg-background relative z-chrome shrink-0">
             <SiteHeader session={safeSession} />
             <ImpersonationBanner session={safeSession} />
             <WorkingTenantBanner session={safeSession} />

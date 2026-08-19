@@ -24,14 +24,14 @@ export function StepStats({ stats }: { stats: GenerationStats }) {
   const normalized = normalizeGenerationStats(stats);
   const rows = STAT_ROWS.filter((row) => normalized && normalized[row.key] !== undefined && normalized[row.key] !== null);
   if (!normalized || rows.length === 0) {
-    return <pre className="bg-muted/40 mt-1 overflow-x-auto rounded-md border p-2 font-mono text-[11px]">{JSON.stringify(stats, null, 2)}</pre>;
+    return <pre className="bg-muted/40 mt-1 overflow-x-auto rounded-md border p-2 font-mono text-2xs">{JSON.stringify(stats, null, 2)}</pre>;
   }
   return (
     <dl className="bg-muted/30 mt-1 grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-0.5 rounded-md border p-2">
       {rows.map((row) => (
         <Fragment key={String(row.key)}>
-          <dt className="text-muted-foreground font-mono text-[11px]">{row.label}</dt>
-          <dd className="font-mono text-[11px] tabular-nums">{row.format(normalized[row.key])}</dd>
+          <dt className="text-muted-foreground font-mono text-2xs">{row.label}</dt>
+          <dd className="font-mono text-2xs tabular-nums">{row.format(normalized[row.key])}</dd>
         </Fragment>
       ))}
     </dl>

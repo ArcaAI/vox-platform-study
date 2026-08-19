@@ -36,7 +36,7 @@ const TodoIcon = memo(function TodoIcon({ status }: { status: PlanTodoStatus }) 
   if (status === 'in_progress') {
     return (
       <span
-        className="border-border bg-card flex size-6 shrink-0 items-center justify-center rounded-full border shadow-[0_0_0_4px_hsl(var(--primary)/0.1)] motion-safe:transition-all motion-safe:duration-300"
+        className="border-border bg-card flex size-6 shrink-0 items-center justify-center rounded-full border shadow-[0_0_0_4px] shadow-primary/10 motion-safe:transition-all motion-safe:duration-300"
         aria-hidden="true"
       >
         <Loader2 className="text-primary size-5 motion-safe:animate-spin" />
@@ -155,7 +155,7 @@ const PlanTodoItem = memo(function PlanTodoItem({ todo, className, style, showCo
               <TodoIcon status={todo.status} />
             </div>
             <span className="min-w-0 flex-1">{labelElement}</span>
-            <ChevronRight className="text-muted-foreground/50 group-hover/todo:text-muted-foreground mt-0.5 size-4 shrink-0 rotate-90 group-data-[state=open]/todo:[transform:rotateY(180deg)] motion-safe:transition-transform motion-safe:duration-300 motion-safe:ease-[cubic-bezier(0.34,1.56,0.64,1)]" />
+            <ChevronRight className="text-muted-foreground/50 group-hover/todo:text-muted-foreground mt-0.5 size-4 shrink-0 rotate-90 group-data-[state=open]/todo:[transform:rotateY(180deg)] motion-safe:transition-transform motion-safe:duration-300 motion-safe:ease-spring" />
           </CollapsibleTrigger>
           <CollapsibleContent className="group/content" data-slot="collapsible-content">
             <div className="min-w-0 motion-safe:group-data-[state=closed]/content:animate-out motion-safe:group-data-[state=closed]/content:fade-out motion-safe:group-data-[state=closed]/content:slide-out-to-top-1 motion-safe:group-data-[state=closed]/content:duration-150 motion-safe:group-data-[state=open]/content:animate-in motion-safe:group-data-[state=open]/content:fade-in motion-safe:group-data-[state=open]/content:slide-in-from-top-1 motion-safe:group-data-[state=open]/content:delay-75 motion-safe:group-data-[state=open]/content:duration-150 motion-safe:group-data-[state=open]/content:fill-mode-both">

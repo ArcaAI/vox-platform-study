@@ -1,6 +1,6 @@
 {
   "name": "@arcaai/vad",
-  "version": "2.0.7",
+  "version": "3.0.0",
   "description": "Voice Activity Detection plugin for @arcaai/room using Silero VAD v5 with ONNX Runtime",
   "private": false,
   "main": "./dist/index.cjs",

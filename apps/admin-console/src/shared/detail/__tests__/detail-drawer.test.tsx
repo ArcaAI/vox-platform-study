@@ -130,4 +130,53 @@ describe('DetailDrawer', () => {
     expect(region.getAttribute('role')).toBe('region');
     expect(region.hasAttribute('aria-label') || region.hasAttribute('aria-labelledby')).toBe(true);
   });
+
+  describe('closeBlockedReason — a blocked close must be legible, never silent', () => {
+    it('leaves the close control enabled and Esc working when nothing blocks it', () => {
+      const onOpenChange = vi.fn();
+      render(
+        <DetailDrawer open onOpenChange={onOpenChange} title="Acme role">
+          <p>Body</p>
+        </DetailDrawer>,
+      );
+      const close = screen.getByRole('button', { name: /close/i });
+      expect((close as HTMLButtonElement).disabled).toBe(false);
+      fireEvent.keyDown(sheetContent(), { key: 'Escape' });
+      expect(onOpenChange).toHaveBeenCalledWith(false);
+    });
+
+    it('disables the close control and names the REASON when blocked', () => {
+      render(
+        <DetailDrawer open onOpenChange={() => {}} title="Acme role" closeBlockedReason="Saving the policy — wait for it to finish.">
+          <p>Body</p>
+        </DetailDrawer>,
+      );
+      // Regression guard for the anti-pattern: a control that stays focusable
+      // and clickable while silently doing nothing (WCAG 4.1.2 name/role/VALUE).
+      const close = screen.getByRole('button', { name: /close/i });
+      expect((close as HTMLButtonElement).disabled).toBe(true);
+      expect(close.getAttribute('aria-disabled')).toBe('true');
+      expect(close.textContent).toMatch(/Saving the policy/);
+    });
+
+    it('suppresses Escape the same way as the button, so all exits agree', () => {
+      const onOpenChange = vi.fn();
+      render(
+        <DetailDrawer open onOpenChange={onOpenChange} title="Acme role" closeBlockedReason="Saving the model — wait for it to finish.">
+          <p>Body</p>
+        </DetailDrawer>,
+      );
+      fireEvent.keyDown(sheetContent(), { key: 'Escape' });
+      expect(onOpenChange).not.toHaveBeenCalled();
+    });
+
+    it('has no axe violations while blocked', async () => {
+      const { container } = render(
+        <DetailDrawer open onOpenChange={() => {}} title="Acme role" closeBlockedReason="Saving — wait for it to finish.">
+          <p>Body</p>
+        </DetailDrawer>,
+      );
+      expect(await axe(container)).toHaveNoViolations();
+    });
+  });
 });

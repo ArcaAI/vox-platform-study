@@ -127,7 +127,7 @@ function PreSummaryCard({
       <div className="flex flex-col gap-1">
         <h2 className="flex flex-wrap items-baseline gap-x-2 text-sm leading-none font-semibold">
           Pre-summary
-          <Badge variant="secondary" className="text-[10px]">
+          <Badge variant="secondary" className="text-2xs">
             tenant-wide
           </Badge>
         </h2>
@@ -343,7 +343,7 @@ function SummaryMatrixCard({
       <div className="flex flex-col gap-1">
         <h2 className="flex flex-wrap items-baseline gap-x-2 text-sm leading-none font-semibold">
           Summary
-          <Badge variant="outline" className="text-[10px]">
+          <Badge variant="outline" className="text-2xs">
             department &times; visit type
           </Badge>
         </h2>
@@ -378,47 +378,55 @@ function SummaryMatrixCard({
       ) : departments.length === 0 ? (
         <EmptyState icon={IconBuildingHospital} title="No departments" description="This tenant has no departments, so there is no summary matrix." />
       ) : (
-        <div className="overflow-x-auto">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead className="min-w-32">Department</TableHead>
-                <TableHead className="min-w-64">Summary &mdash; New referral</TableHead>
-                <TableHead className="min-w-64">Summary &mdash; Re-visit</TableHead>
-                <TableHead className="min-w-40">Pre-summary</TableHead>
+        // The shadcn `Table` already renders its own focusable `overflow-x-auto`
+        // container — a second wrapper would nest scroll areas (rule 11 §1).
+        <Table aria-label="Summary instructions by department and visit type">
+          <TableHeader>
+            <TableRow>
+              <TableHead scope="col" className="min-w-32">
+                Department
+              </TableHead>
+              <TableHead scope="col" className="min-w-64">
+                Summary &mdash; New referral
+              </TableHead>
+              <TableHead scope="col" className="min-w-64">
+                Summary &mdash; Re-visit
+              </TableHead>
+              <TableHead scope="col" className="min-w-40">
+                Pre-summary
+              </TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {departments.map((department) => (
+              <TableRow key={department.id}>
+                <TableCell className="font-mono text-xs">{departmentLabel(department)}</TableCell>
+                {slotCell(department, 'newPatientPromptId')}
+                {slotCell(department, 'revisitPromptId')}
+                <TableCell>
+                  {department.preSummaryPromptId ? (
+                    <span className="flex flex-wrap items-center gap-2">
+                      <Badge variant="destructive" className="text-2xs">
+                        legacy override
+                      </Badge>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-6 px-2 text-xs"
+                        onClick={() => onAssign(department, 'preSummaryPromptId')}
+                        aria-label={`Clear legacy pre-summary override for ${departmentLabel(department)}`}
+                      >
+                        Clear
+                      </Button>
+                    </span>
+                  ) : (
+                    <FallsThrough>{'n/a — tenant-wide'}</FallsThrough>
+                  )}
+                </TableCell>
               </TableRow>
-            </TableHeader>
-            <TableBody>
-              {departments.map((department) => (
-                <TableRow key={department.id}>
-                  <TableCell className="font-mono text-xs">{departmentLabel(department)}</TableCell>
-                  {slotCell(department, 'newPatientPromptId')}
-                  {slotCell(department, 'revisitPromptId')}
-                  <TableCell>
-                    {department.preSummaryPromptId ? (
-                      <span className="flex flex-wrap items-center gap-2">
-                        <Badge variant="destructive" className="text-[10px]">
-                          legacy override
-                        </Badge>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          className="h-6 px-2 text-xs"
-                          onClick={() => onAssign(department, 'preSummaryPromptId')}
-                          aria-label={`Clear legacy pre-summary override for ${departmentLabel(department)}`}
-                        >
-                          Clear
-                        </Button>
-                      </span>
-                    ) : (
-                      <FallsThrough>{'n/a — tenant-wide'}</FallsThrough>
-                    )}
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </div>
+            ))}
+          </TableBody>
+        </Table>
       )}
     </Card>
   );

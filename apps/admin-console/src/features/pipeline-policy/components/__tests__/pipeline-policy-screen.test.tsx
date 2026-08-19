@@ -180,6 +180,25 @@ describe('PipelinePolicyScreen', () => {
     expect(within(card).getByText(/EFFECTIVE harness/)).toBeDefined();
   });
 
+  it('opens the scope editor from a real button, so the matrix is operable by keyboard', async () => {
+    stubFetch();
+    renderWithProviders(<PipelinePolicyScreen />);
+    const table = await waitFor(() => matrix());
+
+    // The row-wide onClick is a pointer affordance only; the scope cell must
+    // carry a focusable control or the editor is mouse-only (WCAG 2.1.1).
+    const scopeButton = within(table).getByRole('button', { name: 'tenant' });
+    expect(scopeButton.tagName).toBe('BUTTON');
+    expect(scopeButton.getAttribute('aria-pressed')).toBe('false');
+
+    scopeButton.focus();
+    expect(document.activeElement).toBe(scopeButton);
+    fireEvent.click(scopeButton);
+
+    expect(await screen.findByRole('radiogroup', { name: 'Auto-NER' })).toBeDefined();
+    expect(within(matrix()).getByRole('button', { name: 'tenant' }).getAttribute('aria-pressed')).toBe('true');
+  });
+
   it('PUTs a sparse row update with If-Match and expectedVersion from the read ETag', async () => {
     const calls = stubFetch({
       custom: (call) => {

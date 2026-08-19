@@ -7,6 +7,13 @@
  * "unsaved new definition" editing mode). Otherwise fetches the definition + node registry and
  * hands them to `WorkflowStudioEditor` once both are ready — `<Skeleton>` shapes match the
  * three-column editor layout (rail · canvas · inspector) while loading (rule 10).
+ *
+ * No `StatusFooter` here, deliberately. The screen's real frame — `ScreenTemplate` with the
+ * `viewMode`-driven `contentMode` and the graph's status bar — belongs to `WorkflowStudioEditor`,
+ * which this file delegates to. The three frames left in THIS file are the create form, the
+ * error state and the loading skeleton; none of them has a count, a connection state or a
+ * last-updated to pin, and an empty status bar under a two-field form would be chrome for its
+ * own sake (rule 11 §2: no wrapper that only adds padding).
  */
 import { Skeleton } from '@arcaai/ui';
 import { PageHeader } from '@/shared/page/page-header';

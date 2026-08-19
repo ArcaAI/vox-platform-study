@@ -8,14 +8,15 @@ import { Button } from '@arcaai/ui/components/shadcn/button';
 import { Input } from '@arcaai/ui/components/shadcn/input';
 import { Label } from '@arcaai/ui/components/shadcn/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@arcaai/ui/components/shadcn/select';
-import { Sheet, SheetContent, SheetDescription, SheetFooter, SheetHeader, SheetTitle } from '@arcaai/ui/components/shadcn/sheet';
 import { Skeleton } from '@arcaai/ui/components/shadcn/skeleton';
 import { Spinner } from '@arcaai/ui/components/shadcn/spinner';
 import { Textarea } from '@arcaai/ui/components/shadcn/textarea';
 import { GatewayError } from '@/shared/api';
 import { BreakGlassDialog, type BreakGlassCredentials } from '@/shared/confirm/break-glass-dialog';
+import { ConfirmDialog } from '@/shared/confirm/confirm-dialog';
 import { CopyButton } from '@/shared/copy-button';
 import { cx } from '@/shared/cx';
+import { DetailDrawer } from '@/shared/detail/detail-drawer';
 import { OccConflictAlert } from '@/shared/occ/occ-alert';
 import { ErrorState } from '@/shared/state/error-state';
 import { useCreatePolicy, usePolicy, useUpdatePolicy, useValidatePolicyRules } from '../api/hooks';
@@ -70,51 +71,138 @@ function Field({
   );
 }
 
+/** Skeleton mirroring the form layout while the edited row loads (rule 10). */
+function PolicyFormSkeleton() {
+  return (
+    <div className="flex flex-col gap-4">
+      {Array.from({ length: 3 }, (_, index) => (
+        <div key={index} className="flex flex-col gap-2">
+          <Skeleton className="h-4 w-20" />
+          <Skeleton className="h-9 w-full" />
+        </div>
+      ))}
+      <div className="flex flex-col gap-2">
+        <Skeleton className="h-4 w-24" />
+        <Skeleton className="h-48 w-full" />
+      </div>
+    </div>
+  );
+}
+
 /**
- * Create/edit form (frame 22) around the JSON rules editor: Validate runs a
+ * Which row the local field state was seeded from. `updatedAt` is part of the
+ * key on purpose: reloading after a 412 must reseed the editor from the server
+ * row (what the retired `key={`${id}-${updatedAt}`}` remount did) — unlike the
+ * model form, whose OCC alert promises to keep local edits.
+ */
+function seedKeyOf(open: boolean, isEdit: boolean, policy: Policy | null): string {
+  if (!open) return 'closed';
+  if (!isEdit) return 'create';
+  return policy ? `row:${policy.id}:${policy.updatedAt}` : 'pending';
+}
+
+/**
+ * Create/edit drawer (frame 22) in the console-wide DetailDrawer: the JSON
+ * rules editor scrolls in the body, the actions stay pinned in the footer
+ * (submit reaches the form through `form={formId}`). Validate runs a
  * client-side JSON.parse preflight, then POST /admin/rbac/policies/validate;
  * save stays disabled until the last validation passed on the CURRENT text
- * (re-edit -> revalidate). Edits that leave the rules untouched skip both
- * the validation gate and the rules field in the PATCH, so a rename never
- * trips the multi-role break-glass. A 428 on save opens the break-glass
- * dialog and retries with body.breakGlass; a 412 renders the OCC alert.
+ * (re-edit -> revalidate). Edits that leave the rules untouched skip both the
+ * validation gate and the rules field in the PATCH, so a rename never trips
+ * the multi-role break-glass. A 428 on save opens the break-glass dialog and
+ * retries with body.breakGlass; a 412 renders the OCC alert. Closing with
+ * unsaved edits asks before discarding them.
  */
-function PolicyForm({
-  initial,
-  onDone,
-  onCancel,
-  onReloadLatest,
+export function PolicyFormSheet({
+  open,
+  onOpenChange,
+  policyId,
 }: {
-  initial?: Policy;
-  onDone: () => void;
-  onCancel: () => void;
-  onReloadLatest?: () => void;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  /** null = create mode. */
+  policyId: string | null;
 }) {
   const uid = useId();
-  const isEdit = initial !== undefined;
-  const initialRulesText = JSON.stringify(initial?.rules ?? RULES_TEMPLATE, null, 2);
-
-  const [name, setName] = useState(initial?.name ?? '');
-  const [description, setDescription] = useState(initial?.description ?? '');
-  const [scope, setScope] = useState<PolicyScope>(initial?.scope ?? 'TENANT');
-  const [rulesText, setRulesText] = useState(initialRulesText);
-  const [parseError, setParseError] = useState<string | null>(null);
-  /** The exact editor text the last completed gateway validation ran against. */
-  const [validatedText, setValidatedText] = useState<string | null>(null);
-  const [breakGlassOpen, setBreakGlassOpen] = useState(false);
-  const [breakGlassError, setBreakGlassError] = useState<string | null>(null);
+  const formId = `${uid}-form`;
+  const isEdit = policyId !== null;
+  const detail = usePolicy(policyId ?? '');
+  const policy = detail.data ?? null;
 
   const validateRules = useValidatePolicyRules();
   const createPolicy = useCreatePolicy();
   const updatePolicy = useUpdatePolicy();
   const isPending = createPolicy.isPending || updatePolicy.isPending;
 
+  const [name, setName] = useState('');
+  const [description, setDescription] = useState('');
+  const [scope, setScope] = useState<PolicyScope>('TENANT');
+  const [rulesText, setRulesText] = useState('');
+  const [baselineRulesText, setBaselineRulesText] = useState('');
+  const [parseError, setParseError] = useState<string | null>(null);
+  /** The exact editor text the last completed gateway validation ran against. */
+  const [validatedText, setValidatedText] = useState<string | null>(null);
+  const [breakGlassOpen, setBreakGlassOpen] = useState(false);
+  const [breakGlassError, setBreakGlassError] = useState<string | null>(null);
+  const [seededFor, setSeededFor] = useState<string>('closed');
+  const [discarding, setDiscarding] = useState(false);
+
+  // Seed during render (never in an effect): the fields must already hold the
+  // loaded row on the commit that first shows them.
+  const seedKey = seedKeyOf(open, isEdit, policy);
+  if (seedKey !== seededFor) {
+    const seeded = seedKey.startsWith('row:') && policy ? policy : undefined;
+    const seededRules = JSON.stringify(seeded?.rules ?? RULES_TEMPLATE, null, 2);
+    setSeededFor(seedKey);
+    setName(seeded?.name ?? '');
+    setDescription(seeded?.description ?? '');
+    setScope(seeded?.scope ?? 'TENANT');
+    setRulesText(seededRules);
+    setBaselineRulesText(seededRules);
+    setParseError(null);
+    setValidatedText(null);
+    setBreakGlassOpen(false);
+    setBreakGlassError(null);
+  }
+
+  const showForm = !isEdit || (!detail.isPending && !detail.error && policy !== null);
   const validation = validatedText === rulesText && !parseError ? validateRules.data : undefined;
   const rulesValidated = validation?.valid === true;
-  const rulesChanged = !isEdit || rulesText !== initialRulesText;
-  const isProtected = initial?.isProtected === true;
+  const rulesChanged = !isEdit || rulesText !== baselineRulesText;
+  const isProtected = policy?.isProtected === true;
   const canSave = Boolean(name.trim()) && !isProtected && (!rulesChanged || rulesValidated);
   const occError = updatePolicy.error instanceof GatewayError && updatePolicy.error.isVersionConflict ? updatePolicy.error : null;
+  const isDirty =
+    name !== (policy && isEdit ? (policy.name ?? '') : '') ||
+    description !== (policy && isEdit ? (policy.description ?? '') : '') ||
+    scope !== (policy && isEdit ? policy.scope : 'TENANT') ||
+    rulesText !== baselineRulesText;
+
+  /** Closes for real and drops mutation state so a reopen starts clean. */
+  function close() {
+    setDiscarding(false);
+    validateRules.reset();
+    createPolicy.reset();
+    updatePolicy.reset();
+    onOpenChange(false);
+  }
+
+  /** Esc / overlay / Cancel — never discards unsaved edits without asking. */
+  function handleOpenChange(next: boolean) {
+    if (next) {
+      onOpenChange(true);
+      return;
+    }
+    // Blocked while a mutation is in flight. The DetailDrawer is told WHY via
+    // `closeBlockedReason`, so the close control is properly disabled and named
+    // rather than staying focusable and silently doing nothing (WCAG 4.1.2).
+    if (isPending) return;
+    if (isDirty) {
+      setDiscarding(true);
+      return;
+    }
+    close();
+  }
 
   function handleValidate() {
     const parsed = parseRules(rulesText);
@@ -144,15 +232,15 @@ function PolicyForm({
   }
 
   function submitUpdate(breakGlass?: BreakGlassCredentials) {
-    if (!initial) return;
+    if (!policy) return;
     updatePolicy.mutate(
-      { id: initial.id, body: { ...buildUpdateBody(), ...(breakGlass ? { breakGlass } : {}) } },
+      { id: policy.id, body: { ...buildUpdateBody(), ...(breakGlass ? { breakGlass } : {}) } },
       {
         onSuccess: () => {
           toast.success('Policy updated');
           setBreakGlassOpen(false);
           setBreakGlassError(null);
-          onDone();
+          close();
         },
         onError: (error) => {
           if (breakGlass) {
@@ -191,7 +279,7 @@ function PolicyForm({
       {
         onSuccess: () => {
           toast.success('Policy created');
-          onDone();
+          close();
         },
         onError: (error) => toast.error(error.message),
       },
@@ -199,132 +287,167 @@ function PolicyForm({
   }
 
   return (
-    <form onSubmit={handleSubmit} className="flex min-h-0 flex-1 flex-col">
-      <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto p-4">
-        {isProtected ? (
-          <Alert>
-            <IconLock aria-hidden />
-            <AlertTitle>Protected system policy</AlertTitle>
-            <AlertDescription>Seed-managed anti-lockout policy — the gateway refuses every mutation.</AlertDescription>
-          </Alert>
-        ) : null}
-        <Field id={`${uid}-name`} label="Name" required>
-          <Input
-            id={`${uid}-name`}
-            value={name}
-            onChange={(event) => setName(event.target.value)}
-            placeholder="consultation.read"
-            autoComplete="off"
-            className="font-mono"
-            required
+    <>
+      <DetailDrawer
+        closeBlockedReason={isPending ? 'Saving the policy — wait for it to finish.' : undefined}
+        open={open}
+        onOpenChange={handleOpenChange}
+        title={isEdit ? 'Edit policy' : 'New policy'}
+        meta={
+          <>
+            <span>
+              {isEdit
+                ? 'Rule edits are validated before save; multi-role policies require break-glass.'
+                : 'Rules follow the CASL action/subject grammar and are validated before save.'}
+            </span>
+            {isEdit && policy ? (
+              <>
+                <span className="font-mono">{policy.id}</span>
+                <CopyButton value={policy.id} label="Copy policy id" />
+              </>
+            ) : null}
+          </>
+        }
+        footer={
+          showForm ? (
+            <div className="flex w-full flex-col gap-2">
+              <OccConflictAlert
+                error={occError}
+                onReload={() => {
+                  updatePolicy.reset();
+                  void detail.refetch();
+                }}
+              />
+              <div className="flex justify-end gap-2">
+                <Button type="button" variant="outline" onClick={() => handleOpenChange(false)} disabled={isPending}>
+                  Cancel
+                </Button>
+                <Button type="submit" form={formId} disabled={!canSave || isPending}>
+                  {isPending ? <Spinner /> : null}
+                  {isEdit ? 'Save changes' : 'Create policy'}
+                </Button>
+              </div>
+            </div>
+          ) : null
+        }
+      >
+        {!open ? null : isEdit && detail.isPending ? (
+          <PolicyFormSkeleton />
+        ) : isEdit && !showForm ? (
+          <ErrorState
+            error={detail.error ?? new GatewayError(404, 'This policy does not exist or is outside your access scope.')}
+            onRetry={() => void detail.refetch()}
           />
-        </Field>
-        <Field id={`${uid}-description`} label="Description">
-          <Input
-            id={`${uid}-description`}
-            value={description}
-            onChange={(event) => setDescription(event.target.value)}
-            placeholder="What this policy grants"
-            autoComplete="off"
-          />
-        </Field>
-        <Field id={`${uid}-scope`} label="Scope" required>
-          <Select value={scope} onValueChange={(next) => setScope(next as PolicyScope)}>
-            <SelectTrigger id={`${uid}-scope`} className="w-full">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {SCOPE_CHOICES.map((choice) => (
-                <SelectItem key={choice.value} value={choice.value}>
-                  {choice.label}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </Field>
-        <Field id={`${uid}-rules`} label="Rules (JSON)" required className="min-h-0 flex-1">
-          <Textarea
-            id={`${uid}-rules`}
-            value={rulesText}
-            onChange={(event) => setRulesText(event.target.value)}
-            spellCheck={false}
-            className="min-h-48 flex-1 resize-none font-mono text-xs"
-          />
-        </Field>
-        <div className="flex flex-wrap items-center gap-2">
-          <Button type="button" variant="outline" onClick={handleValidate} disabled={validateRules.isPending}>
-            {validateRules.isPending ? <Spinner /> : null}
-            Validate
-          </Button>
-          {rulesChanged && !rulesValidated && !parseError ? (
-            <span className="text-muted-foreground text-xs">Validate the rules to enable save.</span>
-          ) : null}
-        </div>
-        {parseError ? (
-          <Alert variant="destructive">
-            <IconAlertTriangle aria-hidden />
-            <AlertTitle>Invalid JSON</AlertTitle>
-            <AlertDescription>{parseError}</AlertDescription>
-          </Alert>
-        ) : null}
-        {validation ? (
-          validation.valid ? (
-            <Alert>
-              <IconCircleCheck aria-hidden />
-              <AlertTitle>Rules are valid</AlertTitle>
-              {validation.warnings?.length ? (
-                <AlertDescription>
-                  <ul className="list-disc pl-4">
-                    {validation.warnings.map((warning) => (
-                      <li key={warning}>{warning}</li>
-                    ))}
-                  </ul>
-                </AlertDescription>
+        ) : (
+          <form id={formId} onSubmit={handleSubmit} className="flex flex-col gap-4">
+            {isProtected ? (
+              <Alert>
+                <IconLock aria-hidden />
+                <AlertTitle>Protected system policy</AlertTitle>
+                <AlertDescription>Seed-managed anti-lockout policy — the gateway refuses every mutation.</AlertDescription>
+              </Alert>
+            ) : null}
+            <Field id={`${uid}-name`} label="Name" required>
+              <Input
+                id={`${uid}-name`}
+                value={name}
+                onChange={(event) => setName(event.target.value)}
+                placeholder="consultation.read"
+                autoComplete="off"
+                className="font-mono"
+                required
+              />
+            </Field>
+            <Field id={`${uid}-description`} label="Description">
+              <Input
+                id={`${uid}-description`}
+                value={description}
+                onChange={(event) => setDescription(event.target.value)}
+                placeholder="What this policy grants"
+                autoComplete="off"
+              />
+            </Field>
+            <Field id={`${uid}-scope`} label="Scope" required>
+              <Select value={scope} onValueChange={(next) => setScope(next as PolicyScope)}>
+                <SelectTrigger id={`${uid}-scope`} className="w-full">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {SCOPE_CHOICES.map((choice) => (
+                    <SelectItem key={choice.value} value={choice.value}>
+                      {choice.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </Field>
+            <Field id={`${uid}-rules`} label="Rules (JSON)" required className="min-h-0 flex-1">
+              <Textarea
+                id={`${uid}-rules`}
+                value={rulesText}
+                onChange={(event) => setRulesText(event.target.value)}
+                spellCheck={false}
+                className="min-h-48 flex-1 resize-none font-mono text-xs"
+              />
+            </Field>
+            <div className="flex flex-wrap items-center gap-2">
+              <Button type="button" variant="outline" onClick={handleValidate} disabled={validateRules.isPending}>
+                {validateRules.isPending ? <Spinner /> : null}
+                Validate
+              </Button>
+              {rulesChanged && !rulesValidated && !parseError ? (
+                <span className="text-muted-foreground text-xs">Validate the rules to enable save.</span>
               ) : null}
-            </Alert>
-          ) : (
-            <Alert variant="destructive">
-              <IconAlertTriangle aria-hidden />
-              <AlertTitle>Validation failed</AlertTitle>
-              <AlertDescription>
-                <ul className="list-disc pl-4">
-                  {(validation.errors ?? []).map((error) => (
-                    <li key={error}>{error}</li>
-                  ))}
-                  {(validation.warnings ?? []).map((warning) => (
-                    <li key={warning} className="text-muted-foreground">
-                      {warning}
-                    </li>
-                  ))}
-                </ul>
-              </AlertDescription>
-            </Alert>
-          )
-        ) : null}
-      </div>
-      <SheetFooter className="border-t">
-        <OccConflictAlert
-          error={occError}
-          onReload={() => {
-            updatePolicy.reset();
-            onReloadLatest?.();
-          }}
-        />
-        <div className="flex justify-end gap-2">
-          <Button type="button" variant="outline" onClick={onCancel} disabled={isPending}>
-            Cancel
-          </Button>
-          <Button type="submit" disabled={!canSave || isPending}>
-            {isPending ? <Spinner /> : null}
-            {isEdit ? 'Save changes' : 'Create policy'}
-          </Button>
-        </div>
-      </SheetFooter>
-      {isEdit ? (
+            </div>
+            {parseError ? (
+              <Alert variant="destructive">
+                <IconAlertTriangle aria-hidden />
+                <AlertTitle>Invalid JSON</AlertTitle>
+                <AlertDescription>{parseError}</AlertDescription>
+              </Alert>
+            ) : null}
+            {validation ? (
+              validation.valid ? (
+                <Alert>
+                  <IconCircleCheck aria-hidden />
+                  <AlertTitle>Rules are valid</AlertTitle>
+                  {validation.warnings?.length ? (
+                    <AlertDescription>
+                      <ul className="list-disc pl-4">
+                        {validation.warnings.map((warning) => (
+                          <li key={warning}>{warning}</li>
+                        ))}
+                      </ul>
+                    </AlertDescription>
+                  ) : null}
+                </Alert>
+              ) : (
+                <Alert variant="destructive">
+                  <IconAlertTriangle aria-hidden />
+                  <AlertTitle>Validation failed</AlertTitle>
+                  <AlertDescription>
+                    <ul className="list-disc pl-4">
+                      {(validation.errors ?? []).map((error) => (
+                        <li key={error}>{error}</li>
+                      ))}
+                      {(validation.warnings ?? []).map((warning) => (
+                        <li key={warning} className="text-muted-foreground">
+                          {warning}
+                        </li>
+                      ))}
+                    </ul>
+                  </AlertDescription>
+                </Alert>
+              )
+            ) : null}
+          </form>
+        )}
+      </DetailDrawer>
+      {isEdit && policy ? (
         <BreakGlassDialog
           open={breakGlassOpen}
-          onOpenChange={(open) => {
-            if (!open) {
+          onOpenChange={(next) => {
+            if (!next) {
               setBreakGlassOpen(false);
               setBreakGlassError(null);
               updatePolicy.reset();
@@ -333,99 +456,26 @@ function PolicyForm({
           title="Confirm rule change"
           description={
             <>
-              <span className="font-mono">{initial.name}</span> is attached to multiple roles, so editing its rules changes authorization for all of
+              <span className="font-mono">{policy.name}</span> is attached to multiple roles, so editing its rules changes authorization for all of
               them at once. Confirm with your password and the exact policy name.
             </>
           }
-          confirmationName={initial.name}
+          confirmationName={policy.name}
           confirmLabel="Save with break-glass"
           onConfirm={(credentials) => submitUpdate(credentials)}
           isPending={updatePolicy.isPending}
           error={breakGlassError}
         />
       ) : null}
-    </form>
-  );
-}
-
-/** Skeleton mirroring the form layout while the edited row loads (rule 10). */
-function PolicyFormSkeleton() {
-  return (
-    <div className="flex flex-col gap-4 p-4">
-      {Array.from({ length: 3 }, (_, index) => (
-        <div key={index} className="flex flex-col gap-2">
-          <Skeleton className="h-4 w-20" />
-          <Skeleton className="h-9 w-full" />
-        </div>
-      ))}
-      <div className="flex flex-col gap-2">
-        <Skeleton className="h-4 w-24" />
-        <Skeleton className="h-48 w-full" />
-      </div>
-    </div>
-  );
-}
-
-/**
- * Create/edit drawer (frame 22). Edit mode loads the policy through
- * usePolicy; the JSON rules editor + validate preflight live in PolicyForm.
- */
-export function PolicyFormSheet({
-  open,
-  onOpenChange,
-  policyId,
-}: {
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
-  /** null = create mode. */
-  policyId: string | null;
-}) {
-  const isEdit = policyId !== null;
-  const detail = usePolicy(policyId ?? '');
-  const policy = detail.data ?? null;
-
-  function close() {
-    onOpenChange(false);
-  }
-
-  return (
-    <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent className="flex w-full flex-col gap-0 sm:max-w-xl">
-        <SheetHeader className="border-b">
-          <SheetTitle>{isEdit ? 'Edit policy' : 'New policy'}</SheetTitle>
-          <SheetDescription>
-            {isEdit
-              ? 'Rule edits are validated before save; multi-role policies require break-glass.'
-              : 'Rules follow the CASL action/subject grammar and are validated before save.'}
-          </SheetDescription>
-          {isEdit && policy ? (
-            <div className="text-muted-foreground flex items-center gap-1 text-xs">
-              <span className="font-mono">{policy.id}</span>
-              <CopyButton value={policy.id} label="Copy policy id" />
-            </div>
-          ) : null}
-        </SheetHeader>
-        {!isEdit ? (
-          <PolicyForm onDone={close} onCancel={close} />
-        ) : detail.isPending ? (
-          <PolicyFormSkeleton />
-        ) : detail.error || !policy ? (
-          <div className="p-4">
-            <ErrorState
-              error={detail.error ?? new GatewayError(404, 'This policy does not exist or is outside your access scope.')}
-              onRetry={() => void detail.refetch()}
-            />
-          </div>
-        ) : (
-          <PolicyForm
-            key={`${policy.id}-${policy.updatedAt}`}
-            initial={policy}
-            onDone={close}
-            onCancel={close}
-            onReloadLatest={() => void detail.refetch()}
-          />
-        )}
-      </SheetContent>
-    </Sheet>
+      <ConfirmDialog
+        open={discarding}
+        onOpenChange={(next) => setDiscarding(next)}
+        title="Discard unsaved changes?"
+        description="This drawer has edits that have not been saved. Closing it discards them."
+        confirmLabel="Discard changes"
+        destructive
+        onConfirm={close}
+      />
+    </>
   );
 }
