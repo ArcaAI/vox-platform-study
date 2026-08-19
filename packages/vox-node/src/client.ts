@@ -15,7 +15,7 @@
 import { ServiceAccountTokenProvider } from './core/service-account-token';
 import type { ServiceAccountCredentials } from './core/service-account-token';
 import { Transport } from './core/transport';
-import { ConsultationsResource, JobsResource, SummarizationResource } from './resources';
+import { AdminNamespace, ConsultationsResource, JobsResource, SummarizationResource } from './resources';
 
 /**
  * Structured logger hook for `HopeClient`. Every method is optional so a
@@ -91,6 +91,19 @@ export class HopeClient {
   readonly consultations: ConsultationsResource;
   /** P0.5 — async job get/cancel/stream/waitFor. */
   readonly jobs: JobsResource;
+  /**
+   * The `/api/v1/admin/**` administration plane — 52 areas, one property per
+   * `svc:admin:*` scope (TASK-773).
+   *
+   * Requires a {@link HopeClientOptions.serviceAccount} credential. The plane
+   * refuses a tenant API key by POLICY, not by omission (`@ForbidApiKey()` on
+   * every admin controller), so an api-key client that reaches for
+   * `hope.admin` gets 401/403 from the gateway, not a missing method. The
+   * namespace is still constructed either way: which credential is on the wire
+   * is a transport concern, and pretending the surface does not exist would
+   * only turn a clear runtime refusal into a confusing `undefined`.
+   */
+  readonly admin: AdminNamespace;
 
   constructor(options: HopeClientOptions) {
     if (!options.baseUrl) {
@@ -146,5 +159,6 @@ export class HopeClient {
     this.summarization = new SummarizationResource(transport);
     this.consultations = new ConsultationsResource(transport);
     this.jobs = new JobsResource(transport);
+    this.admin = new AdminNamespace(transport);
   }
 }
