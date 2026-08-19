@@ -12,7 +12,7 @@ import {
 import { Body, Controller, Delete, Get, HttpCode, Inject, Param, Post, Put, Query } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiParam, ApiQuery, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { ClsService } from 'nestjs-cls';
-import { Authorize, ExpectedVersion, RequiresIfMatch, ForbidApiKey } from '../../decorators';
+import { Authorize, ExpectedVersion, RequiresIfMatch, ForbidApiKey, RequiredSvcScopes } from '../../decorators';
 import { resolveScopedTenantId } from '../../shared/tenant-scope';
 
 /**
@@ -25,6 +25,7 @@ import { resolveScopedTenantId } from '../../shared/tenant-scope';
 @ApiBearerAuth()
 @ApiTags('admin-tenant-idp-config')
 @ForbidApiKey()
+@RequiredSvcScopes('svc:admin:tenant-idp-config:manage')
 @Controller('admin/tenant-idp-config')
 @Authorize()
 export class TenantIdpConfigAdminController {

@@ -1,7 +1,7 @@
 import { TranscriptionJobService } from '@arcaai/applications';
 import { Controller, Get, Param, Query } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiParam, ApiQuery, ApiTags } from '@nestjs/swagger';
-import { CanManage, CanRead, ForbidApiKey } from '../../decorators';
+import { CanManage, CanRead, ForbidApiKey, RequiredSvcScopes } from '../../decorators';
 
 /**
  * Admin transcription-job surface (tenant-wide scope).
@@ -29,6 +29,7 @@ import { CanManage, CanRead, ForbidApiKey } from '../../decorators';
 @ApiBearerAuth()
 @ApiTags('admin-transcription-jobs')
 @ForbidApiKey()
+@RequiredSvcScopes('svc:admin:transcription-job:read')
 @Controller('admin/audio/transcription-jobs')
 @CanManage('Tenant')
 export class AdminTranscriptionJobController {

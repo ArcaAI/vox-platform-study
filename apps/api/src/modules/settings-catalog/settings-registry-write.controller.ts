@@ -9,7 +9,7 @@ import {
 import { Body, Controller, Get, NotFoundException, Param, Put, Query } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiParam, ApiQuery, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { ClsService } from 'nestjs-cls';
-import { CanManage, CanRead, ExpectedVersion, ForbidApiKey } from '../../decorators';
+import { CanManage, CanRead, ExpectedVersion, ForbidApiKey, RequiredSvcScopes } from '../../decorators';
 import { resolveScopedTenantId } from '../../shared/tenant-scope';
 import { EffectiveSettingResponse } from './dto/setting-catalog.response';
 import { WriteRegistrySettingRequest, WriteRegistrySettingResponse } from './dto/registry-setting.dto';
@@ -37,6 +37,7 @@ import { WriteRegistrySettingRequest, WriteRegistrySettingResponse } from './dto
 @ApiTags('Admin: Settings Registry')
 @ApiBearerAuth()
 @ForbidApiKey()
+@RequiredSvcScopes('svc:admin:settings:manage')
 @Controller('admin/settings')
 export class SettingsRegistryWriteController {
   constructor(

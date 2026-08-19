@@ -7,7 +7,7 @@ import {
 import { Body, Controller, Delete, Get, Inject, Param, Put, Query } from '@nestjs/common';
 import { ApiBearerAuth, ApiHeader, ApiOperation, ApiParam, ApiQuery, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { TenantOwnedResource } from '../../common';
-import { CanAny, CanDelete, CanRead, CanUpdate, ExpectedVersion, RequiresIfMatch, ForbidApiKey } from '../../decorators';
+import { CanAny, CanDelete, CanRead, CanUpdate, ExpectedVersion, RequiresIfMatch, ForbidApiKey, RequiredSvcScopes } from '../../decorators';
 
 /**
  * Admin API for per-tenant / per-bucket storage configuration.
@@ -28,6 +28,7 @@ import { CanAny, CanDelete, CanRead, CanUpdate, ExpectedVersion, RequiresIfMatch
 @ApiBearerAuth()
 @ApiTags('admin-storage-config')
 @ForbidApiKey()
+@RequiredSvcScopes('svc:admin:tenant-storage:manage')
 @Controller('admin/tenants/storage/config')
 @CanAny(['manage', 'Tenant'], ['update', 'Tenant'])
 export class TenantStorageConfigAdminController {

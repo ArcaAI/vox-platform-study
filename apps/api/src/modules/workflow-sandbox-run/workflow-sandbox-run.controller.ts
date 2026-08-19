@@ -8,7 +8,7 @@ import {
 import { Body, Controller, Get, HttpCode, HttpStatus, Inject, Param, Post, Res } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiParam, ApiResponse, ApiTags } from '@nestjs/swagger';
 import type { Response } from 'express';
-import { CanCreate, CanRead, CanUpdate, ForbidApiKey } from '../../decorators';
+import { CanCreate, CanRead, CanUpdate, ForbidApiKey, RequiredSvcScopes } from '../../decorators';
 import { StreamScope } from '../auth/decorators/stream-scope.decorator';
 import { WorkflowSandboxStreamService } from './workflow-sandbox-stream.service';
 
@@ -33,6 +33,7 @@ import { WorkflowSandboxStreamService } from './workflow-sandbox-stream.service'
 @ApiBearerAuth()
 @ApiTags('admin-workflow-sandbox-runs')
 @ForbidApiKey()
+@RequiredSvcScopes('svc:admin:workflow-definition:manage')
 @Controller('admin/workflow-definitions/:definitionId/sandbox-runs')
 export class WorkflowSandboxRunController {
   constructor(

@@ -20,7 +20,7 @@ import {
 } from '@arcaai/applications';
 import { Body, Controller, Get, HttpCode, Inject, NotFoundException, Param, ParseIntPipe, Post, Query } from '@nestjs/common';
 import { ApiBearerAuth, ApiBody, ApiHeader, ApiOperation, ApiParam, ApiQuery, ApiResponse, ApiTags } from '@nestjs/swagger';
-import { ApiEndpoint, Authorize, RequiresIfMatch, ExpectedVersion, ForbidApiKey } from '../../decorators';
+import { ApiEndpoint, Authorize, RequiresIfMatch, ExpectedVersion, ForbidApiKey, RequiredSvcScopes } from '../../decorators';
 import { PaginatedPromptTemplateResponse, PromptUsageStatsResponse } from './dto';
 
 @ApiBearerAuth()
@@ -40,6 +40,7 @@ import { PaginatedPromptTemplateResponse, PromptUsageStatsResponse } from './dto
 // guard reads metadata with `getAllAndOverride`, so a handler-level
 // `@Authorize` wins over this class-level one.
 @ForbidApiKey()
+@RequiredSvcScopes('svc:admin:prompt-template:manage')
 @Controller('admin/prompt-templates')
 @Authorize(['manage', 'PromptTemplate'])
 export class PromptManagementController {

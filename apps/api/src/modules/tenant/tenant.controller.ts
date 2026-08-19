@@ -18,7 +18,7 @@ import {
 import { Controller, Body, Param, Get, Post, Put, HttpCode, Inject, Query, ForbiddenException, NotFoundException } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth, ApiHeader, ApiOperation, ApiParam, ApiQuery, ApiResponse } from '@nestjs/swagger';
 import { ClsService } from 'nestjs-cls';
-import { ApiEndpoint, CanAny, CanManage, ForbidApiKey } from '../../decorators';
+import { ApiEndpoint, CanAny, CanManage, ForbidApiKey, RequiredSvcScopes } from '../../decorators';
 import { assertTenantInScope as assertTenantScope } from '../../shared/tenant-scope';
 
 // Canonical RFC 4122 8-4-4-4-12 shape (any version, incl. the
@@ -45,6 +45,7 @@ import { TenantUsageResponse } from './dto';
 @ApiBearerAuth()
 @ApiTags('admin-tenants')
 @ForbidApiKey()
+@RequiredSvcScopes('svc:admin:tenant:write')
 @Controller('admin/tenants')
 @CanAny(['manage', 'Tenant'], ['update', 'Tenant'])
 export class TenantController {

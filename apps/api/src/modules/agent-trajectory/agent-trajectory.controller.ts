@@ -8,7 +8,7 @@ import {
 import { Controller, Get, Inject, Param, Query } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiParam, ApiQuery, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { ClsService } from 'nestjs-cls';
-import { CanRead, ForbidApiKey } from '../../decorators';
+import { CanRead, ForbidApiKey, RequiredSvcScopes } from '../../decorators';
 import { resolveScopedTenantId } from '../../shared/tenant-scope';
 import { AggregateGenerationMetricsQuery, ListAgentTrajectorySessionsQuery, ListAgentTrajectoryStepsQuery } from './dto';
 
@@ -34,6 +34,7 @@ import { AggregateGenerationMetricsQuery, ListAgentTrajectorySessionsQuery, List
 @ApiBearerAuth()
 @ApiTags('admin-agent-trajectory')
 @ForbidApiKey()
+@RequiredSvcScopes('svc:admin:agent-trajectory:read')
 @Controller('admin/agent-trajectory')
 @CanRead('AgentTrajectory')
 export class AgentTrajectoryController {

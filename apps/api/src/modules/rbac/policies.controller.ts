@@ -1,7 +1,7 @@
 import { Controller, Get, Post, Put, Patch, Delete, Body, Param, Query, HttpCode, HttpStatus, Inject, NotFoundException } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagger';
 import { IPolicyService } from '@arcaai/applications';
-import { CanManage, CanAny, ForbidApiKey } from '../../decorators';
+import { CanManage, CanAny, ForbidApiKey, RequiredSvcScopes } from '../../decorators';
 import {
   BreakGlassDto,
   CreatePolicyDto,
@@ -27,6 +27,7 @@ import {
 @ApiTags('RBAC - Policies')
 @ApiBearerAuth()
 @ForbidApiKey()
+@RequiredSvcScopes('svc:admin:rbac-policy:write')
 @Controller('admin/rbac/policies')
 @CanManage('Policy')
 export class PoliciesController {

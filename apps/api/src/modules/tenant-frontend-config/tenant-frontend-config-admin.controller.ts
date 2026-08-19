@@ -1,7 +1,7 @@
 import { ITenantFrontendConfigService, TenantFrontendConfigResponse, UpsertTenantFrontendConfigRequest } from '@arcaai/applications';
 import { Body, Controller, Get, Inject, Put, Query } from '@nestjs/common';
 import { ApiBearerAuth, ApiHeader, ApiOperation, ApiQuery, ApiResponse, ApiTags } from '@nestjs/swagger';
-import { CanAny, ExpectedVersion, ForbidApiKey } from '../../decorators';
+import { CanAny, ExpectedVersion, ForbidApiKey, RequiredSvcScopes } from '../../decorators';
 
 /**
  * Admin API for the per-tenant FRONTEND audio-pipeline defaults.
@@ -22,6 +22,7 @@ import { CanAny, ExpectedVersion, ForbidApiKey } from '../../decorators';
 @ApiBearerAuth()
 @ApiTags('admin-frontend-pipeline-config')
 @ForbidApiKey()
+@RequiredSvcScopes('svc:admin:tenant-frontend-config:manage')
 @Controller('admin/tenant-frontend-config')
 @CanAny(['manage', 'Tenant'], ['update', 'Tenant'])
 export class TenantFrontendConfigAdminController {

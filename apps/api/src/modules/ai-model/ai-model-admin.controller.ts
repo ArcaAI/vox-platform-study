@@ -1,7 +1,7 @@
 import { AiModelService, CreateModelRequest, HttpMethod, ModelResponse, PaginatedModelResponse, UpdateModelRequest } from '@arcaai/applications';
 import { Body, Controller, NotFoundException, Param, Query } from '@nestjs/common';
 import { ApiBearerAuth, ApiHeader, ApiOperation, ApiParam, ApiQuery, ApiResponse, ApiTags } from '@nestjs/swagger';
-import { ApiEndpoint, Authorize, ExpectedVersion, RequiresIfMatch, ForbidApiKey } from '../../decorators';
+import { ApiEndpoint, Authorize, ExpectedVersion, RequiresIfMatch, ForbidApiKey, RequiredSvcScopes } from '../../decorators';
 
 /**
  * Admin AI model catalog controller.
@@ -19,6 +19,7 @@ import { ApiEndpoint, Authorize, ExpectedVersion, RequiresIfMatch, ForbidApiKey 
 @ApiBearerAuth()
 @ApiTags('admin-ai-models')
 @ForbidApiKey()
+@RequiredSvcScopes('svc:admin:ai-model:manage')
 @Controller('admin/ai-models')
 @Authorize(['manage', 'all'])
 export class AiModelAdminController {

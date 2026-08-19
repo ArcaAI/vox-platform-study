@@ -9,7 +9,7 @@ import {
 } from '@arcaai/applications';
 import { Body, Controller, Delete, Get, Inject, Param, Patch, Post, Query } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiParam, ApiQuery, ApiResponse, ApiTags } from '@nestjs/swagger';
-import { CanManage, ForbidApiKey } from '../../decorators';
+import { CanManage, ForbidApiKey, RequiredSvcScopes } from '../../decorators';
 
 /**
  * ResourceSubscriptionController — admin CRUD + toggle
@@ -24,6 +24,7 @@ import { CanManage, ForbidApiKey } from '../../decorators';
 @ApiBearerAuth()
 @ApiTags('admin-resource-subscriptions')
 @ForbidApiKey()
+@RequiredSvcScopes('svc:admin:resource-subscription:manage')
 @Controller('admin/resource-subscriptions')
 @CanManage('ResourceSubscription')
 export class ResourceSubscriptionController {

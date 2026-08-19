@@ -2,7 +2,7 @@ import { Body, Controller, Get, HttpCode, HttpStatus, Inject, Param, Patch, Post
 import { ApiBearerAuth, ApiOkResponse, ApiOperation, ApiParam, ApiTags } from '@nestjs/swagger';
 import { ISchedulerAdminService } from '@arcaai/applications';
 import type { SchedulerInfo } from '@arcaai/domains';
-import { Authorize, ForbidApiKey } from '../../decorators';
+import { Authorize, ForbidApiKey, RequiredSvcScopes } from '../../decorators';
 import { SchedulerInfoResponse, SuccessResponse, ToggleSchedulerRequest, UpdateSchedulerCronRequest } from './dto';
 
 /**
@@ -20,6 +20,7 @@ import { SchedulerInfoResponse, SuccessResponse, ToggleSchedulerRequest, UpdateS
 @ApiBearerAuth()
 @Authorize(['manage', 'all'])
 @ForbidApiKey()
+@RequiredSvcScopes('svc:admin:scheduler:manage')
 @Controller('admin/schedulers')
 export class SchedulerAdminController {
   constructor(@Inject(ISchedulerAdminService) private readonly schedulerService: ISchedulerAdminService) {}

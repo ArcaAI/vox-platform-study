@@ -9,7 +9,7 @@ import {
 import { ConsultationStatus } from '@arcaai/domains';
 import { BadRequestException, Controller, Param, Inject, Query, NotFoundException } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth, ApiParam, ApiQuery, ApiResponse } from '@nestjs/swagger';
-import { ApiEndpoint, CanManage, ForbidApiKey } from '../../decorators';
+import { ApiEndpoint, CanManage, ForbidApiKey, RequiredSvcScopes } from '../../decorators';
 
 /**
  * Admin consultation surface (tenant-wide scope).
@@ -34,6 +34,7 @@ import { ApiEndpoint, CanManage, ForbidApiKey } from '../../decorators';
 @ApiBearerAuth()
 @ApiTags('admin-consultations')
 @ForbidApiKey()
+@RequiredSvcScopes('svc:admin:consultation-admin:manage')
 @Controller('admin/consultations')
 @CanManage('Consultation')
 export class AdminConsultationController {

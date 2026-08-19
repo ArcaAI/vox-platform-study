@@ -10,7 +10,7 @@ import { BadRequestException, Body, Controller, Get, Put, Query } from '@nestjs/
 import { resolveScopedTenantId } from '../../shared/tenant-scope';
 import { ApiBearerAuth, ApiHeader, ApiOperation, ApiQuery, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { ClsService } from 'nestjs-cls';
-import { Authorize, ExpectedVersion, RequiresIfMatch, ForbidApiKey } from '../../decorators';
+import { Authorize, ExpectedVersion, RequiresIfMatch, ForbidApiKey, RequiredSvcScopes } from '../../decorators';
 
 /**
  * PipelinePolicyAdminController — the admin surface
@@ -38,6 +38,7 @@ import { Authorize, ExpectedVersion, RequiresIfMatch, ForbidApiKey } from '../..
 @ApiBearerAuth()
 @ApiTags('admin-harness')
 @ForbidApiKey()
+@RequiredSvcScopes('svc:admin:pipeline-policy:manage')
 @Controller('admin/harness/pipeline-policy')
 @Authorize()
 export class PipelinePolicyAdminController {

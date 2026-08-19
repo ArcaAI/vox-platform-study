@@ -2,7 +2,7 @@ import { CursorPage, IActiveUserContext, isSuperAdmin, IWorkflowRunService, RunT
 import { Controller, ForbiddenException, Get, Inject, Param, Query } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiParam, ApiQuery, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { ClsService } from 'nestjs-cls';
-import { CanRead, ForbidApiKey } from '../../decorators';
+import { CanRead, ForbidApiKey, RequiredSvcScopes } from '../../decorators';
 import { ListWorkflowRunsQuery } from './dto';
 
 /**
@@ -30,6 +30,7 @@ import { ListWorkflowRunsQuery } from './dto';
 @ApiBearerAuth()
 @ApiTags('admin-workflow-runs')
 @ForbidApiKey()
+@RequiredSvcScopes('svc:admin:workflow-run:read')
 @Controller('admin/workflow-runs')
 @CanRead('WorkflowRun')
 export class WorkflowRunController {
