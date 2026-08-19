@@ -51,12 +51,16 @@ dependencies = [
     "hope-env",
     # --- Shared OTel trace-propagation helper ---
     "hope-otel",
+    # --- TASK-717: async task/event envelope contract ---
+    "hope-async-contract",
+    "uuid7>=0.1.0",
 ]
 
 [tool.uv.sources]
 hope-runtime-models = { workspace = true }
 hope-env = { workspace = true }
 hope-otel = { workspace = true }
+hope-async-contract = { workspace = true }
 
 [project.optional-dependencies]
 dev = [
@@ -149,6 +153,10 @@ exclude = "/tests/"
 
 [[tool.mypy.overrides]]
 module = ["sse_starlette"]
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = ["uuid_extensions"]
 ignore_missing_imports = true
 
 # pytest configuration
