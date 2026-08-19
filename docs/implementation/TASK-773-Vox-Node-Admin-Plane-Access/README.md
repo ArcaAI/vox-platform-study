@@ -226,6 +226,46 @@ human-delegated one exactly: the derivation principle working as designed, not a
 the delivery log needs a second source scope (`webhook:event:read`) plus a route-level
 declaration — a new decision, not a code-review call.
 
+### 2.9 Least privilege is not expressible for four areas (O-3)
+
+Surfaced by the A6 guard-level reachability tests, then confirmed by differencing the registry
+against every `@RequiredSvcScopes` declaration in the tree. Of the 55 concrete `svc:admin:*`
+scopes, **51 are declared on a route and 4 are not**:
+
+| Orphaned registry scope | The controller declares instead |
+|---|---|
+| `svc:admin:tenant:read` | `svc:admin:tenant:write` (`TenantController`) |
+| `svc:admin:user:read` | `svc:admin:user:write` (`UserController`) |
+| `svc:admin:apikey:read` | `svc:admin:apikey:write` (`ApiKeyController`) |
+| `svc:admin:role:read` | `svc:admin:role:write` (`RolesController`) |
+
+Every one is the `:read` half of a `:read`/`:write` pair. In each case the controller carries the
+`:write` scope at **class level**, covering its read routes and its write routes alike.
+
+**This is inherited, not introduced.** TASK-757's `admin:*` scopes were class-level, so read/write
+granularity was already collapsed for API keys; the sweep reproduced the existing gating exactly,
+which is the derivation principle working as specified. Boot audit D does not catch it because D
+reconciles the two REGISTRIES — it never asks whether a registry scope has a route consumer.
+
+**But the consequence is sharper for the new class.** An operator who grants
+`svc:admin:tenant:read`, intending least-privilege read-only tenant access for an integration,
+gets a service account that reaches **nothing** — every route on `TenantController` demands
+`:write`. To give a machine read access to tenants you must grant `:write`, which also grants
+mutation. For a credential handed to a third-party backend, "read-only" being inexpressible is a
+more serious property than it was for a human-operated console.
+
+**Open decision O-3.** Either:
+
+- **(a) accept** — the machine class mirrors the human-delegated one exactly; document the four in
+  the SDK README so no one grants a scope that silently reaches nothing; or
+- **(b) make the `:read` scopes real** — add method-level `@RequiredSvcScopes('svc:admin:<area>:read')`
+  to the GET routes of those four controllers, so a read-only grant works. Note this requires boot
+  audit **H** to accommodate a method-level declaration alongside the class-level twin it currently
+  demands exactly.
+
+Not a blocker for the sweep or the SDK; it changes what an operator can safely grant, so it is an
+owner call rather than a code-review one.
+
 ### 2.7 `@arcaai/vox-node` today
 
 Version 3.0.0, zero runtime dependencies, Node ≥ 22 / Bun / Deno / edge.
