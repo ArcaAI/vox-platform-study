@@ -44,6 +44,10 @@ import type {
  * authenticates normally and is then refused here with 403; {@link AdminResource}
  * names the scope in that error's message.
  *
+ * 9 of its routes ALSO accept `svc:admin:user:read`, so a read-only grant reaches
+ * them and nothing else here. Those methods name their own accepted scopes in a 403;
+ * the scope above is the one that reaches EVERY route.
+ *
  * Backed by controllers UserController, UserDepartmentsController
  * (25 routes). Several controllers sharing one scope share one
  * resource on purpose: the scope is the permission surface, so the SDK groups
@@ -56,6 +60,8 @@ export class AdminUserResource extends AdminResource {
    * Retrieving multiple UserResponses
    *
    * `GET /api/v1/admin/users` — `UserController.fetchAll`.
+   *
+   * Reachable with ANY ONE of `svc:admin:user:read`, `svc:admin:user:write` — the gateway matches required scopes with OR, so the area's `svc:admin:user:write` still reaches this route and a read-only grant now does too.
    */
   fetchAll(
     options: AdminRequestOptions & {
@@ -66,6 +72,7 @@ export class AdminUserResource extends AdminResource {
       method: 'GET',
       path: 'admin/users',
       query: options.query,
+      svcScopes: ['svc:admin:user:read', 'svc:admin:user:write'],
       signal: options.signal,
       timeoutMs: options.timeoutMs,
     });
@@ -104,11 +111,14 @@ export class AdminUserResource extends AdminResource {
    * Retrieving a single UserResponse by id
    *
    * `GET /api/v1/admin/users/{id}` — `UserController.fetchById`.
+   *
+   * Reachable with ANY ONE of `svc:admin:user:read`, `svc:admin:user:write` — the gateway matches required scopes with OR, so the area's `svc:admin:user:write` still reaches this route and a read-only grant now does too.
    */
   fetchById(id: string, options: AdminRequestOptions = {}): Promise<UserResponse> {
     return this.request<UserResponse>({
       method: 'GET',
       path: `admin/users/${encodePathSegment(String(id))}`,
+      svcScopes: ['svc:admin:user:read', 'svc:admin:user:write'],
       signal: options.signal,
       timeoutMs: options.timeoutMs,
     });
@@ -133,6 +143,8 @@ export class AdminUserResource extends AdminResource {
    * Retrieving multiple PaginatedApiKeyResponses by userId
    *
    * `GET /api/v1/admin/users/{id}/api-keys` — `UserController.fetchUserApiKeys`.
+   *
+   * Reachable with ANY ONE of `svc:admin:user:read`, `svc:admin:user:write` — the gateway matches required scopes with OR, so the area's `svc:admin:user:write` still reaches this route and a read-only grant now does too.
    */
   fetchUserApiKeys(
     id: string,
@@ -144,6 +156,7 @@ export class AdminUserResource extends AdminResource {
       method: 'GET',
       path: `admin/users/${encodePathSegment(String(id))}/api-keys`,
       query: options.query,
+      svcScopes: ['svc:admin:user:read', 'svc:admin:user:write'],
       signal: options.signal,
       timeoutMs: options.timeoutMs,
     });
@@ -236,11 +249,14 @@ export class AdminUserResource extends AdminResource {
    * Get a user's profile (admin)
    *
    * `GET /api/v1/admin/users/{id}/profile` — `UserController.fetchUserProfile`.
+   *
+   * Reachable with ANY ONE of `svc:admin:user:read`, `svc:admin:user:write` — the gateway matches required scopes with OR, so the area's `svc:admin:user:write` still reaches this route and a read-only grant now does too.
    */
   fetchUserProfile(id: string, options: AdminRequestOptions = {}): Promise<UserProfileResponse> {
     return this.request<UserProfileResponse>({
       method: 'GET',
       path: `admin/users/${encodePathSegment(String(id))}/profile`,
+      svcScopes: ['svc:admin:user:read', 'svc:admin:user:write'],
       signal: options.signal,
       timeoutMs: options.timeoutMs,
     });
@@ -282,6 +298,8 @@ export class AdminUserResource extends AdminResource {
    * Retrieving multiple UserRoleAssignmentResponses by userId
    *
    * `GET /api/v1/admin/users/{id}/roles` — `UserController.fetchUserRoleAssignments`.
+   *
+   * Reachable with ANY ONE of `svc:admin:user:read`, `svc:admin:user:write` — the gateway matches required scopes with OR, so the area's `svc:admin:user:write` still reaches this route and a read-only grant now does too.
    */
   fetchUserRoleAssignments(
     id: string,
@@ -293,6 +311,7 @@ export class AdminUserResource extends AdminResource {
       method: 'GET',
       path: `admin/users/${encodePathSegment(String(id))}/roles`,
       query: options.query,
+      svcScopes: ['svc:admin:user:read', 'svc:admin:user:write'],
       signal: options.signal,
       timeoutMs: options.timeoutMs,
     });
@@ -331,11 +350,14 @@ export class AdminUserResource extends AdminResource {
    * Get all settings for a specific user (admin)
    *
    * `GET /api/v1/admin/users/{id}/settings` — `UserController.fetchUserSettings`.
+   *
+   * Reachable with ANY ONE of `svc:admin:user:read`, `svc:admin:user:write` — the gateway matches required scopes with OR, so the area's `svc:admin:user:write` still reaches this route and a read-only grant now does too.
    */
   fetchUserSettings(id: string, options: AdminRequestOptions = {}): Promise<UserSettingsResponse[]> {
     return this.request<UserSettingsResponse[]>({
       method: 'GET',
       path: `admin/users/${encodePathSegment(String(id))}/settings`,
+      svcScopes: ['svc:admin:user:read', 'svc:admin:user:write'],
       signal: options.signal,
       timeoutMs: options.timeoutMs,
     });
@@ -381,11 +403,14 @@ export class AdminUserResource extends AdminResource {
    * List a user's enrolled voice profiles (admin, read-only)
    *
    * `GET /api/v1/admin/users/{id}/voice-profiles` — `UserController.fetchUserVoiceProfiles`.
+   *
+   * Reachable with ANY ONE of `svc:admin:user:read`, `svc:admin:user:write` — the gateway matches required scopes with OR, so the area's `svc:admin:user:write` still reaches this route and a read-only grant now does too.
    */
   fetchUserVoiceProfiles(id: string, options: AdminRequestOptions = {}): Promise<VoiceProfileResponse[]> {
     return this.request<VoiceProfileResponse[]>({
       method: 'GET',
       path: `admin/users/${encodePathSegment(String(id))}/voice-profiles`,
+      svcScopes: ['svc:admin:user:read', 'svc:admin:user:write'],
       signal: options.signal,
       timeoutMs: options.timeoutMs,
     });
@@ -429,6 +454,8 @@ export class AdminUserResource extends AdminResource {
    * Streams the tenant-scoped Users list as a file attachment, honouring the same filters/sort/search as the list. Capped at 10000 rows (FLAG). CASL-gated by the class-level manage:User.
    *
    * `GET /api/v1/admin/users/export` — `UserController.exportUsers`.
+   *
+   * Reachable with ANY ONE of `svc:admin:user:read`, `svc:admin:user:write` — the gateway matches required scopes with OR, so the area's `svc:admin:user:write` still reaches this route and a read-only grant now does too.
    */
   exportUsers(
     options: AdminRequestOptions & {
@@ -448,6 +475,7 @@ export class AdminUserResource extends AdminResource {
       method: 'GET',
       path: 'admin/users/export',
       query: options.query,
+      svcScopes: ['svc:admin:user:read', 'svc:admin:user:write'],
       signal: options.signal,
       timeoutMs: options.timeoutMs,
     });
@@ -457,6 +485,8 @@ export class AdminUserResource extends AdminResource {
    * Retrieving multiple UserResponses by tenantId
    *
    * `GET /api/v1/admin/users/tenant/{tenantId}` — `UserController.fetchByTenant`.
+   *
+   * Reachable with ANY ONE of `svc:admin:user:read`, `svc:admin:user:write` — the gateway matches required scopes with OR, so the area's `svc:admin:user:write` still reaches this route and a read-only grant now does too.
    */
   fetchByTenant(
     tenantId: string,
@@ -468,6 +498,7 @@ export class AdminUserResource extends AdminResource {
       method: 'GET',
       path: `admin/users/tenant/${encodePathSegment(String(tenantId))}`,
       query: options.query,
+      svcScopes: ['svc:admin:user:read', 'svc:admin:user:write'],
       signal: options.signal,
       timeoutMs: options.timeoutMs,
     });

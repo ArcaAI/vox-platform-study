@@ -3883,6 +3883,7 @@
       "path": "/api/v1/admin/tenants",
       "routePath": "/admin/tenants",
       "svcScopes": [
+        "svc:admin:tenant:read",
         "svc:admin:tenant:write"
       ],
       "forbidServiceAccount": false,
@@ -3922,6 +3923,7 @@
       "path": "/api/v1/admin/tenants/{id}",
       "routePath": "/admin/tenants/:id",
       "svcScopes": [
+        "svc:admin:tenant:read",
         "svc:admin:tenant:write"
       ],
       "forbidServiceAccount": false,
@@ -4000,6 +4002,7 @@
       "path": "/api/v1/admin/tenants/{id}/tags",
       "routePath": "/admin/tenants/:id/tags",
       "svcScopes": [
+        "svc:admin:tenant:read",
         "svc:admin:tenant:write"
       ],
       "forbidServiceAccount": false,
@@ -4026,6 +4029,7 @@
       "path": "/api/v1/admin/tenants/{id}/usage",
       "routePath": "/admin/tenants/:id/usage",
       "svcScopes": [
+        "svc:admin:tenant:read",
         "svc:admin:tenant:write"
       ],
       "forbidServiceAccount": false,
@@ -4039,6 +4043,7 @@
       "path": "/api/v1/admin/tenants/code-name/{codeName}",
       "routePath": "/admin/tenants/code-name/:codeName",
       "svcScopes": [
+        "svc:admin:tenant:read",
         "svc:admin:tenant:write"
       ],
       "forbidServiceAccount": false,
@@ -4052,6 +4057,7 @@
       "path": "/api/v1/admin/tenants/configs/{identifier}",
       "routePath": "/admin/tenants/configs/:identifier",
       "svcScopes": [
+        "svc:admin:tenant:read",
         "svc:admin:tenant:write"
       ],
       "forbidServiceAccount": false,
@@ -4364,6 +4370,7 @@
       "path": "/api/v1/admin/tenants/user/{userId}",
       "routePath": "/admin/tenants/user/:userId",
       "svcScopes": [
+        "svc:admin:tenant:read",
         "svc:admin:tenant:write"
       ],
       "forbidServiceAccount": false,
@@ -4559,6 +4566,7 @@
       "path": "/api/v1/admin/users",
       "routePath": "/admin/users",
       "svcScopes": [
+        "svc:admin:user:read",
         "svc:admin:user:write"
       ],
       "forbidServiceAccount": false,
@@ -4598,6 +4606,7 @@
       "path": "/api/v1/admin/users/{id}",
       "routePath": "/admin/users/:id",
       "svcScopes": [
+        "svc:admin:user:read",
         "svc:admin:user:write"
       ],
       "forbidServiceAccount": false,
@@ -4624,6 +4633,7 @@
       "path": "/api/v1/admin/users/{id}/api-keys",
       "routePath": "/admin/users/:id/api-keys",
       "svcScopes": [
+        "svc:admin:user:read",
         "svc:admin:user:write"
       ],
       "forbidServiceAccount": false,
@@ -4713,6 +4723,7 @@
       "path": "/api/v1/admin/users/{id}/profile",
       "routePath": "/admin/users/:id/profile",
       "svcScopes": [
+        "svc:admin:user:read",
         "svc:admin:user:write"
       ],
       "forbidServiceAccount": false,
@@ -4752,6 +4763,7 @@
       "path": "/api/v1/admin/users/{id}/roles",
       "routePath": "/admin/users/:id/roles",
       "svcScopes": [
+        "svc:admin:user:read",
         "svc:admin:user:write"
       ],
       "forbidServiceAccount": false,
@@ -4791,6 +4803,7 @@
       "path": "/api/v1/admin/users/{id}/settings",
       "routePath": "/admin/users/:id/settings",
       "svcScopes": [
+        "svc:admin:user:read",
         "svc:admin:user:write"
       ],
       "forbidServiceAccount": false,
@@ -4830,6 +4843,7 @@
       "path": "/api/v1/admin/users/{id}/voice-profiles",
       "routePath": "/admin/users/:id/voice-profiles",
       "svcScopes": [
+        "svc:admin:user:read",
         "svc:admin:user:write"
       ],
       "forbidServiceAccount": false,
@@ -4869,6 +4883,7 @@
       "path": "/api/v1/admin/users/export",
       "routePath": "/admin/users/export",
       "svcScopes": [
+        "svc:admin:user:read",
         "svc:admin:user:write"
       ],
       "forbidServiceAccount": false,
@@ -4882,6 +4897,7 @@
       "path": "/api/v1/admin/users/tenant/{tenantId}",
       "routePath": "/admin/users/tenant/:tenantId",
       "svcScopes": [
+        "svc:admin:user:read",
         "svc:admin:user:write"
       ],
       "forbidServiceAccount": false,
@@ -4960,6 +4976,7 @@
       "path": "/api/v1/admin/webhooks/{id}/deliveries",
       "routePath": "/admin/webhooks/:id/deliveries",
       "svcScopes": [
+        "svc:webhook:event:read",
         "svc:webhook:event:write"
       ],
       "forbidServiceAccount": false,
@@ -5167,6 +5184,32 @@
       "method": "GET",
       "path": "/api/v1/admin/workflow-runs/{runId}",
       "routePath": "/admin/workflow-runs/:runId",
+      "svcScopes": [
+        "svc:admin:workflow-run:read"
+      ],
+      "forbidServiceAccount": false,
+      "requiresIfMatch": false,
+      "apiExcluded": false
+    },
+    {
+      "controller": "WorkflowRunController",
+      "handler": "getRunGate",
+      "method": "GET",
+      "path": "/api/v1/admin/workflow-runs/{runId}/gate",
+      "routePath": "/admin/workflow-runs/:runId/gate",
+      "svcScopes": [
+        "svc:admin:workflow-run:read"
+      ],
+      "forbidServiceAccount": false,
+      "requiresIfMatch": false,
+      "apiExcluded": false
+    },
+    {
+      "controller": "WorkflowRunController",
+      "handler": "approveRunGate",
+      "method": "POST",
+      "path": "/api/v1/admin/workflow-runs/{runId}/gate/approve",
+      "routePath": "/admin/workflow-runs/:runId/gate/approve",
       "svcScopes": [
         "svc:admin:workflow-run:read"
       ],

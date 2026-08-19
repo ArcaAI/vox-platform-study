@@ -12,7 +12,7 @@
  * Request and response types for the `/api/v1/admin/**` surface, derived from
  * the gateway's own DTOs via `openapi.json`.
  *
- * Only the 350 component schemas the generated surface transitively
+ * Only the 352 component schemas the generated surface transitively
  * reaches are emitted — the document declares more, and importing shapes no
  * method can produce would be noise.
  *
@@ -268,6 +268,15 @@ export interface ApprovePromptTemplateRequest {
   expectedVersion?: number;
   /** Free-text approval reason, recorded on the pinned PromptVersion + audit event. */
   reason?: string;
+}
+
+export interface ApproveRunGateInput {
+  /** Attestation hash carried onto the audit record. */
+  attestationHash?: string;
+  /** The summary version the clinician actually signed, when they edited before signing. */
+  contextItemVersionId?: string;
+  /** The decision recorded on the WORM GATE_DECISION audit event. Defaults to 'SIGNED'. */
+  decision?: 'SIGNED' | 'REJECTED';
 }
 
 export interface AssignDepartmentPromptRequest {
@@ -3710,6 +3719,21 @@ export interface RotateGlobalSettingRequest {
 export interface RotateWebhookSecretRequest {
   /** Current version of the row (from the prior GET, e.g. via the `ETag` header). Rotation fails with `412 Precondition Failed` if the version drifted. */
   expectedVersion: number;
+}
+
+export interface RunGateStateResponse {
+  /** True once a real approval signal has been received. */
+  approved?: boolean;
+  /** How many SLA-breach escalations have fired so far. */
+  escalations?: number;
+  /** True when this run has a gate child workflow at all. */
+  exists: boolean;
+  /** GATE | RECORD | DONE | ABANDONED. */
+  phase?: string;
+  /** The domain run id. */
+  runId: string;
+  /** True only while the gate is genuinely parked on a human decision. A decided or abandoned gate is false. */
+  waiting: boolean;
 }
 
 export interface RunNodeRollupResponse {

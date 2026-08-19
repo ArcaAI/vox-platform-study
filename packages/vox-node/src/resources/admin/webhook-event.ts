@@ -28,6 +28,10 @@ import type {
  * authenticates normally and is then refused here with 403; {@link AdminResource}
  * names the scope in that error's message.
  *
+ * 1 of its route ALSO accepts `svc:webhook:event:read`, so a read-only grant reaches
+ * it and nothing else here. Those methods name their own accepted scopes in a 403;
+ * the scope above is the one that reaches EVERY route.
+ *
  * Backed by controller WebhookController
  * (7 routes). Several controllers sharing one scope share one
  * resource on purpose: the scope is the permission surface, so the SDK groups
@@ -131,9 +135,14 @@ export class AdminWebhookEventResource extends AdminResource {
    * `GET /api/v1/admin/webhooks/{id}/deliveries` — `WebhookController.fetchDeliveries`.
    *
    * Returns ONE page. `page` is 0-based and both `page` and `limit` are always sent explicitly — the gateway echoes RAW query values back, so the response's own `page`/`limit` are not usable as loop state. Use {@link fetchDeliveriesIterate} to walk every page.
+   *
+   * Reachable with ANY ONE of `svc:webhook:event:read`, `svc:webhook:event:write` — the gateway matches required scopes with OR, so the area's `svc:webhook:event:write` still reaches this route and a read-only grant now does too.
    */
   fetchDeliveries(id: string, options: AdminListOptions & { query?: AdminListQuery } = {}): Promise<PaginatedPage<WebhookRunHistoryResponse>> {
-    return this.listPage<WebhookRunHistoryResponse>(`admin/webhooks/${encodePathSegment(String(id))}/deliveries`, options);
+    return this.listPage<WebhookRunHistoryResponse>(`admin/webhooks/${encodePathSegment(String(id))}/deliveries`, options, [
+      'svc:webhook:event:read',
+      'svc:webhook:event:write',
+    ]);
   }
 
   /**
@@ -144,12 +153,17 @@ export class AdminWebhookEventResource extends AdminResource {
    * `GET /api/v1/admin/webhooks/{id}/deliveries` — `WebhookController.fetchDeliveries`.
    *
    * Walks every page, yielding rows: `for await (const row of …)`. Pagination is driven from the REQUEST side; a failure on page N propagates after page N-1's rows, so "the list ended" and "the list broke" never look alike.
+   *
+   * Reachable with ANY ONE of `svc:webhook:event:read`, `svc:webhook:event:write` — the gateway matches required scopes with OR, so the area's `svc:webhook:event:write` still reaches this route and a read-only grant now does too.
    */
   fetchDeliveriesIterate(
     id: string,
     options: AdminListOptions & { query?: AdminListQuery } = {},
   ): AsyncGenerator<WebhookRunHistoryResponse, void, undefined> {
-    return this.listAll<WebhookRunHistoryResponse>(`admin/webhooks/${encodePathSegment(String(id))}/deliveries`, options);
+    return this.listAll<WebhookRunHistoryResponse>(`admin/webhooks/${encodePathSegment(String(id))}/deliveries`, options, [
+      'svc:webhook:event:read',
+      'svc:webhook:event:write',
+    ]);
   }
 
   /**

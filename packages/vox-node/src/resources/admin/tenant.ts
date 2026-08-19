@@ -31,6 +31,10 @@ import type {
  * authenticates normally and is then refused here with 403; {@link AdminResource}
  * names the scope in that error's message.
  *
+ * 7 of its routes ALSO accept `svc:admin:tenant:read`, so a read-only grant reaches
+ * them and nothing else here. Those methods name their own accepted scopes in a 403;
+ * the scope above is the one that reaches EVERY route.
+ *
  * Backed by controllers TenantController, TenantPipelineResyncController, TenantProvisionController
  * (17 routes). Several controllers sharing one scope share one
  * resource on purpose: the scope is the permission surface, so the SDK groups
@@ -43,6 +47,8 @@ export class AdminTenantResource extends AdminResource {
    * Retrieving multiple TenantResponses
    *
    * `GET /api/v1/admin/tenants` — `TenantController.fetchAll`.
+   *
+   * Reachable with ANY ONE of `svc:admin:tenant:read`, `svc:admin:tenant:write` — the gateway matches required scopes with OR, so the area's `svc:admin:tenant:write` still reaches this route and a read-only grant now does too.
    */
   fetchAll(
     options: AdminRequestOptions & {
@@ -53,6 +59,7 @@ export class AdminTenantResource extends AdminResource {
       method: 'GET',
       path: 'admin/tenants',
       query: options.query,
+      svcScopes: ['svc:admin:tenant:read', 'svc:admin:tenant:write'],
       signal: options.signal,
       timeoutMs: options.timeoutMs,
     });
@@ -91,11 +98,14 @@ export class AdminTenantResource extends AdminResource {
    * Retrieving a single TenantResponse by id
    *
    * `GET /api/v1/admin/tenants/{id}` — `TenantController.fetchById`.
+   *
+   * Reachable with ANY ONE of `svc:admin:tenant:read`, `svc:admin:tenant:write` — the gateway matches required scopes with OR, so the area's `svc:admin:tenant:write` still reaches this route and a read-only grant now does too.
    */
   fetchById(id: string, options: AdminRequestOptions = {}): Promise<TenantResponse> {
     return this.request<TenantResponse>({
       method: 'GET',
       path: `admin/tenants/${encodePathSegment(String(id))}`,
+      svcScopes: ['svc:admin:tenant:read', 'svc:admin:tenant:write'],
       signal: options.signal,
       timeoutMs: options.timeoutMs,
     });
@@ -183,11 +193,14 @@ export class AdminTenantResource extends AdminResource {
    * Read a tenant's tags
    *
    * `GET /api/v1/admin/tenants/{id}/tags` — `TenantController.getTags`.
+   *
+   * Reachable with ANY ONE of `svc:admin:tenant:read`, `svc:admin:tenant:write` — the gateway matches required scopes with OR, so the area's `svc:admin:tenant:write` still reaches this route and a read-only grant now does too.
    */
   getTags(id: string, options: AdminRequestOptions = {}): Promise<unknown> {
     return this.request<unknown>({
       method: 'GET',
       path: `admin/tenants/${encodePathSegment(String(id))}/tags`,
+      svcScopes: ['svc:admin:tenant:read', 'svc:admin:tenant:write'],
       signal: options.signal,
       timeoutMs: options.timeoutMs,
     });
@@ -212,11 +225,14 @@ export class AdminTenantResource extends AdminResource {
    * Get tenant usage statistics
    *
    * `GET /api/v1/admin/tenants/{id}/usage` — `TenantController.getUsage`.
+   *
+   * Reachable with ANY ONE of `svc:admin:tenant:read`, `svc:admin:tenant:write` — the gateway matches required scopes with OR, so the area's `svc:admin:tenant:write` still reaches this route and a read-only grant now does too.
    */
   getUsage(id: string, options: AdminRequestOptions = {}): Promise<TenantUsageResponse> {
     return this.request<TenantUsageResponse>({
       method: 'GET',
       path: `admin/tenants/${encodePathSegment(String(id))}/usage`,
+      svcScopes: ['svc:admin:tenant:read', 'svc:admin:tenant:write'],
       signal: options.signal,
       timeoutMs: options.timeoutMs,
     });
@@ -226,11 +242,14 @@ export class AdminTenantResource extends AdminResource {
    * Retrieving a single TenantResponse by code-name
    *
    * `GET /api/v1/admin/tenants/code-name/{codeName}` — `TenantController.fetchByCodeName`.
+   *
+   * Reachable with ANY ONE of `svc:admin:tenant:read`, `svc:admin:tenant:write` — the gateway matches required scopes with OR, so the area's `svc:admin:tenant:write` still reaches this route and a read-only grant now does too.
    */
   fetchByCodeName(codeName: string, options: AdminRequestOptions = {}): Promise<TenantResponse> {
     return this.request<TenantResponse>({
       method: 'GET',
       path: `admin/tenants/code-name/${encodePathSegment(String(codeName))}`,
+      svcScopes: ['svc:admin:tenant:read', 'svc:admin:tenant:write'],
       signal: options.signal,
       timeoutMs: options.timeoutMs,
     });
@@ -240,6 +259,8 @@ export class AdminTenantResource extends AdminResource {
    * Retrieving multiple PaginatedTenantConfigResponses by identifier
    *
    * `GET /api/v1/admin/tenants/configs/{identifier}` — `TenantController.fetchTenantConfigs`.
+   *
+   * Reachable with ANY ONE of `svc:admin:tenant:read`, `svc:admin:tenant:write` — the gateway matches required scopes with OR, so the area's `svc:admin:tenant:write` still reaches this route and a read-only grant now does too.
    */
   fetchTenantConfigs(
     identifier: string,
@@ -251,6 +272,7 @@ export class AdminTenantResource extends AdminResource {
       method: 'GET',
       path: `admin/tenants/configs/${encodePathSegment(String(identifier))}`,
       query: options.query,
+      svcScopes: ['svc:admin:tenant:read', 'svc:admin:tenant:write'],
       signal: options.signal,
       timeoutMs: options.timeoutMs,
     });
@@ -305,6 +327,8 @@ export class AdminTenantResource extends AdminResource {
    * Retrieving multiple TenantResponses by createdByUserId
    *
    * `GET /api/v1/admin/tenants/user/{userId}` — `TenantController.fetchByUserId`.
+   *
+   * Reachable with ANY ONE of `svc:admin:tenant:read`, `svc:admin:tenant:write` — the gateway matches required scopes with OR, so the area's `svc:admin:tenant:write` still reaches this route and a read-only grant now does too.
    */
   fetchByUserId(
     userId: string,
@@ -316,6 +340,7 @@ export class AdminTenantResource extends AdminResource {
       method: 'GET',
       path: `admin/tenants/user/${encodePathSegment(String(userId))}`,
       query: options.query,
+      svcScopes: ['svc:admin:tenant:read', 'svc:admin:tenant:write'],
       signal: options.signal,
       timeoutMs: options.timeoutMs,
     });
