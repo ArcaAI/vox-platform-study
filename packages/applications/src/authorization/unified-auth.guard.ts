@@ -816,14 +816,33 @@ export class UnifiedAuthGuard implements CanActivate {
     request.ability = ability;
     this.cls.set('userAbility', ability);
 
-    // TASK-712 Phase 5 Task 14 — CASL shadow mode. Diagnostic-only: computes
-    // what an instance-aware verdict WOULD be for any permission whose route
-    // opted in via `@ResolveSubjectInstance(...)`, and records divergence
-    // from the type-only verdict computed below. Never throws, never touches
-    // `allowed` — see `runCaslShadowChecks`'s own guarantees.
-    await this.runCaslShadowChecks(context, request, ability, required, method, path);
+    // TASK-712 Phase 5 Tasks 14+15 — CASL instance evaluation. For any
+    // permission whose route opted in via `@ResolveSubjectInstance(...)`,
+    // computes the instance-aware verdict its seeded `conditions` produce.
+    // Pairs NOT in `CASL_ENFORCED_PAIRS` stay shadow (recorded, not applied);
+    // pairs IN it come back here as denials to apply AFTER the type-only
+    // verdict, so enforcement can only ever NARROW.
+    const enforcedDenials = await this.runCaslInstanceChecks(context, request, ability, required, method, path);
 
     const verdict = evaluatePermissions(ability, required, mode);
+
+    if (verdict.allowed && enforcedDenials.length > 0) {
+      const denied = enforcedDenials.map((d) => `${d.action}:${d.subject}`).join(', ');
+      for (const d of enforcedDenials) {
+        this.policyEngine.recordEnforceDenial(d.action, d.subject, { method, path });
+      }
+      this.logger.warn({
+        message: 'Access denied by enforced CASL conditions',
+        userId: user.id,
+        method,
+        path,
+        deniedPermissions: denied,
+      });
+      // A PRIVILEGE denial (403) — the caller may act on this resource TYPE
+      // but not on THIS row. Cross-tenant reads stay 404 via
+      // `@TenantOwnedResource`; this is a different boundary.
+      throw new ForbiddenException(`Missing permissions: ${denied}`);
+    }
 
     if (!verdict.allowed) {
       this.logger.warn({
@@ -855,11 +874,19 @@ export class UnifiedAuthGuard implements CanActivate {
    * - Resolver throws → swallowed and logged at DEBUG; shadow mode must
    *   never be the reason a real request fails.
    *
-   * This method NEVER throws and NEVER influences `allowed` — it exists
-   * purely to populate `casl_shadow_divergence_total` /
-   * `casl.shadow.divergence` for `casl-blast-radius.md`'s measure phase.
+   * This method NEVER throws. For a SHADOW pair it exists purely to populate
+   * `casl_shadow_divergence_total` / `casl.shadow.divergence`.
+   *
+   * TASK-712 Phase 5 Task 15 — ENFORCE. For a pair in `CASL_ENFORCED_PAIRS`
+   * (`PolicyEngine.isEnforcedPair`) a `false` instance verdict is RETURNED to
+   * the caller as a denial rather than merely recorded. The caller applies it
+   * only after the type-only verdict already allowed, so enforcement can only
+   * narrow — an instance verdict that would ALLOW never rescues a type-only
+   * deny. All three fail-open paths above hold unchanged for enforced pairs
+   * too: no resolver, no instance, or a throwing resolver yields NO denial.
+   * A broken resolver is a diagnostics bug; it must never become an outage.
    */
-  private async runCaslShadowChecks(
+  private async runCaslInstanceChecks(
     context: ExecutionContext,
     // eslint-disable-next-line @typescript-eslint/no-explicit-any -- same request shape as handleJwtPostAuth's own `request: any` param this method is called from.
     request: any,
@@ -867,7 +894,9 @@ export class UnifiedAuthGuard implements CanActivate {
     required: RequiredPermission[],
     method: string,
     path: string,
-  ): Promise<void> {
+  ): Promise<Array<{ action: string; subject: string }>> {
+    const enforcedDenials: Array<{ action: string; subject: string }> = [];
+
     for (const permission of required) {
       try {
         const resolver = this.reflector.getAllAndOverride<SubjectInstanceResolver | undefined>(SUBJECT_INSTANCE_RESOLVER_KEY, [
@@ -880,6 +909,19 @@ export class UnifiedAuthGuard implements CanActivate {
         if (!instance) continue; // resolver explicitly had nothing to compare against
 
         const verdict = this.policyEngine.evaluateShadowVerdict(ability, permission.action, permission.subject, instance);
+
+        if (this.policyEngine.isEnforcedPair(permission.action, permission.subject)) {
+          // ENFORCE: the instance verdict decides. Only a DENY is actionable
+          // (an instance-allow cannot widen a type-only deny).
+          if (!verdict.instanceVerdict) {
+            // Recorded by the CALLER, and only once the type-only verdict has
+            // already allowed — so the counter means "denied BECAUSE of
+            // enforce", not "would also have been denied anyway".
+            enforcedDenials.push({ action: permission.action, subject: permission.subject });
+          }
+          continue;
+        }
+
         if (verdict.diverged) {
           this.policyEngine.recordShadowDivergence(permission.action, permission.subject, verdict, { method, path });
         }
@@ -896,6 +938,8 @@ export class UnifiedAuthGuard implements CanActivate {
         });
       }
     }
+
+    return enforcedDenials;
   }
 
   // ─── Helpers ────────────────────────────────────────────────────────
