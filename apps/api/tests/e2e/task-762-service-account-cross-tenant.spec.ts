@@ -197,9 +197,7 @@ test.describe('Token exchange — non-enumerable and shape-checked', () => {
     // `correlationId` is a fresh uuid per request and is expected to differ; every
     // other field must be byte-identical, or the two denials are distinguishable.
     const stripCorrelationId = (body: string): string => body.replace(/"correlationId":"[^"]*"/, '"correlationId":"<per-request>"');
-    expect(stripCorrelationId(await badSecret.text()), 'the two denials must not be distinguishable').toBe(
-      stripCorrelationId(await unknown.text()),
-    );
+    expect(stripCorrelationId(await badSecret.text()), 'the two denials must not be distinguishable').toBe(stripCorrelationId(await unknown.text()));
 
     await request.delete(`${BASE}/${account.id}`, { headers: { Authorization: `Bearer ${sa!.token}` } });
   });

@@ -289,12 +289,16 @@ describe('TextProxyController', () => {
       errorSpy.mockRestore();
     });
 
-    it('falls back to 502 with a generic message when the upstream produced no HTTP response', async () => {
+    // TASK-768: was BAD_GATEWAY. No upstream response means SMR was never
+    // reached — a transport failure — which is 503. The status now comes from
+    // the shared classifier (`filters/downstream-error.ts`); the body shape is
+    // unchanged.
+    it('falls back to 503 with a generic message when the upstream produced no HTTP response', async () => {
       mockHttpService.axiosRef.post.mockRejectedValue(new Error('socket hang up'));
 
       const thrown = await controller.generate({ prompt: 'p', provider: 'ollama', model: 'm', stream: false }).catch((e: unknown) => e);
 
-      expect((thrown as HttpException).getStatus()).toBe(HttpStatus.BAD_GATEWAY);
+      expect((thrown as HttpException).getStatus()).toBe(HttpStatus.SERVICE_UNAVAILABLE);
       expect((thrown as HttpException).getResponse()).toEqual({ detail: 'SMR service unavailable' });
     });
   });

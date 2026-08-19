@@ -1,6 +1,7 @@
 import { NotFoundException, type MessageEvent } from '@nestjs/common';
 import type { Job, Queue } from 'bullmq';
 import { Observable } from 'rxjs';
+import { redactTopology } from '../../filters/downstream-error';
 import type { DnaJobStatusResponseDto } from './dna-writing-style.dto';
 
 type BullMQJobState = 'completed' | 'failed' | 'active' | 'delayed' | 'waiting' | 'waiting-children' | 'prioritized' | 'unknown';
@@ -67,7 +68,12 @@ export function streamDnaJobStatus(dnaQueue: Queue, jobId: string): Observable<M
         if (status.status === 'failed') {
           subscriber.next({
             type: 'error',
-            data: JSON.stringify({ jobId: status.jobId, error: status.error ?? 'Generation failed' }),
+            // TASK-768: `status.error` is the BullMQ `failedReason`. The DNA
+            // processor calls apps/text, so an unwrapped axios rejection lands
+            // here verbatim — host:port included — and is relayed to the
+            // browser. Redacted on the way out; the processor's own log keeps
+            // the full reason.
+            data: JSON.stringify({ jobId: status.jobId, error: redactTopology(status.error ?? 'Generation failed') }),
           } as MessageEvent);
           subscriber.complete();
         }

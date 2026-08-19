@@ -697,14 +697,17 @@ describe('TextCompatController', () => {
       expect(res.summary.summary).toBe('y');
     });
 
-    it('maps an SMR connection failure to 500 { error: "SMR service unavailable" }', async () => {
+    // TASK-768: was 500. SMR never answered — a transport failure — so the
+    // status is 503. The v1-compat body SHAPE (`{ error, requestId, timestamp }`,
+    // parsed by `@arcaai/vox-node`) is deliberately unchanged.
+    it('maps an SMR connection failure to 503 { error: "SMR service unavailable" }', async () => {
       http.axiosRef.post.mockRejectedValue({ code: 'ECONNREFUSED' });
       await expect(invokeSummary(syncRequest())).rejects.toBeInstanceOf(HttpException);
       try {
         await invokeSummary(syncRequest());
       } catch (err) {
         const resp = (err as HttpException).getResponse() as Record<string, unknown>;
-        expect((err as HttpException).getStatus()).toBe(500);
+        expect((err as HttpException).getStatus()).toBe(503);
         expect(resp.error).toBe('SMR service unavailable');
         expect(resp).toHaveProperty('requestId');
       }

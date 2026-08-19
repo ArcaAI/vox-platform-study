@@ -3,6 +3,12 @@ import { HttpException, Inject, Injectable, Logger, Optional, ServiceUnavailable
 import { IConfigService, SecretsService } from '@arcaai/applications';
 import { isAxiosError } from 'axios';
 
+import { describeCauseForOperator } from '../../filters/downstream-error';
+
+/** TASK-768 — opaque stand-ins. The cause goes to the log; the client gets these. */
+const UPSTREAM_ERROR_MESSAGE = 'The AI service returned an error.';
+const TRANSPORT_ERROR_MESSAGE = 'AI text analysis is temporarily unavailable. Please retry.';
+
 const DEFAULT_GUARDRAIL_URL = 'http://localhost:8863';
 const DEFAULT_NLP_URL = 'http://localhost:8864';
 const DEFAULT_TIMEOUT_MS = 10_000;
@@ -120,11 +126,13 @@ export class AiServiceProxyClient {
   private toHttpError(error: unknown, action: string): HttpException {
     if (isAxiosError(error) && error.response) {
       this.logger.warn({ message: 'AI service upstream error', action, status: error.response.status });
-      const body = error.response.data ?? { message: error.message };
+      // TASK-768 — see `harness-ops.client.ts`: an empty upstream body must not
+      // fall back to the axios message (it carries the internal host:port).
+      const body = error.response.data ?? { message: UPSTREAM_ERROR_MESSAGE };
       return new HttpException(body as string | Record<string, unknown>, error.response.status);
     }
-    const message = error instanceof Error ? error.message : String(error);
-    this.logger.error({ message: 'AI service transport error', action, error: message });
-    return new ServiceUnavailableException(`AI service request failed (${action}): ${message}`);
+    this.logger.error({ message: 'AI service transport error', action, ...describeCauseForOperator(error) });
+    // TASK-768 — cause to the log, capability to the client.
+    return new ServiceUnavailableException(TRANSPORT_ERROR_MESSAGE);
   }
 }

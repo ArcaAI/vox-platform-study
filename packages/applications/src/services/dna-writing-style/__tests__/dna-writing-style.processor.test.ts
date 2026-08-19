@@ -298,6 +298,11 @@ describe('DnaWritingStyleProcessor', () => {
           headers: {
             'Content-Type': 'application/json',
             'X-Service-Token': '',
+            // Tenant-less work DECLARES itself rather than omitting the header
+            // (owner directive 2026-08-16): the DNA job envelope carries no
+            // tenant column, and an ABSENT `X-Tenant-Id` is indistinguishable
+            // from one dropped in transit. See `common/internal-service-headers.ts`.
+            'X-Tenant-Id': 'tenantless:job-queue',
           },
         },
       );
