@@ -6,7 +6,7 @@
  *
  * | Source | Authoritative for |
  * |---|---|
- * | **this manifest** (Nest `ModulesContainer` walk) | route existence, path, HTTP verb, `@RequiredSvcScopes`, `@ForbidServiceAccount`, `@RequiresIfMatch` |
+ * | **this manifest** (Nest `ModulesContainer` walk) | route existence, path, HTTP verb, and the FULL authorization surface of every route — all three credential classes: `@RequiredSvcScopes`/`@ForbidServiceAccount` (service account), `@RequiredApiKeyScopes`/`@ForbidApiKey` (API key), `@Public`/`@Authorize`+`@SetPermissionMode` (JWT) — plus `@RequiresIfMatch` |
  * | `openapi.json` (`emit-openapi.ts`) | request/response TYPES, from the class-validator/`@ApiProperty` DTOs |
  *
  * ## Why this script exists at all
@@ -31,6 +31,24 @@
  * re-implemented here rather than imported because that function is private to
  * the audit module, and this script must not change audit code.
  *
+ * As of TASK-776 the manifest is the ORACLE for a generated authorization
+ * conformance suite, so it claims fidelity for all THREE credential classes,
+ * not just the service account:
+ *
+ * - **service account** — `svcScopes`, `forbidServiceAccount`
+ * - **API key** — `apiKeyScopes`, `apiKeyForbidden`
+ * - **JWT / user** — `isPublic`, `requiredPermissions`, `permissionMode`
+ *
+ * Two distinctions in there are load-bearing and must NOT be collapsed:
+ *
+ * 1. `requiredPermissions` is `null` when the metadata is ABSENT and `[]` when
+ *    a bare `@Authorize()` set an empty array. The deny-by-default boot audit
+ *    treats those two differently, so the manifest has to as well.
+ * 2. `isPublic` mirrors `UnifiedAuthGuard#authenticate` EXACTLY: it is the OR of
+ *    `SKIP_AUTH_KEY` and the legacy string key `'isPublic'`, both read through
+ *    `getAllAndOverride`. Reading only `SKIP_AUTH_KEY` would under-report the
+ *    routes the guard actually lets through unauthenticated.
+ *
  * Same runtime contract as `emit-openapi.ts`: run against the compiled
  * `nest build` output, no `.listen()`, no live DB/Redis/Vault, placeholder env
  * supplied by the `route-manifest` package script. See that file's header for
@@ -45,10 +63,25 @@ import { RequestMethod } from '@nestjs/common';
 import { METHOD_METADATA, PATH_METADATA } from '@nestjs/common/constants';
 import { MetadataScanner, NestFactory, Reflector } from '@nestjs/core';
 import { ModulesContainer } from '@nestjs/core/injector/modules-container';
-import { SERVICE_ACCOUNT_FORBIDDEN, SERVICE_ACCOUNT_REQUIRED_SCOPES } from '@arcaai/applications';
+import {
+  API_KEY_FORBIDDEN,
+  API_KEY_REQUIRED_SCOPES,
+  PERMISSION_MODE_KEY,
+  REQUIRED_PERMISSIONS_KEY,
+  SERVICE_ACCOUNT_FORBIDDEN,
+  SERVICE_ACCOUNT_REQUIRED_SCOPES,
+  SKIP_AUTH_KEY,
+} from '@arcaai/applications';
+import type { PermissionMode, RequiredPermission } from '@arcaai/applications';
 import { writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { AppModule } from '../app.module';
+// Side-effect import — applies `@Public()` (`SKIP_AUTH_KEY`) to vendored
+// third-party controllers we cannot decorate at the source (willsoto's
+// `PrometheusController.index`, i.e. `/metrics`). Its own header requires
+// EVERY route-walking code path to import it; without it this manifest reports
+// `isPublic: false` for a route the running gateway serves unauthenticated.
+import '../bootstrap/third-party-public-routes';
 import { REQUIRES_IF_MATCH_KEY } from '../decorators/requiresIfMatch.decorator';
 import { API_GLOBAL_PREFIX, API_GLOBAL_PREFIX_OPTIONS } from '../global-prefix.config';
 
@@ -103,6 +136,24 @@ interface RouteManifestEntry {
   svcScopes: string[];
   /** `@ForbidServiceAccount()`. */
   forbidServiceAccount: boolean;
+  /**
+   * `@ForbidApiKey()` — the API-key credential class is denied outright,
+   * checked BEFORE any scope check (`UnifiedAuthGuard`). Every `/admin/*`
+   * controller is expected to carry it.
+   */
+  apiKeyForbidden: boolean;
+  /** `@RequiredApiKeyScopes(...)`. Sorted, deduped; `[]` when absent. */
+  apiKeyScopes: string[];
+  /**
+   * `@Authorize(...)`/`@Can*(...)` as `[action, subject]` pairs.
+   * `null` = metadata ABSENT (no permission decorator at all);
+   * `[]` = present but empty (a bare `@Authorize()`). Not the same thing.
+   */
+  requiredPermissions: [string, string][] | null;
+  /** `@Public()` — mirrors the guard: `SKIP_AUTH_KEY` OR the legacy `'isPublic'` key. */
+  isPublic: boolean;
+  /** `@SetPermissionMode(...)` — `null` when absent (the guard then defaults to `AND`). */
+  permissionMode: 'AND' | 'OR' | null;
   /** `@RequiresIfMatch()` — the 428/412 optimistic-concurrency contract. */
   requiresIfMatch: boolean;
   /** `@ApiExcludeEndpoint()`/`@ApiExcludeController()` — deliberately absent from `openapi.json`. */
@@ -188,7 +239,11 @@ function collect(app: Awaited<ReturnType<typeof NestFactory.create>>): RouteMani
         if (verb === undefined) continue;
 
         const routePath = joinPath(controllerPath, readPath(methodRef));
-        const rawScopes = reflector.getAllAndOverride<string[]>(SERVICE_ACCOUNT_REQUIRED_SCOPES, [methodRef as never, ControllerClass]);
+        const targets = [methodRef as never, ControllerClass] as const;
+        const rawScopes = reflector.getAllAndOverride<string[]>(SERVICE_ACCOUNT_REQUIRED_SCOPES, [...targets]);
+        const rawApiKeyScopes = reflector.getAllAndOverride<string[]>(API_KEY_REQUIRED_SCOPES, [...targets]);
+        const rawPermissions = reflector.getAllAndOverride<RequiredPermission[]>(REQUIRED_PERMISSIONS_KEY, [...targets]);
+        const rawMode = reflector.getAllAndOverride<PermissionMode>(PERMISSION_MODE_KEY, [...targets]);
 
         const entry: RouteManifestEntry = {
           controller: ControllerClass.name,
@@ -197,8 +252,16 @@ function collect(app: Awaited<ReturnType<typeof NestFactory.create>>): RouteMani
           path: isPrefixExempt(routePath) ? toOpenApiPath(routePath) : toOpenApiPath(`/${API_GLOBAL_PREFIX}${routePath}`),
           routePath,
           svcScopes: Array.isArray(rawScopes) ? [...new Set(rawScopes)].sort() : [],
-          forbidServiceAccount: reflector.getAllAndOverride<boolean>(SERVICE_ACCOUNT_FORBIDDEN, [methodRef as never, ControllerClass]) === true,
-          requiresIfMatch: reflector.getAllAndOverride<boolean>(REQUIRES_IF_MATCH_KEY, [methodRef as never, ControllerClass]) === true,
+          forbidServiceAccount: reflector.getAllAndOverride<boolean>(SERVICE_ACCOUNT_FORBIDDEN, [...targets]) === true,
+          apiKeyForbidden: reflector.getAllAndOverride<boolean>(API_KEY_FORBIDDEN, [...targets]) === true,
+          apiKeyScopes: Array.isArray(rawApiKeyScopes) ? [...new Set(rawApiKeyScopes)].sort() : [],
+          // Absent stays `null`; an empty array stays `[]` — see the interface.
+          requiredPermissions: Array.isArray(rawPermissions) ? rawPermissions.map((p) => [p.action, p.subject] as [string, string]) : null,
+          isPublic:
+            reflector.getAllAndOverride<boolean>(SKIP_AUTH_KEY, [...targets]) === true ||
+            reflector.getAllAndOverride<boolean>('isPublic', [...targets]) === true,
+          permissionMode: rawMode === 'AND' || rawMode === 'OR' ? rawMode : null,
+          requiresIfMatch: reflector.getAllAndOverride<boolean>(REQUIRES_IF_MATCH_KEY, [...targets]) === true,
           apiExcluded: controllerExcluded || Reflect.getMetadata(API_EXCLUDE_ENDPOINT_KEY, methodRef) === true,
         };
 
