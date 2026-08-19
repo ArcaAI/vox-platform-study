@@ -41,12 +41,15 @@ describe('CASL_ENFORCED_PAIRS', () => {
     engine = new PolicyEngine(mockDatabaseService as any, undefined);
   });
 
-  it('SHIPS EMPTY — no pair is enforced until a real shadow MEASUREMENT justifies it', () => {
-    // Pinned deliberately. Task 14 wired shadow mode to zero production
-    // routes, so no pair has a measured divergence of zero — it has NO
-    // measurement at all. Adding an entry here is an authorization-semantics
-    // change and must fail this test until the ticket records the evidence.
-    expect([...CASL_ENFORCED_PAIRS]).toEqual([]);
+  it('contains ONLY pairs whose evidence is recorded in the ticket README', () => {
+    // Pass 5 shipped this empty (shadow was wired to zero routes, so nothing
+    // had been measured). Pass 6 wired shadow to real routes, fixed the
+    // instance-evaluation bug that made every instance verdict throw, and
+    // recorded exhaustive offline evidence for `ApiKey` — see
+    // `casl-conditions.enforce-apikey.test.ts` and README §7 Pass 6.
+    // Adding an entry here is an authorization-semantics change and must
+    // fail this test until that evidence exists.
+    expect([...CASL_ENFORCED_PAIRS].sort()).toEqual(['delete:ApiKey', 'read:ApiKey', 'update:ApiKey']);
   });
 
   it('isEnforcedPair answers false for the two investigated-and-disqualified candidates', () => {

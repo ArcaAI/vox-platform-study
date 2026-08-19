@@ -1,7 +1,8 @@
 import { Controller, Get, Post, Put, Patch, Delete, Body, Param, Query, HttpCode, HttpStatus, Inject, NotFoundException } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagger';
 import { IRbacRoleService, IUserRoleAssignmentService } from '@arcaai/applications';
-import { CanCreate, CanManage, CanAny, ForbidApiKey, RequiredSvcScopes } from '../../decorators';
+import { CanCreate, CanManage, CanAny, ForbidApiKey, RequiredSvcScopes, ResolveSubjectInstance } from '../../decorators';
+import type { SubjectResolverContext } from '../../decorators';
 import {
   BreakGlassDto,
   CreateRoleDto,
@@ -13,6 +14,37 @@ import {
   PaginatedRoleMemberResponse,
   AssignPolicyResponse,
 } from './dto';
+
+/**
+ * TASK-712 Phase 5 — SHADOW-ONLY subject instance for `Role`.
+ *
+ * The seeded `rbac-tenant-manage` rules are `isSystemRole`-shaped:
+ * `create/read/update/delete/list:Role { isSystemRole: false }` plus
+ * `read:Role { isSystemRole: true }`. Today the guard compares the type name
+ * only, so a tenant admin passes the gate for a SYSTEM role and the refusal —
+ * if any — comes from the service. Resolving the row here measures how often
+ * that happens (`casl_shadow_divergence_total{subject="Role"}`).
+ *
+ * `Role` is deliberately NOT in `CASL_ENFORCED_PAIRS`: `casl-blast-radius.md`
+ * §7 step 3 puts it behind the "own resource" subjects precisely because it is
+ * the most heavily decorated hazard subject, and enforcing it before the
+ * counter has run in a real environment is the R1 risk this rollout exists to
+ * avoid. Wiring shadow is what makes that measurement possible at all.
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- request shape varies by HTTP adapter, matching SubjectInstanceResolver's own signature.
+const resolveRoleInstance = async (request: any, ctx: SubjectResolverContext): Promise<Record<string, unknown> | undefined> => {
+  const id = request?.params?.id;
+  if (typeof id !== 'string' || id.length === 0) return undefined;
+  const role = await ctx.get<IRbacRoleService>(IRbacRoleService).findOne(id);
+  if (!role) return undefined;
+  // NOTE: `RbacRoleRecord` carries no `tenantId` (roles are read through the
+  // tenant-scoped client, so the column never surfaces on the DTO). That is
+  // itself the hazard `casl-blast-radius.md` §3 names — a `tenantId`-less
+  // instance evaluates a `{ tenantId }` condition to DENY. It is safe here
+  // only because `Role` is shadow-only; a would_deny divergence on a
+  // `tenantId`-conditioned Role rule is the signal, not a bug in the caller.
+  return { id: role.id, isSystemRole: role.isSystemRole };
+};
 
 /**
  * RBAC Roles Controller
@@ -87,6 +119,7 @@ export class RolesController {
   @ApiOperation({ summary: 'Get role by ID' })
   @ApiResponse({ status: 200, description: 'Role details', type: RoleResponse })
   @ApiResponse({ status: 404, description: 'Role not found' })
+  @ResolveSubjectInstance(resolveRoleInstance)
   async findOne(@Param('id') id: string): Promise<RoleResponse> {
     const role = await this.roleService.findOne(id);
     if (!role) {
@@ -169,6 +202,7 @@ export class RolesController {
   @ApiOperation({ summary: 'Update a role' })
   @ApiResponse({ status: 200, description: 'Role updated', type: RoleResponse })
   @ApiResponse({ status: 404, description: 'Role not found' })
+  @ResolveSubjectInstance(resolveRoleInstance)
   async update(@Param('id') id: string, @Body() dto: UpdateRoleDto): Promise<RoleResponse> {
     const role = await this.roleService.update(id, {
       name: dto.name,
@@ -188,6 +222,7 @@ export class RolesController {
   @ApiOperation({ summary: 'Partially update a role' })
   @ApiResponse({ status: 200, description: 'Role updated', type: RoleResponse })
   @ApiResponse({ status: 404, description: 'Role not found' })
+  @ResolveSubjectInstance(resolveRoleInstance)
   async patch(@Param('id') id: string, @Body() dto: UpdateRoleDto): Promise<RoleResponse> {
     const role = await this.roleService.patch(id, {
       name: dto.name,
@@ -212,6 +247,7 @@ export class RolesController {
   @ApiResponse({ status: 401, description: 'Break-glass password incorrect' })
   @ApiResponse({ status: 404, description: 'Role not found' })
   @ApiResponse({ status: 428, description: 'Break-glass confirmation (password + confirmationName) is required' })
+  @ResolveSubjectInstance(resolveRoleInstance)
   async remove(@Param('id') id: string, @Body() breakGlass?: BreakGlassDto): Promise<void> {
     // Role deletion demands the break-glass step-up (DELETE body:
     // `{ password, confirmationName: <role name> }`).

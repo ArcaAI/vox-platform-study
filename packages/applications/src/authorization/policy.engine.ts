@@ -1,6 +1,6 @@
 import { Injectable, Logger, Inject, Optional } from '@nestjs/common';
 import { createPrismaAbility, accessibleBy, type PrismaQueryOf, type PrismaTypeMap } from '@casl/prisma';
-import { Ability } from '@casl/ability';
+import { Ability, subject as tagSubjectType } from '@casl/ability';
 import { Counter, register } from 'prom-client';
 import { CoreDatabaseService, ResourceStatusType } from '@arcaai/domains';
 import { IRedisCacheService } from '../services/baseServices/redis';
@@ -110,7 +110,26 @@ const caslShadowDivergenceTotal: Counter<'action' | 'subject' | 'direction'> =
  * (`casl-conditions.enforce.test.ts`) fails until the ticket records the
  * measurement that justifies it.
  */
-export const CASL_ENFORCED_PAIRS: ReadonlySet<string> = new Set<string>();
+export const CASL_ENFORCED_PAIRS: ReadonlySet<string> = new Set<string>([
+  // ApiKey — the `api-key-own-manage` seeded rule
+  // (`[read, update, delete, list]:ApiKey { tenantId, userId }`). Enforced on
+  // the strength of the exhaustive offline evidence in
+  // `casl-conditions.enforce-apikey.test.ts`, which builds abilities from the
+  // REAL seeded `DEFAULT_POLICIES` and pins the whole verdict table: every
+  // legitimate principal (own key, tenant admin, super admin) keeps its
+  // access, and the ONLY behaviour that changes is an own-keys-only principal
+  // addressing a key that is not theirs.
+  //
+  // Safe to enforce at the GUARD specifically because `admin/api-keys/:id`
+  // carries no `@TenantOwnedResource` interceptor to pre-empt (that is what
+  // disqualifies `UserVoiceProfile`) and no post-guard broadening fallback
+  // (that is what disqualifies `Consultation`). `list` is deliberately absent:
+  // a collection route has no single instance, and `getAccessibleBy` — not a
+  // per-row verdict — is the mechanism for those.
+  'read:ApiKey',
+  'update:ApiKey',
+  'delete:ApiKey',
+]);
 
 /** Prometheus counter name for an authorization denied by the ENFORCED instance verdict. */
 export const CASL_ENFORCE_DENIAL_METRIC = 'casl_enforce_denial_total';
@@ -358,8 +377,22 @@ export class PolicyEngine {
    */
   can(ability: AppAbility, action: string, subject: string, resource?: Record<string, unknown>): boolean {
     if (resource) {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      return ability.can(action, subject as any, resource as any);
+      // TASK-712 Phase 5 Task 15c — BUG FIX. CASL's 3-argument `can(action,
+      // subject, field)` treats its THIRD parameter as a FIELD NAME and
+      // throws `The 3rd, \`field\` parameter is expected to be a string` for
+      // anything else — so this branch had never once returned a verdict. It
+      // threw on every call, at all four production call sites
+      // (`permission-check.controller.ts`, `consultation.controller.ts`) and
+      // inside `evaluateShadowVerdict`, where the guard's fail-open catch
+      // swallowed it. That is the deeper reason
+      // `casl_shadow_divergence_total` could never move: even a wired route
+      // would have produced no signal.
+      //
+      // The supported way to evaluate `conditions` against a PLAIN object is
+      // to tag it with its subject type first (`subject(type, obj)`), because
+      // a detached object carries no type CASL can infer.
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- rules are DB-stored JSON; `subject()` erases the literal subject type this loose AppAbility cannot express.
+      return ability.can(action, tagSubjectType(subject, resource as any) as any);
     }
     return ability.can(action, subject);
   }
