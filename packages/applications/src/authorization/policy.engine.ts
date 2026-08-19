@@ -64,6 +64,74 @@ const caslShadowDivergenceTotal: Counter<'action' | 'subject' | 'direction'> =
   });
 
 /**
+ * TASK-712 Phase 5 Task 15 — ENFORCE.
+ *
+ * The explicit, per-`(action, subject)` enforce list. For a pair in this set,
+ * AND ONLY for a route that opted into instance resolution via
+ * `@ResolveSubjectInstance(...)`, the instance-aware verdict becomes
+ * AUTHORITATIVE: a `false` instance verdict turns the request into a 403.
+ * Every other pair keeps Task 14's shadow semantics exactly — computed,
+ * recorded, never applied.
+ *
+ * **It ships EMPTY, deliberately.** Owner directive R1 is binding — shadow →
+ * MEASURE → enforce, per pair — and the measure step has produced no data:
+ * Task 14 wired the shadow mechanism to ZERO production routes, so
+ * `casl_shadow_divergence_total` has never been incremented and the set of
+ * pairs with "zero measured divergence" is empty by construction, not by
+ * observation. Enforcing a pair on the strength of a static survey rather
+ * than a measurement is exactly the R1 outage risk this rollout exists to
+ * avoid.
+ *
+ * Two candidates were investigated and are DISQUALIFIED regardless of what a
+ * future measurement shows. Both findings are structural, so record them here
+ * rather than re-deriving them:
+ *
+ * 1. **`read`/`manage:Consultation`** (`casl-blast-radius.md` §7 step 1) —
+ *    `consultation.controller.ts`'s `verifyConsultationAccess` runs a
+ *    post-guard, DB-backed shared-patient fallback (its Layer 2) that the
+ *    guard cannot see. A guard-level instance denial would 403 before that
+ *    fallback ever runs, turning a legitimate shared-patient read into an
+ *    outage.
+ * 2. **`update`/`delete:UserVoiceProfile`** (§7 step 2's strongest candidate)
+ *    — the `userId = ${user.id}` boundary those routes need is ALREADY
+ *    enforced, by `TenantOwnedResourceInterceptor.assertVoiceProfileOwnership`,
+ *    which deliberately answers **404** so probing another user's profile id
+ *    is indistinguishable from probing a non-existent one. Guards run BEFORE
+ *    interceptors, so enforcing this pair would pre-empt that check and
+ *    downgrade a deliberate 404 into an existence-leaking 403 — a security
+ *    REGRESSION, not a tightening.
+ *
+ * Finding 2 generalises into the rule that governs every future entry:
+ * **a subject already protected by `@TenantOwnedResource` must not be
+ * enforced here**, because the guard precedes the interceptor and would
+ * replace its 404-over-403 posture with a 403.
+ *
+ * Adding a pair is an authorization-semantics change; a pinned unit test
+ * (`casl-conditions.enforce.test.ts`) fails until the ticket records the
+ * measurement that justifies it.
+ */
+export const CASL_ENFORCED_PAIRS: ReadonlySet<string> = new Set<string>();
+
+/** Prometheus counter name for an authorization denied by the ENFORCED instance verdict. */
+export const CASL_ENFORCE_DENIAL_METRIC = 'casl_enforce_denial_total';
+
+/** Structured log event name for the same denial. */
+export const CASL_ENFORCE_DENIAL_EVENT = 'casl.enforce.denial';
+
+const caslEnforceDenialTotal: Counter<'action' | 'subject'> =
+  (register.getSingleMetric(CASL_ENFORCE_DENIAL_METRIC) as Counter<'action' | 'subject'> | undefined) ??
+  new Counter({
+    name: CASL_ENFORCE_DENIAL_METRIC,
+    help:
+      'Number of requests denied (403) because an ENFORCED CASL ' +
+      '(action, subject) pair evaluated its seeded `conditions` against a ' +
+      'resolved subject instance and refused (TASK-712 Phase 5, enforce mode). ' +
+      'A non-zero rate on a newly enforced pair is the signal to revert it.',
+    labelNames: ['action', 'subject'] as const,
+    registers: [register],
+  });
+
+/**
  * CASL Ability type for the application.
  *
  * casl 7 / casl-prisma 2: `PureAbility` was renamed to `Ability`,
@@ -347,6 +415,34 @@ export class PolicyEngine {
       direction,
       typeVerdict: verdict.typeVerdict,
       instanceVerdict: verdict.instanceVerdict,
+      ...meta,
+    });
+  }
+
+  /**
+   * TASK-712 Phase 5 Task 15 — is this `(action, subject)` pair one whose
+   * instance-aware verdict is AUTHORITATIVE (enforce), or still shadow-only?
+   * The single decision point; see {@link CASL_ENFORCED_PAIRS} for why each
+   * listed pair is listed.
+   */
+  isEnforcedPair(action: string, subject: string): boolean {
+    return CASL_ENFORCED_PAIRS.has(`${action}:${subject}`);
+  }
+
+  /**
+   * Records a 403 produced by the ENFORCED instance verdict: increments
+   * `casl_enforce_denial_total` and logs `casl.enforce.denial`. Unlike
+   * {@link recordShadowDivergence} this is unconditional — the caller only
+   * reaches it when a denial actually happened, and every such denial is a
+   * request outcome that would NOT have occurred before Task 15, so it is
+   * always worth a line.
+   */
+  recordEnforceDenial(action: string, subject: string, meta?: Record<string, unknown>): void {
+    caslEnforceDenialTotal.inc({ action, subject });
+    this.logger.warn({
+      message: CASL_ENFORCE_DENIAL_EVENT,
+      action,
+      subject,
       ...meta,
     });
   }
