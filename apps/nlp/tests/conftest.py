@@ -2,6 +2,7 @@ from unittest.mock import patch
 
 import pytest
 from fastapi.testclient import TestClient
+from pydantic import SecretStr
 
 import nlp.lifespan  # noqa: F401 — ensure module is importable before patching
 
@@ -63,7 +64,22 @@ def mock_services():
 
 
 @pytest.fixture()
-def client(mock_services):
+def client(mock_services, monkeypatch):
+    """A hermetic client with service auth OFF.
+
+    These suites call protected routes WITHOUT an `X-Service-Token` header — they are about
+    handler behaviour, not auth. `Settings.accepted_service_tokens` admits either the canonical
+    shared `internal_access_token` or the legacy per-service `service_token`, both read from the
+    environment, so any token present in the loaded `.env.test` turned every such call into a
+    401 before the handler ran. Clearing BOTH restores the documented "empty everywhere = auth
+    disabled" dev path. `test_auth_middleware.py` re-pins them per-test, so its cases are
+    unaffected.
+    """
+    from nlp.core.config import settings as nlp_settings
+
+    monkeypatch.setattr(nlp_settings.service, "service_token", SecretStr(""), raising=False)
+    monkeypatch.setattr(nlp_settings.service, "internal_access_token", SecretStr(""), raising=False)
+
     from nlp.app import get_app
 
     app = get_app()

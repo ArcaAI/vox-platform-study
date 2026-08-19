@@ -125,6 +125,11 @@ def _app(
     from pydantic import SecretStr
 
     app.state.settings.service_token = SecretStr(token)
+    # Pin the SHARED token too: the middleware accepts EITHER it or the legacy
+    # per-service token (`Settings.accepted_service_tokens`), and both are populated from
+    # the environment — so setting only `service_token` left whatever `INTERNAL_ACCESS_TOKEN`
+    # the loaded `.env.test` carried silently in play, and `token=""` (auth off) still 401'd.
+    app.state.settings.internal_access_token = SecretStr(token)
     app.state.settings.db.db_config_enabled = db_config_enabled
     if chunk_chars is not None:
         app.state.effective_config_client = FakeEffectiveConfigClient(chunk_chars)

@@ -179,10 +179,17 @@ class TestOtelEnabledFlag:
             mock_setup.assert_called_once()
 
     def test_otel_service_name_setting_exists(self):
-        """Settings must have otel_service_name with default 'smr'."""
-        settings = Settings(host="127.0.0.1", port=5099)
-        assert hasattr(settings, "otel_service_name")
-        assert settings.otel_service_name == "smr"
+        """Settings declares `otel_service_name` with the default 'smr'.
+
+        Asserted against the FIELD DECLARATION, not against a constructed `Settings()`.
+        `otel_service_name` is env-populatable (`OTEL_SERVICE_NAME`), so constructing an instance
+        tests whatever the ambient environment holds — the loaded `.env.test` says
+        `api-gateway`, and something later in a full-suite run leaves `text` behind, which is
+        why this passed alone and failed in the full run. The declared default is what the test
+        name and docstring have always claimed to check, and it is order-independent.
+        """
+        field = Settings.model_fields["otel_service_name"]
+        assert field.default == "smr"
 
 
 # ---------------------------------------------------------------------------

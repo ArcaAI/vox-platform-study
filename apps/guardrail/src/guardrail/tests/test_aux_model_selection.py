@@ -26,6 +26,7 @@ import fakeredis.aioredis
 import pytest
 from fastapi import FastAPI
 from httpx import ASGITransport, AsyncClient
+from pydantic import SecretStr
 
 from guardrail.core.config import GroundednessConfig
 from guardrail.core.tenant_config import TenantSelectionVetoedError
@@ -35,6 +36,20 @@ from guardrail.services.model_cache import (
     ModelCache,
     clamp_cache_ttl_seconds,
 )
+
+
+def _disable_service_auth(app) -> None:
+    """Clear BOTH accepted service tokens so these hermetic probes reach their handler.
+
+    `ServiceAuthMiddleware` accepts either the canonical shared token or the legacy per-service
+    one (`Settings.accepted_service_tokens`), and both are read from the environment. These
+    tests build an app and call it WITHOUT an `X-Service-Token` header, so any token present in
+    the loaded `.env.test` turns every probe into a 401 before the handler — which is what they
+    were asserting about, model selection, never got to run.
+    """
+    app.state.settings.service_token = SecretStr("")
+    app.state.settings.internal_access_token = SecretStr("")
+
 
 GLINER_MODEL_ID = "hivetrace/gliner-guard-uniencoder-onnx"
 MINICHECK_MODEL_ID = "nvhf/MiniCheck-Flan-T5-Large-Q6_K-GGUF"
@@ -247,6 +262,8 @@ async def test_lifespan_does_not_load_gliner(monkeypatch: pytest.MonkeyPatch) ->
     monkeypatch.setattr(jp_mod.JobProcessor, "start_processing", _noop)
 
     app = main_mod.create_app()
+
+    _disable_service_auth(app)
     app.state.settings.db.db_config_enabled = False  # no DB engine wired
 
     async with main_mod.lifespan(app):
@@ -261,6 +278,7 @@ async def test_lifespan_does_not_load_gliner(monkeypatch: pytest.MonkeyPatch) ->
 
 async def test_first_analyze_lazily_loads_gliner_once() -> None:
     app = create_app()
+    _disable_service_auth(app)
     app.state.settings.db.db_config_enabled = True
     resolver = StubResolver(GLINER_MODEL_ID)
     app.state.tenant_config_resolver = resolver
@@ -288,6 +306,7 @@ async def test_first_analyze_lazily_loads_gliner_once() -> None:
 
 async def test_analyze_fails_closed_503_when_db_selection_missing() -> None:
     app = create_app()
+    _disable_service_auth(app)
     app.state.settings.db.db_config_enabled = True
     app.state.tenant_config_resolver = StubResolver(None)  # no guardrail.safety row
 
@@ -299,6 +318,7 @@ async def test_analyze_fails_closed_503_when_tenant_row_disabled() -> None:
     # Tenant-first resolution (TASK-735 Phase 1): a DISABLED guardrail.safety
     # tenant row is a VETO — 503, never a silent fold-through to SYSTEM.
     app = create_app()
+    _disable_service_auth(app)
     app.state.settings.db.db_config_enabled = True
     resolver = VetoStubResolver()
     app.state.tenant_config_resolver = resolver
@@ -310,6 +330,7 @@ async def test_analyze_fails_closed_503_when_tenant_row_disabled() -> None:
 
 async def test_analyze_fails_closed_503_when_resolver_not_wired() -> None:
     app = create_app()
+    _disable_service_auth(app)
     app.state.settings.db.db_config_enabled = True
     # tenant_config_resolver never set (e.g. DB unreachable at boot).
 
@@ -322,6 +343,7 @@ async def test_analyze_fails_closed_503_when_resolver_not_wired() -> None:
 
 async def test_ground_resolves_minicheck_model_id_from_db() -> None:
     app = create_app()
+    _disable_service_auth(app)
     app.state.settings.groundedness = GroundednessConfig(enabled=True)
     app.state.settings.db.db_config_enabled = True
     resolver = StubResolver(MINICHECK_MODEL_ID)
@@ -346,6 +368,7 @@ async def test_ground_resolves_minicheck_model_id_from_db() -> None:
 
 async def test_ground_fails_closed_503_when_db_selection_missing() -> None:
     app = create_app()
+    _disable_service_auth(app)
     app.state.settings.groundedness = GroundednessConfig(enabled=True)
     app.state.settings.db.db_config_enabled = True
     app.state.tenant_config_resolver = StubResolver(None)  # no guardrail.groundedness row
