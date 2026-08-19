@@ -7,7 +7,7 @@
  * the SAME rule the canvas enforces (`store.deleteNode`), never re-implemented per editor.
  */
 import { Badge, Button } from '@arcaai/ui';
-import { IconArrowDown, IconArrowUp, IconSettings, IconTrash } from '@tabler/icons-react';
+import { IconArrowDown, IconArrowUp, IconCopy, IconSettings, IconTrash } from '@tabler/icons-react';
 import { humanizeKey } from '../../lib/schema-form';
 import type { WorkflowFinding } from '../../api/types';
 import type { GraphStoreEdge, GraphStoreNode } from '../../store/types';
@@ -25,13 +25,14 @@ export interface NodeRowProps {
   onSelect: (nodeId: string) => void;
   onDeleteRequest: (nodeId: string) => void;
   onMove: (nodeId: string, direction: 'up' | 'down') => void;
+  onDuplicate: (nodeId: string) => void;
   onConnect: (source: string, target: string) => { ok: true } | { ok: false; reason: string };
   onDisconnect: (edgeId: string) => void;
 }
 
 const SEVERITY_VARIANT = { ERROR: 'destructive', WARNING: 'secondary' } as const;
 
-export function NodeRow({ node, edges, otherNodes, problems, selected, readOnly, canMoveUp, canMoveDown, onSelect, onDeleteRequest, onMove, onConnect, onDisconnect }: NodeRowProps) {
+export function NodeRow({ node, edges, otherNodes, problems, selected, readOnly, canMoveUp, canMoveDown, onSelect, onDeleteRequest, onMove, onDuplicate, onConnect, onDisconnect }: NodeRowProps) {
   const mandatory = node.safetyClasses.includes('mandatory');
   const worstSeverity = problems.some((problem) => problem.severity === 'ERROR') ? 'ERROR' : problems.length > 0 ? 'WARNING' : null;
   const label = humanizeKey(node.type);
@@ -68,6 +69,11 @@ export function NodeRow({ node, edges, otherNodes, problems, selected, readOnly,
         <Button type="button" variant="ghost" size="icon-sm" aria-label={`Move ${label} down`} disabled={!canMoveDown || readOnly} onClick={() => onMove(node.id, 'down')}>
           <IconArrowDown aria-hidden="true" />
         </Button>
+        {!mandatory && !readOnly ? (
+          <Button type="button" variant="ghost" size="icon-sm" aria-label={`Duplicate ${label}`} onClick={() => onDuplicate(node.id)}>
+            <IconCopy aria-hidden="true" />
+          </Button>
+        ) : null}
         {!mandatory && !readOnly ? (
           <Button type="button" variant="ghost" size="icon-sm" aria-label={`Delete ${label}`} onClick={() => onDeleteRequest(node.id)}>
             <IconTrash aria-hidden="true" />

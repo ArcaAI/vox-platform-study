@@ -27,6 +27,7 @@ describe('GraphListEditor', () => {
         onSelect={vi.fn()}
         onDeleteRequest={vi.fn(() => ({ ok: true }) as const)}
         onMove={vi.fn()}
+      onDuplicate={vi.fn()}
         onConnect={vi.fn(() => ({ ok: true }) as const)}
         onDisconnect={vi.fn()}
       />,
@@ -48,6 +49,7 @@ describe('GraphListEditor', () => {
         onSelect={onSelect}
         onDeleteRequest={onDeleteRequest}
         onMove={vi.fn()}
+      onDuplicate={vi.fn()}
         onConnect={onConnect}
         onDisconnect={vi.fn()}
       />,
@@ -79,6 +81,7 @@ describe('GraphListEditor', () => {
         onSelect={vi.fn()}
         onDeleteRequest={vi.fn(() => ({ ok: true }) as const)}
         onMove={vi.fn()}
+      onDuplicate={vi.fn()}
         onConnect={vi.fn(() => ({ ok: true }) as const)}
         onDisconnect={vi.fn()}
       />,
@@ -98,6 +101,7 @@ describe('GraphListEditor', () => {
         onSelect={vi.fn()}
         onDeleteRequest={vi.fn(() => ({ ok: true }) as const)}
         onMove={onMove}
+        onDuplicate={vi.fn()}
         onConnect={vi.fn(() => ({ ok: true }) as const)}
         onDisconnect={vi.fn()}
       />,
@@ -120,6 +124,7 @@ describe('GraphListEditor', () => {
         onSelect={vi.fn()}
         onDeleteRequest={vi.fn(() => ({ ok: true }) as const)}
         onMove={vi.fn()}
+      onDuplicate={vi.fn()}
         onConnect={vi.fn(() => ({ ok: true }) as const)}
         onDisconnect={onDisconnect}
       />,
@@ -139,6 +144,7 @@ describe('GraphListEditor', () => {
         onSelect={vi.fn()}
         onDeleteRequest={vi.fn(() => ({ ok: true }) as const)}
         onMove={vi.fn()}
+      onDuplicate={vi.fn()}
         onConnect={vi.fn(() => ({ ok: true }) as const)}
         onDisconnect={vi.fn()}
       />,
@@ -156,6 +162,7 @@ describe('GraphListEditor', () => {
         onSelect={vi.fn()}
         onDeleteRequest={vi.fn(() => ({ ok: true }) as const)}
         onMove={vi.fn()}
+      onDuplicate={vi.fn()}
         onConnect={vi.fn(() => ({ ok: true }) as const)}
         onDisconnect={vi.fn()}
       />,

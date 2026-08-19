@@ -26,11 +26,12 @@ export interface GraphListEditorProps {
   onSelect: (nodeId: string) => void;
   onDeleteRequest: (nodeId: string) => ActionResult;
   onMove: (nodeId: string, direction: 'up' | 'down') => void;
+  onDuplicate: (nodeId: string) => void;
   onConnect: (source: string, target: string) => ActionResult;
   onDisconnect: (edgeId: string) => void;
 }
 
-export function GraphListEditor({ nodes, edges, selectedNodeId, problemsByNodeId, readOnly, onSelect, onDeleteRequest, onMove, onConnect, onDisconnect }: GraphListEditorProps) {
+export function GraphListEditor({ nodes, edges, selectedNodeId, problemsByNodeId, readOnly, onSelect, onDeleteRequest, onMove, onDuplicate, onConnect, onDisconnect }: GraphListEditorProps) {
   if (nodes.length === 0) {
     return (
       <Empty>
@@ -61,6 +62,7 @@ export function GraphListEditor({ nodes, edges, selectedNodeId, problemsByNodeId
             onDeleteRequest(nodeId);
           }}
           onMove={onMove}
+          onDuplicate={onDuplicate}
           onConnect={onConnect}
           onDisconnect={onDisconnect}
         />

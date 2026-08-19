@@ -5,23 +5,30 @@
  * ONLY once the definition + registry queries have resolved (the outer screen gates on
  * loading/error), so `GraphStoreProvider` hydrates from real data at creation, not empty state.
  *
- * Layout: palette rail (left) — canvas/list (center, `contentMode` follows `viewMode` per rule
- * 11 §1: "never nest a second scroll area inside fill"; the list editor is the one that
- * scrolls) — inspector + validation rail (right). `StudioToolbar` + OCC/tenant banners are the
- * `ScreenTemplate` `header`/`statusBanner`/`toolbar` slots; `StatusFooter` is `footer`.
+ * Layout: palette rail (left) — canvas/list (center) — inspector + validation rail (right).
+ * `StudioToolbar` + OCC/tenant banners are the `ScreenTemplate` `header`/`statusBanner`/
+ * `toolbar` slots; `StatusFooter` is `footer`.
+ *
+ * REFLOW (WCAG 1.4.10, fixed 2026-08-19): the frame runs `contentMode="scroll"` in BOTH view
+ * modes, and the three-panel row only exists at `EDITOR_WIDE` — at least 64rem wide AND 32rem
+ * tall. Below either threshold the panels stack into one column with intrinsic heights and the
+ * ScreenTemplate's own content region scrolls, which is what makes the editor usable at 200 %
+ * zoom (640×400 CSS px), where the previous fixed-height flex row squeezed palette and canvas
+ * to ~59 px. The wide branch adds `h-full` + per-panel `overflow-y-auto`, so exactly one scroll
+ * container is active per panel in either branch — never nested (rule 11 §1).
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { parseAsStringLiteral, useQueryState } from 'nuqs';
 import { toast } from 'sonner';
-import { Button } from '@arcaai/ui';
-import { IconPencil, IconPlus } from '@tabler/icons-react';
+import { Button, Empty, EmptyDescription, EmptyMedia, EmptyTitle } from '@arcaai/ui';
+import { IconPencil, IconPlus, IconTopologyStar3 } from '@tabler/icons-react';
 import { WorkflowCanvas, type WorkflowCanvasEdge, type WorkflowCanvasNode } from '@arcaai/ui/components/workflow-canvas';
 import { PageHeader } from '@/shared/page/page-header';
 import { ScreenTemplate } from '@/shared/page/screen-template';
 import { StatusFooter } from '@/shared/page/status-footer';
 import { OccConflictAlert } from '@/shared/occ/occ-alert';
-import { useAutosave, useUnsavedChangesGuard } from '../hooks';
+import { useAutosave, useStudioShortcuts, useUnsavedChangesGuard } from '../hooks';
 import { useCreateWorkflowDefinition } from '../api';
 import { publishWorkflowDefinition, validateWorkflowDefinition } from '../api/client';
 import { fromWorkflowGraph, toWorkflowGraph } from '../lib/graph-serialization';
@@ -32,6 +39,8 @@ import {
   useGraphStoreApi,
   findingsByNodeId,
   selectAutosaveState,
+  selectCanRedo,
+  selectCanUndo,
   selectDirty,
   selectEdges,
   selectNodes,
@@ -51,6 +60,15 @@ import { DefinitionMetadataForm } from './definition-metadata-form';
 
 const VIEW_MODES = ['canvas', 'list'] as const satisfies readonly WorkflowStudioViewMode[];
 
+/**
+ * The three-panel layout is gated on `[@media(min-width:64rem)_and_(min-height:32rem)]` below.
+ * A width breakpoint alone is not enough: 200 % zoom on a 1280×800 desktop yields 640×400 CSS
+ * px, but a wide-and-short window (e.g. 1440×420) squeezes the same three panels just as badly,
+ * so the height is part of the condition. The variant is written out literally at each use —
+ * Tailwind v4 scans source TEXT for candidates, so a class assembled from a constant would
+ * never be generated.
+ */
+
 export interface WorkflowStudioEditorProps {
   definition: WorkflowDefinition;
   etag: string | null;
@@ -67,6 +85,8 @@ function EditorBody({ definition, etag, registryNodes }: WorkflowStudioEditorPro
   const selectedNode = useGraphStore(selectSelectedNode);
   const selectedNodeId = useGraphStore(selectSelectedNodeId);
   const autosaveState = useGraphStore(selectAutosaveState);
+  const canUndo = useGraphStore(selectCanUndo);
+  const canRedo = useGraphStore(selectCanRedo);
 
   const [currentEtag, setCurrentEtag] = useState(etag);
   const [report, setReport] = useState<WorkflowValidationReport | null>(definition.validationReport);
@@ -172,6 +192,32 @@ function EditorBody({ definition, etag, registryNodes }: WorkflowStudioEditorPro
   // "Maximum update depth exceeded".
   const selectNodeById = useCallback((nodeId: string | null) => storeApi.getState().selectNode(nodeId), [storeApi]);
   const focusNode = useFocusNode({ viewMode, onSelect: selectNodeById });
+
+  const handleUndo = useCallback(() => storeApi.getState().undo(), [storeApi]);
+  const handleRedo = useCallback(() => storeApi.getState().redo(), [storeApi]);
+  const handleDuplicate = useCallback(
+    (nodeId: string | null) => {
+      if (!nodeId) return;
+      const result = storeApi.getState().duplicateNode(nodeId);
+      if (!result.ok) toast.error(result.reason);
+    },
+    [storeApi],
+  );
+  const duplicateSelected = useCallback(() => handleDuplicate(storeApi.getState().selectedNodeId), [handleDuplicate, storeApi]);
+  // Drag-time guard: the SAME store predicate the committed `connect` runs, so React Flow
+  // refuses an invalid drop target visually instead of the consumer toasting after the fact.
+  const isValidConnection = useCallback(
+    (connection: { source: string; sourceHandle?: string | null; target: string; targetHandle?: string | null }) =>
+      storeApi.getState().canConnect({
+        source: connection.source,
+        sourceHandle: connection.sourceHandle ?? 'out',
+        target: connection.target,
+        targetHandle: connection.targetHandle ?? 'in',
+      }).ok,
+    [storeApi],
+  );
+
+  useStudioShortcuts({ enabled: !readOnly, onUndo: handleUndo, onRedo: handleRedo, onDuplicate: duplicateSelected });
   const problemsByNodeId = useMemo(() => findingsByNodeId(report?.findings ?? []), [report]);
 
   async function handleValidate() {
@@ -201,6 +247,10 @@ function EditorBody({ definition, etag, registryNodes }: WorkflowStudioEditorPro
     }
   }
 
+  const findings = report?.findings ?? [];
+  const errorCount = findings.filter((finding) => finding.severity === 'ERROR').length;
+  const warningCount = findings.filter((finding) => finding.severity === 'WARNING').length;
+
   const canvasNodes: WorkflowCanvasNode[] = nodes.map((node) => ({
     id: node.id,
     type: node.type,
@@ -218,7 +268,7 @@ function EditorBody({ definition, etag, registryNodes }: WorkflowStudioEditorPro
 
   return (
     <ScreenTemplate
-      contentMode={viewMode === 'list' ? 'scroll' : 'fill'}
+      contentMode="scroll"
       header={
         <PageHeader
           title={name}
@@ -258,11 +308,25 @@ function EditorBody({ definition, etag, registryNodes }: WorkflowStudioEditorPro
           publishDisabledReason={readOnly ? 'This version is already published.' : publishBlockedReason(report)}
           publishing={publishing}
           readOnly={readOnly}
+          canUndo={canUndo}
+          canRedo={canRedo}
+          onUndo={handleUndo}
+          onRedo={handleRedo}
         />
       }
       footer={
         <StatusFooter
-          start={<span>{dirty ? 'Unsaved changes — autosaving…' : 'All changes saved.'}</span>}
+          start={
+            <>
+              <span>{dirty ? 'Unsaved changes — autosaving…' : 'All changes saved.'}</span>
+              <span>
+                {nodes.length} node{nodes.length === 1 ? '' : 's'} · {edges.length} connection{edges.length === 1 ? '' : 's'}
+              </span>
+              <span className={errorCount > 0 ? 'text-destructive' : undefined}>
+                {report ? `${errorCount} error${errorCount === 1 ? '' : 's'}, ${warningCount} warning${warningCount === 1 ? '' : 's'}` : 'Not yet validated'}
+              </span>
+            </>
+          }
           end={
             <span aria-hidden className="font-mono">
               PATCH /admin/workflow-definitions/{definition.id}
@@ -271,8 +335,8 @@ function EditorBody({ definition, etag, registryNodes }: WorkflowStudioEditorPro
         />
       }
     >
-      <div className="grid min-h-0 flex-1 grid-cols-[240px_1fr_320px] gap-4">
-        <aside className="min-h-0 overflow-y-auto" aria-label="Node palette panel">
+      <div className="grid min-h-0 grid-cols-1 gap-4 [@media(min-width:64rem)_and_(min-height:32rem)]:h-full [@media(min-width:64rem)_and_(min-height:32rem)]:grid-cols-[240px_1fr_320px]">
+        <aside className="min-h-0 [@media(min-width:64rem)_and_(min-height:32rem)]:overflow-y-auto" aria-label="Node palette panel">
           <PaletteRail
             descriptors={registryNodes}
             onAddNode={(descriptor) =>
@@ -280,7 +344,7 @@ function EditorBody({ definition, etag, registryNodes }: WorkflowStudioEditorPro
             }
           />
         </aside>
-        <div className="min-h-0 flex-1">
+        <div className="min-h-[26rem] [@media(min-width:64rem)_and_(min-height:32rem)]:min-h-0">
           {viewMode === 'canvas' ? (
             <WorkflowCanvas
               aria-label={`${name} graph, canvas view`}
@@ -289,6 +353,16 @@ function EditorBody({ definition, etag, registryNodes }: WorkflowStudioEditorPro
               readOnly={readOnly}
               selectedNodeId={selectedNodeId}
               onSelect={selectNodeById}
+              isValidConnection={isValidConnection}
+              emptyState={
+                <Empty>
+                  <EmptyMedia variant="icon">
+                    <IconTopologyStar3 aria-hidden="true" />
+                  </EmptyMedia>
+                  <EmptyTitle>No nodes yet</EmptyTitle>
+                  <EmptyDescription>Add a node from the palette on the left, or switch to the list view for a pointer-free path.</EmptyDescription>
+                </Empty>
+              }
               onDeleteRequest={(nodeId) => {
                 const result = storeApi.getState().deleteNode(nodeId);
                 if (!result.ok) toast.error(result.reason);
@@ -320,6 +394,7 @@ function EditorBody({ definition, etag, registryNodes }: WorkflowStudioEditorPro
                 return result;
               }}
               onMove={(nodeId, direction) => storeApi.getState().reorderNode(nodeId, direction)}
+              onDuplicate={handleDuplicate}
               onConnect={(source, target) => {
                 const result = storeApi.getState().connect({ source, sourceHandle: 'out', target, targetHandle: 'in' });
                 if (!result.ok) toast.error(result.reason);
@@ -329,7 +404,7 @@ function EditorBody({ definition, etag, registryNodes }: WorkflowStudioEditorPro
             />
           )}
         </div>
-        <aside className="flex min-h-0 flex-col gap-4 overflow-y-auto" aria-label="Inspector and validation panel">
+        <aside className="flex min-h-0 flex-col gap-4 [@media(min-width:64rem)_and_(min-height:32rem)]:overflow-y-auto" aria-label="Inspector and validation panel">
           <InspectorPanel
             node={selectedNode}
             configSchema={undefined}

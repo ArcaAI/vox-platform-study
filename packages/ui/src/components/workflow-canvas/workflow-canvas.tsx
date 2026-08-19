@@ -121,8 +121,10 @@ export function WorkflowCanvas({
   onNodesChange,
   onEdgesChange,
   onConnect,
+  isValidConnection,
   onSelect,
   onDeleteRequest,
+  emptyState,
   className,
   'aria-label': ariaLabel,
 }: WorkflowCanvasProps) {
@@ -198,6 +200,21 @@ export function WorkflowCanvas({
     [onSelect],
   );
 
+  // React Flow hands this an `Edge | Connection`; both carry the four fields the guard needs.
+  const handleIsValidConnection = React.useMemo(
+    () =>
+      isValidConnection
+        ? (connection: Connection | Edge) =>
+            isValidConnection({
+              source: connection.source,
+              sourceHandle: connection.sourceHandle,
+              target: connection.target,
+              targetHandle: connection.targetHandle,
+            })
+        : undefined,
+    [isValidConnection],
+  );
+
   const handleConnect = React.useCallback(
     (connection: Connection) => {
       onConnect?.({
@@ -228,6 +245,7 @@ export function WorkflowCanvas({
         onNodesChange={handleNodesChange}
         onEdgesChange={handleEdgesChange}
         onConnect={handleConnect}
+        isValidConnection={handleIsValidConnection}
         onSelectionChange={handleSelectionChange}
         nodesDraggable={!readOnly}
         nodesConnectable={!readOnly}
@@ -242,6 +260,13 @@ export function WorkflowCanvas({
         <Background variant={BackgroundVariant.Dots} gap={16} />
         <CanvasControls showInteractive={!readOnly} />
       </ReactFlow>
+      {emptyState && nodes.length === 0 ? (
+        // Non-interactive overlay: the pane underneath stays pannable/zoomable and keeps its
+        // `role="application"` semantics; the empty state is purely explanatory copy.
+        <div data-slot="workflow-canvas-empty" className="pointer-events-none absolute inset-0 flex items-center justify-center p-6">
+          {emptyState}
+        </div>
+      ) : null}
     </div>
   );
 }

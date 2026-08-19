@@ -40,7 +40,16 @@ export interface GraphActions {
   addNode: (descriptor: { type: string; safetyClasses: readonly string[] }, position: { x: number; y: number }) => string;
   deleteNode: (nodeId: string) => ActionResult;
   updateNodeConfig: (nodeId: string, config: Record<string, unknown>) => void;
+  /** Copies a node's type/classes/config into a NEW node offset below the original. Refuses a
+   *  `mandatory` node: those are singletons pre-placed by `initializeGraph`, so a second copy
+   *  would only ever be a validation error. Edges are NOT copied — a duplicate's wiring is an
+   *  authoring decision, and silently re-pointing edges would be a guess. */
+  duplicateNode: (nodeId: string) => ActionResult;
   moveNode: (nodeId: string, position: { x: number; y: number }) => void;
+  /** Pure predicate behind `connect` — the SAME rules, evaluated without mutating, so the
+   *  canvas can refuse an invalid connection while the pointer is still dragging (React Flow
+   *  `isValidConnection`) instead of only after the drop. */
+  canConnect: (request: ConnectRequest) => ActionResult;
   connect: (request: ConnectRequest) => ActionResult;
   disconnectEdge: (edgeId: string) => void;
   /** List-editor-only reorder ("move up/down" buttons, never drag — README Task 13: "satisfying
@@ -145,6 +154,21 @@ export function createGraphStore(): GraphStoreApi {
         }));
       },
 
+      duplicateNode: (nodeId) => {
+        const node = get().nodes.find((candidate) => candidate.id === nodeId);
+        if (!node) return { ok: false, reason: 'Node not found.' };
+        if (isMandatory(node)) return { ok: false, reason: 'This node type is mandatory and exists only once — it cannot be duplicated.' };
+        snapshotForUndo();
+        const copy: GraphStoreNode = {
+          ...node,
+          id: generateNodeId(),
+          position: { x: node.position.x + 40, y: node.position.y + 60 },
+          config: { ...node.config },
+        };
+        set((state) => ({ nodes: [...state.nodes, copy], selectedNodeId: copy.id, dirty: true }));
+        return { ok: true };
+      },
+
       // Layout is client-only bookkeeping (definition-api.contract.md: `WorkflowGraphNode` has
       // no server-side position field) — moving a node does NOT mark the graph dirty or push an
       // undo step, so dragging nodes around never triggers an autosave PATCH by itself.
@@ -152,7 +176,7 @@ export function createGraphStore(): GraphStoreApi {
         set((state) => ({ nodes: state.nodes.map((node) => (node.id === nodeId ? { ...node, position } : node)) }));
       },
 
-      connect: (request) => {
+      canConnect: (request) => {
         if (request.source === request.target) return { ok: false, reason: 'A node cannot connect to itself.' };
         const { edges, nodes } = get();
         if (!nodes.some((node) => node.id === request.source) || !nodes.some((node) => node.id === request.target)) {
@@ -166,6 +190,12 @@ export function createGraphStore(): GraphStoreApi {
             edge.targetHandle === request.targetHandle,
         );
         if (duplicate) return { ok: false, reason: 'This connection already exists (duplicate edge).' };
+        return { ok: true };
+      },
+
+      connect: (request) => {
+        const allowed = get().canConnect(request);
+        if (!allowed.ok) return allowed;
         snapshotForUndo();
         const edge: GraphStoreEdge = { id: generateEdgeId(), ...request };
         set((state) => ({ edges: [...state.edges, edge], dirty: true }));

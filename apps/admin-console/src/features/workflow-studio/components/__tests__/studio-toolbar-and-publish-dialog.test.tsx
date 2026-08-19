@@ -1,7 +1,7 @@
 /**
  * `StudioToolbar` + `PublishDialog` (TASK-719 Task 15) — smoke + behavior coverage.
  */
-import { render, screen } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { axe } from 'vitest-axe';
 import { describe, expect, it, vi } from 'vitest';
 import { StudioToolbar } from '../studio-toolbar';
@@ -14,7 +14,11 @@ describe('StudioToolbar', () => {
         viewMode="canvas"
         onViewModeChange={vi.fn()}
         autosaveState="idle"
-        onValidate={vi.fn()}
+        canUndo={false}
+      canRedo={false}
+      onUndo={vi.fn()}
+      onRedo={vi.fn()}
+      onValidate={vi.fn()}
         onPublish={vi.fn()}
         publishDisabledReason="Run Validate before publishing."
       />,
@@ -30,7 +34,11 @@ describe('StudioToolbar', () => {
         viewMode="canvas"
         onViewModeChange={vi.fn()}
         autosaveState="saved"
-        onValidate={vi.fn()}
+        canUndo={false}
+      canRedo={false}
+      onUndo={vi.fn()}
+      onRedo={vi.fn()}
+      onValidate={vi.fn()}
         onPublish={vi.fn()}
         publishDisabledReason={null}
       />,
@@ -41,7 +49,11 @@ describe('StudioToolbar', () => {
   it('switching to List view calls onViewModeChange', () => {
     const onViewModeChange = vi.fn();
     render(
-      <StudioToolbar viewMode="canvas" onViewModeChange={onViewModeChange} autosaveState="idle" onValidate={vi.fn()} onPublish={vi.fn()} publishDisabledReason={null} />,
+      <StudioToolbar viewMode="canvas" onViewModeChange={onViewModeChange} autosaveState="idle" canUndo={false}
+      canRedo={false}
+      onUndo={vi.fn()}
+      onRedo={vi.fn()}
+      onValidate={vi.fn()} onPublish={vi.fn()} publishDisabledReason={null} />,
     );
     screen.getByRole('radio', { name: 'List view' }).click();
     expect(onViewModeChange).toHaveBeenCalledWith('list');
@@ -49,7 +61,11 @@ describe('StudioToolbar', () => {
 
   it('0 axe violations', async () => {
     const { container } = render(
-      <StudioToolbar viewMode="canvas" onViewModeChange={vi.fn()} autosaveState="conflict" onValidate={vi.fn()} onPublish={vi.fn()} publishDisabledReason="Resolve every error before publishing." />,
+      <StudioToolbar viewMode="canvas" onViewModeChange={vi.fn()} autosaveState="conflict" canUndo={false}
+      canRedo={false}
+      onUndo={vi.fn()}
+      onRedo={vi.fn()}
+      onValidate={vi.fn()} onPublish={vi.fn()} publishDisabledReason="Resolve every error before publishing." />,
     );
     expect(await axe(container)).toHaveNoViolations();
   });
@@ -72,5 +88,64 @@ describe('PublishDialog', () => {
     // real browser's focus-trap semantics make it correct); scoping to the dialog itself keeps
     // the scan meaningful.
     expect(await axe(screen.getByRole('dialog'))).toHaveNoViolations();
+  });
+});
+
+describe('StudioToolbar undo/redo (TASK-719 UX pass)', () => {
+  it('exposes labelled undo/redo buttons, disabled until there is history', () => {
+    const onUndo = vi.fn();
+    render(
+      <StudioToolbar
+        viewMode="canvas"
+        onViewModeChange={vi.fn()}
+        autosaveState="idle"
+        canUndo={false}
+        canRedo={false}
+        onUndo={onUndo}
+        onRedo={vi.fn()}
+        onValidate={vi.fn()}
+        onPublish={vi.fn()}
+        publishDisabledReason={null}
+      />,
+    );
+    expect((screen.getByRole('button', { name: /^Undo/ }) as HTMLButtonElement).disabled).toBe(true);
+    expect((screen.getByRole('button', { name: /^Redo/ }) as HTMLButtonElement).disabled).toBe(true);
+
+    cleanup();
+    render(
+      <StudioToolbar
+        viewMode="canvas"
+        onViewModeChange={vi.fn()}
+        autosaveState="idle"
+        canUndo
+        canRedo={false}
+        onUndo={onUndo}
+        onRedo={vi.fn()}
+        onValidate={vi.fn()}
+        onPublish={vi.fn()}
+        publishDisabledReason={null}
+      />,
+    );
+    fireEvent.click(screen.getByRole('button', { name: /^Undo/ }));
+    expect(onUndo).toHaveBeenCalledTimes(1);
+  });
+
+  it('hides undo/redo on a read-only (published) definition', () => {
+    render(
+      <StudioToolbar
+        viewMode="canvas"
+        onViewModeChange={vi.fn()}
+        autosaveState="idle"
+        readOnly
+        canUndo
+        canRedo
+        onUndo={vi.fn()}
+        onRedo={vi.fn()}
+        onValidate={vi.fn()}
+        onPublish={vi.fn()}
+        publishDisabledReason="This version is already published."
+      />,
+    );
+    expect(screen.queryByRole('button', { name: /^Undo/ })).toBeNull();
   });
 });
