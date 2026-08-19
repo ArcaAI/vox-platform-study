@@ -8,6 +8,12 @@ import { join } from 'path';
  */
 
 const mainTsSource = readFileSync(join(__dirname, '..', 'main.ts'), 'utf-8');
+// The literal prefix + exclude list live in `global-prefix.config.ts` (TASK-773
+// B1) so `scripts/emit-openapi.ts` can reuse them without duplicating —
+// and therefore without risking drift from — what `main.ts` passes to
+// `setGlobalPrefix`. Source-level regression guards for those literals
+// check THIS file; guards for how `main.ts` wires it in stay on `mainTsSource`.
+const globalPrefixConfigSource = readFileSync(join(__dirname, '..', 'global-prefix.config.ts'), 'utf-8');
 
 // ─── CSP Middleware Path Matching ─────────────────────────────────────────
 
@@ -107,24 +113,32 @@ describe('Route composition with api/v1 prefix', () => {
 
 describe('main.ts configuration regression guards', () => {
   describe('global prefix', () => {
-    it('should declare globalPrefix as api/v1', () => {
-      const match = mainTsSource.match(/const globalPrefix\s*=\s*['"](.+?)['"]/);
+    it('main.ts wires the global prefix from the shared config, not a literal', () => {
+      expect(mainTsSource).toMatch(/const globalPrefix\s*=\s*API_GLOBAL_PREFIX\s*;/);
+      expect(mainTsSource).toContain(
+        "import { API_GLOBAL_PREFIX, API_GLOBAL_PREFIX_OPTIONS } from './global-prefix.config';",
+      );
+      expect(mainTsSource).toContain('app.setGlobalPrefix(globalPrefix, API_GLOBAL_PREFIX_OPTIONS);');
+    });
+
+    it('should declare API_GLOBAL_PREFIX as api/v1', () => {
+      const match = globalPrefixConfigSource.match(/export const API_GLOBAL_PREFIX\s*=\s*['"](.+?)['"]/);
       expect(match).not.toBeNull();
       expect(match![1]).toBe('api/v1');
     });
 
     it('should not use the old "api" prefix (without /v1)', () => {
-      const oldPrefixPattern = /const globalPrefix\s*=\s*['"]api['"]\s*;/;
-      expect(mainTsSource).not.toMatch(oldPrefixPattern);
+      const oldPrefixPattern = /export const API_GLOBAL_PREFIX\s*=\s*['"]api['"]\s*;/;
+      expect(globalPrefixConfigSource).not.toMatch(oldPrefixPattern);
     });
   });
 
   describe('prefix exclusions', () => {
     it('should exclude /metrics', () => {
-      expect(mainTsSource).toContain("'/metrics'");
+      expect(globalPrefixConfigSource).toContain("'/metrics'");
     });
     it('should exclude the legacy stop-session route', () => {
-      expect(mainTsSource).toContain("'api/stt/stop_session'");
+      expect(globalPrefixConfigSource).toContain("'api/stt/stop_session'");
     });
   });
 

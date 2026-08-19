@@ -24,6 +24,12 @@
  *   G — every route reachable by a service-account token declares either a
  *       `svc:*` scope or `@ForbidServiceAccount()`. Deny-by-default extended to
  *       the third class; mirrors `auditEveryApiKeyReachableRouteDeclaresScopes`.
+ *   H — (TASK-773) every controller TASK-757 stripped an `admin:<area>` scope
+ *       from declares its `svc:admin:<area>` twin, and NOTHING ELSE. G checks
+ *       that a declared scope is well-formed and registry-known; it structurally
+ *       CANNOT see a scope that is well-formed, registry-known and WRONG — the
+ *       exact outcome of a 64-controller sweep applied by hand. H is the
+ *       acceptance test for that sweep.
  *
  * Assertion A (no `admin/` controller declares `@RequiredScopes`) is TASK-757's
  * to add, once `@ForbidApiKey()` has actually been applied across the admin
@@ -54,6 +60,17 @@ import {
 } from '@arcaai/applications';
 
 import './third-party-public-routes';
+// The TASK-773 evidence fixture is EVIDENCE, not configuration: a mechanical
+// transcription of the 64 class-level `@RequiredScopes('admin:<area>')`
+// decorators commit 276f96a32 removed. It lives beside its own consistency test
+// (`__tests__/task-773-admin-scope-map.test.ts`, which proves every row still
+// names a real class and a live registry scope) and is imported here rather
+// than re-typed, because a second copy of the map in boot code is exactly the
+// drift this audit exists to catch. It is pure data — no test framework, no
+// runtime dependency — and `tsconfig.build.json` compiles it as a normal import
+// of `src/**` despite the `__tests__` exclude, which only filters the ENTRY
+// glob.
+import { TASK_773_ADMIN_SCOPE_MAP } from './__tests__/fixtures/task-773-admin-scope-map';
 
 /**
  * The service-token guard class NAMES the audit recognises. Matched by name,
@@ -334,6 +351,133 @@ export function auditServiceAccountReachableRoutesAreDeclared(app: INestApplicat
   }
 }
 
+/**
+ * Assertion H (TASK-773) — the admin plane's machine declaration is COMPLETE
+ * and CORRECT, row by row against the evidence fixture.
+ *
+ * TASK-757 swept one class-level `@RequiredScopes('admin:<area>')` off each of
+ * 64 admin controllers, leaving them JWT-only. TASK-773 puts the machine
+ * declaration back as `@RequiredSvcScopes(toServiceAccountScope('admin:<area>'))`
+ * — the SAME area, renamespaced. That sweep is applied controller by controller,
+ * which is precisely the kind of work that mis-assigns one row.
+ *
+ * ─── Why G is not enough ────────────────────────────────────────────────────
+ *
+ * {@link auditServiceAccountReachableRoutesAreDeclared} checks a declared scope
+ * for two properties: that it is registry-known, and that it does not coexist
+ * with `@ForbidServiceAccount()`. A copy-paste that gives `TenantController`
+ * `svc:admin:department:manage` satisfies BOTH — the scope is real, the registry
+ * knows it, nothing contradicts it — while handing every machine identity
+ * holding department reach the ability to write tenants. G has no notion of
+ * WHICH area a controller belongs to, so it cannot see this class of error at
+ * all. H supplies that notion from the fixture, and it is the only assertion in
+ * this file that does.
+ *
+ * ─── What it enforces, per fixture row ──────────────────────────────────────
+ *
+ *   1. The named controller class is still registered in some module. A rename
+ *      or deletion that leaves the fixture stale would otherwise SHRINK
+ *      coverage silently — the loop would simply stop checking that area.
+ *   2. Every route on it resolves (through the app's own `Reflector`, with the
+ *      `[methodRef, ControllerClass]` override order `UnifiedAuthGuard` uses) to
+ *      a `svc:*` declaration that is EXACTLY `[svc:admin:<area>]`. Not empty
+ *      (the sweep missed it — the route is machine-unreachable), not a different
+ *      twin (mis-assigned), and not a superset (a method-level widening).
+ *   3. It does not simultaneously carry `@ForbidServiceAccount()`.
+ *
+ * ─── Deliberately NOT covered ───────────────────────────────────────────────
+ *
+ * Three `admin/`-prefixed controllers had no `admin:*` scope to renamespace and
+ * are absent from the fixture pending an owner decision: `WebhookController`
+ * (`admin/webhooks`, gated by `webhook:event:write` — a different scope family),
+ * `MonitoringController` and `AdminHealthServicesController` (ability-gated
+ * only). Three more are machine-CLOSED by owner decision D-3 and must never
+ * appear here: `ServiceAccountController` (no self-replication),
+ * `AdminImpersonationController`, `ConsentGrantController`. Because this audit
+ * is driven ENTIRELY by the fixture's rows, all six are ignored by construction
+ * — it never enumerates admin controllers itself.
+ */
+export function auditAdminControllersDeclareCorrectSvcScope(app: INestApplicationContext): void {
+  const reflector = app.get(Reflector);
+
+  const routesByClassName = new Map<string, RouteInfo[]>();
+  for (const route of walkRoutes(app)) {
+    const existing = routesByClassName.get(route.ControllerClass.name);
+    if (existing) existing.push(route);
+    else routesByClassName.set(route.ControllerClass.name, [route]);
+  }
+
+  const offenders: string[] = [];
+
+  for (const row of TASK_773_ADMIN_SCOPE_MAP) {
+    const expected = toServiceAccountScope(row.adminScope);
+    const routes = routesByClassName.get(row.controllerClass);
+
+    if (!routes || routes.length === 0) {
+      offenders.push(
+        `${row.controllerClass} (${row.file}) is named by the TASK-773 evidence fixture but is not registered by any module — ` +
+          `no route was found for it. A rename or deletion silently REMOVES an admin area from this audit's coverage, so it fails the boot: ` +
+          `update the fixture (and re-verify it against commit 276f96a32) in the same change that renames the class.`,
+      );
+      continue;
+    }
+
+    // Collapse the controller's routes into the DISTINCT postures they resolve
+    // to, so a class-level miss reports one line rather than one per route,
+    // while a method-level override that differs still gets its own line.
+    const byPosture = new Map<string, { declared: string[]; forbidden: boolean; routes: RouteInfo[] }>();
+    for (const route of routes) {
+      const raw = reflector.getAllAndOverride<string[]>(SERVICE_ACCOUNT_REQUIRED_SCOPES, [route.methodRef, route.ControllerClass]);
+      const declared = Array.isArray(raw) ? [...new Set(raw)].sort() : [];
+      const forbidden = reflector.getAllAndOverride<boolean>(SERVICE_ACCOUNT_FORBIDDEN, [route.methodRef, route.ControllerClass]) === true;
+
+      const key = `${forbidden ? 'forbidden' : 'open'}|${declared.join(',')}`;
+      const bucket = byPosture.get(key);
+      if (bucket) bucket.routes.push(route);
+      else byPosture.set(key, { declared, forbidden, routes: [route] });
+    }
+
+    for (const { declared, forbidden, routes: affected } of byPosture.values()) {
+      const correctScopes = declared.length === 1 && declared[0] === expected;
+      if (correctScopes && !forbidden) continue;
+
+      const where = `${row.controllerClass}.${affected[0].methodName} (${affected[0].fullPath})${affected.length > 1 ? ` and ${affected.length - 1} further route(s) on the same controller` : ''}`;
+
+      if (declared.length === 0) {
+        offenders.push(
+          `${where} declares NO svc:* scope. TASK-757 removed this controller's @RequiredScopes('${row.adminScope}'); ` +
+            `TASK-773 requires its machine twin @RequiredSvcScopes(toServiceAccountScope('${row.adminScope}')) — expected exactly ['${expected}'], found none. ` +
+            `Without it the administration area is unreachable by every service account, because enforceServiceAccountScopes denies an undeclared route.`,
+        );
+        continue;
+      }
+
+      if (!correctScopes) {
+        offenders.push(
+          `${where} declares the WRONG svc:* scope — expected exactly ['${expected}'] (the twin of '${row.adminScope}', which TASK-757 removed from this controller), found [${declared.map((s) => `'${s}'`).join(', ')}]. ` +
+            `A registry-known but mis-assigned scope passes assertion G and every runtime check while granting machine identities the reach of a DIFFERENT admin area; ` +
+            `derive it as toServiceAccountScope('${row.adminScope}') rather than typing it.`,
+        );
+        continue;
+      }
+
+      offenders.push(
+        `${where} declares @RequiredSvcScopes('${expected}') AND @ForbidServiceAccount(). ` +
+          `These contradict: the fixture records this controller as a machine-reachable admin area, so it cannot also deny every machine token. ` +
+          `If this area is genuinely machine-CLOSED (as ServiceAccountController, AdminImpersonationController and ConsentGrantController are, by owner decision D-3), ` +
+          `remove its row from the fixture with that decision recorded — do not carry both decorators.`,
+      );
+    }
+  }
+
+  if (offenders.length > 0) {
+    throw new Error(
+      `TASK-773: refused to start — ${offenders.length} admin controller(s) do not declare the service-account scope the evidence fixture requires ` +
+        `(${TASK_773_ADMIN_SCOPE_MAP.length} rows checked):\n${offenders.map((o) => `  - ${o}`).join('\n')}`,
+    );
+  }
+}
+
 /** Run every service-account boot audit. Called from `main.ts`. */
 export function auditServiceAccountSurface(app: INestApplicationContext): void {
   auditNoAdminControllerUsesServiceTokenGuard(app);
@@ -342,6 +486,7 @@ export function auditServiceAccountSurface(app: INestApplicationContext): void {
   auditServiceAccountControllerForbidsBothClasses(app);
   auditTokenExchangeRouteIsPublicAndGuarded(app);
   auditServiceAccountReachableRoutesAreDeclared(app);
+  auditAdminControllersDeclareCorrectSvcScope(app);
 }
 
 // ─── helpers ────────────────────────────────────────────────────────────────

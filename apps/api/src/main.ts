@@ -1,5 +1,5 @@
 import { BuildInfoService, ILoggingService, IServiceReleaseService, loadEnv, SecretsService } from '@arcaai/applications';
-import { LogLevel, RequestMethod, ValidationPipe } from '@nestjs/common';
+import { LogLevel, ValidationPipe } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import { WsAdapter } from '@nestjs/platform-ws';
 import { SwaggerModule } from '@nestjs/swagger';
@@ -20,6 +20,7 @@ import { assertJwtSecretNotPlaceholder } from './bootstrap/jwt-secret-placeholde
 // still have a working import.
 import { apiEnv } from './config';
 import { buildCorsOptions, isOriginAllowed } from './cors.config';
+import { API_GLOBAL_PREFIX, API_GLOBAL_PREFIX_OPTIONS } from './global-prefix.config';
 import { flushOtel } from './instrumentation';
 import { ETagInterceptor } from './interceptors';
 import { GracefulShutdownService, startServiceReleaseRegistration } from './services';
@@ -103,24 +104,9 @@ async function bootstrap() {
   app.useWebSocketAdapter(new WsAdapter(app) as any);
 
   const port = env.PORT as number;
-  const globalPrefix = 'api/v1';
+  const globalPrefix = API_GLOBAL_PREFIX;
 
-  app.setGlobalPrefix(globalPrefix, {
-    exclude: [
-      '/metrics',
-      // v1-compat SMR summary shims. Excluded from the `api/v1`
-      // global prefix so `@Controller('api/smr/api/v1')` yields the LITERAL v1
-      // paths existing clients already call, instead of being
-      // rewritten to `/api/v1/api/smr/api/v1/...`.
-
-      // v1-compatibility
-      { path: 'api/smr/api/v1/summary/sync', method: RequestMethod.POST },
-      { path: 'api/smr/api/v1/presummary', method: RequestMethod.POST },
-      { path: 'api/stt/start_session', method: RequestMethod.POST },
-      { path: 'api/stt/stop_session', method: RequestMethod.POST },
-      { path: 'api/stt/switch', method: RequestMethod.POST },
-    ],
-  });
+  app.setGlobalPrefix(globalPrefix, API_GLOBAL_PREFIX_OPTIONS);
 
   if (!isProduction) {
     const config = buildSwaggerConfig().build();
