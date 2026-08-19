@@ -20,6 +20,10 @@ import type { ApiKeyResponse, CreateApiKeyRequest, PaginatedResponse, UpdateApiK
  * authenticates normally and is then refused here with 403; {@link AdminResource}
  * names the scope in that error's message.
  *
+ * 4 of its routes ALSO accept `svc:admin:apikey:read`, so a read-only grant reaches
+ * them and nothing else here. Those methods name their own accepted scopes in a 403;
+ * the scope above is the one that reaches EVERY route.
+ *
  * Backed by controller ApiKeyController
  * (9 routes). Several controllers sharing one scope share one
  * resource on purpose: the scope is the permission surface, so the SDK groups
@@ -32,6 +36,8 @@ export class AdminApikeyResource extends AdminResource {
    * Retrieving multiple ApiKeyResponses
    *
    * `GET /api/v1/admin/api-keys` — `ApiKeyController.fetchAll`.
+   *
+   * Reachable with ANY ONE of `svc:admin:apikey:read`, `svc:admin:apikey:write` — the gateway matches required scopes with OR, so the area's `svc:admin:apikey:write` still reaches this route and a read-only grant now does too.
    */
   fetchAll(
     options: AdminRequestOptions & {
@@ -42,6 +48,7 @@ export class AdminApikeyResource extends AdminResource {
       method: 'GET',
       path: 'admin/api-keys',
       query: options.query,
+      svcScopes: ['svc:admin:apikey:read', 'svc:admin:apikey:write'],
       signal: options.signal,
       timeoutMs: options.timeoutMs,
     });
@@ -80,11 +87,14 @@ export class AdminApikeyResource extends AdminResource {
    * Retrieving a single ApiKeyResponse by id
    *
    * `GET /api/v1/admin/api-keys/{id}` — `ApiKeyController.fetchById`.
+   *
+   * Reachable with ANY ONE of `svc:admin:apikey:read`, `svc:admin:apikey:write` — the gateway matches required scopes with OR, so the area's `svc:admin:apikey:write` still reaches this route and a read-only grant now does too.
    */
   fetchById(id: string, options: AdminRequestOptions = {}): Promise<ApiKeyResponse> {
     return this.request<ApiKeyResponse>({
       method: 'GET',
       path: `admin/api-keys/${encodePathSegment(String(id))}`,
+      svcScopes: ['svc:admin:apikey:read', 'svc:admin:apikey:write'],
       signal: options.signal,
       timeoutMs: options.timeoutMs,
     });
@@ -137,11 +147,14 @@ export class AdminApikeyResource extends AdminResource {
    * Retrieving a single ApiKeyResponse by id
    *
    * `GET /api/v1/admin/api-keys/{id}/usage` — `ApiKeyController.getUsage`.
+   *
+   * Reachable with ANY ONE of `svc:admin:apikey:read`, `svc:admin:apikey:write` — the gateway matches required scopes with OR, so the area's `svc:admin:apikey:write` still reaches this route and a read-only grant now does too.
    */
   getUsage(id: string, options: AdminRequestOptions = {}): Promise<ApiKeyResponse> {
     return this.request<ApiKeyResponse>({
       method: 'GET',
       path: `admin/api-keys/${encodePathSegment(String(id))}/usage`,
+      svcScopes: ['svc:admin:apikey:read', 'svc:admin:apikey:write'],
       signal: options.signal,
       timeoutMs: options.timeoutMs,
     });
@@ -151,11 +164,14 @@ export class AdminApikeyResource extends AdminResource {
    * List available API key scopes
    *
    * `GET /api/v1/admin/api-keys/scopes` — `ApiKeyController.getAvailableScopes`.
+   *
+   * Reachable with ANY ONE of `svc:admin:apikey:read`, `svc:admin:apikey:write` — the gateway matches required scopes with OR, so the area's `svc:admin:apikey:write` still reaches this route and a read-only grant now does too.
    */
   getAvailableScopes(options: AdminRequestOptions = {}): Promise<unknown> {
     return this.request<unknown>({
       method: 'GET',
       path: 'admin/api-keys/scopes',
+      svcScopes: ['svc:admin:apikey:read', 'svc:admin:apikey:write'],
       signal: options.signal,
       timeoutMs: options.timeoutMs,
     });

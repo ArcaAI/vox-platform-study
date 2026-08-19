@@ -44,7 +44,25 @@ class WidgetsResource extends AdminResource {
   createWidget(body: Partial<Widget>): Promise<Widget> {
     return this.request<Widget>({ method: 'POST', path: 'admin/widgets', body });
   }
+
+  // The three shapes generated code takes for a route widened by TASK-773
+  // decision O-3: it also accepts the area's `:read` sibling, which it passes
+  // down so the 403 names what THIS route wants rather than the area scope.
+  readOnly(id: string): Promise<Widget> {
+    return this.request<Widget>({ path: `admin/widgets/${id}`, svcScopes: WIDENED });
+  }
+
+  listReadOnly(options?: AdminListOptions): Promise<PaginatedPage<Widget>> {
+    return this.listPage<Widget>('admin/widgets', options, WIDENED);
+  }
+
+  listAllReadOnly(options?: AdminListOptions): AsyncIterable<Widget> {
+    return this.listAll<Widget>('admin/widgets', options, WIDENED);
+  }
 }
+
+/** What a generated O-3 read route declares: the area scope plus its `:read` sibling. */
+const WIDENED = ['svc:admin:widget:manage', 'svc:admin:widget:read'] as const;
 
 function makeResource(fetchImpl: typeof fetch): WidgetsResource {
   return new WidgetsResource(new Transport({ baseUrl: 'http://localhost:8868', fetch: fetchImpl, maxRetries: 0 }));
@@ -117,6 +135,31 @@ describe('AdminResource — scope discoverability', () => {
     expect(error.code).toBe('AUTH.FORBIDDEN');
     expect(error.requestId).toBe('req-9');
     expect(error.message).toContain('Forbidden resource');
+  });
+
+  it('names EVERY scope a widened read route accepts, so a read-only integrator is not told to ask for :write (O-3)', async () => {
+    const resource = makeResource(fetchMock(async () => jsonResponse(403, { message: 'Forbidden resource' })));
+
+    const error = (await resource.readOnly('w1').catch((e: unknown) => e)) as PermissionError;
+    expect(error).toBeInstanceOf(PermissionError);
+    expect(error.message).toContain('ANY ONE of');
+    expect(error.message).toContain('svc:admin:widget:read');
+    expect(error.message).toContain('svc:admin:widget:manage');
+  });
+
+  it('carries the widened scopes through listPage and the listAll walk as well', async () => {
+    const resource = makeResource(fetchMock(async () => jsonResponse(403, { message: 'Forbidden resource' })));
+
+    await expect(resource.listReadOnly()).rejects.toThrow(/svc:admin:widget:read/);
+    await expect(collect(resource.listAllReadOnly())).rejects.toThrow(/svc:admin:widget:read/);
+  });
+
+  it('still names the single area scope on a route that was not widened', async () => {
+    const resource = makeResource(fetchMock(async () => jsonResponse(403, { message: 'Forbidden resource' })));
+
+    const error = (await resource.get('w1').catch((e: unknown) => e)) as PermissionError;
+    expect(error.message).toContain('the service-account scope `svc:admin:widget:manage`');
+    expect(error.message).not.toContain('ANY ONE of');
   });
 
   it('leaves a 404 alone — its own 404-over-403 explanation is the right one, and the scope is not the problem', async () => {

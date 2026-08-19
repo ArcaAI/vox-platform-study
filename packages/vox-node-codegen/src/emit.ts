@@ -91,7 +91,19 @@ function emitArea(area: AdminArea): string {
   imports.push(`import type { ${[...new Set(baseTypeImports)].sort().join(', ')} } from './admin-resource';`);
   if (usedSchemas.length > 0) imports.push(`import type { ${usedSchemas.join(', ')} } from './schemas';`);
 
-  const methods = area.methods.flatMap((method) => emitMethod(method)).join('\n\n');
+  const methods = area.methods.flatMap((method) => emitMethod(method, area.svcScope)).join('\n\n');
+  // The O-3 widening, stated once at the top of the module rather than only on
+  // the individual methods: "which scope do I grant?" is answered by reading
+  // the class doc, and the honest answer for these areas is two scopes with
+  // different reach.
+  const widened = area.methods.filter((method) => extraScopesOf(method, area.svcScope).length > 0);
+  const alsoAccepted = [...new Set(widened.flatMap((method) => extraScopesOf(method, area.svcScope)))].sort();
+  const readNote =
+    alsoAccepted.length === 0
+      ? ''
+      : `\n *\n * ${widened.length} of its route${widened.length === 1 ? '' : 's'} ALSO accept${widened.length === 1 ? 's' : ''} ` +
+        `${alsoAccepted.map((scope) => `\`${scope}\``).join(', ')}, so a read-only grant reaches\n * ${widened.length === 1 ? 'it' : 'them'} and nothing else here. ` +
+        `Those methods name their own accepted scopes in a 403;\n * the scope above is the one that reaches EVERY route.`;
 
   return `${BANNER}
 
@@ -102,7 +114,7 @@ ${imports.join('\n')}
  *
  * **Required service-account scope: \`${area.svcScope}\`.** A token without it
  * authenticates normally and is then refused here with 403; {@link AdminResource}
- * names the scope in that error's message.
+ * names the scope in that error's message.${readNote}
  *
  * Backed by ${area.controllers.length === 1 ? 'controller' : 'controllers'} ${area.controllers.join(', ')}
  * (${area.methods.length} route${area.methods.length === 1 ? '' : 's'}). Several controllers sharing one scope share one
@@ -131,8 +143,32 @@ function collectSchemaNames(area: AdminArea): string[] {
   return [...names].sort();
 }
 
-function emitMethod(method: AdminMethod): string[] {
-  return method.paginated ? [emitPageMethod(method), emitIterateMethod(method)] : [emitPlainMethod(method)];
+function emitMethod(method: AdminMethod, areaScope: string): string[] {
+  return method.paginated ? [emitPageMethod(method, areaScope), emitIterateMethod(method, areaScope)] : [emitPlainMethod(method, areaScope)];
+}
+
+/**
+ * The scopes this route accepts BEYOND the area's own — empty for all but the
+ * O-3 read routes. Everything downstream keys off this being empty, so the
+ * routes that declare exactly the area scope emit byte-identically to how they
+ * did before the widening existed.
+ */
+function extraScopesOf(method: AdminMethod, areaScope: string): string[] {
+  return method.svcScopes.filter((scope) => scope !== areaScope);
+}
+
+/** `['a', 'b']` for a route that accepts more than the area scope, otherwise `undefined`. */
+function svcScopesLiteral(method: AdminMethod, areaScope: string): string | undefined {
+  if (extraScopesOf(method, areaScope).length === 0) return undefined;
+  return `[${method.svcScopes.map((scope) => `'${scope}'`).join(', ')}]`;
+}
+
+/** The doc-comment line that tells an integrator a read-only grant is enough here. */
+function scopeDocLines(method: AdminMethod, areaScope: string): string[] {
+  if (extraScopesOf(method, areaScope).length === 0) return [];
+  return [
+    `Reachable with ANY ONE of ${method.svcScopes.map((scope) => `\`${scope}\``).join(', ')} — the gateway matches required scopes with OR, so the area's \`${areaScope}\` still reaches this route and a read-only grant now does too.`,
+  ];
 }
 
 /** `admin/tenants/:id` → `` `admin/tenants/${encodePathSegment(String(id))}` `` (or a plain quoted string). */
@@ -183,7 +219,7 @@ function signatureParams(method: AdminMethod, optionsType: string, optionsRequir
   return params.join(', ');
 }
 
-function emitPlainMethod(method: AdminMethod): string {
+function emitPlainMethod(method: AdminMethod, areaScope: string): string {
   const queryLiteral = queryTypeLiteral(method);
   const optionsParts = ['AdminRequestOptions'];
   if (queryLiteral) optionsParts.push(`{ query?: ${queryLiteral} }`);
@@ -196,9 +232,11 @@ function emitPlainMethod(method: AdminMethod): string {
   if (queryLiteral) specLines.push('query: options.query');
   if (method.bodyType) specLines.push('body');
   if (method.requiresIfMatch) specLines.push('ifMatch: options.ifMatch');
+  const scopes = svcScopesLiteral(method, areaScope);
+  if (scopes) specLines.push(`svcScopes: ${scopes}`);
   specLines.push('signal: options.signal', 'timeoutMs: options.timeoutMs');
 
-  return `${docComment(method)}
+  return `${docComment(method, scopeDocLines(method, areaScope))}
   ${method.name}(${signatureParams(method, optionsType, optionsRequired)}): Promise<${method.returnType}> {
     return ${call}<${method.returnType}>({
       ${specLines.join(',\n      ')},
@@ -206,29 +244,33 @@ function emitPlainMethod(method: AdminMethod): string {
   }`;
 }
 
-function emitPageMethod(method: AdminMethod): string {
+function emitPageMethod(method: AdminMethod, areaScope: string): string {
   const queryLiteral = queryTypeLiteral(method);
   const queryType = queryLiteral ? `AdminListQuery & ${queryLiteral}` : 'AdminListQuery';
   const optionsType = `AdminListOptions & { query?: ${queryType} }`;
+  const scopes = svcScopesLiteral(method, areaScope);
 
   return `${docComment(method, [
     `Returns ONE page. \`page\` is 0-based and both \`page\` and \`limit\` are always sent explicitly — the gateway echoes RAW query values back, so the response's own \`page\`/\`limit\` are not usable as loop state. Use {@link ${method.iterateName}} to walk every page.`,
+    ...scopeDocLines(method, areaScope),
   ])}
   ${method.name}(${signatureParams(method, optionsType, false)}): Promise<PaginatedPage<${method.rowType}>> {
-    return this.listPage<${method.rowType}>(${pathExpression(method)}, options);
+    return this.listPage<${method.rowType}>(${pathExpression(method)}, options${scopes ? `, ${scopes}` : ''});
   }`;
 }
 
-function emitIterateMethod(method: AdminMethod): string {
+function emitIterateMethod(method: AdminMethod, areaScope: string): string {
   const queryLiteral = queryTypeLiteral(method);
   const queryType = queryLiteral ? `AdminListQuery & ${queryLiteral}` : 'AdminListQuery';
   const optionsType = `AdminListOptions & { query?: ${queryType} }`;
+  const scopes = svcScopesLiteral(method, areaScope);
 
   return `${docComment(method, [
     `Walks every page, yielding rows: \`for await (const row of …)\`. Pagination is driven from the REQUEST side; a failure on page N propagates after page N-1's rows, so "the list ended" and "the list broke" never look alike.`,
+    ...scopeDocLines(method, areaScope),
   ])}
   ${method.iterateName}(${signatureParams(method, optionsType, false)}): AsyncGenerator<${method.rowType}, void, undefined> {
-    return this.listAll<${method.rowType}>(${pathExpression(method)}, options);
+    return this.listAll<${method.rowType}>(${pathExpression(method)}, options${scopes ? `, ${scopes}` : ''});
   }`;
 }
 

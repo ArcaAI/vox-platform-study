@@ -16,6 +16,25 @@ import { ClsService } from 'nestjs-cls';
 import { ApiEndpoint, CanCreate, CanManage, CanRead, CanUpdate, CanDelete, ForbidApiKey, RequiredSvcScopes } from '../../decorators';
 import { CreateApiKeyResponse, ApiKeyUsageResponse } from './dto';
 
+/**
+ * The class-level `@RequiredSvcScopes('svc:admin:apikey:write')` is the DEFAULT
+ * for every route here; the four read routes additionally accept the `:read`
+ * twin (decision O-3, 2026-08-19).
+ *
+ * `enforceServiceAccountScopes` matches with OR semantics
+ * (`required.some(...)`), so listing BOTH is what makes a read-only grant work
+ * WITHOUT taking anything away from a `:write` holder — declaring only
+ * `svc:admin:apikey:read` on a GET would have LOCKED OUT every existing
+ * `:write`-scoped account. The pair is therefore the whole mechanism, not a
+ * belt-and-braces flourish, and boot audit H accepts exactly this shape (and
+ * only on a method: the pair at CLASS level would let a `:read` token POST).
+ *
+ * Sound here because the abilities line up: `svc:admin:apikey:read` implies
+ * `read:ApiKey`, which is exactly what the read routes' `@CanRead('ApiKey')`
+ * demands — so a `:read`-only token clears the scope gate AND the CASL gate.
+ * (Where they do NOT line up, the scope must stay orphaned rather than become
+ * a credential that authenticates, passes the scope check and is then 403'd.)
+ */
 @ApiBearerAuth()
 @ApiTags('admin-api-keys')
 @ForbidApiKey()
@@ -33,6 +52,7 @@ export class ApiKeyController {
   @ApiOperation({ summary: 'List available API key scopes' })
   @ApiResponse({ status: 200, description: 'Available scopes grouped by category' })
   @CanRead('ApiKey')
+  @RequiredSvcScopes('svc:admin:apikey:read', 'svc:admin:apikey:write')
   getAvailableScopes() {
     return getScopesByCategory();
   }
@@ -70,6 +90,7 @@ export class ApiKeyController {
   @ApiQuery({ name: 'page', required: false, type: Number })
   @ApiQuery({ name: 'pageSize', required: false, type: Number })
   @CanRead('ApiKey')
+  @RequiredSvcScopes('svc:admin:apikey:read', 'svc:admin:apikey:write')
   async fetchAll(@Query() queryParams: PaginatedQuery): Promise<PaginatedApiKeyResponse> {
     const tenantId = this.clsService.get('tenantId');
     const result = tenantId
@@ -93,6 +114,7 @@ export class ApiKeyController {
   @ApiParam({ name: 'id', description: 'API Key ID', type: String })
   @ApiResponse({ status: 404, description: 'API key not found' })
   @CanRead('ApiKey')
+  @RequiredSvcScopes('svc:admin:apikey:read', 'svc:admin:apikey:write')
   async fetchById(@Param('id') id: string): Promise<ApiKeyResponse> {
     const result = await this.apiKeyService.fetchById(id);
     return ApiKeyDtoMapper.ToResponse(result);
@@ -182,6 +204,7 @@ export class ApiKeyController {
   @ApiResponse({ status: 200, description: 'API key usage statistics', type: ApiKeyUsageResponse })
   @ApiResponse({ status: 404, description: 'API key not found' })
   @CanRead('ApiKey')
+  @RequiredSvcScopes('svc:admin:apikey:read', 'svc:admin:apikey:write')
   async getUsage(@Param('id') id: string): Promise<ApiKeyUsageResponse> {
     const apiKey = await this.apiKeyService.fetchById(id);
     const mapped = ApiKeyDtoMapper.ToResponse(apiKey);

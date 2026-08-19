@@ -29,7 +29,9 @@
  *       deliberately exempt from the declaration requirement — see G's own
  *       header for where that boundary is drawn and why.
  *   H — (TASK-773) every controller TASK-757 stripped an `admin:<area>` scope
- *       from declares its `svc:admin:<area>` twin, and NOTHING ELSE. G checks
+ *       from declares its `svc:admin:<area>` twin — and, on a method, at most
+ *       that twin paired with its own `:read` sibling (decision O-3). Nothing
+ *       else. G checks
  *       that a declared scope is well-formed and registry-known; it structurally
  *       CANNOT see a scope that is well-formed, registry-known and WRONG — the
  *       exact outcome of a 64-controller sweep applied by hand. H is the
@@ -483,10 +485,45 @@ export function auditServiceAccountReachableRoutesAreDeclared(app: INestApplicat
  *      coverage silently — the loop would simply stop checking that area.
  *   2. Every route on it resolves (through the app's own `Reflector`, with the
  *      `[methodRef, ControllerClass]` override order `UnifiedAuthGuard` uses) to
- *      a `svc:*` declaration that is EXACTLY `[svc:admin:<area>]`. Not empty
- *      (the sweep missed it — the route is machine-unreachable), not a different
- *      twin (mis-assigned), and not a superset (a method-level widening).
+ *      a `svc:*` declaration that is one of exactly two permitted shapes.
+ *      Not empty (the sweep missed it — the route is machine-unreachable), not
+ *      a different twin (mis-assigned), and not an arbitrary superset.
  *   3. It does not simultaneously carry `@ForbidServiceAccount()`.
+ *
+ * ─── The two permitted shapes (widened by decision O-3, 2026-08-19) ─────────
+ *
+ *   a. `[svc:admin:<area>]` — the twin, alone. Permitted wherever the
+ *      declaration comes from, and the ONLY shape permitted at CLASS level.
+ *   b. `[svc:admin:<area>:read, svc:admin:<area>:write]` — the twin paired with
+ *      its own `:read` sibling, and ONLY when the declaration comes from a
+ *      METHOD. This is what makes a read-only grant reach a controller's GET
+ *      routes: `enforceServiceAccountScopes` is `required.some(...)`, so
+ *      declaring the `:read` scope ALONE would have revoked those routes from
+ *      every existing `:write` holder, while the pair leaves `:write` reaching
+ *      exactly what it reached before.
+ *
+ * Shape (b) is DERIVED, never listed: the sibling is this row's own twin with
+ * its trailing `:write` swapped for `:read`, and it must already exist in
+ * `SERVICE_ACCOUNT_SCOPE_REGISTRY`. A row whose twin has no `:read` sibling
+ * (`admin:department:manage`, `admin:audit:read`, …) therefore has shape (a)
+ * and nothing else — the widening cannot leak into an area with no read half
+ * to express.
+ *
+ * Three things this deliberately does NOT become:
+ *
+ *   - **Not "any superset".** `[twin, svc:admin:tenant:write]` is still a boot
+ *     failure. H exists to catch a mis-assignment, and "the twin plus anything"
+ *     gives that up: a copy-pasted second scope would sail through while
+ *     granting a different area's reach.
+ *   - **Not "the pair anywhere".** At CLASS level the pair would put `:read` on
+ *     the DELETE routes too, so a read-only token could mutate — the exact
+ *     inversion of the least-privilege decision that motivated O-3. Origin is
+ *     therefore read straight off the handler (`Reflect.getMetadata` on
+ *     `methodRef`, no override walk) rather than inferred.
+ *   - **Not "read is free".** Whether the `:read` scope's implied CASL ability
+ *     actually satisfies the route's `@CanXxx` is a separate question this
+ *     audit does not answer (G/A5 does, per declared scope). Two of the four
+ *     O-3 candidates fail it and were deliberately left alone; see the ticket.
  *
  * ─── Deliberately NOT covered ───────────────────────────────────────────────
  *
@@ -517,6 +554,12 @@ export function auditAdminControllersDeclareCorrectSvcScope(app: INestApplicatio
 
   for (const row of TASK_773_ADMIN_SCOPE_MAP) {
     const expected = toServiceAccountScope(row.adminScope);
+    // Shape (b), pre-sorted so the comparison below is an exact element-wise
+    // match rather than a set-containment test. `undefined` for every area
+    // whose twin has no registry-known `:read` sibling, which collapses the
+    // permitted set back to shape (a) alone.
+    const readSibling = readSiblingOf(expected);
+    const permittedPair = readSibling ? [readSibling, expected].sort() : undefined;
     const routes = routesByClassName.get(row.controllerClass);
 
     if (!routes || routes.length === 0) {
@@ -545,20 +588,31 @@ export function auditAdminControllersDeclareCorrectSvcScope(app: INestApplicatio
     // Collapse the controller's routes into the DISTINCT postures they resolve
     // to, so a class-level miss reports one line rather than one per route,
     // while a method-level override that differs still gets its own line.
-    const byPosture = new Map<string, { declared: string[]; forbidden: boolean; routes: RouteInfo[] }>();
+    const byPosture = new Map<string, { declared: string[]; methodLevel: boolean; forbidden: boolean; routes: RouteInfo[] }>();
     for (const route of routes) {
       const raw = reflector.getAllAndOverride<string[]>(SERVICE_ACCOUNT_REQUIRED_SCOPES, [route.methodRef, route.ControllerClass]);
       const declared = Array.isArray(raw) ? [...new Set(raw)].sort() : [];
+      // WHERE the declaration came from, read straight off the handler with no
+      // override walk: `getAllAndOverride` above deliberately cannot tell a
+      // method-level declaration from an inherited class-level one, and shape
+      // (b) is permitted on a method ONLY.
+      const methodLevel = Array.isArray(Reflect.getMetadata(SERVICE_ACCOUNT_REQUIRED_SCOPES, route.methodRef));
       const forbidden = reflector.getAllAndOverride<boolean>(SERVICE_ACCOUNT_FORBIDDEN, [route.methodRef, route.ControllerClass]) === true;
 
-      const key = `${forbidden ? 'forbidden' : 'open'}|${declared.join(',')}`;
+      const key = `${forbidden ? 'forbidden' : 'open'}|${methodLevel ? 'method' : 'class'}|${declared.join(',')}`;
       const bucket = byPosture.get(key);
       if (bucket) bucket.routes.push(route);
-      else byPosture.set(key, { declared, forbidden, routes: [route] });
+      else byPosture.set(key, { declared, methodLevel, forbidden, routes: [route] });
     }
 
-    for (const { declared, forbidden, routes: affected } of byPosture.values()) {
-      const correctScopes = declared.length === 1 && declared[0] === expected;
+    for (const { declared, methodLevel, forbidden, routes: affected } of byPosture.values()) {
+      const isTwinAlone = declared.length === 1 && declared[0] === expected;
+      const isPermittedPair =
+        methodLevel &&
+        permittedPair !== undefined &&
+        declared.length === permittedPair.length &&
+        declared.every((scope, index) => scope === permittedPair[index]);
+      const correctScopes = isTwinAlone || isPermittedPair;
       if (correctScopes && !forbidden) continue;
 
       const where = `${row.controllerClass}.${affected[0].methodName} (${affected[0].fullPath})${affected.length > 1 ? ` and ${affected.length - 1} further route(s) on the same controller` : ''}`;
@@ -573,10 +627,16 @@ export function auditAdminControllersDeclareCorrectSvcScope(app: INestApplicatio
       }
 
       if (!correctScopes) {
+        const permitted = permittedPair
+          ? `either exactly ['${expected}'] or — on a METHOD only — exactly ['${permittedPair.join("', '")}'] (the twin paired with its own :read sibling, decision O-3)`
+          : `exactly ['${expected}']`;
+        const pairHint = permittedPair
+          ? ` The pair is permitted on a METHOD only: at class level it would put '${permittedPair[0]}' on this controller's writes too, so a read-only token could mutate.`
+          : '';
         offenders.push(
-          `${where} declares the WRONG svc:* scope — expected exactly ['${expected}'] (the twin of '${row.adminScope}', which TASK-757 removed from this controller), found [${declared.map((s) => `'${s}'`).join(', ')}]. ` +
+          `${where} declares the WRONG svc:* scope — expected ${permitted} (the twin of '${row.adminScope}', which TASK-757 removed from this controller), found [${declared.map((s) => `'${s}'`).join(', ')}] at the ${methodLevel ? 'method' : 'class'} level. ` +
             `A registry-known but mis-assigned scope passes assertion G and every runtime check while granting machine identities the reach of a DIFFERENT admin area; ` +
-            `derive it as toServiceAccountScope('${row.adminScope}') rather than typing it.`,
+            `derive it as toServiceAccountScope('${row.adminScope}') rather than typing it.${pairHint}`,
         );
         continue;
       }
@@ -647,6 +707,23 @@ function isPublicRoute(reflector: Reflector, route: RouteInfo): boolean {
     reflector.getAllAndOverride<boolean>(SKIP_AUTH_KEY, [route.methodRef, route.ControllerClass]) === true ||
     reflector.getAllAndOverride<boolean>('isPublic', [route.methodRef, route.ControllerClass]) === true
   );
+}
+
+/**
+ * The `:read` sibling of an area's `:write` twin — `svc:admin:apikey:write` →
+ * `svc:admin:apikey:read` — or `undefined` when there is none.
+ *
+ * Registry membership is the gate, not string arithmetic: an area whose scopes
+ * are `:manage` (or already `:read`) has no read half to pair with, so it keeps
+ * the single permitted shape. Returning a string the registry does not know
+ * would let assertion H bless a declaration `@RequiredSvcScopes` itself refuses
+ * at decoration time.
+ */
+function readSiblingOf(twin: string): string | undefined {
+  const suffix = ':write';
+  if (!twin.endsWith(suffix)) return undefined;
+  const sibling = `${twin.slice(0, -suffix.length)}:read`;
+  return SERVICE_ACCOUNT_SCOPE_REGISTRY[sibling] ? sibling : undefined;
 }
 
 function isAdminPath(controllerPath: string): boolean {

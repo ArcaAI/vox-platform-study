@@ -567,6 +567,7 @@
       "path": "/api/v1/admin/api-keys",
       "routePath": "/admin/api-keys",
       "svcScopes": [
+        "svc:admin:apikey:read",
         "svc:admin:apikey:write"
       ],
       "forbidServiceAccount": false,
@@ -606,6 +607,7 @@
       "path": "/api/v1/admin/api-keys/{id}",
       "routePath": "/admin/api-keys/:id",
       "svcScopes": [
+        "svc:admin:apikey:read",
         "svc:admin:apikey:write"
       ],
       "forbidServiceAccount": false,
@@ -658,6 +660,7 @@
       "path": "/api/v1/admin/api-keys/{id}/usage",
       "routePath": "/admin/api-keys/:id/usage",
       "svcScopes": [
+        "svc:admin:apikey:read",
         "svc:admin:apikey:write"
       ],
       "forbidServiceAccount": false,
@@ -671,6 +674,7 @@
       "path": "/api/v1/admin/api-keys/scopes",
       "routePath": "/admin/api-keys/scopes",
       "svcScopes": [
+        "svc:admin:apikey:read",
         "svc:admin:apikey:write"
       ],
       "forbidServiceAccount": false,
@@ -3097,6 +3101,7 @@
       "path": "/api/v1/admin/rbac/roles",
       "routePath": "/admin/rbac/roles",
       "svcScopes": [
+        "svc:admin:role:read",
         "svc:admin:role:write"
       ],
       "forbidServiceAccount": false,
@@ -3136,6 +3141,7 @@
       "path": "/api/v1/admin/rbac/roles/{id}",
       "routePath": "/admin/rbac/roles/:id",
       "svcScopes": [
+        "svc:admin:role:read",
         "svc:admin:role:write"
       ],
       "forbidServiceAccount": false,
@@ -3188,6 +3194,7 @@
       "path": "/api/v1/admin/rbac/roles/{id}/members",
       "routePath": "/admin/rbac/roles/:id/members",
       "svcScopes": [
+        "svc:admin:role:read",
         "svc:admin:role:write"
       ],
       "forbidServiceAccount": false,

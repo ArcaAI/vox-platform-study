@@ -413,19 +413,32 @@ describe('G (A5) — every scope a route declares resolves to at least one CASL 
  * validation; metadata is never written by hand here.
  */
 @Controller('admin/synthetic')
-class SyntheticAdminBase {
-  @Get()
-  list() {}
-}
+class SyntheticAdminBase {}
 
-type SyntheticPosture = { scopes?: string[]; forbid?: boolean };
+/**
+ * `scopes` declares at CLASS level (the sweep's own shape); `methodScopes`
+ * declares on the HANDLER, which is the only place H's O-3 pair is permitted.
+ * Both may be set at once — that is the real controllers' shape: the class
+ * carries the `:write` twin as the default and a read route adds the pair.
+ */
+type SyntheticPosture = { scopes?: string[]; methodScopes?: string[]; forbid?: boolean };
 
 function syntheticController(row: AdminScopeMapRow, posture: SyntheticPosture = {}) {
   const scopes = posture.scopes ?? [toServiceAccountScope(row.adminScope)];
   const named = { [row.controllerClass]: class extends SyntheticAdminBase {} };
   const ControllerClass = named[row.controllerClass];
 
+  // Each synthetic controller gets its OWN decorated handler rather than
+  // inheriting one shared function object: method-level metadata is written
+  // onto `descriptor.value`, so a shared handler would leak one row's
+  // declaration into all 64.
+  const proto = ControllerClass.prototype as Record<string, unknown>;
+  proto.list = function list() {};
+  const descriptor = Object.getOwnPropertyDescriptor(proto, 'list') as PropertyDescriptor;
+  Get()(proto, 'list', descriptor);
+
   if (scopes.length > 0) RequiredSvcScopes(...scopes)(ControllerClass);
+  if (posture.methodScopes) RequiredSvcScopes(...posture.methodScopes)(proto, 'list', descriptor);
   if (posture.forbid) ForbidServiceAccount()(ControllerClass);
 
   return ControllerClass as unknown as new (...args: never[]) => unknown;
@@ -477,7 +490,7 @@ describe('H — every swept admin controller declares its svc:admin:<area> twin'
     expect(lines).toHaveLength(1);
     expect(lines[0]).toContain('TenantController');
     expect(lines[0]).toContain('declares the WRONG svc:* scope');
-    expect(lines[0]).toContain("expected exactly ['svc:admin:tenant:write']");
+    expect(lines[0]).toContain("expected either exactly ['svc:admin:tenant:write']");
     expect(lines[0]).toContain("found ['svc:admin:department:manage']");
   });
 
@@ -501,6 +514,79 @@ describe('H — every swept admin controller declares its svc:admin:<area> twin'
     expect(lines[0]).toContain('WorkflowRunController');
     expect(lines[0]).toContain('declares the WRONG svc:* scope');
     expect(lines[0]).toContain('svc:admin:tenant:write');
+  });
+
+  // ── O-3: the METHOD-level {read, write} pair ──────────────────────────────
+
+  it('PASSES when a READ route pairs the twin with its own :read sibling at the METHOD level (O-3)', () => {
+    // The shipped shape: ApiKeyController keeps `svc:admin:apikey:write` at
+    // class level and its four GET routes add the pair, so a `:read`-only grant
+    // reaches them WITHOUT any `:write` holder losing a route (OR semantics).
+    const paired = {
+      ApiKeyController: { methodScopes: ['svc:admin:apikey:read', 'svc:admin:apikey:write'] },
+      RolesController: { methodScopes: ['svc:admin:role:read', 'svc:admin:role:write'] },
+    };
+
+    expect(() => auditAdminControllersDeclareCorrectSvcScope(fakeApp(sweptAdminPlane(paired)))).not.toThrow();
+  });
+
+  it('accepts the pair in EITHER declaration order — the audit sorts before comparing', () => {
+    const reversed = { ApiKeyController: { methodScopes: ['svc:admin:apikey:write', 'svc:admin:apikey:read'] } };
+
+    expect(() => auditAdminControllersDeclareCorrectSvcScope(fakeApp(sweptAdminPlane(reversed)))).not.toThrow();
+  });
+
+  it('THROWS when the pair is declared at CLASS level — that would let a :read token MUTATE', () => {
+    // The inversion O-3 exists to prevent: at class level the `:read` scope
+    // covers the DELETE/PATCH routes too, so "read-only" would grant writes.
+    const lines = offenderLines(() =>
+      auditAdminControllersDeclareCorrectSvcScope(
+        fakeApp(sweptAdminPlane({ ApiKeyController: { scopes: ['svc:admin:apikey:read', 'svc:admin:apikey:write'] } })),
+      ),
+    );
+
+    expect(lines).toHaveLength(1);
+    expect(lines[0]).toContain('ApiKeyController');
+    expect(lines[0]).toContain('declares the WRONG svc:* scope');
+    expect(lines[0]).toContain('at the class level');
+    expect(lines[0]).toContain('permitted on a METHOD only');
+  });
+
+  it('THROWS when a method declares the :read sibling ALONE — that REVOKES the route from every :write grant', () => {
+    const lines = offenderLines(() =>
+      auditAdminControllersDeclareCorrectSvcScope(fakeApp(sweptAdminPlane({ ApiKeyController: { methodScopes: ['svc:admin:apikey:read'] } }))),
+    );
+
+    expect(lines).toHaveLength(1);
+    expect(lines[0]).toContain('ApiKeyController');
+    expect(lines[0]).toContain('declares the WRONG svc:* scope');
+    expect(lines[0]).toContain("found ['svc:admin:apikey:read']");
+  });
+
+  it('THROWS when a method pairs the twin with ANOTHER area\'s :read scope — the widening is not "any superset"', () => {
+    const lines = offenderLines(() =>
+      auditAdminControllersDeclareCorrectSvcScope(
+        fakeApp(sweptAdminPlane({ ApiKeyController: { methodScopes: ['svc:admin:apikey:write', 'svc:admin:tenant:read'] } })),
+      ),
+    );
+
+    expect(lines).toHaveLength(1);
+    expect(lines[0]).toContain('ApiKeyController');
+    expect(lines[0]).toContain('svc:admin:tenant:read');
+  });
+
+  it('THROWS when an area whose twin has NO :read sibling tries the pair — shape (b) is derived, not available everywhere', () => {
+    // `admin:department:manage` has no `:write`/`:read` split at all, so the
+    // permitted set collapses to the single twin and a pair of ANY kind fails.
+    const lines = offenderLines(() =>
+      auditAdminControllersDeclareCorrectSvcScope(
+        fakeApp(sweptAdminPlane({ DepartmentController: { methodScopes: ['svc:admin:department:manage', 'svc:admin:apikey:read'] } })),
+      ),
+    );
+
+    expect(lines).toHaveLength(1);
+    expect(lines[0]).toContain('DepartmentController');
+    expect(lines[0]).toContain("expected exactly ['svc:admin:department:manage']");
   });
 
   it('THROWS when a controller declares the twin AND @ForbidServiceAccount()', () => {

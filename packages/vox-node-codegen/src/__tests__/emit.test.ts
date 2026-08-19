@@ -16,6 +16,10 @@ function emitted(): Map<string, string> {
 describe('emitSurface', () => {
   const files = emitted();
 
+  it('emits NO per-route scope list when every route declares exactly the area scope', () => {
+    expect(files.get('widget.ts')).not.toContain('svcScopes:');
+  });
+
   it('emits one module per area plus the schemas, namespace and barrel', () => {
     expect([...files.keys()].sort()).toEqual(['admin-namespace.ts', 'index.ts', 'schemas.ts', 'webhook-event.ts', 'widget.ts']);
   });
@@ -48,6 +52,35 @@ describe('emitSurface', () => {
     const widget = files.get('widget.ts') ?? '';
     expect(widget).toContain("import type { UpdateWidgetRequest, WidgetResponse } from './schemas';");
     expect(widget).not.toContain('ApiKey');
+  });
+
+  it('passes a paired read route\'s OWN scopes to the base, on both the plain and the paginated path (O-3)', () => {
+    const manifest = makeManifest();
+    // `list` is the paginated route, `update` the plain one — cover both call
+    // shapes, since they reach the base through different helpers.
+    manifest.routes.find((r) => r.controller === 'WidgetController' && r.handler === 'list')!.svcScopes = [
+      'svc:admin:widget:manage',
+      'svc:admin:widget:read',
+    ];
+    manifest.routes.find((r) => r.controller === 'WidgetCatalogController' && r.handler === 'list')!.svcScopes = [
+      'svc:admin:widget:manage',
+      'svc:admin:widget:read',
+    ];
+    const paired = new Map(emitSurface(buildAdminSurface(manifest, makeDocument())).map((file) => [file.relativePath, file.contents]));
+    const widget = paired.get('widget.ts') ?? '';
+
+    expect(widget).toContain("this.listPage<WidgetResponse>('admin/widgets', options, ['svc:admin:widget:manage', 'svc:admin:widget:read'])");
+    expect(widget).toContain("this.listAll<WidgetResponse>('admin/widgets', options, ['svc:admin:widget:manage', 'svc:admin:widget:read'])");
+    expect(widget).toContain("svcScopes: ['svc:admin:widget:manage', 'svc:admin:widget:read']");
+    // The class still advertises the one scope that reaches everything...
+    expect(widget).toContain("readonly svcScope = 'svc:admin:widget:manage';");
+    // ...and says, once, which routes accept more.
+    expect(widget).toContain('ALSO accept `svc:admin:widget:read`');
+    expect(widget).toContain('Reachable with ANY ONE of `svc:admin:widget:manage`, `svc:admin:widget:read`');
+    // The routes that were NOT widened are untouched: `svcScopes:` appears
+    // exactly once (the plain catalog route — the paginated one passes its
+    // scopes positionally), so `update` carries none.
+    expect(widget.match(/svcScopes:/g)).toHaveLength(1);
   });
 
   it('names every machine-closed controller in the barrel and the namespace', () => {

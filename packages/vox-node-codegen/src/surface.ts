@@ -92,7 +92,7 @@ export function buildAdminSurface(manifest: RouteManifest, document: OpenApiDocu
 
   const byArea = new Map<string, RouteManifestEntry[]>();
   for (const route of reachable) {
-    const key = areaKeyFromScope(route.svcScopes[0]);
+    const key = areaKeyOf(route);
     const bucket = byArea.get(key);
     if (bucket) bucket.push(route);
     else byArea.set(key, [route]);
@@ -101,19 +101,13 @@ export function buildAdminSurface(manifest: RouteManifest, document: OpenApiDocu
   const areas: AdminArea[] = [];
   for (const key of [...byArea.keys()].sort()) {
     const routes = sortRoutes(byArea.get(key) ?? []);
-    const scopes = [...new Set(routes.map((r) => r.svcScopes[0]))];
-    if (scopes.length !== 1) {
-      throw new CrossCheckError([
-        `area '${key}' resolves to more than one svc:* scope (${scopes.join(', ')}). The area key is derived from the scope, so this is impossible ` +
-          `unless two different scopes share an area name — rename one scope rather than teaching the generator an exception.`,
-      ]);
-    }
+    const svcScope = universalScope(key, routes);
 
     areas.push({
       key,
       property: toCamelCase(key),
       className: `Admin${toPascalCase(key)}Resource`,
-      svcScope: scopes[0],
+      svcScope,
       controllers: [...new Set(routes.map((r) => r.controller))].sort(),
       methods: buildMethods(routes, operations, renderer),
     });
@@ -134,6 +128,54 @@ export function buildAdminSurface(manifest: RouteManifest, document: OpenApiDocu
 
 function isMachineReachable(route: RouteManifestEntry): boolean {
   return route.svcScopes.length > 0 && !route.forbidServiceAccount;
+}
+
+/**
+ * The area a route belongs to — derived from EVERY scope it declares, not just
+ * the first.
+ *
+ * A route may declare more than one scope since TASK-773 decision O-3: a read
+ * route accepts its area's `:read` sibling alongside the `:write` twin the
+ * class carries. Those two are the same AREA by construction
+ * ({@link areaKeyFromScope} drops the trailing action segment), so the keys must
+ * agree — and if they ever do not, the route straddles two permission surfaces
+ * and there is no honest resource to put it on. Reading `svcScopes[0]` would
+ * instead have made the answer depend on the ORDER the decorator's arguments
+ * were typed in.
+ */
+function areaKeyOf(route: RouteManifestEntry): string {
+  const keys = [...new Set(route.svcScopes.map(areaKeyFromScope))];
+  if (keys.length !== 1) {
+    throw new CrossCheckError([
+      `${route.method} ${route.path} (${route.controller}.${route.handler}) declares scopes from ${keys.length} different areas ` +
+        `(${route.svcScopes.join(', ')} → ${keys.join(', ')}). A route belongs to exactly one permission surface; a genuine cross-area route ` +
+        `needs its own scope, not a resource that claims to be two.`,
+    ]);
+  }
+  return keys[0];
+}
+
+/**
+ * The single scope that reaches EVERY route of an area — the INTERSECTION of
+ * the routes' declarations.
+ *
+ * Intersection, not union, because this is the scope the generated class
+ * advertises as "what you must hold to use this resource", and a union would
+ * name a scope that reaches only part of it. With O-3 in play the intersection
+ * is the `:write` twin the class-level decorator carries: read routes add the
+ * `:read` sibling on top, so `:read` is not universal and correctly loses.
+ */
+function universalScope(key: string, routes: RouteManifestEntry[]): string {
+  const universal = (routes[0]?.svcScopes ?? []).filter((scope) => routes.every((route) => route.svcScopes.includes(scope)));
+
+  if (universal.length !== 1) {
+    throw new CrossCheckError([
+      `area '${key}' has ${universal.length === 0 ? 'no scope common to all of its routes' : `more than one scope common to all of its routes (${universal.join(', ')})`}. ` +
+        `The area's resource advertises ONE scope as its entry requirement, so exactly one must reach every route: keep the area's twin on the ` +
+        `controller class and add a second scope only on the individual routes that accept it.`,
+    ]);
+  }
+  return universal[0];
 }
 
 function sortRoutes(routes: RouteManifestEntry[]): RouteManifestEntry[] {
@@ -269,6 +311,7 @@ function buildMethods(routes: RouteManifestEntry[], operations: Map<string, Inde
       documentedPath: route.path,
       controller: route.controller,
       handler: route.handler,
+      svcScopes: [...route.svcScopes].sort(),
       pathParams: buildPathParams(route, operation),
       query: rendered.query,
       bodyType: rendered.bodyType,

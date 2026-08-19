@@ -30,6 +30,10 @@ import type {
  * authenticates normally and is then refused here with 403; {@link AdminResource}
  * names the scope in that error's message.
  *
+ * 3 of its routes ALSO accept `svc:admin:role:read`, so a read-only grant reaches
+ * them and nothing else here. Those methods name their own accepted scopes in a 403;
+ * the scope above is the one that reaches EVERY route.
+ *
  * Backed by controller RolesController
  * (10 routes). Several controllers sharing one scope share one
  * resource on purpose: the scope is the permission surface, so the SDK groups
@@ -42,12 +46,15 @@ export class AdminRoleResource extends AdminResource {
    * List all roles
    *
    * `GET /api/v1/admin/rbac/roles` — `RolesController.findAll`.
+   *
+   * Reachable with ANY ONE of `svc:admin:role:read`, `svc:admin:role:write` — the gateway matches required scopes with OR, so the area's `svc:admin:role:write` still reaches this route and a read-only grant now does too.
    */
   findAll(options: AdminRequestOptions & { query?: { page?: number; pageSize?: number; search?: string } } = {}): Promise<PaginatedRoleResponse> {
     return this.request<PaginatedRoleResponse>({
       method: 'GET',
       path: 'admin/rbac/roles',
       query: options.query,
+      svcScopes: ['svc:admin:role:read', 'svc:admin:role:write'],
       signal: options.signal,
       timeoutMs: options.timeoutMs,
     });
@@ -87,11 +94,14 @@ export class AdminRoleResource extends AdminResource {
    * Get role by ID
    *
    * `GET /api/v1/admin/rbac/roles/{id}` — `RolesController.findOne`.
+   *
+   * Reachable with ANY ONE of `svc:admin:role:read`, `svc:admin:role:write` — the gateway matches required scopes with OR, so the area's `svc:admin:role:write` still reaches this route and a read-only grant now does too.
    */
   findOne(id: string, options: AdminRequestOptions = {}): Promise<RoleResponse> {
     return this.request<RoleResponse>({
       method: 'GET',
       path: `admin/rbac/roles/${encodePathSegment(String(id))}`,
+      svcScopes: ['svc:admin:role:read', 'svc:admin:role:write'],
       signal: options.signal,
       timeoutMs: options.timeoutMs,
     });
@@ -146,6 +156,8 @@ export class AdminRoleResource extends AdminResource {
    * List users assigned this role (paginated, tenant-scoped)
    *
    * `GET /api/v1/admin/rbac/roles/{id}/members` — `RolesController.listMembers`.
+   *
+   * Reachable with ANY ONE of `svc:admin:role:read`, `svc:admin:role:write` — the gateway matches required scopes with OR, so the area's `svc:admin:role:write` still reaches this route and a read-only grant now does too.
    */
   listMembers(
     id: string,
@@ -155,6 +167,7 @@ export class AdminRoleResource extends AdminResource {
       method: 'GET',
       path: `admin/rbac/roles/${encodePathSegment(String(id))}/members`,
       query: options.query,
+      svcScopes: ['svc:admin:role:read', 'svc:admin:role:write'],
       signal: options.signal,
       timeoutMs: options.timeoutMs,
     });
