@@ -186,6 +186,18 @@ export function WorkflowCanvas({
     [xyEdges, onEdgesChange],
   );
 
+  // MUST be memoized. React Flow re-subscribes on every new handler identity and re-emits the
+  // current selection, so an inline arrow here fed `onSelect` -> store -> `selectedNodeId` ->
+  // new `xyNodes` -> render -> new handler -> emit again: "Maximum update depth exceeded", which
+  // tore the canvas subtree down the moment a node was selected (observed against the running
+  // stack, 2026-08-19).
+  const handleSelectionChange = React.useCallback(
+    ({ nodes: selected }: { nodes: Node<WorkflowNodeData>[] }) => {
+      onSelect?.(selected[0]?.id ?? null);
+    },
+    [onSelect],
+  );
+
   const handleConnect = React.useCallback(
     (connection: Connection) => {
       onConnect?.({
@@ -216,7 +228,7 @@ export function WorkflowCanvas({
         onNodesChange={handleNodesChange}
         onEdgesChange={handleEdgesChange}
         onConnect={handleConnect}
-        onSelectionChange={({ nodes: selected }) => onSelect?.(selected[0]?.id ?? null)}
+        onSelectionChange={handleSelectionChange}
         nodesDraggable={!readOnly}
         nodesConnectable={!readOnly}
         edgesReconnectable={!readOnly}
