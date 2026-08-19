@@ -207,14 +207,45 @@ export const API_KEY_SCOPE_REGISTRY: Record<string, ScopeDefinition> = {
   'media:file:write': { description: 'Upload media files', category: 'Media', implies: [{ action: 'create', subject: 'Storage' }] },
 
   // Admin
-  'admin:user:read': { description: 'Read user information', category: 'Admin', implies: [{ action: 'read', subject: 'User' }], reserved: true },
+  'admin:user:read': {
+    description: 'Read user information',
+    category: 'Admin',
+    // TASK-773 / O-4 — `read:Admin<X>Directory` is an ADMIN-PLANE-ONLY subject,
+    // minted so a read-only machine grant can clear the admin routes' CASL gate
+    // WITHOUT widening a subject humans already hold. Route decorators are
+    // shared by every principal class, so accepting `read:User` on those
+    // routes instead would have handed them to DEPARTMENT_HEAD and SENIOR_NURSE, which hold `read:User`
+    // tenant-scoped via the `consultation-department-read` policy.
+    // No seeded policy grants this subject, so no human role gains anything;
+    // a service account's abilities are BUILT from its scopes, so it does.
+    // Precedent: `TenantTelemetry`, minted the same way to widen the monitoring
+    // and service-release gates without touching a broad subject.
+    implies: [
+      { action: 'read', subject: 'User' },
+      { action: 'read', subject: 'AdminUserDirectory' },
+    ],
+    reserved: true,
+  },
   'admin:user:write': { description: 'Manage users', category: 'Admin', implies: [{ action: 'manage', subject: 'User' }], reserved: true },
   'admin:apikey:read': { description: 'Read API keys', category: 'Admin', implies: [{ action: 'read', subject: 'ApiKey' }], reserved: true },
   'admin:apikey:write': { description: 'Manage API keys', category: 'Admin', implies: [{ action: 'manage', subject: 'ApiKey' }], reserved: true },
   'admin:tenant:read': {
     description: 'Read tenant configuration',
     category: 'Admin',
-    implies: [{ action: 'read', subject: 'Tenant' }],
+    // TASK-773 / O-4 — `read:Admin<X>Directory` is an ADMIN-PLANE-ONLY subject,
+    // minted so a read-only machine grant can clear the admin routes' CASL gate
+    // WITHOUT widening a subject humans already hold. Route decorators are
+    // shared by every principal class, so accepting `read:Tenant` on those
+    // routes instead would have handed them to EVERY authenticated user, which holds `read:Tenant` via the
+    // `user-profile-own` policy.
+    // No seeded policy grants this subject, so no human role gains anything;
+    // a service account's abilities are BUILT from its scopes, so it does.
+    // Precedent: `TenantTelemetry`, minted the same way to widen the monitoring
+    // and service-release gates without touching a broad subject.
+    implies: [
+      { action: 'read', subject: 'Tenant' },
+      { action: 'read', subject: 'AdminTenantDirectory' },
+    ],
     reserved: true,
   },
   'admin:tenant:write': {

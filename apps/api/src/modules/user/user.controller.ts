@@ -53,7 +53,7 @@ import {
 } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth, ApiParam, ApiQuery, ApiResponse, ApiOperation } from '@nestjs/swagger';
 import { ClsService } from 'nestjs-cls';
-import { ApiEndpoint, CanManage, UserAbility, ForbidApiKey, RequiredSvcScopes } from '../../decorators';
+import { ApiEndpoint, CanAny, CanManage, UserAbility, ForbidApiKey, RequiredSvcScopes } from '../../decorators';
 import {
   UpdateUserStatusRequest,
   BulkDeleteUsersRequest,
@@ -140,6 +140,8 @@ export class UserController {
   })
   @ApiQuery({ name: 'page', required: false, type: Number })
   @ApiQuery({ name: 'pageSize', required: false, type: Number })
+  @CanAny(['manage', 'User'], ['read', 'AdminUserDirectory'])
+  @RequiredSvcScopes('svc:admin:user:read', 'svc:admin:user:write')
   async fetchAll(@Query() queryParams: PaginatedQuery): Promise<PaginatedUserResponse> {
     // Tenant-scope guard: mirrors the AuditLogController guard — non-super-admins
     // are routed to the by-tenant service path scoped to their effective CLS
@@ -207,6 +209,8 @@ export class UserController {
   @ApiQuery({ name: 'format', required: false, enum: ['csv', 'xlsx', 'pdf'] })
   @ApiResponse({ status: 200, description: 'File attachment (csv/xlsx/pdf)' })
   @ApiResponse({ status: 403, description: 'Tenant context required to export users' })
+  @CanAny(['manage', 'User'], ['read', 'AdminUserDirectory'])
+  @RequiredSvcScopes('svc:admin:user:read', 'svc:admin:user:write')
   async exportUsers(@Query() query: ExportUsersQuery): Promise<StreamableFile> {
     const rows = await this.collectExportRows(query);
     const file = await this.userExportService.build(query.format ?? 'csv', rows);
@@ -282,6 +286,8 @@ export class UserController {
   })
   @ApiParam({ name: 'id', description: 'User ID', type: String })
   @ApiResponse({ status: 404, description: 'User not found' })
+  @CanAny(['manage', 'User'], ['read', 'AdminUserDirectory'])
+  @RequiredSvcScopes('svc:admin:user:read', 'svc:admin:user:write')
   async fetchById(@Param('id') id: string): Promise<UserResponse> {
     await this.assertUserInScope(id);
     const result = await this.userService.fetchById(id);
@@ -295,6 +301,8 @@ export class UserController {
     by: ['tenantId'],
   })
   @ApiParam({ name: 'tenantId', description: 'Tenant ID', type: String })
+  @CanAny(['manage', 'User'], ['read', 'AdminUserDirectory'])
+  @RequiredSvcScopes('svc:admin:user:read', 'svc:admin:user:write')
   async fetchByTenant(@Param('tenantId') tenantId: string, @Query() queryParams: PaginatedQuery): Promise<PaginatedUserResponse> {
     // Tenant-scope guard: the class-level `@CanManage('User')` action check does
     // NOT constrain WHICH tenant, so this route asserts it explicitly. Mirrors
@@ -540,6 +548,8 @@ export class UserController {
   @ApiParam({ name: 'id', description: 'User ID', type: String })
   @ApiQuery({ name: 'page', required: false, type: Number })
   @ApiQuery({ name: 'pageSize', required: false, type: Number })
+  @CanAny(['manage', 'User'], ['read', 'AdminUserDirectory'])
+  @RequiredSvcScopes('svc:admin:user:read', 'svc:admin:user:write')
   async fetchUserApiKeys(@Param('id') id: string, @Query() queryParams: PaginatedQuery): Promise<PaginatedApiKeyResponse> {
     await this.assertUserInScope(id);
     const result = await this.apiKeyService.fetchAllByUserId({
@@ -562,6 +572,8 @@ export class UserController {
     schema: { type: 'array', items: { $ref: '#/components/schemas/UserSettingsResponse' } },
   })
   @ApiResponse({ status: 404, description: 'User not found' })
+  @CanAny(['manage', 'User'], ['read', 'AdminUserDirectory'])
+  @RequiredSvcScopes('svc:admin:user:read', 'svc:admin:user:write')
   async fetchUserSettings(@Param('id') id: string): Promise<UserSettingsResponse[]> {
     await this.assertUserInScope(id);
     const settings = await this.userSettingsService.fetchAllByUserId(id);
@@ -630,6 +642,8 @@ export class UserController {
   @ApiQuery({ name: 'page', required: false, type: Number })
   @ApiQuery({ name: 'pageSize', required: false, type: Number })
   @ApiResponse({ status: 200, description: 'Role assignments listed', type: PaginatedUserRoleAssignmentResponse })
+  @CanAny(['manage', 'User'], ['read', 'AdminUserDirectory'])
+  @RequiredSvcScopes('svc:admin:user:read', 'svc:admin:user:write')
   async fetchUserRoleAssignments(@Param('id') id: string, @Query() queryParams: PaginatedQuery): Promise<PaginatedUserRoleAssignmentResponse> {
     await this.assertUserInScope(id);
     const result = await this.userRoleAssignmentService.fetchAllByUserId({
@@ -674,6 +688,8 @@ export class UserController {
   @ApiOperation({ summary: "Get a user's profile (admin)" })
   @ApiParam({ name: 'id', description: 'User ID', type: String })
   @ApiResponse({ status: 200, description: 'Profile retrieved (null when none exists)', type: UserProfileResponse })
+  @CanAny(['manage', 'User'], ['read', 'AdminUserDirectory'])
+  @RequiredSvcScopes('svc:admin:user:read', 'svc:admin:user:write')
   async fetchUserProfile(@Param('id') id: string): Promise<UserProfileResponse | null> {
     await this.assertUserInScope(id);
     const profile = await this.userProfileService.getByUserId(id);
@@ -694,6 +710,8 @@ export class UserController {
   @ApiOperation({ summary: "List a user's enrolled voice profiles (admin, read-only)" })
   @ApiParam({ name: 'id', description: 'User ID', type: String })
   @ApiResponse({ status: 200, description: 'Enrolled voice profiles', type: [VoiceProfileResponse] })
+  @CanAny(['manage', 'User'], ['read', 'AdminUserDirectory'])
+  @RequiredSvcScopes('svc:admin:user:read', 'svc:admin:user:write')
   async fetchUserVoiceProfiles(@Param('id') id: string): Promise<VoiceProfileResponse[]> {
     await this.assertUserInScope(id);
     const profiles = await this.voiceProfileService.listByUserId(id);
