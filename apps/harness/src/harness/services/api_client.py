@@ -262,6 +262,18 @@ def _prune(body: dict[str, Any]) -> dict[str, Any]:
     return {k: v for k, v in body.items() if v is not None}
 
 
+class SttBatchJobResponse(BaseModel):
+    """apps/api ``POST/GET /internal/harness/stt/batch-jobs`` response (TASK-724 Task 5)."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    job_id: str = Field(alias="jobId")
+    status: str
+    progress: int = 0
+    error_message: str | None = Field(default=None, alias="errorMessage")
+    error_code: str | None = Field(default=None, alias="errorCode")
+
+
 class ApiClient:
     """Thin async client for the apps/api ``/internal/harness/*`` endpoints."""
 
@@ -425,6 +437,46 @@ class ApiClient:
             f"/consultations/{consultation_id}/entities", {"tenantId": tenant_id}
         )
         return [_entity_from_payload(e) for e in data.get("entities", [])]
+
+    async def create_stt_batch_job(
+        self,
+        *,
+        tenant_id: str,
+        pipeline_id: str,
+        audio_uri: str,
+        consultation_id: str | None = None,
+        media_id: str | None = None,
+        language: str | None = None,
+    ) -> SttBatchJobResponse:
+        """N-5 `POST /internal/harness/stt/batch-jobs` (TASK-724 Task 5).
+
+        Dispatches through the EXISTING `TranscriptionJobService` /
+        `TranscriptionRealtimeService` write path apps/api's own batch-transcription
+        surface already uses — no second job-processing path in harness. Idempotent
+        on the apps/api side: a retried call with the same ``consultation_id`` +
+        ``pipeline_id`` finds and returns the already-dispatched non-terminal job
+        instead of creating a second one, so this method is safe to call from a
+        retriable Temporal activity as-is.
+        """
+        body = _prune(
+            {
+                "tenantId": tenant_id,
+                "pipelineId": pipeline_id,
+                "audioUri": audio_uri,
+                "consultationId": consultation_id,
+                "mediaId": media_id,
+                "language": language,
+            }
+        )
+        data = await self._post("/stt/batch-jobs", body)
+        return SttBatchJobResponse.model_validate(data)
+
+    async def get_stt_batch_job_status(self, job_id: str, *, tenant_id: str) -> SttBatchJobResponse:
+        """N-5 `GET /internal/harness/stt/batch-jobs/{id}` (TASK-724 Task 5) — the
+        batch-dispatch activity's poll call. Bounded, terminal-state polling only;
+        never a stream (a Temporal activity is not a long-lived connection)."""
+        data = await self._get(f"/stt/batch-jobs/{job_id}", {"tenantId": tenant_id})
+        return SttBatchJobResponse.model_validate(data)
 
     async def assemble(
         self,

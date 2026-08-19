@@ -77,6 +77,7 @@ from harness.services.api_client import (
     PersistEntitiesResponse,
     RecordGateResponse,
     RetractDraftResponse,
+    SttBatchJobResponse,
     TrajectoryStepInput,
 )
 from harness.services.embeddings_client import EmbeddingsClient
@@ -101,6 +102,8 @@ from harness.temporal.models import (
     ConsultationLoopConfig,
     DeriveContextInput,
     DeriveContextResult,
+    DispatchBatchTranscriptionInput,
+    DispatchBatchTranscriptionOutput,
     EmitLoopEventInput,
     EmitLoopEventResult,
     EntitiesResult,
@@ -885,7 +888,9 @@ async def extract_entities(payload: ExtractEntitiesInput) -> EntitiesResult:
     # Resolve the (possibly offloaded) note/transcript before the cold NER pass.
     text = await _resolve_ref(settings, payload.text, payload.text_ref)
     entities = await _nlp_client(settings).classify_tokens(
-        text, tenant_id=_required_tenant(payload.tenant_id, "extract_entities"), language=payload.language
+        text,
+        tenant_id=_required_tenant(payload.tenant_id, "extract_entities"),
+        language=payload.language,
     )
     batch.record(
         step_type=STEP_TOOL_CALL,
@@ -1443,6 +1448,91 @@ async def retrieve_context(payload: RetrieveContextInput) -> RetrievedContext:
     )
     await batch.flush()
     return RetrievedContext(chunks=chunks, degraded=result.degraded, prompt_block=prompt_block)
+
+
+def _stt_batch_job_output(
+    resp: SttBatchJobResponse, *, timed_out: bool = False
+) -> DispatchBatchTranscriptionOutput:
+    return DispatchBatchTranscriptionOutput(
+        job_id=resp.job_id,
+        status=resp.status,
+        progress=resp.progress,
+        error_message=resp.error_message,
+        error_code=resp.error_code,
+        timed_out=timed_out,
+    )
+
+
+# Non-terminal `TranscriptionJobStatus` values (mirrors
+# `packages/domains/src/enums/generated/TranscriptionJobStatus.ts`; QUEUED/PROCESSING
+# keep polling, COMPLETED/FAILED/CANCELLED/DEAD are terminal). Duplicated here rather
+# than shared cross-language — see the ticket README's own "cross-language enum drift"
+# risk note, same posture already accepted for `ModelTaskType`/`LanguageModeKind`.
+_STT_JOB_NON_TERMINAL_STATUSES = frozenset({"QUEUED", "PROCESSING"})
+
+
+@activity.defn
+async def dispatch_batch_transcription(
+    payload: DispatchBatchTranscriptionInput,
+) -> DispatchBatchTranscriptionOutput:
+    """TASK-724 Task 5 — the STT palette's batch-trigger activity.
+
+    Given a resolved `AsrPipeline` id (README §1's central design decision: a
+    published `stt` `WorkflowDefinition` compiles to an `AsrPipeline`, it is never
+    walked node-by-node by this interpreter) and a batch job's audio reference, this
+    is the ONE place harness dispatches STT batch work: it calls apps/api's
+    `POST /internal/harness/stt/batch-jobs`, which itself calls the EXACT SAME
+    `TranscriptionJobService.createBatchJob` + `TranscriptionRealtimeService.
+    dispatchDramatiqJob` calls `TranscriptionJobController`'s own batch handlers
+    already make — no duplicate job-processing logic in harness, and no per-frame
+    audio or per-node execution inside this (or any) Temporal workflow.
+
+    Idempotent / retriable: apps/api itself dedups on (`consultation_id`,
+    `pipeline_id`) for a non-terminal job, so a Temporal retry of this ENTIRE
+    activity (worker crash, network blip) re-POSTs safely and gets back the
+    already-dispatched job rather than a duplicate. The poll loop is real wall-clock
+    `asyncio.sleep` (never Temporal's own clock — this is I/O, not workflow code) and
+    is bounded by `payload.poll_timeout_seconds`; hitting the ceiling returns
+    `timed_out=True` on the LAST-OBSERVED (non-terminal) status rather than raising —
+    the job keeps running on apps/api/apps/stt, so a timeout here is "poll again
+    later", not "the job failed."
+    """
+    settings = get_settings()
+    client = _api_client(settings)
+
+    try:
+        created = await client.create_stt_batch_job(
+            tenant_id=payload.tenant_id,
+            pipeline_id=payload.pipeline_id,
+            audio_uri=payload.audio_uri,
+            consultation_id=payload.consultation_id,
+            media_id=payload.media_id,
+            language=payload.language,
+        )
+    except ApiServiceError as exc:
+        raise ApplicationError(
+            f"dispatch_batch_transcription: create failed: {exc}", type="SttBatchDispatchFailed"
+        ) from exc
+
+    if created.status not in _STT_JOB_NON_TERMINAL_STATUSES:
+        return _stt_batch_job_output(created)
+
+    deadline = asyncio.get_running_loop().time() + payload.poll_timeout_seconds
+    latest = created
+    while latest.status in _STT_JOB_NON_TERMINAL_STATUSES:
+        if asyncio.get_running_loop().time() >= deadline:
+            return _stt_batch_job_output(latest, timed_out=True)
+        await asyncio.sleep(payload.poll_interval_seconds)
+        try:
+            latest = await client.get_stt_batch_job_status(
+                created.job_id, tenant_id=payload.tenant_id
+            )
+        except ApiServiceError as exc:
+            raise ApplicationError(
+                f"dispatch_batch_transcription: poll failed: {exc}", type="SttBatchPollFailed"
+            ) from exc
+
+    return _stt_batch_job_output(latest)
 
 
 @activity.defn
@@ -2526,6 +2616,8 @@ DOCUMENT_ACTIVITIES: list[Callable[..., Any]] = [
     record_gate_decision,
     escalate_gate,
     report_progress,
+    # TASK-724 Task 5 — the STT palette's batch-trigger activity.
+    dispatch_batch_transcription,
 ]
 
 # ---------------------------------------------------------------------------
