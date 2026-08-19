@@ -93,3 +93,5 @@ export * from './WorkflowRunFactory';
 export * from './WorkflowDefinitionFactory';
 export * from './TenantNlpTaskInstructionsFactory';
 export * from './ServiceAccountFactory';
+export * from './WorkflowAssignmentChangeFactory';
+export * from './WorkflowAssignmentFactory';

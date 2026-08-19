@@ -114,4 +114,10 @@ export enum ResourceType {
   // resourceType.enum-parity.test.ts.
   KnowledgeDocument = 'KnowledgeDocument',
   ServiceAccount = 'ServiceAccount',
+  // Per-scope workflow assignment (TASK-733) — WHICH workflow definition
+  // governs a tenant/department for a palette. Its own audited resource:
+  // WorkflowAssignmentService broadcasts on every mutation, and the
+  // assignment is a governance act distinct from the definition it points
+  // at. Parity with audit.prisma; see resourceType.enum-parity.test.ts.
+  WorkflowAssignment = 'WorkflowAssignment',
 }

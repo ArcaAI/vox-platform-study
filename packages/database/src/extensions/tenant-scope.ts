@@ -277,6 +277,16 @@ export const TENANT_SCOPED_MODELS: ReadonlySet<string> = new Set([
   // tenant's fixtures are never visible cross-tenant. Keeps soft delete
   // (NOT in MODELS_WITHOUT_SOFT_DELETE).
   'WorkflowTestFixture',
+  // workflow-assignment.prisma — WHICH workflow definition governs a
+  // tenant/department for a palette (TASK-733). Ordinary tenant-owned rows.
+  // Deliberately NOT in SYSTEM_SHARED_READ_MODELS: the platform-default tier
+  // is the tenant's OWN active published definition for the palette (the
+  // seed's clone path), never a SYSTEM-tenant assignment row read
+  // cross-tenant — the same posture WorkflowDefinition records above.
+  'WorkflowAssignment',
+  // Its append-only WORM change log (no soft-delete; see
+  // MODELS_WITHOUT_SOFT_DELETE in client.ts).
+  'WorkflowAssignmentChange',
 ]);
 
 /**

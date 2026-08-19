@@ -93,3 +93,5 @@ export * from './WorkflowRunEntity';
 export * from './WorkflowDefinitionEntity';
 export * from './TenantNlpTaskInstructionsEntity';
 export * from './ServiceAccountEntity';
+export * from './WorkflowAssignmentChangeEntity';
+export * from './WorkflowAssignmentEntity';

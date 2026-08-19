@@ -97,6 +97,8 @@ import { WebhookRepository } from '../../../repositories/generated/core/WebhookR
 import { WebhookRunHistoryRepository } from '../../../repositories/generated/core/WebhookRunHistoryRepository';
 import { WorkflowRunRepository } from '../../../repositories/generated/core/WorkflowRunRepository';
 import { WorkflowDefinitionRepository } from '../../../repositories/generated/core/WorkflowDefinitionRepository';
+import { WorkflowAssignmentRepository } from '../../../repositories/generated/core/WorkflowAssignmentRepository';
+import { WorkflowAssignmentChangeRepository } from '../../../repositories/generated/core/WorkflowAssignmentChangeRepository';
 import { WorkflowTestFixtureRepository } from '../../../repositories/generated/core/WorkflowTestFixtureRepository';
 
 // Async provider so the (possibly Vault-backed) Prisma client
@@ -276,6 +278,9 @@ const repositories = [
   // The workflow-definition/version rows themselves (TASK-715 domain trio,
   // completed under TASK-722 — see that ticket's README §7 for why).
   WorkflowDefinitionRepository,
+  // Per-scope workflow assignment + its append-only WORM change log (TASK-733).
+  WorkflowAssignmentRepository,
+  WorkflowAssignmentChangeRepository,
 ];
 
 @Module({

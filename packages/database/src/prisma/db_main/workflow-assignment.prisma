@@ -1,0 +1,107 @@
+// =============================================================================
+// Workflow assignment — WHICH workflow definition governs a given scope
+// (TASK-733 half (a)).
+//
+// `WorkflowDefinition` (TASK-715) says WHAT a workflow is; this table says WHO
+// uses it. Deliberately a SEPARATE row rather than a `departmentId` column on
+// `WorkflowDefinition` (TASK-733 §1.3): a definition would otherwise need one
+// row per department, defeating the `(tenantId, slug, versionNumber)` lineage,
+// and a department reassignment would become a definition EDIT — which the
+// published-row immutability the whole substrate rests on forbids.
+//
+// The shape mirrors `PipelinePolicy` (pipeline-policy.prisma) exactly —
+// `(scope, scopeId)` over the SAME `PipelinePolicyScope` enum — so the
+// resolution is the SAME first-set-wins walk (`walkCascade`,
+// packages/applications/src/services/settings-registry/scope-cascade.ts) that
+// `ConfigResolver.resolveOne` already performs. One shape, one resolution
+// semantics, one audit pattern. This ticket exposes the DEPARTMENT and TENANT
+// tiers only; DOCTOR is expressible but is a product decision nobody has made
+// (TASK-733 §1.4), and the service rejects it.
+//
+//   department override → tenant default → platform default (SYSTEM tenant)
+//
+// `workflowDefinitionSlug` is a LINEAGE key, not a version pointer: the ACTIVE
+// PUBLISHED version of that slug is resolved at dispatch time, so a republish
+// moves every assignment forward without touching a single assignment row.
+//
+// `WorkflowAssignmentChange` is the APPEND-ONLY WORM change log, mirroring
+// `PipelinePolicyChange`: assignment edits are the same class of governance act
+// as policy edits, and `AuditLog` is recorded (02-conformance-matrix.md) as
+// "mutable, unchained, and hard-deletable via a live cron" — so the trail lives
+// here, and the migration REVOKEs UPDATE/DELETE on it for the app role.
+// =============================================================================
+
+model WorkflowAssignment {
+  // meta fields
+  metaData Json?  @map("_metadata") @db.JsonB
+  version  Int    @default(1) @map("_version")
+  id       String @id @default(uuid(7))
+
+  // multi tenant fields
+  tenantId String
+
+  // core (business) fields
+  // Scope discriminator, reusing PipelinePolicyScope rather than declaring a
+  // parallel enum: TENANT (scopeId null) | DEPARTMENT (scopeId = departmentId).
+  scope   PipelinePolicyScope @default(TENANT)
+  scopeId String?
+
+  // Which registered palette this assignment governs. A String, not an enum —
+  // palettes are code-registry data (the same call WorkflowDefinition.paletteKey
+  // makes); the service validates it against the registry on every write.
+  paletteKey String
+
+  // The lineage key of the assigned definition. The ACTIVE PUBLISHED version is
+  // resolved at dispatch; validated at WRITE time against a PUBLISHED definition
+  // for this tenant on this palette (TASK-733 §3.2 — references get referential
+  // validation).
+  workflowDefinitionSlug String
+
+  // resource status fields
+  resourceStatus          ResourceStatusType @default(ENABLED)
+  resourceStatusUpdatedAt DateTime?
+  resourceStatusUpdatedBy String?
+
+  // audit fields
+  createdBy String?  @default("60000000-0000-0000-0000-000000000000")
+  updatedBy String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // constraints + indexes — `map:` names the DB index; `name:` would only set
+  // the client-facing compound key (rule 02 §@@unique).
+  @@unique([tenantId, scope, scopeId, paletteKey], map: "WorkflowAssignment_scope_palette_unique")
+  @@index([tenantId], name: "WorkflowAssignment_tenantId_idx")
+  @@index([tenantId, paletteKey], name: "WorkflowAssignment_tenant_palette_idx")
+  @@schema("core")
+}
+
+model WorkflowAssignmentChange {
+  // Identity only — NO _version / _metadata / updatedAt / resourceStatus.
+  // Rows are immutable (append-only); the migration REVOKEs UPDATE/DELETE
+  // on this table from the application role.
+  id String @id @default(uuid(7))
+
+  tenantId String
+
+  // Which assignment row was edited (mirrors the discriminator above).
+  scope      PipelinePolicyScope @default(TENANT)
+  scopeId    String?
+  paletteKey String
+
+  // Who changed it + the assignment row's OCC version AFTER the edit.
+  changedBy         String?
+  assignmentVersion Int?
+
+  // The governed fact, before and after. Null `beforeSlug` => the assignment was
+  // created by this change; null `afterSlug` => it was removed.
+  beforeSlug String?
+  afterSlug  String?
+  reason     String? @db.Text
+
+  createdAt DateTime @default(now())
+
+  @@index([tenantId], name: "WorkflowAssignmentChange_tenantId_idx")
+  @@index([tenantId, createdAt], name: "WorkflowAssignmentChange_tenant_createdAt_idx")
+  @@schema("core")
+}

@@ -96,6 +96,8 @@ export * from './UserSettingsModel';
 export * from './UserVoiceProfileModel';
 export * from './WebhookModel';
 export * from './WebhookRunHistoryModel';
+export * from './WorkflowAssignmentChangeModel';
+export * from './WorkflowAssignmentModel';
 export * from './WorkflowDefinitionModel';
 export * from './WorkflowRunModel';
 export * from './WorkflowTestFixtureModel';
