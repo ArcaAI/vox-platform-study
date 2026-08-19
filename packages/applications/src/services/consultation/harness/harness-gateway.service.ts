@@ -262,6 +262,41 @@ export interface CancelWorkflowRunResult {
 }
 
 /**
+ * Response of `GET /workflow-runs/{runId}/gate` — the live state of a run's HITL gate, read
+ * from the CHILD workflow's own `state` query (TASK-731 Phase B).
+ *
+ * `exists: false` is the normal answer for every run without a gate; it is NOT an error.
+ * `waiting` is the only field a caller should key an Approve affordance off — `WorkflowRunStatus`
+ * cannot answer it (a run parked on a human and a run busy generating text are both `RUNNING`).
+ */
+export interface WorkflowRunGateState {
+  runId: string;
+  workflowId: string;
+  exists: boolean;
+  waiting: boolean;
+  phase?: string;
+  escalations?: number;
+  approved?: boolean;
+}
+
+/** Body for `POST /workflow-runs/{runId}:approve`. */
+export interface ApproveWorkflowRunGateInput {
+  decision?: string;
+  /** The ACTING user, resolved server-side from CLS — never accepted from a client body. */
+  clinicianId?: string;
+  contextItemVersionId?: string;
+  attestationHash?: string;
+  tenantId?: string;
+}
+
+/** Response of `POST /workflow-runs/{runId}:approve`. */
+export interface ApproveWorkflowRunGateResult {
+  runId: string;
+  workflowId: string;
+  signaled: boolean;
+}
+
+/**
  * HarnessGatewayService.
  *
  * The OUTBOUND half of the apps/api <-> apps/harness gate adapter. Uses Nest
@@ -442,7 +477,15 @@ export class HarnessGatewayService {
    * caller's job (`WorkflowExposureService`).
    */
   async startWorkflowRun(input: StartWorkflowRunInput): Promise<StartWorkflowRunResult> {
-    const url = `${this.harnessUrl}/api/v1/workflow-runs:start`;
+    // EVERY harness route in this client lives under `/api/v1/internal` — `main.py:131-136`
+    // mounts the health router at `/api/v1` and every other router, including the interpreter's,
+    // under `/api/v1/internal`. The four interpreter-run methods here shipped without that
+    // segment and therefore addressed paths FastAPI does not route: a missing route answers
+    // `{"detail":"Not Found"}`, whereas the real handler answers `{"detail":"workflow run not
+    // found"}` — which is how the difference was confirmed rather than assumed. Fixed
+    // 2026-08-19; see TASK-722's README for the consequence (no interpreter run could be
+    // started, read or cancelled through the gateway).
+    const url = `${this.harnessUrl}/api/v1/internal/workflow-runs:start`;
     const body = {
       runId: input.runId,
       sessionId: input.sessionId,
@@ -459,7 +502,7 @@ export class HarnessGatewayService {
 
   /** Status/result read surface: `Temporal.describe()` + the workflow's `state` query. */
   async getWorkflowRun(runId: string): Promise<GetWorkflowRunResult> {
-    const url = `${this.harnessUrl}/api/v1/workflow-runs/${runId}`;
+    const url = `${this.harnessUrl}/api/v1/internal/workflow-runs/${runId}`;
     const response = await this.httpService.axiosRef.get(url, { headers: await this.buildHeaders(), timeout: WORKFLOW_RUN_HTTP_TIMEOUT_MS });
     return response.data as GetWorkflowRunResult;
   }
@@ -470,10 +513,30 @@ export class HarnessGatewayService {
    * TASK-722's README names, `harness-admin.controller.ts:485`).
    */
   async cancelWorkflowRun(runId: string): Promise<CancelWorkflowRunResult> {
-    const url = `${this.harnessUrl}/api/v1/workflow-runs/${runId}:cancel`;
+    const url = `${this.harnessUrl}/api/v1/internal/workflow-runs/${runId}:cancel`;
     const response = await this.httpService.axiosRef.post(url, {}, { headers: await this.buildHeaders(), timeout: WORKFLOW_RUN_HTTP_TIMEOUT_MS });
     this.logger.log({ message: 'Harness workflow run cancel requested', runId });
     return response.data as CancelWorkflowRunResult;
+  }
+
+  /** Live gate state for a run. See `WorkflowRunGateState` — `exists: false` is a normal 200. */
+  async getWorkflowRunGate(runId: string): Promise<WorkflowRunGateState> {
+    const url = `${this.harnessUrl}/api/v1/internal/workflow-runs/${runId}/gate`;
+    const response = await this.httpService.axiosRef.get(url, { headers: await this.buildHeaders(), timeout: WORKFLOW_RUN_HTTP_TIMEOUT_MS });
+    return response.data as WorkflowRunGateState;
+  }
+
+  /**
+   * Release a run's HITL gate with a clinician decision — the interpreter-driven counterpart of
+   * `signalApproval` (which targets `HarnessDocWorkflow` by consultation id). Signals the GATE
+   * CHILD workflow, addressed by the run id; a CODE allow-list exactly like `cancelWorkflowRun`,
+   * never a caller-supplied signal name.
+   */
+  async approveWorkflowRunGate(runId: string, input: ApproveWorkflowRunGateInput): Promise<ApproveWorkflowRunGateResult> {
+    const url = `${this.harnessUrl}/api/v1/internal/workflow-runs/${runId}:approve`;
+    const response = await this.httpService.axiosRef.post(url, { ...input }, { headers: await this.buildHeaders(), timeout: WORKFLOW_RUN_HTTP_TIMEOUT_MS });
+    this.logger.log({ message: 'Harness workflow run gate approval sent', runId, decision: input.decision });
+    return response.data as ApproveWorkflowRunGateResult;
   }
 
   private async buildHeaders(): Promise<Record<string, string>> {

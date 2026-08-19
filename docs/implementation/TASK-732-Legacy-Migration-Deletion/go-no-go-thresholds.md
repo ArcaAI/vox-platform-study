@@ -286,7 +286,7 @@ human reviewing an inside-the-band result decides the same): this ticket **stops
 Phases 2-4 do not execute. The finding is recorded in this document's Task 3 verdict section (not
 yet added — Task 3 is out of this pass) and a design-change proposal is raised against:
 
-- `docs/architecture/agentic-workflow-platform/design.md` — D1's decision log (the "entry-point
+- `docs/programs/agentic-workflow-platform/design.md` — D1's decision log (the "entry-point
   seam now → capped legacy floor → harness-only, legacy deleted" staged plan) gets an amended
   final phase: permanent dual-generator support, not deletion.
 - `docs/architecture/consultation-session-workflow/assessment/04-target-architecture.md` —

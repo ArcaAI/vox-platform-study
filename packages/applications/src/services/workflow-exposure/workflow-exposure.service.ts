@@ -136,6 +136,15 @@ export class WorkflowExposureService extends BaseService implements IWorkflowExp
       tenantId,
       configRef,
       sandbox: false,
+      // The caller's invocation input, forwarded verbatim into `InterpreterInput.payload` —
+      // which is what `input.context_binding`'s `bindings[].from` paths resolve against
+      // (`'payload.text'` addresses `{"payload": run_payload}`). This was missing: `dto.input`
+      // was accepted and validated at the route, then never sent, so every invoked run executed
+      // against an EMPTY payload and any graph with a required input binding failed with
+      // "required kind '<k>' (from 'payload.<k>') missing from run payload". The field already
+      // existed on `StartWorkflowRunInput` for TASK-721's Workbench path; only this call site
+      // omitted it.
+      payload: dto.input,
     });
 
     this.broadcastSysEvent(SysEventType.ResourceCreated, {

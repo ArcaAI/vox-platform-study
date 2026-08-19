@@ -1,8 +1,17 @@
-import { CursorPage, IActiveUserContext, isSuperAdmin, IWorkflowRunService, RunTraceResponse, WorkflowRunResponse } from '@arcaai/applications';
-import { Controller, ForbiddenException, Get, Inject, Param, Query } from '@nestjs/common';
+import {
+  ApproveRunGateInput,
+  CursorPage,
+  IActiveUserContext,
+  isSuperAdmin,
+  IWorkflowRunService,
+  RunGateStateResponse,
+  RunTraceResponse,
+  WorkflowRunResponse,
+} from '@arcaai/applications';
+import { Body, Controller, ForbiddenException, Get, Inject, Param, Post, Query } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiParam, ApiQuery, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { ClsService } from 'nestjs-cls';
-import { CanRead, ForbidApiKey, RequiredSvcScopes } from '../../decorators';
+import { Authorize, CanRead, ForbidApiKey, RequiredSvcScopes } from '../../decorators';
 import { ListWorkflowRunsQuery } from './dto';
 
 /**
@@ -19,7 +28,10 @@ import { ListWorkflowRunsQuery } from './dto';
  * tenant id. Cross-tenant / nonexistent run ids are 404 (never 403) —
  * enforced inside `WorkflowRunService` and propagated here.
  *
- * Gated at the class level by `@CanRead('WorkflowRun')` — read-only.
+ * Gated at the class level by `@CanRead('WorkflowRun')`. Read-only EXCEPT
+ * `POST :runId/gate/approve`, which overrides it with `@Authorize(['update',
+ * 'Consultation'])` — see that route's own AUTH-NOTE for why reading a runs
+ * list must not imply the authority to sign a clinical note.
  *
  * Distinct from `/admin/agent-trajectory` (tier 10-19, super-admin
  * cross-tenant platform ops — see `AgentTrajectoryController`) and from the
@@ -90,6 +102,55 @@ export class WorkflowRunController {
   async getRunTrace(@Param('runId') runId: string): Promise<RunTraceResponse> {
     const tenantId = this.resolveWorkingTenantId();
     return this.workflowRunService.getRunTrace(tenantId, runId);
+  }
+
+  @Get(':runId/gate')
+  @ApiOperation({
+    summary: "Live state of the run's human-approval gate, read from the gate child workflow. Cross-tenant / nonexistent id → 404.",
+    description:
+      'Read LIVE rather than from the read model, deliberately: `WorkflowRunStatus` has no ' +
+      '"waiting on a human" member, so a run parked at its gate and a run busy generating text ' +
+      'are both RUNNING. `exists: false` is the normal answer for every run without a gate — a ' +
+      '200, not an error. Key an Approve affordance off `waiting` and nothing else.',
+  })
+  @ApiParam({ name: 'runId', description: 'The domain run id.' })
+  @ApiResponse({ status: 200, type: RunGateStateResponse })
+  @ApiResponse({ status: 404, description: 'Run not found for the tenant (absent or belongs to another tenant).' })
+  @ApiResponse({ status: 503, description: 'The harness could not be reached — never reported as "no gate".' })
+  async getRunGate(@Param('runId') runId: string): Promise<RunGateStateResponse> {
+    const tenantId = this.resolveWorkingTenantId();
+    return this.workflowRunService.getRunGate(tenantId, runId);
+  }
+
+  /**
+   * Release a run's human-approval gate.
+   *
+   * AUTH-NOTE: the class-level `@CanRead('WorkflowRun')` UNDERSTATES this route's real gate, and
+   * a method-level decorator overrides it here on purpose. Signing a clinical note is not a
+   * workflow-run-observability action — reading a runs list must never imply the authority to
+   * sign. `update:Consultation` is the ability that governs clinical content today, so it is the
+   * one required here; the run row's tenant scope (asserted in the service, 404-over-403) is the
+   * separate, orthogonal boundary.
+   *
+   * The recorded clinician is the ACTING user, resolved server-side in the service. There is no
+   * request field that can name a different signer, by construction — see `ApproveRunGateInput`.
+   */
+  @Post(':runId/gate/approve')
+  @Authorize(['update', 'Consultation'])
+  @ApiOperation({
+    summary: "Release the run's human-approval gate with a clinician decision.",
+    description:
+      'The approving clinician is the acting user; it cannot be supplied by the caller. A run ' +
+      'with no gate, or whose gate is not currently waiting, is rejected with 400 rather than ' +
+      'reporting a sign-off that reached nothing.',
+  })
+  @ApiParam({ name: 'runId', description: 'The domain run id.' })
+  @ApiResponse({ status: 200, type: RunGateStateResponse, description: 'The gate state after the decision was delivered.' })
+  @ApiResponse({ status: 400, description: 'This run has no gate, or its gate is not waiting for a decision.' })
+  @ApiResponse({ status: 404, description: 'Run not found for the tenant (absent or belongs to another tenant).' })
+  async approveRunGate(@Param('runId') runId: string, @Body() body: ApproveRunGateInput): Promise<RunGateStateResponse> {
+    const tenantId = this.resolveWorkingTenantId();
+    return this.workflowRunService.approveRunGate(tenantId, runId, body ?? {});
   }
 
   /**

@@ -6,8 +6,16 @@
  * covers — README §2.4, cross-linked not forked).
  */
 
-import { getJson } from '@/shared/api';
-import type { ListWorkflowRunsParams, RunTrace, WorkflowDefinitionSlice, WorkflowRun, WorkflowRunsPage } from './types';
+import { getJson, postJson } from '@/shared/api';
+import type {
+  ApproveRunGateBody,
+  ListWorkflowRunsParams,
+  RunGateState,
+  RunTrace,
+  WorkflowDefinitionSlice,
+  WorkflowRun,
+  WorkflowRunsPage,
+} from './types';
 
 const WORKFLOW_RUNS = 'admin/workflow-runs';
 const WORKFLOW_DEFINITIONS = 'admin/workflow-definitions';
@@ -32,4 +40,18 @@ export function getRunTrace(runId: string): Promise<RunTrace> {
  */
 export function getWorkflowDefinitionVersion(workflowVersionId: string): Promise<WorkflowDefinitionSlice> {
   return getJson(`${WORKFLOW_DEFINITIONS}/${encodeURIComponent(workflowVersionId)}`);
+}
+
+/**
+ * Live gate state. Read from the gate child workflow server-side rather than from the run row,
+ * because `WorkflowRunStatus` has no "waiting on a human" member — a run parked at its gate and
+ * a run busy generating text are both `RUNNING`.
+ */
+export function getRunGate(runId: string): Promise<RunGateState> {
+  return getJson(`${WORKFLOW_RUNS}/${encodeURIComponent(runId)}/gate`);
+}
+
+/** Release the gate. The approving clinician is the acting user — never sent from here. */
+export function approveRunGate(runId: string, body: ApproveRunGateBody): Promise<RunGateState> {
+  return postJson(`${WORKFLOW_RUNS}/${encodeURIComponent(runId)}/gate/approve`, body);
 }
