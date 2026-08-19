@@ -1,4 +1,4 @@
-# TASK-769 · 770 · 771 — Admin-Console System Conformance
+# TASK-769 — Admin-Console Detail-Surface Conformance
 
 | Field | Value |
 |---|---|
@@ -8,17 +8,20 @@
 | **Opened** | 2026-08-19 |
 | **Surface** | `apps/admin-console`, plus one shared ESLint preset |
 | **Follows** | [TASK-765](../TASK-765-Design-System-Conformance/README.md) (token foundation) |
+| **Related (split out 2026-08-19)** | [TASK-774](../TASK-774-Page-Frame-Conformance/README.md) (page-frame conformance), [TASK-775](../TASK-775-Table-Conformance/README.md) (table conformance) |
 
 ## Requirement Analysis
 
 Apply the HOPE design system consistently across the admin console, following the TASK-765 token
-work. Split into three sub-tickets by the kind of drift, each with disjoint file ownership:
+work. This ticket's scope is the 8 feature modules that hand-roll a detail `Sheet` instead of
+using the console-wide `DetailDrawer` (`.claude/rules/11-ux-ui-principles.md` §1 "Detail Surface").
 
-| Ticket | Scope |
-|---|---|
-| **769** | 8 feature modules hand-rolling a detail `Sheet` instead of `DetailDrawer` |
-| **770** | 8 screens without `ScreenTemplate`, 12 without `StatusFooter`, 2 rule-10 loading violations |
-| **771** | 10 table surfaces measured against the rule-11 table contract |
+This document originally also carried two other sub-tickets ("770" page-frame conformance, "771"
+table conformance) under a combined `TASK-769 · 770 · 771` title. Both were split out on
+2026-08-19 after a second numbering collision (see Change History) — they now live at
+**[TASK-774-Page-Frame-Conformance](../TASK-774-Page-Frame-Conformance/README.md)** and
+**[TASK-775-Table-Conformance](../TASK-775-Table-Conformance/README.md)**. This document keeps only
+the DetailDrawer migration, which is TASK-769's own scope.
 
 ## Current State Evaluation
 
@@ -38,13 +41,13 @@ everywhere" implied broad non-conformance. It is not there:
 The 4 `animate-pulse` hits are live-status indicators (recording dot, streaming caret), not
 skeletons — and are now covered by TASK-765's token-layer reduced-motion block regardless.
 
-**Conclusion: there was no sweep to do.** The real drift was three specific structural gaps, which
-became 769/770/771. Recording this because the instinct to run a broad codemod here would have
-produced churn without conformance.
+**Conclusion: there was no broad sweep to do.** The real drift in the console was three specific
+structural gaps (detail sheets, page frames, tables), which became three separate tickets. This
+document covers the first — detail sheets → `DetailDrawer`.
 
 ## Implementation Summary
 
-### TASK-769 — 8 hand-rolled sheets → `DetailDrawer`
+### 8 hand-rolled sheets → `DetailDrawer`
 
 All 8 migrated; `SheetContent` under `src/features/**` is now **0**. Widths preserved on 7;
 `api-key-usage-sheet` widened from `sm:max-w-md` to the drawer's narrowest size (`md`) as a
@@ -82,117 +85,6 @@ Latent bug found in passing: `bucket-browser-sheet` rendered its `SheetHeader` *
 conditional body, so with a null bucket the sheet had no `SheetTitle`. Never triggered in practice;
 now structurally impossible.
 
-### TASK-770 — page-frame conformance
-
-**`ScreenTemplate` adopted on 6** screens: four playground surfaces at `contentMode="scroll"`,
-`consultation-demo` at `fill` (its `ResizablePanelGroup` owns the height and the columns scroll
-internally), plus `workbench`. Pinned header/tabs/toolbar are width-matched to the
-`PlaygroundCanvas` caps (760 / 1100 / 1440px) so they stay aligned with the work column. No
-`position: sticky` was introduced — pinned regions remain `shrink-0` flex rows, preserving the
-WCAG 2.4.11 property that makes `ScreenTemplate` worth having.
-
-**3 exemptions, each with an in-file comment:**
-
-- `auth/verify-email-screen`, `auth/reset-password-screen` — they render under `app/(auth)/*/page.tsx`
-  inside a bare centred `<main>`, with **no `(auth)` layout at all**: no `SidebarProvider`, no
-  `SiteHeader`, no banners. `ScreenTemplate` is a `min-h-0 flex-1` column that assumes the console
-  shell's content region; there is none and no chrome to pin. Login and register follow the same
-  centred-card frame.
-- `knowledge-documents-screen` — an audit false positive on my part. The file is a bare
-  `WorkingTenantGate` wrapper; the real frame (`ScreenTemplate contentMode="fill"` + `StatusFooter`
-  around a `VirtualizedDataGrid`) already exists one level down in `knowledge-documents-list.tsx`.
-  Adding a template here would nest two frames and two scroll containers.
-
-**`StatusFooter` added to 5, moved into the slot on 3, skipped on 1.** Three screens already had
-status lines living in the wrong region (an in-tab `footerStatus()`, a toolbar `FOOTER_STATUS` map,
-a `ScribeFooter`) — those were moved into the pinned slot rather than duplicated. The
-`consultation-review` footer carries the clinical finding the screen exists to expose
-(*N of M claims could not be traced to the transcript*), shared across all four branches so the
-frame does not shift between states. `workflow-studio-screen` was **skipped deliberately**: its
-real frame and status bar live in `workflow-studio-editor.tsx`, and the three frames remaining in
-the file (create form, error, loading) have no count, connection state or last-updated — an empty
-bar would be worse than none. Documented in the file header.
-
-Two footers deliberately avoid repeating in-content text (the DNA footer states the phase rather
-than the SSE percentage the pane already renders; the LLM footer drops `end` because
-`RequestSummaryStrip` carries provider/model/task) — otherwise the polite live region
-double-announces.
-
-**Rule-10 fixes:** `changelog-entry-drawer` and `test-run-panel` replaced bare `Loading…` text with
-`<Skeleton>` compositions mirroring the loaded shape.
-
-Also fixed in passing: `consultation-demo-screen` **had no `h1` at all** (rule 11 §6); the
-`ScreenTemplate` header now supplies one.
-
-### TASK-771 — table conformance: audit first, migrate second
-
-**Migrated to `AdminDataGrid`: none — and that is the correct outcome.**
-
-8 of 10 are not record lists: permission matrices, checkbox grids, fixed comparison tables and
-key/value summaries iterating compile-time constants. A virtualized server-driven grid would be
-actively worse for every one of them.
-
-The 2 that genuinely *are* record lists (`tools-mcp-screen`, `gate-queue-panel`) are **blocked by
-the backend contract, not by preference**: `AdminDataGrid` hardcodes
-`manual={{ sorting: true, filtering: true, pagination: true }}`
-([admin-data-grid.tsx:194](../../../apps/admin-console/src/shared/data/admin-data-grid.tsx)) and is
-strictly server-driven, while `getGateQueue()` and `listMcpServers()` take **no parameters** and
-`GET /admin/mcp-servers` accepts only `?tenantId=`. Wiring the grid over a paramless endpoint would
-ship sort and pager controls that silently do nothing. Verified independently against all three
-sources.
-
-All ten were brought up to the rule-11 table contract in place. Real defects found and fixed:
-
-1. **`pipeline-policy-screen` was mouse-only** (WCAG 2.1.1) — a `<TableRow onClick>` was the sole
-   path to the scope editor, with no keyboard route at all. Now a real `<button>` with
-   `aria-pressed`; the row click stays as a pointer affordance.
-2. **4 raw `<table>` scroll containers were not keyboard-reachable** (axe
-   `scrollable-region-focusable`) — bare `overflow-x-auto` divs, now `tabIndex={0}` +
-   `role="region"` + label, per the `DetailDrawer` precedent.
-3. Two unnamed tables given names; 25 missing `scope="col"`; one nested scroll area removed
-   (rule 11 §1, one scroll container per panel).
-
-**Corrected two of the ticket's own assumptions:** `permission-matrix` was already exemplary
-(caption, both-axis scopes, `sr-only` text on every glyph so nothing rides on colour); and the
-shadcn `Table` primitive already ships `tabIndex={0}` on its scroll container, so 6 of the 10 were
-compliant before this ticket. All ten skeletons and every reachable empty state were already
-correct — none were added.
-
-## Verification (combined, run by the orchestrator after all three)
-
-```
-pnpm --filter @arcaai/admin-console test        Test Files  205 passed (205)   Tests  1610 passed (1610)
-pnpm --filter @arcaai/admin-console lint        eslint src --max-warnings 0    (clean)
-pnpm --filter @arcaai/admin-console typecheck   tsc --noEmit                   (clean)
-pnpm --filter @arcaai/admin-console build       ✓ Compiled successfully
-pnpm --filter @arcaai/ui test                   Test Files  244 passed (244)   Tests   681 passed (681)
-```
-
-Baseline was 202 files / 1590 tests → **205 / 1610** (+3 files, +20 tests, all new coverage). No
-pre-existing test was modified and no axe assertion was relaxed. `@arcaai/ui` unchanged at 681,
-confirming TASK-765 did not regress.
-
-**Cross-agent damage check (the real risk this round).** One agent ran `prettier --write` over
-whole component directories, rewriting 12 files it did not own; it detected and reverted all 12
-(10 by `git checkout HEAD --`, 2 by 3-way merge because they carried another agent's live table
-work). Independently verified afterwards that the merge was clean: every TASK-771 a11y fix in the
-two contested files survives (`sr-only` caption, `tabIndex`/`role="region"`, `scope="col"` ×3,
-table `aria-label`, outer scroll wrapper still removed), as does all of TASK-765
-(66 × `text-2xs`, 0 regressions to `text-[10px]`, `z-chrome`, `z-sticky`).
-
-**Note for future parallel work: do not run prettier over a directory in this repo.** It is not
-uniformly prettier-formatted (~29 files differ at HEAD) and prettier is *not* in the lint gate
-(`lint` is `eslint src --max-warnings 0` only), so a directory-wide format rewrites unrelated files.
-
-## Not in scope / follow-ups
-
-| Item | Detail |
-|---|---|
-| **`AdminDataGrid` has no client-driven mode** | `manual` is hardcoded on. Migrating `tools-mcp-screen` or `gate-queue-panel` requires gateway list params (`apps/api/src/modules/mcp-admin/`), the feature api clients, and the grid change landed **together** — that pairing is the unit of work, and it spans `apps/api`. |
-| **19 × `ring-ring/50` in vendored registries** | Carried from TASK-765. `registries/basecn/*`, `registries/diceui/*` — latent (zero console imports) but on the `@arcaai/ui` barrel. |
-| **184 numeric `duration-<n>` in `packages/ui`** | Safe to sweep since TASK-765 added `--tw-duration`, but lossy for 700/1000/45/90. Needs decisions, not substitution. |
-| **HOPE-11 / HOPE-16** | Decorative-keyframe split out of `globals.css`; 53-route single-tier nav IA. |
-
 ### Follow-on fix — silent close-blocking (found by the discard review)
 
 Reviewing the confirmation surfaced a genuine violation beside it. Both form sheets guarded close
@@ -218,6 +110,48 @@ Guarded by 4 new tests in `shared/detail/__tests__/detail-drawer.test.tsx`: cont
 Escape working when unblocked; `disabled` + `aria-disabled` + reason in the accessible name when
 blocked; Escape suppressed identically when blocked; and axe clean while blocked.
 
+## Verification
+
+Combined verification (this ticket plus the two split-out siblings TASK-774/TASK-775 — all three
+touch disjoint files in the same admin-console app and were verified together):
+
+```
+pnpm --filter @arcaai/admin-console test        Test Files  206 passed (206)   Tests  1620 passed (1620)
+pnpm --filter @arcaai/admin-console lint        eslint src --max-warnings 0    (clean)
+pnpm --filter @arcaai/admin-console typecheck   tsc --noEmit                   (clean)
+pnpm --filter @arcaai/admin-console build       ✓ Compiled successfully
+pnpm --filter @arcaai/ui test                   Test Files  244 passed (244)   Tests   681 passed (681)
+```
+
+Baseline was 202 files / 1590 tests → **205 / 1610** (+3 files, +20 tests, all new coverage) at
+original close-out; re-run in the `wt/task-774` worktree on 2026-08-19 shows 206/1620 (a handful of
+additional tests landed since via unrelated concurrent work in the same tree). No pre-existing test
+was modified and no axe assertion was relaxed. `@arcaai/ui` unchanged at 681, confirming TASK-765
+did not regress.
+
+**Cross-agent damage check (the real risk this round).** One agent ran `prettier --write` over
+whole component directories, rewriting 12 files it did not own; it detected and reverted all 12
+(10 by `git checkout HEAD --`, 2 by 3-way merge because they carried another agent's live table
+work). Independently verified afterwards that the merge was clean: every table a11y fix in the two
+contested files survives (`sr-only` caption, `tabIndex`/`role="region"`, `scope="col"` ×3, table
+`aria-label`, outer scroll wrapper still removed), as does all of TASK-765 (66 × `text-2xs`, 0
+regressions to `text-[10px]`, `z-chrome`, `z-sticky`).
+
+**Note for future parallel work: do not run prettier over a directory in this repo.** It is not
+uniformly prettier-formatted (~29 files differ at HEAD) and prettier is *not* in the lint gate
+(`lint` is `eslint src --max-warnings 0` only), so a directory-wide format rewrites unrelated files.
+
+## Not in scope / follow-ups
+
+| Item | Detail |
+|---|---|
+| **19 × `ring-ring/50` in vendored registries** | Carried from TASK-765. `registries/basecn/*`, `registries/diceui/*` — latent (zero console imports) but on the `@arcaai/ui` barrel. |
+| **184 numeric `duration-<n>` in `packages/ui`** | Safe to sweep since TASK-765 added `--tw-duration`, but lossy for 700/1000/45/90. Needs decisions, not substitution. |
+| **HOPE-11 / HOPE-16** | Decorative-keyframe split out of `globals.css`; 53-route single-tier nav IA. |
+
+See [TASK-774](../TASK-774-Page-Frame-Conformance/README.md) and
+[TASK-775](../TASK-775-Table-Conformance/README.md) for their own follow-ups.
+
 ## Note: concurrent workstream in the same tree
 
 An unrelated, owner-requested workstream is uncommitted in this tree — SDK family version bump
@@ -233,3 +167,4 @@ and `scripts/`. **~15 files that are NOT part of these tickets.** Stage by path;
 | 2026-08-19 | Opened. Pre-measurement found the console already conformant on rules 10/11 — scope narrowed from a sweep to three structural migrations. 769/770/771 dispatched in parallel on disjoint file sets. |
 | 2026-08-19 | Discard-confirmation reviewed against Sarvam EX-09/P3 and WCAG 3.3.7 — **kept**. Review surfaced a real EX-11/4.1.2 violation beside it (silent close-blocking while saving); fixed with a declared `closeBlockedReason` on `DetailDrawer` + 4 regression tests. |
 | 2026-08-19 | All three complete. Combined verification green (205/1606 + build; `@arcaai/ui` 681 unchanged). Cross-agent prettier churn detected, reverted by its author, and independently re-verified. Status → Review. |
+| 2026-08-19 | **Second collision, split out.** `TASK-770-Dev-Bootstrap-Completeness` and `TASK-771-Rate-Limit-Admin-Writes-404` turned out to be separate, unrelated, already-Completed tickets committed by another session against the same two numbers — the combined document's "770" (page-frame conformance) and "771" (table conformance) sections were double-booked a second time. Owner decision: renumber the two colliding workstreams to **TASK-774** and **TASK-775**, write them up as full standalone tickets, and trim this document back to its own scope (the DetailDrawer migration, TASK-769's original and only remaining content). Confirmed 774/775 free in both `docs/implementation/` and `docs/archive/` before creating the new documents. Re-verified `pnpm --filter @arcaai/admin-console test lint typecheck build` clean in the `wt/task-774` worktree (206/206 files, 1620/1620 tests) as part of the split. |
