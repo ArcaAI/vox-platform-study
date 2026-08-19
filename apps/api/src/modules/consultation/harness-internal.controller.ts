@@ -29,9 +29,25 @@ import {
   IPromptManagementService,
   LiveDocumentationService,
   LoopConfigResponse,
+  TranscriptionJobService,
+  TranscriptionRealtimeService,
 } from '@arcaai/applications';
-import { AgentSessionKind, AgentStepStatus, AgentStepType, JsonValue } from '@arcaai/domains';
-import { BadRequestException, Body, Controller, Get, Headers, HttpCode, Inject, Param, Post, Query, UseGuards } from '@nestjs/common';
+import { AgentSessionKind, AgentStepStatus, AgentStepType, JsonValue, TranscriptionJobStatus, TranscriptionJobType } from '@arcaai/domains';
+import {
+  BadRequestException,
+  Body,
+  Controller,
+  Get,
+  Headers,
+  HttpCode,
+  Inject,
+  NotFoundException,
+  Optional,
+  Param,
+  Post,
+  Query,
+  UseGuards,
+} from '@nestjs/common';
 import { ApiExcludeController, ApiOperation, ApiParam, ApiProperty, ApiPropertyOptional, ApiQuery } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
 import {
@@ -45,12 +61,81 @@ import {
   IsObject,
   IsOptional,
   IsString,
+  IsUUID,
   Min,
   ValidateNested,
 } from 'class-validator';
 import { ClsService } from 'nestjs-cls';
+import { uuidv7 } from 'uuidv7';
 import { Public } from '../../decorators';
 import { HarnessServiceTokenGuard } from './harness-service-token.guard';
+
+/**
+ * TASK-724 Task 5 — the harness batch-trigger activity's request/response shapes.
+ *
+ * The STT palette's central design decision (README §1) is that a published `stt`
+ * `WorkflowDefinition` compiles into an `AsrPipeline` id; batch execution dispatches
+ * through ONE harness Temporal activity that calls the EXISTING
+ * `TranscriptionJobService`/`TranscriptionRealtimeService` write path — the SAME two
+ * calls `TranscriptionJobController`'s own batch handlers already make
+ * (`apps/api/src/modules/streaming/transcription-job.controller.ts`) — never a second,
+ * hand-rolled job-processing path. This route is additive and lives OUTSIDE
+ * `apps/api/src/modules/streaming/**`, so the realtime-hot-path grep-gate
+ * (`task-724-stt-realtime-untouched.grep-gate.test.ts`) stays green.
+ */
+class HarnessCreateSttBatchJobRequest {
+  @ApiProperty({ description: 'Tenant the harness is acting on behalf of.' })
+  @IsString()
+  @IsNotEmpty()
+  tenantId: string;
+
+  @ApiProperty({ description: 'Resolved AsrPipeline id (TASK-724 Task 4 compiler output).' })
+  @IsString()
+  @IsNotEmpty()
+  pipelineId: string;
+
+  @ApiProperty({ description: 'Storage URI of the already-uploaded batch audio (s3://bucket/key).' })
+  @IsString()
+  @IsNotEmpty()
+  audioUri: string;
+
+  @ApiPropertyOptional({ description: 'Consultation this batch job belongs to; also the idempotency correlation key.' })
+  @IsOptional()
+  @IsUUID(7)
+  consultationId?: string;
+
+  @ApiPropertyOptional({ description: 'Source media id; generated when omitted.' })
+  @IsOptional()
+  @IsUUID(7)
+  mediaId?: string;
+
+  @ApiPropertyOptional({ description: 'Language hint forwarded to the worker.' })
+  @IsOptional()
+  @IsString()
+  language?: string;
+}
+
+class HarnessSttBatchJobResponse {
+  @ApiProperty()
+  jobId: string;
+
+  @ApiProperty({ enum: TranscriptionJobStatus })
+  status: TranscriptionJobStatus;
+}
+
+class HarnessSttBatchJobStatusResponse extends HarnessSttBatchJobResponse {
+  @ApiProperty()
+  progress: number;
+
+  @ApiPropertyOptional({ nullable: true })
+  errorMessage?: string | null;
+
+  @ApiPropertyOptional({ nullable: true })
+  errorCode?: string | null;
+}
+
+/** Statuses a poller must keep waiting on; anything else is terminal. */
+const NON_TERMINAL_JOB_STATUSES: ReadonlySet<TranscriptionJobStatus> = new Set([TranscriptionJobStatus.QUEUED, TranscriptionJobStatus.PROCESSING]);
 
 /**
  * one ordered trajectory step in the harness `report_trajectory`
@@ -238,6 +323,12 @@ export class HarnessInternalController {
     // client of its own (rule 06 — gateway-resolved injection is the default for a stateless
     // Python service).
     @Inject(IPromptManagementService) private readonly promptManagementService: IPromptManagementService,
+    // TASK-724 Task 5 — batch-trigger binding. `@Optional()` so existing
+    // positional test construction keeps its arity and a stack without the
+    // STT batch modules wired still boots; the two new routes below throw a
+    // clear 500 (never a silent no-op) if these are absent when called.
+    @Optional() private readonly transcriptionJobService?: TranscriptionJobService,
+    @Optional() private readonly transcriptionRealtimeService?: TranscriptionRealtimeService,
   ) {}
 
   @Get('policy')
@@ -611,6 +702,93 @@ export class HarnessInternalController {
       this.cls.set('tenantId', dto.tenantId);
       await this.liveDocumentationService.stop(id, { persistSnapshot: dto.persistSnapshot });
       return { ok: true };
+    });
+  }
+
+  /**
+   * TASK-724 Task 5 — the harness batch-trigger activity's dispatch call.
+   *
+   * Calls the EXACT SAME two application-layer calls
+   * `TranscriptionJobController`'s own batch/upload handlers already make —
+   * `TranscriptionJobService.createBatchJob` then
+   * `TranscriptionRealtimeService.dispatchDramatiqJob` — no duplicate
+   * job-processing logic. Idempotent: a retried Temporal activity attempt
+   * (same `consultationId` + `pipelineId`) finds and returns the existing
+   * non-terminal BATCH job instead of dispatching a second one, per the
+   * ticket's own documented fallback (README §6 — TASK-717's platform-wide
+   * envelope, once a caller here threads one through, supersedes this
+   * consultation-scoped check without changing the route's shape).
+   */
+  @Post('stt/batch-jobs')
+  @HttpCode(201)
+  @ApiOperation({ summary: 'Create (or reuse, idempotently) a batch transcription job for a harness activity' })
+  async createSttBatchJob(@Body() dto: HarnessCreateSttBatchJobRequest): Promise<HarnessSttBatchJobResponse> {
+    if (!this.transcriptionJobService || !this.transcriptionRealtimeService) {
+      throw new BadRequestException('STT batch-transcription services are not wired on this deployment');
+    }
+    const jobService = this.transcriptionJobService;
+    const realtimeService = this.transcriptionRealtimeService;
+    return this.cls.run(async () => {
+      this.cls.set('tenantId', dto.tenantId);
+
+      if (dto.consultationId) {
+        const existing = await jobService.getByConsultation(dto.consultationId);
+        const inFlight = existing.find(
+          (job) => job.jobType === TranscriptionJobType.BATCH && job.pipelineId === dto.pipelineId && NON_TERMINAL_JOB_STATUSES.has(job.status),
+        );
+        if (inFlight) {
+          return { jobId: inFlight.id, status: inFlight.status };
+        }
+      }
+
+      const job = await jobService.createBatchJob({
+        pipelineId: dto.pipelineId,
+        mediaId: dto.mediaId ?? uuidv7(),
+        consultationId: dto.consultationId,
+      });
+      await realtimeService.dispatchDramatiqJob({
+        jobId: job.id,
+        tenantId: dto.tenantId,
+        pipelineId: dto.pipelineId,
+        audioUri: dto.audioUri,
+        consultationId: dto.consultationId,
+        mediaId: job.mediaId ?? undefined,
+        language: dto.language,
+      });
+      return { jobId: job.id, status: job.status };
+    });
+  }
+
+  /**
+   * TASK-724 Task 5 — the harness batch-trigger activity's poll call. Bounded,
+   * terminal-state polling (never SSE — a Temporal activity is not a
+   * long-lived stream); the activity itself owns the poll interval/timeout.
+   */
+  @Get('stt/batch-jobs/:id')
+  @ApiOperation({ summary: 'Poll a batch transcription job the harness dispatched (terminal-state check)' })
+  @ApiParam({ name: 'id', description: 'TranscriptionJob id' })
+  @ApiQuery({ name: 'tenantId', required: true, description: 'Tenant the harness is acting on behalf of.' })
+  async getSttBatchJobStatus(@Param('id') id: string, @Query('tenantId') tenantId?: string): Promise<HarnessSttBatchJobStatusResponse> {
+    if (!tenantId) {
+      throw new BadRequestException('tenantId query parameter is required');
+    }
+    if (!this.transcriptionJobService) {
+      throw new BadRequestException('STT batch-transcription services are not wired on this deployment');
+    }
+    const jobService = this.transcriptionJobService;
+    return this.cls.run(async () => {
+      this.cls.set('tenantId', tenantId);
+      const job = await jobService.getById(id);
+      if (!job) {
+        throw new NotFoundException(`Transcription job ${id} not found`);
+      }
+      return {
+        jobId: job.id,
+        status: job.status,
+        progress: job.progress,
+        errorMessage: job.errorMessage,
+        errorCode: job.errorCode,
+      };
     });
   }
 }

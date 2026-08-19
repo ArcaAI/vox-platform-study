@@ -28,6 +28,11 @@ import {
   // IPromptManagementService for the internal prompt-template resolution endpoint
   // (TASK-720 N-2 — the summarization palette's `prompt.template_ref` node).
   PromptManagementServiceModule,
+  // TASK-724 Task 5 — the harness batch-trigger activity's dispatch/poll routes
+  // reuse the EXISTING batch-transcription write path (no duplicate job-processing
+  // logic in harness).
+  TranscriptionJobServiceModule,
+  TranscriptionRealtimeServiceModule,
 } from '@arcaai/applications';
 import { CoreDatabaseModule } from '@arcaai/domains';
 import { ConsultationController } from './consultation.controller';
@@ -72,6 +77,8 @@ import { ConsentInternalController } from './consent-internal.controller';
     LoopContextTextServiceModule,
     ConsentServiceModule,
     PromptManagementServiceModule,
+    TranscriptionJobServiceModule,
+    TranscriptionRealtimeServiceModule,
   ],
   controllers: [ConsultationController, AdminConsultationController, ConsultationJobController, HarnessInternalController, ConsentInternalController],
   // dedicated Redis subscriber connection for the

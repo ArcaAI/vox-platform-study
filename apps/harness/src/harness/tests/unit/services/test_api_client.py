@@ -970,3 +970,79 @@ class TestReportTrajectory:
                     )
                 ]
             )
+
+
+class TestSttBatchJobs:
+    """TASK-724 Task 5 — the harness batch-trigger activity's HTTP client half."""
+
+    @pytest.mark.asyncio
+    async def test_create_stt_batch_job_posts_and_parses_response(self):
+        seen: dict[str, httpx.Request] = {}
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            seen["request"] = request
+            return httpx.Response(201, json={"jobId": "job-1", "status": "QUEUED"})
+
+        client = _client(handler)
+        result = await client.create_stt_batch_job(
+            tenant_id="t-1",
+            pipeline_id="pipeline-1",
+            audio_uri="s3://bucket/key.wav",
+            consultation_id="c-1",
+            language="en",
+        )
+
+        req = seen["request"]
+        assert req.method == "POST"
+        assert str(req.url) == "http://api:8868/internal/harness/stt/batch-jobs"
+        assert req.headers["X-Service-Token"] == "svc-token"
+        body = json.loads(req.content)
+        assert body == {
+            "tenantId": "t-1",
+            "pipelineId": "pipeline-1",
+            "audioUri": "s3://bucket/key.wav",
+            "consultationId": "c-1",
+            "language": "en",
+        }
+        assert result.job_id == "job-1"
+        assert result.status == "QUEUED"
+        assert result.progress == 0
+
+    @pytest.mark.asyncio
+    async def test_create_stt_batch_job_raises_on_upstream_error(self):
+        def handler(request: httpx.Request) -> httpx.Response:
+            return httpx.Response(500, json={"error": "boom"})
+
+        client = _client(handler)
+        with pytest.raises(ApiServiceError):
+            await client.create_stt_batch_job(
+                tenant_id="t-1", pipeline_id="p-1", audio_uri="s3://x"
+            )
+
+    @pytest.mark.asyncio
+    async def test_get_stt_batch_job_status_gets_and_parses_response(self):
+        seen: dict[str, httpx.Request] = {}
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            seen["request"] = request
+            return httpx.Response(
+                200,
+                json={
+                    "jobId": "job-1",
+                    "status": "FAILED",
+                    "progress": 40,
+                    "errorMessage": "boom",
+                    "errorCode": "ASR_TIMEOUT",
+                },
+            )
+
+        client = _client(handler)
+        result = await client.get_stt_batch_job_status("job-1", tenant_id="t-1")
+
+        req = seen["request"]
+        assert req.method == "GET"
+        assert str(req.url) == "http://api:8868/internal/harness/stt/batch-jobs/job-1?tenantId=t-1"
+        assert result.status == "FAILED"
+        assert result.progress == 40
+        assert result.error_message == "boom"
+        assert result.error_code == "ASR_TIMEOUT"
