@@ -6,7 +6,7 @@
 | **Wave** | 3 · **Size** | L |
 | **Epic slug** | `worker-pool-text` |
 | **Depends on** | TASK-707 (`naming-alignment` — `smr` → `text` rename; this ticket is written and MUST be executed against the renamed tree) |
-| **Design refs** | [design.md](../../architecture/agentic-workflow-platform/design.md) §Services program ("Worker-pool standard"), D7 (async transport), D8 (naming) |
+| **Design refs** | [design.md](../../programs/agentic-workflow-platform/design.md) §Services program ("Worker-pool standard"), D7 (async transport), D8 (naming) |
 | **Findings closed** | — (infrastructure-scaling ticket; does not close a numbered assessment finding) |
 
 ## 1. Requirement Analysis

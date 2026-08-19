@@ -6,7 +6,7 @@
 | **Wave** | 0 · **Size** | S |
 | **Epic slug** | `egress-failclose` |
 | **Depends on** | — |
-| **Design refs** | D1 (adjacent — this closes a compliance finding independent of which generator wins); this ticket is also the named dependency of Wave-1 `phi-redactor` (`706 → 710` in [backlog.md](../../architecture/agentic-workflow-platform/backlog.md)'s dependency graph), which builds the tenant-facing guardrail redact endpoint on top of the same `PhiRedactor` this ticket hardens |
+| **Design refs** | D1 (adjacent — this closes a compliance finding independent of which generator wins); this ticket is also the named dependency of Wave-1 `phi-redactor` (`706 → 710` in [backlog.md](../../programs/agentic-workflow-platform/backlog.md)'s dependency graph), which builds the tenant-facing guardrail redact endpoint on top of the same `PhiRedactor` this ticket hardens |
 | **Findings closed** | §3.3 "PHI reaches NLP and SMR unsanitized" ([assessment README.md](../../architecture/consultation-session-workflow/assessment/README.md)) — specifically its cloud-egress-allowlist sub-finding |
 
 ## 1. Requirement Analysis

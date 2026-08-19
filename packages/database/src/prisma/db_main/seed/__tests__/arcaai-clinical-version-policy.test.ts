@@ -2,7 +2,7 @@
  * TASK-702 — the ArcaAI clinical prompt VERSION POLICY, pinned.
  *
  * Owner decision, 2026-08-17
- * (`docs/architecture/agentic-workflow-platform/owner-decisions-2026-08-17.md`
+ * (`docs/programs/agentic-workflow-platform/owner-decisions-2026-08-17.md`
  * §2, row 702):
  *
  *   > "allow all current prompt versions, v3 will be default versions when

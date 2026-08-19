@@ -6,7 +6,7 @@
 | **Wave** | 0 · **Size** | S |
 | **Epic slug** | `empty-note-marker` |
 | **Depends on** | — |
-| **Design refs** | D5 (Plane 2 containment proceeds regardless of the substrate program) from [design.md](../../architecture/agentic-workflow-platform/design.md) |
+| **Design refs** | D5 (Plane 2 containment proceeds regardless of the substrate program) from [design.md](../../programs/agentic-workflow-platform/design.md) |
 | **Findings closed** | A-11 (conformance matrix, CRITICAL) · F12 (`evidence/ai-pipeline.md`) |
 
 ## 1. Requirement Analysis

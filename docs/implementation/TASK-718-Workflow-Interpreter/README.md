@@ -6,7 +6,7 @@
 | **Wave** | 2 · **Size** | XL |
 | **Epic slug** | `workflow-interpreter` |
 | **Depends on** | TASK-715 (`workflow-definition-model`), TASK-716 (`workflow-compiler-validator`) |
-| **Design refs** | D2, D3, D4, D5, D7 from [design.md](../../architecture/agentic-workflow-platform/design.md) — Plane 1 §Interpreter, §Data flow (Execution), §Error handling (Runtime), §Testing strategy |
+| **Design refs** | D2, D3, D4, D5, D7 from [design.md](../../programs/agentic-workflow-platform/design.md) — Plane 1 §Interpreter, §Data flow (Execution), §Error handling (Runtime), §Testing strategy |
 | **Findings closed** | — (enabling ticket; closes no assessment finding directly. It is the substrate TASK-720/721/722/723 and, in Wave 4, TASK-731 stand on.) |
 
 ---

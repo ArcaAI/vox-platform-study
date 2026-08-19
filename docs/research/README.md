@@ -14,7 +14,7 @@ research/
 ├── ai-ml/             STT realtime+batch SOTA assessment (+ captured 17-agent research set), Whisper ONNX optimization, Apple Silicon inference
 ├── architecture/       Application audits, fit-gap analysis, streaming timeouts
 ├── configs/            Ready-to-deploy configuration files (Docker Compose, HAProxy, Patroni, etc.)
-└── clinical-harness/   Medical-AI + harness-engineering research backing TASK-330 (scribes, RAG, evals, governance, India, FHIR)
+└── clinical-harness/   Medical-AI + harness-engineering research (scribes, RAG, evals, governance, India, FHIR)
 ```
 
 ---
@@ -52,7 +52,7 @@ research/
 
 | Document | Description |
 |----------|-------------|
-| [stt-realtime-batch-sota-assessment-2026-07.md](./ai-ml/stt-realtime-batch-sota-assessment-2026-07.md) | STT realtime + batch SOTA assessment (2026-07) — code-verified architecture map, findings, best-practice scorecard, prioritized roadmap; builds on the TASK-451…487 SOTA track |
+| [stt-realtime-batch-sota-assessment-2026-07.md](./ai-ml/stt-realtime-batch-sota-assessment-2026-07.md) | STT realtime + batch SOTA assessment (2026-07) — code-verified architecture map, findings, best-practice scorecard, prioritized roadmap |
 | [stt-realtime-batch-sota-2026-07/](./ai-ml/stt-realtime-batch-sota-2026-07/README.md) | Complete captured source material behind the assessment — 17 agent reports (7 external deep-research + 10 codebase maps/spot checks); see its README for the fleet index |
 | [whisper-onnx-apple-silicon-best-practices.md](./ai-ml/whisper-onnx-apple-silicon-best-practices.md) | Whisper + ONNX Runtime on Apple Silicon — chunking, CoreML, generation parameters, session config |
 | [whisper-onnx-optimum-inference-optimization-2025.md](./ai-ml/whisper-onnx-optimum-inference-optimization-2025.md) | Whisper inference optimization — VAD+Whisper pipelines, batched inference, faster-whisper comparison |
@@ -66,7 +66,7 @@ research/
 
 ## Clinical Documentation Harness — Medical-AI Research
 
-Fully-cited research backing `docs/implementation/TASK-330-Clinical-Documentation-Harness/`. See [clinical-harness/README.md](./clinical-harness/README.md) for the full index.
+Fully-cited research backing the Clinical Documentation Harness. See [clinical-harness/README.md](./clinical-harness/README.md) for the full index.
 
 | Document | Description |
 |----------|-------------|

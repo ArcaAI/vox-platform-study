@@ -4,7 +4,7 @@
 |---|---|---|---|
 | **Status** | Review | **Owner** | Platform / Authorization |
 | **Date** | 2026-08-18 | **Type** | refactor (security posture) |
-| **Related** | `docs/architecture/api-design-conformance-review.md` rule **A2**, §2.2, §2.3, §3.1 step 2, §4 order 4 · `docs/architecture/api-controller-inventory.md` · `docs/architecture/api-controller-groupings.md` (View B) · `docs/architecture/agentic-workflow-platform/conformance/gateway-and-sdk.md` §6.3, §6.4 · **TASK-756** (privilege ceiling — lands first) · **TASK-762** (machine identity — this ticket creates the need for it) · **TASK-758** (A1 business plane) · **TASK-759** (plane taxonomy / prefix moves) · **TASK-761** (API-plane conformance gates) · `docs/implementation/TASK-708-Apikey-Scope-Verification/README.md` §6, §7 Task 4, §8 (TASK-742) |
+| **Related** | `docs/architecture/api-design-conformance-review.md` rule **A2**, §2.2, §2.3, §3.1 step 2, §4 order 4 · `docs/architecture/api-controller-inventory.md` · `docs/architecture/api-controller-groupings.md` (View B) · `docs/programs/agentic-workflow-platform/conformance/gateway-and-sdk.md` §6.3, §6.4 · **TASK-756** (privilege ceiling — lands first) · **TASK-762** (machine identity — this ticket creates the need for it) · **TASK-758** (A1 business plane) · **TASK-759** (plane taxonomy / prefix moves) · **TASK-761** (API-plane conformance gates) · `docs/implementation/TASK-708-Apikey-Scope-Verification/README.md` §6, §7 Task 4, §8 (TASK-742) |
 
 > **Sibling tickets, authored concurrently from the same review (2026-08-18).** TASK-754…762 were
 > written in parallel by separate sessions and their numbers follow the review's §4 sequencing table,

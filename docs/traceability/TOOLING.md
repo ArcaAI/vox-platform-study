@@ -5,10 +5,10 @@ plain ESM (`.mjs`), require **only Node ≥ 18** (no dependencies, no build step
 the repo root from their own location, and exit non-zero on failure so CI can gate on
 them.
 
-| Script | Ticket | Checks |
-|---|---|---|
-| [`scripts/verify-traceability.mjs`](../../scripts/verify-traceability.mjs) | TASK-538 (Wave-4 #3) | The per-domain traceability rows in `docs/traceability/*.md` do not drift from code. |
-| [`scripts/verify-doc-claims.mjs`](../../scripts/verify-doc-claims.mjs) | TASK-537 (Wave-3 #2) | Backtick-quoted paths and `pnpm <script>` refs across `docs/**/*.md` + every `README.md` resolve. |
+| Script | Checks |
+|---|---|
+| [`scripts/verify-traceability.mjs`](../../scripts/verify-traceability.mjs) | The per-domain traceability rows in `docs/traceability/*.md` do not drift from code. |
+| [`scripts/verify-doc-claims.mjs`](../../scripts/verify-doc-claims.mjs) | Backtick-quoted paths and `pnpm <script>` refs across `docs/**/*.md` + every `README.md` resolve. |
 
 ## verify-traceability.mjs
 
@@ -77,9 +77,9 @@ A failure means *"this backtick path/script, taken as repo-relative, does not ex
 On the current tree that is a mix of genuine drift a maintainer should fix and
 forward-looking references in planning/research notes:
 
-- **Stale cross-references** to tickets that were archived or renamed (e.g. a
-  `docs/implementation/TASK-415-…/capabilities-matrix.md` link that now lives under
-  `docs/archive/…`) → fix the link.
+- **Stale cross-references** to documents that were moved or renamed (e.g. an
+  admin-console capabilities-matrix link that now lives at
+  `docs/architecture/admin-console-capabilities-matrix.md`) → fix the link.
 - **Real path drift** (e.g. a module referenced as `ai-provider` that is now
   `ai-provider-connection`, or a service path missing its `harness/` subdir) → fix the doc.
 - **Planned-but-unlanded artifacts** named in a ticket README or research proposal (e2e

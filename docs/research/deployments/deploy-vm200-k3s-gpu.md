@@ -1,6 +1,6 @@
 # Deploy K3s + GPU — VM 200 (10.10.1.10)
 
-**Status**: BUILT — k3s cluster is live on this VM, confirmed in TASK-616 live-state discovery 2026-08-07 as the single GPU node hosting the cluster.
+**Status**: BUILT — k3s cluster is live on this VM, confirmed in live-state discovery 2026-08-07 as the single GPU node hosting the cluster.
 
 **Date**: 2026-03-18
 **VM**: 200 | **IP**: 10.10.1.10 | **Bridge**: vmbr1 | **Specs**: 8c / 16 GB / 64 GB disk + 2× NVIDIA RTX 2000 Ada (GPU passthrough)

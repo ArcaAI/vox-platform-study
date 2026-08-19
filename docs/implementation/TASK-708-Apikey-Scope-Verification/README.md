@@ -6,12 +6,12 @@
 | **Wave** | 0 · **Size** | M |
 | **Epic slug** | `apikey-scope-verification` |
 | **Depends on** | — |
-| **Design refs** | Exposure plane (§Architecture, [design.md](../../architecture/agentic-workflow-platform/design.md)) — *"Precondition (early work item): verify API-key scope enforcement end-to-end before any workflow is publicly exposed."* This ticket IS that precondition; `TASK-722 exposure-v1` depends on it (`708 & 718 & 720 --> 722` in [backlog.md](../../architecture/agentic-workflow-platform/backlog.md)'s dependency graph) |
+| **Design refs** | Exposure plane (§Architecture, [design.md](../../programs/agentic-workflow-platform/design.md)) — *"Precondition (early work item): verify API-key scope enforcement end-to-end before any workflow is publicly exposed."* This ticket IS that precondition; `TASK-722 exposure-v1` depends on it (`708 & 718 & 720 --> 722` in [backlog.md](../../programs/agentic-workflow-platform/backlog.md)'s dependency graph) |
 | **Findings closed** | — (new finding, produced by this ticket itself — see §2) |
 
 ## 1. Requirement Analysis
 
-The Exposure plane in [design.md](../../architecture/agentic-workflow-platform/design.md) will
+The Exposure plane in [design.md](../../programs/agentic-workflow-platform/design.md) will
 bind published workflow versions to REST/SSE/socket/webhook channels behind "scoped API keys,
 tenant-resolved, entitlement-checked." That plan is only sound if API-key scoping actually
 restricts what a key can invoke today. This ticket verifies that end-to-end, documents exactly
@@ -1019,7 +1019,7 @@ e2e coverage beyond the two worked examples (`/admin/tenants`,
 
 Anchored in this README because TASK-742 is the direct continuation of this ticket's §2 finding.
 Raised as **G1 (P0)** by the gateway conformance review
-([conformance/gateway-and-sdk.md](../../architecture/agentic-workflow-platform/conformance/gateway-and-sdk.md) §6.1).
+([conformance/gateway-and-sdk.md](../../programs/agentic-workflow-platform/conformance/gateway-and-sdk.md) §6.1).
 
 ### 8.1 What was still open after TASK-708
 

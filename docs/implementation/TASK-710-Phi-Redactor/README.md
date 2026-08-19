@@ -6,7 +6,7 @@
 | **Wave** | 1 · **Size** | L |
 | **Epic slug** | `phi-redactor` |
 | **Depends on** | TASK-706 (`egress-failclose`) |
-| **Design refs** | Not a D1–D8 fork (Plane 2 remediation). Governed by the explicit spec correction in `docs/architecture/consultation-session-workflow/assessment/04-target-architecture.md` §"Spec red-team of dataset.xml" #1 and restated in `docs/architecture/agentic-workflow-platform/design.md` under Plane 2 / Wave 1: **identifier pseudonymization before NLP** (preserve the clinical terms NER exists to extract), **full redaction only for retained / derived / cross-patient artifacts**. |
+| **Design refs** | Not a D1–D8 fork (Plane 2 remediation). Governed by the explicit spec correction in `docs/architecture/consultation-session-workflow/assessment/04-target-architecture.md` §"Spec red-team of dataset.xml" #1 and restated in `docs/programs/agentic-workflow-platform/design.md` under Plane 2 / Wave 1: **identifier pseudonymization before NLP** (preserve the clinical terms NER exists to extract), **full redaction only for retained / derived / cross-patient artifacts**. |
 | **Findings closed** | A-02 (`02-conformance-matrix.md`, CRITICAL); un-blocks the exemplar-mining fail-closed-to-nothing state documented in `03-compliance-posture.md` "What is genuinely sound" #4 and F-07's minimal fix in `03-compliance-posture.md`. Structural precondition for TASK-700 (`dna-phi-containment`) but does not duplicate it — see §1 Out of Scope. |
 
 ## 1. Requirement Analysis

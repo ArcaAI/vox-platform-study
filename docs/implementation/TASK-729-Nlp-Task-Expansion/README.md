@@ -215,7 +215,7 @@ settings-registry descriptor pattern (`packages/applications/src/services/settin
 per variable), the pattern rule 09 names as the template for governed, self-describing config
 surfaces. A future workflow-palette node-type registry for NLP tasks (out of scope here, per §1)
 would structurally resemble (2) more than (1) — a typed descriptor list (id, input/output schema,
-category), not four new hardcoded endpoints. `docs/architecture/agentic-workflow-platform/backlog.md`
+category), not four new hardcoded endpoints. `docs/programs/agentic-workflow-platform/backlog.md`
 and `design.md` were grepped for `node.type|nodeType|registry` — no hits; this is greenfield.
 
 ## 3. Knowledge & Best Practices

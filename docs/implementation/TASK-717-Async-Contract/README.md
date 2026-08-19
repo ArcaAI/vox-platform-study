@@ -6,7 +6,7 @@
 | **Wave** | 1 · **Size** | M |
 | **Epic slug** | `async-contract` |
 | **Depends on** | — |
-| **Design refs** | D7 from [design.md](../../architecture/agentic-workflow-platform/design.md) — Decision log D7, §"Explicitly not doing (YAGNI ledger)", Open question 3 |
+| **Design refs** | D7 from [design.md](../../programs/agentic-workflow-platform/design.md) — Decision log D7, §"Explicitly not doing (YAGNI ledger)", Open question 3 |
 | **Findings closed** | design.md open question 3 ("Async contract envelope details (schema, delivery semantics, resume tokens) — needs its own short design") |
 
 ---
@@ -529,8 +529,8 @@ implementation and the conformance suite 722/727 will consume.
 #### Task 1 — Write the envelope design document
 - **Agent:** T4 · opus-5 · xhigh
 - **Files:**
-  - create `docs/architecture/agentic-workflow-platform/async-contract.md`
-  - modify `docs/architecture/agentic-workflow-platform/design.md` (strike open question 3,
+  - create `docs/programs/agentic-workflow-platform/async-contract.md`
+  - modify `docs/programs/agentic-workflow-platform/design.md` (strike open question 3,
     linking the new document)
 - **Approach:** The normative prose. Sections, in order: the envelope (§3.2 with the field
   table and grammars); trace context stays outside (§3.3); delivery semantics per transport
@@ -711,7 +711,7 @@ implementation and the conformance suite 722/727 will consume.
 
 #### Task 7 — Record the YAGNI boundary
 - **Agent:** T1 · haiku-4-5 · default
-- **Files:** modify `docs/architecture/agentic-workflow-platform/design.md`
+- **Files:** modify `docs/programs/agentic-workflow-platform/design.md`
   (§"Explicitly not doing")
 - **Approach:** Add one line: wholesale migration of the four non-reference async surfaces
   (STT streams, BullMQ, Temporal signals, sys-events) is explicitly not being done; each adopts
@@ -726,7 +726,7 @@ implementation and the conformance suite 722/727 will consume.
 
 Paste actual output for every box.
 
-- [ ] `docs/architecture/agentic-workflow-platform/async-contract.md` exists and every claim
+- [ ] `docs/programs/agentic-workflow-platform/async-contract.md` exists and every claim
       about an existing surface carries a verified `file:line`
 - [ ] Reviewed by the TASK-722 and TASK-727 authors before Phase B started (record the review)
 - [ ] `packages/async-contract/schema/async-envelope.v1.json` validates against draft 2020-12;
@@ -807,7 +807,7 @@ Task 1 `design.md` edit.
 
 ### Task 1 — Design document
 
-Created `docs/architecture/agentic-workflow-platform/async-contract.md`
+Created `docs/programs/agentic-workflow-platform/async-contract.md`
 (the envelope, per-transport delivery semantics, the idempotency-key
 convention + SDK carve-out, why trace context stays outside the envelope,
 why `type` cannot reference the domain enums, the resume-token convention,
@@ -962,7 +962,7 @@ started.
 ### Task 7 — YAGNI boundary
 
 Folded into the Task 1 `design.md` edit (see above) rather than a separate
-commit-sized change — `git diff docs/architecture/agentic-workflow-platform/
+commit-sized change — `git diff docs/programs/agentic-workflow-platform/
 design.md` shows exactly: open question 3 struck + linked, and one new YAGNI
 ledger clause naming the four non-adopted surfaces and Temporal's permanent
 non-adoption.

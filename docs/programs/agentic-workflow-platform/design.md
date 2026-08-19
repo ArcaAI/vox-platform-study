@@ -4,7 +4,7 @@
 |---|---|
 | **Status** | Validated (brainstorming session, all decision forks resolved) |
 | **Date** | 2026-08-16 |
-| **Inputs** | [Consultation assessment](../consultation-session-workflow/assessment/README.md) · [dataset.xml](../consultation-session-workflow/dataset.xml) · [user stories](../consultation-session-workflow/user-stories-and-use-cases.md) · enterprise feature catalog (session input) |
+| **Inputs** | [Consultation assessment](../../architecture/consultation-session-workflow/assessment/README.md) · [dataset.xml](../../architecture/consultation-session-workflow/dataset.xml) · [user stories](../../architecture/consultation-session-workflow/user-stories-and-use-cases.md) · enterprise feature catalog (session input) |
 | **Scope** | Workflow substrate + interpreter, service modernization program, Workflow Studio (admin console), exposure plane |
 
 ## Summary

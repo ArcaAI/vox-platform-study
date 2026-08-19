@@ -40,7 +40,7 @@ This research provides actionable findings for optimizing Whisper inference with
 - **Constraints**: Use `gap_threshold_s` between segments; don’t merge beyond `max_duration_s` (e.g. 15–30s).
 
 ```python
-# Reference: merge_vad_segments pattern (from TASK-017)
+# Reference: merge_vad_segments pattern
 def merge_vad_segments(
     segments: list[AudioSegment],
     max_duration_s: float = 15.0,
@@ -302,4 +302,4 @@ model = ORTModelForSpeechSeq2Seq.from_pretrained(
 6. [Optimum #1816](https://github.com/huggingface/optimum/issues/1816) — KV-cache chunking bug
 7. [OpenAI Whisper audio.py](https://github.com/openai/whisper/blob/main/whisper/audio.py) — N_FRAMES=3000
 8. [WhisperX](https://github.com/m-bain/whisperx) — VAD + batching
-9. HOPE codebase: `apps/stt`, `research/whisper-onnx-apple-silicon-best-practices.md`, TASK-017
+9. HOPE codebase: `apps/stt`, `research/whisper-onnx-apple-silicon-best-practices.md`

@@ -2,14 +2,13 @@
 
 > **Model retention & lifecycle** (when models load, how long they stay
 > resident, and how to change that at runtime) lives in a companion runbook:
-> [`model-retention.md`](./model-retention.md) (TASK-529). Read it before tuning
+> [`model-retention.md`](./model-retention.md). Read it before tuning
 > `OLLAMA_KEEP_ALIVE`, LM Studio TTL/Auto-Evict, or any `*.modelCache.*` setting.
 
-vLLM and llama.cpp are the **production** self-host LLM engines for HOPE (AD-4 of
-the [TASK-508 program](../../implementation/TASK-508-Agentic-SOTA-Program/README.md)).
+vLLM and llama.cpp are the **production** self-host LLM engines for HOPE.
 LM Studio (`openai_compat` / `lm-studio`) and Ollama stay the **local dev/test**
 engines — this runbook covers staging, wiring, and smoke-testing the production
-engines behind Text's first-class `vllm` and `llama-cpp` providers (TASK-513/514).
+engines behind Text's first-class `vllm` and `llama-cpp` providers.
 
 > **PHI posture unchanged.** These engines are self-hosted (in-boundary). Cloud
 > providers (Azure/Bedrock) remain governance-gated per the gap review §7.C. No
@@ -63,7 +62,7 @@ in-region GPU instances — "cloud" without a policy change.
 ## 3. Wiring Text to the engines
 
 Text loads every provider config at startup; point its `base_url` at the running
-server to make the engine available (see `apps/text/.env.prod`, TASK-584 —
+server to make the engine available (see `apps/text/.env.prod` —
 Text gates a provider by the PRESENCE of its connection config, not an
 `enabled` flag, so there is no `TEXT_VLLM_ENABLED`/`TEXT_LLAMA_CPP_ENABLED`).
 
@@ -82,8 +81,8 @@ own the per-task selection (`smr.live` / `smr.finalize`, control-plane phase).
 
 > **Deferred provider-accept wiring** (owned by parallel agents, NOT in this
 > ticket): guardrail engine selector + harness `JudgeConfig.provider` accepting
-> `vllm`/`llama-cpp`, and `AiModel.provider` seed rows. Track under TASK-513/514
-> follow-ups; Text already routes to both engines today.
+> `vllm`/`llama-cpp`, and `AiModel.provider` seed rows. Text already routes to
+> both engines today.
 
 ---
 

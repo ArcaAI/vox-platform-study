@@ -1,15 +1,14 @@
-# Retrieval Corpus Ingestion & Tier-Enablement Runbook (TASK-520)
+# Retrieval Corpus Ingestion & Tier-Enablement Runbook
 
 **Status:** Runbook (owner-run — do not execute in CI or automation)
 **Owners:** Platform + Clinical Content owner
 **Scope:** Ingest a licensed guideline corpus into the harness institutional-RAG store
 and flip `HARNESS_RETRIEVAL_ENABLED` per tenant, one controlled change at a time.
 
-> The **engineering** for retrieval already shipped (TASK-511 policy knob
-> `retrievalEnabled` + `HARNESS_RETRIEVAL_ENABLED` env fall-through; TASK-330 §2.6
-> hybrid retrieval). This runbook is the **operational** procedure to populate the
+> The **engineering** for retrieval already shipped (the `retrievalEnabled` policy
+> knob + `HARNESS_RETRIEVAL_ENABLED` env fall-through, and hybrid retrieval). This runbook is the **operational** procedure to populate the
 > corpus and enable the flag. Corpus ingestion + tenant enablement are **owner
-> actions**, gated on licensing and a harness-eval / TASK-470 scorecard.
+> actions**, gated on licensing and a harness-eval scorecard.
 
 ---
 
@@ -67,13 +66,13 @@ Direct/back-fill (owner, per-tenant, staging first):
 ## 3. Flag-flip matrix (one flip per change, each with a gate)
 
 Enable retrieval **per tenant**, one accuracy lever at a time. Each row is a separate
-change whose gate is a **TASK-470 streaming scorecard** or a **harness-eval re-run** on
+change whose gate is a **streaming scorecard** or a **harness-eval re-run** on
 the golden set — never batch multiple flips.
 
 | # | Lever | Knob / env | Gate before flip ON |
 |---|---|---|---|
 | 1 | Institutional RAG (pilot tenant) | `retrievalEnabled` policy knob / `HARNESS_RETRIEVAL_ENABLED` | harness-eval faithfulness/citation delta ≥ 0 on golden set |
-| 2 | Sortformer diarization (staging) + TASK-489 labels | ASR config | TASK-470 scorecard (WER/DER held) |
+| 2 | Sortformer diarization (staging) + diarization labels | ASR config | Streaming scorecard (WER/DER held) |
 | 3 | MiniCheck GGUF entailment paths | sensor config | harness-eval AC-6 re-baseline |
 | 4 | Atomic-fact verifier ON | `atomic-fact` extra + flag | harness-eval faithfulness delta |
 | 5 | Warm-start / NER-priors ON | harness config | harness-eval + latency check |
@@ -89,10 +88,9 @@ empty context (`degraded=True`) and flags reduced assurance — it never breaks 
 - Retrieval returns tenant-scoped, `APPROVED`-only chunks (no cross-tenant bleed).
 - StrictCitations: hallucinated / never-retrieved `[[kb:<chunkId>]]` ids are dropped by
   `extract_cited_ids` (cannot reach `citationsMap` or the citation-verify sensor).
-- harness-eval / TASK-470 scorecard recorded as the flip's evidence.
+- harness-eval / streaming scorecard recorded as the flip's evidence.
 
 ## Change History
 
-- 2026-07-19 — Initial runbook (TASK-520 engineering sliver: this doc + flag-flip
-  matrix). Corpus licensing, ingestion execution, and per-tenant enablement remain
+- 2026-07-19 — Initial runbook (this doc + flag-flip matrix). Corpus licensing, ingestion execution, and per-tenant enablement remain
   owner-run.

@@ -3,8 +3,8 @@
 Sessions, credentials, authorization, password recovery, token revocation + HIPAA
 auth-event auditing, and tenant-scoped federated identity (OIDC + SAML SSO, directory
 sync). Migrates and extends legacy matrix rows **1, 2, 3, 8**, and adds the two surfaces
-that had no legacy home: **SSO/SAML** (TASK-498/499) and **auth token revocation & HIPAA
-auth-event audit** (TASK-541).
+that had no legacy home: **SSO/SAML** and **auth token revocation & HIPAA
+auth-event audit**.
 
 Route paths are relative to the global prefix `/api/v1`. Test shorthand is defined in
 [`index.md`](./index.md#test-location-shorthand). `—` means verified-absent.
@@ -54,7 +54,7 @@ Route paths are relative to the global prefix `/api/v1`. Test shorthand is defin
 | Key API endpoints | `POST /auth/forgot-password` (public request; `forgot-password.controller.ts`), `POST /users/password-reset/complete` (`password-reset.controller.ts`) |
 | Tests | e2e: `password-security-hardening.spec.ts`, `password-hash-settings.spec.ts` |
 
-### A5 — Auth token revocation & HIPAA auth-event audit (TASK-541) — NEW
+### A5 — Auth token revocation & HIPAA auth-event audit — NEW
 
 Closes two live security/compliance TODOs in `auth.service.ts` (revocation stub always
 returned `false`; no persisted failed-auth trail). Status: **Review** on `fix/2605-review`.
@@ -73,8 +73,8 @@ returned `false`; no persisted failed-auth trail). Status: **Review** on `fix/26
 
 Per-tenant external identity providers. Non-secret config in a JSON column; OIDC client
 secret + directory-API credentials sealed with Vault Transit (plaintext never stored). The
-model plane ships both OIDC and SAML; v1 (TASK-498) validated OIDC, SAML landed via
-TASK-499.
+model plane ships both OIDC and SAML; OIDC was validated first, and SAML landed
+afterwards.
 
 ### I1 — Tenant identity-provider configuration (OIDC/SAML) — NEW
 
@@ -100,9 +100,9 @@ TASK-499.
 
 ## Honest notes / gaps
 
-- **SAML assertion-security e2e is an OPEN gate.** I2 has unit coverage (mocked SAML client) but **no** end-to-end matrix exercising real signed assertions against tampering / expiry / replay / XML-signature-wrapping (XSW). Per the TASK-499 status this is the documented hard gate — do not read the unit coverage as assertion-hardening evidence.
+- **SAML assertion-security e2e is an OPEN gate.** I2 has unit coverage (mocked SAML client) but **no** end-to-end matrix exercising real signed assertions against tampering / expiry / replay / XML-signature-wrapping (XSW). This is the documented hard gate — do not read the unit coverage as assertion-hardening evidence.
 - **Directory sync has no dedicated gateway controller.** It is invoked through `admin/tenant-idp-config/:id/sync` and executed by a BullMQ processor; there is no standalone `/admin/directory-sync` surface.
-- **A5 (TASK-541) is uncommitted** on `fix/2605-review` (status Review, staged) — treat as landed-but-unmerged.
+- **A5 is uncommitted** on `fix/2605-review` (status Review, staged) — treat as landed-but-unmerged.
 - Users, profiles & departments (legacy row 7) remain in the legacy matrix under the tenancy/provisioning domain, not here.
 
 Last verified: 2026-07-22

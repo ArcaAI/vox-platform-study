@@ -5,11 +5,10 @@
 | **Status** | Planning / Knowledge Base (not scheduled) |
 | **Audience** | Senior backend / platform engineers scoping work |
 | **Owners** | TBD — assign at scheduling time |
-| **Predecessors** | TASK-258 (Tenant Config Provisioning), TASK-297 (SDK 4-tier ConfigManager), TASK-301 (System Config & Multi-Tenancy Assessment) |
-| **Companion ticket** | TBD (`TASK-3XX-Layered-Config-Resolution`) |
+| **Predecessors** | Tenant Config Provisioning, the SDK 4-tier ConfigManager, the System Config & Multi-Tenancy assessment |
 | **Created** | 2026-05-24 |
 
-> **Scope of this document**. This is a *future-work* knowledge base, not an executable plan. It captures the design intent so that when the work is prioritised, an engineer can scope it in a single planning session and start a TASK ticket with the README pre-populated. **No code change should result from reading this document alone.**
+> **Scope of this document**. This is a *future-work* knowledge base, not an executable plan. It captures the design intent so that when the work is prioritised, an engineer can scope it in a single planning session and start a ticket with the README pre-populated. **No code change should result from reading this document alone.**
 
 ---
 
@@ -27,7 +26,7 @@ HOPE today persists every runtime configuration row in a single `core.GlobalSett
 | **Write amplification** — 17 inserts per tenant create, growing linearly with the catalog. | Storage and write cost both proportional to `tenants × keys`, not to actual change. |
 | **Schema rigidity** — new setting = hand-written `UPSERT` into every tenant. | Easy to forget; produces silent gaps where some tenants lack the key. |
 | **Audit complexity** — same value in N rows. | Auditors cannot answer "did this tenant change this, or was it cloned?" without forensic SQL. |
-| **Cross-tenant cache collisions** — TASK-301 P0-1. | JWT-secret / S3-key leak; documented. |
+| **Cross-tenant cache collisions**. | JWT-secret / S3-key leak; documented. |
 | **No "inherit" semantic** — the copy *is* the value. | Reverting to default = manual lookup of sentinel value + write. |
 
 ### 1.3 Benefits of layered read-time resolution
@@ -39,7 +38,7 @@ HOPE today persists every runtime configuration row in a single `core.GlobalSett
 | **No write on tenant create** | Provisioning emits zero `INSERT` against config tables; first `GET /tenant/me/config` resolves layer-by-layer. |
 | **Cleaner audit** | A row in `TenantSettingOverride` *is* the audit signal — "tenant deliberately changed this key". |
 | **Department / user tiers are additive** | New tier = one table + one resolver branch, not a 4-place schema change. |
-| **SDK alignment** | `@arcaai/vox` `ConfigManager` already does `SYSTEM → tenant → department → user` (TASK-297). The backend currently lies about layers — every value comes back tier-1. Migration fixes the asymmetry. |
+| **SDK alignment** | `@arcaai/vox` `ConfigManager` already does `SYSTEM → tenant → department → user` . The backend currently lies about layers — every value comes back tier-1. Migration fixes the asymmetry. |
 
 ### 1.4 Costs and risks
 
@@ -58,7 +57,7 @@ Two thresholds. Either one is sufficient.
 1. **Write amplification ≥ 25× current**. Today: 17 inserts per tenant. We hit the threshold when the catalog grows past ~40 keys *or* tenant count crosses ~125 (whichever first). At HOPE's stated growth (≤ 50 tenants by 2027, key count drifting up as features ship), this is **2026 H2 territory**.
 2. **Any business-driven default rollout** that needs to reach all existing tenants without per-tenant backfill (e.g. new STT model, regional model routing, updated prompt template defaults). The next such rollout pays for the entire migration once over.
 
-**Verdict**: schedule for **Q4 2026**, immediately after the TASK-301 Phase 0/1 security hotfixes land. Don't combine with the security hotfixes — the security work needs to ship in days; this needs weeks.
+**Verdict**: schedule for **Q4 2026**, immediately after the Phase 0/1 security hotfixes land. Don't combine with the security hotfixes — the security work needs to ship in days; this needs weeks.
 
 ---
 
@@ -266,7 +265,7 @@ One query, one cache entry per `(tenantId, departmentId, userId)`. Sub-milliseco
 - **Distributed cache (Redis)**: optional second tier for cold pods. Same key shape. TTL longer (1 hour) because invalidation is reliable.
 - **Invalidation**: on every write to a definition or override, publish `config:invalidate:{tenantId}` (or `config:invalidate:*` when the definition itself changes — a single setting catalog change can affect every tenant who has not overridden, so we evict all). Use Postgres `LISTEN/NOTIFY` if we want zero extra infra, Redis Pub/Sub if we keep the existing Redis client (HOPE already uses `ioredis`).
 
-This is exactly the [AWS tagged-storage in-memory pattern](https://aws.amazon.com/blogs/architecture/build-a-multi-tenant-configuration-system-with-tagged-storage-patterns/) — event-driven invalidation replaces the existing 45 s cron entirely (closes TASK-301 P1-3).
+This is exactly the [AWS tagged-storage in-memory pattern](https://aws.amazon.com/blogs/architecture/build-a-multi-tenant-configuration-system-with-tagged-storage-patterns/) — event-driven invalidation replaces the existing 45 s cron entirely (closes the 45 s-cron staleness finding).
 
 ### 4.5 Type safety
 
@@ -327,7 +326,7 @@ Four phases. Each is independently shippable and rollback-safe.
 - `DepartmentSettingOverride` admin UI and SDK plumbing.
 - `UserSettingOverride` admin UI and SDK plumbing.
 - `SettingDefinitionHistory` / override audit tables.
-- Envelope-encrypted `SECRET`-type values (closes TASK-301 P0-7).
+- Envelope-encrypted `SECRET`-type values (closes the plaintext-secrets finding).
 
 ---
 
@@ -406,7 +405,7 @@ This is mostly additive. The `DELETE` endpoint is the only new surface and lands
 
 ### 7.3 SDK `ConfigManager` alignment
 
-The SDK already has the 4-tier `SYSTEM_DEFAULTS → tenant → department → user` resolver (TASK-297 DEF-C5). Today the backend hides this from it — every setting comes back as a single tenant blob. With the new model the backend can finally return **per-layer projections** so the SDK can render which tier is contributing each value. The `useGlobalSettings` SDK hook (dormant per TASK-301 P1-1) can be retired entirely in favour of `useTenantSettings` + `useDepartmentSettings` + `useUserSettings`, each backed by an override table.
+The SDK already has the 4-tier `SYSTEM_DEFAULTS → tenant → department → user` resolver . Today the backend hides this from it — every setting comes back as a single tenant blob. With the new model the backend can finally return **per-layer projections** so the SDK can render which tier is contributing each value. The `useGlobalSettings` SDK hook (dormant today) can be retired entirely in favour of `useTenantSettings` + `useDepartmentSettings` + `useUserSettings`, each backed by an override table.
 
 ---
 
@@ -416,12 +415,12 @@ The SDK already has the 4-tier `SYSTEM_DEFAULTS → tenant → department → us
 |---|---|
 | **Read performance** | Bulk resolver is one query; per-key reads forbidden in tight loops. Benchmark goal: p99 < 1 ms warm, < 5 ms cold, at 100 concurrent tenants × 40 keys. |
 | **Audit lineage** | Definition changes in `SettingDefinitionHistory`, override changes in `OverrideHistory`. "Who set X for tenant Y at T" → join `OverrideHistory` on `updatedBy`. |
-| **Department-level config — does HOPE have it today?** | No `DepartmentSetting` table exists. SDK has the Tier 2 hook (TASK-297) but the backend doesn't feed it. **Defer the department table to Phase D**; ship A/B/C with catalog + tenant only. |
+| **Department-level config — does HOPE have it today?** | No `DepartmentSetting` table exists. SDK has the Tier 2 hook but the backend doesn't feed it. **Defer the department table to Phase D**; ship A/B/C with catalog + tenant only. |
 | **Soft delete on overrides** | Use existing `resourceStatus`; resolver filters `ENABLED`. Restore = status update, not a new row. |
 | **Cross-tenant leak during migration** | Phase A/B writes use `where: { tenantId }` even in the diff job. Add a property-based test that randomises tenant ids and asserts the resolver never returns another tenant's value. |
 | **Default change scope** | An update to `SettingDefinition.defaultValue` reaches every tenant that has not overridden. Build an admin tool: "show me every tenant affected by this default change" before flipping a default in production. |
-| **Secrets (TASK-301 P0-7)** | This migration does **not** encrypt secrets. The `SECRET` enum reserves the seat; schedule envelope encryption in parallel (Phase D) or post-migration. |
-| **Tooling consistency** | Override + history write is multi-entity → must use `CoreUnitOfWorkService` per `.cursor/rules/04-application-services.mdc`. Schema follows the model-template rule (meta → tenant → core → audit → status → tags → indexes). |
+| **Secrets** | This migration does **not** encrypt secrets. The `SECRET` enum reserves the seat; schedule envelope encryption in parallel (Phase D) or post-migration. |
+| **Tooling consistency** | Override + history write is multi-entity → must use `CoreUnitOfWorkService` per `.claude/rules/04-application-services.md`. Schema follows the model-template rule (meta → tenant → core → audit → status → tags → indexes). |
 
 ---
 
@@ -465,18 +464,15 @@ Items that *can* be parallelised:
 
 **Internal cross-references** (HOPE repo):
 
-- `docs/implementation/TASK-301-System-Config-Multi-Tenancy-Assessment/README.md` — the audit that motivated this plan; all P0/P1 findings flagged in §1 and §8 trace back here.
-- `docs/implementation/TASK-258-*` (Tenant Config Provisioning) — predecessor; the clone-on-create implementation that this plan retires.
-- `docs/implementation/TASK-297-*` (SDK 4-tier ConfigManager) — predecessor; the *client* side already has the model the backend is migrating to.
 - `packages/database/src/prisma/db_main/globalSetting.prisma` — current schema.
 - `packages/applications/src/services/tenant/tenant.service.ts` (`provisionTenantConfigs`, `updateTenantConfigs`) — current write surface.
 - `packages/applications/src/services/baseServices/_meta/appSettings/appSettings.service.ts` — current cache; replace with per-tenant cache + event-driven invalidation in Phase B.
 - `packages/agentic-sdk-v2/src/core/ConfigManager.ts` — SDK resolver; will gain `effectiveLayer` awareness in Phase B.
-- `.cursor/rules/02-database-prisma.mdc` — model-template rule, followed by the schema sketch in §3.
-- `.cursor/rules/04-application-services.mdc` — service rule; mandates `CoreUnitOfWorkService` for multi-entity writes.
+- `.claude/rules/02-database-prisma.md` — model-template rule, followed by the schema sketch in §3.
+- `.claude/rules/04-application-services.md` — service rule; mandates `CoreUnitOfWorkService` for multi-entity writes.
 
 ---
 
 ## Change history
 
-- **2026-05-24** — Initial draft authored under the researcher subagent at the parent orchestrator's request. Document is planning-only; no source code modified. To be reviewed alongside TASK-301 before scheduling.
+- **2026-05-24** — Initial draft authored under the researcher subagent at the parent orchestrator's request. Document is planning-only; no source code modified.

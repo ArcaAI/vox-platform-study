@@ -372,7 +372,5 @@ certain. This path has **not** been rehearsed — see [§8](#8-known-gaps).
 
 ## Related
 
-- [Vault HA deployment record](../../implementation/TASK-616-Deployment-CICD-Observability-Modernization/vault-ha-deployment-2026-08.md) — what was built, deviations, remaining work
-- [Design rationale §C1](../../implementation/TASK-616-Deployment-CICD-Observability-Modernization/component-designs.md) — why Transit auto-unseal replaced the runbook's manual Shamir
 - [Proxmox MCP setup](../proxmox-mcp/README.md) — the `cloudflared` hop this page's SSH depends on
 - [`README.md`](./README.md) — the **k3s** Vault runbook. Different deployment; not this cluster

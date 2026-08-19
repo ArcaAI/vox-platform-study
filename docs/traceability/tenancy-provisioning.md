@@ -1,7 +1,7 @@
 # Traceability — Tenancy, Provisioning, Entitlements & Settings Control Plane
 
 Tenant lifecycle and provisioning, the SDK-facing tenant frontend config, plan
-entitlements + usage metering, users / profiles / departments, and the TASK-504 **settings
+entitlements + usage metering, users / profiles / departments, and the **settings
 control plane** (the typed catalog / registry / effective-config facade layered over the raw
 `GlobalSetting` store). Migrates legacy matrix rows **4**, **5**, **6**, **7**, and adds the
 settings-control-plane row that never had a legacy home (the Wave-1 P1 gap: `settings-catalog`
@@ -73,9 +73,9 @@ transcription concern and is migrated in [`transcription.md`](./transcription.md
 | Console | `apps/admin-console` feature `departments` (`departments-screen`, `department-detail`, `department-hierarchy-panel`, `department-members-panel`, `department-prompt-config-panel`); route `/departments` (tier 30–49, tenant-scoped) |
 | Tests | unit(app): `department/__tests__/*` (`department.service`, `department-prompt-config.service`, `department-users.service`, `department.dto.mapper`); unit(console): `departments/components/__tests__/departments-screen.test.tsx`, `departments/api/__tests__/departments-api.test.ts`; e2e: covered incidentally by tenant / users suites — no dedicated `department` e2e spec |
 
-### TP6 — Settings control plane (typed catalog / registry / effective-config, TASK-504)
+### TP6 — Settings control plane (typed catalog / registry / effective-config)
 
-The TASK-504 control plane: a **code-defined** settings registry (feature descriptor arrays) that
+The control plane: a **code-defined** settings registry (feature descriptor arrays) that
 catalogs the admin-controllable settings across tiers, resolves an effective value per scope, and
 persists overrides into `GlobalSetting`. It shares the `/admin/settings` base with the raw
 `global-setting` store (PO2 in [`platform-ops.md`](./platform-ops.md)) — see the disambiguation note.
@@ -91,9 +91,9 @@ persists overrides into `GlobalSetting`. It shares the `/admin/settings` base wi
 
 ## Honest notes / gaps
 
-- **`/admin/settings` is shared by two capabilities.** The raw KV + secrets store (`global-setting`, legacy row 30) lives in [`platform-ops.md`](./platform-ops.md) (PO2); the TASK-504 typed control plane (`settings-catalog` + `settings-registry-write` + effective-config) is TP6 here. They mount on the same base path but are distinct controllers; overrides written through the registry persist into `GlobalSetting`.
+- **`/admin/settings` is shared by two capabilities.** The raw KV + secrets store (`global-setting`, legacy row 30) lives in [`platform-ops.md`](./platform-ops.md) (PO2); the typed control plane (`settings-catalog` + `settings-registry-write` + effective-config) is TP6 here. They mount on the same base path but are distinct controllers; overrides written through the registry persist into `GlobalSetting`.
 - **Password reset is NOT in this domain.** The `user` module also hosts `forgot-password.controller.ts` (`@Controller('auth')`) and `password-reset.controller.ts` (`@Controller('users/password-reset')`), plus `admin/users/:id/reset-password`; the forgot-password / reset flow is legacy row 8, migrated in [`auth-identity.md`](./auth-identity.md). TP4 records the user-management surface only.
-- **Tenant pipeline resync is a transcription concern.** `tenant-pipeline-resync.controller.ts` (`POST admin/tenants/:id/pipelines/resync`, TASK-531) sits on the `tenant` module physically but governs ASR pipeline-template propagation — migrated in [`transcription.md`](./transcription.md).
+- **Tenant pipeline resync is a transcription concern.** `tenant-pipeline-resync.controller.ts` (`POST admin/tenants/:id/pipelines/resync`) sits on the `tenant` module physically but governs ASR pipeline-template propagation — migrated in [`transcription.md`](./transcription.md).
 - **Department prompt-config crosses into summarization.** `PATCH admin/departments/:id/prompt-config` is on the department controller (TP5) but binds prompt templates; the template governance side is in [`summarization.md`](./summarization.md).
 - **No dedicated department e2e.** TP5 relies on unit(app) + unit(console); department behavior is exercised only incidentally by the tenant/users e2e suites.
 

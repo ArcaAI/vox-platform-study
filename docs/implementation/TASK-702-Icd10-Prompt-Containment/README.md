@@ -6,7 +6,7 @@
 | **Wave** | 0 · **Size** | M |
 | **Epic slug** | `icd10-prompt-containment` |
 | **Depends on** | — (seed edits + data migration; migration for tenant-customized rows is human-gated) |
-| **Design refs** | D5 (Plane 2 containment proceeds regardless of the substrate program) from [design.md](../../architecture/agentic-workflow-platform/design.md) |
+| **Design refs** | D5 (Plane 2 containment proceeds regardless of the substrate program) from [design.md](../../programs/agentic-workflow-platform/design.md) |
 | **Findings closed** | A-03 (conformance matrix, CRITICAL, ranked #2 worst VIOLATED in §3) · F4 (`evidence/ai-pipeline.md`) |
 
 ## 1. Requirement Analysis
@@ -514,7 +514,7 @@ $ grep -ri "ICD-10\|ICD10" packages/database/src/prisma/db_main/seed/07-prompt-t
 
 ## 9. Owner Decision 2026-08-17 — all versions allowed, v3 is the default
 
-`docs/architecture/agentic-workflow-platform/owner-decisions-2026-08-17.md` §2, row 702:
+`docs/programs/agentic-workflow-platform/owner-decisions-2026-08-17.md` §2, row 702:
 
 > "**Allow all current prompt versions.** v3 becomes the default at go-live. The v1
 >  sign-off blocker is dissolved."

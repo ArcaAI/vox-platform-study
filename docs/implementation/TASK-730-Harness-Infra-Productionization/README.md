@@ -6,10 +6,10 @@
 | **Wave** | 3 · **Size** | L |
 | **Epic slug** | `harness-infra-productionization` |
 | **Depends on** | — |
-| **Design refs** | [design.md](../../architecture/agentic-workflow-platform/design.md) D1 (generator end-state — staged migration, harness-only end state) |
+| **Design refs** | [design.md](../../programs/agentic-workflow-platform/design.md) D1 (generator end-state — staged migration, harness-only end state) |
 | **Findings closed** | — (closes the assessment §5 infrastructure counter-argument; no itemized finding IDs in `README.md` — the numbered ids live in `02-conformance-matrix.md`, out of this ticket's required reading scope, so none are cited here rather than guessed) |
 
-> **⚠️ THIS TICKET GATES WAVE 4.** Per `docs/architecture/agentic-workflow-platform/backlog.md`
+> **⚠️ THIS TICKET GATES WAVE 4.** Per `docs/programs/agentic-workflow-platform/backlog.md`
 > §Sequencing notes: *"730 `harness-infra` is the Wave-4 gate: Temporal in-cluster/managed, harness +
 > worker in the k3s base, real namespaces. Without it, D1's migration cannot complete."* TASK-731
 > (`palette-consultation`) and TASK-732 (`legacy-migration-deletion`) both depend on this ticket.

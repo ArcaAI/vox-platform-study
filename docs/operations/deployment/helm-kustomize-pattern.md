@@ -12,9 +12,8 @@
 
 ## 1. The decision
 
-TASK-616 Phase 0 (a decisions-only gate, no code) evaluated three shapes for the config repo and
-picked a hybrid
-(`docs/implementation/TASK-616-Deployment-CICD-Observability-Modernization/README.md:301`):
+Phase 0 (a decisions-only gate, no code) evaluated three shapes for the config repo and
+picked a hybrid:
 
 | Option | Shape | Verdict |
 |---|---|---|
@@ -23,9 +22,9 @@ picked a hybrid
 | **C** | **Hybrid: Kustomize for HOPE's own 11 in-house services, Helm for vendored third-party charts (GPU Operator, Kyverno, Prometheus Operator, Alloy), composed via Kustomize's `helmCharts:` field** | **Adopted as the end state, layered on top of A** |
 
 "Adopted" here means the *decision* was made and recorded — Phase 0 is explicitly "no code"
-(`README.md:285`). Implementing it (actually vendoring GPU Operator/Kyverno/Prometheus
-Operator/Alloy via `helmCharts:`) is future work tracked against Phase 3/6.2 of that same ticket,
-not something this page or TASK-622 builds.
+(no code). Implementing it (actually vendoring GPU Operator/Kyverno/Prometheus
+Operator/Alloy via `helmCharts:`) is future work tracked against Phase 3/6.2,
+not something this page builds.
 
 ## 2. Why hybrid, not one or the other
 
@@ -75,9 +74,9 @@ Notes for whoever implements this:
 - **Rendering requires `--enable-helm`** (and a `helm` binary on the CI runner/local machine) —
   plain `kustomize build` silently ignores `helmCharts:` entries without that flag. Whoever wires
   this into the deployment repo's CI needs to update the existing `render` job
-  (`hope-v2-deployment/.gitlab-ci.yml`) to pass it, and the acceptance bar TASK-616 set for this
+  (`hope-v2-deployment/.gitlab-ci.yml`) to pass it, and the acceptance bar for this
   work is exactly that: *"`kustomize build --enable-helm` renders the full stack from one entry
-  point"* (`README.md:393`).
+  point"*.
 - **Where the vendored charts live in the tree is not yet decided.** This repo's existing layout
   is `deployment/k8s/{base,overlays}/`; a vendored-chart kustomization needs its own home (a
   sibling directory, or folded into `base/` — precedent to be set by whoever builds this, not
@@ -86,19 +85,17 @@ Notes for whoever implements this:
 ## 4. What this replaces
 
 Today, cluster-scoped infrastructure (GPU Operator, and anything else with cluster-wide CRDs) is
-either hand-installed outside GitOps entirely, or — per TASK-617 §2.4 — deliberately excluded from
+either hand-installed outside GitOps entirely, or deliberately excluded from
 `base/kustomization.yaml` because it targets a different namespace (`gpu-operator`) than the app's
 Argo `Application` manages. That exclusion is exactly the kind of gap `helmCharts:` vendoring is
 meant to close: a chart-vendored GPU Operator would be a tracked, versioned, GitOps-managed
 resource instead of a manual `kubectl apply` that nothing forces to happen in order (the same
-sequencing trap TASK-617 documents for the current, un-vendored `gpu-time-slicing.yaml`).
+sequencing trap that exists for the current, un-vendored `gpu-time-slicing.yaml`).
 
 ## Related
 
 - [`README.md`](./README.md) — the deploy/rollback/k3s-upgrade runbook this pattern doc is a
   companion to
-- [TASK-616 README §Phase 0 / §6.2](../../implementation/TASK-616-Deployment-CICD-Observability-Modernization/README.md) — the decision record and the Phase-6 acceptance bar
-- [TASK-617 §2.4](../../implementation/TASK-617-Dev-Environment-Correctness-And-GitOps-Recovery/README.md) — the live GPU time-slicing sequencing gap this pattern is meant to eventually close
 
 ---
 
@@ -106,4 +103,4 @@ sequencing trap TASK-617 documents for the current, un-vendored `gpu-time-slicin
 
 | Date | Change | Author |
 |---|---|---|
-| 2026-08-08 | Initial version (TASK-622 B.3) — documents the adopted Helm/Kustomize hybrid pattern per TASK-616 Phase 0 Option C. Confirmed zero `helmCharts:` usage exists anywhere in `arca/hope-v2-deployment` today; this is a forward-looking pattern doc, not current-state documentation. | Claude |
+| 2026-08-08 | Initial version — documents the adopted Helm/Kustomize hybrid pattern per Phase 0 Option C. Confirmed zero `helmCharts:` usage exists anywhere in `arca/hope-v2-deployment` today; this is a forward-looking pattern doc, not current-state documentation. | Claude |

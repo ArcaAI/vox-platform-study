@@ -4,7 +4,7 @@
 |---|---|---|---|
 | **Status** | Review | **Owner** | Platform / Authorization |
 | **Date** | 2026-08-18 | **Type** | bugfix (security) |
-| **Related** | `docs/architecture/api-design-conformance-review.md` §2.2, §3.1 step 1, §4 order 2 · `docs/architecture/agentic-workflow-platform/conformance/gateway-and-sdk.md` §6.4, §8 G1 · `docs/implementation/TASK-708-Apikey-Scope-Verification/README.md` §8.5 (deferred here, no ticket number assigned at the time) · **TASK-757** (admin plane JWT-only — consumes this ticket's fail-closed behaviour) · **TASK-762** (machine identity) |
+| **Related** | `docs/architecture/api-design-conformance-review.md` §2.2, §3.1 step 1, §4 order 2 · `docs/programs/agentic-workflow-platform/conformance/gateway-and-sdk.md` §6.4, §8 G1 · `docs/implementation/TASK-708-Apikey-Scope-Verification/README.md` §8.5 (deferred here, no ticket number assigned at the time) · **TASK-757** (admin plane JWT-only — consumes this ticket's fail-closed behaviour) · **TASK-762** (machine identity) |
 
 > **Sibling tickets, authored concurrently from the same review (2026-08-18).** TASK-754…762 were
 > written in parallel by separate sessions; their numbers follow the review's §4 sequencing table,
@@ -148,7 +148,7 @@ one credential in the tree: the seeded `SERVICE_ACCOUNT` key with `scopes: ['*']
 
 ### 2.7 Where this was already written down
 
-- `docs/architecture/agentic-workflow-platform/conformance/gateway-and-sdk.md` §6.4 — named it, with
+- `docs/programs/agentic-workflow-platform/conformance/gateway-and-sdk.md` §6.4 — named it, with
   evidence, as an open gap.
 - `docs/implementation/TASK-708-Apikey-Scope-Verification/README.md` §8.5 — deferred it explicitly:
   *"§6.4's privilege ceiling on API-key minting … warrants its own ticket"* — **without assigning a

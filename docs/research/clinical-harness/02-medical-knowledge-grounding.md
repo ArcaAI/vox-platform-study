@@ -1,7 +1,7 @@
 # 02 · Medical Knowledge Grounding
 
 > Corpora (+ licensing), embedding models, hybrid retrieval, ontology/terminology linking, faithfulness/citation,
-> and benchmarks. **Headline for HOPE:** the *internal + institutional* grounding choice (TASK-330 D5) sidesteps the
+> and benchmarks. **Headline for HOPE:** the *internal + institutional* grounding choice sidesteps the
 > licensing minefield; the provisioned Qdrant `context_items` collection is **1536-dim** → use OpenAI
 > `text-embedding-3-small` as the baseline (MedCPT/BioLORD are 768-dim → would need a new collection).
 

@@ -200,7 +200,6 @@ Disable compression instead ([§4](#4-required-configuration)).
 
 - [`README.md`](./README.md) — the staging deploy / rollback / k3s-upgrade runbook for this cluster
 - [`.claude/rules/05-nestjs-api.md`](../../../.claude/rules/05-nestjs-api.md) — §Optimistic Concurrency: the `_version` → `ETag` → `If-Match` → `updateWithVersion` chain this document protects
-- [`docs/implementation/TASK-610-Tenant-Allowed-Origins/README.md`](../../implementation/TASK-610-Tenant-Allowed-Origins/README.md) — the other edge-adjacent concern on these hostnames (CORS origin registry)
 - Cloudflare docs: [ETag headers](https://developers.cloudflare.com/cache/reference/etag-headers) · [Compression Rules](https://developers.cloudflare.com/rules/compression-rules/) · [Compression Rules settings](https://developers.cloudflare.com/rules/compression-rules/settings/) · [Create via API](https://developers.cloudflare.com/rules/compression-rules/create-api/) · [Rules language functions](https://developers.cloudflare.com/ruleset-engine/rules-language/functions/)
 
 ---

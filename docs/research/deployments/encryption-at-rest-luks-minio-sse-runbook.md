@@ -1,8 +1,7 @@
 # Encryption At Rest — LUKS, MinIO SSE & Backup Cipher Runbook
 
-**Status**: UNVERIFIED — this document (TASK-369 Phase 1/4) describes encryption-at-rest procedures as operator actions on host systems. LUKS disk encryption is not confirmed as enabled in live-state audits (TASK-616 2026-08-07); MinIO SSE and pgBackRest AES-256-CBC are specified in the design but no evidence of live deployment has been found. Treat as a specification/playbook, not as a record of current state.
+**Status**: UNVERIFIED — this document describes encryption-at-rest procedures as operator actions on host systems. LUKS disk encryption is not confirmed as enabled in live-state audits (2026-08-07); MinIO SSE and pgBackRest AES-256-CBC are specified in the design but no evidence of live deployment has been found. Treat as a specification/playbook, not as a record of current state.
 
-**Ticket**: TASK-369 (Data Encryption Initiative — Phase 1 + Phase 4 verification)
 **Audience**: SRE / operators with host/VM root access
 **Scope**: PostgreSQL data + WAL volumes, MinIO object storage (PHI media + pgBackRest), Redis, auto-unlock key custody, and encrypted-backup verification.
 
@@ -19,7 +18,7 @@ At-rest disk encryption is the compliance floor: it covers **every** column,
 index, WAL segment, temp file, and raw backup at once. It defends against stolen
 disks, VM snapshots, decommissioned hardware, and raw backup files — it does
 **not** defend against a live compromised node (that is field-level encryption +
-RBAC, handled elsewhere in TASK-369).
+RBAC, handled elsewhere).
 
 | Data store | At-rest mechanism | Covers |
 |---|---|---|
@@ -210,7 +209,7 @@ After wiring `repo1-cipher-type=aes-256-cbc` + `PGBACKREST_REPO1_CIPHER_PASS`
 ### 6.1 Confirm the repo is encrypted
 
 ```bash
-# Cipher must read 'aes-256-cbc' (it was 'none' before TASK-369)
+# Cipher must read 'aes-256-cbc' (it was 'none' before encryption was enabled)
 docker exec patroni pgbackrest --stanza=hope-cluster info | grep -i cipher
 # -> cipher: aes-256-cbc
 
@@ -288,5 +287,5 @@ docker exec patroni pgbackrest --stanza=hope-cluster info | grep -i cipher   # -
 - Enable server-side Postgres TLS on Patroni/PgBouncer (Phase 2 dependency) so
   the `sslmode=require` clients can connect.
 
-See [`infrastructure/SECURITY_DEPLOYMENT_GUIDE.md`](../../infrastructure/SECURITY_DEPLOYMENT_GUIDE.md)
+See [`infrastructure/SECURITY_DEPLOYMENT_GUIDE.md`](../../../infrastructure/SECURITY_DEPLOYMENT_GUIDE.md)
 for the consolidated operator action list.

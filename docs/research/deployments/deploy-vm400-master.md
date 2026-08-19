@@ -1,6 +1,6 @@
 # Deploy Rancher + Argo — VM 400 `master` (10.10.1.100)
 
-**Status**: BUILT — VM 400 is the k3s control-plane node, confirmed live with ArgoCD (v1.11+ installed) and Rancher running in TASK-616 live-state discovery 2026-08-07.
+**Status**: BUILT — VM 400 is the k3s control-plane node, confirmed live with ArgoCD (v1.11+ installed) and Rancher running in live-state discovery 2026-08-07.
 
 **Date**: 2026-03-18
 **VM**: 400 | **Name**: `master` | **IP**: 10.10.1.100 | **Bridge**: vmbr1 | **Specs**: 8c / 16 GB / 64 GB disk

@@ -6,7 +6,7 @@
 | **Wave** | 0 · **Size** | S |
 | **Epic slug** | `signed-status-forgery` |
 | **Depends on** | — |
-| **Design refs** | D5 (Plane 2 containment proceeds regardless of the substrate program) from [design.md](../../architecture/agentic-workflow-platform/design.md) |
+| **Design refs** | D5 (Plane 2 containment proceeds regardless of the substrate program) from [design.md](../../programs/agentic-workflow-platform/design.md) |
 | **Findings closed** | §3.1 (assessment `README.md` headline finding — no dedicated `A-`id was assigned to it in `02-conformance-matrix.md`) · A-13 (CRITICAL/HIGH matrix, same root cause: an unvalidated `metadata` write reaching the lifecycle-status precedence logic) |
 
 ## 1. Requirement Analysis

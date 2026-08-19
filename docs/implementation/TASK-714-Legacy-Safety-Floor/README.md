@@ -22,7 +22,7 @@
 | **Wave** | 1 · **Size** | S |
 | **Epic slug** | `legacy-safety-floor` |
 | **Depends on** | TASK-704 (`generator-entry-point-seam`) |
-| **Design refs** | D1 — Generator end-state: **Staged migration** — "entry-point seam now → capped legacy floor during infra hardening → harness-only, legacy deleted." This ticket IS phase 2 of D1's three-phase plan (`docs/architecture/agentic-workflow-platform/design.md` decision log). |
+| **Design refs** | D1 — Generator end-state: **Staged migration** — "entry-point seam now → capped legacy floor during infra hardening → harness-only, legacy deleted." This ticket IS phase 2 of D1's three-phase plan (`docs/programs/agentic-workflow-platform/design.md` decision log). |
 | **Findings closed** | Narrows (does not fully close — see §1 Out of Scope) A-25 (`02-conformance-matrix.md`, GATED-OFF risk: sign-before-assurance) by making `signedBeforeAssurance` non-vacuous on the legacy path. Does not close A-09 (clinical safety sensors) — dosage parity is a partial, capped mitigation only. |
 
 ## 1. Requirement Analysis

@@ -2,7 +2,7 @@
 
 | Field | Value |
 |---|---|
-| **Parent assessment** | TASK-301 — System Configuration & Multi-Tenancy Deep Assessment |
+| **Parent assessment** | System Configuration & Multi-Tenancy Deep Assessment |
 | **Scope** | `core.GlobalSetting` first; pattern reusable for all tenant-scoped Prisma models |
 | **Status** | Research / decision-ready (no code change yet) |
 | **Audience** | Senior backend engineer scoping work |
@@ -172,7 +172,7 @@ Phase A through C ship behind no flag and are SDK-transparent. Phase D introduce
 1. **Adopt optimistic locking, opt-in per service**, using the existing `version` column. Start with `TenantService.updateTenantConfigs` — highest concurrency surface, smallest blast radius if we regress.
 2. **`If-Match` / `ETag` on admin HTTP APIs**, backed by `ETagInterceptor` + `@RequiresIfMatch()`. Body-carried `expectedVersion` is the fallback for service-to-service callers.
 3. **Defer for append-only / system-owned tables** — `AuditLog`, `Notification`, every `*UsageRecord`, `WebhookRunHistory`. They are never targets of concurrent human edits.
-4. **Pair with `GlobalSettingHistory`** (TASK-301 §B.7). When a 412 fires, the UI renders "user X changed value from Y to Z at t" so the operator can clobber, merge, or abandon. Conflicts without context are user-hostile.
+4. **Pair with `GlobalSettingHistory`**. When a 412 fires, the UI renders "user X changed value from Y to Z at t" so the operator can clobber, merge, or abandon. Conflicts without context are user-hostile.
 5. **Treat `version` as database-owned** — never expose a setter, never write it through `entity.changes`. The only writer is `updateWithVersion`. This rule alone prevents the entire class of "looks like OCC, actually broken" failures Prisma #10207 documents on MySQL.
 
 ---
@@ -209,4 +209,4 @@ If you want a single "minimum viable" cut: A + B + C is a usable 5.5 days of wor
 - **NestJS interceptors.** <https://docs.nestjs.com/interceptors>
 - **Wanago — "API with NestJS #58: Using ETag"** (updated 2024). <https://wanago.io/2022/01/17/api-nestjs-etag-cache/>
 - **OneUptime — "Implement API ETag Headers"** (2026-01-30). <https://oneuptime.com/blog/post/2026-01-30-api-etag-headers/view>
-- **TASK-301 §P2 finding "missing optimistic locking"** (`packages/database/src/prisma/db_main/globalSetting.prisma`). This document is the proposed remediation.
+- **The assessment finding "missing optimistic locking"** (`packages/database/src/prisma/db_main/globalSetting.prisma`). This document is the proposed remediation.

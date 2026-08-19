@@ -5,7 +5,7 @@
 | **Status** | Planned |
 | **Date** | 2026-08-16 |
 | **Design** | [design.md](./design.md) (decision log D1–D8) |
-| **Evidence** | [Consultation assessment](../consultation-session-workflow/assessment/README.md) |
+| **Evidence** | [Consultation assessment](../../architecture/consultation-session-workflow/assessment/README.md) |
 | **Numbering** | New-sprint block `TASK-700+` — deliberately reuses numbers that also exist in `docs/archive/` (pre-sprint work, off-limits this sprint). For ids 700–706, `docs/implementation/` is the sprint ticket; the archive folder of the same number is unrelated. |
 
 Ticket detail lives in `docs/implementation/TASK-7XX-<Name>/README.md` — each with findings,

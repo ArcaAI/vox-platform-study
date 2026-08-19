@@ -1,9 +1,7 @@
 # PHI-Safe Telemetry Guardrails
 
 > Operator + developer reference for keeping PHI (transcripts, prompts, completions,
-> summaries) out of metrics, traces, and logs. TASK-615 WS-G. Background research:
-> [`docs/implementation/TASK-615-Usage-Metering-And-Billing/research-findings.md`](../implementation/TASK-615-Usage-Metering-And-Billing/research-findings.md)
-> §2 (OTel GenAI semantic conventions) and §10 (healthcare/PHI-safe telemetry).
+> summaries) out of metrics, traces, and logs.
 
 HOPE's telemetry plane (OTel traces/metrics/logs) is a **separate system** from the
 usage ledger and from the HIPAA audit log. Telemetry exists to answer "is the system
@@ -172,7 +170,7 @@ Two independent reasons this is a hard rule, not a style preference:
    organization-identifier level.
 
 Per-tenant analytics belong in the tenant-scoped **Postgres** usage ledger (the
-`AiUsageEvent`/rollup tables — TASK-615 WS-A/WS-B, a different lane), never in a
+`AiUsageEvent`/rollup tables, a different lane), never in a
 Prometheus label. If a dashboard needs a per-tenant breakdown, it queries Postgres;
 Prometheus stays aggregate-only.
 
@@ -186,7 +184,7 @@ Three parallel systems, easy to conflate — kept explicitly separate:
 |---|---|---|---|---|
 | OTel telemetry (this page) | No — enforced by the 4 layers above | Operational health, not compliance | Standard telemetry retention (short) | N/A — no PHI to protect |
 | HIPAA audit log (`AuditLog`/sys-events) | Yes — PHI *references* | §164.312(b) audit controls | 6 years (§164.316(b)(2)(i)) | Tamper-evident |
-| Usage ledger (`AiUsageEvent`, TASK-615 WS-A/WS-B) | No — enums/ids only, no free text | Billing/FinOps | Long (no PHI, no BAA complication) | Re-ratable |
+| Usage ledger (`AiUsageEvent`) | No — enums/ids only, no free text | Billing/FinOps | Long (no PHI, no BAA complication) | Re-ratable |
 
 Keeping the separation clean is what lets the usage ledger have long retention and
 broad analyst access without a BAA — the moment free-text or content sneaks into any

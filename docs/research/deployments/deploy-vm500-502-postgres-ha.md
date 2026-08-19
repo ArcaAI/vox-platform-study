@@ -772,9 +772,9 @@ psql -h 10.10.1.250 -p 5000 -U postgres -c "SELECT 1;"
 
 ## 10. Deploy PgBouncer (Transaction Mode)
 
-PgBouncer is configured in [`docker-compose.yml`](../configs/postgres-ha/docker-compose.yml) under the `pgbouncer` profile and is **mandatory** for HOPE production (no longer optional). It runs in **transaction pooling mode** with the settings validated by [TASK-302 Stream C Phase 1](../../docs/implementation/TASK-302-System-Config-Implementation-Roadmap/03-pgbouncer-validation-report.md).
+PgBouncer is configured in [`docker-compose.yml`](../configs/postgres-ha/docker-compose.yml) under the `pgbouncer` profile and is **mandatory** for HOPE production (no longer optional). It runs in **transaction pooling mode** with validated settings.
 
-> ⚠️ **Do not change transaction-mode settings without re-running the validation rig** at `packages/database/tests/pgbouncer-validation/`. Critical guarantees (RLS GUC isolation, prepared-statement safety, `DISCARD ALL` between transactions) depend on the exact combination of `POOL_MODE=transaction`, `MAX_PREPARED_STATEMENTS=200`, and `SERVER_RESET_QUERY_ALWAYS=1`. See [`03-pgbouncer-rollout.md`](../../docs/implementation/TASK-302-System-Config-Implementation-Roadmap/03-pgbouncer-rollout.md) Phase 2A for the rollout plan.
+> ⚠️ **Do not change transaction-mode settings without re-running the validation rig** at `packages/database/tests/pgbouncer-validation/`. Critical guarantees (RLS GUC isolation, prepared-statement safety, `DISCARD ALL` between transactions) depend on the exact combination of `POOL_MODE=transaction`, `MAX_PREPARED_STATEMENTS=200`, and `SERVER_RESET_QUERY_ALWAYS=1`.
 
 ### Effective configuration (Phase 2A)
 
@@ -1274,11 +1274,11 @@ For internal homelab traffic on a private VLAN, TLS is optional. To enable later
 4. Update `pg_hba.conf` to use `hostssl` instead of `host`
 5. Enable TLS on etcd peer and client connections
 
-### 13.4 Defensive Statement / Idle Timeouts (TASK-302 Stream C Phase 0)
+### 13.4 Defensive Statement / Idle Timeouts
 
 A misbehaving client that opens a transaction and never commits — or issues a
 runaway query — can pin a backend forever. With PgBouncer fronting the
-cluster (Phase 2A/2B of TASK-302 Stream C), one such leak can starve the
+cluster, one such leak can starve the
 entire pool. To bound the blast radius, the Patroni bootstrap config
 ([`patroni/entrypoint.sh`](../configs/postgres-ha/patroni/entrypoint.sh) and
 the [`patroni/patroni.yml`](../configs/postgres-ha/patroni/patroni.yml)
@@ -1504,7 +1504,7 @@ DATABASE_URL="postgresql://hope_app:password@10.10.1.250:5000/hope?schema=public
 
 ### For NestJS API (apps/api)
 
-The API Gateway connects through the VIP. PgBouncer is **mandatory** for production: runtime queries go through the pooler at port `6432` (transaction mode, validated by TASK-302 Stream C Phase 1), while migrations bypass the pooler and use the direct HAProxy R/W port `5000` via `DIRECT_URL`. See §10 above and [`03-pgbouncer-rollout.md`](../../docs/implementation/TASK-302-System-Config-Implementation-Roadmap/03-pgbouncer-rollout.md) for the full rationale.
+The API Gateway connects through the VIP. PgBouncer is **mandatory** for production: runtime queries go through the pooler at port `6432` (transaction mode), while migrations bypass the pooler and use the direct HAProxy R/W port `5000` via `DIRECT_URL`. See §10 above for the full rationale.
 
 ---
 

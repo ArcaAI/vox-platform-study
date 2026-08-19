@@ -237,7 +237,7 @@ Complicating it: `.claude/rules/09-infrastructure-devops.md` §"Config caches" *
 ("sound ONLY because it admits platform-reserved tenants exclusively … `00000000-…` SYSTEM and
 `50000000-…` default"). So rules 00 and 09 contradict each other, and `service-account.service.ts:34-41`
 refuses Global explicitly — three positions in one codebase. Already logged as C9 PARTIAL in
-`docs/architecture/agentic-workflow-platform/conformance/gateway-and-sdk.md:45`.
+`docs/programs/agentic-workflow-platform/conformance/gateway-and-sdk.md:45`.
 
 **Not fixable from the seed.** Re-pointing those rows at SYSTEM without changing the runtime
 constants would break settings resolution outright. Needs a ruling on which rule wins, then a

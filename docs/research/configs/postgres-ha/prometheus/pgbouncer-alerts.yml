@@ -1,4 +1,4 @@
-# pgbouncer alert rules — TASK-302 Stream C Phase 2A.
+# pgbouncer alert rules.
 #
 # Thresholds are tuned for HOPE's projected scale (≤ 50 tenants by 2027)
 # and the default_pool_size=50 / min_pool_size=5 configuration in

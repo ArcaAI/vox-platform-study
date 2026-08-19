@@ -40,7 +40,7 @@ Three schema KINDS, one mechanism:
 | Kind | Defines | Who authors | Precedent to follow |
 |---|---|---|---|
 | `NODE_CONFIG` | the config accepted by one workflow node type | platform (SYSTEM rows) | the node registry's existing `NodeSpec` |
-| `CONTEXT` | the shape of a tenant's consultation context — **the owner's headline requirement** | tenant admin | `ContextSchema` work already seeded day-1 (TASK-686) |
+| `CONTEXT` | the shape of a tenant's consultation context — **the owner's headline requirement** | tenant admin | `ContextSchema` work already seeded day-1 |
 | `RULE` | a validator rule expressed as data rather than code | platform authors, doctors review | TASK-716's `rule-catalogue.ts`, promoted from code to rows |
 
 ## 3. Why this shape

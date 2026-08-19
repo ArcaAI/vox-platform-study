@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://arcaai.dev/schemas/task-648/build-info.schema.json",
   "title": "HOPE build-info",
-  "description": "Immutable build identity baked into every HOPE image at /app/build-info.json. Written by the Dockerfile from CI build args (TASK-648 §3.2); read once at process boot. This is NOT configuration — it is a property of the artifact, so it must never be settable from a Deployment manifest, an env file, or turbo.json#globalEnv. The image digest is deliberately absent: it does not exist until after the push, and is attached to the release row by CI instead.",
+  "description": "Immutable build identity baked into every HOPE image at /app/build-info.json. Written by the Dockerfile from CI build args; read once at process boot. This is NOT configuration — it is a property of the artifact, so it must never be settable from a Deployment manifest, an env file, or turbo.json#globalEnv. The image digest is deliberately absent: it does not exist until after the push, and is attached to the release row by CI instead.",
   "type": "object",
   "additionalProperties": false,
   "required": ["service", "version", "gitBranch", "gitCommitSha", "buildAt"],

@@ -46,10 +46,9 @@ bootstrap:
         max_worker_processes: 27
         max_parallel_workers: 8
         password_encryption: scram-sha-256
-        # Phase 0 of TASK-302 Stream C (PgBouncer rollout) — defensive PG timeouts
+        # PgBouncer-rollout phase 0 — defensive PG timeouts
         # so a leaked transaction or runaway query can't pin a backend forever
         # and starve the connection pool. Units are milliseconds.
-        # See: docs/implementation/TASK-302-System-Config-Implementation-Roadmap/03-pgbouncer-rollout.md
         idle_in_transaction_session_timeout: 30000   # 30 s
         statement_timeout: 60000                     # 60 s
       recovery_conf:
@@ -114,7 +113,7 @@ postgresql:
     timezone: UTC
     password_encryption: scram-sha-256
     huge_pages: try
-    # Phase 0 of TASK-302 Stream C (PgBouncer rollout) — see comment in bootstrap.dcs above.
+    # PgBouncer-rollout phase 0 — see comment in bootstrap.dcs above.
     idle_in_transaction_session_timeout: 30000
     statement_timeout: 60000
   create_replica_methods:

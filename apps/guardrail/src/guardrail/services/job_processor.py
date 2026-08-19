@@ -184,7 +184,7 @@ class JobProcessor:
         leak other tenants' job COUNTS through the offsets even with the rows hidden.
 
         The unbounded ``KEYS`` scan below is pre-existing and tracked separately as F-23
-        in ``docs/architecture/agentic-workflow-platform/conformance/python-services.md``;
+        in ``docs/programs/agentic-workflow-platform/conformance/python-services.md``;
         this change deliberately does not widen its scope.
         """
 

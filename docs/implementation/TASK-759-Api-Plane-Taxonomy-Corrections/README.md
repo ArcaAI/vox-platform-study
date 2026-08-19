@@ -6,7 +6,7 @@
 | **Owner** | Platform / Architecture |
 | **Date** | 2026-08-18 |
 | **Type** | refactor (route taxonomy) + docs |
-| **Related** | [api-design-conformance-review.md](../../architecture/api-design-conformance-review.md) §2.5, §3.2 · [api-controller-inventory.md](../../architecture/api-controller-inventory.md) · [api-controller-groupings.md](../../architecture/api-controller-groupings.md) · [conformance/gateway-and-sdk.md](../../architecture/agentic-workflow-platform/conformance/gateway-and-sdk.md) §6.3 · **TASK-757** (A2 — admin plane JWT-only; the destination posture for every route this ticket moves) · **TASK-758** (A1 — business plane; defers `MonitoringController` and `ApiHealthController` `/services` to this ticket) · TASK-708 §6 (the `/admin/*` vs `/internal/*` non-mixing ruling) · TASK-742 (API-key fail-closed + boot audits) · BUG-013 (STT worker credential) |
+| **Related** | [api-design-conformance-review.md](../../architecture/api-design-conformance-review.md) §2.5, §3.2 · [api-controller-inventory.md](../../architecture/api-controller-inventory.md) · [api-controller-groupings.md](../../architecture/api-controller-groupings.md) · [conformance/gateway-and-sdk.md](../../programs/agentic-workflow-platform/conformance/gateway-and-sdk.md) §6.3 · **TASK-757** (A2 — admin plane JWT-only; the destination posture for every route this ticket moves) · **TASK-758** (A1 — business plane; defers `MonitoringController` and `ApiHealthController` `/services` to this ticket) · TASK-708 §6 (the `/admin/*` vs `/internal/*` non-mixing ruling) · TASK-742 (API-key fail-closed + boot audits) · BUG-013 (STT worker credential) |
 
 ---
 
@@ -359,7 +359,7 @@ plane requires, so the move is a re-filing rather than a re-authorization.
 
 ### Step 6 — `WorkflowSandboxRunController`
 
-No decorator changed. `docs/architecture/agentic-workflow-platform/conformance/gateway-and-sdk.md` §6.3 gained a status note: the drift is closed by TASK-757's admin sweep, and D-4 is recorded (post-TASK-742 the API-key path DOES evaluate CASL via `enforceApiKeyAbilities`, so the stated blast radius is narrower than written; the finding itself stands).
+No decorator changed. `docs/programs/agentic-workflow-platform/conformance/gateway-and-sdk.md` §6.3 gained a status note: the drift is closed by TASK-757's admin sweep, and D-4 is recorded (post-TASK-742 the API-key path DOES evaluate CASL via `enforceApiKeyAbilities`, so the stated blast radius is narrower than written; the finding itself stands).
 
 ### Step 7 — documentation
 

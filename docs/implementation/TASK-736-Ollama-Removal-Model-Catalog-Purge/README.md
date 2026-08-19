@@ -20,7 +20,7 @@
 ### R1 (CURRENT) — Ollama provider LOGIC stays; only the Ollama MODEL CATALOG is removed
 
 Owner decision, 2026-08-17
-(`docs/architecture/agentic-workflow-platform/owner-decisions-2026-08-17.md` §2, row 736):
+(`docs/programs/agentic-workflow-platform/owner-decisions-2026-08-17.md` §2, row 736):
 
 > "ollama provider logic must be available, however, model catalog related to ollama
 >  must be removed."

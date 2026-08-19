@@ -1,15 +1,14 @@
 # Secrets Storage: Migration to a Managed Secrets Manager
 
 > **Status**: Research / pre-planning. Not currently scheduled.
-> **Companion ticket**: `TASK-3XX-Secrets-Manager-Migration` (reserve when prioritized)
-> **Cross-references**: TASK-301 P0-1 (AppSettings cache collision), P0-2 (mass-assignment), P0-6 (audit-log plaintext leak), P0-7 (secrets in DB).
+> **Cross-references**: the System Config & Multi-Tenancy assessment findings — AppSettings cache collision, mass-assignment, audit-log plaintext leak, secrets in DB.
 > **Decision today**: Keep all secrets in env vars. This document prepares the migration path for when one of the trip-wires in §1.4 fires.
 
 ---
 
 ## 1. Why migrate
 
-### 1.1 Current state (as of TASK-301 audit)
+### 1.1 Current state (as of the assessment)
 
 HOPE handles PHI under HIPAA. The secrets surface today spans three locations, none of them ideal:
 
@@ -46,7 +45,7 @@ Migrate when **any** of the following becomes true:
 2. **More than one production environment** (staging + prod + DR) — `.env` divergence becomes the dominant source of bugs.
 3. **An incident requires immediate JWT secret rotation** — today this means a coordinated redeploy.
 4. **A new tenant requests BYOK** (bring-your-own-key, e.g. their own Azure OpenAI subscription) — implies per-tenant secrets that don't belong in env vars.
-5. **The audit-log plaintext leak (TASK-301 P0-6) is fixed in isolation** but the underlying GlobalSetting plaintext remains — a partial fix is reviewer-bait.
+5. **The audit-log plaintext leak is fixed in isolation** but the underlying GlobalSetting plaintext remains — a partial fix is reviewer-bait.
 6. **The `loadVaultSecrets()` stub** in `config.service.ts:195` shows up in a security review.
 
 Until then, the env-var approach is fine *if* the immediate hygiene fixes in §5 Phase 0 ship.
@@ -268,7 +267,7 @@ Each phase is independently shippable and reversible.
 These should ship even if the rest of the migration is deferred indefinitely.
 
 1. **Rotate the real Azure keys currently in `apps/api/.env.dev`** (`AZURE_OPENAI_API_KEY`, `TEXT_AZURE_API_KEY`). Treat them as compromised.
-2. **Add a `@Secret` field decorator** + serializer hook on `BaseEntity.toObject()` that returns `'[REDACTED]'` for decorated fields. Apply to `GlobalSettingEntity.value` when `locked: true`. (This fixes TASK-301 P0-6 standalone, no provider change needed.)
+2. **Add a `@Secret` field decorator** + serializer hook on `BaseEntity.toObject()` that returns `'[REDACTED]'` for decorated fields. Apply to `GlobalSettingEntity.value` when `locked: true`. (This fixes the audit-log plaintext leak standalone, no provider change needed.)
 3. **Add a CI lint rule** that fails the build if `.env.dev` or `.env.example` contains any value matching common secret patterns (high entropy, `sk-`, `xoxb-`, `eyJ...`, etc.). Use `truffleHog` or `gitleaks` in pre-commit.
 4. **Document** which secrets exist, where they live, and why (this section is the start).
 
@@ -475,7 +474,6 @@ Unit tests use `InMemorySecretsProvider` injected into the test module.
 
 ### Internal cross-references
 
-- TASK-301 `docs/implementation/TASK-301-System-Config-Multi-Tenancy-Assessment/README.md` — P0-1 (AppSettings cache collision), P0-2 (mass-assignment), P0-6 (audit-log plaintext leak), P0-7 (DB-stored secrets).
 - `packages/applications/src/services/baseServices/_meta/config/config.service.ts:195` — `loadVaultSecrets()` stub (anchor for Phase A).
 - `packages/database/src/prisma/db_main/seed/06-stt.ts:1690-1712` — `S3_ACCESS_KEY` / `S3_SECRET_KEY` rows scheduled for deletion in Phase C.
 - `packages/database/src/prisma/db_main/seed/11-global-setting.ts` — `locked: true` rows that should carry `settingType: SECRET` after Phase C migration.

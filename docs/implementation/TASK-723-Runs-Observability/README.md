@@ -6,7 +6,7 @@
 | **Wave** | 2 · **Size** | M |
 | **Epic slug** | `runs-observability` |
 | **Depends on** | TASK-718 (`workflow-interpreter`), TASK-719 (`workflow-studio-v1`) |
-| **Design refs** | D6 (CQRS-lite, scoped to the substrate) from [design.md](../../architecture/agentic-workflow-platform/design.md); §"Data flow — Observability"; §"Error handling — Runtime"; §"Plane 3" (runs tab) |
+| **Design refs** | D6 (CQRS-lite, scoped to the substrate) from [design.md](../../programs/agentic-workflow-platform/design.md); §"Data flow — Observability"; §"Error handling — Runtime"; §"Plane 3" (runs tab) |
 | **Findings closed** | — |
 
 ## 1. Requirement Analysis

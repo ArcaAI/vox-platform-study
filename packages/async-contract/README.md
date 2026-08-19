@@ -7,7 +7,7 @@ reusable conformance suite. Zero runtime dependencies.
 
 Full prose contract, per-transport delivery semantics, and the rationale
 behind every field:
-[`docs/architecture/agentic-workflow-platform/async-contract.md`](../../docs/architecture/agentic-workflow-platform/async-contract.md).
+[`docs/programs/agentic-workflow-platform/async-contract.md`](../../docs/programs/agentic-workflow-platform/async-contract.md).
 
 ## Why this package exists
 

@@ -6,7 +6,7 @@ version), plus the idempotency-key and resume-token conventions, for the
 HOPE Python services.
 
 Full prose contract:
-[`docs/architecture/agentic-workflow-platform/async-contract.md`](../../docs/architecture/agentic-workflow-platform/async-contract.md).
+[`docs/programs/agentic-workflow-platform/async-contract.md`](../../docs/programs/agentic-workflow-platform/async-contract.md).
 
 ## Why it exists
 

@@ -1,4 +1,4 @@
-# Harness Migration Runbook (TASK-732 Phase 2)
+# Harness Migration Runbook (Phase 2)
 
 > Operator reference for migrating tenants off the legacy signable generator
 > onto `HarnessDocWorkflow`. Modeled on `docs/operations/vault/README.md`'s
@@ -8,9 +8,7 @@
 ## Status of this pass (2026-08-16/17)
 
 **Executed as a pre-production configuration change, not a live multi-cohort
-migration.** The owner's GO verdict
-(`docs/implementation/TASK-732-Legacy-Migration-Deletion/go-no-go-thresholds.md`
-§7) is explicit that this is a pre-production call, not the data-driven
+migration.** The owner's GO verdict is explicit that this is a pre-production call, not the data-driven
 verdict R-1 envisaged — there is no real tenant traffic to cohort, and only
 two seeded tenants exist (`Global`/demo and `ArcaAI`), both already
 `harnessEnabled: true` before this ticket touched anything. Cohorts 1..N
@@ -33,13 +31,11 @@ the owner's explicit pre-production authorization.
 
 Before flipping ANY tenant, confirm:
 
-1. `docs/implementation/TASK-732-Legacy-Migration-Deletion/readiness-checklist.md` — every row relevant to the environment you're migrating in is VERIFIED (a real production rollout, as opposed to this pass's pre-production authorization, should not proceed on unmet rows without an equally explicit owner override).
-2. `go-no-go-thresholds.md` carries a dated, signed verdict (§7 of that document).
-3. You have `admin:pipeline-policy:manage` scope and, for a super admin acting on a specific tenant, `?tenantId=<id>` reaches the right cascade tier.
+1. You have `admin:pipeline-policy:manage` scope and, for a super admin acting on a specific tenant, `?tenantId=<id>` reaches the right cascade tier.
 
 ## The flip mechanism
 
-**One `PipelinePolicy` row write at TENANT scope, through the admin surface — never a seed edit, never raw SQL.** Deployed rows do not re-seed (`seed/14-pipeline-policy.ts`'s own doc comment; TASK-702 hit the same drift for a different table).
+**One `PipelinePolicy` row write at TENANT scope, through the admin surface — never a seed edit, never raw SQL.** Deployed rows do not re-seed (`seed/14-pipeline-policy.ts`'s own doc comment).
 
 ```bash
 # 1. Read the current row + its version (for the If-Match CAS token).
@@ -94,10 +90,10 @@ Propose **2 weeks per cohort** (long enough to span a full clinical week-cycle t
 | Signal | Source |
 |---|---|
 | Missing-note rate, recomputed per cohort | `packages/database/scripts/harness-migration-readiness-report.ts` (Phase 1 Task 2's formula), scoped to the cohort's tenant ids |
-| Harness 5xx rate | `apps/harness`'s own metrics / TASK-730 Task 4's availability report |
-| Temporal workflow backlog | TASK-730 Task 5's Grafana dashboard (`infrastructure/grafana/dashboards/harness-temporal.json`) |
-| Duplicate `harness-doc-{consultationId}` executions | `scripts/harness-availability-report.py` (TASK-730 Task 4) |
-| `SIGNED_BEFORE_ASSURANCE` annotation count | Should trend toward the harness's own (non-vacuous) rate as tenants leave whatever legacy floor previously existed for them; TASK-714's floor is deleted as of Phase 3, so this signal only has meaning pre-Phase-3 |
+| Harness 5xx rate | `apps/harness`'s own metrics / the availability report |
+| Temporal workflow backlog | Grafana dashboard (`infrastructure/grafana/dashboards/harness-temporal.json`) |
+| Duplicate `harness-doc-{consultationId}` executions | `scripts/harness-availability-report.py` |
+| `SIGNED_BEFORE_ASSURANCE` annotation count | Should trend toward the harness's own (non-vacuous) rate as tenants leave whatever legacy floor previously existed for them; the legacy safety floor is deleted as of Phase 3, so this signal only has meaning pre-Phase-3 |
 
 ## Rollback
 
@@ -128,7 +124,4 @@ Last step of Phase 2, after every cohort is clean (or, as in this pass, under an
 
 ## Related documents
 
-- `docs/implementation/TASK-732-Legacy-Migration-Deletion/README.md` — the parent ticket.
-- `docs/implementation/TASK-732-Legacy-Migration-Deletion/go-no-go-thresholds.md` — the Phase 1 gate + Task 3 verdict.
-- `docs/implementation/TASK-732-Legacy-Migration-Deletion/deletion-manifest.md` — the Phase 3 deletion plan + Task 8 decision.
 - `docs/operations/vault/README.md` — the runbook shape this document follows.

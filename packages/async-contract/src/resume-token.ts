@@ -1,6 +1,6 @@
 /**
  * Resume-token convention (§3.6 of
- * docs/architecture/agentic-workflow-platform/async-contract.md).
+ * docs/programs/agentic-workflow-platform/async-contract.md).
  *
  * Opaque, transport-assigned, consumer-echoed: `base64url(JSON({v, t, c}))`.
  * A producer never invents the cursor `c`; the transport does (a Redis stream

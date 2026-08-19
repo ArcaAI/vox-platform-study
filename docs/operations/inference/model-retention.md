@@ -1,6 +1,6 @@
 # Model Retention & Lifecycle — Operator Runbook
 
-**Owner**: Platform / Inference · **Introduced**: TASK-529 · **Completed by**: TASK-530 · **Last updated**: 2026-07-20 · **Last verified**: 2026-07-21
+**Owner**: Platform / Inference · **Introduced**: 2026-07-21 · **Last updated**: 2026-07-20 · **Last verified**: 2026-07-21
 
 How HOPE decides when a model is loaded, how long it stays resident, and how an
 operator changes that at runtime **without a redeploy**.
@@ -41,17 +41,17 @@ All keys are `globalOnly`, `tier: global-kv`, system-scoped (never tenant-set).
 ### 2a. Which services actually read these keys
 
 Set a key here and it reaches every service in this table within one refresh
-window, with no redeploy. **As of TASK-535 that is all six** — before it,
+window, with no redeploy. **That is all six** — in earlier builds,
 guardrail, harness and tts silently ignored the console and ran on env.
 
-| Service | Reads the control plane since | Client | Refresh trigger |
+| Service | Reads the control plane | Client | Refresh trigger |
 |---|---|---|---|
-| stt | TASK-525 | `core/effective_config.py` | request-path refresher |
-| nlp | TASK-529 | `core/effective_config.py` | request-path (`refresh_inference_limit`) |
-| smr | TASK-525 | `core/effective_config.py` | request path (`get_runtime_limits`) |
-| guardrail | **TASK-535** | `core/effective_config.py` | aux-model resolution (analyze / groundedness) |
-| harness | **TASK-535** | `core/effective_config.py` | **Temporal worker** housekeeping tick (60 s) — §6a |
-| tts | **TASK-535** | `core/effective_config.py` | `POST /api/v1/audio/speech` |
+| stt | Yes | `core/effective_config.py` | request-path refresher |
+| nlp | Yes | `core/effective_config.py` | request-path (`refresh_inference_limit`) |
+| smr | Yes | `core/effective_config.py` | request path (`get_runtime_limits`) |
+| guardrail | Yes | `core/effective_config.py` | aux-model resolution (analyze / groundedness) |
+| harness | Yes | `core/effective_config.py` | **Temporal worker** housekeeping tick (60 s) — §6a |
+| tts | Yes | `core/effective_config.py` | `POST /api/v1/audio/speech` |
 
 All six are **read-triggered, not background pollers** — a service that is never
 called never polls — and all six re-apply the `[60, 3600]` clamp client-side.
@@ -70,10 +70,10 @@ gateway is unreachable): `GUARDRAIL_V2_MODEL_CACHE_TTL_S` /
 > TTL — the service clamps it to 3600. Setting `30` clamps up to 60. This is
 > deliberate: E6 specifies a 1-hour maximum retention.
 
-### ⚠️ The 600 s default is a change from the pre-TASK-529 behaviour
+### ⚠️ The 600 s default is a change from the previous behaviour
 
 stt, guardrail and nlp previously ran a **3600 s** idle TTL; nlp's was
-hardcoded with no knob at all. TASK-529 adopts the program-approved OD-5 default
+hardcoded with no knob at all. HOPE adopts the program-approved OD-5 default
 of **600 s** for every service. Expect **more frequent model reloads** on
 low-traffic deployments after this ships.
 
@@ -92,7 +92,7 @@ Not every "model" is HOPE's to evict. Three different owners:
 
 | Engine | Retention owner | Mechanism |
 |---|---|---|
-| In-process (stt loaders, GLiNER, NLP transformers, harness MiniCheck entailer, Kokoro/IndicParler/IndicF5) | **HOPE** | The shared cache: `ttl → lru → vram` eviction, per-service budgets. As of TASK-530 **no in-process engine is exempt** — see §6a. |
+| In-process (stt loaders, GLiNER, NLP transformers, harness MiniCheck entailer, Kokoro/IndicParler/IndicF5) | **HOPE** | The shared cache: `ttl → lru → vram` eviction, per-service budgets. **No in-process engine is exempt** — see §6a. |
 | **Ollama** | The Ollama server, per-request influenced | HOPE sends `keep_alive: <ttl>s` on every generate/stream, overriding the server's `OLLAMA_KEEP_ALIVE` (default 5 min). Cap residents with `OLLAMA_MAX_LOADED_MODELS`. |
 | **LM Studio** | The LM Studio server, per-request influenced | HOPE sends `ttl: <seconds>` via the OpenAI SDK's `extra_body`. JIT-loaded models otherwise default to a 60 min idle TTL. Leave **Auto-Evict ON** so a new JIT load unloads the previous one. |
 | **vLLM / llama.cpp server** | Launch-time; **resident by design** | One model per launch, stays resident. `smr.modelCache.ttlSeconds` does **not** apply. |
@@ -200,7 +200,7 @@ own periodic sweep (every 60 s) so an idle entailer is released even when no
 further verification arrives. Restarting only the FastAPI app will NOT free it —
 restart the worker.
 
-The same placement applies to its **retention refresh** (TASK-535): the worker's
+The same placement applies to its **retention refresh**: the worker's
 housekeeping tick pulls `harness.modelCache.*` and reconfigures the entailer
 cache immediately before sweeping against it. A refresher in the harness FastAPI
 app would be a no-op — that process holds no entailer. So a `harness.modelCache.
@@ -222,8 +222,8 @@ To restore fail-at-boot: set `TTS_WARMUP_ENABLED=true`. The engine warms during
 startup again — but it still registers either way, so a failure is loud in the
 logs rather than silently removing a route.
 
-**TASK-530 completion note.** TASK-529 made all three engines lazy but put only
-**Kokoro** behind the cache, so IndicParler and IndicF5 loaded on first use and
+**Completion note.** All three engines were made lazy, but initially only
+**Kokoro** sat behind the cache, so IndicParler and IndicF5 loaded on first use and
 then stayed resident forever. All three are now TTL-unloaded on the same terms,
 and each zeroes its `tts_model_loaded{model=…}` gauge on release.
 
@@ -255,7 +255,7 @@ and restart `pnpm worker:dev` — or just wait: the worker sweeps every
 60 s and releases it once idle past `harness.modelCache.ttlSeconds`.
 
 **"I changed `ttlSeconds` in the console and nothing happened."**
-First check §2a — before TASK-535, guardrail / harness / tts did not read the
+First check §2a — in earlier builds, guardrail / harness / tts did not read the
 control plane at all. On a build that has it: the refresh is **read-triggered**,
 so a service with no traffic has not polled yet — issue one request (or, for
 harness, wait one 60 s worker tick). If it still has not moved, the fetch is
@@ -273,7 +273,5 @@ launch-time-resident engine (vLLM / llama.cpp server) instead.
 ## 9. Related
 
 - Contract + conformance clauses: `packages/py-runtime-models/README.md`
-- Tickets: `docs/implementation/TASK-529-Model-Lifecycle-Retention/README.md` (contract + first adoption wave), `docs/implementation/TASK-530-Lifecycle-Convergence-Tail/README.md` (harness D-08, stt convergence, D-09 completion) and `docs/implementation/TASK-535-Retention-Client-Adoption/README.md` (guardrail / harness / tts control-plane clients — the last three env-only services)
-- Config plane: `docs/implementation/TASK-525-*` (effective-config read path)
 - Ollama: <https://docs.ollama.com/faq> · LM Studio:
   <https://lmstudio.ai/docs/developer/core/ttl-and-auto-evict>

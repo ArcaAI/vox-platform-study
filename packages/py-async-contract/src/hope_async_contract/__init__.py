@@ -3,7 +3,7 @@
 Identity, tenancy, type, payload-or-claim-check, correlation, causation,
 idempotency key, schema version — plus the idempotency-key and resume-token
 conventions. See ``hope_async_contract.envelope`` for the contract and
-``docs/architecture/agentic-workflow-platform/async-contract.md`` for the
+``docs/programs/agentic-workflow-platform/async-contract.md`` for the
 full prose design.
 """
 

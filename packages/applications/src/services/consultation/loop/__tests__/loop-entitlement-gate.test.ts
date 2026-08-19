@@ -1,7 +1,7 @@
 /**
  * TASK-705 — the harness agentic loop is a SUBSCRIPTION FEATURE.
  *
- * The owner decision (`docs/architecture/agentic-workflow-platform/owner-decisions-2026-08-17.md`
+ * The owner decision (`docs/programs/agentic-workflow-platform/owner-decisions-2026-08-17.md`
  * §2 row 705) dissolves the old framing entirely: whether the loop runs for a
  * consultation is no longer an environment kill-switch, it is the tenant's
  * ENTITLEMENT. The operational device survives alongside it, with a different

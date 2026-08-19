@@ -13,18 +13,18 @@
 > **Current reality (2026-08-08) — read this before running anything below.** The remediation
 > that makes most of this doc's target state true is **authored but unpushed**: local `main` in
 > `arca/hope-v2-deployment` is 6 commits ahead of `origin/main` (`08d1651`), which is the revision
-> Argo CD actually syncs (TASK-617 §2.1 LIVE-01). Concretely, **today**:
+> Argo CD actually syncs. Concretely, **today**:
 > - The only live namespace/Argo `Application` is `hope-v2-dev` (`deployment/argocd/bootstrap.dev.yaml`,
 >   applied 2026-03-31). **"Staging" is that namespace** — there is no live `hope-v2-staging`
 >   namespace or `Application` yet. The `overlays/staging` Kustomize tree and the `promote-staging`
 >   CI job both exist and render correctly, but nothing in the cluster is watching
->   `overlays/staging` until a `hope-v2-staging` `Application` is applied (owner action, tracked by
->   TASK-617/TASK-626) — see [§2](#2-current-state-snapshot).
+>   `overlays/staging` until a `hope-v2-staging` `Application` is applied (owner action) — see
+>   [§2](#2-current-state-snapshot).
 > - Argo's `hope-v2-dev` sync policy is `automated: {}` — **auto-sync on, `prune` and `selfHeal`
->   both off**. TASK-616 Appendix F §F5's target (`prune: true, selfHeal: true` for dev/staging)
->   is authored but not yet live; flipping it is TASK-616 §E6 steps 8–9, owner-gated, in that order.
-> - Argo CD has been failing every sync for the last several days with a stuck `PreSync` hook
->   (TASK-617 §2.1 LIVE-02) — verify sync health ([§3](#3-health-check-run-this-first)) before
+>   both off**. The target (`prune: true, selfHeal: true` for dev/staging)
+>   is authored but not yet live; flipping it is owner-gated, `prune` first, then `selfHeal`.
+> - Argo CD has been failing every sync for the last several days with a stuck `PreSync` hook —
+>   verify sync health ([§3](#3-health-check-run-this-first)) before
 >   assuming a push will do anything.
 >
 > Follow this runbook against `hope-v2-dev` until a real `hope-v2-staging` Application is live.
@@ -44,7 +44,7 @@ no log line that reads like a mistake.
 - **With `selfHeal: false` (today, `hope-v2-dev`)**: the danger window is "until the next commit
   lands on `main` for any reason" — even one unrelated to your incident, because Argo's poll-driven
   sync (or a webhook) resyncs from `main` HEAD on every change, not just the one you're fixing.
-- **With `selfHeal: true` (the target state for dev/staging, TASK-616 §E6 steps 8–9)**: the danger
+- **With `selfHeal: true` (the target state for dev/staging)**: the danger
   window shrinks to the length of one reconcile loop. Argo's controller periodically diffs live
   state against `main` regardless of whether anything new was pushed, and an out-of-band rollback
   *is* a diff — self-heal reverts it proactively, with no new commit required.
@@ -53,7 +53,6 @@ no log line that reads like a mistake.
 must always be paired with a `git revert` on `arca/hope-v2-deployment`, pushed to `main`.**
 `argocd app rollback` alone is a stopgap for the seconds it takes to also push the revert — never
 the fix itself. See [§5](#5-rollback-runbook) for the full procedure.
-(Design source: `docs/implementation/TASK-616-Deployment-CICD-Observability-Modernization/component-design-cicd-promotion.md:140-152`, §F7.)
 
 ---
 
@@ -65,11 +64,11 @@ the fix itself. See [§5](#5-rollback-runbook) for the full procedure.
 | dev sync policy | `automated: {}` — auto-sync on, `prune`/`selfHeal` off | `prune: true, selfHeal: true` |
 | staging sync policy | N/A (not live) | `prune: true, selfHeal: true`, plus Argo Notifications on sync-failed/health-degraded |
 | prod sync policy | N/A (not live) | Manual sync only, manual `--prune`, `selfHeal` off (an on-call `kubectl scale` must survive an incident) |
-| Argo sync health | **Failing every sync** — stuck `hope-vault-init` PreSync hook (TASK-617 LIVE-02) | Green, `Synced`/`Healthy` |
+| Argo sync health | **Failing every sync** — stuck `hope-vault-init` PreSync hook | Green, `Synced`/`Healthy` |
 | PostSync smoke test | Not live (authored: `deployment/k8s/base/smoke-test.yaml`, unpushed) | Runs automatically after every sync, marks the Application `Degraded` on failure |
 
 Re-check `git log origin/main..main` in `arca/hope-v2-deployment` before trusting this table — the
-unpushed commit count changes as TASK-617 makes progress. Do not assume the "design target" column
+unpushed commit count changes as the GitOps recovery work makes progress. Do not assume the "design target" column
 is live without confirming via [§3](#3-health-check-run-this-first).
 
 ---
@@ -81,9 +80,9 @@ Before deploying or rolling back anything, confirm what Argo currently believes:
 ```bash
 argocd app get hope-v2-dev
 # Expect: Sync Status Synced, Health Status Healthy.
-# TASK-617 LIVE-02: today this instead shows a stuck PreSync hook and
+# Today this instead shows a stuck PreSync hook and
 # operationState.phase: Error — do not push into a cluster that isn't syncing;
-# fix the sync first (TASK-617 owns that recovery).
+# fix the sync first.
 
 argocd app history hope-v2-dev
 # Lists prior synced revisions — the list you roll back into if you ever
@@ -214,8 +213,7 @@ verified SLA.
 ### The cluster shape that makes this dangerous
 
 The only k3s cluster today is **single-node**: Proxmox VM 200 (`ubuntu-live-gpu`, `10.10.1.10`),
-16 cores / 48 GB, with **2× NVIDIA RTX 2000 Ada GPUs attached via VFIO passthrough**
-(`docs/implementation/TASK-616-Deployment-CICD-Observability-Modernization/README.md:184`). There
+16 cores / 48 GB, with **2× NVIDIA RTX 2000 Ada GPUs attached via VFIO passthrough**. There
 is no separate control-plane node and no second worker to fail over to — this one VM *is* the
 entire cluster. Every environment that ends up live on it (`hope-v2-dev` today; `hope-v2-staging`/
 `hope-v2-prod` once they exist, per Phase 8's shared-substrate design) shares this single failure
@@ -229,8 +227,7 @@ domain (`README.md:554`: "one disk, one GPU pair, one failure domain").
 
 The GPUs are attached via PCI/VFIO passthrough, which Proxmox cannot live-migrate — a passed-through
 PCI device is bound to the physical host it's plugged into. This is a documented, deliberate
-constraint of the platform, not a gap to fix:
-`docs/implementation/TASK-616-Deployment-CICD-Observability-Modernization/README.md:506` records it
+constraint of the platform, not a gap to fix. It is recorded
 as a **Certain**-probability, Medium-severity risk: *"k3s upgrade on a GPU-passthrough VM requires
 real downtime (no live migration)."* There is no failover node, no drain target, and no way to move
 the workload elsewhere for the duration — the only mitigation available is scheduling the downtime
@@ -244,18 +241,18 @@ pinned no `INSTALL_K3S_VERSION`, so there is no record of how long a version bum
 restart takes on this box, let alone a full VM reboot for a kernel/driver bump. Do not treat any
 number you see elsewhere for a generic k3s upgrade as this cluster's number — GPU passthrough
 VMs, `local-path` PVs, and Rancher's Fleet agent all add recovery time a stock k3s node doesn't
-have. Measuring this is explicitly still open (TASK-622 Wave C, task C.3) — until that lands,
+have. Measuring this is explicitly still open — until that lands,
 budget for it live during a scheduled window rather than promising a number to stakeholders.
 
 ### Pre-upgrade checklist
 
-- [ ] **Disk headroom.** `/mnt/data` was measured at 89% full (TASK-617 §2.2, L-10) with kubelet
+- [ ] **Disk headroom.** `/mnt/data` was measured at 89% full with kubelet
       image GC failing to reclaim ahead of pressure (LIVE-04). Do not start an upgrade — which
       pulls new images and may need scratch space — while the node is already disk-constrained.
       Confirm current usage first: `df -h /mnt/data`.
 - [ ] **k3s datastore backup.** The datastore is SQLite, not embedded etcd
       (`README.md:518`, Q2). **No backup/restore drill for this datastore has been performed** —
-      it is an open item from TASK-616 (`README.md:333`, step 2.6: *"Automate the k3s datastore
+      it is an open item (*"Automate the k3s datastore
       backup and rehearse one full restore"*). Do not treat "the upgrade failed, roll back" as a
       safety net until that exists; today, a failed upgrade with no snapshot is a rebuild.
 - [ ] **GPU driver/toolkit compatibility.** A kernel upgrade on a GPU-passthrough host risks
@@ -318,10 +315,10 @@ kubectl get nodes -o wide          # same, from the cluster's own view
 
 | Gap | Consequence |
 |---|---|
-| Argo sync is currently broken (TASK-617 LIVE-02) | Nothing in [§4](#4-deploy-runbook-promote-to-staging)/[§5](#5-rollback-runbook) converges until that's fixed — check [§3](#3-health-check-run-this-first) first, every time |
+| Argo sync is currently broken | Nothing in [§4](#4-deploy-runbook-promote-to-staging)/[§5](#5-rollback-runbook) converges until that's fixed — check [§3](#3-health-check-run-this-first) first, every time |
 | `hope-v2-staging`/`hope-v2-prod` are not live | This doc's "staging" procedures run against `hope-v2-dev` until a real staging Application exists |
 | No k3s datastore backup/restore drill | A failed k3s upgrade has no tested recovery path — see the pre-upgrade checklist |
-| No measured k3s upgrade downtime for this cluster | Budget for it live; do not promise a number (TASK-622 Wave C / C.3 owns closing this) |
+| No measured k3s upgrade downtime for this cluster | Budget for it live; do not promise a number |
 | No documented `argocd`/kubeconfig onboarding step | New engineers need to ask the owner for Rancher/Argo access; not written down anywhere else in this repo |
 | PostSync smoke test authored but not live | Manual verification ([§4 step 4](#4-deploy-runbook-promote-to-staging)) is required until the unpushed commits land |
 
@@ -332,8 +329,6 @@ kubectl get nodes -o wide          # same, from the cluster's own view
 - [`helm-kustomize-pattern.md`](./helm-kustomize-pattern.md) — the Helm/Kustomize hybrid pattern for vendoring third-party charts (GPU Operator, Kyverno, Prometheus Operator, Alloy) into this same repo
 - [`cdn-edge-requirements.md`](./cdn-edge-requirements.md) — strong-ETag preservation: the Cloudflare compression setting every HOPE-fronting hostname needs, without which all optimistic-concurrency writes break after deploy (silently in the admin console, as `400`s for the SDK)
 - [`docs/operations/observability/README.md`](../observability/README.md) — on-call process, alert response, and where the dashboards referenced in [§4 step 4](#4-deploy-runbook-promote-to-staging) actually live
-- [TASK-616 component-design-cicd-promotion.md](../../implementation/TASK-616-Deployment-CICD-Observability-Modernization/component-design-cicd-promotion.md) — the full CI→CD promotion design (§F5 per-environment sync matrix, §F6 sync waves, §F7 rollback)
-- [TASK-617](../../implementation/TASK-617-Dev-Environment-Correctness-And-GitOps-Recovery/README.md) — the GitOps recovery ticket that gets [§2](#2-current-state-snapshot)'s "design target" column live
 - [`docs/operations/vault/vm-cluster-seal-unseal.md`](../vault/vm-cluster-seal-unseal.md) — this doc's style model; also the runbook for the separate VM-based Vault cluster HOPE actually uses (not the k3s Vault manifest referenced in old research docs)
 
 ---
@@ -342,4 +337,4 @@ kubectl get nodes -o wide          # same, from the cluster's own view
 
 | Date | Change | Author |
 |---|---|---|
-| 2026-08-08 | Initial version (TASK-622 B.1) — staging deploy, rollback, and k3s-upgrade runbooks, written against the verified live state (only `hope-v2-dev` live, Argo sync currently broken, remediation unpushed). No downtime duration asserted for the k3s upgrade — that measurement is still open. | Claude |
+| 2026-08-08 | Initial version — staging deploy, rollback, and k3s-upgrade runbooks, written against the verified live state (only `hope-v2-dev` live, Argo sync currently broken, remediation unpushed). No downtime duration asserted for the k3s upgrade — that measurement is still open. | Claude |

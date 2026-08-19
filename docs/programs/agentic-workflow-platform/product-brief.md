@@ -111,4 +111,4 @@ text generation.
 
 This brief is the conformance target. When a ticket's scope and this brief disagree, this brief wins
 and the ticket is re-scoped. Gaps found against it are recorded in
-[service-conformance-gaps.md](./service-conformance-gaps.md).
+the conformance reviews — [gateway-and-sdk.md](./conformance/gateway-and-sdk.md), [python-services.md](./conformance/python-services.md), [admin-console.md](./conformance/admin-console.md).
