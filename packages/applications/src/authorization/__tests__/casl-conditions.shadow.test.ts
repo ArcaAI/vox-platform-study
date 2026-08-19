@@ -35,16 +35,18 @@ describe('PolicyEngine.evaluateShadowVerdict', () => {
 
   const abilityAllowingType = (): AppAbility =>
     ({
-      // Mirrors real CASL's calling convention as `PolicyEngine.can` uses it:
-      // `ability.can(action, subject)` for the type-only call (2 args), and
-      // `ability.can(action, subject, resource)` for the instance-aware call
-      // (3 args) — see `PolicyEngine.can` in `policy.engine.ts`.
-      can: vi.fn((_action: string, _subject: string, resource?: Record<string, unknown>) => {
-        if (resource === undefined) return true; // type-only: matches on type alone (today's real bug)
+      // Mirrors real CASL's calling convention as `PolicyEngine.can` uses it
+      // AFTER the Task 15c fix: BOTH calls are 2-argument. The type-only call
+      // passes the subject NAME; the instance-aware call passes the instance
+      // TAGGED with its subject type (`subject(type, obj)`), because CASL's
+      // 3rd parameter is a FIELD NAME and throws for an object — which is what
+      // this double used to encode, and what the fix removed.
+      can: vi.fn((_action: string, subjectOrInstance: string | Record<string, unknown>) => {
+        if (typeof subjectOrInstance === 'string') return true; // type-only: matches on type alone (today's real bug)
         // Instance-aware: the fake ability applies the ONE seeded condition
         // shape this suite cares about — `tenantId` equality — exactly the
         // hazard casl-blast-radius.md names.
-        return resource.tenantId === 'tenant-1';
+        return subjectOrInstance.tenantId === 'tenant-1';
       }),
       cannot: vi.fn(),
       relevantRuleFor: vi.fn(),

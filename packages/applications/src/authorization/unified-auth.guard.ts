@@ -10,7 +10,7 @@ import {
   SetMetadata,
   UnauthorizedException,
 } from '@nestjs/common';
-import { Reflector } from '@nestjs/core';
+import { ModuleRef, Reflector } from '@nestjs/core';
 import { ClsService } from 'nestjs-cls';
 import { IActiveUserContext } from '../interfaces';
 import { IApiKeyService } from '../services/apiKey/IApiKeyService';
@@ -101,7 +101,47 @@ export const SUBJECT_INSTANCE_RESOLVER_KEY = 'subjectInstanceResolver';
 export type SubjectInstanceResolver = (
   // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Express/Fastify request shape varies by adapter; matches this file's existing request-param convention (e.g. handleApiKeyAuth below).
   request: any,
+  ctx: SubjectResolverContext,
 ) => Record<string, unknown> | undefined | Promise<Record<string, unknown> | undefined>;
+
+/**
+ * The dependency access a `SubjectInstanceResolver` is handed as its SECOND
+ * argument (TASK-712 Phase 5 Task 15b).
+ *
+ * Task 14 gave the resolver only the raw request, which meant it could build
+ * an instance from `params`/`body` but could never LOAD A ROW — and every
+ * identity-shaped condition in `casl-blast-radius.md` §4 (`userId`,
+ * `doctorId`, `targetUserId`, `createdBy`, `isSystemRole`) needs the row. So
+ * shadow mode could not be wired to a single real route and
+ * `casl_shadow_divergence_total` could never move. This is the narrowest
+ * change that unblocks it.
+ *
+ * `get` resolves NON-STRICTLY (`{ strict: false }`): `UnifiedAuthGuard` is an
+ * `APP_GUARD` in the root module while the services a resolver wants live in
+ * feature modules, so a module-scoped lookup would never find them.
+ *
+ * TRADEOFF, stated plainly. This hands route-declared code an escape hatch
+ * into the container on the authentication hot path, and a careless resolver
+ * can now issue an unbounded query on every gated request. Three things bound
+ * it: the decorator is opt-in per route (an undecorated route resolves
+ * nothing and loads no row), the whole path is fail-open (a throwing `get` is
+ * swallowed — see `runCaslInstanceChecks`), and a resolver is expected to
+ * reuse a read the handler makes anyway.
+ *
+ * The alternative the ticket named — resolve the instance in a PRECEDING
+ * INTERCEPTOR and stash it on the request — was rejected as structurally
+ * impossible, not merely worse: NestJS runs every guard BEFORE any
+ * interceptor. That ordering is the same fact that disqualifies
+ * `UserVoiceProfile` from enforcement (DEF-C3), so an interceptor could only
+ * ever populate a request the guard has already finished with. Injecting the
+ * concrete services into the guard directly was rejected too: the guard lives
+ * in `packages/applications` and would have to depend on every feature module
+ * that ever wants a resolver.
+ */
+export interface SubjectResolverContext {
+  /** Resolve a provider by injection token from anywhere in the container. */
+  get<T = unknown>(token: unknown): T;
+}
 
 /**
  * Opt IN a route to CASL shadow-mode instance comparison (TASK-712 Phase 5
@@ -289,6 +329,12 @@ export class UnifiedAuthGuard implements CanActivate {
     @Optional()
     @Inject(SERVICE_ACCOUNT_AUTHENTICATOR)
     private readonly serviceAccounts?: IServiceAccountAuthenticator,
+    // TASK-712 Task 15b — the container handle a `@ResolveSubjectInstance`
+    // resolver needs to load the row its `conditions` compare against.
+    // `@Optional` so every existing test double keeps constructing; without
+    // it `SubjectResolverContext.get` throws and the fail-open path in
+    // `runCaslInstanceChecks` turns that into "no instance, no check".
+    @Optional() private readonly moduleRef?: ModuleRef,
   ) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
@@ -886,6 +932,20 @@ export class UnifiedAuthGuard implements CanActivate {
    * too: no resolver, no instance, or a throwing resolver yields NO denial.
    * A broken resolver is a diagnostics bug; it must never become an outage.
    */
+  /**
+   * The `SubjectResolverContext` handed to every resolver. Built once; throws
+   * from `get` when no `ModuleRef` was wired, which `runCaslInstanceChecks`
+   * swallows into the ordinary "no instance" path.
+   */
+  private readonly subjectResolverContext: SubjectResolverContext = {
+    get: <T = unknown,>(token: unknown): T => {
+      if (!this.moduleRef) {
+        throw new Error('SubjectInstanceResolver requested a provider, but UnifiedAuthGuard has no ModuleRef wired');
+      }
+      return this.moduleRef.get(token as never, { strict: false }) as T;
+    },
+  };
+
   private async runCaslInstanceChecks(
     context: ExecutionContext,
     // eslint-disable-next-line @typescript-eslint/no-explicit-any -- same request shape as handleJwtPostAuth's own `request: any` param this method is called from.
@@ -905,7 +965,7 @@ export class UnifiedAuthGuard implements CanActivate {
         ]);
         if (!resolver) continue; // opt-in only — no resolver, no shadow check, no row loaded
 
-        const instance = await resolver(request);
+        const instance = await resolver(request, this.subjectResolverContext);
         if (!instance) continue; // resolver explicitly had nothing to compare against
 
         const verdict = this.policyEngine.evaluateShadowVerdict(ability, permission.action, permission.subject, instance);
