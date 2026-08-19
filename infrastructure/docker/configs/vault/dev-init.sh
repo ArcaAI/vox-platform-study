@@ -152,10 +152,9 @@ vault kv put secret/hope/API_GATEWAY_KEY value="dev-api-gateway-key-not-for-prod
 #
 # The harness claim-check store is self-hosted by contract (PHI blobs must not
 # egress), so in dev it aliases the MinIO credential exactly as S3_* does.
-# guardrail's vLLM endpoint is self-hosted and accepts any bearer value.
+# (guardrail no longer appears here: TASK-735 left it with no vendor credential.)
 vault kv put secret/hope/HARNESS_CLAIM_CHECK_ACCESS_KEY value="minio_admin" >/dev/null
 vault kv put secret/hope/HARNESS_CLAIM_CHECK_SECRET_KEY value="minio_admin" >/dev/null
-vault kv put secret/hope/GUARDRAIL_VLLM_API_KEY value="dev-vllm-placeholder-not-for-prod" >/dev/null
 
 # DELIBERATELY NOT SEEDED — the five EXTERNAL provider credentials:
 #   AZURE_SPEECH_KEY  AZURE_FOUNDRY_API_KEY  TEXT_AZURE_API_KEY

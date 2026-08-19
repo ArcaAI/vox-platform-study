@@ -190,7 +190,6 @@ describe('env/vault-kv descriptor keys resolve to the real variable names', () =
     // STT/TTS/SMR cloud credentials are BYOK-only (db-secret / AiProviderConnection),
     // no longer vault-kv platform secrets. azure.foundryApiKey stays (out of scope).
     'azure.foundryApiKey': 'AZURE_FOUNDRY_API_KEY',
-    'guardrailVllm.apiKey': 'GUARDRAIL_VLLM_API_KEY',
     'harnessJudgeOpenaiCompat.apiKey': 'HARNESS_JUDGE_OPENAI_COMPAT_API_KEY',
     'harness.claimCheck.accessKey': 'HARNESS_CLAIM_CHECK_ACCESS_KEY',
     'harness.claimCheck.secretKey': 'HARNESS_CLAIM_CHECK_SECRET_KEY',

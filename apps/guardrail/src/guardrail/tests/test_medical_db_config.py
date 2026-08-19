@@ -15,7 +15,6 @@ from fastapi import HTTPException
 from guardrail.core.config import Settings
 from guardrail.core.dependencies import get_resolved_guardian_provider
 from guardrail.core.tenant_config import GuardrailTenantConfig, TenantSelectionVetoedError
-from guardrail.providers.openai_compat import OpenAICompatGuardianProvider
 
 # `X-Tenant-Id` is mandatory on this dependency (428 otherwise), so the fake request
 # supplies one by default — these tests are about DB-config RESOLUTION, not the header.
@@ -50,13 +49,9 @@ class _VetoStubResolver:
         raise TenantSelectionVetoedError(tenant_id=tenant_id, task_key="guardrail.validate")
 
 
-def _env_provider(settings: Settings) -> OpenAICompatGuardianProvider:
-    return OpenAICompatGuardianProvider(settings=settings.engine, http_client=object())  # type: ignore[arg-type]
-
-
 def test_db_config_enabled_defaults_true(monkeypatch) -> None:
-    # DB-backed model resolution is the default. Safe even without a
-    # reachable Postgres — the resolver fails open to the env-selected engine.
+    # DB-backed model resolution is the default AND the only source of a model
+    # identity: TASK-735 Phase 2b deleted the env engines it used to fall back to.
     monkeypatch.delenv("GUARDRAIL_DB_CONFIG_ENABLED", raising=False)
     from guardrail.core.config import DatabaseConfig
 
@@ -64,43 +59,44 @@ def test_db_config_enabled_defaults_true(monkeypatch) -> None:
 
 
 @pytest.mark.asyncio
-async def test_db_config_disabled_returns_env_provider() -> None:
+async def test_db_config_disabled_fails_closed_rather_than_inventing_a_model() -> None:
+    """The dev escape hatch used to return the env-configured engine. There is no
+    env engine any more (guardrail hosts no LLM), and naming a model in code is
+    exactly the hardcoded selection this ticket removed — so DB-off is a 503."""
     settings = Settings()
     settings.db.db_config_enabled = False  # explicit opt-out (default is True)
-    env_provider = _env_provider(settings)
 
     state = SimpleNamespace(
         settings=settings,
-        guardian_provider=env_provider,
         http_client=object(),
         tenant_config_resolver=_StubResolver(
             GuardrailTenantConfig(provider="azure", model="should-not-be-used")
         ),
     )
-    resolved = await get_resolved_guardian_provider(_FakeRequest(state))  # type: ignore[arg-type]
+    with pytest.raises(HTTPException) as exc_info:
+        await get_resolved_guardian_provider(_FakeRequest(state))  # type: ignore[arg-type]
 
-    # Disabled -> env provider returned unchanged, resolver never consulted.
-    assert resolved is env_provider
+    assert exc_info.value.status_code == 503
 
 
 @pytest.mark.asyncio
 async def test_db_config_enabled_overrides_model_from_tenant() -> None:
     settings = Settings()
     settings.db.db_config_enabled = True
-    env_provider = _env_provider(settings)
     resolver = _StubResolver(GuardrailTenantConfig(provider="lm-studio", model="tenant-guardian-x"))
 
     state = SimpleNamespace(
         settings=settings,
-        guardian_provider=env_provider,
         http_client=object(),
         tenant_config_resolver=resolver,
     )
     request = _FakeRequest(state, headers={"X-Tenant-Id": "tenant-123"})
     resolved = await get_resolved_guardian_provider(request)  # type: ignore[arg-type]
 
-    assert resolved is not env_provider
+    # The tenant's selection travels to `text` verbatim; guardrail picks nothing.
     assert resolved.model == "tenant-guardian-x"
+    assert resolved.provider == "lm-studio"
+    assert resolved.tenant_id == "tenant-123"
     assert resolver.seen_tenant == "tenant-123"
 
 
@@ -110,12 +106,10 @@ async def test_db_config_enabled_empty_config_fails_closed_503() -> None:
     # HTTP 503, never a silent env fallback (no model identity from env).
     settings = Settings()
     settings.db.db_config_enabled = True
-    env_provider = _env_provider(settings)
     resolver = _StubResolver(GuardrailTenantConfig())  # nothing resolved
 
     state = SimpleNamespace(
         settings=settings,
-        guardian_provider=env_provider,
         http_client=object(),
         tenant_config_resolver=resolver,
     )
@@ -128,15 +122,13 @@ async def test_db_config_enabled_empty_config_fails_closed_503() -> None:
 @pytest.mark.asyncio
 async def test_db_config_enabled_vetoed_tenant_fails_closed_503() -> None:
     # Tenant-first resolution (TASK-735 Phase 1): a DISABLED tenant row is a
-    # VETO — 503, never a silent fold-through to the SYSTEM/env engine.
+    # VETO — 503, never a silent fold-through to the SYSTEM row.
     settings = Settings()
     settings.db.db_config_enabled = True
-    env_provider = _env_provider(settings)
     resolver = _VetoStubResolver()
 
     state = SimpleNamespace(
         settings=settings,
-        guardian_provider=env_provider,
         http_client=object(),
         tenant_config_resolver=resolver,
     )
@@ -151,14 +143,11 @@ async def test_db_config_enabled_vetoed_tenant_fails_closed_503() -> None:
 @pytest.mark.asyncio
 async def test_db_config_enabled_but_no_resolver_fails_closed_503() -> None:
     # DB enabled but the resolver was never wired (e.g. DB unreachable at boot)
-    # → fail closed with 503 rather than falling back to the env engine.
+    # → fail closed with 503; there is nothing else to fall back to.
     settings = Settings()
     settings.db.db_config_enabled = True
-    env_provider = _env_provider(settings)
-
     state = SimpleNamespace(
         settings=settings,
-        guardian_provider=env_provider,
         http_client=object(),
         tenant_config_resolver=None,
     )

@@ -21,16 +21,12 @@ if TYPE_CHECKING:
 
     from guardrail.core.config import Settings
     from guardrail.providers.gliner import GlinerProvider
-    from guardrail.providers.openai_compat import (
-        OpenAICompatGuardianProvider,
-        OpenAICompatProvider,
-    )
+    from guardrail.services.external_text_client import TextJudgeClient
     from guardrail.services.groundedness_nli import GroundednessNliVerifier, NliScorer
     from guardrail.services.job_processor import JobProcessor
 
-    # Every supported LLM engine speaks the OpenAI-compatible wire.
-    ContentProvider = OpenAICompatProvider
-    GuardianLike = OpenAICompatGuardianProvider
+    # Guardrail hosts no engine: the "guardian" is a delegation to `apps/text`.
+    GuardianLike = TextJudgeClient
 
 
 # ---------------------------------------------------------------------------
@@ -96,23 +92,19 @@ def get_redis(request: Request) -> aioredis.Redis:
     return cast("aioredis.Redis", request.app.state.redis)
 
 
-def get_content_provider(request: Request) -> ContentProvider:
-    """Retrieve the active content-analysis provider for the selected engine."""
-    return cast("ContentProvider", request.app.state.content_provider)
-
-
-def get_guardian_provider(request: Request) -> GuardianLike:
-    """Retrieve the env-configured guardian provider for the selected engine."""
-    return cast("GuardianLike", request.app.state.guardian_provider)
-
-
 async def get_resolved_guardian_provider(request: Request) -> GuardianLike:
-    """Resolve the guardian provider from SYSTEM AiTaskDefault.
+    """Resolve the delegated guardian for this request's tenant.
 
-    When ``db_config_enabled`` is false (dev-only escape hatch), returns the
-    env-configured guardian. When enabled (default), reads
-    ``AiTaskDefault`` ⋈ ``AiModel`` for ``guardrail.validate`` and **fails
-    closed** (HTTP 503) if SYSTEM selection is missing — no silent env fallback.
+    Reads ``AiTaskDefault`` ⋈ ``AiModel`` for ``guardrail.validate`` tenant-first
+    (SYSTEM as the platform fallback) and returns a client bound to that
+    selection, pointed at ``apps/text``'s judge lane.
+
+    **Fail-closed at every step and with no env engine left to fall back to**
+    (TASK-735 Phase 2b deleted them): an absent ``X-Tenant-Id`` is 428, a DISABLED
+    tenant row is a 503 veto, and a missing selection is a 503. The
+    ``db_config_enabled=False`` dev escape hatch now also fails closed here —
+    without a DB there is no model to name, and inventing one is precisely the
+    hardcoded selection this ticket removed.
     """
     from fastapi import HTTPException
 
@@ -120,22 +112,26 @@ async def get_resolved_guardian_provider(request: Request) -> GuardianLike:
     tenant_id = require_tenant_id(request)
 
     settings = request.app.state.settings
-    default_provider: GuardianLike = request.app.state.guardian_provider
 
     if not settings.db.db_config_enabled:
-        return default_provider
+        raise HTTPException(
+            status_code=503,
+            detail=(
+                "guardrail.validate selection requires DB config; there is no env "
+                "engine fallback (guardrail hosts no LLM)."
+            ),
+        )
 
     resolver = getattr(request.app.state, "tenant_config_resolver", None)
     if resolver is None:
         raise HTTPException(
             status_code=503,
-            detail="SYSTEM AiTaskDefault for 'guardrail.validate' is unavailable (resolver not wired).",
+            detail="AiTaskDefault for 'guardrail.validate' is unavailable (resolver not wired).",
         )
 
     from guardrail.core.tenant_config import (
         TenantSelectionVetoedError,
-        build_guardian_provider,
-        resolve_guardian_engine,
+        build_judge_client,
     )
 
     try:
@@ -152,16 +148,30 @@ async def get_resolved_guardian_provider(request: Request) -> GuardianLike:
         ) from exc
 
     # Fail closed when DB selection is missing (no env fallback).
-    if tenant_cfg.provider is None and tenant_cfg.model is None:
+    if not tenant_cfg.provider or not tenant_cfg.model:
         raise HTTPException(
             status_code=503,
             detail="AiTaskDefault for 'guardrail.validate' is missing. Run db:seed.",
         )
 
-    provider_name, engine_cfg = resolve_guardian_engine(settings, tenant_cfg)
-    return build_guardian_provider(  # type: ignore[return-value]
-        provider_name, engine_cfg, request.app.state.http_client
+    return build_judge_client(  # type: ignore[no-any-return]
+        settings,
+        tenant_cfg,
+        request.app.state.http_client,
+        tenant_id,
+        provider_overrides=_provider_overrides(request),
     )
+
+
+def _provider_overrides(request: Request) -> dict[str, Any] | None:
+    """Tenant BYO credentials forwarded by the caller, passed through VERBATIM.
+
+    Guardrail never decrypts, stores or logs them: the gateway resolved them, the
+    caller forwarded them, and `text` hands them to the adapter. Absent ⇒ the
+    platform-tier credential `text` resolves for itself.
+    """
+    overrides = getattr(getattr(request, "state", None), "provider_overrides", None)
+    return overrides if isinstance(overrides, dict) and overrides else None
 
 
 def get_job_processor(request: Request) -> JobProcessor:
@@ -461,9 +471,7 @@ async def acquire_groundedness_verifier(
 
     from guardrail.core.tenant_config import TASK_KEY_GUARDRAIL_GROUNDEDNESS
 
-    model_id = await _resolve_aux_model_id(
-        app_state, tenant_id, TASK_KEY_GUARDRAIL_GROUNDEDNESS
-    )
+    model_id = await _resolve_aux_model_id(app_state, tenant_id, TASK_KEY_GUARDRAIL_GROUNDEDNESS)
     config = settings.groundedness.model_copy(update={"model_id": model_id})
     await refresh_model_cache_retention(app_state)
     cache = get_groundedness_scorer_cache(app_state)

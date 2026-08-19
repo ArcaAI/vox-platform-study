@@ -26,9 +26,8 @@ from guardrail.core.tenant_config import (
     GuardrailTenantConfig,
     TenantConfigResolver,
     TenantSelectionVetoedError,
-    build_guardian_provider,
+    build_judge_client,
     is_tenantless_marker,
-    resolve_guardian_engine,
 )
 
 # Ordinary customer tenants. Deliberately NOT in the reserved `50000000-…`
@@ -309,7 +308,11 @@ async def test_db_error_one_session_attempt_per_tenant_per_ttl() -> None:
 
 
 # ---------------------------------------------------------------------------
-# Engine resolution: map a resolved config onto an env sub-config
+# Delegation: map a resolved per-tenant selection onto the judge client
+#
+# There is no engine sub-config to map onto any more (TASK-735 Phase 2b):
+# guardrail hosts no LLM, so a resolved selection produces a CLIENT pointed at
+# `apps/text`'s judge lane, carrying the provider/model the DB chose.
 # ---------------------------------------------------------------------------
 
 
@@ -317,83 +320,54 @@ def _settings() -> Settings:
     return Settings()
 
 
-def test_resolve_engine_overrides_model_for_lm_studio() -> None:
-    s = _settings()
-    cfg = GuardrailTenantConfig(provider="lm-studio", model="my-custom-guardian")
-
-    provider, engine = resolve_guardian_engine(s, cfg)
-
-    assert provider == "lm-studio"
-    assert engine.guardian_model == "my-custom-guardian"
-    assert engine.guardrail_model == "my-custom-guardian"
-    # base_url/api_key still come from env (unchanged).
-    assert engine.base_url == s.openai_compat.base_url
-
-
-def test_resolve_engine_switches_provider_to_vllm() -> None:
-    s = _settings()
-    cfg = GuardrailTenantConfig(provider="vllm", model="self-hosted-guardian")
-
-    provider, engine = resolve_guardian_engine(s, cfg)
-
-    assert provider == "vllm"
-    assert engine.base_url == s.vllm.base_url
-    assert engine.guardian_model == "self-hosted-guardian"
-
-
-def test_resolve_engine_azure_deployment_takes_precedence() -> None:
-    s = _settings()
-    cfg = GuardrailTenantConfig(
-        provider="azure", model="ignored-model", azure_deployment="prod-guardian-deploy"
+def _client(cfg: GuardrailTenantConfig, settings: Settings | None = None):
+    return build_judge_client(
+        settings or _settings(), cfg, http_client=object(), tenant_id=TENANT_A
     )
 
-    provider, engine = resolve_guardian_engine(s, cfg)
 
-    assert provider == "azure"
-    assert engine.guardian_model == "prod-guardian-deploy"
+def test_selection_is_sent_to_text_verbatim() -> None:
+    client = _client(GuardrailTenantConfig(provider="lm-studio", model="my-custom-guardian"))
 
-
-def test_resolve_engine_unknown_provider_falls_back_to_env_default() -> None:
-    s = _settings()
-    cfg = GuardrailTenantConfig(provider="not-a-provider", model=None)
-
-    provider, engine = resolve_guardian_engine(s, cfg)
-
-    assert provider == s.provider  # env default
-    assert engine.guardian_model == s.engine.guardian_model
+    assert client.provider == "lm-studio"
+    assert client.model == "my-custom-guardian"
 
 
-def test_resolve_engine_no_model_returns_base_unmodified() -> None:
-    s = _settings()
-    cfg = GuardrailTenantConfig(provider="lm-studio", model=None)
+def test_provider_switch_is_passed_through_not_mapped_to_a_local_engine() -> None:
+    """`text` owns the adapter registry; guardrail must not second-guess the name."""
+    client = _client(GuardrailTenantConfig(provider="vllm", model="self-hosted-guardian"))
 
-    provider, engine = resolve_guardian_engine(s, cfg)
-
-    assert provider == "lm-studio"
-    assert engine.guardian_model == s.openai_compat.guardian_model
+    assert client.provider == "vllm"
+    assert client.model == "self-hosted-guardian"
 
 
-# ---------------------------------------------------------------------------
-# Provider construction
-# ---------------------------------------------------------------------------
+def test_azure_deployment_takes_precedence_over_the_model_name() -> None:
+    client = _client(
+        GuardrailTenantConfig(
+            provider="azure", model="ignored-model", azure_deployment="prod-guardian-deploy"
+        )
+    )
+
+    assert client.provider == "azure"
+    assert client.model == "prod-guardian-deploy"
 
 
-def test_build_guardian_provider_openai_compat() -> None:
-    from guardrail.providers.openai_compat import OpenAICompatGuardianProvider
+def test_the_client_carries_no_credential_of_its_own() -> None:
+    """BYOK end-to-end: the key travels as an opaque pass-through or not at all."""
+    client = _client(GuardrailTenantConfig(provider="lm-studio", model="m"))
 
-    s = _settings()
-    provider = build_guardian_provider("lm-studio", s.openai_compat, http_client=object())
-
-    assert isinstance(provider, OpenAICompatGuardianProvider)
+    assert not hasattr(client, "api_key")
+    assert client.provider_overrides is None
 
 
-def test_build_guardian_provider_is_openai_compat_for_every_engine() -> None:
-    from guardrail.providers.openai_compat import OpenAICompatGuardianProvider
+def test_the_client_targets_the_isolated_judge_lane() -> None:
+    from guardrail.services.external_text_client import JUDGE_PATH
 
-    s = _settings()
-    for name in ("lm-studio", "vllm", "llama-cpp", "azure", "bedrock"):
-        built = build_guardian_provider(name, s.engine_for(name), http_client=object())
-        assert isinstance(built, OpenAICompatGuardianProvider)
+    settings = _settings()
+    client = _client(GuardrailTenantConfig(provider="lm-studio", model="m"), settings)
+
+    assert client.base_url == settings.text_url.rstrip("/")
+    assert JUDGE_PATH == "/api/v1/generate/internal/judge"
 
 
 # ---------------------------------------------------------------------------
@@ -534,7 +508,7 @@ async def test_db_prefers_system_model_row_over_tenant_copy() -> None:
 
 
 @pytest.mark.asyncio
-async def test_db_no_rows_resolves_empty_for_env_fallback() -> None:
+async def test_db_no_rows_resolves_empty_and_the_caller_fails_closed() -> None:
     cfg = await _db_resolver([]).resolve(TENANT_A)
 
     assert cfg.provider is None
@@ -543,7 +517,7 @@ async def test_db_no_rows_resolves_empty_for_env_fallback() -> None:
 
 
 @pytest.mark.asyncio
-async def test_db_session_error_resolves_empty_for_env_fallback() -> None:
+async def test_db_session_error_resolves_empty_and_the_caller_fails_closed() -> None:
     cfg = await _db_resolver(exc=RuntimeError("connection refused")).resolve(TENANT_A)
 
     assert cfg.provider is None
@@ -551,17 +525,15 @@ async def test_db_session_error_resolves_empty_for_env_fallback() -> None:
 
 
 @pytest.mark.asyncio
-async def test_db_null_provider_column_keeps_env_provider() -> None:
+async def test_db_null_provider_column_yields_no_provider_opinion() -> None:
+    """A NULL provider column used to fall back to the env engine. There is no env
+    engine any more, so it resolves to "no opinion" and the dependency layer fails
+    closed with 503 — a half-resolved selection is not a selection."""
     rows = [_row(TENANT_A, SYSTEM_TENANT_ID, None, "some-source-uri")]
     cfg = await _db_resolver(rows).resolve(TENANT_A)
 
-    assert cfg.provider is None  # provider column NULL → env provider retained
+    assert cfg.provider is None
     assert cfg.model == "some-source-uri"
-
-    s = Settings()
-    provider, engine = resolve_guardian_engine(s, cfg)
-    assert provider == s.provider  # env default provider
-    assert engine.guardian_model == "some-source-uri"  # model still overridden
 
 
 @pytest.mark.asyncio
@@ -741,27 +713,29 @@ def test_database_config_has_no_default_tenant_id_field(monkeypatch) -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_provider_switch_map_has_no_ollama() -> None:
-    from guardrail.core.tenant_config import _PROVIDER_TO_ATTR
+def test_no_engine_switch_map_survives() -> None:
+    """TASK-736 removed Ollama; TASK-735 Phase 2b removed the whole map with the
+    engines it addressed. A provider name is now a pass-through token for `text`,
+    not a key into guardrail's own adapter table."""
+    import guardrail.core.tenant_config as tc
 
-    assert "ollama" not in _PROVIDER_TO_ATTR
-
-
-def test_settings_reject_the_ollama_provider() -> None:
-    from pydantic import ValidationError
-
-    with pytest.raises(ValidationError):
-        Settings(provider="ollama")
+    assert not hasattr(tc, "_PROVIDER_TO_ATTR")
 
 
-def test_settings_has_no_ollama_engine_subconfig() -> None:
-    assert "ollama" not in Settings.model_fields
+def test_settings_has_no_engine_subconfig_at_all() -> None:
+    for engine in ("ollama", "openai_compat", "vllm", "llama_cpp", "azure", "bedrock", "provider"):
+        assert engine not in Settings.model_fields
 
 
-def test_ollama_provider_modules_are_gone() -> None:
+def test_engine_provider_modules_are_gone() -> None:
     import importlib
 
-    for module in ("guardrail.providers.ollama", "guardrail.providers.guardian"):
+    for module in (
+        "guardrail.providers.ollama",
+        "guardrail.providers.guardian",
+        "guardrail.providers.openai_compat",
+        "guardrail.providers._granite",
+    ):
         with pytest.raises(ModuleNotFoundError):
             importlib.import_module(module)
 

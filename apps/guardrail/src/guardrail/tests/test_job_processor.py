@@ -4,19 +4,20 @@ import asyncio
 import time
 
 import fakeredis.aioredis
-import httpx
 import pytest
 
-from guardrail.core.config import OpenAICompatConfig
-from guardrail.providers.openai_compat import OpenAICompatProvider
 from guardrail.services.job_processor import JobProcessor
 
 
-class RecordingProvider(OpenAICompatProvider):
+class RecordingProvider:
+    """Stands in for the GLiNER provider the job processor analyses with.
+
+    A plain stub since TASK-735 Phase 2b: it used to subclass the (now deleted)
+    OpenAI-compat provider, which only ever supplied a constructor — the job
+    processor has always talked to GLiNER, never to an LLM engine.
+    """
+
     def __init__(self) -> None:
-        super().__init__(
-            settings=OpenAICompatConfig(enabled=False), http_client=httpx.AsyncClient()
-        )
         self.calls: list[str] = []
         self.delay_s = 0.0
 
@@ -34,7 +35,7 @@ class RecordingProvider(OpenAICompatProvider):
         }
 
     async def aclose(self) -> None:
-        await self.http_client.aclose()
+        return None
 
 
 @pytest.fixture

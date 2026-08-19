@@ -34,13 +34,10 @@ import httpx
 import pytest
 from fastapi import HTTPException
 
-from guardrail.core.config import GlinerConfig, OpenAICompatConfig
+from guardrail.core.config import GlinerConfig
 from guardrail.core.errors import GuardrailUndeterminedError
 from guardrail.providers.gliner import GlinerProvider
-from guardrail.providers.openai_compat import (
-    OpenAICompatGuardianProvider,
-    OpenAICompatProvider,
-)
+from guardrail.services.external_text_client import TextJudgeClient
 
 
 class _FakeResponse:
@@ -70,62 +67,33 @@ class _RaisingClient:
         raise self.exc
 
 
-def _content_provider(client: Any) -> OpenAICompatProvider:
-    return OpenAICompatProvider(
-        settings=OpenAICompatConfig(),
-        http_client=client,  # type: ignore[arg-type]
-    )
+def _guardian(client: Any, enabled: bool = True) -> TextJudgeClient:
+    """The guardian is now a DELEGATION to `apps/text` (TASK-735 Phase 2b).
 
-
-def _guardian(client: Any) -> OpenAICompatGuardianProvider:
-    return OpenAICompatGuardianProvider(
-        settings=OpenAICompatConfig(),
-        http_client=client,  # type: ignore[arg-type]
+    The posture this suite pins is unchanged by that move — which is the point:
+    the fail-closed rule belongs to guardrail's policy layer, not to whichever
+    engine happened to be behind it.
+    """
+    return TextJudgeClient(
+        base_url="http://text:8862",
+        http_client=client,
+        service_token="tok",
+        provider="lm-studio",
+        model="guardian-1",
+        tenant_id="11111111-1111-1111-1111-111111111111",
+        max_attempts=1,
+        enabled=enabled,
     )
 
 
 # ── 1. engines raise rather than fabricate ─────────────────────────────────
 
 
-@pytest.mark.asyncio
-async def test_llm_timeout_raises_instead_of_returning_safe() -> None:
-    """THE P0. A timeout must not yield a `safe` verdict."""
-    provider = _content_provider(_RaisingClient(httpx.TimeoutException("boom")))
-
-    with pytest.raises(GuardrailUndeterminedError) as exc:
-        await provider.analyze_content("text", "content_safety")
-
-    assert exc.value.reason == "timeout"
-
-
-@pytest.mark.asyncio
-async def test_llm_transport_error_raises_instead_of_returning_safe() -> None:
-    provider = _content_provider(_RaisingClient(ValueError("kaboom")))
-
-    with pytest.raises(GuardrailUndeterminedError) as exc:
-        await provider.analyze_content("text", "content_safety")
-
-    assert exc.value.reason == "engine_error"
-
-
-@pytest.mark.asyncio
-async def test_unparseable_granite_score_raises_instead_of_returning_safe() -> None:
-    """A model that answered without a <score> tag rendered NO verdict."""
-    provider = _content_provider(_FakeChatClient("the model rambled without a score tag"))
-
-    with pytest.raises(GuardrailUndeterminedError) as exc:
-        await provider.analyze_content("text", "prompt_injection")
-
-    assert exc.value.reason == "invalid_response"
-
-
-@pytest.mark.asyncio
-async def test_comprehensive_does_not_survive_one_undetermined_check() -> None:
-    """`comprehensive` merges three checks; one unknown makes the whole merge unknown."""
-    provider = _content_provider(_RaisingClient(httpx.TimeoutException("boom")))
-
-    with pytest.raises(GuardrailUndeterminedError):
-        await provider.analyze_content("text", "comprehensive")
+# The four LLM content-analysis tests that stood here went with
+# `providers/openai_compat.py` in TASK-735 Phase 2b: that stack had zero
+# production callers (`/guardrail/analyze` runs GLiNER), and the LIVE LLM path —
+# the guardian behind `/medical/validate` — is covered below against the
+# delegating client that replaced it.
 
 
 @pytest.mark.asyncio
@@ -166,15 +134,12 @@ async def test_gliner_runtime_error_raises_instead_of_returning_safe() -> None:
 @pytest.mark.asyncio
 async def test_declared_disable_remains_a_bypass_not_a_failure() -> None:
     """`enabled=False` is an operator decision, not an inability to answer."""
-    provider = OpenAICompatProvider(
-        settings=OpenAICompatConfig(enabled=False),
-        http_client=_RaisingClient(ValueError("never called")),  # type: ignore[arg-type]
-    )
+    guardian = _guardian(_RaisingClient(ValueError("never called")), enabled=False)
 
-    result = await provider.analyze_content("text", "content_safety")
+    result = await guardian.validate_medical_context("text")
 
-    assert result["safe"] is True
-    assert "disabled" in result["error"]
+    assert result["is_medical"] is True
+    assert "disabled" in result["reasoning"].lower()
 
 
 # ── 3. endpoints translate an undetermined verdict fail-closed ─────────────

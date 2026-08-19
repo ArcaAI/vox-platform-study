@@ -2,7 +2,7 @@
 
 | Field | Value |
 |---|---|
-| Status | Pending (decisions resolved; plan awaiting approval to implement) |
+| Status | In Progress (Phases 0, 1, 2a, 2b, 4-TS landed; Phase 5 landed for the LLM plane; Phases 3 and 6 not started) |
 | Type | refactor + infrastructure |
 | Owner decision date | 2026-08-16 |
 | Affects | `apps/guardrail`, `apps/text`, `apps/nlp`, `packages/applications`, `apps/admin-console`, `turbo.json` |
@@ -584,7 +584,76 @@ all four lanes, and both pass when run alone). What is NOT established: why they
 `--sequence.shuffle` and `--no-file-parallelism` to distinguish contention from pollution, and if
 it is pollution, the leak predates this ticket and needs its own issue.
 
-### Phases 2b, 3, 5, 6 — not started
+### Phase 2b — guardrail delegates the guardian to `text` (landed 2026-08-19)
+
+Guardrail now hosts **no LLM**. `providers/openai_compat.py` (555 lines) and
+`providers/_granite.py` are DELETED, together with all five engine sub-configs
+(`OpenAICompatConfig` + `Azure`/`Bedrock`/`VLLM`/`LlamaCpp`), `Settings.provider`,
+`Settings.engine`/`engine_for`, `_PROVIDER_TO_ATTR`, `resolve_guardian_engine`,
+`build_guardian_provider` and the process-wide `content_provider` / `guardian_provider`
+lifespan wiring. Finding 1 held: the content-analysis half had zero production callers, so
+it left with no replacement at all; only `validate_medical_context` needed one.
+
+**New**: `services/external_text_client.py::TextJudgeClient` — posts one judgement to
+`POST {TEXT_URL}/api/v1/generate/internal/judge` (the Phase 2a contract) with
+`X-Service-Token` + a MANDATORY `X-Tenant-Id`, carrying the DB-resolved `provider`/`model`,
+a pinned `json_object` response format, and `provider_overrides` forwarded VERBATIM. It
+exposes the same three methods the deleted guardian did, so `/medical/validate`,
+`/medical/validate/batch` and their wire contract (including the 503 that `text`'s gate maps
+distinctly from a 422) did not move.
+
+Deliberate deviations from the plan, all recorded rather than silent:
+
+- **`build_judge_client` replaces `resolve_guardian_engine` + `build_guardian_provider`.**
+  There is no engine sub-config left to map a selection ONTO; the provider name is now a
+  pass-through token for `text`'s registry, not a key into a local adapter table. The Azure
+  deployment-name precedence survives unchanged.
+- **The `db_config_enabled=False` dev escape hatch now fails closed (503).** It used to
+  return the env-configured engine. With the env engines gone, keeping it would mean naming
+  a model in code — exactly the hardcoded selection this ticket removes.
+- **A half-resolved selection is no selection.** The dependency requires BOTH `provider` and
+  `model`; a NULL provider column used to fall back to the env engine and now 503s.
+- **The medical criteria stayed in guardrail** (`MEDICAL_VALIDATION_CRITERIA`), in the
+  service that owns the verdict, rather than following the adapters out. Phase 4/D5 moves it
+  to the PromptTemplate plane; it must not drift into `apps/text` in the meantime.
+- **`JudgePolicy` is a plain `BaseModel`, not `BaseSettings`** — the surviving policy and
+  tuning knobs (min confidence, temperature, max tokens, timeout, retry budget, input cap)
+  carry NO env surface at all, so this replaces ~30 env vars with zero. They become
+  `guardrail.policy.*` descriptors in Phase 4 (blocked on G-01). This is also the answer to
+  G-06's shape: a code default beats an env var, and both lose to a descriptor.
+- **`settings.engine.max_concurrent` → `settings.queue.max_concurrent`**: the async-job
+  bound was living on an engine sub-config, which made a queue limit look like an engine knob.
+
+### Phase 5 — BYOK end-to-end, LLM plane (landed 2026-08-19)
+
+Evidence for both phases: `pnpm guardrail:test` — **244 passed** (21 tests deleted with the
+engines they covered, 14 added); `guardrail:lint` (ruff) clean; `guardrail:typecheck` (mypy)
+clean, 31 source files; `packages/applications` settings-registry suite 212/212;
+`ai-task-default` 50/50; `pnpm env:sync --check` OK (148 keys).
+
+Guardrail sources **no** credential from env. `GUARDRAIL_VLLM_API_KEY` is gone from the
+settings registry (`platform-secrets.descriptors.ts`), `turbo.json#globalEnv`, both
+`.env.sample`s (regenerated with `env:sync`), the Vault dev seed, the `hope-guardrail` Vault
+policy, the Vault-Agent reference deployment and the prod/env secret-generation scripts.
+`test_text_judge_delegation.py` pins it the way `apps/text`'s `test_task602_byok_credentials.py`
+does: five `GUARDRAIL_*_API_KEY` env vars must populate nothing, `Settings` must expose no
+engine attribute, and `TextJudgeClient.__init__` must take no `api_key` parameter.
+
+Per D1 the tenant's credential is its existing `llm` `AiProviderConnection`; guardrail only
+passes an already-resolved `provider_overrides` blob through. **Residual**: nothing upstream
+populates `request.state.provider_overrides` yet — the gateway/peer-caller side of the
+pass-through (plan step 5.1) is NOT wired, so today every judgement is served by whichever
+credential `text` resolves for the tenant itself. That is correct behaviour, not a leak, but
+it is not yet BYOK *through guardrail*.
+
+### Phases 3 and 6 — not started
+
+Phase 3 (GLiNER → `nlp`, with the byte-exact span-offset contract) and Phase 6 (MiniCheck
+groundedness → `nlp`, with the llama.cpp private-API binding and the `apps/harness` duplicate
+NLI question) are untouched. `providers/gliner.py`, `services/groundedness_scorer_minicheck.py`,
+`services/model_cache.py`, `core/model_source.py`, `GlinerConfig` and `GroundednessConfig` all
+still stand, and with them the four hardcoded label taxonomies and the two aux model-id
+defaults. Guardrail is therefore free of LLM engines but not yet free of resident weights.
 
 ### Delegation scope re-measured 2026-08-17 (from the fail-closed ticket)
 
@@ -639,6 +708,7 @@ uncluttered tree.
 
 | Date | Change |
 |---|---|
+| 2026-08-19 | **Phase 2b + Phase 5 (LLM plane) landed.** `providers/openai_compat.py` and `providers/_granite.py` deleted with all five engine sub-configs, `Settings.provider`/`engine`/`engine_for`, `_PROVIDER_TO_ATTR`, `resolve_guardian_engine`, `build_guardian_provider` and the lifespan provider wiring; new `services/external_text_client.py::TextJudgeClient` delegates `/medical/validate{,/batch}` to `text`'s judge lane, fail-closed. `GUARDRAIL_VLLM_API_KEY` removed from the registry, `turbo.json`, both `.env.sample`s, the Vault policy/dev-seed/agent reference and the secret scripts. Dev escape hatch (`db_config_enabled=False`) now fails closed. Docs/rules updated. Phases 3 and 6 remain not started. |
 | 2026-08-16 | Ticket created. Current-state audit of `apps/guardrail` against the two new owner configuration rules; plan drafted; `.claude/rules/00`, `06`, `09` updated with the rules this ticket enforces. |
 | 2026-08-16 | Owner resolved D1–D5: reuse the `llm` connection · tenant may tighten only (entitlement floor) · guardrail keeps its own task keys · all six phases in scope · criteria live in the PromptTemplate plane. Phase 6 rewritten from optional to in-scope. |
 | 2026-08-16 | Phase 0 landed: `guardrail.` removed from `GLOBAL_ADMIN_ONLY_TASK_PREFIXES`; `models.guardrail.*` descriptors retarget to tenant-editable; `entitlements.featureGuardrailModelSelection` catalogued (not yet enforced — G-05); `AiTaskDefaultService.upsertRow` gains the platform-approved-list floor (`assertGuardrailModelApproved`, 403). Tests, API/e2e copy and admin-console copy updated to match. |

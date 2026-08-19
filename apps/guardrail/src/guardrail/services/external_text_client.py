@@ -1,0 +1,357 @@
+"""Guardrail's peer-service client to `apps/text` (TASK-735 Phase 2b).
+
+Guardrail owns POLICY and delegates INFERENCE. This client is the whole of the
+LLM half of that split: it posts one judgement to `text`'s isolated judge lane
+(`POST /api/v1/generate/internal/judge`) and hands the raw output back to the
+caller, which interprets it into a verdict.
+
+What deliberately does NOT live here:
+
+* **No engine.** No base_url per vendor, no `api_key`, no model default. The
+  provider/model pair is resolved from `AiTaskDefault` (tenant row first,
+  SYSTEM as the platform fallback) and passed in; the tenant's own credential
+  arrives as an opaque `provider_overrides` blob that this client forwards
+  VERBATIM and never decrypts, stores or logs.
+* **No fail-open.** A judgement the lane never rendered raises
+  :class:`~guardrail.core.errors.GuardrailUndeterminedError`, which the medical
+  routes map to 503. `apps/text` gates every `/generate` on that verdict, so a
+  permissive default here ships an unmoderated clinical prompt — the exact
+  inversion the fail-closed sweep removed from the in-process engines.
+
+Retry budget lives on THIS side by contract: the judge route runs zero retries
+so a public generation never waits behind a compounding backoff.
+"""
+
+from __future__ import annotations
+
+import asyncio
+import json
+from typing import Any, cast
+
+from guardrail.core.config import JudgePolicy
+from guardrail.core.errors import (
+    REASON_ENGINE_ERROR,
+    REASON_TIMEOUT,
+    GuardrailUndeterminedError,
+)
+from guardrail.core.logging import get_logger
+from guardrail.core.metrics import record_guardrail_call, track_model_inference
+from guardrail.providers.stats import GuardrailCallStats, normalize_stop_reason
+
+logger = get_logger(__name__)
+
+JUDGE_PATH = "/api/v1/generate/internal/judge"
+
+# The medical-context criteria. Policy, not engine — Phase 4 moves it to the
+# PromptTemplate plane (versioned, approval-gated, tenant-overridable); until
+# that lands it stays HERE, in the service that owns the verdict, rather than
+# following the deleted engine adapters out of the tree.
+MEDICAL_VALIDATION_CRITERIA = (
+    "You are a medical context validator. Your task is to determine if the provided text "
+    "is related to medical documentation, clinical notes, patient care, or healthcare services. "
+    "Analyze the text and respond ONLY with a JSON object in this exact format:\n"
+    '{"is_medical": true/false, "confidence": 0.0-1.0, '
+    '"context_type": "clinical/administrative/general", "reasoning": "brief explanation"}\n\n'
+    "Medical context includes: patient records, clinical notes, diagnoses, treatments, "
+    "medications, symptoms, medical procedures, healthcare consultations, referrals, "
+    "prescriptions, vital signs, medical history, physical examinations, lab results, "
+    "imaging reports, care plans, discharge summaries.\n\n"
+    "Non-medical context includes: general conversation, business documents, technical "
+    "documentation, entertainment content, personal communications unrelated to healthcare."
+)
+
+_MEDICAL_KEYWORDS = (
+    "patient",
+    "diagnosis",
+    "treatment",
+    "medication",
+    "clinical",
+    "medical",
+    "doctor",
+    "physician",
+    "nurse",
+    "hospital",
+    "clinic",
+    "symptom",
+    "condition",
+    "prescription",
+    "therapy",
+    "examination",
+    "vital signs",
+    "chief complaint",
+    "history of present illness",
+    "assessment",
+    "plan",
+    "transcript",
+    "case note",
+    "summary",
+    "referral",
+    "visit",
+    "encounter",
+    "procedure",
+    "surgery",
+    "lab",
+    "imaging",
+    "radiology",
+    "pathology",
+    "biopsy",
+    "discharge",
+    "admission",
+    "consultation",
+    "follow-up",
+)
+
+
+def _stats_from_judge(payload: dict[str, Any], provider: str, model: str) -> GuardrailCallStats:
+    """Map `text`'s `GenerationStats` onto guardrail's AD-1 mirror.
+
+    Null-safe by contract (see `providers/stats.py`): a missing or malformed
+    stats block costs the caller its telemetry, never its verdict.
+    """
+    raw_stats = payload.get("stats")
+    stats: dict[str, Any] = raw_stats if isinstance(raw_stats, dict) else {}
+    prompt_tokens = int(stats.get("prompt_tokens", 0) or 0)
+    predicted = int(stats.get("predicted_tokens", stats.get("completion_tokens", 0)) or 0)
+    total = stats.get("total_tokens")
+    raw_stop = stats.get("stop_reason_raw") or payload.get("finish_reason") or ""
+    return GuardrailCallStats(
+        stop_reason=stats.get("stop_reason") or normalize_stop_reason(raw_stop),
+        stop_reason_raw=str(raw_stop),
+        total_ms=int(stats.get("total_ms", payload.get("latency_ms", 0)) or 0),
+        ttft_ms=stats.get("ttft_ms"),
+        tokens_per_second=stats.get("tokens_per_second"),
+        prompt_tokens=prompt_tokens,
+        predicted_tokens=predicted,
+        total_tokens=int(total) if total is not None else prompt_tokens + predicted,
+        provider=str(stats.get("provider") or provider),
+        model=str(stats.get("model") or model),
+        engine_native=(
+            stats.get("engine_native") if isinstance(stats.get("engine_native"), dict) else None
+        ),
+    )
+
+
+class TextJudgeClient:
+    """The guardian, as a delegation rather than an engine.
+
+    Exposes the same three methods the deleted in-process guardian did
+    (`validate_medical_context` / `batch_validate` / `health_check`), so the
+    medical routes were repointed without their wire contract moving — `text`'s
+    gate maps 422-vs-503 off exactly that shape.
+    """
+
+    def __init__(
+        self,
+        *,
+        base_url: str,
+        http_client: Any,
+        service_token: str,
+        provider: str,
+        model: str,
+        tenant_id: str,
+        policy: JudgePolicy | None = None,
+        temperature: float | None = None,
+        max_tokens: int | None = None,
+        timeout_s: float | None = None,
+        max_attempts: int | None = None,
+        provider_overrides: dict[str, Any] | None = None,
+        enabled: bool = True,
+    ) -> None:
+        resolved_tenant = (tenant_id or "").strip()
+        if not resolved_tenant:
+            # Same rule as every other peer client in the monorepo: an absent
+            # tenant is a CALLER defect, and a guardrail decision must be
+            # attributable. Tenant-less internal work declares `tenantless:<reason>`.
+            raise ValueError(
+                "TextJudgeClient requires a tenant_id: the caller must forward "
+                "X-Tenant-Id or declare 'tenantless:<reason>'."
+            )
+        self.policy = policy or JudgePolicy()
+        self.base_url = base_url.rstrip("/")
+        self.http_client = http_client
+        self._service_token = service_token
+        self.provider = provider
+        self.model = model
+        self.tenant_id = resolved_tenant
+        self.temperature = self.policy.temperature if temperature is None else temperature
+        self.max_tokens = self.policy.max_tokens if max_tokens is None else max_tokens
+        self.timeout_s = self.policy.timeout_s if timeout_s is None else timeout_s
+        self.max_attempts = self.policy.max_attempts if max_attempts is None else max_attempts
+        self.provider_overrides = provider_overrides
+        self.enabled = enabled
+
+    # -- wire ---------------------------------------------------------------
+
+    def _headers(self) -> dict[str, str]:
+        headers = {"Content-Type": "application/json", "X-Tenant-Id": self.tenant_id}
+        if self._service_token:
+            headers["X-Service-Token"] = self._service_token
+        return headers
+
+    async def _judge(self, prompt: str, system_prompt: str) -> dict[str, Any]:
+        """One judgement, with a bounded retry budget. Raises when exhausted."""
+        body: dict[str, Any] = {
+            "prompt": prompt,
+            "system_prompt": system_prompt,
+            "provider": self.provider,
+            "model": self.model,
+            "temperature": self.temperature,
+            "max_tokens": self.max_tokens,
+            "response_format": {"type": "json_object"},
+        }
+        if self.provider_overrides:
+            body["provider_overrides"] = self.provider_overrides
+
+        attempts = max(1, self.max_attempts)
+        last_error = ""
+        timed_out = False
+        for attempt in range(attempts):
+            try:
+                with track_model_inference(self.model):
+                    response = await self.http_client.post(
+                        f"{self.base_url}{JUDGE_PATH}",
+                        json=body,
+                        headers=self._headers(),
+                        timeout=self.timeout_s,
+                    )
+                    response.raise_for_status()
+                return cast(dict[str, Any], response.json())
+            except Exception as exc:  # noqa: BLE001 — every failure is fail-CLOSED below
+                last_error = str(exc)
+                timed_out = "timeout" in type(exc).__name__.lower()
+                if attempt + 1 >= attempts:
+                    break
+                await asyncio.sleep(self.policy.retry_backoff_s * (attempt + 1))
+
+        # FAIL-CLOSED. No verdict was rendered, so there is none to report — and
+        # "we could not check" is never "it is fine".
+        logger.error(
+            "guardrail.judge.undetermined",
+            provider=self.provider,
+            model=self.model,
+            attempts=attempts,
+            error=last_error,
+        )
+        raise GuardrailUndeterminedError(
+            REASON_TIMEOUT if timed_out else REASON_ENGINE_ERROR,
+            f"text judge lane rendered no verdict: {last_error}",
+        )
+
+    # -- policy -------------------------------------------------------------
+
+    async def validate_medical_context(
+        self, text: str, include_reasoning: bool = False
+    ) -> dict[str, Any]:
+        """Delegate the medical-context judgement and interpret the result."""
+        if not self.enabled:
+            # DECLARED bypass, not a fail-open: an operator turned the guardian
+            # off. Every FAILURE path raises instead.
+            return {
+                "is_medical": True,
+                "confidence": 1.0,
+                "context_type": "unknown",
+                "reasoning": "Guardian validation disabled",
+            }
+
+        payload = await self._judge(
+            prompt=f"Analyze this text for medical context:\n\n{text[: self.policy.max_input_chars]}",
+            system_prompt=MEDICAL_VALIDATION_CRITERIA,
+        )
+        content = str(payload.get("content") or "").strip()
+        result = self._parse_verdict(content)
+
+        stats = _stats_from_judge(payload, self.provider, self.model)
+        result["stats"] = stats.to_dict()
+        # `text` DERIVED this (BYOK vs platform credential); forwarding it verbatim
+        # is the only route guardrail's spend has to the billing plane, and
+        # re-deriving it here is exactly how a call site starts mis-billing.
+        usage_detail = payload.get("usage_detail")
+        if isinstance(usage_detail, dict):
+            result["usage_detail"] = usage_detail
+        record_guardrail_call(
+            provider=stats.provider,
+            model=stats.model,
+            status="success",
+            prompt_tokens=stats.prompt_tokens,
+            completion_tokens=stats.predicted_tokens,
+        )
+
+        if result["confidence"] < self.policy.min_confidence:
+            logger.warning(
+                "guardrail.judge.low_confidence",
+                confidence=result["confidence"],
+                threshold=self.policy.min_confidence,
+            )
+        # `include_reasoning` is honoured by the ROUTE (it shapes the response
+        # DTO); the verdict itself always carries the model's reasoning so the
+        # low-confidence log above has something to say.
+        return result
+
+    def _parse_verdict(self, content: str) -> dict[str, Any]:
+        try:
+            parsed = json.loads(content)
+            confidence = max(0.0, min(1.0, float(parsed.get("confidence", 0.0))))
+            return {
+                "is_medical": bool(parsed.get("is_medical", False)),
+                "confidence": confidence,
+                "context_type": parsed.get("context_type", "unknown"),
+                "reasoning": parsed.get("reasoning", ""),
+            }
+        except (json.JSONDecodeError, KeyError, ValueError, TypeError) as exc:
+            # Deliberately NOT undetermined: unlike a transport failure, this
+            # degrades the QUALITY of the verdict rather than inventing a
+            # permissive one — the keyword classifier computes an answer from the
+            # text and readily returns False.
+            logger.warning("guardrail.judge.invalid_response", error=str(exc))
+            return self._keyword_verdict(content)
+
+    @staticmethod
+    def _keyword_verdict(text: str) -> dict[str, Any]:
+        lowered = text.lower()
+        matched = [kw for kw in _MEDICAL_KEYWORDS if kw in lowered]
+        return {
+            "is_medical": len(matched) >= 2,
+            "confidence": min(len(matched) / 5.0, 1.0),
+            "context_type": "clinical" if len(matched) >= 2 else "general",
+            "reasoning": f"Keyword-based validation: {len(matched)} medical terms found",
+            "matched_keywords": matched[:5],
+        }
+
+    async def batch_validate(self, texts: list[str]) -> list[dict[str, Any]]:
+        """Validate many texts; per-item failures come back as exceptions.
+
+        The batch route marks the failed ELEMENT rather than voiding the resolved
+        ones — a multiplex cannot collapse onto one status code.
+        """
+        results = await asyncio.gather(
+            *(self.validate_medical_context(t) for t in texts), return_exceptions=True
+        )
+        return cast(list[dict[str, Any]], results)
+
+    async def health_check(self) -> dict[str, Any]:
+        """Report the delegation target's reachability (never raises)."""
+        try:
+            response = await self.http_client.get(
+                f"{self.base_url}/api/v1/health",
+                headers=self._headers(),
+                timeout=10.0,
+            )
+            response.raise_for_status()
+            return {
+                "healthy": True,
+                "guardian_enabled": self.enabled,
+                "delegate": "text",
+                "provider": self.provider,
+                "model": self.model,
+                "base_url": self.base_url,
+            }
+        except Exception as exc:  # noqa: BLE001 — health never raises
+            return {
+                "healthy": False,
+                "guardian_enabled": self.enabled,
+                "delegate": "text",
+                "provider": self.provider,
+                "model": self.model,
+                "error": str(exc),
+                "base_url": self.base_url,
+            }
