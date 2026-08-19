@@ -36,3 +36,8 @@ export function findingsByNodeId(findings: readonly WorkflowFinding[]): Map<stri
   }
   return map;
 }
+
+/** Undo/redo availability — the toolbar buttons and the Ctrl/Cmd+Z shortcut both read these, so
+ *  a disabled button and a no-op shortcut can never disagree. */
+export const selectCanUndo = (state: GraphStore): boolean => state.undoStack.length > 0;
+export const selectCanRedo = (state: GraphStore): boolean => state.redoStack.length > 0;
