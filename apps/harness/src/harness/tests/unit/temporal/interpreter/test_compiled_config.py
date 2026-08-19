@@ -126,24 +126,59 @@ class TestChecksum:
         assert exc.value.code == "checksum_mismatch"
 
 
-class TestGatesNotSupported:
-    def test_non_empty_gates_rejected(self):
-        body = _sample_body(
-            gates=[
-                {
-                    "nodeId": "g1",
-                    "gateType": "clinician",
-                    "blocking": True,
-                    "timeoutSeconds": 60,
-                    "onTimeout": "TIMED_OUT",
-                }
-            ]
-        )
+class TestGateAdmission:
+    """Gate admission narrowed, not removed (TASK-731 Phase B).
+
+    This used to be a blanket refusal of any non-empty `gates` (`gates_not_supported_v1`). The
+    interpreter now executes ONE blocking gate as a child workflow, so what is admitted narrowed
+    to exactly that shape — every other shape is still refused loudly at admission rather than
+    silently walked past.
+    """
+
+    @staticmethod
+    def _doc(gates):
+        body = _sample_body(gates=gates)
         checksum = hashlib.sha256(canonical_json(body).encode("utf-8")).hexdigest()
-        doc = json.dumps({**body, "checksum": checksum})
+        return json.dumps({**body, "checksum": checksum})
+
+    @staticmethod
+    def _gate(node_id="g1", blocking=True):
+        return {
+            "nodeId": node_id,
+            "gateType": "consultation.hitlGate",
+            "blocking": blocking,
+            "timeoutSeconds": 60,
+            "onTimeout": "TIMED_OUT",
+        }
+
+    def test_one_blocking_gate_is_admitted(self):
+        config = parse_and_verify(self._doc([self._gate()]))
+        assert len(config.gates) == 1
+        assert config.gates[0].node_id == "g1"
+
+    def test_two_gates_rejected(self):
+        # One durable human wait per run: a second gate would need a second child workflow id and
+        # a second approve route, neither of which exists. The validator's SINGLE_ENTRY rule on
+        # the gate node type enforces this upstream, so reaching here means a compiler bug.
         with pytest.raises(InterpreterConfigError) as exc:
-            parse_and_verify(doc)
-        assert exc.value.code == "gates_not_supported_v1"
+            parse_and_verify(self._doc([self._gate("g1"), self._gate("g2")]))
+        assert exc.value.code == "too_many_gates"
+
+    def test_non_blocking_gate_rejected(self):
+        # "Carry on without the human" is a different authority model, not a variation of this
+        # one — refused rather than approximated.
+        with pytest.raises(InterpreterConfigError) as exc:
+            parse_and_verify(self._doc([self._gate(blocking=False)]))
+        assert exc.value.code == "non_blocking_gate_not_supported"
+
+    def test_gates_not_a_list_rejected(self):
+        with pytest.raises(InterpreterConfigError) as exc:
+            parse_and_verify(self._doc({"nodeId": "g1"}))
+        assert exc.value.code == "invalid_shape"
+
+    def test_empty_gates_still_admitted(self):
+        # Every pre-Phase-B config: the shape that was the ONLY admitted one.
+        assert parse_and_verify(self._doc([])).gates == []
 
 
 class TestMalformed:

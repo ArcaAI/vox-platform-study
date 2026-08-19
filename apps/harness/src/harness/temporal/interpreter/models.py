@@ -151,6 +151,70 @@ class CancelSignal(BaseModel):
     reason: str | None = None
 
 
+# ---------------------------------------------------------------------------
+# HITL gate (TASK-731 Phase B) — the ONE durable human wait in this substrate.
+# ---------------------------------------------------------------------------
+
+
+class ConsultationGateInput(BaseModel):
+    """Input for ``ConsultationGateWorkflow`` — the child the interpreter starts for a
+    ``gate``-classed node.
+
+    Carries run identity plus the COMPILED gate row (`CompiledGate`), never the graph: the child
+    waits, escalates and records a decision; it does not walk anything. SLA knobs are NOT carried
+    here — the child resolves them from the tenant's effective policy through `fetch_policy`, the
+    same activity `HarnessDocWorkflow` uses, so a tenant's gate SLA is honoured without the
+    interpreter's deterministic body doing any I/O.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    run_id: str
+    node_id: str
+    tenant_id: str
+    consultation_id: str
+    user_id: str | None = None
+    job_id: str | None = None
+    context_item_id: str | None = None
+    # The compiled gate row's own fields (already clamped by the TS compiler).
+    gate_type: str
+    timeout_seconds: int
+    on_timeout: str
+    trajectory: TrajectoryContext | None = None
+
+
+class ConsultationGateResult(BaseModel):
+    """What the gate child returns to the interpreter.
+
+    ``approved`` is the ONLY field that can mean sign-off, and it is set from a real
+    ``approval`` signal or not at all. An abandoned gate returns ``approved=False`` with the
+    escalation count — never a value a caller could read as approval
+    (`03-compliance-posture.md` §3, the forgery shape this must never resemble).
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    approved: bool
+    outcome: Literal["APPROVED", "ABANDONED"]
+    decision: str | None = None
+    clinician_id: str | None = None
+    context_item_version_id: str | None = None
+    escalations: int = 0
+
+
+class GateApprovalSignal(BaseModel):
+    """The ``approval`` signal payload. Mirrors ``harness.temporal.models.ApprovalSignal``'s
+    fields; declared here so the interpreter package never widens that frozen surface."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    decision: str | None = None
+    clinician_id: str | None = None
+    context_item_version_id: str | None = None
+    attestation_hash: str | None = None
+    tenant_id: str | None = None
+
+
 class InterpreterStateQueryResult(BaseModel):
     """Live snapshot returned by the ``state`` query (contracts/execution-semantics.md §8)."""
 

@@ -58,9 +58,21 @@ class TestNodeRegistryParity:
 
     def test_carries_exactly_the_seed_and_stt_palette_keys(self):
         assert sorted(NODE_REGISTRY.keys()) == [
+            "consultation.assemblePrompt",
+            "consultation.bindTerminology",
+            "consultation.captureBinding",
             "consultation.consentGate",
+            "consultation.extractEntities",
+            "consultation.finalizeAssurance",
             "consultation.hitlGate",
+            "consultation.inferentialSensors",
+            "consultation.persistDraft",
             "consultation.phiHop",
+            "consultation.retrieveEvidence",
+            "consultation.sensors",
+            "consultation.synthesize",
+            "core.end",
+            "core.start",
             "generate.text",
             "guardrail.check",
             "input.context_binding",

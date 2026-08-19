@@ -178,6 +178,120 @@ async def get_workflow_run(run_id: str, request: Request) -> dict[str, Any]:
     }
 
 
+@router.get(
+    "/workflow-runs/{run_id}/gate",
+    dependencies=[Depends(require_service_token)],
+)
+async def get_workflow_run_gate(run_id: str, request: Request) -> dict[str, Any]:
+    """Live state of the run's HITL gate, read from the CHILD workflow.
+
+    Answers the one question a caller needs before offering a clinician an Approve action: is
+    this run actually parked on a human right now? `WorkflowRunStatus` cannot answer it — a run
+    waiting at the gate and a run busy generating text are both `RUNNING` — and a projection
+    would be a second source of truth for a decision boundary. So this reads the child's own
+    `state` query, which is the truth by construction.
+
+    `waiting: false` with `exists: false` is the normal answer for every run that has no gate
+    (every summarization/stt run, and any consultation run that has not reached its gate yet):
+    a plain 200, not an error, because "no gate here" is not a failure.
+    """
+    from temporalio.service import RPCStatusCode
+
+    from harness.temporal.interpreter.gate_workflow import (
+        ConsultationGateWorkflow,
+        gate_workflow_id,
+    )
+
+    client = await _temporal_client_or_503(request)
+    workflow_id = gate_workflow_id(run_id)
+
+    try:
+        state = await client.get_workflow_handle(workflow_id).query(ConsultationGateWorkflow.state)
+    except RPCError as exc:
+        if exc.status in (RPCStatusCode.NOT_FOUND, RPCStatusCode.FAILED_PRECONDITION):
+            return {"runId": run_id, "workflowId": workflow_id, "exists": False, "waiting": False}
+        raise _rpc_error_response(exc, action="gate-state") from exc
+
+    phase = state.get("phase")
+    return {
+        "runId": run_id,
+        "workflowId": workflow_id,
+        "exists": True,
+        # Only the GATE phase is a live human wait. RECORD/DONE/ABANDONED are all terminal-ish
+        # and must never render an Approve action — approving a decided gate is a no-op at best
+        # and a misleading affordance at worst.
+        "waiting": phase == "GATE" and not state.get("approved", False),
+        "phase": phase,
+        "escalations": state.get("escalations", 0),
+        "approved": state.get("approved", False),
+    }
+
+
+class GateApprovalRequest(BaseModel):
+    """Body for ``:approve`` (camelCase at the apps/api boundary), mirroring the existing
+    ``/workflows/{id}/signal/approve`` body for the legacy document workflow."""
+
+    model_config = ConfigDict(populate_by_name=True)
+
+    decision: str | None = None
+    clinician_id: str | None = Field(default=None, alias="clinicianId")
+    context_item_version_id: str | None = Field(default=None, alias="contextItemVersionId")
+    attestation_hash: str | None = Field(default=None, alias="attestationHash")
+    tenant_id: str | None = Field(default=None, alias="tenantId")
+
+
+@router.post(
+    "/workflow-runs/{run_id}:approve",
+    dependencies=[Depends(require_service_token)],
+)
+async def approve_workflow_run_gate(
+    run_id: str, body: GateApprovalRequest, request: Request
+) -> dict[str, Any]:
+    """Release the run's HITL gate with a clinician decision.
+
+    Signals the GATE CHILD workflow, not the interpreter: the interpreter's own signal surface
+    is deliberately ``cancel``-only (TASK-718 R-2), and the durable wait lives in
+    ``ConsultationGateWorkflow`` — see its module docstring. The child id is derived from the run
+    id alone (`gate_workflow_id`), which is what lets this route address it without reading run
+    state. Like ``:cancel``, the signal is a code allow-list, never a caller-supplied
+    ``signalName`` (F-09).
+
+    A run with no gate, or one whose gate already completed, surfaces the Temporal RPC error
+    through ``_rpc_error_response`` rather than reporting a sign-off that did not happen.
+    """
+    from harness.temporal.interpreter.gate_workflow import (
+        ConsultationGateWorkflow,
+        gate_workflow_id,
+    )
+    from harness.temporal.interpreter.models import GateApprovalSignal
+
+    client = await _temporal_client_or_503(request)
+    workflow_id = gate_workflow_id(run_id)
+    handle = client.get_workflow_handle(workflow_id)
+
+    try:
+        await handle.signal(
+            ConsultationGateWorkflow.approval,
+            GateApprovalSignal(
+                decision=body.decision,
+                clinician_id=body.clinician_id,
+                context_item_version_id=body.context_item_version_id,
+                attestation_hash=body.attestation_hash,
+                tenant_id=body.tenant_id,
+            ),
+        )
+    except RPCError as exc:
+        raise _rpc_error_response(exc, action="approve") from exc
+
+    logger.info(
+        "harness.interpreter.run.gate_approved",
+        run_id=run_id,
+        workflow_id=workflow_id,
+        decision=body.decision,
+    )
+    return {"runId": run_id, "workflowId": workflow_id, "signaled": True}
+
+
 @router.post(
     "/workflow-runs/{run_id}:cancel",
     dependencies=[Depends(require_service_token)],

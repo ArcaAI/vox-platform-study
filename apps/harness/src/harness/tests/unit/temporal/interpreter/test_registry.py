@@ -27,6 +27,22 @@ class TestRegistryShape:
             assert spec.critical is False
             assert spec.external_write is False
 
+    def test_graph_boundary_markers_are_registered_and_dispatchable(self):
+        # `core.start`/`core.end` are the two node types the palette-agnostic structural rules
+        # WF-S-002/003/004/007 are written against. compile() refuses any graph containing an
+        # unimplemented node type, so a marker that is registered but not dispatchable would
+        # leave every graph unpublishable for a different reason than before.
+        for key in ("core.start", "core.end"):
+            spec = NODE_REGISTRY[key]
+            assert spec.implemented is True
+            assert spec.critical is False
+            assert spec.external_write is False
+            assert callable(spec.activity)
+
+    def test_boundary_markers_carry_distinct_activity_names(self):
+        assert NODE_REGISTRY["core.start"].activity_name == "interpreter.core_start"
+        assert NODE_REGISTRY["core.end"].activity_name == "interpreter.core_end"
+
     def test_activity_is_a_callable_reference_not_a_string(self):
         # S-4: routing reaches sanctioned activities via a code-owned registry, never a
         # string dispatched at runtime (see execution-semantics.md §10).
@@ -54,3 +70,33 @@ class TestNoActivityReachesApproveSummary:
 class TestUnknownNodeType:
     def test_unknown_type_has_no_registry_entry(self):
         assert NODE_REGISTRY.get("this-type-does-not-exist") is None
+
+
+class TestBoundaryMarkerActivities:
+    """A marker executes NOTHING. In particular `core.end` is not a delivery step — whatever the
+    graph produced was written by its own `external_write` node before the walk reached here."""
+
+    @staticmethod
+    def _payload(node_type: str):
+        from harness.temporal.interpreter.models import NodeActivityInput
+
+        return NodeActivityInput(
+            node_id="n1",
+            node_type=node_type,
+            config={},
+            tenant_id="10000000-0000-0000-0000-000000000001",
+        )
+
+    async def _run(self, fn, node_type: str):
+        return await fn(self._payload(node_type))
+
+    def test_markers_succeed_with_no_output(self):
+        import asyncio
+
+        for fn, node_type in (
+            (interpreter_activities.interpreter_core_start, "core.start"),
+            (interpreter_activities.interpreter_core_end, "core.end"),
+        ):
+            result = asyncio.run(self._run(fn, node_type))
+            assert result.status == "SUCCEEDED"
+            assert result.output is None

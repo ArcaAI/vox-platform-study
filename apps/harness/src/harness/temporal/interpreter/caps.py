@@ -27,6 +27,10 @@ MAX_NODES_PER_STAGE = 32
 # Deliberately tighter than MAX_STAGES * MAX_NODES_PER_STAGE (1,600) so this is an
 # independent bound, not a restatement of the other two.
 MAX_TOTAL_NODES = 500
+# HITL gates per run (TASK-731 Phase B). One durable human wait, matching the validator's own
+# SINGLE_ENTRY rule on the gate node type; a second gate would need a second child workflow id
+# and a second approve route, neither of which exists.
+MAX_GATES = 1
 
 
 def clamp_timeout(requested_seconds: int) -> int:

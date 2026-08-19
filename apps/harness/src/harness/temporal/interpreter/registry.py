@@ -23,6 +23,8 @@ from temporalio import workflow
 
 with workflow.unsafe.imports_passed_through():
     from harness.temporal.interpreter.activities import (
+        interpreter_core_end,
+        interpreter_core_start,
         interpreter_noop,
         interpreter_passthrough,
     )
@@ -30,6 +32,26 @@ with workflow.unsafe.imports_passed_through():
         interpreter_consultation_consent_gate,
         interpreter_consultation_hitl_gate,
         interpreter_consultation_phi_hop,
+    )
+    from harness.temporal.interpreter.nodes.consultation_capture import (
+        interpreter_consultation_capture_binding,
+    )
+    from harness.temporal.interpreter.nodes.consultation_compose import (
+        interpreter_consultation_assemble_prompt,
+        interpreter_consultation_retrieve_evidence,
+        interpreter_consultation_synthesize,
+    )
+    from harness.temporal.interpreter.nodes.consultation_nlp import (
+        interpreter_consultation_bind_terminology,
+        interpreter_consultation_extract_entities,
+    )
+    from harness.temporal.interpreter.nodes.consultation_persist import (
+        interpreter_consultation_finalize_assurance,
+        interpreter_consultation_persist_draft,
+    )
+    from harness.temporal.interpreter.nodes.consultation_verify import (
+        interpreter_consultation_inferential_sensors,
+        interpreter_consultation_sensors,
     )
     from harness.temporal.interpreter.nodes.context_binding import interpreter_context_binding
     from harness.temporal.interpreter.nodes.deliver import interpreter_deliver
@@ -100,6 +122,31 @@ class NodeSpec:
 NODE_REGISTRY: dict[str, NodeSpec] = {
     "noop": NodeSpec(key="noop", implemented=True, activity=interpreter_noop),
     "passthrough": NodeSpec(key="passthrough", implemented=True, activity=interpreter_passthrough),
+    # Graph boundary markers (palette-agnostic). The palette-independent structural rules
+    # WF-S-002/003/004/007 are written against these two literal types; until they were
+    # registered no graph in ANY palette could satisfy them. They execute nothing (see
+    # activities.py), but must be dispatchable because compile() refuses a graph containing an
+    # unimplemented node type. `classes: ['boundary']` is TS-only (node-registry.ts) — it is
+    # what the reachability predicates use to exempt a marker from a palette's OWN entry/terminal
+    # rule; Python needs no counterpart because the interpreter never evaluates rules.
+    "core.start": NodeSpec(
+        key="core.start",
+        implemented=True,
+        activity=interpreter_core_start,
+        critical=False,
+        external_write=False,
+        default_timeout_seconds=30,
+        default_max_attempts=1,
+    ),
+    "core.end": NodeSpec(
+        key="core.end",
+        implemented=True,
+        activity=interpreter_core_end,
+        critical=False,
+        external_write=False,
+        default_timeout_seconds=30,
+        default_max_attempts=1,
+    ),
     # Summarization palette (TASK-720). `critical`/`external_write`/timeouts mirror
     # contracts/palette.md's node table and node-registry.ts's matching five entries exactly.
     # RESTORED (2026-08-17, close-out pass): dropped from this dict by an external tree operation
@@ -220,11 +267,20 @@ NODE_REGISTRY: dict[str, NodeSpec] = {
         default_timeout_seconds=60,
         default_max_attempts=1,
     ),
-    # Consultation palette (TASK-731) — a PARTIAL pass: only 3 of the palette's 13 node types are
-    # wired this pass (contracts/node-types.md has the full 13-node design; nodes/consultation.py's
-    # module docstring names exactly why the other 10 are not here yet — real, already-shipped
-    # compile targets exist for each, but their interpreter wrappers were judged out of this
-    # pass's time budget rather than rushed). See the ticket README §7.
+    # Consultation palette (TASK-731) — all 13 node types from contracts/node-types.md's node
+    # table. TASK-731 shipped only 3 (consentGate, phiHop, hitlGate); the other 10 were specified
+    # but left unwired, which made the palette unbuildable — DRAFT_CONSULTATION_RULE_SET names
+    # nine node types by key and the registry served three of them, so no consultation graph could
+    # be authored, let alone compiled. The ten wrappers added here follow the pattern
+    # nodes/consultation.py already established for consentGate/phiHop: a thin
+    # NodeActivityInput -> NodeActivityResult adapter over the activity
+    # contracts/palette-contract.md §1 already names as that node's compile target.
+    #
+    # `default_timeout_seconds`/`default_max_attempts` are NOT invented here — each mirrors what
+    # HarnessDocWorkflow already schedules the SAME underlying activity with (workflows.py's
+    # _ACTIVITY_TIMEOUT=150 / _MCP_TIMEOUT=30 / _INFERENTIAL_TIMEOUT=900 / _LOOP_ACTION_TIMEOUT=30
+    # and the matching _NLP_RETRY / _MCP_RETRY / _API_RETRY / _GENERATE_RETRY / _RETRIEVAL_RETRY /
+    # _INFERENTIAL_RETRY / _LOOP_ACTION_RETRY policies).
     "consultation.consentGate": NodeSpec(
         key="consultation.consentGate",
         implemented=True,
@@ -233,6 +289,35 @@ NODE_REGISTRY: dict[str, NodeSpec] = {
         external_write=False,
         default_timeout_seconds=30,
         default_max_attempts=3,
+    ),
+    "consultation.captureBinding": NodeSpec(
+        key="consultation.captureBinding",
+        implemented=True,
+        activity=interpreter_consultation_capture_binding,
+        critical=False,
+        external_write=False,
+        default_timeout_seconds=30,
+        default_max_attempts=2,
+    ),
+    # external_write=True for the persist leg (persist_entities), not the extraction — see
+    # contracts/node-types.md's `critical` rationale, third bullet.
+    "consultation.extractEntities": NodeSpec(
+        key="consultation.extractEntities",
+        implemented=True,
+        activity=interpreter_consultation_extract_entities,
+        critical=False,
+        external_write=True,
+        default_timeout_seconds=150,
+        default_max_attempts=2,
+    ),
+    "consultation.bindTerminology": NodeSpec(
+        key="consultation.bindTerminology",
+        implemented=True,
+        activity=interpreter_consultation_bind_terminology,
+        critical=False,
+        external_write=False,
+        default_timeout_seconds=30,
+        default_max_attempts=1,
     ),
     "consultation.phiHop": NodeSpec(
         key="consultation.phiHop",
@@ -243,13 +328,81 @@ NODE_REGISTRY: dict[str, NodeSpec] = {
         default_timeout_seconds=60,
         default_max_attempts=3,
     ),
-    # PLACEHOLDER — implemented=False. The interpreter's durable-wait extension (Phase B) has not
-    # been implemented; compile() therefore refuses any graph containing this node type. See
-    # contracts/palette-contract.md §2 and nodes/consultation.py's module docstring.
+    "consultation.retrieveEvidence": NodeSpec(
+        key="consultation.retrieveEvidence",
+        implemented=True,
+        activity=interpreter_consultation_retrieve_evidence,
+        critical=False,
+        external_write=False,
+        default_timeout_seconds=150,
+        default_max_attempts=2,
+    ),
+    "consultation.assemblePrompt": NodeSpec(
+        key="consultation.assemblePrompt",
+        implemented=True,
+        activity=interpreter_consultation_assemble_prompt,
+        critical=False,
+        external_write=False,
+        default_timeout_seconds=150,
+        default_max_attempts=3,
+    ),
+    "consultation.synthesize": NodeSpec(
+        key="consultation.synthesize",
+        implemented=True,
+        activity=interpreter_consultation_synthesize,
+        critical=False,
+        external_write=False,
+        default_timeout_seconds=150,
+        default_max_attempts=2,
+    ),
+    "consultation.sensors": NodeSpec(
+        key="consultation.sensors",
+        implemented=True,
+        activity=interpreter_consultation_sensors,
+        critical=False,
+        external_write=False,
+        default_timeout_seconds=150,
+        default_max_attempts=2,
+    ),
+    "consultation.inferentialSensors": NodeSpec(
+        key="consultation.inferentialSensors",
+        implemented=True,
+        activity=interpreter_consultation_inferential_sensors,
+        critical=False,
+        external_write=False,
+        default_timeout_seconds=900,
+        default_max_attempts=2,
+    ),
+    "consultation.persistDraft": NodeSpec(
+        key="consultation.persistDraft",
+        implemented=True,
+        activity=interpreter_consultation_persist_draft,
+        critical=False,
+        external_write=True,
+        default_timeout_seconds=150,
+        default_max_attempts=3,
+    ),
+    "consultation.finalizeAssurance": NodeSpec(
+        key="consultation.finalizeAssurance",
+        implemented=True,
+        activity=interpreter_consultation_finalize_assurance,
+        critical=False,
+        external_write=True,
+        default_timeout_seconds=150,
+        default_max_attempts=3,
+    ),
+    # The ONE durable human wait in this substrate (TASK-731 Phase B). `kind="child_workflow"` is
+    # the field NodeSpec has reserved for exactly this since TASK-718 and this is its first use:
+    # the interpreter does NOT dispatch `activity` for this node — the compiler lifts every
+    # `gate`-classed node out of `stages` into `gates`, and `WorkflowInterpreter._run_gate` starts
+    # `ConsultationGateWorkflow` as a child instead (see gate_workflow.py). `activity` stays a
+    # real callable because NodeSpec requires one and because `activity_name` is the S-4
+    # cross-check anchor; reaching it means a routing bug, and it degrades saying so.
     "consultation.hitlGate": NodeSpec(
         key="consultation.hitlGate",
-        implemented=False,
+        implemented=True,
         activity=interpreter_consultation_hitl_gate,
+        kind="child_workflow",
         critical=True,
         external_write=True,
         default_timeout_seconds=60,

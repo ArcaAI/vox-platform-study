@@ -24,9 +24,19 @@ from temporalio.exceptions import ActivityError
 with workflow.unsafe.imports_passed_through():
     from harness.temporal.interpreter import caps
     from harness.temporal.interpreter.activities import load_config
-    from harness.temporal.interpreter.compiled_config import CompiledNode, CompiledStage
+    from harness.temporal.interpreter.compiled_config import (
+        CompiledGate,
+        CompiledNode,
+        CompiledStage,
+    )
+    from harness.temporal.interpreter.gate_workflow import (
+        ConsultationGateWorkflow,
+        gate_workflow_id,
+    )
     from harness.temporal.interpreter.models import (
         CancelSignal,
+        ConsultationGateInput,
+        ConsultationGateResult,
         InterpreterInput,
         InterpreterResult,
         InterpreterStateQueryResult,
@@ -53,10 +63,25 @@ _SEQ_STRIDE = 4
 # `consultation_loop_workflow_id` (workflows.py:1623-1625).
 INTERPRETER_WORKFLOW_ID_PREFIX = "workflow-interpreter-"
 
+# The patch marker for the HITL-gate command (TASK-731 Phase B). Required by
+# contracts/versioning.md rule 3: executing a gate adds a NEW command to the workflow body, which
+# would change the command sequence for every replaying history if shipped ungated. The gate is
+# guarded cheap-operand-first (`config.gates and workflow.patched(...)`), and the cheap operand is
+# PROVABLY False on every pre-existing history: until this change, `parse_and_verify` refused any
+# config whose `gates` was not `[]` (`gates_not_supported_v1`), so no admitted run can ever have
+# carried one. `workflow.patched` is therefore never even called when replaying an old history —
+# exactly what the idiom is for.
+_GATE_PATCH = "task-731-hitl-gate"
+
 
 def interpreter_workflow_id(run_id: str) -> str:
     """The deterministic interpreter workflow id for a run (pure)."""
     return f"{INTERPRETER_WORKFLOW_ID_PREFIX}{run_id}"
+
+
+def _opt_str(value: Any) -> str | None:
+    """A non-empty string, or None. Pure."""
+    return value if isinstance(value, str) and value else None
 
 
 @workflow.defn(name="WorkflowInterpreter")
@@ -113,6 +138,21 @@ class WorkflowInterpreter:
                 # The current stage is already fully settled (all-settled join, §5); no
                 # further stage is started once a critical node has failed.
                 break
+
+        # 2) The HITL gate (TASK-731 Phase B). The compiler LIFTS every `gate`-classed node out
+        # of `stages` into `gates` (compiler.ts:204-210), so a gate never reaches `_run_stage` —
+        # it runs here, after the walk, which is also what the graph means: `WF-CONS-004` makes
+        # the gate terminal for everything except the palette-agnostic `core.end` marker.
+        # Skipped when a critical node already failed: there is nothing to sign off.
+        if config.gates and workflow.patched(_GATE_PATCH):
+            gate_result = await self._run_gate(config.gates[0], inp, blocked=run_failed)
+            self._stages.append(
+                StageResult(stage_index=len(self._stages), nodes=[gate_result])
+            )
+            if gate_result.status == "FAILED":
+                run_failed = True
+            elif gate_result.status in ("DEGRADED", "SKIPPED"):
+                run_degraded = True
 
         status: RunStatus
         if self._cancelled:
@@ -246,6 +286,102 @@ class WorkflowInterpreter:
         return NodeResult(
             node_id=node.node_id, node_type=node.type, status="SKIPPED", reason=result.reason
         )
+
+    async def _run_gate(self, gate: CompiledGate, inp: InterpreterInput, *, blocked: bool) -> NodeResult:
+        """Execute the one blocking HITL gate as a CHILD workflow.
+
+        A child rather than an in-line `wait_condition` is what keeps the interpreter's own
+        signal surface `cancel`-only for every palette (TASK-718 R-2) — see
+        `gate_workflow.py`'s module docstring for why this is a new workflow type rather than the
+        `HarnessDocWorkflow` delegation `palette-contract.md` §2 originally chose.
+
+        Three refusals, all of them loud and none of them a wait:
+
+        * **Sandbox.** A Workbench run must never park on a human. The gate node is
+          `external_write: true`, but the stage-level sandbox suppression cannot reach it (the
+          gate is not in `stages`), so the check is repeated here — this is the one place it can
+          be made.
+        * **A failed critical node upstream.** There is no draft to sign off; asking a clinician
+          to approve a run that already failed would be asking them to attest to nothing.
+        * **A missing consultation id.** The gate's whole side effect (escalations, the WORM
+          `GATE_DECISION`) is consultation-scoped; without one there is nothing to record
+          against, and inventing a target would put a decision on the wrong record.
+        """
+        spec = NODE_REGISTRY.get(gate.gate_type)
+        node_type = gate.gate_type
+
+        if spec is None or not spec.implemented:
+            return NodeResult(node_id=gate.node_id, node_type=node_type, status="SKIPPED", reason="unsupported_node_type")
+
+        if inp.sandbox:
+            return NodeResult(node_id=gate.node_id, node_type=node_type, status="SKIPPED", reason="sandbox")
+
+        if blocked:
+            return NodeResult(node_id=gate.node_id, node_type=node_type, status="SKIPPED", reason="upstream_failed")
+
+        consultation_id = inp.payload.get("consultationId")
+        if not isinstance(consultation_id, str) or not consultation_id:
+            # `critical: true` on the gate node makes this a run-level FAILED, which is correct:
+            # a consultation graph that reached its gate with no consultation to gate is not a
+            # run that succeeded.
+            return NodeResult(node_id=gate.node_id, node_type=node_type, status="FAILED", reason="no_consultation_id")
+
+        gate_input = ConsultationGateInput(
+            run_id=inp.run_id,
+            node_id=gate.node_id,
+            tenant_id=inp.tenant_id,
+            consultation_id=consultation_id,
+            user_id=_opt_str(inp.payload.get("userId")),
+            job_id=_opt_str(inp.payload.get("jobId")),
+            context_item_id=_opt_str(self._gate_context_item_id()),
+            gate_type=node_type,
+            timeout_seconds=gate.timeout_seconds,
+            on_timeout=gate.on_timeout,
+            trajectory=TrajectoryContext(
+                tenant_id=inp.tenant_id,
+                seq=self._next_seq(),
+                workflow_version_id=inp.workflow_version_id,
+                stage_id="gate",
+                node_id=gate.node_id,
+                node_type=node_type,
+            ),
+        )
+
+        try:
+            result: ConsultationGateResult = await workflow.execute_child_workflow(
+                ConsultationGateWorkflow.run,
+                gate_input,
+                # Deterministic, derived from the parent's run id — never `uuid4()` inside a
+                # workflow body. Same task queue by inheritance (worker.py hosts both types).
+                id=gate_workflow_id(inp.run_id),
+            )
+        except Exception:  # noqa: BLE001 — ChildWorkflowError and cancellation both land here
+            # A gate that could not run is NOT an approval. `critical: true` promotes this to a
+            # run-level FAILED, which is the only safe reading.
+            return NodeResult(node_id=gate.node_id, node_type=node_type, status="FAILED", reason="gate_unavailable")
+
+        if result.approved:
+            self._node_outputs[gate.node_id] = {
+                "approved": True,
+                "decision": result.decision,
+                "clinicianId": result.clinician_id,
+                "contextItemVersionId": result.context_item_version_id,
+            }
+            return NodeResult(node_id=gate.node_id, node_type=node_type, status="SUCCEEDED")
+
+        # ABANDONED — the SLA ladder ran out without a clinician decision. DEGRADED here would be
+        # promoted to FAILED anyway (the gate is `critical: true`); naming it FAILED directly
+        # keeps the reason honest rather than routing an unsigned gate through a "degraded" word.
+        return NodeResult(node_id=gate.node_id, node_type=node_type, status="FAILED", reason="gate_abandoned")
+
+    def _gate_context_item_id(self) -> str | None:
+        """The `contextItemId` a `consultation.persistDraft` node published upstream, if any —
+        read from the workflow-owned node-output cache, never re-derived."""
+        for output in self._node_outputs.values():
+            candidate = output.get("contextItemId")
+            if isinstance(candidate, str) and candidate:
+                return candidate
+        return None
 
     @workflow.signal(name="cancel")
     async def cancel(self, signal: CancelSignal | None = None) -> None:

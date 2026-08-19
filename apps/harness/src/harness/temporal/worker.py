@@ -34,6 +34,7 @@ from harness.temporal.activities import (
 )
 from harness.temporal.client import get_temporal_client
 from harness.temporal.interpreter.activities import INTERPRETER_ACTIVITIES
+from harness.temporal.interpreter.gate_workflow import ConsultationGateWorkflow
 from harness.temporal.interpreter.workflow import WorkflowInterpreter
 from harness.temporal.workflows import (
     ConsultationLoopWorkflow,
@@ -268,6 +269,10 @@ async def run_worker() -> None:
             ConsultationLoopWorkflow,
             SpecialistWorkflow,
             WorkflowInterpreter,
+            # The interpreter starts this as a child WITHOUT an explicit task_queue, so it
+            # inherits the parent's and must be hosted by this same worker — the identical rule
+            # ConsultationLoopWorkflow/SpecialistWorkflow are on this list for.
+            ConsultationGateWorkflow,
         ],
         activities=[
             ping_activity,
