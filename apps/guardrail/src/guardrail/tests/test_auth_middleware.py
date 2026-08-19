@@ -29,10 +29,21 @@ PROBE_PATH = "/api/__auth_probe__"
 PROTECTED_TOKEN = "test-service-token-guardrail-xyz789"  # noqa: S105 — test constant
 
 
-def _app_with_token(token: str) -> FastAPI:
-    """Build the app (no lifespan) and force a specific service_token on app.state."""
+def _app_with_token(token: str, *, shared: str = "") -> FastAPI:
+    """Build the app (no lifespan) and pin BOTH accepted tokens on app.state.
+
+    Pinning `internal_access_token` as well is what makes this helper honest. The middleware
+    accepts EITHER the canonical shared token or the legacy per-service one
+    (`Settings.accepted_service_tokens`), and both are populated from the environment — so a
+    helper that set only `service_token` left whatever `INTERNAL_ACCESS_TOKEN` the loaded
+    `.env.test` happened to carry silently in play. That is why `test_empty_token_bypasses_auth`
+    failed: it asked for "no tokens configured" and got "one token configured", so the dev-mode
+    bypass never engaged. The default `shared=""` keeps every existing case meaning exactly what
+    it reads as.
+    """
     app = create_app()
     app.state.settings.service_token = SecretStr(token)
+    app.state.settings.internal_access_token = SecretStr(shared)
     return app
 
 

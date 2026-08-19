@@ -13,7 +13,7 @@ import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
 from pydantic import SecretStr
 
-from text.core.config import Settings
+from text.core.config import InternalAccessConfig, Settings
 
 # Test-environment isolation (same defect class fixed in
 # apps/tts/src/tts/tests/conftest.py).
@@ -43,6 +43,18 @@ create_app = importlib.import_module("text.main").create_app
 os.environ.clear()
 os.environ.update(_env_before_main_import)
 
+# The same defect, one layer up. Restoring `os.environ` above un-does the import-time load, but
+# every `Settings()` a fixture builds calls `hope_env.load_env()` again and re-reads `.env.test`
+# — so a token in that file still reaches the middleware, and the suite 401s exactly as it did
+# before. The env-file contract is "host env > file: the file never overwrites a variable already
+# in the environment", so PINNING these empty here is what makes the whole session genuinely
+# tokenless, whatever a given fixture forgets to override.
+#
+# Auth-specific suites (`test_auth_middleware.py`, `test_health_metrics.py`) pass an explicit
+# token to their own `Settings`, which still wins — this only removes the ambient one.
+for _token_var in ("INTERNAL_ACCESS_TOKEN", "TEXT_SERVICE_TOKEN", "SERVICE_TOKEN", "V2_SERVICE_TOKEN"):
+    os.environ[_token_var] = ""
+
 _C = TypeVar("_C")
 
 
@@ -61,13 +73,28 @@ def keyed(config: _C, key: str = "test-key") -> _C:
 
 @pytest.fixture
 def settings() -> Settings:
-    """Default test settings with all providers disabled."""
+    """Default test settings with all providers disabled AND service auth off.
+
+    Both tokens are pinned empty on purpose. `Settings` reads them from the environment, and
+    `accepted_service_tokens` admits EITHER the canonical shared `internal_access_token` or the
+    legacy per-service `service_token` — so whatever the loaded `.env.test` carries would turn
+    every suite-issued request into a 401 before its handler ran. These suites exercise handler
+    behaviour and send no `X-Service-Token`, so "auth disabled" is the state they have always
+    assumed; it just used to be true by accident (an unset token) rather than by declaration.
+
+    Tests that are ABOUT auth (`test_auth_middleware.py`, `test_health_metrics.py`) build their
+    own `Settings` with an explicit token and are unaffected.
+    """
     return Settings(
         host="127.0.0.1",
         port=5099,
         debug=True,
         log_level="debug",
         cors_origins=["http://localhost:8868/api/v1"],
+        service_token=SecretStr(""),
+        # `internal_access_token` is a read-only property over this nested config, so the shared
+        # token is cleared HERE — passing it as a kwarg is an `extra_forbidden` error.
+        internal_access=InternalAccessConfig(token=SecretStr("")),
     )
 
 

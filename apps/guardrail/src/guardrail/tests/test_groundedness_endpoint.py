@@ -63,6 +63,11 @@ def _app(*, enabled: bool = True, seed_stub_scorer: bool = False, token: str = "
     """Build the app (no lifespan), configure the gate, optionally seed a stub verifier."""
     app = create_app()
     app.state.settings.service_token = SecretStr(token)
+    # Pin the SHARED token too: the middleware accepts EITHER it or the legacy
+    # per-service token (`Settings.accepted_service_tokens`), and both are populated from
+    # the environment — so setting only `service_token` left whatever `INTERNAL_ACCESS_TOKEN`
+    # the loaded `.env.test` carried silently in play, and `token=""` (auth off) still 401'd.
+    app.state.settings.internal_access_token = SecretStr(token)
     app.state.settings.groundedness = GroundednessConfig(enabled=enabled)
     # Hermetic: no DB. the db_config_enabled=False dev escape hatch
     # uses the env model id so these tests exercise the scorer degrade/verdict

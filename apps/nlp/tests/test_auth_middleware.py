@@ -40,8 +40,16 @@ EXEMPT_LIVE_PATHS = [
 
 
 def _set_token(monkeypatch: pytest.MonkeyPatch, value: str) -> None:
-    """Point the module-singleton config at ``value``; the auth code reads it at dispatch."""
+    """Point the module-singleton config at ``value``; the auth code reads it at dispatch.
+
+    BOTH accepted tokens are pinned. `Settings.accepted_service_tokens` admits either the
+    canonical shared `internal_access_token` or the legacy per-service `service_token`, and both
+    come from the environment — so setting only the legacy one left whatever
+    `INTERNAL_ACCESS_TOKEN` the loaded `.env.test` carried in play, and asking for `""`
+    ("auth disabled") still produced a configured token and a 401.
+    """
     monkeypatch.setattr(nlp_settings.service, "service_token", SecretStr(value), raising=False)
+    monkeypatch.setattr(nlp_settings.service, "internal_access_token", SecretStr(value), raising=False)
 
 
 # ── HTTP auth disabled (dev mode) ──
