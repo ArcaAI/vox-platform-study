@@ -14,6 +14,7 @@ import { SYSTEM_TENANT_ID, SYSTEM_USER_ID } from './00-constants';
  * - nlp.diagnosis → symps-disease-bert-v3-c41 (TEXT_CLASSIFICATION row — )
  * - guardrail.safety → gliguard-llm-guardrails-300m (LLM safety moderation, six tasks)
  * - guardrail.pii → gliner2-privacy-filter-pii-multi (PII spans; English only)
+ * - guardrail.pii.spans → gliner2-guardrails-pii-multi (joint PII spans + safety; TASK-776)
  * - guardrail.groundedness → minicheck-flan-t5-large (TEXT_CLASSIFICATION row — )
  * - harness.judge → lms-gemma-4-e4b (TEXT_GENERATION row; owner directive 2026-08-16)
  *
@@ -129,6 +130,18 @@ export const SYSTEM_AI_TASK_DEFAULTS: AiTaskDefaultSeed[] = [
     tenantId: SYSTEM_TENANT_ID,
     taskKey: 'guardrail.pii',
     modelSlug: 'gliner2-privacy-filter-pii-multi',
+  },
+  // TASK-776 — the third selection. `guardrail.pii` is the high-volume redaction
+  // path (dedicated 205M span model); `guardrail.pii.spans` is the JOINT
+  // checkpoint, for prompt/response safety that needs SPANS rather than a bare
+  // label. Two keys, not one, because they are different jobs with different
+  // latency budgets — collapsing them would make every redaction pay for a
+  // classification head it does not use.
+  {
+    id: '86000000-0000-0000-0000-000000000012',
+    tenantId: SYSTEM_TENANT_ID,
+    taskKey: 'guardrail.pii.spans',
+    modelSlug: 'gliner2-guardrails-pii-multi',
   },
   {
     id: '86000000-0000-0000-0000-000000000007',

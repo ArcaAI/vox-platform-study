@@ -1,5 +1,7 @@
-from collections.abc import AsyncIterator
+import asyncio
+from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import asynccontextmanager
+from typing import Any
 
 import httpx
 from fastapi import FastAPI
@@ -14,6 +16,45 @@ from nlp.dependencies import get_websocket_manager
 from nlp.services.external_text_client import ExternalTextClient
 
 logger = get_logger(__name__)
+
+
+async def _load_into_cache(model_name: str, model_path: str | None) -> None:
+    """Pull one model into its cache slot so the first request finds it resident."""
+    from nlp.dependencies import pinned_gliner2_guard
+
+    async with pinned_gliner2_guard(model_name, model_path):
+        pass
+
+
+async def warm_models(
+    client: Any,
+    load: Callable[[str, str | None], Awaitable[None]] = _load_into_cache,
+) -> None:
+    """Load the control-plane warm set. NEVER raises — warming is an optimisation.
+
+    Sequential on purpose: a cold GLiNER2 load is CPU- and IO-heavy, and racing
+    several of them at boot lengthens the wall-clock time to the FIRST usable
+    model, which is the number that actually matters to readiness.
+    """
+    try:
+        snapshot = await client.get()
+        warm = snapshot.warm_models()
+    except Exception as exc:  # noqa: BLE001 — a config outage leaves the service lazy
+        logger.warning(f"nlp.warm_models.config_unavailable error={type(exc).__name__} {exc}")
+        return
+
+    if not warm:
+        logger.info("nlp.warm_models.none_configured")
+        return
+
+    for model_name, model_path in warm:
+        try:
+            await load(model_name, model_path)
+            logger.info(f"nlp.warm_models.loaded model={model_name}")
+        except Exception as exc:  # noqa: BLE001 — one bad row must not cancel the rest
+            logger.warning(
+                f"nlp.warm_models.failed model={model_name} " f"error={type(exc).__name__} {exc}"
+            )
 
 
 @asynccontextmanager
@@ -69,9 +110,25 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     except Exception as exc:  # noqa: BLE001 - registration must never block boot
         logger.warning("nlp.service_release_registration_failed: %s", exc)
 
+    # Warm the control-plane-configured models. Detached on purpose: a cold
+    # GLiNER2 load measured ~220s on developer hardware, and blocking `lifespan`
+    # on it would fail every readiness probe for that whole window. Requests that
+    # arrive first still load lazily through the same cache, so warming can only
+    # make the first request faster, never slower or wrong.
+    app.state.warm_models_task = asyncio.create_task(warm_models(app.state.effective_config_client))
+
     logger.info("Medical NLP Service started successfully")
 
     yield
+
+    warm_task = getattr(app.state, "warm_models_task", None)
+    if warm_task is not None and not warm_task.done():
+        warm_task.cancel()
+
+    # Drain the guard batchers so no request is left waiting on a dead loop.
+    from nlp.services.guard_dispatch import reset_guard_batchers
+
+    await reset_guard_batchers()
 
     await websocket_service.shutdown()
 
