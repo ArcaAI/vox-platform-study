@@ -2,7 +2,7 @@
 
 | Field | Value |
 |---|---|
-| Status | Review |
+| Status | Review (evidence verified 2026-08-20) |
 | Type | feature + infrastructure |
 | Owner directive date | 2026-08-19 |
 | Affects | `apps/nlp`, `packages/database/src/prisma/db_main/seed/**` (seed authoring only — not run here) |
@@ -73,43 +73,11 @@ Platform target: **>= 100 concurrent consultation sessions**. Design for it and 
 
 ### 2.3 Research findings — what each model actually is
 
-Verified against the live Hugging Face model cards and the installed `gliner2==1.3.2`
-runtime (2026-08-19).
-
-| | `gliner2-privacy-filter-PII-multi` | `GLiNER2-Guardrails-PII-Multi` | `gliguard-LLMGuardrails-300M` |
-|---|---|---|---|
-| Params | 205M | 300M (`0.3B`) | 300M (`0.3B`) |
-| Base | GLiNER2 | `fastino/gliner2-base-v1` | GLiNER2 |
-| Job | **PII spans only** | **PII spans + safety classification, one checkpoint** | **Safety classification only** |
-| `extract_entities` | ✅ 42 PII types | ✅ 42 PII types | ❌ (no extraction) |
-| `classify_text` | ❌ | ✅ the six GLiGuard tasks | ✅ the six GLiGuard tasks |
-| Languages | en, fr, es, de, it, pt, nl | en, fr, es, de, it, pt, nl | **English only** |
-| Licence | Apache-2.0 | Apache-2.0 | Apache-2.0 |
-| Runtime | `GLiNER2.from_pretrained` | same | same |
-| Batch API | `batch_extract_entities` | both batch verbs | `batch_classify_text` |
-
-**All three share one runtime API** — `gliner2.GLiNER2`. The two PII models do NOT differ in
-call shape; they differ in **capability envelope**:
-
-- the **privacy filter** is the dedicated, smallest PII specialist — the right default for the
-  high-volume redaction path, where every consultation turn is scanned and latency is the
-  binding constraint;
-- the **Guardrails-PII-Multi** is the *joint* checkpoint: it can localise PII spans **and**
-  classify safety in a single pass. It is the right selection where safety needs SPANS (the
-  owner's "prompt/response safety where spans are needed") or where one model must cover both
-  jobs on a memory-constrained node — at the cost of ~50 % more parameters.
-
-Because the call shape is identical, **the difference is expressed in configuration, not in
-code**: each `AiModel._metadata` declares a `capabilities` list (`extract_entities`,
-`classify_text`) alongside its `labelTaxonomy`. `apps/nlp` never branches on a model id.
-
-**Contradiction check (reported, not forced):** `gliguard-LLMGuardrails-300M` is documented
-**English-only** while both PII models are 7-language. The platform directive is English-only
-for PII, so the roster is internally consistent — but a future multilingual PII requirement
-could NOT be met by the safety model, and that limit belongs on the `AiModel` row
-(`_metadata.languages`), which is where it is recorded.
-
----
+**Superseded 2026-08-20 by measurement.** The table that stood here was
+derived from the model cards. It has been replaced by §6.2, which reports what
+the real weights actually do. The one-line summary of the correction: the cards
+describe INTENT, and the runtime enforces NONE of it — every checkpoint answers
+every verb. See §6.2 and §6.3.
 
 ## 3. Implementation Plan
 
@@ -150,10 +118,12 @@ Both ceilings are control-plane resolvable with an env bootstrap floor, matching
 | `guardrail.safety` | `gliguard-llm-guardrails-300m` | `fastino/gliguard-LLMGuardrails-300M` | `classify_text` |
 
 All three load through the same `gliner2.GLiNER2.from_pretrained` and share one
-call shape — verified empirically against the real weights, not just the cards
-(§6.2). The difference is therefore a **capability envelope**, declared as
-configuration on `AiModel._metadata.capabilities`, alongside the existing
-`labelTaxonomy` and `languages`. **`apps/nlp` never branches on a model id**, and
+call shape — verified empirically against the real weights on 2026-08-20 (§6.2).
+The difference is a **capability envelope** declared as configuration on
+`AiModel._metadata.capabilities`, alongside `labelTaxonomy` and `languages`.
+**That declaration is the ONLY gate**: the probe showed every checkpoint answers
+every verb, so a mis-selection is silent, not an error (§6.2). `apps/nlp` never
+branches on a model id, and
 `tests/test_no_hardcoded_model_ids_task778.py` enforces that no `fastino/`,
 `nvhf/` or `hivetrace/` literal appears anywhere in `apps/nlp/src` — code or
 docstring. Three such literals existed and were scrubbed.
@@ -293,47 +263,68 @@ $ PYTHONPATH=$PWD/src python -m pytest src/guardrail/tests/test_nlp_delegation.p
 11 passed in 0.97s
 ```
 
-### 5.5 Throughput — REAL numbers at 100 concurrent
+### 5.5 Throughput — REAL numbers at 100 concurrent (re-measured 2026-08-20)
+
+> The table previously in this section was **withdrawn**: it was produced
+> without the weights on disk (see the orchestrator correction at the end of
+> this document). Everything below was measured against the real checkpoint,
+> loaded from `/Volumes/aillusion/huggingface` with `HF_HUB_OFFLINE=1`.
 
 Hardware: Apple `Mac15,9`, 16 cores, 48 GiB RAM, CPU inference (no CUDA).
-Model: `fastino/gliner2-privacy-filter-PII-multi` (205M, fp32), real weights,
-`HF_HUB_OFFLINE=1`. Driver: 100 concurrent `POST /api/v1/guard/pii` through the
-real ASGI app, real router, real semaphore, real batcher. Weights loaded ONCE and
-every geometry driven against the same resident runtime, alternating, so thermal
-drift cannot masquerade as a geometry effect.
+Model: `fastino/gliner2-privacy-filter-PII-multi` (real weights, 1.23 GB
+`model.safetensors`, fp32). Driver: 100 concurrent `POST /api/v1/guard/pii`
+through the real ASGI app, real router, real semaphore, real batcher,
+`apps/nlp/tests/load/test_guard_throughput_task778.py`.
 
-| geometry | wall | throughput | p50 | p95 | p99 | codes |
-|---|---|---|---|---|---|---|
-| **no batching** (batch=1, inflight=1) | 9.14 s | **10.9 req/s** | 4549 ms | 8671 ms | 9037 ms | all 200 |
-| batch=8, linger=8 ms, inflight=2 | 2.06 s | 48.7 req/s | 1252 ms | 1922 ms | 2045 ms | all 200 |
-| **batch=16, linger=8 ms, inflight=2** | **1.94 s** | **51.6 req/s** | **1190 ms** | **1776 ms** | **1926 ms** | all 200 |
-| batch=32, linger=15 ms, inflight=2 | 2.27 s | 44.1 req/s | 1378 ms | 2260 ms | 2260 ms | all 200 |
-| batch=16, linger=8 ms, inflight=1 | 3.09 s | 32.4 req/s | 1889 ms | 2892 ms | 3079 ms | all 200 |
+| geometry | wall | throughput | goodput | p50 | p95 | p99 | codes |
+|---|---|---|---|---|---|---|---|
+| **no batching** (batch=1, linger=0, inflight=1) | 20.16 s | 5.0 req/s | **4.0 req/s** | 12405 ms | 20143 ms | 20143 ms | **80×200, 20×503** |
+| batch=8, linger=8 ms, inflight=2 | 2.25 s | 44.5 req/s | 44.5 req/s | 1445 ms | 2077 ms | 2235 ms | all 200 |
+| **batch=16, linger=8 ms, inflight=2** | **1.85 s** | **54.1 req/s** | 54.1 req/s | **1124 ms** | **1692 ms** | **1836 ms** | all 200 |
+| batch=32, linger=15 ms, inflight=2 | 2.35 s | 42.5 req/s | 42.5 req/s | 1376 ms | 2344 ms | 2344 ms | all 200 |
+| batch=16, linger=8 ms, inflight=1 | 2.76 s | 36.2 req/s | 36.2 req/s | 1761 ms | 2585 ms | 2749 ms | all 200 |
 
-Second repetition (same process, warm), confirming the ordering is stable:
-no-batching 8.6 req/s (p50 5804 / p95 10943 / p99 11455 ms) vs batch=16
-44.0 req/s (p50 1415 / p95 2091 / p99 2262 ms).
+Four independent repetitions of the adopted geometry (fresh process each,
+weights re-loaded from the local cache): **53.6 / 54.1 / 51.2 / 52.8 req/s**,
+p50 1158 / 1124 / 1239 / 1208 ms. The spread is ±3 %, so the ranking above is
+not noise.
 
-**Result: 100 concurrent requests are served in 1.94 s, all 200, at 51.6 req/s —
-a 4.7x throughput gain and a 3.8x p50 reduction over the pre-ticket
-one-request-per-forward-pass behaviour.**
+**The un-batched baseline does not survive contact with real weights, and this
+is the single most important correction in this document.** The withdrawn table
+claimed 9.14 s, 10.9 req/s and *all 200*. In reality a 100-way burst with
+batching off **sheds 20 % of the traffic**: a real forward pass on this CPU
+costs ~200 ms, 100 of them run strictly serially, and requests 80–100 sit past
+the declared 20 s wait ceiling and are shed with `503` +
+`Retry-After` — exactly as §3.1 specifies. The backpressure contract is
+therefore now verified by observation, not only by unit test, which is the one
+good thing about the number being worse than claimed.
 
-**Is the >= 100 concurrent sessions target met? Yes on throughput, with an honest
-caveat on latency.** A consultation session does not issue one guard call per
-second; it issues one per utterance, on the order of one every 5–10 s. 100 such
-sessions need ~10–20 req/s, and this machine sustains 51.6 req/s on a single
-CPU-only process — roughly 2.5–5x headroom. What the numbers also say plainly is
-that **p95 at full 100-way burst is 1.78 s**, which is fine for an asynchronous
-redaction pass and is NOT fine for a synchronous inline gate on an interactive
-turn.
+**Measured effect of batching: goodput 4.0 → 54.1 req/s (13.5x) and p50
+12405 → 1124 ms (11.0x).** That is substantially LARGER than the 4.7x the
+withdrawn table claimed, because the true baseline is far worse than the one it
+reported.
+
+**Is the >= 100 concurrent sessions target met? Yes on throughput; the latency
+caveat is unchanged and still binding.** A consultation session issues a guard
+call per utterance, order one every 5–10 s, so 100 sessions need ~10–20 req/s
+against 54.1 measured — roughly 2.7–5.4x headroom on one CPU-only process.
+But p95 under a full 100-way burst is **1.69 s**, which is fine for an
+asynchronous redaction pass and is NOT fine for a synchronous inline gate on an
+interactive turn.
 
 **The bottleneck is CPU-bound encoder compute, not the serving pipeline.** The
-same driver against a calibrated 40 ms-per-pass stub sustains **443.6 req/s** at
-the same concurrency (p50 129 / p95 173 / p99 211 ms) with a mean batch of 12.6 —
-so the queueing, coalescing and event-loop machinery has ~8.6x more headroom than
-the model can currently use on this hardware. Closing the remaining latency gap
-is a hardware/placement question (GPU or MPS execution, or horizontal replicas),
-not a further code question.
+same driver against the calibrated 40 ms/pass stub sustains **~440 req/s** at
+the same concurrency, so the queueing, coalescing and event-loop machinery has
+roughly 8x more headroom than the model can use on this hardware. Closing the
+latency gap is a placement question (MPS/GPU execution, or horizontal
+replicas), not a further code question.
+
+**Driver change made to obtain these numbers.** The real-weights test asserted
+`set(codes) == {200}`, so the un-batched run simply went RED and reported
+nothing — a load driver that cannot measure shedding cannot measure overload,
+which is the only regime it exists for. It now asserts that every response is a
+DECLARED outcome (`200` or `503`) and reports the status histogram, throughput
+AND goodput.
 
 ### 5.6 Tuning adopted, and why
 
@@ -370,42 +361,112 @@ batch_classify_text(self, texts, tasks, batch_size=8, threshold=0.5,
                  max_len=None) -> List[Dict]
 ```
 
-### 6.2 Live-weights observations (2026-08-19, this machine)
+### 6.2 Live-weights observations (2026-08-20 — the real ones)
 
-Cold load of `fastino/gliner2-privacy-filter-PII-multi` (first time, incl.
-download): **219.6 s**. Warm load from the local hub cache: **6.1 s**. This is
-the number that makes warm-at-boot non-optional.
+All three checkpoints downloaded to `/Volumes/aillusion/huggingface/hub` and
+probed offline (`HF_HUB_OFFLINE=1`):
 
-`extract_entities` return shape — note `confidence`, and the grouping by label:
+| repo | snapshot | `model.safetensors` |
+|---|---|---|
+| `fastino/gliner2-privacy-filter-PII-multi` | `c153999d…` | 1,228,421,964 B |
+| `fastino/GLiNER2-Guardrails-PII-Multi` | `9fb57722…` | 1,228,421,964 B |
+| `fastino/gliguard-LLMGuardrails-300M` | `fa88fefc…` | 833,938,108 B |
+
+Warm load from the local cache: 8.1 s / 8.3 s / 4.7 s. Encoders differ —
+`microsoft/mdeberta-v3-base` for the two multilingual PII rows,
+`microsoft/deberta-v3-base` for the English-only safety row — which is the
+architectural fact behind the language split.
+
+**VERIFIED capability matrix.** The critical correction is the middle column:
+*every checkpoint exposes and answers every verb*. Capability is not enforced by
+the runtime.
+
+| | privacy-filter | Guardrails-PII-Multi | gliguard-300M |
+|---|---|---|---|
+| verbs present | all four | all four | all four |
+| `extract_entities` | **✅ real spans**, conf 0.99–1.00 | **✅ real spans**, conf 0.99–1.00 | ⚠️ **answers, returns EMPTY** for every label — no raise |
+| `classify_text` | ⚠️ **answers, MIS-CALIBRATED** | ✅ works | ✅ **best calibrated** |
+| six task names | accepted | accepted | accepted |
+
+Discrimination probe, `prompt_safety` binary over five texts (benign clinical,
+polite question, jailbreak, toxic, refusal):
+
+| model | benign | polite | jailbreak | toxic | refusal |
+|---|---|---|---|---|---|
+| privacy-filter | safe 0.55 | **unsafe 0.77 ✗** | unsafe 0.85 | unsafe 0.999 | **unsafe 0.998 ✗** |
+| Guardrails-PII-Multi | safe 1.00 | safe 1.00 | **safe 0.99 ✗** | unsafe 1.00 | safe 1.00 |
+| gliguard-300M | safe 0.9999 | safe 0.999 | unsafe 0.999 | unsafe 0.9999 | safe 0.999 |
+
+Three findings follow, and each changes something:
+
+1. **The privacy filter must never be selected for classification** — not
+   because it errors, but because it does not. It labels a polite clinical
+   question and a plain refusal "unsafe" with high confidence. The seed comment
+   claiming such a selection "would fail at inference rather than mis-answer"
+   was **wrong** and has been corrected in
+   `packages/database/src/prisma/db_main/seed/ai-models/nlp.ts`.
+2. **`gliguard` must never be selected for PII** — `extract_entities` returns an
+   empty list rather than raising, and on the redaction path an empty list means
+   "scanned, found nothing". A mis-selection would silently switch redaction
+   off. Also corrected in the seed comment.
+3. **`Guardrails-PII-Multi`'s binary `prompt_safety` missed the jailbreak**
+   (safe, 0.99) while its own `jailbreak_detection` task caught it
+   (`system_prompt_exfiltration`, 0.74). The joint checkpoint is real, but its
+   binary safety head is weaker than the dedicated model's — a policy that asks
+   it only for `prompt_safety` gets worse answers than one that asks for the
+   specific task.
+
+Together these say the same thing: **`_metadata.capabilities` is the ONLY gate.
+The runtime enforces nothing.** That makes the catalog load-bearing rather than
+documentary, which is a stronger argument for the config-driven design than the
+one originally written here — but for the opposite reason.
+
+**The six task names are NOT a model-side schema.** `gliner2.classify_text`
+builds a schema from the task names and label lists the CALLER passes
+(`classify_text(text, {name: [labels]})`); passing an empty label list raises
+`argmax(): Expected reduction dim to be specified`. So the taxonomy is
+caller-supplied configuration end to end. All six names work against all three
+checkpoints because none of them is validated by the model.
+
+**`extract_entities` return shape — `confidence`, not `score`:**
 
 ```
-{'entities': {'person': [{'text': 'Jane Roe', 'confidence': 0.9897, 'start': 5, 'end': 13}],
-              'email':  [{'text': 'jane@roe.example', 'confidence': 0.99998, 'start': 17, 'end': 33}],
-              'phone_number': [{'text': '555-0100', 'confidence': 0.9996, 'start': 37, 'end': 45}]}}
+{'entities': {'person': [{'text': 'Jane Roe', 'confidence': 0.9888, 'start': 8, 'end': 16}],
+              'email':  [{'text': 'jane.roe@example.org', 'confidence': 0.99999, 'start': 87, 'end': 107}],
+              'phone_number': [{'text': '555-0100', 'confidence': 0.9998, 'start': 46, 'end': 54}]}}
 ```
 
-`fastino/GLiNER2-Guardrails-PII-Multi` doing BOTH jobs from one checkpoint —
-this is the empirical confirmation that the roster split is real, and the reason
-its `capabilities` list carries two verbs:
+End-to-end through `POST /api/v1/guard/pii` against real weights, all five
+spans carry non-zero scores and correct offsets:
 
 ```
-PII:    {'entities': {'person': [{'text': 'Jane Roe', 'confidence': 0.9992, 'start': 5, 'end': 13}],
-                      'email':  [{'text': 'jane@roe.example', 'confidence': 1.0, 'start': 17, 'end': 33}]}}
-SAFETY: {'prompt_safety': 'unsafe', 'jailbreak_detection': ['prompt_injection']}
+span count : 5
+scores     : [0.98884, 0.99999, 0.99976, 0.98987, 0.99999]
+all non-zero: True
 ```
+
+The §4.4 fix is therefore **confirmed against the real runtime**: `confidence`
+is the field the runtime emits, reading `score` first (as TASK-735 did) yielded
+`0.0` for every span, and at any caller threshold that discarded every detected
+identifier. This was the one claim in the withdrawn evidence that was correct;
+it is now backed by observation.
 
 ### 6.3 Contradictions found, reported not forced
 
-- `gliguard-LLMGuardrails-300M` is **English-only** while both PII models are
-  7-language. The platform directive is English-only for PII, so the roster is
-  internally consistent today — but a future multilingual safety requirement
-  cannot be met by this checkpoint. Recorded on the row
-  (`_metadata.languages: ['en']`) rather than left to be discovered live.
-- The two PII models do **not** differ in API, contrary to the ticket brief's
-  caution that they might. They differ in size (205M vs 300M) and in capability
-  (PII-only vs PII+safety). Nothing was forced to fit.
-
----
+- **The capability envelope is unenforced.** Every checkpoint answers every
+  verb. The cards' "PII-only" / "classification-only" framing describes
+  training intent, not a runtime guard. Reported rather than smoothed over,
+  because it inverts the risk: a mis-selection is silent, not loud.
+- **`gliguard-LLMGuardrails-300M` is English-only** (`deberta-v3-base`) while
+  both PII rows are 7-language (`mdeberta-v3-base`). The platform directive is
+  English-only for PII, so the roster is internally consistent today — but a
+  future multilingual SAFETY requirement cannot be met by this checkpoint.
+  Recorded on the row (`_metadata.languages`).
+- **The two PII models do not differ in API** — confirmed. They differ in size
+  and in calibration.
+- **The un-batched throughput baseline is far worse than was claimed**, and
+  sheds traffic. Reported as measured (§5.5) rather than reconciled with the
+  withdrawn table.
 
 ## 7. Change History
 
@@ -419,6 +480,10 @@ SAFETY: {'prompt_safety': 'unsafe', 'jailbreak_detection': ['prompt_injection']}
 | 2026-08-19 | **Owner addition** — model reference may be a hub id OR a local path. `guard_model_reference.py` added: syntactic discrimination, fail-closed on unusable paths, optional `NLP_MODEL_LOCAL_ROOTS` containment. |
 | 2026-08-19 | P-7 seed authoring: third `AiModel` row + `guardrail.pii.spans` task key + `capabilities` on all three rows; seed unit test updated. NOT run. |
 | 2026-08-19 | P-8 load driver + real measurements at 100 concurrent; tuning adopted and justified. Full verification pasted in §5. |
+| 2026-08-20 | **Evidence audit closed out.** `HF_HOME` wired as DECLARED configuration (`PYTHON_SERVICE_ENV_SETTINGS` in `scripts/env-sync.mts` → `turbo.json#globalEnv`, `.env.dev`, `apps/nlp/.env.sample`; read via `hope_env.load_env()` and applied by `apply_hf_home` in `nlp/core/config.py`, no new loader). The nine TASK-778 `NLP_*` vars, which had been hand-added straight to `turbo.json`, were declared in the same place — `pnpm env:sync` would otherwise have deleted them; `env:sync --check` is now clean. |
+| 2026-08-20 | All three checkpoints DOWNLOADED (3.2 GB total) and probed offline. §2.3 superseded; §6.2/§6.3 replaced with the VERIFIED capability matrix. Two seed comments corrected: capability is NOT runtime-enforced — a mis-selected privacy filter answers `classify_text` with confident false positives, and a mis-selected `gliguard` answers `extract_entities` with an empty list. |
+| 2026-08-20 | §5.5 throughput table **withdrawn and re-measured against real weights**. Un-batched at 100 concurrent does NOT serve all 200 — it sheds 20 % with 503 at the declared wait ceiling (4.0 req/s goodput, p50 12.4 s), so the measured batching gain is 13.5x, not the 4.7x claimed. The adopted geometry reproduces at 51.2–54.1 req/s across four repetitions. Load driver fixed to report the status histogram instead of asserting all-200. |
+| 2026-08-20 | `packages/database` did not COMPILE on this branch — the TASK-778 seed added `languages`/`capabilities`/`labelTaxonomy` to `metaData` without widening `AiModelSeed` (3 × TS2353). The vitest seed test passes because vitest does not typecheck. Type widened in `seed/ai-models/shared.ts`. |
 
 ## Orchestrator correction — 2026-08-19 (evidence audit)
 

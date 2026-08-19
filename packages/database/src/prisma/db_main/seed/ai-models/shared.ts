@@ -117,6 +117,37 @@ export type AiModelProvider = (typeof AI_MODEL_PROVIDERS)[number];
  */
 export type TtsVoiceBinding = { id: string; locale: string };
 
+/**
+ * One classification task on an `AiModel._metadata.labelTaxonomy`, e.g. the six
+ * GLiGuard moderation tasks. A type alias (like `TtsVoiceBinding`) so it keeps
+ * an implicit index signature and stays assignable to `InputJsonValue`.
+ */
+export type LabelTaxonomyTask = {
+  labels: string[];
+  multi_label?: boolean;
+  cls_threshold?: number;
+};
+
+/**
+ * Label taxonomy carried on the row rather than in Python. Extraction rows use
+ * `labels`; classification rows use `tasks` (+ `benignLabels`); the joint
+ * checkpoint carries both, which is exactly what makes it the joint checkpoint.
+ */
+export type LabelTaxonomy = {
+  threshold?: number;
+  labels?: string[];
+  benignLabels?: string[];
+  tasks?: Record<string, LabelTaxonomyTask>;
+};
+
+/**
+ * What `apps/nlp` may ask a checkpoint to DO. Declared here, on the row, so the
+ * service never branches on a model id — the capability envelope is
+ * configuration, and a selection pointing a `classify_text` task at an
+ * extraction-only row is wrong at the catalog, not at inference time.
+ */
+export type AiModelCapability = 'extract_entities' | 'classify_text';
+
 /** Shape of one `DEFAULT_AI_MODELS` seed row. */
 export interface AiModelSeed {
   id: string;
@@ -138,8 +169,19 @@ export interface AiModelSeed {
   memorySizeMb: number;
   computeType: string;
   tags: string[];
-  /** Per-model extras: TTS `{voices}`, Azure LLM `{azureDeployment}`. */
-  metaData?: { voices?: TtsVoiceBinding[]; azureDeployment?: string; ttsProvider?: string };
+  /**
+   * Per-model extras: TTS `{voices}`, Azure LLM `{azureDeployment}`, and — for
+   * the NLP safety plane — the capability envelope, languages and label
+   * taxonomy that keep model ids and label sets out of Python.
+   */
+  metaData?: {
+    voices?: TtsVoiceBinding[];
+    azureDeployment?: string;
+    ttsProvider?: string;
+    languages?: string[];
+    capabilities?: AiModelCapability[];
+    labelTaxonomy?: LabelTaxonomy;
+  };
   /** Only set when a row must seed in a non-default status (indic-f5). */
   resourceStatus?: ResourceStatusType;
 }
