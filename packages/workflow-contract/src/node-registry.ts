@@ -102,6 +102,42 @@ export const WORKFLOW_NODE_REGISTRY: Readonly<Record<string, WorkflowNodeDescrip
     entitlementKey: null,
   }),
   // -------------------------------------------------------------------------------------------
+  // Graph boundary markers (palette-agnostic). The four palette-independent structural rules
+  // WF-S-002/003/004/007 are written against these two literal types, so before they existed NO
+  // graph in ANY palette could satisfy them — the platform's own seeded summarization graph
+  // scored 17 errors against its own validator. They are MARKERS, not work: `classes:
+  // ['boundary']` is what `REACHABLE_FROM_ENTRY`/`REACHES_TERMINAL` use to exempt them from a
+  // palette's OWN entry/terminal rule (see `predicates/structural.ts`), so
+  // `core.start -> consultation.consentGate` does not read as "a node precedes the consent gate".
+  // `interpreter.core_start`/`interpreter.core_end` are real registered activities for the same
+  // reason `noop` is: compile() refuses any graph containing an unimplemented type, and a marker
+  // that cannot be dispatched would make every graph unpublishable all over again.
+  // -------------------------------------------------------------------------------------------
+  'core.start': Object.freeze({
+    key: 'core.start',
+    implemented: true,
+    activityName: 'interpreter.core_start',
+    classes: Object.freeze(['boundary']),
+    paletteKey: null,
+    critical: false,
+    externalWrite: false,
+    defaultTimeoutSeconds: 30,
+    defaultMaxAttempts: 1,
+    entitlementKey: null,
+  }),
+  'core.end': Object.freeze({
+    key: 'core.end',
+    implemented: true,
+    activityName: 'interpreter.core_end',
+    classes: Object.freeze(['boundary']),
+    paletteKey: null,
+    critical: false,
+    externalWrite: false,
+    defaultTimeoutSeconds: 30,
+    defaultMaxAttempts: 1,
+    entitlementKey: null,
+  }),
+  // -------------------------------------------------------------------------------------------
   // Summarization palette (TASK-720) — five node types, `paletteKey: 'summarization'`. `classes`
   // carries `'activity'` on every entry (each emits exactly one NODE trajectory step per
   // palette.md's "emitsTrajectory" section) plus `'generation'` on `generate.text` only (the one
@@ -124,7 +160,7 @@ export const WORKFLOW_NODE_REGISTRY: Readonly<Record<string, WorkflowNodeDescrip
     key: 'input.context_binding',
     implemented: true,
     activityName: 'interpreter.context_binding',
-    classes: Object.freeze(['activity']),
+    classes: Object.freeze(['activity', 'mandatory']),
     paletteKey: 'summarization',
     critical: true,
     externalWrite: false,
@@ -148,7 +184,7 @@ export const WORKFLOW_NODE_REGISTRY: Readonly<Record<string, WorkflowNodeDescrip
     key: 'generate.text',
     implemented: true,
     activityName: 'interpreter.text_generate',
-    classes: Object.freeze(['activity', 'generation']),
+    classes: Object.freeze(['activity', 'generation', 'mandatory']),
     paletteKey: 'summarization',
     critical: true,
     externalWrite: false,
@@ -160,7 +196,7 @@ export const WORKFLOW_NODE_REGISTRY: Readonly<Record<string, WorkflowNodeDescrip
     key: 'guardrail.check',
     implemented: true,
     activityName: 'interpreter.guardrail_check',
-    classes: Object.freeze(['activity']),
+    classes: Object.freeze(['activity', 'mandatory']),
     paletteKey: 'summarization',
     critical: false,
     externalWrite: false,
@@ -172,7 +208,7 @@ export const WORKFLOW_NODE_REGISTRY: Readonly<Record<string, WorkflowNodeDescrip
     key: 'output.deliver',
     implemented: true,
     activityName: 'interpreter.deliver',
-    classes: Object.freeze(['activity']),
+    classes: Object.freeze(['activity', 'mandatory']),
     paletteKey: 'summarization',
     critical: true,
     externalWrite: true,
@@ -193,7 +229,7 @@ export const WORKFLOW_NODE_REGISTRY: Readonly<Record<string, WorkflowNodeDescrip
     key: 'stt.audioInput',
     implemented: true,
     activityName: 'interpreter.stt_audio_input',
-    classes: Object.freeze(['activity']),
+    classes: Object.freeze(['activity', 'mandatory']),
     paletteKey: 'stt',
     critical: true,
     externalWrite: false,
@@ -253,7 +289,7 @@ export const WORKFLOW_NODE_REGISTRY: Readonly<Record<string, WorkflowNodeDescrip
     key: 'stt.asrEngine',
     implemented: true,
     activityName: 'interpreter.stt_asr_engine',
-    classes: Object.freeze(['activity']),
+    classes: Object.freeze(['activity', 'mandatory']),
     paletteKey: 'stt',
     critical: true,
     externalWrite: false,
@@ -265,7 +301,7 @@ export const WORKFLOW_NODE_REGISTRY: Readonly<Record<string, WorkflowNodeDescrip
     key: 'stt.transcriptOutput',
     implemented: true,
     activityName: 'interpreter.stt_transcript_output',
-    classes: Object.freeze(['activity']),
+    classes: Object.freeze(['activity', 'mandatory']),
     paletteKey: 'stt',
     critical: true,
     externalWrite: true,
@@ -287,18 +323,29 @@ export const WORKFLOW_NODE_REGISTRY: Readonly<Record<string, WorkflowNodeDescrip
     entitlementKey: null,
   }),
   // -------------------------------------------------------------------------------------------
-  // Consultation palette (TASK-731) — a PARTIAL pass: only 3 of the palette's 13 node types are
-  // registered this pass. See docs/implementation/TASK-731-Palette-Consultation/contracts/
-  // node-types.md for the full 13-node design (every node type's compile target is verified and
-  // documented there, including the 10 not yet wired) and this ticket's README §7 for why. TASK-710
-  // (phi-redactor) HAS landed (unlike at STT's execution time), so `consultation.phiHop` registers
-  // `implemented: true`, unlike its `stt.phiHop` sibling above.
+  // Consultation palette (TASK-731) — all 13 node types from
+  // docs/implementation/TASK-731-Palette-Consultation/contracts/node-types.md's node table.
+  // TASK-731 registered only 3 (consentGate, phiHop, hitlGate) and left the other 10 specified
+  // but unwired; since `DRAFT_CONSULTATION_RULE_SET` names NINE node types by key, that left the
+  // palette unbuildable — the Studio's rail could offer three nodes for a rule set demanding
+  // nine. The ten added here each carry the same compile target `contracts/palette-contract.md`
+  // §1 already verified for them, now with a real interpreter wrapper on the Python side
+  // (`nodes/consultation_{capture,nlp,compose,verify,persist}.py`).
+  //
+  // Ordered by pipeline position (consent → capture → NLP → PHI → evidence → compose → verify →
+  // persist → gate), not alphabetically, so the file reads as the mandatory subgraph it encodes.
+  // `classes` stays the predicate-selector vocabulary the rest of this registry uses
+  // (`activity`, plus `generation` on the one node that generates text — mirroring
+  // `generate.text`); it is deliberately NOT the "safety class" column of node-types.md, which is
+  // a graph-shape property the validator owns, exactly as consentGate/phiHop already did.
+  // TASK-710 (phi-redactor) HAS landed (unlike at STT's execution time), so `consultation.phiHop`
+  // registers `implemented: true`, unlike its `stt.phiHop` sibling above.
   // -------------------------------------------------------------------------------------------
   'consultation.consentGate': Object.freeze({
     key: 'consultation.consentGate',
     implemented: true,
     activityName: 'interpreter.consultation_consent_gate',
-    classes: Object.freeze(['consentGate']),
+    classes: Object.freeze(['consentGate', 'mandatory']),
     paletteKey: 'consultation',
     critical: true,
     externalWrite: false,
@@ -306,11 +353,49 @@ export const WORKFLOW_NODE_REGISTRY: Readonly<Record<string, WorkflowNodeDescrip
     defaultMaxAttempts: 3,
     entitlementKey: null,
   }),
+  'consultation.captureBinding': Object.freeze({
+    key: 'consultation.captureBinding',
+    implemented: true,
+    activityName: 'interpreter.consultation_capture_binding',
+    classes: Object.freeze(['activity', 'mandatory']),
+    paletteKey: 'consultation',
+    critical: false,
+    externalWrite: false,
+    defaultTimeoutSeconds: 30,
+    defaultMaxAttempts: 2,
+    entitlementKey: null,
+  }),
+  // externalWrite for the persist leg (persist_entities), not the extraction itself — see
+  // node-types.md's `critical` rationale, third bullet.
+  'consultation.extractEntities': Object.freeze({
+    key: 'consultation.extractEntities',
+    implemented: true,
+    activityName: 'interpreter.consultation_extract_entities',
+    classes: Object.freeze(['activity']),
+    paletteKey: 'consultation',
+    critical: false,
+    externalWrite: true,
+    defaultTimeoutSeconds: 150,
+    defaultMaxAttempts: 2,
+    entitlementKey: null,
+  }),
+  'consultation.bindTerminology': Object.freeze({
+    key: 'consultation.bindTerminology',
+    implemented: true,
+    activityName: 'interpreter.consultation_bind_terminology',
+    classes: Object.freeze(['activity']),
+    paletteKey: 'consultation',
+    critical: false,
+    externalWrite: false,
+    defaultTimeoutSeconds: 30,
+    defaultMaxAttempts: 1,
+    entitlementKey: null,
+  }),
   'consultation.phiHop': Object.freeze({
     key: 'consultation.phiHop',
     implemented: true,
     activityName: 'interpreter.consultation_phi_hop',
-    classes: Object.freeze(['activity', 'redaction']),
+    classes: Object.freeze(['activity', 'redaction', 'mandatory']),
     paletteKey: 'consultation',
     critical: false,
     externalWrite: false,
@@ -318,14 +403,101 @@ export const WORKFLOW_NODE_REGISTRY: Readonly<Record<string, WorkflowNodeDescrip
     defaultMaxAttempts: 3,
     entitlementKey: null,
   }),
-  // PLACEHOLDER — implemented:false. The interpreter's durable-wait extension (Phase B) has not
-  // been implemented; compile() therefore refuses any graph containing this node type. See
-  // contracts/palette-contract.md §2.
+  'consultation.retrieveEvidence': Object.freeze({
+    key: 'consultation.retrieveEvidence',
+    implemented: true,
+    activityName: 'interpreter.consultation_retrieve_evidence',
+    classes: Object.freeze(['activity']),
+    paletteKey: 'consultation',
+    critical: false,
+    externalWrite: false,
+    defaultTimeoutSeconds: 150,
+    defaultMaxAttempts: 2,
+    entitlementKey: null,
+  }),
+  'consultation.assemblePrompt': Object.freeze({
+    key: 'consultation.assemblePrompt',
+    implemented: true,
+    activityName: 'interpreter.consultation_assemble_prompt',
+    classes: Object.freeze(['activity']),
+    paletteKey: 'consultation',
+    critical: false,
+    externalWrite: false,
+    defaultTimeoutSeconds: 150,
+    defaultMaxAttempts: 3,
+    entitlementKey: null,
+  }),
+  'consultation.synthesize': Object.freeze({
+    key: 'consultation.synthesize',
+    implemented: true,
+    activityName: 'interpreter.consultation_synthesize',
+    classes: Object.freeze(['activity', 'generation']),
+    paletteKey: 'consultation',
+    critical: false,
+    externalWrite: false,
+    defaultTimeoutSeconds: 150,
+    defaultMaxAttempts: 2,
+    entitlementKey: null,
+  }),
+  'consultation.sensors': Object.freeze({
+    key: 'consultation.sensors',
+    implemented: true,
+    activityName: 'interpreter.consultation_sensors',
+    classes: Object.freeze(['activity']),
+    paletteKey: 'consultation',
+    critical: false,
+    externalWrite: false,
+    defaultTimeoutSeconds: 150,
+    defaultMaxAttempts: 2,
+    entitlementKey: null,
+  }),
+  'consultation.inferentialSensors': Object.freeze({
+    key: 'consultation.inferentialSensors',
+    implemented: true,
+    activityName: 'interpreter.consultation_inferential_sensors',
+    classes: Object.freeze(['activity']),
+    paletteKey: 'consultation',
+    critical: false,
+    externalWrite: false,
+    defaultTimeoutSeconds: 900,
+    defaultMaxAttempts: 2,
+    entitlementKey: null,
+  }),
+  'consultation.persistDraft': Object.freeze({
+    key: 'consultation.persistDraft',
+    implemented: true,
+    activityName: 'interpreter.consultation_persist_draft',
+    classes: Object.freeze(['activity', 'mandatory']),
+    paletteKey: 'consultation',
+    critical: false,
+    externalWrite: true,
+    defaultTimeoutSeconds: 150,
+    defaultMaxAttempts: 3,
+    entitlementKey: null,
+  }),
+  'consultation.finalizeAssurance': Object.freeze({
+    key: 'consultation.finalizeAssurance',
+    implemented: true,
+    activityName: 'interpreter.consultation_finalize_assurance',
+    classes: Object.freeze(['activity', 'mandatory']),
+    paletteKey: 'consultation',
+    critical: false,
+    externalWrite: true,
+    defaultTimeoutSeconds: 150,
+    defaultMaxAttempts: 3,
+    entitlementKey: null,
+  }),
+  // The ONE durable human wait in this substrate (TASK-731 Phase B, now implemented). The `gate`
+  // class is load-bearing on BOTH sides: the compiler lifts a `gate`-classed node out of
+  // `stages` into `gates` (compiler.ts), and the interpreter starts `ConsultationGateWorkflow`
+  // as a child for it rather than dispatching `activityName` — which stays declared because it
+  // is the S-4 cross-check anchor. `mandatory` keeps WF-S-007 able to see it as a node nothing
+  // may route around.
   'consultation.hitlGate': Object.freeze({
     key: 'consultation.hitlGate',
-    implemented: false,
+    implemented: true,
     activityName: 'interpreter.consultation_hitl_gate',
-    classes: Object.freeze(['gate']),
+    classes: Object.freeze(['gate', 'mandatory']),
     paletteKey: 'consultation',
     critical: true,
     externalWrite: true,

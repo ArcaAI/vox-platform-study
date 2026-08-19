@@ -1,6 +1,36 @@
 {
-  "_comment": "The cross-language node-registry parity fixture (TASK-734 Task 3, extended by TASK-720 Task 5 with the five summarization-palette node types, by TASK-724 Task 3 with the eight STT-palette node types — stt.phiHop is implemented:false, a documented placeholder pending TASK-710 — and by TASK-731 Task 9 with THREE consultation-palette node types (consentGate, phiHop, hitlGate — hitlGate is implemented:false, a documented placeholder pending the interpreter's own durable-wait extension; the palette's other ten node types are specified but not yet wired — see docs/implementation/TASK-731-Palette-Consultation/README.md §7). Asserted from BOTH packages/workflow-contract/src/__tests__/node-registry-parity.test.ts (TS) and apps/harness/src/harness/tests/unit/temporal/interpreter/test_node_registry_parity.py (Python) — see packages/workflow-contract/src/node-registry.ts's module docstring for why the two sides check against this file instead of against each other. `entries` sorted by `key`. Only fields BOTH registries carry today are listed here; `classes`/`paletteKey` (TS-only) and `kind` (Python-only) are intentionally excluded. NOTE (2026-08-17, TASK-720/711/720/721/723/727 close-out pass): the five summarization-palette entries were re-added this pass — a prior external tree operation had dropped them from both registries (see docs/implementation/TASK-724-Palette-Stt/README.md §7 and docs/implementation/TASK-731-Palette-Consultation/README.md §7 for the history) even though the node activities, rule catalogue, and golden fixtures never stopped existing on disk.",
+  "_comment": "The cross-language node-registry parity fixture (TASK-734 Task 3, extended by TASK-720 Task 5 with the five summarization-palette node types, by TASK-724 Task 3 with the eight STT-palette node types — stt.phiHop is implemented:false, a documented placeholder pending TASK-710 — and by TASK-731 Task 9 with the consultation palette. The consultation palette now carries ALL THIRTEEN node types of docs/implementation/TASK-731-Palette-Consultation/contracts/node-types.md's node table: TASK-731 shipped three (consentGate, phiHop, hitlGate) and left ten specified-but-unwired, which made the palette unbuildable because DRAFT_CONSULTATION_RULE_SET names nine node types by key; the remaining ten interpreter wrappers were added later over the compile targets palette-contract.md §1 had already verified. consultation.hitlGate remains implemented:false, a documented placeholder pending the interpreter's own durable-wait extension (Phase B), so compile() still refuses any graph containing it. Asserted from BOTH packages/workflow-contract/src/__tests__/node-registry-parity.test.ts (TS) and apps/harness/src/harness/tests/unit/temporal/interpreter/test_node_registry_parity.py (Python) — see packages/workflow-contract/src/node-registry.ts's module docstring for why the two sides check against this file instead of against each other. Also carries the two palette-agnostic GRAPH BOUNDARY MARKERS `core.start`/`core.end` (TS class `boundary`): the palette-independent structural rules WF-S-002/003/004/007 are written against these literal node types, so until they were registered no graph in any palette could validate — the platform's own seeded summarization graph scored 17 errors against its own validator. They execute nothing but are `implemented: true` because compile() refuses any graph containing an unimplemented type. `entries` sorted by `key`. Only fields BOTH registries carry today are listed here; `classes`/`paletteKey` (TS-only) and `kind` (Python-only) are intentionally excluded.",
   "entries": [
+    {
+      "key": "consultation.assemblePrompt",
+      "implemented": true,
+      "activityName": "interpreter.consultation_assemble_prompt",
+      "critical": false,
+      "externalWrite": false,
+      "defaultTimeoutSeconds": 150,
+      "defaultMaxAttempts": 3,
+      "entitlementKey": null
+    },
+    {
+      "key": "consultation.bindTerminology",
+      "implemented": true,
+      "activityName": "interpreter.consultation_bind_terminology",
+      "critical": false,
+      "externalWrite": false,
+      "defaultTimeoutSeconds": 30,
+      "defaultMaxAttempts": 1,
+      "entitlementKey": null
+    },
+    {
+      "key": "consultation.captureBinding",
+      "implemented": true,
+      "activityName": "interpreter.consultation_capture_binding",
+      "critical": false,
+      "externalWrite": false,
+      "defaultTimeoutSeconds": 30,
+      "defaultMaxAttempts": 2,
+      "entitlementKey": null
+    },
     {
       "key": "consultation.consentGate",
       "implemented": true,
@@ -12,13 +42,53 @@
       "entitlementKey": null
     },
     {
+      "key": "consultation.extractEntities",
+      "implemented": true,
+      "activityName": "interpreter.consultation_extract_entities",
+      "critical": false,
+      "externalWrite": true,
+      "defaultTimeoutSeconds": 150,
+      "defaultMaxAttempts": 2,
+      "entitlementKey": null
+    },
+    {
+      "key": "consultation.finalizeAssurance",
+      "implemented": true,
+      "activityName": "interpreter.consultation_finalize_assurance",
+      "critical": false,
+      "externalWrite": true,
+      "defaultTimeoutSeconds": 150,
+      "defaultMaxAttempts": 3,
+      "entitlementKey": null
+    },
+    {
       "key": "consultation.hitlGate",
-      "implemented": false,
+      "implemented": true,
       "activityName": "interpreter.consultation_hitl_gate",
       "critical": true,
       "externalWrite": true,
       "defaultTimeoutSeconds": 60,
       "defaultMaxAttempts": 1,
+      "entitlementKey": null
+    },
+    {
+      "key": "consultation.inferentialSensors",
+      "implemented": true,
+      "activityName": "interpreter.consultation_inferential_sensors",
+      "critical": false,
+      "externalWrite": false,
+      "defaultTimeoutSeconds": 900,
+      "defaultMaxAttempts": 2,
+      "entitlementKey": null
+    },
+    {
+      "key": "consultation.persistDraft",
+      "implemented": true,
+      "activityName": "interpreter.consultation_persist_draft",
+      "critical": false,
+      "externalWrite": true,
+      "defaultTimeoutSeconds": 150,
+      "defaultMaxAttempts": 3,
       "entitlementKey": null
     },
     {
@@ -29,6 +99,56 @@
       "externalWrite": false,
       "defaultTimeoutSeconds": 60,
       "defaultMaxAttempts": 3,
+      "entitlementKey": null
+    },
+    {
+      "key": "consultation.retrieveEvidence",
+      "implemented": true,
+      "activityName": "interpreter.consultation_retrieve_evidence",
+      "critical": false,
+      "externalWrite": false,
+      "defaultTimeoutSeconds": 150,
+      "defaultMaxAttempts": 2,
+      "entitlementKey": null
+    },
+    {
+      "key": "consultation.sensors",
+      "implemented": true,
+      "activityName": "interpreter.consultation_sensors",
+      "critical": false,
+      "externalWrite": false,
+      "defaultTimeoutSeconds": 150,
+      "defaultMaxAttempts": 2,
+      "entitlementKey": null
+    },
+    {
+      "key": "consultation.synthesize",
+      "implemented": true,
+      "activityName": "interpreter.consultation_synthesize",
+      "critical": false,
+      "externalWrite": false,
+      "defaultTimeoutSeconds": 150,
+      "defaultMaxAttempts": 2,
+      "entitlementKey": null
+    },
+    {
+      "key": "core.end",
+      "implemented": true,
+      "activityName": "interpreter.core_end",
+      "critical": false,
+      "externalWrite": false,
+      "defaultTimeoutSeconds": 30,
+      "defaultMaxAttempts": 1,
+      "entitlementKey": null
+    },
+    {
+      "key": "core.start",
+      "implemented": true,
+      "activityName": "interpreter.core_start",
+      "critical": false,
+      "externalWrite": false,
+      "defaultTimeoutSeconds": 30,
+      "defaultMaxAttempts": 1,
       "entitlementKey": null
     },
     {

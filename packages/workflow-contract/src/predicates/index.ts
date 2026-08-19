@@ -72,11 +72,11 @@ const PREDICATE_REGISTRY: Record<WorkflowRulePredicateType, PredicateEntry> = {
     configProblems: singleEntryConfigProblems,
   },
   REACHABLE_FROM_ENTRY: {
-    evaluate: (graph, _ctx, config) => reachableFromEntryEvaluate(graph, config as ReachableFromEntryConfig),
+    evaluate: (graph, ctx, config) => reachableFromEntryEvaluate(graph, ctx, config as ReachableFromEntryConfig),
     configProblems: reachableFromEntryConfigProblems,
   },
   REACHES_TERMINAL: {
-    evaluate: (graph, _ctx, config) => reachesTerminalEvaluate(graph, config as ReachesTerminalConfig),
+    evaluate: (graph, ctx, config) => reachesTerminalEvaluate(graph, ctx, config as ReachesTerminalConfig),
     configProblems: reachesTerminalConfigProblems,
   },
   REQUIRED_NODE_TYPE: {
