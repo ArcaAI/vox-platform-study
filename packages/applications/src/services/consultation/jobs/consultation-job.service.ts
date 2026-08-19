@@ -42,6 +42,21 @@ export interface IConsultationJobService {
     idempotencyKey?: string,
   ): Promise<JobResponse>;
 
+  /**
+   * Publish the status record for a note-generation run the HARNESS owns.
+   *
+   * The harness seam mints its own correlation id (`harness-doc-<uuid>` in
+   * `NoteGenerationService.generate`) and dispatches straight to
+   * apps/harness — it never enqueues onto BullMQ, so none of the `create*Job`
+   * methods above ever run for it. Without this record `GET
+   * /consultations/jobs/:jobId` (and `/cancel`, `/stream`) resolve nothing:
+   * `TenantOwnedResourceInterceptor` reads `getJobStatus` for its tenancy
+   * check and 404s first. TASK-732 removed the legacy queue path that used to
+   * write it; this restores the endpoint's contract that the returned jobId is
+   * resolvable by its creator.
+   */
+  registerHarnessNoteJob(jobId: string, consultationId: string, tenantId: string, userId: string): Promise<void>;
+
   getJobStatus(jobId: string): Promise<JobStatusResponse | null>;
   cancelJob(jobId: string): Promise<boolean>;
   subscribeToJobUpdates(jobId: string): Observable<MessageEvent>;
@@ -198,6 +213,30 @@ export class ConsultationJobService implements IConsultationJobService {
       sseUrl: `/api/consultations/jobs/${jobId}/sse`,
       estimatedSeconds: 120, // Longer estimate for cross-chain aggregation + AI
     };
+  }
+
+  /**
+   * Publish the status record for a harness-owned note-generation run.
+   * See the interface declaration for why this exists.
+   */
+  async registerHarnessNoteJob(jobId: string, consultationId: string, tenantId: string, userId: string): Promise<void> {
+    await this.storeJobStatus(jobId, {
+      jobId,
+      type: 'SUMMARY',
+      status: 'PENDING',
+      consultationId,
+      progress: 0,
+      createdAt: new Date(),
+      tenantId,
+      userId,
+    });
+
+    this.logger.log({
+      message: 'Registered harness note-generation job',
+      jobId,
+      consultationId,
+      tenantId,
+    });
   }
 
   /**

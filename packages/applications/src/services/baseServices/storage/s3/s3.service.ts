@@ -151,11 +151,21 @@ export class S3Service implements IS3Service, OnModuleInit {
       // once those rows were removed.
       const requiredSecretKeys = ['S3_ACCESS_KEY', 'S3_SECRET_KEY'];
 
+      // Resolved through the ASYNC `getSecretOptional`, never `getSecretSync`.
+      // `getSecretSync` is cache-only by design and returns undefined on ANY
+      // miss without ever loading — so a boot-time warmup miss (tolerated at
+      // WARN by `SecretsService.boot`, and invisible under LOG_LEVEL=error)
+      // left this gate permanently false and every `updateBucket` answering
+      // 500 "S3 service is not configured", while every sibling storage route
+      // kept working because `BlobStorageProviderFactory` resolves the SAME
+      // two keys through the async path. The await also POPULATES the cache,
+      // so the sync reads in `getS3Configuration()` below are warm by the time
+      // `_initializeS3Client` builds the client.
       for (const key of requiredSecretKeys) {
-        const secret = this.secretsService?.getSecretSync(key);
+        const secret = await this.secretsService?.getSecretOptional(key);
         if (!secret || secret.trim() === '') {
           this.logger.debug({
-            message: 'Required S3 secret missing from SecretsService cache',
+            message: 'Required S3 secret could not be resolved from SecretsService',
             settingKey: key,
           });
           return false;
