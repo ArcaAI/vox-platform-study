@@ -162,14 +162,23 @@ const PROCESS_IDENTITY: SettingDescriptor[] = [
     'Explicit env-file path',
     'Overrides the NODE_ENV→file map used by `loadEnv()`. Unset in every normal deployment.',
   ),
-  envKnob(
-    'enablePrismaStudio',
-    'boolean',
-    'Process',
-    'Enable Prisma Studio module',
-    'Development-only: mounts the Prisma Studio module (`app.module.ts`).',
-    false,
-  ),
+  // The generated `.env.sample` is DEV-SHAPED, so it ships this ON; the runtime
+  // default stays `false`. Keeping the two apart is the whole point of
+  // `sampleValue` — a deployed environment reads host env only and leaves this
+  // unset, and an unset boolean must resolve to "module off". Flipping the
+  // `envKnob` default instead would mount Prisma Studio in exactly those
+  // deployments, which is why the sample was previously hand-edited (and drifted).
+  {
+    ...envKnob(
+      'enablePrismaStudio',
+      'boolean',
+      'Process',
+      'Enable Prisma Studio module',
+      'Mounts the Prisma Studio module (`app.module.ts`). ON in this dev-shaped sample so `pnpm setup:dev` leaves /db-studio working with no extra step; access still requires the dedicated `manage:PrismaStudio` ability (SUPER_ADMIN policy set). Deployed environments read host env only and leave it unset, which keeps the module off.',
+      false,
+    ),
+    sampleValue: true,
+  },
   envKnob(
     'appSettings.bootInvariant',
     'string',
