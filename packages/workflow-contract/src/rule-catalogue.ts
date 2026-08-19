@@ -229,8 +229,18 @@ export const DRAFT_SUMMARIZATION_RULE_SET: readonly DraftWorkflowRule[] = [
   // (graph shape, not the register's clinical invariants) and palette-scoped (`summarization`),
   // so they sit alongside the generic WF-S-* rules above without touching them. See
   // `docs/implementation/TASK-720-Palette-Summarization/contracts/palette.md` for the full
-  // rationale, including why the generic WF-S-002/003/004/007 (which assume literal
-  // `core.start`/`core.end` node types) do not apply to this palette's own node set today.
+  // rationale.
+  //
+  // CORRECTION (superseding this comment's earlier claim that the generic WF-S-002/003/004/007
+  // "do not apply to this palette's own node set"): they always DID apply — every one of them
+  // carries `paletteKey: null`, and `validate()`'s filter only ever skips a rule whose palette
+  // is set and differs. The intent and the mechanism disagreed, and the consequence was that no
+  // graph in ANY palette could pass validation, because those four rules are written against
+  // literal `core.start`/`core.end` node types that no palette registered. Both types are now in
+  // `WORKFLOW_NODE_REGISTRY` as `boundary`-classed markers, so a graph bookended by them
+  // satisfies the generic rules AND its own palette's entry/terminal rules at once (the
+  // reachability predicates exempt markers — see `predicates/structural.ts`'s `BOUNDARY_CLASS`).
+  // `__tests__/palette-canonical-graphs.test.ts` is the gate that keeps it that way.
   rule({
     ruleId: 'WF-SUMM-001',
     ruleClass: 'structural',

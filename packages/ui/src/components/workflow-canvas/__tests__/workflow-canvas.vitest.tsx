@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeAll, beforeEach } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import * as React from 'react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { axe } from 'vitest-axe';
 import * as axeMatchers from 'vitest-axe/matchers';
 
@@ -72,6 +73,49 @@ const EDGES: WorkflowCanvasEdge[] = [{ id: 'ingest-summarize', source: 'ingest',
 describe('WorkflowCanvas', () => {
   beforeEach(() => {
     setReducedMotion(false);
+  });
+
+  // Regression: the Studio rebuilds its `nodes` array on every render (it maps store nodes into
+  // `WorkflowCanvasNode`s), and React Flow's `adoptUserNodes` re-reads `measured` off each user
+  // node whenever the object identity changes. When the composite forwarded React Flow's
+  // `dimensions` changes to `onNodesChange`, measuring a node looked like an authored edit: the
+  // consumer wrote it back, the array identity changed, `measured` was wiped, and the node went
+  // back to `visibility: hidden` — a permanently blank-looking canvas over a populated graph.
+  // Measurement is the composite's own bookkeeping and must never reach the consumer.
+  it('absorbs React Flow dimension measurements instead of reporting them as authored changes', async () => {
+    const onNodesChange = vi.fn();
+    render(<WorkflowCanvas nodes={NODES} edges={EDGES} aria-label="Workflow canvas" onNodesChange={onNodesChange} />);
+
+    const ingest = await screen.findByRole('group', { name: 'Ingest audio' });
+    await waitFor(() => expect(ingest.style.visibility).not.toBe('hidden'));
+    // Nothing was dragged, added or deleted — measurement alone must not look like an edit.
+    expect(onNodesChange).not.toHaveBeenCalled();
+  });
+
+  it('keeps nodes visible when the consumer rebuilds the nodes array on every render', async () => {
+    function Consumer() {
+      const [, forceRender] = React.useState(0);
+      // A fresh array of fresh objects each render — exactly what the Studio does.
+      const nodes = NODES.map((node) => ({ ...node }));
+      return (
+        <>
+          <button type="button" onClick={() => forceRender((n) => n + 1)}>
+            re-render
+          </button>
+          <WorkflowCanvas nodes={nodes} edges={EDGES} aria-label="Workflow canvas" />
+        </>
+      );
+    }
+
+    render(<Consumer />);
+    const ingest = await screen.findByRole('group', { name: 'Ingest audio' });
+    await waitFor(() => expect(ingest.style.visibility).not.toBe('hidden'));
+
+    fireEvent.click(screen.getByRole('button', { name: 're-render' }));
+
+    await waitFor(() => {
+      expect(screen.getByRole('group', { name: 'Ingest audio' }).style.visibility).not.toBe('hidden');
+    });
   });
 
   it('renders one node element per model node, addressable by its label', async () => {

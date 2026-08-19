@@ -1,8 +1,34 @@
-/** ACYCLIC, SINGLE_ENTRY, REACHABLE_FROM_ENTRY, REACHES_TERMINAL, BOUND — the five predicate
- * kinds that need no node-class resolution, only shape. */
+/** ACYCLIC, SINGLE_ENTRY, REACHABLE_FROM_ENTRY, REACHES_TERMINAL, BOUND — shape-only
+ * predicates. The two REACHABILITY kinds consult the registry for exactly one thing: the
+ * `boundary` class (see `BOUNDARY_CLASS`). */
 import type { WorkflowGraph } from '../graph-model';
 import { reachableFrom, reachesAny, topologicalLevels } from '../graph-algorithms';
+import type { WorkflowEvaluationContext } from './context';
 import { isNonEmptyString, isPlainObject, type RawFinding } from './types';
+
+/**
+ * The registry class marking a node as a GRAPH BOUNDARY MARKER rather than work — `core.start`
+ * and `core.end` today.
+ *
+ * Why the two reachability predicates skip these nodes: a palette declares its OWN entry and
+ * terminal (`REACHABLE_FROM_ENTRY consultation.consentGate` = "no node precedes the consent
+ * gate"; `REACHES_TERMINAL consultation.hitlGate` = "no node executes after the gate"), while
+ * the palette-agnostic WF-S-003/004 declare the universal bookends. Both are correct and both
+ * must hold at once, which is impossible if a bookend counts as a node the palette's own rule
+ * has to account for: `core.start` is by construction NOT reachable from the consent gate, and
+ * `core.end` by construction does NOT reach the HITL gate. Exempting markers is what lets a
+ * graph satisfy both families instead of trading one set of errors for the other.
+ *
+ * The exemption is deliberately narrow — it suppresses only "unreachable"/"dead end" REPORTING
+ * for a marker. Markers still take part in every other rule: they are counted by SINGLE_ENTRY,
+ * traversed by REQUIRED_PATH_THROUGH, and bounded by BOUND. A marker cannot be used to smuggle
+ * work past a gate, because a marker executes nothing.
+ */
+export const BOUNDARY_CLASS = 'boundary';
+
+function isBoundary(nodeType: string, ctx: WorkflowEvaluationContext): boolean {
+  return ctx.registry.classesOf(nodeType).includes(BOUNDARY_CLASS);
+}
 
 // ---------------------------------------------------------------------------------------------
 // ACYCLIC
@@ -44,14 +70,18 @@ export function singleEntryConfigProblems(config: unknown): string[] {
 export interface ReachableFromEntryConfig {
   entryType: string;
 }
-export function reachableFromEntryEvaluate(graph: WorkflowGraph, config: ReachableFromEntryConfig): RawFinding[] {
+export function reachableFromEntryEvaluate(
+  graph: WorkflowGraph,
+  ctx: WorkflowEvaluationContext,
+  config: ReachableFromEntryConfig,
+): RawFinding[] {
   const entries = graph.nodes.filter((node) => node.type === config.entryType).map((node) => node.id);
   const reachable = new Set<string>();
   for (const entry of entries) {
     for (const id of reachableFrom(graph, entry)) reachable.add(id);
   }
   return graph.nodes
-    .filter((node) => !reachable.has(node.id))
+    .filter((node) => !reachable.has(node.id) && !isBoundary(node.type, ctx))
     .map((node) => ({ nodeId: node.id, message: `node "${node.id}" is not reachable from any "${config.entryType}" node` }));
 }
 export function reachableFromEntryConfigProblems(config: unknown): string[] {
@@ -64,11 +94,15 @@ export function reachableFromEntryConfigProblems(config: unknown): string[] {
 export interface ReachesTerminalConfig {
   terminalType: string;
 }
-export function reachesTerminalEvaluate(graph: WorkflowGraph, config: ReachesTerminalConfig): RawFinding[] {
+export function reachesTerminalEvaluate(
+  graph: WorkflowGraph,
+  ctx: WorkflowEvaluationContext,
+  config: ReachesTerminalConfig,
+): RawFinding[] {
   const terminals = graph.nodes.filter((node) => node.type === config.terminalType).map((node) => node.id);
   const canReach = reachesAny(graph, terminals);
   return graph.nodes
-    .filter((node) => !canReach.has(node.id))
+    .filter((node) => !canReach.has(node.id) && !isBoundary(node.type, ctx))
     .map((node) => ({ nodeId: node.id, message: `node "${node.id}" does not reach any "${config.terminalType}" node (dead end)` }));
 }
 export function reachesTerminalConfigProblems(config: unknown): string[] {

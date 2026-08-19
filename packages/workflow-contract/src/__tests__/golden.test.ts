@@ -37,6 +37,10 @@ const NODE_CLASSES: Record<string, readonly string[]> = {
   'style.dna': ['styleDna'],
   'commit.external': ['externalCommit', 'activity'],
   'cloud.route': ['cloudProviderRouting', 'activity'],
+  // Mirrors the real registry: the two graph boundary markers, which the reachability
+  // predicates exempt from a palette's own entry/terminal rule (predicates/structural.ts).
+  'core.start': ['boundary'],
+  'core.end': ['boundary'],
 };
 
 const ALL_RULES: readonly DraftWorkflowRule[] = [

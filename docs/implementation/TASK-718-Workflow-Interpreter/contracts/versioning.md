@@ -83,6 +83,37 @@ histories replaying under the new code. Rules, in order of how invasive the chan
    `execute_activity("interpreter.load_secondary_config", ...)` call: gate required (case 3's
    rule — it is a stage-level-equivalent new command).
 
+## Addendum (2026-08-19) — gates landed; what rule 2 asked to be revisited
+
+Axis 2 rule 2 ends: *"**The day gates land (TASK-731), this reasoning changes and gate-adjacent
+activity retargeting will need real patch gates — flag this explicitly for that ticket.**"*
+Gates have landed. What actually changed, and what did not:
+
+- **v1's "no long-lived waits" premise is now false for consultation graphs only.** A run parked
+  at `consultation.hitlGate` sits in `workflow.wait_condition` for up to the tenant's gate SLA
+  (default 24h, then an escalation ladder). Rule 2's argument — "no history is ever mid-dispatch
+  of that node across a deploy boundary" — no longer holds for anything the GATE touches.
+- **But the wait is not in this workflow type.** It lives in `ConsultationGateWorkflow`, a
+  separate `@workflow.defn` started as a child. `WorkflowInterpreter`'s own history records one
+  `start_child_workflow` command and then its result — it is not itself parked. So rule 2 stays
+  true as written for every node type dispatched as an ACTIVITY, and the new exposure is
+  confined to the child's own type.
+- **Retargeting `ConsultationGateWorkflow`'s activities DOES need a patch gate.** `fetch_policy`,
+  `escalate_gate` and `record_gate_decision` are called across a wait that can span days, so a
+  deploy landing mid-wait replays a history recorded under the old code. Treat any change to that
+  workflow's command sequence as rule 3, not rule 2 — the same discipline `HarnessDocWorkflow`'s
+  eleven patch eras exist for, and the reason its gate loop was mirrored there rather than edited.
+- **The interpreter's own new command shipped under rule 3**, marker `task-731-hitl-gate`, gated
+  cheap-operand-first as `config.gates and workflow.patched(...)`. The cheap operand is *provably*
+  False on every pre-existing history: until Phase B, `parse_and_verify` refused any config whose
+  `gates` was not `[]` (`gates_not_supported_v1`), so no admitted run can ever have carried one
+  and `workflow.patched` is never called when replaying an old history.
+
+| # | Change class | Patch gate required? | Why |
+|---|---|---|---|
+| 6 | Change `ConsultationGateWorkflow`'s command sequence (its activities, their order, the ladder shape) | **Yes** | The wait can span days; a deploy lands mid-history. Rule 3 discipline, not rule 2 |
+| 7 | Add a second gate kind, or a non-blocking gate | **Yes**, and admission must widen with it | `parse_and_verify` refuses both today (`too_many_gates`, `non_blocking_gate_not_supported`) — a loud refusal, not a silent walk-past |
+
 ## Escape hatch — a new workflow type
 
 For a change too invasive to gate cleanly (the interpreter's dispatch shape itself needs to

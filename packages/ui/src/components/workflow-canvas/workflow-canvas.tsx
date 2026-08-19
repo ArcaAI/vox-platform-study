@@ -1,7 +1,7 @@
 'use client';
 
 import * as React from 'react';
-import type { Connection, Edge, Node, NodeChange } from '@xyflow/react';
+import type { Connection, Edge, Node, NodeChange, NodeDimensionChange } from '@xyflow/react';
 import { Background, BackgroundVariant, ReactFlow, applyEdgeChanges, applyNodeChanges } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 
@@ -35,12 +35,18 @@ function toXyNode(
     renderer: WorkflowNodeData['renderer'];
     onDeleteRequest: WorkflowNodeData['onDeleteRequest'];
     overlay: WorkflowNodeData['overlay'];
+    measured: NodeDimensions | undefined;
   },
 ): Node<WorkflowNodeData> {
   return {
     id: node.id,
     type: 'workflowNode',
     position: node.position,
+    // React Flow is CONTROLLED here, and `adoptUserNodes` re-reads `measured` off the user node
+    // on every prop sync — a node object rebuilt without it reverts to `visibility: hidden` and
+    // `fitView` never fires (nodesInitialized stays false). Measurement is viewport bookkeeping,
+    // not authored graph data, so the composite keeps it rather than pushing it at the consumer.
+    measured: extra.measured,
     selected: extra.selected,
     focusable: true,
     ariaLabel: node.label,
@@ -65,6 +71,32 @@ function toXyEdge(edge: WorkflowCanvasEdge): Edge {
 
 function fromXyNode(node: Node<WorkflowNodeData>): WorkflowCanvasNode {
   return { ...node.data.node, position: node.position };
+}
+
+interface NodeDimensions {
+  width: number;
+  height: number;
+}
+
+/** Merges React Flow's measurements in, returning the SAME object when nothing moved — a new
+ *  identity here would re-run the `xyNodes` memo and re-sync the whole graph on every frame. */
+function mergeMeasured(previous: Record<string, NodeDimensions>, changes: NodeDimensionChange[]): Record<string, NodeDimensions> {
+  let next: Record<string, NodeDimensions> | null = null;
+  for (const change of changes) {
+    const dimensions = change.dimensions;
+    if (!dimensions) continue;
+    const current = previous[change.id];
+    if (current && current.width === dimensions.width && current.height === dimensions.height) continue;
+    next ??= { ...previous };
+    next[change.id] = { width: dimensions.width, height: dimensions.height };
+  }
+  return next ?? previous;
+}
+
+function pruneMeasured(previous: Record<string, NodeDimensions>, removedIds: Set<string>): Record<string, NodeDimensions> {
+  const remaining = Object.keys(previous).filter((id) => !removedIds.has(id));
+  if (remaining.length === Object.keys(previous).length) return previous;
+  return Object.fromEntries(remaining.map((id) => [id, previous[id]]));
 }
 
 /**
@@ -95,6 +127,9 @@ export function WorkflowCanvas({
   'aria-label': ariaLabel,
 }: WorkflowCanvasProps) {
   const reducedMotion = usePrefersReducedMotion();
+  // Node dimensions as React Flow measured them (see `toXyNode`). Keyed by node id; entries for
+  // removed nodes are pruned so a long editing session cannot grow this unboundedly.
+  const [measured, setMeasured] = React.useState<Record<string, NodeDimensions>>({});
 
   const xyNodes = React.useMemo(
     () =>
@@ -105,9 +140,10 @@ export function WorkflowCanvas({
           renderer: nodeTypes?.[node.type],
           onDeleteRequest,
           overlay,
+          measured: measured[node.id],
         }),
       ),
-    [nodes, selectedNodeId, readOnly, nodeTypes, onDeleteRequest, overlay],
+    [nodes, selectedNodeId, readOnly, nodeTypes, onDeleteRequest, overlay, measured],
   );
   const xyEdges = React.useMemo(() => edges.map(toXyEdge), [edges]);
 
@@ -115,7 +151,17 @@ export function WorkflowCanvas({
     (changes: NodeChange<Node<WorkflowNodeData>>[]) => {
       const removals = changes.filter((change) => change.type === 'remove');
       for (const removal of removals) onDeleteRequest?.(removal.id);
-      const rest = changes.filter((change) => change.type !== 'remove');
+      if (removals.length > 0) {
+        const removedIds = new Set(removals.map((removal) => removal.id));
+        setMeasured((previous) => pruneMeasured(previous, removedIds));
+      }
+
+      // Dimension changes are the composite's own business — absorbed here, never forwarded, so
+      // measuring a node cannot look like an authored edit to the consumer's store.
+      const dimensionChanges = changes.filter((change): change is NodeDimensionChange => change.type === 'dimensions');
+      if (dimensionChanges.length > 0) setMeasured((previous) => mergeMeasured(previous, dimensionChanges));
+
+      const rest = changes.filter((change) => change.type !== 'remove' && change.type !== 'dimensions');
       if (rest.length === 0 || !onNodesChange) return;
       onNodesChange(applyNodeChanges(rest, xyNodes).map(fromXyNode));
     },

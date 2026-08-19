@@ -1,32 +1,82 @@
 /**
- * TASK-731 Phase C — registry-level assertions for the consultation palette's THREE registered
- * node types (`consentGate`, `phiHop`, `hitlGate`). Mirrors the properties `node-types.md`'s
- * "Registry-level assertions" section names, scoped to what is actually registered this pass —
- * see the ticket README §7 for why the other ten node types are not yet in `WORKFLOW_NODE_REGISTRY`.
+ * Registry-level assertions for the consultation palette (TASK-731 Phase C, extended when the
+ * palette's remaining ten node types were wired). Mirrors the properties `node-types.md`'s
+ * "Registry-level assertions" section names, now over the FULL thirteen-node table rather than
+ * the three TASK-731 shipped.
+ *
+ * The last test in this file is the one that would have caught the gap in the first place: a
+ * rule may only name a node type the registry actually serves.
  */
 import { describe, expect, it } from 'vitest';
 import { WORKFLOW_NODE_REGISTRY } from '../node-registry';
+import { DRAFT_CONSULTATION_RULE_SET } from '../rule-catalogue';
 
-const CONSULTATION_KEYS = ['consultation.consentGate', 'consultation.hitlGate', 'consultation.phiHop'] as const;
+/** `node-types.md`'s node table, N-1…N-13, in pipeline order. */
+const CONSULTATION_KEYS = [
+  'consultation.consentGate',
+  'consultation.captureBinding',
+  'consultation.extractEntities',
+  'consultation.bindTerminology',
+  'consultation.phiHop',
+  'consultation.retrieveEvidence',
+  'consultation.assemblePrompt',
+  'consultation.synthesize',
+  'consultation.sensors',
+  'consultation.inferentialSensors',
+  'consultation.persistDraft',
+  'consultation.finalizeAssurance',
+  'consultation.hitlGate',
+] as const;
+
+/** `external_write` column of the same table — the ContextItem writers. */
+const EXTERNAL_WRITE_KEYS = new Set<string>([
+  'consultation.extractEntities', // the persist leg
+  'consultation.persistDraft',
+  'consultation.finalizeAssurance',
+  'consultation.hitlGate',
+]);
 
 describe('consultation palette node registry', () => {
-  it('carries all three registered keys', () => {
+  it('carries all thirteen node types of the node-types.md table', () => {
     for (const key of CONSULTATION_KEYS) {
-      expect(WORKFLOW_NODE_REGISTRY[key]).toBeDefined();
+      expect(WORKFLOW_NODE_REGISTRY[key], `${key} is missing from the registry`).toBeDefined();
+    }
+    const registered = Object.keys(WORKFLOW_NODE_REGISTRY).filter((key) => key.startsWith('consultation.'));
+    expect(registered.sort()).toEqual([...CONSULTATION_KEYS].sort());
+  });
+
+  it('every node type belongs to the consultation palette', () => {
+    for (const key of CONSULTATION_KEYS) {
+      expect(WORKFLOW_NODE_REGISTRY[key].paletteKey).toBe('consultation');
     }
   });
 
   it('CR-14: only consentGate and hitlGate are critical', () => {
-    expect(WORKFLOW_NODE_REGISTRY['consultation.consentGate'].critical).toBe(true);
-    expect(WORKFLOW_NODE_REGISTRY['consultation.hitlGate'].critical).toBe(true);
-    expect(WORKFLOW_NODE_REGISTRY['consultation.phiHop'].critical).toBe(false);
+    for (const key of CONSULTATION_KEYS) {
+      const expected = key === 'consultation.consentGate' || key === 'consultation.hitlGate';
+      expect(WORKFLOW_NODE_REGISTRY[key].critical, `${key}.critical`).toBe(expected);
+    }
   });
 
-  it('hitlGate is implemented:false and externalWrite:true; consentGate/phiHop are implemented:true', () => {
-    expect(WORKFLOW_NODE_REGISTRY['consultation.hitlGate'].implemented).toBe(false);
-    expect(WORKFLOW_NODE_REGISTRY['consultation.hitlGate'].externalWrite).toBe(true);
-    expect(WORKFLOW_NODE_REGISTRY['consultation.consentGate'].implemented).toBe(true);
-    expect(WORKFLOW_NODE_REGISTRY['consultation.phiHop'].implemented).toBe(true);
+  it('externalWrite matches the node table — the ContextItem writers and nothing else', () => {
+    for (const key of CONSULTATION_KEYS) {
+      expect(WORKFLOW_NODE_REGISTRY[key].externalWrite, `${key}.externalWrite`).toBe(EXTERNAL_WRITE_KEYS.has(key));
+    }
+  });
+
+  it('every node type is implemented — including hitlGate, since Phase B (durable wait) landed', () => {
+    // hitlGate was the palette's last `implemented: false` placeholder. `compile()` refuses ANY
+    // graph containing an unimplemented type, and CR-06 makes the gate non-optional, so while it
+    // was a placeholder no consultation graph could compile at all. It is now backed by
+    // `ConsultationGateWorkflow` (a child workflow, not an activity — see `NodeSpec.kind`).
+    for (const key of CONSULTATION_KEYS) {
+      expect(WORKFLOW_NODE_REGISTRY[key].implemented, `${key}.implemented`).toBe(true);
+    }
+  });
+
+  it('hitlGate is the palette\'s only `gate`-classed node — the compiler lifts exactly one node into gates[]', () => {
+    const gateClassed = CONSULTATION_KEYS.filter((key) => WORKFLOW_NODE_REGISTRY[key].classes.includes('gate'));
+    expect(gateClassed).toEqual(['consultation.hitlGate']);
   });
 
   it('every entry is ungated (entitlementKey: null) — R-6, deferred to TASK-722', () => {
@@ -51,9 +101,32 @@ describe('consultation palette node registry', () => {
     }
   });
 
-  it('every consultation activityName is in the interpreter.consultation_* namespace', () => {
-    for (const key of CONSULTATION_KEYS) {
-      expect(WORKFLOW_NODE_REGISTRY[key].activityName.startsWith('interpreter.consultation_')).toBe(true);
+  it('every consultation activityName is a distinct interpreter.consultation_* name', () => {
+    const names = CONSULTATION_KEYS.map((key) => WORKFLOW_NODE_REGISTRY[key].activityName);
+    for (const name of names) {
+      expect(name.startsWith('interpreter.consultation_')).toBe(true);
     }
+    expect(new Set(names).size).toBe(names.length);
+  });
+
+  // The regression guard. TASK-731 shipped sixteen rules naming nine node types against a
+  // registry that served three of them, so no consultation graph could be authored at all — the
+  // Studio's palette rail correctly offered three nodes for a rule set demanding nine. A rule may
+  // only ever name a node type the registry serves.
+  it('every node type named by DRAFT_CONSULTATION_RULE_SET is registered', () => {
+    const referenced = new Set<string>();
+    for (const rule of DRAFT_CONSULTATION_RULE_SET) {
+      const config = rule.predicateConfig as Record<string, unknown>;
+      for (const field of ['entryType', 'terminalType', 'nodeType', 'fromType', 'toType', 'throughType']) {
+        const value = config[field];
+        if (typeof value === 'string') referenced.add(value);
+      }
+      const appliesTo = config.appliesTo as { nodeType?: unknown } | undefined;
+      if (appliesTo && typeof appliesTo.nodeType === 'string') referenced.add(appliesTo.nodeType);
+    }
+
+    expect(referenced.size).toBeGreaterThan(0);
+    const unregistered = [...referenced].filter((nodeType) => WORKFLOW_NODE_REGISTRY[nodeType] === undefined).sort();
+    expect(unregistered, `rules name node types the registry does not serve: ${unregistered.join(', ')}`).toEqual([]);
   });
 });
