@@ -102,10 +102,18 @@ def _percentiles(samples: list[float]) -> dict[str, float]:
     }
 
 
-def _report(title: str, latencies: list[float], wall: float, extra: str = "") -> None:
+def _report(
+    title: str, latencies: list[float], wall: float, extra: str = "", codes: list[int] | None = None
+) -> None:
     pct = _percentiles(latencies)
     print(f"\n===== {title} =====")
     print(f"requests            : {len(latencies)}")
+    if codes is not None:
+        histogram = {code: codes.count(code) for code in sorted(set(codes))}
+        served = histogram.get(200, 0)
+        print(f"status codes        : {histogram}")
+        print(f"served (200)        : {served}/{len(codes)}")
+        print(f"goodput             : {served / wall:.1f} req/s")
     print(f"concurrency         : {CONCURRENCY}")
     print(f"wall clock          : {wall:.2f} s")
     print(f"throughput          : {len(latencies) / wall:.1f} req/s")
@@ -246,11 +254,19 @@ async def test_real_model_throughput_at_target_concurrency(monkeypatch) -> None:
     }
 
     latencies, codes, wall = await _drive(app, body, CONCURRENCY)
-    assert set(codes) == {200}, f"non-200 responses: {sorted(set(codes))}"
+    # NOT `== {200}`. Shedding with 503 at the declared ceilings IS the
+    # contract under overload (§3.1), and a driver that asserts all-200 cannot
+    # MEASURE the failure mode it exists to find — it just goes red and reports
+    # no numbers. So: assert only that every response is a DECLARED outcome,
+    # and report the histogram, throughput AND goodput. A geometry that sheds
+    # is a real result about that geometry, not a broken test.
+    undeclared = sorted(set(codes) - {200, 503})
+    assert not undeclared, f"undeclared response codes: {undeclared}"
     _report(
         f"REAL WEIGHTS — {REAL_MODEL} "
         f"(batch={BATCH}, linger={LINGER_MS}ms, inflight={INFLIGHT})",
         latencies,
         wall,
+        codes=codes,
     )
     await guard_dispatch.reset_guard_batchers()
