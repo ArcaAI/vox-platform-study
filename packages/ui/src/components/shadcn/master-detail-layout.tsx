@@ -123,7 +123,7 @@ function MasterDetailItem({
       role="button"
       tabIndex={0}
       className={cn(
-        'w-full cursor-pointer px-4 py-3 text-left transition-colors hover:bg-accent/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+        'w-full cursor-pointer px-4 py-3 text-left transition-colors hover:bg-accent/50 outline-hidden focus-visible:ring-ring focus-visible:ring-[3px]',
         isSelected && 'bg-accent border-l-2 border-l-primary',
         className,
       )}

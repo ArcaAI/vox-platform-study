@@ -8,6 +8,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@arcaai/ui/components/
 import { Skeleton } from '@arcaai/ui/components/shadcn/skeleton';
 import { ScreenTemplate } from '@/shared/page/screen-template';
 import { PageHeader } from '@/shared/page/page-header';
+import { StatusFooter } from '@/shared/page/status-footer';
 import { EmptyState } from '@/shared/state/empty-state';
 import { ErrorState } from '@/shared/state/error-state';
 import { useConsultationReview } from '../api';
@@ -40,9 +41,37 @@ export function ConsultationReviewScreen({ consultationId }: { consultationId: s
     />
   );
 
+  // The ungrounded count IS the clinical finding this screen exists to expose,
+  // so it is pinned in the footer rather than left to be inferred by scrolling
+  // the claim list. One `footer` for every branch keeps the frame stable.
+  const groundedCount = review?.claims.filter((claim) => hasSegmentProvenance(claim.evidence)).length ?? 0;
+  const ungroundedCount = (review?.claims.length ?? 0) - groundedCount;
+  const footer = (
+    <StatusFooter
+      start={
+        reviewQuery.isPending
+          ? 'Loading the note and its source transcript…'
+          : reviewQuery.error || !review
+            ? 'Review unavailable — the citation map could not be read'
+            : review.claims.length === 0
+              ? 'No citation map for this consultation'
+              : ungroundedCount > 0
+                ? `${ungroundedCount} of ${review.claims.length} claims could not be traced to the transcript`
+                : 'Every claim traces back to a transcript span'
+      }
+      end={
+        review ? (
+          <span className="font-mono">
+            {review.claims.length} claims · {review.transcripts.length} transcripts
+          </span>
+        ) : null
+      }
+    />
+  );
+
   if (reviewQuery.isPending) {
     return (
-      <ScreenTemplate header={header}>
+      <ScreenTemplate header={header} footer={footer}>
         <div className="grid gap-4 @3xl:grid-cols-2" aria-hidden>
           {[0, 1].map((i) => (
             <Card key={i}>
@@ -63,7 +92,7 @@ export function ConsultationReviewScreen({ consultationId }: { consultationId: s
 
   if (reviewQuery.error || !review) {
     return (
-      <ScreenTemplate header={header}>
+      <ScreenTemplate header={header} footer={footer}>
         <ErrorState error={reviewQuery.error} onRetry={() => void reviewQuery.refetch()} />
       </ScreenTemplate>
     );
@@ -71,7 +100,7 @@ export function ConsultationReviewScreen({ consultationId }: { consultationId: s
 
   if (review.claims.length === 0) {
     return (
-      <ScreenTemplate header={header}>
+      <ScreenTemplate header={header} footer={footer}>
         <EmptyState
           icon={IconFileSearch}
           title="No claims recorded"
@@ -85,7 +114,7 @@ export function ConsultationReviewScreen({ consultationId }: { consultationId: s
   const selectedGrounded = selectedClaim ? hasSegmentProvenance(selectedSpans) : false;
 
   return (
-    <ScreenTemplate header={header}>
+    <ScreenTemplate header={header} footer={footer}>
       <div className="grid gap-4 @3xl:grid-cols-2">
         {/* Claims */}
         <Card>
@@ -108,11 +137,11 @@ export function ConsultationReviewScreen({ consultationId }: { consultationId: s
                     <span className="text-sm">{claim.text}</span>
                     <span className="flex flex-wrap items-center gap-1">
                       {/* Never colour alone — the label states the state. */}
-                      <Badge variant={grounded ? 'secondary' : 'destructive'} className="text-[10px]">
+                      <Badge variant={grounded ? 'secondary' : 'destructive'} className="text-2xs">
                         {grounded ? 'Evidence linked' : 'No source'}
                       </Badge>
                       {typeof claim.confidence === 'number' ? (
-                        <span className="text-muted-foreground font-mono text-[10px]">confidence {claim.confidence.toFixed(2)}</span>
+                        <span className="text-muted-foreground font-mono text-2xs">confidence {claim.confidence.toFixed(2)}</span>
                       ) : null}
                     </span>
                   </span>

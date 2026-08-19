@@ -320,12 +320,12 @@ export function CaseNoteColumn(props: CaseNoteColumnProps) {
           <div className="border-t pt-3" aria-label="Extracted vitals">
             <div className="text-muted-foreground mb-1.5 flex items-center gap-1.5 text-xs font-semibold">
               Vitals
-              <span className="bg-ai/10 text-ai rounded px-1 text-[10px] font-bold">AI</span>
+              <span className="bg-ai/10 text-ai rounded px-1 text-2xs font-bold">AI</span>
             </div>
             <div className="grid grid-cols-3 gap-2">
               {vitals.map((cell) => (
                 <div key={cell.label} className="bg-background rounded-lg border px-2.5 py-1.5">
-                  <div className="text-muted-foreground text-[10px] font-semibold">{cell.label}</div>
+                  <div className="text-muted-foreground text-2xs font-semibold">{cell.label}</div>
                   <div className="font-mono text-sm font-bold tabular-nums">{cell.value}</div>
                 </div>
               ))}
@@ -339,9 +339,9 @@ export function CaseNoteColumn(props: CaseNoteColumnProps) {
               <Badge key={`${entity.text}-${index}`} variant="secondary" className="gap-1">
                 {entity.text}
                 {entity.icd10 ? (
-                  <span className="bg-accent text-accent-foreground rounded px-1 font-mono text-[10px] font-bold">{entity.icd10}</span>
+                  <span className="bg-accent text-accent-foreground rounded px-1 font-mono text-2xs font-bold">{entity.icd10}</span>
                 ) : (
-                  <span className="text-muted-foreground font-mono text-[10px]">{entity.type}</span>
+                  <span className="text-muted-foreground font-mono text-2xs">{entity.type}</span>
                 )}
               </Badge>
             ))}

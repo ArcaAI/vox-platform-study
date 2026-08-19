@@ -418,8 +418,13 @@ function ActionEnvelopeSection({
         title="Compliance envelope"
         hint="Always = runs unconditionally, outside the agent's discretion. Never = a hard exclusion it cannot reason its way into."
       />
-      <div className="overflow-x-auto">
+      {/* tabIndex + role/aria-label: a horizontally-scrollable container must be
+          keyboard-reachable on its own (axe scrollable-region-focusable / WCAG 2.1.1). */}
+      <div className="overflow-x-auto" tabIndex={0} role="region" aria-label="Compliance envelope">
         <table className="w-full text-sm">
+          <caption className="sr-only">
+            Compliance envelope — one row per agent action, with an &ldquo;always&rdquo; and a &ldquo;never&rdquo; checkbox.
+          </caption>
           <thead>
             <tr className="text-muted-foreground text-left text-xs">
               <th scope="col" className="pb-1 font-normal">

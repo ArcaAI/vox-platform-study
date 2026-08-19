@@ -365,6 +365,28 @@ describe('LoopConfigTab', () => {
     await waitFor(() => expect(calls.some((call) => call.method === 'PATCH')).toBe(true));
   });
 
+  it('names the compliance-envelope table and keeps its scroll container keyboard-reachable', async () => {
+    stubFetch((call) => baseHandler(agent(), call));
+    renderWithProviders(
+      <DepartmentAgentDetailDrawer
+        agentId="da-1"
+        creating={false}
+        departmentLabel="CARD"
+        onOpenChange={() => {}}
+        onCreated={() => {}}
+        onRequestDelete={() => {}}
+        onSetDefault={() => {}}
+      />,
+      { searchParams: '?catab=loop' },
+    );
+
+    await screen.findByLabelText(/Referral letter/);
+    // The <caption> is the table's programmatic name (it had none before).
+    expect(screen.getByRole('table', { name: /Compliance envelope/ })).toBeDefined();
+    const region = screen.getByRole('region', { name: 'Compliance envelope' });
+    expect(region.getAttribute('tabindex')).toBe('0');
+  });
+
   it('has no axe violations on the Loop config tab', async () => {
     stubFetch((call) => baseHandler(agent(), call));
     const { container } = renderWithProviders(

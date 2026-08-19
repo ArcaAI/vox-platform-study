@@ -25,7 +25,7 @@ const GlassTabsList = React.forwardRef<React.ElementRef<typeof TabsPrimitive.Lis
         className={cn(
           'relative inline-flex h-12 items-center justify-center gap-1 rounded-xl p-1',
           'bg-white/10 backdrop-blur-xl border border-white/20',
-          'shadow-[0_4px_16px_rgba(0,0,0,0.2)]',
+          'shadow-raised',
           className,
         )}
         aria-label="Tab navigation"
@@ -49,7 +49,7 @@ const GlassTabsTrigger = React.forwardRef<
       'disabled:pointer-events-none disabled:opacity-50',
       'hover:text-white/80 hover:bg-white/5',
       'data-[state=active]:bg-white/20 data-[state=active]:text-white',
-      'data-[state=active]:shadow-[0_2px_8px_rgba(0,0,0,0.2)]',
+      'data-[state=active]:shadow-raised',
       'data-[state=active]:before:absolute data-[state=active]:before:inset-0',
       'data-[state=active]:before:rounded-lg data-[state=active]:before:bg-gradient-to-b',
       'data-[state=active]:before:from-white/20 data-[state=active]:before:to-transparent',

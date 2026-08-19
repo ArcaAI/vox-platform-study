@@ -957,7 +957,7 @@ function ColorPickerSwatch(props: DivProps) {
     if (!color) {
       return {
         background:
-          'linear-gradient(to bottom right, transparent calc(50% - 1px), hsl(var(--destructive)) calc(50% - 1px) calc(50% + 1px), transparent calc(50% + 1px)) no-repeat',
+          'linear-gradient(to bottom right, transparent calc(50% - 1px), var(--destructive) calc(50% - 1px) calc(50% + 1px), transparent calc(50% + 1px)) no-repeat',
       };
     }
 

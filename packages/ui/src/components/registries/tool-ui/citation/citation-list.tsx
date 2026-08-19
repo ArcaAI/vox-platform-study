@@ -311,7 +311,7 @@ function StackedCitations({ id, citations, className, onNavigate }: StackedCitat
                   className="border-border bg-background dark:border-foreground/20 relative -ml-2 flex size-6 items-center justify-center rounded-full border shadow-xs"
                   style={{ zIndex: 0 }}
                 >
-                  <span className="text-muted-foreground text-[10px] font-medium tracking-tight">•••</span>
+                  <span className="text-muted-foreground text-2xs font-medium tracking-tight">•••</span>
                 </div>
               )}
             </div>

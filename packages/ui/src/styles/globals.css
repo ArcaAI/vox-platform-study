@@ -137,6 +137,29 @@
 
   --radius: 0.625rem;
 
+  /* --- Elevation (TASK-765) ------------------------------------------------
+     Three declared roles, not seven ad-hoc Tailwind steps. Light expresses
+     depth as a soft ink shadow over a hairline border; dark expresses it
+     tonally (--card already sits ABOVE --background) with a deeper, more
+     diffuse shadow, because a black shadow on a near-black canvas is
+     invisible. Consumed as `shadow-raised` / `shadow-overlay` via @theme
+     inline below; `shadow-flat` is the explicit no-elevation role. */
+  --elevation-raised: 0 1px 2px 0 rgb(14 26 36 / 0.05), 0 1px 3px 0 rgb(14 26 36 / 0.08);
+  --elevation-overlay: 0 4px 12px -2px rgb(14 26 36 / 0.10), 0 12px 32px -8px rgb(14 26 36 / 0.14);
+
+  /* --- Motion (TASK-765) ---------------------------------------------------
+     Six durations and two custom easings. These are the ONLY sanctioned
+     transition timings; a literal `duration-300` at a call site is drift.
+     The reduced-motion block at the end of this file rewrites every duration
+     here to 0s at the root, which neutralises every consumer at once —
+     including components written after this comment. */
+  --motion-duration-instant: 80ms;
+  --motion-duration-fast: 120ms;
+  --motion-duration-normal: 200ms;
+  --motion-duration-slow: 240ms;
+  --motion-duration-reveal: 320ms;
+  --motion-duration-slower: 400ms;
+
   --sidebar: #f7f9fa;
   --sidebar-foreground: var(--slate-800);
   --sidebar-primary: var(--teal-600);
@@ -170,6 +193,11 @@
 }
 
 .dark {
+  /* Elevation in dark is tonal-first; the shadow is deeper and more diffuse
+     so it still reads against the #0c1418 canvas (see :root, TASK-765). */
+  --elevation-raised: 0 1px 2px 0 rgb(0 0 0 / 0.40), 0 1px 3px 0 rgb(0 0 0 / 0.50);
+  --elevation-overlay: 0 4px 12px -2px rgb(0 0 0 / 0.55), 0 12px 32px -8px rgb(0 0 0 / 0.65);
+
   --background: #0c1418;
   --foreground: #e6edf0;
   --card: #111d23;
@@ -667,7 +695,120 @@
   to {
     height: var(--accordion-panel-height, auto);
     }
-  }}
+  }
+
+  /* ==== TASK-765 · Design-system conformance ==============================
+     Motion, elevation and the small-text floor become TOKENS rather than
+     literals at call sites. See
+     docs/implementation/TASK-765-Design-System-Conformance/README.md. ==== */
+
+  /* Motion easings. `ease-in` / `ease-out` / `ease-in-out` ship with Tailwind;
+     these two do not: `emphasized` for overlay entrance, `spring` (which
+     overshoots) reserved for confirmation moments — a check landing, a badge
+     appearing. The named DURATIONS are @utility rules further down: Tailwind
+     v4 has an `--ease-*` theme namespace but no `--duration-*` one, so a
+     `--duration-fast` key here would generate nothing. */
+  --ease-emphasized: cubic-bezier(0.23, 1, 0.32, 1);
+  --ease-spring: cubic-bezier(0.34, 1.42, 0.5, 1);
+
+  /* Elevation — generates `shadow-flat`, `shadow-raised`, `shadow-overlay`. */
+  --shadow-flat: none;
+  --shadow-raised: var(--elevation-raised);
+  --shadow-overlay: var(--elevation-overlay);
+
+  /* Small-text floor — generates `text-2xs`. The console's dense metadata was
+     written with 58 uses of the arbitrary `text-[10px]` and 8 of
+     `text-[11px]`; this is the ONE declared step below `text-xs` (12px), and
+     nothing may go below it. */
+  --text-2xs: 0.6875rem;
+  --text-2xs--line-height: 1rem;}
+
+/* ============================================================================
+ * TASK-765 · Stacking order
+ * A named scale, so "what sits above what" is a decision recorded once rather
+ * than re-litigated with an arbitrary `z-[55]` the first time two layers meet.
+ * Radix portals (dialog, sheet, popover, tooltip) render at `overlay`.
+ * ==========================================================================*/
+/* ============================================================================
+ * TASK-765 · Named transition durations
+ * `duration-fast` etc. rather than `duration-120`, so the reduced-motion block
+ * below can zero all of them from one place. Tailwind's numeric
+ * `duration-<n>` utilities still exist; using one is drift.
+ *
+ * Each rule sets BOTH `transition-duration` and `--tw-duration`. The second is
+ * not redundant: `tw-animate-css` defines
+ *   --animate-in: enter var(--tw-animation-duration, var(--tw-duration, .15s))
+ * so `animate-in` / `animate-out` read `--tw-duration`, which Tailwind's
+ * NUMERIC duration utilities set but a bare `transition-duration` rule does
+ * not. Without it, putting a named duration on an animated element silently
+ * collapses it to the library's 0.15s fallback.
+ * ==========================================================================*/
+@utility duration-instant {
+  transition-duration: var(--motion-duration-instant);
+  --tw-duration: var(--motion-duration-instant);
+}
+@utility duration-fast {
+  transition-duration: var(--motion-duration-fast);
+  --tw-duration: var(--motion-duration-fast);
+}
+@utility duration-normal {
+  transition-duration: var(--motion-duration-normal);
+  --tw-duration: var(--motion-duration-normal);
+}
+@utility duration-slow {
+  transition-duration: var(--motion-duration-slow);
+  --tw-duration: var(--motion-duration-slow);
+}
+@utility duration-reveal {
+  transition-duration: var(--motion-duration-reveal);
+  --tw-duration: var(--motion-duration-reveal);
+}
+@utility duration-slower {
+  transition-duration: var(--motion-duration-slower);
+  --tw-duration: var(--motion-duration-slower);
+}
+
+@utility z-base { z-index: 0; }
+@utility z-raised { z-index: 10; }
+@utility z-sticky { z-index: 20; }
+@utility z-chrome { z-index: 40; }
+@utility z-overlay { z-index: 50; }
+@utility z-toast { z-index: 60; }
+
+/* ============================================================================
+ * TASK-765 · Reduced motion, at the token layer
+ * Rewriting the duration TOKENS to 0s neutralises every consumer at once —
+ * including components written after this block — instead of relying on each
+ * author remembering a `motion-safe:` prefix. Animations that carry meaning
+ * rather than decoration (a spinner showing work is in flight) are slowed and
+ * kept, not removed: an indicator that stops reads as "hung".
+ * ==========================================================================*/
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --motion-duration-instant: 0s;
+    --motion-duration-fast: 0s;
+    --motion-duration-normal: 0s;
+    --motion-duration-slow: 0s;
+    --motion-duration-reveal: 0s;
+    --motion-duration-slower: 0s;
+  }
+
+  /* Decorative loops stop; the spinner slows to a non-vestibular crawl. */
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+
+  [data-slot='spinner'],
+  .animate-spin {
+    animation-duration: 1.6s !important;
+    animation-iteration-count: infinite !important;
+  }
+}
 
 @layer base {
   * {

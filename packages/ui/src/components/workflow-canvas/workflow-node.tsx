@@ -87,12 +87,12 @@ function WorkflowNode({ id, data, selected }: NodeProps & { data: WorkflowNodeDa
 
       <div className="mt-1 flex flex-wrap items-center gap-1">
         {mandatory ? (
-          <Badge variant="outline" className="text-[10px]">
+          <Badge variant="outline" className="text-2xs">
             mandatory
           </Badge>
         ) : null}
         {problem ? (
-          <Badge variant={SEVERITY_BADGE_VARIANT[problem.severity]} className="text-[10px]">
+          <Badge variant={SEVERITY_BADGE_VARIANT[problem.severity]} className="text-2xs">
             {problem.severity === 'ERROR' ? 'error' : 'warning'}
           </Badge>
         ) : null}

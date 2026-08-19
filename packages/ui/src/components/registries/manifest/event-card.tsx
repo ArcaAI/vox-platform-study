@@ -185,7 +185,7 @@ export function EventCard({ data, actions, appearance }: EventCardProps) {
         <div className="absolute inset-0 flex flex-col justify-end p-4 text-white">
           <div>
             <div className="flex items-center gap-2 flex-wrap">
-              {event.category && <p className="text-[10px] font-medium uppercase tracking-wide text-white/70">{event.category}</p>}
+              {event.category && <p className="text-2xs font-medium uppercase tracking-wide text-white/70">{event.category}</p>}
               {showSignal && event.eventSignal && <EventSignalBadge signal={event.eventSignal} />}
             </div>
             {event.title && <h2 className="mt-1 text-lg font-semibold leading-tight">{event.title}</h2>}
@@ -288,7 +288,7 @@ export function EventCard({ data, actions, appearance }: EventCardProps) {
         <div className="flex flex-1 flex-col justify-between p-3">
           <div>
             <div className="flex items-center gap-2 flex-wrap mb-0.5">
-              {event.category && <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">{event.category}</p>}
+              {event.category && <p className="text-2xs font-medium uppercase tracking-wide text-muted-foreground">{event.category}</p>}
               {showSignal && event.eventSignal && <EventSignalBadge signal={event.eventSignal} />}
             </div>
             {event.title && <h3 className="line-clamp-2 text-sm font-medium">{event.title}</h3>}
@@ -349,7 +349,7 @@ export function EventCard({ data, actions, appearance }: EventCardProps) {
       <div className="flex flex-1 flex-col justify-between p-4">
         <div>
           <div className="flex items-center gap-2 flex-wrap mb-1">
-            {event.category && <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">{event.category}</p>}
+            {event.category && <p className="text-2xs font-medium uppercase tracking-wide text-muted-foreground">{event.category}</p>}
             {showSignal && event.eventSignal && <EventSignalBadge signal={event.eventSignal} />}
           </div>
           {event.title && <h3 className="line-clamp-2 font-medium">{event.title}</h3>}

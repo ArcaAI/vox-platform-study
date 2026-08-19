@@ -8,6 +8,11 @@
  * rides a same-origin BFF-proxied EventSource — see use-task-stream.ts). The
  * Guardrails and NER tabs proxy the Guardrail / NLP services through
  * the user-plane `ai/*` gateway routes.
+ *
+ * Frame: `ScreenTemplate` (rule 11 §1) in `scroll` mode, wrapped in `<Tabs>` so
+ * the pinned `tabs` region and the `TabsContent` panels in `children` share one
+ * context. The run status moved out of the text panel into the pinned
+ * `StatusFooter`; header/tabs stay width-matched to the 1440px work canvas.
  */
 
 import { IconPlayerPlay } from '@tabler/icons-react';
@@ -19,6 +24,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@arcaai/ui/components/
 import { GatewayError } from '@/shared/api';
 import { useSession } from '@/shared/auth';
 import { CanvasHeader, PlaygroundCanvas } from '@/features/playground-shared/components/playground-canvas';
+import { ScreenTemplate } from '@/shared/page/screen-template';
+import { StatusFooter } from '@/shared/page/status-footer';
 import { WorkingTenantGate } from '@/shared/tenant-scope/working-tenant-gate';
 import { GuardrailsTab } from './guardrails-tab';
 import { NerTab } from './ner-tab';
@@ -306,88 +313,106 @@ function PlaygroundLlmBody() {
   };
 
   return (
-    <PlaygroundCanvas className="max-w-[1440px]">
-      <CanvasHeader
-        title="Agent Playground"
-        description={'Compose → run → stream · runs under your own account'}
-        actions={
-          <Button onClick={handleGenerate} disabled={isPending || !canGenerate}>
-            <IconPlayerPlay aria-hidden />
-            Run
-          </Button>
-        }
-      />
-      <Tabs defaultValue="text" className="flex min-h-0 flex-1 flex-col gap-4">
-        <TabsList variant="line">
-          <TabsTrigger value="text">Text generation</TabsTrigger>
-          <TabsTrigger value="guardrails">Guardrails</TabsTrigger>
-          <TabsTrigger value="ner">NER</TabsTrigger>
-        </TabsList>
-
-        <TabsContent value="text" className="flex flex-col gap-4">
-          <RequestSummaryStrip
-            providersLoading={providersQuery.isLoading}
-            hasCatalog={!!providers && providers.length > 0}
-            selectedProvider={selectedProvider}
-            selectedModel={selectedModel}
-            temperature={form.temperature}
-            maxTokens={parseMaxTokens(form.maxTokens)}
-            streaming={form.streaming}
-            taskId={run.kind === 'stream' ? run.taskId : null}
-          />
-          <span className="text-muted-foreground text-xs">{footerStatus(run, stream, isPending, recovered)}</span>
-          <div className="grid items-start gap-4 lg:grid-cols-2 xl:grid-cols-[minmax(0,3fr)_minmax(0,4fr)_minmax(0,3fr)]">
-            <PromptEditorCard
-              form={form}
-              onPatch={patch}
-              providers={providers}
-              providersLoading={providersQuery.isLoading}
-              selectedProvider={selectedProvider}
-              selectedModel={selectedModel}
-              onProviderChange={(name) => {
-                setProviderChoice(name);
-                setModelChoice(null);
-              }}
-              onModelChange={setModelChoice}
-              canDebug={canDebug}
-              sourceHint={sourceHint}
-            />
-            <OutputPane
-              run={run}
-              stream={stream}
-              isPending={isPending}
-              postMortem={postMortemQuery.data}
-              streamProviderModel={formatSentProviderModel(lastRequest)}
-              onCancel={handleCancel}
-              cancelPending={cancelMutation.isPending}
-              onRetry={handleRetry}
-              onReattach={stream.reopen}
-            />
-            <ProvidersCard
-              providers={providers}
-              providersLoading={providersQuery.isLoading}
-              providersError={providersQuery.error}
-              guardrails={guardrailsQuery.data}
-              guardrailsLoading={guardrailsQuery.isLoading}
-              guardrailsError={guardrailsQuery.error}
-              onRefresh={handleRefreshCatalogs}
-              showGlobalSwitch={isElevated}
-              globalCatalog={globalCatalog}
-              onGlobalCatalogChange={setGlobalCatalog}
-              workingTenantName={workingTenantName}
+    <Tabs defaultValue="text" className="flex min-h-0 flex-1 flex-col">
+      <ScreenTemplate
+        header={
+          <div className="mx-auto w-full max-w-[1440px] px-4">
+            <CanvasHeader
+              title="Agent Playground"
+              description={'Compose → run → stream · runs under your own account'}
+              actions={
+                <Button onClick={handleGenerate} disabled={isPending || !canGenerate}>
+                  <IconPlayerPlay aria-hidden />
+                  Run
+                </Button>
+              }
             />
           </div>
-        </TabsContent>
+        }
+        tabs={
+          <div className="mx-auto w-full max-w-[1440px] px-4">
+            <TabsList variant="line">
+              <TabsTrigger value="text">Text generation</TabsTrigger>
+              <TabsTrigger value="guardrails">Guardrails</TabsTrigger>
+              <TabsTrigger value="ner">NER</TabsTrigger>
+            </TabsList>
+          </div>
+        }
+        footer={
+          // The header's Run action is text generation on every tab, so the
+          // run state is the page-level status — this replaces the in-tab
+          // status line it used to render above the three-pane grid. No `end`
+          // meta: provider/model/mode/task id are all carried by
+          // `RequestSummaryStrip`, and repeating them here would only
+          // double-announce each change through the footer's live region.
+          <StatusFooter start={footerStatus(run, stream, isPending, recovered)} />
+        }
+      >
+        <PlaygroundCanvas className="max-w-[1440px]">
+          <TabsContent value="text" className="flex flex-col gap-4">
+            <RequestSummaryStrip
+              providersLoading={providersQuery.isLoading}
+              hasCatalog={!!providers && providers.length > 0}
+              selectedProvider={selectedProvider}
+              selectedModel={selectedModel}
+              temperature={form.temperature}
+              maxTokens={parseMaxTokens(form.maxTokens)}
+              streaming={form.streaming}
+              taskId={run.kind === 'stream' ? run.taskId : null}
+            />
+            <div className="grid items-start gap-4 lg:grid-cols-2 xl:grid-cols-[minmax(0,3fr)_minmax(0,4fr)_minmax(0,3fr)]">
+              <PromptEditorCard
+                form={form}
+                onPatch={patch}
+                providers={providers}
+                providersLoading={providersQuery.isLoading}
+                selectedProvider={selectedProvider}
+                selectedModel={selectedModel}
+                onProviderChange={(name) => {
+                  setProviderChoice(name);
+                  setModelChoice(null);
+                }}
+                onModelChange={setModelChoice}
+                canDebug={canDebug}
+                sourceHint={sourceHint}
+              />
+              <OutputPane
+                run={run}
+                stream={stream}
+                isPending={isPending}
+                postMortem={postMortemQuery.data}
+                streamProviderModel={formatSentProviderModel(lastRequest)}
+                onCancel={handleCancel}
+                cancelPending={cancelMutation.isPending}
+                onRetry={handleRetry}
+                onReattach={stream.reopen}
+              />
+              <ProvidersCard
+                providers={providers}
+                providersLoading={providersQuery.isLoading}
+                providersError={providersQuery.error}
+                guardrails={guardrailsQuery.data}
+                guardrailsLoading={guardrailsQuery.isLoading}
+                guardrailsError={guardrailsQuery.error}
+                onRefresh={handleRefreshCatalogs}
+                showGlobalSwitch={isElevated}
+                globalCatalog={globalCatalog}
+                onGlobalCatalogChange={setGlobalCatalog}
+                workingTenantName={workingTenantName}
+              />
+            </div>
+          </TabsContent>
 
-        {/* Guardrails + NER: user-plane `ai/*` gateway proxies over
+          {/* Guardrails + NER: user-plane `ai/*` gateway proxies over
                     the Guardrail (:8863) and NLP (:8864) services. */}
-        <TabsContent value="guardrails">
-          <GuardrailsTab />
-        </TabsContent>
-        <TabsContent value="ner">
-          <NerTab />
-        </TabsContent>
-      </Tabs>
-    </PlaygroundCanvas>
+          <TabsContent value="guardrails">
+            <GuardrailsTab />
+          </TabsContent>
+          <TabsContent value="ner">
+            <NerTab />
+          </TabsContent>
+        </PlaygroundCanvas>
+      </ScreenTemplate>
+    </Tabs>
   );
 }

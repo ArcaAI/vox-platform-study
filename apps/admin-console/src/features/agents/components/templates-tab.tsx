@@ -189,7 +189,7 @@ export function TemplatesTab({ creating, onCreatingChange, onCountChange }: Temp
         meta: { label: 'Dept', variant: 'select', options: departmentOptions },
         cell: ({ row }) =>
           row.original.departmentId ? (
-            <Badge variant="outline" className="font-mono text-[10px]">
+            <Badge variant="outline" className="font-mono text-2xs">
               {departmentLabels.get(row.original.departmentId) ?? row.original.departmentId}
             </Badge>
           ) : (

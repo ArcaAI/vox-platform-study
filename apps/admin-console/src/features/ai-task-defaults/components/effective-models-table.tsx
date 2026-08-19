@@ -106,7 +106,9 @@ export function EffectiveModelsTable() {
           Summarization models are configured above, in the &ldquo;Models&rdquo; tab.
         </p>
       </div>
-      <div className="overflow-x-auto">
+      {/* tabIndex + role/aria-label: a horizontally-scrollable container must be
+          keyboard-reachable on its own (axe scrollable-region-focusable / WCAG 2.1.1). */}
+      <div className="overflow-x-auto" tabIndex={0} role="region" aria-label="Effective models">
         <table className="w-full min-w-2xl border-collapse text-left">
           <caption className="sr-only">Effective AI model per task key, with the cascade tier that resolved it</caption>
           <thead>

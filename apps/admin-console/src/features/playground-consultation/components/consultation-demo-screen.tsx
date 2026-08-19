@@ -10,6 +10,11 @@
  * SDK settings plane ({@link useColumnLayout}); the footer surfaces the ASR +
  * note model selectors and real per-session metrics.
  *
+ * Frame: `ScreenTemplate` with `contentMode="fill"` (rule 11 §1) — the column
+ * group takes the remaining height and each column scrolls internally, and
+ * `ScribeFooter` rides the pinned `footer` slot it was already shaped for.
+ *
+
  * Transport split (unchanged): SDK/REST calls go through the BFF proxy
  * (`/api/hope`, auth injected server-side — no token in the browser); the STT
  * WebSocket and every SSE stream connect DIRECTLY to the gateway
@@ -26,6 +31,8 @@ import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from '@arcaai/ui
 import { Skeleton } from '@arcaai/ui/components/shadcn/skeleton';
 import { publicEnv } from '@/config/public-env';
 import { useSession } from '@/shared/auth';
+import { PageHeader } from '@/shared/page/page-header';
+import { ScreenTemplate } from '@/shared/page/screen-template';
 import { WorkingTenantGate } from '@/shared/tenant-scope/working-tenant-gate';
 import {
   playgroundConsultationKeys,
@@ -399,7 +406,31 @@ function ScribeWorkspace() {
   );
 
   return (
-    <div className="flex h-full min-h-0 flex-col gap-3">
+    // `ScreenTemplate` in `fill` mode (rule 11 §1): the resizable 3-column
+    // group owns the remaining height and each column scrolls internally, so
+    // nothing is nested inside a second scroll area. `ScribeFooter` — already
+    // an IDE-style bottom bar — rides the pinned `footer` slot; the `header`
+    // gives the workspace the page-level h1 it previously lacked (rule 11 §6).
+    <ScreenTemplate
+      contentMode="fill"
+      header={<PageHeader title="Consultation Scribe" meta="Live capture → transcription → personalized note → sign-off, on @arcaai/vox." />}
+      footer={
+        <ScribeFooter
+          transcriptionModels={transcriptionModels}
+          selectedTranscriptionId={pipelineId}
+          onTranscriptionChange={setPipelineChoice}
+          transcriptionLoading={pipelines.isLoading}
+          languageModes={languageModes.modes}
+          selectedLanguageMode={languageMode}
+          onLanguageModeChange={setLanguageMode}
+          languageModesLoading={languageModes.isLoading}
+          noteModels={noteModels}
+          selectedNoteId={noteModelName ?? ''}
+          onNoteChange={() => undefined}
+          metrics={{ tokensPerSecond: metrics.tokensPerSecond, latencyP95Ms: metrics.latencyP95Ms, uplinkBitsPerSecond: audio.uplinkBitrate || null }}
+        />
+      }
+    >
       {layout.isReady ? (
         <ResizablePanelGroup
           orientation="horizontal"
@@ -469,20 +500,6 @@ function ScribeWorkspace() {
           <ConsultationDemoSkeleton />
         </div>
       )}
-      <ScribeFooter
-        transcriptionModels={transcriptionModels}
-        selectedTranscriptionId={pipelineId}
-        onTranscriptionChange={setPipelineChoice}
-        transcriptionLoading={pipelines.isLoading}
-        languageModes={languageModes.modes}
-        selectedLanguageMode={languageMode}
-        onLanguageModeChange={setLanguageMode}
-        languageModesLoading={languageModes.isLoading}
-        noteModels={noteModels}
-        selectedNoteId={noteModelName ?? ''}
-        onNoteChange={() => undefined}
-        metrics={{ tokensPerSecond: metrics.tokensPerSecond, latencyP95Ms: metrics.latencyP95Ms, uplinkBitsPerSecond: audio.uplinkBitrate || null }}
-      />
-    </div>
+    </ScreenTemplate>
   );
 }

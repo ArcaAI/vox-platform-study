@@ -136,7 +136,7 @@ export function OptionList({ data, actions, appearance, control }: OptionListPro
             {option.icon}
             {option.label && <span>{option.label}</span>}
             {option.description && (
-              <span className={cn('text-[10px] sm:text-xs', isSelected(index) ? 'text-background/70' : 'text-muted-foreground')}>
+              <span className={cn('text-2xs sm:text-xs', isSelected(index) ? 'text-background/70' : 'text-muted-foreground')}>
                 · {option.description}
               </span>
             )}

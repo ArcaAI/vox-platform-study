@@ -65,6 +65,15 @@ describe('PermissionMatrix', () => {
     expect(within(list).getAllByText('Read').length).toBeGreaterThanOrEqual(1);
   });
 
+  it('exposes the horizontally-scrollable matrix as a named, keyboard-reachable region', () => {
+    render(<PermissionMatrix data={DATA} />);
+    // A scroll container must be focusable in its own right (WCAG 2.1.1 /
+    // axe scrollable-region-focusable) and carry a name.
+    const region = screen.getByRole('region', { name: 'Permission matrix' });
+    expect(region.getAttribute('tabindex')).toBe('0');
+    expect(within(region).getByRole('table')).toBeDefined();
+  });
+
   it('has no axe violations (table)', async () => {
     const { container } = render(<PermissionMatrix data={DATA} />);
     expect(await axe(container)).toHaveNoViolations();

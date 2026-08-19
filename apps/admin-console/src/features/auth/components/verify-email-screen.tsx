@@ -15,7 +15,19 @@ interface VerifyEmailScreenProps {
 
 type Result = { tenantKey: string } | { error: string };
 
-/** Consumes the emailed verification link, auto-submitting on mount. */
+/**
+ * Consumes the emailed verification link, auto-submitting on mount.
+ *
+ * Deliberately NOT a `ScreenTemplate` screen (rule 11 §1 Screen Template).
+ * This renders under `app/(auth)/verify-email/page.tsx`, OUTSIDE the console
+ * shell — no sidebar, no breadcrumb topbar, no session banners — inside a
+ * `<main className="flex min-h-svh items-center justify-center p-6">` that
+ * centres one `max-w-sm` Card. `ScreenTemplate` is a `min-h-0 flex-1` column
+ * that assumes it fills the console shell's content region and pins a
+ * header/toolbar/footer across its full width; there is no such region here
+ * and no page-level chrome to pin. Every `(auth)` screen (login, register,
+ * reset-password) follows this centred-card frame instead.
+ */
 export function VerifyEmailScreen({ token }: VerifyEmailScreenProps) {
   const [result, setResult] = useState<Result | null>(null);
   const submitted = useRef(false);

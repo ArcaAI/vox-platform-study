@@ -71,10 +71,10 @@ export function LiveEngineTab() {
         </p>
       </div>
       <div className="text-muted-foreground flex flex-wrap items-center gap-2 text-xs">
-        <Badge variant="outline" className="font-mono text-[10px]">
+        <Badge variant="outline" className="font-mono text-2xs">
           env default: {config.envDefault ? 'enabled' : 'disabled'}
         </Badge>
-        <Badge variant="outline" className="font-mono text-[10px]">
+        <Badge variant="outline" className="font-mono text-2xs">
           source: {config.source}
         </Badge>
         {config.updatedAt ? <span>overridden {formatRelativeTime(config.updatedAt)}</span> : null}

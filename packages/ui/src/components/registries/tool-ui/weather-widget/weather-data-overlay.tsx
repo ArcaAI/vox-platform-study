@@ -405,7 +405,7 @@ export function WeatherDataOverlay({
                         textShadow: forecastTextShadow,
                       }}
                     >
-                      <span className={cn('text-[10px] uppercase tracking-[0.08em]', index === 0 ? 'font-semibold' : 'font-medium', textPrimary)}>
+                      <span className={cn('text-2xs uppercase tracking-[0.08em]', index === 0 ? 'font-semibold' : 'font-medium', textPrimary)}>
                         {day.label}
                       </span>
                       <DayIcon

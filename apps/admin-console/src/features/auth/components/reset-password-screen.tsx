@@ -13,6 +13,19 @@ interface ResetPasswordScreenProps {
   token: string | undefined;
 }
 
+/**
+ * Consumes the emailed password-reset link.
+ *
+ * Deliberately NOT a `ScreenTemplate` screen (rule 11 §1 Screen Template).
+ * This renders under `app/(auth)/reset-password/page.tsx`, OUTSIDE the console
+ * shell — no sidebar, no breadcrumb topbar, no session banners — inside a
+ * `<main className="flex min-h-svh items-center justify-center p-6">` that
+ * centres one `max-w-sm` Card. `ScreenTemplate` is a `min-h-0 flex-1` column
+ * that assumes it fills the console shell's content region and pins a
+ * header/toolbar/footer across its full width; there is no such region here
+ * and no page-level chrome to pin. Every `(auth)` screen (login, register,
+ * verify-email) follows this centred-card frame instead.
+ */
 export function ResetPasswordScreen({ token }: ResetPasswordScreenProps) {
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');

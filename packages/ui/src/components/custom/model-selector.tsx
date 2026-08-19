@@ -43,7 +43,7 @@ export function ModelSelector({ label, models, selectedModelId, onChange, isLoad
               <span className="flex items-center gap-2">
                 {selectedModel.name}
                 {selectedModel.source && (
-                  <Badge variant="secondary" className="text-[10px] leading-tight">
+                  <Badge variant="secondary" className="text-2xs leading-tight">
                     {selectedModel.source}
                   </Badge>
                 )}
@@ -66,7 +66,7 @@ export function ModelSelector({ label, models, selectedModelId, onChange, isLoad
                 <span className="flex items-center gap-2">
                   {model.name}
                   {model.source && (
-                    <Badge variant="secondary" className="text-[10px] leading-tight">
+                    <Badge variant="secondary" className="text-2xs leading-tight">
                       {model.source}
                     </Badge>
                   )}

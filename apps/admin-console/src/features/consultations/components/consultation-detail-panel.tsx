@@ -2,9 +2,9 @@
 
 import type { ReactNode } from 'react';
 import { Badge } from '@arcaai/ui/components/shadcn/badge';
-import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@arcaai/ui/components/shadcn/sheet';
 import { Skeleton } from '@arcaai/ui/components/shadcn/skeleton';
 import { CopyButton } from '@/shared/copy-button';
+import { DetailDrawer } from '@/shared/detail/detail-drawer';
 import { formatDateTime } from '@/shared/format';
 import { ErrorState } from '@/shared/state/error-state';
 import { useConsultation, visitTypeOf } from '../api';
@@ -86,7 +86,7 @@ function DetailBody({ id }: { id: string }) {
 
   if (detail.isPending) {
     return (
-      <div className="flex flex-col gap-3 p-4">
+      <div className="flex flex-col gap-3">
         {Array.from({ length: 8 }, (_, index) => (
           <Skeleton key={index} className="h-4 w-full" />
         ))}
@@ -94,11 +94,7 @@ function DetailBody({ id }: { id: string }) {
     );
   }
   if (detail.isError) {
-    return (
-      <div className="p-4">
-        <ErrorState title={'Couldn\u2019t load this consultation'} error={detail.error} onRetry={() => void detail.refetch()} />
-      </div>
-    );
+    return <ErrorState title={'Couldn\u2019t load this consultation'} error={detail.error} onRetry={() => void detail.refetch()} />;
   }
 
   const consultation = detail.data;
@@ -106,7 +102,7 @@ function DetailBody({ id }: { id: string }) {
   const department = departmentLabel(consultation);
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto p-4">
+    <div className="flex flex-col gap-4">
       <dl className="grid grid-cols-2 gap-x-4 gap-y-3">
         <MetaItem label="Patient">
           <span className="font-mono text-xs">{maskPatientId(consultation.patientId)}</span>{' '}
@@ -156,19 +152,18 @@ function DetailBody({ id }: { id: string }) {
  */
 export function ConsultationDetailPanel({ consultationId, onOpenChange }: { consultationId: string | null; onOpenChange: (open: boolean) => void }) {
   return (
-    <Sheet open={consultationId !== null} onOpenChange={onOpenChange}>
-      <SheetContent side="right" className="w-full gap-0 sm:max-w-xl">
-        <SheetHeader className="border-b">
-          <SheetTitle className="flex items-center gap-1 font-mono text-sm break-all">
-            {consultationId}
-            {consultationId ? <CopyButton value={consultationId} label="Copy consultation id" /> : null}
-          </SheetTitle>
-          <SheetDescription>
-            Read-only detail {'\u00b7'} <span className="font-mono text-xs">GET /admin/consultations/:id</span>
-          </SheetDescription>
-        </SheetHeader>
-        {consultationId ? <DetailBody id={consultationId} /> : null}
-      </SheetContent>
-    </Sheet>
+    <DetailDrawer
+      open={consultationId !== null}
+      onOpenChange={onOpenChange}
+      title={<span className="font-mono text-sm break-all">{consultationId}</span>}
+      badges={consultationId ? <CopyButton value={consultationId} label="Copy consultation id" /> : null}
+      meta={
+        <span>
+          Read-only detail {'\u00b7'} <span className="font-mono">GET /admin/consultations/:id</span>
+        </span>
+      }
+    >
+      {consultationId ? <DetailBody id={consultationId} /> : null}
+    </DetailDrawer>
   );
 }

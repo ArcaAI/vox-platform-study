@@ -167,7 +167,7 @@ export function AccountScreen() {
                 </div>
                 <div className="flex flex-wrap items-center gap-2 sm:ml-auto">
                   {identityUser.roles.map((role) => (
-                    <Badge key={role} variant="secondary" className="font-mono text-[10px]">
+                    <Badge key={role} variant="secondary" className="font-mono text-2xs">
                       {role}
                     </Badge>
                   ))}
@@ -220,7 +220,7 @@ export function AccountScreen() {
                         <div className="flex flex-wrap items-center gap-2">
                           <span className="text-sm font-medium">{setting.name}</span>
                           {setting.namespace ? <span className="text-muted-foreground text-xs">{setting.namespace}</span> : null}
-                          <Badge variant="outline" className="text-muted-foreground font-mono text-[10px]">
+                          <Badge variant="outline" className="text-muted-foreground font-mono text-2xs">
                             {setting.dataType}
                           </Badge>
                         </div>
@@ -319,7 +319,7 @@ export function AccountScreen() {
                 </div>
                 <dl className="grid gap-x-8 gap-y-3 border-t pt-4 sm:grid-cols-2">
                   <ReadOnlyField label="Transcription mode">
-                    <Badge variant="outline" className="font-mono text-[10px]">
+                    <Badge variant="outline" className="font-mono text-2xs">
                       {preferences.transcriptionMode}
                     </Badge>
                     {preferences.transcriptionModeLocked ? <Badge variant="outline">Locked by admin</Badge> : null}
@@ -327,7 +327,7 @@ export function AccountScreen() {
                   {preferences.remoteConfig ? (
                     <ReadOnlyField label="Assigned pipeline">
                       <span>{preferences.remoteConfig.pipelineName ?? preferences.remoteConfig.pipelineId}</span>
-                      <Badge variant="outline" className="text-muted-foreground font-mono text-[10px]">
+                      <Badge variant="outline" className="text-muted-foreground font-mono text-2xs">
                         {preferences.remoteConfig.assignedBy}
                       </Badge>
                       {preferences.remoteConfig.codeSwitchingEnabled ? <Badge variant="outline">Code-switching</Badge> : null}

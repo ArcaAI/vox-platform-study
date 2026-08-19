@@ -12,7 +12,7 @@ import { cleanup, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { axe } from 'vitest-axe';
 import { renderWithProviders } from '@/test/render';
-import { TEXT_FALLBACK_TASK_KEYS, TEXT_PRIMARY_TASK_KEYS } from '../../api/types';
+import { TEXT_FALLBACK_TASK_KEYS, TEXT_PRIMARY_TASK_KEYS, TEXT_TEST_TASK_KEYS } from '../../api/types';
 import type { EffectiveAiTaskDefault, TaskModelOption } from '../../api/types';
 import { TextModelsSection } from '../text-models-section';
 
@@ -75,12 +75,16 @@ describe('TextModelsSection', () => {
     stubFetch();
     renderWithProviders(<TextModelsSection />);
 
-    for (const key of [...TEXT_PRIMARY_TASK_KEYS, ...TEXT_FALLBACK_TASK_KEYS]) {
+    // TEXT_TEST_TASK_KEYS is included: TASK-740 D-2 gave `text.test` its own
+    // "Prompt test bench" section and card, but this loop still only walked
+    // primary+fallback, so the new card was never asserted on.
+    for (const key of [...TEXT_PRIMARY_TASK_KEYS, ...TEXT_TEST_TASK_KEYS, ...TEXT_FALLBACK_TASK_KEYS]) {
       expect(await screen.findByText(key)).toBeDefined();
     }
-    // 4 per-key card pickers + 2 default-control pickers (primary + fallback).
-    expect((await screen.findAllByRole('combobox')).length).toBe(6);
-    expect((await screen.findAllByRole('button', { name: /save .* if-match/i })).length).toBe(4);
+    // 5 per-key card pickers (2 primary + 1 test bench + 2 fallback)
+    // + 2 default-control pickers (primary + fallback).
+    expect((await screen.findAllByRole('combobox')).length).toBe(7);
+    expect((await screen.findAllByRole('button', { name: /save .* if-match/i })).length).toBe(5);
   });
 
   it('renders the one-action default text-generation provider control above the per-key cards', async () => {

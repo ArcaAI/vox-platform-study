@@ -242,7 +242,7 @@ export function PostDetail({ data, actions, appearance }: PostDetailProps) {
           <div>
             <div className="flex items-start justify-between gap-2">
               <div className="flex-1 min-w-0">
-                {post?.category && <p className="mb-0.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">{post.category}</p>}
+                {post?.category && <p className="mb-0.5 text-2xs font-medium uppercase tracking-wide text-muted-foreground">{post.category}</p>}
 
                 {post?.title && <h1 className="line-clamp-2 text-sm font-bold leading-tight">{post.title}</h1>}
               </div>
@@ -303,7 +303,7 @@ export function PostDetail({ data, actions, appearance }: PostDetailProps) {
 
         <div className="flex flex-1 flex-col justify-between min-w-0">
           <div>
-            {post?.category && <p className="mb-0.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">{post.category}</p>}
+            {post?.category && <p className="mb-0.5 text-2xs font-medium uppercase tracking-wide text-muted-foreground">{post.category}</p>}
 
             {post?.title && <h1 className="line-clamp-2 text-sm font-bold leading-tight">{post.title}</h1>}
 
@@ -351,7 +351,7 @@ export function PostDetail({ data, actions, appearance }: PostDetailProps) {
             <img src={post.coverImage} alt={post?.title || ''} className="h-full w-full object-cover" />
           </div>
         )}
-        {post?.category && <p className="mb-2 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">{post.category}</p>}
+        {post?.category && <p className="mb-2 text-2xs font-medium uppercase tracking-wide text-muted-foreground">{post.category}</p>}
 
         {post?.title && <h1 className="text-[32px] font-bold leading-[1.25] tracking-tight md:text-[42px]">{post.title}</h1>}
 

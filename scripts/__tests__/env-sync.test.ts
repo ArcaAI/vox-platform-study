@@ -217,7 +217,7 @@ describe('env:sync — dead keys stay dead', () => {
 });
 
 describe('env:sync — the declared surface stays small', () => {
-  it('declares at most ~144 distinct keys', () => {
+  it('declares at most ~149 distinct keys', () => {
     // Bumped 130 -> 134 for 4 legitimate additions since this ceiling was set
     // (verified via `pnpm env:sync --check`, no drift): AZURE_STORAGE_ACCOUNT_KEY,
     // AZURE_STORAGE_CONNECTION_STRING, HARNESS_INTERNAL_SERVICE_TOKEN,
@@ -237,8 +237,12 @@ describe('env:sync — the declared surface stays small', () => {
     // Bumped 147 -> 148 for 1 legitimate addition (TASK-727's dedicated
     // webhook-signing encryption key, deliberately NOT reusing API_KEY_PEPPER
     // — verified via `pnpm env:sync`, no drift): WEBHOOK_SECRET_PEPPER.
+    // Bumped 148 -> 149 for 1 legitimate addition (owner decision D-D,
+    // 2026-08-17: THE one shared internal service-to-service token, which
+    // RETIRES the per-service `*_SERVICE_TOKEN` family rather than adding to
+    // it — verified via `pnpm env:sync --check`, no drift): INTERNAL_ACCESS_TOKEN.
     const declared = declaredTsSurfaceKeys();
-    expect(declared.size).toBeLessThanOrEqual(148);
+    expect(declared.size).toBeLessThanOrEqual(149);
   });
 });
 

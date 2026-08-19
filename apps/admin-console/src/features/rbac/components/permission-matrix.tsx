@@ -51,14 +51,17 @@ function Cell({ state }: { state: CellState }) {
 
 function MatrixTable({ data }: { data: PermissionMatrixData }) {
   return (
-    <div className="overflow-x-auto">
+    // tabIndex + role/aria-label: the horizontally-scrollable container must be
+    // reachable by keyboard on its own (axe scrollable-region-focusable / WCAG
+    // 2.1.1) — same precedent as the shadcn `Table` container and `DetailDrawer`.
+    <div className="overflow-x-auto" tabIndex={0} role="region" aria-label="Permission matrix">
       <table className="w-full border-collapse text-sm">
         <caption className="sr-only">
           Permission matrix — resources by action. Cell states: granted, inherited from a system policy, granted with conditions, or not granted.
         </caption>
         <thead>
           <tr className="border-b">
-            <th scope="col" className="bg-background sticky left-0 z-10 px-3 py-2 text-left font-medium">
+            <th scope="col" className="bg-background sticky left-0 z-sticky px-3 py-2 text-left font-medium">
               Resource
             </th>
             {MATRIX_ACTIONS.map((action) => (
@@ -71,7 +74,7 @@ function MatrixTable({ data }: { data: PermissionMatrixData }) {
         <tbody>
           {data.rows.map((row) => (
             <tr key={row.subject} className="border-b last:border-b-0">
-              <th scope="row" className="bg-background sticky left-0 z-10 px-3 py-2 text-left font-normal">
+              <th scope="row" className="bg-background sticky left-0 z-sticky px-3 py-2 text-left font-normal">
                 {row.label}
               </th>
               {MATRIX_ACTIONS.map((action) => (

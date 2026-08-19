@@ -50,11 +50,11 @@ export function GateQueuePanel() {
           <Table aria-label="Gate queue">
             <TableHeader>
               <TableRow>
-                <TableHead className="font-mono text-xs">Consultation</TableHead>
-                <TableHead className="font-mono text-xs">Status</TableHead>
-                <TableHead className="font-mono text-xs">Pending</TableHead>
-                <TableHead className="font-mono text-xs">Regen</TableHead>
-                <TableHead className="font-mono text-xs">SLA</TableHead>
+                <TableHead scope="col" className="font-mono text-xs">Consultation</TableHead>
+                <TableHead scope="col" className="font-mono text-xs">Status</TableHead>
+                <TableHead scope="col" className="font-mono text-xs">Pending</TableHead>
+                <TableHead scope="col" className="font-mono text-xs">Regen</TableHead>
+                <TableHead scope="col" className="font-mono text-xs">SLA</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -68,15 +68,15 @@ export function GateQueuePanel() {
                   </TableCell>
                   <TableCell>
                     {item.escalated ? (
-                      <Badge variant="destructive" className="text-[10px]">
+                      <Badge variant="destructive" className="text-2xs">
                         escalated
                       </Badge>
                     ) : item.slaBreached ? (
-                      <Badge variant="destructive" className="text-[10px]">
+                      <Badge variant="destructive" className="text-2xs">
                         breached
                       </Badge>
                     ) : (
-                      <Badge variant="outline" className="text-[10px]">
+                      <Badge variant="outline" className="text-2xs">
                         on track
                       </Badge>
                     )}

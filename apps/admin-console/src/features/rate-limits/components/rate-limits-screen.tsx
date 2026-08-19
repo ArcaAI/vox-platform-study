@@ -34,10 +34,10 @@ const STATUS_OPTIONS = [
 function SourceBadges({ limitSource, ttlSource }: { limitSource: string; ttlSource: string }) {
   return (
     <span className="flex items-center gap-1">
-      <Badge variant="outline" className="text-muted-foreground font-mono text-[10px]">
+      <Badge variant="outline" className="text-muted-foreground font-mono text-2xs">
         limit: {limitSource}
       </Badge>
-      <Badge variant="outline" className="text-muted-foreground font-mono text-[10px]">
+      <Badge variant="outline" className="text-muted-foreground font-mono text-2xs">
         ttl: {ttlSource}
       </Badge>
     </span>
@@ -405,7 +405,7 @@ export function RateLimitsScreen() {
                   </p>
                 </div>
                 <div className="flex shrink-0 items-center gap-3">
-                  <Badge variant="outline" className="text-muted-foreground font-mono text-[10px]">
+                  <Badge variant="outline" className="text-muted-foreground font-mono text-2xs">
                     source: {policy.enabledSource}
                   </Badge>
                   <span className="text-sm font-medium">{policy.enabled ? 'Enabled' : 'Disabled'}</span>

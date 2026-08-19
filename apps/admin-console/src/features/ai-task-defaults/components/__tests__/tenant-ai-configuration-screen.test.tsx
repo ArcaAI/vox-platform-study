@@ -20,7 +20,7 @@ import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { axe } from 'vitest-axe';
 import { renderWithProviders } from '@/test/render';
 import type { PermissionRule } from '@/shared/auth/ability';
-import { AI_TASK_KEYS, READ_ONLY_TASK_KEYS, TEXT_FALLBACK_TASK_KEYS, TEXT_PRIMARY_TASK_KEYS } from '../../api/types';
+import { AI_TASK_KEYS, READ_ONLY_TASK_KEYS, TEXT_FALLBACK_TASK_KEYS, TEXT_PRIMARY_TASK_KEYS, TEXT_TEST_TASK_KEYS } from '../../api/types';
 import type { EffectiveAiTaskDefault, TaskModelOption } from '../../api/types';
 import { TenantAiConfigurationScreen } from '../tenant-ai-configuration-screen';
 
@@ -238,16 +238,17 @@ describe('TenantAiConfigurationScreen — Models tab (default)', () => {
     stubFetch();
     renderWithProviders(<TenantAiConfigurationScreen />);
 
-    // Editable text-generation cards (primary + fallback).
-    for (const key of [...TEXT_PRIMARY_TASK_KEYS, ...TEXT_FALLBACK_TASK_KEYS]) {
+    // Editable text-generation cards (primary + test bench + fallback).
+    for (const key of [...TEXT_PRIMARY_TASK_KEYS, ...TEXT_TEST_TASK_KEYS, ...TEXT_FALLBACK_TASK_KEYS]) {
       expect(await screen.findByText(key)).toBeDefined();
     }
     // Read-only effective rows for the platform-managed keys.
     for (const key of READ_ONLY_TASK_KEYS) {
       expect(await screen.findByText(key)).toBeDefined();
     }
-    // If-Match save per editable text-generation card.
-    expect((await screen.findAllByRole('button', { name: /save .* if-match/i })).length).toBe(4);
+    // If-Match save per editable text-generation card
+    // (2 primary + 1 test bench + 2 fallback).
+    expect((await screen.findAllByRole('button', { name: /save .* if-match/i })).length).toBe(5);
   });
 
   it('surfaces an error state with retry when the effective read fails', async () => {

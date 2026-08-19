@@ -95,7 +95,7 @@ export function TranscriptSegment({
             </time>
           ) : null}
           {showConfidence && segment.confidence != null ? (
-            <Badge variant="outline" className="text-[10px]">
+            <Badge variant="outline" className="text-2xs">
               {Math.round(segment.confidence * 100)}%
             </Badge>
           ) : null}

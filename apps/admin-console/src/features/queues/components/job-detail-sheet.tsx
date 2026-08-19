@@ -2,9 +2,9 @@
 
 import { IconAlertTriangle } from '@tabler/icons-react';
 import { Alert, AlertDescription, AlertTitle } from '@arcaai/ui/components/shadcn/alert';
-import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@arcaai/ui/components/shadcn/sheet';
 import { Skeleton } from '@arcaai/ui/components/shadcn/skeleton';
 import { CopyButton } from '@/shared/copy-button';
+import { DetailDrawer } from '@/shared/detail/detail-drawer';
 import { formatDateTime, formatNumber, formatPercent } from '@/shared/format';
 import { ErrorState } from '@/shared/state/error-state';
 import { useJob } from '../api/hooks';
@@ -96,29 +96,26 @@ export function JobDetailSheet({
   const jobQuery = useJob(queueName, jobId ?? '');
 
   return (
-    <Sheet open={jobId !== null} onOpenChange={onOpenChange}>
-      <SheetContent side="right" className="w-full gap-0 sm:max-w-xl">
-        <SheetHeader className="border-b">
-          <SheetTitle className="flex items-center gap-1 font-mono text-sm break-all">
-            {jobId}
-            {jobId ? <CopyButton value={jobId} label="Copy job id" /> : null}
-          </SheetTitle>
-          <SheetDescription>Payload, result and failure detail for this job.</SheetDescription>
-        </SheetHeader>
-        <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto p-4">
-          {jobQuery.isLoading ? (
-            <div className="flex flex-col gap-3">
-              <Skeleton className="h-4 w-1/2" />
-              <Skeleton className="h-4 w-2/3" />
-              <Skeleton className="h-40 w-full" />
-            </div>
-          ) : jobQuery.error ? (
-            <ErrorState error={jobQuery.error} onRetry={() => void jobQuery.refetch()} />
-          ) : jobQuery.data ? (
-            <JobDetailBody job={jobQuery.data} />
-          ) : null}
-        </div>
-      </SheetContent>
-    </Sheet>
+    <DetailDrawer
+      open={jobId !== null}
+      onOpenChange={onOpenChange}
+      title={<span className="font-mono text-sm break-all">{jobId}</span>}
+      badges={jobId ? <CopyButton value={jobId} label="Copy job id" /> : null}
+      meta={<span>Payload, result and failure detail for this job.</span>}
+    >
+      <div className="flex flex-col gap-4">
+        {jobQuery.isLoading ? (
+          <div className="flex flex-col gap-3">
+            <Skeleton className="h-4 w-1/2" />
+            <Skeleton className="h-4 w-2/3" />
+            <Skeleton className="h-40 w-full" />
+          </div>
+        ) : jobQuery.error ? (
+          <ErrorState error={jobQuery.error} onRetry={() => void jobQuery.refetch()} />
+        ) : jobQuery.data ? (
+          <JobDetailBody job={jobQuery.data} />
+        ) : null}
+      </div>
+    </DetailDrawer>
   );
 }

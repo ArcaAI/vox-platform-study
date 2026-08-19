@@ -203,7 +203,7 @@ const ConversationBarInner = React.forwardRef<HTMLDivElement, ConversationBarPro
                         />
                         {agentState === 'disconnected' && (
                           <div className="absolute inset-0 flex items-center justify-center">
-                            <span className="text-foreground/50 text-[10px] font-medium">Customer Support</span>
+                            <span className="text-foreground/50 text-2xs font-medium">Customer Support</span>
                           </div>
                         )}
                       </div>
@@ -231,13 +231,13 @@ const ConversationBarInner = React.forwardRef<HTMLDivElement, ConversationBarPro
                   >
                     <Keyboard
                       className={
-                        'h-5 w-5 transform-gpu transition-all duration-200 ease-[cubic-bezier(0.22,1,0.36,1)] ' +
+                        'h-5 w-5 transform-gpu transition-all duration-200 ease-emphasized ' +
                         (keyboardOpen ? 'scale-75 opacity-0' : 'scale-100 opacity-100')
                       }
                     />
                     <ChevronDown
                       className={
-                        'absolute inset-0 m-auto h-5 w-5 transform-gpu transition-all delay-50 duration-200 ease-[cubic-bezier(0.34,1.56,0.64,1)] ' +
+                        'absolute inset-0 m-auto h-5 w-5 transform-gpu transition-all delay-50 duration-200 ease-spring ' +
                         (keyboardOpen ? 'scale-100 opacity-100' : 'scale-75 opacity-0')
                       }
                     />

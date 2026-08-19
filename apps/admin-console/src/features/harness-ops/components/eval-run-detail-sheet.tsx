@@ -1,9 +1,9 @@
 'use client';
 
-import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@arcaai/ui/components/shadcn/sheet';
 import { Skeleton } from '@arcaai/ui/components/shadcn/skeleton';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@arcaai/ui/components/shadcn/table';
 import { CopyButton } from '@/shared/copy-button';
+import { DetailDrawer } from '@/shared/detail/detail-drawer';
 import { formatDateTime, formatNumber } from '@/shared/format';
 import { ErrorState } from '@/shared/state/error-state';
 import { useEvalRun } from '../api';
@@ -93,29 +93,26 @@ export function EvalRunDetailSheet({ evalRunId, onOpenChange }: { evalRunId: str
   const runQuery = useEvalRun(evalRunId);
 
   return (
-    <Sheet open={evalRunId !== null} onOpenChange={onOpenChange}>
-      <SheetContent side="right" className="w-full gap-0 sm:max-w-xl">
-        <SheetHeader className="border-b">
-          <SheetTitle className="flex items-center gap-1 font-mono text-sm break-all">
-            {evalRunId}
-            {evalRunId ? <CopyButton value={evalRunId} label="Copy eval run id" /> : null}
-          </SheetTitle>
-          <SheetDescription>Per-case claim verdicts and metric scores for this eval run.</SheetDescription>
-        </SheetHeader>
-        <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto p-4">
-          {runQuery.isLoading ? (
-            <div className="flex flex-col gap-3">
-              <Skeleton className="h-4 w-1/2" />
-              <Skeleton className="h-4 w-2/3" />
-              <Skeleton className="h-40 w-full" />
-            </div>
-          ) : runQuery.error ? (
-            <ErrorState error={runQuery.error} onRetry={() => void runQuery.refetch()} />
-          ) : runQuery.data ? (
-            <EvalRunBody run={runQuery.data} />
-          ) : null}
-        </div>
-      </SheetContent>
-    </Sheet>
+    <DetailDrawer
+      open={evalRunId !== null}
+      onOpenChange={onOpenChange}
+      title={<span className="font-mono text-sm break-all">{evalRunId}</span>}
+      badges={evalRunId ? <CopyButton value={evalRunId} label="Copy eval run id" /> : null}
+      meta={<span>Per-case claim verdicts and metric scores for this eval run.</span>}
+    >
+      <div className="flex flex-col gap-4">
+        {runQuery.isLoading ? (
+          <div className="flex flex-col gap-3">
+            <Skeleton className="h-4 w-1/2" />
+            <Skeleton className="h-4 w-2/3" />
+            <Skeleton className="h-40 w-full" />
+          </div>
+        ) : runQuery.error ? (
+          <ErrorState error={runQuery.error} onRetry={() => void runQuery.refetch()} />
+        ) : runQuery.data ? (
+          <EvalRunBody run={runQuery.data} />
+        ) : null}
+      </div>
+    </DetailDrawer>
   );
 }

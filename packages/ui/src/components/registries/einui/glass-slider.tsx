@@ -20,7 +20,7 @@ const GlassSlider = React.forwardRef<React.ElementRef<typeof SliderPrimitive.Roo
         className={cn(
           'block h-5 w-5 rounded-full cursor-grab active:cursor-grabbing',
           'bg-white border-2 border-white/50',
-          'shadow-[0_2px_10px_rgba(0,0,0,0.3)]',
+          'shadow-raised',
           'transition-all duration-200',
           'hover:scale-110 hover:shadow-[0_0_16px_rgba(59,130,246,0.5)]',
           'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/50',

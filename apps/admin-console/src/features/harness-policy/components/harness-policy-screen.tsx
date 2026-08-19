@@ -85,9 +85,9 @@ function SettingsComparisonGrid({
         <Table aria-label="Tenant vs global default settings">
           <TableHeader>
             <TableRow>
-              <TableHead className="font-mono text-xs">Setting</TableHead>
-              <TableHead className="font-mono text-xs">Tenant</TableHead>
-              <TableHead className="font-mono text-xs">Global default</TableHead>
+              <TableHead scope="col" className="font-mono text-xs">Setting</TableHead>
+              <TableHead scope="col" className="font-mono text-xs">Tenant</TableHead>
+              <TableHead scope="col" className="font-mono text-xs">Global default</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>

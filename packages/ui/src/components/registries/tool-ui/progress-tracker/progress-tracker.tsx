@@ -97,7 +97,7 @@ function StepIndicator({ status }: StepIndicatorProps) {
   if (status === 'in-progress') {
     return (
       <span
-        className="bg-card border-border flex size-6 shrink-0 items-center justify-center rounded-full border shadow-[0_0_0_4px_hsl(var(--primary)/0.1)] motion-safe:transition-all motion-safe:duration-300"
+        className="bg-card border-border flex size-6 shrink-0 items-center justify-center rounded-full border shadow-[0_0_0_4px] shadow-primary/10 motion-safe:transition-all motion-safe:duration-300"
         aria-hidden="true"
       >
         <Loader2 className="text-primary size-5 motion-safe:animate-spin" />
@@ -165,7 +165,7 @@ function ProgressTrackerReceipt({ id, steps, elapsedTime, className, choice }: P
       className={cn(
         'isolate flex w-full max-w-md min-w-80 flex-col',
         'text-foreground select-none',
-        'motion-safe:animate-in motion-safe:fade-in motion-safe:blur-in-sm motion-safe:zoom-in-95 motion-safe:duration-300 motion-safe:ease-[cubic-bezier(0.16,1,0.3,1)] motion-safe:fill-mode-both',
+        'motion-safe:animate-in motion-safe:fade-in motion-safe:blur-in-sm motion-safe:zoom-in-95 motion-safe:duration-300 motion-safe:ease-emphasized motion-safe:fill-mode-both',
         className,
       )}
       data-slot="progress-tracker"

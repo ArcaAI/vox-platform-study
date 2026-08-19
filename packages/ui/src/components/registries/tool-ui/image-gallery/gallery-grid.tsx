@@ -78,7 +78,7 @@ function GridImageCard({ image, index, onClick }: GridImageCardProps) {
 
       <div
         ref={wrapperRef}
-        className="bg-muted relative h-full w-full overflow-hidden rounded-lg transition-transform duration-200 ease-[cubic-bezier(0.4,0,0.2,1)] group-hover:scale-[1.02] group-active:scale-[0.98]"
+        className="bg-muted relative h-full w-full overflow-hidden rounded-lg transition-transform duration-200 ease-in-out group-hover:scale-[1.02] group-active:scale-[0.98]"
       >
         {hasError ? (
           <ImageErrorState alt={image.alt} />

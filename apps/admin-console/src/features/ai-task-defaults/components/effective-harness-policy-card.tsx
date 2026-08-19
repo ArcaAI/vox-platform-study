@@ -55,7 +55,10 @@ export function EffectiveHarnessPolicyCard() {
           Harness Policy.
         </p>
       </div>
-      <div className="overflow-x-auto">
+      {/* tabIndex + role/aria-label: a horizontally-scrollable container must be
+          keyboard-reachable on its own (axe scrollable-region-focusable / WCAG
+          2.1.1) — the shadcn `Table` container and `DetailDrawer` precedent. */}
+      <div className="overflow-x-auto" tabIndex={0} role="region" aria-label="Effective harness policy">
         <table className="w-full min-w-2xl border-collapse text-left">
           <caption className="sr-only">Effective harness policy value per setting, with who controls it</caption>
           <thead>

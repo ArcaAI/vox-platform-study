@@ -24,7 +24,7 @@ function CatalogList({ title, endpoint, items, isLoading, error, onRetry }: Cata
     <section className="flex flex-col gap-2">
       <div className="flex items-baseline justify-between gap-2">
         <h3 className="text-sm font-semibold">{title}</h3>
-        <span className="text-muted-foreground/70 font-mono text-[11px]">{endpoint}</span>
+        <span className="text-muted-foreground/70 font-mono text-2xs">{endpoint}</span>
       </div>
       {isLoading ? (
         <div className="flex flex-col gap-2">
@@ -128,7 +128,7 @@ export function ProvidersCard({
           error={guardrailsError}
           onRetry={onRefresh}
         />
-        <p className="text-muted-foreground/80 border-t pt-3 text-[11px] leading-relaxed">
+        <p className="text-muted-foreground/80 border-t pt-3 text-2xs leading-relaxed">
           Provider/model omitted → HarnessPolicy cascade resolves them; unresolved fails closed with <code className="font-mono">422</code>.
         </p>
       </CardContent>

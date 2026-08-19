@@ -6,8 +6,10 @@ import { parseAsString, useQueryStates } from 'nuqs';
 import { useQueryClient } from '@tanstack/react-query';
 import { Button } from '@arcaai/ui/components/shadcn/button';
 import { FilterBar, FilterSearch, FilterSelect, type FilterOption } from '@/shared/data/filter-bar';
+import { formatNumber } from '@/shared/format';
 import { PageHeader } from '@/shared/page/page-header';
 import { ScreenTemplate } from '@/shared/page/screen-template';
+import { StatusFooter } from '@/shared/page/status-footer';
 import { WorkingTenantGate } from '@/shared/tenant-scope/working-tenant-gate';
 import { harnessOpsKeys, useHarnessAudit } from '../api';
 import type { HarnessAuditAction } from '../api';
@@ -51,6 +53,9 @@ const RANGE_OPTIONS: FilterOption[] = [
 const AUDIT_PAGE_SIZE = 50;
 
 const META_DESCRIPTION = 'Read-only \u00b7 WORM audit trail + eval runs + clinician gate queue';
+
+/** Range value \u2192 the label the footer names the active window with. */
+const RANGE_LABELS: Record<string, string> = { '24h': 'last 24 h', '7d': 'last 7 d', '30d': 'last 30 d', all: 'all time' };
 
 function ObservabilityBody() {
   const queryClient = useQueryClient();
@@ -117,6 +122,31 @@ function ObservabilityBody() {
             ?tenantId= is platform-only
           </span>
         </FilterBar>
+      }
+      footer={
+        // The chain verdict is the one fact this read-only screen exists to
+        // report, so it is pinned rather than left to scroll away with
+        // `ChainIntegrityCard` (which states it in its own words + badge).
+        <StatusFooter
+          start={
+            auditQuery.isLoading
+              ? 'Verifying the audit hash chain…'
+              : auditQuery.error || !auditQuery.data
+                ? 'Audit trail unavailable — the chain could not be verified'
+                : auditQuery.data.verification.valid
+                  ? 'Hash chain re-verified end to end for this tenant'
+                  : `Hash chain does not link${
+                      auditQuery.data.verification.brokenAtIndex != null
+                        ? ` at event index ${formatNumber(auditQuery.data.verification.brokenAtIndex)}`
+                        : ''
+                    } — verify the WORM store`
+          }
+          end={
+            <span className="font-mono">
+              {auditQuery.data ? `${formatNumber(auditQuery.data.total)} audit events` : '— audit events'} · {RANGE_LABELS[range] ?? 'all time'}
+            </span>
+          }
+        />
       }
     >
       <div className="grid gap-4 xl:grid-cols-3">
