@@ -77,6 +77,9 @@ const createMockPromptVersionRepository = () => ({
   // Max-version helper queried inside the OCC transaction so the
   // next versionNumber is max(existing)+1, never a recomputed duplicate.
   findMaxVersionNumber: vi.fn().mockResolvedValue(0),
+  // Latest snapshot — approval blesses this row when it already matches the
+  // template's live content, instead of minting a duplicate version.
+  findLatestVersion: vi.fn().mockResolvedValue(null),
 });
 
 const createMockPromptUsageRecordRepository = () => ({
@@ -2696,7 +2699,28 @@ describe('PromptManagementService', () => {
       expect(mockTemplateRepo.updateWithVersion).toHaveBeenCalledWith('tpl-t', tpl, 3, mockTxClient);
     });
 
-    it('pins approvedVersionNumber to the newly-created version snapshot (eval-gate integrity, F-02)', async () => {
+    it('pins approvedVersionNumber to the EXISTING latest snapshot when it already matches the live content', async () => {
+      useContext({ roles: [], tenantId: 'tenant-1', canManage: true });
+      const tpl = createMockTemplateEntity({ id: 'tpl-t', tenantId: 'tenant-1', scope: 'TENANT_DEFAULT', status: 'DRAFT', version: 3 });
+      mockTemplateRepo.findById.mockResolvedValue(tpl);
+      // The publish edit already wrote v2 with exactly this content.
+      mockVersionRepo.findLatestVersion.mockResolvedValue(createMockVersionEntity({ versionNumber: 2, content: tpl.content, variables: tpl.variables ?? null }));
+      mockTemplateRepo.updateWithVersion.mockResolvedValue(tpl);
+
+      await service.approveTemplate('tpl-t', { expectedVersion: 3 } as never);
+
+      // No v3 is authored — approval pins v2.
+      expect(mockVersionRepo.create).not.toHaveBeenCalled();
+      expect(tpl.approvedVersionNumber).toBe(2);
+      expect(mockEventEmitter.emit).toHaveBeenCalledWith(
+        SysEventType.ResourceUpdated,
+        expect.objectContaining({
+          data: expect.objectContaining({ action: 'approve', approvedVersionNumber: 2 }),
+        }),
+      );
+    });
+
+    it('authors a new snapshot when the live content has drifted from the latest version (eval-gate integrity, F-02)', async () => {
       useContext({ roles: [], tenantId: 'tenant-1', canManage: true });
       const tpl = createMockTemplateEntity({ id: 'tpl-t', tenantId: 'tenant-1', scope: 'TENANT_DEFAULT', status: 'DRAFT', version: 3 });
       mockTemplateRepo.findById.mockResolvedValue(tpl);

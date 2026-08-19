@@ -524,19 +524,37 @@ export class PromptManagementService extends BaseService implements IPromptManag
     const previousVersion = template.version;
     const userId = this.requestUserId;
 
+    // Approval BLESSES an existing snapshot; it does not author a new one.
+    // `updatePromptTemplate` already persisted a PromptVersion for the edit that
+    // is being approved, so minting another here produced a duplicate-content
+    // version on every approve (edit -> v2, approve -> v3 pinned). Only when the
+    // template has no history at all — or its live content has drifted from the
+    // latest snapshot — is a new version authored, so the approved content is
+    // always represented by exactly one row.
+    const latestVersion = await this.promptVersionRepository.findLatestVersion(id);
+    const latestMatchesLiveContent =
+      latestVersion != null &&
+      (latestVersion.content ?? '') === (template.content ?? '') &&
+      JSON.stringify(latestVersion.variables ?? null) === JSON.stringify(template.variables ?? null);
+
     const updated = await this.databaseService.baseClient.$transaction(async (tx) => {
-      const maxVersionNumber = await this.promptVersionRepository.findMaxVersionNumber(id, tx);
-      const approvedVersionNumber = maxVersionNumber + 1;
-      const version = PromptVersionFactory.CreatePromptVersion({
-        tenantId: template.tenantId,
-        promptTemplateId: id,
-        versionNumber: approvedVersionNumber,
-        content: template.content,
-        variables: template.variables,
-        changeReason: dto.reason ?? 'Approved for clinical use',
-        changedBy: userId ?? null,
-      });
-      await this.promptVersionRepository.create(version, tx);
+      let approvedVersionNumber: number;
+      if (latestMatchesLiveContent) {
+        approvedVersionNumber = latestVersion!.versionNumber;
+      } else {
+        const maxVersionNumber = await this.promptVersionRepository.findMaxVersionNumber(id, tx);
+        approvedVersionNumber = maxVersionNumber + 1;
+        const version = PromptVersionFactory.CreatePromptVersion({
+          tenantId: template.tenantId,
+          promptTemplateId: id,
+          versionNumber: approvedVersionNumber,
+          content: template.content,
+          variables: template.variables,
+          changeReason: dto.reason ?? 'Approved for clinical use',
+          changedBy: userId ?? null,
+        });
+        await this.promptVersionRepository.create(version, tx);
+      }
       // Eval-gate integrity (F-02): pin the version snapshot THIS approval
       // blesses. Resolution serves `approvedVersionNumber` for unpinned agents
       // and the preferred/legacy/default tiers, so a later plain content edit
