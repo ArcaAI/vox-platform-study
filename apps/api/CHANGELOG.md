@@ -11,6 +11,60 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### BREAKING — TASK-757 (the admin plane is JWT only)
+
+`/api/v1/admin/*` no longer accepts API keys. 65 controllers / 386 handlers now answer **403**
+to any key, including one holding `'*'` — `@ForbidApiKey()` is evaluated before the scope check,
+so no scope can rescue a forbidden route.
+
+The 56 `admin:*` scopes and the 3 `webhook:*` scopes are **reserved, not deleted**: they can no
+longer be granted on `POST /admin/api-keys` and are filtered out of
+`GET /admin/api-keys/scopes`, but remain as the vocabulary the service-account credential uses.
+
+The admin console is unaffected — its BFF proxy has always sent a session JWT. There is no
+supported API-key path to administration; use a service account (TASK-762/767).
+
+### BREAKING — TASK-768 (downstream-unreachable error contract)
+
+| Cause | Was | Now |
+|---|---|---|
+| Transport failure (`ECONNREFUSED`, `ETIMEDOUT`, `ENOTFOUND`, `ECONNRESET`, DNS) | 400, or an opaque 500 | **503** with `Retry-After` |
+| Upstream returned 5xx | 400, or an opaque 500 | **502**, deliberately without `Retry-After` |
+
+The split lets alerting separate "dependency down" from "dependency erroring" on status alone.
+
+No client-facing error body carries a host, port, IP, internal service name, file path or stack
+any more. The operator still gets all of it server-side, keyed by the `correlationId` the client
+already receives. Clients that keyed off the old 400 to detect a downstream failure must change —
+a 400 now means the request was bad.
+
+### Added — TASK-767 (service accounts reach the standalone features)
+
+`svc:stt:transcription:write`, `svc:stt:stream:write` and `svc:consultation:report:write` admit a
+service-account bearer token to native STT (`audio/transcription-jobs`), compat STT
+(`api/stt/*`), native summarization (`text-generations/*`) and compat summarization
+(`api/smr/api/v1/*`). Purely additive: the compat wire contract — paths, verbs and every accepted
+field — is unchanged and pinned by test.
+
+Service accounts remain deny-by-default on every route that does not declare `@RequiredSvcScopes`,
+and are refused outright on the admin plane.
+
+**Not reachable by a machine:** the live STT WebSocket. A service account can create a stream
+session but cannot drive it — stream ownership binds to a human clinician (TASK-754) and stream
+tickets require a user.
+
+### Security — TASK-754 / TASK-755 / TASK-756
+
+- **Same-tenant live-session hijack on `/ws/stt/stream`** — a user who learned another user's
+  `sessionId` could mint a ticket and have the live audio and transcript stream transplanted onto
+  their socket, orphaning the clinician with no anomaly logged. Stream bindings now carry an
+  owner and a rebind by a different user is refused.
+- **`/ws/tts/stream` had no `Origin` check** — now fail-closed, matching the STT gateway. Browsers
+  exempt WebSockets from CORS, so this is the one surface the HTTP CORS gate cannot cover.
+- **API-key minting had no privilege ceiling** — a tenant admin could mint `admin:*` or `'*'`.
+  Minting now refuses any scope whose implied ability the caller does not itself hold.
+
+
 ### BREAKING — TASK-760 (business-plane URI normalization)
 
 Thirteen business-plane prefixes were renamed and one controller class was

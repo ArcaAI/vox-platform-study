@@ -9,7 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-_Nothing yet._
+### Note — service-account credentials are not supported by this SDK
+
+The gateway gained a third credential class in `ALL-3.0.0` (service accounts, bearer tokens with
+`svc:*` scopes). **This SDK cannot send one**: `HopeClientOptions` exposes no such option and the
+compat shims set `x-api-key` directly. Service-account access is raw HTTP for now.
+
+API-key access is unchanged and unaffected — standalone summarization through `@arcaai/vox-node`
+works exactly as before, against the same frozen v1 compat paths.
 
 ---
 
