@@ -338,8 +338,14 @@ async function bootstrap() {
   //      @ForbidServiceAccount() — no key-path escalation into machine
   //      issuance, and no self-replication;
   //   F  POST /auth/service-token is @Public() AND guarded;
-  //   G  a route declaring @RequiredSvcScopes never also forbids machines, and
-  //      never names a scope outside the registry.
+  //   G  every admin/ route declares EITHER a svc:* scope OR
+  //      @ForbidServiceAccount() — never both, never a scope outside the
+  //      registry, and never one that resolves to no CASL ability. The business
+  //      plane is exempt: its default never changed, so silence there still
+  //      means the implicit deny-by-default (TASK-773 A3/A5);
+  //   H  each of the 64 swept admin controllers declares exactly the svc: twin
+  //      of the admin:* scope TASK-757 removed from it — the MIS-assignment G
+  //      structurally cannot see (TASK-773 A4).
   auditServiceAccountSurface(app);
 
   // Refuses to start if a `@WebSocketGateway()` class is not classified in

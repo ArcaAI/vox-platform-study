@@ -59,6 +59,23 @@ export interface AdminScopeMapRow {
   controllerClass: string;
   /** The exact `admin:*` scope removed by TASK-757 (276f96a32). */
   adminScope: string;
+  /**
+   * Set when the controller's MODULE registers it conditionally, so its absence
+   * from the running module graph is a supported configuration rather than a
+   * missing sweep.
+   *
+   * Boot audit H must not treat such a row as an offender when the class is
+   * absent — it still validates the declaration whenever the class IS
+   * registered, so a mis-scoped route cannot hide behind the flag. Without this,
+   * H refuses to start on every host running the default configuration, which is
+   * a boot failure introduced by the audit rather than caught by it.
+   */
+  conditionallyRegistered?: {
+    /** The env var (or condition) that governs registration. */
+    condition: string;
+    /** Why it is off by default. */
+    reason: string;
+  };
 }
 
 export const TASK_773_ADMIN_SCOPE_MAP: readonly AdminScopeMapRow[] = [
@@ -98,7 +115,19 @@ export const TASK_773_ADMIN_SCOPE_MAP: readonly AdminScopeMapRow[] = [
   { file: 'apps/api/src/modules/platform-metrics/platform-metrics.controller.ts', controllerClass: 'PlatformMetricsController', adminScope: 'admin:platform-metrics:read' },
   { file: 'apps/api/src/modules/prompt-management/prompt-management.controller.ts', controllerClass: 'PromptManagementController', adminScope: 'admin:prompt-template:manage' },
   { file: 'apps/api/src/modules/pstudio/pstudio-status.controller.ts', controllerClass: 'PrismaStudioStatusController', adminScope: 'admin:pstudio:manage' },
-  { file: 'apps/api/src/modules/pstudio/pstudio.controller.ts', controllerClass: 'PrismaStudioController', adminScope: 'admin:pstudio:manage' },
+  {
+    file: 'apps/api/src/modules/pstudio/pstudio.controller.ts',
+    controllerClass: 'PrismaStudioController',
+    adminScope: 'admin:pstudio:manage',
+    // `PrismaStudioModule` lists this controller unconditionally, but the module
+    // itself is only imported when `shouldEnablePrismaStudio(env)` is true
+    // (`pstudio.module.ts:14`). The default is OFF, so on an ordinary host —
+    // production included — this class is registered by no module at all.
+    conditionallyRegistered: {
+      condition: 'ENABLE_PRISMA_STUDIO=true',
+      reason: 'Prisma Studio is fail-closed: it registers only when an operator explicitly opts in, so it can never surface on a misconfigured host.',
+    },
+  },
   { file: 'apps/api/src/modules/queue-admin/queue-admin.controller.ts', controllerClass: 'QueueAdminController', adminScope: 'admin:queue:manage' },
   { file: 'apps/api/src/modules/queue-admin/scheduler-admin.controller.ts', controllerClass: 'SchedulerAdminController', adminScope: 'admin:scheduler:manage' },
   { file: 'apps/api/src/modules/rbac/policies.controller.ts', controllerClass: 'PoliciesController', adminScope: 'admin:rbac-policy:write' },

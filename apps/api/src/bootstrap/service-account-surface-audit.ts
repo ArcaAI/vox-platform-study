@@ -21,9 +21,13 @@
  *       issuance, and no self-replication.
  *   F — the token-exchange route is `@Public()` AND carries its own guard.
  *       Public must never mean unguarded.
- *   G — every route reachable by a service-account token declares either a
- *       `svc:*` scope or `@ForbidServiceAccount()`. Deny-by-default extended to
- *       the third class; mirrors `auditEveryApiKeyReachableRouteDeclaresScopes`.
+ *   G — (strengthened by TASK-773) every `admin/`-prefixed route declares
+ *       either a `svc:*` scope or `@ForbidServiceAccount()`, and whatever it
+ *       declares is self-consistent, registry-known and CASL-resolvable.
+ *       Deny-by-default extended to the third class; mirrors
+ *       `auditEveryApiKeyReachableRouteDeclaresScopes`. The business plane is
+ *       deliberately exempt from the declaration requirement — see G's own
+ *       header for where that boundary is drawn and why.
  *   H — (TASK-773) every controller TASK-757 stripped an `admin:<area>` scope
  *       from declares its `svc:admin:<area>` twin, and NOTHING ELSE. G checks
  *       that a declared scope is well-formed and registry-known; it structurally
@@ -57,6 +61,7 @@ import {
   ADMIN_PLANE_PRE_CONVENTION_SVC_SCOPES,
   STANDALONE_FEATURE_SVC_SCOPES,
   resolveServiceAccountImpliedPermissions,
+  serviceAccountPolicyRules,
   toServiceAccountScope,
 } from '@arcaai/applications';
 
@@ -320,32 +325,102 @@ export function auditTokenExchangeRouteIsPublicAndGuarded(app: INestApplicationC
 }
 
 /**
- * Assertion G — deny-by-default, extended to the third class.
+ * Assertion G — deny-by-default on the admin plane, turned into an AUTHORING
+ * error (TASK-773 units A3 + A5).
  *
  * `UnifiedAuthGuard.enforceServiceAccountScopes` already refuses an undeclared
- * route at request time. This turns that runtime refusal into an authoring
- * error, exactly as `auditEveryApiKeyReachableRouteDeclaresScopes` does for
- * keys.
+ * route at request time. This turns that runtime refusal into a boot failure,
+ * exactly as `auditEveryApiKeyReachableRouteDeclaresScopes` does for keys.
  *
- * NOTE ON SCOPE: right now no route in the tree declares `@RequiredSvcScopes`,
- * so requiring an explicit `@ForbidServiceAccount()` on every one of the
- * platform's routes would fail the boot on hundreds of them for no security
- * benefit — the runtime already denies them all. This audit therefore enforces
- * the invariant where it can bite: any route that DOES declare a `svc:*` scope
- * must not simultaneously forbid machines (a contradiction that would read as
- * "reachable" while denying every request). The full every-route form belongs
- * with TASK-757's admin-plane cutover, when `svc:*` declarations actually land.
+ * ─── The invariant ──────────────────────────────────────────────────────────
+ *
+ *   Every `admin/`-prefixed route must declare EITHER a `svc:*` scope OR
+ *   `@ForbidServiceAccount()`. Additionally, whatever it declares must be
+ *   self-consistent: not both at once (G's original contradiction check), only
+ *   registry-known scopes, and — unit A5 — every declared scope must resolve
+ *   through `serviceAccountPolicyRules` to at least one CASL ability.
+ *
+ * ─── Where the admin/business boundary is drawn, and why ────────────────────
+ *
+ * This function's earlier `NOTE ON SCOPE` deferred the every-route form to
+ * "TASK-757's admin-plane cutover, when `svc:*` declarations actually land".
+ * They have now landed (assertion H), so the note is gone — but its REASONING
+ * still decides the boundary, and the boundary is CHOSEN, not overlooked:
+ *
+ *   - **Admin plane — declaration required.** TASK-773 deliberately changed the
+ *     default here: 64 controllers went from machine-unreachable to
+ *     machine-reachable in one sweep. Silence on an admin route is therefore
+ *     AMBIGUOUS — it could be a controller the sweep missed (which should be
+ *     open, and is currently broken for every integrator) or a surface someone
+ *     means to keep closed (which should say so). Only the author knows, so the
+ *     boot demands the answer.
+ *   - **Business plane — exempt, still deny-by-default.** Its default never
+ *     changed. Silence there is UNAMBIGUOUS: the runtime denies every machine
+ *     token already, so requiring `@ForbidServiceAccount()` on hundreds of
+ *     consultation/user/streaming routes would fail the boot "for no security
+ *     benefit" while adding a decorator that restates the default. The handful
+ *     of business routes TASK-767 opened say so explicitly with
+ *     `@RequiredSvcScopes`, and every rule below except the missing-declaration
+ *     one still applies to them.
+ *
+ * A `@Public()` admin route is skipped for the same reason the API-key audit
+ * skips one: `UnifiedAuthGuard` returns before it ever reaches the machine
+ * path, so no declaration could change its behaviour.
+ *
+ * ─── Why A5 lives HERE rather than in its own assertion ─────────────────────
+ *
+ * A5 asks a question about a ROUTE'S DECLARATION — the same subject, resolved
+ * from the same `Reflector` read, in the same walk. A sibling assertion would
+ * duplicate the walk to add one predicate, and would split "what is wrong with
+ * this route's `svc:*` declaration?" across two boot failures. Assertion D asks
+ * the same question of the REGISTRY and is separate precisely because it needs
+ * no app at all.
+ *
+ * Honesty about what A5 catches TODAY: D proves no registry entry is
+ * ability-less, and the unknown-scope check below proves every declared scope
+ * is a registry entry, so A5 cannot currently fail on its own. Its value is
+ * that it does not DEPEND on those two holding — narrow D with an exemption
+ * list, or let a route declare a scope some other way, and A5 is what still
+ * stands between an integrator and the TASK-766 failure mode (a credential that
+ * passes the string-matching scope gate and is then 403'd by CASL, which is the
+ * worst possible failure to debug). It also fails with the ROUTE's name, which
+ * is what the person debugging that 403 is actually holding.
+ *
+ * Note the check is `every` declared scope, not `some`: `enforceServiceAccountScopes`
+ * accepts a caller holding ANY ONE of the listed scopes (OR semantics), so each
+ * one is independently sufficient to reach the route — and therefore each one
+ * independently has to carry the abilities the route's `@CanXxx` decorators ask
+ * for.
  */
 export function auditServiceAccountReachableRoutesAreDeclared(app: INestApplicationContext): void {
   const reflector = app.get(Reflector);
   const offenders: string[] = [];
 
   for (const route of walkRoutes(app)) {
-    const scopes = reflector.getAllAndOverride<string[]>(SERVICE_ACCOUNT_REQUIRED_SCOPES, [route.methodRef, route.ControllerClass]);
-    if (!Array.isArray(scopes) || scopes.length === 0) continue;
+    // An EMPTY array is not a declaration: `enforceServiceAccountScopes` denies
+    // on `required.length === 0` exactly as it does on absent metadata, so a
+    // zero-arg `@RequiredSvcScopes()` typo must read as undeclared here too.
+    const raw = reflector.getAllAndOverride<string[]>(SERVICE_ACCOUNT_REQUIRED_SCOPES, [route.methodRef, route.ControllerClass]);
+    const scopes = Array.isArray(raw) ? raw : [];
+    const forbidden = reflector.getAllAndOverride<boolean>(SERVICE_ACCOUNT_FORBIDDEN, [route.methodRef, route.ControllerClass]) === true;
 
-    const forbidden = reflector.getAllAndOverride<boolean>(SERVICE_ACCOUNT_FORBIDDEN, [route.methodRef, route.ControllerClass]);
-    if (forbidden === true) {
+    if (scopes.length === 0) {
+      if (forbidden) continue; // an explicit, deliberate "never"
+      if (!isAdminPath(route.controllerPath)) continue; // business plane — implicit deny-by-default, see header
+      if (isPublicRoute(reflector, route)) continue; // the guard returns before the machine path
+
+      offenders.push(
+        `${route.ControllerClass.name}.${route.methodName} (${route.fullPath}) declares nothing about service-account access. ` +
+          `Since TASK-773 the admin plane is the machine class's plane, so silence here is ambiguous rather than safe: this route currently ` +
+          `REFUSES every service account at runtime (enforceServiceAccountScopes denies an undeclared route), which is either a gap the sweep ` +
+          `missed or a deliberate closure nobody wrote down. Add @RequiredSvcScopes(toServiceAccountScope('admin:<area>')) if a machine identity ` +
+          `legitimately administers this area, or @ForbidServiceAccount() if it is a human-only surface (record the decision in the comment, ` +
+          `as MonitoringController does).`,
+      );
+      continue;
+    }
+
+    if (forbidden) {
       offenders.push(
         `${route.ControllerClass.name}.${route.methodName} (${route.fullPath}) declares @RequiredSvcScopes(${scopes.join(', ')}) AND @ForbidServiceAccount(). ` +
           `These contradict: the route advertises itself as machine-reachable while denying every machine token. Remove one.`,
@@ -356,12 +431,25 @@ export function auditServiceAccountReachableRoutesAreDeclared(app: INestApplicat
     const unknown = scopes.filter((s) => !SERVICE_ACCOUNT_SCOPE_REGISTRY[s]);
     if (unknown.length > 0) {
       offenders.push(`${route.ControllerClass.name}.${route.methodName} (${route.fullPath}) declares unknown svc:* scope(s): ${unknown.join(', ')}`);
+      continue;
+    }
+
+    // A5 — the per-ROUTE form of assertion D's registry-wide ability check.
+    const abilityless = scopes.filter((s) => serviceAccountPolicyRules([s]).length === 0);
+    if (abilityless.length > 0) {
+      offenders.push(
+        `${route.ControllerClass.name}.${route.methodName} (${route.fullPath}) declares svc:* scope(s) that resolve to ZERO CASL abilities: ${abilityless.join(', ')}. ` +
+          `Any ONE declared scope is sufficient to pass enforceServiceAccountScopes (OR semantics), but abilities are built from the caller's ` +
+          `scopes via serviceAccountPolicyRules — so a holder of this scope alone would clear the scope gate and then be refused by ` +
+          `enforceServiceAccountAbilities on this route's @CanXxx declaration. Wire the scope's implied permission in its source registry entry, ` +
+          `or declare a scope that carries one.`,
+      );
     }
   }
 
   if (offenders.length > 0) {
     throw new Error(
-      `TASK-762: refused to start — ${offenders.length} service-account route declaration(s) are inconsistent:\n${offenders.map((o) => `  - ${o}`).join('\n')}`,
+      `TASK-762/773: refused to start — ${offenders.length} service-account route declaration(s) are missing or inconsistent:\n${offenders.map((o) => `  - ${o}`).join('\n')}`,
     );
   }
 }
@@ -432,10 +520,24 @@ export function auditAdminControllersDeclareCorrectSvcScope(app: INestApplicatio
     const routes = routesByClassName.get(row.controllerClass);
 
     if (!routes || routes.length === 0) {
+      // A CONDITIONALLY-registered controller is absent by configuration, not by
+      // regression. Treating that as an offender made this audit refuse to start
+      // on every host running the default configuration — `PrismaStudioModule`
+      // is imported only under `ENABLE_PRISMA_STUDIO=true`, so a production boot
+      // died inside this very arm. An audit that fails on the default config is
+      // a boot failure the audit INTRODUCED rather than one it caught.
+      //
+      // The declaration is still fully checked whenever the class IS registered
+      // (this arm is the only thing skipped), so a mis-scoped route cannot hide
+      // behind the flag — it simply has to be switched on to be seen, which is
+      // also the only configuration in which it is reachable.
+      if (row.conditionallyRegistered) continue;
+
       offenders.push(
         `${row.controllerClass} (${row.file}) is named by the TASK-773 evidence fixture but is not registered by any module — ` +
           `no route was found for it. A rename or deletion silently REMOVES an admin area from this audit's coverage, so it fails the boot: ` +
-          `update the fixture (and re-verify it against commit 276f96a32) in the same change that renames the class.`,
+          `update the fixture (and re-verify it against commit 276f96a32) in the same change that renames the class. ` +
+          `If the class is instead registered CONDITIONALLY, record that on its fixture row via \`conditionallyRegistered\` rather than deleting the row.`,
       );
       continue;
     }
@@ -534,6 +636,17 @@ function joinPath(controllerPath: string, methodPath: string): string {
   const a = normalizePath(controllerPath).replace(/\/$/, '');
   const b = methodPath ? normalizePath(methodPath).replace(/\/$/, '') : '';
   return `${a}${b}` || '/';
+}
+
+/**
+ * `@Public()` under both spellings the guard accepts (`SKIP_AUTH_KEY` and the
+ * legacy `'isPublic'` string key), read in the guard's own override order.
+ */
+function isPublicRoute(reflector: Reflector, route: RouteInfo): boolean {
+  return (
+    reflector.getAllAndOverride<boolean>(SKIP_AUTH_KEY, [route.methodRef, route.ControllerClass]) === true ||
+    reflector.getAllAndOverride<boolean>('isPublic', [route.methodRef, route.ControllerClass]) === true
+  );
 }
 
 function isAdminPath(controllerPath: string): boolean {

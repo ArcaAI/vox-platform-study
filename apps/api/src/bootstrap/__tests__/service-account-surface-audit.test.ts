@@ -7,7 +7,7 @@
  * (§2.1: no admin controller uses a service-token guard), so the synthetic
  * violation is the only evidence that it would catch one.
  */
-import { describe, it, expect } from 'vitest';
+import { afterEach, beforeEach, describe, it, expect } from 'vitest';
 import { Controller, Get, Injectable, Post, UseGuards } from '@nestjs/common';
 import type { CanActivate } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
@@ -17,6 +17,7 @@ import {
   ForbidServiceAccount,
   Public,
   RequiredSvcScopes,
+  SERVICE_ACCOUNT_FORBIDDEN,
   SERVICE_ACCOUNT_SCOPE_REGISTRY,
   ADMIN_PLANE_PRE_CONVENTION_SVC_SCOPES,
   STANDALONE_FEATURE_SVC_SCOPES,
@@ -248,8 +249,151 @@ describe('G — svc:* route declarations are self-consistent', () => {
     expect(() => auditServiceAccountReachableRoutesAreDeclared(fakeApp([WellFormed]))).not.toThrow();
   });
 
-  it('passes for the real controllers (no svc:* declarations yet — TASK-757 lands them)', () => {
+  it('passes for the real credential-issuance controllers', () => {
     expect(() => auditServiceAccountReachableRoutesAreDeclared(fakeApp([ServiceAccountController, ServiceAccountTokenController]))).not.toThrow();
+  });
+});
+
+// ─── G, strengthened (TASK-773 units A3 + A5) ───────────────────────────────
+
+describe('G (A3) — every admin-plane route declares its machine posture', () => {
+  it('THROWS on an admin route that declares NEITHER a svc:* scope nor @ForbidServiceAccount()', () => {
+    @Controller('admin/undeclared')
+    class UndeclaredAdmin {
+      @Get()
+      list() {}
+    }
+
+    expect(() => auditServiceAccountReachableRoutesAreDeclared(fakeApp([UndeclaredAdmin]))).toThrow(/declares nothing about service-account access/);
+  });
+
+  it('passes when the admin route declares a svc:* scope (OPEN)', () => {
+    @Controller('admin/departments')
+    @RequiredSvcScopes('svc:admin:department:manage')
+    class OpenAdmin {
+      @Get()
+      list() {}
+    }
+
+    expect(() => auditServiceAccountReachableRoutesAreDeclared(fakeApp([OpenAdmin]))).not.toThrow();
+  });
+
+  it('passes when the admin route declares @ForbidServiceAccount() (CLOSED)', () => {
+    @Controller('admin/closed')
+    @ForbidServiceAccount()
+    class ClosedAdmin {
+      @Get()
+      list() {}
+    }
+
+    expect(() => auditServiceAccountReachableRoutesAreDeclared(fakeApp([ClosedAdmin]))).not.toThrow();
+  });
+
+  it('treats an EMPTY @RequiredSvcScopes() as no declaration — the guard does', () => {
+    // `enforceServiceAccountScopes` denies on `required.length === 0` exactly as
+    // it does on absent metadata, so a zero-arg typo must not read as declared.
+    @Controller('admin/typo')
+    class EmptyDeclaration {
+      @Get()
+      list() {}
+    }
+    RequiredSvcScopes()(EmptyDeclaration);
+
+    expect(() => auditServiceAccountReachableRoutesAreDeclared(fakeApp([EmptyDeclaration]))).toThrow(/declares nothing about service-account access/);
+  });
+
+  it('does NOT fail a BUSINESS-plane route that declares neither — this is the chosen boundary', () => {
+    // The business plane keeps relying on implicit deny-by-default: the runtime
+    // already refuses every machine token there, so demanding an explicit
+    // @ForbidServiceAccount() on hundreds of routes would buy no security. The
+    // admin plane is different only because TASK-773 deliberately changed its
+    // default, which makes silence there ambiguous rather than safe.
+    @Controller('consultations')
+    class BusinessPlane {
+      @Get()
+      list() {}
+    }
+
+    expect(() => auditServiceAccountReachableRoutesAreDeclared(fakeApp([BusinessPlane]))).not.toThrow();
+  });
+
+  it('does NOT fail a @Public() admin route — the guard returns before the machine path', () => {
+    @Controller('admin/public-thing')
+    class PublicAdmin {
+      @Get()
+      @Public()
+      list() {}
+    }
+
+    expect(() => auditServiceAccountReachableRoutesAreDeclared(fakeApp([PublicAdmin]))).not.toThrow();
+  });
+
+  it('passes for the whole swept admin plane plus the six controllers absent from the fixture', () => {
+    // The real-tree proof at unit scale: every fixture row declares its twin,
+    // and all six non-fixture admin controllers — including the two that owner
+    // decision D-3 requires be machine-CLOSED — carry a posture of their own.
+    const absent = [
+      WebhookController,
+      MonitoringController,
+      AdminHealthServicesController,
+      ServiceAccountController,
+      AdminImpersonationController,
+      ConsentGrantController,
+    ] as unknown as Array<new (...args: never[]) => unknown>;
+
+    expect(() => auditServiceAccountReachableRoutesAreDeclared(fakeApp([...sweptAdminPlane(), ...absent]))).not.toThrow();
+  });
+
+  it('D-3: AdminImpersonationController and ConsentGrantController are machine-CLOSED', () => {
+    // Asserted on the REAL classes, through the same Reflector override order
+    // the guard uses — the decorator, not a comment, is what closes them.
+    const reflector = new Reflector();
+    for (const Closed of [AdminImpersonationController, ConsentGrantController]) {
+      expect(reflector.get<boolean>(SERVICE_ACCOUNT_FORBIDDEN, Closed), `${Closed.name} must carry @ForbidServiceAccount()`).toBe(true);
+    }
+  });
+});
+
+describe('G (A5) — every scope a route declares resolves to at least one CASL ability', () => {
+  const ABILITYLESS = 'svc:admin:task-773-abilityless-probe';
+
+  /**
+   * The trap cannot be reached through the real registry — assertion D already
+   * proves no registry entry is ability-less — so the probe injects one. That
+   * is the point of A5: it is the check that stays true if D's registry-wide
+   * claim is ever narrowed, and it names the ROUTE rather than the registry row.
+   */
+  beforeEach(() => {
+    SERVICE_ACCOUNT_SCOPE_REGISTRY[ABILITYLESS] = { description: 'probe', category: 'Admin', implies: [] };
+  });
+  afterEach(() => {
+    delete SERVICE_ACCOUNT_SCOPE_REGISTRY[ABILITYLESS];
+  });
+
+  it('THROWS on a route declaring a registry-known scope that yields NO abilities', () => {
+    @Controller('admin/probe')
+    class AbilitylessRoute {
+      @Get()
+      list() {}
+    }
+    RequiredSvcScopes(ABILITYLESS)(AbilitylessRoute);
+
+    expect(() => auditServiceAccountReachableRoutesAreDeclared(fakeApp([AbilitylessRoute]))).toThrow(/resolve to ZERO CASL abilities/);
+  });
+
+  it('THROWS even when ANOTHER declared scope on the same route does resolve — OR semantics make each one sufficient', () => {
+    @Controller('admin/probe')
+    class MixedRoute {
+      @Get()
+      list() {}
+    }
+    RequiredSvcScopes('svc:admin:department:manage', ABILITYLESS)(MixedRoute);
+
+    expect(() => auditServiceAccountReachableRoutesAreDeclared(fakeApp([MixedRoute]))).toThrow(/resolve to ZERO CASL abilities/);
+  });
+
+  it('passes for every scope the swept admin plane actually declares', () => {
+    expect(() => auditServiceAccountReachableRoutesAreDeclared(fakeApp(sweptAdminPlane()))).not.toThrow();
   });
 });
 
@@ -378,6 +522,36 @@ describe('H — every swept admin controller declares its svc:admin:<area> twin'
     expect(lines[0]).toContain('is not registered by any module');
   });
 
+  it('does NOT throw when a CONDITIONALLY-registered controller is absent (the default configuration)', () => {
+    // Regression: `PrismaStudioModule` is imported only under
+    // `ENABLE_PRISMA_STUDIO=true`, so on an ordinary host — production included —
+    // `PrismaStudioController` is registered by no module. Before its fixture row
+    // carried `conditionallyRegistered`, this arm refused the boot on the default
+    // configuration: a boot failure the audit INTRODUCED rather than caught.
+    const conditionalRows = TASK_773_ADMIN_SCOPE_MAP.filter((row) => row.conditionallyRegistered);
+    expect(conditionalRows.length, 'fixture should still mark at least one conditionally-registered controller').toBeGreaterThan(0);
+
+    const omitted = Object.fromEntries(conditionalRows.map((row) => [row.controllerClass, 'omit' as const]));
+
+    expect(() => auditAdminControllersDeclareCorrectSvcScope(fakeApp(sweptAdminPlane(omitted)))).not.toThrow();
+  });
+
+  it('STILL validates a conditionally-registered controller when it IS registered', () => {
+    // The flag suppresses only the absence check. A mis-scoped route must not be
+    // able to hide behind it — switching the studio on is also the only
+    // configuration in which those routes are reachable at all.
+    const [conditional] = TASK_773_ADMIN_SCOPE_MAP.filter((row) => row.conditionallyRegistered);
+    expect(conditional, 'fixture should still mark at least one conditionally-registered controller').toBeDefined();
+
+    const lines = offenderLines(() =>
+      auditAdminControllersDeclareCorrectSvcScope(fakeApp(sweptAdminPlane({ [conditional.controllerClass]: { scopes: ['svc:admin:department:manage'] } }))),
+    );
+
+    expect(lines).toHaveLength(1);
+    expect(lines[0]).toContain(conditional.controllerClass);
+    expect(lines[0]).toContain(toServiceAccountScope(conditional.adminScope));
+  });
+
   it('reports EVERY offender in one boot failure, not just the first', () => {
     const lines = offenderLines(() =>
       auditAdminControllersDeclareCorrectSvcScope(
@@ -398,11 +572,13 @@ describe('H — every swept admin controller declares its svc:admin:<area> twin'
   });
 
   it('IGNORES the six admin controllers deliberately absent from the fixture', () => {
-    // Three have no `admin:*` scope to renamespace and await an owner decision
-    // (WebhookController carries `webhook:event:write`; the other two are
-    // ability-gated only); three are machine-CLOSED by owner decision D-3. None
-    // may be required to carry a svc:* scope, and the fixture-driven loop must
-    // not invent one for them just because their path starts with `admin/`.
+    // Three had no `admin:*` scope to renamespace and were settled by owner
+    // decision O-1 (WebhookController OPEN on the pre-convention family;
+    // MonitoringController and AdminHealthServicesController CLOSED); three are
+    // machine-CLOSED by owner decision D-3. None may be required to carry a
+    // svc:admin:<area> scope, and the fixture-driven loop must not invent one
+    // for them just because their path starts with `admin/`. (That they each
+    // declare SOMETHING is assertion G's job, proved just above.)
     const absent = [
       WebhookController,
       MonitoringController,
