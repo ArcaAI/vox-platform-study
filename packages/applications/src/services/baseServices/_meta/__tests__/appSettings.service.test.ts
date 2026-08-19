@@ -159,6 +159,8 @@ describe('AppSettingsService', () => {
     mockClsService = {
       get: vi.fn(),
       set: vi.fn(),
+      // `cacheAppSettings` reads outside the request CLS context; pass through.
+      exit: vi.fn((fn: () => unknown) => fn()),
     };
 
     // Mock scheduler registry with job tracking for behavior verification

@@ -45,7 +45,10 @@ const buildSetting = (key: string, value: string, deleted = false) => {
 
 const repo = { findAll: vi.fn() };
 const events = { emit: vi.fn() };
-const cls = { get: vi.fn(), set: vi.fn() };
+const cls = { get: vi.fn(), set: vi.fn(),
+  // `cacheAppSettings` reads outside the request CLS context; pass through.
+  exit: <T,>(fn: () => T): T => fn(),
+};
 const scheduler = { addCronJob: vi.fn(), getCronJob: vi.fn(), deleteCronJob: vi.fn() };
 
 const buildService = () => new AppSettingsService(repo as never, events as never, cls as never, scheduler as never);

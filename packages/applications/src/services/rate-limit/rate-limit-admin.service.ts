@@ -1,7 +1,9 @@
 import { BadRequestException, Inject, Injectable } from '@nestjs/common';
+import { ClsService } from 'nestjs-cls';
 import { ValueType } from '@arcaai/domains';
 import { IAppSettingsService } from '../baseServices/_meta/appSettings/IAppSettingsService';
 import { IGlobalSettingService } from '../globalSetting/IGlobalSettingService';
+import { IActiveUserContext } from '../../interfaces';
 import {
   IRateLimitAdminService,
   RateLimitPolicy,
@@ -48,6 +50,7 @@ export class RateLimitAdminService implements IRateLimitAdminService {
     private readonly globalSettings: IGlobalSettingService,
     @Inject(IAppSettingsService)
     private readonly appSettings: IAppSettingsService,
+    private readonly cls: ClsService<IActiveUserContext>,
   ) {}
 
   getPolicy(): RateLimitPolicy {
@@ -161,25 +164,51 @@ export class RateLimitAdminService implements IRateLimitAdminService {
    * Upsert a single `rate-limit.*` row, then refresh the cache. Resolves the
    * row id + optimistic-lock version from the cache (which always carries the
    * seeded platform row); creates the row if a deployment predates the seed.
+   *
+   * PLATFORM-PIN — the write runs in a NESTED CLS scope whose `tenantId` is
+   * `RATE_LIMIT_TENANT_ID`. The tenant-scope Prisma extension filters
+   * `GlobalSetting` by the AMBIENT CLS tenant and only passes through when
+   * NO tenant is in context — SUPER_ADMIN is not a bypass once a tenant is
+   * set. A super admin with a working tenant selected sends `X-Tenant-Id`,
+   * so without this pin `findById` looked for the platform-owned row inside
+   * the customer tenant and every write answered `404 Resource not found`
+   * (the read path was unaffected because `getPolicy()` serves the in-memory
+   * AppSettings cache). Same mechanism as `resolveNerModelInjection`'s
+   * SYSTEM-PIN: `ifNested: 'inherit'` copies the active store, so the
+   * caller's real tenant/user scope is untouched and restored on return.
    */
   private async writeSetting(key: string, value: string, dataType: ValueType, name: string): Promise<void> {
     const cached = this.appSettings.getFromCache(key);
 
-    if (cached) {
-      await this.globalSettings.update(cached.id, {
-        value,
-        expectedVersion: cached.version,
-      });
-    } else {
-      await this.globalSettings.create({
-        name,
-        key,
-        value,
-        dataType,
-        namespace: RATE_LIMIT_NAMESPACE,
-        tenantId: RATE_LIMIT_TENANT_ID,
-      });
+    // A no-op write is a SKIP, not an error. The admin screen submits every
+    // field of a tier/route together, so changing one field sends the others
+    // unchanged; `GlobalSettingService.update` throws
+    // `ArgumentInvalidException` ("No changes to write to.") when nothing
+    // changed, which failed the whole request with a 400 AFTER the changed
+    // field had already been persisted — a half-applied edit.
+    if (cached?.value === value) {
+      return;
     }
+
+    await this.cls.run(async () => {
+      this.cls.set('tenantId', RATE_LIMIT_TENANT_ID);
+
+      if (cached) {
+        await this.globalSettings.update(cached.id, {
+          value,
+          expectedVersion: cached.version,
+        });
+      } else {
+        await this.globalSettings.create({
+          name,
+          key,
+          value,
+          dataType,
+          namespace: RATE_LIMIT_NAMESPACE,
+          tenantId: RATE_LIMIT_TENANT_ID,
+        });
+      }
+    });
 
     await this.appSettings.refreshCache();
   }
