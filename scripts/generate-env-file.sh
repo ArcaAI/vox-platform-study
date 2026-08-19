@@ -80,6 +80,13 @@ _EXTERNAL_SECRET_KEYS=(
   AZURE_STORAGE_CONNECTION_STRING AZURE_STORAGE_ACCOUNT_KEY
 )
 
+# Secrets a LATER setup step mints — not external, not generated here. Listing them makes the
+# closing report honest: without this they were reported as "paste a real value if you use that
+# provider", which is wrong advice for a credential `refresh-vault-creds.sh` is about to write.
+_MINTED_LATER_KEYS=(
+  VAULT_SECRET_ID VAULT_WRAPPED_SECRET_ID
+)
+
 # Fill every locally-generatable CHANGE_ME secret with a fresh random value.
 # Runs AFTER the mode overrides, so anything a mode already pinned (e.g. test's
 # fixed JWT/MinIO creds) is preserved and only the leftovers are generated.
@@ -90,8 +97,16 @@ _fill_generated_secrets() {
 
   # Independent local secrets: HMAC signing keys, hash peppers, the Vault DB
   # engine admin password, and the shared X-Service-Token per Python service.
-  for k in JWT_SECRET_KEY SESSION_SECRET_KEY ADMIN_SESSION_SECRET \
-           API_KEY_PEPPER STORAGE_ACCESS_KEY_PEPPER \
+  # INTERNAL_ACCESS_TOKEN leads the list deliberately: it is THE canonical internal
+  # credential (owner decision D-D) and every per-service token below is only its
+  # backward-compatibility fallback. It was absent here while all six legacy tokens were
+  # generated, so a fresh dev box got a real value for each fallback and `CHANGE_ME` for the
+  # one that supersedes them — which every service then PRESENTED on every internal hop.
+  # WEBHOOK_SECRET_PEPPER was missing for no reason at all: it is a local hash pepper, exactly
+  # like API_KEY_PEPPER and STORAGE_ACCESS_KEY_PEPPER on the line below it.
+  for k in INTERNAL_ACCESS_TOKEN \
+           JWT_SECRET_KEY SESSION_SECRET_KEY ADMIN_SESSION_SECRET \
+           API_KEY_PEPPER STORAGE_ACCESS_KEY_PEPPER WEBHOOK_SECRET_PEPPER \
            VAULT_DB_ADMIN_PASS REDIS_PASS MQTT_PASS \
            TEXT_SERVICE_TOKEN NLP_SERVICE_TOKEN GUARDRAIL_SERVICE_TOKEN \
            HARNESS_SERVICE_TOKEN TTS_SERVICE_TOKEN HARNESS_INTERNAL_SERVICE_TOKEN \
@@ -129,14 +144,33 @@ _fill_generated_secrets() {
 
 # Report any CHANGE_ME the developer must still fill in by hand.
 _report_remaining_placeholders() {
-  local file="$1" remaining
+  local file="$1" remaining k external minted unexpected
   remaining="$(grep -E '=CHANGE_ME' "$file" | cut -d= -f1 | sort || true)"
-  if [ -n "$remaining" ]; then
-    yellow "→ Generated local secrets. The following need a REAL value only if you"
-    yellow "  use that provider (left as CHANGE_ME; provider selection is fail-closed):"
-    printf '     %s\n' $remaining >&2
-  else
-    green "→ Generated all local secrets; no CHANGE_ME placeholders remain."
+  [ -n "$remaining" ] || { green "→ Generated all local secrets; no CHANGE_ME placeholders remain."; return; }
+
+  external=""; minted=""; unexpected=""
+  for k in $remaining; do
+    case " ${_EXTERNAL_SECRET_KEYS[*]} " in *" $k "*) external="$external $k"; continue ;; esac
+    case " ${_MINTED_LATER_KEYS[*]} "     in *" $k "*) minted="$minted $k";     continue ;; esac
+    unexpected="$unexpected $k"
+  done
+
+  if [ -n "$external" ]; then
+    yellow "→ Paste a real value only if you use that provider (selection is fail-closed,"
+    yellow "  so an unfilled one simply means that provider is off):"
+    printf '     %s\n' $external >&2
+  fi
+  if [ -n "$minted" ]; then
+    yellow "→ Minted by a later setup step, not by this script — leave them alone:"
+    printf '     %s\n' $minted >&2
+  fi
+  # A secret in NEITHER list is a gap in this script, not a task for the developer. Saying so
+  # is the whole point: INTERNAL_ACCESS_TOKEN sat here unnoticed, mis-reported as an optional
+  # provider key, while every service shipped it as a live credential.
+  if [ -n "$unexpected" ]; then
+    red "→ UNCLASSIFIED secret(s) left as CHANGE_ME. These are neither generated here nor"
+    red "  declared external — that is a bug in generate-env-file.sh, not something to paste:"
+    printf '     %s\n' $unexpected >&2
   fi
 }
 
