@@ -130,6 +130,9 @@ export * from './workflow-test-fixture';
 // WorkflowDefinition CRUD + compile/validate/publish lifecycle (TASK-734) — wires
 // @arcaai/workflow-contract's compiler/validator into the application layer.
 export * from './workflow-definition';
+// Per-scope workflow assignment (TASK-733) — WHICH definition governs a
+// tenant/department for a palette, resolved with the shared cascade primitive.
+export * from './workflow-assignment';
 // Exposure plane (TASK-722) — invoke / status / cancel / list over a tenant's
 // published workflows, through the harness dispatcher.
 export * from './workflow-exposure';

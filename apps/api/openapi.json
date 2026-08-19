@@ -19208,6 +19208,48 @@
         ],
         "type": "object"
       },
+      "UpsertWorkflowAssignmentRequest": {
+        "properties": {
+          "expectedVersion": {
+            "description": "OCC token; the `If-Match` header wins when both are supplied.",
+            "type": "number"
+          },
+          "paletteKey": {
+            "description": "Registered palette this assignment governs (validated against the code-owned node registry).",
+            "example": "summarization",
+            "type": "string"
+          },
+          "reason": {
+            "description": "Why the assignment changed — recorded verbatim on the WORM change row.",
+            "type": "string"
+          },
+          "scope": {
+            "description": "Cascade tier this assignment sits on. Only TENANT and DEPARTMENT are accepted — a per-doctor workflow is out of scope.",
+            "enum": [
+              "TENANT",
+              "DEPARTMENT",
+              "DOCTOR"
+            ],
+            "example": "DEPARTMENT",
+            "type": "string"
+          },
+          "scopeId": {
+            "description": "The department id for a DEPARTMENT-scope assignment; omitted (or null) for TENANT scope.",
+            "type": "string"
+          },
+          "workflowDefinitionSlug": {
+            "description": "Lineage slug of the assigned definition. Must resolve to a PUBLISHED definition on this palette in the caller tenant.",
+            "example": "radiology-note",
+            "type": "string"
+          }
+        },
+        "required": [
+          "scope",
+          "paletteKey",
+          "workflowDefinitionSlug"
+        ],
+        "type": "object"
+      },
       "UptimeResponse": {
         "properties": {
           "refreshedAt": {
@@ -20115,6 +20157,56 @@
             "type": "string"
           }
         },
+        "type": "object"
+      },
+      "WorkflowAssignmentResponse": {
+        "properties": {
+          "createdAt": {
+            "description": "ISO timestamp",
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "paletteKey": {
+            "type": "string"
+          },
+          "scope": {
+            "enum": [
+              "TENANT",
+              "DEPARTMENT",
+              "DOCTOR"
+            ],
+            "type": "string"
+          },
+          "scopeId": {
+            "nullable": true,
+            "type": "string"
+          },
+          "tenantId": {
+            "type": "string"
+          },
+          "updatedAt": {
+            "description": "ISO timestamp",
+            "type": "string"
+          },
+          "version": {
+            "type": "number"
+          },
+          "workflowDefinitionSlug": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "tenantId",
+          "scope",
+          "paletteKey",
+          "workflowDefinitionSlug",
+          "createdAt",
+          "updatedAt",
+          "version"
+        ],
         "type": "object"
       },
       "WorkflowDefinitionResponse": {
@@ -24376,7 +24468,8 @@
                 "WorkflowTestFixture",
                 "TenantNlpTaskInstructions",
                 "KnowledgeDocument",
-                "ServiceAccount"
+                "ServiceAccount",
+                "WorkflowAssignment"
               ],
               "type": "string"
             }
@@ -24605,7 +24698,8 @@
                 "WorkflowTestFixture",
                 "TenantNlpTaskInstructions",
                 "KnowledgeDocument",
-                "ServiceAccount"
+                "ServiceAccount",
+                "WorkflowAssignment"
               ],
               "type": "string"
             }
@@ -24835,7 +24929,8 @@
                 "WorkflowTestFixture",
                 "TenantNlpTaskInstructions",
                 "KnowledgeDocument",
-                "ServiceAccount"
+                "ServiceAccount",
+                "WorkflowAssignment"
               ],
               "type": "string"
             }
@@ -41983,6 +42078,253 @@
         "summary": "Rotate a webhook signing secret (If-Match OCC)",
         "tags": [
           "admin-webhooks"
+        ]
+      }
+    },
+    "/api/v1/admin/workflow-assignments": {
+      "get": {
+        "operationId": "WorkflowAssignmentController_fetchAll",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "paletteKey",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/WorkflowAssignmentResponse"
+                  },
+                  "type": "array"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "List the caller tenant’s workflow assignments for one palette",
+        "tags": [
+          "admin-workflow-assignments"
+        ]
+      },
+      "patch": {
+        "description": "Optimistic concurrency is enforced: the `If-Match` header (RFC 7232) is REQUIRED and the server runs a Compare-And-Set against the row’s `_version`. When the header is present it overrides the body-field `expectedVersion`. Version drift is `412`; a missing header is `428`.",
+        "operationId": "WorkflowAssignmentController_update",
+        "parameters": [
+          {
+            "description": "RFC 7232 strong validator carrying the version the client read (e.g. `\"7\"`).",
+            "in": "header",
+            "name": "If-Match",
+            "required": true,
+            "schema": {
+              "example": "\"7\"",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpsertWorkflowAssignmentRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkflowAssignmentResponse"
+                }
+              }
+            },
+            "description": ""
+          },
+          "412": {
+            "description": "Optimistic concurrency conflict — re-fetch and retry with the new version."
+          },
+          "428": {
+            "description": "If-Match header is required for this operation."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Re-assign one tier",
+        "tags": [
+          "admin-workflow-assignments"
+        ]
+      },
+      "post": {
+        "description": "Creates the tier’s assignment. Editing an EXISTING assignment goes through `PATCH` so the optimistic-concurrency contract applies; this route is the first write for a tier.",
+        "operationId": "WorkflowAssignmentController_create",
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpsertWorkflowAssignmentRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkflowAssignmentResponse"
+                }
+              }
+            },
+            "description": ""
+          },
+          "400": {
+            "description": "Unknown palette, unsupported scope, or a slug with no PUBLISHED definition on that palette."
+          },
+          "404": {
+            "description": "The referenced department does not belong to the caller tenant."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Create the assignment for one (scope, scopeId, palette) tier",
+        "tags": [
+          "admin-workflow-assignments"
+        ]
+      }
+    },
+    "/api/v1/admin/workflow-assignments/{id}": {
+      "delete": {
+        "description": "Soft-deletes the assignment row and appends a WORM change record with a null `afterSlug`.",
+        "operationId": "WorkflowAssignmentController_remove",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "reason",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "RFC 7232 strong validator carrying the version the client read (e.g. `\"7\"`).",
+            "in": "header",
+            "name": "If-Match",
+            "required": true,
+            "schema": {
+              "example": "\"7\"",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkflowAssignmentResponse"
+                }
+              }
+            },
+            "description": ""
+          },
+          "404": {
+            "description": "Not found (also returned for another tenant’s assignment)."
+          },
+          "428": {
+            "description": "If-Match header is required for this operation."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Remove one assignment — the tier reverts to inheriting",
+        "tags": [
+          "admin-workflow-assignments"
+        ]
+      },
+      "get": {
+        "operationId": "WorkflowAssignmentController_fetchById",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkflowAssignmentResponse"
+                }
+              }
+            },
+            "description": ""
+          },
+          "404": {
+            "description": "Not found (also returned for another tenant’s assignment)."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Get one workflow assignment",
+        "tags": [
+          "admin-workflow-assignments"
         ]
       }
     },

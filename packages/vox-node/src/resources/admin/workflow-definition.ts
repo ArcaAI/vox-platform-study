@@ -19,6 +19,8 @@ import type {
   SandboxRunStatusResponse,
   StartSandboxRunRequest,
   UpdateWorkflowDefinitionRequest,
+  UpsertWorkflowAssignmentRequest,
+  WorkflowAssignmentResponse,
   WorkflowDefinitionResponse,
 } from './schemas';
 
@@ -29,8 +31,8 @@ import type {
  * authenticates normally and is then refused here with 403; {@link AdminResource}
  * names the scope in that error's message.
  *
- * Backed by controllers WorkflowDefinitionController, WorkflowSandboxRunController
- * (12 routes). Several controllers sharing one scope share one
+ * Backed by controllers WorkflowAssignmentController, WorkflowDefinitionController, WorkflowSandboxRunController
+ * (17 routes). Several controllers sharing one scope share one
  * resource on purpose: the scope is the permission surface, so the SDK groups
  * by it rather than by URL.
  */
@@ -38,13 +40,105 @@ export class AdminWorkflowDefinitionResource extends AdminResource {
   readonly svcScope = 'svc:admin:workflow-definition:manage';
 
   /**
+   * List the caller tenant’s workflow assignments for one palette
+   *
+   * `GET /api/v1/admin/workflow-assignments` — `WorkflowAssignmentController.fetchAll`.
+   */
+  workflowAssignmentFetchAll(options: AdminRequestOptions & { query?: { paletteKey: string } } = {}): Promise<WorkflowAssignmentResponse[]> {
+    return this.request<WorkflowAssignmentResponse[]>({
+      method: 'GET',
+      path: 'admin/workflow-assignments',
+      query: options.query,
+      signal: options.signal,
+      timeoutMs: options.timeoutMs,
+    });
+  }
+
+  /**
+   * Re-assign one tier
+   *
+   * Optimistic concurrency is enforced: the `If-Match` header (RFC 7232) is REQUIRED and the server runs a Compare-And-Set against the row’s `_version`. When the header is present it overrides the body-field `expectedVersion`. Version drift is `412`; a missing header is `428`.
+   *
+   * `PATCH /api/v1/admin/workflow-assignments` — `WorkflowAssignmentController.update`.
+   *
+   * Carries `@RequiresIfMatch()`: `options.ifMatch` is required by the type, so the 428 branch is unreachable. On drift the gateway answers 412 (`VersionConflictError.currentVersion`).
+   */
+  workflowAssignmentUpdate(
+    body: UpsertWorkflowAssignmentRequest,
+    options: AdminRequestOptions & { ifMatch: IfMatchPrecondition },
+  ): Promise<WorkflowAssignmentResponse> {
+    return this.requestWithPrecondition<WorkflowAssignmentResponse>({
+      method: 'PATCH',
+      path: 'admin/workflow-assignments',
+      body,
+      ifMatch: options.ifMatch,
+      signal: options.signal,
+      timeoutMs: options.timeoutMs,
+    });
+  }
+
+  /**
+   * Create the assignment for one (scope, scopeId, palette) tier
+   *
+   * Creates the tier’s assignment. Editing an EXISTING assignment goes through `PATCH` so the optimistic-concurrency contract applies; this route is the first write for a tier.
+   *
+   * `POST /api/v1/admin/workflow-assignments` — `WorkflowAssignmentController.create`.
+   */
+  workflowAssignmentCreate(body: UpsertWorkflowAssignmentRequest, options: AdminRequestOptions = {}): Promise<WorkflowAssignmentResponse> {
+    return this.request<WorkflowAssignmentResponse>({
+      method: 'POST',
+      path: 'admin/workflow-assignments',
+      body,
+      signal: options.signal,
+      timeoutMs: options.timeoutMs,
+    });
+  }
+
+  /**
+   * Remove one assignment — the tier reverts to inheriting
+   *
+   * Soft-deletes the assignment row and appends a WORM change record with a null `afterSlug`.
+   *
+   * `DELETE /api/v1/admin/workflow-assignments/{id}` — `WorkflowAssignmentController.remove`.
+   *
+   * Carries `@RequiresIfMatch()`: `options.ifMatch` is required by the type, so the 428 branch is unreachable. On drift the gateway answers 412 (`VersionConflictError.currentVersion`).
+   */
+  remove(
+    id: string,
+    options: AdminRequestOptions & { query?: { reason?: string } } & { ifMatch: IfMatchPrecondition },
+  ): Promise<WorkflowAssignmentResponse> {
+    return this.requestWithPrecondition<WorkflowAssignmentResponse>({
+      method: 'DELETE',
+      path: `admin/workflow-assignments/${encodePathSegment(String(id))}`,
+      query: options.query,
+      ifMatch: options.ifMatch,
+      signal: options.signal,
+      timeoutMs: options.timeoutMs,
+    });
+  }
+
+  /**
+   * Get one workflow assignment
+   *
+   * `GET /api/v1/admin/workflow-assignments/{id}` — `WorkflowAssignmentController.fetchById`.
+   */
+  workflowAssignmentFetchById(id: string, options: AdminRequestOptions = {}): Promise<WorkflowAssignmentResponse> {
+    return this.request<WorkflowAssignmentResponse>({
+      method: 'GET',
+      path: `admin/workflow-assignments/${encodePathSegment(String(id))}`,
+      signal: options.signal,
+      timeoutMs: options.timeoutMs,
+    });
+  }
+
+  /**
    * List the caller tenant’s workflow definition versions
    *
    * `GET /api/v1/admin/workflow-definitions` — `WorkflowDefinitionController.fetchAll`.
    *
-   * Returns ONE page. `page` is 0-based and both `page` and `limit` are always sent explicitly — the gateway echoes RAW query values back, so the response's own `page`/`limit` are not usable as loop state. Use {@link fetchAllIterate} to walk every page.
+   * Returns ONE page. `page` is 0-based and both `page` and `limit` are always sent explicitly — the gateway echoes RAW query values back, so the response's own `page`/`limit` are not usable as loop state. Use {@link workflowDefinitionFetchAllIterate} to walk every page.
    */
-  fetchAll(options: AdminListOptions & { query?: AdminListQuery } = {}): Promise<PaginatedPage<WorkflowDefinitionResponse>> {
+  workflowDefinitionFetchAll(options: AdminListOptions & { query?: AdminListQuery } = {}): Promise<PaginatedPage<WorkflowDefinitionResponse>> {
     return this.listPage<WorkflowDefinitionResponse>('admin/workflow-definitions', options);
   }
 
@@ -55,7 +149,9 @@ export class AdminWorkflowDefinitionResource extends AdminResource {
    *
    * Walks every page, yielding rows: `for await (const row of …)`. Pagination is driven from the REQUEST side; a failure on page N propagates after page N-1's rows, so "the list ended" and "the list broke" never look alike.
    */
-  fetchAllIterate(options: AdminListOptions & { query?: AdminListQuery } = {}): AsyncGenerator<WorkflowDefinitionResponse, void, undefined> {
+  workflowDefinitionFetchAllIterate(
+    options: AdminListOptions & { query?: AdminListQuery } = {},
+  ): AsyncGenerator<WorkflowDefinitionResponse, void, undefined> {
     return this.listAll<WorkflowDefinitionResponse>('admin/workflow-definitions', options);
   }
 
@@ -64,7 +160,7 @@ export class AdminWorkflowDefinitionResource extends AdminResource {
    *
    * `POST /api/v1/admin/workflow-definitions` — `WorkflowDefinitionController.create`.
    */
-  create(body: CreateWorkflowDefinitionRequest, options: AdminRequestOptions = {}): Promise<WorkflowDefinitionResponse> {
+  workflowDefinitionCreate(body: CreateWorkflowDefinitionRequest, options: AdminRequestOptions = {}): Promise<WorkflowDefinitionResponse> {
     return this.request<WorkflowDefinitionResponse>({
       method: 'POST',
       path: 'admin/workflow-definitions',
@@ -152,7 +248,7 @@ export class AdminWorkflowDefinitionResource extends AdminResource {
    *
    * `GET /api/v1/admin/workflow-definitions/{id}` — `WorkflowDefinitionController.fetchById`.
    */
-  fetchById(id: string, options: AdminRequestOptions = {}): Promise<WorkflowDefinitionResponse> {
+  workflowDefinitionFetchById(id: string, options: AdminRequestOptions = {}): Promise<WorkflowDefinitionResponse> {
     return this.request<WorkflowDefinitionResponse>({
       method: 'GET',
       path: `admin/workflow-definitions/${encodePathSegment(String(id))}`,
@@ -170,7 +266,7 @@ export class AdminWorkflowDefinitionResource extends AdminResource {
    *
    * Carries `@RequiresIfMatch()`: `options.ifMatch` is required by the type, so the 428 branch is unreachable. On drift the gateway answers 412 (`VersionConflictError.currentVersion`).
    */
-  update(
+  workflowDefinitionUpdate(
     id: string,
     body: UpdateWorkflowDefinitionRequest,
     options: AdminRequestOptions & { ifMatch: IfMatchPrecondition },

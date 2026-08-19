@@ -12,7 +12,7 @@
  * Request and response types for the `/api/v1/admin/**` surface, derived from
  * the gateway's own DTOs via `openapi.json`.
  *
- * Only the 351 component schemas the generated surface transitively
+ * Only the 353 component schemas the generated surface transitively
  * reaches are emitted — the document declares more, and importing shapes no
  * method can produce would be noise.
  *
@@ -5574,6 +5574,21 @@ export interface UpsertTenantStorageConfigRequest {
   topology?: 'SHARED' | 'DEDICATED';
 }
 
+export interface UpsertWorkflowAssignmentRequest {
+  /** OCC token; the `If-Match` header wins when both are supplied. */
+  expectedVersion?: number;
+  /** Registered palette this assignment governs (validated against the code-owned node registry). */
+  paletteKey: string;
+  /** Why the assignment changed — recorded verbatim on the WORM change row. */
+  reason?: string;
+  /** Cascade tier this assignment sits on. Only TENANT and DEPARTMENT are accepted — a per-doctor workflow is out of scope. */
+  scope: 'TENANT' | 'DEPARTMENT' | 'DOCTOR';
+  /** The department id for a DEPARTMENT-scope assignment; omitted (or null) for TENANT scope. */
+  scopeId?: string;
+  /** Lineage slug of the assigned definition. Must resolve to a PUBLISHED definition on this palette in the caller tenant. */
+  workflowDefinitionSlug: string;
+}
+
 export interface UsageSummaryLine {
   capability: string;
   /** Summed INTERNAL-basis rated cost, integer micros. Excludes BYOK_NOTIONAL (see byokNotionalCostMicros). */
@@ -5827,6 +5842,20 @@ export interface WebhookRunHistoryResponse {
 export interface WorkflowActionRequest {
   /** Reason recorded on the Temporal cancel/terminate (audit trail). */
   reason?: string;
+}
+
+export interface WorkflowAssignmentResponse {
+  /** ISO timestamp */
+  createdAt: string;
+  id: string;
+  paletteKey: string;
+  scope: 'TENANT' | 'DEPARTMENT' | 'DOCTOR';
+  scopeId?: string | null;
+  tenantId: string;
+  /** ISO timestamp */
+  updatedAt: string;
+  version: number;
+  workflowDefinitionSlug: string;
 }
 
 export interface WorkflowDefinitionResponse {

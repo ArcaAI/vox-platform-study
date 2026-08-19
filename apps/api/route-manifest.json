@@ -4997,6 +4997,71 @@
       "apiExcluded": false
     },
     {
+      "controller": "WorkflowAssignmentController",
+      "handler": "fetchAll",
+      "method": "GET",
+      "path": "/api/v1/admin/workflow-assignments",
+      "routePath": "/admin/workflow-assignments",
+      "svcScopes": [
+        "svc:admin:workflow-definition:manage"
+      ],
+      "forbidServiceAccount": false,
+      "requiresIfMatch": false,
+      "apiExcluded": false
+    },
+    {
+      "controller": "WorkflowAssignmentController",
+      "handler": "update",
+      "method": "PATCH",
+      "path": "/api/v1/admin/workflow-assignments",
+      "routePath": "/admin/workflow-assignments",
+      "svcScopes": [
+        "svc:admin:workflow-definition:manage"
+      ],
+      "forbidServiceAccount": false,
+      "requiresIfMatch": true,
+      "apiExcluded": false
+    },
+    {
+      "controller": "WorkflowAssignmentController",
+      "handler": "create",
+      "method": "POST",
+      "path": "/api/v1/admin/workflow-assignments",
+      "routePath": "/admin/workflow-assignments",
+      "svcScopes": [
+        "svc:admin:workflow-definition:manage"
+      ],
+      "forbidServiceAccount": false,
+      "requiresIfMatch": false,
+      "apiExcluded": false
+    },
+    {
+      "controller": "WorkflowAssignmentController",
+      "handler": "remove",
+      "method": "DELETE",
+      "path": "/api/v1/admin/workflow-assignments/{id}",
+      "routePath": "/admin/workflow-assignments/:id",
+      "svcScopes": [
+        "svc:admin:workflow-definition:manage"
+      ],
+      "forbidServiceAccount": false,
+      "requiresIfMatch": true,
+      "apiExcluded": false
+    },
+    {
+      "controller": "WorkflowAssignmentController",
+      "handler": "fetchById",
+      "method": "GET",
+      "path": "/api/v1/admin/workflow-assignments/{id}",
+      "routePath": "/admin/workflow-assignments/:id",
+      "svcScopes": [
+        "svc:admin:workflow-definition:manage"
+      ],
+      "forbidServiceAccount": false,
+      "requiresIfMatch": false,
+      "apiExcluded": false
+    },
+    {
       "controller": "WorkflowDefinitionController",
       "handler": "fetchAll",
       "method": "GET",

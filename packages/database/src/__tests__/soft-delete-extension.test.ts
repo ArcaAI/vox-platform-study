@@ -216,6 +216,9 @@ describe('modelHasSoftDelete', () => {
       // operational-telemetry posture as AgentTrajectoryStep: hard-retention
       // history, no `resourceStatus` column.
       'WorkflowRun',
+      // TASK-733 — append-only WORM change log for workflow assignments (no
+      // `resourceStatus` column; rows are immutable).
+      'WorkflowAssignmentChange',
     ];
 
     expected.forEach((model) => {

@@ -124,6 +124,7 @@ import { VoiceProfileModule } from './modules/voice-profile/voice-profile.module
 // /admin/webhooks (CRUD + delivery-log reads).
 import { WebhookModule } from './modules/webhook/webhook.module';
 import { WorkflowDefinitionModule } from './modules/workflow-definition/workflow-definition.module';
+import { WorkflowAssignmentModule } from './modules/workflow-assignment/workflow-assignment.module';
 import { WorkflowNodeModule } from './modules/workflow-node/workflow-node.module';
 import { WorkflowRunModule } from './modules/workflow-run/workflow-run.module';
 import { WorkflowSandboxRunModule } from './modules/workflow-sandbox-run/workflow-sandbox-run.module';
@@ -487,6 +488,9 @@ const featureModules: any[] = [
   WebhookModule,
   // /admin/workflow-definitions (TASK-734) — WorkflowDefinition CRUD + compile/validate/publish.
   WorkflowDefinitionModule,
+  // /admin/workflow-assignments (TASK-733) — WHICH definition governs a
+  // tenant/department for a palette (department -> tenant -> platform default).
+  WorkflowAssignmentModule,
   // /admin/workflow-nodes (TASK-734) — read-only WORKFLOW_NODE_REGISTRY projection.
   WorkflowNodeModule,
   // /admin/workflow-runs (TASK-723) — tenant-scoped runs/observability read plane.
