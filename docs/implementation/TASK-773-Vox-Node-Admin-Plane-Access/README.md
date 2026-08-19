@@ -8,7 +8,7 @@
 | **Type** | feature (SDK surface + API authorization wiring) |
 | **Trigger** | Owner requirement, 2026-08-19: *"the package is for the other backend-side to integrate with our system, we need to support admin access using API key on the `/admin/*`"* |
 | **Related** | TASK-757 (admin plane ⇒ JWT-only, policy A2), **TASK-762 (machine identity for administration — the credential this ticket consumes)**, TASK-766 (scope/ability wiring trap), TASK-767 (the `svc:` business-plane precedent this ticket mirrors onto the admin plane), TASK-756 (API-key minting privilege ceiling), TASK-632 (`@arcaai/vox-node` inception) |
-| **Owner decisions recorded** | **D-1** credential class = service account (not tenant API keys) · **D-2** coverage = all 70 admin areas · **D-3** the three §2.6 surfaces stay machine-closed · **D-4** SDK family bumps in lockstep to 3.0.1 · **D-5** service-account impersonation not built · **O-1** webhooks opened, monitoring + health closed · **O-3** `:read` scopes made real (2 of 4; the other 2 blocked by CASL — see §2.9). All 2026-08-19. |
+| **Owner decisions recorded** | **D-1** credential class = service account · **D-2** coverage = all 70 admin areas · **D-3** three surfaces stay machine-closed · **D-4** SDK family → 3.0.1 in lockstep · **D-5** impersonation not built · **O-1** webhooks opened, monitoring + health closed · **O-2** delivery log exposed via the scope, not the route · **O-3** `:read` scopes made real · **O-4** admin-only read subjects instead of widening shared ones. All 2026-08-19. |
 
 ---
 
@@ -218,13 +218,21 @@ operator telemetry whose value is in a person looking at it, not rows an integra
 the health fan-out is additionally a 4–6-call outbound SSRF amplifier, which is the last surface
 to hand to a credential that can be driven in a loop.
 
-**Open item O-2 (new, low priority).** `GET admin/webhooks/:id/deliveries` is
-`@Authorize(['read','WebhookRunHistory'])`, an ability `svc:webhook:event:write` does not imply —
-so a service account reaches webhook CRUD but is 403'd on the delivery log. That is byte-identical
-to what an API key holding `webhook:event:write` already got, so the machine class mirrors the
-human-delegated one exactly: the derivation principle working as designed, not a defect. Exposing
-the delivery log needs a second source scope (`webhook:event:read`) plus a route-level
-declaration — a new decision, not a code-review call.
+**O-2 RESOLVED (owner, 2026-08-19): expose the delivery log.** `GET admin/webhooks/:id/deliveries`
+is `@Authorize(['read','WebhookRunHistory'])`, which `svc:webhook:event:write` does not imply.
+
+Fixed by completing the **scope**, not by widening the **route**: `webhook:event:read` is named
+"read webhook events" and the delivery log *is* the event record, so a holder that could read the
+subscription but not its deliveries was under-specified. Its `implies` now carries
+`read:WebhookRunHistory` alongside `read:Webhook`, it joins
+`ADMIN_PLANE_PRE_CONVENTION_SCOPE_SOURCES`, and the route declares the pair.
+
+That choice is the general rule this ticket arrived at, stated once here: **a route decorator is
+shared by every principal class, so widening one is never "for machines only"; `implies` reaches
+only credentials whose abilities are BUILT from scopes.** Human abilities come from DB policies
+(`tenant-full-access` is the sole grantor of `read:WebhookRunHistory`, unchanged), and
+`admin/webhooks` is `@ForbidApiKey()`, so no API key can reach the route regardless. Net human
+blast radius: zero.
 
 ### 2.9 Least privilege is not expressible for four areas (O-3)
 
@@ -293,11 +301,36 @@ svc:admin:role:read    →  [{"action":"read","subject":"Role"}]
   PASS  RolesController.findAll · findOne · listMembers
 ```
 
-**Open item O-4.** Unblocking tenant and user means widening their read routes' CASL decorators
-(`@CanAny(['read','Tenant'], …)` and the same for `User`) so `read:X` is an accepted alternative.
-That is NOT a machine-credential change — it widens who may read tenants and users for **every**
-principal class, human roles included, so it is a privilege-model decision with its own blast
-radius rather than a follow-on to this one. Orphan count is now **2 of 55**, down from 4.
+**O-4 RESOLVED (owner, 2026-08-19): mint admin-only read subjects.** Orphan count is now
+**0 of 55** — every concrete `svc:admin:*` scope reaches a route.
+
+The literal fix — accepting `read:Tenant` / `read:User` on those routes — was traced against the
+seed first and rejected as an **escalation**, not a widening:
+
+| Ability | Granted by | Who holds it | What accepting it would hand them |
+|---|---|---|---|
+| `read:Tenant` | `user-profile-own` | **every authenticated user** | `GET /admin/tenants`, `/admin/tenants/:id/usage`, `/admin/tenants/configs` |
+| `read:User` | `consultation-department-read` | `DEPARTMENT_HEAD`, `SENIOR_NURSE` | the admin user list, **`/admin/users/export`** (bulk export of every user in the tenant), per-user settings |
+
+Instead, two **admin-plane-only** subjects are minted — `AdminTenantDirectory` and
+`AdminUserDirectory` — added to the read routes as an alternative, and `admin:tenant:read` /
+`admin:user:read` are mapped onto them. No seeded policy grants either subject, so no human role
+gains anything; a service account's abilities are built from its scopes, so it does. Not a new
+pattern: `TenantTelemetry` was minted the same way to widen the monitoring and service-release
+gates without touching a broad subject.
+
+**Method level on the 7 tenant GETs and 9 user GETs, never class level** — the write routes on
+both controllers inherit their class ability, so widening there would have let a read-only token
+mutate. Each read route declares the scope pair, for the same `.some()` reason as O-3.
+
+Verified by building the ability exactly as `UnifiedAuthGuard` does and evaluating it per route:
+
+```
+:read-only machine        →  7/7 tenant GETs, 9/9 user GETs reachable
+:write grants (existing)  →  7/7 and 9/9 still reachable — no regression
+read:Tenant   (every authenticated user)        →  0 of 7 reachable
+read+list:User (DEPARTMENT_HEAD, SENIOR_NURSE)  →  0 of 9 reachable
+```
 
 Boot audit **H** was widened to match, and deliberately not loosened into "any superset". It
 permits exactly two shapes: the twin alone (anywhere), or the twin paired with its own `:read`
@@ -525,3 +558,4 @@ not one as originally written. That is the intended cost of lockstep, not an ove
 | 2026-08-19 | **Wave 0 delivered; coverage arithmetic corrected; O-1 opened.** Executed in worktree `task-773-svc-admin` per `PARALLEL-EXECUTION.md`. **A1** extracted the 64-row controller→scope fixture from `276f96a32` (`apps/api/src/bootstrap/__tests__/fixtures/task-773-admin-scope-map.ts`) with a colocated test; count independently re-verified against `git show` (64 removed `admin:*` decorators) and against the live `@ForbidApiKey()` set. Its cross-check produced the finding now recorded as **§2.8**: the 70 admin controllers split THREE ways, not two — 64 mechanically wireable, 3 machine-closed by D-3, and **3 with no `admin:*` scope to renamespace** (`WebhookController` carries `webhook:event:write`; `MonitoringController` and `AdminHealthServicesController` were never class-level scope-gated). Boot audit D could not have caught this: it reconciles the two scope REGISTRIES, never controllers-to-scopes. Opened **O-1** — extend the derivation or close the three — which blocks unit A3 (whose strengthened audit G fails the boot on any route declaring neither) but not the 64-controller sweep. **C** delivered the service-account credential in `@arcaai/vox-node`: lazy exchange, single-flight refresh with a clamped skew margin, one-shot recovery from mid-flight revocation, and redaction of both secret and token. Verified independently: 196 tests pass (was 173), `package.json` unchanged with zero runtime dependencies intact, header emitted via a shared `SERVICE_ACCOUNT_TOKEN_HEADER` constant. Two wire findings recorded: the exchange response's `tokenType: 'Bearer'` is misleading — `UnifiedAuthGuard` reads ONLY `x-service-account-token`, so presenting it as `Authorization: Bearer` gets it parsed as a user JWT and 401s, which is why the transport got a second hook rather than reusing the existing bearer one; and supplying `tenantId` alongside `serviceAccount` now throws at construction rather than being silently dropped, since the working tenant binds at exchange. |
 | 2026-08-19 | **Phase A complete — the admin plane accepts service accounts.** Waves 1–2 delivered per `PARALLEL-EXECUTION.md`. **A4** added boot audit **H**: fixture-driven, it requires each of the 64 controllers to declare exactly the `svc:` twin of the `admin:*` scope TASK-757 removed from it. Written and observed **RED across all 64 before any sweep agent ran** — that observation is only obtainable before the sweep, which is why the audit was ordered first. It exists because assertion G structurally cannot see a MIS-assignment (G checks presence and registry membership, so a real-but-wrong scope passes it); a paired test drives the same synthetic app through both and shows H throwing where G does not. **A2** swept all 64 declarations across 63 files via six parallel agents on disjoint file lists. Gate: a new `task-773-admin-plane-svc-declarations.test.ts` imports every shipped controller class and reads the declaration back off Nest **metadata** — not source text, since a grep would match a comment or a commented-out line — 65/65 pass; full `apps/api` suite 3725 passed / 10 skipped, zero failures (3660 baseline + 65). **O-1 resolved** (see §2.8): `admin/webhooks` opened through a third derived family `ADMIN_PLANE_PRE_CONVENTION_SCOPE_SOURCES`, with assertion D growing an arm that reconciles non-admin `svc:` scopes against the union of the declared families; `admin/monitoring` and `admin/health/services` closed with `@ForbidServiceAccount()`. **D-5 recorded**: service-account impersonation declined, with its two blocking gates and its real cost written down so the question is not re-litigated from scratch. **O-2 opened** (low priority): the webhook delivery log stays 403 for machines, byte-identical to the API-key path. Corrected a premise in §2.8 — `WebhookController` does not *carry* `webhook:event:write`; TASK-757 stripped it along with the `admin:*` ones. Also landed in this phase: **B1/B2** offline `openapi.json` emission (451 paths / 579 operations; cross-checked against 647 live routes, the 68-route gap being exactly the `@ApiExcludeEndpoint` set — zero drift) with a fidelity spike returning **GO** at 80.5% request-typed / 85.3% response-typed against a 70/70 threshold; and **D2**, the hand-authored `AdminResource` base, which surfaced the load-bearing pagination finding now recorded in its doc comments: the gateway echoes RAW query values for `page`/`limit`, so the obvious read-response-and-increment loop is broken against this API and `listAll` must drive pagination from the request side. |
 | 2026-08-19 | **O-3 delivered (2 of 4); Phase E docs; ticket to Review.** Read routes on `RolesController` and `ApiKeyController` now declare the `{:read, :write}` PAIR at method level — the pair rather than `:read` alone because `enforceServiceAccountScopes` is `.some()`, so a lone `:read` would have REVOKED those routes from every existing `:write` grant. `admin:tenant` and `admin:user` are **blocked, not skipped**: their read routes demand `manage`/`update`, which `read:X` does not satisfy, so wiring them would reproduce the TASK-766 trap — a scope that passes the string-matching gate and is then 403'd by CASL. Proven by building the ability exactly as `UnifiedAuthGuard` does and evaluating it per route (evidence in §2.9); opened **O-4** for the CASL widening, which is a privilege-model change affecting every principal class, not a machine-credential one. Orphans 4 → 2 of 55. Boot audit **H** widened to exactly two permitted shapes — the twin alone anywhere, or the twin plus its DERIVED `:read` sibling at METHOD level only — deliberately not "any superset" (which would forfeit mis-assignment detection) and deliberately not class level (which would put `:read` on DELETE routes, inverting the decision). Fixed a separate live defect found by the codegen cross-check: `TenantController.fetchByCodeName` declared `:code-name`, and since path-to-regexp names are `[A-Za-z0-9_]+` the hyphen terminated the name — the route was unreachable at its advertised URL and passed `undefined` at the one that matched; `route-param-names.test.ts` now catches the class of mistake at authoring time. Phase E1/E2 landed: SDK README (credential comparison, the exchange-time tenant binding, `listIterate` over hand-rolled paging, row-as-precondition, the five absent areas), a patch changeset carrying all eight `fixed`-group packages to 3.0.1, and `.claude/rules/08-vox-sdk.md`. Evidence: apps/api **3760 passed / 10 skipped**, bootstrap 378, vox-node 233, `gen:admin:check` no drift, and a real boot with `ENABLE_PRISMA_STUDIO` unset clearing every audit. Status → **Review**. |
+| 2026-08-19 | **O-2 and O-4 resolved; orphan count 0 of 55.** Both were the same problem — a `svc:` scope that clears the string-matching gate and is then 403'd by CASL (the TASK-766 trap) — and both are fixed WITHOUT touching a subject humans hold, which is the general rule this ticket settled on: **a route decorator is shared by every principal class, so widening one is never "for machines only"; `implies` reaches only credentials whose abilities are built from scopes.** **O-2**: `webhook:event:read` now implies `read:WebhookRunHistory` (the delivery log IS the event record, so the scope was under-specified rather than deliberately narrow) and the route declares the pair. **O-4**: the literal widening was traced against the seed and rejected — `read:Tenant` is held by *every authenticated user* via `user-profile-own`, and `read:User` by `DEPARTMENT_HEAD`/`SENIOR_NURSE` via `consultation-department-read`, so accepting them would have handed clinicians the admin tenant endpoints and the bulk user export. Two admin-plane-only subjects (`AdminTenantDirectory`, `AdminUserDirectory`) were minted instead, following the existing `TenantTelemetry` precedent, applied at METHOD level on the 7 tenant and 9 user GETs so a read-only token cannot widen into mutation. Verified per route against a real ability: read-only reaches 7/7 and 9/9, `:write` unregressed, and both human abilities reach **0**. The A6 test that asserted a `:read` principal is refused on `GET /admin/tenants` — true when written, and what became O-3 — now asserts both halves reach it, plus a new case pinning that DELETE still demands the write half. Evidence: apps/api 3769 passed / 4 skipped, bootstrap 378, applications apiKey+serviceAccount 440, real boot clean with the studio flag unset. **Follow-up F-1**: the generated artifacts (`route-manifest.json`, `openapi.json`, SDK admin surface) were deliberately NOT regenerated in either commit — the working tree carries uncommitted `workflow-run` controller routes from concurrent work, and regenerating would bake `/admin/workflow-runs/{runId}/gate` and `/gate/approve` into committed artifacts describing uncommitted routes. Consequence is bounded to a stale per-method scope annotation in the SDK; `gen:admin:check` still passes because it regenerates from the committed manifest rather than re-emitting it. Regenerate from a clean tree. |
