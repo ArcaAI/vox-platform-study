@@ -1,4 +1,4 @@
-"""TASK-776 — `Gliner2GuardService` drives the runtime's BATCH verbs.
+"""TASK-778 — `Gliner2GuardService` drives the runtime's BATCH verbs.
 
 `gliner2==1.3.2` ships `batch_extract_entities(texts, entity_types, batch_size=…)`
 and `batch_classify_text(texts, tasks, batch_size=…)`, which push N texts through

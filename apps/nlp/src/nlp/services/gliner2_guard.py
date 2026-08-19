@@ -15,7 +15,7 @@ NO id appears here, and none may: each arrives per request, resolved by the
 caller from ``AiTaskDefault`` ⋈ ``AiModel`` tenant-first, with the capability
 envelope declared on ``AiModel._metadata``. This module knows only how to DRIVE
 the ``gliner2`` runtime — it never branches on which checkpoint it holds.
-``tests/test_no_hardcoded_model_ids_task776.py`` enforces that.
+``tests/test_no_hardcoded_model_ids_task778.py`` enforces that.
 
 Fail posture — FAIL-CLOSED, and never fabricating: a load or inference failure
 RAISES. An empty entity list means "the model ran and found nothing", never
@@ -180,7 +180,7 @@ class Gliner2GuardService:
     ) -> dict[str, Any]:
         return await asyncio.to_thread(self._sync_classify, text, tasks, threshold)
 
-    # ── batch API (TASK-776) ─────────────────────────────────────────────
+    # ── batch API (TASK-778) ─────────────────────────────────────────────
     #
     # `gliner2` pushes N texts through ONE encoder pass. The fixed per-pass
     # cost — tokeniser dispatch, schema encoding, the Python↔torch boundary — is

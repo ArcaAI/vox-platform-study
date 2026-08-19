@@ -201,7 +201,7 @@ class NLPServiceConfig(BaseSettings):
     # plane (`nlp.inference.maxConcurrent`).
     inference_max_concurrent: int = Field(default=4, ge=1)
 
-    # Micro-batching + backpressure bounds (TASK-776).
+    # Micro-batching + backpressure bounds (TASK-778).
     #
     # BOOTSTRAP FLOOR ONLY, and deliberately TRANSPORT-shaped: these are queue
     # and batch geometry, not model identity, taxonomy, threshold or any other

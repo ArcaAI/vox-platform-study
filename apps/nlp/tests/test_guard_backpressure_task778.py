@@ -1,4 +1,4 @@
-"""TASK-776 — guard routes batch, shed load explicitly, and say so in metrics.
+"""TASK-778 — guard routes batch, shed load explicitly, and say so in metrics.
 
 Three properties, all of which the TASK-735 routes lacked:
 

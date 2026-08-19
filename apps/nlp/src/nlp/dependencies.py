@@ -405,7 +405,7 @@ async def _create_gliner2_guard(cache_key: str) -> Any:
     # for the safety plane means silently serving a different model than the
     # admin configured — and pulling it from the internet on a host that
     # deliberately staged its weights. The guard plane fails CLOSED instead
-    # (owner addition, TASK-776); the reference may be a hub id OR a local path.
+    # (owner addition, TASK-778); the reference may be a hub id OR a local path.
     service = Gliner2GuardService(
         weights_source=resolve_guard_weights_source(model_name, model_path),
         model_id=model_name,
