@@ -31,7 +31,15 @@ const CUSTOMER_TENANTS = [
     id: SEED_CUSTOMER_TENANT_IDS.ARCAAI,
     name: 'ArcaAI',
     key: 'ARCAAI',
-    description: 'ArcaAI customer environment — retained as the secondary tenant backing cross-tenant isolation E2E tests',
+    // TASK-766 — was 'retained as the secondary tenant backing cross-tenant
+    // isolation E2E tests', which described the row by the TEST that reads it
+    // rather than by what it IS. This is the day-1 customer tenant: it carries
+    // the clinical department catalog, the approved prompt library, the loop
+    // defaults, the frontend pipeline config and (TASK-766) the bootstrap
+    // tenant admin + machine identity. It still backs the cross-tenant e2e
+    // suite; that is a consequence of being a real second tenant, not its
+    // purpose.
+    description: 'ArcaAI — the day-1 customer tenant: clinical departments, approved prompt library, agent defaults, tenant administrator and machine identity. Tenant-scoped like any customer; never a config tier.',
   },
 ];
 
