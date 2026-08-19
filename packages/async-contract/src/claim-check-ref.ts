@@ -5,7 +5,7 @@
  *
  * Only the *shape* is shared here. The `BlobStore` implementation (S3, in
  * memory) is NOT lifted into this package — see
- * docs/architecture/agentic-workflow-platform/async-contract.md, Risk 3. A
+ * docs/programs/agentic-workflow-platform/async-contract.md, Risk 3. A
  * TS producer that needs to offload has no store today.
  */
 export interface ClaimCheckRef {

@@ -16,14 +16,14 @@
 > valid as *design* references, but every `kubectl`/`vex` invocation must be translated to
 > `qm guest exec` + `docker exec` for the VM cluster.
 
-> On-call reference for the HOPE HA Vault cluster (TASK-312). Goal: respond to any
+> On-call reference for the HOPE HA Vault cluster. Goal: respond to any
 > Vault incident in **< 30 min** using this page alone. Deployment artifacts and
 > their design rationale live in
 > [`infrastructure/single-deployment/vault/README.md`](../../../infrastructure/single-deployment/vault/README.md);
 > this page is the **operational** companion (day-2: rotate, fail over, recover, monitor).
 
-HOPE runs Vault **only on self-hosted Proxmox k3s** (cloud Terraform was descoped —
-see TASK-312). All commands assume `kubectl` is pointed at the k3s cluster.
+HOPE runs Vault **only on self-hosted Proxmox k3s** (cloud Terraform was descoped).
+All commands assume `kubectl` is pointed at the k3s cluster.
 
 ---
 
@@ -122,7 +122,7 @@ API picks it up on its next cache refresh / restart.
 vex vault-0 vault kv put secret/hope/<key> value=<new>
 ```
 
-### Rotating a platform secret end to end (TASK-558 lane K)
+### Rotating a platform secret end to end
 
 The full procedure, for a secret that both the TypeScript gateway and a Python
 service consume — `GUARDRAIL_SERVICE_TOKEN` is the worked example because it is
@@ -168,7 +168,7 @@ hop. `API_KEY_PEPPER` is the opposite problem — it must be rotated with a
 row), never swapped, or every issued API key dies at once. See §9.2 L6 / the
 descriptor's own `description` field.
 
-**Never** rotate by editing a `.env` file: since TASK-558 the committed env files
+**Never** rotate by editing a `.env` file: the committed env files
 carry placeholders only, and a value that must change without a restart is by
 definition not an env var (§9.2 L1).
 
@@ -179,21 +179,21 @@ APP_NS=hope infrastructure/single-deployment/vault/bootstrap/rotate-secret-id.sh
 kubectl -n hope rollout restart deploy/<api-deploy>   # consume the fresh wrapped secret_id
 ```
 
-**AppRole token** — the API auto-renews it at 50% TTL (TASK-312 Phase B). No action
+**AppRole token** — the API auto-renews it at 50% TTL. No action
 unless `VaultAppSecretsDegraded` fires (then check Vault reachability).
 
 **Dynamic DB credentials** — issued + auto-renewed per app instance via
 `database/creds/hope-app-role`; leases auto-revoke on shutdown. To force-rotate the
 DB **root** the engine uses: `vault write -f database/rotate-root/<conn>`.
 
-`hope-app-role` has two TTLs (BUG-006 follow-up, 2026-07-13):
+`hope-app-role` has two TTLs (2026-07-13):
 
 | TTL | Value | Meaning |
 |---|---|---|
 | `default_ttl` | `1h` (all envs) | Lease duration `VaultLeaseRenewer` (`apps/api/src/vault-prisma.module.ts`) renews at 50% via `sys/leases/renew` — cheap, frequent Vault round-trips, matches Vault-native rotation practice |
 | `max_ttl` | dev `168h` (7d) / prod `720h` (30d) | Hard ceiling from lease ISSUE time (does not reset on renewal). Once elapsed time nears this ceiling (within `min(300s, 25% of max_ttl)`), the renewer stops renewing and force-rotates the PG role instead: `wrapper.swap()` drops the old dynamic user and mints a fresh one |
 
-Widening `max_ttl` (previously `24h` everywhere, pre-BUG-006) trades a longer
+Widening `max_ttl` (previously `24h` everywhere) trades a longer
 compromised-credential blast-radius window for far fewer forced pool-swap /
 `DROP ROLE` events — deliberate for dev convenience and prod connection-pool
 stability. If a credential is suspected compromised, don't wait for
@@ -245,7 +245,7 @@ zero-downtime; optionally `rewrap` historical ciphertext afterwards.
 
 ## GitLab CI → Vault (OIDC)
 
-TASK-558 §13.3. No long-lived `VAULT_TOKEN` in GitLab project settings: each job
+No long-lived `VAULT_TOKEN` in GitLab project settings: each job
 that needs a secret presents a short-lived, job-scoped GitLab ID token, and Vault's
 JWT auth method decides what it may read from the token's own claims.
 
@@ -353,7 +353,7 @@ variables defined in project settings). Never wrap the job's Vault step in `set 
 
 ## Kubernetes secret delivery (Vault Agent injection)
 
-TASK-558 §13.2 / §9.2 L7. Pods get platform secrets from a Vault Agent **sidecar**
+Pods get platform secrets from a Vault Agent **sidecar**
 that renders one file per secret into a memory-backed volume — not from Kubernetes
 `Secret` objects. A `Secret` is base64, not encryption: its plaintext sits in etcd,
 is readable by anything with `get secrets` in the namespace, and outlives the pod.
@@ -529,12 +529,12 @@ DRILLS="C" CHAOS_CONFIRM=yes scripts/chaos/vault-drill.sh            # a single 
 
 Each fault must self-recover (the cluster ends with 3 unsealed nodes + a leader).
 Drill C black-holes the seal Service (reversible) — it never restarts the seal Vault,
-so no manual re-unseal is needed. For the planned 7-day soak (TASK-312 Phase F.3),
+so no manual re-unseal is needed. For the planned 7-day soak,
 run the drill on a schedule against staging and watch the dashboard for `degraded`.
 
 ---
 
-## Production cutover & staging soak (TASK-312 Phase F.3)
+## Production cutover & staging soak
 
 The cluster, app wiring, and drills are verified on `kind`; the remaining gate is an
 **operational staging soak + cutover** on the real k3s cluster. This is a human-run
@@ -544,7 +544,7 @@ checklist (it needs real infra + ≥7 days), not an automated step.
 
 - [ ] Bootstrap complete on staging k3s (Bootstrap section); **root token revoked**; the 5/3 recovery keys are **offline** (not in-cluster).
 - [ ] `monitoring/recording-rules.yaml` + `alerts.yaml` applied; Grafana dashboard imported; a deliberately-sealed node fires `VaultSealed` (prove the pipe end-to-end).
-- [ ] API deploys with the AppRole **file** contract (`VAULT_ROLE_ID_FILE` / `VAULT_WRAPPED_SECRET_ID_FILE`, from Secret `hope/hope-vault-approle`); `apps/api/.env.prod` is secret-free (TASK-312 §B).
+- [ ] API deploys with the AppRole **file** contract (`VAULT_ROLE_ID_FILE` / `VAULT_WRAPPED_SECRET_ID_FILE`, from Secret `hope/hope-vault-approle`); `apps/api/.env.prod` is secret-free.
 - [ ] The deploy pipeline runs `bootstrap/rotate-secret-id.sh` **before each rollout** (fresh single-use wrapped secret_id) — no root needed.
 - [ ] Raft snapshots scheduled (`vault operator raft snapshot save` via CronJob).
 

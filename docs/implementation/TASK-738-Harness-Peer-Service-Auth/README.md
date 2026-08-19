@@ -212,7 +212,7 @@ remains TASK-704's own outstanding item, now directly un-blocked by this fix.
 
 ### 7.1 What changed
 
-[`owner-decisions-2026-08-17.md`](../../architecture/agentic-workflow-platform/owner-decisions-2026-08-17.md)
+[`owner-decisions-2026-08-17.md`](../../programs/agentic-workflow-platform/owner-decisions-2026-08-17.md)
 **D-D** reverses §3 decision 2 of this ticket:
 
 > Internal service-to-service auth uses a **single shared access token**, set by the DevOps

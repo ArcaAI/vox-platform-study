@@ -6,8 +6,8 @@
 | **Wave** | 2 · **Size** | L |
 | **Epic slug** | `smr-identifier-elimination` |
 | **Depends on** | — (reverses the frozen-identifier position of TASK-707) |
-| **Design refs** | [owner-decisions-2026-08-17.md](../../architecture/agentic-workflow-platform/owner-decisions-2026-08-17.md) §3b decision 3 + its carve-out; D-A, D-B, D-E, D-F |
-| **Findings closed** | D-1, D-2, D-3, D-4, D-5, D-6, D-7 from [smr-task-key-findings.md](../../architecture/agentic-workflow-platform/smr-task-key-findings.md) |
+| **Design refs** | [owner-decisions-2026-08-17.md](../../programs/agentic-workflow-platform/owner-decisions-2026-08-17.md) §3b decision 3 + its carve-out; D-A, D-B, D-E, D-F |
+| **Findings closed** | D-1, D-2, D-3, D-4, D-5, D-6, D-7 from [smr-task-key-findings.md](../../programs/agentic-workflow-platform/smr-task-key-findings.md) |
 
 ## 1. Requirement Analysis
 

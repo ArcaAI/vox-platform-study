@@ -1,7 +1,6 @@
 # MinIO PHI Object Backup & Recovery
 
 **Status**: Design — approved for build on the Tier-1 half, **deferral pending owner sign-off** on the Tier-2 half (§10).
-**Closes**: [TASK-596](../../implementation/TASK-596-ArcaAI-Production-Readiness/README.md) §3.D row **D3** · [TASK-622](../../implementation/TASK-622-Portability-Hygiene-And-Operations-Docs/README.md) task C.5
 **Subject**: object storage on VM 402 (`10.10.1.102:9000`) — the buckets holding clinical audio recordings and patient attachments.
 **Live audit date**: 2026-08-08. Every number in §2 was measured on the running system on that date; §12 lists what was *not* verified.
 **Companion**: [Vault backup & restore](../vault/vm-cluster-seal-unseal.md#10-backup--restore) — the house standard this design deliberately copies (encryption model, credential scoping, retention, tested restore).
@@ -51,8 +50,8 @@ one motherboard, one room stands between this platform and total, unrecoverable 
 | TLS | Serves HTTPS with a leaf from `ARCAAI Internal CA`, `notAfter = 2028-03-21` | [MinIO deploy doc §14](../../research/deployments/deploy-vm402-minio.md) |
 
 > The `.minio.sys` metadata backup described in [`deploy-vm402-minio.md` §13](../../research/deployments/deploy-vm402-minio.md)
-> **was never installed.** TASK-596's D3 row says backup "covers only metadata"; the accurate
-> statement is that it covers nothing. Correct D3's wording when closing it.
+> **was never installed.** Any claim that backup "covers only metadata" is inaccurate; it covers
+> nothing.
 
 ### 2.2 Data-protection features — all absent
 
@@ -126,7 +125,7 @@ Separately, the only Kubernetes namespace that exists is `hope-v2-dev`, its Conf
 `NODE_ENV=development`, and there is no staging or production namespace.
 
 So the honest reading is: **today this is a pilot/test corpus; the gap becomes an active
-PHI-loss exposure the moment real consultations start** — which is exactly what TASK-596's
+PHI-loss exposure the moment real consultations start** — which is exactly what the
 day-1 launch means. That timing is the whole argument for §10's recommendation. It is an
 owner determination whether any object in these buckets is already real PHI (open question
 **Q1**, §12).
@@ -174,10 +173,10 @@ The bucket list must include four groups that are easy to miss:
 
 ### 3.3 Deliberately excluded: other people's backups
 
-- **`pgbackrest`** — owned by TASK-596 D2. Copying it here would double-store the same PHI and
+- **`pgbackrest`** — owned by the Postgres backup lane. Copying it here would double-store the same PHI and
   create a circular dependency (the Postgres backup's backup living beside it). It is called out
   in §4.1 as part of the same failure domain, but it is not this job's payload.
-  *Observation for D2's owner, not acted on here*: `pgbackrest.conf` sets no `repo1-cipher-type`,
+  *Observation for the Postgres backup owner, not acted on here*: `pgbackrest.conf` sets no `repo1-cipher-type`,
   so Postgres backups are compressed but **not encrypted** at rest in a bucket with no SSE on a
   disk with no LUKS.
 - **`vault-backups`** — excluded for a specific and non-obvious reason. Vault's backups are
@@ -394,7 +393,7 @@ repo's `.env` files.
 
 > Related, and not fixed by this design: the application's own credential is root-equivalent
 > (§1). Scoping *it* down to its own buckets is a separate change with a separate blast radius,
-> and belongs with TASK-596 C5 / TASK-618, not here. Recorded as **Q4**.
+> and belongs with the credential-scoping lane, not here. Recorded as **Q4**.
 
 ---
 
@@ -592,7 +591,7 @@ checked rather than assumed:
   corruption on a consumer USB volume.
 - Alert if `/mnt/medish` free space drops below 100 GB.
 
-Wire these into whatever TASK-636 lands; until then they are an operator check.
+Wire these into whatever monitoring lands; until then they are an operator check.
 
 ---
 
@@ -748,7 +747,7 @@ one)*
 | **Q1** | **Do the `hope-recordings-*` / `hope-audio*` buckets already contain real patient data**, or is it all pilot/test material? §2.6 shows a test-fixture-dominated corpus and a `hope-v2-dev`-only cluster, but a minority of objects are ambiguous. | Determining whether an audio file is a real consultation requires knowing who was recorded. Not inferable from a filename, and not something to guess at. Drives the urgency of everything above. |
 | **Q2** | What are the `audio` (135 MB, 33 objects) and `tts-audio` (72 KB) buckets? Neither has a producer anywhere in the codebase. | Provenance is outside the repo. They are included in the backup payload by default because they cost nothing; they may instead warrant deletion. |
 | **Q3** | Do `langfuse` trace events contain unredacted clinical text? | Depends on whether the telemetry PHI guardrails are effective in practice, which needs an inspection decision, not a grep. If yes, langfuse joins the payload (69 MiB). |
-| **Q4** | Should the application's MinIO credential be scoped down from root-equivalent? | A credential rotation with a real blast radius; belongs with TASK-596 C5 / TASK-618. Recorded here because it is the reason the backup destination must be off-MinIO. |
+| **Q4** | Should the application's MinIO credential be scoped down from root-equivalent? | A credential rotation with a real blast radius; belongs with the credential-scoping lane. Recorded here because it is the reason the backup destination must be off-MinIO. |
 | **Q5** | What is the records-retention requirement for clinical audio in this deployment's jurisdiction? | A legal/clinical determination. The repo establishes nothing beyond audit-log retention, and this document refuses to invent a number. |
 | **Q6** | How does right-to-erasure interact with a 30-day backup window? | Needs a written choice by whoever owns the erasure procedure — accept the window, or purge archives on erasure. §7.3. |
 | **Q7** | Does `age` encryption satisfy the breach-notification safe harbour for an off-site drive? | A compliance judgement about NIST SP 800-111 conformance, not an engineering one. §10.2. |
@@ -794,7 +793,6 @@ release (§5.3 — test on a scratch bucket first); whether `chunk_*.pcm` are by
 - [MinIO deployment record](../../research/deployments/deploy-vm402-minio.md) — how VM 402 was built (its §13 backup script was never installed — §2.1)
 - [Encryption-at-rest runbook](../../research/deployments/encryption-at-rest-luks-minio-sse-runbook.md) — LUKS/SSE specification, confirmed **not** deployed
 - [DR break-glass runbook](../../research/deployments/dr-break-glass-runbook.md) — assumes the MinIO data disk is re-attached intact; this document is what covers the case where it is not
-- [TASK-596 §3.D / §4](../../implementation/TASK-596-ArcaAI-Production-Readiness/README.md) — the D3 row this closes, and its sibling D2 (Postgres restore drill) and D4 (MinIO single-node)
 - [`09-infrastructure-devops.md` §Configuration Tiers](../../../.claude/rules/09-infrastructure-devops.md) — the PHI posture and where credentials may live
 
 ---
@@ -803,4 +801,4 @@ release (§5.3 — test on a scratch bucket first); whether `chunk_*.pcm` are by
 
 | Date | Change | Author |
 |---|---|---|
-| 2026-08-08 | Created for TASK-622 C.5 / TASK-596 D3. Grounded in a read-only live audit of VM 402 and `pve-node1`. Key findings: no backup of any kind exists (not even the metadata backup D3 credits); the application's MinIO credential is root-equivalent (`ParentUser: minioadmin`, `Policy: implied`), so an app compromise can erase the PHI objects, the Postgres backups, and the Vault seal backup alike; 87% of the object store is a reproducible container registry, leaving a ~18.6 GB PHI surface; the only spare host capacity is a USB **exFAT** volume with no POSIX permissions, which makes encryption the sole available access control. **Recommendation: build Tier 1 (on-host, off-MinIO, age-encrypted, read-only-scoped) now; defer Tier 2 (off-site) with the dated risk acceptance in §11** — deferred because it requires a BAA counterparty or a drive-rotation commitment, not because of cost. | Claude |
+| 2026-08-08 | Created. Grounded in a read-only live audit of VM 402 and `pve-node1`. Key findings: no backup of any kind exists (not even the metadata backup previously credited); the application's MinIO credential is root-equivalent (`ParentUser: minioadmin`, `Policy: implied`), so an app compromise can erase the PHI objects, the Postgres backups, and the Vault seal backup alike; 87% of the object store is a reproducible container registry, leaving a ~18.6 GB PHI surface; the only spare host capacity is a USB **exFAT** volume with no POSIX permissions, which makes encryption the sole available access control. **Recommendation: build Tier 1 (on-host, off-MinIO, age-encrypted, read-only-scoped) now; defer Tier 2 (off-site) with the dated risk acceptance in §11** — deferred because it requires a BAA counterparty or a drive-rotation commitment, not because of cost. | Claude |

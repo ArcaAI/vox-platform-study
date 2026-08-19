@@ -5,10 +5,10 @@
 **Date**: 2026-05-24
 **VMs**: 430 (`10.10.1.130`), 431 (`10.10.1.131`), 432 (`10.10.1.132`)
 **Bridge**: vmbr1 | **Specs**: 2 vCPU / 4 GB RAM / 32 GB disk per node
-**Config files**: [`configs/vault/`](../configs/vault/)
+**Config files**: inline in this runbook (there is no `configs/vault/` directory — the Vault configuration is reproduced in the sections below)
 **Cloudflare SSH**: `ssh-vault-1.taphuynh.dev`, `ssh-vault-2.taphuynh.dev`, `ssh-vault-3.taphuynh.dev`
 **API endpoint**: `https://vault.taphuynh.dev` (HAProxy-fronted, TLS-terminated)
-**Related**: [Redis HA](./deploy-vm420-421-redis.md), [PostgreSQL HA](./deploy-vm500-502-postgres-ha.md), [Cloudflare Tunnel](./deploy-ct101-cloudflare-tunnel.md), [TASK-302 Vault Migration Plan](../../docs/implementation/TASK-302-System-Config-Implementation-Roadmap/02-vault-migration.md)
+**Related**: [Redis HA](./deploy-vm420-421-redis.md), [PostgreSQL HA](./deploy-vm500-502-postgres-ha.md), [Cloudflare Tunnel](./deploy-ct101-cloudflare-tunnel.md)
 
 > **Vault is the secrets root of trust** for HOPE production. A successful exploit on these VMs grants attacker decryption of every transit-encrypted column and access to every dynamic DB credential. Harden accordingly.
 
@@ -324,8 +324,6 @@ App-side unwrapping happens once in `SecretsService.boot()` (see Plan Phase 2B T
 ---
 
 ## 16. Manual secret rotation procedure
-
-TASK-302 Phase 6 Task 6.2 (Stream B).
 
 Static secrets (`JWT_SECRET_KEY`, `OIDC_CLIENT_SECRET`, `API_KEY_PEPPER`,
 `SESSION_SECRET_KEY`, `TEXT_SERVICE_TOKEN`, `S3_ACCESS_KEY`,

@@ -5,7 +5,7 @@
 | **Status** | Completed |
 | **Wave** | 0 (barrier) · **Size** | L |
 | **Epic slug** | `naming-alignment` |
-| **Depends on** | TASK-700, TASK-701, TASK-702, TASK-703, TASK-704, TASK-705, TASK-706 (all Wave-0 code fixes must land first — this ticket is a deliberate barrier, per [backlog.md](../../architecture/agentic-workflow-platform/backlog.md) "Sequencing notes": *"707 `naming-alignment` is a deliberate barrier: it lands after the Wave-0 code fixes so the rename doesn't collide with them, and before Wave 1 so all new code is born with the new names."*) |
+| **Depends on** | TASK-700, TASK-701, TASK-702, TASK-703, TASK-704, TASK-705, TASK-706 (all Wave-0 code fixes must land first — this ticket is a deliberate barrier, per [backlog.md](../../programs/agentic-workflow-platform/backlog.md) "Sequencing notes": *"707 `naming-alignment` is a deliberate barrier: it lands after the Wave-0 code fixes so the rename doesn't collide with them, and before Wave 1 so all new code is born with the new names."*) |
 | **Design refs** | D8 (`smr` → `text`; `GLOBAL_ADMIN` → `SUPER_ADMIN`, "a rename — code already has one elevated role. Batched in one `naming-alignment` epic, executed early") |
 | **Findings closed** | — (D8 is a design decision, not a remediation of a numbered conformance finding) |
 
@@ -25,7 +25,7 @@ Authoring-time inventory in §1–§6 (role-data migration, two elevated users, 
 
 ## 1. Requirement Analysis
 
-[design.md](../../architecture/agentic-workflow-platform/design.md) D8 commits to two renames
+[design.md](../../programs/agentic-workflow-platform/design.md) D8 commits to two renames
 ahead of the Wave-1 structural work so nothing new is born under the old names:
 
 1. **`smr` → `text`** — the service is described in design.md's Services Program table as a
@@ -1220,7 +1220,7 @@ in-progress work belonging to other Group A/B tasks**:
 
 Independent read-only re-verification of the owner directive *"SUPER_ADMIN is a supreme user,
 manage the platform, consolidate global admins, to super admin — we use only that term"*
-([owner-decisions-2026-08-17.md](../../architecture/agentic-workflow-platform/owner-decisions-2026-08-17.md) §2, ticket 707).
+([owner-decisions-2026-08-17.md](../../programs/agentic-workflow-platform/owner-decisions-2026-08-17.md) §2, ticket 707).
 Nothing was edited during this pass; it is a verification of the landed state.
 
 **Verdict: CLEAN. Zero real remnants. TASK-707 Group B is closed.**

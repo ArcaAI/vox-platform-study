@@ -161,7 +161,7 @@ export interface PlanEntitlementValues {
   /**
    * TASK-705 — may this plan's tenants run the HARNESS AGENTIC LOOP?
    *
-   * The owner ruling (`docs/architecture/agentic-workflow-platform/owner-decisions-2026-08-17.md`
+   * The owner ruling (`docs/programs/agentic-workflow-platform/owner-decisions-2026-08-17.md`
    * §2 row 705): *"harness agentic loop is one of the core business, so, lets treat
    * it as a feature in subscription plan"*. Loop eligibility is therefore
    * COMMERCIAL — a plan property resolved from the database — and no longer an

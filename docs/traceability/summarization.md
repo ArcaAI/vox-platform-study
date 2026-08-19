@@ -90,6 +90,6 @@ Per-doctor stylistic fingerprint applied to generated documentation.
 - **No DNA e2e.** G6 is covered across unit(app)/unit(console) only; there is no `apps/api/tests/e2e` spec exercising the DNA generate → version → apply round-trip (legacy row 25's e2e cell was already `—`).
 - **Guardrail is a capability service shared with the medical-NLP domain (legacy row 18).** G3 records it only as it intercepts summarization; the standalone guardrail service surface (jobs, groundedness, medical-config) stays with the capability-services domain in the legacy matrix until that domain migrates.
 - **The summary approval step is documented in [`harness.md`](./harness.md), not here.** `POST /consultations/:id/summary/:contextItemId/approve` is the harness gate's attestation write, not a summarization primitive.
-- **`text.contract.test.ts` / `stt.contract.test.ts` are present** under `tests/contracts/` — note the legacy matrix's claim that the TTS contract was removed in TASK-414 does not extend to the Text/STT contracts, which remain.
+- **`text.contract.test.ts` / `stt.contract.test.ts` are present** under `tests/contracts/` — note the legacy matrix's claim that the TTS contract was removed does not extend to the Text/STT contracts, which remain.
 
 Last verified: 2026-07-22

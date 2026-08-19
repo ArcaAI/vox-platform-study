@@ -6,7 +6,7 @@
 | **Wave** | 0 · **Size** | M |
 | **Epic slug** | `dna-phi-containment` |
 | **Depends on** | — (decrypt-and-scan is human-gated) |
-| **Design refs** | D5 (Plane 2 containment proceeds regardless of the substrate program) from [design.md](../../architecture/agentic-workflow-platform/design.md) |
+| **Design refs** | D5 (Plane 2 containment proceeds regardless of the substrate program) from [design.md](../../programs/agentic-workflow-platform/design.md) |
 | **Findings closed** | A-06 (conformance matrix, CRITICAL) · F-13 (`evidence/context-model.md`) · §3.2 (assessment `README.md`) · adversarial re-verification "FINDING 1" (`05-critical-verification.md`) |
 
 ## 1. Requirement Analysis

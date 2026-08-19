@@ -1,11 +1,10 @@
-# HOPE Temporal — Operator Runbook (DR/backup) — TASK-730 Task 6
+# HOPE Temporal — Operator Runbook (DR/backup)
 
 | | |
 |---|---|
-| **Status** | **Option A (self-hosted k3s) is the decided path** — `temporal-hosting-decision.md` (TASK-730 Task 1) was signed off 2026-08-17. §1.2/§2.2/§3.1's Option A sections are now load-bearing; §1.3/§2.3/§3.2's Option B sections are retained for reference only (not chosen, kept so the fork's reasoning stays legible). The reconnection patch that makes Option A live (harness/harness-worker still point at the VM as of this writing) is documented, not yet applied, in `deployment-repo-changes.md`. |
+| **Status** | **Option A (self-hosted k3s) is the decided path** — `temporal-hosting-decision.md` was signed off 2026-08-17. §1.2/§2.2/§3.1's Option A sections are now load-bearing; §1.3/§2.3/§3.2's Option B sections are retained for reference only (not chosen, kept so the fork's reasoning stays legible). The reconnection patch that makes Option A live (harness/harness-worker still point at the VM as of this writing) is documented, not yet applied, in `deployment-repo-changes.md`. |
 | **Scope** | Backup/restore + daily operational checks for the durable-workflow substrate `HarnessDocWorkflow` (and future Temporal workflows) run on. **Explicitly an ops runbook, never a console CRUD screen or admin UI feature** — design.md's YAGNI ledger: *"DR/backup as console CRUD (ops tooling + at most a read-only status page)."* |
 | **Modeled on** | `docs/operations/vault/README.md`'s section shape (architecture / bootstrap / privileged commands / daily ops / rotation-or-backup / CI integration) |
-| **Depends on** | `docs/implementation/TASK-730-Harness-Infra-Productionization/temporal-hosting-decision.md` — read that first; it decides which half of this document is load-bearing |
 
 ---
 
@@ -43,7 +42,7 @@ docker-compose.dev.yml (`temporal` profile)
 
 Local dev is disposable by design (`pnpm infra:dev:up` with `-v` recreates it from empty) — this
 runbook's backup/restore procedures do not apply to it. `scripts/temporal-volume-hop.sh`
-(TASK-702) is the only local-dev Temporal runbook that matters, and it's a version-upgrade
+is the only local-dev Temporal runbook that matters, and it's a version-upgrade
 procedure, not a backup one.
 
 ### 1.2 Option A — self-hosted in k3s (if Task 1 chooses this)
@@ -209,13 +208,13 @@ kubectl -n hope-v2-<env> get pod -l app=hope-harness-worker
 
 # 3. Temporal server reachability from the harness side, TODAY, is only knowable indirectly (no
 #    dedicated /health endpoint check documented here yet) — cross-reference the Grafana dashboard
-#    from TASK-730 Task 5 (infrastructure/grafana/dashboards/harness-temporal.json, local dev; a
-#    cluster-side equivalent is a Task 5 follow-on, not built by this ticket) and the
+#    (infrastructure/grafana/dashboards/harness-temporal.json, local dev; a
+#    cluster-side equivalent is not built yet) and the
 #    HarnessTemporalDown / HarnessWorkerTaskFailures alert rules
 #    (infrastructure/docker/configs/prometheus/rules/harness-temporal.rules.yml, local; the
 #    cluster-side TemporalDown rule already exists in arca/hope-v2-deployment's
 #    base/alert-rules.yaml but currently watches the WRONG Temporal instance — see
-#    temporal-hosting-decision.md and this ticket's README.md §2.10 finding 5 before trusting it).
+#    temporal-hosting-decision.md before trusting it).
 
 # 4. Duplicate-execution / 5xx / latency report (the assessment's three decisive availability
 #    signals) — scripts/harness-availability-report.py. Requires a reachable Temporal server;

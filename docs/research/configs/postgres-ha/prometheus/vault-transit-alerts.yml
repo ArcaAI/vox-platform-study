@@ -1,4 +1,4 @@
-# Vault / Transit alert rules — TASK-369 Phase 5 (key management).
+# Vault / Transit alert rules (key management).
 #
 # Monitors the secrets root of trust (Vault VMs 430–432). The PHI Transit key
 # is `hope-phi`; a Vault outage means NO transit-encrypted PHI column can be

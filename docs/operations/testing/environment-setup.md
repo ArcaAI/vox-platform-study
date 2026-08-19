@@ -22,7 +22,7 @@ pnpm exec playwright install chromium   # once, for E2E
 
 - Location: repo root. Selected by `NODE_ENV`; **every** TypeScript test alias loads it explicitly
   via `dotenv -e .env.test` (see the `test:*` scripts in root `package.json`).
-- Contract (TASK-558): precedence is **host env > env file > schema default**; in CI (`CI=true`)
+- Contract: precedence is **host env > env file > schema default**; in CI (`CI=true`)
   no file is read — host env only. Python reads the same file through `packages/py-env` (`hope_env`).
 - It points at the **isolated test infra** (Postgres 5433, Redis 6380, etc.), not dev.
 - The integration setup (`tests/setup/integration.setup.ts`) **refuses to run unless `DATABASE_URL`

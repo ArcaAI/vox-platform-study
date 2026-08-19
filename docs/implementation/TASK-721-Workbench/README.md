@@ -6,7 +6,7 @@
 | **Wave** | 2 · **Size** | M |
 | **Epic slug** | `workbench` |
 | **Depends on** | TASK-718 (`workflow-interpreter`), TASK-719 (`workflow-studio-v1`) |
-| **Design refs** | D2, D3, D4 from [design.md](../../architecture/agentic-workflow-platform/design.md) §"Plane 3 — Workflow Studio" (Workbench paragraph), §"Error handling" (runtime), §"Testing strategy" |
+| **Design refs** | D2, D3, D4 from [design.md](../../programs/agentic-workflow-platform/design.md) §"Plane 3 — Workflow Studio" (Workbench paragraph), §"Error handling" (runtime), §"Testing strategy" |
 | **Findings closed** | — |
 
 ## 1. Requirement Analysis

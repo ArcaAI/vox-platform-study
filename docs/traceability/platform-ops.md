@@ -27,7 +27,7 @@ Route paths are relative to the global prefix `/api/v1`. Test shorthand is defin
 
 ### PO2 — Global settings & secrets store — legacy row 30
 
-The raw key/value + secrets store. The TASK-504 **typed control plane** over it
+The raw key/value + secrets store. The **typed control plane** over it
 (`settings-catalog` / registry / effective-config) is migrated in
 [`tenancy-provisioning.md`](./tenancy-provisioning.md) (TP6) — both mount on `/admin/settings`.
 
@@ -80,7 +80,7 @@ The raw key/value + secrets store. The TASK-504 **typed control plane** over it
 | Key modules | `apps/api/src/modules/pstudio` (`pstudio.controller.ts`, `pstudio-status.controller.ts`, `pstudio.html.ts` — fail-closed: dev + flag gated); `packages/applications/src/services/pstudio` |
 | Prisma models | — |
 | Key API endpoints | `@Controller('admin/pstudio')` (`@CanManage('PrismaStudio')`): `GET ''`, `POST ''` (`@Authorize(['manage','PrismaStudio'])`). `@Controller('admin/pstudio/status')` (`@Authorize(['manage','PrismaStudio'])`): `GET ''`. The gateway paths are deliberately unchanged; only the console route was renamed |
-| Console | `apps/admin-console` feature `db-studio` (`db-studio-screen`); route `/db-studio` (tier 10–19, global). TASK-532 M-08 — renamed from `/pstudio`, which now `redirect()`s for one release |
+| Console | `apps/admin-console` feature `db-studio` (`db-studio-screen`); route `/db-studio` (tier 10–19, global) — renamed from `/pstudio`, which now `redirect()`s for one release |
 | Tests | unit(api): `pstudio/__tests__/{pstudio.controller,pstudio-status.controller,pstudio.html}.test.ts`; unit(console): `db-studio/components/__tests__/db-studio-screen.test.tsx`, `app/(console)/(global)/__tests__/retired-route-redirects.test.tsx`; e2e: `super-admin-ops-surfaces.spec.ts` (partial) |
 
 ### PO7 — AI service status & config (guardrail / NLP / agentic instructions) — legacy row 34a

@@ -1,6 +1,6 @@
 # Traceability — End-to-End Business Workflows
 
-The **workflow dimension** of the traceability rebuild (TASK-538 Wave 3). The per-domain
+The **workflow dimension** of the traceability rebuild. The per-domain
 files ([`index.md`](./index.md)) answer *"where does capability X live?"*; this file answers
 *"how do the capabilities compose into a business flow, and which invariants must hold along
 the way?"* Each of the 11 flows below is an ordered step list — every step names the service,
@@ -9,7 +9,7 @@ model touched, and the test that covers it — followed by the **capability rows
 (links into the domain files) and the **invariants** the flow must uphold.
 
 Nothing here is a new claim: every endpoint, model, and test cited is verified in the linked
-domain file (or, for not-yet-migrated domains, in the legacy [`docs/traceability-matrix.md`](../traceability-matrix.md)).
+domain file.
 `—` means verified-absent. Test shorthand is defined in [`index.md`](./index.md#test-location-shorthand).
 
 ## Cross-cutting invariants (asserted by every flow)
@@ -22,7 +22,7 @@ domain file (or, for not-yet-migrated domains, in the legacy [`docs/traceability
   route; see rule 05.)
 - **Optimistic concurrency (OCC / If-Match).** `_version` → strong `ETag` → client `If-Match`
   → `@RequiresIfMatch()` (missing header → **428**) + `@ExpectedVersion()` → `updateWithVersion`
-  CAS (drift → **412**). **The new "0"-create contract (TASK-534):** config-plane `PUT /row`
+  CAS (drift → **412**). **The "0"-create contract:** config-plane `PUT /row`
   surfaces a `version: 0` placeholder on a GET of a not-yet-materialized row; the client echoes
   `If-Match: "0"`; the service CAS **creates** if the row is absent and **412s** if a row at
   version ≥ 1 already exists. `"0"` is now an accepted strong validator (`(0|[1-9][0-9]*)`);
@@ -31,7 +31,7 @@ domain file (or, for not-yet-migrated domains, in the legacy [`docs/traceability
   `ai-provider-connections.spec.ts`, `ai-runtime-profiles.spec.ts`, `settings-registry-write.spec.ts`.
 - **PHI posture.** Clinical payloads (context items, highlights, transcript segments, summaries,
   DNA reports, audit rows) are envelope-encrypted at rest; golden-case reads surface
-  PHI-safe metadata only (TASK-532 M-09); guardrail validation is **fail-closed** on the
+  PHI-safe metadata only; guardrail validation is **fail-closed** on the
   generation path; BYO provider keys are Vault-Transit ciphertext, write-only (no reveal route),
   and ciphertext never crosses the wire (asserted against raw response text in `ai-provider-connections.spec.ts`).
 
@@ -114,7 +114,7 @@ attestation write.
 1. **Start the workflow.** Gateway → harness `POST /api/v1/internal/consultations/:id/document:start` (service-token, `HarnessServiceTokenGuard`) → Temporal workflow (`harness-task-queue`, deterministic; side effects in idempotent activities). unit(app): `consultation/harness/__tests__/harness-gateway.service.test.ts`; py(hrn) incl. `test_replay_compat`.
 2. **Assemble + retrieve context (RAG).** Harness `retrieve_context` activity over `KnowledgeDocument`/`KnowledgeChunk` (Qdrant + TEI reranker), ingested via internal `POST /api/v1/internal/knowledge/ingest` (BullMQ, no public REST). unit(app): `knowledge/__tests__/*`; e2e: `harness-institutional-rag.spec.ts`.
 3. **Draft + sensor scoring.** Gateway internal `@Controller('internal/harness')` → `POST /consultations/:id/{assemble,draft,gate-decision}` → `SummaryMeta` (scores/gate), `HarnessPolicy` (effective gate policy). unit(app): `harness-internal.service.test.ts`.
-4. **Stream progress / assurance / trajectory.** SSE on `ConsultationController`: `GET /consultations/:id/harness-progress/stream`, `…/harness-assurance/stream`, `…/trajectory/stream` (TASK-533 agentic loop). unit(api): `consultation.controller.{harness-progress,harness-assurance,trajectory}.test.ts`; e2e: `harness-progress-stream-cross-tenant.spec.ts`.
+4. **Stream progress / assurance / trajectory.** SSE on `ConsultationController`: `GET /consultations/:id/harness-progress/stream`, `…/harness-assurance/stream`, `…/trajectory/stream` (agentic loop). unit(api): `consultation.controller.{harness-progress,harness-assurance,trajectory}.test.ts`; e2e: `harness-progress-stream-cross-tenant.spec.ts`.
 5. **Gate + attest.** Clinician approve/edit → workflow signal `POST /api/v1/internal/workflows/:id/signal/{approve,edit}`; attestation `POST /consultations/:id/summary/:contextItemId/approve` → `ContextItemVersion` (attestation), `HarnessAuditEvent`. e2e: `harness-gate.spec.ts`.
 
 **Composes:** [`harness.md`](./harness.md) H1 (harness workflow), H4 (RAG); [`summarization.md`](./summarization.md) G1 (the draft it gates).
@@ -134,7 +134,7 @@ entitlements, wire SSO, and attach BYO credentials.
 4. **Wire SSO (OIDC / SAML).** `@Controller('admin/tenant-idp-config')` → `POST ''` / `PUT :id`, `POST :id/test` (DRAFT→ENABLED), `PUT :id/directory-credentials` (Vault-encrypted BYO directory key), `POST :id/sync` (directory sync, BullMQ) → `TenantIdentityProvider`, `FederatedIdentity`, `TenantIdentityProviderDomain`. unit(app): `tenant-idp-config/__tests__/*`, `directory-sync/__tests__/*`.
 5. **Attach BYO provider + TTS credentials.** `PUT /admin/ai-providers/:provider` (`AiProviderConnection`) and `PUT /admin/tts-config/credentials/:provider` (`TenantTtsProviderCredential`) — Vault-Transit, write-only. unit(app): `ai-provider-connection.service.test.ts`; e2e: `ai-provider-connections-cross-tenant.spec.ts`.
 
-**Composes:** legacy rows 4/5/6/7 (tenancy — [`docs/traceability-matrix.md`](../traceability-matrix.md)); [`auth-identity.md`](./auth-identity.md) A3 (RBAC), I1 (IdP config); [`ai-models-providers.md`](./ai-models-providers.md) M6 (BYO); [`tts.md`](./tts.md) T3 (tenant-TTS BYO).
+**Composes:** [`tenancy-provisioning.md`](./tenancy-provisioning.md) TP1–TP5 (tenancy, entitlements, users, departments); [`auth-identity.md`](./auth-identity.md) A3 (RBAC), I1 (IdP config); [`ai-models-providers.md`](./ai-models-providers.md) M6 (BYO); [`tts.md`](./tts.md) T3 (tenant-TTS BYO).
 
 **Invariants:** 404-over-403 on every tenant-scoped `:id` (`role-members-cross-tenant`, `*-cross-tenant.spec.ts` suite); OCC on tenant/entitlement/IdP writes; SSO client secret + directory + BYO keys sealed with Vault Transit (plaintext never stored); **SAML assertion-security e2e is an OPEN gate** — I2's unit coverage is mocked, not real signed-assertion tamper/expiry/replay/XSW ([`auth-identity.md`](./auth-identity.md) gap).
 
@@ -189,16 +189,16 @@ the tenant's effective TTS spec per request.
 
 ## W10 — AuthN / AuthZ session flows (login → authorize → revoke)
 
-Session issuance, per-request authorization, and the TASK-541 revocation + HIPAA auth-event
+Session issuance, per-request authorization, and the revocation + HIPAA auth-event
 audit path.
 
 1. **Authenticate.** `@Controller('auth')` → `POST /auth/login` (or federated `@Controller('auth/sso')` → OIDC `POST /start` + `GET /callback`, SAML `POST /saml/:tenantKey/{start,acs}`) → `User`, `FederatedIdentity`; refresh-token family + revocation state in Redis. e2e: `auth.spec.ts`, `auth-refresh.spec.ts`; unit(app): `federated-auth/__tests__/*`.
 2. **Authorize every request (deny-by-default).** `UnifiedAuthGuard` (JWT / API key / OIDC) → `JwtStrategy` applies revocation posture; `@Authorize`/`@Can*` → PolicyEngine over `Role`/`Policy`/`RolePolicy`/`UserRoleAssignment`; runtime check `POST /rbac/check[/bulk]`. e2e: `auth-guard-behavior.spec.ts`, `rbac.spec.ts`, `authorization.spec.ts`.
 3. **Stream ticket (out-of-band).** `POST /auth/stream-ticket` mints a single-use ticket for WS/SSE (never a JWT in the URL). e2e: `stream-ticket-scopes.spec.ts`.
 4. **Impersonate (break-glass).** `POST /auth/impersonate`, `POST /admin/users/:id/impersonate`, `POST /auth/revoke-impersonation` — audited via `ImpersonationAuditInterceptor`. e2e: `user-impersonation.spec.ts`, `policy-break-glass.spec.ts`.
-5. **Revoke + audit (TASK-541).** `POST /auth/logout` (access jti + refresh family) and user deactivate/suspend/soft-delete stamp Redis `jwt-revoked:<jti>` + per-user `auth:user-nbf:<userId>`; failed logins emit envelope-encrypted `UserAuthenticationFailed` rows → `AuditLog` (`db_main/audit.prisma`, no new model). unit(app): `auth/__tests__/{jwt-revocation.service,jwt.strategy}.test.ts`, `user/user/__tests__/user.service.task541.test.ts`; e2e: `auth-revocation-audit.spec.ts` (logout→replay 401; deactivate→live-token 401; failed login writes a queryable `success:false` row that never contains the attempted password).
+5. **Revoke + audit.** `POST /auth/logout` (access jti + refresh family) and user deactivate/suspend/soft-delete stamp Redis `jwt-revoked:<jti>` + per-user `auth:user-nbf:<userId>`; failed logins emit envelope-encrypted `UserAuthenticationFailed` rows → `AuditLog` (`db_main/audit.prisma`, no new model). unit(app): `auth/__tests__/{jwt-revocation.service,jwt.strategy}.test.ts`, `user/user/__tests__/user.service.task541.test.ts`; e2e: `auth-revocation-audit.spec.ts` (logout→replay 401; deactivate→live-token 401; failed login writes a queryable `success:false` row that never contains the attempted password).
 
-**Composes:** [`auth-identity.md`](./auth-identity.md) A1 (sessions), A2 (API keys), A3 (RBAC), A5 (revocation + audit), I2 (federated SSO); legacy row 28 (audit — [`docs/traceability-matrix.md`](../traceability-matrix.md)).
+**Composes:** [`auth-identity.md`](./auth-identity.md) A1 (sessions), A2 (API keys), A3 (RBAC), A5 (revocation + audit), I2 (federated SSO); [`platform-ops.md`](./platform-ops.md) PO1 (audit logging & sys-events).
 
 **Invariants:** deny-by-default (`UnifiedAuthGuard` — every route carries `@Public()` or a permission decorator, enforced by the boot audit); revocation fails **OPEN** for ordinary tokens / **CLOSED** for impersonation on a Redis outage (owner decision A3); per-user not-before TTL 24 h, deny-on-tie `iat <= notBefore`; failed-auth audit rows never contain the attempted password; 404-over-403 on cross-tenant admin-user reads (`tenant-access-control.spec.ts`). A5 is **uncommitted on `fix/2605-review`** (status Review).
 
@@ -223,50 +223,50 @@ imperative privilege gate above the declarative decorator.
 
 ## W12 — Agentic workflow substrate: author → validate → publish → invoke → result (Summarization palette)
 
-The first palette proving the agentic-workflow-platform substrate (TASK-715–720, 734, 722; wave
-1/2 of [`design.md`](../architecture/agentic-workflow-platform/design.md)). **Partial** — see
+The first palette proving the agentic-workflow-platform substrate (wave
+1/2 of [`design.md`](../programs/agentic-workflow-platform/design.md)). **Partial** — see
 the gaps below; a REAL clinical-summarization result is not producible end-to-end yet, but the
-authoring→publish→invoke→status→cancel *mechanism* now is (as of TASK-722).
+authoring→publish→invoke→status→cancel *mechanism* now is.
 
-1. **Definition model + domain quartet.** `WorkflowDefinition` (TASK-715 Phase A: DB; TASK-734
-   Phase B-D: the hand-authored `Entity`/`Factory`/`EntityMapper`/`Repository`, incl.
+1. **Definition model + domain quartet.** `WorkflowDefinition` (the Prisma model plus the hand-authored
+   `Entity`/`Factory`/`EntityMapper`/`Repository`, incl.
    `findPublishedBySlug`/`findActivePublishedByTenant`) — rows ARE versions (no head/version
    split); `graph` (authored canvas, `packages/database/src/prisma/db_main/workflow-definition.prisma`).
    A `BEFORE UPDATE OR DELETE` trigger + a partial unique index enforce PUBLISHED-row
    immutability and the "at most one ACTIVE version per slug" invariant at the DB layer
-   (TASK-734, `migrations/20260816090000_task_734_workflow_definition_immutability_guard/`).
-2. **Validate + compile (pure engine).** `packages/workflow-contract` (TASK-716 Phase C) —
+   (`migrations/20260817000100_task_734_workflow_definition_immutability_guard/`).
+2. **Validate + compile (pure engine).** `packages/workflow-contract` —
    `validate()` (structural/invariant/schema rule classes over `DRAFT_SUMMARIZATION_RULE_SET`,
    itself DRAFT/not clinician-reviewed) and `compile()` (deterministic graph →
-   `compiledConfig`, the interpreter's input contract), wired into `WorkflowDefinitionService`
-   (TASK-734 Task 5): `compile()` is the always-blocking ENGINE gate on create/update/publish;
+   `compiledConfig`, the interpreter's input contract), wired into `WorkflowDefinitionService`:
+   `compile()` is the always-blocking ENGINE gate on create/update/publish;
    `validate()`'s DRAFT rule findings are recorded but never block a write (decision #3). **The
    Summarization palette's own mandatory-subgraph rules** (`input.context_binding →
    generate.text → guardrail.check → output.deliver`, guardrail non-removable) are
-   `WF-SUMM-001..006` (TASK-720 Task 3), golden fixtures at
+   `WF-SUMM-001..006`, golden fixtures at
    `packages/workflow-contract/src/__tests__/golden/WF-SUMM-*/`. Node config schemas:
    `docs/implementation/TASK-720-Palette-Summarization/contracts/nodes/*.schema.json` +
    `contracts/palette.md` (safety class / `critical` / activity-name table) — no delivered
-   `configSchema` contract exists on the node-registry response yet (TASK-734 §7).
-3. **Node registry.** `@arcaai/workflow-contract`'s `WORKFLOW_NODE_REGISTRY` (TASK-734 Task 3,
-   `packages/workflow-contract/src/node-registry.ts`) is the code-owned TS mirror of
+   `configSchema` contract exists on the node-registry response yet.
+3. **Node registry.** `@arcaai/workflow-contract`'s `WORKFLOW_NODE_REGISTRY`
+   (`packages/workflow-contract/src/node-registry.ts`) is the code-owned TS mirror of
    `apps/harness/.../interpreter/registry.py`'s `NODE_REGISTRY`, parity-guarded by a shared
-   fixture (`docs/implementation/TASK-734-.../contracts/node-registry.snapshot.json`). Carries
+   fixture (`docs/implementation/TASK-734-Workflow-Substrate-Second-Pass/contracts/node-registry.snapshot.json`). Carries
    seven entries: the `noop`/`passthrough` seed pair plus the five Summarization palette node
    types (`interpreter.context_binding` / `interpreter.template_ref` / `interpreter.text_generate`
    / `interpreter.guardrail_check` / `interpreter.deliver`), populated on both sides + the shared
-   fixture by TASK-720's second pass (2026-08-16) — see the gaps below for what remains before a
+   fixture by the palette's second pass (2026-08-16) — see the gaps below for what remains before a
    real invoke produces a retrievable clinical output.
-4. **Interpreter.** `WorkflowInterpreter` Temporal workflow (TASK-718,
-   `apps/harness/src/harness/temporal/interpreter/`) — stage-walk dispatch off
+4. **Interpreter.** `WorkflowInterpreter` Temporal workflow
+   (`apps/harness/src/harness/temporal/interpreter/`) — stage-walk dispatch off
    `compiledConfig`, registry-sanctioned activities only (S-4: the wire `activity` string is a
-   consistency check, never a routing decision). A new HTTP dispatcher (TASK-718 Task 10,
-   `apps/harness/src/harness/api/endpoints/interpreter.py`) exposes `POST
+   consistency check, never a routing decision). A new HTTP dispatcher
+   (`apps/harness/src/harness/api/endpoints/interpreter.py`) exposes `POST
    /api/v1/workflow-runs:start` (idempotent by workflow-id collision), `GET
    /api/v1/workflow-runs/{runId}` (Temporal `describe()` + the workflow's `state` query), `POST
    /api/v1/workflow-runs/{runId}:cancel` (a code allow-list — never a caller-supplied signal
    name) — `X-Service-Token`-guarded, called only from the gateway (never a browser).
-5. **Exposure plane — invoke/status/stream/cancel/list (TASK-722).** `GET /api/v1/workflows`,
+5. **Exposure plane — invoke/status/stream/cancel/list.** `GET /api/v1/workflows`,
    `POST /api/v1/workflows/:slug/invoke`, `GET /api/v1/workflows/:slug/runs/:runId[/stream]`,
    `POST /api/v1/workflows/:slug/runs/:runId/cancel` (`apps/api/src/modules/workflows/`), gated
    OFF by default (`WORKFLOW_EXPOSURE_ENABLED`, R-1) and scoped by both a CASL authorization
@@ -274,11 +274,11 @@ authoring→publish→invoke→status→cancel *mechanism* now is (as of TASK-72
    route (boot-audited, `api-key-scope-audit.ts`). `invoke()` resolves the tenant's
    ACTIVE PUBLISHED version (`findPublishedBySlug`, 404-over-403), mints a content-addressed
    `ClaimCheckRef` for `compiledConfig` into the self-hosted MinIO claim-check bucket (the
-   interpreter never accepts a raw compiled config — TASK-718's own dispatcher contract), and
+   interpreter never accepts a raw compiled config — the interpreter's own dispatcher contract), and
    POSTs to the harness dispatcher's `:start` route. The SSE stream is a documented, disclosed
    BRIDGE, not a byte-proxy: no live event-stream producer exists on the interpreter yet
-   (TASK-717 Phase C deferred), so `WorkflowStreamService` polls the JSON status read and
-   translates each snapshot into a TASK-717 async-contract envelope; no synthetic resume token
+   (deferred), so `WorkflowStreamService` polls the JSON status read and
+   translates each snapshot into an async-contract envelope; no synthetic resume token
    is minted (Temporal polling has no transport-native cursor — async-contract §3.6 forbids
    inventing one). Decision #6 (cloud-provider selection through a public workflow, R-8): OFF by
    default (`WORKFLOW_EXPOSURE_ALLOW_CLOUD_PROVIDERS`), checked against `compiledConfig`'s
@@ -286,11 +286,11 @@ authoring→publish→invoke→status→cancel *mechanism* now is (as of TASK-72
    the BYO-credential plane uses — currently inert (no node type sets `config.provider` yet)
    but wired for the moment one does.
 6. **Seeded platform default.** One SYSTEM-tenant, `PUBLISHED`, `isActive` `WorkflowDefinition`
-   row (TASK-720 Task 6, `packages/database/src/prisma/db_main/seed/21-workflow-definition.ts`)
+   row (`packages/database/src/prisma/db_main/seed/21-workflow-definition.ts`)
    — the dispatcher's fallback when a tenant has authored no workflow of its own. `graph` /
    `compiledConfig` are the literal, provable output of the real `compile()`/`validate()` engine.
-7. **Async envelope + Studio.** TASK-717 (async contract, Phase A+B delivered) and TASK-719
-   (Workflow Studio v1, admin-console) — see their own ticket READMEs for status.
+7. **Async envelope + Studio.** The async contract is delivered through Phases A+B; Workflow
+   Studio v1 (`apps/admin-console`) is separate in-flight work.
 
 **Composes:** [`harness.md`](./harness.md) (Temporal workflow patterns); no domain file yet
 owns this substrate as a first-class capability (candidate for a future `agentic-workflow.md`
@@ -299,9 +299,9 @@ once wave 2+ lands).
 **Invariants (intended, not all enforced yet):** the guardrail node is structurally
 non-removable and nothing routes around it (`WF-SUMM-004`/`006`); `compiledConfig` is
 server-produced only, never accepted from a request DTO; a published row is hard-immutable
-(service guard + DTO whitelist + checksum drift-detection + a DB trigger, TASK-734); a
+(service guard + DTO whitelist + checksum drift-detection + a DB trigger); a
 publicly-invoked workflow never routes to a cloud LLM provider without an explicit tenant
-opt-in (TASK-722 decision #6); provider/model selection for `generate.text` is `failMode:
+opt-in (exposure-plane decision #6); provider/model selection for `generate.text` is `failMode:
 closed` (no env fallback).
 
 ---
@@ -311,8 +311,8 @@ closed` (no env fallback).
 - **No e2e proves W4's full guardrail-interception chain end to end.** The fail-closed behavior is covered at py(text) unit level (`test_generate_guardrail_wiring.py`); there is no live-DB Playwright spec asserting a blocked generation from a browser call.
 - **W2's browser-WS live round-trip and W9's live synthesis are env-gated**, not `apps/api/tests/e2e` specs (playground manual passes) — see the transcription and TTS domain gaps.
 - **W6's SAML leg is an open security gate** — real signed-assertion tamper/expiry/replay/XSW coverage does not exist (I2 unit tests use a mocked SAML client). Do not read W6 step 4 as assertion-hardening evidence.
-- **W10 step 5 (revocation/audit) is uncommitted** on `fix/2605-review` (TASK-541, status Review) — landed-but-unmerged.
-- **W12's five Summarization node activities are now implemented** (TASK-720 second pass,
+- **W10 step 5 (revocation/audit) is uncommitted** on `fix/2605-review` (status Review) — landed-but-unmerged.
+- **W12's five Summarization node activities are now implemented** (palette second pass,
   2026-08-16): `interpreter.context_binding` / `interpreter.template_ref` /
   `interpreter.text_generate` / `interpreter.guardrail_check` / `interpreter.deliver` all exist,
   are registered on both `NODE_REGISTRY` (Python) and `WORKFLOW_NODE_REGISTRY` (TS, cross-language
@@ -320,23 +320,22 @@ closed` (no env fallback).
   two blockers this bullet previously named were closed, not routed around: `workflow.py` now
   threads a `bound_inputs` dict (from the compiler's own `NODE.inputs` edges) between nodes, and
   `generate.text` reuses the harness's own already-shipped `ApiClient.get_policy` +
-  `SmrClient.generate` pattern (never the gateway) — see that ticket's README §7 for the full
-  reasoning and replay-safety proof. **W12 STILL cannot produce a real clinical result
+  `SmrClient.generate` pattern (never the gateway). **W12 STILL cannot produce a real clinical result
   end-to-end**, for reasons now narrower and specifically named:
-  1. `WorkflowExposureService.invoke()` (TASK-722) accepts `InvokeWorkflowRequest.input` but does
+  1. `WorkflowExposureService.invoke()` accepts `InvokeWorkflowRequest.input` but does
      NOT forward it to `HarnessGatewayService.startWorkflowRun(...)` — so `input.context_binding`
      always sees an empty `run_payload` on a real invoke today, and (its kind is `required: true`
-     in the seeded definition) DEGRADES → the run's `input.context_binding` node fails. TASK-722's
-     own gap, not TASK-720's.
+     in the seeded definition) DEGRADES → the run's `input.context_binding` node fails. This is the
+     exposure plane's (step 5) gap, not the palette definition's (steps 1–3).
   2. `output.deliver`'s claim-check write has no consumer: no `WorkflowRun` column or callback
      records a `resultRef` for a run-status caller to read back, so a run's actual output is
      unrecoverable by an invoker even when the graph runs cleanly. Real external write, no
-     retrieval path — TASK-722/723's (runs observability) gap to close.
+     retrieval path — the runs-observability plane's gap to close.
   3. `guardrail.check`'s `onFail: 'abort'` is accepted/recorded but cannot promote a run to
      `FAILED` (that requires the code-owned `critical` registry flag, which this node carries as
      `False` per its safety classification) — a genuine v1 architectural ceiling, not a bug.
   A live Temporal/harness round trip (item below) remains separately unverified regardless.
-- **TASK-722's exposure plane was NOT proven against a live Temporal/harness round trip.**
+- **W12's exposure plane was NOT proven against a live Temporal/harness round trip.**
   `apps/harness` and its Temporal worker are not part of `pnpm test:up:api`'s server set and
   were not started this session; `apps/api/tests/e2e/task-722-workflow-exposure.spec.ts` proves
   every gateway-side gate (scoping, tenant isolation, 404-over-403, DTO validation, the
@@ -346,8 +345,8 @@ closed` (no env fallback).
   comment. A genuine `202 → RUNNING → COMPLETED` round trip is unverified pending a running
   harness + Temporal worker (R-2 already names Temporal as not production-ready for the same
   reason).
-- **The "0"-create contract (TASK-534) is proven mostly at the unit/decorator layer plus the `ai-provider-connections.spec.ts` / `ai-runtime-profiles.spec.ts` / `settings-registry-write.spec.ts` 428/412 legs.** The create-from-absent (`If-Match: "0"` → new row) path is asserted in the service unit suites (`settings-registry-write.occ`, `ai-provider-connection.service`, `harness-policy.service`), not yet in a dedicated e2e create leg.
-- Legacy-domain steps (W6 tenancy/entitlements, W10 audit) cite the not-yet-migrated [`docs/traceability-matrix.md`](../traceability-matrix.md) rows; re-verify when those domains migrate.
+- **The "0"-create contract is proven mostly at the unit/decorator layer plus the `ai-provider-connections.spec.ts` / `ai-runtime-profiles.spec.ts` / `settings-registry-write.spec.ts` 428/412 legs.** The create-from-absent (`If-Match: "0"` → new row) path is asserted in the service unit suites (`settings-registry-write.occ`, `ai-provider-connection.service`, `harness-policy.service`), not yet in a dedicated e2e create leg.
+- W6 (tenancy/entitlements) and W10 (audit) now resolve to [`tenancy-provisioning.md`](./tenancy-provisioning.md) and [`platform-ops.md`](./platform-ops.md) respectively; their step-level claims were carried over from the retired matrix and have not been re-verified against those files line by line.
 - **[`ai-models-providers.md`](./ai-models-providers.md) M7's `e2e: —` is stale.** `apps/api/tests/e2e/trajectory-admin.spec.ts` exists and probes the M7 `/admin/agent-trajectory/*` read plane (RBAC + keyset step pagination + `payloadRef`-never-surfaced); code wins over the domain file's cell. W7 step 5 cites it; M7's e2e cell should be corrected on that file's next re-stamp.
 
 Last verified: 2026-07-22

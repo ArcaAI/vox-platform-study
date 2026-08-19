@@ -1,6 +1,6 @@
 """The async task/event envelope (TASK-717).
 
-Normative prose + rationale: ``docs/architecture/agentic-workflow-platform/
+Normative prose + rationale: ``docs/programs/agentic-workflow-platform/
 async-contract.md`` §3.2. Normative machine artifact:
 ``packages/async-contract/schema/async-envelope.v1.json`` (draft 2020-12).
 

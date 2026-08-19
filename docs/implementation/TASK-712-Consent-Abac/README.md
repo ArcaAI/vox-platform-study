@@ -6,7 +6,7 @@
 | **Wave** | 1 · **Size** | XL |
 | **Epic slug** | `consent-abac` |
 | **Depends on** | — (independent; TASK-711 supplies the `PRIMED` state this gate naturally attaches to, but neither blocks the other) |
-| **Design refs** | D3 (server-side validator is the safety boundary, never UI lockouts), D7 (async contract), [design.md](../../architecture/agentic-workflow-platform/design.md) §Plane 2 Wave 1 ("keyed on `(tenantId, externalPatientId)`; guard after `UnifiedAuthGuard` + non-HTTP `assertConsent` choke point for workers/activities/tools"), §Data flow ("Consent-gate node → `assertConsent` (fail → abort + audit)"), §Error handling ("Mid-session consent revocation → re-checked at every gated stage; new tool calls stop; audited") |
+| **Design refs** | D3 (server-side validator is the safety boundary, never UI lockouts), D7 (async contract), [design.md](../../programs/agentic-workflow-platform/design.md) §Plane 2 Wave 1 ("keyed on `(tenantId, externalPatientId)`; guard after `UnifiedAuthGuard` + non-HTTP `assertConsent` choke point for workers/activities/tools"), §Data flow ("Consent-gate node → `assertConsent` (fail → abort + audit)"), §Error handling ("Mid-session consent revocation → re-checked at every gated stage; new tool calls stop; audited") |
 | **Findings closed** | A-01 · F-03, F-08's CASL half (`03-compliance-posture.md`) · unblocks A-10 (`retention-erasure`) and the erasure cascade, neither of which is delivered here |
 
 ---

@@ -1,4 +1,4 @@
-# pgbouncer_exporter scrape config — TASK-302 Stream C Phase 2A.
+# pgbouncer_exporter scrape config.
 #
 # Append the snippet under `scrape_configs:` in your Prometheus config
 # (typically /etc/prometheus/prometheus.yml). The HA stack runs the

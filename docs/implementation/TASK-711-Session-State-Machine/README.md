@@ -6,7 +6,7 @@
 | **Wave** | 1 · **Size** | L |
 | **Epic slug** | `session-state-machine` |
 | **Depends on** | TASK-701 (`signed-status-forgery`), TASK-704 (`generator-entry-point-seam`) |
-| **Design refs** | D1 (staged generator migration — the seam this ticket transitions through), D5/Plane 2 Wave 1, [design.md](../../architecture/agentic-workflow-platform/design.md) §Plane 2, §Error handling ("Timeout force-stops that node only; 'Degraded' is health flags, not a state" · "HITL timeout → `Timed Out`, visibly unsigned, notification — the clock never signs") |
+| **Design refs** | D1 (staged generator migration — the seam this ticket transitions through), D5/Plane 2 Wave 1, [design.md](../../programs/agentic-workflow-platform/design.md) §Plane 2, §Error handling ("Timeout force-stops that node only; 'Degraded' is health flags, not a state" · "HITL timeout → `Timed Out`, visibly unsigned, notification — the clock never signs") |
 | **Findings closed** | A-13, A-33, A-41, A-46 · A-36 (consultation half only; the `ContextItem` half belongs to `context-lifecycle`) · [ADDED-1] from `evidence/orchestration.md` |
 
 ---

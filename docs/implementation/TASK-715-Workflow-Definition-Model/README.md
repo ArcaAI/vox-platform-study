@@ -6,7 +6,7 @@
 | **Wave** | 1 · **Size** | L |
 | **Epic slug** | `workflow-definition-model` |
 | **Depends on** | TASK-707 (`naming-alignment` — all new code is born with the post-rename names) |
-| **Design refs** | D2, D3, D4, D6, D8 from [design.md](../../architecture/agentic-workflow-platform/design.md) — Plane 1 §"Workflow substrate", Data flow §Authoring, Roadmap Wave 1 |
+| **Design refs** | D2, D3, D4, D6, D8 from [design.md](../../programs/agentic-workflow-platform/design.md) — Plane 1 §"Workflow substrate", Data flow §Authoring, Roadmap Wave 1 |
 | **Findings closed** | — (foundation ticket; closes design.md open question 5 with a recommendation) |
 
 ---

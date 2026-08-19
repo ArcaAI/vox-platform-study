@@ -6,7 +6,7 @@
 | **Wave** | 0 · **Size** | M (re-scoped from S on 2026-08-17) |
 | **Epic slug** | `loop-status-discovery` (historical — the ticket is no longer a discovery ticket) |
 | **Depends on** | — |
-| **Owner decision** | [`owner-decisions-2026-08-17.md`](../../architecture/agentic-workflow-platform/owner-decisions-2026-08-17.md) §2 row 705, plus standing directives D-A (no production data → finish enabled for day-1), D-B (configuration lives in the database, never env), D-F (local infra is up and is to be used) |
+| **Owner decision** | [`owner-decisions-2026-08-17.md`](../../programs/agentic-workflow-platform/owner-decisions-2026-08-17.md) §2 row 705, plus standing directives D-A (no production data → finish enabled for day-1), D-B (configuration lives in the database, never env), D-F (local infra is up and is to be used) |
 | **Findings closed** | Re-triages A-26, A-27, A-28 (per [04-target-architecture.md](../../architecture/consultation-session-workflow/assessment/04-target-architecture.md) §7 remediation table row `loop-status-discovery`) |
 
 ---

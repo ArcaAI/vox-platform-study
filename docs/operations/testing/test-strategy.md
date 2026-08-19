@@ -121,7 +121,7 @@ advisory jobs):
   `root-cause-tracing` skills), then fix to green. That test becomes the regression guard.
 - For data-path bugs, add validation at every layer the data crosses (`defense-in-depth` skill) so
   the class of bug becomes structurally impossible, not merely patched.
-- Track each defect against a `TASK-XXX` ticket; record the fix + evidence in that ticket's README
+- Track each defect against a ticket; record the fix + evidence in that ticket's README
   (append to Change History for fixes to existing tickets).
 
 ## 10. Test data & environment hygiene

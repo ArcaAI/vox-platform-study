@@ -2,7 +2,7 @@
 
 Speech-to-text across all its shapes: live streaming transcription (WS bridge → Redis →
 STT), batch transcription jobs (Dramatiq worker), speaker voice-profile enrollment +
-diarization, and the ASR pipeline registry with its TASK-531 template governance (locked
+diarization, and the ASR pipeline registry with its template governance (locked
 template copies, clone-to-customize, SYSTEM-template resync). Migrates legacy matrix rows
 **10**, **11**, **13**, and the **ASR-pipeline half of row 26** (the `AiModel` registry
 half is in [`ai-models-providers.md`](./ai-models-providers.md)).
@@ -61,7 +61,7 @@ back to the gateway on internal service-token callbacks.
 | Console | `apps/admin-console` feature `audio-pipelines` (`audio-pipelines-screen`); route `/audio/pipelines` (tier 30–49, tenant-scoped) |
 | Tests | unit(app): `stt/pipeline/__tests__/{pipeline.service,pipeline.service.task328}.test.ts`; unit(api): `pipeline/__tests__/{audio-pipeline.controller,audio-pipeline-public.controller}.test.ts`; unit(console): `audio-pipelines/components/__tests__/audio-pipelines-screen.test.tsx`, `audio-pipelines/api/__tests__/audio-pipelines-api.test.ts`; py(stt): `unit/test_config_reader.py` |
 
-### R5 — Pipeline template governance: clone + SYSTEM-template resync (TASK-531) — NEW (post-2026-07-06)
+### R5 — Pipeline template governance: clone + SYSTEM-template resync — NEW (post-2026-07-06)
 
 Locked SYSTEM-template copies are read-only; a tenant admin **clones** one into an editable
 copy (carrying template provenance), and a super admin **resyncs** a tenant's catalog
@@ -77,7 +77,7 @@ copies fast-forwarded; customized/unlocked rows never touched).
 | Console | `apps/admin-console` feature `audio-pipelines` template-governance surface (`template-governance`) under route `/audio/pipelines` |
 | Tests | unit(app): `stt/pipeline/__tests__/{pipeline.service.task531,pipeline-template-resync.service,pipeline-template-resync.cron.service}.test.ts`; unit(api): `pipeline/__tests__/audio-pipeline.task531.controller.test.ts`; unit(console): `audio-pipelines/components/__tests__/template-governance.test.tsx`; e2e: `pipeline-clone-resync-cross-tenant.spec.ts`, `pipeline-template-governance.spec.ts` |
 
-### R6 — Tenant STT fallback pipeline + BYOK, in-session provider switch (TASK-567) — NEW (post-2026-07-06)
+### R6 — Tenant STT fallback pipeline + BYOK, in-session provider switch — NEW (post-2026-07-06)
 
 A tenant-level fallback pipeline pointer + optional bring-your-own credentials for
 `azure-speech`/`sarvam`/`openai`; streaming credentials are injected into the session-create
@@ -103,6 +103,6 @@ the same Dramatiq attempt.
 - **`TranscriptSegment` (`db_main/consultation.prisma`) is a transcription-owned model on the consultation schema file.** It is populated by the streaming/batch path here, not by the consultation service.
 - **Nightly resync is off by default.** The `PipelineTemplateResyncCronService` sweep is disabled so a human stays in the loop; `POST /admin/tenants/:id/pipelines/resync` is the primary (admin-triggered) path.
 - **No dedicated live-DB streaming e2e for the WS bridge.** R1 has unit + contract + cross-tenant-job coverage; the full browser-WS live-transcription round-trip is env-gated (playground manual pass), not an `apps/api/tests/e2e` spec.
-- **R6 discovered a real drift, not yet fixed here (Phase H is docs-only)**: TASK-567's seed change added `openai` to `packages/database/src/prisma/db_main/seed/ai-models/shared.ts`'s `AI_MODEL_PROVIDERS` without the matching addition to the DTO allow-list `AI_MODEL_PROVIDERS` in `packages/applications/src/services/stt/model/dto/create-model.request.ts` — `tests/contracts/ai-model-providers.contract.test.ts` fails as a result (`@IsIn` on the admin `AiModel` create/update routes would reject `provider: 'openai'` today). Confirmed via `git stash` bisection that this is caused by TASK-567's changes (passes on the pre-TASK-567 tree), not pre-existing drift.
+- **R6 discovered a real drift, not yet fixed here (Phase H is docs-only)**: a seed change added `openai` to `packages/database/src/prisma/db_main/seed/ai-models/shared.ts`'s `AI_MODEL_PROVIDERS` without the matching addition to the DTO allow-list `AI_MODEL_PROVIDERS` in `packages/applications/src/services/stt/model/dto/create-model.request.ts` — `tests/contracts/ai-model-providers.contract.test.ts` fails as a result (`@IsIn` on the admin `AiModel` create/update routes would reject `provider: 'openai'` today). Confirmed via `git stash` bisection that this is caused by that seed change (the contract test passes on the tree before it), not pre-existing drift.
 
 Last verified: 2026-07-22

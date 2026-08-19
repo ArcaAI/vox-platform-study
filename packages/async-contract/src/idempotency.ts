@@ -1,6 +1,6 @@
 /**
  * Idempotency-key convention for the async envelope (§3.5 of
- * docs/architecture/agentic-workflow-platform/async-contract.md).
+ * docs/programs/agentic-workflow-platform/async-contract.md).
  *
  * ============================================================================
  * THE ONE RULE, restated from `usageLedger/idempotency-keys.ts:3-26` (the

@@ -93,7 +93,7 @@ itself lives in the medical-NLP domain / SMR-driven `extract-entities` in
 | Prisma models | `ContextItem` — the running note is a `PRE_SUMMARY` snapshot tagged `metadata.subType = LIVE_SOAP_SNAPSHOT` |
 | Key API endpoints | SSE `GET /consultations/:id/live-summary/stream` (`@Sse()` on `consultation.controller.ts`) |
 | Console | consumed by the playground live-transcription surface (running note panel) |
-| Tests | unit(app): `consultation/live-documentation/__tests__/{live-documentation.service,soap-parser,live-documentation.windowed,live-documentation.groundedness,live-documentation.repair,live-documentation.prompt-cache,live-documentation.agentic-context,live-documentation.repoint-grounding,live-documentation.trajectory}.test.ts`. The `agentic-context`, `repoint-grounding`, and `trajectory` suites cover the TASK-533 agentic-loop wiring (post-2026-07-06) |
+| Tests | unit(app): `consultation/live-documentation/__tests__/{live-documentation.service,soap-parser,live-documentation.windowed,live-documentation.groundedness,live-documentation.repair,live-documentation.prompt-cache,live-documentation.agentic-context,live-documentation.repoint-grounding,live-documentation.trajectory}.test.ts`. The `agentic-context`, `repoint-grounding`, and `trajectory` suites cover the agentic-loop wiring (post-2026-07-06) |
 
 ### C8 — Async consultation jobs (generation job tracking)
 

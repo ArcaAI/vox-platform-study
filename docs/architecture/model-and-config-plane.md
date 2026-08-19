@@ -1,8 +1,8 @@
 # HOPE Model & Configuration Plane
 
-| | |
-|---|---|
-| **Owner** | Platform / Inference | **Introduced** docs/implementation/TASK-524-Config-Plane-Core · **Last verified** 2026-07-21 |
+|           |                      |
+| --------- | -------------------- |
+| **Owner** | Platform / Inference | **Introduced** 2026-07-21 · **Last verified** 2026-07-21 |
 
 Authoritative reference for how HOPE decides **which model runs a task, where its
 provider lives, how it is authenticated, how long it stays resident, and how an
@@ -21,19 +21,19 @@ endpoint for its own service-level knobs.
 
 ## 1. Layers at a glance
 
-| Layer | Persisted in | Resolved by | Consumed by |
-|---|---|---|---|
-| Settings registry / catalog | descriptor code + `GlobalSetting` (`global-kv` lane) | `EffectiveSettingsService` (registry-key addressed) | admin console (catalog), internal effective-config route |
-| Task → model selection | `AiTaskDefault` | `AiTaskDefaultService.getEffective` | gateway proxies to guardrail / nlp / smr / harness |
-| Provider location + auth | `AiProviderConnection` | provider resolver (tenant → SYSTEM → env) | gateway inference proxies |
-| Hyperparameters / concurrency | `AiRuntimeProfile` | injection-time cascade | gateway inference proxies |
-| Model registry + discovery | `AiModel` (+ live server enumeration) | `AiModelDiscoveryService` (merge view) | admin registration, pipeline / task references |
-| Model source resolution | `AiModel.sourceUri` / `localPath` | each service's `resolve_model_dir` | stt, guardrail, nlp, harness |
-| Model lifecycle / retention | `global-kv` settings keys | internal effective-config route | in-process model caches (all services) |
-| Pipeline governance | `AsrPipeline` (template lineage) | pipeline service (clone / resync) | stt pipeline reader |
-| Per-tenant TTS spec | `TenantTtsConfig` (+ BYO credential) | `TenantTtsConfigService` | gateway → tts (stateless) |
-| External identity | `TenantIdentityProvider` (+ federation) | `idp-resolver` | auth (OIDC login) |
-| External tools | `McpServer` | harness at call time | harness MCP transport |
+| Layer                         | Persisted in                                         | Resolved by                                         | Consumed by                                              |
+| ----------------------------- | ---------------------------------------------------- | --------------------------------------------------- | -------------------------------------------------------- |
+| Settings registry / catalog   | descriptor code + `GlobalSetting` (`global-kv` lane) | `EffectiveSettingsService` (registry-key addressed) | admin console (catalog), internal effective-config route |
+| Task → model selection        | `AiTaskDefault`                                      | `AiTaskDefaultService.getEffective`                 | gateway proxies to guardrail / nlp / smr / harness       |
+| Provider location + auth      | `AiProviderConnection`                               | provider resolver (tenant → SYSTEM → env)           | gateway inference proxies                                |
+| Hyperparameters / concurrency | `AiRuntimeProfile`                                   | injection-time cascade                              | gateway inference proxies                                |
+| Model registry + discovery    | `AiModel` (+ live server enumeration)                | `AiModelDiscoveryService` (merge view)              | admin registration, pipeline / task references           |
+| Model source resolution       | `AiModel.sourceUri` / `localPath`                    | each service's `resolve_model_dir`                  | stt, guardrail, nlp, harness                             |
+| Model lifecycle / retention   | `global-kv` settings keys                            | internal effective-config route                     | in-process model caches (all services)                   |
+| Pipeline governance           | `AsrPipeline` (template lineage)                     | pipeline service (clone / resync)                   | stt pipeline reader                                      |
+| Per-tenant TTS spec           | `TenantTtsConfig` (+ BYO credential)                 | `TenantTtsConfigService`                            | gateway → tts (stateless)                                |
+| External identity             | `TenantIdentityProvider` (+ federation)              | `idp-resolver`                                      | auth (OIDC login)                                        |
+| External tools                | `McpServer`                                          | harness at call time                                | harness MCP transport                                    |
 
 Every model row follows the standard field template (uuid v7 id, `_version` OCC,
 `tenantId`, soft-delete `resourceStatus`, audit columns) unless it is explicitly
@@ -63,7 +63,7 @@ system-scoped, never tenant-set).
 `walkCascade` (`settings-registry/scope-cascade.ts`) is the dependency-free
 primitive: walk the caller-ordered tiers deepest → shallowest and return the
 **first tier that supplies a set value**, else the code default. `false` / `0` /
-`""` count as *set*; only `null` / `undefined` mean "inherit". Tier ordering and
+`""` count as _set_; only `null` / `undefined` mean "inherit". Tier ordering and
 max-scope filtering are the caller's responsibility.
 
 `EffectiveSettingsService` (`settings-registry/effective-settings.service.ts`) is
@@ -111,7 +111,7 @@ consuming service's env fallback**.
 is **super-admin-only** — writes are gated by an `isSuperAdmin` service-layer
 guard (`SUPER_ADMIN_ONLY_TASK_PREFIXES` in
 `packages/applications/src/services/ai-task-default/constants.ts`). Tenants only
-*consume* the SYSTEM-row platform default; no task key is tenant-admin editable
+_consume_ the SYSTEM-row platform default; no task key is tenant-admin editable
 and runtime resolution ignores per-tenant override rows. This mirrors the
 imperative privilege pattern documented in the API gateway rules — the
 permission decorator says `manage`, but the real gate is "super admin only".
@@ -150,8 +150,8 @@ bedrock) — the service layer returns 403 otherwise; self-host engines
 every tenant's resolver may read the SYSTEM catalog row, but the widening is
 `[caller, SYSTEM]` only and never exposes another tenant's BYO row.
 
-BYO cloud-credential admin flows live under
-docs/implementation/TASK-526-BYO-Cloud-Credentials for the deep dive.
+BYO cloud-credential admin flows live under the gateway's
+`ai-provider-connection` module (`apps/api/src/modules/ai-provider-connection/`).
 
 ---
 
@@ -202,29 +202,28 @@ enumerated live from server-managed providers
 (`DISCOVERABLE_AI_MODEL_PROVIDERS = ['ollama', 'lm-studio', 'vllm', 'llama-cpp']`).
 Each entry carries a status:
 
-| Status | Meaning |
-|---|---|
-| `registered` | governance row exists and the model is present on its server |
-| `discovered` | live on a server but not yet a governance row |
-| `registered-missing-on-server` | governance row exists but the server no longer serves it |
+| Status                         | Meaning                                                      |
+| ------------------------------ | ------------------------------------------------------------ |
+| `registered`                   | governance row exists and the model is present on its server |
+| `discovered`                   | live on a server but not yet a governance row                |
+| `registered-missing-on-server` | governance row exists but the server no longer serves it     |
 
 Explicit **register** promotes a discovered model into a governance row.
 `normalizeModelSlug` deterministically lowercases and hyphen-collapses the
 server's model name (`llama3.1:8b-instruct-q4_K_M` → `llama3-1-8b-instruct-q4-k-m`);
 there is deliberately **no collision suffixing** — a taken slug surfaces as an
-actionable 400 so the admin names the row on purpose. Deep dive:
-docs/implementation/TASK-528-Model-Discovery-Hub.
+actionable 400 so the admin names the row on purpose.
 
 ### 6.3 Source resolution
 
 `AiModel.sourceUri` follows a scheme grammar honoured by every service's
 `resolve_model_dir` (stt, guardrail, nlp, harness):
 
-| Scheme | Behaviour |
-|---|---|
-| `hf:<org>/<repo>` or bare `<org>/<repo>` | HuggingFace Hub snapshot; honours `HF_HUB_OFFLINE` |
-| `file:///abs/path` | verified in place, never copied |
-| `s3://bucket/prefix` | downloaded once into the service cache, single-flight + SHA256-verified |
+| Scheme                                   | Behaviour                                                               |
+| ---------------------------------------- | ----------------------------------------------------------------------- |
+| `hf:<org>/<repo>` or bare `<org>/<repo>` | HuggingFace Hub snapshot; honours `HF_HUB_OFFLINE`                      |
+| `file:///abs/path`                       | verified in place, never copied                                         |
+| `s3://bucket/prefix`                     | downloaded once into the service cache, single-flight + SHA256-verified |
 
 Anything else is a hard `ModelSourceError` — never a silent fallback
 (`azure-blob://` is deferred). `AiModel.localPath` is an operator/admin override
@@ -233,8 +232,7 @@ pre-staged NFS mounts); a set-but-missing `localPath` falls through to scheme
 dispatch with a warning. `checksum` (SHA256) is verified for single-file
 artifacts (GGUF / ONNX) after download and on first use of a pre-existing cache
 entry — a mismatch is a hard error and the model is never served; on directory
-snapshots it is a documented no-op. Deep dive:
-docs/implementation/TASK-527-Model-Source-Resolution.
+snapshots it is a documented no-op.
 
 ---
 
@@ -242,26 +240,24 @@ docs/implementation/TASK-527-Model-Source-Resolution.
 
 Every in-process model is loaded **on first request** and released after an
 **idle TTL** (default **600 s**, clamped to `[60 s, 3600 s]`). Models in active
-use are *pinned* and never evicted. Retention is set from the admin console
+use are _pinned_ and never evicted. Retention is set from the admin console
 (settings registry), served over the internal effective-config route, and
 applied within one refresh window (~60 s).
 
 Keys are `globalOnly`, `tier: global-kv`, system-scoped:
 
-| Key | Default | Meaning |
-|---|---|---|
-| `<svc>.modelCache.ttlSeconds` | 600 | idle TTL before eviction (clamped `[60, 3600]`) |
-| `<svc>.modelCache.maxModels` | stt 5 · nlp 3 · guardrail 2 · harness 1 · tts 2 | max resident models (LRU beyond it) |
-| `<svc>.modelCache.vramBudgetMb` | 0 (unset) | optional VRAM bound (NVML hosts only) |
-| `stt.modelCache.maxMemoryMb` | 10000 | stt only — MB-estimate budget |
-| `smr.modelCache.ttlSeconds` | 600 | not a cache — forwarded to server-managed engines |
+| Key                             | Default                                         | Meaning                                           |
+| ------------------------------- | ----------------------------------------------- | ------------------------------------------------- |
+| `<svc>.modelCache.ttlSeconds`   | 600                                             | idle TTL before eviction (clamped `[60, 3600]`)   |
+| `<svc>.modelCache.maxModels`    | stt 5 · nlp 3 · guardrail 2 · harness 1 · tts 2 | max resident models (LRU beyond it)               |
+| `<svc>.modelCache.vramBudgetMb` | 0 (unset)                                       | optional VRAM bound (NVML hosts only)             |
+| `stt.modelCache.maxMemoryMb`    | 10000                                           | stt only — MB-estimate budget                     |
+| `smr.modelCache.ttlSeconds`     | 600                                             | not a cache — forwarded to server-managed engines |
 
 `<svc>` ∈ `stt`, `nlp`, `guardrail`, `harness`, `tts`. **Key prefix ≠ service
 name for tts:** the service registers/polls as `tts` but its settings live
 under the `tts` prefix — both spellings are load-bearing. The operator runbook is
-[operations/inference/model-retention.md](../operations/inference/model-retention.md);
-service-side retention-client adoption is tracked in
-docs/implementation/TASK-535-Retention-Client-Adoption.
+[operations/inference/model-retention.md](../operations/inference/model-retention.md).
 
 ---
 
@@ -274,19 +270,18 @@ slug in `sourceTemplateSlug` (provenance survives clone chains) and is
 `templateLocked = true`.
 
 A `templateLocked` copy is **read-only for content edits and delete** — the
-application layer returns 403 *"clone to customize"* — while enable/disable and
+application layer returns 403 _"clone to customize"_ — while enable/disable and
 set-default remain available. `templateLocked` is absent from every request DTO,
 so the gateway's whitelist pipe rejects any attempt to flip it over the API.
 
 - **Clone** (`POST /api/v1/admin/audio/pipelines/:id/clone`) makes a new,
   unlocked, editable copy that keeps the source's template provenance.
 - **Resync** (`POST /api/v1/admin/tenants/:id/pipelines/resync`, the
-  `TenantPipelineResyncController`) fast-forwards *pristine* locked copies to the
+  `TenantPipelineResyncController`) fast-forwards _pristine_ locked copies to the
   template's current config and never touches unlocked rows; it reports
   `{ added, fastForwarded, skipped }`.
 
 The `[tenantId, templateLocked]` index backs the per-tenant locked-copy sweep.
-Deep dive: docs/implementation/TASK-531-Pipeline-Template-Governance.
 
 ---
 
@@ -315,14 +310,13 @@ Deep dive: docs/implementation/TASK-531-Pipeline-Template-Governance.
 
 ## 10. Program status & open tails
 
-The config / model plane is delivered across
-docs/implementation/TASK-523..535. Verified status on the last-verified date:
+Verified status on the last-verified date:
 
-| Area | State |
-|---|---|
-| Config-plane core, service adoption, BYO creds, source resolution, discovery hub, lifecycle/retention, pipeline governance, governance-console IA, retention-client adoption | Landed on `fix/2605-review` |
-| Agentic-loop completion (docs/implementation/TASK-533-Agentic-Loop-Completion) | Review — 533-A and 533-B (B1–B6) complete; 533-C is owner/hardware-gated (GPU, credentials) |
-| End-to-end validation (docs/implementation/TASK-534-E2E-Validation) | **Pending** — the program closeout / e2e gate has not run |
+| Area                                                                                                                                                                         | State                                                                                             |
+| ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------- |
+| Config-plane core, service adoption, BYO creds, source resolution, discovery hub, lifecycle/retention, pipeline governance, governance-console IA, retention-client adoption | Landed on `fix/2605-review`                                                                       |
+| Agentic-loop completion                                                                                                                                                      | Review — the agentic loop is complete except for the owner/hardware-gated pass (GPU, credentials) |
+| End-to-end validation                                                                                                                                                        | **Pending** — the program closeout / e2e gate has not run                                         |
 
 Two runtime tails are honest limitations, not doc drift:
 

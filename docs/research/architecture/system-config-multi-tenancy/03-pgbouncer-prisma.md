@@ -7,7 +7,7 @@
 | **Audience** | Senior backend / SRE scoping multi-tenant connection-pool work |
 | **Status** | Reference / opinion piece (no code changes) |
 | **Stack assumed** | PostgreSQL 17, Prisma 7.5.x + `@prisma/adapter-pg` 7.5.x, NestJS 11, `node-pg` 8.20, ≤ 50 tenants by 2027 |
-| **Related docs** | [`research/deployments/deploy-vm500-502-postgres-ha.md`](../../deployments/deploy-vm500-502-postgres-ha.md) (Patroni HA stack — PgBouncer is already deployed there as "optional"); [`docs/implementation/TASK-301-System-Config-Multi-Tenancy-Assessment/README.md`](../../../docs/implementation/TASK-301-System-Config-Multi-Tenancy-Assessment/README.md) (RLS roadmap) |
+| **Related docs** | [`research/deployments/deploy-vm500-502-postgres-ha.md`](../../deployments/deploy-vm500-502-postgres-ha.md) (Patroni HA stack — PgBouncer is already deployed there as "optional") |
 
 > **TL;DR for the impatient**
 >
@@ -245,7 +245,7 @@ Drawn from the [PgConf.EU 2024 pooler comparison][pgconf24], the [PkgPulse 2026 
 
 ## 5. RLS — the deal-breaker for transaction-mode pooling
 
-This section ties to the [TASK-301 multi-tenancy audit][task301], which recommends RLS for Phase 2.
+This section ties to the multi-tenancy audit, which recommends RLS for Phase 2.
 
 ### 5.1 The pattern that works in *both* modes
 
@@ -594,8 +594,7 @@ Answer: TBD
 
 - Patroni HA deployment plan with optional PgBouncer profile: [`research/deployments/deploy-vm500-502-postgres-ha.md`](../../deployments/deploy-vm500-502-postgres-ha.md)
 - HA Compose file (current `POOL_MODE=transaction` baseline): [`research/configs/postgres-ha/docker-compose.yml`](../../configs/postgres-ha/docker-compose.yml)
-- System-config / multi-tenancy assessment (RLS roadmap): [`docs/implementation/TASK-301-System-Config-Multi-Tenancy-Assessment/README.md`](../../../docs/implementation/TASK-301-System-Config-Multi-Tenancy-Assessment/README.md)
-- Prisma client wiring: [`packages/database/src/client.ts`](../../../packages/database/src/client.ts)
+- Prisma client wiring: [`packages/database/src/client.ts`](../../../../packages/database/src/client.ts)
 
 [pgb-config]: https://github.com/pgbouncer/pgbouncer/blob/master/doc/config.md
 [pgb-usage]: https://github.com/pgbouncer/pgbouncer/blob/master/doc/usage.md
@@ -610,4 +609,3 @@ Answer: TBD
 [goldlapel]: https://goldlapel.com/books/you-dont-need-redis/pgbouncer-alternative-comparison
 [how2]: https://how2.sh/posts/how-to-optimize-connection-pool-slo-controls-for-high-scale-systems/
 [pg-setconfig]: https://www.postgresql.org/docs/17/functions-admin.html#FUNCTIONS-ADMIN-SET
-[task301]: ../../../docs/implementation/TASK-301-System-Config-Multi-Tenancy-Assessment/README.md

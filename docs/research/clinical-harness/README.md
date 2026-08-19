@@ -1,8 +1,8 @@
 # HOPE — Clinical Documentation Harness · Research Archive
 
-Detailed, fully-cited research backing the **Clinical Documentation Harness** design
-(`docs/implementation/TASK-330-Clinical-Documentation-Harness/`). Lives at `research/clinical-harness/`. Each
-document is a standalone, sourced report, written to be reusable across future medical-AI work — not just this ticket.
+Detailed, fully-cited research backing the **Clinical Documentation Harness** design.
+Lives at `research/clinical-harness/`. Each
+document is a standalone, sourced report, written to be reusable across future medical-AI work — not just this design.
 
 | Date | Method |
 |---|---|
@@ -24,8 +24,8 @@ Proceedings, ACL/arXiv), **official** (FDA, EU, NHS, MeitY/NHA/CDSCO, HL7/NLM), 
 | 05 | [`05-india-health-ai-regulation.md`](./05-india-health-ai-regulation.md) | DPDP 2023 + Rules 2025, ABDM/NRCeS FHIR, Telemedicine 2020, CDSCO, MeitY/SAHI | 18 |
 | 06 | [`06-sota-harness-implementation.md`](./06-sota-harness-implementation.md) | 2026 implementation SOTA — orchestration libs, eval/guardrail stacks, durable HITL | 44 |
 
-## How the research maps to TASK-330 decisions
-| TASK-330 decision | Backed by |
+## How the research maps to the harness design decisions
+| Design decision | Backed by |
 |---|---|
 | Accuracy/safety-first; sensors before prompts | 00 (Böckeler), 01 (omissions #1, proofreading weak), 03 (faithfulness metrics) |
 | Internal + institutional grounding (no external corpora) | 02 (StatPearls non-commercial; UpToDate/DynaMed proprietary) |

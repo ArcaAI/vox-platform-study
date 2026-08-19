@@ -6,7 +6,7 @@
 | **Wave** | 2 · **Size** | L |
 | **Epic slug** | `exposure-v1` |
 | **Depends on** | TASK-708 (`apikey-scope-verification`), TASK-718 (`workflow-interpreter`), TASK-720 (`palette-summarization`) · **consumes** TASK-717 (`async-contract`) |
-| **Design refs** | D3, D7 from [design.md](../../architecture/agentic-workflow-platform/design.md) — §Exposure plane, §Data flow (Execution), Roadmap Wave 2 |
+| **Design refs** | D3, D7 from [design.md](../../programs/agentic-workflow-platform/design.md) — §Exposure plane, §Data flow (Execution), Roadmap Wave 2 |
 | **Findings closed** | — (enabling). Depends on TASK-708 closing the API-key-scope precondition. |
 
 ---

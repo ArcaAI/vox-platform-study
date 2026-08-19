@@ -1,11 +1,7 @@
 # HOPE — Release Versioning & Cutting a Release
 
 > Operator runbook for cutting a release: how to decide the version bump, what to
-> type, what CI does automatically, and what still needs a human. TASK-648. The
-> policy this doc implements lives in
-> [`docs/implementation/TASK-648-Service-Version-And-Release-Registry/README.md`](../implementation/TASK-648-Service-Version-And-Release-Registry/README.md)
-> §3.1–3.5 and its frozen contracts
-> (`docs/implementation/TASK-648-Service-Version-And-Release-Registry/contracts/`); the
+> type, what CI does automatically, and what still needs a human. The
 > single source of truth for the tag grammar in code is
 > [`packages/utils/src/version-grammar.ts`](../../packages/utils/src/version-grammar.ts).
 >
@@ -114,9 +110,9 @@ different tag family entirely — see §4.
 1. **Full test suite** runs (release-tag pipelines are never test-skipped).
 2. **Build**: each matching service's Dockerfile builds, stamped with the OCI labels
    `org.opencontainers.image.{source,revision,created,version}` (`.build-template`).
-   Once W3/W4 of the TASK-648 plan land, the image additionally carries
+   The image additionally carries
    `/app/build-info.json` — the build-metadata contract in
-   `docs/implementation/TASK-648-Service-Version-And-Release-Registry/contracts/build-info.schema.json` —
+   [`docs/operations/build-info.schema.json`](build-info.schema.json) —
    baked in from the same build args, so the running process can report its own real
    version instead of a stale constant (§5).
 3. **Digest capture**: the CI publish step resolves the pushed manifest's digest.
@@ -194,9 +190,8 @@ record and changelog, then — separately — tag the same commit `vX.Y.Z` and r
   `const SERVICE_VERSION = process.env.npm_package_version || '0.1.0';` — `npm_package_version`
   is set by the pnpm/npm script runner, but the API image starts `node dist/main.js`
   directly, so that env var is never set in any deployed container and the gateway has
-  reported `0.1.0` in every environment it has ever run in. TASK-648 W4/W8 fix this by
-  reading the baked `/app/build-info.json` instead. Do not reintroduce a `package.json`
-  version as a source of truth anywhere in this system.
+  reported `0.1.0` in every environment it has ever run in. The fix is to read the baked
+  `/app/build-info.json` instead. Do not reintroduce a `package.json` version as a source of truth anywhere in this system.
 - **Untagged builds never get a fake SemVer.** A `dev-*`/`staging-*`/`cicd`/feature branch
   push produces `0.0.0-<branch-slug>.<sha8>` (e.g. branch `dev-2.1`, commit `0ab258f9…` →
   `0.0.0-dev-2-1.0ab258f9`), using the exact same `[^a-zA-Z0-9]` → `-` slugging rule the

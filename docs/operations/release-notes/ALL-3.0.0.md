@@ -11,7 +11,7 @@
 > for that edit** — it is written for the person doing it, not for the machine. The tag is the
 > version; nothing here is derived from a `package.json`.
 
-Covers TASK-754 … TASK-768. Four changes are **breaking for integrators**; the rest are
+Four changes are **breaking for integrators**; the rest are
 internal hardening, seeds and tests.
 
 ---

@@ -24,13 +24,13 @@ This ticket delivers **one seam** — `NoteGenerationService` — that every gen
 routes through, and makes `harnessEnabled` mean what the flag's own name and every operator's
 mental model already assume. It does **not** change which generator wins for any tenant, does not
 build new harness capabilities, and does not attempt the migration itself (that is Wave 2,
-`harness-sole-generator`, per [design.md](../../architecture/agentic-workflow-platform/design.md)
+`harness-sole-generator`, per [design.md](../../programs/agentic-workflow-platform/design.md)
 D1). It also fixes a **silent-drop defect** discovered independently of the routing gap: when the
 harness path is selected but `HarnessGatewayService` is not wired (an `@Optional()` NestJS
 dependency), the current code logs a success-shaped message and produces zero notes with no error
 anywhere in the system.
 
-Per [design.md](../../architecture/agentic-workflow-platform/design.md) D4/§Plane 1,
+Per [design.md](../../programs/agentic-workflow-platform/design.md) D4/§Plane 1,
 `NoteGenerationService` is deliberately named to become the interpreter dispatcher once the
 workflow substrate exists (Wave 2+). **Nothing about that future is built here.** This ticket adds
 no node registry, no compiler, no interpreter hook — only the entry-point consolidation and the

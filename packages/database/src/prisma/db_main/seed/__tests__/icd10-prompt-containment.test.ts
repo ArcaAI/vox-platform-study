@@ -12,7 +12,7 @@ import { ARCAAI_CLINICAL_TEMPLATES, ARCAAI_CLINICAL_VERSIONS } from '../07b-arca
 
 /**
  * TASK-702 golden test — register invariants INV-065/066/071/231/233/373/432/449
- * (`docs/architecture/agentic-workflow-platform/design.md`, `01-invariant-register.md`,
+ * (`docs/programs/agentic-workflow-platform/design.md`, `01-invariant-register.md`,
  * category `terminology`): no seeded prompt may instruct the model to
  * free-write an ICD-10 diagnosis code. Verification, not the prompt, is the
  * only sanctioned source of a code — "the clinician stated it" is model-

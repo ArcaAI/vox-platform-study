@@ -688,8 +688,8 @@ one this ticket makes unilaterally."* Phase 1 is where the call is made.
 
 #### Task 15 — Update the design and assessment docs to match the shipped end-state
 - **Agent:** T1 · haiku-4-5 · default
-- **Files:** `docs/architecture/agentic-workflow-platform/design.md` (§Deprecations, D1 row, Roadmap
-  Wave 4), `docs/architecture/agentic-workflow-platform/backlog.md` (Wave 4 row status)
+- **Files:** `docs/programs/agentic-workflow-platform/design.md` (§Deprecations, D1 row, Roadmap
+  Wave 4), `docs/programs/agentic-workflow-platform/backlog.md` (Wave 4 row status)
 - **Approach:** Record what actually shipped, including any scope change from Task 8's decision. If
   Phase 1 concluded NO-GO or INVERT, that is what gets recorded instead — with D1's decision row
   amended and the reason. Do not edit `.claude/rules/*.md` (repo-wide config; propose a diff if one
@@ -1060,8 +1060,8 @@ unchanged except where noted):
   `apps/api/src/modules/consultation/__tests__/consultation.controller{,.highlights}.test.ts`,
   `apps/api/tests/integration/summary-provenance.spec.ts` (constructor-arg fixups for the new
   `noteGenerationService` parameter — not this ticket's behavior, but a mechanical consequence of it)
-- Modified (docs): `docs/architecture/agentic-workflow-platform/design.md`,
-  `docs/architecture/agentic-workflow-platform/backlog.md`,
+- Modified (docs): `docs/programs/agentic-workflow-platform/design.md`,
+  `docs/programs/agentic-workflow-platform/backlog.md`,
   `docs/implementation/TASK-732-Legacy-Migration-Deletion/{README,go-no-go-thresholds,deletion-manifest}.md`
 
 **A git-index note, not a code change:** the deleted files were `git add`-ed (staged, never

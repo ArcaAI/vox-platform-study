@@ -1,6 +1,6 @@
 # Deploy Cloudflare Tunnel — CT 101 (Multi-Homed)
 
-**Status**: BUILT — this infrastructure is live and currently in use for external access to the homelab (confirmed via Cloudflare tunnel access in TASK-616 live-state discovery).
+**Status**: BUILT — this infrastructure is live and currently in use for external access to the homelab (confirmed via Cloudflare tunnel access in live-state discovery).
 
 **Date**: 2026-03-18
 **Container**: CT 101 (LXC) | **Bridges**: vmbr0, vmbr1, vmbr2, vmbr3, vmbr4 | **Multi-homed**

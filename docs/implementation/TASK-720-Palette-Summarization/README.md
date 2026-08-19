@@ -6,7 +6,7 @@
 | **Wave** | 2 · **Size** | L |
 | **Epic slug** | `palette-summarization` |
 | **Depends on** | TASK-718 (`workflow-interpreter`), TASK-719 (`workflow-studio-v1`) |
-| **Design refs** | D3, D4, **D5** from [design.md](../../architecture/agentic-workflow-platform/design.md) — Plane 1 §Node registry, §Compiler + Validator, §Services program (`text`, `guardrail`), Roadmap Wave 2 |
+| **Design refs** | D3, D4, **D5** from [design.md](../../programs/agentic-workflow-platform/design.md) — Plane 1 §Node registry, §Compiler + Validator, §Services program (`text`, `guardrail`), Roadmap Wave 2 |
 | **Findings closed** | — (enabling). Structurally hardens the fail-open guardrail posture named in assessment [README §3.3](../../architecture/consultation-session-workflow/assessment/README.md) *for substrate runs only*; the platform-wide fix is TASK-706. |
 
 ---

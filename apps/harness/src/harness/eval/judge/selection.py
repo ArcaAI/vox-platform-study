@@ -1,6 +1,6 @@
 """DB-resident, fail-closed judge SELECTION for the offline eval gate.
 
-Owner directive D-B (`docs/architecture/agentic-workflow-platform/owner-decisions-2026-08-17.md`):
+Owner directive D-B (`docs/programs/agentic-workflow-platform/owner-decisions-2026-08-17.md`):
 an engine name or model id is **never** an env var and **never** a literal in code.
 The runtime (Temporal) path already honours this — `temporal/activities.py` takes
 `judge_provider`/`judge_model` from the SYSTEM ``harness.judge`` ``AiTaskDefault``

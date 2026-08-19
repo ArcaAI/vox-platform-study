@@ -7,7 +7,7 @@
 | **Epic slug** | `worker-pool-stt-tts` |
 | **Depends on** | TASK-725 (`worker-pool-text` — this ticket follows its control-plane/registry/
   degrade-routing/metrics pattern; do not re-derive it independently) |
-| **Design refs** | [design.md](../../architecture/agentic-workflow-platform/design.md) §Services program ("Worker-pool standard") |
+| **Design refs** | [design.md](../../programs/agentic-workflow-platform/design.md) §Services program ("Worker-pool standard") |
 | **Findings closed** | — (infrastructure-scaling ticket; does not close a numbered assessment finding) |
 
 ## 1. Requirement Analysis

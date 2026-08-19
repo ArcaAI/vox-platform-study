@@ -34,8 +34,8 @@ primary source where the finding was safety-critical:
 
 **Could not reach / out of lane:** the admin-console frontend (React) beyond a `useArcaSessionManager` consumer
 check; the harness's non-Temporal FastAPI surfaces beyond `admin.py`/`internal.py`; running the app or querying a
-live DB — everything below is static-code evidence. `docs/archive/TASK-654/660/662/665/668` exist and describe
-this exact feature but were deliberately **not read** per the "new sprint, code not old plans" rule.
+live DB — everything below is static-code evidence. archived tickets describing this exact feature exist but were
+deliberately **not read** per the "new sprint, code not old plans" rule.
 
 ## Subsystem map
 

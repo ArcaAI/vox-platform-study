@@ -1,6 +1,6 @@
 # System Configuration & Multi-Tenancy — Research Subfolder
 
-> **Purpose**: knowledge bases + high-level migration plans that complement [`TASK-301: System Configuration & Multi-Tenancy Deep Assessment`](../../../docs/implementation/TASK-301-System-Config-Multi-Tenancy-Assessment/README.md). All documents in this subfolder are reference material — they describe *future* work that is **not currently scheduled**. Each carries a placeholder ticket ID for assignment when prioritized.
+> **Purpose**: knowledge bases + high-level migration plans that complement the System Configuration & Multi-Tenancy deep assessment. All documents in this subfolder are reference material — they describe *future* work that is **not currently scheduled**.
 >
 > **No source code is changed by reading these documents.**
 
@@ -8,9 +8,9 @@
 
 ## Why this subfolder exists
 
-The TASK-301 assessment surfaced architectural debt in HOPE's System Configuration stack: cross-tenant cache collisions, mass-assignment exploit chains, plaintext secrets in `GlobalSetting`, write-amplifying clone-on-create provisioning, audit-log plaintext leakage, and three parallel configuration mechanisms with drift between them.
+The assessment surfaced architectural debt in HOPE's System Configuration stack: cross-tenant cache collisions, mass-assignment exploit chains, plaintext secrets in `GlobalSetting`, write-amplifying clone-on-create provisioning, audit-log plaintext leakage, and three parallel configuration mechanisms with drift between them.
 
-A subset of those findings (the Phase 0/1/2 items in the TASK-301 roadmap) will be addressed in normal product iterations. A second subset is **strategic architectural change** — too large for a single sprint, too consequential to design ad-hoc when the work begins. This subfolder houses the design intent for that second subset, so when the work is prioritised an engineer can scope it in a single planning session and start with the README pre-populated.
+A subset of those findings (the Phase 0/1/2 items in the assessment roadmap) will be addressed in normal product iterations. A second subset is **strategic architectural change** — too large for a single sprint, too consequential to design ad-hoc when the work begins. This subfolder houses the design intent for that second subset, so when the work is prioritised an engineer can scope it in a single planning session and start with the README pre-populated.
 
 ---
 
@@ -43,7 +43,6 @@ Migrate from the current `__GLOBAL__` sentinel-tenant clone-on-create pattern to
 - 0 inserts on tenant create instead of 17
 - Default updates instantly propagate to every tenant that hasn't overridden
 
-**Companion ticket**: `TASK-3XX-Layered-Config-Resolution`
 **When to schedule**: Q4 2026 (write amplification threshold) or before the next platform-wide default rollout (model upgrade, regional routing, etc.) — whichever comes first.
 
 ### [02 — Secrets → Cloud KMS Migration](./02-secrets-cloud-kms-migration.md)
@@ -57,7 +56,6 @@ Migrate from env-var + plaintext `GlobalSetting` secrets to a managed secrets ma
 - Rotation automation via Event Grid / Lambda + Redis Pub/Sub cache invalidation
 - HIPAA-compliant under standard BAA on both clouds
 
-**Companion ticket**: `TASK-3XX-Secrets-Manager-Migration`
 **When to schedule**: when real PHI hits prod with an audit on the horizon, or when a 2nd production environment is needed, or when the first BYOK tenant signs.
 
 ### [03 — PgBouncer Best Practices with Prisma 7](./03-pgbouncer-prisma.md)
@@ -70,8 +68,7 @@ Best-practice guide for PgBouncer in front of PostgreSQL 17 with Prisma 7 + `@pr
 - Phase-by-phase rollout: Phase 1 = no pooler, just adapter tuning. Phase 2 (with RLS) = PgBouncer-session. Phase 3 (only if growth justifies) = pgcat for read-replica routing.
 - Decision matrix vs Supavisor / pgcat / PgPool-II.
 
-**Companion ticket**: `TASK-3XX-PgBouncer-Session-Rollout`
-**When to schedule**: bundled with the RLS rollout (Phase 3 of TASK-301 roadmap), OR when active connections × pods × Prisma `max` exceeds 70% of PG `max_connections`.
+**When to schedule**: bundled with the RLS rollout (Phase 3 of the assessment roadmap), OR when active connections × pods × Prisma `max` exceeds 70% of PG `max_connections`.
 
 ### [04 — Optimistic Locking via `_version`](./04-optimistic-locking.md)
 
@@ -82,17 +79,16 @@ Plan to wire up the existing-but-unused `_version` column for optimistic concurr
 - HTTP layer via RFC 7232 `ETag` / `If-Match` → `412 Precondition Failed`, with `428 Precondition Required` fallback (RFC 6585)
 - Domain integration against existing `Repository<T>.update` / `BaseService.updateEntity` / `applyChangesToEntity`
 - 5-phase reversible migration (~13.5 eng-days total); starts with `TenantService.updateTenantConfigs` (highest-value, lowest-effort)
-- Pairs naturally with `GlobalSettingHistory` from TASK-301 roadmap item 16
+- Pairs naturally with `GlobalSettingHistory` from the assessment roadmap
 
-**Companion ticket**: `TASK-3XX-Optimistic-Locking-Config`
 **When to schedule**: after the first reported "my config edit got lost" incident, or proactively when admin UI gains real-time multi-user editing.
 
 ---
 
-## How these documents relate to TASK-301
+## How these documents relate to the assessment
 
 ```
-TASK-301 (immediate work — Phase 0 → 1 → 2 → 3)
+Assessment (immediate work — Phase 0 → 1 → 2 → 3)
   ├── Phase 0 (hard gate, < 1 day) — emergency hotfixes
   ├── Phase 1 (2-3 weeks) — structural correctness
   │     ├─ Keeps __GLOBAL__ clone (no migration to layered yet)
@@ -115,22 +111,19 @@ Future / when prioritized (this subfolder):
   └── Doc 04 — Optimistic locking via _version
 ```
 
-The TASK-301 roadmap is the **what you build next**. The four documents in this subfolder are the **what you build when the time is right** — each carries a clear trigger condition so the team isn't optimising prematurely.
+The assessment roadmap is the **what you build next**. The four documents in this subfolder are the **what you build when the time is right** — each carries a clear trigger condition so the team isn't optimising prematurely.
 
 ---
 
 ## Maintenance
 
-- **When a companion ticket is scheduled**: copy the corresponding doc into a new `docs/implementation/<TASK-ID>-<name>/README.md`, update Status to "Planning", and start an Implementation Plan section. Keep the source doc in `research/` as the long-form rationale.
-- **When decisions in §"Decisions locked-in" change**: update this overview, the corresponding doc, AND the TASK-301 §"Decisions" table in the same commit. Do not let them drift.
+- **When this work is scheduled**: copy the corresponding doc into a new implementation ticket README, update Status to "Planning", and start an Implementation Plan section. Keep the source doc in `research/` as the long-form rationale.
+- **When decisions in §"Decisions locked-in" change**: update this overview and the corresponding doc in the same commit. Do not let them drift.
 - **When the codebase changes in a way that invalidates a recommendation**: add a `Change History` entry to the affected doc. Don't silently overwrite — these are reference material that may be cited in future audits.
 
 ---
 
 ## Cross-references
 
-- [TASK-301 — System Configuration & Multi-Tenancy Deep Assessment](../../../docs/implementation/TASK-301-System-Config-Multi-Tenancy-Assessment/README.md)
-- [TASK-258 — Tenant Config Provisioning](../../../docs/implementation/TASK-258-Tenant-Config-Provisioning/README.md) (predecessor)
-- [TASK-297 — SDK 4-tier ConfigManager (DEF-C5)](../../../docs/implementation/TASK-297-SDK-Personalization-Cascade/README.md) (already implements the SDK side of the future layered resolution)
 - [`research/deployments/deploy-vm500-502-postgres-ha.md`](../../deployments/deploy-vm500-502-postgres-ha.md) (PgBouncer drift flagged in Doc 03)
-- [Project rule: `01-development-workflow.mdc`](../../../.cursor/rules/01-development-workflow.mdc) (layer dependency chain enforcement)
+- [Project rule: `01-development-workflow.md`](../../../../.claude/rules/01-development-workflow.md) (layer dependency chain enforcement)

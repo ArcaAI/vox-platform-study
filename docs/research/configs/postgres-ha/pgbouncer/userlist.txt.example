@@ -1,4 +1,4 @@
-# pgbouncer userlist.txt — TEMPLATE ONLY (TASK-302 Stream C Phase 2A)
+# pgbouncer userlist.txt — TEMPLATE ONLY
 #
 # Copy to userlist.txt and replace the SCRAM-SHA-256 hashes below with
 # the real hashes from PostgreSQL's pg_authid (or use the

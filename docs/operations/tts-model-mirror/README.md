@@ -1,4 +1,4 @@
-# TTS Model Mirror — Indic Parler-TTS (TASK-495)
+# TTS Model Mirror — Indic Parler-TTS
 
 Operator runbook for mirroring the **gated** `ai4bharat/indic-parler-tts` weights
 into an internal, ungated store so the TTS GPU pods load them **offline** — no
@@ -52,7 +52,7 @@ python apps/tts/scripts/mirror_parler_weights.py --out ./mirror
 The script pins the current commit sha of each repo, downloads them into
 `./mirror/<name>/<sha>/`, writes a `checksums.sha256` manifest per repo, and writes
 a `NOTICE` (Apache §4 attribution) next to the Parler weights. **Record the two
-pinned shas it prints in the [TASK-495 README](../../implementation/TASK-495-Mirror-Gated-Parler-Weights/README.md).**
+pinned shas it prints.**
 
 To reproduce/rollback a specific revision: `--parler-revision <sha>`.
 

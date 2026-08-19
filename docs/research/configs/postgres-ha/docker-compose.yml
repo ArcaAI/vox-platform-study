@@ -70,7 +70,7 @@ services:
       REPL_PASSWORD: ${REPL_PASSWORD}
       PGDATA: /home/postgres/pgdata/data
       PGBACKREST_CONFIG: /etc/pgbackrest/pgbackrest.conf
-      # ── pgBackRest secrets via env (TASK-369 Phase 4) ──
+      # ── pgBackRest secrets via env ──
       # pgBackRest reads any option as PGBACKREST_<OPTION> (uppercase, dashes ->
       # underscores). These keep the S3 creds + backup cipher passphrase OUT of
       # the committed pgbackrest.conf; values come from the node .env, sourced
@@ -121,10 +121,8 @@ services:
       - haproxy
 
   # ── PgBouncer (Connection Pooler) ──
-  # Transaction-mode rollout per TASK-302 Stream C Phase 2A.
-  # Validated by packages/database/tests/pgbouncer-validation/ (see
-  # docs/implementation/TASK-302-System-Config-Implementation-Roadmap/
-  # 03-pgbouncer-validation-report.md — PASS verdict).
+  # Transaction-mode rollout.
+  # Validated by packages/database/tests/pgbouncer-validation/ (PASS verdict).
   pgbouncer:
     image: edoburu/pgbouncer:v1.25.2-p0  # ≥ 1.21 for MAX_PREPARED_STATEMENTS; v1.25.2-p0 is the current 1.25.x pin
     container_name: pgbouncer
@@ -144,7 +142,7 @@ services:
       LOG_CONNECTIONS: 1
       LOG_DISCONNECTIONS: 1
       LISTEN_PORT: 6432
-      # ── Prisma 7 transaction-mode requirements (Phase 2A, TASK-302) ──
+      # ── Prisma 7 transaction-mode requirements ──
       MAX_PREPARED_STATEMENTS: 200       # required for Prisma in txn mode (PgBouncer ≥ 1.21)
       SERVER_RESET_QUERY: 'DISCARD ALL'  # explicit (mirrors default)
       SERVER_RESET_QUERY_ALWAYS: 1       # force DISCARD ALL between transactions in txn mode
@@ -172,7 +170,7 @@ services:
     profiles:
       - monitoring
 
-  # ── Prometheus pgbouncer_exporter (TASK-302 Stream C Phase 2A) ──
+  # ── Prometheus pgbouncer_exporter ──
   # Exposes pgbouncer pool stats (sv_active, cl_waiting, maxwait, etc.)
   # for the Grafana dashboard (community ID 13353 or hand-crafted).
   # Connects to the special `pgbouncer` admin database, which exposes

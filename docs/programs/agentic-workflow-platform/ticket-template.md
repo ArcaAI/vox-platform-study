@@ -46,7 +46,7 @@ the multi-agent shape (e.g. `T2 ×3 parallel, one per service`).
 | **Wave** | <0–4> · **Size** | <S/M/L/XL> |
 | **Epic slug** | `<slug>` |
 | **Depends on** | TASK-7XX, … (or —) |
-| **Design refs** | D<１–8> from [design.md](../../architecture/agentic-workflow-platform/design.md) |
+| **Design refs** | D<１–8> from [design.md](../../programs/agentic-workflow-platform/design.md) |
 | **Findings closed** | <assessment ids, e.g. A-06, F-13> (or —) |
 
 ## 1. Requirement Analysis
