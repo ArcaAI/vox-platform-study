@@ -20,6 +20,7 @@ from pydantic import BaseModel, Field
 
 from guardrail.core.dependencies import (
     ModelUnavailableError,
+    admitted,
     get_job_processor,
     get_safety_analyzer,
     require_tenant_id,
@@ -32,6 +33,14 @@ from guardrail.services.safety_analyzer import SafetyAnalyzer
 logger = get_logger(__name__)
 
 router = APIRouter()
+
+
+def _batch_gate(request: Request) -> object | None:
+    """The fan-out bound for a caller-supplied batch (never an unbounded gather)."""
+    from guardrail.core.dependencies import get_gate
+
+    gate: object | None = get_gate(request, "batch")
+    return gate
 
 
 class GuardrailRequest(BaseModel):
@@ -93,10 +102,13 @@ async def analyze_content(
     start_time = time.monotonic()
 
     try:
-        result = await analyzer.analyze_content(
-            text=request.text,
-            guardrail_type=request.guardrail_type,
-        )
+        async with admitted(http_request):
+            result = await analyzer.analyze_content(
+                text=request.text,
+                guardrail_type=request.guardrail_type,
+            )
+    except HTTPException:
+        raise
     except GuardrailUndeterminedError as exc:
         raise HTTPException(status_code=503, detail=exc.as_detail()) from exc
     except ModelUnavailableError as exc:
@@ -140,10 +152,14 @@ async def analyze_batch(
     start_time = time.monotonic()
 
     try:
-        results = await analyzer.batch_analyze(
-            texts=request.texts,
-            guardrail_type=request.guardrail_type,
-        )
+        async with admitted(http_request):
+            results = await analyzer.batch_analyze(
+                texts=request.texts,
+                guardrail_type=request.guardrail_type,
+                gate=_batch_gate(http_request),
+            )
+    except HTTPException:
+        raise
     except ModelUnavailableError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
     except Exception as exc:

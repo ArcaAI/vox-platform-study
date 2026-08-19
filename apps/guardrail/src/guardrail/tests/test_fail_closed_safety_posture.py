@@ -79,6 +79,7 @@ def _guardian(client: Any, enabled: bool = True) -> TextJudgeClient:
         provider="lm-studio",
         model="guardian-1",
         tenant_id="11111111-1111-1111-1111-111111111111",
+        criteria="you are a medical context validator",
         max_attempts=1,
         enabled=enabled,
     )
@@ -160,7 +161,10 @@ class _UndeterminedAnalyzer:
         raise GuardrailUndeterminedError("timeout", "engine timed out")
 
     async def batch_analyze(
-        self, texts: list[str], guardrail_type: str = "comprehensive"
+        self,
+        texts: list[str],
+        guardrail_type: str = "comprehensive",
+        gate: Any = None,  # TASK-777 B-4: batch fan-out is bounded by a gate
     ) -> list[Any]:
         return [
             GuardrailUndeterminedError("timeout", "engine timed out") for _ in texts

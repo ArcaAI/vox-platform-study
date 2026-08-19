@@ -35,14 +35,17 @@ Guardrail forwards no vendor credential of its own: there is deliberately no
 from __future__ import annotations
 
 import asyncio
+import time
 from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import Any
 
 import httpx
 
+from guardrail.core.breaker import BreakerOpenError, CircuitBreaker
 from guardrail.core.errors import REASON_ENGINE_ERROR, GuardrailUndeterminedError
 from guardrail.core.logging import get_logger
+from guardrail.core.metrics import observe_peer_latency
 
 logger = get_logger(__name__)
 
@@ -59,6 +62,14 @@ class PiiSpan:
     start: int
     end: int
     score: float
+
+
+class _PeerStatusError(RuntimeError):
+    """A non-2xx from `apps/nlp`. Raised so the breaker counts it as a failure."""
+
+    def __init__(self, status_code: int) -> None:
+        self.status_code = status_code
+        super().__init__(f"apps/nlp returned HTTP {status_code}")
 
 
 class NlpGuardClient:
@@ -78,6 +89,7 @@ class NlpGuardClient:
         timeout_s: float = 60.0,
         max_attempts: int = 2,
         retry_backoff_s: float = 0.1,
+        breaker: CircuitBreaker | None = None,
     ) -> None:
         # Attribution is a CONSTRUCTION-time invariant, not a per-call check:
         # there is no way to obtain this client and then make an unattributable
@@ -100,6 +112,10 @@ class NlpGuardClient:
         self._timeout_s = timeout_s
         self._max_attempts = max(1, max_attempts)
         self._retry_backoff_s = retry_backoff_s
+        # Optional so unit tests and one-shot callers need not build one; when
+        # present it sheds load for a peer that is already down instead of paying
+        # `max_attempts × timeout` on every request (TASK-777 B-3).
+        self._breaker = breaker
 
     # ── transport ────────────────────────────────────────────────────────
 
@@ -119,8 +135,8 @@ class NlpGuardClient:
         if self.model_path:
             body["model_path"] = self.model_path
 
-        last_error = ""
-        for attempt in range(self._max_attempts):
+        async def _once() -> dict[str, Any]:
+            started = time.monotonic()
             try:
                 response = await self._http.post(
                     f"{self._base_url}{path}",
@@ -128,13 +144,29 @@ class NlpGuardClient:
                     headers=self._headers(),
                     timeout=self._timeout_s,
                 )
-                if response.status_code < 400:
-                    result = response.json()
-                    return result if isinstance(result, dict) else {}
-                last_error = f"HTTP {response.status_code}"
+            finally:
+                observe_peer_latency("nlp", what, time.monotonic() - started)
+            if response.status_code < 400:
+                result = response.json()
+                return result if isinstance(result, dict) else {}
+            raise _PeerStatusError(response.status_code)
+
+        last_error = ""
+        for attempt in range(self._max_attempts):
+            try:
+                if self._breaker is not None:
+                    return await self._breaker.call(_once)
+                return await _once()
+            except BreakerOpenError as exc:
+                # The peer is known-down. Retrying is load amplification, so stop
+                # here — the posture is unchanged (this still raises below).
+                last_error = str(exc)
+                break
+            except _PeerStatusError as exc:
+                last_error = f"HTTP {exc.status_code}"
                 # 4xx that is not a transient overload is not worth retrying —
                 # a rejected request will be rejected identically next time.
-                if 400 <= response.status_code < 500 and response.status_code != 429:
+                if 400 <= exc.status_code < 500 and exc.status_code != 429:
                     break
             except (
                 Exception

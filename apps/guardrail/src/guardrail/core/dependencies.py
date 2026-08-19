@@ -152,13 +152,22 @@ async def get_resolved_guardian_provider(request: Request) -> GuardianLike:
             detail="AiTaskDefault for 'guardrail.validate' is missing. Run db:seed.",
         )
 
-    return build_judge_client(  # type: ignore[no-any-return]
-        settings,
-        tenant_cfg,
-        request.app.state.http_client,
-        tenant_id,
-        provider_overrides=_provider_overrides(request),
-    )
+    from guardrail.core.errors import GuardrailUndeterminedError
+
+    try:
+        return build_judge_client(  # type: ignore[no-any-return]
+            settings,
+            tenant_cfg,
+            request.app.state.http_client,
+            tenant_id,
+            provider_overrides=_provider_overrides(request),
+            breaker=_breaker(request.app.state, "text"),
+        )
+    except GuardrailUndeterminedError as exc:
+        # A fail-CLOSED policy key (the criteria that decides the verdict) is
+        # unresolved. Same 503 shape as a missing selection: the check cannot run,
+        # so it certainly cannot pass.
+        raise HTTPException(status_code=503, detail=exc.as_detail()) from exc
 
 
 def _provider_overrides(request: Request) -> dict[str, Any] | None:
@@ -170,6 +179,52 @@ def _provider_overrides(request: Request) -> dict[str, Any] | None:
     """
     overrides = getattr(getattr(request, "state", None), "provider_overrides", None)
     return overrides if isinstance(overrides, dict) and overrides else None
+
+
+def _breaker(app_state: Any, peer: str) -> Any:
+    """The process-wide breaker for a peer (``None`` in tests that never build one)."""
+    breakers = getattr(app_state, "circuit_breakers", None)
+    return breakers.get(peer) if isinstance(breakers, dict) else None
+
+
+def get_gate(request: Request, name: str = "request") -> Any:
+    """The named admission gate, or ``None`` when the app was built without one."""
+    gates = getattr(request.app.state, "admission_gates", None)
+    return gates.get(name) if isinstance(gates, dict) else None
+
+
+@asynccontextmanager
+async def admitted(request: Request, gate_name: str = "request") -> AsyncIterator[None]:
+    """Hold an admission slot for the request, or refuse it with a DECLARED 503.
+
+    Saturation is answered with `503 + Retry-After`, the same status an
+    undetermined verdict uses — a rejection means nothing was checked, so nothing
+    is reported safe. It is emphatically NOT a fail-open, and `apps/text` already
+    treats 503 as retryable rather than as a content rejection.
+    """
+    from fastapi import HTTPException
+
+    from guardrail.core.concurrency import AdmissionRejected
+
+    gate = get_gate(request, gate_name)
+    if gate is None:
+        yield
+        return
+    try:
+        async with gate.admit():
+            yield
+    except AdmissionRejected as exc:
+        logger.warning(
+            "guardrail.admission.rejected", gate=exc.gate, waited_s=round(exc.waited_s, 3)
+        )
+        raise HTTPException(
+            status_code=503,
+            detail=(
+                "guardrail is at capacity and refused to queue this check further — "
+                "nothing was analysed, so nothing is reported safe"
+            ),
+            headers={"Retry-After": str(int(exc.retry_after_s))},
+        ) from exc
 
 
 def get_job_processor(request: Request) -> JobProcessor:
@@ -268,6 +323,7 @@ def _nlp_client(
         labels=labels,
         threshold=threshold,
         timeout_s=float(cfg.timeout_s or settings.judge.timeout_s),
+        breaker=_breaker(app_state, "nlp"),
     )
 
 
@@ -338,6 +394,34 @@ async def build_safety_analyzer(app_state: Any, tenant_id: str) -> SafetyAnalyze
             labels=policy.pii_labels,
             threshold=policy.pii_threshold,
         ),
+    )
+
+
+async def build_screener(app_state: Any, tenant_id: str) -> Any:
+    """Build the bidirectional screener for one tenant.
+
+    Reuses `build_safety_analyzer` verbatim — one selection path, one taxonomy,
+    one fail-closed posture — and layers the screening policy (containment size
+    bound, PII-leak score floor) resolved through the SAME two-tier cascade.
+    """
+    from guardrail.core.policy import GuardrailPolicy
+    from guardrail.core.tenant_config import TASK_KEY_GUARDRAIL_SAFETY
+    from guardrail.services.screening import Screener
+
+    analyzer = await build_safety_analyzer(app_state, tenant_id)
+    safety_cfg = await _resolve_selection(
+        app_state, tenant_id, TASK_KEY_GUARDRAIL_SAFETY
+    )
+    policy = GuardrailPolicy.from_blob(
+        getattr(safety_cfg, "policy", None),
+        source_tenant_id=getattr(safety_cfg, "source_tenant_id", None),
+    )
+    return Screener(
+        analyzer=analyzer,
+        tenant_id=tenant_id,
+        policy_source_tenant_id=policy.source_tenant_id,
+        max_untrusted_chars=policy.max_untrusted_chars,
+        pii_leak_min_score=policy.pii_leak_min_score,
     )
 
 
