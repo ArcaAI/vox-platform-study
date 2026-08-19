@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Status** | In Progress (Phases A–D done, incl. Task 15/16 remainder; E — Task 17 assessment done, Task 18 correctly not-applicable per its own verdict, Task 19 done; F partially done — unit/a11y green, e2e execution + manual a11y pass still gated on infra) |
+| **Status** | Review (Phases A–F complete: e2e EXECUTED 12/12 green and the manual a11y pass performed 2026-08-19 — see §7 "Session 4". One open a11y finding recorded there: the editor squeezes at 200% zoom.) |
 | **Wave** | 2 · **Size** | XL |
 | **Epic slug** | `workflow-studio-v1` |
 | **Depends on** | TASK-715 (`workflow-definition-model`), TASK-716 (`workflow-compiler-validator`) |
@@ -1093,6 +1093,108 @@ session (`workflow-canvas` unchanged) — not re-verified in this session since 
 - Task 18 (pipeline-policy fold) — not attempted; Task 17's verdict already resolves it to
   "does not fold this pass" and nothing in this session's scope changed that verdict.
 
+### Session 4 (2026-08-19) — e2e EXECUTED, manual a11y pass performed, two runtime defects fixed
+
+Both remaining Phase-F items were run for real against the isolated test stack: gateway
+`http://localhost:8968` (owned by the orchestrator, DB untouched — `RESET_DB=false`, no reset, no
+re-seed) and a `next dev` console on `:5276` pointed at it.
+
+#### Playwright e2e — `tests/e2e/workflow-studio.spec.ts`
+
+```
+$ ADMIN_CONSOLE_URL=http://localhost:5276 API_URL=http://localhost:8968 RESET_DB=false \
+    pnpm exec playwright test workflow-studio.spec.ts --workers=2 --timeout=90000
+Running 12 tests using 2 workers
+  ✓ [setup] authenticate as seeded super admin (1.1s)
+  ✓ workflow definitions list › shows the header, fill-height grid and a New definition action
+  ✓ workflow definitions list › has no WCAG 2.2 AA violations (light)
+  ✓ workflow definitions list › has no WCAG 2.2 AA violations (dark)
+  ✓ workflow studio editor › Publish is disabled while the report is dirty, with a visible reason
+  ✓ workflow studio editor › create draft -> add a node from the palette BY KEYBOARD ONLY -> it persists -> Publish stays gated
+  ✓ workflow studio editor › a mandatory node exposes no Delete affordance in EITHER view mode
+  ✓ workflow studio editor › a foreign/nonexistent definition id renders not-found, never a 403
+  ✓ workflow studio editor › clicking a validation problem moves DOM focus to its node, in canvas AND list view
+  ✓ workflow studio editor › has no WCAG 2.2 AA violations on the canvas editor (light)
+  ✓ workflow studio editor › has no WCAG 2.2 AA violations on the canvas editor (dark)
+  ✓ workflow studio editor › has no WCAG 2.2 AA violations on the list editor (light)
+  12 passed (13.6s)
+```
+
+**axe: 0 violations** on the definitions list (light + dark), the canvas editor (light + dark) and
+the list editor — `expectNoA11yViolations` asserts an EMPTY violations array over
+`wcag2a/2aa/21a/21aa/22aa`, so a green run IS the zero-violation evidence.
+
+Four assertions in the authored spec contradicted the running system and were corrected (each
+carries an inline comment saying why):
+
+| Was | Reality |
+|---|---|
+| `/run validate before publishing/` on a fresh draft | The gateway returns a `validationReport` with the created draft, so the gate reason is "Resolve every error before publishing." Now accepts either. |
+| add ONE node → Validate → expect Publish ENABLED | The live summarization palette needs `core.start` + 4 mandatory types + reachability + per-node config (`WF-I-002/004/010`). One node can never clear it. The leg now proves keyboard-only add → persistence → gate holds; the publish-confirm dialog stays unit-covered. |
+| mandatory-node test `test.skip(true, …)` | The registry DOES class nodes `mandatory` now — the test is live and green. |
+| click a problem row → `:focus-visible` on the node | `use-focus-node.ts` focuses programmatically; a programmatic focus after a MOUSE click never matches `:focus-visible` in Chromium. The row is now activated BY KEYBOARD, which is the path the ring exists for. |
+
+Two `test.skip` guards also fired spuriously because they called `isVisible()` without awaiting the
+async registry/report fetch; both now await the locator first.
+
+#### Manual a11y + runtime pass (driven browser, both themes)
+
+- **Keyboard**: Tab reaches every palette item with a visible focus ring; Tab reaches canvas nodes
+  (React Flow stamps `tabindex=0`); activating a validation problem by keyboard moves DOM focus to
+  the node and `:focus-visible` matches (proved in-run, see the table above).
+- **Both themes**: list, canvas editor and list editor verified in light and dark. Dark exposed a
+  real defect (below).
+- **Reduced motion / semantics**: `data-reduced-motion` bridge present; `role="application"` carries
+  the definition name; the canvas ships its sr-only "use the list view for a pointer-free path" hint.
+- **Reflow**: no horizontal scrolling at 640×400 CSS px (≙ 200 % zoom of 1280×800).
+
+#### Defects found and FIXED this session
+
+1. **The whole React Flow theming bridge never reached any consumer.** `tsup` extracts
+   `canvas-tokens.css` into `dist/components/workflow-canvas/index.css` but does NOT re-import it
+   from the emitted JS, so `@arcaai/ui/components/workflow-canvas` shipped with **zero** `--xy-*`
+   overrides: every `--xy-*` custom property computed to the empty string in the running app and
+   React Flow fell back to its light defaults — white (`#fefefe`) zoom/fit control buttons carrying
+   near-white foreground icons on the dark surface, plus a white attribution chip. **Fix:** the
+   canonical token sheet `packages/ui/src/styles/globals.css` now `@import`s the bridge, so every
+   consumer of `@arcaai/ui/globals.css` gets it unconditionally. Verified in-browser:
+   `--xy-controls-button-background-color` resolves to `#111d23` in dark and `#fff` in light.
+2. **Selecting a node crashed the canvas — "Maximum update depth exceeded".** `WorkflowCanvas`
+   passed an INLINE arrow to React Flow's `onSelectionChange`. React Flow re-subscribes on every
+   handler identity and re-emits the current selection, so selection looped
+   (`onSelect` → store → `selectedNodeId` → new `xyNodes` → render → new handler → emit). The React
+   error boundary tore the canvas subtree down: node count dropped to 0 and focus fell back to
+   `<body>`. **Fix:** memoize the handler in the composite (`React.useCallback`) AND give it a
+   stable `onSelect` from the consumer (`selectNodeById` in `workflow-studio-editor.tsx`, previously
+   a fresh arrow per render — the composite-side memo alone would have been useless). This is why
+   the click-error → focus-node contract had never actually worked outside jsdom.
+
+#### Open a11y finding (NOT fixed — needs a layout decision)
+
+At 640×400 CSS px (200 % zoom on a 1280×800 desktop) the editor's palette rail and canvas collapse
+to **59 px tall**. There is no horizontal scrolling (1.4.10 in the strict sense holds), but the
+authoring surface is unusable at that zoom. The cause is structural: the console shell owns the
+viewport height (`h-svh overflow-hidden`) and `ScreenTemplate contentMode="fill"` hands what is left
+to a fixed-height flex row. Fixing it properly means stacking the palette/canvas/inspector into a
+scrolling column below a height threshold — a `ScreenTemplate`-level change with blast radius beyond
+this ticket, so it is recorded here rather than attempted in a verification pass.
+
+#### Commands (Session 4)
+
+```
+$ pnpm --filter @arcaai/admin-console typecheck   # tsc --noEmit — clean
+$ pnpm --filter @arcaai/admin-console lint        # eslint src --max-warnings 0 — clean
+$ pnpm --filter @arcaai/admin-console test        # Test Files 206 passed (206) · Tests 1620 passed (1620)
+$ pnpm --filter @arcaai/admin-console build       # succeeds; /workflow-studio + /workflow-studio/[definitionId] in the manifest
+```
+
+`packages/ui` was edited this session but its unit suite was NOT run — the orchestrator's standing
+instruction (and `01-development-workflow.md` §Test Scope Exclusions) keeps that suite out of scope.
+The canvas changes are covered end-to-end by the Playwright run above.
+
+`apps/admin-console/tests/e2e/harness-workflows.spec.ts` has 6 failures in this stack because the
+Temporal harness service is not running; unrelated to this ticket and left alone.
+
 ## 8. Change History
 
 | Date | Change | By |
@@ -1102,3 +1204,4 @@ session (`workflow-canvas` unchanged) — not re-verified in this session since 
 | 2026-08-16 | **Session 2** (same day, continued — TASK-734 landed the real `admin/workflow-definitions`/`admin/workflow-nodes` endpoints between sessions): the three Task 3 contracts re-derived against delivered code (superseding Session 1's "NOT YET DELIVERED" verdicts, real gaps re-confirmed — notably still NO per-node `configSchema`); Task 9 (inspector form rendering) finished, closing out Phase C; Phase D built in full — API layer (Task 10), Zustand graph store (Task 11, +`reorderNode`), palette rail (Task 12), structured list/tree peer editor (Task 13, every mutation proven click-only/no-drag), validation rail + click-to-focus (Task 14), debounced autosave/OCC/publish (Task 15, RED→GREEN fake-timer coverage of 412-pause/never-retry/428/cancel), routes + nav entry (Task 16) — `pnpm --filter @arcaai/admin-console build` succeeds with both new routes in the compiled manifest; Phase E (Task 17) executed as an assessment — consolidation-map.md records that NOTHING folds this pass (registry still has no palette content to fold against; `/agentic-policy` stays HUMAN-GATED per explicit instruction) — Tasks 18/19 correctly left not-done rather than forced; Phase F partial — 89 unit/a11y tests across the new components (all green), `tests/e2e/workflow-studio.spec.ts` authored following `workflow-runs.spec.ts` but NOT executed (program-wide Playwright/Prisma blocker), manual a11y pass not performed. Full command evidence and the "still genuinely NOT done" list are in §7. | execution agent |
 | 2026-08-17 | **Session 3** — finished Task 15's remainder (name/description metadata form + autosave wiring via `DefinitionMetadataForm` + `use-unsaved-changes-guard.ts`; "Create new version from this" on a PUBLISHED row; combined graph+metadata unsaved-changes guard), Task 16's remainder (`?view=list` URL sync via nuqs, both directions), and Task 19 (`PromptTemplatePicker` in the inspector, gated off `knownPaths` so it never duplicates a schema-declared field; reciprocal `/workflow-studio` link + note added to `department-prompt-config-panel.tsx`, which stays authoritative). Decision #11 remains GATED, untouched. Task 18 not attempted — Task 17's own verdict already resolves it to "does not fold this pass". TDD RED→GREEN throughout (3 new test files + additions to `inspector-panel.test.tsx`/`workflow-studio-api.test.ts`); along the way, root-caused and fixed a pre-existing gap in how this app's tests drive a Radix `SelectItem` selection under jsdom (documented in §7). `pnpm --filter @arcaai/admin-console {test,lint,typecheck,build}` all green (201 test files, 1579 tests); e2e execution and the manual a11y pass remain gated on the program-wide infra blocker. | execution agent |
 | 2026-08-19 | **Canvas render fix (BUG — nodes invisible on the canvas).** Reported as "cannot add any nodes"; reproduced in a running console against live infra. Nodes WERE being added and autosaved (the list editor showed them, `PATCH` returned 200) — React Flow just never painted them. Root cause in `packages/ui/src/components/workflow-canvas/workflow-canvas.tsx`: the composite forwarded React Flow's `dimensions` node-changes to `onNodesChange`, whose only consumer effect is `moveNode` → a new `nodes` array identity → `adoptUserNodes` re-reads `measured` off the rebuilt user node, finds none (`fromXyNode` kept only `position`), and reverts every node to `visibility: hidden`; `nodesInitialized` therefore never flips and `fitView` never runs. Fix: the composite now OWNS its measurements — `dimensions` changes are absorbed into local state (never forwarded, since measuring is not an authored edit) and re-applied as `measured` on each `toXyNode`. Regression coverage added to `workflow-canvas.vitest.tsx` (RED confirmed against the pre-fix component: the "absorbs React Flow dimension measurements" test fails). The pre-existing suite passed throughout because it renders a module-level constant `NODES` array, whose stable identity hits `adoptUserNodes`'s `checkEquality` short-circuit — the Studio rebuilds its array every render and never did. `pnpm --filter @arcaai/ui {test,lint,typecheck,build}` green (16/16 canvas tests); `apps/admin-console` studio+workbench suites green (17 files, 119 tests). Verified in-browser: palette click now paints the node and `fitView` frames the graph. | execution agent |
+| 2026-08-19 | **Session 4 — Phase F closed.** Executed `tests/e2e/workflow-studio.spec.ts` for the first time against the isolated test stack (gateway :8968, console :5276, `RESET_DB=false`, no DB reset/seed): **12/12 green**, including axe 0-violation scans on the definitions list, canvas editor and list editor in BOTH themes. Performed the manual a11y pass in a driven browser (keyboard reach + visible focus rings, both themes, reduced-motion bridge, 200 % reflow). Corrected four spec assertions that contradicted the running system and two skip guards that raced async fetches. Found and fixed two real runtime defects the unit suites could not see: (1) `tsup` never re-imports the extracted `canvas-tokens.css`, so the entire React Flow `--xy-*` theming bridge was absent in every consumer — white control buttons on the dark canvas; now imported from the canonical `packages/ui/src/styles/globals.css`. (2) an inline `onSelectionChange` (plus a per-render `onSelect` from the editor) looped selection into "Maximum update depth exceeded" and tore the canvas subtree down whenever a node was selected; both handlers are now memoized. One a11y finding left OPEN and documented in §7: the editor squeezes to ~59 px tall at 200 % zoom. `typecheck`/`lint`/`test` (206 files, 1620 tests)/`build` all green. | execution agent |

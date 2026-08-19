@@ -1,5 +1,12 @@
 @import "tailwindcss";
 @import "tw-animate-css";
+/* Workflow-canvas theming bridge. It lives in its own file next to the composite, but must be
+   imported HERE too: `tsup` extracts the composite's CSS into a sibling `index.css` and does NOT
+   re-import it from the emitted JS, so every consumer of the built
+   `@arcaai/ui/components/workflow-canvas` entry silently lost the bridge and React Flow fell back
+   to its light-mode defaults (white control buttons on a dark surface). Routing it through the
+   canonical token sheet — which every app already imports — makes the bridge unconditional. */
+@import "../components/workflow-canvas/canvas-tokens.css";
 
 @custom-variant dark (&:is(.dark *));
 
