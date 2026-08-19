@@ -84,43 +84,11 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             cache_ttl_s=settings.db.config_cache_ttl_s,
         )
 
-    # Initialize the LLM engine providers based on the selected provider.
-    # Every engine — lm-studio (default) | vllm | llama-cpp | azure | bedrock —
-    # runs over the OpenAI-compatible chat API. The self-host production engines
-    # (vllm/llama-cpp) serve Granite Guardian, so the Granite BYOC protocol
-    # applies to them as it does for lm-studio.
-    _GRANITE_ENGINES = {"lm-studio", "vllm", "llama-cpp"}
-    engine_cfg = settings.engine
-    if not hasattr(app.state, "content_provider") or app.state.content_provider is None:
-        from guardrail.providers.openai_compat import OpenAICompatProvider
-
-        app.state.content_provider = OpenAICompatProvider(
-            settings=engine_cfg,
-            http_client=http_client,
-            use_granite=(settings.provider in _GRANITE_ENGINES),
-        )
-        logger.info(
-            "guardrail.content_provider_initialized",
-            provider=settings.provider,
-            base_url=engine_cfg.base_url,
-            model=engine_cfg.guardrail_model,
-        )
-
-    # Initialize Guardian provider for medical validation
-    if not hasattr(app.state, "guardian_provider") or app.state.guardian_provider is None:
-        from guardrail.providers.openai_compat import OpenAICompatGuardianProvider
-
-        app.state.guardian_provider = OpenAICompatGuardianProvider(
-            settings=engine_cfg,
-            http_client=http_client,
-        )
-        logger.info(
-            "guardrail.guardian_provider_initialized",
-            provider=settings.provider,
-            base_url=engine_cfg.base_url,
-            model=engine_cfg.guardian_model,
-            enabled=engine_cfg.guardian_enabled,
-        )
+    # No engine providers are initialized here. Guardrail hosts no LLM
+    # (TASK-735 Phase 2b): medical validation delegates to `apps/text`'s judge
+    # lane through a per-request client built from the tenant's own
+    # `AiTaskDefault` selection, so there is nothing process-wide to construct —
+    # and no env-configured engine to fall back to.
 
     # GLiNER is NO LONGER loaded here. Its runtime model id is
     # DB-selected (SYSTEM `guardrail.safety`) and loaded lazily on first
@@ -143,7 +111,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         app.state.job_processor = JobProcessor(
             redis=redis_client,
             gliner_provider_resolver=_gliner_for_job,  # type: ignore[arg-type]
-            max_concurrent=settings.engine.max_concurrent,
+            max_concurrent=settings.queue.max_concurrent,
         )
 
         # Start background job processing

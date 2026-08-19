@@ -249,12 +249,10 @@ export const PLATFORM_SECRET_SETTINGS: SettingDescriptor[] = [
   // ambient cloud credentials (no static key). `azure.foundryApiKey` stays: it is a
   // disabled-by-default preview engine, out of that credential-move's scope.
   platformSecret('azure.foundryApiKey', 'Azure AI Foundry key', 'Azure AI Foundry credential used by the STT Foundry model loader.', 'AI Providers'),
-  platformSecret(
-    'guardrailVllm.apiKey',
-    'Guardrail vLLM key',
-    "Bearer credential for guardrail's vLLM OpenAI-compatible endpoint (`GUARDRAIL_VLLM_` prefix). Self-hosted endpoints commonly accept a placeholder, but it is still a credential and is classified as one.",
-    'AI Providers',
-  ),
+  // `guardrailVllm.apiKey` (GUARDRAIL_VLLM_API_KEY) was REMOVED by TASK-735 Phase
+  // 2b/5: `apps/guardrail` no longer hosts an LLM engine, so it holds no vendor
+  // credential of any kind. Judgement is delegated to `apps/text`, which resolves
+  // the tenant's own key from `AiProviderConnection` (BYOK) or the platform tier.
   platformSecret(
     'harnessJudgeOpenaiCompat.apiKey',
     'Harness judge endpoint key',

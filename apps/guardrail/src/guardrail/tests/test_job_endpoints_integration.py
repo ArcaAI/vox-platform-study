@@ -4,7 +4,6 @@ import asyncio
 from collections.abc import AsyncGenerator
 
 import fakeredis.aioredis
-import httpx
 import pytest
 import pytest_asyncio
 from fastapi import FastAPI
@@ -13,7 +12,6 @@ from httpx import ASGITransport, AsyncClient
 from guardrail.api.endpoints.guardrails import router as guardrails_router
 from guardrail.api.endpoints.jobs import router as jobs_router
 from guardrail.core.config import Settings
-from guardrail.providers.openai_compat import OpenAICompatProvider
 from guardrail.services.job_processor import JobProcessor
 
 # `X-Tenant-Id` is mandatory on `/guardrail/analyze/async` (428 otherwise) and is
@@ -21,9 +19,10 @@ from guardrail.services.job_processor import JobProcessor
 TEST_TENANT = "11111111-1111-1111-1111-111111111111"
 
 
-class RecordingProvider(OpenAICompatProvider):
+class RecordingProvider:
+    """Stub GLiNER provider — the analyse job's only engine (TASK-735 Phase 2b)."""
+
     def __init__(self) -> None:
-        super().__init__(settings=Settings().openai_compat, http_client=httpx.AsyncClient())
         self.calls: list[tuple[str, str]] = []
         self.delay_s = 0.0
 
@@ -41,7 +40,7 @@ class RecordingProvider(OpenAICompatProvider):
         }
 
     async def aclose(self) -> None:
-        await self.http_client.aclose()
+        return None
 
 
 @pytest_asyncio.fixture
@@ -56,7 +55,6 @@ async def integration_client() -> (
     app = FastAPI()
     app.state.settings = settings
     app.state.redis = redis_client
-    app.state.content_provider = provider
     app.state.job_processor = processor
     app.include_router(guardrails_router, prefix="/api", tags=["guardrails"])
     app.include_router(jobs_router, prefix="/api", tags=["jobs"])
@@ -96,7 +94,9 @@ async def test_async_job_lifecycle_end_to_end(integration_client) -> None:
 
     status_payload = None
     for _ in range(20):
-        status_response = await client.get("/api/jobs/status/integration-job-1", headers={"X-Tenant-Id": TEST_TENANT})
+        status_response = await client.get(
+            "/api/jobs/status/integration-job-1", headers={"X-Tenant-Id": TEST_TENANT}
+        )
         assert status_response.status_code == 200
         status_payload = status_response.json()
         if status_payload["status"] == "completed":
@@ -107,7 +107,9 @@ async def test_async_job_lifecycle_end_to_end(integration_client) -> None:
     assert status_payload["status"] == "completed"
     assert provider.calls == [("integration text", "prompt_injection")]
 
-    result_response = await client.get("/api/jobs/result/integration-job-1", headers={"X-Tenant-Id": TEST_TENANT})
+    result_response = await client.get(
+        "/api/jobs/result/integration-job-1", headers={"X-Tenant-Id": TEST_TENANT}
+    )
     assert result_response.status_code == 200
     result_payload = result_response.json()
     assert result_payload["safe"] is True
@@ -145,7 +147,9 @@ async def test_async_job_cancel_endpoint_prevents_completion(integration_client)
     assert submit_response.status_code == 200
 
     for _ in range(20):
-        status_response = await client.get("/api/jobs/status/integration-job-2", headers={"X-Tenant-Id": TEST_TENANT})
+        status_response = await client.get(
+            "/api/jobs/status/integration-job-2", headers={"X-Tenant-Id": TEST_TENANT}
+        )
         assert status_response.status_code == 200
         if status_response.json()["status"] in {"processing", "pending"}:
             break
@@ -159,7 +163,9 @@ async def test_async_job_cancel_endpoint_prevents_completion(integration_client)
 
     final_status = None
     for _ in range(20):
-        status_response = await client.get("/api/jobs/status/integration-job-2", headers={"X-Tenant-Id": TEST_TENANT})
+        status_response = await client.get(
+            "/api/jobs/status/integration-job-2", headers={"X-Tenant-Id": TEST_TENANT}
+        )
         assert status_response.status_code == 200
         final_status = status_response.json()
         if final_status["status"] == "cancelled":
@@ -169,7 +175,9 @@ async def test_async_job_cancel_endpoint_prevents_completion(integration_client)
     assert final_status is not None
     assert final_status["status"] == "cancelled"
 
-    result_response = await client.get("/api/jobs/result/integration-job-2", headers={"X-Tenant-Id": TEST_TENANT})
+    result_response = await client.get(
+        "/api/jobs/result/integration-job-2", headers={"X-Tenant-Id": TEST_TENANT}
+    )
     assert result_response.status_code == 400
 
 
@@ -302,6 +310,6 @@ async def test_declared_tenantless_marker_scopes_like_any_other_owner(
     marker = {"X-Tenant-Id": TENANTLESS}
     assert (await client.get("/api/jobs/status/queue-job", headers=marker)).status_code == 200
     assert (await client.get("/api/jobs/status/tenant-job", headers=marker)).status_code == 404
-    assert {job["job_id"] for job in (await client.get("/api/jobs/list", headers=marker)).json()["jobs"]} == {
-        "queue-job"
-    }
+    assert {
+        job["job_id"] for job in (await client.get("/api/jobs/list", headers=marker)).json()["jobs"]
+    } == {"queue-job"}

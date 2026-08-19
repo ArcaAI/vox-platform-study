@@ -4,18 +4,22 @@
 
 The Guardian service provides medical context validation to ensure only medical-related content reaches the SMR (medical documentation) service. This guide explains how to integrate the Guardian model with your API proxy.
 
-The default LLM engine is **LM Studio** (OpenAI-compatible, `http://localhost:1234/v1`)
-running `granite-guardian-4.1-8b`. Medical-context validation uses a generic JSON prompt
-path over `POST {base_url}/v1/chat/completions`. The engine is selectable via
-`GUARDRAIL_V2_PROVIDER` (`lm-studio` default | `vllm` | `llama-cpp` | `azure` | `bedrock`).
+**Guardrail hosts no LLM engine** (TASK-735). It owns the medical-context CRITERIA, the
+confidence floor, the verdict shape and the fail-closed posture, and delegates the model
+call to `apps/text`'s isolated judge lane — `POST {TEXT_URL}/api/v1/generate/internal/judge`,
+which sits outside `text`'s own moderation gate and runs on its own pool. Provider and model
+come from `AiTaskDefault` (`guardrail.validate`), the tenant's row first and the SYSTEM row
+as the platform fallback; the tenant's credential comes from its own `llm`
+`AiProviderConnection` and is forwarded as an opaque `provider_overrides` blob that
+guardrail never decrypts, stores or logs.
 
 ## Architecture
 
 ```
 ┌─────────────┐    ┌─────────────────┐    ┌─────────────┐    ┌──────────────────┐
-│   Client    │───▶│  API Proxy      │───▶│  Guardian   │───▶│  LLM engine      │
-│  (Frontend) │    │  (NestJS)       │    │  Service    │    │  (LM Studio      │
-└─────────────┘    │                 │    └─────────────┘    │   default)       │
+│   Client    │───▶│  API Proxy      │───▶│  Guardian   │───▶│  apps/text       │
+│  (Frontend) │    │  (NestJS)       │    │  (policy)   │    │  judge lane      │
+└─────────────┘    │                 │    └─────────────┘    │  (owns engines)  │
                    │  ✓ Validates    │           │           └──────────────────┘
                    │  ✓ Blocks       │           ▼
                    │                 │    ┌─────────────┐
@@ -28,32 +32,30 @@ path over `POST {base_url}/v1/chat/completions`. The engine is selectable via
 
 ### 1. Environment Variables
 
-Add to your Guardrail service `.env` (default LM Studio engine):
+Guardrail declares **no engine, endpoint, model or vendor key**. What it needs is transport
+and identity only:
 
 ```bash
-# Engine selector
-GUARDRAIL_V2_PROVIDER=lm-studio
-
-# Guardian Model Configuration (OpenAI-compatible engine)
-GUARDRAIL_OPENAI_COMPAT_BASE_URL=http://localhost:1234/v1
-GUARDRAIL_OPENAI_COMPAT_API_KEY=lm-studio
-GUARDRAIL_OPENAI_COMPAT_GUARDIAN_MODEL=granite-guardian-4.1-8b
-GUARDRAIL_OPENAI_COMPAT_GUARDIAN_ENABLED=true
-GUARDRAIL_OPENAI_COMPAT_GUARDIAN_TEMPERATURE=0.05
-GUARDRAIL_OPENAI_COMPAT_GUARDIAN_MAX_TOKENS=300
-GUARDRAIL_OPENAI_COMPAT_GUARDIAN_MIN_CONFIDENCE=0.75
+# Where apps/text lives (repo-wide; guardrail adds no env var of its own).
+TEXT_URL=http://localhost:8862
+# Inbound/outbound internal auth (one shared token across every HOPE service).
+INTERNAL_ACCESS_TOKEN=...
 ```
 
-To use a self-hosted engine instead, set `GUARDRAIL_V2_PROVIDER=vllm` (or `llama-cpp`) and
-configure the matching `GUARDRAIL_VLLM_*` / `GUARDRAIL_LLAMA_CPP_*` block.
+There is deliberately no `GUARDRAIL_V2_PROVIDER` and no
+`GUARDRAIL_{OPENAI_COMPAT,VLLM,LLAMA_CPP,AZURE,BEDROCK}_*` block: an engine name, model id,
+endpoint or API key in guardrail's env is configuration wearing a costume, and a vendor key
+there is a leak. Selection is `AiTaskDefault`; tuning is the provider-level
+`AiRuntimeProfile`; the credential is the tenant's own connection.
 
 ### 1b. Per-Tenant DB Configuration (TASK-338, optional)
 
-The variables above are **env-only**. To let administrators choose the engine/model **per
-tenant** through the admin console, opt in to DB-driven resolution:
+DB-driven per-tenant resolution is the ONLY source of a provider/model, and it is on by
+default. There is no env-only mode to fall back to:
 
 ```bash
-# Default: false → env-only behavior (unchanged). Set true to resolve per tenant from DB.
+# Default: TRUE. Setting it false does not produce an env-only mode — with no engine left
+# to name, medical validation simply 503s.
 GUARDRAIL_DB_CONFIG_ENABLED=true
 # Read-only connection to the shared HOPE core DB (postgres:// auto-normalized to asyncpg).
 GUARDRAIL_DATABASE_URL=postgresql+asyncpg://postgres:postgres@localhost:5432/hope
@@ -80,22 +82,14 @@ When enabled, the service resolves the guardian provider/model at request time b
   plaintext `GlobalSetting`).
 - DB access is **fail-safe**: any error falls back to the env-selected engine.
 
-### 2. Recommended Models
+### 2. Choosing the Model
 
-**Default (LM Studio):**
-
-- Model: `granite-guardian-4.1-8b`
-- Load `lmstudio-community/granite-guardian-4.1-8b-GGUF` and ensure LM Studio's model id resolves to `granite-guardian-4.1-8b` (or override via `GUARDRAIL_OPENAI_COMPAT_GUARDIAN_MODEL`)
-
-**Optional (self-hosted engines):**
-
-- A guardian-capable model served by vLLM or llama.cpp over the OpenAI-compatible `/v1` wire
-
-### 3. Load / Pull the Model
-
-```bash
-# LM Studio (default): load the GGUF via the LM Studio UI / CLI, then start the server on :1234
-```
+The model is **not chosen here and not chosen in env**. A platform admin publishes the
+approved guardian models as SYSTEM-tenant `AiModel` rows and points the SYSTEM
+`AiTaskDefault` row for `guardrail.validate` at one of them; a tenant may select any model
+from that approved list for its own row, and bring its own key for it. Guardrail resolves
+tenant row → SYSTEM row and fails CLOSED (503) when neither exists — it never substitutes a
+compiled-in default.
 
 ## API Endpoints
 

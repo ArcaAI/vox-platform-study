@@ -5,109 +5,46 @@ from __future__ import annotations
 from typing import Annotated
 
 from hope_env import first_real_secret, hope_settings_sources, load_env, real_secret
-from pydantic import AliasChoices, Field, SecretStr, field_validator
+from pydantic import AliasChoices, BaseModel, Field, SecretStr, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
-class OpenAICompatConfig(BaseSettings):
-    """OpenAI-compatible engine configuration (LM Studio default).
+class JudgePolicy(BaseModel):
+    """Policy + tuning for the delegated LLM judgement (TASK-735 Phase 2b).
 
-    Drives the Granite Guardian ``<guardian>``/``<score>`` protocol over the
-    OpenAI-compatible chat completions API. All guardrail task models default to
-    ``granite-guardian-4.1-8b`` (load the matching GGUF in LM Studio, e.g.
-    ``lmstudio-community/granite-guardian-4.1-8b-GGUF``). Select it via the default
-    ``GUARDRAIL_V2_PROVIDER=lm-studio``.
+    Deliberately a plain ``BaseModel``, NOT ``BaseSettings``: none of these is an
+    env var. Guardrail's five engine sub-configs used to live here — six
+    ``granite-guardian-4.1-8b`` model defaults, four vendor ``base_url``s and an
+    ``api_key`` literal — and every one of them was configuration wearing an env
+    costume (`.claude/rules/00-project-context.md` §Configuration Principles).
+    Engine, model and credential now come from the control plane: the
+    provider/model pair from ``AiTaskDefault`` (tenant row first, SYSTEM as the
+    platform fallback) and the credential from the tenant's ``llm``
+    ``AiProviderConnection``, forwarded as an opaque ``provider_overrides`` blob.
+
+    What is left is POLICY (the confidence floor a verdict must clear) and pool
+    TUNING. These become ``guardrail.policy.*`` ``SettingDescriptor``s in Phase 4;
+    that half is blocked on the missing tenant-cascade read surface for
+    ``db-config`` keys (README §6b G-01), so they sit here as code defaults —
+    which is strictly better than the env surface they replaced, and reachable
+    from exactly one place when the descriptors land.
     """
 
-    # Init > host env > secrets_dir (Vault Agent) > .env.<NODE_ENV> > default.
-    settings_customise_sources = hope_settings_sources
+    # Selection knobs the runtime profile may still override per provider.
+    temperature: float = 0.05
+    max_tokens: int = 300
+    timeout_s: float = 60.0
 
-    model_config = SettingsConfigDict(env_prefix="GUARDRAIL_OPENAI_COMPAT_")
+    # A verdict below this confidence is logged, never silently trusted.
+    min_confidence: float = 0.75
 
-    enabled: bool = True
-    base_url: str = "http://localhost:1234/v1"
-    api_key: SecretStr = SecretStr("lm-studio")
+    # Guardrail owns the retry budget by contract: `text`'s judge route runs zero
+    # retries so a public generation never waits behind a compounding backoff.
+    max_attempts: int = 2
+    retry_backoff_s: float = 0.1
 
-    # Default fallback model for generic guardrail analysis.
-    guardrail_model: str = "granite-guardian-4.1-8b"
-    content_safety_model: str = "granite-guardian-4.1-8b"
-    pii_detection_model: str = "granite-guardian-4.1-8b"
-    prompt_injection_model: str = "granite-guardian-4.1-8b"
-    comprehensive_model: str = "granite-guardian-4.1-8b"
-
-    # Dedicated guardian model for medical context validation
-    guardian_model: str = "granite-guardian-4.1-8b"
-    guardian_enabled: bool = True
-
-    timeout_s: int = 60
-    max_concurrent: int = 4
-    queue_backoff_s: float = 2.0
-
-    # Guardrail-specific settings
-    temperature: float = 0.1  # Low temperature for consistent guardrail results
-    max_tokens: int = 500  # Reasonable limit for guardrail responses
-
-    # Guardian-specific settings
-    guardian_temperature: float = 0.05  # Even lower for medical validation
-    guardian_max_tokens: int = 300
-    guardian_min_confidence: float = 0.75  # Minimum confidence for medical context
-
-
-class AzureOpenAIConfig(OpenAICompatConfig):
-    """Azure OpenAI engine (optional). REQUIRES a guardian-capable deployment.
-
-    Azure does not host Granite Guardian, so this engine uses the generic
-    SAFE/UNSAFE prompt fallback. Point ``base_url``/``api_key`` at an Azure
-    OpenAI-compatible deployment and override the task models. Select it via
-    ``GUARDRAIL_V2_PROVIDER=azure``.
-    """
-
-    model_config = SettingsConfigDict(env_prefix="GUARDRAIL_AZURE_")
-
-    enabled: bool = False
-    base_url: str = ""
-    api_key: SecretStr = SecretStr("")
-
-
-class BedrockConfig(OpenAICompatConfig):
-    """AWS Bedrock engine (optional). REQUIRES a guardian-capable model.
-
-    Bedrock is not natively OpenAI-compatible; front it with an OpenAI-compatible
-    gateway (e.g. LiteLLM / Bedrock Access Gateway). Uses the generic SAFE/UNSAFE
-    prompt fallback. Select it via ``GUARDRAIL_V2_PROVIDER=bedrock``.
-    """
-
-    model_config = SettingsConfigDict(env_prefix="GUARDRAIL_BEDROCK_")
-
-    enabled: bool = False
-    base_url: str = ""
-    api_key: SecretStr = SecretStr("")
-
-
-class VLLMConfig(OpenAICompatConfig):
-    """vLLM engine (production self-host, AD-4). OpenAI-compatible wire.
-
-    Point ``base_url`` at the vLLM server (``/v1``) serving a guardian-capable
-    model (Granite Guardian). Disabled by default — enable it and select via
-    ``GUARDRAIL_V2_PROVIDER=vllm``. Config prefix ``GUARDRAIL_VLLM_``.
-    """
-
-    model_config = SettingsConfigDict(env_prefix="GUARDRAIL_VLLM_")
-
-    enabled: bool = False
-    base_url: str = "http://localhost:8000/v1"
-
-
-class LlamaCppConfig(OpenAICompatConfig):
-    """llama.cpp server engine (production self-host, AD-4). OpenAI-compatible
-    ``/v1`` wire. GGUF tier; select via ``GUARDRAIL_V2_PROVIDER=llama-cpp``.
-    Config prefix ``GUARDRAIL_LLAMA_CPP_``.
-    """
-
-    model_config = SettingsConfigDict(env_prefix="GUARDRAIL_LLAMA_CPP_")
-
-    enabled: bool = False
-    base_url: str = "http://localhost:8080/v1"
+    # The judge sees a bounded prefix — a validation is a classification, not a read.
+    max_input_chars: int = 2000
 
 
 class GlinerConfig(BaseSettings):
@@ -212,6 +149,10 @@ class QueueConfig(BaseSettings):
 
     model_config = SettingsConfigDict(env_prefix="GUARDRAIL_V2_QUEUE_")
 
+    # Concurrent async analyse jobs. Lived on the deleted engine sub-config
+    # (`settings.engine.max_concurrent`), which made a queue bound look like an
+    # engine knob; it is the job queue's own limit.
+    max_concurrent: int = 4
     max_wait_s: float = 60.0
     max_retries: int = 3
     retry_backoff_s: float = 1.0
@@ -293,10 +234,19 @@ class Settings(BaseSettings):
 
     model_config = SettingsConfigDict(env_prefix="GUARDRAIL_V2_")
 
-    # LLM engine selector: lm-studio (default) | vllm | llama-cpp | azure | bedrock
-    # Dev-only escape hatch: consumed only when DatabaseConfig.db_config_enabled
-    # is False, i.e. DB-backed provider resolution is deliberately bypassed.
-    provider: str = "lm-studio"
+    # There is deliberately NO `provider` engine selector and no engine
+    # sub-config. Guardrail hosts no LLM: judgement is delegated to `apps/text`,
+    # which owns the eleven provider adapters, the BYOK credential plane and the
+    # circuit breakers. The provider/model pair is DB-resolved per tenant and
+    # fails CLOSED when unresolved — there is no env engine to fall back to.
+
+    # Where `apps/text` lives. BOOTSTRAP TRANSPORT (an address), not config
+    # authority — read from the repo-wide `TEXT_URL`, so guardrail adds no env
+    # var of its own.
+    text_url: str = Field(
+        default="http://localhost:8862",
+        validation_alias=AliasChoices("TEXT_URL", "GUARDRAIL_V2_TEXT_URL"),
+    )
 
     # Bootstrap credentials for `s3://` model sources (MinIO-compatible).
     # All optional: unset simply means an `s3://` source_uri errors cleanly and the
@@ -387,12 +337,7 @@ class Settings(BaseSettings):
     metrics_enabled: bool = True
 
     # Sub-configs
-    openai_compat: OpenAICompatConfig = Field(default_factory=OpenAICompatConfig)
-    # production self-host engines (AD-4), OpenAI-compatible wire.
-    vllm: VLLMConfig = Field(default_factory=VLLMConfig)
-    llama_cpp: LlamaCppConfig = Field(default_factory=LlamaCppConfig)
-    azure: AzureOpenAIConfig = Field(default_factory=AzureOpenAIConfig)
-    bedrock: BedrockConfig = Field(default_factory=BedrockConfig)
+    judge: JudgePolicy = Field(default_factory=JudgePolicy)
     gliner: GlinerConfig = Field(default_factory=GlinerConfig)
     groundedness: GroundednessConfig = Field(default_factory=GroundednessConfig)
     redis: RedisConfig = Field(default_factory=RedisConfig)
@@ -403,36 +348,6 @@ class Settings(BaseSettings):
     @classmethod
     def _normalize_log_level(cls, v: str) -> str:
         return v.lower()
-
-    @field_validator("provider")
-    @classmethod
-    def _validate_provider(cls, v: str) -> str:
-        allowed = {"lm-studio", "vllm", "llama-cpp", "azure", "bedrock"}
-        normalized = v.strip().lower()
-        if normalized not in allowed:
-            raise ValueError(f"provider must be one of {sorted(allowed)}, got {v!r}")
-        return normalized
-
-    def engine_for(self, provider: str) -> OpenAICompatConfig:
-        """Return the env sub-config for an arbitrary provider switch value.
-
-        Falls back to the env-default provider's engine when ``provider`` is
-        unknown. ``self.provider`` is always a validated key, so this never
-        recurses indefinitely.
-        """
-        engines: dict[str, OpenAICompatConfig] = {
-            "lm-studio": self.openai_compat,
-            "vllm": self.vllm,
-            "llama-cpp": self.llama_cpp,
-            "azure": self.azure,
-            "bedrock": self.bedrock,
-        }
-        return engines.get((provider or "").strip().lower(), engines[self.provider])
-
-    @property
-    def engine(self) -> OpenAICompatConfig:
-        """Return the sub-config for the selected LLM engine."""
-        return self.engine_for(self.provider)
 
 
 def get_settings() -> Settings:

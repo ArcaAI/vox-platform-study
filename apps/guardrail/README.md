@@ -1,9 +1,12 @@
 # Guardrail Service
 
-AI-powered content safety and medical context validation service. The default LLM engine
-is **LM Studio** (OpenAI-compatible, `http://localhost:1234/v1`) running **IBM Granite
-Guardian** (`granite-guardian-4.1-8b`). The engine is selectable via `GUARDRAIL_V2_PROVIDER`
-(`lm-studio` default | `vllm` | `llama-cpp` | `azure` | `bedrock`).
+AI-powered content safety and medical context validation service. Guardrail owns **policy**
+— criteria, thresholds, taxonomies, verdict shape and the fail-closed posture — and hosts
+**no LLM of its own**: medical-context judgement is delegated to `apps/text`'s isolated
+judge lane (`POST {TEXT_URL}/api/v1/generate/internal/judge`), which owns the provider
+adapters, the BYOK credential plane and the circuit breakers. Provider and model come from
+`AiTaskDefault` (`guardrail.validate`), tenant row first and SYSTEM as the platform
+fallback.
 
 ## Features
 
@@ -63,14 +66,9 @@ cp .env.sample .env
 Edit `.env` to configure your settings:
 
 ```bash
-# LLM engine selector: lm-studio (default) | vllm | llama-cpp | azure | bedrock
-GUARDRAIL_V2_PROVIDER=lm-studio
-
-# OpenAI-compatible engine (LM Studio default)
-GUARDRAIL_OPENAI_COMPAT_BASE_URL=http://localhost:1234/v1
-GUARDRAIL_OPENAI_COMPAT_API_KEY=lm-studio
-GUARDRAIL_OPENAI_COMPAT_GUARDRAIL_MODEL=granite-guardian-4.1-8b
-GUARDRAIL_OPENAI_COMPAT_GUARDIAN_MODEL=granite-guardian-4.1-8b
+# Where apps/text lives — the judge lane guardrail delegates to. Transport only:
+# there is no engine, model, endpoint or vendor key in guardrail's env.
+TEXT_URL=http://localhost:8862
 
 # Redis configuration
 GUARDRAIL_REDIS_URL=redis://localhost:6379/0
@@ -220,37 +218,38 @@ mypy src/
 pre-commit install
 ```
 
-## LLM Engine
+## LLM Judgement (delegated)
 
-The service selects its LLM engine via `GUARDRAIL_V2_PROVIDER`:
+Guardrail declares no engine. `/medical/validate` resolves the tenant's
+`guardrail.validate` selection and posts ONE judgement to `apps/text`:
 
-| Provider              | Transport                             | Protocol                                | Notes                                  |
-| --------------------- | ------------------------------------- | --------------------------------------- | -------------------------------------- |
-| `lm-studio` (default) | `POST {base_url}/v1/chat/completions` | Granite Guardian `<guardian>`/`<score>` | `granite-guardian-4.1-8b`              |
-| `vllm` / `llama-cpp`  | OpenAI-compatible chat                | Granite Guardian `<guardian>`/`<score>` | production self-host                   |
-| `azure`               | OpenAI-compatible chat                | Generic SAFE/UNSAFE fallback            | requires a guardian-capable deployment |
-| `bedrock`             | OpenAI-compatible gateway             | Generic SAFE/UNSAFE fallback            | requires a guardian-capable model      |
+| Concern | Owner |
+| --- | --- |
+| Criteria, thresholds, verdict shape, fail-closed posture | `apps/guardrail` |
+| Provider adapters, pools, circuit breakers, BYOK credential resolution | `apps/text` (`/generate/internal/judge`) |
+| Which provider + model runs | `AiTaskDefault` ⋈ `AiModel`, tenant row → SYSTEM row |
+| Temperature / max tokens / timeout | provider-level `AiRuntimeProfile`, else the judge policy defaults |
 
-**Granite Guardian protocol (BYOC):** criteria cannot be passed as API params over the
-OpenAI-compatible endpoint, so each guardrail task appends a `<guardian>` block (the
-criterion) as the final user message after the judged text. The model replies with
-`<score>yes</score>` / `<score>no</score>` (`yes` = the criterion is met → unsafe). The
-`comprehensive` task runs the content-safety, PII, and prompt-injection checks and merges
-them. Medical-context validation uses a generic JSON prompt path. All engines fail open on
-timeout/error.
+The judge lane is deliberately OUTSIDE `text`'s own moderation gate and runs on its own
+semaphore + breaker, so the safety plane can neither recurse into itself nor starve behind
+the user-facing traffic it protects.
+
+**Fail posture — FAIL-CLOSED throughout.** A judgement that never rendered (timeout,
+`text` outage, exhausted retry budget) is a 503 on `/medical/validate` and a per-element
+`is_medical=false` on the batch route. It is never `is_medical=true`.
 
 ## Per-Tenant Engine Configuration (Admin-Configurable, TASK-338 / TASK-506)
 
-The engine/model are resolved **per tenant at request time** from the AI model registry
-(`core."AiTaskDefault"` ⋈ `core."AiModel"`) — **enabled by default since TASK-506**, with
-the env-only selection (`GUARDRAIL_V2_PROVIDER` + the per-engine `GUARDRAIL_*` vars above)
-as the bootstrap/fail-open fallback. Deployments without a reachable Postgres behave
-exactly as env-only ones.
+The provider/model are resolved **per tenant at request time** from the AI model registry
+(`core."AiTaskDefault"` ⋈ `core."AiModel"`), tenant row over SYSTEM row. This is the ONLY
+source of a selection: TASK-735 deleted the env engines that used to serve as a fallback,
+so an unresolved (or tenant-VETOED) selection is a 503, never a substituted default.
 
 ### DB-driven config knobs
 
 ```bash
-# Per-tenant DB resolution (default: true; false → env-only behavior)
+# Per-tenant DB resolution (default: true). False does NOT give an env-only mode —
+# with no engine left to name, medical validation 503s.
 GUARDRAIL_DB_CONFIG_ENABLED=true
 
 # Read-only connection to the shared HOPE core DB (postgres:// is normalized to asyncpg)
@@ -325,11 +324,13 @@ See `.env.sample` for all available configuration options.
 
 ## Model Configuration
 
-- **Default engine / model**: LM Studio serving `granite-guardian-4.1-8b`
-- **Switch engine**: `GUARDRAIL_V2_PROVIDER` (`lm-studio` | `vllm` | `llama-cpp` | `azure` | `bedrock`)
-- **Override general guardrail model**: `GUARDRAIL_OPENAI_COMPAT_GUARDRAIL_MODEL`
-- **Override guardian model**: `GUARDRAIL_OPENAI_COMPAT_GUARDIAN_MODEL`
-- Per-engine overrides use that engine's prefix (`GUARDRAIL_VLLM_*`, `GUARDRAIL_LLAMA_CPP_*`, `GUARDRAIL_AZURE_*`, `GUARDRAIL_BEDROCK_*`)
+- **Judgement model**: the `AiTaskDefault` row for `guardrail.validate` — the tenant's own
+  row when it has one, the SYSTEM row otherwise. Unresolved ⇒ 503.
+- **Aux models**: `guardrail.safety` (GLiNER) and `guardrail.groundedness` (MiniCheck),
+  resolved the same way and loaded lazily behind an idle-TTL cache.
+- **Credential**: the tenant's `llm` `AiProviderConnection`, forwarded to `apps/text` as an
+  opaque `provider_overrides` blob. Guardrail reads no vendor key from env — there is none
+  to read (`test_text_judge_delegation.py` pins that).
 
 ## License
 

@@ -2,7 +2,10 @@
 
 Proves the standardized cross-service ``model_running_instances`` gauge and
 ``model_inference_latency_seconds`` histogram increment on the real guardian
-validation path (model = granite-guardian-4.1-8b by default).
+validation path — now the DELEGATED one (TASK-735 Phase 2b): guardrail times the
+judgement it asked `apps/text` for, under the model it selected from
+``AiTaskDefault``. The metric belongs to the caller that waits on the inference,
+not to whichever process hosts the weights.
 """
 
 from __future__ import annotations
@@ -13,8 +16,7 @@ import pytest
 from prometheus_client import REGISTRY
 
 from guardrail.core import metrics as m
-from guardrail.core.config import OpenAICompatConfig
-from guardrail.providers.openai_compat import OpenAICompatGuardianProvider
+from guardrail.services.external_text_client import TextJudgeClient
 
 
 def _val(name: str, labels: dict[str, str] | None = None) -> float:
@@ -27,16 +29,15 @@ class _FakeResponse:
 
     def json(self) -> dict[str, Any]:
         return {
-            "choices": [
-                {
-                    "message": {
-                        "content": (
-                            '{"is_medical": true, "confidence": 0.9, '
-                            '"context_type": "clinical", "reasoning": "ok"}'
-                        )
-                    }
-                }
-            ]
+            "content": (
+                '{"is_medical": true, "confidence": 0.9, '
+                '"context_type": "clinical", "reasoning": "ok"}'
+            ),
+            "provider": "lm-studio",
+            "model": "guardian-1",
+            "latency_ms": 5,
+            "finish_reason": "stop",
+            "stats": {"prompt_tokens": 3, "completion_tokens": 1, "stop_reason": "stop"},
         }
 
 
@@ -47,11 +48,11 @@ class _FakeChatClient:
 
 class TestTrackModelInference:
     def test_gauge_bumped_then_restored_and_latency_observed(self):
-        labels = {"service": "guardrail", "model": "granite-guardian-4.1-8b"}
+        labels = {"service": "guardrail", "model": "guardian-1"}
         before_gauge = _val("model_running_instances", labels)
         before_count = _val("model_inference_latency_seconds_count", labels)
 
-        with m.track_model_inference("granite-guardian-4.1-8b"):
+        with m.track_model_inference("guardian-1"):
             assert _val("model_running_instances", labels) == before_gauge + 1
 
         assert _val("model_running_instances", labels) == before_gauge
@@ -61,9 +62,13 @@ class TestTrackModelInference:
 class TestGuardianProviderEmitsPerModelMetrics:
     @pytest.mark.asyncio
     async def test_validate_medical_context_observes_latency(self):
-        provider = OpenAICompatGuardianProvider(
-            settings=OpenAICompatConfig(),  # default guardian_model = granite-guardian-4.1-8b
-            http_client=_FakeChatClient(),  # type: ignore[arg-type]
+        provider = TextJudgeClient(
+            base_url="http://text:8862",
+            http_client=_FakeChatClient(),
+            service_token="tok",
+            provider="lm-studio",
+            model="guardian-1",
+            tenant_id="11111111-1111-1111-1111-111111111111",
         )
         labels = {"service": "guardrail", "model": provider.model}
         before_count = _val("model_inference_latency_seconds_count", labels)
