@@ -9,6 +9,7 @@
  */
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { NotFoundException } from '@nestjs/common';
 import { StorageProvider } from '@arcaai/types';
 
 const h = vi.hoisted(() => {
@@ -250,6 +251,64 @@ describe('AzureBlobProvider', () => {
     it('bucketExists returns the container exists() result', async () => {
       h.container.exists.mockResolvedValue(true);
       await expect(makeProvider().bucketExists('c')).resolves.toBe(true);
+    });
+  });
+
+  // Azure's counterpart to S3 `NoSuchBucket`. A container row can outlive — or
+  // precede — the physical container, and "the container isn't there" is a
+  // not-found answer, not a server fault, so it must leave the gateway as 404.
+  // The Azure SDK reports the condition on `code` (RestError), not `name`.
+  describe('ContainerNotFound mapping', () => {
+    function containerNotFound(): Error {
+      const error = new Error('The specified container does not exist.');
+      error.name = 'RestError';
+      (error as { code?: string }).code = 'ContainerNotFound';
+      (error as { statusCode?: number }).statusCode = 404;
+      return error;
+    }
+
+    it('maps ContainerNotFound to NotFoundException on listObjects', async () => {
+      h.byPage.mockReturnValue({ next: vi.fn().mockRejectedValue(containerNotFound()) });
+      await expect(makeProvider().listObjects({ bucket: 'missing' })).rejects.toBeInstanceOf(NotFoundException);
+    });
+
+    it('names the container in the message', async () => {
+      h.byPage.mockReturnValue({ next: vi.fn().mockRejectedValue(containerNotFound()) });
+      await expect(makeProvider().listObjects({ bucket: 'missing' })).rejects.toThrow(/missing/);
+    });
+
+    it('maps ContainerNotFound on object operations too', async () => {
+      h.blockBlob.uploadData.mockRejectedValue(containerNotFound());
+      h.blockBlob.downloadToBuffer.mockRejectedValue(containerNotFound());
+      h.blockBlob.deleteIfExists.mockRejectedValue(containerNotFound());
+      const provider = makeProvider();
+
+      await expect(provider.putObject({ bucket: 'missing', key: 'k', body: Buffer.from('x') })).rejects.toBeInstanceOf(
+        NotFoundException,
+      );
+      await expect(provider.getObject({ bucket: 'missing', key: 'k' })).rejects.toBeInstanceOf(NotFoundException);
+      await expect(provider.deleteObject({ bucket: 'missing', key: 'k' })).rejects.toBeInstanceOf(NotFoundException);
+    });
+
+    it('also recognises the condition on details.errorCode', async () => {
+      const error = new Error('The specified container does not exist.');
+      (error as { details?: { errorCode?: string } }).details = { errorCode: 'ContainerNotFound' };
+      h.byPage.mockReturnValue({ next: vi.fn().mockRejectedValue(error) });
+      await expect(makeProvider().listObjects({ bucket: 'missing' })).rejects.toBeInstanceOf(NotFoundException);
+    });
+
+    it('leaves unrelated SDK errors untouched', async () => {
+      const authError = new Error('AuthenticationFailed');
+      (authError as { code?: string }).code = 'AuthenticationFailed';
+      h.byPage.mockReturnValue({ next: vi.fn().mockRejectedValue(authError) });
+      await expect(makeProvider().listObjects({ bucket: 'c' })).rejects.toThrow('AuthenticationFailed');
+      h.byPage.mockReturnValue({ next: vi.fn().mockRejectedValue(authError) });
+      await expect(makeProvider().listObjects({ bucket: 'c' })).rejects.not.toBeInstanceOf(NotFoundException);
+    });
+
+    it('does not change bucketExists, which answers a boolean', async () => {
+      h.container.exists.mockResolvedValue(false);
+      await expect(makeProvider().bucketExists('missing')).resolves.toBe(false);
     });
   });
 

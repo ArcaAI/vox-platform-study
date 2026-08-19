@@ -1,5 +1,5 @@
 import { BlobSASPermissions, BlobServiceClient, generateBlobSASQueryParameters, SASProtocol, StorageSharedKeyCredential } from '@azure/storage-blob';
-import { Logger } from '@nestjs/common';
+import { Logger, NotFoundException } from '@nestjs/common';
 import { Readable } from 'stream';
 
 import { StorageProvider } from '@arcaai/types';
@@ -71,22 +71,50 @@ export class AzureBlobProvider implements IBlobStorageProvider {
     }
   }
 
+  /**
+   * Runs a container-scoped call, translating Azure's `ContainerNotFound` into
+   * a `NotFoundException` so it leaves the gateway as a 404 instead of an
+   * unmapped 500 — the Azure counterpart of the S3 provider's `NoSuchBucket`
+   * mapping. A container row can legitimately outlive, or precede, the physical
+   * container; "the container isn't there" is a not-found answer, not a server
+   * fault.
+   *
+   * The condition arrives on `RestError.code` (and is mirrored on
+   * `details.errorCode`), NOT on `name` as it is in the AWS SDK — so this reads
+   * both. Every other SDK error propagates untouched: an authentication or
+   * throttling failure must NOT be reported to the caller as "not found".
+   * `bucketExists` needs no wrapping — `exists()` already answers a boolean.
+   */
+  private async forContainer<T>(bucket: string, run: () => Promise<T>): Promise<T> {
+    try {
+      return await run();
+    } catch (error) {
+      const code = (error as { code?: string })?.code ?? (error as { details?: { errorCode?: string } })?.details?.errorCode;
+      if (code === 'ContainerNotFound') {
+        throw new NotFoundException(`Container '${bucket}' does not exist`);
+      }
+      throw error;
+    }
+  }
+
   async putObject(params: PutObjectParams): Promise<void> {
     const blockBlobClient = this.client.getContainerClient(params.bucket).getBlockBlobClient(params.key);
-    await blockBlobClient.uploadData(params.body, {
-      ...(params.contentType ? { blobHTTPHeaders: { blobContentType: params.contentType } } : {}),
-      metadata: params.metadata,
-    });
+    await this.forContainer(params.bucket, () =>
+      blockBlobClient.uploadData(params.body, {
+        ...(params.contentType ? { blobHTTPHeaders: { blobContentType: params.contentType } } : {}),
+        metadata: params.metadata,
+      }),
+    );
   }
 
   async getObject(params: GetObjectParams): Promise<Buffer> {
     const blockBlobClient = this.client.getContainerClient(params.bucket).getBlockBlobClient(params.key);
-    return blockBlobClient.downloadToBuffer();
+    return this.forContainer(params.bucket, () => blockBlobClient.downloadToBuffer());
   }
 
   async getObjectStream(params: GetObjectParams): Promise<Readable> {
     const blockBlobClient = this.client.getContainerClient(params.bucket).getBlockBlobClient(params.key);
-    const response = await blockBlobClient.download();
+    const response = await this.forContainer(params.bucket, () => blockBlobClient.download());
     if (!response.readableStreamBody) {
       throw new Error(`Object has no readable stream body: ${params.bucket}/${params.key}`);
     }
@@ -94,7 +122,7 @@ export class AzureBlobProvider implements IBlobStorageProvider {
   }
 
   async deleteObject(params: DeleteObjectParams): Promise<void> {
-    await this.client.getContainerClient(params.bucket).getBlockBlobClient(params.key).deleteIfExists();
+    await this.forContainer(params.bucket, () => this.client.getContainerClient(params.bucket).getBlockBlobClient(params.key).deleteIfExists());
   }
 
   async listObjects(params: ListObjectsParams): Promise<ListObjectsResult> {
@@ -103,7 +131,7 @@ export class AzureBlobProvider implements IBlobStorageProvider {
       .listBlobsFlat({ prefix: params.prefix })
       .byPage({ continuationToken: params.continuationToken, maxPageSize: params.maxKeys });
 
-    const { value } = await iterator.next();
+    const { value } = await this.forContainer(params.bucket, () => iterator.next());
     const blobItems = value?.segment?.blobItems ?? [];
 
     const objects = blobItems.map((item) => ({
