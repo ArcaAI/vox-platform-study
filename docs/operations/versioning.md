@@ -17,6 +17,10 @@
 
 ---
 
+> **Doing the release?** [release-runbook.md](./release-runbook.md) is the hands-on
+> companion: which command to run in which order, how Changesets versions the npm
+> packages (this document covers tags, which version the SERVICES), and the traps.
+
 ## 1. Deciding the version bump
 
 Every service is versioned independently by its own git tag family; the platform as a
