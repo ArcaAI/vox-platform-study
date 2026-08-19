@@ -11,7 +11,7 @@
 import { encodePathSegment } from '../../core/url';
 import { AdminResource } from './admin-resource';
 import type { AdminRequestOptions } from './admin-resource';
-import type { RunTraceResponse, WorkflowRunResponse } from './schemas';
+import type { ApproveRunGateInput, RunGateStateResponse, RunTraceResponse, WorkflowRunResponse } from './schemas';
 
 /**
  * `hope.admin.workflowRun` — the `svc:admin:workflow-run:read` administration area.
@@ -21,7 +21,7 @@ import type { RunTraceResponse, WorkflowRunResponse } from './schemas';
  * names the scope in that error's message.
  *
  * Backed by controller WorkflowRunController
- * (3 routes). Several controllers sharing one scope share one
+ * (5 routes). Several controllers sharing one scope share one
  * resource on purpose: the scope is the permission surface, so the SDK groups
  * by it rather than by URL.
  */
@@ -66,6 +66,39 @@ export class AdminWorkflowRunResource extends AdminResource {
     return this.request<WorkflowRunResponse>({
       method: 'GET',
       path: `admin/workflow-runs/${encodePathSegment(String(runId))}`,
+      signal: options.signal,
+      timeoutMs: options.timeoutMs,
+    });
+  }
+
+  /**
+   * Live state of the run's human-approval gate, read from the gate child workflow. Cross-tenant / nonexistent id → 404.
+   *
+   * Read LIVE rather than from the read model, deliberately: `WorkflowRunStatus` has no "waiting on a human" member, so a run parked at its gate and a run busy generating text are both RUNNING. `exists: false` is the normal answer for every run without a gate — a 200, not an error. Key an Approve affordance off `waiting` and nothing else.
+   *
+   * `GET /api/v1/admin/workflow-runs/{runId}/gate` — `WorkflowRunController.getRunGate`.
+   */
+  getRunGate(runId: string, options: AdminRequestOptions = {}): Promise<RunGateStateResponse> {
+    return this.request<RunGateStateResponse>({
+      method: 'GET',
+      path: `admin/workflow-runs/${encodePathSegment(String(runId))}/gate`,
+      signal: options.signal,
+      timeoutMs: options.timeoutMs,
+    });
+  }
+
+  /**
+   * Release the run's human-approval gate with a clinician decision.
+   *
+   * The approving clinician is the acting user; it cannot be supplied by the caller. A run with no gate, or whose gate is not currently waiting, is rejected with 400 rather than reporting a sign-off that reached nothing.
+   *
+   * `POST /api/v1/admin/workflow-runs/{runId}/gate/approve` — `WorkflowRunController.approveRunGate`.
+   */
+  approveRunGate(runId: string, body: ApproveRunGateInput, options: AdminRequestOptions = {}): Promise<RunGateStateResponse> {
+    return this.request<RunGateStateResponse>({
+      method: 'POST',
+      path: `admin/workflow-runs/${encodePathSegment(String(runId))}/gate/approve`,
+      body,
       signal: options.signal,
       timeoutMs: options.timeoutMs,
     });
