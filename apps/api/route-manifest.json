@@ -5213,7 +5213,7 @@
       "svcScopes": [
         "svc:admin:workflow-run:read"
       ],
-      "forbidServiceAccount": false,
+      "forbidServiceAccount": true,
       "requiresIfMatch": false,
       "apiExcluded": false
     },

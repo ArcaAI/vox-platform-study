@@ -226,7 +226,7 @@ describe('F — the token-exchange route is public AND guarded', () => {
 });
 
 describe('G — svc:* route declarations are self-consistent', () => {
-  it('THROWS on a route that both declares a svc:* scope and forbids machines', () => {
+  it('THROWS when the METHOD declares both a svc:* scope and @ForbidServiceAccount()', () => {
     @Controller('admin/contradiction')
     class Contradiction {
       @Get()
@@ -235,7 +235,58 @@ describe('G — svc:* route declarations are self-consistent', () => {
       list() {}
     }
 
-    expect(() => auditServiceAccountReachableRoutesAreDeclared(fakeApp([Contradiction]))).toThrow(/These contradict/);
+    expect(() => auditServiceAccountReachableRoutesAreDeclared(fakeApp([Contradiction]))).toThrow(/contradict at the same level/);
+    expect(() => auditServiceAccountReachableRoutesAreDeclared(fakeApp([Contradiction]))).toThrow(/on the METHOD/);
+  });
+
+  it('THROWS when the CONTROLLER CLASS declares both', () => {
+    @Controller('admin/class-contradiction')
+    @RequiredSvcScopes('svc:admin:department:manage')
+    @ForbidServiceAccount()
+    class ClassContradiction {
+      @Get()
+      list() {}
+    }
+
+    expect(() => auditServiceAccountReachableRoutesAreDeclared(fakeApp([ClassContradiction]))).toThrow(/contradict at the same level/);
+    expect(() => auditServiceAccountReachableRoutesAreDeclared(fakeApp([ClassContradiction]))).toThrow(/on the CONTROLLER CLASS/);
+  });
+
+  it('PASSES when a method-level @ForbidServiceAccount() overrides a class-level scope', () => {
+    // The shape the old flattened rule could not express: "this controller is
+    // machine-reachable EXCEPT this route". The runtime honours it —
+    // UnifiedAuthGuard resolves FORBIDDEN method-first and checks it before the
+    // scope gate — so the audit must not refuse it. Real instance:
+    // WorkflowRunController.approveRunGate, which signs clinical content.
+    @Controller('admin/workflow-runs')
+    @RequiredSvcScopes('svc:admin:workflow-run:read')
+    class PartiallyClosed {
+      @Get()
+      list() {}
+
+      @Post(':id/approve')
+      @ForbidServiceAccount()
+      approve() {}
+    }
+
+    expect(() => auditServiceAccountReachableRoutesAreDeclared(fakeApp([PartiallyClosed]))).not.toThrow();
+  });
+
+  it('PASSES when a method-level scope opts back in under a class-level forbid', () => {
+    // The mirror image, legal for the same reason: the class closes the surface
+    // and one route re-opens it. Also an override, also resolvable.
+    @Controller('admin/mostly-closed')
+    @ForbidServiceAccount()
+    class MostlyClosed {
+      @Get()
+      list() {}
+
+      @Get('open')
+      @RequiredSvcScopes('svc:admin:department:manage')
+      open() {}
+    }
+
+    expect(() => auditServiceAccountReachableRoutesAreDeclared(fakeApp([MostlyClosed]))).not.toThrow();
   });
 
   it('passes for a well-formed machine-reachable route', () => {

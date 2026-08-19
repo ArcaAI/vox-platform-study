@@ -12,7 +12,7 @@
  * Request and response types for the `/api/v1/admin/**` surface, derived from
  * the gateway's own DTOs via `openapi.json`.
  *
- * Only the 352 component schemas the generated surface transitively
+ * Only the 351 component schemas the generated surface transitively
  * reaches are emitted — the document declares more, and importing shapes no
  * method can produce would be noise.
  *
@@ -268,15 +268,6 @@ export interface ApprovePromptTemplateRequest {
   expectedVersion?: number;
   /** Free-text approval reason, recorded on the pinned PromptVersion + audit event. */
   reason?: string;
-}
-
-export interface ApproveRunGateInput {
-  /** Attestation hash carried onto the audit record. */
-  attestationHash?: string;
-  /** The summary version the clinician actually signed, when they edited before signing. */
-  contextItemVersionId?: string;
-  /** The decision recorded on the WORM GATE_DECISION audit event. Defaults to 'SIGNED'. */
-  decision?: 'SIGNED' | 'REJECTED';
 }
 
 export interface AssignDepartmentPromptRequest {
