@@ -146,6 +146,10 @@ describe('UnifiedAuthGuard — CASL shadow mode (Task 14)', () => {
       buildAbility: vi.fn().mockResolvedValue(mockAbility),
       evaluateShadowVerdict: vi.fn(),
       recordShadowDivergence: vi.fn(),
+      // Task 15 added the enforce branch; every pair in THIS suite is a
+      // shadow pair, so the double answers false for all of them.
+      isEnforcedPair: vi.fn().mockReturnValue(false),
+      recordEnforceDenial: vi.fn(),
     } as unknown as PolicyEngine;
 
     clsService = {
