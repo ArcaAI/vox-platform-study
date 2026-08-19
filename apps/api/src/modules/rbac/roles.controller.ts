@@ -28,6 +28,18 @@ import {
 @ApiTags('RBAC - Roles')
 @ApiBearerAuth()
 @ForbidApiKey()
+/*
+ * The class-level `@RequiredSvcScopes('svc:admin:role:write')` below is the
+ * DEFAULT for every route; the three read routes additionally accept the
+ * `:read` twin (decision O-3, 2026-08-19) — see the same note on
+ * `ApiKeyController` for why BOTH scopes are listed rather than just `:read`
+ * (OR semantics: `:read`-only would lock out every existing `:write` grant),
+ * and why the pair belongs on the METHOD and never on the class.
+ *
+ * Sound here because `svc:admin:role:read` implies `read:Role`, which is one
+ * of the two alternatives each read route's `@CanAny(['read','Role'],
+ * ['manage','Role'])` accepts — so a `:read`-only token clears both gates.
+ */
 @RequiredSvcScopes('svc:admin:role:write')
 @Controller('admin/rbac/roles')
 @CanManage('Role')
@@ -49,6 +61,7 @@ export class RolesController {
   // (e.g. TENANT_ADMIN per seed) OR the `manage:Role` alias. Mutations below
   // stay `manage`-only.
   @CanAny(['read', 'Role'], ['manage', 'Role'])
+  @RequiredSvcScopes('svc:admin:role:read', 'svc:admin:role:write')
   @ApiOperation({ summary: 'List all roles' })
   @ApiResponse({ status: 200, description: 'List of roles', type: PaginatedRoleResponse })
   async findAll(
@@ -70,6 +83,7 @@ export class RolesController {
    */
   @Get(':id')
   @CanAny(['read', 'Role'], ['manage', 'Role'])
+  @RequiredSvcScopes('svc:admin:role:read', 'svc:admin:role:write')
   @ApiOperation({ summary: 'Get role by ID' })
   @ApiResponse({ status: 200, description: 'Role details', type: RoleResponse })
   @ApiResponse({ status: 404, description: 'Role not found' })
@@ -90,6 +104,7 @@ export class RolesController {
    */
   @Get(':id/members')
   @CanAny(['read', 'Role'], ['manage', 'Role'])
+  @RequiredSvcScopes('svc:admin:role:read', 'svc:admin:role:write')
   @ApiOperation({ summary: 'List users assigned this role (paginated, tenant-scoped)' })
   @ApiResponse({ status: 200, description: 'Paginated role members', type: PaginatedRoleMemberResponse })
   @ApiResponse({ status: 404, description: 'Role not found' })

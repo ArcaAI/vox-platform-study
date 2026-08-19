@@ -2,13 +2,13 @@
 
 | | |
 |---|---|
-| **Status** | **Pending** — plan authored; D-3/D-4 resolved at the gate. Awaiting go-ahead to start Phase A. No code written. |
+| **Status** | **Review** — Phases A, B, C, D and E1/E2 complete and boot-verified. E3 (E2E against a running gateway) deferred by owner: to be run once infrastructure is up. |
 | **Owner** | Platform / SDK |
 | **Date** | 2026-08-19 |
 | **Type** | feature (SDK surface + API authorization wiring) |
 | **Trigger** | Owner requirement, 2026-08-19: *"the package is for the other backend-side to integrate with our system, we need to support admin access using API key on the `/admin/*`"* |
 | **Related** | TASK-757 (admin plane ⇒ JWT-only, policy A2), **TASK-762 (machine identity for administration — the credential this ticket consumes)**, TASK-766 (scope/ability wiring trap), TASK-767 (the `svc:` business-plane precedent this ticket mirrors onto the admin plane), TASK-756 (API-key minting privilege ceiling), TASK-632 (`@arcaai/vox-node` inception) |
-| **Owner decisions recorded** | **D-1: credential class = service account** (not tenant API keys). **D-2: coverage = all 70 admin areas.** **D-3: the three §2.6 surfaces stay machine-closed.** **D-4: SDK family bumps in lockstep to 3.0.1.** All taken 2026-08-19. |
+| **Owner decisions recorded** | **D-1** credential class = service account (not tenant API keys) · **D-2** coverage = all 70 admin areas · **D-3** the three §2.6 surfaces stay machine-closed · **D-4** SDK family bumps in lockstep to 3.0.1 · **D-5** service-account impersonation not built · **O-1** webhooks opened, monitoring + health closed · **O-3** `:read` scopes made real (2 of 4; the other 2 blocked by CASL — see §2.9). All 2026-08-19. |
 
 ---
 
@@ -254,17 +254,57 @@ gets a service account that reaches **nothing** — every route on `TenantContro
 mutation. For a credential handed to a third-party backend, "read-only" being inexpressible is a
 more serious property than it was for a human-operated console.
 
-**Open decision O-3.** Either:
+**O-3 RESOLVED (owner, 2026-08-19): make the `:read` scopes real.** Delivered for **two** of the
+four. The other two cannot be done at this layer, and the reason is worth recording.
 
-- **(a) accept** — the machine class mirrors the human-delegated one exactly; document the four in
-  the SDK README so no one grants a scope that silently reaches nothing; or
-- **(b) make the `:read` scopes real** — add method-level `@RequiredSvcScopes('svc:admin:<area>:read')`
-  to the GET routes of those four controllers, so a read-only grant works. Note this requires boot
-  audit **H** to accommodate a method-level declaration alongside the class-level twin it currently
-  demands exactly.
+Each read route now declares the **PAIR** — `@RequiredSvcScopes('svc:admin:<area>:read',
+'svc:admin:<area>:write')` — at METHOD level, with the class-level `:write` left in place as the
+default for every other route. The pair, never `:read` alone: `enforceServiceAccountScopes` is
+`required.some(...)`, so declaring only `:read` would have **revoked those routes from every
+existing `:write` holder**. The pair leaves `:write` reaching exactly what it reached before and
+additionally lets a `:read`-only grant through.
 
-Not a blocker for the sweep or the SDK; it changes what an operator can safely grant, so it is an
-owner call rather than a code-review one.
+| Area | Read routes demand | `:read` scope implies | Outcome |
+|---|---|---|---|
+| `admin:role` | `read:Role` OR `manage:Role` | `read:Role` | **done** |
+| `admin:apikey` | `read:ApiKey` | `read:ApiKey` | **done** |
+| `admin:tenant` | `manage:Tenant` OR `update:Tenant` | `read:Tenant` | **blocked** |
+| `admin:user` | `manage:User` | `read:User` | **blocked** |
+
+**Why the last two are blocked, not skipped.** Granting them would reproduce the TASK-766 trap
+exactly: the scope gate is string matching, so `svc:admin:tenant:read` would PASS
+`enforceServiceAccountScopes` and then be refused by CASL, because `read:Tenant` satisfies neither
+`manage:Tenant` nor `update:Tenant`. A credential that looks correctly scoped and 403s anyway is
+the worst possible failure to debug — which is the specific outcome boot audit D exists to
+prevent. Verified by building the ability exactly as `UnifiedAuthGuard` does
+(`policyEngine.buildAbilityFromRules(serviceAccountPolicyRules(scopes))`) and evaluating it
+against each route's own metadata:
+
+```
+svc:admin:tenant:read  →  [{"action":"read","subject":"Tenant"}]
+  FAIL  TenantController.fetchAll     requires ["manage:Tenant","update:Tenant"]
+  FAIL  TenantController.fetchById    requires ["manage:Tenant","update:Tenant"]     (+3 more)
+svc:admin:user:read    →  [{"action":"read","subject":"User"}]
+  FAIL  UserController.fetchAll       requires ["manage:User"]
+  FAIL  UserController.fetchById      requires ["manage:User"]                       (+2 more)
+svc:admin:apikey:read  →  [{"action":"read","subject":"ApiKey"}]
+  PASS  ApiKeyController.fetchAll · fetchById · getUsage · getAvailableScopes
+svc:admin:role:read    →  [{"action":"read","subject":"Role"}]
+  PASS  RolesController.findAll · findOne · listMembers
+```
+
+**Open item O-4.** Unblocking tenant and user means widening their read routes' CASL decorators
+(`@CanAny(['read','Tenant'], …)` and the same for `User`) so `read:X` is an accepted alternative.
+That is NOT a machine-credential change — it widens who may read tenants and users for **every**
+principal class, human roles included, so it is a privilege-model decision with its own blast
+radius rather than a follow-on to this one. Orphan count is now **2 of 55**, down from 4.
+
+Boot audit **H** was widened to match, and deliberately not loosened into "any superset". It
+permits exactly two shapes: the twin alone (anywhere), or the twin paired with its own `:read`
+sibling (**method level only**). The sibling is DERIVED from the row's twin, so an area with no
+`:read` half cannot acquire one. Class level is excluded because the pair there would put `:read`
+on the DELETE routes too — a read-only token could then mutate, inverting the very decision O-3
+exists to serve.
 
 ### 2.7 `@arcaai/vox-node` today
 
@@ -484,3 +524,4 @@ not one as originally written. That is the intended cost of lockstep, not an ove
 | 2026-08-19 | **Approval-gate decisions recorded.** **D-3** — the three surfaces in §2.6 (`admin/service-accounts`, `AdminImpersonationController`, `ConsentGrantController`) stay machine-closed; what was assumption A-1 is now a decision, and re-opening any of them is a new owner decision rather than a code-review call. **D-4** — the SDK family bumps in lockstep to **3.0.1** via the existing `scripts/publish-sdk.sh 3.0.1`, which applies one version across every family package; `@arcaai/vox` ships a no-op release at that version, which is the intended cost of lockstep. Recorded that 3.0.1 is a PATCH number carrying additive functionality (strict semver would say 3.1.0) — deliberate, owner's call, and immaterial to consumers since both `^3.0.0` and `~3.0.0` resolve it; the CHANGELOG carries the surface description instead. §6 restructured into resolved decisions vs. the one still-open question (a service-account rate-limit tier). Phase E2 made concrete. Status remains **Pending** — no code written, awaiting go-ahead on Phase A. |
 | 2026-08-19 | **Wave 0 delivered; coverage arithmetic corrected; O-1 opened.** Executed in worktree `task-773-svc-admin` per `PARALLEL-EXECUTION.md`. **A1** extracted the 64-row controller→scope fixture from `276f96a32` (`apps/api/src/bootstrap/__tests__/fixtures/task-773-admin-scope-map.ts`) with a colocated test; count independently re-verified against `git show` (64 removed `admin:*` decorators) and against the live `@ForbidApiKey()` set. Its cross-check produced the finding now recorded as **§2.8**: the 70 admin controllers split THREE ways, not two — 64 mechanically wireable, 3 machine-closed by D-3, and **3 with no `admin:*` scope to renamespace** (`WebhookController` carries `webhook:event:write`; `MonitoringController` and `AdminHealthServicesController` were never class-level scope-gated). Boot audit D could not have caught this: it reconciles the two scope REGISTRIES, never controllers-to-scopes. Opened **O-1** — extend the derivation or close the three — which blocks unit A3 (whose strengthened audit G fails the boot on any route declaring neither) but not the 64-controller sweep. **C** delivered the service-account credential in `@arcaai/vox-node`: lazy exchange, single-flight refresh with a clamped skew margin, one-shot recovery from mid-flight revocation, and redaction of both secret and token. Verified independently: 196 tests pass (was 173), `package.json` unchanged with zero runtime dependencies intact, header emitted via a shared `SERVICE_ACCOUNT_TOKEN_HEADER` constant. Two wire findings recorded: the exchange response's `tokenType: 'Bearer'` is misleading — `UnifiedAuthGuard` reads ONLY `x-service-account-token`, so presenting it as `Authorization: Bearer` gets it parsed as a user JWT and 401s, which is why the transport got a second hook rather than reusing the existing bearer one; and supplying `tenantId` alongside `serviceAccount` now throws at construction rather than being silently dropped, since the working tenant binds at exchange. |
 | 2026-08-19 | **Phase A complete — the admin plane accepts service accounts.** Waves 1–2 delivered per `PARALLEL-EXECUTION.md`. **A4** added boot audit **H**: fixture-driven, it requires each of the 64 controllers to declare exactly the `svc:` twin of the `admin:*` scope TASK-757 removed from it. Written and observed **RED across all 64 before any sweep agent ran** — that observation is only obtainable before the sweep, which is why the audit was ordered first. It exists because assertion G structurally cannot see a MIS-assignment (G checks presence and registry membership, so a real-but-wrong scope passes it); a paired test drives the same synthetic app through both and shows H throwing where G does not. **A2** swept all 64 declarations across 63 files via six parallel agents on disjoint file lists. Gate: a new `task-773-admin-plane-svc-declarations.test.ts` imports every shipped controller class and reads the declaration back off Nest **metadata** — not source text, since a grep would match a comment or a commented-out line — 65/65 pass; full `apps/api` suite 3725 passed / 10 skipped, zero failures (3660 baseline + 65). **O-1 resolved** (see §2.8): `admin/webhooks` opened through a third derived family `ADMIN_PLANE_PRE_CONVENTION_SCOPE_SOURCES`, with assertion D growing an arm that reconciles non-admin `svc:` scopes against the union of the declared families; `admin/monitoring` and `admin/health/services` closed with `@ForbidServiceAccount()`. **D-5 recorded**: service-account impersonation declined, with its two blocking gates and its real cost written down so the question is not re-litigated from scratch. **O-2 opened** (low priority): the webhook delivery log stays 403 for machines, byte-identical to the API-key path. Corrected a premise in §2.8 — `WebhookController` does not *carry* `webhook:event:write`; TASK-757 stripped it along with the `admin:*` ones. Also landed in this phase: **B1/B2** offline `openapi.json` emission (451 paths / 579 operations; cross-checked against 647 live routes, the 68-route gap being exactly the `@ApiExcludeEndpoint` set — zero drift) with a fidelity spike returning **GO** at 80.5% request-typed / 85.3% response-typed against a 70/70 threshold; and **D2**, the hand-authored `AdminResource` base, which surfaced the load-bearing pagination finding now recorded in its doc comments: the gateway echoes RAW query values for `page`/`limit`, so the obvious read-response-and-increment loop is broken against this API and `listAll` must drive pagination from the request side. |
+| 2026-08-19 | **O-3 delivered (2 of 4); Phase E docs; ticket to Review.** Read routes on `RolesController` and `ApiKeyController` now declare the `{:read, :write}` PAIR at method level — the pair rather than `:read` alone because `enforceServiceAccountScopes` is `.some()`, so a lone `:read` would have REVOKED those routes from every existing `:write` grant. `admin:tenant` and `admin:user` are **blocked, not skipped**: their read routes demand `manage`/`update`, which `read:X` does not satisfy, so wiring them would reproduce the TASK-766 trap — a scope that passes the string-matching gate and is then 403'd by CASL. Proven by building the ability exactly as `UnifiedAuthGuard` does and evaluating it per route (evidence in §2.9); opened **O-4** for the CASL widening, which is a privilege-model change affecting every principal class, not a machine-credential one. Orphans 4 → 2 of 55. Boot audit **H** widened to exactly two permitted shapes — the twin alone anywhere, or the twin plus its DERIVED `:read` sibling at METHOD level only — deliberately not "any superset" (which would forfeit mis-assignment detection) and deliberately not class level (which would put `:read` on DELETE routes, inverting the decision). Fixed a separate live defect found by the codegen cross-check: `TenantController.fetchByCodeName` declared `:code-name`, and since path-to-regexp names are `[A-Za-z0-9_]+` the hyphen terminated the name — the route was unreachable at its advertised URL and passed `undefined` at the one that matched; `route-param-names.test.ts` now catches the class of mistake at authoring time. Phase E1/E2 landed: SDK README (credential comparison, the exchange-time tenant binding, `listIterate` over hand-rolled paging, row-as-precondition, the five absent areas), a patch changeset carrying all eight `fixed`-group packages to 3.0.1, and `.claude/rules/08-vox-sdk.md`. Evidence: apps/api **3760 passed / 10 skipped**, bootstrap 378, vox-node 233, `gen:admin:check` no drift, and a real boot with `ENABLE_PRISMA_STUDIO` unset clearing every audit. Status → **Review**. |

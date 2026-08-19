@@ -111,6 +111,14 @@ export interface AdminRequestSpec extends AdminRequestOptions {
   path: string;
   query?: Record<string, QueryValue>;
   body?: unknown;
+  /**
+   * The scope(s) THIS route accepts, when they are not simply the resource's
+   * {@link AdminResource.svcScope}. Set by generated code on the read routes
+   * that also accept their area's `:read` sibling; defaults to the area scope
+   * everywhere else. Only ever used to word a 403 — the gateway, not the SDK,
+   * decides reachability.
+   */
+  svcScopes?: readonly string[];
 }
 
 /**
@@ -220,9 +228,13 @@ function normalizePageIndex(page: number | undefined): number {
  * deny-by-default for service accounts: a route serves a machine caller only
  * if it declares a `svc:admin:*` scope AND the presented token holds it. That
  * makes "which scope?" the first question of nearly every 403, so this base
- * appends {@link svcScope} to the message of any `PermissionError` it sees.
- * The error CLASS is unchanged — `catch (e) { if (e instanceof PermissionError) }`
- * still works, and `status`/`code`/`requestId` are preserved.
+ * appends the scope(s) the ROUTE accepts to the message of any
+ * `PermissionError` it sees — {@link svcScope} for most routes, and the wider
+ * set on a read route that also accepts its area's `:read` sibling, since
+ * naming only the `:write` scope there would send a read-only integrator to
+ * request more privilege than the route actually wants. The error CLASS is
+ * unchanged — `catch (e) { if (e instanceof PermissionError) }` still works,
+ * and `status`/`code`/`requestId` are preserved.
  *
  * **404 — may mean "not yours", not "does not exist".** HOPE's tenancy posture
  * is 404-over-403 (`.claude/rules/05-nestjs-api.md`): a cross-tenant read or
@@ -242,27 +254,44 @@ function normalizePageIndex(page: number | undefined): number {
  */
 export abstract class AdminResource {
   /**
-   * The `svc:admin:*` scope a service-account token must hold to reach this
-   * resource — the `svc:` twin of the `admin:*` scope the controller carried
-   * before TASK-757 (`toServiceAccountScope`). Generated subclasses declare it
-   * from the route manifest, so the required scope is readable at the call
-   * site and quotable in a 403.
+   * The `svc:admin:*` scope that reaches EVERY route on this resource — the
+   * `svc:` twin of the `admin:*` scope the controller carried before TASK-757
+   * (`toServiceAccountScope`). Generated subclasses declare it from the route
+   * manifest, so the required scope is readable at the call site and quotable
+   * in a 403.
+   *
+   * It is the resource's FLOOR, not a complete answer: since TASK-773 decision
+   * O-3 an individual read route may accept its area's `:read` sibling as well,
+   * which the generated method passes per call ({@link AdminRequestSpec.svcScopes})
+   * so its 403 names what that route actually wants. A token holding only this
+   * scope always reaches everything here; a token holding only the `:read`
+   * sibling reaches the read routes.
    */
   abstract readonly svcScope: string;
 
   constructor(protected readonly transport: Transport) {}
 
   /**
-   * Re-throw with the required scope named, for a 403 only.
+   * Re-throw with the required scope(s) named, for a 403 only.
    *
    * Rebuilt rather than mutated: `Error.message` is writable, but reassigning
    * it on an error someone else constructed is the kind of spooky action that
    * makes a stack trace lie. The original is kept as `cause`.
+   *
+   * `scopes` is what THIS route accepts and is plural because the gateway
+   * matches with OR (`enforceServiceAccountScopes` is `required.some(...)`), so
+   * holding any one of them is enough. It defaults to the resource's own
+   * {@link svcScope}, which is the case for all but the read routes widened by
+   * TASK-773 decision O-3.
    */
-  private explain(error: unknown): unknown {
-    if (!(error instanceof PermissionError) || error.message.includes(this.svcScope)) return error;
+  private explain(error: unknown, scopes: readonly string[]): unknown {
+    if (!(error instanceof PermissionError) || scopes.some((scope) => error.message.includes(scope))) return error;
+    const requirement =
+      scopes.length === 1
+        ? `the service-account scope \`${scopes[0]}\``
+        : `ANY ONE of the service-account scopes ${scopes.map((scope) => `\`${scope}\``).join(', ')}`;
     return new PermissionError({
-      message: `${error.message} (This route requires the service-account scope \`${this.svcScope}\`; a token that does not hold it authenticates fine and is then refused here.)`,
+      message: `${error.message} (This route requires ${requirement}; a token that does not hold it authenticates fine and is then refused here.)`,
       code: error.code,
       requestId: error.requestId,
       headers: error.headers,
@@ -270,12 +299,12 @@ export abstract class AdminResource {
     });
   }
 
-  /** Issue one request through the shared transport, augmenting a 403 with {@link svcScope}. */
-  private async send<T>(options: TransportRequestOptions): Promise<T> {
+  /** Issue one request through the shared transport, augmenting a 403 with the route's accepted scope(s). */
+  private async send<T>(options: TransportRequestOptions, svcScopes?: readonly string[]): Promise<T> {
     try {
       return await this.transport.request<T>(options);
     } catch (error) {
-      throw this.explain(error);
+      throw this.explain(error, svcScopes && svcScopes.length > 0 ? svcScopes : [this.svcScope]);
     }
   }
 
@@ -289,14 +318,17 @@ export abstract class AdminResource {
    * type system prevents it in generated code.
    */
   protected request<T>(spec: AdminRequestSpec): Promise<T> {
-    return this.send<T>({
-      method: spec.method,
-      path: spec.path,
-      query: spec.query,
-      body: spec.body,
-      signal: spec.signal,
-      timeoutMs: spec.timeoutMs,
-    });
+    return this.send<T>(
+      {
+        method: spec.method,
+        path: spec.path,
+        query: spec.query,
+        body: spec.body,
+        signal: spec.signal,
+        timeoutMs: spec.timeoutMs,
+      },
+      spec.svcScopes,
+    );
   }
 
   /**
@@ -331,15 +363,18 @@ export abstract class AdminResource {
    * `.catch()`. Same reasoning applies to {@link listPage}.
    */
   protected async requestWithPrecondition<T>(spec: AdminPreconditionedRequestSpec): Promise<T> {
-    return this.send<T>({
-      method: spec.method ?? 'PATCH',
-      path: spec.path,
-      query: spec.query,
-      body: spec.body,
-      headers: { 'If-Match': toIfMatchHeader(spec.ifMatch) },
-      signal: spec.signal,
-      timeoutMs: spec.timeoutMs,
-    });
+    return this.send<T>(
+      {
+        method: spec.method ?? 'PATCH',
+        path: spec.path,
+        query: spec.query,
+        body: spec.body,
+        headers: { 'If-Match': toIfMatchHeader(spec.ifMatch) },
+        signal: spec.signal,
+        timeoutMs: spec.timeoutMs,
+      },
+      spec.svcScopes,
+    );
   }
 
   /**
@@ -350,14 +385,17 @@ export abstract class AdminResource {
    * `page`/`limit` rejects rather than throwing synchronously (see
    * {@link requestWithPrecondition}).
    */
-  protected async listPage<T>(path: string, options: AdminListOptions = {}): Promise<PaginatedPage<T>> {
+  protected async listPage<T>(path: string, options: AdminListOptions = {}, svcScopes?: readonly string[]): Promise<PaginatedPage<T>> {
     const query = { ...options.query };
-    return this.send<PaginatedPage<T>>({
-      path,
-      query: { ...query, page: normalizePageIndex(query.page), limit: normalizePageSize(query.limit) },
-      signal: options.signal,
-      timeoutMs: options.timeoutMs,
-    });
+    return this.send<PaginatedPage<T>>(
+      {
+        path,
+        query: { ...query, page: normalizePageIndex(query.page), limit: normalizePageSize(query.limit) },
+        signal: options.signal,
+        timeoutMs: options.timeoutMs,
+      },
+      svcScopes,
+    );
   }
 
   /**
@@ -405,14 +443,14 @@ export abstract class AdminResource {
    * iterating an admin surface. Breaking out of the loop stops the walk
    * immediately; no page is fetched speculatively.
    */
-  protected async *listAll<T>(path: string, options: AdminListOptions = {}): AsyncGenerator<T, void, undefined> {
+  protected async *listAll<T>(path: string, options: AdminListOptions = {}, svcScopes?: readonly string[]): AsyncGenerator<T, void, undefined> {
     const query = { ...options.query };
     const limit = normalizePageSize(query.limit);
     let page = normalizePageIndex(query.page);
     let yielded = 0;
 
     for (;;) {
-      const result = await this.listPage<T>(path, { ...options, query: { ...query, page, limit } });
+      const result = await this.listPage<T>(path, { ...options, query: { ...query, page, limit } }, svcScopes);
       const rows = result?.data ?? [];
       for (const row of rows) yield row;
       yielded += rows.length;

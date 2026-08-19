@@ -74,6 +74,63 @@ describe('buildAdminSurface', () => {
   });
 });
 
+/**
+ * TASK-773 decision O-3: a READ route may declare its area's `:read` sibling
+ * alongside the `:write` twin the controller class carries. The generator has
+ * to keep both routes in ONE area (the scopes differ only in their action
+ * segment) while still advertising a single entry scope for the resource.
+ */
+describe('buildAdminSurface — a route that accepts more than one scope (O-3)', () => {
+  function withPairedRead() {
+    const manifest = makeManifest();
+    const list = manifest.routes.find((route) => route.controller === 'WidgetController' && route.handler === 'list');
+    // Deliberately typed WRITE-first, so a `svcScopes[0]` implementation would
+    // pick a different area key than the sorted form does.
+    list!.svcScopes = ['svc:admin:widget:manage', 'svc:admin:widget:read'];
+    return manifest;
+  }
+
+  it('keeps the paired read route in its own area and records BOTH scopes on the method', () => {
+    const surface = buildAdminSurface(withPairedRead(), makeDocument());
+    const widget = surface.areas.find((area) => area.key === 'widget');
+    const list = widget?.methods.find((method) => method.name === 'widgetList');
+
+    expect(widget?.methods).toHaveLength(3);
+    expect(list?.svcScopes).toEqual(['svc:admin:widget:manage', 'svc:admin:widget:read']);
+  });
+
+  it("advertises the INTERSECTION as the area's scope — the one that reaches every route, not the union", () => {
+    const surface = buildAdminSurface(withPairedRead(), makeDocument());
+
+    expect(surface.areas.find((area) => area.key === 'widget')?.svcScope).toBe('svc:admin:widget:manage');
+  });
+
+  it('leaves every other route declaring exactly one scope', () => {
+    const surface = buildAdminSurface(withPairedRead(), makeDocument());
+    const update = surface.areas.find((area) => area.key === 'widget')?.methods.find((method) => method.name === 'update');
+
+    expect(update?.svcScopes).toEqual(['svc:admin:widget:manage']);
+  });
+
+  it('REFUSES a route whose scopes name two different areas — a resource cannot be two permission surfaces', () => {
+    const manifest = makeManifest();
+    const list = manifest.routes.find((route) => route.controller === 'WidgetController' && route.handler === 'list');
+    list!.svcScopes = ['svc:admin:widget:manage', 'svc:admin:tenant:read'];
+
+    expect(() => buildAdminSurface(manifest, makeDocument())).toThrow(/declares scopes from 2 different areas/);
+  });
+
+  it('REFUSES an area with no scope common to all of its routes', () => {
+    const manifest = makeManifest();
+    const list = manifest.routes.find((route) => route.controller === 'WidgetController' && route.handler === 'list');
+    // Only the read sibling: the area would then have no single entry scope,
+    // which is exactly what declaring `:read` ALONE on a route would produce.
+    list!.svcScopes = ['svc:admin:widget:read'];
+
+    expect(() => buildAdminSurface(manifest, makeDocument())).toThrow(/no scope common to all of its routes/);
+  });
+});
+
 describe('cross-check', () => {
   it('fails when an admin route has no operation in the OpenAPI document', () => {
     const manifest = makeManifest({

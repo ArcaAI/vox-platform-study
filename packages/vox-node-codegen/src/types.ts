@@ -99,6 +99,14 @@ export interface AdminMethod {
   documentedPath: string;
   controller: string;
   handler: string;
+  /**
+   * Every `svc:*` scope THIS route declares, sorted. Usually one — the area's
+   * own scope — but a read route may also accept the area's `:read` sibling
+   * (TASK-773 decision O-3), and `enforceServiceAccountScopes` is OR, so any
+   * one of them is sufficient. Emitted into the 403 message so it names what
+   * this route actually needs rather than what the area as a whole needs.
+   */
+  svcScopes: string[];
   pathParams: PathParam[];
   /** Typed query parameters, excluding the house `PaginatedQuery` fields on a paginated route. */
   query: { name: string; tsType: string; required: boolean; description?: string }[];
@@ -125,6 +133,11 @@ export interface AdminArea {
   property: string;
   /** `Admin<Pascal>Resource`. */
   className: string;
+  /**
+   * The one scope that reaches EVERY route in the area — the intersection of
+   * the areas' routes' declarations, not the union. A read route may accept
+   * more (see {@link AdminMethod.svcScopes}); nothing accepts less.
+   */
   svcScope: string;
   controllers: string[];
   methods: AdminMethod[];
