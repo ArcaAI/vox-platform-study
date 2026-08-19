@@ -56,6 +56,52 @@ class JudgePolicy(BaseModel):
 # POLICY reach the analyzer through `SafetyPolicy`, never through env.
 
 
+class TransportPolicy(BaseModel):
+    """Pool, timeout and saturation bounds for the one shared peer client.
+
+    A plain ``BaseModel``, NOT ``BaseSettings``, for the same reason
+    :class:`JudgePolicy` is: none of this is an env var. It is the shape of the
+    service's own back pressure, and TASK-735 §6b G-06 recorded the standing
+    objection to spelling exactly these knobs as five new ``*_MAX_CONCURRENT`` /
+    ``*_TIMEOUT_S`` environment variables. Code defaults with one reachable
+    definition site are strictly better, and become ``guardrail.transport.*``
+    ``SettingDescriptor``s when the tenant-cascade read surface for ``db-config``
+    keys lands (G-01).
+
+    **Every timeout phase is explicit** (TASK-777 B-1). The previous
+    ``httpx.Timeout(300.0)`` was one scalar applied to all four phases, so a peer
+    that accepted a connection and then stalled held a pool slot for five minutes
+    — and with no POOL timeout, the 101st concurrent request waited on pool
+    acquisition indefinitely rather than being told the service was full.
+    """
+
+    # --- httpx pool ---
+    max_connections: int = 200
+    max_keepalive_connections: int = 100
+    keepalive_expiry_s: float = 30.0
+
+    # --- httpx timeouts, per phase ---
+    connect_timeout_s: float = 3.0
+    read_timeout_s: float = 60.0
+    write_timeout_s: float = 10.0
+    #: Bounded on purpose: pool exhaustion must surface as a fast, DECLARED
+    #: rejection, never as an unbounded wait.
+    pool_timeout_s: float = 5.0
+
+    # --- admission control ---
+    #: Concurrent screening/analysis requests admitted. Sized for >= 100 concurrent
+    #: consultation sessions with headroom; work past it queues, briefly, then 503s.
+    max_concurrent_requests: int = 256
+    #: Queue-wait ceiling. Past this the caller is TOLD (503 + Retry-After).
+    max_queue_wait_s: float = 5.0
+    #: Fan-out bound for one caller-supplied batch — never an unbounded `gather`.
+    max_batch_concurrency: int = 16
+
+    # --- per-peer circuit breakers ---
+    breaker_failure_threshold: int = 5
+    breaker_recovery_timeout_s: float = 15.0
+
+
 class GroundednessConfig(BaseSettings):
     """Live output-side NLI groundedness POLICY.
 
@@ -288,7 +334,9 @@ class Settings(BaseSettings):
     # route this URL points at.
     gateway_url: str = "http://localhost:8868/api/v1"
 
-    # Connection pooling
+    # Connection pooling. Superseded by `transport` below (TASK-777 B-1) and kept
+    # only so an existing deployment that set them keeps a voice; `build_http_client`
+    # reads `transport`.
     httpx_max_connections: int = 100
     httpx_max_keepalive: int = 50
 
@@ -310,6 +358,7 @@ class Settings(BaseSettings):
 
     # Sub-configs
     judge: JudgePolicy = Field(default_factory=JudgePolicy)
+    transport: TransportPolicy = Field(default_factory=TransportPolicy)
     groundedness: GroundednessConfig = Field(default_factory=GroundednessConfig)
     redis: RedisConfig = Field(default_factory=RedisConfig)
     queue: QueueConfig = Field(default_factory=QueueConfig)

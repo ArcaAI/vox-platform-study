@@ -91,7 +91,7 @@ async def test_db_config_enabled_overrides_model_from_tenant() -> None:
     settings = Settings()
     settings.db.db_config_enabled = True
     resolver = _StubResolver(
-        GuardrailTenantConfig(provider="lm-studio", model="tenant-guardian-x")
+        GuardrailTenantConfig(provider="lm-studio", model="tenant-guardian-x", policy={"medicalValidationCriteria": "you are a medical context validator"})
     )
 
     state = SimpleNamespace(

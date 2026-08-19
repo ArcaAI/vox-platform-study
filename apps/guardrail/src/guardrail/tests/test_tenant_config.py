@@ -328,7 +328,15 @@ def _settings() -> Settings:
     return Settings()
 
 
+# TASK-777 A-3: criteria is CONFIG (failMode=closed) with no code default.
+_POLICY = {"medicalValidationCriteria": "you are a medical context validator"}
+
+
 def _client(cfg: GuardrailTenantConfig, settings: Settings | None = None):
+    from dataclasses import replace
+
+    if cfg.policy is None:
+        cfg = replace(cfg, policy=_POLICY)
     return build_judge_client(
         settings or _settings(), cfg, http_client=object(), tenant_id=TENANT_A
     )

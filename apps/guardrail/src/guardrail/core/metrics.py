@@ -161,3 +161,141 @@ def build_model_cache_metrics_sink() -> PrometheusMetricsSink:
         resident_models=MODEL_CACHE_RESIDENT_MODELS,
         resident_bytes_estimate=MODEL_CACHE_RESIDENT_BYTES_ESTIMATE,
     )
+
+
+# ---------------------------------------------------------------------------
+# Throughput / saturation (TASK-777 Lane B)
+# ---------------------------------------------------------------------------
+# Guardrail fails CLOSED and sits on every generation's critical path, so its
+# saturation is the platform's saturation. Before TASK-777 `/metrics` carried
+# per-model gauges and token counters only: there was no way to see in-flight
+# work, queue depth, peer health or shed load — the four numbers you need to
+# answer "is the safety plane the bottleneck?".
+#
+# LABELS STAY BOUNDED AND TENANT-FREE, for the same reason as above: Prometheus
+# is the fleet-health plane; per-tenant answers come from Postgres.
+
+GUARDRAIL_INFLIGHT = Gauge(
+    "guardrail_inflight_requests",
+    "Work currently holding an admission slot, by gate.",
+    ["gate"],
+)
+
+GUARDRAIL_QUEUE_DEPTH = Gauge(
+    "guardrail_queue_depth",
+    "Work waiting for an admission slot, by gate.",
+    ["gate"],
+)
+
+GUARDRAIL_ADMISSION_WAIT = Histogram(
+    "guardrail_admission_wait_seconds",
+    "Time spent waiting for an admission slot, by gate.",
+    ["gate"],
+    buckets=[0.001, 0.005, 0.01, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0, 10.0, 30.0],
+)
+
+GUARDRAIL_ADMISSION_REJECTIONS = Counter(
+    "guardrail_admission_rejections_total",
+    "Requests refused because the queue-wait ceiling was exceeded, by gate.",
+    ["gate"],
+)
+
+GUARDRAIL_PEER_LATENCY = Histogram(
+    "guardrail_peer_request_seconds",
+    "Latency of one delegated peer call, by peer and operation.",
+    ["peer", "operation"],
+    buckets=[0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0, 10.0, 30.0, 60.0],
+)
+
+GUARDRAIL_PEER_FAILURES = Counter(
+    "guardrail_peer_failures_total",
+    "Failed delegated peer calls, by peer and reason (error | circuit_open).",
+    ["peer", "reason"],
+)
+
+GUARDRAIL_BREAKER_STATE = Gauge(
+    "guardrail_circuit_breaker_state",
+    "Peer circuit-breaker state: 0 = closed, 1 = half-open, 2 = open.",
+    ["peer"],
+)
+
+GUARDRAIL_CONFIG_CACHE_EVENTS = Counter(
+    "guardrail_config_cache_events_total",
+    "Per-tenant config cache events (hit | miss | coalesced | invalidated).",
+    ["event"],
+)
+
+GUARDRAIL_SCREENING_DECISIONS = Counter(
+    "guardrail_screening_decisions_total",
+    "Screening verdicts, by direction (inbound|outbound), decision and reason.",
+    ["direction", "decision", "reason"],
+)
+
+
+def set_requests_in_flight(gate: str, value: int) -> None:
+    """Publish the in-flight count for a gate. Never raises."""
+    try:
+        GUARDRAIL_INFLIGHT.labels(gate=gate).set(value)
+    except Exception:  # noqa: BLE001 — telemetry never fails a safety check
+        return
+
+
+def set_queue_depth(gate: str, value: int) -> None:
+    try:
+        GUARDRAIL_QUEUE_DEPTH.labels(gate=gate).set(value)
+    except Exception:  # noqa: BLE001
+        return
+
+
+def observe_admission_wait(gate: str, seconds: float) -> None:
+    try:
+        GUARDRAIL_ADMISSION_WAIT.labels(gate=gate).observe(max(0.0, seconds))
+    except Exception:  # noqa: BLE001
+        return
+
+
+def record_admission_rejection(gate: str) -> None:
+    try:
+        GUARDRAIL_ADMISSION_REJECTIONS.labels(gate=gate).inc()
+    except Exception:  # noqa: BLE001
+        return
+
+
+def observe_peer_latency(peer: str, operation: str, seconds: float) -> None:
+    try:
+        GUARDRAIL_PEER_LATENCY.labels(peer=peer, operation=operation).observe(
+            max(0.0, seconds)
+        )
+    except Exception:  # noqa: BLE001
+        return
+
+
+def record_peer_failure(peer: str, reason: str) -> None:
+    try:
+        GUARDRAIL_PEER_FAILURES.labels(peer=peer, reason=reason).inc()
+    except Exception:  # noqa: BLE001
+        return
+
+
+def set_circuit_breaker_state(peer: str, code: int) -> None:
+    try:
+        GUARDRAIL_BREAKER_STATE.labels(peer=peer).set(code)
+    except Exception:  # noqa: BLE001
+        return
+
+
+def record_config_cache_event(event: str) -> None:
+    try:
+        GUARDRAIL_CONFIG_CACHE_EVENTS.labels(event=event).inc()
+    except Exception:  # noqa: BLE001
+        return
+
+
+def record_screening_decision(direction: str, decision: str, reason: str) -> None:
+    """One screening verdict. `reason` is a closed vocabulary — never free text."""
+    try:
+        GUARDRAIL_SCREENING_DECISIONS.labels(
+            direction=direction, decision=decision, reason=reason or "none"
+        ).inc()
+    except Exception:  # noqa: BLE001
+        return
