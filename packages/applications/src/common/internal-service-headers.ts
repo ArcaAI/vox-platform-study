@@ -104,6 +104,31 @@ export function internalServiceHeaders(options: {
 }
 
 /**
+ * The literal `scripts/env-sync.mts` writes into `.env.sample` for every secret, and
+ * `scripts/generate-env-file.sh` leaves behind for any credential it cannot synthesize. It
+ * means "no operator has filled this in" — the ABSENCE of a value, not a value.
+ */
+export const PLACEHOLDER_SECRET = 'CHANGE_ME';
+
+/**
+ * A secret's value, or `''` when it is absent or still the unfilled placeholder.
+ *
+ * Needed because the sentinel is a NON-EMPTY string, so every `if (x)` / `x || fallback` guard
+ * around a secret silently accepts it and stops looking. On the `SECRETS_PROVIDER=env` path
+ * `getSecretOptional` returns whatever the env file holds verbatim, so an unfilled
+ * `INTERNAL_ACCESS_TOKEN=CHANGE_ME` would be PRESENTED as the credential on every internal hop
+ * and rejected by every peer. `scripts/vault-seed-secrets.sh` already refuses to write this
+ * value for the same reason; this is the read side of that same rule.
+ *
+ * The Python services share one definition of this in `hope_env.placeholders`; the two must
+ * agree, which is why both spell the sentinel out rather than inferring it.
+ */
+export function realSecret(value: string | undefined | null): string {
+  if (typeof value !== 'string') return '';
+  return value.trim() === PLACEHOLDER_SECRET ? '' : value;
+}
+
+/**
  * Resolve the token to PRESENT on an internal hop (owner decision D-D).
  *
  * The canonical credential is the ONE shared `INTERNAL_ACCESS_TOKEN`. The legacy
@@ -119,7 +144,7 @@ export async function resolveInternalAccessToken(
   secrets: { getSecretOptional(key: string): Promise<string | undefined> } | undefined,
   legacyKey: string,
 ): Promise<string> {
-  const shared = await secrets?.getSecretOptional('INTERNAL_ACCESS_TOKEN');
+  const shared = realSecret(await secrets?.getSecretOptional('INTERNAL_ACCESS_TOKEN'));
   if (shared) return shared;
-  return (await secrets?.getSecretOptional(legacyKey)) ?? '';
+  return realSecret(await secrets?.getSecretOptional(legacyKey));
 }

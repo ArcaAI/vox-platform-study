@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Annotated
 
-from hope_env import hope_settings_sources, load_env
+from hope_env import first_real_secret, hope_settings_sources, load_env, real_secret
 from pydantic import AliasChoices, Field, SecretStr, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -342,18 +342,23 @@ class Settings(BaseSettings):
         Empty tuple ⇒ auth is bypassed (local dev / hermetic CI) — the pre-existing
         behaviour when no token is configured at all.
         """
+        # `real_secret` maps the unfilled-secret sentinel onto "" so a `CHANGE_ME` token is
+        # never ACCEPTED as a credential — see hope_env.placeholders.
         return tuple(
             t
             for t in (
-                self.internal_access_token.get_secret_value(),
-                self.service_token.get_secret_value(),
+                real_secret(self.internal_access_token),
+                real_secret(self.service_token),
             )
             if t
         )
 
     def peer_service_token(self, legacy: SecretStr) -> str:
         """Token to PRESENT on an outbound peer call: shared first, legacy fallback."""
-        return self.internal_access_token.get_secret_value() or legacy.get_secret_value()
+        # `first_real_secret`, not `or`: the sentinel is a NON-EMPTY string, so a plain
+        # truthiness chain returns "CHANGE_ME" and never reaches the legacy fallback — the
+        # trap that made every internal hop 401 (see hope_env.placeholders).
+        return first_real_secret(self.internal_access_token, legacy)
 
     # Where the control plane lives (env GUARDRAIL_V2_GATEWAY_URL).
     # This is BOOTSTRAP TRANSPORT (the address of the config source), NOT config

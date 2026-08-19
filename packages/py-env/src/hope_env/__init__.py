@@ -55,6 +55,12 @@ from hope_env.build_info import (
     BuildInfoReader,
     format_untagged_version,
 )
+from hope_env.placeholders import (
+    PLACEHOLDER_SENTINEL,
+    first_real_secret,
+    is_placeholder,
+    real_secret,
+)
 from hope_env.service_registration import (
     DEFAULT_HEARTBEAT_INTERVAL_S,
     DEFAULT_REGISTER_TIMEOUT_S,
@@ -76,6 +82,7 @@ from hope_env.settings_sources import (
 
 __all__ = [
     "DEFAULT_BUILD_INFO_PATH",
+    "PLACEHOLDER_SENTINEL",
     "DEFAULT_HEARTBEAT_INTERVAL_S",
     "DEFAULT_REGISTER_TIMEOUT_S",
     "DEFAULT_SECRETS_DIR",
@@ -90,6 +97,9 @@ __all__ = [
     "format_untagged_version",
     "hope_settings_sources",
     "instance_id",
+    "first_real_secret",
+    "is_placeholder",
+    "real_secret",
     "load_env",
     "normalize_environment",
     "register_settings_cache",
