@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections.abc import AsyncIterator
 
 from fastapi import APIRouter, Depends, HTTPException, Request
+from hope_async_contract import RESUME_FROM_BEGINNING, decode_resume_token, encode_resume_token
 from hope_otel.trace_propagation import extract_trace_context, inject_trace_carrier
 from opentelemetry import context as context_api
 from sse_starlette.sse import EventSourceResponse
@@ -14,6 +15,20 @@ from text.models.task import TaskStatus
 from text.services.task_manager import TaskManager
 
 router = APIRouter(tags=["stream"])
+
+# TASK-717: the resume-token transport tag for this SSE path's Redis Streams cursor.
+_RESUME_TRANSPORT = "redis-stream"
+
+
+def _cursor_from_last_event_id(last_event_id: str) -> str:
+    """Decode a TASK-717 resume token; fall back to the raw value during rollout.
+
+    A caller storing an OLD raw Redis message id (or the `0-0` sentinel) as its
+    `Last-Event-ID` still resumes correctly — only a well-formed opaque token is
+    decoded, everything else is passed through as the Redis cursor it already is.
+    """
+    decoded = decode_resume_token(last_event_id)
+    return decoded["cursor"] if decoded else last_event_id
 
 
 @router.get("/tasks/{task_id}/stream")
@@ -32,7 +47,8 @@ async def stream_task(
     if state is None:
         raise HTTPException(status_code=404, detail=f"Task '{task_id}' not found")
 
-    cursor_start = last_event_id or request.headers.get("last-event-id") or "0-0"
+    raw_last_event_id = last_event_id or request.headers.get("last-event-id") or RESUME_FROM_BEGINNING
+    cursor_start = _cursor_from_last_event_id(raw_last_event_id)
 
     async def event_generator() -> AsyncIterator[dict[str, str]]:
         cursor = cursor_start
@@ -58,7 +74,11 @@ async def stream_task(
                     context_api.attach(producer_context) if producer_context is not None else None
                 )
                 try:
-                    yield {"event": chunk.type, "data": chunk.model_dump_json(), "id": msg_id}
+                    yield {
+                        "event": chunk.type,
+                        "data": chunk.model_dump_json(),
+                        "id": encode_resume_token(_RESUME_TRANSPORT, msg_id),
+                    }
                 finally:
                     if token is not None:
                         context_api.detach(token)

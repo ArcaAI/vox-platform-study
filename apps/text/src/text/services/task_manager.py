@@ -8,7 +8,14 @@ from datetime import UTC, datetime
 from typing import Any, cast
 
 import structlog
+from hope_async_contract import (
+    ASYNC_ENVELOPE_SCHEMA_VERSION,
+    AsyncEnvelope,
+    AsyncIdempotencyKey,
+    parse_async_envelope,
+)
 from hope_otel.trace_propagation import carrier_from_redis_fields, inject_trace_carrier
+from uuid_extensions import uuid7
 
 from text.models.stream import StreamChunk
 from text.models.task import TaskState, TaskStatus
@@ -48,6 +55,12 @@ class TaskManager:
         self._redis = redis
         self._task_ttl = task_ttl
         self._stream_max_len = stream_max_len
+        # TASK-717: per-task chunk sequence counter, for the enveloped write's
+        # idempotency key (`text:task:<taskId>:chunk:<sequence>`). Scoped to this
+        # instance/process, matching the existing per-request TaskManager lifecycle
+        # (see `core/dependencies.py:get_task_manager`) — a chunk stream is always
+        # produced by one worker for one task.
+        self._chunk_sequences: dict[str, int] = {}
 
     def _task_key(self, task_id: str) -> str:
         return f"{_TASK_KEY_PREFIX}{task_id}"
@@ -95,13 +108,20 @@ class TaskManager:
     async def cancel_task(self, task_id: str) -> TaskState | None:
         return await self.update_task(task_id, status=TaskStatus.CANCELLED)
 
-    async def append_chunk(self, task_id: str, chunk: StreamChunk) -> str:
+    async def append_chunk(
+        self,
+        task_id: str,
+        chunk: StreamChunk,
+        *,
+        tenant_id: str | None = None,
+        correlation_id: str | None = None,
+    ) -> str:
         # Stamp the GENERATING context onto the entry. The SSE
         # reader is a different HTTP request (often a different connection), so
         # this field is the only thing that can join a streamed chunk to the
         # generation that produced it. Empty (and the entry byte-identical to
         # prior) when tracing is off.
-        fields: dict[str, str] = {"data": chunk.model_dump_json()}
+        fields: dict[str, str] = {"data": self._encode_chunk_data(task_id, chunk, tenant_id, correlation_id)}
         fields.update(inject_trace_carrier())
         msg_id = await self._redis.xadd(
             self._stream_key(task_id),
@@ -109,6 +129,67 @@ class TaskManager:
             maxlen=self._stream_max_len,
         )
         return cast(str, msg_id)
+
+    def _encode_chunk_data(
+        self,
+        task_id: str,
+        chunk: StreamChunk,
+        tenant_id: str | None,
+        correlation_id: str | None,
+    ) -> str:
+        """Envelope the chunk (TASK-717) when a tenant is resolved; bare JSON otherwise.
+
+        Additive and backward compatible (design doc §3.7): a caller with no
+        resolved tenant (an untenanted internal caller) keeps writing the bare
+        ``StreamChunk`` exactly as before — the envelope's ``tenantId`` is
+        mandatory, so there is nothing sound to write without one.
+        """
+        if tenant_id is None:
+            return chunk.model_dump_json()
+
+        sequence = self._chunk_sequences.get(task_id, 0)
+        self._chunk_sequences[task_id] = sequence + 1
+
+        envelope = AsyncEnvelope(
+            schema_version=ASYNC_ENVELOPE_SCHEMA_VERSION,
+            id=str(uuid7()),
+            tenant_id=tenant_id,
+            type=f"smr.stream.{chunk.type}",
+            occurred_at=datetime.now(UTC).isoformat(),
+            correlation_id=correlation_id or task_id,
+            causation_id=None,
+            idempotency_key=AsyncIdempotencyKey.text_chunk(task_id, sequence),
+            payload=chunk.model_dump(mode="json"),
+        )
+        # `exclude_unset=True`: `payload_ref` was never assigned (only `payload`
+        # was), so it is omitted from the wire form entirely — a `payloadRef:
+        # null` key WOULD otherwise satisfy the XOR-by-presence check on
+        # re-parse (`_validate_payload_xor_ref` reads `model_fields_set`, and
+        # the round trip through `model_validate(dict)` marks any present key
+        # as "set" even when its value is `null`). `causation_id`, explicitly
+        # passed as `None` above, stays present — the schema requires the key.
+        return envelope.model_dump_json(by_alias=True, exclude_unset=True)
+
+    @staticmethod
+    def _decode_chunk_data(raw: str) -> StreamChunk:
+        """Parse a stream entry's ``data`` field — enveloped (TASK-717) or legacy bare.
+
+        A `schemaVersion` probe distinguishes the two. An enveloped entry whose
+        `schemaVersion` this reader does not understand is REFUSED, never
+        best-effort parsed (design doc §3.2) — cutover of the acceptance path to
+        require the envelope is a follow-up, not this ticket.
+        """
+        doc = json.loads(raw)
+        if isinstance(doc, dict) and "schemaVersion" in doc:
+            envelope = parse_async_envelope(doc)
+            if envelope is None:
+                raise ValueError(
+                    f"unrecognized async envelope schemaVersion in stream data: {doc.get('schemaVersion')!r}"
+                )
+            if envelope.payload is None:
+                raise ValueError("enveloped SMR stream chunk carries no inline payload")
+            return StreamChunk.model_validate(envelope.payload)
+        return StreamChunk.model_validate_json(raw)
 
     async def get_chunks(self, task_id: str, after_id: str | None = None) -> list[StreamChunk]:
         start = f"({after_id}" if after_id else "-"
@@ -119,7 +200,7 @@ class TaskManager:
             if raw:
                 if isinstance(raw, bytes):
                     raw = raw.decode()
-                chunks.append(StreamChunk.model_validate_json(raw))
+                chunks.append(self._decode_chunk_data(raw))
         return chunks
 
     async def read_chunks_blocking(
@@ -169,7 +250,7 @@ class TaskManager:
                     chunks.append(
                         (
                             msg_id,
-                            StreamChunk.model_validate_json(raw),
+                            self._decode_chunk_data(raw),
                             carrier_from_redis_fields(fields),
                         )
                     )
