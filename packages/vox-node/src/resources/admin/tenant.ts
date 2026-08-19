@@ -225,12 +225,12 @@ export class AdminTenantResource extends AdminResource {
   /**
    * Retrieving a single TenantResponse by code-name
    *
-   * `GET /api/v1/admin/tenants/code-name/{code}-name` — `TenantController.fetchByCodeName`.
+   * `GET /api/v1/admin/tenants/code-name/{codeName}` — `TenantController.fetchByCodeName`.
    */
-  fetchByCodeName(code: string, options: AdminRequestOptions = {}): Promise<TenantResponse> {
+  fetchByCodeName(codeName: string, options: AdminRequestOptions = {}): Promise<TenantResponse> {
     return this.request<TenantResponse>({
       method: 'GET',
-      path: `admin/tenants/code-name/${encodePathSegment(String(code))}-name`,
+      path: `admin/tenants/code-name/${encodePathSegment(String(codeName))}`,
       signal: options.signal,
       timeoutMs: options.timeoutMs,
     });

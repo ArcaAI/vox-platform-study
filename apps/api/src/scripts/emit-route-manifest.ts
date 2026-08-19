@@ -132,12 +132,20 @@ function joinPath(controllerPath: string, methodPath: string): string {
  * `/admin/tenants/:id` → `/admin/tenants/{id}` (OpenAPI path-template shape).
  *
  * The character class is `[A-Za-z0-9_]`, NOT `[^/]`, because that is what the
- * path-to-regexp parser underneath Nest accepts as a parameter name. It
- * matters: `@Get('code-name/:code-name')` on `TenantController` binds a
- * parameter called `code`, followed by the LITERAL text `-name` — so the
- * OpenAPI template is `/code-name/{code}-name`. A greedier regex renders
- * `{code-name}` here, which then disagrees with the document the same
- * controller produced, and the cross-check (correctly) refuses to generate.
+ * path-to-regexp parser underneath Nest accepts as a parameter name. Keep it
+ * that way even though no route currently depends on the distinction: a
+ * greedier `[^/]` silently agrees with a MALFORMED parameter name instead of
+ * rendering what the router actually binds, which is exactly how a broken route
+ * hides.
+ *
+ * It has already caught one. `TenantController` shipped
+ * `@Get('code-name/:code-name')`, which binds a parameter called `code`
+ * followed by the LITERAL `-name` — so the true template was
+ * `/code-name/{code}-name`, the route never matched its advertised URL, and
+ * `@Param('code-name')` resolved to `undefined`. This regex rendered the truth,
+ * disagreed with the OpenAPI document, and the cross-check refused to generate.
+ * The controller is fixed; `src/__tests__/route-param-names.test.ts` now catches
+ * the class of mistake at authoring time.
  */
 function toOpenApiPath(routePath: string): string {
   return routePath.replace(/:([A-Za-z0-9_]+)\??/g, (_match, name: string) => `{${name}}`);
