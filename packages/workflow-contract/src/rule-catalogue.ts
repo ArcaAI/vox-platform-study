@@ -392,8 +392,8 @@ export const DRAFT_STT_RULE_SET: readonly DraftWorkflowRule[] = [
 /**
  * The Consultation-palette rule set (TASK-731 Task 2/11 — a partial pass; see the ticket
  * README §7 and `docs/implementation/TASK-731-Palette-Consultation/contracts/validator-rules.md`
- * for the full CR-01..CR-19 statement set and which ones are NOT graph rules — 16 of them are
- * implemented here as `WF-CONS-*`; the rest are enforced elsewhere (registry-level fields,
+ * for the full CR-01..CR-19 statement set and which ones are NOT graph rules — 19 of them are
+ * implemented here as `WF-CONS-*` (CR-12 and CR-16 landed after the first partial pass); the rest are enforced elsewhere (registry-level fields,
  * deferred pending a node type that does not exist yet, or deferred pending the impure
  * schema/entitlement-I/O validator layer that no palette has today — same scope boundary the
  * SIX `WF-C-*` rules above already established for Summarization).
@@ -592,5 +592,48 @@ export const DRAFT_CONSULTATION_RULE_SET: readonly DraftWorkflowRule[] = [
     paletteKey: 'consultation',
     registerRefs: ['INV-063', 'INV-233', 'INV-071'],
     title: 'consultation.bindTerminology declares an unmappedOutputKey (CR-19 — unmapped terms surfaced, never silent).',
+  }),
+  // ---- CR-12: a transcript-consuming node reads FINALIZED transcript only -----------------
+  //
+  // `requiresFinalized` is required to be STATED true (same strictness choice as WF-CONS-015 /
+  // WF-I-004): "absent" and "false" are the same silent partial-transcript read, and P-16's
+  // `isFinal` gating is exactly the property that must not be lost when authorship moves from
+  // `HarnessDocWorkflow` to a tenant-authored graph.
+  rule({
+    ruleId: 'WF-CONS-017',
+    ruleClass: 'invariant',
+    predicateType: 'CONFIG_PREDICATE',
+    predicateConfig: { appliesTo: { nodeType: 'consultation.extractEntities' }, field: 'requiresFinalized', op: 'eq', value: true },
+    severity: 'ERROR',
+    paletteKey: 'consultation',
+    registerRefs: ['INV-023', 'INV-027', 'INV-137', 'INV-208', 'INV-210'],
+    title: 'consultation.extractEntities declares requiresFinalized: true (CR-12).',
+  }),
+  rule({
+    ruleId: 'WF-CONS-018',
+    ruleClass: 'invariant',
+    predicateType: 'CONFIG_PREDICATE',
+    predicateConfig: { appliesTo: { nodeType: 'consultation.assemblePrompt' }, field: 'requiresFinalized', op: 'eq', value: true },
+    severity: 'ERROR',
+    paletteKey: 'consultation',
+    registerRefs: ['INV-023', 'INV-027', 'INV-137', 'INV-208', 'INV-210'],
+    title: 'consultation.assemblePrompt declares requiresFinalized: true (CR-12).',
+  }),
+  // ---- CR-16: no stage-level abort — force-stop applies to the timed-out node only --------
+  //
+  // The `op: 'in'` template `validator-rules.md` §3 named, applied to every ACTIVITY-classed
+  // node in the palette (the two gates are not activities and degrade differently by design —
+  // they are the only `critical: true` nodes, CR-14). `'abort'` is excluded by omission, and
+  // the value must be stated: an undeclared error policy is how a stage-wide abort gets in
+  // without anyone authoring one.
+  rule({
+    ruleId: 'WF-CONS-019',
+    ruleClass: 'invariant',
+    predicateType: 'CONFIG_PREDICATE',
+    predicateConfig: { appliesTo: { nodeClass: 'activity' }, field: 'onError', op: 'in', value: ['degrade', 'retry', 'fail'] },
+    severity: 'ERROR',
+    paletteKey: 'consultation',
+    registerRefs: ['INV-074', 'INV-075', 'INV-125'],
+    title: 'Every consultation activity node declares a non-abort onError policy (CR-16 — no stage-level abort).',
   }),
 ] as const;
