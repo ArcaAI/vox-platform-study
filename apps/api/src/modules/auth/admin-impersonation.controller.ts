@@ -27,7 +27,7 @@ import { ApiBearerAuth, ApiOperation, ApiParam, ApiResponse, ApiTags } from '@ne
 import { Throttle } from '@nestjs/throttler';
 import { randomBytes } from 'crypto';
 import { ClsService } from 'nestjs-cls';
-import { Authorize, ForbidApiKey } from '../../decorators';
+import { Authorize, ForbidApiKey, ForbidServiceAccount } from '../../decorators';
 import { AdminImpersonateRequest, ImpersonateResponse, ImpersonateUserResponse } from './dto';
 import { ImpersonationEvents, ImpersonationDeniedReason, ImpersonationEventPayload } from './impersonation-events';
 
@@ -68,6 +68,21 @@ const MAX_TTL_SECONDS = 1800;
 @ApiTags('admin-users')
 @ForbidApiKey()
 @Controller('admin/users')
+// SVC-NOTE (TASK-773, owner decision D-3) — CLOSED to the machine class.
+// Not a conservative default awaiting classification: impersonation is a
+// machine assuming a HUMAN identity, which defeats the actor attribution the
+// audit trail is built on. `AuditLog` records exactly one responsible actor —
+// `responsibleUserId` and `responsibleServiceAccountId` are mutually exclusive
+// by construction (packages/database/src/prisma/db_main/audit.prisma:10-22) —
+// and an impersonation token carries the TARGET's identity with the true actor
+// in `impersonatedBy`. A service account minting one would write a person's id
+// into rows no person authored, with the machine's identity nowhere in the
+// exclusive pair. The whole point of the third credential class is that a
+// machine's actions are attributable to the machine.
+// Deliberately absent from the generated SDK surface, so an integrator gets no
+// method that would always 403. Re-opening it is a new owner decision, not a
+// code-review call.
+@ForbidServiceAccount()
 export class AdminImpersonationController {
   constructor(
     @Inject(IAuthService) private readonly authService: IAuthService,

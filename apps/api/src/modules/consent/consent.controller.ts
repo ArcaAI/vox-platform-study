@@ -1,7 +1,7 @@
 import { ConsentGrantResponse, CreateConsentGrantRequest, IConsentGrantService, RevokeConsentGrantRequest } from '@arcaai/applications';
 import { Body, Controller, Get, Inject, Param, Patch, Post, Query } from '@nestjs/common';
 import { ApiBearerAuth, ApiHeader, ApiOperation, ApiParam, ApiQuery, ApiResponse, ApiTags } from '@nestjs/swagger';
-import { CanManage, ExpectedVersion, RequiresIfMatch, ForbidApiKey } from '../../decorators';
+import { CanManage, ExpectedVersion, RequiresIfMatch, ForbidApiKey, ForbidServiceAccount } from '../../decorators';
 
 /**
  * `ConsentGrantController` — admin CRUD over `ConsentGrant`
@@ -31,6 +31,19 @@ import { CanManage, ExpectedVersion, RequiresIfMatch, ForbidApiKey } from '../..
 // owner confirms a real API-key use case — see the TASK-708 README's
 // "Reachability changes awaiting owner review" table.
 @ForbidApiKey()
+// SVC-NOTE (TASK-773, owner decision D-3) — CLOSED to the machine class.
+// Unlike the API-key note above, this is a decision about WHAT the surface is,
+// not a conservative default awaiting classification: consent is an act of a
+// PERSON. A grant recorded here asserts that a patient authorized a use of
+// their data, and the platform can only substantiate that claim when a human
+// identity stands behind the write. A machine identity recording consent on a
+// person's behalf would produce a compliance artifact with nobody to attribute
+// it to — and this is the only write surface for grants, so closing it closes
+// the claim.
+// Deliberately absent from the generated SDK surface, so an integrator gets no
+// method that would always 403. Re-opening it is a new owner decision, not a
+// code-review call.
+@ForbidServiceAccount()
 export class ConsentGrantController {
   constructor(
     @Inject(IConsentGrantService)
