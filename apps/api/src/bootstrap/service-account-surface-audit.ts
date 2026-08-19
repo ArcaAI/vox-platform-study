@@ -48,6 +48,8 @@ import {
   SERVICE_ACCOUNT_SCOPE_REGISTRY,
   SKIP_AUTH_KEY,
   API_KEY_SCOPE_REGISTRY,
+  STANDALONE_FEATURE_SVC_SCOPES,
+  resolveServiceAccountImpliedPermissions,
   toServiceAccountScope,
 } from '@arcaai/applications';
 
@@ -172,26 +174,54 @@ export function auditNoInternalControllerDeclaresSvcScopes(app: INestApplication
 }
 
 /**
- * Assertion D — no orphan scopes, no ungated admin areas.
+ * Assertion D — no orphan scopes, no ungated admin areas, no ability-less scope.
  *
  * The registry DERIVES `svc:admin:<area>` from every concrete `admin:<area>`
- * scope, so this normally holds by construction. It is asserted anyway because
- * "holds by construction" is a property of today's `buildRegistry()`: the day
- * someone hand-adds a `svc:*` entry, this is what catches it.
+ * scope, and (TASK-767) `svc:<feature>` from each named standalone business
+ * scope, so the first two checks normally hold by construction. They are
+ * asserted anyway because "holds by construction" is a property of today's
+ * `buildRegistry()`: the day someone hand-adds a `svc:*` entry, this is what
+ * catches it.
+ *
+ * The THIRD check is TASK-767's addition and it pins a different failure —
+ * the one the TASK-766 seed note calls out. `hasServiceAccountScope` is pure
+ * string matching, so a registered scope carrying NO implied ability still
+ * satisfies `enforceServiceAccountScopes`, while `serviceAccountPolicyRules`
+ * contributes nothing for it and `enforceServiceAccountAbilities` then denies
+ * any route that declares a permission pair. A credential that passes the
+ * scope gate and fails the ability gate is the worst of both worlds to debug,
+ * so it fails the boot instead.
  */
 export function auditSvcScopeCoverage(): void {
   const adminScopes = Object.keys(API_KEY_SCOPE_REGISTRY).filter((s) => s.startsWith('admin:') && !s.endsWith(':*'));
   const svcScopes = Object.keys(SERVICE_ACCOUNT_SCOPE_REGISTRY).filter((s) => !s.endsWith(':*'));
+  const svcAdminScopes = svcScopes.filter((s) => s.startsWith(toServiceAccountScope('admin:')));
+  const svcStandaloneScopes = svcScopes.filter((s) => !s.startsWith(toServiceAccountScope('admin:')));
 
   const uncovered = adminScopes.filter((s) => !SERVICE_ACCOUNT_SCOPE_REGISTRY[toServiceAccountScope(s)]);
-  const orphans = svcScopes.filter((s) => !adminScopes.includes(s.slice('svc:'.length)));
+  const orphans = svcAdminScopes.filter((s) => !adminScopes.includes(s.slice('svc:'.length)));
+  // The standalone family is closed: exactly the declared sources, nothing else.
+  const missingStandalone = STANDALONE_FEATURE_SVC_SCOPES.filter((s) => !SERVICE_ACCOUNT_SCOPE_REGISTRY[s]);
+  const unexpectedStandalone = svcStandaloneScopes.filter((s) => !STANDALONE_FEATURE_SVC_SCOPES.includes(s));
+  const abilityless = Object.keys(SERVICE_ACCOUNT_SCOPE_REGISTRY).filter((s) => resolveServiceAccountImpliedPermissions(s).length === 0);
 
   const problems: string[] = [];
   if (uncovered.length > 0) problems.push(`admin areas with no svc:* scope: ${uncovered.join(', ')}`);
-  if (orphans.length > 0) problems.push(`svc:* scopes mapping to no live admin area: ${orphans.join(', ')}`);
+  if (orphans.length > 0) problems.push(`svc:admin:* scopes mapping to no live admin area: ${orphans.join(', ')}`);
+  if (missingStandalone.length > 0) problems.push(`declared standalone-feature scopes missing from the registry: ${missingStandalone.join(', ')}`);
+  if (unexpectedStandalone.length > 0)
+    problems.push(
+      `non-admin svc:* scopes not declared in STANDALONE_FEATURE_SCOPE_SOURCES: ${unexpectedStandalone.join(', ')}. ` +
+        `Add the source scope there so the ability mapping is derived, never hand-written.`,
+    );
+  if (abilityless.length > 0)
+    problems.push(
+      `svc:* scopes that resolve to ZERO abilities: ${abilityless.join(', ')}. ` +
+        `Such a scope passes the guard and is then refused by CASL — wire its implied permission or delete it.`,
+    );
 
   if (problems.length > 0) {
-    throw new Error(`TASK-762: refused to start — svc:* scope coverage is broken:\n${problems.map((p) => `  - ${p}`).join('\n')}`);
+    throw new Error(`TASK-762/767: refused to start — svc:* scope coverage is broken:\n${problems.map((p) => `  - ${p}`).join('\n')}`);
   }
 }
 

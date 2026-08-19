@@ -17,10 +17,13 @@ import { describe, it, expect } from 'vitest';
 import { API_KEY_SCOPE_REGISTRY, isValidScope } from '../../apiKey/apikey-scopes.registry';
 import {
   SERVICE_ACCOUNT_SCOPE_REGISTRY,
+  STANDALONE_FEATURE_SCOPE_SOURCES,
+  STANDALONE_FEATURE_SVC_SCOPES,
   SVC_SCOPE_PREFIX,
   hasServiceAccountScope,
   isValidServiceAccountScope,
   resolveServiceAccountImpliedPermissions,
+  serviceAccountPolicyRules,
   toServiceAccountScope,
 } from '../service-account-scopes.registry';
 
@@ -36,9 +39,10 @@ describe('SERVICE_ACCOUNT_SCOPE_REGISTRY', () => {
     for (const adminScope of adminScopes) {
       expect(SERVICE_ACCOUNT_SCOPE_REGISTRY[toServiceAccountScope(adminScope)], `no svc:* scope covers ${adminScope}`).toBeDefined();
     }
-    // …and nothing beyond them, apart from the two wildcards.
+    // …and nothing beyond them, apart from the two wildcards and the TASK-767
+    // standalone-feature family.
     const nonWildcard = Object.keys(SERVICE_ACCOUNT_SCOPE_REGISTRY).filter((s) => !s.endsWith(':*'));
-    expect(nonWildcard.length).toBe(adminScopes.length);
+    expect(nonWildcard.length).toBe(adminScopes.length + STANDALONE_FEATURE_SVC_SCOPES.length);
   });
 
   it('every non-wildcard scope declares at least one implied permission (no fail-open ceiling)', () => {
@@ -55,6 +59,83 @@ describe('SERVICE_ACCOUNT_SCOPE_REGISTRY', () => {
     for (const scope of Object.keys(API_KEY_SCOPE_REGISTRY)) {
       expect(isValidServiceAccountScope(scope), `${scope} must NOT be a valid service-account scope`).toBe(false);
     }
+  });
+});
+
+/**
+ * TASK-767 — the trap TASK-766 §"Coordination note" names, pinned.
+ *
+ * `hasServiceAccountScope` is pure string matching, so a scope string that is
+ * REGISTERED but wired to no ability still satisfies `enforceServiceAccountScopes`
+ * — and then `serviceAccountPolicyRules` skips it, so CASL denies any route that
+ * declares a permission pair. That combination (guard says yes, abilities say no)
+ * is the worst failure mode to debug, so BOTH halves are asserted here for every
+ * scope in the registry, and again at boot by `auditSvcScopeCoverage`.
+ */
+describe('every registered svc: scope is wired on BOTH halves (TASK-767)', () => {
+  const everyScope = Object.keys(SERVICE_ACCOUNT_SCOPE_REGISTRY);
+
+  it.each(everyScope)('%s resolves to at least one ability', (scope) => {
+    expect(resolveServiceAccountImpliedPermissions(scope).length, `${scope} passes the scope guard but grants nothing`).toBeGreaterThan(0);
+  });
+
+  it.each(everyScope)('%s produces at least one CASL rule', (scope) => {
+    expect(serviceAccountPolicyRules([scope]).length, `${scope} is silently skipped by serviceAccountPolicyRules`).toBeGreaterThan(0);
+  });
+
+  it('the two halves agree — nothing the guard accepts is dropped by the rule builder', () => {
+    for (const scope of everyScope) {
+      const implied = resolveServiceAccountImpliedPermissions(scope)
+        .map((p) => `${p.action}:${p.subject}`)
+        .sort();
+      const rules = serviceAccountPolicyRules([scope])
+        .map((r) => `${r.action}:${r.subject}`)
+        .sort();
+      expect(rules, `${scope} implies ${implied.join(', ')} but builds rules ${rules.join(', ')}`).toEqual(implied);
+    }
+  });
+});
+
+/**
+ * TASK-767 — the standalone STT + summarization family.
+ *
+ * It is DERIVED from `API_KEY_SCOPE_REGISTRY` for the same reason the admin
+ * family is: the `implies` must be the one the API-key path already uses on the
+ * SAME route, or the two credential classes would silently diverge on what the
+ * identical capability grants.
+ */
+describe('STANDALONE_FEATURE_SVC_SCOPES (TASK-767)', () => {
+  it('every declared source is a real API-key scope', () => {
+    for (const source of STANDALONE_FEATURE_SCOPE_SOURCES) {
+      expect(API_KEY_SCOPE_REGISTRY[source], `${source} is not an API-key scope`).toBeDefined();
+    }
+  });
+
+  it('each one is registered and implies EXACTLY what its API-key source implies', () => {
+    for (const source of STANDALONE_FEATURE_SCOPE_SOURCES) {
+      const svcScope = toServiceAccountScope(source);
+      expect(isValidServiceAccountScope(svcScope), `${svcScope} must be a registry member`).toBe(true);
+      expect(resolveServiceAccountImpliedPermissions(svcScope)).toEqual(API_KEY_SCOPE_REGISTRY[source]!.implies);
+    }
+  });
+
+  it('carries no admin: segment — it is the BUSINESS plane, and svc:admin:* must not expand into it', () => {
+    for (const svcScope of STANDALONE_FEATURE_SVC_SCOPES) {
+      expect(svcScope.startsWith('svc:admin:')).toBe(false);
+      expect(hasServiceAccountScope(['svc:admin:*'], svcScope), `svc:admin:* must not reach ${svcScope}`).toBe(false);
+    }
+  });
+
+  it('svc:* DOES reach them — the unrestricted platform wildcard is unrestricted', () => {
+    for (const svcScope of STANDALONE_FEATURE_SVC_SCOPES) {
+      expect(hasServiceAccountScope(['svc:*'], svcScope)).toBe(true);
+    }
+  });
+
+  it('holding one standalone scope never reaches another feature', () => {
+    expect(hasServiceAccountScope(['svc:stt:stream:write'], 'svc:consultation:report:write')).toBe(false);
+    expect(hasServiceAccountScope(['svc:consultation:report:write'], 'svc:stt:transcription:write')).toBe(false);
+    expect(hasServiceAccountScope(['svc:stt:transcription:write'], 'svc:admin:user:write')).toBe(false);
   });
 });
 

@@ -17,6 +17,12 @@
         "sourceMap": true,
         "strictNullChecks": false,
         "strictBindCallApply": false,
-        "target": "ES2021"
+        "target": "ES2022",
+        // ES2022 defaults useDefineForClassFields to TRUE, which DEFINES class fields
+        // instead of assigning them. That breaks DTOs redeclaring a base property and
+        // interacts badly with class-validator/Nest decorators, which read assigned
+        // values. Target was raised to ES2022 for LIB TYPES only (Error.cause,
+        // AggregateError) on a Node >= 22 floor — field semantics stay pre-ES2022.
+        "useDefineForClassFields": false
     }
 }

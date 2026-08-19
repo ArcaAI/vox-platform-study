@@ -129,6 +129,16 @@ export const ARCAAI_TENANT_ADMIN_SVC_SCOPES = [
   'svc:admin:harness:manage', // → manage:HarnessPolicy, manage:HarnessEval, manage:HarnessWorkflow, read:HarnessAudit
   'svc:admin:agentic:manage', // → manage:HarnessPolicy
   'svc:admin:agent-trajectory:read', // → read:AgentTrajectory
+
+  // Standalone-feature (business-plane) scopes — TASK-767. These are what let the
+  // account actually EXERCISE speech-to-text and summarization, as opposed to
+  // administering their configuration. All three imply `create:Consultation`,
+  // which TENANT_ADMIN holds, so they satisfy this file's derivation rule.
+  // Renamespaced from the API-key scopes of the same name; the registry owns the
+  // mapping (`STANDALONE_FEATURE_SCOPE_SOURCES`) and the test pins agreement.
+  'svc:stt:transcription:write', // → create:Consultation  (native STT jobs)
+  'svc:stt:stream:write', // → create:Consultation  (compat /api/stt sessions)
+  'svc:consultation:report:write', // → create:Consultation  (summarization, native + compat)
   // Speech-to-text plane  [TASK-767]
   'svc:admin:audio-pipeline:manage', // → manage:AsrPipeline
   'svc:admin:transcription-job:read', // → read:AsrPipeline
@@ -230,7 +240,23 @@ export const seedServiceAccount = async (client: CorePrismaClient) => {
       where: { OR: [{ id: account.id }, { clientId: account.clientId }] },
     });
     if (existing) {
-      console.log(`  Service account "${account.clientId}" already exists — leaving it untouched.`);
+      // AUTHORITY reconciles; the CREDENTIAL never does. This file's whole design
+      // is that the two are separable — the secret verifier is left exactly as it
+      // is (a rotated credential must survive a re-seed), but `scopes` are
+      // configuration, and a seed that could never widen them would leave every
+      // already-provisioned environment stuck on whatever the account was created
+      // with. That is how this account ended up without the TASK-767
+      // standalone-feature scopes after they were added.
+      const current = Array.isArray(existing.scopes) ? (existing.scopes as string[]) : [];
+      const desired = [...account.scopes];
+      const drifted = current.length !== desired.length || desired.some((scope) => !current.includes(scope));
+
+      if (drifted) {
+        await client.serviceAccount.update({ where: { id: existing.id }, data: { scopes: desired } });
+        console.log(`  Service account "${account.clientId}" exists — reconciled scopes ${current.length} → ${desired.length} (secret untouched).`);
+      } else {
+        console.log(`  Service account "${account.clientId}" already exists and is in sync — leaving it untouched.`);
+      }
       continue;
     }
 

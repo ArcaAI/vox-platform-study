@@ -35,6 +35,11 @@ import { SEED_CUSTOMER_TENANT_IDS, SEED_SERVICE_ACCOUNT_DEV_SECRETS, SYSTEM_TENA
 
 /** `svc:admin:<area>` → the CASL pairs it implies, mirroring `API_KEY_SCOPE_REGISTRY`. */
 const SVC_SCOPE_IMPLICATIONS: Readonly<Record<string, ReadonlyArray<readonly [action: string, subject: string]>>> = {
+  // TASK-767 standalone-feature scopes — all three renamespace an API-key scope
+  // whose `implies` is `create:Consultation`.
+  'svc:stt:transcription:write': [['create', 'Consultation']],
+  'svc:stt:stream:write': [['create', 'Consultation']],
+  'svc:consultation:report:write': [['create', 'Consultation']],
   'svc:admin:user:read': [['read', 'User']],
   'svc:admin:user:write': [['manage', 'User']],
   'svc:admin:apikey:read': [['read', 'ApiKey']],
@@ -260,12 +265,30 @@ describe('credential posture — no recoverable secret on a production path', ()
     }
   });
 
-  it('the seed is CREATE-ONLY, so a rotated secret survives a re-seed', () => {
+  it('a re-seed never rewrites the credential, so a rotated secret survives', () => {
     const src = readFileSync(join(__dirname, '../94-service-account.ts'), 'utf8');
-    expect(src).toContain('already exists — leaving it untouched');
+
     // An upsert would rewrite `secretVerifier` on every run, invalidating the
     // secret the operator obtained through `rotate`.
     expect(src).not.toContain('serviceAccount.upsert');
+
+    // The existing-account branch reconciles AUTHORITY (scopes) but must never
+    // touch the CREDENTIAL. Assert the invariant rather than a log string: the
+    // update payload carries `scopes` and nothing secret-bearing.
+    const update = /serviceAccount\.update\(\{[\s\S]*?\}\)/.exec(src);
+    expect(update, 'the reconcile branch must use serviceAccount.update').not.toBeNull();
+    expect(update![0]).toContain('scopes');
+    for (const secretField of ['secretVerifier', 'clientSecret', 'credentialsRef', 'secretPreview']) {
+      expect(update![0], `a re-seed must never write ${secretField}`).not.toContain(secretField);
+    }
+  });
+
+  it('reconciles scopes on an existing account, so authority converges on re-seed', () => {
+    const src = readFileSync(join(__dirname, '../94-service-account.ts'), 'utf8');
+    // Without this, an environment provisioned before a scope was added stays
+    // stuck on the set the account was created with — which is exactly how the
+    // seeded account missed the TASK-767 standalone-feature scopes.
+    expect(src).toContain('reconciled scopes');
   });
 });
 

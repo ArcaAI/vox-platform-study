@@ -12,7 +12,15 @@ import { Controller, Get, Injectable, Post, UseGuards } from '@nestjs/common';
 import type { CanActivate } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import { ModulesContainer } from '@nestjs/core/injector/modules-container';
-import { ForbidApiKey, ForbidServiceAccount, Public, RequiredSvcScopes } from '@arcaai/applications';
+import {
+  ForbidApiKey,
+  ForbidServiceAccount,
+  Public,
+  RequiredSvcScopes,
+  SERVICE_ACCOUNT_SCOPE_REGISTRY,
+  STANDALONE_FEATURE_SVC_SCOPES,
+  resolveServiceAccountImpliedPermissions,
+} from '@arcaai/applications';
 
 import {
   auditNoAdminControllerUsesServiceTokenGuard,
@@ -120,6 +128,23 @@ describe('C — no internal route may declare a svc:* scope', () => {
 describe('D — svc:* scope coverage', () => {
   it('passes against the real registries (coverage holds by construction)', () => {
     expect(() => auditSvcScopeCoverage()).not.toThrow();
+  });
+
+  // TASK-767 widened D from "admin coverage" to three checks. The registry
+  // derives everything, so none of these can be provoked without mutating it —
+  // assert the properties D now depends on instead, so a future hand-added
+  // entry that breaks one is caught here as well as at boot.
+  it('the non-admin svc: scopes are exactly the declared standalone family', () => {
+    const nonAdmin = Object.keys(SERVICE_ACCOUNT_SCOPE_REGISTRY)
+      .filter((s) => !s.endsWith(':*') && !s.startsWith('svc:admin:'))
+      .sort();
+    expect(nonAdmin).toEqual([...STANDALONE_FEATURE_SVC_SCOPES].sort());
+  });
+
+  it('no registry scope — wildcards included — resolves to zero abilities', () => {
+    for (const scope of Object.keys(SERVICE_ACCOUNT_SCOPE_REGISTRY)) {
+      expect(resolveServiceAccountImpliedPermissions(scope).length, `${scope} would pass the guard and be denied by CASL`).toBeGreaterThan(0);
+    }
   });
 });
 

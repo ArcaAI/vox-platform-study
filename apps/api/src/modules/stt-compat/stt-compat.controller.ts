@@ -27,7 +27,7 @@ import type { AudioConfig, StartSessionResponse } from './dto/start-session.resp
 import type { SwitchSessionResponse } from './dto/switch-session.response';
 import { StopSessionRequest } from './dto/stop-session.request';
 import type { StopSessionResponse } from './dto/stop-session.response';
-import { RequiredScopes } from '../../decorators';
+import { RequiredScopes, RequiredSvcScopes } from '../../decorators';
 
 /** The caller identity resolved from the request / API key / CLS. */
 type ResolvedCaller = {
@@ -40,6 +40,17 @@ type ResolvedCaller = {
 type CompatRequest = {
   apiKey?: { tenantId?: string; userId?: string };
   user?: { id?: string; tenantId?: string };
+  /**
+   * TASK-767 — the third credential class, attached to the Express request by
+   * `UnifiedAuthGuard`'s service-account branch. Read here for the same reason
+   * `apiKey` is: these routes are EXCLUDED from the `api/v1` global prefix, and
+   * a CLS write made in the guard is not visible from a prefix-excluded route
+   * (measured on a live gateway; the sibling `TextCompatController.
+   * requireTenantId` documents the same property). A machine principal carries
+   * no `user` and no `apiKey`, so without this branch every service-account call
+   * would fail with `Tenant ID is required` AFTER the guard had authenticated it.
+   */
+  serviceAccount?: { workingTenantId?: string };
   headers?: Record<string, string | string[] | undefined>;
 };
 
@@ -62,6 +73,20 @@ const DEFAULT_AUDIO_CONFIG: AudioConfig = {
 // TASK-742: v1-compat STT session surface (start/switch/stop) — streaming
 // control, so the stream scope rather than the transcription-record one.
 @RequiredScopes('stt:stream:write')
+// TASK-767 — the standalone speech-to-text feature over the FROZEN v1 wire
+// contract, reachable by the third credential class. Renamespaced from the
+// `stt:stream:write` above, so a machine identity reaches exactly the three
+// routes a scoped tenant key does — `start_session`, `switch`, `stop_session`
+// — at exactly the paths, verbs and bodies v1 clients already send. A
+// decorator declares WHO may call; it changes no path, no verb and no payload
+// (pinned by `src/modules/__tests__/task-767-compat-wire-contract.test.ts`).
+//
+// SVC-NOTE: the compat WebSocket (`stt-compat.gateway.ts`, path `/stt`)
+// authenticates by API KEY ONLY — it calls `extractApiKeyFromWebSocket` and
+// knows nothing of a machine token. A service account can therefore drive the
+// compat session LIFECYCLE but not the compat audio socket. See the TASK-767
+// README §Unreachable.
+@RequiredSvcScopes('svc:stt:stream:write')
 export class SttCompatController {
   private readonly logger = new Logger(SttCompatController.name);
 
@@ -255,7 +280,16 @@ export class SttCompatController {
     const rawApiKeyHeader = request.headers?.['x-api-key'];
     const rawApiKey = Array.isArray(rawApiKeyHeader) ? rawApiKeyHeader[0] : rawApiKeyHeader;
     const authenticatedKey = rawApiKey && this.apiKeyService ? await this.apiKeyService.authenticateByRawKey(rawApiKey, undefined) : undefined;
-    const tenantId = user?.tenantId ?? request.apiKey?.tenantId ?? authenticatedKey?.tenantId ?? this.cls?.get<string>('tenantId');
+    const tenantId =
+      user?.tenantId ??
+      request.apiKey?.tenantId ??
+      authenticatedKey?.tenantId ??
+      this.cls?.get<string>('tenantId') ??
+      request.serviceAccount?.workingTenantId;
+    // A machine principal has no owning clinician, and inventing one would
+    // record its actions against a person. `userId` therefore stays undefined
+    // for a service account — which is exactly what makes the OWNER-bound
+    // stream lifecycle unreachable for it (see the SVC-NOTE on the class).
     const userId = user?.id ?? request.apiKey?.userId ?? authenticatedKey?.userId;
     return { tenantId, userId, user, authenticatedKey };
   }

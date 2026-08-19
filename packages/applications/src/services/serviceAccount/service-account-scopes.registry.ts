@@ -28,16 +28,88 @@
  * The ticket §3 Option 2 "Fit" row sanctions exactly this ("reuses the `admin:*`
  * scope vocabulary TASK-757 puts in reserve (renamespaced `svc:admin:*` or
  * mapped 1:1)").
+ *
+ * ─── TASK-767: a SECOND derived family, on the business plane ───────────────
+ *
+ * The registry now holds two families, both renamespaced from
+ * `API_KEY_SCOPE_REGISTRY` and neither hand-written:
+ *
+ *   `svc:admin:<area>`  — every concrete `admin:*` scope (TASK-762, above)
+ *   `svc:<feature>`     — the standalone STT + summarization scopes
+ *                         (TASK-767, {@link STANDALONE_FEATURE_SCOPE_SOURCES})
+ *
+ * They are kept as separate families rather than one blanket derivation of the
+ * whole API-key registry because the `svc:admin:*` WILDCARD must keep meaning
+ * exactly "the administration plane": widening it to every business scope by
+ * accident is the kind of silent grant this class exists to prevent, and the
+ * seeded ArcaAI account holds admin scopes explicitly for the same reason.
  */
 import { API_KEY_SCOPE_REGISTRY, type ImpliedPermission, type ScopeDefinition } from '../apiKey/apikey-scopes.registry';
 
 /** Every service-account scope starts with this. Nothing else may. */
 export const SVC_SCOPE_PREFIX = 'svc:';
 
-/** `admin:department:manage` → `svc:admin:department:manage`. */
-export function toServiceAccountScope(adminScope: string): string {
-  return `${SVC_SCOPE_PREFIX}${adminScope}`;
+/**
+ * `admin:department:manage` → `svc:admin:department:manage`;
+ * `stt:stream:write` → `svc:stt:stream:write`. Pure renamespacing — it is the
+ * ONE place a `svc:` string is constructed, so the two families below cannot
+ * drift in how they are spelled.
+ */
+export function toServiceAccountScope(apiKeyScope: string): string {
+  return `${SVC_SCOPE_PREFIX}${apiKeyScope}`;
 }
+
+/**
+ * TASK-767 — the STANDALONE-FEATURE scopes, the SECOND `svc:` family.
+ *
+ * ─── Why a second family at all ─────────────────────────────────────────────
+ *
+ * TASK-762 built this registry as a pure renamespacing of `admin:*`, because a
+ * machine identity was only ever meant to reach the ADMINISTRATION plane. The
+ * owner requirement of 2026-08-18 is different in kind: *"end-user can use
+ * service-account/api-key for standalone features: speech-to-text,
+ * summarization, via SDK compat and API compat"*. Those are BUSINESS-plane
+ * capabilities (`audio/transcription-jobs`, `api/stt`, `text-generations`,
+ * `api/smr/api/v1`), and no amount of `admin:*` derivation produces a scope
+ * that names them — so a machine identity could reach NOTHING there
+ * (`enforceServiceAccountScopes` denies every route that declares no `svc:*`
+ * scope, and no route declared one).
+ *
+ * ─── Why it is DERIVED too, and from the API-key scope ──────────────────────
+ *
+ * The trap TASK-766 §"Coordination note for TASK-767" names is the reason this
+ * is a list of SOURCE scope names rather than hand-written definitions:
+ * `hasServiceAccountScope` is pure string matching, so an unregistered `svc:`
+ * string still SATISFIES the guard, while `serviceAccountPolicyRules` silently
+ * SKIPS it — the credential passes the scope gate and is then refused by CASL,
+ * which is the worst possible failure to debug. Deriving each entry from the
+ * API-key scope that already gates the same route makes BOTH halves — registry
+ * membership and the ability mapping — land in one edit, by construction, with
+ * the identical `implies` the human-credential path uses. Boot audit D
+ * additionally refuses to start if any registry scope resolves to zero
+ * abilities.
+ *
+ * ─── Why exactly these three ────────────────────────────────────────────────
+ *
+ * They are the scopes the four standalone surfaces ALREADY declare for API
+ * keys, so the machine class reaches exactly the same routes as the human-
+ * delegated class and not one more:
+ *
+ *   `stt:transcription:write`   → `audio/transcription-jobs`   (native STT)
+ *   `stt:stream:write`          → `api/stt`                    (compat STT)
+ *   `consultation:report:write` → `text-generations` (native summarization)
+ *                                 AND `api/smr/api/v1` (compat summarization)
+ *
+ * `ai:inference:write` (`safety-checks`, `text-analyses`) and `tts:speech:write`
+ * (`speech`) are deliberately ABSENT: they are different standalone features
+ * (guardrail moderation, medical NLP, speech synthesis) that the requirement
+ * does not name, and deny-by-default means silence is a refusal, not an
+ * oversight. Adding one is a single line here plus a decorator — see the ticket.
+ */
+export const STANDALONE_FEATURE_SCOPE_SOURCES = ['stt:transcription:write', 'stt:stream:write', 'consultation:report:write'] as const;
+
+/** The renamespaced form of {@link STANDALONE_FEATURE_SCOPE_SOURCES}. */
+export const STANDALONE_FEATURE_SVC_SCOPES: readonly string[] = STANDALONE_FEATURE_SCOPE_SOURCES.map(toServiceAccountScope);
 
 function buildRegistry(): Record<string, ScopeDefinition> {
   const registry: Record<string, ScopeDefinition> = {};
@@ -49,6 +121,27 @@ function buildRegistry(): Record<string, ScopeDefinition> {
     // this module's, not the API-key module's.
     if (!scope.startsWith('admin:') || scope.endsWith(':*')) continue;
     registry[toServiceAccountScope(scope)] = {
+      description: `${def.description} (machine identity)`,
+      category: 'ServiceAccount',
+      implies: def.implies,
+    };
+  }
+
+  // TASK-767 — the standalone-feature family, derived from the SAME API-key
+  // definition the human-credential path uses on the same route, so the scope
+  // and its abilities can never disagree. A source name that stops existing in
+  // `API_KEY_SCOPE_REGISTRY` is a module-load crash, not a silently missing
+  // registry row that `hasServiceAccountScope` would then accept as a bare
+  // string while CASL refused it.
+  for (const source of STANDALONE_FEATURE_SCOPE_SOURCES) {
+    const def = API_KEY_SCOPE_REGISTRY[source];
+    if (!def) {
+      throw new Error(
+        `TASK-767: STANDALONE_FEATURE_SCOPE_SOURCES names '${source}', which is not in API_KEY_SCOPE_REGISTRY. ` +
+          `The svc: standalone family is DERIVED from the API-key scope that gates the same route; it cannot be invented here.`,
+      );
+    }
+    registry[toServiceAccountScope(source)] = {
       description: `${def.description} (machine identity)`,
       category: 'ServiceAccount',
       implies: def.implies,
