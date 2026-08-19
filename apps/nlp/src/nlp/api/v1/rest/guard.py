@@ -19,14 +19,18 @@ that reads as "nothing found"), and an absent tenant is 428.
 
 from __future__ import annotations
 
+import time
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException
 
+from nlp.core.batching import InferenceQueueFull, InferenceQueueTimeout
 from nlp.core.concurrency import ResizableSemaphore
+from nlp.core.config import settings
 from nlp.core.logging import get_logger
+from nlp.core.metrics import observe_queue_wait, publish_queue_depths, record_rejection
 from nlp.dependencies import (
     get_inference_bound,
     pinned_entailment_scorer,
@@ -41,11 +45,24 @@ from nlp.schemas.guard import (
     GuardPiiRequest,
     GuardPiiResponse,
 )
+from nlp.services.guard_dispatch import (
+    classify_group_key,
+    get_batcher,
+    live_batchers,
+    pii_group_key,
+)
 from nlp.services.model_cache import ModelUnavailableError
 
 logger = get_logger(__name__)
 
 router = APIRouter(prefix="/guard", tags=["NLP REST Guard"])
+
+
+def _slot_key(model_name: str, model_path: str | None) -> str:
+    """The batcher slot — the SAME weight identity the model cache keys on, so an
+    admin flipping `AiModel.localPath` gets a fresh batcher with the fresh
+    weights instead of a queue still pointed at the old runtime."""
+    return f"{model_name}\x00{model_path}" if model_path else model_name
 
 
 def _require(model_name: str | None, tenant_id: str | None, what: str) -> str:
@@ -71,19 +88,97 @@ def _require(model_name: str | None, tenant_id: str | None, what: str) -> str:
 
 # Seam, so route tests can inject a fake runtime without touching the cache.
 @asynccontextmanager
-async def _acquire_guard(
-    model_name: str, model_path: str | None = None
-) -> AsyncIterator[Any]:
+async def _acquire_guard(model_name: str, model_path: str | None = None) -> AsyncIterator[Any]:
     async with pinned_gliner2_guard(model_name, model_path) as service:
         yield service
 
 
 @asynccontextmanager
-async def _acquire_scorer(
-    model_name: str, model_path: str | None = None
-) -> AsyncIterator[Any]:
+async def _acquire_scorer(model_name: str, model_path: str | None = None) -> AsyncIterator[Any]:
     async with pinned_entailment_scorer(model_name, model_path) as scorer:
         yield scorer
+
+
+def _shed(route: str, exc: Exception, reason: str) -> HTTPException:
+    """Turn a declared backpressure signal into a retryable 503.
+
+    Deliberately NOT an empty result: an empty PII list means "scanned, found
+    nothing", so returning one under overload would silently switch redaction
+    off at exactly the moment the platform is busiest.
+    """
+    record_rejection(route, reason)
+    logger.warning(f"nlp.guard.shed route={route} reason={reason}")
+    return HTTPException(
+        status_code=503,
+        detail=f"inference {reason.replace('_', ' ')}: {exc}",
+        headers={"Retry-After": "1"},
+    )
+
+
+def _publish_depths() -> None:
+    publish_queue_depths(
+        {batcher.name: batcher.queue_depth for batcher in live_batchers().values()}
+    )
+
+
+async def _submit_pii(
+    service: Any,
+    slot_key: str,
+    text: str,
+    labels: list[str],
+    threshold: float,
+    batch_size: int,
+) -> list[dict[str, Any]]:
+    """Enqueue one text onto the (slot, pii) batcher and await ITS spans.
+
+    The batch closure captures the labels/threshold that DEFINE the group, so a
+    request can only ever be evaluated under the policy it was grouped by.
+    """
+
+    async def run_batch(_group: str, texts: list[str]) -> list[list[dict[str, Any]]]:
+        spans: list[list[dict[str, Any]]] = await service.batch_extract_entities(
+            texts, labels, threshold, batch_size
+        )
+        return spans
+
+    batcher = await get_batcher(slot_key, "pii", run_batch)
+    started = time.perf_counter()
+    try:
+        entities: list[dict[str, Any]] = await batcher.submit(
+            pii_group_key(labels, threshold), text
+        )
+        return entities
+    finally:
+        observe_queue_wait(batcher.name, time.perf_counter() - started)
+        _publish_depths()
+
+
+async def _submit_classify(
+    service: Any,
+    slot_key: str,
+    text: str,
+    tasks: dict[str, Any],
+    threshold: float,
+    batch_size: int,
+) -> dict[str, Any]:
+    """Enqueue one text onto the (slot, classify) batcher and await ITS verdicts."""
+
+    async def run_batch(_group: str, texts: list[str]) -> list[dict[str, Any]]:
+        verdicts: list[dict[str, Any]] = await service.batch_classify_text(
+            texts, tasks, threshold, batch_size
+        )
+        return verdicts
+
+    batcher = await get_batcher(slot_key, "classify", run_batch)
+    started = time.perf_counter()
+    try:
+        results: dict[str, Any] = await batcher.submit(
+            classify_group_key(tasks, threshold), text
+        )
+        return results
+    finally:
+        observe_queue_wait(batcher.name, time.perf_counter() - started)
+        _publish_depths()
 
 
 @router.post("/pii", response_model=GuardPiiResponse)
@@ -103,14 +198,27 @@ async def guard_pii(
             detail="no PII label taxonomy supplied; the caller owns it as policy (fail-closed).",
         )
 
+    batch_size = settings.service.inference_batch_max_size
     try:
         async with _acquire_guard(model_name, request.model_path) as service:
+            # The semaphore still bounds how many requests may be RESIDENT in the
+            # inference stage; the batcher bounds how many forward passes those
+            # requests turn into. Both are needed: without the semaphore a burst
+            # would pin unbounded memory in flight, and without the batcher each
+            # resident request would cost its own pass.
             async with inference_bound:
-                raw = await _maybe_await(
-                    service.extract_entities(
-                        request.text, request.labels, request.threshold
-                    )
+                raw = await _submit_pii(
+                    service,
+                    _slot_key(model_name, request.model_path),
+                    request.text,
+                    list(request.labels),
+                    request.threshold,
+                    batch_size,
                 )
+    except InferenceQueueFull as exc:
+        raise _shed("guard_pii", exc, "queue_full") from exc
+    except InferenceQueueTimeout as exc:
+        raise _shed("guard_pii", exc, "queue_timeout") from exc
     except ModelUnavailableError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
     except HTTPException:
@@ -150,12 +258,22 @@ async def guard_classify(
             entry["cls_threshold"] = spec.cls_threshold
         tasks[name] = entry
 
+    batch_size = settings.service.inference_batch_max_size
     try:
         async with _acquire_guard(model_name, request.model_path) as service:
             async with inference_bound:
-                raw = await _maybe_await(
-                    service.classify_text(request.text, tasks, request.threshold)
+                raw = await _submit_classify(
+                    service,
+                    _slot_key(model_name, request.model_path),
+                    request.text,
+                    tasks,
+                    request.threshold,
+                    batch_size,
                 )
+    except InferenceQueueFull as exc:
+        raise _shed("guard_classify", exc, "queue_full") from exc
+    except InferenceQueueTimeout as exc:
+        raise _shed("guard_classify", exc, "queue_timeout") from exc
     except ModelUnavailableError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
     except HTTPException:
@@ -163,9 +281,7 @@ async def guard_classify(
     except Exception as exc:
         # A generated label must RAISE, never be fabricated (rule 06).
         logger.error(f"nlp.guard.classify.failed error={type(exc).__name__}")
-        raise HTTPException(
-            status_code=503, detail="safety classification failed"
-        ) from exc
+        raise HTTPException(status_code=503, detail="safety classification failed") from exc
 
     results: dict[str, str | list[str]] = {}
     for name in request.tasks:
@@ -201,9 +317,7 @@ async def guard_entailment(
         # Never fabricate an entailment score — an unscored claim must not read
         # back as grounded. Guardrail degrades to `unverified` on this 503.
         logger.error(f"nlp.guard.entailment.failed error={type(exc).__name__}")
-        raise HTTPException(
-            status_code=503, detail="entailment scoring failed"
-        ) from exc
+        raise HTTPException(status_code=503, detail="entailment scoring failed") from exc
 
     return GuardEntailmentResponse(
         scores=[float(score) for score in scores], model_version=model_name

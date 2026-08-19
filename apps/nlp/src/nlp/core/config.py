@@ -146,9 +146,7 @@ class NLPServiceConfig(BaseSettings):
     # OTEL_METRICS_ENABLED, which .env.dev sets to false — so NLP's /metrics
     # was disabled by a variable documented under the API gateway. OTEL_METRICS_ENABLED is kept as a fallback for compatibility.
     metrics_enabled: bool = Field(
-        default=os.getenv(
-            "NLP_METRICS_ENABLED", os.getenv("OTEL_METRICS_ENABLED", "true")
-        ).lower()
+        default=os.getenv("NLP_METRICS_ENABLED", os.getenv("OTEL_METRICS_ENABLED", "true")).lower()
         == "true"
     )
 
@@ -202,6 +200,27 @@ class NLPServiceConfig(BaseSettings):
     # Bootstrap fallback; the runtime value comes from the control
     # plane (`nlp.inference.maxConcurrent`).
     inference_max_concurrent: int = Field(default=4, ge=1)
+
+    # Micro-batching + backpressure bounds (TASK-778).
+    #
+    # BOOTSTRAP FLOOR ONLY, and deliberately TRANSPORT-shaped: these are queue
+    # and batch geometry, not model identity, taxonomy, threshold or any other
+    # policy value — so they are legitimately env-tier under
+    # `00-project-context.md` §Configuration Principles, unlike a model id or a
+    # label set, which may never be a settings default.
+    #
+    # `inference_batch_linger_ms` is the ENTIRE latency price of batching: an
+    # otherwise-idle request waits at most this long for company. Keep it well
+    # under the p50 forward pass, or batching costs more than it saves.
+    inference_batch_max_size: int = Field(default=8, ge=1, le=64)
+    inference_batch_linger_ms: int = Field(default=5, ge=0, le=1000)
+    # The queue is bounded so overload degrades into a 503 instead of an OOM.
+    inference_queue_max_depth: int = Field(default=256, ge=1)
+    inference_queue_max_wait_seconds: float = Field(default=20.0, gt=0)
+    # Concurrent forward passes against ONE model. Small on purpose: torch
+    # already parallelises inside a pass, so stacking passes on the same weights
+    # buys cache contention rather than throughput.
+    inference_max_inflight_batches: int = Field(default=2, ge=1, le=32)
 
     # Model-cache retention.
     #

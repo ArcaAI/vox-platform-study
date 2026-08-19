@@ -6,8 +6,8 @@ shape, fail-closed degradation) and calls this service per segment batch. The
 model id and staged weights path arrive PER REQUEST from guardrail's
 `guardrail.groundedness` `AiTaskDefault` selection — neither is named here.
 
-Implements the ``NliScorer`` seam (``groundedness_nli.py``) using the GGUF quant
-``nvhf/MiniCheck-Flan-T5-Large-Q6_K-GGUF`` run under llama.cpp (owner directive
+Implements the ``NliScorer`` seam (``groundedness_nli.py``) against a MiniCheck
+Flan-T5-Large GGUF quant run under llama.cpp (owner directive
 2026-07-11: "GGUF everywhere"). MiniCheck (arXiv:2404.10774) scores ``p(claim
 entailed by document)`` at the sentence level; the flan-t5 variant builds the input
 ``'predict: ' + doc + '</s>' + claim`` and reads a 2-way softmax over the decoder's

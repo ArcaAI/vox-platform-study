@@ -80,7 +80,10 @@ const NEW_LLM_SLUGS = [
   'azure-gpt-5.4-mini',
 ] as const;
 
-const NEW_NLP_SLUGS = ['medical-ner', 'symps-disease-bert-v3-c41', 'gliguard-llm-guardrails-300m', 'gliner2-privacy-filter-pii-multi'] as const;
+// TASK-776 completes the owner's three-model safety roster: the dedicated PII
+// span model, the JOINT PII+safety checkpoint, and the classification-only
+// LLM-guardrails model.
+const NEW_NLP_SLUGS = ['medical-ner', 'symps-disease-bert-v3-c41', 'gliguard-llm-guardrails-300m', 'gliner2-privacy-filter-pii-multi', 'gliner2-guardrails-pii-multi'] as const;
 
 const NEW_TTS_SLUGS = ['azure-neural-voices', 'kokoro', 'sarvam-bulbul', 'indic-parler-tts', 'indic-f5'] as const;
 
@@ -251,10 +254,11 @@ const bySlug = (slug: string) => catalog.find((m) => m.slug === slug);
 // =============================================================================
 
 describe('consolidated AI model catalog (26 rows) + extensions', () => {
-  it('is exactly the 44 expected slugs (46 minus 3 Ollama rows, +1 net from the TASK-735 guardrail split)', () => {
+  it('is exactly the 45 expected slugs (46 minus 3 Ollama rows, +1 net from the TASK-735 guardrail split, +1 from the TASK-776 joint model)', () => {
     const slugs = catalog.map((m) => m.slug).sort();
     expect(slugs).toEqual([...EXPECTED_CATALOG_SLUGS].sort());
-    expect(catalog.length).toBe(44);
+    // TASK-776 added `gliner2-guardrails-pii-multi`, completing the three-model roster.
+    expect(catalog.length).toBe(45);
   });
 
   it('seeds no row with provider "ollama" (TASK-736 — Ollama removed entirely)', () => {
@@ -674,6 +678,10 @@ describe('AiTaskDefault SYSTEM seed', () => {
     // multi-task TEXT classifier, PII spans are TOKEN classification.
     'guardrail.safety': 'TEXT_CLASSIFICATION',
     'guardrail.pii': 'TOKEN_CLASSIFICATION',
+    // TASK-776 — the JOINT checkpoint. Its primary shape is span extraction,
+    // so it is TOKEN_CLASSIFICATION even though it also serves the six safety
+    // tasks; `metaData.capabilities` carries the dual envelope.
+    'guardrail.pii.spans': 'TOKEN_CLASSIFICATION',
     'guardrail.groundedness': 'TEXT_CLASSIFICATION',
     'harness.judge': 'TEXT_GENERATION',
     'nlp.diagnosis': 'TEXT_CLASSIFICATION',
@@ -690,10 +698,10 @@ describe('AiTaskDefault SYSTEM seed', () => {
       seedAiTaskDefault: (client: unknown) => Promise<{ created: number; skipped: number }>;
     }>;
 
-  it('seeds exactly the eleven SYSTEM task defaults with deterministic ids', async () => {
+  it('seeds exactly the twelve SYSTEM task defaults with deterministic ids', async () => {
     const { SYSTEM_AI_TASK_DEFAULTS } = await loadModule();
     const byKey = new Map(SYSTEM_AI_TASK_DEFAULTS.map((r) => [r.taskKey, r]));
-    expect(SYSTEM_AI_TASK_DEFAULTS.length).toBe(11);
+    expect(SYSTEM_AI_TASK_DEFAULTS.length).toBe(12);
     expect(byKey.get('guardrail.validate')?.modelSlug).toBe('granite-guardian-4.1-8b');
     expect(byKey.get('nlp.ner')?.modelSlug).toBe('medical-ner');
     // nlp.classification is the doc-type classifier (fail-closed
@@ -711,6 +719,8 @@ describe('AiTaskDefault SYSTEM seed', () => {
     // guardrail safety/groundedness + harness judge selection.
     expect(byKey.get('guardrail.safety')?.modelSlug).toBe('gliguard-llm-guardrails-300m');
     expect(byKey.get('guardrail.pii')?.modelSlug).toBe('gliner2-privacy-filter-pii-multi');
+    // TASK-776 — completes the owner's three-model roster.
+    expect(byKey.get('guardrail.pii.spans')?.modelSlug).toBe('gliner2-guardrails-pii-multi');
     expect(byKey.get('guardrail.groundedness')?.modelSlug).toBe('minicheck-flan-t5-large');
     // The judge points at the model the dev LM Studio instance actually serves
     // OWNER DIRECTIVE 2026-08-16: judgement uses LM Studio + `google/gemma-4-e4b`,
@@ -724,7 +734,7 @@ describe('AiTaskDefault SYSTEM seed', () => {
       expect(row.tenantId).toBe(SYSTEM_TENANT_ID);
       expect(row.id).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i);
     });
-    expect(new Set(SYSTEM_AI_TASK_DEFAULTS.map((r) => r.id)).size).toBe(11);
+    expect(new Set(SYSTEM_AI_TASK_DEFAULTS.map((r) => r.id)).size).toBe(12);
   });
 
   it('references catalog slugs whose taskType matches the task key', async () => {
@@ -747,7 +757,7 @@ describe('AiTaskDefault SYSTEM seed', () => {
     };
     const result = await seedAiTaskDefault(client as never);
     expect(result.created).toBe(0);
-    expect(result.skipped).toBe(11);
+    expect(result.skipped).toBe(12);
     expect(client.aiTaskDefault.create).not.toHaveBeenCalled();
     expect(client.aiTaskDefault.update).not.toHaveBeenCalled();
   });
@@ -765,7 +775,7 @@ describe('AiTaskDefault SYSTEM seed', () => {
       },
     };
     const result = await seedAiTaskDefault(client as never);
-    expect(result.created).toBe(11);
+    expect(result.created).toBe(12);
     created.forEach(({ data }) => {
       expect(data.tenantId).toBe(SYSTEM_TENANT_ID);
       expect(data.createdBy).toBe(SYSTEM_USER_ID);

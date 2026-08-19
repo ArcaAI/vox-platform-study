@@ -1,17 +1,21 @@
 """GLiNER2 guardrail-class inference (TASK-735 Phase 3).
 
-Hosts the two owner-specified models — moved here from `apps/guardrail`, which
-must hold zero resident weights:
+Hosts the owner-specified GLiNER2 safety-plane models — moved here from
+`apps/guardrail`, which must hold zero resident weights. Three checkpoints are
+in the roster and they differ by CAPABILITY, not by call shape:
 
-* ``fastino/gliner2-privacy-filter-PII-multi`` — PII entity spans, used by
-  guardrail's ``/guardrail/redact`` and its PII detection path;
-* ``fastino/gliguard-LLMGuardrails-300M`` — LLM safety moderation over six
-  tasks (``prompt_safety``, ``prompt_toxicity``, ``jailbreak_detection``,
+* a dedicated **PII span** model (entity extraction only) — the high-volume
+  redaction path behind guardrail's ``/guardrail/redact``;
+* a **joint PII + safety** model, which can both localise spans and classify;
+* a **classification-only** LLM-guardrails model covering six moderation tasks
+  (``prompt_safety``, ``prompt_toxicity``, ``jailbreak_detection``,
   ``response_safety``, ``response_toxicity``, ``response_refusal``).
 
-Neither id appears here: both arrive per request, resolved by guardrail from
-``AiTaskDefault`` ⋈ ``AiModel``. This module knows only how to DRIVE the
-``gliner2`` runtime.
+NO id appears here, and none may: each arrives per request, resolved by the
+caller from ``AiTaskDefault`` ⋈ ``AiModel`` tenant-first, with the capability
+envelope declared on ``AiModel._metadata``. This module knows only how to DRIVE
+the ``gliner2`` runtime — it never branches on which checkpoint it holds.
+``tests/test_no_hardcoded_model_ids_task778.py`` enforces that.
 
 Fail posture — FAIL-CLOSED, and never fabricating: a load or inference failure
 RAISES. An empty entity list means "the model ran and found nothing", never
@@ -48,7 +52,13 @@ def _span_fields(entity: Any) -> tuple[str, int, int, float, str] | None:
     if not isinstance(start, int) or not isinstance(end, int) or end < start:
         return None
     label = field("label") or field("type") or ""
-    score = field("score")
+    # The runtime reports `confidence`; `score` is accepted only as a fallback
+    # for stubs and older builds. Reading `score` FIRST is what TASK-735 did,
+    # and against real weights every span then came back at 0.0 — under any
+    # caller threshold, i.e. a detected identifier silently discarded.
+    score = field("confidence")
+    if score is None:
+        score = field("score")
     text = field("text") or ""
     return (
         str(label),
@@ -81,9 +91,7 @@ class Gliner2GuardService:
 
     # ── sync cores (thread-pool bound) ───────────────────────────────────
 
-    def _sync_extract(
-        self, text: str, labels: list[str], threshold: float
-    ) -> list[dict[str, Any]]:
+    def _sync_extract(self, text: str, labels: list[str], threshold: float) -> list[dict[str, Any]]:
         result = self.runtime.extract_entities(
             text,
             labels,
@@ -91,9 +99,42 @@ class Gliner2GuardService:
             include_confidence=True,
             include_spans=True,
         )
-        entities = (
-            result.get("entities", result) if isinstance(result, dict) else result
+        return self._normalize_entities(text, result)
+
+    def _sync_batch_extract(
+        self, texts: list[str], labels: list[str], threshold: float, batch_size: int
+    ) -> list[list[dict[str, Any]]]:
+        results = self.runtime.batch_extract_entities(
+            texts,
+            labels,
+            batch_size=batch_size,
+            threshold=threshold,
+            include_confidence=True,
+            include_spans=True,
         )
+        if len(results) != len(texts):
+            # Never zip a short result onto the inputs: caller A would receive
+            # caller B's spans, and these offsets drive redaction.
+            raise RuntimeError(f"gliner2 returned {len(results)} results for {len(texts)} texts")
+        # Each result is normalised against ITS OWN text, so an offset can never
+        # be interpreted against a sibling request's string.
+        return [
+            self._normalize_entities(text, result)
+            for text, result in zip(texts, results, strict=True)
+        ]
+
+    def _sync_batch_classify(
+        self, texts: list[str], tasks: dict[str, Any], threshold: float, batch_size: int
+    ) -> list[dict[str, Any]]:
+        results = self.runtime.batch_classify_text(
+            texts, tasks, batch_size=batch_size, threshold=threshold
+        )
+        if len(results) != len(texts):
+            raise RuntimeError(f"gliner2 returned {len(results)} results for {len(texts)} texts")
+        return [dict(result or {}) for result in results]
+
+    def _normalize_entities(self, text: str, result: Any) -> list[dict[str, Any]]:
+        entities = result.get("entities", result) if isinstance(result, dict) else result
         if isinstance(entities, dict):
             # Some runtimes group by label: {label: [span, ...]}.
             flattened: list[Any] = []
@@ -124,9 +165,7 @@ class Gliner2GuardService:
             )
         return normalized
 
-    def _sync_classify(
-        self, text: str, tasks: dict[str, Any], threshold: float
-    ) -> dict[str, Any]:
+    def _sync_classify(self, text: str, tasks: dict[str, Any], threshold: float) -> dict[str, Any]:
         return dict(self.runtime.classify_text(text, tasks, threshold=threshold) or {})
 
     # ── async API ────────────────────────────────────────────────────────
@@ -140,3 +179,36 @@ class Gliner2GuardService:
         self, text: str, tasks: dict[str, Any], threshold: float
     ) -> dict[str, Any]:
         return await asyncio.to_thread(self._sync_classify, text, tasks, threshold)
+
+    # ── batch API (TASK-778) ─────────────────────────────────────────────
+    #
+    # `gliner2` pushes N texts through ONE encoder pass. The fixed per-pass
+    # cost — tokeniser dispatch, schema encoding, the Python↔torch boundary — is
+    # paid once instead of N times, which is what makes >= 100 concurrent
+    # consultation sessions reachable on CPU. The coalescing that decides WHICH
+    # texts ride together lives in `nlp.core.batching`; this class only drives
+    # the runtime.
+
+    async def batch_extract_entities(
+        self, texts: list[str], labels: list[str], threshold: float, batch_size: int = 8
+    ) -> list[list[dict[str, Any]]]:
+        """One pass over `texts`; result i holds the spans of `texts[i]`."""
+        if not texts:
+            return []
+        return await asyncio.to_thread(
+            self._sync_batch_extract, texts, labels, threshold, batch_size
+        )
+
+    async def batch_classify_text(
+        self,
+        texts: list[str],
+        tasks: dict[str, Any],
+        threshold: float,
+        batch_size: int = 8,
+    ) -> list[dict[str, Any]]:
+        """One pass over `texts`; result i holds the verdicts for `texts[i]`."""
+        if not texts:
+            return []
+        return await asyncio.to_thread(
+            self._sync_batch_classify, texts, tasks, threshold, batch_size
+        )
