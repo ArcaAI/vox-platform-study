@@ -10,7 +10,7 @@
  * scrolls) — inspector + validation rail (right). `StudioToolbar` + OCC/tenant banners are the
  * `ScreenTemplate` `header`/`statusBanner`/`toolbar` slots; `StatusFooter` is `footer`.
  */
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { parseAsStringLiteral, useQueryState } from 'nuqs';
 import { toast } from 'sonner';
@@ -166,7 +166,12 @@ function EditorBody({ definition, etag, registryNodes }: WorkflowStudioEditorPro
     }
   }
 
-  const focusNode = useFocusNode({ viewMode, onSelect: (nodeId) => storeApi.getState().selectNode(nodeId) });
+  // Stable identity is load-bearing for the canvas: `WorkflowCanvas` memoizes its
+  // `onSelectionChange` on this callback, and React Flow re-emits the current selection every
+  // time that handler's identity changes — an inline arrow here looped selection into
+  // "Maximum update depth exceeded".
+  const selectNodeById = useCallback((nodeId: string | null) => storeApi.getState().selectNode(nodeId), [storeApi]);
+  const focusNode = useFocusNode({ viewMode, onSelect: selectNodeById });
   const problemsByNodeId = useMemo(() => findingsByNodeId(report?.findings ?? []), [report]);
 
   async function handleValidate() {
@@ -283,7 +288,7 @@ function EditorBody({ definition, etag, registryNodes }: WorkflowStudioEditorPro
               edges={canvasEdges}
               readOnly={readOnly}
               selectedNodeId={selectedNodeId}
-              onSelect={(nodeId) => storeApi.getState().selectNode(nodeId)}
+              onSelect={selectNodeById}
               onDeleteRequest={(nodeId) => {
                 const result = storeApi.getState().deleteNode(nodeId);
                 if (!result.ok) toast.error(result.reason);
@@ -308,7 +313,7 @@ function EditorBody({ definition, etag, registryNodes }: WorkflowStudioEditorPro
               selectedNodeId={selectedNodeId}
               problemsByNodeId={problemsByNodeId}
               readOnly={readOnly}
-              onSelect={(nodeId) => storeApi.getState().selectNode(nodeId)}
+              onSelect={selectNodeById}
               onDeleteRequest={(nodeId) => {
                 const result = storeApi.getState().deleteNode(nodeId);
                 if (!result.ok) toast.error(result.reason);
