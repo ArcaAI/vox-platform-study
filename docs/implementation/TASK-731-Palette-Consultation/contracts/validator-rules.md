@@ -10,6 +10,10 @@ outside. Node type keys per `node-types.md`.
 
 ## Rule instances (`WF-CONS-*`) and the CR-nn statements they implement
 
+`WF-CONS-019` is the palette's first `nodeClass`-selecting rule; the golden harness's stubbed
+class lookup therefore falls back to the REAL registry (`golden.test.ts`), since a stub that
+returns `[]` would make such a rule silently vacuous.
+
 Every instance uses ONLY the 11 existing predicate kinds (`packages/workflow-contract/src/predicates/`)
 — per README §1.6, this ticket makes NO engine change to the compiler/validator. Where a CR-nn
 statement is not expressible with the existing predicate catalogue on pure graph shape, it is
@@ -33,7 +37,9 @@ listed in §3 (not implemented as a graph rule this pass) rather than faked with
 | `WF-CONS-014` | `CONFIG_PREDICATE` | `{ appliesTo: { nodeType: 'consultation.persistDraft' }, field: 'occ', op: 'eq', value: true }` | CR-07 | INV-029, INV-052, INV-085, INV-092, INV-133, INV-152, INV-219, INV-237 | `node "<id>" config/occ fails "eq" true` |
 | `WF-CONS-015` | `CONFIG_PREDICATE` | `{ appliesTo: { nodeType: 'consultation.synthesize' }, field: 'producesCode', op: 'eq', value: false }` | CR-18 | INV-065, INV-066, INV-231, INV-089 | `node "<id>" config/producesCode fails "eq" false` |
 | `WF-CONS-016` | `CONFIG_PREDICATE` | `{ appliesTo: { nodeType: 'consultation.bindTerminology' }, field: 'unmappedOutputKey', op: 'present' }` | CR-19 | INV-063, INV-233, INV-071 | `node "<id>" config/unmappedOutputKey fails "present"` |
-
+| `WF-CONS-017` | `CONFIG_PREDICATE` | `{ appliesTo: { nodeType: 'consultation.extractEntities' }, field: 'requiresFinalized', op: 'eq', value: true }` | CR-12 | INV-023, INV-027, INV-137, INV-208, INV-210 | `node "<id>" config/requiresFinalized fails "eq" true` |
+| `WF-CONS-018` | `CONFIG_PREDICATE` | `{ appliesTo: { nodeType: 'consultation.assemblePrompt' }, field: 'requiresFinalized', op: 'eq', value: true }` | CR-12 | INV-023, INV-027, INV-137, INV-208, INV-210 | same template, `assemblePrompt` |
+| `WF-CONS-019` | `CONFIG_PREDICATE` | `{ appliesTo: { nodeClass: 'activity' }, field: 'onError', op: 'in', value: ['degrade','retry','fail'] }` 
 `WF-CONS-015`'s strictness choice mirrors the codebase's own established pattern
 (`WF-I-004`'s "DRAFT STRICTNESS CHOICE: requires an explicit declaration rather than tolerating
 silent absence"): a `consultation.synthesize` node must explicitly declare `producesCode: false`
@@ -71,11 +77,15 @@ is structurally hard to author by accident (README's own instruction).
 
 ## Golden fixture status (honest count, per the Honesty Requirement)
 
-**16 of the palette's ~19-CR statement set have a real `WF-CONS-*` rule instance with a
-committed pass/fail fixture pair this pass; 7 CR-nn statements (02, 04, 05, 08, 09, 11, 14 — plus
-the runtime half of 10 and the data-driven half of 15) are deliberately NOT graph rules, each with
-a stated reason and, where applicable, a named alternative enforcement point above.** This is
-fewer than the README's "CR-01…CR-19" full enumeration implies as a Phase D deliverable — see the
-ticket README §7 for the disclosed scope of this pass and what a follow-up pass should pick up
-first (CR-16's straightforward template, then the two data-driven CRs once the impure validator
-layer exists for any palette).
+**19 `WF-CONS-*` rule instances, each with a committed pass/fail fixture pair.** CR-12
+(`WF-CONS-017`/`018`) and CR-16 (`WF-CONS-019`) landed in the completion pass, once all thirteen
+node types were registered and there were real `extractEntities`/`assemblePrompt`/activity-classed
+nodes to select. **7 CR-nn statements (02, 04, 05, 08, 09, 11, 14 — plus the runtime and
+author-time halves of 10 and the data-driven half of 15) remain deliberately NOT graph rules**,
+each with a stated reason and, where applicable, a named alternative enforcement point above.
+Four of those seven are vacuous-or-duplicate today (02/05 need `consultation.priming`, which is
+deliberately unregistered; 08/11 are already covered platform-wide by `WF-S-006`); two are
+registry-field assertions covered by unit tests (04/14); the rest wait on the impure validator
+layer that no palette has, or on a `MAX_GATE_WAIT` constant that `caps.py` still does not
+define — Phase B shipped the gate without one, so there is still no real cap number to encode
+(re-verified this pass).

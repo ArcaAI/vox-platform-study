@@ -23,6 +23,9 @@ import type { WorkflowGraph, WorkflowGraphNode } from '../graph-model';
  *  (`emitsTrajectory` must be STATED true, not merely absent) and WF-I-010 (bounded retry). */
 const BASE_CONFIG = { emitsTrajectory: true, retry: { maximumAttempts: 3 } } as const;
 
+/** The consultation palette's non-abort error policy (CR-16 / WF-CONS-019). */
+const DEGRADE = 'degrade';
+
 /** A linear graph over `types`, `core.start`-bookended by the caller. */
 function chain(types: readonly string[], configs: Record<string, Record<string, unknown>> = {}): WorkflowGraph {
   const nodes: WorkflowGraphNode[] = types.map((type, index) => ({
@@ -62,11 +65,16 @@ const CONSULTATION = chain(
     'core.end',
   ],
   {
-    'consultation.captureBinding': { action: 'start' },
-    'consultation.bindTerminology': { purposeScope: 'terminology_validation', unmappedOutputKey: 'unmappedTerms' },
-    'consultation.phiHop': { mode: 'pseudonymize' },
-    'consultation.synthesize': { taskKey: 'text.finalize', producesCode: false },
-    'consultation.persistDraft': { occ: true },
+    // CR-16 (WF-CONS-019): every ACTIVITY-classed node states a non-abort error policy — an
+    // undeclared one is how a stage-wide abort gets in without anyone authoring it.
+    'consultation.captureBinding': { action: 'start', onError: DEGRADE },
+    // CR-12 (WF-CONS-017): the extractor reads FINALIZED transcript only.
+    'consultation.extractEntities': { requiresFinalized: true, onError: DEGRADE },
+    'consultation.bindTerminology': { purposeScope: 'terminology_validation', unmappedOutputKey: 'unmappedTerms', onError: DEGRADE },
+    'consultation.phiHop': { mode: 'pseudonymize', onError: DEGRADE },
+    'consultation.synthesize': { taskKey: 'text.finalize', producesCode: false, onError: DEGRADE },
+    'consultation.sensors': { onError: DEGRADE },
+    'consultation.persistDraft': { occ: true, onError: DEGRADE },
   },
 );
 

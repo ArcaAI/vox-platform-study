@@ -17,6 +17,7 @@ import { readdirSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import type { WorkflowGraph } from '../graph-model';
+import { workflowNodeClassLookup } from '../node-registry';
 import { evaluatePredicate } from '../predicates';
 import type { WorkflowEvaluationContext } from '../predicates/context';
 import { DRAFT_CONSULTATION_RULE_SET, DRAFT_STT_RULE_SET, DRAFT_SUMMARIZATION_RULE_SET } from '../rule-catalogue';
@@ -56,7 +57,10 @@ function contextFor(paletteKey: string): WorkflowEvaluationContext {
   return {
     paletteKey,
     registry: {
-      classesOf: (type: string) => NODE_CLASSES[type] ?? [],
+      // Fixture-local stub FIRST (the summarization/STT fixtures use invented type keys that are
+      // deliberately not registered), then the REAL registry — a palette whose rules select by
+      // `nodeClass` (consultation's WF-CONS-019) can only be exercised against real classes.
+      classesOf: (type: string) => NODE_CLASSES[type] ?? workflowNodeClassLookup.classesOf(type),
       paletteOf: () => paletteKey,
     },
   };
