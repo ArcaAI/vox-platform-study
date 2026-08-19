@@ -7,6 +7,10 @@ conventions. See ``hope_async_contract.envelope`` for the contract and
 full prose design.
 """
 
+from hope_async_contract.conformance import (
+    AsyncProducerUnderTest,
+    assert_async_conformance,
+)
 from hope_async_contract.envelope import (
     ASYNC_ENVELOPE_SCHEMA_VERSION,
     AsyncEnvelope,
@@ -31,7 +35,9 @@ __all__ = [
     "RESUME_FROM_BEGINNING",
     "AsyncEnvelope",
     "AsyncIdempotencyKey",
+    "AsyncProducerUnderTest",
     "ClaimCheckRef",
+    "assert_async_conformance",
     "decode_resume_token",
     "encode_resume_token",
     "envelope_problems",

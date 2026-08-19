@@ -12,6 +12,7 @@ from __future__ import annotations
 from unittest.mock import AsyncMock
 
 import pytest
+from hope_async_contract import decode_resume_token
 from httpx import ASGITransport, AsyncClient
 
 from text.core.config import Settings
@@ -287,8 +288,11 @@ class TestSSEXreadStreaming:
             resp = await client.get("/api/v1/tasks/task-123/stream")
 
         body = resp.text
-        assert "id: 100-0" in body
-        assert "id: 101-0" in body
+        # TASK-717: the SSE `id:` is an opaque resume token wrapping the Redis
+        # message id, not the raw id itself — decode it back to compare.
+        emitted_ids = [line.removeprefix("id: ") for line in body.splitlines() if line.startswith("id: ")]
+        cursors = [decode_resume_token(token)["cursor"] for token in emitted_ids]
+        assert cursors == ["100-0", "101-0"]
 
     @pytest.mark.asyncio
     async def test_sse_stops_on_done_chunk(self, settings):
@@ -384,4 +388,7 @@ class TestSSEXreadStreaming:
 
         body = resp.text
         assert "resumed" in body
-        assert "id: 51-0" in body
+        # TASK-717: opaque resume token, not the raw Redis message id.
+        emitted_ids = [line.removeprefix("id: ") for line in body.splitlines() if line.startswith("id: ")]
+        cursors = [decode_resume_token(token)["cursor"] for token in emitted_ids]
+        assert cursors[0] == "51-0"
