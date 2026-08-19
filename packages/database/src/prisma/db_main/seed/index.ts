@@ -38,6 +38,8 @@ import { seedWorkflowDefinition } from './21-workflow-definition';
 import { seedConsentGrant } from './22-consent-grant';
 import { seedUser } from './91-user';
 import { seedBootstrapAdmin } from './92-bootstrap-admin';
+import { seedBootstrapTenantAdmin } from './93-bootstrap-tenant-admin';
+import { seedServiceAccount } from './94-service-account';
 import { resolveSeedMode, isPhaseEnabled } from './seed-mode';
 
 /**
@@ -224,6 +226,22 @@ export const seed = async () => {
     // credential. Ordered after seedUser so a `username` collision with a demo
     // account is detected rather than raced.
     await seedBootstrapAdmin(client);
+    console.log('');
+    // TASK-766 — the env-driven first TENANT_ADMIN, for the same reason and in
+    // every seeding mode: `91-user` is skipped in `safe`, which left the fully
+    // configured ArcaAI tenant with nobody able to administer it. No-op unless
+    // BOOTSTRAP_TENANT_ADMIN_EMAIL + _PASSWORD are set; CREATE-ONLY. Ordered
+    // after `seedBootstrapAdmin` so a username collision between the two
+    // bootstrap accounts is detected in a deterministic order.
+    await seedBootstrapTenantAdmin(client);
+    console.log('');
+    // TASK-766 — the ArcaAI tenant's machine identity (TASK-762 credential
+    // class). Runs in EVERY seeding mode: outside development/test the row is
+    // seeded INERT (a verifier with no preimage) and becomes usable through
+    // `POST /admin/service-accounts/:id/rotate`, so no secret ever reaches a
+    // production seed path. Needs tenants (Phase 1); no user FK — a service
+    // account is not a delegation of a person.
+    await seedServiceAccount(client);
     console.log('');
     // API-key fixtures embed raw demo secrets; only seed in dev/test.
     if (SEED_DEMO_DATA) {

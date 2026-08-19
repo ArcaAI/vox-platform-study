@@ -77,6 +77,11 @@
  *   99000000-xxxx  →  Workflow Definitions (TASK-715 model; TASK-720 seeds the
  *                     SYSTEM-tenant platform-default Summarization row)
  *   A0000000-xxxx  →  Audit Log Entries
+ *   E0000000-xxxx  →  Service Accounts (TASK-762 machine identity; seeded by
+ *                     TASK-766). A block of its own rather than an extension of
+ *                     the `60000000-…` API-key block, because a ServiceAccount
+ *                     is a DIFFERENT credential class — sharing a numbering
+ *                     block would be the first step towards sharing a mechanism.
  *   B0000000-xxxx  →  Plan Entitlements
  *   C0000000-xxxx  →  Tenant Allowed Origins — bootstrap loopback rows ONLY.
  *                     Not used by any seed file: these ids are allocated by
@@ -307,6 +312,48 @@ export const SEED_API_KEY_RAW = {
   EXPIRED_DOCTOR2: 'hope_sk_test_i4k5m34f32k2215njl5km5llm7_419026',
   SDK_COMPAT_ARCAAI:
     'hope_sk_7548d66e07c25f8d0d079fa4f22e20abad3a0d919a83bd24ce6b0da58074c19a_a619ea',
+} as const;
+
+// =============================================================================
+// SERVICE ACCOUNTS (TASK-762 machine identity — seeded by TASK-766)
+//
+// A ServiceAccount is the THIRD credential class. It shares no mechanism with
+// the `ApiKey` block above: its own `svc:*` scope namespace, its own issuance
+// path, its own guard branch — and so its own id block.
+//
+// NOTE ON SECRETS: unlike `SEED_API_KEY_RAW`, there is deliberately NO raw
+// secret constant for a PRODUCTION path. The dev/test fixture secret below is
+// gated exactly like the demo API keys (`shouldSeedApiKeys()` → NODE_ENV
+// development|test only). Outside dev/test the seed creates the ROW with an
+// unguessable, immediately-discarded secret, so the account exists, is visible
+// with its scopes, and becomes usable through `POST /admin/service-accounts/
+// :id/rotate` — which is the only honest answer given TASK-762's rule that the
+// secret is shown once and never persisted recoverably.
+// =============================================================================
+
+export const SEED_SERVICE_ACCOUNT_IDS = {
+  /** ArcaAI tenant-bound administration identity. */
+  ARCAAI_ADMIN: 'e0000000-0000-0000-0000-000000000001',
+} as const;
+
+/**
+ * Public, NON-SECRET client identifiers. Deterministic so an e2e spec or a dev
+ * script can name the account without first reading it back from the database.
+ * The runtime mints these as `hope_svc_<24 hex>` (`ServiceAccountService.
+ * create`); these follow the same shape so nothing has to special-case them.
+ */
+export const SEED_SERVICE_ACCOUNT_CLIENT_IDS = {
+  ARCAAI_ADMIN: 'hope_svc_a4ca1a11ad3141b0c0de0001',
+} as const;
+
+/**
+ * DEV/TEST ONLY fixture secrets. Double-gated exactly like `SEED_API_KEY_RAW`:
+ * the phase is skipped outside `NODE_ENV` development/test AND the seed
+ * function re-checks. Carrying `_test_` in the value keeps the intent visible
+ * to a secret scanner and to a human reading a log line.
+ */
+export const SEED_SERVICE_ACCOUNT_DEV_SECRETS = {
+  ARCAAI_ADMIN: 'hope_svcsec_test_4f0b1d7a2e6c48b39a15d0c7e2f83b6104d9a7c5e18f2b6039d4c8a71e0b5f2d',
 } as const;
 
 // =============================================================================
