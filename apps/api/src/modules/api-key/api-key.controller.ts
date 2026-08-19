@@ -13,7 +13,18 @@ import {
 import { Body, Controller, Get, Inject, Param, Query } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiParam, ApiQuery, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { ClsService } from 'nestjs-cls';
-import { ApiEndpoint, CanCreate, CanManage, CanRead, CanUpdate, CanDelete, ForbidApiKey, RequiredSvcScopes } from '../../decorators';
+import {
+  ApiEndpoint,
+  CanCreate,
+  CanManage,
+  CanRead,
+  CanUpdate,
+  CanDelete,
+  ForbidApiKey,
+  RequiredSvcScopes,
+  ResolveSubjectInstance,
+} from '../../decorators';
+import type { SubjectResolverContext } from '../../decorators';
 import { CreateApiKeyResponse, ApiKeyUsageResponse } from './dto';
 
 /**
@@ -35,6 +46,35 @@ import { CreateApiKeyResponse, ApiKeyUsageResponse } from './dto';
  * (Where they do NOT line up, the scope must stay orphaned rather than become
  * a credential that authenticates, passes the scope check and is then 403'd.)
  */
+
+/**
+ * TASK-712 Phase 5 — the subject INSTANCE the seeded `ApiKey` conditions
+ * compare against. Two rules reach this controller: `manage:ApiKey
+ * { tenantId }` (tenant admins) and `api-key-own-manage`'s
+ * `[read, update, delete, list]:ApiKey { tenantId, userId }` (every key
+ * creator). Only the second is identity-shaped, and it is the pair
+ * `casl-blast-radius.md` §4 lists first.
+ *
+ * `read`/`update`/`delete` on `ApiKey` are ENFORCED pairs (`CASL_ENFORCED_PAIRS`),
+ * so a `false` verdict here is a 403 — a privilege boundary, never the
+ * 404-over-403 cross-tenant posture. Cross-tenant ids never get that far:
+ * `fetchById` reads through the tenant-scoped Prisma client, throws, and this
+ * resolver's rejection is swallowed by the guard's fail-open path, leaving the
+ * handler to answer its ordinary 404.
+ *
+ * The row is fetched with the same call the handler makes, so on the read
+ * routes this costs one extra query on an admin surface — accepted
+ * deliberately; see the ticket README §7 Pass 6.
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- request shape varies by HTTP adapter, matching SubjectInstanceResolver's own signature.
+const resolveApiKeyInstance = async (request: any, ctx: SubjectResolverContext): Promise<Record<string, unknown> | undefined> => {
+  const id = request?.params?.id;
+  if (typeof id !== 'string' || id.length === 0) return undefined;
+  const key = await ctx.get<IApiKeyService>(IApiKeyService).fetchById(id);
+  if (!key) return undefined;
+  return { tenantId: key.tenantId, userId: key.userId };
+};
+
 @ApiBearerAuth()
 @ApiTags('admin-api-keys')
 @ForbidApiKey()
@@ -115,6 +155,7 @@ export class ApiKeyController {
   @ApiResponse({ status: 404, description: 'API key not found' })
   @CanRead('ApiKey')
   @RequiredSvcScopes('svc:admin:apikey:read', 'svc:admin:apikey:write')
+  @ResolveSubjectInstance(resolveApiKeyInstance)
   async fetchById(@Param('id') id: string): Promise<ApiKeyResponse> {
     const result = await this.apiKeyService.fetchById(id);
     return ApiKeyDtoMapper.ToResponse(result);
@@ -136,6 +177,7 @@ export class ApiKeyController {
   @ApiParam({ name: 'id', description: 'API Key ID', type: String })
   @ApiResponse({ status: 404, description: 'API key not found' })
   @CanUpdate('ApiKey')
+  @ResolveSubjectInstance(resolveApiKeyInstance)
   async update(@Param('id') id: string, @Body() request: UpdateApiKeyRequest): Promise<ApiKeyResponse> {
     const result = await this.apiKeyService.update(id, request);
     return ApiKeyDtoMapper.ToResponse(result);
@@ -150,6 +192,7 @@ export class ApiKeyController {
   @ApiParam({ name: 'id', description: 'API Key ID', type: String })
   @ApiResponse({ status: 404, description: 'API key not found' })
   @CanDelete('ApiKey')
+  @ResolveSubjectInstance(resolveApiKeyInstance)
   async delete(@Param('id') id: string): Promise<ApiKeyResponse> {
     const result = await this.apiKeyService.deleteById(id);
     return ApiKeyDtoMapper.ToResponse(result);
@@ -164,6 +207,7 @@ export class ApiKeyController {
   @ApiParam({ name: 'id', description: 'API Key ID', type: String })
   @ApiResponse({ status: 404, description: 'API key not found' })
   @CanUpdate('ApiKey')
+  @ResolveSubjectInstance(resolveApiKeyInstance)
   async revoke(@Param('id') id: string): Promise<ApiKeyResponse> {
     const result = await this.apiKeyService.revokeKey(id);
     return ApiKeyDtoMapper.ToResponse(result);
@@ -187,6 +231,7 @@ export class ApiKeyController {
   })
   @ApiResponse({ status: 404, description: 'API key not found' })
   @CanUpdate('ApiKey')
+  @ResolveSubjectInstance(resolveApiKeyInstance)
   async rotate(@Param('id') id: string): Promise<CreateApiKeyResponse> {
     const result = await this.apiKeyService.rotateKey(id);
     return {
@@ -205,6 +250,7 @@ export class ApiKeyController {
   @ApiResponse({ status: 404, description: 'API key not found' })
   @CanRead('ApiKey')
   @RequiredSvcScopes('svc:admin:apikey:read', 'svc:admin:apikey:write')
+  @ResolveSubjectInstance(resolveApiKeyInstance)
   async getUsage(@Param('id') id: string): Promise<ApiKeyUsageResponse> {
     const apiKey = await this.apiKeyService.fetchById(id);
     const mapped = ApiKeyDtoMapper.ToResponse(apiKey);
