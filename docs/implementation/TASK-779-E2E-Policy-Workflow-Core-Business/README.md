@@ -82,7 +82,7 @@ finding rather than fixed, because changing a published status code is an API co
 change that needs an owner decision. The spec asserts the ACTUAL behaviour (201) with the
 drift called out inline.
 
-**F-3 — `apps/api/tests/e2e/consultation-jobs.e2e-spec.ts` is never executed.** The
+**F-3 — `apps/api/tests/e2e/consultation-jobs.spec.ts` is never executed.** The
 Playwright `testMatch` is `**/*.spec.ts`; the file ends in `.e2e-spec.ts`, which does not
 match. Its seven assertions have therefore never run. Its two portable assertions
 (unknown job → 404, unauthenticated → 401) are reproduced in
