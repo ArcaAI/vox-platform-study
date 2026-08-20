@@ -1387,7 +1387,7 @@ export interface CreateWorkflowDefinitionRequest {
 export interface CreateWorkflowTestFixtureRequest {
   /** Fixture description */
   description?: string;
-  /** Synthetic test input. SYNTHETIC ONLY — do not paste real or realistic patient data. This column is plain JsonB, not encrypted; "synthetic" is a contract, not an enforcement (see the ticket README §6/R4). */
+  /** Synthetic test input. SYNTHETIC ONLY — do not paste real or realistic patient data. Stored encrypted with Vault Transit (README §6/R4, RESOLVED): the plaintext column was dropped, so only ciphertext is persisted. */
   input: Record<string, unknown>;
   /** Fixture name */
   name: string;
@@ -5378,7 +5378,7 @@ export interface UpdateWorkflowTestFixtureRequest {
   description?: string;
   /** Current version of the row (from the prior GET). The PATCH fails with 412 if the version drifted. */
   expectedVersion: number;
-  /** Synthetic test input. SYNTHETIC ONLY — do not paste real or realistic patient data. */
+  /** Synthetic test input. SYNTHETIC ONLY — do not paste real or realistic patient data. Stored encrypted with Vault Transit; supplying it re-encrypts the payload. */
   input?: Record<string, unknown>;
   /** Fixture name */
   name?: string;
@@ -5963,8 +5963,8 @@ export interface WorkflowTestFixtureResponse {
   description?: string;
   /** Fixture ID */
   id: string;
-  /** Synthetic test input — never real or realistic patient data */
-  input: Record<string, unknown>;
+  /** Synthetic test input — never real or realistic patient data. Encrypted at rest (Vault Transit); returned only by the single-fixture reads, omitted from list pages. */
+  input?: Record<string, unknown>;
   /** Fixture name */
   name: string;
   /** Palette this fixture is scoped to */

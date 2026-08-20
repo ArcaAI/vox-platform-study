@@ -12,7 +12,11 @@ export class WorkflowTestFixture extends BaseTenantDataModel {
   public description: string | null;
   public paletteId: string | null;
   public workflowDefinitionId: string | null;
-  public input: JsonValue;
+  // Plaintext `input` column DROPPED; persistence is ciphertext-only. The
+  // entity keeps `input` as a transient field repopulated by decrypt-on-read.
+  // Vault-Transit ciphertext column + shared key version.
+  public encryptedInput: Uint8Array | null;
+  public keyVersion: number | null;
   public resourceStatus: Enums.ResourceStatusType;
   public resourceStatusUpdatedAt: Date | null;
   public resourceStatusUpdatedBy: string | null;
@@ -23,7 +27,8 @@ export class WorkflowTestFixture extends BaseTenantDataModel {
     this.description = data.description;
     this.paletteId = data.paletteId;
     this.workflowDefinitionId = data.workflowDefinitionId;
-    this.input = data.input;
+    this.encryptedInput = data.encryptedInput;
+    this.keyVersion = data.keyVersion;
     this.resourceStatus = data.resourceStatus;
     this.resourceStatusUpdatedAt = data.resourceStatusUpdatedAt;
     this.resourceStatusUpdatedBy = data.resourceStatusUpdatedBy;

@@ -127,7 +127,7 @@ export function FixturePicker({
           <DialogHeader>
             <DialogTitle>New fixture</DialogTitle>
             <DialogDescription>
-              Synthetic test input only — do not paste real or realistic patient data. This field is not encrypted.
+              Synthetic test input only — do not paste real or realistic patient data. This field is encrypted at rest.
             </DialogDescription>
           </DialogHeader>
           <div className="flex flex-col gap-3">

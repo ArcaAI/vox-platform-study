@@ -1,8 +1,10 @@
-import { Injectable } from '@nestjs/common';
+import { Inject, Injectable, Logger, Optional } from '@nestjs/common';
 import { ClsService } from 'nestjs-cls';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { WorkflowTestFixtureFactory, WorkflowTestFixtureRepository, ResourceType, SysEventType } from '@arcaai/domains';
 import { ArgumentInvalidException } from '@arcaai/exceptions';
+import { SecretsService } from '../baseServices/_meta/secrets';
+import { encryptPhiFields } from '../../common';
 import { IWorkflowTestFixtureService } from './IWorkflowTestFixtureService';
 import {
   CreateWorkflowTestFixtureRequest,
@@ -19,19 +21,43 @@ const WORKFLOW_TEST_FIXTURE_FILTER_MODEL = 'WorkflowTestFixture';
 /**
  * Per-tenant saved synthetic Workbench test input (TASK-721 §1 item 5).
  *
- * Plain tenant-scoped CRUD — no cross-aggregate lookups. `input` is a
- * SYNTHETIC-ONLY contract enforced by DTO copy, not by this service; no
- * redaction/encryption happens here (see the ticket README §6/R4 —
- * HUMAN-GATED, not resolved in this ticket).
+ * Plain tenant-scoped CRUD — no cross-aggregate lookups. `input` is
+ * Vault-Transit encrypted on write, exactly as `EvalService` treats
+ * `GoldenCase.transcript`/`referenceNote` (README §6/R4, RESOLVED): the
+ * plaintext column was dropped, so the ciphertext is the system of record and
+ * repository decrypt-on-read repopulates the transient `input` for entitled
+ * readers. "Synthetic only" remains the CONTRACT expressed in DTO copy, but it
+ * is no longer the only thing standing between a pasted transcript and disk.
  */
 @Injectable()
 export class WorkflowTestFixtureService extends BaseService implements IWorkflowTestFixtureService {
+  private readonly logger = new Logger(WorkflowTestFixtureService.name);
+
   constructor(
     private readonly workflowTestFixtureRepository: WorkflowTestFixtureRepository,
     protected override readonly eventEmitter: EventEmitter2,
     protected override readonly clsService: ClsService<IActiveUserContext>,
+    // Optional so the service still constructs when Vault/SecretsService is not
+    // provisioned; in that soft (non-vault) mode the encrypt step is a no-op —
+    // and under SECRETS_PROVIDER=vault it FAILS CLOSED instead of persisting
+    // an unencrypted payload. Mirrors `EvalService`.
+    @Optional() @Inject(SecretsService) private readonly secretsService?: SecretsService,
   ) {
     super(eventEmitter, clsService, ResourceType.WorkflowTestFixture);
+  }
+
+  /**
+   * Encrypt `input` through the shared env-gated guard: a soft no-op in
+   * dev/test (SECRETS_PROVIDER != vault) but fail-closed in staging/prod. The
+   * guard's messages are label-only and never carry the payload.
+   */
+  private async encryptInput(entity: Parameters<WorkflowTestFixtureRepository['encryptFieldsIntoEntity']>[0]): Promise<void> {
+    await encryptPhiFields(
+      this.secretsService,
+      'WorkflowTestFixture',
+      () => this.workflowTestFixtureRepository.encryptFieldsIntoEntity(entity, this.secretsService!),
+      this.logger,
+    );
   }
 
   async create(request: CreateWorkflowTestFixtureRequest): Promise<WorkflowTestFixtureResponse> {
@@ -49,6 +75,8 @@ export class WorkflowTestFixtureService extends BaseService implements IWorkflow
       input: request.input,
       createdBy: this.requestUserId ?? undefined,
     });
+
+    await this.encryptInput(entity);
 
     const saved = await this.workflowTestFixtureRepository.create(entity);
 
@@ -78,6 +106,10 @@ export class WorkflowTestFixtureService extends BaseService implements IWorkflow
       data: { items: fixtures.map((fixture) => fixture.id) },
     });
 
+    // PHI posture: the page projection deliberately OMITS the decrypted
+    // `input` — mirrors `EvalService.listGoldenCases`, which returns
+    // PHI-safe golden-case metadata only. A fixture's payload is disclosed
+    // solely through the id-scoped read below, never bulk-exported by a list.
     return WorkflowTestFixtureDtoMapper.toPaginatedResponse(new FetchResponse({ data: fixtures, count, limit: limit ?? 10, page: page ?? 0 }));
   }
 
@@ -95,7 +127,10 @@ export class WorkflowTestFixtureService extends BaseService implements IWorkflow
 
     this.broadcastSysEvent(SysEventType.ResourceViewed, { resourceId: entity.id });
 
-    return WorkflowTestFixtureDtoMapper.toResponse(entity);
+    // The one surface that discloses the decrypted payload: id-scoped, tenant-
+    // asserted, audited, and reachable only through the
+    // `@CanManage('WorkflowTestFixture')` route.
+    return WorkflowTestFixtureDtoMapper.toResponse(entity, { includeInput: true });
   }
 
   /**
@@ -118,15 +153,21 @@ export class WorkflowTestFixtureService extends BaseService implements IWorkflow
       throw new ArgumentInvalidException('No changes to write to.');
     }
 
+    // Re-encrypt ONLY when the patch actually touched the payload; a
+    // name/description-only PATCH must leave the persisted ciphertext alone.
+    if ('input' in entity.changes) {
+      await this.encryptInput(entity);
+    }
+
     const previousVersion = entity.version;
     const updated = await this.workflowTestFixtureRepository.updateWithVersion(id, entity, expectedVersion);
 
     this.broadcastSysEvent(SysEventType.ResourceUpdated, {
       resourceId: updated.id,
-      data: { ...entity.changes, previousVersion, newVersion: updated.version },
+      data: { ...redactPayloadChanges(entity.changes), previousVersion, newVersion: updated.version },
     });
 
-    return WorkflowTestFixtureDtoMapper.toResponse(updated);
+    return WorkflowTestFixtureDtoMapper.toResponse(updated, { includeInput: true });
   }
 
   async deleteById(id: string): Promise<WorkflowTestFixtureResponse> {
@@ -142,4 +183,18 @@ export class WorkflowTestFixtureService extends BaseService implements IWorkflow
 
     return WorkflowTestFixtureDtoMapper.toResponse(deleted);
   }
+}
+
+/**
+ * `ResourceUpdated` carries the change set into the AuditLog queue. The payload
+ * (and its ciphertext) must never land there, so both keys are replaced with a
+ * marker — the audit still records THAT the payload changed, never WHAT it
+ * changed to. Defense-in-depth alongside the `@Secret()` markers on the entity.
+ */
+function redactPayloadChanges(changes: Record<string, unknown>): Record<string, unknown> {
+  const redacted: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(changes)) {
+    redacted[key] = key === 'input' || key === 'encryptedInput' || key === 'keyVersion' ? '[REDACTED]' : value;
+  }
+  return redacted;
 }

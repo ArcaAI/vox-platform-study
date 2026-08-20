@@ -5350,7 +5350,7 @@
             "type": "string"
           },
           "input": {
-            "description": "Synthetic test input. SYNTHETIC ONLY — do not paste real or realistic patient data. This column is plain JsonB, not encrypted; \"synthetic\" is a contract, not an enforcement (see the ticket README §6/R4).",
+            "description": "Synthetic test input. SYNTHETIC ONLY — do not paste real or realistic patient data. Stored encrypted with Vault Transit (README §6/R4, RESOLVED): the plaintext column was dropped, so only ciphertext is persisted.",
             "type": "object"
           },
           "name": {
@@ -18714,7 +18714,7 @@
             "type": "number"
           },
           "input": {
-            "description": "Synthetic test input. SYNTHETIC ONLY — do not paste real or realistic patient data.",
+            "description": "Synthetic test input. SYNTHETIC ONLY — do not paste real or realistic patient data. Stored encrypted with Vault Transit; supplying it re-encrypts the payload.",
             "type": "object"
           },
           "name": {
@@ -20660,7 +20660,7 @@
             "type": "string"
           },
           "input": {
-            "description": "Synthetic test input — never real or realistic patient data",
+            "description": "Synthetic test input — never real or realistic patient data. Encrypted at rest (Vault Transit); returned only by the single-fixture reads, omitted from list pages.",
             "type": "object"
           },
           "name": {
@@ -20696,7 +20696,6 @@
         "required": [
           "id",
           "name",
-          "input",
           "createdAt",
           "updatedAt",
           "version"
