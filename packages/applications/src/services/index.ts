@@ -62,6 +62,9 @@ export * from './phi-redaction';
 export * from './agentic-instructions';
 export * from './prompt-management';
 export * from './dna-writing-style';
+// TASK-733 Task 10 — scheduled hard-delete of soft-deleted DNA writing-style
+// profiles past their retention window ("purge later").
+export * from './dna-profile-retention';
 export * from './text';
 // BUG-018 — the shared TEXT request-enrichment service (tenant BYO credentials
 // + runtime profile) used by both the TEXT proxy and the prompt-test bench.

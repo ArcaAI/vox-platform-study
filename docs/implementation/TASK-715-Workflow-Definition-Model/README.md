@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Status** | Review — stale-doc correction (2026-08-19): Phase A (Database) done as documented below, but Phases B–F have since shipped in the repo (domain quartet, `workflow-definition`/`workflow-run`/`workflow-sandbox-run`/`workflow-test-fixture`/`workflow-exposure` application services, `apps/api` controllers) even though this README's body still narrates them as "not started." §7/§8 below are the original Phase-A-only pass and were left unedited; see the 2026-08-19 Change History entry for the correction and its evidence. |
+| **Status** | Review — stale-doc correction (2026-08-19, extended 2026-08-20): Phase A (Database) done as documented below, but Phases B–F have since shipped in the repo (domain quartet, `workflow-definition`/`workflow-run`/`workflow-sandbox-run`/`workflow-test-fixture`/`workflow-exposure` application services, `apps/api` controllers) even though this README's body still narrates them as "not started." §7/§8 below are the original Phase-A-only pass and were left unedited; see the 2026-08-19 Change History entry for the correction and its evidence. **D-715-1 (owner ruling, 2026-08-20)** closes §3.4/§6/§7's DB-trigger-vs-application-guard open question: keep the application-layer enforcement, do not build `WorkflowVersionPublication` — see §3.4 and the 2026-08-20 Change History entry. That same pass also corrected §3.5's stale "registry-assembly assertion" claim against the code that actually shipped. |
 | **Wave** | 1 · **Size** | L |
 | **Epic slug** | `workflow-definition-model` |
 | **Depends on** | TASK-707 (`naming-alignment` — all new code is born with the post-rename names) |
@@ -429,13 +429,49 @@ inside a role-existence-guarded, idempotent `DO $worm$` block — is **table-lev
 cannot be applied to a table that also holds mutable drafts. §6 records the one shape that
 would make it available.
 
+> **D-715-1 (owner ruling, 2026-08-20) — this is the human decision §6/§7 flagged as open,
+> and it is now closed: KEEP the application-layer enforcement above (service guard + DTO
+> whitelist + checksum). Do NOT build the append-only `WorkflowVersionPublication` table or a
+> DB-level `REVOKE`.** Rationale, restated for the record: the table this ticket already ships
+> mixes DRAFT and PUBLISHED rows of the same lineage, which is exactly the shape a table-level
+> `REVOKE` cannot express (it would also gag legitimate writes to DRAFT rows in the same
+> table), and Prisma cannot model a trigger at all — introducing one costs permanent
+> `prisma migrate diff` drift with no way to check it back into the schema. Nothing here
+> changes if revisited: a genuine append-only publication ledger would still need its own
+> table, separate from the mutable-draft table, exactly as this section's rejected alternative
+> already describes — so the trigger to revisit this is a NEW requirement (e.g. a regulator or
+> auditor asking for DB-enforced, not just application-enforced, immutability), not new
+> information about the current design.
+
 ### 3.5 Decision — entitlement gating granularity: **per palette**
 
-Recorded in §2.8 with the arithmetic. `WorkflowNodeDescriptor.entitlement` is typed
-`EntitlementFeatureKey | undefined`, and the registry-assembly assertion requires that every
-node type in a palette declare the *same* key as the palette (or none). Wave 1 introduces one
-key, `workflowSummarizationPalette`; TASK-724 and TASK-731 add one each. Three column pairs
-over the whole program, not one per node type.
+Recorded in §2.8 with the arithmetic. The *decision* (gate per palette, not per node type) is
+correct and is what shipped. This section's *mechanism* claim, however, is stale and corrected
+below (2026-08-20 stale-doc pass, verified against the code that actually shipped):
+
+> **Corrected claim.** This section used to say `WorkflowNodeDescriptor.entitlement` is typed
+> `EntitlementFeatureKey | undefined`, and that "the registry-assembly assertion requires that
+> every node type in a palette declare the same key as the palette (or none)." **No such
+> assertion exists anywhere in the repo.** The field actually shipped is
+> `WorkflowNodeDescriptor.entitlementKey: string | null` (`@arcaai/workflow-contract`'s
+> `node-registry.ts`), and every single registered node — every palette, every entry — declares
+> `entitlementKey: null`. It is a vestigial, unread field: nothing in `node-registry.ts`, the
+> compiler, or the interpreter ever consults it to gate anything today.
+>
+> The gate that actually runs is `WorkflowDefinitionService.assertPaletteEntitled()`
+> (`workflow-definition.service.ts:425-437`) — a **publish-time-only, hardcoded per-palette
+> check**, not anything derived from the node registry: today it fires for exactly one palette
+> (`entity.paletteKey === STT_PALETTE_KEY`), calling
+> `IEntitlementsService.isFeatureEnabled(tenantId, 'paletteStt')` and throwing
+> `QuotaExceededException` on a denial. Every other palette is a no-op through this method, and
+> the whole check is a no-op while `entitlements.enabled` is off. Adding a second gated palette
+> means adding a second hardcoded branch here (or generalizing the method to a lookup table
+> keyed by `paletteKey`) — it does NOT mean giving the node registry an enforced invariant it
+> does not have.
+
+Wave 1 introduces one key, `paletteStt`; TASK-724 and TASK-731 add one each. Three column pairs
+over the whole program, not one per node type — that part of the original arithmetic still
+holds.
 
 ### 3.6 Known pitfalls for THIS ticket
 
@@ -931,13 +967,19 @@ Paste **actual command output** as evidence for every box; a claim without outpu
    rows join to it — so a head/version split would give two identities to one thing, and the
    "version" would need its own status, entitlement, activation and audit lifecycle, i.e. it
    would BE the head. Recorded so a later reviewer sees the divergence was deliberate.
-2. **HUMAN-GATED — no DB-level immutability.** §3.4 rejects a trigger and shows why `REVOKE`
-   cannot apply to a mixed draft/published table. If a reviewer requires DB-level enforcement
-   of the published bytes, the migration path is an append-only
+2. **CLOSED (D-715-1, owner ruling, 2026-08-20) — no DB-level immutability.** §3.4 rejects a
+   trigger and shows why `REVOKE` cannot apply to a mixed draft/published table. If a reviewer
+   requires DB-level enforcement of the published bytes, the migration path is an append-only
    `WorkflowVersionPublication` table (compiled config + both checksums + publisher + at) with
    `REVOKE UPDATE, DELETE` in the `HarnessAuditEvent` idiom
    (`migrations/20260606143138_task_330_.../migration.sql:206-215`) — a second table, not a
-   trigger. Not built here to avoid gold-plating; the decision needs a human. **Answer**: Lets review, suggest best practices.
+   trigger. **Answer: keep the current application-layer enforcement (service guard + DTO
+   whitelist + checksum). Do not build `WorkflowVersionPublication` or a DB-level `REVOKE`.**
+   The table already mixes draft and published rows of the same lineage, which is exactly what
+   a table-level `REVOKE`/trigger cannot express cleanly, and Prisma cannot model a trigger at
+   all (permanent `prisma migrate diff` drift). Revisit only if a NEW requirement appears (e.g.
+   a regulator/auditor demanding DB-enforced, not just application-enforced, immutability) —
+   see §3.4 for the full rationale.
 3. **Palette-level entitlement granularity closes design.md open question 5** — but only
    because entitlements are column-per-key today. If a future ticket generalizes entitlements
    to a key/value table, per-node-type gating becomes cheap and this decision should be
@@ -1019,14 +1061,14 @@ application service, API, seeds) are NOT started and are left for follow-on agen
   phase" scope.
 - **`pnpm gen:mapper` was NOT run** (forbidden; also not yet relevant — no domain layer exists
   yet for this model).
-- **HUMAN-GATED open question (ticket §6 #2, restated here as required)**: this ticket's
-  DB-level-immutability question is still open. §3.4 recommends service guard + DTO whitelist +
-  checksum with **no DB trigger and no `REVOKE`**, and that recommendation is what the schema
-  above implements (no trigger/rule/check was added — verified zero `CREATE TRIGGER`/`CREATE
-  RULE` in this migration). If a reviewer wants DB-level enforcement of published bytes, the
-  ticket's own answer is a second, append-only `WorkflowVersionPublication` table with `REVOKE
-  UPDATE, DELETE` (the `HarnessAuditEvent` idiom) — not built, needs a human decision before any
-  agent builds it.
+- **CLOSED (D-715-1, owner ruling, 2026-08-20)** — was a HUMAN-GATED open question (ticket §6
+  #2): this ticket's DB-level-immutability question. §3.4 recommends service guard + DTO
+  whitelist + checksum with **no DB trigger and no `REVOKE`**, and that recommendation is what
+  the schema above implements (no trigger/rule/check was added — verified zero `CREATE
+  TRIGGER`/`CREATE RULE` in this migration). The ruling keeps exactly that: it does NOT build
+  the append-only `WorkflowVersionPublication` table with `REVOKE UPDATE, DELETE` (the
+  `HarnessAuditEvent` idiom) that would have added DB-level enforcement — see §3.4 for the
+  rationale and what would change if this is revisited.
 
 ### Verification (actual output)
 
@@ -1078,3 +1120,4 @@ both explicitly out of this pass's `packages/database`-only scope.
 | 2026-08-16 | Ticket authored | ticket-writer agent (Wave 1 substrate foundations) |
 | 2026-08-16 | Phase A (Database) executed: `WorkflowDefinition` model + `WorkflowDefinitionStatus` enum + `ResourceType` DB-enum addition ([Task 1](#task-1--author-the-prisma-model--enum)); `TENANT_SCOPED_MODELS` allow-list + drift-guard test updated (database portion of [Task 2](#task-2--allow-lists--domain-enum--parity-test-red-first)); migration hand-authored, shadow-DB proof NOT run (infra down + forbidden this pass) ([Task 3](#task-3--author-the-migration-against-a-shadow-db)). Domains-layer half of Task 2 (`ResourceType.ts` + parity-test pin) explicitly NOT done — confirmed as the sole resulting `resourceType.enum-parity.test.ts` failure. Phases B–F not started. See §7 for full detail and verification output. | packages/database execution agent |
 | 2026-08-19 | **Status-only correction, no code changed.** A repo spot-check found this README's body/§7/§8 stale: `packages/domains/src/enums/generated/ResourceType.ts` DOES carry `WorkflowDefinition` (the "sole known gap" from the 08-16 pass is closed); the full domain quartet, `packages/applications/src/services/{workflow-definition,workflow-run,workflow-sandbox-run,workflow-test-fixture,workflow-exposure}/`, and `apps/api/src/modules/{workflow-definition,workflow-node,workflow-run,workflow-sandbox-run}/` all exist on disk; the migration was superseded/renamed to `20260817000100_task_734_workflow_definition_immutability_guard` rather than the `20260816020000_task_715_...` path this README cites. This entry only updates the Status row to flag the drift — §7/§8's Phase-A narrative was left as the historical record of that pass rather than rewritten; a follow-up pass should rewrite §7 against current code and close this ticket out properly (likely as Review or Completed once verified). | doc-audit pass |
+| 2026-08-20 | **Documentation only, no code changed. D-715-1 (owner ruling)**: keep the current application-layer enforcement of `WorkflowDefinition` immutability (service guard + DTO whitelist + checksum); do NOT build the append-only `WorkflowVersionPublication` table or a DB-level `REVOKE`. Recorded the ruling and its rationale in §3.4 (new note), closed §6 risk #2 and the matching §7 "NOT done" item (both previously open/placeholder), and updated the Status row. Also corrected a verified-stale claim in §3.5: there is **no "registry-assembly assertion"** enforcing one `entitlementKey` per palette — `WorkflowNodeDescriptor.entitlementKey` (`@arcaai/workflow-contract/src/node-registry.ts`) is `null` on every registered node across every palette, and the actual per-palette entitlement gate is `WorkflowDefinitionService.assertPaletteEntitled()` (`workflow-definition.service.ts:425-437`), a publish-time-only, hardcoded check that today only fires for the `stt` palette (`isFeatureEnabled(tenantId, 'paletteStt')`). §3.5 rewritten with the verified mechanism; the underlying per-palette (not per-node-type) gating *decision* was correct and is unchanged. | Claude (documentation pass, TASK-733/TASK-715 owner-decision recording) |

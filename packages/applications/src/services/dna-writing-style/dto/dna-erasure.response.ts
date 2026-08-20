@@ -14,6 +14,9 @@ export class DnaErasureResponse {
   @ApiProperty({ description: 'Number of DNA writing-style reports soft-deleted.' })
   deletedReports!: number;
 
-  @ApiProperty({ description: 'Number of historical report versions soft-deleted alongside them.' })
+  @ApiProperty({
+    description:
+      'Number of historical report versions associated with the erased report(s). Not mutated here — DnaWritingStyleVersion has no soft-delete column, so these rows are only counted; they become unreachable the moment their parent report is soft-deleted, and are hard-deleted alongside it later by the scheduled DnaProfileRetentionService purge (TASK-733 Task 10).',
+  })
   deletedVersions!: number;
 }
