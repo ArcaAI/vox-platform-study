@@ -14,7 +14,7 @@
  * resolution happens once, at import — mirrors `phi-encryption.test.ts`.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { SEED_GLOBAL_SETTING_IDS, SEED_TENANT_ID } from '../00-constants';
+import { SEED_GLOBAL_SETTING_IDS, SYSTEM_TENANT_ID } from '../00-constants';
 import { PLAN_ENTITLEMENTS } from '../15-entitlements';
 
 beforeEach(() => {
@@ -57,7 +57,7 @@ describe('seedEntitlements — metering.reconcile.enabled GlobalSetting row', ()
     expect(meteringUpsert).toBeDefined();
     expect(meteringUpsert!.create).toMatchObject({
       id: SEED_GLOBAL_SETTING_IDS.METERING_RECONCILE_ENABLED,
-      tenantId: SEED_TENANT_ID,
+      tenantId: SYSTEM_TENANT_ID,
       namespace: 'metering',
       key: 'metering.reconcile.enabled',
       defaultValue: 'false',

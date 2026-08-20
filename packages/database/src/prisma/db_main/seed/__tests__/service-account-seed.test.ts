@@ -3,9 +3,12 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import {
   ARCAAI_TENANT_ADMIN_SVC_SCOPES,
+  BOOTSTRAP_SERVICE_ACCOUNT_ENV_VAR,
+  BOOTSTRAP_SERVICE_ACCOUNT_SECRET_MIN_LENGTH,
   SEEDED_SERVICE_ACCOUNTS,
   computeSecretVerifier,
   credentialsRefFor,
+  resolveBootstrapServiceAccountSecret,
   shouldSeedServiceAccountSecrets,
 } from '../94-service-account';
 import { DEFAULT_POLICIES } from '../01-policy';
@@ -249,13 +252,15 @@ describe('credential posture — no recoverable secret on a production path', ()
     expect(computeSecretVerifier('secret-value', 'a-pepper')).toBe(peppered);
   });
 
-  it('the non-dev path writes a verifier with NO generated preimage', () => {
+  it('the non-dev, non-bootstrap path writes a verifier with NO generated preimage', () => {
     const src = readFileSync(join(__dirname, '../94-service-account.ts'), 'utf8');
     // The inert branch must generate the VERIFIER directly. Generating a secret
     // and hashing it would create a plaintext credential in process memory (and
     // in any log line someone later adds) for no benefit.
     expect(src).toContain("randomBytes(32).toString('hex')");
-    expect(src).toMatch(/withUsableSecret \? computeSecretVerifier\(account\.devSecret, pepper\) : randomBytes\(32\)/);
+    // Precedence order: bootstrap env secret, then dev/test fixture, then inert.
+    expect(src).toMatch(/if \(bootstrapSecret\)\s*\{\s*secretVerifier = computeSecretVerifier\(bootstrapSecret, pepper\);/);
+    expect(src).toMatch(/else if \(devFixture\)\s*\{\s*secretVerifier = computeSecretVerifier\(account\.devSecret, pepper\);/);
   });
 
   it('records a Vault path, matching ServiceAccountService.credentialsRefFor', () => {
@@ -289,6 +294,69 @@ describe('credential posture — no recoverable secret on a production path', ()
     // stuck on the set the account was created with — which is exactly how the
     // seeded account missed the TASK-767 standalone-feature scopes.
     expect(src).toContain('reconciled scopes');
+  });
+});
+
+describe('OD-2 revisited (2026-08-20 owner ruling) — day-1 bootstrap secret for CI/automation', () => {
+  const V = BOOTSTRAP_SERVICE_ACCOUNT_ENV_VAR;
+  const GOOD_SECRET = 'a-high-entropy-day-one-automation-secret-value';
+
+  it('is a no-op when the variable is unset — the seed must not invent a credential', () => {
+    expect(resolveBootstrapServiceAccountSecret({})).toBeUndefined();
+  });
+
+  it('is a no-op for an empty string, the same as unset', () => {
+    expect(resolveBootstrapServiceAccountSecret({ [V]: '' })).toBeUndefined();
+  });
+
+  it('returns the operator-supplied secret verbatim when it clears the bar', () => {
+    expect(resolveBootstrapServiceAccountSecret({ [V]: GOOD_SECRET })).toBe(GOOD_SECRET);
+  });
+
+  it('refuses a well-known value, case-insensitively — same stop-list as the human bootstrap credentials', () => {
+    expect(() => resolveBootstrapServiceAccountSecret({ [V]: 'password123' })).toThrow(/well-known value/);
+    expect(() => resolveBootstrapServiceAccountSecret({ [V]: 'ChangeMe' })).toThrow(/well-known value/);
+  });
+
+  it(`refuses a secret shorter than ${BOOTSTRAP_SERVICE_ACCOUNT_SECRET_MIN_LENGTH} characters`, () => {
+    const short = 'x'.repeat(BOOTSTRAP_SERVICE_ACCOUNT_SECRET_MIN_LENGTH - 1);
+    expect(() => resolveBootstrapServiceAccountSecret({ [V]: short })).toThrow(new RegExp(`at least ${BOOTSTRAP_SERVICE_ACCOUNT_SECRET_MIN_LENGTH}`));
+  });
+
+  it('accepts a secret exactly at the floor length', () => {
+    const exact = 'y'.repeat(BOOTSTRAP_SERVICE_ACCOUNT_SECRET_MIN_LENGTH);
+    expect(resolveBootstrapServiceAccountSecret({ [V]: exact })).toBe(exact);
+  });
+
+  it('never appears as a literal anywhere in the tracked seed source', () => {
+    const src = readFileSync(join(__dirname, '../94-service-account.ts'), 'utf8');
+    expect(src).not.toContain(GOOD_SECRET);
+    // The mechanism reads from process.env, never a hardcoded fallback.
+    expect(src).toMatch(/env\[BOOTSTRAP_SERVICE_ACCOUNT_ENV_VAR\]/);
+  });
+
+  it('resolves via the SAME peppered HMAC construction the dev/test fixture and the runtime both use — non-recoverable, never plaintext', () => {
+    const verifier = computeSecretVerifier(GOOD_SECRET, 'a-pepper');
+    expect(verifier).toMatch(/^[0-9a-f]{64}$/);
+    expect(verifier).not.toContain(GOOD_SECRET);
+    // One-way: nothing in this codebase can turn a verifier back into a secret.
+    expect(verifier.length).toBeLessThan(GOOD_SECRET.length * 2);
+  });
+
+  it('takes precedence over the dev/test fixture in source, so setting it in dev/test still uses the operator value', () => {
+    const src = readFileSync(join(__dirname, '../94-service-account.ts'), 'utf8');
+    const ifIndex = src.indexOf('if (bootstrapSecret) {\n      secretVerifier');
+    const elseIfIndex = src.indexOf('else if (devFixture) {\n      secretVerifier');
+    expect(ifIndex).toBeGreaterThan(-1);
+    expect(elseIfIndex).toBeGreaterThan(-1);
+    expect(ifIndex).toBeLessThan(elseIfIndex);
+  });
+
+  it('is resolved in EVERY environment, not gated to dev/test like shouldSeedServiceAccountSecrets', () => {
+    const src = readFileSync(join(__dirname, '../94-service-account.ts'), 'utf8');
+    // `resolveBootstrapServiceAccountSecret()` is called unconditionally — no
+    // `shouldSeedServiceAccountSecrets`/env guard wraps it, unlike the dev fixture.
+    expect(src).toMatch(/const bootstrapSecret = resolveBootstrapServiceAccountSecret\(\);/);
   });
 });
 

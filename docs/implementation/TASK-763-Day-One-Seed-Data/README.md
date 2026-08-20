@@ -244,20 +244,123 @@ constants would break settings resolution outright. Needs a ruling on which rule
 coordinated change to the constants + a data migration. This ticket corrected only the part that
 is genuinely the seed's: the Global tenant's own description.
 
-### OD-2 — No day-1 service account is seeded (answers the brief's question 1)
+> #### OD-1 — RESOLVED 2026-08-20
+>
+> Owner's ruling, verbatim:
+>
+> > "SYSTEM will be the reference point as default for all tenants. When creating new tenant, it
+> > must clone/copy from SYSTEM tenant. GLOBAL tenant is where super admins can test any
+> > configuration, perform a sync to update/transform/release a validated configuration from
+> > GLOBAL to SYSTEM for all other tenants to refer to."
+>
+> So: the runtime cascade is request-tenant → SYSTEM, full stop. GLOBAL (`50000000-…`) NEVER
+> appears in a runtime cascade; it reaches other tenants only by an explicit promotion into
+> SYSTEM.
+>
+> **The ranking correction landed** (audit ticket, not this one — see that ticket's README for the
+> full hit list and test evidence):
+>
+> | Site | Before | After |
+> |---|---|---|
+> | `AppSettingsService.PLATFORM_TENANT_IDS` | `[GLOBAL_TENANT_ID, SYSTEM_TENANT_ID]`, Global ranked first (outranked SYSTEM) | `[SYSTEM_TENANT_ID]` — the sole platform tier; GLOBAL is filtered out exactly like any other customer tenant |
+> | `SettingsRegistryWriteService.targetTenantFor('system', …)` / its own `PLATFORM_TENANT_IDS` | resolved to `GLOBAL_TENANT_ID` | resolves to `SYSTEM_TENANT_ID` |
+> | `ENTITLEMENTS_TENANT_ID`, `RATE_LIMIT_TENANT_ID` | `50000000-…` (Global) | `00000000-…` (SYSTEM) |
+> | Seed rows `11a-platform-knob-settings.ts`, `11c-consultation-gate-settings.ts`, `12-rate-limit-settings.ts`, `15-entitlements.ts` | wrote the platform row under `SEED_TENANT_ID` (Global) | write it under `SYSTEM_TENANT_ID` — matches the corrected write-lane target, so an operator's first `PUT` no longer creates a duplicate platform row |
+> | `.claude/rules/09-infrastructure-devops.md` §"Config caches" | sanctioned Global as one of two "platform-reserved tenants" | corrected to name SYSTEM as the sole platform tier |
+>
+> A CONSEQUENCE, confirmed correct rather than a regression: the `tenantSettings(SEED_TENANT_ID,
+> {…})` block in `11-global-setting.ts` (general/feature-flag/admin-menu-order rows, non-`registry`
+> namespace) no longer enters `AppSettingsService`'s flat platform cache. That is the fix working
+> as intended — those rows are Global's OWN tenant-scoped settings (mirrored 1:1 by an identical
+> ArcaAI block right below them) and were never meant to govern every other tenant; they remain
+> correctly reachable through the tenant-scoped `GlobalSettingService`/`GlobalSettingController`
+> CRUD path (which resolves `tenantId` from CLS, unlike the flat cache).
+>
+> **NOT resolved by this correction, deliberately** — `TenantService.provisionTenantConfigs`
+> (`packages/applications/src/services/tenant/tenant.service.ts`) still looks up the tenant keyed
+> `__GLOBAL__` and clones ITS `GlobalSetting` rows into every newly created tenant. Per the owner's
+> ruling, new-tenant config provisioning must clone from SYSTEM, not GLOBAL — this is a real,
+> confirmed defect against the ruling, but implementing the fix (plus the GLOBAL→SYSTEM
+> promotion/sync surface the ruling describes) is out of scope for the ranking-correction ticket
+> and is being turned into its own ticket. See that ticket's README §"Promotion-feature scope" for
+> the full writeup.
 
-**Decision taken: do not seed one.** TASK-762's own definition of done says *"no secret value in
-any migration, seed, or fixture"* (§DoD), the secret is shown once and never persisted
-recoverably, and `credentialsRef` points at a Vault path an operator provisions. Seeding a usable
-service account would require embedding a client secret, contradicting the ticket that created the
-model.
+### OD-2 — No day-1 service account is seeded (answers the brief's question 1) — **RESOLVED (owner ruling, 2026-08-20): seed a day-1 SECRET too, opt-in and non-recoverable**
 
-**The consequence, stated plainly:** with TASK-757 landing, a fresh deploy has **no machine path
-to administration at all** until a human SUPER_ADMIN logs in and issues a service account. That is
-by design, but it means the bootstrap admin of §4.3 is a hard prerequisite for automation, not just
-for humans. Confirm this is the intended day-1 sequence.
+**Original decision (2026-08-18): do not seed one.** TASK-762's own definition of done says *"no
+secret value in any migration, seed, or fixture"* (§DoD), the secret is shown once and never
+persisted recoverably, and `credentialsRef` points at a Vault path an operator provisions. Seeding
+a usable service account would require embedding a client secret, contradicting the ticket that
+created the model.
 
-### OD-3 — A developer's personal domain is a seeded trusted CORS origin
+**The consequence, stated plainly at the time:** with TASK-757 landing, a fresh deploy would have
+**no machine path to administration at all** until a human SUPER_ADMIN logged in and issued a
+service account. TASK-766 (2026-08-19) closed half of that: `94-service-account.ts` now seeds the
+ArcaAI tenant's `ARCAAI_ADMIN` service account's **authority** (tenant-scoped `svc:*` scopes
+matching `TENANT_ADMIN`, derived and pinned by `__tests__/service-account-seed.test.ts`) on every
+deploy, in every environment — but left the **secret** inert outside dev/test, so the human-in-the-
+loop requirement above still held for anything that needed to actually authenticate.
+
+**Owner ruling, 2026-08-20, verbatim intent:** the current day-1 posture — no service account
+usable until a human SUPER_ADMIN logs in and issues/rotates one — is **not acceptable**;
+CI/automation needs machine access from day one. The hard constraint that produced the original
+posture still stands unchanged: TASK-762's DoD forbidding a recoverable secret in seed data is not
+up for negotiation, and the platform handles PHI.
+
+**Resolution — mirror the bootstrap-admin shape onto this credential, don't invent a new one.**
+`92-bootstrap-admin.ts` already proves the exact shape that satisfies both constraints at once: an
+operator-supplied value that never touches a tracked file, read once at seed time, turned into a
+one-way hash before it ever reaches a column. `94-service-account.ts` now offers the same shape for
+this credential, gated on a new env var, `BOOTSTRAP_SERVICE_ACCOUNT_SECRET`:
+
+| Environment | What the seed does |
+|---|---|
+| `BOOTSTRAP_SERVICE_ACCOUNT_SECRET` set (ANY `NODE_ENV`, incl. production/CI) | The operator's value is peppered-HMAC'd via `computeSecretVerifier` (identical construction to `ServiceAccountService.exchangeToken`'s verifier check) and written as `secretVerifier`. The account authenticates immediately at `POST /api/v1/auth/service-token` — no human login, no `rotate` call. |
+| Unset, development/test | Unchanged: the deterministic `SEED_SERVICE_ACCOUNT_DEV_SECRETS` fixture (TASK-766 behaviour, untouched). |
+| Unset, everywhere else | Unchanged: the inert random verifier — **the seed invents no credential.** The log names the `rotate` endpoint, exactly as before. |
+
+Why this satisfies TASK-762's constraint: what lands in the database is a peppered HMAC-SHA256
+digest with **no recoverable preimage** anywhere in the seed, migration, or fixture tree — the
+plaintext lives only in the operator's env/Vault delivery mechanism at seed time, which is the same
+bootstrap-floor class of input `09-infrastructure-devops.md` §Configuration Tiers already carves
+out for `BOOTSTRAP_SUPER_ADMIN_PASSWORD` (the one input that cannot be read from the system it
+unlocks). Absence is still absence: unset the variable and a fresh cluster has zero machine-admin
+path, exactly as TASK-766 shipped it — this is a strict opt-in, not a change of default.
+
+**Scope set — deliberately unchanged, and deliberately NOT super-admin.** The credential this
+unlocks is still exactly `ARCAAI_TENANT_ADMIN_SVC_SCOPES` — the same tenant-scoped authority a
+human `TENANT_ADMIN` holds, no more. "CI/automation needs machine access" was a request to remove
+the human-in-the-loop *activation* step, not a request to widen *what* the account can do; the
+scope-derivation rule from TASK-766 (include `svc:admin:<area>` iff every ability it implies is one
+`TENANT_ADMIN` already holds) is untouched and still mechanically checked by the same test file.
+
+**Validation, mirroring the two existing bootstrap credentials:** minimum 32 characters (higher
+than the 12-character human-password floor, because this credential has no login rate limiting
+behind it) and the same well-known-value stop-list, checked before the length rule. Absent →
+`resolveBootstrapServiceAccountSecret()` returns `undefined` and the seed logs that it is skipping,
+same posture as `resolveBootstrapAdminConfig`.
+
+**CREATE-ONLY still applies.** This path only produces a working secret on the row's FIRST
+creation — the existing-account reconcile branch still only ever touches `scopes`, never the
+credential, so setting the variable against an already-seeded (inert or previously rotated)
+environment changes nothing.
+
+**Interaction with TASK-762, restated for the record:** TASK-762's DoD line — *"no secret value in
+any migration, seed, or fixture"* — is about what is committed to the repository, not about what an
+operator supplies at deploy time and the seed hashes before persisting. `BOOTSTRAP_SERVICE_ACCOUNT_
+SECRET` never appears in a migration, seed literal, or fixture; it is read from `process.env`
+exactly like the two credentials that already satisfy the same DoD line today. Nothing in TASK-762
+is reopened or weakened by this change — the Vault-write gap TASK-762 §7 recorded as deviation D2
+(no `ISecretsProvider` write path exists in any of its five providers) is exactly why this seed
+reuses the pepper-HMAC construction rather than attempting a Vault write.
+
+Implementation: `packages/database/src/prisma/db_main/seed/94-service-account.ts` (see its "OD-2
+revisited, 2026-08-20" docblock section), tests in
+`packages/database/src/prisma/db_main/seed/__tests__/service-account-seed.test.ts` and
+`packages/applications/src/services/serviceAccount/__tests__/service-account.service.test.ts`.
+Operator-facing documentation: `docs/operations/day-one-deployment.md` §2.4.
+
+### OD-3 — A developer's personal domain is a seeded trusted CORS origin — **RESOLVED: KEEP AS IS (owner ruling, 2026-08-20)**
 
 `11b-tenant-allowed-origins.ts:209` seeds `https://*.taphuynh.dev:*` and `:215`
 `https://*.4bits.vn:*` as ArcaAI-tenant allowed origins — a personal domain and a former vendor
@@ -266,24 +369,38 @@ domain, trusted in **every** environment that runs the seed. `:230,236,242` addi
 browser extension. The BCMCH hosts (`:183,189,195,203`) are legitimately customer-specific but are
 equally wrong for a non-BCMCH deploy.
 
-Recommendation: drop the two developer domains and the three extension wildcards from the seed and
-re-add them per environment through the admin origin UI. Not done here — trusted-origin policy is a
-security decision, and `task-641-allowed-origins-seed-corrections.test.ts` pins the row set
-deliberately.
+**Owner decision (2026-08-20): keep every row exactly as seeded, in every environment, including
+production.** No code change. The residual exposure, stated plainly so this stops being
+re-raised: on every fresh cluster — production included — `*.taphuynh.dev`, `*.4bits.vn`, and the
+three browser-extension wildcards are trusted CORS origins for the ArcaAI tenant from first boot,
+until an operator removes them through the admin origin UI. `task-641-allowed-origins-seed-corrections.test.ts`
+continues to pin this exact row set deliberately; do not "fix" it without a new owner ruling.
 
-### OD-4 — Provider `baseUrl` values cannot be right in both a laptop and a cluster
+### OD-4 — Provider `baseUrl` values cannot be right in both a laptop and a cluster — **RESOLVED: KEEP the seed, ADD a runbook (owner ruling, 2026-08-20)**
 
 `17-ai-provider-connection.ts` seeds `localhost:11434` (ollama), `localhost:1234/v1` (lm-studio),
 `http://hope-vllm:8000/v1` and `http://hope-llama-cpp:8080` (k3s Service DNS). The rows are
 CREATE-ONLY, so on a fresh cluster the two `localhost` rows are wrong on first boot and an admin
 `PUT` is required before the LM Studio-backed `text.live` / `text.finalize` / `guardrail.validate`
-defaults resolve to a reachable endpoint. Needs either a documented day-1 operator step or
-env-derived seeding.
+defaults resolve to a reachable endpoint.
 
-### OD-5 — `05c-platform-storage-config.ts` persists `http://localhost:9000` when `MINIO_ENDPOINT` is unset
+**Owner decision (2026-08-20): no change to the seed's provider `baseUrl` rows.** The day-1
+operator step is now real, tracked documentation instead of a ticket-only recommendation:
+[`docs/operations/day-one-deployment.md`](../../operations/day-one-deployment.md) §3.1 names
+exactly which rows are CREATE-ONLY and therefore wrong on a fresh cluster, the precise
+`GET`/`PUT /api/v1/admin/providers/:service/:provider` calls to correct or disable each, and when
+in the deploy sequence it must be done (before the first live consultation, only if the resolved
+task default actually selects a local engine).
+
+### OD-5 — `05c-platform-storage-config.ts` persists `http://localhost:9000` when `MINIO_ENDPOINT` is unset — **RESOLVED: KEEP the seed, ADD a runbook (owner ruling, 2026-08-20)**
 
 CREATE-ONLY, so the seed will never self-correct it; an operator must edit it in the console.
-Consider refusing to create the row when the endpoint is absent in a non-development `NODE_ENV`.
+
+**Owner decision (2026-08-20): no change to the seed's storage fallback.** Same treatment as
+OD-4: [`docs/operations/day-one-deployment.md`](../../operations/day-one-deployment.md) §3.2
+names the exact `GET`/`PUT /api/v1/admin/tenants/storage/config/platform` call, the fields to
+correct (`endpoint`, `region`), and the reminder that credentials are never accepted in that body
+— only a Vault `credentialsRef` path, which must be populated separately.
 
 ### OD-6 — Should `BOOTSTRAP_SUPER_ADMIN_*` acquire `SettingDescriptor`s?
 
@@ -296,14 +413,52 @@ Its two scopes are reserved and `WebhookController` is JWT-only. The row is kept
 (fails closed) because `10-audit-log.ts:133` references its id and a WEBHOOK-type key's purpose is
 outbound delivery identity. Decide whether to give it a real inbound capability or retire it.
 
-### OD-8 — Smaller items, reported not fixed
+### OD-8 — Smaller items — **owner ruling on departments, 2026-08-20; two sub-items explicitly NOT selected**
+
+Owner's words (2026-08-20): *"what belong to BCMCH keep those in ArcaAI, for SYSTEM and GLOBAL,
+use different ones."* Three sub-items from the table below were in scope; the ruling only
+addresses the departments row, and only two of the three original findings were selected at all.
+
+**Departments — PARTIALLY RESOLVED, follow-up required.** Re-audited 2026-08-20 against the
+current seed (per the owner's instruction to check what currently seeds departments for each
+tenant before changing anything):
+
+| Tenant | What currently seeds its departments |
+|---|---|
+| ArcaAI | `ARCAAI_ALL_CLINICAL_DEPARTMENTS` (`04-department.ts:395-619`) — the 11 BCMCH/v1-parity departments, each FK-bound to its own APPROVED prompt templates (`07-prompt-template.ts`) and (for 7 of the 11) a default `DepartmentAgent` (`07a-agent-golden-library.ts`). |
+| Global (`50000000-…`) | `DEFAULT_DEPARTMENTS` (`04-department.ts:14-362`) — 18 rows. **11 of those 18 codes/names are the same 11 BCMCH specialties as ArcaAI's set** (`GEN`/`NEUR`/`ORTH`/`DERM`/`SURG`/`BREN`/`RHEUM`/`HEME`/`DIET`/`NEPH`/`SONC`), plus 7 broader categories ArcaAI does not carry (`CARD`/`RAD`/`LAB`/`PSYCH`/`PEDS`/`ER`/`MED`). |
+| SYSTEM (`00000000-…`) | **Not seeded directly at all.** `07a-agent-golden-library.ts`'s `GOLDEN_DEPARTMENTS` maps `DEFAULT_DEPARTMENTS` 1:1 onto the SYSTEM tenant (same `code`/`name`/`description`, new ids) to build the platform's golden department/template/agent library — the exact mechanism `TenantService.provisionTenantAgentCatalog` and `AgentTemplateResyncService` (`packages/applications`) use to clone a starting catalog into every newly-provisioned tenant. |
+
+So: the ArcaAI half of the ruling was already true and needed no change (kept as-is, verified
+2026-08-20). The SYSTEM/Global half is **not yet closed**: SYSTEM's "new tenant" starting
+catalog is not an independent, hand-authored generic set — it is *derived* from Global's
+`DEFAULT_DEPARTMENTS`, which itself duplicates 11 of ArcaAI's 11 BCMCH specialty codes verbatim.
+Correcting this is a real re-architecture, not a seed-data tweak: every one of the 18 codes is a
+hard Postgres foreign key target from `PromptTemplate.departmentId` (`prompt-template.prisma:75`,
+a real `@relation`, not a soft string reference), is keyed into `GOLDEN_TEMPLATE_SOURCE_BY_CODE`
+(`07a-agent-golden-library.ts:77`), and feeds the golden-department/template/agent counts several
+tests and `agent-template-resync.service.ts` (production runtime code in
+`packages/applications`, not seed-only) assume are stable. Shrinking or renaming the set requires
+rewriting the bound `07-prompt-template.ts` rows (≈ 20+), re-deriving the golden library, and
+updating every test that pins the current 18-department/13-template/18-agent shape — genuinely a
+dedicated follow-up ticket, not something to force through as a drive-by alongside the other
+owner decisions in this pass. A follow-up task has been flagged (see this ticket's Change History
+for the date) so it is not lost.
+
+**Two other OD-8 sub-items were reviewed and explicitly NOT selected by the owner — left exactly
+as they are, kept, owner reviewed 2026-08-20:**
+
+| Item | Evidence | Status |
+|---|---|---|
+| `password123` for 32 demo accounts (`91-user.ts:804`) | Dev/test-gated; the re-seed *reset* hazard is fixed, the literal remains | **Kept, owner reviewed 2026-08-20 — not selected.** |
+| `DEFAULT_TENANT_ID` names **two different tenants** across the chain — Global in `04-department.ts:6` / `07-prompt-template.ts:24`, SYSTEM in `06-stt.ts:33` | Renaming touches exported symbols consumed by e2e specs a sibling agent is editing | **Kept, owner reviewed 2026-08-20 — not selected.** |
+
+The remaining findings below were never part of this owner's decision round and stay open exactly
+as originally reported:
 
 | Item | Evidence |
 |---|---|
-| `DEFAULT_TENANT_ID` names **two different tenants** across the chain — Global in `04-department.ts:6` / `07-prompt-template.ts:24`, SYSTEM in `06-stt.ts:33` | Renaming touches exported symbols consumed by e2e specs a sibling agent is editing |
-| 11 BCMCH/v1-parity departments seeded on the ArcaAI tenant (`04-department.ts:398-609`) | A new customer inherits another hospital's department catalog and prompt bindings |
 | `91-user.ts:918` swallows per-user errors — a partial identity seed exits 0 | |
-| `password123` for 32 demo accounts (`91-user.ts:804`) | Dev/test-gated; the re-seed *reset* hazard is fixed, the literal remains |
 | 10 raw API-key literals in `00-constants.ts:298-313`, one not in `_test_` form (`:311`) | Double-gated to dev/test; still a secret-scanner finding |
 | `nlp.sentiment` / `nlp.toxicity` have no SYSTEM `AiTaskDefault` row and are super-admin-only | Dormant — no runtime consumer today |
 | `11-global-setting.ts:279` (`whisper-large-v3-turbo`) disagrees with `06-stt.ts:1775` (`arcaai-whisper-large-ml-en-gguf`) | Two "default STT" knobs |
@@ -421,9 +576,18 @@ SERVICE_ACCOUNT raw key as `X-Internal-Service-Key` against `/internal/stt/*`, w
 
 **Cannot:**
 
-- Administer anything from a machine identity until a human issues a service account (OD-2).
+- ~~Administer anything from a machine identity until a human issues a service account~~
+  RESOLVED 2026-08-20 (OD-2): setting `BOOTSTRAP_SERVICE_ACCOUNT_SECRET` at seed time gives the
+  ArcaAI tenant's seeded `ARCAAI_ADMIN` service account a working, non-recoverable secret with no
+  human login required — opt-in, absent by default. Issuing a machine identity for any OTHER
+  customer tenant still requires a human SUPER_ADMIN (`POST /admin/service-accounts`); that part
+  of OD-2 is unchanged.
 - Trust the seeded provider `baseUrl` rows in a cluster without one admin `PUT` (OD-4).
-- Rely on platform settings being SYSTEM-owned — they are Global-owned, by runtime design (OD-1).
+- ~~Rely on platform settings being SYSTEM-owned — they were Global-owned, by runtime design~~
+  RESOLVED 2026-08-20 (OD-1): the ranking correction lands in a sibling audit ticket — platform
+  settings now resolve SYSTEM-only; GLOBAL is an ordinary customer tenant. `provisionTenantConfigs`
+  still clones new-tenant config from GLOBAL rather than SYSTEM, which is a separate, tracked
+  defect against the same ruling (see that ticket's README).
 - Use `WEBHOOK_ADMIN` for anything (OD-7).
 - Get any configuration at all if the deployment does not set `RUN_SEED="safe"` — the default is
   `none`, and `deployment` `db-migrate.yaml` passes no `envFrom`. Guardrail then 503s with
@@ -436,3 +600,6 @@ SERVICE_ACCOUNT raw key as `X-Internal-Service-Key` against `/internal/stt/*`, w
 | Date | Change |
 |---|---|
 | 2026-08-18 | Ticket authored and implemented. Reader-plane abilities granted (`01-policy.ts`); seeded API keys conformed to TASK-757's reserved-scope registry and given the TASK-758 business-plane scopes the SDK actually calls (`02-apikey.ts`); env-driven CREATE-ONLY bootstrap SUPER_ADMIN added (`92-bootstrap-admin.ts`, wired in `index.ts`); re-seed password reset stopped (`91-user.ts`); Global tenant description corrected (`05-tenant.ts`); 67 tests added across 3 files. Eight owner decisions recorded in §5. Status **Review** — the seed has not been executed against a database (§6.3). |
+| 2026-08-20 | **OD-1 RESOLVED** by owner ruling (quoted verbatim in §5 OD-1): the runtime cascade is request-tenant → SYSTEM, full stop — GLOBAL never appears in it, and reaches other tenants only by an explicit promotion into SYSTEM. The audit + ranking correction landed in a sibling ticket: `AppSettingsService.PLATFORM_TENANT_IDS` and `SettingsRegistryWriteService`'s own copy now admit SYSTEM only (GLOBAL no longer outranks — or even enters — the platform cache); `ENTITLEMENTS_TENANT_ID` / `RATE_LIMIT_TENANT_ID` repointed to SYSTEM; seeds `11a-platform-knob-settings.ts`, `11c-consultation-gate-settings.ts`, `12-rate-limit-settings.ts`, `15-entitlements.ts` now write their platform row under `SYSTEM_TENANT_ID` (matching the corrected write-lane target); `.claude/rules/09-infrastructure-devops.md` §"Config caches" corrected to name SYSTEM as the sole platform tier. Confirmed NOT a regression: Global's own `tenantSettings(SEED_TENANT_ID, …)` rows in `11-global-setting.ts` (general/feature-flags/admin-menu-order) still resolve correctly through the tenant-scoped `GlobalSettingService` CRUD path — they were never meant to enter the flat platform cache. Confirmed NOT yet fixed, tracked as its own follow-up ticket: `TenantService.provisionTenantConfigs` still clones new-tenant `GlobalSetting` rows from GLOBAL (`__GLOBAL__`) rather than SYSTEM, unlike `provisionTenantModelCatalog`/`provisionTenantPipelineCatalog`/`provisionTenantAgentCatalog`, which already clone from SYSTEM correctly. |
+| 2026-08-20 | Four more owner decisions applied. **OD-3 (CORS) RESOLVED — KEEP AS IS**: no code change; the seeded `*.taphuynh.dev`/`*.4bits.vn`/browser-extension origins stay trusted in every environment including production, recorded so the finding stops recurring. **OD-4/OD-5 (localhost endpoints) RESOLVED — KEEP the seed, ADD a runbook**: no change to `17-ai-provider-connection.ts` or `05c-platform-storage-config.ts`; the day-1 operator correction steps are now tracked at `docs/operations/day-one-deployment.md` §3, linked from both OD-4 and OD-5. **OD-8 (departments) PARTIALLY RESOLVED**: re-verified ArcaAI/Global/SYSTEM department seeding is unchanged from the original audit — ArcaAI's 11 BCMCH departments are correctly kept (no action needed); the SYSTEM/GLOBAL half of the owner's ruling ("use different [department sets]") is **not yet closed** — SYSTEM's golden department catalog is *derived* from Global's `DEFAULT_DEPARTMENTS`, which duplicates 11 of ArcaAI's BCMCH codes verbatim, and every one of those 18 codes is a hard FK target from `PromptTemplate.departmentId` plus production code in `packages/applications` (`agent-template-resync.service.ts`) — decoupling it safely is a dedicated follow-up, flagged as its own task rather than risked as a same-session rewrite. The other two OD-8 sub-items (`password123` demo accounts, the ambiguous `DEFAULT_TENANT_ID` symbol) were reviewed and explicitly NOT selected by the owner this round — kept exactly as they are. |
+| 2026-08-20 | **OD-2 RESOLVED** by owner ruling: the day-1-no-machine-path posture is unacceptable — CI/automation needs machine access from day one — while TASK-762's DoD (no recoverable secret in seed data) stands unchanged. Resolution: `94-service-account.ts` gained `BOOTSTRAP_SERVICE_ACCOUNT_SECRET`, the same operator-supplied/seed-time-only/never-in-a-tracked-file shape as `BOOTSTRAP_SUPER_ADMIN_PASSWORD`. Set (any `NODE_ENV`) → the value is peppered-HMAC'd via the existing `computeSecretVerifier` (identical construction to `ServiceAccountService.exchangeToken`'s check) and written as `secretVerifier`, so the seeded `ARCAAI_ADMIN` account authenticates at `POST /api/v1/auth/service-token` immediately, no human login or `rotate` call needed. Unset → unchanged TASK-766 behavior (dev/test fixture, else inert CSPRNG verifier with no preimage) — the seed still invents no credential. Scope set is unchanged (`ARCAAI_TENANT_ADMIN_SVC_SCOPES`, tenant-scoped, never super-admin) since the ruling asked to remove the human-activation step, not to widen authority. Validation mirrors the two existing bootstrap credentials: 32-character floor, same well-known-value stop-list checked before length. CREATE-ONLY preserved — this only affects first creation, never an existing row. Tests added: `packages/database/.../seed/__tests__/service-account-seed.test.ts` (new describe block: no-op when unset, well-known-value/length rejection, never-a-literal-in-source check, HMAC construction parity, precedence-over-dev-fixture-in-source, resolved-in-every-environment) and `packages/applications/.../serviceAccount/__tests__/service-account.service.test.ts` (new test: a verifier built the same way the seed builds it authenticates through `exchangeToken`). Operator documentation: `docs/operations/day-one-deployment.md` new §2.4. |

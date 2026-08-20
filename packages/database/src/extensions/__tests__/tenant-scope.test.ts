@@ -133,7 +133,11 @@ describe('TENANT_SCOPED_MODELS allow-list', () => {
     // tenant's validator must resolve the SYSTEM platform rule set merged
     // with any rows the tenant added itself, or it would silently
     // under-enforce every safety rule it didn't happen to also author.
-    expect(TENANT_SCOPED_MODELS.size).toBe(84);
+    // 84 → 85: adds Role (TASK-766 OD-1). SYSTEM-tenant rows are the
+    // platform's built-in roles (also SYSTEM-shared, see below); tenant rows
+    // are a tenant admin's own custom roles, now protected by this extension
+    // instead of a handler-level guard. `Policy`/`RolePolicy` stay global.
+    expect(TENANT_SCOPED_MODELS.size).toBe(85);
   });
 
   // The usage ledger, its outbox, the rollups and the whole billing
@@ -171,9 +175,20 @@ describe('TENANT_SCOPED_MODELS allow-list', () => {
   });
 
   it('does NOT include global / root models', () => {
-    for (const global of ['Tenant', 'User', 'Role', 'Policy', 'RolePolicy']) {
+    for (const global of ['Tenant', 'User', 'Policy', 'RolePolicy']) {
       expect(TENANT_SCOPED_MODELS.has(global)).toBe(false);
     }
+  });
+
+  // TASK-766 OD-1: `Role` gained a `tenantId` column and is now genuinely
+  // tenant-scoped (SYSTEM-tenant rows are the platform's built-in roles;
+  // tenant rows are custom roles a tenant admin created). `Policy`/
+  // `RolePolicy` deliberately stay global — see rbac.prisma's comment on
+  // `Role.tenantId` for why.
+  it('DOES include Role (TASK-766 OD-1) but keeps Policy/RolePolicy global', () => {
+    expect(TENANT_SCOPED_MODELS.has('Role')).toBe(true);
+    expect(TENANT_SCOPED_MODELS.has('Policy')).toBe(false);
+    expect(TENANT_SCOPED_MODELS.has('RolePolicy')).toBe(false);
   });
 
   // Regression guard.
@@ -384,6 +399,14 @@ describe('SYSTEM_SHARED_READ_MODELS allow-list', () => {
       new Set([
         'AsrPipeline',
         'AiModel',
+        // Role's SYSTEM-tenant rows are the platform's built-in roles
+        // (TASK-766 OD-1) — every tenant reads them directly (list, clone
+        // source, member counts) rather than getting a per-tenant clone.
+        // Writes are NOT widened; a tenant admin's write to a SYSTEM role id
+        // matches zero rows (service layer already refuses it earlier via the
+        // isSystemRole guard). A super admin mutating a SYSTEM role routes
+        // through RbacRoleService's unscoped cross-tenant lane instead.
+        'Role',
         'HarnessPolicy',
         'PipelinePolicy',
         'GlobalSetting',
@@ -480,6 +503,51 @@ describe('SYSTEM_SHARED_READ_MODELS allow-list', () => {
       const args: Record<string, unknown> = { where: { promptTemplateId: '71000000-0000-0000-0000-000000000040', versionNumber: 1 } };
       await cfg.query.$allModels.findFirst({ model: 'PromptVersion', args, query: async (a) => a });
       expect((args.where as Record<string, unknown>).tenantId).toEqual({ in: [CALLER, SYSTEM_TENANT_ID] });
+    });
+  });
+
+  // TASK-766 OD-1. Mirrors the PromptTemplate block above: reads widen to
+  // [caller, SYSTEM] (so a tenant sees the platform's built-in roles plus its
+  // own custom ones); writes stay pinned to the exact caller tenant (so a
+  // write aimed at a SYSTEM role id, or another tenant's role id, matches
+  // zero rows instead of silently succeeding).
+  describe('Role tenant-scope widening (TASK-766 OD-1)', () => {
+    const CALLER = '50000000-0000-0000-0001-000000000000';
+
+    it('widens an unscoped findUnique to [caller, SYSTEM] so a built-in role resolves', async () => {
+      const cfg = captureExtensionConfig({ getTenantId: () => CALLER });
+      const args: Record<string, unknown> = { where: { id: 'role-doctor' } };
+      await cfg.query.$allModels.findUnique({ model: 'Role', args, query: async (a) => a });
+      expect(args.where).toEqual({ id: 'role-doctor', tenantId: { in: [CALLER, SYSTEM_TENANT_ID] } });
+    });
+
+    it('leaves an EXPLICIT caller tenantId alone (a tenant admin listing its own roles never grows SYSTEM rows unexpectedly)', async () => {
+      const cfg = captureExtensionConfig({ getTenantId: () => CALLER });
+      const args: Record<string, unknown> = { where: { tenantId: CALLER, isSystemRole: false } };
+      await cfg.query.$allModels.findMany({ model: 'Role', args, query: async (a) => a });
+      expect(args.where).toEqual({ tenantId: CALLER, isSystemRole: false });
+    });
+
+    it('does NOT widen writes — an update still injects the exact caller tenant', async () => {
+      const cfg = captureExtensionConfig({ getTenantId: () => CALLER });
+      const args: Record<string, unknown> = { where: { id: 'role-doctor' }, data: { name: 'hijack' } };
+      await cfg.query.$allModels.update({ model: 'Role', args, query: async (a) => a });
+      // Exact-tenant injection ⇒ the SYSTEM-owned row is not matched ⇒ P2025.
+      expect(args.where).toEqual({ id: 'role-doctor', tenantId: CALLER });
+    });
+
+    it('throws for a non-super-admin caller with no tenant context at all (Role now requires one like any other tenant-scoped model)', async () => {
+      const cfg = captureExtensionConfig({ getTenantId: () => undefined, isSuperAdmin: () => false });
+      await expect(
+        cfg.query.$allModels.findMany({ model: 'Role', args: {}, query: async (a) => a }),
+      ).rejects.toThrow(/tenant context required/);
+    });
+
+    it('passes a super admin with no tenant context straight through (cross-tenant platform view, unchanged)', async () => {
+      const cfg = captureExtensionConfig({ getTenantId: () => undefined, isSuperAdmin: () => true });
+      const args: Record<string, unknown> = { where: { isSystemRole: true } };
+      await cfg.query.$allModels.findMany({ model: 'Role', args, query: async (a) => a });
+      expect(args.where).toEqual({ isSystemRole: true });
     });
   });
 
@@ -934,7 +1002,14 @@ describe('Non-allow-listed (global / root) models pass through unchanged', () =>
     expect(query).toHaveBeenCalledWith({ data: { username: 'alice' } });
   });
 
-  it('Role.findUnique does not throw even when tenant context is missing', async () => {
+  // TASK-766 OD-1: `Role` moved OFF this pass-through list — it is now
+  // tenant-scoped (see the dedicated "Role tenant-scope widening" describe
+  // block below). `Policy` (the CASL rule catalog `Role`s attach via
+  // `RolePolicy`) deliberately stays here: a tenant admin can only attach/
+  // detach EXISTING policies (`manage:RolePolicy`), never author new ones
+  // (`manage:Policy` is super-admin-only), so there is nothing tenant-owned
+  // to scope.
+  it('Policy.findUnique does not throw even when tenant context is missing', async () => {
     const config = captureExtensionConfig({
       getTenantId: () => null,
       isSuperAdmin: () => false,
@@ -942,12 +1017,12 @@ describe('Non-allow-listed (global / root) models pass through unchanged', () =>
     const query = vi.fn().mockResolvedValue({});
 
     await config.query.$allModels.findUnique({
-      model: 'Role',
-      args: { where: { id: 'role-1' } },
+      model: 'Policy',
+      args: { where: { id: 'policy-1' } },
       query,
     });
 
-    expect(query).toHaveBeenCalledWith({ where: { id: 'role-1' } });
+    expect(query).toHaveBeenCalledWith({ where: { id: 'policy-1' } });
   });
 });
 

@@ -39,9 +39,9 @@ model ServiceRelease {
   tenantId String
 
   // core (business) fields — immutable build facts
-  serviceName     String // api | smr | stt-worker | ...
+  serviceName     String // api | text | stt-worker | ...
   releaseVersion  String // SemVer from the git tag, or 0.0.0-<branch>.<sha8>
-  releaseTag      String? // SMR-2.1.0; null on untagged builds
+  releaseTag      String? // TEXT-2.1.0; null on untagged builds
   gitBranch       String
   gitCommitSha    String // full 40-char
   buildAt         DateTime

@@ -1,5 +1,5 @@
 import type { CorePrismaClient } from '../../../client';
-import { SEED_ROLE_IDS } from './00-constants';
+import { SEED_ROLE_IDS, SYSTEM_TENANT_ID } from './00-constants';
 
 /**
  * Policy-Based Role Seed Data - Healthcare-Focused Design
@@ -145,17 +145,23 @@ export const seedRole = async (client: CorePrismaClient) => {
   const createdRoleIds = new Map<string, string>();
 
   // Seed roles in order: system first, then extendable (which have parents), then legacy
+  //
+  // TASK-766 OD-1: `Role` gained a `tenantId` column. Every role seeded here
+  // is a platform/built-in role (SYSTEM_ROLES, GLOBAL_ROLES,
+  // TENANT_EXTENDABLE_ROLES), so every row belongs to the SYSTEM tenant —
+  // a tenant's own custom roles are created at runtime via
+  // `POST /admin/rbac/roles` or `:id/clone`, never seeded here.
   for (const roleData of DEFAULT_ROLES) {
     // Use findFirst instead of findUnique for Prisma 7 compatibility
     let role = await client.role.findFirst({
-      where: { name: roleData.name },
+      where: { name: roleData.name, tenantId: SYSTEM_TENANT_ID },
     });
 
     // Resolve parent role ID if specified
     let resolvedParentRoleId: string | null = null;
     if (roleData.parentRoleId) {
       const parentRole = await client.role.findFirst({
-        where: { id: roleData.parentRoleId },
+        where: { id: roleData.parentRoleId, tenantId: SYSTEM_TENANT_ID },
       });
       if (parentRole) {
         resolvedParentRoleId = parentRole.id;
@@ -180,6 +186,7 @@ export const seedRole = async (client: CorePrismaClient) => {
       role = await client.role.create({
         data: {
           id: roleData.id,
+          tenantId: SYSTEM_TENANT_ID,
           name: roleData.name,
           description: roleData.description,
           externalName: roleData.externalName,
