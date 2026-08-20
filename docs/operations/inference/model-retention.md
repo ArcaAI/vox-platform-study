@@ -29,7 +29,7 @@ All keys are `globalOnly`, `tier: global-kv`, system-scoped (never tenant-set).
 | `<svc>.modelCache.maxModels` | stt 5 · nlp 3 · guardrail 2 · harness 1 · tts 2 | Max resident models (LRU beyond it). |
 | `<svc>.modelCache.vramBudgetMb` | 0 (unset) | Optional VRAM bound. Only effective where NVML is available. |
 | `stt.modelCache.maxMemoryMb` | 10000 | stt only — its historical MB estimate budget. |
-| `smr.modelCache.ttlSeconds` | 600 | **Not a cache.** Forwarded to server-managed engines (below). |
+| `text.modelCache.ttlSeconds` | 600 | **Not a cache.** Forwarded to server-managed engines (below). |
 
 `<svc>` ∈ `stt`, `nlp`, `guardrail`, `harness`, `tts`.
 
@@ -48,7 +48,7 @@ guardrail, harness and tts silently ignored the console and ran on env.
 |---|---|---|---|
 | stt | Yes | `core/effective_config.py` | request-path refresher |
 | nlp | Yes | `core/effective_config.py` | request-path (`refresh_inference_limit`) |
-| smr | Yes | `core/effective_config.py` | request path (`get_runtime_limits`) |
+| text | Yes | `core/effective_config.py` | request path (`get_runtime_limits`) |
 | guardrail | Yes | `core/effective_config.py` | aux-model resolution (analyze / groundedness) |
 | harness | Yes | `core/effective_config.py` | **Temporal worker** housekeeping tick (60 s) — §6a |
 | tts | Yes | `core/effective_config.py` | `POST /api/v1/audio/speech` |
@@ -95,7 +95,7 @@ Not every "model" is HOPE's to evict. Three different owners:
 | In-process (stt loaders, GLiNER, NLP transformers, harness MiniCheck entailer, Kokoro/IndicParler/IndicF5) | **HOPE** | The shared cache: `ttl → lru → vram` eviction, per-service budgets. **No in-process engine is exempt** — see §6a. |
 | **Ollama** | The Ollama server, per-request influenced | HOPE sends `keep_alive: <ttl>s` on every generate/stream, overriding the server's `OLLAMA_KEEP_ALIVE` (default 5 min). Cap residents with `OLLAMA_MAX_LOADED_MODELS`. |
 | **LM Studio** | The LM Studio server, per-request influenced | HOPE sends `ttl: <seconds>` via the OpenAI SDK's `extra_body`. JIT-loaded models otherwise default to a 60 min idle TTL. Leave **Auto-Evict ON** so a new JIT load unloads the previous one. |
-| **vLLM / llama.cpp server** | Launch-time; **resident by design** | One model per launch, stays resident. `smr.modelCache.ttlSeconds` does **not** apply. |
+| **vLLM / llama.cpp server** | Launch-time; **resident by design** | One model per launch, stays resident. `text.modelCache.ttlSeconds` does **not** apply. |
 
 **Why vLLM is out of scope.** vLLM's dedicated-tier posture is intentional: a
 model is pinned at launch for predictable latency. vLLM *does* have a

@@ -1,0 +1,86 @@
+// =============================================================================
+// Workflow-graph invariant rule (TASK-716 Task 3) — the DATA half of the
+// validator's "code-owned predicate types, data-owned rule instances" split
+// (README §3.3): `WorkflowRulePredicateType` is a closed, code-owned enum
+// backed by an evaluator in `packages/workflow-contract/src/predicates/`; a
+// row here is one PARAMETERIZATION of a predicate kind. Tightening a rule —
+// a new forbidden edge, a raised severity, a required node type added to a
+// palette — is a row insert; adding a genuinely new predicate KIND is a
+// deploy, correctly.
+//
+// Ownership: SYSTEM-tenant rows are the platform's invariant register made
+// executable. A tenant row may only ADD strictness for its own tenant — it
+// may raise a WARNING it authored to ERROR, but it can never disable, loosen,
+// or delete a SYSTEM-owned row (enforced imperatively in the service with an
+// `// AUTH-NOTE:` marker, the `SUPER_ADMIN_ONLY_POLICY_KEYS` precedent —
+// `05-nestjs-api.md` §Imperative Privilege Checks). This ticket's own §6
+// Risk #1 answer: "let's go ahead with the initial rules, but make sure we
+// allow admin (super/tenant) to enable/disable the system/platform rules" —
+// `resourceStatus` is exactly that enable/disable toggle, gated the same way.
+//
+// SYSTEM_SHARED_READ_MODELS — a deliberate correction against this ticket's
+// own speculative Task 3 text (which said "not added to SYSTEM_SHARED_READ_MODELS
+// ... the union is visible in code"): the tenant-scope extension
+// (`packages/database/src/extensions/tenant-scope.ts`) enforces, for every
+// OTHER tenant-scoped model, that an explicit `where.tenantId` filter must
+// equal the CALLER'S OWN context tenant or it throws — there is no mechanism
+// for a service to read a DIFFERENT tenant's rows (SYSTEM's) "in code" without
+// either the unscoped admin client (lint-banned outside seeds/scripts) or
+// this allow-list. `SYSTEM_SHARED_READ_MODELS` is precisely the widening this
+// union needs and is the SAME mechanism `HarnessPolicy`/`PipelinePolicy` use
+// for their own "SYSTEM default + tenant override" reads (`findSystemDefault()`
+// passing an EXPLICIT `tenantId: SYSTEM_TENANT_ID` is only legal because those
+// two models are on this list). `WorkflowValidatorService.findApplicable()`
+// therefore issues two explicit-tenantId reads (own tenant + SYSTEM), exactly
+// mirroring `PipelinePolicyRepository.findCascadeRows` / `findSystemDefault`.
+// Writes are NOT widened by this list (see tenant-scope.ts's own doc comment)
+// — a tenant can read but never mutate a SYSTEM-owned row, which is exactly
+// the one-way-strictness rule above.
+// =============================================================================
+
+model WorkflowInvariantRule {
+  // meta fields
+  metaData Json?  @map("_metadata") @db.JsonB
+  version  Int    @default(1) @map("_version")
+  id       String @id @default(uuid(7))
+
+  // multi tenant fields
+  tenantId String // SYSTEM tenant owns platform rules; a tenant row ADDS strictness
+
+  // core (business) fields
+  ruleId       String // stable human id, e.g. "WF-I-006" — parity with contracts/rule-model.md
+  registerRefs String[] @default([]) // INV ids from 01-invariant-register.md
+  title        String
+  rationale    String? @db.Text
+
+  predicateType   WorkflowRulePredicateType
+  predicateConfig Json                 @db.JsonB // validated against the predicate's own configProblems() at evaluation time
+  paletteKey      String? // null => applies to every palette (structural rules)
+  severity        WorkflowRuleSeverity @default(ERROR)
+
+  // Bumping this is what the TASK-716 Task 10 re-validation sweep keys off. A
+  // rule whose predicateConfig changes MUST bump it, or published definitions
+  // silently keep an old verdict.
+  ruleVersion   Int      @default(1)
+  effectiveFrom DateTime @default(now())
+
+  // resource status fields — the enable/disable toggle §6 Risk #1 asked for.
+  // Disabling a SYSTEM row is GLOBAL_ADMIN-only; a tenant may disable only a
+  // row it created itself (enforced in the service, not here).
+  resourceStatus          ResourceStatusType @default(ENABLED)
+  resourceStatusUpdatedAt DateTime?
+  resourceStatusUpdatedBy String?
+
+  // audit fields
+  createdBy String?  @default("60000000-0000-0000-0000-000000000000")
+  updatedBy String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // constraints + indexes — `map:` names the DB index; `name:` would only set
+  // the client-facing compound key (rule 02 §@@unique).
+  @@unique([tenantId, ruleId], map: "WorkflowInvariantRule_tenant_ruleId_unique")
+  @@index([tenantId], name: "WorkflowInvariantRule_tenantId_idx")
+  @@index([tenantId, paletteKey, severity], name: "WorkflowInvariantRule_tenant_palette_severity_idx")
+  @@schema("core")
+}

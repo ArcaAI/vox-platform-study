@@ -288,7 +288,7 @@ overrides plus a tenant-ownership check in `RbacRoleService` (owned by `apps/api
 `packages/applications`, not this ticket); (b) enabling CASL condition evaluation; (c) giving
 `Role` a `tenantId`. Needs a ruling.
 
-### OD-2 — Every seeded tenant has `plan = NULL`, so all of them resolve "ungated-legacy"
+### OD-2 — Every seeded tenant has `plan = NULL`, so all of them resolve "ungated-legacy" — **RESOLVED (owner ruling, 2026-08-20)**
 
 `Tenant.plan` is nullable and no seed sets it — including for ArcaAI. `resolveEntitlements`
 returns `UNGATED_ENTITLEMENTS` for a null plan: **unlimited quotas, every feature on except
@@ -298,11 +298,24 @@ Practically this is benign on day 1 (nothing is quota-blocked, and the SYSTEM-te
 provider rows are exempt from the credential gate — `isCloudByoProvider` scopes it to cloud BYO —
 so local LM Studio / Ollama / vLLM summarization resolves normally). But it means a fresh ArcaAI
 tenant is **commercially unmodelled**, and any *cloud* provider without a tenant-owned key returns
-403 with "ask your account owner to enable the platform-default entitlement". Assigning a plan is a
-commercial decision, so it was not guessed at. If ArcaAI should ship as `ENTERPRISE`, that is a
-one-line change to `05-tenant.ts`.
+403 with "ask your account owner to enable the platform-default entitlement".
 
-### OD-3 — The bootstrap credentials are still undocumented in any tracked file
+**Owner decision (2026-08-20): assign the ArcaAI tenant `ENTERPRISE`. Every other seeded tenant
+keeps `plan = NULL`.** Implemented in `05-tenant.ts` — the ArcaAI `CUSTOMER_TENANTS` row now
+carries `plan: TenantPlan.ENTERPRISE`; SYSTEM and Global are untouched (still resolve
+ungated-legacy, which is correct for a config tier and a platform-admin playground respectively).
+Verified both halves of the claim, not just the seed literal:
+
+- **The seed**: `tenant-plan-seed.test.ts` (new, `packages/database`) asserts ArcaAI's row is
+  `plan: 'ENTERPRISE'` and that SYSTEM/Global carry no `plan` field at all.
+- **The resolution path actually resolves it**: `entitlements.service.test.ts` (new case,
+  `packages/applications`) proves `EntitlementsService.resolveForTenant` given `plan: 'ENTERPRISE'`
+  (the value the seed now assigns) returns `gated: true` with the real ENTERPRISE structural caps
+  (`maxUsers: 100`, `maxDepartments: 40`, `maxApiKeys: 50`) — not `UNGATED_ENTITLEMENTS`. Together
+  these close the gap this OD named: ArcaAI is no longer commercially unmodelled, and the fix is
+  proven at both the data layer and the resolution layer, not asserted from the seed literal alone.
+
+### OD-3 — The bootstrap credentials are still undocumented in any tracked file — **RESOLVED (owner ruling, 2026-08-20)**
 
 TASK-763 §4.2 recorded documenting `BOOTSTRAP_SUPER_ADMIN_*` in `.env.dev`. That file is
 gitignored and untracked, and the variables are not present in it now, so the documentation did
@@ -310,10 +323,16 @@ not survive. The same applies to the four `BOOTSTRAP_TENANT_ADMIN_*` variables a
 
 Both sets are deliberately **not** in `turbo.json#globalEnv` and carry no `SettingDescriptor`
 (registering one makes a key governed *and writable*, and a bootstrap password must never become
-addressable through the settings plane) — the precedent is `RUN_SEED` itself. The consequence is
-that the only place they are written down is a ticket README and the seed's own console output.
-Decide whether they belong in a tracked operator runbook (`docs/operations/`) — this ticket
-deliberately did not create one unasked.
+addressable through the settings plane) — the precedent is `RUN_SEED` itself.
+
+**Owner decision (2026-08-20): document the variables in a tracked operator runbook — never their
+values.** [`docs/operations/day-one-deployment.md`](../../operations/day-one-deployment.md) §2 is
+that runbook: which variables must be set (`BOOTSTRAP_SUPER_ADMIN_*`, `BOOTSTRAP_TENANT_ADMIN_*`,
+and `BOOTSTRAP_SERVICE_ACCOUNT_SECRET` for the ArcaAI machine identity), where they are set (host
+env on the seed job only, never a tracked file), the first-login flow end to end, and what happens
+if each is left absent (silent no-op — the deployment simply has no matching credential until a
+human re-runs the seed with them set). This page is now the single tracked place that names them;
+the ticket READMEs continue to record *why* they exist, not the operational how-to.
 
 ### OD-4 — `svc:admin:ai-provider:manage` and `svc:admin:settings:manage` both imply `manage:GlobalSetting`
 
@@ -502,3 +521,4 @@ changed no policy, so the numbers were expected to be unchanged and are.
 | Date | Change |
 |---|---|
 | 2026-08-19 | Ticket authored and implemented. Env-driven CREATE-ONLY bootstrap TENANT_ADMIN added (`93-bootstrap-tenant-admin.ts`); ArcaAI machine identity added with a scope set derived from the tenant admin's own authority (`94-service-account.ts`, 37 scopes, secret gated by environment); both wired into `index.ts`; service-account id block reserved in `00-constants.ts`; ArcaAI tenant description corrected in `05-tenant.ts`; 183 tests added across 3 new files, including an exact-set pin on tenant-admin authority. Mintability sweep re-run — unchanged. Four owner decisions recorded in §5. Status **Review**. |
+| 2026-08-20 | Two owner decisions resolved. **OD-2 (tenant plan) RESOLVED**: ArcaAI's seeded tenant row now carries `plan: TenantPlan.ENTERPRISE` (`05-tenant.ts`); every other seeded tenant (SYSTEM, Global) keeps `plan = NULL` unchanged. Proven at both layers: `tenant-plan-seed.test.ts` (new, `packages/database`) pins the seed literal; `entitlements.service.test.ts` (new case, `packages/applications`) proves `EntitlementsService.resolveForTenant` actually resolves a real, gated ENTERPRISE quota set (`maxUsers: 100`, `maxDepartments: 40`, `maxApiKeys: 50`) for that plan value rather than falling through to `UNGATED_ENTITLEMENTS`. **OD-3 (bootstrap credential docs) RESOLVED**: the variables are now documented in a tracked operator runbook, `docs/operations/day-one-deployment.md` §2 — which variables, where to set them (host env only, never a tracked file), the first-login flow, and the absent-variable behavior — linked from this README and from TASK-763's. OD-1 and OD-4 remain open, unchanged from the original audit. |

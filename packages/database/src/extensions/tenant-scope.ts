@@ -67,6 +67,15 @@ export const TENANT_SCOPED_MODELS: ReadonlySet<string> = new Set([
   'ResourceSubscription',
   // tag.prisma (1)
   'Tag',
+  // rbac.prisma — TASK-766 OD-1: `Role` is now genuinely tenant-scoped.
+  // SYSTEM-tenant rows are the platform's built-in roles (TENANT_ADMIN,
+  // DOCTOR, NURSE, ...) — every tenant resolves them directly (also a
+  // SYSTEM-shared read model, below) rather than getting its own clone.
+  // Tenant rows are custom roles a tenant admin created via
+  // `POST /admin/rbac/roles` or `:id/clone`. `Policy`/`RolePolicy` stay
+  // OMITTED_MODELS / globally unscoped — see the schema comment on `Role`
+  // in rbac.prisma for why.
+  'Role',
   // service-account.prisma — `ServiceAccount` is NOT here either, for exactly
   // the reason below: the token exchange reads it by `clientId` PRE-AUTH.
   // apikey.prisma — `ApiKey` is NOT here; it is INTENTIONALLY_UNSCOPED (see
@@ -338,6 +347,21 @@ export const SYSTEM_TENANT_ID = '00000000-0000-0000-0000-000000000000';
 export const SYSTEM_SHARED_READ_MODELS: ReadonlySet<string> = new Set([
   'AsrPipeline',
   'AiModel',
+  // TASK-766 OD-1: the platform's built-in roles (TENANT_ADMIN, DOCTOR,
+  // NURSE, SUPER_ADMIN, ...) are SYSTEM-tenant rows every tenant must read
+  // directly to function at all (RolesController listing, `:id/clone`
+  // source lookup, member counts) — the same "every tenant resolves the
+  // SYSTEM row" shape as `AiTaskDefault`/`HarnessPolicy` below, NOT a
+  // per-tenant clone. READS widen to [caller, SYSTEM] so a tenant sees the
+  // built-ins plus its own custom roles, never another tenant's; WRITES are
+  // NOT widened, so a tenant admin's `update`/`patch`/`softDelete` on a
+  // SYSTEM role id matches zero rows under the tenant-pinned `where` (service
+  // layer already refuses this via the `isSystemRole` guard before the write
+  // is attempted). A super admin mutating a SYSTEM role routes through the
+  // unscoped base client instead (`RbacRoleService`'s cross-tenant lane,
+  // mirroring `AiTaskDefaultService.crossTenantLane`) so it succeeds
+  // regardless of any working tenant they have selected.
+  'Role',
   // The harness GLOBAL-DEFAULT policy row is owned by the
   // SYSTEM tenant and every tenant must read it to compute its effective policy
   // (tenant row merged over the system default). A READ therefore widens to

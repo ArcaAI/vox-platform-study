@@ -93,7 +93,7 @@ ownership and targets are decided — do not treat the example row as a real com
 |---|---|---|---|---|
 | _e.g._ `hope-api` | _e.g._ request success rate | _TBD_ | _TBD_ | _TBD_ |
 | `hope-stt-v2` | | | | |
-| `hope-smr` | | | | |
+| `hope-text` | | | | |
 | `hope-guardrail` | | | | |
 | `hope-nlp` | | | | |
 | `hope-harness` | | | | |
