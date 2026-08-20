@@ -895,9 +895,13 @@ describe('ConsultationController', () => {
       consultationService.updateConsultation.mockResolvedValue(updated);
 
       const body = { departmentId: 'dept-1', metadata: { note: 'x' } };
-      const result = await controller.update(CONSULTATION_OWN, body as any);
+      const result = await controller.update(CONSULTATION_OWN, body as any, undefined);
 
-      expect(consultationService.updateConsultation).toHaveBeenCalledWith(CONSULTATION_OWN, body);
+      expect(consultationService.updateConsultation).toHaveBeenCalledWith(
+        CONSULTATION_OWN,
+        body,
+        undefined,
+      );
       expect(result).toEqual(updated);
     });
 
