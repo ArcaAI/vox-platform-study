@@ -23,7 +23,7 @@ def setup_telemetry(
     app: FastAPI,
     *,
     endpoint: str = "http://localhost:4317",
-    service_name: str = "smr",
+    service_name: str = "text",
     service_namespace: str = "hope",
     deployment_environment: str = "production",
     insecure: bool = True,

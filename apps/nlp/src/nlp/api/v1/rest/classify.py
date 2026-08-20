@@ -5,12 +5,15 @@ from nlp.core.logging import get_logger
 from nlp.dependencies import (
     get_external_text_client,
     get_inference_bound,
+    get_peer_call_bound,
     pinned_text_classifier,
     pinned_token_classifier,
 )
 from nlp.schemas.classification import (
     IntentClassificationRequest,
     IntentClassificationResponse,
+    MultiLabelClassificationRequest,
+    MultiLabelClassificationResponse,
     TextClassificationRequest,
     TextClassificationResponse,
     TokenClassificationRequest,
@@ -94,6 +97,54 @@ async def classify_text(
         raise HTTPException(status_code=500, detail="Text classification failed") from e
 
 
+@router.post("/text/multi-label", response_model=MultiLabelClassificationResponse)
+async def classify_text_multi_label(
+    request: MultiLabelClassificationRequest,
+    inference_bound: ResizableSemaphore = Depends(get_inference_bound),
+) -> MultiLabelClassificationResponse:
+    """
+    Classify text against every label the model exposes, independently.
+
+    Owner decision (2026-08-20, TASK-729 §6): `nlp.toxicity` is MULTI-LABEL —
+    toxic + threat + insult may all apply to the same utterance at once, so
+    this route returns a per-label score for EVERY label plus the labels that
+    clear `cls_threshold` (zero, one, or several), rather than one
+    mutually-exclusive winner. Uses the SAME `pinned_text_classifier`/model
+    cache as `/classify/text` — the model IS the taxonomy; nothing is
+    invented here.
+    """
+    # model_name (gateway-injected AiModel.sourceUri) is required;
+    # a missing/unloadable model fails closed with HTTP 503, mirroring
+    # /classify/text's posture exactly.
+    if not request.model_name:
+        raise HTTPException(status_code=503, detail="Text classification model not available")
+
+    try:
+        async with pinned_text_classifier(request.model_name, request.model_path) as service:
+            if not service.is_initialized:
+                raise HTTPException(
+                    status_code=503, detail="Text classification model not available"
+                )
+
+            async with inference_bound:
+                result = await service.process_multi_label(request)
+            logger.info(
+                f"Multi-label classification produced {len(result.predicted_labels)} "
+                f"label(s) at/above threshold {result.threshold:.2f}"
+            )
+            return result
+    except ModelUnavailableError as e:
+        logger.error(f"Multi-label classification model load failed: {str(e)}")
+        raise HTTPException(
+            status_code=503, detail="Text classification model not available"
+        ) from e
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Multi-label classification failed: {str(e)}")
+        raise HTTPException(status_code=500, detail="Multi-label classification failed") from e
+
+
 @router.post("/tokens", response_model=TokenClassificationResponse)
 async def classify_tokens(
     request: TokenClassificationRequest,
@@ -156,13 +207,13 @@ def _build_intent_prompt(text: str, intents: list[str]) -> str:
 async def classify_topic(
     request: TopicClassificationRequest,
     external_text_client: ExternalTextClient | None = Depends(get_external_text_client),
-    # Bounds apps/nlp's own concurrent-call budget to `text`, the same
-    # semaphore local model inference uses. This reuses `inference_bound`
-    # verbatim rather than a dedicated peer-call semaphore — an OPEN
-    # question this ticket flags rather than resolves (README §6): a
-    # sustained burst of topic/intent calls could starve local
-    # classification's inference slots, or vice versa.
-    inference_bound: ResizableSemaphore = Depends(get_inference_bound),
+    # Owner decision (2026-08-20, TASK-729 §6): a DEDICATED peer-call
+    # semaphore, never `inference_bound`. That bound protects local GPU/CPU
+    # inference slots; this one protects apps/nlp's own outbound
+    # concurrency/connection budget to `text` — two different resources, so a
+    # sustained burst of topic/intent calls can no longer starve local
+    # classification (or vice versa).
+    peer_call_bound: ResizableSemaphore = Depends(get_peer_call_bound),
 ) -> TopicClassificationResponse:
     """
     Classify text into one of a tenant's configured topics.
@@ -184,7 +235,7 @@ async def classify_topic(
     _require_tenant(request.tenant_id, "topic")
     prompt = _build_topic_prompt(request.text, request.instructions)
     try:
-        async with inference_bound:
+        async with peer_call_bound:
             label = await external_text_client.generate_label(
                 prompt, tenant_id=str(request.tenant_id)
             )
@@ -203,7 +254,8 @@ async def classify_topic(
 async def classify_intent(
     request: IntentClassificationRequest,
     external_text_client: ExternalTextClient | None = Depends(get_external_text_client),
-    inference_bound: ResizableSemaphore = Depends(get_inference_bound),
+    # See /topic above — a DEDICATED peer-call semaphore, never `inference_bound`.
+    peer_call_bound: ResizableSemaphore = Depends(get_peer_call_bound),
 ) -> IntentClassificationResponse:
     """
     Classify text into one of a tenant's configured intents.
@@ -221,7 +273,7 @@ async def classify_intent(
     _require_tenant(request.tenant_id, "intent")  # TASK-737 — see /topic above.
     prompt = _build_intent_prompt(request.text, request.instructions)
     try:
-        async with inference_bound:
+        async with peer_call_bound:
             label = await external_text_client.generate_label(
                 prompt, tenant_id=str(request.tenant_id)
             )

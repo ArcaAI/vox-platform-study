@@ -29,7 +29,7 @@ from text.services.pool_health import PoolHealthTracker
 
 router = APIRouter(tags=["health"])
 
-_SERVICE_NAME = "smr"
+_SERVICE_NAME = "text"
 _SERVICE_VERSION = "2.0.0"
 _startup_time = time.monotonic()
 

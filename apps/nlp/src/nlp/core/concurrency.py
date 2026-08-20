@@ -171,3 +171,66 @@ async def refresh_inference_limit(client: Any) -> ResizableSemaphore:
         )
 
     return semaphore
+
+
+_peer_call_semaphore: ResizableSemaphore | None = None
+
+
+def get_peer_call_semaphore() -> ResizableSemaphore:
+    """The process-wide OUTBOUND PEER HTTP bound (TASK-729 §6, owner decision 2026-08-20).
+
+    A SEPARATE singleton from `get_inference_semaphore`: it bounds this
+    process's own concurrent calls to `text` (the `/classify/topic` and
+    `/classify/intent` delegation), never local model inference. Sharing
+    `inference_bound` would let a slow HTTP round-trip to a peer service
+    starve local GPU/CPU inference slots, or vice versa — two different
+    resources, so two different semaphores.
+    """
+    global _peer_call_semaphore
+    if _peer_call_semaphore is None:
+        _peer_call_semaphore = ResizableSemaphore(settings.service.peer_call_max_concurrent)
+    return _peer_call_semaphore
+
+
+def reset_peer_call_semaphore() -> None:
+    """Drop the singleton (tests only)."""
+    global _peer_call_semaphore
+    _peer_call_semaphore = None
+
+
+async def refresh_peer_call_limit(client: Any) -> ResizableSemaphore:
+    """Pull the control-plane peer-call bound (cached; cheap) and apply it.
+
+    Mirrors `refresh_inference_limit` exactly, but for the peer-call
+    semaphore and its OWN control-plane key (`nlp.peerCall.maxConcurrent`).
+    Deliberately does NOT re-apply model-cache retention — that stays the
+    sole responsibility of `refresh_inference_limit`, so a request path that
+    resolves both bounds never applies the same retention snapshot twice.
+    NEVER raises: a peer call must not fail because the config plane is
+    unavailable. No opinion from the control plane ⇒ the env bound stays in
+    force.
+    """
+    semaphore = get_peer_call_semaphore()
+    if client is None:
+        return semaphore
+
+    try:
+        snapshot = await client.get()
+        limit = snapshot.peer_call_max_concurrent()
+        if limit is not None and limit != semaphore.limit:
+            previous = semaphore.limit
+            semaphore.set_limit(limit)
+            logger.info(
+                "nlp.effective_config.peer_call_limit_resized",
+                previous=previous,
+                current=limit,
+                in_flight=semaphore.in_flight,
+            )
+    except Exception as exc:  # noqa: BLE001 — a config refresh may never break a peer call
+        logger.warning(
+            "nlp.effective_config.apply_error",
+            error=str(exc),
+            error_type=type(exc).__name__,
+        )
+
+    return semaphore

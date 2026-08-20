@@ -6,7 +6,7 @@ clamp is imported from the shared contract so Text can never drift from the
 services that do own a cache.
 
 `DEFAULT_RETENTION_TTL_S` is a BOOTSTRAP FALLBACK only — the runtime value
-arrives from the control plane via `GET /internal/effective-config?service=smr`.
+arrives from the control plane via `GET /internal/effective-config?service=text`.
 """
 
 from __future__ import annotations

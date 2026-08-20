@@ -14,7 +14,8 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from nlp.api.v1 import rest_api_router_v1
-from nlp.dependencies import get_external_text_client
+from nlp.core.concurrency import ResizableSemaphore
+from nlp.dependencies import get_external_text_client, get_inference_bound, get_peer_call_bound
 from nlp.services.external_text_client import ExternalTextUnavailableError
 
 
@@ -114,3 +115,57 @@ class TestClassifyIntent:
         body = resp.json()
         assert body["predicted_intent"] == "schedule_appointment"
         assert body["available_intents"] == ["schedule_appointment", "cancel_appointment"]
+
+
+class _TrackingSemaphore(ResizableSemaphore):
+    """A `ResizableSemaphore` that records how many times it was entered."""
+
+    def __init__(self, limit: int = 1) -> None:
+        super().__init__(limit)
+        self.enter_count = 0
+
+    async def __aenter__(self) -> _TrackingSemaphore:
+        self.enter_count += 1
+        return await super().__aenter__()  # type: ignore[return-value]
+
+
+class TestPeerCallBoundIndependence:
+    """Owner decision (2026-08-20, TASK-729 §6): `/topic`/`/intent` bound their
+    outbound call to `text` with a DEDICATED peer-call semaphore, never the
+    local-inference bound. Each semaphore records how many times it was
+    actually entered, distinguishing "used" from "merely resolved as a
+    dependency but never acquired"."""
+
+    def test_topic_uses_the_peer_call_bound_not_the_inference_bound(self, app_and_client):
+        app, client, fake = app_and_client
+        peer_call_sem = _TrackingSemaphore()
+        inference_sem = _TrackingSemaphore()
+        app.dependency_overrides[get_inference_bound] = lambda: inference_sem
+        app.dependency_overrides[get_peer_call_bound] = lambda: peer_call_sem
+
+        resp = client.post(
+            "/api/v1/classify/topic",
+            json={"text": "billing question", "instructions": ["billing"], "tenant_id": "t1"},
+        )
+
+        assert resp.status_code == 200
+        assert fake.calls
+        assert peer_call_sem.enter_count == 1, "the peer-call bound must guard the call to text"
+        assert inference_sem.enter_count == 0, "the inference bound must NOT be touched by /topic"
+
+    def test_intent_uses_the_peer_call_bound_not_the_inference_bound(self, app_and_client):
+        app, client, fake = app_and_client
+        peer_call_sem = _TrackingSemaphore()
+        inference_sem = _TrackingSemaphore()
+        app.dependency_overrides[get_inference_bound] = lambda: inference_sem
+        app.dependency_overrides[get_peer_call_bound] = lambda: peer_call_sem
+
+        resp = client.post(
+            "/api/v1/classify/intent",
+            json={"text": "book an appointment", "instructions": ["schedule_appointment"], "tenant_id": "t1"},
+        )
+
+        assert resp.status_code == 200
+        assert fake.calls
+        assert peer_call_sem.enter_count == 1, "the peer-call bound must guard the call to text"
+        assert inference_sem.enter_count == 0, "the inference bound must NOT be touched by /intent"

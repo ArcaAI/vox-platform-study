@@ -6,7 +6,12 @@ from transformers import AutoModelForSequenceClassification, AutoTokenizer, pipe
 
 from nlp.core.config import TextClassificationConfig
 from nlp.core.logging import get_logger
-from nlp.schemas.classification import TextClassificationRequest, TextClassificationResponse
+from nlp.schemas.classification import (
+    MultiLabelClassificationRequest,
+    MultiLabelClassificationResponse,
+    TextClassificationRequest,
+    TextClassificationResponse,
+)
 
 logger = get_logger(__name__)
 
@@ -27,6 +32,13 @@ class TextClassifier(ABC):
     @abstractmethod
     async def process(self, request: TextClassificationRequest) -> TextClassificationResponse:
         """Classify medical text into categories"""
+        pass
+
+    @abstractmethod
+    async def process_multi_label(
+        self, request: MultiLabelClassificationRequest
+    ) -> MultiLabelClassificationResponse:
+        """Classify text against every label the model exposes, independently."""
         pass
 
     @abstractmethod
@@ -99,16 +111,13 @@ class TransformerTextClassifier(TextClassifier):
             await self.initialize()
 
         try:
-            pipeline_results = self.pipeline(request.text)
-            top_prediction = max(pipeline_results, key=lambda x: x["score"])
-            probabilities = {
-                score_item["label"]: float(score_item["score"]) for score_item in pipeline_results
-            }
+            scores = self._raw_scores(request.text)
+            top_label = max(scores, key=lambda label: scores[label])
 
             return TextClassificationResponse(
-                predicted_label=top_prediction["label"],
-                confidence=float(top_prediction["score"]),
-                probabilities=probabilities,
+                predicted_label=top_label,
+                confidence=scores[top_label],
+                probabilities=scores,
                 model_version=self.version,
             )
 
@@ -119,6 +128,37 @@ class TransformerTextClassifier(TextClassifier):
                 probabilities={"other": 1.0},
                 model_version=self.version,
             )
+
+    async def process_multi_label(
+        self, request: MultiLabelClassificationRequest
+    ) -> MultiLabelClassificationResponse:
+        """Score every label the model exposes independently, threshold-gated.
+
+        Reuses the SAME pipeline call `process()` does — the model's own head
+        (softmax/single-label or sigmoid/multi-label) decides how its scores
+        relate to one another; this method invents no taxonomy of its own, it
+        only applies the caller's `cls_threshold` to whatever labels come
+        back, so zero, one, or several may clear it on the same input.
+        """
+        if not self.is_initialized:
+            await self.initialize()
+
+        scores = self._raw_scores(request.text)
+        predicted_labels = [
+            label for label, score in scores.items() if score >= request.cls_threshold
+        ]
+
+        return MultiLabelClassificationResponse(
+            predicted_labels=predicted_labels,
+            scores=scores,
+            threshold=request.cls_threshold,
+            model_version=self.version,
+        )
+
+    def _raw_scores(self, text: str) -> dict[str, float]:
+        """Every label the pipeline returns, mapped to its own independent score."""
+        pipeline_results = self.pipeline(text)
+        return {item["label"]: float(item["score"]) for item in pipeline_results}
 
     async def shutdown(self) -> None:
         """Shutdown the text classification model"""

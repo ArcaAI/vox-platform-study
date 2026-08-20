@@ -295,7 +295,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         app.state.effective_config_client = EffectiveConfigClient(
             base_url=settings.gateway_url,
             token=settings.service_token.get_secret_value(),
-            service="smr",
+            service="text",
         )
 
     if app.state.shutdown_manager is None:

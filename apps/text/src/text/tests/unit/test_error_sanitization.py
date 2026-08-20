@@ -27,14 +27,14 @@ from text.providers.base import ProviderRegistry
 
 SENSITIVE_ERROR = (
     "Connection to https://internal-api.example.com:8443 failed, "
-    "api_key=sk-secret123, traceback: File '/app/smr/providers/azure.py'"
+    "api_key=sk-secret123, traceback: File '/app/text/providers/azure.py'"
 )
 
 SENSITIVE_FRAGMENTS = [
     "internal-api.example.com",
     "sk-secret123",
     "8443",
-    "/app/smr/providers/azure.py",
+    "/app/text/providers/azure.py",
 ]
 
 
@@ -188,7 +188,7 @@ class TestStreamingErrorSanitization:
 class TestExceptionHierarchy:
     """Custom exception classes have correct attributes and inheritance."""
 
-    def test_smr_error_base(self):
+    def test_text_error_base(self):
         from text.core.exceptions import TextError
 
         err = TextError("boom")

@@ -118,10 +118,9 @@ CONCURRENT_REQUESTS = Gauge(
 # Worker pool (TASK-725) — async out-of-process task dispatch, separate from
 # the sync-path metrics above. `task_type` ("embedding" | "batch_generation")
 # is the label KEDA's Prometheus scaler (arca/hope-v2-deployment, not this
-# repo) would key a per-pool `ScaledObject` trigger on. Still `smr_`-prefixed
-# — see design-notes.md §(c) for why (every OTHER metric in this file is,
-# post-TASK-707, and a lone `text_*` metric next to them would be its own
-# drift).
+# repo) would key a per-pool `ScaledObject` trigger on. `text_`-prefixed like
+# every OTHER metric in this file (post-TASK-707/740) — a lone differently
+# prefixed metric next to them would be its own drift.
 # ---------------------------------------------------------------------------
 
 WORKER_POOL_QUEUE_DEPTH = Gauge(
@@ -144,7 +143,7 @@ WORKER_POOL_TASKS_TOTAL = Counter(
 # per-model "running" + "avg latency" with ONE PromQL pattern. The name and
 # label keys must stay byte-identical across services.
 
-SERVICE_NAME = "smr"
+SERVICE_NAME = "text"
 
 MODEL_RUNNING_INSTANCES = Gauge(
     "model_running_instances",

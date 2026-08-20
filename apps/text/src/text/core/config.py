@@ -632,7 +632,7 @@ class Settings(BaseSettings):
         validation_alias=AliasChoices("OTEL_EXPORTER_ENDPOINT", "V2_OTEL_EXPORTER_ENDPOINT"),
     )
     otel_service_name: str = Field(
-        default="smr", validation_alias=AliasChoices("OTEL_SERVICE_NAME", "V2_OTEL_SERVICE_NAME")
+        default="text", validation_alias=AliasChoices("OTEL_SERVICE_NAME", "V2_OTEL_SERVICE_NAME")
     )
     otel_service_namespace: str = Field(
         default="hope",
@@ -708,7 +708,7 @@ class Settings(BaseSettings):
     # this is propagation, not a cache.
     #
     # BOOTSTRAP FALLBACK ONLY — the runtime value comes from the control plane
-    # (`GET /internal/effective-config?service=smr` → `retention.ttlSeconds`).
+    # (`GET /internal/effective-config?service=text` → `retention.ttlSeconds`).
     # Env var: TEXT_MODEL_RETENTION_TTL_S.
     model_retention_ttl_s: int = Field(
         default=600,

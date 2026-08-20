@@ -179,7 +179,7 @@ class TestOtelEnabledFlag:
             mock_setup.assert_called_once()
 
     def test_otel_service_name_setting_exists(self):
-        """Settings declares `otel_service_name` with the default 'smr'.
+        """Settings declares `otel_service_name` with the default 'text'.
 
         Asserted against the FIELD DECLARATION, not against a constructed `Settings()`.
         `otel_service_name` is env-populatable (`OTEL_SERVICE_NAME`), so constructing an instance
@@ -189,7 +189,7 @@ class TestOtelEnabledFlag:
         name and docstring have always claimed to check, and it is order-independent.
         """
         field = Settings.model_fields["otel_service_name"]
-        assert field.default == "smr"
+        assert field.default == "text"
 
 
 # ---------------------------------------------------------------------------

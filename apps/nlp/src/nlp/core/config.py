@@ -201,6 +201,17 @@ class NLPServiceConfig(BaseSettings):
     # plane (`nlp.inference.maxConcurrent`).
     inference_max_concurrent: int = Field(default=4, ge=1)
 
+    # Owner decision (2026-08-20, TASK-729 §6): outbound peer HTTP (the
+    # `nlp` → `text` delegation behind `/classify/topic`/`/classify/intent`)
+    # gets its OWN bound, never `inference_max_concurrent`. That semaphore
+    # protects local GPU/CPU inference slots; a slow HTTP round-trip to `text`
+    # is a completely different resource (this process's own outbound
+    # connection/concurrency budget) and must not be able to starve — or be
+    # starved by — local classification. Bootstrap fallback only; the
+    # runtime value comes from the control plane (`nlp.peerCall.maxConcurrent`),
+    # configured the exact same way as `inference_max_concurrent` above.
+    peer_call_max_concurrent: int = Field(default=8, ge=1)
+
     # Micro-batching + backpressure bounds (TASK-778).
     #
     # BOOTSTRAP FLOOR ONLY, and deliberately TRANSPORT-shaped: these are queue

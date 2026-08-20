@@ -598,14 +598,36 @@ dependencies (`httpx`/`redis` already present) — `uv lock` re-run not needed.
    `tests/unit/test_worker_batch_generation_handler.py` (resolve+call, unknown
    provider, malformed payload, cloud-provider fail-closed model selection, and
    a wiring assertion that `main()` actually uses a real registry).
-   **Residual, called out explicitly rather than silently expanded into**: no
-   HTTP submission endpoint for `BATCH_GENERATION` exists yet (unlike
-   `embedding`, which has `POST /embeddings/batch`) — nothing in this repo
-   currently enqueues a `batch_generation` task in production, so the fixed
-   dispatch path is exercised by direct unit tests today, not an end-to-end
-   HTTP round trip. Adding that submission endpoint (and deciding its caller —
-   harness? admin console? gateway?) is real, separate follow-up work, not
-   silently bundled into this fix.
+   ~~**Residual, called out explicitly rather than silently expanded
+   into**: no HTTP submission endpoint for `BATCH_GENERATION` exists yet~~
+   **RESOLVED 2026-08-20 (owner decision).** `POST /api/v1/generate/batch`
+   (`api/endpoints/generate.py::submit_batch_generation`) now enqueues a
+   `BATCH_GENERATION` task the same way `POST /embeddings/batch` enqueues an
+   `EMBEDDING` one — same module layout (co-located with its synchronous
+   counterpart, mirroring `embeddings.py`), same 202 accepted envelope
+   (`task_id`/`status`), same `WorkerPoolQueue.submit` dispatch path
+   (`ShutdownError` → 503 while draining). Two additions beyond a literal
+   mirror: (a) `X-Tenant-Id` is REQUIRED via the same `_require_inbound_tenant`
+   428 + `tenantless:<reason>` gate `/generate` already enforces — unlike
+   `/embeddings/batch`, which only forwards the header, batch generation
+   drives the SAME billable `LLMProvider.generate()` call the synchronous path
+   does, so it carries the same per-request tenant-attribution requirement
+   (owner directive, 2026-08-16); (b) the provider name is validated against
+   `ProviderRegistry` at submission (the same `registry.get()` /
+   `ProviderNotFoundError` → 404 `/generate` already performs), so an unknown
+   provider fails fast here rather than only at worker dispatch. The gateway
+   (`apps/api`) was checked and NOT touched — `POST /embeddings/batch` itself
+   is not proxied anywhere in `apps/api` today (no `embeddings` route exists
+   in `TextProxyController` or `route-manifest.json`), so there is no
+   established gateway convention to mirror and no existing reachability gap
+   to close; `/generate/batch` is reachable the same way `/embeddings/batch`
+   is — directly against `apps/text`, behind its own `X-Service-Token`
+   middleware, not yet behind the gateway. Covered by
+   `tests/unit/test_generate_batch_endpoint.py` (submission → queued →
+   dispatched round trip against the real `worker.py::_handle_batch_generation`
+   handler, tenant/idempotency header forwarding, `tenantless:` marker,
+   draining → 503, and the rejection cases: missing/blank tenant header → 428,
+   missing/blank prompt → 422, unknown provider → 404).
 2. **Nothing in this ticket was verified against LIVE `tei-embed` or a LIVE
    worker process** — local infra was down for the entire session. All
    verification is hermetic (mocked Redis/httpx) or via the ASGI test client
@@ -629,3 +651,4 @@ dependencies (`httpx`/`redis` already present) — `uv lock` re-run not needed.
 | 2026-08-16 | Ticket authored | Claude (ticket-authoring session) |
 | 2026-08-16 | Phases A–C implemented (design-notes.md; degrade-routing; admin introspection; text-embedding; queue-depth metrics; drain; local worker entry point). Full unit suite 1175/1175 green, lint clean, typecheck clean. `batch_generation` worker dispatch and live-infra round trips explicitly flagged as gated/residual — see §7. Status → Review. | Claude (execution session) |
 | 2026-08-20 | Closed the `batch_generation` NotImplementedError residual (§Known gaps item 1). `worker.py::_handle_batch_generation` now parses `envelope.payload` as a `GenerateRequest` and dispatches through the SAME `ProviderRegistry`/`LLMProvider.generate()` contract `/generate` uses (built in `main()` via `text.main._register_provider_factories` — the same factory-registration function the FastAPI app itself calls, so batch generation never sees a wider/narrower provider surface than sync). Provider/model selection stays fail-closed via the existing `ProviderNotFoundError`/`require_model` guards — no hardcoded engine/model/endpoint added, no new env var. Added `tests/unit/test_worker_batch_generation_handler.py` (5 tests: resolve+dispatch, unknown provider, malformed payload, cloud-provider fail-closed model selection, `main()` wiring). Evidence: `ruff check apps/text/src/` — all checks passed; `mypy --config-file apps/text/pyproject.toml apps/text/src/` — Success, no issues found in 74 source files; `pytest apps/text/src/text/tests/unit/` — 1187 passed, 1 failed (`test_wired_provider_queue.py::TestQueueWhenRateLimited::test_request_queued_when_rate_limited` — a pre-existing, timing-sensitive test in the sync rate-limiter/queue path, untouched by this change and reproducible independent of it; not caused by or related to this fix). **New residual surfaced, not silently folded in**: no HTTP submission endpoint exists for `BATCH_GENERATION` (unlike `embedding`'s `POST /embeddings/batch`) — nothing in this repo currently enqueues a batch-generation task in production, so the fixed dispatch path is verified by direct unit tests, not an end-to-end HTTP round trip. Status left at Review pending an owner decision on that new residual (see chat report). | Claude (TASK-725 dispatch-fix session) |
+| 2026-08-20 | **Owner decision**: build the `BATCH_GENERATION` submission endpoint now, closing the residual the previous entry surfaced. Added `POST /api/v1/generate/batch` (`api/endpoints/generate.py::submit_batch_generation`, co-located with `/generate` — same file, mirroring how `POST /embeddings/batch` sits alongside `POST /embeddings` in `embeddings.py`) plus `GenerateBatchRequest` (`models/requests.py`) and `GenerateBatchAcceptedResponse` (`models/responses.py`). Mirrors `/embeddings/batch`'s module layout, 202 accepted-envelope shape (`task_id`/`status`), and `WorkerPoolQueue.submit` dispatch path (`ShutdownError` → 503 while draining) exactly. Two deliberate additions beyond a literal mirror, both documented inline: (1) `X-Tenant-Id` is REQUIRED via the SAME `_require_inbound_tenant` 428 + `tenantless:<reason>` gate `/generate` already enforces — batch generation drives the same billable `LLMProvider.generate()` call the sync path does, so it carries the same tenant-attribution requirement (owner directive, 2026-08-16), unlike `/embeddings/batch`, which only forwards the header without enforcing it; (2) the provider name is validated against `ProviderRegistry` at submission (same `registry.get()`/`ProviderNotFoundError` → 404 `/generate` performs), so an unknown provider fails fast here rather than only at worker dispatch. **Gateway checked, not touched**: `POST /embeddings/batch` is not proxied anywhere in `apps/api` today (no `embeddings` route in `TextProxyController` or `apps/api/route-manifest.json`) — there is no established gateway convention to mirror and no existing reachability gap for `/generate/batch` to close; both batch endpoints are reachable the same way, directly against `apps/text` behind its own `X-Service-Token` middleware. Added `tests/unit/test_generate_batch_endpoint.py` (10 tests: submit+202 envelope assertions, tenant/idempotency header forwarding, `tenantless:` marker, draining → 503, missing/blank tenant header → 428, missing/blank prompt → 422, unknown provider → 404, and a dispatch round-trip that feeds the endpoint's own built envelope through the real `worker.py::_handle_batch_generation` handler). Evidence: `ruff check apps/text/src/` — all checks passed; `mypy --config-file apps/text/pyproject.toml apps/text/src/` — Success, no issues found in 74 source files; `pytest` scoped to the new test file plus every existing `/generate`, `/embeddings`, worker-pool, and models test file — 143 passed, 0 failed. Status left at Review — this closes the "no submission endpoint" residual only; items 2–4 (no live-infra verification, KEDA manifests deliberately deployment-repo-only, TASK-717 reconciliation still pending) are unaffected and unresolved. | Claude (TASK-725 submission-endpoint session) |

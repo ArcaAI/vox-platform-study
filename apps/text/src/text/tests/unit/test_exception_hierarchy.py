@@ -114,7 +114,7 @@ def settings():
 
 class TestExceptionInheritance:
     @pytest.mark.parametrize("exc_cls,_code", _ALL_EXCEPTIONS)
-    def test_all_exceptions_inherit_from_smr_error(self, exc_cls, _code):
+    def test_all_exceptions_inherit_from_text_error(self, exc_cls, _code):
         assert issubclass(exc_cls, TextError)
 
 
@@ -287,7 +287,7 @@ class TestExceptionHandlerStatusCodes:
         assert resp.status_code == 502
 
     @pytest.mark.asyncio
-    async def test_handler_returns_500_for_base_smr_error(self):
+    async def test_handler_returns_500_for_base_text_error(self):
         from text.core.exception_handlers import text_exception_handler
 
         exc = TextError("generic")

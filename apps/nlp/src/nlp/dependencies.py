@@ -7,7 +7,11 @@ from typing import Any, cast
 import structlog
 from fastapi import Request
 
-from nlp.core.concurrency import ResizableSemaphore, refresh_inference_limit
+from nlp.core.concurrency import (
+    ResizableSemaphore,
+    refresh_inference_limit,
+    refresh_peer_call_limit,
+)
 from nlp.core.config import (
     UNCONFIGURED_DOC_TYPE_CLASSIFIER_MODEL,
     MedicalSuggesterConfig,
@@ -33,6 +37,17 @@ async def get_inference_bound(request: Request) -> ResizableSemaphore:
     background poller. Cheap inside the client's TTL window, and never raises.
     """
     return await refresh_inference_limit(
+        getattr(request.app.state, "effective_config_client", None)
+    )
+
+
+async def get_peer_call_bound(request: Request) -> ResizableSemaphore:
+    """The outbound peer-call bound (TASK-729 §6), with its limit refreshed
+    from the control plane. A SEPARATE semaphore from `get_inference_bound` —
+    see `nlp.core.concurrency.get_peer_call_semaphore` for why sharing the
+    inference bound with `text` delegation was rejected. Never raises.
+    """
+    return await refresh_peer_call_limit(
         getattr(request.app.state, "effective_config_client", None)
     )
 

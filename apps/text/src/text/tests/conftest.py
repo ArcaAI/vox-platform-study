@@ -1,4 +1,4 @@
-"""Shared test fixtures for smr."""
+"""Shared test fixtures for text."""
 
 from __future__ import annotations
 
@@ -18,7 +18,7 @@ from text.core.config import InternalAccessConfig, Settings
 # Test-environment isolation (same defect class fixed in
 # apps/tts/src/tts/tests/conftest.py).
 #
-# `smr/main.py` ends with a module-level `app = create_app()`, which the
+# `text/main.py` ends with a module-level `app = create_app()`, which the
 # uvicorn/Docker entrypoint (`uvicorn text.main:app`) legitimately relies on.
 # That call runs the real `get_settings()`, which loads this machine's
 # gitignored `.env.dev` into `os.environ` via `hope_env.load_env()` — a

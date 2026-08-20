@@ -19,7 +19,7 @@ import pytest
 from text.core.effective_config import EffectiveConfigClient
 
 PAYLOAD = {
-    "service": "smr",
+    "service": "text",
     "generatedAt": "2026-07-20T00:00:00.000Z",
     "runtimeProfiles": [
         {
@@ -60,8 +60,8 @@ def make_client(
 
     client = EffectiveConfigClient(
         base_url="http://gateway.test/api/v1",
-        token="smr-token",
-        service="smr",
+        token="text-token",
+        service="text",
         ttl_s=ttl_s,
         time_func=clock,
         transport=httpx.MockTransport(counting),
@@ -101,8 +101,8 @@ class TestFetch:
         client, _ = make_client(clock, capture)
         await client.get()
 
-        assert seen["token"] == "smr-token"
-        assert "service=smr" in str(seen["url"])
+        assert seen["token"] == "text-token"
+        assert "service=text" in str(seen["url"])
 
     async def test_serves_from_cache_within_the_ttl_window(self) -> None:
         clock = FakeClock()
@@ -206,8 +206,8 @@ class TestSingleFlight:
 
         client = EffectiveConfigClient(
             base_url="http://gateway.test/api/v1",
-            token="smr-token",
-            service="smr",
+            token="text-token",
+            service="text",
             time_func=clock,
             transport=httpx.MockTransport(counting),
         )
@@ -291,7 +291,7 @@ class TestProviderLimits:
     async def test_omits_providers_that_carry_no_opinion(self) -> None:
         clock = FakeClock()
         payload = {
-            "service": "smr",
+            "service": "text",
             "runtimeProfiles": [
                 {"provider": "ollama", "modelSlug": "", "maxConcurrent": None, "timeoutS": None},
                 {"provider": "vllm", "modelSlug": "", "maxConcurrent": 3, "timeoutS": None},
@@ -308,7 +308,7 @@ class TestProviderLimits:
         """Only provider-default rows (modelSlug == '') set service-level capacity."""
         clock = FakeClock()
         payload = {
-            "service": "smr",
+            "service": "text",
             "runtimeProfiles": [
                 {
                     "provider": "ollama",

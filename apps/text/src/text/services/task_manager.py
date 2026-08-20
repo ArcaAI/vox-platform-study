@@ -154,7 +154,7 @@ class TaskManager:
             schema_version=ASYNC_ENVELOPE_SCHEMA_VERSION,
             id=str(uuid7()),
             tenant_id=tenant_id,
-            type=f"smr.stream.{chunk.type}",
+            type=f"text.stream.{chunk.type}",
             occurred_at=datetime.now(UTC).isoformat(),
             correlation_id=correlation_id or task_id,
             causation_id=None,
@@ -187,7 +187,7 @@ class TaskManager:
                     f"unrecognized async envelope schemaVersion in stream data: {doc.get('schemaVersion')!r}"
                 )
             if envelope.payload is None:
-                raise ValueError("enveloped SMR stream chunk carries no inline payload")
+                raise ValueError("enveloped text stream chunk carries no inline payload")
             return StreamChunk.model_validate(envelope.payload)
         return StreamChunk.model_validate_json(raw)
 

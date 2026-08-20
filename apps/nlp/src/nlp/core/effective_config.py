@@ -52,6 +52,21 @@ class EffectiveConfigSnapshot:
             return None
         return _positive_int(concurrency.get("maxConcurrent"))
 
+    def peer_call_max_concurrent(self) -> int | None:
+        """The served OUTBOUND PEER HTTP bound (TASK-729 §6), or None (no opinion).
+
+        A SEPARATE field in the SAME `concurrency` group `max_concurrent()`
+        reads — `nlp` already has one concurrency subset, and this is another
+        ceiling within it, not a new top-level group (mirrors how stt's
+        `workerConcurrency`/`streamingMaxConcurrent` sit alongside its own
+        `maxConcurrent` field). None on fetch failure, an absent group, a null
+        field, or a nonsensical value — never coerced into a real bound.
+        """
+        concurrency = self.raw.get("concurrency")
+        if not isinstance(concurrency, dict):
+            return None
+        return _positive_int(concurrency.get("peerCallMaxConcurrent"))
+
     def retention(self) -> dict[str, int]:
         """Model-cache retention knobs with an opinion.
 
