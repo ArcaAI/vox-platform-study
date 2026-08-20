@@ -153,3 +153,48 @@ export interface PromptTemplateOption {
   id: string;
   name: string;
 }
+
+/**
+ * TASK-733 half (a) — WHICH workflow definition governs a tenant or department for a palette.
+ * Mirrors `WorkflowAssignmentResponse`
+ * (`packages/applications/src/services/workflow-assignment/dto/workflow-assignment.response.ts`)
+ * field-for-field. Only `TENANT` and `DEPARTMENT` scope are writable from this admin surface —
+ * `DOCTOR` is structurally supported by the cascade but is not a product decision anyone has made
+ * (ticket §1.4).
+ */
+export type WorkflowAssignmentScope = 'TENANT' | 'DEPARTMENT';
+
+export interface WorkflowAssignment {
+  id: string;
+  tenantId: string;
+  scope: WorkflowAssignmentScope;
+  scopeId: string | null;
+  paletteKey: string;
+  workflowDefinitionSlug: string;
+  createdAt: string;
+  updatedAt: string;
+  /** OCC row version — echoed back as If-Match/`expectedVersion` on PATCH/DELETE. */
+  version: number;
+}
+
+/** POST/PATCH body (`UpsertWorkflowAssignmentRequest`). PATCH has no `:id` — the controller
+ *  identifies the row by the `(scope, scopeId, paletteKey)` tuple in the body. */
+export interface UpsertWorkflowAssignmentRequest {
+  scope: WorkflowAssignmentScope;
+  scopeId?: string | null;
+  paletteKey: string;
+  workflowDefinitionSlug: string;
+  /** Recorded verbatim on the WORM `WorkflowAssignmentChange` row. */
+  reason?: string;
+  expectedVersion?: number;
+}
+
+/** Minimal department shape for the assignment matrix's row list (id + name/code). Mirrors
+ *  `features/departments/api/types.ts`'s `Department` field-for-field for the subset used here —
+ *  deliberately NOT imported from there (rule 13 §Structure: "features never import each other"). */
+export interface DepartmentOption {
+  id: string;
+  name?: string;
+  code?: string;
+  resourceStatus?: 'ENABLED' | 'DISABLED';
+}

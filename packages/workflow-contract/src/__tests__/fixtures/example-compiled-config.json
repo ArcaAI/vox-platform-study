@@ -1,0 +1,110 @@
+{
+  "formatVersion": 1,
+  "definitionId": "018f1e0a-0000-7000-8000-000000000001",
+  "slug": "summarization-default",
+  "versionNumber": 1,
+  "tenantId": "00000000-0000-0000-0000-000000000000",
+  "paletteKey": "summarization",
+  "compiledAt": "2026-08-16T00:00:00.000Z",
+  "compilerVersion": "0.1.0",
+  "registryChecksum": "reg-checksum-abc",
+  "ruleSetVersion": 1,
+  "stages": [
+    {
+      "stageIndex": 0,
+      "nodes": [
+        {
+          "nodeId": "n_start",
+          "type": "core.start",
+          "activity": "noop",
+          "config": {},
+          "timeoutSeconds": 60,
+          "retry": {
+            "maximumAttempts": 1,
+            "initialIntervalSeconds": 1,
+            "backoffCoefficient": 2
+          },
+          "inputs": [],
+          "onError": "fail",
+          "emitsTrajectory": true
+        }
+      ]
+    },
+    {
+      "stageIndex": 1,
+      "nodes": [
+        {
+          "nodeId": "n_a1",
+          "type": "summarization.generate",
+          "activity": "generate",
+          "config": {
+            "onError": "fail"
+          },
+          "timeoutSeconds": 60,
+          "retry": {
+            "maximumAttempts": 1,
+            "initialIntervalSeconds": 1,
+            "backoffCoefficient": 2
+          },
+          "inputs": [
+            {
+              "fromNodeId": "n_gate",
+              "fromPort": "out",
+              "toPort": "text"
+            }
+          ],
+          "onError": "fail",
+          "emitsTrajectory": true
+        }
+      ]
+    },
+    {
+      "stageIndex": 2,
+      "nodes": [
+        {
+          "nodeId": "n_end",
+          "type": "core.end",
+          "activity": "noop",
+          "config": {},
+          "timeoutSeconds": 60,
+          "retry": {
+            "maximumAttempts": 1,
+            "initialIntervalSeconds": 1,
+            "backoffCoefficient": 2
+          },
+          "inputs": [
+            {
+              "fromNodeId": "n_a1",
+              "fromPort": "out",
+              "toPort": "in"
+            }
+          ],
+          "onError": "fail",
+          "emitsTrajectory": true
+        }
+      ]
+    }
+  ],
+  "gates": [
+    {
+      "nodeId": "n_gate",
+      "gateType": "hitl",
+      "blocking": true,
+      "timeoutSeconds": 600,
+      "onTimeout": "TIMED_OUT"
+    }
+  ],
+  "policyBindings": {
+    "guardrailProfile": "STANDARD",
+    "redactionRuleSetId": null,
+    "promptTemplateRefs": [],
+    "contextSchemaVersionId": null,
+    "entitlementKeys": []
+  },
+  "caps": {
+    "maxTotalSeconds": 3600,
+    "maxNodeSeconds": 600,
+    "maxAttempts": 5
+  },
+  "checksum": "84f94ce4d0b2f5ecd5ba88a308cbd28c377210b738e12f733a2aad0d185270c5"
+}

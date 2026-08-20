@@ -6,21 +6,26 @@
  * over cache cleverness (rule 13). No `fetch` in `useEffect` anywhere in this feature.
  */
 
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQueries, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
+  createWorkflowAssignment,
   createWorkflowDefinition,
+  deleteWorkflowAssignment,
   deleteWorkflowDefinition,
   getWorkflowDefinition,
+  listDepartmentOptions,
   listPromptTemplateOptions,
+  listWorkflowAssignments,
   listWorkflowDefinitionVersions,
   listWorkflowDefinitions,
   listWorkflowNodes,
   publishWorkflowDefinition,
+  updateWorkflowAssignment,
   validateWorkflowDefinition,
   type ListWorkflowDefinitionsParams,
 } from './client';
 import { workflowStudioKeys } from './keys';
-import type { CreateWorkflowDefinitionRequest, PublishWorkflowDefinitionRequest } from './types';
+import type { CreateWorkflowDefinitionRequest, PublishWorkflowDefinitionRequest, UpsertWorkflowAssignmentRequest } from './types';
 
 export function useWorkflowDefinitions(params?: ListWorkflowDefinitionsParams) {
   return useQuery({ queryKey: [...workflowStudioKeys.list(), params ?? {}], queryFn: () => listWorkflowDefinitions(params) });
@@ -74,6 +79,54 @@ export function usePublishWorkflowDefinition() {
   const invalidate = useInvalidateWorkflowStudio();
   return useMutation({
     mutationFn: ({ id, body }: { id: string; body?: PublishWorkflowDefinitionRequest }) => publishWorkflowDefinition(id, body),
+    onSuccess: invalidate,
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Workflow assignments (TASK-733 half (a)).
+// ---------------------------------------------------------------------------
+
+/** The assignment matrix's row source — a self-contained read (rule 13 "features never
+ *  import each other"), not the `features/departments` list. */
+export function useDepartmentOptions() {
+  return useQuery({ queryKey: workflowStudioKeys.departmentOptions(), queryFn: listDepartmentOptions });
+}
+
+/** One palette's raw assignment rows (tenant + department tiers, unresolved — the matrix
+ *  derives inheritance client-side from these). */
+export function useWorkflowAssignments(paletteKey: string) {
+  return useQuery({ queryKey: workflowStudioKeys.assignments(paletteKey), queryFn: () => listWorkflowAssignments(paletteKey) });
+}
+
+/** Every registered palette's assignment rows in parallel — the matrix's columns are
+ *  palette-keyed and the palette set is code-owned (the node registry), never hard-coded. */
+export function useWorkflowAssignmentsForPalettes(paletteKeys: readonly string[]) {
+  return useQueries({
+    queries: paletteKeys.map((paletteKey) => ({
+      queryKey: workflowStudioKeys.assignments(paletteKey),
+      queryFn: () => listWorkflowAssignments(paletteKey),
+    })),
+  });
+}
+
+export function useCreateWorkflowAssignment() {
+  const invalidate = useInvalidateWorkflowStudio();
+  return useMutation({ mutationFn: (body: UpsertWorkflowAssignmentRequest) => createWorkflowAssignment(body), onSuccess: invalidate });
+}
+
+export function useUpdateWorkflowAssignment() {
+  const invalidate = useInvalidateWorkflowStudio();
+  return useMutation({
+    mutationFn: ({ body, etag }: { body: UpsertWorkflowAssignmentRequest; etag: string }) => updateWorkflowAssignment(body, etag),
+    onSuccess: invalidate,
+  });
+}
+
+export function useDeleteWorkflowAssignment() {
+  const invalidate = useInvalidateWorkflowStudio();
+  return useMutation({
+    mutationFn: ({ id, etag, reason }: { id: string; etag: string; reason?: string }) => deleteWorkflowAssignment(id, etag, reason),
     onSuccess: invalidate,
   });
 }

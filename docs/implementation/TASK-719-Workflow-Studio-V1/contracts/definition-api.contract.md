@@ -81,21 +81,26 @@ it, e.g. a badge, since it means a PUBLISHED row may no longer match the live no
 `updatedAt`, `version` (the OCC counter — this is what `versionFromEtag` reads off the `ETag`
 the `ETagInterceptor` derives), `tags`.
 
-## Graph JsonB shape — the "no `position` field" gap is CONFIRMED STILL OPEN
+## Graph JsonB shape — the "no `position` field" gap is CLOSED (2026-08-20)
 
-Re-checked directly against `packages/workflow-contract/src/graph-model.ts:12-16`
-(`WorkflowGraphNode { id: string; type: string; config: Record<string, unknown> }`) — TASK-734
-did not add a `position` field. The prior contract's documented fallback stands and is now the
-ACTIVE plan for Task 11 (not a contingency): the graph store keeps
-`position: { x: number; y: number }` as Studio-local client node state and serializes it into
-`config.__position` at the API-client boundary (a Studio-reserved key, namespaced so it cannot
-collide with a registered node type's own schema fields — doubly safe today since no node type
-has a schema at all, per `registry.contract.md`). One consequence worth naming explicitly here:
-`WorkflowGraphNode.config` is echoed verbatim into `WorkflowFinding.path` when a
-`schema`-ruleClass finding fires on a config field — a finding whose `path` starts with
-`__position` would be a real bug (the validator inspecting Studio's own bookkeeping key), so
-Task 11's serializer must ensure `__position` is stripped or namespaced in a way the validator
-provably never inspects. Recorded for Task 11/15's test list.
+`WorkflowGraphNode` (`packages/workflow-contract/src/graph-model.ts`) now carries `position?: {
+x: number; y: number }` as a first-class, optional sibling of `config` — a real, own-purpose
+type (`WorkflowNodePosition`), not a nested-in-`config` workaround. `workflowGraphProblems`
+validates it when present (must be a plain object with finite numeric `x`/`y`); absent stays
+valid (a graph authored before this field existed, or built entirely through the list/tree
+editor, carries none). The Studio's serializer (`lib/graph-serialization.ts`) writes it there
+directly and reads it back the same way; it still reads the legacy `config.__position` nesting
+as a FALLBACK for a graph already saved under the old scheme, but never writes that shape again.
+`apps/admin-console/src/features/workflow-runs/lib/graph-layout.ts` (the read-only run-trace
+canvas) was updated the same way: `node.position` first, the legacy key as fallback, then the
+deterministic layered layout.
+
+This also fixes a real, previously-live defect the old fallback carried: `compileNode`/
+`compileGate` (`compiler.ts`) copy `node.config` verbatim into `CompiledNode.config`, so nesting
+layout under `config.__position` meant every compile leaked Studio's own canvas-layout
+bookkeeping into the interpreter's input contract (`compiledConfig`) — harmless in practice
+(the interpreter ignores unknown config keys) but a real coupling violation. `position` living
+outside `config` closes that path entirely; `CompiledNode.config` never sees it.
 
 ## Consequence for Studio v1's build order (updated)
 

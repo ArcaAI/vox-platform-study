@@ -8,14 +8,20 @@
 
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
+  createWorkflowAssignment,
   createWorkflowDefinition,
+  deleteWorkflowAssignment,
   deleteWorkflowDefinition,
+  etagFromVersion,
   getWorkflowDefinition,
+  listDepartmentOptions,
   listPromptTemplateOptions,
+  listWorkflowAssignments,
   listWorkflowDefinitions,
   listWorkflowDefinitionVersions,
   listWorkflowNodes,
   publishWorkflowDefinition,
+  updateWorkflowAssignment,
   updateWorkflowDefinition,
   validateWorkflowDefinition,
 } from '../client';
@@ -124,5 +130,51 @@ describe('workflow-studio client', () => {
     expect(options).toEqual([{ id: 't-1', name: 'Discharge' }]);
     const [[url]] = vi.mocked(fetch).mock.calls;
     expect(String(url)).toContain('/api/hope/admin/prompt-templates');
+  });
+});
+
+describe('workflow-assignment client (TASK-733 half (a) Task 6)', () => {
+  it('lists one palette’s assignments via a paletteKey query param', async () => {
+    const calls = installFetchMock();
+    await listWorkflowAssignments('consultation');
+    expect(calls.map((call) => `${call.method} ${call.url}`)).toEqual(['GET /api/hope/admin/workflow-assignments?paletteKey=consultation']);
+  });
+
+  it('creates the first assignment for a tier WITHOUT an If-Match header', async () => {
+    const calls = installFetchMock();
+    await createWorkflowAssignment({ scope: 'DEPARTMENT', scopeId: 'dept-1', paletteKey: 'consultation', workflowDefinitionSlug: 'radiology-note' });
+    expect(calls.map((call) => `${call.method} ${call.url}`)).toEqual(['POST /api/hope/admin/workflow-assignments']);
+    expect(calls[0].headers['if-match']).toBeUndefined();
+    expect(calls[0].body).toEqual({ scope: 'DEPARTMENT', scopeId: 'dept-1', paletteKey: 'consultation', workflowDefinitionSlug: 'radiology-note' });
+  });
+
+  it('PATCHes the collection route (no :id) with If-Match + the ETag-derived expectedVersion', async () => {
+    const calls = installFetchMock();
+    await updateWorkflowAssignment(
+      { scope: 'TENANT', paletteKey: 'consultation', workflowDefinitionSlug: 'new-note', reason: 'switching default' },
+      '"4"',
+    );
+    expect(calls.map((call) => `${call.method} ${call.url}`)).toEqual(['PATCH /api/hope/admin/workflow-assignments']);
+    expect(calls[0].headers['if-match']).toBe('"4"');
+    expect(calls[0].body).toEqual({ scope: 'TENANT', paletteKey: 'consultation', workflowDefinitionSlug: 'new-note', reason: 'switching default', expectedVersion: 4 });
+  });
+
+  it('DELETEs by id with If-Match + an optional reason query param', async () => {
+    const calls = installFetchMock();
+    await deleteWorkflowAssignment('assignment-1', '"2"', 'reverting to platform default');
+    expect(calls.map((call) => `${call.method} ${call.url}`)).toEqual([
+      'DELETE /api/hope/admin/workflow-assignments/assignment-1?reason=reverting+to+platform+default',
+    ]);
+    expect(calls[0].headers['if-match']).toBe('"2"');
+  });
+
+  it('etagFromVersion builds a strong validator string from a list-row version', () => {
+    expect(etagFromVersion(7)).toBe('"7"');
+  });
+
+  it('reads the department options catalog (id + name/code only) with disabled departments excluded', async () => {
+    const calls = installFetchMock();
+    await listDepartmentOptions();
+    expect(calls.map((call) => `${call.method} ${call.url}`)).toEqual(['GET /api/hope/admin/departments?includeDisabled=false']);
   });
 });
