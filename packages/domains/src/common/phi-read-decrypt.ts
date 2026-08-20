@@ -80,6 +80,8 @@ export const PHI_CIPHERTEXT_FIELDS: Readonly<Record<string, PhiPlaintextTarget>>
   encryptedMessageContent: { plaintext: 'messageContent', json: true },
   // PromptTemplate
   encryptedLastTestOutput: { plaintext: 'lastTestOutput' },
+  // WorkflowTestFixture — the saved Workbench test payload
+  encryptedInput: { plaintext: 'input', json: true },
 });
 
 /**
@@ -115,6 +117,7 @@ export const PHI_MODEL_CIPHERTEXT: Readonly<Record<string, readonly string[]>> =
   promptTemplate: ['encryptedLastTestOutput'],
   summaryMeta: ['encryptedCitationsMap', 'encryptedGuardrailDecisions'],
   transcriptionJob: ['encryptedResultMetadata', 'encryptedResultText'],
+  workflowTestFixture: ['encryptedInput'],
 });
 
 /**

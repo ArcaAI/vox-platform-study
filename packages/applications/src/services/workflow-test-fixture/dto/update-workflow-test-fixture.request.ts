@@ -25,7 +25,8 @@ export class UpdateWorkflowTestFixtureRequest {
   workflowDefinitionId?: string;
 
   @ApiPropertyOptional({
-    description: 'Synthetic test input. SYNTHETIC ONLY — do not paste real or realistic patient data.',
+    description:
+      'Synthetic test input. SYNTHETIC ONLY — do not paste real or realistic patient data. Stored encrypted with Vault Transit; supplying it re-encrypts the payload.',
   })
   @IsOptional()
   @IsObject()

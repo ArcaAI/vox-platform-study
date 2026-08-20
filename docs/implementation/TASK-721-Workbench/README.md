@@ -504,7 +504,7 @@ structure and misuse its `EvalRun` relations. A small dedicated model is the cor
 | R1 | **The placement ruling itself.** design.md says the Workbench "extends the playground tier", but every existing tier-50-59 entry declares `required: []` because those screens are own-account planes with plain `@Authorize()` guards (`nav-config.ts:421-426`) | **Ruling: playground tier placement, ability-gated nav entry.** Placement follows design.md and inherits the `(tenant)` route guard plus the `isAdminTier` role check. The `required: []` convention is deliberately broken because the Workbench reads and executes tenant `WorkflowDefinition` rows — a resource ability, not an own-account action. Declaring `[]` would hide a real gate from the nav and diverge from the gateway. Rejected alternative: nesting it inside the Studio as a tab — it would fight the Studio's editor layout for the same viewport, and a run surface is not an editing surface |
 | R2 | **BLOCKING if unmet — TASK-718 may not expose single-node execution.** Requirement 4 of §1 depends entirely on it | **RESOLVED, still unmet.** Re-checked against TASK-720's landed registry (7 real node types) — still no "independently runnable" field on `NodeSpec`. The isolated-node panel is dropped and recorded as a gap (Phase C, this session); the Workbench does **not** simulate node execution client-side |
 | R3 | **BLOCKING if unmet — the run read model's `isSandbox` field is owned by TASK-723.** Task 9's exclusion guardrail needs one filter point | **RESOLVED — TASK-723 landed with exactly this field**, default-excluded (`IWorkflowRunService.listRuns`'s `includeSandbox`, default `false`). This session's `WorkflowSandboxRunService` calls the SAME `recordRunStarted({ isSandbox: true })` — no second marker |
-| R4 | **HUMAN-GATED — fixture PHI posture.** `WorkflowTestFixture.input` is a plain `JsonB` column. "Synthetic" is a contract, not an enforcement; an admin can paste a real transcript into it | The field header comments the contract, and the console labels the field "synthetic input — do not paste patient data". Whether this needs the Vault-Transit treatment `GoldenCase` uses (`harness.prisma:98-102`), or a `phi-redactor` (TASK-710) pass on write, is a **security decision** and is not taken here |
+| R4 | ~~**HUMAN-GATED — fixture PHI posture.** `WorkflowTestFixture.input` is a plain `JsonB` column. "Synthetic" is a contract, not an enforcement; an admin can paste a real transcript into it~~ | **RESOLVED 2026-08-20 (owner ruling): encrypt with Vault Transit, mirroring `GoldenCase`.** The plaintext `input` column is DROPPED; `encryptedInput` (`Bytes?`) + the shared `keyVersion` are the system of record under the dedicated `hope-phi` Transit key. Encrypt-on-write goes through the repository sibling `WorkflowTestFixtureRepository.encryption.ts` behind the shared env-gated guard `encryptPhiFields` (soft no-op in dev/test, FAIL-CLOSED under `SECRETS_PROVIDER=vault`); decrypt-on-read is the SAME global registry every other PHI model uses (`phi-read-decrypt.ts`), so `fixture.input` keeps working for server-side readers (e.g. `WorkflowSandboxRunService`) unchanged. Disclosure narrowed at the DTO: `input` is projected ONLY by the id-scoped reads, never by list pages or the delete ack. "Synthetic only" remains the contract in DTO/UI copy, but it is no longer the only thing standing between a pasted transcript and disk. Full detail: §7.1 below |
 | R5 | Size: this ticket carries a full Prisma→domain→service→controller chain (Tasks 4–6) plus three console surfaces | M is the *intended* size. If Task 2 reveals that TASK-718 already carries a synthetic-input store, Tasks 4–6 collapse and M holds comfortably. If not, **this ticket is realistically L** — promote it rather than compressing the domain-layer work, which rule 03 makes hand-authored and unskippable |
 | R6 | The interpreter's progress stream may replay on reconnect, like the SMR task stream does | Task 2 §4 requires the replay semantics to be recorded before `maxRetries` is chosen. `use-task-stream.ts` is the cautionary precedent |
 | R7 | `payloadRef` may point at content the console is not permitted to resolve (PHI posture, `agent-trajectory.prisma:8-11`) | Pitfall 1: render an explicit "payload not available". Do not add a console-side decryption path |
@@ -862,8 +862,92 @@ $ npx playwright test tests/e2e/workbench.spec.ts --list   → 7 tests listed (u
 `pnpm admin:test:e2e` (same documented `prisma db push --force-reset` refusal every sibling ticket
 in this close-out hits); the manual keyboard/200%-zoom pass (no interactive browser session); R2's
 isolated-node-test gap (`NODE_REGISTRY` still carries no "independently runnable" field, re-checked
-against TASK-720's now-restored registry entries — still absent); R4's fixture PHI-encryption
-open question. No code defects found in this ticket's own files this pass. Status remains Review.
+against TASK-720's now-restored registry entries — still absent). ~~R4's fixture PHI-encryption
+open question~~ — **R4 is RESOLVED as of 2026-08-20, see §7.1.** No code defects found in this
+ticket's own files this pass. Status remains Review.
+
+### 7.1 R4 RESOLVED — `WorkflowTestFixture.input` is Vault-Transit encrypted (2026-08-20)
+
+Owner ruling: the field gets the same treatment `GoldenCase` already gives its PHI-bearing
+`transcript` / `referenceNote`. A label telling users not to paste patient data is not enforcement
+on a PHI platform.
+
+**The GoldenCase pattern mirrored, layer by layer:**
+
+| Layer | GoldenCase | WorkflowTestFixture (this change) |
+|---|---|---|
+| Prisma | plaintext columns DROPPED; `encryptedTranscript`/`encryptedReferenceNote` `Bytes?` + shared `keyVersion` | plaintext `input` DROPPED; `encryptedInput Bytes?` + `keyVersion` (schema + migration `20260820043053_task_721_workflow_test_fixture_encrypt_input` had already landed; this change completes the code that the schema promised) |
+| Model | `GoldenCaseModel` exposes `Uint8Array \| null` ciphertext, no plaintext | `WorkflowTestFixtureModel` likewise — `input` removed, so the auto-mapper structurally cannot write plaintext |
+| Entity | plaintext survives as a TRANSIENT field, `@Secret()` on both plaintext and ciphertext | same: `input` transient + `@Secret()`, `encryptedInput` `@Secret()`, `keyVersion` plain |
+| Mapper | `$toPersistence`/`$toDomain` return the raw Buffer so the auto-mapper does not destructure the typed array | same handler pair for `encryptedInput` |
+| Repository | `GoldenCaseRepository.encryption.ts` — prototype patch + declaration merging, `encryptFieldsIntoEntity` / `decryptFieldsFromEntity` / `findByIdWithDecryptedFields`, `hope-phi` Transit key | `WorkflowTestFixtureRepository.encryption.ts`, identical shape, using the JSON primitives `encryptJsonToCiphertext` / `decryptCiphertextToJson` (the `SummaryMeta` variant of the same helper family) |
+| Decrypt-on-read | `goldenCase: ['encryptedTranscript','encryptedReferenceNote']` in `PHI_MODEL_CIPHERTEXT` | `workflowTestFixture: ['encryptedInput']` + `encryptedInput → { plaintext: 'input', json: true }` in `PHI_CIPHERTEXT_FIELDS`. The schema-parity guard re-derives both maps from the `.prisma` files and stays green |
+| Service | `EvalService.createGoldenCase` calls `encryptFieldsIntoEntity` BEFORE `create`, through the env-gated `encryptPhiFields` guard | `WorkflowTestFixtureService.create` does the same; `update` re-encrypts only when the patch actually touched `input` |
+| DTO | `goldenCaseToMetaResponse` deliberately EXCLUDES the clinical payload | `WorkflowTestFixtureDtoMapper.toResponse` takes `{ includeInput }`, **defaulting to OMIT** so a new call site fails safe. Only the id-scoped reads (`GET /:id`, and the create/update echo of what the caller just supplied) opt in; list pages and the delete ack never carry it |
+
+**PHI-disclosure posture (TASK-776 F-09 must not be reintroduced).** Decryption is not widened
+anywhere: it is the same model-scoped, schema-derived registry, and `workflowTestFixture` declares
+exactly one ciphertext column and no relation edges, so nothing nested is reachable through it.
+Entitlement is unchanged and unchanged-by-design — `@ForbidApiKey()` +
+`@CanManage('WorkflowTestFixture')` on the controller, tenant assertion in the service
+(cross-tenant → 404). Errors never carry the payload: `encryptPhiFields` messages are
+label-only, and `ResourceUpdated` now redacts `input`/`encryptedInput`/`keyVersion` out of the
+change set before it reaches the AuditLog queue (defense-in-depth on top of `scrubPhiForAudit`) —
+the audit records THAT the payload changed, never what it changed to.
+
+**Existing rows.** None to migrate: the committed migration DROPs the plaintext column outright
+and states why — Transit encryption needs a live Vault round-trip that SQL cannot perform, the
+feature is pre-production and still design-gated, and any local/dev row is by this model's own
+contract a synthetic smoke-test fixture that is a trivial re-POST to recreate. No backfill script
+is needed or provided.
+
+**Behavioural consequence to know about.** Under `SECRETS_PROVIDER != vault` (dev/test) there is
+no plaintext column to fall back to, so a fixture written in soft mode round-trips as
+`input = null`. That is the same posture every Phase 6 PHI model already has; any environment that
+must retain fixture payloads runs `SECRETS_PROVIDER=vault`, where the write path is fail-closed.
+
+**Files changed**
+
+- `packages/domains/src/models/generated/core/WorkflowTestFixtureModel.ts`
+- `packages/domains/src/entities/generated/core/WorkflowTestFixtureEntity.ts`
+- `packages/domains/src/mappers/generated/core/WorkflowTestFixtureEntityMapper.ts`
+- `packages/domains/src/repositories/generated/core/WorkflowTestFixtureRepository.encryption.ts` (new) + barrel
+- `packages/domains/src/common/phi-read-decrypt.ts`
+- `packages/domains/src/repositories/__tests__/workflow-test-fixture-encryption.test.ts` (new)
+- `packages/applications/src/services/workflow-test-fixture/{workflow-test-fixture.service.ts,workflow-test-fixture.dto.mapper.ts}`
+- `packages/applications/src/services/workflow-test-fixture/dto/{create,update}-workflow-test-fixture.request.ts`, `workflow-test-fixture.response.ts`
+- `packages/applications/src/services/workflow-test-fixture/__tests__/workflow-test-fixture.service.encryption.test.ts` (new)
+- `apps/admin-console/src/features/workbench/{api/types.ts,components/fixture-picker.tsx}` (copy corrected: the field IS encrypted; `input` optional on the list shape)
+- `apps/api/openapi.json`, `packages/vox-node/src/resources/admin/schemas.ts` (both REGENERATED, drift gate green)
+
+**Evidence (2026-08-20)**
+
+```
+$ npx vitest run packages/domains/src/repositories/__tests__/workflow-test-fixture-encryption.test.ts \
+    packages/domains/src/common/__tests__/phi-read-decrypt.schema-parity.test.ts \
+    packages/domains/src/common/__tests__/phi-read-decrypt.scope.test.ts \
+    packages/applications/src/services/workflow-test-fixture apps/api/src/modules/workflow-test-fixture
+  → Test Files 6 passed (6); Tests 43 passed (43)
+$ npx vitest run packages/domains        → Test Files 151 passed | 1 skipped (152); Tests 1832 passed | 9 todo
+$ pnpm --filter @arcaai/domains typecheck / build            → clean
+$ pnpm --filter @arcaai/applications typecheck               → clean
+$ pnpm api:build                                             → 12/12 successful
+$ pnpm gen:entity:check / gen:factory:check                  → no WorkflowTestFixture coverage drift
+$ pnpm --filter @arcaai/vox-node gen:admin:check             → no drift (52 areas, 390 routes, 353 schemas)
+$ pnpm --filter @arcaai/vox-node typecheck                   → clean
+$ pnpm --filter {domains,applications} lint                  → 0 findings in any WorkflowTestFixture file
+```
+
+**Branch-state caveat recorded for the integrator.** `feat/loop` at `f69e3598f` does not build:
+`packages/domains` carries six dangling barrel/import lines for a `WorkflowInvariantRule` domain
+layer whose files were never committed (TASK-716), and `packages/applications` imports two modules
+that are absent (`common/phi-audit-scrub.ts`, `workflow-exposure/cloud-provider-guard.ts` — the
+latter has history at `60fba0d54`, so it was lost in a merge, not never-written). Verification
+above was produced with those six lines locally commented and two one-line stubs standing in for
+the missing modules; **none of that is in this commit**. Consequences to expect at integration:
+`gen:model/entity/factory:check` still report the `WorkflowInvariantRule` gap, and the
+`appSettings` (13) / `effective-config` (1) applications suites fail for reasons unrelated to this
+change. Task 1 (the Figma design gate) is untouched and the ticket is NOT closed.
 
 ## 8. Change History
 
@@ -873,3 +957,4 @@ open question. No code defects found in this ticket's own files this pass. Statu
 | 2026-08-16 | Phase A (Task 2 contract doc, Task 3 nav placement) and Phase B (Tasks 4–6: `WorkflowTestFixture` Prisma model + migration authored, hand-authored domain layer, application service, gateway CRUD controller) built and verified package-scoped green. Phase C (Tasks 7–11, the Workbench screen) explicitly not attempted — Task 2's own contract verification found the run/live-progress/single-node-execution mechanisms Phase C depends on do not exist yet (TASK-722/723 Pending/mid-flight, interpreter has no single-node dispatch). Design gate (Task 1) untouched — human-gated. No PHI, real or synthetic-realistic, used anywhere. | Execution agent (this session) |
 | 2026-08-17 | Close-out pass. Closed the one previously-gated migration proof by re-running rule 02's shadow-DB recipe against a throwaway `hope_shadow_closeout` database (the ledger was squashed since the last pass; `WorkflowTestFixture`'s schema effect is now part of `20260817000000_init` — confirmed present, confirmed empty-diff). Re-ran domains/database/applications/api/admin-console build+test, all green (see evidence above). No code changes to this ticket's own files. Status remains Review — design gate, e2e execution, and the manual a11y pass are the open items, none closable by this pass. | close-out pass agent |
 | 2026-08-17 | Phase C built: re-verified TASK-722/723's now-landed contract (addendum in `contracts/sandbox-mode.contract.md`), found neither served the Workbench's DRAFT-or-published/always-sandbox requirement, and built the dedicated backend TASK-722's own README delegates to this ticket (`WorkflowSandboxRunService`/`WorkflowSandboxRunController`, fresh-compile-for-sandbox on `IWorkflowDefinitionService`, `payload` wiring through the harness interpreter, RBAC seed gap closed). Built the full Workbench screen (`WorkbenchScreen`/`RunPanel`/`FixturePicker`/`NodeRunInspector`/`RelatedPlaygrounds`/`SandboxBanner`/`SandboxBadge`), reconciled the nav entry against the real landed guard, added the fixed-seed synthetic-fixture PHI-scan safety net (reuses TASK-700's `dna-phi-scan.ts`). Isolated node test (Task 8) confirmed still unsupported by the interpreter (R2) — documented gap, not built. e2e authored (7 cases, Playwright-listable) but not executed — Prisma AI-agent guard on `db push --force-reset`. Mid-session recovery note: an accidental `git stash`/`stash pop` (forbidden by the hard rules) transiently reverted ~63 tracked files across multiple concurrent sibling tickets' in-progress work in this shared tree; fully recovered via `git show stash@{0}:<path>` restoration (read-only git inspection, no further stash/checkout/reset/branch commands), verified file-by-file against the stash snapshot, and cross-checked against two siblings' own newer concurrent edits (`webhook.controller.test.ts`, `knowledge-document.service.ts`) which were correctly left untouched as the more current version. All affected packages re-verified green after recovery (`@arcaai/database` 53/53, `@arcaai/domains` 145/145, `@arcaai/applications` 498/499 [1 transient Prisma-client race from a concurrent build, re-run clean], `apps/api` 214/214, `@arcaai/admin-console` 197/197). Package-scoped `build`/`test`/`lint`/`typecheck` all green; evidence pasted below. | Execution agent (this session) |
+| 2026-08-20 | **R4 RESOLVED — `WorkflowTestFixture.input` encrypted with Vault Transit** (owner ruling). Mirrored the `GoldenCase` pattern end to end rather than inventing one: plaintext column dropped (schema + migration had already landed; this pass wrote the code they promised), `encryptedInput`/`keyVersion` on the model, transient `@Secret()` plaintext on the entity, Bytes-safe mapper handlers, a new `WorkflowTestFixtureRepository.encryption.ts` prototype sibling using the `hope-phi` Transit key, and registration in the global `phi-read-decrypt` registry so every server-side reader keeps working unchanged. Service encrypts before persist through the env-gated `encryptPhiFields` guard (soft no-op in dev/test, fail-closed under `SECRETS_PROVIDER=vault`) and re-encrypts on update only when the patch touched `input`. Disclosure narrowed: the DTO mapper defaults to OMITTING `input`, so only the id-scoped reads project it — list pages and the delete ack never do; `ResourceUpdated` redacts the payload out of the audit change set. No existing rows to migrate (pre-production, synthetic-only by contract — the committed migration DROPs the column and says why). 43 tests green across domains/applications/api incl. round-trip, ciphertext-on-disk and DTO-disclosure cases; openapi.json and the vox-node admin surface regenerated, drift gate clean. Task 1 (Figma design gate) untouched; ticket NOT closed. Full detail and the `feat/loop` branch-state caveat: §7.1. | TASK-721 R4 agent (isolated worktree) |

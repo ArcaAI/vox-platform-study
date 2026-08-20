@@ -38,6 +38,14 @@ export class WorkflowTestFixtureEntityMapper extends BaseMapper<Entities.Workflo
 }
 
 export const WorkflowTestFixtureEntityMapperHandlers = createMapperHandlers<Entities.WorkflowTestFixtureEntity, Models.WorkflowTestFixture>({
-  $toPersistence: {},
-  $toDomain: {},
+  $toPersistence: {
+    // Return the raw ciphertext Buffer directly so the generic auto-mapper does
+    // not destructure the typed array (see GoldenCaseEntityMapper). The
+    // plaintext `input` is NOT a model field any more, so it can never be
+    // written — the mapper's field set is driven by `Models.WorkflowTestFixture`.
+    encryptedInput: (entity) => entity.encryptedInput ?? null,
+  },
+  $toDomain: {
+    encryptedInput: (model) => model.encryptedInput ?? null,
+  },
 });
