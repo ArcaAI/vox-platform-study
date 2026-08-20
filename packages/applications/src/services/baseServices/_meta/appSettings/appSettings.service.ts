@@ -90,8 +90,16 @@ export class AppSettingsService implements IAppSettingsService, OnModuleInit {
   /** Logger instance for this service */
   private readonly logger = new Logger(AppSettingsService.name);
 
-  /** Cache for storing app settings */
-  private _cachedAppSettings!: Map<string, GlobalSettingEntity>;
+  /**
+   * Cache for storing app settings.
+   *
+   * Initialized empty rather than left definitely-unassigned: nothing loads it
+   * before `onModuleInit`, so the key-only accessors (`hasSetting`,
+   * `getAllKeys`) would otherwise throw a `TypeError` in that window instead
+   * of reporting an empty cache. `_cacheInitialized` — not the map's existence
+   * — is what distinguishes "not loaded yet" from "loaded and empty".
+   */
+  private _cachedAppSettings: Map<string, GlobalSettingEntity> = new Map();
 
   /**
    * The TENANT lane — per-tenant overrides for the
@@ -152,9 +160,6 @@ export class AppSettingsService implements IAppSettingsService, OnModuleInit {
       message: 'Service created',
       service: AppSettingsService.name,
     });
-
-    // Initialize cache immediately but don't wait for it
-    this.initializeCache();
   }
 
   /**
@@ -644,22 +649,21 @@ export class AppSettingsService implements IAppSettingsService, OnModuleInit {
   }
 
   /**
-   * Initializes the cache asynchronously
-   */
-  private async initializeCache(): Promise<void> {
-    try {
-      await this.cacheAppSettings();
-    } catch (error) {
-      this.logger.error({
-        message: 'Failed to initialize cache',
-        error: error instanceof Error ? error.message : String(error),
-      });
-      // Don't throw here to allow service to start even if cache fails initially
-    }
-  }
-
-  /**
-   * Ensures cache is initialized before proceeding
+   * Ensures cache is initialized before proceeding.
+   *
+   * This is the ONLY load path, and it runs from `onModuleInit` — never from
+   * the constructor. A constructor cannot await, so warming the cache there
+   * meant a floating promise racing the awaited load below: on a healthy boot
+   * it duplicated the `findAll({})` query, and on any process that builds the
+   * DI graph WITHOUT running lifecycle hooks (`NestFactory.create()` with no
+   * `init()`/`listen()` — how `apps/api/src/scripts/emit-openapi.ts` and
+   * `emit-route-manifest.ts` emit their artifacts offline) it dialled the
+   * database for a cache nothing would ever read, and lost that race to
+   * `process.exit()` as an unattributable `prisma:error` on stderr.
+   *
+   * Removing it changes no boot outcome: the constructor path swallowed its
+   * error, so the P0-5 duplicate-key invariant and a DB-down boot were
+   * already decided here, where `onModuleInit` re-throws.
    */
   private async ensureCacheInitialized(): Promise<void> {
     if (!this._cacheInitialized) {

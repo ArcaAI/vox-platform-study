@@ -36,21 +36,21 @@
  *     throws SYNCHRONOUSLY during `NestFactory.create()` if
  *     `REDIS_HOST`/`REDIS_PORT` are unset (it only checks presence, not
  *     reachability). BullMQ's underlying ioredis client then dials in the
- *     background; it never has to succeed — the bounded `Promise.race`
- *     around `app.close()` below moves on even if it never connects.
+ *     background; it never has to succeed. Those doomed dials are what
+ *     `silenceBullQueueConnectionErrors()` below exists for — see
+ *     `offline-infrastructure.ts` for why an expected error needs an owner
+ *     rather than a mute.
  *   - `JwtStrategy`'s constructor refuses to build (throws) if
  *     `JWT_SECRET_KEY` is empty or the literal shared dev placeholder — any
  *     other non-empty string satisfies it without being a real secret.
  *
  * `DATABASE_URL`/`DIRECT_URL` similarly only need to be well-formed —
  * `CoreDatabaseService` constructs a `PrismaClient` at DI time, which does
- * not connect eagerly. A LIVE-only side effect exists regardless of what's
- * running: `AppSettingsService`'s constructor fires off an unawaited cache
- * warm-up query ("Initialize cache immediately but don't wait for it"),
- * which loses its race against this script's `writeFileSync` every time
- * and surfaces later as a harmless, already-losing DB error on stderr. It
- * cannot be avoided without editing application code, which is out of
- * scope here — it never affects the emitted document or the exit code.
+ * not connect eagerly, and no provider queries at construction time either
+ * (`AppSettingsService` used to warm its cache from its constructor, which
+ * surfaced here as a stray `prisma:error`; that load now lives where it
+ * belongs, in `onModuleInit`, which this script never runs). This emit
+ * therefore reaches NO network service at all.
  */
 import { NestFactory } from '@nestjs/core';
 import { SwaggerModule } from '@nestjs/swagger';
@@ -59,6 +59,7 @@ import { resolve } from 'node:path';
 import { AppModule } from '../app.module';
 import { API_GLOBAL_PREFIX, API_GLOBAL_PREFIX_OPTIONS } from '../global-prefix.config';
 import { buildSwaggerConfig } from '../swagger.config';
+import { silenceBullQueueConnectionErrors } from './offline-infrastructure';
 
 const OUTPUT_PATH = resolve(__dirname, '..', '..', 'openapi.json');
 
@@ -87,6 +88,10 @@ async function main(): Promise<void> {
   // instead, so the real error reaches `main().catch()` and gets printed.
   const app = await NestFactory.create(AppModule, { logger: false, abortOnError: false });
 
+  // FIRST statement after `create()` — the queues' connection errors land a
+  // few ticks later. See `offline-infrastructure.ts`.
+  const silencedQueues = silenceBullQueueConnectionErrors(app);
+
   try {
     app.setGlobalPrefix(API_GLOBAL_PREFIX, API_GLOBAL_PREFIX_OPTIONS);
 
@@ -97,14 +102,15 @@ async function main(): Promise<void> {
 
     const pathCount = Object.keys(document.paths ?? {}).length;
     // eslint-disable-next-line no-console -- CLI script, not application logging
-    console.log(`[emit-openapi] wrote ${pathCount} paths to ${OUTPUT_PATH}`);
+    console.log(`[emit-openapi] wrote ${pathCount} paths to ${OUTPUT_PATH} (${silencedQueues} offline queues quiesced)`);
   } finally {
     // The document is already on disk at this point. `app.close()` is a
     // best-effort courtesy to release DB/Redis handles cleanly — bounded so
     // an unreachable Redis's reconnect backoff (observed ~10s end-to-end
     // with nothing reachable) can never make this script hang or blow a CI
     // timeout. `process.exit()` right after `main()` resolves/rejects tears
-    // down anything still open regardless.
+    // down anything still open regardless. The retries during this window are
+    // silent because of `silenceBullQueueConnectionErrors` above.
     await Promise.race([app.close(), new Promise((r) => setTimeout(r, 5000))]);
   }
 }
