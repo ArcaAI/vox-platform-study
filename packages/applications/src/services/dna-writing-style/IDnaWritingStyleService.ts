@@ -70,6 +70,14 @@ export abstract class IDnaWritingStyleService {
   abstract setDefaultReport(reportId: string, expectedVersion?: number): Promise<DnaReportResponse>;
   /** Erase the caller's OWN learned writing-style profile in full (INV-240). */
   abstract resetMyDnaProfile(): Promise<DnaErasureResponse>;
+  /**
+   * Admin-triggered erasure of a DOCTOR's learned writing-style profile — the
+   * admin half of INV-240's "deletable" requirement, complementing the doctor
+   * self-service {@link resetMyDnaProfile}. Tenant membership is asserted with
+   * `assertUserBelongsToTenant`, so a cross-tenant `doctorId` surfaces as
+   * `NotFoundException` (404-over-403). Soft delete only; idempotent.
+   */
+  abstract resetDoctorDnaProfile(doctorId: string): Promise<DnaErasureResponse>;
   /** Erase one of the caller's own writing-style reports (404 cross-tenant, 403 cross-doctor). */
   abstract deleteReport(reportId: string): Promise<DnaErasureResponse>;
   abstract getVersions(reportId: string): Promise<DnaVersionResponse[]>;

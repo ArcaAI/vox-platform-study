@@ -2884,6 +2884,29 @@
     },
     {
       "controller": "DnaWritingStyleAdminController",
+      "handler": "resetDoctorProfile",
+      "method": "DELETE",
+      "path": "/api/v1/admin/dna-writing-styles/doctor/{doctorId}",
+      "routePath": "/admin/dna-writing-styles/doctor/:doctorId",
+      "svcScopes": [
+        "svc:admin:dna-writing-style:manage"
+      ],
+      "forbidServiceAccount": false,
+      "apiKeyForbidden": true,
+      "apiKeyScopes": [],
+      "requiredPermissions": [
+        [
+          "manage",
+          "DnaWritingStyleReport"
+        ]
+      ],
+      "isPublic": false,
+      "permissionMode": "AND",
+      "requiresIfMatch": false,
+      "apiExcluded": false
+    },
+    {
+      "controller": "DnaWritingStyleAdminController",
       "handler": "getReportForDoctor",
       "method": "GET",
       "path": "/api/v1/admin/dna-writing-styles/doctor/{doctorId}",

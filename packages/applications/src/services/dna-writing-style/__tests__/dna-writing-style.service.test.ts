@@ -1750,6 +1750,77 @@ describe('DnaWritingStyleService', () => {
     });
   });
 
+  // TASK-733 Task 10 — the ADMIN half of INV-240's "deletable" requirement: a
+  // tenant admin resets a DIFFERENT doctor's profile (on request, or as part of
+  // incident response) without impersonating them. Complements the doctor
+  // self-service `resetMyDnaProfile` above and shares its `eraseReports` body,
+  // so the version-counting and soft-delete-only semantics are identical.
+  describe('resetDoctorDnaProfile', () => {
+    it('soft-deletes every report the TARGET doctor owns, counting versions without mutating them', async () => {
+      mockReportRepo.findAllForDoctor.mockResolvedValue([createMockReportEntity({ id: 'report-1', doctorId: 'doctor-5' })]);
+      mockVersionRepo.findAll.mockResolvedValue([createMockVersionEntity({ id: 'v-1' }), createMockVersionEntity({ id: 'v-2' })]);
+
+      const result = await service.resetDoctorDnaProfile('doctor-5');
+
+      expect(result).toEqual({ doctorId: 'doctor-5', deletedReports: 1, deletedVersions: 2 });
+      expect(mockReportRepo.softDelete).toHaveBeenCalledWith('report-1');
+      expect(mockVersionRepo.softDelete).not.toHaveBeenCalled();
+      expect(mockReportRepo.findAllForDoctor).toHaveBeenCalledWith('doctor-5');
+    });
+
+    it('broadcasts a ResourceDeleted SysEvent naming the TARGET doctor, not the acting admin', async () => {
+      mockReportRepo.findAllForDoctor.mockResolvedValue([createMockReportEntity({ id: 'report-1', doctorId: 'doctor-5' })]);
+
+      await service.resetDoctorDnaProfile('doctor-5');
+
+      expect(mockEventEmitter.emit).toHaveBeenCalledWith(
+        'SysEvent.ResourceDeleted',
+        expect.objectContaining({
+          resourceId: 'report-1',
+          data: expect.objectContaining({ kind: 'dna-profile-reset', doctorId: 'doctor-5' }),
+        }),
+      );
+    });
+
+    it('is idempotent — a doctor with no profile resets to zero without error or broadcast', async () => {
+      mockReportRepo.findAllForDoctor.mockResolvedValue([]);
+
+      const result = await service.resetDoctorDnaProfile('doctor-5');
+
+      expect(result).toEqual({ doctorId: 'doctor-5', deletedReports: 0, deletedVersions: 0 });
+      expect(mockReportRepo.softDelete).not.toHaveBeenCalled();
+      expect(mockEventEmitter.emit).not.toHaveBeenCalled();
+    });
+
+    it('never erases a row belonging to another tenant', async () => {
+      mockReportRepo.findAllForDoctor.mockResolvedValue([
+        createMockReportEntity({ id: 'mine', doctorId: 'doctor-5', tenantId: 'tenant-1' }),
+        createMockReportEntity({ id: 'foreign', doctorId: 'doctor-5', tenantId: 'tenant-2' }),
+      ]);
+
+      const result = await service.resetDoctorDnaProfile('doctor-5');
+
+      expect(result.deletedReports).toBe(1);
+      expect(mockReportRepo.softDelete).toHaveBeenCalledWith('mine');
+      expect(mockReportRepo.softDelete).not.toHaveBeenCalledWith('foreign');
+    });
+
+    it('throws BadRequestException when no tenant is in context (nothing erased)', async () => {
+      mockClsService.get.mockImplementation((key: string) => (key === 'user' ? { id: 'user-id-1' } : null));
+
+      await expect(service.resetDoctorDnaProfile('doctor-5')).rejects.toThrow(BadRequestException);
+      expect(mockReportRepo.softDelete).not.toHaveBeenCalled();
+    });
+
+    it("returns 404 (not 403) when the target doctor is not a member of the caller's tenant", async () => {
+      mockUserRoleAssignmentRepo.findFirst.mockResolvedValue(null);
+      mockUserDepartmentRepo.findFirst.mockResolvedValue(null);
+
+      await expect(service.resetDoctorDnaProfile('not-in-tenant')).rejects.toThrow(NotFoundException);
+      expect(mockReportRepo.softDelete).not.toHaveBeenCalled();
+    });
+  });
+
   describe('deleteReport', () => {
     it('soft-deletes a single owned report, counts its versions without mutating them, and broadcasts', async () => {
       mockReportRepo.findById.mockResolvedValue(createMockReportEntity({ id: 'report-1', doctorId: 'user-id-1' }));

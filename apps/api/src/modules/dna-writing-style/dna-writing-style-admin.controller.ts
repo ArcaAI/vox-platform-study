@@ -3,6 +3,7 @@ import {
   DnaReportResponse,
   DnaVersionResponse,
   DnaDashboardResponse,
+  DnaErasureResponse,
   GenerateDnaReportRequest,
   UpdateDnaReportRequest,
   PaginatedQuery,
@@ -12,7 +13,7 @@ import {
 import { DnaJobResponseDto, DnaJobStatusResponseDto } from './dna-writing-style.dto';
 import { PaginatedDnaReportResponse } from './dto';
 import { JobQueue } from '@arcaai/domains';
-import { Controller, Body, Param, Inject, Get, Query, Sse, NotFoundException, type MessageEvent } from '@nestjs/common';
+import { Controller, Body, Param, Inject, Get, Delete, Query, Sse, NotFoundException, type MessageEvent } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth, ApiHeader, ApiParam, ApiQuery, ApiResponse, ApiOperation } from '@nestjs/swagger';
 import { InjectQueue } from '@nestjs/bullmq';
 import { Queue } from 'bullmq';
@@ -170,6 +171,31 @@ export class DnaWritingStyleAdminController {
   @ApiResponse({ status: 400, description: 'Bad request — invalid input' })
   async generateForDoctor(@Param('doctorId') doctorId: string, @Body() dto: GenerateDnaReportRequest): Promise<DnaJobResponse> {
     return this.dnaService.generateDnaReport(doctorId, dto);
+  }
+
+  // TASK-733 Task 10 — the admin half of INV-240's "deletable by the
+  // clinician" requirement: a tenant admin can reset a doctor's profile (on
+  // request, or as part of incident response) without impersonating them.
+  // Soft delete only — the scheduled DNA profile retention purge is the one
+  // sanctioned hard delete. Authorization is the class-level
+  // `@Authorize(['manage','DnaWritingStyleReport'])` + `@ForbidApiKey()` +
+  // `@RequiredSvcScopes(...)`; tenant isolation is enforced in the service via
+  // `assertUserBelongsToTenant`, so a cross-tenant `doctorId` 404s.
+  // The literal `doctor/` prefix keeps it clear of the `:reportId` routes,
+  // matching the existing `generate/:doctorId` idiom above.
+  @Delete('doctor/:doctorId')
+  @ApiOperation({
+    summary: "Erase a doctor's entire learned DNA writing-style profile (admin)",
+    description:
+      'Soft-deletes every DNA writing-style report the doctor owns; the report versions are counted but left in place ' +
+      '(they carry no resourceStatus column and become unreachable once the parent report is deleted). Complements the ' +
+      "doctor's own self-service `DELETE /dna-writing-styles/my-style`. Idempotent — a doctor with no profile gets zero counts.",
+  })
+  @ApiParam({ name: 'doctorId', description: 'Target doctor ID', type: String })
+  @ApiResponse({ status: 200, description: 'Erasure counts', type: DnaErasureResponse })
+  @ApiResponse({ status: 404, description: 'Doctor not found (or not a member of the caller tenant)' })
+  async resetDoctorProfile(@Param('doctorId') doctorId: string): Promise<DnaErasureResponse> {
+    return this.dnaService.resetDoctorDnaProfile(doctorId);
   }
 
   @ApiEndpoint({
