@@ -16,9 +16,14 @@
  * resolver's instance shape is closed (it returns `tenantId` + `userId`, both
  * always present on the row) and is the only instance this pair can ever see.
  */
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { ExecutionContext } from '@nestjs/common';
+import { Reflector } from '@nestjs/core';
 import { createPrismaAbility } from '@casl/prisma';
 import { PolicyEngine, AppAbility, CASL_ENFORCED_PAIRS } from '../policy.engine';
+import { REQUIRED_PERMISSIONS_KEY, PERMISSION_MODE_KEY } from '../authorization.guard';
+import { UnifiedAuthGuard, SUBJECT_INSTANCE_RESOLVER_KEY } from '../unified-auth.guard';
+import { IApiKeyService } from '../../services/apiKey/IApiKeyService';
 import { DEFAULT_POLICIES } from '../../../../database/src/prisma/db_main/seed/01-policy';
 
 const TENANT = 'tenant-1';
@@ -111,5 +116,114 @@ describe('ApiKey enforce — evidence', () => {
     // Role: wired to SHADOW this pass, deliberately not enforced.
     expect(engine.isEnforcedPair('manage', 'Role')).toBe(false);
     expect(engine.isEnforcedPair('read', 'Role')).toBe(false);
+  });
+});
+
+/**
+ * TASK-781 — THE REMOVAL CHANGED NO BEHAVIOUR, proven rather than asserted.
+ *
+ * Owner decision 2026-08-20 removed `read`/`update`/`delete:ApiKey` from
+ * `CASL_ENFORCED_PAIRS` on the finding that they were enforced in NAME ONLY.
+ * "In name only" is a testable claim, so this suite tests it: it drives the
+ * REAL `UnifiedAuthGuard` over the REAL seeded `api-key-own-manage` ability
+ * twice — once with the three pairs listed exactly as TASK-712 had them, once
+ * with the shipped (empty) list — and asserts the outcome is IDENTICAL.
+ *
+ * The two runs can only differ on a request where the guard sees an instance
+ * the caller does not own. `resolveApiKeyInstance` cannot produce one: it
+ * loads its row through `IApiKeyService.fetchById`, which asserts access and
+ * throws 404 (pinned in `apps/api/src/modules/api-key/__tests__/api-key.controller.test.ts`).
+ * So only two branches exist, and both are covered below:
+ *
+ *   1. non-owned key → the resolver THROWS → `runCaslInstanceChecks` swallows
+ *      it → no denial, either way, and the service's 404 answers downstream;
+ *   2. owned key     → the instance verdict is `true` → nothing to enforce.
+ *
+ * The counter-case is included too, as the honesty check: fed the instance the
+ * resolver can never return, the two runs DO diverge — which is what makes the
+ * two invariance assertions above meaningful rather than vacuous.
+ */
+describe('ApiKey enforce removal — behavioural invariance (TASK-781)', () => {
+  /** Exactly what TASK-712 listed, restored here to compare against. */
+  const TASK_712_APIKEY_PAIRS: ReadonlySet<string> = new Set(['read:ApiKey', 'update:ApiKey', 'delete:ApiKey']);
+
+  type Outcome = { allowed: boolean; error?: string; denialsRecorded: number };
+
+  /** Drives the real guard for one `(enforced list, resolver)` combination. */
+  const runGuard = async (enforcedPairs: ReadonlySet<string>, resolver: () => unknown): Promise<Outcome> => {
+    const engine = new PolicyEngine({ client: {}, baseClient: {} } as any, undefined);
+    const ability = abilityFromPolicies([OWN_KEYS]);
+    vi.spyOn(engine, 'buildAbility').mockResolvedValue(ability);
+    vi.spyOn(engine, 'isEnforcedPair').mockImplementation((action: string, subject: string) => enforcedPairs.has(`${action}:${subject}`));
+    const recordEnforceDenial = vi.spyOn(engine, 'recordEnforceDenial').mockImplementation(() => undefined);
+    vi.spyOn(engine, 'recordShadowDivergence').mockImplementation(() => undefined);
+
+    const metadata: Record<string, unknown> = {
+      [REQUIRED_PERMISSIONS_KEY]: [{ action: 'read', subject: 'ApiKey' }],
+      [PERMISSION_MODE_KEY]: 'AND',
+      [SUBJECT_INSTANCE_RESOLVER_KEY]: { resolver, subject: 'ApiKey', enforceGrade: false },
+    };
+
+    const guard = new UnifiedAuthGuard(
+      { getAllAndOverride: vi.fn((key: string) => metadata[key]) } as unknown as Reflector,
+      { extractApiKeyFromRequest: vi.fn().mockReturnValue(null), authenticateByRawKey: vi.fn(), hasScope: vi.fn().mockReturnValue(true) } as unknown as IApiKeyService,
+      engine,
+      { get: vi.fn((key: string) => (key === 'user' ? { id: USER, tenantId: TENANT } : undefined)), set: vi.fn() } as any,
+      undefined,
+      { canActivate: vi.fn().mockResolvedValue(true) },
+    );
+
+    const request = { headers: {}, method: 'GET', url: '/admin/api-keys/key-1', ip: '127.0.0.1', params: { id: 'key-1' } };
+    const context = {
+      switchToHttp: () => ({ getRequest: () => request }),
+      getHandler: () => ({}),
+      getClass: () => ({}),
+    } as unknown as ExecutionContext;
+
+    try {
+      const allowed = await guard.canActivate(context);
+      return { allowed, denialsRecorded: recordEnforceDenial.mock.calls.length };
+    } catch (error) {
+      return { allowed: false, error: error instanceof Error ? error.message : String(error), denialsRecorded: recordEnforceDenial.mock.calls.length };
+    }
+  };
+
+  beforeEach(() => vi.restoreAllMocks());
+
+  it('BRANCH 1 (non-owned key — the only request the pairs existed to deny): identical outcome, listed or not', async () => {
+    // `fetchById` → `assertKeyAccess` → 404. The resolver propagates the throw.
+    const throwingResolver = () => {
+      throw new Error('API key not found');
+    };
+
+    const withPairs = await runGuard(TASK_712_APIKEY_PAIRS, throwingResolver);
+    const shipped = await runGuard(CASL_ENFORCED_PAIRS, throwingResolver);
+
+    expect(withPairs).toEqual(shipped);
+    expect(shipped).toEqual({ allowed: true, denialsRecorded: 0 });
+  });
+
+  it('BRANCH 2 (owned key — access already asserted): identical outcome, listed or not', async () => {
+    const ownedRow = () => ({ tenantId: TENANT, userId: USER });
+
+    const withPairs = await runGuard(TASK_712_APIKEY_PAIRS, ownedRow);
+    const shipped = await runGuard(CASL_ENFORCED_PAIRS, ownedRow);
+
+    expect(withPairs).toEqual(shipped);
+    expect(shipped).toEqual({ allowed: true, denialsRecorded: 0 });
+  });
+
+  it('HONESTY CHECK: the comparison is not vacuous — a foreign instance (which this resolver can never return) DOES diverge', async () => {
+    const foreignRow = () => ({ tenantId: TENANT, userId: 'someone-else' });
+
+    const withPairs = await runGuard(TASK_712_APIKEY_PAIRS, foreignRow);
+    const shipped = await runGuard(CASL_ENFORCED_PAIRS, foreignRow);
+
+    expect(withPairs.allowed).toBe(false);
+    expect(withPairs.error).toMatch(/read:ApiKey/);
+    expect(withPairs.denialsRecorded).toBe(1);
+    // …and with the shipped list the request is allowed through to
+    // `assertKeyAccess`, which answers 404 — the safer status.
+    expect(shipped).toEqual({ allowed: true, denialsRecorded: 0 });
   });
 });

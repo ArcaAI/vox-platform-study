@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { SUBJECT_INSTANCE_RESOLVER_KEY } from '@arcaai/applications';
 import { ApiKeyController } from '../api-key.controller';
 
 const createMockApiKeyService = () => ({
@@ -178,6 +179,68 @@ describe('ApiKeyController', () => {
       expect(mockService.rotateKey).toHaveBeenCalledWith('key-1');
       expect(result.rawKey).toBe('hk_new_secret_raw');
       expect(result.apiKey.id).toBe('key-2');
+    });
+  });
+
+  /**
+   * TASK-781 — WHY `read`/`update`/`delete:ApiKey` were removed from
+   * `CASL_ENFORCED_PAIRS`, proven at the resolver rather than argued in prose.
+   *
+   * An enforced pair only ever exists to deny ONE request: the caller
+   * addressing a row they do not own. This resolver cannot produce an instance
+   * for that request, because it loads the row through
+   * `IApiKeyService.fetchById`, which runs `assertKeyAccess` and throws 404.
+   * `runCaslInstanceChecks` swallows resolver throws by design, so the pair
+   * was structurally unable to move `casl_enforce_denial_total` (TASK-779
+   * F-1). The other half of the removal — that "fixing" it by dropping the
+   * assertion would replace a deliberate 404 with an existence-leaking 403 —
+   * is a property of that same delegation.
+   *
+   * The guard-side half of this proof (identical outcomes with and without the
+   * pairs listed) lives in
+   * `packages/applications/src/authorization/__tests__/casl-conditions.enforce-apikey.test.ts`.
+   */
+  describe('subject-instance resolver (TASK-781 — why the ApiKey pairs are unreachable)', () => {
+    const descriptorFor = (method: keyof ApiKeyController) =>
+      Reflect.getMetadata(SUBJECT_INSTANCE_RESOLVER_KEY, ApiKeyController.prototype[method] as object) as
+        | { resolver: (req: unknown, ctx: { get: (t: unknown) => unknown }) => Promise<Record<string, unknown> | undefined>; subject?: string; enforceGrade: boolean }
+        | undefined;
+
+    const ctxFor = (service: unknown) => ({ get: () => service });
+
+    for (const method of ['fetchById', 'getUsage', 'update', 'delete', 'revoke', 'rotate'] as const) {
+      it(`${method} declares subject 'ApiKey' and never claims enforce grade`, () => {
+        const descriptor = descriptorFor(method);
+        expect(descriptor).toBeDefined();
+        expect(descriptor?.subject).toBe('ApiKey');
+        // The attestation the boot audit consumes. Claiming `true` here while
+        // delegating to `fetchById` is the ONE mis-declaration
+        // `assertCaslEnforcePairReachability` cannot catch.
+        expect(descriptor?.enforceGrade).toBe(false);
+      });
+    }
+
+    it('THE UNREACHABILITY: on a key the caller does not own the resolver THROWS — the guard can never see an instance to deny', async () => {
+      const descriptor = descriptorFor('fetchById');
+      const notOwned = new Error('API key not found'); // `assertKeyAccess` → NotFoundException
+      mockService.fetchById.mockRejectedValue(notOwned);
+
+      await expect(descriptor!.resolver({ params: { id: 'someone-elses-key' } }, ctxFor(mockService))).rejects.toThrow('API key not found');
+      expect(mockService.fetchById).toHaveBeenCalledWith('someone-elses-key');
+    });
+
+    it('and when it does NOT throw, access was already asserted — so the instance verdict could only ever be an allow', async () => {
+      const descriptor = descriptorFor('fetchById');
+      mockService.fetchById.mockResolvedValue({ id: 'key-1', tenantId: 'tenant-1', userId: 'user-1' });
+
+      await expect(descriptor!.resolver({ params: { id: 'key-1' } }, ctxFor(mockService))).resolves.toEqual({ tenantId: 'tenant-1', userId: 'user-1' });
+    });
+
+    it('no id on the request → no row is loaded at all', async () => {
+      const descriptor = descriptorFor('fetchById');
+
+      await expect(descriptor!.resolver({ params: {} }, ctxFor(mockService))).resolves.toBeUndefined();
+      expect(mockService.fetchById).not.toHaveBeenCalled();
     });
   });
 });
