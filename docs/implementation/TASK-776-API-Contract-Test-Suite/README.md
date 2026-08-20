@@ -2,10 +2,12 @@
 
 | Field | Value |
 |---|---|
-| Status | Completed |
-| Type | test / infrastructure |
-| Branch | `feat/loop` |
-| Surfaces | `apps/api`, `packages/applications` (read-only), `.claude/rules` |
+| Status | **Completed** — implementation done and verified; four items below need an OWNER DECISION and should become their own tickets |
+| Type | test / infrastructure, then bugfix (security) |
+| Branch | `feat/loop` (local; not pushed) |
+| Commits | `4c39a6f5e` test suite · `b0e76042e` first fix round · `c13ddd967` PHI decrypt + error envelope + OCC audit + suite to zero |
+| Surfaces | `apps/api`, `packages/applications`, `packages/domains`, `packages/database`, `.claude/rules` |
+| Final state | e2e **1083 passed / 0 failed** (CI config, twice, no DB reset between); unit 3881 · 9566 · 1821 · 1541; builds/tsc/lint/drift all clean |
 
 ## Requirement Analysis
 
@@ -113,7 +115,7 @@ controllers) and user (`password-reset`, `user-preferences`) — each asserting 
 plus the authorization metadata actually present on the handler/class, so decorator drift fails a
 test. `billing` was found to already have full coverage and was correctly left alone.
 
-## Verification
+## Verification (initial test-suite round, 2026-08-19)
 
 | Gate | Result |
 |---|---|
@@ -124,7 +126,11 @@ test. `billing` was found to already have full coverage and was correctly left a
 | `vox-node gen:admin:check` | no drift (52 areas, 390 routes) |
 | manifest determinism | identical sha256 across two runs |
 
-## Findings (behavior pinned as-is; no production code changed)
+## Findings — initial round (2026-08-19; behaviour pinned as-is, no production code changed YET)
+
+> Superseded in part by the follow-up round below: F-01/F-02/F-03 were subsequently FIXED, F-04/F-05/F-06
+> closed as not-defects, and F-08 merged into F-09. The table is kept as the record of what the test
+> suite originally pinned.
 
 | Id | Finding |
 |---|---|
@@ -138,7 +144,7 @@ test. `billing` was found to already have full coverage and was correctly left a
 F-01 and F-02 are the two with client-visible consequences and are the recommended follow-ups.
 None is an authorization hole: **no credential class reached a route it should not.**
 
-## Test Hygiene (idempotency)
+## Test Hygiene (idempotency) — initial round
 
 The e2e stack is normally run with `RESET_DB=false` against a shared, already-seeded test DB, so
 specs that create rows MUST clean up after themselves. The two specs that create departments track
@@ -151,13 +157,6 @@ observed flake — a different test failed on each run — before the id-trackin
 
 Verified idempotent: three consecutive full runs, 75 passed each, 0 leftover `t776-*` rows after
 every run.
-
-## Change History
-
-| Date | Change |
-|---|---|
-| 2026-08-19 | Initial implementation: manifest extended, 5 e2e specs (75 tests), 66 controller unit tests, rules updated (`05-nestjs-api.md` §API Test Standard, `01-development-workflow.md`, rules `README.md` v6.5.0). Six findings recorded. |
-| 2026-08-19 | Test hygiene: added worker-local id-tracked cleanup to the two department-creating specs after observing cross-worker deletion flake; purged 123 leaked rows from earlier runs; verified idempotency over three consecutive runs. |
 
 ## Follow-up findings (post-fix review round)
 
@@ -371,3 +370,39 @@ starting resolved it, after which the gateway correctly returns **404** for an u
 the documented "upstream 4xx propagates" behaviour, rather than the 503 seen when the service is
 absent. The precise mechanism behind the 401 was not isolated; recorded here as a runbook note, not
 as a diagnosed defect.
+
+## Open items — owner decisions / follow-up tickets
+
+Nothing below is a regression from this ticket. Each is recorded rather than patched because it
+needs a decision or is breaking.
+
+| Item | Why it is not done here |
+|---|---|
+| **F-10** — audit snapshots persist PHI **plaintext** beside the ciphertext (`AuditLog.data.content`), written at audit time and streamed by `/admin/audit-logs/export` | Genuine fork: "deliberate plaintext for forensic reconstruction" is defensible, but encrypting the source column and silently copying the plaintext next to it is not. Needs an owner call on retention/export posture, then a shared PHI-transient scrub in the audit path (`scrubLockedForAudit` is the existing pattern, never generalised). **Highest-value follow-up.** |
+| **REST H-1 route flips** (tier A: 7 routes; tier B: 42 needing a DTO `version` first) | Breaking — adding `@RequiresIfMatch()` turns every current caller into a 428. Needs `@arcaai/vox` + `vox-node` + admin console to send `If-Match` first. Detection, inventory and the phased plan are in `occ-coverage-inventory.md`; the audit is warn-only until the inventory is empty. |
+| **Weak Express ETag** — 226 of 322 GETs (70%) hand out a validator the write path never accepts, and on tier-B routes `If-Match` is **silently discarded** while the client believes the write was conditional | Recommendation is `app.set('etag', false)` (measured: keeps 304s on all 96 strong-ETag routes). It changes what every client observes on GET, so it belongs at phase 0a, ahead of the SDK work. |
+| **F-07** — nine sub-collection routes return `200` with an empty payload for a NONEXISTENT parent (`/admin/users/{missing}/roles`) | Not a leak; a client simply cannot distinguish "no roles" from "no such user". Small, unowned, deferred. |
+
+Smaller, mechanical follow-ups: `ApiErrorResponse` (`packages/applications`) no longer documents the
+`code`/`details` keys the interceptor spreads, so Swagger under-describes the envelope; `vox-node`'s
+`admin-resource.ts` carries a now-stale comment and workaround for the F-02 `limit: 0` bug that no
+longer exists; and the two sanctioned `@NoOptimisticConcurrency()` cases are recorded in an
+in-audit map rather than on their controllers (those files were owned by other work at the time).
+
+Also still open from the REST review, untouched here: M-1 (`201` on ~25 routes that create nothing;
+no `Location` header anywhere), M-2 (45 bare-array list endpoints vs 24 paginated; several unbounded),
+M-3 (`ETag` is write-only — no `If-None-Match`/304 handling of our own), M-5 (no `Deprecation`/`Sunset`
+on the 32 redirect-shim routes), M-6 (`Idempotency-Key` exists on the internal plane but not on the
+expensive client-facing creates).
+
+## Change History
+
+| Date | Change |
+|---|---|
+| 2026-08-19 | Initial implementation: manifest extended, 5 e2e specs (75 tests), 66 controller unit tests, rules updated (`05-nestjs-api.md` §API Test Standard, `01-development-workflow.md`, rules `README.md` v6.5.0). Six findings recorded. |
+| 2026-08-19 | Test hygiene: added worker-local id-tracked cleanup to the two department-creating specs after observing cross-worker deletion flake; purged 123 leaked rows from earlier runs; verified idempotency over three consecutive runs. |
+| 2026-08-20 | Follow-up round: fixed C-01 (cross-tenant PHI on DNA job routes), H-01 (`?token=` JWT-in-URL on all 656 routes), H-02 (fail-open ticket-scope registry), M-01/M-02 (SSE refcount leak + shared-Subject starvation), F-01/F-02/F-03. Closed F-04/F-05/F-06 as not-defects with evidence. |
+| 2026-08-20 | Self-inflicted regressions caught by the FULL suite and fixed: R-1 (no-op payload skipped the OCC precondition), R-2 (ticket mint over-tightened, admin SSE route unusable), R-3 (PUT idempotency broken on 7 upsert routes). |
+| 2026-08-20 | F-09 fixed — PHI decrypt crash AND silent-disclosure path; schema-derived model scoping + parity test. F-10 recorded (audit snapshots persist PHI plaintext) — NOT fixed, owner decision. |
+| 2026-08-20 | REST H-2 unified error envelope (additive, incl. a catch-all filter for guard-thrown 401/403). REST H-1 phase 1: warn-only OCC coverage audit, `@NoOptimisticConcurrency()`, `occ-coverage-inventory.md`. No route flipped. |
+| 2026-08-20 | Suite driven to ZERO failures: 3 once-per-DB specs made idempotent, 1 spec whose premise the tracked `.env.sample` contradicts rewritten, 1 stale mock from TASK-772 fixed, 1 real-work test given the house timeout override, `@arcaai/database` build (TASK-735/778 seed types) repaired. |
