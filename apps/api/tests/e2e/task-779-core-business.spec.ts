@@ -17,7 +17,7 @@
  *    is unavailable the gateway answers a typed 503 and mints NO job — it never
  *    hands back a phantom job id or an empty success;
  *  - the job read plane's 401/404 — assertions that exist today only in
- *    `consultation-jobs.e2e-spec.ts`, a file the Playwright `testMatch`
+ *    `consultation-jobs.spec.ts`, a file the Playwright `testMatch`
  *    (`**\/*.spec.ts`) does not select, so they have never run (ticket finding F-3).
  *
  * FIXTURE HYGIENE: every consultation is opened for a patient id unique to this

@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { BadRequestException } from '@nestjs/common';
 import { ValueType } from '@arcaai/domains';
 import { RateLimitAdminService } from '../rate-limit-admin.service';
+import { RATE_LIMIT_TENANT_ID } from '../rate-limit.constants';
 
 const cache = new Map<string, { id: string; version: number; value?: string }>();
 const values = new Map<string, unknown>();
@@ -89,7 +90,7 @@ describe('RateLimitAdminService', () => {
 
       await makeService().setTier('default', { limit: 10000 });
 
-      expect(tenantSeenByWrite).toBe('50000000-0000-0000-0000-000000000000');
+      expect(tenantSeenByWrite).toBe(RATE_LIMIT_TENANT_ID);
       expect(clsStore.tenantId).toBe('50000000-0000-0000-0000-000000000001');
     });
 
@@ -98,7 +99,7 @@ describe('RateLimitAdminService', () => {
 
       await makeService().setEnabled(false);
 
-      expect(tenantSeenByWrite).toBe('50000000-0000-0000-0000-000000000000');
+      expect(tenantSeenByWrite).toBe(RATE_LIMIT_TENANT_ID);
     });
   });
 
@@ -124,7 +125,7 @@ describe('RateLimitAdminService', () => {
           value: 'true',
           dataType: ValueType.Boolean,
           namespace: 'rate-limit',
-          tenantId: '50000000-0000-0000-0000-000000000000',
+          tenantId: RATE_LIMIT_TENANT_ID,
         }),
       );
       expect(appSettings.refreshCache).toHaveBeenCalledTimes(1);

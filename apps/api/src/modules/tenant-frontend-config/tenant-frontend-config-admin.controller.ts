@@ -1,7 +1,7 @@
 import { ITenantFrontendConfigService, TenantFrontendConfigResponse, UpsertTenantFrontendConfigRequest } from '@arcaai/applications';
 import { Body, Controller, Get, Inject, Put, Query } from '@nestjs/common';
 import { ApiBearerAuth, ApiHeader, ApiOperation, ApiQuery, ApiResponse, ApiTags } from '@nestjs/swagger';
-import { CanAny, ExpectedVersion, ForbidApiKey, RequiredSvcScopes } from '../../decorators';
+import { CanAny, ExpectedVersion, ForbidApiKey, NoOptimisticConcurrency, RequiredSvcScopes } from '../../decorators';
 
 /**
  * Admin API for the per-tenant FRONTEND audio-pipeline defaults.
@@ -40,6 +40,7 @@ export class TenantFrontendConfigAdminController {
   }
 
   @Put()
+  @NoOptimisticConcurrency('create-or-update: one row per tenant, OCC applies on UPDATE only; first-time creation legitimately carries no version')
   @ApiOperation({
     summary: 'Create or update the tenant frontend pipeline config',
     description:

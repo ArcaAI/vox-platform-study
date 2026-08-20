@@ -1,5 +1,5 @@
 import type { CorePrismaClient } from '../../../client';
-import { TranscriptionMode } from '../../../generated/core-prisma-client/client.js';
+import { TenantPlan, TranscriptionMode } from '../../../generated/core-prisma-client/client.js';
 import { SEED_TENANT_ID, SEED_CUSTOMER_TENANT_IDS, SYSTEM_TENANT_ID } from './00-constants';
 
 export { SEED_TENANT_ID as DEFAULT_TENANT_ID } from './00-constants';
@@ -40,6 +40,12 @@ const CUSTOMER_TENANTS = [
     // suite; that is a consequence of being a real second tenant, not its
     // purpose.
     description: 'ArcaAI — the day-1 customer tenant: clinical departments, approved prompt library, agent defaults, tenant administrator and machine identity. Tenant-scoped like any customer; never a config tier.',
+    // TASK-766 OD-2 (owner decision, 2026-08-20): ArcaAI is the one seeded
+    // tenant with a commercially-modelled plan. Every other seeded tenant
+    // (SYSTEM, Global) keeps `plan = null` and resolves ungated-legacy via
+    // `resolveEntitlements`'s Q3 rule — see
+    // packages/applications/src/services/entitlements/resolve-entitlements.ts.
+    plan: TenantPlan.ENTERPRISE,
   },
 ];
 

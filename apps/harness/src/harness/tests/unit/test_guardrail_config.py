@@ -78,13 +78,16 @@ class TestSafetyGuardConfig:
         with pytest.raises(ValidationError):
             SafetyGuardConfig()
 
-    def test_ollama_provider_rejected(self, monkeypatch: pytest.MonkeyPatch):
-        # R1 (TASK-736): Ollama is removed entirely — a deployment whose env still
-        # sets HARNESS_SAFETY_PROVIDER=ollama must now fail startup validation
-        # (fail-fast) rather than silently running against a removed engine.
+    def test_ollama_provider_accepted(self, monkeypatch: pytest.MonkeyPatch):
+        # Owner decision 2026-08-20 (TASK-736/TASK-740 D-740-3): Ollama provider
+        # logic stays available, including for the safety guard. Ollama's
+        # ``/v1`` endpoint speaks the OpenAI wire, so it is selected the same
+        # way as "lm-studio" — no native-transport branch is added anywhere.
         monkeypatch.setenv("HARNESS_SAFETY_PROVIDER", "ollama")
-        with pytest.raises(ValidationError):
-            SafetyGuardConfig()
+        monkeypatch.setenv("HARNESS_SAFETY_BASE_URL", "http://localhost:11434/v1")
+        c = SafetyGuardConfig()
+        assert c.provider == "ollama"
+        assert c.base_url == "http://localhost:11434/v1"
 
     def test_harm_criteria_parsed_from_env_json(self, monkeypatch: pytest.MonkeyPatch):
         monkeypatch.setenv("HARNESS_SAFETY_HARM_CRITERIA", '["harm", "violence"]')
@@ -102,10 +105,10 @@ class TestPhiConfig:
         # The known-LOCAL providers — everything else (including a provider not
         # in this list) defaults to redact-and-confirm (default-deny; TASK-706).
         assert "lm-studio" in c.local_providers
-        # R1 (TASK-736): Ollama is removed entirely, so it is no longer treated
-        # as local — an ollama-routed call now falls into the default-deny
-        # (redact-and-confirm) branch like any unrecognized provider.
-        assert "ollama" not in c.local_providers
+        # Owner decision 2026-08-20 (TASK-736/TASK-740 D-740-3): Ollama provider
+        # logic stays available, and it is a local (non-egress) engine like
+        # lm-studio/vllm/llama-cpp — it belongs back on the PHI local allowlist.
+        assert "ollama" in c.local_providers
         assert "azure" not in c.local_providers
         assert "bedrock" not in c.local_providers
 

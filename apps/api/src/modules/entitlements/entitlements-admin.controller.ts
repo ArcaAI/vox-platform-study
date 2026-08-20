@@ -1,5 +1,5 @@
 import { Body, Controller, Delete, Get, Inject, Param, Patch, Post, Put } from '@nestjs/common';
-import { ApiBearerAuth, ApiOkResponse, ApiOperation, ApiParam, ApiTags } from '@nestjs/swagger';
+import { ApiBearerAuth, ApiHeader, ApiOkResponse, ApiOperation, ApiParam, ApiResponse, ApiTags } from '@nestjs/swagger';
 import {
   DowngradeReport,
   EntitlementCapabilitiesResponse,
@@ -11,7 +11,7 @@ import {
   UpdatePlanEntitlementRequest,
   UpsertTenantEntitlementRequest,
 } from '@arcaai/applications';
-import { Authorize, ForbidApiKey, RequiredSvcScopes } from '../../decorators';
+import { Authorize, ExpectedVersion, ForbidApiKey, RequiredSvcScopes, RequiresIfMatch } from '../../decorators';
 import { EntitlementsEnabledResponse, SetEnforcementEnabledRequest, TriggerDowngradeRequest } from './dto';
 
 /**
@@ -78,11 +78,34 @@ export class EntitlementsAdminController {
   }
 
   @Patch('plans/:plan')
-  @ApiOperation({ summary: 'Edit a plan default row (OCC via expectedVersion → 412 on drift).' })
+  @RequiresIfMatch()
+  @ApiOperation({
+    summary: 'Edit a plan default row.',
+    description:
+      'Optimistic concurrency is ENFORCED: the `If-Match` header (RFC 7232) is REQUIRED and carries the strong ' +
+      'validator the client read from the row GET. When present it overrides the body-field `expectedVersion`. ' +
+      'Version drift is `412 Precondition Failed`; a missing header is `428 Precondition Required`.',
+  })
+  @ApiHeader({
+    name: 'If-Match',
+    description: 'RFC 7232 strong validator carrying the version the client read (e.g. `"7"`).',
+    required: true,
+    example: '"7"',
+  })
   @ApiParam({ name: 'plan', example: 'PRO' })
   @ApiOkResponse({ type: PlanEntitlementResponse })
-  updatePlan(@Param('plan') plan: string, @Body() body: UpdatePlanEntitlementRequest): Promise<PlanEntitlementResponse> {
-    return this.entitlements.updatePlanEntitlement(plan, body);
+  @ApiResponse({ status: 412, description: 'Optimistic concurrency conflict — re-fetch and try again with the new version.' })
+  @ApiResponse({ status: 428, description: 'If-Match header is required for this operation.' })
+  updatePlan(
+    @Param('plan') plan: string,
+    @Body() body: UpdatePlanEntitlementRequest,
+    @ExpectedVersion() expectedFromHeader: number | undefined,
+  ): Promise<PlanEntitlementResponse> {
+    // Header wins over the body field when both are present (house pattern —
+    // `department.controller.ts#update`). On this `@RequiresIfMatch()` route the
+    // param decorator already fired 428 when the header was absent.
+    const effective: UpdatePlanEntitlementRequest = expectedFromHeader !== undefined ? { ...body, expectedVersion: expectedFromHeader } : body;
+    return this.entitlements.updatePlanEntitlement(plan, effective);
   }
 
   // ── Per-tenant override (Q1/Q7) + snapshot ────────────────────────────────
@@ -104,11 +127,32 @@ export class EntitlementsAdminController {
   }
 
   @Put('tenants/:tenantId/override')
-  @ApiOperation({ summary: 'Create-or-update a tenant override ("increase on demand", Q7). OCC required to update.' })
+  @RequiresIfMatch()
+  @ApiOperation({
+    summary: 'Create-or-update a tenant override ("increase on demand", Q7).',
+    description:
+      'Optimistic concurrency is ENFORCED: the `If-Match` header (RFC 7232) is REQUIRED. On an EXISTING override ' +
+      'echo the validator the row GET returned; on the FIRST create the GET answers `null` (no row, no ETag), so ' +
+      'send the create-intent validator `If-Match: "0"`. Version drift is `412 Precondition Failed`; a missing ' +
+      'header is `428 Precondition Required`.',
+  })
+  @ApiHeader({
+    name: 'If-Match',
+    description: 'RFC 7232 strong validator: the version read from the override GET, or `"0"` to create the first override.',
+    required: true,
+    example: '"0"',
+  })
   @ApiParam({ name: 'tenantId' })
   @ApiOkResponse({ type: TenantEntitlementResponse })
-  upsertOverride(@Param('tenantId') tenantId: string, @Body() body: UpsertTenantEntitlementRequest): Promise<TenantEntitlementResponse> {
-    return this.entitlements.upsertTenantEntitlement(tenantId, body);
+  @ApiResponse({ status: 412, description: 'Optimistic concurrency conflict — re-fetch and try again with the new version.' })
+  @ApiResponse({ status: 428, description: 'If-Match header is required for this operation.' })
+  upsertOverride(
+    @Param('tenantId') tenantId: string,
+    @Body() body: UpsertTenantEntitlementRequest,
+    @ExpectedVersion() expectedFromHeader: number | undefined,
+  ): Promise<TenantEntitlementResponse> {
+    const effective: UpsertTenantEntitlementRequest = expectedFromHeader !== undefined ? { ...body, expectedVersion: expectedFromHeader } : body;
+    return this.entitlements.upsertTenantEntitlement(tenantId, effective);
   }
 
   @Delete('tenants/:tenantId/override')

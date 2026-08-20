@@ -235,8 +235,16 @@ export class TenantIdpConfigService extends BaseService implements ITenantIdpCon
       throw new BadRequestException('Identity provider federation requires the Vault secrets provider (SECRETS_PROVIDER=vault).');
     }
 
+    // OCC precondition FIRST — `PUT :id/directory-credentials` carries
+    // `@RequiresIfMatch()`, so a stale admin must be told to refetch (412)
+    // before we seal a bundle into Vault against a row that has moved.
+    this.assertExpectedVersion(row, dto.expectedVersion, 'tenantIdentityProvider');
+
     row.directoryCredentialsRef = await this.secretsService.encrypt(Buffer.from(JSON.stringify(dto.credentials), 'utf8'));
-    const updated = await this.providerRepository.update(row.id, row);
+    const updated =
+      dto.expectedVersion === undefined
+        ? await this.providerRepository.update(row.id, row)
+        : await this.providerRepository.updateWithVersion(row.id, row, dto.expectedVersion);
 
     // A stale cached client keeps the OLD credentials — evict so the next
     // sync/login resolves fresh.

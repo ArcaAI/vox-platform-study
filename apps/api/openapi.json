@@ -14183,6 +14183,11 @@
           "credentials": {
             "description": "Directory-provider-specific credential bundle (JSON-stringified, then Vault-sealed)",
             "type": "object"
+          },
+          "expectedVersion": {
+            "description": "Row version the client read (OCC). The `If-Match` header overrides it.",
+            "example": 1,
+            "type": "number"
           }
         },
         "required": [
@@ -20393,6 +20398,12 @@
             },
             "type": "array"
           },
+          "configSchema": {
+            "additionalProperties": true,
+            "description": "The node type’s config JSON Schema (authorable subset), or null when none has been authored for it yet — a real, structural state, not every node type has one.",
+            "nullable": true,
+            "type": "object"
+          },
           "critical": {
             "description": "Code-owned safety property — never tenant-configurable.",
             "type": "boolean"
@@ -24469,7 +24480,8 @@
                 "TenantNlpTaskInstructions",
                 "KnowledgeDocument",
                 "ServiceAccount",
-                "WorkflowAssignment"
+                "WorkflowAssignment",
+                "WorkflowInvariantRule"
               ],
               "type": "string"
             }
@@ -24699,7 +24711,8 @@
                 "TenantNlpTaskInstructions",
                 "KnowledgeDocument",
                 "ServiceAccount",
-                "WorkflowAssignment"
+                "WorkflowAssignment",
+                "WorkflowInvariantRule"
               ],
               "type": "string"
             }
@@ -24930,7 +24943,8 @@
                 "TenantNlpTaskInstructions",
                 "KnowledgeDocument",
                 "ServiceAccount",
-                "WorkflowAssignment"
+                "WorkflowAssignment",
+                "WorkflowInvariantRule"
               ],
               "type": "string"
             }
@@ -28432,6 +28446,7 @@
         ]
       },
       "patch": {
+        "description": "Optimistic concurrency is ENFORCED: the `If-Match` header (RFC 7232) is REQUIRED and carries the strong validator the client read from the row GET. When present it overrides the body-field `expectedVersion`. Version drift is `412 Precondition Failed`; a missing header is `428 Precondition Required`.",
         "operationId": "EntitlementsAdminController_updatePlan",
         "parameters": [
           {
@@ -28440,6 +28455,16 @@
             "required": true,
             "schema": {
               "example": "PRO",
+              "type": "string"
+            }
+          },
+          {
+            "description": "RFC 7232 strong validator carrying the version the client read (e.g. `\"7\"`).",
+            "in": "header",
+            "name": "If-Match",
+            "required": true,
+            "schema": {
+              "example": "\"7\"",
               "type": "string"
             }
           }
@@ -28464,6 +28489,12 @@
               }
             },
             "description": ""
+          },
+          "412": {
+            "description": "Optimistic concurrency conflict — re-fetch and try again with the new version."
+          },
+          "428": {
+            "description": "If-Match header is required for this operation."
           }
         },
         "security": [
@@ -28474,7 +28505,7 @@
             "bearer": []
           }
         ],
-        "summary": "Edit a plan default row (OCC via expectedVersion → 412 on drift).",
+        "summary": "Edit a plan default row.",
         "tags": [
           "admin-entitlements"
         ]
@@ -28637,6 +28668,7 @@
         ]
       },
       "put": {
+        "description": "Optimistic concurrency is ENFORCED: the `If-Match` header (RFC 7232) is REQUIRED. On an EXISTING override echo the validator the row GET returned; on the FIRST create the GET answers `null` (no row, no ETag), so send the create-intent validator `If-Match: \"0\"`. Version drift is `412 Precondition Failed`; a missing header is `428 Precondition Required`.",
         "operationId": "EntitlementsAdminController_upsertOverride",
         "parameters": [
           {
@@ -28644,6 +28676,16 @@
             "name": "tenantId",
             "required": true,
             "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "RFC 7232 strong validator: the version read from the override GET, or `\"0\"` to create the first override.",
+            "in": "header",
+            "name": "If-Match",
+            "required": true,
+            "schema": {
+              "example": "\"0\"",
               "type": "string"
             }
           }
@@ -28668,6 +28710,12 @@
               }
             },
             "description": ""
+          },
+          "412": {
+            "description": "Optimistic concurrency conflict — re-fetch and try again with the new version."
+          },
+          "428": {
+            "description": "If-Match header is required for this operation."
           }
         },
         "security": [
@@ -28678,7 +28726,7 @@
             "bearer": []
           }
         ],
-        "summary": "Create-or-update a tenant override (\"increase on demand\", Q7). OCC required to update.",
+        "summary": "Create-or-update a tenant override (\"increase on demand\", Q7).",
         "tags": [
           "admin-entitlements"
         ]
@@ -37215,7 +37263,7 @@
     },
     "/api/v1/admin/tenant-idp-config/{id}/directory-credentials": {
       "put": {
-        "description": "Vault-seals the credential bundle into directoryCredentialsRef. Shape matches config.directoryProvider (ms-graph: {azureTenantId, clientId, clientSecret}; google-directory: {serviceAccountEmail, privateKey, delegatedAdminEmail, customerId?}). Write-only — never echoed back. No If-Match (a narrow secret rotation, same posture as the client secret's own rotation on PUT :id).",
+        "description": "Vault-seals the credential bundle into directoryCredentialsRef. Shape matches config.directoryProvider (ms-graph: {azureTenantId, clientId, clientSecret}; google-directory: {serviceAccountEmail, privateKey, delegatedAdminEmail, customerId?}). Write-only — never echoed back. Optimistic concurrency is ENFORCED, the same posture as `PUT :id`: `If-Match` (RFC 7232) is REQUIRED and overrides the body-field `expectedVersion`; drift is `412`, a missing header is `428`.",
         "operationId": "TenantIdpConfigAdminController_setDirectoryCredentials",
         "parameters": [
           {
@@ -37232,6 +37280,16 @@
             "name": "tenantId",
             "required": false,
             "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "RFC 7232 strong validator carrying the provider-row version the client read (e.g. `\"7\"`).",
+            "in": "header",
+            "name": "If-Match",
+            "required": true,
+            "schema": {
+              "example": "\"7\"",
               "type": "string"
             }
           }
@@ -37259,6 +37317,12 @@
           },
           "400": {
             "description": "Vault secrets provider not configured"
+          },
+          "412": {
+            "description": "Optimistic concurrency conflict — re-fetch and try again with the new version."
+          },
+          "428": {
+            "description": "If-Match header is required for this operation."
           }
         },
         "security": [
@@ -39114,6 +39178,7 @@
         ]
       },
       "put": {
+        "description": "Optimistic concurrency is ENFORCED: the `If-Match` header (RFC 7232) is REQUIRED and CASes against the tenant row's `_version`. The precondition is evaluated even when the supplied tag set is identical to the stored one, so a stale client is told to refetch (`412`) rather than silently succeeding. A missing header is `428 Precondition Required`.",
         "operationId": "TenantController_setTags",
         "parameters": [
           {
@@ -39122,6 +39187,16 @@
             "name": "id",
             "required": true,
             "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "RFC 7232 strong validator carrying the tenant version the client read (e.g. `\"7\"`).",
+            "in": "header",
+            "name": "If-Match",
+            "required": true,
+            "schema": {
+              "example": "\"7\"",
               "type": "string"
             }
           }
@@ -39149,6 +39224,12 @@
           },
           "404": {
             "description": "Tenant not found"
+          },
+          "412": {
+            "description": "Optimistic concurrency conflict — re-fetch and try again with the new version."
+          },
+          "428": {
+            "description": "If-Match header is required for this operation."
           }
         },
         "security": [
@@ -40762,6 +40843,9 @@
               }
             },
             "description": "Assignments listed"
+          },
+          "404": {
+            "description": "User not found (or cross-tenant)"
           }
         },
         "security": [
@@ -45677,6 +45761,7 @@
         ]
       },
       "patch": {
+        "description": "Optimistic concurrency is ENFORCED: the `If-Match` header (RFC 7232) is REQUIRED and the server runs a Compare-And-Set against the row's `_version`. This closes the last unprotected write on the Consultation aggregate — `prime`/`close`/`reopen` and the context/summary sub-resource writes already required it, so a second open tab could previously clobber an edit here silently. Drift is `412 Precondition Failed`; a missing header is `428 Precondition Required`.",
         "operationId": "ConsultationController_update",
         "parameters": [
           {
@@ -45685,6 +45770,16 @@
             "name": "id",
             "required": true,
             "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "RFC 7232 strong validator carrying the consultation version the client read (e.g. `\"7\"`).",
+            "in": "header",
+            "name": "If-Match",
+            "required": true,
+            "schema": {
+              "example": "\"7\"",
               "type": "string"
             }
           }
@@ -45712,6 +45807,12 @@
           },
           "404": {
             "description": "Consultation not found"
+          },
+          "412": {
+            "description": "Optimistic concurrency conflict — re-fetch and try again with the new version."
+          },
+          "428": {
+            "description": "If-Match header is required for this operation."
           }
         },
         "security": [
@@ -48286,7 +48387,7 @@
             "description": "Job status"
           },
           "404": {
-            "description": "Job not found"
+            "description": "Job not found (also returned for a job owned by another doctor or tenant)"
           }
         },
         "security": [
@@ -48499,9 +48600,20 @@
         ]
       },
       "put": {
-        "description": "Writes the DOCTOR-scope `PipelinePolicy.dnaStyleEnabled` for the caller. `enabled: false` is an explicit opt-out, `enabled: null` clears the override (revert to the implicit opt-in). Optimistic concurrency is optional: when an `If-Match` header is present it overrides the body `expectedVersion`. The DNA learning processor honours the resulting opt-out on its next BATCH run.",
+        "description": "Writes the DOCTOR-scope `PipelinePolicy.dnaStyleEnabled` for the caller. `enabled: false` is an explicit opt-out, `enabled: null` clears the override (revert to the implicit opt-in). Optimistic concurrency is ENFORCED: `If-Match` (RFC 7232) is REQUIRED and overrides the body `expectedVersion`. `GET settings` answers `version: 0` while no DOCTOR-scope row exists, so the FIRST write echoes the create-intent validator `If-Match: \"0\"`. Drift is `412`; a missing header is `428`. The DNA learning processor honours the resulting opt-out on its next BATCH run.",
         "operationId": "DnaWritingStyleController_setSettings",
-        "parameters": [],
+        "parameters": [
+          {
+            "description": "RFC 7232 strong validator carrying the version `GET settings` returned (`\"0\"` before the first write).",
+            "in": "header",
+            "name": "If-Match",
+            "required": true,
+            "schema": {
+              "example": "\"0\"",
+              "type": "string"
+            }
+          }
+        ],
         "requestBody": {
           "content": {
             "application/json": {
@@ -48528,6 +48640,9 @@
           },
           "412": {
             "description": "Optimistic concurrency conflict — re-fetch and retry with the new version."
+          },
+          "428": {
+            "description": "If-Match header is required for this operation."
           }
         },
         "security": [
@@ -48661,6 +48776,7 @@
     },
     "/api/v1/dna-writing-styles/{reportId}/default": {
       "patch": {
+        "description": "Optimistic concurrency is ENFORCED: `If-Match` (RFC 7232) is REQUIRED and CASes against the report row. Promotion is idempotent (a report that is already the default returns unchanged) — the precondition is still evaluated first, so a stale client gets `412` rather than a misleading `200`. A missing header is `428`.",
         "operationId": "DnaWritingStyleController_setDefault",
         "parameters": [
           {
@@ -48669,6 +48785,16 @@
             "name": "reportId",
             "required": true,
             "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "RFC 7232 strong validator carrying the report version the client read (e.g. `\"3\"`).",
+            "in": "header",
+            "name": "If-Match",
+            "required": true,
+            "schema": {
+              "example": "\"3\"",
               "type": "string"
             }
           }
@@ -48689,6 +48815,12 @@
           },
           "404": {
             "description": "Report not found"
+          },
+          "412": {
+            "description": "Optimistic concurrency conflict — re-fetch and try again with the new version."
+          },
+          "428": {
+            "description": "If-Match header is required for this operation."
           }
         },
         "security": [

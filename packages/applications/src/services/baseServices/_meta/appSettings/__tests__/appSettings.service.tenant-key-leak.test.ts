@@ -23,8 +23,11 @@
  *              resolve the row to UPDATE via `getFromCache(key)`; a tenant row in
  *              that slot means a platform admin write mutates a TENANT's row.
  *
- * Fix: the cache admits ONLY platform-reserved tenants (SYSTEM `00000000-…` and
- * GLOBAL/default `50000000-…`). Customer-tenant rows never enter a key-only cache.
+ * Fix: the cache admits ONLY the reserved SYSTEM tenant (`00000000-…`) — the
+ * SOLE platform-configuration tier (owner ruling 2026-08-20, TASK-763 OD-1).
+ * GLOBAL/default (`50000000-…`) is a CUSTOMER tenant, never a runtime tier, and
+ * its rows are treated exactly like any other customer tenant's — never
+ * admitted into this key-only cache. Customer-tenant rows never enter it.
  */
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { AppSettingsService } from '../appSettings.service';
@@ -99,23 +102,23 @@ describe('AppSettingsService — M4 tenant-keyed cache', () => {
     // slot turns a platform write into a cross-tenant write.
     repo.findAll.mockResolvedValue([
       buildSetting('entitlements.enabled', CUSTOMER_TENANT_A, 'false'),
-      buildSetting('entitlements.enabled', GLOBAL_TENANT_ID, 'true'),
+      buildSetting('entitlements.enabled', SYSTEM_TENANT_ID, 'true'),
     ]);
 
     const svc = newService();
     await svc.cacheAppSettings();
 
-    expect(svc.getFromCache('entitlements.enabled')?.tenantId).toBe(GLOBAL_TENANT_ID);
+    expect(svc.getFromCache('entitlements.enabled')?.tenantId).toBe(SYSTEM_TENANT_ID);
   });
 
-  it('keeps BOTH platform-reserved tenants cacheable (SYSTEM and GLOBAL)', async () => {
-    // Platform rows are seeded under two reserved ids: capability rows under
-    // SYSTEM (seed 11 `PLATFORM_SETTINGS`), the rest under GLOBAL/default
-    // (seed 11 `ALL_SETTINGS`, 12 rate-limit, 15 entitlements). Scoping the
-    // cache must not drop either.
+  it('keeps the reserved SYSTEM tenant cacheable as the sole platform tier', async () => {
+    // Platform rows are seeded under exactly one reserved id: SYSTEM (seed 11
+    // `PLATFORM_SETTINGS`, 11a platform knobs, 11c consultation gates, 12
+    // rate-limit, 15 entitlements — TASK-763 OD-1 migrated all of these off
+    // GLOBAL/default). Scoping the cache must not drop it.
     repo.findAll.mockResolvedValue([
       buildSetting('enable-local-raw-capture', SYSTEM_TENANT_ID, 'true'),
-      buildSetting('crypto.saltRounds', GLOBAL_TENANT_ID, '12'),
+      buildSetting('crypto.saltRounds', SYSTEM_TENANT_ID, '12'),
     ]);
 
     const svc = newService();
@@ -125,8 +128,21 @@ describe('AppSettingsService — M4 tenant-keyed cache', () => {
     expect(svc.getValueWithDefault('crypto.saltRounds', 'missing')).toBe('12');
   });
 
+  it('never treats GLOBAL (the customer playground tenant) as platform-reserved, even for a key that is genuinely platform-wide elsewhere', async () => {
+    // Owner ruling 2026-08-20 (TASK-763 OD-1): the runtime cascade is request
+    // tenant → SYSTEM, full stop. GLOBAL (`50000000-…`) is an ordinary CUSTOMER
+    // tenant and must never outrank — or substitute for — the SYSTEM row.
+    repo.findAll.mockResolvedValue([buildSetting('crypto.saltRounds', GLOBAL_TENANT_ID, '12')]);
+
+    const svc = newService();
+    await svc.cacheAppSettings();
+
+    expect(svc.hasSetting('crypto.saltRounds')).toBe(false);
+    expect(svc.getFromCache('crypto.saltRounds')).toBeUndefined();
+  });
+
   it('still drops soft-DELETED platform rows', async () => {
-    const deleted = buildSetting('crypto.saltRounds', GLOBAL_TENANT_ID, '4');
+    const deleted = buildSetting('crypto.saltRounds', SYSTEM_TENANT_ID, '4');
     // `resourceStatus` is read-only on BaseEntity (mutations go through
     // setProperty/lifecycle methods), so stub the getter for this fixture.
     vi.spyOn(deleted, 'resourceStatus', 'get').mockReturnValue(ResourceStatusType.DELETED);

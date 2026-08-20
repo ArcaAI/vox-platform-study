@@ -12,8 +12,10 @@ from __future__ import annotations
 import hashlib
 import json
 import uuid
+from typing import Any
 
 import pytest
+from temporalio.api.enums.v1 import EventType
 from temporalio.contrib.pydantic import pydantic_data_converter
 from temporalio.testing import WorkflowEnvironment
 from temporalio.worker import Worker
@@ -25,6 +27,7 @@ from harness.temporal.interpreter.compiled_config import canonical_json
 from harness.temporal.interpreter.models import CancelSignal, InterpreterInput
 from harness.temporal.interpreter.registry import NODE_REGISTRY, NodeSpec
 from harness.temporal.interpreter.workflow import WorkflowInterpreter
+from harness.tests.unit.temporal._temporal_sync import await_history_event
 
 _BUCKET = "harness-claim-check"
 
@@ -89,9 +92,7 @@ def _input(config_ref, *, sandbox: bool = False) -> InterpreterInput:
     )
 
 
-async def _run(
-    body: dict, *, signal_cancel_after_start: bool = False, cancel_delay_seconds: float = 0.0
-):
+async def _run(body: dict, *, signal_cancel_after_start: bool = False):
     ref = await _store_config(body)
     async with await WorkflowEnvironment.start_time_skipping(
         data_converter=pydantic_data_converter
@@ -110,10 +111,27 @@ async def _run(
                 task_queue=tq,
             )
             if signal_cancel_after_start:
-                if cancel_delay_seconds:
-                    import asyncio
+                # Deterministic, not a wall-clock guess (TASK-718 Task 12): wait for stage
+                # 0's own node activity (never `interpreter.load_config`, which is scheduled
+                # first and would defeat the point) to actually be SCHEDULED before
+                # signalling. That event can only appear once the workflow has passed the
+                # `if self._cancelled: break` check for stage 0 and committed to
+                # `_run_stage`, which is exactly the ordering this test asserts — however
+                # long it took a busy machine to get there. A fixed `asyncio.sleep(...)`
+                # before the signal raced that same ordering against real wall-clock
+                # scheduling overhead and was observed flaky under load.
+                def _stage0_node_scheduled(event: Any) -> bool:
+                    return (
+                        event.event_type == EventType.EVENT_TYPE_ACTIVITY_TASK_SCHEDULED
+                        and event.activity_task_scheduled_event_attributes.activity_type.name
+                        != "interpreter.load_config"
+                    )
 
-                    await asyncio.sleep(cancel_delay_seconds)
+                await await_history_event(
+                    handle,
+                    _stage0_node_scheduled,
+                    description="stage 0 node activity scheduled",
+                )
                 await handle.signal(WorkflowInterpreter.cancel, CancelSignal(reason="test"))
             return await handle.result()
 
@@ -266,10 +284,13 @@ class TestCapClamping:
 class TestCancel:
     @pytest.mark.asyncio
     async def test_cancel_signal_stops_the_walk_at_the_next_stage_boundary(self):
-        # n1 sleeps briefly (real wall-clock — activities are not time-skipped); the test
-        # itself waits past config-load before signaling, so cancellation reliably lands
-        # WHILE stage 0's node is in flight (stage 0 still completes; stage 1 never starts) —
-        # deterministic, not a race on whether the signal beats the workflow's first await.
+        # n1 sleeps briefly (real wall-clock — activities are not time-skipped) so it is
+        # still genuinely in flight when the cancel signal lands. `_run` waits for n1's
+        # ActivityTaskScheduled history event (not a fixed real-time delay — see
+        # `_temporal_sync.await_history_event`) before signalling, so cancellation
+        # deterministically lands after the workflow has committed to stage 0 (stage 0
+        # still completes; stage 1 never starts) regardless of how long a busy machine
+        # takes to get there.
         body = _body(
             [
                 {
@@ -286,7 +307,7 @@ class TestCancel:
                 {"stageIndex": 1, "nodes": [_node("n2", "noop", activity="interpreter.noop")]},
             ]
         )
-        result = await _run(body, signal_cancel_after_start=True, cancel_delay_seconds=0.2)
+        result = await _run(body, signal_cancel_after_start=True)
         assert result.status == "CANCELLED"
         assert len(result.stages) == 1  # stage 0 completed; stage 1 never started
         assert result.stages[0].nodes[0].status == "SUCCEEDED"

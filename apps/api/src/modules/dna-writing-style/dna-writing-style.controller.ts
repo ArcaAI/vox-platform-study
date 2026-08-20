@@ -157,17 +157,27 @@ export class DnaWritingStyleController {
   }
 
   @Put('settings')
+  @RequiresIfMatch()
   @ApiOperation({
     summary: "Set the caller doctor's DNA writing-style on/off toggle",
     description:
       'Writes the DOCTOR-scope `PipelinePolicy.dnaStyleEnabled` for the caller. `enabled: false` is an explicit ' +
       'opt-out, `enabled: null` clears the override (revert to the implicit opt-in). Optimistic concurrency is ' +
-      'optional: when an `If-Match` header is present it overrides the body `expectedVersion`. The DNA learning ' +
-      'processor honours the resulting opt-out on its next BATCH run.',
+      'ENFORCED: `If-Match` (RFC 7232) is REQUIRED and overrides the body `expectedVersion`. `GET settings` ' +
+      'answers `version: 0` while no DOCTOR-scope row exists, so the FIRST write echoes the create-intent ' +
+      'validator `If-Match: "0"`. Drift is `412`; a missing header is `428`. The DNA learning processor honours ' +
+      'the resulting opt-out on its next BATCH run.',
+  })
+  @ApiHeader({
+    name: 'If-Match',
+    description: 'RFC 7232 strong validator carrying the version `GET settings` returned (`"0"` before the first write).',
+    required: true,
+    example: '"0"',
   })
   @ApiResponse({ status: 200, description: 'Updated per-doctor DNA settings', type: DnaSettingsResponse })
   @ApiResponse({ status: 403, description: 'An admin not acting as a doctor cannot toggle DNA under their own account.' })
   @ApiResponse({ status: 412, description: 'Optimistic concurrency conflict — re-fetch and retry with the new version.' })
+  @ApiResponse({ status: 428, description: 'If-Match header is required for this operation.' })
   async setSettings(@Body() dto: UpdateDnaSettingsRequest, @ExpectedVersion() expectedFromHeader: number | undefined): Promise<DnaSettingsResponse> {
     // Mirror `generate`: a non-impersonating admin must not toggle DNA under
     // their OWN account (per-doctor isolation — the toggle is owned by CLS user).
@@ -258,11 +268,27 @@ export class DnaWritingStyleController {
     path: ':reportId/default',
     by: ['reportId'],
   })
+  @RequiresIfMatch()
+  @ApiOperation({
+    summary: "Promote one of the caller's reports to their active/default style",
+    description:
+      'Optimistic concurrency is ENFORCED: `If-Match` (RFC 7232) is REQUIRED and CASes against the report row. ' +
+      'Promotion is idempotent (a report that is already the default returns unchanged) — the precondition is ' +
+      'still evaluated first, so a stale client gets `412` rather than a misleading `200`. A missing header is `428`.',
+  })
+  @ApiHeader({
+    name: 'If-Match',
+    description: 'RFC 7232 strong validator carrying the report version the client read (e.g. `"3"`).',
+    required: true,
+    example: '"3"',
+  })
   @ApiParam({ name: 'reportId', description: 'Report ID', type: String })
   @ApiResponse({ status: 403, description: "Cannot set another doctor's report as default" })
   @ApiResponse({ status: 404, description: 'Report not found' })
-  async setDefault(@Param('reportId') reportId: string): Promise<DnaReportResponse> {
-    return this.dnaService.setDefaultReport(reportId);
+  @ApiResponse({ status: 412, description: 'Optimistic concurrency conflict — re-fetch and try again with the new version.' })
+  @ApiResponse({ status: 428, description: 'If-Match header is required for this operation.' })
+  async setDefault(@Param('reportId') reportId: string, @ExpectedVersion() expectedFromHeader: number | undefined): Promise<DnaReportResponse> {
+    return this.dnaService.setDefaultReport(reportId, expectedFromHeader);
   }
 
   // ─── Erasure — the other half of the opt-out (INV-240 / INV-241) ──────────

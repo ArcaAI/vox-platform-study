@@ -2,8 +2,8 @@
 //
 // These are the SERVICE-LEVEL knobs the stt and nlp services consume through
 // `GET /api/v1/internal/effective-config`. They are deliberately
-// NOT per-request model selection: SMR's stateless-gateway contract
-// (`apps/text/src/text/core/config.py:1-9`) stays intact, and SMR's own tunables
+// NOT per-request model selection: Text's stateless-gateway contract
+// (`apps/text/src/text/core/config.py:1-9`) stays intact, and Text's own tunables
 // arrive as `AiRuntimeProfile` rows rather than registry keys.
 //
 // Registering them changes ZERO runtime behaviour: every `default` below is
@@ -17,6 +17,9 @@
 //   stt.workers.concurrency      `settings.worker_concurrency`          = 4
 //   stt.streaming.maxConcurrent  `settings.streaming_max_concurrent`    = 0 (0 = hardware auto-detect)
 //   nlp.inference.maxConcurrent  NEW — nlp had NO bound at all
+//   nlp.peerCall.maxConcurrent   `settings.service.peer_call_max_concurrent` = 8 (TASK-729 §6,
+//                                owner decision 2026-08-20 — a SEPARATE bound from
+//                                nlp.inference.maxConcurrent for outbound calls to `text`)
 //
 // ⚠️ Deliberate divergence from the legacy seed: the orphaned GlobalSetting row
 // `stt.config/model_cache/max_memory_mb` (`seed/06-stt.ts`) carries 16384, but the
@@ -41,6 +44,7 @@ export const SERVICE_RUNTIME_DEFAULTS = {
   'stt.workers.concurrency': 4,
   'stt.streaming.maxConcurrent': 0,
   'nlp.inference.maxConcurrent': 4,
+  'nlp.peerCall.maxConcurrent': 8,
 
   // ── the remaining in-process caches ───────────────────────────
   // The `<svc>.modelCache.<knob>` grammar originally served stt only,
@@ -64,7 +68,7 @@ export const SERVICE_RUNTIME_DEFAULTS = {
   'tts.modelCache.ttlSeconds': 600,
   'tts.modelCache.maxModels': 2,
   'tts.modelCache.vramBudgetMb': 0,
-  'smr.modelCache.ttlSeconds': 600,
+  'text.modelCache.ttlSeconds': 600,
 
   // ── guardrail PHI redaction ──────────────────────────────────────────────
   // NOT a model-cache knob, so it sits outside the `<svc>.modelCache.*` family
@@ -79,8 +83,8 @@ export const SERVICE_RUNTIME_DEFAULTS = {
 export type ServiceRuntimeKey = keyof typeof SERVICE_RUNTIME_DEFAULTS;
 
 /**
- * The in-process caches this registry family governs. `smr` is deliberately ABSENT: it
- * holds no weights — its `smr.modelCache.ttlSeconds` is forwarded to
+ * The in-process caches this registry family governs. `text` is deliberately ABSENT: it
+ * holds no weights — its `text.modelCache.ttlSeconds` is forwarded to
  * server-managed engines (Ollama `keep_alive`, LM Studio `ttl`), so it has no
  * `maxModels`/`vramBudgetMb` to speak of.
  */
@@ -158,6 +162,15 @@ const HAND_WRITTEN_META: Partial<Record<ServiceRuntimeKey, KeyMeta>> = {
       'Ceiling on concurrent NER/classification/diagnosis inferences. Previously the nlp service had ' +
       'no bound of any kind, so concurrent requests piled onto the model unbounded.',
   },
+  'nlp.peerCall.maxConcurrent': {
+    label: 'NLP peer-call concurrency (to text)',
+    description:
+      'Ceiling on concurrent outbound HTTP calls nlp makes to text for /classify/topic and ' +
+      '/classify/intent (TASK-729). A SEPARATE bound from nlp.inference.maxConcurrent (owner decision ' +
+      '2026-08-20): that ceiling protects local GPU/CPU inference slots, while this one protects ' +
+      "nlp's own outbound connection/concurrency budget to a peer service — sharing one bound between " +
+      'the two would let a slow peer round-trip starve local inference, or vice versa.',
+  },
   'guardrail.redact.chunkChars': {
     label: 'PHI redaction chunk size (characters)',
     description:
@@ -170,11 +183,11 @@ const HAND_WRITTEN_META: Partial<Record<ServiceRuntimeKey, KeyMeta>> = {
       'overhead wins the gain back and the model gets less context to work with. Raising it above 8,000 ' +
       'buys nothing and costs both latency and memory.',
   },
-  'smr.modelCache.ttlSeconds': {
-    label: 'SMR engine retention TTL (s)',
+  'text.modelCache.ttlSeconds': {
+    label: 'Text engine retention TTL (s)',
     description:
       'Idle retention forwarded to SERVER-managed LLM engines — Ollama `keep_alive` and LM Studio `ttl`. ' +
-      'SMR holds no weights itself, so this is a per-request hint to the engine rather than a cache bound. ' +
+      'Text holds no weights itself, so this is a per-request hint to the engine rather than a cache bound. ' +
       'vLLM / llama.cpp-server load one model at launch and stay resident by design; this value does not apply ' +
       'to them. Clamped to [60s, 3600s] by the service.',
   },

@@ -13,6 +13,7 @@ import {
   // OriginRegistryServiceModule is imported at root instead of only inside
   // a feature module.
   ConsentServiceModule,
+  ConsultationTimeoutSweepServiceModule,
   EntitlementsServiceModule,
   JWT_AUTH_GUARD,
   SERVICE_ACCOUNT_AUTHENTICATOR,
@@ -360,6 +361,11 @@ const common = [
   AuditLogServiceModule, // Event-driven audit logging (replaces Kafka audit topics)
   AuditRetentionServiceModule, // scheduled AuditLog retention purge (bounds growth)
   AgentTrajectoryRetentionServiceModule, // scheduled AgentTrajectoryStep hard-retention prune (opt-in)
+  // TASK-711 (state-machine.md §1a) — scheduled session-timeout sweep:
+  // transitions stale PRIMED/DRAINING/DRAFT_PENDING_SENSORS/TIMED_OUT/REOPENED
+  // consultations to CLOSED_INCOMPLETE. On by default (no `enabled` gate —
+  // see the service's own doc comment for why).
+  ConsultationTimeoutSweepServiceModule,
   // AI usage metering: exports IUsageLedgerService for the emitter lanes and
   // hosts the outbox drainer (BullMQ tick -> rate -> append -> roll up). Its
   // queue registers its own name rather than a `JobQueue` member, so it is not

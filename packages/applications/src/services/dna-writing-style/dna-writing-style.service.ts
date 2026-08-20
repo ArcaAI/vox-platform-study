@@ -427,7 +427,7 @@ export class DnaWritingStyleService extends BaseService implements IDnaWritingSt
    * both enforced; even an admin cannot set another doctor's default here (the
    * playground runs in the doctor's own/impersonated context).
    */
-  async setDefaultReport(reportId: string): Promise<DnaReportResponse> {
+  async setDefaultReport(reportId: string, expectedVersion?: number): Promise<DnaReportResponse> {
     const userId = this.requestUserId;
 
     const report = await this.dnaReportRepository.findById(reportId);
@@ -437,6 +437,12 @@ export class DnaWritingStyleService extends BaseService implements IDnaWritingSt
     if (report.doctorId !== userId) {
       throw new ForbiddenException("Cannot set another doctor's DNA report as default");
     }
+
+    // OCC precondition BEFORE the idempotent short-circuit below: promoting an
+    // already-default report is a no-op, but a client holding a stale version
+    // must still be told to refetch (412) rather than receive a 200 that
+    // certifies a precondition nobody evaluated.
+    this.assertExpectedVersion(report, expectedVersion, 'dnaWritingStyleReport');
 
     // Idempotent: already the default ⇒ nothing to flip.
     if (report.isLatest) {
@@ -450,7 +456,10 @@ export class DnaWritingStyleService extends BaseService implements IDnaWritingSt
     }
 
     report.markAsLatest();
-    const updated = await this.dnaReportRepository.update(reportId, report);
+    const updated =
+      expectedVersion === undefined
+        ? await this.dnaReportRepository.update(reportId, report)
+        : await this.dnaReportRepository.updateWithVersion(reportId, report, expectedVersion);
 
     this.broadcastSysEvent(SysEventType.ResourceUpdated, {
       resourceId: reportId,

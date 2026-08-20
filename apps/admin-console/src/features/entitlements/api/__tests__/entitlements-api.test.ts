@@ -72,7 +72,9 @@ describe('entitlements client', () => {
     await updatePlanEntitlement('PRO', { maxUsers: 50, expectedVersion: 3 });
     expect(calls[2].method).toBe('PATCH');
     expect(calls[2].url).toBe('/api/hope/admin/entitlements/plans/PRO');
-    expect(calls[2].headers.get('if-match')).toBeNull();
+    // TASK-776 H-1 phase 2: the route requires `If-Match`; the validator is the
+    // version the caller already read and carries in the body.
+    expect(calls[2].headers.get('if-match')).toBe('"3"');
     expect(calls[2].body).toEqual({ maxUsers: 50, expectedVersion: 3 });
   });
 
@@ -92,6 +94,9 @@ describe('entitlements client', () => {
       'POST /api/hope/admin/entitlements/tenants/t-1/downgrade',
       'POST /api/hope/admin/entitlements/trial-expiry/run',
     ]);
+    // The override PUT echoes the read version as `If-Match`; with no row the
+    // client would send the create-intent validator `"0"` instead.
+    expect(calls[2].headers.get('if-match')).toBe('"2"');
     expect(calls[4].body).toEqual({ plan: 'STARTER' });
   });
 });

@@ -111,12 +111,16 @@ describe('tenants client', () => {
     const calls = installFetchMock(() => Response.json({ tags: ['pilot'] }));
     await getTenantUsage('t-1');
     await getTenantTags('t-1');
-    await setTenantTags('t-1', ['pilot', 'emea']);
+    // TASK-776 H-1 phase 2: `PUT :id/tags` writes the TENANT row and now
+    // requires `If-Match`, so the caller passes the tenant DETAIL ETag — the
+    // `/tags` read carries no row version of its own.
+    await setTenantTags('t-1', ['pilot', 'emea'], '"5"');
     expect(calls.map((call) => `${call.method} ${call.url}`)).toEqual([
       'GET /api/hope/admin/tenants/t-1/usage',
       'GET /api/hope/admin/tenants/t-1/tags',
       'PUT /api/hope/admin/tenants/t-1/tags',
     ]);
+    expect(calls[2].headers.get('if-match')).toBe('"5"');
     expect(calls[2].body).toEqual({ tags: ['pilot', 'emea'] });
   });
 

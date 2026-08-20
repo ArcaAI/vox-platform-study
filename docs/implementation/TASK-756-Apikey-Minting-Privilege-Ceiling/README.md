@@ -2,7 +2,7 @@
 
 | | | | |
 |---|---|---|---|
-| **Status** | Review | **Owner** | Platform / Authorization |
+| **Status** | Completed | **Owner** | Platform / Authorization |
 | **Date** | 2026-08-18 | **Type** | bugfix (security) |
 | **Related** | `docs/architecture/api-design-conformance-review.md` §2.2, §3.1 step 1, §4 order 2 · `docs/programs/agentic-workflow-platform/conformance/gateway-and-sdk.md` §6.4, §8 G1 · `docs/implementation/TASK-708-Apikey-Scope-Verification/README.md` §8.5 (deferred here, no ticket number assigned at the time) · **TASK-757** (admin plane JWT-only — consumes this ticket's fail-closed behaviour) · **TASK-762** (machine identity) |
 
@@ -446,3 +446,4 @@ publishes on the API-key path, and refuses when it is absent. Two consequences w
 |---|---|---|
 | 2026-08-18 | Implemented. `ScopeDefinition.implies` + `resolveImpliedPermissions` in the registry; `assertScopeCeiling` in `ApiKeyService`, wired into `create()` (whole array) and `update()` (widening delta only); `AUTH-NOTE` markers on both controller routes; 11 new service tests, 6 new registry tests, e2e "Half 5". Five deliberate deviations recorded in §5.3 — notably T10's premise was wrong (the shared CLS mock was already permissive; only 3 SERVICE_ACCOUNT cases went RED) and Halves 2/4 of the TASK-708 e2e needed re-tokening to SUPER_ADMIN, which the plan did not anticipate. Status: Review. | Implementing agent |
 | 2026-08-18 | Ticket created. Claims the privilege-ceiling gap named in `conformance/gateway-and-sdk.md` §6.4 and deferred without a ticket number in TASK-708 §8.5, and sequenced first by `api-design-conformance-review.md` §3.1/§4. Evidence re-verified against the live tree; three stale `file:line` citations in the source reviews corrected (§2.1, §2.4). Status: Pending. | Ticket-authoring agent |
+| 2026-08-20 | Status advanced to Completed per owner directive: implementation complete (privilege ceiling, deviations recorded and deliberate); outstanding e2e/live-run verification (9 pre-existing/state-dependent failures under `RESET_DB=false`; clean-DB re-confirmation) is not a status gate. | Owner directive |

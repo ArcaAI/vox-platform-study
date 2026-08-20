@@ -2,13 +2,12 @@ import type { WorkflowCanvasNode } from '@arcaai/ui/components/workflow-canvas';
 import type { WorkflowGraph, WorkflowGraphEdge, WorkflowGraphNode } from '../api/types';
 
 /**
- * `WorkflowGraphNode` has no `position` field (`@arcaai/workflow-contract`'s
- * `graph-model.ts`) — TASK-719's own contract audit recorded the documented
- * fallback: a Studio-reserved `config.__position` nesting, for when a graph
- * actually carries authored coordinates. This module reads that fallback
- * when present, and otherwise computes a deterministic layered layout so the
- * read-only run-trace canvas (Task 8) never renders every node stacked at
- * the origin.
+ * `WorkflowGraphNode.position` (`@arcaai/workflow-contract`'s `graph-model.ts`) is a first-class,
+ * optional field now (definition-api.contract.md's "no `position` field" gap, closed) — this
+ * module reads it directly. A graph saved before that field existed may still carry its layout
+ * under the Studio-reserved `config.__position` nesting, so that legacy shape is read as a
+ * fallback, never written. Absent either, a deterministic layered layout takes over so the
+ * read-only run-trace canvas (Task 8) never renders every node stacked at the origin.
  */
 
 const COLUMN_WIDTH = 240;
@@ -19,17 +18,16 @@ interface Position {
   y: number;
 }
 
+function isPosition(value: unknown): value is Position {
+  return (
+    typeof value === 'object' && value !== null && typeof (value as Position).x === 'number' && typeof (value as Position).y === 'number'
+  );
+}
+
 function readAuthoredPosition(node: WorkflowGraphNode): Position | null {
-  const raw = node.config?.__position;
-  if (
-    typeof raw === 'object' &&
-    raw !== null &&
-    typeof (raw as Record<string, unknown>).x === 'number' &&
-    typeof (raw as Record<string, unknown>).y === 'number'
-  ) {
-    return { x: (raw as { x: number }).x, y: (raw as { y: number }).y };
-  }
-  return null;
+  if (isPosition(node.position)) return node.position;
+  const legacy = node.config?.__position;
+  return isPosition(legacy) ? legacy : null;
 }
 
 /**

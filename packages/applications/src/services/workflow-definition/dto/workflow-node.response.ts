@@ -37,6 +37,15 @@ export class WorkflowNodeResponse {
 
   @ApiPropertyOptional({ nullable: true, description: 'The EntitlementFeatureKey that gates this node type, if any.' })
   entitlementKey: string | null;
+
+  @ApiPropertyOptional({
+    type: 'object',
+    additionalProperties: true,
+    nullable: true,
+    description:
+      'The node type’s config JSON Schema (authorable subset), or null when none has been authored for it yet — a real, structural state, not every node type has one.',
+  })
+  configSchema: Record<string, unknown> | null;
 }
 
 export class WorkflowNodeRegistryResponse {

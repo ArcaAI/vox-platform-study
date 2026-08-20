@@ -10,7 +10,7 @@
 
 import { encodePathSegment } from '../../core/url';
 import { AdminResource } from './admin-resource';
-import type { AdminRequestOptions } from './admin-resource';
+import type { AdminRequestOptions, IfMatchPrecondition } from './admin-resource';
 import type {
   EntitlementCapabilitiesResponse,
   EntitlementsEnabledResponse,
@@ -95,15 +95,24 @@ export class AdminEntitlementResource extends AdminResource {
   }
 
   /**
-   * Edit a plan default row (OCC via expectedVersion → 412 on drift).
+   * Edit a plan default row.
+   *
+   * Optimistic concurrency is ENFORCED: the `If-Match` header (RFC 7232) is REQUIRED and carries the strong validator the client read from the row GET. When present it overrides the body-field `expectedVersion`. Version drift is `412 Precondition Failed`; a missing header is `428 Precondition Required`.
    *
    * `PATCH /api/v1/admin/entitlements/plans/{plan}` — `EntitlementsAdminController.updatePlan`.
+   *
+   * Carries `@RequiresIfMatch()`: `options.ifMatch` is required by the type, so the 428 branch is unreachable. On drift the gateway answers 412 (`VersionConflictError.currentVersion`).
    */
-  updatePlan(plan: string, body: UpdatePlanEntitlementRequest, options: AdminRequestOptions = {}): Promise<PlanEntitlementResponse> {
-    return this.request<PlanEntitlementResponse>({
+  updatePlan(
+    plan: string,
+    body: UpdatePlanEntitlementRequest,
+    options: AdminRequestOptions & { ifMatch: IfMatchPrecondition },
+  ): Promise<PlanEntitlementResponse> {
+    return this.requestWithPrecondition<PlanEntitlementResponse>({
       method: 'PATCH',
       path: `admin/entitlements/plans/${encodePathSegment(String(plan))}`,
       body,
+      ifMatch: options.ifMatch,
       signal: options.signal,
       timeoutMs: options.timeoutMs,
     });
@@ -167,15 +176,24 @@ export class AdminEntitlementResource extends AdminResource {
   }
 
   /**
-   * Create-or-update a tenant override ("increase on demand", Q7). OCC required to update.
+   * Create-or-update a tenant override ("increase on demand", Q7).
+   *
+   * Optimistic concurrency is ENFORCED: the `If-Match` header (RFC 7232) is REQUIRED. On an EXISTING override echo the validator the row GET returned; on the FIRST create the GET answers `null` (no row, no ETag), so send the create-intent validator `If-Match: "0"`. Version drift is `412 Precondition Failed`; a missing header is `428 Precondition Required`.
    *
    * `PUT /api/v1/admin/entitlements/tenants/{tenantId}/override` — `EntitlementsAdminController.upsertOverride`.
+   *
+   * Carries `@RequiresIfMatch()`: `options.ifMatch` is required by the type, so the 428 branch is unreachable. On drift the gateway answers 412 (`VersionConflictError.currentVersion`).
    */
-  upsertOverride(tenantId: string, body: UpsertTenantEntitlementRequest, options: AdminRequestOptions = {}): Promise<TenantEntitlementResponse> {
-    return this.request<TenantEntitlementResponse>({
+  upsertOverride(
+    tenantId: string,
+    body: UpsertTenantEntitlementRequest,
+    options: AdminRequestOptions & { ifMatch: IfMatchPrecondition },
+  ): Promise<TenantEntitlementResponse> {
+    return this.requestWithPrecondition<TenantEntitlementResponse>({
       method: 'PUT',
       path: `admin/entitlements/tenants/${encodePathSegment(String(tenantId))}/override`,
       body,
+      ifMatch: options.ifMatch,
       signal: options.signal,
       timeoutMs: options.timeoutMs,
     });

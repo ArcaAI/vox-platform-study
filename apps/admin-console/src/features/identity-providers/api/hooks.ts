@@ -80,11 +80,16 @@ export function useSyncDirectory() {
   return useMutation({ mutationFn: (id: string) => syncDirectory(id) });
 }
 
-/** Write-only secret rotation — invalidate so the row's hasSecret-style state (directory config) reflects the change. */
+/**
+ * Write-only secret rotation under OCC — `etag` is the provider detail ETag.
+ * Invalidate so the row's hasSecret-style state (directory config) AND its
+ * bumped version are re-read; the next write needs the fresh validator.
+ */
 export function useSetDirectoryCredentials() {
   const invalidate = useInvalidateIdentityProviders();
   return useMutation({
-    mutationFn: ({ id, credentials }: { id: string; credentials: DirectoryCredentials }) => setDirectoryCredentials(id, credentials),
+    mutationFn: ({ id, credentials, etag }: { id: string; credentials: DirectoryCredentials; etag: string }) =>
+      setDirectoryCredentials(id, credentials, etag),
     onSuccess: invalidate,
   });
 }

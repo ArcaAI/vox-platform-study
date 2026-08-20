@@ -19,6 +19,7 @@ const NOOP: WorkflowNodeDescriptor = {
   defaultTimeoutSeconds: 60,
   defaultMaxAttempts: 1,
   entitlementKey: null,
+  configSchema: null,
 };
 
 const MANDATORY: WorkflowNodeDescriptor = { ...NOOP, type: 'guardrail_gate', classes: ['mandatory'], paletteKey: 'summarization' };

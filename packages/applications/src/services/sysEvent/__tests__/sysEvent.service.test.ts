@@ -1061,9 +1061,10 @@ describe('SysEventService', () => {
       // Modify original after the call
       originalData.field = 'modified';
 
-      // The passed data should still reference the event data
-      // (This test documents current behavior - not necessarily requiring deep clone)
-      expect(passedData).toEqual(event.data);
+      // The queued snapshot is a COPY taken at enqueue time (the PHI scrub
+      // rebuilds the payload), so a later mutation of the source object can no
+      // longer rewrite an already-queued audit row.
+      expect(passedData).toEqual({ field: 'original' });
     });
   });
 
@@ -1135,6 +1136,55 @@ describe('SysEventService', () => {
       const event = makeQuotaBlockedEvent();
 
       await expect(service.handleEntitlementsQuotaBlockedEvent(event)).resolves.toBeUndefined();
+    });
+  });
+  describe('PHI scrubbing of audit snapshots', () => {
+    const phiEvent = () =>
+      createMockSysEvent({
+        resourceType: ResourceType.ContextItem,
+        data: {
+          id: 'ci-1',
+          type: 'TRANSCRIPT',
+          encryptedContent: Buffer.from('vault:v1:abcdef'),
+          content: 'advance before stale approve',
+        },
+        previousData: {
+          id: 'ci-1',
+          type: 'TRANSCRIPT',
+          encryptedContent: Buffer.from('vault:v1:previous'),
+          content: 'patient reports chest pain',
+        },
+      });
+
+    it('strips PHI plaintext and ciphertext from data and previousData on update', async () => {
+      await service.handleResourceUpdatedEvent(phiEvent());
+
+      const auditJob = mockRedisService.addJob.mock.calls.map((c) => c[0]).find((c) => c.queueName === JobQueue.AuditLog);
+      expect(auditJob).toBeDefined();
+      const serialized = JSON.stringify(auditJob.data);
+      expect(serialized).not.toContain('advance before stale approve');
+      expect(serialized).not.toContain('patient reports chest pain');
+      expect(serialized).not.toContain('"type":"Buffer"');
+      // Non-PHI fields still describe the change.
+      expect(auditJob.data.data.id).toBe('ci-1');
+      expect(auditJob.data.data.type).toBe('TRANSCRIPT');
+      expect(Object.keys(auditJob.data.data)).toContain('content');
+    });
+
+    it('strips PHI from the created-resource snapshot too', async () => {
+      await service.handleResourceCreatedEvent(phiEvent());
+
+      const auditJob = mockRedisService.addJob.mock.calls.map((c) => c[0]).find((c) => c.queueName === JobQueue.AuditLog);
+      expect(JSON.stringify(auditJob.data)).not.toContain('advance before stale approve');
+    });
+
+    it('leaves a non-PHI resource payload untouched', async () => {
+      const event = createMockSysEvent({ resourceType: ResourceType.User, data: { id: 'u-1', email: 'a@b.c' } });
+
+      await service.handleResourceUpdatedEvent(event);
+
+      const auditJob = mockRedisService.addJob.mock.calls.map((c) => c[0]).find((c) => c.queueName === JobQueue.AuditLog);
+      expect(auditJob.data.data).toEqual({ id: 'u-1', email: 'a@b.c' });
     });
   });
 });

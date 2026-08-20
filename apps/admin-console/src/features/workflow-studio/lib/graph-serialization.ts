@@ -1,14 +1,17 @@
 /**
  * The store's node/edge model <-> `WorkflowGraph` (the server DTO shape) round trip (TASK-719
- * Task 11). `WorkflowGraphNode` has NO `position` field (confirmed against delivered code —
- * `contracts/definition-api.contract.md`), so client-side canvas layout is nested under the
- * Studio-reserved `config.__position` key at this boundary only; the store, the canvas
- * composite, and the list editor never see it as anything other than `node.position`.
+ * Task 11). `WorkflowGraphNode.position` is now a first-class, optional sibling of `config`
+ * (definition-api.contract.md's "no `position` field" gap, closed — `@arcaai/workflow-contract`
+ * `graph-model.ts`), so `toGraphNode` writes it there directly. `fromGraphNode` still reads the
+ * legacy `config.__position` nesting this Studio used before that field existed, so a graph
+ * saved under the old scheme still renders at its authored coordinates rather than snapping to
+ * the origin — but that legacy shape is never written again.
  */
 import type { GraphStoreEdge, GraphStoreNode } from '../store/types';
 import type { WorkflowGraph, WorkflowGraphEdge, WorkflowGraphNode } from '../api/types';
 
-const POSITION_KEY = '__position';
+/** Studio-reserved key from before `WorkflowGraphNode.position` existed — read-only fallback. */
+const LEGACY_POSITION_KEY = '__position';
 
 interface Position {
   x: number;
@@ -20,12 +23,12 @@ function isPosition(value: unknown): value is Position {
 }
 
 function toGraphNode(node: GraphStoreNode): WorkflowGraphNode {
-  return { id: node.id, type: node.type, config: { ...node.config, [POSITION_KEY]: node.position } };
+  return { id: node.id, type: node.type, config: node.config, position: node.position };
 }
 
 function fromGraphNode(node: WorkflowGraphNode): GraphStoreNode {
-  const { [POSITION_KEY]: rawPosition, ...config } = node.config;
-  const position = isPosition(rawPosition) ? rawPosition : { x: 0, y: 0 };
+  const { [LEGACY_POSITION_KEY]: legacyPosition, ...config } = node.config;
+  const position = isPosition(node.position) ? node.position : isPosition(legacyPosition) ? legacyPosition : { x: 0, y: 0 };
   // `classesOf`/`safetyClasses` come from the node registry, not the graph document — the
   // caller (the store's `hydrate` action, or a selector that joins against the registry query)
   // fills this in; a bare deserialization has no registry to consult, so it starts empty.

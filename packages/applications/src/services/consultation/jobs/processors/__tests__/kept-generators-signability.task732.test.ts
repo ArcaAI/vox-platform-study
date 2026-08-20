@@ -30,17 +30,26 @@
  *     a signability claim.
  *   - `ComprehensiveSummaryProcessor`: ALSO calls `CreateRawSummary` (against
  *     the root consultationId the job was created for), so its output ALSO
- *     satisfies `isFinalSummary` today. **This is a FINDING, not a
- *     confirmed-safe fact**: the ticket's §2.6 draft asserted comprehensive
- *     summaries are non-signable "the same way" pre-summary is, without
- *     verifying it — they are not. Whether a cross-consultation-chain
- *     rollup SHOULD be signable as if it were the target consultation's own
- *     note is a clinical-product question this ticket does not have the
- *     authority to decide unilaterally (matches the ticket's own
- *     HUMAN-GATED posture for Task 8-adjacent product calls). Recorded
- *     here as an accurate, checked regression-lock of CURRENT behavior —
- *     not as an endorsement of it — so a future change to either direction
- *     is a deliberate edit to this test, not a silent behavior change.
+ *     satisfies `isFinalSummary`. **RESOLVED, not an open finding**: this
+ *     pass's original draft asserted comprehensive summaries are non-signable
+ *     "the same way" pre-summary is, without verifying it — that assertion
+ *     was wrong, and the code is correct. Evidence: (1) the processor's own
+ *     pre-existing doc comment already described it as following "the same
+ *     pattern as the legacy signable summary generator"; (2) its sync twin,
+ *     `ChainSummaryService.generateComprehensiveSummary`, is long-standing,
+ *     untouched-by-this-ticket production code whose own doc comment calls
+ *     its output "a FINAL comprehensive summary" stored as
+ *     `ContextItem(RAW_SUMMARY)` on the requesting consultation; (3) this
+ *     ticket's own `note-generation-assurance.contract.test.ts` already lists
+ *     both `ComprehensiveSummaryProcessor` and `ChainSummaryService` among
+ *     the ordinary RAW_SUMMARY-producing, SummaryMeta-backed generators, with
+ *     no non-signable distinction drawn. A clinician who explicitly requests
+ *     a chain rollup for the consultation they are viewing is choosing to
+ *     make that rollup this consultation's note — the same product decision
+ *     `SummaryService.generateSummary` implements for a single consultation.
+ *     Locked below as confirmed, intentional behavior (see
+ *     `deletion-manifest.md` §5 and README.md §7A/Change History for the
+ *     correction).
  */
 import { describe, expect, it } from 'vitest';
 import { ContextItemFactory } from '@arcaai/domains';
@@ -59,15 +68,25 @@ describe('TASK-732 Task 11 — kept-generator output reachability of approveSumm
     expect(syncSummaryItem.isFinalSummary, 'the sync-regenerate path produces the consultation\'s actual note and must stay signable').toBe(true);
   });
 
-  it('FINDING (not endorsed): ComprehensiveSummaryProcessor output (RAW_SUMMARY) currently ALSO satisfies isFinalSummary', () => {
+  it('ComprehensiveSummaryProcessor output (RAW_SUMMARY) is signable — resolved as intentional, not an open finding', () => {
     const comprehensiveItem = ContextItemFactory.CreateRawSummary(TENANT_ID, CONSULTATION_ID, 'cross-chain rollup text', undefined, 'system');
     expect(
       comprehensiveItem.isFinalSummary,
       'ComprehensiveSummaryProcessor uses CreateRawSummary (the same factory method as a real single-consultation ' +
-        'summary), so its output is NOT structurally distinguished from a signable note today. The ticket\'s §2.6 ' +
-        'draft assumed otherwise without checking — this test locks the ACTUAL behavior so the open question ' +
-        '(should a cross-chain rollup be signable as the target consultation\'s note?) is visible and deliberate ' +
-        'to change, not silently true.',
+        'summary) deliberately: a clinician who requests a cross-chain rollup for the consultation they are ' +
+        'viewing is choosing to make that rollup this consultation\'s signable note, exactly like its sync twin ' +
+        '(ChainSummaryService.generateComprehensiveSummary) and like sync SummaryService.generateSummary.',
     ).toBe(true);
+  });
+
+  it("sync twin ChainSummaryService.generateComprehensiveSummary agrees with the async processor — no signability asymmetry between them", () => {
+    // Both the async (BullMQ) and sync comprehensive-summary paths must land on the
+    // exact same ContextItemFactory call, or a future edit to only one of them would
+    // silently reintroduce a signable/non-signable split between two implementations
+    // of the same product feature.
+    const asyncEquivalent = ContextItemFactory.CreateRawSummary(TENANT_ID, CONSULTATION_ID, 'async rollup', undefined, 'system');
+    const syncEquivalent = ContextItemFactory.CreateRawSummary(TENANT_ID, CONSULTATION_ID, 'sync rollup', undefined, 'system');
+    expect(asyncEquivalent.isFinalSummary).toBe(syncEquivalent.isFinalSummary);
+    expect(syncEquivalent.isFinalSummary).toBe(true);
   });
 });

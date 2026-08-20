@@ -25,7 +25,7 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { AppSettingsService } from '../appSettings.service';
 import { GlobalSettingFactory, ValueType } from '@arcaai/domains';
 
-const GLOBAL_TENANT_ID = '50000000-0000-0000-0000-000000000000';
+const SYSTEM_TENANT_ID = '00000000-0000-0000-0000-000000000000';
 const CUSTOMER_TENANT = '50000000-0000-0000-0000-000000000001';
 
 const buildSetting = (key: string, tenantId: string, value: string) =>
@@ -49,7 +49,7 @@ let readRanOutsideContext: boolean | undefined;
 const repo = {
   findAll: vi.fn(async () => {
     readRanOutsideContext = insideExit;
-    return [buildSetting('rate-limit.tier.default.limit', GLOBAL_TENANT_ID, '100')];
+    return [buildSetting('rate-limit.tier.default.limit', SYSTEM_TENANT_ID, '100')];
   }),
 };
 const events = { emit: vi.fn() };

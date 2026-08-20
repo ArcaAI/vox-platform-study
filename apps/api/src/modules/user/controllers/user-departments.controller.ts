@@ -1,6 +1,17 @@
-import { IUserDepartmentService, UserDepartmentResponse, AssignUserDepartmentRequest, UpdateUserDepartmentRequest } from '@arcaai/applications';
-import { Body, Controller, Delete, Get, HttpCode, HttpStatus, Inject, Param, Patch, Post } from '@nestjs/common';
+import {
+  IUserDepartmentService,
+  IUserService,
+  IUserRoleAssignmentService,
+  UserDepartmentResponse,
+  AssignUserDepartmentRequest,
+  UpdateUserDepartmentRequest,
+  isSuperAdmin,
+  IActiveUserContext,
+} from '@arcaai/applications';
+import { DataNotFoundException } from '@arcaai/exceptions';
+import { Body, Controller, Delete, Get, HttpCode, HttpStatus, Inject, NotFoundException, Param, Patch, Post } from '@nestjs/common';
 import { ApiBearerAuth, ApiHeader, ApiOperation, ApiParam, ApiResponse, ApiTags } from '@nestjs/swagger';
+import { ClsService } from 'nestjs-cls';
 import { CanManage, ExpectedVersion, RequiresIfMatch, ForbidApiKey, RequiredSvcScopes } from '../../../decorators';
 
 /**
@@ -24,14 +35,59 @@ export class UserDepartmentsController {
   constructor(
     @Inject(IUserDepartmentService)
     private readonly userDepartmentService: IUserDepartmentService,
+    @Inject(IUserService)
+    private readonly userService: IUserService,
+    @Inject(IUserRoleAssignmentService)
+    private readonly userRoleAssignmentService: IUserRoleAssignmentService,
+    private readonly cls: ClsService<IActiveUserContext>,
   ) {}
 
   @Get(':id/departments')
   @ApiOperation({ summary: "List a user's department assignments (tenant-scoped)" })
   @ApiParam({ name: 'id', description: 'User ID', type: String })
   @ApiResponse({ status: 200, description: 'Assignments listed', type: [UserDepartmentResponse] })
+  @ApiResponse({ status: 404, description: 'User not found (or cross-tenant)' })
   async list(@Param('id') id: string): Promise<UserDepartmentResponse[]> {
+    await this.assertUserInScope(id);
     return this.userDepartmentService.getByUser(id);
+  }
+
+  /**
+   * Mirrors `UserController.assertUserInScope` (F-07): proves the target
+   * user EXISTS before returning its sub-collection, then — unless the
+   * caller is an unscoped SUPER_ADMIN performing the deliberate cross-tenant
+   * read `UserDepartmentService.getByUser` itself supports — proves the
+   * caller's tenant is among the user's ENABLED tenant memberships. Both
+   * failure modes 404 (never a 200 empty list, never a 403) so a bogus id
+   * and a real cross-tenant id are indistinguishable.
+   */
+  private async assertUserInScope(id: string): Promise<void> {
+    try {
+      await this.userService.fetchById(id);
+    } catch (err) {
+      if (err instanceof DataNotFoundException) {
+        throw new NotFoundException('User not found');
+      }
+      throw err;
+    }
+
+    const user = this.cls.get('user');
+    const callerTenantId = this.cls.get('tenantId');
+    if (isSuperAdmin(user)) {
+      // An unscoped SUPER_ADMIN (no working tenant selected) reads
+      // cross-tenant by design — mirrors `UserDepartmentService.getByUser`'s
+      // own `crossTenant` branch. A SUPER_ADMIN with a working tenant
+      // selected is exempt from the membership check too, matching
+      // `UserController.assertUserInScope`.
+      return;
+    }
+    if (!callerTenantId) {
+      throw new NotFoundException('User not found');
+    }
+    const tenantIds = await this.userRoleAssignmentService.findActiveTenantIdsForUser(id);
+    if (!tenantIds.includes(callerTenantId)) {
+      throw new NotFoundException('User not found');
+    }
   }
 
   @Post(':id/departments')

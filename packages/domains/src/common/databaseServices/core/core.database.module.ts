@@ -100,6 +100,7 @@ import { WorkflowDefinitionRepository } from '../../../repositories/generated/co
 import { WorkflowAssignmentRepository } from '../../../repositories/generated/core/WorkflowAssignmentRepository';
 import { WorkflowAssignmentChangeRepository } from '../../../repositories/generated/core/WorkflowAssignmentChangeRepository';
 import { WorkflowTestFixtureRepository } from '../../../repositories/generated/core/WorkflowTestFixtureRepository';
+import { WorkflowInvariantRuleRepository } from '../../../repositories/generated/core/WorkflowInvariantRuleRepository';
 
 // Async provider so the (possibly Vault-backed) Prisma client
 // is fully resolved BEFORE the service is injected into the UnitOfWork /
@@ -281,6 +282,9 @@ const repositories = [
   // Per-scope workflow assignment + its append-only WORM change log (TASK-733).
   WorkflowAssignmentRepository,
   WorkflowAssignmentChangeRepository,
+  // Workflow-graph safety rule rows (TASK-716) — a SYSTEM_SHARED_READ_MODEL,
+  // see tenant-scope.ts for why.
+  WorkflowInvariantRuleRepository,
 ];
 
 @Module({

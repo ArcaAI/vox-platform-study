@@ -127,7 +127,13 @@ describe('TENANT_SCOPED_MODELS allow-list', () => {
     // append-only change log). Ordinary tenant-owned rows, deliberately NOT
     // SYSTEM-shared: the platform-default tier is the tenant's own active
     // published definition, never a SYSTEM assignment row read cross-tenant.
-    expect(TENANT_SCOPED_MODELS.size).toBe(83);
+    // 83 → 84: adds WorkflowInvariantRule (TASK-716 — the validator's rule
+    // rows). UNLIKE its workflow-substrate siblings above, this one IS
+    // SYSTEM-shared (see the SYSTEM_SHARED_READ_MODELS assertion below): a
+    // tenant's validator must resolve the SYSTEM platform rule set merged
+    // with any rows the tenant added itself, or it would silently
+    // under-enforce every safety rule it didn't happen to also author.
+    expect(TENANT_SCOPED_MODELS.size).toBe(84);
   });
 
   // The usage ledger, its outbox, the rollups and the whole billing
@@ -425,6 +431,14 @@ describe('SYSTEM_SHARED_READ_MODELS allow-list', () => {
         // which mergeSharedReadTenantIntoWhere preserves verbatim.
         'PromptTemplate',
         'PromptVersion',
+        // WorkflowInvariantRule's SYSTEM-tenant rows ARE the platform
+        // invariant register made executable (TASK-716); every tenant's
+        // WorkflowValidatorService must read them merged with its own
+        // additions to validate ANY graph — the same "every tenant must
+        // resolve the SYSTEM row to function at all" shape as HarnessPolicy/
+        // PipelinePolicy above. READS widen to [caller, SYSTEM]; WRITES are
+        // NOT widened — a tenant can never mutate a SYSTEM-owned rule row.
+        'WorkflowInvariantRule',
       ]),
     );
   });

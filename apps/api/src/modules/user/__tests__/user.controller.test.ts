@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { BadRequestException, ForbiddenException, NotFoundException, StreamableFile } from '@nestjs/common';
 import { REQUIRED_PERMISSIONS_KEY } from '@arcaai/applications';
+import { DataNotFoundException } from '@arcaai/exceptions';
 import { UserController } from '../user.controller';
 
 // Mirror of the AuditLogController CLS mock so the controller can read the
@@ -1181,6 +1182,76 @@ describe('UserController', () => {
       expect(result.succeeded).toHaveLength(1);
       expect(result.failed).toHaveLength(1);
       expect(result.failed[0].id).toBe('theirs');
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // F-07: sub-collection routes (`:id/roles`, `:id/api-keys`, `:id/settings`,
+  // `:id/profile`, `:id/voice-profiles`) answered `200` with an empty
+  // collection for a NONEXISTENT parent user id, because the only existence
+  // signal (`findActiveTenantIdsForUser` returning an empty tenant list) is
+  // never reached by a SUPER_ADMIN caller — that branch returns immediately.
+  // `assertUserInScope` now proves existence via `userService.fetchById`
+  // FIRST, for every caller including SUPER_ADMIN.
+  // -------------------------------------------------------------------------
+  describe('F-07 — SUPER_ADMIN existence guard on sub-collection routes', () => {
+    const buildController = (cls: ReturnType<typeof createMockCls>) =>
+      new UserController(
+        mockUserService as any,
+        mockApiKeyService as any,
+        mockUserSettingsService as any,
+        mockUserRoleAssignmentService as any,
+        mockUserProfileService as any,
+        mockVoiceProfileService as any,
+        mockUserDepartmentService as any,
+        mockUserPasswordService as any,
+        mockUserExportService as any,
+        cls as any,
+      );
+
+    const superAdmin = () => createMockCls({ id: 'root', tenantId: null, roles: ['SUPER_ADMIN'] }, null);
+
+    beforeEach(() => {
+      mockUserService.fetchById.mockRejectedValue(new DataNotFoundException('User', 'bogus-id'));
+    });
+
+    it('fetchUserRoleAssignments: 404s a bogus id for a SUPER_ADMIN caller (never 200 [])', async () => {
+      await expect(buildController(superAdmin()).fetchUserRoleAssignments('bogus-id', { page: 1, pageSize: 10 } as any)).rejects.toBeInstanceOf(
+        NotFoundException,
+      );
+      expect(mockUserRoleAssignmentService.fetchAllByUserId).not.toHaveBeenCalled();
+    });
+
+    it('fetchUserApiKeys: 404s a bogus id for a SUPER_ADMIN caller (never 200 [])', async () => {
+      await expect(buildController(superAdmin()).fetchUserApiKeys('bogus-id', { page: 1, pageSize: 10 } as any)).rejects.toBeInstanceOf(
+        NotFoundException,
+      );
+      expect(mockApiKeyService.fetchAllByUserId).not.toHaveBeenCalled();
+    });
+
+    it('fetchUserSettings: 404s a bogus id for a SUPER_ADMIN caller (never 200 [])', async () => {
+      await expect(buildController(superAdmin()).fetchUserSettings('bogus-id')).rejects.toBeInstanceOf(NotFoundException);
+      expect(mockUserSettingsService.fetchAllByUserId).not.toHaveBeenCalled();
+    });
+
+    it('fetchUserProfile: 404s a bogus id for a SUPER_ADMIN caller (never 200 null)', async () => {
+      await expect(buildController(superAdmin()).fetchUserProfile('bogus-id')).rejects.toBeInstanceOf(NotFoundException);
+      expect(mockUserProfileService.getByUserId).not.toHaveBeenCalled();
+    });
+
+    it('fetchUserVoiceProfiles: 404s a bogus id for a SUPER_ADMIN caller (never 200 [])', async () => {
+      await expect(buildController(superAdmin()).fetchUserVoiceProfiles('bogus-id')).rejects.toBeInstanceOf(NotFoundException);
+      expect(mockVoiceProfileService.listByUserId).not.toHaveBeenCalled();
+    });
+
+    it('a real id for the SAME checks still succeeds (existence proven, not just gated)', async () => {
+      mockUserService.fetchById.mockResolvedValue(fakeUserEntity);
+      mockUserRoleAssignmentService.fetchAllByUserId.mockResolvedValue({ data: [], count: 0, page: 1, limit: 10 });
+
+      const result = await buildController(superAdmin()).fetchUserRoleAssignments('real-id', { page: 1, pageSize: 10 } as any);
+
+      expect(result).toBeDefined();
+      expect(mockUserRoleAssignmentService.fetchAllByUserId).toHaveBeenCalledWith(expect.objectContaining({ userId: 'real-id' }));
     });
   });
 

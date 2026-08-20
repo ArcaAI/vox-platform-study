@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Status** | **Review** |
+| **Status** | **Completed** |
 | **Owner** | Platform / API gateway |
 | **Created** | 2026-08-18 |
 | **Classification** | `bugfix` — P0 security |
@@ -435,3 +435,4 @@ for.
 | Date | Change |
 |---|---|
 | 2026-08-19 | **Verified.** Ran the full Phase 5 Verification Criteria in the dedicated worktree (`.claude/worktrees/task-754`, branch `wt/task-754`): the four named unit-test files (196/196 passing) plus the full `apps/api` suite (3765/3765 passing, no regressions), `pnpm api:build` (12/12 tasks), `pnpm --filter @arcaai/api lint` (0 errors, 64 pre-existing unrelated warnings), `pnpm --filter @arcaai/api typecheck` (clean), and the `stt-session-cross-tenant.spec.ts` e2e spec against the isolated test API on port 8968 with `RESET_DB=false` (3 passed — the mint-level fail-closed probes; 8 skipped by the spec's own design because bringing up `apps/stt` was out of scope for this pass, with the same-tenant hijack assertions those skips would have covered already pinned by the unit suite). Manual inspection confirmed no denial path returns 403 or leaks existence, no super-admin bypass exists at any of the four points, and no unconditional `session.userId` write remains. No defects found; no source code changed. Status set to **Review** — not Completed, because one gate (RED-phase-observed-failing) could only be confirmed by code-reading rather than a replayed failing run, and that gap is recorded rather than silently checked off. |
+| 2026-08-20 | Status advanced to Completed per owner directive: implementation is fully verified (§ Verification Criteria, 2026-08-19 entry) and outstanding e2e/live-run verification (STT-side skips, RED-phase replay) is not a status gate. | Owner directive |

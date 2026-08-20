@@ -2,7 +2,7 @@
 
 | Field | Value |
 |---|---|
-| **Status** | Review |
+| **Status** | Completed |
 | **Type** | refactor |
 | **Branch** | `wt/task-774` |
 | **Opened** | 2026-08-19 |
@@ -143,3 +143,4 @@ pass — the suite was run as committed.
 |---|---|
 | 2026-08-19 | **Split out of TASK-769 and renumbered 771 → 775.** The combined `TASK-769 · 770 · 771` document bundled this workstream ("771": table conformance) with two unrelated numbers. A concurrent session had already committed a real, already-Completed `TASK-771-Rate-Limit-Admin-Writes-404` against the same number (and `TASK-770-Dev-Bootstrap-Completeness` against the sibling "770"), so both numbers were double-booked — the second such collision on this workstream (the first: 766/767/768 → 769/770/771, recorded in TASK-769's own history). Owner decision: split into standalone `TASK-774` (page-frame conformance) and `TASK-775` (this ticket, table conformance); confirmed both numbers free in `docs/implementation/` and `docs/archive/` before creating this document. Content migrated verbatim from the combined ticket's "771" section; no new table-conformance work was performed as part of the split — this is a documentation move plus re-verification. |
 | 2026-08-19 | Re-verified against the `wt/task-774` worktree: a11y fix claims (`role="region"`, `scope="col"`, `aria-pressed`) spot-checked with `grep`, then `pnpm --filter @arcaai/admin-console test lint typecheck build` run clean (206/206 files, 1620/1620 tests, 0 lint warnings, clean typecheck, successful build). Status → Review. |
+| 2026-08-20 | Status advanced to Completed per owner directive: implementation complete, all gates green; outstanding e2e execution/verification is not a status gate. |

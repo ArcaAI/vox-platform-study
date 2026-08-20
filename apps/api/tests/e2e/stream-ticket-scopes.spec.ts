@@ -7,7 +7,7 @@
  *   GET /api/v1/audio/transcription-jobs/:id/stream
  *     `@StreamScope({ namespace: 'transcription_job', param: 'id' })`
  *
- * Contract (mirrors consultation-jobs.e2e-spec.ts): no credential → 401; a
+ * Contract (mirrors consultation-jobs.spec.ts): no credential → 401; a
  * single-use ticket minted by POST /auth/stream-ticket with the matching
  * `<namespace>:<resourceId>` scope must pass the auth guard (anything but
  * 401 — unknown ids may still 404 from the pre-stream ownership guard or

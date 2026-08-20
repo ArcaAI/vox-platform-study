@@ -41,15 +41,24 @@ describe('CASL_ENFORCED_PAIRS', () => {
     engine = new PolicyEngine(mockDatabaseService as any, undefined);
   });
 
-  it('contains ONLY pairs whose evidence is recorded in the ticket README', () => {
-    // Pass 5 shipped this empty (shadow was wired to zero routes, so nothing
-    // had been measured). Pass 6 wired shadow to real routes, fixed the
-    // instance-evaluation bug that made every instance verdict throw, and
-    // recorded exhaustive offline evidence for `ApiKey` — see
-    // `casl-conditions.enforce-apikey.test.ts` and README §7 Pass 6.
-    // Adding an entry here is an authorization-semantics change and must
-    // fail this test until that evidence exists.
-    expect([...CASL_ENFORCED_PAIRS].sort()).toEqual(['delete:ApiKey', 'read:ApiKey', 'update:ApiKey']);
+  it('contains ONLY pairs that are REACHABLE and whose evidence is in the ticket README', () => {
+    // TASK-781: the three `ApiKey` pairs were removed. They were unreachable —
+    // the route resolver loads its row through a 404-throwing accessor, so on
+    // the deny case it threw and the guard failed open (TASK-779 F-1) — and
+    // making them fire would have replaced a deliberate 404 with an
+    // existence-leaking 403 (DEF-C3). The boundary is enforced by
+    // `ApiKeyService.assertKeyAccess`, one layer down, with the safer status.
+    //
+    // Adding an entry here is an authorization-semantics change: it needs
+    // evidence in the ticket README AND an enforce-grade resolver, or
+    // `auditCaslEnforcePairReachability` refuses to boot the gateway.
+    expect([...CASL_ENFORCED_PAIRS].sort()).toEqual([]);
+  });
+
+  it('isEnforcedPair answers false for ApiKey — the boundary belongs to the service layer', () => {
+    for (const action of ['read', 'update', 'delete']) {
+      expect(engine.isEnforcedPair(action, 'ApiKey')).toBe(false);
+    }
   });
 
   it('isEnforcedPair answers false for the two investigated-and-disqualified candidates', () => {

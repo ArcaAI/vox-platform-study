@@ -52,10 +52,11 @@ export function useUpdateMyReport() {
   });
 }
 
+/** OCC write: `etag` is the report row's validator (its `version` from the list read). */
 export function useSetDefaultReport() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (reportId: string) => setDefaultReport(reportId),
+    mutationFn: ({ reportId, etag }: { reportId: string; etag: string }) => setDefaultReport(reportId, etag),
     // Root-level: the default flip changes my-style AND the mine rows.
     onSuccess: () => queryClient.invalidateQueries({ queryKey: playgroundDnaKeys.root }),
   });

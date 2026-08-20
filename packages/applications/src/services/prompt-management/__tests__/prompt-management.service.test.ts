@@ -1081,6 +1081,10 @@ describe('PromptManagementService', () => {
   // ─── getVersions ────────────────────────────────────────────
 
   describe('getVersions', () => {
+    beforeEach(() => {
+      mockTemplateRepo.findById.mockResolvedValue(createMockTemplateEntity({ id: 'template-id-1', tenantId: 'tenant-1' }));
+    });
+
     it('should return version history for a template', async () => {
       mockVersionRepo.findByTemplate.mockResolvedValue([
         createMockVersionEntity({ id: 'v2', versionNumber: 2 }),
@@ -1101,6 +1105,22 @@ describe('PromptManagementService', () => {
       const result = await service.getVersions('template-id-1');
 
       expect(result).toEqual([]);
+    });
+
+    // F-07: a nonexistent or cross-tenant template must 404, never a silent
+    // `200 []`.
+    it('throws NotFound when the template does not exist', async () => {
+      mockTemplateRepo.findById.mockResolvedValue(null);
+
+      await expect(service.getVersions('missing')).rejects.toThrow(NotFoundException);
+      expect(mockVersionRepo.findByTemplate).not.toHaveBeenCalled();
+    });
+
+    it('throws NotFound (never leaks) for a cross-tenant template', async () => {
+      mockTemplateRepo.findById.mockResolvedValue(createMockTemplateEntity({ id: 'tpl-x', tenantId: 'other-tenant' }));
+
+      await expect(service.getVersions('tpl-x')).rejects.toThrow(NotFoundException);
+      expect(mockVersionRepo.findByTemplate).not.toHaveBeenCalled();
     });
   });
 
@@ -1305,6 +1325,26 @@ describe('PromptManagementService', () => {
   });
 
   describe('getUsageStats', () => {
+    beforeEach(() => {
+      mockTemplateRepo.findById.mockResolvedValue(createMockTemplateEntity({ id: 'template-1', tenantId: 'tenant-1' }));
+    });
+
+    // F-07: a nonexistent or cross-tenant template must 404, never a silent
+    // `200` empty-stats response.
+    it('throws NotFound when the template does not exist', async () => {
+      mockTemplateRepo.findById.mockResolvedValue(null);
+
+      await expect(service.getUsageStats('missing')).rejects.toThrow(NotFoundException);
+      expect(mockUsageRepo.findByTemplate).not.toHaveBeenCalled();
+    });
+
+    it('throws NotFound (never leaks) for a cross-tenant template', async () => {
+      mockTemplateRepo.findById.mockResolvedValue(createMockTemplateEntity({ id: 'tpl-x', tenantId: 'other-tenant' }));
+
+      await expect(service.getUsageStats('tpl-x')).rejects.toThrow(NotFoundException);
+      expect(mockUsageRepo.findByTemplate).not.toHaveBeenCalled();
+    });
+
     it('should return total usages and last used timestamp when records exist', async () => {
       const now = new Date('2026-02-20T10:00:00Z');
       const earlier = new Date('2026-02-19T08:00:00Z');

@@ -96,6 +96,54 @@ class TestApplyGate:
         assert gated.aggregates["gwet_ac2"] == 0.55
 
 
+class TestTask713IccBaselineGate:
+    """TASK-713 closure (owner ruling, 2026-08-20): the release-gate ICC
+    threshold was lowered from the literature-derived 0.80 target to **0.73**,
+    the MEASURED baseline against the real `curated-v2.0.0` golden set
+    (`icc=0.7306`, Gwet AC2=0.9196, n=288 — TASK-713 README §"Fresh run
+    outcome"). Proves the gate now reflects that decision at today's actual
+    quality: passes at the measured reading, and still fails a reading below
+    the new floor — so an accidental future widen/narrow of `icc_threshold`
+    is caught here, not discovered live in CI. The bar for restoring 0.80 is
+    tracked as debt in TASK-780, not laundered by this test.
+    """
+
+    _CURATED_V2_AGGREGATES = {
+        "pdsqi_mean": 4.875,
+        "pdsqi_accurate": 4.833,
+        "pdsqi_thorough": 4.833,
+        "faithfulness": 0.9938,
+    }
+
+    def test_default_icc_threshold_is_the_recorded_baseline(self):
+        assert EvalConfig().icc_threshold == 0.73
+
+    def test_gate_passes_at_the_measured_curated_v2_icc(self):
+        # The exact TASK-713 measured reading: icc=0.7306 on n=288.
+        run = _run(dict(self._CURATED_V2_AGGREGATES))
+        measured = CalibrationReport(
+            icc=0.7306, ac2=0.9196, n=288, k=2, icc_threshold=EvalConfig().icc_threshold
+        )
+        gated = apply_gate(run, EvalConfig(), calibration=measured)
+        assert gated.passed is True
+        assert gated.failures == []
+        assert gated.thresholds["icc"] == 0.73
+        assert gated.aggregates["icc"] == 0.7306
+
+    def test_gate_still_fails_below_the_new_threshold(self):
+        # One thousandth below the new floor — the gate must not have been
+        # loosened into a rubber stamp; a genuine regression below 0.73
+        # still blocks release.
+        run = _run(dict(self._CURATED_V2_AGGREGATES))
+        below = CalibrationReport(
+            icc=0.7299, ac2=0.90, n=288, k=2, icc_threshold=EvalConfig().icc_threshold
+        )
+        gated = apply_gate(run, EvalConfig(), calibration=below)
+        assert gated.passed is False
+        assert any("icc" in f.lower() for f in gated.failures)
+        assert gated.thresholds["icc"] == 0.73
+
+
 class TestJudgeClinicianICC:
     def _gs_and_run(self, judge_scores: list[PDSQIScore], clinician_scores: list[PDSQIScore]):
         cases = [

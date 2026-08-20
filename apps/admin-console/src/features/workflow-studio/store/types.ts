@@ -10,8 +10,9 @@ export interface GraphStoreNode {
   id: string;
   /** Registry node `type`. */
   type: string;
-  /** Client-side canvas layout — NOT part of the server `WorkflowGraphNode` shape (see
-   *  `lib/graph-serialization.ts`). */
+  /** Client-authored canvas layout — mirrors the server `WorkflowGraphNode.position` field
+   *  (see `lib/graph-serialization.ts`); always present in the store even for a node whose
+   *  graph document carried no position (defaults to the origin on hydrate). */
   position: { x: number; y: number };
   /** Open set of registry-declared classes (e.g. `['mandatory']`). A node is mandatory iff
    *  `'mandatory'` is a member — see `contracts/registry.contract.md`. */

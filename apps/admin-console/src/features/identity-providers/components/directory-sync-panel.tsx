@@ -75,7 +75,7 @@ function DirectoryProviderSelect({ provider, etag, onSaved }: { provider: Tenant
   );
 }
 
-function MsGraphCredentialsForm({ providerId }: { providerId: string }) {
+function MsGraphCredentialsForm({ providerId, etag, onSaved }: { providerId: string; etag: string | null; onSaved: () => void }) {
   const setCredentials = useSetDirectoryCredentials();
   const [azureTenantId, setAzureTenantId] = useState('');
   const [clientId, setClientId] = useState('');
@@ -87,21 +87,32 @@ function MsGraphCredentialsForm({ providerId }: { providerId: string }) {
       clientId: clientId.trim(),
       clientSecret: clientSecret.trim(),
     };
+    if (!etag) return;
     setCredentials.mutate(
-      { id: providerId, credentials },
+      { id: providerId, credentials, etag },
       {
         onSuccess: () => {
           toast.success('Microsoft Graph credentials saved');
           setAzureTenantId('');
           setClientId('');
           setClientSecret('');
+          // The seal bumped the row version — re-read so the next write
+          // carries a fresh If-Match validator.
+          onSaved();
         },
-        onError: (error) => toast.error(error instanceof GatewayError ? error.message : 'Could not save the credentials.'),
+        onError: (error) => {
+          if (error instanceof GatewayError && error.status === 412) {
+            onSaved();
+            toast.error('Someone else changed this provider. Reloaded the latest version — try again.');
+            return;
+          }
+          toast.error(error instanceof GatewayError ? error.message : 'Could not save the credentials.');
+        },
       },
     );
   }
 
-  const canSave = azureTenantId.trim() && clientId.trim() && clientSecret.trim();
+  const canSave = etag && azureTenantId.trim() && clientId.trim() && clientSecret.trim();
 
   return (
     <div className="flex flex-col gap-3">
@@ -149,7 +160,7 @@ function MsGraphCredentialsForm({ providerId }: { providerId: string }) {
   );
 }
 
-function GoogleDirectoryCredentialsForm({ providerId }: { providerId: string }) {
+function GoogleDirectoryCredentialsForm({ providerId, etag, onSaved }: { providerId: string; etag: string | null; onSaved: () => void }) {
   const setCredentials = useSetDirectoryCredentials();
   const [serviceAccountEmail, setServiceAccountEmail] = useState('');
   const [privateKey, setPrivateKey] = useState('');
@@ -163,8 +174,9 @@ function GoogleDirectoryCredentialsForm({ providerId }: { providerId: string }) 
       delegatedAdminEmail: delegatedAdminEmail.trim(),
       ...(customerId.trim() ? { customerId: customerId.trim() } : {}),
     };
+    if (!etag) return;
     setCredentials.mutate(
-      { id: providerId, credentials },
+      { id: providerId, credentials, etag },
       {
         onSuccess: () => {
           toast.success('Google Directory credentials saved');
@@ -172,13 +184,21 @@ function GoogleDirectoryCredentialsForm({ providerId }: { providerId: string }) 
           setPrivateKey('');
           setDelegatedAdminEmail('');
           setCustomerId('');
+          onSaved();
         },
-        onError: (error) => toast.error(error instanceof GatewayError ? error.message : 'Could not save the credentials.'),
+        onError: (error) => {
+          if (error instanceof GatewayError && error.status === 412) {
+            onSaved();
+            toast.error('Someone else changed this provider. Reloaded the latest version — try again.');
+            return;
+          }
+          toast.error(error instanceof GatewayError ? error.message : 'Could not save the credentials.');
+        },
       },
     );
   }
 
-  const canSave = serviceAccountEmail.trim() && privateKey.trim() && delegatedAdminEmail.trim();
+  const canSave = etag && serviceAccountEmail.trim() && privateKey.trim() && delegatedAdminEmail.trim();
 
   return (
     <div className="flex flex-col gap-3">
@@ -279,9 +299,9 @@ export function DirectorySyncPanel({ provider, etag, onSaved }: { provider: Tena
               </Badge>
             </div>
             {directoryProvider === 'ms-graph' ? (
-              <MsGraphCredentialsForm providerId={provider.id} />
+              <MsGraphCredentialsForm providerId={provider.id} etag={etag} onSaved={onSaved} />
             ) : (
-              <GoogleDirectoryCredentialsForm providerId={provider.id} />
+              <GoogleDirectoryCredentialsForm providerId={provider.id} etag={etag} onSaved={onSaved} />
             )}
             <Separator />
             <div className="flex flex-col gap-2">

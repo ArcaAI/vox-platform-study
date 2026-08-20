@@ -55,6 +55,7 @@ export class WorkflowDefinitionDtoMapper {
     dto.defaultTimeoutSeconds = descriptor.defaultTimeoutSeconds;
     dto.defaultMaxAttempts = descriptor.defaultMaxAttempts;
     dto.entitlementKey = descriptor.entitlementKey;
+    dto.configSchema = descriptor.configSchema ?? null;
     return dto;
   }
 }

@@ -13,7 +13,7 @@
  * enforcing gate until that review completes.
  */
 
-export type { WorkflowGraph, WorkflowGraphNode, WorkflowGraphEdge } from './graph-model';
+export type { WorkflowGraph, WorkflowGraphNode, WorkflowGraphEdge, WorkflowNodePosition } from './graph-model';
 export { MAX_GRAPH_NODES, MAX_GRAPH_EDGES, MAX_GRAPH_DEPTH, WORKFLOW_NODE_ID_PATTERN, workflowGraphProblems } from './graph-model';
 
 export { topologicalLevels, reachableFrom, reachesAny, pathExists, allPathsPassThrough } from './graph-algorithms';
@@ -37,6 +37,9 @@ export { canonicalJson } from './canonical-json';
 
 export { WORKFLOW_NODE_REGISTRY, classesOf, paletteOf, nodeInfo, workflowNodeClassLookup, registryChecksum } from './node-registry';
 export type { WorkflowNodeDescriptor } from './node-registry';
+
+export { NODE_CONFIG_SCHEMAS } from './node-config-schemas';
+export type { NodeConfigSchema } from './node-config-schemas';
 
 export { compile } from './compiler';
 export type {

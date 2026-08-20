@@ -97,11 +97,14 @@ export interface RunTrace {
   tracePruned: boolean;
 }
 
-/** One node authored on a `WorkflowDefinition.graph` (`WorkflowGraphNode`). No `position` field — see `lib/graph-layout.ts`. */
+/** One node authored on a `WorkflowDefinition.graph` (`WorkflowGraphNode`). `position` is
+ *  optional — a graph saved before the Studio persisted layout, or one authored entirely
+ *  through the list/tree editor, may still carry none; see `lib/graph-layout.ts`. */
 export interface WorkflowGraphNode {
   id: string;
   type: string;
   config?: Record<string, unknown>;
+  position?: { x: number; y: number };
 }
 
 /** One edge authored on a `WorkflowDefinition.graph` (`WorkflowGraphEdge`). */

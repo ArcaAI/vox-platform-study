@@ -20,7 +20,7 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { AppSettingsService } from '../appSettings.service';
 import { GlobalSettingFactory, ValueType } from '@arcaai/domains';
 
-const GLOBAL_TENANT_ID = '50000000-0000-0000-0000-000000000000';
+const SYSTEM_TENANT_ID = '00000000-0000-0000-0000-000000000000';
 const CUSTOMER_TENANT_A = '11111111-1111-1111-1111-111111111111';
 const CUSTOMER_TENANT_B = '22222222-2222-2222-2222-222222222222';
 
@@ -56,7 +56,7 @@ describe('AppSettingsService — tenant lane', () => {
 
   it('serves a tenant override to THAT tenant only', async () => {
     repo.findAll.mockResolvedValue([
-      buildSetting('rateLimit.maxRequests', GLOBAL_TENANT_ID, '100'),
+      buildSetting('rateLimit.maxRequests', SYSTEM_TENANT_ID, '100'),
       buildSetting('rateLimit.maxRequests', CUSTOMER_TENANT_A, '10'),
     ]);
 
@@ -72,7 +72,7 @@ describe('AppSettingsService — tenant lane', () => {
 
   it('keeps two tenants overriding the SAME key independent', async () => {
     repo.findAll.mockResolvedValue([
-      buildSetting('rateLimit.maxRequests', GLOBAL_TENANT_ID, '100'),
+      buildSetting('rateLimit.maxRequests', SYSTEM_TENANT_ID, '100'),
       buildSetting('rateLimit.maxRequests', CUSTOMER_TENANT_A, '10'),
       buildSetting('rateLimit.maxRequests', CUSTOMER_TENANT_B, '55'),
     ]);

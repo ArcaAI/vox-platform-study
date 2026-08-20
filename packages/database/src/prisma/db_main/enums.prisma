@@ -687,3 +687,37 @@ enum ConsentGrantMethod {
 
   @@schema("core")
 }
+
+// TASK-716 — the workflow safety validator. A rule with severity WARNING is
+// recorded on `WorkflowValidationReport` but never blocks publish; ERROR
+// blocks it. Graduated rollout: a rule may ship as WARNING and be promoted to
+// ERROR later by a row edit (bumping `ruleVersion`), never the reverse for a
+// SYSTEM-owned row (see the one-way-strictness rule in
+// workflow-invariant-rule.prisma).
+enum WorkflowRuleSeverity {
+  ERROR
+  WARNING
+
+  @@schema("core")
+}
+
+// TASK-716 — the CLOSED catalogue of predicate *kinds* a `WorkflowInvariantRule`
+// row may parameterize (§3.3: the kind is code, the instance is data). Mirrors
+// `WORKFLOW_RULE_PREDICATE_TYPES` in `packages/workflow-contract/src/predicates/index.ts`
+// verbatim — adding a member here means adding the matching evaluator there
+// first; the two must never drift; see `contracts/rule-model.md` §3.
+enum WorkflowRulePredicateType {
+  ACYCLIC
+  SINGLE_ENTRY
+  REACHABLE_FROM_ENTRY
+  REACHES_TERMINAL
+  REQUIRED_NODE_TYPE
+  FORBIDDEN_NODE_TYPE
+  REQUIRED_PATH_THROUGH
+  FORBIDDEN_PATH
+  ORDERED_BEFORE
+  BOUND
+  CONFIG_PREDICATE
+
+  @@schema("core")
+}

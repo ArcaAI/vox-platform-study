@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Status** | Completed (e2e run outstanding — see Verification) |
+| **Status** | Completed |
 | **Owner** | Platform / Architecture |
 | **Date** | 2026-08-18 |
 | **Type** | refactor (route taxonomy) + docs |

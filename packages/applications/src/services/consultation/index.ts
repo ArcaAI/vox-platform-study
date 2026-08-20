@@ -11,6 +11,8 @@ export * from './timeline';
 export * from './prompt';
 // apps/api <-> apps/harness gate adapter.
 export * from './harness';
+// Session-timeout sweep worker (TASK-711 state-machine.md §1a).
+export * from './timeout-sweep';
 // Per-consultation realtime live-summary watcher.
 export * from './live-documentation';
 // Loop event plane — publishes ConsultationLoopWorkflow output for

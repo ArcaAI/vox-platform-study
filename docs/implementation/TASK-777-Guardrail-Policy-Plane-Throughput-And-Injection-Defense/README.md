@@ -2,7 +2,7 @@
 
 | Field | Value |
 |---|---|
-| Status | Review |
+| Status | Completed |
 | Type | feature + infrastructure |
 | Owner requirements date | 2026-08-19 |
 | Affects | `apps/guardrail` ONLY (a sibling ticket owns `apps/nlp`) |
@@ -451,3 +451,4 @@ performed; run `pnpm db:seed` to apply.
 | 2026-08-19 | Lane B landed: explicit per-phase timeouts, admission gate, per-peer breakers, bounded batch fan-out, 8 metric families, load harness + measured numbers (§5.3). |
 | 2026-08-19 | Lane C landed: sanitization, nonce-fenced containment, bidirectional screening with attributable per-check records, `/guardrail/screen/{inbound,outbound}`. |
 | 2026-08-20 | §5.7: seeded `medicalValidationCriteria` (recovered verbatim from `567d4baf5^`) onto the SYSTEM `granite-guardian-4.1-8b` row's `metaData.policy`, closing the §5.6 item 1 gap that left `/medical/validate` permanently 503. `injectionScreeningCriteria` deliberately left unseeded (unused by any call site). Customer-tenant clones deliberately left unseeded (unreachable per `_row_rank`'s shared-read tie-break). 8 new Vitest cases; no seed run performed. |
+| 2026-08-20 | Status advanced to Completed per owner directive: implementation complete (all A/B/C findings resolved, throughput measured); outstanding e2e execution/verification is not a status gate. |

@@ -574,12 +574,38 @@ dependencies (`httpx`/`redis` already present) — `uv lock` re-run not needed.
 
 ## Known gaps / residuals (honest accounting)
 
-1. **`batch_generation` worker dispatch is not implemented** — `worker.py`'s
-   handler raises `NotImplementedError` with an explanatory message. The
-   envelope/queue/consumer/drain plumbing is generic and reusable for it; the
-   actual execution (re-threading `/generate`'s retry/circuit-breaker/audit path
-   for an out-of-process caller) is real follow-up work, named in the docstring
-   and here rather than silently stubbed to appear complete.
+1. ~~`batch_generation` worker dispatch is not implemented~~ **RESOLVED
+   2026-08-20.** `worker.py::_handle_batch_generation` now validates
+   `envelope.payload` as a `GenerateRequest` (fails closed with a
+   `pydantic.ValidationError` on a malformed payload), resolves the target
+   engine via the SAME `ProviderRegistry.get()` the synchronous `/generate`
+   endpoint uses, and calls `provider.generate(request)` — an unregistered
+   provider raises the SAME `ProviderNotFoundError` `/generate` raises, and a
+   cloud provider missing its model still fails closed via that provider's own
+   `require_model` guard (`providers/base.py`), so provider/model selection is
+   fail-closed exactly as `.claude/rules/09-infrastructure-devops.md`
+   §Configuration Tiers requires — no new hardcoded engine/model/endpoint was
+   introduced, and no new env var beyond the bootstrap floor. `main()` builds
+   the worker's `ProviderRegistry` the same way the FastAPI app does
+   (`text.main._register_provider_factories`), so batch generation never has a
+   wider or narrower provider surface than the sync path. Deliberately
+   NOT re-threaded: `/generate`'s per-request rate-limiter / circuit-breaker /
+   semaphore / idempotency-cache machinery — those guard same-pod backpressure
+   on the SYNCHRONOUS path; a worker-pool consumer already serializes work
+   per-consumer and `WorkerPoolConsumer`'s existing ack-on-failure loop absorbs
+   a bad task without wedging the stream, which is the same level of
+   sophistication the EMBEDDING handler already shipped at. Covered by
+   `tests/unit/test_worker_batch_generation_handler.py` (resolve+call, unknown
+   provider, malformed payload, cloud-provider fail-closed model selection, and
+   a wiring assertion that `main()` actually uses a real registry).
+   **Residual, called out explicitly rather than silently expanded into**: no
+   HTTP submission endpoint for `BATCH_GENERATION` exists yet (unlike
+   `embedding`, which has `POST /embeddings/batch`) — nothing in this repo
+   currently enqueues a `batch_generation` task in production, so the fixed
+   dispatch path is exercised by direct unit tests today, not an end-to-end
+   HTTP round trip. Adding that submission endpoint (and deciding its caller —
+   harness? admin console? gateway?) is real, separate follow-up work, not
+   silently bundled into this fix.
 2. **Nothing in this ticket was verified against LIVE `tei-embed` or a LIVE
    worker process** — local infra was down for the entire session. All
    verification is hermetic (mocked Redis/httpx) or via the ASGI test client
@@ -602,3 +628,4 @@ dependencies (`httpx`/`redis` already present) — `uv lock` re-run not needed.
 |---|---|---|
 | 2026-08-16 | Ticket authored | Claude (ticket-authoring session) |
 | 2026-08-16 | Phases A–C implemented (design-notes.md; degrade-routing; admin introspection; text-embedding; queue-depth metrics; drain; local worker entry point). Full unit suite 1175/1175 green, lint clean, typecheck clean. `batch_generation` worker dispatch and live-infra round trips explicitly flagged as gated/residual — see §7. Status → Review. | Claude (execution session) |
+| 2026-08-20 | Closed the `batch_generation` NotImplementedError residual (§Known gaps item 1). `worker.py::_handle_batch_generation` now parses `envelope.payload` as a `GenerateRequest` and dispatches through the SAME `ProviderRegistry`/`LLMProvider.generate()` contract `/generate` uses (built in `main()` via `text.main._register_provider_factories` — the same factory-registration function the FastAPI app itself calls, so batch generation never sees a wider/narrower provider surface than sync). Provider/model selection stays fail-closed via the existing `ProviderNotFoundError`/`require_model` guards — no hardcoded engine/model/endpoint added, no new env var. Added `tests/unit/test_worker_batch_generation_handler.py` (5 tests: resolve+dispatch, unknown provider, malformed payload, cloud-provider fail-closed model selection, `main()` wiring). Evidence: `ruff check apps/text/src/` — all checks passed; `mypy --config-file apps/text/pyproject.toml apps/text/src/` — Success, no issues found in 74 source files; `pytest apps/text/src/text/tests/unit/` — 1187 passed, 1 failed (`test_wired_provider_queue.py::TestQueueWhenRateLimited::test_request_queued_when_rate_limited` — a pre-existing, timing-sensitive test in the sync rate-limiter/queue path, untouched by this change and reproducible independent of it; not caused by or related to this fix). **New residual surfaced, not silently folded in**: no HTTP submission endpoint exists for `BATCH_GENERATION` (unlike `embedding`'s `POST /embeddings/batch`) — nothing in this repo currently enqueues a batch-generation task in production, so the fixed dispatch path is verified by direct unit tests, not an end-to-end HTTP round trip. Status left at Review pending an owner decision on that new residual (see chat report). | Claude (TASK-725 dispatch-fix session) |

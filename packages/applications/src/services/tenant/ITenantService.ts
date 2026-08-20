@@ -26,7 +26,7 @@ export interface ITenantService extends IBaseService {
   restore(id: EntityId): Promise<TenantEntity>;
 
   // Tags. Replaces the tenant's full tag set.
-  setTags(id: EntityId, tags: string[]): Promise<TenantEntity>;
+  setTags(id: EntityId, tags: string[], expectedVersion?: number): Promise<TenantEntity>;
 
   // Tenant configurations
   fetchTenantConfigs(props: PaginatedQuery & { tenantId?: string; codeName?: string }): Promise<FetchResponse<GlobalSettingEntity>>;

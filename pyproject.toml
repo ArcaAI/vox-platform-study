@@ -44,6 +44,13 @@ members = [
     # Its single dependency (pydantic) is already declared by every member, so
     # it adds nothing to this resolution.
     "packages/py-async-contract",
+    # TASK-716 Task 7b: the Python mirror of @arcaai/workflow-contract's
+    # `compiledConfig` contract (CompiledWorkflowConfig models, checksum
+    # verification, formatVersion guard) — the interpreter's read-only
+    # consumer half only; no validator, no compiler. Its single dependency
+    # (pydantic) is already declared by every member, so it adds nothing to
+    # this resolution.
+    "packages/py-workflow-contract",
 ]
 
 # stt's `nemo` extra pulls nemo-toolkit, which hard-requires transformers

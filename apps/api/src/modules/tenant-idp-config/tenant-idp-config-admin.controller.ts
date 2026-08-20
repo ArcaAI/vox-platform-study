@@ -10,7 +10,7 @@ import {
   UpdateTenantIdpConfigRequest,
 } from '@arcaai/applications';
 import { Body, Controller, Delete, Get, HttpCode, Inject, Param, Post, Put, Query } from '@nestjs/common';
-import { ApiBearerAuth, ApiOperation, ApiParam, ApiQuery, ApiResponse, ApiTags } from '@nestjs/swagger';
+import { ApiBearerAuth, ApiHeader, ApiOperation, ApiParam, ApiQuery, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { ClsService } from 'nestjs-cls';
 import { Authorize, ExpectedVersion, RequiresIfMatch, ForbidApiKey, RequiredSvcScopes } from '../../decorators';
 import { resolveScopedTenantId } from '../../shared/tenant-scope';
@@ -115,24 +115,36 @@ export class TenantIdpConfigAdminController {
 
   @Put(':id/directory-credentials')
   @Authorize(['manage', 'TenantIdentityProvider'])
+  @RequiresIfMatch()
   @ApiOperation({
     summary: 'Seal a directory-API credential bundle for admin-triggered sync (P3)',
     description:
       'Vault-seals the credential bundle into directoryCredentialsRef. Shape matches config.directoryProvider ' +
       '(ms-graph: {azureTenantId, clientId, clientSecret}; google-directory: {serviceAccountEmail, privateKey, ' +
-      'delegatedAdminEmail, customerId?}). Write-only — never echoed back. No If-Match (a narrow secret rotation, ' +
-      "same posture as the client secret's own rotation on PUT :id).",
+      'delegatedAdminEmail, customerId?}). Write-only — never echoed back. Optimistic concurrency is ENFORCED, ' +
+      'the same posture as `PUT :id`: `If-Match` (RFC 7232) is REQUIRED and overrides the body-field ' +
+      '`expectedVersion`; drift is `412`, a missing header is `428`.',
+  })
+  @ApiHeader({
+    name: 'If-Match',
+    description: 'RFC 7232 strong validator carrying the provider-row version the client read (e.g. `"7"`).',
+    required: true,
+    example: '"7"',
   })
   @ApiParam({ name: 'id' })
   @ApiQuery({ name: 'tenantId', required: false, description: 'Platform-admin only: target tenant.' })
   @ApiResponse({ status: 200, type: TenantIdpConfigResponse })
   @ApiResponse({ status: 400, description: 'Vault secrets provider not configured' })
+  @ApiResponse({ status: 412, description: 'Optimistic concurrency conflict — re-fetch and try again with the new version.' })
+  @ApiResponse({ status: 428, description: 'If-Match header is required for this operation.' })
   async setDirectoryCredentials(
     @Param('id') id: string,
     @Body() request: SetDirectoryCredentialsRequest,
+    @ExpectedVersion() expectedFromHeader: number | undefined,
     @Query('tenantId') tenantId?: string,
   ): Promise<TenantIdpConfigResponse> {
-    return this.configService.setDirectoryCredentials(this.resolveTenantId(tenantId), id, request);
+    const effective: SetDirectoryCredentialsRequest = expectedFromHeader !== undefined ? { ...request, expectedVersion: expectedFromHeader } : request;
+    return this.configService.setDirectoryCredentials(this.resolveTenantId(tenantId), id, effective);
   }
 
   @Post(':id/sync')

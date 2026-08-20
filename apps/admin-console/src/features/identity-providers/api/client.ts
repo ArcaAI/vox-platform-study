@@ -7,7 +7,7 @@
  * client-side progress poll).
  */
 
-import { deleteJson, getJson, getWithEtag, postJson, putJson, putWithEtag, versionFromEtag } from '@/shared/api';
+import { deleteJson, getJson, getWithEtag, postJson, putWithEtag, versionFromEtag } from '@/shared/api';
 import type { WithEtag } from '@/shared/api';
 import type {
   CreateTenantIdpConfigRequest,
@@ -51,9 +51,20 @@ export function deleteProvider(id: string): Promise<void> {
   return deleteJson(providerPath(id));
 }
 
-/** Vault-seals a directory-API credential bundle (shape matches config.directoryProvider). No OCC — a narrow secret rotation, mirrors the client secret rotation on updateProvider. */
-export function setDirectoryCredentials(id: string, credentials: DirectoryCredentials): Promise<TenantIdpConfig> {
-  return putJson(`${providerPath(id)}/directory-credentials`, { credentials });
+/**
+ * Vault-seals a directory-API credential bundle (shape matches
+ * config.directoryProvider). OCC applies, exactly like `updateProvider`:
+ * `If-Match` is REQUIRED and CASes against the provider row, so a stale editor
+ * gets 412 instead of sealing a bundle onto a row that has moved.
+ */
+export async function setDirectoryCredentials(id: string, credentials: DirectoryCredentials, etag: string): Promise<TenantIdpConfig> {
+  return (
+    await putWithEtag<TenantIdpConfig>(
+      `${providerPath(id)}/directory-credentials`,
+      { credentials, expectedVersion: versionFromEtag(etag) },
+      etag,
+    )
+  ).data;
 }
 
 /** Discovery + client-construction probe. A successful call flips DRAFT -> ENABLED server-side. */

@@ -2,7 +2,7 @@
 
 | Field | Value |
 |---|---|
-| **Status** | Review |
+| **Status** | Completed |
 | **Type** | refactor |
 | **Branch** | `feat/loop` |
 | **Opened** | 2026-08-19 |
@@ -168,3 +168,4 @@ and `scripts/`. **~15 files that are NOT part of these tickets.** Stage by path;
 | 2026-08-19 | Discard-confirmation reviewed against Sarvam EX-09/P3 and WCAG 3.3.7 — **kept**. Review surfaced a real EX-11/4.1.2 violation beside it (silent close-blocking while saving); fixed with a declared `closeBlockedReason` on `DetailDrawer` + 4 regression tests. |
 | 2026-08-19 | All three complete. Combined verification green (205/1606 + build; `@arcaai/ui` 681 unchanged). Cross-agent prettier churn detected, reverted by its author, and independently re-verified. Status → Review. |
 | 2026-08-19 | **Second collision, split out.** `TASK-770-Dev-Bootstrap-Completeness` and `TASK-771-Rate-Limit-Admin-Writes-404` turned out to be separate, unrelated, already-Completed tickets committed by another session against the same two numbers — the combined document's "770" (page-frame conformance) and "771" (table conformance) sections were double-booked a second time. Owner decision: renumber the two colliding workstreams to **TASK-774** and **TASK-775**, write them up as full standalone tickets, and trim this document back to its own scope (the DetailDrawer migration, TASK-769's original and only remaining content). Confirmed 774/775 free in both `docs/implementation/` and `docs/archive/` before creating the new documents. Re-verified `pnpm --filter @arcaai/admin-console test lint typecheck build` clean in the `wt/task-774` worktree (206/206 files, 1620/1620 tests) as part of the split. |
+| 2026-08-20 | Status advanced to Completed per owner directive: implementation fully verified (combined verification green, 205/1606 + build; DetailDrawer migration re-verified 206/206 files, 1620/1620 tests in the split); no outstanding e2e/live-run verification blocks this ticket. |

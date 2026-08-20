@@ -745,7 +745,17 @@ export class PromptManagementService extends BaseService implements IPromptManag
     return templates.map(PromptManagementDtoMapper.toTemplateResponse);
   }
 
+  /**
+   * F-07: assert the template exists (and, for a non-super-admin, is owned
+   * by the caller's tenant) before returning its version history — mirrors
+   * {@link diffVersions}. Without this a bogus or cross-tenant template id
+   * was indistinguishable from a real template with zero versions.
+   */
   async getVersions(templateId: string): Promise<PromptVersionResponse[]> {
+    const template = await this.promptTemplateRepository.findById(templateId);
+    if (!template) throw new NotFoundException(`Prompt template ${templateId} not found`);
+    this.assertOwnedByTenant(template, templateId);
+
     const versions = await this.promptVersionRepository.findByTemplate(templateId);
     return versions.map(PromptManagementDtoMapper.toVersionResponse);
   }
@@ -862,7 +872,16 @@ export class PromptManagementService extends BaseService implements IPromptManag
     return { changes, patch, stats: { additions, deletions, unchanged } };
   }
 
+  /**
+   * F-07: assert the template exists (and, for a non-super-admin, is owned
+   * by the caller's tenant) before returning its usage stats — same
+   * no-existence-leak rationale as {@link getVersions}.
+   */
   async getUsageStats(templateId: string): Promise<{ totalUsages: number; lastUsedAt: string | null }> {
+    const template = await this.promptTemplateRepository.findById(templateId);
+    if (!template) throw new NotFoundException(`Prompt template ${templateId} not found`);
+    this.assertOwnedByTenant(template, templateId);
+
     const records = await this.promptUsageRecordRepository.findByTemplate(templateId);
     const totalUsages = records.length;
     const lastUsedAt = totalUsages > 0 ? (records[0].createdAt?.toISOString() ?? null) : null;

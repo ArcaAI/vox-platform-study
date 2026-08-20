@@ -405,22 +405,36 @@ export abstract class AdminResource {
    * for await (const tenant of hope.admin.tenants.listAll()) { … }
    * ```
    *
-   * ### The trap this avoids
+   * ### The trap this USED to avoid (TASK-776 F-02 — fixed, but read on)
    *
    * The obvious implementation — read `page`/`limit` off each response and
-   * increment — is WRONG against this gateway. The services echo the RAW query
-   * values into the response (`const { limit, page } = props;` in
-   * `TenantService.fetchAll` and its ~19 siblings), while the DEFAULTS are
+   * increment — used to be WRONG against this gateway: the services echoed
+   * the RAW query values into the response (`const { limit, page } = props;`
+   * in `TenantService.fetchAll` and its ~19 siblings) while the DEFAULTS were
    * applied separately, inside `withFormattedPaginatedProps`, only to the
-   * database query. A request that omits `page`/`limit` therefore comes back
-   * with `page: undefined, limit: undefined` over a page that really was
-   * limited to 10 — and at least one non-list route returns `limit: 0`
-   * outright (`TenantService`'s bulk config update). A loop that trusted those
-   * fields would stall, skip, or divide by zero.
+   * database query. A request that omitted `page`/`limit` came back with
+   * `page: undefined, limit: undefined` over a page that really was limited
+   * to 10, and at least one non-list route (`TenantService`'s bulk config
+   * update — not a route this walk ever calls) returned `limit: 0` outright.
    *
-   * So pagination is driven entirely from the REQUEST side: this iterator
-   * always sends an explicit `page` and `limit`, and only ever reads `data`
-   * and `count` back.
+   * F-02 closed the root cause: `PaginatedQuery` (`packages/applications/src/
+   * common/dto/paginated.query.ts`) now applies `DEFAULT_PAGE`/
+   * `DEFAULT_PAGE_SIZE` as the DTO's OWN runtime defaults, so every list
+   * response's `page`/`limit` echo the values actually used — verified live
+   * 2026-08-20 against `/admin/users`, `/admin/api-keys`, `/admin/audit-logs`:
+   * an omitted `limit` now comes back `limit: 10` over a 10-row page, and an
+   * explicit `?page=1&limit=5` echoes `page: 1, limit: 5`.
+   *
+   * This iterator still does NOT read `page`/`limit` back from the response,
+   * on purpose: this SDK ships to every admin-plane consumer across every
+   * present and future list route, and the fixed guarantee lives in a shared
+   * DTO default that a single route's controller could still override or a
+   * future route could omit. Driving the walk from the REQUEST side (always
+   * send an explicit `page`/`limit`, only ever read `data`/`count` back) costs
+   * nothing extra — the loop already has to track its own page counter — and
+   * stays correct independent of any one route's echo behaviour, so it is kept
+   * as defense-in-depth rather than swapped for a form that is merely
+   * observed-correct today.
    *
    * ### Termination
    *

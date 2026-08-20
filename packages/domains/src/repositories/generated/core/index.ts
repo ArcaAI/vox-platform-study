@@ -143,3 +143,4 @@ export * from './WorkflowRunRepository';
 export * from './WorkflowDefinitionRepository';
 export * from './WorkflowAssignmentRepository';
 export * from './WorkflowAssignmentChangeRepository';
+export * from './WorkflowInvariantRuleRepository';

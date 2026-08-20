@@ -39,6 +39,7 @@
 import { createHash } from 'node:crypto';
 import { canonicalJson } from './canonical-json';
 import type { CompilerNodeInfo } from './compiler';
+import { NODE_CONFIG_SCHEMAS, type NodeConfigSchema } from './node-config-schemas';
 import type { WorkflowNodeClassLookup } from './predicates';
 
 export interface WorkflowNodeDescriptor {
@@ -69,14 +70,21 @@ export interface WorkflowNodeDescriptor {
    *  same key as the palette, or none). Typed `string` rather than the domains enum so this
    *  package keeps zero runtime dependencies. */
   readonly entitlementKey: string | null;
+  /** The node type's config JSON Schema (authorable subset), or `undefined` when none has been
+   *  authored yet — see `node-config-schemas.ts`'s docstring for which node types have one and
+   *  why some deliberately do not (TASK-719's registry-contract gap, closed for the node types
+   *  with a real, committed schema source). Attached below via `NODE_CONFIG_SCHEMAS`, never
+   *  inline on these literals, so the schema source stays the single place it is authored. */
+  readonly configSchema?: NodeConfigSchema;
 }
 
 /**
  * The seed entries mirror `registry.py`'s `NODE_REGISTRY` exactly — both intentionally ship
  * ONLY `noop`/`passthrough` in this pass; TASK-720 adds the five summarization-palette node
- * types to both sides together.
+ * types to both sides together. `configSchema` is deliberately NOT set on these literals —
+ * see the derivation below, which attaches it uniformly from `NODE_CONFIG_SCHEMAS`.
  */
-export const WORKFLOW_NODE_REGISTRY: Readonly<Record<string, WorkflowNodeDescriptor>> = Object.freeze({
+const WORKFLOW_NODE_REGISTRY_BASE: Readonly<Record<string, Omit<WorkflowNodeDescriptor, 'configSchema'>>> = Object.freeze({
   noop: Object.freeze({
     key: 'noop',
     implemented: true,
@@ -506,6 +514,21 @@ export const WORKFLOW_NODE_REGISTRY: Readonly<Record<string, WorkflowNodeDescrip
     entitlementKey: null,
   }),
 });
+
+/**
+ * The public registry: `WORKFLOW_NODE_REGISTRY_BASE` with each entry's `configSchema` attached
+ * from `NODE_CONFIG_SCHEMAS` (`node-config-schemas.ts`). A key absent from that map yields
+ * `configSchema: undefined` — the documented, structural "no schema authored yet" state, not a
+ * defect (see that module's docstring for which node types this applies to and why).
+ */
+export const WORKFLOW_NODE_REGISTRY: Readonly<Record<string, WorkflowNodeDescriptor>> = Object.freeze(
+  Object.fromEntries(
+    Object.entries(WORKFLOW_NODE_REGISTRY_BASE).map(([key, descriptor]) => [
+      key,
+      Object.freeze({ ...descriptor, configSchema: NODE_CONFIG_SCHEMAS[key] }),
+    ]),
+  ),
+);
 
 /** The registry-declared classes for a node type — `[]` for an unknown type (never throws;
  *  a caller checks `nodeInfo()`/`compile()` findings for "unknown type", not this). */

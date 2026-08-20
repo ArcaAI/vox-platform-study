@@ -336,13 +336,33 @@ export class TenantController {
   }
 
   @Put(':id/tags')
-  @ApiOperation({ summary: "Replace a tenant's full tag set (idempotent set-semantics)" })
+  @RequiresIfMatch()
+  @ApiOperation({
+    summary: "Replace a tenant's full tag set (idempotent set-semantics)",
+    description:
+      'Optimistic concurrency is ENFORCED: the `If-Match` header (RFC 7232) is REQUIRED and CASes against the ' +
+      "tenant row's `_version`. The precondition is evaluated even when the supplied tag set is identical to the " +
+      'stored one, so a stale client is told to refetch (`412`) rather than silently succeeding. A missing header ' +
+      'is `428 Precondition Required`.',
+  })
+  @ApiHeader({
+    name: 'If-Match',
+    description: 'RFC 7232 strong validator carrying the tenant version the client read (e.g. `"7"`).',
+    required: true,
+    example: '"7"',
+  })
   @ApiParam({ name: 'id', description: 'Tenant ID', type: String })
   @ApiResponse({ status: 200, description: 'Updated tenant', type: TenantResponse })
   @ApiResponse({ status: 404, description: 'Tenant not found' })
-  async setTags(@Param('id') id: string, @Body() request: SetTenantTagsRequest): Promise<TenantResponse> {
+  @ApiResponse({ status: 412, description: 'Optimistic concurrency conflict — re-fetch and try again with the new version.' })
+  @ApiResponse({ status: 428, description: 'If-Match header is required for this operation.' })
+  async setTags(
+    @Param('id') id: string,
+    @Body() request: SetTenantTagsRequest,
+    @ExpectedVersion() expectedFromHeader: number | undefined,
+  ): Promise<TenantResponse> {
     this.assertTenantInScope(id);
-    const result = await this.tenantService.setTags(id, request.tags);
+    const result = await this.tenantService.setTags(id, request.tags, expectedFromHeader);
     return TenantDtoMapper.ToResponse(result);
   }
 

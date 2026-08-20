@@ -103,4 +103,58 @@ describe('workflowGraphProblems', () => {
     expect(WORKFLOW_NODE_ID_PATTERN.test('n_a1')).toBe(true);
     expect(WORKFLOW_NODE_ID_PATTERN.test('N-bad!')).toBe(false);
   });
+
+  describe('position (client canvas layout, optional)', () => {
+    it('accepts a node with no position at all', () => {
+      const graph = { ...validGraph, nodes: [{ id: 'n_start', type: 'core.start', config: {} }], edges: [] };
+      expect(workflowGraphProblems(graph)).toEqual([]);
+    });
+
+    it('accepts a node with a well-formed {x, y} position', () => {
+      const graph = {
+        ...validGraph,
+        nodes: [{ id: 'n_start', type: 'core.start', config: {}, position: { x: 10, y: -20.5 } }],
+        edges: [],
+      };
+      expect(workflowGraphProblems(graph)).toEqual([]);
+    });
+
+    it('rejects a position that is not a plain object', () => {
+      const graph = {
+        ...validGraph,
+        nodes: [{ id: 'n_start', type: 'core.start', config: {}, position: 'nope' }],
+        edges: [],
+      };
+      const problems = workflowGraphProblems(graph);
+      expect(problems.some((p) => p.includes('/position'))).toBe(true);
+    });
+
+    it('rejects a position missing x or y', () => {
+      const graph = {
+        ...validGraph,
+        nodes: [{ id: 'n_start', type: 'core.start', config: {}, position: { x: 1 } }],
+        edges: [],
+      };
+      const problems = workflowGraphProblems(graph);
+      expect(problems.some((p) => p.includes('/position'))).toBe(true);
+    });
+
+    it('rejects a position with non-finite x/y', () => {
+      const graph = {
+        ...validGraph,
+        nodes: [{ id: 'n_start', type: 'core.start', config: {}, position: { x: Number.NaN, y: 1 } }],
+        edges: [],
+      };
+      const problems = workflowGraphProblems(graph);
+      expect(problems.some((p) => p.includes('/position'))).toBe(true);
+    });
+
+    it('never throws when position itself is malformed input', () => {
+      const inputs: unknown[] = [null, 42, [], { x: '1', y: '2' }];
+      for (const position of inputs) {
+        const graph = { ...validGraph, nodes: [{ id: 'n_start', type: 'core.start', config: {}, position }], edges: [] };
+        expect(() => workflowGraphProblems(graph)).not.toThrow();
+      }
+    });
+  });
 });

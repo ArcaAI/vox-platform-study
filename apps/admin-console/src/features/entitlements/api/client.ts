@@ -1,6 +1,6 @@
 /** Entitlements administration (capabilities-matrix row 4). SUPER_ADMIN only. */
 
-import { deleteJson, getJson, patchJson, postJson, putJson } from '@/shared/api';
+import { deleteJson, getJson, patchWithEtag, postJson, putJson, putWithEtag } from '@/shared/api';
 import type { TenantPlan } from '@/features/tenants/api/types';
 import type {
   DowngradeReport,
@@ -32,9 +32,14 @@ export function getPlanEntitlement(plan: TenantPlan): Promise<PlanEntitlement> {
   return getJson(`${BASE}/plans/${plan}`);
 }
 
-/** OCC via body expectedVersion (no If-Match on this route) — 412 on drift. */
-export function updatePlanEntitlement(plan: TenantPlan, body: UpdatePlanEntitlementRequest): Promise<PlanEntitlement> {
-  return patchJson(`${BASE}/plans/${plan}`, body);
+/**
+ * OCC: `If-Match` is REQUIRED on this route. The validator is the version the
+ * caller read from the plan row and already carries in `body.expectedVersion`
+ * (the header overrides the body server-side); drift is 412, and a missing
+ * header would be 428.
+ */
+export async function updatePlanEntitlement(plan: TenantPlan, body: UpdatePlanEntitlementRequest): Promise<PlanEntitlement> {
+  return (await patchWithEtag<PlanEntitlement>(`${BASE}/plans/${plan}`, body, `"${body.expectedVersion}"`)).data;
 }
 
 /** Effective capabilities (plan + override merge, usage, trial). */
@@ -46,9 +51,17 @@ export async function getTenantOverride(tenantId: string): Promise<TenantEntitle
   return (await getJson(`${BASE}/tenants/${encodeURIComponent(tenantId)}/override`)) ?? null;
 }
 
-/** Upsert — pass expectedVersion only when a row already exists. */
-export function upsertTenantOverride(tenantId: string, body: UpsertTenantEntitlementRequest): Promise<TenantEntitlement> {
-  return putJson(`${BASE}/tenants/${encodeURIComponent(tenantId)}/override`, body);
+/**
+ * Upsert — `If-Match` is REQUIRED. On an existing row the caller passes the
+ * version it read as `body.expectedVersion`; with no row the override GET
+ * answered `null` (no ETag to echo), so the call carries the create-intent
+ * validator `"0"`, which the gateway accepts for a first write and rejects
+ * (412) against a row that already exists.
+ */
+export async function upsertTenantOverride(tenantId: string, body: UpsertTenantEntitlementRequest): Promise<TenantEntitlement> {
+  return (
+    await putWithEtag<TenantEntitlement>(`${BASE}/tenants/${encodeURIComponent(tenantId)}/override`, body, `"${body.expectedVersion ?? 0}"`)
+  ).data;
 }
 
 export function clearTenantOverride(tenantId: string): Promise<{ cleared: true }> {

@@ -287,6 +287,10 @@ export const TENANT_SCOPED_MODELS: ReadonlySet<string> = new Set([
   // Its append-only WORM change log (no soft-delete; see
   // MODELS_WITHOUT_SOFT_DELETE in client.ts).
   'WorkflowAssignmentChange',
+  // workflow-invariant-rule.prisma (TASK-716) — the validator's rule rows.
+  // ALSO a SYSTEM-shared read model (below): a tenant reads its own rows AND
+  // the SYSTEM platform rule set, never writes to a SYSTEM-owned row.
+  'WorkflowInvariantRule',
 ]);
 
 /**
@@ -479,6 +483,19 @@ export const SYSTEM_SHARED_READ_MODELS: ReadonlySet<string> = new Set([
   // A new list surface MUST keep pinning tenantId explicitly.
   'PromptTemplate',
   'PromptVersion',
+  // workflow-invariant-rule.prisma (TASK-716). The SYSTEM-tenant rows ARE the
+  // platform invariant register made executable; every tenant's
+  // `WorkflowValidatorService` must read them (merged with its own
+  // additions) to validate ANY graph, the same "every tenant must resolve
+  // the SYSTEM row to function at all" shape as `HarnessPolicy`/
+  // `PipelinePolicy` above — without widening, a tenant validating its own
+  // graph would see only the rules IT authored (or none), silently
+  // under-enforcing the platform's own safety rules. READS widen to
+  // [caller, SYSTEM] (`findApplicable()` issues two explicit-tenantId reads,
+  // mirroring `PipelinePolicyRepository.findSystemDefault`); WRITES are NOT
+  // widened — a tenant can read but never mutate a SYSTEM-owned rule row
+  // (the one-way-strictness rule enforced in the service).
+  'WorkflowInvariantRule',
 ]);
 
 export function isSystemSharedReadModel(model: string): boolean {

@@ -197,11 +197,14 @@ rate; see the ticket's `go-no-go-thresholds.md` §7):**
   `ComprehensiveSummaryProcessor`, and `SummaryService.generateSummary`'s sync body (the "third
   generator", permanently excluded from harness by TASK-704's own decision). These are the
   "v1-compat pre-summary and summary surfaces," to be transformed into standalone features in a
-  later ticket. **Correction found while verifying this:** only `PreSummaryProcessor`'s output is
-  structurally non-signable (`PRE_SUMMARY` never satisfies `isFinalSummary`); the sync summary
-  generator's output IS signable (correct — it produces the actual clinical note); and
-  `ComprehensiveSummaryProcessor`'s output ALSO currently satisfies `isFinalSummary` (an open
-  finding this ticket did not resolve, not a confirmed-safe fact — see deletion-manifest.md §5).
+  later ticket. **Correction found while verifying this, and resolved 2026-08-20:** only
+  `PreSummaryProcessor`'s output is structurally non-signable (`PRE_SUMMARY` never satisfies
+  `isFinalSummary`); both the sync summary generator's output AND `ComprehensiveSummaryProcessor`'s
+  output ARE signable, by design — the latter matches its long-standing sync twin
+  `ChainSummaryService.generateComprehensiveSummary`, which documents its own output as "a FINAL
+  comprehensive summary." "Kept" only ever meant kept-and-signable for two of the three, and
+  kept-and-non-signable for `PreSummaryProcessor` alone; the ticket's own §2.6 draft conflated the
+  two properties (see deletion-manifest.md §5 and this ticket's README.md §8 Change History).
 - `SYSTEM_PIPELINE_POLICY_DEFAULTS.harnessEnabled` flipped to `true` (Phase 2 exit criterion,
   executed pre-production alongside the deletion given no real cohorts existed to migrate).
 

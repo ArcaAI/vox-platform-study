@@ -77,11 +77,24 @@ export function MyReportsCard({
   const [eraseTarget, setEraseTarget] = useState<string | null>(null);
   const selectedId = selected ?? myStyleReportId;
 
-  function handleSetDefault(reportId: string) {
-    setDefault.mutate(reportId, {
-      onSuccess: () => toast.success('Default report updated'),
-      onError: (error) => toast.error(error instanceof GatewayError ? error.message : 'Could not set the default report.'),
-    });
+  /**
+   * `PATCH :reportId/default` requires `If-Match`; the validator is the row
+   * version this list read, so it is echoed rather than invented.
+   */
+  function handleSetDefault(reportId: string, version: number) {
+    setDefault.mutate(
+      { reportId, etag: `"${version}"` },
+      {
+        onSuccess: () => toast.success('Default report updated'),
+        onError: (error) => {
+          if (error instanceof GatewayError && error.status === 412) {
+            toast.error('This report changed since it was loaded. Refresh the list and try again.');
+            return;
+          }
+          toast.error(error instanceof GatewayError ? error.message : 'Could not set the default report.');
+        },
+      },
+    );
   }
 
   /** Single-report erasure (DELETE :reportId) — same 403 gate as the rest. */
@@ -145,10 +158,10 @@ export function MyReportsCard({
                   variant="outline"
                   size="sm"
                   aria-label={`Set ${report.id} as default`}
-                  onClick={() => handleSetDefault(report.id)}
+                  onClick={() => handleSetDefault(report.id, report.version)}
                   disabled={setDefault.isPending}
                 >
-                  {setDefault.isPending && setDefault.variables === report.id ? <Spinner /> : <IconStar aria-hidden />}
+                  {setDefault.isPending && setDefault.variables?.reportId === report.id ? <Spinner /> : <IconStar aria-hidden />}
                   Set default
                 </Button>
               ) : null}

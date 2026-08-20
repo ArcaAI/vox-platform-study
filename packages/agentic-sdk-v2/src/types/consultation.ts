@@ -75,6 +75,17 @@ export interface Consultation {
   updatedAt: string;
   /** Whether this consultation was just created (from getOrCreate) */
   isNew?: boolean;
+  /**
+   * Row `_version` — the RFC 7232 strong validator the gateway renders as
+   * `ETag: "<version>"`.
+   *
+   * `PATCH /consultations/:id` requires `If-Match`, so the SDK echoes this
+   * value back on the next write (`useArcaSession.update` /
+   * `useArca.updateConsultation`). Optional because older gateway builds and
+   * projections omit it; when it is absent the SDK sends NO precondition
+   * rather than inventing one.
+   */
+  version?: number;
 }
 
 // =============================================================================

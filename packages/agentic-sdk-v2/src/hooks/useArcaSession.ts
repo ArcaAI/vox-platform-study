@@ -27,6 +27,7 @@ import { SimpleCrossTabSync, createCrossTabSync } from '../core/SimpleCrossTabSy
 import type { ISDKLogger } from '../core/logger';
 import { openSessionOperation, loadConsultationOperation, getPatientHistoryOperation } from '../core/sessionUtils';
 import { AgenticError } from '../types';
+import { ifMatchFor, toOccError } from '../utils/occ';
 // Client-side payload validation against the session-pinned schema.
 import { validateConsultationContextPayload } from '../core/contextPayloadValidation';
 
@@ -275,14 +276,26 @@ export function useArcaSession(): UseArcaSessionReturn {
         sdk: { consultationId: consultation.id },
       });
 
+      // `PATCH /consultations/:id` is `@RequiresIfMatch()`. Echo the strong
+      // validator the SDK read with this consultation; when the loaded row
+      // carries no `version` we send NO precondition rather than inventing
+      // one — a 428 that names the missing header beats a fabricated CAS.
+      const expectedVersion = consultation.version;
+
       try {
-        const updated = await apiClient.patch<Consultation>(CONSULTATION_ENDPOINTS.UPDATE(consultation.id), input);
+        const updated =
+          typeof expectedVersion === 'number'
+            ? await apiClient.patchWithIfMatch<Consultation>(CONSULTATION_ENDPOINTS.UPDATE(consultation.id), input, ifMatchFor(expectedVersion))
+            : await apiClient.patch<Consultation>(CONSULTATION_ENDPOINTS.UPDATE(consultation.id), input);
         store.setConsultation(updated);
         timer?.end(true);
         return updated;
       } catch (error) {
-        timer?.error(error as Error);
-        throw error;
+        // Surface a stale write as a refetch-and-retry conflict rather than a
+        // generic failure (same shape the context/summary writes already use).
+        const mapped = typeof expectedVersion === 'number' ? toOccError(error, consultation.id, expectedVersion) : error;
+        timer?.error(mapped as Error);
+        throw mapped;
       }
     },
     [store, getLogger],

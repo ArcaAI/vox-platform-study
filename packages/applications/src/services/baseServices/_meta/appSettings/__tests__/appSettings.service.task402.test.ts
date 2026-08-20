@@ -24,12 +24,12 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { AppSettingsService } from '../appSettings.service';
 import { GlobalSettingFactory, ValueType } from '@arcaai/domains';
 
-const GLOBAL_TENANT_ID = '50000000-0000-0000-0000-000000000000';
+const SYSTEM_TENANT_ID = '00000000-0000-0000-0000-000000000000';
 const KEY = 'task402.recreated.key';
 
 const buildSetting = (key: string, value: string, deleted = false) => {
   const entity = GlobalSettingFactory.CreateGlobalSetting({
-    tenantId: GLOBAL_TENANT_ID,
+    tenantId: SYSTEM_TENANT_ID,
     key,
     value,
     dataType: ValueType.String,

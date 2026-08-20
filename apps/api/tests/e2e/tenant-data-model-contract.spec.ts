@@ -138,19 +138,26 @@ test.describe.serial('tenant plan / tags / lifecycle (#1/#2/#3)', () => {
   });
 
   test('#2 tags: PUT replaces the set; GET reads it back; [] clears it', async ({ request }) => {
+    // TASK-776 H-1 phase 2: `PUT :id/tags` now carries `@RequiresIfMatch()`.
+    // The tag route writes the TENANT row, so the validator is the tenant
+    // detail ETag — the `/tags` read carries no version of its own — and each
+    // successful write bumps it, so the second PUT re-reads.
+    const before = (await (await authGet(request, `/api/v1/admin/tenants/${tenantId}`, superToken)).json()) as TenantDto;
+
     const put = await request.put(`/api/v1/admin/tenants/${tenantId}/tags`, {
-      headers: bearer(superToken),
+      headers: { ...bearer(superToken), ...ifMatch(before.version) },
       data: { tags: ['priority', 'vip'] },
     });
     expect(put.status(), 'super_admin sets tags').toBe(200);
-    expect(((await put.json()) as TenantDto).tags?.slice().sort()).toEqual(['priority', 'vip']);
+    const afterPut = (await put.json()) as TenantDto;
+    expect(afterPut.tags?.slice().sort()).toEqual(['priority', 'vip']);
 
     const get = await authGet(request, `/api/v1/admin/tenants/${tenantId}/tags`, superToken);
     expect(get.status()).toBe(200);
     expect(((await get.json()) as { tags: string[] }).tags.slice().sort()).toEqual(['priority', 'vip']);
 
     const clear = await request.put(`/api/v1/admin/tenants/${tenantId}/tags`, {
-      headers: bearer(superToken),
+      headers: { ...bearer(superToken), ...ifMatch(afterPut.version) },
       data: { tags: [] },
     });
     expect(clear.status()).toBe(200);

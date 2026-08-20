@@ -14,8 +14,10 @@
  * default — so a platform that resolved these from env resolves identical
  * values from these rows. Nothing needs to be set for an upgrade to be a no-op.
  *
- * The rows live on the reserved platform tenant (`SEED_TENANT_ID`,
- * `50000000-…`) under the `registry` namespace, which is what
+ * The rows live on the reserved SYSTEM tenant (`SYSTEM_TENANT_ID`,
+ * `00000000-…`) — the sole platform-configuration tier (owner ruling
+ * 2026-08-20, TASK-763 OD-1; GLOBAL/`SEED_TENANT_ID` is a CUSTOMER tenant,
+ * never a runtime tier) — under the `registry` namespace, which is what
  * `SettingsRegistryWriteService` writes and what `AppSettingsService` admits
  * into its platform (key-only) cache lane. Per-TENANT overrides are NOT seeded:
  * their absence means "inherit the platform value", which is the correct
@@ -35,7 +37,7 @@
  */
 import type { CorePrismaClient } from '../../../client';
 import { ValueType } from '../../../generated/core-prisma-client/client.js';
-import { SEED_TENANT_ID, SEED_USER_IDS } from './00-constants';
+import { SYSTEM_TENANT_ID, SEED_USER_IDS } from './00-constants';
 
 const CREATED_BY = SEED_USER_IDS.SUPER_ADMIN;
 
@@ -159,7 +161,7 @@ export const seedPlatformKnobSettings = async (client: CorePrismaClient): Promis
     await client.globalSetting.upsert({
       where: {
         GlobalSetting_tenantId_name_key_unique: {
-          tenantId: SEED_TENANT_ID,
+          tenantId: SYSTEM_TENANT_ID,
           name: knob.name,
           key: knob.key,
         },
@@ -172,7 +174,7 @@ export const seedPlatformKnobSettings = async (client: CorePrismaClient): Promis
         namespace: NAMESPACE,
       },
       create: {
-        tenantId: SEED_TENANT_ID,
+        tenantId: SYSTEM_TENANT_ID,
         namespace: NAMESPACE,
         name: knob.name,
         key: knob.key,

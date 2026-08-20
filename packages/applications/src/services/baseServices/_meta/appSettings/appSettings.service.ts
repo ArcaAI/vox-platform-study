@@ -11,18 +11,17 @@ import { IAppSettingsService } from './IAppSettingsService';
 import { IRedisCacheService } from '../../redis';
 import { RedisSubscriberService } from '../../../stt/realtime/redisSubscriber.service';
 
-// Canonical platform tenant id.
-// Matches the seed UUID used across the system (see packages/database/seeds).
-// Inlined to avoid pulling tenant/constants.ts into this baseService.
-const GLOBAL_TENANT_ID = '50000000-0000-0000-0000-000000000000';
-
-// The reserved SYSTEM tenant. Platform CAPABILITY rows are seeded here rather
-// than under the default tenant (seed `11-global-setting.ts` `PLATFORM_SETTINGS`,
-// e.g. `enable-local-raw-capture`), so it is equally platform-owned.
+// The reserved SYSTEM tenant — the SOLE platform-configuration tier.
+// Platform CAPABILITY rows are seeded here (seed `11-global-setting.ts`
+// `PLATFORM_SETTINGS`, e.g. `enable-local-raw-capture`), and this is also the
+// reference default every tenant clones from at provisioning time (owner
+// ruling 2026-08-20, TASK-763 OD-1): "SYSTEM will be the reference point as
+// default for all tenants." Inlined to avoid pulling tenant/constants.ts into
+// this baseService.
 const SYSTEM_TENANT_ID = '00000000-0000-0000-0000-000000000000';
 
 /**
- * The ONLY tenants whose rows may enter this cache, highest precedence first.
+ * The ONLY tenant whose rows may enter this cache.
  *
  * `tenantId` must be part of every config cache key. This
  * cache is deliberately keyed by setting KEY ALONE, because every consumer of
@@ -32,16 +31,24 @@ const SYSTEM_TENANT_ID = '00000000-0000-0000-0000-000000000000';
  * cache is only sound if its CONTENTS are platform-only — otherwise a customer
  * tenant's row lands in the shared slot and governs the whole platform.
  *
- * That was reachable: `TenantService.provisionTenantConfigs` clones every
- * platform setting into each new tenant, so the loader (`findAll({})`, which
- * runs without a CLS tenant and is therefore unscoped) sees N_tenants rows per
- * key. Platform-row precedence alone did not close it — a key whose platform
- * row was absent or soft-deleted still resolved to a tenant clone, both on read
- * and on the `getFromCache(key)` → `update(row.id)` admin-write path.
+ * GLOBAL (`50000000-…`) is deliberately EXCLUDED. It is a CUSTOMER tenant —
+ * the platform-admin playground for trialling configuration before an
+ * explicit promotion into SYSTEM — never a runtime tier (owner ruling
+ * 2026-08-20, TASK-763 OD-1; `.claude/rules/00-project-context.md`
+ * §"The two reserved tenants are NOT two config tiers"). Admitting it here
+ * used to let it OUTRANK SYSTEM and let a customer tenant's own rows
+ * (e.g. `TenantService.provisionTenantConfigs`'s clone target) leak into the
+ * platform-wide cache read by every other tenant. That was reachable:
+ * `provisionTenantConfigs` clones every platform setting into each new
+ * tenant, so the loader (`findAll({})`, which runs without a CLS tenant and
+ * is therefore unscoped) sees N_tenants rows per key. Platform-row
+ * precedence alone did not close it — a key whose platform row was absent or
+ * soft-deleted still resolved to a tenant clone, both on read and on the
+ * `getFromCache(key)` → `update(row.id)` admin-write path.
  */
-const PLATFORM_TENANT_IDS: readonly string[] = [GLOBAL_TENANT_ID, SYSTEM_TENANT_ID];
+const PLATFORM_TENANT_IDS: readonly string[] = [SYSTEM_TENANT_ID];
 
-/** Precedence rank of a platform tenant; non-platform rows are never cached. */
+/** Precedence rank of the platform tenant; non-platform rows are never cached. */
 const platformRank = (tenantId: string): number => PLATFORM_TENANT_IDS.indexOf(tenantId);
 
 /**
@@ -49,7 +56,7 @@ const platformRank = (tenantId: string): number => PLATFORM_TENANT_IDS.indexOf(t
  * it creates (`SettingsRegistryWriteService.REGISTRY_SETTING_NAMESPACE`).
  *
  * Inlined rather than imported: this baseService must not depend on a feature
- * service (the same reason `GLOBAL_TENANT_ID` is inlined above). A registry
+ * service (the same reason `SYSTEM_TENANT_ID` is inlined above). A registry
  * test asserts the two literals agree.
  */
 const REGISTRY_NAMESPACE = 'registry';
@@ -356,12 +363,12 @@ export class AppSettingsService implements IAppSettingsService, OnModuleInit {
 
       // Boot-time duplicate-key invariant.
       // If >1 row exists for the same platform key
-      // (tenantId === GLOBAL_TENANT_ID), the Map<key>-keyed cache silently
+      // (tenantId === SYSTEM_TENANT_ID), the Map<key>-keyed cache silently
       // resolves to a non-deterministic winner. Refuse to start.
       const allowSkip = process.env.NODE_ENV === 'development' && process.env.APP_SETTINGS_BOOT_INVARIANT === 'skip';
 
       if (!allowSkip) {
-        const platformOnly = globalSettings.filter((s) => s.tenantId === GLOBAL_TENANT_ID);
+        const platformOnly = globalSettings.filter((s) => s.tenantId === SYSTEM_TENANT_ID);
         const seen = new Map<string, number>();
         for (const s of platformOnly) {
           seen.set(s.key, (seen.get(s.key) ?? 0) + 1);
@@ -378,12 +385,11 @@ export class AppSettingsService implements IAppSettingsService, OnModuleInit {
       }
 
       // Populate the new cache.
-      // Only platform rows reach this point, so the sole remaining ambiguity is
-      // a key present on BOTH platform tenants. Resolve it by declared
-      // precedence (default tenant over SYSTEM) rather than row order, and keep
-      // the first row on a tie, so the winner never depends on how the
-      // repository happened to sort. In the seeded layout the two platform
-      // tenants carry disjoint keys, so this only guards future overlap.
+      // Only platform (SYSTEM) rows reach this point. `platformRank` now has a
+      // single entry, so this reduces to "keep the first row on a tie" — kept
+      // as a rank comparison (rather than a plain `if (existing) return`) so
+      // the shape stays unchanged if a second platform-reserved tier is ever
+      // reintroduced deliberately.
       globalSettings.forEach((setting) => {
         const existing = newCache.get(setting.key);
         if (existing && platformRank(existing.tenantId) <= platformRank(setting.tenantId)) {

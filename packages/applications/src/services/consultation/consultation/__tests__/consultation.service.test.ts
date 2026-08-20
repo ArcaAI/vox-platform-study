@@ -1616,17 +1616,22 @@ describe('ConsultationService', () => {
       });
     });
 
+    // TASK-776 H-1 phase 2: `PATCH /consultations/:id` is `@RequiresIfMatch()`,
+    // so the write is a CAS (`updateWithVersion`) rather than a blind `update` —
+    // and it returns the FRESHLY-PERSISTED entity, because the CAS bumps
+    // `_version` and a client chaining `If-Match` off a stale body would 412 on
+    // its very next write.
     describe('updateConsultation', () => {
       it('updates departmentId (tenant-checked) and shallow-merges metadata; emits ResourceUpdated', async () => {
         const entity = makeRealEntity();
         entity.metadata = { existing: 'keep' };
         mockConsultationRepository.findWithRelations.mockResolvedValue(entity);
-        mockConsultationRepository.update.mockResolvedValue(entity);
+        mockConsultationRepository.updateWithVersion.mockResolvedValue(entity);
 
         const result = await service.updateConsultation('c-1', { departmentId: 'dept-1', metadata: { note: 'x' } });
 
         expect(mockDepartmentRepository.findById).toHaveBeenCalledWith('dept-1');
-        const [updateId, updated] = mockConsultationRepository.update.mock.calls[0];
+        const [updateId, updated] = mockConsultationRepository.updateWithVersion.mock.calls[0];
         expect(updateId).toBe('c-1');
         expect(updated.departmentId).toBe('dept-1');
         expect(updated.metadata).toEqual({ existing: 'keep', note: 'x' });
@@ -1643,7 +1648,7 @@ describe('ConsultationService', () => {
       it('does not accept a status field — the typed column is untouched', async () => {
         const entity = makeRealEntity({ status: ConsultationStatus.PENDING_REVIEW });
         mockConsultationRepository.findWithRelations.mockResolvedValue(entity);
-        mockConsultationRepository.update.mockResolvedValue(entity);
+        mockConsultationRepository.updateWithVersion.mockResolvedValue(entity);
 
         // UpdateConsultationRequest no longer declares `status` at all
         // (TASK-711); passing one through is simply ignored by the DTO/service.
@@ -1655,13 +1660,26 @@ describe('ConsultationService', () => {
       it('updates appointmentDate', async () => {
         const entity = makeRealEntity();
         mockConsultationRepository.findWithRelations.mockResolvedValue(entity);
-        mockConsultationRepository.update.mockResolvedValue(entity);
+        mockConsultationRepository.updateWithVersion.mockResolvedValue(entity);
 
         const result = await service.updateConsultation('c-1', { appointmentDate: '2026-04-01' });
 
-        const [, updated] = mockConsultationRepository.update.mock.calls[0];
+        const [, updated] = mockConsultationRepository.updateWithVersion.mock.calls[0];
         expect(updated.appointmentDate).toEqual(new Date('2026-04-01'));
         expect(result.appointmentDate).toBe('2026-04-01');
+      });
+
+      it('CASes against the caller-supplied expectedVersion, falling back to the row version', async () => {
+        const entity = makeRealEntity();
+        mockConsultationRepository.findWithRelations.mockResolvedValue(entity);
+        mockConsultationRepository.updateWithVersion.mockResolvedValue(entity);
+
+        await service.updateConsultation('c-1', { appointmentDate: '2026-04-01' }, 3);
+        expect(mockConsultationRepository.updateWithVersion.mock.calls[0][2]).toBe(3);
+
+        mockConsultationRepository.updateWithVersion.mockClear();
+        await service.updateConsultation('c-1', { appointmentDate: '2026-04-02' });
+        expect(mockConsultationRepository.updateWithVersion.mock.calls[0][2]).toBe(entity.version);
       });
 
       it('throws NotFoundException when consultation not found', async () => {
@@ -1680,7 +1698,7 @@ describe('ConsultationService', () => {
         mockDepartmentRepository.findById.mockResolvedValue({ id: 'dept-other', tenantId: 'tenant-OTHER' });
 
         await expect(service.updateConsultation('c-1', { departmentId: 'dept-other' })).rejects.toThrow(NotFoundException);
-        expect(mockConsultationRepository.update).not.toHaveBeenCalled();
+        expect(mockConsultationRepository.updateWithVersion).not.toHaveBeenCalled();
       });
     });
   });

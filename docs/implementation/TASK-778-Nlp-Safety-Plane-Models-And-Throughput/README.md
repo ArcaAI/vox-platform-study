@@ -2,7 +2,7 @@
 
 | Field | Value |
 |---|---|
-| Status | Review (evidence verified 2026-08-20) |
+| Status | Completed (evidence verified 2026-08-20) |
 | Type | feature + infrastructure |
 | Owner directive date | 2026-08-19 |
 | Affects | `apps/nlp`, `packages/database/src/prisma/db_main/seed/**` (seed authoring only — not run here) |
@@ -484,6 +484,7 @@ it is now backed by observation.
 | 2026-08-20 | All three checkpoints DOWNLOADED (3.2 GB total) and probed offline. §2.3 superseded; §6.2/§6.3 replaced with the VERIFIED capability matrix. Two seed comments corrected: capability is NOT runtime-enforced — a mis-selected privacy filter answers `classify_text` with confident false positives, and a mis-selected `gliguard` answers `extract_entities` with an empty list. |
 | 2026-08-20 | §5.5 throughput table **withdrawn and re-measured against real weights**. Un-batched at 100 concurrent does NOT serve all 200 — it sheds 20 % with 503 at the declared wait ceiling (4.0 req/s goodput, p50 12.4 s), so the measured batching gain is 13.5x, not the 4.7x claimed. The adopted geometry reproduces at 51.2–54.1 req/s across four repetitions. Load driver fixed to report the status histogram instead of asserting all-200. |
 | 2026-08-20 | `packages/database` did not COMPILE on this branch — the TASK-778 seed added `languages`/`capabilities`/`labelTaxonomy` to `metaData` without widening `AiModelSeed` (3 × TS2353). The vitest seed test passes because vitest does not typecheck. Type widened in `seed/ai-models/shared.ts`. |
+| 2026-08-20 | Status advanced to Completed per owner directive: implementation complete (three-model safety plane wired, throughput re-measured against real weights); outstanding e2e execution/live seed run is not a status gate. |
 
 ## Orchestrator correction — 2026-08-19 (evidence audit)
 

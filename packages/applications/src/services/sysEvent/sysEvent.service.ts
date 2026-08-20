@@ -18,6 +18,7 @@ import {
 } from '@arcaai/domains';
 import { JobsOptions } from 'bullmq';
 import { IResourceSubscriptionService } from '../resourceSubscription';
+import { scrubPhiForAudit } from '../../common/phi-audit-scrub';
 import { ENTITLEMENTS_QUOTA_BLOCKED_EVENT, QuotaBlockedEvent } from '../entitlements/entitlements.constants';
 
 /**
@@ -144,10 +145,19 @@ export class SysEventService implements ISysEventService {
       responsibleIp: event.responsibleIp,
       resourceId: event.resourceId,
       resourceType: event.resourceType,
+      // PHI SCRUB. Every entity-mutation audit row in the
+      // platform is built here — this is the single funnel between the
+      // sys-event bus and the AuditLog queue — so scrubbing at this point
+      // covers ALL models with no per-service opt-in. A PHI entity carries its
+      // DECRYPTED value as a transient beside the ciphertext column, and the
+      // snapshot serialized both; the audit table has a different retention
+      // profile and a CSV export endpoint, so that defeated the envelope
+      // encryption for every audited clinical edit. Field names survive as
+      // redaction markers, so the row still records WHICH fields changed.
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      data: event.data as any,
+      data: scrubPhiForAudit(event.data, event.resourceType) as any,
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      previousData: event.previousData as any,
+      previousData: scrubPhiForAudit(event.previousData, event.resourceType) as any,
       // Carry the event's metaData (e.g. the impersonatedBy
       // provenance threaded by BaseService.broadcastSysEvent) into the queued
       // job so AuditLogProcessor persists it on the row's `metadata` column.

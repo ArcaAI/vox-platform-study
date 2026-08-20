@@ -11,15 +11,19 @@ import { Label } from '@arcaai/ui/components/shadcn/label';
 import { Skeleton } from '@arcaai/ui/components/shadcn/skeleton';
 import { GatewayError } from '@/shared/api';
 import { ErrorState } from '@/shared/state/error-state';
-import { useSetTenantTags, useTenantTags } from '../api/hooks';
+import { useSetTenantTags, useTenant, useTenantTags } from '../api/hooks';
 
 /** Frame 12.1 tags tab: chip editor — each add/remove PUTs the full set. */
 export function TenantTagsTab({ id }: { id: string }) {
   const { data, isLoading, error, refetch } = useTenantTags(id);
+  // `PUT :id/tags` writes the TENANT row and requires `If-Match`, so the
+  // precondition comes from the tenant detail ETag — the `/tags` read carries
+  // no row version of its own.
+  const tenant = useTenant(id);
   const setTags = useSetTenantTags();
   const [draft, setDraft] = useState('');
 
-  if (isLoading) {
+  if (isLoading || tenant.isLoading) {
     return (
       <Card className="flex flex-row flex-wrap gap-2 p-6">
         <Skeleton className="h-5 w-24 rounded-full" />
@@ -28,18 +32,41 @@ export function TenantTagsTab({ id }: { id: string }) {
       </Card>
     );
   }
-  if (error || !data) {
-    return <ErrorState error={error} onRetry={() => refetch()} />;
+  if (error || !data || tenant.error || !tenant.data) {
+    return (
+      <ErrorState
+        error={error ?? tenant.error}
+        onRetry={() => {
+          void refetch();
+          void tenant.refetch();
+        }}
+      />
+    );
   }
 
   const tags = data.tags;
 
+  const etag = tenant.data.etag;
+
   function apply(next: string[], successMessage: string) {
+    if (!etag) {
+      toast.error('Could not read the tenant version. Reload the page and try again.');
+      return;
+    }
     setTags.mutate(
-      { id, tags: next },
+      { id, tags: next, etag },
       {
         onSuccess: () => toast.success(successMessage),
-        onError: (mutationError) => toast.error(mutationError instanceof GatewayError ? mutationError.message : 'Could not update the tags.'),
+        onError: (mutationError) => {
+          // 412 = someone else edited this tenant since we read it. Refetch so
+          // the next attempt carries a fresh validator.
+          if (mutationError instanceof GatewayError && mutationError.status === 412) {
+            void tenant.refetch();
+            toast.error('Someone else changed this tenant. Reloaded the latest version — try again.');
+            return;
+          }
+          toast.error(mutationError instanceof GatewayError ? mutationError.message : 'Could not update the tags.');
+        },
       },
     );
   }
