@@ -534,7 +534,11 @@ export class HarnessGatewayService {
    */
   async approveWorkflowRunGate(runId: string, input: ApproveWorkflowRunGateInput): Promise<ApproveWorkflowRunGateResult> {
     const url = `${this.harnessUrl}/api/v1/internal/workflow-runs/${runId}:approve`;
-    const response = await this.httpService.axiosRef.post(url, { ...input }, { headers: await this.buildHeaders(), timeout: WORKFLOW_RUN_HTTP_TIMEOUT_MS });
+    const response = await this.httpService.axiosRef.post(
+      url,
+      { ...input },
+      { headers: await this.buildHeaders(), timeout: WORKFLOW_RUN_HTTP_TIMEOUT_MS },
+    );
     this.logger.log({ message: 'Harness workflow run gate approval sent', runId, decision: input.decision });
     return response.data as ApproveWorkflowRunGateResult;
   }

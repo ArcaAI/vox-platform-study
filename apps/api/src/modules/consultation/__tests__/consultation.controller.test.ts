@@ -802,7 +802,7 @@ describe('ConsultationController', () => {
     });
 
     it('update should enforce ownership', async () => {
-      await expect(controller.update(CONSULTATION_OWN, {} as any)).rejects.toThrow(ForbiddenException);
+      await expect(controller.update(CONSULTATION_OWN, {} as any, undefined)).rejects.toThrow(ForbiddenException);
     });
   });
 

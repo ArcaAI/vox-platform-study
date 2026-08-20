@@ -70,11 +70,7 @@ export function singleEntryConfigProblems(config: unknown): string[] {
 export interface ReachableFromEntryConfig {
   entryType: string;
 }
-export function reachableFromEntryEvaluate(
-  graph: WorkflowGraph,
-  ctx: WorkflowEvaluationContext,
-  config: ReachableFromEntryConfig,
-): RawFinding[] {
+export function reachableFromEntryEvaluate(graph: WorkflowGraph, ctx: WorkflowEvaluationContext, config: ReachableFromEntryConfig): RawFinding[] {
   const entries = graph.nodes.filter((node) => node.type === config.entryType).map((node) => node.id);
   const reachable = new Set<string>();
   for (const entry of entries) {
@@ -94,11 +90,7 @@ export function reachableFromEntryConfigProblems(config: unknown): string[] {
 export interface ReachesTerminalConfig {
   terminalType: string;
 }
-export function reachesTerminalEvaluate(
-  graph: WorkflowGraph,
-  ctx: WorkflowEvaluationContext,
-  config: ReachesTerminalConfig,
-): RawFinding[] {
+export function reachesTerminalEvaluate(graph: WorkflowGraph, ctx: WorkflowEvaluationContext, config: ReachesTerminalConfig): RawFinding[] {
   const terminals = graph.nodes.filter((node) => node.type === config.terminalType).map((node) => node.id);
   const canReach = reachesAny(graph, terminals);
   return graph.nodes
