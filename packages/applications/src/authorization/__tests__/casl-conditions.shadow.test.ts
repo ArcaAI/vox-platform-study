@@ -159,14 +159,9 @@ describe('UnifiedAuthGuard — CASL shadow mode (Task 14)', () => {
       set: vi.fn(),
     };
 
-    guard = new UnifiedAuthGuard(
-      reflector,
-      apiKeyService,
-      policyEngine,
-      clsService as any,
-      undefined,
-      { canActivate: vi.fn().mockResolvedValue(true) },
-    );
+    guard = new UnifiedAuthGuard(reflector, apiKeyService, policyEngine, clsService as any, undefined, {
+      canActivate: vi.fn().mockResolvedValue(true),
+    });
 
     metadata[REQUIRED_PERMISSIONS_KEY] = [{ action: 'read', subject: 'Consultation' }];
     metadata[PERMISSION_MODE_KEY] = 'AND';
@@ -277,13 +272,17 @@ describe('UnifiedAuthGuard — CASL shadow mode (Task 14)', () => {
 // guard tests above actually reading what it sets. This last check pins the
 // metadata KEY the decorator and the guard must agree on.
 describe('ResolveSubjectInstance', () => {
-  it('sets SUBJECT_INSTANCE_RESOLVER_KEY metadata to the given resolver', () => {
+  it('sets SUBJECT_INSTANCE_RESOLVER_KEY metadata to a descriptor carrying the resolver', () => {
+    // TASK-781 changed the stored shape from a bare function to a descriptor
+    // so a route can also declare WHICH subject it resolves and whether the
+    // resolver is enforce-grade. `enforceGrade` defaults to false: an
+    // undeclared resolver is never enough to make a pair enforceable.
     const resolver: SubjectInstanceResolver = () => ({ tenantId: 't-1' });
     class Dummy {
       @ResolveSubjectInstance(resolver)
       handler() {}
     }
     const stored = Reflect.getMetadata(SUBJECT_INSTANCE_RESOLVER_KEY, Dummy.prototype.handler);
-    expect(stored).toBe(resolver);
+    expect(stored).toEqual({ resolver, enforceGrade: false });
   });
 });

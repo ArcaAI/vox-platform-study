@@ -90,10 +90,14 @@ describe('ApiKey enforce — evidence', () => {
     expect(engine.can(abilityFromPolicies([OWN_KEYS]), 'read', 'ApiKey', orphan)).toBe(false);
   });
 
-  it('the enforce list contains exactly the three ApiKey pairs this evidence covers', () => {
-    // Pinned. Any addition is an authorization-semantics change and must come
-    // with its own evidence in the ticket README before this test is edited.
-    expect([...CASL_ENFORCED_PAIRS].sort()).toEqual(['delete:ApiKey', 'read:ApiKey', 'update:ApiKey']);
+  it('TASK-781: the ApiKey pairs are NOT enforced at the guard — the CASL table above is redundant with the service', () => {
+    // The verdict table above is still true, and that is precisely the point:
+    // `ApiKeyService.assertKeyAccess` already enforces the SAME
+    // `{tenantId, userId}` boundary the seeded rule expresses, and answers
+    // 404 rather than 403 so a peer's key id is indistinguishable from a
+    // non-existent one. Guards run before services, so a guard-level denial
+    // could only ever pre-empt that 404 with an existence-leaking 403.
+    expect([...CASL_ENFORCED_PAIRS].sort()).toEqual([]);
   });
 
   it('the two investigated-and-DISQUALIFIED subjects are still absent', () => {

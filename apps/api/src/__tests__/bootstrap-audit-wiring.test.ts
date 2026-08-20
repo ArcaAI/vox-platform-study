@@ -44,6 +44,7 @@ const WIRED_AUDITS = [
   'auditConsentRouteCoverage',
   'auditServiceAccountSurface',
   'auditWebSocketGatewayOwnerBinding',
+  'auditCaslEnforcePairReachability',
 ] as const;
 
 describe('bootstrap audit wiring (TASK-761 T-8)', () => {
@@ -56,7 +57,12 @@ describe('bootstrap audit wiring (TASK-761 T-8)', () => {
 
   it('every audit name appears in an import statement', () => {
     const importedNames = new Set(
-      [...MAIN_TS_CODE.matchAll(/import\s*\{([^}]*)\}\s*from\s*'\.\/bootstrap\/[^']*'/g)].flatMap((m) => m[1].split(',').map((n) => n.trim()).filter(Boolean)),
+      [...MAIN_TS_CODE.matchAll(/import\s*\{([^}]*)\}\s*from\s*'\.\/bootstrap\/[^']*'/g)].flatMap((m) =>
+        m[1]
+          .split(',')
+          .map((n) => n.trim())
+          .filter(Boolean),
+      ),
     );
     for (const auditName of WIRED_AUDITS) {
       expect(importedNames.has(auditName), `${auditName} is not imported from ./bootstrap/*`).toBe(true);

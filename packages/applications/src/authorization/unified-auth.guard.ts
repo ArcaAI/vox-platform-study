@@ -162,7 +162,42 @@ export interface SubjectResolverContext {
  * getOne() { ... }
  * ```
  */
-export const ResolveSubjectInstance = (resolver: SubjectInstanceResolver) => SetMetadata(SUBJECT_INSTANCE_RESOLVER_KEY, resolver);
+export const ResolveSubjectInstance = (resolver: SubjectInstanceResolver, options: SubjectInstanceResolverOptions = {}) =>
+  SetMetadata(SUBJECT_INSTANCE_RESOLVER_KEY, {
+    resolver,
+    ...(options.subject !== undefined ? { subject: options.subject } : {}),
+    enforceGrade: options.enforceGrade === true,
+  } satisfies SubjectInstanceResolverDescriptor);
+
+/**
+ * TASK-781 — what a route DECLARES about its resolver, beyond the function.
+ *
+ * `subject` closes the disclosed TASK-712 limitation that one route-level
+ * resolver was applied to EVERY required permission: an instance shaped for
+ * subject X was evaluated against subject Y's conditions, where a spurious
+ * `false` becomes a wrongful 403. When declared, the instance is only ever
+ * compared against permissions for that subject.
+ *
+ * `enforceGrade` is an ATTESTATION, consumed by
+ * `assertCaslEnforcePairReachability` at boot, not by this guard: it states
+ * that the resolver returns an instance for rows the caller does NOT own —
+ * i.e. it does not delegate to an access-asserting accessor. A resolver that
+ * throws on the deny case fails open, which is precisely how TASK-712's
+ * `ApiKey` pairs ended up listed-but-unreachable (TASK-779 F-1). The guard
+ * deliberately does NOT require the flag to enforce: a mis-declaration must
+ * fail the BOOT loudly, never silently disable an enforced pair at runtime.
+ */
+export interface SubjectInstanceResolverOptions {
+  subject?: string;
+  enforceGrade?: boolean;
+}
+
+/** The metadata shape `@ResolveSubjectInstance` stores. */
+export interface SubjectInstanceResolverDescriptor {
+  resolver: SubjectInstanceResolver;
+  subject?: string;
+  enforceGrade: boolean;
+}
 
 /**
  * Injectable token for the JWT auth guard.
@@ -877,7 +912,7 @@ export class UnifiedAuthGuard implements CanActivate {
     // Pairs NOT in `CASL_ENFORCED_PAIRS` stay shadow (recorded, not applied);
     // pairs IN it come back here as denials to apply AFTER the type-only
     // verdict, so enforcement can only ever NARROW.
-    const enforcedDenials = await this.runCaslInstanceChecks(context, request, ability, required, method, path);
+    const enforcedDenials = await this.runCaslInstanceChecks(context, request, ability, required, mode, method, path);
 
     const verdict = evaluatePermissions(ability, required, mode);
 
@@ -947,7 +982,7 @@ export class UnifiedAuthGuard implements CanActivate {
    * swallows into the ordinary "no instance" path.
    */
   private readonly subjectResolverContext: SubjectResolverContext = {
-    get: <T = unknown,>(token: unknown): T => {
+    get: <T = unknown>(token: unknown): T => {
       if (!this.moduleRef) {
         throw new Error('SubjectInstanceResolver requested a provider, but UnifiedAuthGuard has no ModuleRef wired');
       }
@@ -961,6 +996,7 @@ export class UnifiedAuthGuard implements CanActivate {
     request: any,
     ability: AppAbility,
     required: RequiredPermission[],
+    mode: PermissionMode,
     method: string,
     path: string,
   ): Promise<Array<{ action: string; subject: string }>> {
@@ -968,18 +1004,48 @@ export class UnifiedAuthGuard implements CanActivate {
 
     for (const permission of required) {
       try {
-        const resolver = this.reflector.getAllAndOverride<SubjectInstanceResolver | undefined>(SUBJECT_INSTANCE_RESOLVER_KEY, [
-          context.getHandler(),
-          context.getClass(),
-        ]);
-        if (!resolver) continue; // opt-in only — no resolver, no shadow check, no row loaded
+        const declared = this.reflector.getAllAndOverride<SubjectInstanceResolverDescriptor | SubjectInstanceResolver | undefined>(
+          SUBJECT_INSTANCE_RESOLVER_KEY,
+          [context.getHandler(), context.getClass()],
+        );
+        if (!declared) continue; // opt-in only — no resolver, no shadow check, no row loaded
 
-        const instance = await resolver(request, this.subjectResolverContext);
+        // A bare function is the pre-TASK-781 metadata shape; still accepted so
+        // an un-migrated route keeps its (shadow) behaviour exactly.
+        const descriptor: SubjectInstanceResolverDescriptor = typeof declared === 'function' ? { resolver: declared, enforceGrade: false } : declared;
+
+        // TASK-781 — a resolver that declares WHICH subject it resolves is
+        // applied to that subject only. Without this, one route-level resolver
+        // was compared against every required permission, so an instance
+        // shaped for subject X was evaluated against subject Y's conditions
+        // and a spurious `false` became a wrongful 403.
+        if (descriptor.subject !== undefined && descriptor.subject !== permission.subject) continue;
+
+        const instance = await descriptor.resolver(request, this.subjectResolverContext);
         if (!instance) continue; // resolver explicitly had nothing to compare against
 
         const verdict = this.policyEngine.evaluateShadowVerdict(ability, permission.action, permission.subject, instance);
 
         if (this.policyEngine.isEnforcedPair(permission.action, permission.subject)) {
+          // TASK-781 R4 — never enforce on an OR-mode route. The denial is
+          // applied AFTER the type-only verdict, so on `@CanAny` a denial from
+          // one alternative would override an allow earned by another and
+          // silently rewrite the route's declared OR into an AND. Shadow
+          // recording continues below; `auditCaslEnforcePairReachability`
+          // makes this combination unshippable in the first place.
+          if (mode === 'OR') {
+            this.logger.debug({
+              message: 'casl.enforce.skipped_or_mode',
+              action: permission.action,
+              subject: permission.subject,
+              method,
+              path,
+            });
+            if (verdict.diverged) {
+              this.policyEngine.recordShadowDivergence(permission.action, permission.subject, verdict, { method, path });
+            }
+            continue;
+          }
           // ENFORCE: the instance verdict decides. Only a DENY is actionable
           // (an instance-allow cannot widen a type-only deny).
           if (!verdict.instanceVerdict) {

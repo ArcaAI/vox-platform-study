@@ -1,6 +1,18 @@
 // Policy Engine
-export { PolicyEngine, CASL_SHADOW_DIVERGENCE_METRIC, CASL_SHADOW_DIVERGENCE_EVENT } from './policy.engine';
+export {
+  PolicyEngine,
+  CASL_SHADOW_DIVERGENCE_METRIC,
+  CASL_SHADOW_DIVERGENCE_EVENT,
+  CASL_ENFORCED_PAIRS,
+  CASL_ENFORCE_DENIAL_METRIC,
+  CASL_ENFORCE_DENIAL_EVENT,
+} from './policy.engine';
 export type { AppAbility, PolicyRule, PolicyContext, ShadowVerdict } from './policy.engine';
+
+// Enforce-pair reachability (TASK-781) — the boot gate that keeps
+// `CASL_ENFORCED_PAIRS` from listing a pair that can never fire.
+export { assertCaslEnforcePairReachability } from './enforce-reachability';
+export type { EnforceRouteDescriptor } from './enforce-reachability';
 
 // Authorization Guard (legacy — prefer UnifiedAuthGuard)
 export { AuthorizationGuard, REQUIRED_PERMISSIONS_KEY, SKIP_AUTH_KEY, PERMISSION_MODE_KEY } from './authorization.guard';
@@ -24,6 +36,8 @@ export {
 } from './unified-auth.guard';
 export type {
   SubjectInstanceResolver,
+  SubjectInstanceResolverOptions,
+  SubjectInstanceResolverDescriptor,
   SubjectResolverContext,
   IServiceAccountAuthenticator,
   ServiceAccountPrincipalLike,
