@@ -7,7 +7,7 @@ import {
   UpdateWorkflowDefinitionRequest,
   WorkflowDefinitionResponse,
 } from '@arcaai/applications';
-import { Body, Controller, Delete, Get, Inject, Param, Patch, Post, Query } from '@nestjs/common';
+import { Body, Controller, Delete, Get, HttpCode, HttpStatus, Inject, Param, Patch, Post, Query } from '@nestjs/common';
 import { ApiBearerAuth, ApiHeader, ApiOperation, ApiParam, ApiQuery, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { CanManage, ExpectedVersion, RequiresIfMatch, ForbidApiKey, RequiredSvcScopes } from '../../decorators';
 
@@ -114,6 +114,7 @@ export class WorkflowDefinitionController {
   }
 
   @Post(':id/validate')
+  @HttpCode(HttpStatus.OK)
   @ApiOperation({
     summary: 'Re-run shape + engine + DRAFT rule-catalogue validation and persist the report',
     description:
@@ -129,6 +130,7 @@ export class WorkflowDefinitionController {
   }
 
   @Post(':id/publish')
+  @HttpCode(HttpStatus.OK)
   @ApiOperation({
     summary: 'Compile the graph and publish this version',
     description:

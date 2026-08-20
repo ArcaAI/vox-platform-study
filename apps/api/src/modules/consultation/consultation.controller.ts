@@ -1024,10 +1024,13 @@ export class ConsultationController {
     by: ['id'],
   })
   @ApiParam({ name: 'id', description: 'Consultation ID' })
+  @ApiResponse({ status: 404, description: 'Consultation not found (or cross-tenant), or no summary has been generated yet.' })
   @RequiredScopes('consultation:report:read')
-  async getLatestSummary(@Param('id') id: string): Promise<SummaryResponse | null> {
+  async getLatestSummary(@Param('id') id: string): Promise<SummaryResponse> {
     await this.verifyConsultationAccess(id);
-    return this.summaryService.getLatestSummary(id);
+    const summary = await this.summaryService.getLatestSummary(id);
+    if (!summary) throw new NotFoundException(`No summary has been generated yet for consultation ${id}`);
+    return summary;
   }
 
   @ApiEndpoint({
@@ -1036,10 +1039,13 @@ export class ConsultationController {
     by: ['id'],
   })
   @ApiParam({ name: 'id', description: 'Consultation ID' })
+  @ApiResponse({ status: 404, description: 'Consultation not found (or cross-tenant), or no pre-summary has been generated yet.' })
   @RequiredScopes('consultation:report:read')
-  async getLatestPreSummary(@Param('id') id: string): Promise<SummaryResponse | null> {
+  async getLatestPreSummary(@Param('id') id: string): Promise<SummaryResponse> {
     await this.verifyConsultationAccess(id);
-    return this.summaryService.getLatestPreSummary(id);
+    const preSummary = await this.summaryService.getLatestPreSummary(id);
+    if (!preSummary) throw new NotFoundException(`No pre-summary has been generated yet for consultation ${id}`);
+    return preSummary;
   }
 
   @ApiEndpoint({

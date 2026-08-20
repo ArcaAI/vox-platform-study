@@ -200,16 +200,14 @@ test.describe('TASK-779 core business — the capture path', () => {
     expect(timelineBody.events.length, 'the note added an event on top of the open event').toBeGreaterThan(1);
   });
 
-  test('summary/latest on a consultation that has never been summarised is an empty 200, not a 404', async ({ request }) => {
+  test('summary/latest on a consultation that has never been summarised is a 404 (TASK-780 F-6 fixed)', async ({ request }) => {
     const consultation = await openConsultation(request, 'nosummary');
     const response = await request.get(`/api/v1/consultations/${consultation.id}/summary/latest`, { headers: bearer(doctorToken) });
-    // Pinned because it is a real client-facing choice: "no summary yet" is a
-    // legitimate state of an existing consultation, so it is emptiness, not absence.
-    expect(response.status(), 'no summary yet is an empty success, not a missing resource').toBe(200);
-    // NOTE: the body is EMPTY (zero bytes), not `{}` or `null` — a JSON client
-    // that calls `.json()` unconditionally on this route will throw. Pinned as
-    // the actual contract rather than the one a client would expect.
-    expect(await response.text(), 'and the empty state carries no payload at all').toBe('');
+    // TASK-780 F-6 fixed: "no summary yet" now answers 404, matching the house pattern
+    // used by every other "optional latest resource" endpoint (getDnaReport, getJob,
+    // getLiveSession) — a client that calls `.json()` unconditionally no longer throws
+    // on a zero-byte body.
+    expect(response.status(), 'no summary yet is a missing resource, not an empty success').toBe(404);
   });
 });
 

@@ -17,11 +17,11 @@
  * Graph fixtures mirror `packages/workflow-contract/src/__tests__/palette-canonical-graphs.test.ts`
  * so the wire-level expectations and the unit-level ones cannot drift apart.
  *
- * NOTE ON STATUS CODES (finding F-2 in the ticket README): `POST :id/validate` and
- * `POST :id/publish` are plain `@Post()` handlers, so Nest answers **201**, while
- * their `@ApiResponse` — and therefore `openapi.json` — declares 200. The assertions
- * below pin the ACTUAL behaviour; a generated client that checks for 200 will
- * mis-read a successful publish. Reported, not silently normalised.
+ * NOTE ON STATUS CODES (TASK-780 fixed finding F-2): `POST :id/validate` and
+ * `POST :id/publish` are state transitions on an EXISTING resource, not creations of
+ * a new one, so they now carry `@HttpCode(HttpStatus.OK)` and answer 200, matching
+ * their `@ApiResponse` — and therefore `openapi.json` — which always declared 200.
+ * The assertions below pin the CORRECTED behaviour.
  *
  * Prerequisites: API running against the test DB and seeded. Run with `RESET_DB=false`.
  */
@@ -196,21 +196,21 @@ test.describe('TASK-779 workflow — authoring lifecycle', () => {
     expect(read.headers()['etag'], 'the global ETagInterceptor stamps a strong validator from _version').toBe(`"${body.version}"`);
 
     const validated = await request.post(`/api/v1/admin/workflow-definitions/${body.id}/validate`, { headers: bearer(tenantAdminToken) });
-    // F-2: plain @Post() ⇒ 201, while the OpenAPI contract says 200.
-    expect(validated.status(), 'validate answers 201 (Nest @Post default) — openapi.json says 200; see ticket finding F-2').toBe(201);
+    // TASK-780 F-2: validate is a state transition on an existing resource — 200, not 201.
+    expect(validated.status(), 'validate answers 200 (a state transition, not a creation) — TASK-780 F-2').toBe(200);
     const validatedBody = (await validated.json()) as Definition;
     expect(validatedBody.status, 'a clean engine gate advances DRAFT → VALIDATED').toBe('VALIDATED');
     expect(validatedBody.validatedAt, 'validatedAt is stamped').toBeTruthy();
 
     // Validate is idempotent re-computation, not a CAS: running it twice is fine.
     const revalidated = await request.post(`/api/v1/admin/workflow-definitions/${body.id}/validate`, { headers: bearer(tenantAdminToken) });
-    expect(revalidated.status(), 'validate is idempotent — it carries no If-Match gate by design').toBe(201);
+    expect(revalidated.status(), 'validate is idempotent — it carries no If-Match gate by design').toBe(200);
 
     const published = await request.post(`/api/v1/admin/workflow-definitions/${body.id}/publish`, {
       headers: bearer(tenantAdminToken),
       data: {},
     });
-    expect(published.status(), 'publish answers 201 (see F-2)').toBe(201);
+    expect(published.status(), 'publish answers 200 (a state transition, not a creation) — TASK-780 F-2').toBe(200);
     const publishedBody = (await published.json()) as Definition;
     expect(publishedBody.status).toBe('PUBLISHED');
     expect(publishedBody.publishedAt, 'publishedAt is stamped').toBeTruthy();
@@ -230,7 +230,7 @@ test.describe('TASK-779 workflow — authoring lifecycle', () => {
   test('re-publishing an already PUBLISHED version is refused 400 — publish is a one-way transition, not an update', async ({ request }) => {
     const { body } = await createDefinition(request, tenantAdminToken, canonicalGraph(), 'republish');
     const first = await request.post(`/api/v1/admin/workflow-definitions/${body.id}/publish`, { headers: bearer(tenantAdminToken), data: {} });
-    expect(first.status()).toBe(201);
+    expect(first.status()).toBe(200);
     const second = await request.post(`/api/v1/admin/workflow-definitions/${body.id}/publish`, { headers: bearer(tenantAdminToken), data: {} });
     expect(second.status(), 'a PUBLISHED row cannot be published again — branch a new draft').toBe(400);
   });
@@ -256,7 +256,7 @@ test.describe('TASK-779 workflow — the rule catalogue at the wire', () => {
       headers: bearer(tenantAdminToken),
       data: {},
     });
-    expect(published.status(), 'ERROR-severity rule findings do NOT block publish (documented design)').toBe(201);
+    expect(published.status(), 'ERROR-severity rule findings do NOT block publish (documented design)').toBe(200);
     expect((await published.json()).status).toBe('PUBLISHED');
   });
 
@@ -347,7 +347,7 @@ test.describe('TASK-779 workflow — optimistic concurrency on PATCH', () => {
       headers: bearer(tenantAdminToken),
       data: {},
     });
-    expect(published.status()).toBe(201);
+    expect(published.status()).toBe(200);
     const current = (await published.json()) as Definition;
 
     const patch = await request.patch(`/api/v1/admin/workflow-definitions/${body.id}`, {

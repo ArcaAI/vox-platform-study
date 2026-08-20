@@ -8,7 +8,7 @@
  */
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { RequestMethod } from '@nestjs/common';
-import { PATH_METADATA, METHOD_METADATA } from '@nestjs/common/constants';
+import { PATH_METADATA, METHOD_METADATA, HTTP_CODE_METADATA } from '@nestjs/common/constants';
 import { WorkflowDefinitionController } from '../workflow-definition.controller';
 
 const definitionResponse = (overrides: Record<string, unknown> = {}) => ({
@@ -55,6 +55,15 @@ describe('WorkflowDefinitionController — authorization metadata', () => {
     expect(Reflect.getMetadata(METHOD_METADATA, WorkflowDefinitionController.prototype.validate)).toBe(RequestMethod.POST);
     expect(Reflect.getMetadata(PATH_METADATA, WorkflowDefinitionController.prototype.publish)).toBe(':id/publish');
     expect(Reflect.getMetadata(METHOD_METADATA, WorkflowDefinitionController.prototype.publish)).toBe(RequestMethod.POST);
+  });
+
+  it('answers validate/publish with 200, not Nest\'s default 201 for POST (TASK-780 F-2)', () => {
+    // These are state transitions on an EXISTING resource (DRAFT -> VALIDATED /
+    // DRAFT -> PUBLISHED), not creations of a new one — the documented
+    // `@ApiResponse({ status: 200 })` (and openapi.json) is the correct contract,
+    // so the handler must override Nest's default POST status (201) explicitly.
+    expect(Reflect.getMetadata(HTTP_CODE_METADATA, WorkflowDefinitionController.prototype.validate)).toBe(200);
+    expect(Reflect.getMetadata(HTTP_CODE_METADATA, WorkflowDefinitionController.prototype.publish)).toBe(200);
   });
 });
 
