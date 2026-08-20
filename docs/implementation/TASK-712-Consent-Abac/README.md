@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Status** | Partial — Pass 6 (2026-08-19): Phase 5 Task 15 is now COMPLETE for one subject and the rollout is unblocked. Three things landed: (a) `SubjectInstanceResolver` gained DEPENDENCY ACCESS (a `SubjectResolverContext` second argument backed by `ModuleRef`), without which a resolver could never load a row; (b) a **bug fix in `PolicyEngine.can`** — its instance branch called CASL's 3-argument `can(action, subject, field)`, which THROWS for an object, so instance-aware evaluation had never once returned a verdict at any of its four production call sites; (c) shadow mode wired to **10 real routes** (`ApiKey` ×6, `Role` ×4), so `casl_shadow_divergence_total` can finally move. `CASL_ENFORCED_PAIRS` briefly contained **`read`/`update`/`delete` on `ApiKey`**; **TASK-781 REMOVED all three** after TASK-779 proved by e2e that they were structurally unreachable (see §7 Pass 6 §4, corrected). The enforce list is EMPTY again — this time because every investigated candidate is disqualified for a structural reason, not because nothing has been measured. `Consultation`, `UserVoiceProfile` and `Role` remain DECLINED with reasons (§7 Pass 6). `getAccessibleBy` remains unwired — its precondition (zero divergence over a measured period) needs the counter to run in a real environment first. Phases 0–4 and 6 done. |
+| **Status** | Partial — **Phase 5's instance-enforcement rollout is CLOSED by owner decision (2026-08-20): stopped, not paused; `CASL_ENFORCED_PAIRS` stays EMPTY and no new pair is to be wired, shadow or enforce. Read [§9](#9-casl-instance-enforcement--closed-by-owner-decision-2026-08-20) before anything else in this ticket — the Pass 6 narrative below is kept for history and its "rollout is unblocked" conclusion no longer holds.** Pass 6 (2026-08-19) said: Phase 5 Task 15 is now COMPLETE for one subject and the rollout is unblocked. Three things landed: (a) `SubjectInstanceResolver` gained DEPENDENCY ACCESS (a `SubjectResolverContext` second argument backed by `ModuleRef`), without which a resolver could never load a row; (b) a **bug fix in `PolicyEngine.can`** — its instance branch called CASL's 3-argument `can(action, subject, field)`, which THROWS for an object, so instance-aware evaluation had never once returned a verdict at any of its four production call sites; (c) shadow mode wired to **10 real routes** (`ApiKey` ×6, `Role` ×4), so `casl_shadow_divergence_total` can finally move. `CASL_ENFORCED_PAIRS` briefly contained **`read`/`update`/`delete` on `ApiKey`**; **TASK-781 REMOVED all three** after TASK-779 proved by e2e that they were structurally unreachable (see §7 Pass 6 §4, corrected). The enforce list is EMPTY again — this time because every investigated candidate is disqualified for a structural reason, not because nothing has been measured. `Consultation`, `UserVoiceProfile` and `Role` remain DECLINED with reasons (§7 Pass 6). `getAccessibleBy` remains unwired — its precondition (zero divergence over a measured period) needs the counter to run in a real environment first. Phases 0–4 and 6 done. |
 | **Wave** | 1 · **Size** | XL |
 | **Epic slug** | `consent-abac` |
 | **Depends on** | — (independent; TASK-711 supplies the `PRIMED` state this gate naturally attaches to, but neither blocks the other) |
@@ -1570,3 +1570,91 @@ restarted; the file was internally consistent again within seconds.
 | Date | Change |
 |---|---|
 | 2026-08-20 | **TASK-781** corrected §7 Pass 6 §4: the three `ApiKey` enforce pairs were structurally unreachable (TASK-779 F-1) and unfixable at the guard without leaking existence; all three removed, `CASL_ENFORCED_PAIRS` is empty, and a boot audit (`auditCaslEnforcePairReachability`) now refuses to start the gateway on an unreachable listed pair. The DEF-C3 rule was widened from "interceptor-protected" to "any downstream 404-posture ownership assertion". The disclosed one-resolver-per-route limitation was closed too (resolvers may declare `{ subject }`; enforcement is skipped in OR mode). |
+| 2026-08-20 | **OWNER DECISION — the CASL instance-enforcement rollout is STOPPED** (see §9 below). No new `(action, subject)` pair is to be wired, shadow or enforce; `CASL_ENFORCED_PAIRS` stays empty. Behavioural invariance of the `ApiKey` removal is now PROVEN, not asserted: `casl-conditions.enforce-apikey.test.ts` drives the real guard over the real seeded ability with the TASK-712 list and with the shipped empty list and asserts identical outcomes on both reachable resolver branches, plus an honesty check that the comparison is not vacuous; `api-key.controller.test.ts` pins the delegation to `fetchById` that makes the deny branch unreachable. Also restored the four `{ subject: 'Role' }` resolver attestations that the TASK-766 revert (`f69e3598f`) had stripped as collateral, now pinned by `rbac-permissions.test.ts`. |
+
+---
+
+## 9. CASL instance enforcement — closed by owner decision (2026-08-20)
+
+**Decision: the shadow → measure → enforce rollout (R1) is STOPPED, not paused.**
+`CASL_ENFORCED_PAIRS` ships EMPTY and stays empty. No new `(action, subject)` pair
+is to be wired — neither shadow nor enforce — without a fresh owner decision that
+supersedes this one. This section is the whole record; it replaces "unblocked" as
+the standing state of Phase 5.
+
+### 9.1 The finding that ended it — `read`/`update`/`delete:ApiKey`
+
+Pass 6 (§7) listed three `ApiKey` pairs as the rollout's first enforced pairs, on
+an exhaustive offline verdict table. The table was correct and the enforcement was
+still fictional: the pairs were enforced **in name only**.
+
+- `ApiKeyController`'s `@ResolveSubjectInstance(resolveApiKeyInstance, …)` loads its
+  row through `IApiKeyService.fetchById`, which runs `assertKeyAccess` and throws
+  **404** for a key the caller does not own.
+- That is *exactly* the request an enforced pair exists to deny. On it, the resolver
+  THREW; `runCaslInstanceChecks` swallowed the throw on its documented fail-open
+  path; no denial was ever produced, and the service's 404 answered.
+- On every request where the resolver did NOT throw, `assertKeyAccess` had already
+  passed — so the instance verdict was necessarily `true`.
+- Therefore `casl_enforce_denial_total` **could not increment**. TASK-779 observed
+  this by e2e. A counter reading zero because it cannot fire is indistinguishable
+  from one reading zero because nothing diverged — which made the "measure, then
+  enforce" step the rollout depends on vacuous at its first use.
+
+### 9.2 The removal, and why not "make it fire" instead
+
+TASK-781 removed all three pairs. The alternative — reading the row WITHOUT the
+ownership assertion so the guard could see a foreign instance — was rejected as a
+**security regression**: guards run before services, so the guard's 403 would
+pre-empt `assertKeyAccess`'s deliberate 404 and leak that another user's key id
+exists. The boundary is already enforced one layer down, with the safer status.
+
+**Behaviour did not change, and that is proven rather than asserted:**
+
+| Proof | Location |
+|---|---|
+| The real guard, over the real seeded `api-key-own-manage` ability, produces IDENTICAL outcomes with the TASK-712 list and with the shipped empty list — on both reachable resolver branches (resolver throws; resolver returns the caller's own row) — plus an honesty check showing the comparison is not vacuous | `packages/applications/src/authorization/__tests__/casl-conditions.enforce-apikey.test.ts` |
+| The route's declared resolver really does delegate to the access-asserting `fetchById`, propagates its throw, and never claims `enforceGrade` | `apps/api/src/modules/api-key/__tests__/api-key.controller.test.ts` |
+
+### 9.3 The structural reason some pairs can NEVER be enforced at the guard
+
+This is the general rule, and the reason the rollout has nowhere left to go rather
+than merely no measurements yet:
+
+> **A subject whose ownership boundary is already enforced downstream with a
+> deliberate 404 must not be enforced at the guard** — whether that downstream
+> enforcement lives in an INTERCEPTOR (`@TenantOwnedResource`) or in the SERVICE
+> (`assertKeyAccess`). The guard precedes both. It cannot *add* a boundary that is
+> already there; all it can do is replace a 404-over-403 posture with a 403, which
+> leaks existence. And a resolver that keeps the 404 posture fails open, so the pair
+> is unenforceable in the first place.
+
+TASK-712 stated only the interceptor half of that rule, which is how `ApiKey`
+slipped through. Every candidate investigated to date is disqualified:
+
+| Candidate | Why it can never be enforced here |
+|---|---|
+| `read`/`update`/`delete:ApiKey` | Service-layer `assertKeyAccess` 404 (both halves of the rule above) |
+| `update`/`delete:UserVoiceProfile` | `TenantOwnedResourceInterceptor.assertVoiceProfileOwnership` 404; guards run before interceptors (DEF-C3) |
+| `read`/`manage:Consultation` | `verifyConsultationAccess`'s post-guard, DB-backed shared-patient fallback is invisible to the guard; a guard denial would 403 a legitimate read |
+| `read`/`manage:Role` | The by-id Role routes are **OR-mode** (`read` OR `manage`), which `assertCaslEnforcePairReachability` refuses outright (R4): a denial from one alternative would override an allow earned by the other and silently rewrite the route's declared OR into an AND |
+
+### 9.4 What stays, and what now guards the list
+
+Shadow mode stays exactly as it is — computed, recorded, never applied — on the ten
+already-wired routes. Nothing is ripped out; the rollout simply does not advance.
+
+Two mechanical gates make a silent relapse impossible:
+
+- `assertCaslEnforcePairReachability` (`packages/applications/src/authorization/enforce-reachability.ts`),
+  run at gateway boot by `auditCaslEnforcePairReachability`
+  (`apps/api/src/bootstrap/casl-enforce-reachability-audit.ts`, wired in `main.ts`):
+  a listed pair must be declared on an AND-mode route carrying an
+  **enforce-grade** `@ResolveSubjectInstance` resolver for that subject, or the
+  gateway refuses to start. With the list empty it passes vacuously, which is why
+  its own behaviour is pinned on synthetic routes in its two test suites.
+- `casl-conditions.enforce.test.ts` pins the set as empty, so adding an entry fails
+  a test until this section is superseded by a new owner decision.
+
+`getAccessibleBy` remains unwired; its precondition (a measured period of zero
+divergence) is moot under this decision.
