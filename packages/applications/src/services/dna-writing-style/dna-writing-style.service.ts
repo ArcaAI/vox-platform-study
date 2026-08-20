@@ -503,6 +503,40 @@ export class DnaWritingStyleService extends BaseService implements IDnaWritingSt
   }
 
   /**
+   * Admin-triggered erasure of a DOCTOR's learned writing-style profile — the
+   * admin half of INV-240's "deletable" requirement, complementing the doctor
+   * self-service {@link resetMyDnaProfile}. Lets a tenant admin honour an
+   * erasure request (or respond to an incident) without impersonating the
+   * clinician.
+   *
+   * `doctorId` must be a member of the ACTING ADMIN's tenant — the same
+   * `assertUserBelongsToTenant` guard `generateDnaReport`/`getDnaReport`
+   * already apply — so a cross-tenant `doctorId` surfaces as
+   * `NotFoundException` (404-over-403) rather than erasing nothing and
+   * reporting success, or confirming that the id exists elsewhere.
+   *
+   * Soft delete only, exactly like {@link resetMyDnaProfile}: it shares
+   * {@link eraseReports}, so the rows stay auditable, drop out of every read
+   * path, and are hard-deleted later by the scheduled DNA profile retention
+   * purge. Idempotent — a doctor with no profile resets to zero counts.
+   */
+  async resetDoctorDnaProfile(doctorId: string): Promise<DnaErasureResponse> {
+    const tenantId = this.tenantId;
+    if (!tenantId) {
+      throw new BadRequestException('Tenant ID is required');
+    }
+    await assertUserBelongsToTenant(this.userRoleAssignmentRepository, this.userDepartmentRepository, this.userRepository, doctorId, tenantId);
+
+    const reports = await this.dnaReportRepository.findAllForDoctor(doctorId);
+    // Defense in depth, mirroring `resetMyDnaProfile`: the extended client
+    // already scopes reads by tenant, but erasure is destructive enough to
+    // re-assert it rather than trust the extension to have been applied.
+    const owned = (reports ?? []).filter((report) => report.tenantId === tenantId);
+
+    return this.eraseReports(owned, doctorId);
+  }
+
+  /**
    * Erase ONE of the caller's own writing-style reports (and its versions).
    * Complements {@link resetMyDnaProfile} for a doctor who wants to drop a
    * single bad snapshot rather than the whole profile.

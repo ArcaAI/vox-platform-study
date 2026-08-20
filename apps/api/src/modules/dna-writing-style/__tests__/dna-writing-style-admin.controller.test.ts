@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { DnaWritingStyleAdminController } from '../dna-writing-style-admin.controller';
+import { NotFoundException } from '@nestjs/common';
 import { STREAM_SCOPE_METADATA } from '../../auth/decorators/stream-scope.decorator';
 
 const fakeReportEntity = {
@@ -46,6 +47,7 @@ const createMockDnaService = () => ({
   // Repository-level pagination delegate.
   listReportsPaginated: vi.fn(),
   getDashboard: vi.fn(),
+  resetDoctorDnaProfile: vi.fn(),
 });
 
 const createMockDnaQueue = () => ({
@@ -280,6 +282,26 @@ describe('DnaWritingStyleAdminController', () => {
 
       expect(mockDnaService.generateDnaReport).toHaveBeenCalledWith('doctor-5', dto);
       expect(result.jobId).toBe('job-admin-1');
+    });
+  });
+
+  // TASK-733 Task 10 — the admin half of INV-240's "deletable" requirement.
+  // Literal `doctor/` prefix so it never collides with the `:reportId` routes,
+  // matching the existing `generate/:doctorId` idiom on this controller.
+  describe('DELETE /admin/dna-writing-styles/doctor/:doctorId (resetDoctorProfile)', () => {
+    it('delegates to service.resetDoctorDnaProfile with the target doctorId', async () => {
+      mockDnaService.resetDoctorDnaProfile.mockResolvedValue({ doctorId: 'doctor-5', deletedReports: 2, deletedVersions: 3 });
+
+      const result = await controller.resetDoctorProfile('doctor-5');
+
+      expect(mockDnaService.resetDoctorDnaProfile).toHaveBeenCalledWith('doctor-5');
+      expect(result).toEqual({ doctorId: 'doctor-5', deletedReports: 2, deletedVersions: 3 });
+    });
+
+    it('propagates the service 404 for a doctor outside the caller tenant (no swallowing)', async () => {
+      mockDnaService.resetDoctorDnaProfile.mockRejectedValue(new NotFoundException('User not found'));
+
+      await expect(controller.resetDoctorProfile('foreign-doctor')).rejects.toThrow(NotFoundException);
     });
   });
 
