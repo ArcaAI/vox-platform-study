@@ -35,7 +35,17 @@
  *    provider.
  */
 import { APIRequestContext, expect, test } from '@playwright/test';
+import { join } from 'path';
+import { pathToFileURL } from 'url';
 import { DEFAULT_TENANT_KEY, SEEDED_USERS, loginUser } from '../../../../tests/helpers';
+
+/**
+ * Run-unique marker. The instructions surface is keyed by a FIXED, validated
+ * `taskKey` (an unknown key is a 400), so a per-run key is impossible — the
+ * per-run uniqueness lives in the CONTENT instead, which is what the read-back
+ * assertion actually needs.
+ */
+const RUN_TAG = `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
 
 // A platform admin has no implicit tenant, so every ai-task-default call it makes
 // must name one: the controller answers 400 "Platform admins must pass ?tenantId=
@@ -130,10 +140,41 @@ test.describe('TASK-729 — nlp.sentiment / nlp.toxicity (fixed-taxonomy, no new
   });
 });
 
+// ─── DB access (cleanup only — the instructions surface has no DELETE) ──────
+
+interface InstructionsDb {
+  tenantNlpTaskInstructions: { deleteMany(args: { where: { tenantId: string; taskKey: string } }): Promise<unknown> };
+}
+let dbClient: InstructionsDb | null = null;
+async function getDb(): Promise<InstructionsDb> {
+  if (!dbClient) {
+    // Same dist-import pattern as task-776-credential-classes.spec.ts.
+    const distEntry = pathToFileURL(join(__dirname, '../../../../packages/database/dist/index.js')).href;
+    const mod = (await import(distEntry)) as { getPlatformAdminPrismaClient_Unscoped(): unknown };
+    dbClient = mod.getPlatformAdminPrismaClient_Unscoped() as InstructionsDb;
+  }
+  return dbClient;
+}
+
 test.describe('TASK-729 — nlp.topic / nlp.intent (open-taxonomy, tenant-writable instructions)', () => {
   let superAdminToken: string;
   let tenantAdminToken: string;
   let arcaaiTenantId: string;
+
+  /**
+   * Set ONLY when this worker's write CREATED the row (it read version 0
+   * first). Holds the row's own unique key — `(tenantId, taskKey)` — not a
+   * name/prefix predicate, so `afterAll` can never delete a row a sibling
+   * worker or an earlier run owns. Left null when the row already existed:
+   * that row is not ours to remove.
+   */
+  let instructionsRowCreatedByThisWorker: { tenantId: string; taskKey: string } | null = null;
+
+  test.afterAll(async () => {
+    if (!instructionsRowCreatedByThisWorker) return;
+    const db = await getDb();
+    await db.tenantNlpTaskInstructions.deleteMany({ where: instructionsRowCreatedByThisWorker });
+  });
 
   test.beforeAll(async ({ request }) => {
     const ga = await loginUser(request, SEEDED_USERS.superAdmin.username, SEEDED_USERS.superAdmin.password, 'ARCAAI');
@@ -150,20 +191,38 @@ test.describe('TASK-729 — nlp.topic / nlp.intent (open-taxonomy, tenant-writab
   });
 
   test('tenant admin writes their OWN topic list, then reads it back', async ({ request }) => {
-    const placeholder = await readInstructionsRow(request, tenantAdminToken, 'nlp.topic');
-    expect(placeholder.version).toBe(0);
+    // WAS: asserted the row was at `version === 0` (i.e. did not exist yet) and
+    // wrote with `If-Match: "0"` — a PROXY for "this is the tenant's own,
+    // freshly authored list" that only held on a virgin DB, since the very
+    // write under test leaves a version-1 row behind for the next run.
+    // NOW: read the CURRENT version and drive the write off it. That is what
+    // the OCC-guarded surface requires anyway, and it keeps the assertions
+    // that actually matter — the tenant's own list is persisted verbatim,
+    // scoped to their tenant, and the version advances by exactly one — while
+    // making them independent of whether a row existed before.
+    const before = await readInstructionsRow(request, tenantAdminToken, 'nlp.topic');
+    expect(before.taskKey).toBe('nlp.topic');
+    // Run-unique content, so the read-back is a genuine round-trip and not a
+    // re-read of whatever a previous run happened to store. (A PUT of the
+    // IDENTICAL value is a documented no-op that does not bump the version.)
+    const topics = ['billing', 'appointments', `medical_records_${RUN_TAG}`];
 
     const put = await request.put(`${NLP_INSTRUCTIONS_BASE}/row?taskKey=nlp.topic`, {
-      headers: { Authorization: `Bearer ${tenantAdminToken}`, 'If-Match': '"0"' },
-      data: { instructionsJson: ['billing', 'appointments', 'medical_records'] },
+      headers: { Authorization: `Bearer ${tenantAdminToken}`, 'If-Match': `"${before.version}"` },
+      data: { instructionsJson: topics },
     });
     expect(put.status()).toBe(200);
     const created = (await put.json()) as NlpInstructionsRow;
-    expect(created.instructionsJson).toEqual(['billing', 'appointments', 'medical_records']);
-    expect(created.version).toBe(1);
+    expect(created.instructionsJson).toEqual(topics);
+    expect(created.version).toBe(before.version + 1);
+    // The write landed on the CALLER's tenant, never a widened/SYSTEM row.
+    expect(created.tenantId).toBe(before.tenantId);
+    expect(created.tenantId).not.toBe(SYSTEM_TENANT_ID);
+    if (before.version === 0) instructionsRowCreatedByThisWorker = { tenantId: created.tenantId, taskKey: 'nlp.topic' };
 
     const read = await readInstructionsRow(request, tenantAdminToken, 'nlp.topic');
-    expect(read.instructionsJson).toEqual(['billing', 'appointments', 'medical_records']);
+    expect(read.instructionsJson).toEqual(topics);
+    expect(read.tenantId).toBe(created.tenantId);
   });
 
   // An EXPLICIT foreign `?tenantId=` is a PRIVILEGE boundary, so it answers 403 —

@@ -24,6 +24,7 @@ import {
   describeCauseForOperator,
   downstreamStatusFor,
 } from '../filters/downstream-error';
+import { VALIDATION_ERROR_CODE, httpCodeForStatus, toUnifiedErrorBody } from '../filters/error-envelope';
 import { optimisticLockConflictTotal, routeLabel } from '../observability/metrics';
 
 @Injectable()
@@ -85,12 +86,18 @@ export class ExceptionInterceptor implements NestInterceptor {
           // from a missing row (404) from a generic validation failure
           // (400). Sanitisation is preserved: only the label changes per
           // code; `err.meta` and raw `err.message` never reach the client.
-          const { status, label } = mapPrismaCodeToHttp(err.code);
+          const { status, label, code } = mapPrismaCodeToHttp(err.code);
           return throwError(
             () =>
               new HttpException(
                 {
                   statusCode: status,
+                  code,
+                  // The label is the ONLY text that reaches the client. It is a
+                  // fixed string from the table below — never `err.message` and
+                  // never `err.meta`, both of which leak column names,
+                  // constraint names and row ids.
+                  message: label,
                   error: label,
                   correlationId: requestId,
                 },
@@ -113,6 +120,10 @@ export class ExceptionInterceptor implements NestInterceptor {
               new HttpException(
                 {
                   statusCode: HttpStatus.BAD_REQUEST,
+                  code: PRISMA_QUERY_INVALID_CODE,
+                  // Fixed string; the Prisma validation message never reaches
+                  // the client (it echoes the generated query).
+                  message: 'Bad Request',
                   error: 'Bad Request',
                   correlationId: requestId,
                 },
@@ -134,15 +145,22 @@ export class ExceptionInterceptor implements NestInterceptor {
 
           // Transforming class-validator errors to a different format
           if (isClassValidatorError) {
-            err = new BadRequestException(
-              new ApiErrorResponse({
+            const subErrors: string[] = err?.response?.message;
+            err = new BadRequestException({
+              ...new ApiErrorResponse({
                 statusCode: err.status,
                 message: 'Validation error',
                 error: err?.response?.error,
-                subErrors: err?.response?.message,
+                subErrors,
                 correlationId: err.correlationId || requestId,
               }),
-            );
+              // H-2: the envelope's machine-readable `code`. `subErrors` is
+              // KEPT under its own name (the TASK-776 validation spec asserts
+              // it) and additionally surfaced as `details`, the envelope's
+              // generic slot for per-field information.
+              code: VALIDATION_ERROR_CODE,
+              details: subErrors,
+            });
           }
         }
 
@@ -180,7 +198,9 @@ export class ExceptionInterceptor implements NestInterceptor {
             });
           }
 
-          return throwError(() => new HttpException(err.toJSON(), HttpStatus.PRECONDITION_FAILED));
+          return throwError(
+            () => new HttpException(unifiedDomainBody(err, HttpStatus.PRECONDITION_FAILED, requestId), HttpStatus.PRECONDITION_FAILED),
+          );
         }
 
         // `DataNotFoundException` (thrown by `Repository<T>.findById` and
@@ -221,7 +241,7 @@ export class ExceptionInterceptor implements NestInterceptor {
             capability,
             status,
           });
-          return throwError(() => new HttpException(err.toJSON(), status));
+          return throwError(() => new HttpException(unifiedDomainBody(err, status, requestId), status));
         }
 
         // The caller's OWN tenant forbids this provider: its
@@ -240,7 +260,7 @@ export class ExceptionInterceptor implements NestInterceptor {
             correlationId: err.correlationId,
             metadata: err.metadata,
           });
-          return throwError(() => new HttpException(err.toJSON(), HttpStatus.CONFLICT));
+          return throwError(() => new HttpException(unifiedDomainBody(err, HttpStatus.CONFLICT, requestId), HttpStatus.CONFLICT));
         }
 
         // Consent & ABAC (TASK-712). `assertConsent` denied the call — no
@@ -260,7 +280,7 @@ export class ExceptionInterceptor implements NestInterceptor {
             correlationId: err.correlationId,
             metadata: err.metadata,
           });
-          return throwError(() => new HttpException(err.toJSON(), HttpStatus.FORBIDDEN));
+          return throwError(() => new HttpException(unifiedDomainBody(err, HttpStatus.FORBIDDEN, requestId), HttpStatus.FORBIDDEN));
         }
 
         // Consent & ABAC (TASK-712), R4. `assertConsent` could NOT determine
@@ -278,7 +298,9 @@ export class ExceptionInterceptor implements NestInterceptor {
             correlationId: err.correlationId,
             metadata: err.metadata,
           });
-          return throwError(() => new HttpException(err.toJSON(), HttpStatus.SERVICE_UNAVAILABLE));
+          return throwError(
+            () => new HttpException(unifiedDomainBody(err, HttpStatus.SERVICE_UNAVAILABLE, requestId), HttpStatus.SERVICE_UNAVAILABLE),
+          );
         }
 
         // The tenant hit its optional monthly SPEND limit (D12).
@@ -293,7 +315,7 @@ export class ExceptionInterceptor implements NestInterceptor {
             ...baseContext,
             correlationId: err.correlationId,
           });
-          return throwError(() => new HttpException(err.toJSON(), HttpStatus.PAYMENT_REQUIRED));
+          return throwError(() => new HttpException(unifiedDomainBody(err, HttpStatus.PAYMENT_REQUIRED, requestId), HttpStatus.PAYMENT_REQUIRED));
         }
 
         // Services signal invalid input with
@@ -312,7 +334,7 @@ export class ExceptionInterceptor implements NestInterceptor {
             correlationId: err.correlationId,
             errorMessage: err.message,
           });
-          return throwError(() => new HttpException(err.toJSON(), HttpStatus.BAD_REQUEST));
+          return throwError(() => new HttpException(unifiedDomainBody(err, HttpStatus.BAD_REQUEST, requestId), HttpStatus.BAD_REQUEST));
         }
 
         if (err instanceof BaseException) {
@@ -325,7 +347,9 @@ export class ExceptionInterceptor implements NestInterceptor {
             stack: err.stack,
           });
 
-          return throwError(() => new HttpException(err.toJSON(), HttpStatus.INTERNAL_SERVER_ERROR));
+          return throwError(
+            () => new HttpException(unifiedDomainBody(err, HttpStatus.INTERNAL_SERVER_ERROR, requestId), HttpStatus.INTERNAL_SERVER_ERROR),
+          );
         }
 
         // TASK-768 — a failed call to a downstream Python service (text, stt,
@@ -396,6 +420,14 @@ export class ExceptionInterceptor implements NestInterceptor {
         // honest 503/4xx rewritten into an opaque 500.
         if (err.response !== null && typeof err.response === 'object') {
           err.response.correlationId = err.correlationId;
+          // H-2: every body leaving the gateway carries a machine-readable
+          // `code`. Plain `HttpException`s (a guard's 401, a service's
+          // `NotFoundException('Resource not found')`, …) have no domain code
+          // of their own, so they get the status-derived fallback. Purely
+          // additive — an existing `code` is never overwritten.
+          if (err.response.code === undefined) {
+            err.response.code = httpCodeForStatus(typeof err.status === 'number' ? err.status : 500);
+          }
         }
 
         // Log unexpected errors
@@ -459,10 +491,24 @@ function mapQuotaCapabilityToHttp(capability: string | undefined): HttpStatus {
   return HttpStatus.CONFLICT;
 }
 
-function mapPrismaCodeToHttp(code: string): { status: HttpStatus; label: string } {
+export const PRISMA_QUERY_INVALID_CODE = 'PERSISTENCE.QUERY_INVALID';
+
+/**
+ * Wrap a domain exception's `toJSON()` in the unified envelope.
+ *
+ * `BaseException.toJSON()` deliberately knows nothing about HTTP, so its body
+ * carried `{code, message, metadata, correlationId}` and no `statusCode` — the
+ * H-2 asymmetry. The status is added HERE (the only layer that knows it);
+ * every field `toJSON()` already produced is preserved verbatim.
+ */
+function unifiedDomainBody(err: BaseException, status: HttpStatus, correlationId?: string): Record<string, unknown> {
+  return toUnifiedErrorBody(err.toJSON() as unknown as Record<string, unknown>, { status, correlationId });
+}
+
+function mapPrismaCodeToHttp(code: string): { status: HttpStatus; label: string; code: string } {
   switch (code) {
     case 'P2002':
-      return { status: HttpStatus.CONFLICT, label: 'Unique constraint violation' };
+      return { status: HttpStatus.CONFLICT, label: 'Unique constraint violation', code: 'PERSISTENCE.UNIQUE_CONSTRAINT_VIOLATION' };
     // TASK-776 F-06: NOT structurally dead. `Repository.updateWithVersion`
     // (the OCC path most PATCH routes use) issues `updateMany`, which never
     // throws P2025 on zero matched rows — and most services `findById` first,
@@ -476,13 +522,13 @@ function mapPrismaCodeToHttp(code: string): { status: HttpStatus; label: string 
     // the row before this write lands. Kept as defense-in-depth for that
     // race window, not deleted.
     case 'P2025':
-      return { status: HttpStatus.NOT_FOUND, label: 'Not found' };
+      return { status: HttpStatus.NOT_FOUND, label: 'Not found', code: 'PERSISTENCE.RECORD_NOT_FOUND' };
     case 'P2003':
-      return { status: HttpStatus.BAD_REQUEST, label: 'Foreign key constraint violation' };
+      return { status: HttpStatus.BAD_REQUEST, label: 'Foreign key constraint violation', code: 'PERSISTENCE.FOREIGN_KEY_VIOLATION' };
     case 'P2014':
-      return { status: HttpStatus.BAD_REQUEST, label: 'Required relation violation' };
+      return { status: HttpStatus.BAD_REQUEST, label: 'Required relation violation', code: 'PERSISTENCE.REQUIRED_RELATION_VIOLATION' };
     default:
-      return { status: HttpStatus.BAD_REQUEST, label: 'Bad Request' };
+      return { status: HttpStatus.BAD_REQUEST, label: 'Bad Request', code: PRISMA_QUERY_INVALID_CODE };
   }
 }
 

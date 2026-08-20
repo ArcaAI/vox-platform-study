@@ -126,7 +126,14 @@ test.describe('TASK-776: response parsing — ETag / If-Match OCC + pagination',
       });
       expect(res.status()).toBe(412);
       const body = await res.json();
+      // REST review H-2: a domain-exception body (`BaseException.toJSON()`) used
+      // to carry `code`/`message`/`metadata`/`correlationId` but NO `statusCode`
+      // — so a client keying off `body.statusCode` broke on exactly this error.
+      // It is now part of the one unified envelope; `code` + `metadata` are
+      // unchanged.
+      expect(body.statusCode).toBe(412);
       expect(body.code).toBe('PERSISTENCE.CONCURRENCY_CONFLICT');
+      expect(typeof body.correlationId).toBe('string');
       expect(body.metadata).toMatchObject({ expectedVersion: 99, currentVersion: 1 });
     });
 

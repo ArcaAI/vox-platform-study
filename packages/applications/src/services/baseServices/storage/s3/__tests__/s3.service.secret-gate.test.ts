@@ -56,6 +56,13 @@ const appSettingsWithoutCredentials = (): IAppSettingsService => {
 
 const secretsMock = (values: Record<string, string | undefined>) => ({
   getSecretSync: vi.fn((key: string) => values[key]),
+  // The readiness gate resolves through the ASYNC `getSecretOptional` (TASK-772
+  // change A) — `getSecretSync` is cache-only and returns undefined on any miss,
+  // which left the gate permanently false. This mock stubbed only the sync form,
+  // so after that change the gate resolved no credentials and init failed with
+  // "S3_ENDPOINT must be a valid URL". Both forms are stubbed from the same map
+  // so the test covers the real call path.
+  getSecretOptional: vi.fn(async (key: string) => values[key]),
 });
 
 describe('S3Service — readiness gate reads credentials from SecretsService (G4)', () => {

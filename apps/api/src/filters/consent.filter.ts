@@ -2,6 +2,8 @@ import { ArgumentsHost, Catch, ExceptionFilter, HttpStatus, Logger } from '@nest
 import type { Request, Response } from 'express';
 import { ConsentDeniedException, ConsentUnavailableException } from '@arcaai/exceptions';
 
+import { toUnifiedErrorBody } from './error-envelope';
+
 /**
  * Maps `ConsentDeniedException` → 403 and `ConsentUnavailableException` →
  * 503 (TASK-712, consent-abac).
@@ -22,9 +24,10 @@ import { ConsentDeniedException, ConsentUnavailableException } from '@arcaai/exc
  * gateway-internal endpoint, a plain controller/service call site); this
  * filter is what makes the CURRENT, guard-only call site work at all.
  *
- * Body shape matches `ExceptionInterceptor`'s branches exactly
- * (`err.toJSON()`) so callers see one consistent contract regardless of
- * which mechanism handled a given request.
+ * Body shape matches `ExceptionInterceptor`'s branches exactly — `err.toJSON()`
+ * lifted into the unified H-2 envelope (`toUnifiedErrorBody` adds the
+ * `statusCode` that `BaseException.toJSON()` cannot know) — so callers see one
+ * consistent contract regardless of which mechanism handled a given request.
  */
 @Catch(ConsentDeniedException, ConsentUnavailableException)
 export class ConsentExceptionFilter implements ExceptionFilter<ConsentDeniedException | ConsentUnavailableException> {
@@ -54,6 +57,6 @@ export class ConsentExceptionFilter implements ExceptionFilter<ConsentDeniedExce
       this.logger.debug(logPayload);
     }
 
-    response.status(status).json(exception.toJSON());
+    response.status(status).json(toUnifiedErrorBody(exception.toJSON() as unknown as Record<string, unknown>, { status }));
   }
 }

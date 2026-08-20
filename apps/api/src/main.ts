@@ -12,6 +12,7 @@ import { auditBusinessPlaneApiKeyExemptions } from './bootstrap/business-plane-a
 import { auditConsentRouteCoverage } from './bootstrap/consent-route-coverage-audit';
 import { auditServiceAccountSurface } from './bootstrap/service-account-surface-audit';
 import { auditWebSocketGatewayOwnerBinding } from './bootstrap/ws-gateway-owner-audit';
+import { auditOptimisticConcurrencyCoverage } from './bootstrap/occ-coverage-audit';
 import { assertGenaiContentCaptureDisabled } from './bootstrap/genai-content-capture-audit';
 import { assertJwtSecretNotPlaceholder } from './bootstrap/jwt-secret-placeholder-audit';
 // CORS helpers live in `cors.config.ts` so the dev / staging / production
@@ -356,6 +357,12 @@ async function bootstrap() {
   // ship without someone answering "may THIS caller drive THIS stream?"), never
   // the behaviour; the behaviour is pinned by the specs each entry names.
   auditWebSocketGatewayOwnerBinding(app);
+
+  // WARN-ONLY (REST review H-1). Reports version-bearing PATCH/PUT routes that
+  // do not require `If-Match`. Deliberately does NOT refuse boot: closing the
+  // gap is a breaking, owner-sequenced client migration, not drift an operator
+  // can fix at startup. See the file header for the detection rule and limits.
+  auditOptimisticConcurrencyCoverage(app);
 
   // KEEP-ALIVE MUST OUTLIVE THE UPSTREAM PROXY'S IDLE TIMEOUT.
   //

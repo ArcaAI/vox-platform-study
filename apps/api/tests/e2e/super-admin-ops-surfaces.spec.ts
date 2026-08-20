@@ -353,17 +353,35 @@ test.describe.serial('Queues & Jobs — listing, redis health, failed-job retry'
 // Surface 16 — Prisma Studio
 // =============================================================================
 test.describe('Prisma Studio — status probe honest about availability', () => {
-  // The gate is the ENABLE_PRISMA_STUDIO flag alone
-  // (production-capable, fail-closed when unset). `.env.test` does not set
-  // the flag, so the probe must report disabled and the shell must be absent.
-  test('GET /admin/pstudio/status reports enabled:false when ENABLE_PRISMA_STUDIO is unset', async ({ request }) => {
-    const res = await request.get('/api/v1/admin/pstudio/status', { headers: bearer(superAdminToken) });
-    expect(res.status()).toBe(200);
-    expect((await res.json()) as { enabled: boolean }).toEqual({ enabled: false });
-  });
+  // The gate is the ENABLE_PRISMA_STUDIO flag alone (production-capable,
+  // fail-closed when unset).
+  //
+  // This block used to hardcode `enabled: false`, on the stated premise that
+  // "`.env.test` does not set the flag". That premise is FALSE and has been for
+  // a while: `.env.sample` (tracked) carries `ENABLE_PRISMA_STUDIO=true`, and
+  // `.env.test` is GENERATED from it by `pnpm setup:test` — so every developer's
+  // test env enables Studio and the assertion could never pass for anyone.
+  //
+  // The invariant the block is actually named for is HONESTY: whatever the flag
+  // is, the probe must agree with whether the shell is really mounted. That is
+  // environment-independent, so it holds on a machine with the flag set and on
+  // one without, and it still catches the real regression — a probe that claims
+  // disabled while the conditional module is live (or vice versa).
+  test('the status probe agrees with whether the Studio shell is actually mounted', async ({ request }) => {
+    const statusRes = await request.get('/api/v1/admin/pstudio/status', { headers: bearer(superAdminToken) });
+    expect(statusRes.status()).toBe(200);
+    const { enabled } = (await statusRes.json()) as { enabled: boolean };
+    expect(typeof enabled, 'status probe must report a boolean').toBe('boolean');
 
-  test('the Studio shell itself is genuinely absent (404) when disabled', async ({ request }) => {
-    const res = await request.get('/api/v1/admin/pstudio', { headers: bearer(superAdminToken) });
-    expect(res.status(), 'conditional PrismaStudioModule not registered in test env').toBe(404);
+    const shellRes = await request.get('/api/v1/admin/pstudio', { headers: bearer(superAdminToken) });
+
+    if (enabled) {
+      // Mounted: the conditional PrismaStudioModule is registered, so the shell
+      // route resolves rather than 404-ing.
+      expect(shellRes.status(), 'probe says enabled, so the shell must be mounted').not.toBe(404);
+    } else {
+      // Fail-closed: the module is not registered at all, so the route does not exist.
+      expect(shellRes.status(), 'probe says disabled, so the shell must be absent').toBe(404);
+    }
   });
 });
