@@ -689,6 +689,42 @@ describe('ConsultationController', () => {
   });
 
   // ═══════════════════════════════════════════════════════════════════════
+  // getLatestSummary / getLatestPreSummary — no-summary-yet is 404, not an
+  // empty 200 (TASK-780 F-6). Matches the house pattern used by every other
+  // "optional latest resource" endpoint: getDnaReport, getJob, getLiveSession.
+  // ═══════════════════════════════════════════════════════════════════════
+
+  describe('getLatestSummary / getLatestPreSummary — no summary yet is 404 (TASK-780 F-6)', () => {
+    it('getLatestSummary throws NotFoundException when the service resolves null', async () => {
+      const { controller, consultationService, summaryService } = buildController();
+      const consultation = makeConsultation({ doctorId: DOCTOR_A });
+      consultationService.getById.mockResolvedValue(consultation);
+      summaryService.getLatestSummary.mockResolvedValue(null);
+
+      await expect(controller.getLatestSummary(CONSULTATION_OWN)).rejects.toThrow(NotFoundException);
+    });
+
+    it('getLatestPreSummary throws NotFoundException when the service resolves null', async () => {
+      const { controller, consultationService, summaryService } = buildController();
+      const consultation = makeConsultation({ doctorId: DOCTOR_A });
+      consultationService.getById.mockResolvedValue(consultation);
+      summaryService.getLatestPreSummary.mockResolvedValue(null);
+
+      await expect(controller.getLatestPreSummary(CONSULTATION_OWN)).rejects.toThrow(NotFoundException);
+    });
+
+    it('getLatestSummary returns the summary when the service resolves one', async () => {
+      const { controller, consultationService, summaryService } = buildController();
+      const consultation = makeConsultation({ doctorId: DOCTOR_A });
+      consultationService.getById.mockResolvedValue(consultation);
+      const summary = { id: 'summary-1', consultationId: CONSULTATION_OWN };
+      summaryService.getLatestSummary.mockResolvedValue(summary);
+
+      await expect(controller.getLatestSummary(CONSULTATION_OWN)).resolves.toEqual(summary);
+    });
+  });
+
+  // ═══════════════════════════════════════════════════════════════════════
   // Endpoint wiring — write endpoints use verifyConsultationOwnership
   // ═══════════════════════════════════════════════════════════════════════
 
