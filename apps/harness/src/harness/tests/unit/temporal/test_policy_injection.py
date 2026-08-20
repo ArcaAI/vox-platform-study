@@ -55,7 +55,7 @@ _POLICY_JSON: dict[str, Any] = {
     "maxRegen": 4,
     "gateSlaSeconds": 3600,
     "gateEscalationSeconds": 1800,
-    "toolAllowlist": ["nlp", "smr"],
+    "toolAllowlist": ["nlp", "text"],
     "version": 7,
 }
 
@@ -86,7 +86,7 @@ class TestHarnessPolicyModel:
         assert policy.max_regen == 4
         assert policy.gate_sla_seconds == 3600
         assert policy.gate_escalation_seconds == 1800
-        assert policy.tool_allowlist == ["nlp", "smr"]
+        assert policy.tool_allowlist == ["nlp", "text"]
         assert policy.version == 7
 
     def test_to_sensor_thresholds_carries_policy_values(self):

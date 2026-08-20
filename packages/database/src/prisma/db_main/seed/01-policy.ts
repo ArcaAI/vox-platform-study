@@ -223,7 +223,7 @@ export const DEFAULT_POLICIES: DefaultPolicy[] = [
       // task-model defaults (AiTaskDefault). Tenant-scoped; super admins
       // are covered by `manage:all`. NOTE (governance): tenant admins DO
       // hold manage:AiTaskDefault here — but ALL FOUR task-key prefixes
-      // (`guardrail.`, `smr.`, `nlp.`, `harness.` —
+      // (`guardrail.`, `text.`, `nlp.`, `harness.` —
       // SUPER_ADMIN_ONLY_TASK_PREFIXES in @arcaai/applications) are
       // SUPER_ADMIN-ONLY on write, enforced at the application-service
       // layer, not by RBAC. In practice this grant yields reads only.

@@ -40,7 +40,7 @@ class TestAsyncIdempotencyKey:
             AsyncIdempotencyKey.stt_segment("sess-1", 3) == "stt:session:sess-1:seg:3"
         )
 
-    def test_smr_chunk(self) -> None:
+    def test_text_chunk(self) -> None:
         assert AsyncIdempotencyKey.text_chunk("task-1", 7) == "text:task:task-1:chunk:7"
 
     def test_workflow_node(self) -> None:

@@ -1,6 +1,6 @@
 """Effective-config pull client (nlp).
 
-Mirrors `smr.core.effective_config` against the same frozen contract, exposing
+Mirrors `text.core.effective_config` against the same frozen contract, exposing
 the subset nlp consumes: `concurrency.maxConcurrent` for the inference bound.
 Model IDENTITY is untouched — it remains gateway-injected per request and
 structurally env-unreachable (`core/config.py` `_MODEL_IDENTITY_FIELDS`).

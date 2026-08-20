@@ -27,7 +27,7 @@ import type { McpServerResponse } from '../mcp-server/dto';
 import { HarnessOverridesSource, HarnessPolicyResponse, HarnessPolicySource, UpdateHarnessPolicyRequest } from './dto';
 
 /**
- * the SMR routing tasks the loop discriminates on:
+ * the TEXT routing tasks the loop discriminates on:
  *  - `live`     → the live-documentation delta summariser (`text.live`).
  *  - `finalize` → the final/comprehensive summary generator (`text.finalize`).
  *  - `test`     → the tenant-admin prompt-template test bench (`text.test`,

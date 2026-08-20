@@ -68,12 +68,12 @@ export class ServiceHealthMonitoringService implements IServiceHealthMonitoringS
   private initializeServices(): void {
     // Mirrors the gateway health controller's downstream set
     // (apps/api/.../health/health.controller.ts): the real services are
-    // SMR (8862), NLP (8864), STT v2 (8861), TTS (8865), Guardrail (8863)
+    // TEXT (8862), NLP (8864), STT v2 (8861), TTS (8865), Guardrail (8863)
     // and the Clinical Documentation Harness (8866). Guardrail mounts its
     // health router under `/api` (not `/api/v1`), same as the health controller.
     this.services = [
       {
-        key: 'smr',
+        key: 'text',
         name: 'Summarization',
         url: process.env.TEXT_SERVICE_URL || process.env.TEXT_URL || 'http://localhost:8862',
         healthEndpoint: '/api/v1/health',
@@ -282,7 +282,7 @@ export class ServiceHealthMonitoringService implements IServiceHealthMonitoringS
     // uptime/health. Counts are static placeholders — no per-service polling.
     return {
       services: {
-        smr: { active: 0 },
+        text: { active: 0 },
         stt: { active: 0 },
         tts: { active: 0 },
         nlp: { active: 0 },

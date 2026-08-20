@@ -90,7 +90,7 @@ export class AdminHealthServicesController {
     // instance — the URLs do not change at runtime.
     this.downstreamServices = [
       {
-        key: 'smr',
+        key: 'text',
         name: 'Summarization',
         url: this.configService.getConfigValue('TEXT_URL'),
         healthEndpoint: '/api/v1/health',
@@ -132,7 +132,7 @@ export class AdminHealthServicesController {
   @Get()
   @CanAny(['manage', 'all'], ['read', 'TenantTelemetry'])
   @ApiOperation({ summary: 'Consolidated health check for all downstream microservices (admin only)' })
-  @ApiResponse({ status: 200, description: 'Sanitised health status of SMR, NLP, STT, TTS, Guardrail, and Harness services' })
+  @ApiResponse({ status: 200, description: 'Sanitised health status of TEXT, NLP, STT, TTS, Guardrail, and Harness services' })
   @ApiResponse({ status: 401, description: 'Authentication required' })
   async checkServices() {
     const results = await Promise.allSettled(this.downstreamServices.map((svc) => this.probeService(svc)));
@@ -170,7 +170,7 @@ export class AdminHealthServicesController {
   @Get(':serviceKey')
   @CanAny(['manage', 'all'], ['read', 'TenantTelemetry'])
   @ApiOperation({ summary: 'Health check for a single downstream microservice (admin only)' })
-  @ApiParam({ name: 'serviceKey', enum: ['smr', 'nlp', 'stt', 'tts', 'guardrail', 'harness'], description: 'Service key' })
+  @ApiParam({ name: 'serviceKey', enum: ['text', 'nlp', 'stt', 'tts', 'guardrail', 'harness'], description: 'Service key' })
   @ApiResponse({ status: 200, description: 'Sanitised health status of the requested service' })
   @ApiResponse({ status: 401, description: 'Authentication required' })
   @ApiResponse({ status: 404, description: 'Unknown service key' })

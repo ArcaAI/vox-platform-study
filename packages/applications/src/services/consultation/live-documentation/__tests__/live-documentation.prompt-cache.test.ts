@@ -1,7 +1,7 @@
 /**
- * prefix-cache-friendly live SMR prompt ordering.
+ * prefix-cache-friendly live TEXT prompt ordering.
  *
- * The live SMR user prompt is reordered to
+ * The live TEXT user prompt is reordered to
  *   [stable system] + [transcript-so-far] + [current note] + [delta instruction]
  * so the leading `[stable system]` block is BYTE-IDENTICAL across every flush of
  * a session — first flush AND subsequent update flushes — letting a prefix-cache
@@ -16,7 +16,7 @@ import { LiveDocumentationService, LIVE_SOAP_STABLE_SYSTEM_PREFIX } from '../liv
 const CID = 'consultation-cache-001';
 const TENANT = 'tenant-cache';
 
-/** Records every SMR `/generate` prompt; returns a note so a prior note exists on flush 2. */
+/** Records every TEXT `/generate` prompt; returns a note so a prior note exists on flush 2. */
 function recordingHttpMock(prompts: string[]) {
   return {
     axiosRef: {

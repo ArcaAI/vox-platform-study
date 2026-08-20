@@ -2,8 +2,14 @@
  * Grep-gate: the Python summarization service CLI token is `text`, not `smr`.
  *
  * `scripts/dev-service.sh` only accepts `text`. Launchers that still put `smr`
- * in DEFAULT/ALL/PY lists fail with `Unknown argument: smr`. `smr` may remain
- * as a deprecated remap; it must not be the canonical list token.
+ * in DEFAULT/ALL/PY lists fail with `Unknown argument: smr`.
+ *
+ * The `smr` literals BELOW are the thing being forbidden, not a usage — this file is
+ * the enforcement point for owner decision D-740-1 ("rename the service-identity
+ * cluster `smr` -> `text`"), so a future sweep must not rewrite them to `text`, which
+ * would silently invert every assertion into a tautology. The deprecated `smr` CLI
+ * remap and the `test:up:smr` package alias were REMOVED by D-740-1; the token is now
+ * rejected outright rather than remapped with a warning.
  */
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
@@ -16,12 +22,26 @@ function read(relativePath: string): string {
 }
 
 describe('text service CLI token', () => {
-  it('package.json exposes test:up:text and points test:up:smr at text', () => {
+  it('package.json exposes test:up:text and no longer carries the test:up:smr alias', () => {
     const pkg = JSON.parse(read('package.json')) as { scripts: Record<string, string> };
     expect(pkg.scripts['test:up:text']).toBe('./scripts/start-test-app.sh text');
-    expect(pkg.scripts['test:up:smr']).toBe('./scripts/start-test-app.sh text');
+    expect(pkg.scripts['test:up:smr']).toBeUndefined();
     expect(pkg.scripts['text:test:managed']).toBe('./scripts/test-run.sh text');
     expect(pkg.scripts['text:setup']).toContain('--service text');
+  });
+
+  it('the deprecated `smr` CLI remap is gone from every launcher (D-740-1)', () => {
+    for (const script of [
+      'scripts/dev-stack.sh',
+      'scripts/test-stack.sh',
+      'scripts/test-run.sh',
+      'scripts/setup-python-env.sh',
+      'scripts/start-test-app.sh',
+    ]) {
+      const src = read(script);
+      expect(src, `${script} still defines/uses a remap shim`).not.toMatch(/remap_\w*_alias/);
+      expect(src, `${script} still mentions the retired token`).not.toMatch(/\bsmr\b/);
+    }
   });
 
   it('dev-stack default/all lists use text, not smr', () => {

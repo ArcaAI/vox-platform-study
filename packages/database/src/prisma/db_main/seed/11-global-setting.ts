@@ -5,7 +5,7 @@ import { SEED_CUSTOMER_TENANT_IDS, SEED_TENANT_ID, SEED_USER_IDS, SEED_GLOBAL_SE
 /**
  * Per-Tenant Global Settings Seed Data
  *
- * Seeds general settings, feature flags, STT, SMR, and UX constants for
+ * Seeds general settings, feature flags, STT, TEXT, and UX constants for
  * every tenant (Global + customer tenants) so the admin panel and SDK
  * always see populated configuration.
  *
@@ -13,13 +13,13 @@ import { SEED_CUSTOMER_TENANT_IDS, SEED_TENANT_ID, SEED_USER_IDS, SEED_GLOBAL_SE
  *   - general       (3) — session limits, language, timeouts
  *   - feature-flags (6) — toggles for platform capabilities
  *   - stt           (2) — speech-to-text defaults
- *   - smr           (1) — Azure deployment name (non-secret)
+ *   - text           (1) — Azure deployment name (non-secret)
  *   - ux-constants  (4) — static model lists + guardrail provider catalog
  *   - admin         (1) — locked config paths
  *   - arcaai-admin  (1) — admin-console menu order
  *
- * The smr default-provider/default-model keys, the ad-hoc
- * `smr-provider-models` UI catalog and the entire `guardrail` namespace are
+ * The text default-provider/default-model keys, the ad-hoc
+ * `text-provider-models` UI catalog and the entire `guardrail` namespace are
  * RETIRED (superseded by the `AiTaskDefault` table + registry-backed provider
  * listings). They are removed from the seeded arrays and swept to
  * resourceStatus DELETED by `retireSupersededGlobalSettings` below.
@@ -67,8 +67,8 @@ const LOCAL_VAD_MODELS = JSON.stringify([
 const LOCAL_NOISE_SUPPRESSION_MODELS = JSON.stringify([{ id: 'rnnoise', name: 'RNNoise' }]);
 
 // =============================================================================
-// The SMR provider-model catalog (`TEXT_PROVIDER_MODELS`,
-// `smr-provider-models` ux-constants key) was RETIRED: provider/model listings
+// The TEXT provider-model catalog (`TEXT_PROVIDER_MODELS`,
+// `text-provider-models` ux-constants key) was RETIRED: provider/model listings
 // now come from the AiModel registry (ENABLED rows grouped by `provider`), and
 // the platform text/summarization default lives on HarnessPolicy
 // (13-harness-policy.ts) + the AiTaskDefault table (16-ai-task-default.ts).
@@ -80,7 +80,7 @@ const LOCAL_NOISE_SUPPRESSION_MODELS = JSON.stringify([{ id: 'rnnoise', name: 'R
 //
 // Seeded per-tenant so the admin console can populate the Guardrail
 // provider/model selectors. Admins pick a default provider + model from this
-// catalog. Mirrors the SMR catalog shape. LM Studio (OpenAI-compatible) is the
+// catalog. Mirrors the TEXT catalog shape. LM Studio (OpenAI-compatible) is the
 // default/primary local engine and MUST expose the default Granite Guardian
 // model `granite-guardian-4.1-8b` (cross-worker contract with the Guardrail
 // Python service).
@@ -149,7 +149,7 @@ function tenantSettings(
     ffConsultationSharing: string;
     sttModel: string;
     sttVad: string;
-    smrAzureDeployment: string;
+    textAzureDeployment: string;
     uxLocalAsrModels: string;
     uxLocalVadModels: string;
     uxLocalNoiseSuppressionModels: string;
@@ -295,25 +295,25 @@ function tenantSettings(
       locked: true,
     },
 
-    // ── smr (1) ─────────────────────────────────────────────────────
-    // default-smr-provider / default-smr-model RETIRED: the
+    // ── text (1) ─────────────────────────────────────────────────────
+    // default-text-provider / default-text-model RETIRED: the
     // platform summarization default lives on HarnessPolicy (SYSTEM row,
     // 13-harness-policy.ts); provider/model listings come from the AiModel
     // registry. Only the non-secret Azure deployment name remains here.
     {
-      // Azure OpenAI deployment NAME for SMR (non-secret).
+      // Azure OpenAI deployment NAME for TEXT (non-secret).
       // The Azure API key remains env/Vault only (never a plaintext
       // GlobalSetting); only the deployment name is DB-driven. Not locked
       // so tenant admins can set their own Azure deployment.
-      id: ids.smrAzureDeployment,
+      id: ids.textAzureDeployment,
       tenantId,
-      namespace: 'smr',
-      name: 'SMR Azure Deployment',
-      key: 'smr-azure-deployment',
+      namespace: 'text',
+      name: 'TEXT Azure Deployment',
+      key: 'text-azure-deployment',
       value: '',
       defaultValue: '',
       dataType: ValueType.String,
-      description: 'Azure OpenAI deployment name used by SMR when provider=azure-openai (non-secret; the API key stays in env/Vault)',
+      description: 'Azure OpenAI deployment name used by TEXT when provider=azure-openai (non-secret; the API key stays in env/Vault)',
     },
 
     // ── guardrail (0) — RETIRED ──────────────────────────
@@ -360,10 +360,10 @@ function tenantSettings(
       description: 'Available local browser-based noise suppression models for the SDK installation page',
       locked: true,
     },
-    // The `smr-provider-models` catalog key is RETIRED (the
+    // The `text-provider-models` catalog key is RETIRED (the
     // AiModel registry is the single provider/model catalog).
     {
-      // Guardrail provider/model catalog mirroring the SMR one.
+      // Guardrail provider/model catalog mirroring the TEXT one.
       id: ids.uxGuardrailProviderModels,
       tenantId,
       namespace: 'ux-constants',
@@ -429,7 +429,7 @@ export const ALL_SETTINGS: SettingDef[] = [
     ffConsultationSharing: IDS.GLOBAL_FF_CONSULTATION_SHARING,
     sttModel: IDS.GLOBAL_STT_MODEL,
     sttVad: IDS.GLOBAL_STT_VAD,
-    smrAzureDeployment: IDS.GLOBAL_TEXT_AZURE_DEPLOYMENT,
+    textAzureDeployment: IDS.GLOBAL_TEXT_AZURE_DEPLOYMENT,
     uxLocalAsrModels: IDS.GLOBAL_UX_LOCAL_ASR_MODELS,
     uxLocalVadModels: IDS.GLOBAL_UX_LOCAL_VAD_MODELS,
     uxLocalNoiseSuppressionModels: IDS.GLOBAL_UX_LOCAL_NOISE_SUPPRESSION_MODELS,
@@ -449,7 +449,7 @@ export const ALL_SETTINGS: SettingDef[] = [
     ffConsultationSharing: IDS.ARCAAI_FF_CONSULTATION_SHARING,
     sttModel: IDS.ARCAAI_STT_MODEL,
     sttVad: IDS.ARCAAI_STT_VAD,
-    smrAzureDeployment: IDS.ARCAAI_TEXT_AZURE_DEPLOYMENT,
+    textAzureDeployment: IDS.ARCAAI_TEXT_AZURE_DEPLOYMENT,
     uxLocalAsrModels: IDS.ARCAAI_UX_LOCAL_ASR_MODELS,
     uxLocalVadModels: IDS.ARCAAI_UX_LOCAL_VAD_MODELS,
     uxLocalNoiseSuppressionModels: IDS.ARCAAI_UX_LOCAL_NOISE_SUPPRESSION_MODELS,
@@ -566,6 +566,13 @@ export const PLATFORM_SETTINGS: SettingDef[] = [
 // provider listings in this same ticket. `retireSupersededGlobalSettings`
 // sweeps EVERY tenant's copy to resourceStatus DELETED (idempotent; rows stay
 // recoverable). NOTE: `default-stt-pipeline` and all other keys are untouched.
+//
+// The three `smr` literals below are DELIBERATELY NOT renamed by D-740-1. They are
+// not identifiers this codebase chooses — they are the namespace/key of rows that
+// ALREADY EXIST in every deployed database, and this list is the only thing that
+// retires them. Renaming them to `text` would point the sweep at rows that do not
+// exist, silently leaving the real `smr` rows ENABLED forever. They may only be
+// dropped from this list once no database can still hold them.
 // =============================================================================
 
 export const RETIRED_GLOBAL_SETTING_KEYS: ReadonlyArray<{ namespace: string; key: string }> = [
@@ -686,7 +693,7 @@ export const seedGlobalSetting = async (client: CorePrismaClient) => {
     console.log(`  [SYSTEM] ${s.namespace}/${s.key}`);
   }
 
-  // Sweep the superseded smr/guardrail keys AFTER the upserts so
+  // Sweep the superseded text/guardrail keys AFTER the upserts so
   // existing DBs converge on the retired state (idempotent; see above).
   await retireSupersededGlobalSettings(client);
 };

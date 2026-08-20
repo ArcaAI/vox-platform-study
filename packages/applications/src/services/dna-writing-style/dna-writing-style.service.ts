@@ -202,7 +202,7 @@ export class DnaWritingStyleService extends BaseService implements IDnaWritingSt
    */
   async getEffectiveStyleText(doctorId: string, explicitTenantId?: string): Promise<string | null> {
     // `explicitTenantId` exists because the CLS getter is not always
-    // populated: the v1-compat SMR surface authenticates by API KEY, and only the
+    // populated: the v1-compat TEXT surface authenticates by API KEY, and only the
     // JWT strategy writes CLS `tenantId`. Its controller already resolves the
     // authoritative tenant (`requireTenantId` → CLS, else `apiKey.tenantId`) and
     // hands it to every other resolver on that path; this method re-read CLS and

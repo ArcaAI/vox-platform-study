@@ -48,9 +48,9 @@ afterEach(() => {
 describe('queueKeys', () => {
   it('is stable and separates queues, jobs and schedulers', () => {
     expect(queueKeys.list()).toEqual(queueKeys.list());
-    expect(queueKeys.jobs('smr', { page: 0 })).toEqual(queueKeys.jobs('smr', { page: 0 }));
-    expect(queueKeys.jobs('smr')).not.toEqual(queueKeys.jobs('stt'));
-    expect(queueKeys.job('smr', 'j-1')).not.toEqual(queueKeys.jobs('smr'));
+    expect(queueKeys.jobs('text', { page: 0 })).toEqual(queueKeys.jobs('text', { page: 0 }));
+    expect(queueKeys.jobs('text')).not.toEqual(queueKeys.jobs('stt'));
+    expect(queueKeys.job('text', 'j-1')).not.toEqual(queueKeys.jobs('text'));
     expect(queueKeys.schedulers()[0]).toBe('queues');
   });
 });
@@ -59,35 +59,35 @@ describe('queues client', () => {
   it('covers queue reads and pause/resume/clean controls', async () => {
     const calls = installFetchMock();
     await listQueues();
-    await getQueue('smr');
-    await pauseQueue('smr');
-    await resumeQueue('smr');
-    await cleanQueue('smr', { status: 'failed', gracePeriodMs: 0 });
+    await getQueue('text');
+    await pauseQueue('text');
+    await resumeQueue('text');
+    await cleanQueue('text', { status: 'failed', gracePeriodMs: 0 });
     expect(calls.map((call) => `${call.method} ${call.url}`)).toEqual([
       'GET /api/hope/admin/queues',
-      'GET /api/hope/admin/queues/smr',
-      'POST /api/hope/admin/queues/smr/pause',
-      'POST /api/hope/admin/queues/smr/resume',
-      'POST /api/hope/admin/queues/smr/clean',
+      'GET /api/hope/admin/queues/text',
+      'POST /api/hope/admin/queues/text/pause',
+      'POST /api/hope/admin/queues/text/resume',
+      'POST /api/hope/admin/queues/text/clean',
     ]);
     expect(calls[4].body).toEqual({ status: 'failed', gracePeriodMs: 0 });
   });
 
   it('drives job listing (custom items envelope) and per-job actions', async () => {
     const calls = installFetchMock();
-    await listJobs('smr', { page: 0, limit: 50, status: 'failed' });
-    await getJob('smr', 'j-1');
-    await retryJob('smr', 'j-1');
-    await promoteJob('smr', 'j-1');
-    await removeJob('smr', 'j-1');
-    await bulkJobAction('smr', { action: 'retry', jobIds: ['j-1', 'j-2'] });
+    await listJobs('text', { page: 0, limit: 50, status: 'failed' });
+    await getJob('text', 'j-1');
+    await retryJob('text', 'j-1');
+    await promoteJob('text', 'j-1');
+    await removeJob('text', 'j-1');
+    await bulkJobAction('text', { action: 'retry', jobIds: ['j-1', 'j-2'] });
     expect(calls.map((call) => `${call.method} ${call.url}`)).toEqual([
-      'GET /api/hope/admin/queues/smr/jobs?page=0&limit=50&status=failed',
-      'GET /api/hope/admin/queues/smr/jobs/j-1',
-      'POST /api/hope/admin/queues/smr/jobs/j-1/retry',
-      'POST /api/hope/admin/queues/smr/jobs/j-1/promote',
-      'DELETE /api/hope/admin/queues/smr/jobs/j-1',
-      'POST /api/hope/admin/queues/smr/jobs/bulk',
+      'GET /api/hope/admin/queues/text/jobs?page=0&limit=50&status=failed',
+      'GET /api/hope/admin/queues/text/jobs/j-1',
+      'POST /api/hope/admin/queues/text/jobs/j-1/retry',
+      'POST /api/hope/admin/queues/text/jobs/j-1/promote',
+      'DELETE /api/hope/admin/queues/text/jobs/j-1',
+      'POST /api/hope/admin/queues/text/jobs/bulk',
     ]);
     expect(calls[5].body).toEqual({ action: 'retry', jobIds: ['j-1', 'j-2'] });
   });

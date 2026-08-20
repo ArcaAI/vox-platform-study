@@ -100,7 +100,7 @@ So `PATCH /api/v1/consultations/:id` with body `{"metadata":{"status":"SIGNED"}}
 | Exemplar bank PHI-redacted, fail-closed | Yes (INV-169) | **Yes by design, inert in practice** | Mining service | No — fails closed to *nothing mined* | `gate-edit-mining.service.ts:174-182,408-418`; `IPhiRedactor` has **no provider anywhere in the repo** |
 | PHI encrypted at rest (DB) | Yes | **Yes** | Vault Transit `hope-phi` | Only when `SECRETS_PROVIDER=vault` | `packages/applications/src/common/phi-field-encryption.ts:32-33` |
 | AI-vs-human attribution | Yes (INV-051/087/218) | **Version-level yes; per-clause no** | `ContextItemVersion` | — | `ContextItemSource` enum (`enums.prisma:290-297`); `ai_draft_v1` snapshot + `encryptedContentDiff` |
-| Cross-doctor / cross-tenant style isolation | Yes | **Yes** | SMR proxy | No | `apps/api/src/modules/streaming/text-proxy.controller.ts:969-984` |
+| Cross-doctor / cross-tenant style isolation | Yes | **Yes** | TEXT proxy | No | `apps/api/src/modules/streaming/text-proxy.controller.ts:969-984` |
 
 ---
 
@@ -115,24 +115,24 @@ Legend: **RAW** = plaintext, no redaction · **ENC** = encrypted at rest · **RE
 | 3 | Transcript → `ContextItem` | full transcript | **ENC** (`encryptedContent`, plaintext column dropped) | `consultation.prisma:97-98`; `phi-field-encryption.ts:32-33` |
 | 4 | Audio → MinIO/S3 `recordings` bucket | raw audio | **RAW at rest** — MinIO SSE is commented out in the shipped compose | `docker-compose.yml:103-108` |
 | 5 | `ContextItem` → **NLP** `/classify/tokens` | decrypted transcript | **RAW** — no sanitizer on this hop | `summary.service.ts:1571`; `ner.processor.ts:219`; `live-tool-registry.ts:190` |
-| 6a | **Default path** `ContextItem` → SMR `/api/v1/generate` | full transcript + assembled prompt | **RAW** — no redaction exists on this path | `summary.service.ts:1358`; `harnessEnabled` codeDefault **false** at `config-resolver.service.ts:80` |
-| 6b | **Harness path** → `ensure_egress_safe` → SMR | prompt | **RED for `azure`/`bedrock` only**; RAW for every other provider | `redactor.py:185` — `if provider not in phi.cloud_egress_providers: return text` |
-| 7 | SMR → provider adapter → model | prompt | RAW inside SMR (zero redaction code in `apps/text/src/text/providers/*`) | `providers/azure_openai.py:167`; `providers/bedrock.py:185` |
+| 6a | **Default path** `ContextItem` → TEXT `/api/v1/generate` | full transcript + assembled prompt | **RAW** — no redaction exists on this path | `summary.service.ts:1358`; `harnessEnabled` codeDefault **false** at `config-resolver.service.ts:80` |
+| 6b | **Harness path** → `ensure_egress_safe` → TEXT | prompt | **RED for `azure`/`bedrock` only**; RAW for every other provider | `redactor.py:185` — `if provider not in phi.cloud_egress_providers: return text` |
+| 7 | TEXT → provider adapter → model | prompt | RAW inside TEXT (zero redaction code in `apps/text/src/text/providers/*`) | `providers/azure_openai.py:167`; `providers/bedrock.py:185` |
 | 7a | → **local** LM Studio / Ollama / vLLM | prompt | RAW, stays on-host | default provider `lm-studio` (`seed/13-harness-policy.ts:31-34`; `requests.py:114`) |
 | 7b | → **cloud** azure / bedrock **†** | prompt | RED *only if* harness path enabled; otherwise RAW | F-02 |
 | 7c | → **cloud** openai / anthropic / vertex **†** | prompt | **RAW always** — not in `cloud_egress_providers` | F-01: `config.py:129` vs `apps/text/src/text/main.py:83-93` (registered unconditionally) |
-| 8 | SMR → guardrail `/api/medical/validate` | prompt + system prompt | RAW; **off by default** (`TEXT_EXTERNAL_GUARDRAIL_ENABLED=False`, `smr/core/config.py:329`) | `generate.py:281-287` |
-| 9 | SMR idempotency cache → Redis | **full generated summary** | RAW, in-memory, TTL 3600 s | `generate.py:255-267` |
+| 8 | TEXT → guardrail `/api/medical/validate` | prompt + system prompt | RAW; **off by default** (`TEXT_EXTERNAL_GUARDRAIL_ENABLED=False`, `text/core/config.py:329`) | `generate.py:281-287` |
+| 9 | TEXT idempotency cache → Redis | **full generated summary** | RAW, in-memory, TTL 3600 s | `generate.py:255-267` |
 | 10 | Draft → `ContextItemVersion` (`ai_draft_v1`) | AI draft | **ENC** | `harness-internal.service.ts:1507` |
 | 11 | Signed note → `ContextItemVersion` (`SIGNED_NOTE`) | attested note | **ENC** + `attestationHash` | `summary.service.ts:891-918` |
-| 12 | **Style-DNA corpus** → SMR **†** | **verbatim approved clinical notes** | **RAW — no redaction** | `dna-writing-style.processor.ts:174` → `:189` → `:332-340`. See F-07 |
+| 12 | **Style-DNA corpus** → TEXT **†** | **verbatim approved clinical notes** | **RAW — no redaction** | `dna-writing-style.processor.ts:174` → `:189` → `:332-340`. See F-07 |
 | 13 | DNA `styleText` → stored profile | model-derived text + `sourceContextItemIds` back-pointers | ENC at rest, content unverified | `dna-writing-style.prisma:22-31`; `processor.ts:205-210` |
 | 14 | DNA `styleText` → **every later generation for that doctor** | appended to system prompt | RAW into the prompt | `text-proxy.controller.ts:985-986` |
 | 15 | Exemplar bank `GateEditExemplar` | redacted snippets + `consultationId` | RED, fail-closed — **but inert**: `IPhiRedactor` is never provided | `gate-edit-mining.service.ts:409` |
 | 16 | Qdrant vector store | institutional knowledge chunks | tenant-filtered; **no delete API implemented** | `apps/harness/src/harness/guides/retrieval/qdrant_store.py` — only `upsert_chunks`, `hybrid_query` |
 | 17 | Logs (`@arcaai/applications` logger) | structured fields | RED by key-name allowlist | `baseServices/logging/redactor.ts:52-87`, applied at `logging.service.ts:303` |
 | 18 | Logs (`@arcaai/logger`) | structured fields | **RAW — no redaction in this logger** | `packages/logger/src/index.ts` |
-| 19 | OTel spans | GenAI message content | pinned off, boot-enforced in production | `smr/core/config.py:346-395`; `apps/api/src/bootstrap/genai-content-capture-audit.ts:33-45` |
+| 19 | OTel spans | GenAI message content | pinned off, boot-enforced in production | `text/core/config.py:346-395`; `apps/api/src/bootstrap/genai-content-capture-audit.ts:33-45` |
 
 **Third-party LLM egress verdict.** In the strict shipped default, **no** — every seeded provider is local (`lm-studio`), so nothing leaves the host. But the protection is **destination-based, not redaction-based**. The moment a tenant configures a cloud provider through the supported BYOK path (no code change, no redeploy): `openai`/`anthropic`/`vertex` receive PHI **unredacted unconditionally** (F-01), and `azure`/`bedrock` receive it unredacted whenever `harnessEnabled` is false — which is the code default (F-02).
 
@@ -150,7 +150,7 @@ if provider not in phi.cloud_egress_providers:
     return text
 ```
 
-`cloud_egress_providers` defaults to `["azure", "bedrock"]` (`apps/harness/src/harness/core/config.py:129`). SMR registers `openai`, `anthropic`, `vertex`, and `azure` **unconditionally** as BYO cloud providers (`apps/text/src/text/main.py:83-93`, with an explicit comment that they must be available without platform credentials).
+`cloud_egress_providers` defaults to `["azure", "bedrock"]` (`apps/harness/src/harness/core/config.py:129`). TEXT registers `openai`, `anthropic`, `vertex`, and `azure` **unconditionally** as BYO cloud providers (`apps/text/src/text/main.py:83-93`, with an explicit comment that they must be available without platform credentials).
 
 The failure is **silent and fail-open**: `phi_enabled=True` and `fail_closed=True` are both honored and both irrelevant, because the guard returns before the try/except that would raise `PhiEgressBlocked`.
 
@@ -158,19 +158,19 @@ The failure is **silent and fail-open**: `phi_enabled=True` and `fail_closed=Tru
 
 **Default configuration?** The guard gap is present by default; it is only *reachable* once a tenant BYOKs one of those three providers. No code change is needed to reach it.
 
-**Minimal fix.** Invert the allowlist to a deny-by-default classification: treat any provider not positively known to be local (`lm-studio`, `ollama`, `vllm`, `llama_cpp`) as cloud. Derive the local set from one shared constant consumed by both `smr/main.py` and `harness/core/config.py` so registering a new provider cannot silently widen egress.
+**Minimal fix.** Invert the allowlist to a deny-by-default classification: treat any provider not positively known to be local (`lm-studio`, `ollama`, `vllm`, `llama_cpp`) as cloud. Derive the local set from one shared constant consumed by both `text/main.py` and `harness/core/config.py` so registering a new provider cannot silently widen egress.
 
 ---
 
 ### F-02 — CRITICAL · The default consultation pipeline has no PHI redaction on any hop
 
-**Mechanism.** All five redaction call sites live inside harness Temporal activities (`activities.py:864,1090,1099,1628,1829`). The harness is opt-in: `harnessEnabled: { codeDefault: false, maxScope: DEPARTMENT }` (`packages/applications/src/services/config-resolver/config-resolver.service.ts:80`). With it off, generation runs `summary.service.ts:1341-1365` → SMR directly, and there is no redaction anywhere on that path — nor on the sibling processors (`summary.processor.ts:316`, `pre-summary.processor.ts:277`, `comprehensive-summary.processor.ts:390`, `chain-summary.service.ts:621`, `live-documentation.service.ts:2067`).
+**Mechanism.** All five redaction call sites live inside harness Temporal activities (`activities.py:864,1090,1099,1628,1829`). The harness is opt-in: `harnessEnabled: { codeDefault: false, maxScope: DEPARTMENT }` (`packages/applications/src/services/config-resolver/config-resolver.service.ts:80`). With it off, generation runs `summary.service.ts:1341-1365` → TEXT directly, and there is no redaction anywhere on that path — nor on the sibling processors (`summary.processor.ts:316`, `pre-summary.processor.ts:277`, `comprehensive-summary.processor.ts:390`, `chain-summary.service.ts:621`, `live-documentation.service.ts:2067`).
 
 **Exposure scenario.** A tenant enables an Azure OpenAI connection but never enables the harness — the redaction control that exists is simply not on the code path.
 
 **Default configuration?** Yes, the pipeline is the default. PHI does not leave the host only because the seeded provider is local.
 
-**Minimal fix.** Move the egress guard from the harness activity to the SMR client boundary in `apps/api` (or into SMR itself, before `registry.get(...)`), so every generation path inherits it regardless of `harnessEnabled`.
+**Minimal fix.** Move the egress guard from the harness activity to the TEXT client boundary in `apps/api` (or into TEXT itself, before `registry.get(...)`), so every generation path inherits it regardless of `harnessEnabled`.
 
 ---
 
@@ -251,7 +251,7 @@ Full mechanism in *Non-negotiable 3* above. Summary: `PATCH /consultations/:id` 
 **Mechanism.** Three steps, none redacted:
 
 1. The corpus is **verbatim approved clinical notes**. `buildCorpus` emits `approved` — the full signed note text — optionally paired with the AI draft (`dna-writing-style.processor.ts:305-313`, called at `:174`).
-2. That string is POSTed to SMR as the prompt (`:189` → `callSmr` → `:332-340`), with the tenant's resolved provider. There is no redaction between `:174` and `:189` — only a `substring` truncation at `:177-179`. Per F-01/F-02, that provider may be cloud.
+2. That string is POSTed to TEXT as the prompt (`:189` → `callText` → `:332-340`), with the tenant's resolved provider. There is no redaction between `:174` and `:189` — only a `substring` truncation at `:177-179`. Per F-01/F-02, that provider may be cloud.
 3. The resulting `styleText` is stored (`:222`) and then **appended to the system prompt of every subsequent generation for that doctor**: `systemPrompt += "\n\nApply the following writing style:\n" + dnaStyle.styleText` (`apps/api/src/modules/streaming/text-proxy.controller.ts:985-986`).
 
 Nothing constrains the model's style report to exclude content. `sourceContextItemIds` is additionally persisted inside `reportData` (`processor.ts:205-210`), a durable pointer from the doctor's style profile back to specific patients' notes.
@@ -262,7 +262,7 @@ Nothing constrains the model's style report to exclude content. `sourceContextIt
 
 **Default configuration?** DNA style is gated by `dnaStyleEnabled` (tenant AND doctor). When on, all of the above applies with no further opt-in.
 
-**Minimal fix.** Run the corpus through the same fail-closed `IPhiRedactor` port that `gate-edit-mining` already uses before `callSmr`, and drop the `textSamples` bypass of the opt-in check.
+**Minimal fix.** Run the corpus through the same fail-closed `IPhiRedactor` port that `gate-edit-mining` already uses before `callText`, and drop the `textSamples` bypass of the opt-in check.
 
 ---
 
@@ -341,7 +341,7 @@ These are controls I tried to break and could not, or that are notably better-bu
 
 7. **STT WebSocket transport hardening is genuinely careful**: CSWSH origin allowlist that fails closed when the registry is unavailable, single-use stream tickets (never JWTs in URLs), ticket-tenant to session-tenant binding verification, and per-tenant concurrency accounting (`stt-ws.gateway.ts:292-520`).
 
-8. **GenAI telemetry content capture is pinned off and boot-enforced** in both runtimes (`smr/core/config.py:346-395`; `genai-content-capture-audit.ts:33-45`), with the empty-string default deliberately distinguishable from "explicitly safe".
+8. **GenAI telemetry content capture is pinned off and boot-enforced** in both runtimes (`text/core/config.py:346-395`; `genai-content-capture-audit.ts:33-45`), with the empty-string default deliberately distinguishable from "explicitly safe".
 
 9. **Redis persistence is off by default** with the PHI rationale stated in the compose file (`docker-compose.yml:176-186`).
 
@@ -354,7 +354,7 @@ These are controls I tried to break and could not, or that are notably better-bu
 | "`approveSummary` is the sole `SIGNED` write site; no path reaches a signed note without explicit human action." | **Confirmed for the stored record — but incomplete.** The *presented* status is separately forgeable via `metadata.status` (F-06), which no wave-1 lane reported. The invariant holds at the database column and WORM ledger; it does not hold at the API contract or the UI. |
 | "No `force`/`auto`/`skipReview` flag exists." | **Confirmed.** Searched exhaustively; the only option on the sign path is `overrideSafetyFlag`, which tightens rather than loosens. |
 | "The internal harness service-token route can record gate decisions but never sign." | **Confirmed** (`harness-internal.service.ts:1211-1247` writes a WORM row only). Wave 1 understated the corollary: that route accepts a caller-supplied `clinicianId` and `attestationHash`, and the admin signal endpoint can drive it (F-09). |
-| Lane D: "No PHI sanitizer runs between the finalized transcript and NLP/SMR consumption." | **Confirmed and broader than stated.** True for NLP (`summary.service.ts:1571`, `ner.processor.ts:219`) *and* for SMR on the default path (F-02), *and* for the style-DNA corpus (F-07). |
+| Lane D: "No PHI sanitizer runs between the finalized transcript and NLP/TEXT consumption." | **Confirmed and broader than stated.** True for NLP (`summary.service.ts:1571`, `ner.processor.ts:219`) *and* for TEXT on the default path (F-02), *and* for the style-DNA corpus (F-07). |
 | Lane D: "A real Presidio redactor exists but is scoped only to cloud-LLM egress." | **Confirmed, with a material correction.** It is scoped to cloud egress *and* only to two provider names. For `openai`/`anthropic`/`vertex` it is not merely out of scope — it silently returns the text unredacted while reporting itself enabled and fail-closed (F-01). "Scoped to cloud egress" overstates the coverage. |
 | Lane C: "`ResourceViewed` is only durably persisted when `forceAuditLog: true`, which no clinical read path sets." | **Confirmed independently** (`sysEvent.service.ts:246`; six non-clinical `forceAuditLog: true` sites). One addition: summary and transcript *body* reads emit no `ResourceViewed` at all, so the gap is wider than "the flag is unset". |
 | Lane C: "No consent-revocation cascade mechanism exists at all." | **Confirmed**, and the reason is more fundamental than a missing job: there is no `Patient` model, so the set of records belonging to a patient is not enumerable in the schema. |

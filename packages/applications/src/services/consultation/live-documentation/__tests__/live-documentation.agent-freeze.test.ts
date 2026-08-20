@@ -5,7 +5,7 @@
  * behavior change.** The live loop stops hardcoding its prompt and starts
  * serving a frozen, governed agent snapshot — but with no agent binding the
  * resolved bytes are the SYSTEM default, which is byte-identical to the in-code
- * constants, so the SMR payload is unchanged down to the byte.
+ * constants, so the TEXT payload is unchanged down to the byte.
  *
  *   C3-T1  default-prompt parity (prompt + system_prompt byte-identical)
  *   C3-T2  freeze semantics + Redis adopt (cross-instance / crash recovery)
@@ -98,10 +98,10 @@ function buildService(opts: {
     // Without one the durable-snapshot write is (correctly) refused.
     //
     // `getSecretOptional` is REQUIRED, not decorative: `callText` resolves
-    // `TEXT_SERVICE_TOKEN` through it for the authenticated gateway→SMR hop
+    // `TEXT_SERVICE_TOKEN` through it for the authenticated gateway→TEXT hop
     // A stand-in missing the method throws inside the flush's try,
-    // which the catch turns into "SMR failed" — so every assertion about the
-    // SMR payload silently sees zero calls instead of failing loudly.
+    // which the catch turns into "TEXT failed" — so every assertion about the
+    // TEXT payload silently sees zero calls instead of failing loudly.
     { encrypt: vi.fn(), decrypt: vi.fn(), getSecretOptional: vi.fn().mockResolvedValue('') } as never,
     undefined,
     undefined,
@@ -116,7 +116,7 @@ const settle = async (): Promise<void> => {
   await new Promise((resolve) => setImmediate(resolve));
 };
 
-describe('The gateway→SMR hop is authenticated', () => {
+describe('The gateway→TEXT hop is authenticated', () => {
   it('sends X-Service-Token resolved from TEXT_SERVICE_TOKEN', async () => {
     const calls: TextCall[] = [];
     const http = recordingHttpMock(calls);
@@ -124,23 +124,23 @@ describe('The gateway→SMR hop is authenticated', () => {
     // Re-point the stand-in at a configured secret (the default resolves '').
     (service as unknown as { secretsService: { getSecretOptional: ReturnType<typeof vi.fn> } }).secretsService.getSecretOptional = vi
       .fn()
-      .mockResolvedValue('smr-token');
+      .mockResolvedValue('text-token');
 
     service.start({ consultationId: CID, tenantId: TENANT });
     service.ingestSegment(CID, { text: 'Patient reports cough', isFinal: true, segmentId: 's1' });
     await service.flush(CID);
 
     const generate = http.axiosRef.post.mock.calls.find(([url]: [string]) => String(url).includes('/generate'));
-    expect(generate, 'the live loop must reach SMR').toBeTruthy();
-    // Without this header SMR answers `invalid_or_missing_token` in every
+    expect(generate, 'the live loop must reach TEXT').toBeTruthy();
+    // Without this header TEXT answers `invalid_or_missing_token` in every
     // environment where the token is set, and the flush degrades to an empty
     // note — silently, because the failure never reaches the SSE payload.
-    expect(generate![2].headers['X-Service-Token']).toBe('smr-token');
+    expect(generate![2].headers['X-Service-Token']).toBe('text-token');
   });
 });
 
 describe('C3-T1 — default-prompt parity (the unconfigured tenant sees zero change)', () => {
-  it('with NO resolver port wired, the SMR payload is byte-identical to the pre-C3 constants', async () => {
+  it('with NO resolver port wired, the TEXT payload is byte-identical to the pre-C3 constants', async () => {
     const calls: TextCall[] = [];
     const service = buildService({ http: recordingHttpMock(calls) });
     service.start({ consultationId: CID, tenantId: TENANT });
@@ -177,7 +177,7 @@ describe('C3-T1 — default-prompt parity (the unconfigured tenant sees zero cha
     expect(calls[0].system_prompt).toBe(LIVE_SOAP_SYSTEM_PROMPT);
   });
 
-  it('a bound agent’s prompt bytes actually reach SMR (the capability is real, not decorative)', async () => {
+  it('a bound agent’s prompt bytes actually reach TEXT (the capability is real, not decorative)', async () => {
     const calls: TextCall[] = [];
     const resolver: Partial<ILiveAgentResolver> = { resolveForSession: vi.fn().mockResolvedValue(agentSnapshot()) };
     const service = buildService({ http: recordingHttpMock(calls), resolver });

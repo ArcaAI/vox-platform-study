@@ -872,7 +872,7 @@ describe('useArca — pipeline actions', () => {
 
     it('should rethrow summarization errors', async () => {
       const mockPipeline = {
-        triggerSummarization: vi.fn().mockRejectedValue(new Error('SMR service down')),
+        triggerSummarization: vi.fn().mockRejectedValue(new Error('TEXT service down')),
       };
       const pluginManager = createMockPluginManager({
         getKnowledgePipeline: vi.fn(() => mockPipeline),
@@ -885,7 +885,7 @@ describe('useArca — pipeline actions', () => {
         act(async () => {
           await result.current.pipelines.triggerSummarization();
         }),
-      ).rejects.toThrow('SMR service down');
+      ).rejects.toThrow('TEXT service down');
     });
   });
 });

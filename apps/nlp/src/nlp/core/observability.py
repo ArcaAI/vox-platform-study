@@ -46,7 +46,7 @@ def _instrument_fastapi(
     """Instrument the app, ALWAYS with the PHI sanitisation hook attached.
 
     ``_phi_sanitization_hook`` existed since this module was
-    written and was never passed to the instrumentor — dead code, while SMR's
+    written and was never passed to the instrumentor — dead code, while TEXT's
     identical hook *was* wired. NLP receives clinical text on every request, so
     an unhooked instrumentor is free to attach request/response bodies to spans
     that land in Tempo.

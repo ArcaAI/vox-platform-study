@@ -12,7 +12,7 @@
  * It is deliberately transport-agnostic, and BOTH paths drive it — the live-doc
  * flush and the durable finalize summary (which previously would persist a
  * malformed structured response verbatim as the clinical note):
- * the caller supplies the `generate` closure (which performs the actual SMR call,
+ * the caller supplies the `generate` closure (which performs the actual TEXT call,
  * measures latency, captures stats, …), the strict parser, and the tolerant
  * fallback. The helper returns every model call it made (in order) so the caller
  * can record an ordered trajectory step — or attribute token cost — per call.

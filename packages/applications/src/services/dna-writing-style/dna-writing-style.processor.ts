@@ -56,7 +56,7 @@ export class DnaWritingStyleProcessor extends WorkerHost {
     private readonly jobMetrics: JobMetricsService,
     private readonly clsService: ClsService<IActiveUserContext>,
     @Optional() @Inject(SecretsService) private readonly secretsService?: SecretsService,
-    // Resolver for the tenant's effective SMR {provider, model}.
+    // Resolver for the tenant's effective TEXT {provider, model}.
     @Optional() @Inject(HarnessPolicyService) private readonly harnessPolicyService?: HarnessPolicyService,
     // Gate the AUTOMATIC learning corpus on the
     // effective DNA flag (tenant AND doctor): a doctor who has opted out (or whose
@@ -74,14 +74,14 @@ export class DnaWritingStyleProcessor extends WorkerHost {
     // `processWithContext`. Only the pre-schema positional test fixtures ever
     // leave it unset, and only they still reach the permissive parser.
     @Optional() @Inject(PromptTemplateRepository) private readonly promptTemplateRepository?: PromptTemplateRepository,
-    // PHI redaction seam (TASK-710, hop 2: approved-notes corpus → SMR).
+    // PHI redaction seam (TASK-710, hop 2: approved-notes corpus → TEXT).
     // FULL redaction — the DNA profile is a retained, cross-patient artifact
     // (see IPhiRedactor's mode doc), not pseudonymization.
     //
     // NO LONGER `@Optional()` (owner directive D-A, 2026-08-17). It was, and
     // the call site below correspondingly guarded with `if (this.phiRedactor)`
     // — meaning a module graph that lost `PhiRedactionServiceModule` would
-    // have posted the raw cross-patient corpus to SMR SILENTLY. That is
+    // have posted the raw cross-patient corpus to TEXT SILENTLY. That is
     // precisely how hop 1 regressed when TASK-732 deleted `ner.processor.ts`,
     // so the same shape is closed here: Nest now REQUIRES the provider (a
     // missing import fails at boot) and the call site throws rather than
@@ -208,7 +208,7 @@ export class DnaWritingStyleProcessor extends WorkerHost {
         samples = samples.substring(0, maxContextChars);
       }
 
-      // TASK-710 hop 2: FULL redaction before the corpus reaches SMR — the DNA
+      // TASK-710 hop 2: FULL redaction before the corpus reaches TEXT — the DNA
       // profile is a retained, cross-patient artifact (see IPhiRedactor's mode
       // doc), unlike hop 1's pseudonymize-for-NER posture. Scoped to inserting
       // the call regardless of which branch (textSamples bypass vs. the
@@ -216,7 +216,7 @@ export class DnaWritingStyleProcessor extends WorkerHost {
       // territory, not touched here. Fail-closed by propagation: a throwing
       // redactor falls into the existing outer catch below and aborts the job.
       if (!this.phiRedactor) {
-        throw new Error('PHI redactor is not available; refusing to send an unredacted DNA corpus to SMR');
+        throw new Error('PHI redactor is not available; refusing to send an unredacted DNA corpus to TEXT');
       }
       samples = await this.phiRedactor.redact(samples, 'full');
 
@@ -438,7 +438,7 @@ export class DnaWritingStyleProcessor extends WorkerHost {
     latency_ms?: number;
   }> {
     const textStart = Date.now();
-    // SMR is a stateless gateway with no model default; resolve the
+    // TEXT is a stateless gateway with no model default; resolve the
     // tenant's effective {provider, model} (CLS tenant set by processWithContext)
     // and pass both explicitly on the generate call.
     let provider: string | undefined;
@@ -456,7 +456,7 @@ export class DnaWritingStyleProcessor extends WorkerHost {
         model,
         // TASK-700: constrain DNA output to the closed-vocabulary schema
         // (mirrors the SOAP `response_format` binding —
-        // `smr-compat.controller.ts`'s `response_format: { type: 'json_schema',
+        // `text-compat.controller.ts`'s `response_format: { type: 'json_schema',
         // json_schema: responseSchema, strict: true }`). Omitted entirely
         // (not even as `undefined`) when the resolved template carries no
         // schema, so the outgoing payload shape is unchanged for legacy
@@ -477,7 +477,7 @@ export class DnaWritingStyleProcessor extends WorkerHost {
         }),
       },
     );
-    this.jobMetrics.recordTextCallDuration(JobQueue.GenerateDnaReport, 'smr', (Date.now() - textStart) / 1000);
+    this.jobMetrics.recordTextCallDuration(JobQueue.GenerateDnaReport, 'text', (Date.now() - textStart) / 1000);
     return response.data;
   }
 
@@ -498,8 +498,8 @@ export class DnaWritingStyleProcessor extends WorkerHost {
   }
 
   /**
-   * Validate a parsed SMR response against a (JSON-Schema-shaped) DNA output
-   * schema — client-side, never trusting that SMR/the model honored
+   * Validate a parsed TEXT response against a (JSON-Schema-shaped) DNA output
+   * schema — client-side, never trusting that TEXT/the model honored
    * `strict: true`. Checks, in order:
    *   1. `parsed` is a plain object.
    *   2. every `required` top-level key is present (not `undefined`/`null`).

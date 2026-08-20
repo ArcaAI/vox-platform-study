@@ -45,7 +45,7 @@ class _CapTraj:
         return TrajectoryReportResponse(accepted=len(steps))
 
 
-class _StatsSmr:
+class _StatsText:
     """Text double that records the dispatched prompt and returns fixed stats."""
 
     def __init__(self, stats: dict[str, Any] | None = None) -> None:
@@ -76,7 +76,7 @@ class TestPromptSizeStats:
     @pytest.mark.asyncio
     async def test_llm_call_step_carries_prompt_size(self, env, monkeypatch):
         cap = _CapTraj()
-        text_client = _StatsSmr(stats={"prompt_tokens": 25, "total_tokens": 37})
+        text_client = _StatsText(stats={"prompt_tokens": 25, "total_tokens": 37})
         monkeypatch.setattr(activities, "_text_client", lambda s: text_client)
         monkeypatch.setattr(activities, "_trajectory_api_client", lambda s: cap)
 
@@ -97,7 +97,7 @@ class TestPromptSizeStats:
     async def test_prompt_size_counts_the_appended_blocks(self, env, monkeypatch):
         """The measured size is post-assembly, not the bare template prefix."""
         cap = _CapTraj()
-        text_client = _StatsSmr()
+        text_client = _StatsText()
         monkeypatch.setattr(activities, "_text_client", lambda s: text_client)
         monkeypatch.setattr(activities, "_trajectory_api_client", lambda s: cap)
 
@@ -117,7 +117,7 @@ class TestPromptSizeStats:
     async def test_stats_absent_from_backend_still_carries_prompt_size(self, env, monkeypatch):
         """A legacy Text response without ``stats`` must not lose the size fields."""
         cap = _CapTraj()
-        monkeypatch.setattr(activities, "_text_client", lambda s: _StatsSmr(stats=None))
+        monkeypatch.setattr(activities, "_text_client", lambda s: _StatsText(stats=None))
         monkeypatch.setattr(activities, "_trajectory_api_client", lambda s: cap)
 
         await env.run(activities.generate, GenerateInput(tenant_id="11111111-1111-1111-1111-111111111111", prompt="P" * 12, trajectory=_traj()))
@@ -131,7 +131,7 @@ class TestPromptSizeWarning:
     @pytest.mark.asyncio
     async def test_warns_above_threshold_and_still_generates(self, env, monkeypatch, caplog):
         cap = _CapTraj()
-        text_client = _StatsSmr()
+        text_client = _StatsText()
         monkeypatch.setattr(activities, "get_settings", lambda: Settings(prompt_size_warn_chars=50))
         monkeypatch.setattr(activities, "_text_client", lambda s: text_client)
         monkeypatch.setattr(activities, "_trajectory_api_client", lambda s: cap)
@@ -153,7 +153,7 @@ class TestPromptSizeWarning:
         monkeypatch.setattr(
             activities, "get_settings", lambda: Settings(prompt_size_warn_chars=1000)
         )
-        monkeypatch.setattr(activities, "_text_client", lambda s: _StatsSmr())
+        monkeypatch.setattr(activities, "_text_client", lambda s: _StatsText())
         monkeypatch.setattr(activities, "_trajectory_api_client", lambda s: cap)
 
         with caplog.at_level(logging.WARNING):
@@ -180,7 +180,7 @@ class TestPromptCacheStatsPassthrough:
             "engine_native": {"tokens_cached": 11_800, "prompt_cache_key": "abc"},
         }
         cap = _CapTraj()
-        monkeypatch.setattr(activities, "_text_client", lambda s: _StatsSmr(stats=stats))
+        monkeypatch.setattr(activities, "_text_client", lambda s: _StatsText(stats=stats))
         monkeypatch.setattr(activities, "_trajectory_api_client", lambda s: cap)
 
         await env.run(activities.generate, GenerateInput(tenant_id="11111111-1111-1111-1111-111111111111", prompt="P", trajectory=_traj()))

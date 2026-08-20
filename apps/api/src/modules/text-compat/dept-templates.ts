@@ -1,7 +1,7 @@
 /**
  * v1 department- and visit-type-specific prompt template engine.
  *
- * Faithful port of the v1 SMR selectors:
+ * Faithful port of the v1 TEXT selectors:
  *   - visit-type normalization        → `prompt_selector.py:_normalize_visit_type`
  *                                        (47-66) / `prompts_json.py:_normalize_visit_type` (249-261)
  *   - department synonym resolution    → `prompts_json.py:get_department_schema` (264-289)
@@ -18,7 +18,7 @@
  * conversational prompt (v1 special-case, `summary_service.py:253-265`).
  *
  * **Re-verified against the LIVE v1 pod 2026-08-07** (Rancher
- * `c-9lwv8`/`apps`/`apps-smr-84c9774997-zhp2l` — never a local checkout, which
+ * `c-9lwv8`/`apps`/`apps-text-84c9774997-zhp2l` — never a local checkout, which
  * has diverged — see `docs/implementation/TASK-634-.../README.md`).
  * `resolveDepartmentKey` below is the UNION of v1's two alias tables, which
  * are themselves NOT identical to each other in production:

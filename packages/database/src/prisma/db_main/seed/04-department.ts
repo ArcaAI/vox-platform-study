@@ -524,7 +524,7 @@ export const ARCAAI_CLINICAL_DEPARTMENTS = [
 // The remaining FOUR v1 clinical departments.
 //
 // WHY THIS ARRAY EXISTS SEPARATELY. v1 recognises ELEVEN departments (verified
-// on the running v1 SMR pod: `DEPT_VISIT_SCHEMAS` = 22 = 11 × {new_referral,
+// on the running v1 TEXT pod: `DEPT_VISIT_SCHEMAS` = 22 = 11 × {new_referral,
 // followup}; `select_prompt_template` = 11 branches), and the ArcaAI tenant must
 // carry exactly those eleven — no more, no fewer. The seven above were ported by
 // ; these four complete the set.

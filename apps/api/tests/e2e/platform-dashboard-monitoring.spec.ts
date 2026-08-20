@@ -129,7 +129,7 @@ test.describe('platform dashboard + monitoring (cross-tenant data sources)', () 
     expect(body.status, 'overall status present (healthy|degraded|unhealthy)').toBeTruthy();
     expect(typeof body.services, 'per-service health map present').toBe('object');
     // The controller probes a fixed downstream set; the Services table renders
-    // the canonical API/STT/SMR/NLP/Guardrail/Harness order. Assert the known
+    // the canonical API/STT/TEXT/NLP/Guardrail/Harness order. Assert the known
     // downstream keys are present and each carries a status (REAL — `down` is a
     // legitimate value when a service is offline in the test env).
     const keys = Object.keys(body.services);

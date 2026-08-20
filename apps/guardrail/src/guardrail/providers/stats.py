@@ -6,7 +6,7 @@ went with the engine adapters. The SHAPE stays: it is what
 ``services/external_text_client`` maps ``text``'s ``GenerationStats`` onto, and
 what rides back to the billing plane on a verdict.
 
-Guardrail is a SEPARATE service and MUST NOT import from smr, so this module
+Guardrail is a SEPARATE service and MUST NOT import from text, so this module
 mirrors the AD-1 ``GenerationStats`` field names locally. It captures the same
 shape (stop reason normalized + raw, timings, token counts, provider identity,
 engine-native audit blob) that the Agentic SOTA program standardizes across

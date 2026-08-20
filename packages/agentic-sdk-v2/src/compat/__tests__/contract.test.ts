@@ -117,7 +117,7 @@ describe('audio + STT hook shapes', () => {
 });
 
 // ===========================================================================
-// Type-level: / SMR hook contract + v1 response shapes.
+// Type-level: / TEXT hook contract + v1 response shapes.
 // ===========================================================================
 describe('useText contract + v1 response shapes', () => {
   it('exposes summarize/summarizeSync/summarizeAsync/preSummarize', () => {

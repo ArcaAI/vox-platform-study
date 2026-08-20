@@ -66,7 +66,7 @@ const createConsultation = (overrides: Record<string, unknown> = {}) => ({
 });
 
 describe('ComprehensiveSummaryProcessor.callTextService — explicit tenant id (B-04)', () => {
-  it('resolves the SMR selection with the job tenantId + finalize task passed explicitly', async () => {
+  it('resolves the TEXT selection with the job tenantId + finalize task passed explicitly', async () => {
     const jobService = { notifyProgress: vi.fn(), notifyComplete: vi.fn(), notifyFailed: vi.fn() };
     const chainSummaryService = {
       resolveLinkedConsultations: vi.fn().mockResolvedValue([createConsultation()]),
@@ -90,7 +90,7 @@ describe('ComprehensiveSummaryProcessor.callTextService — explicit tenant id (
     };
     const namedEntityRepo = { findByContextItem: vi.fn().mockResolvedValue([]) };
     const httpService = { axiosRef: { post: vi.fn().mockResolvedValue({ data: { summary: 'S', modelName: 'm' } }) } };
-    const configService = { get: vi.fn().mockImplementation((key: string) => (key === 'TEXT_URL' ? 'http://smr:8862' : undefined)) };
+    const configService = { get: vi.fn().mockImplementation((key: string) => (key === 'TEXT_URL' ? 'http://text:8862' : undefined)) };
     const promptResolutionService = {
       resolve: vi.fn().mockResolvedValue({ template: 'comprehensive', promptId: 'p', contextVariables: {}, resolvedFrom: 'default' }),
     };

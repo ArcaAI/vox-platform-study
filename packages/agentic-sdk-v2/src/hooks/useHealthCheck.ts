@@ -9,7 +9,7 @@
  *   3. GET /admin/health/services – Consolidated downstream service health
  *
  * The /admin/health/services response is flattened so each downstream service
- * (smr, nlp, stt, guardrail, harness) appears as a top-level entry in the
+ * (text, nlp, stt, guardrail, harness) appears as a top-level entry in the
  * services map alongside 'api' and 'apiLive'.
  */
 

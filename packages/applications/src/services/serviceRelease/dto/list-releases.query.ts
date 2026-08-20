@@ -3,7 +3,7 @@ import { IsIn, IsOptional, IsString } from 'class-validator';
 import { PaginatedQuery } from '../../../common';
 
 export class ListReleasesQuery extends PaginatedQuery {
-  @ApiPropertyOptional({ description: 'Filter to one service', example: 'smr' })
+  @ApiPropertyOptional({ description: 'Filter to one service', example: 'text' })
   @IsOptional()
   @IsString()
   serviceName?: string;

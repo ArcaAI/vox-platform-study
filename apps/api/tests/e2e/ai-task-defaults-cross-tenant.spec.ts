@@ -4,7 +4,7 @@
  *
  * Governance contracts (`SUPER_ADMIN_ONLY_TASK_PREFIXES` in
  * `packages/applications/src/services/ai-task-default/constants.ts` covers
- * `nlp.` AND `harness.` only. REMOVED `smr.` (earlier) and `guardrail.`
+ * `nlp.` AND `harness.` only. REMOVED `text.` (earlier) and `guardrail.`
  * (TASK-735 Phase 0, owner decision 2026-08-16, reversing the 2026-07-17
  * super-admin-only directive) — both are now TENANT-ADMIN configurable, so a
  * tenant admin may write them for their OWN tenant while `nlp.`/`harness.`
@@ -20,7 +20,7 @@
  *     (nlp./harness.) are refused: a tenant admin PUT → 403 even for
  *     their OWN tenant (a privilege verdict, deliberately raised BEFORE the OCC
  *     compare — so a tenant admin sees 403, not 412, on any version). The
- *     un-locked `smr.*`/`guardrail.*` keys are the exception: a tenant admin
+ *     un-locked `text.*`/`guardrail.*` keys are the exception: a tenant admin
  *     PUT succeeds for their own tenant (guardrail.* subject to the
  *     platform-approved-list floor above).
  *  3. Super admin acts cross-tenant via `?tenantId=` (PUT succeeds).
@@ -84,7 +84,7 @@ test.describe('AiTaskDefault admin surface (cross-tenant + guardrail governance)
     // The full registry (AI_TASK_KEYS, ai-task-default/constants.ts):
     // guardrail.validate/safety/groundedness, nlp.ner/classification/diagnosis
     // + TASK-729's nlp.sentiment/toxicity, text.live/finalize + the
-    // tenant-configurable smr.*.fallback keys + text.test, harness.judge, and
+    // tenant-configurable text.*.fallback keys + text.test, harness.judge, and
     // vlm.extract.
     expect(body.map((e) => e.taskKey)).toEqual([
       'guardrail.validate',
@@ -136,7 +136,7 @@ test.describe('AiTaskDefault admin surface (cross-tenant + guardrail governance)
     // Reverses the OLD "GOVERNANCE: tenant admin PUT on guardrail.validate …
     // → 403 (deliberate, not 404)" contract (owner directive 2026-07-17).
     // TASK-735 Phase 0 (owner decision 2026-08-16) makes guardrail.*
-    // tenant-admin configurable, same cascade as smr.*. The seeded slug is a
+    // tenant-admin configurable, same cascade as text.*. The seeded slug is a
     // SYSTEM-catalog row, so it also satisfies the D2 platform-approved-list
     // floor (see the negative probe below for the floor itself).
     const row = await readRowVersion(request, tenantAdminToken, 'guardrail.validate');
@@ -165,7 +165,7 @@ test.describe('AiTaskDefault admin surface (cross-tenant + guardrail governance)
   });
 
   test('GOVERNANCE: a still-locked prefix stays global-only — nlp.ner PUT by a tenant admin → 403', async ({ request }) => {
-    // nlp./harness. remain SUPER_ADMIN-ONLY (smr. and, since TASK-735,
+    // nlp./harness. remain SUPER_ADMIN-ONLY (text. and, since TASK-735,
     // guardrail. were un-locked). The 403 fires BEFORE the OCC compare, so
     // any valid If-Match sees it.
     const row = await readRowVersion(request, tenantAdminToken, 'nlp.ner');
@@ -177,8 +177,8 @@ test.describe('AiTaskDefault admin surface (cross-tenant + guardrail governance)
     expect(JSON.stringify(await resp.json())).toContain('super administrators only');
   });
 
-  test('Tenant admin CAN write an smr.* key (text.finalize) for their OWN tenant → 200', async ({ request }) => {
-    // `smr.` left SUPER_ADMIN_ONLY_TASK_PREFIXES: the smr.* keys are
+  test('Tenant admin CAN write an text.* key (text.finalize) for their OWN tenant → 200', async ({ request }) => {
+    // `text.` left SUPER_ADMIN_ONLY_TASK_PREFIXES: the text.* keys are
     // now tenant-admin configurable. Unlike the guardrail/nlp negative probes
     // above, this write is accepted for the caller's own CLS-pinned tenant. On a
     // fresh seed the tenant row is a version-0 placeholder, so this PUT travels

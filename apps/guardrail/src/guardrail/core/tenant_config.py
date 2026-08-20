@@ -58,15 +58,15 @@ This choice was re-examined against preferring gateway-resolved injection
 over per-service DB reads, and CONFIRMED, on two
 grounds the paragraph above did not state:
 
-  1. Guardrail's callers are PEER SERVICES, not the gateway. SMR calls
-     ``POST /api/medical/validate`` directly (``smr/services/external_guardrail.py``)
+  1. Guardrail's callers are PEER SERVICES, not the gateway. TEXT calls
+     ``POST /api/medical/validate`` directly (``text/services/external_guardrail.py``)
      and forwards only ``X-Tenant-Id`` — it has no resolved config to inject.
      The TTS pattern works precisely because the gateway is the caller;
      for guardrail that precondition does not hold, so injection is not
      structurally available.
   2. Pulling effective config over HTTP would put the GATEWAY on guardrail's
      safety-critical validate path and close a call cycle
-     (gateway → SMR → guardrail → gateway). A safety engine must not acquire a
+     (gateway → TEXT → guardrail → gateway). A safety engine must not acquire a
      liveness dependency on the service it is protecting.
 
 Of the three things that must not survive per-service, two are already

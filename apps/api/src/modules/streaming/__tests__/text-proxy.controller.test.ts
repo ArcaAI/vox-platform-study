@@ -57,7 +57,7 @@ const createMockBlobStorage = () => ({
 });
 
 // Stubbed IConfigService so the controller resolves
-// the SMR base URL through the typed accessor (matching production), not
+// the TEXT base URL through the typed accessor (matching production), not
 // process.env.
 const createMockConfigService = () => ({
   getConfigValue: vi.fn((key: string) => {
@@ -127,7 +127,7 @@ describe('TextProxyController', () => {
   });
 
   describe('POST /text/generate', () => {
-    it('should proxy synchronous generation to SMR', async () => {
+    it('should proxy synchronous generation to TEXT', async () => {
       const textResponse = {
         data: {
           task_id: 'task-1',
@@ -183,7 +183,7 @@ describe('TextProxyController', () => {
       expect(result.stream_url).toContain('/stream');
     });
 
-    it('should return 502 when SMR service is unreachable', async () => {
+    it('should return 502 when TEXT service is unreachable', async () => {
       mockHttpService.axiosRef.post.mockRejectedValue(new Error('ECONNREFUSED'));
 
       await expect(controller.generate({ prompt: 'test', stream: false })).rejects.toThrow();
@@ -191,7 +191,7 @@ describe('TextProxyController', () => {
 
     // The proxy MUST preserve the upstream status code but must
     // NOT forward the raw upstream error body verbatim: that body can echo the
-    // assembled clinical prompt / PHI / internal SMR detail. The client receives
+    // assembled clinical prompt / PHI / internal TEXT detail. The client receives
     // a generic message; the upstream detail is kept server-side only.
     it('preserves the upstream status but does NOT forward the raw upstream body (C4-05)', async () => {
       mockHttpService.axiosRef.post.mockRejectedValue({
@@ -214,7 +214,7 @@ describe('TextProxyController', () => {
       expect(thrown).toBeInstanceOf(HttpException);
       expect((thrown as HttpException).getStatus()).toBe(404);
       // Generic body only — no upstream detail or error_code echoed to the client.
-      expect((thrown as HttpException).getResponse()).toEqual({ detail: 'SMR service unavailable' });
+      expect((thrown as HttpException).getResponse()).toEqual({ detail: 'TEXT service unavailable' });
       const serialized = JSON.stringify((thrown as HttpException).getResponse());
       expect(serialized).not.toContain('lm-studio');
       expect(serialized).not.toContain('PROVIDER_NOT_FOUND');
@@ -223,7 +223,7 @@ describe('TextProxyController', () => {
 
   // `buildUpstreamException` used to forward the raw upstream
   // error body verbatim (`{ detail: payload }` for string bodies, `payload` for
-  // object bodies). SMR/LM-Studio error bodies can echo the assembled clinical
+  // object bodies). TEXT/LM-Studio error bodies can echo the assembled clinical
   // prompt / PHI / internal stack detail, so an upstream 4xx/5xx leaked that into
   // the caller's telemetry. The proxy must return a GENERIC sanitized message to
   // the client (status code preserved) and log the upstream detail SERVER-SIDE only.
@@ -239,7 +239,7 @@ describe('TextProxyController', () => {
 
       expect(thrown).toBeInstanceOf(HttpException);
       expect((thrown as HttpException).getStatus()).toBe(400);
-      expect((thrown as HttpException).getResponse()).toEqual({ detail: 'SMR service unavailable' });
+      expect((thrown as HttpException).getResponse()).toEqual({ detail: 'TEXT service unavailable' });
       expect(JSON.stringify((thrown as HttpException).getResponse())).not.toContain('123-45-6789');
     });
 
@@ -251,7 +251,7 @@ describe('TextProxyController', () => {
       const thrown = await controller.generate({ prompt: 'p', provider: 'ollama', model: 'm', stream: false }).catch((e: unknown) => e);
 
       expect((thrown as HttpException).getStatus()).toBe(422);
-      expect((thrown as HttpException).getResponse()).toEqual({ detail: 'SMR service unavailable' });
+      expect((thrown as HttpException).getResponse()).toEqual({ detail: 'TEXT service unavailable' });
       const serialized = JSON.stringify((thrown as HttpException).getResponse());
       expect(serialized).not.toContain('123-45-6789');
       expect(serialized).not.toContain('LEAK');
@@ -289,7 +289,7 @@ describe('TextProxyController', () => {
       errorSpy.mockRestore();
     });
 
-    // TASK-768: was BAD_GATEWAY. No upstream response means SMR was never
+    // TASK-768: was BAD_GATEWAY. No upstream response means TEXT was never
     // reached — a transport failure — which is 503. The status now comes from
     // the shared classifier (`filters/downstream-error.ts`); the body shape is
     // unchanged.
@@ -299,15 +299,15 @@ describe('TextProxyController', () => {
       const thrown = await controller.generate({ prompt: 'p', provider: 'ollama', model: 'm', stream: false }).catch((e: unknown) => e);
 
       expect((thrown as HttpException).getStatus()).toBe(HttpStatus.SERVICE_UNAVAILABLE);
-      expect((thrown as HttpException).getResponse()).toEqual({ detail: 'SMR service unavailable' });
+      expect((thrown as HttpException).getResponse()).toEqual({ detail: 'TEXT service unavailable' });
     });
   });
 
   // The playground/SDK proxy passes a caller-supplied
   // model through untouched (SDK fidelity); only when the model is absent does it
   // fall back to the HarnessPolicy cascade. When neither is available it forwards
-  // to SMR, which is the fail-closed 422 authority (no in-proxy default).
-  describe('SMR model selection', () => {
+  // to TEXT, which is the fail-closed 422 authority (no in-proxy default).
+  describe('TEXT model selection', () => {
     const buildWithResolver = (resolver: { resolveTextSelection: ReturnType<typeof vi.fn> }) =>
       new TextProxyController(
         mockHttpService as any,
@@ -388,7 +388,7 @@ describe('TextProxyController', () => {
 
   // `withRetry` used to re-POST `/generate` on post-send
   // socket failures (ECONNRESET/EPIPE/ETIMEDOUT) and upstream 5xx responses.
-  // Those occur AFTER request bytes reached SMR, so a generation may already
+  // Those occur AFTER request bytes reached TEXT, so a generation may already
   // be running/billed — the retry re-invoked it (duplicate billing, divergent
   // drafts). `/generate` may only retry CONNECT-PHASE failures (the request
   // provably never left the gateway); idempotent GETs keep the broad retry.
@@ -426,7 +426,7 @@ describe('TextProxyController', () => {
       }
     });
 
-    it('does NOT re-POST /generate when SMR itself responded 5xx (request was delivered)', async () => {
+    it('does NOT re-POST /generate when TEXT itself responded 5xx (request was delivered)', async () => {
       mockHttpService.axiosRef.post.mockRejectedValue({ response: { status: 503, data: { detail: 'busy' } } });
 
       const outcome = controller.generate({ prompt: 'p', provider: 'ollama', model: 'm', stream: false }).catch((e: unknown) => e);
@@ -437,7 +437,7 @@ describe('TextProxyController', () => {
       expect(mockHttpService.axiosRef.post).toHaveBeenCalledTimes(1);
     });
 
-    it('still retries a connect-phase ECONNREFUSED (request never reached SMR)', async () => {
+    it('still retries a connect-phase ECONNREFUSED (request never reached TEXT)', async () => {
       mockHttpService.axiosRef.post.mockRejectedValueOnce(codeError('ECONNREFUSED')).mockResolvedValueOnce({ data: { task_id: 't-retry' } });
 
       const outcome = controller.generate({ prompt: 'p', provider: 'ollama', model: 'm', stream: false });
@@ -475,7 +475,7 @@ describe('TextProxyController', () => {
   });
 
   describe('GET /text/tasks/:taskId', () => {
-    it('should proxy task status request to SMR', async () => {
+    it('should proxy task status request to TEXT', async () => {
       const taskResponse = {
         data: {
           task_id: 'task-1',
@@ -499,7 +499,7 @@ describe('TextProxyController', () => {
   });
 
   describe('GET /text/tasks/:taskId/stream', () => {
-    it('should pipe SSE stream from SMR to the response', async () => {
+    it('should pipe SSE stream from TEXT to the response', async () => {
       const mockStream = {
         on: vi.fn(),
         destroy: vi.fn(),
@@ -574,7 +574,7 @@ describe('TextProxyController', () => {
       await controller.streamTaskEvents('task-err', undefined, mockRes as any);
 
       expect(mockRes.status).toHaveBeenCalledWith(502);
-      expect(mockRes.json).toHaveBeenCalledWith({ detail: 'SMR service unavailable' });
+      expect(mockRes.json).toHaveBeenCalledWith({ detail: 'TEXT service unavailable' });
       const jsonArg = JSON.stringify(mockRes.json.mock.calls[0]?.[0]);
       expect(jsonArg).not.toContain('999-88-7777');
       expect(jsonArg).not.toContain('error_code');
@@ -582,7 +582,7 @@ describe('TextProxyController', () => {
   });
 
   describe('POST /text/tasks/:taskId/cancel', () => {
-    it('should proxy cancel request to SMR', async () => {
+    it('should proxy cancel request to TEXT', async () => {
       const cancelResponse = {
         data: { task_id: 'task-1', status: 'cancelled' },
       };
@@ -595,7 +595,7 @@ describe('TextProxyController', () => {
       expect(result.status).toBe('cancelled');
     });
 
-    it('should return 502 when SMR service is unreachable', async () => {
+    it('should return 502 when TEXT service is unreachable', async () => {
       mockHttpService.axiosRef.post.mockRejectedValue(new Error('ECONNREFUSED'));
 
       await expect(controller.cancelTask('task-1')).rejects.toThrow();
@@ -603,7 +603,7 @@ describe('TextProxyController', () => {
   });
 
   describe('POST /text/generate with structured output', () => {
-    it('should forward json response_format to SMR', async () => {
+    it('should forward json response_format to TEXT', async () => {
       const textResponse = {
         data: {
           task_id: 'task-json-1',
@@ -630,7 +630,7 @@ describe('TextProxyController', () => {
       );
     });
 
-    it('should forward json_schema response_format to SMR', async () => {
+    it('should forward json_schema response_format to TEXT', async () => {
       const textResponse = {
         data: {
           task_id: 'task-schema-1',
@@ -669,7 +669,7 @@ describe('TextProxyController', () => {
       );
     });
 
-    it('should forward streaming request with json_schema to SMR', async () => {
+    it('should forward streaming request with json_schema to TEXT', async () => {
       const textResponse = {
         data: {
           task_id: 'task-stream-schema-1',
@@ -704,9 +704,9 @@ describe('TextProxyController', () => {
 
   // ── Providers listings repointed to the AiModel registry ──────────────────
   // `GET /text/providers` and `GET /text/guardrail-providers` no longer read the
-  // retired GlobalSetting keys (`smr-provider-models` / `default-smr-*` /
+  // retired GlobalSetting keys (`text-provider-models` / `default-text-*` /
   // `default-guardrail-*`); the registry (ENABLED AiModel rows grouped by
-  // `provider`) is the single UI catalog. The live-SMR probe survives ONLY as
+  // `provider`) is the single UI catalog. The live-TEXT probe survives ONLY as
   // the /providers transition fallback when the registry has zero rows.
 
   const createMockAiModelService = () => ({ getByTaskTypeSharedRead: vi.fn(async (_taskType: string) => []) });
@@ -822,7 +822,7 @@ describe('TextProxyController', () => {
       expect(result[0].default_model).toBe('qwen3.5:2b'); // first model, mirroring the legacy shape
     });
 
-    it('skips rows without a provider (unmigrated) — all-unmigrated falls to the SMR probe', async () => {
+    it('skips rows without a provider (unmigrated) — all-unmigrated falls to the TEXT probe', async () => {
       const aiModels = createMockAiModelService();
       aiModels.getByTaskTypeSharedRead.mockResolvedValue([registryRow({ slug: 'legacy-row', provider: null, sourceUri: 'legacy' })]);
       mockHttpService.axiosRef.get.mockResolvedValue({ data: [] });
@@ -833,7 +833,7 @@ describe('TextProxyController', () => {
       expect(mockHttpService.axiosRef.get).toHaveBeenCalledWith(expect.stringContaining('/api/v1/providers'), expect.any(Object));
     });
 
-    it('falls back to the live SMR /providers probe when the registry returns zero rows (transition safety)', async () => {
+    it('falls back to the live TEXT /providers probe when the registry returns zero rows (transition safety)', async () => {
       const aiModels = createMockAiModelService(); // returns []
       mockHttpService.axiosRef.get.mockResolvedValue({
         data: [
@@ -858,7 +858,7 @@ describe('TextProxyController', () => {
       ]);
     });
 
-    it('returns an empty list when the registry is empty and the SMR probe fails', async () => {
+    it('returns an empty list when the registry is empty and the TEXT probe fails', async () => {
       const aiModels = createMockAiModelService();
       mockHttpService.axiosRef.get.mockRejectedValue(new Error('ECONNREFUSED'));
       const ctrl = buildProvidersController({ aiModels });
@@ -1011,7 +1011,7 @@ describe('TextProxyController', () => {
       ]);
     });
 
-    it('does NOT fall back to the SMR /providers upstream on an empty registry', async () => {
+    it('does NOT fall back to the TEXT /providers upstream on an empty registry', async () => {
       const ctrl = buildProvidersController({ aiModels: createMockAiModelService(), aiTaskDefaults: createMockAiTaskDefaultService() });
 
       const result = await ctrl.getGuardrailProviders();
@@ -1763,7 +1763,7 @@ describe('TextProxyController', () => {
     // A caller could previously pass another tenant's context_item_ids and
     // exfiltrate their content through the generated summary; the proxy must
     // reject cross-tenant context items (surfaced as NotFound to avoid leaking
-    // their existence) before any prompt is assembled or sent to SMR.
+    // their existence) before any prompt is assembled or sent to TEXT.
     describe('cross-tenant context item ownership', () => {
       it('rejects a context item that belongs to a different tenant (NotFound, no leak)', async () => {
         mockContextItemRepo.findById.mockResolvedValue({

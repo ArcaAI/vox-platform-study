@@ -58,13 +58,13 @@
  *   80000000-0002  →  AI Models (VAD)
  *   80000000-0003  →  AI Models (Noise Reduction)
  *   80000000-0004  →  AI Models (ONNX Community)
- *   80000000-0005  →  AI Models (LLM/Summarization — SMR v2)
+ *   80000000-0005  →  AI Models (LLM/Summarization — TEXT v2)
  *   80000000-0006  →  AI Models (Local Browser STT)
  *   81000000-xxxx  →  ASR Pipelines
  *   82000000-xxxx  →  STT Global Settings
  *   83000000-xxxx  →  General User Settings
  *   84000000-xxxx  →  SDK User Preferences
- *   85000000-xxxx  →  Per-Tenant Global Settings (general, feature-flags, stt, smr)
+ *   85000000-xxxx  →  Per-Tenant Global Settings (general, feature-flags, stt, text)
  *   90000000-xxxx  →  Consultations
  *   91000000-xxxx  →  Context Items
  *   92000000-xxxx  →  Summary Metas
@@ -243,7 +243,7 @@ export const SEED_DEPARTMENT_IDS = {
   //
   // The ArcaAI tenant carries the ELEVEN v1 clinical departments — and exactly
   // eleven. v1 has no Department table; its department set is defined by what
-  // its SMR recognises, and BOTH authoritative sources on the running v1 pod
+  // its TEXT recognises, and BOTH authoritative sources on the running v1 pod
   // agree on eleven: `DEPT_VISIT_SCHEMAS` (22 = 11 × {new_referral, followup})
   // and `select_prompt_template` (11 branches). The v1 keys map to the codes
   // below as: breast_endocrine→BREN, dermatology→DERM, dietetics→DIET,
@@ -672,7 +672,7 @@ export const SEED_GLOBAL_SETTING_IDS = {
   // ArcaAI — stt
   ARCAAI_STT_MODEL: '85000000-0000-0000-0001-000000000020',
   ARCAAI_STT_VAD: '85000000-0000-0000-0001-000000000021',
-  // ArcaAI — smr Azure deployment-name (non-secret)
+  // ArcaAI — text Azure deployment-name (non-secret)
   // ARCAAI_TEXT_PROVIDER (…030) / ARCAAI_TEXT_MODEL (…031) /
   // ARCAAI_GUARDRAIL_* (…033-035) / ARCAAI_UX_TEXT_PROVIDER_MODELS (…043)
   // retired (rows swept to DELETED); ids stay reserved — never reuse them.
@@ -696,7 +696,7 @@ export const SEED_GLOBAL_SETTING_IDS = {
   // Global tenant — stt
   GLOBAL_STT_MODEL: '85000000-0000-0000-0000-000000000020',
   GLOBAL_STT_VAD: '85000000-0000-0000-0000-000000000021',
-  // Global tenant — smr Azure deployment-name (non-secret)
+  // Global tenant — text Azure deployment-name (non-secret)
   // GLOBAL_TEXT_PROVIDER (…030) / GLOBAL_TEXT_MODEL (…031) /
   // GLOBAL_GUARDRAIL_* (…033-035) / GLOBAL_UX_TEXT_PROVIDER_MODELS (…043)
   // retired (rows swept to DELETED); ids stay reserved — never reuse them.

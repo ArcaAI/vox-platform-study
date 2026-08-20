@@ -7,7 +7,7 @@ import { timingSafeEqual } from 'node:crypto';
  *
  * Generalizes `HarnessServiceTokenGuard` from one hardcoded secret to a
  * per-service map: the presented token is validated against the secret belonging
- * to the service named in `?service=`, so an nlp token cannot read smr's config
+ * to the service named in `?service=`, so an nlp token cannot read text's config
  * subset. Same posture as the harness guard otherwise — fail-closed on a missing
  * header, an unconfigured secret, or an absent SecretsService, and a
  * constant-time compare so the token cannot be recovered by timing.
@@ -25,14 +25,14 @@ export class InternalServiceTokenGuard implements CanActivate {
   /**
    * Service name → the secret holding that service's token.
    *
-   * NOTE `smr` → `TEXT_SERVICE_TOKEN`: the SMR service reads its inbound token
+   * NOTE `text` → `TEXT_SERVICE_TOKEN`: the TEXT service reads its inbound token
    * from `settings.service_token` under the `TEXT_` pydantic prefix, so that is
    * the name it actually presents. The gateway's OUTBOUND proxying separately
    * resolves `TEXT_SERVICE_TOKEN`; the two are distinct secret names that hold the
    * same shared value by deployment convention.
    */
   private static readonly SERVICE_SECRETS: Readonly<Record<string, string>> = {
-    smr: 'TEXT_SERVICE_TOKEN',
+    text: 'TEXT_SERVICE_TOKEN',
     nlp: 'NLP_SERVICE_TOKEN',
     guardrail: 'GUARDRAIL_SERVICE_TOKEN',
     harness: 'HARNESS_SERVICE_TOKEN',

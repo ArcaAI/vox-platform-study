@@ -499,7 +499,7 @@ sbom-python-base:
   rules:
     - !reference [.image-signing-guard, rules]
     - !reference [.build-common-rules, rules]
-    - if: $CI_COMMIT_TAG =~ /^(SMR|STT|GUARD|TTS|HARNESS|NLP|ALL)-/
+    - if: $CI_COMMIT_TAG =~ /^(TEXT|STT|GUARD|TTS|HARNESS|NLP|ALL)-/
 
 sign-python-base:
   extends: .cosign-sign-attest
@@ -512,7 +512,7 @@ sign-python-base:
   rules:
     - !reference [.image-signing-guard, rules]
     - !reference [.build-common-rules, rules]
-    - if: $CI_COMMIT_TAG =~ /^(SMR|STT|GUARD|TTS|HARNESS|NLP|ALL)-/
+    - if: $CI_COMMIT_TAG =~ /^(TEXT|STT|GUARD|TTS|HARNESS|NLP|ALL)-/
 
 # --- API gateway ---
 sbom-api:
@@ -619,7 +619,7 @@ sign-guardrail:
     - !reference [.image-signing-guard, rules]
     - !reference [.rules-guardrail, rules]
 
-# --- SMR ---
+# --- TEXT ---
 sbom-text:
   extends: .cyclonedx-sbom
   needs:

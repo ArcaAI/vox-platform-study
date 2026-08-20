@@ -148,7 +148,7 @@ export interface LiveSummaryEntity {
 
 /**
  * Per-flush generation stats (`LiveSummaryStatsDto` subset). Real values from
- * the SMR engine — absent on a legacy idempotency-cache hit; never fabricated.
+ * the TEXT engine — absent on a legacy idempotency-cache hit; never fabricated.
  */
 export interface LiveSummaryStats {
   total_ms?: number | null;
@@ -180,7 +180,7 @@ export interface LiveSummarySnapshot {
   metadata?: { stats?: LiveSummaryStats | null } | null;
   /** Structured vitals (accumulated across flushes); absent until one is seen. */
   vitals?: LiveSummaryVitals;
-  /** True when the most recent SMR generation call failed; `runningSummary`/`sections` reflect the last successfully generated content (or are empty on a first-flush failure) — never fabricated. */
+  /** True when the most recent TEXT generation call failed; `runningSummary`/`sections` reflect the last successfully generated content (or are empty on a first-flush failure) — never fabricated. */
   textFailed?: boolean;
   updatedAt: string;
   /** Terminal event (recording stopped). */

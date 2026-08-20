@@ -21,7 +21,7 @@ export interface ServiceSessionCount {
  * Session counts, realigned to the backend `SessionsResponse`
  * (`MonitoringController.getSessions`):
  *
- *   { services: { smr|stt|nlp|guardrail|harness: { active } }, totalUsers, refreshedAt }
+ *   { services: { text|stt|nlp|guardrail|harness: { active } }, totalUsers, refreshedAt }
  *
  * The `services` map + `totalUsers` are the AUTHORITATIVE backend shape. The
  * `activeSessions` / `processingJobs` / `active` / `total` fields are kept as
@@ -31,7 +31,7 @@ export interface ServiceSessionCount {
 export interface SessionCounts {
   /** Per-service active sessions (authoritative backend shape). */
   services: {
-    smr: ServiceSessionCount;
+    text: ServiceSessionCount;
     stt: ServiceSessionCount;
     nlp: ServiceSessionCount;
     guardrail: ServiceSessionCount;
@@ -45,7 +45,7 @@ export interface SessionCounts {
   // ── Derived convenience fields (back-compat with legacy consumers) ──
   /** Live consultation sessions ≈ STT streams (`services.stt.active`). */
   activeSessions: number;
-  /** Background inference jobs ≈ SMR + NLP + guardrail + harness active. */
+  /** Background inference jobs ≈ TEXT + NLP + guardrail + harness active. */
   processingJobs: number;
   /** Alias of `activeSessions` (legacy). */
   active: number;

@@ -310,7 +310,7 @@ holds the presentational pieces.
   already ship. On the terminal `result` event the same render path runs as the
   non-streaming case, so the final output is identical either way.
 
-  > Worth knowing when demoing: the gateway re-emits SMR `chunk` frames as
+  > Worth knowing when demoing: the gateway re-emits TEXT `chunk` frames as
   > `delta`, i.e. **raw text, not partial structured JSON**. With the Enhanced /
   > SOAP formats the live stream shows unstructured model output and only snaps
   > into the structured view on the terminal `result`. That is real backend

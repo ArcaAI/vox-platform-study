@@ -55,17 +55,17 @@ That second bypass is a **consent** defect the original finding did not identify
 
 No instruction to exclude patient facts, medications, or identifiers. Item 4 ("Common phrases") actively invites verbatim quotation from source notes.
 
-Critically — and this defeats the "it's a constrained structured profile" counter-argument — this template carries **no** `metaData.promptConfig`, unlike its sibling SOAP template two entries above which sets `metaData: { promptConfig: SOAP_PROMPT_CONFIG }` to "Activate structured SOAP output (json_schema)" (`:377-378`). The DNA call therefore requests **free text**. Confirm at the call site: `dna-writing-style.processor.ts:332-341` posts `{prompt, system_prompt, stream:false, provider, model}` to `SMR /api/v1/generate` with **no `response_format`** — compare the summary path, which does bind one (`text-compat.controller.ts:400-406`, `response_format: {type:'json_schema', json_schema: responseSchema, strict:true}`).
+Critically — and this defeats the "it's a constrained structured profile" counter-argument — this template carries **no** `metaData.promptConfig`, unlike its sibling SOAP template two entries above which sets `metaData: { promptConfig: SOAP_PROMPT_CONFIG }` to "Activate structured SOAP output (json_schema)" (`:377-378`). The DNA call therefore requests **free text**. Confirm at the call site: `dna-writing-style.processor.ts:332-341` posts `{prompt, system_prompt, stream:false, provider, model}` to `TEXT /api/v1/generate` with **no `response_format`** — compare the summary path, which does bind one (`text-compat.controller.ts:400-406`, `response_format: {type:'json_schema', json_schema: responseSchema, strict:true}`).
 
 **Link 4 — persisted with no redaction. HOLDS.** The parser, `dna-writing-style.processor.ts:197-203`:
 
 ```ts
 try {
-  const parsed = JSON.parse(smrResponse.content);
+  const parsed = JSON.parse(textResponse.content);
   reportData = parsed.reportData ?? parsed;
-  styleText = parsed.styleText ?? smrResponse.content;
+  styleText = parsed.styleText ?? textResponse.content;
 } catch {
-  styleText = smrResponse.content;
+  styleText = textResponse.content;
 }
 ```
 
@@ -89,7 +89,7 @@ Identical embedding in the generic builder at `summary-prompt.builder.ts:231-236
 
 Four counter-arguments are available. I built each as strongly as the code allows; three fail, one partly survives.
 
-1. **"Guardrail sanitizes the prompt."** This is the best-looking defense and it fails on three independent grounds. SMR's `/generate` genuinely does call guardrail (`apps/text/src/text/api/endpoints/generate.py:282-299`), so the DNA corpus *does* traverse it. But (a) `ExternalGuardrailClient.validate` posts to `/api/medical/validate` and returns `{allowed, is_medical, confidence, reason}` — a **verdict, not a transform**; the prompt text is passed to the LLM unmodified (`apps/text/src/text/services/external_guardrail.py:41-95`). (b) Its question is *"is this medical content"* (`require_medical`), which is topicality, not PHI detection — a PHI-dense note is exactly what it *approves*. (c) It defaults **off**: `enabled: bool = False` at `apps/text/src/text/core/config.py:329`, and when off it returns `{"allowed": True, ..., "reason": "external_guardrail_disabled"}` without any call at all.
+1. **"Guardrail sanitizes the prompt."** This is the best-looking defense and it fails on three independent grounds. TEXT's `/generate` genuinely does call guardrail (`apps/text/src/text/api/endpoints/generate.py:282-299`), so the DNA corpus *does* traverse it. But (a) `ExternalGuardrailClient.validate` posts to `/api/medical/validate` and returns `{allowed, is_medical, confidence, reason}` — a **verdict, not a transform**; the prompt text is passed to the LLM unmodified (`apps/text/src/text/services/external_guardrail.py:41-95`). (b) Its question is *"is this medical content"* (`require_medical`), which is topicality, not PHI detection — a PHI-dense note is exactly what it *approves*. (c) It defaults **off**: `enabled: bool = False` at `apps/text/src/text/core/config.py:329`, and when off it returns `{"allowed": True, ..., "reason": "external_guardrail_disabled"}` without any call at all.
 
 2. **"A PHI redactor exists in this codebase, so this path probably uses it."** It does not, and the truth is worse than the original stated. `IPhiRedactor` is declared at `packages/applications/src/services/gate-edit-mining/IPhiRedactor.ts:12-20` but **has no implementation and no DI provider anywhere in the repo** — the only hits are the interface, its barrel export, and its consumer. The module comment is explicit (`gate-edit-mining.service.module.ts:10-13`): *"Note what is NOT provided here: `IPhiRedactor` … a wiring that forgets to wire it collects an empty store rather than an unredacted one."* Because `GateEditMiningService` is fail-closed (`gate-edit-mining.service.ts:408-414`, `redactOrNull` returns `null` with no redactor, and `:176-178` drops the candidate), the `GateEditExemplar` corpus the original agent held up as the good sibling pattern currently mines **nothing**. This cuts both ways: it weakens the rhetorical comparison, and it establishes the stronger systemic fact that **no working PHI redactor exists anywhere in this codebase**.
 
@@ -117,7 +117,7 @@ Report on the two paths separately, as instructed.
 
 Smallest change that closes it, in priority order:
 
-1. **Constrain the output rather than trusting the model.** Add a `promptConfig` with a `json_schema` to the DNA_ANALYSIS seed template (mirroring `SOAP_PROMPT_CONFIG`) whose fields are enumerated style descriptors — verbosity, hedging, list-vs-narrative, section order, tone, confidence scores — with **no free-text field**, and bind `response_format` on the SMR call at `dna-writing-style.processor.ts:332-341`. Then make the parser reject rather than fall back: replace the `catch { styleText = smrResponse.content; }` at `:201-203` with a hard failure. This is the single highest-value change — it converts the artifact from "whatever the LLM wrote" into a fixed shape that structurally cannot carry a clinical narrative.
+1. **Constrain the output rather than trusting the model.** Add a `promptConfig` with a `json_schema` to the DNA_ANALYSIS seed template (mirroring `SOAP_PROMPT_CONFIG`) whose fields are enumerated style descriptors — verbosity, hedging, list-vs-narrative, section order, tone, confidence scores — with **no free-text field**, and bind `response_format` on the TEXT call at `dna-writing-style.processor.ts:332-341`. Then make the parser reject rather than fall back: replace the `catch { styleText = textResponse.content; }` at `:201-203` with a hard failure. This is the single highest-value change — it converts the artifact from "whatever the LLM wrote" into a fixed shape that structurally cannot carry a clinical narrative.
 2. Append one sentence to the DNA_ANALYSIS prompt forbidding reproduction of patient names, identifiers, dates, medications, doses, and any encounter-specific fact. Cheap, immediate, partial.
 3. Move the `resolveEffectiveDnaStyleEnabled` gate at `:118-124` **above** the `if (textSamples …)` branch so the opt-out cannot be bypassed. Two-line change, closes the consent defect outright.
 
@@ -199,7 +199,7 @@ For `persistDurableSnapshot`, no change is warranted until the work note is show
 7. **The DNA feature is ON in the production day-1 tenant.** `dnaStyleEnabled` code-defaults to `false` and fails closed, but the seed sets it `true` at tenant scope for ArcaAI with *"every ArcaAI doctor is seeded with a DNA report"* (`seed/14-pipeline-policy.ts:75-80`). This is the single most important severity fact and the original omitted it.
 8. **The `textSamples` branch also bypasses the DNA opt-out**, not just the approved-only filter (`processor.ts:112-124`) — a tenant admin can build a style profile for a clinician who explicitly opted out. That is a consent defect independent of any PHI question.
 9. **The DNA corpus is denser in PHI than described:** `buildCorpus` (`:305-313`) renders each encounter as an `AI DRAFT:` → `DOCTOR APPROVED:` pair, i.e. two full renderings per patient, up to 50 patients in one prompt.
-10. **The DNA output is entirely unconstrained.** The DNA_ANALYSIS template carries no `promptConfig`/`json_schema` (unlike its SOAP sibling), the SMR call binds no `response_format`, and the parser's `catch` stores raw model output verbatim (`:197-203`). The "it's a structured profile" defense has nothing holding it up.
+10. **The DNA output is entirely unconstrained.** The DNA_ANALYSIS template carries no `promptConfig`/`json_schema` (unlike its SOAP sibling), the TEXT call binds no `response_format`, and the parser's `catch` stores raw model output verbatim (`:197-203`). The "it's a structured profile" defense has nothing holding it up.
 11. **Guardrail is not a sanitizer.** It returns a verdict, never transforms text, asks only "is this medical content", and defaults to `enabled = False` (`apps/text/src/text/core/config.py:329`).
 12. **`MODIFIED_SUMMARY` ContextItems are never written by any code path**, while two comments (`summary.service.ts:779`, `harness-gateway.service.ts:264`) assert that they are, and a read-authority ladder (`harness-internal.service.ts:364`) depends on them. This is the root reason the clinician-edited row stays adoptable, and it is a defect in its own right that neither finding identified.
 13. **`assertConsultationWritable` is not a lifecycle guard** — it checks soft-delete status only (`:402-406`), so review state does not bound the overwrite window.

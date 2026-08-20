@@ -10,7 +10,7 @@ the existing `X-Internal-Service-Key` header — the gateway guard accepts that
 header for `service=stt` specifically, so no second credential is minted and
 no new env var is introduced for this service.
 
-Mechanics match the smr/nlp mirrors: TTL cache jittered ±10 %, negative cache,
+Mechanics match the text/nlp mirrors: TTL cache jittered ±10 %, negative cache,
 single-flight refresh, read-triggered. Duplicated per service on purpose — a
 shared package for this logic remains an open question.
 """

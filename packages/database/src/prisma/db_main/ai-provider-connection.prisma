@@ -4,7 +4,7 @@
 // WHERE a serving provider lives and HOW to authenticate. One row per
 // (tenant, SERVICE, provider); the reserved SYSTEM tenant row is the platform
 // default. This is the ONE credential/connection store for all three AI
-// capabilities — LLM (SMR), STT and TTS — unifying the former
+// capabilities — LLM (TEXT), STT and TTS — unifying the former
 // TenantTtsProviderCredential / TenantSttProviderCredential tables.
 //
 // `service` is the capability discriminator (`llm` | `stt` | `tts`) — a
@@ -21,7 +21,7 @@
 // NEVER returned by any read DTO (hasKey boolean only).
 // Resolution: tenant row (enabled) → SYSTEM row → fail closed, filtered by
 // `service`. removed the former per-service ENV-key fallback for the
-// STT/TTS/SMR cloud credentials: the SYSTEM row IS the platform default, and a
+// STT/TTS/TEXT cloud credentials: the SYSTEM row IS the platform default, and a
 // request with no enabled tenant/SYSTEM row now fails closed (typically 503)
 // rather than substituting an env secret. (Bedrock/Vertex remain ambient-cloud-
 // credential providers; they carry no static API key here.)

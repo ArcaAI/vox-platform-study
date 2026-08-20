@@ -52,11 +52,11 @@ describe('useMonitoring', () => {
     it('should fetch uptime and sessions in parallel and update state', async () => {
       const uptimeData = [
         { service: 'stt', status: 'up', uptimeSeconds: 3600 },
-        { service: 'smr', status: 'up', uptimeSeconds: 7200 },
+        { service: 'text', status: 'up', uptimeSeconds: 7200 },
       ];
       // Real backend SessionsResponse shape (per-service active + totalUsers).
       const sessionsData = {
-        services: { smr: { active: 2 }, stt: { active: 5 }, nlp: { active: 1 }, guardrail: { active: 0 }, harness: { active: 0 } },
+        services: { text: { active: 2 }, stt: { active: 5 }, nlp: { active: 1 }, guardrail: { active: 0 }, harness: { active: 0 } },
         totalUsers: 4,
         refreshedAt: '2026-07-01T00:00:00.000Z',
       };
@@ -70,7 +70,7 @@ describe('useMonitoring', () => {
       expect(mockGet).toHaveBeenCalledWith(MONITORING_ENDPOINTS.UPTIME);
       expect(mockGet).toHaveBeenCalledWith(MONITORING_ENDPOINTS.SESSIONS);
       expect(result.current.uptime).toEqual(uptimeData);
-      // activeSessions = stt.active (5); processingJobs = smr+nlp+guardrail+harness (3); total = 8.
+      // activeSessions = stt.active (5); processingJobs = text+nlp+guardrail+harness (3); total = 8.
       expect(result.current.sessions).toMatchObject({ activeSessions: 5, processingJobs: 3, active: 5, total: 8, totalUsers: 4 });
     });
 
@@ -106,10 +106,10 @@ describe('useMonitoring', () => {
   });
 
   describe('SessionCounts type contract (backend SessionsResponse)', () => {
-    it('derives activeSessions (stt) + processingJobs (smr+nlp+guardrail+harness) from the services map', async () => {
+    it('derives activeSessions (stt) + processingJobs (text+nlp+guardrail+harness) from the services map', async () => {
       const uptimeData = [{ service: 'stt', status: 'up', uptimeSeconds: 3600 }];
       const sessionsData = {
-        services: { smr: { active: 1 }, stt: { active: 2 }, nlp: { active: 1 }, guardrail: { active: 1 }, harness: { active: 0 } },
+        services: { text: { active: 1 }, stt: { active: 2 }, nlp: { active: 1 }, guardrail: { active: 1 }, harness: { active: 0 } },
         totalUsers: 6,
         refreshedAt: '2026-07-01T00:00:00.000Z',
       };

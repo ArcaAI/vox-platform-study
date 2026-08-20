@@ -313,7 +313,7 @@ export function TestRunPanel({ template }: { template: PromptTemplate }) {
   const versions = [...(versionsQuery.data ?? [])].sort((a, b) => b.versionNumber - a.versionNumber);
 
   // BUG-018 run state. POST :id/test now ACKS immediately (the blocking call
-  // always 524'd at the CDN); the generation arrives over the SMR task SSE and
+  // always 524'd at the CDN); the generation arrives over the TEXT task SSE and
   // only the finalize step writes, so the ETag is still owed to THAT call.
   const finalize = useFinalizeTemplateTest();
   const [ack, setAck] = useState<PromptTestAck | null>(null);

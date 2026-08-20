@@ -3,7 +3,7 @@
  *
  * Both `generateSummary` and `generatePreSummary` compute an `assembledPrompt`
  * whose `resolvedFrom` (preferred/department/default) + `promptId` describe which
- * tier produced the summary. Before this slice the tier was only forwarded to SMR;
+ * tier produced the summary. Before this slice the tier was only forwarded to TEXT;
  * now it must also be written onto the SummaryMeta record so it can be surfaced.
  */
 import { describe, it, expect, beforeEach, vi } from 'vitest';

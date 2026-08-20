@@ -7,8 +7,8 @@
  * `generatePreSummary` and `generateSummary`, alongside the pre-existing
  * `monthlySummaries` check — same "post-hoc debit" call shape (no caller-
  * supplied increment; the check compares month-to-date rollups against the
- * allowance BEFORE the SMR call, since a request's own eventual token count
- * is unknowable in advance). A block must abort BEFORE the (expensive) SMR
+ * allowance BEFORE the TEXT call, since a request's own eventual token count
+ * is unknowable in advance). A block must abort BEFORE the (expensive) TEXT
  * call, the same way the existing `monthlySummaries` check does.
  *
  * Guardrail is explicitly exempt (D6/D16): this file also proves no quota
@@ -44,7 +44,7 @@ function makeService(overrides: { entitlements?: unknown } = {}) {
           model: 'gpt-5',
           usage: { prompt_tokens: 100, completion_tokens: 20 },
           usage_detail: {
-            task_id: 'smr-task-1',
+            task_id: 'text-task-1',
             provider: 'openai',
             model: 'gpt-5',
             endpoint_kind: 'openai.chat',
@@ -96,7 +96,7 @@ function makeService(overrides: { entitlements?: unknown } = {}) {
     summaryMetaRepository as never,
     { create: vi.fn() } as never,
     httpService as never,
-    { get: vi.fn(() => 'http://smr') } as never,
+    { get: vi.fn(() => 'http://text') } as never,
     { emit: vi.fn() } as never,
     clsService as never,
     { create: vi.fn() } as never,
@@ -125,7 +125,7 @@ describe('SummaryService — LLM-token quota pre-flight', () => {
     harness = makeService();
   });
 
-  it('generateSummary checks BOTH monthlySummaries and monthlyLlmTokens before calling SMR', async () => {
+  it('generateSummary checks BOTH monthlySummaries and monthlyLlmTokens before calling TEXT', async () => {
     await harness.service.generateSummary('c-1', {} as never);
 
     const capabilities = harness.entitlements.assertMeterQuota.mock.calls.map((c) => c[1]);
@@ -134,14 +134,14 @@ describe('SummaryService — LLM-token quota pre-flight', () => {
     expect(harness.entitlements.assertMeterQuota.mock.calls[1][0]).toBe('tenant-1');
   });
 
-  it('generatePreSummary checks BOTH monthlySummaries and monthlyLlmTokens before calling SMR', async () => {
+  it('generatePreSummary checks BOTH monthlySummaries and monthlyLlmTokens before calling TEXT', async () => {
     await harness.service.generatePreSummary('c-1', {} as never);
 
     const capabilities = harness.entitlements.assertMeterQuota.mock.calls.map((c) => c[1]);
     expect(capabilities).toEqual(['monthlySummaries', 'monthlyLlmTokens']);
   });
 
-  it('aborts BEFORE the SMR call when the LLM-token allowance is exceeded', async () => {
+  it('aborts BEFORE the TEXT call when the LLM-token allowance is exceeded', async () => {
     const entitlements = {
       assertMeterQuota: vi.fn(async (_tenantId: string, capability: string) => {
         if (capability === 'monthlyLlmTokens') {
@@ -201,7 +201,7 @@ describe('SummaryService — LLM-token quota pre-flight', () => {
         summaryMetaRepository as never,
         { create: vi.fn() } as never,
         httpService as never,
-        { get: vi.fn(() => 'http://smr') } as never,
+        { get: vi.fn(() => 'http://text') } as never,
         { emit: vi.fn() } as never,
         clsService as never,
         { create: vi.fn() } as never,

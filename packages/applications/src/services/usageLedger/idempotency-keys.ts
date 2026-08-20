@@ -39,7 +39,7 @@ const IDEMPOTENCY_KEY = /^[\x21-\x7e]{1,255}$/;
  * | STT batch           | `stt:job:<jobId>`            | `stt:job:<jobId>:AUDIO_SECOND`            |
  * | STT streaming       | `stt:session:<sessionId>`    | `stt:session:<sessionId>:SESSION_SECOND`  |
  * |                     |                              | `stt:session:<sessionId>:AUDIO_SECOND`    |
- * | LLM (SMR)           | `llm:<requestId>`            | `llm:<requestId>:INPUT_TOKEN` (etc.)      |
+ * | LLM (TEXT)           | `llm:<requestId>`            | `llm:<requestId>:INPUT_TOKEN` (etc.)      |
  * | Guardrail           | `guardrail:<requestId>`      | `guardrail:<requestId>:INPUT_TOKEN`       |
  * | TTS                 | `tts:<requestId>`            | `tts:<requestId>:CHARACTER`               |
  * | NLP                 | `nlp:<requestId>`            | `nlp:<requestId>:TEXT_UNIT`               |
@@ -57,7 +57,7 @@ export const UsageIdempotencyKey = {
   /** STT streaming session (`transcribe.stream`) — completion AND abort. */
   sttStreamSession: (sessionId: string): string => `stt:session:${requireId(sessionId, 'sessionId')}`,
 
-  /** One SMR generation call (`generate`, `generate.stream`, `presummarize`). */
+  /** One TEXT generation call (`generate`, `generate.stream`, `presummarize`). */
   llmRequest: (requestId: string): string => `llm:${requireId(requestId, 'requestId')}`,
 
   /** One guardrail validation call (`guardrail.validate`). */

@@ -106,7 +106,7 @@ describe('containsTopology is strict enough to be worth asserting on', () => {
   // A sweep is only as good as its predicate — pin that the predicate would
   // actually have caught the observed production body.
   it('would have failed the TASK-764 production body', () => {
-    const observed = 'Failed to call SMR service: AggregateError: connect ECONNREFUSED ::1:8862; connect ECONNREFUSED 127.0.0.1:8862';
+    const observed = 'Failed to call TEXT service: AggregateError: connect ECONNREFUSED ::1:8862; connect ECONNREFUSED 127.0.0.1:8862';
     expect(containsTopology(observed)).toBe(true);
   });
 });

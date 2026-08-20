@@ -217,8 +217,8 @@ export class HarnessInternalService {
     // `persistDraft`'s `HarnessDraftRequest` carries no token fields, and
     // harness-originated LLM calls are already metered PER-STEP by the
     // agent-trajectory path (WS-F: `harness:step:<sessionId>:<runId>:<seq>`
-    // idempotency keys) — the harness calls SMR via its own `TextClient`
-    // directly, never through this gateway's SMR proxy, so the
+    // idempotency keys) — the harness calls TEXT via its own `TextClient`
+    // directly, never through this gateway's TEXT proxy, so the
     // `llm:<requestId>` and `harness:step:<...>` id-spaces are disjoint by
     // construction. Adding emission here would double-bill the same
     // generation under a second, unrelated key. Wired only so
@@ -558,7 +558,7 @@ export class HarnessInternalService {
   }
 
   /**
-   * Resolve the prompt tier + assemble the SMR payload (incl. Lane E's NER
+   * Resolve the prompt tier + assemble the TEXT payload (incl. Lane E's NER
    * injection + SOAP responseFormat) — the single source of truth for prompt
    * assembly. nerEntities are loaded via NamedEntityRepository.findByConsultation.
    */
@@ -918,8 +918,8 @@ export class HarnessInternalService {
           // INTENTIONALLY NOT metered here. `dto`
           // (HarnessDraftRequest) carries no token fields, and this generation
           // is already billed by the agent-trajectory per-step path (WS-F):
-          // the harness calls SMR via its own TextClient, never through this
-          // gateway's SMR proxy, so `harness:step:<...>` already covers it.
+          // the harness calls TEXT via its own TextClient, never through this
+          // gateway's TEXT proxy, so `harness:step:<...>` already covers it.
           // Emitting a second `llm:<...>` row here would double-bill the same
           // generation. See the constructor's `usageLedgerService` doc comment
           // and the double-bill-guard test in harness-internal.service.test.ts.

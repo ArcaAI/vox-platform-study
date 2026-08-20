@@ -3,14 +3,14 @@
  * `admin/ai-models/discovery/register` (explicit register).
  *
  * The e2e job needs a live
- * gateway + seeded DB (`pnpm test:api:up`, then `pnpm test:e2e`); SMR itself may
+ * gateway + seeded DB (`pnpm test:api:up`, then `pnpm test:e2e`); TEXT itself may
  * be DOWN — that is a covered case, not a skip condition, because a failed probe
  * must degrade the response, never 5xx it.
  *
  * Locked contracts:
  *  1. GLOBAL-ADMIN ONLY — the discovery routes join the `manage:all` registry
  *     plane. A tenant admin is refused (403/404, never 200 with data).
- *  2. NEVER 5xx ON A DEAD ENGINE — with SMR or an engine unreachable the merge
+ *  2. NEVER 5xx ON A DEAD ENGINE — with TEXT or an engine unreachable the merge
  *     still returns 200 and degrades the affected provider's rows to
  *     `registered` / `loadState: unknown`; a `registered-missing-on-server` tag
  *     must never appear for a provider whose probe did not succeed.

@@ -5,7 +5,7 @@
  * "no ciphertext in any read DTO" contract. THIS file locks the additional piece:
  * `resolveTenantCloudOverrides` — the gateway-only decrypt path that turns a
  * tenant's enabled cloud credential into the `provider_overrides` map folded
- * into the SMR generate body.
+ * into the TEXT generate body.
  *
  * The contracts locked here:
  *   1. Only CLOUD BYO providers are ever injected — a self-host row (however it

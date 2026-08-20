@@ -22,7 +22,7 @@ import { PhiRedactionServiceModule } from '../../phi-redaction/phi-redaction.ser
   // HarnessAuditServiceModule supplies the WORM audit trail
   // used by approveSummary's attestation gate (ATTEST event on signing).
   // HarnessGatewayServiceModule (Lane G) supplies the outbound sign-off signal.
-  // HarnessPolicyServiceModule supplies the SMR-selection resolver.
+  // HarnessPolicyServiceModule supplies the TEXT-selection resolver.
   // EntitlementsServiceModule supplies the monthlySummaries meter.
   // AiTaskDefaultServiceModule supplies the nlp.ner model-injection resolver
   // for extractEntities.

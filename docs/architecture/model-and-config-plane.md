@@ -24,7 +24,7 @@ endpoint for its own service-level knobs.
 | Layer                         | Persisted in                                         | Resolved by                                         | Consumed by                                              |
 | ----------------------------- | ---------------------------------------------------- | --------------------------------------------------- | -------------------------------------------------------- |
 | Settings registry / catalog   | descriptor code + `GlobalSetting` (`global-kv` lane) | `EffectiveSettingsService` (registry-key addressed) | admin console (catalog), internal effective-config route |
-| Task → model selection        | `AiTaskDefault`                                      | `AiTaskDefaultService.getEffective`                 | gateway proxies to guardrail / nlp / smr / harness       |
+| Task → model selection        | `AiTaskDefault`                                      | `AiTaskDefaultService.getEffective`                 | gateway proxies to guardrail / nlp / text / harness       |
 | Provider location + auth      | `AiProviderConnection`                               | provider resolver (tenant → SYSTEM → env)           | gateway inference proxies                                |
 | Hyperparameters / concurrency | `AiRuntimeProfile`                                   | injection-time cascade                              | gateway inference proxies                                |
 | Model registry + discovery    | `AiModel` (+ live server enumeration)                | `AiModelDiscoveryService` (merge view)              | admin registration, pipeline / task references           |
@@ -86,7 +86,7 @@ GET /api/v1/internal/effective-config?service=<name>
 
 `effective-config.controller.ts` (guarded by `InternalServiceTokenGuard`, `@Public()`
 so the boot-time route-permission audit passes, excluded from public Swagger).
-`<name>` ∈ `smr`, `stt`, `nlp`, `guardrail`, `harness`, `tts`; an unknown
+`<name>` ∈ `text`, `stt`, `nlp`, `guardrail`, `harness`, `tts`; an unknown
 service is a 400. If the control plane is unreachable a service keeps its own
 env/bootstrap value — **a degraded control plane never changes behaviour**.
 
@@ -99,15 +99,15 @@ standard `_version` / `If-Match` OCC path).
 ## 3. Task → model selection (`AiTaskDefault`)
 
 `AiTaskDefault` is the per-`(tenant, taskKey)` "default model for task X"
-selector — the generalization of `HarnessPolicy.smrProvider/smrModel` to
+selector — the generalization of `HarnessPolicy.textProvider/textModel` to
 non-pipeline AI tasks. `taskKey` examples: `guardrail.validate`, `nlp.ner`,
-`nlp.classification`, `smr.*`, `harness.*`. `modelSlug` references `AiModel.slug`
+`nlp.classification`, `text.*`, `harness.*`. `modelSlug` references `AiModel.slug`
 within `[tenant, SYSTEM]` scope (no FK — the house slug-reference convention).
 
 Resolution (`AiTaskDefaultService.getEffective`): **tenant row → SYSTEM row →
 consuming service's env fallback**.
 
-**Governance:** every task-key prefix (`guardrail.`, `nlp.`, `smr.`, `harness.`)
+**Governance:** every task-key prefix (`guardrail.`, `nlp.`, `text.`, `harness.`)
 is **super-admin-only** — writes are gated by an `isSuperAdmin` service-layer
 guard (`SUPER_ADMIN_ONLY_TASK_PREFIXES` in
 `packages/applications/src/services/ai-task-default/constants.ts`). Tenants only
@@ -252,7 +252,7 @@ Keys are `globalOnly`, `tier: global-kv`, system-scoped:
 | `<svc>.modelCache.maxModels`    | stt 5 · nlp 3 · guardrail 2 · harness 1 · tts 2 | max resident models (LRU beyond it)               |
 | `<svc>.modelCache.vramBudgetMb` | 0 (unset)                                       | optional VRAM bound (NVML hosts only)             |
 | `stt.modelCache.maxMemoryMb`    | 10000                                           | stt only — MB-estimate budget                     |
-| `smr.modelCache.ttlSeconds`     | 600                                             | not a cache — forwarded to server-managed engines |
+| `text.modelCache.ttlSeconds`     | 600                                             | not a cache — forwarded to server-managed engines |
 
 `<svc>` ∈ `stt`, `nlp`, `guardrail`, `harness`, `tts`. **Key prefix ≠ service
 name for tts:** the service registers/polls as `tts` but its settings live

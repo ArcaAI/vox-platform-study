@@ -355,13 +355,13 @@ describe('useText', () => {
     });
 
     it('rejects with the detail message and fires onError on an SSE error event', async () => {
-      fetchMock.mockResolvedValue(sseResponse(['event: error\ndata: {"detail":"SMR unavailable"}\n\n']));
+      fetchMock.mockResolvedValue(sseResponse(['event: error\ndata: {"detail":"TEXT unavailable"}\n\n']));
 
       const onError = vi.fn();
       const { result } = renderHook(() => useText({ onError }));
 
-      await expect(result.current.summarizeSync({ text: 'hi', stream: true })).rejects.toThrow(/SMR unavailable/);
-      expect(onError).toHaveBeenCalledWith(expect.objectContaining({ message: expect.stringContaining('SMR unavailable') }));
+      await expect(result.current.summarizeSync({ text: 'hi', stream: true })).rejects.toThrow(/TEXT unavailable/);
+      expect(onError).toHaveBeenCalledWith(expect.objectContaining({ message: expect.stringContaining('TEXT unavailable') }));
     });
 
     it('stream omitted stays on the unchanged JSON path — no Accept: text/event-stream header (regression)', async () => {

@@ -1894,7 +1894,7 @@ describe('TenantService', () => {
     });
   });
 
-  describe('updateTenantConfigs — SMR provider/model validation', () => {
+  describe('updateTenantConfigs — TEXT provider/model validation', () => {
     const CATALOG_JSON = JSON.stringify([
       {
         provider: 'ollama',
@@ -1913,14 +1913,14 @@ describe('TenantService', () => {
       },
     ]);
 
-    it('should reject an invalid default-smr-provider not in catalog', async () => {
+    it('should reject an invalid default-text-provider not in catalog', async () => {
       const tenant = createMockTenantEntity({ id: 'tenant-123' });
       mockTenantRepository.findFirst.mockResolvedValue(tenant);
 
       const providerSetting = createMockGlobalSettingEntity({
-        id: 'smr-provider-id',
+        id: 'text-provider-id',
         tenantId: 'tenant-123',
-        key: 'default-smr-provider',
+        key: 'default-text-provider',
         value: 'ollama',
       });
       mockGlobalSettingRepository.findById.mockResolvedValue(providerSetting);
@@ -1928,24 +1928,24 @@ describe('TenantService', () => {
       const catalogSetting = createMockGlobalSettingEntity({
         id: 'catalog-id',
         tenantId: 'tenant-123',
-        key: 'smr-provider-models',
+        key: 'text-provider-models',
         value: CATALOG_JSON,
       });
       mockGlobalSettingRepository.findAll.mockResolvedValue([catalogSetting]);
 
-      await expect(service.updateTenantConfigs('tenant-123', [{ id: 'smr-provider-id', value: 'invalid-provider' }])).rejects.toThrow(
-        /not a valid SMR provider/i,
+      await expect(service.updateTenantConfigs('tenant-123', [{ id: 'text-provider-id', value: 'invalid-provider' }])).rejects.toThrow(
+        /not a valid TEXT provider/i,
       );
     });
 
-    it('should reject an invalid default-smr-model not in the selected provider catalog', async () => {
+    it('should reject an invalid default-text-model not in the selected provider catalog', async () => {
       const tenant = createMockTenantEntity({ id: 'tenant-123' });
       mockTenantRepository.findFirst.mockResolvedValue(tenant);
 
       const modelSetting = createMockGlobalSettingEntity({
-        id: 'smr-model-id',
+        id: 'text-model-id',
         tenantId: 'tenant-123',
-        key: 'default-smr-model',
+        key: 'default-text-model',
         value: 'granite4:latest',
       });
       mockGlobalSettingRepository.findById.mockResolvedValue(modelSetting);
@@ -1953,19 +1953,19 @@ describe('TenantService', () => {
       const catalogSetting = createMockGlobalSettingEntity({
         id: 'catalog-id',
         tenantId: 'tenant-123',
-        key: 'smr-provider-models',
+        key: 'text-provider-models',
         value: CATALOG_JSON,
       });
 
       const providerSetting = createMockGlobalSettingEntity({
-        id: 'smr-provider-id',
+        id: 'text-provider-id',
         tenantId: 'tenant-123',
-        key: 'default-smr-provider',
+        key: 'default-text-provider',
         value: 'ollama',
       });
       mockGlobalSettingRepository.findAll.mockResolvedValue([catalogSetting, providerSetting]);
 
-      await expect(service.updateTenantConfigs('tenant-123', [{ id: 'smr-model-id', value: 'nonexistent-model' }])).rejects.toThrow(
+      await expect(service.updateTenantConfigs('tenant-123', [{ id: 'text-model-id', value: 'nonexistent-model' }])).rejects.toThrow(
         /not a valid model/i,
       );
     });
@@ -1975,9 +1975,9 @@ describe('TenantService', () => {
       mockTenantRepository.findFirst.mockResolvedValue(tenant);
 
       const providerSetting = createMockGlobalSettingEntity({
-        id: 'smr-provider-id',
+        id: 'text-provider-id',
         tenantId: 'tenant-123',
-        key: 'default-smr-provider',
+        key: 'default-text-provider',
         value: 'ollama',
         hasChanges: true,
         changes: { value: 'lm-studio' },
@@ -1988,12 +1988,12 @@ describe('TenantService', () => {
       const catalogSetting = createMockGlobalSettingEntity({
         id: 'catalog-id',
         tenantId: 'tenant-123',
-        key: 'smr-provider-models',
+        key: 'text-provider-models',
         value: CATALOG_JSON,
       });
       mockGlobalSettingRepository.findAll.mockResolvedValue([catalogSetting]);
 
-      const result = await service.updateTenantConfigs('tenant-123', [{ id: 'smr-provider-id', value: 'lm-studio', expectedVersion: 1 } as never]);
+      const result = await service.updateTenantConfigs('tenant-123', [{ id: 'text-provider-id', value: 'lm-studio', expectedVersion: 1 } as never]);
 
       expect(result.data).toHaveLength(1);
     });

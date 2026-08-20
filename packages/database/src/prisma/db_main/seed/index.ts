@@ -136,7 +136,7 @@ export const seed = async () => {
     console.log('');
     await seedStt(client);
     console.log('');
-    // SYSTEM HarnessPolicy SMR default (+ WORM audit).
+    // SYSTEM HarnessPolicy TEXT default (+ WORM audit).
     // Depends only on the reserved SYSTEM tenant (Phase 1).
     await seedHarnessPolicy(client);
     console.log('');

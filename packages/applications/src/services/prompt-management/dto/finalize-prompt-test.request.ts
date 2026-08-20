@@ -5,7 +5,7 @@ import { IsInt, IsOptional, IsString, Min } from 'class-validator';
  * Request body for `POST /admin/prompt-templates/:id/test/finalize`.
  *
  * BUG-018 — closes the two-call test run: the gateway fetches the FINISHED
- * generation from SMR server-side (`GET /api/v1/tasks/<taskId>`), scores it, and
+ * generation from TEXT server-side (`GET /api/v1/tasks/<taskId>`), scores it, and
  * persists `lastTestScore/lastTestOutput/lastTestAt` under optimistic
  * concurrency.
  *
@@ -14,7 +14,7 @@ import { IsInt, IsOptional, IsString, Min } from 'class-validator';
  * any caller forge `lastTestOutput` on the row.
  */
 export class FinalizePromptTestRequest {
-  @ApiProperty({ description: 'SMR generation task id returned by the `:id/test` ack', example: '0f1c…' })
+  @ApiProperty({ description: 'TEXT generation task id returned by the `:id/test` ack', example: '0f1c…' })
   @IsString()
   taskId: string;
 

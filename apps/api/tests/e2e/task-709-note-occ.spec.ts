@@ -20,7 +20,7 @@
  * Environment. Requires the test API at `process.env.API_URL` (default
  * `http://localhost:8968`) and a seeded test database — see
  * `tests/setup/playwright.global-setup.ts`. The `PATCH :id/summary` cases
- * additionally require a reachable `apps/text` (SMR) so `generateSummary`
+ * additionally require a reachable `apps/text` (TEXT) so `generateSummary`
  * can produce the RAW_SUMMARY row the OCC assertions run against (mirrors
  * the FULL-loop dependency documented in `harness-gate.spec.ts`); the
  * approve cases instead need `HARNESS_SERVICE_TOKEN` — see the TASK-772
@@ -156,7 +156,7 @@ test.describe('TASK-709 — OCC on PATCH :id/context/:contextId', () => {
 });
 
 test.describe('TASK-709 — OCC on PATCH :id/summary/:summaryId', () => {
-  // Requires a reachable apps/text (SMR) to actually generate a summary —
+  // Requires a reachable apps/text (TEXT) to actually generate a summary —
   // see the file-level doc comment.
   //
   // TASK-764 — that requirement was DOCUMENTED but never ENFORCED: the
@@ -164,10 +164,10 @@ test.describe('TASK-709 — OCC on PATCH :id/summary/:summaryId', () => {
   // without apps/text (:8862) running it threw there and Playwright charged the
   // failure to the first test in the block ("GET the generated summary carries
   // a strong ETag…"), which reads as an OCC regression rather than an absent
-  // service. The gateway reports the real cause plainly — `Failed to call SMR
+  // service. The gateway reports the real cause plainly — `Failed to call TEXT
   // service: connect ECONNREFUSED …:8862`, a 400 — so capture it and self-skip
   // per the probe pattern in `streaming-ticket-refresh.spec.ts`. Every OCC
-  // assertion below is unchanged and still runs whenever SMR is up.
+  // assertion below is unchanged and still runs whenever TEXT is up.
   let token: string;
   let consultationId: string;
   let summaryId = '';

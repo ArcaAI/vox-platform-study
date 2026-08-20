@@ -32,7 +32,7 @@ describe('STT config naming', () => {
     // apps/fedl was removed; the gateway no longer carries the legacy
     // FEDL_PORT/FEDL_URL config keys. (TTS_PORT/TTS_URL were REINTRODUCED by
     // apps/tts — TTS is a real downstream service again, like
-    // SMR/NLP/GUARDRAIL — so their presence is now correct, not v1 cruft.)
+    // TEXT/NLP/GUARDRAIL — so their presence is now correct, not v1 cruft.)
     it('should no longer contain FEDL_PORT, FEDL_URL properties', () => {
       const content = readFile(interfacePath);
       expect(content).not.toMatch(/^\s*FEDL_PORT\s*:/m);

@@ -2,7 +2,7 @@
 # ============================================================================
 # Start ONE app/service/worker against the TEST environment
 # ============================================================================
-# Replaces the former per-service start-test-{api,stt,smr,nlp}.sh scripts,
+# Replaces the former per-service start-test-{api,stt,text,nlp}.sh scripts,
 # which each re-implemented a uvicorn command that scripts/dev-service.sh
 # already owns. Launch logic now lives in exactly one place, so a dev-launcher
 # fix can never silently skip the test launcher.
@@ -38,16 +38,6 @@ shift || true
 PY_TARGETS=(stt text nlp guardrail harness tts worker)
 TS_TARGETS=(api admin)
 
-# Canonical CLI token is `text`. `smr` still works as a deprecated remap.
-remap_smr_alias() {
-    if [ "$1" = "smr" ]; then
-        echo -e "${YELLOW}warning: 'smr' is deprecated; use 'text'.${NC}" >&2
-        echo "text"
-    else
-        echo "$1"
-    fi
-}
-
 usage() {
     echo "Usage: $0 <${TS_TARGETS[*]} ${PY_TARGETS[*]}> [--build]" >&2
 }
@@ -57,7 +47,6 @@ if [ -z "$TARGET" ]; then
     usage
     exit 2
 fi
-TARGET="$(remap_smr_alias "$TARGET")"
 
 is_python_target=false
 known=false

@@ -1,5 +1,5 @@
 // Pin TEXT_SERVICE_TOKEN migration in place.
-// Static grep over the production SMR call sites.
+// Static grep over the production TEXT call sites.
 //
 // Each site must NOT read process.env.TEXT_SERVICE_TOKEN and MUST go
 // through SecretsService (async getSecretOptional or sync getSecretSync).

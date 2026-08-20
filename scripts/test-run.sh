@@ -59,16 +59,6 @@ TEARDOWN_INFRA=true
 
 PY_SERVICES=(stt text nlp guardrail harness tts)
 
-# Canonical CLI token is `text`. `smr` still works as a deprecated remap.
-remap_smr_alias() {
-    if [ "$1" = "smr" ]; then
-        echo -e "${YELLOW}warning: 'smr' is deprecated; use 'text'.${NC}" >&2
-        echo "text"
-    else
-        echo "$1"
-    fi
-}
-
 SUITE=""
 SERVICES=()
 for arg in "$@"; do
@@ -87,11 +77,10 @@ if [ -z "$SUITE" ]; then
     echo -e "${RED}No suite given.${NC} One of: unit integration e2e py ${PY_SERVICES[*]}" >&2
     exit 2
 fi
-SUITE="$(remap_smr_alias "$SUITE")"
 if [ "${#SERVICES[@]}" -gt 0 ]; then
     remapped=()
     for s in "${SERVICES[@]}"; do
-        remapped+=("$(remap_smr_alias "$s")")
+        remapped+=("$s")
     done
     SERVICES=("${remapped[@]}")
 fi

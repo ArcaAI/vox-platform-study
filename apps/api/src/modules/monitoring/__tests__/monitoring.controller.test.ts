@@ -38,7 +38,7 @@ interface UptimeResponse {
 
 interface SessionsResponse {
   services: {
-    smr: { active: number };
+    text: { active: number };
     stt: { active: number };
     nlp: { active: number };
     guardrail: { active: number };
@@ -125,7 +125,7 @@ describe('MonitoringController', () => {
         services: {
           stt: createMockUptime(),
           guardrail: createMockUptime(),
-          smr: createMockUptime(),
+          text: createMockUptime(),
         },
         refreshedAt: new Date().toISOString(),
       };
@@ -186,7 +186,7 @@ describe('MonitoringController', () => {
     it('should delegate to monitoringService.getSessionCounts', async () => {
       const expected: SessionsResponse = {
         services: {
-          smr: { active: 0 },
+          text: { active: 0 },
           stt: { active: 5 },
           nlp: { active: 0 },
           guardrail: { active: 0 },
@@ -205,10 +205,10 @@ describe('MonitoringController', () => {
 
     // Sessions cover the real downstream services so the surface stays
     // aligned with uptime/health.
-    it('returns stt, nlp, guardrail and harness session counts alongside smr', async () => {
+    it('returns stt, nlp, guardrail and harness session counts alongside text', async () => {
       const expected: SessionsResponse = {
         services: {
-          smr: { active: 0 },
+          text: { active: 0 },
           stt: { active: 0 },
           nlp: { active: 0 },
           guardrail: { active: 0 },

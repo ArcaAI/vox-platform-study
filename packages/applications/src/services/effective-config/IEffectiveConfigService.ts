@@ -6,7 +6,7 @@
 // "keep my env/bootstrap value".
 
 /** The services the internal route will serve a subset for. */
-export const EFFECTIVE_CONFIG_SERVICES = ['smr', 'nlp', 'stt', 'guardrail', 'harness', 'tts'] as const;
+export const EFFECTIVE_CONFIG_SERVICES = ['text', 'nlp', 'stt', 'guardrail', 'harness', 'tts'] as const;
 
 export type EffectiveConfigServiceName = (typeof EFFECTIVE_CONFIG_SERVICES)[number];
 
@@ -37,7 +37,7 @@ export interface EffectiveRuntimeProfile {
 
 /**
  * Model-cache retention knobs, covering every in-process service
- * (nlp/guardrail/harness/tts/stt) plus smr, whose
+ * (nlp/guardrail/harness/tts/stt) plus text, whose
  * `ttlSeconds` is forwarded to server-managed engines rather than a cache.
  *
  * Every field is nullable BY CONTRACT: null/omitted means "the service keeps its

@@ -50,7 +50,7 @@ Every service below carries the same microservice obligation, stated once here:
 **gold-standard microservice architecture — well-defined and documented APIs, an SSE interface, a
 Message Queue real-time interface, and documented internal architecture and design.**
 
-### `text` (renamed from `smr`) — high-performance, high-availability, worker-pool managed
+### `text` (renamed from `text`) — high-performance, high-availability, worker-pool managed
 - Handles **text-generation and text-embedding** requests.
 - Acts as a **proxy**: routes each request to the appropriate worker, running tasks **in parallel**,
   across engines — vLLM, llama.cpp, LM Studio, Ollama — and third parties — Azure Foundry, AWS Bedrock.

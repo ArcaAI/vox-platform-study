@@ -29,7 +29,7 @@ describe('mapGenerateToV1Summary', () => {
     expect(res.confidence_score).toBeNull();
   });
 
-  it('reuses SMR task_id as summary_id when provided', () => {
+  it('reuses TEXT task_id as summary_id when provided', () => {
     const res = mapGenerateToV1Summary(simplifiedContent, {
       sessionId: 'sess-1',
       summaryId: 'task-abc-123',

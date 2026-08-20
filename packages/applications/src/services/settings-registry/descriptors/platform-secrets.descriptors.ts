@@ -41,7 +41,7 @@
 //                             anywhere" — that was wrong; corrected at the wave-3 merge.)
 //   - `AZURE_OPENAI_API_KEY`— read ONLY by `apps/text/src/text/tests/e2e/conftest.py`
 //                             (a test fixture parsing a dotenv file directly). No
-//                             runtime reader. SMR's Azure credential
+//                             runtime reader. TEXT's Azure credential
 //                             (`TEXT_AZURE_API_KEY`) is no longer a platform-secret
 //                             either — it is BYOK-only (`db-secret`, resolved from
 //                             `AiProviderConnection`), so nothing is registered here.
@@ -138,7 +138,7 @@ export const PLATFORM_SECRET_SETTINGS: SettingDescriptor[] = [
   platformSecret(
     'text.serviceToken',
     'Text service token',
-    "Shared secret on the gateway↔SMR hop. SMR reads it as `settings.service_token` under its `TEXT_` pydantic prefix; the gateway resolves the same name for outbound proxying and for `InternalServiceTokenGuard`'s inbound check.",
+    "Shared secret on the gateway↔TEXT hop. TEXT reads it as `settings.service_token` under its `TEXT_` pydantic prefix; the gateway resolves the same name for outbound proxying and for `InternalServiceTokenGuard`'s inbound check.",
     'Service Tokens',
   ),
   platformSecret('nlp.serviceToken', 'NLP service token', 'Shared secret on the gateway↔NLP hop (`X-Service-Token`).', 'Service Tokens'),
@@ -238,7 +238,7 @@ export const PLATFORM_SECRET_SETTINGS: SettingDescriptor[] = [
   },
 
   // ── AI provider credentials (platform-owned; BYO tenant keys are db-secret) ─
-  // The STT/TTS/SMR cloud credentials (`AZURE_SPEECH_KEY`,
+  // The STT/TTS/TEXT cloud credentials (`AZURE_SPEECH_KEY`,
   // `TTS_SARVAM_API_KEY`, `TEXT_AZURE_API_KEY`, `TEXT_OPENAI_API_KEY`,
   // `TEXT_ANTHROPIC_API_KEY`) are NO LONGER platform-secrets. They moved fully to
   // the `db-secret` tier: a platform default is a SYSTEM-tenant row in

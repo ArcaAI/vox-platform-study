@@ -1,5 +1,5 @@
 /**
- * V1-compatible SMR summary gateway shims.
+ * V1-compatible TEXT summary gateway shims.
  *
  * Verifies the gateway contract for the two additive routes against a RUNNING
  * API:
@@ -14,9 +14,9 @@
  *   - Strict DTO validation: a missing `session_data` → 400.
  *   - Happy path returns a v1 `SummaryResponse` / `PreSummaryResponse` shape.
  *
- * The upstream SMR service (:8862) is NOT part of the API e2e infra, so a valid
- * request may resolve to a 200 (SMR up — shape validated) or a 500 (SMR down —
- * the v1 `{ error: "SMR service unavailable", ... }` / `{ detail: ... }` shape).
+ * The upstream TEXT service (:8862) is NOT part of the API e2e infra, so a valid
+ * request may resolve to a 200 (TEXT up — shape validated) or a 500 (TEXT down —
+ * the v1 `{ error: "TEXT service unavailable", ... }` / `{ detail: ... }` shape).
  * Either way it must never be an auth rejection or a 404.
  *
  * Prerequisites: API server running + seeded users (pnpm test:db:seed).
@@ -25,7 +25,7 @@
 import { expect, test } from '@playwright/test';
 import { DEFAULT_TENANT_KEY, SEEDED_USERS, loginUser } from '../../../../tests/helpers';
 // Validate LIVE 200 responses against the frozen v1 schema lock
-// (/). Hermetic when SMR is down (status ≠ 200 → shape check skipped).
+// (/). Hermetic when TEXT is down (status ≠ 200 → shape check skipped).
 import { PreSummaryResponseSchema, SummaryResponseSchema } from '../../../../tests/contracts/text-compat.schemas';
 
 const SUMMARY_SYNC_PATH = '/api/smr/api/v1/summary/sync';
@@ -59,7 +59,7 @@ const samplePreSummaryBody = () => ({
   language: 'en',
 });
 
-test.describe('V1-compatible SMR summary shims', () => {
+test.describe('V1-compatible TEXT summary shims', () => {
   let token: string;
   let apiKey: string | undefined;
   const createdApiKeyIds: string[] = [];

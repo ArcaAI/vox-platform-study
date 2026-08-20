@@ -74,7 +74,7 @@ export async function resolveAgentFinalizeSelection(
   if (!model || model.taskType !== ModelTaskType.TEXT_GENERATION || !model.sourceUri) {
     throw new ServiceUnavailableException(`The session agent's configured finalize model '${slug}' is not available`);
   }
-  // The catalog seeds `azure`; SMR registers it as `azure-openai`
+  // The catalog seeds `azure`; TEXT registers it as `azure-openai`
   // (mirrors HarnessPolicyService.resolveTextSelection and resolveLiveLlm).
   const provider = model.provider === 'azure' ? 'azure-openai' : (model.provider ?? '');
   if (!provider) {

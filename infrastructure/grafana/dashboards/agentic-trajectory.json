@@ -504,7 +504,7 @@
           "refId": "B"
         }
       ],
-      "title": "SMR Time to First Token (TTFT, from SMR metrics)",
+      "title": "TEXT Time to First Token (TTFT, from TEXT metrics)",
       "type": "timeseries"
     },
     {
@@ -591,7 +591,7 @@
           "refId": "A"
         }
       ],
-      "title": "SMR Output Token Throughput (tok/s, from SMR metrics)",
+      "title": "TEXT Output Token Throughput (tok/s, from TEXT metrics)",
       "type": "timeseries"
     },
     {

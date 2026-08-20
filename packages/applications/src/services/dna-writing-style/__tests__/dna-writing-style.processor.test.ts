@@ -1,9 +1,9 @@
 /**
  * DnaWritingStyleProcessor Unit Tests
  *
- * Tests the BullMQ processor that calls SMR to generate DNA reports.
- * Mocks at boundaries: HTTP service (SMR), repositories, job service.
- * Verifies actual processor behavior: text gathering, SMR call, storage, error handling.
+ * Tests the BullMQ processor that calls TEXT to generate DNA reports.
+ * Mocks at boundaries: HTTP service (TEXT), repositories, job service.
+ * Verifies actual processor behavior: text gathering, TEXT call, storage, error handling.
  */
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
@@ -67,7 +67,7 @@ const createMockClsService = () => ({
 /**
  * TASK-710 (re-opened) — `IPhiRedactor` is now a REQUIRED dependency of this
  * processor (owner directive D-A): an absent redactor ABORTS the job instead of
- * silently posting the raw cross-patient corpus to SMR. Every fixture below
+ * silently posting the raw cross-patient corpus to TEXT. Every fixture below
  * therefore supplies a pass-through double, which keeps each pre-existing
  * assertion about the posted prompt byte-identical while exercising the new
  * mandatory call. The dedicated redaction specs supply their own doubles.
@@ -152,11 +152,11 @@ const createMockJob = (overrides: Record<string, unknown> = {}) => ({
   updateProgress: vi.fn().mockResolvedValue(undefined),
 });
 
-// ─── SMR Response Helper ─────────────────────────────────────────
-// Complete mock matching real SMR GenerateResponse (stream: false)
+// ─── TEXT Response Helper ─────────────────────────────────────────
+// Complete mock matching real TEXT GenerateResponse (stream: false)
 
-const createSmrResponse = (content: string) => ({
-  task_id: 'task-smr-1',
+const createTextResponse = (content: string) => ({
+  task_id: 'task-text-1',
   status: 'completed' as const,
   content,
   provider: 'openai',
@@ -168,8 +168,8 @@ const createSmrResponse = (content: string) => ({
 });
 
 // Axios returns { data: response }
-const createAxiosSmrResponse = (content: string) => ({
-  data: createSmrResponse(content),
+const createAxiosTextResponse = (content: string) => ({
+  data: createTextResponse(content),
 });
 
 // ─── Tests ──────────────────────────────────────────────────────────
@@ -244,7 +244,7 @@ describe('DnaWritingStyleProcessor', () => {
     it('should process DNA report with provided text samples and return result', async () => {
       mockPromptService.listPromptTemplates.mockResolvedValue([{ id: 'tpl-1', content: 'Analyze writing samples.', category: 'DNA_ANALYSIS' }]);
       mockHttpService.axiosRef.post.mockResolvedValue(
-        createAxiosSmrResponse(
+        createAxiosTextResponse(
           JSON.stringify({
             reportData: { formality: 'high', sentenceLength: 'medium' },
             styleText: 'Doctor writes in a formal, concise style.',
@@ -267,9 +267,9 @@ describe('DnaWritingStyleProcessor', () => {
       expect(result.reportData).toEqual({ formality: 'high', sentenceLength: 'medium' });
     });
 
-    it('should call SMR POST /api/v1/generate with stream: false', async () => {
+    it('should call TEXT POST /api/v1/generate with stream: false', async () => {
       mockPromptService.listPromptTemplates.mockResolvedValue([{ id: 'tpl-1', content: 'Analyze writing.', category: 'DNA_ANALYSIS' }]);
-      mockHttpService.axiosRef.post.mockResolvedValue(createAxiosSmrResponse('{"reportData":{},"styleText":"Style"}'));
+      mockHttpService.axiosRef.post.mockResolvedValue(createAxiosTextResponse('{"reportData":{},"styleText":"Style"}'));
       mockDnaReportRepo.findLatestForDoctor.mockResolvedValue(null);
       mockDnaReportRepo.create.mockResolvedValue({
         id: 'r',
@@ -281,7 +281,7 @@ describe('DnaWritingStyleProcessor', () => {
 
       await processor.process(createMockJob({ textSamples: ['sample'] }) as never);
 
-      // The SMR gateway now requires an explicit provider+model,
+      // The TEXT gateway now requires an explicit provider+model,
       // resolved via the HarnessPolicy cascade and merged into the payload.
       expect(mockHarnessPolicyService.resolveTextSelection).toHaveBeenCalled();
       expect(mockHttpService.axiosRef.post).toHaveBeenCalledWith(
@@ -322,7 +322,7 @@ describe('DnaWritingStyleProcessor', () => {
       mockClsService.get.mockImplementation((key: string) => clsStore.get(key));
 
       mockPromptService.listPromptTemplates.mockResolvedValue([{ id: 'tpl-1', content: 'Analyze writing.', category: 'DNA_ANALYSIS' }]);
-      mockHttpService.axiosRef.post.mockResolvedValue(createAxiosSmrResponse('{"reportData":{},"styleText":"Style"}'));
+      mockHttpService.axiosRef.post.mockResolvedValue(createAxiosTextResponse('{"reportData":{},"styleText":"Style"}'));
       mockDnaReportRepo.findLatestForDoctor.mockResolvedValue(null);
       mockDnaReportRepo.create.mockResolvedValue({
         id: 'r',
@@ -354,7 +354,7 @@ describe('DnaWritingStyleProcessor', () => {
         { id: 'ci-2', content: null, text: 'Doctor summary text 2', type: 'MODIFIED_SUMMARY' },
       ]);
       mockPromptService.listPromptTemplates.mockResolvedValue([{ id: 'tpl-1', content: 'Analyze.', category: 'DNA_ANALYSIS' }]);
-      mockHttpService.axiosRef.post.mockResolvedValue(createAxiosSmrResponse('{"reportData":{},"styleText":"From context"}'));
+      mockHttpService.axiosRef.post.mockResolvedValue(createAxiosTextResponse('{"reportData":{},"styleText":"From context"}'));
       mockDnaReportRepo.findLatestForDoctor.mockResolvedValue(null);
       mockDnaReportRepo.create.mockResolvedValue({
         id: 'r',
@@ -372,10 +372,10 @@ describe('DnaWritingStyleProcessor', () => {
       expect(result.styleText).toBe('From context');
     });
 
-    it('should handle SMR JSON response with reportData and styleText', async () => {
+    it('should handle TEXT JSON response with reportData and styleText', async () => {
       mockPromptService.listPromptTemplates.mockResolvedValue([{ id: 'tpl-1', content: 'Analyze.', category: 'DNA_ANALYSIS' }]);
       mockHttpService.axiosRef.post.mockResolvedValue(
-        createAxiosSmrResponse(
+        createAxiosTextResponse(
           JSON.stringify({
             reportData: { formality: 'high', tone: 'formal' },
             styleText: 'Formal medical writing style.',
@@ -397,14 +397,14 @@ describe('DnaWritingStyleProcessor', () => {
       expect(result.styleText).toBe('Formal medical writing style.');
     });
 
-    // TASK-700 (Task 1 RED test 1 / PHI containment): a schema-mismatched SMR
+    // TASK-700 (Task 1 RED test 1 / PHI containment): a schema-mismatched TEXT
     // response must never be persisted verbatim. Pre-fix, this test asserted
     // the OPPOSITE (silent fallback to raw content) — flipped here so the
     // suite pins the fixed behavior; see the ticket README for the RED-run
     // evidence captured before this assertion was updated.
-    it('fails the job (never persists verbatim) when SMR returns non-JSON content', async () => {
+    it('fails the job (never persists verbatim) when TEXT returns non-JSON content', async () => {
       mockPromptService.listPromptTemplates.mockResolvedValue([{ id: 'tpl-1', content: 'Analyze.', category: 'DNA_ANALYSIS' }]);
-      mockHttpService.axiosRef.post.mockResolvedValue(createAxiosSmrResponse('This is plain text analysis, not JSON.'));
+      mockHttpService.axiosRef.post.mockResolvedValue(createAxiosTextResponse('This is plain text analysis, not JSON.'));
       mockDnaReportRepo.findLatestForDoctor.mockResolvedValue(null);
 
       await expect(processor.process(createMockJob({ textSamples: ['sample'] }) as never)).rejects.toThrow(/unparseable or non-conforming/i);
@@ -413,12 +413,12 @@ describe('DnaWritingStyleProcessor', () => {
       expect(mockDnaReportRepo.create).not.toHaveBeenCalled();
     });
 
-    it('should handle SMR JSON without styleText key — uses content as styleText', async () => {
+    it('should handle TEXT JSON without styleText key — uses content as styleText', async () => {
       mockPromptService.listPromptTemplates.mockResolvedValue([{ id: 'tpl-1', content: 'Analyze.', category: 'DNA_ANALYSIS' }]);
       const jsonContent = JSON.stringify({
         reportData: { formality: 'medium' },
       });
-      mockHttpService.axiosRef.post.mockResolvedValue(createAxiosSmrResponse(jsonContent));
+      mockHttpService.axiosRef.post.mockResolvedValue(createAxiosTextResponse(jsonContent));
       mockDnaReportRepo.findLatestForDoctor.mockResolvedValue(null);
       mockDnaReportRepo.create.mockResolvedValue({
         id: 'r',
@@ -440,7 +440,7 @@ describe('DnaWritingStyleProcessor', () => {
         { id: 'ci-empty-2', content: null, text: '', type: 'MODIFIED_SUMMARY' },
       ]);
       mockPromptService.listPromptTemplates.mockResolvedValue([{ id: 'tpl-1', content: 'Analyze.', category: 'DNA_ANALYSIS' }]);
-      mockHttpService.axiosRef.post.mockResolvedValue(createAxiosSmrResponse('{"reportData":{},"styleText":"Minimal analysis"}'));
+      mockHttpService.axiosRef.post.mockResolvedValue(createAxiosTextResponse('{"reportData":{},"styleText":"Minimal analysis"}'));
       mockDnaReportRepo.findLatestForDoctor.mockResolvedValue(null);
       mockDnaReportRepo.create.mockResolvedValue({
         id: 'r',
@@ -459,7 +459,7 @@ describe('DnaWritingStyleProcessor', () => {
 
     it('should use default prompt when no DNA_ANALYSIS template exists', async () => {
       mockPromptService.listPromptTemplates.mockResolvedValue([]);
-      mockHttpService.axiosRef.post.mockResolvedValue(createAxiosSmrResponse('{"reportData":{},"styleText":"Fallback"}'));
+      mockHttpService.axiosRef.post.mockResolvedValue(createAxiosTextResponse('{"reportData":{},"styleText":"Fallback"}'));
       mockDnaReportRepo.findLatestForDoctor.mockResolvedValue(null);
       mockDnaReportRepo.create.mockResolvedValue({
         id: 'r',
@@ -483,7 +483,7 @@ describe('DnaWritingStyleProcessor', () => {
       mockDnaReportRepo.findLatestForDoctor.mockResolvedValue(previousReport);
       mockDnaReportRepo.update.mockResolvedValue(previousReport);
       mockPromptService.listPromptTemplates.mockResolvedValue([{ id: 'tpl-1', content: 'Analyze.', category: 'DNA_ANALYSIS' }]);
-      mockHttpService.axiosRef.post.mockResolvedValue(createAxiosSmrResponse('{"reportData":{},"styleText":"Style"}'));
+      mockHttpService.axiosRef.post.mockResolvedValue(createAxiosTextResponse('{"reportData":{},"styleText":"Style"}'));
       mockDnaReportRepo.create.mockResolvedValue({
         id: 'new-report',
         createdAt: new Date(),
@@ -501,7 +501,7 @@ describe('DnaWritingStyleProcessor', () => {
     it('should skip unmark step when no previous latest report exists', async () => {
       mockDnaReportRepo.findLatestForDoctor.mockResolvedValue(null);
       mockPromptService.listPromptTemplates.mockResolvedValue([{ id: 'tpl-1', content: 'Analyze.', category: 'DNA_ANALYSIS' }]);
-      mockHttpService.axiosRef.post.mockResolvedValue(createAxiosSmrResponse('{"reportData":{},"styleText":"Style"}'));
+      mockHttpService.axiosRef.post.mockResolvedValue(createAxiosTextResponse('{"reportData":{},"styleText":"Style"}'));
       mockDnaReportRepo.create.mockResolvedValue({
         id: 'new-report',
         createdAt: new Date(),
@@ -519,7 +519,7 @@ describe('DnaWritingStyleProcessor', () => {
       mockPromptService.listPromptTemplates.mockResolvedValue([
         { id: 'tpl-1', content: 'Analyze.', category: 'DNA_ANALYSIS', currentVersionNumber: 2 },
       ]);
-      mockHttpService.axiosRef.post.mockResolvedValue(createAxiosSmrResponse('{"reportData":{"key":"val"},"styleText":"Style"}'));
+      mockHttpService.axiosRef.post.mockResolvedValue(createAxiosTextResponse('{"reportData":{"key":"val"},"styleText":"Style"}'));
       mockDnaReportRepo.findLatestForDoctor.mockResolvedValue(null);
       mockDnaReportRepo.create.mockResolvedValue({
         id: 'new-report',
@@ -544,7 +544,7 @@ describe('DnaWritingStyleProcessor', () => {
       mockPromptService.listPromptTemplates.mockResolvedValue([
         { id: 'dna-tpl-42', content: 'Analyze style.', category: 'DNA_ANALYSIS', currentVersionNumber: 3 },
       ]);
-      mockHttpService.axiosRef.post.mockResolvedValue(createAxiosSmrResponse('{"reportData":{},"styleText":"Style"}'));
+      mockHttpService.axiosRef.post.mockResolvedValue(createAxiosTextResponse('{"reportData":{},"styleText":"Style"}'));
       mockDnaReportRepo.findLatestForDoctor.mockResolvedValue(null);
       mockDnaReportRepo.create.mockResolvedValue({
         id: 'r',
@@ -576,7 +576,7 @@ describe('DnaWritingStyleProcessor', () => {
 
     it('should NOT record PromptUsageRecord when no DNA_ANALYSIS template is found (fallback prompt used)', async () => {
       mockPromptService.listPromptTemplates.mockResolvedValue([]);
-      mockHttpService.axiosRef.post.mockResolvedValue(createAxiosSmrResponse('{"reportData":{},"styleText":"Fallback"}'));
+      mockHttpService.axiosRef.post.mockResolvedValue(createAxiosTextResponse('{"reportData":{},"styleText":"Fallback"}'));
       mockDnaReportRepo.findLatestForDoctor.mockResolvedValue(null);
       mockDnaReportRepo.create.mockResolvedValue({
         id: 'r',
@@ -593,7 +593,7 @@ describe('DnaWritingStyleProcessor', () => {
 
     it('should report progress at all 5 steps (10, 20, 40, 80, 100)', async () => {
       mockPromptService.listPromptTemplates.mockResolvedValue([{ id: 'tpl-1', content: 'Analyze.', category: 'DNA_ANALYSIS' }]);
-      mockHttpService.axiosRef.post.mockResolvedValue(createAxiosSmrResponse('{"reportData":{},"styleText":"Style"}'));
+      mockHttpService.axiosRef.post.mockResolvedValue(createAxiosTextResponse('{"reportData":{},"styleText":"Style"}'));
       mockDnaReportRepo.findLatestForDoctor.mockResolvedValue(null);
       mockDnaReportRepo.create.mockResolvedValue({
         id: 'r',
@@ -611,7 +611,7 @@ describe('DnaWritingStyleProcessor', () => {
 
     it('should call notifyComplete with reportId', async () => {
       mockPromptService.listPromptTemplates.mockResolvedValue([{ id: 'tpl-1', content: 'Analyze.', category: 'DNA_ANALYSIS' }]);
-      mockHttpService.axiosRef.post.mockResolvedValue(createAxiosSmrResponse('{"reportData":{},"styleText":"Style"}'));
+      mockHttpService.axiosRef.post.mockResolvedValue(createAxiosTextResponse('{"reportData":{},"styleText":"Style"}'));
       mockDnaReportRepo.findLatestForDoctor.mockResolvedValue(null);
       mockDnaReportRepo.create.mockResolvedValue({
         id: 'saved-report-123',
@@ -628,9 +628,9 @@ describe('DnaWritingStyleProcessor', () => {
       });
     });
 
-    it('should use custom SMR URL from ConfigService', async () => {
+    it('should use custom TEXT URL from ConfigService', async () => {
       const customConfig = createMockConfigService();
-      customConfig.get.mockReturnValue('http://custom-smr:9000');
+      customConfig.get.mockReturnValue('http://custom-text:9000');
       const customProcessor = new DnaWritingStyleProcessor(
         mockJobService as never,
         mockAppSettings as never,
@@ -653,7 +653,7 @@ describe('DnaWritingStyleProcessor', () => {
       );
 
       mockPromptService.listPromptTemplates.mockResolvedValue([]);
-      mockHttpService.axiosRef.post.mockResolvedValue(createAxiosSmrResponse('{"reportData":{},"styleText":"Style"}'));
+      mockHttpService.axiosRef.post.mockResolvedValue(createAxiosTextResponse('{"reportData":{},"styleText":"Style"}'));
       mockDnaReportRepo.findLatestForDoctor.mockResolvedValue(null);
       mockDnaReportRepo.create.mockResolvedValue({
         id: 'r',
@@ -665,10 +665,10 @@ describe('DnaWritingStyleProcessor', () => {
 
       await customProcessor.process(createMockJob({ textSamples: ['sample'] }) as never);
 
-      expect(mockHttpService.axiosRef.post).toHaveBeenCalledWith('http://custom-smr:9000/api/v1/generate', expect.any(Object), expect.any(Object));
+      expect(mockHttpService.axiosRef.post).toHaveBeenCalledWith('http://custom-text:9000/api/v1/generate', expect.any(Object), expect.any(Object));
     });
 
-    it('should use default SMR URL when config returns undefined', async () => {
+    it('should use default TEXT URL when config returns undefined', async () => {
       const noConfig = createMockConfigService();
       noConfig.get.mockReturnValue(undefined);
       const fallbackProcessor = new DnaWritingStyleProcessor(
@@ -693,7 +693,7 @@ describe('DnaWritingStyleProcessor', () => {
       );
 
       mockPromptService.listPromptTemplates.mockResolvedValue([]);
-      mockHttpService.axiosRef.post.mockResolvedValue(createAxiosSmrResponse('{"reportData":{},"styleText":"Style"}'));
+      mockHttpService.axiosRef.post.mockResolvedValue(createAxiosTextResponse('{"reportData":{},"styleText":"Style"}'));
       mockDnaReportRepo.findLatestForDoctor.mockResolvedValue(null);
       mockDnaReportRepo.create.mockResolvedValue({
         id: 'r',
@@ -712,7 +712,7 @@ describe('DnaWritingStyleProcessor', () => {
       const { DnaUsageRecordFactory } = await import('@arcaai/domains');
 
       mockPromptService.listPromptTemplates.mockResolvedValue([{ id: 'tpl-1', content: 'Analyze.', category: 'DNA_ANALYSIS' }]);
-      mockHttpService.axiosRef.post.mockResolvedValue(createAxiosSmrResponse('{"reportData":{},"styleText":"Style"}'));
+      mockHttpService.axiosRef.post.mockResolvedValue(createAxiosTextResponse('{"reportData":{},"styleText":"Style"}'));
       mockDnaReportRepo.findLatestForDoctor.mockResolvedValue(null);
       mockDnaReportRepo.create.mockResolvedValue({
         id: 'report-xyz',
@@ -769,7 +769,7 @@ describe('DnaWritingStyleProcessor', () => {
 
       mockContextItemRepo.findAll.mockResolvedValue([{ id: 'ci-1', content: 'text-1', text: null, type: 'RAW_SUMMARY' }]);
       mockPromptService.listPromptTemplates.mockResolvedValue([]);
-      mockHttpService.axiosRef.post.mockResolvedValue(createAxiosSmrResponse('{"reportData":{},"styleText":"OK"}'));
+      mockHttpService.axiosRef.post.mockResolvedValue(createAxiosTextResponse('{"reportData":{},"styleText":"OK"}'));
       mockDnaReportRepo.findLatestForDoctor.mockResolvedValue(null);
       mockDnaReportRepo.create.mockResolvedValue({
         id: 'r',
@@ -808,7 +808,7 @@ describe('DnaWritingStyleProcessor', () => {
       );
 
       mockPromptService.listPromptTemplates.mockResolvedValue([]);
-      mockHttpService.axiosRef.post.mockResolvedValue(createAxiosSmrResponse('{"reportData":{},"styleText":"Truncated"}'));
+      mockHttpService.axiosRef.post.mockResolvedValue(createAxiosTextResponse('{"reportData":{},"styleText":"Truncated"}'));
       mockDnaReportRepo.findLatestForDoctor.mockResolvedValue(null);
       mockDnaReportRepo.create.mockResolvedValue({
         id: 'r',
@@ -827,7 +827,7 @@ describe('DnaWritingStyleProcessor', () => {
 
     it('should not truncate when samples are within max-context-chars', async () => {
       mockPromptService.listPromptTemplates.mockResolvedValue([]);
-      mockHttpService.axiosRef.post.mockResolvedValue(createAxiosSmrResponse('{"reportData":{},"styleText":"OK"}'));
+      mockHttpService.axiosRef.post.mockResolvedValue(createAxiosTextResponse('{"reportData":{},"styleText":"OK"}'));
       mockDnaReportRepo.findLatestForDoctor.mockResolvedValue(null);
       mockDnaReportRepo.create.mockResolvedValue({
         id: 'r',
@@ -869,7 +869,7 @@ describe('DnaWritingStyleProcessor', () => {
 
       mockContextItemRepo.findAll.mockResolvedValue([{ id: 'ci-x', content: 'text', text: null, type: 'RAW_SUMMARY' }]);
       mockPromptService.listPromptTemplates.mockResolvedValue([]);
-      mockHttpService.axiosRef.post.mockResolvedValue(createAxiosSmrResponse('{"reportData":{},"styleText":"OK"}'));
+      mockHttpService.axiosRef.post.mockResolvedValue(createAxiosTextResponse('{"reportData":{},"styleText":"OK"}'));
       mockDnaReportRepo.findLatestForDoctor.mockResolvedValue(null);
       mockDnaReportRepo.create.mockResolvedValue({
         id: 'r',
@@ -888,7 +888,7 @@ describe('DnaWritingStyleProcessor', () => {
   // ─── Error Handling ─────────────────────────────────────────
 
   describe('Error Handling', () => {
-    it('should notify failed and re-throw when SMR call fails', async () => {
+    it('should notify failed and re-throw when TEXT call fails', async () => {
       mockPromptService.listPromptTemplates.mockResolvedValue([{ id: 'tpl-1', content: 'Analyze.', category: 'DNA_ANALYSIS' }]);
       mockHttpService.axiosRef.post.mockRejectedValue(new Error('Connection refused'));
 
@@ -897,7 +897,7 @@ describe('DnaWritingStyleProcessor', () => {
       expect(mockJobService.notifyFailed).toHaveBeenCalledWith('job-1', expect.stringContaining('Connection refused'));
     });
 
-    it('should notify failed and re-throw on SMR timeout', async () => {
+    it('should notify failed and re-throw on TEXT timeout', async () => {
       mockPromptService.listPromptTemplates.mockResolvedValue([{ id: 'tpl-1', content: 'Analyze.', category: 'DNA_ANALYSIS' }]);
       mockHttpService.axiosRef.post.mockRejectedValue(new Error('timeout of 120000ms exceeded'));
 
@@ -932,7 +932,7 @@ describe('DnaWritingStyleProcessor', () => {
   describe('CLS Context Propagation', () => {
     it('should set tenantId in CLS context from job payload before calling services', async () => {
       mockPromptService.listPromptTemplates.mockResolvedValue([]);
-      mockHttpService.axiosRef.post.mockResolvedValue(createAxiosSmrResponse('{"reportData":{},"styleText":"Style"}'));
+      mockHttpService.axiosRef.post.mockResolvedValue(createAxiosTextResponse('{"reportData":{},"styleText":"Style"}'));
       mockDnaReportRepo.findLatestForDoctor.mockResolvedValue(null);
       mockDnaReportRepo.create.mockResolvedValue({
         id: 'r',
@@ -949,7 +949,7 @@ describe('DnaWritingStyleProcessor', () => {
 
     it('should set userId in CLS context from job payload', async () => {
       mockPromptService.listPromptTemplates.mockResolvedValue([]);
-      mockHttpService.axiosRef.post.mockResolvedValue(createAxiosSmrResponse('{"reportData":{},"styleText":"Style"}'));
+      mockHttpService.axiosRef.post.mockResolvedValue(createAxiosTextResponse('{"reportData":{},"styleText":"Style"}'));
       mockDnaReportRepo.findLatestForDoctor.mockResolvedValue(null);
       mockDnaReportRepo.create.mockResolvedValue({
         id: 'r',
@@ -968,7 +968,7 @@ describe('DnaWritingStyleProcessor', () => {
   // ─── APPROVED-only learning corpus ──────────────────
 
   describe('APPROVED-only learning corpus', () => {
-    it('excludes non-approved summaries from the corpus and only feeds approved ones to SMR', async () => {
+    it('excludes non-approved summaries from the corpus and only feeds approved ones to TEXT', async () => {
       mockContextItemVersionRepo.getVersionsByChangeReason.mockImplementation(async (contextItemId: string, changeReason: string) => {
         if (changeReason !== 'approved') return [];
         return contextItemId === 'ci-approved' ? [{ id: 'v-1', contextItemId, changeReason: 'approved', versionNumber: 1 }] : [];
@@ -980,7 +980,7 @@ describe('DnaWritingStyleProcessor', () => {
         { id: 'ci-modified-pending', content: 'Modified but not approved', type: 'MODIFIED_SUMMARY' },
       ]);
       mockPromptService.listPromptTemplates.mockResolvedValue([{ id: 'tpl-1', content: 'Analyze.', category: 'DNA_ANALYSIS' }]);
-      mockHttpService.axiosRef.post.mockResolvedValue(createAxiosSmrResponse('{"reportData":{},"styleText":"Style"}'));
+      mockHttpService.axiosRef.post.mockResolvedValue(createAxiosTextResponse('{"reportData":{},"styleText":"Style"}'));
       mockDnaReportRepo.findLatestForDoctor.mockResolvedValue(null);
       mockDnaReportRepo.create.mockResolvedValue({
         id: 'r',
@@ -1012,7 +1012,7 @@ describe('DnaWritingStyleProcessor', () => {
         { id: 'ci-c', content: 'C', type: 'MODIFIED_SUMMARY' },
       ]);
       mockPromptService.listPromptTemplates.mockResolvedValue([{ id: 'tpl-1', content: 'Analyze.', category: 'DNA_ANALYSIS' }]);
-      mockHttpService.axiosRef.post.mockResolvedValue(createAxiosSmrResponse('{"reportData":{"x":1},"styleText":"Style"}'));
+      mockHttpService.axiosRef.post.mockResolvedValue(createAxiosTextResponse('{"reportData":{"x":1},"styleText":"Style"}'));
       mockDnaReportRepo.findLatestForDoctor.mockResolvedValue(null);
       mockDnaReportRepo.create.mockResolvedValue({
         id: 'r',
@@ -1044,7 +1044,7 @@ describe('DnaWritingStyleProcessor', () => {
         { id: 'ci-tx', content: 'Transcript', type: 'TRANSCRIPT' },
       ]);
       mockPromptService.listPromptTemplates.mockResolvedValue([{ id: 'tpl-1', content: 'Analyze.', category: 'DNA_ANALYSIS' }]);
-      mockHttpService.axiosRef.post.mockResolvedValue(createAxiosSmrResponse('{"reportData":{},"styleText":"Style"}'));
+      mockHttpService.axiosRef.post.mockResolvedValue(createAxiosTextResponse('{"reportData":{},"styleText":"Style"}'));
       mockDnaReportRepo.findLatestForDoctor.mockResolvedValue(null);
       mockDnaReportRepo.create.mockResolvedValue({
         id: 'r',
@@ -1077,7 +1077,7 @@ describe('DnaWritingStyleProcessor', () => {
     it('bypasses the approval filter when explicit textSamples are supplied (admin/migration path)', async () => {
       mockContextItemVersionRepo.getVersionsByChangeReason.mockResolvedValue([]);
       mockPromptService.listPromptTemplates.mockResolvedValue([{ id: 'tpl-1', content: 'Analyze.', category: 'DNA_ANALYSIS' }]);
-      mockHttpService.axiosRef.post.mockResolvedValue(createAxiosSmrResponse('{"reportData":{},"styleText":"Style"}'));
+      mockHttpService.axiosRef.post.mockResolvedValue(createAxiosTextResponse('{"reportData":{},"styleText":"Style"}'));
       mockDnaReportRepo.findLatestForDoctor.mockResolvedValue(null);
       mockDnaReportRepo.create.mockResolvedValue({
         id: 'r',
@@ -1124,7 +1124,7 @@ describe('DnaWritingStyleProcessor', () => {
 
     const primeStorageMocks = () => {
       mockPromptService.listPromptTemplates.mockResolvedValue([{ id: 'tpl-1', content: 'Analyze.', category: 'DNA_ANALYSIS' }]);
-      mockHttpService.axiosRef.post.mockResolvedValue(createAxiosSmrResponse('{"reportData":{},"styleText":"Style"}'));
+      mockHttpService.axiosRef.post.mockResolvedValue(createAxiosTextResponse('{"reportData":{},"styleText":"Style"}'));
       mockDnaReportRepo.findLatestForDoctor.mockResolvedValue(null);
       mockDnaReportRepo.create.mockResolvedValue({ id: 'r', createdAt: new Date(), updatedAt: new Date() });
       mockDnaVersionRepo.create.mockResolvedValue({});
@@ -1216,7 +1216,7 @@ describe('DnaWritingStyleProcessor', () => {
   });
 
   // ===========================================================================
-  // TASK-710 hop 2 — PHI redaction before the corpus reaches SMR
+  // TASK-710 hop 2 — PHI redaction before the corpus reaches TEXT
   // ===========================================================================
 
   describe('PHI redaction (TASK-710 hop 2)', () => {
@@ -1244,14 +1244,14 @@ describe('DnaWritingStyleProcessor', () => {
 
     const primeStorageMocks = () => {
       mockPromptService.listPromptTemplates.mockResolvedValue([{ id: 'tpl-1', content: 'Analyze.', category: 'DNA_ANALYSIS' }]);
-      mockHttpService.axiosRef.post.mockResolvedValue(createAxiosSmrResponse('{"reportData":{},"styleText":"Style"}'));
+      mockHttpService.axiosRef.post.mockResolvedValue(createAxiosTextResponse('{"reportData":{},"styleText":"Style"}'));
       mockDnaReportRepo.findLatestForDoctor.mockResolvedValue(null);
       mockDnaReportRepo.create.mockResolvedValue({ id: 'r', createdAt: new Date(), updatedAt: new Date() });
       mockDnaVersionRepo.create.mockResolvedValue({});
       mockDnaUsageRepo.create.mockResolvedValue({});
     };
 
-    it("calls redact(samples, 'full') and posts the REDACTED corpus to SMR — the raw sample never reaches the mocked SMR client", async () => {
+    it("calls redact(samples, 'full') and posts the REDACTED corpus to TEXT — the raw sample never reaches the mocked TEXT client", async () => {
       const rawSample = 'Patient John Smith, DOB 1985-02-03, prescribed lisinopril.';
       const redactedSample = '[REDACTED] prescribed lisinopril.';
       const phiRedactor = { redact: vi.fn().mockResolvedValue(redactedSample) };
@@ -1267,7 +1267,7 @@ describe('DnaWritingStyleProcessor', () => {
       expect(requestBody.prompt).not.toContain('1985-02-03');
     });
 
-    it('FAIL-CLOSED: a throwing redactor aborts the job — SMR is never called with the unredacted corpus', async () => {
+    it('FAIL-CLOSED: a throwing redactor aborts the job — TEXT is never called with the unredacted corpus', async () => {
       const phiRedactor = { redact: vi.fn().mockRejectedValue(new Error('guardrail unreachable')) };
       const proc = buildProcessorWithPhiRedactor(phiRedactor);
       primeStorageMocks();
@@ -1287,7 +1287,7 @@ describe('DnaWritingStyleProcessor', () => {
      * "nothing to redact". The dependency is now REQUIRED (Nest fails at boot
      * without `PhiRedactionServiceModule`) and the call site aborts.
      */
-    it('FAIL-CLOSED: an unwired redactor aborts the job — the raw corpus is never posted to SMR', async () => {
+    it('FAIL-CLOSED: an unwired redactor aborts the job — the raw corpus is never posted to TEXT', async () => {
       const proc = buildProcessorWithPhiRedactor(undefined);
       primeStorageMocks();
 

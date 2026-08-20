@@ -63,7 +63,7 @@ const sseEventData = (res: ReturnType<typeof createMockRes>, event: string): unk
   return dataLine ? JSON.parse(dataLine.slice('data:'.length).trim()) : undefined;
 };
 
-/** Build one SMR SSE frame the way `apps/text` emits it. */
+/** Build one TEXT SSE frame the way `apps/text` emits it. */
 const textFrame = (type: string, extra: Record<string, unknown> = {}): string => `event: ${type}\ndata: ${JSON.stringify({ type, ...extra })}\n\n`;
 
 /** Let the mocked stream's buffered `data`/`end` events flush to the handler. */
@@ -249,7 +249,7 @@ describe('TextCompatController', () => {
   };
 
   describe('POST summary/sync', () => {
-    it('posts to SMR /api/v1/generate with the resolved URL + X-Service-Token', async () => {
+    it('posts to TEXT /api/v1/generate with the resolved URL + X-Service-Token', async () => {
       http.axiosRef.post.mockResolvedValue({
         data: { content: JSON.stringify({ chief_complaint: 'x', summary: 'y' }), latency_ms: 500, finish_reason: 'stop' },
       });
@@ -331,9 +331,9 @@ describe('TextCompatController', () => {
     });
 
     // The requesting doctor's DNA writing-style is resolved by
-    // doctor_id and injected into the SMR system_prompt; omitted entirely when no
+    // doctor_id and injected into the TEXT system_prompt; omitted entirely when no
     // doctor_id is supplied (D5: department + visit-type only).
-    it('injects the doctor DNA writing style into the SMR system_prompt when doctor_id is provided', async () => {
+    it('injects the doctor DNA writing style into the TEXT system_prompt when doctor_id is provided', async () => {
       const dna = { getEffectiveStyleText: vi.fn().mockResolvedValue('Terse SOAP, active voice.') };
       const controllerWithDna = new TextCompatController(
         http as any,
@@ -377,10 +377,10 @@ describe('TextCompatController', () => {
       expect(body.system_prompt).not.toContain('SHOULD NOT APPEAR');
     });
 
-    // Translate the transcript to English via SMR /api/v1/translate
+    // Translate the transcript to English via TEXT /api/v1/translate
     // before summarizing; BYOK resolved from the unified provider plane; fail-open
     // to the original transcript on error; no call when the flag is absent.
-    it('translates the transcript via SMR /api/v1/translate (with tenant BYOK) before summarizing', async () => {
+    it('translates the transcript via TEXT /api/v1/translate (with tenant BYOK) before summarizing', async () => {
       const providerConnection = {
         resolveTenantCloudOverrides: vi.fn().mockResolvedValue({ overrides: { sarvam: { api_key: 'byok', funding: 'tenant' } } }),
       };
@@ -421,7 +421,7 @@ describe('TextCompatController', () => {
     // the model sees. On a real ml-en consultation the translation alone swapped
     // aceclofenac for acetaminophen and "marked" for "mild"; the untranslated
     // turn now travels with it and outranks it for clinical facts.
-    it('sends BOTH the Sarvam translation and the untranslated original to SMR', async () => {
+    it('sends BOTH the Sarvam translation and the untranslated original to TEXT', async () => {
       const httpLocal = createMockHttpService();
       httpLocal.axiosRef.post.mockImplementation((url: string, reqBody: { texts?: string[] }) => {
         if (String(url).includes('/api/v1/translate')) {
@@ -617,7 +617,7 @@ describe('TextCompatController', () => {
       const providerConnection = { resolveTenantCloudOverrides: vi.fn().mockResolvedValue({ overrides: {} }) };
       const httpLocal = createMockHttpService();
       httpLocal.axiosRef.post.mockImplementation((url: string) => {
-        if (String(url).includes('/api/v1/translate')) return Promise.reject(new Error('smr translate down'));
+        if (String(url).includes('/api/v1/translate')) return Promise.reject(new Error('text translate down'));
         return Promise.resolve({ data: { content: JSON.stringify({ chief_complaint: 'x', summary: 'y' }) } });
       });
       const ctrl = new TextCompatController(
@@ -681,26 +681,26 @@ describe('TextCompatController', () => {
       expect(translateCall![1].provider_overrides.sarvam.funding).toBe('platform');
     });
 
-    it('does not call SMR translate when translate_to_english is absent', async () => {
+    it('does not call TEXT translate when translate_to_english is absent', async () => {
       http.axiosRef.post.mockResolvedValue({ data: { content: JSON.stringify({ chief_complaint: 'x', summary: 'y' }) } });
       await invokeSummary(syncRequest());
       const translateCall = http.axiosRef.post.mock.calls.find((c: unknown[]) => String(c[0]).includes('/api/v1/translate'));
       expect(translateCall).toBeFalsy();
     });
 
-    it('summarizes with no session_id (no consultation required), synthesizing a smr- id', async () => {
+    it('summarizes with no session_id (no consultation required), synthesizing a text- id', async () => {
       http.axiosRef.post.mockResolvedValue({ data: { content: JSON.stringify({ chief_complaint: 'x', summary: 'y' }) } });
       const body = syncRequest();
       delete (body.session_data as { session_id?: string }).session_id;
       const res = await invokeSummary(body);
-      expect(res.session_id).toMatch(/^smr-/);
+      expect(res.session_id).toMatch(/^text-/);
       expect(res.summary.summary).toBe('y');
     });
 
-    // TASK-768: was 500. SMR never answered — a transport failure — so the
+    // TASK-768: was 500. TEXT never answered — a transport failure — so the
     // status is 503. The v1-compat body SHAPE (`{ error, requestId, timestamp }`,
     // parsed by `@arcaai/vox-node`) is deliberately unchanged.
-    it('maps an SMR connection failure to 503 { error: "SMR service unavailable" }', async () => {
+    it('maps an TEXT connection failure to 503 { error: "TEXT service unavailable" }', async () => {
       http.axiosRef.post.mockRejectedValue({ code: 'ECONNREFUSED' });
       await expect(invokeSummary(syncRequest())).rejects.toBeInstanceOf(HttpException);
       try {
@@ -708,7 +708,7 @@ describe('TextCompatController', () => {
       } catch (err) {
         const resp = (err as HttpException).getResponse() as Record<string, unknown>;
         expect((err as HttpException).getStatus()).toBe(503);
-        expect(resp.error).toBe('SMR service unavailable');
+        expect(resp.error).toBe('TEXT service unavailable');
         expect(resp).toHaveProperty('requestId');
       }
     });
@@ -743,7 +743,7 @@ describe('TextCompatController', () => {
     });
   });
 
-  describe('Per-tenant SMR fallback', () => {
+  describe('Per-tenant TEXT fallback', () => {
     const good = JSON.stringify({ chief_complaint: 'x', summary: 'y' });
 
     // (a) primary fails + resolver returns a target → ONE retry on that provider/model.
@@ -813,7 +813,7 @@ describe('TextCompatController', () => {
     });
 
     // (d) connect-phase primary failure → resolver NOT consulted, no retry.
-    it('does not consult the resolver or fall back when SMR is unreachable (connect-phase failure)', async () => {
+    it('does not consult the resolver or fall back when TEXT is unreachable (connect-phase failure)', async () => {
       policy.resolveTextFallbackSelection.mockResolvedValue({ provider: 'azure-openai', model: 'gpt-4o-foundry' });
       http.axiosRef.post.mockRejectedValue({ code: 'ECONNREFUSED' });
 
@@ -865,7 +865,7 @@ describe('TextCompatController', () => {
   });
 
   describe('Department-aware governed template steering', () => {
-    it('resolves the governed instruction for the resolved tenant + department/visit and injects it into the SMR system_prompt', async () => {
+    it('resolves the governed instruction for the resolved tenant + department/visit and injects it into the TEXT system_prompt', async () => {
       template.resolveGovernedInstruction.mockResolvedValue('Cardiology instruction: capture ejection fraction and rhythm.');
       http.axiosRef.post.mockResolvedValue({ data: { content: JSON.stringify({ chief_complaint: 'x', summary: 'y' }) } });
 
@@ -920,7 +920,7 @@ describe('TextCompatController', () => {
       expect(res.pre_summary).toContain('HTN');
     });
 
-    it('pre-summary does not fall back when SMR is unreachable (connect-phase failure)', async () => {
+    it('pre-summary does not fall back when TEXT is unreachable (connect-phase failure)', async () => {
       policy.resolveTextFallbackSelection.mockResolvedValue({ provider: 'azure-openai', model: 'gpt-4o-foundry' });
       http.axiosRef.post.mockRejectedValue({ code: 'ECONNREFUSED' });
 
@@ -935,13 +935,13 @@ describe('TextCompatController', () => {
       cls.get.mockReturnValue(undefined);
     });
 
-    it('rejects summary/sync with UnauthorizedException and makes NO SMR call when no tenant resolves', async () => {
+    it('rejects summary/sync with UnauthorizedException and makes NO TEXT call when no tenant resolves', async () => {
       await expect(invokeSummary(syncRequest())).rejects.toBeInstanceOf(UnauthorizedException);
       expect(http.axiosRef.post).not.toHaveBeenCalled();
       expect(policy.resolveTextSelection).not.toHaveBeenCalled();
     });
 
-    it('rejects presummary with UnauthorizedException and makes NO SMR call when no tenant resolves', async () => {
+    it('rejects presummary with UnauthorizedException and makes NO TEXT call when no tenant resolves', async () => {
       await expect(invokePresummary({ current_department: 'Cardiology' } as PreSummaryRequest)).rejects.toBeInstanceOf(UnauthorizedException);
       expect(http.axiosRef.post).not.toHaveBeenCalled();
       expect(policy.resolveTextSelection).not.toHaveBeenCalled();
@@ -956,7 +956,7 @@ describe('TextCompatController', () => {
   });
 
   describe('Streaming (stream:true)', () => {
-    // Drive a summary stream: primary START ok → task_id, then feed SMR frames.
+    // Drive a summary stream: primary START ok → task_id, then feed TEXT frames.
     const runSummaryStream = async (frames: string[]) => {
       const textStream = new PassThrough();
       http.axiosRef.post.mockResolvedValue({ data: { task_id: 't1', status: 'streaming' } });
@@ -1060,7 +1060,7 @@ describe('TextCompatController', () => {
       expect(res.end).toHaveBeenCalled();
     });
 
-    it('surfaces a mid-stream SMR error frame as a PHI-redacted error event (no upstream content on the wire)', async () => {
+    it('surfaces a mid-stream TEXT error frame as a PHI-redacted error event (no upstream content on the wire)', async () => {
       const res = await runSummaryStream([
         textFrame('chunk', { content: '{"partial":' }),
         textFrame('error', { content: 'SECRET_PHI_LEAK', data: { note: 'SECRET_PHI_LEAK' } }),
@@ -1072,7 +1072,7 @@ describe('TextCompatController', () => {
       expect(res.end).toHaveBeenCalled();
     });
 
-    it('forwards SMR reasoning frames to the client as a separate `reasoning` event, never mixed into the result', async () => {
+    it('forwards TEXT reasoning frames to the client as a separate `reasoning` event, never mixed into the result', async () => {
       const res = await runSummaryStream([
         textFrame('reasoning', { content: 'Weighing the differential…' }),
         textFrame('chunk', { content: '{"chief_complaint":"x","summary":"y"}' }),
@@ -1125,7 +1125,7 @@ describe('TextCompatController', () => {
 
         await invokePresummary(body);
 
-        const calls = logCallsFor('SMR compat pre-summary context received');
+        const calls = logCallsFor('TEXT compat pre-summary context received');
         expect(calls).toHaveLength(1);
         expect(calls[0]).toMatchObject({
           hasVitals: true,
@@ -1149,7 +1149,7 @@ describe('TextCompatController', () => {
 
         await invokePresummary({} as PreSummaryRequest);
 
-        const calls = logCallsFor('SMR compat pre-summary context received');
+        const calls = logCallsFor('TEXT compat pre-summary context received');
         expect(calls).toHaveLength(1);
         expect(calls[0]).toMatchObject({
           hasVitals: false,
@@ -1181,7 +1181,7 @@ describe('TextCompatController', () => {
         await done;
         await flushStream();
 
-        const calls = logCallsFor('SMR compat pre-summary context received');
+        const calls = logCallsFor('TEXT compat pre-summary context received');
         expect(calls).toHaveLength(1);
         expect(calls[0]).toMatchObject({ hasVitals: true, department: 'Cardiology' });
       });
@@ -1220,7 +1220,7 @@ describe('TextCompatController', () => {
 
         await invokeSummary(body);
 
-        const calls = logCallsFor('SMR compat summary context received');
+        const calls = logCallsFor('TEXT compat summary context received');
         expect(calls).toHaveLength(1);
         const expectedChars = body.session_data.conversation_segments!.reduce((sum, s) => sum + s.text.length, 0);
         expect(calls[0]).toMatchObject({
@@ -1246,7 +1246,7 @@ describe('TextCompatController', () => {
 
         await invokeSummary(body);
 
-        const calls = logCallsFor('SMR compat summary context received');
+        const calls = logCallsFor('TEXT compat summary context received');
         expect(calls).toHaveLength(1);
         expect(calls[0]).toMatchObject({
           hasPatientInfo: false,
@@ -1272,7 +1272,7 @@ describe('TextCompatController', () => {
 
         await invokeSummary(body);
 
-        const calls = logCallsFor('SMR compat summary context received');
+        const calls = logCallsFor('TEXT compat summary context received');
         expect(calls).toHaveLength(1);
         expect(calls[0]).toMatchObject({ translateToEnglishRequested: true, willTranslate: true });
       });
@@ -1288,7 +1288,7 @@ describe('TextCompatController', () => {
 
         await invokeSummary(body);
 
-        const calls = logCallsFor('SMR compat summary context received');
+        const calls = logCallsFor('TEXT compat summary context received');
         expect(calls[0]).toMatchObject({ translateToEnglishRequested: false, sourceLanguage: 'ml-en', willTranslate: true });
       });
 
@@ -1306,7 +1306,7 @@ describe('TextCompatController', () => {
         await done;
         await flushStream();
 
-        const calls = logCallsFor('SMR compat summary context received');
+        const calls = logCallsFor('TEXT compat summary context received');
         expect(calls).toHaveLength(1);
         expect(calls[0]).toMatchObject({ hasPatientInfo: true, hasPreSummary: true });
       });

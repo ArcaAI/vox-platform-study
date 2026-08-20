@@ -29,7 +29,7 @@ const createMockJob = (data: GeneratePreSummaryJobPayload): Job<GeneratePreSumma
   ({ data, id: data.jobId, name: 'generate', timestamp: Date.now() }) as unknown as Job<GeneratePreSummaryJobPayload>;
 
 describe('PreSummaryProcessor.callTextService — explicit tenant id (B-04)', () => {
-  it('resolves the SMR selection with the job tenantId + finalize task passed explicitly', async () => {
+  it('resolves the TEXT selection with the job tenantId + finalize task passed explicitly', async () => {
     const mockJobService = { notifyProgress: vi.fn(), notifyComplete: vi.fn(), notifyFailed: vi.fn() };
     const mockContextItemRepository = {
       findById: vi.fn(),

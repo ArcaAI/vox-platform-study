@@ -16,22 +16,22 @@ const createMockService = () => ({
 });
 
 const registerRequest = {
-  service: 'smr',
+  service: 'text',
   version: '2.1.0',
-  releaseTag: 'SMR-2.1.0',
+  releaseTag: 'TEXT-2.1.0',
   gitBranch: 'main',
   gitCommitSha: '0ab258f9c1d2e3f4a5b6c7d8e9f0011223344557',
   buildAt: '2026-08-09T11:22:33.000Z',
   ciPipelineId: '12345',
   ciPipelineUrl: 'https://gitlab.example.com/pipelines/12345',
   environment: 'dev',
-  instanceId: 'smr-0',
+  instanceId: 'text-0',
 };
 
 describe('ServiceReleaseInternalController', () => {
   it('delegates registration (self-registration + heartbeat) to the service', async () => {
     const service = createMockService();
-    const response = { id: 'release-1', serviceName: 'smr', version: '2.1.0' };
+    const response = { id: 'release-1', serviceName: 'text', version: '2.1.0' };
     service.registerInstance.mockResolvedValue(response);
 
     const controller = new ServiceReleaseInternalController(service as any);
@@ -44,12 +44,12 @@ describe('ServiceReleaseInternalController', () => {
   it('delegates digest attachment to the service', async () => {
     const service = createMockService();
     const digestRequest = {
-      service: 'smr',
+      service: 'text',
       gitCommitSha: '0ab258f9c1d2e3f4a5b6c7d8e9f0011223344557',
-      imageRepository: 'registry.gitlab/arca/hope/smr',
+      imageRepository: 'registry.gitlab/arca/hope/text',
       imageDigest: `sha256:${'a'.repeat(64)}`,
     };
-    const response = { id: 'release-1', serviceName: 'smr', imageDigest: digestRequest.imageDigest };
+    const response = { id: 'release-1', serviceName: 'text', imageDigest: digestRequest.imageDigest };
     service.attachDigest.mockResolvedValue(response);
 
     const controller = new ServiceReleaseInternalController(service as any);

@@ -18,7 +18,7 @@
  *   1. Bootstraps a real summarisation job in tenant `__GLOBAL__` via
  *      `POST /consultations/:id/summary/pre-summary/async`, which
  *      persists `tenantId` + `userId` on the Redis status payload
- *      before `BullModule` enqueues the work to the SMR worker.
+ *      before `BullModule` enqueues the work to the TEXT worker.
  *   2. Confirms the originating doctor can resolve the job (200), so
  *      the 404 from the cross-tenant probe must be tenant-mismatch
  *      and not "Redis lost the job".
@@ -36,7 +36,7 @@
  * Live-stack requirement: this spec depends on the dev stack
  * (`docker compose up postgres redis`) plus the seed in
  * `09-consultation.ts` (`GEN_COMPLETED` consultation owned by the
- * `doctor` user). The SMR worker does NOT need to be running — the
+ * `doctor` user). The TEXT worker does NOT need to be running — the
  * status payload is persisted synchronously to Redis by
  * `ConsultationJobService.createPreSummaryJob` BEFORE the BullMQ job
  * is enqueued, so the probe sees a "pending" job that exists.
@@ -78,7 +78,7 @@ test.describe('AC-2/AC-3 — ConsultationJob ownership genuine probe (AC-10)', (
 
     // Bootstrap a REAL job in tenant __GLOBAL__. The async pre-summary
     // endpoint is the cheapest path to a persisted ConsultationJob
-    // status — only the metadata round-trip is mandatory; the SMR
+    // status — only the metadata round-trip is mandatory; the TEXT
     // worker may or may not pick up the BullMQ job, which doesn't
     // matter for the cross-tenant probe (the status row is written
     // BEFORE enqueue per `consultation-job.service.ts`).

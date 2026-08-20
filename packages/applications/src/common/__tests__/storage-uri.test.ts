@@ -21,7 +21,7 @@ describe('parseStorageUri', () => {
   });
 
   // Mirrors both former call sites: context.service.ts accepted `string | null | undefined`,
-  // smr-proxy.controller.ts's copy defaulted `uri ?? ''` before matching — same net effect.
+  // text-proxy.controller.ts's copy defaulted `uri ?? ''` before matching — same net effect.
   it('returns null for null/undefined', () => {
     expect(parseStorageUri(null)).toBeNull();
     expect(parseStorageUri(undefined)).toBeNull();

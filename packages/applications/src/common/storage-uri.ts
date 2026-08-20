@@ -6,7 +6,7 @@
  * `Media` row back into a `{ bucket, key }` pair for `IBlobStorageService`
  * (presigned GET, raw object fetch, ...) MUST go through this single parser
  * instead of hand-rolling its own regex — previously `context.service.ts`
- * and `smr-proxy.controller.ts` each carried an identical private copy, which
+ * and `text-proxy.controller.ts` each carried an identical private copy, which
  * is exactly the kind of duplication that lets one copy silently drift from
  * the other.
  */

@@ -2,7 +2,7 @@
  * PreSummaryProcessor Unit Tests
  *
  * Tests for the PreSummaryProcessor that handles async pre-summary generation jobs.
- * The processor gathers case notes from a consultation and calls the SMR service.
+ * The processor gathers case notes from a consultation and calls the TEXT service.
  */
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
@@ -106,14 +106,14 @@ const createMockClsService = () => {
 const createMockConfigResolver = () => ({ resolvePreferredPromptTemplateId: vi.fn().mockResolvedValue(null) });
 
 // =============================================================================
-// Realistic Mock Data Factories - These match actual SMR service responses
+// Realistic Mock Data Factories - These match actual TEXT service responses
 // =============================================================================
 
 /**
- * Creates a realistic SMR service response that matches the actual API structure.
+ * Creates a realistic TEXT service response that matches the actual API structure.
  * This prevents Anti-Pattern #4: Incomplete Mocks
  */
-const createRealisticSmrResponse = (
+const createRealisticTextResponse = (
   overrides: Partial<{
     summary: string;
     llmProvider: string;
@@ -271,8 +271,8 @@ describe('PreSummaryProcessor', () => {
     });
   });
 
-  // ── the SMR call carries the cascade-resolved model ──
-  describe('SMR selection', () => {
+  // ── the TEXT call carries the cascade-resolved model ──
+  describe('TEXT selection', () => {
     it('posts the cascade-resolved provider+model when the request omits a model', async () => {
       mockConsultationRepository.findById.mockResolvedValue(createMockConsultation());
       mockContextItemRepository.findByConsultation.mockResolvedValue([createMockContextItem({ content: 'case note content' })]);
@@ -384,7 +384,7 @@ describe('PreSummaryProcessor', () => {
       expect(mockContextItemRepository.findByConsultation).toHaveBeenCalledWith('consultation-123', { type: ContextItemType.CASE_NOTE });
     });
 
-    it('should send correct payload to SMR service', async () => {
+    it('should send correct payload to TEXT service', async () => {
       const caseNote = createMockContextItem({ content: 'Patient symptoms: fever, cough' });
 
       mockConsultationRepository.findById.mockResolvedValue(createMockConsultation());
@@ -427,7 +427,7 @@ describe('PreSummaryProcessor', () => {
             'Content-Type': 'application/json',
             'X-Service-Token': '',
             // TASK-737 — the job's own fail-closed-validated tenant. It was in
-            // scope (and used for `resolveSmrSelection` one line above the HTTP
+            // scope (and used for `resolveTextSelection` one line above the HTTP
             // call) but never reached the wire, so Text resolved the platform
             // default provider for a job that HAS a tenant.
             'X-Tenant-Id': 'tenant-1',
@@ -499,7 +499,7 @@ describe('PreSummaryProcessor', () => {
       );
     });
 
-    it('should handle partial SMR response without optional metadata', async () => {
+    it('should handle partial TEXT response without optional metadata', async () => {
       mockConsultationRepository.findById.mockResolvedValue(createMockConsultation());
       mockContextItemRepository.findByConsultation.mockResolvedValue([createMockContextItem({ content: 'Test content' })]);
       mockHttpService.axiosRef.post.mockResolvedValue({

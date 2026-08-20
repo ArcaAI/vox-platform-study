@@ -252,7 +252,7 @@ export class LiveAgentResolutionService implements ILiveAgentResolver {
         });
         return null;
       }
-      // The catalog seeds `azure`; SMR registers it as `azure-openai`
+      // The catalog seeds `azure`; TEXT registers it as `azure-openai`
       // (mirrors HarnessPolicyService.resolveTextSelection).
       const provider = model.provider === 'azure' ? 'azure-openai' : (model.provider ?? '');
       if (!provider) return null;

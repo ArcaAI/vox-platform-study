@@ -1,7 +1,7 @@
 /**
  * Request/response types for the stateless, v1-compat summarization surface.
  *
- * Wire shapes are snake_case and FROZEN — they mirror the v1 SMR contract
+ * Wire shapes are snake_case and FROZEN — they mirror the v1 TEXT contract
  * served by `POST /api/smr/api/v1/presummary` and `POST /api/smr/api/v1/summary/sync`
  * (`apps/api/src/modules/text-compat/`). No consultation is required: the
  * caller posts a transcript and gets a summary back. Renaming any field here

@@ -43,7 +43,7 @@ deliberately **not read** per the "new sprint, code not old plans" rule.
 |---|---|---|
 | `Consultation.status` | `packages/database/src/prisma/db_main/consultation.prisma:36` | Typed `ConsultationStatus` enum column: OPEN/RECORDING/DRAFT_PENDING_SENSORS/PENDING_REVIEW/SIGNED/CLOSED/REOPENED |
 | `metadata.status` | `consultation.service.ts:640-719` | **Second, independent** open/closed tracker — legacy free-form JSON, predates the typed column |
-| `LiveDocumentationService` | `packages/applications/.../live-documentation/live-documentation.service.ts` | Ephemeral, in-memory/Redis, per-consultation watcher; debounces finalized STT segments into a running SOAP draft over SMR+NLP; never authoritative, never touches `Consultation.status` |
+| `LiveDocumentationService` | `packages/applications/.../live-documentation/live-documentation.service.ts` | Ephemeral, in-memory/Redis, per-consultation watcher; debounces finalized STT segments into a running SOAP draft over TEXT+NLP; never authoritative, never touches `Consultation.status` |
 | `HarnessGatewayService` | `.../harness/harness-gateway.service.ts` | apps/api → apps/harness outbound HTTP client (start workflow, signal approval/edit/context) |
 | `HarnessInternalService` + `harness-internal.controller.ts` | `.../harness/harness-internal.service.ts`, `apps/api/.../consultation/harness-internal.controller.ts` | Inbound, `X-Service-Token`-guarded callback surface the Python harness calls back into (persist draft/entities, finalize assurance, gate-decision, escalation, progress, live-doc start/stop) |
 | `SummaryService.approveSummary` | `.../summary/summary.service.ts:824-1027` | **The single, non-bypassable clinician signing path** — writes SIGNED_NOTE + ATTEST + flips `status → SIGNED` |
@@ -357,8 +357,8 @@ a specific elevated ability, and doesn't touch the clinical record itself.
 
 - **F-07** (sign-before-assurance) — see above; a deliberate "clinician autonomy" trade-off vs. the reference's
   stricter sequencing.
-- **SMR generation failure propagates and fails the whole run** (`workflows.py` — `generate` has no
-  `except ActivityError:` wrapper, per Agent A, "SMR failure propagates (never silently downgrade)") — arguably
+- **TEXT generation failure propagates and fails the whole run** (`workflows.py` — `generate` has no
+  `except ActivityError:` wrapper, per Agent A, "TEXT failure propagates (never silently downgrade)") — arguably
   reasonable (there is no content to review without a successful generation), but it means the reference's
   "independent tasks continue" philosophy (UC-11) applies to auxiliary sensors, not to the primary generation
   step itself. Not a violation, but worth naming as a boundary the reference doesn't draw as sharply.

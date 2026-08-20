@@ -7,7 +7,7 @@
  * (the latter is unset in every container, which is why the API gateway
  * reported `0.1.0` in production for as long as it has been deployed).
  *
- * <SVC>-<MAJOR>.<MINOR>.<PATCH>[-<prerelease>] e.g. SMR-2.1.0, STT-3.0.0-rc.1
+ * <SVC>-<MAJOR>.<MINOR>.<PATCH>[-<prerelease>] e.g. TEXT-2.1.0, STT-3.0.0-rc.1
  * ALL-<MAJOR>.<MINOR>.<PATCH> the platform release train
 */
 
@@ -16,7 +16,7 @@
  * `$CI_COMMIT_TAG =~ /^(...)-/` rules in `.gitlab/ci/build.yml`; a prefix that
  * builds an image but is absent here yields a release the console cannot name.
  */
-export const SERVICE_TAG_PREFIXES = ['ALL', 'API', 'ADMIN', 'COMPAT', 'GUARD', 'HARNESS', 'NLP', 'SMR', 'STT', 'TTS'] as const;
+export const SERVICE_TAG_PREFIXES = ['ALL', 'API', 'ADMIN', 'COMPAT', 'GUARD', 'HARNESS', 'NLP', 'TEXT', 'STT', 'TTS'] as const;
 
 export type ServiceTagPrefix = (typeof SERVICE_TAG_PREFIXES)[number];
 
@@ -40,7 +40,7 @@ const SEMVER_PRERELEASE = '(?:0|[1-9]\\d*|\\d*[a-zA-Z-][0-9a-zA-Z-]*)(?:\\.(?:0|
 export const RELEASE_TAG_PATTERN = new RegExp(`^(${SERVICE_TAG_PREFIXES.join('|')})-${SEMVER_CORE}(?:-(${SEMVER_PRERELEASE}))?$`);
 
 export interface ParsedReleaseTag {
-  /** Service prefix, e.g. `SMR`. `ALL` denotes the platform train. */
+  /** Service prefix, e.g. `TEXT`. `ALL` denotes the platform train. */
   service: ServiceTagPrefix;
   /** The SemVer portion, e.g. `2.1.0` or `3.0.0-rc.1`. */
   version: string;

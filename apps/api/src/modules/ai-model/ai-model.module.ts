@@ -10,7 +10,7 @@ import { AiModelDiscoveryService } from './ai-model-discovery.service';
  * already-existing `AiModelService`. Mirrors `PipelineModule`.
  *
  * Also wires the discovery surface (merge view + explicit register). It needs
- * `HttpModule` to reach SMR's provider aggregator and `CommonServiceModule` for
+ * `HttpModule` to reach TEXT's provider aggregator and `CommonServiceModule` for
  * `IConfigService` (`TEXT_URL`) / `SecretsService` — direct `process.env` reads
  * for downstream URLs are lint-banned in `src/modules/**`.
  */

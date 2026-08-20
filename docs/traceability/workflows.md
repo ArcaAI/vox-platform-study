@@ -63,7 +63,7 @@ STT consumes; transcript segments feed a running SOAP note streamed back over SS
 1. **Open a streaming session + ticket.** `POST /audio/transcription-jobs/stream/session` → `TranscriptionJob`, `AsrPipeline` (`db_main/stt.prisma`); refresh via `POST …/:sessionId/refresh-ticket`. unit(app): `stt/streaming/__tests__/streamingSession.service.test.ts`; e2e: `stt-session-cross-tenant.spec.ts`, `stream-ticket-scopes.spec.ts`.
 2. **Stream audio (WS, single-use ticket — never a JWT in the URL).** WS `@WebSocketGateway({ path: '/ws/stt/stream' })` → gateway bridges to STT internal `POST /internal/streaming/sessions` (`APIRouter(prefix="/internal/streaming")`). unit(app): `streamingAudioBridge.service.test.ts`; py(stt): `unit/streaming/*`; e2e: `streaming-{resume-after-drop,backpressure-recovery,ticket-refresh}.spec.ts`.
 3. **Persist transcript segments.** STT posts back on `@Controller('internal/stt')` → `POST /internal/stt/transcripts` → `TranscriptSegment` (`db_main/consultation.prisma`, transcription-owned). contract: `tests/contracts/stt-transcript-segments/`, `stt.contract.test.ts`.
-4. **Stream the running SOAP note.** SSE `GET /consultations/:id/live-summary/stream` (`@Sse()`) → `ContextItem` `PRE_SUMMARY` snapshot tagged `metadata.subType = LIVE_SOAP_SNAPSHOT` (SMR-generated, NLP-entity-grounded). unit(app): `consultation/live-documentation/__tests__/{live-documentation.service,soap-parser,live-documentation.groundedness}.test.ts`.
+4. **Stream the running SOAP note.** SSE `GET /consultations/:id/live-summary/stream` (`@Sse()`) → `ContextItem` `PRE_SUMMARY` snapshot tagged `metadata.subType = LIVE_SOAP_SNAPSHOT` (TEXT-generated, NLP-entity-grounded). unit(app): `consultation/live-documentation/__tests__/{live-documentation.service,soap-parser,live-documentation.groundedness}.test.ts`.
 
 **Composes:** [`transcription.md`](./transcription.md) R1 (live STT); [`consultation.md`](./consultation.md) C7 (live documentation), C2 (context).
 
@@ -320,7 +320,7 @@ closed` (no env fallback).
   two blockers this bullet previously named were closed, not routed around: `workflow.py` now
   threads a `bound_inputs` dict (from the compiler's own `NODE.inputs` edges) between nodes, and
   `generate.text` reuses the harness's own already-shipped `ApiClient.get_policy` +
-  `SmrClient.generate` pattern (never the gateway). **W12 STILL cannot produce a real clinical result
+  `TextClient.generate` pattern (never the gateway). **W12 STILL cannot produce a real clinical result
   end-to-end**, for reasons now narrower and specifically named:
   1. `WorkflowExposureService.invoke()` accepts `InvokeWorkflowRequest.input` but does
      NOT forward it to `HarnessGatewayService.startWorkflowRun(...)` — so `input.context_binding`

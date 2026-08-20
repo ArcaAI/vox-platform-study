@@ -191,7 +191,7 @@ WORKER_QUEUE_DEPTH = Gauge(
 # Cross-service per-model contract metrics
 # ---------------------------------------------------------------------------
 # Standardized {service, model} pair emitted IDENTICALLY by every HOPE model
-# service (STT, SMR, NLP, Guardrail) so the platform-metrics backend can read
+# service (STT, TEXT, NLP, Guardrail) so the platform-metrics backend can read
 # per-model "running" + "avg latency" with ONE PromQL pattern. The name and
 # label keys must stay byte-identical across services.
 

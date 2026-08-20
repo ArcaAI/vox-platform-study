@@ -13,12 +13,12 @@ import { EntitlementsServiceModule } from '../entitlements/entitlements.service.
 import { EvalServiceModule } from '../eval/eval.service.module';
 
 @Module({
-  // HttpModule + ConfigModule wire the SMR/text-generation client
+  // HttpModule + ConfigModule wire the TEXT/text-generation client
   // used by the prompt-test endpoint (mirrors SummaryServiceModule).
   // BUG-018: AiTaskDefaultServiceModule supplies the `text.test` model resolver
   // (replacing the harness policy module — the test bench is not harness), and
   // TextRequestServiceModule supplies the shared tenant-credential + runtime-profile
-  // enrichment the SMR proxy uses.
+  // enrichment the TEXT proxy uses.
   // UserProfileServiceModule supplies the preferred-template write.
   // EntitlementsServiceModule supplies the maxPromptTemplates quota check.
   imports: [

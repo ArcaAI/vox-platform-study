@@ -16,7 +16,7 @@ import { EffectiveConfigController } from '../effective-config.controller';
 import { InternalServiceTokenGuard } from '../internal-service-token.guard';
 
 const SNAPSHOT = {
-  service: 'smr',
+  service: 'text',
   generatedAt: '2026-07-20T00:00:00.000Z',
   runtimeProfiles: [{ provider: 'ollama', modelSlug: '', maxConcurrent: 6, timeoutS: 120, source: 'db' as const }],
 };
@@ -52,8 +52,8 @@ describe('EffectiveConfigController', () => {
 
   it('returns the resolved subset for the requested service', async () => {
     const { controller, resolve } = controllerWith();
-    await expect(controller.getEffectiveConfig('smr')).resolves.toEqual(SNAPSHOT);
-    expect(resolve).toHaveBeenCalledWith('smr');
+    await expect(controller.getEffectiveConfig('text')).resolves.toEqual(SNAPSHOT);
+    expect(resolve).toHaveBeenCalledWith('text');
   });
 
   // Service-to-service requests arrive with an EMPTY CLS store (no user, no
@@ -69,7 +69,7 @@ describe('EffectiveConfigController', () => {
     });
     const { controller, cls } = controllerWith(resolve);
 
-    await controller.getEffectiveConfig('smr');
+    await controller.getEffectiveConfig('text');
 
     expect(cls.run).toHaveBeenCalledTimes(1);
     expect(cls.set).toHaveBeenCalledWith('tenantId', SYSTEM_TENANT_ID);

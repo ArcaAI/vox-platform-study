@@ -121,7 +121,7 @@ function extractConfidenceScore(summary: Record<string, unknown>, useEnhanced: b
 
 /**
  * Wrap the LLM `content` (a summary JSON object) in the v1 `SummaryResponse`.
- * `processing_time_ms` is filled from SMR's `latency_ms`. Provider internals
+ * `processing_time_ms` is filled from TEXT's `latency_ms`. Provider internals
  * (e.g. `raw_llm_content`) are NEVER echoed.
  */
 export function mapGenerateToV1Summary(content: string, meta: SummaryMappingMeta): SummaryResponse {

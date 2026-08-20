@@ -7,7 +7,7 @@ import { IsNotEmpty, IsOptional, IsString, Matches } from 'class-validator';
  * across build and promotion.
  */
 export class AttachDigestRequest {
-  @ApiProperty({ example: 'smr' })
+  @ApiProperty({ example: 'text' })
   @IsString()
   @IsNotEmpty()
   service!: string;
@@ -17,7 +17,7 @@ export class AttachDigestRequest {
   @Matches(/^[0-9a-f]{40}$/)
   gitCommitSha!: string;
 
-  @ApiPropertyOptional({ nullable: true, example: 'registry.gitlab/arca/hope/smr' })
+  @ApiPropertyOptional({ nullable: true, example: 'registry.gitlab/arca/hope/text' })
   @IsOptional()
   @IsString()
   imageRepository?: string | null;

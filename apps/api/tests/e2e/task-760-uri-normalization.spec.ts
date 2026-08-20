@@ -203,7 +203,7 @@ test.describe('TASK-760 scope fence — the frozen v1 compat surfaces are untouc
       data: {},
       maxRedirects: 0,
     });
-    expect(response.status(), 'the SMR compat prefix must not 404').not.toBe(404);
+    expect(response.status(), 'the TEXT compat prefix must not 404').not.toBe(404);
     expect([301, 302, 307, 308]).not.toContain(response.status());
   });
 

@@ -25,7 +25,7 @@
  *   - Resets/seeds the test DB and FAILS FAST if seeding errors
  *   - Waits for API to be available
  *   - Verifies seeded users can authenticate (fails fast on an empty DB)
- *   - Optionally waits for Python services (STT, SMR, NLP)
+ *   - Optionally waits for Python services (STT, TEXT, NLP)
  *
  * ENVIRONMENT FLAGS:
  *   - RESET_DB=false           Skip the destructive `pnpm test:db:reset`
@@ -41,7 +41,7 @@
  *                              it implicitly depends on the same database.
  *                              Default: probe runs and hard-fails on miss.
  *   - E2E_WAIT_SERVICES=true   Additionally wait for Python micro-services
- *                              (STT, SMR, NLP) before starting the run.
+ *                              (STT, TEXT, NLP) before starting the run.
  */
 
 /**
@@ -79,7 +79,7 @@ function getServiceConfigs(): ServiceConfig[] {
       required: false,
     },
     {
-      name: 'SMR',
+      name: 'TEXT',
       url: process.env.TEXT_URL || 'http://localhost:8962',
       healthPath: '/api/v1/health',
       envVar: 'TEXT_URL',

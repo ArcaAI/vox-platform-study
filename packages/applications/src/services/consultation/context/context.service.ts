@@ -133,7 +133,7 @@ export class ContextService extends BaseService implements IContextService {
     @Optional() @Inject(MediaRepository) private readonly mediaRepository?: MediaRepository,
     @Optional() @Inject(IBlobStorageService) private readonly blobStorage?: IBlobStorageService,
     // Records the bare inputTokens/outputTokens
-    // `addRawSummary` receives (this write path makes NO SMR call of its
+    // `addRawSummary` receives (this write path makes NO TEXT call of its
     // own). Optional + trailing so existing positional fixtures keep
     // compiling; absent ⇒ the SummaryMeta persists unmetered.
     @Optional() @Inject(IUsageLedgerService) private readonly usageLedgerService?: IUsageLedgerService,
@@ -761,10 +761,10 @@ export class ContextService extends BaseService implements IContextService {
   /**
    * Persist a `SummaryMeta` and, in the SAME transaction, record the bare
    * `inputTokens`/`outputTokens` it carries. `addRawSummary`
-   * makes NO SMR call of its own — the caller already ran the generation and
+   * makes NO TEXT call of its own — the caller already ran the generation and
    * supplied the token counts directly — so there is no real `TextUsageDetail`
    * (no provider, no endpointKind); `buildLlmUsageInputFromTokenCounts`
-   * (smr-usage.ts) is the honest builder for that shape (never fabricates an
+   * (text-usage.ts) is the honest builder for that shape (never fabricates an
    * `endpointKind`). A freshly generated id keys the row: this write path
    * carries no natural request/task id.
    *

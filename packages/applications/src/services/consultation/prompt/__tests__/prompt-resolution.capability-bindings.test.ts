@@ -149,7 +149,7 @@ describe('PromptResolutionService — capability-keyed bindings', () => {
 
         // The ONE intended difference. Asserted rather than tolerated: the flip
         // is provenance-only. Its single behavioural consumer is the compat
-        // shim's `resolvedFrom === 'default'` guard (smr-compat-template.service.ts),
+        // shim's `resolvedFrom === 'default'` guard (text-compat-template.service.ts),
         // which neither value triggers — so compat output is unchanged.
         expect(viaColumns.resolvedFrom).toBe('department');
         expect(viaAgent.resolvedFrom).toBe('agent');
@@ -270,7 +270,7 @@ describe('PromptResolutionService — capability-keyed bindings', () => {
 
   // =========================================================================
   // OD-7(b) — the 'v1' surface excludes `dept-free` rather than
-  // requiring `smr-v1`, so hand-created tenant rows keep resolving. These
+  // requiring `text-v1`, so hand-created tenant rows keep resolving. These
   // tests drive `mockPromptTemplateRepository.findAll` through a real
   // (if partial) emulation of the Prisma `tags` list-filter semantics the
   // service actually issues, so they assert row-level RESOLUTION behaviour
@@ -318,8 +318,8 @@ describe('PromptResolutionService — capability-keyed bindings', () => {
       expect(result.resolvedFrom).toBe('default');
     });
 
-    it("still resolves a row tagged ['pre-summary', 'smr-v1'] on the 'v1' surface — no regression", async () => {
-      fakeFindAll([{ id: 'v1-tagged-row', tags: ['pre-summary', 'smr-v1'] }]);
+    it("still resolves a row tagged ['pre-summary', 'text-v1'] on the 'v1' surface — no regression", async () => {
+      fakeFindAll([{ id: 'v1-tagged-row', tags: ['pre-summary', 'text-v1'] }]);
 
       const result = await service.resolve({ tenantId: TENANT, promptType: 'pre-summary' });
 

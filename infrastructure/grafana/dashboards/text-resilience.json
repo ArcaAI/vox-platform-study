@@ -700,7 +700,7 @@
   "refresh": "10s",
   "schemaVersion": 39,
   "style": "dark",
-  "tags": ["smr", "resilience"],
+  "tags": ["text", "resilience"],
   "templating": {
     "list": [
       {
@@ -735,8 +735,8 @@
   },
   "timepicker": {},
   "timezone": "",
-  "title": "SMR - Resilience",
-  "uid": "smr-resilience",
+  "title": "TEXT - Resilience",
+  "uid": "text-resilience",
   "version": 1,
   "weekStart": ""
 }

@@ -614,7 +614,7 @@ export const AUTH_ENDPOINTS = {
  * Consolidated service health endpoint.
  *
  * The API gateway provides a single endpoint that fans out health checks to
- * all downstream Python microservices (TTS, SMR, NLP, STT) and returns
+ * all downstream Python microservices (TTS, TEXT, NLP, STT) and returns
  * aggregated results with per-service status.
  *
  * TASK-759 moved it to `AdminHealthServicesController`
