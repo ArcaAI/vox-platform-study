@@ -38,7 +38,7 @@ export class EffectiveConfigController {
    * service throws `ArgumentInvalidException`).
    *
    * Values are service-level knobs ONLY — never per-request model selection, so
-   * SMR's stateless-gateway contract is untouched.
+   * TEXT's stateless-gateway contract is untouched.
    *
    * Service-to-service requests carry NO user and NO tenant, so the CLS store is
    * empty — and parts of the read subtree touch tenant-scoped models

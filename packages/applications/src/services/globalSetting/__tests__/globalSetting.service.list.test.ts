@@ -137,10 +137,10 @@ describe('GlobalSetting list faceting', () => {
 
   describe('fetchAll — bracket-grammar faceting with GlobalSetting field coercion', () => {
     it('deserializes namespace[in]:a|b to a Prisma in-list', async () => {
-      await service.fetchAll({ limit: 10, page: 1, filters: 'namespace[in]:secrets|smr' });
+      await service.fetchAll({ limit: 10, page: 1, filters: 'namespace[in]:secrets|text' });
 
       expect(mockGlobalSettingRepository.findAll).toHaveBeenCalledWith(
-        expect.objectContaining({ filters: { namespace: { in: ['secrets', 'smr'] } } }),
+        expect.objectContaining({ filters: { namespace: { in: ['secrets', 'text'] } } }),
       );
     });
 

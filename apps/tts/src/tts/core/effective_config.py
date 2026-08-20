@@ -1,6 +1,6 @@
 """Effective-config pull client (tts).
 
-Structurally identical to `guardrail` / `harness` / `nlp` / `smr` / `stt`
+Structurally identical to `guardrail` / `harness` / `nlp` / `text` / `stt`
 against the same frozen contract, exposing the ONLY subset tts consumes:
 `retention.ttlSeconds` for the local engines' weight caches (Kokoro,
 IndicParler, IndicF5). The cloud providers (Azure, Sarvam) hold no weights and

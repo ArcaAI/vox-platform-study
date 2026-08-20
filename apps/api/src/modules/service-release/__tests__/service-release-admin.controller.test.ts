@@ -21,7 +21,7 @@ describe('ServiceReleaseAdminController', () => {
     service.listReleases.mockResolvedValue(response);
 
     const controller = new ServiceReleaseAdminController(service as any);
-    const query = { serviceName: 'smr', environment: 'dev', page: 1, limit: 25 };
+    const query = { serviceName: 'text', environment: 'dev', page: 1, limit: 25 };
     const result = await controller.list(query as any);
 
     expect(service.listReleases).toHaveBeenCalledWith(query);
@@ -30,7 +30,7 @@ describe('ServiceReleaseAdminController', () => {
 
   it('delegates current() to listCurrent with the environment query param', async () => {
     const service = createMockService();
-    const response = [{ serviceName: 'smr', environment: 'dev' }];
+    const response = [{ serviceName: 'text', environment: 'dev' }];
     service.listCurrent.mockResolvedValue(response);
 
     const controller = new ServiceReleaseAdminController(service as any);
@@ -42,13 +42,13 @@ describe('ServiceReleaseAdminController', () => {
 
   it('delegates history() to getHistory with the path param', async () => {
     const service = createMockService();
-    const response = [{ id: 'release-1', serviceName: 'smr' }];
+    const response = [{ id: 'release-1', serviceName: 'text' }];
     service.getHistory.mockResolvedValue(response);
 
     const controller = new ServiceReleaseAdminController(service as any);
-    const result = await controller.history('smr');
+    const result = await controller.history('text');
 
-    expect(service.getHistory).toHaveBeenCalledWith('smr');
+    expect(service.getHistory).toHaveBeenCalledWith('text');
     expect(result).toBe(response);
   });
 

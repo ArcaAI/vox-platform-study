@@ -6,7 +6,7 @@ catches the exception and reports `{"ready": False}` in the body instead of
 raising. The k8s readiness probe only looks at the status code, so the pod is
 never pulled from Service endpoints even when its one hard dependency is down.
 
-RED: written before the fix. Mirrors the SMR/NLP/TTS health contract, whose
+RED: written before the fix. Mirrors the TEXT/NLP/TTS health contract, whose
 `/health/ready` already returns 503 on the equivalent failure
 (`apps/text/src/text/api/endpoints/health.py`, `test_health_metrics.py`).
 """

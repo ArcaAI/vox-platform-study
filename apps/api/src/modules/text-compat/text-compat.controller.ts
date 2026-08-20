@@ -31,7 +31,7 @@ import { ENHANCED_SUMMARY_SCHEMA } from './summary-schemas';
 import { buildV1PreSummaryPrompt, buildV1SummaryPrompt } from './v1-summary-prompt.builder';
 
 // Codes that can occur ONLY while establishing the connection, i.e. before any
-// request bytes reached SMR. `/generate` is non-idempotent (billable
+// request bytes reached TEXT. `/generate` is non-idempotent (billable
 // generation), so a retry is safe only when the request provably never left
 // the gateway — mirrors `TextProxyController.CONNECT_PHASE_CODES`.
 const CONNECT_PHASE_CODES = new Set(['ECONNREFUSED', 'ENOTFOUND']);
@@ -117,13 +117,13 @@ interface TextGenerateRequest {
   response_format?: TextResponseFormat;
   stream?: boolean;
   // Follow-up: per-request BYOK credential for a cloud provider, keyed
-  // by the request's provider name. SMR no longer reads cloud creds from env, so
+  // by the request's provider name. TEXT no longer reads cloud creds from env, so
   // an azure/openai/anthropic selection (primary OR fallback) must carry its key
-  // here or SMR fails closed with ProviderCredentialsError (503).
+  // here or TEXT fails closed with ProviderCredentialsError (503).
   provider_overrides?: Record<string, Record<string, unknown>>;
 }
 
-/** One decoded SMR SSE frame (`event: <type>` + JSON `data`). */
+/** One decoded TEXT SSE frame (`event: <type>` + JSON `data`). */
 interface TextStreamFrame {
   type?: string;
   content?: string;
@@ -139,7 +139,7 @@ interface TextStreamFrame {
  */
 type PumpOutcome = 'completed' | 'error_pre_content' | 'error_final';
 
-// The subset of SMR `GenerateResponse` (apps/text models/responses.py) this shim
+// The subset of TEXT `GenerateResponse` (apps/text models/responses.py) this shim
 // reads. Provider internals are intentionally NOT surfaced to the client.
 interface TextGenerateResponse {
   task_id?: string;
@@ -150,10 +150,10 @@ interface TextGenerateResponse {
 }
 
 /**
- * v1-compatible SMR summary gateway shims.
+ * v1-compatible TEXT summary gateway shims.
  *
  * Reproduces the v1 endpoints `POST /api/smr/api/v1/summary/sync` and
- * `POST /api/smr/api/v1/presummary` as STATELESS shims over SMR
+ * `POST /api/smr/api/v1/presummary` as STATELESS shims over TEXT
  * `POST /api/v1/generate`. The literal paths are produced by declaring
  * `@Controller('api/smr/api/v1')` AND excluding these two routes from the
  * `api/v1` global prefix in `main.ts`.
@@ -181,21 +181,21 @@ export class TextCompatController {
     // steering if the DNA module is ever absent — DNA is additive, never required.
     @Optional() @Inject(IDnaWritingStyleService) private readonly dnaWritingStyleService?: IDnaWritingStyleService,
     // Resolves per-tenant Sarvam BYOK from the unified provider plane
-    // for the pre-summarization transcript translation (now served by SMR).
+    // for the pre-summarization transcript translation (now served by TEXT).
     // @Optional so the shim degrades gracefully (platform key) when absent.
     @Optional() @Inject(IProviderConnectionService) private readonly providerConnectionService?: IProviderConnectionService,
   ) {}
 
   /**
    * When `translate_to_english` is set, return a copy of `body` whose
-   * transcript segments are translated to English via SMR's `/api/v1/translate`
+   * transcript segments are translated to English via TEXT's `/api/v1/translate`
    * (the Sarvam translate capability). Per-tenant Sarvam BYOK is resolved from the
    * unified provider plane (`resolveTenantCloudOverrides('stt','sarvam')` — one
-   * Sarvam subscription key serves every capability), and forwarded to SMR as a
-   * `provider_overrides` entry; absent ⇒ SMR uses its platform `TEXT_SARVAM_API_KEY`.
-   * FAIL-OPEN: any error (SMR down, Sarvam failure, unexpected shape) logs a
+   * Sarvam subscription key serves every capability), and forwarded to TEXT as a
+   * `provider_overrides` entry; absent ⇒ TEXT uses its platform `TEXT_SARVAM_API_KEY`.
+   * FAIL-OPEN: any error (TEXT down, Sarvam failure, unexpected shape) logs a
    * warning and returns the ORIGINAL body so the summary is still produced. Flag
-   * off/absent ⇒ no SMR translate call.
+   * off/absent ⇒ no TEXT translate call.
    */
   private async maybeTranslateBody(body: SyncSummaryRequest, tenantId: string): Promise<SyncSummaryRequest> {
     if (!this.shouldTranslateToEnglish(body)) return body;
@@ -209,7 +209,7 @@ export class TextCompatController {
       // super admin's platform (SYSTEM-tenant) credential. One Sarvam
       // subscription key covers STT/TTS/translate, so the existing 'stt' Sarvam
       // BYO row is reused. Only the 'sarvam' entry is forwarded (minimal exposure);
-      // if neither tier has one, no credential is sent and SMR fails → fail-open.
+      // if neither tier has one, no credential is sent and TEXT fails → fail-open.
       const sarvamOverride = await this.resolveSarvamByok(tenantId);
       const providerOverrides = sarvamOverride ? { sarvam: sarvamOverride } : undefined;
 
@@ -222,7 +222,7 @@ export class TextCompatController {
       );
       const translations = (response.data as { translations?: unknown })?.translations;
       if (!Array.isArray(translations) || translations.length !== segments.length) {
-        throw new Error('SMR /api/v1/translate returned an unexpected shape');
+        throw new Error('TEXT /api/v1/translate returned an unexpected shape');
       }
       // Keep the speaker's own words alongside the translation.
       // Sarvam still produces the English the note is written from, but it is a
@@ -261,7 +261,7 @@ export class TextCompatController {
    * unified provider plane: the tenant admin's own row first, then the global
    * admin's platform (SYSTEM-tenant) credential. Sarvam is BYOK-only — there is
    * NO env fallback. Returns `undefined` when neither tier has an enabled Sarvam
-   * credential (→ SMR gets no key → fail-open, no translation). One Sarvam
+   * credential (→ TEXT gets no key → fail-open, no translation). One Sarvam
    * subscription key serves every capability, so the `stt`/`sarvam` connection
    * row is the source.
    *
@@ -312,9 +312,9 @@ export class TextCompatController {
   // `@RequiredScopes` placement above; adding it changes no path, no verb and
   // no payload (pinned by `src/modules/__tests__/task-767-compat-wire-contract.test.ts`).
   @RequiredSvcScopes('svc:consultation:report:write')
-  @ApiOperation({ summary: 'v1-compatible synchronous medical summary (stateless shim over SMR /generate)' })
+  @ApiOperation({ summary: 'v1-compatible synchronous medical summary (stateless shim over TEXT /generate)' })
   async summarySync(@Body() body: SyncSummaryRequest, @Req() request: RequestWithAuth, @Res() res: Response): Promise<void> {
-    // Mandatory V2 Core context: resolve-or-reject tenant BEFORE any SMR call,
+    // Mandatory V2 Core context: resolve-or-reject tenant BEFORE any TEXT call,
     // for the stream AND non-stream branch (no SYSTEM-default leak).
     const tenantId = this.requireTenantId(request);
     if (body.stream === true) {
@@ -343,7 +343,7 @@ export class TextCompatController {
     // A consultation/session is NOT required to summarize. `session_id` is an
     // optional correlation string echoed back on the response; synthesize one
     // when the caller omits it so `SummaryResponse.session_id` stays a valid id.
-    const sessionId = sessionData.session_id?.trim() ? sessionData.session_id : `smr-${randomUUID()}`;
+    const sessionId = sessionData.session_id?.trim() ? sessionData.session_id : `text-${randomUUID()}`;
     const language = this.resolveLanguage(sessionData.session_metadata);
     // Enrichment logic (TEXT_Summary_Endpoints.md §3.1): enabled when the flag is
     // set OR when pre_summary_text is present (the documented safety net).
@@ -389,7 +389,7 @@ export class TextCompatController {
     const responseSchema = v1Assembled?.responseSchema ?? ENHANCED_SUMMARY_SCHEMA;
 
     this.logger.log({
-      message: 'SMR compat summary prompt assembled',
+      message: 'TEXT compat summary prompt assembled',
       assembly: v1Assembled ? 'v1-template' : 'generic-enhanced',
       department: department ?? null,
       visitType: visitType ?? null,
@@ -414,7 +414,7 @@ export class TextCompatController {
       },
     };
 
-    // Map an SMR `/generate` result into the v1 SummaryResponse for the
+    // Map an TEXT `/generate` result into the v1 SummaryResponse for the
     // provider/model that actually produced it (labels reflect the fallback too).
     // `generated` carries the non-stream metadata (task_id/latency/usage); in the
     // streaming path it is empty and only the accumulated `content` is available.
@@ -482,9 +482,9 @@ export class TextCompatController {
       primaryError = err;
     }
 
-    // Per-tenant SMR fallback — ONE retry against the tenant's
+    // Per-tenant TEXT fallback — ONE retry against the tenant's
     // configured fallback provider/model for provider-side failures (LLM error /
-    // unparseable content / non-connect upstream error). Skipped when SMR itself
+    // unparseable content / non-connect upstream error). Skipped when TEXT itself
     // was unreachable (a connect-phase failure — a second call cannot help), so
     // the resolver is only consulted once the failure is fallback-eligible. When
     // the tenant has no fallback configured the resolver returns `null` (fail-open)
@@ -500,7 +500,7 @@ export class TextCompatController {
         try {
           const generated = await this.postGenerate(fallbackRequest, 'Summary generation (tenant fallback)', tenantId);
           this.logger.warn({
-            message: 'Primary SMR summary generation failed; served via tenant-configured fallback',
+            message: 'Primary TEXT summary generation failed; served via tenant-configured fallback',
             fallbackProvider: fallback.provider,
             correlationId: this.clsService.getId(),
           });
@@ -509,7 +509,7 @@ export class TextCompatController {
           // Surface the ORIGINAL primary error, not the fallback's — the primary
           // failure is the one the caller's request actually hit.
           this.logger.warn({
-            message: 'Tenant-configured SMR fallback also failed for summary generation',
+            message: 'Tenant-configured TEXT fallback also failed for summary generation',
             correlationId: this.clsService.getId(),
             fallbackError: fallbackErr instanceof Error ? fallbackErr.message : undefined,
           });
@@ -522,7 +522,7 @@ export class TextCompatController {
 
   /**
    * Streaming summary path. Builds the same request as `computeSummary`, then
-   * proxies the SMR SSE stream as v1 `delta`/`result`/`error` events. The
+   * proxies the TEXT SSE stream as v1 `delta`/`result`/`error` events. The
    * per-tenant fallback applies ONLY to a pre-stream START failure (the
    * `/generate` POST failing before any bytes) — a half-emitted stream cannot be
    * restarted, so mid-stream failures surface as a single `error` event.
@@ -547,7 +547,7 @@ export class TextCompatController {
         const fallback = await this.harnessPolicyService.resolveTextFallbackSelection(tenantId, 'finalize');
         if (fallback && fallback.provider !== primaryRequest.provider) {
           this.logger.warn({
-            message: 'Primary SMR summary stream start failed; retrying via tenant-configured fallback',
+            message: 'Primary TEXT summary stream start failed; retrying via tenant-configured fallback',
             fallbackProvider: fallback.provider,
             correlationId: this.clsService.getId(),
           });
@@ -562,15 +562,15 @@ export class TextCompatController {
 
   /**
    * Fallback is eligible for provider-side failures: an upstream RESPONSE error
-   * (SMR answered with an error — the LLM/provider failed) OR a parse/mapping
-   * failure (unparseable content). It is NOT eligible when SMR itself was
+   * (TEXT answered with an error — the LLM/provider failed) OR a parse/mapping
+   * failure (unparseable content). It is NOT eligible when TEXT itself was
    * unreachable (a connect-phase transport error with no response) — retrying a
    * different provider through the same unreachable gateway cannot help.
    */
   private isFallbackEligible(err: unknown): boolean {
     const axiosError = err as AxiosError;
-    if (axiosError?.response !== undefined) return true; // SMR responded with an error
-    if (typeof axiosError?.code === 'string') return false; // connect-phase / unreachable SMR
+    if (axiosError?.response !== undefined) return true; // TEXT responded with an error
+    if (typeof axiosError?.code === 'string') return false; // connect-phase / unreachable TEXT
     return true; // parse/mapping failure
   }
 
@@ -587,9 +587,9 @@ export class TextCompatController {
   @Authorize()
   @RequiredScopes('consultation:report:write')
   @RequiredSvcScopes('svc:consultation:report:write')
-  @ApiOperation({ summary: 'v1-compatible department-aware pre-summary (stateless shim over SMR /generate)' })
+  @ApiOperation({ summary: 'v1-compatible department-aware pre-summary (stateless shim over TEXT /generate)' })
   async presummary(@Body() body: PreSummaryRequest, @Req() request: RequestWithAuth, @Res() res: Response): Promise<void> {
-    // Mandatory V2 Core context: resolve-or-reject tenant BEFORE any SMR call.
+    // Mandatory V2 Core context: resolve-or-reject tenant BEFORE any TEXT call.
     const tenantId = this.requireTenantId(request);
     if (body.stream === true) {
       await this.streamPreSummary(res, body, tenantId);
@@ -648,14 +648,14 @@ export class TextCompatController {
         try {
           const generated = await this.postGenerate(fallbackRequest, 'Pre-summary generation (tenant fallback)', tenantId);
           this.logger.warn({
-            message: 'Primary SMR pre-summary generation failed; served via tenant-configured fallback',
+            message: 'Primary TEXT pre-summary generation failed; served via tenant-configured fallback',
             fallbackProvider: fallback.provider,
             correlationId: this.clsService.getId(),
           });
           return mapGenerateToV1PreSummary(generated.content, new Date());
         } catch (fallbackErr) {
           this.logger.warn({
-            message: 'Tenant-configured SMR fallback also failed for pre-summary generation',
+            message: 'Tenant-configured TEXT fallback also failed for pre-summary generation',
             correlationId: this.clsService.getId(),
             fallbackError: fallbackErr instanceof Error ? fallbackErr.message : undefined,
           });
@@ -692,7 +692,7 @@ export class TextCompatController {
         const fallback = await this.harnessPolicyService.resolveTextFallbackSelection(tenantId, 'finalize');
         if (fallback && fallback.provider !== primaryRequest.provider) {
           this.logger.warn({
-            message: 'Primary SMR pre-summary stream start failed; retrying via tenant-configured fallback',
+            message: 'Primary TEXT pre-summary stream start failed; retrying via tenant-configured fallback',
             fallbackProvider: fallback.provider,
             correlationId: this.clsService.getId(),
           });
@@ -716,12 +716,12 @@ export class TextCompatController {
    * PHI rule: booleans and character COUNTS only — never field content, never
    * a preview, never a substring. `department`/`visitType`/`language` are
    * non-PHI categorical identifiers, logged the same way the neighboring
-   * `TextCompatTemplateService` resolution log ("SMR compat instruction
+   * `TextCompatTemplateService` resolution log ("TEXT compat instruction
    * template resolved") already does.
    */
   private logPreSummaryContext(body: PreSummaryRequest): void {
     this.logger.log({
-      message: 'SMR compat pre-summary context received',
+      message: 'TEXT compat pre-summary context received',
       hasVitals: Boolean(body.formatted_vitals?.trim()),
       hasTestResults: Boolean(body.formatted_test_results?.trim()),
       hasPreviousVisits: Boolean(body.formatted_previous_visits?.trim()),
@@ -750,7 +750,7 @@ export class TextCompatController {
     const sessionData = body.session_data;
     const segments = sessionData.conversation_segments ?? [];
     this.logger.log({
-      message: 'SMR compat summary context received',
+      message: 'TEXT compat summary context received',
       hasPatientInfo: Boolean(sessionData.patient_info && Object.keys(sessionData.patient_info).length > 0),
       hasPreSummary: Boolean(sessionData.pre_summary_text?.trim()),
       hasTestResults: Boolean((sessionData.test_results?.length ?? 0) > 0 || sessionData.test_results_text?.trim()),
@@ -815,16 +815,16 @@ export class TextCompatController {
 
   /**
    * Follow-up: inject the tenant's LLM cloud BYOK credential for
-   * `request.provider`. Mirrors `TextProxyController` — SMR no longer holds env
+   * `request.provider`. Mirrors `TextProxyController` — TEXT no longer holds env
    * credentials, so a cloud provider (azure/openai/anthropic) selected as
    * PRIMARY or FALLBACK must receive its key/endpoint as a per-request
-   * `provider_overrides` entry, or SMR fails closed with ProviderCredentialsError
+   * `provider_overrides` entry, or TEXT fails closed with ProviderCredentialsError
    * (503). Local engines (lm-studio/ollama) resolve to no override and are
    * unaffected. `azure-openai` de-aliases to the `azure` connection key
    * (`resolveTextSelection`/`resolveTextFallbackSelection` map azure→azure-openai
-   * for SMR's registry; the connection plane is keyed by `azure`). The override
-   * is keyed by `request.provider` so SMR's adapter (`provider_overrides[provider]`)
-   * finds it. Fail-open: a resolver error leaves the request unchanged (SMR then
+   * for TEXT's registry; the connection plane is keyed by `azure`). The override
+   * is keyed by `request.provider` so TEXT's adapter (`provider_overrides[provider]`)
+   * finds it. Fail-open: a resolver error leaves the request unchanged (TEXT then
    * decides — a cloud provider will 503, a local one proceeds).
    */
   private async attachLlmByok(request: TextGenerateRequest, tenantId: string): Promise<void> {
@@ -837,7 +837,7 @@ export class TextCompatController {
       return;
     }
     // A SUPPRESSED platform tier (tenant veto → 409, no
-    // entitlement → 403) is reported instead of degrading to SMR's
+    // entitlement → 403) is reported instead of degrading to TEXT's
     // unattributable 503. Nothing suppressed ⇒ returns void and the fail-open
     // behaviour above is unchanged.
     if (resolved) assertProviderAvailable(resolved, 'llm', connKey);
@@ -924,8 +924,8 @@ export class TextCompatController {
   }
 
   /**
-   * POST to SMR `/api/v1/generate`, retrying ONLY on connect-phase failures
-   * (the request provably never reached SMR — safe for the non-idempotent
+   * POST to TEXT `/api/v1/generate`, retrying ONLY on connect-phase failures
+   * (the request provably never reached TEXT — safe for the non-idempotent
    * billable call). Throws the RAW transport error on exhaustion so callers can
    * classify it (fallback eligibility / error-shape mapping).
    */
@@ -935,7 +935,7 @@ export class TextCompatController {
   }
 
   /**
-   * POST to SMR `/api/v1/generate` with `stream:true`, returning the accepted
+   * POST to TEXT `/api/v1/generate` with `stream:true`, returning the accepted
    * `task_id`. Shares the connect-phase retry with the non-stream path; throws
    * the RAW transport error on exhaustion (so the streaming START can classify it
    * for the per-tenant fallback).
@@ -944,14 +944,14 @@ export class TextCompatController {
     const data = (await this.postGenerateRaw({ ...request, stream: true }, label, tenantId)) as { task_id?: string };
     const taskId = data?.task_id;
     if (!taskId) {
-      throw new Error('SMR did not return a task_id for the streaming request');
+      throw new Error('TEXT did not return a task_id for the streaming request');
     }
     return taskId;
   }
 
   /**
    * POST `/api/v1/generate`, retrying ONLY on connect-phase failures (the request
-   * provably never reached SMR — safe for the non-idempotent billable call).
+   * provably never reached TEXT — safe for the non-idempotent billable call).
    * Returns the raw response body; throws the RAW transport error on exhaustion.
    */
   private async postGenerateRaw(request: TextGenerateRequest, label: string, tenantId: string): Promise<unknown> {
@@ -989,9 +989,9 @@ export class TextCompatController {
   // ── SSE streaming (opt-in `stream:true`) ────────────────────────────────────
 
   /**
-   * Proxy an SMR `/generate` stream to the client as v1 SSE. Sets the SSE
+   * Proxy an TEXT `/generate` stream to the client as v1 SSE. Sets the SSE
    * headers, opens the generation (with an optional pre-stream START fallback),
-   * then re-emits SMR `chunk` frames as `event: delta` and, on `done`, the
+   * then re-emits TEXT `chunk` frames as `event: delta` and, on `done`, the
    * fully-mapped v1 body as `event: result`. Any failure surfaces as a single
    * PHI-redacted `event: error`. Mirrors `TextProxyController.streamTaskEvents`
    * (heartbeat + disconnect cleanup) minus the native ticket — the compat POST
@@ -1042,8 +1042,8 @@ export class TextCompatController {
       }
     }
 
-    // PUMP phase. SMR accepts a streaming `/generate` with 202 BEFORE the provider
-    // runs, so a down PRIMARY (e.g. LM Studio) surfaces as an SMR `error` frame
+    // PUMP phase. TEXT accepts a streaming `/generate` with 202 BEFORE the provider
+    // runs, so a down PRIMARY (e.g. LM Studio) surfaces as an TEXT `error` frame
     // AFTER the 202 — the START-phase fallback above never sees it. When that
     // error (or an empty stream) arrives with NOTHING yet streamed to the client,
     // the stream is safely restartable: retry ONCE on the tenant fallback, at
@@ -1065,7 +1065,7 @@ export class TextCompatController {
       // retry and re-attaches the fallback provider's BYOK) restarts the stream
       // once on the tenant fallback; nothing has reached the client, so this is
       // clean. A synthetic error drives its eligibility check down the
-      // parse/mapping branch (a provider-side failure, not an unreachable SMR).
+      // parse/mapping branch (a provider-side failure, not an unreachable TEXT).
       const fallbackRequest = resolveStartFallback ? await resolveStartFallback(new Error(`${label} stream produced no content`), textRequest) : null;
       let retried = false;
       if (fallbackRequest && fallbackRequest.provider !== textRequest.provider) {
@@ -1094,7 +1094,7 @@ export class TextCompatController {
   }
 
   /**
-   * Open the held-open SMR task stream and re-emit its frames to the client.
+   * Open the held-open TEXT task stream and re-emit its frames to the client.
    * `chunk` → `event: delta { text }` (accumulating); `done` → `event: result`
    * carrying `buildResult(accumulated)`; `error`/parse/mapping failure →
    * `event: error` (PHI-redacted — never echo upstream content).
@@ -1202,9 +1202,9 @@ export class TextCompatController {
             resolve('completed');
             return;
           } else if (frame.type === 'error') {
-            // SMR error frame — never forward its content (may carry PHI/prompt).
+            // TEXT error frame — never forward its content (may carry PHI/prompt).
             this.logger.error({
-              message: `SMR error frame during ${label} (content redacted)`,
+              message: `TEXT error frame during ${label} (content redacted)`,
               correlationId: this.clsService.getId(),
               redacted: true,
             });
@@ -1240,7 +1240,7 @@ export class TextCompatController {
     });
   }
 
-  /** Decode one SMR SSE frame (`event:`/`data:` lines) into a `StreamChunk`. */
+  /** Decode one TEXT SSE frame (`event:`/`data:` lines) into a `StreamChunk`. */
   private parseTextFrame(rawFrame: string): TextStreamFrame | null {
     let eventName: string | undefined;
     const dataParts: string[] = [];
@@ -1277,7 +1277,7 @@ export class TextCompatController {
   private logStreamFailure(label: string, err: unknown): void {
     const axiosError = err as AxiosError;
     this.logger.error({
-      message: `SMR streaming failure during ${label} (body redacted — may contain PHI/prompt content)`,
+      message: `TEXT streaming failure during ${label} (body redacted — may contain PHI/prompt content)`,
       upstreamStatus: axiosError?.response?.status,
       code: axiosError?.code,
       correlationId: this.clsService.getId(),
@@ -1286,7 +1286,7 @@ export class TextCompatController {
   }
 
   /**
-   * Map an SMR transport failure to the v1 error shapes (/):
+   * Map an TEXT transport failure to the v1 error shapes (/):
    *   - no upstream response (unreachable) → `{ error, requestId, timestamp }`;
    *   - upstream responded with an error → `{ detail: "<label> failed: ..." }`.
    * The raw upstream body is NEVER forwarded or logged — it can echo the
@@ -1298,7 +1298,7 @@ export class TextCompatController {
 
     if (axiosError?.response !== undefined) {
       this.logger.error({
-        message: `SMR upstream error during ${label} (body redacted — may contain PHI/prompt content)`,
+        message: `TEXT upstream error during ${label} (body redacted — may contain PHI/prompt content)`,
         upstreamStatus,
         correlationId: this.clsService.getId(),
         upstreamBodyRedacted: true,
@@ -1307,19 +1307,19 @@ export class TextCompatController {
     }
 
     this.logger.error({
-      message: 'SMR service unavailable',
+      message: 'TEXT service unavailable',
       label,
       code: axiosError?.code,
       correlationId: this.clsService.getId(),
     });
-    // TASK-768: this branch is reached only when SMR never answered — a
+    // TASK-768: this branch is reached only when TEXT never answered — a
     // transport failure — so the status is 503, not 500. The v1 body SHAPE
     // (`{ error, requestId, timestamp }`) is FROZEN: `@arcaai/vox-node` parses
     // it. Only the status changes, and `ExceptionInterceptor` adds `Retry-After`
     // to it like every other 503 leaving the gateway.
     return new HttpException(
       {
-        error: 'SMR service unavailable',
+        error: 'TEXT service unavailable',
         requestId: this.clsService.getId(),
         timestamp: new Date().toISOString(),
       },

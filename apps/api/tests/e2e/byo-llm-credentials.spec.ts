@@ -1,13 +1,13 @@
 /**
- * Tenant BYO cloud credential → SMR generate round-trip (gap).
+ * Tenant BYO cloud credential → TEXT generate round-trip (gap).
  *
  * `ai-provider-connections-cross-tenant.spec.ts` already locks down
  * `AiProviderConnectionController` itself: secret-never-echoed, self-host-403,
  * and the cross-tenant read/write posture — exclusively against the `azure`
- * row. NONE of that proves the credential actually reaches SMR — that only
+ * row. NONE of that proves the credential actually reaches TEXT — that only
  * happens inside `TextProxyController#generate` via
  * `applyTenantProviderOverrides` (see
- * `apps/api/src/modules/streaming/__tests__/smr-proxy-tenant-byo.controller.test.ts`
+ * `apps/api/src/modules/streaming/__tests__/text-proxy-tenant-byo.controller.test.ts`
  * for the equivalent unit-level proof of the same fold-in logic). This spec is
  * the live HTTP round trip, exercised against `bedrock` instead of `azure` so
  * it never contends with the other spec file's writes to the same tenant's
@@ -28,7 +28,7 @@
  * ENV-GATED — SKIPPED BY DEFAULT (a visible skip count in the report, never a
  * silent omission). Proving (1)/(2) needs the gateway's own `TEXT_URL` to point
  * at a listener this spec can inspect, and the gateway resolves `TEXT_URL` ONCE
- * at bootstrap (`smr-proxy.controller.ts#getTextBaseUrl`) — this Playwright
+ * at bootstrap (`text-proxy.controller.ts#getTextBaseUrl`) — this Playwright
  * worker cannot redirect an already-running gateway process. That makes this
  * an OPERATOR setup step, not something the spec can arrange on its own:
  *
@@ -39,7 +39,7 @@
  * Given that, this spec binds a tiny HTTP listener at that exact address for
  * the run and services `POST /api/v1/generate` itself, echoing back the JSON
  * body it received (including any `provider_overrides`) as its own response.
- * That echo is TEST-ONLY verification plumbing: a real SMR never echoes
+ * That echo is TEST-ONLY verification plumbing: a real TEXT never echoes
  * credentials back in its response — it uses them to call the cloud provider
  * and returns generated text. The echo is what lets this spec see, from the
  * outside, exactly what the gateway forwarded downstream, without a second
@@ -68,10 +68,10 @@ interface StubGenerateEcho {
 // assigned a test from this same describe and run its OWN copy of `beforeAll`
 // concurrently — a second `listen()` on the same port throws EADDRINUSE. No
 // other spec in this folder binds a port, so no other file needs this.
-test.describe.serial('tenant BYO cloud credential reaches SMR (generate round-trip)', () => {
+test.describe.serial('tenant BYO cloud credential reaches TEXT (generate round-trip)', () => {
   test.skip(
     !TEXT_STUB_ENABLED || !TEXT_STUB_URL,
-    'requires a stub SMR listener this spec binds at E2E_TEXT_URL, with the LIVE gateway’s own TEXT_URL pointed at ' +
+    'requires a stub TEXT listener this spec binds at E2E_TEXT_URL, with the LIVE gateway’s own TEXT_URL pointed at ' +
       'that same address before boot (set E2E_TEXT_STUB=1 + E2E_TEXT_URL=http://127.0.0.1:<port> for BOTH the gateway ' +
       'process and this suite — see the file header for the full sequence)',
   );
@@ -164,7 +164,7 @@ test.describe.serial('tenant BYO cloud credential reaches SMR (generate round-tr
     expect(body.hasKey).toBe(true);
   });
 
-  test('a generate request from tenant A carries its BYO bedrock credential through to SMR', async ({ request }) => {
+  test('a generate request from tenant A carries its BYO bedrock credential through to TEXT', async ({ request }) => {
     test.skip(!tenantACredentialWritten, 'no Vault Transit provider in this environment — see beforeAll');
 
     const resp = await request.post(GENERATE_ROUTE, {

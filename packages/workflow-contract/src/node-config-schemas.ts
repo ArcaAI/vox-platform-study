@@ -134,7 +134,7 @@ const GENERATE_TEXT_SCHEMA: NodeConfigSchema = Object.freeze({
   additionalProperties: false,
   required: ['taskKey'],
   properties: {
-    taskKey: { type: 'string', enum: ['smr.finalize', 'smr.live', 'smr.test'] },
+    taskKey: { type: 'string', enum: ['text.finalize', 'text.live', 'text.test'] },
     systemPrompt: { type: 'string', maxLength: 50000 },
     temperature: { type: 'number', minimum: 0, maximum: 2 },
     maxTokens: { type: 'integer', minimum: 1 },

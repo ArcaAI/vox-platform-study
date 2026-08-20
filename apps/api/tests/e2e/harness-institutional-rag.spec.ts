@@ -4,7 +4,7 @@
  * Mirrors `harness-gate.spec.ts`. It proves the Phase-3 safety/quality
  * properties at the HTTP edge, with the SAME evidence policy: assertions that
  * need only a live apps/api run unconditionally; the full ingest→retrieve→cite→
- * verify loop (which additionally needs apps/harness + Temporal + SMR + NLP +
+ * verify loop (which additionally needs apps/harness + Temporal + TEXT + NLP +
  * Qdrant + the BAAI/bge-m3 embeddings model + the TEI `hope-reranker`) is gated
  * behind `HARNESS_E2E_FULL` and SKIPPED unless that flag (and the required seed
  * ids) are set, so CI never reports a fabricated pass.
@@ -63,7 +63,7 @@ test.describe('Phase 3 — institutional-knowledge provenance is auth-gated', ()
 // Prerequisites for a green live run:
 //   HARNESS_E2E_FULL=1
 //   HARNESS_RETRIEVAL_ENABLED=true                 (the flag-gated retriever)
-//   apps/harness + Temporal + SMR + NLP + Postgres + Redis + Qdrant up
+//   apps/harness + Temporal + TEXT + NLP + Postgres + Redis + Qdrant up
 //   LM Studio BAAI/bge-m3 (1024-dim) loaded at /v1/embeddings
 //   TEI hope-reranker (:8870) up
 //   A tenant-A KnowledgeDocument APPROVED + ingested (chunks in knowledge_chunks)
@@ -88,7 +88,7 @@ test.describe('Phase 3 — ingest → retrieve → cite → verify (full loop)',
   test('the cited draft surfaces knowledgeChunkIds in its citationsMap and citation_verify PASS', async ({ request }) => {
     const auth = { Authorization: `Bearer ${doctorToken}` };
 
-    // The harness loop retrieved tenant-A institutional chunks, the SMR draft
+    // The harness loop retrieved tenant-A institutional chunks, the TEXT draft
     // cited them with [[kb:<id>]] markers, and the loop persisted those ids onto
     // each claim's knowledgeChunkIds + recorded the citation_verify sensor.
     const detail = await request.get(`/api/v1/consultations/${CONSULT_ID}`, { headers: auth });

@@ -31,7 +31,7 @@
  *     does not exist), so there is nothing to assign.
  *   • Test sub-metrics as a UI feature — the backend `PromptTestResultResponse`
  *     *does* expose an optional deterministic `metrics`; when a
- *     real run returns it we assert its shape, but we do not require it (SMR may be
+ *     real run returns it we assert its shape, but we do not require it (TEXT may be
  *     down in the test stack).
  *
  * Documented gaps surfaced by this spec (see TRACEABILITY-MATRIX.md A1/A3):
@@ -277,7 +277,7 @@ test.describe.serial('agent management backend contract (arcaai_admin · ARCAAI)
     expect(rolled.content, 'activating v1 restores the original content').toBe(ORIGINAL_CONTENT);
   });
 
-  // ── Frame 33 · test playground (SMR-dependent) ─────────────────────────
+  // ── Frame 33 · test playground (TEXT-dependent) ─────────────────────────
 
   // The test run is NOT an OCC write: it assembles the prompt and submits a
   // STREAMING generation job, persisting nothing until the separate
@@ -287,9 +287,9 @@ test.describe.serial('agent management backend contract (arcaai_admin · ARCAAI)
   // TASK-764: the CONTRACT here is the ABSENCE of an OCC gate — a bare,
   // header-less POST must never be refused for want of an `If-Match` (428) nor
   // on a version compare (412). Whether the run then REACHES the generator is
-  // environmental: the route forwards to apps/text (SMR), which is optional in
-  // this stack, and an unreachable SMR surfaces as a 400 naming the refused
-  // connection. Asserting `[200,201]` conflated "not OCC-gated" with "SMR is
+  // environmental: the route forwards to apps/text (TEXT), which is optional in
+  // this stack, and an unreachable TEXT surfaces as a 400 naming the refused
+  // connection. Asserting `[200,201]` conflated "not OCC-gated" with "TEXT is
   // up" and failed on every stack without apps/text running — the sibling test
   // below already documents that split. Both OCC statuses stay asserted
   // unconditionally, and the accepted-run shape is asserted whenever the run
@@ -301,7 +301,7 @@ test.describe.serial('agent management backend contract (arcaai_admin · ARCAAI)
 
     if ([200, 201].includes(res.status())) return;
     console.warn(
-      `[TASK-764] prompt test run returned ${res.status()} — SMR unavailable; the no-OCC-gate contract is verified. Body: ${await res.text()}`,
+      `[TASK-764] prompt test run returned ${res.status()} — TEXT unavailable; the no-OCC-gate contract is verified. Body: ${await res.text()}`,
     );
   });
 
@@ -320,7 +320,7 @@ test.describe.serial('agent management backend contract (arcaai_admin · ARCAAI)
       headers: ifMatch(token, current.version),
       data: { sampleInput: 'Patient reports chest pain for 2 days.', variables: { department: 'Cardiology', transcript: 'CC: chest pain.' } },
     });
-    // Prompt assembly + provider resolution are deterministic; reaching SMR is
+    // Prompt assembly + provider resolution are deterministic; reaching TEXT is
     // not (the test stack may not run it, and a missing `text.test` model is a
     // documented 400). Assert the shape only when the ack was actually issued.
     expect(res.status(), 'the run is not OCC-gated ⇒ never 428').not.toBe(428);
@@ -337,8 +337,8 @@ test.describe.serial('agent management backend contract (arcaai_admin · ARCAAI)
       // Stream mode hands back the handle the finalize call needs.
       if (ack.mode === 'stream') expect(typeof ack.taskId).toBe('string');
     } else {
-      // Authored — SMR unreachable, or no `text.test` model configured (400).
-      console.warn(`[task-382] prompt test run returned ${res.status()} — SMR/model selection unavailable; the no-428 contract is verified.`);
+      // Authored — TEXT unreachable, or no `text.test` model configured (400).
+      console.warn(`[task-382] prompt test run returned ${res.status()} — TEXT/model selection unavailable; the no-428 contract is verified.`);
     }
   });
 

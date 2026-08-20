@@ -14,7 +14,7 @@
         "type": "prometheus",
         "uid": "prometheus"
       },
- "description": "Prefix/prompt-cache hit rate of the backing inference engine (vLLM prefix cache / llama.cpp cache_prompt), re-exported by SMR as the engine-agnostic `text_engine_cache_hit_rate{engine}` gauge. Phase 4D.2 measures the prompt-reorder (4D.1) cache-friendliness improvement per engine.",
+ "description": "Prefix/prompt-cache hit rate of the backing inference engine (vLLM prefix cache / llama.cpp cache_prompt), re-exported by TEXT as the engine-agnostic `text_engine_cache_hit_rate{engine}` gauge. Phase 4D.2 measures the prompt-reorder (4D.1) cache-friendliness improvement per engine.",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -200,7 +200,7 @@
   "refresh": "10s",
   "schemaVersion": 39,
   "style": "dark",
- "tags": ["smr", "cache", "prefix-cache", ""],
+ "tags": ["text", "cache", "prefix-cache", ""],
   "templating": {
     "list": [
       {
@@ -259,8 +259,8 @@
   },
   "timepicker": {},
   "timezone": "",
- "title": "SMR - Cache Friendliness",
-  "uid": "smr-cache-friendliness",
+ "title": "TEXT - Cache Friendliness",
+  "uid": "text-cache-friendliness",
   "version": 1,
   "weekStart": ""
 }

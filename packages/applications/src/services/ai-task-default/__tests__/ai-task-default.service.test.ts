@@ -132,7 +132,7 @@ describe('AiTaskDefaultService — getEffective', () => {
   });
 
   it('rejects an unknown task key', async () => {
-    await expect(ctx.svc.getEffective('smr.summarize')).rejects.toBeInstanceOf(ArgumentInvalidException);
+    await expect(ctx.svc.getEffective('text.summarize')).rejects.toBeInstanceOf(ArgumentInvalidException);
   });
 });
 
@@ -208,7 +208,7 @@ describe('AiTaskDefaultService — SUPER_ADMIN-only governance', () => {
     expect(res.modelSlug).toBe('medical-ner');
   });
 
-  it('accepts an smr.* write from a tenant admin (SMR routing is now tenant-configurable)', async () => {
+  it('accepts an text.* write from a tenant admin (TEXT routing is now tenant-configurable)', async () => {
     const ctx = makeService({ roles: ['TENANT_ADMIN'] });
     ctx.modelRepo.findBySlug.mockResolvedValue(makeModel({ slug: 'lms-gemma-4-e2b-it-qat', taskType: ModelTaskType.TEXT_GENERATION }));
     ctx.repo.findByTenantAndTaskKey.mockResolvedValue(null);

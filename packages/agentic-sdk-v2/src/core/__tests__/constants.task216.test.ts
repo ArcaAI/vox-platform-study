@@ -3,7 +3,7 @@
  *
  * SERVICE_HEALTH_ENDPOINTS uses a single consolidated endpoint at /admin/health/services
  * on the API gateway. The gateway fans out health checks to all downstream
- * Python microservices (TTS, SMR, NLP, STT) and returns aggregated results.
+ * Python microservices (TTS, TEXT, NLP, STT) and returns aggregated results.
  *
  * This replaces the previous per-service proxy approach where the SDK hit
  * 4 separate endpoints (/speech/health, /nlp/health, /text/api/v2/health,
@@ -27,7 +27,7 @@ describe('SERVICE_HEALTH_ENDPOINTS (consolidated health check)', () => {
   it('should NOT have per-service keys (removed broken proxies)', () => {
     expect('TTS' in SERVICE_HEALTH_ENDPOINTS).toBe(false);
     expect('NLP' in SERVICE_HEALTH_ENDPOINTS).toBe(false);
-    expect('SMR' in SERVICE_HEALTH_ENDPOINTS).toBe(false);
+    expect('TEXT' in SERVICE_HEALTH_ENDPOINTS).toBe(false);
     expect('STT' in SERVICE_HEALTH_ENDPOINTS).toBe(false);
   });
 

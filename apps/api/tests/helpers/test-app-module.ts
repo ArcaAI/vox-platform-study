@@ -199,7 +199,7 @@ const STUB_REDIS_CACHE_SERVICE = {
  */
 const TEST_ONLY_JWT_SECRET = 'task-309-test-app-module-jwt-secret-not-for-production';
 const TEST_ONLY_API_KEY_PEPPER = 'task-309-test-app-module-api-key-pepper-not-for-production';
-const TEST_ONLY_TEXT_SERVICE_TOKEN = 'task-309-test-app-module-smr-token-not-for-production';
+const TEST_ONLY_TEXT_SERVICE_TOKEN = 'task-309-test-app-module-text-token-not-for-production';
 
 const SYNTHETIC_SECRETS: Record<string, string> = {
   JWT_SECRET_KEY: TEST_ONLY_JWT_SECRET,

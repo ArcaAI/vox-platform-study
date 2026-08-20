@@ -475,7 +475,7 @@ export const DEFAULT_PROMPT_TEMPLATES = [
     variables: null,
     currentVersionNumber: 1,
     departmentId: null,
-    tags: ['system', 'base', 'smr-v1'],
+    tags: ['system', 'base', 'text-v1'],
   },
   // ID 06: SMR System Prompt - Emergency Medicine
   {
@@ -493,7 +493,7 @@ export const DEFAULT_PROMPT_TEMPLATES = [
     variables: null,
     currentVersionNumber: 1,
     departmentId: DEPT.ER,
-    tags: ['system', 'specialty', 'emergency', 'smr-v1'],
+    tags: ['system', 'specialty', 'emergency', 'text-v1'],
   },
   // ID 07: SMR System Prompt - Pediatrics
   {
@@ -511,7 +511,7 @@ export const DEFAULT_PROMPT_TEMPLATES = [
     variables: null,
     currentVersionNumber: 1,
     departmentId: DEPT.PEDS,
-    tags: ['system', 'specialty', 'pediatrics', 'smr-v1'],
+    tags: ['system', 'specialty', 'pediatrics', 'text-v1'],
   },
   // ID 08: SMR System Prompt - Cardiology
   {
@@ -529,7 +529,7 @@ export const DEFAULT_PROMPT_TEMPLATES = [
     variables: null,
     currentVersionNumber: 1,
     departmentId: null,
-    tags: ['system', 'specialty', 'cardiology', 'smr-v1'],
+    tags: ['system', 'specialty', 'cardiology', 'text-v1'],
   },
   // ID 09: SMR System Prompt - Psychiatry
   {
@@ -547,7 +547,7 @@ export const DEFAULT_PROMPT_TEMPLATES = [
     variables: null,
     currentVersionNumber: 1,
     departmentId: DEPT.BEH,
-    tags: ['system', 'specialty', 'psychiatry', 'smr-v1'],
+    tags: ['system', 'specialty', 'psychiatry', 'text-v1'],
   },
   // ID 10: Surgery - New Referral
   // ID 11: Surgery - Revisit
@@ -574,7 +574,7 @@ export const DEFAULT_PROMPT_TEMPLATES = [
     variables: null,
     currentVersionNumber: 1,
     departmentId: null,
-    tags: ['system', 'json-enforcement', 'smr-v1'],
+    tags: ['system', 'json-enforcement', 'text-v1'],
   },
   // ID 25: Corrective Retry Suffix
   {
@@ -587,7 +587,7 @@ export const DEFAULT_PROMPT_TEMPLATES = [
     variables: null,
     currentVersionNumber: 1,
     departmentId: null,
-    tags: ['system', 'retry', 'smr-v1'],
+    tags: ['system', 'retry', 'text-v1'],
   },
   // ID 26: Pre-Summary System Prompt
   {
@@ -607,7 +607,7 @@ export const DEFAULT_PROMPT_TEMPLATES = [
     // multi-candidate tiebreak (createdAt/id order) silently served this stub
     // instead of the intended default. See
     // pre-summary-candidate-uniqueness.test.ts.
-    tags: ['system', 'smr-v1'],
+    tags: ['system', 'text-v1'],
   },
   // ID 27: Previous Visit Summary System Prompt
   {
@@ -620,7 +620,7 @@ export const DEFAULT_PROMPT_TEMPLATES = [
     variables: null,
     currentVersionNumber: 1,
     departmentId: null,
-    tags: ['system', 'previous-visit', 'smr-v1'],
+    tags: ['system', 'previous-visit', 'text-v1'],
   },
   // Unified Pre-Summary Template (tenant-level default for all departments)
   //
@@ -749,7 +749,7 @@ When no department-specific template matches the current encounter's department,
     },
     currentVersionNumber: 1,
     departmentId: null,
-    tags: ['department', 'catchall', 'soap', 'smr-v1'],
+    tags: ['department', 'catchall', 'soap', 'text-v1'],
   },
   // ──────────────────────────────────────────────────────────────────
   // ID 41: Whisper Initial Prompt - Bilingual EN-VI Medical Vocabulary

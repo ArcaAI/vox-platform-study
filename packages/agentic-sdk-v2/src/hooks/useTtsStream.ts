@@ -2,7 +2,7 @@
  * `useTtsStream`: speak-while-generating over a WS duplex.
  *
  * Opens the gateway WS (`/ws/tts/stream`) with a single-use stream ticket,
- * pushes summary tokens in as SMR streams them, and plays the returned PCM
+ * pushes summary tokens in as TEXT streams them, and plays the returned PCM
  * frames through the `TtsPlaybackPlayer` — so the clinician hears the
  * summary forming instead of waiting for the whole read-aloud.
  *

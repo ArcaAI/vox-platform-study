@@ -686,7 +686,7 @@ export class TenantService extends BaseService implements ITenantService {
    *    `value` starts at `defaultValue ?? value` and copies the descriptive
    *    metadata (`name`, `key`, `dataType`, `description`, `namespace`,
    *    `locked`). The `locked` flag is preserved so admin-restricted defaults
-   *    (e.g. `default-stt-model`, `smr-provider-models`) remain locked on the
+   *    (e.g. `default-stt-model`, `text-provider-models`) remain locked on the
    *    new tenant and are enforced by `updateTenantConfigs`.
    *  - Each insert is wrapped in a try/catch so a single failure (e.g. a
    *    unique-constraint race on `(tenantId, name, key)`) does not abort the
@@ -1451,14 +1451,14 @@ export class TenantService extends BaseService implements ITenantService {
   }
 
   /**
-   * Reusable provider/model validation shared by the SMR and
-   * Guardrail engines (generalised from the original `validateSmrConfigValue`).
+   * Reusable provider/model validation shared by the TEXT and
+   * Guardrail engines (generalised from the original `validateTextConfigValue`).
    *
    * When a `default-*-provider` / `default-*-model` setting is updated, the new
    * value is validated against that domain's per-tenant `*-provider-models`
    * catalog so the admin console can never persist an unknown provider/model
    * combination. It is a no-op for every other setting key, so the batch update
-   * loop can safely call it for every config. SMR behaviour and error messages
+   * loop can safely call it for every config. TEXT behaviour and error messages
    * are preserved verbatim; Guardrail reuses the identical logic with its own
    * catalog + a `Guardrail` label.
    */
@@ -1467,11 +1467,11 @@ export class TenantService extends BaseService implements ITenantService {
     // readers. Adding a future engine is a single entry here.
     const domains = [
       {
-        label: 'SMR',
-        providerKey: 'default-smr-provider',
-        modelKey: 'default-smr-model',
-        loadCatalog: () => this.loadSmrCatalog(tenantId),
-        getCurrentProvider: () => this.getCurrentSmrProvider(tenantId),
+        label: 'TEXT',
+        providerKey: 'default-text-provider',
+        modelKey: 'default-text-model',
+        loadCatalog: () => this.loadTextCatalog(tenantId),
+        getCurrentProvider: () => this.getCurrentTextProvider(tenantId),
       },
       {
         label: 'Guardrail',
@@ -1514,7 +1514,7 @@ export class TenantService extends BaseService implements ITenantService {
   }
 
   /**
-   * Generic loader for a `ux-constants` provider/model catalog (SMR or
+   * Generic loader for a `ux-constants` provider/model catalog (TEXT or
    * Guardrail). Returns `null` when the catalog row is missing or malformed so
    * callers treat validation as a no-op rather than blocking the update.
    */
@@ -1542,7 +1542,7 @@ export class TenantService extends BaseService implements ITenantService {
 
   /**
    * Generic reader for the currently-selected provider of a domain
-   * (`default-smr-provider` / `default-guardrail-provider`). Defaults to the
+   * (`default-text-provider` / `default-guardrail-provider`). Defaults to the
    * primary local engine `lm-studio` when unset.
    */
   private async getCurrentProvider(tenantId: string, providerKey: string): Promise<string> {
@@ -1557,14 +1557,14 @@ export class TenantService extends BaseService implements ITenantService {
     return providerSetting?.value?.trim() || 'lm-studio';
   }
 
-  /** SMR provider/model catalog for this tenant. */
-  private loadSmrCatalog(tenantId: string) {
-    return this.loadCatalog(tenantId, 'smr-provider-models');
+  /** TEXT provider/model catalog for this tenant. */
+  private loadTextCatalog(tenantId: string) {
+    return this.loadCatalog(tenantId, 'text-provider-models');
   }
 
-  /** Currently-selected SMR provider for this tenant. */
-  private getCurrentSmrProvider(tenantId: string) {
-    return this.getCurrentProvider(tenantId, 'default-smr-provider');
+  /** Currently-selected TEXT provider for this tenant. */
+  private getCurrentTextProvider(tenantId: string) {
+    return this.getCurrentProvider(tenantId, 'default-text-provider');
   }
 
   /** Guardrail provider/model catalog for this tenant. */

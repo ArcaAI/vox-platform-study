@@ -103,7 +103,7 @@ describe('v1 clinical prompt fidelity fixture', () => {
           `  actual (seeded) sha256:      ${actualSha256}\n` +
           'This means the seeded content no longer matches the v1 clinical prompt template. ' +
           `Re-extract ${contentConstant} from the RUNNING v1 pod (Rancher cluster c-9lwv8, ` +
-          'namespace apps, pod apps-smr-84c9774997-zhp2l) — never from a local HOPE checkout, ' +
+          'namespace apps, pod apps-text-84c9774997-zhp2l) — never from a local HOPE checkout, ' +
           'which has diverged from production in both directions. If this divergence is an ' +
           'intentional, sign-off-approved content change (not silent drift), update the pinned ' +
           'hash in v1-clinical-prompt-checksums.fixture.ts with a Change History entry explaining why.',

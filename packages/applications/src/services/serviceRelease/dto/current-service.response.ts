@@ -4,7 +4,7 @@ import { ServiceReleaseResponse } from './service-release.response';
 export type InstanceLiveness = 'live' | 'stale';
 
 export class CurrentServiceResponse {
-  @ApiProperty({ example: 'smr' })
+  @ApiProperty({ example: 'text' })
   serviceName!: string;
 
   @ApiProperty({ enum: ['dev', 'staging', 'prod'] })

@@ -452,7 +452,7 @@ export const NAV_ENTRIES: readonly NavEntry[] = [
   // duplication (rule 13, "one authoritative editor"). Each tab spans a
   // DIFFERENT backend resource, so `required` is the OR (canAny) of the four
   // reads — the entry shows if the caller can read ANY one, and each tab is
-  // `<RequirePermission>`-gated in the screen. SMR selection stays tenant-owned;
+  // `<RequirePermission>`-gated in the screen. TEXT selection stays tenant-owned;
   // guardrail/nlp/harness model selection stays SUPER_ADMIN-only (read-only here).
   {
     route: '/ai-configuration',

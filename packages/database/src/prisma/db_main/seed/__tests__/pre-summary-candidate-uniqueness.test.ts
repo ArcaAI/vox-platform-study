@@ -26,7 +26,7 @@ import { ARCAAI_CLINICAL_TEMPLATES } from '../07b-arcaai-clinical-templates';
  *
  * NOTE: once the dept-free pre-summary fork lands (Lane D2 /
  * OD-1b), a tenant may legitimately carry TWO pre-summary rows — the v1-parity
- * body (tag `smr-v1`) and the dept-free fork (a distinct surface tag, e.g.
+ * body (tag `text-v1`) and the dept-free fork (a distinct surface tag, e.g.
  * `dept-free`). At that point this assertion must become per-(tenant,
  * surface-tag) uniqueness rather than per-tenant uniqueness — see RF-2 in
  * docs/implementation/TASK-635-Summarization-Agent-Conformance/README.md

@@ -7,7 +7,7 @@ import { TextProxyController } from '../text-proxy.controller';
 /**
  * The SSE proxy meters what flows through it.
  *
- * The proxy is a byte pipe: SMR generates, the browser reads, and nothing in
+ * The proxy is a byte pipe: TEXT generates, the browser reads, and nothing in
  * between ever knew how many tokens were spent. This is also the path where the
  * Bug class lives — a stream that dies late loses its tail, and
  * with it every token the provider is about to bill for. So the abort case is
@@ -17,7 +17,7 @@ import { TextProxyController } from '../text-proxy.controller';
  */
 
 const USAGE = {
-  task_id: 'smr-task-9',
+  task_id: 'text-task-9',
   request_id: 'corr-9',
   provider: 'anthropic',
   model: 'claude-sonnet-5',
@@ -66,7 +66,7 @@ function build(usageLedger?: unknown) {
 
   const http = { axiosRef: { get: vi.fn(async () => ({ data: upstream })), post: vi.fn() } };
   const cls = { get: vi.fn((key: string) => (key === 'tenantId' ? 'tenant-1' : null)), getId: vi.fn(() => 'corr') };
-  const config = { getConfigValue: vi.fn(() => 'http://smr') };
+  const config = { getConfigValue: vi.fn(() => 'http://text') };
 
   const ctrl = new TextProxyController(
     http as never,
@@ -91,7 +91,7 @@ function build(usageLedger?: unknown) {
   return { ctrl, upstream, http, ledger: (usageLedger ?? undefined) as { recordUsage: ReturnType<typeof vi.fn> } | undefined };
 }
 
-describe('SMR proxy — ledger emission on stream teardown', () => {
+describe('TEXT proxy — ledger emission on stream teardown', () => {
   beforeEach(() => vi.clearAllMocks());
 
   it('emits token rows when the stream completes normally', async () => {
@@ -99,7 +99,7 @@ describe('SMR proxy — ledger emission on stream teardown', () => {
     const { ctrl, upstream } = build(ledger);
     const res = makeResponse();
 
-    await ctrl.streamTaskEvents('smr-task-9', undefined, res as never);
+    await ctrl.streamTaskEvents('text-task-9', undefined, res as never);
 
     upstream.emit('data', Buffer.from(sseFrame('chunk', { type: 'chunk', content: 'hi' })));
     upstream.emit('data', Buffer.from(sseFrame('done', { type: 'done', data: { finish_reason: 'stop', usage: USAGE } })));
@@ -108,7 +108,7 @@ describe('SMR proxy — ledger emission on stream teardown', () => {
 
     const [input] = ledger.recordUsage.mock.calls[0];
     expect(input.common.operation).toBe('generate.stream');
-    expect(input.common.idempotencyKey).toBe('llm:smr-task-9');
+    expect(input.common.idempotencyKey).toBe('llm:text-task-9');
     expect(input.common.tenantId).toBe('tenant-1');
     expect(input.common.provider).toBe('anthropic');
     expect(input.common.attributesJson).toMatchObject({ interrupted: false });
@@ -125,7 +125,7 @@ describe('SMR proxy — ledger emission on stream teardown', () => {
     const { ctrl, upstream } = build(ledger);
     const res = makeResponse();
 
-    await ctrl.streamTaskEvents('smr-task-9', undefined, res as never);
+    await ctrl.streamTaskEvents('text-task-9', undefined, res as never);
 
     upstream.emit('data', Buffer.from(sseFrame('error', { type: 'error', data: { error: 'boom', usage: { ...USAGE, interrupted: true } } })));
     res.emit('close');
@@ -134,7 +134,7 @@ describe('SMR proxy — ledger emission on stream teardown', () => {
     const [input] = ledger.recordUsage.mock.calls[0];
     // The SAME key a clean completion would use — an `...:aborted` variant
     // would bill the generation twice.
-    expect(input.common.idempotencyKey).toBe('llm:smr-task-9');
+    expect(input.common.idempotencyKey).toBe('llm:text-task-9');
     expect(input.common.attributesJson).toMatchObject({ interrupted: true });
   });
 
@@ -143,7 +143,7 @@ describe('SMR proxy — ledger emission on stream teardown', () => {
     const { ctrl, upstream } = build(ledger);
     const res = makeResponse();
 
-    await ctrl.streamTaskEvents('smr-task-9', undefined, res as never);
+    await ctrl.streamTaskEvents('text-task-9', undefined, res as never);
 
     upstream.emit('data', Buffer.from(sseFrame('done', { type: 'done', data: { finish_reason: 'stop', usage: USAGE } })));
     upstream.emit('end');
@@ -157,7 +157,7 @@ describe('SMR proxy — ledger emission on stream teardown', () => {
     const { ctrl, upstream } = build(ledger);
     const res = makeResponse();
 
-    await ctrl.streamTaskEvents('smr-task-9', undefined, res as never);
+    await ctrl.streamTaskEvents('text-task-9', undefined, res as never);
 
     const frame = sseFrame('done', { type: 'done', data: { finish_reason: 'stop', usage: USAGE } });
     const split = Math.floor(frame.length / 2);
@@ -173,7 +173,7 @@ describe('SMR proxy — ledger emission on stream teardown', () => {
     const { ctrl, upstream } = build(ledger);
     const res = makeResponse();
 
-    await ctrl.streamTaskEvents('smr-task-9', undefined, res as never);
+    await ctrl.streamTaskEvents('text-task-9', undefined, res as never);
 
     upstream.emit('data', Buffer.from(sseFrame('done', { type: 'done', data: { finish_reason: 'stop' } })));
     upstream.emit('end');
@@ -187,7 +187,7 @@ describe('SMR proxy — ledger emission on stream teardown', () => {
     const { ctrl, upstream } = build(ledger);
     const res = makeResponse();
 
-    await ctrl.streamTaskEvents('smr-task-9', undefined, res as never);
+    await ctrl.streamTaskEvents('text-task-9', undefined, res as never);
 
     upstream.emit('data', Buffer.from(sseFrame('done', { type: 'done', data: { finish_reason: 'stop', usage: USAGE } })));
     upstream.emit('end');
@@ -200,7 +200,7 @@ describe('SMR proxy — ledger emission on stream teardown', () => {
     const { ctrl, upstream } = build();
     const res = makeResponse();
 
-    await ctrl.streamTaskEvents('smr-task-9', undefined, res as never);
+    await ctrl.streamTaskEvents('text-task-9', undefined, res as never);
 
     const payload = Buffer.from(sseFrame('chunk', { type: 'chunk', content: 'hello' }));
     upstream.emit('data', payload);

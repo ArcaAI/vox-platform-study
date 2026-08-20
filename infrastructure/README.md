@@ -40,7 +40,7 @@ Two compose files, combined by the wrapper scripts. Both load the root `.env`.
 
 The `inference` profile stages the production self-host LLM engine matrix (vLLM + llama.cpp + TEI embeddings) on a GPU dev host; LM Studio + Ollama remain the default local engines. See [docs/operations/inference/README.md](../docs/operations/inference/README.md) for staging, wiring, and smoke-testing.
 
-The dev Prometheus scrapes host-run services via `host.docker.internal` (api 8868, stt 8861, smr 8862, guardrail 8863, nlp 8864, harness 8866) per `docker/configs/prometheus/prometheus.yml`. Dev Grafana provisions its datasource + starter dashboard from `docker/configs/grafana/`.
+The dev Prometheus scrapes host-run services via `host.docker.internal` (api 8868, stt 8861, text 8862, guardrail 8863, nlp 8864, harness 8866) per `docker/configs/prometheus/prometheus.yml`. Dev Grafana provisions its datasource + starter dashboard from `docker/configs/grafana/`.
 
 Isolated TEST infrastructure (Postgres 5433, Redis 6380, MinIO 9002, Qdrant 6335) is a separate compose file at [tests/docker-compose.test.yml](../tests/README.md) — not part of this directory.
 
@@ -79,7 +79,7 @@ Dashboard JSONs and provisioning for a Grafana instance pointed at a Prometheus 
 
 | Dashboard                                                                  | Focus                                                |
 | -------------------------------------------------------------------------- | ---------------------------------------------------- |
-| `dashboards/text-overview.json`, `text-resilience.json`, `text-security.json` | Text service health, resilience, and security metrics (Grafana UIDs still `smr-overview`, `smr-resilience`, `smr-security`) |
+| `dashboards/text-overview.json`, `text-resilience.json`, `text-security.json` | Text service health, resilience, and security metrics (Grafana UIDs still `text-overview`, `text-resilience`, `text-security`) |
 | `dashboards/pgbouncer.json`                                                | PgBouncer pool stats                                 |
 | `dashboards/optimistic-locking.json`                                       | Optimistic-locking conflict metrics                  |
 

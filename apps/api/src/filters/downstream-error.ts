@@ -4,7 +4,7 @@
  * Background. A request to a route that forwards to `apps/text` (:8862) while
  * that service was down surfaced as:
  *
- *     400 {"message":"Failed to call SMR service: AggregateError: connect
+ *     400 {"message":"Failed to call TEXT service: AggregateError: connect
  *          ECONNREFUSED ::1:8862; connect ECONNREFUSED 127.0.0.1:8862", …}
  *
  * Two defects in one body. The status blamed the CALLER for an absent
@@ -240,6 +240,9 @@ const CAPABILITY_BY_PATH: Array<[RegExp, string]> = [
   [/\/speech\b|\/tts\b/, 'Speech synthesis'],
   [/\/transcription-jobs\b|\/api\/stt\b|\/internal\/stt\b|\/stt\b/, 'Transcription'],
   [/\/text-analyses\b|\/safety-checks\b|\/diagnosis-suggestions\b|\/ai\//, 'AI text analysis'],
+  // `\/api\/smr\b` matches the FROZEN v1 compat prefix `api/smr/api/v1` (owner
+  // decision 704), which D-740-1 deliberately does not rename — so this literal
+  // must stay `smr` even though the service is `text` everywhere else.
   [/\/summary\b|\/prompt-templates\/[^/]+\/test|\/text-generations\b|\/api\/smr\b|\/text\b/, 'Summarization'],
 ];
 

@@ -10,7 +10,7 @@ import { AiCostBasis, AiDeploymentKind } from '@arcaai/domains';
  * next mis-rating ships, so R3 — which has to change both anyway — collapses
  * them here.
  *
- * (The LLM/harness pair, `smr-usage.ts` and `harness-usage.mapper.ts`, keep
+ * (The LLM/harness pair, `text-usage.ts` and `harness-usage.mapper.ts`, keep
  * their own copies: they classify a different capability from a different
  * input and belong to their own ticket. OD-4 scopes this dedup to TTS.)
  */

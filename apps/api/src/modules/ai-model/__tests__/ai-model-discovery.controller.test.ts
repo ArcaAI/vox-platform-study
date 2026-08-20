@@ -1,7 +1,7 @@
 /**
  * AI model discovery (merge view + explicit register).
  *
- * Unit level: the SMR probe transport and `AiModelService` are stubbed, so the
+ * Unit level: the TEXT probe transport and `AiModelService` are stubbed, so the
  * assertions are about the MERGE RULE and the register mapping, not HTTP.
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
@@ -21,12 +21,12 @@ type TextProviderEntry = {
 };
 
 function makeService(opts: {
-  smr?: TextProviderEntry[];
-  smrError?: Error;
+  text?: TextProviderEntry[];
+  textError?: Error;
   dbRows?: Array<Record<string, unknown>>;
   create?: ReturnType<typeof vi.fn>;
 }) {
-  const get = opts.smrError ? vi.fn().mockRejectedValue(opts.smrError) : vi.fn().mockResolvedValue({ data: opts.smr ?? [] });
+  const get = opts.textError ? vi.fn().mockRejectedValue(opts.textError) : vi.fn().mockResolvedValue({ data: opts.text ?? [] });
   const httpService = { axiosRef: { get } } as never;
   const configService = { getConfigValue: vi.fn().mockReturnValue('http://text.test') } as never;
   const create = opts.create ?? vi.fn().mockResolvedValue({ id: 'new-id', slug: 's' });
@@ -53,7 +53,7 @@ const dbRow = (over: Record<string, unknown> = {}) => ({
 describe('AiModelDiscoveryService.discover — merge rule', () => {
   it('tags a live-only model as discovered', async () => {
     const { service } = makeService({
-      smr: [{ name: 'vllm', probe_status: 'ok', models: [{ name: 'mistral-7b' }] }],
+      text: [{ name: 'vllm', probe_status: 'ok', models: [{ name: 'mistral-7b' }] }],
       dbRows: [],
     });
 
@@ -66,7 +66,7 @@ describe('AiModelDiscoveryService.discover — merge rule', () => {
 
   it('tags a registry row absent from the live listing as registered-missing-on-server', async () => {
     const { service } = makeService({
-      smr: [{ name: 'vllm', probe_status: 'ok', models: [{ name: 'mistral-7b' }] }],
+      text: [{ name: 'vllm', probe_status: 'ok', models: [{ name: 'mistral-7b' }] }],
       dbRows: [dbRow()],
     });
 
@@ -79,7 +79,7 @@ describe('AiModelDiscoveryService.discover — merge rule', () => {
 
   it('matches on sourceUri AND on slug, and passes engine load state through', async () => {
     const { service } = makeService({
-      smr: [
+      text: [
         {
           name: 'vllm',
           probe_status: 'ok',
@@ -102,7 +102,7 @@ describe('AiModelDiscoveryService.discover — merge rule', () => {
 
   it('degrades DB rows to registered/unknown when the provider probe is not ok', async () => {
     const { service } = makeService({
-      smr: [{ name: 'vllm', probe_status: 'timeout', probe_error: 'probe exceeded 5.0s', models: [] }],
+      text: [{ name: 'vllm', probe_status: 'timeout', probe_error: 'probe exceeded 5.0s', models: [] }],
       dbRows: [dbRow()],
     });
 
@@ -113,8 +113,8 @@ describe('AiModelDiscoveryService.discover — merge rule', () => {
     expect(result.probes).toEqual(expect.arrayContaining([expect.objectContaining({ provider: 'vllm', probeStatus: 'timeout' })]));
   });
 
-  it('reports probeStatus error for the whole probe when SMR itself is unreachable', async () => {
-    const { service } = makeService({ smrError: new Error('ECONNREFUSED'), dbRows: [dbRow()] });
+  it('reports probeStatus error for the whole probe when TEXT itself is unreachable', async () => {
+    const { service } = makeService({ textError: new Error('ECONNREFUSED'), dbRows: [dbRow()] });
 
     const result = await service.discover();
 
@@ -124,7 +124,7 @@ describe('AiModelDiscoveryService.discover — merge rule', () => {
 
   it('filters to a single provider when asked', async () => {
     const { service, aiModelService } = makeService({
-      smr: [
+      text: [
         { name: 'vllm', probe_status: 'ok', models: [{ name: 'a' }] },
         { name: 'lm-studio', probe_status: 'ok', models: [{ name: 'b' }] },
       ],
@@ -139,7 +139,7 @@ describe('AiModelDiscoveryService.discover — merge rule', () => {
 
   it('ignores registry rows on non-server-managed providers (azure has nothing to discover)', async () => {
     const { service } = makeService({
-      smr: [{ name: 'vllm', probe_status: 'ok', models: [] }],
+      text: [{ name: 'vllm', probe_status: 'ok', models: [] }],
       dbRows: [dbRow({ id: 'cloud', provider: 'azure', slug: 'gpt-5-mini', sourceUri: 'gpt-5-mini' })],
     });
 
@@ -155,7 +155,7 @@ describe('AiModelDiscoveryService.discover — merge rule', () => {
 describe('AiModelDiscoveryService.register', () => {
   it('delegates to AiModelService.create with a derived slug and the verbatim sourceUri', async () => {
     const create = vi.fn().mockResolvedValue({ id: 'new-id' });
-    const { service } = makeService({ smr: [], dbRows: [], create });
+    const { service } = makeService({ text: [], dbRows: [], create });
 
     await service.register({ provider: 'vllm', modelName: 'llama3.1-8b-instruct-q4_K_M' });
 
@@ -173,7 +173,7 @@ describe('AiModelDiscoveryService.register', () => {
 
   it('honours an explicit slug and name', async () => {
     const create = vi.fn().mockResolvedValue({ id: 'new-id' });
-    const { service } = makeService({ smr: [], dbRows: [], create });
+    const { service } = makeService({ text: [], dbRows: [], create });
 
     await service.register({ provider: 'lm-studio', modelName: 'qwen3-8b', slug: 'my-qwen', name: 'Qwen 3 8B' });
 
@@ -182,7 +182,7 @@ describe('AiModelDiscoveryService.register', () => {
 
   it('surfaces the duplicate-slug 400 with an actionable message naming the taken slug', async () => {
     const create = vi.fn().mockRejectedValue(new Error("Model with slug 'qwen3-8b' already exists"));
-    const { service } = makeService({ smr: [], dbRows: [], create });
+    const { service } = makeService({ text: [], dbRows: [], create });
 
     await expect(service.register({ provider: 'lm-studio', modelName: 'qwen3-8b' })).rejects.toThrow(/qwen3-8b/);
     await expect(service.register({ provider: 'lm-studio', modelName: 'qwen3-8b' })).rejects.toThrow(/slug/i);

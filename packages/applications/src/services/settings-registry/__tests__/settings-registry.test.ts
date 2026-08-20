@@ -175,8 +175,8 @@ describe('HOPE_SETTINGS_REGISTRY (assembled catalog)', () => {
     }
   });
 
-  // The two per-tenant SMR fallback keys are TEXT_GENERATION.
-  it('maps the smr fallback task keys to TEXT_GENERATION model task types', () => {
+  // The two per-tenant TEXT fallback keys are TEXT_GENERATION.
+  it('maps the text fallback task keys to TEXT_GENERATION model task types', () => {
     expect(AI_TASK_MODEL_TASK_TYPES['text.live.fallback']).toBe(ModelTaskType.TEXT_GENERATION);
     expect(AI_TASK_MODEL_TASK_TYPES['text.finalize.fallback']).toBe(ModelTaskType.TEXT_GENERATION);
   });
@@ -184,7 +184,7 @@ describe('HOPE_SETTINGS_REGISTRY (assembled catalog)', () => {
   it('flags nlp.*/harness.* task-model defaults as super-admin-only (editableBy all, globalOnly)', () => {
     // These task-model defaults are platform-owned: nlp (revoked tenant
     // writes) and harness.judge. Both resolve to the super-admin resource
-    // and carry globalOnly. SMR and, since TASK-735 (owner decision
+    // and carry globalOnly. TEXT and, since TASK-735 (owner decision
     // 2026-08-16, reversing the 2026-07-17 super-admin-only directive),
     // guardrail are NOT in this set — see the test below.
     for (const key of ['models.nlp.ner', 'models.nlp.classification', 'models.nlp.diagnosis', 'models.harness.judge']) {
@@ -194,13 +194,13 @@ describe('HOPE_SETTINGS_REGISTRY (assembled catalog)', () => {
     }
   });
 
-  // SMR summarization model selection (primary + per-tenant fallback), and
+  // TEXT summarization model selection (primary + per-tenant fallback), and
   // guardrail.* since TASK-735 Phase 0, are tenant-admin configurable: the
   // descriptors resolve to the tenant-editable AiTaskDefault resource and are
   // NOT flagged globalOnly. (guardrail.* writes still pass through the D2
   // platform-approved-list floor enforced in AiTaskDefaultService — this
   // descriptor only governs WHO may attempt the write.)
-  it('flags smr.* and guardrail.* task-model defaults as tenant-editable (editableBy AiTaskDefault, not globalOnly)', () => {
+  it('flags text.* and guardrail.* task-model defaults as tenant-editable (editableBy AiTaskDefault, not globalOnly)', () => {
     for (const key of [
       'models.text.live',
       'models.text.finalize',

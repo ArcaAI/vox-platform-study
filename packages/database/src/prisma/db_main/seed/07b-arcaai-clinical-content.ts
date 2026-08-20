@@ -35,7 +35,7 @@
  * {current_department} / {visit_type} / {safe_age} / {safe_dob} / {safe_gender}
  * / {safe_vitals} / {formatted_test_results} / {formatted_previous_visits} /
  * {language_name}. They are substituted at ASSEMBLY time by
- * `renderPreSummaryTemplate` (apps/api .../smr-compat/summary-prompt.builder.ts)
+ * `renderPreSummaryTemplate` (apps/api .../text-compat/summary-prompt.builder.ts)
  * — never here and never at resolve time, so the stored row stays byte-identical
  * to v1 (audit/diff of the version-pinned APPROVED snapshot) and PHI never
  * reaches a resolved-prompt log. NOTE: `interpolateTemplate`
@@ -43,7 +43,7 @@
  * substitute these; rendering this content through it leaks literal braces.
  *
  * The FORMAT block's five section titles are title-matched by
- * `PRE_SUMMARY_DISPLAY_TITLES` (apps/api .../smr-compat/summary-response.mapper.ts).
+ * `PRE_SUMMARY_DISPLAY_TITLES` (apps/api .../text-compat/summary-response.mapper.ts).
  * Editing one without the other returns an EMPTY structured_data.sections.
  *
  * Strings are JSON-encoded so backticks / ${...} in the source need no escaping.

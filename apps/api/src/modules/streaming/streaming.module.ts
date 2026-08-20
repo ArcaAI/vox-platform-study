@@ -41,7 +41,7 @@ import { TranscriptionJobController } from './transcription-job.controller';
     TenantBucketServiceModule,
     PipelineServiceModule,
     CoreDatabaseModule,
-    HarnessPolicyServiceModule, // SMR-selection resolver for TextProxyController
+    HarnessPolicyServiceModule, // TEXT-selection resolver for TextProxyController
     // Supplies `IOriginRegistry` to `SttWsGateway`'s CSWSH
     // handshake check. Browsers do NOT apply CORS to WebSockets, so this is the
     // only place the allow-list reaches the socket path. The gateway injects it
@@ -56,10 +56,10 @@ import { TranscriptionJobController } from './transcription-job.controller';
     // resolves the effective `guardrail.validate` default.
     AiModelServiceModule,
     AiTaskDefaultServiceModule,
-    // Hyperparameter profile resolver for the SMR proxy's
+    // Hyperparameter profile resolver for the TEXT proxy's
     // caller-wins, fail-open parameter injection.
     AiRuntimeProfileServiceModule,
-    // Tenant BYO cloud-credential resolver for the SMR proxy's
+    // Tenant BYO cloud-credential resolver for the TEXT proxy's
     // cloud-only, minimal-exposure, fail-open `provider_overrides` injection.
     AiProviderConnectionServiceModule,
     // Provides `ISocketRegistryService` so `SttWsGateway`

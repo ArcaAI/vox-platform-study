@@ -4,7 +4,7 @@
  * Verifies: the key exists in `AI_TASK_KEYS`, maps to `IMAGE_TEXT_TO_TEXT`
  * (the multimodal task type — see `enums.prisma`), and is tenant-admin
  * configurable (NOT under `SUPER_ADMIN_ONLY_TASK_PREFIXES`) — it lives in
- * SMR's own adapter framework like `smr.*`, not the platform-only
+ * TEXT's own adapter framework like `text.*`, not the platform-only
  * `guardrail./nlp./harness.` safety surfaces.
  */
 import { ModelTaskType } from '@arcaai/domains';

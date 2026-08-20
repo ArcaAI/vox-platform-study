@@ -2,12 +2,12 @@
  * `ContextService#addRawSummary` is one of the two
  * unmetered `SummaryMeta` writers flagged in the WS-D handoff ("compat"
  * path). Unlike `comprehensive-summary.processor.ts` (item 1a), this write
- * path makes NO SMR call of its own — confirmed by an exhaustive search: zero
+ * path makes NO TEXT call of its own — confirmed by an exhaustive search: zero
  * httpService/axios references anywhere in context.service.ts. It exists to
  * persist a summary + bare `inputTokens`/`outputTokens` a caller already
  * computed elsewhere, so there is no real `TextUsageDetail` (no provider, no
  * endpointKind, no raw provider payload) — hence
- * `buildLlmUsageInputFromTokenCounts` (smr-usage.ts) rather than
+ * `buildLlmUsageInputFromTokenCounts` (text-usage.ts) rather than
  * `buildLlmUsageInput`, which would force a fabricated `endpointKind` onto
  * `attributesJson`.
  *

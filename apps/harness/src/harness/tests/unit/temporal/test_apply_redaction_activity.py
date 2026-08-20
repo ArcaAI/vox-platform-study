@@ -76,7 +76,7 @@ def _input(**kw: Any) -> ApplyRedactionInput:
 
 class TestDeterministicOnly:
     @pytest.mark.asyncio
-    async def test_no_smr_call_for_deterministic_rules(self, env, monkeypatch):
+    async def test_no_text_call_for_deterministic_rules(self, env, monkeypatch):
         text_client = _FakeText()
         monkeypatch.setattr(activities, "_text_client", lambda s: text_client)
         monkeypatch.setattr(activities, "get_settings", _settings)
@@ -107,7 +107,7 @@ class TestFailClosed:
         assert out.text == "Patient works at Acme Corp."
 
     @pytest.mark.asyncio
-    async def test_required_smr_rewrite_failure_fails_closed(self, env, monkeypatch):
+    async def test_required_text_rewrite_failure_fails_closed(self, env, monkeypatch):
         monkeypatch.setattr(activities, "_text_client", lambda s: _BoomText())
         monkeypatch.setattr(activities, "get_settings", _settings)
         monkeypatch.setattr(activities, "_phi_redactor", lambda: _ContractRedactor())
@@ -119,9 +119,9 @@ class TestFailClosed:
         assert out.failed_closed is True
 
 
-class TestSmrRewritePass:
+class TestTextRewritePass:
     @pytest.mark.asyncio
-    async def test_smr_called_with_idempotency_key_and_egress_guard(self, env, monkeypatch):
+    async def test_text_called_with_idempotency_key_and_egress_guard(self, env, monkeypatch):
         text_client = _FakeText(content='{"S": "clean"}')
         redactor = _ContractRedactor()
         monkeypatch.setattr(activities, "_text_client", lambda s: text_client)

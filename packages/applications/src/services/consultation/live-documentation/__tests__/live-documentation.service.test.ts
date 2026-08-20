@@ -4,8 +4,8 @@
  * Covers the net-new realtime watcher behaviour:
  *   - debounce: flush at the segment threshold (~3 final segments)
  *   - debounce: flush on the idle timer (~5s) for a trailing segment
- *   - aggregate/payload shaping: SMR running summary + NLP entities → SSE payload
- *   - SMR/NLP fault tolerance (a down service keeps the prior value)
+ *   - aggregate/payload shaping: TEXT running summary + NLP entities → SSE payload
+ *   - TEXT/NLP fault tolerance (a down service keeps the prior value)
  *   - SSE relay: stored snapshot emitted first, then channel messages relayed
  *   - interim (non-final) segments are ignored
  */
@@ -176,7 +176,7 @@ function buildDeps(httpMock = buildHttpMock(), opts: BuildDepsOpts = {}) {
   const config = opts.config ?? {};
   const configService = { get: vi.fn().mockImplementation((key: string) => config[key]) };
   // Live-doc resolves provider+model via the HarnessPolicy cascade
-  // (not env). Default stub resolves successfully so SMR-path tests still flow.
+  // (not env). Default stub resolves successfully so TEXT-path tests still flow.
   const harnessPolicyService = opts.harnessPolicyService ?? {
     resolveTextSelection: vi.fn().mockResolvedValue({ provider: 'lm-studio', model: 'live-medgemma' }),
   };
@@ -250,7 +250,7 @@ describe('LiveDocumentationService', () => {
   });
 
   describe('aggregate + payload shaping', () => {
-    it('builds the SSE payload from SMR summary + NLP entities and publishes it', async () => {
+    it('builds the SSE payload from TEXT summary + NLP entities and publishes it', async () => {
       const { service, cacheService } = buildDeps();
       service.start({ consultationId: CID, tenantId: TENANT });
       service.ingestSegment(CID, { text: 'Patient on amlodipine', isFinal: true, segmentId: 'seg-42' });
@@ -274,7 +274,7 @@ describe('LiveDocumentationService', () => {
       expect(published.runningSummary).toBe('Pt on amlodipine for HTN.');
     });
 
-    it('tolerates an NLP outage and keeps the SMR summary', async () => {
+    it('tolerates an NLP outage and keeps the TEXT summary', async () => {
       const httpMock = {
         axiosRef: {
           post: vi.fn().mockImplementation((url: string) => {
@@ -294,19 +294,19 @@ describe('LiveDocumentationService', () => {
   });
 
   // ------------------------------------------------------------------
-  // TASK-703: `textFailed` computed internally on a failed SMR call but never
+  // TASK-703: `textFailed` computed internally on a failed TEXT call but never
   // attached to the published `LiveSummaryEventDto` — a first-flush failure
   // published an empty note indistinguishable from "nothing said yet", and a
   // later-flush failure froze stale content under a fresh `updatedAt` with no
   // marker. The published payload must carry `textFailed: true` in both cases.
   // ------------------------------------------------------------------
   describe('textFailed degradation marker (TASK-703)', () => {
-    it('marks a first-flush SMR failure with textFailed: true (no prior content to freeze)', async () => {
+    it('marks a first-flush TEXT failure with textFailed: true (no prior content to freeze)', async () => {
       const httpMock = {
         axiosRef: {
           post: vi.fn().mockImplementation((url: string) => {
             if (url.includes('/classify/tokens')) return Promise.resolve({ data: { entities: [] } });
-            if (url.includes('/generate')) return Promise.reject(new Error('SMR down'));
+            if (url.includes('/generate')) return Promise.reject(new Error('TEXT down'));
             return Promise.resolve({ data: {} });
           }),
         },
@@ -323,7 +323,7 @@ describe('LiveDocumentationService', () => {
       expect(payload!.sections).toEqual([]);
     });
 
-    it('marks a later-flush SMR failure with textFailed: true while freezing the prior content', async () => {
+    it('marks a later-flush TEXT failure with textFailed: true while freezing the prior content', async () => {
       let generateCalls = 0;
       const httpMock = {
         axiosRef: {
@@ -332,7 +332,7 @@ describe('LiveDocumentationService', () => {
             if (url.includes('/generate')) {
               generateCalls += 1;
               if (generateCalls === 1) return Promise.resolve({ data: { summary: 'Pt on amlodipine for HTN.' } });
-              return Promise.reject(new Error('SMR down'));
+              return Promise.reject(new Error('TEXT down'));
             }
             return Promise.resolve({ data: {} });
           }),
@@ -474,7 +474,7 @@ describe('LiveDocumentationService', () => {
       };
     }
 
-    it('emits the four ordered SOAP sections parsed from the SMR output', async () => {
+    it('emits the four ordered SOAP sections parsed from the TEXT output', async () => {
       const { service } = buildDeps(soapHttpMock());
       service.start({ consultationId: CID, tenantId: TENANT });
       service.ingestSegment(CID, { text: 'Patient has chest pain', isFinal: true, segmentId: 's1' });
@@ -496,7 +496,7 @@ describe('LiveDocumentationService', () => {
 
       const payload = await service.flush(CID);
 
-      // NER is handed the raw transcript delta (the text that feeds SMR), NOT the note.
+      // NER is handed the raw transcript delta (the text that feeds TEXT), NOT the note.
       const nlpCall = httpMock.axiosRef.post.mock.calls.find((c) => String(c[0]).includes('/classify/tokens'))!;
       expect(nlpCall[1].text).toBe('Patient has chest pain');
       expect(nlpCall[1].text).not.toBe(payload!.runningSummary);
@@ -506,7 +506,7 @@ describe('LiveDocumentationService', () => {
       expect(payload!.runningSummary.slice(entity.start!, entity.end!)).toBe('amlodipine');
     });
 
-    it('falls back to a single "Running Summary" section for unstructured SMR output', async () => {
+    it('falls back to a single "Running Summary" section for unstructured TEXT output', async () => {
       const { service } = buildDeps();
       service.start({ consultationId: CID, tenantId: TENANT });
       service.ingestSegment(CID, { text: 'Patient on amlodipine', isFinal: true, segmentId: 's1' });
@@ -518,7 +518,7 @@ describe('LiveDocumentationService', () => {
 
   // ------------------------------------------------------------------
   // AD-1 generation stats on the live-summary SSE payload.
-  // The SMR /generate response now carries a `stats` block; each flush must
+  // The TEXT /generate response now carries a `stats` block; each flush must
   // surface it as `metadata.stats` on the published payload so the console /
   // gateway wave can render TTFT / tok-s / stop-reason live. Null / missing
   // stats (legacy idempotency-cache hit) must degrade cleanly — no metadata,
@@ -596,7 +596,7 @@ describe('LiveDocumentationService', () => {
       expect(published.metadata.stats.tokens_per_second).toBe(33.3);
     });
 
-    it('degrades cleanly when SMR omits stats — no metadata.stats, feed still publishes', async () => {
+    it('degrades cleanly when TEXT omits stats — no metadata.stats, feed still publishes', async () => {
       const { service, cacheService } = buildDeps(statsHttpMock(null));
       service.start({ consultationId: CID, tenantId: TENANT });
       service.ingestSegment(CID, { text: 'hello', isFinal: true, segmentId: 's1' });
@@ -762,9 +762,9 @@ describe('LiveDocumentationService', () => {
       service.start({ consultationId: CID, tenantId: TENANT });
 
       service.ingestSegment(CID, { text: 'first', isFinal: true, segmentId: 's1' });
-      const p1 = service.flush(CID); // generation 1 — SMR hangs
+      const p1 = service.flush(CID); // generation 1 — TEXT hangs
       service.ingestSegment(CID, { text: 'second', isFinal: true, segmentId: 's2' });
-      const p2 = service.flush(CID); // generation 2 — supersedes; SMR resolves immediately
+      const p2 = service.flush(CID); // generation 2 — supersedes; TEXT resolves immediately
       await p2;
 
       deferred.resolve(); // release the stale first call AFTER the fresh one published
@@ -780,7 +780,7 @@ describe('LiveDocumentationService', () => {
       expect(publishedSummaries.at(-1)).toBe('FRESH second');
     });
 
-    it('throttles live SMR calls to at most one per LIVE_DOC_MIN_INTERVAL_MS', async () => {
+    it('throttles live TEXT calls to at most one per LIVE_DOC_MIN_INTERVAL_MS', async () => {
       vi.useFakeTimers();
       const { service, httpMock } = buildDeps(buildHttpMock(), { config: { LIVE_DOC_MIN_INTERVAL_MS: '4000' } });
       const generateCalls = () => httpMock.axiosRef.post.mock.calls.filter((c: unknown[]) => String(c[0]).includes('/generate')).length;
@@ -790,7 +790,7 @@ describe('LiveDocumentationService', () => {
       await service.flush(CID);
       expect(generateCalls()).toBe(1);
 
-      // A 2nd flush inside the window must be throttled (scheduled, no SMR call yet).
+      // A 2nd flush inside the window must be throttled (scheduled, no TEXT call yet).
       service.ingestSegment(CID, { text: 'b', isFinal: true, segmentId: 's2' });
       await service.flush(CID);
       expect(generateCalls()).toBe(1);
@@ -800,7 +800,7 @@ describe('LiveDocumentationService', () => {
       expect(generateCalls()).toBe(2);
     });
 
-    it('passes an abort signal to the SMR and NLP calls so in-flight work can be cancelled', async () => {
+    it('passes an abort signal to the TEXT and NLP calls so in-flight work can be cancelled', async () => {
       const { service, httpMock } = buildDeps();
       service.start({ consultationId: CID, tenantId: TENANT });
       service.ingestSegment(CID, { text: 'hello', isFinal: true, segmentId: 's1' });
@@ -814,7 +814,7 @@ describe('LiveDocumentationService', () => {
   });
 
   // ------------------------------------------------------------------
-  // P0-B: incremental prompt + bounded SMR params
+  // P0-B: incremental prompt + bounded TEXT params
   // ------------------------------------------------------------------
   describe('bounded transcript cost', () => {
     it('sends an incremental prompt (prior note + new delta only) on subsequent flushes', async () => {
@@ -833,7 +833,7 @@ describe('LiveDocumentationService', () => {
       expect(secondPrompt).not.toContain('Patient reports cough'); // old transcript NOT re-sent verbatim
     });
 
-    it('sets bounded live SMR params (max_tokens, lower timeout) and resolves provider/model via policy', async () => {
+    it('sets bounded live TEXT params (max_tokens, lower timeout) and resolves provider/model via policy', async () => {
       const harnessPolicyService = {
         resolveTextSelection: vi.fn().mockResolvedValue({ provider: 'openai', model: 'fast-model' }),
       };
@@ -955,7 +955,7 @@ describe('LiveDocumentationService', () => {
   describe('long-transcript truncation carry-forward', () => {
     const HEAD_MARKER = 'CHIEFCOMPLAINT allergy penicillin anaphylaxis';
 
-    /** An httpMock that records every SMR `/generate` prompt. */
+    /** An httpMock that records every TEXT `/generate` prompt. */
     function recordingHttpMock(prompts: string[]) {
       return {
         axiosRef: {
@@ -995,7 +995,7 @@ describe('LiveDocumentationService', () => {
       service.ingestSegment(CID, { text: 'TAILMARKER new symptom just now', isFinal: true, segmentId: 'tail' });
       await service.flush(CID); // second flush — incremental
 
-      // The early clinical content must have reached SMR in SOME flush (kept as the
+      // The early clinical content must have reached TEXT in SOME flush (kept as the
       // head + carried forward), not silently dropped forever.
       expect(prompts.some((p) => p.includes(HEAD_MARKER))).toBe(true);
     });
@@ -1027,7 +1027,7 @@ describe('LiveDocumentationService', () => {
   // P0-C: deterministic json_schema SOAP parse in the flush path
   // ------------------------------------------------------------------
   describe('deterministic SOAP parse', () => {
-    it('parses a SOAP JSON SMR response into the four ordered sections (no regex dependency)', async () => {
+    it('parses a SOAP JSON TEXT response into the four ordered sections (no regex dependency)', async () => {
       const httpMock = {
         axiosRef: {
           post: vi.fn().mockImplementation((url: string) => {
@@ -1103,7 +1103,7 @@ describe('LiveDocumentationService', () => {
   // ------------------------------------------------------------------
   // C5-06: single-owner lock must be a real atomic acquire (SET NX), fenced on
   // release/renew, and the durable snapshot must dedup deterministically — so a
-  // second instance can neither run a duplicate watcher (duplicate SMR spend)
+  // second instance can neither run a duplicate watcher (duplicate TEXT spend)
   // nor write a second PRE_SUMMARY row.
   // ------------------------------------------------------------------
   describe('single-owner lock: mutual exclusion + fencing + dedup', () => {
@@ -1185,7 +1185,7 @@ describe('LiveDocumentationService', () => {
       };
     }
 
-    it('acquires the owner lock with SET NX so a second instance bails out of start() (no duplicate SMR call)', async () => {
+    it('acquires the owner lock with SET NX so a second instance bails out of start() (no duplicate TEXT call)', async () => {
       const sharedCache = makeSharedCacheMock();
       const sharedRepo = makeSharedRepo();
       const sharedHttp = buildHttpMock();
@@ -1206,9 +1206,9 @@ describe('LiveDocumentationService', () => {
       a.service.ingestSegment(CID, { text: 'chest pain', isFinal: true, segmentId: 's1' });
       b.service.ingestSegment(CID, { text: 'chest pain', isFinal: true, segmentId: 's1' }); // no-op — no session
       await a.service.flush(CID);
-      await b.service.flush(CID); // null — no session, no SMR
+      await b.service.flush(CID); // null — no session, no TEXT
 
-      // One consultation → exactly ONE SMR /generate call, not two.
+      // One consultation → exactly ONE TEXT /generate call, not two.
       expect(generateCalls()).toBe(1);
     });
 
@@ -1318,7 +1318,7 @@ describe('LiveDocumentationService', () => {
       // No manual flush — stop() alone must drain the > 12k backlog.
       await service.stop(CID, { persistSnapshot: true });
 
-      // The most-recent content (the tail) reached SMR — not dropped by a single
+      // The most-recent content (the tail) reached TEXT — not dropped by a single
       // head-only flush. (The head is retained by C5-04; the tail is the I-2 case.)
       expect(prompts.some((p) => p.includes('TAILMARKER assessment and plan'))).toBe(true);
       expect(prompts.some((p) => p.includes('HEADMARKER chief complaint'))).toBe(true);
@@ -1576,13 +1576,13 @@ describe('LiveDocumentationService', () => {
   // dropped precisely from the in-flight running summary.
   // ------------------------------------------------------------------
   describe('context drop-out', () => {
-    /** Pull the prompt sent to SMR `/generate` on the most recent flush. */
+    /** Pull the prompt sent to TEXT `/generate` on the most recent flush. */
     const lastTextPrompt = (httpMock: ReturnType<typeof buildHttpMock>): string => {
       const calls = httpMock.axiosRef.post.mock.calls.filter((c: unknown[]) => String(c[0]).includes('/generate'));
       return calls.length ? String((calls[calls.length - 1][1] as { prompt?: string }).prompt ?? '') : '';
     };
 
-    it('threads an added context note into the SMR prompt unchanged (add-only, no regression)', async () => {
+    it('threads an added context note into the TEXT prompt unchanged (add-only, no regression)', async () => {
       const { service, httpMock } = buildDeps();
       service.start({ consultationId: CID, tenantId: TENANT });
 
@@ -1602,7 +1602,7 @@ describe('LiveDocumentationService', () => {
       expect(lastTextPrompt(httpMock)).toContain('Clinician notes / labs:\nPatient reports chest pain');
     });
 
-    it('drops a removed note from the SMR prompt on the next flush, keeping the others', async () => {
+    it('drops a removed note from the TEXT prompt on the next flush, keeping the others', async () => {
       const { service, httpMock } = buildDeps();
       service.start({ consultationId: CID, tenantId: TENANT });
 
@@ -1738,7 +1738,7 @@ describe('LiveDocumentationService', () => {
     const trackedNotes = (service: LiveDocumentationService, consultationId: string): TrackedNote[] =>
       (service as unknown as { sessions: Map<string, { contextNotes: TrackedNote[] }> }).sessions.get(consultationId)!.contextNotes;
 
-    /** Pull the prompt sent to SMR `/generate` on the most recent flush. */
+    /** Pull the prompt sent to TEXT `/generate` on the most recent flush. */
     const lastTextPrompt = (httpMock: ReturnType<typeof buildHttpMock>): string => {
       const calls = httpMock.axiosRef.post.mock.calls.filter((c: unknown[]) => String(c[0]).includes('/generate'));
       return calls.length ? String((calls[calls.length - 1][1] as { prompt?: string }).prompt ?? '') : '';
@@ -1779,7 +1779,7 @@ describe('LiveDocumentationService', () => {
       expect(notes[0].text).toContain('Hemoglobin 13.5 g/dL; WBC 6.2');
       expect(notes[0].text).not.toContain('lab-scan.pdf (no text layer)');
 
-      // The enriched (not the stale placeholder) content reaches the SMR prompt once.
+      // The enriched (not the stale placeholder) content reaches the TEXT prompt once.
       await service.flush(CID, { force: true });
       const prompt = lastTextPrompt(httpMock);
       expect(prompt).toContain('Hemoglobin 13.5 g/dL; WBC 6.2');

@@ -15,7 +15,7 @@
  *   - The guard/gate assertions only need a live apps/api (same as the other
  *     specs in this folder) and run without seeded data.
  *   - The FULL loop (transcript → harness workflow → draft → provenance →
- *     approve → GATE_DECISION) additionally needs apps/harness + Temporal + SMR
+ *     approve → GATE_DECISION) additionally needs apps/harness + Temporal + TEXT
  *     + NLP + Postgres + Redis. Those assertions live under the
  *     `HARNESS_E2E_FULL`-gated describe and are SKIPPED unless that env flag is
  *     set, so CI never reports a fabricated pass.
@@ -119,7 +119,7 @@ test.describe('the HITL signing gate is not bypassable', () => {
 const RUN_FULL = !!process.env.HARNESS_E2E_FULL;
 
 test.describe('full harness loop (gate not bypassable + provenance surfaced)', () => {
-  test.skip(!RUN_FULL, 'requires apps/harness + Temporal + SMR + NLP + Postgres + Redis (set HARNESS_E2E_FULL=1)');
+  test.skip(!RUN_FULL, 'requires apps/harness + Temporal + TEXT + NLP + Postgres + Redis (set HARNESS_E2E_FULL=1)');
 
   let doctorToken: string;
   let consultationId: string;

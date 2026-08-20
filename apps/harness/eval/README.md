@@ -607,7 +607,7 @@ rubric-derived** — they were authored from the Epic PDSQI-9 grade descriptors,
 **not** collected from real clinicians. Therefore the ICC reported by a live run
 is **judge ↔ curated-reference** agreement, NOT **judge ↔ real-clinician**
 agreement. Likewise the quality-lane notes in `curated_v1.json` are hand-authored
-exemplars, not real system (SMR) output. A green gate here proves the harness +
+exemplars, not real system (TEXT) output. A green gate here proves the harness +
 judge are wired and internally consistent against a defensible rubric; it does
 **not** by itself constitute clinical validation.
 
@@ -670,7 +670,7 @@ from `get_runtime_judge_config()`, `groundedness_threshold = 0.8`):
 - **Micro-cases, not the golden set.** The rows above are small **crafted** cases authored to exercise the live
   sensors end-to-end (prove wiring + signal + the fail-safe), **not** a clinical groundedness/safety delta over a
   representative corpus. A real corpus delta still requires the **SME-authored golden set in the loop's JSON-SOAP
-  shape** + live **NLP** (NER) + live **SMR** generation (same OPEN prerequisite as the Phase-0 gate above).
+  shape** + live **NLP** (NER) + live **TEXT** generation (same OPEN prerequisite as the Phase-0 gate above).
 - **Model verdicts, not clinician labels.** "judge verdict" / "flagged" are the live model's outputs, not human
   adjudication. Groundedness inherits the gemma-4-e4b lenience characterised above; Granite Guardian is a content
   guardian, not a clinical-correctness oracle.
@@ -713,7 +713,7 @@ conda run -n arcaenv python -m harness.eval.inferential_corpus_eval \
 **Backends live for this run (both confirmed up first):** LM Studio serving `google/gemma-4-e4b` (groundedness
 judge, `http://localhost:1234/v1`) **and** Ollama serving `ibm/granite3.3-guardian:8b` (safety, `:11434`). **18/18
 cases scored, 0 sensors degraded.** Wall time ≈ 23 min (sequential cases; ~80 live entailment calls @ ~13 s + 18×7
-Granite calls). No NLP / SMR / apps-api / Temporal needed — the inferential pass needs only the judge + Granite.
+Granite calls). No NLP / TEXT / apps-api / Temporal needed — the inferential pass needs only the judge + Granite.
 
 ### Corpus aggregate (groundedness threshold 0.8)
 
@@ -801,14 +801,14 @@ guardian, not a clinical-appropriateness oracle.
   verbose c03). With real NER claims the absolute groundedness numbers would move; the _direction_ of the delta (faithful
   → high, fabrication/falsification → low) should not.
 - **Synthetic notes + rubric-derived labels.** Same provenance ceiling as the Phase-0 gate above: the quality notes are
-  hand-authored exemplars (not real SMR output) and every `clinician_pdsqi` label is **curated/rubric-derived, not a
+  hand-authored exemplars (not real TEXT output) and every `clinician_pdsqi` label is **curated/rubric-derived, not a
   real clinician rating**. The "agreement" rows are judge-vs-rubric over **n=6** — illustrative, not a reliability claim.
 - **Model verdicts inherit gemma-4-e4b behaviour.** Groundedness carries the small-judge entailment noise seen on c02
   (a grounded claim false-flagged) and the residual lenience characterised in the Phase-0 section. Treat per-claim
   flags as a live signal to be clinician-reviewed, not ground truth.
-- **No SMR/NLP/apps-api/Temporal in the loop.** This is the standalone inferential pass over a static fixture, not an
+- **No TEXT/NLP/apps-api/Temporal in the loop.** This is the standalone inferential pass over a static fixture, not an
   end-to-end durable-loop run. A full clinical corpus delta still needs the **SME-authored golden set in the loop's
-  JSON-SOAP shape** + live NER + live SMR generation + persistence (the same OPEN prerequisite as the Phase-0 gate).
+  JSON-SOAP shape** + live NER + live TEXT generation + persistence (the same OPEN prerequisite as the Phase-0 gate).
 - **Reproduce / hygiene.** Read-only eval module `harness.eval.inferential_corpus_eval` (added under the eval harness);
   driven by the `HARNESS_JUDGE_*` env above + a default `GraniteGuardConfig` against local Ollama. The JSON report was
   written outside the repo (`/tmp`). Nothing was written to Postgres; no app/sensor logic, `core/config.py`, or

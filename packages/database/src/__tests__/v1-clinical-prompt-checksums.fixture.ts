@@ -33,7 +33,7 @@
  *
  * Every hash below was extracted byte-exact (base64 pipeline, never
  * model-retyped) from the RUNNING v1 deployment — Rancher cluster `c-9lwv8`,
- * namespace `apps`, pod `apps-smr-84c9774997-zhp2l` — and independently
+ * namespace `apps`, pod `apps-text-84c9774997-zhp2l` — and independently
  * re-verified. The deployed pod is the ONLY valid source for these values.
  * A local v1 HOPE checkout is NOT a valid source: it has diverged from
  * production in both directions (some checkout content was never deployed;

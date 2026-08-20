@@ -52,7 +52,7 @@ function makeService(): HarnessPolicyService {
   return new HarnessPolicyService(policyRepository as never, policyChangeRepository as never, databaseService as never, cls as never);
 }
 
-// service with the AiTaskDefault-first SMR routing wired.
+// service with the AiTaskDefault-first TEXT routing wired.
 const aiTaskDefaultService = {
   getEffective: vi.fn(),
   getRow: vi.fn(),
@@ -89,7 +89,7 @@ describe('HarnessPolicyService', () => {
 
   describe('getEffectivePolicy', () => {
     it('returns the tenant own row (source=tenant) when present', async () => {
-      // SMR fields non-null so the field-level fallthrough is
+      // TEXT fields non-null so the field-level fallthrough is
       // a no-op here: this case asserts the SYSTEM default is NOT consulted when
       // the own row is fully populated.
       const own = HarnessPolicyFactory.CreateHarnessPolicy({
@@ -136,12 +136,12 @@ describe('HarnessPolicyService', () => {
       expect(result.id).toBeNull();
     });
 
-    // ── field-level fallthrough for the two SMR fields ──
-    it('fills null SMR fields on the tenant own row from the SYSTEM default (field-level fallthrough)', async () => {
+    // ── field-level fallthrough for the two TEXT fields ──
+    it('fills null TEXT fields on the tenant own row from the SYSTEM default (field-level fallthrough)', async () => {
       const own = HarnessPolicyFactory.CreateHarnessPolicy({
         tenantId: TENANT,
         coverageThreshold: 0.55,
-        // Pre-Phase-2 tenant row: SMR selection was never set.
+        // Pre-Phase-2 tenant row: TEXT selection was never set.
         textProvider: null,
         textModel: null,
       });
@@ -155,14 +155,14 @@ describe('HarnessPolicyService', () => {
 
       const result = await service.getEffectivePolicy();
 
-      // Still the tenant's own row (source unchanged) but SMR fields inherited.
+      // Still the tenant's own row (source unchanged) but TEXT fields inherited.
       expect(result.source).toBe('tenant');
       expect(result.coverageThreshold).toBe(0.55);
       expect(result.textProvider).toBe('lm-studio');
       expect(result.textModel).toBe('gemma-4-e2b-it-sft-rlvr-medical');
     });
 
-    it('SYSTEM SMR selection wins over a non-null tenant-row SMR field', async () => {
+    it('SYSTEM TEXT selection wins over a non-null tenant-row TEXT field', async () => {
       const own = HarnessPolicyFactory.CreateHarnessPolicy({
         tenantId: TENANT,
         textProvider: 'ollama',
@@ -241,7 +241,7 @@ describe('HarnessPolicyService', () => {
     });
   });
 
-  // ── the fail-closed SMR selection seam ──
+  // ── the fail-closed TEXT selection seam ──
   describe('resolveTextSelection', () => {
     it('returns {provider, model} resolved from the SYSTEM-default cascade', async () => {
       const sys = HarnessPolicyFactory.CreateHarnessPolicy({
@@ -257,7 +257,7 @@ describe('HarnessPolicyService', () => {
       expect(result).toEqual({ provider: 'lm-studio', model: 'gemma-4-e2b-it-sft-rlvr-medical' });
     });
 
-    it('resolves a null-SMR tenant row to the SYSTEM default (field-level fallthrough)', async () => {
+    it('resolves a null-TEXT tenant row to the SYSTEM default (field-level fallthrough)', async () => {
       const own = HarnessPolicyFactory.CreateHarnessPolicy({ tenantId: TENANT, textProvider: null, textModel: null });
       const sys = HarnessPolicyFactory.CreateHarnessPolicy({
         tenantId: SYSTEM_TENANT_ID,
@@ -279,7 +279,7 @@ describe('HarnessPolicyService', () => {
       await expect(service.resolveTextSelection()).rejects.toBeInstanceOf(BadRequestException);
     });
 
-    it('throws (fail-closed) when the tenant row and the SYSTEM default both leave SMR null', async () => {
+    it('throws (fail-closed) when the tenant row and the SYSTEM default both leave TEXT null', async () => {
       const own = HarnessPolicyFactory.CreateHarnessPolicy({ tenantId: TENANT, textProvider: null, textModel: null });
       policyRepository.findForExactTenant.mockResolvedValue(own);
       policyRepository.findSystemDefault.mockResolvedValue(null);
@@ -288,7 +288,7 @@ describe('HarnessPolicyService', () => {
     });
   });
 
-  // AiTaskDefault-first SMR routing.
+  // AiTaskDefault-first TEXT routing.
   describe('resolveTextSelection — AiTaskDefault precedence', () => {
     it('consults the text.finalize AiTaskDefault FIRST and returns its {provider, sourceUri}', async () => {
       const svc = makeServiceWithAiTaskDefault();
@@ -351,7 +351,7 @@ describe('HarnessPolicyService', () => {
     });
   });
 
-  // Tenant-configurable SMR fallback selection (fail-OPEN).
+  // Tenant-configurable TEXT fallback selection (fail-OPEN).
   describe('resolveTextFallbackSelection', () => {
     it('resolves the text.finalize.fallback key to {provider, sourceUri} when a model is enabled', async () => {
       const svc = makeServiceWithAiTaskDefault();

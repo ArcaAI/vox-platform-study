@@ -54,16 +54,6 @@ NC='\033[0m'
 DEFAULT_SERVICES=(api stt stt-worker text guardrail nlp harness worker admin)
 ALL_SERVICES=(api stt stt-worker text nlp harness worker admin guardrail tts)
 
-# Canonical CLI token is `text`. `smr` still works as a deprecated remap.
-remap_smr_alias() {
-    if [ "$1" = "smr" ]; then
-        echo -e "${YELLOW}warning: 'smr' is deprecated; use 'text'.${NC}" >&2
-        echo "text"
-    else
-        echo "$1"
-    fi
-}
-
 port_for() {
     case "$1" in
         api) echo "${API_PORT:-8868}" ;;
@@ -122,7 +112,6 @@ if [ "${#ARGS[@]}" -eq 0 ]; then
     SERVICES=("${DEFAULT_SERVICES[@]}")
 else
     for arg in "${ARGS[@]}"; do
-        arg="$(remap_smr_alias "$arg")"
         ok=0
         for s in "${ALL_SERVICES[@]}"; do
             [ "$arg" = "$s" ] && ok=1

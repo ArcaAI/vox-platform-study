@@ -21,7 +21,7 @@ export interface RedactionRule {
   pattern: string;
   /**
    * For `rewrite` rules: the literal replacement. A `rewrite` rule with NO
-   * `replacement` is a *semantic* rewrite handled by the harness SMR pass — valid
+   * `replacement` is a *semantic* rewrite handled by the harness TEXT pass — valid
    * here, resolved there.
    */
   replacement?: string;

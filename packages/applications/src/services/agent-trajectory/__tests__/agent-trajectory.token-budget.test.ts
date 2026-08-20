@@ -29,7 +29,7 @@ function buildService() {
   return new AgentTrajectoryService(stepRepository as never, { emit: vi.fn() } as never, cls as never);
 }
 
-/** An LLM_CALL step whose stats carry the SMR usage block. */
+/** An LLM_CALL step whose stats carry the TEXT usage block. */
 const llmStep = (stats: Record<string, unknown>) => ({ stepType: AgentStepType.LLM_CALL, stats });
 
 describe('AgentTrajectoryService — token accounting', () => {
@@ -48,7 +48,7 @@ describe('AgentTrajectoryService — token accounting', () => {
     expect(metrics.totalTokens).toBe(2500);
   });
 
-  it('tolerates camelCase and the nested usage block the SMR client emits', async () => {
+  it('tolerates camelCase and the nested usage block the TEXT client emits', async () => {
     stepRepository.findAll.mockResolvedValue([
       llmStep({ promptTokens: 10, completionTokens: 5 }),
       llmStep({ usage: { prompt_tokens: 7, completion_tokens: 3 } }),

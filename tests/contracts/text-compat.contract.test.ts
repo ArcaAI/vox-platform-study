@@ -1,5 +1,5 @@
 /**
- * v1-compatible SMR summary shim CONTRACT tests (hermetic).
+ * v1-compatible TEXT summary shim CONTRACT tests (hermetic).
  *
  * Locks the frozen v1 response shapes by validating the
  * golden fixtures against the zod schemas in `text-compat.schemas.ts`, and proves
@@ -16,7 +16,7 @@ import {
   GOLDEN_SESSION_DATA,
   GOLDEN_SIMPLIFIED_SUMMARY,
   GOLDEN_SUMMARY_RESPONSE,
-} from '../fixtures/smr-compat.fixture';
+} from '../fixtures/text-compat.fixture';
 import {
   EnhancedMedicalSummarySchema,
   PreSummaryResponseSchema,
@@ -25,7 +25,7 @@ import {
   SummaryResponseSchema,
 } from './text-compat.schemas';
 
-describe('SMR compat request contract (SessionData)', () => {
+describe('TEXT compat request contract (SessionData)', () => {
   it('accepts the golden SessionData', () => {
     const result = SessionDataSchema.safeParse(GOLDEN_SESSION_DATA);
     expect(result.success).toBe(true);

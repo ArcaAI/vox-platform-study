@@ -27,7 +27,7 @@ const QUEUES: QueueStats[] = [
     workerCount: 4,
   },
   {
-    name: 'smr-summaries',
+    name: 'text-summaries',
     isPaused: true,
     counts: { waiting: 3, active: 0, completed: 480, failed: 0, delayed: 0, paused: 3, prioritized: 0 },
     workerCount: 2,
@@ -48,7 +48,7 @@ describe('QueuesScreen', () => {
     renderWithProviders(<QueuesScreen />);
     expect(screen.getByRole('heading', { level: 1, name: 'Queues & Jobs' })).toBeDefined();
     expect(await screen.findByText('stt-transcription')).toBeDefined();
-    expect(screen.getByText('smr-summaries')).toBeDefined();
+    expect(screen.getByText('text-summaries')).toBeDefined();
     expect(screen.getByText('Paused')).toBeDefined();
     expect(screen.getAllByText('Running').length).toBeGreaterThan(0);
     expect(screen.getByRole('grid', { name: 'Queues' })).toBeDefined();
@@ -90,12 +90,12 @@ describe('QueuesScreen', () => {
   it('resumes a paused queue after confirmation', async () => {
     const calls = stubFetch(({ url }) => (url === LIST_URL ? QUEUES : undefined));
     renderWithProviders(<QueuesScreen />);
-    await screen.findByText('smr-summaries');
-    fireEvent.keyDown(screen.getByRole('button', { name: 'Actions for smr-summaries' }), { key: 'Enter' });
+    await screen.findByText('text-summaries');
+    fireEvent.keyDown(screen.getByRole('button', { name: 'Actions for text-summaries' }), { key: 'Enter' });
     fireEvent.click(await screen.findByRole('menuitem', { name: 'Resume' }));
     fireEvent.click(await screen.findByRole('button', { name: 'Resume queue' }));
     await waitFor(() =>
-      expect(calls.some((call) => call.method === 'POST' && call.url === '/api/hope/admin/queues/smr-summaries/resume')).toBe(true),
+      expect(calls.some((call) => call.method === 'POST' && call.url === '/api/hope/admin/queues/text-summaries/resume')).toBe(true),
     );
   });
 

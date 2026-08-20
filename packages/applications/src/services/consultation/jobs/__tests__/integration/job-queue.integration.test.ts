@@ -155,11 +155,11 @@ describe('Consultation Job Queue Integration Tests', () => {
       await jobService.notifyProgress(jobId, 30, 'Generating summary with AI');
 
       // Simulate failure
-      await jobService.notifyFailed(jobId, 'SMR service timeout after 120 seconds');
+      await jobService.notifyFailed(jobId, 'TEXT service timeout after 120 seconds');
 
       const status = await jobService.getJobStatus(jobId);
       expect(status?.status).toBe('FAILED');
-      expect(status?.error).toBe('SMR service timeout after 120 seconds');
+      expect(status?.error).toBe('TEXT service timeout after 120 seconds');
       expect(status?.completedAt).toBeDefined();
       expect(status?.progress).toBe(30); // Progress stays where it was
     });
@@ -597,7 +597,7 @@ describe('Consultation Job Queue Integration Tests', () => {
       await jobService.notifyProgress(job.jobId, 30, 'Calling AI service');
 
       // Simulate failure
-      const errorMessage = 'SMR service returned 503: Service temporarily unavailable. Retry after 30 seconds.';
+      const errorMessage = 'TEXT service returned 503: Service temporarily unavailable. Retry after 30 seconds.';
       await jobService.notifyFailed(job.jobId, errorMessage);
 
       // Verify failure state is properly captured

@@ -241,7 +241,7 @@ lint-python:
 # Rejects a `<SVC>-`/`ALL-` release tag that does not match the frozen SemVer
 # grammar in packages/utils/src/version-grammar.ts. Runs only on the `release`
 # pipeline type — the tag family `.gitlab-ci.yml`'s workflow rules put there
-# (`^(SDK|SMR|STT|GUARD|TTS|HARNESS|API|ADMIN|NLP|ALL)-`). The SDK sub-family
+# (`^(SDK|TEXT|STT|GUARD|TTS|HARNESS|API|ADMIN|NLP|ALL)-`). The SDK sub-family
 # is skipped inside the script (separate, pre-existing npm-SemVer scheme). The
 # other tag family, `v<X.Y.Z>` (`PIPELINE_TYPE == "tag_release"`), builds
 # nothing and promotes an existing digest (see promote.sh) — out of scope here.

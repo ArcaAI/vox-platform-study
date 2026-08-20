@@ -5,14 +5,14 @@ export class ServiceReleaseResponse {
   @ApiProperty({ format: 'uuid' })
   id!: string;
 
-  @ApiProperty({ example: 'smr' })
+  @ApiProperty({ example: 'text' })
   serviceName!: string;
 
   /** Wire name of `ServiceRelease.releaseVersion` (see `platform.prisma`). */
   @ApiProperty({ example: '2.1.0' })
   version!: string;
 
-  @ApiProperty({ nullable: true, example: 'SMR-2.1.0' })
+  @ApiProperty({ nullable: true, example: 'TEXT-2.1.0' })
   releaseTag!: string | null;
 
   @ApiProperty({ example: 'main' })

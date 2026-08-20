@@ -30,13 +30,13 @@ export class LiveDocSessionStatsResponse {
   @ApiProperty({ description: 'Monotonic flush generation id of the last flush' })
   generation: number;
 
-  @ApiProperty({ description: 'SMR running-summary latency of the last flush (ms)' })
+  @ApiProperty({ description: 'TEXT running-summary latency of the last flush (ms)' })
   textLatencyMs: number;
 
   @ApiProperty({ description: 'NLP entity-extraction latency of the last flush (ms)' })
   nlpLatencyMs: number;
 
-  @ApiProperty({ description: 'Whether the last SMR call failed (prior summary retained)' })
+  @ApiProperty({ description: 'Whether the last TEXT call failed (prior summary retained)' })
   textFailed: boolean;
 
   @ApiProperty({ description: 'Whether the last NLP call failed (prior entities retained)' })

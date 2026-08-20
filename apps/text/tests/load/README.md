@@ -1,13 +1,13 @@
-# SMR Load Tests (Locust)
+# TEXT Load Tests (Locust)
 
-Load tests for the SMR text generation service to verify resilience features under sustained load: rate limiter, circuit breaker, semaphore, and queue behavior.
+Load tests for the TEXT text generation service to verify resilience features under sustained load: rate limiter, circuit breaker, semaphore, and queue behavior.
 
 ## Prerequisites
 
 - **Locust** installed (`pip install locust` or `uv pip install locust`)
-- **SMR** running on port 8862
+- **TEXT** running on port 8862
 - **LM Studio** running with a model (e.g. `gemma-4-e2b-it-qat`) for generate requests
-- **Redis** running (required by SMR for task management)
+- **Redis** running (required by TEXT for task management)
 
 ## Installation
 
@@ -89,7 +89,7 @@ Then open http://localhost:8089 and configure users/spawn rate.
 
 ### Metrics Endpoint
 
-SMR exposes Prometheus metrics at `GET /metrics`. Correlate load test runs with:
+TEXT exposes Prometheus metrics at `GET /metrics`. Correlate load test runs with:
 
 - `text_rate_limit_rejections_total`
 - `text_circuit_breaker_state`

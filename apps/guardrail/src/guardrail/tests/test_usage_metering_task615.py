@@ -4,7 +4,7 @@
 the endpoint never read ``result["stats"]``, so guardrail — a service that runs
 an LLM on every single generation the platform serves — reported zero cost to
 anyone. Guardrail is also a peer service with no gateway in front of it, so the
-ONLY route its usage has to the billing plane is riding back on the SMR response
+ONLY route its usage has to the billing plane is riding back on the TEXT response
 that triggered it.
 
 Metered in full, never quota-blocked, never invoiced to a tenant (D16): a safety

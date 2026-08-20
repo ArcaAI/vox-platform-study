@@ -26,7 +26,7 @@ export interface GovernedInstructionAudit {
 }
 
 /**
- * Bridges the v1-compat SMR shim to HOPE v2's real tenant `Department` +
+ * Bridges the v1-compat TEXT shim to HOPE v2's real tenant `Department` +
  * governed `PromptTemplate` domain.
  *
  * The v1 endpoints carry a free-form department NAME string; the canonical
@@ -160,7 +160,7 @@ export class TextCompatTemplateService {
   }): void {
     const { resolved } = input;
     this.logger.log({
-      message: 'SMR compat instruction template resolved',
+      message: 'TEXT compat instruction template resolved',
       capability: input.promptType === 'pre-summary' ? 'pre-summary' : 'summary',
       promptType: input.promptType,
       tenantId: input.tenantId,

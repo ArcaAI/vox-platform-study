@@ -255,7 +255,7 @@ export function getCommitsInRange(sinceRef: string | null, untilRef: string, cwd
 // ─── CLI entrypoint ──────────────────────────────────────────────────────────
 // `npx tsx scripts/changelog-from-commits.ts [<tag>] [--since <ref>] [--cwd <dir>]`
 //
-//   <tag>          A release tag (`SMR-2.1.0`, `ALL-2.1.0`, …). When present,
+//   <tag>          A release tag (`TEXT-2.1.0`, `ALL-2.1.0`, …). When present,
 //                   the previous tag of the same family is auto-detected and
 //                   the breaking/major gate runs — a real release-tag pipeline
 //                   invocation.

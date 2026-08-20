@@ -65,7 +65,7 @@ model DepartmentAgent {
   // Validated against LIVE_TOOL_KEYS in the application service; consumed by
   // the LiveToolRegistry.
   toolConfig Json? @db.JsonB
-  // Optional per-task LLM override, keyed by the SmrRoutingTask subset:
+  // Optional per-task LLM override, keyed by the TextRoutingTask subset:
   //   { live?: { aiModelSlug }, finalize?: { aiModelSlug } }   (OD-3b)
   // Validated against ENABLED TEXT_GENERATION AiModel rows at write time;
   // read-time precedence is agent override → tenant AiTaskDefault

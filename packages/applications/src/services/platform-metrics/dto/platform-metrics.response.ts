@@ -29,7 +29,7 @@ export class PlatformModelMetric {
   @ApiProperty({ description: 'Model id (matches `model` label + FE PLATFORM_MODELS).' })
   id!: string;
 
-  @ApiProperty({ description: 'Owning service (`service` label: stt/smr/nlp/guardrail).' })
+  @ApiProperty({ description: 'Owning service (`service` label: stt/text/nlp/guardrail).' })
   service!: string;
 
   @ApiProperty({ nullable: true, type: Number, description: 'Currently-running instances (null when not reporting).' })

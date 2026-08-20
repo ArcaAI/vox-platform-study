@@ -33,7 +33,7 @@
     # Release tags (<SVC>-<ver> / ALL-<ver>) and prod-* branches
     # run the full test suite so a build/release is only cut from a green
     # commit — even though those branches no longer build.
-    - if: $CI_COMMIT_TAG =~ /^(SDK|SMR|STT|GUARD|TTS|HARNESS|API|ADMIN|NLP|COMPAT|ALL)-/
+    - if: $CI_COMMIT_TAG =~ /^(SDK|TEXT|STT|GUARD|TTS|HARNESS|API|ADMIN|NLP|COMPAT|ALL)-/
     - if: $PIPELINE_TYPE == "prod"
 
 # ── cicd branch: always run everything ──────────────────────────────────────
@@ -158,7 +158,7 @@
       changes:
         - apps/stt/**/*
 
-# ── SMR (Summarization) ─────────────────────────────────────────────────────
+# ── TEXT (Summarization) ─────────────────────────────────────────────────────
 
 .rules-text:
   rules:

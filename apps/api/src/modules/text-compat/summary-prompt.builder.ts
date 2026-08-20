@@ -13,7 +13,7 @@ import type { PreviousVisitRecordDto, SessionDataDto, TestResultDto } from './dt
  */
 export { PRE_SUMMARY_TEMPLATE_VARIABLES, resolveV1LanguageName } from '@arcaai/applications';
 
-/** Assembled `{ system, user }` prompt pair sent to SMR `/generate`. */
+/** Assembled `{ system, user }` prompt pair sent to TEXT `/generate`. */
 export interface AssembledPrompt {
   system: string;
   user: string;
@@ -282,7 +282,7 @@ export function buildSummaryPrompt(sessionData: SessionDataDto, options: Summary
 
 /**
  * VERBATIM v1 pre-summary system prompt — sha256 `277d94d56d3d`, 336 bytes,
- * extracted from the RUNNING v1 SMR pod (`previous_visit_service.py`), never
+ * extracted from the RUNNING v1 TEXT pod (`previous_visit_service.py`), never
  * retyped. In v1 this is the ENTIRE system message for `/presummary`; the
  * template below is the ENTIRE user message.
  */
@@ -372,7 +372,7 @@ export interface PreSummaryPromptOptions {
  * version-pinned APPROVED snapshot identity used for audit/diff AND push PHI
  * (DOB, vitals) into anything that logs a resolved prompt. Assembly time keeps
  * the stored template row byte-identical to v1 and confines PHI to the last hop
- * before the SMR call.
+ * before the TEXT call.
  */
 export function buildPreSummaryPrompt(req: PreSummaryRequest, options: PreSummaryPromptOptions = {}): AssembledPrompt {
   const governed = options.governedInstruction?.trim();

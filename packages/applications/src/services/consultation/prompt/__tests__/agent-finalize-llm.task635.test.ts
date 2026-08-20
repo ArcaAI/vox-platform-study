@@ -33,7 +33,7 @@ describe('resolveAgentFinalizeSelection', () => {
     await expect(resolveAgentFinalizeSelection(d as never, 'agent-1')).resolves.toEqual({ provider: 'openai', model: 'gpt-4.1' });
   });
 
-  it("maps the catalog's `azure` provider to SMR's `azure-openai`", async () => {
+  it("maps the catalog's `azure` provider to TEXT's `azure-openai`", async () => {
     const d = deps({ llmOverrides: { finalize: { aiModelSlug: 'az' } } }, [enabledModel({ provider: 'azure', sourceUri: 'gpt-4o' })]);
 
     await expect(resolveAgentFinalizeSelection(d as never, 'agent-1')).resolves.toEqual({ provider: 'azure-openai', model: 'gpt-4o' });

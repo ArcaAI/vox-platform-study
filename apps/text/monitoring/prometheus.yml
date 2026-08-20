@@ -3,7 +3,7 @@ global:
   evaluation_interval: 15s
 
 scrape_configs:
-  - job_name: 'smr'
+  - job_name: 'text'
     static_configs:
       - targets: ['text:8862']
     metrics_path: '/metrics'

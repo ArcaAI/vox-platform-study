@@ -64,7 +64,7 @@ export interface SummaryResponse {
      * Which tier of the 3-tier prompt fallback produced
      * this summary (server `PromptResolutionTier`). Surfaced so the UI can badge
      * "Preferred prompt" / "Dept prompt" / "Default". The value already flows
-     * server→SMR; this just types it on the SDK boundary (no runtime change).
+     * server→TEXT; this just types it on the SDK boundary (no runtime change).
      */
     promptResolvedFrom?: 'preferred' | 'department' | 'default';
     /** Id of the resolved department/preferred prompt template. */

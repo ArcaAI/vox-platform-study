@@ -77,7 +77,7 @@ TEXT_LLAMA_CPP_BASE_URL=http://localhost:8080   # cluster: http://hope-llama-cpp
 
 Model routing stays caller-authoritative (D-7): the `provider` + `model` on each
 `/generate` request pick the engine and model. `AiTaskDefault` / `HarnessPolicy`
-own the per-task selection (`smr.live` / `smr.finalize`, control-plane phase).
+own the per-task selection (`text.live` / `text.finalize`, control-plane phase).
 
 > **Deferred provider-accept wiring** (owned by parallel agents, NOT in this
 > ticket): guardrail engine selector + harness `JudgeConfig.provider` accepting
@@ -120,7 +120,7 @@ on the `VLLM_MODEL` / `LLAMA_CPP_MODEL` env vars; stage the GGUF into the
 # --- vLLM ---
 curl -fsS http://localhost:8000/health && echo " vllm healthy"
 curl -fsS http://localhost:8000/v1/models | jq '.data[].id'
-# prefix-cache counters (re-exported by Text as smr_engine_cache_hit_rate{engine="vllm"}):
+# prefix-cache counters (re-exported by Text as text_engine_cache_hit_rate{engine="vllm"}):
 curl -fsS http://localhost:8000/metrics | grep -E 'vllm:.*prefix_cache'
 
 # --- llama.cpp ---
@@ -148,5 +148,5 @@ TEXT_E2E_VLLM_BASE_URL=http://localhost:8000/v1 TEXT_E2E_VLLM_MODEL=Qwen/Qwen3-8
 
 ## 7. Structured output & prefix caching
 
-- **vLLM**: JSON-schema structured output via native `response_format={"type":"json_schema",...}` (vLLM ≥ 0.8); flip `TEXT_VLLM_USE_GUIDED_JSON=true` to route through `extra_body.guided_json` on older builds. Automatic prefix caching is on by default — Text scrapes the hit rate into `smr_engine_cache_hit_rate{engine="vllm"}`.
+- **vLLM**: JSON-schema structured output via native `response_format={"type":"json_schema",...}` (vLLM ≥ 0.8); flip `TEXT_VLLM_USE_GUIDED_JSON=true` to route through `extra_body.guided_json` on older builds. Automatic prefix caching is on by default — Text scrapes the hit rate into `text_engine_cache_hit_rate{engine="vllm"}`.
 - **llama.cpp**: JSON-schema (`json_schema` field) or raw **GBNF** grammar (via `context.grammar`). `cache_prompt: true` reuses the KV cache of a stable prefix across flushes/regens (the 4C prompt-reorder program depends on this).

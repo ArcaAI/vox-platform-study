@@ -57,7 +57,7 @@ export interface RedactionRule {
   type: RedactionRuleType;
   match: RedactionMatchKind;
   pattern: string;
-  /** For `rewrite` rules: the literal replacement (omit for a semantic SMR rewrite). */
+  /** For `rewrite` rules: the literal replacement (omit for a semantic TEXT rewrite). */
   replacement?: string;
   note?: string;
 }

@@ -30,8 +30,8 @@
  * |----------------------|----------------------------------------------|
  * | `transcribe.stream` | — live STT socket teardown |
  * | `transcribe.batch` | — batch transcription job completion |
- * | `generate` | — non-streaming SMR generation |
- * | `generate.stream` | — streaming SMR generation (incl. abort)|
+ * | `generate` | — non-streaming TEXT generation |
+ * | `generate.stream` | — streaming TEXT generation (incl. abort)|
  * | `presummarize` | — pre-summary pass |
  * | `guardrail.validate` | — guardrail LLM calls (metered, never quota-blocked, never invoiced) |
  * | `ner.extract` | — NLP entity extraction |
@@ -66,7 +66,7 @@ export function isUsageOperation(value: unknown): value is UsageOperation {
  *
  *   - **Connection ids** — verbatim from the `AiProviderConnection` seed
  *     (`packages/database/src/prisma/db_main/seed/17-ai-provider-connection.ts`).
- *     Note `azure` (NOT `azure-openai`, which is an SMR *setting* value),
+ *     Note `azure` (NOT `azure-openai`, which is an TEXT *setting* value),
  *     `lm-studio` and `llama-cpp` (hyphenated).
  *   - **Engine ids** — what the platform's own self-hosted engines report,
  *     verbatim from the Python services (`whisper_cpp`, `indic_parler` and

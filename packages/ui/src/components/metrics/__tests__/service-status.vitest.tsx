@@ -10,7 +10,7 @@ expect.extend(axeMatchers);
 const SERVICES: ServiceStatusItemProps[] = [
   { name: 'API', status: 'healthy', p95Ms: 82, version: '1.4.0' },
   { name: 'STT', status: 'healthy', p95Ms: 240 },
-  { name: 'SMR', status: 'degraded' },
+  { name: 'TEXT', status: 'degraded' },
   { name: 'NLP', status: 'unhealthy', error: 'timeout' },
 ];
 
@@ -26,7 +26,7 @@ describe('ServiceStatusItem', () => {
     expect(item.querySelector('[data-slot="status-dot"]')).toHaveAttribute('data-color-role', 'success');
     expect(screen.getByText('Healthy')).toBeInTheDocument();
 
-    rerender(<ServiceStatusItem name="SMR" status="degraded" />);
+    rerender(<ServiceStatusItem name="TEXT" status="degraded" />);
     expect(container.querySelector('[data-slot="status-dot"]')).toHaveAttribute('data-color-role', 'warning');
     expect(screen.getByText('Degraded')).toBeInTheDocument();
 

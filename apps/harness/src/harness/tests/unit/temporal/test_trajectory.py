@@ -172,14 +172,14 @@ class TestActivityEmission:
             "engine_native": None,
         }
 
-        class _StatsSmr:
+        class _StatsText:
             async def generate(self, **kwargs: Any) -> TextGenerationResult:
                 return TextGenerationResult(
                     content="DRAFT", model="m", finish_reason="stop", stats=stats
                 )
 
         cap = _CapTraj()
-        monkeypatch.setattr(activities, "_text_client", lambda s: _StatsSmr())
+        monkeypatch.setattr(activities, "_text_client", lambda s: _StatsText())
         monkeypatch.setattr(activities, "_trajectory_api_client", lambda s: cap)
 
         await env.run(activities.generate, GenerateInput(tenant_id="11111111-1111-1111-1111-111111111111", prompt="P", trajectory=_traj_ctx(seq=32)))
@@ -200,7 +200,7 @@ class TestActivityEmission:
         `model` on `TextGenerationResult` itself — backfill from there so the
         step is never missing the two fields the ledger emitter requires."""
 
-        class _NoStatsSmr:
+        class _NoStatsText:
             async def generate(self, **kwargs: Any) -> TextGenerationResult:
                 return TextGenerationResult(
                     content="DRAFT",
@@ -211,7 +211,7 @@ class TestActivityEmission:
                 )
 
         cap = _CapTraj()
-        monkeypatch.setattr(activities, "_text_client", lambda s: _NoStatsSmr())
+        monkeypatch.setattr(activities, "_text_client", lambda s: _NoStatsText())
         monkeypatch.setattr(activities, "_trajectory_api_client", lambda s: cap)
 
         await env.run(activities.generate, GenerateInput(tenant_id="11111111-1111-1111-1111-111111111111", prompt="P", trajectory=_traj_ctx(seq=10)))
@@ -228,7 +228,7 @@ class TestActivityEmission:
         model, e.g. a fallback)."""
         stats = {"stop_reason": "stop", "provider": "lm-studio", "model": "reported-model"}
 
-        class _StatsSmr:
+        class _StatsText:
             async def generate(self, **kwargs: Any) -> TextGenerationResult:
                 return TextGenerationResult(
                     content="DRAFT",
@@ -238,7 +238,7 @@ class TestActivityEmission:
                 )
 
         cap = _CapTraj()
-        monkeypatch.setattr(activities, "_text_client", lambda s: _StatsSmr())
+        monkeypatch.setattr(activities, "_text_client", lambda s: _StatsText())
         monkeypatch.setattr(activities, "_trajectory_api_client", lambda s: cap)
 
         await env.run(activities.generate, GenerateInput(tenant_id="11111111-1111-1111-1111-111111111111", prompt="P", trajectory=_traj_ctx(seq=11)))
@@ -257,12 +257,12 @@ class TestActivityEmission:
             "engine_native": {"reasoning_tokens": 42},
         }
 
-        class _ReasoningSmr:
+        class _ReasoningText:
             async def generate(self, **kwargs: Any) -> TextGenerationResult:
                 return TextGenerationResult(content="DRAFT", model="m", stats=stats)
 
         cap = _CapTraj()
-        monkeypatch.setattr(activities, "_text_client", lambda s: _ReasoningSmr())
+        monkeypatch.setattr(activities, "_text_client", lambda s: _ReasoningText())
         monkeypatch.setattr(activities, "_trajectory_api_client", lambda s: cap)
 
         await env.run(activities.generate, GenerateInput(tenant_id="11111111-1111-1111-1111-111111111111", prompt="P", trajectory=_traj_ctx(seq=64)))
@@ -277,12 +277,12 @@ class TestActivityEmission:
 
     @pytest.mark.asyncio
     async def test_generate_regen_increments_regen_metric(self, env, monkeypatch):
-        class _Smr:
+        class _Text:
             async def generate(self, **kwargs: Any) -> TextGenerationResult:
                 return TextGenerationResult(content="DRAFT", model="m")
 
         cap = _CapTraj()
-        monkeypatch.setattr(activities, "_text_client", lambda s: _Smr())
+        monkeypatch.setattr(activities, "_text_client", lambda s: _Text())
         monkeypatch.setattr(activities, "_trajectory_api_client", lambda s: cap)
 
         before = REGISTRY.get_sample_value("harness_regen_total") or 0.0

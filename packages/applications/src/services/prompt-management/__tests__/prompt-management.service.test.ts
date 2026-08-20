@@ -94,17 +94,17 @@ const createMockPromptUsageRecordRepository = () => ({
   count: vi.fn().mockResolvedValue(0),
 });
 
-// SMR/text-generation client is an injected dependency
+// TEXT/text-generation client is an injected dependency
 // (HttpService) so the prompt-test path is unit-testable with a mock; the
-// live SMR call is verified in CI against the running Python service.
+// live TEXT call is verified in CI against the running Python service.
 const createMockHttpService = (responseData: Record<string, unknown>) => ({
   axiosRef: {
     post: vi.fn().mockResolvedValue({ data: responseData }),
   },
 });
 
-const createMockConfigService = (smrUrl = 'http://smr.local:8862') => ({
-  get: vi.fn().mockReturnValue(smrUrl),
+const createMockConfigService = (textUrl = 'http://text.local:8862') => ({
+  get: vi.fn().mockReturnValue(textUrl),
 });
 
 const wordsOfLength = (n: number): string => Array.from({ length: n }, (_, i) => `word${i}`).join(' ');
@@ -1742,9 +1742,9 @@ describe('PromptManagementService', () => {
   // ─── prompt quality/score test run ──────────────────────
 
   describe('prompt test run (BUG-018 two-call: start + finalize)', () => {
-    // SMR now acks a STREAMING job on POST /generate and serves the finished
+    // TEXT now acks a STREAMING job on POST /generate and serves the finished
     // text on GET /tasks/:id. Both live on the same axios mock.
-    const createSmrHttpMock = (taskOutput: string, taskOverrides: Record<string, unknown> = {}) => ({
+    const createTextHttpMock = (taskOutput: string, taskOverrides: Record<string, unknown> = {}) => ({
       axiosRef: {
         post: vi.fn().mockResolvedValue({ data: { task_id: 'task-1', status: 'pending', stream_url: '/api/v1/tasks/task-1/stream' } }),
         get: vi.fn().mockResolvedValue({ data: { task_id: 'task-1', status: 'completed', content: taskOutput, ...taskOverrides } }),
@@ -1766,7 +1766,7 @@ describe('PromptManagementService', () => {
         taskOverrides?: Record<string, unknown>;
       } = {},
     ) => {
-      const httpMock = createSmrHttpMock(taskOutput, opts.taskOverrides);
+      const httpMock = createTextHttpMock(taskOutput, opts.taskOverrides);
       const configMock = createMockConfigService();
       const aiTaskDefaultService = opts.aiTaskDefaultService ?? defaultTaskDefaults();
       const svc = new PromptManagementService(
@@ -1837,7 +1837,7 @@ describe('PromptManagementService', () => {
     });
 
     // ── model selection ──────────────────────────────────
-    it('resolves provider+model via the text.test AiTaskDefault and posts both to SMR', async () => {
+    it('resolves provider+model via the text.test AiTaskDefault and posts both to TEXT', async () => {
       const existing = createMockTemplateEntity({ id: 'tpl-1', version: 1, content: 'Summarize {{topic}}' });
       mockTemplateRepo.findById.mockResolvedValue(existing);
       const { svc, httpMock, aiTaskDefaultService } = buildTextService(wordsOfLength(60));
@@ -1871,7 +1871,7 @@ describe('PromptManagementService', () => {
     });
 
     // ── BUG-018 test 3: the outgoing request is tenant-attributed + enriched ──
-    it('sends X-Tenant-Id and runs the body through the shared SMR enrichment service', async () => {
+    it('sends X-Tenant-Id and runs the body through the shared TEXT enrichment service', async () => {
       const existing = createMockTemplateEntity({ id: 'tpl-1', version: 1 });
       mockTemplateRepo.findById.mockResolvedValue(existing);
       const textRequestEnrichment = {
@@ -1896,7 +1896,7 @@ describe('PromptManagementService', () => {
       expect((config as { headers: Record<string, string> }).headers['X-Tenant-Id']).toBe('tenant-1');
     });
 
-    it('finalize scores the SMR task content and persists lastTestScore/lastTestOutput/lastTestAt via OCC write', async () => {
+    it('finalize scores the TEXT task content and persists lastTestScore/lastTestOutput/lastTestAt via OCC write', async () => {
       const output = wordsOfLength(60); // ≥ 50 words → full score
       const existing = createMockTemplateEntity({ id: 'tpl-1', version: 5, content: 'Summarize {{topic}}' });
       mockTemplateRepo.findById.mockResolvedValue(existing);
@@ -1911,7 +1911,7 @@ describe('PromptManagementService', () => {
       expect((payload as { prompt: string }).prompt).toContain('asthma');
       expect(ack.assembledPrompt).toContain('asthma');
 
-      // The finished text was read SERVER-SIDE from SMR, never from the client
+      // The finished text was read SERVER-SIDE from TEXT, never from the client
       expect(httpMock.axiosRef.get).toHaveBeenCalledTimes(1);
       expect(httpMock.axiosRef.get.mock.calls[0][0]).toContain('/api/v1/tasks/task-1');
 
@@ -1937,7 +1937,7 @@ describe('PromptManagementService', () => {
       expect(mockTemplateRepo.updateWithVersion).not.toHaveBeenCalled();
     });
 
-    it('finalize on an unknown task id (SMR 404) throws NotFoundException', async () => {
+    it('finalize on an unknown task id (TEXT 404) throws NotFoundException', async () => {
       const existing = createMockTemplateEntity({ id: 'tpl-1', version: 1 });
       mockTemplateRepo.findById.mockResolvedValue(existing);
       const { svc, httpMock } = buildTextService('');
@@ -1997,7 +1997,7 @@ describe('PromptManagementService', () => {
       expect(mockTemplateRepo.updateWithVersion).toHaveBeenCalledTimes(1);
     });
 
-    it('scores a short SMR output below 1.0 (deterministic word-count heuristic)', async () => {
+    it('scores a short TEXT output below 1.0 (deterministic word-count heuristic)', async () => {
       const existing = createMockTemplateEntity({ id: 'tpl-1', version: 1 });
       mockTemplateRepo.findById.mockResolvedValue(existing);
       mockTemplateRepo.updateWithVersion.mockResolvedValue(createMockTemplateEntity({ id: 'tpl-1', version: 2 }));
@@ -2019,7 +2019,7 @@ describe('PromptManagementService', () => {
       expect(mockEventEmitter.emit).toHaveBeenCalledWith(SysEventType.ResourceUpdated, expect.objectContaining({ resourceId: 'tpl-1' }));
     });
 
-    it('throws NotFoundException on a cross-tenant template — on BOTH calls (no SMR call, no write)', async () => {
+    it('throws NotFoundException on a cross-tenant template — on BOTH calls (no TEXT call, no write)', async () => {
       const foreign = createMockTemplateEntity({ id: 'tpl-X', tenantId: 'tenant-OTHER', version: 1 });
       mockTemplateRepo.findById.mockResolvedValue(foreign);
       const { svc, httpMock } = buildTextService(wordsOfLength(80));
@@ -2118,7 +2118,7 @@ describe('PromptManagementService', () => {
 
     // ─── provider selection, dry-run/version, golden-case ───
     describe('provider/model selection (text.test routing tier)', () => {
-      it('forwards an explicit caller-supplied provider/model pair to SMR verbatim', async () => {
+      it('forwards an explicit caller-supplied provider/model pair to TEXT verbatim', async () => {
         const existing = createMockTemplateEntity({ id: 'tpl-1', version: 1 });
         mockTemplateRepo.findById.mockResolvedValue(existing);
         const aiTaskDefaultService = { getEffective: vi.fn() };
@@ -2183,7 +2183,7 @@ describe('PromptManagementService', () => {
 
     describe('dryRun + versionNumber', () => {
       // ── BUG-018 test 1: dry run generates NOTHING ──
-      it('dry-run returns the assembled prompt and never calls SMR at all', async () => {
+      it('dry-run returns the assembled prompt and never calls TEXT at all', async () => {
         const existing = createMockTemplateEntity({ id: 'tpl-1', version: 1, content: 'Summarize {{topic}}' });
         mockTemplateRepo.findById.mockResolvedValue(existing);
         const { svc, httpMock } = buildTextService(wordsOfLength(60));
@@ -2222,7 +2222,7 @@ describe('PromptManagementService', () => {
         expect(prompt).not.toContain('DRAFT content');
       });
 
-      it('throws NotFoundException for a missing versionNumber (no SMR call, no write)', async () => {
+      it('throws NotFoundException for a missing versionNumber (no TEXT call, no write)', async () => {
         const existing = createMockTemplateEntity({ id: 'tpl-1', version: 1 });
         mockTemplateRepo.findById.mockResolvedValue(existing);
         mockVersionRepo.findByVersionNumber.mockResolvedValue(undefined);

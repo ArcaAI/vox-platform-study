@@ -3,7 +3,7 @@
  *
  * Proves the closed loop end-to-end once a DNA_ANALYSIS template carries a
  * closed-vocabulary `metaData.promptConfig.outputSchema`:
- *   1. The outgoing SMR call binds `response_format` from that schema.
+ *   1. The outgoing TEXT call binds `response_format` from that schema.
  *   2. A response that is valid JSON but violates the schema (extra property,
  *      missing required key, out-of-enum value, or an over-length string
  *      field) hard-fails the job — nothing is ever persisted.
@@ -14,7 +14,7 @@
  *   5. The approved-only corpus filter is unaffected by the schema fix.
  *
  * Mocks at the same boundaries as `dna-writing-style.processor.test.ts`
- * (HTTP/SMR, repositories, job service); see that file for the base-case
+ * (HTTP/TEXT, repositories, job service); see that file for the base-case
  * coverage this file does not repeat.
  */
 
@@ -134,9 +134,9 @@ const createMockJob = (overrides: Record<string, unknown> = {}) => ({
   updateProgress: vi.fn().mockResolvedValue(undefined),
 });
 
-const createAxiosSmrResponse = (content: string) => ({
+const createAxiosTextResponse = (content: string) => ({
   data: {
-    task_id: 'task-smr-1',
+    task_id: 'task-text-1',
     status: 'completed' as const,
     content,
     provider: 'openai',
@@ -187,7 +187,7 @@ describe('DnaWritingStyleProcessor — PHI containment (TASK-700)', () => {
       mockPromptTemplateRepo as never,
       // TASK-710 (re-opened): `IPhiRedactor` is a REQUIRED dependency now — an
       // absent redactor aborts the job rather than posting the raw
-      // cross-patient corpus to SMR. Pass-through double keeps this file's
+      // cross-patient corpus to TEXT. Pass-through double keeps this file's
       // TASK-700 assertions byte-identical.
       { redact: vi.fn(async (text: string) => text) } as never,
     );
@@ -236,9 +236,9 @@ describe('DnaWritingStyleProcessor — PHI containment (TASK-700)', () => {
 
   // ─── Task 1 RED test 3: response_format is sent when a schema is resolved ──
 
-  it('binds response_format from the resolved template outputSchema on the outgoing SMR call', async () => {
+  it('binds response_format from the resolved template outputSchema on the outgoing TEXT call', async () => {
     primeTemplateWithSchema();
-    mockHttpService.axiosRef.post.mockResolvedValue(createAxiosSmrResponse(JSON.stringify(VALID_PROFILE)));
+    mockHttpService.axiosRef.post.mockResolvedValue(createAxiosTextResponse(JSON.stringify(VALID_PROFILE)));
 
     await buildProcessor().process(createMockJob({ textSamples: ['sample'] }) as never);
 
@@ -265,10 +265,10 @@ describe('DnaWritingStyleProcessor — PHI containment (TASK-700)', () => {
 
   // ─── Task 5 test 1: PHI-shaped input cannot persist ────────────────────────
 
-  it('hard-fails (never persists) when SMR adds a free-text property outside the closed schema', async () => {
+  it('hard-fails (never persists) when TEXT adds a free-text property outside the closed schema', async () => {
     primeTemplateWithSchema();
     const withExtraNarrative = { ...VALID_PROFILE, extraNarrative: 'Patient John Doe, MRN 12345, prescribed metformin 500mg.' };
-    mockHttpService.axiosRef.post.mockResolvedValue(createAxiosSmrResponse(JSON.stringify(withExtraNarrative)));
+    mockHttpService.axiosRef.post.mockResolvedValue(createAxiosTextResponse(JSON.stringify(withExtraNarrative)));
 
     await expect(buildProcessor().process(createMockJob({ textSamples: ['sample'] }) as never)).rejects.toThrow(/unparseable or non-conforming/i);
 
@@ -281,7 +281,7 @@ describe('DnaWritingStyleProcessor — PHI containment (TASK-700)', () => {
     primeTemplateWithSchema();
     const { toneFormality: _drop, ...missingRequired } = VALID_PROFILE;
     void _drop;
-    mockHttpService.axiosRef.post.mockResolvedValue(createAxiosSmrResponse(JSON.stringify(missingRequired)));
+    mockHttpService.axiosRef.post.mockResolvedValue(createAxiosTextResponse(JSON.stringify(missingRequired)));
 
     await expect(buildProcessor().process(createMockJob({ textSamples: ['sample'] }) as never)).rejects.toThrow(/unparseable or non-conforming/i);
     expect(mockDnaReportRepo.create).not.toHaveBeenCalled();
@@ -290,7 +290,7 @@ describe('DnaWritingStyleProcessor — PHI containment (TASK-700)', () => {
   it('hard-fails when an enum-constrained field carries a value outside its closed vocabulary', async () => {
     primeTemplateWithSchema();
     const outOfEnum = { ...VALID_PROFILE, toneFormality: 'Dr. Smith prefers a warm, empathetic tone with the patient.' };
-    mockHttpService.axiosRef.post.mockResolvedValue(createAxiosSmrResponse(JSON.stringify(outOfEnum)));
+    mockHttpService.axiosRef.post.mockResolvedValue(createAxiosTextResponse(JSON.stringify(outOfEnum)));
 
     await expect(buildProcessor().process(createMockJob({ textSamples: ['sample'] }) as never)).rejects.toThrow(/unparseable or non-conforming/i);
     expect(mockDnaReportRepo.create).not.toHaveBeenCalled();
@@ -302,15 +302,15 @@ describe('DnaWritingStyleProcessor — PHI containment (TASK-700)', () => {
       ...VALID_PROFILE,
       sectionOrderPreference: 'Patient reports worsening chest pain radiating to the left arm since yesterday evening, MRN 998877.',
     };
-    mockHttpService.axiosRef.post.mockResolvedValue(createAxiosSmrResponse(JSON.stringify(overLong)));
+    mockHttpService.axiosRef.post.mockResolvedValue(createAxiosTextResponse(JSON.stringify(overLong)));
 
     await expect(buildProcessor().process(createMockJob({ textSamples: ['sample'] }) as never)).rejects.toThrow(/unparseable or non-conforming/i);
     expect(mockDnaReportRepo.create).not.toHaveBeenCalled();
   });
 
-  it('renders styleText deterministically from the validated fields — never the raw SMR content', async () => {
+  it('renders styleText deterministically from the validated fields — never the raw TEXT content', async () => {
     primeTemplateWithSchema();
-    mockHttpService.axiosRef.post.mockResolvedValue(createAxiosSmrResponse(JSON.stringify(VALID_PROFILE)));
+    mockHttpService.axiosRef.post.mockResolvedValue(createAxiosTextResponse(JSON.stringify(VALID_PROFILE)));
 
     const result = await buildProcessor().process(createMockJob({ textSamples: ['sample'] }) as never);
 
@@ -347,7 +347,7 @@ describe('DnaWritingStyleProcessor — PHI containment (TASK-700)', () => {
       { id: 'ci-approved', content: 'Approved summary body', type: 'RAW_SUMMARY' },
       { id: 'ci-pending', content: 'Pending summary body', type: 'RAW_SUMMARY' },
     ]);
-    mockHttpService.axiosRef.post.mockResolvedValue(createAxiosSmrResponse(JSON.stringify(VALID_PROFILE)));
+    mockHttpService.axiosRef.post.mockResolvedValue(createAxiosTextResponse(JSON.stringify(VALID_PROFILE)));
 
     await buildProcessor().process(createMockJob({}) as never);
 
@@ -380,7 +380,7 @@ describe('DnaWritingStyleProcessor — PHI containment (TASK-700)', () => {
       { id: 'dna-tpl-no-schema', content: 'Analyze.', category: 'DNA_ANALYSIS', currentVersionNumber: 3 },
     ]);
     mockPromptTemplateRepo.findById.mockResolvedValue({ id: 'dna-tpl-no-schema', metaData: {} });
-    mockHttpService.axiosRef.post.mockResolvedValue(createAxiosSmrResponse(PHI_BEARING_RESPONSE));
+    mockHttpService.axiosRef.post.mockResolvedValue(createAxiosTextResponse(PHI_BEARING_RESPONSE));
 
     await expect(buildProcessor().process(createMockJob({ textSamples: ['sample'] }) as never)).rejects.toThrow(/schema/i);
     expectNothingPersisted();
@@ -388,7 +388,7 @@ describe('DnaWritingStyleProcessor — PHI containment (TASK-700)', () => {
 
   it('hard-fails when no DNA_ANALYSIS template resolves at all (fallback prompt)', async () => {
     mockPromptService.listPromptTemplates.mockResolvedValue([]);
-    mockHttpService.axiosRef.post.mockResolvedValue(createAxiosSmrResponse(PHI_BEARING_RESPONSE));
+    mockHttpService.axiosRef.post.mockResolvedValue(createAxiosTextResponse(PHI_BEARING_RESPONSE));
 
     await expect(buildProcessor().process(createMockJob({ textSamples: ['sample'] }) as never)).rejects.toThrow(/schema/i);
     expectNothingPersisted();
@@ -399,7 +399,7 @@ describe('DnaWritingStyleProcessor — PHI containment (TASK-700)', () => {
       { id: 'dna-tpl-boom', content: 'Analyze.', category: 'DNA_ANALYSIS', currentVersionNumber: 3 },
     ]);
     mockPromptTemplateRepo.findById.mockRejectedValue(new Error('db down'));
-    mockHttpService.axiosRef.post.mockResolvedValue(createAxiosSmrResponse(PHI_BEARING_RESPONSE));
+    mockHttpService.axiosRef.post.mockResolvedValue(createAxiosTextResponse(PHI_BEARING_RESPONSE));
 
     await expect(buildProcessor().process(createMockJob({ textSamples: ['sample'] }) as never)).rejects.toThrow(/schema/i);
     expectNothingPersisted();

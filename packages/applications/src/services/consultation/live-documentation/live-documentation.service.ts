@@ -91,7 +91,7 @@ const SOAP_OUTPUT_INSTRUCTION =
   'Leave a section blank after its header if there is nothing yet. Do not invent details or add other sections.';
 
 /**
- * stable, prefix-cache-friendly lead-in for the live SMR
+ * stable, prefix-cache-friendly lead-in for the live TEXT
  * user prompt. This block is BYTE-IDENTICAL on every flush of a session (first
  * flush AND every subsequent update flush), so a prefix-cache engine (vLLM /
  * llama.cpp `cache_prompt`) reuses the KV cache of the stable prefix instead of
@@ -105,7 +105,7 @@ export const LIVE_SOAP_STABLE_SYSTEM_PREFIX =
   SOAP_OUTPUT_INSTRUCTION;
 
 /**
- * The SMR `system_prompt` for the live running-note call.
+ * The TEXT `system_prompt` for the live running-note call.
  *
  * LIFTED VERBATIM out of the inline `callText` literal — the bytes
  * are unchanged (the paired sha256 guards in `live-soap-prompt-checksum.test.ts`
@@ -121,7 +121,7 @@ export const LIVE_SOAP_SYSTEM_PROMPT =
 /**
  * Safety cap on the transcript delta sent per flush (sliding-window fallback):
  * the incremental prompt only sends new transcript since the last successful
- * flush, but if SMR keeps failing the un-flushed delta grows — this bounds it
+ * flush, but if TEXT keeps failing the un-flushed delta grows — this bounds it
  * so a busy/failing session can't send an unbounded prompt.
  *
  * This former hardcoded constant is now the
@@ -167,7 +167,7 @@ export interface LiveTranscriptSegment {
 }
 
 /**
- * One SMR `/generate` call result for the bounded JSON auto-repair coordinator
+ * One TEXT `/generate` call result for the bounded JSON auto-repair coordinator
  *. `structured` reflects whether `response_format:
  * json_schema` was actually sent (false for engines like Ollama that ignore it,
  * so a corrective retry is skipped); `latencyMs` is captured per-call so both the
@@ -218,11 +218,11 @@ interface LiveSession {
   lockRenewalTimer?: ReturnType<typeof setInterval>;
   /** Monotonic flush id; only the latest generation may publish. */
   generation: number;
-  /** Aborts the in-flight SMR/NLP HTTP calls when a newer flush supersedes them. */
+  /** Aborts the in-flight TEXT/NLP HTTP calls when a newer flush supersedes them. */
   abortController?: AbortController;
   /** How many `transcriptParts` have already been folded into `lastPayload` (incremental prompt cursor, P0-B). */
   flushedTranscriptCount: number;
-  /** Epoch ms of the last SMR-producing flush — drives the min-interval throttle (P0-A). */
+  /** Epoch ms of the last TEXT-producing flush — drives the min-interval throttle (P0-A). */
   lastFlushAt: number;
   /** Pending trailing flush scheduled by the throttle. */
   throttleTimer?: ReturnType<typeof setTimeout>;
@@ -266,7 +266,7 @@ interface LiveSession {
  *
  * Per-consultation, transient (Redis only — no Prisma models). Consumes live
  * STT final segments (from `stt:result:{sessionId}`) plus context-add events,
- * debounces (~3 final segments OR ~5s idle), calls the existing SMR client for
+ * debounces (~3 final segments OR ~5s idle), calls the existing TEXT client for
  * a running summary and the NLP client (`/api/v1/classify/tokens`) for medical
  * entities, then publishes a {@link LiveSummaryEventDto} to the Redis pub/sub
  * channel `consultation:live-summary:{consultationId}`. The SSE endpoint relays
@@ -378,8 +378,8 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
   private readonly enabled: boolean;
   private readonly minIntervalMs: number;
   private readonly durableSnapshotMs: number;
-  private readonly smrMaxTokens: number;
-  private readonly smrTimeoutMs: number;
+  private readonly textMaxTokens: number;
+  private readonly textTimeoutMs: number;
   private readonly textProvider?: string;
   private readonly textModel?: string;
   private readonly statsTtl: number;
@@ -402,7 +402,7 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
     private readonly redisSubscriber: RedisSubscriberService,
     @Optional() private readonly audioBridge?: StreamingAudioBridgeService,
     @Optional() @Inject(ContextItemRepository) private readonly contextItemRepository?: ContextItemRepository,
-    // Resolver for the tenant's effective SMR {provider, model}.
+    // Resolver for the tenant's effective TEXT {provider, model}.
     @Optional() @Inject(HarnessPolicyService) private readonly harnessPolicyService?: HarnessPolicyService,
     // X-Service-Token for the guardrail groundedness hop
     // (SecretsService is provided by the @Global SecretsModule). Optional so unit
@@ -454,13 +454,13 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
     this.heartbeatMs = Number(this.configService.get('LIVE_DOC_HEARTBEAT_MS') ?? 15000);
     // Kill-switch (P2): any value other than the literal 'false' keeps it on.
     this.enabled = String(this.configService.get('LIVE_DOC_ENABLED') ?? 'true') !== 'false';
-    // Min seconds between SMR calls for one session — protects the small local LM pool (P0-A).
+    // Min seconds between TEXT calls for one session — protects the small local LM pool (P0-A).
     this.minIntervalMs = Number(this.configService.get('LIVE_DOC_MIN_INTERVAL_MS') ?? 4000);
     // Durable-snapshot throttle: 0 disables periodic durable writes (P1-C).
     this.durableSnapshotMs = Number(this.configService.get('LIVE_DOC_DURABLE_SNAPSHOT_MS') ?? 30000);
     // Bounded live-generation params (P0-B).
-    this.smrMaxTokens = Number(this.configService.get('LIVE_DOC_TEXT_MAX_TOKENS') ?? 8192);
-    this.smrTimeoutMs = Number(this.configService.get('LIVE_DOC_TEXT_TIMEOUT_MS') ?? 20000);
+    this.textMaxTokens = Number(this.configService.get('LIVE_DOC_TEXT_MAX_TOKENS') ?? 8192);
+    this.textTimeoutMs = Number(this.configService.get('LIVE_DOC_TEXT_TIMEOUT_MS') ?? 20000);
     this.textProvider = this.configService.get<string>('LIVE_DOC_TEXT_PROVIDER') || undefined;
     this.textModel = this.configService.get<string>('LIVE_DOC_TEXT_MODEL') || undefined;
     // TTL on the per-session Redis stats snapshot + active set. A
@@ -797,7 +797,7 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
       // head and drop the most-recent transcript (assessment/plan/closing). Flush
       // repeatedly until the cursor catches up to the full transcript. Bounded twice
       // over — break as soon as a flush makes no forward progress (cursor stuck, e.g.
-      // SMR down / nothing new), and a hard iteration cap as a final safety net so a
+      // TEXT down / nothing new), and a hard iteration cap as a final safety net so a
       // non-advancing cursor can never loop forever.
       const maxDrainIterations = session.transcriptParts.length + 1;
       for (let i = 0; i < maxDrainIterations; i++) {
@@ -950,7 +950,7 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
   }
 
   // ------------------------------------------------------------------
-  // Flush — SMR + NLP aggregation, publish
+  // Flush — TEXT + NLP aggregation, publish
   // ------------------------------------------------------------------
 
   /**
@@ -959,7 +959,7 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
    *
    * `force` (used by `stop`) bypasses the min-interval throttle for the final flush.
    * Overlapping flushes are made safe by a per-session generation id: a newer flush
-   * aborts the prior in-flight SMR/NLP call and only the latest generation may
+   * aborts the prior in-flight TEXT/NLP call and only the latest generation may
    * publish, advance the incremental cursor, or persist.
    */
   async flush(consultationId: string, opts?: { force?: boolean }): Promise<LiveSummaryEventDto | null> {
@@ -975,7 +975,7 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
     if (!transcript && !notes) return null;
 
     // Min-interval throttle (P0-A): coalesce a burst into a single trailing re-run so
-    // a busy session never exceeds one SMR call per `LIVE_DOC_MIN_INTERVAL_MS`.
+    // a busy session never exceeds one TEXT call per `LIVE_DOC_MIN_INTERVAL_MS`.
     const elapsed = Date.now() - session.lastFlushAt;
     if (!opts?.force && elapsed < this.minIntervalMs) {
       this.scheduleThrottledFlush(session);
@@ -1090,7 +1090,7 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
     // flush — exactly the property the constant used to provide.
     const promptText = this.buildTextUserPrompt(priorNote, delta || transcript, notes, elidedParts > 0, agent.stableUserPrefix);
 
-    // SMR first (a structured S/O/A/P running note), then NER over the resulting
+    // TEXT first (a structured S/O/A/P running note), then NER over the resulting
     // `runningSummary` (the canonical text the entity highlight offsets index — so it
     // must be produced before NER runs). Both calls retain the last-good value if the
     // service is down.
@@ -1098,13 +1098,13 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
     let runningSummary = priorNote;
     let textFailed = false;
     let textLatencyMs = 0;
-    // AD-1 generation stats for this flush (null unless SMR
+    // AD-1 generation stats for this flush (null unless TEXT
     // returned a stats block); surfaced on the payload as `metadata.stats`.
     let textStats: LiveSummaryStatsDto | null = null;
     // bounded JSON auto-repair telemetry. When the first
     // structured response is not valid SOAP JSON we do EXACTLY ONE corrective
-    // retry; the repair SMR call is recorded as its own ordered LLM_CALL step.
-    let smrRepaired = false;
+    // retry; the repair TEXT call is recorded as its own ordered LLM_CALL step.
+    let textRepaired = false;
     let repairLatencyMs = 0;
     let repairStats: LiveSummaryStatsDto | null = null;
     try {
@@ -1135,7 +1135,7 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
       const [firstCall, repairCall] = outcome.calls;
       textLatencyMs = firstCall.latencyMs;
       textStats = firstCall.stats;
-      smrRepaired = outcome.repaired;
+      textRepaired = outcome.repaired;
       if (repairCall) {
         repairLatencyMs = repairCall.latencyMs;
         repairStats = repairCall.stats;
@@ -1152,11 +1152,15 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
     } catch (error) {
       if (isStale()) return this.dropStale(session);
       textFailed = true;
-      this.logger.warn({ message: 'SMR running-summary call failed', consultationId, error: error instanceof Error ? error.message : String(error) });
+      this.logger.warn({
+        message: 'TEXT running-summary call failed',
+        consultationId,
+        error: error instanceof Error ? error.message : String(error),
+      });
     }
 
     // Extract-from-source + entity-ground (SPEER). Run NER over the RAW
-    // TRANSCRIPT DELTA (the same `delta || transcript` that feeds SMR), NOT the generated note:
+    // TRANSCRIPT DELTA (the same `delta || transcript` that feeds TEXT), NOT the generated note:
     // the LLM running note carries a material hallucination base rate, so NER over the note
     // laundered invented findings/medications into first-class clinical entities. The
     // transcript-sourced entities are then GROUNDED back to the rendered note (below) — a
@@ -1242,7 +1246,7 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
       lastSegmentId: session.lastSegmentId,
       ...(groundedness ? { groundedness } : {}),
       // attach the AD-1 stats when present; omit the envelope
-      // entirely on a stats-less flush (SMR failure / legacy cache hit) so the
+      // entirely on a stats-less flush (TEXT failure / legacy cache hit) so the
       // feed degrades cleanly rather than publishing an empty metadata block.
       // The session's agent identity, additively, under the same
       // optional envelope. Emitted only when a GOVERNED tier resolved: on the
@@ -1302,7 +1306,7 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
       textStats,
       textFailed,
       textLatencyMs,
-      smrRepaired,
+      textRepaired,
       repairStats,
       repairLatencyMs,
       // C4: the TOOL_CALL step records exactly the calls this flush made — a
@@ -1332,7 +1336,7 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
       textFailed: boolean;
       textLatencyMs: number;
       /** whether the bounded JSON auto-repair retry ran. */
-      smrRepaired: boolean;
+      textRepaired: boolean;
       repairStats: LiveSummaryStatsDto | null;
       repairLatencyMs: number;
       nlpRan: boolean;
@@ -1355,7 +1359,7 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
 
       const steps: CreateAgentTrajectoryStepInput[] = [];
 
-      // 1) LLM_CALL — the SMR running-summary generation for this flush.
+      // 1) LLM_CALL — the TEXT running-summary generation for this flush.
       steps.push({
         ...common,
         seq: session.trajectorySeq++,
@@ -1381,8 +1385,8 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
 
       // 1b) LLM_CALL — the bounded JSON auto-repair retry,
       // recorded only when the corrective retry actually ran so the trajectory
-      // reflects EXACTLY the SMR calls this flush made (original + at most one repair).
-      if (ctx.smrRepaired) {
+      // reflects EXACTLY the TEXT calls this flush made (original + at most one repair).
+      if (ctx.textRepaired) {
         steps.push({
           ...common,
           seq: session.trajectorySeq++,
@@ -1586,7 +1590,7 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
    *
    * The acquire is now an atomic compare-and-set (`LOCK_ACQUIRE_SCRIPT`): when a
    * live foreign instance already owns the consultation we BAIL OUT of the watcher
-   * instead of overwriting its lock — that stops the duplicate SMR spend and the
+   * instead of overwriting its lock — that stops the duplicate TEXT spend and the
    * duplicate PRE_SUMMARY row. On success we keep the lock fresh with a fenced
    * periodic renewal for the life of the session. Fail-open on a Redis error /
    * outage so a cache blip never kills live documentation in the common
@@ -1850,7 +1854,7 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
   }
 
   /**
-   * Assemble the live SMR user prompt. Once a SOAP note exists we
+   * Assemble the live TEXT user prompt. Once a SOAP note exists we
    * send it plus only the new transcript delta ("update the note") instead of the
    * whole transcript, keeping prompt size bounded; the first flush sends the delta
    * as the initial transcript.
@@ -1965,7 +1969,7 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
     corrective?: string,
     agent?: FrozenLiveAgentSnapshot,
   ): Promise<{ text: string; stats: LiveSummaryStatsDto | null; structured: boolean }> {
-    // SMR is a stateless gateway with no model default. Resolve the
+    // TEXT is a stateless gateway with no model default. Resolve the
     // tenant's effective {provider, model} via the HarnessPolicy cascade (NOT the
     // legacy LIVE_DOC_TEXT_PROVIDER/MODEL env); fall back to env only when the
     // resolver is not wired (kept for non-DI construction paths).
@@ -2004,27 +2008,27 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
       system_prompt: agent?.systemPrompt ?? LIVE_SOAP_SYSTEM_PROMPT,
       provider,
       model,
-      max_tokens: this.smrMaxTokens,
+      max_tokens: this.textMaxTokens,
       stream: false as const,
       response_format: includeResponseFormat ? LIVE_SOAP_RESPONSE_FORMAT : undefined,
     };
-    // The gateway→SMR hop is shared-secret authenticated (`X-Service-Token`).
-    // This call omitted it, so wherever SMR actually enforces a token — i.e.
+    // The gateway→TEXT hop is shared-secret authenticated (`X-Service-Token`).
+    // This call omitted it, so wherever TEXT actually enforces a token — i.e.
     // every environment where `TEXT_SERVICE_TOKEN` is non-empty — the live loop
     // was rejected with `invalid_or_missing_token` and the flush degraded to an
     // empty note. It "worked" only in dev, where an empty token
-    // trips SMR's bypass. Same resolution the sibling SMR callers use
+    // trips TEXT's bypass. Same resolution the sibling TEXT callers use
     // (`prompt-management.service.ts`, `dna-writing-style.processor.ts`); `??
     // ''` preserves the dev bypass when no secret is configured.
     // D-D: the ONE shared `INTERNAL_ACCESS_TOKEN` (`TEXT_SERVICE_TOKEN` is only the
-    // migration fallback). TASK-737: `X-Tenant-Id` is MANDATORY — SMR resolves the
+    // migration fallback). TASK-737: `X-Tenant-Id` is MANDATORY — TEXT resolves the
     // tenant's BYOK provider/credential from it, and TASK-735 derives
     // `funding`/`cost_basis` from whichever tier supplied that credential, so a
     // dropped header mis-bills silently as well as mis-configuring the call. This is
     // the highest-volume internal hop in the platform (every live-doc flush).
     const serviceToken = await resolveInternalAccessToken(this.secretsService, 'TEXT_SERVICE_TOKEN');
     const response = await this.httpService.axiosRef.post(`${this.textServiceUrl}/api/v1/generate`, payload, {
-      timeout: this.smrTimeoutMs,
+      timeout: this.textTimeoutMs,
       headers: internalServiceHeaders({ serviceToken, tenantId, tenantlessReason: TENANTLESS.PLATFORM_OPERATOR }),
       signal,
     });
@@ -2032,7 +2036,7 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
     // Stamp WHICH AiTaskDefault routing key served this
     // flush (`text.live`, never `text.finalize` — this method is the live tier
     // exclusively, see the `resolveTextSelection(tenantId, 'live')` call above).
-    // SMR itself has no notion of this key; it only echoes back the
+    // TEXT itself has no notion of this key; it only echoes back the
     // provider/model it actually ran, so the tier provenance is stamped here.
     return {
       text: mapTextGenerateResponse(response.data).summary,
@@ -2044,9 +2048,9 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
   }
 
   /**
-   * extract the AD-1 GenerationStats block from the SMR
+   * extract the AD-1 GenerationStats block from the TEXT
    * `/generate` response for the SSE payload. Passes the normalized headline
-   * fields through near-verbatim (snake_case, matching the SMR contract) minus
+   * fields through near-verbatim (snake_case, matching the TEXT contract) minus
    * `engine_native` (the raw per-provider blob stays server-side, off the
    * browser stream). Returns `null` when the `stats` block is absent (legacy
    * response) or null (idempotency-cache hit) so the flush omits `metadata`.

@@ -4,7 +4,7 @@
  * When structured SOAP output (`response_format: json_schema`) comes back as
  * malformed JSON, the flush must do EXACTLY ONE corrective retry (appending the
  * seeded CORRECTIVE_RETRY instruction) and then fall back to the tolerant parser.
- * Both SMR calls must be recorded as ordered LLM_CALL trajectory steps.
+ * Both TEXT calls must be recorded as ordered LLM_CALL trajectory steps.
  */
 import { describe, it, expect, afterEach, vi } from 'vitest';
 import { AgentStepType } from '@arcaai/domains';
@@ -100,7 +100,7 @@ describe('LiveDocumentationService — bounded JSON auto-repair (Phase 4D.3)', (
 
     const payload = await service.flush(CID, { force: true });
 
-    // Exactly one retry: the SMR /generate endpoint was hit exactly twice.
+    // Exactly one retry: the TEXT /generate endpoint was hit exactly twice.
     expect(http.generateCalls).toBe(2);
 
     // The repaired (valid) SOAP JSON drives the running summary.
@@ -111,7 +111,7 @@ describe('LiveDocumentationService — bounded JSON auto-repair (Phase 4D.3)', (
     expect(generateBodies[0].prompt).not.toContain('REVISE STRICTLY');
     expect(generateBodies[1].prompt).toContain('REVISE STRICTLY');
 
-    // Both the original and the repair SMR calls are recorded as ordered LLM_CALL steps.
+    // Both the original and the repair TEXT calls are recorded as ordered LLM_CALL steps.
     const steps = recordedSteps(trajectory);
     const llmSteps = steps.filter((s) => s.stepType === AgentStepType.LLM_CALL);
     expect(llmSteps.map((s) => s.name)).toEqual(['flush', 'flush.repair']);

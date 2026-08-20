@@ -66,7 +66,7 @@ describe('provider vocabulary', () => {
   });
 
   it('does not carry the spellings that are NOT in the seed', () => {
-    // `azure-openai` is the SMR settings value; the CONNECTION id is `azure`.
+    // `azure-openai` is the TEXT settings value; the CONNECTION id is `azure`.
     // Freezing the wrong one splits every LLM rollup in half.
     expect(isKnownProvider('azure-openai')).toBe(false);
     expect(isKnownProvider('lmstudio')).toBe(false);

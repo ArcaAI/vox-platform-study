@@ -10,7 +10,7 @@ export class JobMetricsService implements OnModuleInit {
   jobWaitingDuration!: Histogram<string>;
   jobErrorsTotal!: Counter<string>;
   jobActiveCount!: Gauge<string>;
-  jobSmrCallDuration!: Histogram<string>;
+  jobTextCallDuration!: Histogram<string>;
 
   onModuleInit(): void {
     this.jobProcessingTotal = new Counter({
@@ -50,9 +50,9 @@ export class JobMetricsService implements OnModuleInit {
       registers: [register],
     });
 
-    this.jobSmrCallDuration = new Histogram({
-      name: 'hope_job_smr_call_duration_seconds',
-      help: 'Duration of SMR HTTP calls within jobs',
+    this.jobTextCallDuration = new Histogram({
+      name: 'hope_job_text_call_duration_seconds',
+      help: 'Duration of TEXT HTTP calls within jobs',
       labelNames: ['queue', 'provider'],
       buckets: [0.5, 1, 2, 5, 10, 30, 60, 120],
       registers: [register],
@@ -86,6 +86,6 @@ export class JobMetricsService implements OnModuleInit {
   }
 
   recordTextCallDuration(queue: string, provider: string, durationSeconds: number): void {
-    this.jobSmrCallDuration.labels(queue, provider).observe(durationSeconds);
+    this.jobTextCallDuration.labels(queue, provider).observe(durationSeconds);
   }
 }

@@ -54,7 +54,7 @@ const imports = [
   SecretsModule.forRoot({
     defaultTtlSec: Number(process.env.SECRETS_TTL_SEC ?? 300),
     lruMax: Number(process.env.SECRETS_LRU_MAX ?? 200),
-    // Keep the sync-only service tokens (SMR/TTS X-Service-Token) continuously
+    // Keep the sync-only service tokens (TEXT/TTS X-Service-Token) continuously
     // warm; unset derives max(30, TTL/2) so warmed keys never expire cold.
     reWarmIntervalSec: process.env.SECRETS_REWARM_INTERVAL_SEC ? Number(process.env.SECRETS_REWARM_INTERVAL_SEC) : undefined,
     warmupKeys: [...COMMON_SERVICE_WARMUP_KEYS],

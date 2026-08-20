@@ -28,16 +28,16 @@ const mockInstanceRepository = {
 };
 
 const REGISTER_INPUT = {
-  service: 'smr',
+  service: 'text',
   version: '2.1.0',
-  releaseTag: 'SMR-2.1.0',
+  releaseTag: 'TEXT-2.1.0',
   gitBranch: 'main',
   gitCommitSha: 'a'.repeat(40),
   buildAt: '2026-08-01T10:00:00.000Z',
   ciPipelineId: '4242',
   ciPipelineUrl: 'https://gitlab/pipelines/4242',
   environment: 'dev',
-  instanceId: 'smr-7c9d-abcde',
+  instanceId: 'text-7c9d-abcde',
 };
 
 /** Minimal duck-typed ServiceRelease entity (change tracking included). */
@@ -46,9 +46,9 @@ const makeReleaseEntity = (overrides: Record<string, unknown> = {}) => {
   const entity: Record<string, unknown> = {
     id: 'release-1',
     tenantId: SERVICE_REGISTRY_TENANT_ID,
-    serviceName: 'smr',
+    serviceName: 'text',
     releaseVersion: '2.1.0',
-    releaseTag: 'SMR-2.1.0',
+    releaseTag: 'TEXT-2.1.0',
     gitBranch: 'main',
     gitCommitSha: 'a'.repeat(40),
     buildAt: new Date('2026-08-01T10:00:00.000Z'),
@@ -77,9 +77,9 @@ const makeInstanceEntity = (overrides: Record<string, unknown> = {}) => {
     id: 'instance-1',
     tenantId: SERVICE_REGISTRY_TENANT_ID,
     releaseId: 'release-1',
-    serviceName: 'smr',
+    serviceName: 'text',
     environment: 'dev',
-    instanceId: 'smr-7c9d-abcde',
+    instanceId: 'text-7c9d-abcde',
     startedAt: new Date('2026-08-01T10:05:00.000Z'),
     lastSeenAt: new Date('2026-08-01T10:05:00.000Z'),
     ...overrides,
@@ -132,7 +132,7 @@ describe('ServiceReleaseService', () => {
 
       expect(mockReleaseRepository.create).toHaveBeenCalledTimes(1);
       expect(response.version).toBe('2.1.0');
-      expect(response.serviceName).toBe('smr');
+      expect(response.serviceName).toBe('text');
 
       const createdEvents = mockEventEmitter.emit.mock.calls.filter(([type]) => type === SysEventType.ResourceCreated);
       expect(createdEvents).toHaveLength(1);
@@ -157,7 +157,7 @@ describe('ServiceReleaseService', () => {
       mockInstanceRepository.findAll.mockResolvedValue([instance]);
       mockInstanceRepository.update.mockImplementation((_id, entity) => Promise.resolve(entity));
 
-      await createService().registerInstance({ ...REGISTER_INPUT, instanceId: 'smr-7c9d-abcde' });
+      await createService().registerInstance({ ...REGISTER_INPUT, instanceId: 'text-7c9d-abcde' });
 
       expect(mockInstanceRepository.create).not.toHaveBeenCalled();
       expect(mockInstanceRepository.update).toHaveBeenCalledTimes(1);
@@ -242,9 +242,9 @@ describe('ServiceReleaseService', () => {
 
   describe('attachDigest', () => {
     const DIGEST_INPUT = {
-      service: 'smr',
+      service: 'text',
       gitCommitSha: 'a'.repeat(40),
-      imageRepository: 'registry/hope/smr',
+      imageRepository: 'registry/hope/text',
       imageDigest: `sha256:${'b'.repeat(64)}`,
     };
 
@@ -282,7 +282,7 @@ describe('ServiceReleaseService', () => {
       const now = Date.now();
       const liveInstance = makeInstanceEntity({
         id: 'i-live',
-        serviceName: 'smr',
+        serviceName: 'text',
         lastSeenAt: new Date(now - (INSTANCE_LIVENESS_THRESHOLD_MS - 1_000)),
       });
       const staleInstance = makeInstanceEntity({
@@ -296,7 +296,7 @@ describe('ServiceReleaseService', () => {
 
       const rows = await createService().listCurrent('dev');
 
-      expect(rows.find((row) => row.serviceName === 'smr')?.liveness).toBe('live');
+      expect(rows.find((row) => row.serviceName === 'text')?.liveness).toBe('live');
       expect(rows.find((row) => row.serviceName === 'stt')?.liveness).toBe('stale');
     });
 
@@ -335,7 +335,7 @@ describe('ServiceReleaseService', () => {
     it('returns the timeline newest first', async () => {
       mockReleaseRepository.findAll.mockResolvedValue([makeReleaseEntity({ id: 'r2' }), makeReleaseEntity({ id: 'r1' })]);
 
-      const rows = await createService().getHistory('smr');
+      const rows = await createService().getHistory('text');
 
       expect(rows.map((row) => row.id)).toEqual(['r2', 'r1']);
     });

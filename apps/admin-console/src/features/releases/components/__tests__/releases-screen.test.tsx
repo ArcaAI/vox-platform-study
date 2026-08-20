@@ -15,13 +15,13 @@ import { ReleasesScreen } from '../releases-screen';
 
 const TAGGED_RELEASE = {
   id: 'rel-1',
-  serviceName: 'smr',
+  serviceName: 'text',
   version: '2.1.0',
-  releaseTag: 'SMR-2.1.0',
+  releaseTag: 'TEXT-2.1.0',
   gitBranch: 'dev-2.1',
   gitCommitSha: '0ab258f9aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
   buildAt: '2026-08-09T10:00:00.000Z',
-  imageRepository: 'registry.example/smr',
+  imageRepository: 'registry.example/text',
   imageDigest: 'sha256:abcdef',
   ciPipelineUrl: 'https://gitlab.example/pipelines/1',
   changelog: [
@@ -46,7 +46,7 @@ const UNTAGGED_RELEASE = {
 
 const CURRENT = [
   {
-    serviceName: 'smr',
+    serviceName: 'text',
     environment: 'dev',
     release: TAGGED_RELEASE,
     instanceCount: 2,
@@ -109,7 +109,7 @@ describe('ReleasesScreen', () => {
     stubFetch();
     renderWithProviders(<ReleasesScreen />);
 
-    fireEvent.click(await screen.findByRole('button', { name: 'smr' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'text' }));
 
     const dialog = await screen.findByRole('dialog');
     const changesTab = within(dialog).getByRole('tab', { name: 'Changes' });

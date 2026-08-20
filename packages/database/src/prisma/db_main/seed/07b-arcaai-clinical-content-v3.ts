@@ -71,11 +71,11 @@
  * source markdown escapes them as `{current\_department}`, and extraction strips
  * those escapes, asserting all nine survive and no tenth appears. They are
  * substituted at ASSEMBLY time by `renderPreSummaryTemplate`
- * (apps/api .../smr-compat/summary-prompt.builder.ts), never here.
+ * (apps/api .../text-compat/summary-prompt.builder.ts), never here.
  *
  * The FORMAT block's five section titles are unchanged and are asserted present
  * at extraction: they are title-matched by `PRE_SUMMARY_DISPLAY_TITLES`
- * (apps/api .../smr-compat/summary-response.mapper.ts), and editing one without
+ * (apps/api .../text-compat/summary-response.mapper.ts), and editing one without
  * the other returns an EMPTY structured_data.sections.
  *
  * Strings are JSON-encoded so backticks / ${...} in the source need no escaping.

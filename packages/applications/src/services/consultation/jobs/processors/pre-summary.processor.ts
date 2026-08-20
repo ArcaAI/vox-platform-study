@@ -49,7 +49,7 @@ export class PreSummaryProcessor extends WorkerHost {
     private readonly jobMetrics: JobMetricsService,
     private readonly cls: ClsService<IActiveUserContext>,
     @Optional() @Inject(SecretsService) private readonly secretsService?: SecretsService,
-    // Resolver for the tenant's effective SMR {provider, model}.
+    // Resolver for the tenant's effective TEXT {provider, model}.
     @Optional() @Inject(HarnessPolicyService) private readonly harnessPolicyService?: HarnessPolicyService,
     // Load the consulting doctor's preferred prompt id so the
     // pre-summary BullMQ path threads it (was previously dropped here, unlike
@@ -319,11 +319,11 @@ export class PreSummaryProcessor extends WorkerHost {
           extra: jobId ? { 'X-Request-ID': jobId } : undefined,
         }),
       });
-      this.jobMetrics.recordTextCallDuration(JobQueue.GeneratePreSummary, 'smr', (Date.now() - textStart) / 1000);
+      this.jobMetrics.recordTextCallDuration(JobQueue.GeneratePreSummary, 'text', (Date.now() - textStart) / 1000);
       return mapTextGenerateResponse(response.data);
     } catch (error) {
       this.logger.error({
-        message: 'SMR service call failed',
+        message: 'TEXT service call failed',
         error: error instanceof Error ? error.message : String(error),
       });
       throw new Error('Failed to generate pre-summary from AI service');

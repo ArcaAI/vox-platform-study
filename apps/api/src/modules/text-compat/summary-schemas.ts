@@ -1,8 +1,8 @@
 /**
- * JSON Schemas passed to SMR `/api/v1/generate` as `response_format.json_schema`
+ * JSON Schemas passed to TEXT `/api/v1/generate` as `response_format.json_schema`
  * to constrain the LLM's structured output.
  *
- * SMR forwards these verbatim to the provider, wrapping them as
+ * TEXT forwards these verbatim to the provider, wrapping them as
  * `{ name: schema.title ?? 'output', schema: <this object>, strict }`
  * (see `apps/text/src/text/providers/azure_openai.py`). Each schema therefore
  * carries a `title` so the provider's schema name is stable.

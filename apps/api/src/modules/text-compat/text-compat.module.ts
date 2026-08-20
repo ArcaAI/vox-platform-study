@@ -11,7 +11,7 @@ import { TextCompatController } from './text-compat.controller';
 import { TextCompatTemplateService } from './text-compat-template.service';
 
 /**
- * v1-compatible SMR summary gateway shims.
+ * v1-compatible TEXT summary gateway shims.
  *
  *
  * Registered in `AppModule`; the two routes are added to the `setGlobalPrefix`
@@ -30,7 +30,7 @@ import { TextCompatTemplateService } from './text-compat-template.service';
     // Requesting doctor's DNA writing-style resolution (IDnaWritingStyleService).
     DnaWritingStyleServiceModule,
     // Per-tenant Sarvam BYOK resolution (unified provider plane) for the
-    // SMR-served transcript translation.
+    // TEXT-served transcript translation.
     AiProviderConnectionServiceModule,
     CoreDatabaseModule,
   ],

@@ -41,7 +41,7 @@ function makeService(overrides: { usageLedger?: unknown; unitOfWork?: unknown } 
           model: 'gpt-5',
           usage: { prompt_tokens: 100, completion_tokens: 20 },
           usage_detail: {
-            task_id: 'smr-task-1',
+            task_id: 'text-task-1',
             request_id: 'corr-1',
             provider: 'openai',
             model: 'gpt-5',
@@ -95,7 +95,7 @@ function makeService(overrides: { usageLedger?: unknown; unitOfWork?: unknown } 
     summaryMetaRepository as never,
     { create: vi.fn() } as never,
     httpService as never,
-    { get: vi.fn(() => 'http://smr') } as never,
+    { get: vi.fn(() => 'http://text') } as never,
     { emit: vi.fn() } as never,
     clsService as never,
     { create: vi.fn() } as never,
@@ -135,7 +135,7 @@ describe('SummaryService — ledger emission on SummaryMeta write', () => {
     const llmCall = harness.usageLedger.recordUsage.mock.calls.find((c) => c[0].common.operation === 'generate');
     expect(llmCall).toBeDefined();
     expect(llmCall![1]).toBe(TX); // the same tx — not a second, independent write
-    expect(llmCall![0].common.idempotencyKey).toBe('llm:smr-task-1');
+    expect(llmCall![0].common.idempotencyKey).toBe('llm:text-task-1');
     expect(llmCall![0].common.tenantId).toBe('tenant-1');
     expect(llmCall![0].common.consultationId).toBe('c-1');
     expect(llmCall![0].common.doctorId).toBe('doc-1');
@@ -183,7 +183,7 @@ describe('SummaryService — ledger emission on SummaryMeta write', () => {
     expect(failing.summaryMetaRepository.create).toHaveBeenCalled();
   });
 
-  it('emits nothing when SMR returned no usage block (older service)', async () => {
+  it('emits nothing when TEXT returned no usage block (older service)', async () => {
     const legacy = makeService();
     legacy.httpService.axiosRef.post.mockResolvedValue({ data: { content: 'the summary', provider: 'openai', model: 'gpt-5' } });
 

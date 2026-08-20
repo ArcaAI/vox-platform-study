@@ -18,7 +18,7 @@
  * Test data
  * ---------
  * The E2E stack does not normally produce a real `ConsultationJobStatus`
- * row (that would require driving the full BullMQ + SMR pipeline), so we
+ * row (that would require driving the full BullMQ + TEXT pipeline), so we
  * seed Redis directly with the same JSON shape the W3.3 `JobService`
  * writes. Cleanup deletes the key in `afterAll`.
  *

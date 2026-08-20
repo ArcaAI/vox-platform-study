@@ -21,7 +21,7 @@ import { LiveAgentResolutionServiceModule } from '../prompt/live-agent-resolutio
  * Live Documentation Service Module (Clinical Workflow Playground — WS1).
  *
  * Wires the per-consultation realtime watcher:
- * - HttpModule         → SMR (`/api/v1/generate`) + NLP (`/api/v1/classify/tokens`) calls
+ * - HttpModule         → TEXT (`/api/v1/generate`) + NLP (`/api/v1/classify/tokens`) calls
  * - ConfigModule       → service URLs + debounce tuning (NLP_URL, TEXT_URL, LIVE_DOC_*)
  * - CoreDatabaseModule → ContextItemRepository for the optional PRE_SUMMARY snapshot on stop
  * - EventEmitterModule → @OnEvent(ConsultationPipelineEvent.ContextAdded) reaction

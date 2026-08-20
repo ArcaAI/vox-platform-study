@@ -461,7 +461,7 @@ export class HarnessInternalController {
   }
 
   @Post('consultations/:id/assemble')
-  @ApiOperation({ summary: 'Resolve prompt tier + assemble the SMR payload (NER-injected, SOAP responseFormat)' })
+  @ApiOperation({ summary: 'Resolve prompt tier + assemble the TEXT payload (NER-injected, SOAP responseFormat)' })
   @ApiParam({ name: 'id', description: 'Consultation ID' })
   async assemble(@Param('id') id: string, @Body() dto: HarnessAssembleRequest) {
     return this.harnessInternalService.assemble(id, dto);

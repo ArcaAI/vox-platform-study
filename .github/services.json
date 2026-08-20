@@ -40,7 +40,7 @@
   "services": [
     {
       "name": "hope-python-base",
-      "tagPrefixes": ["GUARD", "HARNESS", "NLP", "SMR", "STT", "TTS"],
+      "tagPrefixes": ["GUARD", "HARNESS", "NLP", "TEXT", "STT", "TTS"],
       "dockerfile": "infrastructure/docker/python-base/Dockerfile",
       "context": "infrastructure/docker/python-base/",
       "target": null,
@@ -118,7 +118,7 @@
     },
     {
       "name": "text",
-      "tagPrefixes": ["SMR"],
+      "tagPrefixes": ["TEXT"],
       "dockerfile": "apps/text/Dockerfile",
       "context": ".",
       "target": null,

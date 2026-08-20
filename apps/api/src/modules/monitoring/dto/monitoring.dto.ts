@@ -62,9 +62,9 @@ export class ServiceSessionCount {
  * Response for GET /monitoring/sessions
  */
 export class SessionsResponse {
-  @ApiProperty({ description: 'Session counts per service (smr, stt, nlp, guardrail, harness)' })
+  @ApiProperty({ description: 'Session counts per service (text, stt, nlp, guardrail, harness)' })
   services: {
-    smr: ServiceSessionCount;
+    text: ServiceSessionCount;
     stt: ServiceSessionCount;
     nlp: ServiceSessionCount;
     guardrail: ServiceSessionCount;

@@ -87,7 +87,7 @@ const FULL_SCORE_WORD_COUNT = 50;
 // harness coupling and is what made every test run on the platform's LM Studio.
 const TEXT_TEST_TASK_KEY = 'text.test';
 
-// SMR's terminal success state (`TaskStatus.COMPLETED` in
+// TEXT's terminal success state (`TaskStatus.COMPLETED` in
 // `apps/text/src/text/models/task.py`).
 const TEXT_TASK_COMPLETED = 'completed';
 
@@ -171,9 +171,9 @@ export class PromptManagementService extends BaseService implements IPromptManag
     // atomic idiom in this codebase. Required so the version-history insert
     // and the OCC compare-and-set commit (or roll back) together.
     @Inject('CORE_DATABASE_SERVICE') private readonly databaseService: CoreDatabaseService,
-    // SMR/text-generation client (mirrors SummaryService). These
+    // TEXT/text-generation client (mirrors SummaryService). These
     // are @Optional() so existing unit-test fixtures that construct the service
-    // directly without the SMR deps keep compiling; the live API always wires
+    // directly without the TEXT deps keep compiling; the live API always wires
     // HttpModule + ConfigModule via PromptManagementServiceModule.
     @Optional() private readonly httpService?: HttpService,
     @Optional() private readonly configService?: ConfigService,
@@ -898,7 +898,7 @@ export class PromptManagementService extends BaseService implements IPromptManag
    * decryption, and `interpolateTemplate`.
    *
    * What changed:
-   *  - `dto.dryRun` short-circuits BEFORE any SMR call — a dry run used to burn
+   *  - `dto.dryRun` short-circuits BEFORE any TEXT call — a dry run used to burn
    *    a real 2-minute generation just to discard the write.
    *  - Otherwise a STREAMING job is submitted (`stream: true`); the caller opens
    *    the returned `streamUrl` over SSE and then calls
@@ -946,7 +946,7 @@ export class PromptManagementService extends BaseService implements IPromptManag
     const sampleInput = dto.goldenCaseId ? await this.loadGoldenCaseSampleInput(dto.goldenCaseId) : dto.sampleInput;
 
     const prompt = this.interpolateTemplate(content, dto.variables, sampleInput, declaredVariables);
-    const { provider, model } = await this.resolveTestSmrTarget({ provider: dto.provider, model: dto.model });
+    const { provider, model } = await this.resolveTestTextTarget({ provider: dto.provider, model: dto.model });
 
     // Defect 4 — a dry run generates NOTHING. The author gets the exact prompt
     // that would have been sent; no job, no tokens, no cost.
@@ -954,14 +954,14 @@ export class PromptManagementService extends BaseService implements IPromptManag
       return { mode: 'dry-run', provider, model, assembledPrompt: prompt };
     }
 
-    const { taskId, streamUrl } = await this.submitSmrGenerationJob(prompt, provider, model);
+    const { taskId, streamUrl } = await this.submitTextGenerationJob(prompt, provider, model);
     return { mode: 'stream', provider, model, assembledPrompt: prompt, taskId, streamUrl };
   }
 
   /**
    * BUG-018 — FINALIZE a test run started by {@link startPromptTemplateTest}.
    *
-   * The finished text is read from SMR SERVER-SIDE (`GET /api/v1/tasks/:id`,
+   * The finished text is read from TEXT SERVER-SIDE (`GET /api/v1/tasks/:id`,
    * whose `content` field holds the accumulated stream). It is deliberately NOT
    * accepted from the request body: the browser saw the same tokens over SSE,
    * but trusting it would let any caller forge `lastTestOutput` on the row.
@@ -970,7 +970,7 @@ export class PromptManagementService extends BaseService implements IPromptManag
    * `ResourceUpdated`) are unchanged from the old blocking implementation.
    *
    * @throws NotFoundException — unknown/cross-tenant template, or an unknown
-   *   `taskId` (404 from SMR).
+   *   `taskId` (404 from TEXT).
    * @throws BadRequestException — the task has not reached a terminal completed
    *   state (the offending state is named).
    * @throws OptimisticConcurrencyException — version drift; HTTP 412.
@@ -998,7 +998,7 @@ export class PromptManagementService extends BaseService implements IPromptManag
       scoredVariables = (version.variables as Record<string, unknown> | null) ?? scoredVariables;
     }
 
-    const output = await this.fetchSmrTaskOutput(dto.taskId);
+    const output = await this.fetchTextTaskOutput(dto.taskId);
     const { score, metrics } = this.scoreOutput(output, {
       category: template.category,
       content: scoredContent,
@@ -1174,7 +1174,7 @@ export class PromptManagementService extends BaseService implements IPromptManag
    * intersects the 9 v1 pre-summary placeholder names, ALSO run the shared
    * single-brace substituter (`substitutePreSummaryVariables`) so a v1-style
    * body (`{current_department}`) interpolates instead of leaking literal
-   * `{braces}` into the SMR call. Caller-supplied `variables` (matched by the
+   * `{braces}` into the TEXT call. Caller-supplied `variables` (matched by the
    * exact placeholder name) win; any of the 9 not supplied fall back to the
    * shared v1 defaults (`buildPreSummaryVariables`) so no recognized
    * single-brace token is ever left unresolved.
@@ -1211,7 +1211,7 @@ export class PromptManagementService extends BaseService implements IPromptManag
   }
 
   /**
-   * BUG-018 — resolve the `{provider, model}` a test run sends to SMR.
+   * BUG-018 — resolve the `{provider, model}` a test run sends to TEXT.
    *
    * Precedence:
    *  1. Caller-supplied pair (`override.provider` + `override.model`, both
@@ -1234,12 +1234,12 @@ export class PromptManagementService extends BaseService implements IPromptManag
    *   or the supplied pair does not match an ENABLED registry row.
    * @throws BadRequestException — `text.test` resolves to nothing.
    */
-  private async resolveTestSmrTarget(override: { provider?: string; model?: string }): Promise<{ provider: string; model: string }> {
+  private async resolveTestTextTarget(override: { provider?: string; model?: string }): Promise<{ provider: string; model: string }> {
     if (override.provider !== undefined || override.model !== undefined) {
       if (!override.provider || !override.model) {
         throw new ArgumentInvalidException('provider and model must be supplied together.');
       }
-      await this.assertKnownSmrModel(override.provider, override.model);
+      await this.assertKnownTextModel(override.provider, override.model);
       return { provider: override.provider, model: override.model };
     }
 
@@ -1268,8 +1268,8 @@ export class PromptManagementService extends BaseService implements IPromptManag
       );
     }
 
-    // The registry stores Azure under `azure`; SMR registers the provider as
-    // `azure-openai`. Same mapping the rest of the SMR call path uses.
+    // The registry stores Azure under `azure`; TEXT registers the provider as
+    // `azure-openai`. Same mapping the rest of the TEXT call path uses.
     const provider = model.provider === 'azure' ? 'azure-openai' : model.provider;
     return { provider, model: model.sourceUri };
   }
@@ -1281,7 +1281,7 @@ export class PromptManagementService extends BaseService implements IPromptManag
    * `AiModelRepository` the pair passes through unchecked rather than
    * blocking the test run.
    */
-  private async assertKnownSmrModel(provider: string, model: string): Promise<void> {
+  private async assertKnownTextModel(provider: string, model: string): Promise<void> {
     if (!this.aiModelRepository) return;
     const [textGeneration, summarization] = await Promise.all([
       this.aiModelRepository.findByTaskTypeSharedRead(ModelTaskType.TEXT_GENERATION),
@@ -1315,24 +1315,24 @@ export class PromptManagementService extends BaseService implements IPromptManag
   }
 
   /**
-   * BUG-018 — SUBMIT a STREAMING generation job to SMR and return its ack.
+   * BUG-018 — SUBMIT a STREAMING generation job to TEXT and return its ack.
    *
    * Replaces the old blocking `stream: false` POST (2–3½ minutes, CDN 524) and
-   * the direct-to-SMR bypass that lost tenant credentials and metering:
+   * the direct-to-TEXT bypass that lost tenant credentials and metering:
    *  - the body goes through the SHARED `TextRequestEnrichmentService` — the same
    *    code path `TextProxyController` uses — so the tenant's BYO credential
    *    (`provider_overrides`, carrying its `funding` label) and the resolved
    *    hyperparameter profile ride along;
-   *  - `X-Tenant-Id` is sent alongside `X-Service-Token`, so SMR no longer logs
+   *  - `X-Tenant-Id` is sent alongside `X-Service-Token`, so TEXT no longer logs
    *    `tenant_id: null` and the usage ledger can attribute the run.
    *
    * The generation itself is consumed by the caller over SSE
    * (`GET text/tasks/:taskId/stream`, which is where the ledger row is emitted)
    * and then finalized through {@link finalizePromptTemplateTest}.
    */
-  private async submitSmrGenerationJob(prompt: string, provider: string, model: string): Promise<{ taskId: string; streamUrl: string }> {
+  private async submitTextGenerationJob(prompt: string, provider: string, model: string): Promise<{ taskId: string; streamUrl: string }> {
     if (!this.httpService) {
-      throw new BadRequestException('SMR/text-generation client is not configured');
+      throw new BadRequestException('TEXT/text-generation client is not configured');
     }
     const body: Record<string, unknown> = { prompt, stream: true, provider, model };
     if (this.textRequestEnrichment) {
@@ -1343,17 +1343,17 @@ export class PromptManagementService extends BaseService implements IPromptManag
     let data: { task_id?: string; stream_url?: string };
     try {
       const response = await this.httpService.axiosRef.post(`${this.textServiceUrl}/api/v1/generate`, body, {
-        headers: await this.smrHeaders(),
+        headers: await this.textHeaders(),
       });
       data = response.data ?? {};
     } catch (error) {
-      // TASK-768: was `BadRequestException(\`Failed to call SMR service: ${error}\`)`.
+      // TASK-768: was `BadRequestException(\`Failed to call TEXT service: ${error}\`)`.
       // That is the exact body the TASK-764 evidence captured — a 400 naming
       // `connect ECONNREFUSED 127.0.0.1:8862`. Rethrow the cause; the gateway
       // boundary (`downstream-error.ts` via `ExceptionInterceptor`) owns the
       // status and the client-facing message.
       this.logger.error({
-        message: 'SMR generation-job submission failed; rethrowing the cause for the gateway boundary to classify',
+        message: 'TEXT generation-job submission failed; rethrowing the cause for the gateway boundary to classify',
         causeMessage: error instanceof Error ? error.message : String(error),
       });
       throw error;
@@ -1361,30 +1361,30 @@ export class PromptManagementService extends BaseService implements IPromptManag
 
     const taskId = data.task_id;
     if (!taskId) {
-      throw new BadRequestException('SMR did not return a task id for the streaming generation job.');
+      throw new BadRequestException('TEXT did not return a task id for the streaming generation job.');
     }
     // Gateway-relative SSE path (`TextProxyController` mounts `text/*`), not the
-    // service-relative `stream_url` SMR reports — the browser talks to the
+    // service-relative `stream_url` TEXT reports — the browser talks to the
     // gateway, with a `text_task:<taskId>`-scoped single-use ticket.
     return { taskId, streamUrl: `text/tasks/${taskId}/stream` };
   }
 
   /**
-   * BUG-018 — read the FINISHED generation for `taskId` from SMR
+   * BUG-018 — read the FINISHED generation for `taskId` from TEXT
    * (`GET /api/v1/tasks/:id`; `content` holds the accumulated stream text).
    *
    * Server-side on purpose: the client must never be the source of the text
    * that gets persisted as `lastTestOutput`.
    */
-  private async fetchSmrTaskOutput(taskId: string): Promise<string> {
+  private async fetchTextTaskOutput(taskId: string): Promise<string> {
     if (!this.httpService) {
-      throw new BadRequestException('SMR/text-generation client is not configured');
+      throw new BadRequestException('TEXT/text-generation client is not configured');
     }
 
     let data: { status?: string; content?: string | null; error?: string | null };
     try {
       const response = await this.httpService.axiosRef.get(`${this.textServiceUrl}/api/v1/tasks/${taskId}`, {
-        headers: await this.smrHeaders(),
+        headers: await this.textHeaders(),
       });
       data = response.data ?? {};
     } catch (error) {
@@ -1395,7 +1395,7 @@ export class PromptManagementService extends BaseService implements IPromptManag
       // TASK-768 — as above. The 404 branch stays: that is a considered mapping
       // of an upstream status, not a composed cause string.
       this.logger.error({
-        message: 'SMR task-output read failed; rethrowing the cause for the gateway boundary to classify',
+        message: 'TEXT task-output read failed; rethrowing the cause for the gateway boundary to classify',
         causeMessage: error instanceof Error ? error.message : String(error),
       });
       throw error;
@@ -1420,7 +1420,7 @@ export class PromptManagementService extends BaseService implements IPromptManag
    * which is what lets `apps/text` treat an ABSENT header as an unambiguous
    * caller defect and refuse it with 428.
    */
-  private async smrHeaders(): Promise<Record<string, string>> {
+  private async textHeaders(): Promise<Record<string, string>> {
     const serviceToken = await resolveInternalAccessToken(this.secretsService, 'TEXT_SERVICE_TOKEN');
     return internalServiceHeaders({
       serviceToken,

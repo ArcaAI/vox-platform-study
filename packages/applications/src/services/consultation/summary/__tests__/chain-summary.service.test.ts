@@ -6,7 +6,7 @@
  *   - Linked consultation resolution (chain + same-day strategies)
  *   - Section gathering across multiple consultations
  *   - NER entity aggregation
- *   - SMR service integration
+ *   - TEXT service integration
  *   - Context item persistence
  *   - Error handling
  */
@@ -93,7 +93,7 @@ const createMockHttpService = () => ({
 
 const createMockConfigService = () => ({
   get: vi.fn().mockImplementation((key: string) => {
-    if (key === 'TEXT_URL') return 'http://smr:8862';
+    if (key === 'TEXT_URL') return 'http://text:8862';
     return null;
   }),
 });
@@ -211,7 +211,7 @@ describe('ChainSummaryService', () => {
   });
 
   // ── callTextService passes the cascade-resolved model ──
-  describe('SMR selection', () => {
+  describe('TEXT selection', () => {
     const primeComprehensive = () => {
       const consultation = createConsultation();
       mocks.consultationRepo.findById.mockResolvedValue(consultation);
@@ -591,8 +591,8 @@ describe('ChainSummaryService', () => {
     });
   });
 
-  describe('SMR input composition', () => {
-    it('should include section headers with department, doctor, type in the text sent to SMR', async () => {
+  describe('TEXT input composition', () => {
+    it('should include section headers with department, doctor, type in the text sent to TEXT', async () => {
       const consultation = createConsultation();
       mocks.consultationRepo.findById.mockResolvedValue(consultation);
       mocks.consultationRepo.findConsultationChain.mockResolvedValue([consultation]);
@@ -750,9 +750,9 @@ describe('ChainSummaryService', () => {
       expect(result.sectionCount).toBe(2);
       expect(result.structuredData?.modelName).toBe('gpt-4o');
 
-      // Verify SMR was called
+      // Verify TEXT was called
       expect(mocks.httpService.axiosRef.post).toHaveBeenCalledWith(
-        'http://smr:8862/api/v1/generate',
+        'http://text:8862/api/v1/generate',
         expect.objectContaining({
           prompt: expect.stringContaining('--- Section 1 ---'),
           context: expect.objectContaining({
@@ -878,7 +878,7 @@ describe('ChainSummaryService', () => {
       );
     });
 
-    it('should throw BadRequestException when SMR service fails', async () => {
+    it('should throw BadRequestException when TEXT service fails', async () => {
       const consultation = createConsultation();
       mocks.consultationRepo.findById.mockResolvedValue(consultation);
       mocks.consultationRepo.findConsultationChain.mockResolvedValue([consultation]);
@@ -888,7 +888,7 @@ describe('ChainSummaryService', () => {
       mocks.contextItemRepo.findCaseNotes.mockResolvedValue([]);
       mocks.contextItemRepo.findPreSummaries.mockResolvedValue([]);
 
-      mocks.httpService.axiosRef.post.mockRejectedValue(new Error('SMR timeout'));
+      mocks.httpService.axiosRef.post.mockRejectedValue(new Error('TEXT timeout'));
 
       await expect(mocks.service.generateComprehensiveSummary('consultation-A', { includeNER: false })).rejects.toThrow(BadRequestException);
     });
@@ -1003,7 +1003,7 @@ describe('ChainSummaryService', () => {
       expect(ContextItemFactory.CreateRawSummary).toHaveBeenCalledWith(
         'tenant-1', // tenantId
         'consultation-A', // consultationId
-        'Generated comprehensive.', // content from SMR
+        'Generated comprehensive.', // content from TEXT
         'my-style', // dnaStyleId from request
         'doctor-A', // userId from CLS
       );

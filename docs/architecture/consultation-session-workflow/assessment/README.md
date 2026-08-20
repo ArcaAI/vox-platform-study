@@ -4,7 +4,7 @@
 |---|---|
 | **Status** | Review |
 | **Date** | 2026-08-15 |
-| **Scope** | Consultation vertical, full stack — harness (Temporal), live-documentation, domains/applications, gateway, Vox SDK, admin console, and the Python services on the path (stt, nlp, smr, guardrail) |
+| **Scope** | Consultation vertical, full stack — harness (Temporal), live-documentation, domains/applications, gateway, Vox SDK, admin console, and the Python services on the path (stt, nlp, text, guardrail) |
 | **Measured against** | [dataset.xml](../dataset.xml) + [user-stories-and-use-cases.md](../user-stories-and-use-cases.md) |
 | **Method** | 9 agents, 2 waves, with adversarial verification of critical findings |
 
@@ -74,7 +74,7 @@ takes no patient parameter.
 
 Four candidate defenses were tested and all failed: guardrail returns a verdict and never transforms text
 (and defaults to `enabled = False`); the DNA template carries no `json_schema`, unlike its SOAP sibling; the
-SMR call binds no `response_format`; the parser's `catch` stores raw model output verbatim.
+TEXT call binds no `response_format`; the parser's `catch` stores raw model output verbatim.
 
 `dnaStyleEnabled` code-defaults to `false` and fails closed — but **the seed sets it `true` at tenant scope
 for ArcaAI and seeds every ArcaAI doctor with a DNA report.**
@@ -87,12 +87,12 @@ on LLM behavior and cannot be settled statically. **One query decides it:** decr
 `DnaWritingStyleReport.styleText` for the ArcaAI tenant and scan for patient names, MRNs, DOBs, and drug+dose
 strings. Clean rows → latent control gap. Dirty rows → live incident. *Not yet run.*
 
-### 3.3 PHI reaches NLP and SMR unsanitized
+### 3.3 PHI reaches NLP and TEXT unsanitized
 
 No sanitizer runs between a finalized transcript and downstream consumption; `ner.processor.ts` posts raw
 `contextItem.content`. Third-party egress is currently prevented only because seeded providers are local —
 and the cloud guard is an **allowlist that returns text untouched for providers not on it**. It lists
-`azure` and `bedrock`; SMR registers `openai`, `anthropic`, and `vertex` unconditionally. **One tenant BYOK
+`azure` and `bedrock`; TEXT registers `openai`, `anthropic`, and `vertex` unconditionally. **One tenant BYOK
 config change — no code change, no deploy — sends unredacted PHI to a third party, while the redactor reports
 itself enabled and fail-closed.**
 
@@ -196,7 +196,7 @@ into the XML — especially `INV-249`, *"confidence is not a clinical probabilit
 | `dna-phi-containment` | §3.2 — `json_schema` on the DNA template, parser hard-fail, move the opt-in gate above the `textSamples` branch; **plus the decrypt-and-scan that decides latent-gap vs. live incident** |
 | `signed-status-forgery` | §3.1 — validate `metadata`, remove the mapper's `metadata.status` preference |
 | `icd10-prompt-containment` | §3.4 — 13 seed templates **plus a data migration** for drifted deployed rows |
-| `empty-note-marker` | Stop publishing `runningSummary: ''`; surface the already-computed `smrFailed` |
+| `empty-note-marker` | Stop publishing `runningSummary: ''`; surface the already-computed `textFailed` |
 | `generator-entry-point-seam` | One `NoteGenerationService`, one reader of `harnessEnabled` |
 | `loop-status-discovery` | Determine whether `harness.loop.enabled` is actually on in each environment |
 

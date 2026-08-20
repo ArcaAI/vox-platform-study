@@ -6,7 +6,7 @@ import { TextRequestEnrichmentService } from './text-request-enrichment.service'
 
 /**
  * Supplies {@link TextRequestEnrichmentService} — the single implementation of
- * tenant-credential + runtime-profile enrichment for outgoing SMR requests.
+ * tenant-credential + runtime-profile enrichment for outgoing TEXT requests.
  */
 @Module({
   imports: [CommonServiceModule, AiRuntimeProfileServiceModule, AiProviderConnectionServiceModule],

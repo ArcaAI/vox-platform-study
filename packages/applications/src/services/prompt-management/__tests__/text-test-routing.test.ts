@@ -74,7 +74,7 @@ describe('prompt-test model resolution (BUG-018 harness decoupling)', () => {
       clsService as never,
       {} as never,
       { axiosRef: { post, get: vi.fn() } } as never,
-      { get: vi.fn().mockReturnValue('http://smr.local:8862') } as never,
+      { get: vi.fn().mockReturnValue('http://text.local:8862') } as never,
       undefined, // secretsService
       { getEffective: opts.getEffective } as never, // IAiTaskDefaultService
     );
@@ -100,7 +100,7 @@ describe('prompt-test model resolution (BUG-018 harness decoupling)', () => {
     expect((payload as { model?: string }).model).toBe('medgemma-27b');
   });
 
-  it("maps the registry provider 'azure' onto SMR's 'azure-openai'", async () => {
+  it("maps the registry provider 'azure' onto TEXT's 'azure-openai'", async () => {
     const getEffective = vi.fn().mockResolvedValue({ model: { provider: 'azure', sourceUri: 'gpt-4o' } });
     const { svc } = buildService({ getEffective });
 
@@ -110,7 +110,7 @@ describe('prompt-test model resolution (BUG-018 harness decoupling)', () => {
     expect(ack.model).toBe('gpt-4o');
   });
 
-  it('MISS: text.test resolves to nothing → BadRequestException naming the key, no SMR call', async () => {
+  it('MISS: text.test resolves to nothing → BadRequestException naming the key, no TEXT call', async () => {
     const getEffective = vi.fn().mockResolvedValue({ taskKey: 'text.test', modelSlug: null, source: null, model: null });
     const { svc, post } = buildService({ getEffective });
 

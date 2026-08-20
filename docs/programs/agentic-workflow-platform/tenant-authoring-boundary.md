@@ -79,7 +79,7 @@ is never visible to another tenant. Cross-tenant reads keep the 404-over-403 pos
 | **743** (new) | SDK upgrade: generated types from a tenant's published schemas, typed context read/write, versioned client | 741, 742 |
 | **744** (new) | Rules-as-data: promote `rule-catalogue.ts` into `RULE` rows, admin enable/disable, re-validation sweep of published definitions — this is TASK-716's unfinished governance half | 741 |
 
-Numbers 741–744 are proposals; 740 is already proposed for the `smr` task-key defects. None is
+Numbers 741–744 are proposals; 740 is already proposed for the `text` task-key defects. None is
 opened until the owner confirms.
 
 ## 6. What I need decided

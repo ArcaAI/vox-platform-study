@@ -7,12 +7,12 @@ import { isCloudByoProvider } from '../ai-provider-connection/constants';
 import { assertProviderAvailable } from '../ai-provider-connection/assert-provider-available';
 
 /**
- * The ONE implementation of the two enrichments every outgoing SMR
+ * The ONE implementation of the two enrichments every outgoing TEXT
  * `/api/v1/generate` body must carry: the caller tenant's BYO cloud credential
  * (`provider_overrides`) and the resolved hyperparameter profile.
  *
  * Extracted VERBATIM out of `TextProxyController` (BUG-018 defect 3) because a
- * second caller — the prompt-template test bench — was posting to SMR directly
+ * second caller — the prompt-template test bench — was posting to TEXT directly
  * and therefore silently ran on platform credentials with no runtime profile.
  * Both callers now share this service, so there is exactly one place where the
  * fail-open/fail-closed semantics live.
@@ -53,7 +53,7 @@ export class TextRequestEnrichmentService {
    */
   async applyTenantProviderOverrides<T extends { provider?: string }>(target: T): Promise<T> {
     const provider = target.provider;
-    // SMR is the LLM capability, so the service discriminator is always `llm`
+    // TEXT is the LLM capability, so the service discriminator is always `llm`
     // (C2/C5). The 1-arg transition shims are retired here.
     if (!this.aiProviderConnectionService || !provider || !isCloudByoProvider('llm', provider)) {
       return target;
@@ -63,7 +63,7 @@ export class TextRequestEnrichmentService {
 
     // The resolver cascades the tenant's own row over the
     // SYSTEM-tenant platform default, and each entry's `funding` label travels
-    // with it so SMR meters platform-funded generation as CLOUD rather than as
+    // with it so TEXT meters platform-funded generation as CLOUD rather than as
     // the tenant's own BYOK.
     let resolved: ResolvedProviderOverrides;
     try {
@@ -104,7 +104,7 @@ export class TextRequestEnrichmentService {
    *   - FAIL-OPEN. A resolver error injects nothing and the request proceeds on
    *     the service's own env defaults.
    *
-   * Field names are snake_case to match the SMR wire contract; SMR ignores
+   * Field names are snake_case to match the TEXT wire contract; TEXT ignores
    * unknown body fields.
    */
   async applyTextRuntimeProfile<T extends { provider?: string; model?: string }>(target: T): Promise<T> {

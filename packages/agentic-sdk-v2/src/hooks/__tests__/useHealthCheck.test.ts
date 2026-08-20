@@ -6,7 +6,7 @@
  *   2. GET /health/live  (API gateway liveness)
  *   3. GET /admin/health/services  (consolidated downstream service health)
  *
- * The /admin/health/services response contains per-service status for smr, nlp, stt, guardrail.
+ * The /admin/health/services response contains per-service status for text, nlp, stt, guardrail.
  * The hook flattens this into the services map alongside api and apiLive.
  *
  * @vitest-environment jsdom
@@ -29,7 +29,7 @@ const CONSOLIDATED_SERVICES_RESPONSE = {
   timestamp: '2026-03-02T00:00:00Z',
   services: {
     guardrail: { status: 'healthy', service: 'Guardrail', version: '1.0.0' },
-    smr: { status: 'healthy', service: 'Summarization', version: '2.0.0' },
+    text: { status: 'healthy', service: 'Summarization', version: '2.0.0' },
     nlp: { status: 'healthy', service: 'Medical NLP', version: '1.0.0' },
     stt: { status: 'healthy', service: 'Speech to Text', version: '1.0.0' },
   },
@@ -116,7 +116,7 @@ describe('useHealthCheck', () => {
       expect(result.current.services).toHaveProperty('api');
       expect(result.current.services).toHaveProperty('apiLive');
       expect(result.current.services).toHaveProperty('guardrail');
-      expect(result.current.services).toHaveProperty('smr');
+      expect(result.current.services).toHaveProperty('text');
       expect(result.current.services).toHaveProperty('nlp');
       expect(result.current.services).toHaveProperty('stt');
       expect(Object.keys(result.current.services)).toHaveLength(6);

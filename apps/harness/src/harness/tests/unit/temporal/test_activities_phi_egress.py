@@ -110,7 +110,7 @@ def _infer_input(**kw: Any) -> RunInferentialSensorsInput:
 
 class TestGeneratePhiEgress:
     @pytest.mark.asyncio
-    async def test_cloud_phi_blocks_generate_and_skips_smr(self, env, monkeypatch):
+    async def test_cloud_phi_blocks_generate_and_skips_text(self, env, monkeypatch):
         # T1: cloud + fail-closed block ⇒ Text client never called.
         text_client = _FakeText()
         monkeypatch.setattr(activities, "_text_client", lambda s: text_client)
@@ -125,7 +125,7 @@ class TestGeneratePhiEgress:
         assert text_client.kwargs == {}, "Text must not be called when egress is blocked"
 
     @pytest.mark.asyncio
-    async def test_cloud_calls_smr_with_cleaned_text(self, env, monkeypatch):
+    async def test_cloud_calls_text_with_cleaned_text(self, env, monkeypatch):
         # T2: cloud egress ⇒ Text receives the redacted prompt + system prompt.
         text_client = _FakeText()
         monkeypatch.setattr(activities, "_text_client", lambda s: text_client)
@@ -147,7 +147,7 @@ class TestGeneratePhiEgress:
         assert text_client.kwargs["system_prompt"] == "Sys <PERSON>"
 
     @pytest.mark.asyncio
-    async def test_local_provider_passthrough_to_smr(self, env, monkeypatch):
+    async def test_local_provider_passthrough_to_text(self, env, monkeypatch):
         # T3: a local provider ⇒ Text receives the ORIGINAL text (no redaction).
         text_client = _FakeText()
         monkeypatch.setattr(activities, "_text_client", lambda s: text_client)

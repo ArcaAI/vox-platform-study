@@ -4,7 +4,7 @@ Before this module the service had ZERO semaphores anywhere: every concurrent
 NER / classification / diagnosis request went straight at the model, so load was
 bounded only by however many requests happened to arrive.
 
-`ResizableSemaphore` is mirrored from `smr.services.resizable_semaphore` —
+`ResizableSemaphore` is mirrored from `text.services.resizable_semaphore` —
 deliberately duplicated rather than shared, because factoring the per-service
 clients and primitives into a common package is a settled decision and must not be
 preempted here. Keep the two implementations in step.

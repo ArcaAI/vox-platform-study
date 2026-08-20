@@ -4,7 +4,7 @@
  * Locks the seed- and scoping-side properties of the conformance scorecard
  * in `docs/implementation/TASK-635-Summarization-Agent-Conformance/README.md`.
  * Sibling files carry the other layers:
- *   - apps/api/src/modules/smr-compat/__tests__/task-635-conformance.test.ts (R-C1/R-C2/R-C3)
+ *   - apps/api/src/modules/text-compat/__tests__/task-635-conformance.test.ts (R-C1/R-C2/R-C3)
  *   - packages/applications/src/services/consultation/prompt/__tests__/task-635-conformance.test.ts (R-T1/R-T2)
  *   - packages/agentic-sdk-v2/src/compat/__tests__/task-635-conformance.test.ts (R-C1, SDK half)
  *
@@ -50,20 +50,20 @@ import { SYSTEM_DEPT_FREE_PRE_SUMMARY_CONTENT, SYSTEM_DEPT_FREE_PRE_SUMMARY_TEMP
  * tagged `dept-free` — a hand-created tenant row tagged only `pre-summary`
  * must keep resolving on the `'v1'` surface rather than silently falling
  * through to the SYSTEM default, which is what a strict `hasEvery(['pre-summary',
- * 'smr-v1'])` predicate (OD-7(a), the originally approved spec) would have
+ * 'text-v1'])` predicate (OD-7(a), the originally approved spec) would have
  * done to it.
  *
  * This helper still scans with `hasEvery(pre-summary, surfaceTag)` for BOTH
  * surfaces rather than transcribing the exclusion form literally: every
  * seeded row in this file carries its full tag set regardless (the v1 rows
- * carry both `pre-summary` and `smr-v1`; the dept-free fork carries both
+ * carry both `pre-summary` and `text-v1`; the dept-free fork carries both
  * `pre-summary` and `dept-free`), so the candidate SET this scan finds for
  * each surface is identical to what the production predicate would find over
  * this seeded data — it is a seed-level candidate-uniqueness check, not a
  * literal transcription of the (b) query shape.
  */
 const PRE_SUMMARY_TAG = 'pre-summary';
-const SURFACE_TAGS = ['smr-v1', 'dept-free'] as const;
+const SURFACE_TAGS = ['text-v1', 'dept-free'] as const;
 
 // Mirrors the (unexported) `resolvePromptStatus` in ../07-prompt-template.ts.
 const resolveSeedStatus = (category: string): string => (category === 'DNA_ANALYSIS' ? 'DRAFT' : 'APPROVED');
@@ -115,13 +115,13 @@ describe('RF-2 — at most ONE tenant pre-summary candidate per (tenant, surface
     expect(offenders).toEqual([]);
   });
 
-  it('the seeded ArcaAI v1 row carries BOTH the family tag and the smr-v1 surface tag', () => {
-    // Since OD-7(b) the production 'v1' query no longer REQUIRES the `smr-v1`
+  it('the seeded ArcaAI v1 row carries BOTH the family tag and the text-v1 surface tag', () => {
+    // Since OD-7(b) the production 'v1' query no longer REQUIRES the `text-v1`
     // tag (it excludes `dept-free` instead, so an untagged row still
     // resolves) — but the seeded row keeps carrying it as a label, and this
     // scan still uses it to identify the v1 candidate set for the
     // uniqueness check above.
-    const arcaaiV1 = [...candidatesFor('smr-v1').values()].flat();
+    const arcaaiV1 = [...candidatesFor('text-v1').values()].flat();
     expect(arcaaiV1.length).toBeGreaterThan(0);
   });
 });

@@ -164,7 +164,7 @@ REDIS_DB=0
 STT_PORT=8861
 STT_URL=http://stt-service:8861
 
-# Text (formerly SMR)
+# Text (formerly TEXT)
 TEXT_PORT=8862
 TEXT_URL=http://text-service:8862
 

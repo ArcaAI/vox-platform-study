@@ -47,7 +47,7 @@ const META: Record<AgenticContextKnobKey, { dataType: SettingDescriptor['dataTyp
   'liveDelta.maxChars': {
     dataType: 'number',
     label: 'Live delta max chars',
-    description: 'Soft per-flush cap on the transcript delta sent to SMR (chars).',
+    description: 'Soft per-flush cap on the transcript delta sent to TEXT (chars).',
   },
   'liveFlush.segmentThreshold': {
     dataType: 'number',

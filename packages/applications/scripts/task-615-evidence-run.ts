@@ -162,7 +162,7 @@ async function main() {
           { unit: AiUsageUnit.AUDIO_SECOND, quantity: '5000' },
         ],
       },
-      // LLM generate (SMR)
+      // LLM generate (TEXT)
       {
         common: {
           tenantId: ARCAAI_TENANT_ID,

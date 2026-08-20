@@ -6,7 +6,7 @@
  * as executable checks. Each `describe`/`it` is named after the requirement it
  * locks so a failure names the broken contract, not just the broken code.
  *
- * Scope of THIS file: the v1-compat surface (`apps/api/src/modules/smr-compat`).
+ * Scope of THIS file: the v1-compat surface (`apps/api/src/modules/text-compat`).
  * Sibling (main) file — everything NOT compat-controller-specific (R-T1/R-T2
  * DTO contract, F-01 closure complement, R-C3(i) at the resolver level, RF-2,
  * B-12):
@@ -162,7 +162,7 @@ describe('R-C2 — compat summary activation is department AND visit-type aware'
 describe('R-C2 — the LLM is the default set by the tenant admin', () => {
   /**
    * The conformance property is the SELECTION SEAM, not the HTTP round trip
-   * (which `smr-compat.controller.test.ts` already exercises end-to-end):
+   * (which `text-compat.controller.test.ts` already exercises end-to-end):
    * compat must ask the tenant-scoped policy resolver with an EXPLICIT tenant id
    * — never let it re-derive one from ambient CLS (B-04's failure mode, the
    * "silent SYSTEM default" leak) — and must route on the finalize task.

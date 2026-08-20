@@ -1,5 +1,5 @@
 """
-SMR Load Tests — Locust
+TEXT Load Tests — Locust
 
 Verifies resilience features under sustained load:
 - Baseline throughput
@@ -24,8 +24,8 @@ from __future__ import annotations
 from locust import HttpUser, between, constant, tag, task
 
 
-class BaseSmrUser(HttpUser):
-    """Base class for SMR load test users. Sets auth header and provider."""
+class BaseTextUser(HttpUser):
+    """Base class for TEXT load test users. Sets auth header and provider."""
 
     abstract = True
     provider = "lm-studio"
@@ -46,7 +46,7 @@ class BaseSmrUser(HttpUser):
                     resp.failure(f"Provider {self.provider} not in health response")
 
 
-class BaselineUser(BaseSmrUser):
+class BaselineUser(BaseTextUser):
     """Baseline throughput: sync generate, health, providers. Normal pacing."""
 
     weight = 3
@@ -91,7 +91,7 @@ class BaselineUser(BaseSmrUser):
                 resp.failure(f"Expected 200, got {resp.status_code}")
 
 
-class RateLimitUser(BaseSmrUser):
+class RateLimitUser(BaseTextUser):
     """Rapid-fire requests to trigger rate limiter (429) and verify Retry-After."""
 
     weight = 2
@@ -122,7 +122,7 @@ class RateLimitUser(BaseSmrUser):
                 resp.failure(f"Unexpected status: {resp.status_code}")
 
 
-class ConcurrencyUser(BaseSmrUser):
+class ConcurrencyUser(BaseTextUser):
     """Concurrent requests with longer prompts to saturate semaphore (503)."""
 
     weight = 2
@@ -156,7 +156,7 @@ class ConcurrencyUser(BaseSmrUser):
                 resp.failure(f"Unexpected status: {resp.status_code}")
 
 
-class StreamingUser(BaseSmrUser):
+class StreamingUser(BaseTextUser):
     """Streaming requests: POST with stream=true (202), then poll task status."""
 
     weight = 1

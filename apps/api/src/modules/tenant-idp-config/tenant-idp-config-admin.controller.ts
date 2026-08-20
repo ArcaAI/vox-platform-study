@@ -143,7 +143,8 @@ export class TenantIdpConfigAdminController {
     @ExpectedVersion() expectedFromHeader: number | undefined,
     @Query('tenantId') tenantId?: string,
   ): Promise<TenantIdpConfigResponse> {
-    const effective: SetDirectoryCredentialsRequest = expectedFromHeader !== undefined ? { ...request, expectedVersion: expectedFromHeader } : request;
+    const effective: SetDirectoryCredentialsRequest =
+      expectedFromHeader !== undefined ? { ...request, expectedVersion: expectedFromHeader } : request;
     return this.configService.setDirectoryCredentials(this.resolveTenantId(tenantId), id, effective);
   }
 

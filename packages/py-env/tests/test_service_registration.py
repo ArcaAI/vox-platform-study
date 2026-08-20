@@ -27,7 +27,7 @@ from hope_env.service_registration import (
 )
 
 SAMPLE_BUILD_INFO = BuildInfo(
-    service="smr",
+    service="text",
     version="2.1.0",
     release_tag="Text-2.1.0",
     git_branch="main",
@@ -58,8 +58,8 @@ class TestNormalizeEnvironment:
 
 class TestInstanceId:
     def test_prefers_hostname_env_var(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.setenv("HOSTNAME", "smr-7d8f9c-abcde")
-        assert instance_id() == "smr-7d8f9c-abcde"
+        monkeypatch.setenv("HOSTNAME", "text-7d8f9c-abcde")
+        assert instance_id() == "text-7d8f9c-abcde"
 
     def test_falls_back_to_hostname_colon_pid(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.delenv("HOSTNAME", raising=False)
@@ -69,10 +69,10 @@ class TestInstanceId:
 
 class TestBuildPayload:
     def test_builds_the_wire_shape_from_build_info_plus_runtime_facts(self) -> None:
-        payload = build_payload(SAMPLE_BUILD_INFO, "production", "smr-pod-1")
+        payload = build_payload(SAMPLE_BUILD_INFO, "production", "text-pod-1")
 
         assert payload == {
-            "service": "smr",
+            "service": "text",
             "version": "2.1.0",
             "releaseTag": "Text-2.1.0",
             "gitBranch": "main",
@@ -81,11 +81,11 @@ class TestBuildPayload:
             "ciPipelineId": "12345",
             "ciPipelineUrl": "https://gitlab.example.com/pipelines/12345",
             "environment": "prod",
-            "instanceId": "smr-pod-1",
+            "instanceId": "text-pod-1",
         }
 
     def test_normalizes_environment_inline(self) -> None:
-        payload = build_payload(SAMPLE_BUILD_INFO, "development", "smr-pod-1")
+        payload = build_payload(SAMPLE_BUILD_INFO, "development", "text-pod-1")
         assert payload["environment"] == "dev"
 
 
@@ -125,7 +125,7 @@ class TestStartRegistrationNeverBlocksBoot:
                 service_token="secret",
                 build_info=SAMPLE_BUILD_INFO,
                 environment="dev",
-                instance_id_="smr-pod-1",
+                instance_id_="text-pod-1",
                 interval_s=9999,
             )
             # Give the fire-and-forget initial POST a chance to run and fail.
@@ -145,7 +145,7 @@ class TestStartRegistrationNeverBlocksBoot:
                 service_token="secret",
                 build_info=SAMPLE_BUILD_INFO,
                 environment="dev",
-                instance_id_="smr-pod-1",
+                instance_id_="text-pod-1",
                 interval_s=9999,
             )
             await asyncio.sleep(0.05)
@@ -164,7 +164,7 @@ class TestStartRegistrationNeverBlocksBoot:
                 service_token="secret",
                 build_info=SAMPLE_BUILD_INFO,
                 environment="dev",
-                instance_id_="smr-pod-1",
+                instance_id_="text-pod-1",
                 interval_s=9999,
             )
             await asyncio.sleep(0.05)
@@ -184,7 +184,7 @@ class TestStartRegistrationNeverBlocksBoot:
                 service_token="s3cr3t",
                 build_info=SAMPLE_BUILD_INFO,
                 environment="prod",
-                instance_id_="smr-pod-1",
+                instance_id_="text-pod-1",
                 interval_s=9999,
             )
             await asyncio.sleep(0.05)
@@ -209,7 +209,7 @@ class TestHeartbeatScheduling:
                 service_token="secret",
                 build_info=SAMPLE_BUILD_INFO,
                 environment="dev",
-                instance_id_="smr-pod-1",
+                instance_id_="text-pod-1",
                 interval_s=0.02,
             )
             await asyncio.sleep(0.1)
@@ -229,7 +229,7 @@ class TestHeartbeatScheduling:
                 service_token="secret",
                 build_info=SAMPLE_BUILD_INFO,
                 environment="dev",
-                instance_id_="smr-pod-1",
+                instance_id_="text-pod-1",
                 interval_s=0.02,
             )
             await asyncio.sleep(0.03)

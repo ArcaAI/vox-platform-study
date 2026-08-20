@@ -6,7 +6,7 @@ import type { EnhancedMedicalSummary, SimplifiedMedicalSummary, SoapMedicalSumma
  * Enhanced/Simplified/SOAP shape discriminators + renderers (moved verbatim
  * out of `SummaryCard.tsx`), plus `StreamingPreview` — the live-token view
  * shown while `stream:true` is in flight (R10). The SSE `delta` payload is the
- * RAW upstream generation text (see `apps/api/.../smr-compat.controller.ts`
+ * RAW upstream generation text (see `apps/api/.../text-compat.controller.ts`
  * `streamGenerate` — `chunk` frames become `event: delta`), not a partial
  * structured summary, so streaming can only preview accumulated text; the
  * structured `SummaryView` below takes over once the terminal `result` event

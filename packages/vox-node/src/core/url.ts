@@ -9,7 +9,7 @@
  *
  *   - `POST /api/smr/api/v1/presummary`      (summarization; the renamed
  *   - `POST /api/smr/api/v1/summary/sync`     `text` service's frozen
- *                                             `smr`-legacy routes)
+ *                                             `text`-legacy routes)
  *   - `POST /api/stt/start_session`          (speech-to-text session
  *   - `POST /api/stt/switch`                  lifecycle — TASK-742)
  *   - `POST /api/stt/stop_session`
