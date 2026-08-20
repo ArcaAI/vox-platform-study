@@ -85,7 +85,17 @@ export class ETagInterceptor implements NestInterceptor {
 
     // Set before subscribing to the handler: on a streaming route the head is
     // flushed on the first emission, and `map` would then be too late.
-    if (isGet && Boolean(req.user ?? req.apiKey ?? req.serviceAccount)) {
+    //
+    // `headersSent` is checked HERE too, not only inside `map`. Nest wraps the
+    // interceptor chain in `defer()`, and for an `@Sse()` route the response
+    // controller writes the SSE head BEFORE subscribing to that deferred chain
+    // — so `intercept()` itself can run after the flush, and this `setHeader`
+    // threw `ERR_HTTP_HEADERS_SENT`, turning the whole stream into a 500 on the
+    // FIRST byte. It only bit JWT/api-key-authenticated streams: a ticket-
+    // authenticated one leaves `req.user` unset, skips this branch, and
+    // survived — which is why the trajectory stream passed while the loop
+    // stream (Bearer) never delivered an event or a heartbeat.
+    if (isGet && !res.headersSent && Boolean(req.user ?? req.apiKey ?? req.serviceAccount)) {
       res.setHeader('Cache-Control', 'private, no-cache');
     }
 

@@ -98,7 +98,13 @@ test.describe('TASK-776 H-1 phase 2: tier-A routes enforce If-Match', () => {
   });
 
   async function createTenant(request: APIRequestContext): Promise<{ id: string; version: number }> {
-    const key = unique('tenant').replace(/-/g, '').slice(0, 24);
+    // `Tenant.key` is globally `@unique` (soft-deleted rows included), so the
+    // key must stay unique across parallel workers AND earlier runs against the
+    // same DB. Truncating `unique()` to 24 chars used to cut BOTH the random
+    // suffix and the last two timestamp digits, leaving 100ms resolution and no
+    // entropy — two tenants created in the same window collided on 409. Build
+    // the key inside the 24-char budget instead of trimming entropy off it.
+    const key = `t776occ${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`;
     const res = await request.post('/api/v1/admin/tenants', {
       headers: bearer(superToken),
       data: { name: `T776 OCC ${key}`, key },

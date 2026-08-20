@@ -147,9 +147,11 @@ export class SettingsRegistryWriteService extends BaseService {
 
     // 7. Upsert the backing row under COMPARE-AND-SET, then refresh the read cache.
     const existing = await this.findBackingRow(key, targetTenantId);
-    const persisted = existing
-      ? await this.updateExisting(existing, serialized, options.expectedVersion, key)
-      : await this.createOrRecoverRace(key, descriptor, serialized, valueType, targetTenantId);
+    const persisted = await this.actingOnTenant(targetTenantId, () =>
+      existing
+        ? this.updateExisting(existing, serialized, options.expectedVersion, key)
+        : this.createOrRecoverRace(key, descriptor, serialized, valueType, targetTenantId),
+    );
 
     this.broadcastSysEvent(SysEventType.ResourceUpdated, {
       resourceId: persisted.id,
@@ -244,6 +246,46 @@ export class SettingsRegistryWriteService extends BaseService {
       );
     }
     return tenantId;
+  }
+
+  /**
+   * Run the persistence for `targetTenantId` with CLS actually pointing at that
+   * tenant.
+   *
+   * A super admin's WORKING tenant rides in CLS on every console request, and
+   * the tenant-scope extension pins every `GlobalSetting` write to it —
+   * deliberately: reads widen to `[caller, SYSTEM]`, writes never do
+   * (`packages/database/src/extensions/tenant-scope.ts`). So a `system`-scope
+   * write while any customer tenant was selected threw
+   * `TenantScope: tenantId mismatch on GlobalSetting.create` and surfaced as a
+   * 500 — i.e. the platform row was unwritable from the console's normal state.
+   *
+   * The same defect and its two remedies are documented on
+   * `AiTaskDefaultService.crossTenantLane`, which routes the write through the
+   * UNSCOPED base client. This lane cannot: it persists through
+   * `IGlobalSettingService`, whose `create`/`update` carry semantics worth
+   * keeping (revive-on-create over the soft-delete unique index, the
+   * locked-row SUPER_ADMIN guard, secret re-wrap, sys-events) and take no `tx`
+   * client. Re-entering CLS on the target tenant reaches the same row without
+   * forking those semantics, and matches `resolveNerModelInjection`'s
+   * `cls.run()` + `set('tenantId', SYSTEM_TENANT_ID)` precedent.
+   *
+   * The nested context carries the SAME user, so audit attribution
+   * (`createdBy`/`updatedBy`) and every `isSuperAdmin(this.requestUser)` check
+   * downstream behave exactly as they do on the caller's own tenant. This does
+   * NOT widen any privilege: `assertMayWriteAtScope` has already refused a
+   * non-super-admin `system` write with a 403 before we get here.
+   */
+  private async actingOnTenant<T>(targetTenantId: string, work: () => Promise<T>): Promise<T> {
+    if (targetTenantId === this.tenantId) {
+      return work();
+    }
+    const user = this.requestUser;
+    return this.clsService.run(async () => {
+      this.clsService.set('tenantId', targetTenantId);
+      if (user) this.clsService.set('user', user);
+      return work();
+    });
   }
 
   /**

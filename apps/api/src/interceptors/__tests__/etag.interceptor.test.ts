@@ -202,6 +202,20 @@ describe('ETagInterceptor', () => {
       expect(result).toBe(body);
     });
 
+    it('does not set Cache-Control when the SSE head was flushed before the chain was subscribed', async () => {
+      // Nest wraps the interceptor chain in `defer()` and, for an `@Sse()`
+      // route, writes the SSE head BEFORE subscribing to it — so `intercept()`
+      // itself can run post-flush. The eager `setHeader` then threw
+      // ERR_HTTP_HEADERS_SENT and 500'd the stream on its first byte (only for
+      // JWT/api-key streams; ticket auth leaves `req.user` unset and skipped
+      // the branch entirely).
+      const res = makeRes();
+      res.headersSent = true;
+      const next: CallHandler = { handle: () => of({ data: 'event-1' }) };
+      await lastValueFrom(new ETagInterceptor().intercept(makeContext(res, authedGet()), next));
+      expect(res.setHeader).not.toHaveBeenCalled();
+    });
+
     it('sets Cache-Control BEFORE subscribing, so a stream that flushes on its first emission is still labelled', async () => {
       const res = makeRes();
       const next: CallHandler = {

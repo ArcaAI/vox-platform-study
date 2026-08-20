@@ -31,14 +31,14 @@ describe('NAV_ENTRIES (capabilities-matrix section 3, reviewed 2026-07-04; playg
   // /workflow-studio (tier 30-49, TASK-719 — a concurrent sibling ticket's
   // graph-authoring surface, landed in this shared file alongside this
   // ticket's own edit), taking 51 -> 52.
-  it('covers the full 52-route map across the four tiers (including /context-schemas, /playground/workbench, /workflow-runs, /workflow-studio)', () => {
-    // 53 total, as of this ticket's own pass: siblings landing concurrently in this shared tree
-    // (TASK-719 workflow-studio, TASK-723 workflow-runs) each added a nav entry since this
-    // count was last set at 52 — bumped here to match reality, not a change this ticket made.
-    expect(NAV_ENTRIES).toHaveLength(53);
+  // /workflow-studio/assignments (tier 30-49, TASK-733 — the Studio
+  // assignment-matrix screen), taking 53 -> 54.
+  it('covers the full 54-route map across the four tiers (including /context-schemas, /playground/workbench, /workflow-runs, /workflow-studio)', () => {
+    // 54 total: TASK-733 added /workflow-studio/assignments after this count was last set at 53.
+    expect(NAV_ENTRIES).toHaveLength(54);
     expect(NAV_ENTRIES.filter((entry) => entry.tier === '10-19')).toHaveLength(21);
     expect(NAV_ENTRIES.filter((entry) => entry.tier === '20-29')).toHaveLength(7);
-    expect(NAV_ENTRIES.filter((entry) => entry.tier === '30-49')).toHaveLength(19);
+    expect(NAV_ENTRIES.filter((entry) => entry.tier === '30-49')).toHaveLength(20);
     expect(NAV_ENTRIES.filter((entry) => entry.tier === '50-59')).toHaveLength(6);
   });
 

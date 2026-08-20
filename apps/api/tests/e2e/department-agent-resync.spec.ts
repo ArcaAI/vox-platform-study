@@ -120,7 +120,12 @@ test.describe('agent provisioning — a new tenant gets the golden library', () 
       expect(summary.added).toBe(0);
       expect(summary.fastForwarded).toBe(0);
       // One skipped per provisioned golden agent (the full day-1 catalog).
-      expect(summary.skipped).toBeGreaterThanOrEqual(18);
+      // The catalog is `DEFAULT_DEPARTMENTS`
+      // (packages/database/src/prisma/db_main/seed/04-department.ts), which
+      // owner ruling OD-8 replaced with EIGHT platform-generic care settings —
+      // the 18-row specialty roster it used to carry now belongs to ArcaAI
+      // alone, so this floor moved 18 → 8 with the catalog.
+      expect(summary.skipped).toBeGreaterThanOrEqual(8);
     } finally {
       // Cleanup — soft-delete the throwaway tenant.
       await request.delete(`/api/v1/admin/tenants/${tenant.id}`, { headers: auth(superAdminToken) });

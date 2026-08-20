@@ -35,6 +35,9 @@ const SUPER_ADMIN = { id: 'user-1', roles: ['SUPER_ADMIN'] };
 const cls = {
   get: vi.fn((k: string) => (k === 'user' ? SUPER_ADMIN : k === 'tenantId' ? 'tenant-1' : undefined)),
   set: vi.fn(),
+  // `write()` re-enters CLS on the TARGET tenant for the persistence step
+  // (`SettingsRegistryWriteService.actingOnTenant`); pass through.
+  run: vi.fn(async (fn: () => unknown) => fn()),
 };
 
 const existingRow = (version: number) => ({ id: 'row-1', key: KEY, version });

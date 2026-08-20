@@ -18,7 +18,10 @@ export default defineConfig({
     // ERR_MODULE_NOT_FOUND. Never a real source root — exclude from discovery.
     // (Anchored, not `**/.claude/**`: a leading `**` glob does not descend into
     // hidden `.`-prefixed dirs in the exclude matcher.) Mirrors vitest.config.ts.
-    exclude: ['**/node_modules/**', '**/dist/**', '.claude/**'],
+    // The three trailing dirs are the owner-directed test-scope exclusions
+    // (`.claude/rules/01-development-workflow.md` §Test Scope Exclusions) —
+    // out of every aggregate suite, run only via their own package script.
+    exclude: ['**/node_modules/**', '**/dist/**', '.claude/**', 'packages/ui/**', 'apps/compat-playground/**', 'apps/quick-compat-app/**'],
     setupFiles: ['./tests/setup/integration.setup.ts'],
     // Run integration tests sequentially to avoid database conflicts
     pool: 'forks',

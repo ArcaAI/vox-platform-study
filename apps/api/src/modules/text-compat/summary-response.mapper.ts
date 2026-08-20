@@ -121,8 +121,12 @@ function extractConfidenceScore(summary: Record<string, unknown>, useEnhanced: b
 
 /**
  * Wrap the LLM `content` (a summary JSON object) in the v1 `SummaryResponse`.
- * `processing_time_ms` is filled from TEXT's `latency_ms`. Provider internals
- * (e.g. `raw_llm_content`) are NEVER echoed.
+ * `processing_time_ms` is filled from TEXT's `latency_ms`. The v1-parity
+ * display labels (`llm_provider` / `model_name` / `parsing_method` /
+ * `raw_llm_content`) ARE echoed, matching v1's
+ * `_sanitize_response_for_frontend` — see the reasoning on
+ * `SummaryResponseMetadata`. Credentials and provider endpoints are never
+ * echoed.
  */
 export function mapGenerateToV1Summary(content: string, meta: SummaryMappingMeta): SummaryResponse {
   const summary = parseSummaryContent(content);

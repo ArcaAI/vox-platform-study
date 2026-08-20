@@ -169,7 +169,17 @@ test.describe('Users Management (backend contract)', () => {
       // orders 'doctor2' before 'doctor_bren' (byte/C collation) while JS
       // localeCompare disagrees — that mismatch was the earlier flake.
       test.skip(ascNames.length < ascBody.count, 'user set exceeds one page — cannot assert reverse-equality');
-      expect(descNames).toEqual([...ascNames].reverse());
+      // Compare only the rows PRESENT IN BOTH reads. The two requests are
+      // separate round-trips against a shared database, and sibling specs
+      // create and delete users throughout the run — a user born between the
+      // asc and the desc read appears in one list only, and the mirror
+      // assertion then fails on a sorting contract that never broke. (Observed:
+      // `t398role_a/b_*` from the role specs landing mid-test.) Intersecting
+      // first keeps the property under test — same rows, opposite order —
+      // without pretending the row set is frozen.
+      const common = new Set(ascNames.filter((n) => descNames.includes(n)));
+      expect(common.size, 'the two reads must share more than one row to compare order').toBeGreaterThan(1);
+      expect(descNames.filter((n) => common.has(n))).toEqual([...ascNames.filter((n) => common.has(n))].reverse());
     });
 
     test('search narrows the result set and surfaces the match', async ({ request }) => {
