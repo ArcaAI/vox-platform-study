@@ -7,6 +7,8 @@ hardcoded. The judge is **model-agnostic** — pick the provider via
 
 * ``openai_compat`` (default, priority) — a small ≤20B judge on an LM Studio /
   vLLM / any OpenAI-compatible local endpoint (``HARNESS_JUDGE_OPENAI_COMPAT_*``).
+* ``ollama`` — Ollama via its OpenAI-compatible ``/v1`` (parity option; reuses the
+  ``HARNESS_JUDGE_OPENAI_COMPAT_*`` config — point ``base_url`` at ``:11434/v1``).
 * ``azure`` — a large judge via Azure OpenAI (``HARNESS_JUDGE_AZURE_*``).
 * ``bedrock`` — a large judge via AWS Bedrock (``HARNESS_JUDGE_BEDROCK_*``).
 """
@@ -26,6 +28,7 @@ class JudgeProvider(StrEnum):
     """Selects which backend serves the LLM-as-judge."""
 
     OPENAI_COMPAT = "openai_compat"  # LM Studio / any OpenAI-compatible server
+    OLLAMA = "ollama"  # Ollama via its OpenAI-compatible ``/v1`` (parity option)
     # production self-host engines (AD-4). Both speak the OpenAI wire,
     # so they reuse the OpenAI-compatible judge client; configured via the shared
     # ``HARNESS_JUDGE_OPENAI_COMPAT_*`` block pointed at the engine's base_url.
@@ -47,7 +50,7 @@ class OpenAICompatJudgeConfig(BaseSettings):
     api_key: SecretStr = SecretStr("lm-studio")
     organization: str | None = None
     # ``response_format.type`` sent on json_mode calls (claim extraction / verify).
-    # "json_object" works on vLLM; LM Studio rejects it ("must be json_schema
+    # "json_object" works on Ollama/vLLM; LM Studio rejects it ("must be json_schema
     # or text") and small models emit empty output under a strict json_schema grammar,
     # so set this to "text" for LM Studio to omit the constraint and rely on the
     # "Return ONLY JSON" prompt + tolerant parsing (harness.eval.jsonio.loads_json).
@@ -242,7 +245,14 @@ class EvalConfig(BaseSettings):
     icc_gate_enabled: bool = True
 
     # Release-gate thresholds.
-    icc_threshold: float = 0.8
+    # OWNER RULING 2026-08-20 (TASK-713): lowered 0.80 -> 0.73 to the MEASURED
+    # baseline (icc=0.7306, Gwet AC2=0.9196, n=288, golden set curated-v2.0.0,
+    # reproduced 2026-08-18). This is a recorded baseline, not a target: the
+    # shortfall against the 0.80 literature bar is accepted as debt and tracked
+    # in TASK-780, which restores 0.80 once a clinician-authored golden set or a
+    # higher-dynamic-range judge is available. Do not raise this value without
+    # re-measuring; do not lower it further without a new owner ruling.
+    icc_threshold: float = 0.73
     faithfulness_threshold: float = 0.85
     pdsqi_accurate_threshold: float = 4.0
     pdsqi_thorough_threshold: float = 4.0

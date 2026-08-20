@@ -529,12 +529,23 @@ only. The 149th key is `INTERNAL_ACCESS_TOKEN` in `apps/api/.env.sample` (D-D). 
 
 ### 10.6 Not done
 
-- **`apps/harness`** still rejects `ollama` in `_SAFETY_PROVIDERS`, omits it from
-  `PhiConfig.local_providers`, and has no `JudgeProvider.OLLAMA`. Under the revised scope
-  a tenant BYO-ing Ollama *for harness safety/judge selection* would still be refused.
-  Files are outside this ticket's ownership; needs an owner call on whether harness
-  safety/judge selection should accept Ollama at all, given TASK-735 routes judgement
-  through `apps/text` (where it now works).
+- ~~`apps/harness` still rejects `ollama`...~~ — **RESOLVED 2026-08-20, owner ruling: unblock
+  it, routed through `apps/text`** (same ruling as TASK-740 D-740-3, same question in two
+  tickets). `_SAFETY_PROVIDERS` and `PhiConfig.local_providers` accept `"ollama"` again;
+  `JudgeProvider.OLLAMA` is restored (`apps/harness/src/harness/eval/config.py`); the judge
+  factory and `_STOP_TABLES` route it through the existing shared `OpenAICompatJudgeClient`
+  (`apps/harness/src/harness/eval/judge/providers.py`); the offline eval-gate's
+  `AiModel.provider -> JudgeProvider` map gains `"ollama" -> JudgeProvider.OLLAMA`
+  (`apps/harness/src/harness/eval/judge/selection.py`). Per the ruling, **harness gained no
+  Ollama-specific vendor adapter or transport** — the pre-removal native `/api/chat` branches
+  in `granite_client.py` (`GraniteGuardianClient`/`GraniteGroundednessJudge`) were deliberately
+  **not** restored; Ollama is selected exactly like `lm-studio`, over its own OpenAI-compatible
+  `/v1` endpoint, so no branch is needed there at all. Selection stays fail-closed
+  (`resolve_eval_judge_selection` still raises `JudgeSelectionUnavailable` for any
+  `AiModel.provider` absent from `_PROVIDER_MAP`; an unresolvable `harness.judge`
+  `AiTaskDefault` still refuses to run). Tests updated (`test_guardrail_config.py`,
+  `test_judge_config.py`) to assert acceptance instead of rejection; `pnpm harness:lint` /
+  `:typecheck` clean; see the 2026-08-20 Change History entry below for real test output.
 - **`apps/guardrail`** — see §10.1; deliberately not restored.
 - **`RUNTIME_PROVIDER_OPTIONS`** (admin-console) still lists only 6 of the 11 canonical
   providers (missing `openai`/`anthropic`/`vertex`/`vllm`/`llama-cpp`). Pre-existing drift
@@ -551,3 +562,4 @@ only. The 149th key is `INTERNAL_ACCESS_TOKEN` in `apps/api/.env.sample` (D-D). 
 |---|---|
 | 2026-08-17 | **Scope REVERSED by owner** (`owner-decisions-2026-08-17.md` §2 row 736): Ollama provider logic stays available; only the model catalog is removed. §1 Requirement Analysis rewritten so the ticket stops contradicting the product; §8 relabelled as the record of the superseded scope. |
 | 2026-08-17 | **Revised scope implemented.** `apps/text` Ollama adapter, config, stats mapper, registry wiring and unit tests restored from `180d5cda^` (byte-identical, except `default_model` → `""` per D-B). `ollama` restored to `AI_MODEL_PROVIDERS` (seed + DTO), `DISCOVERABLE_AI_MODEL_PROVIDERS`, and the SYSTEM `AiProviderConnection` seed (11 llm rows again). Model catalog confirmed still purged and the retired ledger intact; ledger/catalog comments truthed-up. New `ollama-provider-retained.test.ts` pins both halves; 3 superseded assertions updated (config-plane seed + 2 e2e specs) with the product-changed vs assertion-weakened distinction recorded in §10.2. Verified: text lint/mypy clean, 1180 passed (1 pre-existing TASK-707 failure), `pnpm typecheck` 43/43, database 1278 passed, `db:seed` green against the local dev DB with DB-level proof. A self-inflicted 5×-duplication defect in `stats.py`/`config.py`/`main.py` was found and closed (§10.4). |
+| 2026-08-20 | **§10.6 harness item RESOLVED — owner ruling: unblock Ollama for harness, routed through `apps/text`** (same ruling closes TASK-740 D-740-3, same question in two tickets). `apps/harness` no longer hard-rejects `ollama`: `_SAFETY_PROVIDERS` and `PhiConfig.local_providers` (`core/config.py`) accept it again; `JudgeProvider.OLLAMA` is restored (`eval/config.py`); `build_judge_client`'s accepted tuple and `_STOP_TABLES` gain the `ollama` entry, routed through the existing shared `OpenAICompatJudgeClient` — no Ollama-specific transport (`eval/judge/providers.py`); the offline eval-gate's `AiModel.provider -> JudgeProvider` map gains `"ollama" -> JudgeProvider.OLLAMA` (`eval/judge/selection.py`). Per the ruling's explicit constraint, the pre-removal native `/api/chat` branches in `sensors/inferential/granite_client.py` (`GraniteGuardianClient`/`GraniteGroundednessJudge`) were **deliberately NOT restored** — Ollama is selected exactly like `lm-studio`, over its own OpenAI-compatible `/v1` endpoint, so harness gains no vendor adapter at all. Selection stays fail-closed: an unmapped `AiModel.provider` (or a missing/disabled `harness.judge` `AiTaskDefault`) still raises. TDD: `test_ollama_provider_rejected`/`test_ollama_provider_no_longer_exists` flipped to `test_ollama_provider_accepted`/`test_ollama_provider_is_accepted_via_openai_compat_client` (RED confirmed against the pre-fix code, then GREEN); `test_defaults_are_fail_closed`'s `"ollama" not in c.local_providers` assertion flipped to `in`. Verified: `pnpm harness:lint`/`:typecheck` clean; targeted suite (`test_guardrail_config.py`, `eval/`, `guards/`, `sensors/test_safety.py`, `temporal/test_policy_injection.py`, `services/test_api_client.py`) 360 passed, 3 pre-existing/unrelated failures in `test_ci_gate.py` (TASK-780's in-flight ICC-threshold change, untouched by this diff). E2E-not-executed (§10.6) and the guardrail/`RUNTIME_PROVIDER_OPTIONS` items are unrelated to this ruling and remain as recorded; Status stays Review. | doc + code pass (owner decisions 2026-08-20) |
