@@ -102,10 +102,33 @@ they render in an "ungrouped/utility" bucket, not under any named palette) and i
 empty state applies to the **paletteKey-grouped** view being empty, not to the API call
 failing.
 
-## Open question carried to §6
+## Open question carried to §6 — RESOLVED (2026-08-20), partially populated
 
-Where a per-node-type config JSON Schema will live (registry field vs. a separate lookup) is
-unresolved — see "Consequence for Task 9" above. Recorded as an open question, not guessed.
+Resolution path #1 above ("TASK-720 adds a `configSchema` field to `WorkflowNodeDescriptor`/
+`WorkflowNodeResponse`") is now what's built, though not by TASK-720 itself — that ticket (and
+TASK-724/731/734 after it) added real palette node types but never the schema field. This pass
+adds it directly: `WorkflowNodeDescriptor.configSchema?: Readonly<Record<string, unknown>>`
+(`packages/workflow-contract/src/node-registry.ts`), mirrored on `WorkflowNodeResponse.
+configSchema: Record<string, unknown> | null` (`workflow-node.response.ts`) and on the admin
+console's hand-mirrored `WorkflowNodeDescriptor` type (`api/types.ts`).
+
+Coverage is **partial, and deliberately not uniform** — `packages/workflow-contract/src/
+node-config-schemas.ts` is the single source, with its own docstring naming exactly which node
+types have a schema and why the rest do not:
+
+| Node types | Schema source | Status |
+|---|---|---|
+| Summarization palette (5): `input.context_binding`, `prompt.template_ref`, `generate.text`, `guardrail.check`, `output.deliver` | `docs/implementation/TASK-720-Palette-Summarization/contracts/nodes/*.schema.json` (already committed, never wired) | Wired verbatim |
+| STT palette (8): `stt.audioInput`, `stt.vad`, `stt.noiseFilter`, `stt.diarization`, `stt.languageDetection`, `stt.asrEngine`, `stt.transcriptOutput`, `stt.phiHop` | `docs/implementation/TASK-724-Palette-Stt/contracts/nodes/*.schema.json` (already committed, never wired) | Wired verbatim |
+| `noop`, `core.start`, `core.end` | No committed contract doc; derived directly from `apps/harness/src/harness/temporal/interpreter/activities.py` (`interpreter_noop` reads `raise_error`/`sleep_seconds` and nothing else; `core_start`/`core_end` read no config at all) | Authored fresh, small and faithful |
+| `passthrough` | None, deliberately | "Echoes its own config back as output" (`activities.py`'s own docstring) — a fixed schema would be a false constraint on a node whose whole purpose is accepting an arbitrary payload. `configSchema` stays `undefined`; the inspector's raw-JSON fallback is the CORRECT rendering, not a gap |
+| Consultation palette (13, all `consultation.*`) | None — `node-types.md`'s own "Config schemas" section names `contracts/nodes/*.schema.json` files that were never authored | Left `undefined`. Inventing thirteen clinical-workflow config contracts without a validated source would be a new design decision, not wiring up an existing one — genuinely open, tracked here rather than guessed |
+
+Every wired schema is asserted against `@arcaai/json-schema-subset`'s `authorableJsonSchemaProblems`
+in `packages/workflow-contract/src/__tests__/node-config-schemas.test.ts` — the exact cross-check
+this contract's Task 3 section named as the verification step. `registryChecksum()` (the sha256
+the compiler/publish path stamps) changes as a direct, expected consequence — the same "registry
+bump" every prior palette addition already caused; not special-cased.
 
 ---
 

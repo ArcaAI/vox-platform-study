@@ -11,13 +11,16 @@
  * `If-Match` on either would be a client bug, not a safety net.
  */
 
-import { deleteJson, getJson, getWithEtag, patchWithEtag, postJson, versionFromEtag } from '@/shared/api';
+import { deleteJson, getJson, getWithEtag, patchWithEtag, postJson, request, versionFromEtag } from '@/shared/api';
 import type { Paginated, WithEtag } from '@/shared/api';
 import type {
   CreateWorkflowDefinitionRequest,
+  DepartmentOption,
   PromptTemplateOption,
   PublishWorkflowDefinitionRequest,
   UpdateWorkflowDefinitionRequest,
+  UpsertWorkflowAssignmentRequest,
+  WorkflowAssignment,
   WorkflowDefinition,
   WorkflowNodeRegistry,
 } from './types';
@@ -25,6 +28,8 @@ import type {
 const BASE = 'admin/workflow-definitions';
 const NODES_PATH = 'admin/workflow-nodes';
 const PROMPT_TEMPLATES_PATH = 'admin/prompt-templates';
+const ASSIGNMENTS_BASE = 'admin/workflow-assignments';
+const DEPARTMENTS_PATH = 'admin/departments';
 
 const definitionPath = (id: string) => `${BASE}/${encodeURIComponent(id)}`;
 
@@ -96,4 +101,52 @@ export function listPromptTemplateOptions(): Promise<PromptTemplateOption[]> {
   return getJson<Paginated<PromptTemplateOption>>(PROMPT_TEMPLATES_PATH, { page: 1, limit: 100 }).then((res) =>
     res.data.map((template) => ({ id: template.id, name: template.name })),
   );
+}
+
+// ---------------------------------------------------------------------------
+// Workflow assignments (TASK-733 half (a)) — WHICH definition governs a
+// tenant/department for a palette. Paths and OCC posture verified against
+// the DELIVERED `WorkflowAssignmentController`
+// (`apps/api/src/modules/workflow-assignment/workflow-assignment.controller.ts`).
+// ---------------------------------------------------------------------------
+
+/** Strong ETag from a list-row `version` (no per-tuple GET exists to re-read one first). */
+export function etagFromVersion(version: number): string {
+  return `"${version}"`;
+}
+
+/** The caller tenant's assignments for one palette — no cross-palette "list all" route. */
+export function listWorkflowAssignments(paletteKey: string): Promise<WorkflowAssignment[]> {
+  return getJson(ASSIGNMENTS_BASE, { paletteKey });
+}
+
+/** First write for a `(scope, scopeId, paletteKey)` tier — no If-Match (nothing to CAS against yet). */
+export function createWorkflowAssignment(body: UpsertWorkflowAssignmentRequest): Promise<WorkflowAssignment> {
+  return postJson(ASSIGNMENTS_BASE, body);
+}
+
+/**
+ * Re-assigns an EXISTING tier. The controller's `PATCH` route carries no `:id` — the service
+ * identifies the row by the `(scope, scopeId, paletteKey)` tuple in the body, so the caller
+ * passes that tuple, not an id. If-Match required; `expectedVersion` folded from the ETag.
+ */
+export function updateWorkflowAssignment(body: UpsertWorkflowAssignmentRequest, etag: string): Promise<WorkflowAssignment> {
+  return patchWithEtag<WorkflowAssignment>(ASSIGNMENTS_BASE, { ...body, expectedVersion: versionFromEtag(etag) }, etag).then((res) => res.data);
+}
+
+/** Soft-deletes one assignment — the tier reverts to inheriting. If-Match required. */
+export function deleteWorkflowAssignment(id: string, etag: string, reason?: string): Promise<WorkflowAssignment> {
+  return request<WorkflowAssignment>(`${ASSIGNMENTS_BASE}/${encodeURIComponent(id)}`, { method: 'DELETE', etag, params: { reason } }).then(
+    (res) => res.data,
+  );
+}
+
+/**
+ * Row list for the assignment matrix (id + name/code only) — a read of the EXISTING
+ * `admin/departments` route, deliberately RE-IMPLEMENTED rather than imported from
+ * `features/departments/api/client.ts` (rule 13 §Structure: "features never import each other").
+ * `admin/departments` answers a PLAIN ARRAY, not the `Paginated` envelope.
+ */
+export function listDepartmentOptions(): Promise<DepartmentOption[]> {
+  return getJson(DEPARTMENTS_PATH, { includeDisabled: false });
 }
