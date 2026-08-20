@@ -686,7 +686,7 @@ export class TenantService extends BaseService implements ITenantService {
    *    `value` starts at `defaultValue ?? value` and copies the descriptive
    *    metadata (`name`, `key`, `dataType`, `description`, `namespace`,
    *    `locked`). The `locked` flag is preserved so admin-restricted defaults
-   *    (e.g. `default-stt-model`, `text-provider-models`) remain locked on the
+   *    (e.g. `default-stt-model`, `smr-provider-models`) remain locked on the
    *    new tenant and are enforced by `updateTenantConfigs`.
    *  - Each insert is wrapped in a try/catch so a single failure (e.g. a
    *    unique-constraint race on `(tenantId, name, key)`) does not abort the
@@ -1288,10 +1288,6 @@ export class TenantService extends BaseService implements ITenantService {
           throw new ForbiddenException(`Setting '${existingConfig.key}' is locked and can only be modified by ${SUPER_ADMIN_ROLE} users.`);
         }
 
-        if (config.value !== undefined) {
-          await this.validateProviderModel(existingConfig.key, config.value, tenant.id);
-        }
-
         // Explicit allowlist.
         // NEVER spread `config` directly into `updateEntity`: that path
         // assigns every key on the entity (mass-assignment) and lets a
@@ -1448,132 +1444,5 @@ export class TenantService extends BaseService implements ITenantService {
   private isSuperAdmin(): boolean {
     const roles = this.requestUser?.roles;
     return Array.isArray(roles) && roles.includes(SUPER_ADMIN_ROLE);
-  }
-
-  /**
-   * Reusable provider/model validation shared by the TEXT and
-   * Guardrail engines (generalised from the original `validateTextConfigValue`).
-   *
-   * When a `default-*-provider` / `default-*-model` setting is updated, the new
-   * value is validated against that domain's per-tenant `*-provider-models`
-   * catalog so the admin console can never persist an unknown provider/model
-   * combination. It is a no-op for every other setting key, so the batch update
-   * loop can safely call it for every config. TEXT behaviour and error messages
-   * are preserved verbatim; Guardrail reuses the identical logic with its own
-   * catalog + a `Guardrail` label.
-   */
-  private async validateProviderModel(settingKey: string, newValue: string, tenantId: string): Promise<void> {
-    // Each domain wires its provider/model keys to its catalog + current-provider
-    // readers. Adding a future engine is a single entry here.
-    const domains = [
-      {
-        label: 'TEXT',
-        providerKey: 'default-text-provider',
-        modelKey: 'default-text-model',
-        loadCatalog: () => this.loadTextCatalog(tenantId),
-        getCurrentProvider: () => this.getCurrentTextProvider(tenantId),
-      },
-      {
-        label: 'Guardrail',
-        providerKey: 'default-guardrail-provider',
-        modelKey: 'default-guardrail-model',
-        loadCatalog: () => this.loadGuardrailCatalog(tenantId),
-        getCurrentProvider: () => this.getCurrentGuardrailProvider(tenantId),
-      },
-    ];
-
-    const domain = domains.find((d) => d.providerKey === settingKey || d.modelKey === settingKey);
-    if (!domain) {
-      return;
-    }
-
-    const catalog = await domain.loadCatalog();
-    if (!catalog || catalog.length === 0) {
-      return;
-    }
-
-    if (settingKey === domain.providerKey) {
-      const validProviders = catalog.map((entry: { provider: string }) => entry.provider);
-      if (!validProviders.includes(newValue)) {
-        throw new ArgumentInvalidException(`'${newValue}' is not a valid ${domain.label} provider. ` + `Available: ${validProviders.join(', ')}`);
-      }
-    }
-
-    if (settingKey === domain.modelKey) {
-      const currentProvider = await domain.getCurrentProvider();
-      const providerEntry = catalog.find((entry: { provider: string }) => entry.provider === currentProvider);
-      if (providerEntry) {
-        const validModels = providerEntry.models.map((m: { name: string }) => m.name);
-        if (!validModels.includes(newValue)) {
-          throw new ArgumentInvalidException(
-            `'${newValue}' is not a valid model for provider '${currentProvider}'. ` + `Available: ${validModels.join(', ')}`,
-          );
-        }
-      }
-    }
-  }
-
-  /**
-   * Generic loader for a `ux-constants` provider/model catalog (TEXT or
-   * Guardrail). Returns `null` when the catalog row is missing or malformed so
-   * callers treat validation as a no-op rather than blocking the update.
-   */
-  private async loadCatalog(tenantId: string, catalogKey: string): Promise<{ provider: string; models: { name: string; size: string }[] }[] | null> {
-    const settings = await this.globalSettingRepository.findAll({
-      where: {
-        tenantId,
-        key: catalogKey,
-      },
-    });
-
-    const catalogSetting = settings.find((s: GlobalSettingEntity) => s.key === catalogKey);
-    if (!catalogSetting?.value) return null;
-
-    try {
-      const parsed = JSON.parse(catalogSetting.value);
-      if (Array.isArray(parsed) && parsed.length > 0 && parsed[0].provider) {
-        return parsed;
-      }
-    } catch {
-      // Malformed catalog, skip validation
-    }
-    return null;
-  }
-
-  /**
-   * Generic reader for the currently-selected provider of a domain
-   * (`default-text-provider` / `default-guardrail-provider`). Defaults to the
-   * primary local engine `lm-studio` when unset.
-   */
-  private async getCurrentProvider(tenantId: string, providerKey: string): Promise<string> {
-    const settings = await this.globalSettingRepository.findAll({
-      where: {
-        tenantId,
-        key: providerKey,
-      },
-    });
-
-    const providerSetting = settings.find((s: GlobalSettingEntity) => s.key === providerKey);
-    return providerSetting?.value?.trim() || 'lm-studio';
-  }
-
-  /** TEXT provider/model catalog for this tenant. */
-  private loadTextCatalog(tenantId: string) {
-    return this.loadCatalog(tenantId, 'text-provider-models');
-  }
-
-  /** Currently-selected TEXT provider for this tenant. */
-  private getCurrentTextProvider(tenantId: string) {
-    return this.getCurrentProvider(tenantId, 'default-text-provider');
-  }
-
-  /** Guardrail provider/model catalog for this tenant. */
-  private loadGuardrailCatalog(tenantId: string) {
-    return this.loadCatalog(tenantId, 'guardrail-provider-models');
-  }
-
-  /** Currently-selected Guardrail provider for this tenant. */
-  private getCurrentGuardrailProvider(tenantId: string) {
-    return this.getCurrentProvider(tenantId, 'default-guardrail-provider');
   }
 }
