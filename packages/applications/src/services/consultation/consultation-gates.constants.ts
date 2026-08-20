@@ -92,12 +92,25 @@ export const CONSULTATION_REQUIRE_PRIMED_BEFORE_RECORDING_KEY = 'consultation.st
 
 /**
  * TASK-711 (state-machine.md §1a) — general session-idleness timeout, in
- * minutes, consulted by the (not-yet-built) scheduled sweep that transitions
- * stale sessions to `CLOSED_INCOMPLETE`. NOT a kill-switch (no on/off
- * semantics) — a tuning knob, `failMode: open-to-default` so an absent value
- * never stalls the sweep. Documented default 1440 (24h), provisional.
+ * minutes, consulted by the scheduled sweep (`ConsultationTimeoutSweepService`)
+ * that transitions stale sessions to `CLOSED_INCOMPLETE`. NOT a kill-switch
+ * (no on/off semantics) — a tuning knob, `failMode: open-to-default` so an
+ * absent value never stalls the sweep. Documented default 1440 (24h),
+ * provisional.
  */
 export const CONSULTATION_SESSION_TIMEOUT_MINUTES_KEY = 'consultation.state.sessionTimeoutMinutes';
+
+/**
+ * TASK-711 (state-machine.md §1a mechanism) — cron cadence for
+ * `ConsultationTimeoutSweepService`'s own tick, i.e. how OFTEN the sweep
+ * checks for stale sessions (distinct from `..sessionTimeoutMinutes` above,
+ * which is HOW STALE a session must be). Mirrors the `audit-retention.cron` /
+ * `agentic.trajectory.cron` shape of the other self-scheduling workers. NOT a
+ * kill-switch — a tuning knob, `failMode: open-to-default`. Default every 15
+ * minutes, a conservative cadence relative to the 24h default staleness
+ * window.
+ */
+export const CONSULTATION_SESSION_TIMEOUT_SWEEP_CRON_KEY = 'consultation.state.sessionTimeoutSweep.cron';
 
 /**
  * Code defaults — the last fallback in the cascade, and the single source of
@@ -110,4 +123,5 @@ export const CONSULTATION_GATE_DEFAULTS = {
   [CONSULTATION_OCR_ENABLED_KEY]: false,
   [CONSULTATION_REQUIRE_PRIMED_BEFORE_RECORDING_KEY]: false,
   [CONSULTATION_SESSION_TIMEOUT_MINUTES_KEY]: 1440,
+  [CONSULTATION_SESSION_TIMEOUT_SWEEP_CRON_KEY]: '*/15 * * * *',
 } as const;
