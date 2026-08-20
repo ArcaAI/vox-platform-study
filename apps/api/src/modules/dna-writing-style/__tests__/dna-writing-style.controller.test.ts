@@ -283,13 +283,23 @@ describe('DnaWritingStyleController', () => {
 
   // ─── Set-default (PATCH :reportId/default) ────────────────────
   describe('PATCH /dna-writing-styles/:reportId/default', () => {
-    it('should call service.setDefaultReport with the reportId', async () => {
+    it('should thread the reportId and the parsed If-Match version into service.setDefaultReport', async () => {
       mockDnaService.setDefaultReport.mockResolvedValue({ ...fakeReportEntity, isLatest: true });
 
-      const result = await controller.setDefault('report-1');
+      // The route is `@RequiresIfMatch()`, so `@ExpectedVersion()` has already
+      // parsed `If-Match: "7"` into `7` by the time the handler runs.
+      const result = await controller.setDefault('report-1', 7);
 
-      expect(mockDnaService.setDefaultReport).toHaveBeenCalledWith('report-1');
+      expect(mockDnaService.setDefaultReport).toHaveBeenCalledWith('report-1', 7);
       expect(result.isLatest).toBe(true);
+    });
+
+    it('should pass undefined through when no If-Match version was parsed', async () => {
+      mockDnaService.setDefaultReport.mockResolvedValue({ ...fakeReportEntity, isLatest: true });
+
+      await controller.setDefault('report-1', undefined);
+
+      expect(mockDnaService.setDefaultReport).toHaveBeenCalledWith('report-1', undefined);
     });
   });
 

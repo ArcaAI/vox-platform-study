@@ -347,10 +347,7 @@ test.describe('TASK-776 H-1 phase 2: tier-A routes enforce If-Match', () => {
     expect(currentDefault, 'seed precondition: the doctor has a default DNA report').toBeDefined();
     expect(promotable, 'seed precondition: the doctor has a non-default DNA report to promote').toBeDefined();
 
-    await expect428(
-      await request.patch(`/api/v1/dna-writing-styles/${promotable!.id}/default`, { headers: bearer(doctorToken) }),
-      'dna set-default',
-    );
+    await expect428(await request.patch(`/api/v1/dna-writing-styles/${promotable!.id}/default`, { headers: bearer(doctorToken) }), 'dna set-default');
 
     await expect412(
       await request.patch(`/api/v1/dna-writing-styles/${promotable!.id}/default`, {

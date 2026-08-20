@@ -92,13 +92,24 @@ describe('TenantIdpConfigAdminController — directory credentials', () => {
     const { controller, service } = makeController({ user: TENANT_ADMIN('t1'), tenantId: 't1' });
     service.setDirectoryCredentials.mockResolvedValue({ id: 'provider-1' });
     const body = { credentials: { azureTenantId: 't', clientId: 'c', clientSecret: 's' } };
-    await controller.setDirectoryCredentials('provider-1', body as never, 't1');
+    await controller.setDirectoryCredentials('provider-1', body as never, undefined, 't1');
     expect(service.setDirectoryCredentials).toHaveBeenCalledWith('t1', 'provider-1', body);
+  });
+
+  it('merges the parsed If-Match version into the body as expectedVersion', async () => {
+    const { controller, service } = makeController({ user: TENANT_ADMIN('t1'), tenantId: 't1' });
+    service.setDirectoryCredentials.mockResolvedValue({ id: 'provider-1' });
+    const body = { credentials: { azureTenantId: 't', clientId: 'c', clientSecret: 's' } };
+
+    // The route is `@RequiresIfMatch()`; the header wins over the body field.
+    await controller.setDirectoryCredentials('provider-1', body as never, 7, 't1');
+
+    expect(service.setDirectoryCredentials).toHaveBeenCalledWith('t1', 'provider-1', { ...body, expectedVersion: 7 });
   });
 
   it('rejects a tenant admin targeting another tenant', async () => {
     const { controller } = makeController({ user: TENANT_ADMIN('t1'), tenantId: 't1' });
-    await expect(controller.setDirectoryCredentials('provider-1', {} as never, 't2')).rejects.toBeInstanceOf(ForbiddenException);
+    await expect(controller.setDirectoryCredentials('provider-1', {} as never, undefined, 't2')).rejects.toBeInstanceOf(ForbiddenException);
   });
 });
 
