@@ -285,7 +285,7 @@ export const DEFAULT_DNA_USAGE_RECORDS = [
     dnaReportId: SEED_DNA_REPORT_IDS.REPORT_DOCTOR,
     dnaVersionNumber: 1,
     consultationId: null,
-    departmentId: SEED_DEPARTMENT_IDS.GEN,
+    departmentId: SEED_DEPARTMENT_IDS.OPD,
   },
   {
     id: '75000000-0000-0000-0000-000000000002',
@@ -294,7 +294,7 @@ export const DEFAULT_DNA_USAGE_RECORDS = [
     dnaReportId: SEED_DNA_REPORT_IDS.REPORT_DOCTOR2,
     dnaVersionNumber: 1,
     consultationId: null,
-    departmentId: SEED_DEPARTMENT_IDS.CARD,
+    departmentId: SEED_DEPARTMENT_IDS.OPD,
   },
   {
     id: '75000000-0000-0000-0000-000000000003',
@@ -303,7 +303,7 @@ export const DEFAULT_DNA_USAGE_RECORDS = [
     dnaReportId: SEED_DNA_REPORT_IDS.REPORT_DOCTOR,
     dnaVersionNumber: 2,
     consultationId: null,
-    departmentId: SEED_DEPARTMENT_IDS.GEN,
+    departmentId: SEED_DEPARTMENT_IDS.OPD,
   },
   {
     id: '75000000-0000-0000-0000-000000000004',
@@ -312,7 +312,7 @@ export const DEFAULT_DNA_USAGE_RECORDS = [
     dnaReportId: SEED_DNA_REPORT_IDS.REPORT_DEPT_HEAD,
     dnaVersionNumber: 1,
     consultationId: null,
-    departmentId: SEED_DEPARTMENT_IDS.GEN,
+    departmentId: SEED_DEPARTMENT_IDS.OPD,
   },
   {
     id: '75000000-0000-0000-0000-000000000005',
@@ -321,7 +321,7 @@ export const DEFAULT_DNA_USAGE_RECORDS = [
     dnaReportId: SEED_DNA_REPORT_IDS.REPORT_SURGERY,
     dnaVersionNumber: 1,
     consultationId: null,
-    departmentId: SEED_DEPARTMENT_IDS.SURG,
+    departmentId: SEED_DEPARTMENT_IDS.PERI,
   },
   {
     id: '75000000-0000-0000-0000-000000000006',
@@ -330,7 +330,7 @@ export const DEFAULT_DNA_USAGE_RECORDS = [
     dnaReportId: SEED_DNA_REPORT_IDS.REPORT_NEURO,
     dnaVersionNumber: 1,
     consultationId: null,
-    departmentId: SEED_DEPARTMENT_IDS.NEUR,
+    departmentId: SEED_DEPARTMENT_IDS.OPD,
   },
   {
     id: '75000000-0000-0000-0000-000000000007',
@@ -339,7 +339,7 @@ export const DEFAULT_DNA_USAGE_RECORDS = [
     dnaReportId: SEED_DNA_REPORT_IDS.REPORT_BREN,
     dnaVersionNumber: 1,
     consultationId: null,
-    departmentId: SEED_DEPARTMENT_IDS.BREN,
+    departmentId: SEED_DEPARTMENT_IDS.OPD,
   },
   {
     id: '75000000-0000-0000-0000-000000000008',
@@ -348,7 +348,7 @@ export const DEFAULT_DNA_USAGE_RECORDS = [
     dnaReportId: SEED_DNA_REPORT_IDS.REPORT_RHEUM,
     dnaVersionNumber: 1,
     consultationId: null,
-    departmentId: SEED_DEPARTMENT_IDS.RHEUM,
+    departmentId: SEED_DEPARTMENT_IDS.OPD,
   },
 ];
 
@@ -360,7 +360,7 @@ export const DEFAULT_PROMPT_USAGE_RECORDS = [
     promptVersionNumber: 1,
     consultationId: null,
     doctorId: SEED_USER_IDS.DOCTOR,
-    departmentId: SEED_DEPARTMENT_IDS.GEN,
+    departmentId: SEED_DEPARTMENT_IDS.OPD,
   },
   {
     id: '76000000-0000-0000-0000-000000000002',
@@ -369,7 +369,7 @@ export const DEFAULT_PROMPT_USAGE_RECORDS = [
     promptVersionNumber: 1,
     consultationId: null,
     doctorId: SEED_USER_IDS.DOCTOR2,
-    departmentId: SEED_DEPARTMENT_IDS.CARD,
+    departmentId: SEED_DEPARTMENT_IDS.OPD,
   },
 ];
 

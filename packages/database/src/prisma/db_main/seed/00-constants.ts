@@ -220,24 +220,42 @@ export const SEED_USER_IDS = {
 // =============================================================================
 
 export const SEED_DEPARTMENT_IDS = {
-  GEN: '70000000-0000-0000-0000-000000000001',
-  CARD: '70000000-0000-0000-0000-000000000002',
-  RAD: '70000000-0000-0000-0000-000000000003',
-  LAB: '70000000-0000-0000-0000-000000000004',
-  NEUR: '70000000-0000-0000-0000-000000000005',
-  ORTH: '70000000-0000-0000-0000-000000000006',
-  DERM: '70000000-0000-0000-0000-000000000007',
-  PSYCH: '70000000-0000-0000-0000-000000000008',
-  PEDS: '70000000-0000-0000-0000-000000000009',
-  ER: '70000000-0000-0000-0000-000000000010',
-  SURG: '70000000-0000-0000-0000-000000000011',
-  MED: '70000000-0000-0000-0000-000000000012',
-  BREN: '70000000-0000-0000-0000-000000000013',
-  RHEUM: '70000000-0000-0000-0000-000000000014',
-  HEME: '70000000-0000-0000-0000-000000000015',
-  DIET: '70000000-0000-0000-0000-000000000016',
-  NEPH: '70000000-0000-0000-0000-000000000017',
-  SONC: '70000000-0000-0000-0000-000000000018',
+  // ---------------------------------------------------------------------------
+  // Global customer tenant (50000000-…) — the PLATFORM-GENERIC day-1 catalog.
+  //
+  // OWNER RULING (2026-08-20, TASK-763 §5 OD-8): "what belong to BCMCH keep
+  // those in ArcaAI, for SYSTEM and GLOBAL, use different ones."
+  //
+  // The former Global catalog was EIGHTEEN rows whose first eleven
+  // (GEN/NEUR/ORTH/DERM/SURG/BREN/RHEUM/HEME/DIET/NEPH/SONC) duplicated the
+  // ArcaAI/BCMCH v1 specialty roster code-for-code, name-for-name — and whose
+  // `promptConfig.preferredSections` carried BCMCH's house vocabulary
+  // ('BIODATA', 'Fitness for Surgery', 'MDT Plan',
+  // 'style_DNA_doctor_department_dermatology'). Because 07a-agent-golden-library
+  // promotes THIS array 1:1 onto the SYSTEM tenant, that roster was also the
+  // GOLDEN library — i.e. every newly-provisioned tenant inherited another
+  // hospital's department list and documentation format on day 1.
+  //
+  // The replacement is deliberately on a DIFFERENT AXIS: eight CARE SETTINGS
+  // rather than clinical specialties. A care setting is something every
+  // healthcare organisation has, which is what a platform default must be; a
+  // specialty roster is a tenant's own configuration and is now exclusively
+  // ArcaAI's (SEED_DEPARTMENT_IDS.*_ARCAAI below). The golden set is the FLOOR a
+  // tenant builds on, not a roster it must prune.
+  //
+  // 4th UUID group 0003 = Global generic care-setting departments. The retired
+  // 0000-group slots 001-018 are NOT reused: within the
+  // `70000000-0000-0000-0000-…` prefix, slots 019+ already belong to
+  // SEED_USER_IDS, so that block is not extensible, and re-pointing a retired
+  // slot at a different code would collide with rows in long-lived dev DBs.
+  OPD: '70000000-0000-0000-0003-000000000001',
+  IPD: '70000000-0000-0000-0003-000000000002',
+  ER: '70000000-0000-0000-0003-000000000003',
+  PERI: '70000000-0000-0000-0003-000000000004',
+  RAD: '70000000-0000-0000-0003-000000000005',
+  LAB: '70000000-0000-0000-0003-000000000006',
+  BEH: '70000000-0000-0000-0003-000000000007',
+  PEDS: '70000000-0000-0000-0003-000000000008',
   // ArcaAI customer-tenant CLINICAL departments (;
   // completed to v1 parity by).
   //
@@ -360,6 +378,12 @@ export const SEED_SERVICE_ACCOUNT_DEV_SECRETS = {
 // PROMPT TEMPLATES
 // =============================================================================
 
+// Mirrors TEMPLATE_IDS in 07-prompt-template.ts. The 22 BCMCH/v1-format
+// specialty template ids (SURGERY/MEDICINE/BREN/RHEUM/ORTH/NEUR/HEME/DERM/DIET/
+// NEPH/SONC x {new referral, revisit}) were retired from the Global catalog by
+// TASK-763 OD-8 and are NOT re-listed here: those bodies live on the tenant they
+// belong to, as ARCAAI_CLINICAL_TEMPLATE_IDS in 07b-arcaai-clinical-templates.ts.
+// The Global generic replacements are TEMPLATE_IDS.GENERIC_* (block 0003).
 export const SEED_TEMPLATE_IDS = {
   SYSTEM_DEFAULT: '71000000-0000-0000-0000-000000000001',
   SOAP_SUMMARY: '71000000-0000-0000-0000-000000000002',
@@ -370,32 +394,10 @@ export const SEED_TEMPLATE_IDS = {
   TEXT_SYSTEM_PEDS: '71000000-0000-0000-0000-000000000007',
   TEXT_SYSTEM_CARD: '71000000-0000-0000-0000-000000000008',
   TEXT_SYSTEM_PSYCH: '71000000-0000-0000-0000-000000000009',
-  SURGERY_NEW_REFERRAL: '71000000-0000-0000-0000-000000000010',
-  SURGERY_REVISIT: '71000000-0000-0000-0000-000000000011',
-  MEDICINE_NEW_REFERRAL: '71000000-0000-0000-0000-000000000012',
-  MEDICINE_REVISIT: '71000000-0000-0000-0000-000000000013',
-  BREN_NEW_REFERRAL: '71000000-0000-0000-0000-000000000014',
-  BREN_REVISIT: '71000000-0000-0000-0000-000000000015',
-  RHEUM_NEW_REFERRAL: '71000000-0000-0000-0000-000000000016',
-  RHEUM_REVISIT: '71000000-0000-0000-0000-000000000017',
-  ORTH_NEW_REFERRAL: '71000000-0000-0000-0000-000000000018',
-  ORTH_REVISIT: '71000000-0000-0000-0000-000000000019',
-  NEUR_NEW_REFERRAL: '71000000-0000-0000-0000-000000000020',
-  NEUR_REVISIT: '71000000-0000-0000-0000-000000000021',
-  HEME_NEW_REFERRAL: '71000000-0000-0000-0000-000000000022',
-  HEME_REVISIT: '71000000-0000-0000-0000-000000000023',
   JSON_ENFORCEMENT: '71000000-0000-0000-0000-000000000024',
   CORRECTIVE_RETRY: '71000000-0000-0000-0000-000000000025',
   PRE_SUMMARY_SYSTEM: '71000000-0000-0000-0000-000000000026',
   PREVIOUS_VISIT_SYSTEM: '71000000-0000-0000-0000-000000000027',
-  DERM_NEW_REFERRAL: '71000000-0000-0000-0000-000000000028',
-  DERM_REVISIT: '71000000-0000-0000-0000-000000000029',
-  DIET_NEW_REFERRAL: '71000000-0000-0000-0000-000000000030',
-  DIET_REVISIT: '71000000-0000-0000-0000-000000000031',
-  NEPH_NEW_REFERRAL: '71000000-0000-0000-0000-000000000032',
-  NEPH_REVISIT: '71000000-0000-0000-0000-000000000033',
-  SONC_NEW_REFERRAL: '71000000-0000-0000-0000-000000000034',
-  SONC_REVISIT: '71000000-0000-0000-0000-000000000035',
   CATCHALL_SOAP: '71000000-0000-0000-0000-000000000036',
   PRE_SUMMARY_DEFAULT: '71000000-0000-0000-0000-000000000040',
 } as const;

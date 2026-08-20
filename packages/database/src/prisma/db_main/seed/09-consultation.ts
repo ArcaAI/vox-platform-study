@@ -67,7 +67,7 @@ export const DEFAULT_CONSULTATIONS = [
     patientId: PATIENT_IDS.PAT_001,
     appointmentDate: new Date('2025-12-15'),
     doctorId: SEED_USER_IDS.DOCTOR,
-    departmentId: SEED_DEPARTMENT_IDS.GEN,
+    departmentId: SEED_DEPARTMENT_IDS.OPD,
     parentConsultationId: null,
     metadata: {
       visitType: 'NEW_PATIENT',
@@ -85,7 +85,7 @@ export const DEFAULT_CONSULTATIONS = [
     patientId: PATIENT_IDS.PAT_002,
     appointmentDate: new Date('2026-01-20'),
     doctorId: SEED_USER_IDS.DOCTOR2,
-    departmentId: SEED_DEPARTMENT_IDS.CARD,
+    departmentId: SEED_DEPARTMENT_IDS.OPD,
     parentConsultationId: null,
     metadata: {
       visitType: 'REVISIT',
@@ -101,7 +101,7 @@ export const DEFAULT_CONSULTATIONS = [
     patientId: PATIENT_IDS.PAT_003,
     appointmentDate: new Date('2026-01-10'),
     doctorId: SEED_USER_IDS.DOCTOR_SURGERY,
-    departmentId: SEED_DEPARTMENT_IDS.SURG,
+    departmentId: SEED_DEPARTMENT_IDS.PERI,
     parentConsultationId: null,
     metadata: {
       visitType: 'NEW_PATIENT',
@@ -117,7 +117,7 @@ export const DEFAULT_CONSULTATIONS = [
     patientId: PATIENT_IDS.PAT_003,
     appointmentDate: new Date('2026-02-05'),
     doctorId: SEED_USER_IDS.DOCTOR_SURGERY,
-    departmentId: SEED_DEPARTMENT_IDS.SURG,
+    departmentId: SEED_DEPARTMENT_IDS.PERI,
     parentConsultationId: SEED_CONSULTATION_IDS.SURG_NEW,
     metadata: {
       visitType: 'REVISIT',
@@ -133,7 +133,7 @@ export const DEFAULT_CONSULTATIONS = [
     patientId: PATIENT_IDS.PAT_004,
     appointmentDate: new Date('2026-02-05'),
     doctorId: SEED_USER_IDS.DOCTOR_NEURO,
-    departmentId: SEED_DEPARTMENT_IDS.NEUR,
+    departmentId: SEED_DEPARTMENT_IDS.OPD,
     parentConsultationId: null,
     metadata: {
       visitType: 'REFERRAL',
@@ -186,7 +186,7 @@ export const DEFAULT_CONSULTATIONS = [
     patientId: PATIENT_IDS.PAT_001,
     appointmentDate: new Date('2026-01-05'),
     doctorId: SEED_USER_IDS.DOCTOR,
-    departmentId: SEED_DEPARTMENT_IDS.GEN,
+    departmentId: SEED_DEPARTMENT_IDS.OPD,
     parentConsultationId: SEED_CONSULTATION_IDS.GEN_COMPLETED,
     metadata: {
       visitType: 'REVISIT',
@@ -205,7 +205,7 @@ export const DEFAULT_CONSULTATIONS = [
     patientId: PATIENT_IDS.PAT_002,
     appointmentDate: new Date('2026-02-15'),
     doctorId: SEED_USER_IDS.DOCTOR2,
-    departmentId: SEED_DEPARTMENT_IDS.NEUR,
+    departmentId: SEED_DEPARTMENT_IDS.OPD,
     parentConsultationId: SEED_CONSULTATION_IDS.CARD_NEW,
     metadata: {
       visitType: 'REFERRAL',

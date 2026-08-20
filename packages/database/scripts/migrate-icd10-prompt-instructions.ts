@@ -101,19 +101,14 @@ export function sha256(value: string): string {
  * matching one of these means "unmodified since the old (bad) seed wrote
  * it" — the only condition under which this script will overwrite it.
  */
+// NOTE (TASK-763 OD-8): the eleven Global-tenant specialty entries this map used
+// to carry were dropped when their templates left the Global catalog. Those
+// bodies were BCMCH's and now exist only on the ArcaAI tenant, whose
+// ARCAAI_CLINICAL_TEMPLATE_IDS fingerprints below are unchanged and still
+// authoritative. Dropping a key only narrows what this script is willing to
+// overwrite, so a stale deployed row is left alone rather than mis-rewritten.
 const KNOWN_BAD_SHA256: Record<string, string> = {
   [TEMPLATE_IDS.SOAP_SUMMARY]: '455d0dd74d30d08ae5e8657c645b07ce0ba307d79e939d7a144d687a50257acd',
-  [TEMPLATE_IDS.SURGERY_NEW_REFERRAL]: 'a51bc83df1ad5b242e7619a19eeaaaa95355fd3d6714aef79e284fffbcbdb199',
-  [TEMPLATE_IDS.MEDICINE_NEW_REFERRAL]: 'bc4e33ed4345d11a2d815f3f7ebd74f61da01434461fe962d9f3eacb976b96fd',
-  [TEMPLATE_IDS.MEDICINE_REVISIT]: '545f4b0a3a2dbbd6d6c807f94bc40d75f260669d77af5e2a31604787217a7809',
-  [TEMPLATE_IDS.BREN_NEW_REFERRAL]: 'eb3f99f9c6795e71a66ada0cd39ac32388aefd3cb80372fdd56f6d4a081fe368',
-  [TEMPLATE_IDS.RHEUM_NEW_REFERRAL]: 'cda5947ef8f8020a08aab8559b539bd16dad1a4486ac2b3c8ef1de0e7a0b8aa1',
-  [TEMPLATE_IDS.RHEUM_REVISIT]: '9cb641a77c5ebd74c9764b0b922ee666294359c2da4588f8a36fb00cfc5c91c0',
-  [TEMPLATE_IDS.ORTH_NEW_REFERRAL]: 'a2d5dbe04078d4e6d4d42a26e150e0559de37ff81e7cd173d3814117edb21fdb',
-  [TEMPLATE_IDS.ORTH_REVISIT]: 'c3cdf308351a7c3611b2899dc3b019dcdb179a59d4bd94d4e03e58c26a7fe7c3',
-  [TEMPLATE_IDS.NEUR_NEW_REFERRAL]: '33099e0b2eb33478f09607f8593dc5e13a7970963c10771e427156f04f603137',
-  [TEMPLATE_IDS.NEUR_REVISIT]: 'ed1aaba89c6f75aad1ea9ee3e7ba6b798d65a40d2b27c827d5fc70ac4db3b7ab',
-  [TEMPLATE_IDS.NEPH_NEW_REFERRAL]: 'e658cfb8a4b5041f950872fd1feaa0dd284f3e1620b0fd55be37c425fc82918c',
   [ARCAAI_CLINICAL_TEMPLATE_IDS.SURGERY_NEW_REFERRAL]: 'f60b9e059f77223e0f3201a887738652ebac84e2380e90565b0858e03bd927a5',
   [ARCAAI_CLINICAL_TEMPLATE_IDS.SURGERY_FOLLOWUP]: 'ab51ae4ff01715bf168ecd2d7ca14be6b2833e2899befa49a36d776546ed8abf',
   [ARCAAI_CLINICAL_TEMPLATE_IDS.MEDICINE_NEW_REFERRAL]: '9f4dca373be9b734113cdbf8b8b79ab6da485804e5553238d6702bb653597658',

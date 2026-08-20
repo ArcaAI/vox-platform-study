@@ -1,7 +1,7 @@
 import type { CorePrismaClient } from '../../../client';
 import { Prisma } from '../../../generated/core-prisma-client/client';
 import type { PromptTemplateCategory, PromptTemplateStatus } from '../../../generated/core-prisma-client/enums';
-import { SEED_CUSTOMER_TENANT_IDS, SYSTEM_TENANT_ID } from './00-constants';
+import { SEED_CUSTOMER_TENANT_IDS, SEED_DEPARTMENT_IDS, SYSTEM_TENANT_ID } from './00-constants';
 
 /**
  * Publication baseline.
@@ -119,34 +119,34 @@ export const TEMPLATE_IDS = {
   TEXT_SYSTEM_PEDS: '71000000-0000-0000-0000-000000000007',
   TEXT_SYSTEM_CARD: '71000000-0000-0000-0000-000000000008',
   TEXT_SYSTEM_PSYCH: '71000000-0000-0000-0000-000000000009',
-  SURGERY_NEW_REFERRAL: '71000000-0000-0000-0000-000000000010',
-  SURGERY_REVISIT: '71000000-0000-0000-0000-000000000011',
-  MEDICINE_NEW_REFERRAL: '71000000-0000-0000-0000-000000000012',
-  MEDICINE_REVISIT: '71000000-0000-0000-0000-000000000013',
-  BREN_NEW_REFERRAL: '71000000-0000-0000-0000-000000000014',
-  BREN_REVISIT: '71000000-0000-0000-0000-000000000015',
-  RHEUM_NEW_REFERRAL: '71000000-0000-0000-0000-000000000016',
-  RHEUM_REVISIT: '71000000-0000-0000-0000-000000000017',
-  ORTH_NEW_REFERRAL: '71000000-0000-0000-0000-000000000018',
-  ORTH_REVISIT: '71000000-0000-0000-0000-000000000019',
-  NEUR_NEW_REFERRAL: '71000000-0000-0000-0000-000000000020',
-  NEUR_REVISIT: '71000000-0000-0000-0000-000000000021',
-  HEME_NEW_REFERRAL: '71000000-0000-0000-0000-000000000022',
-  HEME_REVISIT: '71000000-0000-0000-0000-000000000023',
   JSON_ENFORCEMENT: '71000000-0000-0000-0000-000000000024',
   CORRECTIVE_RETRY: '71000000-0000-0000-0000-000000000025',
   PRE_SUMMARY_SYSTEM: '71000000-0000-0000-0000-000000000026',
   PREVIOUS_VISIT_SYSTEM: '71000000-0000-0000-0000-000000000027',
-  DERM_NEW_REFERRAL: '71000000-0000-0000-0000-000000000028',
-  DERM_REVISIT: '71000000-0000-0000-0000-000000000029',
-  DIET_NEW_REFERRAL: '71000000-0000-0000-0000-000000000030',
-  DIET_REVISIT: '71000000-0000-0000-0000-000000000031',
-  NEPH_NEW_REFERRAL: '71000000-0000-0000-0000-000000000032',
-  NEPH_REVISIT: '71000000-0000-0000-0000-000000000033',
-  SONC_NEW_REFERRAL: '71000000-0000-0000-0000-000000000034',
-  SONC_REVISIT: '71000000-0000-0000-0000-000000000035',
   CATCHALL_SOAP: '71000000-0000-0000-0000-000000000036',
   PRE_SUMMARY_DEFAULT: '71000000-0000-0000-0000-000000000040',
+  // ---------------------------------------------------------------------------
+  // GENERIC platform templates for the eight care-setting departments
+  // (04-department.ts). Authored for TASK-763 §5 OD-8: the previous Global
+  // catalog reused BCMCH's v1 specialty prompt bodies, which the golden library
+  // then shipped to every new tenant. These are written to the standard
+  // clinical-documentation section conventions instead and name no
+  // organisation, house format, or specialty roster.
+  //
+  // Block 0003 mirrors the department id block of the same number.
+  GENERIC_OUTPATIENT_NEW: '71000000-0000-0000-0003-000000000001',
+  GENERIC_OUTPATIENT_REVISIT: '71000000-0000-0000-0003-000000000002',
+  GENERIC_INPATIENT_ADMISSION: '71000000-0000-0000-0003-000000000003',
+  GENERIC_INPATIENT_PROGRESS: '71000000-0000-0000-0003-000000000004',
+  GENERIC_EMERGENCY_ENCOUNTER: '71000000-0000-0000-0003-000000000005',
+  GENERIC_PERIOP_ASSESSMENT: '71000000-0000-0000-0003-000000000006',
+  GENERIC_PERIOP_REVIEW: '71000000-0000-0000-0003-000000000007',
+  GENERIC_IMAGING_REPORT: '71000000-0000-0000-0003-000000000008',
+  GENERIC_LAB_REPORT: '71000000-0000-0000-0003-000000000009',
+  GENERIC_BEHAVIORAL_ASSESSMENT: '71000000-0000-0000-0003-000000000010',
+  GENERIC_BEHAVIORAL_REVIEW: '71000000-0000-0000-0003-000000000011',
+  GENERIC_PEDIATRIC_NEW: '71000000-0000-0000-0003-000000000012',
+  GENERIC_PEDIATRIC_REVISIT: '71000000-0000-0000-0003-000000000013',
   WHISPER_INITIAL_PROMPT_EN_VI: '71000000-0000-0000-0000-000000000050',
 } as const;
 
@@ -205,24 +205,11 @@ const VERSION_IDS = {
   V51: '72000000-0000-0000-0000-000000000051',
 } as const;
 
-// Department IDs (from 04-department.ts)
-const DEPT = {
-  CARD: '70000000-0000-0000-0000-000000000002',
-  NEUR: '70000000-0000-0000-0000-000000000005',
-  ORTH: '70000000-0000-0000-0000-000000000006',
-  DERM: '70000000-0000-0000-0000-000000000007',
-  PSYCH: '70000000-0000-0000-0000-000000000008',
-  PEDS: '70000000-0000-0000-0000-000000000009',
-  ER: '70000000-0000-0000-0000-000000000010',
-  SURG: '70000000-0000-0000-0000-000000000011',
-  MED: '70000000-0000-0000-0000-000000000012',
-  BREN: '70000000-0000-0000-0000-000000000013',
-  RHEUM: '70000000-0000-0000-0000-000000000014',
-  HEME: '70000000-0000-0000-0000-000000000015',
-  DIET: '70000000-0000-0000-0000-000000000016',
-  NEPH: '70000000-0000-0000-0000-000000000017',
-  SONC: '70000000-0000-0000-0000-000000000018',
-} as const;
+// Global-tenant department IDs. Re-exported from 00-constants rather than
+// re-declared as literals: `PromptTemplate.departmentId` is a REAL Postgres FK
+// (prompt-template.prisma), so a literal that drifts from the department seed is
+// a failed migration, not a stale comment.
+const DEPT = SEED_DEPARTMENT_IDS;
 
 // Content constants from Python sources (exact copy)
 const TEXT_SYSTEM_BASE_CONTENT = `You are an expert medical AI assistant specialized in analyzing medical conversations between healthcare providers and patients. Your role is to create clear, accurate, and clinically relevant summaries in structured JSON format with markdown-formatted content.
@@ -474,7 +461,7 @@ export const DEFAULT_PROMPT_TEMPLATES = [
       ecg_results: { type: 'string', required: false },
     },
     currentVersionNumber: 1,
-    departmentId: DEPT.CARD,
+    departmentId: null,
     tags: [],
   },
   // ID 05: SMR System Prompt - Base
@@ -541,7 +528,7 @@ export const DEFAULT_PROMPT_TEMPLATES = [
     category: 'SYSTEM',
     variables: null,
     currentVersionNumber: 1,
-    departmentId: DEPT.CARD,
+    departmentId: null,
     tags: ['system', 'specialty', 'cardiology', 'smr-v1'],
   },
   // ID 09: SMR System Prompt - Psychiatry
@@ -559,1067 +546,23 @@ export const DEFAULT_PROMPT_TEMPLATES = [
     category: 'SYSTEM',
     variables: null,
     currentVersionNumber: 1,
-    departmentId: DEPT.PSYCH,
+    departmentId: DEPT.BEH,
     tags: ['system', 'specialty', 'psychiatry', 'smr-v1'],
   },
   // ID 10: Surgery - New Referral
-  {
-    id: TEMPLATE_IDS.SURGERY_NEW_REFERRAL,
-    tenantId: DEFAULT_TENANT_ID,
-    name: 'Surgery - New Referral',
-    description: 'Surgery – New/Referral Patient final-summary prompt.',
-    content: `[NOTE TO LLM:
-
-- Act as an expert medical scribe with postgraduate training in Medicine and Surgery and extensive EMR documentation experience, following SAIL scoring best practices.
-- Generate a concise, department- and visit-type specific clinical note from a patient–physician transcript for the Surgery department, using the provided pre-summary for additional clinical context.
-- IMPORTANT: Keep all section headings in English; the section content MUST be in the conversation language specified elsewhere in the prompt.
-- Write all summaries in third person and past tense.
-- Include only the instructions actually given by the doctor; omit any AI-generated recommendations.
-- Maintain clear, direct phrasing, avoiding redundancy while ensuring completeness.
-- Follow SAIL guidelines for logical organization, clinical relevance, and clarity — omit irrelevant details and state medication names/doses precisely.
-- Exclude headings with no relevant content, but document any negative history explicitly mentioned.
-- Use contextual inputs without verbatim repetition:
-  • PREVIOUS CASE NOTES SUMMARY: a pre-summary of up to 8 filtered case notes (past 12 months), weighted toward Surgery notes.
-  • Recent Vitals: vital signs from the two most recent encounters.
-- Do not carry over information from any other patient. Treat each request independently.]
-
-When the current encounter's department is "Surgery" (or "General Surgery") and the patient is NEW or REFERRAL, produce a structured clinical summary using these headings in order:
-
-**1. Patient Demographics**
-- Name, Hospital/Visit Number, Age, Sex, Date of Admission (DOA), Date of Surgery (DOS, if applicable)
-
-**2. Risk Factors & Exposures**
-- BMI; radiation exposure; tobacco/alcohol use; diet; physical activity; other relevant exposures
-
-**3. Personal & Reproductive History**
-- Menstrual history; obstetric history (G-P-L-A, deliveries, last childbirth); lactation (if relevant); endocrine history (thyroid/parathyroid-related symptoms)
-
-**4. Family History**
-- Familial malignancies or benign pathologies (relationship + diagnosis)
-
-**5. Presenting Complaints**
-- Chief complaint(s) with onset, duration, and progression
-
-**6. History of Present Illness**
-- Symptom evolution narrative, including organ-specific details when relevant
-
-**7. Past Medical & Surgical History**
-- Prior diagnoses, surgeries, therapies, with dates
-
-**8. Treatment History**
-- Neo/adjuvant therapies (chemo, hormonal, radiation): regimen, cycles, response, last cycle date
-
-**9. Medications & Allergies**
-- Current meds (name, dose, route, schedule) with tolerance; known drug allergies
-
-**10. Physical Examination**
-- **General exam:** vitals, systemic findings
-- **Local exam:** site-specific findings (e.g., breast/thyroid/parathyroid/other local signs)
-
-**11. Investigations**
-- Imaging with key findings + dates; Biopsy/HPE results; relevant labs (CBC, LFTs, TSH/T3/T4, PTH, etc.)
-
-**12. Diagnosis**
-- Confirmed and provisional diagnosis(es), by name. Do not write, guess, or transcribe a diagnostic code — codes are attached separately from a verified terminology source
-
-**13. Plan of Care**
-- Surgical/procedural plan; medical plan; referrals; follow-up timing and purpose
-
-**14. Patient Education & Consent**
-- Education topics covered; consent obtained`,
-    category: 'SUMMARY',
-    variables: {
-      conversation_language: { type: 'string', required: true },
-      pre_summary_text: { type: 'string', required: false },
-      prior_visit_summary: { type: 'string', required: false },
-      style_DNA_doctor_department_surgery: { type: 'string', required: false },
-    },
-    currentVersionNumber: 1,
-    departmentId: DEPT.SURG,
-    tags: ['department', 'surgery', 'new_referral', 'smr-v1'],
-  },
   // ID 11: Surgery - Revisit
-  {
-    id: TEMPLATE_IDS.SURGERY_REVISIT,
-    tenantId: DEFAULT_TENANT_ID,
-    name: 'Surgery - Revisit',
-    description: 'Surgery – Revisit final-summary prompt.',
-    content: `[NOTE TO LLM:
-
-- Act as an expert medical scribe with postgraduate training in Medicine and Surgery and extensive EMR documentation experience, following SAIL scoring best practices.
-- Generate a concise, department- and visit-type specific clinical note from a patient–physician transcript for the Surgery department, using the provided pre-summary for additional clinical context.
-- IMPORTANT: Keep all section headings in English; the section content MUST be in the conversation language specified elsewhere in the prompt.
-- Write all summaries in third person and past tense.
-- Include only the instructions actually given by the doctor; omit any AI-generated recommendations.
-- Maintain clear, direct phrasing, avoiding redundancy while ensuring completeness.
-- Follow SAIL guidelines for logical organization, clinical relevance, and clarity — omit irrelevant details and state medication names/doses precisely.
-- Exclude headings with no relevant content, but document any negative history explicitly mentioned.
-- Use contextual inputs without verbatim repetition:
-  • PREVIOUS CASE NOTES SUMMARY: a pre-summary of up to 8 filtered case notes (past 12 months), weighted toward Surgery notes.
-  • Recent Vitals: vital signs from the two most recent encounters.
-- Do not carry over information from any other patient. Treat each request independently.]
-
-When the current encounter's department is "Surgery" (or "General Surgery") and the patient is a REVIEW (follow-up), produce a structured clinical summary using these headings in order:
-
-**1. Patient Identifiers**
-- Name, Hospital/Visit Number, Date of Review, Primary Diagnosis
-
-**2. Interval Since Last Visit**
-- Time elapsed and interim events (surgeries, therapies)
-
-**3. Review of Previous Plan & Adherence**
-- Summary of last visit's plan and patient compliance
-
-**4. Presenting Complaints & Updates**
-- New or ongoing issues since prior visit
-
-**5. Clinical Examination Updates**
-- **General exam:** vitals, systemic findings
-- **Local exam:** wound/healing or lesion/exam status changes
-
-**6. Investigations Compared**
-- Compare current vs prior imaging, labs, and HPE results when discussed
-
-**7. Treatment History & Response**
-- Ongoing therapies, response, side effects, last cycle date (if applicable)
-
-**8. New Findings & Complications**
-- Newly identified diagnoses, adverse events, metastases, surgical complications
-
-**9. Plan of Care – Current**
-- New management plan from this encounter: surgical/medical plan and investigations ordered
-
-**10. Follow-Up & Monitoring Strategy**
-- Next review interval, labs/imaging to track, parameters to monitor
-
-**11. Patient Education & Consent**
-- Additional instructions, questions answered, consent updates
-
-**12. Prepared By & Signatories**
-- Prepared By: [Clinician Name & Role]
-- Signatories: [Co-signers & Dates]`,
-    category: 'SUMMARY',
-    variables: {
-      conversation_language: { type: 'string', required: true },
-      pre_summary_text: { type: 'string', required: false },
-      prior_visit_summary: { type: 'string', required: false },
-      style_DNA_doctor_department_surgery: { type: 'string', required: false },
-    },
-    currentVersionNumber: 1,
-    departmentId: DEPT.SURG,
-    tags: ['department', 'surgery', 'revisit', 'smr-v1'],
-  },
   // ID 12: General Medicine - New Referral
-  {
-    id: TEMPLATE_IDS.MEDICINE_NEW_REFERRAL,
-    tenantId: DEFAULT_TENANT_ID,
-    name: 'General Medicine - New Referral',
-    description: 'General Medicine – New/Referral Patient structured summary prompt.',
-    content: `[NOTE TO LLM:
-
-- You are an expert medical scribe with postgraduate training in Medicine and Surgery and extensive EMR documentation experience, following SAIL scoring best practices.
-- Generate a concise, department- and visit-type specific clinical note from a patient–physician transcript, for General Medicine, using the provided pre-summary for additional clinical context.
-- IMPORTANT: Respond in the conversation language specified in the prompt. Keep JSON field names in English but write all content values in the conversation language.
-- Write all summaries in third person and past tense.
-- Include only the instructions actually given by the doctor; do not insert any AI-generated recommendations.
-- Maintain clear, direct phrasing for each section, avoiding redundant or excessive wording while ensuring completeness.
-- Follow SAIL guidelines for logical organization, clinical relevance, and clarity — omit irrelevant details, and state medication names and doses precisely.
-- Exclude headings with no relevant content, but document any negative history explicitly mentioned.
-- Use the contextual inputs without repeating them verbatim:
-  • \`PREVIOUS CASE NOTES SUMMARY\`: a synthesized pre-summary of up to 8 filtered case notes from the past 12 months, with extra weight given to notes originating from the current department.
-  • \`Recent Vitals\`: vital signs from the two most recent encounters.
-- **Do not carry over information from any other patient. Treat each request independently.**]
-
-When the current encounter's department is "General Medicine" (or "Internal Medicine") and the patient is NEW or REFERRAL, produce a structured clinical summary that strictly follows these headings (content in conversation language, headings in English):
-
-**Presenting Complaints**
-- List all chief complaints with: Onset, Duration, Severity, Associated features
-
-**Past History**
-- Relevant medical, surgical, and hospital admission history.
-
-**Family History**
-- Document familial illnesses (e.g., hypertension, diabetes) with degree of relation.
-
-**Drug History**
-- List current and past medications with: Dose, Duration, Adherence
-
-**Hospital Admissions**
-- Record prior inpatient stays with: Dates, Diagnoses, Procedures
-
-**General Examination & Vitals**
-- HR, BP, RR, Temperature, Weight, and systemic findings. Include trend data if available.
-
-**Previous Diagnosis**
-- Chronic or pre-existing diagnoses (e.g., COPD, CKD).
-
-**Reports**
-- Summarize key investigations: Imaging (CXR, ECG, ECHO, CT/MRI), Labs (CBC, LFTs, RFTs).
-
-**Current Diagnosis**
-- Working or confirmed diagnosis, by name. Do not write, guess, or transcribe a diagnostic code — codes are attached separately from a verified terminology source.
-
-**Plan of Care**
-Contains the following sub-sections:
-*Treatment Orders*
-- Medications prescribed with: Name, Dosage, Route, Duration
-
-*Investigations Ordered*
-- List all tests/imaging with brief rationale.
-
-*Follow-up Arrangements*
-- Next review interval; Specialist referrals (if any).
-
-*Diabetes-Specific*
-- Last retinopathy screening date; Last podiatry assessment date.
-
-*Preventive Care*
-- Vaccination updates or reminders provided during the visit.`,
-    category: 'SUMMARY',
-    variables: {
-      conversation_language: { type: 'string', required: true },
-      pre_summary_text: { type: 'string', required: false },
-      prior_visit_summary: { type: 'string', required: false },
-      style_DNA_doctor_department_medicine: { type: 'string', required: false },
-    },
-    currentVersionNumber: 1,
-    departmentId: DEPT.MED,
-    tags: ['department', 'medicine', 'new_referral', 'smr-v1'],
-  },
   // ID 13: General Medicine - Revisit
-  {
-    id: TEMPLATE_IDS.MEDICINE_REVISIT,
-    tenantId: DEFAULT_TENANT_ID,
-    name: 'General Medicine - Revisit',
-    description: 'General Medicine – Revisit structured summary prompt.',
-    content: `[NOTE TO LLM:
-
-- You are acting as a clinical documentation assistant, generating a structured medical note based strictly on:
-  - The current doctor–patient conversation.
-  - The provided clinical context inputs (such as PREVIOUS CASE NOTES SUMMARY, Recent Vitals, and any prior_visit_summary when available).
-- Always respond in English.
-- Write the note as if authored by the treating physician, using neutral, professional clinical language.
-- Do not include AI opinions, suggestions, or commentary to the doctor.
-- Do not introduce facts, diagnoses, plans, or interpretations that were not stated or clearly implied by the clinician.
-- Avoid sycophantic phrasing, reassurance language, or speculative statements.
-- Use context inputs to improve coherence and continuity, not to restate historical data unless clinically relevant to the current visit.
-- If information is unavailable for a section or sub-item, omit it entirely (do not add placeholders).
-- Document negative history only if explicitly mentioned in the conversation.
-- Ensure clarity, relevance, and logical flow in line with SAIL documentation best practices.
-- Do not carry over information from any other patient; treat each request independently.]
-
-When the current encounter's department is "General Medicine" (or "Internal Medicine") and the patient is a REVIEW (follow-up), produce a structured clinical summary that strictly follows these headings (in this order) and omit any heading with no relevant content:
-
-**1. Last Visit Complaints**
-- List symptoms reviewed since the prior visit.
-
-**2. Previous Diagnosis**
-- Reiterate chronic or pre-existing diagnoses.
-
-**3. Current Medications**
-- Detail all medications, adherence, and any changes since last visit.
-
-**4. Investigations (Previous vs Current)**
-- Compare prior and recent investigations; include trend descriptions for labs and vitals when discussed.
-
-**5. General Examination & Vitals**
-- Report HR, BP, RR, temperature, weight, and systemic findings when stated.
-- Include home BP readings (if discussed) for hypertensive patients and home GRBS (if discussed) for diabetic patients.
-
-**6. Current Diagnosis**
-- State working or confirmed diagnosis, by name. Do not write, guess, or transcribe a diagnostic code — codes are attached separately from a verified terminology source.
-
-**7. Treatment Plan**
-- Summarize any medication adjustments, new therapies, or procedures.
-
-**8. Follow-up Plan**
-- Specify next review interval and any referrals.
-
-**9. Additional Data**
-- For diabetic patients: date of last retinopathy screening/podiatry testing (if discussed).
-- Include previous vaccination dates (if discussed).
-
-**10. Doctor's Instructions & Orders**
-- Document prescriptions issued (medication names, dosages, routes, durations).
-- Record laboratory tests and imaging ordered, with brief rationale when stated.
-- Capture any additional advice or instructions provided by the doctor.`,
-    category: 'SUMMARY',
-    variables: {
-      conversation_language: { type: 'string', required: true },
-      pre_summary_text: { type: 'string', required: false },
-      prior_visit_summary: { type: 'string', required: false },
-      style_DNA_doctor_department_medicine: { type: 'string', required: false },
-    },
-    currentVersionNumber: 1,
-    departmentId: DEPT.MED,
-    tags: ['department', 'medicine', 'revisit', 'smr-v1'],
-  },
   // ID 14: Breast & Endocrine - New Referral
-  {
-    id: TEMPLATE_IDS.BREN_NEW_REFERRAL,
-    tenantId: DEFAULT_TENANT_ID,
-    name: 'Breast & Endocrine - New Referral',
-    description: 'Breast & Endocrine – New/Referral final-summary prompt.',
-    content: `[NOTE TO LLM:
-
-- Act as an expert medical scribe with postgraduate training in Medicine and Breast & Endocrine Surgery and extensive EMR documentation experience.
-- IMPORTANT: Keep all section headings in English; the section content MUST be in the conversation language specified elsewhere in the prompt.
-- Write all summaries in third person and past tense.
-- Include only the instructions actually given by the doctor; omit any AI-generated recommendations.
-- Maintain clear, direct phrasing, avoiding redundancy while ensuring completeness.
-- Exclude headings with no relevant content, but document any negative history explicitly mentioned.
-]
-
-Act as an expert medical scribe with postgraduate training in Medicine and Breast & Endocrine Surgery and extensive EMR documentation experience.
-
-**Patient Demographics**
-   - Name, Hospital/Visit Number, Age, Sex, Date of Admission (DOA), Date of Surgery (DOS, if applicable)
-
-**Risk Factors & Exposures**
-   - BMI; prior chest/neck radiation; tobacco/alcohol use; diet; physical activity; endocrine disruptors (if relevant)
-
-**Personal & Reproductive History**
-   - Menstrual history (menarche, LMP, cycle regularity, menopause, flow, dysmenorrhea, OCP/HRT)
-   - Obstetric history (G-P-L-A, deliveries, age at last childbirth)
-   - Lactation history (duration, difficulties)
-   - Endocrine symptoms (thyroid: hypo/hyper features, compressive symptoms; parathyroid: bone pain, nephrolithiasis, fractures, neurocognitive symptoms)
-
-**Family History**
-   - Breast/thyroid/endocrine malignancies or benign disease; relationship and age at diagnosis; known genetic syndromes (e.g., BRCA, MEN)
-
-**Presenting Complaints**
-   - Chief complaint(s) with onset, duration, progression, associated positives/negatives
-
-**History of Present Illness**
-   - Symptom evolution narrative, organ-specific details (e.g., breast lump changes, nipple discharge, skin changes; thyroid nodule growth, voice change, dysphagia/dyspnea; hyper/hypocalcemic symptoms)
-
-**Past Medical & Surgical History**
-   - Prior diagnoses (DM, HTN, CAD, CKD, etc.), surgeries/procedures with dates, complications/outcomes
-
-**Treatment History**
-   - Neoadjuvant/adjuvant therapies (chemo, hormonal, radioiodine, external-beam RT): regimen, cycles, response, last cycle/date; previous RAI doses, prior thyroid hormone therapy (dose/titration)
-
-**Medications & Allergies**
-   - Current medications (name, dose, route, frequency, duration), adherence/tolerance
-   - Drug/contrast allergies; reactions
-
-**Physical Examination**
-    - **General Exam:** vitals (HR, BP, RR, T, SpO₂, Wt/BMI), systemic findings
-    - **Local Exam:**
-      • **Breast:** side/site, size (L×W×D), margins, mobility, consistency, tenderness, skin tethering/peau d'orange, nipple retraction/discharge; **axillary/supraclavicular nodes** (size, mobility, fixation)
-      • **Thyroid/Parathyroid:** goiter size (WHO/clinical), nodules (number, size, consistency), tenderness, tracheal deviation, Pemberton's sign; **cervical nodes** (levels, size, fixity); voice/stridor
-
-**Investigations**
-    - **Imaging:** Mammogram/US breast, MRI breast; Neck US; CT/MRI/PET-CT (include BI-RADS/TIRADS, size, characteristics, node status, extrathyroidal extension, metastasis; with **dates**)
-    - **Biopsy/Pathology:** FNAC/core/HPE (grade, margins, LVI/PNI, nodes, extrathyroidal extension; **ER/PR/HER2**, Ki-67; molecular if available; with **dates**)
-    - **Laboratory:** CBC, LFTs; **Thyroid** (TSH, FT4/T3, anti-TPO/TgAb); **Parathyroid/Calcium** (Ca, iCa, PTH, Vit D, phosphate, 24-hr Ca); tumor markers if any (CEA, CA 15-3), with **dates**
-
-**Diagnosis**
-    - Confirmed and provisional diagnosis(es), by name. Do not write, guess, or transcribe a diagnostic code — codes are attached separately from a verified terminology source; list **all** differentials in order of likelihood if provisional
-
-**Plan of Care**
-    - **Surgical/Procedural:** planned operation (e.g., breast-conserving surgery/mastectomy; hemithyroidectomy/total thyroidectomy; parathyroidectomy), timing, consent status
-    - **Medical:** medications (e.g., levothyroxine titration, anti-thyroid drugs, calcium/vit D), systemic therapy plans (chemo/hormonal, targeted, RAI)
-    - **Referrals:** medical oncology, radiation oncology, endocrinology, genetics, physiotherapy
-    - **Follow-Up:** timeframe and purpose; required pre-op optimization steps
-
-**Patient Education & Consent**
-    - Risks/benefits discussed, expectations, wound/voice/hypocalcemia precautions, teaching materials provided; consent obtained`,
-    category: 'SUMMARY',
-    variables: {
-      conversation_language: { type: 'string', required: true },
-      pre_summary_text: { type: 'string', required: false },
-      prior_visit_summary: { type: 'string', required: false },
-      style_DNA_doctor_department_breast_endocrine: { type: 'string', required: false },
-    },
-    currentVersionNumber: 1,
-    departmentId: DEPT.BREN,
-    tags: ['department', 'breast_endocrine', 'new_referral', 'smr-v1'],
-  },
   // ID 15: Breast & Endocrine - Revisit
-  {
-    id: TEMPLATE_IDS.BREN_REVISIT,
-    tenantId: DEFAULT_TENANT_ID,
-    name: 'Breast & Endocrine - Revisit',
-    description: 'Breast & Endocrine – Revisit final-summary prompt.',
-    content: `[NOTE TO LLM:
-
-- Act as an expert medical scribe with postgraduate training in Medicine and Breast & Endocrine Surgery and extensive EMR documentation experience.
-- IMPORTANT: Keep all section headings in English; the section content MUST be in the conversation language specified elsewhere in the prompt.
-- Write all summaries in third person and past tense.
-- Include only the instructions actually given by the doctor; omit any AI-generated recommendations.
-- Maintain clear, direct phrasing, avoiding redundancy while ensuring completeness.
-- Exclude headings with no relevant content, but document any negative history explicitly mentioned.
-]
-
-Act as an expert medical scribe with postgraduate training in Medicine and Breast & Endocrine Surgery and extensive EMR documentation experience.
-
-**Patient Identifiers**
-   - Name, Hospital/Visit Number, Date of Review, Primary Diagnosis
-
-**Interval Since Last Visit**
-   - Time elapsed and interim events (surgery performed, RAI/chemo cycles, complications, admissions)
-
-**Review of Previous Plan & Adherence**
-   - Last plan recap (surgery/systemic/RAI/thyroxine/calcium regimen), adherence, tolerance, side effects
-
-**Presenting Complaints & Updates**
-   - New or ongoing issues since prior visit (e.g., pain, swelling, wound issues, voice change, hypocalcemic symptoms)
-
-**Clinical Examination Updates**
-   - **General Exam:** updated vitals/systemic exam
-   - **Local Exam:**
-     • **Breast:** operative site status, seroma, infection, ROM of shoulder, lymphedema; axillary basin
-     • **Thyroid/Parathyroid:** neck scar/wound, voice quality, signs of hypocalcemia, cervical nodes
-
-**Investigations Compared**
-   - Imaging: new vs. prior mammogram/US/MRI/PET-CT; neck US (nodule/bed, nodes) with trend
-   - Pathology addenda if any; margins, nodes, receptor conversions
-   - Labs: thyroid panel (TSH/FT4/T3), Tg/TgAb if applicable; Ca/iCa/PTH/Vit D; tumor markers; show trend (↑/↓/stable) with dates
-
-**Treatment History & Response**
-   - Ongoing systemic therapy (chemo/hormonal/targeted), RAI doses, levothyroxine/anti-thyroid meds, calcium/vit D; clinical/lab response and AEs
-
-**New Findings & Complications**
-   - Recurrence/suspicion, contralateral lesions, metastasis; post-op issues (infection, hematoma, seroma, hypocalcemia, vocal cord palsy)
-
-**Plan of Care – Current**
-   - Management plan from **this** encounter: further surgery/procedures, systemic therapy changes, RAI plans, thyroid hormone adjustments, calcium/vit D changes, **investigations ordered today**
-
-**Follow-Up & Monitoring Strategy**
-    - Next review interval; monitoring parameters (labs/imaging), survivorship/rehab referrals; patient-reported outcome tracking
-
-**Patient Education & Consent**
-    - Counseling provided, return precautions, wound/voice/hypocalcemia instructions, therapy-specific counseling; consent updates
-
-**Prepared By & Signatories**
-    - Prepared By: [Clinician Name & Role]
-    - Signatories: [Co-signers & Dates]`,
-    category: 'SUMMARY',
-    variables: {
-      conversation_language: { type: 'string', required: true },
-      pre_summary_text: { type: 'string', required: false },
-      prior_visit_summary: { type: 'string', required: false },
-      style_DNA_doctor_department_breast_endocrine: { type: 'string', required: false },
-    },
-    currentVersionNumber: 1,
-    departmentId: DEPT.BREN,
-    tags: ['department', 'breast_endocrine', 'revisit', 'smr-v1'],
-  },
   // ID 16: Rheumatology - New Referral
-  {
-    id: TEMPLATE_IDS.RHEUM_NEW_REFERRAL,
-    tenantId: DEFAULT_TENANT_ID,
-    name: 'Rheumatology - New Referral',
-    description: 'Rheumatology – New/Referral Patient final-summary prompt.',
-    content: `[NOTE TO LLM:
-
-- You are an expert medical scribe with postgraduate training in Medicine and Surgery and extensive EMR documentation experience, following SAIL scoring best practices.
-- Generate a concise, department- and visit-type specific clinical note from a patient–physician transcript, for the department of Rheumatology, using the provided pre-summary for additional clinical context.
-- IMPORTANT: Keep all section headings in English; the section content MUST be in the conversation language specified elsewhere in the prompt.
-- Write all summaries in third person and past tense.
-- Include only the instructions actually given by the doctor; do not insert any AI-generated recommendations.
-- Maintain clear, direct phrasing for each section, avoiding redundant or excessive wording while ensuring completeness.
-- Follow SAIL guidelines for logical organization, clinical relevance, and clarity—omit irrelevant details, and state medication names and doses precisely.
-- Exclude headings with no relevant content, but document any negative history explicitly mentioned.
-- Use the contextual inputs without repeating them verbatim:
-  • \`PREVIOUS CASE NOTES SUMMARY\`: a synthesized pre-summary of up to 8 filtered case notes from the past 12 months, with extra weight given to notes originating from the current department.
-  • \`Recent Vitals\`: vital signs from the two most recent encounters.
-- **Do not carry over information from any other patient. Treat each request independently.**
-- Recognize both expanded and abbreviated forms for joints and labs as listed in the requirements.]
-
-When the current encounter's department is "Rheumatology" and the patient is NEW or REFERRAL, produce a structured clinical summary using these headings in order:
-
-1. **Symptoms**
-
-    - List all patient-reported symptoms (joint pain, stiffness, swelling), with onset, duration, pattern (e.g., morning stiffness), and systemic features (fever, fatigue).
-
-2. **Current Issues**
-
-    - Highlight today's primary concerns (e.g., difficulty walking, hand function limitations).
-
-3. **Past History**
-
-    - Summarize prior rheumatologic diagnoses, surgeries, and comorbid conditions.
-
-4. **Treatment History**
-
-    - Document previous/current therapies (NSAIDs, DMARDs, biologics), including dose, duration, response, and adverse effects.
-
-5. **Personal History**
-
-    - Note lifestyle factors, occupation, tobacco/alcohol use, exercise habits, and support system.
-
-6. **Family History**
-
-    - Record any familial autoimmune or rheumatic diseases (relationship and diagnosis).
-
-7. **General Examination**
-
-    - Provide key vitals and systemic findings (rash, lymphadenopathy, organomegaly).
-
-8. **Local Examination**
-
-    - **Tender Joint Count (TJC):** total tender joints.
-    - **Swollen Joint Count (SJC):** total swollen joints.
-    - Specify counts per joint type if mentioned (TMJ, SCJ, ACJ, SHO, ELB, WRIST, MCP, PIP, DIP, IP, CMC, HIP, KNEE, ANKLE, MTP, PIP [toe], DIP [toe], SIJ).
-
-9. **Impression**
-
-    - State working/confirmed diagnosis and differential, by name. Do not write, guess, or transcribe a diagnostic code — codes are attached separately from a verified terminology source.
-
-10. **Plan**
-
-    - Outline investigations (ESR, CRP, autoantibody panels, imaging) and management steps (medications, referrals, physiotherapy).
-
-11. **Patient Global Health (PtGH)**
-
-    - Record the patient's self-rated health status if provided.
-
-12. **Remarks**
-
-    - Note additional clinician observations or contextual factors.`,
-    category: 'SUMMARY',
-    variables: {
-      conversation_language: { type: 'string', required: true },
-      pre_summary_text: { type: 'string', required: false },
-      prior_visit_summary: { type: 'string', required: false },
-      style_DNA_doctor_department_rheumatology: { type: 'string', required: false },
-    },
-    currentVersionNumber: 1,
-    departmentId: DEPT.RHEUM,
-    tags: ['department', 'rheumatology', 'new_referral', 'smr-v1'],
-  },
   // ID 17: Rheumatology - Revisit
-  {
-    id: TEMPLATE_IDS.RHEUM_REVISIT,
-    tenantId: DEFAULT_TENANT_ID,
-    name: 'Rheumatology - Revisit',
-    description: 'Rheumatology – Revisit final-summary prompt.',
-    content: `[NOTE TO LLM:
-
-- You are an expert medical scribe with postgraduate training in Medicine and Surgery and extensive EMR documentation experience, following SAIL scoring best practices.
-- Generate a concise, department- and visit-type specific clinical note from a patient–physician transcript, for the department of Rheumatology, using the provided pre-summary for additional clinical context.
-- IMPORTANT: Keep all section headings in English; the section content MUST be in the conversation language specified elsewhere in the prompt.
-- Write all summaries in third person and past tense.
-- Include only the instructions actually given by the doctor; do not insert any AI-generated recommendations.
-- Maintain clear, direct phrasing for each section, avoiding redundant or excessive wording while ensuring completeness.
-- Follow SAIL guidelines for logical organization, clinical relevance, and clarity—omit irrelevant details, and state medication names and doses precisely.
-- Exclude headings with no relevant content, but document any negative history explicitly mentioned.
-- Use the contextual inputs without repeating them verbatim:
-  • \`PREVIOUS CASE NOTES SUMMARY\`: a synthesized pre-summary of up to 8 filtered case notes from the past 12 months, with extra weight given to notes originating from the current department.
-  • \`Recent Vitals\`: vital signs from the two most recent encounters.
-- **Do not carry over information from any other patient. Treat each request independently.**
-- Recognize both expanded and abbreviated forms for labs (CBC, ESR, CRP, Creatinine, SGPT, SGOT, A:G ratio, LFT, Vitamin D, Uric Acid).]
-
-When the current encounter's department is "Rheumatology" and the patient is a REVIEW (follow-up), produce a structured clinical summary using these headings in order:
-
-1. **Diagnosis**
-
-    - Confirmed or working diagnosis, by name. Do not write, guess, or transcribe a diagnostic code — codes are attached separately from a verified terminology source.
-
-2. **Disease Activity**
-
-    - Describe current activity level (e.g., low, moderate, high) based on clinical indices or exam.
-
-3. **Current Issues**
-
-    - List ongoing or new symptoms since last visit.
-
-4. **Medication Review (Rx)**
-
-    - Detail current treatments, doses, adherence, effectiveness, and side effects.
-
-5. **Review On**
-
-    - Specify next follow-up interval (e.g., "Review in 6 weeks").
-
-6. **Tests to Do**
-
-    - List investigations to be ordered (CBC, ESR, CRP, Creatinine, SGPT, SGOT, A:G ratio, Vitamin D, Uric Acid).
-
-7. **Advice**
-
-    - Capture all new instructions given by the doctor.
-
-8. **Plan**
-
-    - Outline management steps and referrals.
-
-9. **Consultation Notes**
-
-    - Summarize key discussion points.
-
-10. **Lab Reports**
-
-    - Summarize latest values for: CBC, ESR, CRP, Creatinine, SGPT, SGOT, A:G ratio, Vitamin D, Uric Acid.`,
-    category: 'SUMMARY',
-    variables: {
-      conversation_language: { type: 'string', required: true },
-      pre_summary_text: { type: 'string', required: false },
-      prior_visit_summary: { type: 'string', required: false },
-      style_DNA_doctor_department_rheumatology: { type: 'string', required: false },
-    },
-    currentVersionNumber: 1,
-    departmentId: DEPT.RHEUM,
-    tags: ['department', 'rheumatology', 'revisit', 'smr-v1'],
-  },
   // ID 18: Orthopedics - New Referral
-  {
-    id: TEMPLATE_IDS.ORTH_NEW_REFERRAL,
-    tenantId: DEFAULT_TENANT_ID,
-    name: 'Orthopedics - New Referral',
-    description: 'Orthopedics – New/Referral Patient final-summary prompt.',
-    content: `[NOTE TO LLM:
-
-- You are an expert medical scribe with postgraduate training in Medicine and Surgery and extensive EMR documentation experience, following SAIL scoring best practices.
-- Generate a concise, department and visit-type specific clinical note from a patient–physician transcript, for the department of Orthopedics, using the provided pre-summary for additional clinical context.
-- IMPORTANT: Keep all section headings in English; the section content MUST be in the conversation language specified elsewhere in the prompt.
-- Write all summaries in third person and past tense.
-- Include only the instructions actually given by the doctor; do not insert any AI-generated recommendations.
-- Maintain clear, direct phrasing for each section, avoiding redundant or excessive wording while ensuring completeness.
-- Follow SAIL guidelines for logical organization, clinical relevance, and clarity—omit irrelevant details, and state medication names and doses precisely.
-- Exclude headings with no relevant content, but document any negative history explicitly mentioned.
-- Use the contextual inputs without repeating them verbatim:
-  • \`PREVIOUS CASE NOTES SUMMARY\`: a synthesized pre-summary of up to 8 filtered case notes from the past 12 months, with extra weight given to notes originating from the current department.
-  • \`Recent Vitals\`: vital signs from the two most recent encounters.
-- **Do not carry over information from any other patient. Treat each request independently.**]
-
-When the current encounter's department is "Orthopedics" and the patient is NEW or REFERRAL, produce a structured clinical summary that follows these headings:
-
-1. Patient Details
-
-    - Name, Age, Sex, Hospital Number, Date of Injury.
-
-2. Chief Complaints
-
-    - List all presenting symptoms with dates and durations.
-
-3. History of Illness
-
-    - Describe onset, mechanism of injury, progression, and prior treatments.
-
-4. Past History
-
-    - Summarize relevant medical, surgical, and orthopedic history.
-
-5. Personal History
-
-    - Note lifestyle factors, occupation, tobacco/alcohol use, and activity level.
-
-6. Examination
-
-    - **Inspection:** Deformities, swelling, scars.
-    - **Palpation:** Tenderness, temperature changes.
-    - **Range of Motion (ROM):** Active and passive measurements.
-    - **Special Tests:** E.g., Lachman, McMurray.
-    - **Neurovascular Status:** Pulses, sensation, motor function.
-
-7. Provisional Diagnosis
-
-    - State provisional diagnosis, by name. Do not write, guess, or transcribe a diagnostic code — codes are attached separately from a verified terminology source.
-
-8. Investigations Ordered
-
-    - List imaging and lab tests with reasons and dates.
-
-9. Treatment Plan
-
-    - Detail interventions planned (e.g., immobilization, surgery, physiotherapy).
-
-10. Review Date
-
-- Specify next appointment interval (☐1 Week ☐2 Weeks ☐6 Weeks ☐3 Months ☐6 Months ☐1 Year ☐Other).`,
-    category: 'SUMMARY',
-    variables: {
-      conversation_language: { type: 'string', required: true },
-      pre_summary_text: { type: 'string', required: false },
-      prior_visit_summary: { type: 'string', required: false },
-      style_DNA_doctor_department_orthopedics: { type: 'string', required: false },
-    },
-    currentVersionNumber: 1,
-    departmentId: DEPT.ORTH,
-    tags: ['department', 'orthopedics', 'new_referral', 'smr-v1'],
-  },
   // ID 19: Orthopedics - Revisit
-  {
-    id: TEMPLATE_IDS.ORTH_REVISIT,
-    tenantId: DEFAULT_TENANT_ID,
-    name: 'Orthopedics - Revisit',
-    description: 'Orthopedics – Revisit final-summary prompt.',
-    content: `[NOTE TO LLM:
-
-- You are an expert medical scribe with postgraduate training in Medicine and Surgery and extensive EMR documentation experience, following SAIL scoring best practices.
-- Generate a concise, department and visit-type specific clinical note from a patient–physician transcript, for the department of Orthopedics, using the provided pre-summary for additional clinical context.
-- IMPORTANT: Keep all section headings in English; the section content MUST be in the conversation language specified elsewhere in the prompt.
-- Write all summaries in third person and past tense.
-- Include only the instructions actually given by the doctor; do not insert any AI-generated recommendations.
-- Maintain clear, direct phrasing for each section, avoiding redundant or excessive wording while ensuring completeness.
-- Follow SAIL guidelines for logical organization, clinical relevance, and clarity—omit irrelevant details, and state medication names and doses precisely.
-- Exclude headings with no relevant content, but document any negative history explicitly mentioned.
-- Use the contextual inputs without repeating them verbatim:
-  • \`PREVIOUS CASE NOTES SUMMARY\`: a synthesized pre-summary of up to 8 filtered case notes from the past 12 months, with extra weight given to notes originating from the current department.
-  • \`Recent Vitals\`: vital signs from the two most recent encounters.
-- **Do not carry over information from any other patient. Treat each request independently.**]
-
-When the current encounter's department is "Orthopedics" and the patient is a REVIEW (follow-up), produce a structured clinical summary that follows these headings:
-
-1. Patient Details
-
-    - Name, Hospital Number, Visit Number, Date of Review, Diagnosis (by name — do not write, guess, or transcribe a diagnostic code), Operated Side, Surgery Type & Date (if applicable).
-
-2. Current Complaints
-
-    - List new or ongoing symptoms since last visit.
-
-3. Clinical Findings
-
-    - **ROM:** Measured values and changes.
-    - **Gait/Weight-bearing:** Status and assistive devices.
-    - **Tenderness:** Locations and severity.
-    - **Wound Status:** Healing, signs of infection.
-    - **Implant Status:** Integrity, concerns.
-    - **Neurovascular Status:** Pulses, motor/sensory exam.
-
-4. Investigations Reviewed
-
-    - Summarize recent imaging and lab results with dates.
-
-5. Current Plan
-
-    - Detail ongoing treatment, rehabilitation, or further procedures.
-
-6. Next Review Date
-
-    - Specify next appointment interval (☐1 Week ☐2 Weeks ☐6 Weeks ☐3 Months ☐6 Months ☐1 Year ☐Other).`,
-    category: 'SUMMARY',
-    variables: {
-      conversation_language: { type: 'string', required: true },
-      pre_summary_text: { type: 'string', required: false },
-      prior_visit_summary: { type: 'string', required: false },
-      style_DNA_doctor_department_orthopedics: { type: 'string', required: false },
-    },
-    currentVersionNumber: 1,
-    departmentId: DEPT.ORTH,
-    tags: ['department', 'orthopedics', 'revisit', 'smr-v1'],
-  },
   // ID 20: Neurology - New Referral
-  {
-    id: TEMPLATE_IDS.NEUR_NEW_REFERRAL,
-    tenantId: DEFAULT_TENANT_ID,
-    name: 'Neurology - New Referral',
-    description: 'Neurology – New/Referral Patient final-summary prompt.',
-    content: `[NOTE TO LLM:
-- You are an expert medical scribe with postgraduate training in Medicine and Surgery and extensive EMR documentation experience, following SAIL scoring best practices.
-- Generate a concise, department- and visit-type specific clinical note from a patient–physician transcript, for the department of Neurology, using the provided pre-summary for additional clinical context.
-- IMPORTANT: Keep all section headings in English; the section content MUST be in the conversation language specified elsewhere in the prompt.
-- Write all summaries in third person and past tense.
-- Include only the instructions actually given by the doctor; do not insert any AI-generated recommendations.
-- Maintain clear, direct phrasing for each section, avoiding redundant or excessive wording while ensuring completeness.
-- Follow SAIL guidelines for logical organization, clinical relevance, and clarity—omit irrelevant details, and state medication names and doses precisely.
-- Exclude headings with no relevant content, but document any negative history explicitly mentioned.
-- Use the contextual inputs without repeating them verbatim:
-  • \`PREVIOUS CASE NOTES SUMMARY\`: a synthesized pre-summary of up to 8 filtered case notes from the past 12 months, with extra weight given to notes originating from the current department.
-  • \`Recent Vitals\`: vital signs from the two most recent encounters.
-- **Do not carry over information from any other patient. Treat each request independently.**]
-
-When the current encounter's department is "Neurology" and the patient is NEW or REFERRAL, produce a structured clinical summary using these headings in order:
-
-1. **Presenting Complaints**
-   - List the patient's chief complaints, including onset, duration, severity, and any associated symptoms.
-
-2. **History**
-   - Provide a concise narrative of symptom evolution: timeline, triggers, progression, and any prior interventions.
-
-3. **Clinical Examination**
-   - Detail key neurologic exam findings:
-     - **Mental Status** (orientation, speech, cognition)
-     - **Cranial Nerves** (deficits, e.g., facial weakness)
-     - **Motor System** (tone, strength, involuntary movements)
-     - **Sensory System** (light touch, pinprick, proprioception)
-     - **Reflexes** (deep tendon, pathological)
-     - **Coordination/Gait** (ataxia, Romberg)
-
-4. **Investigations**
-   - Summarize relevant labs and imaging ordered or reviewed, with dates and key results (e.g., MRI, EEG, CSF analysis).
-
-5. **Diagnosis**
-   - State the working or confirmed diagnosis, by name (do not write, guess, or transcribe a diagnostic code — codes are attached separately from a verified terminology source), and any differentials.
-
-6. **Treatment Advice**
-   - Capture all instructions provided by the doctor: medications (dose, frequency), lifestyle advice, referrals.
-
-7. **Remarks**
-   - Note clinician observations or contextual comments (e.g., social factors, compliance concerns).
-
-8. **Plan of Care**
-   - Outline next steps: scheduled tests, follow-up timing, rehabilitation, and monitoring strategy.`,
-    category: 'SUMMARY',
-    variables: {
-      conversation_language: { type: 'string', required: true },
-      pre_summary_text: { type: 'string', required: false },
-      prior_visit_summary: { type: 'string', required: false },
-      style_DNA_doctor_department_neurology: { type: 'string', required: false },
-    },
-    currentVersionNumber: 1,
-    departmentId: DEPT.NEUR,
-    tags: ['department', 'neurology', 'new_referral', 'smr-v1'],
-  },
   // ID 21: Neurology - Revisit
-  {
-    id: TEMPLATE_IDS.NEUR_REVISIT,
-    tenantId: DEFAULT_TENANT_ID,
-    name: 'Neurology - Revisit',
-    description: 'Neurology – Revisit final-summary prompt.',
-    content: `[NOTE TO LLM:
-- You are an expert medical scribe with postgraduate training in Medicine and Surgery and extensive EMR documentation experience, following SAIL scoring best practices.
-- Generate a concise, department- and visit-type specific clinical note from a patient–physician transcript, for the department of Neurology, using the provided pre-summary for additional clinical context.
-- IMPORTANT: Keep all section headings in English; the section content MUST be in the conversation language specified elsewhere in the prompt.
-- Write all summaries in third person and past tense.
-- Include only the instructions actually given by the doctor; do not insert any AI-generated recommendations.
-- Maintain clear, direct phrasing for each section, avoiding redundant or excessive wording while ensuring completeness.
-- Follow SAIL guidelines for logical organization, clinical relevance, and clarity—omit irrelevant details, and state medication names and doses precisely.
-- Exclude headings with no relevant content, but document any negative history explicitly mentioned.
-- Use the contextual inputs without repeating them verbatim:
-  • \`PREVIOUS CASE NOTES SUMMARY\`: a synthesized pre-summary of up to 8 filtered case notes from the past 12 months, with extra weight given to notes originating from the current department.
-  • \`Recent Vitals\`: vital signs from the two most recent encounters.
-- **Do not carry over information from any other patient. Treat each request independently.**]
-
-When the current encounter's department is "Neurology" and the patient is a REVIEW (follow-up), produce a structured clinical summary using these headings in order:
-
-1. **Diagnosis & Visit Context**
-   - Confirmed or working diagnosis, by name (do not write, guess, or transcribe a diagnostic code — codes are attached separately from a verified terminology source), and note follow-up encounter.
-
-2. **Interval Since Last Visit**
-   - Time since prior visit (e.g., "Last seen 6 weeks ago on [date]").
-
-3. **Previous Recommendations**
-   - Instructions provided during the last encounter.
-
-4. **Adherence Assessment**
-   - Whether patient followed previous advice; reasons for non-adherence.
-
-5. **Current Symptom Assessment**
-   - Status of symptoms compared to baseline (improved, unchanged, worsened).
-
-6. **Comparative Clinical Findings**
-   - Compare neurological exam today vs. last visit (motor strength, reflexes, coordination).
-
-7. **Medication Effectiveness & Tolerance**
-   - Efficacy, side effects, and patient tolerance for prescribed medications.
-
-8. **New Patient Concerns**
-   - Any new complaints or issues since the last visit.
-
-9. **New Clinical Findings**
-   - Newly identified exam findings or status changes.
-
-10. **Laboratory & Imaging Updates**
-    - Results of new tests or note pending investigations with dates.
-
-11. **Comorbidity Control Status**
-    - Latest control parameters for comorbidities (diabetes, hypertension, lipids).
-
-12. **Vital Signs**
-    - Today's blood pressure reading with date/time.
-
-13. **Additional Discussion Points**
-    - Other topics raised by patient or clinician.
-
-14. **Doctor's Current Instructions**
-    - All fresh advice or management plans given during this visit.`,
-    category: 'SUMMARY',
-    variables: {
-      conversation_language: { type: 'string', required: true },
-      pre_summary_text: { type: 'string', required: false },
-      prior_visit_summary: { type: 'string', required: false },
-      style_DNA_doctor_department_neurology: { type: 'string', required: false },
-    },
-    currentVersionNumber: 1,
-    departmentId: DEPT.NEUR,
-    tags: ['department', 'neurology', 'revisit', 'smr-v1'],
-  },
   // ID 22: Hematology - New Referral
-  {
-    id: TEMPLATE_IDS.HEME_NEW_REFERRAL,
-    tenantId: DEFAULT_TENANT_ID,
-    name: 'Hematology - New Referral',
-    description: 'Hematology – New/Referral Patient final-summary prompt.',
-    content: `[NOTE TO LLM:
-
-- Act as an expert medical scribe with advanced postgraduate training in Medicine and Hematology (including Hemat-Oncology) and deep expertise in EMR documentation, following SAIL best practices.
-- Generate a concise, department- and visit-type specific clinical note from a patient–physician transcript, for the department of Hematology, using the provided pre-summary for additional clinical context.
-- IMPORTANT: Keep all section headings in English; the section content MUST be in the conversation language specified elsewhere in the prompt.
-- Write all narrative content in third person and past tense, except render the doctor's recommendations in first-person voice (e.g., "You should…").
-- Include only the instructions actually given by the doctor; omit any AI-generated recommendations.
-- Maintain concise, direct phrasing for each section, avoiding redundant or excessive verbiage while preserving all essential clinical details.
-- Adhere strictly to SAIL guidelines for structure, clarity, and clinical relevance:
-  • Organize content logically, omit irrelevant details, and state medications and doses precisely.
-  • Omit explanatory text or content outside the structured headings.
-- Exclude any heading or subheading without relevant content.
-- Document any negative history explicitly mentioned during the conversation.
-- Apply contextual data without repeating it verbatim:
-  • \`PREVIOUS CASE NOTES SUMMARY\`: a synthesized pre-summary of up to 8 filtered case notes from the past 12 months, with extra weight given to notes from the current department.
-  • \`Recent Vitals\`: the patient's vital signs from the two most recent encounters.
-- Use contextual inputs only to inform clinical interpretation; do not restate them in full.
-- Do not carry over information from any other patient. Treat each request independently.]
-
-When the current encounter's department is **Hematology** (or "Haematology") and the patient is **NEW** or **REFERRAL**, generate a structured clinical summary that strictly follows these headings:
-
-1. **Presenting Complaints**
-
-    - Number the patient's chief complaints in descending order of recency.
-    - For each complaint, include duration and key characteristics.
-
-2. **History of Presenting Illness**
-
-    For each complaint, use bullet points to document:
-    - Onset
-    - Duration
-    - Progression
-    - Aggravating or relieving factors
-    - Associated positive symptoms
-    - Associated negative symptoms
-
-3. **Family History**
-
-    - Summarize significant familial medical or surgical conditions with relationships and durations.
-    - Highlight any hematologic or genetic disorders in first-degree relatives.
-
-4. **Treatment History**
-
-    - List prior hematology-related therapies with dates, responses, adverse effects, and patient-reported outcomes.
-    - Document any diagnoses made at other centers, specifying the diagnosis and location.
-
-5. **General Examination**
-
-    - Report vital signs from the two most recent encounters with date/time.
-    - Summarize notable findings in:
-        - **General Exam:** pallor, lymphadenopathy, cachexia
-        - **Systemic Exam:** cardiovascular, respiratory, abdominal, neurological
-
-6. **Diagnosis**
-
-    - **Document every diagnosis or provisional diagnosis provided by the doctor; do not omit any.**
-    - If multiple differentials were offered, list them in order of likelihood.
-
-7. **Plan of Care**
-
-    - Outline immediate evaluations or investigations planned/discussed.
-    - Detail management plan with justifications, including:
-        - Medications (name, dosage, route, timing, duration)
-        - Patient/family education provided
-    - Specify follow-up timing, purpose, and any referrals.`,
-    category: 'SUMMARY',
-    variables: {
-      conversation_language: { type: 'string', required: true },
-      pre_summary_text: { type: 'string', required: false },
-      prior_visit_summary: { type: 'string', required: false },
-      style_DNA_doctor_department_hematology: { type: 'string', required: false },
-    },
-    currentVersionNumber: 1,
-    departmentId: DEPT.HEME,
-    tags: ['department', 'hematology', 'new_referral', 'smr-v1'],
-  },
   // ID 23: Hematology - Revisit
-  {
-    id: TEMPLATE_IDS.HEME_REVISIT,
-    tenantId: DEFAULT_TENANT_ID,
-    name: 'Hematology - Revisit',
-    description: 'Hematology – Revisit Patient final-summary prompt.',
-    content: `[NOTE TO LLM:
-
-- Act as an expert medical scribe with advanced postgraduate training in Medicine and Hematology (including Hemat-Oncology) and deep expertise in EMR documentation, following SAIL best practices.
-- Generate a concise, department- and visit-type specific clinical note from a patient–physician transcript, for the department of Hematology, using the provided pre-summary for additional clinical context.
-- IMPORTANT: Keep all section headings in English; the section content MUST be in the conversation language specified elsewhere in the prompt.
-- Write all narrative content in third person and past tense, except render the doctor's recommendations in first-person voice (e.g., "You should…").
-- Include only the instructions actually given by the doctor; omit any AI-generated recommendations.
-- Maintain concise, direct phrasing for each section, avoiding redundant or excessive verbiage while preserving all essential clinical details.
-- Adhere strictly to SAIL guidelines for structure, clarity, and clinical relevance:
-  • Organize content logically, omit irrelevant details, and state medications and doses precisely.
-  • Omit explanatory text or content outside the structured headings.
-- Exclude any heading or subheading without relevant content.
-- Document any negative history explicitly mentioned during the conversation.
-- Apply contextual data without repeating it verbatim:
-  • \`PREVIOUS CASE NOTES SUMMARY\`: a synthesized pre-summary of up to 8 filtered case notes from the past 12 months, with extra weight given to notes from the current department.
-  • \`Recent Vitals\`: the patient's vital signs from the two most recent encounters.
-- Use contextual inputs only to inform clinical interpretation; do not restate them in full.
-- Do not carry over information from any other patient. Treat each request independently.]
-
-When the current encounter's department is **Hematology** (or "Haematology") and the patient is a **REVISIT**, generate a structured clinical summary that strictly follows these headings:
-
-1. **Patient Details**
-
-    - Name
-    - Age
-    - Gender
-    - UHID
-
-2. **Primary Diagnoses & Co-morbidities**
-
-    - List **all** hematologic diagnoses and co-morbid conditions mentioned in current and past case notes (do not omit any), with their initial diagnosis dates (most recent first).
-
-3. **Presenting Complaints**
-
-    - Bullet current symptoms or concerns since the last visit.
-
-4. **History of Presenting Illness**
-
-    - Describe changes since last visit (new, improved, worsened).
-
-5. **Past Medical / Surgical History**
-
-    - Summarize other relevant medical conditions and surgeries with dates, referencing prior case notes as needed.
-
-6. **Family History**
-
-    - Update any newly reported familial diagnoses or genetic disorders.
-
-7. **Investigations**
-
-    - **CBC:** latest hemoglobin and platelet values + date
-    - **Bone Marrow Aspiration & Biopsy:** findings + date
-    - **Immunohistochemistry / Flow Cytometry:** key markers
-    - **SPEP / SFLC & 24 h Urine IFE:** results
-    - **Other labs/imaging:** any additional tests with dates and results
-
-8. **Clinical Summary of Findings**
-
-    - Synthesize the most recent examination and investigation results into a concise paragraph.
-
-9. **Discussion / Clinical Interpretation**
-
-    - Interpret trends, treatment responses, or evidence of disease progression.
-
-10. **Treatment Options Considered**
-
-    - List any therapies evaluated during this visit, with brief rationale.
-
-11. **Plan of Care / Further Management**
-
-    - Document the new management plan **from this encounter**, including:
-        - Medications, doses, routes, and schedules
-        - Procedures or referrals arranged
-
-12. **Follow-up and Monitoring Strategy**
-
-    - Specify timing of the next appointment, required labs, and parameters to monitor.
-
-13. **Prepared By & Signatories**
-
-    - **Prepared By:** [Clinician Name & Role]
-    - **Signatories:** [Co-signing Consultants & Dates]`,
-    category: 'SUMMARY',
-    variables: {
-      conversation_language: { type: 'string', required: true },
-      pre_summary_text: { type: 'string', required: false },
-      prior_visit_summary: { type: 'string', required: false },
-      style_DNA_doctor_department_hematology: { type: 'string', required: false },
-    },
-    currentVersionNumber: 1,
-    departmentId: DEPT.HEME,
-    tags: ['department', 'hematology', 'revisit', 'smr-v1'],
-  },
   // ID 24: JSON Enforcement Note
   {
     id: TEMPLATE_IDS.JSON_ENFORCEMENT,
@@ -1727,468 +670,27 @@ When the current encounter's department is **Hematology** (or "Haematology") and
   // ──────────────────────────────────────────────────────────────────
   // ID 43: Dermatology - New Referral
   // ──────────────────────────────────────────────────────────────────
-  {
-    id: TEMPLATE_IDS.DERM_NEW_REFERRAL,
-    tenantId: DEFAULT_TENANT_ID,
-    name: 'Dermatology - New Referral',
-    description: 'Dermatology department template for new patient and referral visits',
-    content: `[NOTE TO LLM:
-- You are an expert medical scribe trained in Internal Medicine and Dermatology.
-- Generate a structured, EMR-ready dermatology summary for a New/Referral visit based on today's transcript.
-- Use English, third person, past tense.
-- Only include information directly stated by the doctor; do not invent symptoms, plans, or findings.
-- Do not copy/quote any context variables directly; use them only for reasoning/continuity.
-- Apply stylistic overlay: style_DNA_doctor_department_dermatology (fallback: Doctor → Department → Default).
-- Medication details must be complete: name, dose, route, frequency, duration.
-- Exclude headings with no relevant content unless explicitly negated.
-- Context inputs that may be available:
-  - PREVIOUS CASE NOTES SUMMARY
-  - Recent Vitals
-  - prior_visit_summary
-  - style_DNA_doctor_department_dermatology
-- Do not carry over information from any other patient. Treat each request independently.]
-
-When the current encounter's department is "Dermatology" (or "Derm") and the patient is NEW or REFERRAL, produce a structured summary using these headings in order:
-
-**1. Presenting Complaints** — Morphology of lesions, sites involved, duration, timing/variation.
-
-**2. Evolution of Symptoms** — Initial appearance and progression/spread/recurrence.
-
-**3. Aggravating and Relieving Factors**
-
-**4. Past History of Similar Complaints**
-
-**5. Preceding Illnesses / New Exposures** — Drugs, infections, cosmetics, contactants.
-
-**6. History of Atopy** — Personal/family eczema/asthma/allergic rhinitis.
-
-**7. Treatment History** — Previous therapies and response.
-
-**8. Occupation**
-
-**9. Personal History** — Hygiene, cosmetics, daily routine.
-
-**10. Past Medical History**
-
-**11. Family History** — Hereditary skin conditions.
-
-**12. Clinical Examination** — General, systemic, and local examination (morphology, distribution, nails/hair, mucosa).
-
-**13. Impression**
-
-**14. Investigations Ordered**
-
-**15. Treatment Plan**
-
-**16. Follow-Up Advice**`,
-    category: 'SUMMARY',
-    variables: {
-      conversation_language: { type: 'string', required: true },
-      pre_summary_text: { type: 'string', required: false },
-      prior_visit_summary: { type: 'string', required: false },
-      style_DNA_doctor_department_dermatology: { type: 'string', required: false },
-    },
-    currentVersionNumber: 1,
-    departmentId: DEPT.DERM,
-    tags: ['department', 'dermatology', 'new_referral'],
-  },
   // ──────────────────────────────────────────────────────────────────
   // ID 44: Dermatology - Revisit
   // ──────────────────────────────────────────────────────────────────
-  {
-    id: TEMPLATE_IDS.DERM_REVISIT,
-    tenantId: DEFAULT_TENANT_ID,
-    name: 'Dermatology - Revisit',
-    description: 'Dermatology department template for follow-up and review visits',
-    content: `[NOTE TO LLM:
-- You are an expert dermatology scribe generating a structured follow-up summary from a clinical transcript.
-- This follow-up summary should reflect only changes, new findings, or updated plans since the previous visit.
-- Use English, third person, past tense.
-- Prioritize today's transcript; avoid repeating prior content unless reaffirmed/changed.
-- If prior_visit_summary exists, treat this as a continuation visit and suppress redundancy.
-- Do not copy/quote any context variables directly; use them only for continuity.
-- Apply stylistic overlay: style_DNA_doctor_department_dermatology (fallback: Doctor → Department → Default).
-- Medication details must be complete: name, dose, route, frequency, duration.
-- Include only sections where updates were made.
-- Context inputs that may be available:
-  - PREVIOUS CASE NOTES SUMMARY
-  - Recent Vitals
-  - prior_visit_summary
-  - style_DNA_doctor_department_dermatology
-- Do not carry over information from any other patient. Treat each request independently.]
-
-When the current encounter's department is "Dermatology" and the patient is a REVIEW (follow-up), produce a structured summary using these headings (include only sections with updates):
-
-**1. Response to Treatment**
-
-**2. Medication Adherence**
-
-**3. New Symptoms or Lesions**
-
-**4. Follow-Up Investigations**
-
-**5. Clinical Examination**
-
-**6. Updated Diagnosis / Assessment**
-
-**7. Updated Treatment Plan**
-
-**8. Next Follow-Up Advice**`,
-    category: 'SUMMARY',
-    variables: {
-      conversation_language: { type: 'string', required: true },
-      pre_summary_text: { type: 'string', required: false },
-      prior_visit_summary: { type: 'string', required: false },
-      style_DNA_doctor_department_dermatology: { type: 'string', required: false },
-    },
-    currentVersionNumber: 1,
-    departmentId: DEPT.DERM,
-    tags: ['department', 'dermatology', 'revisit'],
-  },
   // ──────────────────────────────────────────────────────────────────
   // ID 45: Dietetics - New Referral
   // ──────────────────────────────────────────────────────────────────
-  {
-    id: TEMPLATE_IDS.DIET_NEW_REFERRAL,
-    tenantId: DEFAULT_TENANT_ID,
-    name: 'Dietetics - New Referral',
-    description: 'Dietetics department template for new patient and referral visits',
-    content: `[NOTE TO LLM:
-- You are an expert clinical scribe trained in Dietetics and Clinical Nutrition.
-- Generate a structured, EMR-ready summary from the transcript for the Dietetics department (New/Referral).
-- Write in English, third person, past tense.
-- Only include information explicitly stated by the dietitian/doctor. Do not invent or extrapolate.
-- Never quote or copy context inputs verbatim; use them only for interpretation.
-- Medications and supplements must include: name, dose, route, frequency, duration.
-- Apply writing style overlay: style_DNA_doctor_department_dietetics (fallback: Doctor → Department → Default).
-- Exclude headings with no relevant content, but include negative history if explicitly mentioned.
-- Context inputs that may be available:
-  - PREVIOUS CASE NOTES SUMMARY
-  - Recent Vitals
-  - prior_visit_summary
-  - style_DNA_doctor_department_dietetics
-- Do not carry over information from any other patient. Treat each request independently.]
-
-When the current encounter's department is "Dietetics" (or "Dietitian", "Clinical Nutrition", "Nutrition") and the patient is NEW or REFERRAL, produce a structured summary using these headings in order:
-
-**1. Patient History** — Referral source, presenting complaints, diagnosis (primary and comorbid), relevant medical history, medication & supplement history (with full details), physical activity/exercise pattern.
-
-**2. Anthropometric Measurements** — Height (cm), Weight (kg), BMI (with interpretation), body composition analysis (if stated).
-
-**3. Diet History** — Usual eating pattern, allergies/intolerances, dietary habit and constraints, meal pattern details and fluid intake.
-
-**4. Nutrition Screening** — MST score and screening outcome.
-
-**5. Nutritional Status** — Current nutritional state and contributing factors.
-
-**6. Nutrition Diagnosis** — PES statement (if available).
-
-**7. Plan of Care** — Dietary modifications, calorie/macronutrient targets (if provided), supplement recommendations (with full details), counseling and follow-up plan.`,
-    category: 'SUMMARY',
-    variables: {
-      conversation_language: { type: 'string', required: true },
-      pre_summary_text: { type: 'string', required: false },
-      prior_visit_summary: { type: 'string', required: false },
-      style_DNA_doctor_department_dietetics: { type: 'string', required: false },
-    },
-    currentVersionNumber: 1,
-    departmentId: DEPT.DIET,
-    tags: ['department', 'dietetics', 'new_referral'],
-  },
   // ──────────────────────────────────────────────────────────────────
   // ID 46: Dietetics - Revisit
   // ──────────────────────────────────────────────────────────────────
-  {
-    id: TEMPLATE_IDS.DIET_REVISIT,
-    tenantId: DEFAULT_TENANT_ID,
-    name: 'Dietetics - Revisit',
-    description: 'Dietetics department template for follow-up and review visits',
-    content: `[NOTE TO LLM:
-- You are an expert clinical scribe trained in Dietetics and Clinical Nutrition.
-- Generate a structured, delta-focused follow-up summary from the transcript for the Dietetics department.
-- Write in English, third person, past tense.
-- Use context inputs only for interpretation; never quote or copy them verbatim.
-- Do not repeat previous advice unless it was explicitly reaffirmed or modified today.
-- Reflect updated anthropometry, screening, nutritional status, and plan changes.
-- Apply writing style overlay: style_DNA_doctor_department_dietetics (fallback: Doctor → Department → Default).
-- Medications and supplements must include: name, dose, route, frequency, duration.
-- Context inputs that may be available:
-  - PREVIOUS CASE NOTES SUMMARY
-  - Recent Vitals
-  - prior_visit_summary
-  - style_DNA_doctor_department_dietetics
-- Do not carry over information from any other patient. Treat each request independently.]
-
-When the current encounter's department is "Dietetics" and the patient is a REVIEW (follow-up), produce a structured summary using these headings (include only sections with updates):
-
-**1. Anthropometric Measurements** — Height, Weight, BMI, Body composition (track % change if available).
-
-**2. Nutrition Screening** — Updated MST score and any category change.
-
-**3. Nutritional Status** — Status change since last visit and key drivers.
-
-**4. Plan of Care** — Continued/modified diet prescription, additional recommendations (ONS/tube feeds if stated), lifestyle/behavior goals, new referrals/interventions, next follow-up date and purpose.
-
-**5. Summary** — 2–3 sentence concise summary of progress and plan.`,
-    category: 'SUMMARY',
-    variables: {
-      conversation_language: { type: 'string', required: true },
-      pre_summary_text: { type: 'string', required: false },
-      prior_visit_summary: { type: 'string', required: false },
-      style_DNA_doctor_department_dietetics: { type: 'string', required: false },
-    },
-    currentVersionNumber: 1,
-    departmentId: DEPT.DIET,
-    tags: ['department', 'dietetics', 'revisit'],
-  },
   // ──────────────────────────────────────────────────────────────────
   // ID 47: Nephrology - New Referral
   // ──────────────────────────────────────────────────────────────────
-  {
-    id: TEMPLATE_IDS.NEPH_NEW_REFERRAL,
-    tenantId: DEFAULT_TENANT_ID,
-    name: 'Nephrology - New Referral',
-    description: 'Nephrology department template for new patient and referral visits',
-    content: `[NOTE TO LLM:
-- You are an expert clinical scribe trained in Internal Medicine and Nephrology.
-- Generate a complete, structured, EMR-ready summary of a new nephrology outpatient case from today's transcript.
-- Use English, third person, past tense.
-- Only include doctor-stated findings; do not invent or extrapolate.
-- Use context variables only for interpretation; never quote them directly.
-- Medication details must include: name, dose, route, frequency, duration.
-- Apply stylistic overlay: style_DNA_doctor_department_nephrology (fallback: Doctor → Department → Default).
-- Do not suppress sections unless explicitly empty or negated.
-- Context inputs that may be available:
-  - PREVIOUS CASE NOTES SUMMARY
-  - Recent Vitals
-  - prior_visit_summary
-  - style_DNA_doctor_department_nephrology
-- Do not carry over information from any other patient. Treat each request independently.]
-
-When the current encounter's department is "Nephrology" (or "Nephro") and the patient is NEW or REFERRAL, produce a structured summary using these headings in order:
-
-**1. Diagnosis** — Working diagnosis/differentials, by name. Do not write, guess, or transcribe a diagnostic code — codes are attached separately from a verified terminology source.
-
-**2. History** — Chief complaints/duration; HPI; associated symptoms; systemic illnesses; nephrotoxic exposures; family/lifestyle history.
-
-**3. Examination** — General exam (vitals, edema, pallor, hydration) and systemic exam (CVS/RS/abdomen/CNS as stated).
-
-**4. Investigations** — KFT/eGFR trends; urinalysis; electrolytes; imaging; serology; biopsy (if available).
-
-**5. Medicine** — Current medications and recent changes (full dosing details).
-
-**6. Remarks** — Clinical reasoning/impression; education/consent discussion if stated.
-
-**7. Vaccination** — Hep B/Influenza/Pneumococcal status if discussed.
-
-**8. Plan of Care** — Investigations planned; dialysis/access planning; biopsy scheduling; admission/observation; dietary/lifestyle advice.`,
-    category: 'SUMMARY',
-    variables: {
-      conversation_language: { type: 'string', required: true },
-      pre_summary_text: { type: 'string', required: false },
-      prior_visit_summary: { type: 'string', required: false },
-      style_DNA_doctor_department_nephrology: { type: 'string', required: false },
-    },
-    currentVersionNumber: 1,
-    departmentId: DEPT.NEPH,
-    tags: ['department', 'nephrology', 'new_referral'],
-  },
   // ──────────────────────────────────────────────────────────────────
   // ID 48: Nephrology - Revisit
   // ──────────────────────────────────────────────────────────────────
-  {
-    id: TEMPLATE_IDS.NEPH_REVISIT,
-    tenantId: DEFAULT_TENANT_ID,
-    name: 'Nephrology - Revisit',
-    description: 'Nephrology department template for follow-up and review visits',
-    content: `[NOTE TO LLM:
-- You are an expert nephrology scribe generating a follow-up summary.
-- Focus on disease evolution, adherence, investigation review, and therapy adjustments.
-- Use English, third person, past tense.
-- Avoid repetition from previous summaries unless explicitly referenced today.
-- If prior_visit_summary exists, treat as continuation and suppress redundancy.
-- Do not quote/copy context variables verbatim; use only for continuity.
-- Apply stylistic overlay: style_DNA_doctor_department_nephrology (fallback: Doctor → Department → Default).
-- Medication details must include: name, dose, route, frequency, duration.
-- Context inputs that may be available:
-  - PREVIOUS CASE NOTES SUMMARY
-  - Recent Vitals
-  - prior_visit_summary
-  - style_DNA_doctor_department_nephrology
-- Do not carry over information from any other patient. Treat each request independently.]
-
-When the current encounter's department is "Nephrology" and the patient is a REVIEW (follow-up), produce a structured summary using these headings (include only sections with updates):
-
-**1. Date of Review**
-
-**2. Symptom Review** — Changes since last visit; ongoing complaints; compliance to salt/fluid restrictions.
-
-**3. Medication Review** — Adherence; adjustments; side effects/substitutions.
-
-**4. Examination** — General/systemic findings; BP/weight/edema/JVP changes.
-
-**5. Investigations Reviewed** — Creatinine/eGFR trend; electrolytes/urinalysis; special tests; imaging.
-
-**6. Current Diagnosis** — CKD staging/progression assessment if stated.
-
-**7. Updated Plan of Care** — Medication changes; dialysis/transplant planning; lifestyle/diet; next review date.
-
-**8. Investigations to be Done on Review** — Tests ordered for next visit.`,
-    category: 'SUMMARY',
-    variables: {
-      conversation_language: { type: 'string', required: true },
-      pre_summary_text: { type: 'string', required: false },
-      prior_visit_summary: { type: 'string', required: false },
-      style_DNA_doctor_department_nephrology: { type: 'string', required: false },
-    },
-    currentVersionNumber: 1,
-    departmentId: DEPT.NEPH,
-    tags: ['department', 'nephrology', 'revisit'],
-  },
   // ──────────────────────────────────────────────────────────────────
   // ID 49: Surgical Oncology - New Referral
   // ──────────────────────────────────────────────────────────────────
-  {
-    id: TEMPLATE_IDS.SONC_NEW_REFERRAL,
-    tenantId: DEFAULT_TENANT_ID,
-    name: 'Surgical Oncology - New Referral',
-    description: 'Surgical oncology department template for new patient and referral visits',
-    content: `[NOTE TO LLM:
-- You are an expert medical scribe trained in General Surgery and Surgical Oncology.
-- Generate a structured, EMR-ready note for a Surgical Oncology New/Referral visit from today's transcript.
-- Use English, third person, past tense only.
-- Output must reflect only what the doctor stated; do not invent or suggest.
-- Use context inputs as cues only; never copy them verbatim.
-- Apply stylistic overlay: style_DNA_doctor_department_surgical_oncology (fallback: Doctor → Department → Default).
-- Omit empty sections unless explicitly negated.
-- Medications must include: name, dose, route, frequency, duration.
-- Context inputs that may be available:
-  - PREVIOUS CASE NOTES SUMMARY
-  - Recent Vitals
-  - prior_visit_summary
-  - style_DNA_doctor_department_surgical_oncology
-- Do not carry over information from any other patient. Treat each request independently.]
-
-When the current encounter's department is "Surgical Oncology" (or "Surg Oncology", "Oncosurgery", "Oncology Surgery") and the patient is NEW or REFERRAL, produce a structured note using these headings in order:
-
-**1. Patient Demographics**
-
-**2. History**
-
-**3. Comorbidities**
-
-**4. Treatment / Surgery History**
-
-**5. Family History of Cancer**
-
-**6. Habits**
-
-**7. Obstetric History** (if female)
-
-**8. Presenting Complaints**
-
-**9. Investigations Done**
-
-**10. Examination**
-
-**11. Performance Status**
-
-**12. General Examination**
-
-**13. Local Examination**
-
-**14. Impression**
-
-**15. Plan**
-
-**16. Biopsy**
-
-**17. Metastatic Workup**
-
-**18. Neoadjuvant Treatment**
-
-**19. MDT Plan**
-
-**20. PAC Workup**
-
-**21. MDT Date**
-
-**22. Advice**
-
-**23. Review Date**`,
-    category: 'SUMMARY',
-    variables: {
-      conversation_language: { type: 'string', required: true },
-      pre_summary_text: { type: 'string', required: false },
-      prior_visit_summary: { type: 'string', required: false },
-      style_DNA_doctor_department_surgical_oncology: { type: 'string', required: false },
-    },
-    currentVersionNumber: 1,
-    departmentId: DEPT.SONC,
-    tags: ['department', 'surgical_oncology', 'new_referral'],
-  },
   // ──────────────────────────────────────────────────────────────────
   // ID 50: Surgical Oncology - Revisit
   // ──────────────────────────────────────────────────────────────────
-  {
-    id: TEMPLATE_IDS.SONC_REVISIT,
-    tenantId: DEFAULT_TENANT_ID,
-    name: 'Surgical Oncology - Revisit',
-    description: 'Surgical oncology department template for follow-up and post-op review visits',
-    content: `[NOTE TO LLM:
-- You are an expert medical scribe in Surgical Oncology documentation.
-- Generate a concise, structured note for a Surgical Oncology follow-up/review (post-op) visit from today's transcript.
-- Use English, third person, past tense only.
-- Prioritize today's transcript; use historical context only for continuity.
-- If prior_visit_summary exists, suppress repetition and focus on updates.
-- Do not quote/copy context variables verbatim; use only for continuity.
-- Apply stylistic overlay: style_DNA_doctor_department_surgical_oncology (fallback: Doctor → Department → Default).
-- Medications must include: name, dose, route, frequency, duration.
-- Context inputs that may be available:
-  - PREVIOUS CASE NOTES SUMMARY
-  - Recent Vitals
-  - prior_visit_summary
-  - style_DNA_doctor_department_surgical_oncology
-- Do not carry over information from any other patient. Treat each request independently.]
-
-When the current encounter's department is "Surgical Oncology" and the patient is a REVIEW (follow-up/post-op), produce a structured note using these headings (include only sections with updates):
-
-**1. Patient Demographics**
-
-**2. Procedure**
-
-**3. Surgery Date**
-
-**4. Complaints**
-
-**5. Examination**
-
-**6. General Condition**
-
-**7. Wound/Drain**
-
-**8. Medications**
-
-**9. Histopathology Report**
-
-**10. Plan**
-
-**11. MDT**
-
-**12. Adjuvant Treatment Plan**
-
-**13. Follow-Up Plan**`,
-    category: 'SUMMARY',
-    variables: {
-      conversation_language: { type: 'string', required: true },
-      pre_summary_text: { type: 'string', required: false },
-      prior_visit_summary: { type: 'string', required: false },
-      style_DNA_doctor_department_surgical_oncology: { type: 'string', required: false },
-    },
-    currentVersionNumber: 1,
-    departmentId: DEPT.SONC,
-    tags: ['department', 'surgical_oncology', 'revisit'],
-  },
   // ──────────────────────────────────────────────────────────────────
   // ID 51: Catch-All SOAP (fallback when no department matches)
   // ──────────────────────────────────────────────────────────────────
@@ -2267,6 +769,457 @@ When no department-specific template matches the current encounter's department,
     currentVersionNumber: 1,
     departmentId: null,
     tags: ['whisper', 'stt', 'initial-prompt', 'en-vi', 'bilingual'],
+  },
+  // ---------------------------------------------------------------------------
+  // GENERIC care-setting templates — the platform day-1 documentation formats.
+  //
+  // These replace the 22 BCMCH/v1-format specialty templates the Global catalog
+  // used to carry (TASK-763 §5 OD-8). Those bodies still exist, unchanged, on the
+  // tenant they belong to: 07b-arcaai-clinical-templates.ts. What is authored
+  // here is written to the standard clinical-documentation section conventions
+  // and names no organisation, house format, or specialty roster, because
+  // 07a-agent-golden-library.ts promotes whatever is here onto the SYSTEM tenant
+  // and every newly-provisioned tenant is given a clone of it.
+  //
+  // All are APPROVED at version 1 so a fresh tenant resolves them for clinical
+  // generation on day 1 without an admin approval step.
+  // ---------------------------------------------------------------------------
+  {
+    id: TEMPLATE_IDS.GENERIC_OUTPATIENT_NEW,
+    tenantId: DEFAULT_TENANT_ID,
+    name: 'Outpatient - New Consultation',
+    description: 'Generic first-visit outpatient note in SOAP order',
+    content: `You are a clinical documentation assistant. Produce a structured outpatient consultation note from the encounter transcript supplied below.
+
+Write the note under exactly these headings, in this order:
+
+1. **Chief Complaint**
+2. **History of Present Illness**
+3. **Relevant Past History, Medications and Allergies**
+4. **Examination**
+5. **Assessment**
+6. **Plan**
+
+Rules:
+- Record ONLY what the transcript supports. Never infer a diagnosis, a measurement, a medication, a dose, or a result that was not stated.
+- If a heading has no supporting content, write "Not documented" under it rather than omitting the heading or inventing filler.
+- Preserve the clinician's own clinical terminology; do not upgrade tentative language into definite findings.
+- Attribute anything the patient reports as reported ("patient reports..."), and keep it distinct from examination findings.
+- State the reason for the visit in the patient's own terms under Chief Complaint.
+- Return the note as markdown under the headings above. Do not add a preamble, a closing summary, or any heading not listed.
+
+Transcript:
+{{transcript}}`,
+    category: 'SUMMARY',
+    status: 'APPROVED',
+    variables: { transcript: 'Encounter transcript' },
+    currentVersionNumber: 1,
+    approvedVersionNumber: 1,
+    departmentId: DEPT.OPD,
+    tags: ['generic', 'platform-default', 'opd'],
+  },
+  {
+    id: TEMPLATE_IDS.GENERIC_OUTPATIENT_REVISIT,
+    tenantId: DEFAULT_TENANT_ID,
+    name: 'Outpatient - Follow-Up',
+    description: 'Generic outpatient follow-up note centred on interval change',
+    content: `You are a clinical documentation assistant. Produce a structured outpatient follow-up note from the encounter transcript supplied below.
+
+Write the note under exactly these headings, in this order:
+
+1. **Reason for Review**
+2. **Interval History**
+3. **Response to Current Treatment**
+4. **Examination**
+5. **Assessment**
+6. **Plan**
+
+Rules:
+- Record ONLY what the transcript supports. Never infer a diagnosis, a measurement, a medication, a dose, or a result that was not stated.
+- If a heading has no supporting content, write "Not documented" under it rather than omitting the heading or inventing filler.
+- Preserve the clinician's own clinical terminology; do not upgrade tentative language into definite findings.
+- Attribute anything the patient reports as reported ("patient reports..."), and keep it distinct from examination findings.
+- Interval History covers only what changed since the previous visit; do not restate the original history.
+- Return the note as markdown under the headings above. Do not add a preamble, a closing summary, or any heading not listed.
+
+Transcript:
+{{transcript}}`,
+    category: 'SUMMARY',
+    status: 'APPROVED',
+    variables: { transcript: 'Encounter transcript' },
+    currentVersionNumber: 1,
+    approvedVersionNumber: 1,
+    departmentId: DEPT.OPD,
+    tags: ['generic', 'platform-default', 'opd'],
+  },
+  {
+    id: TEMPLATE_IDS.GENERIC_INPATIENT_ADMISSION,
+    tenantId: DEFAULT_TENANT_ID,
+    name: 'Inpatient - Admission Note',
+    description: 'Generic admission note for a newly admitted patient',
+    content: `You are a clinical documentation assistant. Produce a structured admission note from the encounter transcript supplied below.
+
+Write the note under exactly these headings, in this order:
+
+1. **Reason for Admission**
+2. **History of Present Illness**
+3. **Past History, Medications and Allergies**
+4. **Examination and Vitals on Admission**
+5. **Working Diagnosis**
+6. **Initial Management Plan**
+
+Rules:
+- Record ONLY what the transcript supports. Never infer a diagnosis, a measurement, a medication, a dose, or a result that was not stated.
+- If a heading has no supporting content, write "Not documented" under it rather than omitting the heading or inventing filler.
+- Preserve the clinician's own clinical terminology; do not upgrade tentative language into definite findings.
+- Attribute anything the patient reports as reported ("patient reports..."), and keep it distinct from examination findings.
+- Record admission vitals only if they were explicitly stated; never carry forward a prior value.
+- Return the note as markdown under the headings above. Do not add a preamble, a closing summary, or any heading not listed.
+
+Transcript:
+{{transcript}}`,
+    category: 'SUMMARY',
+    status: 'APPROVED',
+    variables: { transcript: 'Encounter transcript' },
+    currentVersionNumber: 1,
+    approvedVersionNumber: 1,
+    departmentId: DEPT.IPD,
+    tags: ['generic', 'platform-default', 'ipd'],
+  },
+  {
+    id: TEMPLATE_IDS.GENERIC_INPATIENT_PROGRESS,
+    tenantId: DEFAULT_TENANT_ID,
+    name: 'Inpatient - Daily Progress Note',
+    description: 'Generic ward-round progress note',
+    content: `You are a clinical documentation assistant. Produce a structured daily progress note from the encounter transcript supplied below.
+
+Write the note under exactly these headings, in this order:
+
+1. **Interval History**
+2. **Vitals & Observations**
+3. **Examination**
+4. **Assessment**
+5. **Plan for Today**
+
+Rules:
+- Record ONLY what the transcript supports. Never infer a diagnosis, a measurement, a medication, a dose, or a result that was not stated.
+- If a heading has no supporting content, write "Not documented" under it rather than omitting the heading or inventing filler.
+- Preserve the clinician's own clinical terminology; do not upgrade tentative language into definite findings.
+- Attribute anything the patient reports as reported ("patient reports..."), and keep it distinct from examination findings.
+- Plan for Today lists actions for this calendar day only; carry nothing over implicitly.
+- Return the note as markdown under the headings above. Do not add a preamble, a closing summary, or any heading not listed.
+
+Transcript:
+{{transcript}}`,
+    category: 'SUMMARY',
+    status: 'APPROVED',
+    variables: { transcript: 'Encounter transcript' },
+    currentVersionNumber: 1,
+    approvedVersionNumber: 1,
+    departmentId: DEPT.IPD,
+    tags: ['generic', 'platform-default', 'ipd'],
+  },
+  {
+    id: TEMPLATE_IDS.GENERIC_EMERGENCY_ENCOUNTER,
+    tenantId: DEFAULT_TENANT_ID,
+    name: 'Emergency - Encounter Note',
+    description: 'Generic emergency encounter note ending in an explicit disposition',
+    content: `You are a clinical documentation assistant. Produce a structured emergency encounter note from the encounter transcript supplied below.
+
+Write the note under exactly these headings, in this order:
+
+1. **Presenting Problem**
+2. **Triage Category**
+3. **History**
+4. **Examination**
+5. **Investigations**
+6. **Disposition**
+
+Rules:
+- Record ONLY what the transcript supports. Never infer a diagnosis, a measurement, a medication, a dose, or a result that was not stated.
+- If a heading has no supporting content, write "Not documented" under it rather than omitting the heading or inventing filler.
+- Preserve the clinician's own clinical terminology; do not upgrade tentative language into definite findings.
+- Attribute anything the patient reports as reported ("patient reports..."), and keep it distinct from examination findings.
+- Disposition must state the outcome explicitly (discharged, admitted, transferred, or left without being seen); never leave it implied.
+- Return the note as markdown under the headings above. Do not add a preamble, a closing summary, or any heading not listed.
+
+Transcript:
+{{transcript}}`,
+    category: 'SUMMARY',
+    status: 'APPROVED',
+    variables: { transcript: 'Encounter transcript' },
+    currentVersionNumber: 1,
+    approvedVersionNumber: 1,
+    departmentId: DEPT.ER,
+    tags: ['generic', 'platform-default', 'er'],
+  },
+  {
+    id: TEMPLATE_IDS.GENERIC_PERIOP_ASSESSMENT,
+    tenantId: DEFAULT_TENANT_ID,
+    name: 'Perioperative - Pre-Procedure Assessment',
+    description: 'Generic pre-procedure assessment and risk note',
+    content: `You are a clinical documentation assistant. Produce a structured pre-procedure assessment note from the encounter transcript supplied below.
+
+Write the note under exactly these headings, in this order:
+
+1. **Indication**
+2. **Relevant History**
+3. **Medications, Allergies and Anaesthetic History**
+4. **Examination**
+5. **Risk Assessment**
+6. **Plan**
+
+Rules:
+- Record ONLY what the transcript supports. Never infer a diagnosis, a measurement, a medication, a dose, or a result that was not stated.
+- If a heading has no supporting content, write "Not documented" under it rather than omitting the heading or inventing filler.
+- Preserve the clinician's own clinical terminology; do not upgrade tentative language into definite findings.
+- Attribute anything the patient reports as reported ("patient reports..."), and keep it distinct from examination findings.
+- Record a fitness or risk conclusion only if the clinician stated one; do not derive one from the findings yourself.
+- Return the note as markdown under the headings above. Do not add a preamble, a closing summary, or any heading not listed.
+
+Transcript:
+{{transcript}}`,
+    category: 'SUMMARY',
+    status: 'APPROVED',
+    variables: { transcript: 'Encounter transcript' },
+    currentVersionNumber: 1,
+    approvedVersionNumber: 1,
+    departmentId: DEPT.PERI,
+    tags: ['generic', 'platform-default', 'peri'],
+  },
+  {
+    id: TEMPLATE_IDS.GENERIC_PERIOP_REVIEW,
+    tenantId: DEFAULT_TENANT_ID,
+    name: 'Perioperative - Post-Procedure Review',
+    description: 'Generic post-procedure recovery review note',
+    content: `You are a clinical documentation assistant. Produce a structured post-procedure review note from the encounter transcript supplied below.
+
+Write the note under exactly these headings, in this order:
+
+1. **Procedure Performed**
+2. **Recovery Progress**
+3. **Examination and Observations**
+4. **Complications**
+5. **Plan**
+
+Rules:
+- Record ONLY what the transcript supports. Never infer a diagnosis, a measurement, a medication, a dose, or a result that was not stated.
+- If a heading has no supporting content, write "Not documented" under it rather than omitting the heading or inventing filler.
+- Preserve the clinician's own clinical terminology; do not upgrade tentative language into definite findings.
+- Attribute anything the patient reports as reported ("patient reports..."), and keep it distinct from examination findings.
+- Under Complications write "None documented" unless a complication was explicitly described.
+- Return the note as markdown under the headings above. Do not add a preamble, a closing summary, or any heading not listed.
+
+Transcript:
+{{transcript}}`,
+    category: 'SUMMARY',
+    status: 'APPROVED',
+    variables: { transcript: 'Encounter transcript' },
+    currentVersionNumber: 1,
+    approvedVersionNumber: 1,
+    departmentId: DEPT.PERI,
+    tags: ['generic', 'platform-default', 'peri'],
+  },
+  {
+    id: TEMPLATE_IDS.GENERIC_IMAGING_REPORT,
+    tenantId: DEFAULT_TENANT_ID,
+    name: 'Imaging - Diagnostic Report',
+    description: 'Generic imaging report answering a stated clinical question',
+    content: `You are a clinical documentation assistant. Produce a structured diagnostic imaging report from the encounter transcript supplied below.
+
+Write the note under exactly these headings, in this order:
+
+1. **Clinical Indication**
+2. **Technique**
+3. **Findings**
+4. **Impression**
+
+Rules:
+- Record ONLY what the transcript supports. Never infer a diagnosis, a measurement, a medication, a dose, or a result that was not stated.
+- If a heading has no supporting content, write "Not documented" under it rather than omitting the heading or inventing filler.
+- Preserve the clinician's own clinical terminology; do not upgrade tentative language into definite findings.
+- Attribute anything the patient reports as reported ("patient reports..."), and keep it distinct from examination findings.
+- Impression answers the stated Clinical Indication directly and introduces no finding absent from Findings.
+- Return the note as markdown under the headings above. Do not add a preamble, a closing summary, or any heading not listed.
+
+Transcript:
+{{transcript}}`,
+    category: 'SUMMARY',
+    status: 'APPROVED',
+    variables: { transcript: 'Encounter transcript' },
+    currentVersionNumber: 1,
+    approvedVersionNumber: 1,
+    departmentId: DEPT.RAD,
+    tags: ['generic', 'platform-default', 'rad'],
+  },
+  {
+    id: TEMPLATE_IDS.GENERIC_LAB_REPORT,
+    tenantId: DEFAULT_TENANT_ID,
+    name: 'Laboratory - Interpretive Report',
+    description: 'Generic interpretive laboratory report',
+    content: `You are a clinical documentation assistant. Produce a structured interpretive laboratory report from the encounter transcript supplied below.
+
+Write the note under exactly these headings, in this order:
+
+1. **Specimen**
+2. **Results**
+3. **Reference Ranges**
+4. **Interpretation**
+
+Rules:
+- Record ONLY what the transcript supports. Never infer a diagnosis, a measurement, a medication, a dose, or a result that was not stated.
+- If a heading has no supporting content, write "Not documented" under it rather than omitting the heading or inventing filler.
+- Preserve the clinician's own clinical terminology; do not upgrade tentative language into definite findings.
+- Attribute anything the patient reports as reported ("patient reports..."), and keep it distinct from examination findings.
+- Reproduce every numeric result and unit exactly as stated; never round, convert, or complete a partial value.
+- Return the note as markdown under the headings above. Do not add a preamble, a closing summary, or any heading not listed.
+
+Transcript:
+{{transcript}}`,
+    category: 'SUMMARY',
+    status: 'APPROVED',
+    variables: { transcript: 'Encounter transcript' },
+    currentVersionNumber: 1,
+    approvedVersionNumber: 1,
+    departmentId: DEPT.LAB,
+    tags: ['generic', 'platform-default', 'lab'],
+  },
+  {
+    id: TEMPLATE_IDS.GENERIC_BEHAVIORAL_ASSESSMENT,
+    tenantId: DEFAULT_TENANT_ID,
+    name: 'Behavioral Health - Initial Assessment',
+    description: 'Generic initial behavioral health assessment with explicit risk section',
+    content: `You are a clinical documentation assistant. Produce a structured behavioral health assessment note from the encounter transcript supplied below.
+
+Write the note under exactly these headings, in this order:
+
+1. **Presenting Concern**
+2. **History**
+3. **Mental State Examination**
+4. **Risk Assessment**
+5. **Formulation**
+6. **Plan**
+
+Rules:
+- Record ONLY what the transcript supports. Never infer a diagnosis, a measurement, a medication, a dose, or a result that was not stated.
+- If a heading has no supporting content, write "Not documented" under it rather than omitting the heading or inventing filler.
+- Preserve the clinician's own clinical terminology; do not upgrade tentative language into definite findings.
+- Attribute anything the patient reports as reported ("patient reports..."), and keep it distinct from examination findings.
+- Risk Assessment must record what was explicitly asked and answered; if risk was not discussed, write "Not assessed this encounter" rather than "No risk".
+- Return the note as markdown under the headings above. Do not add a preamble, a closing summary, or any heading not listed.
+
+Transcript:
+{{transcript}}`,
+    category: 'SUMMARY',
+    status: 'APPROVED',
+    variables: { transcript: 'Encounter transcript' },
+    currentVersionNumber: 1,
+    approvedVersionNumber: 1,
+    departmentId: DEPT.BEH,
+    tags: ['generic', 'platform-default', 'beh'],
+  },
+  {
+    id: TEMPLATE_IDS.GENERIC_BEHAVIORAL_REVIEW,
+    tenantId: DEFAULT_TENANT_ID,
+    name: 'Behavioral Health - Review',
+    description: 'Generic behavioral health follow-up review note',
+    content: `You are a clinical documentation assistant. Produce a structured behavioral health review note from the encounter transcript supplied below.
+
+Write the note under exactly these headings, in this order:
+
+1. **Reason for Review**
+2. **Interval History**
+3. **Mental State Examination**
+4. **Risk Review**
+5. **Response to Treatment**
+6. **Plan**
+
+Rules:
+- Record ONLY what the transcript supports. Never infer a diagnosis, a measurement, a medication, a dose, or a result that was not stated.
+- If a heading has no supporting content, write "Not documented" under it rather than omitting the heading or inventing filler.
+- Preserve the clinician's own clinical terminology; do not upgrade tentative language into definite findings.
+- Attribute anything the patient reports as reported ("patient reports..."), and keep it distinct from examination findings.
+- Risk Review must record what was explicitly asked and answered; if risk was not discussed, write "Not assessed this encounter" rather than "No risk".
+- Return the note as markdown under the headings above. Do not add a preamble, a closing summary, or any heading not listed.
+
+Transcript:
+{{transcript}}`,
+    category: 'SUMMARY',
+    status: 'APPROVED',
+    variables: { transcript: 'Encounter transcript' },
+    currentVersionNumber: 1,
+    approvedVersionNumber: 1,
+    departmentId: DEPT.BEH,
+    tags: ['generic', 'platform-default', 'beh'],
+  },
+  {
+    id: TEMPLATE_IDS.GENERIC_PEDIATRIC_NEW,
+    tenantId: DEFAULT_TENANT_ID,
+    name: 'Pediatrics - New Consultation',
+    description: 'Generic paediatric first-visit note including growth and immunisation review',
+    content: `You are a clinical documentation assistant. Produce a structured paediatric consultation note from the encounter transcript supplied below.
+
+Write the note under exactly these headings, in this order:
+
+1. **Chief Complaint**
+2. **History of Present Illness**
+3. **Growth & Development**
+4. **Immunization Status**
+5. **Examination**
+6. **Assessment**
+7. **Plan**
+
+Rules:
+- Record ONLY what the transcript supports. Never infer a diagnosis, a measurement, a medication, a dose, or a result that was not stated.
+- If a heading has no supporting content, write "Not documented" under it rather than omitting the heading or inventing filler.
+- Preserve the clinician's own clinical terminology; do not upgrade tentative language into definite findings.
+- Attribute anything the patient reports as reported ("patient reports..."), and keep it distinct from examination findings.
+- Attribute history to the caregiver or the child as the transcript indicates, and record growth measurements only where explicitly stated.
+- Return the note as markdown under the headings above. Do not add a preamble, a closing summary, or any heading not listed.
+
+Transcript:
+{{transcript}}`,
+    category: 'SUMMARY',
+    status: 'APPROVED',
+    variables: { transcript: 'Encounter transcript' },
+    currentVersionNumber: 1,
+    approvedVersionNumber: 1,
+    departmentId: DEPT.PEDS,
+    tags: ['generic', 'platform-default', 'peds'],
+  },
+  {
+    id: TEMPLATE_IDS.GENERIC_PEDIATRIC_REVISIT,
+    tenantId: DEFAULT_TENANT_ID,
+    name: 'Pediatrics - Follow-Up',
+    description: 'Generic paediatric follow-up note centred on interval change and growth',
+    content: `You are a clinical documentation assistant. Produce a structured paediatric follow-up note from the encounter transcript supplied below.
+
+Write the note under exactly these headings, in this order:
+
+1. **Reason for Review**
+2. **Interval History**
+3. **Growth & Development**
+4. **Examination**
+5. **Assessment**
+6. **Plan**
+
+Rules:
+- Record ONLY what the transcript supports. Never infer a diagnosis, a measurement, a medication, a dose, or a result that was not stated.
+- If a heading has no supporting content, write "Not documented" under it rather than omitting the heading or inventing filler.
+- Preserve the clinician's own clinical terminology; do not upgrade tentative language into definite findings.
+- Attribute anything the patient reports as reported ("patient reports..."), and keep it distinct from examination findings.
+- Attribute history to the caregiver or the child as the transcript indicates, and record growth measurements only where explicitly stated.
+- Return the note as markdown under the headings above. Do not add a preamble, a closing summary, or any heading not listed.
+
+Transcript:
+{{transcript}}`,
+    category: 'SUMMARY',
+    status: 'APPROVED',
+    variables: { transcript: 'Encounter transcript' },
+    currentVersionNumber: 1,
+    approvedVersionNumber: 1,
+    departmentId: DEPT.PEDS,
+    tags: ['generic', 'platform-default', 'peds'],
   },
 ];
 
