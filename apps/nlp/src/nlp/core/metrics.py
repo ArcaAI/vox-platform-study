@@ -264,8 +264,13 @@ NLP_INFERENCE_BATCH_SIZE = Histogram(
 
 NLP_INFERENCE_REJECTIONS_TOTAL = Counter(
     "nlp_inference_rejections",
-    "Inference requests SHED rather than served, by route and declared reason.",
-    ["route", "reason"],
+    "Inference requests SHED rather than served, by route, lane and declared reason.",
+    # `lane` (TASK-782) is a third dimension rather than a suffix on `route`,
+    # because the two service classes shed for DIFFERENT reasons: the
+    # interactive wait ceiling is short on purpose, so its timeouts are an
+    # expected, declared outcome and must be alertable separately from bulk
+    # overload rather than summed into it.
+    ["route", "reason", "lane"],
 )
 
 
@@ -279,9 +284,9 @@ def observe_queue_wait(batcher: str, seconds: float) -> None:
     NLP_INFERENCE_QUEUE_WAIT_SECONDS.labels(batcher=batcher).observe(max(seconds, 0.0))
 
 
-def record_rejection(route: str, reason: str) -> None:
-    """Count one SHED request. `reason` is declared, never 'unknown'."""
-    NLP_INFERENCE_REJECTIONS_TOTAL.labels(route=route, reason=reason).inc()
+def record_rejection(route: str, reason: str, lane: str = "bulk") -> None:
+    """Count one SHED request. `reason` and `lane` are declared, never 'unknown'."""
+    NLP_INFERENCE_REJECTIONS_TOTAL.labels(route=route, reason=reason, lane=lane).inc()
 
 
 def publish_queue_depths(depths: dict[str, int]) -> None:
