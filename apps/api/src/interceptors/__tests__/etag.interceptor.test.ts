@@ -18,7 +18,11 @@ import { of, lastValueFrom } from 'rxjs';
 import type { CallHandler, ExecutionContext } from '@nestjs/common';
 import { ETagInterceptor } from '../etag.interceptor';
 
-type FakeResponse = { setHeader: ReturnType<typeof vi.fn>; status?: ReturnType<typeof vi.fn> };
+type FakeResponse = {
+  setHeader: ReturnType<typeof vi.fn>;
+  status?: ReturnType<typeof vi.fn>;
+  headersSent?: boolean;
+};
 type FakeRequest = { method?: string; headers?: Record<string, string | undefined>; user?: unknown };
 
 const makeContext = (response: FakeResponse, request: FakeRequest = {}): ExecutionContext =>
@@ -36,8 +40,8 @@ const authedGet = (ifNoneMatch?: string): FakeRequest => ({
   user: { id: 'u1' },
 });
 
-const makeRes = (): Required<FakeResponse> => {
-  const res = { setHeader: vi.fn(), status: vi.fn() };
+const makeRes = (): FakeResponse & { status: ReturnType<typeof vi.fn> } => {
+  const res = { setHeader: vi.fn(), status: vi.fn(), headersSent: false };
   res.status.mockReturnValue(res);
   return res;
 };
@@ -175,6 +179,55 @@ describe('ETagInterceptor', () => {
       await lastValueFrom(new ETagInterceptor().intercept(makeContext(res, {}), next));
       expect(res.setHeader).toHaveBeenCalledWith('ETag', '"7"');
       expect(res.status).not.toHaveBeenCalled();
+    });
+  });
+
+  // ==========================================================================
+  // Streaming safety
+  //
+  // `map` runs once per EMISSION. An `@Sse()` route emits many times over one
+  // already-flushed response, and `setHeader` after that flush throws
+  // ERR_HTTP_HEADERS_SENT — which turned every SSE stream into a 500.
+  // ==========================================================================
+
+  describe('streaming responses (@Sse)', () => {
+    it('never touches headers once the response head has been flushed', async () => {
+      const res = makeRes();
+      res.headersSent = true;
+      const body = { id: 'x', version: 7 };
+      const next: CallHandler = { handle: () => of(body) };
+      const result = await lastValueFrom(new ETagInterceptor().intercept(makeContext(res, authedGet('"7"')), next));
+      expect(res.setHeader).not.toHaveBeenCalledWith('ETag', expect.anything());
+      expect(res.status).not.toHaveBeenCalled();
+      expect(result).toBe(body);
+    });
+
+    it('sets Cache-Control BEFORE subscribing, so a stream that flushes on its first emission is still labelled', async () => {
+      const res = makeRes();
+      const next: CallHandler = {
+        handle: () => {
+          // The head is flushed the moment the handler starts producing.
+          res.headersSent = true;
+          return of({ data: 'event-1' }, { data: 'event-2' });
+        },
+      };
+      await lastValueFrom(new ETagInterceptor().intercept(makeContext(res, authedGet()), next));
+      expect(res.setHeader).toHaveBeenCalledWith('Cache-Control', 'private, no-cache');
+      expect(res.setHeader).toHaveBeenCalledTimes(1);
+    });
+
+    it('survives a multi-emission versioned stream without a second setHeader', async () => {
+      const res = makeRes();
+      const next: CallHandler = {
+        handle: () => {
+          res.headersSent = true;
+          return of({ id: 'a', version: 1 }, { id: 'b', version: 2 }, { id: 'c', version: 3 });
+        },
+      };
+      await expect(
+        lastValueFrom(new ETagInterceptor().intercept(makeContext(res, authedGet()), next)),
+      ).resolves.toEqual({ id: 'c', version: 3 });
+      expect(res.setHeader).not.toHaveBeenCalledWith('ETag', expect.anything());
     });
   });
 
