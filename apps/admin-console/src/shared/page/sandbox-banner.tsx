@@ -16,7 +16,7 @@ export function SandboxBanner() {
   return (
     <div
       role="note"
-      className="border-warning/30 bg-warning/10 text-warning-foreground flex items-center gap-2 rounded-md border px-3 py-1.5 text-xs font-medium"
+      className="border-warning/30 bg-warning/10 text-warning-strong flex items-center gap-2 rounded-md border px-3 py-1.5 text-xs font-medium"
     >
       <IconFlask aria-hidden className="size-3.5 shrink-0" />
       <span className="min-w-0 truncate">
