@@ -32,6 +32,13 @@ import { pathToFileURL } from 'url';
 import { SEEDED_USERS, DEFAULT_TENANT_KEY, loginUser } from '../../../../tests/helpers';
 
 /**
+ * The reserved SYSTEM tenant — the SOLE platform-configuration tier (owner
+ * ruling 2026-08-20, TASK-763 OD-1). The AppSettings key-only cache the
+ * password policy reads admits THIS tenant and no other.
+ */
+const SYSTEM_TENANT_ID = '00000000-0000-0000-0000-000000000000';
+
+/**
  * Minimal unscoped Prisma access for UPDATE-only test fixture manipulation
  * (backdating expiry / passwordChangedAt) and hash-storage assertions. The
  * shared `tests/helpers/db.helper` resolves `@arcaai/database` from the repo
@@ -376,17 +383,9 @@ test.describe.serial('D — rotation warning at login', () => {
       // for the same key, which trips the AppSettings boot invariant
       // and silently breaks every subsequent cache refresh.
       const prisma = await getDb();
-      const row = await prisma.globalSetting
-        .findFirst({ where: { key: 'security.password.maxAgeDays', resourceStatus: 'ENABLED' } })
-        .catch(() => null);
-      if (row) {
-        await request
-          .patch(`/api/v1/admin/settings/${row.id}`, {
-            headers: { ...bearer(saGlobalToken), 'If-Match': `"${row.version}"` },
-            data: { value: '0' },
-          })
-          .catch(() => undefined);
-      }
+      await prisma.globalSetting
+        .update({ where: { id: settingId }, data: { value: '0', version: { increment: 1 } } })
+        .catch(() => undefined);
     }
     await deleteUser(request, user?.id);
   });
@@ -410,24 +409,42 @@ test.describe.serial('D — rotation warning at login', () => {
       data: { passwordChangedAt: new Date(Date.now() - 400 * 24 * 60 * 60 * 1000) },
     });
 
-    // Opt rotation in via the GlobalSettings surface (platform tenant).
-    // UPSERT semantics: reuse an existing row for the key (flip its value)
-    // and only create when absent — a second row for the same platform key
-    // would trip the AppSettings duplicate-key boot invariant.
+    // Opt rotation in by writing the PLATFORM row directly.
+    //
+    // `resolvePasswordPolicy` reads this key from the AppSettings key-only
+    // cache, which since TASK-763 OD-1 admits the reserved SYSTEM tenant
+    // EXCLUSIVELY. This setup used to POST/PATCH `/admin/settings` as a super
+    // admin acting on GLOBAL — but the tenant-scope extension pins every
+    // `GlobalSetting` write to the CLS tenant, so the row landed on GLOBAL
+    // (`50000000-…`), which is a CUSTOMER tenant (the platform-admin
+    // playground), not a config tier. The write succeeded, the row existed, and
+    // the value was simply never read — so this test failed with the policy
+    // silently inert.
+    //
+    // There is currently NO admin API that can write this key on SYSTEM: the
+    // legacy `/admin/settings` DTO takes no `tenantId` (and the pipe rejects
+    // undeclared fields), and the registry lane — the sanctioned platform-write
+    // path — refuses keys with no descriptor, which `security.password.*` has
+    // none of. That gap is a product decision, tracked separately; this test's
+    // subject is the LOGIN response, so it arranges the platform row the same
+    // way it already arranges `passwordChangedAt`: straight through Prisma.
+    //
+    // UPSERT semantics: reuse an existing SYSTEM row (flip its value) and only
+    // create when absent — a second row for the same platform key would trip
+    // the AppSettings duplicate-key boot invariant.
     const existing = await prisma.globalSetting.findFirst({
-      where: { key: 'security.password.maxAgeDays', resourceStatus: 'ENABLED' },
+      where: { key: 'security.password.maxAgeDays', tenantId: SYSTEM_TENANT_ID, resourceStatus: 'ENABLED' },
     });
     if (existing) {
-      const upd = await request.patch(`/api/v1/admin/settings/${existing.id}`, {
-        headers: { ...bearer(saGlobalToken), 'If-Match': `"${existing.version}"` },
-        data: { value: '1' },
+      await prisma.globalSetting.update({
+        where: { id: existing.id },
+        data: { value: '1', version: { increment: 1 } },
       });
-      expect(upd.status(), 'flip security.password.maxAgeDays to 1').toBe(200);
       settingId = existing.id;
     } else {
-      const create = await request.post('/api/v1/admin/settings', {
-        headers: bearer(saGlobalToken),
+      const created = await prisma.globalSetting.create({
         data: {
+          tenantId: SYSTEM_TENANT_ID,
           name: 'security.password.maxAgeDays (rotation window, days; 0 = off)',
           key: 'security.password.maxAgeDays',
           value: '1',
@@ -435,8 +452,7 @@ test.describe.serial('D — rotation warning at login', () => {
           namespace: 'security',
         },
       });
-      expect(create.status(), 'create security.password.maxAgeDays').toBe(201);
-      settingId = ((await create.json()) as { id: string }).id;
+      settingId = created.id;
     }
 
     // Poll login until the cache refresh (45s cron) picks the setting up.

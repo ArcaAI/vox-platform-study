@@ -68,6 +68,9 @@ const cls = {
   set: vi.fn(),
   // `cacheAppSettings` reads outside the request CLS context; pass through.
   exit: vi.fn((fn: () => unknown) => fn()),
+  // `write()` re-enters CLS on the TARGET tenant for the persistence step
+  // (`SettingsRegistryWriteService.actingOnTenant`); pass through.
+  run: vi.fn(async (fn: () => unknown) => fn()),
 };
 const scheduler = { addCronJob: vi.fn(), getCronJob: vi.fn(), deleteCronJob: vi.fn() };
 

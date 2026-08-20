@@ -53,6 +53,10 @@ function makeService(opts: { roles?: string[]; tenantId?: string | undefined; ex
             : CUSTOMER_TENANT
           : undefined,
     ),
+    set: vi.fn(),
+    // `write()` re-enters CLS on the TARGET tenant for the persistence step
+    // (`SettingsRegistryWriteService.actingOnTenant`); pass through.
+    run: vi.fn(async (fn: () => unknown) => fn()),
   };
   const globalSettingRepository = { findFirst: vi.fn(async () => opts.existing ?? null) };
   const svc = new SettingsRegistryWriteService(appSettings as any, globalSettings as any, emitter as any, cls as any, globalSettingRepository as any);

@@ -495,6 +495,42 @@ describe('PipelinePolicyService', () => {
       expect(result.doctorToggle).toBe(true);
     });
 
+    it('412s a stale If-Match on the FIRST write instead of creating the row', async () => {
+      // `GET settings` reports `version: 0` while no DOCTOR row exists, so `0`
+      // is the create-intent validator and anything else is a stale client.
+      // The create branch used to ignore `expectedVersion` entirely, so this
+      // wrote a fresh row and answered 200 — the route's advertised OCC
+      // contract held only once a row happened to exist.
+      policyRepository.findForScope.mockResolvedValue(null);
+
+      await expect(service.setDnaStyleForDoctor({ tenantId: TENANT, doctorId: DOCTOR, enabled: true, expectedVersion: 99 })).rejects.toBeInstanceOf(
+        OptimisticConcurrencyException,
+      );
+      expect(policyRepository.create).not.toHaveBeenCalled();
+      expect(policyChangeRepository.create).not.toHaveBeenCalled();
+    });
+
+    it('accepts If-Match "0" as create intent on the FIRST write', async () => {
+      policyRepository.findForScope.mockResolvedValue(null);
+      policyRepository.create.mockImplementation(async (entity) => entity);
+      configResolver.resolveEffectiveDnaStyleEnabled.mockResolvedValue({ effective: true, tenantEnabled: true, doctorToggle: true });
+
+      const result = await service.setDnaStyleForDoctor({ tenantId: TENANT, doctorId: DOCTOR, enabled: true, expectedVersion: 0 });
+
+      expect(policyRepository.create).toHaveBeenCalledTimes(1);
+      expect(result.doctorToggle).toBe(true);
+    });
+
+    it('evaluates the precondition even when clearing (enabled=null) would write nothing', async () => {
+      // RFC 7232 preconditions are independent of the payload — same stance the
+      // update branch takes ahead of its no-changes short-circuit.
+      policyRepository.findForScope.mockResolvedValue(null);
+
+      await expect(service.setDnaStyleForDoctor({ tenantId: TENANT, doctorId: DOCTOR, enabled: null, expectedVersion: 99 })).rejects.toBeInstanceOf(
+        OptimisticConcurrencyException,
+      );
+    });
+
     it('does NOT create an empty row when clearing (enabled=null) and no row exists yet', async () => {
       policyRepository.findForScope.mockResolvedValue(null);
       configResolver.resolveEffectiveDnaStyleEnabled.mockResolvedValue({ effective: true, tenantEnabled: true, doctorToggle: null });

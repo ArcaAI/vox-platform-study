@@ -11,6 +11,7 @@ import {
   PipelinePolicyScope,
   SYSTEM_TENANT_ID,
 } from '@arcaai/domains';
+import { OptimisticConcurrencyException } from '@arcaai/exceptions';
 import { assertExpectedVersion } from '../../common/assertExpectedVersion';
 import { isSuperAdmin } from '../../common/tenant-guards';
 import { IActiveUserContext } from '../../interfaces';
@@ -355,6 +356,26 @@ export class PipelinePolicyService {
         return u;
       });
       return this.settingsAfterWrite(tenantId, doctorId, updated.version);
+    }
+
+    // No row yet — but a precondition was still supplied, so it must be
+    // EVALUATED, not ignored. `GET settings` answers `version: 0` while no
+    // DOCTOR-scope row exists, so `If-Match: "0"` is the create-intent
+    // validator and anything else is a stale client that believes it has
+    // already seen a row. Without this, the create branch accepted ANY
+    // validator: a client holding a version from a row that has since been
+    // deleted (or a garbage validator) silently created a fresh row with 200
+    // instead of the documented 412 — the OCC contract this route advertises
+    // held only once a row happened to exist.
+    //
+    // Evaluated BEFORE the `enabled === null` short-circuit for the same
+    // reason the update branch evaluates it before its no-changes
+    // short-circuit: RFC 7232 preconditions are independent of the payload.
+    if (expectedVersion !== undefined && expectedVersion !== null && expectedVersion !== 0) {
+      throw new OptimisticConcurrencyException('pipelinePolicy', `${scope}:${scopeId}`, {
+        expectedVersion,
+        currentVersion: 0,
+      });
     }
 
     // No row yet. Clearing (null) overrides nothing → skip the empty create.

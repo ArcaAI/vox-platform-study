@@ -30,6 +30,10 @@ function makeService(opts: { roles?: string[]; cached?: any } = {}) {
   const emitter = { emit: vi.fn() };
   const cls = {
     get: vi.fn((k: string) => (k === 'user' ? { id: 'u1', roles: opts.roles ?? ['SUPER_ADMIN'] } : k === 'tenantId' ? 'tenant-abc' : undefined)),
+    set: vi.fn(),
+    // `write()` re-enters CLS on the TARGET tenant for the persistence step
+    // (`SettingsRegistryWriteService.actingOnTenant`); pass through.
+    run: vi.fn(async (fn: () => unknown) => fn()),
   };
   // The CAS version now comes from a FRESH repository read, not
   // from the (45s-stale) AppSettings snapshot. `opts.cached` therefore drives

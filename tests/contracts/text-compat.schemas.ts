@@ -77,6 +77,13 @@ export const SummaryResponseMetadataSchema = z.object({
   specialty: z.string().nullable().optional(),
   encounter_type: z.string().nullable().optional(),
   pre_summary_text: z.string().optional(),
+  // v1-parity display labels, echoed by `mapGenerateToV1Summary`. Declared here
+  // so the lock documents them; they were added to the DTO/mapper/SDK without
+  // reaching this file.
+  llm_provider: z.string().nullable().optional(),
+  model_name: z.string().nullable().optional(),
+  parsing_method: z.string().nullable().optional(),
+  raw_llm_content: z.string().nullable().optional(),
 });
 
 export const SummaryResponseSchema = z.object({

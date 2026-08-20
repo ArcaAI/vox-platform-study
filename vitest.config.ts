@@ -1,6 +1,12 @@
 import { defineConfig } from 'vitest/config';
 import path from 'path';
 
+// Excluded from EVERY aggregate suite (unit / integration / e2e) by owner
+// directive — see `.claude/rules/01-development-workflow.md` §Test Scope
+// Exclusions. `apps/quick-compat-app` is not even a workspace member
+// (pnpm-workspace.yaml negates it), so its suites must never be discovered here.
+const SKIPPED_WORKSPACE_DIRS = ['packages/ui/**', 'apps/compat-playground/**', 'apps/quick-compat-app/**'];
+
 const SHARED_EXCLUDE = [
   '**/node_modules/**',
   '**/dist/**',
@@ -20,6 +26,11 @@ const SHARED_EXCLUDE = [
   // *.postgres.test.ts is a live-Postgres regression guard.
   '**/pgbouncer-validation/**',
   '**/*.postgres.test.ts',
+  // Owner directive (2026-08-19, `01-development-workflow.md` §Test Scope
+  // Exclusions): these three workspaces are OUT of every aggregate suite. Run
+  // them only via their own `pnpm --filter <pkg> test` when the change is
+  // inside them.
+  ...SKIPPED_WORKSPACE_DIRS,
 ];
 
 // Component/browser packages own their vitest config (jsdom/happy-dom env, the
@@ -36,6 +47,8 @@ const SHARED_EXCLUDE = [
 //   - apps/compat-playground names its suites `*.test.tsx` (happy-dom).
 //   - apps/admin-console uses a NESTED-projects config (server node + client
 //     happy-dom) + `@vitejs/plugin-react` that isn't resolvable from the repo root.
+// `packages/ui` and `apps/compat-playground` are additionally in
+// SKIPPED_WORKSPACE_DIRS above (never run by an aggregate suite at all).
 const BROWSER_PACKAGE_DIRS = ['packages/ui/**', 'packages/agentic-sdk-v2/**', 'apps/compat-playground/**', 'apps/admin-console/**'];
 
 export default defineConfig({

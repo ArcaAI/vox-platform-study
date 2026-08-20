@@ -46,6 +46,14 @@ const WsCtor = WebSocket as unknown as StreamWsCtor;
 /** Audio flooded (as fast as possible) to overload the ingest path. */
 const FLOOD_SECONDS = 24;
 
+/**
+ * How long to wait for captions to RESUME after the flood. ~6x the idle
+ * measurement (see the budget note on the test) — the drain is real ASR over
+ * `FLOOD_SECONDS` of audio, so this scales with machine load, not with any
+ * gateway behaviour under test.
+ */
+const CAPTION_RECOVERY_TIMEOUT_MS = 120_000;
+
 test.describe('AC-3 — backpressure / overload recovery', () => {
   let token: string;
 
@@ -54,7 +62,15 @@ test.describe('AC-3 — backpressure / overload recovery', () => {
   });
 
   test('documented baseline: ingest overload recovers (socket stays open, captions resume, session finalizes)', async ({ request }, testInfo) => {
-    test.setTimeout(150_000);
+    // Budget note: the assertion is "captions RESUME after the overload", with
+    // no claim about how fast. Draining FLOOD_SECONDS of audio through real
+    // Whisper inference takes ~20s on an idle machine (measured), so the
+    // original 30s caption window carried a ~1.5x margin — which the rest of
+    // the suite running in parallel erased, reporting `transcriptsReceived: 0`
+    // and failing a recovery that had simply not finished yet. The windows
+    // below are sized off that measurement with real headroom so the outcome
+    // depends on the transport, not on what else the machine is doing.
+    test.setTimeout(240_000);
 
     const created = await createStreamSession(request, { token });
     test.skip(!created.ok, `streaming session unavailable (is STT running?): ${created.ok ? '' : created.reason}`);
@@ -78,7 +94,7 @@ test.describe('AC-3 — backpressure / overload recovery', () => {
       const openAfterFlood = socket.raw.readyState === WsCtor.OPEN;
 
       // The loop must drain and keep producing captions (recovery).
-      const gotTranscripts = await socket.waitForTranscripts(1, 30_000);
+      const gotTranscripts = await socket.waitForTranscripts(1, CAPTION_RECOVERY_TIMEOUT_MS);
       // `{type:'stop'}` is a JSON TEXT control frame. The gateway branches on
       // the `message` event's `isBinary`
       // arg, so stop reaches `writeControlCommand(finalize)`. Whether a `closed`

@@ -69,12 +69,12 @@ async function createPublishedWorkflow(request: APIRequestContext, token: string
     headers: { Authorization: `Bearer ${token}`, 'If-Match': `"${definition.version}"` },
     data: {},
   });
-  // `POST :id/publish` has no `@HttpCode` override in `WorkflowDefinitionController`, so it
-  // returns Nest's default POST status (201) at runtime — matching the sibling
-  // `ConsultationContextSchemaController#publish` route, which documents 201 for the same
-  // shape of action. The controller's own `@ApiResponse({ status: 200 })` Swagger annotation
-  // on this route is stale docs, not the actual contract.
-  expect(published.status(), `publish workflow definition '${slug}'`).toBe(201);
+  // `POST :id/publish` carries an explicit `@HttpCode(HttpStatus.OK)` in
+  // `WorkflowDefinitionController`, so 200 IS the contract and the route's
+  // `@ApiResponse({ status: 200 })` is accurate. (This assertion read 201 —
+  // Nest's default POST status — which was correct until TASK-780 made
+  // validate/publish answer 200; the annotation was never the stale half.)
+  expect(published.status(), `publish workflow definition '${slug}'`).toBe(200);
   const publishedBody = await published.json();
 
   return { id: publishedBody.id, slug: publishedBody.slug, version: publishedBody.version };

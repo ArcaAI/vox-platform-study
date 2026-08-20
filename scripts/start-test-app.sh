@@ -139,6 +139,35 @@ elif [ "$TARGET" = "worker" ]; then
     fi
 fi
 
+# ----------------------------------------------------------------------------
+# STT only: drop streaming session state left behind by an earlier test run,
+# BEFORE this instance boots.
+#
+# `SessionManager._recover_sessions` revives, at startup, every `stt:session:*`
+# still marked `status: ACTIVE` — claiming a capacity slot and starting an
+# ingestion consumer plus inference runtime for each. A spec that creates a
+# streaming session without closing it therefore leaks an ACTIVE session that
+# the NEXT run's STT resurrects and keeps running until the key's 24h TTL, and
+# those zombies compete for ASR throughput with the run that is actually
+# executing. Measured: from a clean Redis the suite was fully green and leaked
+# 7 keys; the very next run failed `streaming-backpressure-recovery` with
+# `transcriptsReceived: 0` after waiting 120s. Same code, opposite results.
+#
+# It MUST happen here rather than in the Playwright global setup: by the time
+# globalSetup runs, this process has already booted and revived them, so
+# deleting the keys then leaves the zombies running (observed).
+#
+# Test-env only, and scoped to the streaming keyspace — never touches app data.
+# ----------------------------------------------------------------------------
+if [ "$TARGET" = "stt" ]; then
+    purged="$(docker exec hope-redis-test sh -c \
+        'redis-cli -a "${REDIS_PASSWORD:-test_redis_pass}" --scan --pattern "stt:*" \
+         | xargs -r redis-cli -a "${REDIS_PASSWORD:-test_redis_pass}" DEL' 2>/dev/null | tail -1 || true)"
+    if [ -n "${purged:-}" ] && [ "${purged:-0}" != "0" ]; then
+        echo "  cleared ${purged} leaked stt:* key(s) from the test Redis before boot"
+    fi
+fi
+
 print_service_header "$TARGET (test env)" "${TARGET_PORT:+http://localhost:$TARGET_PORT}" \
     "$($is_python_target && echo "Conda env: arcaenv" || echo "")"
 

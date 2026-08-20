@@ -28,6 +28,22 @@ import { DEFAULT_TENANT_KEY, SEEDED_USERS, loginUser } from '../../../../tests/h
 // (/). Hermetic when TEXT is down (status ≠ 200 → shape check skipped).
 import { PreSummaryResponseSchema, SummaryResponseSchema } from '../../../../tests/contracts/text-compat.schemas';
 
+/**
+ * The three tests below drive a REAL upstream generation (TEXT -> the local
+ * provider), which the suite's default 30s test timeout cannot cover: measured
+ * generations on this stack run 4-21s EACH, and the provider serves one model
+ * instance, so concurrent callers queue behind one another. The tests were
+ * never asserting latency — they accept `200 | 500 | 502 | 503` precisely so a
+ * down/unavailable TEXT still passes — but a 30s cap turned "slow provider"
+ * into a red test. Sized at ~9x the worst measured single generation.
+ *
+ * The per-request timeout sits just under the test timeout so an upstream that
+ * truly hangs fails as a legible HTTP timeout rather than Playwright tearing
+ * the request context down mid-flight ("Request context disposed").
+ */
+const LLM_TEST_TIMEOUT_MS = 180_000;
+const LLM_REQUEST_TIMEOUT_MS = 170_000;
+
 const SUMMARY_SYNC_PATH = '/api/smr/api/v1/summary/sync';
 const PRESUMMARY_PATH = '/api/smr/api/v1/presummary';
 
@@ -133,9 +149,11 @@ test.describe('V1-compatible TEXT summary shims', () => {
 
   test('an authenticated Bearer caller reaches the shim (never 401/403/404)', async ({ request }) => {
     test.skip(!token, 'login failed — is the API seeded?');
+    test.setTimeout(LLM_TEST_TIMEOUT_MS);
     const response = await request.post(SUMMARY_SYNC_PATH, {
       headers: { Authorization: `Bearer ${token}` },
       data: sampleSummaryBody(),
+      timeout: LLM_REQUEST_TIMEOUT_MS,
     });
     expect([200, 500, 502, 503]).toContain(response.status());
     if (response.status() === 200) {
@@ -144,25 +162,39 @@ test.describe('V1-compatible TEXT summary shims', () => {
       const parsed = SummaryResponseSchema.safeParse(body);
       expect(parsed.success, `live response must match the v1 SummaryResponse schema: ${JSON.stringify(parsed.error?.issues)}`).toBe(true);
       expect(body.metadata).toHaveProperty('use_enhanced_format', false);
-      // Provider internals must never leak.
-      expect(body.metadata).not.toHaveProperty('raw_llm_content');
+      // v1-parity display labels. `raw_llm_content` is DELIBERATELY echoed:
+      // it mirrors v1's `_sanitize_response_for_frontend`, which explicitly
+      // keeps it, and it is the same LLM text already parsed into `summary`,
+      // so it exposes nothing beyond the returned summary (see the reasoning on
+      // `SummaryResponseMetadata`). This assertion previously demanded the
+      // OPPOSITE and never fired, because the call always hit the 30s test
+      // timeout before a 200 could come back.
+      expect(body.metadata).toHaveProperty('raw_llm_content');
+      // What must never leak is a CREDENTIAL or a provider endpoint.
+      const metaJson = JSON.stringify(body.metadata);
+      expect(metaJson).not.toMatch(/api[-_]?key/i);
+      expect(metaJson).not.toMatch(/https?:\/\//);
     }
   });
 
   test('an x-api-key caller reaches the shim (parity D2)', async ({ request }) => {
     test.skip(!apiKey, 'api key creation failed — is the API seeded?');
+    test.setTimeout(LLM_TEST_TIMEOUT_MS);
     const response = await request.post(SUMMARY_SYNC_PATH, {
       headers: { 'x-api-key': apiKey!, Accept: 'application/json' },
       data: sampleSummaryBody(),
+      timeout: LLM_REQUEST_TIMEOUT_MS,
     });
     expect([200, 500, 502, 503]).toContain(response.status());
   });
 
   test('presummary happy path returns a v1 PreSummaryResponse shape', async ({ request }) => {
     test.skip(!token, 'login failed — is the API seeded?');
+    test.setTimeout(LLM_TEST_TIMEOUT_MS);
     const response = await request.post(PRESUMMARY_PATH, {
       headers: { Authorization: `Bearer ${token}` },
       data: samplePreSummaryBody(),
+      timeout: LLM_REQUEST_TIMEOUT_MS,
     });
     expect([200, 500, 502, 503]).toContain(response.status());
     if (response.status() === 200) {

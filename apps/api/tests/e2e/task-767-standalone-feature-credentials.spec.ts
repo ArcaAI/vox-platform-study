@@ -57,6 +57,13 @@ const ARCAAI_TENANT_KEY = 'ARCAAI';
 const NATIVE_STT = '/api/v1/audio/transcription-jobs';
 const COMPAT_STT_START = '/api/stt/start_session';
 const NATIVE_SUMMARY = '/api/v1/text-generations/generate';
+/**
+ * Per-request budget for calls that wait on a real model. `APIRequestContext`
+ * caps every request at 30s by default, which a busy local provider exceeds —
+ * these tests assert the AUTH outcome, not latency (see playwright.config.ts).
+ */
+const INFERENCE_REQUEST_TIMEOUT_MS = 230_000;
+
 const COMPAT_SUMMARY = '/api/smr/api/v1/summary/sync';
 
 interface CreatedApiKey {
@@ -346,7 +353,11 @@ test.describe('TASK-767 — standalone features reachable by both machine creden
       const key = await createScopedApiKey(request, adminToken, ['consultation:report:write'], 'task-767-compat-sum-key');
       createdApiKeyIds.push(key.id);
 
-      const response = await request.post(COMPAT_SUMMARY, { headers: { 'X-API-Key': key.rawKey }, data: compatSummaryBody() });
+      const response = await request.post(COMPAT_SUMMARY, {
+        headers: { 'X-API-Key': key.rawKey },
+        data: compatSummaryBody(),
+        timeout: INFERENCE_REQUEST_TIMEOUT_MS,
+      });
       expect(response.status(), await response.text()).not.toBe(401);
       expect(response.status(), await response.text()).not.toBe(403);
     });
@@ -360,7 +371,11 @@ test.describe('TASK-767 — standalone features reachable by both machine creden
       );
       createdAccountIds.push(account.id);
 
-      const response = await request.post(COMPAT_SUMMARY, { headers: { 'X-Service-Account-Token': accessToken }, data: compatSummaryBody() });
+      const response = await request.post(COMPAT_SUMMARY, {
+        headers: { 'X-Service-Account-Token': accessToken },
+        data: compatSummaryBody(),
+        timeout: INFERENCE_REQUEST_TIMEOUT_MS,
+      });
       expect(response.status(), await response.text()).not.toBe(401);
       expect(response.status(), await response.text()).not.toBe(403);
     });
@@ -386,7 +401,11 @@ test.describe('TASK-767 — standalone features reachable by both machine creden
     });
 
     test('a machine token drives compat summarization all the way to a v1 body', async ({ request }) => {
-      const response = await request.post(COMPAT_SUMMARY, { headers: { 'X-Service-Account-Token': accessToken }, data: compatSummaryBody() });
+      const response = await request.post(COMPAT_SUMMARY, {
+        headers: { 'X-Service-Account-Token': accessToken },
+        data: compatSummaryBody(),
+        timeout: INFERENCE_REQUEST_TIMEOUT_MS,
+      });
 
       // The gate is asserted unconditionally — that part never depends on a
       // Python service being up.
