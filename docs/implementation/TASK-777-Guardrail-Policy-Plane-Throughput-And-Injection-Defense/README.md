@@ -291,12 +291,13 @@ created here were formatted with black.
 
 ### 5.6 Left undone / follow-ups
 
-1. **Seed rows for the new policy blob.** `AiModel._metadata.policy` needs
+1. **Seed rows for the new policy blob.** ~~`AiModel._metadata.policy` needs
    `medicalValidationCriteria` on the SYSTEM `guardrail.validate` row, or
-   `/medical/validate` fails closed with 503. This is the intended posture (a judge
-   with no criteria is no judge) but it is a **hard cutover**: the seed change must
-   land with this code. Seed authoring is a sibling ticket's lane and no seed run was
-   performed here, per the working agreement.
+   `/medical/validate` fails closed with 503.~~ **Resolved 2026-08-20 — see §5.7.**
+   This was the intended posture (a judge with no criteria is no judge) but it was a
+   **hard cutover**: the seed change had to land with this code. Seed authoring was a
+   sibling lane and no seed run was performed in the original pass, per the working
+   agreement.
 2. **`injectionScreeningCriteria`** is declared and unused — reserved for an
    LLM-judge second opinion on the inbound path, which would close a call cycle with
    `apps/text` and needs its own design.
@@ -309,6 +310,138 @@ created here were formatted with black.
    cutover is not `apps/guardrail`'s file scope.
 5. **Groundedness is unchanged** (T7) and still degrades to `unverified`.
 
+### 5.7 Seed data for the policy blob (2026-08-20)
+
+Follow-up to §5.6 item 1: with no seed row carrying `_metadata.policy`,
+`POST /medical/validate` was permanently 503 (`GuardrailPolicy.require_criteria`
+fail-closed) — the correct posture for missing config, but only correct once the
+config is actually shipped. This closes the gap.
+
+**Files:**
+
+| File | Change |
+|---|---|
+| `packages/database/src/prisma/db_main/seed/ai-models/shared.ts` | `AiModelSeed.metaData` gains an optional `policy?: Record<string, string \| number>` key, documented against `core/policy.py`'s governed key table. |
+| `packages/database/src/prisma/db_main/seed/ai-models/llm.ts` | The SYSTEM `granite-guardian-4.1-8b` row (`80000000-0000-0000-0005-000000000060`, the platform default for `guardrail.validate`) gains `metaData.policy.medicalValidationCriteria`. |
+| `packages/database/src/prisma/db_main/seed/__tests__/task-777-guardrail-policy-seed.test.ts` | **New.** 8 Vitest cases (mock-client, no live DB) — see below. |
+
+**Criteria text — recovered, not rewritten.** `MEDICAL_VALIDATION_CRITERIA` was
+deleted from `apps/guardrail/src/guardrail/services/external_text_client.py` by
+commit `567d4baf5`. Its exact value was read back with
+`git show 567d4baf5^:apps/guardrail/src/guardrail/services/external_text_client.py`
+and extracted with `ast.literal_eval` (not hand-transcribed) to guarantee a
+byte-for-byte match, including the embedded JSON-shape example and both blank
+lines. The seeded string is that value verbatim — a fabricated clinical-validator
+prompt would be a worse outcome than the pre-existing 503.
+
+**`injectionScreeningCriteria` was deliberately NOT seeded.** It is declared in
+`core/policy.py::_SPECS` with `failMode: closed`, but grepping
+`apps/guardrail/src/guardrail` turns up no call site that resolves it —
+§5.6 item 2 confirms it's "reserved for an LLM-judge second opinion on the inbound
+path, which would close a call cycle with `apps/text` and needs its own design."
+Authoring criteria text for a check nothing reads yet would be unreviewed clinical
+policy masquerading as shipped configuration. When that lane is designed, it needs
+its own seed entry and its own review — not a placeholder invented here.
+
+**How the update reaches the EXISTING row (the create-only trap named in the
+original task brief).** `seedAiTaskDefault` (`16-ai-task-default.ts:184-196`) genuinely
+is create-only. `seedAiModels` (`06-stt.ts:1799`, invoked by `seedStt` — the actual
+`AiModel` entry point) is **not**: for a slug that already exists it calls
+`client.aiModel.update({ where: { id: existing.id }, data: { ...,
+...(modelData.metaData !== undefined ? { metaData: modelData.metaData } : {}) } })`
+— the exact mechanism `ai-models/nlp.ts` already relies on for `labelTaxonomy` and
+`ai-models/tts.ts` for `voices`. Because `granite-guardian-4.1-8b`'s seed row didn't
+previously set `metaData` at all, existing rows kept whatever `_metadata` they had
+(the guard clause skips the key entirely). Adding `metaData: { policy: {...} }` now
+means a `db:seed` re-run **overwrites the row's entire `_metadata` column** with
+exactly that literal — the same full-column-write semantics every other
+`metaData`-bearing row in this catalog already has, not a new merge mechanism. On
+this row specifically that is safe: `granite-guardian-4.1-8b` carried no other
+`metaData` keys before this change (verified: it's the only row in `LLM_AI_MODELS`'s
+guardrail block, and no other file writes to its id). Fields OUTSIDE `metaData` —
+`resourceStatus`, `downloadState`, and anything an admin sets through the AiModel
+admin surface — are untouched; `seedAiModels`'s `update()` payload never carries them.
+
+**Customer-tenant clones (`50000000-…0000`, `50000000-…0001`) — deliberately NOT
+given the policy blob.** `tenant_config.py::_load_from_db`'s `_row_rank` ranks the
+**SYSTEM** `AiModel` row over a tenant-owned copy of the SAME slug as a tie-break
+(`0 if row.model_tenant_id == SYSTEM_TENANT_ID else 1`) — a shared-read design
+pinned by the Python suite's `test_db_prefers_system_model_row_over_tenant_copy`.
+For `guardrail.validate` specifically, a tenant would need to point its OWN
+`AiTaskDefault` row at a DIFFERENT model slug to ever have its clone's `metaData`
+consulted; the same-slug clone's `_metadata.policy` is structurally unreachable.
+Separately, `backfillCustomerTenantAiModels` only resyncs an EXISTING clone's
+`metaData` when `provider IS NULL` (`06-stt.ts:1888`) — the live dev DB's clones
+were backfilled long ago and already carry `provider`, so even a resync pass
+wouldn't touch them. Seeding `policy` onto the clones would be dead, unreachable
+data pretending to be tenant-overridable config; the README instead documents the
+reachability gap rather than papering over it with an inert write.
+
+**Tests (`task-777-guardrail-policy-seed.test.ts`, all mock-client / static —
+no live DB):**
+
+1. The SYSTEM row's `metaData.policy.medicalValidationCriteria` equals the recovered
+   text exactly.
+2. `injectionScreeningCriteria` is absent from the seeded blob.
+3. No other `DEFAULT_AI_MODELS` row accidentally carries a `policy` key.
+4. `seedAiModels` against an "already exists" mock `update()`s the granite row's
+   `metaData` to exactly `{ policy: { medicalValidationCriteria: <text> } }`, and
+   creates nothing.
+5. Re-running `seedAiModels` twice produces byte-identical update payloads
+   (idempotency).
+6. Every OTHER row with no seeded `metaData` gets an update payload with no
+   `metaData` key at all (existing admin-set metadata on those rows is never
+   clobbered by this change).
+7. A brand-new customer-tenant clone (first backfill) DOES inherit
+   `metaData.policy` — `backfillCustomerTenantAiModels` spreads the SYSTEM row
+   verbatim on create, so this is accurate even though it's inert per the
+   reachability note above.
+8. An already-populated clone (`provider` already set — the live-DB state) is left
+   untouched by the backfill's resync branch.
+
+**Verification (this worktree, `.claude/worktrees/task-777-seed`, after
+`pnpm install` + `DATABASE_URL=... DIRECT_URL=... pnpm --filter @arcaai/database
+db:generate` to materialize the Prisma client and node_modules, neither of which
+were checked in):**
+
+```
+$ pnpm --filter @arcaai/database exec vitest run src/prisma/db_main/seed/__tests__/task-777-guardrail-policy-seed.test.ts
+ Test Files  1 passed (1)
+      Tests  8 passed (8)
+
+$ pnpm --filter @arcaai/database test
+ Test Files  59 passed (59)
+      Tests  1549 passed (1549)   # 1541 baseline + 8 new
+
+$ pnpm --filter @arcaai/database build   # tsc
+src/prisma/db_main/seed/ai-models/nlp.ts(111,7): error TS2353: ... 'languages' does not exist ...
+src/prisma/db_main/seed/ai-models/nlp.ts(167,7): error TS2353: ... 'languages' does not exist ...
+src/prisma/db_main/seed/ai-models/nlp.ts(261,7): error TS2353: ... 'languages' does not exist ...
+ERR_PNPM_RECURSIVE_RUN_FIRST_FAIL  @arcaai/database@0.1.0 build: `tsc`
+
+$ pnpm --filter @arcaai/database typecheck   # identical 3 errors, same file/lines
+```
+
+Those 3 `nlp.ts` errors are **pre-existing on `feat/loop @ 636c4c917`**, unrelated to
+this change — confirmed by `git stash -u` (stashing both this lane's tracked edits
+AND the untracked new test file) and re-running `build`: the identical 3 errors
+reproduce with ZERO files from this lane present. `AiModelSeed.metaData` was already
+too narrow for `ai-models/nlp.ts`'s `languages`/`capabilities`/`labelTaxonomy` keys
+before this change (a TASK-778-lane gap, out of this ticket's scope per the
+Karpathy "surgical changes" rule — not touched here). This lane's own addition
+(`metaData.policy` on the `AiModelSeed` interface, consumed only by `llm.ts`)
+introduces zero new `tsc` errors, confirmed by diffing the error list before/after.
+
+`pnpm --filter @arcaai/database lint` does not exist — the package has no `lint`
+script and no ESLint config (`npx turbo run lint --filter=@arcaai/database` reports
+"No tasks were executed"), consistent with `01-development-workflow.md`'s lint
+guidance applying at the repo-aggregate level; there is nothing to lint in this
+package specifically.
+
+**Left undone:** the pre-existing `nlp.ts`/`shared.ts` typecheck drift above (not
+this ticket's scope — flag separately if it should be fixed). No live seed run was
+performed; run `pnpm db:seed` to apply.
+
 ## 6. Change History
 
 | Date | Change |
@@ -317,3 +450,4 @@ created here were formatted with black.
 | 2026-08-19 | Lane A landed: single-flight + invalidation, policy-as-config with per-key `failMode`, keyword-fallback deleted, confidence floor enforced. |
 | 2026-08-19 | Lane B landed: explicit per-phase timeouts, admission gate, per-peer breakers, bounded batch fan-out, 8 metric families, load harness + measured numbers (§5.3). |
 | 2026-08-19 | Lane C landed: sanitization, nonce-fenced containment, bidirectional screening with attributable per-check records, `/guardrail/screen/{inbound,outbound}`. |
+| 2026-08-20 | §5.7: seeded `medicalValidationCriteria` (recovered verbatim from `567d4baf5^`) onto the SYSTEM `granite-guardian-4.1-8b` row's `metaData.policy`, closing the §5.6 item 1 gap that left `/medical/validate` permanently 503. `injectionScreeningCriteria` deliberately left unseeded (unused by any call site). Customer-tenant clones deliberately left unseeded (unreachable per `_row_rank`'s shared-read tie-break). 8 new Vitest cases; no seed run performed. |

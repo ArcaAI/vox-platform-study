@@ -122,18 +122,42 @@ export type TtsVoiceBinding = { id: string; locale: string };
  * (GLiNER2 PII span detector, GLiNER2 safety moderator). Guardrail reads this
  * through the tenant → SYSTEM cascade (`core/tenant_config.py`), so the shape
  * is load-bearing configuration, not documentation.
+ *
+ * One classification task, e.g. the six GLiGuard moderation tasks. A type alias
+ * (like `TtsVoiceBinding`) so it keeps an implicit index signature and stays
+ * assignable to `InputJsonValue`.
  */
-export type NlpModelCapability = 'extract_entities' | 'classify_text';
-
 export type LabelTaxonomyTask = {
   labels: string[];
-  multi_label: boolean;
+  multi_label?: boolean;
   cls_threshold?: number;
 };
 
-export type LabelTaxonomy =
-  | { threshold: number; labels: string[] }
-  | { threshold: number; benignLabels: string[]; tasks: Record<string, LabelTaxonomyTask> };
+/**
+ * Extraction rows use `labels`; classification rows use `tasks` (+
+ * `benignLabels`); the joint checkpoint carries both, which is exactly what
+ * makes it the joint checkpoint. Fields are optional so both shapes are
+ * expressible on one type.
+ */
+export type LabelTaxonomy = {
+  threshold?: number;
+  labels?: string[];
+  benignLabels?: string[];
+  tasks?: Record<string, LabelTaxonomyTask>;
+};
+
+/**
+ * What `apps/nlp` may ask a checkpoint to DO. Declared here, on the row, so the
+ * service never branches on a model id — the capability envelope is
+ * configuration, and a selection pointing a `classify_text` task at an
+ * extraction-only row is wrong at the catalog, not at inference time.
+ * TASK-778 proved this is load-bearing: every checkpoint ANSWERS every verb,
+ * so a wrong selection mis-answers confidently instead of failing.
+ */
+export type AiModelCapability = 'extract_entities' | 'classify_text';
+
+/** Historical alias — same closed set. */
+export type NlpModelCapability = AiModelCapability;
 
 /** Shape of one `DEFAULT_AI_MODELS` seed row. */
 export interface AiModelSeed {
@@ -157,23 +181,23 @@ export interface AiModelSeed {
   computeType: string;
   tags: string[];
   /**
-   * Per-model extras: TTS `{voices}`, Azure LLM `{azureDeployment}`, and the
-   * guardrail-plane NLP rows' `{languages, labelTaxonomy}`.
+   * Per-model extras: TTS `{voices}`, Azure LLM `{azureDeployment}`, guardrail
+   * `{policy}` (TASK-777 — `apps/guardrail/src/guardrail/core/policy.py`'s
+   * governed key table, resolved through the same tenant → SYSTEM cascade as
+   * model selection; a key declared `failMode: closed` there — e.g.
+   * `medicalValidationCriteria` — is NOT a code default and MUST be seeded here
+   * or the resolving endpoint fails closed with 503), and — for the NLP safety
+   * plane (TASK-778) — the capability envelope, languages and label taxonomy
+   * that keep model ids and label sets out of Python.
    */
   metaData?: {
     voices?: TtsVoiceBinding[];
     azureDeployment?: string;
     ttsProvider?: string;
+    policy?: Record<string, string | number>;
     languages?: string[];
+    capabilities?: AiModelCapability[];
     labelTaxonomy?: LabelTaxonomy;
-    /**
-     * What `apps/nlp` may ask this checkpoint to do. Declared as configuration
-     * rather than inferred from the model id in Python, so a `guardrail.safety`
-     * selection pointing at an extraction-only row fails at selection time
-     * instead of mis-answering at inference. Closed set: a row without a
-     * classification head must not claim `classify_text`.
-     */
-    capabilities?: NlpModelCapability[];
   };
   /** Only set when a row must seed in a non-default status (indic-f5). */
   resourceStatus?: ResourceStatusType;

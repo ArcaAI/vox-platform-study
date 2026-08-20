@@ -230,6 +230,23 @@ class NLPServiceConfig(BaseSettings):
     model_cache_ttl_seconds: int = Field(default=600, ge=60, le=3600)
     model_cache_max_models: int = Field(default=3, ge=1)
 
+    # ── Model weight cache root ────────────────────────────────────────────
+    # WHERE weights are cached; never WHICH checkpoint runs (that stays
+    # `AiTaskDefault` x `AiModel`, resolved per request). Transport/topology,
+    # so env-tier is correct — but it must be DECLARED, not inherited from an
+    # operator's login shell: `~/.zshrc` is sourced by INTERACTIVE shells only,
+    # and services, CI jobs and coding agents all run in non-interactive ones.
+    # An undeclared value silently redirects every download to
+    # `~/.cache/huggingface`, which is how TASK-778's first "measured against
+    # real weights" claim came to be unsubstantiated.
+    #
+    # Unprefixed (`validation_alias` bypasses the `NLP_` prefix) because it
+    # belongs to the huggingface stack, not to this service. It arrives through
+    # the ONE canonical loader — `hope_env.load_env()` at the top of this
+    # module — and is pushed back into `os.environ` by `apply_hf_home` below.
+    # Empty = the huggingface default.
+    hf_home: str = Field(default="", validation_alias=AliasChoices("HF_HOME"))
+
     model_config = SettingsConfigDict(env_prefix="NLP_")
 
     def __init__(self, **kwargs: Any) -> None:
@@ -484,3 +501,23 @@ class Settings:
 
 
 settings = Settings()
+
+
+def apply_hf_home(service: NLPServiceConfig) -> None:
+    """Export the declared cache root into ``os.environ`` for huggingface.
+
+    ``huggingface_hub`` snapshots its cache constants at IMPORT time and reads
+    them from ``os.environ``, never from this settings object — so a declared
+    field that is not exported is documentation, not configuration. Called at
+    module import, i.e. before any ``gliner2`` / ``transformers`` import that a
+    request path could trigger.
+
+    Idempotent, and never invents a path: an empty value leaves the huggingface
+    default in place rather than pointing the cache somewhere the operator did
+    not ask for.
+    """
+    if service.hf_home:
+        os.environ["HF_HOME"] = service.hf_home
+
+
+apply_hf_home(settings.service)
