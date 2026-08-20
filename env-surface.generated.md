@@ -11,13 +11,13 @@ disagree with those declarations.
 
 | Metric | Value |
 |---|---:|
-| Declared keys (distinct) | 158 |
+| Declared keys (distinct) | 157 |
 | … of which required (`failMode: closed`) | 32 |
 | … of which secret | 31 |
-| … tier `env` | 122 |
+| … tier `env` | 121 |
 | … tier `global-kv` | 9 |
 | … tier `vault-kv` | 27 |
-| `turbo.json#globalEnv` entries | 174 |
+| `turbo.json#globalEnv` entries | 173 |
 
 ## Variables
 
@@ -179,5 +179,4 @@ disagree with those declarations.
 | `VAULT_TRANSIT_MOUNT` | `env` | no | `transit` | `apps/api` | Mount path of the Transit engine used for envelope encryption. |
 | `VAULT_WRAPPED_SECRET_ID` | `env` | yes | `CHANGE_ME` | `apps/api` | PRODUCTION path: a single-use response-wrapping token unwrapped once per process start. Blank in dev so the raw path is taken. Same bootstrap exemption as `VAULT_SECRET_ID`. |
 | `WEBHOOK_SECRET_PEPPER` | `vault-kv` | yes | `CHANGE_ME` | `apps/api` | Key-derivation material for the REVERSIBLE AES-256-GCM encryption `WebhookService` applies to every server-generated webhook signing secret before storage (`WebhookService.encryptSecretForStorage`). NOT an HMAC pepper like `api.keyPepper` — webhook signing requires the platform to recover the RAW secret at delivery time (to compute an HMAC the receiver, who only ever saw the raw secret once, can independently verify), so the stored form must be decryptable, not a one-way hash. See `WebhookService`'s class doc for the full rationale. DELIBERATELY A SEPARATE VAULT SECRET FROM `API_KEY_PEPPER` — reusing the API-key pepper would couple two independent rotation lifecycles: rotating one to respond to an API-key compromise would silently invalidate every webhook signature (and vice versa), and a caller with no legitimate reason to hold both credentials would need only one to attack both surfaces. Unset ⇒ falls back to a fixed local key-derivation string (no cross-credential fallback chain), matching `ApiKeyService`’s own legacy/no-SecretsService fallback — NOT a security posture to rely on in a Vault-backed deployment. Rotation is a bigger event than `api.keyPepper`'s stage-and-overlap pattern: changing this key makes every EXISTING stored ciphertext undecryptable (there is no keyVersion column here either), so a rotation must re-encrypt every `Webhook.hashedSecret` row under the new key in the same operation — a re-encryption migration, not a Vault kv-v2 version bump alone. |
-| `WORKFLOW_EXPOSURE_ALLOW_CLOUD_PROVIDERS` | `env` | no | `false` | `apps/api` | Decision #6 (R-8): may a workflow invoked through the PUBLIC exposure plane route to a cloud LLM provider (azure/bedrock/openai/anthropic/vertex — `isCloudByoProvider('llm', …)`)? OFF by default — public exposure inherits the strictest egress posture; a tenant opts in explicitly, never by default. Platform-wide today, not yet per-tenant: no node type in the code-owned registry selects a provider yet (`WORKFLOW_NODE_REGISTRY` ships only `noop`/`passthrough`), so there is nothing to differentiate BY tenant until TASK-720/731 add one — see the TASK-722 ticket README §7 for the reasoning. |
 | `WORKFLOW_EXPOSURE_ENABLED` | `env` | no | `false` | `apps/api` | R-1 kill-switch for the whole `/api/v1/workflows/:slug/…` public-invoke surface (TASK-722). Design.md's precondition: TASK-708's API-key scope enforcement must be verified end-to-end before this ships enabled; Temporal is also not yet production-ready (R-2). Read via `ConfigService.getConfigValue('WORKFLOW_EXPOSURE_ENABLED')`, `=== "true"` — a 404 (existence not disclosed) while off, same posture as `registration.selfSignupEnabled`. |

@@ -1,4 +1,4 @@
-import { BadRequestException, ForbiddenException, Inject, Injectable, NotFoundException, Optional } from '@nestjs/common';
+import { BadRequestException, Inject, Injectable, NotFoundException, Optional } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { ClsService } from 'nestjs-cls';
 import { generateId, ResourceType, SysEventType, WorkflowDefinitionRepository } from '@arcaai/domains';
@@ -12,7 +12,6 @@ import { GetWorkflowRunResult, HarnessGatewayService } from '../consultation/har
 import { IEntitlementsService } from '../entitlements/IEntitlementsService';
 import { interpreterSessionId, IWorkflowRunService, WorkflowRunResponse } from '../workflow-run';
 import { mintCompiledConfigClaimCheckRef } from './claim-check';
-import { findDisallowedCloudProvider } from './cloud-provider-guard';
 import {
   InvokeWorkflowRequest,
   WorkflowInvokeResponse,
@@ -92,13 +91,10 @@ export class WorkflowExposureService extends BaseService implements IWorkflowExp
       throw new BadRequestException(`Workflow '${slug}' has no compiled configuration.`);
     }
 
-    const allowCloudProviders = this.configService.getConfigValue('WORKFLOW_EXPOSURE_ALLOW_CLOUD_PROVIDERS') === true;
-    const disallowedProvider = findDisallowedCloudProvider(definition.compiledConfig, allowCloudProviders);
-    if (disallowedProvider) {
-      throw new ForbiddenException(
-        `Workflow '${slug}' selects the cloud provider '${disallowedProvider}', which this tenant has not opted into for public invocation.`,
-      );
-    }
+    // TASK-720 R-4 (owner ruling, 2026-08-20): a publicly-exposed workflow MAY select a cloud AI
+    // provider — the tenant carries the risk (BYOK), consistent with the platform's BYO-first
+    // posture. This used to gate on `WORKFLOW_EXPOSURE_ALLOW_CLOUD_PROVIDERS` (decision #6, R-8);
+    // that restriction is deliberately removed, not merely defaulted on. See the ticket README.
 
     if (!this.s3Service) {
       // No storage backend wired (e.g. a minimal test fixture) — fail loud rather than starting

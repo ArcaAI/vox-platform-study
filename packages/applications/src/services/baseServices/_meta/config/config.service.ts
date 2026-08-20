@@ -121,9 +121,9 @@ export class ConfigService implements IConfigService, OnModuleInit {
       // Auth / Registration
       REGISTRATION_SELF_SIGNUP_ENABLED: process.env.REGISTRATION_SELF_SIGNUP_ENABLED === 'true',
 
-      // Workflow exposure (TASK-722) — both default OFF/fail-closed.
+      // Workflow exposure (TASK-722) — default OFF/fail-closed. (The cloud-provider gate,
+      // WORKFLOW_EXPOSURE_ALLOW_CLOUD_PROVIDERS, was removed under TASK-720 R-4 — see IAppConfig.)
       WORKFLOW_EXPOSURE_ENABLED: process.env.WORKFLOW_EXPOSURE_ENABLED === 'true',
-      WORKFLOW_EXPOSURE_ALLOW_CLOUD_PROVIDERS: process.env.WORKFLOW_EXPOSURE_ALLOW_CLOUD_PROVIDERS === 'true',
 
       // Internal Services
       PORT: process.env.PORT || '8868',

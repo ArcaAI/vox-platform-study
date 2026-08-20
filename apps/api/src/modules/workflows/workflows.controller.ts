@@ -60,14 +60,20 @@ export class WorkflowsController {
   // is the control that reaches API-key traffic specifically (R-3) — set a conservative default
   // for workflow-scoped keys; this tier is the platform-wide backstop.
   @Throttle({ heavy: { limit: 20, ttl: 60000 } })
-  @ApiOperation({ summary: "Start a run of the tenant's active published version of :slug." })
+  @ApiOperation({
+    summary: "Start a run of the tenant's active published version of :slug.",
+    description:
+      "If the published definition selects a cloud AI provider (via the tenant's own `smr.*` task-default " +
+      "configuration — see AI Task Defaults), this run sends the tenant's data to that vendor. Public exposure " +
+      'does NOT restrict provider choice: TASK-720 R-4 (owner ruling, 2026-08-20) allows a publicly-exposed ' +
+      'workflow to select a cloud provider — the tenant carries that egress risk, consistent with the ' +
+      "platform's BYO-first posture. Configure/disclose provider choice where the tenant sets it (AI Task " +
+      'Defaults), not only here.',
+  })
   @ApiParam({ name: 'slug' })
   @ApiResponse({ status: 202, type: WorkflowInvokeResponse })
   @ApiResponse({ status: 404, description: 'Unknown, unpublished, or cross-tenant slug.' })
-  @ApiResponse({
-    status: 403,
-    description: 'Scope violation, or the definition selects a cloud provider this tenant has not opted into (decision #6).',
-  })
+  @ApiResponse({ status: 403, description: 'Scope violation.' })
   @ApiResponse({ status: 429, description: 'monthlyWorkflowInvocations quota exhausted.' })
   async invoke(
     @Param('slug') slug: string,
