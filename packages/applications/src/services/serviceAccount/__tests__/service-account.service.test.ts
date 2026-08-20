@@ -16,6 +16,7 @@
  *    from the 403 privilege boundaries above.
  */
 import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { createHmac } from 'crypto';
 import { ForbiddenException, NotFoundException } from '@nestjs/common';
 import { ServiceAccountService } from '../service-account.service';
 
@@ -182,6 +183,49 @@ describe('ServiceAccountService.exchangeToken', () => {
     expect(first.accessToken).not.toBe(second.accessToken);
     expect(first.expiresIn).toBe(900);
   });
+
+  it(
+    'a day-1 bootstrap secret, verified the SAME way the seed builds it (TASK-763 §OD-2), ' +
+      'authenticates through the documented exchange',
+    async () => {
+      // `94-service-account.ts`'s `computeSecretVerifier(secret, pepper)` is
+      // `createHmac('sha256', pepper ?? 'hope-service-account').update(secret).digest('hex')`
+      // — reproduced here (not imported: packages/database sits below
+      // packages/applications) with the SAME pepper `makeService`'s mocked
+      // SecretsService returns ('test-pepper'), so this proves the seed's
+      // construction and the runtime's verification are the same function.
+      const operatorSecret = 'a-high-entropy-operator-supplied-day-one-secret-value';
+      const seededVerifier = createHmac('sha256', 'test-pepper').update(operatorSecret).digest('hex');
+
+      const account = {
+        id: 'sa-arcaai',
+        clientId: 'hope_svc_a4ca1a11ad3141b0c0de0001',
+        tenantId: TENANT_A,
+        scopes: ['svc:admin:department:manage'],
+        superAdmin: false,
+        tokenTtlSeconds: 900,
+        secretVerifier: seededVerifier,
+        previousSecretVerifier: null,
+        previousCredentialExpiresAt: null,
+        allowedTenantIds: null,
+        allowedIps: null,
+        isPlatformAccount: false,
+        isRotationOverlapActive: () => false,
+      };
+      const { service } = makeService({}, { findByClientId: vi.fn(async () => account) });
+
+      const result = await service.exchangeToken(
+        { clientId: 'hope_svc_a4ca1a11ad3141b0c0de0001', clientSecret: operatorSecret } as never,
+        '1.2.3.4',
+      );
+
+      expect(result.accessToken).toBeTruthy();
+      expect(result.expiresIn).toBe(900);
+      // The stored verifier is the one-way hash, never the operator's secret.
+      expect(account.secretVerifier).not.toBe(operatorSecret);
+      expect(account.secretVerifier).not.toContain(operatorSecret);
+    },
+  );
 
   it('refuses a PLATFORM account presenting a working tenant outside its allow-list with 403 (test 15)', async () => {
     const secret = 'b'.repeat(64);
