@@ -582,6 +582,13 @@ export const RETIRED_GLOBAL_SETTING_KEYS: ReadonlyArray<{ namespace: string; key
   { namespace: 'guardrail', key: 'default-guardrail-provider' },
   { namespace: 'guardrail', key: 'default-guardrail-model' },
   { namespace: 'guardrail', key: 'guardrail-azure-deployment' },
+  // D-740-1 cutover: the Azure deployment name moved from `smr/smr-azure-deployment`
+  // to `text/text-azure-deployment` (seeded above). The row is seed-written and has no
+  // runtime reader, so this sweep is what stops the old copy lingering ENABLED in an
+  // already-provisioned database. Any value a tenant had set under the old key is NOT
+  // migrated — per owner decision D-A there is no production data, so this is a clean
+  // cutover rather than a migration.
+  { namespace: 'smr', key: 'smr-azure-deployment' },
 ];
 
 /**

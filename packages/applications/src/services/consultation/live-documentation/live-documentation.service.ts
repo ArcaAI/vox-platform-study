@@ -1152,7 +1152,11 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
     } catch (error) {
       if (isStale()) return this.dropStale(session);
       textFailed = true;
-      this.logger.warn({ message: 'TEXT running-summary call failed', consultationId, error: error instanceof Error ? error.message : String(error) });
+      this.logger.warn({
+        message: 'TEXT running-summary call failed',
+        consultationId,
+        error: error instanceof Error ? error.message : String(error),
+      });
     }
 
     // Extract-from-source + entity-ground (SPEER). Run NER over the RAW

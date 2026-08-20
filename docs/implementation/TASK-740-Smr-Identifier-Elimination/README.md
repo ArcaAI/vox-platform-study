@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Status** | Review — core delivered and verified; one bounded chunk deliberately deferred (§6) |
+| **Status** | Review — core delivered and verified; the deferred service-identity cluster is now DONE under owner decision D-740-1 (§6). Only the separate deployment repo remains (§6.4) |
 | **Wave** | 2 · **Size** | L |
 | **Epic slug** | `smr-identifier-elimination` |
 | **Depends on** | — (reverses the frozen-identifier position of TASK-707) |
@@ -257,46 +257,204 @@ structlog, Redis, exceptions) · Console: `ai-task-defaults/api/types.ts`, `text
 `policy-fields.ts`, `harness-policy-summary-types.ts` · SDK: `ConfigSchema.ts`, `types/config.ts`,
 `compat.ts`, `compat/types.ts`, `core/constants.ts`, `utils/errorUtils.ts` · Infra: 5 Grafana
 dashboards.
+## 6. The service-identity cluster — RESOLVED by owner decision D-740-1
 
-## 6. Deliberately deferred — the service-identity cluster
+> **D-740-1 (owner, 2026-08-20, made knowing it touches published contracts):** rename the
+> service-identity cluster `smr` → `text` NOW. In scope: the Prometheus job name, the OTel
+> service name, the BullMQ queue names, the Vault policy path `hope-smr`, the `SMR-` release-tag
+> prefix, and every residual occurrence.
 
-The token `smr` **as the service's registry key** is one atomic cross-cutting cluster, and renaming
-it partially is precisely how silent breakage happens. It was NOT renamed. It comprises:
+This supersedes the deferral recorded here previously. **2,162 lines across 463 files** were
+changed; the repo now holds **zero** `smr` occurrences outside the six classified carve-outs
+in §6.2 and the historical records in §6.5.
 
-| Surface | Site |
-|---|---|
-| Service registry key | `SERVICE_NAME = "smr"` (`apps/text/core/metrics.py:147`), `_SERVICE_NAME` (`api/endpoints/health.py:32`) |
-| Effective-config contract | `GET /internal/effective-config?service=smr`; the gateway derives `` `${service}.modelCache.ttlSeconds` `` — so `smr.modelCache.ttlSeconds` and its `GlobalSetting` row are bound to it |
-| Prometheus | `job_name: smr` + the `service=smr` relabel in `infrastructure/docker/configs/prometheus/prometheus.yml` |
-| OTel | `service_name` / tracer-name defaults, `otel_service_name` |
-| BullMQ queues | `smr`, `smr-summaries` |
-| Vault | policy path `hope-smr` |
-| **Release tags** | the `SMR-` prefix in the tag grammar (`packages/utils/src/version-grammar.ts`) — digest-pinned promotion depends on it |
-| Deployment | compose/k8s service names in the **separate** `arca/hope-v2-deployment` repo |
+### 6.1 What was renamed
 
-Two of these — the release-tag grammar and the deployment-repo manifests — are outside this repo or
-constitute a published versioning contract, so moving them unilaterally would break CI and deploys
-that TASK-730 has not yet reached. **This needs an owner decision and its own ticket**, sequenced
-with 730.
+| Surface | Site | Note |
+|---|---|---|
+| Prometheus job + label | `infrastructure/docker/configs/prometheus/prometheus.yml` — `job_name: text`, `service` relabel `replacement: text` | Dev scrape config only; the cluster's lives in the deployment repo (§6.4) |
+| Grafana dashboards | `uid`/`tags` on `text-{overview,resilience,security,cache-friendliness}` | Metric NAMES were already `text_*` (Wave 4); no PromQL used a `service="smr"` selector, so nothing was left dangling |
+| Release-tag grammar | `SERVICE_TAG_PREFIXES` `SMR`→`TEXT` (`packages/utils/src/version-grammar.ts`) **plus every** `$CI_COMMIT_TAG` rule in `.gitlab-ci.yml`, `.gitlab/ci/{build,publish,rules,validate}.yml`, and `.github/services.json` | Moved atomically — see §6.3. The rule doc (`09-infrastructure-devops.md`) already documented `TEXT`, so this closes a doc↔code drift rather than opening one |
+| Vault policy path | `hope-smr` → `hope-text` in `apps/text/README.md`, `deployment/vault-agent/README.md`, `apps/text/docker-compose.yml`, dev bootstrap | In-repo these are docs + local compose; the real policy is created in the deployment repo (§6.4) |
+| Service registry / OTel | already `text` in code; only prose and `.env.sample` comments moved | No env VAR NAME changed, so `turbo.json#globalEnv` is untouched |
+| GlobalSetting key | `smr/smr-azure-deployment` → `text/text-azure-deployment` | Seed-written, **no runtime reader**. The old row is now swept by `RETIRED_GLOBAL_SETTING_KEYS` — see §6.3 |
+| Prompt-template tag | `smr-v1` → `text-v1` (seeds + `PRE_SUMMARY_SURFACE_TAG.v1`) | Behaviourally INERT: OD-7(b) made the `'v1'` surface a NEGATIVE match on `dept-free`, so `PRE_SUMMARY_SURFACE_TAG.v1` is a dead value no query reads. Verified before renaming |
+| Everything else | ~2,000 residual symbols, private methods, file names, test names, docstrings, prose | 2 files renamed: `summary.service.smr-fallback.task635.test.ts`, `tests/fixtures/smr-compat.fixture.ts` |
 
-Also deferred, and reported rather than changed:
+**The BullMQ item in the original deferral list was wrong.** There is no queue named `smr` or
+`smr-summaries`. Queue names come from the `JobQueue` enum (`packages/domains/src/enums/JobQueue.enum.ts`),
+which contains no such member; the summarization queues are `GeneratePreSummary` /
+`GenerateComprehensiveSummary` / `GenerateSummary`. `smr-summaries` exists only as fixture data in
+one admin-console test. **No queue cutover was required** — see §6.3 for why that mattered.
 
-- **`~2000 residual occurrences`** in non-doc files, of which ~847 are pure prose in
-  comments/docstrings/test names and ~251 are the service-identity cluster above. The remainder are
-  lower-value symbols (`createAxiosSmrResponse`, `_StatsSmr`, `BaseSmrUser`, `remap_smr_alias`,
-  `SmrSyncSummaryRequestSchema`, the `smr-v1` prompt-template seed tags, `smr-compat` file names,
-  the `smr_task` SSE ticket namespace shared with the gateway's `@StreamScope`).
-- **An extension of D-6 found in passing:** `packages/applications/src/services/tenant/tenant.service.ts:1449,1450,1545`
-  still reads the `default-smr-provider` / `default-smr-model` `GlobalSetting` keys, which
-  `seed/11-global-setting.ts` lists in `RETIRED_GLOBAL_SETTING_KEYS` and sweeps to `DELETED`. That
-  is the same defect D-6 describes, in a second place. Removing the read changes tenant
-  provider-switching behaviour, so it was reported rather than fixed blind.
-- **`apps/harness` still rejects `ollama`** in `_SAFETY_PROVIDERS`, `local_providers` and
-  `JudgeProvider`. Left untouched deliberately — it interacts with the owner's revised TASK-736
-  scope (Ollama provider logic stays available) and with TASK-735 routing judgement through
-  `apps/text`. Needs an owner call, not a unilateral fix.
+### 6.2 What was deliberately NOT renamed (six carve-outs, 184 occurrences)
+
+Each of these is a value some *external or already-persisted* thing knows, not an identifier this
+codebase is free to choose. A blanket rename broke three of them; all six now carry an in-code
+comment saying why a future sweep must leave them alone.
+
+| # | Site | Why it must stay `smr` |
+|---|---|---|
+| 1 | `api/smr/api/v1` (~110 occurrences) | The frozen v1 wire contract (owner decision 704). Masked with a sentinel during the sweep and restored byte-identically |
+| 2 | `apps/harness/.../temporal/models.py` — `AliasChoices("text_provider", "smr_provider")` ×6 | The legacy key that lets **pre-740 recorded Temporal histories** decode on replay. The sweep collapsed it to `AliasChoices("text_provider","text_provider")`, which broke 18 replay-compat tests |
+| 3 | `RETIRED_GLOBAL_SETTING_KEYS` (`seed/11-global-setting.ts`) | Names `GlobalSetting` rows that **exist in deployed databases**. Renaming them points the retirement sweep at rows that do not exist, leaving the real `smr` rows ENABLED forever |
+| 4 | `apps/api/src/filters/downstream-error.ts` — `/\/api\/smr\b/` | The capability matcher for carve-out #1. Renamed, it stops recognising the frozen path |
+| 5 | `scripts/__tests__/text-service-cli-token.test.ts` | A grep-gate whose `smr` literals are the thing being **forbidden**. Renamed, every `not.toMatch` became a tautology that can never fail |
+| 6 | `tests/helpers/__tests__/db.helper.test.ts` | Same class as #5 (`smr.main:app`, `DEBUG_SMR`) |
+
+> **The general lesson, beyond the `export const X = X` bug class TASK-707 recorded.** A rename is
+> unsafe wherever the old and new name appear *together on purpose* — a legacy alias, a
+> retirement list, a negative assertion. Collapsing that pair produces code that still compiles,
+> still reads plausibly, and silently does nothing. A `git grep` for the new token cannot find it;
+> only running the suites can. Three of the six were caught by tests, one by a duplicate-pair
+> detector run over the diff.
+
+### 6.3 Cutover classification (running-system state)
+
+| State | Classification | Action taken |
+|---|---|---|
+| **BullMQ queues** | **N/A — no such queue exists** (see §6.1) | Nothing. Had one existed, the choice would have been *drain*: pause the producer, let the old queue empty, then deploy the renamed consumer — dual-read doubles the consumer surface for no benefit when the rename is a single atomic deploy |
+| **Redis key prefixes** | Already renamed in Wave 4 — **accept-loss** | Unchanged. Per owner decision D-A there is no production data; a real deployment would drain in-flight `smr:task:*` / `smr:stream:*` keys before the cut, since these carry SSE resume state whose loss surfaces as a stalled stream, not a crash |
+| **`GlobalSetting` rows** | **Persisted state — retire-and-recreate** | `smr/smr-azure-deployment` added to `RETIRED_GLOBAL_SETTING_KEYS`, so the seed sweeps the old row to `DELETED` while the new `text/text-azure-deployment` row is created. Any value a tenant had set is NOT migrated (D-A: no production data) |
+| **Prompt-template `smr-v1` tag** | **Persisted but inert** | Renamed. No query reads it (verified). An already-seeded DB keeps `smr-v1` rows until reseeded; nothing behaves differently either way |
+| **Prometheus job/label** | **Observability continuity** | Renamed. Historical `job="smr"` series do not merge with `job="text"` — Grafana panels show a discontinuity at the cut. Acceptable in dev; the cluster's Prometheus is in the deployment repo (§6.4) |
+| **Grafana dashboard `uid`** | **Stored identifier** | Renamed. A `uid` change breaks saved links and any provisioning reference — see the deployment checklist |
+| **Vault policy path** | **Live secret-engine state** | In-repo docs/compose renamed. The live policy needs the create-then-swap procedure in §6.4 — a rename is NOT atomic in Vault |
+| **Release-tag prefix** | **Published grammar** | Renamed atomically with every consumer. `TEXT-x.y.z` now builds `apps/text`; **`SMR-x.y.z` no longer matches anything and triggers no pipeline** |
+
+### 6.4 Deployment-repo checklist — `arca/hope-v2-deployment`
+
+**Not touched here, by instruction.** That repo is not checked out in this worktree and the owner
+deploys it personally. Ordered relative to merging this branch:
+
+**Before merge (safe to do early — additive only):**
+
+1. **Vault**: create policy `hope-text` with the *same* rules as `hope-smr`, and bind the existing
+   AppRole to **both**. Do not delete `hope-smr` yet — a running pod holds a token issued against
+   it. (Vault has no policy rename; this create-then-swap is the only non-disruptive path.)
+2. **Prometheus** (cluster scrape config): add a `text` job alongside `smr`, scraping the same
+   target, with the `service` relabel set to `text`. Both series exist during the overlap, which is
+   what lets a dashboard bridge the discontinuity.
+3. **Grafana**: if dashboards are provisioned from that repo, add the new `uid`s **as new files**;
+   keep the old ones until step 8.
+
+**At merge (must be simultaneous with this branch landing):**
+
+4. Nothing in the deployment repo is required for the app to boot — the rename is internal. The one
+   hard coupling is the release tag: **stop tagging `SMR-x.y.z`. Use `TEXT-x.y.z`.** A `SMR-` tag
+   pushed after this merge triggers **no pipeline at all** (silent no-op, not an error).
+5. The image name is unaffected — it was already `text` (`SERVICE_NAME: text` in
+   `.gitlab/ci/build.yml`), so **no manifest image path changes** and digest-pinned promotion is
+   unaffected.
+
+**After the new revision is running and healthy:**
+
+6. Point the Deployment's Vault annotations at `hope-text`; roll the pods.
+7. Remove the `hope-smr` binding, then delete the policy.
+8. Remove the old Prometheus `smr` job and the old Grafana dashboard files.
+
+**Do NOT** delete `hope-smr` or the `smr` scrape job in the same change that lands this branch —
+a rollback would then have no policy to authenticate against and no metrics to alert on.
+
+### 6.5 Still out of scope (historical records — deliberately untouched)
+
+`docs/implementation/**`, `docs/archive/**`, `docs/research/**` (Proxmox VM inventories naming real
+`smr-v1` hosts), `**/CHANGELOG.md`, the committed migrations (rule 02 forbids editing them, and the
+folder `20260817170254_task_740_smr_to_text_identifier` is a ledger entry), `apps/nlp/data/dictionaries/**`
+(the English unigram list contains `smriti` and `smrt`), and `wasmResult` in `packages/noise-filter`
+(a false positive — w-a-**s**-**m**-**R**esult).
+
+### 6.6 D-740-2 — the retired `default-smr-*` reads in `tenant.service.ts`
+
+**Finding.** `validateProviderModel` (`packages/applications/src/services/tenant/tenant.service.ts:1466-1490`)
+declares a TEXT domain keyed on `default-smr-provider` / `default-smr-model` and validates a
+submitted provider/model against the `ux-constants/smr-provider-models` catalog. **All three keys
+are in `RETIRED_GLOBAL_SETTING_KEYS`** and are swept to `DELETED` by every seed run.
+
+**What removing them would change: nothing observable.** The code path is already inert, in two
+independent ways:
+
+1. The keys are retired, so `validateProviderModel` never matches `settingKey` and returns at the
+   `if (!domain) return;` guard.
+2. Even if a key did match, `loadTextCatalog` reads the retired `smr-provider-models` row, gets
+   nothing, and the `if (!catalog || catalog.length === 0) return;` guard exits before any
+   validation runs.
+
+So the TEXT half of this validator cannot reject anything today. The **Guardrail half of the same
+function is in exactly the same position** — `default-guardrail-provider`, `default-guardrail-model`
+and the whole `guardrail` namespace are retired too. The function's only live behaviour is its
+early return.
+
+**Recommendation — remove the TEXT and Guardrail domains together, in their own ticket; do NOT
+remove them here.** Reasons:
+
+- The honest fix deletes the whole `validateProviderModel` mechanism plus `loadTextCatalog`,
+  `getCurrentTextProvider`, `loadGuardrailCatalog`, `getCurrentGuardrailProvider` and their tests —
+  a behaviour-preserving deletion, but a substantial one, and outside a rename ticket's remit.
+- Deleting only the TEXT half would leave a two-entry table with one dead entry, which reads as an
+  oversight rather than a decision.
+- The replacement is already live: provider/model selection is validated by `AiTaskDefault` +
+  the `AiModel` registry (`resolveTextSelectionForKey`, Wave 5), which is fail-closed. Nothing
+  regresses by removing the dead validator, but nothing improves either — this is debt cleanup,
+  not a defect fix.
+
+**Renamed, not removed, in this ticket:** the literals now read `default-text-provider` /
+`default-text-model`, which are equally non-existent keys — the code is exactly as inert as before,
+with no `smr` left in it. That preserves D-740-1 without making an unreviewed behavioural change.
+
+### 6.7 Defect found and fixed while classifying — the effective-config contract was BROKEN
+
+Not a rename side effect; a live bug the rename repaired.
+
+`apps/text` polls `GET /internal/effective-config?service=text` (`core/effective_config.py:119`,
+`service: str = "text"`). The gateway's `EFFECTIVE_CONFIG_SERVICES` still listed **`smr`**, so
+`isKnownService('text')` was false and **every poll returned 400**. The Python client's negative
+cache absorbed the failure, so `apps/text` silently ran on its bootstrap env value forever and the
+admin control plane for text was inert.
+
+The same partial rename had left `resolveRetention('smr')` building the registry key
+`smr.modelCache.ttlSeconds`, while `SERVICE_RUNTIME_DEFAULTS` had already been renamed to
+`text.modelCache.ttlSeconds` — so even a well-formed request resolved `undefined`. The `as
+ServiceRuntimeKey` cast hid the mismatch from the compiler, and the unit test asked for
+`resolveForService('smr')`, so it agreed with the bug rather than catching it.
+
+Renaming the reader to `text` closes both halves. The suite reflects it: the baseline run has
+`EffectiveConfigService … serves smr runtimeProfiles plus the engine-retention TTL` **failing**;
+after the rename its `text` counterpart passes.
 
 ## 7. Verification
+
+### 7.0 D-740-1 verification (2026-08-20)
+
+Run in an isolated worktree. **Two environment hazards were confirmed and neutralised before any
+result was trusted** — both would otherwise have produced meaningless green:
+
+1. The worktree branched from a **2026-05-25 `dev` commit, 1,993 commits behind `feat/loop`**
+   (9,428 files differing). A 2,000-occurrence rename authored there would have been unmergeable
+   and would have missed everything added since May. Reset onto `feat/loop@f69e3598f` first.
+2. `node_modules` was **absent**, and the conda env's editable installs resolve `text`/`harness`
+   to the **MAIN checkout**, not this worktree. Verified with `importlib.util.find_spec`, then
+   overridden with `PYTHONPATH` and re-verified that each package resolved inside the worktree.
+   Every Python figure below was produced against **this** tree.
+
+| Gate | Result |
+|---|---|
+| `pnpm turbo typecheck --continue` | **40 of 45 tasks pass; ZERO new errors.** All failures are pre-existing sibling breakage — `WorkflowInvariantRule*`/`WorkflowRule*` (domains), `phi-audit-scrub`/`cloud-provider-guard` (applications), and 7 test-arity errors in apps/api. Proven pre-existing: none of the 8 failing files appear in this change's file list, and each missing module is absent from `HEAD` (`git ls-tree`) |
+| `pnpm turbo lint --continue` | **0 errors** in every package (domains 17, applications 183, api 63 standing `only-warn` warnings). One real prettier error the rename reflowed was fixed |
+| `pnpm test:unit` — **baseline vs after**, JSON reporter, set-differenced | baseline **892** failures → after **891**. **Zero new failures; one genuine fix.** The single "new" entry is the same pre-existing `Cannot find module './WorkflowRulePredicateType'` file-level failure under the renamed filename; the fix is `EffectiveConfigService … engine-retention TTL`, which **fails at baseline and passes after** — direct evidence for §6.7 |
+| `CI=true pytest` — `apps/harness` | **1479 passed, 0 failed** (all replay-compat tests green after restoring the legacy `smr_provider` alias) |
+| `CI=true pytest` — `apps/text` | **1212 passed, 2 failed.** Both are `test_wired_provider_queue.py` rate-limit timing (429 vs 200). **Not this change**: `apps/text/src/text` is byte-identical to the main checkout except one prose-only test file, and the failure **reproduces on unmodified main** under the same `PYTHONPATH` invocation |
+| `CI=true pytest` — `apps/guardrail` | **251 passed** |
+| `CI=true pytest` — `apps/nlp` | **358 passed** |
+| `ruff check` (project lint scope) | **All checks passed!** (the 14 errors a wider sweep shows are in `apps/{stt,harness}/scripts/**`, outside every `<svc>:lint` scope and untouched here) |
+| `pnpm --filter @arcaai/vox test` | **4206 passed, 0 failed** — `test:unit` does not cover this suite, and it is the one that exercises the `api/smr/api/v1` carve-out |
+| `pnpm --filter @arcaai/vox-node test` | **233 passed, 0 failed** |
+| Carve-out integrity | `api/smr/api/v1` present at all 5 production sites; **184 residual `smr` occurrences across exactly the 6 classified carve-out files**, nothing else |
+| `package.json` | parses with **no duplicate keys** (the sweep had created one) |
+
+Not run: `pnpm test:e2e` and the integration suites — the isolated test stack on :5433 is still down.
+
+### 7.1 Original ticket verification (2026-08-17)
 
 All commands run through the shared test mutex. Real output:
 
@@ -366,11 +524,16 @@ Additionally `apps/text/.../test_lifespan.py` had its title assertion corrected 
 - [x] Replay compatibility preserved (1360 harness tests green)
 - [x] `typecheck` clean repo-wide
 - [x] `pnpm lint` clean (exit 0, 0 errors); `pnpm env:sync` regenerated, drift assertion green
-- [ ] Service-identity cluster (§6) — deferred, needs an owner decision
-- [ ] e2e / integration — test stack :5433 down
+- [x] Service-identity cluster (§6) — **DONE** under D-740-1; only the separate deployment repo remains (§6.4 checklist)
+- [x] Release-tag grammar moved atomically with every CI consumer (§6.1)
+- [x] Six carve-outs classified, commented in code, and proven to still hold (§6.2)
+- [x] D-740-2 analysed and reported with a recommendation; deliberately NOT removed (§6.6)
+- [ ] e2e / integration — test stack :5433 down (unchanged)
+- [ ] Deployment repo `arca/hope-v2-deployment` — owner-executed, §6.4
 
 ## 9. Change History
 
 | Date | Change |
 |---|---|
 | 2026-08-17 | Ticket created and executed. Waves 1–6 applied; migration authored and proven; D-1…D-7 closed; service-identity cluster deferred with reasons (§6). |
+| 2026-08-20 | **D-740-1 RESOLVED.** §6 rewritten from "deferred" to delivered: renamed the service-identity cluster across 463 files / 2,162 lines — Prometheus job + relabel, Grafana dashboard uids, the `SMR-`→`TEXT-` release-tag prefix (version-grammar **plus** every `$CI_COMMIT_TAG` rule and `.github/services.json`), the `hope-smr` Vault policy path, the `smr-azure-deployment` GlobalSetting key (with a retirement entry for the old row), the `smr-v1` prompt tag, and all residual symbols/prose. Corrected the deferral's claim that BullMQ queues `smr`/`smr-summaries` exist — they do not (§6.1), so no queue cutover was needed. Six carve-outs identified and commented (§6.2); three of them (Temporal replay aliases, `RETIRED_GLOBAL_SETTING_KEYS`, the `api/smr` capability matcher) were **broken by the sweep and restored**, and two grep-gates that the sweep had inverted into tautologies were repaired and hardened. Removed the now-pointless `smr` CLI remap from five launcher scripts plus the `test:up:smr` alias (and the duplicate `package.json` key the sweep created). Fixed an unrelated **live defect found while classifying**: `EFFECTIVE_CONFIG_SERVICES` still said `smr` while `apps/text` polls `?service=text`, so every effective-config pull 400'd and `text.modelCache.ttlSeconds` was inert (§6.7). D-740-2 analysed, recommendation recorded, deliberately not actioned (§6.6). Deployment-repo work specified as an ordered checklist (§6.4) rather than attempted. |

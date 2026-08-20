@@ -800,10 +800,12 @@ describe('companion seed updates', () => {
   });
 
   it('removes the six superseded GlobalSetting keys from the seeded arrays', () => {
+    // These `smr` literals are DB row keys, not code identifiers — D-740-1 leaves them
+    // spelled `smr` on purpose (see RETIRED_GLOBAL_SETTING_KEYS in 11-global-setting.ts).
     const retiredKeys = [
-      'default-text-provider',
-      'default-text-model',
-      'text-provider-models',
+      'default-smr-provider',
+      'default-smr-model',
+      'smr-provider-models',
       'default-guardrail-provider',
       'default-guardrail-model',
       'guardrail-azure-deployment',
@@ -818,17 +820,22 @@ describe('companion seed updates', () => {
     expect(seededKeys.has('default-stt-model')).toBe(true);
   });
 
-  it('declares exactly the six superseded keys in RETIRED_GLOBAL_SETTING_KEYS', () => {
+  it('declares exactly the superseded keys in RETIRED_GLOBAL_SETTING_KEYS', () => {
     expect(RETIRED_GLOBAL_SETTING_KEYS).toBeDefined();
     const asStrings = (RETIRED_GLOBAL_SETTING_KEYS ?? []).map((k) => `${k.namespace}/${k.key}`).sort();
+    // Every entry keeps its ORIGINAL `smr` spelling: these name rows that exist in
+    // already-provisioned databases, so renaming them would point the retirement sweep
+    // at rows that do not exist. `smr/smr-azure-deployment` is the D-740-1 addition —
+    // the key moved to `text/text-azure-deployment`, and this retires the old copy.
     expect(asStrings).toEqual(
       [
         'guardrail/default-guardrail-provider',
         'guardrail/default-guardrail-model',
         'guardrail/guardrail-azure-deployment',
-        'text/default-text-provider',
-        'text/default-text-model',
-        'ux-constants/text-provider-models',
+        'smr/default-smr-provider',
+        'smr/default-smr-model',
+        'smr/smr-azure-deployment',
+        'ux-constants/smr-provider-models',
       ].sort(),
     );
   });
@@ -846,8 +853,11 @@ describe('companion seed updates', () => {
     };
     const result = await retireSupersededGlobalSettings!(client as never);
 
-    expect(client.globalSetting.updateMany).toHaveBeenCalledTimes(6);
-    expect(result.retired).toBe(12);
+    // 7 = the original six superseded keys + `smr/smr-azure-deployment` (D-740-1
+    // moved that key to the `text` namespace, so the old row must be swept too).
+    expect(client.globalSetting.updateMany).toHaveBeenCalledTimes(RETIRED_GLOBAL_SETTING_KEYS!.length);
+    expect(client.globalSetting.updateMany).toHaveBeenCalledTimes(7);
+    expect(result.retired).toBe(14);
     updates.forEach(({ where, data }) => {
       expect(where.resourceStatus).toEqual({ not: 'DELETED' });
       expect(where.namespace).toBeTypeOf('string');
