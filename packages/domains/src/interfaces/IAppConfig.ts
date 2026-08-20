@@ -34,16 +34,11 @@ export interface IAppConfig {
    * `false` by every reader, same posture as an explicit `false`.
    */
   WORKFLOW_EXPOSURE_ENABLED?: boolean;
-  /**
-   * Decision #6 (R-8): may a workflow invoked through the PUBLIC exposure
-   * plane route to a cloud LLM provider (`isCloudByoProvider('llm', …)` —
-   * azure/bedrock/openai/anthropic/vertex)? OFF by default — public exposure
-   * inherits the strictest egress posture; a tenant must opt in explicitly.
-   * Platform-wide today (not yet per-tenant — see the ticket README §7 for
-   * why a per-tenant entitlement column was deliberately not built ahead of
-   * any node type that could actually select a cloud provider).
-   */
-  WORKFLOW_EXPOSURE_ALLOW_CLOUD_PROVIDERS?: boolean;
+  // `WORKFLOW_EXPOSURE_ALLOW_CLOUD_PROVIDERS` (decision #6, R-8) REMOVED by owner decision,
+  // TASK-720 R-4 (2026-08-20): a publicly-exposed workflow MAY select a cloud AI provider — the
+  // tenant carries the risk (BYOK), consistent with the platform's BYO-first posture. See
+  // `docs/implementation/TASK-720-Palette-Summarization/README.md` R-4 and
+  // `docs/implementation/TASK-722-Exposure-V1/README.md`'s Change History.
 
   //=========== INTERNAL SERVICES ============//
   PORT: string;

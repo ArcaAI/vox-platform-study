@@ -6,13 +6,14 @@
  * ClsService. Asserts: tenantId is read EXCLUSIVELY from CLS (S-3); 404-over-403 for a
  * foreign-tenant/unpublished slug and for a foreign-tenant/mismatched-slug run; the
  * `WORKFLOW_EXPOSURE_ENABLED` kill-switch (R-1) hides the surface with a 404 when off;
- * `assertMeterQuota` runs before a run is started; a disallowed cloud-provider selection is
- * a 403 (decision #6, R-8); the ownership-anchor `WorkflowRun` row is written BEFORE the
+ * `assertMeterQuota` runs before a run is started; a compiled config selecting a cloud provider
+ * is allowed through (TASK-720 R-4, owner ruling 2026-08-20 — the former decision #6/R-8 gate is
+ * removed, not defaulted on); the ownership-anchor `WorkflowRun` row is written BEFORE the
  * harness dispatcher is called; `Idempotency-Key` replay returns the prior response and
  * starts no second run; `broadcastSysEvent` fires on invoke/cancel.
  */
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { ForbiddenException, NotFoundException } from '@nestjs/common';
+import { NotFoundException } from '@nestjs/common';
 import { ArgumentInvalidException } from '@arcaai/exceptions';
 import { SysEventType } from '@arcaai/domains';
 import { WorkflowExposureService } from '../workflow-exposure.service';
@@ -40,7 +41,6 @@ const mockWorkflowRunService = {
 const mockConfigService = {
   getConfigValue: vi.fn((key: string) => {
     if (key === 'WORKFLOW_EXPOSURE_ENABLED') return true;
-    if (key === 'WORKFLOW_EXPOSURE_ALLOW_CLOUD_PROVIDERS') return false;
     return undefined;
   }),
 };
@@ -102,7 +102,6 @@ describe('WorkflowExposureService', () => {
     vi.clearAllMocks();
     mockConfigService.getConfigValue.mockImplementation((key: string) => {
       if (key === 'WORKFLOW_EXPOSURE_ENABLED') return true;
-      if (key === 'WORKFLOW_EXPOSURE_ALLOW_CLOUD_PROVIDERS') return false;
       return undefined;
     });
     mockRedisCache.get.mockResolvedValue(null);
@@ -180,25 +179,13 @@ describe('WorkflowExposureService', () => {
       expect(mockHarnessGateway.startWorkflowRun).not.toHaveBeenCalled();
     });
 
-    it('rejects a compiled config selecting a disallowed cloud provider with 403 (decision #6 / R-8)', async () => {
-      mockWorkflowDefinitionRepository.findPublishedBySlug.mockResolvedValue(createMockDefinition({ compiledConfig: CLOUD_COMPILED_CONFIG }));
-      const service = build('tenant-1');
-
-      await expect(service.invoke('discharge_summary', { input: {} }, {})).rejects.toBeInstanceOf(ForbiddenException);
-      expect(mockWorkflowRunService.recordRunStarted).not.toHaveBeenCalled();
-      expect(mockHarnessGateway.startWorkflowRun).not.toHaveBeenCalled();
-    });
-
-    it('allows the same cloud-provider config when WORKFLOW_EXPOSURE_ALLOW_CLOUD_PROVIDERS is true', async () => {
-      mockConfigService.getConfigValue.mockImplementation((key: string) => {
-        if (key === 'WORKFLOW_EXPOSURE_ENABLED') return true;
-        if (key === 'WORKFLOW_EXPOSURE_ALLOW_CLOUD_PROVIDERS') return true;
-        return undefined;
-      });
+    it('allows a compiled config selecting a cloud provider (TASK-720 R-4: the tenant carries the risk, BYOK)', async () => {
       mockWorkflowDefinitionRepository.findPublishedBySlug.mockResolvedValue(createMockDefinition({ compiledConfig: CLOUD_COMPILED_CONFIG }));
       const service = build('tenant-1');
 
       await expect(service.invoke('discharge_summary', { input: {} }, {})).resolves.toBeDefined();
+      expect(mockWorkflowRunService.recordRunStarted).toHaveBeenCalled();
+      expect(mockHarnessGateway.startWorkflowRun).toHaveBeenCalled();
     });
 
     it('mints a claim-check ref via IS3Service.putFile, then writes the WorkflowRun row BEFORE calling the harness dispatcher', async () => {
