@@ -164,7 +164,7 @@ export const DEFAULT_AUDIT_LOGS = [
     data: {
       consultationId: SEED_CONSULTATION_IDS.GEN_COMPLETED,
       patientId: 'PAT-20250101-001',
-      departmentId: '70000000-0000-0000-0000-000000000001',
+      departmentId: SEED_DEPARTMENT_IDS.OPD,
       visitType: 'NEW_PATIENT',
       status: 'OPEN',
     },
