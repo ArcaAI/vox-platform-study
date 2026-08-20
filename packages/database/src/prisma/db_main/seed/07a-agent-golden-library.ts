@@ -69,30 +69,30 @@ const goldenAgentId = (n: number): string => `78000000-0000-0000-0002-${pad(n)}`
 const globalAgentId = (n: number): string => `78000000-0000-0000-0000-${pad(n)}`;
 
 /**
- * Which fixture template each department's golden default agent documents
- * with. Departments with a wired new-referral summary prompt use it; the rest
- * fall back to the catch-all SOAP final-summary; Cardiology keeps its
- * department-specific CUSTOM prompt. Exported for the inventory-lock test.
+ * Which fixture template each department's golden default agent documents with.
+ *
+ * One entry per care-setting department (04-department.ts). Each binds that
+ * setting's NEW-encounter generic template — the format a tenant with no
+ * configuration of its own should get on its first consultation. Settings that
+ * also ship a follow-up/revisit body (OPD, IPD, PERI, BEH, PEDS) expose it
+ * through the department's legacy `revisitPromptId` column, not through a
+ * second golden agent: the golden library is ONE default agent per department.
+ *
+ * The map is total over DEFAULT_DEPARTMENTS — `sourceIdForCode` throws on a
+ * miss, so adding a department without a template here fails the seed loudly
+ * rather than silently shipping a tenant an unbound agent.
+ *
+ * Exported for the inventory-lock test.
  */
 export const GOLDEN_TEMPLATE_SOURCE_BY_CODE: Record<string, string> = {
-  GEN: TEMPLATE_IDS.CATCHALL_SOAP,
-  CARD: TEMPLATE_IDS.CARD_CUSTOM,
-  RAD: TEMPLATE_IDS.CATCHALL_SOAP,
-  LAB: TEMPLATE_IDS.CATCHALL_SOAP,
-  NEUR: TEMPLATE_IDS.NEUR_NEW_REFERRAL,
-  ORTH: TEMPLATE_IDS.ORTH_NEW_REFERRAL,
-  DERM: TEMPLATE_IDS.DERM_NEW_REFERRAL,
-  PSYCH: TEMPLATE_IDS.CATCHALL_SOAP,
-  PEDS: TEMPLATE_IDS.CATCHALL_SOAP,
-  ER: TEMPLATE_IDS.CATCHALL_SOAP,
-  SURG: TEMPLATE_IDS.SURGERY_NEW_REFERRAL,
-  MED: TEMPLATE_IDS.MEDICINE_NEW_REFERRAL,
-  BREN: TEMPLATE_IDS.BREN_NEW_REFERRAL,
-  RHEUM: TEMPLATE_IDS.RHEUM_NEW_REFERRAL,
-  HEME: TEMPLATE_IDS.HEME_NEW_REFERRAL,
-  DIET: TEMPLATE_IDS.DIET_NEW_REFERRAL,
-  NEPH: TEMPLATE_IDS.NEPH_NEW_REFERRAL,
-  SONC: TEMPLATE_IDS.SONC_NEW_REFERRAL,
+  OPD: TEMPLATE_IDS.GENERIC_OUTPATIENT_NEW,
+  IPD: TEMPLATE_IDS.GENERIC_INPATIENT_ADMISSION,
+  ER: TEMPLATE_IDS.GENERIC_EMERGENCY_ENCOUNTER,
+  PERI: TEMPLATE_IDS.GENERIC_PERIOP_ASSESSMENT,
+  RAD: TEMPLATE_IDS.GENERIC_IMAGING_REPORT,
+  LAB: TEMPLATE_IDS.GENERIC_LAB_REPORT,
+  BEH: TEMPLATE_IDS.GENERIC_BEHAVIORAL_ASSESSMENT,
+  PEDS: TEMPLATE_IDS.GENERIC_PEDIATRIC_NEW,
 };
 
 /** Guarded accessor — every department code above has a mapped source. */
