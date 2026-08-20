@@ -240,7 +240,10 @@ const CAPABILITY_BY_PATH: Array<[RegExp, string]> = [
   [/\/speech\b|\/tts\b/, 'Speech synthesis'],
   [/\/transcription-jobs\b|\/api\/stt\b|\/internal\/stt\b|\/stt\b/, 'Transcription'],
   [/\/text-analyses\b|\/safety-checks\b|\/diagnosis-suggestions\b|\/ai\//, 'AI text analysis'],
-  [/\/summary\b|\/prompt-templates\/[^/]+\/test|\/text-generations\b|\/api\/text\b|\/text\b/, 'Summarization'],
+  // `\/api\/smr\b` matches the FROZEN v1 compat prefix `api/smr/api/v1` (owner
+  // decision 704), which D-740-1 deliberately does not rename — so this literal
+  // must stay `smr` even though the service is `text` everywhere else.
+  [/\/summary\b|\/prompt-templates\/[^/]+\/test|\/text-generations\b|\/api\/smr\b|\/text\b/, 'Summarization'],
 ];
 
 /** The user-facing name of the capability a path depends on. Never contains topology. */
