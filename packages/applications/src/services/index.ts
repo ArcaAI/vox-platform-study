@@ -130,6 +130,11 @@ export * from './workflow-test-fixture';
 // WorkflowDefinition CRUD + compile/validate/publish lifecycle (TASK-734) — wires
 // @arcaai/workflow-contract's compiler/validator into the application layer.
 export * from './workflow-definition';
+// The DB-backed rule-set half of the validator (TASK-716 Task 8) — resolves
+// SYSTEM ∪ tenant `WorkflowInvariantRule` rows, merges them one-way-strict, and
+// evaluates a graph against the result. Total: never throws, never `ok: true`
+// on an internal failure.
+export * from './workflow-validator';
 // Per-scope workflow assignment (TASK-733) — WHICH definition governs a
 // tenant/department for a palette, resolved with the shared cascade primitive.
 export * from './workflow-assignment';
