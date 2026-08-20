@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Status** | Review — stale-doc correction (2026-08-19, extended 2026-08-20): Phase A (Database) done as documented below, but Phases B–F have since shipped in the repo (domain quartet, `workflow-definition`/`workflow-run`/`workflow-sandbox-run`/`workflow-test-fixture`/`workflow-exposure` application services, `apps/api` controllers) even though this README's body still narrates them as "not started." §7/§8 below are the original Phase-A-only pass and were left unedited; see the 2026-08-19 Change History entry for the correction and its evidence. **D-715-1 (owner ruling, 2026-08-20)** closes §3.4/§6/§7's DB-trigger-vs-application-guard open question: keep the application-layer enforcement, do not build `WorkflowVersionPublication` — see §3.4 and the 2026-08-20 Change History entry. That same pass also corrected §3.5's stale "registry-assembly assertion" claim against the code that actually shipped. |
+| **Status** | Review — stale-doc correction (2026-08-19, extended 2026-08-20): Phase A (Database) done as documented below, but Phases B–F have since shipped in the repo (domain quartet, `workflow-definition`/`workflow-run`/`workflow-sandbox-run`/`workflow-test-fixture`/`workflow-exposure` application services, `apps/api` controllers) even though this README's body still narrates them as "not started." §7/§8 below are the original Phase-A-only pass and were left unedited; see the 2026-08-19 Change History entry for the correction and its evidence. **D-715-1 (owner ruling, 2026-08-20)** closes §3.4/§6/§7's DB-trigger-vs-application-guard open question: keep the application-layer enforcement, do not build `WorkflowVersionPublication` — see §3.4 and the 2026-08-20 Change History entry. That same pass also corrected §3.5's stale "registry-assembly assertion" claim against the code that actually shipped. **§3.4.1 (2026-08-20)** corrects a second stale claim: §3.4/§6 #2's "no DB trigger / zero `CREATE TRIGGER`" is no longer true — TASK-734 added a row-scoped `BEFORE UPDATE OR DELETE` trigger plus a partial unique index on `WorkflowDefinition`. That does not reopen D-715-1. |
 | **Wave** | 1 · **Size** | L |
 | **Epic slug** | `workflow-definition-model` |
 | **Depends on** | TASK-707 (`naming-alignment` — all new code is born with the post-rename names) |
@@ -414,7 +414,9 @@ Mechanism, in three layers, all of which exist in this codebase already:
    makes the record self-contained … and makes drift detectable: compare against the target
    agent's CURRENT checksum at read time").
 
-**A DB trigger is explicitly rejected.** Verified: there are **zero** `CREATE TRIGGER`,
+**A DB trigger is explicitly rejected.** *(Stale as of TASK-734 — see §3.4.1. The
+"zero `CREATE TRIGGER`" measurement below was true when written and is no longer true.)*
+Verified at the time: there were **zero** `CREATE TRIGGER`,
 `CREATE RULE` or `CHECK` constraints across all migration folders in
 `packages/database/src/prisma/db_main/migrations/` — the single grep hit is a comment
 (`20260809010000_task_644_.../migration.sql:48`). Introducing the first one costs shadow-DB
@@ -442,6 +444,52 @@ would make it available.
 > already describes — so the trigger to revisit this is a NEW requirement (e.g. a regulator or
 > auditor asking for DB-enforced, not just application-enforced, immutability), not new
 > information about the current design.
+
+#### 3.4.1 Stale-doc correction (2026-08-20) — a DB-level trigger DOES exist, added later by TASK-734
+
+The D-715-1 ruling above stands unchanged: this ticket does not build the append-only
+`WorkflowVersionPublication` table or a DB-level `REVOKE`. But §3.4's headline ("**No DB
+trigger**"), its "zero `CREATE TRIGGER` across all migration folders" measurement, and §6 risk
+#2's "no DB-level immutability" framing are all **stale**. TASK-734 revisited exactly this call
+and added a **fourth, DB-level enforcement layer**, on top of — not instead of — the three
+application-layer layers above.
+
+Verified against the tree on 2026-08-20:
+
+- `packages/database/src/prisma/db_main/migrations/20260817000100_task_734_workflow_definition_immutability_guard/migration.sql`
+  creates function `core.workflow_definition_immutability_guard()` and trigger
+  `workflow_definition_immutability_guard_trigger`, `BEFORE UPDATE OR DELETE ... FOR EACH ROW`
+  on `core.WorkflowDefinition`.
+- On UPDATE it raises when `OLD.status IN ('PUBLISHED','DEPRECATED')` and any of
+  `graph`, `graphChecksum`, `compiledConfig`, `compiledConfigChecksum`, `tenantId`, `slug`,
+  `paletteKey`, `versionNumber`, `parentVersionId`, `publishedAt` changes. It gates on
+  `OLD.status`, deliberately never `NEW.status`, so the guard cannot be bypassed by flipping
+  status back to `DRAFT` in the same statement that rewrites the graph.
+- On DELETE it unconditionally refuses a hard delete of a `PUBLISHED`/`DEPRECATED` row
+  (`ERRCODE = 'restrict_violation'`), closing the one path around the house soft-delete rule.
+- The same migration adds the partial unique index
+  `WorkflowDefinition_tenant_slug_active_unique ON ("tenantId","slug") WHERE "isActive" = true
+  AND "resourceStatus" != 'DELETED'`.
+
+**Why this does not reopen D-715-1.** §3.4's objection to a trigger was that a row-blind guard
+cannot distinguish DRAFT from PUBLISHED rows in the same table. A `REVOKE` genuinely cannot —
+it is table-scoped — but a **row-scoped** trigger reading `OLD.status` can, which is the
+mechanism §3.4 weighed as "does it awkwardly" and TASK-734 concluded does it cleanly. So the
+same objection is resolved without the second table, and the ruling to not build
+`WorkflowVersionPublication` is unaffected.
+
+**The cost §3.4 predicted is real and was accepted:** Prisma models neither triggers nor partial
+unique indexes, so `prisma migrate diff` shows permanent drift against
+`workflow-definition.prisma` for both. That file's header documents the trade deliberately.
+
+Also verified while in this area (informational, outside the D-715-1 ruling): §4 Tasks 7–8's
+planned `IWorkflowValidatorService` port + stub was **not** built as specified.
+`packages/applications/src/services/workflow-definition/IWorkflowDefinitionService.ts` records
+that TASK-734 wired `WorkflowDefinitionService` directly to `@arcaai/workflow-contract`'s
+`validate`/`compile`, and
+`packages/applications/src/services/workflow-validator/workflow-validator.service.module.ts`
+records that TASK-734 deliberately removed the port. Correcting that belongs to TASK-716/734's
+own documents; it is noted here only so a reader of §4 does not go looking for it.
 
 ### 3.5 Decision — entitlement gating granularity: **per palette**
 
@@ -967,7 +1015,10 @@ Paste **actual command output** as evidence for every box; a claim without outpu
    rows join to it — so a head/version split would give two identities to one thing, and the
    "version" would need its own status, entitlement, activation and audit lifecycle, i.e. it
    would BE the head. Recorded so a later reviewer sees the divergence was deliberate.
-2. **CLOSED (D-715-1, owner ruling, 2026-08-20) — no DB-level immutability.** §3.4 rejects a
+2. **CLOSED (D-715-1, owner ruling, 2026-08-20).** *This item's own "no DB-level immutability"
+   framing is stale — TASK-734 later added a row-scoped trigger; see §3.4.1. The ruling below is
+   unaffected: it is about the second table, not about whether Postgres enforces anything.*
+   §3.4 rejects a
    trigger and shows why `REVOKE` cannot apply to a mixed draft/published table. If a reviewer
    requires DB-level enforcement of the published bytes, the migration path is an append-only
    `WorkflowVersionPublication` table (compiled config + both checksums + publisher + at) with
@@ -1065,7 +1116,8 @@ application service, API, seeds) are NOT started and are left for follow-on agen
   #2): this ticket's DB-level-immutability question. §3.4 recommends service guard + DTO
   whitelist + checksum with **no DB trigger and no `REVOKE`**, and that recommendation is what
   the schema above implements (no trigger/rule/check was added — verified zero `CREATE
-  TRIGGER`/`CREATE RULE` in this migration). The ruling keeps exactly that: it does NOT build
+  TRIGGER`/`CREATE RULE` in **this ticket's** migration; a LATER ticket, TASK-734, added one in
+  its own migration — see §3.4.1). The ruling keeps exactly that: it does NOT build
   the append-only `WorkflowVersionPublication` table with `REVOKE UPDATE, DELETE` (the
   `HarnessAuditEvent` idiom) that would have added DB-level enforcement — see §3.4 for the
   rationale and what would change if this is revisited.
@@ -1120,4 +1172,5 @@ both explicitly out of this pass's `packages/database`-only scope.
 | 2026-08-16 | Ticket authored | ticket-writer agent (Wave 1 substrate foundations) |
 | 2026-08-16 | Phase A (Database) executed: `WorkflowDefinition` model + `WorkflowDefinitionStatus` enum + `ResourceType` DB-enum addition ([Task 1](#task-1--author-the-prisma-model--enum)); `TENANT_SCOPED_MODELS` allow-list + drift-guard test updated (database portion of [Task 2](#task-2--allow-lists--domain-enum--parity-test-red-first)); migration hand-authored, shadow-DB proof NOT run (infra down + forbidden this pass) ([Task 3](#task-3--author-the-migration-against-a-shadow-db)). Domains-layer half of Task 2 (`ResourceType.ts` + parity-test pin) explicitly NOT done — confirmed as the sole resulting `resourceType.enum-parity.test.ts` failure. Phases B–F not started. See §7 for full detail and verification output. | packages/database execution agent |
 | 2026-08-19 | **Status-only correction, no code changed.** A repo spot-check found this README's body/§7/§8 stale: `packages/domains/src/enums/generated/ResourceType.ts` DOES carry `WorkflowDefinition` (the "sole known gap" from the 08-16 pass is closed); the full domain quartet, `packages/applications/src/services/{workflow-definition,workflow-run,workflow-sandbox-run,workflow-test-fixture,workflow-exposure}/`, and `apps/api/src/modules/{workflow-definition,workflow-node,workflow-run,workflow-sandbox-run}/` all exist on disk; the migration was superseded/renamed to `20260817000100_task_734_workflow_definition_immutability_guard` rather than the `20260816020000_task_715_...` path this README cites. This entry only updates the Status row to flag the drift — §7/§8's Phase-A narrative was left as the historical record of that pass rather than rewritten; a follow-up pass should rewrite §7 against current code and close this ticket out properly (likely as Review or Completed once verified). | doc-audit pass |
+| 2026-08-20 | **Documentation only, no code changed.** Stale-doc correction recovered from stopped-agent WIP and re-verified against the tree before import: §3.4's "**No DB trigger** — verified zero `CREATE TRIGGER`/`CREATE RULE` across all migration folders" and §6 risk #2's "no DB-level immutability" are STALE. TASK-734's migration `20260817000100_task_734_workflow_definition_immutability_guard` adds function `core.workflow_definition_immutability_guard()` + trigger `workflow_definition_immutability_guard_trigger` (`BEFORE UPDATE OR DELETE ... FOR EACH ROW`), gated on `OLD.status`, plus the partial unique index `WorkflowDefinition_tenant_slug_active_unique`. Recorded as new §3.4.1 with the exact guarded columns; §3.4, §6 #2, §7's matching bullet and the Status row annotated in place. **D-715-1 is NOT reopened** — a row-scoped trigger resolves the DRAFT-vs-PUBLISHED objection that made a table-scoped `REVOKE` unusable, so the ruling to not build `WorkflowVersionPublication` stands. Also noted (informational): §4 Tasks 7–8's planned `IWorkflowValidatorService` port was never built — TASK-734 wired `WorkflowDefinitionService` straight to `@arcaai/workflow-contract` and removed the port. | Claude (stale-doc recovery pass) |
 | 2026-08-20 | **Documentation only, no code changed. D-715-1 (owner ruling)**: keep the current application-layer enforcement of `WorkflowDefinition` immutability (service guard + DTO whitelist + checksum); do NOT build the append-only `WorkflowVersionPublication` table or a DB-level `REVOKE`. Recorded the ruling and its rationale in §3.4 (new note), closed §6 risk #2 and the matching §7 "NOT done" item (both previously open/placeholder), and updated the Status row. Also corrected a verified-stale claim in §3.5: there is **no "registry-assembly assertion"** enforcing one `entitlementKey` per palette — `WorkflowNodeDescriptor.entitlementKey` (`@arcaai/workflow-contract/src/node-registry.ts`) is `null` on every registered node across every palette, and the actual per-palette entitlement gate is `WorkflowDefinitionService.assertPaletteEntitled()` (`workflow-definition.service.ts:425-437`), a publish-time-only, hardcoded check that today only fires for the `stt` palette (`isFeatureEnabled(tenantId, 'paletteStt')`). §3.5 rewritten with the verified mechanism; the underlying per-palette (not per-node-type) gating *decision* was correct and is unchanged. | Claude (documentation pass, TASK-733/TASK-715 owner-decision recording) |
