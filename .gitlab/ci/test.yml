@@ -388,7 +388,7 @@ test-stt:
       when: never
     - !reference [.rules-stt, rules]
 
-# ── SMR tests (pytest) ──────────────────────────────────────────────────────
+# ── Text tests (pytest) ─────────────────────────────────────────────────────
 
 test-text:
   stage: test
