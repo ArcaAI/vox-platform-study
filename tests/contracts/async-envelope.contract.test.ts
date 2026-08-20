@@ -1,6 +1,6 @@
 /**
  * TASK-717 Task 6 — wires the reusable conformance suite against the Task 5
- * SMR reference implementation's envelope recipe.
+ * Text reference implementation's envelope recipe.
  *
  * `assertAsyncConformance` (`@arcaai/async-contract`) cannot import Python
  * directly, so — following this directory's existing convention of
@@ -9,7 +9,7 @@
  * responses instead of calling it) — this test drives an in-memory producer
  * that reproduces the EXACT recipe `apps/text/src/text/services/
  * task_manager.py`'s `_encode_chunk_data`/`_decode_chunk_data` implement:
- *   - `type`:            `smr.stream.<chunk.type>`
+ *   - `type`:            `text.stream.<chunk.type>`
  *   - `idempotencyKey`:  `AsyncIdempotencyKey.textChunk(taskId, sequence)`
  *     (`text:task:<taskId>:chunk:<sequence>`, matching `AsyncIdempotencyKey.
  *     textChunk` in `packages/async-contract/src/idempotency.ts` and
@@ -53,7 +53,7 @@ function testUuidV7(counter: number): string {
  * in-memory Redis Stream stand-in — same shape as `_FakeRedis` in
  * `apps/text/src/text/tests/unit/test_async_envelope_task717.py`.
  */
-class SmrStreamProducer implements AsyncProducerUnderTest {
+class TextStreamProducer implements AsyncProducerUnderTest {
   resumable = true;
   private readonly taskId = 'contract-test-task';
   private sequence = 0;
@@ -84,7 +84,7 @@ class SmrStreamProducer implements AsyncProducerUnderTest {
       schemaVersion: ASYNC_ENVELOPE_SCHEMA_VERSION,
       id: testUuidV7(this.idCounter),
       tenantId: SYSTEM_TENANT_ID,
-      type: `smr.stream.${input.type}`,
+      type: `text.stream.${input.type}`,
       occurredAt: identity.occurredAt,
       correlationId: input.correlationId,
       causationId: null,
@@ -110,24 +110,24 @@ class SmrStreamProducer implements AsyncProducerUnderTest {
   }
 }
 
-describe('async envelope contract — SMR stream chunk producer (TASK-717 Task 5 recipe)', () => {
+describe('async envelope contract — Text stream chunk producer (TASK-717 Task 5 recipe)', () => {
   it('conforms to the async envelope contract end to end', async () => {
-    const problems = await assertAsyncConformance(new SmrStreamProducer());
+    const problems = await assertAsyncConformance(new TextStreamProducer());
     expect(problems).toEqual([]);
   }, 20000);
 
-  it('types use the smr.stream.<chunk.type> grammar', async () => {
-    const producer = new SmrStreamProducer();
+  it('types use the text.stream.<chunk.type> grammar', async () => {
+    const producer = new TextStreamProducer();
     const produced = (await producer.produce({
       type: 'chunk',
       payload: { type: 'chunk', content: 'hello' },
       correlationId: 'req-1',
     })) as Record<string, unknown>;
-    expect(produced.type).toBe('smr.stream.chunk');
+    expect(produced.type).toBe('text.stream.chunk');
   });
 
   it('idempotency keys follow AsyncIdempotencyKey.textChunk(taskId, sequence)', async () => {
-    const producer = new SmrStreamProducer();
+    const producer = new TextStreamProducer();
     const first = (await producer.produce({
       type: 'chunk',
       payload: {},
@@ -143,7 +143,7 @@ describe('async envelope contract — SMR stream chunk producer (TASK-717 Task 5
   });
 
   it('a redelivered chunk (same correlationId) reuses the same idempotencyKey and occurredAt', async () => {
-    const producer = new SmrStreamProducer();
+    const producer = new TextStreamProducer();
     const first = (await producer.produce({
       type: 'chunk',
       payload: {},
@@ -160,7 +160,7 @@ describe('async envelope contract — SMR stream chunk producer (TASK-717 Task 5
   });
 
   it('resume tokens wrap a redis-stream cursor, decodable by both language packages', async () => {
-    const producer = new SmrStreamProducer();
+    const producer = new TextStreamProducer();
     await producer.produce({ type: 'chunk', payload: {}, correlationId: 'req-1' });
     const token = producer.resumeTokenOf(
       await producer.produce({ type: 'chunk', payload: {}, correlationId: 'req-1' })
