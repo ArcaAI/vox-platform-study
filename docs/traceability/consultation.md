@@ -63,7 +63,7 @@ recording / named-entity / live-documentation surfaces are recorded here.
 ### C5 — Aggregate named-entity read (clinical context) — legacy row 9
 
 Read-only aggregation of the `NamedEntity` rows the NLP pipeline persisted (extraction
-itself lives in the medical-NLP domain / SMR-driven `extract-entities` in
+itself lives in the medical-NLP domain / TEXT-driven `extract-entities` in
 [`summarization.md`](./summarization.md)).
 
 | Field | Value |
@@ -88,7 +88,7 @@ itself lives in the medical-NLP domain / SMR-driven `extract-entities` in
 
 | Field | Value |
 |---|---|
-| App / service | `apps/api` (+ SMR generation, NLP entities) |
+| App / service | `apps/api` (+ TEXT generation, NLP entities) |
 | Key modules | `packages/applications/src/services/consultation/live-documentation` (`live-documentation.service.ts`, `soap-parser.ts`) |
 | Prisma models | `ContextItem` — the running note is a `PRE_SUMMARY` snapshot tagged `metadata.subType = LIVE_SOAP_SNAPSHOT` |
 | Key API endpoints | SSE `GET /consultations/:id/live-summary/stream` (`@Sse()` on `consultation.controller.ts`) |
@@ -111,7 +111,7 @@ documentation generation. The jobs themselves are enqueued by the summarization 
 ## Honest notes / gaps
 
 - **No dedicated context/timeline/highlight/named-entity e2e.** C2–C5 are covered at the unit(app)/unit(api) layers; the only consultation e2e specs are the job suites (C8) and the admin fetch-all cross-tenant spec (C1). Recording round-trips (C6) have unit coverage but no live-DB + MinIO e2e.
-- **Named-entity extraction is not in this domain.** C5 only *reads* aggregated `NamedEntity` rows; population happens via the NLP service and the SMR-driven `POST /consultations/:id/summary/:contextItemId/extract-entities` route ([`summarization.md`](./summarization.md), and legacy row 17 for the NLP capability service).
+- **Named-entity extraction is not in this domain.** C5 only *reads* aggregated `NamedEntity` rows; population happens via the NLP service and the TEXT-driven `POST /consultations/:id/summary/:contextItemId/extract-entities` route ([`summarization.md`](./summarization.md), and legacy row 17 for the NLP capability service).
 - **Summary / harness / trajectory routes on `ConsultationController` are documented elsewhere** — `:id/summary*` in [`summarization.md`](./summarization.md); `:id/harness-progress/stream`, `:id/harness-assurance/stream`, `:id/trajectory/stream`, and `:id/summary/:contextItemId/approve` in [`harness.md`](./harness.md). This file does not restate them.
 - `TranscriptSegment` (`db_main/consultation.prisma`) is populated by the transcription pipeline, not the consultation service; it is recorded in [`transcription.md`](./transcription.md).
 

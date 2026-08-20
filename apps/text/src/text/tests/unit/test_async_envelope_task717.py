@@ -1,4 +1,4 @@
-"""TASK-717 Task 5 — SMR stream chunks adopt the async task/event envelope.
+"""TASK-717 Task 5 — TEXT stream chunks adopt the async task/event envelope.
 
 Additive and backward compatible (design doc §3.7): a chunk written with a
 resolved tenant is enveloped (``AsyncEnvelope`` wrapping the existing

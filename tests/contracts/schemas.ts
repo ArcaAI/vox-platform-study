@@ -86,22 +86,22 @@ export const SttTaskStatusResponseSchema = z.object({
 });
 
 // ============================================================================
-// SMR Service Schemas
+// TEXT Service Schemas
 // ============================================================================
 
 /**
- * SMR Health Response Schema
+ * TEXT Health Response Schema
  */
-export const SmrHealthResponseSchema = z.object({
+export const TextHealthResponseSchema = z.object({
   status: z.enum(['healthy', 'degraded', 'unhealthy']),
   timestamp: z.number().optional(),
   message: z.string().optional(),
 });
 
 /**
- * SMR Summary Request Schema (Sync)
+ * TEXT Summary Request Schema (Sync)
  */
-export const SmrSyncSummaryRequestSchema = z.object({
+export const TextSyncSummaryRequestSchema = z.object({
   session_data: z.object({
     session_id: z.string(),
     conversation_segments: z.array(
@@ -131,7 +131,7 @@ export const SmrSyncSummaryRequestSchema = z.object({
 });
 
 /**
- * SMR Summary Response Schema
+ * TEXT Summary Response Schema
  */
 export const TextSummaryResponseSchema = z.object({
   session_id: z.string(),
@@ -152,9 +152,9 @@ export const TextSummaryResponseSchema = z.object({
 });
 
 /**
- * SMR Pre-Summary Request Schema
+ * TEXT Pre-Summary Request Schema
  */
-export const SmrPreSummaryRequestSchema = z.object({
+export const TextPreSummaryRequestSchema = z.object({
   current_department: z.string().optional(),
   visit_type: z.string().optional(),
   age: z.string().optional(),
@@ -169,9 +169,9 @@ export const SmrPreSummaryRequestSchema = z.object({
 });
 
 /**
- * SMR Pre-Summary Response Schema
+ * TEXT Pre-Summary Response Schema
  */
-export const SmrPreSummaryResponseSchema = z.object({
+export const TextPreSummaryResponseSchema = z.object({
   pre_summary: z.string(),
   structured_data: z.object({
     title: z.string(),
@@ -181,9 +181,9 @@ export const SmrPreSummaryResponseSchema = z.object({
 });
 
 /**
- * SMR Job Response Schema
+ * TEXT Job Response Schema
  */
-export const SmrJobResponseSchema = z.object({
+export const TextJobResponseSchema = z.object({
   job_id: z.string(),
   status: z.enum(['pending', 'running', 'completed', 'failed', 'cancelled']),
   created_at: z.string().optional(),
@@ -191,9 +191,9 @@ export const SmrJobResponseSchema = z.object({
 });
 
 /**
- * SMR Feedback Request Schema
+ * TEXT Feedback Request Schema
  */
-export const SmrFeedbackRequestSchema = z.object({
+export const TextFeedbackRequestSchema = z.object({
   summary_id: z.string(),
   provider_id: z.string().optional(),
   rating: z.number().min(1).max(5),
@@ -203,9 +203,9 @@ export const SmrFeedbackRequestSchema = z.object({
 });
 
 /**
- * SMR Feedback Response Schema
+ * TEXT Feedback Response Schema
  */
-export const SmrFeedbackResponseSchema = z.object({
+export const TextFeedbackResponseSchema = z.object({
   feedback_id: z.string(),
   summary_id: z.string(),
   provider_id: z.string().nullable().optional(),
@@ -248,14 +248,14 @@ export type SttStartSessionResponse = z.infer<typeof SttStartSessionResponseSche
 export type SttTranscribeFileResponse = z.infer<typeof SttTranscribeFileResponseSchema>;
 export type SttTaskStatusResponse = z.infer<typeof SttTaskStatusResponseSchema>;
 
-export type SmrHealthResponse = z.infer<typeof SmrHealthResponseSchema>;
-export type SmrSyncSummaryRequest = z.infer<typeof SmrSyncSummaryRequestSchema>;
-export type SmrSummaryResponse = z.infer<typeof TextSummaryResponseSchema>;
-export type SmrPreSummaryRequest = z.infer<typeof SmrPreSummaryRequestSchema>;
-export type SmrPreSummaryResponse = z.infer<typeof SmrPreSummaryResponseSchema>;
-export type SmrJobResponse = z.infer<typeof SmrJobResponseSchema>;
-export type SmrFeedbackRequest = z.infer<typeof SmrFeedbackRequestSchema>;
-export type SmrFeedbackResponse = z.infer<typeof SmrFeedbackResponseSchema>;
+export type TextHealthResponse = z.infer<typeof TextHealthResponseSchema>;
+export type TextSyncSummaryRequest = z.infer<typeof TextSyncSummaryRequestSchema>;
+export type TextSummaryResponse = z.infer<typeof TextSummaryResponseSchema>;
+export type TextPreSummaryRequest = z.infer<typeof TextPreSummaryRequestSchema>;
+export type TextPreSummaryResponse = z.infer<typeof TextPreSummaryResponseSchema>;
+export type TextJobResponse = z.infer<typeof TextJobResponseSchema>;
+export type TextFeedbackRequest = z.infer<typeof TextFeedbackRequestSchema>;
+export type TextFeedbackResponse = z.infer<typeof TextFeedbackResponseSchema>;
 
 export type TtsSynthesizeRequest = z.infer<typeof TtsSynthesizeRequestSchema>;
 export type TtsVoicesResponse = z.infer<typeof TtsVoicesResponseSchema>;

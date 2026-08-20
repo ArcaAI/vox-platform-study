@@ -493,7 +493,7 @@ const featureModules: any[] = [
   ResourceSubscriptionModule,
   StorageModule,
   StorageAccessKeyModule,
-  // v1-compat SMR summary shims (/api/smr/api/v1/summary/sync + /presummary).
+  // v1-compat TEXT summary shims (/api/smr/api/v1/summary/sync + /presummary).
   TextCompatModule,
   SttCompatModule,
   StreamingModule,

@@ -1,7 +1,7 @@
 /**
  * Endpoint Constants Tests
  *
- * Verifies the new admin/storage/SMR endpoint constant groups added so
+ * Verifies the new admin/storage/TEXT endpoint constant groups added so
  * consuming apps can consume the new API surfaces "via the SDK". Every path is
  * source-verified against its API controller (paths omit the `/api/v1` prefix,
  * which the AgenticClient baseUrl carries).
@@ -109,7 +109,7 @@ describe('Endpoint Constants', () => {
     });
   });
 
-  describe('TEXT_ENDPOINTS (smr-proxy.controller.ts @Controller("text"))', () => {
+  describe('TEXT_ENDPOINTS (text-proxy.controller.ts @Controller("text"))', () => {
     it('GENERATE is /text-generations/generate', () => {
       expect(TEXT_ENDPOINTS.GENERATE).toBe('/text-generations/generate');
     });

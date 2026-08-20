@@ -30,7 +30,7 @@ export interface ServiceRelease {
   serviceName: string;
   /** SemVer from the release tag, or `0.0.0-<branch>.<sha8>` on an untagged build. */
   version: string;
-  /** `SMR-2.1.0`; null on an untagged build — never render a fabricated version instead. */
+  /** `TEXT-2.1.0`; null on an untagged build — never render a fabricated version instead. */
   releaseTag: string | null;
   gitBranch: string;
   gitCommitSha: string;

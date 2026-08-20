@@ -246,7 +246,7 @@ describe('tenant-guards', () => {
   });
 
   // Pure predicate used by inline controller
-  // guards (W5.5 TenantController, W5.7 AuditLogController, W5.9 SmrProxy).
+  // guards (W5.5 TenantController, W5.7 AuditLogController, W5.9 TextProxy).
   describe('isSuperAdmin', () => {
     it('returns false for null / undefined user', () => {
       expect(isSuperAdmin(null)).toBe(false);

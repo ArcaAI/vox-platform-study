@@ -1,11 +1,11 @@
 'use client';
 
 /**
- * SMR task SSE, consumed through the house ticket flow: `useEventStream` mints
+ * TEXT task SSE, consumed through the house ticket flow: `useEventStream` mints
  * a single-use ticket per connect and the browser connects DIRECTLY to the
  * gateway (JWTs never appear in a URL, streams never traverse the BFF proxy).
  *
- * Replay contract: the SMR endpoint reads `last_event_id` from the QUERY STRING
+ * Replay contract: the TEXT endpoint reads `last_event_id` from the QUERY STRING
  * only and nothing forwards it, so EVERY (re)connect replays the task's chunk
  * log from 0-0. The hook therefore keys its accumulator by connection and
  * disables the shared hook's automatic reconnect (`maxRetries: 0`) — an
@@ -21,14 +21,14 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useEventStream } from './use-event-stream';
 
-/** SMR token accounting carried by the terminal `usage` frame. */
+/** TEXT token accounting carried by the terminal `usage` frame. */
 export interface TextTokenUsage {
   prompt_tokens: number;
   completion_tokens: number;
   total_tokens: number;
 }
 
-/** SSE frame on GET text-generations/tasks/:taskId/stream (SMR StreamChunk; named events). */
+/** SSE frame on GET text-generations/tasks/:taskId/stream (TEXT StreamChunk; named events). */
 export interface TextStreamFrame {
   type: 'chunk' | 'reasoning' | 'meta' | 'done' | 'error' | 'usage';
   content?: string | null;
@@ -37,7 +37,7 @@ export interface TextStreamFrame {
 
 /**
  * Gateway SSE path (relative to /api/v1) for a task stream. Shared by every
- * consumer of an SMR generation job (LLM playground, prompt-template test).
+ * consumer of an TEXT generation job (LLM playground, prompt-template test).
  */
 export function taskStreamPath(taskId: string): string {
   return `text-generations/tasks/${encodeURIComponent(taskId)}/stream`;
@@ -160,7 +160,7 @@ export function useTaskStream(taskId: string | null): TaskStreamState {
   // Stale event data (older connection) is ignored via the key mismatch.
   const current = eventState.key === connectionKey ? eventState : null;
 
-  // A terminal frame ends the stream — the SMR generator has returned, so the
+  // A terminal frame ends the stream — the TEXT generator has returned, so the
   // source is closed from an effect (never during render).
   const terminal = current?.status === 'done' || current?.status === 'failed';
   const closeStream = stream.close;

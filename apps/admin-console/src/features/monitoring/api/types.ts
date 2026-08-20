@@ -1,5 +1,5 @@
 /** Python service key accepted by health/monitoring routes. */
-export type MonitoredService = 'smr' | 'nlp' | 'stt' | 'tts' | 'guardrail' | 'harness';
+export type MonitoredService = 'text' | 'nlp' | 'stt' | 'tts' | 'guardrail' | 'harness';
 
 export type ServiceStatus = 'healthy' | 'degraded' | 'down' | 'unknown';
 

@@ -21,8 +21,8 @@
  * carried through as two SEPARATE byte-exact templates (not derived from one
  * another) so neither can silently drift out of sync with the source.
  *
- * Source: the RUNNING v1 SMR pod (Rancher cluster c-9lwv8, namespace apps,
- * pod apps-smr-84c9774997-zhp2l), NOT a local v1 checkout — the two have
+ * Source: the RUNNING v1 TEXT pod (Rancher cluster c-9lwv8, namespace apps,
+ * pod apps-text-84c9774997-zhp2l), NOT a local v1 checkout — the two have
  * diverged (see docs/implementation/TASK-634-Pre-Summary-Summary-Prompt-Fidelity/README.md
  * ). Extracted 2026-08-07 via a chunked base64 pipeline (never
  * retyped) with every chunk sha256-verified against the pod before

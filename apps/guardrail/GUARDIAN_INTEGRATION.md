@@ -2,7 +2,7 @@
 
 ## Overview
 
-The Guardian service provides medical context validation to ensure only medical-related content reaches the SMR (medical documentation) service. This guide explains how to integrate the Guardian model with your API proxy.
+The Guardian service provides medical context validation to ensure only medical-related content reaches the TEXT (medical documentation) service. This guide explains how to integrate the Guardian model with your API proxy.
 
 **Guardrail hosts no LLM engine** (TASK-735). It owns the medical-context CRITERIA, the
 confidence floor, the verdict shape and the fail-closed posture, and delegates the model
@@ -23,7 +23,7 @@ guardrail never decrypts, stores or logs.
                    │  ✓ Validates    │           │           └──────────────────┘
                    │  ✓ Blocks       │           ▼
                    │                 │    ┌─────────────┐
-                   │                 │───▶│    SMR      │
+                   │                 │───▶│    TEXT      │
                    │                 │    │  Service    │
                    └─────────────────┘    └─────────────┘
 ```
@@ -100,7 +100,7 @@ compiled-in default.
 **Headers (optional):**
 
 - `X-Tenant-Id`: consultation tenant. When `GUARDRAIL_DB_CONFIG_ENABLED=true`, this selects
-  the per-tenant guardian provider/model (see §1b). Ignored in env-only mode. SMR forwards
+  the per-tenant guardian provider/model (see §1b). Ignored in env-only mode. TEXT forwards
   the consultation tenant here automatically.
 - `X-Service-Token`: inter-service auth token (when configured).
 
@@ -287,7 +287,7 @@ Guardian logs include:
 
 ## Best Practices
 
-1. **Always validate before SMR**: Never skip validation for production traffic
+1. **Always validate before TEXT**: Never skip validation for production traffic
 2. **Monitor confidence scores**: Track distribution to tune thresholds
 3. **Use batch validation**: For multiple texts, use batch endpoint for efficiency
 4. **Cache results**: Cache validation results for identical prompts

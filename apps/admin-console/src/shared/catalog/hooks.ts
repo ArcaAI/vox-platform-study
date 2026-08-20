@@ -52,7 +52,7 @@ export interface CatalogOption {
 }
 
 /**
- * GET text-generations/providers row (SMR provider catalog, matrix row 38). Wire shape
+ * GET text-generations/providers row (TEXT provider catalog, matrix row 38). Wire shape
  * mirrors `apps/text/src/text/models/provider.py::ProviderInfo` verbatim
  * (snake_case) — the playground feature (`playground-llm/api/types.ts`) owns
  * its own copy for that surface; this one exists so the agents feature's Test

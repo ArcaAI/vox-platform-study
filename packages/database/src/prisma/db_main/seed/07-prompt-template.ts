@@ -477,25 +477,25 @@ export const DEFAULT_PROMPT_TEMPLATES = [
     departmentId: DEPT.CARD,
     tags: [],
   },
-  // ID 05: SMR System Prompt - Base
+  // ID 05: TEXT System Prompt - Base
   {
     id: TEMPLATE_IDS.TEXT_SYSTEM_BASE,
     tenantId: DEFAULT_TENANT_ID,
-    name: 'SMR System Prompt - Base',
-    description: 'Base system prompt for SMR medical conversation summarization',
+    name: 'TEXT System Prompt - Base',
+    description: 'Base system prompt for TEXT medical conversation summarization',
     content: TEXT_SYSTEM_BASE_CONTENT,
     category: 'SYSTEM',
     variables: null,
     currentVersionNumber: 1,
     departmentId: null,
-    tags: ['system', 'base', 'smr-v1'],
+    tags: ['system', 'base', 'text-v1'],
   },
-  // ID 06: SMR System Prompt - Emergency Medicine
+  // ID 06: TEXT System Prompt - Emergency Medicine
   {
     id: TEMPLATE_IDS.TEXT_SYSTEM_ER,
     tenantId: DEFAULT_TENANT_ID,
-    name: 'SMR System Prompt - Emergency Medicine',
-    description: 'Emergency medicine specialty overlay for SMR',
+    name: 'TEXT System Prompt - Emergency Medicine',
+    description: 'Emergency medicine specialty overlay for TEXT',
     content: `\nEMERGENCY MEDICINE FOCUS:
 - Assess triage acuity and time-sensitive interventions
 - Document critical pathways and disposition decisions
@@ -506,14 +506,14 @@ export const DEFAULT_PROMPT_TEMPLATES = [
     variables: null,
     currentVersionNumber: 1,
     departmentId: DEPT.ER,
-    tags: ['system', 'specialty', 'emergency', 'smr-v1'],
+    tags: ['system', 'specialty', 'emergency', 'text-v1'],
   },
-  // ID 07: SMR System Prompt - Pediatrics
+  // ID 07: TEXT System Prompt - Pediatrics
   {
     id: TEMPLATE_IDS.TEXT_SYSTEM_PEDS,
     tenantId: DEFAULT_TENANT_ID,
-    name: 'SMR System Prompt - Pediatrics',
-    description: 'Pediatrics specialty overlay for SMR',
+    name: 'TEXT System Prompt - Pediatrics',
+    description: 'Pediatrics specialty overlay for TEXT',
     content: `\nPEDIATRIC MEDICINE FOCUS:
 - Document age-appropriate vital sign interpretation
 - Include growth parameters and developmental milestones
@@ -524,14 +524,14 @@ export const DEFAULT_PROMPT_TEMPLATES = [
     variables: null,
     currentVersionNumber: 1,
     departmentId: DEPT.PEDS,
-    tags: ['system', 'specialty', 'pediatrics', 'smr-v1'],
+    tags: ['system', 'specialty', 'pediatrics', 'text-v1'],
   },
-  // ID 08: SMR System Prompt - Cardiology
+  // ID 08: TEXT System Prompt - Cardiology
   {
     id: TEMPLATE_IDS.TEXT_SYSTEM_CARD,
     tenantId: DEFAULT_TENANT_ID,
-    name: 'SMR System Prompt - Cardiology',
-    description: 'Cardiology specialty overlay for SMR',
+    name: 'TEXT System Prompt - Cardiology',
+    description: 'Cardiology specialty overlay for TEXT',
     content: `\nCARDIOLOGY FOCUS:
 - Detailed cardiovascular risk factor assessment
 - ECG interpretation and cardiac rhythm analysis
@@ -542,14 +542,14 @@ export const DEFAULT_PROMPT_TEMPLATES = [
     variables: null,
     currentVersionNumber: 1,
     departmentId: DEPT.CARD,
-    tags: ['system', 'specialty', 'cardiology', 'smr-v1'],
+    tags: ['system', 'specialty', 'cardiology', 'text-v1'],
   },
-  // ID 09: SMR System Prompt - Psychiatry
+  // ID 09: TEXT System Prompt - Psychiatry
   {
     id: TEMPLATE_IDS.TEXT_SYSTEM_PSYCH,
     tenantId: DEFAULT_TENANT_ID,
-    name: 'SMR System Prompt - Psychiatry',
-    description: 'Psychiatry specialty overlay for SMR',
+    name: 'TEXT System Prompt - Psychiatry',
+    description: 'Psychiatry specialty overlay for TEXT',
     content: `\nMENTAL HEALTH FOCUS:
 - Comprehensive mental status examination
 - Assess suicide and violence risk with safety planning
@@ -560,7 +560,7 @@ export const DEFAULT_PROMPT_TEMPLATES = [
     variables: null,
     currentVersionNumber: 1,
     departmentId: DEPT.PSYCH,
-    tags: ['system', 'specialty', 'psychiatry', 'smr-v1'],
+    tags: ['system', 'specialty', 'psychiatry', 'text-v1'],
   },
   // ID 10: Surgery - New Referral
   {
@@ -636,7 +636,7 @@ When the current encounter's department is "Surgery" (or "General Surgery") and 
     },
     currentVersionNumber: 1,
     departmentId: DEPT.SURG,
-    tags: ['department', 'surgery', 'new_referral', 'smr-v1'],
+    tags: ['department', 'surgery', 'new_referral', 'text-v1'],
   },
   // ID 11: Surgery - Revisit
   {
@@ -707,7 +707,7 @@ When the current encounter's department is "Surgery" (or "General Surgery") and 
     },
     currentVersionNumber: 1,
     departmentId: DEPT.SURG,
-    tags: ['department', 'surgery', 'revisit', 'smr-v1'],
+    tags: ['department', 'surgery', 'revisit', 'text-v1'],
   },
   // ID 12: General Medicine - New Referral
   {
@@ -784,7 +784,7 @@ Contains the following sub-sections:
     },
     currentVersionNumber: 1,
     departmentId: DEPT.MED,
-    tags: ['department', 'medicine', 'new_referral', 'smr-v1'],
+    tags: ['department', 'medicine', 'new_referral', 'text-v1'],
   },
   // ID 13: General Medicine - Revisit
   {
@@ -852,7 +852,7 @@ When the current encounter's department is "General Medicine" (or "Internal Medi
     },
     currentVersionNumber: 1,
     departmentId: DEPT.MED,
-    tags: ['department', 'medicine', 'revisit', 'smr-v1'],
+    tags: ['department', 'medicine', 'revisit', 'text-v1'],
   },
   // ID 14: Breast & Endocrine - New Referral
   {
@@ -934,7 +934,7 @@ Act as an expert medical scribe with postgraduate training in Medicine and Breas
     },
     currentVersionNumber: 1,
     departmentId: DEPT.BREN,
-    tags: ['department', 'breast_endocrine', 'new_referral', 'smr-v1'],
+    tags: ['department', 'breast_endocrine', 'new_referral', 'text-v1'],
   },
   // ID 15: Breast & Endocrine - Revisit
   {
@@ -1004,7 +1004,7 @@ Act as an expert medical scribe with postgraduate training in Medicine and Breas
     },
     currentVersionNumber: 1,
     departmentId: DEPT.BREN,
-    tags: ['department', 'breast_endocrine', 'revisit', 'smr-v1'],
+    tags: ['department', 'breast_endocrine', 'revisit', 'text-v1'],
   },
   // ID 16: Rheumatology - New Referral
   {
@@ -1088,7 +1088,7 @@ When the current encounter's department is "Rheumatology" and the patient is NEW
     },
     currentVersionNumber: 1,
     departmentId: DEPT.RHEUM,
-    tags: ['department', 'rheumatology', 'new_referral', 'smr-v1'],
+    tags: ['department', 'rheumatology', 'new_referral', 'text-v1'],
   },
   // ID 17: Rheumatology - Revisit
   {
@@ -1162,7 +1162,7 @@ When the current encounter's department is "Rheumatology" and the patient is a R
     },
     currentVersionNumber: 1,
     departmentId: DEPT.RHEUM,
-    tags: ['department', 'rheumatology', 'revisit', 'smr-v1'],
+    tags: ['department', 'rheumatology', 'revisit', 'text-v1'],
   },
   // ID 18: Orthopedics - New Referral
   {
@@ -1239,7 +1239,7 @@ When the current encounter's department is "Orthopedics" and the patient is NEW 
     },
     currentVersionNumber: 1,
     departmentId: DEPT.ORTH,
-    tags: ['department', 'orthopedics', 'new_referral', 'smr-v1'],
+    tags: ['department', 'orthopedics', 'new_referral', 'text-v1'],
   },
   // ID 19: Orthopedics - Revisit
   {
@@ -1301,7 +1301,7 @@ When the current encounter's department is "Orthopedics" and the patient is a RE
     },
     currentVersionNumber: 1,
     departmentId: DEPT.ORTH,
-    tags: ['department', 'orthopedics', 'revisit', 'smr-v1'],
+    tags: ['department', 'orthopedics', 'revisit', 'text-v1'],
   },
   // ID 20: Neurology - New Referral
   {
@@ -1363,7 +1363,7 @@ When the current encounter's department is "Neurology" and the patient is NEW or
     },
     currentVersionNumber: 1,
     departmentId: DEPT.NEUR,
-    tags: ['department', 'neurology', 'new_referral', 'smr-v1'],
+    tags: ['department', 'neurology', 'new_referral', 'text-v1'],
   },
   // ID 21: Neurology - Revisit
   {
@@ -1437,7 +1437,7 @@ When the current encounter's department is "Neurology" and the patient is a REVI
     },
     currentVersionNumber: 1,
     departmentId: DEPT.NEUR,
-    tags: ['department', 'neurology', 'revisit', 'smr-v1'],
+    tags: ['department', 'neurology', 'revisit', 'text-v1'],
   },
   // ID 22: Hematology - New Referral
   {
@@ -1519,7 +1519,7 @@ When the current encounter's department is **Hematology** (or "Haematology") and
     },
     currentVersionNumber: 1,
     departmentId: DEPT.HEME,
-    tags: ['department', 'hematology', 'new_referral', 'smr-v1'],
+    tags: ['department', 'hematology', 'new_referral', 'text-v1'],
   },
   // ID 23: Hematology - Revisit
   {
@@ -1618,7 +1618,7 @@ When the current encounter's department is **Hematology** (or "Haematology") and
     },
     currentVersionNumber: 1,
     departmentId: DEPT.HEME,
-    tags: ['department', 'hematology', 'revisit', 'smr-v1'],
+    tags: ['department', 'hematology', 'revisit', 'text-v1'],
   },
   // ID 24: JSON Enforcement Note
   {
@@ -1631,7 +1631,7 @@ When the current encounter's department is **Hematology** (or "Haematology") and
     variables: null,
     currentVersionNumber: 1,
     departmentId: null,
-    tags: ['system', 'json-enforcement', 'smr-v1'],
+    tags: ['system', 'json-enforcement', 'text-v1'],
   },
   // ID 25: Corrective Retry Suffix
   {
@@ -1644,7 +1644,7 @@ When the current encounter's department is **Hematology** (or "Haematology") and
     variables: null,
     currentVersionNumber: 1,
     departmentId: null,
-    tags: ['system', 'retry', 'smr-v1'],
+    tags: ['system', 'retry', 'text-v1'],
   },
   // ID 26: Pre-Summary System Prompt
   {
@@ -1664,7 +1664,7 @@ When the current encounter's department is **Hematology** (or "Haematology") and
     // multi-candidate tiebreak (createdAt/id order) silently served this stub
     // instead of the intended default. See
     // pre-summary-candidate-uniqueness.test.ts.
-    tags: ['system', 'smr-v1'],
+    tags: ['system', 'text-v1'],
   },
   // ID 27: Previous Visit Summary System Prompt
   {
@@ -1677,7 +1677,7 @@ When the current encounter's department is **Hematology** (or "Haematology") and
     variables: null,
     currentVersionNumber: 1,
     departmentId: null,
-    tags: ['system', 'previous-visit', 'smr-v1'],
+    tags: ['system', 'previous-visit', 'text-v1'],
   },
   // Unified Pre-Summary Template (tenant-level default for all departments)
   //
@@ -2247,7 +2247,7 @@ When no department-specific template matches the current encounter's department,
     },
     currentVersionNumber: 1,
     departmentId: null,
-    tags: ['department', 'catchall', 'soap', 'smr-v1'],
+    tags: ['department', 'catchall', 'soap', 'text-v1'],
   },
   // ──────────────────────────────────────────────────────────────────
   // ID 41: Whisper Initial Prompt - Bilingual EN-VI Medical Vocabulary

@@ -21,7 +21,7 @@
  *      `whisper-large-v3` must NOT be blocked by `whisper-large-v3-turbo`).
  *   5. The SYSTEM `AiTaskDefault` seed rows reference catalog slugs with the
  *      compatible `taskType`, and the seed step is CREATE-ONLY.
- *   6. Companion updates: HarnessPolicy SMR default → `gemma-4-e2b-it-qat`;
+ *   6. Companion updates: HarnessPolicy TEXT default → `gemma-4-e2b-it-qat`;
  *      the six superseded GlobalSetting keys are gone from the seeded arrays
  *      and covered by the idempotent soft-retire sweep; tenant admins hold
  *      read+manage on `AiTaskDefault`.
@@ -668,7 +668,7 @@ describe('AiTaskDefault SYSTEM seed', () => {
     'guardrail.validate': ModelTaskType.GUARDRAIL,
     'nlp.ner': 'TOKEN_CLASSIFICATION',
     'nlp.classification': 'TEXT_CLASSIFICATION',
-    // SMR generation routing keys.
+    // TEXT generation routing keys.
     'text.live': 'TEXT_GENERATION',
     'text.finalize': 'TEXT_GENERATION',
     // BUG-018 — prompt-template Test routing, independent of harness.
@@ -708,8 +708,8 @@ describe('AiTaskDefault SYSTEM seed', () => {
     // placeholder); the diagnosis suggester moved to nlp.diagnosis.
     expect(byKey.get('nlp.classification')?.modelSlug).toBe('nlp-doc-type-classifier');
     expect(byKey.get('nlp.diagnosis')?.modelSlug).toBe('symps-disease-bert-v3-c41');
-    // SMR live/finalize routing, both mapped to the
-    // current SYSTEM SMR default registry slug.
+    // TEXT live/finalize routing, both mapped to the
+    // current SYSTEM TEXT default registry slug.
     expect(byKey.get('text.live')?.modelSlug).toBe('lms-gemma-4-e2b-it-qat');
     expect(byKey.get('text.finalize')?.modelSlug).toBe('lms-gemma-4-e2b-it-qat');
     // BUG-018 — the prompt-template Test key. Seeded so the Test path
@@ -788,12 +788,12 @@ describe('AiTaskDefault SYSTEM seed', () => {
 // =============================================================================
 
 describe('companion seed updates', () => {
-  it('moves the SYSTEM HarnessPolicy SMR default to gemma-4-e2b-it-qat (provider lm-studio)', () => {
+  it('moves the SYSTEM HarnessPolicy TEXT default to gemma-4-e2b-it-qat (provider lm-studio)', () => {
     expect(SYSTEM_HARNESS_POLICY_TEXT_DEFAULTS.textProvider).toBe('lm-studio');
     expect(SYSTEM_HARNESS_POLICY_TEXT_DEFAULTS.textModel).toBe('gemma-4-e2b-it-qat');
   });
 
-  it('keeps the new SMR default resolvable against the registry (lm-studio row, matching sourceUri)', () => {
+  it('keeps the new TEXT default resolvable against the registry (lm-studio row, matching sourceUri)', () => {
     const row = catalog.find((m) => m.provider === 'lm-studio' && m.sourceUri === SYSTEM_HARNESS_POLICY_TEXT_DEFAULTS.textModel);
     expect(row).toBeDefined();
     expect(row?.slug).toBe('lms-gemma-4-e2b-it-qat');
@@ -801,9 +801,9 @@ describe('companion seed updates', () => {
 
   it('removes the six superseded GlobalSetting keys from the seeded arrays', () => {
     const retiredKeys = [
-      'default-smr-provider',
-      'default-smr-model',
-      'smr-provider-models',
+      'default-text-provider',
+      'default-text-model',
+      'text-provider-models',
       'default-guardrail-provider',
       'default-guardrail-model',
       'guardrail-azure-deployment',
@@ -813,7 +813,7 @@ describe('companion seed updates', () => {
       expect(seededKeys.has(key), `GlobalSetting key ${key} is still seeded`).toBe(false);
     });
     // The survivors stay untouched.
-    expect(seededKeys.has('smr-azure-deployment')).toBe(true);
+    expect(seededKeys.has('text-azure-deployment')).toBe(true);
     expect(seededKeys.has('guardrail-provider-models')).toBe(true);
     expect(seededKeys.has('default-stt-model')).toBe(true);
   });
@@ -826,9 +826,9 @@ describe('companion seed updates', () => {
         'guardrail/default-guardrail-provider',
         'guardrail/default-guardrail-model',
         'guardrail/guardrail-azure-deployment',
-        'smr/default-smr-provider',
-        'smr/default-smr-model',
-        'ux-constants/smr-provider-models',
+        'text/default-text-provider',
+        'text/default-text-model',
+        'ux-constants/text-provider-models',
       ].sort(),
     );
   });

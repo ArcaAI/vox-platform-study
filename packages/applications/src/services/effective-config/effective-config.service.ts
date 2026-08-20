@@ -6,7 +6,7 @@
 // `AiRuntimeProfile` service — and deliberately owns no data access of its own.
 //
 // House constraint: effective-config carries service-level knobs
-// ONLY, never per-request model choice. SMR remains a stateless gateway; the
+// ONLY, never per-request model choice. TEXT remains a stateless gateway; the
 // gateway injects `{provider, model}` per request, exactly as before.
 
 import { Inject, Injectable, Logger, Optional } from '@nestjs/common';
@@ -64,7 +64,7 @@ export class EffectiveConfigService implements IEffectiveConfigService {
 
   constructor(
     private readonly effectiveSettings: EffectiveSettingsService,
-    // Optional so graphs that never serve smr/nlp profiles (and unit tests) keep
+    // Optional so graphs that never serve text/nlp profiles (and unit tests) keep
     // working; an unwired service yields an empty profile list rather than a 500.
     @Optional() @Inject(IAiRuntimeProfileService) private readonly runtimeProfiles?: IAiRuntimeProfileService,
   ) {}
@@ -77,16 +77,16 @@ export class EffectiveConfigService implements IEffectiveConfigService {
     const base: EffectiveConfigResponse = { service, generatedAt: new Date().toISOString() };
 
     switch (service) {
-      case 'smr':
+      case 'text':
         // Service-level knobs only. temperature/topP/maxTokens still travel
         // per-request via the gateway's profile injection.
         // `retention.ttlSeconds` is the ONLY retention field
-        // meaningful here — SMR holds no weights, so it forwards this to the
+        // meaningful here — TEXT holds no weights, so it forwards this to the
         // engine (Ollama `keep_alive` / LM Studio `ttl`) instead of caching.
         return {
           ...base,
           runtimeProfiles: await this.listProfiles(),
-          retention: await this.resolveRetention('smr'),
+          retention: await this.resolveRetention('text'),
         };
 
       case 'nlp':
@@ -148,15 +148,15 @@ export class EffectiveConfigService implements IEffectiveConfigService {
   /**
    * Resolve one service's retention subset.
    *
-   * `smr` gets ttlSeconds ONLY: it owns no cache, so `maxModels`/`maxMemoryMb`/
+   * `text` gets ttlSeconds ONLY: it owns no cache, so `maxModels`/`maxMemoryMb`/
    * `vramBudgetMb` are meaningless there and stay null rather than being
    * invented. `maxMemoryMb` remains stt-only (its historical MB budget);
    * every other service uses the generalized `vramBudgetMb`.
    */
-  private async resolveRetention(service: 'stt' | 'nlp' | 'guardrail' | 'harness' | 'tts' | 'smr'): Promise<EffectiveRetention> {
+  private async resolveRetention(service: 'stt' | 'nlp' | 'guardrail' | 'harness' | 'tts' | 'text'): Promise<EffectiveRetention> {
     const ttl = await this.resolveKey(`${service}.modelCache.ttlSeconds` as ServiceRuntimeKey);
 
-    if (service === 'smr') {
+    if (service === 'text') {
       return { ttlSeconds: ttl.value, maxModels: null, maxMemoryMb: null, vramBudgetMb: null, source: ttl.source };
     }
 

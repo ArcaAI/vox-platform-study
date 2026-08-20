@@ -12,9 +12,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { BuildInfoService } from '../build-info.service';
 
 const VALID_BUILD_INFO = {
-  service: 'smr',
+  service: 'text',
   version: '2.1.0',
-  releaseTag: 'SMR-2.1.0',
+  releaseTag: 'TEXT-2.1.0',
   gitBranch: 'dev-2.1',
   gitCommitSha: '0ab258f9c1d2e3f4a5b6c7d8e9f0011223344557',
   buildAt: '2026-08-09T11:22:33Z',
@@ -55,7 +55,7 @@ describe('BuildInfoService', () => {
     const second = service.getBuildInfo();
 
     expect(second).toBe(first);
-    expect(second.service).toBe('smr');
+    expect(second.service).toBe('text');
   });
 
   it('never throws and returns a degraded object when the file is absent', () => {

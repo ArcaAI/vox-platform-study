@@ -33,7 +33,7 @@ const CATALOG: SettingCatalog = {
       category: 'Agentic Context',
       globalOnly: true,
       label: 'Live delta max chars',
-      description: 'Soft per-flush cap on the transcript delta sent to SMR.',
+      description: 'Soft per-flush cap on the transcript delta sent to TEXT.',
     },
     {
       key: 'pipeline.harnessEnabled',

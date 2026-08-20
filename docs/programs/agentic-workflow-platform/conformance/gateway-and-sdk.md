@@ -8,7 +8,7 @@
 | **Conformance target** | [product-brief.md](../product-brief.md) §1, §2, §3 `api` · [owner-decisions-2026-08-17.md](../owner-decisions-2026-08-17.md) D-A, D-B, D-D, D-E |
 | **Method** | Static inspection only. No tests, builds, migrations or DB access were run. Every claim carries a `file:line`. |
 | **Concurrency caveat** | Three other agents were writing to this tree during the review. Line numbers are accurate as of the read but may drift. Two items were **verified as closed mid-review and are therefore NOT reported as gaps**: DNA style erasure (`DELETE /dna-writing-styles/my-style` and `/:reportId` now exist — `apps/api/src/modules/dna-writing-style/dna-writing-style.controller.ts:267,289`) and the `featureAgenticLoop` entitlement column (migration `20260817161511_task_705_entitlement_agentic_loop`). |
-| **Note on `smr`** | Per owner decision §3b#3, surviving `smr` identifiers are a known in-flight rename (TASK-740) and are **not** reported as findings here. The frozen wire path `api/smr/api/v1` is a deliberate carve-out. |
+| **Note on `text`** | Per owner decision §3b#3, surviving `text` identifiers are a known in-flight rename (TASK-740) and are **not** reported as findings here. The frozen wire path `api/smr/api/v1` is a deliberate carve-out. |
 
 ---
 

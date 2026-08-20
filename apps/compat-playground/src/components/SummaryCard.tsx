@@ -23,7 +23,7 @@ const EMPTY_CONTEXT: ClinicalContextValues = {
 
 /**
  * The pre-summarization → summarization surface for the Summarization tab,
- * wired to the v1-compat SMR API through `useText()`. Orchestrator: owns every
+ * wired to the v1-compat TEXT API through `useText()`. Orchestrator: owns every
  * piece of state and the two request handlers; `ContextForm`,
  * `TranscriptSource`, and the `SummaryResultView` family (
  * split, ~467 LOC → 4 files) are presentational.
@@ -33,7 +33,7 @@ const EMPTY_CONTEXT: ClinicalContextValues = {
  * summarize the transcript with the pre-summary folded into context. R10:
  * the streaming toggle threads `{stream:true, onDelta}` through to the
  * already-shipped SDK/gateway SSE path — see `useText.ts` and
- * `smr-compat.controller.ts`.
+ * `text-compat.controller.ts`.
  */
 export function SummaryCard({ config }: SummaryCardProps) {
   const { preSummarize, summarizeSync, loading } = useText();

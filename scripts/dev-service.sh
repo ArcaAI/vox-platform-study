@@ -53,7 +53,7 @@
 #   worker       harness Temporal worker on task queue `harness-task-queue`.
 #
 # MACHINE-SPECIFIC MODEL:
-#   LM_STUDIO_MODEL (default: gemma-4-e4b-it-qat) feeds both the SMR default
+#   LM_STUDIO_MODEL (default: gemma-4-e4b-it-qat) feeds both the TEXT default
 #   model and the harness worker's HARNESS_TEXT_MODEL. Export it in your shell
 #   profile if your LM Studio has a different model loaded.
 # ============================================================================
@@ -182,21 +182,21 @@ RELOAD_DIR=""
 
 # The LM Studio pairing is the ONE application default this script still
 # supplies. It is machine-specific (whichever model your LM Studio has loaded)
-# and it differs from the pydantic defaults — SMR's is `google/gemma-4-e4b`,
+# and it differs from the pydantic defaults — TEXT's is `google/gemma-4-e4b`,
 # harness's `text_provider`/`text_model` are None. Removed from here it would
 # silently change which model dev requests, and it has no declaration in the
 # root env files yet. When those env files are generated, this moves to
 # .env.dev and these functions disappear.
 #
 # Everything else this script used to export is gone: TEXT_OPENAI_COMPAT_ENABLED
-# (read by NOTHING — SMR has no `enabled` field; a provider is available iff its
+# (read by NOTHING — TEXT has no `enabled` field; a provider is available iff its
 # connection config is present), TEXT_OPENAI_COMPAT_BASE_URL,
-# TEXT_EXTERNAL_GUARDRAIL_ENABLED, HARNESS_{SMR,NLP,API}_BASE_URL and
+# TEXT_EXTERNAL_GUARDRAIL_ENABLED, HARNESS_{TEXT,NLP,API}_BASE_URL and
 # HARNESS_RETRIEVAL_ENABLED (all identical to the pydantic field default), and
 # HARNESS_SERVICE_TOKEN (the harness API *and* the worker now read .env.dev
 # themselves through hope_env.load_env(), which is what the hand-rolled `sed`
 # of .env.dev was standing in for).
-apply_smr_env() {
+apply_text_env() {
     : "${TEXT_OPENAI_COMPAT_DEFAULT_MODEL:=${LM_STUDIO_MODEL}}"
     export TEXT_OPENAI_COMPAT_DEFAULT_MODEL
     ENV_REPORT+=("TEXT_OPENAI_COMPAT_DEFAULT_MODEL=$TEXT_OPENAI_COMPAT_DEFAULT_MODEL")
@@ -237,7 +237,7 @@ case "$SERVICE" in
         ;;
     text)
         : "${TEXT_PORT:=8862}"
-        apply_smr_env
+        apply_text_env
         ENV_REPORT+=("HOST=$HOST" "TEXT_PORT=$TEXT_PORT")
         CMD=(uvicorn text.main:app --host "$HOST" --port "$TEXT_PORT" --app-dir apps/text/src)
         RELOAD_DIR="apps/text/src"

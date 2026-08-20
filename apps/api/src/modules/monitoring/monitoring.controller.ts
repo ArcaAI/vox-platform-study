@@ -59,7 +59,7 @@ export class MonitoringController {
 
   @Get('uptime/:service')
   @ApiOperation({ summary: 'Get uptime data for a specific service' })
-  @ApiParam({ name: 'service', enum: ['smr', 'stt', 'nlp', 'guardrail', 'harness'], description: 'Service name' })
+  @ApiParam({ name: 'service', enum: ['text', 'stt', 'nlp', 'guardrail', 'harness'], description: 'Service name' })
   @ApiResponse({ status: 200, description: 'Uptime data for the service', type: ServiceUptime })
   @ApiResponse({ status: 404, description: 'Service not found' })
   async getServiceUptime(@Param('service') service: string): Promise<ServiceUptime> {
@@ -79,7 +79,7 @@ export class MonitoringController {
 
   @Get('heartbeats/:service')
   @ApiOperation({ summary: 'Get heartbeat history for a service' })
-  @ApiParam({ name: 'service', enum: ['smr', 'stt', 'nlp', 'guardrail', 'harness'], description: 'Service name' })
+  @ApiParam({ name: 'service', enum: ['text', 'stt', 'nlp', 'guardrail', 'harness'], description: 'Service name' })
   @ApiResponse({ status: 200, description: 'Heartbeat history', type: [HeartbeatRecord] })
   async getHeartbeats(@Param('service') service: string): Promise<HeartbeatRecord[]> {
     this.logger.debug({

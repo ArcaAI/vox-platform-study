@@ -37,7 +37,7 @@ function EffectiveResolveCard({ policy }: { policy: HarnessPolicy }) {
     { label: 'safety', value: policy.safetyEnabled ? 'on' : 'off' },
     { label: 'phi', value: policy.phiEnabled ? (policy.phiFailClosed ? 'on \u00b7 fail-closed' : 'on') : 'off' },
     { label: 'safety model', value: `${policy.safetyProvider} / ${policy.safetyModel}` },
-    { label: 'smr model', value: policy.textProvider && policy.textModel ? `${policy.textProvider} / ${policy.textModel}` : 'service chooses' },
+    { label: 'text model', value: policy.textProvider && policy.textModel ? `${policy.textProvider} / ${policy.textModel}` : 'service chooses' },
     { label: 'max regen', value: String(policy.maxRegen) },
     { label: 'gate sla', value: `${policy.gateSlaSeconds} s` },
     { label: 'gate escalation', value: `${policy.gateEscalationSeconds} s` },

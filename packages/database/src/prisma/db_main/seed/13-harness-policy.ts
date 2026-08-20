@@ -2,15 +2,15 @@ import type { CorePrismaClient } from '../../../client';
 import { SYSTEM_TENANT_ID, SYSTEM_USER_ID } from './00-constants';
 
 /**
- * HarnessPolicy Seed (SMR default wiring)
+ * HarnessPolicy Seed (TEXT default wiring)
  *
  * The reserved system tenant (`00000000-…`, SYSTEM_TENANT_ID) owns the
  * GLOBAL-DEFAULT HarnessPolicy row that the clinical documentation loop reads
- * via its `fetch_policy` activity (apps/harness). This seed sets the SMR
+ * via its `fetch_policy` activity (apps/harness). This seed sets the TEXT
  * generation default on that row:
  *   - textProvider = 'lm-studio'
  *   - textModel    = 'gemma-4-e2b-it-qat'
- * (both were NULL → "let the SMR service choose"; the model
+ * (both were NULL → "let the TEXT service choose"; the model
  * default moved from `gemma-4-e2b-it-sft-rlvr-medical` to the owner-declared
  * platform default `gemma-4-e2b-it-qat` — registry row `lms-gemma-4-e2b-it-qat`).
  *
@@ -23,10 +23,10 @@ import { SYSTEM_TENANT_ID, SYSTEM_USER_ID } from './00-constants';
  *
  * Scope guard: this seed touches NO gating/threshold/safety columns
  * and does not change safetyModel (granite-guardian remains the schema
- * default). It only sets the two SMR columns.
+ * default). It only sets the two TEXT columns.
  */
 
-/** The agreed SMR system default (overrides the NULL "service chooses"). */
+/** The agreed TEXT system default (overrides the NULL "service chooses"). */
 export const SYSTEM_HARNESS_POLICY_TEXT_DEFAULTS = {
   textProvider: 'lm-studio',
   // Owner decision (2026-07-17) — the platform summarization
@@ -65,7 +65,7 @@ type HarnessPolicyKnobs = Record<keyof typeof HARNESS_POLICY_KNOB_DEFAULTS, unkn
 /**
  * Build a full 16-knob snapshot from a (possibly partial) policy row, falling
  * back to the code defaults for any column the row does not carry. `??` is used
- * so a legitimate `false`/`0`/explicit `null` is preserved (the SMR defaults are
+ * so a legitimate `false`/`0`/explicit `null` is preserved (the TEXT defaults are
  * `null`, so a null row value collapses to the null default either way).
  */
 function snapshotKnobs(row: Record<string, unknown>): HarnessPolicyKnobs {
@@ -76,34 +76,34 @@ function snapshotKnobs(row: Record<string, unknown>): HarnessPolicyKnobs {
   return out;
 }
 
-const SEED_CHANGE_REASON = 'TASK-506 seed: set SMR system default (lm-studio / gemma-4-e2b-it-qat)';
+const SEED_CHANGE_REASON = 'TASK-506 seed: set TEXT system default (lm-studio / gemma-4-e2b-it-qat)';
 
 /**
- * Idempotently set the SYSTEM HarnessPolicy SMR default + record a WORM change.
+ * Idempotently set the SYSTEM HarnessPolicy TEXT default + record a WORM change.
  *
  * Returns the action taken so callers/tests can assert behaviour:
- *   - 'created' — no SYSTEM row existed; created with the SMR default (+ WORM, beforeJson=null)
- *   - 'updated' — a row existed without the SMR default; only the two SMR columns written (+ WORM before/after)
- *   - 'noop'    — the SMR default was already set; nothing written
+ *   - 'created' — no SYSTEM row existed; created with the TEXT default (+ WORM, beforeJson=null)
+ *   - 'updated' — a row existed without the TEXT default; only the two TEXT columns written (+ WORM before/after)
+ *   - 'noop'    — the TEXT default was already set; nothing written
  */
 export const seedHarnessPolicy = async (
   client: CorePrismaClient,
 ): Promise<{ success: true; action: 'created' | 'updated' | 'noop'; changeWritten: boolean }> => {
-  console.log('Seeding SYSTEM HarnessPolicy SMR default (TASK-356 Phase 2)...');
+  console.log('Seeding SYSTEM HarnessPolicy TEXT default (TASK-356 Phase 2)...');
 
   const { textProvider, textModel } = SYSTEM_HARNESS_POLICY_TEXT_DEFAULTS;
   const existing = await client.harnessPolicy.findFirst({
     where: { tenantId: SYSTEM_TENANT_ID },
   });
 
-  // Idempotent: the SMR default is already set — nothing to write or audit.
+  // Idempotent: the TEXT default is already set — nothing to write or audit.
   if (existing && existing.textProvider === textProvider && existing.textModel === textModel) {
-    console.log('  SYSTEM HarnessPolicy SMR default already set, skipping');
+    console.log('  SYSTEM HarnessPolicy TEXT default already set, skipping');
     return { success: true, action: 'noop', changeWritten: false };
   }
 
   if (!existing) {
-    // Create the SYSTEM row with the SMR default. All other knobs come from
+    // Create the SYSTEM row with the TEXT default. All other knobs come from
     // the Prisma column @defaults (granite safety model, code thresholds…).
     const created = await client.harnessPolicy.create({
       data: {
@@ -123,11 +123,11 @@ export const seedHarnessPolicy = async (
         reason: SEED_CHANGE_REASON,
       },
     });
-    console.log('  Created SYSTEM HarnessPolicy with SMR default + WORM change');
+    console.log('  Created SYSTEM HarnessPolicy with TEXT default + WORM change');
     return { success: true, action: 'created', changeWritten: true };
   }
 
-  // A row exists but the SMR default is unset/stale — write ONLY the two SMR
+  // A row exists but the TEXT default is unset/stale — write ONLY the two TEXT
   // columns (never clobber other admin-changed knobs) + a before/after WORM.
   const before = snapshotKnobs(existing as Record<string, unknown>);
   const updated = await client.harnessPolicy.update({
@@ -144,6 +144,6 @@ export const seedHarnessPolicy = async (
       reason: SEED_CHANGE_REASON,
     },
   });
-  console.log('  Updated SYSTEM HarnessPolicy SMR default + WORM change');
+  console.log('  Updated SYSTEM HarnessPolicy TEXT default + WORM change');
   return { success: true, action: 'updated', changeWritten: true };
 };

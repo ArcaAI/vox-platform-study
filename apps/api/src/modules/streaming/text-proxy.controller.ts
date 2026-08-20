@@ -99,7 +99,7 @@ interface TextGenerateRequest {
       /**
        * WHO PAID for this credential: the caller tenant's own
        * connection row (`'tenant'`) or the SYSTEM-tenant platform default
-       * (`'platform'`). SMR reads it to stamp `usage_detail.byok`, which
+       * (`'platform'`). TEXT reads it to stamp `usage_detail.byok`, which
        * becomes `deployment`/`costBasis` on the ledger row.
        *
        * The entry is forwarded VERBATIM below, so this field rides the
@@ -140,14 +140,14 @@ interface UpstreamErrorPayload {
 
 const RETRIABLE_CODES = new Set(['ECONNREFUSED', 'ECONNRESET', 'ETIMEDOUT', 'ENOTFOUND', 'EPIPE']);
 // Codes that can ONLY occur while establishing the
-// connection, i.e. before any request bytes reached SMR. Everything else
-// (ECONNRESET/EPIPE/ETIMEDOUT, or ANY upstream response) may mean SMR already
+// connection, i.e. before any request bytes reached TEXT. Everything else
+// (ECONNRESET/EPIPE/ETIMEDOUT, or ANY upstream response) may mean TEXT already
 // started a billable generation, so the non-idempotent `/generate` POSTs must
 // never retry on them (duplicate billing + divergent drafts).
 const CONNECT_PHASE_CODES = new Set(['ECONNREFUSED', 'ENOTFOUND']);
 const SSE_HEARTBEAT_INTERVAL_MS = 15_000;
 // Cap extracted attachment text injected into a summarization prompt so a large
-// document can't blow the SMR context window. ~200k chars ≈ 50k tokens.
+// document can't blow the TEXT context window. ~200k chars ≈ 50k tokens.
 const ATTACHMENT_TEXT_LIMIT = 200_000;
 const GLOBAL_TENANT_KEY = '__GLOBAL__';
 // SUPER_ADMIN (formerly SUPER_ADMIN, renamed ) is the single
@@ -206,7 +206,7 @@ export class TextProxyController {
     @Inject(IBlobStorageService) private readonly blobStorage: IBlobStorageServiceType,
     @Inject(IConfigService) private readonly configService: IConfigService,
     @Optional() @Inject(SecretsService) private readonly secretsService?: SecretsService,
-    // Resolves the tenant's effective SMR {provider, model} when a
+    // Resolves the tenant's effective TEXT {provider, model} when a
     // caller (playground/SDK) omits the model. @Optional so test fixtures that
     // construct the controller without it keep compiling.
     @Optional() @Inject(HarnessPolicyService) private readonly harnessPolicyService?: HarnessPolicyService,
@@ -220,13 +220,13 @@ export class TextProxyController {
     @Optional() @Inject(IAiTaskDefaultService) private readonly aiTaskDefaultService?: IAiTaskDefaultService,
     // Resolves the effective hyperparameter profile for the outgoing
     // {provider, model}. @Optional so existing positional test fixtures (and
-    // graphs that never proxy to SMR) keep compiling.
+    // graphs that never proxy to TEXT) keep compiling.
     @Optional()
     @Inject(IAiRuntimeProfileService)
     private readonly aiRuntimeProfileService?: IAiRuntimeProfileService,
     // Resolves the caller tenant's BYO cloud credential for the
     // outgoing provider. @Optional so existing positional test fixtures (and
-    // graphs that never proxy to SMR) keep compiling.
+    // graphs that never proxy to TEXT) keep compiling.
     @Optional()
     @Inject(IProviderConnectionService)
     private readonly aiProviderConnectionService?: IProviderConnectionService,
@@ -281,7 +281,7 @@ export class TextProxyController {
    *
    * BUG-018 — the implementation MOVED VERBATIM to the applications-layer
    * `TextRequestEnrichmentService` so the prompt-template test bench (which used
-   * to POST to SMR directly, on platform credentials) shares exactly one
+   * to POST to TEXT directly, on platform credentials) shares exactly one
    * implementation with this proxy. Semantics are unchanged: cloud-only,
    * minimal exposure, fail-open on a resolver error, and the policy-refusal
    * `assertProviderAvailable` check outside that catch.
@@ -300,7 +300,7 @@ export class TextProxyController {
     return this.textRequestEnrichment.applyTextRuntimeProfile(target);
   }
 
-  // The SMR base URL resolves through the
+  // The TEXT base URL resolves through the
   // typed `IConfigService.getConfigValue('TEXT_URL')` accessor. A direct
   // `process.env.TEXT_URL || 'http://localhost:8862'`
   // read is forbidden by the `no-direct-downstream-url-env` lint
@@ -311,10 +311,10 @@ export class TextProxyController {
   }
 
   /**
-   * Headers for every gateway→SMR hop out of this controller.
+   * Headers for every gateway→TEXT hop out of this controller.
    *
    * TASK-737: `X-Tenant-Id` is MANDATORY here. It was omitted UNCONDITIONALLY on
-   * all seven call sites below, so SMR resolved `x_tenant_id=None` and fell back to
+   * all seven call sites below, so TEXT resolved `x_tenant_id=None` and fell back to
    * the platform default — never applying the tenant's own BYOK provider/credential,
    * and (because TASK-735 derives `funding`/`cost_basis` from whichever tier supplied
    * the credential) mis-attributing the spend, with nothing thrown or logged anywhere.
@@ -351,7 +351,7 @@ export class TextProxyController {
    * Retry predicate for the NON-IDEMPOTENT `/generate` POSTs:
    * only connect-phase failures qualify, because they prove the request never
    * left the gateway. An upstream response (any status) or a post-send socket
-   * failure means SMR may already be generating — retrying would re-invoke it.
+   * failure means TEXT may already be generating — retrying would re-invoke it.
    */
   private isConnectPhaseFailure(err: unknown): boolean {
     const axiosError = err as AxiosError;
@@ -366,7 +366,7 @@ export class TextProxyController {
     const payload = axiosError.response?.data;
 
     // The raw upstream error body can echo the assembled
-    // clinical prompt / PHI or internal SMR/LM-Studio stack detail. It MUST NOT
+    // clinical prompt / PHI or internal TEXT/LM-Studio stack detail. It MUST NOT
     // reach the client AND MUST NOT be written to logs (stdout → k8s/Loki, outside
     // PHI controls). Record only NON-CONTENT metadata — the upstream status, the
     // request correlation id, and an explicit redaction sentinel — so operators can
@@ -376,7 +376,7 @@ export class TextProxyController {
     // branches AND the earlier interim fix that logged the raw body.
     if (payload !== undefined && payload !== null && payload !== '') {
       this.logger.error({
-        message: 'SMR upstream error (body redacted — may contain PHI/prompt content)',
+        message: 'TEXT upstream error (body redacted — may contain PHI/prompt content)',
         upstreamStatus: status,
         correlationId: this.clsService.getId(),
         upstreamBodyRedacted: true,
@@ -492,7 +492,7 @@ export class TextProxyController {
    * Group registry rows by `provider` into the legacy listing shape.
    * Rows without a `provider` are skipped (not yet machine-actionable — the
    * pre-506 catalog rows); `defaultSelection` marks the tenant's effective
-   * default provider/model (HarnessPolicy for SMR, AiTaskDefault for guardrail).
+   * default provider/model (HarnessPolicy for TEXT, AiTaskDefault for guardrail).
    */
   private groupRegistryModelsByProvider(
     rows: ModelResponse[],
@@ -530,7 +530,7 @@ export class TextProxyController {
   @HttpCode(HttpStatus.OK)
   @Authorize()
   @ApiExcludeEndpoint()
-  @ApiOperation({ summary: 'Generate text via SMR (sync or streaming)' })
+  @ApiOperation({ summary: 'Generate text via TEXT (sync or streaming)' })
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   async generate(@Body() body: TextGenerateRequest): Promise<any> {
     const base = this.getTextBaseUrl();
@@ -543,9 +543,9 @@ export class TextProxyController {
             headers: this.getForwardHeaders(),
             timeout: body.stream ? 30_000 : 120_000,
           }),
-        'SMR generate',
+        'TEXT generate',
         // /generate is non-idempotent (billable generation):
-        // retry ONLY when the request provably never reached SMR.
+        // retry ONLY when the request provably never reached TEXT.
         2,
         (err) => this.isConnectPhaseFailure(err),
       );
@@ -554,18 +554,18 @@ export class TextProxyController {
     } catch (err) {
       const upstreamStatus = (err as AxiosError)?.response?.status;
       this.logger.error({
-        message: 'Failed to proxy generate request to SMR',
+        message: 'Failed to proxy generate request to TEXT',
         error: err instanceof Error ? err.message : String(err),
         code: (err as AxiosError)?.code,
         upstreamStatus,
       });
-      throw this.buildUpstreamException(err, 'SMR service unavailable');
+      throw this.buildUpstreamException(err, 'TEXT service unavailable');
     }
   }
 
   @Get('tasks/:taskId')
   @Authorize()
-  @ApiOperation({ summary: 'Get task status from SMR' })
+  @ApiOperation({ summary: 'Get task status from TEXT' })
   @ApiParam({ name: 'taskId', description: 'Task ID' })
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   async getTaskStatus(@Param('taskId') taskId: string): Promise<any> {
@@ -577,25 +577,25 @@ export class TextProxyController {
           this.httpService.axiosRef.get(`${base}/api/v1/tasks/${taskId}`, {
             headers: this.getForwardHeaders(),
           }),
-        `SMR task status ${taskId}`,
+        `TEXT task status ${taskId}`,
       );
 
       return response.data;
     } catch (err) {
       const upstreamStatus = (err as AxiosError)?.response?.status;
       this.logger.error({
-        message: 'Failed to get task status from SMR',
+        message: 'Failed to get task status from TEXT',
         taskId,
         error: err instanceof Error ? err.message : String(err),
         upstreamStatus,
       });
-      throw this.buildUpstreamException(err, 'SMR service unavailable');
+      throw this.buildUpstreamException(err, 'TEXT service unavailable');
     }
   }
 
   @Post('tasks/:taskId/cancel')
   @Authorize()
-  @ApiOperation({ summary: 'Cancel a running SMR task' })
+  @ApiOperation({ summary: 'Cancel a running TEXT task' })
   @ApiParam({ name: 'taskId', description: 'Task ID to cancel' })
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   async cancelTask(@Param('taskId') taskId: string): Promise<any> {
@@ -608,12 +608,12 @@ export class TextProxyController {
     } catch (err) {
       const upstreamStatus = (err as AxiosError)?.response?.status;
       this.logger.error({
-        message: 'Failed to cancel SMR task',
+        message: 'Failed to cancel TEXT task',
         taskId,
         error: err instanceof Error ? err.message : String(err),
         upstreamStatus,
       });
-      throw this.buildUpstreamException(err, 'SMR service unavailable');
+      throw this.buildUpstreamException(err, 'TEXT service unavailable');
     }
   }
 
@@ -621,7 +621,7 @@ export class TextProxyController {
   @Authorize()
   @StreamScope({ namespace: 'text_task', param: 'taskId' })
   @ApiOperation({
-    summary: 'Stream task chunks via SSE from SMR',
+    summary: 'Stream task chunks via SSE from TEXT',
     description:
       'Server-Sent Events stream. Accepts either `Authorization: Bearer <jwt>` or a single-use `?ticket=<ticket>` issued by `POST /auth/stream-ticket` with scope `text_task:<taskId>`.',
   })
@@ -672,7 +672,7 @@ export class TextProxyController {
       // degrade to "not metered", never to a broken stream.
       void this.usageLedger.recordUsage(input).catch((error: unknown) => {
         this.logger.warn({
-          message: 'Usage metering failed for a proxied SMR stream',
+          message: 'Usage metering failed for a proxied TEXT stream',
           taskId,
           error: error instanceof Error ? error.message : String(error),
         });
@@ -744,7 +744,7 @@ export class TextProxyController {
         // (: this is where a dropped tail becomes lost revenue).
         emitUsageOnce();
         this.logger.error({
-          message: 'SSE stream error from SMR',
+          message: 'SSE stream error from TEXT',
           taskId,
           error: err.message,
         });
@@ -753,7 +753,7 @@ export class TextProxyController {
 
       res.on('close', () => {
         if (heartbeatTimer) clearInterval(heartbeatTimer);
-        // The client hung up. SMR keeps generating in its background task, but
+        // The client hung up. TEXT keeps generating in its background task, but
         // whatever usage already crossed the wire is real and must be recorded.
         emitUsageOnce();
         stream.destroy();
@@ -763,7 +763,7 @@ export class TextProxyController {
       const axiosError = err as AxiosError<UpstreamErrorPayload | string>;
       const upstreamStatus = axiosError.response?.status;
       this.logger.error({
-        message: 'Failed to connect to SMR SSE stream',
+        message: 'Failed to connect to TEXT SSE stream',
         taskId,
         error: err instanceof Error ? err.message : String(err),
         upstreamStatus,
@@ -778,7 +778,7 @@ export class TextProxyController {
       // the try). The `res.end()` behavior on the live path is unchanged.
       if (!res.headersSent) {
         const status = typeof upstreamStatus === 'number' ? upstreamStatus : HttpStatus.BAD_GATEWAY;
-        res.status(status).json({ detail: 'SMR service unavailable' });
+        res.status(status).json({ detail: 'TEXT service unavailable' });
       } else {
         res.end();
       }
@@ -815,7 +815,7 @@ export class TextProxyController {
             headers: this.getForwardHeaders(),
             timeout: textPayload.stream ? 30_000 : 120_000,
           }),
-        'SMR assembled generate',
+        'TEXT assembled generate',
         // Same single-delivery contract as `generate()`.
         2,
         (err) => this.isConnectPhaseFailure(err),
@@ -838,12 +838,12 @@ export class TextProxyController {
     } catch (err) {
       const upstreamStatus = (err as AxiosError)?.response?.status;
       this.logger.error({
-        message: 'Failed to proxy assembled generate request to SMR',
+        message: 'Failed to proxy assembled generate request to TEXT',
         error: err instanceof Error ? err.message : String(err),
         code: (err as AxiosError)?.code,
         upstreamStatus,
       });
-      throw this.buildUpstreamException(err, 'SMR service unavailable');
+      throw this.buildUpstreamException(err, 'TEXT service unavailable');
     }
   }
 
@@ -930,7 +930,7 @@ export class TextProxyController {
         }
         // ATTACHMENT items reference an uploaded file (mediaId) rather than
         // inline text — fetch it from object storage and extract its text so
-        // SMR (which is text-in/text-out) can summarize the document.
+        // TEXT (which is text-in/text-out) can summarize the document.
         if (contextItem.type === ContextItemType.ATTACHMENT && contextItem.mediaId) {
           const attachment = await this.extractAttachmentText(contextItem.mediaId);
           if (attachment) {
@@ -1005,7 +1005,7 @@ export class TextProxyController {
     if (body.dna_writing_style_id) {
       const dnaStyle = await this.dnaWritingStyleRepository.findById(body.dna_writing_style_id);
       // Cross-doctor DNA writing-style ownership check.
-      // The SMR proxy assembles prompts on behalf of the caller; without
+      // The TEXT proxy assembles prompts on behalf of the caller; without
       // this guard a doctor could reference another doctor's stylistic
       // fingerprint (or a style from a different tenant) to imitate them.
       if (!dnaStyle) {
@@ -1031,7 +1031,7 @@ export class TextProxyController {
 
       // The ownership check above only proves the referenced report belongs
       // to the caller — it must NOT be the source of the injected text. Route
-      // through the same gated accessor `smr-compat` uses
+      // through the same gated accessor `text-compat` uses
       // (`IDnaWritingStyleService.getEffectiveStyleText`): it re-applies the
       // tenant+doctor opt-out gate, resolves the doctor's LATEST report, and
       // decrypts the ciphertext column. Reading `dnaStyle.styleText` directly
@@ -1149,9 +1149,9 @@ export class TextProxyController {
 
   // The listing reads the AiModel registry (ENABLED
   // TEXT_GENERATION + SUMMARIZATION rows grouped by `provider`), replacing the
-  // retired `smr-provider-models`/`default-smr-*` GlobalSetting keys. The
+  // retired `text-provider-models`/`default-text-*` GlobalSetting keys. The
   // tenant's effective default still comes from the HarnessPolicy cascade
-  // (`applyTextModelSelection` untouched). The live SMR probe survives ONLY as
+  // (`applyTextModelSelection` untouched). The live TEXT probe survives ONLY as
   // transition safety when the registry has zero rows.
   //
   // That fallback is scoped to the PLAYGROUND (tier 50-59), the
@@ -1164,7 +1164,7 @@ export class TextProxyController {
   @Authorize()
   @ApiOperation({
     summary:
-      'List LLM providers/models from the AiModel registry (ENABLED TEXT_GENERATION/SUMMARIZATION rows), with a live SMR probe ' +
+      'List LLM providers/models from the AiModel registry (ENABLED TEXT_GENERATION/SUMMARIZATION rows), with a live TEXT probe ' +
       `fallback when the registry is empty. SUPER_ADMINs may explicitly target the GLOBAL tenant with ?tenantKey=${GLOBAL_TENANT_KEY}.`,
   })
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -1172,7 +1172,7 @@ export class TextProxyController {
     const tenantId = await this.resolveTenantId(tenantKey);
     const rows = await this.fetchRegistryModels([ModelTaskType.TEXT_GENERATION, ModelTaskType.SUMMARIZATION]);
 
-    // Default marking from the tenant's effective SMR selection; fail-open (no
+    // Default marking from the tenant's effective TEXT selection; fail-open (no
     // default marked) when the cascade is unresolved.
     let defaultSelection: { provider: string; model: string } | undefined;
     try {
@@ -1186,10 +1186,10 @@ export class TextProxyController {
       return providers;
     }
 
-    // Transition fallback: empty registry — fetch live providers from the SMR
+    // Transition fallback: empty registry — fetch live providers from the TEXT
     // service. The Python ProviderInfo model uses `status: str`
     // ("available"/"unavailable") rather than `is_available: boolean`, so we map
-    // it here to satisfy the TypeScript SmrProvider interface.
+    // it here to satisfy the TypeScript TextProvider interface.
     try {
       const base = this.getTextBaseUrl();
       const response = await this.withRetry(
@@ -1198,7 +1198,7 @@ export class TextProxyController {
             headers: this.getForwardHeaders(),
             timeout: 5_000,
           }),
-        'SMR providers fallback',
+        'TEXT providers fallback',
         1,
       );
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -1208,7 +1208,7 @@ export class TextProxyController {
       }));
     } catch (err) {
       this.logger.warn({
-        message: 'SMR service providers fallback failed — returning empty list',
+        message: 'TEXT service providers fallback failed — returning empty list',
         error: err instanceof Error ? err.message : String(err),
       });
       return [];

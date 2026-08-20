@@ -23,12 +23,12 @@ import { PhiRedactionServiceModule } from '../phi-redaction/phi-redaction.servic
     ConfigModule,
     PromptManagementServiceModule,
     ConsultationJobServiceModule,
-    HarnessPolicyServiceModule, // SMR-selection resolver for DnaWritingStyleProcessor
+    HarnessPolicyServiceModule, // TEXT-selection resolver for DnaWritingStyleProcessor
     // PipelinePolicyService backs the per-doctor DNA
     // toggle (service); ConfigResolver gates the processor's learning corpus.
     PipelinePolicyServiceModule,
     ConfigResolverModule,
-    PhiRedactionServiceModule, // TASK-710 hop 2 — IPhiRedactor for DnaWritingStyleProcessor's full-redact-before-SMR call
+    PhiRedactionServiceModule, // TASK-710 hop 2 — IPhiRedactor for DnaWritingStyleProcessor's full-redact-before-TEXT call
     BullModule.registerQueue({ name: JobQueue.GenerateDnaReport }),
   ],
   providers: [

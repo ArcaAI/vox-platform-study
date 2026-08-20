@@ -7,7 +7,7 @@ HOPE's telemetry plane (OTel traces/metrics/logs) is a **separate system** from 
 usage ledger and from the HIPAA audit log. Telemetry exists to answer "is the system
 healthy" — it must never carry clinical content. This page is the four-layer defense
 that keeps it that way, plus the two naming conventions and the tenant-label rule
-every new emitter (STT/TTS/NLP/guardrail/harness Prometheus counters, SMR spans, gateway
+every new emitter (STT/TTS/NLP/guardrail/harness Prometheus counters, TEXT spans, gateway
 proxies) must follow.
 
 ---
@@ -43,7 +43,7 @@ Enforcement is **production-scoped only**:
   posture.
 - `apps/text/src/text/core/config.py` — `TelemetryPhiGuardConfig`, a `pydantic-settings`
   model validator wired into `Settings`. Raises (propagating out of `get_settings()` →
-  `create_app()`) under the same condition. SMR is the only Python service that stamps
+  `create_app()`) under the same condition. TEXT is the only Python service that stamps
   `gen_ai.*` span attributes today (verified by grepping the whole monorepo for
   `gen_ai\.` — every hit lives under `apps/text/src/text/{core/observability.py,providers/}`),
   so it is the only Python service that carries this guard; a future service that starts
@@ -201,7 +201,7 @@ Before adding a new span, metric, or log field anywhere in the platform:
 - [ ] No attribute name or value carries prompt text, completion text, transcript
       text, entity text, or any other clinical content.
 - [ ] No Prometheus label is a tenant, user, patient, or consultation identifier.
-- [ ] If the emitter is `gen_ai.*` in a NEW service (SMR is the only one today), add
+- [ ] If the emitter is `gen_ai.*` in a NEW service (TEXT is the only one today), add
       the same `NO_CONTENT` production boot guard as `apps/text` and extend
       `test_phi_safe_telemetry.py`'s scan (or an equivalent test in that service) to
       cover it.

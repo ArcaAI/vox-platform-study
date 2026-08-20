@@ -750,7 +750,7 @@
   "refresh": "10s",
   "schemaVersion": 39,
   "style": "dark",
-  "tags": ["smr", "overview"],
+  "tags": ["text", "overview"],
   "templating": {
     "list": [
       {
@@ -785,8 +785,8 @@
   },
   "timepicker": {},
   "timezone": "",
-  "title": "SMR - Overview",
-  "uid": "smr-overview",
+  "title": "TEXT - Overview",
+  "uid": "text-overview",
   "version": 1,
   "weekStart": ""
 }

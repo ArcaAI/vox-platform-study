@@ -318,7 +318,6 @@
     "test:up:admin": "./scripts/start-test-app.sh admin",
     "test:up:stt": "./scripts/start-test-app.sh stt",
     "test:up:text": "./scripts/start-test-app.sh text",
-    "test:up:smr": "./scripts/start-test-app.sh text",
     "test:up:nlp": "./scripts/start-test-app.sh nlp",
     "test:up:guardrail": "./scripts/start-test-app.sh guardrail",
     "test:up:harness": "./scripts/start-test-app.sh harness",

@@ -30,7 +30,7 @@ load-bearing** — see §7, Risk 2.
 **Adoption status at the time of writing:** the envelope, the idempotency-key
 convention, the resume-token convention, and the reusable conformance suite
 (`assertAsyncConformance`, exported from `@arcaai/async-contract`) exist and
-are tested. **Wiring the envelope onto the SMR stream path itself
+are tested. **Wiring the envelope onto the TEXT stream path itself
 (`apps/text`) is a follow-up, not yet done** — see §8. Nothing today emits or
 consumes an `AsyncEnvelope` on the wire. TASK-722 and TASK-727 are the first
 real producers.
@@ -44,11 +44,11 @@ real producers.
   "schemaVersion": 1,
   "id": "01907d3a-0000-7000-8000-000000000001",
   "tenantId": "00000000-0000-0000-0000-000000000000",
-  "type": "smr.stream.chunk",
+  "type": "text.stream.chunk",
   "occurredAt": "2026-08-16T12:00:00.000Z",
   "correlationId": "req-abc123",
   "causationId": null,
-  "idempotencyKey": "smr:task:t-1:chunk:0",
+  "idempotencyKey": "text:task:t-1:chunk:0",
 
   // EXACTLY ONE of the two below.
   "payload": { "type": "chunk", "content": "hello" }
@@ -82,7 +82,7 @@ or, with a claim check instead of an inline payload:
 | `schemaVersion` | integer, `const 1` in this document | A consumer MUST **refuse** an unknown value rather than best-effort parse it. Precedent: `UsageOutboxPayload` — `packages/applications/src/services/usageLedger/dto/usage-outbox.payload.ts:18-22` states "the drainer refuses unknown shapes" as the reason `version` exists. This is the closest existing precedent for a versioned message envelope in the repo. |
 | `id` | UUIDv7 string | The message's own identity. UUIDv7 matches the platform's `@default(uuid(7))` id convention (`.claude/rules/02-database-prisma.md` §Standard Model Field Template) and sorts by creation time. |
 | `tenantId` | UUIDv7 string, **mandatory, never null** | Platform-wide messages use the SYSTEM tenant `00000000-0000-0000-0000-000000000000`, never `NULL` — the same rule `02-database-prisma.md` states for `tenantId` columns ("`NULL = global` is banned"). `BaseService.broadcastSysEvent` already enforces this for sys-events by writing `tenantId: this.tenantId ?? SYSTEM_TENANT_ID` **after** the object spread specifically so a caller cannot override it (`packages/applications/src/common/base.service.ts:79`); the envelope generalizes that discipline. |
-| `type` | `/^[a-z0-9]+(\.[a-z0-9_]+){1,4}$/`, lowercase dotted, 2-5 segments, max 200 chars | E.g. `stt.segment.finalized`, `smr.stream.chunk`. Deliberately **not** `SysEventType`'s `'SysEvent.ResourceCreated'` form (`packages/domains/src/enums/sysEventType.enum.ts:1-10`) — that is a NestJS `EventEmitter2` channel name, not a wire type. §5 records why `type` cannot import the domain enums at all. |
+| `type` | `/^[a-z0-9]+(\.[a-z0-9_]+){1,4}$/`, lowercase dotted, 2-5 segments, max 200 chars | E.g. `stt.segment.finalized`, `text.stream.chunk`. Deliberately **not** `SysEventType`'s `'SysEvent.ResourceCreated'` form (`packages/domains/src/enums/sysEventType.enum.ts:1-10`) — that is a NestJS `EventEmitter2` channel name, not a wire type. §5 records why `type` cannot import the domain enums at all. |
 | `occurredAt` | ISO-8601 UTC date-time string | When the FACT happened, **not** the publish or redelivery time. Every transport this contract documents is at-least-once (§2); a redelivery MUST carry the original `occurredAt` or every consumer's ordering logic breaks on retry. |
 | `correlationId` | non-empty string, max 255 chars | Request/session-scoped, propagated unchanged across every envelope caused by the same request or session. Already present, ad-hoc, on four independent surfaces before this contract: `packages/domains/src/common/events/arcaai.event.ts:29-30`, `packages/domains/src/interfaces/jobTypes.ts:41-42`, `packages/applications/src/common/base.service.ts:77`, `apps/harness/src/harness/temporal/models.py:80` (`correlation_id`). |
 | `causationId` | UUIDv7 string **or `null`** | The `id` of the envelope that caused this one. Makes `DomainEventMetaData.causationId` (`packages/domains/src/common/domainEvent.ts:14`) — declared once, on the `DomainEvent` abstraction, and never touched by `SysEventService` — real instead of declared-and-unused. **Treat it as optional in practice**: most producers emit `null` until they adopt causation tracking deliberately (§7, Risk 4). |
@@ -137,7 +137,7 @@ them, so an adopter knows exactly what it is signing up for.
 | Transport | Delivery | Ordering | Ack / redelivery | Resume token |
 |---|---|---|---|---|
 | Redis Streams + consumer group (STT audio/result/control) | at-least-once | per-stream FIFO | `XACK` (`apps/stt/src/stt/streaming/redis_streams.py:301`); reclaim via `XAUTOCLAIM` after 30s idle (`:56`, `:325-332`) | stream message id |
-| Redis Stream, no group (SMR chunks — `smr:stream:{task_id}`) | at-least-once, **client-driven** | per-stream FIFO | none — the client re-reads from its own cursor | stream message id, surfaced as SSE `id:` (`apps/text/src/text/api/endpoints/stream.py:61`) and consumed from `Last-Event-ID` (`:35`) |
+| Redis Stream, no group (TEXT chunks — `text:stream:{task_id}`) | at-least-once, **client-driven** | per-stream FIFO | none — the client re-reads from its own cursor | stream message id, surfaced as SSE `id:` (`apps/text/src/text/api/endpoints/stream.py:61`) and consumed from `Last-Event-ID` (`:35`) |
 | BullMQ | at-least-once (`attempts: 3`, exponential 1000ms — `packages/applications/src/services/baseServices/redis/redis.service.module.ts:23-55`) | **none** | job completion / failure | **none** — a failed job replays from its source, it does not resume |
 | Temporal signal | at-least-once; the workflow itself dedupes (e.g. `ContextAddedSignal.dedupe_key()`, `apps/harness/src/harness/temporal/models.py:1267-1269`) | per-workflow signal order | implicit in workflow history | **none** — workflow state IS the cursor |
 | sys-events (EventEmitter2 → BullMQ) | in-process best-effort, then at-least-once once enqueued | none | job completion | none |
@@ -189,7 +189,7 @@ signatures):
 | Producer | Key |
 |---|---|
 | STT finalized segment | `stt:session:<sessionId>:seg:<utteranceIndex>` |
-| SMR stream chunk | `smr:task:<taskId>:chunk:<sequence>` |
+| TEXT stream chunk | `text:task:<taskId>:chunk:<sequence>` |
 | Workflow node completion (TASK-718) | `wf:run:<runId>:node:<nodeId>:<attemptGeneration>` |
 | Exposure SSE frame (TASK-722) | the source envelope's `idempotencyKey`, **unchanged** — there is nothing to derive, it is a pass-through |
 | Webhook delivery (TASK-727) | `hook:<subscriptionId>:<sourceEnvelopeId>` |
@@ -261,7 +261,7 @@ pick different wire types for the same underlying fact. There is no starting
 type registry shipped with this ticket (M-sized, not this ticket's scope);
 TASK-722 should own one once there is a second real adopter. Until then,
 follow the pattern already used in the two worked examples above
-(`smr.stream.chunk`, `harness.transcript.offloaded`) — lowercase, dotted,
+(`text.stream.chunk`, `harness.transcript.offloaded`) — lowercase, dotted,
 named after the fact, not the internal enum member.
 
 ---
@@ -273,7 +273,7 @@ named after the fact, not the internal enum member.
 
 - **The producer never invents the cursor `c`; the transport does.** On a
   Redis stream it wraps the raw message id (e.g. `"1723800000000-0"`) —
-  exactly what SMR already surfaces as the SSE `id:`
+  exactly what TEXT already surfaces as the SSE `id:`
   (`apps/text/src/text/api/endpoints/stream.py:61`) and reads back from
   `Last-Event-ID` (`:35`).
 - **It is opaque to the consumer**: echo it back, never parse it. The repo
@@ -320,7 +320,7 @@ asserts this).
 3. **The claim-check store is Python-only and stays that way here.**
    `ClaimCheckRef`'s *shape* is shared; the `BlobStore` implementation is
    not. A TypeScript producer that needs to offload has no store today. That
-   is acceptable while known payloads (SMR chunks) are small, and becomes a
+   is acceptable while known payloads (TEXT chunks) are small, and becomes a
    real gap the first time an exposure or webhook payload exceeds a
    transport limit — most likely in TASK-722. Recorded rather than
    pre-built.
@@ -383,7 +383,7 @@ A surface "adopts the envelope" when:
 |---|---|
 | TASK-722 (exposure SSE) | Designed for; not yet built |
 | TASK-727 (webhook channel) | Designed for; not yet built |
-| SMR stream (`apps/text`, `smr:stream:{task_id}`) | **Designated reference path, not yet adopted.** Its wire schema is already one `data` field holding a JSON document, so wrapping that document in an envelope is purely additive; it already implements the exact resume mechanism this contract standardizes. Adopting it is a follow-up ticket, not part of TASK-717's delivered scope — see the ticket README's Implementation Summary for what was and was not built. |
+| TEXT stream (`apps/text`, `text:stream:{task_id}`) | **Designated reference path, not yet adopted.** Its wire schema is already one `data` field holding a JSON document, so wrapping that document in an envelope is purely additive; it already implements the exact resume mechanism this contract standardizes. Adopting it is a follow-up ticket, not part of TASK-717's delivered scope — see the ticket README's Implementation Summary for what was and was not built. |
 
 ### Explicit non-adopters
 

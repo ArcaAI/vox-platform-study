@@ -26,7 +26,7 @@ import { SYSTEM_TENANT_ID, SYSTEM_USER_ID } from './00-constants';
  * SUPER_ADMIN_ONLY_TASK_PREFIXES in
  * packages/applications/src/services/ai-task-default/constants.ts. For those,
  * tenants only CONSUME the SYSTEM-row platform default and runtime resolution
- * ignores per-tenant override rows. EXCEPTION: the `smr.` prefix is
+ * ignores per-tenant override rows. EXCEPTION: the `text.` prefix is
  * tenant-admin configurable — the SYSTEM rows below are still seeded as the
  * platform default, but tenants may override them with their own rows. The
  * per-tenant `text.live.fallback` / `text.finalize.fallback` keys are opt-in and
@@ -78,13 +78,13 @@ export const SYSTEM_AI_TASK_DEFAULTS: AiTaskDefaultSeed[] = [
     taskKey: 'nlp.diagnosis',
     modelSlug: 'symps-disease-bert-v3-c41',
   },
-  // SMR generation routing, mapped to the CURRENT SMR
+  // TEXT generation routing, mapped to the CURRENT TEXT
   // default (HarnessPolicy SYSTEM textProvider/textModel = lm-studio /
   // gemma-4-e2b-it-qat, registry slug `lms-gemma-4-e2b-it-qat`). Both live and
   // finalize point at the same platform default today; a super admin OR a
   // tenant admin may split or override them later.
   // `resolveTextSelection` consults these keys FIRST. NOTE: the per-tenant
-  // `smr.<task>.fallback` keys are opt-in and intentionally NOT seeded here.
+  // `text.<task>.fallback` keys are opt-in and intentionally NOT seeded here.
   {
     id: '86000000-0000-0000-0000-000000000004',
     tenantId: SYSTEM_TENANT_ID,

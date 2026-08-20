@@ -73,10 +73,10 @@ export class HarnessPolicyResponse {
   @ApiProperty({ description: 'Safety-guard model id.', example: 'granite-guardian-4.1-8b' })
   safetyModel: string;
 
-  @ApiPropertyOptional({ description: 'SMR generation provider id (null = let the SMR service choose).', nullable: true })
+  @ApiPropertyOptional({ description: 'TEXT generation provider id (null = let the TEXT service choose).', nullable: true })
   textProvider: string | null;
 
-  @ApiPropertyOptional({ description: 'SMR generation model id (null = let the SMR service choose).', nullable: true })
+  @ApiPropertyOptional({ description: 'TEXT generation model id (null = let the TEXT service choose).', nullable: true })
   textModel: string | null;
 
   // ── LLM-as-judge selection (resolved from the SYSTEM-only

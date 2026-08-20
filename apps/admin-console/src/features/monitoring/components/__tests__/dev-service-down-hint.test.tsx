@@ -11,13 +11,13 @@ function probes(entries: Record<string, string>): Record<string, ServiceProbe> {
 
 describe('DevServiceDownHint', () => {
   it('points the developer at pnpm dev:doctor and names the down service', () => {
-    render(<DevServiceDownHint enabled services={probes({ smr: 'healthy', harness: 'down' })} />);
+    render(<DevServiceDownHint enabled services={probes({ text: 'healthy', harness: 'down' })} />);
 
     expect(screen.getByText(/pnpm dev:doctor/)).toBeDefined();
     // names the offending service, not the healthy one
     const hint = screen.getByRole('status');
     expect(hint.textContent).toContain('harness');
-    expect(hint.textContent).not.toContain('smr');
+    expect(hint.textContent).not.toContain('text');
   });
 
   it('treats "unhealthy" the same as "down"', () => {
@@ -28,7 +28,7 @@ describe('DevServiceDownHint', () => {
   });
 
   it('renders nothing when every service is healthy or degraded', () => {
-    const { container } = render(<DevServiceDownHint enabled services={probes({ smr: 'healthy', harness: 'degraded' })} />);
+    const { container } = render(<DevServiceDownHint enabled services={probes({ text: 'healthy', harness: 'degraded' })} />);
     expect(container.firstChild).toBeNull();
     expect(screen.queryByText(/pnpm dev:doctor/)).toBeNull();
   });

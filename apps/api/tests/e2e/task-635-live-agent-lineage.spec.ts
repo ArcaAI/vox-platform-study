@@ -37,10 +37,10 @@
  * ONLY the rows this spec created.
  *
  * Generation dependency (house pattern, see `task-635-prompt-test-bench.spec.ts`):
- * live flushes and finalize both call SMR, and the live loop additionally calls
+ * live flushes and finalize both call TEXT, and the live loop additionally calls
  * NLP. Everything that needs a generated note is gated behind a reachability
  * check with a `console.warn` fallback, so the spec is green — and honest —
- * on a stack without SMR/NLP. The lineage assertions themselves are NOT
+ * on a stack without TEXT/NLP. The lineage assertions themselves are NOT
  * softened: when a summary IS produced, they must hold.
  *
  * PRECONDITIONS (this spec cannot create them itself):
@@ -49,7 +49,7 @@
  *      columns) — `pnpm db:migrate`.
  *   2. Seed run (`pnpm test:db:seed`) — seeded departments, prompt templates,
  *      `SEEDED_USERS`.
- *   3. API on 8868 (`pnpm test:up:api`), SMR on 8862, NLP on 8864.
+ *   3. API on 8868 (`pnpm test:up:api`), TEXT on 8862, NLP on 8864.
  *   4. The live-documentation engine ENABLED for the tenant
  *      (`GET/PUT admin/harness/live/config`).
  *   5. A DepartmentAgent bound to the consultation's department with a live
@@ -166,7 +166,7 @@ interface SseAgent {
 /** What the SSE watch observed: the frozen agent, and whether a note was generated. */
 interface SseWatchResult {
   agent: SseAgent;
-  /** True once a frame carried a non-empty `runningSummary` — i.e. SMR actually ran. */
+  /** True once a frame carried a non-empty `runningSummary` — i.e. TEXT actually ran. */
   generated: boolean;
 }
 
@@ -428,12 +428,12 @@ test.describe.serial('Live agent lineage survives into finalize (R-N1 → R-N2)'
     liveGenerated = watch?.generated ?? false;
 
     if (!sseAgent) {
-      // With the stream fed, the remaining reasons are environmental: SMR (and
+      // With the stream fed, the remaining reasons are environmental: TEXT (and
       // the LLM behind it) or NLP unreachable, or generation slower than the
       // budget above. Skip rather than assert against an engine that never ran.
       console.warn(
         '[TASK-635 C6] No live-summary SSE event with metadata.agent arrived even though the STT result stream was fed — ' +
-          'SMR/NLP likely unreachable or generation exceeded the budget. R-N1 assertions skipped.',
+          'TEXT/NLP likely unreachable or generation exceeded the budget. R-N1 assertions skipped.',
       );
       test.skip();
       return;
@@ -468,7 +468,7 @@ test.describe.serial('Live agent lineage survives into finalize (R-N1 → R-N2)'
     // Lineage is carried by the LIVE_SOAP_SNAPSHOT ContextItem, which only
     // exists once a flush GENERATED a note. The frozen agent alone (R-N1) is
     // not enough — without generation there is no row to stamp.
-    test.skip(!liveGenerated, 'the live loop never generated a note (SMR unavailable/slow) — no snapshot exists to carry lineage');
+    test.skip(!liveGenerated, 'the live loop never generated a note (TEXT unavailable/slow) — no snapshot exists to carry lineage');
 
     const stopped = await request.post(`/api/v1/consultations/${consultationId}/recording/stop`, {
       headers: bearer(token),
@@ -478,7 +478,7 @@ test.describe.serial('Live agent lineage survives into finalize (R-N1 → R-N2)'
 
     const summary = await request.post(`/api/v1/consultations/${consultationId}/summary`, { headers: bearer(token), data: {} });
     if (![200, 201].includes(summary.status())) {
-      console.warn(`[TASK-635 C6] finalize returned ${summary.status()} — SMR unavailable. R-N2 assertions skipped.`);
+      console.warn(`[TASK-635 C6] finalize returned ${summary.status()} — TEXT unavailable. R-N2 assertions skipped.`);
       test.skip();
       return;
     }
@@ -528,7 +528,7 @@ test.describe.serial('Live agent lineage survives into finalize (R-N1 → R-N2)'
     try {
       const summary = await request.post(`/api/v1/consultations/${consultationId}/summary`, { headers: bearer(token), data: {} });
       if (![200, 201].includes(summary.status())) {
-        console.warn(`[TASK-635 C6] finalize returned ${summary.status()} — SMR unavailable. tier-0 assertions skipped.`);
+        console.warn(`[TASK-635 C6] finalize returned ${summary.status()} — TEXT unavailable. tier-0 assertions skipped.`);
         test.skip();
         return;
       }

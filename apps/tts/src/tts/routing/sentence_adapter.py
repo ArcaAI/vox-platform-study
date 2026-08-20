@@ -1,6 +1,6 @@
 """Sentence adapter — turns a non-streaming engine into a duplex SynthesisStream.
 
-Buffers incremental text (SMR tokens), emits complete sentences to a per-sentence
+Buffers incremental text (TEXT tokens), emits complete sentences to a per-sentence
 synth callable, and yields the resulting audio frames as they are produced — so
 first audio ships after the first sentence instead of the whole summary. Natively
 duplex engines (Azure text-stream) bypass this and stream directly.

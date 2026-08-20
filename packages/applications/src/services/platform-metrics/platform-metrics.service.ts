@@ -29,7 +29,7 @@ import {
 const MODEL_INVENTORY: ReadonlyArray<{ id: string; service: string }> = [
   { id: 'whisper-large-v3-turbo', service: 'stt' },
   { id: 'silero-vad-v5', service: 'stt' },
-  { id: 'gemma-4-e4b', service: 'smr' },
+  { id: 'gemma-4-e4b', service: 'text' },
   { id: 'granite-guardian-4.1-8b', service: 'guardrail' },
   { id: 'Medical-NER', service: 'nlp' },
   { id: 'symps-disease-bert', service: 'nlp' },

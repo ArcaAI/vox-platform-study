@@ -8,7 +8,7 @@ import { AiProviderConnectionService } from './ai-provider-connection.service';
 // `IProviderConnectionService` and the deprecated `IAiProviderConnectionService`
 // alias are the SAME symbol value, so registering the token once resolves both
 // `@Inject(IProviderConnectionService)` and the legacy `@Inject(IAiProviderConnectionService)`
-// (smr-proxy) until it is repointed.
+// (text-proxy) until it is repointed.
 @Module({
   // `EntitlementsServiceModule` supplies the platform-default gate
   // . It is the ONLY consumer-visible reason this module grew an

@@ -29,7 +29,7 @@ export const PROVIDER_SERVICES = ['llm', 'stt', 'tts'] as const;
  *
  * NOTE: the three new LLM entries (`openai`, `anthropic`, `vertex`) are frozen
  * here at unification time but only become functional when that lands their
- * SMR adapters + seed rows.
+ * TEXT adapters + seed rows.
  */
 export const CLOUD_BYO_PROVIDERS: Record<ProviderService, readonly string[]> = {
   llm: ['azure', 'bedrock', 'openai', 'anthropic', 'vertex'],
@@ -58,11 +58,11 @@ export const CONNECTION_ENABLED_SEMANTICS =
  * Whether a tenant may hold its own connection row for `(service, provider)`.
  *
  * The 1-arg form is a `@deprecated` transition shim that assumes `service='llm'`
- * so the `smr-proxy.controller` keeps compiling until it
+ * so the `text-proxy.controller` keeps compiling until it
  * repoints to the service-first form; do not use it in new code.
  */
 export function isCloudByoProvider(service: ProviderService, provider: string): boolean;
-/** @deprecated 1-arg form assumes `service='llm'`; kept for the smr-proxy transition (removes it). */
+/** @deprecated 1-arg form assumes `service='llm'`; kept for the text-proxy transition (removes it). */
 export function isCloudByoProvider(provider: string): boolean;
 export function isCloudByoProvider(a: string, b?: string): boolean {
   const service = (b === undefined ? 'llm' : a) as ProviderService;

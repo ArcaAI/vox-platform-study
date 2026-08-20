@@ -112,7 +112,7 @@ export interface FrozenLiveAgentSnapshot {
   promptVersionNumber: number | null;
   /** The prompt bytes served on every flush (replaces LIVE_SOAP_STABLE_SYSTEM_PREFIX). */
   stableUserPrefix: string;
-  /** The SMR `system_prompt` served on every flush. */
+  /** The TEXT `system_prompt` served on every flush. */
   systemPrompt: string;
   toolPlan: ResolvedToolPlan;
   /** Frozen per-task LLM override; null ⇒ per-flush `resolveTextSelection(tenantId,'live')` as today. */

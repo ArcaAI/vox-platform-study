@@ -1,11 +1,11 @@
 /**
  * PromptAssemblyService
  *
- * Assembles a complete SMR v2 payload by:
+ * Assembles a complete TEXT v2 payload by:
  * 1. Resolving the prompt template via PromptResolutionService
  * 2. Loading template content + hyperparameters + JSON schema from DB
  * 3. Substituting variables ({conversation_language}, {style_DNA_*}, etc.)
- * 4. Building the final payload with all parameters for SMR v2
+ * 4. Building the final payload with all parameters for TEXT v2
  */
 
 import { Inject, Injectable, Logger, Optional } from '@nestjs/common';

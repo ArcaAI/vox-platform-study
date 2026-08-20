@@ -25,9 +25,9 @@ import { NormalizedLlmUsage, toUsageUnitQuantities, UsageEventBatchInput, UsageI
  */
 
 /**
- * Non-canonical spellings SMR's own `GenerationStats.provider` reports for a
+ * Non-canonical spellings TEXT's own `GenerationStats.provider` reports for a
  * provider already in the ledger's `KNOWN_PROVIDERS` vocabulary
- * (`usageLedger/vocabulary.ts`). Copied VERBATIM from SMR's own
+ * (`usageLedger/vocabulary.ts`). Copied VERBATIM from TEXT's own
  * `_PROVIDER_TABLES` alias set (apps/text/src/text/models/stats.py) — not
  * invented. Confirmed trap: Azure's provider constructor is literally
  * `provider="azure_openai"` (apps/text/src/text/providers/azure_openai.py),
@@ -103,9 +103,9 @@ function pickString(stats: Record<string, unknown>, ...keys: string[]): string |
  *
  * Deliberately reads the AD-1 `GenerationStats` field names directly
  * (`prompt_tokens` / `predicted_tokens`) rather than routing through
- * `normalizeLlmUsage(provider, 'openai.chat', stats)`: SMR's OpenAI-chat-wire
+ * `normalizeLlmUsage(provider, 'openai.chat', stats)`: TEXT's OpenAI-chat-wire
  * normalizer reads `completion_tokens`, not `predicted_tokens` — AD-1 is
- * SMR's OWN already-normalized shape, not the raw OpenAI wire, and running it
+ * TEXT's OWN already-normalized shape, not the raw OpenAI wire, and running it
  * through that normalizer would silently read the wrong field and emit a
  * zero-quantity OUTPUT_TOKEN row every time. `toUsageUnitQuantities` is still
  * reused for the zero-dropping behaviour it already implements correctly.

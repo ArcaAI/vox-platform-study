@@ -1,8 +1,8 @@
 /**
- * Golden fixtures for the v1-compatible SMR summary shims.
+ * Golden fixtures for the v1-compatible TEXT summary shims.
  *
  * Frozen sample payloads for the compat endpoints. They
- * are the regression anchor for `tests/contracts/smr-compat.contract.test.ts`
+ * are the regression anchor for `tests/contracts/text-compat.contract.test.ts`
  * (schema lock) and the live-response assertions in the e2e spec. If a
  * future change reshapes a v1 contract, validating these fixtures fails.
  *

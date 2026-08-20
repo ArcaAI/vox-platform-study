@@ -2,7 +2,7 @@
  * Shared v1 pre-summary variable substitution.
  *
  * These are the pure pieces LIFTED OUT of
- * `apps/api/src/modules/smr-compat/summary-prompt.builder.ts` so BOTH SDK
+ * `apps/api/src/modules/text-compat/summary-prompt.builder.ts` so BOTH SDK
  * surfaces can use them (OD-2/OD-3): the compat shim keeps importing them from
  * here, and `PromptAssemblyService` (the native Vox v2 path) uses them too.
  * A second copy would drift, and drift here means literal `{braces}` reaching

@@ -45,7 +45,7 @@ export const HOPE_SETTINGS_REGISTRY: SettingsRegistry = new SettingsRegistry().r
   // Outbox-drain schedule (ws-b-contract.md handoff) + the
   // TenantUsageMeter reconcile-sweep kill-switch + its seed-time-only default.
   ...METERING_SETTINGS,
-  // AI task-model defaults (guardrail/NLP/SMR).
+  // AI task-model defaults (guardrail/NLP/TEXT).
   ...MODEL_DEFAULT_SETTINGS,
   // Guardrail POLICY (thresholds, judge/groundedness tuning, label
   // taxonomies) — tenant → SYSTEM cascade, tighten-only floor on the
@@ -72,7 +72,7 @@ export const HOPE_SETTINGS_REGISTRY: SettingsRegistry = new SettingsRegistry().r
   // chunk budget in SERVICE_RUNTIME_SETTINGS). Registered at the redactor's own
   // code default, so cataloging it changes no behaviour.
   ...PHI_REDACTION_SETTINGS,
-  // SMR cloud-provider (openai/anthropic/vertex) platform CONNECTION config —
+  // TEXT cloud-provider (openai/anthropic/vertex) platform CONNECTION config —
   // tier `env`, read by apps/text. Registered at their config.py defaults, so
   // cataloging them changes no behaviour.
   ...TEXT_PROVIDER_CONNECTION_SETTINGS,

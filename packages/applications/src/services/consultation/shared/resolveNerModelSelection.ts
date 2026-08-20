@@ -17,7 +17,7 @@ export const NLP_NER_TASK_KEY = 'nlp.ner';
  * callers: `ner.processor.ts` (durable BullMQ job), `summary.service.ts`
  * (synchronous extract-entities), `live-documentation.service.ts` (live plane).
  *
- * FAIL-OPEN — the deliberate OPPOSITE of the judge/SMR routing lanes: a
+ * FAIL-OPEN — the deliberate OPPOSITE of the judge/TEXT routing lanes: a
  * resolver failure (service not wired, resolver error, no ENABLED model)
  * returns `{}` (no `model_name`) so the caller posts EXACTLY like it did
  * before this resolver existed — the NLP service falls back to its own env

@@ -716,7 +716,7 @@ class TestPolicyInjection:
             ):
                 handle = await env.client.start_workflow(
                     HarnessDocWorkflow.run,
-                    _input(),  # no smr provider/model -> policy supplies the defaults
+                    _input(),  # no text provider/model -> policy supplies the defaults
                     id=f"harness-doc-{uuid.uuid4()}",
                     task_queue=tq,
                 )
@@ -734,12 +734,12 @@ class TestPolicyInjection:
         # Inferential groundedness threshold + safety toggle are threaded in.
         assert recorder.inferential_inputs[0].groundedness_threshold == 0.42
         assert recorder.inferential_inputs[0].safety_enabled is False
-        # Policy smr provider/model are used as defaults when the input omits them.
+        # Policy text provider/model are used as defaults when the input omits them.
         assert recorder.generate_inputs[0].provider == "azure"
         assert recorder.generate_inputs[0].model == "gpt-4o"
 
     @pytest.mark.asyncio
-    async def test_input_smr_overrides_policy_default(self):
+    async def test_input_text_overrides_policy_default(self):
         recorder = StubRecorder()
         policy = HarnessPolicy(text_provider="azure", text_model="gpt-4o")
         config = StubConfig(verdicts=["PASS"], policy=policy)
@@ -1398,7 +1398,7 @@ class TestDegradation:
         assert recorder.calls["persist_draft"] == 1
 
     @pytest.mark.asyncio
-    async def test_smr_failure_fails_workflow_without_persisting_draft(self):
+    async def test_text_failure_fails_workflow_without_persisting_draft(self):
         recorder = StubRecorder()
         config = StubConfig(verdicts=["PASS"], generate_fails=True)
         async with await _env() as env:

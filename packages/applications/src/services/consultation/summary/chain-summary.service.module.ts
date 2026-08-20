@@ -12,7 +12,7 @@ import { UsageLedgerServiceModule } from '../../usageLedger/usage-ledger.service
 import { NoteGenerationServiceModule } from '../note-generation/note-generation.service.module';
 
 @Module({
-  // HarnessPolicyServiceModule supplies the SMR-selection resolver.
+  // HarnessPolicyServiceModule supplies the TEXT-selection resolver.
   // ConfigResolverModule supplies the preferred-prompt resolver.
   // UsageLedgerServiceModule supplies IUsageLedgerService so a
   // chain generation's token consumption is recorded with its SummaryMeta.

@@ -190,7 +190,7 @@ export interface PromptTestMetrics {
 /**
  * POST :id/test ack (BUG-018). The endpoint returns IMMEDIATELY — a blocking
  * 2–3½ minute generation always 524'd at the CDN. `mode: 'stream'` carries the
- * SMR task to stream; `mode: 'dry-run'` carries the assembled prompt only and
+ * TEXT task to stream; `mode: 'dry-run'` carries the assembled prompt only and
  * opens no stream. `provider`/`model` are the EFFECTIVE resolved selection, so
  * the panel can show which model actually ran.
  */

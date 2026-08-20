@@ -4,7 +4,7 @@
  * Background. A request to a route that forwards to `apps/text` (:8862) while
  * that service was down surfaced as:
  *
- *     400 {"message":"Failed to call SMR service: AggregateError: connect
+ *     400 {"message":"Failed to call TEXT service: AggregateError: connect
  *          ECONNREFUSED ::1:8862; connect ECONNREFUSED 127.0.0.1:8862", …}
  *
  * Two defects in one body. The status blamed the CALLER for an absent
@@ -240,7 +240,7 @@ const CAPABILITY_BY_PATH: Array<[RegExp, string]> = [
   [/\/speech\b|\/tts\b/, 'Speech synthesis'],
   [/\/transcription-jobs\b|\/api\/stt\b|\/internal\/stt\b|\/stt\b/, 'Transcription'],
   [/\/text-analyses\b|\/safety-checks\b|\/diagnosis-suggestions\b|\/ai\//, 'AI text analysis'],
-  [/\/summary\b|\/prompt-templates\/[^/]+\/test|\/text-generations\b|\/api\/smr\b|\/text\b/, 'Summarization'],
+  [/\/summary\b|\/prompt-templates\/[^/]+\/test|\/text-generations\b|\/api\/text\b|\/text\b/, 'Summarization'],
 ];
 
 /** The user-facing name of the capability a path depends on. Never contains topology. */

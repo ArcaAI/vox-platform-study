@@ -281,7 +281,7 @@ export class PromptManagementController {
     summary: 'Submit a prompt-template test run (returns immediately)',
     description:
       'Assembles the prompt, resolves the `text.test` provider/model and submits a ' +
-      'STREAMING generation job to SMR, returning an ack in well under a second. ' +
+      'STREAMING generation job to TEXT, returning an ack in well under a second. ' +
       'Open the returned `streamUrl` over SSE for tokens, then call ' +
       '`POST :id/test/finalize` with the `taskId` to score and persist. ' +
       '`dryRun: true` returns the assembled prompt and generates NOTHING. ' +
@@ -305,7 +305,7 @@ export class PromptManagementController {
   @ApiOperation({
     summary: 'Score and persist a finished prompt-template test run',
     description:
-      'Fetches the finished generation from SMR SERVER-SIDE by `taskId` (the generated ' +
+      'Fetches the finished generation from TEXT SERVER-SIDE by `taskId` (the generated ' +
       'text is never accepted from the request body), scores it, and persists ' +
       '`lastTestScore/lastTestOutput/lastTestAt`. This is the optimistic-concurrency ' +
       'write of the test flow: the `If-Match` header is REQUIRED and folds over any ' +

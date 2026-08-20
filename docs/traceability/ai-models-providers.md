@@ -87,7 +87,7 @@ the model/runtime for each call.
 | App / service | `apps/api` + `apps/text` (overrides injected into generation) |
 | Key modules | `apps/api/src/modules/ai-provider-connection` (`ai-provider-connection.controller.ts`); `packages/applications/src/services/ai-provider-connection` (`resolveConnection`, `resolveTenantCloudOverrides`); `apps/api/src/modules/streaming` `TextProxyController.applyTenantProviderOverrides` |
 | Prisma models | `AiProviderConnection` (`db_main/ai-provider-connection.prisma`) |
-| Key API endpoints | `@Controller('admin/ai-providers')`: `GET /admin/ai-providers`, `GET /admin/ai-providers/:provider`, `PUT /admin/ai-providers/:provider` (`@RequiresIfMatch()` OCC; `apiKey` write-only, no reveal route), `DELETE /admin/ai-providers/:provider`. Injected onto SMR `POST /api/v1/generate` as `provider_overrides` |
+| Key API endpoints | `@Controller('admin/ai-providers')`: `GET /admin/ai-providers`, `GET /admin/ai-providers/:provider`, `PUT /admin/ai-providers/:provider` (`@RequiresIfMatch()` OCC; `apiKey` write-only, no reveal route), `DELETE /admin/ai-providers/:provider`. Injected onto TEXT `POST /api/v1/generate` as `provider_overrides` |
 | Console | `apps/admin-console` feature `ai-task-defaults` `byo-credential-card` (surfaced on `/ai-configuration`, tier 30–49) — legacy row 39 |
 | Tests | unit(app): `ai-provider-connection/__tests__/{ai-provider-connection.service,ai-provider-connection.tenant-lane}.test.ts`; unit(api): `streaming/__tests__/text-proxy-tenant-byo.controller.test.ts`; e2e: `ai-provider-connections-cross-tenant.spec.ts` |
 

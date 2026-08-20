@@ -7,8 +7,8 @@
  * `docs/implementation/TASK-635-Summarization-Agent-Conformance/README.md`
  *
  *   R-C1 — "Start recording → realtime TRANSCRIPT ONLY (no live summarization
- *   loop)". The API half (no live route on `smr-compat`) is locked in
- *   `apps/api/src/modules/smr-compat/__tests__/task-635-conformance.test.ts`;
+ *   loop)". The API half (no live route on `text-compat`) is locked in
+ *   `apps/api/src/modules/text-compat/__tests__/task-635-conformance.test.ts`;
  *   this file locks the client half: the compat barrel must not hand a
  *   migrating v1 app any live/streaming-summary hook to call.
  *
@@ -38,9 +38,9 @@ describe('R-C1 — the compat SDK exposes no live-summarization hook', () => {
   });
 
   it('ships exactly the summarization entry point v1 had — `useText` — and no live sibling', () => {
-    // TASK-740 eliminated the `smr` identifier, so the deprecated `useSMR` alias
+    // TASK-740 eliminated the `text` identifier, so the deprecated `useTEXT` alias
     // is gone and `useText` is the only name left to match. The predicate hunted
-    // for `SMR`/`Summar`, which now matches nothing — it has to name the entry
+    // for `TEXT`/`Summar`, which now matches nothing — it has to name the entry
     // point it is guarding, or the assertion silently stops guarding anything.
     const summarizationExports = exportedNames.filter((name) => /^use(Text|.*Summar)/i.test(name));
 

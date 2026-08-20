@@ -603,7 +603,7 @@ export { DEFAULT_AVAILABLE_STT_MODELS, DEFAULT_MODELS, DEFAULT_STT_MODELS, DEFAU
 // =============================================================================
 
 export {
-  // SMR error → AgenticErrorCode classification helpers.
+  // TEXT error → AgenticErrorCode classification helpers.
   classifyHttpError,
   classifyTextError,
   // SDK-207 WS-4: Diff utilities

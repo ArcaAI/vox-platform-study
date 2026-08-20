@@ -291,15 +291,15 @@ const PRE_SUMMARY_TEMPLATE_TAG = 'pre-summary';
  *     (`hasEvery(['pre-summary', 'dept-free'])`) — a row must OPT IN to being
  *     the fork, never be inferred into it.
  *   - `'v1'` is a NEGATIVE match — any `pre-summary` row EXCEPT one also
- *     tagged `dept-free` — so a legacy/untagged tenant row (no `smr-v1` tag)
+ *     tagged `dept-free` — so a legacy/untagged tenant row (no `text-v1` tag)
  *     keeps resolving instead of silently falling through to the SYSTEM
  *     default, which is what the original `hasEvery(['pre-summary',
- *     'smr-v1'])` predicate did to hand-created tenant data. `smr-v1` remains
+ *     'text-v1'])` predicate did to hand-created tenant data. `text-v1` remains
  *     as a label (seeded rows still carry it) but is no longer part of the
  *     'v1' query itself.
  */
 const PRE_SUMMARY_SURFACE_TAG = {
-  v1: 'smr-v1',
+  v1: 'text-v1',
   'dept-free': 'dept-free',
 } as const;
 
@@ -714,7 +714,7 @@ export class PromptResolutionService {
    *     is never inferred.
    *   - `'v1'` is a NEGATIVE match: `has('pre-summary')` MINUS any row also
    *     tagged `dept-free`. OD-7(a) (the originally approved spec) required
-   *     BOTH `pre-summary` AND `smr-v1`, which silently stopped resolving any
+   *     BOTH `pre-summary` AND `text-v1`, which silently stopped resolving any
    *     hand-created tenant row tagged only `pre-summary` (falling through to
    *     the SYSTEM default). The negative match keeps that legacy/untagged
    *     row resolving while still excluding the dept-free fork cleanly.

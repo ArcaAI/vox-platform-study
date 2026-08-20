@@ -8,8 +8,8 @@ import { RELEASE_TAG_PATTERN, SERVICE_TAG_PREFIXES, formatUntaggedVersion, isPla
 
 describe('parseReleaseTag', () => {
   it('parses a service release tag', () => {
-    expect(parseReleaseTag('SMR-2.1.0')).toEqual({
-      service: 'SMR',
+    expect(parseReleaseTag('TEXT-2.1.0')).toEqual({
+      service: 'TEXT',
       version: '2.1.0',
       major: 2,
       minor: 1,
@@ -37,35 +37,35 @@ describe('parseReleaseTag', () => {
   });
 
   it.each([
-    ['SMR-2.1', 'a two-part version is not SemVer'],
-    ['smr-2.1.0', 'the service prefix is upper-case'],
+    ['TEXT-2.1', 'a two-part version is not SemVer'],
+    ['text-2.1.0', 'the service prefix is upper-case'],
     ['v2.1.0', 'no service prefix'],
     ['2.1.0', 'no service prefix at all'],
-    ['SMR-2.1.0.1', 'four-part versions are not SemVer'],
-    ['SMR-02.1.0', 'leading zeros are not SemVer'],
+    ['TEXT-2.1.0.1', 'four-part versions are not SemVer'],
+    ['TEXT-02.1.0', 'leading zeros are not SemVer'],
     ['UNKNOWN-1.0.0', 'not a known service prefix'],
-    ['SMR-', 'no version'],
+    ['TEXT-', 'no version'],
     ['', 'empty'],
   ])('rejects %s (%s)', (tag) => {
     expect(parseReleaseTag(tag)).toBeNull();
   });
 
   it('exposes a pattern consistent with the parser, for the CI shell gate', () => {
-    expect(RELEASE_TAG_PATTERN.test('SMR-2.1.0')).toBe(true);
-    expect(RELEASE_TAG_PATTERN.test('SMR-2.1')).toBe(false);
+    expect(RELEASE_TAG_PATTERN.test('TEXT-2.1.0')).toBe(true);
+    expect(RELEASE_TAG_PATTERN.test('TEXT-2.1')).toBe(false);
   });
 
   it('covers every prefix the CI build rules trigger on', () => {
     // Keep in lockstep with .gitlab/ci/build.yml — a prefix that builds an image
     // but is missing here would produce a release the console cannot name.
-    expect(SERVICE_TAG_PREFIXES).toEqual(['ALL', 'API', 'ADMIN', 'COMPAT', 'GUARD', 'HARNESS', 'NLP', 'SMR', 'STT', 'TTS']);
+    expect(SERVICE_TAG_PREFIXES).toEqual(['ALL', 'API', 'ADMIN', 'COMPAT', 'GUARD', 'HARNESS', 'NLP', 'TEXT', 'STT', 'TTS']);
   });
 });
 
 describe('isPlatformTrainTag', () => {
   it('is true only for ALL-', () => {
     expect(isPlatformTrainTag('ALL-2.1.0')).toBe(true);
-    expect(isPlatformTrainTag('SMR-2.1.0')).toBe(false);
+    expect(isPlatformTrainTag('TEXT-2.1.0')).toBe(false);
     expect(isPlatformTrainTag('ALL-nonsense')).toBe(false);
   });
 });

@@ -97,7 +97,7 @@ export const AI_MODEL_PROVIDERS = [
   'openai',
   // Cloud tenant-BYO LLM providers. `openai` above already served
   // the STT OpenAI ASR engine; these two are net-new. Governance lives in
-  // `CLOUD_BYO_PROVIDERS.llm` (@arcaai/applications); their SMR adapters are
+  // `CLOUD_BYO_PROVIDERS.llm` (@arcaai/applications); their TEXT adapters are
   // `apps/text/src/text/providers/{anthropic,vertex}.py`.
   'anthropic',
   'vertex',

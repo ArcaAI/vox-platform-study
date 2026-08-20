@@ -758,13 +758,13 @@ describe('ConsultationJobService', () => {
       };
       mockCacheService.get.mockResolvedValue(JSON.stringify(existingStatus));
 
-      await service.notifyFailed('job-123', 'SMR service timeout');
+      await service.notifyFailed('job-123', 'TEXT service timeout');
 
       expect(mockCacheService.setex).toHaveBeenCalledWith('consultation_job:job-123', 86400, expect.stringContaining('"status":"FAILED"'));
       expect(mockCacheService.setex).toHaveBeenCalledWith(
         'consultation_job:job-123',
         86400,
-        expect.stringContaining('"error":"SMR service timeout"'),
+        expect.stringContaining('"error":"TEXT service timeout"'),
       );
     });
 

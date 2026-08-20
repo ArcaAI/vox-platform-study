@@ -2,7 +2,7 @@
 
 A ``TTSEngine`` turns text into a stream of audio chunks. Engines are held in a
 ``ProviderRegistry`` and selected by the router per request. This mirrors the
-SMR provider pattern (Protocol + registry) adapted for audio synthesis.
+TEXT provider pattern (Protocol + registry) adapted for audio synthesis.
 """
 
 from __future__ import annotations
@@ -87,7 +87,7 @@ class TTSEngine(Protocol):
 class SynthesisStream(Protocol):
     """A duplex synthesis stream: push incremental text in, iterate audio out.
 
-    Used by the WS-duplex path for speak-while-generating: SMR tokens
+    Used by the WS-duplex path for speak-while-generating: TEXT tokens
     are pushed in as they stream, and audio frames come out per sentence. A
     non-streaming engine is wrapped by ``SentenceAdapter``; a natively duplex
     engine (Azure text-stream) exposes this directly via ``open_stream``.
@@ -125,7 +125,7 @@ class DuplexTTSEngine(Protocol):
 
 
 class ProviderRegistry:
-    """Name → engine registry (mirrors smr.providers.base.ProviderRegistry)."""
+    """Name → engine registry (mirrors text.providers.base.ProviderRegistry)."""
 
     def __init__(self) -> None:
         self._providers: dict[str, TTSEngine] = {}

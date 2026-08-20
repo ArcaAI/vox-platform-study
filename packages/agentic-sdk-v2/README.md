@@ -146,7 +146,7 @@ Per-capture runtime options flow through `useArcaAudio.start(options)` (`AudioSt
 
 ### Knowledge pipeline
 
-`KnowledgePipeline` post-processes transcription text with per-stage `location` (`browser`/`backend`/`auto`/`disabled`) and `triggerMode` (`auto`/`manual`): NER (browser via optional `@arcaai/med-ner`, or backend NLP), spell-check, and summarization (backend SMR via `AgenticClient`).
+`KnowledgePipeline` post-processes transcription text with per-stage `location` (`browser`/`backend`/`auto`/`disabled`) and `triggerMode` (`auto`/`manual`): NER (browser via optional `@arcaai/med-ner`, or backend NLP), spell-check, and summarization (backend TEXT via `AgenticClient`).
 
 ### Transports and cross-tab behaviour
 

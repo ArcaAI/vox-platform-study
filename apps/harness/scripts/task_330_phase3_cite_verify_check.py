@@ -11,9 +11,9 @@ REAL models, against the LIVE seeded tenant-A hypertension chunk:
     -> CitationVerifySensor.arun       (REAL sensor + REAL LM Studio judge, threshold 0.8)
 
 The generation model is invoked directly over LM Studio's OpenAI-compatible chat API
-— it is the SAME model id the harness SMR activity calls (apps/harness/.env
-HARNESS_TEXT_PROVIDER=lm-studio, HARNESS_TEXT_MODEL=gemma-4-e2b-it-qat); only the SMR
-HTTP wrapper is bypassed so we don't need the separate :8872 live-verification SMR
+— it is the SAME model id the harness TEXT activity calls (apps/harness/.env
+HARNESS_TEXT_PROVIDER=lm-studio, HARNESS_TEXT_MODEL=gemma-4-e2b-it-qat); only the TEXT
+HTTP wrapper is bypassed so we don't need the separate :8872 live-verification TEXT
 instance for this proof.
 
 Run:
@@ -77,7 +77,7 @@ _GEN_SYSTEM = (
 
 
 async def _generate_soap(block: str) -> dict:
-    """Generate a SOAP note (JSON) via LM Studio gemma-4-e2b-it-qat — the harness SMR model."""
+    """Generate a SOAP note (JSON) via LM Studio gemma-4-e2b-it-qat — the harness TEXT model."""
     user = f"KNOWLEDGE CONTEXT:\n{block}\n\nCONSULTATION TRANSCRIPT:\n{TRANSCRIPT}"
     payload = {
         "model": TEXT_MODEL,

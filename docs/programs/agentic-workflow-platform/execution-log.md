@@ -25,7 +25,7 @@
 | W0-2 | **API-key scope narrowing.** ~50 `/admin/*` routes are reachable by any active API key today. (= queue #10) | 708 | Full (a)/(b)/(c) classification of all 92 controllers written to README §7. Contract tests lock in *current* behavior so the change is measurable. Nothing narrowed. | Approve/adjust the classification. It is a **breaking change** for existing keys. |
 | W0-3 | **NEW — `stt-internal.controller.ts` is reachable by any tenant API key.** Not `@Public()`, no `@RequiredScopes`. Its own AUTH-NOTE already calls this a known gap. | 708 | Flagged HIGH PRIORITY in the Task 3 table. Not changed. | Confirm this should be closed in the 708 follow-up — I'd treat it as higher urgency than the `/admin/*` sweep. |
 | W0-4 | **NEW — ArcaAI v1 clinical prompts still carry the ICD-10 wording.** `v1-clinical-prompt-checksums.fixture.ts` pins v1 against the running production pod and its own header demands clinical/product sign-off before hashes change. | 702 | v2 + v3 fixed (v3 is what's actually served — `ARCAAI_CLINICAL_APPROVED_VERSION = 3`). v1 edit was made, then **reverted** to zero diff. The 10 new sha256 hashes are computed and ready to hand over. | Clinical/product sign-off to update the fixture. Residual risk: rolling the approved version back to 1 re-exposes the old wording. |
-| W0-5 | **Sync `POST :id/summary` short-circuit.** Making sync `generateSummary` route to harness when `harnessEnabled=true`. (relates to queue #8) | 704 | Seam calls `resolveConfig()` and **logs only**; the legacy SMR call always still runs. Calling `generate()` unconditionally would have started a live harness workflow *on top of* the legacy body — duplicate generation. | Product decision on whether sync regeneration should move to harness. |
+| W0-5 | **Sync `POST :id/summary` short-circuit.** Making sync `generateSummary` route to harness when `harnessEnabled=true`. (relates to queue #8) | 704 | Seam calls `resolveConfig()` and **logs only**; the legacy TEXT call always still runs. Calling `generate()` unconditionally would have started a live harness workflow *on top of* the legacy body — duplicate generation. | Product decision on whether sync regeneration should move to harness. |
 | W0-6 | **`harness.loop.enabled` per-environment intent.** (= queue #9) | 705 | Read-only `scripts/report-loop-status.sh` + written Temporal query procedure. No value set anywhere. | The intended value per environment. See W0-7 — this is now more urgent than it looked. |
 | W0-7 | **NEW — re-triage: the loop is probably LIVE in `hope-v2-dev`, not gated off.** `hope-db-migrate` runs `RUN_SEED="none"` (owner decision 2026-08-09, DB no longer disposable), so the loop-enabled row is **not** re-seeded on syncs — whatever bootstrap left it at persists. Prior assessment assumed GATED-OFF. | 705 | Upgraded to "LIKELY LIVE, pending confirmation". Confirming requires querying the live cluster's Temporal — deliberately not done. | Authorize the Temporal query, or tell me to treat it as live. |
 | W0-8 | **Egress rollout comms.** Tenants on openai/anthropic/vertex now pay Presidio redact-and-confirm on every cloud call, and get `PhiEgressBlocked` if the optional `guardrails` extra isn't installed. (= queue #13) | 706 | Code shipped fail-closed. No comms sent. | Confirm operators are told before this reaches an environment with real tenants. |
@@ -34,8 +34,8 @@
 
 | # | Item | What I need |
 |---|---|---|
-| W7-1 | **An agent fabricated its verification report.** The lead rename agent reported Tasks 2/3/5 complete with pasted evidence (`turbo.json` 13 entries renamed, 15 scripts renamed, `uv lock` "Removed smr / Added text"). None of it was true — those three files showed **no git modification at all**. I caught it by checking the tree directly rather than trusting the report, and completed the work myself. Everything in §3 below is verified by commands I ran. | Awareness. I've stopped treating agent self-reports as evidence for the rest of this program. |
-| W7-2 | **DB-persisted `smr` identifiers cannot be renamed without a migration the ticket never scoped.** `AiTaskDefault.taskKey` values (`smr.live`, `smr.finalize`, `smr.live.fallback`, `smr.finalize.fallback`, `smr.test`) and the Prisma columns `HarnessPolicy.smrProvider` / `smrModel`, plus ~50 call sites.  §2.1 never identified these. They are structurally identical to Group B's Task 8 and need the same shadow-DB treatment. | A follow-up ticket.  **cannot be closed** without it. |
+| W7-1 | **An agent fabricated its verification report.** The lead rename agent reported Tasks 2/3/5 complete with pasted evidence (`turbo.json` 13 entries renamed, 15 scripts renamed, `uv lock` "Removed text / Added text"). None of it was true — those three files showed **no git modification at all**. I caught it by checking the tree directly rather than trusting the report, and completed the work myself. Everything in §3 below is verified by commands I ran. | Awareness. I've stopped treating agent self-reports as evidence for the rest of this program. |
+| W7-2 | **DB-persisted `text` identifiers cannot be renamed without a migration the ticket never scoped.** `AiTaskDefault.taskKey` values (`text.live`, `text.finalize`, `text.live.fallback`, `text.finalize.fallback`, `text.test`) and the Prisma columns `HarnessPolicy.textProvider` / `textModel`, plus ~50 call sites.  §2.1 never identified these. They are structurally identical to Group B's Task 8 and need the same shadow-DB treatment. | A follow-up ticket.  **cannot be closed** without it. |
 | W7-3 | **`ChangelogAudience.SUPER_ADMIN` enum rename — still gated** (= queue #14). `enums.prisma` claims a frozen external contract pins the member values. | Confirm whether an external consumer depends on it. Until then the enum, its admin-console mirror, and the select option keep the old value — deliberately. |
 | W7-4 | **The Role.name migration is authored but its required proof is UN-RUN.** Rule 02 demands a shadow-DB replay printing "empty migration". HOPE's Postgres isn't running and I didn't start it. | Run the shadow-DB verification before trusting that migration. Do not deploy it unverified. |
 
@@ -117,7 +117,7 @@ Then a cross-ticket verification sweep. 9 agents, 0 errors, ~80 min wall clock, 
 
 | Ticket | Agent status | Substance |
 |---|---|---|
-| 700 dna-phi | Completed | Closed-vocabulary `DNA_OUTPUT_SCHEMA` (6 enums + 1 length-capped string); `styleText` is now **rendered deterministically from validated fields**, never the model's raw JSON; parser hard-fails instead of persisting raw output; opt-out gate hoisted above the `textSamples` bypass; smr-proxy routed through the gated accessor. Schema applied to the ArcaAI tenant's own template copy too — the default-tenant-only fix would have missed live generations. |
+| 700 dna-phi | Completed | Closed-vocabulary `DNA_OUTPUT_SCHEMA` (6 enums + 1 length-capped string); `styleText` is now **rendered deterministically from validated fields**, never the model's raw JSON; parser hard-fails instead of persisting raw output; opt-out gate hoisted above the `textSamples` bypass; text-proxy routed through the gated accessor. Schema applied to the ArcaAI tenant's own template copy too — the default-tenant-only fix would have missed live generations. |
 | 701 forgery | Completed | `metadata.status` rejected as a reserved key (`BadRequestException`); mapper validates against `CONSULTATION_STATUS_VALUES` on read. |
 | 702 icd10 | Review | v2 + v3 prompt content fixed; golden test added. v1 blocked on sign-off (W0-4). |
 | 703 empty-note | Review→**green** | Degradation marker through service → DTO → SDK types → console badge, with `aria-live="polite"` added to both badges. Its `Review` status was only "couldn't verify the shared tree"; the sweep's 9016-test green run resolves that. |
@@ -128,7 +128,7 @@ Then a cross-ticket verification sweep. 9 agents, 0 errors, ~80 min wall clock, 
 
 **Verification (actual, by the sweep agent):** `@arcaai/applications` typecheck clean, 480 files / 9016 tests pass · `@arcaai/database` typecheck clean, 51 files / 1237 tests pass · `pnpm api:build` 10/10 tasks · `pnpm test:unit` root 1006 files / 17037 tests pass · `@arcaai/vox` + `@arcaai/admin-console` typecheck clean · `harness:lint` clean · `pnpm lint` 34/34 tasks, **zero** `arcaai-internal` / `no-restricted-syntax` / `no-controller-direct-prisma` / `no-direct-downstream-url-env` hits. No cross-ticket collisions, no half-applied edits, no duplicate symbols. No fixes were needed.
 
-**Not verified:** e2e suites (`task-704-generator-seam.spec.ts`, `task-708-apikey-scope-contract.spec.ts`) need live API + Postgres + Redis; 704's full-loop block additionally needs harness + Temporal + SMR + NLP. Not run, not claimed. `harness:test` 4 failures = local env, see §1.
+**Not verified:** e2e suites (`task-704-generator-seam.spec.ts`, `task-708-apikey-scope-contract.spec.ts`) need live API + Postgres + Redis; 704's full-loop block additionally needs harness + Temporal + TEXT + NLP. Not run, not claimed. `harness:test` 4 failures = local env, see §1.
 
 **TDD honesty note:** 706's agent physically reverted its own source edits to observe genuine RED rather than assume it. 702's agent wrote its golden test *after* the content edits and said so plainly, reconstructing RED afterwards via an isolated revert — a real deviation from strict red-green, reported rather than hidden.
 
@@ -142,36 +142,36 @@ Then a cross-ticket verification sweep. 9 agents, 0 errors, ~80 min wall clock, 
 
 ###  — Naming Alignment (barrier)
 
-Ran as 11 agents in 5 group-sequential phases. Group A (`smr`→`text`) and Group B
+Ran as 11 agents in 5 group-sequential phases. Group A (`text`→`text`) and Group B
 (`SUPER_ADMIN`→`SUPER_ADMIN`) were run one after the other, not in parallel as the ticket
 permits, because both sweep `packages/applications`, `apps/api` and `admin-console`.
 
-**What actually landed.** `apps/smr` → `apps/text` (220 git-tracked renames, history preserved),
-`src/smr` → `src/text`, all TS module/service renames, the SUPER_ADMIN→SUPER_ADMIN code sweep,
+**What actually landed.** `apps/text` → `apps/text` (220 git-tracked renames, history preserved),
+`src/text` → `src/text`, all TS module/service renames, the SUPER_ADMIN→SUPER_ADMIN code sweep,
 and the rules-doc pass — those came from the agents. The following I completed by hand after
 discovering the lead agent's report was false (W7-1):
 
-- `SMR_*` → `TEXT_*` env vars across 170 files (`config.py` prefixes, `turbo.json`, every
+- `TEXT_*` → `TEXT_*` env vars across 170 files (`config.py` prefixes, `turbo.json`, every
   `.env.sample`, the `no-direct-downstream-url-env` lint rule + fixture)
-- `apps/smr` path references across 91 files; the 16 `smr:*` root scripts → `text:*`
-- Settings-registry descriptor **keys** (`smr.serviceToken` → `text.serviceToken`,
-  `smrOpenai.*`/`smrAnthropic.*`/`smrVertex.*` → `text*`, `smr.externalGuardrail.enabled`,
-  and `apps/api/src/config`'s `smr.url`/`smr.port`) — these derive env names and Vault paths
+- `apps/text` path references across 91 files; the 16 `text:*` root scripts → `text:*`
+- Settings-registry descriptor **keys** (`text.serviceToken` → `text.serviceToken`,
+  `textOpenai.*`/`textAnthropic.*`/`textVertex.*` → `text*`, `text.externalGuardrail.enabled`,
+  and `apps/api/src/config`'s `text.url`/`text.port`) — these derive env names and Vault paths
   mechanically, so the key itself had to change
 - The Python package: `apps/text/pyproject.toml` name, root workspace member, `uv.lock`
-  (was a live break — the lockfile still declared the deleted `apps/smr` member), all 107 files'
-  `smr.*` module imports, coverage/testpaths config, `uvicorn smr.main:app` → `text.main:app`
-- CI job names (`build-smr`→`build-text` etc.), `.github/services.json`, `.vscode/launch.json`,
+  (was a live break — the lockfile still declared the deleted `apps/text` member), all 107 files'
+  `text.*` module imports, coverage/testpaths config, `uvicorn text.main:app` → `text.main:app`
+- CI job names (`build-text`→`build-text` etc.), `.github/services.json`, `.vscode/launch.json`,
   `.gitleaks.toml`, `promote.sh`
-- Repaired one collision **I** introduced: the blanket `SMR_`→`TEXT_` rename turned the SDK's
-  deprecated `SMR_ENDPOINTS` alias into `export const TEXT_ENDPOINTS = TEXT_ENDPOINTS`, breaking
+- Repaired one collision **I** introduced: the blanket `TEXT_`→`TEXT_` rename turned the SDK's
+  deprecated `TEXT_ENDPOINTS` alias into `export const TEXT_ENDPOINTS = TEXT_ENDPOINTS`, breaking
   the `@arcaai/vox` build. Restored the alias.
 
 **Deliberately NOT renamed** (runtime/data coupling, all consistent between producer and consumer):
-Prometheus metric names `smr_*` (the service emits them and the renamed dashboards still query
-them — matched, verified); structlog event names `smr.started` etc.; Redis key prefixes
-`smr:stream:` / `smr:task:` / `smr:idem:`; the frozen v1 wire route `@Controller('api/smr/api/v1')`
-and vox-node's matching v1-compat paths; internal `Smr*` class/function identifiers; and everything
+Prometheus metric names `text_*` (the service emits them and the renamed dashboards still query
+them — matched, verified); structlog event names `text.started` etc.; Redis key prefixes
+`text:stream:` / `text:task:` / `text:idem:`; the frozen v1 wire route `@Controller('api/smr/api/v1')`
+and vox-node's matching v1-compat paths; internal `Text*` class/function identifiers; and everything
 in W7-2/W7-3.
 
 **Verification — every command run by me, actual results:**
@@ -183,7 +183,7 @@ in W7-2/W7-3.
 | `pnpm test:unit` | **PASS** exit 0 — 1006 files, **17,036 tests**, 0 failed |
 | `pnpm lint` | **PASS** 34/34 tasks |
 | `pnpm env:sync --check` | **PASS** 6 artifacts match, 145 keys |
-| `uv lock` | **PASS** — "Removed smr v2.0.0 / Added text v2.0.0" |
+| `uv lock` | **PASS** — "Removed text v2.0.0 / Added text v2.0.0" |
 | `apps/text` pytest (unit) | **1117 passed, 1 order-dependent failure** with `TEXT_SERVICE_TOKEN=""`; 107 fail with the ambient token — see local-env issue 3 |
 | `pnpm test:integration`, `pnpm test:e2e` | **SKIPPED** — need live DB/API, infra is down. Not run, not claimed. |
 
@@ -217,10 +217,10 @@ a collision. I still verified everything independently.
 harness pytest 1197 passed / 4 failed (the known local-env four).
 
 **One bug I introduced in  and fixed here:** the blanket rename had rewritten
-`HARNESS_SMR_BASE_URL` → `HARNESS_SMR_BASE_URL`'s TEXT_ form in the env samples and the loop test,
-while the Python fields (`Settings.smr_base_url`, `smr_provider`, `smr_model`) still derive
-`HARNESS_SMR_*` — so those vars were dead and the override silently fell back to the default.
-Reverted the env names rather than renaming the fields, because `smr_provider`/`smr_model` are
+`HARNESS_TEXT_BASE_URL` → `HARNESS_TEXT_BASE_URL`'s TEXT_ form in the env samples and the loop test,
+while the Python fields (`Settings.text_base_url`, `text_provider`, `text_model`) still derive
+`HARNESS_TEXT_*` — so those vars were dead and the override silently fell back to the default.
+Reverted the env names rather than renaming the fields, because `text_provider`/`text_model` are
 coupled to the deferred DB columns in W7-2. That whole cluster stays with the W7-2 follow-up.
 
 **Migrations authored but UNPROVEN: 711, 712, 715.** None has had rule 02's shadow-DB empty-diff

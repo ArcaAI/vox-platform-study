@@ -37,7 +37,7 @@ import { INoteGenerationService, GenerationTrigger } from '../../note-generation
  *
  * Follows the same pattern as the legacy signable summary generator (deleted
  * TASK-732) but aggregates content across the entire consultation chain
- * before calling the SMR service.
+ * before calling the TEXT service.
  *
  * Progress steps:
  *   10% — Resolving linked consultations
@@ -86,13 +86,13 @@ export class ComprehensiveSummaryProcessor extends WorkerHost {
     private readonly jobMetrics: JobMetricsService,
     private readonly cls: ClsService<IActiveUserContext>,
     @Optional() @Inject(SecretsService) private readonly secretsService?: SecretsService,
-    // Resolver for the tenant's effective SMR {provider, model}.
+    // Resolver for the tenant's effective TEXT {provider, model}.
     @Optional() @Inject(HarnessPolicyService) private readonly harnessPolicyService?: HarnessPolicyService,
     // Load the requesting doctor's preferred prompt id so this async
     // comprehensive path threads it into BOTH resolution and assembly (was dropped
     // here before). Optional + trailing so existing positional fixtures keep compiling.
     @Optional() @Inject(ConfigResolver) private readonly configResolver?: ConfigResolver,
-    // Records the LLM (+ guardrail, when SMR
+    // Records the LLM (+ guardrail, when TEXT
     // forwarded one) token consumption this generation produced. Optional +
     // trailing so existing positional fixtures keep compiling; absent ⇒ the
     // SummaryMeta persists unmetered (see `persistSummaryMetaWithUsage`).
@@ -229,7 +229,7 @@ export class ComprehensiveSummaryProcessor extends WorkerHost {
           };
         }
 
-        // Step 4: Call SMR service (60%)
+        // Step 4: Call TEXT service (60%)
         await this.jobService.notifyProgress(jobId, 60, 'Generating comprehensive summary with AI');
 
         const textResponse = await this.callTextService(
@@ -361,9 +361,9 @@ export class ComprehensiveSummaryProcessor extends WorkerHost {
     processingTimeMs?: number;
     inputTokens?: number;
     outputTokens?: number;
-    /** SMR's billing passthrough for this call. */
+    /** TEXT's billing passthrough for this call. */
     usage: TextUsageDetail | null;
-    /** The guardrail call this generation triggered, forwarded by SMR. */
+    /** The guardrail call this generation triggered, forwarded by TEXT. */
     guardrailUsage: TextUsageDetail | null;
   }> {
     // Build structured text from sections
@@ -436,7 +436,7 @@ export class ComprehensiveSummaryProcessor extends WorkerHost {
           extra: jobId ? { 'X-Request-ID': jobId } : undefined,
         }),
       });
-      this.jobMetrics.recordTextCallDuration(JobQueue.GenerateComprehensiveSummary, 'smr', (Date.now() - textStart) / 1000);
+      this.jobMetrics.recordTextCallDuration(JobQueue.GenerateComprehensiveSummary, 'text', (Date.now() - textStart) / 1000);
       const data = response.data as { usage_detail?: unknown; guardrail_usage?: unknown };
       return {
         ...mapTextGenerateResponse(response.data),
@@ -445,7 +445,7 @@ export class ComprehensiveSummaryProcessor extends WorkerHost {
       };
     } catch (error) {
       this.logger.error({
-        message: 'SMR service call failed for comprehensive summary',
+        message: 'TEXT service call failed for comprehensive summary',
         error: error instanceof Error ? error.message : String(error),
       });
       throw new Error('Failed to generate comprehensive summary from AI service');

@@ -8,7 +8,7 @@ const SYSTEM_TENANT_ID = '00000000-0000-0000-0000-000000000000';
 
 const baseProps = {
   tenantId: SYSTEM_TENANT_ID,
-  serviceName: 'smr',
+  serviceName: 'text',
   releaseVersion: '2.1.0',
   gitBranch: 'dev-2.1',
   gitCommitSha: '0ab258f9c1d2e3f4a5b6c7d8e9f0a1b2c3d4e5f6',
@@ -40,9 +40,9 @@ describe('ServiceReleaseFactory', () => {
   it('carries a tagged release', () => {
     const release = ServiceReleaseFactory.CreateServiceRelease({
       ...baseProps,
-      releaseTag: 'SMR-2.1.0',
+      releaseTag: 'TEXT-2.1.0',
     });
-    expect(release.releaseTag).toBe('SMR-2.1.0');
+    expect(release.releaseTag).toBe('TEXT-2.1.0');
   });
 });
 

@@ -78,7 +78,7 @@ function createService(clsTenantId: string | null) {
   const summaryMetaRepo = { create: vi.fn().mockResolvedValue({ id: 'meta-1' }), encryptFieldsIntoEntity: vi.fn().mockResolvedValue(undefined) };
   const namedEntityRepo = { findByContextItem: vi.fn().mockResolvedValue([]) };
   const httpService = { axiosRef: { post: vi.fn().mockResolvedValue({ data: { summary: 'Result.' } }) } };
-  const configService = { get: vi.fn().mockImplementation((key: string) => (key === 'TEXT_URL' ? 'http://smr:8862' : null)) };
+  const configService = { get: vi.fn().mockImplementation((key: string) => (key === 'TEXT_URL' ? 'http://text:8862' : null)) };
   const eventEmitter = { emit: vi.fn() };
   const clsService = {
     get: vi.fn().mockImplementation((key: string) => {
@@ -120,7 +120,7 @@ function createService(clsTenantId: string | null) {
 }
 
 describe('ChainSummaryService.callTextService — explicit tenant assertion (B-04)', () => {
-  it('resolves the SMR selection with the CLS tenant + finalize task passed explicitly', async () => {
+  it('resolves the TEXT selection with the CLS tenant + finalize task passed explicitly', async () => {
     const { service, harnessPolicyService } = createService('tenant-1');
 
     await service.generateComprehensiveSummary('consultation-A', { includeNER: false });

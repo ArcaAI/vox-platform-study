@@ -35,7 +35,7 @@ const METRICS = {
   openSockets: 342,
   socketsPerMinute: 9,
   services: [
-    { key: 'smr', p95LatencyMs: 210, requestsPerMinute: 480, errorRatePct: 0.1 },
+    { key: 'text', p95LatencyMs: 210, requestsPerMinute: 480, errorRatePct: 0.1 },
     { key: 'stt', p95LatencyMs: 118, requestsPerMinute: 260, errorRatePct: 0.3 },
     { key: 'nlp', p95LatencyMs: 88, requestsPerMinute: 96, errorRatePct: null },
     { key: 'guardrail', p95LatencyMs: null, requestsPerMinute: 0, errorRatePct: null },
@@ -49,7 +49,7 @@ const HEALTH = {
   status: 'degraded',
   timestamp: new Date().toISOString(),
   services: {
-    smr: { status: 'healthy', service: 'Summarization', uptime_seconds: 86_400, duration_ms: 42 },
+    text: { status: 'healthy', service: 'Summarization', uptime_seconds: 86_400, duration_ms: 42 },
     stt: { status: 'healthy', service: 'Speech to Text', duration_ms: 118 },
     guardrail: { status: 'degraded', service: 'Guardrail', error: 'queue depth 117' },
     harness: { status: 'down', service: 'Clinical Documentation Harness', error: 'ECONNREFUSED' },
@@ -174,7 +174,7 @@ describe('PlatformDashboard', () => {
     renderWithProviders(<PlatformDashboard />);
 
     const chart = await screen.findByRole('table');
-    expect(within(chart).getByText('smr')).toBeDefined();
+    expect(within(chart).getByText('text')).toBeDefined();
     expect(within(chart).getByText('480')).toBeDefined();
   });
 

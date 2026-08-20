@@ -406,7 +406,7 @@ class TestDeliver:
         assert result.status == "DEGRADED"
 
 
-def test_harness_policy_from_api_reads_smr_selection():
+def test_harness_policy_from_api_reads_text_selection():
     """Sanity check on the assumption `text_generate.py` depends on: `HarnessPolicy.from_api`
     maps the raw camelCase policy JSON's `textProvider`/`textModel` onto snake_case fields."""
     policy = HarnessPolicy.from_api({"textProvider": "lm-studio", "textModel": "m", "version": 1})

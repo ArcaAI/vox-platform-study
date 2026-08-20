@@ -153,7 +153,7 @@ class TestCreateAppOtelWiring:
         endpoint configured — invariant.
 
         ``FastAPIInstrumentor``/``HTTPXClientInstrumentor`` are mocked here
-        (matching the SMR reference test suite, which never runs real
+        (matching the TEXT reference test suite, which never runs real
         instrumentation): ``HTTPXClientInstrumentor.instrument`` patches
         ``httpx`` at the PROCESS level, which would otherwise break every
         other test's ``httpx.AsyncClient(transport=ASGITransport(...))``
@@ -272,7 +272,7 @@ class TestSetupDoesNotRaise:
 
 
 # ---------------------------------------------------------------------------
-# Basic setup/shutdown behavior (parity with the SMR reference implementation)
+# Basic setup/shutdown behavior (parity with the TEXT reference implementation)
 # ---------------------------------------------------------------------------
 
 

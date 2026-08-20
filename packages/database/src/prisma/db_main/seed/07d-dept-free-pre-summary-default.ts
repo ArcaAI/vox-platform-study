@@ -6,7 +6,7 @@
  * v1-parity prompt BODY still interpolates `{current_department}`/`{visit_type}`
  * and its three "(Latest Dept Note)" FORMAT headings. RF-1 forbids stripping
  * those out of the shared v1 body: the v1-compat response mapper
- * (`apps/api/src/modules/smr-compat/summary-response.mapper.ts`,
+ * (`apps/api/src/modules/text-compat/summary-response.mapper.ts`,
  * `PRE_SUMMARY_DISPLAY_TITLES`) title-matches those exact headings, so a
  * dept-free body on the compat surface would return empty
  * `structured_data.sections` to every v1 client. The fix is this NEW,
@@ -143,7 +143,7 @@ export const SYSTEM_DEPT_FREE_PRE_SUMMARY_TEMPLATE = {
     language_name: 'Output language name',
   } as Prisma.InputJsonValue,
   // RF-2 surface tag: 'dept-free' discriminates this row from the tenant's
-  // 'smr-v1' pre-summary row so the tenant tier never sees two candidates for
+  // 'text-v1' pre-summary row so the tenant tier never sees two candidates for
   // the same surface. 'system-default' matches the C1 D2 fork contract.
   tags: ['pre-summary', 'dept-free', 'system-default'],
 };

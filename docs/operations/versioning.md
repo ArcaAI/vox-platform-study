@@ -47,7 +47,7 @@ afterward.
 The git tag **is** the version. There is no other input.
 
 ```
-<SVC>-<MAJOR>.<MINOR>.<PATCH>[-<prerelease>]     e.g. SMR-2.1.0, STT-3.0.0-rc.1
+<SVC>-<MAJOR>.<MINOR>.<PATCH>[-<prerelease>]     e.g. TEXT-2.1.0, STT-3.0.0-rc.1
 ALL-<MAJOR>.<MINOR>.<PATCH>                      e.g. ALL-2.2.0 — the platform release train
 ```
 
@@ -55,7 +55,7 @@ Valid `<SVC>` prefixes (`packages/utils/src/version-grammar.ts`, `SERVICE_TAG_PR
 kept in lockstep with the tag regexes in `.gitlab/ci/build.yml`):
 
 ```
-ALL  API  ADMIN  COMPAT  GUARD  HARNESS  NLP  SMR  STT  TTS
+ALL  API  ADMIN  COMPAT  GUARD  HARNESS  NLP  TEXT  STT  TTS
 ```
 
 (`SDK` is also accepted by the workflow-level tag rule for the separate npm-SemVer SDK
@@ -68,8 +68,8 @@ an image is identified by its digest, and a `+build` suffix would be a second, w
 identity competing with it.
 
 ```bash
-git tag SMR-2.1.0
-git push origin SMR-2.1.0
+git tag TEXT-2.1.0
+git push origin TEXT-2.1.0
 ```
 
 ### Which tags trigger which builds
@@ -79,15 +79,15 @@ per-service build jobs live in `.gitlab/ci/build.yml`:
 
 | Tag matches | `PIPELINE_TYPE` | What runs |
 |---|---|---|
-| `^(SDK\|SMR\|STT\|GUARD\|TTS\|HARNESS\|API\|ADMIN\|NLP\|ALL)-` | `release` | The full test suite (`rules.yml` runs everything on a release-tag pipeline), then the build job(s) whose own rule matches the tag prefix |
+| `^(SDK\|TEXT\|STT\|GUARD\|TTS\|HARNESS\|API\|ADMIN\|NLP\|ALL)-` | `release` | The full test suite (`rules.yml` runs everything on a release-tag pipeline), then the build job(s) whose own rule matches the tag prefix |
 | `^v\d+` (e.g. `v2.2.0`) | `tag_release` | **No build.** Only `promote-prod` becomes available (manual) — see §4 |
 
 Each build job in `build.yml` has its own `rules:` on top of the shared
 `.build-common-rules`, keyed on the exact prefix — e.g. `build-text` runs on
-`$CI_COMMIT_TAG =~ /^SMR-/ || $CI_COMMIT_TAG =~ /^ALL-/`, `build-api` on
+`$CI_COMMIT_TAG =~ /^TEXT-/ || $CI_COMMIT_TAG =~ /^ALL-/`, `build-api` on
 `/^API-/ || /^ALL-/`, and so on for every service in the scope table below. So:
 
-- `SMR-2.1.0` builds only the `text` image.
+- `TEXT-2.1.0` builds only the `text` image.
 - `ALL-2.2.0` builds **every** image (`api`, `admin-console`, `compat-playground`, `text`,
   `stt-ml-runtime`, `stt-worker`, `nlp`, `guardrail`, `tts`, `harness`, `harness-worker`,
   `database`, `qdrant-init`, `hope-python-base`) — that is what makes it "the platform
@@ -97,7 +97,7 @@ The image pushed by a release-tag build is tagged with the **tag itself, verbati
 (non-alphanumerics replaced with `-`) plus `sha-<sha8>` — see `.build-template` in
 `.gitlab/ci/templates.yml`. It is never tagged `latest`.
 
-**A release tag (`SMR-2.1.0`, `ALL-2.2.0`) builds and publishes images. It does not, by
+**A release tag (`TEXT-2.1.0`, `ALL-2.2.0`) builds and publishes images. It does not, by
 itself, deploy anywhere.** Deployment to `dev`/`staging` happens automatically from
 `dev-*`/`staging-*` branch pushes (`promote-dev`/`promote-staging` in
 `.gitlab/ci/deploy.yml`, gated on `PIPELINE_TYPE == "dev"`/`"staging"`). Production is a

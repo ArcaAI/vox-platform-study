@@ -2,7 +2,7 @@
 //
 // Generalizes HarnessServiceTokenGuard: instead of one hardcoded secret, the
 // guard validates the presented token against the secret belonging to the
-// REQUESTED service, so an nlp token cannot read smr's config subset.
+// REQUESTED service, so an nlp token cannot read text's config subset.
 
 import { UnauthorizedException } from '@nestjs/common';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -14,7 +14,7 @@ const makeContext = (headers: Record<string, string>, query: Record<string, stri
   }) as any;
 
 const SECRETS: Record<string, string> = {
-  TEXT_SERVICE_TOKEN: 'smr-token',
+  TEXT_SERVICE_TOKEN: 'text-token',
   NLP_SERVICE_TOKEN: 'nlp-token',
   GUARDRAIL_SERVICE_TOKEN: 'guardrail-token',
   HARNESS_SERVICE_TOKEN: 'harness-token',
@@ -33,7 +33,7 @@ describe('InternalServiceTokenGuard', () => {
 
   describe('per-service token binding', () => {
     it.each([
-      ['smr', 'smr-token'],
+      ['text', 'text-token'],
       ['nlp', 'nlp-token'],
       ['guardrail', 'guardrail-token'],
       ['harness', 'harness-token'],
@@ -45,7 +45,7 @@ describe('InternalServiceTokenGuard', () => {
 
     it('rejects a valid token belonging to a DIFFERENT service (no cross-service reads)', async () => {
       const guard = guardWith();
-      await expect(guard.canActivate(makeContext({ 'x-service-token': 'nlp-token' }, { service: 'smr' }))).rejects.toBeInstanceOf(
+      await expect(guard.canActivate(makeContext({ 'x-service-token': 'nlp-token' }, { service: 'text' }))).rejects.toBeInstanceOf(
         UnauthorizedException,
       );
     });
@@ -59,7 +59,7 @@ describe('InternalServiceTokenGuard', () => {
 
     it('does NOT accept X-Internal-Service-Key for any other service', async () => {
       const guard = guardWith();
-      await expect(guard.canActivate(makeContext({ 'x-internal-service-key': 'stt-key' }, { service: 'smr' }))).rejects.toBeInstanceOf(
+      await expect(guard.canActivate(makeContext({ 'x-internal-service-key': 'stt-key' }, { service: 'text' }))).rejects.toBeInstanceOf(
         UnauthorizedException,
       );
     });
@@ -68,31 +68,31 @@ describe('InternalServiceTokenGuard', () => {
   describe('fail-closed', () => {
     it('rejects a missing token header', async () => {
       const guard = guardWith();
-      await expect(guard.canActivate(makeContext({}, { service: 'smr' }))).rejects.toBeInstanceOf(UnauthorizedException);
+      await expect(guard.canActivate(makeContext({}, { service: 'text' }))).rejects.toBeInstanceOf(UnauthorizedException);
     });
 
     it('rejects when the service secret is unconfigured', async () => {
       const guard = guardWith({});
-      await expect(guard.canActivate(makeContext({ 'x-service-token': 'smr-token' }, { service: 'smr' }))).rejects.toBeInstanceOf(
+      await expect(guard.canActivate(makeContext({ 'x-service-token': 'text-token' }, { service: 'text' }))).rejects.toBeInstanceOf(
         UnauthorizedException,
       );
     });
 
     it('rejects when SecretsService itself is absent from the graph', async () => {
       const guard = new InternalServiceTokenGuard(undefined);
-      await expect(guard.canActivate(makeContext({ 'x-service-token': 'smr-token' }, { service: 'smr' }))).rejects.toBeInstanceOf(
+      await expect(guard.canActivate(makeContext({ 'x-service-token': 'text-token' }, { service: 'text' }))).rejects.toBeInstanceOf(
         UnauthorizedException,
       );
     });
 
     it('rejects a token of a different length without throwing (timingSafeEqual guard)', async () => {
       const guard = guardWith();
-      await expect(guard.canActivate(makeContext({ 'x-service-token': 'short' }, { service: 'smr' }))).rejects.toBeInstanceOf(UnauthorizedException);
+      await expect(guard.canActivate(makeContext({ 'x-service-token': 'short' }, { service: 'text' }))).rejects.toBeInstanceOf(UnauthorizedException);
     });
 
     it('rejects a missing service query param', async () => {
       const guard = guardWith();
-      await expect(guard.canActivate(makeContext({ 'x-service-token': 'smr-token' }))).rejects.toBeInstanceOf(UnauthorizedException);
+      await expect(guard.canActivate(makeContext({ 'x-service-token': 'text-token' }))).rejects.toBeInstanceOf(UnauthorizedException);
     });
   });
 

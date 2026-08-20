@@ -39,7 +39,7 @@ describe('isAdminPlanePath covers non-/admin admin-only routes', () => {
   it('still matches the LEGACY /monitoring/* paths (pre-TASK-759 hard-coded callers)', () => {
     expect(isAdminPlanePath('/monitoring/uptime')).toBe(true);
     expect(isAdminPlanePath('/monitoring/sessions')).toBe(true);
-    expect(isAdminPlanePath('/monitoring/uptime/smr')).toBe(true);
+    expect(isAdminPlanePath('/monitoring/uptime/text')).toBe(true);
     expect(isAdminPlanePath('/monitoring/heartbeats/stt')).toBe(true);
     expect(isAdminPlanePath('monitoring/uptime')).toBe(true); // no leading slash
     expect(isAdminPlanePath('/api/v1/monitoring/uptime')).toBe(true); // fully-qualified
@@ -47,7 +47,7 @@ describe('isAdminPlanePath covers non-/admin admin-only routes', () => {
 
   it('still matches the LEGACY /health/services[/:serviceKey] paths (pre-TASK-759 hard-coded callers)', () => {
     expect(isAdminPlanePath('/health/services')).toBe(true);
-    expect(isAdminPlanePath('/health/services/smr')).toBe(true);
+    expect(isAdminPlanePath('/health/services/text')).toBe(true);
     expect(isAdminPlanePath('/health/services?verbose=1')).toBe(true); // query string
     expect(isAdminPlanePath('/api/v1/health/services')).toBe(true); // fully-qualified
   });
@@ -56,7 +56,7 @@ describe('isAdminPlanePath covers non-/admin admin-only routes', () => {
     expect(isAdminPlanePath('/admin/monitoring/uptime')).toBe(true);
     expect(isAdminPlanePath('/admin/monitoring/sessions')).toBe(true);
     expect(isAdminPlanePath('/admin/health/services')).toBe(true);
-    expect(isAdminPlanePath('/admin/health/services/smr')).toBe(true);
+    expect(isAdminPlanePath('/admin/health/services/text')).toBe(true);
     expect(isAdminPlanePath('/api/v1/admin/health/services')).toBe(true);
   });
 

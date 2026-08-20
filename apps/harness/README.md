@@ -7,7 +7,7 @@ A Python/FastAPI service whose real job is a **Temporal durable workflow**:
 clinical-documentation loop for one consultation. `apps/api` (NestJS) stays the gateway and
 system-of-record (authZ, tenant/CLS, Postgres, WORM audit, consent, sign-off) and drives the loop
 through two internal HTTP endpoints — it never talks to Temporal directly. The harness treats
-STT / NLP / SMR / Qdrant / Temporal as tools (ACI): all non-deterministic I/O (HTTP calls,
+STT / NLP / TEXT / Qdrant / Temporal as tools (ACI): all non-deterministic I/O (HTTP calls,
 model inference, clock/random access) lives in Temporal **activities**; the workflow **body**
 stays deterministic.
 
@@ -136,7 +136,7 @@ One workflow instance per consultation, id `harness-doc-{consultationId}` (deter
    `GATE_DECISION` WORM audit via `record_gate_decision` and the workflow completes,
    `approved=true`.
 
-Fail-safe invariants baked into every step: an SMR (generation) failure always **propagates** —
+Fail-safe invariants baked into every step: an TEXT (generation) failure always **propagates** —
 no draft is ever persisted from a failed generation. Everything else (NLP, retrieval, the
 inferential pass, a policy fetch) **degrades** rather than raising: a degraded/missing input is
 never a silent auto-`PASS` — the aggregator forces `FLAG` (human review) instead. Progress is
@@ -313,7 +313,7 @@ parity package (`hope_workflow_contract`), still not built as of this writing.
 
 ## PHI egress guard (`guards/phi/`)
 
-Every cloud-bound LLM call (the `generate` activity's prompt/system-prompt to a cloud SMR
+Every cloud-bound LLM call (the `generate` activity's prompt/system-prompt to a cloud TEXT
 provider; the inferential pass's note/transcript/citations/knowledge-chunks to a cloud judge or
 safety provider) passes through `ensure_egress_safe` / `ensure_inferential_egress_safe`
 immediately before the call. Fail-closed by contract: if `PhiRedactor` (Presidio analyzer +

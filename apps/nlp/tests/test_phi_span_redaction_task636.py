@@ -2,7 +2,7 @@
 
 `_phi_sanitization_hook` has existed in `nlp/core/observability.py` since the
 module was written and was **never passed to the instrumentor** — dead code.
-SMR's identical hook *is* wired (`server_request_hook=_phi_sanitization_hook`),
+TEXT's identical hook *is* wired (`server_request_hook=_phi_sanitization_hook`),
 so the two services silently disagreed about whether request/response bodies
 get scrubbed off spans.
 

@@ -206,7 +206,7 @@ export const SYSTEM_AI_PROVIDER_CONNECTIONS: AiProviderConnectionSeed[] = [
 
   // ── New LLM cloud providers (freeze; functional in) ──────
   {
-    // Anthropic Messages API (cloud). Catalog-only until lands the SMR
+    // Anthropic Messages API (cloud). Catalog-only until lands the TEXT
     // adapter. NOTE: the public API is not PHI-safe — route via a compliant
     // endpoint before enabling for patient data.
     id: '87000000-0000-0000-0000-00000000000a',
@@ -223,7 +223,7 @@ export const SYSTEM_AI_PROVIDER_CONNECTIONS: AiProviderConnectionSeed[] = [
     metaData: null,
   },
   {
-    // Google Vertex AI (cloud). Catalog-only until lands the SMR
+    // Google Vertex AI (cloud). Catalog-only until lands the TEXT
     // adapter. NOTE: the public API is not PHI-safe — use a compliant project.
     id: '87000000-0000-0000-0000-00000000000b',
     tenantId: SYSTEM_TENANT_ID,

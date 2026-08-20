@@ -93,7 +93,7 @@ describe('AdminHealthServicesController', () => {
   // ─────────────────────────────────────────────────────────────────
   describe('GET /api/v1/admin/health/services', () => {
     const textHealthy = {
-      data: { status: 'healthy', service: 'smr', version: '2.0.0', uptime_seconds: 200, timestamp: '2026-03-02T00:00:00Z', checks: {} },
+      data: { status: 'healthy', service: 'text', version: '2.0.0', uptime_seconds: 200, timestamp: '2026-03-02T00:00:00Z', checks: {} },
     };
     const nlpHealthy = {
       data: { status: 'healthy', service: 'nlp', version: '1.0.0', uptime_seconds: 300, timestamp: '2026-03-02T00:00:00Z', checks: {} },
@@ -123,7 +123,7 @@ describe('AdminHealthServicesController', () => {
       const result = await controller.checkServices();
 
       expect(result.status).toBe('healthy');
-      for (const key of ['smr', 'nlp', 'stt', 'tts', 'guardrail', 'harness']) {
+      for (const key of ['text', 'nlp', 'stt', 'tts', 'guardrail', 'harness']) {
         expect(result.services).toHaveProperty(key);
         expect(result.services[key].status).toBe('healthy');
       }
@@ -142,7 +142,7 @@ describe('AdminHealthServicesController', () => {
 
       expect(result.status).toBe('degraded');
       expect(result.services.nlp.status).toBe('down');
-      expect(result.services.smr.status).toBe('healthy');
+      expect(result.services.text.status).toBe('healthy');
     });
 
     it('should return unhealthy when all services are down', async () => {
@@ -151,7 +151,7 @@ describe('AdminHealthServicesController', () => {
       const result = await controller.checkServices();
 
       expect(result.status).toBe('unhealthy');
-      for (const key of ['smr', 'nlp', 'stt', 'tts', 'guardrail', 'harness']) {
+      for (const key of ['text', 'nlp', 'stt', 'tts', 'guardrail', 'harness']) {
         expect(result.services[key].status).toBe('down');
       }
     });
@@ -170,9 +170,9 @@ describe('AdminHealthServicesController', () => {
 
       const result = await controller.checkServices();
 
-      expect(result.services.smr.service).toBe('Summarization');
+      expect(result.services.text.service).toBe('Summarization');
       expect(result.services.guardrail.service).toBe('Guardrail');
-      expect(result.services.smr).not.toHaveProperty('version');
+      expect(result.services.text).not.toHaveProperty('version');
       expect(result.services.guardrail).not.toHaveProperty('version');
     });
 
@@ -208,7 +208,7 @@ describe('AdminHealthServicesController', () => {
 
     it('strips `version` and `checks` from the public services payload', async () => {
       mockHttpService.axiosRef.get.mockResolvedValue({
-        data: { status: 'healthy', service: 'smr', version: '2.0.0', uptime_seconds: 200, checks: { gpu: { status: 'healthy' } } },
+        data: { status: 'healthy', service: 'text', version: '2.0.0', uptime_seconds: 200, checks: { gpu: { status: 'healthy' } } },
       });
 
       const result = await controller.checkServices();
@@ -224,7 +224,7 @@ describe('AdminHealthServicesController', () => {
     const textHealthy = {
       data: {
         status: 'healthy',
-        service: 'smr',
+        service: 'text',
         version: '2.0.0',
         uptime_seconds: 200,
         timestamp: '2026-03-02T00:00:00Z',
@@ -235,7 +235,7 @@ describe('AdminHealthServicesController', () => {
     it('should return sanitised structured health for a valid service key (no version / no checks)', async () => {
       mockHttpService.axiosRef.get.mockResolvedValueOnce(textHealthy);
 
-      const result = await controller.checkServiceByKey('smr');
+      const result = await controller.checkServiceByKey('text');
 
       expect(result.status).toBe('healthy');
       expect(result.service).toBe('Summarization');
@@ -247,7 +247,7 @@ describe('AdminHealthServicesController', () => {
     it('should return structured down status when service is unreachable', async () => {
       mockHttpService.axiosRef.get.mockRejectedValueOnce(new Error('connect ECONNREFUSED 127.0.0.1:8862'));
 
-      const result = await controller.checkServiceByKey('smr');
+      const result = await controller.checkServiceByKey('text');
 
       expect(result.status).toBe('down');
       expect(result.service).toBe('Summarization');
@@ -260,7 +260,7 @@ describe('AdminHealthServicesController', () => {
       (timeoutErr as any).code = 'ECONNABORTED';
       mockHttpService.axiosRef.get.mockRejectedValueOnce(timeoutErr);
 
-      const result = await controller.checkServiceByKey('smr');
+      const result = await controller.checkServiceByKey('text');
 
       expect(result.status).toBe('down');
       expect(result.error).toContain('timeout');
@@ -281,7 +281,7 @@ describe('AdminHealthServicesController', () => {
     });
 
     it('should accept all five valid service keys', async () => {
-      for (const key of ['smr', 'nlp', 'stt', 'guardrail', 'harness']) {
+      for (const key of ['text', 'nlp', 'stt', 'guardrail', 'harness']) {
         mockHttpService.axiosRef.get.mockResolvedValueOnce(textHealthy);
         const result = await controller.checkServiceByKey(key);
         expect(result.status).toBeDefined();
@@ -291,7 +291,7 @@ describe('AdminHealthServicesController', () => {
     it('should include timestamp in response', async () => {
       mockHttpService.axiosRef.get.mockResolvedValueOnce(textHealthy);
 
-      const result = await controller.checkServiceByKey('smr');
+      const result = await controller.checkServiceByKey('text');
 
       expect(result.timestamp).toBeDefined();
       expect(new Date(result.timestamp).getTime()).not.toBeNaN();

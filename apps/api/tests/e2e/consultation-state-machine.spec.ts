@@ -14,12 +14,12 @@
  *
  * RUNNABLE-HERE vs RUN_FULL-gated:
  *   - Everything in the top-level `test.describe` blocks needs only a live
- *     apps/api + Postgres (no SMR/NLP/harness/Temporal) — every consultation
+ *     apps/api + Postgres (no TEXT/NLP/harness/Temporal) — every consultation
  *     used is created fresh via `POST /consultations/open`, so these tests
  *     do not depend on seed data shape or ordering.
  *   - The full open -> prime -> recording -> draft -> approve -> close ->
  *     reopen walk (case 2) and the gate-SLA TIMED_OUT path (case 5) need a
- *     reachable text-generation backend (SMR) and the harness's internal
+ *     reachable text-generation backend (TEXT) and the harness's internal
  *     service-token callback respectively; both are gated behind
  *     `TASK711_E2E_FULL=1` (+ `HARNESS_SERVICE_TOKEN` for case 5) so CI never
  *     reports a fabricated pass when those aren't wired up.
@@ -256,7 +256,7 @@ test.describe('TASK-711 — session state machine (RUNNABLE-HERE, apps/api + Pos
 });
 
 // =============================================================================
-// RUN_FULL-gated — needs a reachable text-generation backend (SMR) for case 2/4,
+// RUN_FULL-gated — needs a reachable text-generation backend (TEXT) for case 2/4,
 // and the harness's internal X-Service-Token callback + HARNESS_SERVICE_TOKEN
 // for case 5/6. SKIPPED unless TASK711_E2E_FULL=1, so CI never reports a
 // fabricated pass (mirrors harness-gate.spec.ts's RUN_FULL gating).
@@ -265,7 +265,7 @@ const RUN_FULL = process.env.TASK711_E2E_FULL === '1';
 const SERVICE_TOKEN = process.env.HARNESS_SERVICE_TOKEN ?? '';
 
 test.describe('TASK-711 — full lifecycle walk (RUN_FULL)', () => {
-  test.skip(!RUN_FULL, 'requires a reachable SMR/text backend; set TASK711_E2E_FULL=1');
+  test.skip(!RUN_FULL, 'requires a reachable TEXT/text backend; set TASK711_E2E_FULL=1');
 
   let doctorToken: string;
 

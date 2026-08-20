@@ -40,7 +40,7 @@ export abstract class IDnaWritingStyleService {
   /**
    * The doctor's DECRYPTED DNA writing-style text, or `null` when DNA
    * style is disabled (tenant AND doctor gate), the doctor has no report/style,
-   * or the secrets backend is unwired. Reused by the v1-compat SMR path to inject
+   * or the secrets backend is unwired. Reused by the v1-compat TEXT path to inject
    * the doctor's style into the summary/pre-summary prompt. Never throws on an
    * absent/disabled style — DNA is additive.
    *

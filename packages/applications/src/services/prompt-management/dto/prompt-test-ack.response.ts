@@ -7,7 +7,7 @@ import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
  * of generation reached the browser as a CDN 524). The route now returns in well
  * under a second:
  *
- *  - `mode: 'stream'` — SMR accepted a streaming generation job. Open
+ *  - `mode: 'stream'` — TEXT accepted a streaming generation job. Open
  *    `streamUrl` (SSE, single-use stream ticket, `text_task:<taskId>` scope) to
  *    render tokens, then call `POST :id/test/finalize` with the `taskId` to
  *    score and persist the result.
@@ -31,10 +31,10 @@ export class PromptTestAckResponse {
   @ApiProperty({ description: 'Resolved LLM model for the run', example: 'gpt-4o' })
   model: string;
 
-  @ApiProperty({ description: 'The fully interpolated prompt that was (or would be) sent to SMR' })
+  @ApiProperty({ description: 'The fully interpolated prompt that was (or would be) sent to TEXT' })
   assembledPrompt: string;
 
-  @ApiPropertyOptional({ description: 'SMR generation task id (stream mode only)', example: '0f1c…' })
+  @ApiPropertyOptional({ description: 'TEXT generation task id (stream mode only)', example: '0f1c…' })
   taskId?: string;
 
   @ApiPropertyOptional({

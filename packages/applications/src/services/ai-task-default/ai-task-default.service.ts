@@ -37,7 +37,7 @@ import { AiTaskDefaultResponse, EffectiveAiTaskDefaultResponse, UpsertAiTaskDefa
  * boundary on a key the caller can already read, not a cross-tenant existence
  * probe.
  *
- * `smr.*` and, as of TASK-735 Phase 0 (owner decision 2026-08-16),
+ * `text.*` and, as of TASK-735 Phase 0 (owner decision 2026-08-16),
  * `guardrail.*` are tenant-admin configurable: those keys honour per-tenant
  * override rows at read time and accept tenant writes. `guardrail.*` carries
  * an ADDITIONAL platform floor on top of that (D2, tighten-only): a write
@@ -105,7 +105,7 @@ export class AiTaskDefaultService extends BaseService implements IAiTaskDefaultS
     this.assertKnownTaskKey(taskKey);
 
     // GOVERNANCE: nlp / harness model routing is exclusively super-admin-managed
-    // (smr.* and, since TASK-735, guardrail.* are tenant-configurable — see the
+    // (text.* and, since TASK-735, guardrail.* are tenant-configurable — see the
     // class doc comment). A privilege rule — 403, not 404 (the caller can
     // already READ these keys; only writes are gated).
     if (SUPER_ADMIN_ONLY_TASK_PREFIXES.some((p) => taskKey.startsWith(p)) && !isSuperAdmin(this.requestUser)) {

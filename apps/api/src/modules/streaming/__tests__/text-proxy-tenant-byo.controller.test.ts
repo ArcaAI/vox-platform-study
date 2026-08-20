@@ -1,7 +1,7 @@
 /**
- * SMR proxy — tenant BYO credential injection.
+ * TEXT proxy — tenant BYO credential injection.
  *
- * Sibling of `smr-proxy-runtime-profile.controller.test.ts`, kept separate so
+ * Sibling of `text-proxy-runtime-profile.controller.test.ts`, kept separate so
  * the credential-injection contract reads as one unit.
  *
  * The contract:
@@ -9,7 +9,7 @@
  *      (azure/bedrock) AND the tenant has an enabled credential. A self-host
  *      provider never carries `provider_overrides`.
  *   2. Only the MATCHING provider's entry is forwarded — a tenant with both
- *      azure and bedrock credentials does not leak the unused one to SMR.
+ *      azure and bedrock credentials does not leak the unused one to TEXT.
  *   3. FAIL OPEN: a throwing resolver forwards the request WITHOUT overrides
  *      (platform/env credentials serve it) and logs a warn — while the
  *      model-IDENTITY path stays FAIL CLOSED and still rethrows.
@@ -71,7 +71,7 @@ const forwardedBody = (http: ReturnType<typeof build>['http']) => http.axiosRef.
 
 beforeEach(() => vi.clearAllMocks());
 
-describe('SMR proxy — tenant BYO credential injection', () => {
+describe('TEXT proxy — tenant BYO credential injection', () => {
   it('folds the tenant azure credential into the forwarded body', async () => {
     const { ctrl, http } = build({
       overrides: {
@@ -137,7 +137,7 @@ describe('SMR proxy — tenant BYO credential injection', () => {
     expect(forwardedBody(http)).not.toHaveProperty('provider_overrides');
   });
 
-  // A SUPPRESSED platform tier is REPORTED, not degraded into SMR's
+  // A SUPPRESSED platform tier is REPORTED, not degraded into TEXT's
   // generic missing-credential 503. Both errors are raised before dispatch, so
   // no vendor request and no usage event is produced.
   it('raises the 409 veto instead of dispatching, when the tenant disabled this provider', async () => {
@@ -155,7 +155,7 @@ describe('SMR proxy — tenant BYO credential injection', () => {
   });
 
   it('does NOT convert an unconfigured provider into a policy error — that stays the downstream 503', async () => {
-    // Nothing suppressed: the body is byte-identical to today's and SMR decides.
+    // Nothing suppressed: the body is byte-identical to today's and TEXT decides.
     const { ctrl, http } = build({ overrides: {} });
     await expect(ctrl.generate({ prompt: 'p', stream: false } as any)).resolves.toBeDefined();
     expect(forwardedBody(http)).not.toHaveProperty('provider_overrides');

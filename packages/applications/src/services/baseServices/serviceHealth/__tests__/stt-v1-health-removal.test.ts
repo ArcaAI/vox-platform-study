@@ -63,14 +63,14 @@ describe('STT v1 Health Check Removal (Phase 1)', () => {
   });
 
   describe('service list after STT v1 removal', () => {
-    it('should monitor SMR, NLP, STT v2, Guardrail, Harness (not STT v1)', async () => {
+    it('should monitor TEXT, NLP, STT v2, Guardrail, Harness (not STT v1)', async () => {
       mockRedisInstance.lrange.mockResolvedValue([]);
 
       const result = await service.getUptime();
 
       const serviceNames = Object.keys(result.services);
       expect(serviceNames).toHaveLength(6);
-      expect(serviceNames).toContain('smr');
+      expect(serviceNames).toContain('text');
       expect(serviceNames).toContain('nlp');
       expect(serviceNames).toContain('stt');
       expect(serviceNames).toContain('tts');
@@ -87,7 +87,7 @@ describe('STT v1 Health Check Removal (Phase 1)', () => {
 
     it('should still return uptime for Summarization', async () => {
       mockRedisInstance.lrange.mockResolvedValue([]);
-      const result = await service.getServiceUptime('smr');
+      const result = await service.getServiceUptime('text');
       expect(result).not.toBeNull();
       expect(result!.status).toBe('unknown');
     });
@@ -140,7 +140,7 @@ describe('STT v1 Health Check Removal (Phase 1)', () => {
       expect(mockFetch).not.toHaveBeenCalled();
     });
 
-    // Sessions expose an `stt` (STT v2) key alongside smr/nlp/guardrail/
+    // Sessions expose an `stt` (STT v2) key alongside text/nlp/guardrail/
     // harness for surface consistency. This does NOT reintroduce the
     // removed STT v1 *polling* (see "should not make any fetch calls"); the
     // count is a static placeholder produced without any network call.
@@ -155,9 +155,9 @@ describe('STT v1 Health Check Removal (Phase 1)', () => {
       expect(result.totalUsers).toBe(0);
     });
 
-    it('should include smr, guardrail and harness with zero active counts', async () => {
+    it('should include text, guardrail and harness with zero active counts', async () => {
       const result = await service.getSessionCounts();
-      expect(result.services.smr.active).toBe(0);
+      expect(result.services.text.active).toBe(0);
       expect(result.services.guardrail.active).toBe(0);
       expect(result.services.harness.active).toBe(0);
     });

@@ -4,7 +4,7 @@
  * Locks the conformance scorecard of
  * `docs/implementation/TASK-635-Summarization-Agent-Conformance/README.md`.
  * Sibling file (COMPAT / API layer — R-C1/R-C2/R-C3):
- *   apps/api/src/modules/smr-compat/__tests__/task-635-conformance.test.ts
+ *   apps/api/src/modules/text-compat/__tests__/task-635-conformance.test.ts
  *
  * | Requirement | Scorecard row | Covered here |
  * |---|---|---|
@@ -41,7 +41,7 @@
  *   - per-field validation semantics (types, ranges, UUID) →
  *     `prompt-management/__tests__/test-prompt-template.request.test.ts`
  *   - caller-supplied provider/model forwarded verbatim + the
- *     `text.test` → `text.finalize` cascade → `prompt-management/__tests__/smr-test-routing.test.ts`
+ *     `text.test` → `text.finalize` cascade → `prompt-management/__tests__/text-test-routing.test.ts`
  *   - dry-run persistence/OCC neutrality, `versionNumber` snapshot targeting,
  *     `goldenCaseId` XOR/404 → `prompt-management/__tests__/prompt-management.service.test.ts`
  *     and the e2e spec `apps/api/tests/e2e/task-635-prompt-test-bench.spec.ts`

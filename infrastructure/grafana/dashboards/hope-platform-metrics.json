@@ -12,7 +12,7 @@
       "title": "Running model instances (total)",
       "type": "stat",
       "datasource": { "type": "prometheus", "uid": "hope-prometheus" },
-      "description": "sum(model_running_instances) across stt/smr/nlp/guardrail. Feeds the TASK-386 platform 'running models' tile.",
+      "description": "sum(model_running_instances) across stt/text/nlp/guardrail. Feeds the TASK-386 platform 'running models' tile.",
       "targets": [
         { "expr": "sum(model_running_instances)", "legendFormat": "running", "refId": "A" }
       ],
@@ -30,7 +30,7 @@
       "title": "Scrape targets UP (by job)",
       "type": "timeseries",
       "datasource": { "type": "prometheus", "uid": "hope-prometheus" },
-      "description": "1 = target UP, 0 = DOWN. Mirrors Prometheus /targets. Python-service jobs stay DOWN until stt/smr/nlp/guardrail run on the host.",
+      "description": "1 = target UP, 0 = DOWN. Mirrors Prometheus /targets. Python-service jobs stay DOWN until stt/text/nlp/guardrail run on the host.",
       "targets": [
         { "expr": "up", "legendFormat": "{{job}}", "refId": "A" }
       ],
@@ -96,7 +96,7 @@
       "title": "HTTP request rate (req/s by service)",
       "type": "timeseries",
       "datasource": { "type": "prometheus", "uid": "hope-prometheus" },
-      "description": "sum by (service) (rate(http_requests_total[5m])). Covers api-gateway/stt/smr/harness/guardrail/nlp — all Python/NestJS services now emit un-namespaced http_requests_total with a service label (added at scrape time for the Python services).",
+      "description": "sum by (service) (rate(http_requests_total[5m])). Covers api-gateway/stt/text/harness/guardrail/nlp — all Python/NestJS services now emit un-namespaced http_requests_total with a service label (added at scrape time for the Python services).",
       "targets": [
         { "expr": "sum by (service) (rate(http_requests_total[5m]))", "legendFormat": "{{service}}", "refId": "A" }
       ],

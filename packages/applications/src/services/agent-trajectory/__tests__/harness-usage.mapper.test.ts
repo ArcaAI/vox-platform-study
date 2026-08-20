@@ -118,7 +118,7 @@ describe('buildHarnessUsageEvent', () => {
     expect(buildHarnessUsageEvent(step)).toBeNull();
   });
 
-  it('canonicalizes SMR-internal provider spellings onto the ledger vocabulary (azure_openai -> azure)', () => {
+  it('canonicalizes TEXT-internal provider spellings onto the ledger vocabulary (azure_openai -> azure)', () => {
     const step = makeStep({ stats: { prompt_tokens: 10, predicted_tokens: 5, provider: 'azure_openai', model: 'gpt-4o' } });
     const event = buildHarnessUsageEvent(step);
     expect(event!.common.provider).toBe('azure');

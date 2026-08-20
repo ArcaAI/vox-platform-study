@@ -8,7 +8,7 @@
  * {@link ResolvedToolPlan} (C3) — not the code — decides what runs.
  *
  * WHAT THIS IS NOT (OD-5(b), not (a)). There is NO model-initiated tool-calling
- * loop here, and no `tools` field is added to the SMR payload. A live flush must
+ * loop here, and no `tools` field is added to the TEXT payload. A live flush must
  * hold a ~5s budget; a model-driven loop costs ≥1 extra serial LLM round-trip
  * per call with an unbounded worst case. The sanctioned path to OD-5(a)
  * later is {@link LiveToolExecutor.describe} + {@link LiveToolRegistry.describeAll}:
@@ -195,7 +195,7 @@ export class NlpExtractionTool implements ExtractionToolExecutor {
     // guardrail executor below already does it. This call omitted the header,
     // so wherever NLP enforces a token (`NLP_SERVICE_TOKEN` non-empty) entity
     // extraction was rejected and the live note silently lost its highlights —
-    // the NLP twin of the SMR defect in `callText`.
+    // the NLP twin of the TEXT defect in `callText`.
     // D-D: the ONE shared `INTERNAL_ACCESS_TOKEN`, `NLP_SERVICE_TOKEN` only as the
     // migration fallback. TASK-737: `X-Tenant-Id` is MANDATORY on this hop — a live
     // flush always has a tenant, so there is no tenant-less branch to declare here.
@@ -443,7 +443,7 @@ export class LiveToolRegistry {
    * OD-5(a) seam. Static descriptors for every known tool — constructs nothing,
    * performs no I/O. When model-initiated tool-calling is eventually built, this
    * is what it serializes (filtered by the session's plan); today nothing in the
-   * live path calls it, and no `tools` field is sent to SMR.
+   * live path calls it, and no `tools` field is sent to TEXT.
    */
   describeAll(plan?: ResolvedToolPlan): LiveToolDescriptor[] {
     return LIVE_TOOL_KEYS.filter((key) => (plan ? this.isEnabled(plan, key) : true)).map((key) => DESCRIPTORS[key]);

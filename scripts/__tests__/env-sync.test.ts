@@ -192,8 +192,8 @@ describe('env:sync — turbo.json#globalEnv', () => {
 describe('env:sync — dead keys stay dead', () => {
   // Verified 2026-07-25: no reader in any TS/Python/shell/compose source.
   //   TENANT_IDP_ENABLED        — no reader at all (see feature-flags.descriptors.ts)
-  //   AZURE_OPENAI_API_KEY      — only an SMR e2e conftest fixture; the real key is TEXT_AZURE_API_KEY
-  //   TEXT_OPENAI_COMPAT_ENABLED — SMR gates providers by config presence, it has no `enabled` field
+  //   AZURE_OPENAI_API_KEY      — only an TEXT e2e conftest fixture; the real key is TEXT_AZURE_API_KEY
+  //   TEXT_OPENAI_COMPAT_ENABLED — TEXT gates providers by config presence, it has no `enabled` field
   //   TEXT_V2_* / STT_V2_URL     — the retired rename shims
   const DEAD = [
     'TENANT_IDP_ENABLED',

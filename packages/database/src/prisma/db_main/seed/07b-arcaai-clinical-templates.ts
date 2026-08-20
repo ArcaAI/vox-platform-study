@@ -217,7 +217,7 @@ interface ClinicalTemplateSpec {
  * body. Declared here (not imported) because `packages/database` must not depend
  * on `apps/api`; the runtime substituter that consumes them is
  * `renderPreSummaryTemplate` / `PRE_SUMMARY_TEMPLATE_VARIABLES` in
- * apps/api/src/modules/smr-compat/summary-prompt.builder.ts. A test there asserts
+ * apps/api/src/modules/text-compat/summary-prompt.builder.ts. A test there asserts
  * the declared set equals the placeholders actually present in the body, so the
  * two lists cannot silently diverge.
  */
@@ -241,7 +241,7 @@ const SUMMARY_SPECS: ClinicalTemplateSpec[] = [
     content: SURGERY_NEW_REFERRAL_CONTENT,
     departmentId: SEED_DEPARTMENT_IDS.SURG_ARCAAI,
     scope: 'DEPARTMENT_DEFAULT',
-    tags: ['arcaai', 'clinical', 'surgery', 'new_referral', 'smr-v1'],
+    tags: ['arcaai', 'clinical', 'surgery', 'new_referral', 'text-v1'],
   },
   {
     id: ARCAAI_CLINICAL_TEMPLATE_IDS.SURGERY_FOLLOWUP,
@@ -250,7 +250,7 @@ const SUMMARY_SPECS: ClinicalTemplateSpec[] = [
     content: SURGERY_FOLLOWUP_CONTENT,
     departmentId: SEED_DEPARTMENT_IDS.SURG_ARCAAI,
     scope: 'DEPARTMENT_DEFAULT',
-    tags: ['arcaai', 'clinical', 'surgery', 'followup', 'smr-v1'],
+    tags: ['arcaai', 'clinical', 'surgery', 'followup', 'text-v1'],
   },
   {
     id: ARCAAI_CLINICAL_TEMPLATE_IDS.MEDICINE_NEW_REFERRAL,
@@ -259,7 +259,7 @@ const SUMMARY_SPECS: ClinicalTemplateSpec[] = [
     content: MEDICINE_NEW_REFERRAL_CONTENT,
     departmentId: SEED_DEPARTMENT_IDS.GEN_ARCAAI,
     scope: 'DEPARTMENT_DEFAULT',
-    tags: ['arcaai', 'clinical', 'medicine', 'new_referral', 'smr-v1'],
+    tags: ['arcaai', 'clinical', 'medicine', 'new_referral', 'text-v1'],
   },
   {
     id: ARCAAI_CLINICAL_TEMPLATE_IDS.MEDICINE_FOLLOWUP,
@@ -268,7 +268,7 @@ const SUMMARY_SPECS: ClinicalTemplateSpec[] = [
     content: MEDICINE_FOLLOWUP_CONTENT,
     departmentId: SEED_DEPARTMENT_IDS.GEN_ARCAAI,
     scope: 'DEPARTMENT_DEFAULT',
-    tags: ['arcaai', 'clinical', 'medicine', 'followup', 'smr-v1'],
+    tags: ['arcaai', 'clinical', 'medicine', 'followup', 'text-v1'],
   },
   {
     id: ARCAAI_CLINICAL_TEMPLATE_IDS.RHEUMATOLOGY_NEW_REFERRAL,
@@ -277,7 +277,7 @@ const SUMMARY_SPECS: ClinicalTemplateSpec[] = [
     content: RHEUMATOLOGY_NEW_REFERRAL_CONTENT,
     departmentId: SEED_DEPARTMENT_IDS.RHEUM_ARCAAI,
     scope: 'DEPARTMENT_DEFAULT',
-    tags: ['arcaai', 'clinical', 'rheumatology', 'new_referral', 'smr-v1'],
+    tags: ['arcaai', 'clinical', 'rheumatology', 'new_referral', 'text-v1'],
   },
   {
     id: ARCAAI_CLINICAL_TEMPLATE_IDS.RHEUMATOLOGY_FOLLOWUP,
@@ -286,7 +286,7 @@ const SUMMARY_SPECS: ClinicalTemplateSpec[] = [
     content: RHEUMATOLOGY_FOLLOWUP_CONTENT,
     departmentId: SEED_DEPARTMENT_IDS.RHEUM_ARCAAI,
     scope: 'DEPARTMENT_DEFAULT',
-    tags: ['arcaai', 'clinical', 'rheumatology', 'followup', 'smr-v1'],
+    tags: ['arcaai', 'clinical', 'rheumatology', 'followup', 'text-v1'],
   },
   {
     id: ARCAAI_CLINICAL_TEMPLATE_IDS.NEUROLOGY_NEW_REFERRAL,
@@ -295,7 +295,7 @@ const SUMMARY_SPECS: ClinicalTemplateSpec[] = [
     content: NEUROLOGY_NEW_REFERRAL_CONTENT,
     departmentId: SEED_DEPARTMENT_IDS.NEUR_ARCAAI,
     scope: 'DEPARTMENT_DEFAULT',
-    tags: ['arcaai', 'clinical', 'neurology', 'new_referral', 'smr-v1'],
+    tags: ['arcaai', 'clinical', 'neurology', 'new_referral', 'text-v1'],
   },
   {
     id: ARCAAI_CLINICAL_TEMPLATE_IDS.NEUROLOGY_FOLLOWUP,
@@ -304,7 +304,7 @@ const SUMMARY_SPECS: ClinicalTemplateSpec[] = [
     content: NEUROLOGY_FOLLOWUP_CONTENT,
     departmentId: SEED_DEPARTMENT_IDS.NEUR_ARCAAI,
     scope: 'DEPARTMENT_DEFAULT',
-    tags: ['arcaai', 'clinical', 'neurology', 'followup', 'smr-v1'],
+    tags: ['arcaai', 'clinical', 'neurology', 'followup', 'text-v1'],
   },
   {
     id: ARCAAI_CLINICAL_TEMPLATE_IDS.ORTHOPEDICS_NEW_REFERRAL,
@@ -313,7 +313,7 @@ const SUMMARY_SPECS: ClinicalTemplateSpec[] = [
     content: ORTHOPEDICS_NEW_REFERRAL_CONTENT,
     departmentId: SEED_DEPARTMENT_IDS.ORTH_ARCAAI,
     scope: 'DEPARTMENT_DEFAULT',
-    tags: ['arcaai', 'clinical', 'orthopedics', 'new_referral', 'smr-v1'],
+    tags: ['arcaai', 'clinical', 'orthopedics', 'new_referral', 'text-v1'],
   },
   {
     id: ARCAAI_CLINICAL_TEMPLATE_IDS.ORTHOPEDICS_REVIEW,
@@ -322,7 +322,7 @@ const SUMMARY_SPECS: ClinicalTemplateSpec[] = [
     content: ORTHOPEDICS_REVIEW_CONTENT,
     departmentId: SEED_DEPARTMENT_IDS.ORTH_ARCAAI,
     scope: 'DEPARTMENT_DEFAULT',
-    tags: ['arcaai', 'clinical', 'orthopedics', 'review', 'smr-v1'],
+    tags: ['arcaai', 'clinical', 'orthopedics', 'review', 'text-v1'],
   },
   {
     id: ARCAAI_CLINICAL_TEMPLATE_IDS.HEMATOLOGY_NEW_REFERRAL,
@@ -331,7 +331,7 @@ const SUMMARY_SPECS: ClinicalTemplateSpec[] = [
     content: HEMATOLOGY_NEW_REFERRAL_CONTENT,
     departmentId: SEED_DEPARTMENT_IDS.HEME_ARCAAI,
     scope: 'DEPARTMENT_DEFAULT',
-    tags: ['arcaai', 'clinical', 'hematology', 'new_referral', 'smr-v1'],
+    tags: ['arcaai', 'clinical', 'hematology', 'new_referral', 'text-v1'],
   },
   {
     id: ARCAAI_CLINICAL_TEMPLATE_IDS.HEMATOLOGY_REVISIT,
@@ -340,7 +340,7 @@ const SUMMARY_SPECS: ClinicalTemplateSpec[] = [
     content: HEMATOLOGY_REVISIT_CONTENT,
     departmentId: SEED_DEPARTMENT_IDS.HEME_ARCAAI,
     scope: 'DEPARTMENT_DEFAULT',
-    tags: ['arcaai', 'clinical', 'hematology', 'revisit', 'smr-v1'],
+    tags: ['arcaai', 'clinical', 'hematology', 'revisit', 'text-v1'],
   },
   {
     id: ARCAAI_CLINICAL_TEMPLATE_IDS.BREAST_ENDOCRINE_NEW_REFERRAL,
@@ -349,7 +349,7 @@ const SUMMARY_SPECS: ClinicalTemplateSpec[] = [
     content: BREAST_ENDOCRINE_NEW_REFERRAL_CONTENT,
     departmentId: SEED_DEPARTMENT_IDS.BREN_ARCAAI,
     scope: 'DEPARTMENT_DEFAULT',
-    tags: ['arcaai', 'clinical', 'breast_endocrine', 'new_referral', 'smr-v1'],
+    tags: ['arcaai', 'clinical', 'breast_endocrine', 'new_referral', 'text-v1'],
   },
   {
     id: ARCAAI_CLINICAL_TEMPLATE_IDS.BREAST_ENDOCRINE_FOLLOWUP,
@@ -358,7 +358,7 @@ const SUMMARY_SPECS: ClinicalTemplateSpec[] = [
     content: BREAST_ENDOCRINE_FOLLOWUP_CONTENT,
     departmentId: SEED_DEPARTMENT_IDS.BREN_ARCAAI,
     scope: 'DEPARTMENT_DEFAULT',
-    tags: ['arcaai', 'clinical', 'breast_endocrine', 'followup', 'smr-v1'],
+    tags: ['arcaai', 'clinical', 'breast_endocrine', 'followup', 'text-v1'],
   },
   {
     id: ARCAAI_CLINICAL_TEMPLATE_IDS.DERMATOLOGY_NEW_REFERRAL,
@@ -367,7 +367,7 @@ const SUMMARY_SPECS: ClinicalTemplateSpec[] = [
     content: DERMATOLOGY_NEW_REFERRAL_CONTENT,
     departmentId: SEED_DEPARTMENT_IDS.DERM_ARCAAI,
     scope: 'DEPARTMENT_DEFAULT',
-    tags: ['arcaai', 'clinical', 'dermatology', 'new_referral', 'smr-v1'],
+    tags: ['arcaai', 'clinical', 'dermatology', 'new_referral', 'text-v1'],
   },
   {
     id: ARCAAI_CLINICAL_TEMPLATE_IDS.DERMATOLOGY_FOLLOWUP,
@@ -376,7 +376,7 @@ const SUMMARY_SPECS: ClinicalTemplateSpec[] = [
     content: DERMATOLOGY_FOLLOWUP_CONTENT,
     departmentId: SEED_DEPARTMENT_IDS.DERM_ARCAAI,
     scope: 'DEPARTMENT_DEFAULT',
-    tags: ['arcaai', 'clinical', 'dermatology', 'followup', 'smr-v1'],
+    tags: ['arcaai', 'clinical', 'dermatology', 'followup', 'text-v1'],
   },
   {
     id: ARCAAI_CLINICAL_TEMPLATE_IDS.DIETETICS_NEW_REFERRAL,
@@ -385,7 +385,7 @@ const SUMMARY_SPECS: ClinicalTemplateSpec[] = [
     content: DIETETICS_NEW_REFERRAL_CONTENT,
     departmentId: SEED_DEPARTMENT_IDS.DIET_ARCAAI,
     scope: 'DEPARTMENT_DEFAULT',
-    tags: ['arcaai', 'clinical', 'dietetics', 'new_referral', 'smr-v1'],
+    tags: ['arcaai', 'clinical', 'dietetics', 'new_referral', 'text-v1'],
   },
   {
     id: ARCAAI_CLINICAL_TEMPLATE_IDS.DIETETICS_FOLLOWUP,
@@ -394,7 +394,7 @@ const SUMMARY_SPECS: ClinicalTemplateSpec[] = [
     content: DIETETICS_FOLLOWUP_CONTENT,
     departmentId: SEED_DEPARTMENT_IDS.DIET_ARCAAI,
     scope: 'DEPARTMENT_DEFAULT',
-    tags: ['arcaai', 'clinical', 'dietetics', 'followup', 'smr-v1'],
+    tags: ['arcaai', 'clinical', 'dietetics', 'followup', 'text-v1'],
   },
   {
     id: ARCAAI_CLINICAL_TEMPLATE_IDS.NEPHROLOGY_NEW_REFERRAL,
@@ -403,7 +403,7 @@ const SUMMARY_SPECS: ClinicalTemplateSpec[] = [
     content: NEPHROLOGY_NEW_REFERRAL_CONTENT,
     departmentId: SEED_DEPARTMENT_IDS.NEPH_ARCAAI,
     scope: 'DEPARTMENT_DEFAULT',
-    tags: ['arcaai', 'clinical', 'nephrology', 'new_referral', 'smr-v1'],
+    tags: ['arcaai', 'clinical', 'nephrology', 'new_referral', 'text-v1'],
   },
   {
     id: ARCAAI_CLINICAL_TEMPLATE_IDS.NEPHROLOGY_FOLLOWUP,
@@ -412,7 +412,7 @@ const SUMMARY_SPECS: ClinicalTemplateSpec[] = [
     content: NEPHROLOGY_FOLLOWUP_CONTENT,
     departmentId: SEED_DEPARTMENT_IDS.NEPH_ARCAAI,
     scope: 'DEPARTMENT_DEFAULT',
-    tags: ['arcaai', 'clinical', 'nephrology', 'followup', 'smr-v1'],
+    tags: ['arcaai', 'clinical', 'nephrology', 'followup', 'text-v1'],
   },
   {
     id: ARCAAI_CLINICAL_TEMPLATE_IDS.SURGICAL_ONCOLOGY_NEW_REFERRAL,
@@ -421,7 +421,7 @@ const SUMMARY_SPECS: ClinicalTemplateSpec[] = [
     content: SURGICAL_ONCOLOGY_NEW_REFERRAL_CONTENT,
     departmentId: SEED_DEPARTMENT_IDS.SONC_ARCAAI,
     scope: 'DEPARTMENT_DEFAULT',
-    tags: ['arcaai', 'clinical', 'surgical_oncology', 'new_referral', 'smr-v1'],
+    tags: ['arcaai', 'clinical', 'surgical_oncology', 'new_referral', 'text-v1'],
   },
   {
     id: ARCAAI_CLINICAL_TEMPLATE_IDS.SURGICAL_ONCOLOGY_FOLLOWUP,
@@ -430,7 +430,7 @@ const SUMMARY_SPECS: ClinicalTemplateSpec[] = [
     content: SURGICAL_ONCOLOGY_FOLLOWUP_CONTENT,
     departmentId: SEED_DEPARTMENT_IDS.SONC_ARCAAI,
     scope: 'DEPARTMENT_DEFAULT',
-    tags: ['arcaai', 'clinical', 'surgical_oncology', 'followup', 'smr-v1'],
+    tags: ['arcaai', 'clinical', 'surgical_oncology', 'followup', 'text-v1'],
   },
 ];
 
@@ -449,7 +449,7 @@ const PRE_SUMMARY_SPEC: ClinicalTemplateSpec = {
   content: PRE_SUMMARY_CONTENT,
   departmentId: null,
   scope: 'TENANT_DEFAULT',
-  tags: ['arcaai', 'clinical', 'pre-summary', 'smr-v1'],
+  tags: ['arcaai', 'clinical', 'pre-summary', 'text-v1'],
   variables: [...PRE_SUMMARY_VARIABLES],
 };
 
@@ -592,7 +592,7 @@ const contentFor = (spec: ClinicalTemplateSpec, versionNumber: number): string =
 const ARCAAI_CLINICAL_SEEDED_VERSIONS = [1, 2, 3] as const;
 
 const VERSION_CHANGE_REASON: Record<(typeof ARCAAI_CLINICAL_SEEDED_VERSIONS)[number], string> = {
-  1: 'Initial version (ported from HOPE v1 SMR prompt library)',
+  1: 'Initial version (ported from HOPE v1 TEXT prompt library)',
   2: 'v2 hardened prompt corpus — source-of-truth protocol, per-heading SOURCE lines, dated borrowed facts, gated ASR terminology repair (names only)',
   3: 'v3 corpus — pre-summary rebuilt (provenance vs event dates, deduplicated diagnoses, status-post interventions, dose-change visibility, English-only), RULE 6 ASR name repair required and annotated, Hematology re-worked against the department templates',
 };

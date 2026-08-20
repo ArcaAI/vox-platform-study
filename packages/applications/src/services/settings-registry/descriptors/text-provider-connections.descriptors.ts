@@ -1,4 +1,4 @@
-// SMR cloud-provider CONNECTION config — tier `env`.
+// TEXT cloud-provider CONNECTION config — tier `env`.
 //
 // The three cloud LLM providers (OpenAI / Anthropic / Google
 // Vertex) each carry a small PLATFORM-level connection surface in
@@ -17,7 +17,7 @@
 //   - `failMode`            DECLARATIVE, not behavioural (env is not a control
 //                           plane): `open-to-default` — the reader has a code
 //                           fallback, transcribed verbatim into `default`.
-//   - `default`            the SMR config class's ACTUAL fallback (config.py).
+//   - `default`            the TEXT config class's ACTUAL fallback (config.py).
 //
 // The CREDENTIALS themselves (`TEXT_OPENAI_API_KEY`,
 // `TEXT_ANTHROPIC_API_KEY`, `TEXT_AZURE_API_KEY`) are BYOK-only and NO LONGER
@@ -29,7 +29,7 @@
 
 import { EDITABLE_BY_NONE, SettingDescriptor } from '../registry.types';
 
-/** Shared shape for an SMR cloud-provider connection-config variable. */
+/** Shared shape for an TEXT cloud-provider connection-config variable. */
 function textProviderEnv(key: string, label: string, description: string, defaultValue?: unknown): SettingDescriptor {
   return {
     key,
@@ -50,18 +50,18 @@ export const TEXT_PROVIDER_CONNECTION_SETTINGS: SettingDescriptor[] = [
   // ── OpenAI (TEXT_OPENAI_) ──────────────────────────────────────────────────
   textProviderEnv(
     'textOpenai.baseUrl',
-    'SMR OpenAI base URL',
-    'OpenAI API base URL for SMR’s platform-fallback OpenAI client (`OpenAIConfig.base_url`). Override for an OpenAI-compatible gateway; a tenant BYO connection may override it per request.',
+    'TEXT OpenAI base URL',
+    'OpenAI API base URL for TEXT’s platform-fallback OpenAI client (`OpenAIConfig.base_url`). Override for an OpenAI-compatible gateway; a tenant BYO connection may override it per request.',
     'https://api.openai.com/v1',
   ),
   textProviderEnv(
     'textOpenai.organization',
-    'SMR OpenAI organization',
-    'Optional OpenAI organization id sent by SMR’s platform-fallback client (`OpenAIConfig.organization`). Unset ⇒ the account default organization.',
+    'TEXT OpenAI organization',
+    'Optional OpenAI organization id sent by TEXT’s platform-fallback client (`OpenAIConfig.organization`). Unset ⇒ the account default organization.',
   ),
   textProviderEnv(
     'textOpenai.defaultModel',
-    'SMR OpenAI default model',
+    'TEXT OpenAI default model',
     'Empty by design (TASK-579): provider/model SELECTION is fail-closed — `OpenAIConfig.default_model` has no compiled-in vendor value, and an unresolved model raises (`require_model()`) rather than being substituted. Informational only (providers listing).',
     '',
   ),
@@ -69,13 +69,13 @@ export const TEXT_PROVIDER_CONNECTION_SETTINGS: SettingDescriptor[] = [
   // ── Anthropic (TEXT_ANTHROPIC_) ────────────────────────────────────────────
   textProviderEnv(
     'textAnthropic.baseUrl',
-    'SMR Anthropic base URL',
-    'Anthropic API base URL for SMR’s platform-fallback client (`AnthropicConfig.base_url`). Empty ⇒ the SDK default (`https://api.anthropic.com`); a tenant BYO connection may override it per request.',
+    'TEXT Anthropic base URL',
+    'Anthropic API base URL for TEXT’s platform-fallback client (`AnthropicConfig.base_url`). Empty ⇒ the SDK default (`https://api.anthropic.com`); a tenant BYO connection may override it per request.',
     '',
   ),
   textProviderEnv(
     'textAnthropic.defaultModel',
-    'SMR Anthropic default model',
+    'TEXT Anthropic default model',
     'Empty by design (TASK-579): provider/model SELECTION is fail-closed — `AnthropicConfig.default_model` has no compiled-in vendor value, and an unresolved model raises (`require_model()`) rather than being substituted. Informational only (providers listing).',
     '',
   ),
@@ -83,19 +83,19 @@ export const TEXT_PROVIDER_CONNECTION_SETTINGS: SettingDescriptor[] = [
   // ── Google Vertex AI (TEXT_VERTEX_) ────────────────────────────────────────
   textProviderEnv(
     'textVertex.project',
-    'SMR Vertex project',
-    'GCP project id for SMR’s platform-fallback Vertex client (`VertexConfig.project`). Empty ⇒ no platform fallback (Vertex is then usable only via a tenant BYO service-account connection). A Vertex client is bound to a `(project, location)`; a tenant override supplies its own.',
+    'TEXT Vertex project',
+    'GCP project id for TEXT’s platform-fallback Vertex client (`VertexConfig.project`). Empty ⇒ no platform fallback (Vertex is then usable only via a tenant BYO service-account connection). A Vertex client is bound to a `(project, location)`; a tenant override supplies its own.',
     '',
   ),
   textProviderEnv(
     'textVertex.location',
-    'SMR Vertex location',
-    'GCP location/region for SMR’s platform-fallback Vertex client (`VertexConfig.location`), e.g. `us-central1`.',
+    'TEXT Vertex location',
+    'GCP location/region for TEXT’s platform-fallback Vertex client (`VertexConfig.location`), e.g. `us-central1`.',
     'us-central1',
   ),
   textProviderEnv(
     'textVertex.defaultModel',
-    'SMR Vertex default model',
+    'TEXT Vertex default model',
     'Empty by design (TASK-579): provider/model SELECTION is fail-closed — `VertexConfig.default_model` has no compiled-in vendor value, and an unresolved model raises (`require_model()`) rather than being substituted. Informational only (providers listing).',
     '',
   ),

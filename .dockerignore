@@ -46,7 +46,7 @@ coverage/
 # Turborepo
 .turbo
 
-# Python caches (for nlp/smr apps)
+# Python caches (for nlp/text apps)
 **/__pycache__
 **/*.pyc
 **/.venv

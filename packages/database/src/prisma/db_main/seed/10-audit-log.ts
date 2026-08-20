@@ -222,7 +222,7 @@ export const DEFAULT_AUDIT_LOGS = [
       outputTokens: 420,
     },
     previousData: {},
-    metadata: { source: 'smr-service', pipeline: 'summary-v2' },
+    metadata: { source: 'text-service', pipeline: 'summary-v2' },
     createdBy: '60000000-0000-0000-0000-000000000000',
     createdAt: new Date('2025-12-15T10:35:00Z'),
   },

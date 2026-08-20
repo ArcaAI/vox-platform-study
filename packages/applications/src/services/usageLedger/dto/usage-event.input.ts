@@ -6,7 +6,7 @@ import type { UsageOperation } from '../vocabulary';
 /**
  * `UsageEventInput` — THE FROZEN EMISSION CONTRACT.
  *
- * Every wave-1 emitter (STT, SMR/guardrail, TTS/NLP,
+ * Every wave-1 emitter (STT, TEXT/guardrail, TTS/NLP,
  * harness) builds this shape and nothing else. It is deliberately NOT a
  * class-validator DTO: it never crosses an HTTP boundary, it is constructed in
  * process by a service, and its validation is `recordUsage`'s own (which

@@ -28,7 +28,7 @@ import { NoteGenerationServiceModule } from '../note-generation/note-generation.
     ChainSummaryServiceModule, // Required for ComprehensiveSummaryProcessor
     PromptResolutionServiceModule, // Required for prompt fallback chain
     NoteGenerationServiceModule, // TASK-704 seam — harnessEnabled routing for ConsultationEventHandler
-    HarnessPolicyServiceModule, // SMR-selection resolver for the pre-summary/comprehensive processors
+    HarnessPolicyServiceModule, // TEXT-selection resolver for the pre-summary/comprehensive processors
     ConfigResolverModule, // Realtime cascade + preferred-prompt threading (handler + pre-summary/comprehensive processors)
     UsageLedgerServiceModule, // usage emission for ComprehensiveSummaryProcessor
     EventEmitterModule, // Required for @OnEvent handlers and EventEmitter2 injection

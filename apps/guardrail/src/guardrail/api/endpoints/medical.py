@@ -61,7 +61,7 @@ class MedicalValidationResponse(BaseModel):
     timestamp: str = Field(..., description="Validation timestamp")
     error: str | None = Field(None, description="Error message if validation failed")
     # Guardrail's OWN per-call LLM usage (``GuardrailCallStats``). Guardrail is a
-    # peer service — SMR posts to it directly, with no gateway in between — so
+    # peer service — TEXT posts to it directly, with no gateway in between — so
     # riding back on this response is the only path its token spend has to the
     # billing plane. ``None`` when no model was reached (disabled, error,
     # keyword fallback): a zero-token block would be indistinguishable from a

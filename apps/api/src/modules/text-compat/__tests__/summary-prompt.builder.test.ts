@@ -15,7 +15,7 @@ import {
 } from '../summary-prompt.builder';
 
 /**
- * v1 corpus extracted from the RUNNING v1 SMR pod — never
+ * v1 corpus extracted from the RUNNING v1 TEXT pod — never
  * retyped. `rendered-*.txt` were produced by Python's own `str.format()` over
  * `template.txt`, i.e. v1's interpolation engine, so they are goldens for what
  * v2 must assemble.

@@ -185,15 +185,15 @@ describe('env/vault-kv descriptor keys resolve to the real variable names', () =
     'minio.secretKey': 'MINIO_SECRET_KEY',
     's3.accessKey': 'S3_ACCESS_KEY',
     's3.secretKey': 'S3_SECRET_KEY',
-    // azure.speechKey / smrAzure.apiKey / smrOpenai.apiKey /
-    // smrAnthropic.apiKey / ttsSarvam.apiKey were removed from the registry — the
-    // STT/TTS/SMR cloud credentials are BYOK-only (db-secret / AiProviderConnection),
+    // azure.speechKey / textAzure.apiKey / textOpenai.apiKey /
+    // textAnthropic.apiKey / ttsSarvam.apiKey were removed from the registry — the
+    // STT/TTS/TEXT cloud credentials are BYOK-only (db-secret / AiProviderConnection),
     // no longer vault-kv platform secrets. azure.foundryApiKey stays (out of scope).
     'azure.foundryApiKey': 'AZURE_FOUNDRY_API_KEY',
     'harnessJudgeOpenaiCompat.apiKey': 'HARNESS_JUDGE_OPENAI_COMPAT_API_KEY',
     'harness.claimCheck.accessKey': 'HARNESS_CLAIM_CHECK_ACCESS_KEY',
     'harness.claimCheck.secretKey': 'HARNESS_CLAIM_CHECK_SECRET_KEY',
-    // ── env (SMR cloud-provider connection config) ──
+    // ── env (TEXT cloud-provider connection config) ──
     'textOpenai.baseUrl': 'TEXT_OPENAI_BASE_URL',
     'textOpenai.organization': 'TEXT_OPENAI_ORGANIZATION',
     'textOpenai.defaultModel': 'TEXT_OPENAI_DEFAULT_MODEL',

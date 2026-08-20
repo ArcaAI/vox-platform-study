@@ -111,7 +111,7 @@ for kv in \
   "MINIO_SECRET_KEY=minio_admin" \
   "S3_ACCESS_KEY=minio_admin" \
   "S3_SECRET_KEY=minio_admin" \
-  "TEXT_SERVICE_TOKEN=dev-smr-service-token-not-for-prod" \
+  "TEXT_SERVICE_TOKEN=dev-text-service-token-not-for-prod" \
   "MQTT_PASS=dev-mqtt-pass-not-for-prod" \
   "REDIS_PASS=dev-redis-pass-not-for-prod"; do
   k=${kv%%=*}
@@ -128,19 +128,19 @@ vault kv put secret/hope/HARNESS_SERVICE_TOKEN value="dev-harness-service-token-
 
 # InternalServiceTokenGuard's per-service secret map
 # (apps/api/src/modules/internal/internal-service-token.guard.ts) — the
-# INBOUND tokens smr/nlp/guardrail/tts/stt present as `X-Service-Token`
+# INBOUND tokens text/nlp/guardrail/tts/stt present as `X-Service-Token`
 # (stt: `X-Internal-Service-Key`) when THEY poll the gateway's
 # `/api/v1/internal/effective-config`. On-demand like HARNESS_SERVICE_TOKEN
 # above, not in the warmup loop.
 #
-# NAMING TRAP — smr only: the gateway's OUTBOUND credential to reach SMR is
-# `TEXT_SERVICE_TOKEN` (seeded in the warmup loop above); SMR's INBOUND token
+# NAMING TRAP — text only: the gateway's OUTBOUND credential to reach TEXT is
+# `TEXT_SERVICE_TOKEN` (seeded in the warmup loop above); TEXT's INBOUND token
 # for calling back into the gateway is the *differently named*
-# `TEXT_SERVICE_TOKEN` (SMR reads it as `settings.service_token` under the
+# `TEXT_SERVICE_TOKEN` (TEXT reads it as `settings.service_token` under the
 # `TEXT_` pydantic-settings prefix). The two secret names are distinct but
 # MUST hold the same value by convention, or the effective-config poll 401s —
 # kept equal to TEXT_SERVICE_TOKEN's value here for exactly that reason.
-vault kv put secret/hope/TEXT_SERVICE_TOKEN value="dev-smr-service-token-not-for-prod" >/dev/null
+vault kv put secret/hope/TEXT_SERVICE_TOKEN value="dev-text-service-token-not-for-prod" >/dev/null
 vault kv put secret/hope/NLP_SERVICE_TOKEN value="dev-nlp-service-token-not-for-prod" >/dev/null
 vault kv put secret/hope/GUARDRAIL_SERVICE_TOKEN value="dev-guardrail-service-token-not-for-prod" >/dev/null
 vault kv put secret/hope/TTS_SERVICE_TOKEN value="dev-tts-service-token-not-for-prod" >/dev/null

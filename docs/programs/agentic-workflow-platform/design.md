@@ -30,7 +30,7 @@ generator. Published workflows are products: bindable to REST/SSE/socket/webhook
 | D5 | Palette sequencing | **Summarization → STT → Consultation** — prove substrate/canvas/exposure on palettes with no clinical gates; consultation inherits a battle-tested engine. Plane 2 (containment + modernization) proceeds regardless |
 | D6 | CQRS | **CQRS-lite, scoped to the substrate** — commands+events on definition mutations, read models for runs/observability. No platform-wide rewrite |
 | D7 | Async transport | **Contract over broker** — one documented async task/event envelope over existing infra (Redis Streams, BullMQ, Temporal). Broker adoption only behind the contract, only if proven necessary |
-| D8 | Naming | `smr` → `text`; `SUPER_ADMIN` → `SUPER_ADMIN` (a **rename** — code already has one elevated role). Batched in one `naming-alignment` epic, executed early |
+| D8 | Naming | `text` → `text`; `SUPER_ADMIN` → `SUPER_ADMIN` (a **rename** — code already has one elevated role). Batched in one `naming-alignment` epic, executed early |
 
 ## Architecture — three planes plus exposure
 
@@ -107,7 +107,7 @@ end-to-end before any workflow is publicly exposed.**
 
 | Service | Program |
 |---|---|
-| `text` (ex-`smr`) | Control-plane proxy for text-generation + text-embedding across engines (vLLM, llama.cpp, LM Studio, Ollama) and BYOK cloud (Azure, Bedrock, …). Standard APIs + SSE + async contract |
+| `text` (ex-`text`) | Control-plane proxy for text-generation + text-embedding across engines (vLLM, llama.cpp, LM Studio, Ollama) and BYOK cloud (Azure, Bedrock, …). Standard APIs + SSE + async contract |
 | `stt` | Same control-plane pattern for realtime + batch ASR (whisper, nemo, cloud engines); per-tenant task instructions (config tables largely exist) |
 | `tts` | Five providers verified in-tree: **Azure Speech, Kokoro, Indic Parler, Indic F5, Sarvam** (the catalog's whisper/nemo/Transcribe list was a copy-paste from ASR). No batch/queue use case exists, so no worker pool is built for it (TASK-726) |
 | `nlp` | Adds sentiment / topic / intent / toxicity task types; may delegate generative NLP to `text`; per-tenant instructions |

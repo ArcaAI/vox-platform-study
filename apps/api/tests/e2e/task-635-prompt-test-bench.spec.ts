@@ -9,13 +9,13 @@
  *     `ETag`/`version` must be byte-identical to before the call.
  *   - `dryRun` omitted (default `false`): the run IS an OCC write — it
  *     persists `lastTest*` and bumps `_version` by exactly 1, mirroring PATCH.
- *   - `provider`/`model` (B1): caller-selected pair, forwarded to SMR
+ *   - `provider`/`model` (B1): caller-selected pair, forwarded to TEXT
  *     verbatim; validated against the ENABLED `AiModel` TEXT_GENERATION /
- *     SUMMARIZATION registry BEFORE the SMR call — an unknown/disabled pair
- *     is a deterministic `400`, independent of SMR reachability.
+ *     SUMMARIZATION registry BEFORE the TEXT call — an unknown/disabled pair
+ *     is a deterministic `400`, independent of TEXT reachability.
  *   - `versionNumber` (B2): tests the immutable pinned `PromptVersion`
  *     snapshot instead of the mutable draft; an out-of-range number is a
- *     deterministic `404` (the version lookup happens before the SMR call).
+ *     deterministic `404` (the version lookup happens before the TEXT call).
  *   - `goldenCaseId` (B3): mutually exclusive with `sampleInput` (`400` if
  *     both); a missing OR cross-tenant id is `404` — `loadGoldenCaseSampleInput`
  *     uses the SAME `!goldenCase || goldenCase.tenantId !== tenantId` branch
@@ -26,16 +26,16 @@
  *     and `taskId`/`streamUrl` in stream mode) WITHOUT awaiting the LLM. It no
  *     longer writes, so `@RequiresIfMatch()` moved to the new
  *     `POST :id/test/finalize`, where the OCC write lives. `dryRun: true` makes
- *     no SMR call at all, so it is fully deterministic now.
+ *     no TEXT call at all, so it is fully deterministic now.
  *
- * SMR dependency (house pattern from `agent-management-contract.spec.ts`,
+ * TEXT dependency (house pattern from `agent-management-contract.spec.ts`,
  * frame-33 test). Every SUCCESS branch of `testPromptTemplate` calls
  * `callTextGenerate` UNCONDITIONALLY — `dryRun` only skips the persistence
  * step, generation always runs — so any assertion that needs a `200/201`
  * body is generation-dependent. Deterministic gates (`400`/`404`/`428`, all
  * thrown BEFORE `callTextGenerate`) are asserted unconditionally; the
  * generation-dependent assertions are gated behind a `[200, 201]` check with
- * a `console.warn` fallback when the stack's SMR/text-generation service is
+ * a `console.warn` fallback when the stack's TEXT/text-generation service is
  * unreachable, so the spec stays green without a live LLM backend while
  * still proving the contract when one is available.
  *
@@ -96,7 +96,7 @@ const ifMatch = (token: string, version: number) => ({ ...auth(token), 'If-Match
 
 /**
  * `callTextGenerate` runs unconditionally on every non-error path, so a
- * `[200, 201]` response is the only proof the SMR/text-generation service
+ * `[200, 201]` response is the only proof the TEXT/text-generation service
  * answered. Anything else in a test stack without a live LLM backend is
  * treated as "generation unavailable" — logged, not failed — so the spec's
  * deterministic gates (asserted separately, before this call) stay the
@@ -105,7 +105,7 @@ const ifMatch = (token: string, version: number) => ({ ...auth(token), 'If-Match
 function loggedGenerationAvailable(status: number, label: string): boolean {
   if (GENERATION_SUCCESS_STATUSES.includes(status)) return true;
   console.warn(
-    `[task-635] ${label} returned ${status} — SMR/text-generation likely unavailable in this stack; skipping generation-dependent assertions.`,
+    `[task-635] ${label} returned ${status} — TEXT/text-generation likely unavailable in this stack; skipping generation-dependent assertions.`,
   );
   return false;
 }
@@ -151,7 +151,7 @@ test.describe.serial('prompt-template test bench (tenant_admin · __GLOBAL__)', 
 
   // ── B2 — dry-run: score/generate WITHOUT touching the resource ─────────
 
-  test('dry-run: acks with the assembled prompt and leaves ETag/_version UNCHANGED (no SMR call at all)', async ({ request }) => {
+  test('dry-run: acks with the assembled prompt and leaves ETag/_version UNCHANGED (no TEXT call at all)', async ({ request }) => {
     const before = await request.get(`${PROMPTS}/${promptId}`, { headers: auth(tenantAdminToken) });
     expect(before.status()).toBe(200);
     const beforeRow = (await before.json()) as PromptTemplateRow;
@@ -162,7 +162,7 @@ test.describe.serial('prompt-template test bench (tenant_admin · __GLOBAL__)', 
       headers: auth(tenantAdminToken),
       data: { sampleInput: 'Patient reports 3 days of dry cough, no fever.', variables: { department: 'General Medicine' }, dryRun: true },
     });
-    // BUG-018: fully deterministic — a dry run never touches SMR, so this is a
+    // BUG-018: fully deterministic — a dry run never touches TEXT, so this is a
     // hard assertion, not a generation-gated one. (A 400 here means no
     // `text.test` AiTaskDefault is configured in the stack — a real regression.)
     expect(GENERATION_SUCCESS_STATUSES, `dry-run submit → ${res.status()}`).toContain(res.status());
@@ -199,7 +199,7 @@ test.describe.serial('prompt-template test bench (tenant_admin · __GLOBAL__)', 
     if (loggedGenerationAvailable(res.status(), 'stream submit')) {
       const ack = (await res.json()) as PromptTestAck;
       expect(ack.mode).toBe('stream');
-      expect(ack.taskId, 'the ack carries the SMR generation task id').toBeTruthy();
+      expect(ack.taskId, 'the ack carries the TEXT generation task id').toBeTruthy();
       expect(ack.streamUrl).toBe(`text/tasks/${ack.taskId}/stream`);
       // The whole point of BUG-018: no CDN in front of the gateway will hold a
       // 2-3 minute response. The submit must return long before any ceiling.
@@ -239,7 +239,7 @@ test.describe.serial('prompt-template test bench (tenant_admin · __GLOBAL__)', 
 
   // ── B1 — explicit provider/model ────────────────────────────────────────
 
-  test('explicit provider/model: a known ENABLED pair is accepted (dry-run, 200 when SMR is up)', async ({ request }) => {
+  test('explicit provider/model: a known ENABLED pair is accepted (dry-run, 200 when TEXT is up)', async ({ request }) => {
     const res = await request.post(`${PROMPTS}/${promptId}/test`, {
       headers: auth(tenantAdminToken),
       data: { sampleInput: 'Patient reports 3 days of dry cough, no fever.', provider: KNOWN_PROVIDER, model: KNOWN_MODEL, dryRun: true },
@@ -252,13 +252,13 @@ test.describe.serial('prompt-template test bench (tenant_admin · __GLOBAL__)', 
       expect(ack.provider).toBe(KNOWN_PROVIDER);
       expect(ack.model).toBe(KNOWN_MODEL);
     } else {
-      // TASK-768 made this branch decisive. Previously an unreachable SMR ALSO
-      // produced a 400 (`Failed to call SMR service: connect ECONNREFUSED
+      // TASK-768 made this branch decisive. Previously an unreachable TEXT ALSO
+      // produced a 400 (`Failed to call TEXT service: connect ECONNREFUSED
       // 127.0.0.1:8862`), so a bare status check could not tell "known pair
-      // wrongly rejected" apart from "SMR is down in this stack" and the test
+      // wrongly rejected" apart from "TEXT is down in this stack" and the test
       // had to read the message. Now the two are different statuses: an absent
-      // dependency is 503, and 400 can only mean `assertKnownSmrModel` rejected
-      // the pair before the SMR call — a genuine contract failure.
+      // dependency is 503, and 400 can only mean `assertKnownTextModel` rejected
+      // the pair before the TEXT call — a genuine contract failure.
       expect(res.status(), `a KNOWN pair (${KNOWN_PROVIDER}/${KNOWN_MODEL}) must not be rejected as unknown/disabled`).not.toBe(400);
 
       if (res.status() === 503) {
@@ -270,7 +270,7 @@ test.describe.serial('prompt-template test bench (tenant_admin · __GLOBAL__)', 
     }
   });
 
-  test('explicit provider/model: an unknown/disabled pair → 400 (validated before the SMR call, deterministic)', async ({ request }) => {
+  test('explicit provider/model: an unknown/disabled pair → 400 (validated before the TEXT call, deterministic)', async ({ request }) => {
     const res = await request.post(`${PROMPTS}/${promptId}/test`, {
       headers: auth(tenantAdminToken),
       data: { sampleInput: 'x', provider: 'no-such-provider', model: 'no-such-model', dryRun: true },
@@ -280,7 +280,7 @@ test.describe.serial('prompt-template test bench (tenant_admin · __GLOBAL__)', 
 
   // ── B2 — versionNumber: pinned PromptVersion snapshot ───────────────────
 
-  test('versionNumber: an out-of-range version → 404 (checked before the SMR call, deterministic)', async ({ request }) => {
+  test('versionNumber: an out-of-range version → 404 (checked before the TEXT call, deterministic)', async ({ request }) => {
     const res = await request.post(`${PROMPTS}/${promptId}/test`, {
       headers: auth(tenantAdminToken),
       data: { sampleInput: 'x', versionNumber: 9999, dryRun: true },
@@ -288,13 +288,13 @@ test.describe.serial('prompt-template test bench (tenant_admin · __GLOBAL__)', 
     expect(res.status()).toBe(404);
   });
 
-  test('versionNumber: the seeded v1 snapshot resolves (dry-run, 200 when SMR is up)', async ({ request }) => {
+  test('versionNumber: the seeded v1 snapshot resolves (dry-run, 200 when TEXT is up)', async ({ request }) => {
     const res = await request.post(`${PROMPTS}/${promptId}/test`, {
       headers: auth(tenantAdminToken),
       data: { sampleInput: 'x', variables: { department: 'General Medicine' }, versionNumber: 1, dryRun: true },
     });
     // Deterministic gate: v1 exists (created alongside the template in
-    // beforeAll), so the lookup itself never 404s regardless of SMR.
+    // beforeAll), so the lookup itself never 404s regardless of TEXT.
     expect(res.status()).not.toBe(404);
     expect(res.status()).not.toBe(428);
 

@@ -64,7 +64,7 @@ function makeService() {
     summaryMetaRepository as never,
     { findByContextItem: vi.fn().mockResolvedValue([]) } as never,
     httpService as never,
-    { get: vi.fn(() => 'http://smr') } as never,
+    { get: vi.fn(() => 'http://text') } as never,
     { emit: vi.fn() } as never,
     {
       get: vi.fn((key: string) => (key === 'tenantId' ? 'tenant-1' : key === 'user' ? { id: 'user-1' } : null)),

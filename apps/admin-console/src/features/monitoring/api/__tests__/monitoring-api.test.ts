@@ -21,7 +21,7 @@ afterEach(() => {
 describe('monitoringKeys', () => {
   it('is stable and scoped per service', () => {
     expect(monitoringKeys.uptime()).toEqual(monitoringKeys.uptime());
-    expect(monitoringKeys.serviceUptime('stt')).not.toEqual(monitoringKeys.serviceUptime('smr'));
+    expect(monitoringKeys.serviceUptime('stt')).not.toEqual(monitoringKeys.serviceUptime('text'));
     expect(monitoringKeys.heartbeats('nlp')).not.toEqual(monitoringKeys.serviceUptime('nlp'));
     for (const key of [monitoringKeys.servicesHealth(), monitoringKeys.uptime(), monitoringKeys.sessions(), monitoringKeys.redis()]) {
       expect(key[0]).toBe('monitoring');
@@ -35,7 +35,7 @@ describe('monitoring client', () => {
     await getServicesHealth();
     await getServiceHealth('stt');
     await getUptime();
-    await getServiceUptime('smr');
+    await getServiceUptime('text');
     await listHeartbeats('nlp');
     await getSessions();
     await getRedisHealth();
@@ -43,7 +43,7 @@ describe('monitoring client', () => {
       '/api/hope/admin/health/services',
       '/api/hope/admin/health/services/stt',
       '/api/hope/admin/monitoring/uptime',
-      '/api/hope/admin/monitoring/uptime/smr',
+      '/api/hope/admin/monitoring/uptime/text',
       '/api/hope/admin/monitoring/heartbeats/nlp',
       '/api/hope/admin/monitoring/sessions',
       '/api/hope/admin/queues/health/redis',

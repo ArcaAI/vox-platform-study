@@ -370,7 +370,7 @@ Operationally:
 vault auth enable kubernetes
 vault write auth/kubernetes/config kubernetes_host="https://$KUBERNETES_PORT_443_TCP_ADDR:443"
 
-for svc in api smr guardrail nlp harness tts stt; do
+for svc in api text guardrail nlp harness tts stt; do
   vault policy write "hope-$svc" "infrastructure/docker/configs/vault/policies/k8s/hope-$svc.hcl"
   vault write "auth/kubernetes/role/hope-$svc" \
     bound_service_account_names="hope-$svc" \

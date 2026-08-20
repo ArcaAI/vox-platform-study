@@ -122,7 +122,7 @@ ENV PATH="/opt/venv/bin:$PATH"
 # Workspace scaffolding: stt's pyproject declares hope-runtime-models / hope-env
 # as `workspace = true` sources, so even this fresh (non-frozen) GPU resolve needs
 # the workspace root (root pyproject.toml + uv.lock) and those path members on
-# disk — the same set the CPU `builder` stage and the smr/harness Dockerfiles copy.
+# disk — the same set the CPU `builder` stage and the text/harness Dockerfiles copy.
 # Without it, `uv pip install` fails: "hope-runtime-models references a workspace
 # in tool.uv.sources, but is not a workspace member".
 COPY pyproject.toml uv.lock ./

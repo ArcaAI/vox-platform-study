@@ -17,7 +17,7 @@ import { DISCOVERABLE_AI_MODEL_PROVIDERS } from './create-model.request';
  */
 export class RegisterDiscoveredModelRequest {
   @ApiProperty({
-    description: 'Server-managed provider the model was discovered on (SMR registry key).',
+    description: 'Server-managed provider the model was discovered on (TEXT registry key).',
     enum: DISCOVERABLE_AI_MODEL_PROVIDERS,
     example: 'ollama',
   })

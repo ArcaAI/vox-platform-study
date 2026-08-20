@@ -39,8 +39,8 @@ import { INoteGenerationService, GenerationTrigger } from '../note-generation';
  * 1. Resolve all linked consultation IDs (combined chain + date strategy)
  * 2. For each consultation, gather transcripts, summaries, case notes
  * 3. Optionally gather NER entities from all consultations
- * 4. Compose structured sections for the SMR service
- * 5. Call SMR for comprehensive summary generation
+ * 4. Compose structured sections for the TEXT service
+ * 5. Call TEXT for comprehensive summary generation
  * 6. Store result as ContextItem(RAW_SUMMARY) on the requesting consultation
  */
 @Injectable()
@@ -59,8 +59,8 @@ export class ChainSummaryService extends BaseService {
     protected override readonly clsService: ClsService<IActiveUserContext>,
     private readonly promptAssemblyService: PromptAssemblyService,
     @Optional() @Inject(SecretsService) private readonly secretsService?: SecretsService,
-    // Resolve the admin-managed SMR {provider, model} on every
-    // SMR call (the gateway has no model default). Optional + trailing so
+    // Resolve the admin-managed TEXT {provider, model} on every
+    // TEXT call (the gateway has no model default). Optional + trailing so
     // existing positional test fixtures keep compiling; production DI always
     // supplies it (ChainSummaryServiceModule).
     @Optional() @Inject(HarnessPolicyService) private readonly harnessPolicyService?: HarnessPolicyService,
@@ -103,7 +103,7 @@ export class ChainSummaryService extends BaseService {
   /**
    * Generate a comprehensive summary spanning all linked consultations.
    *
-   * This is the synchronous endpoint — blocks until SMR returns.
+   * This is the synchronous endpoint — blocks until TEXT returns.
    * For long consultation chains, prefer the async job endpoint.
    */
   async generateComprehensiveSummary(consultationId: string, request: ComprehensiveSummaryRequest): Promise<ComprehensiveSummaryResponse> {
@@ -189,11 +189,11 @@ export class ChainSummaryService extends BaseService {
       aggregatedEntities = await this.gatherNamedEntities(allConsultationIds);
     }
 
-    // Step 4: Compose structured input and assemble final prompt for SMR
-    const smrInput = await this.composeSmrInput(consultation, sections, aggregatedEntities, request, preferredPromptTemplateId);
+    // Step 4: Compose structured input and assemble final prompt for TEXT
+    const textInput = await this.composeTextInput(consultation, sections, aggregatedEntities, request, preferredPromptTemplateId);
 
-    // Step 5: Call SMR service
-    const textResponse = await this.callTextService(smrInput);
+    // Step 5: Call TEXT service
+    const textResponse = await this.callTextService(textInput);
 
     // Step 6: Store as ContextItem(RAW_SUMMARY) on the requesting consultation
     const contextItem = ContextItemFactory.CreateRawSummary(tenantId, consultationId, textResponse.summary, request.dnaStyleId, userId ?? 'system');
@@ -444,7 +444,7 @@ export class ChainSummaryService extends BaseService {
    * entry whose tenantId drifts from the caller. Throws `NotFoundException`
    * (no existence leak) on the first cross-tenant entry. Pre-D.2 data
    * could carry a poisoned `parentConsultationId` pointer into another
-   * tenant; this guard short-circuits before SMR is called.
+   * tenant; this guard short-circuits before TEXT is called.
    */
   private assertChainInTenant(tenantId: string, consultations: ConsultationEntity[]): void {
     for (const c of consultations) {
@@ -500,14 +500,14 @@ export class ChainSummaryService extends BaseService {
   }
 
   /**
-   * Compose structured input for the SMR service.
+   * Compose structured input for the TEXT service.
    *
-   * The SMR service receives:
+   * The TEXT service receives:
    * - sections: array of content blocks with metadata
    * - namedEntities: aggregated NER entities (optional)
    * - dnaStyleId/template: prompt configuration
    */
-  private async composeSmrInput(
+  private async composeTextInput(
     consultation: ConsultationEntity,
     sections: ChainSectionDto[],
     namedEntities:
@@ -595,7 +595,7 @@ export class ChainSummaryService extends BaseService {
   }
 
   /**
-   * Call the SMR service for comprehensive summary generation.
+   * Call the TEXT service for comprehensive summary generation.
    */
   private async callTextService(payload: {
     assembledPrompt: {
@@ -624,7 +624,7 @@ export class ChainSummaryService extends BaseService {
     // below — never a bare no-arg call trusting `resolveTextSelection`'s own
     // CLS fallback, so a worker path with unpopulated CLS fails loudly with
     // a clear message instead of either silently serving the SYSTEM default
-    // model or having that failure masked by the generic SMR-call catch.
+    // model or having that failure masked by the generic TEXT-call catch.
     if (this.harnessPolicyService && !this.tenantId) {
       throw new BadRequestException('Tenant ID is required');
     }
@@ -659,7 +659,7 @@ export class ChainSummaryService extends BaseService {
       return { ...mapTextGenerateResponse(response.data), usage: parseTextUsageDetail(data?.usage_detail) };
     } catch (error) {
       this.logger.error({
-        message: 'SMR service call failed for comprehensive summary',
+        message: 'TEXT service call failed for comprehensive summary',
         error: error instanceof Error ? error.message : String(error),
       });
       throw new BadRequestException('Failed to generate comprehensive summary from AI service');

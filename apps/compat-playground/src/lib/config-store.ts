@@ -59,24 +59,24 @@ export interface PlaygroundConfig {
   quietWindowMs?: number;
 
   /**
-   * Last-used SMR department (code or name) — seeds the SummaryCard picker
+   * Last-used TEXT department (code or name) — seeds the SummaryCard picker
    * (Workstream B). Optional: absent for configs saved before this field existed.
    */
   department?: string;
   /**
-   * Last-used SMR visit type (e.g. `New Patient`) — seeds the SummaryCard
+   * Last-used TEXT visit type (e.g. `New Patient`) — seeds the SummaryCard
    * selector. Optional for the same backward-compat reason as `department`.
    */
   visitType?: string;
   /**
-   * Last-used SMR doctor (user id) whose DNA writing-style is applied — seeds
+   * Last-used TEXT doctor (user id) whose DNA writing-style is applied — seeds
    * the SummaryCard doctor picker. Empty/absent ⇒ NO
    * `doctorId` is sent (department + visit-type only). Optional for the same
    * backward-compat reason as `department`.
    */
   doctorId?: string;
   /**
-   * Last-used SMR "translate transcript to English (Sarvam)" toggle — seeds the
+   * Last-used TEXT "translate transcript to English (Sarvam)" toggle — seeds the
    * SummaryCard switch. When true, `summarizeSync` is called
    * with `translateToEnglish: true` so the backend translates the transcript
    * before summarizing. Optional for the same backward-compat reason as

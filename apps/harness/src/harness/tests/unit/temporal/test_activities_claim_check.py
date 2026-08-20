@@ -120,7 +120,7 @@ class TestGenerateOffloadsNote:
         assert result.content_ref is None
 
     @pytest.mark.asyncio
-    async def test_resolves_prompt_ref_and_folds_block_before_smr(self, env, monkeypatch):
+    async def test_resolves_prompt_ref_and_folds_block_before_text(self, env, monkeypatch):
         """Consume: the prompt is resolved inline-or-ref and the RAG block folded in."""
         store = InMemoryBlobStore()
         prompt_ref = await store_blob("BASE PROMPT", store=store, bucket=_BUCKET)

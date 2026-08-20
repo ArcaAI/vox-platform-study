@@ -92,7 +92,7 @@ describe('HarnessPolicyService — per-agent harnessOverrides overlay', () => {
         maxRegen: 5,
         gateSlaSeconds: 7200,
         gateEscalationSeconds: 3600,
-        toolAllowlist: ['nlp', 'smr'],
+        toolAllowlist: ['nlp', 'text'],
       },
     });
 
@@ -103,7 +103,7 @@ describe('HarnessPolicyService — per-agent harnessOverrides overlay', () => {
     expect(result.maxRegen).toBe(5);
     expect(result.gateSlaSeconds).toBe(7200);
     expect(result.gateEscalationSeconds).toBe(3600);
-    expect(result.toolAllowlist).toEqual(['nlp', 'smr']);
+    expect(result.toolAllowlist).toEqual(['nlp', 'text']);
     // provenance for observability
     expect(result.overridesSource).toEqual({
       agentId: 'agent-1',
