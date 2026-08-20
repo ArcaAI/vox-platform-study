@@ -19,7 +19,7 @@ import { CheckPermissionDto, CheckPermissionsBulkDto, CheckPermissionResponse, C
  * otherwise swallow the literal `me`. Pinned by
  * `apps/api/src/modules/user/controllers/__tests__/users-me-route-precedence.test.ts`.
  */
-@ApiTags('RBAC - Permission Check')
+@ApiTags('rbac-permission-check')
 @ApiBearerAuth()
 @Controller('users/me/permission-checks')
 // API-KEY-NOTE: policy A1. Permission introspection for the key's BOUND
@@ -81,7 +81,7 @@ export class PermissionCheckController {
  * body, not the path) to `users/<caller>/permission-checks` without changing
  * which user gets checked.
  */
-@ApiTags('RBAC - Permission Check')
+@ApiTags('rbac-permission-check')
 @ApiBearerAuth()
 @Controller('users/:id/permission-checks')
 // API-KEY-NOTE: policy A1. Permission introspection for the key's BOUND

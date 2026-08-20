@@ -211,6 +211,97 @@ generate-vox-node-admin-check:
         - packages/vox-node/src/resources/admin/**/*
     - if: $PIPELINE_TYPE == "release_sdk"
 
+# ── OpenAPI coverage gate (TASK-783) ────────────────────────────────────────
+# Cross-checks the two committed artifacts against each other. Catches:
+#
+#   1. a route that is served but carries no Swagger metadata — invisible in
+#      the developer reference;
+#   2. a spec operation with no manifest route — the two files were emitted
+#      from different builds and one is stale.
+#
+# (2) is not hypothetical: `openapi.json` sat one commit behind
+# `route-manifest.json` after TASK-733 and nothing caught it.
+#
+# The distinction between (1) and "deliberately hidden" rests entirely on the
+# manifest's `apiExcluded` flag, which was ALWAYS false until TASK-783 fixed
+# how it reads `@nestjs/swagger`'s wrapped metadata. `api-exclude-metadata.test.ts`
+# locks that against the real decorators.
+#
+# No Nest boot, no database, no network — it reads two JSON files. Reconcile a
+# failure with `pnpm api:build && pnpm api:route-manifest && pnpm api:openapi`.
+
+openapi-coverage-check:
+  stage: validate
+  extends: .node-base
+  needs:
+    - job: install-node
+      optional: true
+  script:
+    - pnpm api:openapi:check
+  rules:
+    - !reference [.skip-on-dev-2-1, rules]
+    - !reference [.rules-always, rules]
+    - !reference [.rules-cicd-always, rules]
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+      changes:
+        paths:
+          - apps/api/openapi.json
+          - apps/api/route-manifest.json
+          - apps/api/src/**/*
+          - scripts/check-openapi-coverage.ts
+        compare_to: refs/heads/main
+    - if: $PIPELINE_TYPE == "dev"
+    - if: $PIPELINE_TYPE == "staging" || $PIPELINE_TYPE == "main" || $PIPELINE_TYPE == "feature"
+      changes:
+        - apps/api/openapi.json
+        - apps/api/route-manifest.json
+        - apps/api/src/**/*
+        - scripts/check-openapi-coverage.ts
+
+# ── Developer-portal spec drift gate (TASK-783) ─────────────────────────────
+# The two projections the admin console's developer portal serves are GENERATED
+# by joining `openapi.json` (types) with `route-manifest.json` (the
+# authorization oracle). Same shape as `generate-vox-node-admin-check`: re-run
+# the generator, fail on any difference.
+#
+# This gate is a security boundary, not a formatting one. The business
+# projection is served to tenant developers, and membership in it is decided
+# from `apiKeyForbidden` / `apiKeyScopes` / `svcScopes` — never from a
+# hand-maintained list. A hand-edit to either committed JSON is exactly the
+# change that could publish an administration route to the wrong audience, so
+# it fails here.
+#
+# Reconcile with `pnpm api:portal`. If the ROUTES changed, re-emit the inputs
+# first (`pnpm api:route-manifest`, `pnpm api:openapi`) and commit those too.
+
+generate-api-portal-check:
+  stage: validate
+  extends: .node-base
+  needs:
+    - job: install-node
+      optional: true
+  script:
+    - pnpm api:portal:check
+  rules:
+    - !reference [.skip-on-dev-2-1, rules]
+    - !reference [.rules-always, rules]
+    - !reference [.rules-cicd-always, rules]
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+      changes:
+        paths:
+          - apps/api/openapi.json
+          - apps/api/route-manifest.json
+          - apps/admin-console/src/server/api-docs/**/*
+          - scripts/gen-api-portal.ts
+        compare_to: refs/heads/main
+    - if: $PIPELINE_TYPE == "dev"
+    - if: $PIPELINE_TYPE == "staging" || $PIPELINE_TYPE == "main" || $PIPELINE_TYPE == "feature"
+      changes:
+        - apps/api/openapi.json
+        - apps/api/route-manifest.json
+        - apps/admin-console/src/server/api-docs/**/*
+        - scripts/gen-api-portal.ts
+
 # ── Python linting (ruff) ───────────────────────────────────────────────────
 
 lint-python:

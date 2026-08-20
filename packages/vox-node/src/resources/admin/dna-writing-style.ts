@@ -13,6 +13,7 @@ import { AdminResource } from './admin-resource';
 import type { AdminRequestOptions, IfMatchPrecondition } from './admin-resource';
 import type {
   DnaDashboardResponse,
+  DnaErasureResponse,
   DnaJobResponseDto,
   DnaJobStatusResponseDto,
   DnaReportResponse,
@@ -30,7 +31,7 @@ import type {
  * names the scope in that error's message.
  *
  * Backed by controller DnaWritingStyleAdminController
- * (8 routes). Several controllers sharing one scope share one
+ * (9 routes). Several controllers sharing one scope share one
  * resource on purpose: the scope is the permission surface, so the SDK groups
  * by it rather than by URL.
  */
@@ -104,6 +105,22 @@ export class AdminDnaWritingStyleResource extends AdminResource {
       method: 'GET',
       path: 'admin/dna-writing-styles/dashboard',
       query: options.query,
+      signal: options.signal,
+      timeoutMs: options.timeoutMs,
+    });
+  }
+
+  /**
+   * Erase a doctor's entire learned DNA writing-style profile (admin)
+   *
+   * Soft-deletes every DNA writing-style report the doctor owns; the report versions are counted but left in place (they carry no resourceStatus column and become unreachable once the parent report is deleted). Complements the doctor's own self-service `DELETE /dna-writing-styles/my-style`. Idempotent — a doctor with no profile gets zero counts.
+   *
+   * `DELETE /api/v1/admin/dna-writing-styles/doctor/{doctorId}` — `DnaWritingStyleAdminController.resetDoctorProfile`.
+   */
+  resetDoctorProfile(doctorId: string, options: AdminRequestOptions = {}): Promise<DnaErasureResponse> {
+    return this.request<DnaErasureResponse>({
+      method: 'DELETE',
+      path: `admin/dna-writing-styles/doctor/${encodePathSegment(String(doctorId))}`,
       signal: options.signal,
       timeoutMs: options.timeoutMs,
     });

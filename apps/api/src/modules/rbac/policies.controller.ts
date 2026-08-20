@@ -24,7 +24,7 @@ import {
  * `IPolicyService`; direct `CoreDatabaseService` access is forbidden by
  * ESLint rule.
  */
-@ApiTags('RBAC - Policies')
+@ApiTags('admin-rbac-policies')
 @ApiBearerAuth()
 @ForbidApiKey()
 @RequiredSvcScopes('svc:admin:rbac-policy:write')

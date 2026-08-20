@@ -54,7 +54,7 @@ function assertProviderService(value: string): ProviderService {
  * super admins act cross-tenant — incl. the SYSTEM platform default — via
  * `?tenantId=`. A cross-tenant by-id read returns 404, never 403.
  */
-@ApiTags('Admin: Provider Connections')
+@ApiTags('admin-provider-connections')
 @ApiBearerAuth()
 @ForbidApiKey()
 @RequiredSvcScopes('svc:admin:ai-provider:manage')
@@ -167,7 +167,7 @@ export class ProviderConnectionController {
  * behavioural difference from `admin/providers/llm/*`. Delete this controller
  * (and drop it from the module) when the deprecation window closes.
  */
-@ApiTags('Admin: AI Provider Connections (legacy alias)')
+@ApiTags('admin-ai-provider-connections-legacy')
 @ApiBearerAuth()
 @ForbidApiKey()
 @RequiredSvcScopes('svc:admin:ai-provider:manage')

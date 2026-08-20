@@ -101,6 +101,29 @@ export const DEFAULT_POLICIES: DefaultPolicy[] = [
     rules: [{ action: 'manage', subject: 'PrismaStudio' }],
   },
 
+  {
+    id: '00000000-0000-0000-0001-000000000081',
+    name: 'api-documentation-read',
+    description: 'Read the developer API documentation portal in the admin console',
+    scope: PolicyScope.GLOBAL,
+    // TASK-783 (owner decision D-1, 2026-08-20). A DEDICATED subject, on the
+    // `PrismaStudio` precedent above: reading the API reference is its own
+    // privilege, grantable to tenant developers without handing out
+    // `manage:all` and without implying any data access.
+    //
+    // GLOBAL scope is deliberate — the API contract is a property of the
+    // PLATFORM, not of a tenant's data, so there is no `tenantId` condition to
+    // apply. What the reader sees is still audience-split: `read` serves the
+    // BUSINESS projection (API-key-reachable routes only), while the
+    // ADMINISTRATION projection additionally requires `manage` on this subject,
+    // which in practice only `system-full-access` (`manage:all`) grants.
+    //
+    // The projections themselves are generated from `route-manifest.json`
+    // (`pnpm api:portal`), so a route's audience is decided by the guard
+    // metadata that protects it, never by this policy.
+    rules: [{ action: 'read', subject: 'ApiDocumentation' }],
+  },
+
   // =========================================================================
   // TENANT SCOPE POLICIES - Administration
   // =========================================================================

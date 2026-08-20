@@ -2,6 +2,7 @@ import {
   IconActivity,
   IconAdjustmentsAlt,
   IconAdjustmentsCog,
+  IconApi,
   IconBinaryTree2,
   IconBook2,
   IconBrain,
@@ -258,6 +259,24 @@ export const NAV_ENTRIES: readonly NavEntry[] = [
       ['read', 'Tenant'],
       ['update', 'Tenant'],
     ],
+    implemented: true,
+  },
+  {
+    // TASK-783 — the developer API documentation portal. Tier 20-29: the
+    // audience is both super admins and tenant admins/developers, and the
+    // screens are not tenant-scoped (the API contract belongs to the platform).
+    //
+    // `read:ApiDocumentation` is a DEDICATED subject (seed policy
+    // `api-documentation-read`), so access can be delegated to tenant
+    // developers without granting `manage:all`. The admin-plane projection
+    // additionally needs `manage` on the same subject; that split is enforced
+    // server-side in `@/server/api-docs`, not here — this list only decides
+    // whether the sidebar entry renders.
+    route: '/developer',
+    label: 'Developer',
+    tier: '20-29',
+    icon: IconApi,
+    required: [['read', 'ApiDocumentation']],
     implemented: true,
   },
   { route: '/account', label: 'Account', tier: '20-29', icon: IconUserCircle, required: [], implemented: true },

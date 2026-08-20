@@ -9694,7 +9694,7 @@
       "isPublic": false,
       "permissionMode": "AND",
       "requiresIfMatch": false,
-      "apiExcluded": false
+      "apiExcluded": true
     },
     {
       "controller": "AiInferenceRedirectShimController",
@@ -9712,7 +9712,7 @@
       "isPublic": false,
       "permissionMode": "AND",
       "requiresIfMatch": false,
-      "apiExcluded": false
+      "apiExcluded": true
     },
     {
       "controller": "AiInferenceRedirectShimController",
@@ -9730,7 +9730,7 @@
       "isPublic": false,
       "permissionMode": "AND",
       "requiresIfMatch": false,
-      "apiExcluded": false
+      "apiExcluded": true
     },
     {
       "controller": "AiInferenceRedirectShimController",
@@ -9748,7 +9748,7 @@
       "isPublic": false,
       "permissionMode": "AND",
       "requiresIfMatch": false,
-      "apiExcluded": false
+      "apiExcluded": true
     },
     {
       "controller": "AiInferenceRedirectShimController",
@@ -9766,7 +9766,7 @@
       "isPublic": false,
       "permissionMode": "AND",
       "requiresIfMatch": false,
-      "apiExcluded": false
+      "apiExcluded": true
     },
     {
       "controller": "AudioPipelineCatalogController",
@@ -10499,7 +10499,7 @@
       "isPublic": false,
       "permissionMode": "AND",
       "requiresIfMatch": false,
-      "apiExcluded": false
+      "apiExcluded": true
     },
     {
       "controller": "MyBillingRedirectShimController",
@@ -10522,7 +10522,7 @@
       "isPublic": false,
       "permissionMode": "AND",
       "requiresIfMatch": false,
-      "apiExcluded": false
+      "apiExcluded": true
     },
     {
       "controller": "MyBillingRedirectShimController",
@@ -10545,7 +10545,7 @@
       "isPublic": false,
       "permissionMode": "AND",
       "requiresIfMatch": false,
-      "apiExcluded": false
+      "apiExcluded": true
     },
     {
       "controller": "ChangelogController",
@@ -11823,7 +11823,7 @@
       "isPublic": false,
       "permissionMode": "AND",
       "requiresIfMatch": false,
-      "apiExcluded": false
+      "apiExcluded": true
     },
     {
       "controller": "ApiHealthController",
@@ -11903,7 +11903,7 @@
       "isPublic": true,
       "permissionMode": null,
       "requiresIfMatch": false,
-      "apiExcluded": false
+      "apiExcluded": true
     },
     {
       "controller": "EffectiveConfigController",
@@ -11919,7 +11919,7 @@
       "isPublic": true,
       "permissionMode": null,
       "requiresIfMatch": false,
-      "apiExcluded": false
+      "apiExcluded": true
     },
     {
       "controller": "HarnessInternalController",
@@ -11935,7 +11935,7 @@
       "isPublic": true,
       "permissionMode": null,
       "requiresIfMatch": false,
-      "apiExcluded": false
+      "apiExcluded": true
     },
     {
       "controller": "HarnessInternalController",
@@ -11951,7 +11951,7 @@
       "isPublic": true,
       "permissionMode": null,
       "requiresIfMatch": false,
-      "apiExcluded": false
+      "apiExcluded": true
     },
     {
       "controller": "HarnessInternalController",
@@ -11967,7 +11967,7 @@
       "isPublic": true,
       "permissionMode": null,
       "requiresIfMatch": false,
-      "apiExcluded": false
+      "apiExcluded": true
     },
     {
       "controller": "HarnessInternalController",
@@ -11983,7 +11983,7 @@
       "isPublic": true,
       "permissionMode": null,
       "requiresIfMatch": false,
-      "apiExcluded": false
+      "apiExcluded": true
     },
     {
       "controller": "HarnessInternalController",
@@ -11999,7 +11999,7 @@
       "isPublic": true,
       "permissionMode": null,
       "requiresIfMatch": false,
-      "apiExcluded": false
+      "apiExcluded": true
     },
     {
       "controller": "HarnessInternalController",
@@ -12015,7 +12015,7 @@
       "isPublic": true,
       "permissionMode": null,
       "requiresIfMatch": false,
-      "apiExcluded": false
+      "apiExcluded": true
     },
     {
       "controller": "HarnessInternalController",
@@ -12031,7 +12031,7 @@
       "isPublic": true,
       "permissionMode": null,
       "requiresIfMatch": false,
-      "apiExcluded": false
+      "apiExcluded": true
     },
     {
       "controller": "HarnessInternalController",
@@ -12047,7 +12047,7 @@
       "isPublic": true,
       "permissionMode": null,
       "requiresIfMatch": false,
-      "apiExcluded": false
+      "apiExcluded": true
     },
     {
       "controller": "HarnessInternalController",
@@ -12063,7 +12063,7 @@
       "isPublic": true,
       "permissionMode": null,
       "requiresIfMatch": false,
-      "apiExcluded": false
+      "apiExcluded": true
     },
     {
       "controller": "HarnessInternalController",
@@ -12079,7 +12079,7 @@
       "isPublic": true,
       "permissionMode": null,
       "requiresIfMatch": false,
-      "apiExcluded": false
+      "apiExcluded": true
     },
     {
       "controller": "HarnessInternalController",
@@ -12095,7 +12095,7 @@
       "isPublic": true,
       "permissionMode": null,
       "requiresIfMatch": false,
-      "apiExcluded": false
+      "apiExcluded": true
     },
     {
       "controller": "HarnessInternalController",
@@ -12111,7 +12111,7 @@
       "isPublic": true,
       "permissionMode": null,
       "requiresIfMatch": false,
-      "apiExcluded": false
+      "apiExcluded": true
     },
     {
       "controller": "HarnessInternalController",
@@ -12127,7 +12127,7 @@
       "isPublic": true,
       "permissionMode": null,
       "requiresIfMatch": false,
-      "apiExcluded": false
+      "apiExcluded": true
     },
     {
       "controller": "HarnessInternalController",
@@ -12143,7 +12143,7 @@
       "isPublic": true,
       "permissionMode": null,
       "requiresIfMatch": false,
-      "apiExcluded": false
+      "apiExcluded": true
     },
     {
       "controller": "HarnessInternalController",
@@ -12159,7 +12159,7 @@
       "isPublic": true,
       "permissionMode": null,
       "requiresIfMatch": false,
-      "apiExcluded": false
+      "apiExcluded": true
     },
     {
       "controller": "HarnessInternalController",
@@ -12175,7 +12175,7 @@
       "isPublic": true,
       "permissionMode": null,
       "requiresIfMatch": false,
-      "apiExcluded": false
+      "apiExcluded": true
     },
     {
       "controller": "HarnessInternalController",
@@ -12191,7 +12191,7 @@
       "isPublic": true,
       "permissionMode": null,
       "requiresIfMatch": false,
-      "apiExcluded": false
+      "apiExcluded": true
     },
     {
       "controller": "HarnessInternalController",
@@ -12207,7 +12207,7 @@
       "isPublic": true,
       "permissionMode": null,
       "requiresIfMatch": false,
-      "apiExcluded": false
+      "apiExcluded": true
     },
     {
       "controller": "HarnessInternalController",
@@ -12223,7 +12223,7 @@
       "isPublic": true,
       "permissionMode": null,
       "requiresIfMatch": false,
-      "apiExcluded": false
+      "apiExcluded": true
     },
     {
       "controller": "HarnessInternalController",
@@ -12239,7 +12239,7 @@
       "isPublic": true,
       "permissionMode": null,
       "requiresIfMatch": false,
-      "apiExcluded": false
+      "apiExcluded": true
     },
     {
       "controller": "ServiceReleaseInternalController",
@@ -12255,7 +12255,7 @@
       "isPublic": true,
       "permissionMode": null,
       "requiresIfMatch": false,
-      "apiExcluded": false
+      "apiExcluded": true
     },
     {
       "controller": "ServiceReleaseInternalController",
@@ -12271,7 +12271,7 @@
       "isPublic": true,
       "permissionMode": null,
       "requiresIfMatch": false,
-      "apiExcluded": false
+      "apiExcluded": true
     },
     {
       "controller": "SttInternalController",
@@ -12289,7 +12289,7 @@
       "isPublic": false,
       "permissionMode": "AND",
       "requiresIfMatch": false,
-      "apiExcluded": false
+      "apiExcluded": true
     },
     {
       "controller": "SttInternalController",
@@ -12307,7 +12307,7 @@
       "isPublic": false,
       "permissionMode": "AND",
       "requiresIfMatch": false,
-      "apiExcluded": false
+      "apiExcluded": true
     },
     {
       "controller": "SttInternalController",
@@ -12325,7 +12325,7 @@
       "isPublic": false,
       "permissionMode": "AND",
       "requiresIfMatch": false,
-      "apiExcluded": false
+      "apiExcluded": true
     },
     {
       "controller": "SttInternalController",
@@ -12343,7 +12343,7 @@
       "isPublic": false,
       "permissionMode": "AND",
       "requiresIfMatch": false,
-      "apiExcluded": false
+      "apiExcluded": true
     },
     {
       "controller": "SttInternalController",
@@ -12361,7 +12361,7 @@
       "isPublic": false,
       "permissionMode": "AND",
       "requiresIfMatch": false,
-      "apiExcluded": false
+      "apiExcluded": true
     },
     {
       "controller": "SttInternalController",
@@ -12379,7 +12379,7 @@
       "isPublic": false,
       "permissionMode": "AND",
       "requiresIfMatch": false,
-      "apiExcluded": false
+      "apiExcluded": true
     },
     {
       "controller": "SttInternalController",
@@ -12397,7 +12397,7 @@
       "isPublic": false,
       "permissionMode": "AND",
       "requiresIfMatch": false,
-      "apiExcluded": false
+      "apiExcluded": true
     },
     {
       "controller": "SttInternalController",
@@ -12415,7 +12415,7 @@
       "isPublic": false,
       "permissionMode": "AND",
       "requiresIfMatch": false,
-      "apiExcluded": false
+      "apiExcluded": true
     },
     {
       "controller": "SttInternalController",
@@ -12433,7 +12433,7 @@
       "isPublic": false,
       "permissionMode": "AND",
       "requiresIfMatch": false,
-      "apiExcluded": false
+      "apiExcluded": true
     },
     {
       "controller": "SttInternalController",
@@ -12451,7 +12451,7 @@
       "isPublic": false,
       "permissionMode": "AND",
       "requiresIfMatch": false,
-      "apiExcluded": false
+      "apiExcluded": true
     },
     {
       "controller": "PromptTemplateController",
@@ -12584,7 +12584,7 @@
       "isPublic": false,
       "permissionMode": "AND",
       "requiresIfMatch": false,
-      "apiExcluded": false
+      "apiExcluded": true
     },
     {
       "controller": "PermissionCheckRedirectShimController",
@@ -12602,7 +12602,7 @@
       "isPublic": false,
       "permissionMode": "AND",
       "requiresIfMatch": false,
-      "apiExcluded": false
+      "apiExcluded": true
     },
     {
       "controller": "PermissionCheckRedirectShimController",
@@ -12620,7 +12620,7 @@
       "isPublic": false,
       "permissionMode": "AND",
       "requiresIfMatch": false,
-      "apiExcluded": false
+      "apiExcluded": true
     },
     {
       "controller": "SafetyCheckController",
@@ -12922,7 +12922,7 @@
       "isPublic": false,
       "permissionMode": "AND",
       "requiresIfMatch": false,
-      "apiExcluded": false
+      "apiExcluded": true
     },
     {
       "controller": "MyTenantRedirectShimController",
@@ -12940,7 +12940,7 @@
       "isPublic": false,
       "permissionMode": "AND",
       "requiresIfMatch": false,
-      "apiExcluded": false
+      "apiExcluded": true
     },
     {
       "controller": "MyTenantRedirectShimController",
@@ -12963,7 +12963,7 @@
       "isPublic": false,
       "permissionMode": "AND",
       "requiresIfMatch": false,
-      "apiExcluded": false
+      "apiExcluded": true
     },
     {
       "controller": "MyTenantContextSchemaRedirectShimController",
@@ -12981,7 +12981,7 @@
       "isPublic": false,
       "permissionMode": "AND",
       "requiresIfMatch": false,
-      "apiExcluded": false
+      "apiExcluded": true
     },
     {
       "controller": "MyTenantController",
@@ -13288,7 +13288,7 @@
       "isPublic": false,
       "permissionMode": "AND",
       "requiresIfMatch": false,
-      "apiExcluded": false
+      "apiExcluded": true
     },
     {
       "controller": "TextProxyController",
@@ -13426,7 +13426,7 @@
       "isPublic": false,
       "permissionMode": "AND",
       "requiresIfMatch": false,
-      "apiExcluded": false
+      "apiExcluded": true
     },
     {
       "controller": "TextProxyRedirectShimController",
@@ -13444,7 +13444,7 @@
       "isPublic": false,
       "permissionMode": "AND",
       "requiresIfMatch": false,
-      "apiExcluded": false
+      "apiExcluded": true
     },
     {
       "controller": "TextProxyRedirectShimController",
@@ -13462,7 +13462,7 @@
       "isPublic": false,
       "permissionMode": "AND",
       "requiresIfMatch": false,
-      "apiExcluded": false
+      "apiExcluded": true
     },
     {
       "controller": "TextProxyRedirectShimController",
@@ -13480,7 +13480,7 @@
       "isPublic": false,
       "permissionMode": "AND",
       "requiresIfMatch": false,
-      "apiExcluded": false
+      "apiExcluded": true
     },
     {
       "controller": "TextProxyRedirectShimController",
@@ -13498,7 +13498,7 @@
       "isPublic": false,
       "permissionMode": "AND",
       "requiresIfMatch": false,
-      "apiExcluded": false
+      "apiExcluded": true
     },
     {
       "controller": "TextProxyRedirectShimController",
@@ -13516,7 +13516,7 @@
       "isPublic": false,
       "permissionMode": "AND",
       "requiresIfMatch": false,
-      "apiExcluded": false
+      "apiExcluded": true
     },
     {
       "controller": "TextProxyRedirectShimController",
@@ -13534,7 +13534,7 @@
       "isPublic": false,
       "permissionMode": "AND",
       "requiresIfMatch": false,
-      "apiExcluded": false
+      "apiExcluded": true
     },
     {
       "controller": "MyUsageRedirectShimController",
@@ -13557,7 +13557,7 @@
       "isPublic": false,
       "permissionMode": "AND",
       "requiresIfMatch": false,
-      "apiExcluded": false
+      "apiExcluded": true
     },
     {
       "controller": "MyUsageRedirectShimController",
@@ -13580,7 +13580,7 @@
       "isPublic": false,
       "permissionMode": "AND",
       "requiresIfMatch": false,
-      "apiExcluded": false
+      "apiExcluded": true
     },
     {
       "controller": "UserMeRedirectShimController",
@@ -13598,7 +13598,7 @@
       "isPublic": false,
       "permissionMode": "AND",
       "requiresIfMatch": false,
-      "apiExcluded": false
+      "apiExcluded": true
     },
     {
       "controller": "UserMeRedirectShimController",
@@ -13616,7 +13616,7 @@
       "isPublic": false,
       "permissionMode": "AND",
       "requiresIfMatch": false,
-      "apiExcluded": false
+      "apiExcluded": true
     },
     {
       "controller": "UserMeRedirectShimController",
@@ -13634,7 +13634,7 @@
       "isPublic": false,
       "permissionMode": "AND",
       "requiresIfMatch": false,
-      "apiExcluded": false
+      "apiExcluded": true
     },
     {
       "controller": "UserMeRedirectShimController",
@@ -13652,7 +13652,7 @@
       "isPublic": false,
       "permissionMode": "AND",
       "requiresIfMatch": false,
-      "apiExcluded": false
+      "apiExcluded": true
     },
     {
       "controller": "UserMeRedirectShimController",
@@ -13670,7 +13670,7 @@
       "isPublic": false,
       "permissionMode": "AND",
       "requiresIfMatch": false,
-      "apiExcluded": false
+      "apiExcluded": true
     },
     {
       "controller": "UserPermissionCheckController",
@@ -13869,7 +13869,7 @@
       "isPublic": false,
       "permissionMode": "AND",
       "requiresIfMatch": false,
-      "apiExcluded": false
+      "apiExcluded": true
     },
     {
       "controller": "VoiceProfileRedirectShimController",
@@ -13890,7 +13890,7 @@
       "isPublic": false,
       "permissionMode": "AND",
       "requiresIfMatch": false,
-      "apiExcluded": false
+      "apiExcluded": true
     },
     {
       "controller": "VoiceProfileRedirectShimController",
@@ -13911,7 +13911,7 @@
       "isPublic": false,
       "permissionMode": "AND",
       "requiresIfMatch": false,
-      "apiExcluded": false
+      "apiExcluded": true
     },
     {
       "controller": "VoiceProfileRedirectShimController",
@@ -13932,7 +13932,7 @@
       "isPublic": false,
       "permissionMode": "AND",
       "requiresIfMatch": false,
-      "apiExcluded": false
+      "apiExcluded": true
     },
     {
       "controller": "VoiceProfileRedirectShimController",
@@ -13953,7 +13953,7 @@
       "isPublic": false,
       "permissionMode": "AND",
       "requiresIfMatch": false,
-      "apiExcluded": false
+      "apiExcluded": true
     },
     {
       "controller": "VoiceProfileController",

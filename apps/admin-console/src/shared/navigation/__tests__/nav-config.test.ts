@@ -33,13 +33,39 @@ describe('NAV_ENTRIES (capabilities-matrix section 3, reviewed 2026-07-04; playg
   // ticket's own edit), taking 51 -> 52.
   // /workflow-studio/assignments (tier 30-49, TASK-733 — the Studio
   // assignment-matrix screen), taking 53 -> 54.
-  it('covers the full 54-route map across the four tiers (including /context-schemas, /playground/workbench, /workflow-runs, /workflow-studio)', () => {
-    // 54 total: TASK-733 added /workflow-studio/assignments after this count was last set at 53.
-    expect(NAV_ENTRIES).toHaveLength(54);
+  // /developer (tier 20-29, TASK-783 — the API documentation portal),
+  // taking 54 -> 55.
+  it('covers the full 55-route map across the four tiers (including /context-schemas, /playground/workbench, /workflow-runs, /workflow-studio, /developer)', () => {
+    // 55 total: TASK-783 added /developer after this count was last set at 54.
+    expect(NAV_ENTRIES).toHaveLength(55);
     expect(NAV_ENTRIES.filter((entry) => entry.tier === '10-19')).toHaveLength(21);
-    expect(NAV_ENTRIES.filter((entry) => entry.tier === '20-29')).toHaveLength(7);
+    expect(NAV_ENTRIES.filter((entry) => entry.tier === '20-29')).toHaveLength(8);
     expect(NAV_ENTRIES.filter((entry) => entry.tier === '30-49')).toHaveLength(20);
     expect(NAV_ENTRIES.filter((entry) => entry.tier === '50-59')).toHaveLength(6);
+  });
+
+  it('gates the developer portal on the dedicated ApiDocumentation subject, not on manage:all', () => {
+    const developer = NAV_ENTRIES.find((entry) => entry.route === '/developer');
+
+    expect(developer).toBeDefined();
+    expect(developer?.tier).toBe('20-29');
+    // TASK-783 D-1: a DEDICATED subject, so access is delegable to tenant
+    // developers. Gating on `manage:all` here would make the portal
+    // super-admin-only and defeat the point of the ticket.
+    expect(developer?.required).toEqual([['read', 'ApiDocumentation']]);
+    expect(developer?.implemented).toBe(true);
+  });
+
+  it('shows the developer portal to a tenant developer holding only read:ApiDocumentation', () => {
+    const visible = visibleNavEntries([{ action: 'read', subject: 'ApiDocumentation' }], ['DOCTOR']);
+
+    expect(visible.map((entry) => entry.route)).toContain('/developer');
+  });
+
+  it('hides the developer portal from a caller without the ability', () => {
+    const visible = visibleNavEntries([{ action: 'manage', subject: 'Consultation' }], ['DOCTOR']);
+
+    expect(visible.map((entry) => entry.route)).not.toContain('/developer');
   });
 
   it('merges the standalone /stt-config, /tts-config and /ai-providers screens into the /ai-configuration hub', () => {
