@@ -26,7 +26,7 @@ export class CreateWorkflowTestFixtureRequest {
 
   @ApiProperty({
     description:
-      'Synthetic test input. SYNTHETIC ONLY — do not paste real or realistic patient data. This column is plain JsonB, not encrypted; "synthetic" is a contract, not an enforcement (see the ticket README §6/R4).',
+      'Synthetic test input. SYNTHETIC ONLY — do not paste real or realistic patient data. Stored encrypted with Vault Transit (README §6/R4, RESOLVED): the plaintext column was dropped, so only ciphertext is persisted.',
   })
   @IsObject()
   input!: Record<string, unknown>;

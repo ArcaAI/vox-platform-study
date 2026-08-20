@@ -139,6 +139,8 @@ export * from './ChangelogEntryRepository';
 export * from './UserChangelogAcknowledgementRepository';
 export * from './ConsentGrantRepository';
 export * from './WorkflowTestFixtureRepository';
+// Sibling that patches WorkflowTestFixtureRepository.prototype.
+export * from './WorkflowTestFixtureRepository.encryption';
 export * from './WorkflowRunRepository';
 export * from './WorkflowDefinitionRepository';
 export * from './WorkflowAssignmentRepository';

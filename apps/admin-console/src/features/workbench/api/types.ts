@@ -31,7 +31,12 @@ export interface Fixture {
   description?: string | null;
   paletteId?: string | null;
   workflowDefinitionId?: string | null;
-  input: Record<string, unknown>;
+  /**
+   * Encrypted at rest (Vault Transit) and disclosed ONLY by the single-fixture
+   * reads — the list endpoint omits it. Absent means "not disclosed on this
+   * surface", never "empty fixture".
+   */
+  input?: Record<string, unknown>;
   resourceStatus?: string;
   createdAt: string;
   updatedAt: string;
