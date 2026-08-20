@@ -5,3 +5,4 @@ export { CreateDefinitionForm } from './create-definition-form';
 export { StudioToolbar } from './studio-toolbar';
 export { PublishDialog } from './publish-dialog';
 export { DefinitionMetadataForm } from './definition-metadata-form';
+export { AssignmentMatrixScreen } from './assignments';
