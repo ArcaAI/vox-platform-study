@@ -14,6 +14,9 @@ import {
   // a feature module.
   ConsentServiceModule,
   ConsultationTimeoutSweepServiceModule,
+  // TASK-733 Task 10 — scheduled hard-delete of soft-deleted DNA
+  // writing-style profiles past their retention window ("purge later").
+  DnaProfileRetentionServiceModule,
   EntitlementsServiceModule,
   JWT_AUTH_GUARD,
   SERVICE_ACCOUNT_AUTHENTICATOR,
@@ -366,6 +369,11 @@ const common = [
   // consultations to CLOSED_INCOMPLETE. On by default (no `enabled` gate —
   // see the service's own doc comment for why).
   ConsultationTimeoutSweepServiceModule,
+  // TASK-733 Task 10 (owner ruling, 2026-08-20) — scheduled hard-delete of
+  // DnaWritingStyleReport/…Version rows already soft-deleted by
+  // resetMyDnaProfile/deleteReport, past their retention window. Opt-in
+  // (defaults OFF — see the service's own doc comment for why).
+  DnaProfileRetentionServiceModule,
   // AI usage metering: exports IUsageLedgerService for the emitter lanes and
   // hosts the outbox drainer (BullMQ tick -> rate -> append -> roll up). Its
   // queue registers its own name rather than a `JobQueue` member, so it is not

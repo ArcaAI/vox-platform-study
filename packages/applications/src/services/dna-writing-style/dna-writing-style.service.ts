@@ -527,20 +527,30 @@ export class DnaWritingStyleService extends BaseService implements IDnaWritingSt
   }
 
   /**
-   * Soft-delete the given reports and each of their versions, broadcasting one
-   * `ResourceDeleted` per report. Soft delete (never hard delete) per
-   * `03-domain-layer.md`: the rows stay auditable while dropping out of every
-   * read path, and `getEffectiveStyleText` therefore stops injecting them.
+   * Soft-delete the given reports, broadcasting one `ResourceDeleted` per
+   * report. Soft delete (never hard delete) per `03-domain-layer.md`: the
+   * rows stay auditable while dropping out of every read path, and
+   * `getEffectiveStyleText` therefore stops injecting them.
+   *
+   * `DnaWritingStyleVersion` carries NO `resourceStatus` column
+   * (`MODELS_WITHOUT_SOFT_DELETE` — `packages/database/src/client.ts`), so it
+   * CANNOT be soft-deleted — calling `.softDelete()` on it throws. Versions
+   * are therefore only COUNTED here, never mutated: they become unreachable
+   * the instant their parent report is soft-deleted (`getVersions` /
+   * `getVersionsForDoctor` load the parent report first and 404 once it is
+   * gone), and TASK-733 Task 10 (owner ruling, 2026-08-20) hard-deletes them
+   * together with their report once `DnaProfileRetentionService`'s retention
+   * window elapses — the "purge later" half of "soft delete now, purge
+   * later". Erasing them here, ahead of that window, would erase their
+   * PHI-derived ciphertext sooner than the report's own, which the ruling
+   * does not intend.
    */
   private async eraseReports(reports: { id: string; doctorId?: string | null }[], doctorId: string): Promise<DnaErasureResponse> {
     let deletedVersions = 0;
 
     for (const report of reports) {
       const versions = await this.dnaVersionRepository.findAll({ filters: { dnaReportId: report.id } });
-      for (const version of versions ?? []) {
-        await this.dnaVersionRepository.softDelete(version.id);
-        deletedVersions++;
-      }
+      deletedVersions += (versions ?? []).length;
 
       await this.dnaReportRepository.softDelete(report.id);
 

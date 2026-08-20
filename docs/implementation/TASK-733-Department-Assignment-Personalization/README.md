@@ -590,6 +590,61 @@ the **department tier is already in its cascade walk**. A DEPARTMENT-scope `Pipe
   `pnpm test:unit`; a test asserting `getEffectiveStyleText` returns `null` after a reset **even when
   two `isLatest = true` rows existed beforehand**.
 
+> #### Task 10 decides in writing (owner ruling, 2026-08-20) — SOFT DELETE NOW, PURGE LATER
+>
+> **Reset semantics are SOFT DELETE, IMMEDIATELY** — `resourceStatus: DELETED`, rule 03's
+> default — never hard delete at reset time. `resetMyDnaProfile()` / `deleteReport()` already
+> did this before this ruling (routes 2 and 3 above shipped as part of other Wave-4 work — see
+> §7.3); this ruling is the answer to §3.3 pitfall 3's "decide in writing" instruction that
+> those routes shipped without ever writing down, plus it closes a real bug found while writing
+> it down (see below).
+>
+> **A scheduled purge job hard-deletes soft-deleted profiles after a retention window** — the
+> *eventual* half. Rationale: the profile is derived from PHI, so INV-240's "the clinician can
+> delete it" must eventually mean **really** gone, not merely hidden behind a status flag
+> forever; but the immediate write stays a soft delete because that is what the rest of this
+> domain does or every reset (rule 03 default), and it keeps the row auditable/reversible for
+> the retention window in case of an erroneous or coerced reset. Hard delete past the window is
+> the ONE sanctioned exception to rule 03's soft-delete default here — `03-domain-layer.md`:
+> *"delete() exists but is reserved for genuinely immutable cleanup"* — a retention purge of an
+> already-soft-deleted, already-audited row is exactly that case, the same exception
+> `AuditRetentionService` and `AgentTrajectoryRetentionService` already rely on.
+>
+> **Implemented (this pass):**
+> - `packages/applications/src/services/dna-profile-retention/` (new) — `DnaProfileRetentionService`
+>   + module + barrel, following `ConsultationTimeoutSweepService`'s self-scheduling shape
+>   (`SchedulerRegistry` cron job, re-synced on `@OnEvent('app-settings.cache-refreshed')`) and
+>   `AuditRetentionService`'s hard-delete-gated-by-`enabled` shape (this purge is a hard delete,
+>   so — unlike the timeout sweep — it defaults **OFF**; an operator opts in). It reads
+>   `DnaWritingStyleReport` rows with `resourceStatus: 'DELETED'` and
+>   `resourceStatusUpdatedAt` older than the configured window, via the UNSCOPED `baseClient`
+>   (platform-wide maintenance; the tenant-scoped extended client would filter `DELETED` rows
+>   out of every read, which would hide the very rows this job exists to find), and hard-deletes
+>   each batch's `DnaWritingStyleVersion` rows **before** their parent `DnaWritingStyleReport`
+>   rows (so an interrupted run never orphans a version pointing at an already-purged report).
+> - Retention config, catalogued in `settings-registry/descriptors/platform-ops.descriptors.ts`
+>   (already present on `feat/loop` from prior reconciled work, now actually consumed):
+>   `dna-profile-retention.enabled` (default `false`), `.cron` (default `'45 3 * * *'`),
+>   `.retention-days` (default `30`) — **the retention window; never a hardcoded constant** —
+>   `.batch-size` (default `200`), `.max-batches-per-run` (default `100`).
+> - **Bug found and fixed while writing this down**: `eraseReports()` (the shared helper behind
+>   both `resetMyDnaProfile`/`deleteReport`) called `dnaVersionRepository.softDelete(version.id)`
+>   on every version row. `DnaWritingStyleVersion` has **no `resourceStatus` column** — it is
+>   listed in `MODELS_WITHOUT_SOFT_DELETE` (`packages/database/src/client.ts`) precisely because
+>   it is immutable version history, the same shape as `PromptVersion`/`ContextItemVersion` —
+>   so that call THROWS in production (`Repository.softDelete()`'s own guard), meaning the
+>   reset path failed for any doctor with at least one report version, i.e. almost always. The
+>   existing unit tests never caught it because they mock `dnaVersionRepository.softDelete` as a
+>   bare `vi.fn()`, which happily "succeeds." Fixed: versions are now only COUNTED in
+>   `eraseReports` (never mutated) — they become unreachable the instant their parent report is
+>   soft-deleted (`getVersions`/`getVersionsForDoctor` load the parent report first and 404 once
+>   it is gone) — and are hard-deleted together with their parent report by
+>   `DnaProfileRetentionService` once the retention window elapses. A regression test
+>   (`dna-writing-style.service.test.ts`) asserts `dnaVersionRepository.softDelete` is never
+>   called and reproduces the original throw via a mock that mirrors the real repository guard.
+>
+> See §7 for pasted test/build output.
+
 #### Task 11 — Node-level DNA opt-in on the synthesis node
 - **Agent:** T3 · sonnet-5 · high
 - **Files:** modify the consultation palette's `consultation.synthesize` descriptor (TS registry) and
@@ -863,6 +918,72 @@ orchestrator's to start), and the `apps/compat-playground` / `apps/quick-compat-
 | **Phase B Tasks 8–12** | **HARD-GATED on Task 7**, which is a human verdict. `reenable-gate.md` was authored with the evidence status verified against the tree. Findings worth surfacing: **Task 8 (the §2.7 ungated injection path), Task 9 (the `failMode` declaration) and Task 10 (the reset path) are ALREADY CLOSED on `feat/loop` by other work** — the proxy now routes through the gated `getEffectiveStyleText` (`text-proxy.controller.ts:1041-1045`), `pipeline.descriptors.ts:74-76` declares `dnaStyleEnabled` as `'closed'`, and both DNA controllers now carry `@Delete` routes. Task 11 is additionally blocked on TASK-731; Task 12 is deferred with the gate. |
 | **A DB-level `REVOKE` on the change log** | Deliberately omitted (see §7.1); a follow-up should restore it for all three change logs together. |
 
+### 7.4 2026-08-20 addendum — Task 10 completed in full (soft delete now, purge later)
+
+Row 899 above ("Task 10 ... ALREADY CLOSED") was only half true: `resetMyDnaProfile`/
+`deleteReport` DID soft-delete the report, but the "decide reset semantics in writing"
+instruction (§3.3 pitfall 3) was never actually answered anywhere, and the implementation
+carried a real bug (below). This pass (owner ruling — see Task 10's plan block above for the
+full written decision):
+
+- Wrote the decision Task 10 asked for, in writing, in Task 10's plan block: **soft delete now,
+  scheduled hard-delete purge later.**
+- **Fixed a production bug**: `eraseReports()` called `dnaVersionRepository.softDelete(...)` on
+  every report version, but `DnaWritingStyleVersion` has no `resourceStatus` column
+  (`MODELS_WITHOUT_SOFT_DELETE`) — that call throws, so the reset path failed for any doctor
+  with at least one report version (i.e. almost always). Existing unit tests never caught it
+  because they mocked the call as an unconditionally-succeeding `vi.fn()`. Fixed: versions are
+  now counted only, never mutated at reset time.
+- **Built the missing purge half**: `DnaProfileRetentionService`
+  (`packages/applications/src/services/dna-profile-retention/`), wired into
+  `apps/api/src/app.module.ts` and `packages/applications/src/services/index.ts`. Consumes the
+  `dna-profile-retention.*` settings-registry keys already catalogued in
+  `platform-ops.descriptors.ts` (present on `feat/loop` from prior reconciled work, but until
+  now unconsumed by any service).
+
+Verification (actual output, this pass):
+
+```
+$ pnpm --filter @arcaai/domains build                 (tsc, clean)
+$ pnpm --filter @arcaai/applications build             > tsc  (clean, no output)
+$ pnpm --filter @arcaai/applications typecheck          > tsc --noEmit  (clean, no output)
+$ pnpm --filter @arcaai/applications lint               0 errors, 0 new warnings
+
+$ pnpm vitest run src/services/dna-profile-retention/__tests__/dna-profile-retention.service.test.ts
+ Test Files  1 passed (1)
+      Tests  20 passed (20)
+
+$ pnpm vitest run src/services/dna-writing-style/__tests__/dna-writing-style.service.test.ts
+ Test Files  1 passed (1)
+      Tests  100 passed (100)
+
+$ pnpm vitest run src/services/dna-writing-style src/services/dna-profile-retention src/services/settings-registry
+ Test Files  29 passed (29)
+      Tests  461 passed (461)
+```
+
+Full `packages/applications` suite (`pnpm vitest run`, no filter): 3 pre-existing test files
+fail (`appSettings.service.test.ts`, and two others — see the full run's log), reproduced
+identically with this pass's changes stashed via `git stash push --keep-index` over exactly the
+DNA/purge-job files, confirmed out of scope. `pnpm api:build` and `pnpm test:unit`/`test:e2e`
+were not run this pass (no live test infra/gateway in this worktree — orchestrator's to start,
+per rule 01).
+
+**Worktree note**: this worktree's branch was found 1993 commits behind `feat/loop`'s actual
+tip (a stale-base hazard) and 424 commits diverged from it; work proceeded on a fresh branch
+(`task-733-715-dna-workflow-docs`) cut from the real `feat/loop` tip so this pass's tests
+exercise current code. Building `@arcaai/domains`/`@arcaai/applications` in that tip surfaced
+pre-existing, unrelated breakage from commit `60fba0d54` ("reconcile parallel-session work"):
+several barrel exports reference files that were never committed (`WorkflowInvariantRule*`,
+`common/phi-audit-scrub.ts`) and `workflow-exposure/cloud-provider-guard.ts` was deleted while
+still imported by `workflow-exposure.service.ts`. These are flagged separately (not fixed here,
+not committed as part of this ticket) — see the final report for a pointer.
+
+**Task 10 status: DONE (both halves).** Phase B otherwise remains exactly as row 899 states —
+Task 7's gate is still unsigned, Tasks 8/9/11/12 untouched this pass, the ticket's overall
+status is unchanged (still gated on Task 7 for Tasks 8–12, still blocked on the design gate for
+Task 6, still STOPPED on TASK-731 for Task 5).
+
 ## 8. Change History
 
 | Date | Change | By |
@@ -870,3 +991,4 @@ orchestrator's to start), and the `apps/compat-playground` / `apps/quick-compat-
 | 2026-08-16 | Ticket authored | Claude (Wave-4 ticket-authoring agent) |
 | 2026-08-19 | Phase A implemented (Tasks 1–4): `WorkflowAssignment` + `WorkflowAssignmentChange` model/migration/domain trio, `WorkflowAssignmentService` (cascade resolution via `walkCascade` + OCC CRUD + WORM audit), `/api/v1/admin/workflow-assignments` controller, regenerated route-manifest/openapi/vox-node admin artifacts. Task 5 STOPPED (TASK-731 not landed), Task 6 blocked on the design gate, Phase B gate document authored unsigned — and Tasks 8/9/10 found already closed by other work on `feat/loop`. | Claude (implementing agent) |
 | 2026-08-20 | Task 6 shipped (§7.1a) — the assignment-matrix screen at `/workflow-studio/assignments`, design gate waived by owner decision. Phase A is now feature-complete except Task 5 (still stopped on TASK-731); Phase B untouched. | Claude (implementing agent) |
+| 2026-08-20 | **Task 10 completed in full (owner ruling: soft delete now, purge later).** Wrote the reset-semantics decision Task 10's plan block (§4) had never actually answered. Fixed a production bug in `eraseReports()` (`dna-writing-style.service.ts`) that called `.softDelete()` on `DnaWritingStyleVersion` rows, which have no `resourceStatus` column and throw — the reset path failed for any doctor with a report version. Built the missing purge half: new `DnaProfileRetentionService` (`packages/applications/src/services/dna-profile-retention/`), a self-scheduling worker (mirrors `ConsultationTimeoutSweepService`'s shape, `AuditRetentionService`'s hard-delete-gated-by-`enabled` shape) that hard-deletes soft-deleted `DnaWritingStyleReport`/`…Version` rows past a configurable retention window (`dna-profile-retention.*` settings-registry keys), wired into `app.module.ts`. Regression test added proving the version-softDelete call is never made. See §7.4 for evidence. Phase B otherwise unchanged: Task 7's gate still unsigned, Tasks 8/9/11/12 untouched, Task 6 still blocked on the design gate, Task 5 still STOPPED on TASK-731. Documentation-only pass also recorded on TASK-715 (D-715-1). | Claude (implementing agent) |

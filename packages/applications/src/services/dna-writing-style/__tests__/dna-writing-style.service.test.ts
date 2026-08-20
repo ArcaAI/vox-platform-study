@@ -1673,7 +1673,7 @@ describe('DnaWritingStyleService', () => {
   // stored and keeps being injected into every summary the doctor generates.
 
   describe('resetMyDnaProfile', () => {
-    it('soft-deletes every report the caller owns, plus each report version', async () => {
+    it('soft-deletes every report the caller owns, and counts (without mutating) each report version', async () => {
       mockReportRepo.findAllForDoctor.mockResolvedValue([
         createMockReportEntity({ id: 'report-1', doctorId: 'user-id-1' }),
         createMockReportEntity({ id: 'report-2', doctorId: 'user-id-1', isLatest: false }),
@@ -1687,8 +1687,22 @@ describe('DnaWritingStyleService', () => {
       expect(result).toEqual({ doctorId: 'user-id-1', deletedReports: 2, deletedVersions: 2 });
       expect(mockReportRepo.softDelete).toHaveBeenCalledWith('report-1');
       expect(mockReportRepo.softDelete).toHaveBeenCalledWith('report-2');
-      expect(mockVersionRepo.softDelete).toHaveBeenCalledWith('v-1');
-      expect(mockVersionRepo.softDelete).toHaveBeenCalledWith('v-2');
+    });
+
+    it('never calls softDelete on a report version — DnaWritingStyleVersion has no resourceStatus column and would throw in production', async () => {
+      mockReportRepo.findAllForDoctor.mockResolvedValue([createMockReportEntity({ id: 'report-1', doctorId: 'user-id-1' })]);
+      mockVersionRepo.findAll.mockResolvedValue([createMockVersionEntity({ id: 'v-1' })]);
+      // Mirrors the real `Repository.softDelete()` guard for a model absent a
+      // `resourceStatus` column (`MODELS_WITHOUT_SOFT_DELETE` — client.ts):
+      // calling it would reject with exactly this error in production.
+      mockVersionRepo.softDelete.mockRejectedValue(
+        new Error('softDelete is not supported on model "dnaWritingStyleVersion" because it has no resourceStatus column'),
+      );
+
+      const result = await service.resetMyDnaProfile();
+
+      expect(mockVersionRepo.softDelete).not.toHaveBeenCalled();
+      expect(result).toEqual({ doctorId: 'user-id-1', deletedReports: 1, deletedVersions: 1 });
     });
 
     it('broadcasts a ResourceDeleted SysEvent per erased report', async () => {
@@ -1737,7 +1751,7 @@ describe('DnaWritingStyleService', () => {
   });
 
   describe('deleteReport', () => {
-    it('soft-deletes a single owned report and its versions, and broadcasts', async () => {
+    it('soft-deletes a single owned report, counts its versions without mutating them, and broadcasts', async () => {
       mockReportRepo.findById.mockResolvedValue(createMockReportEntity({ id: 'report-1', doctorId: 'user-id-1' }));
       mockVersionRepo.findAll.mockResolvedValue([createMockVersionEntity({ id: 'v-1' })]);
 
@@ -1745,7 +1759,7 @@ describe('DnaWritingStyleService', () => {
 
       expect(result).toEqual({ doctorId: 'user-id-1', deletedReports: 1, deletedVersions: 1 });
       expect(mockReportRepo.softDelete).toHaveBeenCalledWith('report-1');
-      expect(mockVersionRepo.softDelete).toHaveBeenCalledWith('v-1');
+      expect(mockVersionRepo.softDelete).not.toHaveBeenCalled();
       expect(mockEventEmitter.emit).toHaveBeenCalledWith(
         'SysEvent.ResourceDeleted',
         expect.objectContaining({ resourceId: 'report-1', data: expect.objectContaining({ kind: 'dna-profile-reset' }) }),
