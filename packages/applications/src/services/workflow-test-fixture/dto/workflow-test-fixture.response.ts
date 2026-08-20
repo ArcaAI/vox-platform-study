@@ -17,8 +17,17 @@ export class WorkflowTestFixtureResponse {
   @ApiPropertyOptional({ description: 'WorkflowDefinition id this fixture is scoped to; null = tenant-wide' })
   workflowDefinitionId?: string | null;
 
-  @ApiProperty({ description: 'Synthetic test input — never real or realistic patient data' })
-  input!: Record<string, unknown>;
+  /**
+   * Encrypted at rest with Vault Transit (TASK-721 R4) and therefore projected
+   * ONLY on the id-scoped reads (GET /:id, and the create/update echo). List
+   * pages and the delete acknowledgement omit it entirely — treat an absent
+   * `input` as "not disclosed on this surface", never as "empty fixture".
+   */
+  @ApiPropertyOptional({
+    description:
+      'Synthetic test input — never real or realistic patient data. Encrypted at rest (Vault Transit); returned only by the single-fixture reads, omitted from list pages.',
+  })
+  input?: Record<string, unknown>;
 
   @ApiPropertyOptional({ description: 'Resource status', enum: ['ENABLED', 'DISABLED'] })
   resourceStatus?: ResourceStatusType;
