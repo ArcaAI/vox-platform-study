@@ -374,3 +374,4 @@ Additionally `apps/text/.../test_lifespan.py` had its title assertion corrected 
 | Date | Change |
 |---|---|
 | 2026-08-17 | Ticket created and executed. Waves 1–6 applied; migration authored and proven; D-1…D-7 closed; service-identity cluster deferred with reasons (§6). |
+| 2026-08-20 | D-740-2 follow-up: removed the dead `validateProviderModel` cluster from `tenant.service.ts` (both TEXT/SMR and Guardrail domains together) plus the orphaned `loadCatalog`/`getCurrentProvider`/`loadSmrCatalog`/`getCurrentSmrProvider`/`loadGuardrailCatalog`/`getCurrentGuardrailProvider` helpers, its call site in `updateTenantConfigs`, and the six provider/model validation tests. Behaviour-preserving: every key involved is in `RETIRED_GLOBAL_SETTING_KEYS`, and selection is validated by `AiTaskDefault` + the `AiModel` registry (Wave 5). The locked-setting enforcement test was kept and rehomed under a `locked setting enforcement` describe. |
