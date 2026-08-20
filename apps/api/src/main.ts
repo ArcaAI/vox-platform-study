@@ -161,10 +161,29 @@ async function bootstrap() {
     }),
   );
 
-  // Renders RFC 7232 strong `ETag` headers from `body.version`. Non-versioned
-  // routes pass through unchanged (the interceptor is zero-cost when there's
-  // no version field). The `If-Match` round-trip on PATCH is enforced by
-  // `@RequiresIfMatch()` + `@ExpectedVersion()`.
+  // Disable Express's default auto-generated ETag. Left on, it stamps a WEAK
+  // content-hash validator (`W/"<len>-<hash>"`) on every JSON GET, including
+  // the ~70% of GET routes whose body carries no `version`. Those tokens are
+  // unusable as preconditions: replayed as `If-Match` they either fail the
+  // strong-validator check with 400, or — on a route with no
+  // `@ExpectedVersion()` — are silently discarded and the write proceeds
+  // anyway. Advertising no validator is strictly safer than advertising one
+  // the write path will never honour.
+  //
+  // This disables ETag GENERATION only. Express's own freshness check in
+  // `res.send` is independent of this setting and still short-circuits to 304
+  // for any response that carries an ETag, so conditional GET survives on
+  // versioned routes; `ETagInterceptor` implements it explicitly regardless.
+  // (Reached through the http adapter rather than a `NestExpressApplication`
+  // generic on `NestFactory.create` so the bootstrap signature is untouched.)
+  app.getHttpAdapter().getInstance().set('etag', false);
+
+  // Renders RFC 7232 strong `ETag` headers from `body.version` — after the
+  // line above, the ONLY ETag this API emits. Also serves the matching
+  // conditional GET (`If-None-Match` -> 304) and sets
+  // `Cache-Control: private, no-cache` on authenticated GETs. Non-versioned
+  // routes pass through unchanged. The `If-Match` round-trip on PATCH is
+  // enforced by `@RequiresIfMatch()` + `@ExpectedVersion()`.
   app.useGlobalInterceptors(new ETagInterceptor());
 
   // Enable shutdown hooks for graceful termination
