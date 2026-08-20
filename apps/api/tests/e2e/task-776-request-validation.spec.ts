@@ -146,7 +146,7 @@ test.describe('TASK-776: request validation', () => {
   // ==========================================================================
 
   test.describe('exception -> HTTP status mapping', () => {
-    test('DataNotFoundException => 404 with the generic {statusCode, message} body', async ({ request }) => {
+    test('DataNotFoundException => 404 with the generic unified-envelope body', async ({ request }) => {
       // `DepartmentRepository.findById` throws the domain `DataNotFoundException`
       // directly on a miss (repository.ts:109-116); `DepartmentService.update`'s own
       // `if (!department) throw new NotFoundException(...)` guard right after it is
@@ -159,10 +159,21 @@ test.describe('TASK-776: request validation', () => {
       });
       expect(res.status()).toBe(404);
       const body = await res.json();
-      // Exact shape from DataNotFoundExceptionFilter — statusCode + message ONLY,
-      // no `error`/`correlationId` keys (those belong to the ApiErrorResponse/
-      // BaseException.toJSON() shapes used by the other branches below).
-      expect(body).toEqual({ statusCode: 404, message: 'Resource not found' });
+      // Exact shape from DataNotFoundExceptionFilter. Since REST review H-2 this
+      // is the ONE unified envelope every gateway error uses —
+      // `{statusCode, code, message, correlationId}` — so the filter now also
+      // emits `code: 'HTTP.NOT_FOUND'` (status-derived: it has no domain code)
+      // and the correlationId. Deliberately still NO `error` key here.
+      //
+      // The enumeration posture is unchanged and is what the strict `toEqual`
+      // pins: the message stays the generic 'Resource not found', so neither
+      // the model name nor the row id appears anywhere in the body.
+      expect(body).toEqual({
+        statusCode: 404,
+        code: 'HTTP.NOT_FOUND',
+        message: 'Resource not found',
+        correlationId: expect.any(String),
+      });
     });
 
     test('ArgumentInvalidException (no-op update) => 400 with code GENERIC.ARGUMENT_INVALID', async ({ request }) => {
@@ -235,7 +246,7 @@ test.describe('TASK-776: request validation', () => {
       expect(body.metadata).toMatchObject({ expectedVersion: staleVersion, currentVersion: 1 });
     });
 
-    test('Prisma P2002 (unique constraint) => 409 with the sanitised {statusCode, error, correlationId} body', async ({ request }) => {
+    test('Prisma P2002 (unique constraint) => 409 with the sanitised unified-envelope body', async ({ request }) => {
       const key = `t776.p2002.${Date.now()}`;
       const payload = { name: 'T776 dup', key, value: '1', dataType: 'String' };
 
@@ -257,13 +268,19 @@ test.describe('TASK-776: request validation', () => {
       const body = await dup.json();
       // DIVERGENCE: the briefed contract said "Prisma P2002 => 409" without
       // specifying a body shape beyond the general exception-mapping section.
-      // The actual sanitised body carries NO `message` key at all (`mapPrismaCodeToHttp`
-      // + ExceptionInterceptor build `{statusCode, error, correlationId}` only,
-      // deliberately omitting the raw Prisma message to avoid leaking constraint/
-      // column names). Assert the real shape.
-      expect(body).toMatchObject({ statusCode: 409, error: 'Unique constraint violation' });
+      // The body is sanitised: it never carries the raw Prisma message or
+      // `meta` (constraint/column names). Since REST review H-2 it DOES carry
+      // the unified envelope — `message` and `code` were added, both derived
+      // from the Prisma error CODE alone, never from its text.
+      expect(body).toMatchObject({
+        statusCode: 409,
+        code: 'PERSISTENCE.UNIQUE_CONSTRAINT_VIOLATION',
+        message: 'Unique constraint violation',
+        error: 'Unique constraint violation',
+      });
       expect(typeof body.correlationId).toBe('string');
-      expect(body.message).toBeUndefined();
+      // The sanitisation this test exists for: no Prisma text reaches the client.
+      expect(JSON.stringify(body)).not.toContain('Unique constraint failed');
     });
 
     test('Prisma P2025 (record not found) — DIVERGENCE: unreachable through the versioned-write path', async () => {
@@ -279,9 +296,10 @@ test.describe('TASK-776: request validation', () => {
       //      (packages/domains/src/common/repository.ts:109-116) — this is caught by
       //      a DEDICATED `ExceptionInterceptor` branch (order-sensitive, runs before
       //      the generic BaseException branch) and produces the DIFFERENT 404 body
-      //      `{statusCode:404, message:'Resource not found'}` (see the
-      //      DataNotFoundException test above), not the Prisma-P2025 body
-      //      `{statusCode:404, error:'Not found', correlationId}`.
+      //      `{statusCode:404, code:'HTTP.NOT_FOUND', message:'Resource not found',
+      //      correlationId}` (see the DataNotFoundException test above), not the
+      //      Prisma-P2025 body (`code:'PERSISTENCE.RECORD_NOT_FOUND'`,
+      //      `error:'Not found'`).
       //   2. The CAS write itself (`Repository.updateWithVersion`,
       //      packages/domains/src/common/repository.ts:208-249) uses Prisma
       //      `updateMany({ where: { id, version: expectedVersion } })`, which NEVER

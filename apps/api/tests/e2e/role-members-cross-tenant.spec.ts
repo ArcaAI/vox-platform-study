@@ -120,6 +120,21 @@ async function fetchMembers(
   return (await res.json()) as MembersEnvelope;
 }
 
+/**
+ * Every member row of a role, across ALL pages — so a tenant-consistency
+ * assertion covers the whole result set, not just the first page. (This spec
+ * is READ-ONLY: it creates no rows, so there is nothing for it to clean up.)
+ */
+async function fetchAllMembers(request: APIRequestContext, token: string, roleId: string, tenantId?: string): Promise<MemberRow[]> {
+  const pageSize = 100;
+  const rows: MemberRow[] = [];
+  for (let page = 1; ; page++) {
+    const envelope = await fetchMembers(request, token, roleId, `page=${page}&pageSize=${pageSize}`, tenantId);
+    rows.push(...envelope.data);
+    if (rows.length >= envelope.total || envelope.data.length === 0) return rows;
+  }
+}
+
 async function fetchRole(request: APIRequestContext, token: string, roleId: string, tenantId?: string): Promise<RoleRow> {
   const res = await request.get(`/api/v1/admin/rbac/roles/${roleId}`, { headers: bearer(token, tenantId) });
   expect(res.status(), `GET role ${roleId} → ${await res.text()}`).toBe(200);
@@ -235,12 +250,30 @@ test.describe('role members — cross-tenant contract', () => {
     const doctorRole = await fetchRole(request, tenantAdminToken, doctorRoleId);
     expect(doctorRole.memberCount, 'tenant-scoped memberCount equals listing total').toBe(doctors.total);
 
-    // SUPER_ADMIN's holders are all SYSTEM-tenant: for a tenant admin the
-    // listing must be EMPTY — platform admin identities (usernames,
-    // emails) never cross the tenant boundary.
-    const members = await fetchMembers(request, tenantAdminToken, superAdminRoleId);
-    expect(members.total, 'SYSTEM-tenant platform admins hidden from a tenant admin').toBe(0);
-    expect(members.data).toHaveLength(0);
+    // WAS: `members.total === 0` on the SUPER_ADMIN role — a PROXY for "no
+    // SYSTEM-tenant platform admin leaks", valid only while nobody had ever
+    // granted SUPER_ADMIN inside the default tenant. Other specs do exactly
+    // that and never clean up, so the count drifted upward and the test failed
+    // on every run after the first — while a REAL leak that coincided with
+    // that pollution would still have passed a `> 0` count.
+    // NOW: assert the invariant this test is NAMED for — every row returned
+    // belongs to the caller's own tenant, and no SYSTEM-tenant platform admin
+    // appears. Strictly stronger: it fails on any cross-tenant row regardless
+    // of how many legitimate in-tenant rows exist.
+    const platformRows = await fetchAllMembers(request, tenantAdminToken, superAdminRoleId);
+    for (const row of platformRows) {
+      expect(row.tenantId, `member ${row.username} leaked from tenant ${row.tenantId}`).toBe(DEFAULT_TENANT_ID);
+    }
+    expect(
+      platformRows.some((row) => row.tenantId === SYSTEM_TENANT_ID),
+      'SYSTEM-tenant platform admins hidden from a tenant admin',
+    ).toBe(false);
+    // The count follows the same scoped predicate as the listing, so a hidden
+    // cross-tenant row cannot survive inside `total` either.
+    const scopedTotal = (await fetchMembers(request, tenantAdminToken, superAdminRoleId, 'page=1&pageSize=1')).total;
+    expect(platformRows).toHaveLength(scopedTotal);
+    const superAdminRoleScoped = await fetchRole(request, tenantAdminToken, superAdminRoleId);
+    expect(superAdminRoleScoped.memberCount, 'tenant-scoped memberCount equals listing total').toBe(scopedTotal);
   });
 
   test('M5 — unknown role id → 404 for every caller; no 403 on the members surface', async ({ request }) => {

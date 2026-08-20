@@ -175,7 +175,8 @@ against the running gateway, not as claimed.
 | **REST H-2** | HIGH | Four incompatible error body shapes; `statusCode` absent from OCC 412s, `correlationId` absent from 404s, machine-readable `code` only on domain exceptions. | **Open** — fixable additively, non-breaking |
 | **F-07** | MEDIUM | Nine sub-collection routes return `200` with an empty payload for a NONEXISTENT parent (`/admin/users/{missing}/roles`). Client cannot distinguish "no roles" from "no such user". Not a leak. | **Open** |
 | **F-08** | — | Superseded by F-09 — the cursor `500` is not a keyset/race bug; it is the PHI decrypt crash below. | **Closed, merged into F-09** |
-| **F-09** | **HIGH** | **PHI decrypt crashes every audit read that includes an audited PHI-entity mutation.** `phi-read-decrypt.ts` `collectNode` matches `PHI_CIPHERTEXT_FIELDS` **by key name anywhere in the object graph** and recurses into arbitrary nested JSON — including `AuditLog.data`/`previousData` snapshots. Those snapshots JSON-serialize entity `Buffer`s as `{"type":"Buffer","data":[…]}`, so the walker finds e.g. `encryptedContent`, assumes a `Uint8Array`, and calls `Buffer.from(object)` → `TypeError [ERR_INVALID_ARG_TYPE]` → bare **500** (no `correlationId` — it escapes `ExceptionInterceptor`). | **Open** |
+| **F-10** | **HIGH** | Audit snapshots persist PHI **plaintext** next to the ciphertext (`AuditLog.data.content`), defeating envelope encryption for audited clinical edits. Written at audit time, not at read time. Needs an owner decision. | **Open** |
+| **F-09** | **HIGH → CRITICAL** | **PHI decrypt crashed every audit read — and the same path could silently DISCLOSE PHI.** `phi-read-decrypt.ts` `collectNode` matches `PHI_CIPHERTEXT_FIELDS` **by key name anywhere in the object graph** and recurses into arbitrary nested JSON — including `AuditLog.data`/`previousData` snapshots. Those snapshots JSON-serialize entity `Buffer`s as `{"type":"Buffer","data":[…]}`, so the walker finds e.g. `encryptedContent`, assumes a `Uint8Array`, and calls `Buffer.from(object)` → `TypeError [ERR_INVALID_ARG_TYPE]` → bare **500** (no `correlationId` — it escapes `ExceptionInterceptor`). | **Open** |
 
 ### Regressions introduced by our own fixes (caught by the FULL suite, not the targeted runs)
 
@@ -183,6 +184,41 @@ against the running gateway, not as claimed.
 |---|---|---|
 | **R-1** | F-01 moved the `hasChanges` guard ahead of the CAS, so a no-op payload skips the OCC precondition entirely: unchanged value + stale `expectedVersion` returned 200 instead of 412 (`tenant.service.ts:1291-1310`). Generalizes to every `if (!hasChanges) throw` service, which now 400s where it used to 412. | **Being fixed** — precondition must be evaluated before the no-changes short-circuit |
 | **R-2** | C-01's mint applied the doctor-ownership rule to BOTH surfaces, so a tenant admin could read a job (200) but never mint a ticket for it (404) — making the admin SSE route dead for the Admin Console. | **Fixed + verified** — mint is now the union of both surface rules; route still re-asserts the precise one |
+
+### F-10 — audit snapshots persist PHI plaintext (found while verifying F-09; needs an owner decision)
+
+`AuditLog.data` for a `ContextItem` mutation contains **both** the ciphertext and the decrypted
+transient:
+
+```
+data->>'encryptedContent'  = {"type":"Buffer","data":[…]}      (vault:v1:… ciphertext)
+data->>'content'           = "advance before stale approve"     (PLAINTEXT)
+```
+Verified straight from the test DB; 4 `ContextItem` rows currently carry it, and no other
+resourceType does.
+
+This is NOT the F-09 read-path bug — the plaintext is written at AUDIT time, not decrypted at read
+time. F-09's fix is confirmed correct precisely because the API response merely echoes what is
+already stored.
+
+Mechanism: the audit snapshot serializes the entity, and a PHI entity carries its decrypted value
+as a transient field alongside the ciphertext column (`PHI_CIPHERTEXT_FIELDS` maps
+`encryptedContent` → the transient `content`). Nothing strips the transient before persisting.
+
+Why it matters: these columns are envelope-encrypted specifically because the database alone is not
+treated as sufficient protection for PHI. Persisting the plaintext into `AuditLog.data` defeats that
+for every audited clinical edit, and the audit table has a different retention and export profile
+than the source table — `GET /admin/audit-logs/export` streams it to CSV.
+
+The pattern for the fix already exists but was never generalized: `services/tenant/scrubbing.ts`
+(`scrubLockedForAudit`) scrubs locked/secret values out of tenant-config audit payloads. There is no
+equivalent for PHI transients, and the scrub is local to the tenant service rather than applied in
+the shared audit path.
+
+**Owner decision needed**, because the alternative reading is defensible: if audit snapshots are
+deliberately plaintext for forensic reconstruction, then say so explicitly and scope the audit table
+accordingly (retention, export gating, at-rest posture). What is not defensible is encrypting the
+source column and silently copying the plaintext next to it.
 
 ### F-09 detail (verified 2026-08-19)
 
@@ -209,10 +245,20 @@ buffers. From then on, every audit read whose page includes that row returns 500
 platform the audit trail is a compliance surface — it failing closed-with-a-500 is an availability
 defect, and it is guaranteed to occur rather than merely possible.
 
-**Second-order concern worth an owner decision:** the name-based match is unscoped. On a value
-shaped as real bytes rather than the `{type:'Buffer'}` JSON form, the same code path would
-*succeed* — decrypting PHI ciphertext into an audit-log response. The crash is currently the only
-thing preventing that. Any fix should scope the match to the model's declared ciphertext columns
+**The second-order concern was REAL, not hypothetical — confirmed by the fix's RED test.** Node's
+`Buffer.from` *accepts* the `{"type":"Buffer","data":[…]}` JSON form, so the walker decrypted
+`vault`-wrapped content out of an audit payload and wrote it onto `data.content` **without
+throwing**. The crash and the silent-disclosure path are the same bug; which one you get depends
+only on the byte payload. That reclassifies F-09 from an availability defect to a PHI disclosure
+path, and it is why the fix must not be a `try/catch` or an `instanceof` skip — either would have
+converted a loud crash into a quiet leak.
+
+**Fix (verified):** matching is now schema-derived and model-scoped — `PHI_MODEL_CIPHERTEXT`
+(14 models: only declared columns may be decrypted; `auditLog` declares none) and
+`PHI_MODEL_RELATIONS` (44 parents / 98 edges: recursion follows only declared relation edges, so
+`Json`/`JsonB` snapshot columns are structurally unreachable). The decision comes from the schema,
+never from the value's shape. A schema-parity test re-derives both maps from `db_main/*.prisma` and
+fails on drift. Any fix should scope the match to the model's declared ciphertext columns
 rather than matching bare key names anywhere in the graph, and should stop recursing into opaque
 JSON payload columns entirely.
 
@@ -257,3 +303,71 @@ sessions. Consequences observed and worth knowing before triaging a red suite:
 - `task-776-response-parsing` cursor case fails in the full run but passes in isolation — cross-spec interference, not a defect.
 - `agentic-policy`'s stale-`If-Match` test hardcodes `If-Match: "999"` and races a sibling test that CREATES the policy row; the first edit creates rather than updates, so the precondition never applies. Order-dependent, pre-existing.
 - Continuous audit-log writes from the suite itself are what expose F-08.
+
+
+## Final verification (2026-08-20) — zero failing tests
+
+| Gate | Result |
+|---|---|
+| e2e, CI configuration (`--workers=1`, as `playwright.config.ts` sets for CI) | **1083 passed / 0 failed**, twice consecutively, **no DB reset between runs** |
+| `apps/api` unit | 248 files / **3881** passed |
+| `@arcaai/applications` | 519 files / **9566** passed |
+| `@arcaai/domains` | **1821** passed |
+| `@arcaai/database` | **1541** passed |
+| `pnpm api:build` | 12/12 tasks successful |
+| `tsc --noEmit` (api / applications / domains) | clean |
+| eslint (all touched files) | 0 errors |
+| `vox-node gen:admin:check` | no drift (52 areas, 390 routes) |
+| route-manifest determinism | identical sha256 across re-runs |
+
+### What it took to get from "12 failing" to zero, and what each failure actually was
+
+None of the twelve were caused by this ticket's production changes. They fell into five classes,
+and the distinction matters because four of them were latent defects rather than noise:
+
+1. **PHI decrypt crash (7 failures)** — F-09. Fixed; see above.
+2. **Specs that pass only once per database (3)** — `role-members-cross-tenant` M4,
+   `task-729-nlp-task-expansion`, `task-615-invoice-lifecycle`. Each asserted a PROXY for its
+   invariant that only holds on a virgin DB (`total === 0`, `version === 0`, `201 not 409`). The
+   canonical `pnpm test:e2e` hid this by resetting in `globalSetup`, so a reset buys exactly ONE
+   green run. Rewritten to assert the real invariant — every member belongs to the caller's tenant;
+   the list round-trips verbatim using run-unique content; recompute returns the SAME invoice id on
+   a period claimed fresh — each with worker-local id-tracked cleanup. Verified by three
+   consecutive runs per spec with no reset.
+   Notable correction found while doing it: `BillingService.computeDraft` **is** idempotent while a
+   period is DRAFT; the 409 is the deliberate contract for FINALIZED/VOID. The spec was reusing a
+   month its own later tests had terminalized. That contract is now pinned by an explicit assertion.
+3. **A spec whose premise the tracked sample contradicts (1)** — `super-admin-ops-surfaces` asserted
+   `enabled: false` "because `.env.test` does not set the flag", but `.env.sample` (tracked) carries
+   `ENABLE_PRISMA_STUDIO=true` and `.env.test` is GENERATED from it, so the test could never pass
+   for any developer. Rewritten to assert the honesty invariant it is named for: the probe agrees
+   with whether the shell is actually mounted — true with the flag set or unset.
+4. **A stale mock after another ticket's change (1)** — `s3.service.secret-gate.test.ts`. TASK-772
+   changed the S3 readiness gate from `getSecretSync` to `await getSecretOptional`; the mock stubbed
+   only the sync form, so the gate resolved no credentials and failed with the misleading
+   `S3_ENDPOINT must be a valid URL`. Both forms are now stubbed from the same map.
+5. **A real-work test against the default timeout (1)** — `task-760` presummary. The "scope fence"
+   proves only routing, but the compat route accepts `{}` and performs a REAL summarization
+   (~6.5s idle, well past 30s once the suite saturates apps/text). Raised per the existing house
+   pattern (`task-709-note-occ.spec.ts:189`, added by TASK-772 for the identical cause).
+
+### Local parallelism is flaky; CI is not
+
+`playwright.config.ts` sets `workers: isCI ? 1 : undefined` with `fullyParallel: true`, so CI
+serializes while a local run fans out. Under local parallelism the failing SET moves between runs —
+`admin-panel-patch-surfaces` and `users-management-contract` fail intermittently because a file's
+own tests mutate shared collections (roles, users) while sibling tests list and sort them. Both pass
+in isolation and under `--workers=1`. The CI-equivalent invocation is the authoritative one and is
+what the table above reports. Chasing a green local parallel run would mean fixing fixture sharing
+inside those two specs — worth doing, but it is not a regression and not in this ticket's scope.
+
+### Environment prerequisites discovered
+
+`pnpm test:up:api` alone is not sufficient for a fully green suite. The test-port **text service on
+:8962** must also be running (`./scripts/start-test-app.sh text`) or four specs fail — three on the
+missing service and, subtly, `task-760` only becomes slow ONCE it is up. Starting it plainly yielded
+gateway→text `401`s; exporting `SERVICE_TOKEN` (from `.env.test`'s `TEXT_SERVICE_TOKEN`) before
+starting resolved it, after which the gateway correctly returns **404** for an unknown task —
+the documented "upstream 4xx propagates" behaviour, rather than the 503 seen when the service is
+absent. The precise mechanism behind the 401 was not isolated; recorded here as a runbook note, not
+as a diagnosed defect.

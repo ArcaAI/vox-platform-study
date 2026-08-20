@@ -117,6 +117,24 @@ export type AiModelProvider = (typeof AI_MODEL_PROVIDERS)[number];
  */
 export type TtsVoiceBinding = { id: string; locale: string };
 
+/**
+ * `metaData.labelTaxonomy` shapes used by the guardrail-plane NLP rows
+ * (GLiNER2 PII span detector, GLiNER2 safety moderator). Guardrail reads this
+ * through the tenant → SYSTEM cascade (`core/tenant_config.py`), so the shape
+ * is load-bearing configuration, not documentation.
+ */
+export type NlpModelCapability = 'extract_entities' | 'classify_text';
+
+export type LabelTaxonomyTask = {
+  labels: string[];
+  multi_label: boolean;
+  cls_threshold?: number;
+};
+
+export type LabelTaxonomy =
+  | { threshold: number; labels: string[] }
+  | { threshold: number; benignLabels: string[]; tasks: Record<string, LabelTaxonomyTask> };
+
 /** Shape of one `DEFAULT_AI_MODELS` seed row. */
 export interface AiModelSeed {
   id: string;
@@ -138,8 +156,25 @@ export interface AiModelSeed {
   memorySizeMb: number;
   computeType: string;
   tags: string[];
-  /** Per-model extras: TTS `{voices}`, Azure LLM `{azureDeployment}`. */
-  metaData?: { voices?: TtsVoiceBinding[]; azureDeployment?: string; ttsProvider?: string };
+  /**
+   * Per-model extras: TTS `{voices}`, Azure LLM `{azureDeployment}`, and the
+   * guardrail-plane NLP rows' `{languages, labelTaxonomy}`.
+   */
+  metaData?: {
+    voices?: TtsVoiceBinding[];
+    azureDeployment?: string;
+    ttsProvider?: string;
+    languages?: string[];
+    labelTaxonomy?: LabelTaxonomy;
+    /**
+     * What `apps/nlp` may ask this checkpoint to do. Declared as configuration
+     * rather than inferred from the model id in Python, so a `guardrail.safety`
+     * selection pointing at an extraction-only row fails at selection time
+     * instead of mis-answering at inference. Closed set: a row without a
+     * classification head must not claim `classify_text`.
+     */
+    capabilities?: NlpModelCapability[];
+  };
   /** Only set when a row must seed in a non-default status (indic-f5). */
   resourceStatus?: ResourceStatusType;
 }

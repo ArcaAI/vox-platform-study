@@ -82,6 +82,98 @@ export const PHI_CIPHERTEXT_FIELDS: Readonly<Record<string, PhiPlaintextTarget>>
   encryptedLastTestOutput: { plaintext: 'lastTestOutput' },
 });
 
+/**
+ * MODEL-SCOPED ciphertext columns — the authority for what may be decrypted.
+ *
+ * Keyed by Prisma DELEGATE name (camelCase, i.e. `Repository._modelName`), each
+ * entry lists the ciphertext columns that model actually DECLARES in the Prisma
+ * schema. Matching by bare key name anywhere in the object graph (the previous
+ * behaviour) was both a crash and a disclosure hazard: `AuditLog.data` /
+ * `previousData` / `metaData` are opaque JSON SNAPSHOTS of mutated entities, and
+ * a snapshot of a PHI entity serialises its ciphertext Buffer as
+ * `{"type":"Buffer","data":[…]}` under the very same `encrypted*` key. Walking
+ * into those payloads either threw (`Buffer.from(object)`) or — when the value
+ * happened to be well-formed bytes — silently decrypted PHI into an audit
+ * response. Neither can happen now: `auditLog` declares no ciphertext column and
+ * no relation edge, so nothing under it is ever read.
+ *
+ * Derived from `packages/database/src/prisma/db_main/*.prisma`; the parity test
+ * `phi-read-decrypt.schema-parity.test.ts` re-derives it and fails on drift.
+ */
+export const PHI_MODEL_CIPHERTEXT: Readonly<Record<string, readonly string[]>> = Object.freeze({
+  contextItem: ['encryptedContent'],
+  contextItemVersion: ['encryptedChangeSummary', 'encryptedContent', 'encryptedContentDiff', 'encryptedFieldChanges'],
+  dnaWritingStyleReport: ['encryptedReportData', 'encryptedStyleText'],
+  dnaWritingStyleVersion: ['encryptedReportData', 'encryptedStyleText'],
+  evalRun: ['encryptedNotes'],
+  evalScore: ['encryptedDetails', 'encryptedRationale'],
+  goldenCase: ['encryptedReferenceNote', 'encryptedTranscript'],
+  highlight: ['encryptedExact', 'encryptedNote', 'encryptedPrefix', 'encryptedSuffix'],
+  knowledgeChunk: ['encryptedText'],
+  namedEntity: ['encryptedMetadata', 'encryptedNormalizedText', 'encryptedText'],
+  notification: ['encryptedMessageContent', 'encryptedMessageRichText', 'encryptedMessageText'],
+  promptTemplate: ['encryptedLastTestOutput'],
+  summaryMeta: ['encryptedCitationsMap', 'encryptedGuardrailDecisions'],
+  transcriptionJob: ['encryptedResultMetadata', 'encryptedResultText'],
+});
+
+/**
+ * Declared RELATION edges (delegate name → relation field → child delegate name)
+ * on every path that can reach a model in `PHI_MODEL_CIPHERTEXT`. Recursion
+ * follows ONLY these edges, so it descends into genuine nested relation rows
+ * pulled in via `include` and never into a `Json`/`JsonB` scalar column — those
+ * are not relations and therefore have no edge. A model absent from this map is
+ * a leaf for walking purposes.
+ *
+ * Same provenance and parity guard as `PHI_MODEL_CIPHERTEXT` above.
+ */
+export const PHI_MODEL_RELATIONS: Readonly<Record<string, Readonly<Record<string, string>>>> = Object.freeze({
+  apiKey: { user: 'user' },
+  asrPipeline: { TranscriptionJobs: 'transcriptionJob', Versions: 'asrPipelineVersion' },
+  asrPipelineVersion: { AsrPipeline: 'asrPipeline' },
+  audioRecording: { ContextItem: 'contextItem' },
+  consultation: { ChildConsultations: 'consultation', ContextItems: 'contextItem', Department: 'department', Doctor: 'user', Highlights: 'highlight', ParentConsultation: 'consultation' },
+  consultationContextSchema: { Department: 'department', Versions: 'consultationContextSchemaVersion' },
+  consultationContextSchemaVersion: { Schema: 'consultationContextSchema' },
+  contextItem: { AudioRecordings: 'audioRecording', Consultation: 'consultation', NamedEntities: 'namedEntity', SummaryMeta: 'summaryMeta', TranscriptNamedEntities: 'namedEntity', TranscriptSegments: 'transcriptSegment', Versions: 'contextItemVersion' },
+  contextItemVersion: { ContextItem: 'contextItem' },
+  department: { ChildDepartments: 'department', ConsultationContextSchemas: 'consultationContextSchema', Consultations: 'consultation', DepartmentAgents: 'departmentAgent', ParentDepartment: 'department', PromptTemplates: 'promptTemplate', UserDepartments: 'userDepartment' },
+  departmentAgent: { Department: 'department', PromptTemplate: 'promptTemplate', Versions: 'departmentAgentVersion' },
+  departmentAgentVersion: { Agent: 'departmentAgent' },
+  dnaWritingStyleReport: { Doctor: 'user', Versions: 'dnaWritingStyleVersion' },
+  dnaWritingStyleVersion: { DnaWritingStyleReport: 'dnaWritingStyleReport' },
+  evalRun: { EvalScores: 'evalScore', GoldenSet: 'goldenSet' },
+  evalScore: { EvalRun: 'evalRun', GoldenCase: 'goldenCase' },
+  goldenCase: { EvalScores: 'evalScore', GoldenSet: 'goldenSet' },
+  goldenSet: { EvalRuns: 'evalRun', GoldenCases: 'goldenCase' },
+  highlight: { Consultation: 'consultation' },
+  knowledgeChunk: { KnowledgeDocument: 'knowledgeDocument' },
+  knowledgeDocument: { KnowledgeChunks: 'knowledgeChunk' },
+  media: { Bucket: 'tenantBucket', UserMedias: 'userMedia' },
+  namedEntity: { ContextItem: 'contextItem', TranscriptContextItem: 'contextItem' },
+  notification: { ResourceSubscription: 'resourceSubscription', TargetUser: 'user' },
+  passwordResetToken: { User: 'user' },
+  policy: { RolePolicies: 'rolePolicy' },
+  promptTemplate: { Department: 'department', DepartmentAgents: 'departmentAgent', Owner: 'user', Versions: 'promptVersion' },
+  promptVersion: { PromptTemplate: 'promptTemplate' },
+  resourceSubscription: { Notifications: 'notification', Subscribers: 'user' },
+  role: { ChildRoles: 'role', ParentRole: 'role', RolePolicies: 'rolePolicy', UserRoleAssignments: 'userRoleAssignment' },
+  rolePolicy: { Policy: 'policy', Role: 'role' },
+  storageAccessKey: { Buckets: 'tenantBucket' },
+  summaryMeta: { ContextItem: 'contextItem' },
+  tenantBucket: { Medias: 'media', StorageAccessKeys: 'storageAccessKey', StorageConfigs: 'tenantStorageConfig' },
+  tenantStorageConfig: { Bucket: 'tenantBucket' },
+  transcriptSegment: { ContextItem: 'contextItem' },
+  transcriptionJob: { Pipeline: 'asrPipeline' },
+  user: { ApiKeys: 'apiKey', DoctorConsultations: 'consultation', DoctorDnaReports: 'dnaWritingStyleReport', OwnedPromptTemplates: 'promptTemplate', PasswordResetTokens: 'passwordResetToken', ResourceSubscriptions: 'resourceSubscription', UserDepartments: 'userDepartment', UserMedias: 'userMedia', UserNotifications: 'notification', UserProfile: 'userProfile', UserRoleAssignments: 'userRoleAssignment', UserSettings: 'userSettings', VoiceProfiles: 'userVoiceProfile' },
+  userDepartment: { Department: 'department', User: 'user' },
+  userMedia: { Media: 'media', User: 'user' },
+  userProfile: { User: 'user' },
+  userRoleAssignment: { Role: 'role', User: 'user' },
+  userSettings: { User: 'user' },
+  userVoiceProfile: { User: 'user' },
+});
+
 // Process-wide SecretsService handle for repository decrypt-on-read. Set ONCE
 // per process by the application-layer PHI initializer when
 // SECRETS_PROVIDER=vault; left undefined in env-mode dev/test and in unit tests
@@ -111,7 +203,7 @@ const DECRYPT_METHODS = new Set(['findUnique', 'findUniqueOrThrow', 'findFirst',
  * other delegate method passes through untouched (bound to preserve `this`).
  * Only invoked from the base `db` getter when a SecretsService is wired.
  */
-export function wrapDelegateWithPhiDecrypt<T extends object>(delegate: T): T {
+export function wrapDelegateWithPhiDecrypt<T extends object>(delegate: T, modelName: string): T {
   return new Proxy(delegate, {
     get(target, prop, receiver) {
       const orig = Reflect.get(target, prop, receiver);
@@ -121,7 +213,7 @@ export function wrapDelegateWithPhiDecrypt<T extends object>(delegate: T): T {
       if (DECRYPT_METHODS.has(prop)) {
         return async (...args: unknown[]): Promise<unknown> => {
           const result = await (orig as (...a: unknown[]) => Promise<unknown>).apply(target, args);
-          if (result) await decryptPhiRows(result);
+          if (result) await decryptPhiRows(result, modelName);
           return result;
         };
       }
@@ -142,11 +234,11 @@ const SKIP_RECURSE = (v: unknown): boolean => v instanceof Uint8Array || v insta
  * every registered `encrypted<Field>` column found on any node, and descending
  * into nested relation objects/arrays (so includes from any parent are covered).
  */
-function collectNode(node: unknown, jobs: DecryptJob[], seen: Set<object>): void {
+function collectNode(node: unknown, modelName: string, jobs: DecryptJob[], seen: Set<object>): void {
   if (!node || typeof node !== 'object' || SKIP_RECURSE(node)) return;
 
   if (Array.isArray(node)) {
-    for (const item of node) collectNode(item, jobs, seen);
+    for (const item of node) collectNode(item, modelName, jobs, seen);
     return;
   }
 
@@ -154,28 +246,42 @@ function collectNode(node: unknown, jobs: DecryptJob[], seen: Set<object>): void
   seen.add(node);
 
   const row = node as Record<string, unknown>;
-  for (const key of Object.keys(row)) {
-    const value = row[key];
+
+  // 1) Decrypt ONLY the ciphertext columns this model declares.
+  for (const key of PHI_MODEL_CIPHERTEXT[modelName] ?? []) {
+    if (!(key in row)) continue;
     const target = PHI_CIPHERTEXT_FIELDS[key];
-    if (target) {
-      const raw = value as Uint8Array | null | undefined;
-      if (!raw || (raw as Uint8Array).length === 0) {
-        // Ciphertext column present but empty ⇒ no data; null the transient field.
-        row[target.plaintext] = null;
-      } else {
-        const ct = Buffer.from(raw as Uint8Array).toString('utf8');
-        const t = target;
-        jobs.push({
-          ct,
-          apply: (plaintext: string) => {
-            row[t.plaintext] = t.json ? JSON.parse(plaintext) : plaintext;
-          },
-        });
-      }
+    if (!target) continue;
+    const raw = row[key];
+    if (!(raw instanceof Uint8Array)) {
+      // A declared ciphertext column that is not bytes is either absent (null)
+      // or not a live column value; treat as "no data" rather than guessing.
+      if (raw === null || raw === undefined) row[target.plaintext] = null;
       continue;
     }
-    // Recurse into nested relations (objects/arrays), not ciphertext buffers.
-    if (value && typeof value === 'object') collectNode(value, jobs, seen);
+    if (raw.length === 0) {
+      // Ciphertext column present but empty ⇒ no data; null the transient field.
+      row[target.plaintext] = null;
+      continue;
+    }
+    const ct = Buffer.from(raw).toString('utf8');
+    const t = target;
+    jobs.push({
+      ct,
+      apply: (plaintext: string) => {
+        row[t.plaintext] = t.json ? JSON.parse(plaintext) : plaintext;
+      },
+    });
+  }
+
+  // 2) Recurse ONLY through DECLARED relations. Json/JsonB payload columns
+  //    (AuditLog.data/previousData/metaData and friends) are scalars, have no
+  //    relation edge, and are therefore never entered.
+  const relations = PHI_MODEL_RELATIONS[modelName];
+  if (!relations) return;
+  for (const [field, childModel] of Object.entries(relations)) {
+    const value = row[field];
+    if (value && typeof value === 'object') collectNode(value, childModel, jobs, seen);
   }
 }
 
@@ -187,12 +293,12 @@ function collectNode(node: unknown, jobs: DecryptJob[], seen: Set<object>): void
  * SecretsService is wired (env-mode dev/test) or when the result has no PHI
  * ciphertext.
  */
-export async function decryptPhiRows(rows: unknown): Promise<void> {
+export async function decryptPhiRows(rows: unknown, modelName: string): Promise<void> {
   const secrets = getPhiReadSecrets();
   if (!secrets) return;
 
   const jobs: DecryptJob[] = [];
-  collectNode(rows, jobs, new Set<object>());
+  collectNode(rows, modelName, jobs, new Set<object>());
   if (jobs.length === 0) return;
 
   const keyName = secrets.getPhiTransitKeyName?.() ?? PHI_TRANSIT_KEY;

@@ -637,7 +637,11 @@ describe('Prisma error sanitisation (audit)', () => {
     expect(JSON.stringify(body)).not.toContain('Unique constraint failed');
   });
 
-  it('client body shape is {statusCode, error, correlationId} only (no message, no meta)', async () => {
+  // H-2: the body now also carries the unified envelope's `code` + `message`.
+  // Both are FIXED strings derived from the Prisma error CODE (never `err.meta`
+  // and never `err.message`), so the sanitisation this test guards is unchanged
+  // — the key list simply grew by two.
+  it('client body shape is {statusCode, code, message, error, correlationId} only (no Prisma message, no meta)', async () => {
     // P2002 maps to 409 with the proper error label.
     const err = makePrismaError({
       code: 'P2002',
@@ -652,8 +656,10 @@ describe('Prisma error sanitisation (audit)', () => {
       caught = e as HttpException;
     }
     const body = caught!.getResponse() as Record<string, unknown>;
-    expect(Object.keys(body).sort()).toEqual(['correlationId', 'error', 'statusCode'].sort());
+    expect(Object.keys(body).sort()).toEqual(['code', 'correlationId', 'error', 'message', 'statusCode'].sort());
     expect(body.statusCode).toBe(HttpStatus.CONFLICT);
+    expect(body.code).toBe('PERSISTENCE.UNIQUE_CONSTRAINT_VIOLATION');
+    expect(body.message).toBe('Unique constraint violation');
     expect(body.error).toBe('Unique constraint violation');
     expect(body.correlationId).toBe('corr-1');
   });

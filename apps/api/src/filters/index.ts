@@ -1,5 +1,7 @@
 export * from './data-not-found.filter';
 export * from './consent.filter';
+export * from './error-envelope';
+export * from './http-exception-envelope.filter';
 // TASK-768 — the downstream-failure classifier + the only client-facing body
 // builder for a failed call to a Python service. Not a Nest filter: it is the
 // pure boundary logic `ExceptionInterceptor` applies (and that the three proxy

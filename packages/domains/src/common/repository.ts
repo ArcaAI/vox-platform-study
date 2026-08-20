@@ -42,7 +42,7 @@ export abstract class Repository<DomainEntity extends BaseEntity, DatabaseModel>
     // on the 26 registered `encrypted*` columns — all other models (GlobalSetting,
     // AuditLog, WORM) use distinct names and are untouched.
     if (getPhiReadSecrets()) {
-      return wrapDelegateWithPhiDecrypt(delegate);
+      return wrapDelegateWithPhiDecrypt(delegate, this._modelName);
     }
     return delegate;
   }

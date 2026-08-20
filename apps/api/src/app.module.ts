@@ -35,7 +35,7 @@ import { EventEmitterModule } from '@nestjs/event-emitter';
 import { ScheduleModule } from '@nestjs/schedule';
 import { ClsGuard, ClsModule } from 'nestjs-cls';
 import { uuidv7 } from 'uuidv7';
-import { ConsentExceptionFilter, DataNotFoundExceptionFilter } from './filters';
+import { ConsentExceptionFilter, DataNotFoundExceptionFilter, HttpExceptionEnvelopeFilter } from './filters';
 import { JwtAuthGuard, OriginTenantBindingGuard, PatientConsentGuard } from './guards';
 import { ContextInterceptor, ExceptionInterceptor, ImpersonationAuditInterceptor, MaintenanceInterceptor, MetricsInterceptor } from './interceptors';
 import { TenantOwnedResourceModule, TenantOwnedResourceSseGuard } from './common';
@@ -237,6 +237,22 @@ const guards = [
 // `NotFoundException("Resource not found")` directly with the right
 // message and need no filter wrapping.
 const filters = [
+  // REST review H-2 — the catch-all envelope normalizer. Registered FIRST
+  // deliberately: with several `APP_FILTER` providers Nest gives precedence to
+  // the LAST-registered matching filter, so the two specific filters below must
+  // come after it. (It also `@Catch(HttpException)` rather than `@Catch()`, so
+  // it is not even a candidate for the domain exceptions those two handle —
+  // belt and braces, verified empirically against the live 404 + consent
+  // bodies rather than reasoned about.)
+  //
+  // What it fixes: guards run BEFORE interceptors, so `UnifiedAuthGuard`'s
+  // 401/403 — the highest-volume error class on this gateway — never reached
+  // `ExceptionInterceptor` and still shipped the bare Nest body with no `code`
+  // and no `correlationId`.
+  {
+    provide: APP_FILTER,
+    useClass: HttpExceptionEnvelopeFilter,
+  },
   {
     provide: APP_FILTER,
     useClass: DataNotFoundExceptionFilter,
