@@ -183,10 +183,7 @@ export function useDnaStyle(): UseDnaStyleReturn {
   const setDefault = useCallback(
     (reportId: string, expectedVersion?: number): Promise<DnaReport> =>
       execute<DnaReport>('setDefault', async (client) => {
-        const known =
-          expectedVersion ??
-          reports.find((r) => r.id === reportId)?.version ??
-          (style?.id === reportId ? style.version : undefined);
+        const known = expectedVersion ?? reports.find((r) => r.id === reportId)?.version ?? (style?.id === reportId ? style.version : undefined);
 
         try {
           const data =

@@ -383,9 +383,7 @@ test.describe.serial('D — rotation warning at login', () => {
       // for the same key, which trips the AppSettings boot invariant
       // and silently breaks every subsequent cache refresh.
       const prisma = await getDb();
-      await prisma.globalSetting
-        .update({ where: { id: settingId }, data: { value: '0', version: { increment: 1 } } })
-        .catch(() => undefined);
+      await prisma.globalSetting.update({ where: { id: settingId }, data: { value: '0', version: { increment: 1 } } }).catch(() => undefined);
     }
     await deleteUser(request, user?.id);
   });

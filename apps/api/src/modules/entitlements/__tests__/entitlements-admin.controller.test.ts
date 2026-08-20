@@ -70,7 +70,7 @@ describe('EntitlementsAdminController — delegation', () => {
 
   it('updates a plan with param + body', async () => {
     const body = { defaultLimits: { seats: 10 } };
-    await controller.updatePlan('PRO', body as never);
+    await controller.updatePlan('PRO', body as never, undefined);
     expect(services.entitlements.updatePlanEntitlement).toHaveBeenCalledWith('PRO', body);
   });
 
@@ -86,7 +86,7 @@ describe('EntitlementsAdminController — delegation', () => {
 
   it('upserts a tenant override with param + body', async () => {
     const body = { seats: 20, expectedVersion: 1 };
-    await controller.upsertOverride('tenant-9', body as never);
+    await controller.upsertOverride('tenant-9', body as never, undefined);
     expect(services.entitlements.upsertTenantEntitlement).toHaveBeenCalledWith('tenant-9', body);
   });
 
