@@ -1,6 +1,9 @@
 # OCC Coverage Inventory — REST review finding H-1
 
-**Status:** Phase 1 (detection + inventory) — no route behaviour changed.
+**Status:** Phase 0b + Phase 2 SHIPPED (2026-08-20) — the seven tier-A routes now require `If-Match`,
+and the clients that drive them send it. Tier A is 0; the boot audit reports `46/88` protected
+(was `39/88`) and the two sanctioned exceptions now come from in-place decorators, not the audit's
+lookup table. Tier B is untouched and still needs `version` on its DTOs first (§9 phase 3).
 **Source of truth:** `apps/api/route-manifest.json` (regenerate with `pnpm api:route-manifest`) plus the
 boot audit `apps/api/src/bootstrap/occ-coverage-audit.ts`.
 **Last measured:** 2026-08-20, against `feat/loop`.
@@ -18,7 +21,7 @@ they must be separated:
 
 | Tier | What is true | Client-visible symptom | Count |
 |---|---|---|---|
-| **A — advertised but unenforced** | The response DTO carries `version`, so `ETagInterceptor` emits a strong `ETag`. A GET *tells* the client the resource is conditionally updatable; the write path then ignores `If-Match`. | Silent lost update, with a conflict-detection story the client reasonably believed in. | **7** |
+| **A — advertised but unenforced** (CLOSED — all seven flipped, 2026-08-20) | The response DTO carries `version`, so `ETagInterceptor` emits a strong `ETag`. A GET *tells* the client the resource is conditionally updatable; the write path then ignores `If-Match`. | Silent lost update, with a conflict-detection story the client reasonably believed in. | **7** |
 | **B — versioned row, unexposed validator** | The Prisma row has `_version` (the standard model template gives it to every model), but the response DTO omits it, so `ETagInterceptor` never fires. The client is *still* handed a **weak Express content-hash ETag** (§8) that the write path will not accept. | Silent lost update — and worse than tier A, because a conforming client that echoes the validator back has its precondition **silently ignored** while believing it applied. Adding `@RequiresIfMatch()` alone would 428 every caller forever: there is no strong validator to echo. | **42** |
 
 Tier A is worse than emitting no strong ETag at all, and it is where the *decorator* migration starts — but §8 shows the weak-ETag problem is larger than either tier and should be fixed first. Tier B needs a
@@ -70,7 +73,15 @@ A client reasonably assumes per-resource consistency. These eight aggregates bre
 
 ## 4. Tier A — the seven ETag-advertising routes with no precondition
 
-Verbatim from the boot audit (see §7 for the raw WARN):
+**All seven now carry `@RequiresIfMatch()` + `@ExpectedVersion()` and CAS through
+`repository.updateWithVersion` (2026-08-20).** Where the service had a short-circuit ahead of the
+CAS — `TenantService.setTags` (identical tag set) and `DnaWritingStyleService.setDefaultReport`
+(already the default) — `assertExpectedVersion` runs BEFORE it, so a stale client gets 412 rather
+than a 200 that certifies a precondition nobody evaluated. Two are create-or-update and use the
+`"0"` create-intent validator (`PUT .../override`, `PUT /dna-writing-styles/settings`). Contract
+pinned by `apps/api/tests/e2e/task-776-occ-tier-a.spec.ts`.
+
+Verbatim from the boot audit BEFORE the flip (see §7 for the raw WARN):
 
 | Route | Handler | Evidence |
 |---|---|---|
@@ -128,12 +139,21 @@ service applies the precondition only when a row exists.
 | `PUT /admin/settings/registry/:key` (`SettingsRegistryWriteController.putSetting`) | create-or-update; `@RequiresIfMatch()` would 428 the first write forever |
 | `PUT /admin/tenant-frontend-config` (`TenantFrontendConfigAdminController.upsert`) | one row per tenant; OCC applies on UPDATE only |
 
-They are recorded in `SANCTIONED_EXCEPTIONS` in the audit because the controller files were owned by
-another change when Phase 1 landed. Migrating each to an in-place
-`@NoOptimisticConcurrency('<reason>')` is a mechanical follow-up, and that list should shrink to
-empty.
+**Both migrated (2026-08-20)** to an in-place `@NoOptimisticConcurrency('<reason>')` on the
+controller, carrying the same reason strings. `SANCTIONED_EXCEPTIONS` in the audit is now an empty
+map and must stay empty — an exception belongs on the route it excuses, where a reader of the
+controller sees it. Pinned by `occ-coverage-audit.test.ts`.
 
-## 7. Audit output (boot, 2026-08-20)
+## 7. Audit output (boot)
+
+**After the phase-2 flip the walk reports** `OCC coverage: 46/88 PATCH/PUT routes require
+If-Match; 2 sanctioned exception(s); 0 version-bearing route(s) unprotected.` and emits no WARN.
+The 46 is reproducible without a boot: `apps/api/route-manifest.json` carries 88 PATCH/PUT routes,
+46 with `requiresIfMatch: true`. The two exceptions are now the in-place
+`@NoOptimisticConcurrency()` decorators of §6 — `SANCTIONED_EXCEPTIONS` is an empty map, pinned by
+`occ-coverage-audit.test.ts`.
+
+The BEFORE output, kept as the record of what was found:
 
 ```
 [Nest] LOG [OccCoverageAudit] OCC coverage: 39/88 PATCH/PUT routes require If-Match; 2 sanctioned exception(s); 7 version-bearing route(s) unprotected.
@@ -256,7 +276,13 @@ alongside the SDK work and before any decorator flips, because it changes what c
 only ETag a client can be given is one the write path accepts. Ship it with release-note copy for
 the `304` loss on version-less GETs.
 
-**Phase 0b — SDKs (no gateway change).** `@arcaai/vox` and `@arcaai/vox-node` send `If-Match`
+**Phase 0b — SDKs (no gateway change). DONE 2026-08-20**, shipped in the SAME change set as the
+phase-2 flip (shipping the flip first would have turned every current caller into a 428):
+`@arcaai/vox` echoes the version it holds on `PATCH /consultations/:id` and
+`PATCH /dna-writing-styles/:reportId/default` and maps 412 to `ConfigConflictError`;
+`@arcaai/vox-node`'s generated admin surface now types `ifMatch` as REQUIRED on the four admin
+routes; the admin console sends the read ETag on all five surfaces it owns and surfaces 412 as
+"someone else edited this — reloaded, try again". Original text: `@arcaai/vox` and `@arcaai/vox-node` send `If-Match`
 on *every* PATCH/PUT whose prior GET returned an `ETag`, and retry-on-412 with a refetch. The admin
 console proxy already passes `If-Match`/`ETag` through, so its work is per-screen: capture the ETag
 on read, echo it on write, surface the 412 as "someone else edited this". **Nothing below may ship
@@ -264,6 +290,10 @@ until a release carrying this is out.**
 
 **Phase 1 (this change) — detection only.** Warn-only boot audit, `@NoOptimisticConcurrency()`, this
 inventory. Non-breaking.
+
+**Phase 2 — DONE 2026-08-20.** Executed as ONE change set rather than the staged order below,
+because 0b shipped with it: all seven tier-A routes flipped, `PATCH /consultations/:id` last.
+Original plan text:
 
 **Phase 2 — admin-config surfaces, tier A.** `PUT /admin/tenant-idp-config/:id/directory-credentials`,
 `PUT /admin/tenants/:id/tags`, `PATCH /admin/entitlements/plans/:plan`,
@@ -280,6 +310,11 @@ symmetry with the already-protected STT twin.
 `/internal/stt/*` job callbacks, the voice-profile toggles, `consultations/jobs/:jobId/cancel`, and
 `PUT /prompt-templates/preferred` if the owner accepts last-write-wins there. Also migrate the two
 `SANCTIONED_EXCEPTIONS` entries in §6 to in-place decorators.
+
+**Phase 5 — DONE 2026-08-20 (folded into phase 2).** `PATCH /consultations/:id` was flipped last,
+without waiting for a telemetry window: this is a pre-production platform (no prod data), so the
+"wait for the header on 100% of live traffic" gate has no traffic to wait on, and the browser SDK
+that drives the route ships in the same change. Original text:
 
 **Phase 5 — DnaWritingStyle, then `PATCH /consultations/:id` last.** `PUT /dna-writing-styles/settings`
 is one decorator away (it already parses `@ExpectedVersion()`), so it goes first as the rehearsal.
