@@ -23,6 +23,7 @@ import {
   IconHistory,
   IconKey,
   IconLayoutDashboard,
+  IconLayoutGrid,
   IconLicense,
   IconListTree,
   IconMicrophone,
@@ -428,6 +429,20 @@ export const NAV_ENTRIES: readonly NavEntry[] = [
     label: 'Workflow Studio',
     tier: '30-49',
     icon: IconBinaryTree2,
+    required: [['manage', 'WorkflowDefinition']],
+    implemented: true,
+  },
+  // TASK-733 half (a) Task 6 — the assignment matrix. A sub-route of the Studio
+  // (rule 13 "one authoritative editor per backend resource": the Studio owns
+  // `WorkflowDefinition`, so it owns which definition governs which
+  // tenant/department too), given its own nav entry rather than a tab so it
+  // shows up alongside the sibling `/workflow-runs` entry for the same domain.
+  // Design gate waived for this screen (owner decision, TASK-733 Task 6).
+  {
+    route: '/workflow-studio/assignments',
+    label: 'Workflow Assignments',
+    tier: '30-49',
+    icon: IconLayoutGrid,
     required: [['manage', 'WorkflowDefinition']],
     implemented: true,
   },

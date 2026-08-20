@@ -7,8 +7,9 @@
  * the same program, already built against a real `admin/workflow-*` endpoint.
  */
 import { useState } from 'react';
-import { IconListTree, IconPlus, IconRefresh } from '@tabler/icons-react';
+import { IconLayoutGrid, IconListTree, IconPlus, IconRefresh } from '@tabler/icons-react';
 import { useQueryClient } from '@tanstack/react-query';
+import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { Badge, Button, VirtualizedDataGrid, type ColumnDef, type DataQueryState } from '@arcaai/ui';
 import { gridPersistence } from '@/shared/data/grid-persistence';
@@ -99,6 +100,12 @@ function DefinitionsListBody() {
           meta={<span>Author, validate and publish workflow definitions for this tenant.</span>}
           actions={
             <>
+              <Button variant="outline" asChild>
+                <Link href="/workflow-studio/assignments">
+                  <IconLayoutGrid aria-hidden />
+                  Assignments
+                </Link>
+              </Button>
               <Button variant="outline" onClick={() => void queryClient.invalidateQueries({ queryKey: workflowStudioKeys.root })}>
                 <IconRefresh aria-hidden />
                 Refresh

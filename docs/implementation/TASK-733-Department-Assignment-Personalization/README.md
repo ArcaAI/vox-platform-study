@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Status** | In Progress — Phase A (half (a)) backend COMPLETE; Task 6 (screen) blocked on the design gate; Phase B remains HARD-GATED |
+| **Status** | In Progress — Phase A (half (a)) backend COMPLETE; Task 6 (screen) COMPLETE (design gate waived by owner decision); Phase B remains HARD-GATED |
 | **Wave** | 4 · **Size** | M |
 | **Epic slug** | `department-assignment-personalization` |
 | **Depends on** | TASK-700 (`dna-phi-containment`) — **half (b) is HARD-GATED on its decrypt-and-scan returning clean AND its containment tasks having shipped**; TASK-731 (`palette-consultation`) — half (a) assigns consultation workflow definitions, which must exist first. Soft: TASK-710 (`phi-redactor`) hop 2, TASK-718 (`workflow-interpreter`) dispatcher, TASK-719 (`workflow-studio-v1`) for the screen. |
@@ -729,8 +729,27 @@ the **department tier is already in its cascade walk**. A DEPARTMENT-scope `Pipe
 
 ## 7. Implementation Summary
 
-**Executed 2026-08-19 on `feat/loop` @ `a6daa9157`.** Phase A Tasks 1–4 are complete. Task 5,
-Task 6 and all of Phase B are blocked — see "Not done, and why" below.
+**Executed 2026-08-19 on `feat/loop` @ `a6daa9157`.** Phase A Tasks 1–4 are complete. Task 6
+shipped 2026-08-20 (design gate waived by owner decision, TASK-733 Task 6). Task 5 and all of
+Phase B remain blocked — see "Not done, and why" below.
+
+### 7.1a Task 6 — Studio assignment-matrix screen (shipped 2026-08-20)
+
+Owner decision waived the design gate (R-8) so the screen could ship against the existing design
+system. Sub-route of the Studio (`/workflow-studio/assignments`, own nav entry), not a tab. Rows =
+tenant-default + departments; columns = code-owned palettes; each cell shows the resolved slug + a
+text-labeled source badge (Explicit / Inherits tenant / Platform default) and opens a
+`DetailDrawer` (Select with an Inherit sentinel + published definitions, OCC create/update/delete)
+built on the already-existing `assignments` API/hooks/cascade-lib layer. Plain `<table>` (sticky
+first column), matching `permission-matrix.tsx`'s non-list-matrix precedent, not
+`VirtualizedDataGrid`. Files: `features/workflow-studio/components/assignments/**`,
+`app/(console)/(tenant)/workflow-studio/assignments/{page,loading,error}.tsx`, `nav-config.ts`.
+Tests: `assignment-matrix-screen.test.tsx` (7 tests — render, badges, POST/PATCH/DELETE OCC, NoTenant
+gate, axe 0 violations). Verified live against the shared dev gateway/DB (both themes, two tenants,
+NoTenant gate); no workflow definition is published in this dev DB yet, so the write path's
+runtime evidence is the component tests (asserted against the real controller's routes/headers).
+R-7 (STT department-scoping) is deliberately not special-cased here — that's a TASK-724 dispatcher
+concern, out of this screen's scope.
 
 ### 7.1 What was built (Phase A, half (a))
 
@@ -840,7 +859,7 @@ orchestrator's to start), and the `apps/compat-playground` / `apps/quick-compat-
 | Item | State |
 |---|---|
 | **Task 5 — wire the dispatcher** | **STOPPED AND FLAGGED, as §4 Task 5 instructs.** TASK-731 has not landed: `NoteGenerationService` (`packages/applications/src/services/consultation/note-generation/note-generation.service.ts`, 196 lines) contains no workflow/palette resolution at all, and the node registry carries `summarization` + `stt` only — there is no `consultation` palette to resolve. Building a parallel dispatch was explicitly forbidden. `IWorkflowAssignmentService.resolve()` is ready for the one-line hop when TASK-731 lands. |
-| **Task 6 — Studio assignment-matrix screen** | **BLOCKED on the design gate** (rule 12 §2 gate 2 — no screen before its Figma frames are approved; no frame inventory exists for it). §6 R-8 anticipates exactly this and puts the backend first, which is what shipped. |
+| **Task 6 — Studio assignment-matrix screen** | **SHIPPED 2026-08-20** — design gate waived by owner decision (§7.1a). No longer blocked. |
 | **Phase B Tasks 8–12** | **HARD-GATED on Task 7**, which is a human verdict. `reenable-gate.md` was authored with the evidence status verified against the tree. Findings worth surfacing: **Task 8 (the §2.7 ungated injection path), Task 9 (the `failMode` declaration) and Task 10 (the reset path) are ALREADY CLOSED on `feat/loop` by other work** — the proxy now routes through the gated `getEffectiveStyleText` (`text-proxy.controller.ts:1041-1045`), `pipeline.descriptors.ts:74-76` declares `dnaStyleEnabled` as `'closed'`, and both DNA controllers now carry `@Delete` routes. Task 11 is additionally blocked on TASK-731; Task 12 is deferred with the gate. |
 | **A DB-level `REVOKE` on the change log** | Deliberately omitted (see §7.1); a follow-up should restore it for all three change logs together. |
 
@@ -850,3 +869,4 @@ orchestrator's to start), and the `apps/compat-playground` / `apps/quick-compat-
 |---|---|---|
 | 2026-08-16 | Ticket authored | Claude (Wave-4 ticket-authoring agent) |
 | 2026-08-19 | Phase A implemented (Tasks 1–4): `WorkflowAssignment` + `WorkflowAssignmentChange` model/migration/domain trio, `WorkflowAssignmentService` (cascade resolution via `walkCascade` + OCC CRUD + WORM audit), `/api/v1/admin/workflow-assignments` controller, regenerated route-manifest/openapi/vox-node admin artifacts. Task 5 STOPPED (TASK-731 not landed), Task 6 blocked on the design gate, Phase B gate document authored unsigned — and Tasks 8/9/10 found already closed by other work on `feat/loop`. | Claude (implementing agent) |
+| 2026-08-20 | Task 6 shipped (§7.1a) — the assignment-matrix screen at `/workflow-studio/assignments`, design gate waived by owner decision. Phase A is now feature-complete except Task 5 (still stopped on TASK-731); Phase B untouched. | Claude (implementing agent) |
