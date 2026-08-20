@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Status** | Review — engine (Phase C) built, green, and now verified live-wired: the 2026-08-19 Change History entry confirms `POST admin/workflow-definitions` publishing a real definition end-to-end (`packages/workflow-contract` 249/249, harness 1447/1447); Python mirror (Task 7b) and remaining Phases B/D items (`WorkflowValidatorService` port, Prisma rule model) still not built — see §7/§8 |
+| **Status** | Review — all three formerly-unbuilt items now built (2026-08-20): the **Python mirror** (Task 7b, `packages/py-workflow-contract`, 57 tests), the **`WorkflowValidatorService`** (Task 8, DB-backed rule resolution, 13 tests) and the **Prisma rule model** (Tasks 3/3b — its schema/migration/allow-lists were already on `feat/loop`, but the 7 domain-layer files its own barrels imported were MISSING and `@arcaai/domains` did not compile; completed here). Remaining: Tasks 9–12 (rule-set CRUD controller, re-validation sweep, seed, E2E) — see §7/§8 |
 | **Wave** | 1 · **Size** | XL |
 | **Epic slug** | `workflow-compiler-validator` |
 | **Depends on** | TASK-715 (`workflow-definition-model`) |
@@ -1119,10 +1119,163 @@ pnpm --filter @arcaai/workflow-contract build lint typecheck test
 
 ---
 
+## 7b. Implementation Summary — the three unbuilt items (2026-08-20)
+
+This pass closed the three items §7 left open: the Python mirror (Task 7b), the
+`WorkflowValidatorService` (Task 8) and the Prisma rule model (Tasks 3/3b).
+
+### The rule model was HALF-APPLIED on `feat/loop`, not missing
+
+The most important finding of this pass. `feat/loop` already carried the rule model's
+**schema half** — `workflow-invariant-rule.prisma`, the `WorkflowRuleSeverity` /
+`WorkflowRulePredicateType` enums in `enums.prisma`, the `ResourceType` value in
+`audit.prisma` AND `packages/domains/src/enums/generated/ResourceType.ts`, the migration
+`20260820040427_task_716_workflow_invariant_rule`, both `tenant-scope.ts` allow-lists
+(`TENANT_SCOPED_MODELS` + `SYSTEM_SHARED_READ_MODELS`, with a comment already describing
+`findApplicable()`'s two-read shape), the `CoreDatabaseModule` provider/export registration,
+and all five domain **barrel** lines.
+
+What it did NOT carry were the seven files those barrels and that module import:
+
+```
+src/enums/generated/WorkflowRuleSeverity.ts
+src/enums/generated/WorkflowRulePredicateType.ts
+src/models/generated/core/WorkflowInvariantRuleModel.ts
+src/entities/generated/core/WorkflowInvariantRuleEntity.ts
+src/factories/generated/core/WorkflowInvariantRuleFactory.ts
+src/mappers/generated/core/WorkflowInvariantRuleEntityMapper.ts
+src/repositories/generated/core/WorkflowInvariantRuleRepository.ts
+```
+
+**Consequence: `@arcaai/domains` did not compile on `feat/loop`** — 8 `TS2307` errors, every
+one a barrel or module importing a file that was never committed. This pass authored the
+seven files, which took that count to zero. The migration was re-verified end to end against
+a throwaway shadow DB (created and dropped; the dev DB was never touched) and
+`prisma migrate diff` printed `-- This is an empty migration.`
+
+The model file was produced by `pnpm gen:model` (the only sanctioned scaffolder); the entity,
+factory, mapper and repository were hand-authored per rule 03. `pnpm gen:mapper` was NOT run.
+The mapper carries `FIELDS_NOT_WRITABLE = ['version']` — `WorkflowInvariantRule` is OCC-written
+by the Task 9 admin PATCH route, so the strip is load-bearing.
+
+`WorkflowInvariantRuleRepository` adds the two methods the ticket specified:
+`findApplicable(tenantId, paletteKey)` (two explicit-`tenantId` reads — own tenant then SYSTEM
+— mirroring `PipelinePolicyRepository.findSystemDefault`, with `paletteKey: null` rows always
+in scope) and `findMaxRuleVersion`.
+
+### Task 8 — `WorkflowValidatorService`, and why it has no port
+
+`packages/applications/src/services/workflow-validator/`: `workflow-validator.service.ts`,
+`rule-merge.ts`, `workflow-validator.service.module.ts`, `index.ts`, `__tests__/`.
+
+The ticket's Task 8 specified an `IWorkflowValidatorService` symbol token. **That port is
+deliberately not re-introduced**, because TASK-734 removed it on purpose — see
+`IWorkflowDefinitionService.ts`'s own header: *"this service calls
+`@arcaai/workflow-contract`'s `validate`/`compile` directly rather than through a speculative
+port nothing else consumes."* The concrete class is provided and exported instead, the shape
+`SttPipelineCompilerService` / `SttPipelineResolverService` already use in the sibling module.
+
+The service owns exactly the impure half the pure engine cannot: loading rule ROWS, merging
+them, and computing `ruleSetVersion`. It deliberately does **not** persist the report or
+broadcast a sys-event — `WorkflowDefinitionService` already owns the definition lifecycle and
+does both, and a second writer would double-broadcast `ResourceUpdated` on every validate.
+
+Three behaviours worth naming:
+
+- **Totality is the contract** (§3.5). A repository throw, a `predicateType` the code-owned
+  catalogue does not have, or an evaluator failure each resolve to a synthetic `WF-INTERNAL`
+  ERROR finding with `ok: false`. Nothing resolves to `ok: true`, and nothing throws.
+- **An empty rule table falls back to the bundled DRAFT catalogue**, stamped
+  `ruleSetVersion: 0`. Returning an empty rule set on an unseeded database would make every
+  graph validate clean — a total, silent loss of the safety boundary that looks like success.
+- **`mergeRuleSets` enforces one-way strictness** (`rule-merge.ts`, pure + separately tested):
+  a tenant row may ADD a rule and may RAISE a SYSTEM rule's severity, but may never lower one
+  and never redefine what a SYSTEM rule CHECKS — an emptied `predicateConfig` would otherwise
+  be a disabled rule wearing an ERROR badge.
+
+### Task 7b — the Python mirror
+
+`packages/py-workflow-contract` (`hope_workflow_contract`): pydantic models for
+`CompiledWorkflowConfig` and every child, `verify_checksum()`, a `formatVersion` guard that
+raises on an unknown version, `py.typed`, and `tests/test_parity.py`. Consumer half only — no
+compiler, no validator; Python never authors a workflow. The root `pyproject.toml` needed no
+edit: `packages/py-workflow-contract` was ALREADY a committed `[tool.uv.workspace]` member
+(line 53) and `uv.lock` already carried a full `hope-workflow-contract` entry — a fifth
+half-applied change, source never committed. `uv lock --offline` re-resolved with a zero diff.
+
+Two mirroring choices are deliberate and are pinned by an exact round-trip assertion:
+`compiledAt` stays `str` (a `datetime` round-trip rewrites `…T00:00:00.000Z` → `…T00:00:00Z`),
+and the two `retry` numbers are `int | float`, not `float` (`float` turns the wire's `1` into
+`1.0`, so canonical JSON emits `"1.0"` where JS emits `"1"` — every real config would fail
+verification).
+
+### Contract-staleness notes (the ticket is now out of date in five places)
+
+1. §2.3 says the node registry lives in `packages/applications/src/services/workflow-registry/`.
+   It does not; it is `packages/workflow-contract/src/node-registry.ts`.
+2. §2.3 says TASK-715 hands over an `IWorkflowValidatorService` port + stub. It never existed,
+   and TASK-734 decided against it (above).
+3. Task 8's "replaces the stub provider binding" is therefore not applicable.
+4. `WorkflowGraphNode` now has a real `position` field and `WorkflowNodeDescriptor` a
+   `configSchema` (`node-config-schemas.ts`). Neither affects the Python mirror or
+   `compiled-config.schema.json`: `position` is presentational canvas state on the GRAPH, and
+   the compiled config — the only thing Python consumes — never carries it. Verified field-for-
+   field; the schema needed no change.
+5. Task 3's text says `WorkflowInvariantRule` is "not added to `SYSTEM_SHARED_READ_MODELS`".
+   The committed schema header explicitly reverses that, with reasoning, and the allow-list
+   entry is present. The committed decision is the correct one and is what the repository
+   implements.
+
+### Verification (actual output)
+
+| Gate | Result |
+|---|---|
+| `@arcaai/domains` typecheck | **8 errors → 0** |
+| `@arcaai/domains` build (`tsc`) | clean |
+| `@arcaai/domains` test | **1831 passed**, 2 skipped, 9 todo (153 files) |
+| New `WorkflowInvariantRuleRepository.test.ts` | 6/6; mutation-checked (removing the SYSTEM union fails 2 tests) |
+| `@arcaai/applications` `workflow-validator` tests | 13/13 (6 rule-merge + 7 service), both RED-first |
+| `@arcaai/applications` test (whole package) | 4807 passed / 17 failed — **baseline without this change is 4794 passed / 17 failed**, i.e. +13 and zero regressions |
+| `pnpm gen:factory:check` | no drift, schema coverage OK |
+| `pnpm gen:entity:check` | no drift (100 files match, incl. the new entity) |
+| Migration | replayed onto throwaway `hope_shadow`; `migrate diff` → `-- This is an empty migration.` |
+| `packages/py-workflow-contract` | **57 passed**; ruff clean; mypy --strict clean |
+| Lint (`domains`, `applications`) | 0 errors; **0 warnings attributable to the new files** |
+
+### Pre-existing breakage on `feat/loop` found while verifying (NOT introduced here, NOT fixed here)
+
+Each is another half-applied change, independent of TASK-716. They are why the aggregate gates
+are red today, and they are left alone deliberately — completing another ticket's schema change
+blind is the failure mode this pass exists to correct, not to repeat.
+
+| # | Breakage | Evidence |
+|---|---|---|
+| 1 | **`@arcaai/applications` does not build.** `src/common/phi-audit-scrub` and `src/services/workflow-exposure/cloud-provider-guard` are imported but were NEVER committed (`git ls-files` → 0 hits) | 3 × `TS2307` |
+| 2 | The same missing `phi-audit-scrub` fails **231 applications test FILES** (107 resolution errors) — identical with and without this change | baseline run above |
+| 3 | **TASK-721's fixture encryption is half-applied.** Schema + migration `20260820043053_task_721_…encrypt_input` dropped `input` for `encryptedInput`/`keyVersion`, but `WorkflowTestFixtureModel`/`Entity` still carry `input` and no `WorkflowTestFixtureRepository.encryption.ts` exists. This fails `pnpm gen:model:check` and `pnpm gen:entity:check` (schema-coverage) on `feat/loop` today. Proven pre-existing: with this pass's files stashed, the same one file drifts | `gen:*:check` output |
+| 4 | A stale editable install in conda `arcaenv` (`__editable__.hope_workflow_contract-0.1.0.pth`) points at the MAIN checkout, where no source exists, so `import hope_workflow_contract` yields an empty namespace package (`__file__ is None`). The documented `pnpm`/`conda run` invocation will fail until it is refreshed; a permanent test (`test_the_module_under_test_is_the_one_next_to_this_test`) now fails loudly instead of passing against the wrong tree | verified both ways |
+| 5 | `apps/harness/.../interpreter/compiled_config.py` is a THIRD implementation of the canonicalizer, self-described as "validated-in-principle, not proven-in-practice". It was run against the real fixture and DOES reproduce the TS digest — no bug, but it should import `hope_workflow_contract` now that the package exists | follow-up |
+
+### Still open (Tasks 9–12)
+
+Rule-set CRUD service + controller with the `// AUTH-NOTE:` privilege split (Task 9), the
+re-validation → `NEEDS_REVIEW` sweep (Task 10), the platform rule-set seed (Task 11) and E2E
+(Task 12). Also still open, and unchanged by this pass: `contracts/rule-model.md` remains
+**DRAFT and not clinically reviewed** — `WorkflowValidatorService` is wired to resolve rules
+from the database, but nothing seeds those rows yet, so it currently evaluates the bundled
+DRAFT catalogue via the documented fallback and is not an enforcing gate. And the one seam
+deliberately left unwired: `WorkflowDefinitionService.validateGraph` still calls the pure
+`validate()` with its hardcoded `RULE_SET_VERSION = 1`. Switching it to the DB-backed service
+turns unreviewed rules into a live publish gate, which is precisely the line §7 drew — that
+wiring wants the clinical review and an owner decision first, not a silent swap.
+
+---
+
 ## 8. Change History
 
 | Date | Change | By |
 |---|---|---|
+| 2026-08-20 | **All three formerly-unbuilt items built: Python mirror, `WorkflowValidatorService`, Prisma rule model — and the rule model turned out to be HALF-APPLIED, not missing.** `feat/loop` already carried the rule model's entire schema half (prisma model, both enums, `ResourceType` in audit.prisma AND the domain enum, migration `20260820040427_task_716_workflow_invariant_rule`, both `tenant-scope.ts` allow-lists, the `CoreDatabaseModule` registration, and all five domain barrel lines) but NOT the seven domain files those barrels import — so **`@arcaai/domains` did not compile** (8 × TS2307). Authored the seven (`gen:model` for the model; entity/factory/mapper/repository hand-authored per rule 03; `gen:mapper` NOT run; mapper carries the `FIELDS_NOT_WRITABLE = ['version']` OCC strip), taking domains to 0 errors, `tsc` clean and **1831 tests green**. Repository adds `findApplicable` (two explicit-`tenantId` reads, own → SYSTEM, palette-agnostic rows always in scope) + `findMaxRuleVersion`, with 6 tests mutation-checked. Migration re-verified on a throwaway shadow DB (dev DB untouched): `migrate diff` → `-- This is an empty migration.` **Task 8** added `packages/applications/src/services/workflow-validator/` — DB-backed rule resolution, the pure one-way-strictness `mergeRuleSets` (a tenant may add a rule or raise a SYSTEM rule's severity, never lower one or redefine what it checks), `ruleSetVersion` = merged max, total-by-contract (repository throw / unknown predicate kind → synthetic `WF-INTERNAL` + `ok: false`, never `ok: true`, never a throw), and an unseeded-table fallback to the bundled catalogue at `ruleSetVersion: 0` so an empty rule table cannot silently pass every graph; 13 tests, both files RED-first. **No `IWorkflowValidatorService` port** — TASK-734 removed it deliberately and re-adding it would restore the "speculative port nothing else consumes" it deleted. **Task 7b** added `packages/py-workflow-contract` (consumer half only: pydantic models, `verify_checksum`, raising `formatVersion` guard), 57 tests + ruff + mypy --strict clean, checksum pinned against a real TS-produced fixture; `compiledAt: str` and `retry: int \| float` are deliberate (a `float` makes the wire's `1` serialize as `"1.0"` vs JS `"1"` and every config fails verification). Root `pyproject.toml`/`uv.lock` needed no edit — the workspace member was already committed with no source. Ticket found STALE in 5 places (registry path, the never-existing port, and `SYSTEM_SHARED_READ_MODELS`); `position`/`configSchema` confirmed NOT to affect the compiled-config contract. Also FOUND, NOT FIXED (pre-existing, proven by a stashed baseline run — applications is 4794→4807 passed with zero new failures): `@arcaai/applications` does not build (`phi-audit-scrub`, `cloud-provider-guard` never committed, failing 231 test files), TASK-721's fixture encryption is half-applied and fails two `gen:*:check` gates, a stale conda editable install resolves `hope_workflow_contract` to the main checkout, and the harness holds a third canonicalizer copy. Tasks 9–12 remain; `rule-model.md` is still DRAFT/unreviewed and the validator is deliberately NOT yet wired into `WorkflowDefinitionService`'s publish gate. | execution agent |
 | 2026-08-19 | **Status-only correction, no code changed.** A repo spot-check found the Status row still read "Partial... Phases B, D not started," stale against the same-day entry below documenting a live, gateway-verified publish. Status row reworded to Review. | doc-audit pass |
 | 2026-08-19 | **`core.start`/`core.end` registered — the four palette-agnostic structural rules this ticket authored became satisfiable for the first time.** `WF-S-002/003/004/007` carry `paletteKey: null` and are written against literal `core.start`/`core.end` node types; `validate()`'s filter only skips a rule whose palette is SET and differs, so they applied to every graph in every palette while no palette registered either type. Consequence, measured: the platform's own seeded `platform-default-summarization` graph — a `PUBLISHED` row written straight to the database by the seed, never through the validator — scored 17 errors when re-submitted through `POST admin/workflow-definitions`, and nothing was publishable in any palette. Fix, in three parts: (1) both types added to `WORKFLOW_NODE_REGISTRY` and `registry.py` as `boundary`-classed markers with real `interpreter.core_start`/`interpreter.core_end` activities (markers execute nothing, but `compile()` refuses any graph containing an unimplemented type, so a non-dispatchable marker would have blocked publishing for a different reason); (2) `REACHABLE_FROM_ENTRY`/`REACHES_TERMINAL` now exempt `boundary`-classed nodes — without this the bookends and a palette's OWN entry/terminal rules are mutually unsatisfiable, since `core.start` is by construction not reachable from `consultation.consentGate` and `core.end` does not reach `consultation.hitlGate`; the exemption suppresses only unreachable/dead-end REPORTING for a marker, and a WORK node in either position still trips `WF-CONS-002`/`WF-CONS-004` (both cases tested); (3) the `mandatory` class declared on the nodes each palette's own contract already calls mandatory (4 summarization, 3 stt, 6 consultation) — `WF-S-007` selects `throughClass: 'mandatory'`, so with no node carrying it the cut-set is empty and every `core.start → core.end` path reads as unguarded. Verified end to end against live infra: a summarization definition now goes create → `ok: true` → **`PUBLISHED`, `isActive: true`**, the first workflow definition ever published through this path. Consultation validates clean in-process; through the gateway it is still refused at compile by `consultation.hitlGate` (`implemented: false`, pending the interpreter's durable-wait extension) — a separate, pre-existing gap. New gate: `__tests__/palette-canonical-graphs.test.ts` runs each palette's canonical graph through the real `validate()` with the default merged rule set — the whole-graph check the per-rule golden suite structurally cannot be, and the one that would have caught this. `packages/workflow-contract` 249/249, harness 1447/1447, ruff + mypy clean. | execution agent |
 | 2026-08-16 | Ticket authored | ticket-writer agent (Wave 1 substrate foundations) |
