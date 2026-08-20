@@ -119,7 +119,7 @@ export class RolesController {
   @ApiOperation({ summary: 'Get role by ID' })
   @ApiResponse({ status: 200, description: 'Role details', type: RoleResponse })
   @ApiResponse({ status: 404, description: 'Role not found' })
-  @ResolveSubjectInstance(resolveRoleInstance, { subject: 'Role' })
+  @ResolveSubjectInstance(resolveRoleInstance)
   async findOne(@Param('id') id: string): Promise<RoleResponse> {
     const role = await this.roleService.findOne(id);
     if (!role) {
@@ -202,7 +202,7 @@ export class RolesController {
   @ApiOperation({ summary: 'Update a role' })
   @ApiResponse({ status: 200, description: 'Role updated', type: RoleResponse })
   @ApiResponse({ status: 404, description: 'Role not found' })
-  @ResolveSubjectInstance(resolveRoleInstance, { subject: 'Role' })
+  @ResolveSubjectInstance(resolveRoleInstance)
   async update(@Param('id') id: string, @Body() dto: UpdateRoleDto): Promise<RoleResponse> {
     const role = await this.roleService.update(id, {
       name: dto.name,
@@ -222,7 +222,7 @@ export class RolesController {
   @ApiOperation({ summary: 'Partially update a role' })
   @ApiResponse({ status: 200, description: 'Role updated', type: RoleResponse })
   @ApiResponse({ status: 404, description: 'Role not found' })
-  @ResolveSubjectInstance(resolveRoleInstance, { subject: 'Role' })
+  @ResolveSubjectInstance(resolveRoleInstance)
   async patch(@Param('id') id: string, @Body() dto: UpdateRoleDto): Promise<RoleResponse> {
     const role = await this.roleService.patch(id, {
       name: dto.name,
@@ -247,7 +247,7 @@ export class RolesController {
   @ApiResponse({ status: 401, description: 'Break-glass password incorrect' })
   @ApiResponse({ status: 404, description: 'Role not found' })
   @ApiResponse({ status: 428, description: 'Break-glass confirmation (password + confirmationName) is required' })
-  @ResolveSubjectInstance(resolveRoleInstance, { subject: 'Role' })
+  @ResolveSubjectInstance(resolveRoleInstance)
   async remove(@Param('id') id: string, @Body() breakGlass?: BreakGlassDto): Promise<void> {
     // Role deletion demands the break-glass step-up (DELETE body:
     // `{ password, confirmationName: <role name> }`).

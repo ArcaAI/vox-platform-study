@@ -23,16 +23,6 @@ model Role {
   version  Int    @default(1) @map("_version")
   id       String @id @default(uuid(7))
 
-  // multi tenant fields
-  // Platform/built-in roles (SUPER_ADMIN, TENANT_ADMIN, DOCTOR, NURSE, ...)
-  // belong to the SYSTEM tenant (00000000-...) and are read cross-tenant via
-  // SYSTEM_SHARED_READ_MODELS (every tenant must resolve them directly — they
-  // are never cloned per tenant). A tenant's own custom roles (created via
-  // POST /admin/rbac/roles or the :id/clone endpoint) carry that tenant's id
-  // and are protected by the tenant-scope client extension like any other
-  // tenant-owned config row. See docs/implementation/TASK-766-... OD-1.
-  tenantId String
-
   // core fields
   name         String
   description  String?
@@ -63,14 +53,8 @@ model Role {
   UserRoleAssignments UserRoleAssignment[] @relation("_Role_UserRoleAssignments")
 
   // indexing
-  // Deliberately still a GLOBAL unique on `name` (not `[tenantId, name]`):
-  // relaxing it to per-tenant would let a tenant's custom role shadow a
-  // built-in name and would break the global name lookups in
-  // `PolicyEngine.loadUserPolicies` / `FederatedAuthService` that assume one
-  // row per name. Out of this ticket's scope — see OD-1 resolution notes.
   @@unique([name], name: "Role_name_unique")
   @@index([parentRoleId], name: "Role_parentRoleId_idx")
-  @@index([tenantId], name: "Role_tenantId_idx")
   @@schema("core")
 }
 
