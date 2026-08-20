@@ -38,11 +38,7 @@ export function DevServiceDownHint({
     >
       <IconTerminal2 aria-hidden className="text-warning-strong mt-0.5 size-4 shrink-0" />
       <div className="flex min-w-0 flex-col gap-0.5">
-        <p className="text-foreground">{subject} — if you started services by hand, one may have failed to launch.</p>
-        <p className="text-muted-foreground">
-          Run <code className="bg-muted rounded px-1 py-0.5 font-mono text-xs">pnpm dev:doctor</code> for an aggregated health probe, or{' '}
-          <code className="bg-muted rounded px-1 py-0.5 font-mono text-xs">pnpm dev:stack</code> to supervise every service in one place.
-        </p>
+        <p className="text-foreground">{subject}</p>
       </div>
     </div>
   );
