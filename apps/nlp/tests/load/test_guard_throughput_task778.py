@@ -66,6 +66,20 @@ LINGER_MS = _env_int("NLP_LOAD_TEST_LINGER_MS", 8)
 INFLIGHT = _env_int("NLP_LOAD_TEST_INFLIGHT", 2)
 REAL_MODEL = os.environ.get("NLP_LOAD_TEST_MODEL", "").strip()
 
+# TASK-782 — device placement and the two service classes.
+#
+# `NLP_LOAD_TEST_DEVICE` is where the tensors execute ("cpu" | "mps" | "cuda" |
+# "auto"). It goes through the same `nlp.core.device` resolution the service
+# uses, so a benchmark cannot accidentally measure a placement the service
+# could not actually adopt.
+DEVICE = os.environ.get("NLP_LOAD_TEST_DEVICE", "cpu").strip() or "cpu"
+INTERACTIVE_BATCH = _env_int("NLP_LOAD_TEST_INTERACTIVE_BATCH", 4)
+INTERACTIVE_LINGER_MS = _env_int("NLP_LOAD_TEST_INTERACTIVE_LINGER_MS", 2)
+# The inline gate is measured WHILE the bulk lane saturates the model — a gate
+# latency measured on an idle service is not a latency the platform ever sees.
+INTERACTIVE_COUNT = _env_int("NLP_LOAD_TEST_INTERACTIVE_COUNT", 20)
+INTERACTIVE_GAP_MS = _env_int("NLP_LOAD_TEST_INTERACTIVE_GAP_MS", 50)
+
 
 class CalibratedStub:
     """A model whose forward pass costs a FIXED time regardless of batch size.
@@ -124,6 +138,12 @@ def _report(
     print(f"latency min / max   : {pct['min'] * 1000:.0f} / {pct['max'] * 1000:.0f} ms")
     if extra:
         print(extra)
+
+
+async def _one(client, body: dict, sink: list[tuple[float, int]]) -> None:
+    started = time.perf_counter()
+    response = await client.post("/api/v1/guard/pii", json=body)
+    sink.append((time.perf_counter() - started, response.status_code))
 
 
 async def _drive(app, body: dict, n: int) -> tuple[list[float], list[int], float]:
@@ -241,6 +261,9 @@ async def test_real_model_throughput_at_target_concurrency(monkeypatch) -> None:
     monkeypatch.setattr(nlp_settings.service, "inference_batch_max_size", BATCH)
     monkeypatch.setattr(nlp_settings.service, "inference_batch_linger_ms", LINGER_MS)
     monkeypatch.setattr(nlp_settings.service, "inference_max_inflight_batches", INFLIGHT)
+    # TASK-782: placement is part of the geometry under test, resolved exactly
+    # as the service resolves it.
+    monkeypatch.setattr(nlp_settings.service, "inference_device", DEVICE)
     reset_inference_semaphore()
     await guard_dispatch.reset_guard_batchers()
 
@@ -264,9 +287,103 @@ async def test_real_model_throughput_at_target_concurrency(monkeypatch) -> None:
     assert not undeclared, f"undeclared response codes: {undeclared}"
     _report(
         f"REAL WEIGHTS — {REAL_MODEL} "
-        f"(batch={BATCH}, linger={LINGER_MS}ms, inflight={INFLIGHT})",
+        f"(device={DEVICE}, batch={BATCH}, linger={LINGER_MS}ms, inflight={INFLIGHT})",
         latencies,
         wall,
         codes=codes,
     )
+    await guard_dispatch.reset_guard_batchers()
+
+
+# ── TASK-782 — the two service classes, measured together ────────────────
+
+
+def _apply_geometry(monkeypatch) -> None:
+    """Pin the geometry under test onto the real settings the service reads."""
+    from nlp.core.config import settings as nlp_settings
+
+    secret = type(nlp_settings.service.service_token)
+    monkeypatch.setattr(nlp_settings.service, "service_token", secret(""))
+    monkeypatch.setattr(nlp_settings.service, "internal_access_token", secret(""))
+    monkeypatch.setattr(
+        nlp_settings.service, "inference_max_concurrent", CONCURRENCY + INTERACTIVE_COUNT
+    )
+    monkeypatch.setattr(nlp_settings.service, "inference_batch_max_size", BATCH)
+    monkeypatch.setattr(nlp_settings.service, "inference_batch_linger_ms", LINGER_MS)
+    monkeypatch.setattr(nlp_settings.service, "inference_max_inflight_batches", INFLIGHT)
+    monkeypatch.setattr(
+        nlp_settings.service, "inference_interactive_batch_max_size", INTERACTIVE_BATCH
+    )
+    monkeypatch.setattr(
+        nlp_settings.service, "inference_interactive_batch_linger_ms", INTERACTIVE_LINGER_MS
+    )
+    monkeypatch.setattr(nlp_settings.service, "inference_device", DEVICE)
+
+
+@pytest.mark.skipif(not REAL_MODEL, reason="set NLP_LOAD_TEST_MODEL to measure real weights")
+@pytest.mark.asyncio
+async def test_inline_gate_latency_under_bulk_load(monkeypatch) -> None:
+    """The question TASK-782 exists to answer, measured the only honest way.
+
+    A synchronous inline gate does not run on an idle service — it runs while
+    the asynchronous per-utterance redaction pass is saturating the same
+    weights. So the bulk lane is driven at the target concurrency and the
+    interactive lane is paced through it, and BOTH classes are reported
+    separately with their own status histogram.
+    """
+    from nlp.core.concurrency import reset_inference_semaphore
+    from nlp.services import guard_dispatch
+
+    _apply_geometry(monkeypatch)
+    reset_inference_semaphore()
+    await guard_dispatch.reset_guard_batchers()
+
+    app = _build_app(monkeypatch, None)  # real cache, real weights, real placement
+
+    def body(lane: str) -> dict:
+        return {
+            "text": SAMPLE,
+            "model_name": REAL_MODEL,
+            "labels": LABELS,
+            "threshold": 0.5,
+            "tenant_id": TENANT,
+            "latency_class": lane,
+        }
+
+    transport = httpx.ASGITransport(app=app)
+    bulk: list[tuple[float, int]] = []
+    interactive: list[tuple[float, int]] = []
+
+    async with httpx.AsyncClient(
+        transport=transport, base_url="http://load", timeout=180.0
+    ) as client:
+        # Warm: the weight load and first-touch cost belong to neither class.
+        await _one(client, body("bulk"), [])
+
+        async def pace_interactive() -> None:
+            tasks = []
+            for _ in range(INTERACTIVE_COUNT):
+                tasks.append(asyncio.create_task(_one(client, body("interactive"), interactive)))
+                await asyncio.sleep(INTERACTIVE_GAP_MS / 1000.0)
+            await asyncio.gather(*tasks)
+
+        started = time.perf_counter()
+        await asyncio.gather(
+            *(_one(client, body("bulk"), bulk) for _ in range(CONCURRENCY)),
+            pace_interactive(),
+        )
+        wall = time.perf_counter() - started
+
+    header = (
+        f"device={DEVICE} bulk(batch={BATCH}, linger={LINGER_MS}ms) "
+        f"interactive(batch={INTERACTIVE_BATCH}, linger={INTERACTIVE_LINGER_MS}ms) "
+        f"inflight={INFLIGHT}"
+    )
+    for label, samples in (("BULK", bulk), ("INTERACTIVE", interactive)):
+        latencies = [lat for lat, _ in samples]
+        codes = [code for _, code in samples]
+        undeclared = sorted(set(codes) - {200, 503})
+        assert not undeclared, f"{label}: undeclared response codes: {undeclared}"
+        _report(f"{label} — {REAL_MODEL} — {header}", latencies, wall, codes=codes)
+
     await guard_dispatch.reset_guard_batchers()

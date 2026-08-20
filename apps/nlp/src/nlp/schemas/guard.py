@@ -17,6 +17,8 @@ own: those are configuration, and configuration does not live in code
 
 from __future__ import annotations
 
+from typing import Literal
+
 from pydantic import BaseModel, Field
 
 
@@ -34,6 +36,19 @@ class _GuardModelSelection(BaseModel):
     tenant_id: str | None = Field(
         default=None,
         description="Tenant the decision is attributable to. Absent ⇒ 428.",
+    )
+    #: WHICH SERVICE CLASS this call belongs to (TASK-782), not a priority the
+    #: caller may claim for speed's sake — the two lanes have different queue
+    #: geometries AND different declared wait ceilings, so `interactive` is also
+    #: a promise to accept a 503 sooner. Absent ⇒ `bulk`, which is exactly the
+    #: TASK-778 behaviour, so an existing caller is unaffected.
+    latency_class: Literal["interactive", "bulk"] | None = Field(
+        default=None,
+        description=(
+            "Service class: 'interactive' for a synchronous inline gate (small "
+            "batch, short linger, short wait ceiling), 'bulk' for the "
+            "asynchronous per-utterance pass. Absent ⇒ 'bulk'."
+        ),
     )
 
 

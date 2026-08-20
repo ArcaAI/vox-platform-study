@@ -164,14 +164,16 @@ def test_rejections_are_counted_by_reason(client, monkeypatch) -> None:
 
     monkeypatch.setattr(guard_module, "_acquire_guard", _fake_acquire(BatchingGuard()))
     monkeypatch.setattr(guard_module, "_submit_pii", boom)
+    # `lane` was added to this counter by TASK-782; a request that names no
+    # `latency_class` lands in the bulk lane, which is the TASK-778 behaviour.
     before = NLP_INFERENCE_REJECTIONS_TOTAL.labels(
-        route="guard_pii", reason="queue_full"
+        route="guard_pii", reason="queue_full", lane="bulk"
     )._value.get()
 
     body = {"text": "hello", "model_name": MODEL, "labels": ["email"], "tenant_id": TENANT}
     client.post("/api/v1/guard/pii", json=body)
 
     after = NLP_INFERENCE_REJECTIONS_TOTAL.labels(
-        route="guard_pii", reason="queue_full"
+        route="guard_pii", reason="queue_full", lane="bulk"
     )._value.get()
     assert after == before + 1
