@@ -78,6 +78,76 @@ export class RbacRoleService extends BaseService implements IRbacRoleService {
   }
 
   /**
+   * TASK-766 OD-1 — which tenant OWNS a role this caller is creating.
+   *
+   * A tenant admin always has a CLS tenant, so their roles are theirs. A super
+   * admin with a working tenant selected creates a role FOR that tenant (the
+   * console's "acting on «Tenant»" semantics). A super admin with no working
+   * tenant is acting on the platform, so the row belongs to SYSTEM — which is
+   * also the only way a platform built-in can ever be authored at runtime, and
+   * is consistent with `isSystemRole: true` already being super-admin-only.
+   */
+  private resolveOwningTenantId(): string {
+    return this.tenantId ?? SYSTEM_TENANT_ID;
+  }
+
+  /**
+   * TASK-766 OD-1 — the cross-tenant WRITE lane (mirrors
+   * `AiTaskDefaultService.crossTenantLane`).
+   *
+   * `Role` is tenant-scoped, so the extended client pins every write to the
+   * caller's CLS tenant. A super admin who has a working tenant W selected and
+   * edits a SYSTEM-owned built-in would therefore write `tenantId = W`, match
+   * zero rows, and get a P2025 instead of the edit they are entitled to make.
+   * When the target row's tenant differs from CLS AND the caller is a super
+   * admin, route the write through the UNSCOPED base client so it carries only
+   * the explicit `where`. A tenant admin never reaches this: `assertMutable`
+   * has already refused them for any row they do not own.
+   */
+  private crossTenantLane(targetTenantId: string): boolean {
+    const clsTenantId = this.tenantId;
+    // No working tenant selected → the extension already passes a super admin
+    // straight through, so the SCOPED client is correct and bypassing it would
+    // be a gratuitous hole. Only engage the lane when a working tenant is
+    // actually set AND it is not the tenant that owns the target row.
+    if (!clsTenantId) return false;
+    return targetTenantId !== clsTenantId && isSuperAdmin(this.requestUser);
+  }
+
+  /**
+   * TASK-766 OD-1 — the write gate, applied by `update` / `patch` /
+   * `softDelete` after the row has been loaded.
+   *
+   * Three outcomes, and the status codes are deliberate:
+   *
+   *  - ANOTHER tenant's role → never gets here. `findByIdGuardSelect` reads
+   *    through the tenant-scoped client, which widens to `[caller, SYSTEM]`
+   *    only, so a foreign id resolves to `null` and the caller already got a
+   *    404. That is the 404-over-403 posture, enforced by the data layer
+   *    rather than by a check each new route has to remember.
+   *  - A SYSTEM-owned role (the platform built-ins) → 403, NOT 404. The row is
+   *    legitimately VISIBLE to this tenant (it is in their role list, and they
+   *    assign users to it), so hiding it would be a lie. This is a privilege
+   *    boundary, which rule 05 says is a 403 — the same shape as the other
+   *    super-admin-only actions on tenant-manageable resources.
+   *  - The caller's OWN role → allowed. This is the whole point of OD-1.
+   *
+   * The `isSystemRole` BadRequest guard at each call site stays where it is and
+   * fires FIRST, so the existing message for the five `isSystemRole: true`
+   * built-ins is unchanged. This check is what additionally covers the SYSTEM
+   * rows that are NOT flagged — `DEPARTMENT_HEAD` and `SENIOR_NURSE` are
+   * seeded `isSystemRole: false` as clonable platform templates, and before
+   * this they were the concrete way a tenant admin could edit platform data.
+   */
+  private assertMutable(role: { tenantId: string; name: string }): void {
+    if (role.tenantId === this.tenantId) return;
+    if (isSuperAdmin(this.requestUser)) return;
+    throw new ForbiddenException(
+      `Role '${role.name}' belongs to the platform, not to your tenant. Clone it (POST /admin/rbac/roles/${'{id}'}/clone) and edit your own copy instead.`,
+    );
+  }
+
+  /**
    * Role reads carry a member count so the admin console renders
    * per-role chips without one members call per row. The nested `_count` is
    * NOT intercepted by the tenant-scope `$extends` (query extensions only see
@@ -144,6 +214,7 @@ export class RbacRoleService extends BaseService implements IRbacRoleService {
 
     const user = this.requestUser;
     const data = RbacRoleFactory.buildCreateInput({
+      tenantId: this.resolveOwningTenantId(),
       name: request.name,
       description: request.description,
       externalName: request.externalName,
@@ -152,6 +223,11 @@ export class RbacRoleService extends BaseService implements IRbacRoleService {
       isSystemRole: request.isSystemRole,
       createdBy: user?.id,
     });
+    // A super admin with NO working tenant creates a SYSTEM row while CLS
+    // carries no tenant, so the extension passes through and the explicit
+    // tenantId above is used verbatim. With a working tenant selected the
+    // extension asserts data.tenantId === CLS tenant, which is what
+    // resolveOwningTenantId() just returned — so they agree by construction.
     const role = (await this.roleRepository.create(data)) as RbacRoleRecord;
 
     this.broadcastSysEvent(SysEventType.ResourceCreated, {
@@ -180,13 +256,18 @@ export class RbacRoleService extends BaseService implements IRbacRoleService {
       throw new BadRequestException(`Cannot modify system role '${existing.name}'. System roles are protected from modification.`);
     }
 
+    // TASK-766 OD-1: a role this caller's tenant does not own is off limits.
+    // Another tenant's id never reaches here (the read above already 404'd);
+    // this refuses the SYSTEM-owned platform rows with a 403.
+    this.assertMutable(existing);
+
     if (request.parentRoleId !== undefined && request.parentRoleId !== null) {
       await this.validateParentRole(request.parentRoleId, id);
     }
 
     const user = this.requestUser;
     const data = RbacRoleFactory.buildUpdateInput(request, user?.id);
-    const role = (await this.roleRepository.update(id, data)) as RbacRoleRecord;
+    const role = (await this.roleRepository.update(id, data, this.crossTenantLane(existing.tenantId))) as RbacRoleRecord;
 
     await this.policyEngine.invalidateRole(id);
     this.broadcastSysEvent(SysEventType.ResourceUpdated, {
@@ -216,13 +297,18 @@ export class RbacRoleService extends BaseService implements IRbacRoleService {
       throw new BadRequestException(`Cannot modify system role '${existing.name}'. System roles are protected from modification.`);
     }
 
+    // TASK-766 OD-1: a role this caller's tenant does not own is off limits.
+    // Another tenant's id never reaches here (the read above already 404'd);
+    // this refuses the SYSTEM-owned platform rows with a 403.
+    this.assertMutable(existing);
+
     if (request.parentRoleId !== undefined && request.parentRoleId !== null) {
       await this.validateParentRole(request.parentRoleId, id);
     }
 
     const user = this.requestUser;
     const data = RbacRoleFactory.buildUpdateInput(request, user?.id);
-    const role = (await this.roleRepository.update(id, data)) as RbacRoleRecord;
+    const role = (await this.roleRepository.update(id, data, this.crossTenantLane(existing.tenantId))) as RbacRoleRecord;
 
     await this.policyEngine.invalidateRole(id);
     this.broadcastSysEvent(SysEventType.ResourceUpdated, {
@@ -254,6 +340,10 @@ export class RbacRoleService extends BaseService implements IRbacRoleService {
       throw new BadRequestException('Cannot delete system role');
     }
 
+    // TASK-766 OD-1: refuse a SYSTEM-owned platform row (403). A foreign
+    // tenant's id already 404'd on the read above.
+    this.assertMutable(role);
+
     // Deleting a role is a dangerous-but-allowed mutation.
     await this.requireBreakGlass(
       'role-delete',
@@ -263,7 +353,7 @@ export class RbacRoleService extends BaseService implements IRbacRoleService {
     );
 
     const user = this.requestUser;
-    await this.roleRepository.softDelete(id, user?.id);
+    await this.roleRepository.softDelete(id, user?.id, this.crossTenantLane(role.tenantId));
 
     this.emitBreakGlassAudit('role-delete', 'confirmed', { targetId: id, targetName: role.name, targetType: 'Role' });
 
@@ -291,6 +381,10 @@ export class RbacRoleService extends BaseService implements IRbacRoleService {
     if (role.isSystemRole && !isSuperAdmin(this.requestUser)) {
       throw new ForbiddenException('Only a super admin can modify policies on a system role.');
     }
+    // TASK-766 OD-1: `RolePolicy` is a GLOBAL join table, so attaching a policy
+    // to a SYSTEM-owned role would change the grant for EVERY tenant. Same
+    // ownership boundary as update/delete, applied to the policy plane too.
+    this.assertMutable(role);
 
     const user = this.requestUser;
 
@@ -341,6 +435,9 @@ export class RbacRoleService extends BaseService implements IRbacRoleService {
     if (role.isSystemRole && !isSuperAdmin(this.requestUser)) {
       throw new ForbiddenException('Only a super admin can modify policies on a system role.');
     }
+    // TASK-766 OD-1 — see assignPolicy: detaching from a SYSTEM-owned role
+    // would strip the grant platform-wide.
+    this.assertMutable(role);
 
     // The detach target must exist (the policy name anchors both
     // the confirmation contract and the anti-lockout check below).
@@ -399,7 +496,12 @@ export class RbacRoleService extends BaseService implements IRbacRoleService {
     }
 
     const user = this.requestUser;
+    // TASK-766 OD-1: the clone belongs to the CALLER's tenant, never the
+    // source's. Cloning a SYSTEM built-in into your own tenant is exactly the
+    // supported way for a tenant admin to get an editable role, which is why
+    // `clone` carries no isSuperAdmin gate.
     const data = RbacRoleFactory.buildCreateInput({
+      tenantId: this.resolveOwningTenantId(),
       name: request.name,
       description: source.description ?? undefined,
       externalName: source.externalName ?? undefined,

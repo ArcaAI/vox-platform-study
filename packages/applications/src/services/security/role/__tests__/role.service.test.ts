@@ -581,10 +581,9 @@ describe('RoleService', () => {
 
   describe('edge cases', () => {
     it('should handle service creation without user context', async () => {
-      mockClsService.get.mockImplementation((key: string) => {
-        if (key === 'user') return null;
-        return null;
-      });
+      // No USER (so `createdBy` is undefined) but the tenant context stands —
+      // TASK-766 OD-1 made `Role` tenant-scoped, and the two are separate axes.
+      mockClsService.get.mockImplementation((key: string) => (key === 'tenantId' ? 'tenant-1' : null));
 
       const newRole = createMockRoleEntity({ id: 'new-role-id' });
       mockRoleRepository.create.mockResolvedValue(newRole);
@@ -594,6 +593,16 @@ describe('RoleService', () => {
       });
 
       expect(result.id).toBe('new-role-id');
+    });
+
+    it('refuses to create a role with no tenant context at all (TASK-766 OD-1)', async () => {
+      // `Role` is tenant-scoped and `tenantId` has no default, so a create with
+      // neither an explicit tenant nor a CLS tenant must fail loudly here
+      // rather than reaching Prisma and dying on the NOT NULL.
+      mockClsService.get.mockImplementation(() => null);
+
+      await expect(service.create({ name: 'New Role' })).rejects.toThrow(/Tenant context is required/);
+      expect(mockRoleRepository.create).not.toHaveBeenCalled();
     });
 
     it('should handle empty search results gracefully', async () => {

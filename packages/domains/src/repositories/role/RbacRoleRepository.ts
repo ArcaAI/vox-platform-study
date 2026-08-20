@@ -64,11 +64,19 @@ export class RbacRoleRepository {
     });
   }
 
-  async findByIdGuardSelect(id: string): Promise<{ isSystemRole: boolean; name: string } | null> {
+  /**
+   * TASK-766 OD-1: the projection now carries `tenantId` so the service can
+   * tell "my tenant's custom role" from "a SYSTEM-owned platform role" before
+   * it writes. The read itself is widened to `[caller, SYSTEM]` by the
+   * tenant-scope extension (`Role` is a SYSTEM-shared read model), so ANOTHER
+   * tenant's role id simply resolves to `null` here and the service turns that
+   * into a 404 — the 404-over-403 posture, for free.
+   */
+  async findByIdGuardSelect(id: string): Promise<{ isSystemRole: boolean; name: string; tenantId: string } | null> {
     return this.delegate.findUnique({
       where: { id },
-      select: { isSystemRole: true, name: true },
-    }) as Promise<{ isSystemRole: boolean; name: string } | null>;
+      select: { isSystemRole: true, name: true, tenantId: true },
+    }) as Promise<{ isSystemRole: boolean; name: string; tenantId: string } | null>;
   }
 
   async findParentRoleById(id: string): Promise<{ id: string; parentRoleId: string | null } | null> {
@@ -85,20 +93,46 @@ export class RbacRoleRepository {
     }) as Promise<{ parentRoleId: string | null } | null>;
   }
 
-  async create(data: RbacRoleCreateInputShape): Promise<unknown> {
-    return this.delegate.create({ data });
+  /**
+   * TASK-766 OD-1 — the cross-tenant WRITE lane.
+   *
+   * `Role` is tenant-scoped now, so the EXTENDED client pins every write to the
+   * caller's CLS tenant. That is exactly right for a tenant admin, but it
+   * breaks a super admin who has a working tenant W selected and is editing a
+   * SYSTEM-owned built-in: the write would carry `tenantId = W`, match zero
+   * rows, and surface as P2025 instead of the edit they are entitled to make.
+   *
+   * `crossTenant` routes that one case through the UNSCOPED base client, so the
+   * query carries only the explicit `where`. Same mechanism and same rationale
+   * as `AiTaskDefaultService.crossTenantLane`; it lives HERE rather than in the
+   * service because `RbacRoleService` deliberately holds no `CoreDatabaseService`
+   * (all Prisma access was moved behind this repository).
+   *
+   * The flag is only ever set by the service AFTER an `isSuperAdmin` check, so
+   * a tenant admin can never reach it.
+   */
+  private get unscopedDelegate(): RoleDelegateLike {
+    return (this.databaseService.baseClient as unknown as { role: RoleDelegateLike }).role;
   }
 
-  async update(id: string, data: RbacRoleUpdateInputShape): Promise<unknown> {
-    return this.delegate.update({
+  private delegateFor(crossTenant?: boolean): RoleDelegateLike {
+    return crossTenant === true ? this.unscopedDelegate : this.delegate;
+  }
+
+  async create(data: RbacRoleCreateInputShape, crossTenant?: boolean): Promise<unknown> {
+    return this.delegateFor(crossTenant).create({ data });
+  }
+
+  async update(id: string, data: RbacRoleUpdateInputShape, crossTenant?: boolean): Promise<unknown> {
+    return this.delegateFor(crossTenant).update({
       where: { id },
       data,
       include: ROLE_POLICIES_INCLUDE,
     });
   }
 
-  async softDelete(id: string, updatedBy?: string): Promise<unknown> {
-    return this.delegate.update({
+  async softDelete(id: string, updatedBy?: string, crossTenant?: boolean): Promise<unknown> {
+    return this.delegateFor(crossTenant).update({
       where: { id },
       data: {
         resourceStatus: ResourceStatusType.DELETED,

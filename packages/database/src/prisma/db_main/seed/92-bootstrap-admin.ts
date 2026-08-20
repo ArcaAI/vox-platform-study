@@ -156,7 +156,10 @@ export const seedBootstrapAdmin = async (client: CorePrismaClient) => {
     return { success: true, created: false as const };
   }
 
-  const superAdminRole = await client.role.findFirst({ where: { name: 'SUPER_ADMIN' } });
+  // TASK-766 OD-1: `Role` is tenant-scoped, and the built-in roles are
+  // SYSTEM-tenant rows. Pin the tenant so this never matches a customer
+  // tenant's custom role that happens to be named SUPER_ADMIN.
+  const superAdminRole = await client.role.findFirst({ where: { name: 'SUPER_ADMIN', tenantId: SYSTEM_TENANT_ID } });
   if (!superAdminRole) {
     // seedRole runs in every mode, so this means the chain was invoked out of
     // order. Throwing beats creating an account with no authority.

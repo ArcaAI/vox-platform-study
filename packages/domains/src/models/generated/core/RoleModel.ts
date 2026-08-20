@@ -2,12 +2,12 @@
 /* eslint-disable @typescript-eslint/no-unused-vars */
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
-import { BaseDataModel, VirtualDbProperty } from '../../../common';
+import { BaseTenantDataModel, VirtualDbProperty } from '../../../common';
 import { JsonValue } from '../../../interfaces';
 import * as Enums from '../../../enums';
 import * as Models from './';
 
-export class Role extends BaseDataModel {
+export class Role extends BaseTenantDataModel {
   public name: string;
   public description: string | null;
   public externalName: string | null;
@@ -26,7 +26,7 @@ export class Role extends BaseDataModel {
   @VirtualDbProperty()
   public UserRoleAssignments: Models.UserRoleAssignment[] | undefined;
 
-  constructor(data: Role & BaseDataModel) {
+  constructor(data: Role & BaseTenantDataModel) {
     super(data);
     this.name = data.name;
     this.description = data.description;

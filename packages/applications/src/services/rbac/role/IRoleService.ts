@@ -65,6 +65,17 @@ export interface RbacRolePolicyRow {
 
 export interface RbacRoleRecord {
   id: string;
+  /**
+   * TASK-766 OD-1. The owning tenant: `SYSTEM_TENANT_ID` for a platform
+   * built-in (every tenant reads these — `Role` is a SYSTEM-shared read model),
+   * or a customer tenant for a role that tenant created. It is what
+   * distinguishes "my custom role, which I may edit" from "the platform's role,
+   * which I may only read", so it is surfaced rather than hidden — the CASL
+   * subject resolver in `RolesController` needs it too, otherwise a
+   * `{ tenantId }`-conditioned rule evaluates against an instance that has no
+   * `tenantId` and wrongly denies.
+   */
+  tenantId: string;
   name: string;
   description: string | null;
   externalName: string | null;

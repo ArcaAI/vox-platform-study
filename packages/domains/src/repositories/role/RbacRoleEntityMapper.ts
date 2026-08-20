@@ -26,6 +26,8 @@ export interface RbacRolePolicyRow {
 
 export interface RbacRoleRecord {
   id: string;
+  /** TASK-766 OD-1 — SYSTEM tenant for a platform built-in, else the owning customer tenant. */
+  tenantId: string;
   name: string;
   description: string | null;
   externalName: string | null;
@@ -40,6 +42,7 @@ export interface RbacRoleRecord {
 
 export interface RoleRowLike {
   id: string;
+  tenantId: string;
   name: string;
   description: string | null;
   externalName: string | null;
@@ -55,6 +58,7 @@ export interface RoleRowLike {
 export function mapRoleRowToRecord(row: RoleRowLike): RbacRoleRecord {
   return {
     id: row.id,
+    tenantId: row.tenantId,
     name: row.name,
     description: row.description,
     externalName: row.externalName,

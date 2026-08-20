@@ -122,17 +122,20 @@ describe('RbacRoleRepository', () => {
   });
 
   describe('findByIdGuardSelect', () => {
-    it('selects only isSystemRole and name', async () => {
+    // TASK-766 OD-1: the projection also carries `tenantId`, so the service can
+    // tell an own-tenant custom role from a SYSTEM-owned platform one before it
+    // writes.
+    it('selects isSystemRole, name and tenantId', async () => {
       const { repo, prisma } = makeRepo();
-      prisma.role.findUnique.mockResolvedValue({ isSystemRole: false, name: 'doctor' });
+      prisma.role.findUnique.mockResolvedValue({ isSystemRole: false, name: 'doctor', tenantId: 'tenant-1' });
 
       const result = await repo.findByIdGuardSelect('role-1');
 
       expect(prisma.role.findUnique).toHaveBeenCalledWith({
         where: { id: 'role-1' },
-        select: { isSystemRole: true, name: true },
+        select: { isSystemRole: true, name: true, tenantId: true },
       });
-      expect(result).toEqual({ isSystemRole: false, name: 'doctor' });
+      expect(result).toEqual({ isSystemRole: false, name: 'doctor', tenantId: 'tenant-1' });
     });
   });
 
@@ -226,6 +229,7 @@ describe('RbacRoleFactory', () => {
   describe('buildCreateInput', () => {
     it('produces a role create input with isSystemRole=false and ENABLED status', () => {
       const input = RbacRoleFactory.buildCreateInput({
+        tenantId: 'tenant-1',
         name: 'manager',
         description: 'Mid-management',
         externalName: 'ext-mgr',
@@ -235,6 +239,7 @@ describe('RbacRoleFactory', () => {
       });
 
       expect(input).toEqual({
+        tenantId: 'tenant-1',
         name: 'manager',
         description: 'Mid-management',
         externalName: 'ext-mgr',
@@ -248,6 +253,7 @@ describe('RbacRoleFactory', () => {
 
     it('preserves undefined for optional fields (no clobber)', () => {
       const input = RbacRoleFactory.buildCreateInput({
+        tenantId: 'tenant-1',
         name: 'orphan',
         createdBy: 'user-1',
       });
@@ -261,6 +267,7 @@ describe('RbacRoleFactory', () => {
 
     it('honours an explicit isSystemRole:true (super-admin SYSTEM-role create)', () => {
       const input = RbacRoleFactory.buildCreateInput({
+        tenantId: '00000000-0000-0000-0000-000000000000',
         name: 'CLINICIAN',
         isSystemRole: true,
         createdBy: 'admin-1',
@@ -270,7 +277,7 @@ describe('RbacRoleFactory', () => {
     });
 
     it('defaults isSystemRole to false when omitted', () => {
-      const input = RbacRoleFactory.buildCreateInput({ name: 'orphan', createdBy: 'user-1' });
+      const input = RbacRoleFactory.buildCreateInput({ tenantId: 'tenant-1', name: 'orphan', createdBy: 'user-1' });
 
       expect(input.isSystemRole).toBe(false);
     });

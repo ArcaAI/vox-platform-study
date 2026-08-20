@@ -37,13 +37,12 @@ const resolveRoleInstance = async (request: any, ctx: SubjectResolverContext): P
   if (typeof id !== 'string' || id.length === 0) return undefined;
   const role = await ctx.get<IRbacRoleService>(IRbacRoleService).findOne(id);
   if (!role) return undefined;
-  // NOTE: `RbacRoleRecord` carries no `tenantId` (roles are read through the
-  // tenant-scoped client, so the column never surfaces on the DTO). That is
-  // itself the hazard `casl-blast-radius.md` §3 names — a `tenantId`-less
-  // instance evaluates a `{ tenantId }` condition to DENY. It is safe here
-  // only because `Role` is shadow-only; a would_deny divergence on a
-  // `tenantId`-conditioned Role rule is the signal, not a bug in the caller.
-  return { id: role.id, isSystemRole: role.isSystemRole };
+  // TASK-766 OD-1 closed the hazard this NOTE used to record. `Role` now has a
+  // real `tenantId` and `RbacRoleRecord` surfaces it, so a `{ tenantId }`
+  // condition evaluates against a real value instead of silently DENYing on an
+  // absent one — which `casl-blast-radius.md` §3 names as the way a
+  // shadow-mode divergence turns into a wrongful 403 once enforced.
+  return { id: role.id, tenantId: role.tenantId, isSystemRole: role.isSystemRole };
 };
 
 /**
@@ -197,8 +196,20 @@ export class RolesController {
   /**
    * Update a role
    */
+  // AUTH-NOTE: TASK-766 OD-1. Declared `@CanAny([<verb>,'Role'], ['manage','Role'])`
+  // rather than the class-level `@CanManage('Role')`, mirroring what the read
+  // routes above already do. A tenant admin holds the DECOMPOSED
+  // `update`/`delete:Role` from the seeded `rbac-tenant-manage` policy but NOT
+  // the `manage:Role` alias, so `@CanManage` refused them even for a custom
+  // role they had just cloned — the exact gap OD-1 records.
+  //
+  // The decorator UNDERSTATES the real gate, so read the service too: which
+  // ROW may be written is decided by `RbacRoleService.assertMutable` plus the
+  // tenant-scope Prisma extension — a foreign tenant's id 404s on the read, a
+  // SYSTEM-owned platform role is 403 for anyone but a super admin, and only
+  // the caller's own tenant's roles are writable.
   @Put(':id')
-  @CanManage('Role')
+  @CanAny(['update', 'Role'], ['manage', 'Role'])
   @ApiOperation({ summary: 'Update a role' })
   @ApiResponse({ status: 200, description: 'Role updated', type: RoleResponse })
   @ApiResponse({ status: 404, description: 'Role not found' })
@@ -217,8 +228,20 @@ export class RolesController {
   /**
    * Partially update a role
    */
+  // AUTH-NOTE: TASK-766 OD-1. Declared `@CanAny([<verb>,'Role'], ['manage','Role'])`
+  // rather than the class-level `@CanManage('Role')`, mirroring what the read
+  // routes above already do. A tenant admin holds the DECOMPOSED
+  // `update`/`delete:Role` from the seeded `rbac-tenant-manage` policy but NOT
+  // the `manage:Role` alias, so `@CanManage` refused them even for a custom
+  // role they had just cloned — the exact gap OD-1 records.
+  //
+  // The decorator UNDERSTATES the real gate, so read the service too: which
+  // ROW may be written is decided by `RbacRoleService.assertMutable` plus the
+  // tenant-scope Prisma extension — a foreign tenant's id 404s on the read, a
+  // SYSTEM-owned platform role is 403 for anyone but a super admin, and only
+  // the caller's own tenant's roles are writable.
   @Patch(':id')
-  @CanManage('Role')
+  @CanAny(['update', 'Role'], ['manage', 'Role'])
   @ApiOperation({ summary: 'Partially update a role' })
   @ApiResponse({ status: 200, description: 'Role updated', type: RoleResponse })
   @ApiResponse({ status: 404, description: 'Role not found' })
@@ -238,8 +261,20 @@ export class RolesController {
   /**
    * Delete a role (soft delete)
    */
+  // AUTH-NOTE: TASK-766 OD-1. Declared `@CanAny([<verb>,'Role'], ['manage','Role'])`
+  // rather than the class-level `@CanManage('Role')`, mirroring what the read
+  // routes above already do. A tenant admin holds the DECOMPOSED
+  // `update`/`delete:Role` from the seeded `rbac-tenant-manage` policy but NOT
+  // the `manage:Role` alias, so `@CanManage` refused them even for a custom
+  // role they had just cloned — the exact gap OD-1 records.
+  //
+  // The decorator UNDERSTATES the real gate, so read the service too: which
+  // ROW may be written is decided by `RbacRoleService.assertMutable` plus the
+  // tenant-scope Prisma extension — a foreign tenant's id 404s on the read, a
+  // SYSTEM-owned platform role is 403 for anyone but a super admin, and only
+  // the caller's own tenant's roles are writable.
   @Delete(':id')
-  @CanManage('Role')
+  @CanAny(['delete', 'Role'], ['manage', 'Role'])
   @HttpCode(HttpStatus.NO_CONTENT)
   @ApiOperation({ summary: 'Delete a role (requires break-glass confirmation)' })
   @ApiResponse({ status: 204, description: 'Role deleted' })
@@ -292,6 +327,7 @@ export class RolesController {
 
   private toResponse(role: {
     id: string;
+    tenantId: string;
     name: string;
     description: string | null;
     externalName: string | null;
@@ -309,6 +345,7 @@ export class RolesController {
     return {
       ...(role._count ? { memberCount: role._count.UserRoleAssignments } : {}),
       id: role.id,
+      tenantId: role.tenantId,
       name: role.name,
       description: role.description || undefined,
       externalName: role.externalName || undefined,

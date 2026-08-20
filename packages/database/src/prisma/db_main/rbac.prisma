@@ -23,6 +23,29 @@ model Role {
   version  Int    @default(1) @map("_version")
   id       String @id @default(uuid(7))
 
+  // multi tenant fields
+  // OD-1 (owner decision, 2026-08-20). `Role` used to be a GLOBAL table, which
+  // is why a tenant admin could not be granted write access to its OWN custom
+  // roles without also being able to touch every other tenant's — CASL
+  // `conditions` are shadow-mode, so `{ isSystemRole: false }` constrained
+  // nothing at request time. Giving `Role` a real `tenantId` puts it behind the
+  // tenant-scope Prisma extension, which is a data-layer boundary rather than a
+  // handler-level guard that each new route has to remember.
+  //
+  // Two kinds of row live here:
+  //   • SYSTEM tenant (00000000-…) — the platform's built-in roles
+  //     (SUPER_ADMIN, TENANT_ADMIN, DOCTOR, NURSE, SERVICE_ACCOUNT,
+  //     DEPARTMENT_HEAD, SENIOR_NURSE). `Role` is in SYSTEM_SHARED_READ_MODELS,
+  //     so every tenant RESOLVES these directly — they are never cloned per
+  //     tenant. Reads widen to `tenantId IN [caller, SYSTEM]`; writes do NOT.
+  //   • A customer tenant — a custom role that tenant created via
+  //     `POST /admin/rbac/roles` or `:id/clone`, protected exactly like any
+  //     other tenant-owned row.
+  //
+  // No FK and no default, per the standard field template: every writer states
+  // the tenant explicitly.
+  tenantId String
+
   // core fields
   name         String
   description  String?
@@ -53,11 +76,43 @@ model Role {
   UserRoleAssignments UserRoleAssignment[] @relation("_Role_UserRoleAssignments")
 
   // indexing
+  // DELIBERATELY still a GLOBAL unique on `name`, NOT the `[tenantId, name]`
+  // composite the standard field template would suggest. Role names are
+  // globally unique TODAY (the table was global), so keeping the constraint
+  // preserves the status quo instead of shipping a second semantic change
+  // alongside the tenancy one. Concretely it stops a tenant's custom role from
+  // shadowing a built-in name that other code keys off by name — the seeds
+  // (`92-bootstrap-admin.ts`, `93-bootstrap-tenant-admin.ts`) and
+  // `UserRoleAssignmentService.assertAssignableRoleTier`'s `SUPER_ADMIN` check.
+  //
+  // The cost is real and is recorded as an open follow-up in
+  // docs/implementation/TASK-766-Day-One-Seed-Completeness §OD-1: one tenant
+  // taking the name "REVIEWER" refuses it to every other tenant. Relaxing this
+  // to `@@unique([tenantId, name], map: "Role_tenantId_name_unique")` is the
+  // fix, and it needs a service-layer guard that refuses a tenant-created name
+  // colliding with a SYSTEM role name. Out of scope here.
   @@unique([name], name: "Role_name_unique")
   @@index([parentRoleId], name: "Role_parentRoleId_idx")
+  @@index([tenantId], name: "Role_tenantId_idx")
   @@schema("core")
 }
 
+// `Policy` deliberately gets NO `tenantId` — it stays a GLOBAL table, and so
+// does the `RolePolicy` join (OD-1 resolution, 2026-08-20).
+//
+// OD-1's gap was "a tenant admin cannot mutate its own tenant's CUSTOM ROLES".
+// A tenant admin never AUTHORS a policy; it attaches and detaches
+// platform-authored ones, which it can already do — `manage:RolePolicy` is in
+// the seeded `rbac-tenant-manage` grant. So `Policy` needs no tenancy to close
+// OD-1, and giving it one would mean:
+//   • a per-tenant CASL rule-authoring plane nobody asked for (a tenant could
+//     write its own `rules` JSON — the single most privilege-sensitive column
+//     in the schema);
+//   • breaking the by-NAME global lookups the platform depends on —
+//     `seed/03-role.ts`'s `policyMap`, and `PROTECTED_SYSTEM_POLICY_NAMES` /
+//     `Policy.isProtected`, the anti-lockout guard that keeps super admins in.
+// `packages/database/src/extensions/__tests__/tenant-scope.test.ts` pins this:
+// `Policy` and `RolePolicy` must stay OUT of `TENANT_SCOPED_MODELS`.
 model Policy {
   // meta fields
   metaData Json?  @map("_metadata") @db.JsonB

@@ -3,12 +3,20 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import Decimal from 'decimal.js';
 import { BusinessException } from '@arcaai/exceptions';
-import { BaseEntity, IBaseEntity } from '../../../common';
+import { BaseTenantEntity, IBaseTenantEntity } from '../../../common';
 import { JsonValue } from '../../../interfaces';
 import * as Enums from '../../../enums';
 import * as Entities from '../../../entities';
 
-export interface IRoleEntity extends Omit<IBaseEntity, 'tenantId'> {
+/**
+ * TASK-766 OD-1: `Role` gained a real `tenantId` column, so this interface
+ * extends `IBaseTenantEntity` instead of the former
+ * `Omit<IBaseEntity, 'tenantId'>` — the `Omit` was there precisely because
+ * `Role` used to be a global table. SYSTEM-tenant rows are the platform's
+ * built-in roles; a customer tenant's rows are its own custom roles. See the
+ * comment on `Role.tenantId` in `rbac.prisma`.
+ */
+export interface IRoleEntity extends IBaseTenantEntity {
   name: string;
   description?: string | null;
   externalName?: string | null;
@@ -18,7 +26,7 @@ export interface IRoleEntity extends Omit<IBaseEntity, 'tenantId'> {
   userRoleAssignmentId?: string | null;
 }
 
-export class RoleEntity extends BaseEntity {
+export class RoleEntity extends BaseTenantEntity {
   private _name: IRoleEntity['name'];
   private _description?: IRoleEntity['description'];
   private _externalName?: IRoleEntity['externalName'];
@@ -95,6 +103,10 @@ export class RoleEntity extends BaseEntity {
   }
 
   public override validate(): void {
+    // Mandatory: BaseTenantEntity.validate() is the runtime backstop for the
+    // schema-level NOT NULL on tenantId. Overriding without calling it would
+    // silently bypass the tenant guard.
+    super.validate();
     if (!this._name || this._name.trim().length === 0) {
       throw new BusinessException('Role name is required.');
     }

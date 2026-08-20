@@ -31,10 +31,39 @@ describe('RBAC controller route permissions (AC-03)', () => {
       expect(mode(RolesController.prototype.findOne)).toBe('OR');
     });
 
-    it('keeps mutations manage-only (create / update / remove)', () => {
+    it('keeps CREATE manage-only', () => {
       expect(required(RolesController.prototype.create)).toEqual([{ action: 'manage', subject: 'Role' }]);
-      expect(required(RolesController.prototype.update)).toEqual([{ action: 'manage', subject: 'Role' }]);
-      expect(required(RolesController.prototype.remove)).toEqual([{ action: 'manage', subject: 'Role' }]);
+    });
+
+    /**
+     * TASK-766 OD-1 (owner decision, 2026-08-20). `update`/`patch`/`remove`
+     * used to be `manage`-only, which is exactly the gap OD-1 records: a tenant
+     * admin holds the DECOMPOSED `update`/`delete:Role` from the seeded
+     * `rbac-tenant-manage` policy but NOT the `manage:Role` alias, so it could
+     * not edit even a custom role it had just cloned. They now accept either,
+     * mirroring what the read routes already did.
+     *
+     * The ability is only half the gate — WHICH ROW may be written is decided
+     * by `RbacRoleService.assertMutable` plus the tenant-scope Prisma extension
+     * (own tenant → allowed, SYSTEM → 403, another tenant → 404). Those are
+     * covered in `role.service.task766.test.ts`.
+     */
+    it('accepts update OR manage on the two update routes (OD-1)', () => {
+      for (const handler of [RolesController.prototype.update, RolesController.prototype.patch]) {
+        expect(required(handler)).toEqual([
+          { action: 'update', subject: 'Role' },
+          { action: 'manage', subject: 'Role' },
+        ]);
+        expect(mode(handler)).toBe('OR');
+      }
+    });
+
+    it('accepts delete OR manage on remove (OD-1)', () => {
+      expect(required(RolesController.prototype.remove)).toEqual([
+        { action: 'delete', subject: 'Role' },
+        { action: 'manage', subject: 'Role' },
+      ]);
+      expect(mode(RolesController.prototype.remove)).toBe('OR');
     });
 
     it('clone requires create:Role (a clone only ever CREATES a CUSTOM role; tenant admins hold the seeded `create Role {isSystemRole:false}` grant)', () => {

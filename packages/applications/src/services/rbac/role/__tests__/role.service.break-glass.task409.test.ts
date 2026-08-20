@@ -24,8 +24,13 @@ const ADMIN_USER = { id: 'admin-001', firstName: 'Su', lastName: 'Admin', email:
 const STORED_HASH = 'bcrypt$stored-hash';
 const GOOD_PASSWORD = 'correct-horse-battery';
 
-const PLAIN_ROLE = { id: 'role-1', name: 'Care Team', isSystemRole: false };
-const SYSTEM_ROLE = { id: 'role-sys', name: 'Super Administrators', isSystemRole: true };
+// TASK-766 OD-1: `Role` is tenant-scoped, so the guard projection now carries
+// `tenantId`. Both fixtures are owned by the CLS tenant ('tenant-1') — these
+// specs exercise the break-glass step-up, not the ownership boundary, and an
+// own-tenant role is what keeps `assertMutable` out of the way here. The
+// ownership boundary itself is covered by `role.service.task766.test.ts`.
+const PLAIN_ROLE = { id: 'role-1', name: 'Care Team', isSystemRole: false, tenantId: 'tenant-1' };
+const SYSTEM_ROLE = { id: 'role-sys', name: 'Super Administrators', isSystemRole: true, tenantId: 'tenant-1' };
 
 const PLAIN_POLICY = { id: 'policy-1', name: 'team-policy', isProtected: false, rules: [] };
 const PROTECTED_POLICY = { id: 'sfa', name: 'system-full-access', isProtected: true, rules: [{ action: 'manage', subject: 'all' }] };
@@ -119,7 +124,9 @@ describe('RbacRoleService break-glass on role DELETE', () => {
   it('correct step-up → role soft-deleted + confirmed audit (no password in payload)', async () => {
     const result = await service.softDelete('role-1', GOOD_CREDS('Care Team'));
     expect(result).toEqual({ id: 'role-1', name: 'Care Team' });
-    expect(mocks.roleRepo.softDelete).toHaveBeenCalledWith('role-1', ADMIN_USER.id);
+    // TASK-766 OD-1: third arg is the cross-tenant-lane flag (false — the
+    // fixture role is owned by the CLS tenant).
+    expect(mocks.roleRepo.softDelete).toHaveBeenCalledWith('role-1', ADMIN_USER.id, false);
     const audits = breakGlassAudits(mocks);
     expect(audits[0]?.data.outcome).toBe('confirmed');
     expect(audits[0]?.data.operation).toBe('role-delete');
