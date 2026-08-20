@@ -11,7 +11,7 @@ license = "MIT"
 requires-python = ">=3.11,<3.12"
 
 # ONE dependency, and a free one: every workspace member that currently
-# imports this package (stt, smr) already declares `opentelemetry-api` (and
+# imports this package (stt, text) already declares `opentelemetry-api` (and
 # every other service declares it too, for its own FastAPI instrumentation),
 # so adding it here forces nothing new onto anyone and cannot perturb the
 # single root `uv.lock`.

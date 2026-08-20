@@ -48,7 +48,7 @@ export interface ProviderOverrideEntry {
   /**
    * REQUIRED here, on purpose — strict where entries are CONSTRUCTED, lenient
    * where they are PARSED. Every consumer (`tts-provider-classification.ts`,
-   * SMR's `_used_byok_credential`, STT's `resolve_usage_attribution`) treats an
+   * TEXT's `_used_byok_credential`, STT's `resolve_usage_attribution`) treats an
    * absent value as `tenant`, which is exact rather than merely conservative
    * for any sender that predates the cascade, and keeps in-flight requests
    * unchanged during a rolling deploy. Making it required on the internal type
@@ -118,7 +118,7 @@ export type LlmProviderOverrides = ProviderOverrides;
 /**
  * DI token for the unified provider-connection service. The pre-unification
  * `IAiProviderConnectionService` symbol below is an ALIAS to this same value, so
- * existing `@Inject(IAiProviderConnectionService)` sites (smr-proxy) keep
+ * existing `@Inject(IAiProviderConnectionService)` sites (text-proxy) keep
  * resolving until it is repointed them.
  */
 export const IProviderConnectionService = Symbol('IProviderConnectionService');
@@ -198,11 +198,11 @@ export interface IProviderConnectionService {
    * classes.
    *
    * The 1-arg overload is a `@deprecated` transition shim (assumes
-   * `service='llm'`) so the smr-proxy keeps compiling until it
+   * `service='llm'`) so the text-proxy keeps compiling until it
    * repoints; removes it.
    */
   resolveTenantCloudOverrides(service: ProviderService, tenantId: string): Promise<ResolvedProviderOverrides>;
-  /** @deprecated 1-arg form assumes `service='llm'`; kept for the smr-proxy transition (removes it). */
+  /** @deprecated 1-arg form assumes `service='llm'`; kept for the text-proxy transition (removes it). */
   resolveTenantCloudOverrides(tenantId: string): Promise<ResolvedProviderOverrides>;
 }
 

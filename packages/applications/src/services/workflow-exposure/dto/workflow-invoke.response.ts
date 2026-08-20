@@ -2,7 +2,7 @@ import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 /**
  * `202 Accepted` body of `POST /api/v1/workflows/:slug/invoke` — mirrors
- * SMR's streaming-202 shape (`generate.py:405-411`, cited in the ticket
+ * TEXT's streaming-202 shape (`generate.py:405-411`, cited in the ticket
  * README Task 6). `streamUrl` is a relative gateway path; the caller mints
  * its own single-use stream ticket via `POST /api/v1/auth/stream-ticket`
  * (scope `workflow_run:<runId>`) before opening it — this response never

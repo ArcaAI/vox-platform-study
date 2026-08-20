@@ -283,7 +283,7 @@ export const LLM_AI_MODELS: AiModelSeed[] = [
   },
 
   // =========================================================================
-  // AWS Bedrock provider (SMR supports the `bedrock` provider but
+  // AWS Bedrock provider (TEXT supports the `bedrock` provider but
   // the catalog had no row. Region/credentials stay in env/Vault; sourceUri is
   // the Bedrock model id sent to the converse API.)
   // =========================================================================
@@ -293,7 +293,7 @@ export const LLM_AI_MODELS: AiModelSeed[] = [
     name: 'Claude 3.5 Haiku (Bedrock)',
     slug: 'bedrock-claude-3.5-haiku',
     description:
-      'Anthropic Claude 3.5 Haiku via AWS Bedrock — cloud text generation. Matches the SMR Bedrock provider default (TEXT_BEDROCK_DEFAULT_MODEL). Region/keys stay in env/Vault.',
+      'Anthropic Claude 3.5 Haiku via AWS Bedrock — cloud text generation. Matches the TEXT Bedrock provider default (TEXT_BEDROCK_DEFAULT_MODEL). Region/keys stay in env/Vault.',
     category: ModelCategory.NLP,
     taskType: ModelTaskType.TEXT_GENERATION,
     modelType: ModelType.BASE_MODEL,

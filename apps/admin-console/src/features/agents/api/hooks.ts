@@ -143,7 +143,7 @@ export function useApproveTemplate() {
 
 /**
  * Test run ACK (BUG-018): returns immediately with the resolved provider/model
- * plus either the assembled prompt (dry run) or the SMR task to stream. No
+ * plus either the assembled prompt (dry run) or the TEXT task to stream. No
  * cache invalidation — nothing is written yet (see `useFinalizeTemplateTest`).
  */
 export function useTestTemplate() {

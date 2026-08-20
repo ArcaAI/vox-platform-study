@@ -1,13 +1,13 @@
 /**
- * v1 SMR summary system prompt — `ConversationalPrompts.SYSTEM_PROMPT_BASE`
+ * v1 TEXT summary system prompt — `ConversationalPrompts.SYSTEM_PROMPT_BASE`
  * (`apps/text/src/text/models/prompts.py`), returned unchanged by
  * `ConversationalPrompts.build_system_prompt()` when called with no
  * specialty/encounter_type — exactly how `summary_service.py:212` →
  * `JsonPromptFactory.build_template_by_department` calls it
  * (`system = ConversationalPrompts.build_system_prompt()`).
  *
- * Source: the RUNNING v1 SMR pod (Rancher cluster c-9lwv8, namespace apps,
- * pod apps-smr-84c9774997-zhp2l), NOT a local v1 checkout — the two have
+ * Source: the RUNNING v1 TEXT pod (Rancher cluster c-9lwv8, namespace apps,
+ * pod apps-text-84c9774997-zhp2l), NOT a local v1 checkout — the two have
  * diverged (see docs/implementation/TASK-634-Pre-Summary-Summary-Prompt-Fidelity/README.md
  * ). Extracted 2026-08-07 via a chunked base64 pipeline (never
  * retyped) with every chunk sha256-verified against the pod before

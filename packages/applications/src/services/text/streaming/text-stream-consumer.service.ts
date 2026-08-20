@@ -12,7 +12,7 @@ export interface TextStreamChunk {
 /**
  * TextStreamConsumerService
  *
- * Reads SMR task chunks directly from Redis Streams:
+ * Reads TEXT task chunks directly from Redis Streams:
  * - Stream key: `text:stream:{taskId}` (matches Python TaskManager._STREAM_KEY_PREFIX)
  * - Each entry has a `data` field containing JSON-serialized StreamChunk
  * - StreamChunk has: `type` (string), `data` (dict)
@@ -39,7 +39,7 @@ export class TextStreamConsumerService implements OnModuleDestroy {
     if (this.connected) return;
 
     if (!this.configService?.isRedisConfigured()) {
-      this.logger.warn({ message: 'Redis not configured — SMR stream consumer disabled' });
+      this.logger.warn({ message: 'Redis not configured — TEXT stream consumer disabled' });
       return;
     }
 
@@ -54,7 +54,7 @@ export class TextStreamConsumerService implements OnModuleDestroy {
     });
 
     this.connected = true;
-    this.logger.log({ message: 'SMR stream consumer Redis connection established' });
+    this.logger.log({ message: 'TEXT stream consumer Redis connection established' });
   }
 
   async disconnect(): Promise<void> {
@@ -71,7 +71,7 @@ export class TextStreamConsumerService implements OnModuleDestroy {
   }
 
   /**
-   * Subscribe to SMR task chunks via Redis Streams.
+   * Subscribe to TEXT task chunks via Redis Streams.
    * Returns an Observable that emits SSE-compatible MessageEvents.
    * Supports Last-Event-ID for resume.
    */

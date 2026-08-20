@@ -76,13 +76,13 @@ export class UpdateHarnessPolicyRequest {
   @MaxLength(200)
   safetyModel?: string;
 
-  @ApiPropertyOptional({ description: 'SMR generation provider id (null = let the SMR service choose).', nullable: true })
+  @ApiPropertyOptional({ description: 'TEXT generation provider id (null = let the TEXT service choose).', nullable: true })
   @IsOptional()
   @IsString()
   @MaxLength(100)
   textProvider?: string | null;
 
-  @ApiPropertyOptional({ description: 'SMR generation model id (null = let the SMR service choose).', nullable: true })
+  @ApiPropertyOptional({ description: 'TEXT generation model id (null = let the TEXT service choose).', nullable: true })
   @IsOptional()
   @IsString()
   @MaxLength(200)

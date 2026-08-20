@@ -63,8 +63,8 @@ export * from './agentic-instructions';
 export * from './prompt-management';
 export * from './dna-writing-style';
 export * from './text';
-// BUG-018 — the shared SMR request-enrichment service (tenant BYO credentials
-// + runtime profile) used by both the SMR proxy and the prompt-test bench.
+// BUG-018 — the shared TEXT request-enrichment service (tenant BYO credentials
+// + runtime profile) used by both the TEXT proxy and the prompt-test bench.
 export * from './text-request';
 export * from './stt';
 export * from './pstudio';

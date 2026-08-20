@@ -131,7 +131,7 @@ NLP_DOCUMENTS_PROCESSED_TOTAL = Counter(
 # Prometheus, so the standardized {service, model} pair below is defined with
 # prometheus_client so it is exposed on the existing /metrics endpoint
 # (served from the default Prometheus registry by the FastAPI instrumentator).
-# Name + label keys must stay byte-identical to STT/SMR/Guardrail.
+# Name + label keys must stay byte-identical to STT/TEXT/Guardrail.
 
 SERVICE_NAME = "nlp"
 

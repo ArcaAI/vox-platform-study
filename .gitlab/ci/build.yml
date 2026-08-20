@@ -4,7 +4,7 @@
 #
 # Trigger model (automatic — no manual click):
 #   dev-* / staging-* / prod-* / cicd branch push → build ALL images (env-tagged)
-#   git tag <SVC>-<ver> (e.g. SMR-2.1.0)          → build that service only
+#   git tag <SVC>-<ver> (e.g. TEXT-2.1.0)          → build that service only
 #   git tag ALL-<ver>                             → build every image (+ SDK, see publish.yml)
 #   MR / feature / main / release-sdk → no builds
 # Builds gate on the relevant test job(s) via `needs:`; a release-tag pipeline
@@ -14,7 +14,7 @@
 # Every build job references this, then appends its own release-tag clause:
 #   rules:
 #     - !reference [.build-common-rules, rules]
-#     - if: $CI_COMMIT_TAG =~ /^SMR-/ || $CI_COMMIT_TAG =~ /^ALL-/
+#     - if: $CI_COMMIT_TAG =~ /^TEXT-/ || $CI_COMMIT_TAG =~ /^ALL-/
 #
 # `prod`/`production` deliberately do NOT appear in
 # the build-triggering condition below. Under digest promotion,
@@ -70,7 +70,7 @@ warm-up-base-images:
       echo "All base images warm"
   rules:
     - !reference [.build-common-rules, rules]
-    - if: $CI_COMMIT_TAG =~ /^(SMR|STT|GUARD|TTS|HARNESS|NLP|COMPAT|ALL)-/
+    - if: $CI_COMMIT_TAG =~ /^(TEXT|STT|GUARD|TTS|HARNESS|NLP|COMPAT|ALL)-/
 
 # ── Shared Python base image ─────────────────────────────────────────────────
 # Single base image consumed by ALL Python service builds (guardrail, nlp, text,
@@ -100,7 +100,7 @@ build-python-base:
         infrastructure/docker/python-base/
   rules:
     - !reference [.build-common-rules, rules]
-    - if: $CI_COMMIT_TAG =~ /^(SMR|STT|GUARD|TTS|HARNESS|NLP|ALL)-/
+    - if: $CI_COMMIT_TAG =~ /^(TEXT|STT|GUARD|TTS|HARNESS|NLP|ALL)-/
 
 # ── API Gateway ──────────────────────────────────────────────────────────────
 
@@ -205,7 +205,7 @@ build-guardrail:
     - !reference [.build-common-rules, rules]
     - if: $CI_COMMIT_TAG =~ /^GUARD-/ || $CI_COMMIT_TAG =~ /^ALL-/
 
-# ── SMR ──────────────────────────────────────────────────────────────────────
+# ── TEXT ──────────────────────────────────────────────────────────────────────
 
 build-text:
   extends: .build-template
@@ -222,7 +222,7 @@ build-text:
     BUILD_ARGS: "--build-arg BASE_IMAGE=$REGISTRY/$CI_PROJECT_PATH/hope-python-base:$CI_COMMIT_SHA"
   rules:
     - !reference [.build-common-rules, rules]
-    - if: $CI_COMMIT_TAG =~ /^SMR-/ || $CI_COMMIT_TAG =~ /^ALL-/
+    - if: $CI_COMMIT_TAG =~ /^TEXT-/ || $CI_COMMIT_TAG =~ /^ALL-/
 
 # ── Harness ─────────────────────────────────────────────────────────────────
 

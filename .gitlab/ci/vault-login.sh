@@ -93,7 +93,7 @@ fi
 # so pick whichever HTTP client and JSON reader the image actually has rather
 # than adding a package install to every job's critical path.
 
-# `python:3.11-slim` (test-stt / test-smr / test-nlp / …) ships NEITHER curl nor
+# `python:3.11-slim` (test-stt / test-text / test-nlp / …) ships NEITHER curl nor
 # wget, so python3 is a first-class transport here, not a curiosity.
 if command -v curl >/dev/null 2>&1; then
   HTTP=curl

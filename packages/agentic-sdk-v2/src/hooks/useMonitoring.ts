@@ -10,14 +10,14 @@ import { extractArray } from '../utils/responseUtils';
 import { MONITORING_ENDPOINTS } from '../core/constants';
 import type { ServiceSessionCount, ServiceUptime, SessionCounts, HeartbeatRecord } from '../types/monitoring';
 
-const SESSION_SERVICE_KEYS = ['smr', 'stt', 'nlp', 'guardrail', 'harness'] as const;
+const SESSION_SERVICE_KEYS = ['text', 'stt', 'nlp', 'guardrail', 'harness'] as const;
 
 /**
  * Normalize the backend `SessionsResponse`
- *   `{ services: { smr|stt|nlp|guardrail|harness: { active } }, totalUsers, refreshedAt }`
+ *   `{ services: { text|stt|nlp|guardrail|harness: { active } }, totalUsers, refreshedAt }`
  * into `SessionCounts`, computing the DERIVED tile values:
  *   - `activeSessions` ≈ live consultations ≈ `services.stt.active` (the live STT stream).
- *   - `processingJobs` ≈ background inference ≈ SMR + NLP + guardrail + harness active.
+ *   - `processingJobs` ≈ background inference ≈ TEXT + NLP + guardrail + harness active.
  * Falls back to all-zero on a missing/malformed body so tiles render 0, never NaN.
  */
 function normalizeSessionCounts(raw: Record<string, unknown> | null | undefined): SessionCounts {
@@ -30,7 +30,7 @@ function normalizeSessionCounts(raw: Record<string, unknown> | null | undefined)
   };
 
   const services = {
-    smr: readActive('smr'),
+    text: readActive('text'),
     stt: readActive('stt'),
     nlp: readActive('nlp'),
     guardrail: readActive('guardrail'),
@@ -42,7 +42,7 @@ function normalizeSessionCounts(raw: Record<string, unknown> | null | undefined)
     raw && typeof (raw as { refreshedAt?: unknown }).refreshedAt === 'string' ? (raw as { refreshedAt: string }).refreshedAt : undefined;
 
   const activeSessions = services.stt.active;
-  const processingJobs = services.smr.active + services.nlp.active + services.guardrail.active + services.harness.active;
+  const processingJobs = services.text.active + services.nlp.active + services.guardrail.active + services.harness.active;
   const total = SESSION_SERVICE_KEYS.reduce((sum, key) => sum + services[key].active, 0);
 
   return { services, totalUsers, refreshedAt, activeSessions, processingJobs, active: activeSessions, total };

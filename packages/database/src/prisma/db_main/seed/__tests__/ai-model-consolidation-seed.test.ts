@@ -21,7 +21,7 @@
  *      `whisper-large-v3` must NOT be blocked by `whisper-large-v3-turbo`).
  *   5. The SYSTEM `AiTaskDefault` seed rows reference catalog slugs with the
  *      compatible `taskType`, and the seed step is CREATE-ONLY.
- *   6. Companion updates: HarnessPolicy SMR default → `gemma-4-e2b-it-qat`;
+ *   6. Companion updates: HarnessPolicy TEXT default → `gemma-4-e2b-it-qat`;
  *      the six superseded GlobalSetting keys are gone from the seeded arrays
  *      and covered by the idempotent soft-retire sweep; tenant admins hold
  *      read+manage on `AiTaskDefault`.
@@ -668,7 +668,7 @@ describe('AiTaskDefault SYSTEM seed', () => {
     'guardrail.validate': ModelTaskType.GUARDRAIL,
     'nlp.ner': 'TOKEN_CLASSIFICATION',
     'nlp.classification': 'TEXT_CLASSIFICATION',
-    // SMR generation routing keys.
+    // TEXT generation routing keys.
     'text.live': 'TEXT_GENERATION',
     'text.finalize': 'TEXT_GENERATION',
     // BUG-018 — prompt-template Test routing, independent of harness.
@@ -708,8 +708,8 @@ describe('AiTaskDefault SYSTEM seed', () => {
     // placeholder); the diagnosis suggester moved to nlp.diagnosis.
     expect(byKey.get('nlp.classification')?.modelSlug).toBe('nlp-doc-type-classifier');
     expect(byKey.get('nlp.diagnosis')?.modelSlug).toBe('symps-disease-bert-v3-c41');
-    // SMR live/finalize routing, both mapped to the
-    // current SYSTEM SMR default registry slug.
+    // TEXT live/finalize routing, both mapped to the
+    // current SYSTEM TEXT default registry slug.
     expect(byKey.get('text.live')?.modelSlug).toBe('lms-gemma-4-e2b-it-qat');
     expect(byKey.get('text.finalize')?.modelSlug).toBe('lms-gemma-4-e2b-it-qat');
     // BUG-018 — the prompt-template Test key. Seeded so the Test path
@@ -788,18 +788,20 @@ describe('AiTaskDefault SYSTEM seed', () => {
 // =============================================================================
 
 describe('companion seed updates', () => {
-  it('moves the SYSTEM HarnessPolicy SMR default to gemma-4-e2b-it-qat (provider lm-studio)', () => {
+  it('moves the SYSTEM HarnessPolicy TEXT default to gemma-4-e2b-it-qat (provider lm-studio)', () => {
     expect(SYSTEM_HARNESS_POLICY_TEXT_DEFAULTS.textProvider).toBe('lm-studio');
     expect(SYSTEM_HARNESS_POLICY_TEXT_DEFAULTS.textModel).toBe('gemma-4-e2b-it-qat');
   });
 
-  it('keeps the new SMR default resolvable against the registry (lm-studio row, matching sourceUri)', () => {
+  it('keeps the new TEXT default resolvable against the registry (lm-studio row, matching sourceUri)', () => {
     const row = catalog.find((m) => m.provider === 'lm-studio' && m.sourceUri === SYSTEM_HARNESS_POLICY_TEXT_DEFAULTS.textModel);
     expect(row).toBeDefined();
     expect(row?.slug).toBe('lms-gemma-4-e2b-it-qat');
   });
 
   it('removes the six superseded GlobalSetting keys from the seeded arrays', () => {
+    // These `smr` literals are DB row keys, not code identifiers — D-740-1 leaves them
+    // spelled `smr` on purpose (see RETIRED_GLOBAL_SETTING_KEYS in 11-global-setting.ts).
     const retiredKeys = [
       'default-smr-provider',
       'default-smr-model',
@@ -813,14 +815,18 @@ describe('companion seed updates', () => {
       expect(seededKeys.has(key), `GlobalSetting key ${key} is still seeded`).toBe(false);
     });
     // The survivors stay untouched.
-    expect(seededKeys.has('smr-azure-deployment')).toBe(true);
+    expect(seededKeys.has('text-azure-deployment')).toBe(true);
     expect(seededKeys.has('guardrail-provider-models')).toBe(true);
     expect(seededKeys.has('default-stt-model')).toBe(true);
   });
 
-  it('declares exactly the six superseded keys in RETIRED_GLOBAL_SETTING_KEYS', () => {
+  it('declares exactly the superseded keys in RETIRED_GLOBAL_SETTING_KEYS', () => {
     expect(RETIRED_GLOBAL_SETTING_KEYS).toBeDefined();
     const asStrings = (RETIRED_GLOBAL_SETTING_KEYS ?? []).map((k) => `${k.namespace}/${k.key}`).sort();
+    // Every entry keeps its ORIGINAL `smr` spelling: these name rows that exist in
+    // already-provisioned databases, so renaming them would point the retirement sweep
+    // at rows that do not exist. `smr/smr-azure-deployment` is the D-740-1 addition —
+    // the key moved to `text/text-azure-deployment`, and this retires the old copy.
     expect(asStrings).toEqual(
       [
         'guardrail/default-guardrail-provider',
@@ -828,6 +834,7 @@ describe('companion seed updates', () => {
         'guardrail/guardrail-azure-deployment',
         'smr/default-smr-provider',
         'smr/default-smr-model',
+        'smr/smr-azure-deployment',
         'ux-constants/smr-provider-models',
       ].sort(),
     );
@@ -846,8 +853,11 @@ describe('companion seed updates', () => {
     };
     const result = await retireSupersededGlobalSettings!(client as never);
 
-    expect(client.globalSetting.updateMany).toHaveBeenCalledTimes(6);
-    expect(result.retired).toBe(12);
+    // 7 = the original six superseded keys + `smr/smr-azure-deployment` (D-740-1
+    // moved that key to the `text` namespace, so the old row must be swept too).
+    expect(client.globalSetting.updateMany).toHaveBeenCalledTimes(RETIRED_GLOBAL_SETTING_KEYS!.length);
+    expect(client.globalSetting.updateMany).toHaveBeenCalledTimes(7);
+    expect(result.retired).toBe(14);
     updates.forEach(({ where, data }) => {
       expect(where.resourceStatus).toEqual({ not: 'DELETED' });
       expect(where.namespace).toBeTypeOf('string');

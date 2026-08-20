@@ -1,5 +1,5 @@
 /**
- * V1 SMR summary WRAPPER artifacts (D-12), byte-exact from
+ * V1 TEXT summary WRAPPER artifacts (D-12), byte-exact from
  * the running v1 pod.
  *
  * `summary_service.py:212` selects the department body template
@@ -22,7 +22,7 @@
  * `../v1-summary-prompt.builder.ts`, which performs the assembly-time
  * placeholder substitution these templates require (see
  * `v1-summary-user-prompt-template.ts`) and is used by the two compat routes in
- * `smr-compat.controller.ts`. The constants below remain GENERATED and
+ * `text-compat.controller.ts`. The constants below remain GENERATED and
  * byte-exact — the checksum gate is unchanged; assembly happens entirely in the
  * builder. `summary-prompt.builder.ts` (the native Vox v2 path) still does not
  * import this module.

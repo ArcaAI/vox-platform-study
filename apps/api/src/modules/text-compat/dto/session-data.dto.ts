@@ -142,9 +142,9 @@ export class PreviousVisitRecordDto {
 export class SessionDataDto {
   // No consultation/session is required to summarize: `session_id` is an OPTIONAL
   // free-form correlation string, echoed back on `SummaryResponse.session_id`.
-  // When the caller omits it, the controller synthesizes a `smr-…` value so the
+  // When the caller omits it, the controller synthesizes a `text-…` value so the
   // response contract still carries a valid id. It is NOT a v2 Consultation id.
-  @ApiPropertyOptional({ description: 'Optional session correlation id (echoed back; a `smr-…` value is generated when omitted)' })
+  @ApiPropertyOptional({ description: 'Optional session correlation id (echoed back; a `text-…` value is generated when omitted)' })
   @IsOptional()
   @IsString()
   session_id?: string;

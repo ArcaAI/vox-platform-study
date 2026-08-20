@@ -89,7 +89,7 @@ describe('classifyDownstreamFailure — classify by CAUSE, never by what the cli
   });
 
   it('walks the `cause` chain', () => {
-    const wrapped = new Error('SMR finalize failed', { cause: transportError('ECONNREFUSED') });
+    const wrapped = new Error('TEXT finalize failed', { cause: transportError('ECONNREFUSED') });
     expect(classifyDownstreamFailure(wrapped)).toBe('transport');
   });
 

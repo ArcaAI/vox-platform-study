@@ -45,7 +45,7 @@ describe('resolveDepartmentKey (v1 get_department_schema + select_prompt_templat
   });
 
   // Verified against the live v1 pod (Rancher c-9lwv8/apps
-  // apps-smr-84c9774997-zhp2l): "rheum"/"neuro"/"heme" only exist in
+  // apps-text-84c9774997-zhp2l): "rheum"/"neuro"/"heme" only exist in
   // prompts_json.py's get_department_schema table, NOT in prompt_selector.py's
   // select_prompt_template table. v2 unions both, so all three still resolve.
   it('resolves synonyms that exist in only one of v1s two (non-identical) alias tables', () => {

@@ -3,8 +3,8 @@
 **Owner**: Platform / Text generation · **Port**: **8862** · **Package**: `text` (`apps/text/src/text`)
 
 Multi-provider text generation and summarization FastAPI service for the HOPE platform. The
-directory and CLI were formerly `apps/smr` / `smr:*`; start it with `pnpm text:dev`. Several
-**wire identifiers stay `smr`** (health `serviceKey`, Redis stream prefix, Prometheus metric
+directory and CLI were formerly `apps/text` / `text:*`; start it with `pnpm text:dev`. Several
+**wire identifiers stay `text`** (health `serviceKey`, Redis stream prefix, Prometheus metric
 names, compat HTTP paths) — see [Frozen identifiers](#frozen-identifiers).
 
 The gateway fronts this service. Browsers should not call it directly.
@@ -116,19 +116,19 @@ These are **live** names, not leftovers to “fix” in code or docs that descri
 
 | Kind | Value |
 |---|---|
-| Health `service` field | `smr` |
-| Effective-config query | `?service=smr` |
+| Health `service` field | `text` |
+| Effective-config query | `?service=text` |
 | Redis streams | `text:stream:` (DB 3) |
-| Prometheus metrics | `smr_*` (e.g. `text_generation_total`, `text_engine_cache_hit_rate`) |
-| OTEL service name (image default) | `smr` (`TEXT_OTEL_SERVICE_NAME`) |
+| Prometheus metrics | `text_*` (e.g. `text_generation_total`, `text_engine_cache_hit_rate`) |
+| OTEL service name (image default) | `text` (`TEXT_OTEL_SERVICE_NAME`) |
 | Compat HTTP (gateway) | `/api/smr/api/v1/presummary`, `/api/smr/api/v1/summary/sync` |
 | Task keys | `text.live`, `text.finalize`, `text.test` |
-| Vault AppRole | `hope-smr` |
-| Release tag prefix | `SMR-` (image name is `text`) |
+| Vault AppRole | `hope-text` |
+| Release tag prefix | `TEXT-` (image name is `text`) |
 
 Grafana dashboard **files** are `infrastructure/grafana/dashboards/text-overview.json`,
 `text-resilience.json`, `text-security.json`, `text-cache-friendliness.json`. Dashboard
-**UIDs** are still `smr-overview`, `smr-resilience`, `smr-security`, `smr-cache-friendliness`.
+**UIDs** are still `text-overview`, `text-resilience`, `text-security`, `text-cache-friendliness`.
 
 ## Gateway
 

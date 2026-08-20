@@ -10,7 +10,7 @@ import { IsDateString, IsIn, IsNotEmpty, IsOptional, IsString, Matches } from 'c
  * counter and Prisma forbids the collision (see `platform.prisma`).
  */
 export class RegisterInstanceRequest {
-  @ApiProperty({ description: 'Service name, e.g. api | smr | stt-worker', example: 'smr' })
+  @ApiProperty({ description: 'Service name, e.g. api | text | stt-worker', example: 'text' })
   @IsString()
   @IsNotEmpty()
   service!: string;
@@ -20,7 +20,7 @@ export class RegisterInstanceRequest {
   @IsNotEmpty()
   version!: string;
 
-  @ApiPropertyOptional({ description: 'Release tag, e.g. SMR-2.1.0; null on untagged builds', nullable: true })
+  @ApiPropertyOptional({ description: 'Release tag, e.g. TEXT-2.1.0; null on untagged builds', nullable: true })
   @IsOptional()
   @IsString()
   releaseTag?: string | null;

@@ -14,7 +14,7 @@
         "api",
         "admin-console",
         "compat-playground",
-        "smr",
+        "text",
         "text",
         "stt-ml-runtime",
         "stt-worker",
@@ -35,7 +35,7 @@
     },
     "releaseTag": {
       "type": ["string", "null"],
-      "description": "The git tag that produced this build, e.g. SMR-2.1.0. Null on untagged builds.",
+      "description": "The git tag that produced this build, e.g. TEXT-2.1.0. Null on untagged builds.",
       "default": null
     },
     "gitBranch": {

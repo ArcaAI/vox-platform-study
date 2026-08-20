@@ -26,7 +26,7 @@ describe('ServiceReleaseTokenGuard', () => {
 
   beforeEach(() => {
     secretsService = createMockSecretsService({
-      TEXT_SERVICE_TOKEN: 'smr-secret',
+      TEXT_SERVICE_TOKEN: 'text-secret',
       NLP_SERVICE_TOKEN: 'nlp-secret',
       GUARDRAIL_SERVICE_TOKEN: undefined,
       HARNESS_SERVICE_TOKEN: undefined,
@@ -45,7 +45,7 @@ describe('ServiceReleaseTokenGuard', () => {
   });
 
   it('accepts a token matching any one configured per-service secret', async () => {
-    await expect(guard.canActivate(contextWithHeaders({ 'x-service-token': 'smr-secret' }))).resolves.toBe(true);
+    await expect(guard.canActivate(contextWithHeaders({ 'x-service-token': 'text-secret' }))).resolves.toBe(true);
     await expect(guard.canActivate(contextWithHeaders({ 'x-service-token': 'gateway-secret' }))).resolves.toBe(true);
   });
 
@@ -61,6 +61,6 @@ describe('ServiceReleaseTokenGuard', () => {
   });
 
   it('accepts an array header value by taking the first entry', async () => {
-    await expect(guard.canActivate(contextWithHeaders({ 'x-service-token': ['smr-secret', 'other'] }))).resolves.toBe(true);
+    await expect(guard.canActivate(contextWithHeaders({ 'x-service-token': ['text-secret', 'other'] }))).resolves.toBe(true);
   });
 });

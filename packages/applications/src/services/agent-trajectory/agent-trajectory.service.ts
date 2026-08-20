@@ -545,9 +545,9 @@ function parseGenerationStats(raw: unknown): ParsedGenerationStats | null {
   const tokensPerSecond = pickNumber(obj, 'tokens_per_second', 'tokensPerSecond');
   const stopReason = pickString(obj, 'stop_reason', 'stopReason');
   // Token counts were ALREADY being persisted here and thrown away:
-  // the SMR client's `stats`/`usage` carries them, the harness forwards `stats`
+  // the TEXT client's `stats`/`usage` carries them, the harness forwards `stats`
   // verbatim onto every LLM_CALL step, and this parser simply never looked. Read
-  // both the flat and the nested `usage` shape (the SMR wire uses both).
+  // both the flat and the nested `usage` shape (the TEXT wire uses both).
   const usage = (obj.usage && typeof obj.usage === 'object' ? (obj.usage as Record<string, unknown>) : {}) as Record<string, unknown>;
   const promptTokens =
     pickNumber(obj, 'prompt_tokens', 'promptTokens', 'input_tokens', 'inputTokens') ?? pickNumber(usage, 'prompt_tokens', 'promptTokens');

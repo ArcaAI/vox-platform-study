@@ -384,7 +384,7 @@ _POLICY_JSON = {
     "maxRegen": 4,
     "gateSlaSeconds": 3600,
     "gateEscalationSeconds": 1800,
-    "toolAllowlist": ["nlp", "smr"],
+    "toolAllowlist": ["nlp", "text"],
     "updatedAt": "2026-06-07T00:00:00Z",
     "version": 7,
 }

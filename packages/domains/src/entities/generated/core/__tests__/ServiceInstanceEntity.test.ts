@@ -9,9 +9,9 @@ const SYSTEM_TENANT_ID = '00000000-0000-0000-0000-000000000000';
 const baseProps = {
   tenantId: SYSTEM_TENANT_ID,
   releaseId: 'release-1',
-  serviceName: 'smr',
+  serviceName: 'text',
   environment: 'dev',
-  instanceId: 'smr-7f9c8d-abcde',
+  instanceId: 'text-7f9c8d-abcde',
   startedAt: new Date('2026-08-09T11:22:33.000Z'),
 };
 

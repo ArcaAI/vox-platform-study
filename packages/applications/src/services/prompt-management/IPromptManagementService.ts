@@ -67,13 +67,13 @@ export abstract class IPromptManagementService {
   /**
    * BUG-018 — SUBMIT a test run. Assembles the prompt, resolves
    * `{provider, model}` from the `text.test` AiTaskDefault (or the caller's
-   * explicit pair) and submits a STREAMING generation job to SMR, returning
-   * immediately. `dryRun` returns the assembled prompt and calls SMR not at all.
+   * explicit pair) and submits a STREAMING generation job to TEXT, returning
+   * immediately. `dryRun` returns the assembled prompt and calls TEXT not at all.
    * Never awaits the completion — the 2–3½ minute blocking call was the CDN 524.
    */
   abstract startPromptTemplateTest(id: string, dto: TestPromptTemplateRequest): Promise<PromptTestAckResponse>;
   /**
-   * BUG-018 — FINALIZE a test run: fetch the finished generation from SMR
+   * BUG-018 — FINALIZE a test run: fetch the finished generation from TEXT
    * server-side by `taskId`, score it, and persist
    * `lastTestScore/lastTestOutput/lastTestAt` under optimistic concurrency.
    */

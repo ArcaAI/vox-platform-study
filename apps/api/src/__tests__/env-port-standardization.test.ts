@@ -248,7 +248,7 @@ describe('Port topology: apps/api/.env.prod uses service hostnames, not localhos
   const expectedHost: ReadonlyArray<readonly [string, string]> = [
     ['API_URL', 'api'],
     ['GUARDRAIL_URL', 'guardrail'],
-    ['TEXT_URL', 'smr'],
+    ['TEXT_URL', 'text'],
     ['NLP_URL', 'nlp'],
     ['HARNESS_URL', 'harness'],
   ];

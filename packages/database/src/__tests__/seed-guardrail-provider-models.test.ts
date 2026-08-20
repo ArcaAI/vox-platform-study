@@ -88,7 +88,7 @@ describe('Guardrail Provider-Model Catalog Seed Data', () => {
     });
   });
 
-  describe('seed IDs for the surviving SMR Azure deployment setting', () => {
+  describe('seed IDs for the surviving TEXT Azure deployment setting', () => {
     const SETTING_PREFIXES = ['GLOBAL', 'ARCAAI'] as const;
 
     for (const prefix of SETTING_PREFIXES) {

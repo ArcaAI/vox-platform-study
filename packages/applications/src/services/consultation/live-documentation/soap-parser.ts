@@ -1,7 +1,7 @@
 /**
  * SOAP section parsing for the live running summary.
  *
- * The realtime SMR call now asks for a structured S/O/A/P running note. These
+ * The realtime TEXT call now asks for a structured S/O/A/P running note. These
  * pure helpers turn that text into the four canonical sections (in order) and
  * reconstitute the flat `runningSummary` the NLP entity highlights are offset
  * against. If the model returns unstructured prose, we degrade gracefully to a
@@ -12,7 +12,7 @@ import type { LiveSummarySectionDto } from './dto';
 /** Canonical section order for a SOAP note. */
 export const SOAP_SECTION_TITLES = ['Subjective', 'Objective', 'Assessment', 'Plan'] as const;
 
-/** Title used when the SMR output cannot be parsed into SOAP sections. */
+/** Title used when the TEXT output cannot be parsed into SOAP sections. */
 export const RUNNING_SUMMARY_TITLE = 'Running Summary';
 
 type SoapTitle = (typeof SOAP_SECTION_TITLES)[number];
@@ -53,7 +53,7 @@ function matchHeader(line: string): HeaderMatch | null {
 }
 
 /**
- * Parse SMR running-note text into the four ordered SOAP sections. Requires at
+ * Parse TEXT running-note text into the four ordered SOAP sections. Requires at
  * least two recognisable SOAP headers to be considered structured; otherwise
  * returns a single "Running Summary" section with the whole text.
  */
@@ -86,7 +86,7 @@ export function parseSoapSections(raw: string): LiveSummarySectionDto[] {
 }
 
 /**
- * SOAP `response_format` (json_schema) for the live SMR call.
+ * SOAP `response_format` (json_schema) for the live TEXT call.
  *
  * Forwarded to `/api/v1/generate` so a json-schema-capable provider returns a
  * deterministic `{ subjective, objective, assessment, plan }` object instead of

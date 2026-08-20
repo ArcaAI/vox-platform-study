@@ -555,7 +555,7 @@ export const DNA_REGEN_SETTINGS = [
     id: '77000000-0000-0000-0000-000000000004',
     tenantId: SEED_TENANT_ID,
     name: 'DNA Regeneration Max Context Chars',
-    description: 'Maximum total characters sent to SMR v2 for DNA analysis',
+    description: 'Maximum total characters sent to TEXT v2 for DNA analysis',
     key: 'dna-regen.max-context-chars',
     value: '100000',
     defaultValue: '100000',

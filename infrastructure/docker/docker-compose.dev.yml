@@ -422,7 +422,7 @@ services:
     volumes:
       - ./configs/grafana/provisioning:/etc/grafana/provisioning:ro
       # This mounted ./configs/grafana/dashboards, which held a
-      # SINGLE dashboard, while the nine purpose-built ones (SMR overview /
+      # SINGLE dashboard, while the nine purpose-built ones (TEXT overview /
       # resilience / security / cache-friendliness, consumption,
       # agentic-trajectory, model-retention, optimistic-locking, pgbouncer) sat
       # unmounted in ../grafana/dashboards — reachable only from the standalone
@@ -445,7 +445,7 @@ services:
   # LM Studio + Ollama remain the default local engines. hope-vllm needs NVIDIA;
   # `dev-infra.sh -e` warns when the NVIDIA runtime is missing.
   #
-  # Wire SMR to them via .env.dev (see apps/text/.env.prod for the production
+  # Wire TEXT to them via .env.dev (see apps/text/.env.prod for the production
   # reference values):
   #   TEXT_VLLM_BASE_URL=http://localhost:8000/v1
   #   TEXT_LLAMA_CPP_BASE_URL=http://localhost:8080
@@ -502,7 +502,7 @@ services:
               capabilities: ["gpu"]
 
   # llama.cpp server — production GGUF-tier engine (CPU/edge, small utility
-  # models, MiniCheck GGUF path). Serves the native /completion endpoint SMR's
+  # models, MiniCheck GGUF path). Serves the native /completion endpoint TEXT's
   # `llama-cpp` provider targets. Reads a PRE-STAGED GGUF from a host bind-mount
   # (operator downloads it once — see the runbook); no weights are pulled here.
   # `--slots` exposes /slots for per-slot occupancy visibility + healthcheck.

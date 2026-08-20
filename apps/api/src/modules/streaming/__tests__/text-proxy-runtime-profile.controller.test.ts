@@ -1,8 +1,8 @@
 /**
- * SMR proxy — runtime-profile parameter injection.
+ * TEXT proxy — runtime-profile parameter injection.
  *
  * Kept in its own file rather than extending the 1700-line
- * `smr-proxy.controller.test.ts`, so the injection contract reads as one unit.
+ * `text-proxy.controller.test.ts`, so the injection contract reads as one unit.
  *
  * The contract, in priority order:
  *   1. CALLER WINS — a parameter present on the request body is never clobbered.
@@ -63,7 +63,7 @@ const bodyOf = (http: ReturnType<typeof build>['http']) => http.axiosRef.post.mo
 
 beforeEach(() => vi.clearAllMocks());
 
-describe('SMR proxy — runtime-profile injection', () => {
+describe('TEXT proxy — runtime-profile injection', () => {
   it('injects resolved parameters when the caller supplied none', async () => {
     const resolver = {
       resolveProfile: vi.fn(async () => ({

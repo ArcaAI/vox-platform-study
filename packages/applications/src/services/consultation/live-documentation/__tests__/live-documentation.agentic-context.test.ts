@@ -124,7 +124,7 @@ describe('LiveDocumentationService — agentic.context.* live lane', () => {
     // claimCheck.minBytes was removed (F-21): the claim-check offload is a
     // Temporal-history concern owned entirely by the harness
     // (HARNESS_CLAIM_CHECK_MIN_BYTES); it never governed anything in the live
-    // SMR loop, so it is no longer resolved here.
+    // TEXT loop, so it is no longer resolved here.
     const { service, resolveEffective } = buildService();
 
     await service.resolveAgenticContext(TENANT);
@@ -205,7 +205,7 @@ describe('LiveDocumentationService — agentic.context.* live lane', () => {
 
   it('the flush actually consumes the resolved delta cap', async () => {
     // End-to-end proof the lane is connected, not just resolvable: a tiny stored
-    // cap must truncate the delta the flush sends to SMR.
+    // cap must truncate the delta the flush sends to TEXT.
     const { service } = buildService({ 'liveDelta.maxChars': 20 });
     service.start({ consultationId: CID, tenantId: TENANT });
     service.ingestSegment(CID, { text: 'a'.repeat(200), isFinal: true, segmentId: 's1' });

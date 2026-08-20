@@ -27,4 +27,4 @@ Production blueprint for a 3-node, highly-available, auto-unsealing HashiCorp Va
 | Production / staging Vault on the k3s cluster                     | This directory (`vault/`).                                                                                                              |
 | Day-2 Vault operations (rotation, failover, recovery, monitoring) | [docs/operations/vault/](../../docs/operations/vault/README.md).                                                                        |
 | Resilience drills against a running HA cluster                    | `scripts/chaos/vault-drill.sh` (see [scripts/README.md](../../scripts/README.md)).                                                      |
-| Application service deploys (API, STT, SMR, ...)                  | [deployment/](../../deployment/README.md) (k3s + ArgoCD).                                                                               |
+| Application service deploys (API, STT, TEXT, ...)                  | [deployment/](../../deployment/README.md) (k3s + ArgoCD).                                                                               |

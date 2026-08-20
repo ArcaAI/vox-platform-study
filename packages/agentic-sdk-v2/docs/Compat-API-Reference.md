@@ -16,7 +16,7 @@
 - [1. `useArcaSessionManager`](#1-usearcasessionmanager)
 - [2. `useAudioCapture`](#2-useaudiocapture)
 - [3. `useArcaSpeechToText`](#3-usearcaspeechtotext)
-- [4. `useText`](#4-usesmr)
+- [4. `useText`](#4-usetext)
 - [5. `useArcaSttProvider`](#5-usearcasttprovider)
 - [6. `useArcaSttLanguageModes`](#6-usearcasttlanguagemodes)
 - [7. `useArcaBatchTranscription`](#7-usearcabatchtranscription)
@@ -325,7 +325,7 @@ const job = await getTranscriptionStatus(taskId);           // → Transcription
 
 ## 4. `useText`
 
-v1 summary hook, reproduced against the gateway's v1-compat SMR shim (`apps/api`'s `smr-compat` module, `@Controller('api/smr/api/v1')`).
+v1 summary hook, reproduced against the gateway's v1-compat TEXT shim (`apps/api`'s `text-compat` module, `@Controller('api/smr/api/v1')`).
 
 ```ts
 function useText(props?: {
@@ -692,7 +692,7 @@ Documented in [`TASK-560 README §6`](../../../docs/implementation/TASK-560-v1-v
 - [`docs/implementation/TASK-560-v1-v2-consultation-migration/MIGRATION_GUIDE.md`](../../../docs/implementation/TASK-560-v1-v2-consultation-migration/MIGRATION_GUIDE.md) — step-by-step migration walkthrough with a full before/after example
 - [`docs/implementation/TASK-560-v1-v2-consultation-migration/README.md`](../../../docs/implementation/TASK-560-v1-v2-consultation-migration/README.md) — frozen contract (§5) and anti-patterns (§6)
 - [`docs/implementation/TASK-564-live-transcription-metadata-passthrough/METADATA_PASSTHROUGH.md`](../../../docs/implementation/TASK-564-live-transcription-metadata-passthrough/METADATA_PASSTHROUGH.md) — the live-transcription metadata contract in full
-- [`docs/implementation/TASK-599-Compat-DNA-Writing-Style/README.md`](../../../docs/implementation/TASK-599-Compat-DNA-Writing-Style/README.md) — DNA writing-style resolution into SMR summary/pre-summary prompts
+- [`docs/implementation/TASK-599-Compat-DNA-Writing-Style/README.md`](../../../docs/implementation/TASK-599-Compat-DNA-Writing-Style/README.md) — DNA writing-style resolution into TEXT summary/pre-summary prompts
 - [`docs/implementation/TASK-600-Compat-Translate-To-English/README.md`](../../../docs/implementation/TASK-600-Compat-Translate-To-English/README.md) — Sarvam translate-to-English before summarizing
 - [`docs/implementation/TASK-602-Provider-Credential-Env-Fallback-Cleanup/README.md`](../../../docs/implementation/TASK-602-Provider-Credential-Env-Fallback-Cleanup/README.md) — BYOK cloud-provider credential model (fail-closed `ProviderCredentialsError`)
 - [`apps/compat-playground`](../../../apps/compat-playground) (port 5177) — full runnable reference app exercising every hook on this page

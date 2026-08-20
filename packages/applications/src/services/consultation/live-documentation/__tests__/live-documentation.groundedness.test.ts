@@ -46,7 +46,7 @@ const GROUND_WIRE_ALL_GROUNDED = {
 interface HttpMockOptions {
   /** Handler for the `/guardrail/ground` call; default resolves the mixed fixture. */
   ground?: (body: unknown) => Promise<{ data: unknown }>;
-  /** Summary the SMR `/generate` mock returns. */
+  /** Summary the TEXT `/generate` mock returns. */
   summary?: string;
   /** Entities the NLP `/classify/tokens` mock returns (default: a single MEDICATION). */
   classifyEntities?: unknown[];

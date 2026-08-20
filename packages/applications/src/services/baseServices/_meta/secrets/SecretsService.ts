@@ -236,7 +236,7 @@ export class SecretsService implements OnModuleDestroy {
       // Keep the warmup set continuously warm. `getSecretSync` is cache-only and
       // its entries carry the per-secret TTL, so without a re-warm loop every
       // warmed key silently goes cold `defaultTtlSec` after boot — dropping the
-      // `X-Service-Token` header on the sync-only proxy paths (SMR/TTS) and
+      // `X-Service-Token` header on the sync-only proxy paths (TEXT/TTS) and
       // turning healthy calls into upstream 401s minutes after startup. Refresh
       // is a NO-OP when caching is disabled (`defaultTtlSec <= 0`) or nothing
       // was warmed.

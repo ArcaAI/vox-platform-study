@@ -404,7 +404,7 @@ def make_stub_activities(config: StubConfig, recorder: StubRecorder) -> list:
         recorder.calls["generate"] += 1
         recorder.generate_inputs.append(payload)
         if config.generate_fails:
-            raise ApplicationError("smr unavailable", non_retryable=True)
+            raise ApplicationError("text unavailable", non_retryable=True)
         # On the claim-check fixture, return the note OFFLOADED (content emptied
         # + ref) so the captured history threads content_ref to the downstream activities.
         content, content_ref = (

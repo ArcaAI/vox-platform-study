@@ -173,9 +173,9 @@ class TestToolClientFactoriesSendServiceToken:
     decide the assertion."""
 
     def test_text_client_carries_the_configured_token(self) -> None:
-        settings = Settings(internal_access_token="", text_service_token="tok-smr")
+        settings = Settings(internal_access_token="", text_service_token="tok-text")
         client = activities._text_client(settings)
-        assert client._service_token == "tok-smr"
+        assert client._service_token == "tok-text"
 
     def test_nlp_client_carries_the_configured_token(self) -> None:
         settings = Settings(internal_access_token="", nlp_service_token="tok-nlp")
@@ -185,7 +185,7 @@ class TestToolClientFactoriesSendServiceToken:
     def test_shared_token_wins_over_the_legacy_peer_token(self) -> None:
         settings = Settings(
             internal_access_token="shared-tok",
-            text_service_token="tok-smr",
+            text_service_token="tok-text",
             nlp_service_token="tok-nlp",
         )
         assert activities._text_client(settings)._service_token == "shared-tok"
@@ -339,7 +339,7 @@ class TestGenerate:
         assert fake.kwargs["model"] == "gpt-4o"
 
     @pytest.mark.asyncio
-    async def test_threads_smr_stats_onto_activity_result(self, env, monkeypatch):
+    async def test_threads_text_stats_onto_activity_result(self, env, monkeypatch):
         """the generate activity result carries the Text
         ``stats`` block (additive field on ``TextGenerationResult``; command-neutral —
         no new workflow command). Phase 2 trajectory emitters read it off the result."""
@@ -357,13 +357,13 @@ class TestGenerate:
             "engine_native": None,
         }
 
-        class _StatsSmr:
+        class _StatsText:
             async def generate(self, **kwargs: Any) -> TextGenerationResult:
                 return TextGenerationResult(
                     content="DRAFT", model="m", finish_reason="stop", stats=stats
                 )
 
-        monkeypatch.setattr(activities, "_text_client", lambda s: _StatsSmr())
+        monkeypatch.setattr(activities, "_text_client", lambda s: _StatsText())
         result = await env.run(activities.generate, GenerateInput(tenant_id="11111111-1111-1111-1111-111111111111", prompt="P"))
         assert result.content == "DRAFT"
         assert result.stats == stats
@@ -396,22 +396,22 @@ class TestGeneratePostSendFailure:
 
     @pytest.mark.asyncio
     async def test_post_send_failure_raises_non_retryable(self, env, monkeypatch):
-        class _LostSmr:
+        class _LostText:
             async def generate(self, **kw: Any) -> TextGenerationResult:
                 raise TextServiceError("response lost after dispatch", after_send=True)
 
-        monkeypatch.setattr(activities, "_text_client", lambda s: _LostSmr())
+        monkeypatch.setattr(activities, "_text_client", lambda s: _LostText())
         with pytest.raises(ApplicationError) as ei:
             await env.run(activities.generate, GenerateInput(tenant_id="11111111-1111-1111-1111-111111111111", prompt="P"))
         assert ei.value.non_retryable is True
 
     @pytest.mark.asyncio
     async def test_pre_send_failure_propagates_as_retryable(self, env, monkeypatch):
-        class _DownSmr:
+        class _DownText:
             async def generate(self, **kw: Any) -> TextGenerationResult:
                 raise TextServiceError("connection refused", after_send=False)
 
-        monkeypatch.setattr(activities, "_text_client", lambda s: _DownSmr())
+        monkeypatch.setattr(activities, "_text_client", lambda s: _DownText())
         # Propagates unchanged (NOT wrapped non-retryable) → Temporal retries per policy.
         with pytest.raises(TextServiceError):
             await env.run(activities.generate, GenerateInput(tenant_id="11111111-1111-1111-1111-111111111111", prompt="P"))

@@ -41,7 +41,7 @@ import { resolveScopedTenantId } from '../../shared/tenant-scope';
  * probe). Tenant admins may READ the effective default but cannot write those
  * task keys; runtime resolution uses the SYSTEM row only.
  *
- * `smr.*` and, since TASK-735 Phase 0 (owner decision 2026-08-16, reversing
+ * `text.*` and, since TASK-735 Phase 0 (owner decision 2026-08-16, reversing
  * the 2026-07-17 super-admin-only directive), `guardrail.*` are
  * tenant-admin configurable — `getEffective` honours the tenant row and
  * `upsertRow` accepts tenant writes for those keys. `guardrail.*` carries an

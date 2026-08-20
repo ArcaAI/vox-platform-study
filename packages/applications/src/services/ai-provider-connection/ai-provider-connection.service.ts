@@ -277,11 +277,11 @@ export class AiProviderConnectionService extends BaseService implements IProvide
    * ONE deliberate improvement: the per-credential catch is not silent.
    *
    * The 1-arg overload is a `@deprecated` transition shim (assumes
-   * `service='llm'`) so smr-proxy keeps compiling until it
+   * `service='llm'`) so text-proxy keeps compiling until it
    * repoints to the service-first form.
    */
   async resolveTenantCloudOverrides(service: ProviderService, tenantId: string): Promise<ResolvedProviderOverrides>;
-  /** @deprecated 1-arg form assumes `service='llm'`; kept for the smr-proxy transition (removes it). */
+  /** @deprecated 1-arg form assumes `service='llm'`; kept for the text-proxy transition (removes it). */
   async resolveTenantCloudOverrides(tenantId: string): Promise<ResolvedProviderOverrides>;
   async resolveTenantCloudOverrides(a: ProviderService | string, b?: string): Promise<ResolvedProviderOverrides> {
     const service = (b === undefined ? 'llm' : a) as ProviderService;

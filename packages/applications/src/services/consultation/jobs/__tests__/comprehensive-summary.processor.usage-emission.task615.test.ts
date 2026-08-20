@@ -1,6 +1,6 @@
 /**
  * `ComprehensiveSummaryProcessor` makes its own
- * SMR `/generate` call (`callTextService`) and was flagged in the WS-D
+ * TEXT `/generate` call (`callTextService`) and was flagged in the WS-D
  * handoff as an unmetered `SummaryMeta` writer. This mirrors the
  * `summary.service.ts`/`chain-summary.service.ts` treatment: the SummaryMeta
  * write and the LLM (+ guardrail, when present) usage-ledger rows commit in
@@ -107,7 +107,7 @@ function makeHarness(overrides: { usageLedgerService?: unknown; unitOfWorkServic
       }),
     },
   };
-  const configService = { get: vi.fn((key: string) => (key === 'TEXT_URL' ? 'http://smr:8862' : undefined)) };
+  const configService = { get: vi.fn((key: string) => (key === 'TEXT_URL' ? 'http://text:8862' : undefined)) };
   const promptResolutionService = {
     resolve: vi.fn().mockResolvedValue({ template: 'comprehensive', promptId: 'prompt_default', contextVariables: {}, resolvedFrom: 'default', resolutionTrace: { usedDefaults: [] } }),
   };
@@ -210,7 +210,7 @@ describe('ComprehensiveSummaryProcessor — usage-ledger emission', () => {
     expect(failing.summaryMetaRepo.create).toHaveBeenCalled();
   });
 
-  it('emits nothing when SMR returned no usage block (older service / partial response)', async () => {
+  it('emits nothing when TEXT returned no usage block (older service / partial response)', async () => {
     const legacy = makeHarness();
     legacy.httpService.axiosRef.post.mockResolvedValue({ data: { summary: 'Minimal response.' } });
 

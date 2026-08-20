@@ -194,7 +194,7 @@ describe('SummaryService.generateSummary — finalize lineage', () => {
       );
     }
 
-    const smrOptions = () => httpService.axiosRef.post.mock.calls.at(-1)![1] as Record<string, unknown>;
+    const textOptions = () => httpService.axiosRef.post.mock.calls.at(-1)![1] as Record<string, unknown>;
 
     it("the session agent's finalize override outranks the tenant text.finalize default", async () => {
       withSnapshot({ subType: 'LIVE_SOAP_SNAPSHOT', agent: LINEAGE });
@@ -202,8 +202,8 @@ describe('SummaryService.generateSummary — finalize lineage', () => {
 
       await svc.generateSummary('c-1', {} as never, 'user-1');
 
-      expect(smrOptions().llm_provider ?? smrOptions().provider).toBeDefined();
-      expect(JSON.stringify(smrOptions())).toContain('gpt-4.1');
+      expect(textOptions().llm_provider ?? textOptions().provider).toBeDefined();
+      expect(JSON.stringify(textOptions())).toContain('gpt-4.1');
     });
 
     it('REGRESSION LOCK — no lineage ⇒ the tenant selection decides, exactly as before', async () => {
@@ -212,7 +212,7 @@ describe('SummaryService.generateSummary — finalize lineage', () => {
       await svc.generateSummary('c-1', {} as never, 'user-1');
 
       expect(resolveTextSelection).toHaveBeenCalledWith('tenant-1', 'finalize');
-      expect(JSON.stringify(smrOptions())).toContain('tenant-model');
+      expect(JSON.stringify(textOptions())).toContain('tenant-model');
     });
   });
 });

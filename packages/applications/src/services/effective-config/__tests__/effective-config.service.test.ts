@@ -1,7 +1,7 @@
 // The frozen per-service effective-config contract.
 //
 // The service resolves the SERVICE-LEVEL subset only: retention, concurrency and
-// runtime profiles. It never carries per-request model selection — SMR's
+// runtime profiles. It never carries per-request model selection — TEXT's
 // stateless-gateway contract (`apps/text/src/text/core/config.py:1-9`) is
 // preserved verbatim, so a regression here would break that house constraint.
 
@@ -86,20 +86,20 @@ describe('EffectiveConfigService', () => {
 
   it('stamps the service name and an ISO-8601 generatedAt', async () => {
     const svc = serviceWith(settingsStub());
-    const res = await svc.resolveForService('smr');
-    expect(res.service).toBe('smr');
+    const res = await svc.resolveForService('text');
+    expect(res.service).toBe('text');
     expect(res.generatedAt).toMatch(/^\d{4}-\d{2}-\d{2}T[\d:.]+Z$/);
   });
 
   describe('per-service subset filtering', () => {
-    // Smr now ALSO carries `retention.ttlSeconds`. That is not
-    // a cache bound: smr holds no weights, and forwards this value to the
+    // Text now ALSO carries `retention.ttlSeconds`. That is not
+    // a cache bound: text holds no weights, and forwards this value to the
     // server-managed engine (Ollama `keep_alive` / LM Studio `ttl`). The
     // service-level-knobs-only contract is intact — this is a capacity/residency
     // knob, never per-request model selection.
-    it('serves smr runtimeProfiles plus the engine-retention TTL', async () => {
+    it('serves text runtimeProfiles plus the engine-retention TTL', async () => {
       const svc = serviceWith(settingsStub(), [profile()]);
-      const res = await svc.resolveForService('smr');
+      const res = await svc.resolveForService('text');
 
       expect(res.runtimeProfiles).toHaveLength(1);
       expect(res.runtimeProfiles?.[0]).toMatchObject({
@@ -174,7 +174,7 @@ describe('EffectiveConfigService', () => {
     it('is served to guardrail ONLY — no other service gains the group', async () => {
       const svc = serviceWith(settingsStub());
 
-      for (const name of ['smr', 'nlp', 'stt', 'harness', 'tts']) {
+      for (const name of ['text', 'nlp', 'stt', 'harness', 'tts']) {
         expect((await svc.resolveForService(name)).redaction).toBeUndefined();
       }
     });
@@ -199,16 +199,16 @@ describe('EffectiveConfigService', () => {
 
     it('stamps a runtime profile env-fallback when the row carries no opinion', async () => {
       const svc = serviceWith(settingsStub(), [emptyProfile()]);
-      const res = await svc.resolveForService('smr');
+      const res = await svc.resolveForService('text');
 
       expect(res.runtimeProfiles?.[0].source).toBe('env-fallback');
     });
   });
 
   describe('house constraint: never leaks per-request model selection', () => {
-    it('omits any model-selection field from the smr payload', async () => {
+    it('omits any model-selection field from the text payload', async () => {
       const svc = serviceWith(settingsStub(), [profile({ modelSlug: 'llama3:8b' })]);
-      const res = await svc.resolveForService('smr');
+      const res = await svc.resolveForService('text');
 
       // modelSlug identifies WHICH profile row applies; it must never be
       // presented as a selection directive alongside a `model`/`provider` choice.

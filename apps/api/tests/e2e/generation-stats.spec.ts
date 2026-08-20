@@ -2,7 +2,7 @@
  * GenerationStats surface probe (E2E, Agentic SOTA).
  *
  * AD-1 GenerationStats headline fields — `stopReason`, `ttftMs`,
- * `tokensPerSecond` — are parsed off the SMR response and PERSISTED onto
+ * `tokensPerSecond` — are parsed off the TEXT response and PERSISTED onto
  * `SummaryMeta` (migration
  * `20260719000000_task_509_summary_meta_generation_stats`).
  *

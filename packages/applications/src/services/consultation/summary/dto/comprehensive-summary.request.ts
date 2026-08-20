@@ -45,7 +45,7 @@ export class ComprehensiveSummaryRequest {
   includeLabResults?: boolean;
 
   @ApiPropertyOptional({
-    description: 'Additional options for the SMR service',
+    description: 'Additional options for the TEXT service',
   })
   @IsOptional()
   @IsObject()

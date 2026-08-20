@@ -286,12 +286,12 @@ describe('PipelineStepFailedPayload', () => {
       failedStep: 'summary',
       jobId: 'summary-job-fail-001',
       contextItemId: 'ctx-transcript-001',
-      error: 'SMR service timeout after 120s',
+      error: 'TEXT service timeout after 120s',
       willContinue: false,
     };
 
     expect(payload.failedStep).toBe('summary');
-    expect(payload.error).toBe('SMR service timeout after 120s');
+    expect(payload.error).toBe('TEXT service timeout after 120s');
     expect(payload.willContinue).toBe(false);
   });
 

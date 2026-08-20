@@ -1,6 +1,10 @@
 /**
  * Grep-gate for the Text service helper: uvicorn must load `text.main:app`,
  * not the retired `smr.main:app` package path.
+ *
+ * The `smr` literals below are the thing being FORBIDDEN, not a usage — a future
+ * rename sweep must leave them alone, or every negative assertion here collapses
+ * into a tautology that can never fail (D-740-1).
  */
 import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';

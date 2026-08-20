@@ -405,14 +405,14 @@ describe('DnaWritingStyleAdminController', () => {
         data: { tenantId: 'tenant-1', doctorId: 'doctor-1', userId: 'doctor-1' },
         getState: vi.fn().mockResolvedValue('failed'),
         returnvalue: undefined,
-        failedReason: 'SMR service unavailable',
+        failedReason: 'TEXT service unavailable',
       });
 
       const result = await controller.getJobStatus('job-3');
 
       expect(result.jobId).toBe('job-3');
       expect(result.status).toBe('failed');
-      expect(result.error).toBe('SMR service unavailable');
+      expect(result.error).toBe('TEXT service unavailable');
     });
 
     it('should return queued status when job is waiting', async () => {

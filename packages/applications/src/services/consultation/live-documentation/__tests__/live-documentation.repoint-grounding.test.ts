@@ -1,13 +1,13 @@
 /**
  * Live NER transcript re-point + source-grounding (SPEER).
  *
- * The live loop generated a running SOAP note from SMR and then ran NER OVER THAT
+ * The live loop generated a running SOAP note from TEXT and then ran NER OVER THAT
  * GENERATED NOTE, publishing the entities to the clinician's live panel. Because the
  * LLM note carries a material hallucination base rate, an invented finding/medication
  * became a highlighted, first-class clinical entity — the loop LAUNDERED summary
  * hallucinations into entities. This suite pins the corrected contract:
  *
- *   - NER runs over the RAW TRANSCRIPT DELTA (the same text that feeds SMR),
+ *   - NER runs over the RAW TRANSCRIPT DELTA (the same text that feeds TEXT),
  *           not `runningSummary`.  [RED on the old code — it passed the note]
  *   - A token present only in the generated note (no transcript support) is
  *           NEVER surfaced as an entity.  [RED on the old code — NER saw the note]
@@ -58,13 +58,13 @@ function nerEntitiesFor(text: string) {
 }
 
 interface HttpMockOpts {
-  /** Fixed SMR `/generate` note. */
+  /** Fixed TEXT `/generate` note. */
   note?: string;
-  /** When set, the note is derived from the SMR prompt (cumulative) — for the recall test. */
+  /** When set, the note is derived from the TEXT prompt (cumulative) — for the recall test. */
   noteFromPrompt?: boolean;
 }
 
-/** A note that grows to name whichever recall terms have entered the SMR prompt so far. */
+/** A note that grows to name whichever recall terms have entered the TEXT prompt so far. */
 function noteFromPrompt(prompt: string): string {
   const present = ['cough', 'fever'].filter((t) => prompt.toLowerCase().includes(t));
   return `Subjective: patient reports ${present.join(' and ')}.`;
@@ -159,7 +159,7 @@ describe('LiveDocumentationService — live NER re-point + source-grounding', ()
     const payload = await service.flush(CID);
 
     const nlpCall = httpMock.axiosRef.post.mock.calls.find((c) => String(c[0]).includes('/classify/tokens'))!;
-    // The NER call receives the transcript delta (the text that fed SMR) — NOT the note.
+    // The NER call receives the transcript delta (the text that fed TEXT) — NOT the note.
     expect(nlpCall[1].text).toBe('patient reports a cough');
     expect(nlpCall[1].text).not.toBe(payload!.runningSummary);
   });

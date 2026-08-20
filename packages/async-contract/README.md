@@ -83,7 +83,7 @@ expect(problems).toEqual([]);
 
 | Consumer | Uses |
 |---|---|
-| `apps/text` (planned, TASK-717 follow-up) | Reference adoption on the SMR stream path |
+| `apps/text` (planned, TASK-717 follow-up) | Reference adoption on the TEXT stream path |
 | TASK-722 (exposure SSE) | Envelope + resume token + conformance suite |
 | TASK-727 (webhook channel) | Envelope + `AsyncIdempotencyKey.webhookDelivery` + conformance suite |
 

@@ -8,7 +8,7 @@
 // Governance: `nlp.*` and `harness.*` keys are SUPER_ADMIN-ONLY —
 // `editableBy` points at the super-admin resource (`'all'`, the CASL
 // manage-everything subject) and the descriptor is flagged `globalOnly`.
-// `smr.*` and, since TASK-735 Phase 0 (owner decision 2026-08-16,
+// `text.*` and, since TASK-735 Phase 0 (owner decision 2026-08-16,
 // reversing the 2026-07-17 super-admin-only directive), `guardrail.*` are
 // tenant-admin configurable: their descriptors resolve to the tenant-editable
 // `AiTaskDefault` resource and are NOT flagged `globalOnly` (driven by
@@ -60,23 +60,23 @@ const META: Record<AiTaskKey, { label: string; description: string }> = {
     label: 'Toxicity classification model',
     description: 'Default text-classification model used for toxicity classification (super admins only).',
   },
-  // SMR generation routing (tenant-admin configurable).
+  // TEXT generation routing (tenant-admin configurable).
   'text.live': {
-    label: 'SMR live-summary model',
+    label: 'TEXT live-summary model',
     description: 'Default text-generation model for the live-documentation delta summariser.',
   },
   'text.finalize': {
-    label: 'SMR final-summary model',
+    label: 'TEXT final-summary model',
     description: 'Default text-generation model for the final/comprehensive summary generator.',
   },
-  // per-tenant SMR fallback selections (opt-in). No SYSTEM default;
+  // per-tenant TEXT fallback selections (opt-in). No SYSTEM default;
   // when unset, no fallback runs (`resolveTextFallbackSelection` returns null).
   'text.live.fallback': {
-    label: 'SMR live-summary fallback model',
+    label: 'TEXT live-summary fallback model',
     description: 'Fallback text-generation model for the live-documentation delta summariser when the primary provider fails.',
   },
   'text.finalize.fallback': {
-    label: 'SMR final-summary fallback model',
+    label: 'TEXT final-summary fallback model',
     description: 'Fallback text-generation model for the final/comprehensive summary generator when the primary provider fails.',
   },
   // prompt-template test-bench routing (tenant-admin
@@ -86,7 +86,7 @@ const META: Record<AiTaskKey, { label: string; description: string }> = {
   // for the tenant — there is no `text.finalize` fallback hop (removed
   // deliberately; this comment described behaviour that no longer existed).
   'text.test': {
-    label: 'SMR prompt-test-bench model',
+    label: 'TEXT prompt-test-bench model',
     description: 'Default text-generation model for the tenant-admin prompt-template test bench, when the caller does not select a provider/model.',
   },
   // harness LLM-as-judge model (super admins only).
@@ -95,7 +95,7 @@ const META: Record<AiTaskKey, { label: string; description: string }> = {
     description: 'Default text-generation model used as the LLM-as-judge by the clinical documentation harness (super admins only).',
   },
   // vision extraction — tenant-admin configurable, same
-  // governance class as smr.*.
+  // governance class as text.*.
   'vlm.extract': {
     label: 'Vision extraction model',
     description: 'Default vision-language model used to extract text/findings from an image attachment.',

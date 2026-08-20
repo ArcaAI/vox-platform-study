@@ -358,7 +358,7 @@ export class ExceptionInterceptor implements NestInterceptor {
         // This branch is the SINGLE place a downstream failure becomes a
         // client-facing body. It exists because the alternative — each call
         // site composing its own message — is exactly how
-        // `Failed to call SMR service: connect ECONNREFUSED 127.0.0.1:8862`
+        // `Failed to call TEXT service: connect ECONNREFUSED 127.0.0.1:8862`
         // reached callers as a 400.
         //
         // It deliberately runs LAST, on errors nothing else claimed, and skips

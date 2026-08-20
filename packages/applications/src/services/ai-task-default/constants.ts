@@ -7,12 +7,12 @@ import { ModelTaskType } from '@arcaai/domains';
  * new keys are added here + a compatibility mapping below + a
  * `models.<taskKey>` descriptor in the settings registry.
  */
-// `text.live` / `text.finalize` route the two SMR generation
+// `text.live` / `text.finalize` route the two TEXT generation
 // flows (live-documentation delta vs. final/comprehensive summary). They are the
 // AiTaskDefault-first precedence source for `HarnessPolicyService.resolveTextSelection`.
 // `text.live.fallback` / `text.finalize.fallback` are the per-tenant,
 // opt-in fallback selections `resolveTextFallbackSelection` reads (fail-OPEN: no
-// row ⇒ no fallback). SMR selection is tenant-admin configurable (NOT in
+// row ⇒ no fallback). TEXT selection is tenant-admin configurable (NOT in
 // `SUPER_ADMIN_ONLY_TASK_PREFIXES`).
 // `text.test` routes the tenant-admin prompt-template test bench when the
 // caller does not supply an explicit provider/model pair. TASK-740 D-5: this
@@ -30,9 +30,9 @@ import { ModelTaskType } from '@arcaai/domains';
 // (model-agnostic already; see apps/nlp/src/nlp/api/v1/rest/classify.py).
 // No new Python endpoint — only these two AiTaskDefault keys. Super-admin-only,
 // consistent with every other `nlp.*` key.
-// `vlm.extract`  routes SMR's vision capability (image → text
-// extraction via a vision-language model). It lives in SMR's own
-// provider/adapter framework — same governance class as `smr.*` — so it is
+// `vlm.extract`  routes TEXT's vision capability (image → text
+// extraction via a vision-language model). It lives in TEXT's own
+// provider/adapter framework — same governance class as `text.*` — so it is
 // tenant-admin configurable, NOT under `SUPER_ADMIN_ONLY_TASK_PREFIXES`.
 export const AI_TASK_KEYS = [
   'guardrail.validate',
@@ -73,10 +73,10 @@ export const AI_TASK_MODEL_TASK_TYPES: Record<AiTaskKey, ModelTaskType> = {
   // /classify/text path as nlp.classification/nlp.diagnosis — same task type.
   'nlp.sentiment': ModelTaskType.TEXT_CLASSIFICATION,
   'nlp.toxicity': ModelTaskType.TEXT_CLASSIFICATION,
-  // SMR generation models are text-generation models in the registry.
+  // TEXT generation models are text-generation models in the registry.
   'text.live': ModelTaskType.TEXT_GENERATION,
   'text.finalize': ModelTaskType.TEXT_GENERATION,
-  // per-tenant SMR fallback selections — same task type.
+  // per-tenant TEXT fallback selections — same task type.
   'text.live.fallback': ModelTaskType.TEXT_GENERATION,
   'text.finalize.fallback': ModelTaskType.TEXT_GENERATION,
   // prompt-template test-bench routing — same task type.
@@ -95,14 +95,14 @@ export const AI_TASK_MODEL_TASK_TYPES: Record<AiTaskKey, ModelTaskType> = {
  * - `nlp.`
  * - `harness.`
  *
- * NOTE: `smr.` is intentionally NOT here. SMR summarization model
+ * NOTE: `text.` is intentionally NOT here. TEXT summarization model
  * selection — primary (`text.live` / `text.finalize`) AND per-tenant fallback
- * (`smr.<task>.fallback`) — is tenant-admin configurable: `getEffective`
+ * (`text.<task>.fallback`) — is tenant-admin configurable: `getEffective`
  * honours per-tenant override rows and `upsertRow` permits tenant writes.
  *
  * `guardrail.` was REMOVED here by owner decision 2026-08-16 (TASK-735 Phase
  * 0), reversing the 2026-07-17 super-admin-only directive: guardrail
- * selection is now tenant-admin configurable via the SAME cascade as `smr.*`
+ * selection is now tenant-admin configurable via the SAME cascade as `text.*`
  * (`getEffective` honours the tenant row; `upsertRow` accepts tenant writes).
  * It is NOT unconditional, though — `AiTaskDefaultService.upsertRow` layers a
  * separate, guardrail-specific platform floor (D2, tighten-only) on top of

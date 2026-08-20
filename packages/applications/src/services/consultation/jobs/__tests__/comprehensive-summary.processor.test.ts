@@ -3,7 +3,7 @@
  *
  * Tests for the BullMQ processor that handles async comprehensive summary
  * generation jobs. The processor resolves linked consultations, gathers
- * sections and NER entities via ChainSummaryService, calls the SMR service,
+ * sections and NER entities via ChainSummaryService, calls the TEXT service,
  * and persists the result.
  *
  * Progress steps: 10% → 25% → 40% → 60% → 85% → 100%
@@ -82,7 +82,7 @@ const createMockHttpService = () => ({
 
 const createMockConfigService = () => ({
   get: vi.fn().mockImplementation((key: string) => {
-    if (key === 'TEXT_URL') return 'http://smr:8862';
+    if (key === 'TEXT_URL') return 'http://text:8862';
     return undefined;
   }),
 });
@@ -261,8 +261,8 @@ describe('ComprehensiveSummaryProcessor', () => {
     mocks = createProcessor();
   });
 
-  // ── the SMR call carries the cascade-resolved model ──
-  describe('SMR selection', () => {
+  // ── the TEXT call carries the cascade-resolved model ──
+  describe('TEXT selection', () => {
     it('posts the cascade-resolved provider+model when the request omits a model', async () => {
       const consultation = createConsultation();
       mocks.consultationRepo.findById.mockResolvedValue(consultation);
@@ -369,7 +369,7 @@ describe('ComprehensiveSummaryProcessor', () => {
       expect(mocks.jobService.notifyComplete).toHaveBeenCalledWith('job-comp-001', result);
     });
 
-    it('should call SMR service with correct URL, payload, and 3-minute timeout', async () => {
+    it('should call TEXT service with correct URL, payload, and 3-minute timeout', async () => {
       setupSuccessfulJob({
         sections: [
           createSection({ content: 'Section A content.' }),
@@ -387,7 +387,7 @@ describe('ComprehensiveSummaryProcessor', () => {
 
       const [url, payload, config] = mocks.httpService.axiosRef.post.mock.calls[0];
 
-      expect(url).toBe('http://smr:8862/api/v1/generate');
+      expect(url).toBe('http://text:8862/api/v1/generate');
       expect(payload.prompt).toContain('Section A content.');
       expect(payload.prompt).toContain('Section B content.');
       expect(payload.context).toEqual(
@@ -439,7 +439,7 @@ describe('ComprehensiveSummaryProcessor', () => {
       expect(mocks.summaryMetaRepo.create).toHaveBeenCalledTimes(1);
     });
 
-    it('should use default SMR URL when not configured', async () => {
+    it('should use default TEXT URL when not configured', async () => {
       mocks.configService.get.mockReturnValue(undefined);
 
       const processor = new ComprehensiveSummaryProcessor(
@@ -470,7 +470,7 @@ describe('ComprehensiveSummaryProcessor', () => {
       expect(mocks.httpService.axiosRef.post).toHaveBeenCalledWith('http://localhost:8862/api/v1/generate', expect.any(Object), expect.any(Object));
     });
 
-    it('should include section headers with department, doctor, type in SMR text', async () => {
+    it('should include section headers with department, doctor, type in TEXT text', async () => {
       setupSuccessfulJob({
         sections: [
           createSection({
@@ -545,7 +545,7 @@ describe('ComprehensiveSummaryProcessor', () => {
       expect(payload.context.sectionCount).toBe(3);
     });
 
-    it('should handle SMR returning partial response (no modelName)', async () => {
+    it('should handle TEXT returning partial response (no modelName)', async () => {
       setupSuccessfulJob({
         textResponse: { summary: 'Minimal response.' },
       });
@@ -598,7 +598,7 @@ describe('ComprehensiveSummaryProcessor', () => {
       expect(mocks.jobService.notifyFailed).toHaveBeenCalledWith('job-comp-001', 'No content available across linked consultations');
     });
 
-    it('should fail when SMR service returns error', async () => {
+    it('should fail when TEXT service returns error', async () => {
       mocks.consultationRepo.findById.mockResolvedValue(createConsultation());
       mocks.chainSummaryService.resolveLinkedConsultations.mockResolvedValue([createConsultation()]);
       mocks.chainSummaryService.gatherSections.mockResolvedValue([createSection()]);
@@ -611,7 +611,7 @@ describe('ComprehensiveSummaryProcessor', () => {
       expect(mocks.jobService.notifyFailed).toHaveBeenCalledWith('job-comp-001', 'Failed to generate comprehensive summary from AI service');
     });
 
-    it('should fail when SMR service times out', async () => {
+    it('should fail when TEXT service times out', async () => {
       mocks.consultationRepo.findById.mockResolvedValue(createConsultation());
       mocks.chainSummaryService.resolveLinkedConsultations.mockResolvedValue([createConsultation()]);
       mocks.chainSummaryService.gatherSections.mockResolvedValue([createSection()]);
@@ -724,7 +724,7 @@ describe('ComprehensiveSummaryProcessor', () => {
       expect(result.namedEntities).toEqual({});
     });
 
-    it('should pass custom options through to SMR service', async () => {
+    it('should pass custom options through to TEXT service', async () => {
       mocks.consultationRepo.findById.mockResolvedValue(createConsultation());
       mocks.chainSummaryService.resolveLinkedConsultations.mockResolvedValue([createConsultation()]);
       mocks.chainSummaryService.gatherSections.mockResolvedValue([createSection()]);
@@ -932,7 +932,7 @@ describe('ComprehensiveSummaryProcessor', () => {
       expect(result.summaryMeta?.aiModelId).toBe('gpt-4o');
       expect(result.summaryMeta?.processingTimeMs).toBe(8500);
 
-      // Verify SMR was called with all sections
+      // Verify TEXT was called with all sections
       const textPayload = mocks.httpService.axiosRef.post.mock.calls[0][1];
       expect(textPayload.prompt).toContain('Summary from Gen Med.');
       expect(textPayload.prompt).toContain('Hematology findings.');

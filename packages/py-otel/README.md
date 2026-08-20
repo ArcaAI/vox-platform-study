@@ -6,9 +6,9 @@ OBS-16).
 
 ## Why it exists
 
-STT and SMR each cross a non-HTTP boundary — a Redis Stream — that
+STT and TEXT each cross a non-HTTP boundary — a Redis Stream — that
 `FastAPIInstrumentor` cannot trace through: STT's audio/control/result frames,
-and SMR's generation chunks relayed over a separate SSE request. Both services
+and TEXT's generation chunks relayed over a separate SSE request. Both services
 originally carried a byte-for-byte duplicate copy of this module
 (`apps/stt/src/stt/core/trace_propagation.py`,
 `apps/text/src/text/core/trace_propagation.py`) — a deliberate, time-boxed

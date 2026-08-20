@@ -11,10 +11,10 @@
  * There is no single `models.retention.ttlSeconds` key — deliberately, per
  * `model-retention.descriptors.test.ts` ("does NOT introduce a competing
  * models.retention.* namespace"): the family is `<service>.modelCache.
- * ttlSeconds` for `stt|nlp|guardrail|harness|tts`, plus the SMR-only
- * `smr.modelCache.ttlSeconds` (SMR holds no weights, so it has no
+ * ttlSeconds` for `stt|nlp|guardrail|harness|tts`, plus the TEXT-only
+ * `text.modelCache.ttlSeconds` (TEXT holds no weights, so it has no
  * maxModels/vramBudgetMb — ttlSeconds is its only retention field). This spec
- * exercises `smr.modelCache.ttlSeconds` as the representative of that family.
+ * exercises `text.modelCache.ttlSeconds` as the representative of that family.
  *
  * IMPORTANT — where the [60s, 3600s] clamp mentioned on the descriptor
  * actually lives: `service-runtime.descriptors.ts` documents "the service
@@ -50,9 +50,9 @@
 import { test, expect, APIRequestContext } from '@playwright/test';
 import { DEFAULT_TENANT_KEY, SEEDED_USERS, loginUser } from '../../../../tests/helpers';
 
-const REGISTRY_KEY = 'smr.modelCache.ttlSeconds';
+const REGISTRY_KEY = 'text.modelCache.ttlSeconds';
 const REGISTRY_ROUTE = `/api/v1/admin/settings/registry/${REGISTRY_KEY}`;
-const INTERNAL_EFFECTIVE_CONFIG = '/api/v1/internal/effective-config?service=smr';
+const INTERNAL_EFFECTIVE_CONFIG = '/api/v1/internal/effective-config?service=text';
 
 const TEXT_SERVICE_TOKEN = process.env.E2E_TEXT_SERVICE_TOKEN ?? process.env.E2E_TEXT_V2_SERVICE_TOKEN ?? '';
 
@@ -156,7 +156,7 @@ test.describe('model-cache retention TTL — write lane reaches the effective-co
         '(the InternalServiceTokenGuard fails closed with no configured secret — see the file header)',
     );
 
-    test('the written value reaches GET internal/effective-config?service=smr', async ({ request }) => {
+    test('the written value reaches GET internal/effective-config?service=text', async ({ request }) => {
       const before = await readKey(request);
       const testValue = before.value === 601 ? 602 : 601;
       const put = await writeKey(request, testValue);
@@ -165,7 +165,7 @@ test.describe('model-cache retention TTL — write lane reaches the effective-co
       const resp = await request.get(INTERNAL_EFFECTIVE_CONFIG, { headers: { 'X-Service-Token': TEXT_SERVICE_TOKEN } });
       expect(resp.status()).toBe(200);
       const body = (await resp.json()) as EffectiveConfigBody;
-      expect(body.service).toBe('smr');
+      expect(body.service).toBe('text');
       expect(body.retention?.ttlSeconds).toBe(testValue);
       expect(body.retention?.source).toBe('db');
     });

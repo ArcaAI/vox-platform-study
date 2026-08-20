@@ -17,7 +17,7 @@
  *     to `harnessEnabled: true` — no extra env var needed to name a
  *     harness-enabled consultation, unlike the generic harness-gate spec.
  *   - The FULL-loop assertions (harness actually produces + signs a draft)
- *     additionally need apps/harness + Temporal + SMR + NLP + Postgres +
+ *     additionally need apps/harness + Temporal + TEXT + NLP + Postgres +
  *     Redis and are SKIPPED unless `HARNESS_E2E_FULL` is set, so CI never
  *     reports a fabricated pass.
  *   - "SummaryMeta with assuranceCompletedAt set" is asserted the same
@@ -61,7 +61,7 @@ test.describe.configure({ mode: 'serial' });
 
 test.describe('entry point #4 (`POST :id/summary/async`) creates a real job on a harness-enabled tenant', () => {
   // TASK-764 — this block's original claim ("needs only a live apps/api +
-  // Postgres + Redis — NOT the harness/Temporal/SMR/NLP stack") stopped being
+  // Postgres + Redis — NOT the harness/Temporal/TEXT/NLP stack") stopped being
   // true when TASK-732 moved the seam decision INTO the controller. The route
   // no longer enqueues onto a BullMQ queue and returns; it now calls
   // `NoteGenerationService.generate`, which calls `HarnessGatewayService.start`
@@ -102,7 +102,7 @@ test.describe('entry point #4 (`POST :id/summary/async`) creates a real job on a
 });
 
 test.describe('FULL loop — harness-on tenant regenerate produces an assured, signable draft (HARNESS_E2E_FULL)', () => {
-  test.skip(!RUN_FULL, 'requires apps/harness + Temporal + SMR + NLP + Postgres + Redis (set HARNESS_E2E_FULL=1)');
+  test.skip(!RUN_FULL, 'requires apps/harness + Temporal + TEXT + NLP + Postgres + Redis (set HARNESS_E2E_FULL=1)');
 
   let doctorToken: string;
   let jobId: string;

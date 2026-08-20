@@ -13,7 +13,7 @@ const summarizeSyncMock = vi.fn();
 // preview branch, which is gated on `loading`.
 let mockLoading = false;
 
-// Mock the compat SMR hook so the component talks to controllable fns instead
+// Mock the compat TEXT hook so the component talks to controllable fns instead
 // of a real gateway. Only `useText` is consumed at runtime; the type-only
 // imports resolve against the real `.d.ts`.
 vi.mock('@arcaai/vox/compat', () => ({
@@ -37,7 +37,7 @@ vi.mock('sonner', () => ({
 // The live transcript arrives through the console-wide session context
 //  instead of a `transcriptLines` prop, so the card needs a
 // session to read. Mock the hook rather than standing up the whole provider —
-// this suite is about the SMR call shape, not session wiring.
+// this suite is about the TEXT call shape, not session wiring.
 let mockLineTexts: string[] = [];
 // `batch.handoff` is the batch-upload → summarization push ; `null`
 // here means "nothing was handed over", which is the state every test below

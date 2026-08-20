@@ -8,7 +8,7 @@ A medical AI platform built as a monorepo with [Turborepo](https://turbo.build/r
 apps/
   api/          NestJS API Gateway (8868) — auth, multi-tenancy, REST/WS/SSE, system of record
   stt/       FastAPI (8861) — speech-to-text, multi-model ASR, diarization + batch worker
-  text/         FastAPI (8862) — LLM summarization / text generation (formerly SMR)
+  text/         FastAPI (8862) — LLM summarization / text generation (formerly TEXT)
   guardrail/    FastAPI (8863) — content-safety, PII, medical validation
   nlp/          FastAPI (8864) — medical NER, classification, diagnosis suggestions
   harness/      FastAPI (8866) — clinical documentation harness + Temporal worker
@@ -76,7 +76,7 @@ For the full setup guide, daily workflows, testing, and troubleshooting, see **[
 | `pnpm infra:dev:down` / `infra:status` / `infra:logs` | Stop / inspect / follow docker infra                                                          |
 | `pnpm api:dev`                                        | Start API Gateway (development)                                                               |
 | `pnpm stt:dev`                                        | Start STT service (no reload; `:watch` for scoped reload)                                     |
-| `pnpm text:dev`                                        | Start the Text service (formerly SMR) with the LM Studio provider registered                  |
+| `pnpm text:dev`                                        | Start the Text service (formerly TEXT) with the LM Studio provider registered                  |
 | `pnpm nlp:dev` / `dev:guardrail` / `dev:harness`      | Start NLP / Guardrail / harness API service                                                   |
 | `pnpm worker:dev`                                     | Start the harness Temporal worker                                                             |
 | `pnpm tts:dev`                                        | Start TTS service (`:watch` for scoped reload)                                                |

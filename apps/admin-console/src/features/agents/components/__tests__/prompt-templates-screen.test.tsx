@@ -53,7 +53,7 @@ const PRE_SUMMARY = template({
   scope: 'TENANT_DEFAULT',
   status: 'APPROVED',
   departmentId: undefined,
-  tags: ['arcaai', 'clinical', 'pre-summary', 'smr-v1'],
+  tags: ['arcaai', 'clinical', 'pre-summary', 'text-v1'],
   currentVersionNumber: 5,
   approvedVersionNumber: 3,
   createdAt: '2026-04-01T10:00:00.000Z',

@@ -5,10 +5,10 @@ import { KNOWN_PROVIDERS } from '../../../usageLedger/vocabulary';
 import { buildGuardrailUsageInput, buildLlmUsageInput, buildLlmUsageInputFromTokenCounts, parseTextUsageDetail, toLedgerProvider } from '../text-usage';
 
 /**
- * Turning an SMR response into ledger rows.
+ * Turning an TEXT response into ledger rows.
  *
  * Two independent vocabularies meet here and neither is allowed to bleed into
- * the other: SMR names its providers for its own registry (`azure-openai`,
+ * the other: TEXT names its providers for its own registry (`azure-openai`,
  * `openai_compat`), while the ledger's `provider` is a ROLLUP DIMENSION whose
  * spelling is fixed by `KNOWN_PROVIDERS`. A wrong mapping does not fail — it
  * silently forks the dimension, so a cost figure splits across two rows nobody
@@ -48,13 +48,13 @@ describe('toLedgerProvider', () => {
     ['anthropic', 'anthropic'],
     ['bedrock', 'bedrock'],
     ['vertex', 'vertex'],
-  ])('maps the SMR key %s onto the canonical ledger slug %s', (smr, ledger) => {
-    expect(toLedgerProvider(smr)).toBe(ledger);
+  ])('maps the TEXT key %s onto the canonical ledger slug %s', (text, ledger) => {
+    expect(toLedgerProvider(text)).toBe(ledger);
   });
 
   it('only ever produces a provider the ledger vocabulary knows', () => {
-    for (const smr of ['azure-openai', 'azure', 'openai_compat', 'lm-studio', 'llama-cpp', 'ollama', 'vllm', 'openai', 'anthropic', 'bedrock', 'vertex']) {
-      expect(KNOWN_PROVIDERS).toContain(toLedgerProvider(smr));
+    for (const text of ['azure-openai', 'azure', 'openai_compat', 'lm-studio', 'llama-cpp', 'ollama', 'vllm', 'openai', 'anthropic', 'bedrock', 'vertex']) {
+      expect(KNOWN_PROVIDERS).toContain(toLedgerProvider(text));
     }
   });
 
@@ -66,7 +66,7 @@ describe('toLedgerProvider', () => {
 });
 
 describe('parseTextUsageDetail', () => {
-  it('reads the block SMR puts on the response', () => {
+  it('reads the block TEXT puts on the response', () => {
     const parsed = parseTextUsageDetail(detail());
 
     expect(parsed).not.toBeNull();
@@ -194,12 +194,12 @@ describe('buildLlmUsageInput', () => {
 
   it('A PLATFORM-FUNDED cloud call is CLOUD + INTERNAL, not BYOK', () => {
     // The gateway injected `provider_overrides` for this call — but from the
-    // SYSTEM-tenant platform default, not the tenant's own credential. SMR is
+    // SYSTEM-tenant platform default, not the tenant's own credential. TEXT is
     // told which it was via `provider_overrides[<provider>].funding` and
     // reports `byok: false`, so the economics land here as ordinary
     // platform-funded cloud spend (OD-2: no new AiDeploymentKind member).
     //
-    // Pinning test: the DECISION lives in SMR's `_used_byok_credential`
+    // Pinning test: the DECISION lives in TEXT's `_used_byok_credential`
     // (`apps/text/.../generate.py`, tested there). What this pins is the
     // consequence — that `byok: false` on a cloud provider yields a costBasis
     // the drainer will actually accumulate. Stamped BYOK instead, this call
@@ -319,7 +319,7 @@ describe('buildGuardrailUsageInput', () => {
 });
 
 // Context.service.ts#addRawSummary is a WRITE
-// PATH THAT NEVER CALLS SMR ITSELF (confirmed: zero httpService/axios
+// PATH THAT NEVER CALLS TEXT ITSELF (confirmed: zero httpService/axios
 // references in that file). It exists to persist a summary + bare
 // inputTokens/outputTokens the CALLER already computed, so there is no real
 // TextUsageDetail — no provider, no endpointKind, no raw provider payload.

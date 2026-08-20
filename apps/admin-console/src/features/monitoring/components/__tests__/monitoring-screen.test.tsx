@@ -41,7 +41,7 @@ const HEALTH = {
   status: 'degraded',
   timestamp: NOW,
   services: {
-    smr: { status: 'healthy', service: 'Summarization', uptime_seconds: 86_400, duration_ms: 210 },
+    text: { status: 'healthy', service: 'Summarization', uptime_seconds: 86_400, duration_ms: 210 },
     stt: { status: 'healthy', service: 'Speech to Text', duration_ms: 118 },
     tts: { status: 'healthy', service: 'Text to Speech', duration_ms: 104 },
     nlp: { status: 'healthy', service: 'Medical NLP', duration_ms: 88 },
@@ -52,7 +52,7 @@ const HEALTH = {
 
 const UPTIME = {
   services: {
-    smr: { status: 'healthy', uptime: 99.97, responseTime: 210, lastCheck: NOW, heartbeats: heartbeats(20, 0) },
+    text: { status: 'healthy', uptime: 99.97, responseTime: 210, lastCheck: NOW, heartbeats: heartbeats(20, 0) },
     stt: { status: 'healthy', uptime: 99.4, responseTime: 118, lastCheck: NOW, heartbeats: heartbeats(19, 1) },
     tts: { status: 'healthy', uptime: 99.1, responseTime: 104, lastCheck: NOW, heartbeats: heartbeats(18, 2) },
     harness: { status: 'degraded', uptime: 97.2, responseTime: 2_140, lastCheck: NOW, heartbeats: heartbeats(15, 5) },
@@ -61,7 +61,7 @@ const UPTIME = {
 };
 
 const SESSIONS = {
-  services: { smr: { active: 12 }, stt: { active: 7 }, tts: { active: 5 }, nlp: { active: 3 }, guardrail: { active: 0 }, harness: { active: 1 } },
+  services: { text: { active: 12 }, stt: { active: 7 }, tts: { active: 5 }, nlp: { active: 3 }, guardrail: { active: 0 }, harness: { active: 1 } },
   totalUsers: 19,
   refreshedAt: NOW,
 };
@@ -175,7 +175,7 @@ describe('MonitoringScreen', () => {
     renderWithProviders(<MonitoringScreen />);
 
     const chart = await screen.findByRole('table');
-    expect(within(chart).getByText('smr')).toBeDefined();
+    expect(within(chart).getByText('text')).toBeDefined();
     expect(within(chart).getByText('210 ms')).toBeDefined();
   });
 

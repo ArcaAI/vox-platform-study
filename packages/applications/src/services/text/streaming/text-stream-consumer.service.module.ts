@@ -3,9 +3,9 @@ import { ConfigModule } from '../../baseServices/_meta/config';
 import { TextStreamConsumerService } from './text-stream-consumer.service';
 
 /**
- * SMR Stream Consumer Module
+ * TEXT Stream Consumer Module
  *
- * Provides direct Redis Streams consumption for SMR task chunks.
+ * Provides direct Redis Streams consumption for TEXT task chunks.
  * Bypasses the Python SSE proxy for lower-latency streaming.
  *
  * Imports:

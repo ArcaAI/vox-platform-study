@@ -118,7 +118,7 @@ export function CompatConsultation({ provider: initialProvider = 'azure', apiBas
   const activeProviderLabel = provider.activeProvider?.name ?? selectedProviderLabel;
 
   // 4. Summary — same path + x-api-key as v1; sends real per-turn segments.
-  const smr = useText({ sessionId: mgr.session?.id });
+  const text = useText({ sessionId: mgr.session?.id });
 
   const startSttSession = async (sessionId: string): Promise<void> => {
     const base = (apiBaseUrl ?? '').replace(/\/$/, '');
@@ -183,7 +183,7 @@ export function CompatConsultation({ provider: initialProvider = 'azure', apiBas
 
   // 4. Generate a summary of the case note from the accumulated transcript.
   const summarize = async () => {
-    const result = await smr.summarizeSync({
+    const result = await text.summarizeSync({
       // Prefer real per-turn segments (F2) — split from the transcript lines.
       segments: lines.map((l) => ({ speaker: 'provider', text: l.text })),
       text: lines.map((l) => l.text).join('\n'),
@@ -225,8 +225,8 @@ export function CompatConsultation({ provider: initialProvider = 'azure', apiBas
         <button onClick={stop} disabled={isStarting || !capture.isRecording}>
           Stop
         </button>
-        <button onClick={summarize} disabled={isStarting || capture.isRecording || lines.length === 0 || smr.loading}>
-          {smr.loading ? 'Summarizing…' : 'Generate summary'}
+        <button onClick={summarize} disabled={isStarting || capture.isRecording || lines.length === 0 || text.loading}>
+          {text.loading ? 'Summarizing…' : 'Generate summary'}
         </button>
         <button onClick={switchProvider} disabled={isStarting || (capture.isRecording && provider.switchStatus === 'switching')}>
           {capture.isRecording
@@ -290,7 +290,7 @@ export function CompatConsultation({ provider: initialProvider = 'azure', apiBas
           ) : (
             <pre style={{ whiteSpace: 'pre-wrap' }}>{JSON.stringify(summary.summary, null, 2)}</pre>
           )}
-          {smr.error ? <p style={{ color: '#b00' }}>Summary error: {smr.error}</p> : null}
+          {text.error ? <p style={{ color: '#b00' }}>Summary error: {text.error}</p> : null}
         </section>
       ) : null}
     </div>

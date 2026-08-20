@@ -1,7 +1,7 @@
 /**
  * buildTextGeneratePayload — structured SOAP output forwarding
  *
- * Proves the assembled `responseFormat` (json_schema) actually reaches the SMR
+ * Proves the assembled `responseFormat` (json_schema) actually reaches the TEXT
  * provider payload for non-Ollama providers, and is suppressed for Ollama
  * (which does not accept OpenAI-style response_format).
  */

@@ -9,7 +9,7 @@ import { AiModelDiscoveryService, DiscoveryResponse } from './ai-model-discovery
  *
  * Joins the `admin/ai-models` controller family with the identical guard
  * (`manage:all`, the super-admin registry plane). Thin by
- * rule 05: the SMR fetch and the merge live in `AiModelDiscoveryService`.
+ * rule 05: the TEXT fetch and the merge live in `AiModelDiscoveryService`.
  *
  * The registry stays authoritative for task routing (`AiTaskDefault` reads the
  * DB only). Discovery is an OPERATOR AFFORDANCE — it never mutates rows, and
@@ -33,7 +33,7 @@ export class AiModelDiscoveryController {
       '`registered-missing-on-server`, plus per-provider probe outcomes and the probe timestamp. A provider whose ' +
       'probe did not succeed degrades its registry rows to `registered`/`unknown` — never to a false "missing".',
   })
-  @ApiQuery({ name: 'provider', required: false, type: String, description: 'SMR registry key, e.g. `ollama` or `lm-studio`.' })
+  @ApiQuery({ name: 'provider', required: false, type: String, description: 'TEXT registry key, e.g. `ollama` or `lm-studio`.' })
   @ApiResponse({ status: 200, type: DiscoveryResponse })
   async discover(@Query('provider') provider?: string): Promise<DiscoveryResponse> {
     return this.discoveryService.discover(provider);

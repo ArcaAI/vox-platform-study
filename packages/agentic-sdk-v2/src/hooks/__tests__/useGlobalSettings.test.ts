@@ -72,7 +72,7 @@ describe('useGlobalSettings', () => {
     it('should GET from GLOBAL_SETTINGS_ENDPOINTS.LIST and update state', async () => {
       const data = [
         { id: 'gs-1', key: 'stt.model', value: 'whisper-large', tenantId: 't-1' },
-        { id: 'gs-2', key: 'smr.model', value: 'gpt-4', tenantId: 't-1' },
+        { id: 'gs-2', key: 'text.model', value: 'gpt-4', tenantId: 't-1' },
       ];
       mockGet.mockResolvedValue(data);
       const { result } = renderHook(() => useGlobalSettings());
@@ -324,7 +324,7 @@ describe('useGlobalSettings', () => {
     it('should remove from local state', async () => {
       const initial = [
         { id: 'gs-1', key: 'stt.model', value: 'whisper', tenantId: 't-1' },
-        { id: 'gs-2', key: 'smr.model', value: 'gpt-4', tenantId: 't-1' },
+        { id: 'gs-2', key: 'text.model', value: 'gpt-4', tenantId: 't-1' },
       ];
       mockGet.mockResolvedValue(initial);
       mockDelete.mockResolvedValue(undefined);

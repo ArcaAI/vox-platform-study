@@ -1,10 +1,10 @@
 /**
- * SummaryService.callTextService — tenant SMR fallback on finalize
+ * SummaryService.callTextService — tenant TEXT fallback on finalize
  *
  * `resolveTextFallbackSelection` (`text.finalize.fallback`) was configurable in
- * the admin UI but INERT on the native finalize path — only smr-compat ever
+ * the admin UI but INERT on the native finalize path — only text-compat ever
  * called it. `callTextService` now mirrors compat's provider-failure fallback
- * (`smr-compat.controller.ts#computeSummary`): on a provider-side failure,
+ * (`text-compat.controller.ts#computeSummary`): on a provider-side failure,
  * retry EXACTLY ONCE against the tenant's configured fallback selection;
  * propagate the ORIGINAL error when no fallback is configured, the fallback
  * is the same provider as the primary, or the fallback attempt also fails.
@@ -76,7 +76,7 @@ const createMockPromptAssemblyService = () => ({
   }),
 });
 
-describe('SummaryService.callTextService — tenant SMR fallback (B-03)', () => {
+describe('SummaryService.callTextService — tenant TEXT fallback (B-03)', () => {
   let mockContextItemRepository: ReturnType<typeof createMockContextItemRepository>;
   let mockHttpService: { axiosRef: { post: ReturnType<typeof vi.fn> } };
   let mockHarnessPolicyService: {
@@ -86,7 +86,7 @@ describe('SummaryService.callTextService — tenant SMR fallback (B-03)', () => 
   let service: SummaryService;
 
   const providerSideError = () => {
-    const err = new Error('SMR provider error') as Error & { response?: unknown };
+    const err = new Error('TEXT provider error') as Error & { response?: unknown };
     err.response = { status: 502, data: { detail: 'upstream LLM failure' } };
     return err;
   };
@@ -151,7 +151,7 @@ describe('SummaryService.callTextService — tenant SMR fallback (B-03)', () => 
     mockHttpService.axiosRef.post.mockRejectedValue(providerSideError());
     mockHarnessPolicyService.resolveTextFallbackSelection.mockResolvedValue(null);
 
-    await expect(service.generateSummary('c-1', {} as any)).rejects.toThrow(/SMR provider error/);
+    await expect(service.generateSummary('c-1', {} as any)).rejects.toThrow(/TEXT provider error/);
 
     expect(mockHttpService.axiosRef.post).toHaveBeenCalledTimes(1); // no retry attempted
   });
@@ -165,7 +165,7 @@ describe('SummaryService.callTextService — tenant SMR fallback (B-03)', () => 
     expect(mockHttpService.axiosRef.post).toHaveBeenCalledTimes(1);
   });
 
-  it('is NOT eligible for a connect-phase failure (unreachable SMR) — no fallback attempted', async () => {
+  it('is NOT eligible for a connect-phase failure (unreachable TEXT) — no fallback attempted', async () => {
     mockHttpService.axiosRef.post.mockRejectedValue(connectPhaseError());
     mockHarnessPolicyService.resolveTextFallbackSelection.mockResolvedValue({ provider: 'fallback-provider', model: 'fallback-model' });
 
@@ -179,7 +179,7 @@ describe('SummaryService.callTextService — tenant SMR fallback (B-03)', () => 
     mockHttpService.axiosRef.post.mockRejectedValueOnce(providerSideError()).mockRejectedValueOnce(new Error('fallback provider also down'));
     mockHarnessPolicyService.resolveTextFallbackSelection.mockResolvedValue({ provider: 'fallback-provider', model: 'fallback-model' });
 
-    await expect(service.generateSummary('c-1', {} as any)).rejects.toThrow(/SMR provider error/);
+    await expect(service.generateSummary('c-1', {} as any)).rejects.toThrow(/TEXT provider error/);
 
     expect(mockHttpService.axiosRef.post).toHaveBeenCalledTimes(2);
   });

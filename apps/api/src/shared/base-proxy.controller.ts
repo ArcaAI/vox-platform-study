@@ -21,7 +21,7 @@ const EXPECTED_NETWORK_ERRORS = new Set(['ECONNREFUSED', 'ECONNRESET', 'ETIMEDOU
 export abstract class BaseProxyController {
   abstract readonly config: ProxyControllerConfig;
   /**
-   * Optional SecretsService accessor. Subclasses that proxy SMR (or any
+   * Optional SecretsService accessor. Subclasses that proxy TEXT (or any
    * upstream needing a service token) inject SecretsService and expose
    * it here so the synchronous `on.proxyReq` hook can read the
    * cache-warmed token via `getSecretSync`. Subclasses that don't need
@@ -62,7 +62,7 @@ export abstract class BaseProxyController {
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
             (fixRequestBody as any)(proxyReq, req, res);
 
-            // Read SMR token from SecretsService cache (warmed at bootstrap).
+            // Read TEXT token from SecretsService cache (warmed at bootstrap).
             // Sync lookup because on.proxyReq cannot await. Cold cache -> no
             // header (fail-open, same as an unset env var).
             const serviceToken = this.secrets?.getSecretSync('TEXT_SERVICE_TOKEN');

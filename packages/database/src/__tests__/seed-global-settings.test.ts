@@ -17,7 +17,7 @@ const CORE_SUFFIXES = [
   'FF_CONSULTATION_SHARING',
   'STT_MODEL',
   'STT_VAD',
-  // SMR Azure deployment-name (032), seeded for every tenant.
+  // TEXT Azure deployment-name (032), seeded for every tenant.
   // TEXT_PROVIDER/TEXT_MODEL (030/031), the guardrail namespace
   // (033/034/035) and UX_TEXT_PROVIDER_MODELS (043) were RETIRED (superseded
   // by HarnessPolicy + AiTaskDefault + the AiModel registry); their ids stay
@@ -223,9 +223,9 @@ describe('Global Settings Seed Data (11-global-setting)', () => {
           expect(guardrail).toEqual([]);
         });
 
-        // SMR Azure deployment-name parity (non-secret, unlocked).
-        it('emits the smr-azure-deployment setting (non-secret, unlocked)', () => {
-          const azure = settingsForTenant(tenantId).find((s) => s.namespace === 'smr' && s.key === 'smr-azure-deployment');
+        // TEXT Azure deployment-name parity (non-secret, unlocked).
+        it('emits the text-azure-deployment setting (non-secret, unlocked)', () => {
+          const azure = settingsForTenant(tenantId).find((s) => s.namespace === 'text' && s.key === 'text-azure-deployment');
           expect(azure).toBeDefined();
           expect(azure?.value).toBe('');
           expect(azure?.locked).toBeFalsy();

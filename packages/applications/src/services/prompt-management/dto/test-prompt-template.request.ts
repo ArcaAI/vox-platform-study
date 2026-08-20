@@ -6,7 +6,7 @@ import { IsOptional, IsString, IsInt, IsBoolean, IsUUID, Min } from 'class-valid
  *
  * BUG-018 — this call NO LONGER blocks on the LLM and NO LONGER writes. It
  * assembles the prompt, resolves `{provider, model}`, submits a STREAMING
- * generation job to SMR and returns a `PromptTestAckResponse` immediately.
+ * generation job to TEXT and returns a `PromptTestAckResponse` immediately.
  * Scoring and the optimistic-concurrency persist happen on the follow-up
  * `POST :id/test/finalize` call, which is where `expectedVersion`/`If-Match`
  * now belong.
@@ -15,7 +15,7 @@ import { IsOptional, IsString, IsInt, IsBoolean, IsUUID, Min } from 'class-valid
  *    resolve the `text.test` AiTaskDefault, tenant row → SYSTEM row. There is no
  *    `text.finalize` fallback: that was harness coupling, removed here).
  *  - `dryRun` — assemble and return the prompt WITHOUT generating anything at
- *    all (no SMR call, no job, no tokens billed).
+ *    all (no TEXT call, no job, no tokens billed).
  *  - `versionNumber` — test an immutable pinned `PromptVersion` snapshot
  *    instead of the mutable draft.
  *  - `goldenCaseId` — feed a decrypted golden-case transcript as the sample
@@ -43,7 +43,7 @@ export class TestPromptTemplateRequest {
 
   @ApiPropertyOptional({
     description:
-      'Caller-selected LLM provider, forwarded to SMR verbatim (must be paired with `model`). ' +
+      'Caller-selected LLM provider, forwarded to TEXT verbatim (must be paired with `model`). ' +
       'Omit both to resolve the `text.test` AiTaskDefault (tenant row → SYSTEM row).',
     example: 'lm-studio',
   })
@@ -52,7 +52,7 @@ export class TestPromptTemplateRequest {
   provider?: string;
 
   @ApiPropertyOptional({
-    description: 'Caller-selected LLM model, forwarded to SMR verbatim (must be paired with `provider`).',
+    description: 'Caller-selected LLM model, forwarded to TEXT verbatim (must be paired with `provider`).',
     example: 'medgemma-27b',
   })
   @IsOptional()
@@ -60,7 +60,7 @@ export class TestPromptTemplateRequest {
   model?: string;
 
   @ApiPropertyOptional({
-    description: 'Assemble and return the prompt WITHOUT calling SMR at all — no generation, no job, no tokens.',
+    description: 'Assemble and return the prompt WITHOUT calling TEXT at all — no generation, no job, no tokens.',
     default: true,
   })
   @IsOptional()

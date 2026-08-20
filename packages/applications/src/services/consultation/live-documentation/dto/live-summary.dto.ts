@@ -63,7 +63,7 @@ export class LiveSummaryVitalsDto {
 }
 
 /**
- * A logical section of the running summary. When the SMR output parses as a
+ * A logical section of the running summary. When the TEXT output parses as a
  * structured SOAP note the service emits the four canonical sections in order
  * (`Subjective`, `Objective`, `Assessment`, `Plan`) — some may have empty
  * `content` until the visit populates them. If the output is unstructured it
@@ -143,11 +143,11 @@ export class LiveSummaryGroundednessDto {
 /**
  * AD-1 generation statistics for one live-summary flush.
  *
- * A near-verbatim passthrough of the SMR `/generate` `stats` block (the program's
+ * A near-verbatim passthrough of the TEXT `/generate` `stats` block (the program's
  * single normalized GenerationStats contract), minus `engine_native` (the raw
  * per-provider timings/usage blob is kept server-side, never streamed to the
- * browser). Field names mirror the SMR wire contract (snake_case) so the console
- * / gateway wave consumes the same shape SMR emits. All fields are optional +
+ * browser). Field names mirror the TEXT wire contract (snake_case) so the console
+ * / gateway wave consumes the same shape TEXT emits. All fields are optional +
  * nullable: today the non-stream `stop_reason` is often `"stop"` and only the
  * token counts are populated; per-provider fidelity (ttft/tok-s) fills in later
  * engine waves. Never fabricated — a field the engine omitted stays null/absent.
@@ -185,7 +185,7 @@ export class LiveSummaryStatsDto {
 
   @ApiPropertyOptional({
     description:
-      "The AiTaskDefault routing key this flush's SMR call resolved through (TASK-552 Lane B) — 'text.live' for the live running-note tier. Lets the console/stat cards show WHICH tier (and therefore which admin-managed model) actually served this flush, distinct from the one-shot/finalize tier.",
+      "The AiTaskDefault routing key this flush's TEXT call resolved through (TASK-552 Lane B) — 'text.live' for the live running-note tier. Lets the console/stat cards show WHICH tier (and therefore which admin-managed model) actually served this flush, distinct from the one-shot/finalize tier.",
   })
   task_key?: string | null;
 
@@ -276,7 +276,7 @@ export class LiveSummaryEventDto {
 
   @ApiPropertyOptional({
     description:
-      'Per-flush metadata. Carries the AD-1 generation stats under `metadata.stats`; absent when the SMR call produced no stats (legacy idempotency-cache hit).',
+      'Per-flush metadata. Carries the AD-1 generation stats under `metadata.stats`; absent when the TEXT call produced no stats (legacy idempotency-cache hit).',
     type: LiveSummaryMetadataDto,
   })
   metadata?: LiveSummaryMetadataDto;
@@ -290,7 +290,7 @@ export class LiveSummaryEventDto {
 
   @ApiPropertyOptional({
     description:
-      'True when the most recent SMR generation call failed. `runningSummary`/`sections` reflect the last successfully generated content (or are empty on a first-flush failure) — never fabricated. Clients should render a visible degraded/stale indicator rather than treating the payload as fresh.',
+      'True when the most recent TEXT generation call failed. `runningSummary`/`sections` reflect the last successfully generated content (or are empty on a first-flush failure) — never fabricated. Clients should render a visible degraded/stale indicator rather than treating the payload as fresh.',
   })
   textFailed?: boolean;
 

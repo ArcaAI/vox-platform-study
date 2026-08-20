@@ -22,7 +22,7 @@ describe('JobMetricsService', () => {
       expect(service.jobWaitingDuration).toBeDefined();
       expect(service.jobErrorsTotal).toBeDefined();
       expect(service.jobActiveCount).toBeDefined();
-      expect(service.jobSmrCallDuration).toBeDefined();
+      expect(service.jobTextCallDuration).toBeDefined();
     });
 
     it('should register metrics with prom-client', async () => {
@@ -33,7 +33,7 @@ describe('JobMetricsService', () => {
       expect(names).toContain('hope_job_waiting_duration_seconds');
       expect(names).toContain('hope_job_errors_total');
       expect(names).toContain('hope_job_active_count');
-      expect(names).toContain('hope_job_smr_call_duration_seconds');
+      expect(names).toContain('hope_job_text_call_duration_seconds');
     });
   });
 
@@ -70,8 +70,8 @@ describe('JobMetricsService', () => {
   });
 
   describe('recordTextCallDuration', () => {
-    it('should record SMR call duration without error', () => {
-      service.recordTextCallDuration('GenerateSummary', 'smr-v1', 3.0);
+    it('should record TEXT call duration without error', () => {
+      service.recordTextCallDuration('GenerateSummary', 'text-v1', 3.0);
     });
   });
 
@@ -79,7 +79,7 @@ describe('JobMetricsService', () => {
     it('should track a complete successful job lifecycle', () => {
       const endTimer = service.recordJobStart('GenerateSummary');
       service.recordWaitingDuration('GenerateSummary', 0.5);
-      service.recordTextCallDuration('GenerateSummary', 'smr-v1', 2.0);
+      service.recordTextCallDuration('GenerateSummary', 'text-v1', 2.0);
       const duration = endTimer();
       expect(duration).toBeGreaterThanOrEqual(0);
       service.recordJobComplete('GenerateSummary', 'SummaryProcessor', duration);
@@ -97,9 +97,9 @@ describe('JobMetricsService', () => {
       const timer2 = service.recordJobStart('GeneratePreSummary');
       const timer3 = service.recordJobStart('GenerateDnaReport');
 
-      service.recordTextCallDuration('GenerateSummary', 'smr-v1', 1.5);
-      service.recordTextCallDuration('GeneratePreSummary', 'smr-v1', 2.0);
-      service.recordTextCallDuration('GenerateDnaReport', 'smr', 3.0);
+      service.recordTextCallDuration('GenerateSummary', 'text-v1', 1.5);
+      service.recordTextCallDuration('GeneratePreSummary', 'text-v1', 2.0);
+      service.recordTextCallDuration('GenerateDnaReport', 'text', 3.0);
 
       const d1 = timer1();
       const d2 = timer2();

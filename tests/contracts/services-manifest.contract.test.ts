@@ -75,7 +75,7 @@ function serviceNameOf(block: string): string | null {
 
 /**
  * Tag prefixes a job's rules react to. Handles both spellings build.yml uses:
- *   /^(SMR|STT|GUARD|TTS|HARNESS|NLP|ALL)-/     — alternation group
+ *   /^(TEXT|STT|GUARD|TTS|HARNESS|NLP|ALL)-/     — alternation group
  *   /^API-/ || $CI_COMMIT_TAG =~ /^ALL-/        — separate clauses
  */
 function tagPrefixesOf(block: string): Set<string> {

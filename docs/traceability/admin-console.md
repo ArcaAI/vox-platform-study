@@ -46,7 +46,7 @@ services.
 |---|---|
 | App / service | `apps/admin-console` + `@arcaai/vox` SDK (see [`sdk.md`](./sdk.md)) |
 | Key modules | `apps/admin-console/src/features/playground-consultation` (`consultation-demo-screen`, `documentation-review-panel`), `playground-dna-style` (`my-dna-style-screen`, `generate-pane`, `impersonation-gate-panel`), `playground-llm` (`playground-llm-screen`, `providers-card`, `guardrails-tab`, `ner-tab`, `output-pane`), `playground-shared` (`playground-canvas`, `playground-persona-bar`, `persona-control`, `run-bar` — shared chrome) |
-| Prisma models | — (console; composes consultation / summarization / DNA / SMR / guardrail / NLP gateway surfaces documented in their own domain files) |
+| Prisma models | — (console; composes consultation / summarization / DNA / TEXT / guardrail / NLP gateway surfaces documented in their own domain files) |
 | Console | routes `/playground/{consultation,dna-writing-style,llm}` (tier 50–59); `playground-shared` is cross-playground chrome with no route. `/playground/{live-transcription,voice-profiles}` are owned by [`transcription.md`](./transcription.md) |
 | Tests | unit(console): `playground-consultation/components/__tests__/{consultation-demo-screen,documentation-review-panel}.test.tsx` + `api/__tests__/{client,streams}`; `playground-dna-style/components/__tests__/my-dna-style-screen.test.tsx` + `api/__tests__/*`; `playground-llm/components/__tests__/{playground-llm-screen,guardrails-tab,ner-tab}.test.tsx` + `api/__tests__/*`; `playground-shared/components/__tests__/{canvas,persona-control,playground-persona-bar}.test.tsx` |
 

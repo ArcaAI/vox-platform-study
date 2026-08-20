@@ -718,9 +718,9 @@ describe('ArcaAI Clinical Department Seed Data', () => {
   // Is that the ArcaAI tenant carries EXACTLY these and no
   // others.
   //
-  // Source of truth is the RUNNING v1 SMR pod (rancher cluster c-9lwv8,
-  // namespace apps, pod apps-smr-…), re-verified 2026-08-08:
-  //   `smr.models.prompts_json.DEPT_VISIT_SCHEMAS` → 22 entries = 11 departments
+  // Source of truth is the RUNNING v1 TEXT pod (rancher cluster c-9lwv8,
+  // namespace apps, pod apps-text-…), re-verified 2026-08-08:
+  //   `text.models.prompts_json.DEPT_VISIT_SCHEMAS` → 22 entries = 11 departments
   //   × {new_referral, followup}; `select_prompt_template` has 11 branches.
   // v1 has no Department table at all, so "v1's departments" IS this key set.
   // ---------------------------------------------------------------------------
@@ -1958,7 +1958,7 @@ describe('ASR Pipeline isDefault invariant', () => {
 
 // =============================================================================
 // DEFAULT MODEL WIRING
-//   (a) SMR  → gemma-4-e2b-it-qat via HarnessPolicy (GlobalSetting keys RETIRED)
+//   (a) TEXT  → gemma-4-e2b-it-qat via HarnessPolicy (GlobalSetting keys RETIRED)
 //   (b) Guardrail → granite-guardian-4.1-8b via AiTaskDefault (keys RETIRED)
 //   (c) STT  → unchanged (CT2 registered; whisper-large-v3-turbo default)
 // =============================================================================
@@ -2004,20 +2004,20 @@ describe('nightly pipeline template resync is enabled by a platform setting', ()
   });
 });
 
-describe('SMR default moved off GlobalSetting (HarnessPolicy is authoritative)', () => {
-  it('no longer seeds the default-smr-provider / default-smr-model GlobalSetting keys', () => {
-    expect(ALL_SETTINGS.filter((s) => s.key === 'default-smr-model')).toEqual([]);
-    expect(ALL_SETTINGS.filter((s) => s.key === 'default-smr-provider')).toEqual([]);
-    expect(ALL_SETTINGS.filter((s) => s.key === 'smr-provider-models')).toEqual([]);
+describe('TEXT default moved off GlobalSetting (HarnessPolicy is authoritative)', () => {
+  it('no longer seeds the default-text-provider / default-text-model GlobalSetting keys', () => {
+    expect(ALL_SETTINGS.filter((s) => s.key === 'default-text-model')).toEqual([]);
+    expect(ALL_SETTINGS.filter((s) => s.key === 'default-text-provider')).toEqual([]);
+    expect(ALL_SETTINGS.filter((s) => s.key === 'text-provider-models')).toEqual([]);
   });
 
-  it('keeps the non-secret smr-azure-deployment key for every tenant', () => {
-    const rows = ALL_SETTINGS.filter((s) => s.key === 'smr-azure-deployment');
+  it('keeps the non-secret text-azure-deployment key for every tenant', () => {
+    const rows = ALL_SETTINGS.filter((s) => s.key === 'text-azure-deployment');
     expect(rows.length).toBeGreaterThanOrEqual(1);
-    rows.forEach((s) => expect(s.namespace).toBe('smr'));
+    rows.forEach((s) => expect(s.namespace).toBe('text'));
   });
 
-  it('keeps the platform SMR default model registered in the catalog (lms-gemma-4-e2b-it-qat)', () => {
+  it('keeps the platform TEXT default model registered in the catalog (lms-gemma-4-e2b-it-qat)', () => {
     const row = DEFAULT_AI_MODELS.find((m) => m.slug === 'lms-gemma-4-e2b-it-qat');
     expect(row).toBeDefined();
     expect(row?.sourceUri).toBe('gemma-4-e2b-it-qat');
@@ -2554,7 +2554,7 @@ describe('Usage Record Seed Data', () => {
 });
 
 // =============================================================================
-// SMR LLM MODELS SEED DATA TESTS
+// TEXT LLM MODELS SEED DATA TESTS
 // =============================================================================
 
 describe('LLM Models Seed Data (consolidated matrix)', () => {
@@ -2678,8 +2678,8 @@ describe('LLM Models Seed Data (consolidated matrix)', () => {
   });
 
   describe('Retired LLM catalog', () => {
-    it('should no longer seed any of the legacy SMR provider rows', () => {
-      const legacy = DEFAULT_AI_MODELS.filter((m) => m.tags.includes('smr'));
+    it('should no longer seed any of the legacy TEXT provider rows', () => {
+      const legacy = DEFAULT_AI_MODELS.filter((m) => m.tags.includes('text'));
       expect(legacy).toEqual([]);
       [
         'gpt-4',
@@ -2797,10 +2797,10 @@ describe('Customer-tenant AI model catalog backfill', () => {
 });
 
 // =============================================================================
-// SYSTEM HarnessPolicy SMR default + WORM audit
+// SYSTEM HarnessPolicy TEXT default + WORM audit
 // =============================================================================
 
-describe('Phase 2 — seedHarnessPolicy (SMR default + WORM)', () => {
+describe('Phase 2 — seedHarnessPolicy (TEXT default + WORM)', () => {
   const makeMockClient = (existing: Record<string, unknown> | null) => {
     const created: Array<{ data: Record<string, unknown> }> = [];
     const updated: Array<{ where: Record<string, unknown>; data: Record<string, unknown> }> = [];
@@ -2828,12 +2828,12 @@ describe('Phase 2 — seedHarnessPolicy (SMR default + WORM)', () => {
     return { client, created, updated, changes };
   };
 
-  it('exposes the agreed SMR defaults (lm-studio + gemma-4-e2b-it-qat)', () => {
+  it('exposes the agreed TEXT defaults (lm-studio + gemma-4-e2b-it-qat)', () => {
     expect(SYSTEM_HARNESS_POLICY_TEXT_DEFAULTS.textProvider).toBe('lm-studio');
     expect(SYSTEM_HARNESS_POLICY_TEXT_DEFAULTS.textModel).toBe('gemma-4-e2b-it-qat');
   });
 
-  it('creates the SYSTEM policy row with the SMR defaults and writes a WORM change (beforeJson=null)', async () => {
+  it('creates the SYSTEM policy row with the TEXT defaults and writes a WORM change (beforeJson=null)', async () => {
     const { client, created, changes } = makeMockClient(null);
     const result = await seedHarnessPolicy(client as never);
 
@@ -2855,7 +2855,7 @@ describe('Phase 2 — seedHarnessPolicy (SMR default + WORM)', () => {
     expect(change.changedBy).toBe(SYSTEM_USER_ID);
   });
 
-  it('is idempotent — no write/WORM when the SYSTEM policy already has the SMR defaults', async () => {
+  it('is idempotent — no write/WORM when the SYSTEM policy already has the TEXT defaults', async () => {
     const { client } = makeMockClient({
       id: 'existing-id',
       tenantId: SYSTEM_TENANT_ID,
@@ -2872,7 +2872,7 @@ describe('Phase 2 — seedHarnessPolicy (SMR default + WORM)', () => {
     expect(client.harnessPolicyChange.create).not.toHaveBeenCalled();
   });
 
-  it('updates ONLY the two SMR columns on an existing NULL-SMR row and writes a before/after WORM change', async () => {
+  it('updates ONLY the two TEXT columns on an existing NULL-TEXT row and writes a before/after WORM change', async () => {
     const { client, updated, changes } = makeMockClient({
       id: 'existing-id',
       tenantId: SYSTEM_TENANT_ID,
@@ -2887,7 +2887,7 @@ describe('Phase 2 — seedHarnessPolicy (SMR default + WORM)', () => {
     expect(result.changeWritten).toBe(true);
 
     expect(client.harnessPolicy.update).toHaveBeenCalledTimes(1);
-    // Writes ONLY the two SMR columns (does not clobber other admin knobs).
+    // Writes ONLY the two TEXT columns (does not clobber other admin knobs).
     expect(Object.keys(updated[0].data).sort()).toEqual(['textModel', 'textProvider']);
     expect(updated[0].data.textProvider).toBe('lm-studio');
     expect(updated[0].data.textModel).toBe('gemma-4-e2b-it-qat');

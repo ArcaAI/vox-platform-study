@@ -5,7 +5,7 @@
  * 3091 B) and therefore carry v1's NINE single-brace placeholders. Two surfaces
  * resolve those same bodies and both must interpolate them (OD-2/OD-3):
  *
- *  - the v1-compat shim — `apps/api/src/modules/smr-compat/summary-prompt.builder.ts`,
+ *  - the v1-compat shim — `apps/api/src/modules/text-compat/summary-prompt.builder.ts`,
  *    which imports these functions;
  *  - the native Vox SDK v2 path — `PromptAssemblyService`, reached by BOTH
  *    `SummaryService.generatePreSummary` and `PreSummaryProcessor`.

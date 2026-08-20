@@ -15,7 +15,7 @@
  * builtins.
  */
 
-/** The well-known Redis "from the beginning" sentinel — also SMR's `stream.py:35` default. */
+/** The well-known Redis "from the beginning" sentinel — also TEXT's `stream.py:35` default. */
 export const RESUME_FROM_BEGINNING = '0-0';
 
 interface ResumeTokenWire {

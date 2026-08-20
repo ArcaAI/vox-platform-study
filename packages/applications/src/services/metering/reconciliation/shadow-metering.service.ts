@@ -121,8 +121,8 @@ export class ShadowMeteringService implements IShadowMeteringService, OnModuleIn
     // ── Surface 1: ledger LLM tokens vs SummaryMeta token columns ─────────
     // Known, documented drift source (handoff): the ledger's LLM_TOKENS
     // rollup also carries `guardrail.validate` and `harness.step` rows (D16 —
-    // metered for COGS, never SMR-attributed), so the ledger total is
-    // EXPECTED to run higher than SummaryMeta's SMR-only capture. A breach
+    // metered for COGS, never TEXT-attributed), so the ledger total is
+    // EXPECTED to run higher than SummaryMeta's TEXT-only capture. A breach
     // here is not automatically a bug; it is a signal to inspect the
     // decomposition (see `research-findings.md` §6 / ws-b-contract.md §11).
     const [ledgerLlmTokens, summaryMetaTokens] = await Promise.all([

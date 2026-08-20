@@ -23,7 +23,7 @@ const NLP_TIMEOUT_MS = 15_000;
 // PHI hygiene: the Guardrail/NLP upstream error body can ECHO the caller's
 // clinical text (Guardrail moderates it; NLP runs NER over it), so it is NEVER
 // forwarded to the console — only the upstream status is preserved. Mirrors the
-// smr-proxy posture.
+// text-proxy posture.
 const UPSTREAM_ERROR_MESSAGE = 'The AI inference service returned an error.';
 /** TASK-768 — opaque transport-failure message. Names the capability, never the topology. */
 const TRANSPORT_ERROR_MESSAGE = 'AI text analysis is temporarily unavailable. Please retry.';

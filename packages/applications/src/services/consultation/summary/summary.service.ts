@@ -75,7 +75,7 @@ import { IPhiRedactor } from '../../gate-edit-mining/IPhiRedactor';
 
 /**
  * the AD-1 GenerationStats headline fields the summary
- * paths persist onto `SummaryMeta`. A narrow view of the SMR `/generate`
+ * paths persist onto `SummaryMeta`. A narrow view of the TEXT `/generate`
  * `stats` block: only the three headline fields are read here (predicted/total
  * token counts are derivable from the existing `inputTokens`/`outputTokens`).
  * All optional — never fabricated; a field the engine omitted stays null.
@@ -87,16 +87,16 @@ interface TextGenerationStats {
 }
 
 /**
- * One SMR `/generate` call inside the bounded auto-repair loop.
+ * One TEXT `/generate` call inside the bounded auto-repair loop.
  * Carries the mapped response alongside the raw `text` the repair helper parses,
  * so the caller can attribute cost across the (at most two) calls.
  */
 interface TextRepairCall extends JsonRepairCall {
   mapped: LegacyTextSummaryResponse;
   stats: TextGenerationStats | null;
-  /** SMR's billing passthrough for this call — one per attempt, all metered. */
+  /** TEXT's billing passthrough for this call — one per attempt, all metered. */
   usage: TextUsageDetail | null;
-  /** The guardrail call this generation triggered, forwarded by SMR. */
+  /** The guardrail call this generation triggered, forwarded by TEXT. */
   guardrailUsage: TextUsageDetail | null;
 }
 
@@ -108,7 +108,7 @@ interface SummaryUsageAttribution {
   departmentId?: string | null;
 }
 
-/** Request shape for `SummaryService#callTextService` / `#executeSmrGenerate` (B-03 / B-04). */
+/** Request shape for `SummaryService#callTextService` / `#executeTextGenerate` (B-03 / B-04). */
 interface TextCallPayload {
   assembledPrompt: {
     userPrompt: string;
@@ -186,8 +186,8 @@ export class SummaryService extends BaseService implements ISummaryService {
     // harness workflow (best-effort). Optional + trailing so existing positional
     // test fixtures keep compiling; production DI (SummaryServiceModule) supplies it.
     @Optional() @Inject(HarnessGatewayService) private readonly harnessGatewayService?: HarnessGatewayService,
-    // Resolve the admin-managed SMR {provider, model} on every
-    // SMR call (the gateway has no model default). Optional + trailing so
+    // Resolve the admin-managed TEXT {provider, model} on every
+    // TEXT call (the gateway has no model default). Optional + trailing so
     // existing positional test fixtures keep compiling; production DI
     // (SummaryServiceModule) always supplies it, keeping the path fail-closed.
     @Optional() @Inject(HarnessPolicyService) private readonly harnessPolicyService?: HarnessPolicyService,
@@ -332,8 +332,8 @@ export class SummaryService extends BaseService implements ISummaryService {
     await this.entitlements?.assertMeterQuota(tenantId, 'monthlySummaries');
 
     // LLM-token allowance pre-flight, BEFORE the (expensive)
-    // SMR call. Post-hoc debit model (D6): a request's own token count is
-    // unknowable until SMR responds, so this compares month-to-date rollups
+    // TEXT call. Post-hoc debit model (D6): a request's own token count is
+    // unknowable until TEXT responds, so this compares month-to-date rollups
     // against the allowance rather than predicting this call's usage — same
     // no-increment call shape as `monthlySummaries` above. A no-op (never
     // reads the ledger) while the kill-switch is off or the allowance is
@@ -346,7 +346,7 @@ export class SummaryService extends BaseService implements ISummaryService {
     await this.billing?.assertSpendLimit(tenantId);
 
     // (audit C-1 / C-3) — verify the parent Consultation
-    // belongs to the caller's tenant before invoking the (expensive) SMR
+    // belongs to the caller's tenant before invoking the (expensive) TEXT
     // call. `assertParentInScope` throws `NotFoundException` for both
     // missing-parent and cross-tenant cases so no existence leak.
     const consultation = await assertParentInScope(this.consultationRepository, consultationId, tenantId);
@@ -384,7 +384,7 @@ export class SummaryService extends BaseService implements ISummaryService {
       preferredPromptTemplateId: await this.resolvePreferredPromptTemplateId(consultation.doctorId),
     });
 
-    // Call SMR service
+    // Call TEXT service
     const textResponse = await this.callTextService({
       assembledPrompt,
       options: request.options,
@@ -422,7 +422,7 @@ export class SummaryService extends BaseService implements ISummaryService {
       resolvedPromptId: assembledPrompt.promptId,
     });
     // persist the AD-1 GenerationStats headline fields when
-    // SMR returned them. Set via the entity setters (change-tracked, same path
+    // TEXT returned them. Set via the entity setters (change-tracked, same path
     // as `contextItem.currentVersionNumber = 1` above); the factory does not yet
     // expose these props. Null/absent stats (legacy idempotency-cache hit) leaves
     // the columns null — never fabricated.
@@ -556,8 +556,8 @@ export class SummaryService extends BaseService implements ISummaryService {
     await this.entitlements?.assertMeterQuota(tenantId, 'monthlySummaries');
 
     // LLM-token allowance pre-flight, BEFORE the (expensive)
-    // SMR call. Post-hoc debit model (D6): a request's own token count is
-    // unknowable until SMR responds, so this compares month-to-date rollups
+    // TEXT call. Post-hoc debit model (D6): a request's own token count is
+    // unknowable until TEXT responds, so this compares month-to-date rollups
     // against the allowance rather than predicting this call's usage — same
     // no-increment call shape as `monthlySummaries` above. A no-op (never
     // reads the ledger) while the kill-switch is off or the allowance is
@@ -570,7 +570,7 @@ export class SummaryService extends BaseService implements ISummaryService {
     // (audit C-1 / C-3) — verify the parent Consultation
     // belongs to the caller's tenant, then validate every explicit
     // `contextItemIds` reference. Without the per-id check a cross-tenant
-    // id would be silently filtered into the SMR transcript and
+    // id would be silently filtered into the TEXT transcript and
     // exfiltrated through the generated summary content.
     const consultation = await assertParentInScope(this.consultationRepository, consultationId, tenantId);
     await this.assertContextItemsInTenant(tenantId, request.contextItemIds);
@@ -622,7 +622,7 @@ export class SummaryService extends BaseService implements ISummaryService {
       preferredPromptTemplateId: await this.resolvePreferredPromptTemplateId(consultation.doctorId),
     });
 
-    // Call SMR service
+    // Call TEXT service
     const textResponse = await this.callTextService({
       assembledPrompt,
       options: request.options,
@@ -681,7 +681,7 @@ export class SummaryService extends BaseService implements ISummaryService {
       preSummaryIds: warmStart.lineage && warmStart.snapshotId ? [warmStart.snapshotId] : [],
     });
     // persist the AD-1 GenerationStats headline fields when
-    // SMR returned them. Set via the entity setters (change-tracked, same path
+    // TEXT returned them. Set via the entity setters (change-tracked, same path
     // as `contextItem.currentVersionNumber = 1` above); the factory does not yet
     // expose these props. Null/absent stats (legacy idempotency-cache hit) leaves
     // the columns null — never fabricated.
@@ -1473,7 +1473,7 @@ export class SummaryService extends BaseService implements ISummaryService {
    * (audit C-3) — validate every ContextItem id in the given
    * list belongs to `tenantId`. Used to scrub `generateSummary`'s
    * `contextItemIds` array so a cross-tenant id cannot be silently filtered
-   * into the SMR transcript.
+   * into the TEXT transcript.
    *
    * Sequential `for...of` fails fast on the first cross-tenant id without
    * spawning unnecessary parallel reads on the hot summary-generate path.
@@ -1486,14 +1486,14 @@ export class SummaryService extends BaseService implements ISummaryService {
   }
 
   /**
-   * The single SMR call path for finalize (B-03 / B-04). Resolves the
+   * The single TEXT call path for finalize (B-03 / B-04). Resolves the
    * tenant's effective {provider, model} EXPLICITLY (never relies on
    * `resolveTextSelection()`'s own CLS fallback — a worker path with
    * unpopulated CLS must fail loudly, not silently serve the SYSTEM
    * default), then runs the request with the SAME bounded corrective-JSON
    * retry as before. On a provider-side failure, retries EXACTLY ONCE
    * against the tenant's configured `text.finalize.fallback` selection
-   * (mirrors `smr-compat.controller.ts#computeSummary`'s fallback shape);
+   * (mirrors `text-compat.controller.ts#computeSummary`'s fallback shape);
    * an unconfigured/no-op fallback propagates the ORIGINAL error.
    */
   private async callTextService(payload: TextCallPayload): Promise<TextCallResult> {
@@ -1516,17 +1516,17 @@ export class SummaryService extends BaseService implements ISummaryService {
     }
 
     try {
-      return await this.executeSmrGenerate(payload, options);
+      return await this.executeTextGenerate(payload, options);
     } catch (primaryError) {
-      if (tenantId && this.harnessPolicyService && this.isSmrFallbackEligible(primaryError)) {
+      if (tenantId && this.harnessPolicyService && this.isTextFallbackEligible(primaryError)) {
         const fallback = await this.harnessPolicyService.resolveTextFallbackSelection(tenantId, 'finalize');
         const primaryProvider = (options as Record<string, unknown> | undefined)?.textProvider;
         if (fallback && fallback.provider !== primaryProvider) {
           const fallbackOptions = { ...options, textProvider: fallback.provider, textModel: fallback.model };
           try {
-            const result = await this.executeSmrGenerate(payload, fallbackOptions);
+            const result = await this.executeTextGenerate(payload, fallbackOptions);
             this.logger.warn({
-              message: 'Primary SMR finalize call failed; served via tenant-configured fallback',
+              message: 'Primary TEXT finalize call failed; served via tenant-configured fallback',
               fallbackProvider: fallback.provider,
             });
             return result;
@@ -1534,14 +1534,14 @@ export class SummaryService extends BaseService implements ISummaryService {
             // Surface the ORIGINAL primary error below — the primary failure is
             // the one the caller's request actually hit.
             this.logger.warn({
-              message: 'Tenant-configured SMR fallback also failed for finalize',
+              message: 'Tenant-configured TEXT fallback also failed for finalize',
               fallbackError: fallbackError instanceof Error ? fallbackError.message : String(fallbackError),
             });
           }
         }
       }
       // TASK-768: this used to be
-      // `BadRequestException(\`Failed to call SMR service: ${primaryError}\`)`,
+      // `BadRequestException(\`Failed to call TEXT service: ${primaryError}\`)`,
       // which answered 400 for an ABSENT dependency and handed the caller
       // `connect ECONNREFUSED 127.0.0.1:8862`. Rethrow the CAUSE instead: the
       // gateway boundary (`apps/api/src/filters/downstream-error.ts`, applied by
@@ -1550,7 +1550,7 @@ export class SummaryService extends BaseService implements ISummaryService {
       // client-facing body. This service must not, and cannot: it is one layer
       // below the HTTP contract and its other callers are queue processors.
       this.logger.error({
-        message: 'SMR finalize call failed; rethrowing the cause for the gateway boundary to classify',
+        message: 'TEXT finalize call failed; rethrowing the cause for the gateway boundary to classify',
         causeMessage: primaryError instanceof Error ? primaryError.message : String(primaryError),
       });
       throw primaryError;
@@ -1559,27 +1559,27 @@ export class SummaryService extends BaseService implements ISummaryService {
 
   /**
    * Fallback is eligible for provider-side failures: an upstream RESPONSE
-   * error (SMR answered with an error — the LLM/provider failed) OR a
+   * error (TEXT answered with an error — the LLM/provider failed) OR a
    * parse/mapping failure (unparseable content, thrown by
-   * `generateJsonWithRepair`/`mapTextGenerateResponse`). NOT eligible when SMR
+   * `generateJsonWithRepair`/`mapTextGenerateResponse`). NOT eligible when TEXT
    * itself was unreachable (a connect-phase transport error with no
    * response) — retrying a different provider through the same unreachable
-   * gateway cannot help. Mirrors `smr-compat.controller.ts#isFallbackEligible`.
+   * gateway cannot help. Mirrors `text-compat.controller.ts#isFallbackEligible`.
    */
-  private isSmrFallbackEligible(err: unknown): boolean {
+  private isTextFallbackEligible(err: unknown): boolean {
     const axiosError = err as AxiosError;
-    if (axiosError?.response !== undefined) return true; // SMR responded with an error
-    if (typeof axiosError?.code === 'string') return false; // connect-phase / unreachable SMR
+    if (axiosError?.response !== undefined) return true; // TEXT responded with an error
+    if (typeof axiosError?.code === 'string') return false; // connect-phase / unreachable TEXT
     return true; // parse/mapping failure
   }
 
   /**
-   * One SMR generate attempt (with the bounded corrective-JSON retry).
+   * One TEXT generate attempt (with the bounded corrective-JSON retry).
    * Raw errors propagate uncaught so `callTextService` can decide fallback
    * eligibility from the original shape before wrapping into
    * `BadRequestException`.
    */
-  private async executeSmrGenerate(payload: TextCallPayload, options: Record<string, unknown> | undefined): Promise<TextCallResult> {
+  private async executeTextGenerate(payload: TextCallPayload, options: Record<string, unknown> | undefined): Promise<TextCallResult> {
     const textPayload = buildTextGeneratePayload(payload.assembledPrompt, options, payload.context);
     // D-D: the ONE shared `INTERNAL_ACCESS_TOKEN` (`TEXT_SERVICE_TOKEN` is only the
     // migration fallback). TASK-737: `X-Tenant-Id` is MANDATORY on this hop — this
@@ -1589,7 +1589,7 @@ export class SummaryService extends BaseService implements ISummaryService {
     // the platform tier instead. Both headers are built once, here, by the shared
     // contract rather than a hand-rolled literal.
     const serviceToken = await resolveInternalAccessToken(this.secretsService, 'TEXT_SERVICE_TOKEN');
-    const smrHeaders = internalServiceHeaders({
+    const textHeaders = internalServiceHeaders({
       serviceToken,
       tenantId: this.tenantId,
       tenantlessReason: TENANTLESS.PLATFORM_OPERATOR,
@@ -1609,7 +1609,7 @@ export class SummaryService extends BaseService implements ISummaryService {
         const response = await this.httpService.axiosRef.post(
           `${this.textServiceUrl}/api/v1/generate`,
           { ...textPayload, prompt: corrective ? `${basePrompt}${corrective}` : basePrompt },
-          { headers: smrHeaders },
+          { headers: textHeaders },
         );
         const mapped = mapTextGenerateResponse(response.data);
         const data = response.data as { usage_detail?: unknown; guardrail_usage?: unknown } | null;
@@ -1636,7 +1636,7 @@ export class SummaryService extends BaseService implements ISummaryService {
     const finalCall = outcome.calls[outcome.calls.length - 1];
     if (outcome.repaired) {
       this.logger.warn({
-        message: 'SMR finalize response failed the structured-output contract; one corrective retry applied',
+        message: 'TEXT finalize response failed the structured-output contract; one corrective retry applied',
         repairSucceeded: parsesAsJsonObject(outcome.value),
       });
     }
@@ -1655,7 +1655,7 @@ export class SummaryService extends BaseService implements ISummaryService {
       processingTimeMs: sumAcrossCalls((c) => c.mapped.processingTimeMs),
       stats: finalCall.stats,
       // The usage blocks describe the call whose text became the stored note.
-      // A repair attempt is a SEPARATE SMR request with its own task id, so it
+      // A repair attempt is a SEPARATE TEXT request with its own task id, so it
       // bills as its own ledger event rather than being folded in here — the
       // per-unit sums above would silently merge two idempotency identities.
       usage: finalCall.usage,
@@ -1665,7 +1665,7 @@ export class SummaryService extends BaseService implements ISummaryService {
 
   /**
    * read the AD-1 GenerationStats headline fields off the
-   * SMR `/generate` response. Returns `null` when the `stats` block is absent
+   * TEXT `/generate` response. Returns `null` when the `stats` block is absent
    * (legacy response) or null (idempotency-cache hit) so the caller persists
    * nothing extra. Null-safe per field — never throws over missing/odd stats.
    */
@@ -1834,7 +1834,7 @@ export class SummaryService extends BaseService implements ISummaryService {
       );
       return { ...response.data, modelUsed: modelSelection.model_name ?? null };
     } catch (error) {
-      // TASK-768 — see `callSmrWithTenantFallback`: rethrow the cause, let the
+      // TASK-768 — see `callTextWithTenantFallback`: rethrow the cause, let the
       // gateway boundary classify and build the body. Composing a message here
       // is what leaked the NLP host:port as a 400.
       this.logger.error({

@@ -37,7 +37,7 @@ function byteLength(value: string): number {
  * fixture pattern already used for `../dept-templates.ts`): every constant in
  * this directory must keep hashing to the value recorded when it was
  * extracted byte-exact from the running v1 pod
- * (`apps-smr-84c9774997-zhp2l`, cluster `c-9lwv8`, namespace `apps`,
+ * (`apps-text-84c9774997-zhp2l`, cluster `c-9lwv8`, namespace `apps`,
  * 2026-08-07). A red test here means either the constant was hand-edited
  * (forbidden — these are GENERATED) or the fixture drifted; investigate,
  * don't just update the fixture.

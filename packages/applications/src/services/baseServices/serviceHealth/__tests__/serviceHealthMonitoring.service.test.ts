@@ -3,7 +3,7 @@
  *
  * Tests the microservice health monitoring service that tracks heartbeats,
  * uptime, and session counts for the real downstream services
- * (SMR, NLP, STT v2, Guardrail, Harness).
+ * (TEXT, NLP, STT v2, Guardrail, Harness).
  *
  * Mocking strategy: We mock ioredis at module level so the constructor
  * returns a controllable mock instance. We also mock global fetch.
@@ -97,7 +97,7 @@ describe('ServiceHealthMonitoringService', () => {
       expect(result).toHaveProperty('services');
       expect(result).toHaveProperty('refreshedAt');
       expect(Object.keys(result.services)).toHaveLength(6);
-      expect(result.services).toHaveProperty('smr');
+      expect(result.services).toHaveProperty('text');
       expect(result.services).toHaveProperty('nlp');
       expect(result.services).toHaveProperty('stt');
       expect(result.services).toHaveProperty('tts');
@@ -253,12 +253,12 @@ describe('ServiceHealthMonitoringService', () => {
       expect(result).toHaveProperty('services');
       expect(result).toHaveProperty('totalUsers');
       expect(result).toHaveProperty('refreshedAt');
-      expect(result.services.smr.active).toBe(0);
+      expect(result.services.text.active).toBe(0);
       expect(result.services.guardrail.active).toBe(0);
       expect(result.totalUsers).toBe(0);
     });
 
-    // Sessions cover the real downstream services (smr, stt, nlp,
+    // Sessions cover the real downstream services (text, stt, nlp,
     // guardrail, harness), matching the uptime/health surfaces. The
     // counts stay static zeros (no per-service polling — see no-fetch test).
     it('should include tts, stt, nlp, guardrail and harness session counts', async () => {

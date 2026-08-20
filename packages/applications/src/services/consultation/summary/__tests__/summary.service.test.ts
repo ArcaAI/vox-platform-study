@@ -261,7 +261,7 @@ describe('SummaryService', () => {
   let mockHttpService: ReturnType<typeof createMockHttpService>;
   let mockConfigService: ReturnType<typeof createMockConfigService>;
   let mockPromptAssemblyService: ReturnType<typeof createMockPromptAssemblyService>;
-  // The fail-closed SMR-selection seam every caller funnels through.
+  // The fail-closed TEXT-selection seam every caller funnels through.
   let mockHarnessPolicyService: { resolveTextSelection: ReturnType<typeof vi.fn> };
 
   beforeEach(() => {
@@ -320,7 +320,7 @@ describe('SummaryService', () => {
   });
 
   // ── callTextService passes the cascade-resolved model ──
-  describe('callTextService SMR selection', () => {
+  describe('callTextService TEXT selection', () => {
     const primeGenerateMocks = () => {
       mockConsultationRepository.findById.mockResolvedValue(consultationFixture({ id: 'c-1', tenantId: 'tenant-1' }));
       mockContextItemRepository.findTranscripts.mockResolvedValue([{ content: 'transcript text' }]);
@@ -329,7 +329,7 @@ describe('SummaryService', () => {
       mockSummaryMetaRepository.create.mockResolvedValue({ id: 'meta-1' });
     };
 
-    const lastSmrBody = () => {
+    const lastTextBody = () => {
       const call = mockHttpService.axiosRef.post.mock.calls.find((c: unknown[]) => String(c[0]).includes('/api/v1/generate'))!;
       return call[1] as { provider?: string; model?: string };
     };
@@ -340,7 +340,7 @@ describe('SummaryService', () => {
       await service.generateSummary('c-1', { dnaStyleId: 'style-1' } as any);
 
       expect(mockHarnessPolicyService.resolveTextSelection).toHaveBeenCalled();
-      const body = lastSmrBody();
+      const body = lastTextBody();
       expect(body.provider).toBe('lm-studio');
       expect(body.model).toBe('resolved-medgemma');
     });
@@ -365,13 +365,13 @@ describe('SummaryService', () => {
 
       await service.generateSummary('c-1', { options: { model: 'caller-pinned' } } as any);
 
-      const body = lastSmrBody();
+      const body = lastTextBody();
       expect(body.model).toBe('caller-pinned');
     });
   });
 
   // ── persist the AD-1 GenerationStats headline fields ──
-  // The SMR /generate response now carries a `stats` block (stop_reason,
+  // The TEXT /generate response now carries a `stats` block (stop_reason,
   // ttft_ms, tokens_per_second, …). generateSummary/generatePreSummary must
   // persist the three headline fields onto SummaryMeta via the factory/entity
   // path. `stats` may be null (legacy idempotency-cache hit) → degrade cleanly.
@@ -406,7 +406,7 @@ describe('SummaryService', () => {
       engine_native: null,
     };
 
-    it('persists stopReason/ttftMs/tokensPerSecond from a populated SMR stats block (generateSummary)', async () => {
+    it('persists stopReason/ttftMs/tokensPerSecond from a populated TEXT stats block (generateSummary)', async () => {
       primeGenerateMocks({ summary: 'S', modelName: 'm', stats: POPULATED_STATS });
 
       await service.generateSummary('c-1', { dnaStyleId: 'style-1' } as any);
@@ -418,7 +418,7 @@ describe('SummaryService', () => {
       expect(meta.tokensPerSecond).toBe(42.5);
     });
 
-    it('persists stopReason/ttftMs/tokensPerSecond from a populated SMR stats block (generatePreSummary)', async () => {
+    it('persists stopReason/ttftMs/tokensPerSecond from a populated TEXT stats block (generatePreSummary)', async () => {
       mockConsultationRepository.findById.mockResolvedValue(consultationFixture({ id: 'c-1', tenantId: 'tenant-1' }));
       mockContextItemRepository.findCaseNotes.mockResolvedValue([{ id: 'cn-1', content: 'case note content' }]);
       mockHttpService.axiosRef.post.mockResolvedValue({ data: { summary: 'S', modelName: 'm', stats: POPULATED_STATS } });
@@ -433,7 +433,7 @@ describe('SummaryService', () => {
       expect(meta.tokensPerSecond).toBe(42.5);
     });
 
-    it('degrades cleanly when SMR stats is null — no crash, stats fields unset', async () => {
+    it('degrades cleanly when TEXT stats is null — no crash, stats fields unset', async () => {
       primeGenerateMocks({ summary: 'S', modelName: 'm', stats: null });
 
       await expect(service.generateSummary('c-1', { dnaStyleId: 'style-1' } as any)).resolves.toBeDefined();
@@ -444,7 +444,7 @@ describe('SummaryService', () => {
       expect(meta.tokensPerSecond ?? null).toBeNull();
     });
 
-    it('degrades cleanly when SMR omits the stats block entirely', async () => {
+    it('degrades cleanly when TEXT omits the stats block entirely', async () => {
       primeGenerateMocks({ summary: 'S', modelName: 'm' });
 
       await expect(service.generateSummary('c-1', { dnaStyleId: 'style-1' } as any)).resolves.toBeDefined();
@@ -986,11 +986,11 @@ describe('SummaryService', () => {
       expect(mockConfigService.get).toHaveBeenCalledWith('NLP_URL');
     });
 
-    it('should use ConfigService-provided SMR URL when calling SMR service', async () => {
-      const customSmrUrl = 'http://smr-production:8862';
+    it('should use ConfigService-provided TEXT URL when calling TEXT service', async () => {
+      const customTextUrl = 'http://text-production:8862';
       const configWithCustomUrls = createMockConfigService();
       configWithCustomUrls.get.mockImplementation((key: string) => {
-        if (key === 'TEXT_URL') return customSmrUrl;
+        if (key === 'TEXT_URL') return customTextUrl;
         if (key === 'NLP_URL') return 'http://nlp:8864';
         return undefined;
       });
@@ -1045,7 +1045,7 @@ describe('SummaryService', () => {
       } as any);
 
       expect(mockHttpService.axiosRef.post).toHaveBeenCalledWith(
-        `${customSmrUrl}/api/v1/generate`,
+        `${customTextUrl}/api/v1/generate`,
         expect.any(Object),
         expect.objectContaining({
           headers: expect.objectContaining({
@@ -1059,7 +1059,7 @@ describe('SummaryService', () => {
       const customNlpUrl = 'http://nlp-production:8864';
       const configWithCustomUrls = createMockConfigService();
       configWithCustomUrls.get.mockImplementation((key: string) => {
-        if (key === 'TEXT_URL') return 'http://smr:8862';
+        if (key === 'TEXT_URL') return 'http://text:8862';
         if (key === 'NLP_URL') return customNlpUrl;
         return undefined;
       });
@@ -1140,7 +1140,7 @@ describe('SummaryService', () => {
       );
     });
 
-    it('should default SMR URL to http://localhost:8862 when ConfigService returns undefined', () => {
+    it('should default TEXT URL to http://localhost:8862 when ConfigService returns undefined', () => {
       const configWithNoUrls = {
         get: vi.fn().mockReturnValue(undefined),
       };
@@ -1246,7 +1246,7 @@ describe('SummaryService', () => {
       expect(calledUrl).not.toContain(':8004');
     });
 
-    it('should call SMR service at /api/v1/generate', async () => {
+    it('should call TEXT service at /api/v1/generate', async () => {
       mockConsultationRepository.findById.mockResolvedValue(consultationFixture({ id: 'c-1', tenantId: 'tenant-1' }));
       mockContextItemRepository.findCaseNotes.mockResolvedValue([{ content: 'Historical case note content' }]);
       mockHttpService.axiosRef.post.mockResolvedValue({
@@ -1319,7 +1319,7 @@ describe('SummaryService', () => {
       });
     });
 
-    it('should use same default SMR port (8862) as SummaryProcessor', () => {
+    it('should use same default TEXT port (8862) as SummaryProcessor', () => {
       const configWithNoUrls = { get: vi.fn().mockReturnValue(undefined) };
 
       const serviceWithDefaults = new SummaryService(

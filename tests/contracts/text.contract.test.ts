@@ -1,29 +1,29 @@
 /**
- * SMR Service Contract Tests
+ * TEXT Service Contract Tests
  *
- * Tests the contract between API Gateway and SMR (Summary) Python Service.
+ * Tests the contract between API Gateway and TEXT (Summary) Python Service.
  * These tests validate that both services agree on request/response schemas.
  */
 
 import { describe, it, expect } from 'vitest';
 import { z } from 'zod';
 import {
-  SmrHealthResponseSchema,
-  SmrSyncSummaryRequestSchema,
+  TextHealthResponseSchema,
+  TextSyncSummaryRequestSchema,
   TextSummaryResponseSchema,
-  SmrPreSummaryRequestSchema,
-  SmrPreSummaryResponseSchema,
-  SmrJobResponseSchema,
-  SmrFeedbackRequestSchema,
-  SmrFeedbackResponseSchema,
+  TextPreSummaryRequestSchema,
+  TextPreSummaryResponseSchema,
+  TextJobResponseSchema,
+  TextFeedbackRequestSchema,
+  TextFeedbackResponseSchema,
 } from './schemas';
 
-// Mock SMR service responses for contract validation
-const mockSmrResponses = {
+// Mock TEXT service responses for contract validation
+const mockTextResponses = {
   health: {
     status: 'healthy',
     timestamp: Date.now() / 1000,
-    message: 'SMR service is running',
+    message: 'TEXT service is running',
   },
   summary: {
     session_id: 'session-123',
@@ -82,10 +82,10 @@ const mockSmrResponses = {
   },
 };
 
-describe('SMR Service Contract', () => {
+describe('TEXT Service Contract', () => {
   describe('Health Endpoint Contract', () => {
     it('should validate healthy response schema', () => {
-      const result = SmrHealthResponseSchema.safeParse(mockSmrResponses.health);
+      const result = TextHealthResponseSchema.safeParse(mockTextResponses.health);
 
       expect(result.success).toBe(true);
       if (result.success) {
@@ -99,7 +99,7 @@ describe('SMR Service Contract', () => {
         message: 'LLM service experiencing high latency',
       };
 
-      const result = SmrHealthResponseSchema.safeParse(degradedResponse);
+      const result = TextHealthResponseSchema.safeParse(degradedResponse);
       expect(result.success).toBe(true);
     });
 
@@ -110,7 +110,7 @@ describe('SMR Service Contract', () => {
         message: 'Database connection failed',
       };
 
-      const result = SmrHealthResponseSchema.safeParse(unhealthyResponse);
+      const result = TextHealthResponseSchema.safeParse(unhealthyResponse);
       expect(result.success).toBe(true);
     });
   });
@@ -150,7 +150,7 @@ describe('SMR Service Contract', () => {
         visit_type: 'Consultation',
       };
 
-      const result = SmrSyncSummaryRequestSchema.safeParse(request);
+      const result = TextSyncSummaryRequestSchema.safeParse(request);
       expect(result.success).toBe(true);
     });
 
@@ -162,7 +162,7 @@ describe('SMR Service Contract', () => {
         },
       };
 
-      const result = SmrSyncSummaryRequestSchema.safeParse(minimalRequest);
+      const result = TextSyncSummaryRequestSchema.safeParse(minimalRequest);
       expect(result.success).toBe(true);
     });
 
@@ -173,7 +173,7 @@ describe('SMR Service Contract', () => {
         },
       };
 
-      const result = SmrSyncSummaryRequestSchema.safeParse(invalidRequest);
+      const result = TextSyncSummaryRequestSchema.safeParse(invalidRequest);
       expect(result.success).toBe(false);
     });
 
@@ -189,14 +189,14 @@ describe('SMR Service Contract', () => {
         },
       };
 
-      const result = SmrSyncSummaryRequestSchema.safeParse(request);
+      const result = TextSyncSummaryRequestSchema.safeParse(request);
       expect(result.success).toBe(true);
     });
   });
 
   describe('Summary Response Contract', () => {
     it('should validate summary response schema', () => {
-      const result = TextSummaryResponseSchema.safeParse(mockSmrResponses.summary);
+      const result = TextSummaryResponseSchema.safeParse(mockTextResponses.summary);
 
       expect(result.success).toBe(true);
       if (result.success) {
@@ -253,14 +253,14 @@ describe('SMR Service Contract', () => {
         temperature: 0.2,
       };
 
-      const result = SmrPreSummaryRequestSchema.safeParse(request);
+      const result = TextPreSummaryRequestSchema.safeParse(request);
       expect(result.success).toBe(true);
     });
 
     it('should validate minimal pre-summary request', () => {
       const minimalRequest = {};
 
-      const result = SmrPreSummaryRequestSchema.safeParse(minimalRequest);
+      const result = TextPreSummaryRequestSchema.safeParse(minimalRequest);
       expect(result.success).toBe(true);
     });
 
@@ -270,14 +270,14 @@ describe('SMR Service Contract', () => {
         language: 'ml',
       };
 
-      const result = SmrPreSummaryRequestSchema.safeParse(request);
+      const result = TextPreSummaryRequestSchema.safeParse(request);
       expect(result.success).toBe(true);
     });
   });
 
   describe('Pre-Summary Response Contract', () => {
     it('should validate pre-summary response schema', () => {
-      const result = SmrPreSummaryResponseSchema.safeParse(mockSmrResponses.preSummary);
+      const result = TextPreSummaryResponseSchema.safeParse(mockTextResponses.preSummary);
 
       expect(result.success).toBe(true);
       if (result.success) {
@@ -295,14 +295,14 @@ describe('SMR Service Contract', () => {
         created_at: '2024-01-01T00:00:00Z',
       };
 
-      const result = SmrPreSummaryResponseSchema.safeParse(responseWithEmptySections);
+      const result = TextPreSummaryResponseSchema.safeParse(responseWithEmptySections);
       expect(result.success).toBe(true);
     });
   });
 
   describe('Job Response Contract', () => {
     it('should validate job response schema', () => {
-      const result = SmrJobResponseSchema.safeParse(mockSmrResponses.job);
+      const result = TextJobResponseSchema.safeParse(mockTextResponses.job);
 
       expect(result.success).toBe(true);
       if (result.success) {
@@ -320,7 +320,7 @@ describe('SMR Service Contract', () => {
           status,
         };
 
-        const result = SmrJobResponseSchema.safeParse(response);
+        const result = TextJobResponseSchema.safeParse(response);
         expect(result.success).toBe(true);
       }
     });
@@ -333,7 +333,7 @@ describe('SMR Service Contract', () => {
         session_id: 'session-123',
       };
 
-      const result = SmrJobResponseSchema.safeParse(completedJob);
+      const result = TextJobResponseSchema.safeParse(completedJob);
       expect(result.success).toBe(true);
     });
   });
@@ -349,7 +349,7 @@ describe('SMR Service Contract', () => {
         corrected_summary: 'Corrected version...',
       };
 
-      const result = SmrFeedbackRequestSchema.safeParse(request);
+      const result = TextFeedbackRequestSchema.safeParse(request);
       expect(result.success).toBe(true);
     });
 
@@ -359,7 +359,7 @@ describe('SMR Service Contract', () => {
         rating: 3,
       };
 
-      const result = SmrFeedbackRequestSchema.safeParse(minimalRequest);
+      const result = TextFeedbackRequestSchema.safeParse(minimalRequest);
       expect(result.success).toBe(true);
     });
 
@@ -369,7 +369,7 @@ describe('SMR Service Contract', () => {
         rating: 6, // Invalid: max is 5
       };
 
-      const result = SmrFeedbackRequestSchema.safeParse(invalidRating);
+      const result = TextFeedbackRequestSchema.safeParse(invalidRating);
       expect(result.success).toBe(false);
     });
 
@@ -379,12 +379,12 @@ describe('SMR Service Contract', () => {
         rating: 0, // Invalid: min is 1
       };
 
-      const result = SmrFeedbackRequestSchema.safeParse(invalidRating);
+      const result = TextFeedbackRequestSchema.safeParse(invalidRating);
       expect(result.success).toBe(false);
     });
 
     it('should validate feedback response schema', () => {
-      const result = SmrFeedbackResponseSchema.safeParse(mockSmrResponses.feedback);
+      const result = TextFeedbackResponseSchema.safeParse(mockTextResponses.feedback);
 
       expect(result.success).toBe(true);
       if (result.success) {
@@ -396,7 +396,7 @@ describe('SMR Service Contract', () => {
 
   describe('API Gateway Integration Contract', () => {
     it('should ensure API Gateway can construct valid summary request', () => {
-      // Simulates what API Gateway sends to SMR service
+      // Simulates what API Gateway sends to TEXT service
       const apiGatewayRequest = {
         session_data: {
           session_id: `session-${Date.now()}`,
@@ -418,12 +418,12 @@ describe('SMR Service Contract', () => {
         encounter_type: 'New Patient',
       };
 
-      const result = SmrSyncSummaryRequestSchema.safeParse(apiGatewayRequest);
+      const result = TextSyncSummaryRequestSchema.safeParse(apiGatewayRequest);
       expect(result.success).toBe(true);
     });
 
-    it('should ensure API Gateway can parse SMR summary response', () => {
-      // Simulates what SMR service returns
+    it('should ensure API Gateway can parse TEXT summary response', () => {
+      // Simulates what TEXT service returns
       const textResponse = {
         session_id: 'session-gateway-test',
         summary: {
@@ -469,7 +469,7 @@ describe('SMR Service Contract', () => {
   describe('Schema Evolution', () => {
     it('should handle additional fields (forward compatibility)', () => {
       const responseWithExtraFields = {
-        ...mockSmrResponses.summary,
+        ...mockTextResponses.summary,
         new_field: 'some value',
         analytics: { word_count: 500 },
       };
@@ -495,11 +495,11 @@ describe('SMR Service Contract', () => {
 /**
  * `GET /api/v1/providers` probe contract.
  *
- * The SMR-side additions are ADDITIVE and OPTIONAL: the gateway's transition
- * fallback mapper (`smr-proxy.controller.ts#getProviders`) spreads the payload
- * untouched, so an SMR without probe fields must still validate.
+ * The TEXT-side additions are ADDITIVE and OPTIONAL: the gateway's transition
+ * fallback mapper (`text-proxy.controller.ts#getProviders`) spreads the payload
+ * untouched, so an TEXT without probe fields must still validate.
  */
-describe('SMR Providers Listing Contract', () => {
+describe('TEXT Providers Listing Contract', () => {
   const ModelInfoSchema = z.object({
     name: z.string(),
     supports_streaming: z.boolean().optional(),

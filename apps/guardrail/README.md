@@ -267,7 +267,7 @@ service never touches the DB and behaves exactly as the env-only configuration a
 
 ### How resolution works (TASK-506: `AiTaskDefault` ⋈ `AiModel`)
 
-1. The caller (SMR) forwards the consultation tenant as the **`X-Tenant-Id`** request header
+1. The caller (TEXT) forwards the consultation tenant as the **`X-Tenant-Id`** request header
    to `POST /api/medical/validate`.
 2. The service reads (SQLAlchemy + asyncpg, read-only, mirroring STT) the ENABLED
    `core."AiTaskDefault"` row with `taskKey = 'guardrail.validate'` for

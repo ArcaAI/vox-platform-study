@@ -754,7 +754,7 @@ This project is part of the HOPE platform. See the main repository for license i
 - **HOPE API Gateway**: Central API gateway and authentication
 - **HOPE STT Service**: Speech-to-Text companion service
 - **HOPE TTS Service**: Text-to-Speech companion service
-- **HOPE SMR Service**: Medical summarization service
+- **HOPE TEXT Service**: Medical summarization service
 - **HOPE Infrastructure**: Shared infrastructure components
 
 ## 📞 Support

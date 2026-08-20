@@ -5,7 +5,7 @@
  * 1. Resolve template by department + visit type
  * 2. Load template content + hyperparameters + JSON schema
  * 3. Substitute variables
- * 4. Build SMR payload with all parameters
+ * 4. Build TEXT payload with all parameters
  *
  * Coverage: E2 (Prompt Assembly & Variable Substitution)
  */

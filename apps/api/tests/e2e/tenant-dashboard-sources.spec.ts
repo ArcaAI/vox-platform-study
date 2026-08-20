@@ -172,7 +172,7 @@ test.describe('Tenant Dashboard (18d) backend sources', () => {
     const body = (await res.json()) as ServiceHealthResponse;
     expect(typeof body.status, 'overall status string present').toBe('string');
     expect(typeof body.services, 'per-service health map present').toBe('object');
-    // The audio-pipeline strip reads these keys (smr/stt/nlp/guardrail/harness);
+    // The audio-pipeline strip reads these keys (text/stt/nlp/guardrail/harness);
     // assert the SHAPE, not the health (services may be down in a test env).
     expect(Object.keys(body.services).length, 'at least one downstream service reported').toBeGreaterThan(0);
   });

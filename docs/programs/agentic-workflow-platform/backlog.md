@@ -103,7 +103,7 @@ graph LR
     T713[713 eval-gate]; T714[714 floor]; T715[715 wf-model]; T716[716 validator]; T717[717 contract]
   end
   subgraph W2[Wave 2]
-    T718[718 interpreter]; T719[719 studio]; T720[720 smr-palette]
+    T718[718 interpreter]; T719[719 studio]; T720[720 text-palette]
     T721[721 workbench]; T722[722 exposure]; T723[723 runs]
   end
   subgraph W3[Wave 3]
@@ -149,7 +149,7 @@ assessment claims; the tickets, not the assessment, are now authoritative for ev
 | 3 | Clinical review of the initial validator rule set (authored by AI, not a clinician; 22 substrate + 19 consultation rules) | 716, 731 | Validator build phase; tenant full-build-power safety |
 | 4 | Temporal hosting (self-hosted k3s vs Temporal Cloud) — sequences all of 730 | 730 | Wave 4 migration gate |
 | 5 | Eval-gate judge backend (local CI model vs cloud spend vs scheduled-only) | 713 | CI clinical-quality gate |
-| 6 | May a publicly-invoked workflow select a cloud LLM? (`smr.*` is deliberately tenant-configurable; interacts with 706 egress) | 722 | Exposure flag flip |
+| 6 | May a publicly-invoked workflow select a cloud LLM? (`text.*` is deliberately tenant-configurable; interacts with 706 egress) | 722 | Exposure flag flip |
 | 7 | Migration go/no-go thresholds: define missing-note rate vs unverified-note-harm proxy BEFORE reading 730's data (a NO-GO/INVERT verdict is a complete outcome) | 732 | Legacy deletion |
 | 8 | Scope of "legacy deleted": 3 of 7 entry points have no harness equivalent — retire pre-summary/comprehensive-summary, or keep them? | 732, 704 | Deletion scope |
 | 9 | Per-environment intent for `harness.loop.enabled` (seeded ON is a documented owner decision; re-triage silent auto-adjudication) | 705 | Loop posture |

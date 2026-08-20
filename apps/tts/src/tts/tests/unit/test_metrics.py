@@ -63,7 +63,7 @@ class TestUsageMeteringMetrics:
 
 
 class TestCrossServiceModelPair:
-    """Byte-identical to STT/SMR/NLP/Guardrail — see stt/core/metrics.py."""
+    """Byte-identical to STT/TEXT/NLP/Guardrail — see stt/core/metrics.py."""
 
     def test_service_name(self) -> None:
         assert m.SERVICE_NAME == "tts"

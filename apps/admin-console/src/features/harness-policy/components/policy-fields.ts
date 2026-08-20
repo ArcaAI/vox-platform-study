@@ -33,7 +33,7 @@ export interface PolicyFieldGroup {
  * Keep in step with `SUPER_ADMIN_ONLY_POLICY_KEYS` in
  * `packages/applications/src/services/harness-policy/harness-policy.service.ts`.
  * This list is the INTERSECTION of that one with the fields the tenant tab
- * actually renders — the remaining locked keys (SMR routing, agentic loop
+ * actually renders — the remaining locked keys (TEXT routing, agentic loop
  * knobs) have no tenant-tab control, so there is nothing to disable.
  *
  * `safetyProvider`/`safetyModel` were locked server-side before this change,

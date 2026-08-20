@@ -43,7 +43,7 @@ class TestTextClient:
     @pytest.mark.asyncio
     async def test_generate_posts_stream_false_and_passes_response_format(self):
         seen, handler = _capture()
-        client = TextClient("http://smr:8862", transport=httpx.MockTransport(handler))
+        client = TextClient("http://text:8862", transport=httpx.MockTransport(handler))
         response_format = {
             "type": "json_schema",
             "json_schema": {"type": "object", "properties": {"subjective": {"type": "string"}}},
@@ -61,7 +61,7 @@ class TestTextClient:
 
         req = seen["request"]
         assert req.method == "POST"
-        assert str(req.url) == "http://smr:8862/api/v1/generate"
+        assert str(req.url) == "http://text:8862/api/v1/generate"
         body = json.loads(req.content)
         assert body["stream"] is False
         assert body["prompt"] == "Summarize the consult."
@@ -76,7 +76,7 @@ class TestTextClient:
     @pytest.mark.asyncio
     async def test_generate_parses_response(self):
         _seen, handler = _capture(content='{"subjective": "Patient reports cough."}')
-        client = TextClient("http://smr:8862", transport=httpx.MockTransport(handler))
+        client = TextClient("http://text:8862", transport=httpx.MockTransport(handler))
 
         result = await client.generate(tenant_id="11111111-1111-1111-1111-111111111111", prompt="hi")
 
@@ -90,7 +90,7 @@ class TestTextClient:
     @pytest.mark.asyncio
     async def test_generate_includes_provider_and_model_when_set(self):
         seen, handler = _capture()
-        client = TextClient("http://smr:8862", transport=httpx.MockTransport(handler))
+        client = TextClient("http://text:8862", transport=httpx.MockTransport(handler))
 
         await client.generate(tenant_id="11111111-1111-1111-1111-111111111111", prompt="hi", provider="azure-openai", model="gpt-4o", top_p=0.9)
 
@@ -105,7 +105,7 @@ class TestTextClient:
         # Text can dedup a worker-crash replay instead of re-billing the model. Mirrors the
         # api_client header contract (``Idempotency-Key``), not a body field.
         seen, handler = _capture()
-        client = TextClient("http://smr:8862", transport=httpx.MockTransport(handler))
+        client = TextClient("http://text:8862", transport=httpx.MockTransport(handler))
 
         await client.generate(tenant_id="11111111-1111-1111-1111-111111111111", prompt="hi", idempotency_key="wf-run-1:generate")
 
@@ -118,7 +118,7 @@ class TestTextClient:
     async def test_generate_omits_idempotency_header_when_unset(self):
         # No key supplied → no header (preserve the wire shape for non-durable calls).
         seen, handler = _capture()
-        client = TextClient("http://smr:8862", transport=httpx.MockTransport(handler))
+        client = TextClient("http://text:8862", transport=httpx.MockTransport(handler))
 
         await client.generate(tenant_id="11111111-1111-1111-1111-111111111111", prompt="hi")
 
@@ -130,7 +130,7 @@ class TestTextClient:
         # TEXT_SERVICE_TOKEN is configured — the client must present it.
         seen, handler = _capture()
         client = TextClient(
-            "http://smr:8862", service_token="tok-1", transport=httpx.MockTransport(handler)
+            "http://text:8862", service_token="tok-1", transport=httpx.MockTransport(handler)
         )
 
         await client.generate(tenant_id="11111111-1111-1111-1111-111111111111", prompt="hi")
@@ -141,7 +141,7 @@ class TestTextClient:
     async def test_generate_omits_service_token_header_when_unset(self):
         # No token configured (local dev-bypass case) → no header sent.
         seen, handler = _capture()
-        client = TextClient("http://smr:8862", transport=httpx.MockTransport(handler))
+        client = TextClient("http://text:8862", transport=httpx.MockTransport(handler))
 
         await client.generate(tenant_id="11111111-1111-1111-1111-111111111111", prompt="hi")
 
@@ -185,7 +185,7 @@ class TestTextClientStats:
                 },
             )
 
-        client = TextClient("http://smr:8862", transport=httpx.MockTransport(handler))
+        client = TextClient("http://text:8862", transport=httpx.MockTransport(handler))
         result = await client.generate(tenant_id="11111111-1111-1111-1111-111111111111", prompt="hi")
         assert result.stats == stats
 
@@ -194,7 +194,7 @@ class TestTextClientStats:
         # Legacy cache-hit path: Text returns no ``stats`` block → the client degrades
         # to None (never raises over missing stats).
         _seen, handler = _capture()
-        client = TextClient("http://smr:8862", transport=httpx.MockTransport(handler))
+        client = TextClient("http://text:8862", transport=httpx.MockTransport(handler))
         result = await client.generate(tenant_id="11111111-1111-1111-1111-111111111111", prompt="hi")
         assert result.stats is None
 
@@ -223,7 +223,7 @@ class TestGenerateLostResponseNoReinvoke:
             calls["n"] += 1
             raise exc_factory(request)
 
-        client = TextClient("http://smr-c104:8862", transport=httpx.MockTransport(handler))
+        client = TextClient("http://text-c104:8862", transport=httpx.MockTransport(handler))
         with pytest.raises(TextServiceError) as ei:
             await client.generate(tenant_id="11111111-1111-1111-1111-111111111111", prompt="Summarize the consult.")
         # The prompt reached the model EXACTLY once — never re-invoked.
@@ -243,7 +243,7 @@ class TestGenerateLostResponseNoReinvoke:
             calls["n"] += 1
             raise httpx.ConnectError("connection refused", request=request)
 
-        client = TextClient("http://smr-c104b:8862", transport=httpx.MockTransport(handler))
+        client = TextClient("http://text-c104b:8862", transport=httpx.MockTransport(handler))
         with pytest.raises(TextServiceError) as ei:
             await client.generate(tenant_id="11111111-1111-1111-1111-111111111111", prompt="hi")
         assert calls["n"] == 3  # retried to the budget (pre-send is safe)
@@ -265,7 +265,7 @@ class TestGenerateLostResponseNoReinvoke:
             await asyncio.sleep(0.5)  # hang past the 0.05s per-call timeout
             return httpx.Response(200, json={"content": "{}"})
 
-        client = TextClient("http://smr-c104c:8862", transport=httpx.MockTransport(handler))
+        client = TextClient("http://text-c104c:8862", transport=httpx.MockTransport(handler))
         with pytest.raises((TextServiceError, TimeoutError)) as ei:
             await client.generate(tenant_id="11111111-1111-1111-1111-111111111111", prompt="Summarize the consult.")
         # The model was invoked EXACTLY once — the per-call timeout is not re-issued.

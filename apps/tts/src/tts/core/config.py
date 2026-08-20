@@ -247,7 +247,7 @@ class Settings(BaseSettings):
     otel_service_name: str = "tts"
     otel_service_namespace: str = "hope"
     # Resolved from the environment, defaulting to DEVELOPMENT.
-    # Copied "production" from the SMR reference, which was itself the origin of
+    # Copied "production" from the TEXT reference, which was itself the origin of
     # this defect fleet-wide. A hardcoded "production" tags a developer laptop's
     # spans as production data — a mislabelled dev span is noise, a mislabelled
     # prod span corrupts an audit trail.

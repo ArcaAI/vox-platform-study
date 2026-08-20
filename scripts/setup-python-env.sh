@@ -63,16 +63,6 @@ ALL_SERVICES=(stt text nlp harness guardrail tts)
 # Selected subset (empty => all). Populated by --service.
 SERVICES=()
 
-# Canonical CLI token is `text`. `smr` still works as a deprecated remap.
-remap_smr_alias() {
-    if [[ "$1" == "smr" ]]; then
-        echo "${YELLOW}warning: 'smr' is deprecated; use 'text'.${NC}" >&2
-        echo "text"
-    else
-        echo "$1"
-    fi
-}
-
 # ---------------------------------------------------------------------------
 # Argument parsing
 # ---------------------------------------------------------------------------
@@ -80,7 +70,6 @@ expect_service=false
 for arg in "$@"; do
     if $expect_service; then
         expect_service=false
-        arg="$(remap_smr_alias "$arg")"
         found=false
         for known in "${ALL_SERVICES[@]}"; do
             [[ "$arg" == "$known" ]] && found=true
@@ -102,7 +91,7 @@ for arg in "$@"; do
         --gpu)      ML_PLATFORM="gpu" ;;
         --service|-s) expect_service=true ;;
         --service=*)
-            svc="$(remap_smr_alias "${arg#--service=}")"
+            svc="${arg#--service=}"
             found=false
             for known in "${ALL_SERVICES[@]}"; do
                 [[ "$svc" == "$known" ]] && found=true
@@ -749,7 +738,7 @@ print_summary() {
     echo ""
     echo "  ${BOLD}Run a service (dev):${NC}"
     echo "    ${CYAN}pnpm stt:dev${NC}         — STT on port 8861"
-    echo "    ${CYAN}pnpm text:dev${NC}         — SMR on port 8862"
+    echo "    ${CYAN}pnpm text:dev${NC}         — TEXT on port 8862"
     echo "    ${CYAN}pnpm guardrail:dev${NC}   — Guardrail on port 8863"
     echo "    ${CYAN}pnpm nlp:dev${NC}         — NLP on port 8864"
     echo "    ${CYAN}pnpm tts:dev${NC}         — TTS on port 8865"

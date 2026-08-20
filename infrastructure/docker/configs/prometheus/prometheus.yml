@@ -76,9 +76,9 @@ scrape_configs:
         target_label: service
         replacement: stt
 
-  # ---- SMR (FastAPI) ----------------------------------------------------
-  # http_* + smr_* domain metrics + model_* (service="smr", model="gemma-4-e4b").
-  - job_name: smr
+  # ---- TEXT (FastAPI) ----------------------------------------------------
+  # http_* + text_* domain metrics + model_* (service="text", model="gemma-4-e4b").
+  - job_name: text
     metrics_path: /metrics
     static_configs:
       - targets: ["host.docker.internal:8862"]
@@ -86,7 +86,7 @@ scrape_configs:
       - source_labels: [__name__]
         regex: "http_.*"
         target_label: service
-        replacement: smr
+        replacement: text
 
   # ---- Guardrail (FastAPI) -------------------------------------------------
   # model_* per-model (service="guardrail", model="granite-guardian-4.1-8b")

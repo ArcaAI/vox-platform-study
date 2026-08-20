@@ -81,7 +81,7 @@ export interface UsePromptsReturn {
   compareVersionsDetailed: (id: string, v1: number, v2: number) => Promise<PromptVersionDiff>;
   /** Activate (rollback to) a specific version of a prompt template. */
   activateVersion: (promptId: string, versionNumber: number) => Promise<PromptTemplate>;
-  /** Run a quality/score test against the SMR service. */
+  /** Run a quality/score test against the TEXT service. */
   test: (id: string, input?: TestPromptInput) => Promise<PromptTestResult>;
   /** Usage analytics grouped by department / doctor / day. */
   analytics: (filters?: { promptTemplateId?: string }) => Promise<PromptUsageAnalytics>;

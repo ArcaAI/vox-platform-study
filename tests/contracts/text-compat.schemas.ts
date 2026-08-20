@@ -1,18 +1,18 @@
 /**
- * JSON-schema lock for the v1-compatible SMR summary shim contracts.
+ * JSON-schema lock for the v1-compatible TEXT summary shim contracts.
  *
  * Zod schemas mirroring the FROZEN v1 shapes
  * (TEXT_Summary_Endpoints.md §3.2/§3.3/§4.2). They are the drift guard for the
  * gateway compat endpoints:
- *   - `tests/contracts/smr-compat.contract.test.ts` validates the golden
+ *   - `tests/contracts/text-compat.contract.test.ts` validates the golden
  *     fixtures against them (hermetic);
- *   - the e2e spec validates a LIVE 200 response against them when SMR
+ *   - the e2e spec validates a LIVE 200 response against them when TEXT
  *     is up.
  *
  * Contract intent: the v1-REQUIRED keys are enforced; UNKNOWN keys are tolerated
  * (zod strips them, parse still succeeds) so the LLM may emit extra fields
  * without breaking a migrated app — mirrors the forward-compat posture of the
- * existing SMR contract tests. Do not restate these shapes divergently; these encode them.
+ * existing TEXT contract tests. Do not restate these shapes divergently; these encode them.
  */
 
 import { z } from 'zod';

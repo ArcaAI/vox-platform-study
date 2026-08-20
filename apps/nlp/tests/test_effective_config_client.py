@@ -1,4 +1,4 @@
-"""nlp's effective-config pull client (mirror of smr's).
+"""nlp's effective-config pull client (mirror of text's).
 
 Same frozen contract: TTL + jitter, negative cache, single-flight, fail-safe to
 env. Hermetic via `httpx.MockTransport` + an injected clock.
