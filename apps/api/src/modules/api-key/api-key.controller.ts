@@ -52,19 +52,32 @@ import { CreateApiKeyResponse, ApiKeyUsageResponse } from './dto';
  * compare against. Two rules reach this controller: `manage:ApiKey
  * { tenantId }` (tenant admins) and `api-key-own-manage`'s
  * `[read, update, delete, list]:ApiKey { tenantId, userId }` (every key
- * creator). Only the second is identity-shaped, and it is the pair
- * `casl-blast-radius.md` §4 lists first.
+ * creator).
  *
- * `read`/`update`/`delete` on `ApiKey` are ENFORCED pairs (`CASL_ENFORCED_PAIRS`),
- * so a `false` verdict here is a 403 — a privilege boundary, never the
- * 404-over-403 cross-tenant posture. Cross-tenant ids never get that far:
- * `fetchById` reads through the tenant-scoped Prisma client, throws, and this
- * resolver's rejection is swallowed by the guard's fail-open path, leaving the
- * handler to answer its ordinary 404.
+ * SHADOW ONLY — corrected by TASK-781. TASK-712 listed `read`/`update`/
+ * `delete:ApiKey` in `CASL_ENFORCED_PAIRS`; TASK-779's e2e proved the pairs
+ * could never fire, and TASK-781 removed them. Both facts are properties of
+ * THIS resolver, so record them here:
  *
- * The row is fetched with the same call the handler makes, so on the read
- * routes this costs one extra query on an admin surface — accepted
- * deliberately; see the ticket README §7 Pass 6.
+ * 1. It loads the row through `IApiKeyService.fetchById`, which runs
+ *    `assertKeyAccess` and throws 404 for a key the caller does not own. On
+ *    exactly the request an enforced pair would exist to deny, this resolver
+ *    THROWS, `runCaslInstanceChecks` swallows it on its fail-open path, and
+ *    no denial is ever produced. It is therefore NOT enforce-grade, and it is
+ *    deliberately not declared as such — `auditCaslEnforcePairReachability`
+ *    would refuse to boot the gateway if the pair were re-listed against it.
+ * 2. Fixing (1) by reading the row without the assertion would make the guard
+ *    pre-empt `assertKeyAccess`'s deliberate **404** with a 403, leaking that
+ *    a peer's key exists. The ownership boundary belongs to the service layer,
+ *    which is the layer that can express 404. See `policy.engine.ts`
+ *    §CASL_ENFORCED_PAIRS finding 3.
+ *
+ * What it still buys: `casl_shadow_divergence_total` observations on a real
+ * route, at the cost of one extra query on an admin surface.
+ *
+ * `subject: 'ApiKey'` is declared so the instance is only ever compared
+ * against `ApiKey` permissions — TASK-781 closed the gap where one route-level
+ * resolver was applied to every required permission on the route.
  */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any -- request shape varies by HTTP adapter, matching SubjectInstanceResolver's own signature.
 const resolveApiKeyInstance = async (request: any, ctx: SubjectResolverContext): Promise<Record<string, unknown> | undefined> => {
@@ -155,7 +168,7 @@ export class ApiKeyController {
   @ApiResponse({ status: 404, description: 'API key not found' })
   @CanRead('ApiKey')
   @RequiredSvcScopes('svc:admin:apikey:read', 'svc:admin:apikey:write')
-  @ResolveSubjectInstance(resolveApiKeyInstance)
+  @ResolveSubjectInstance(resolveApiKeyInstance, { subject: 'ApiKey' })
   async fetchById(@Param('id') id: string): Promise<ApiKeyResponse> {
     const result = await this.apiKeyService.fetchById(id);
     return ApiKeyDtoMapper.ToResponse(result);
@@ -177,7 +190,7 @@ export class ApiKeyController {
   @ApiParam({ name: 'id', description: 'API Key ID', type: String })
   @ApiResponse({ status: 404, description: 'API key not found' })
   @CanUpdate('ApiKey')
-  @ResolveSubjectInstance(resolveApiKeyInstance)
+  @ResolveSubjectInstance(resolveApiKeyInstance, { subject: 'ApiKey' })
   async update(@Param('id') id: string, @Body() request: UpdateApiKeyRequest): Promise<ApiKeyResponse> {
     const result = await this.apiKeyService.update(id, request);
     return ApiKeyDtoMapper.ToResponse(result);
@@ -192,7 +205,7 @@ export class ApiKeyController {
   @ApiParam({ name: 'id', description: 'API Key ID', type: String })
   @ApiResponse({ status: 404, description: 'API key not found' })
   @CanDelete('ApiKey')
-  @ResolveSubjectInstance(resolveApiKeyInstance)
+  @ResolveSubjectInstance(resolveApiKeyInstance, { subject: 'ApiKey' })
   async delete(@Param('id') id: string): Promise<ApiKeyResponse> {
     const result = await this.apiKeyService.deleteById(id);
     return ApiKeyDtoMapper.ToResponse(result);
@@ -207,7 +220,7 @@ export class ApiKeyController {
   @ApiParam({ name: 'id', description: 'API Key ID', type: String })
   @ApiResponse({ status: 404, description: 'API key not found' })
   @CanUpdate('ApiKey')
-  @ResolveSubjectInstance(resolveApiKeyInstance)
+  @ResolveSubjectInstance(resolveApiKeyInstance, { subject: 'ApiKey' })
   async revoke(@Param('id') id: string): Promise<ApiKeyResponse> {
     const result = await this.apiKeyService.revokeKey(id);
     return ApiKeyDtoMapper.ToResponse(result);
@@ -231,7 +244,7 @@ export class ApiKeyController {
   })
   @ApiResponse({ status: 404, description: 'API key not found' })
   @CanUpdate('ApiKey')
-  @ResolveSubjectInstance(resolveApiKeyInstance)
+  @ResolveSubjectInstance(resolveApiKeyInstance, { subject: 'ApiKey' })
   async rotate(@Param('id') id: string): Promise<CreateApiKeyResponse> {
     const result = await this.apiKeyService.rotateKey(id);
     return {
@@ -250,7 +263,7 @@ export class ApiKeyController {
   @ApiResponse({ status: 404, description: 'API key not found' })
   @CanRead('ApiKey')
   @RequiredSvcScopes('svc:admin:apikey:read', 'svc:admin:apikey:write')
-  @ResolveSubjectInstance(resolveApiKeyInstance)
+  @ResolveSubjectInstance(resolveApiKeyInstance, { subject: 'ApiKey' })
   async getUsage(@Param('id') id: string): Promise<ApiKeyUsageResponse> {
     const apiKey = await this.apiKeyService.fetchById(id);
     const mapped = ApiKeyDtoMapper.ToResponse(apiKey);
