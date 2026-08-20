@@ -98,8 +98,8 @@ describe('Seed Constants (00-constants)', () => {
     expect(SEED_USER_IDS.SYSTEM).toBe(SYSTEM_USER_ID);
   });
 
-  it('should define 29 department IDs (18 Global-tenant + 11 ArcaAI clinical)', () => {
-    expect(Object.keys(SEED_DEPARTMENT_IDS).length).toBe(29);
+  it('should define 19 department IDs (8 Global-tenant care settings + 11 ArcaAI clinical)', () => {
+    expect(Object.keys(SEED_DEPARTMENT_IDS).length).toBe(19);
   });
 
   it('should define the 11 ArcaAI clinical department IDs — v1 parity', () => {
@@ -128,10 +128,20 @@ describe('Seed Constants (00-constants)', () => {
     expect((SEED_DEPARTMENT_IDS as Record<string, string>).ER_ARCAAI).toBeUndefined();
   });
 
-  it('should include DIET, NEPH, SONC department IDs', () => {
-    expect(SEED_DEPARTMENT_IDS.DIET).toBeDefined();
-    expect(SEED_DEPARTMENT_IDS.NEPH).toBeDefined();
-    expect(SEED_DEPARTMENT_IDS.SONC).toBeDefined();
+  it('should have retired the Global-tenant specialty department IDs (TASK-763 OD-8)', () => {
+    // DIET / NEPH / SONC and the rest of the specialty roster are ArcaAI's, and
+    // exist only under the *_ARCAAI keys now. Keeping Global copies is what made
+    // the SYSTEM golden library ship one hospital's catalog to every tenant.
+    const ids = SEED_DEPARTMENT_IDS as Record<string, string | undefined>;
+    ['GEN', 'CARD', 'MED', 'SURG', 'NEUR', 'ORTH', 'DERM', 'PSYCH', 'BREN', 'RHEUM', 'HEME', 'DIET', 'NEPH', 'SONC'].forEach((code) => {
+      expect(ids[code], `Global specialty department id ${code} should be retired`).toBeUndefined();
+    });
+  });
+
+  it('should define the 8 Global care-setting department IDs on the 0003 block', () => {
+    const globalIds = Object.entries(SEED_DEPARTMENT_IDS).filter(([key]) => !key.endsWith('_ARCAAI'));
+    expect(globalIds).toHaveLength(8);
+    globalIds.forEach(([, id]) => expect(id.startsWith('70000000-0000-0000-0003-')).toBe(true));
   });
 
   it('should define 17 policy IDs including new prompt/audit/settings policies', () => {
@@ -642,8 +652,8 @@ describe('Role Seed Data', () => {
 // =============================================================================
 
 describe('Department Seed Data', () => {
-  it('should define 18 medical departments', () => {
-    expect(DEFAULT_DEPARTMENTS.length).toBe(18);
+  it('should define 8 platform-generic care-setting departments', () => {
+    expect(DEFAULT_DEPARTMENTS.length).toBe(8);
   });
 
   it('should have unique department codes', () => {
@@ -662,30 +672,21 @@ describe('Department Seed Data', () => {
     });
   });
 
-  it('should include all 18 expected departments', () => {
+  it('should include all 8 expected care-setting departments', () => {
     const codes = DEFAULT_DEPARTMENTS.map((d) => d.code);
-    const expectedCodes = [
-      'GEN',
-      'CARD',
-      'RAD',
-      'LAB',
-      'NEUR',
-      'ORTH',
-      'DERM',
-      'PSYCH',
-      'PEDS',
-      'ER',
-      'SURG',
-      'MED',
-      'BREN',
-      'RHEUM',
-      'HEME',
-      'DIET',
-      'NEPH',
-      'SONC',
-    ];
+    const expectedCodes = ['OPD', 'IPD', 'ER', 'PERI', 'RAD', 'LAB', 'BEH', 'PEDS'];
     expectedCodes.forEach((code) => {
       expect(codes).toContain(code);
+    });
+    expect(codes).toHaveLength(expectedCodes.length);
+  });
+
+  it('should carry none of the ArcaAI/BCMCH specialty codes (TASK-763 OD-8)', () => {
+    // The Global catalog IS the source of the SYSTEM golden library, so a
+    // specialty code here becomes every new tenant's day-1 department.
+    const codes = new Set(DEFAULT_DEPARTMENTS.map((d) => d.code));
+    ['GEN', 'MED', 'SURG', 'NEUR', 'ORTH', 'DERM', 'BREN', 'RHEUM', 'HEME', 'DIET', 'NEPH', 'SONC'].forEach((code) => {
+      expect(codes.has(code), `specialty code ${code} leaked back into the Global catalog`).toBe(false);
     });
   });
 
@@ -1027,24 +1028,7 @@ describe('ArcaAI Clinical Prompt Library Seed Data', () => {
 // =============================================================================
 
 describe('Department Prompt Configuration', () => {
-  const VALID_SUMMARY_TEMPLATES = [
-    'SOAP',
-    'Radiology-Report',
-    'Lab-Report',
-    'Psychiatric-Assessment',
-    'ER-Triage',
-    'Neurology-Structured',
-    'Orthopedics-Structured',
-    'Surgery-Structured',
-    'Medicine-Structured',
-    'BreastEndocrine-Structured',
-    'Rheumatology-Structured',
-    'Hematology-Structured',
-    'Dermatology-Structured',
-    'Dietetics-Structured',
-    'Nephrology-Structured',
-    'SurgicalOncology-Structured',
-  ];
+  const VALID_SUMMARY_TEMPLATES = ['SOAP', 'Progress-Note', 'ED-Encounter', 'Periop-Assessment', 'Imaging-Report', 'Lab-Report', 'Behavioral-Assessment', 'Pediatric-SOAP'];
 
   const VALID_ABBREVIATION_DENSITIES = ['low', 'medium', 'high'];
 
@@ -1117,55 +1101,51 @@ describe('Department Prompt Configuration', () => {
       });
     });
 
-    it('should use SOAP for general clinical departments', () => {
-      const soapDepts = ['GEN', 'CARD', 'PEDS'];
-      soapDepts.forEach((code) => {
+    it('should map each care setting to its documentation format', () => {
+      const EXPECTED: Record<string, string> = {
+        OPD: 'SOAP',
+        IPD: 'Progress-Note',
+        ER: 'ED-Encounter',
+        PERI: 'Periop-Assessment',
+        RAD: 'Imaging-Report',
+        LAB: 'Lab-Report',
+        BEH: 'Behavioral-Assessment',
+        PEDS: 'Pediatric-SOAP',
+      };
+      Object.entries(EXPECTED).forEach(([code, template]) => {
         const dept = DEFAULT_DEPARTMENTS.find((d) => d.code === code);
-        expect(dept).toBeDefined();
-        expect(dept?.defaultSummaryTemplate).toBe('SOAP');
+        expect(dept, `department ${code} missing`).toBeDefined();
+        expect(dept?.defaultSummaryTemplate).toBe(template);
       });
-    });
-
-    it('should use Radiology-Report for RAD department', () => {
-      const rad = DEFAULT_DEPARTMENTS.find((d) => d.code === 'RAD');
-      expect(rad?.defaultSummaryTemplate).toBe('Radiology-Report');
-    });
-
-    it('should use Lab-Report for LAB department', () => {
-      const lab = DEFAULT_DEPARTMENTS.find((d) => d.code === 'LAB');
-      expect(lab?.defaultSummaryTemplate).toBe('Lab-Report');
-    });
-
-    it('should use Psychiatric-Assessment for PSYCH department', () => {
-      const psych = DEFAULT_DEPARTMENTS.find((d) => d.code === 'PSYCH');
-      expect(psych?.defaultSummaryTemplate).toBe('Psychiatric-Assessment');
-    });
-
-    it('should use ER-Triage for ER department', () => {
-      const er = DEFAULT_DEPARTMENTS.find((d) => d.code === 'ER');
-      expect(er?.defaultSummaryTemplate).toBe('ER-Triage');
     });
   });
 
   describe('Prompt IDs', () => {
-    const DEPTS_WITH_PROMPTS = ['GEN', 'CARD', 'NEUR', 'ORTH', 'SURG', 'MED', 'BREN', 'RHEUM', 'HEME', 'DERM', 'DIET', 'NEPH', 'SONC'];
-    const DEPTS_WITHOUT_PROMPTS = ['RAD', 'LAB', 'PSYCH', 'PEDS', 'ER'];
+    // Every care setting has a NEW-encounter body. Only the settings with a
+    // genuine longitudinal follow-up have a revisit body; a single-episode
+    // setting (ER) and the two report-producing services (RAD, LAB) do not.
+    const DEPTS_WITH_REVISIT = ['OPD', 'IPD', 'PERI', 'BEH', 'PEDS'];
+    const DEPTS_WITHOUT_REVISIT = ['ER', 'RAD', 'LAB'];
 
-    it('should have non-null prompt IDs for departments with prompt registry', () => {
-      DEPTS_WITH_PROMPTS.forEach((code) => {
-        const dept = DEFAULT_DEPARTMENTS.find((d) => d.code === code);
-        expect(dept).toBeDefined();
-        expect(dept?.newPatientPromptId).not.toBeNull();
-        expect(dept?.revisitPromptId).not.toBeNull();
+    it('should have a non-null newPatientPromptId on every care setting', () => {
+      DEFAULT_DEPARTMENTS.forEach((dept) => {
+        expect(dept.newPatientPromptId, `${dept.code} has no new-encounter prompt`).not.toBeNull();
       });
     });
 
-    it('should have null prompt IDs for departments without prompt registry', () => {
-      DEPTS_WITHOUT_PROMPTS.forEach((code) => {
+    it('should have a revisit prompt for longitudinal care settings', () => {
+      DEPTS_WITH_REVISIT.forEach((code) => {
         const dept = DEFAULT_DEPARTMENTS.find((d) => d.code === code);
         expect(dept).toBeDefined();
-        expect(dept?.newPatientPromptId).toBeNull();
-        expect(dept?.revisitPromptId).toBeNull();
+        expect(dept?.revisitPromptId, `${code} should have a revisit prompt`).not.toBeNull();
+      });
+    });
+
+    it('should have no revisit prompt for single-episode / report-producing settings', () => {
+      DEPTS_WITHOUT_REVISIT.forEach((code) => {
+        const dept = DEFAULT_DEPARTMENTS.find((d) => d.code === code);
+        expect(dept).toBeDefined();
+        expect(dept?.revisitPromptId, `${code} should not have a revisit prompt`).toBeNull();
       });
     });
   });
@@ -1200,7 +1180,7 @@ describe('Department Prompt Configuration', () => {
     });
 
     it('should include "Recent Vitals" in context variables for clinical departments', () => {
-      const clinicalDepts = ['GEN', 'CARD', 'NEUR', 'ORTH', 'PEDS', 'ER'];
+      const clinicalDepts = ['OPD', 'IPD', 'PERI', 'PEDS', 'ER'];
       clinicalDepts.forEach((code) => {
         const dept = DEFAULT_DEPARTMENTS.find((d) => d.code === code);
         expect(dept?.promptConfig!.contextVariables).toContain('Recent Vitals');
@@ -1208,17 +1188,14 @@ describe('Department Prompt Configuration', () => {
     });
 
     it('should include "PREVIOUS CASE NOTES SUMMARY" for consultation-based departments', () => {
-      const consultDepts = ['GEN', 'CARD', 'NEUR', 'ORTH', 'DERM', 'PSYCH', 'PEDS'];
+      const consultDepts = ['OPD', 'IPD', 'PERI', 'BEH', 'PEDS'];
       consultDepts.forEach((code) => {
         const dept = DEFAULT_DEPARTMENTS.find((d) => d.code === code);
         expect(dept?.promptConfig!.contextVariables).toContain('PREVIOUS CASE NOTES SUMMARY');
       });
     });
 
-    it('should have department-specific context variables for specialties', () => {
-      const card = DEFAULT_DEPARTMENTS.find((d) => d.code === 'CARD');
-      expect(card?.promptConfig!.contextVariables).toContain('ECG Results');
-
+    it('should have setting-specific context variables', () => {
       const rad = DEFAULT_DEPARTMENTS.find((d) => d.code === 'RAD');
       expect(rad?.promptConfig!.contextVariables).toContain('Prior Imaging');
 
@@ -1226,8 +1203,8 @@ describe('Department Prompt Configuration', () => {
       expect(peds?.promptConfig!.contextVariables).toContain('Growth Chart');
       expect(peds?.promptConfig!.contextVariables).toContain('Immunization History');
 
-      const psych = DEFAULT_DEPARTMENTS.find((d) => d.code === 'PSYCH');
-      expect(psych?.promptConfig!.contextVariables).toContain('Risk Assessment');
+      const beh = DEFAULT_DEPARTMENTS.find((d) => d.code === 'BEH');
+      expect(beh?.promptConfig!.contextVariables).toContain('Risk Assessment');
     });
   });
 
@@ -1241,7 +1218,7 @@ describe('Department Prompt Configuration', () => {
     });
 
     it('should have low abbreviation density for narrative-heavy departments', () => {
-      const lowAbbrevDepts = ['GEN', 'DERM', 'PSYCH', 'PEDS', 'MED'];
+      const lowAbbrevDepts = ['OPD', 'BEH', 'PEDS'];
       lowAbbrevDepts.forEach((code) => {
         const dept = DEFAULT_DEPARTMENTS.find((d) => d.code === code);
         expect(dept?.promptConfig!.abbreviationDensity).toBe('low');
@@ -1249,7 +1226,7 @@ describe('Department Prompt Configuration', () => {
     });
 
     it('should have medium abbreviation density for mixed departments', () => {
-      const mediumAbbrevDepts = ['CARD', 'NEUR', 'ORTH', 'SURG', 'BREN', 'RHEUM', 'HEME'];
+      const mediumAbbrevDepts = ['IPD', 'PERI'];
       mediumAbbrevDepts.forEach((code) => {
         const dept = DEFAULT_DEPARTMENTS.find((d) => d.code === code);
         expect(dept?.promptConfig!.abbreviationDensity).toBe('medium');
@@ -1278,8 +1255,8 @@ describe('Department Prompt Configuration', () => {
       });
     });
 
-    it('should have 18 departments after prompt config addition', () => {
-      expect(DEFAULT_DEPARTMENTS.length).toBe(18);
+    it('should have 8 departments after prompt config addition', () => {
+      expect(DEFAULT_DEPARTMENTS.length).toBe(8);
     });
 
     it('should have default tenant ID for all departments', () => {
@@ -2327,40 +2304,53 @@ describe('Prompt Template Seed Data', () => {
       expect(dna).toBeDefined();
     });
 
-    it('should include CUSTOM template with Cardiology departmentId', () => {
+    it('should include the CUSTOM template, no longer department-bound', () => {
+      // Cardiology left the Global catalog with the specialty roster
+      // (TASK-763 OD-8). The template is retained but re-homed to
+      // departmentId: null rather than left pointing at a deleted department —
+      // `PromptTemplate.departmentId` is a real FK, so a dangling id is a failed
+      // migration, not a stale reference.
       const custom = DEFAULT_PROMPT_TEMPLATES.find((t) => t.id === SEED_TEMPLATE_IDS.CARD_CUSTOM);
       expect(custom).toBeDefined();
-      expect(custom?.departmentId).toBe(SEED_DEPARTMENT_IDS.CARD);
+      expect(custom?.departmentId).toBeNull();
     });
   });
 
-  describe('Department-Specific Templates', () => {
-    it('should have new-referral and revisit templates for DERM', () => {
-      const dermNew = DEFAULT_PROMPT_TEMPLATES.find((t) => t.id === SEED_TEMPLATE_IDS.DERM_NEW_REFERRAL);
-      const dermRevisit = DEFAULT_PROMPT_TEMPLATES.find((t) => t.id === SEED_TEMPLATE_IDS.DERM_REVISIT);
-      expect(dermNew).toBeDefined();
-      expect(dermRevisit).toBeDefined();
+  describe('Care-Setting Templates', () => {
+    // Replaces the per-specialty DERM/DIET/NEPH/SONC pairs. Those bodies were
+    // BCMCH's and now live only on the ArcaAI tenant
+    // (07b-arcaai-clinical-templates.ts); the Global catalog carries generic
+    // care-setting bodies instead (TASK-763 OD-8).
+    it('binds every Global department prompt column to a template that exists', () => {
+      const byId = new Map(DEFAULT_PROMPT_TEMPLATES.map((t) => [t.id, t]));
+      DEFAULT_DEPARTMENTS.forEach((dept) => {
+        for (const [column, id] of [
+          ['newPatientPromptId', dept.newPatientPromptId],
+          ['revisitPromptId', dept.revisitPromptId],
+        ] as const) {
+          if (id === null) continue;
+          expect(byId.has(id), `${dept.code}.${column} -> ${id} has no seeded template`).toBe(true);
+        }
+      });
     });
 
-    it('should have new-referral and revisit templates for DIET', () => {
-      const dietNew = DEFAULT_PROMPT_TEMPLATES.find((t) => t.id === SEED_TEMPLATE_IDS.DIET_NEW_REFERRAL);
-      const dietRevisit = DEFAULT_PROMPT_TEMPLATES.find((t) => t.id === SEED_TEMPLATE_IDS.DIET_REVISIT);
-      expect(dietNew).toBeDefined();
-      expect(dietRevisit).toBeDefined();
+    it('anchors every department-bound template to a department that exists', () => {
+      // `PromptTemplate.departmentId` is a real Postgres FK, so a dangling id
+      // fails the seed rather than degrading quietly.
+      const deptIds = new Set(DEFAULT_DEPARTMENTS.map((d) => d.id));
+      DEFAULT_PROMPT_TEMPLATES.forEach((tpl) => {
+        if (!tpl.departmentId) return;
+        expect(deptIds.has(tpl.departmentId), `template ${tpl.name} -> departmentId ${tpl.departmentId} does not exist`).toBe(true);
+      });
     });
 
-    it('should have new-referral and revisit templates for NEPH', () => {
-      const nephNew = DEFAULT_PROMPT_TEMPLATES.find((t) => t.id === SEED_TEMPLATE_IDS.NEPH_NEW_REFERRAL);
-      const nephRevisit = DEFAULT_PROMPT_TEMPLATES.find((t) => t.id === SEED_TEMPLATE_IDS.NEPH_REVISIT);
-      expect(nephNew).toBeDefined();
-      expect(nephRevisit).toBeDefined();
-    });
-
-    it('should have new-referral and revisit templates for SONC', () => {
-      const soncNew = DEFAULT_PROMPT_TEMPLATES.find((t) => t.id === SEED_TEMPLATE_IDS.SONC_NEW_REFERRAL);
-      const soncRevisit = DEFAULT_PROMPT_TEMPLATES.find((t) => t.id === SEED_TEMPLATE_IDS.SONC_REVISIT);
-      expect(soncNew).toBeDefined();
-      expect(soncRevisit).toBeDefined();
+    it('seeds the generic templates as APPROVED v1 so a fresh tenant can generate on day 1', () => {
+      const generic = DEFAULT_PROMPT_TEMPLATES.filter((t) => t.id.startsWith('71000000-0000-0000-0003-'));
+      expect(generic.length).toBe(13);
+      generic.forEach((tpl) => {
+        expect(tpl.status, `${tpl.name} must be APPROVED`).toBe('APPROVED');
+        expect(tpl.currentVersionNumber).toBe(1);
+      });
     });
   });
 });

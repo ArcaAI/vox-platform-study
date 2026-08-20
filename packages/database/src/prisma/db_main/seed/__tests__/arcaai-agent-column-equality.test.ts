@@ -22,8 +22,8 @@
 import { describe, it, expect } from 'vitest';
 
 import { SEED_CUSTOMER_TENANT_IDS } from '../00-constants';
-import { ARCAAI_CLINICAL_DEPARTMENTS } from '../04-department';
-import { ARCAAI_TENANT_AGENTS, GOLDEN_AGENTS, GLOBAL_TENANT_AGENTS } from '../07a-agent-golden-library';
+import { ARCAAI_ALL_CLINICAL_DEPARTMENTS, ARCAAI_CLINICAL_DEPARTMENTS } from '../04-department';
+import { ARCAAI_TENANT_AGENTS, GOLDEN_AGENTS, GOLDEN_DEPARTMENTS, GLOBAL_TENANT_AGENTS } from '../07a-agent-golden-library';
 
 const ARCAAI_TENANT_ID = SEED_CUSTOMER_TENANT_IDS.ARCAAI;
 
@@ -71,16 +71,30 @@ describe('ArcaAI DepartmentAgents mirror the legacy Department columns', () => {
     }
   });
 
-  it('uses the GOLDEN slugs so the resync sweep is a structural no-op', () => {
-    // Rule (i) of AgentTemplateResyncService clones a golden agent into a tenant
-    // only when its SLUG is absent there. Matching slugs make the sweep add
-    // nothing; rule (iii) then protects these unlocked, tenant-owned rows
-    // forever. This closes the "sweep silently re-adds an agent and collapses
-    // visit types" hazard STRUCTURALLY rather than with a kill-switch.
-    const goldenSlugs = new Set(GOLDEN_AGENTS.map((agent) => agent.slug));
-    for (const agent of ARCAAI_TENANT_AGENTS) {
-      expect(goldenSlugs.has(agent.slug), `ArcaAI agent slug '${agent.slug}' is not a golden slug`).toBe(true);
-    }
+  it('shares no department CODE with the golden library, so the resync sweep cannot touch it', () => {
+    // WHY THIS REPLACED THE SLUG-PARITY CHECK (TASK-763 OD-8).
+    //
+    // The old assertion was "every ArcaAI agent slug is also a GOLDEN slug",
+    // because rule (i) of AgentTemplateResyncService clones a golden agent into
+    // a tenant only when its SLUG is absent there. That worked only while the
+    // golden library WAS ArcaAI's specialty roster — the two sets shared codes,
+    // so they shared slugs, and the no-op was a coincidence of duplication.
+    //
+    // The golden library is now the eight CARE-SETTING departments and shares no
+    // code with ArcaAI's specialty roster. The sweep is still a no-op for
+    // ArcaAI, but for a stronger reason, one tier earlier: before rule (i) ever
+    // looks at a slug it calls `resolveTenantDepartment`, which resolves the
+    // golden department's CODE against the tenant and returns null when the
+    // tenant has no such department — logged as 'Skipped golden agent - tenant
+    // has no department with this code'. Disjoint code sets therefore make every
+    // golden agent unclonable into ArcaAI, whatever the slugs are.
+    //
+    // This is the invariant worth locking: it does not depend on two catalogs
+    // happening to name their departments the same way.
+    const goldenCodes = new Set(GOLDEN_DEPARTMENTS.map((d) => d.code));
+    const arcaaiCodes = new Set(ARCAAI_ALL_CLINICAL_DEPARTMENTS.map((d) => d.code));
+    const overlap = [...arcaaiCodes].filter((code) => goldenCodes.has(code));
+    expect(overlap, `ArcaAI department codes must not collide with golden codes: ${overlap.join(', ')}`).toEqual([]);
   });
 
   it('is tenant-owned wiring, not a locked golden clone', () => {
