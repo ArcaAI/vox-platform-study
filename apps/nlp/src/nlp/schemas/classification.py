@@ -32,6 +32,67 @@ class TextClassificationResponse(BaseModel):
     model_version: str = Field(..., description="Text classification model version")
 
 
+# Multi-label text classification (owner decision 2026-08-20, TASK-729 §6).
+#
+# `nlp.toxicity` is MULTI-LABEL: an utterance may be simultaneously toxic +
+# threat + insult, which the single-`predicted_label` shape above cannot
+# express (it forces one mutually-exclusive winner). This is a SEPARATE
+# request/response pair, not a conditional reshape of
+# `TextClassificationRequest`/`Response` — `nlp.sentiment` and
+# `nlp.classification` stay on the single-label shape unchanged.
+#
+# No taxonomy is invented here: the label set is whatever the selected
+# model's own classification head exposes (its `id2label`), exactly like
+# `TextClassificationResponse.probabilities` today. `cls_threshold` is the
+# ONLY new policy value, and it is gateway-injected the same way
+# `model_name`/`model_path` are — sourced from the winning
+# `AiModel._metadata.labelTaxonomy` row (the `labelTaxonomy.tasks.<taskKey>`
+# shape already used for guardrail's GLiNER2 classification, mirrored here
+# for a transformers sequence-classification checkpoint).
+
+
+class MultiLabelClassificationRequest(BaseModel):
+    text: str = Field(..., description="Input text")
+    language: SupportedLanguage | None = Field(
+        default=SupportedLanguage.ENGLISH, description="Language of the text"
+    )
+    model_name: str | None = Field(
+        default=None, description="Gateway-injected AiModel.sourceUri; required, fails closed with 503"
+    )
+    model_path: str | None = Field(
+        default=None,
+        description="Optional local weights directory (gateway-injected AiModel.localPath)",
+    )
+    # Gateway-injected from the selected model's own
+    # `AiModel._metadata.labelTaxonomy` row (mirrors `LabelTaxonomyTask.cls_threshold`).
+    # Independent per-label decision boundary — NOT a softmax top-1 pick, so
+    # zero, one, or several labels may all clear it on the same input.
+    cls_threshold: float = Field(
+        default=0.5, ge=0.0, le=1.0, description="Per-label score threshold for a label to count as a positive"
+    )
+
+
+class MultiLabelClassificationResponse(BaseModel):
+    predicted_labels: list[str] = Field(
+        ...,
+        description=(
+            "Labels at/above cls_threshold — the simultaneous positives (e.g. "
+            "['toxic', 'insult'] together). May be empty (nothing cleared the "
+            "threshold) or contain more than one label at once."
+        ),
+    )
+    scores: dict[str, float] = Field(
+        ...,
+        description=(
+            "Per-label score for EVERY label the model's own head exposes — the "
+            "model's own taxonomy, never invented here. Independent scores, not "
+            "required to sum to 1."
+        ),
+    )
+    threshold: float = Field(..., description="The cls_threshold actually applied")
+    model_version: str = Field(..., description="Text classification model version")
+
+
 # Token Classification
 
 

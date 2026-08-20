@@ -77,6 +77,16 @@ class StreamingGenerateResponse(BaseModel):
     created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
 
+class GenerateBatchAcceptedResponse(BaseModel):
+    """``POST /generate/batch``'s 202 envelope — same shape as
+    ``EmbeddingBatchAcceptedResponse`` (``models/embedding.py``): a `task_id`
+    pollable via the existing `GET /tasks/{task_id}` (no duplicate status
+    route)."""
+
+    task_id: str
+    status: str = "queued"
+
+
 class TaskResponse(BaseModel):
     task_id: str
     status: str

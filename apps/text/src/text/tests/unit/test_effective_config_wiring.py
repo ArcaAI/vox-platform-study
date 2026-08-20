@@ -20,7 +20,7 @@ from text.services.runtime_limits import apply_provider_limits, refresh_runtime_
 
 
 def snapshot(profiles: list[dict]) -> EffectiveConfigSnapshot:
-    return EffectiveConfigSnapshot(raw={"service": "smr", "runtimeProfiles": profiles}, ok=True)
+    return EffectiveConfigSnapshot(raw={"service": "text", "runtimeProfiles": profiles}, ok=True)
 
 
 def profile(provider: str, **over) -> dict:
@@ -99,7 +99,7 @@ class TestApplyProviderLimits:
 class TestRefreshRuntimeLimits:
     async def test_pulls_and_applies_in_one_step(self) -> None:
         payload = {
-            "service": "smr",
+            "service": "text",
             "runtimeProfiles": [
                 {"provider": "ollama", "modelSlug": "", "maxConcurrent": 7, "timeoutS": 30}
             ],
@@ -107,7 +107,7 @@ class TestRefreshRuntimeLimits:
         client = EffectiveConfigClient(
             base_url="http://gateway.test/api/v1",
             token="t",
-            service="smr",
+            service="text",
             transport=httpx.MockTransport(lambda _r: httpx.Response(200, json=payload)),
         )
         state = SimpleNamespace(
@@ -137,7 +137,7 @@ class TestRefreshRuntimeLimits:
         client = EffectiveConfigClient(
             base_url="http://gateway.test/api/v1",
             token="t",
-            service="smr",
+            service="text",
             transport=httpx.MockTransport(boom),
         )
         state = SimpleNamespace(

@@ -89,7 +89,7 @@ class TestAppendChunkEnvelopesWhenTenantKnown:
         assert doc["schemaVersion"] == 1
         assert doc["tenantId"] == TENANT_ID
         assert doc["correlationId"] == "req-1"
-        assert doc["type"] == "smr.stream.chunk"
+        assert doc["type"] == "text.stream.chunk"
         assert doc["payload"]["content"] == "hello"
 
         envelope = parse_async_envelope(doc)

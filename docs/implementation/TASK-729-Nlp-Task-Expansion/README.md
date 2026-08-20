@@ -395,9 +395,15 @@ and `design.md` were grepped for `node.type|nodeType|registry` — no hits; this
 - [x] `pnpm nlp:lint`, `pnpm nlp:typecheck` pass
 - [ ] **GATED (infra down)** `pnpm test:up:api` then `pnpm test:e2e -- task-729-nlp-task-expansion`
       — NOT run; the spec is authored (see §7 Task 7) but unverified
-- [x] `nlp.sentiment`/`nlp.toxicity` require NO new `apps/nlp` endpoint — only new `AiTaskDefault`
-      rows; no schema extension needed (proven by `test_classify_sentiment_toxicity.py`, not
-      assumed). Toxicity multi-label shape stays OPEN/HUMAN-GATED per §6, unchanged.
+- [x] `nlp.sentiment` requires NO new `apps/nlp` endpoint — only a new `AiTaskDefault` row; no
+      schema extension needed (proven by `test_classify_sentiment_toxicity.py`, not assumed).
+      `nlp.toxicity` is the one exception: per the RESOLVED owner decision in §6, it is genuinely
+      multi-label and now resolves to the NEW dedicated `POST /classify/text/multi-label` endpoint
+      (`MultiLabelClassificationResponse`: `predicted_labels` + a per-label `scores` map) rather
+      than the single-label generic path.
+- [x] Outbound peer HTTP (`nlp` → `text`, behind `/classify/topic`/`/classify/intent`) is bounded by
+      its OWN semaphore (`peer_call_max_concurrent` / `nlp.peerCall.maxConcurrent`), never
+      `inference_bound` — the RESOLVED owner decision in §6
 - [x] `nlp.topic`/`nlp.intent` delegate to `text` via a new peer-to-peer `X-Service-Token`-authenticated
       client mirroring `ExternalGuardrailClient`
 - [x] Tenant-writable instructions for topic/intent live in a NEW model, never in `AiTaskDefault.configJson`
@@ -411,22 +417,37 @@ and `design.md` were grepped for `node.type|nodeType|registry` — no hits; this
 
 ## 6. Risks & Open Questions
 
-- **HUMAN-GATED: toxicity multi-label shape (Task 2).** If product requirements need simultaneous
-  multi-category toxicity (toxic + threat + insult at once, not mutually exclusive), the existing
-  `TextClassificationResponse` (`predicted_label`, single string) cannot represent it — that would
-  require either a new response variant or a schema extension, sized as a follow-up task, not
-  assumed away. Confirm the actual requirement before Task 2 claims "no new endpoint needed" as a
-  blanket fact. **Answer**: Lets review, suggest best practices.
+- **RESOLVED (owner decision, 2026-08-20): toxicity multi-label shape (Task 2).** Ruling: toxicity
+  output IS multi-label — an utterance may be toxic + threat + insult simultaneously, and the
+  response must carry a per-label score for every category rather than one winning label. The
+  label set is never invented in code: it is whatever the selected model's own classification head
+  exposes, following the `AiModel._metadata.labelTaxonomy` path guardrail's GLiNER2 classification
+  already established (`LabelTaxonomyTask.multi_label`/`cls_threshold`). Implemented as a NEW,
+  dedicated endpoint — `POST /classify/text/multi-label`
+  (`MultiLabelClassificationRequest`/`MultiLabelClassificationResponse`,
+  `apps/nlp/src/nlp/schemas/classification.py`) — rather than a conditional reshape of
+  `/classify/text`, so `nlp.sentiment`/`nlp.classification` keep the existing single-label contract
+  byte-for-byte. `nlp.toxicity` now resolves to this endpoint. See §7 "Task 2 addendum" for the full
+  implementation and test evidence.
 - **HUMAN-GATED: naming and rename timing (TASK-707 soft dependency).** If TASK-707 lands mid-execution,
   every `apps/text`/`TEXT_*` citation in this ticket needs re-verifying against the renamed paths —
   Task 1 is the re-verification gate but a second pass may be needed if the rename lands between
   Task 1 and later tasks. **Answer**: Lets review, suggest best practices.
-- **Peer-call concurrency budget (Task 5)**: reusing `inference_bound` for a network call to `text`
-  conflates two different resource budgets (local GPU/CPU inference slots vs. outbound HTTP
-  concurrency to a peer service). This ticket's plan flags but does not resolve it — a wrong choice
-  here could either starve local classification under load from topic/intent calls, or vice versa.
-  Needs a decision, ideally informed by how `apps/text`'s own guardrail-calling code paces its calls
-  (verify if `ExternalGuardrailClient`'s callers use a distinct semaphore before deciding). **Answer**: Lets review, suggest best practices.
+- **HUMAN-GATED: naming and rename timing (TASK-707 soft dependency).** If TASK-707 lands mid-execution,
+  every `apps/text`/`TEXT_*` citation in this ticket needs re-verifying against the renamed paths —
+  Task 1 is the re-verification gate but a second pass may be needed if the rename lands between
+  Task 1 and later tasks. **Answer**: Lets review, suggest best practices.
+- **RESOLVED (owner decision, 2026-08-20): peer-call concurrency budget (Task 5)**: outbound peer
+  HTTP (the `nlp` → `text` delegation behind `/classify/topic`/`/classify/intent`) gets its OWN
+  semaphore, never `inference_bound` — that one bounds local GPU/CPU inference slots, and sharing
+  it let a slow `text` round-trip starve local inference (or vice versa). Implemented as
+  `get_peer_call_semaphore()`/`refresh_peer_call_limit()` in `apps/nlp/src/nlp/core/concurrency.py`,
+  sized from `NLPServiceConfig.peer_call_max_concurrent` (bootstrap default 8) — configured the
+  EXACT same way `inference_max_concurrent` already is: a bootstrap-floor env field, overridden at
+  runtime by a new `nlp.peerCall.maxConcurrent` control-plane key (never a hardcoded literal, never
+  a new ad-hoc env var). `/classify/topic`/`/classify/intent` now depend on `get_peer_call_bound`
+  instead of `get_inference_bound`. See §7 "Task 5 addendum" for the full implementation and test
+  evidence.
 - **`GLOBAL_ADMIN_ONLY_TASK_PREFIXES` scope**: this ticket does not add `nlp.sentiment`/`nlp.toxicity`/
   `nlp.topic`/`nlp.intent` as EXCEPTIONS to the global-admin-only write lock — MODEL selection for
   all four stays global-admin-only, consistent with the other `nlp.*` keys. If product wants tenant
@@ -614,6 +635,81 @@ Executed against `feat/loop`. TASK-707's rename had already landed (`apps/text`,
   test:up:api` + `pnpm test:e2e` (the new e2e spec is authored, not run), `pnpm db:seed` (the
   RBAC policy seed edit is authored, not applied to any database).
 
+### Task 2 addendum (2026-08-20) — toxicity multi-label, owner decision resolved
+
+RED-then-GREEN, TDD: `apps/nlp/tests/test_classify_sentiment_toxicity.py` gained three new tests
+(`test_toxicity_multi_label_returns_per_label_scores_and_simultaneous_positives`,
+`test_toxicity_multi_label_can_return_zero_or_all_labels`,
+`test_toxicity_multi_label_requires_model_name_fails_closed_503`) driving the endpoint before it
+existed (404), then implemented:
+
+- `apps/nlp/src/nlp/schemas/classification.py` — new `MultiLabelClassificationRequest`
+  (`text`/`language`/`model_name`/`model_path`, plus `cls_threshold: float = 0.5`, gateway-injected
+  from the winning `AiModel._metadata.labelTaxonomy` row) and `MultiLabelClassificationResponse`
+  (`predicted_labels: list[str]`, `scores: dict[str, float]`, `threshold: float`, `model_version`).
+  A SEPARATE pair from `TextClassificationRequest`/`Response` — `nlp.sentiment`/`nlp.classification`
+  are untouched.
+- `apps/nlp/src/nlp/services/text_classifier.py` — `TextClassifier.process_multi_label()`
+  (abstract) + `TransformerTextClassifier` implementation, factored through a shared `_raw_scores()`
+  helper so `process()`'s existing single-label behaviour is byte-for-byte unchanged. No taxonomy
+  is invented: `_raw_scores()` returns exactly whatever labels the pipeline call already returns
+  (the model's own head); `cls_threshold` only decides which of those clear the bar. Unlike
+  `process()` (which swallows a pipeline failure into an `{"other": 1.0}` fallback),
+  `process_multi_label()` deliberately does NOT fabricate a false "all clear" — a genuine failure
+  propagates to a 500, since a silent empty `predicted_labels` on a real toxicity-model failure
+  would be a false negative on a safety-relevant signal.
+- `apps/nlp/src/nlp/api/v1/rest/classify.py` — new `POST /classify/text/multi-label` route, same
+  `pinned_text_classifier` + `inference_bound` + fail-closed-503-on-missing-`model_name` shape as
+  `/classify/text`. `nlp.toxicity` now resolves to this endpoint instead of the generic
+  single-label one.
+- Evidence: `pnpm nlp:test` — 358 passed, 2 deselected (unrelated pre-existing test markers), 0
+  failed (full run including the 6 new/extended toxicity tests). `pnpm nlp:lint` (ruff) and
+  `pnpm nlp:typecheck` (mypy, scoped to `apps/nlp/src/`) — both clean, 0 issues.
+
+### Task 5 addendum (2026-08-20) — dedicated peer-call semaphore, owner decision resolved
+
+RED-then-GREEN, TDD: new `apps/nlp/tests/test_peer_call_semaphore.py` (18 tests: singleton
+behaviour, independence from the inference semaphore, live control-plane resize, never-raises
+fail-safety) plus new assertions in `test_effective_config_client.py`
+(`peer_call_max_concurrent()`) and `test_classify_topic_intent.py`
+(`TestPeerCallBoundIndependence` — proves `/topic`/`/intent` enter the peer-call semaphore exactly
+once and never touch the inference semaphore, via a `_TrackingSemaphore` override), all written
+and RED (import/attribute errors) before the implementation existed. Then implemented:
+
+- `apps/nlp/src/nlp/core/config.py` — `NLPServiceConfig.peer_call_max_concurrent: int = Field(default=8, ge=1)`,
+  configured EXACTLY like `inference_max_concurrent` (bootstrap-floor env field; the runtime value
+  comes from the control plane).
+- `apps/nlp/src/nlp/core/concurrency.py` — `get_peer_call_semaphore()` / `reset_peer_call_semaphore()`
+  / `refresh_peer_call_limit()`, a full mirror of the existing inference-bound trio but for its OWN
+  singleton and its OWN control-plane key. Deliberately does NOT re-invoke
+  `apply_model_cache_retention()` — that stays `refresh_inference_limit`'s sole responsibility, so a
+  request resolving both bounds never double-applies the same retention snapshot.
+- `apps/nlp/src/nlp/core/effective_config.py` — `EffectiveConfigSnapshot.peer_call_max_concurrent()`,
+  reading a NEW `peerCallMaxConcurrent` field inside the EXISTING `concurrency` group (not a new
+  top-level group — mirrors how stt's `workerConcurrency`/`streamingMaxConcurrent` already sit
+  alongside `maxConcurrent`).
+- `apps/nlp/src/nlp/dependencies.py` — new `get_peer_call_bound()` route dependency, mirroring
+  `get_inference_bound()`.
+- `apps/nlp/src/nlp/api/v1/rest/classify.py` — `/classify/topic` and `/classify/intent` now depend
+  on `get_peer_call_bound` instead of `get_inference_bound`; the stale "OPEN question" comments are
+  replaced with the resolved-decision rationale.
+- Gateway side (`packages/applications`): `nlp.peerCall.maxConcurrent` (default `8`, matching the
+  Python bootstrap default) added to `SERVICE_RUNTIME_DEFAULTS` +
+  `SERVICE_RUNTIME_SETTINGS`/registry metadata (`service-runtime.descriptors.ts`) — the SAME
+  mechanism `nlp.inference.maxConcurrent` already uses, not a new ad-hoc config surface.
+  `IEffectiveConfigService.EffectiveConcurrency` gained `peerCallMaxConcurrent: number | null`;
+  `EffectiveConfigService.resolveForService('nlp')` now resolves both
+  `nlp.inference.maxConcurrent` and `nlp.peerCall.maxConcurrent` into the same `concurrency` block.
+  New/extended tests in `effective-config.service.test.ts` (2 new cases) prove the two ceilings
+  resolve independently (an admin override of one never moves the other).
+- Evidence: `pnpm nlp:test` (all 358 tests, including 18 new peer-call-semaphore tests + extensions)
+  — 0 failed. `pnpm nlp:lint`/`pnpm nlp:typecheck` — clean. Applications-package vitest run scoped to
+  `effective-config`/`model-retention.descriptors` — 26/26 passed. `pnpm --filter @arcaai/applications typecheck`
+  surfaced 2 PRE-EXISTING errors unrelated to this change (`serviceHealthMonitoring.service.ts` —
+  a leftover from the in-flight `smr`→`text` rename; `dna-writing-style.service.ts` — an unrelated,
+  concurrently-in-progress ticket); zero errors in any file this addendum touched. ESLint on the
+  touched files — 0 errors (one prettier formatting warning fixed).
+
 ### Process note (honesty)
 Not every piece of this ticket followed strict test-first RED→GREEN. RED was genuinely observed
 before implementing: the `nlp.sentiment`/`nlp.toxicity` task-key test, the
@@ -630,3 +726,4 @@ strict RED-GREEN throughout.
 |---|---|---|
 | 2026-08-16 | Ticket authored | Wave-3 ticket-authoring agent |
 | 2026-08-16 | Tasks 1–6 implemented (TS: Prisma model/migration authored, domain layer, application service, gateway admin controller + AiInferenceController proxy routes, RBAC seed grant; Python: nlp.sentiment/nlp.toxicity proof test, ExternalTextClient, /classify/topic + /classify/intent). Task 7 e2e spec authored (not run — infra down). Full verification (Task 8): `@arcaai/domains`/`@arcaai/applications`/`@arcaai/api` build+test+lint+typecheck all green; `pnpm nlp:test/lint/typecheck` green (6 pre-existing unrelated test_extract.py failures noted, not introduced). Full `pnpm test:unit` run twice: first run caught one real ticket-caused drift-guard failure (`TENANT_SCOPED_MODELS.size` hardcoded to 80, needed 81 — fixed with a matching changelog comment); second run fully green across all 5 workspace scopes — main workspace 1033 files/17474 tests, `@arcaai/ui` 243/673, `@arcaai/vox` 4183, `compat-playground` 21/223, `admin-console` 179/1432, exit code 0. Toxicity label shape and instructionsJson shape both left OPEN and flagged per the ticket's own instruction, not silently settled; the RED-first TDD deviation for Task 3/Task 6 (implementation before test for those specific pieces) is disclosed in §7. Status → Review. | Execution agent |
+| 2026-08-20 | Two owner decisions RESOLVED (§6): (1) **toxicity is multi-label** — new dedicated `POST /classify/text/multi-label` endpoint (`MultiLabelClassificationRequest`/`Response`, `apps/nlp/src/nlp/schemas/classification.py` + `TextClassifier.process_multi_label()`) returns a per-label `scores` map and `predicted_labels` (zero, one, or several labels clearing `cls_threshold`), deriving the label set from the selected model's own head rather than inventing a taxonomy; `nlp.sentiment`/`nlp.classification` keep the single-label `/classify/text` contract unchanged. (2) **outbound peer HTTP gets its own semaphore** — new `get_peer_call_semaphore()`/`refresh_peer_call_limit()` (`apps/nlp/src/nlp/core/concurrency.py`), sized from `NLPServiceConfig.peer_call_max_concurrent` (bootstrap default 8) and a new `nlp.peerCall.maxConcurrent` control-plane key (mirroring `nlp.inference.maxConcurrent`'s existing configuration mechanism, not a new ad-hoc env var); `/classify/topic`/`/classify/intent` now depend on `get_peer_call_bound` instead of `get_inference_bound`. TDD throughout (RED confirmed before each implementation): 9 new/extended Python tests for the multi-label endpoint, 18 new tests in `test_peer_call_semaphore.py` plus extensions to `test_effective_config_client.py` and `test_classify_topic_intent.py` for the peer-call bound. Gateway-side settings-registry/effective-config mirrored on the TS side (`service-runtime.descriptors.ts`, `IEffectiveConfigService.ts`, `effective-config.service.ts`) with 2 new vitest cases. Evidence: `pnpm nlp:test` 358 passed/2 deselected/0 failed; `pnpm nlp:lint`/`pnpm nlp:typecheck` clean; applications-package vitest (effective-config + model-retention scope) 26/26 passed; `pnpm --filter @arcaai/applications typecheck` surfaced 2 pre-existing errors unrelated to this change (in-flight `smr`→`text` rename and an unrelated DNA-writing-style ticket), zero in files this change touched. Two OTHER open items from §6 remain unresolved (out of this task's scope, not addressed): the TASK-707 naming/rename-timing note, and the `GLOBAL_ADMIN_ONLY_TASK_PREFIXES` scope question; Task 7's e2e spec also remains GATED (infra down). Status stays Review — not all §6 items are closed. | Execution agent |

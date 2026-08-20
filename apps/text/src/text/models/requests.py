@@ -32,7 +32,7 @@ from the presence of an override.
 
 class ProviderOverride(BaseModel):
     """Per-request BYO cloud credential the gateway injects for the resolved
-    cloud provider (`apps/api` ``SmrProxyController.applyTenantProviderOverrides``).
+    cloud provider (`apps/api` ``TextProxyController.applyTenantProviderOverrides``).
 
     ``api_key`` is a ``SecretStr`` so it never surfaces via ``repr()``/``str()``/
     ``model_dump()``/logging — a provider client must call
@@ -150,3 +150,33 @@ class GenerateRequest(BaseModel):
         if not self.content_parts:
             return []
         return [p for p in self.content_parts if isinstance(p, ImageContentPart)]
+
+
+class GenerateBatchRequest(BaseModel):
+    """Async batch-generation submission (TASK-725 §7 residual close-out) —
+    enqueued onto ``WorkerPoolQueue`` and processed out-of-process by
+    ``worker.py::_handle_batch_generation``, which re-validates this payload
+    as a `GenerateRequest`.
+
+    Mirrors ``EmbeddingBatchRequest``'s minimalism (``models/embedding.py``):
+    the async surface exposes only the fields the out-of-process handler
+    actually consumes to build a ``GenerateRequest`` — not the synchronous
+    ``/generate`` request's same-pod concerns (``stream``, ``retry_config``,
+    ``provider_overrides``, ``content_parts``, ``fallback_provider``), none of
+    which the worker's ``_handle_batch_generation`` reads or acts on today.
+    """
+
+    prompt: str = Field(..., min_length=1, max_length=200_000)
+    system_prompt: str | None = Field(default=None, max_length=50_000)
+    provider: str = "lm-studio"
+    model: str | None = None
+    temperature: float | None = Field(default=None, ge=0.0, le=2.0)
+    max_tokens: int | None = Field(default=None, ge=1)
+    top_p: float | None = Field(default=None, ge=0.0, le=1.0)
+
+    @field_validator("prompt")
+    @classmethod
+    def _prompt_not_blank(cls, v: str) -> str:
+        if not v.strip():
+            raise ValueError("Prompt must not be blank or whitespace-only")
+        return v

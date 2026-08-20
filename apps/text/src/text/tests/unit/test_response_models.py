@@ -84,7 +84,7 @@ class TestResponseModelSerialization:
     def test_health_response_serialization(self):
         resp = HealthResponse(
             status="healthy",
-            service="smr",
+            service="text",
             version="2.0.0",
             uptime_seconds=10.0,
             timestamp="2025-01-01T00:00:00Z",
@@ -101,7 +101,7 @@ class TestResponseModelSerialization:
     def test_health_response_json_round_trip(self):
         resp = HealthResponse(
             status="degraded",
-            service="smr",
+            service="text",
             version="2.0.0",
             uptime_seconds=5.0,
             timestamp="2025-01-01T00:00:00Z",

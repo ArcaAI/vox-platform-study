@@ -1,7 +1,7 @@
 """Effective-config pull client (text service).
 
 Pulls this service's SERVICE-LEVEL knobs from the gateway
-(`GET /api/v1/internal/effective-config?service=smr`) instead of taking them from
+(`GET /api/v1/internal/effective-config?service=text`) instead of taking them from
 env. Model/provider SELECTION is unaffected — Text remains a stateless gateway and
 still receives `{provider, model}` per request (see `core/config.py`).
 
@@ -116,7 +116,7 @@ class EffectiveConfigClient:
         self,
         base_url: str,
         token: str,
-        service: str = "smr",
+        service: str = "text",
         *,
         ttl_s: int = DEFAULT_TTL_S,
         timeout_s: float = DEFAULT_TIMEOUT_S,

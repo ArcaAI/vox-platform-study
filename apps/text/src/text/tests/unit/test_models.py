@@ -1,4 +1,4 @@
-"""TDD tests for smr Pydantic models.
+"""TDD tests for text Pydantic models.
 
 Written BEFORE implementation — these must fail first (RED),
 then we write minimal code to make them pass (GREEN).

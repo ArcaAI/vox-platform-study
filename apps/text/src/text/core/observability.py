@@ -58,7 +58,7 @@ def setup_opentelemetry(
     app: FastAPI,
     *,
     endpoint: str = "http://localhost:4317",
-    service_name: str = "smr",
+    service_name: str = "text",
     service_namespace: str = "hope",
     # Never default to "production" — see core/config.py.
     # Callers pass `settings.otel_deployment_environment`, which resolves from
@@ -159,7 +159,7 @@ def shutdown_opentelemetry(app: FastAPI) -> None:
     logger.info("OpenTelemetry shutdown complete")
 
 
-def get_tracer(name: str = "smr") -> trace.Tracer:
+def get_tracer(name: str = "text") -> trace.Tracer:
     """Get a tracer instance for creating spans."""
     return trace.get_tracer(name, _TRACER_VERSION)
 

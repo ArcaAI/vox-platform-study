@@ -65,6 +65,19 @@ class TestFetch:
         assert snapshot.ok is True
         assert snapshot.max_concurrent() == 9
 
+    async def test_reads_the_served_peer_call_bound(self) -> None:
+        """TASK-729 §6 — a SEPARATE field in the SAME `concurrency` group."""
+        payload = {
+            "service": "nlp",
+            "concurrency": {"maxConcurrent": 9, "peerCallMaxConcurrent": 25, "source": "db"},
+        }
+        client, _ = make_client(FakeClock(), lambda _r: httpx.Response(200, json=payload))
+
+        snapshot = await client.get()
+
+        assert snapshot.max_concurrent() == 9
+        assert snapshot.peer_call_max_concurrent() == 25
+
     async def test_requests_its_own_service_subset(self) -> None:
         seen: dict[str, str] = {}
 
@@ -121,12 +134,33 @@ class TestFailSafe:
 
         assert (await client.get()).max_concurrent() is None
 
+    async def test_a_null_peer_call_bound_is_not_coerced_to_a_number(self) -> None:
+        payload = {
+            "service": "nlp",
+            "concurrency": {"peerCallMaxConcurrent": None, "source": "env-fallback"},
+        }
+        client, _ = make_client(FakeClock(), lambda _r: httpx.Response(200, json=payload))
+
+        assert (await client.get()).peer_call_max_concurrent() is None
+
+    async def test_a_missing_concurrency_group_yields_no_peer_call_opinion(self) -> None:
+        client, _ = make_client(FakeClock(), boom_handler)
+
+        assert (await client.get()).peer_call_max_concurrent() is None
+
     @pytest.mark.parametrize("bad", [0, -4, "eight", True])
     async def test_rejects_a_nonsensical_bound(self, bad: object) -> None:
         payload = {"service": "nlp", "concurrency": {"maxConcurrent": bad, "source": "db"}}
         client, _ = make_client(FakeClock(), lambda _r: httpx.Response(200, json=payload))
 
         assert (await client.get()).max_concurrent() is None
+
+    @pytest.mark.parametrize("bad", [0, -4, "eight", True])
+    async def test_rejects_a_nonsensical_peer_call_bound(self, bad: object) -> None:
+        payload = {"service": "nlp", "concurrency": {"peerCallMaxConcurrent": bad, "source": "db"}}
+        client, _ = make_client(FakeClock(), lambda _r: httpx.Response(200, json=payload))
+
+        assert (await client.get()).peer_call_max_concurrent() is None
 
     async def test_a_non_2xx_response_is_a_failure(self) -> None:
         client, _ = make_client(FakeClock(), lambda _r: httpx.Response(500))

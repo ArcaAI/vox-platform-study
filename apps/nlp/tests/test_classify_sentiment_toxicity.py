@@ -15,14 +15,15 @@ model. This test proves that claim rather than assuming it: it drives
 Mirrors `test_model_override_routes.py`'s fixture-model pattern — imitate,
 don't invent a new fixture style.
 
-TOXICITY LABEL SHAPE (OPEN, flagged — see ticket §6 and the SHAPE DECISION
-note on `nlp.toxicity`'s AiTaskDefault entry): this test exercises SINGLE-LABEL
-toxicity (`predicted_label` + a `probabilities` map over the fixture model's
-classes), which the existing response shape already supports. A genuinely
-independent MULTI-LABEL toxicity taxonomy (toxic + threat + insult
-simultaneously, not mutually exclusive) is NOT proven or built here — that
-would need a new response variant, sized as a follow-up (HUMAN-GATED, not
-assumed away).
+TOXICITY LABEL SHAPE — RESOLVED (owner decision, 2026-08-20, TASK-729 §6):
+toxicity is MULTI-LABEL (toxic + threat + insult may all apply to the same
+utterance simultaneously). The single-label tests above still exercise
+`/classify/text` directly (proving the generic single-label path is
+unaffected — `nlp.sentiment` and `nlp.classification` keep it verbatim);
+the multi-label tests further down drive the NEW, dedicated
+`/classify/text/multi-label` endpoint (`MultiLabelClassificationResponse`:
+`predicted_labels` + a per-label `scores` map), which is what `nlp.toxicity`
+now resolves to.
 """
 
 from __future__ import annotations
@@ -122,6 +123,73 @@ def test_classify_text_serves_toxicity_via_model_name(client, clean_deps) -> Non
     assert set(body["probabilities"].keys()) == {"toxic", "non_toxic"}
     tok.from_pretrained.assert_called_once_with("org/toxicity-model")
     mdl.from_pretrained.assert_called_once_with("org/toxicity-model")
+
+
+def test_toxicity_multi_label_returns_per_label_scores_and_simultaneous_positives(client, clean_deps) -> None:
+    """Owner decision (2026-08-20, TASK-729 §6): toxicity is MULTI-LABEL — an
+    utterance may be toxic AND a threat AND an insult at once. `/classify/text/
+    multi-label` returns a per-label score for every label the model exposes,
+    plus every label that clears `cls_threshold` (not just one winner)."""
+    fake_pipe = MagicMock(
+        return_value=[
+            {"label": "toxic", "score": 0.91},
+            {"label": "threat", "score": 0.77},
+            {"label": "insult", "score": 0.62},
+            {"label": "obscene", "score": 0.12},
+        ]
+    )
+    with (
+        patch("nlp.services.text_classifier.AutoTokenizer") as tok,
+        patch("nlp.services.text_classifier.AutoModelForSequenceClassification") as mdl,
+        patch("nlp.services.text_classifier.pipeline", return_value=fake_pipe),
+    ):
+        r = client.post(
+            "/api/v1/classify/text/multi-label",
+            json={
+                "text": "some user-submitted comment",
+                "model_name": "org/toxicity-model",
+                "cls_threshold": 0.5,
+            },
+        )
+
+    assert r.status_code == 200
+    body = r.json()
+    # Three labels simultaneously clear the threshold — not one winning label.
+    assert set(body["predicted_labels"]) == {"toxic", "threat", "insult"}
+    assert body["scores"] == {"toxic": 0.91, "threat": 0.77, "insult": 0.62, "obscene": 0.12}
+    assert body["threshold"] == 0.5
+    tok.from_pretrained.assert_called_once_with("org/toxicity-model")
+    mdl.from_pretrained.assert_called_once_with("org/toxicity-model")
+
+
+def test_toxicity_multi_label_can_return_zero_or_all_labels(client, clean_deps) -> None:
+    """Independent thresholding, not a forced top-1 pick: nothing clearing the
+    bar yields an empty list (never a fabricated `predicted_label`)."""
+    fake_pipe = MagicMock(
+        return_value=[
+            {"label": "toxic", "score": 0.1},
+            {"label": "non_toxic", "score": 0.05},
+        ]
+    )
+    with (
+        patch("nlp.services.text_classifier.AutoTokenizer"),
+        patch("nlp.services.text_classifier.AutoModelForSequenceClassification"),
+        patch("nlp.services.text_classifier.pipeline", return_value=fake_pipe),
+    ):
+        r = client.post(
+            "/api/v1/classify/text/multi-label",
+            json={"text": "a perfectly polite comment", "model_name": "org/toxicity-model"},
+        )
+
+    assert r.status_code == 200
+    body = r.json()
+    assert body["predicted_labels"] == []
+    assert body["threshold"] == 0.5  # the request-schema default
+
+
+def test_toxicity_multi_label_requires_model_name_fails_closed_503(client, clean_deps) -> None:
+    resp = client.post("/api/v1/classify/text/multi-label", json={"text": "hello"})
+    assert resp.status_code == 503
 
 
 def test_sentiment_and_toxicity_are_the_same_generic_path_no_task_specific_branching(client, clean_deps) -> None:

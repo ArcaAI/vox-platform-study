@@ -17,12 +17,12 @@ def _val(name: str, labels: dict[str, str] | None = None) -> float:
     return REGISTRY.get_sample_value(name, labels) or 0.0
 
 
-def test_service_name_is_smr():
-    assert m.SERVICE_NAME == "smr"
+def test_service_name_is_text():
+    assert m.SERVICE_NAME == "text"
 
 
 def test_track_model_inference_bumps_then_restores_and_observes():
-    labels = {"service": "smr", "model": "gemma-4-e4b"}
+    labels = {"service": "text", "model": "gemma-4-e4b"}
     before_gauge = _val("model_running_instances", labels)
     before_count = _val("model_inference_latency_seconds_count", labels)
 
@@ -34,7 +34,7 @@ def test_track_model_inference_bumps_then_restores_and_observes():
 
 
 def test_track_model_inference_decrements_gauge_on_error():
-    labels = {"service": "smr", "model": "gemma-4-e4b"}
+    labels = {"service": "text", "model": "gemma-4-e4b"}
     before_gauge = _val("model_running_instances", labels)
 
     try:

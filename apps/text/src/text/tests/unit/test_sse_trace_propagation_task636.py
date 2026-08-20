@@ -236,7 +236,7 @@ class TestEndToEndTaskStreamHop:
 
 
 class TestSharedHelperMatchesTheGoldenWireFormat:
-    def test_smr_helper_emits_the_same_traceparent_as_stt_and_the_gateway(self) -> None:
+    def test_text_helper_emits_the_same_traceparent_as_stt_and_the_gateway(self) -> None:
         assert inject_trace_carrier(_golden_context()) == {TRACEPARENT_HEADER: GOLDEN_TRACEPARENT}
 
     def test_carrier_from_redis_fields_ignores_payload(self) -> None:

@@ -96,7 +96,7 @@ class TestGenerateFailsClosedWithoutCredential:
             ):
                 pass
 
-    def test_provider_credentials_error_is_smr_error(self):
+    def test_provider_credentials_error_is_text_error(self):
         exc = ProviderCredentialsError("nope", provider="openai")
         assert isinstance(exc, TextError)
         assert exc.error_code == "PROVIDER_CREDENTIALS_MISSING"
