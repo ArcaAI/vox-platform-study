@@ -187,23 +187,46 @@ describe('AppSettingsService', () => {
     vi.restoreAllMocks();
   });
 
-  const createService = async (settings: any[] = []) => {
-    mockGlobalSettingRepository.findAll.mockResolvedValue(settings);
-
-    service = new AppSettingsService(
+  const construct = () =>
+    new AppSettingsService(
       mockGlobalSettingRepository as any,
       mockEventEmitter as any,
       mockClsService as any,
       mockSchedulerRegistry as any,
     );
 
-    // Wait for initial cache to be loaded
-    await new Promise((resolve) => setTimeout(resolve, 10));
+  /**
+   * Construct the service and load its cache through the ONE load path.
+   *
+   * The constructor deliberately performs no I/O (see the service's
+   * `ensureCacheInitialized` doc comment), so the load has to be requested
+   * explicitly — this used to be `await sleep(10)` waiting on a floating
+   * promise the constructor fired.
+   */
+  const createService = async (settings: any[] = []) => {
+    mockGlobalSettingRepository.findAll.mockResolvedValue(settings);
+
+    service = construct();
+    await service.cacheAppSettings();
     return service;
   };
 
-  describe('constructor', () => {
-    it('should create service and load settings into cache', async () => {
+  describe('construction', () => {
+    it('performs NO database I/O — the load belongs to onModuleInit, not the constructor', () => {
+      construct();
+
+      expect(mockGlobalSettingRepository.findAll).not.toHaveBeenCalled();
+    });
+
+    it('reports an unloaded cache rather than throwing, before anything loads it', () => {
+      const fresh = construct();
+
+      expect(fresh.getCacheStats().isInitialized).toBe(false);
+      expect(fresh.hasSetting('key1')).toBe(false);
+      expect(fresh.getAllKeys()).toEqual([]);
+    });
+
+    it('makes settings accessible from the cache once loaded', async () => {
       const settings = [createMockSetting('key1', 'value1'), createMockSetting('key2', 'value2')];
 
       service = await createService(settings);
@@ -214,22 +237,17 @@ describe('AppSettingsService', () => {
       expect(service.getAllKeys()).toHaveLength(2);
     });
 
-    it('should handle cache initialization failure gracefully without crashing', async () => {
+    it('propagates a load failure to its caller and counts it', async () => {
       mockGlobalSettingRepository.findAll.mockRejectedValue(new Error('DB Error'));
 
-      service = new AppSettingsService(
-        mockGlobalSettingRepository as any,
-        mockEventEmitter as any,
-        mockClsService as any,
-        mockSchedulerRegistry as any,
-      );
+      service = construct();
 
-      // Wait for async initialization attempt
-      await new Promise((resolve) => setTimeout(resolve, 10));
+      // The failure is the CALLER's to handle — `onModuleInit` turns it into a
+      // refused boot (asserted below). It is never swallowed.
+      await expect(service.cacheAppSettings()).rejects.toThrow('DB Error');
 
-      // Verify BEHAVIOR: service is created but cache is empty/uninitialized
-      expect(service).toBeDefined();
       const stats = service.getCacheStats();
+      expect(stats.isInitialized).toBe(false);
       expect(stats.errorCount).toBeGreaterThan(0);
     });
   });

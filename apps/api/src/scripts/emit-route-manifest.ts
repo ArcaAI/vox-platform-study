@@ -52,7 +52,9 @@
  * Same runtime contract as `emit-openapi.ts`: run against the compiled
  * `nest build` output, no `.listen()`, no live DB/Redis/Vault, placeholder env
  * supplied by the `route-manifest` package script. See that file's header for
- * why `abortOnError: false` and the bounded `app.close()` are load-bearing.
+ * why `abortOnError: false` and the bounded `app.close()` are load-bearing,
+ * and `offline-infrastructure.ts` for why the BullMQ queues this bootstrap
+ * brings up need an explicit owner for their (expected) connection errors.
  *
  * Output is deterministic: routes are sorted by (path, method, controller,
  * handler), keys are emitted in a fixed order, and NOTHING time- or
@@ -85,6 +87,7 @@ import '../bootstrap/third-party-public-routes';
 import { REQUIRES_IF_MATCH_KEY } from '../decorators/requiresIfMatch.decorator';
 import { API_GLOBAL_PREFIX, API_GLOBAL_PREFIX_OPTIONS } from '../global-prefix.config';
 import { isControllerApiExcluded, isEndpointApiExcluded } from '../openapi/api-exclude-metadata';
+import { silenceBullQueueConnectionErrors } from './offline-infrastructure';
 
 const OUTPUT_PATH = resolve(__dirname, '..', '..', 'route-manifest.json');
 
@@ -293,6 +296,10 @@ async function main(): Promise<void> {
   // failure into a diagnosable rejection instead of a silent `process.exit(1)`.
   const app = await NestFactory.create(AppModule, { logger: false, abortOnError: false });
 
+  // FIRST statement after `create()` — the queues' connection errors land a
+  // few ticks later. See `offline-infrastructure.ts`.
+  const silencedQueues = silenceBullQueueConnectionErrors(app);
+
   try {
     const routes = collect(app);
     writeFileSync(OUTPUT_PATH, JSON.stringify({ globalPrefix: API_GLOBAL_PREFIX, routes }, null, 2) + '\n', 'utf8');
@@ -301,7 +308,8 @@ async function main(): Promise<void> {
     const reachable = admin.filter((r) => r.svcScopes.length > 0 && !r.forbidServiceAccount);
     // eslint-disable-next-line no-console -- CLI script, not application logging
     console.log(
-      `[emit-route-manifest] wrote ${routes.length} routes (${admin.length} admin, ${reachable.length} machine-reachable) to ${OUTPUT_PATH}`,
+      `[emit-route-manifest] wrote ${routes.length} routes (${admin.length} admin, ${reachable.length} machine-reachable) to ${OUTPUT_PATH} ` +
+        `(${silencedQueues} offline queues quiesced)`,
     );
   } finally {
     await Promise.race([app.close(), new Promise((r) => setTimeout(r, 5000))]);

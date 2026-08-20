@@ -553,6 +553,74 @@ $ pnpm env:sync --check   ->  OK — 6 artifacts match (163 keys)
 The per-file scan was extracted as `scanSourceForTests` so that distinction is asserted on a
 string rather than by planting a probe file in the repo.
 
+### 4. The offline emit scripts printed a wall of errors on a clean, successful run
+
+`pnpm api:openapi` and `pnpm api:route-manifest` both exited **0**, wrote correct artifacts, and
+then printed a `prisma:error` block plus ~200 raw `ECONNREFUSED` stack dumps. A build command whose
+success is indistinguishable from its failure is not a usable gate — an operator cannot tell that
+run apart from a broken one, and in CI the log reads as a failure. Two independent causes, both
+real defects rather than script noise:
+
+**(a) `AppSettingsService` did database I/O from its constructor.** *"Initialize cache immediately
+but don't wait for it"* fired an unawaited `findAll({})` at DI time. A constructor cannot await, so
+that promise raced the awaited load in `onModuleInit` — on a healthy boot it simply duplicated the
+query, and in any process that builds the DI graph WITHOUT running lifecycle hooks (exactly what
+these two scripts do: `NestFactory.create()`, never `init()`/`listen()`) it dialled a database that
+by design is not there, then lost the race to `process.exit()` and surfaced as an unattributable
+`prisma:error`.
+
+Fixed by deleting the constructor call and the `initializeCache()` wrapper it used;
+`ensureCacheInitialized()` in `onModuleInit` is now the ONE load path. **No boot outcome changes** —
+the constructor path swallowed its error, so the P0-5 duplicate-key invariant and a DB-down boot
+were already being decided by `onModuleInit`, which re-throws. `_cachedAppSettings` also stops being
+definitely-unassigned (it is `new Map()` at the field): with no constructor load, `hasSetting()` /
+`getAllKeys()` in the pre-`onModuleInit` window would otherwise throw a `TypeError` rather than
+report an empty cache. `_cacheInitialized`, not the map's existence, remains the "loaded yet?" flag.
+
+`appSettings.service.test.ts` was reworked accordingly — its `createService` helper waited on that
+floating promise with `await sleep(10)`, so 14 tests were transitively asserting the constructor
+side effect. It now loads through the real path, plus two new tests pinning the new invariant
+(the constructor issues no query; an unloaded cache reports empty instead of throwing).
+
+**(b) BullMQ queues had no `'error'` listener, so BullMQ fell back to `console.error`.** The
+bootstrap brings up 40 `Queue`s, each of which dials Redis eagerly from its constructor — against
+the deliberately unreachable `REDIS_HOST=127.0.0.1 REDIS_PORT=1` these scripts must pass in
+(`BullModule.forRootAsync`'s factory throws synchronously if the pair is absent, so "no Redis" is
+not an option). `QueueBase#emit` re-throws what `EventEmitter#emit` throws, Node throws on an
+`'error'` event with no listener, and BullMQ's last resort is `console.error(err)` — a path that
+also bypasses `@arcaai/logger` entirely.
+
+Fixed with `apps/api/src/scripts/offline-infrastructure.ts`: the scripts attach a no-op `'error'`
+listener to every queue in the container as the FIRST statement after `create()`. That is not a
+mute — the connection error is *expected* under the script's own "no infrastructure" premise, so
+this process is the one that should own it, and nothing is hidden that could matter (the emit reads
+compiled metadata and never touches a queue). Timing is load-bearing and measured: `create()`
+resolves at ~1.2s, the first `ECONNREFUSED` lands at ~1.34s, so that call site catches all of them.
+`ModulesContainer` is the walk root rather than `DiscoveryService` because it is an
+internal-core, always-global provider, and `emit-route-manifest.ts` already walks it.
+
+The module is separate from the two scripts (which self-execute on import and so cannot be
+imported by a test) for the same reason `openapi/api-exclude-metadata.ts` is — it is unit-tested,
+including a test that reproduces the `console.error` fallback and then proves it stops.
+
+Both emits are now silent, and both artifacts re-emit **byte-identical** — the fix changed nothing
+about what is produced:
+
+```
+$ pnpm api:openapi
+[emit-openapi] wrote 455 paths to …/openapi.json (40 offline queues quiesced)
+    stderr: 0 lines            git status: clean
+
+$ pnpm api:route-manifest
+[emit-route-manifest] wrote 657 routes (409 admin, 391 machine-reachable) to …/route-manifest.json (40 offline queues quiesced)
+    stderr: 0 lines            git status: clean
+```
+
+The header comment in `emit-openapi.ts` claiming this was *"harmless"* and *"cannot be avoided
+without editing application code, which is out of scope here"* was wrong on the second half and
+misleading on the first, and has been corrected: (a) was application code that needed fixing, and
+the emit now reaches **no** network service at all.
+
 ### 3. Seed policy count
 
 `api-documentation-read` took `DEFAULT_POLICIES` from 21 to 22. Count updated, plus a shape
@@ -576,6 +644,22 @@ $ pnpm --filter @arcaai/admin-console lint         clean (--max-warnings 0)
 $ pnpm --filter @arcaai/admin-console typecheck    clean
 ```
 
+Re-verified after follow-on fix 4 (offline emit noise):
+
+```
+$ pnpm api:openapi                  exit 0, 0 stderr lines, artifact byte-identical
+$ pnpm api:route-manifest           exit 0, 0 stderr lines, artifact byte-identical
+$ pnpm api:openapi:check            OK — ratchet 1/412/290, hygiene clean
+$ pnpm api:portal:check             no drift (admin 587, business 178)
+$ pnpm --filter @arcaai/vox-node gen:admin:check    no drift (52 areas, 391 routes, 354 schemas)
+$ pnpm --filter @arcaai/applications test           528 files, 9698 passed, 0 failed
+$ pnpm --filter @arcaai/applications build          clean
+$ pnpm --filter @arcaai/applications typecheck      clean
+$ pnpm --filter @arcaai/api test                    254 files, 3974 passed, 0 failed
+$ pnpm --filter @arcaai/api typecheck               clean
+$ pnpm --filter @arcaai/api lint                    0 errors (63 pre-existing warnings, none in touched files)
+```
+
 The full sweep newly covers 70 routes that had dropped out — 34 `/internal/*`, 35 TASK-760
 redirect shims, and the text proxy — with **zero** authorization findings among them.
 
@@ -593,24 +677,28 @@ redirect shims, and the text proxy — with **zero** authorization findings amon
 
 | Issue | Evidence |
 |---|---|
-| 3 failing console tests in `dev-service-down-hint` | The file is modified-uncommitted in the working tree from before this session; the edit removed the `pnpm dev:doctor` text those tests assert on |
-| 1 lint error in `apps/api/tests/e2e/password-security-hardening.spec.ts:386` | Prettier formatting; file untouched by this ticket, last changed by HEAD |
-| 2 typecheck errors in `consultation.controller.test.ts` and `entitlements-admin.controller.test.ts` | `Expected 3 arguments, but got 2`; both files untouched by this ticket |
-| `throttle-guard.test.ts` flake | Failed once under full-suite parallelism, passed alone and on re-run |
+| ~~3 failing console tests in `dev-service-down-hint`~~ | **RESOLVED elsewhere.** Those tests failed against an uncommitted working-tree edit; commits `06f098b5`/`60a6224` landed it properly. Re-verified 2026-08-20: `pnpm --filter @arcaai/admin-console test` → 212 files, **1685 passed, 0 failed** |
+| ~~1 lint error in `apps/api/tests/e2e/password-security-hardening.spec.ts:386`~~ | **RESOLVED elsewhere.** `pnpm --filter @arcaai/api lint` (which globs `{src,tests}/**/*.ts`) → **0 errors** |
+| ~~2 typecheck errors in `consultation.controller.test.ts` and `entitlements-admin.controller.test.ts`~~ | **RESOLVED elsewhere.** `pnpm --filter @arcaai/api typecheck` → clean |
+| `throttle-guard.test.ts` flake | Failed once under full-suite parallelism, passed alone and on re-run. Not reproduced since |
 | `notFound()` returns HTTP **200** with a 404 body | App-wide in dev: `/dashboard`, `/tenants`, `/audit-logs` all behave identically. The content gate works; the status code does not match it |
 | `GET /api/v1/consultations` requires the scope `consultation:session:write` | A read requiring a write scope. Surfaced by rendering scopes in the reference; worth a look, out of scope here |
 
 ## Verification Criteria
 
-- [ ] `pnpm api:openapi` → `openapi-coverage-check` green (0 manifest routes missing from the spec)
-- [ ] `pnpm gen:api-portal:check` green and byte-idempotent
-- [ ] `pnpm api:lint:spec` — zero error-severity findings; description coverage recorded and ratcheting
-- [ ] `pnpm --filter @arcaai/admin-console build lint test` green
-- [ ] `pnpm --filter @arcaai/api test` green (swagger-config + tag-taxonomy tests)
-- [ ] axe scan 0 violations on all four new screens, both themes
-- [ ] E2E: user WITH the ability sees the portal; user WITHOUT it gets no nav entry and a 403 from the spec route; a tenant admin cannot fetch the admin projection
-- [ ] No spec bytes reachable without a session (verified by an unauthenticated request to every new route)
-- [ ] Version stamp on the portal matches `build-info.json` in the running image
+Three criteria named scripts the plan expected to create. Phase 3 deviated (no Redocly — see its
+Implementation Summary), so the real script names are recorded here; the stale names never existed.
+
+- [x] `pnpm api:openapi` → `pnpm api:openapi:check` green — 0 manifest routes missing from the spec (657 routes = 587 documented + 70 deliberately excluded)
+- [x] `pnpm api:portal:check` (planned as `gen:api-portal:check`) green and byte-idempotent — no drift, admin 587 ops / business 178 ops
+- [x] Spec quality gate green — delivered as the ratchet + example hygiene inside `api:openapi:check` (planned as `pnpm api:lint:spec`, a Redocly run that was measured to be worth ~nothing here): 1/412/290 at or under their maxima, hygiene clean
+- [x] `pnpm --filter @arcaai/admin-console build lint test` green — 212 files, 1685 passed, 0 failed; lint clean at `--max-warnings 0`; build emits all four routes
+- [x] `pnpm --filter @arcaai/api test` green (swagger-config + tag-taxonomy tests) — 254 files, 3974 passed, 0 failed
+- [x] Both emit commands are clean, not merely exit-0 — `pnpm api:openapi` / `pnpm api:route-manifest` produce **zero** stderr output and byte-identical artifacts (follow-on fix 4)
+- [~] axe scan 0 violations, both themes — run on the **overview** and **SDK** screens. The reference screen is a third-party Scalar embed and the spec route returns JSON, so neither is an authored screen to scan; the two authored screens are covered. Dark mode verified on all of them
+- [x] E2E: user WITH the ability sees the portal; user WITHOUT it gets a 403 from the spec route and no nav entry; `/api/docs/spec/bogus` → 404 (Runtime verification table above)
+- [x] No spec bytes reachable without a session — unauthenticated → 401 on every new route (`proxy.ts` first, and the handler's own gate unit-tested directly as defence in depth)
+- [~] Version stamp on the portal matches `build-info.json` in the running image — the portal renders the gateway's `GET /health` payload, which is the correct source (`info.version` is deliberately a constant). Verified against the LOCAL dev gateway, which reports the untagged `0.0.0-<branch>.<sha8>` form; matching against a real `build-info.json` needs a CI-built image and is not verifiable from a workstation
 
 ---
 
@@ -636,3 +724,4 @@ redirect shims, and the text proxy — with **zero** authorization findings amon
 | 2026-08-20 | Phases 1, 2 and 4 implemented and verified. Current State defect #3 CORRECTED — the "71 undocumented routes" were 70 deliberate exclusions hidden by a broken `apiExcluded` reader, plus one genuinely stale spec. Best-practice item #4 corrected: `info.version` stays a constant so the committed artifact remains reproducible; build identity comes from the running gateway instead. Generator homed in `scripts/` rather than `packages/tools`. Three Scalar cloud-egress affordances disabled after observing them at runtime. Phases 3 and 5 not started — see Remaining Work. |
 | 2026-08-20 | Phases 3 and 5 completed. Phase 3 deviated from the plan: measured what a spec linter would catch here (near zero — both e-mails use RFC 2606 `example.com`, both tenant ids are documented platform constants), so the quality **ratchet** and HOPE-specific **example hygiene** went into `check-openapi-coverage.ts` instead of adopting Redocly. Ratchet made injectable so its regression branch is genuinely tested. Phase 5 added `docs/operations/api-documentation.md`, a §Documentation Surface + 3 DoD items in rule 05, and a pointer from `apps/api/docs/05-api-reference.md`. Seed policy-count test corrected 21 -> 22 with a shape assertion for `api-documentation-read`. |
 | 2026-08-20 | Fixed the three suite failures TASK-783 surfaced: the e2e authz sweep silently dropping 70 routes (`apiExcluded` is documentation visibility, not authorization reach), `turbo.json#globalEnv` polluted by portal doc snippets, and the seed policy count. Narrowed the env-sync exclusion from whole-file to template-literal-only after disproving the agent's claim that `turbo/no-undeclared-env-vars` would catch a genuine read — that rule is not active on `apps/admin-console`. Full unit (19941) and e2e (1162) suites green. |
+| 2026-08-20 | Follow-on fix 4: `pnpm api:openapi` / `pnpm api:route-manifest` printed a `prisma:error` block and ~200 raw `ECONNREFUSED` dumps on a successful exit-0 run. Two real causes, both fixed at the source — `AppSettingsService` did unawaited DB I/O from its CONSTRUCTOR (moved to the `onModuleInit` load path it already had; no boot outcome changes), and 40 BullMQ queues had no `'error'` listener so BullMQ fell back to raw `console.error` (new unit-tested `scripts/offline-infrastructure.ts` gives them an owner right after `create()`). `emit-openapi.ts`'s header claim that this was harmless and unavoidable was corrected. Both emits are silent and both artifacts re-emit byte-identical. |
