@@ -26,9 +26,19 @@ export class RoleService extends BaseService implements IRoleService {
   }
 
   async create(request: CreateRoleRequest): Promise<RoleEntity> {
+    // TASK-766 OD-1: `Role` is tenant-scoped now, so `CreateRoleProps.tenantId`
+    // is required and has no default. Pin it to the caller's CLS tenant — a
+    // role created through this path is a TENANT-owned custom role, never a
+    // platform one (built-ins are seeded under the SYSTEM tenant).
+    const tenantId = request.tenantId ?? this.tenantId;
+    if (!tenantId) {
+      throw new ArgumentInvalidException('Tenant context is required to create a role.');
+    }
+
     const newRole = RoleFactory.CreateRole({
       createdBy: this.requestUser?.id,
       ...request,
+      tenantId,
     });
 
     const role = await this.roleRepository.create(newRole);

@@ -46,6 +46,7 @@ function makeRoleRow(overrides: Partial<Record<string, unknown>> = {}) {
     externalName: null,
     externalId: null,
     isSystemRole: false,
+    tenantId: TENANT_ID,
     parentRoleId: null,
     resourceStatus: ResourceStatusType.ENABLED,
     createdAt: new Date('2026-01-01T00:00:00Z'),
@@ -76,7 +77,11 @@ function makeMocks(user: typeof ADMIN_USER = ADMIN_USER) {
     // AssignPolicy/removePolicy now pre-check isSystemRole via this
     // select; default to a non-system role so the pre-existing tests (which
     // don't care about the SYSTEM-role gate) don't need to stub it.
-    findByIdGuardSelect: vi.fn().mockResolvedValue({ isSystemRole: false, name: 'doctor' }),
+    // TASK-766 OD-1: the projection now carries `tenantId` too. Default it to
+    // the CLS tenant so the shared fixture is an OWN-TENANT role — the normal
+    // case these specs exercise. The ownership boundary itself lives in
+    // `role.service.task766.test.ts`.
+    findByIdGuardSelect: vi.fn().mockResolvedValue({ isSystemRole: false, name: 'doctor', tenantId: TENANT_ID }),
     findParentRoleById: vi.fn(),
     findParentRoleIdById: vi.fn(),
     create: vi.fn(),
@@ -195,6 +200,8 @@ describe('RbacRoleService', () => {
       const result = await service.create({ name: 'manager' });
 
       expect(mocks.roleRepo.create).toHaveBeenCalledWith({
+        // TASK-766 OD-1: the create input now states the owning tenant.
+        tenantId: TENANT_ID,
         name: 'manager',
         description: undefined,
         externalName: undefined,
@@ -240,7 +247,7 @@ describe('RbacRoleService', () => {
   describe('update', () => {
     it('a super admin may update a system role', async () => {
       const mocks = makeMocks(ADMIN_USER);
-      mocks.roleRepo.findByIdGuardSelect.mockResolvedValue({ isSystemRole: true, name: 'SUPER_ADMIN' });
+      mocks.roleRepo.findByIdGuardSelect.mockResolvedValue({ isSystemRole: true, name: 'SUPER_ADMIN', tenantId: TENANT_ID });
       const updated = makeRoleRow({ isSystemRole: true, name: 'SUPER_ADMIN', description: 'x' });
       mocks.roleRepo.update.mockResolvedValue(updated);
       const service = buildService(mocks);
@@ -253,7 +260,7 @@ describe('RbacRoleService', () => {
 
     it('a tenant admin is refused when modifying a system role', async () => {
       const mocks = makeMocks(TENANT_ADMIN_USER);
-      mocks.roleRepo.findByIdGuardSelect.mockResolvedValue({ isSystemRole: true, name: 'SUPER_ADMIN' });
+      mocks.roleRepo.findByIdGuardSelect.mockResolvedValue({ isSystemRole: true, name: 'SUPER_ADMIN', tenantId: TENANT_ID });
       const service = buildService(mocks);
 
       await expect(service.update('role-sys', { name: 'x' })).rejects.toThrow(/Cannot modify system role 'SUPER_ADMIN'/);
@@ -262,7 +269,7 @@ describe('RbacRoleService', () => {
 
     it('detects circular parentRoleId before issuing the write', async () => {
       const mocks = makeMocks();
-      mocks.roleRepo.findByIdGuardSelect.mockResolvedValue({ isSystemRole: false, name: 'doctor' });
+      mocks.roleRepo.findByIdGuardSelect.mockResolvedValue({ isSystemRole: false, name: 'doctor', tenantId: TENANT_ID });
       // parent lookup returns a parent whose parent is the target → cycle
       mocks.roleRepo.findParentRoleById.mockResolvedValue({ id: 'parent-1', parentRoleId: 'role-1' });
       const service = buildService(mocks);
@@ -274,17 +281,23 @@ describe('RbacRoleService', () => {
     it('invalidates cache and emits Updated event with previousData', async () => {
       const mocks = makeMocks();
       const updated = makeRoleRow({ name: 'doctor-v2' });
-      const existing = { isSystemRole: false, name: 'doctor' };
+      const existing = { isSystemRole: false, name: 'doctor', tenantId: TENANT_ID };
       mocks.roleRepo.findByIdGuardSelect.mockResolvedValue(existing);
       mocks.roleRepo.update.mockResolvedValue(updated);
       const service = buildService(mocks);
 
       await service.update('role-1', { name: 'doctor-v2' });
 
-      expect(mocks.roleRepo.update).toHaveBeenCalledWith('role-1', {
-        name: 'doctor-v2',
-        updatedBy: ADMIN_USER.id,
-      });
+      // TASK-766 OD-1: third arg is the cross-tenant-lane flag. The fixture
+      // role is owned by the CLS tenant, so no lane is needed.
+      expect(mocks.roleRepo.update).toHaveBeenCalledWith(
+        'role-1',
+        {
+          name: 'doctor-v2',
+          updatedBy: ADMIN_USER.id,
+        },
+        false,
+      );
 
       expect(mocks.engine.invalidateRole).toHaveBeenCalledWith('role-1');
       expect(mocks.eventEmitter.emit).toHaveBeenCalledWith(
@@ -303,7 +316,7 @@ describe('RbacRoleService', () => {
     it('stamps resource-status fields when resourceStatus is provided', async () => {
       const mocks = makeMocks();
       const updated = makeRoleRow({ resourceStatus: 'DISABLED' });
-      mocks.roleRepo.findByIdGuardSelect.mockResolvedValue({ isSystemRole: false, name: 'doctor' });
+      mocks.roleRepo.findByIdGuardSelect.mockResolvedValue({ isSystemRole: false, name: 'doctor', tenantId: TENANT_ID });
       mocks.roleRepo.update.mockResolvedValue(updated);
       const service = buildService(mocks);
 
@@ -319,14 +332,14 @@ describe('RbacRoleService', () => {
 
     it('a super admin may patch a system role; a tenant admin is refused', async () => {
       const adminMocks = makeMocks(ADMIN_USER);
-      adminMocks.roleRepo.findByIdGuardSelect.mockResolvedValue({ isSystemRole: true, name: 'SUPER_ADMIN' });
+      adminMocks.roleRepo.findByIdGuardSelect.mockResolvedValue({ isSystemRole: true, name: 'SUPER_ADMIN', tenantId: TENANT_ID });
       adminMocks.roleRepo.update.mockResolvedValue(makeRoleRow({ isSystemRole: true, resourceStatus: 'DISABLED' }));
       const adminService = buildService(adminMocks);
       await expect(adminService.patch('role-sys', { resourceStatus: 'DISABLED' })).resolves.toBeDefined();
       expect(adminMocks.roleRepo.update).toHaveBeenCalled();
 
       const tenantMocks = makeMocks(TENANT_ADMIN_USER);
-      tenantMocks.roleRepo.findByIdGuardSelect.mockResolvedValue({ isSystemRole: true, name: 'SUPER_ADMIN' });
+      tenantMocks.roleRepo.findByIdGuardSelect.mockResolvedValue({ isSystemRole: true, name: 'SUPER_ADMIN', tenantId: TENANT_ID });
       const tenantService = buildService(tenantMocks);
       await expect(tenantService.patch('role-sys', { resourceStatus: 'DISABLED' })).rejects.toThrow(/Cannot modify system role 'SUPER_ADMIN'/);
       expect(tenantMocks.roleRepo.update).not.toHaveBeenCalled();
@@ -336,7 +349,7 @@ describe('RbacRoleService', () => {
   describe('softDelete', () => {
     it('refuses to delete a system role', async () => {
       const mocks = makeMocks();
-      mocks.roleRepo.findByIdGuardSelect.mockResolvedValue({ isSystemRole: true, name: 'SUPER_ADMIN' });
+      mocks.roleRepo.findByIdGuardSelect.mockResolvedValue({ isSystemRole: true, name: 'SUPER_ADMIN', tenantId: TENANT_ID });
       const service = buildService(mocks);
 
       await expect(service.softDelete('role-sys')).rejects.toThrow(/Cannot delete system role/);
@@ -345,12 +358,14 @@ describe('RbacRoleService', () => {
 
     it('flips resourceStatus to DELETED, invalidates cache, and emits Deleted event', async () => {
       const mocks = makeMocks();
-      mocks.roleRepo.findByIdGuardSelect.mockResolvedValue({ isSystemRole: false, name: 'doctor' });
+      mocks.roleRepo.findByIdGuardSelect.mockResolvedValue({ isSystemRole: false, name: 'doctor', tenantId: TENANT_ID });
       const service = buildService(mocks);
 
       const result = await service.softDelete('role-1', BREAK_GLASS('doctor'));
 
-      expect(mocks.roleRepo.softDelete).toHaveBeenCalledWith('role-1', ADMIN_USER.id);
+      // TASK-766 OD-1: third arg is the cross-tenant-lane flag (false here —
+      // the fixture role belongs to the caller's own tenant).
+      expect(mocks.roleRepo.softDelete).toHaveBeenCalledWith('role-1', ADMIN_USER.id, false);
 
       expect(mocks.engine.invalidateRole).toHaveBeenCalledWith('role-1');
       expect(mocks.eventEmitter.emit).toHaveBeenCalledWith(
@@ -428,7 +443,7 @@ describe('RbacRoleService', () => {
 
     it('a super admin may assign a policy to a system role', async () => {
       const mocks = makeMocks(ADMIN_USER);
-      mocks.roleRepo.findByIdGuardSelect.mockResolvedValue({ isSystemRole: true, name: 'SUPER_ADMIN' });
+      mocks.roleRepo.findByIdGuardSelect.mockResolvedValue({ isSystemRole: true, name: 'SUPER_ADMIN', tenantId: TENANT_ID });
       mocks.rolePolicyRepo.findFirstByRoleAndPolicy.mockResolvedValue(null);
       const service = buildService(mocks);
 
@@ -439,7 +454,7 @@ describe('RbacRoleService', () => {
 
     it('a tenant admin is refused when assigning a policy to a system role', async () => {
       const mocks = makeMocks(TENANT_ADMIN_USER);
-      mocks.roleRepo.findByIdGuardSelect.mockResolvedValue({ isSystemRole: true, name: 'SUPER_ADMIN' });
+      mocks.roleRepo.findByIdGuardSelect.mockResolvedValue({ isSystemRole: true, name: 'SUPER_ADMIN', tenantId: TENANT_ID });
       const service = buildService(mocks);
 
       await expect(service.assignPolicy('role-sys', 'policy-1', {})).rejects.toThrow(/super admin/i);
@@ -470,7 +485,7 @@ describe('RbacRoleService', () => {
 
     it('a super admin may remove a policy from a system role', async () => {
       const mocks = makeMocks(ADMIN_USER);
-      mocks.roleRepo.findByIdGuardSelect.mockResolvedValue({ isSystemRole: true, name: 'SUPER_ADMIN' });
+      mocks.roleRepo.findByIdGuardSelect.mockResolvedValue({ isSystemRole: true, name: 'SUPER_ADMIN', tenantId: TENANT_ID });
       const service = buildService(mocks);
 
       await service.removePolicy('role-sys', 'policy-1', BREAK_GLASS('team-policy'));
@@ -480,7 +495,7 @@ describe('RbacRoleService', () => {
 
     it('a tenant admin is refused when removing a policy from a system role', async () => {
       const mocks = makeMocks(TENANT_ADMIN_USER);
-      mocks.roleRepo.findByIdGuardSelect.mockResolvedValue({ isSystemRole: true, name: 'SUPER_ADMIN' });
+      mocks.roleRepo.findByIdGuardSelect.mockResolvedValue({ isSystemRole: true, name: 'SUPER_ADMIN', tenantId: TENANT_ID });
       const service = buildService(mocks);
 
       await expect(service.removePolicy('role-sys', 'policy-1', BREAK_GLASS('team-policy'))).rejects.toThrow(/super admin/i);

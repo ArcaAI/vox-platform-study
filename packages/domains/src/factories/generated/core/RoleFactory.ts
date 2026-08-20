@@ -8,6 +8,13 @@ import * as Enums from '../../../enums';
 import * as Entities from '../../../entities';
 
 export interface CreateRoleProps extends BaseEntityFactoryCreateProps {
+  /**
+   * TASK-766 OD-1 — REQUIRED, with no default. `Role` is tenant-scoped now, so
+   * every caller must state which tenant owns the row: `SYSTEM_TENANT_ID` for a
+   * platform/built-in role, the caller's own tenant for a custom one. Defaulting
+   * it here would silently mint SYSTEM roles from tenant code paths.
+   */
+  tenantId: IRoleEntity['tenantId'];
   name: IRoleEntity['name'];
   description?: IRoleEntity['description'];
   externalName?: IRoleEntity['externalName'];
@@ -29,6 +36,7 @@ export class RoleFactory {
 
     return new RoleEntity({
       id,
+      tenantId: props.tenantId,
 
       createdAt: props.createdAt || now,
       updatedAt: props.updatedAt || now,

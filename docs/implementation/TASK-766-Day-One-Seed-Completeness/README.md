@@ -272,21 +272,80 @@ test fails until both sides agree.
 TASK-763 §5 recorded eight (OD-1 … OD-8); all remain open and are **not** repeated here. These are
 new, ordered by day-1 impact.
 
-### OD-1 — A tenant admin cannot mutate its own tenant's custom roles
+### OD-1 — A tenant admin cannot mutate its own tenant's custom roles — **RESOLVED (owner ruling, 2026-08-20)**
 
-`RolesController` is class-gated `@CanManage('Role')`. A tenant admin holds `read`/`list:Role`
+`RolesController` was class-gated `@CanManage('Role')`. A tenant admin holds `read`/`list:Role`
 (so `GET /admin/rbac/roles` works), `create:Role` (so `POST :id/clone` works — the handler-level
 override exists precisely for this) and `manage:RolePolicy` (so policy attach/detach works). It
-does **not** hold `manage:Role`, so `PUT`/`PATCH`/`DELETE :id` are refused — including on a custom
+did **not** hold `manage:Role`, so `PUT`/`PATCH`/`DELETE :id` were refused — including on a custom
 role it created a moment earlier by cloning.
 
-**This cannot be fixed from the seed.** `Role` and `Policy` are GLOBAL tables with no `tenantId`
-column, and CASL `conditions` are in shadow mode, so `{ isSystemRole: false }` would not constrain
-the grant at request time — a tenant admin holding `manage:Role` could delete the SYSTEM roles.
-The real fixes are, in increasing cost: (a) handler-level `@CanUpdate('Role')`/`@CanDelete('Role')`
-overrides plus a tenant-ownership check in `RbacRoleService` (owned by `apps/api` +
-`packages/applications`, not this ticket); (b) enabling CASL condition evaluation; (c) giving
-`Role` a `tenantId`. Needs a ruling.
+This could not be fixed from the seed: `Role` was a GLOBAL table with no `tenantId`, and CASL
+`conditions` are in shadow mode, so `{ isSystemRole: false }` would not have constrained the grant
+at request time — a tenant admin holding `manage:Role` could have deleted the SYSTEM roles every
+other tenant depends on.
+
+**Owner decision (2026-08-20): option (c) — give `Role` a `tenantId` column.** The two cheaper
+options were REJECTED: a handler guard has to be re-remembered by every future route, and CASL
+conditions are shadow-mode (they report, they do not enforce). A real column puts the boundary in
+the tenant-scope Prisma extension, where it holds for every current and future call site.
+
+#### What shipped
+
+| Layer | Change |
+|---|---|
+| Schema | `Role.tenantId String` — NOT NULL, no default, no FK, `@@index([tenantId], name: "Role_tenantId_idx")` (`rbac.prisma`) |
+| Migration | `20260820045008_task_766_add_role_tenant_id` — add NULLABLE, backfill to SYSTEM, `SET NOT NULL`, index. Authored against a throwaway shadow DB; `prisma migrate diff` then printed `-- This is an empty migration.` |
+| Allow-lists | `Role` in **both** `TENANT_SCOPED_MODELS` and `SYSTEM_SHARED_READ_MODELS` (already committed with this ticket's tenant-scope tests) |
+| Domain | `RoleEntity` now extends `BaseTenantEntity` (was `Omit<IBaseEntity,'tenantId'>`) and chains `super.validate()`; `RoleFactory.CreateRole` takes a REQUIRED `tenantId`; `RoleModel` regenerated onto `BaseTenantDataModel`; `RbacRoleFactory` / `RbacRoleRepository` / `RbacRoleEntityMapper` carry `tenantId` |
+| Service | `RbacRoleService.assertMutable` (own tenant allowed, SYSTEM 403, foreign already 404), `resolveOwningTenantId`, and a `crossTenantLane` so a super admin with a working tenant can still edit a SYSTEM role |
+| API | `PUT`/`PATCH` accept `update` OR `manage` on `Role`; `DELETE` accepts `delete` OR `manage`; `RoleResponse` exposes `tenantId`; the CASL subject resolver now returns a real `tenantId` and is pinned with `{ subject: 'Role' }` |
+| Seeds | Every built-in role is stamped `SYSTEM_TENANT_ID`; the by-name lookups in `03-role.ts`, `92-bootstrap-admin.ts` and `93-bootstrap-tenant-admin.ts` pin the tenant |
+
+#### Three questions this raised, and how they were answered
+
+**Does `Policy` need the same? No.** A tenant admin never AUTHORS a policy — it attaches and
+detaches platform-authored ones, which `manage:RolePolicy` already permits. Giving `Policy` a
+tenant would mean a per-tenant CASL rule-authoring plane nobody asked for (a tenant writing its own
+`rules` JSON is the most privilege-sensitive write in the schema) and would break the by-NAME
+global lookups the platform depends on — `seed/03-role.ts`'s `policyMap`, and
+`PROTECTED_SYSTEM_POLICY_NAMES` / `Policy.isProtected`, the anti-lockout guard that keeps super
+admins in. `RolePolicy` stays global for the same reason. Both are pinned OUT of
+`TENANT_SCOPED_MODELS` by `extensions/__tests__/tenant-scope.test.ts`.
+
+**`SYSTEM_SHARED_READ_MODELS`: `Role` is IN it, and stays in.** Becoming tenant-scoped without it
+would have been a catastrophe, not a tightening — every tenant would instantly stop seeing
+`TENANT_ADMIN`, `DOCTOR`, `NURSE`, so the role list would empty, `:id/clone` would 404 on every
+built-in, and member counts would break. Membership means READS widen to `tenantId IN [caller,
+SYSTEM]` — never another customer — while WRITES stay pinned to the exact caller tenant. That
+asymmetry is what makes the whole design work: a tenant SEES the built-ins and its own roles, and
+can WRITE only its own.
+
+**Should custom roles be cloned into a new tenant at provisioning? No — nothing is cloned.** In
+this codebase the two mechanisms are mutually exclusive by design: a model is either cloned at
+tenant creation (`AiModel`, `AsrPipeline`, the `DepartmentAgent` golden library — all deliberately
+NOT SYSTEM-shared, precisely so a tenant does not see the SYSTEM originals in its own lists) or it
+is SYSTEM-shared and resolved directly. `Role` is the second kind. Cloning would also freeze a
+per-tenant snapshot of every built-in, so a policy change to `DOCTOR` would need a fan-out
+migration across every tenant, and `SUPER_ADMIN` is cross-tenant by nature and cannot be
+per-tenant at all. There is additionally nothing custom to clone: all seven seeded roles are
+platform roles. `DEPARTMENT_HEAD` and `SENIOR_NURSE` carry `isSystemRole: false`, but they are
+platform-provided TEMPLATES a tenant clones ON DEMAND via `:id/clone` — not tenant-owned rows.
+No provisioning code was added.
+
+#### Follow-up this deliberately did NOT do
+
+`@@unique([name])` is still GLOBAL rather than the `[tenantId, name]` composite the standard field
+template would suggest. Role names are globally unique TODAY, so keeping the constraint preserves
+the status quo instead of shipping a second semantic change alongside the tenancy one, and it stops
+a tenant's custom role from shadowing a built-in name that other code keys off by name (the
+bootstrap seeds, and `UserRoleAssignmentService.assertAssignableRoleTier`'s `SUPER_ADMIN` check).
+
+**The cost is real: one tenant taking the name `REVIEWER` refuses it to every other tenant** — a
+cross-tenant name-squatting refusal, and a weak existence oracle. Relaxing it to
+`@@unique([tenantId, name], map: "Role_tenantId_name_unique")` is the fix, and it needs a
+service-layer guard that refuses a tenant-created name colliding with a SYSTEM role name. Left for
+a follow-up ticket rather than smuggled in here.
 
 ### OD-2 — Every seeded tenant has `plan = NULL`, so all of them resolve "ungated-legacy" — **RESOLVED (owner ruling, 2026-08-20)**
 
@@ -501,13 +560,15 @@ changed no policy, so the numbers were expected to be unchanged and are.
   by that same tenant administrator, obtained with one `rotate` call and no scope decisions.
 - Re-seed safely: neither bootstrap account nor the service account is ever rewritten, so a
   rotated credential survives.
+- **Manage its own tenant's custom roles** — create one, clone a built-in, then edit and delete the
+  copy (OD-1, resolved 2026-08-20). SYSTEM roles stay readable and assignable but super-admin-only
+  to write, and another tenant's role id returns 404.
 
 **Cannot:**
 
 - Use the service account against any route until **TASK-767** lands — `@RequiredSvcScopes` is
   deny-by-default and no route declares it yet (§2.3). The scopes are provisioned ahead of the
   surfaces.
-- Mutate its own tenant's custom roles (OD-1).
 - Rely on any commercial plan being modelled — every tenant resolves ungated-legacy (OD-2).
 - Find the bootstrap variables documented anywhere tracked (OD-3).
 - Everything TASK-763 §7 already listed as "cannot" — provider `baseUrl` correctness in a cluster,
@@ -522,3 +583,4 @@ changed no policy, so the numbers were expected to be unchanged and are.
 |---|---|
 | 2026-08-19 | Ticket authored and implemented. Env-driven CREATE-ONLY bootstrap TENANT_ADMIN added (`93-bootstrap-tenant-admin.ts`); ArcaAI machine identity added with a scope set derived from the tenant admin's own authority (`94-service-account.ts`, 37 scopes, secret gated by environment); both wired into `index.ts`; service-account id block reserved in `00-constants.ts`; ArcaAI tenant description corrected in `05-tenant.ts`; 183 tests added across 3 new files, including an exact-set pin on tenant-admin authority. Mintability sweep re-run — unchanged. Four owner decisions recorded in §5. Status **Review**. |
 | 2026-08-20 | Two owner decisions resolved. **OD-2 (tenant plan) RESOLVED**: ArcaAI's seeded tenant row now carries `plan: TenantPlan.ENTERPRISE` (`05-tenant.ts`); every other seeded tenant (SYSTEM, Global) keeps `plan = NULL` unchanged. Proven at both layers: `tenant-plan-seed.test.ts` (new, `packages/database`) pins the seed literal; `entitlements.service.test.ts` (new case, `packages/applications`) proves `EntitlementsService.resolveForTenant` actually resolves a real, gated ENTERPRISE quota set (`maxUsers: 100`, `maxDepartments: 40`, `maxApiKeys: 50`) for that plan value rather than falling through to `UNGATED_ENTITLEMENTS`. **OD-3 (bootstrap credential docs) RESOLVED**: the variables are now documented in a tracked operator runbook, `docs/operations/day-one-deployment.md` §2 — which variables, where to set them (host env only, never a tracked file), the first-login flow, and the absent-variable behavior — linked from this README and from TASK-763's. OD-1 and OD-4 remain open, unchanged from the original audit. |
+| 2026-08-20 | **OD-1 (tenant-owned roles) RESOLVED** — owner ruled for the column, not the guard: `Role` gained a NOT NULL, no-default, indexed `tenantId`, so the boundary lives in the tenant-scope Prisma extension instead of a per-route check. Migration `20260820045008_task_766_add_role_tenant_id` authored against a throwaway shadow DB (add nullable, backfill every existing row to SYSTEM, `SET NOT NULL`, index); the backfill was proven by planting a pre-existing row before applying, and `prisma migrate diff --from-config-datasource` then printed `-- This is an empty migration.` End-to-end this time: `RoleEntity` moved to `BaseTenantEntity` (chaining `super.validate()`), `RoleFactory` takes a required `tenantId`, `RoleModel` regenerated onto `BaseTenantDataModel`, and `RbacRoleFactory` / `RbacRoleRepository` / `RbacRoleEntityMapper` all carry the column — the inconsistency that forced the earlier revert is closed, with `gen:model:check` / `gen:entity:check` / `gen:factory:check` reporting no drift and factory coverage OK. `RbacRoleService` gained `assertMutable` (own tenant allowed; SYSTEM **403**, a privilege boundary because the row is legitimately visible; another tenant already **404** from the widened read, so 404-over-403 holds by construction) applied to update/patch/softDelete AND to policy attach/detach (`RolePolicy` is a global join, so attaching to a SYSTEM role would change every tenant's grants), plus a `crossTenantLane` so a super admin with a working tenant selected can still edit a SYSTEM role instead of hitting P2025. `PUT`/`PATCH` now accept `update` OR `manage`, `DELETE` accepts `delete` OR `manage` (the decomposed abilities a tenant admin actually holds); `route-manifest.json` regenerated. Seeds stamp SYSTEM and pin the tenant on every by-name lookup. `Policy` / `RolePolicy` stay GLOBAL, and `Role` stays in `SYSTEM_SHARED_READ_MODELS` (reads widen to `[caller, SYSTEM]`, writes do not) — both decisions justified in §5 OD-1, along with the ruling that built-in roles are resolved cross-tenant and **never cloned at tenant provisioning**. 27 tests added (`role.service.task766.test.ts` x20, `role-tenant-seed.test.ts` x4, `RoleEntity.test.ts` tenant-guard x3); the ownership guard was verified RED by neutering `assertMutable`. One follow-up deliberately deferred and recorded: `@@unique([name])` is still global, so role names remain squattable across tenants. |

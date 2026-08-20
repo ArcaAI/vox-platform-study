@@ -12,6 +12,14 @@ import { ResourceStatusType } from '../../enums';
 
 /** Properties required to seed a new `Role` row. */
 export interface RbacRoleCreateProps {
+  /**
+   * TASK-766 OD-1 — REQUIRED, no default. `Role` is tenant-scoped: a role
+   * created by a tenant admin belongs to that tenant, and one created by a
+   * super admin with no working tenant belongs to SYSTEM. The service resolves
+   * which; the factory never guesses, because a wrong guess silently mints a
+   * platform-wide role from a tenant code path.
+   */
+  tenantId: string;
   name: string;
   description?: string;
   externalName?: string;
@@ -36,6 +44,7 @@ export interface RbacRoleUpdateProps {
 }
 
 export interface RbacRoleCreateInputShape {
+  tenantId: string;
   name: string;
   description?: string;
   externalName?: string;
@@ -61,6 +70,7 @@ export interface RbacRoleUpdateInputShape {
 export const RbacRoleFactory = {
   buildCreateInput(props: RbacRoleCreateProps): RbacRoleCreateInputShape {
     return {
+      tenantId: props.tenantId,
       name: props.name,
       description: props.description,
       externalName: props.externalName,

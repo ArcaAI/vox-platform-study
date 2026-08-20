@@ -1,5 +1,6 @@
 import bcryptjs from 'bcryptjs';
 import type { CorePrismaClient } from '../../../client';
+import { SYSTEM_TENANT_ID } from './00-constants';
 
 /**
  * TASK-766 — the day-1 bootstrap TENANT_ADMIN.
@@ -188,7 +189,11 @@ export const seedBootstrapTenantAdmin = async (client: CorePrismaClient) => {
     return { success: true, created: false as const };
   }
 
-  const tenantAdminRole = await client.role.findFirst({ where: { name: 'TENANT_ADMIN' } });
+  // TASK-766 OD-1: `Role` is tenant-scoped, and TENANT_ADMIN is a SYSTEM-tenant
+  // built-in that every tenant resolves via SYSTEM_SHARED_READ_MODELS — it is
+  // NOT cloned per tenant. Pin the tenant so this cannot match a customer
+  // tenant's own custom role of the same name.
+  const tenantAdminRole = await client.role.findFirst({ where: { name: 'TENANT_ADMIN', tenantId: SYSTEM_TENANT_ID } });
   if (!tenantAdminRole) {
     throw new Error('Cannot seed the bootstrap tenant admin: the TENANT_ADMIN role does not exist. Run seedRole (03-role) first.');
   }

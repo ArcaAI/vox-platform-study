@@ -101,6 +101,14 @@ export class RoleResponse {
   @ApiProperty({ description: 'Role ID' })
   id: string;
 
+  @ApiProperty({
+    description:
+      'Owning tenant. The reserved SYSTEM tenant (00000000-0000-0000-0000-000000000000) marks a platform built-in, ' +
+      'which every tenant can read and assign but only a super admin can edit; any other value is a tenant-owned ' +
+      'custom role, editable by that tenant. Lets the console decide whether to offer Edit or Clone.',
+  })
+  tenantId: string;
+
   @ApiProperty({ description: 'Role name' })
   name: string;
 

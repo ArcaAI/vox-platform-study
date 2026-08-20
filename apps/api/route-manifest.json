@@ -5566,12 +5566,16 @@
       "apiKeyScopes": [],
       "requiredPermissions": [
         [
+          "delete",
+          "Role"
+        ],
+        [
           "manage",
           "Role"
         ]
       ],
       "isPublic": false,
-      "permissionMode": "AND",
+      "permissionMode": "OR",
       "requiresIfMatch": false,
       "apiExcluded": false
     },
@@ -5617,12 +5621,16 @@
       "apiKeyScopes": [],
       "requiredPermissions": [
         [
+          "update",
+          "Role"
+        ],
+        [
           "manage",
           "Role"
         ]
       ],
       "isPublic": false,
-      "permissionMode": "AND",
+      "permissionMode": "OR",
       "requiresIfMatch": false,
       "apiExcluded": false
     },
@@ -5640,12 +5648,16 @@
       "apiKeyScopes": [],
       "requiredPermissions": [
         [
+          "update",
+          "Role"
+        ],
+        [
           "manage",
           "Role"
         ]
       ],
       "isPublic": false,
-      "permissionMode": "AND",
+      "permissionMode": "OR",
       "requiresIfMatch": false,
       "apiExcluded": false
     },
