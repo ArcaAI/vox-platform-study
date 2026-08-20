@@ -99,5 +99,6 @@ export * from './WebhookRunHistoryModel';
 export * from './WorkflowAssignmentChangeModel';
 export * from './WorkflowAssignmentModel';
 export * from './WorkflowDefinitionModel';
+export * from './WorkflowInvariantRuleModel';
 export * from './WorkflowRunModel';
 export * from './WorkflowTestFixtureModel';

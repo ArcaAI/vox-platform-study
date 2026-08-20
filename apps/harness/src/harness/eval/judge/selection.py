@@ -52,12 +52,16 @@ SYSTEM_TENANT_ID = "00000000-0000-0000-0000-000000000000"
 #: The `AiTaskDefault.taskKey` the LLM-as-judge selection lives under (SUPER_ADMIN-owned).
 EVAL_JUDGE_TASK_KEY = "harness.judge"
 
-#: `AiModel.provider` values -> the judge transport that serves them. LM Studio, vLLM
-#: and llama.cpp all speak the OpenAI wire, so they share the OpenAI-compatible client
-#: and differ only in `base_url` (which is CONNECTION config, i.e. env).
+#: `AiModel.provider` values -> the judge transport that serves them. LM Studio, Ollama,
+#: vLLM and llama.cpp all speak the OpenAI wire, so they share the OpenAI-compatible
+#: client and differ only in `base_url` (which is CONNECTION config, i.e. env). Ollama
+#: gets its own `JudgeProvider` member (not reused OPENAI_COMPAT) only so stop-reason
+#: normalization stays provider-aware (`_STOP_TABLES["ollama"]`) — no vendor-specific
+#: transport is added anywhere (owner decision 2026-08-20, TASK-736/TASK-740 D-740-3).
 _PROVIDER_MAP: dict[str, JudgeProvider] = {
     "lm-studio": JudgeProvider.OPENAI_COMPAT,
     "openai_compat": JudgeProvider.OPENAI_COMPAT,
+    "ollama": JudgeProvider.OLLAMA,
     "vllm": JudgeProvider.VLLM,
     "llama-cpp": JudgeProvider.LLAMA_CPP,
     "azure": JudgeProvider.AZURE,

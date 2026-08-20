@@ -69,6 +69,73 @@ test.describe('TASK-776: response parsing — ETag / If-Match OCC + pagination',
     expect(res.headers()['etag']).toBe('"1"');
   });
 
+  test('GET on an UNVERSIONED resource advertises no ETag at all', async ({ request }) => {
+    // `app.set('etag', false)` in main.ts removed Express's default WEAK
+    // content-hash validator. It used to stamp `W/"<len>-<hash>"` on every JSON
+    // GET — a token the write path can never honour: replayed as `If-Match` it
+    // either 400s on the strong-validator check, or (on a route with no
+    // `@ExpectedVersion()`) is SILENTLY DISCARDED and the write proceeds.
+    // `ETagInterceptor`'s strong `"<version>"` is now the only ETag we emit.
+    const res = await request.get(`/api/v1/admin/users/${SEEDED_USERS.admin.id}`, { headers: auth(tenantAdminToken) });
+    expect(res.status()).toBe(200);
+    const body = await res.json();
+    expect(body.version, 'fixture precondition: this response carries no top-level version').toBeUndefined();
+    expect(res.headers()['etag']).toBeUndefined();
+  });
+
+  test('authenticated GET carries Cache-Control: private, no-cache', async ({ request }) => {
+    // `no-cache` (store, but revalidate) — NOT `no-store`, which would forbid
+    // the client from holding the copy that makes the 304 path usable.
+    const dept = await createDepartment(request, tenantAdminToken, 't776-cachectl');
+    const res = await request.get(`/api/v1/admin/departments/${dept.id}`, { headers: auth(tenantAdminToken) });
+    expect(res.status()).toBe(200);
+    expect(res.headers()['cache-control']).toBe('private, no-cache');
+  });
+
+  // ==========================================================================
+  // Conditional GET (If-None-Match -> 304)
+  // ==========================================================================
+
+  test('replaying a fresh ETag as If-None-Match => 304; after a mutation the stale ETag => 200 with the new ETag', async ({ request }) => {
+    const dept = await createDepartment(request, tenantAdminToken, 't776-inm');
+
+    const first = await request.get(`/api/v1/admin/departments/${dept.id}`, { headers: auth(tenantAdminToken) });
+    expect(first.status()).toBe(200);
+    const etag = first.headers()['etag'];
+    expect(etag).toBe('"1"');
+
+    // Fresh validator -> 304, ETag echoed, empty body.
+    const notModified = await request.get(`/api/v1/admin/departments/${dept.id}`, {
+      headers: { ...auth(tenantAdminToken), 'If-None-Match': etag },
+    });
+    expect(notModified.status()).toBe(304);
+    expect(notModified.headers()['etag']).toBe('"1"');
+    expect(await notModified.body()).toHaveLength(0);
+
+    // Mutate, so the row's _version moves past the client's validator.
+    const patchRes = await request.patch(`/api/v1/admin/departments/${dept.id}`, {
+      headers: { ...auth(tenantAdminToken), 'If-Match': '"1"' },
+      data: { description: 'invalidates the cached validator', expectedVersion: 1 },
+    });
+    expect(patchRes.status()).toBe(200);
+
+    // Stale validator -> full 200 carrying the NEW ETag.
+    const revalidated = await request.get(`/api/v1/admin/departments/${dept.id}`, {
+      headers: { ...auth(tenantAdminToken), 'If-None-Match': etag },
+    });
+    expect(revalidated.status()).toBe(200);
+    expect(revalidated.headers()['etag']).toBe('"2"');
+    expect((await revalidated.json()).version).toBe(2);
+  });
+
+  test('a collection GET never 304s (no single ETag can represent N rows)', async ({ request }) => {
+    const res = await request.get('/api/v1/admin/departments?page=1&limit=5', {
+      headers: { ...auth(tenantAdminToken), 'If-None-Match': '"1"' },
+    });
+    expect(res.status()).toBe(200);
+    expect(res.headers()['etag']).toBeUndefined();
+  });
+
   // ==========================================================================
   // If-Match matrix
   // ==========================================================================

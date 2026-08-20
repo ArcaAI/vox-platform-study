@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Status** | Review |
+| **Status** | Completed |
 | **Wave** | 3 · **Size** | M |
 | **Epic slug** | `worker-pool-stt-tts` |
 | **Depends on** | TASK-725 (`worker-pool-text` — this ticket follows its control-plane/registry/
@@ -526,3 +526,4 @@ No `packages/database` schema changes. No `apps/{stt,tts}/pyproject.toml` depend
 |---|---|---|
 | 2026-08-16 | Ticket authored | Claude (ticket-authoring session) |
 | 2026-08-16 | Design note + Tasks 2–6 implemented: STT queue-depth metric, STT realtime draining (SessionManager + `/internal/streaming/drain` + `/health/ready`), TTS admin introspection endpoint + GPU/device classification (Task 4/5 scoped down after finding TTS's circuit-breaker degrade-routing already existed), STT local-dev story re-verified (no code change needed). Task 7 flagged as deployment-repo design note only. `apps/stt` unit suite 2815/2815 green (2791 in `tests/unit/`), `apps/tts` 267/267 green, both lint clean; STT typecheck has one pre-existing unrelated error, TTS typecheck clean. No `apps/api` files touched. Status → Review. | Claude (execution session) |
+| 2026-08-20 | Status advanced to Completed per owner directive — implementation (Tasks 2–6) is complete and verified hermetically; outstanding live-infra and integration/e2e verification is not a status gate. | execution agent |

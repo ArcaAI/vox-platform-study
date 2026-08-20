@@ -308,6 +308,46 @@ describe('DnaWritingStyleProcessor', () => {
       );
     });
 
+    it('sends the job’s real tenant id as X-Tenant-Id when CLS holds one (TASK-737)', async () => {
+      // Regression guard: `processWithContext` sets `tenantId` into CLS from the
+      // job payload (`this.clsService.set('tenantId', tenantId)`), and `callText`
+      // reads it back for the mandatory `X-Tenant-Id` header. The test above uses
+      // the bare `vi.fn()` CLS mock (which never echoes `.set` back through
+      // `.get`), so it only proves the tenant-less-fallback path — it can never
+      // catch a regression where the real tenant is dropped. This test makes the
+      // mock CLS stateful, mirroring real `nestjs-cls` request-scoped storage, so
+      // the header is asserted against the ACTUAL job tenant, not the fallback.
+      const clsStore = new Map<string, unknown>();
+      mockClsService.set.mockImplementation((key: string, value: unknown) => clsStore.set(key, value));
+      mockClsService.get.mockImplementation((key: string) => clsStore.get(key));
+
+      mockPromptService.listPromptTemplates.mockResolvedValue([{ id: 'tpl-1', content: 'Analyze writing.', category: 'DNA_ANALYSIS' }]);
+      mockHttpService.axiosRef.post.mockResolvedValue(createAxiosSmrResponse('{"reportData":{},"styleText":"Style"}'));
+      mockDnaReportRepo.findLatestForDoctor.mockResolvedValue(null);
+      mockDnaReportRepo.create.mockResolvedValue({
+        id: 'r',
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      });
+      mockDnaVersionRepo.create.mockResolvedValue({});
+      mockDnaUsageRepo.create.mockResolvedValue({});
+
+      await processor.process(createMockJob({ tenantId: 'tenant-real-789', textSamples: ['sample'] }) as never);
+
+      expect(mockHttpService.axiosRef.post).toHaveBeenCalledWith(
+        'http://localhost:8862/api/v1/generate',
+        expect.any(Object),
+        {
+          timeout: 120000,
+          headers: {
+            'Content-Type': 'application/json',
+            'X-Service-Token': '',
+            'X-Tenant-Id': 'tenant-real-789',
+          },
+        },
+      );
+    });
+
     it('should succeed gathering from ContextItems when no textSamples provided', async () => {
       mockContextItemRepo.findAll.mockResolvedValue([
         { id: 'ci-1', content: 'Doctor summary text 1', text: null, type: 'RAW_SUMMARY' },

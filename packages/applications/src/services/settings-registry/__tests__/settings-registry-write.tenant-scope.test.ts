@@ -25,6 +25,9 @@ import { ArgumentInvalidException } from '@arcaai/exceptions';
 import { SysEventType } from '@arcaai/domains';
 import { SettingsRegistryWriteService, REGISTRY_SETTING_NAMESPACE } from '../settings-registry-write.service';
 
+/** The SOLE platform-configuration tier (owner ruling 2026-08-20, TASK-763 OD-1). */
+const SYSTEM_TENANT_ID = '00000000-0000-0000-0000-000000000000';
+/** GLOBAL — a CUSTOMER tenant (the platform-admin playground), never a config tier. */
 const GLOBAL_TENANT_ID = '50000000-0000-0000-0000-000000000000';
 const CUSTOMER_TENANT = '11111111-1111-1111-1111-111111111111';
 
@@ -111,10 +114,29 @@ describe('tenant-scope write persists under the caller tenant', () => {
     expect(globalSettings.create).not.toHaveBeenCalled();
   });
 
-  it('refuses a tenant-scope write whose working tenant IS a platform tenant', async () => {
-    const { svc, globalSettings } = makeService({ roles: ['SUPER_ADMIN'], tenantId: GLOBAL_TENANT_ID });
+  it('refuses a tenant-scope write whose working tenant IS the platform (SYSTEM) tenant', async () => {
+    const { svc, globalSettings } = makeService({ roles: ['SUPER_ADMIN'], tenantId: SYSTEM_TENANT_ID });
     await expect(svc.write('rateLimit.maxRequests', 10, { scope: 'tenant' })).rejects.toBeInstanceOf(ArgumentInvalidException);
     expect(globalSettings.create).not.toHaveBeenCalled();
+  });
+
+  it('ALLOWS a tenant-scope write whose working tenant is GLOBAL — GLOBAL is an ordinary CUSTOMER tenant, not a platform tier', async () => {
+    // Owner ruling 2026-08-20 (TASK-763 OD-1): the runtime cascade is request
+    // tenant → SYSTEM, full stop. GLOBAL (`50000000-…`) is the platform-admin
+    // playground tenant, and must be free to set its OWN tenant-scope rows
+    // exactly like any other customer tenant — that is the whole point of the
+    // playground (trial config, then promote the validated result into SYSTEM).
+    const { svc, globalSettings } = makeService({ roles: [], tenantId: GLOBAL_TENANT_ID });
+
+    const result = await svc.write('rateLimit.maxRequests', 10, { scope: 'tenant' });
+
+    expect(globalSettings.create).toHaveBeenCalledTimes(1);
+    expect(globalSettings.create.mock.calls[0]![0]).toMatchObject({
+      key: 'rateLimit.maxRequests',
+      namespace: REGISTRY_SETTING_NAMESPACE,
+      tenantId: GLOBAL_TENANT_ID,
+    });
+    expect(result.scope).toBe('tenant');
   });
 });
 
@@ -127,12 +149,12 @@ describe('system-scope write is a platform change — super admins only', () => 
     expect(globalSettings.create).not.toHaveBeenCalled();
   });
 
-  it('allows a super admin to write the platform row, on the platform tenant', async () => {
+  it('allows a super admin to write the platform row, on the SYSTEM tenant (never GLOBAL)', async () => {
     const { svc, globalSettings } = makeService({ roles: ['SUPER_ADMIN'], tenantId: CUSTOMER_TENANT });
 
     const result = await svc.write('rateLimit.maxRequests', 250);
 
-    expect(globalSettings.create.mock.calls[0]![0]).toMatchObject({ tenantId: GLOBAL_TENANT_ID });
+    expect(globalSettings.create.mock.calls[0]![0]).toMatchObject({ tenantId: SYSTEM_TENANT_ID });
     expect(result.scope).toBe('system');
   });
 });

@@ -21,7 +21,7 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { AppSettingsService } from '../appSettings.service';
 import { GlobalSettingFactory, ValueType } from '@arcaai/domains';
 
-const GLOBAL_TENANT_ID = '50000000-0000-0000-0000-000000000000';
+const SYSTEM_TENANT_ID = '00000000-0000-0000-0000-000000000000';
 const TENANT_A = '019f1bf5-21b6-7365-a5fc-4f271716b17a';
 const TENANT_B = '019f1c5d-9325-7258-a7c1-e462088a9e69';
 const KEY = 'rate-limit.enabled';
@@ -56,23 +56,23 @@ describe('AppSettingsService — platform row wins over tenant clones', () => {
   });
 
   it('serves the PLATFORM row when a tenant clone comes after it (platform first)', async () => {
-    repo.findAll.mockResolvedValue([buildSetting(GLOBAL_TENANT_ID, 'true'), buildSetting(TENANT_A, 'false')]);
+    repo.findAll.mockResolvedValue([buildSetting(SYSTEM_TENANT_ID, 'true'), buildSetting(TENANT_A, 'false')]);
     const svc = buildService();
 
     await svc.cacheAppSettings();
 
     expect(svc.getValueWithDefault<boolean>(KEY, false)).toBe(true);
-    expect(svc.getFromCache(KEY)?.tenantId).toBe(GLOBAL_TENANT_ID);
+    expect(svc.getFromCache(KEY)?.tenantId).toBe(SYSTEM_TENANT_ID);
   });
 
   it('serves the PLATFORM row when tenant clones come BEFORE it (reverse ordering)', async () => {
-    repo.findAll.mockResolvedValue([buildSetting(TENANT_A, 'false'), buildSetting(TENANT_B, 'false'), buildSetting(GLOBAL_TENANT_ID, 'true')]);
+    repo.findAll.mockResolvedValue([buildSetting(TENANT_A, 'false'), buildSetting(TENANT_B, 'false'), buildSetting(SYSTEM_TENANT_ID, 'true')]);
     const svc = buildService();
 
     await svc.cacheAppSettings();
 
     expect(svc.getValueWithDefault<boolean>(KEY, false)).toBe(true);
-    expect(svc.getFromCache(KEY)?.tenantId).toBe(GLOBAL_TENANT_ID);
+    expect(svc.getFromCache(KEY)?.tenantId).toBe(SYSTEM_TENANT_ID);
   });
 
   // SUPERSEDED. The two cases below previously pinned the

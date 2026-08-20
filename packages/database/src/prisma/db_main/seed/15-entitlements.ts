@@ -1,7 +1,7 @@
 import type { CorePrismaClient } from '../../../client';
 import { getNodeEnv, isCI, loadDatabaseEnv } from '../../../env';
 import { TenantPlan, ValueType } from '../../../generated/core-prisma-client/client.js';
-import { SEED_TENANT_ID, SEED_USER_IDS, SEED_GLOBAL_SETTING_IDS, SEED_PLAN_ENTITLEMENT_IDS } from './00-constants';
+import { SYSTEM_TENANT_ID, SEED_USER_IDS, SEED_GLOBAL_SETTING_IDS, SEED_PLAN_ENTITLEMENT_IDS } from './00-constants';
 
 /**
  * Plan entitlements seed.
@@ -314,7 +314,7 @@ export const seedEntitlements = async (client: CorePrismaClient) => {
   await client.globalSetting.upsert({
     where: {
       GlobalSetting_tenantId_name_key_unique: {
-        tenantId: SEED_TENANT_ID,
+        tenantId: SYSTEM_TENANT_ID,
         name: 'Entitlements Enabled',
         key: 'entitlements.enabled',
       },
@@ -326,7 +326,7 @@ export const seedEntitlements = async (client: CorePrismaClient) => {
     },
     create: {
       id: SEED_GLOBAL_SETTING_IDS.ENTITLEMENTS_ENABLED,
-      tenantId: SEED_TENANT_ID,
+      tenantId: SYSTEM_TENANT_ID,
       namespace: 'entitlements',
       name: 'Entitlements Enabled',
       key: 'entitlements.enabled',
@@ -353,7 +353,7 @@ export const seedEntitlements = async (client: CorePrismaClient) => {
   await client.globalSetting.upsert({
     where: {
       GlobalSetting_tenantId_name_key_unique: {
-        tenantId: SEED_TENANT_ID,
+        tenantId: SYSTEM_TENANT_ID,
         name: 'Metering Reconcile Enabled',
         key: 'metering.reconcile.enabled',
       },
@@ -366,7 +366,7 @@ export const seedEntitlements = async (client: CorePrismaClient) => {
     },
     create: {
       id: SEED_GLOBAL_SETTING_IDS.METERING_RECONCILE_ENABLED,
-      tenantId: SEED_TENANT_ID,
+      tenantId: SYSTEM_TENANT_ID,
       namespace: 'metering',
       name: 'Metering Reconcile Enabled',
       key: 'metering.reconcile.enabled',

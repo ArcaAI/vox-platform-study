@@ -17,14 +17,16 @@
 export type WorkflowDefinitionStatus = 'DRAFT' | 'VALIDATED' | 'PUBLISHED' | 'DEPRECATED';
 
 /** `WorkflowGraph` (`@arcaai/workflow-contract`'s `graph-model.ts`) — the canvas graph exactly
- *  as authored. `WorkflowGraphNode` has NO `position` field (registry.contract.md /
- *  definition-api.contract.md: confirmed, not guessed) — the Studio nests client-side layout
- *  under the Studio-reserved `config.__position` key at the serialization boundary; see
- *  `lib/graph-serialization.ts`. */
+ *  as authored. `WorkflowGraphNode.position` is a first-class, optional sibling of `config`
+ *  (definition-api.contract.md's "no `position` field" gap, closed) — client-authored canvas
+ *  layout, never read by the compiler/interpreter. `lib/graph-serialization.ts` still reads the
+ *  legacy `config.__position` nesting as a fallback for a graph saved before this field existed,
+ *  but never writes it again. */
 export interface WorkflowGraphNode {
   id: string;
   type: string;
   config: Record<string, unknown>;
+  position?: { x: number; y: number };
 }
 
 export interface WorkflowGraphEdge {
@@ -118,8 +120,13 @@ export interface PublishWorkflowDefinitionRequest {
   activate?: boolean;
 }
 
-/** `WorkflowNodeDescriptor`'s wire projection (`WorkflowNodeResponse`). No `label`, no
- *  `configSchema` — neither field exists on the delivered DTO (registry.contract.md). */
+/** `WorkflowNodeDescriptor`'s wire projection (`WorkflowNodeResponse`). No `label` field yet
+ *  (registry.contract.md) — the Studio still derives a display label from `type`
+ *  (`humanizeKey`). `configSchema` IS now on the delivered DTO (registry.contract.md's
+ *  resolution path #1: "TASK-720 adds a `configSchema` field… when it adds real palette node
+ *  types") — `null` for a node type with no authored schema yet, a real, structural state the
+ *  inspector's raw-JSON fallback already handles as `undefined` (see
+ *  `components/workflow-studio-editor.tsx`). */
 export interface WorkflowNodeDescriptor {
   type: string;
   implemented: boolean;
@@ -131,6 +138,7 @@ export interface WorkflowNodeDescriptor {
   defaultTimeoutSeconds: number;
   defaultMaxAttempts: number;
   entitlementKey: string | null;
+  configSchema: Record<string, unknown> | null;
 }
 
 export interface WorkflowNodeRegistry {

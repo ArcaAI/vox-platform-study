@@ -127,20 +127,23 @@ export class AdminTenantIdpConfigResource extends AdminResource {
   /**
    * Seal a directory-API credential bundle for admin-triggered sync (P3)
    *
-   * Vault-seals the credential bundle into directoryCredentialsRef. Shape matches config.directoryProvider (ms-graph: {azureTenantId, clientId, clientSecret}; google-directory: {serviceAccountEmail, privateKey, delegatedAdminEmail, customerId?}). Write-only — never echoed back. No If-Match (a narrow secret rotation, same posture as the client secret's own rotation on PUT :id).
+   * Vault-seals the credential bundle into directoryCredentialsRef. Shape matches config.directoryProvider (ms-graph: {azureTenantId, clientId, clientSecret}; google-directory: {serviceAccountEmail, privateKey, delegatedAdminEmail, customerId?}). Write-only — never echoed back. Optimistic concurrency is ENFORCED, the same posture as `PUT :id`: `If-Match` (RFC 7232) is REQUIRED and overrides the body-field `expectedVersion`; drift is `412`, a missing header is `428`.
    *
    * `PUT /api/v1/admin/tenant-idp-config/{id}/directory-credentials` — `TenantIdpConfigAdminController.setDirectoryCredentials`.
+   *
+   * Carries `@RequiresIfMatch()`: `options.ifMatch` is required by the type, so the 428 branch is unreachable. On drift the gateway answers 412 (`VersionConflictError.currentVersion`).
    */
   setDirectoryCredentials(
     id: string,
     body: SetDirectoryCredentialsRequest,
-    options: AdminRequestOptions & { query?: { tenantId?: string } } = {},
+    options: AdminRequestOptions & { query?: { tenantId?: string } } & { ifMatch: IfMatchPrecondition },
   ): Promise<TenantIdpConfigResponse> {
-    return this.request<TenantIdpConfigResponse>({
+    return this.requestWithPrecondition<TenantIdpConfigResponse>({
       method: 'PUT',
       path: `admin/tenant-idp-config/${encodePathSegment(String(id))}/directory-credentials`,
       query: options.query,
       body,
+      ifMatch: options.ifMatch,
       signal: options.signal,
       timeoutMs: options.timeoutMs,
     });

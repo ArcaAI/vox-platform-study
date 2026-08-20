@@ -3,7 +3,7 @@
  * gateway-relative; the shared core prepends the BFF proxy mount.
  */
 
-import { deleteJson, getJson, getWithEtag, patchJson, patchWithEtag, postJson, putJson, request, versionFromEtag } from '@/shared/api';
+import { deleteJson, getJson, getWithEtag, patchJson, patchWithEtag, postJson, putWithEtag, request, versionFromEtag } from '@/shared/api';
 import type { ListParams, Paginated, WithEtag } from '@/shared/api';
 import type {
   CreateTenantRequest,
@@ -87,8 +87,13 @@ export function getTenantTags(id: string): Promise<{ tags: string[] }> {
   return getJson(`${BASE}/${encodeURIComponent(id)}/tags`);
 }
 
-export function setTenantTags(id: string, tags: string[]): Promise<Tenant> {
-  return putJson(`${BASE}/${encodeURIComponent(id)}/tags`, { tags });
+/**
+ * OCC: `If-Match` is REQUIRED. The tag route writes the TENANT row, so the
+ * validator is the tenant detail ETag (`GET admin/tenants/:id`), not anything
+ * the `/tags` read returns. Drift is 412 — re-read the tenant and retry.
+ */
+export async function setTenantTags(id: string, tags: string[], etag: string): Promise<Tenant> {
+  return (await putWithEtag<Tenant>(`${BASE}/${encodeURIComponent(id)}/tags`, { tags }, etag)).data;
 }
 
 /** identifier = tenant UUID or code-name (dual route). */

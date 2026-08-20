@@ -209,13 +209,18 @@ export class AdminTenantResource extends AdminResource {
   /**
    * Replace a tenant's full tag set (idempotent set-semantics)
    *
+   * Optimistic concurrency is ENFORCED: the `If-Match` header (RFC 7232) is REQUIRED and CASes against the tenant row's `_version`. The precondition is evaluated even when the supplied tag set is identical to the stored one, so a stale client is told to refetch (`412`) rather than silently succeeding. A missing header is `428 Precondition Required`.
+   *
    * `PUT /api/v1/admin/tenants/{id}/tags` — `TenantController.setTags`.
+   *
+   * Carries `@RequiresIfMatch()`: `options.ifMatch` is required by the type, so the 428 branch is unreachable. On drift the gateway answers 412 (`VersionConflictError.currentVersion`).
    */
-  setTags(id: string, body: SetTenantTagsRequest, options: AdminRequestOptions = {}): Promise<TenantResponse> {
-    return this.request<TenantResponse>({
+  setTags(id: string, body: SetTenantTagsRequest, options: AdminRequestOptions & { ifMatch: IfMatchPrecondition }): Promise<TenantResponse> {
+    return this.requestWithPrecondition<TenantResponse>({
       method: 'PUT',
       path: `admin/tenants/${encodePathSegment(String(id))}/tags`,
       body,
+      ifMatch: options.ifMatch,
       signal: options.signal,
       timeoutMs: options.timeoutMs,
     });

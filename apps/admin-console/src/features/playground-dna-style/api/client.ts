@@ -6,7 +6,7 @@
  * admin-impersonated doctor session works identically.
  */
 
-import { deleteJson, getJson, getWithEtag, patchJson, patchWithEtag, postJson, putJson, request, versionFromEtag } from '@/shared/api';
+import { deleteJson, getJson, getWithEtag, patchWithEtag, postJson, request, versionFromEtag } from '@/shared/api';
 import type { WithEtag } from '@/shared/api';
 import type {
   DnaErasureResult,
@@ -50,9 +50,14 @@ export async function updateMyReport(reportId: string, patch: UpdateMyReportRequ
   return patchWithEtag(`${BASE}/${encodeURIComponent(reportId)}`, { ...patch, expectedVersion: versionFromEtag(etag) }, etag);
 }
 
-/** Promotes one of the caller's reports to the active/default (no If-Match). */
-export function setDefaultReport(reportId: string): Promise<DnaReport> {
-  return patchJson(`${BASE}/${encodeURIComponent(reportId)}/default`);
+/**
+ * Promotes one of the caller's reports to the active/default. OCC: `If-Match`
+ * is REQUIRED and CASes against the report row, so the caller passes the
+ * `version` it read from the report list. Promotion is idempotent, but a stale
+ * validator still yields 412 — refetch the list and retry.
+ */
+export async function setDefaultReport(reportId: string, etag: string): Promise<DnaReport> {
+  return (await patchWithEtag<DnaReport>(`${BASE}/${encodeURIComponent(reportId)}/default`, {}, etag)).data;
 }
 
 /**
@@ -93,23 +98,24 @@ export function getDnaSettings(): Promise<DnaSettings> {
 }
 
 /**
- * Writes the per-doctor DNA toggle. OCC is optional on this route: pass the
- * GET's `version` as `currentVersion` and, once a DOCTOR-scope row exists
- * (`version >= 1`), the call carries If-Match + the body `expectedVersion`
- * (header overrides body server-side; drift = 412). While `currentVersion`
- * is 0 no row exists yet, so the first write goes out without a
- * precondition. Also 403-gated by `assertActingAsDoctor`.
+ * Writes the per-doctor DNA toggle. OCC is ENFORCED on this route: pass the
+ * GET's `version` as `currentVersion` and the call always carries `If-Match`
+ * (header overrides the body `expectedVersion` server-side; drift = 412).
+ *
+ * `GET settings` answers `version: 0` while no DOCTOR-scope row exists, and
+ * `"0"` is the gateway's create-intent validator — so the FIRST write echoes
+ * `If-Match: "0"` rather than omitting the header, and a `"0"` sent against a
+ * row that has since been created correctly fails with 412. The body field is
+ * only sent once a row exists, because its validator rejects 0.
+ * Also 403-gated by `assertActingAsDoctor`.
  */
-export async function updateDnaSettings(body: UpdateDnaSettingsRequest, currentVersion?: number): Promise<DnaSettings> {
-  if (currentVersion !== undefined && currentVersion >= 1) {
-    const response = await request<DnaSettings>(`${BASE}/settings`, {
-      method: 'PUT',
-      body: { ...body, expectedVersion: currentVersion },
-      etag: `"${currentVersion}"`,
-    });
-    return response.data;
-  }
-  return putJson(`${BASE}/settings`, body);
+export async function updateDnaSettings(body: UpdateDnaSettingsRequest, currentVersion = 0): Promise<DnaSettings> {
+  const response = await request<DnaSettings>(`${BASE}/settings`, {
+    method: 'PUT',
+    body: currentVersion >= 1 ? { ...body, expectedVersion: currentVersion } : body,
+    etag: `"${currentVersion}"`,
+  });
+  return response.data;
 }
 
 export function getDnaJobStatus(jobId: string): Promise<DnaJobStatus> {

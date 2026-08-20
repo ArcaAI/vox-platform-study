@@ -74,6 +74,17 @@ vacuous. Not a security hole (404 hides existence, which is strictly stronger th
 NOT fixed here: making it fire would replace a 404 with an existence-leaking 403, the exact
 regression `policy.engine.ts` warns about for `UserVoiceProfile`. Documented and pinned.
 
+> **RESOLVED by TASK-781 (2026-08-20).** The three pairs were REMOVED from
+> `CASL_ENFORCED_PAIRS` rather than made to fire — the boundary they described is already
+> enforced by `ApiKeyService.assertKeyAccess`, one layer down, with the safer status, and no
+> guard-level fix exists that does not leak existence. The e2e assertions in
+> `task-779-policy-boundaries.spec.ts` are unchanged and still pass: every by-id route still
+> answers 404 for a peer's key, and `casl_enforce_denial_total` still does not move — but now
+> because nothing is enforced, not because an enforced pair cannot fire. A boot audit
+> (`auditCaslEnforcePairReachability`) refuses to start the gateway if a listed pair is
+> structurally unreachable, so this defect class cannot return silently. See
+> `docs/implementation/TASK-781-Casl-Instance-Enforcement-Reachability/`.
+
 **F-2 — `POST /admin/workflow-definitions/:id/validate` and `:id/publish` answer 201, not
 the documented 200.** Both are plain `@Post()` handlers, so Nest's default 201 applies,
 while their `@ApiResponse` (and therefore `openapi.json`) declares 200. A generated client
@@ -169,3 +180,4 @@ Preceded by `pnpm --filter @arcaai/domains --filter @arcaai/applications build` 
 | Date | Change |
 |---|---|
 | 2026-08-20 | Ticket created; three e2e specs added and executed; findings F-1..F-4 recorded. |
+| 2026-08-20 | F-1 RESOLVED by TASK-781 — the unreachable `ApiKey` enforce pairs removed and a boot-time reachability audit added. Finding text annotated; the spec itself is unchanged and still green. |

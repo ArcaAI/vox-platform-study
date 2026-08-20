@@ -33,14 +33,15 @@ import { AppSettingsService, APP_SETTINGS_INVALIDATION_CHANNEL } from '../../bas
 import { SettingsRegistryWriteService, REGISTRY_SETTING_NAMESPACE } from '../settings-registry-write.service';
 import { GlobalSettingFactory, ResourceType, SysEvent, SysEventType, ValueType } from '@arcaai/domains';
 
-const GLOBAL_TENANT_ID = '50000000-0000-0000-0000-000000000000';
+/** The SOLE platform-configuration tier (owner ruling 2026-08-20, TASK-763 OD-1). */
+const SYSTEM_TENANT_ID = '00000000-0000-0000-0000-000000000000';
 
 /** A real registry key on the `global-kv` tier (writable through this lane). */
 const KEY = 'rate-limit.enabled';
 
 const row = (value: string) =>
   GlobalSettingFactory.CreateGlobalSetting({
-    tenantId: GLOBAL_TENANT_ID,
+    tenantId: SYSTEM_TENANT_ID,
     key: KEY,
     value,
     dataType: ValueType.Boolean,
@@ -63,7 +64,7 @@ const buildBus = () => {
 // `rate-limit.enabled` is a `globalOnly` descriptor, so the writer must be a
 // SUPER_ADMIN (the imperative privilege check in the write lane).
 const cls = {
-  get: vi.fn((key?: string) => (key === 'user' ? { id: 'super-admin', roles: ['SUPER_ADMIN'], tenantId: GLOBAL_TENANT_ID } : undefined)),
+  get: vi.fn((key?: string) => (key === 'user' ? { id: 'super-admin', roles: ['SUPER_ADMIN'], tenantId: SYSTEM_TENANT_ID } : undefined)),
   set: vi.fn(),
   // `cacheAppSettings` reads outside the request CLS context; pass through.
   exit: vi.fn((fn: () => unknown) => fn()),

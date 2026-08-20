@@ -34,6 +34,7 @@ import {
   type AppAbility,
   type UserExportEnrichment,
 } from '@arcaai/applications';
+import { DataNotFoundException } from '@arcaai/exceptions';
 import {
   BadRequestException,
   Body,
@@ -128,7 +129,9 @@ export class UserController {
   @ApiResponse({ status: 200, description: 'Updated user', type: UserResponse })
   @ApiResponse({ status: 404, description: 'User or a target department not found (or cross-tenant)' })
   async setDepartments(@Param('id') id: string, @Body() request: SetUserDepartmentsRequest): Promise<UserResponse> {
-    await this.assertUserInScope(id);
+    // `skipExistenceCheck: true` — the unconditional `userService.fetchById`
+    // below already 404s on a missing id (see `assertUserInScope`).
+    await this.assertUserInScope(id, { skipExistenceCheck: true });
     await this.userDepartmentService.setDepartments(id, request);
     const user = await this.userService.fetchById(id);
     return UserDtoMapper.ToResponse(user);
@@ -289,7 +292,9 @@ export class UserController {
   @CanAny(['manage', 'User'], ['read', 'AdminUserDirectory'])
   @RequiredSvcScopes('svc:admin:user:read', 'svc:admin:user:write')
   async fetchById(@Param('id') id: string): Promise<UserResponse> {
-    await this.assertUserInScope(id);
+    // `skipExistenceCheck: true` — the unconditional `userService.fetchById`
+    // below already 404s on a missing id (see `assertUserInScope`).
+    await this.assertUserInScope(id, { skipExistenceCheck: true });
     const result = await this.userService.fetchById(id);
     return UserDtoMapper.ToResponse(result);
   }
@@ -342,9 +347,22 @@ export class UserController {
    * asserted explicitly. Resolves the target's ENABLED tenant memberships via
    * `UserRoleAssignment` and throws `NotFoundException` (404, NOT 403, to avoid
    * disclosing the existence of a cross-tenant user) when the caller's active
-   * tenant is not among them. SUPER_ADMIN is platform-wide and exempt.
+   * tenant is not among them. SUPER_ADMIN is exempt from the tenant-membership
+   * check (platform-wide) but NOT from existence — a nonexistent id must still
+   * 404 (F-07: the tenant-membership check was the only existence signal, so
+   * a SUPER_ADMIN caller — who short-circuits past it — saw every sub-collection
+   * route answer 200 with an empty list for a bogus parent id).
+   *
+   * `skipExistenceCheck` is for the two callers (`fetchById`, `setDepartments`)
+   * that unconditionally call `userService.fetchById(id)` themselves right
+   * after this guard — that call already 404s on a missing id for every
+   * caller, so re-proving existence here would just double the lookup.
    */
-  private async assertUserInScope(id: string): Promise<void> {
+  private async assertUserInScope(id: string, opts: { skipExistenceCheck?: boolean } = {}): Promise<void> {
+    if (!opts.skipExistenceCheck) {
+      await this.assertUserExists(id);
+    }
+
     const user = this.cls.get('user');
     if (isSuperAdmin(user)) {
       return;
@@ -356,6 +374,18 @@ export class UserController {
     const tenantIds = await this.userRoleAssignmentService.findActiveTenantIdsForUser(id);
     if (!tenantIds.includes(callerTenantId)) {
       throw new NotFoundException('User not found');
+    }
+  }
+
+  /** Existence-only check, shared by {@link assertUserInScope}. */
+  private async assertUserExists(id: string): Promise<void> {
+    try {
+      await this.userService.fetchById(id);
+    } catch (err) {
+      if (err instanceof DataNotFoundException) {
+        throw new NotFoundException('User not found');
+      }
+      throw err;
     }
   }
 

@@ -33,13 +33,14 @@
  * .enabled`; that file's comment spells out the reasoning at length.
  *
  * ROW COORDINATES ARE LOAD-BEARING. `SettingsRegistryWriteService` finds an
- * existing row by `(key, namespace='registry', tenantId=GLOBAL)` and, failing
+ * existing row by `(key, namespace='registry', tenantId=SYSTEM)` and, failing
  * that, CREATES one named `descriptor.label`. `GlobalSetting` is unique on
  * `(tenantId, name, key)`. Seed a different tenant, namespace or name and the
  * operator's first `PUT` creates a SECOND platform row for the same key — which
  * `AppSettingsService` refuses to boot on. So the rows below use
- * `SEED_TENANT_ID` (`50000000-…`), namespace `registry`, and names copied
- * verbatim from the descriptor labels. `consultation-gate-seed-parity.test.ts`
+ * `SYSTEM_TENANT_ID` (`00000000-…` — the sole platform-configuration tier;
+ * owner ruling 2026-08-20, TASK-763 OD-1), namespace `registry`, and names
+ * copied verbatim from the descriptor labels. `consultation-gate-seed-parity.test.ts`
  * in `@arcaai/applications` holds all four coordinates to the registry, because
  * `packages/database` must not depend on `@arcaai/applications`.
  *
@@ -56,7 +57,7 @@
  */
 import type { CorePrismaClient } from '../../../client';
 import { ValueType } from '../../../generated/core-prisma-client/client.js';
-import { SEED_TENANT_ID, SEED_USER_IDS } from './00-constants';
+import { SYSTEM_TENANT_ID, SEED_USER_IDS } from './00-constants';
 
 const CREATED_BY = SEED_USER_IDS.SUPER_ADMIN;
 
@@ -93,7 +94,7 @@ export const seedConsultationGateSettings = async (client: CorePrismaClient): Pr
     await client.globalSetting.upsert({
       where: {
         GlobalSetting_tenantId_name_key_unique: {
-          tenantId: SEED_TENANT_ID,
+          tenantId: SYSTEM_TENANT_ID,
           name: gate.name,
           key: gate.key,
         },
@@ -108,7 +109,7 @@ export const seedConsultationGateSettings = async (client: CorePrismaClient): Pr
         locked: true,
       },
       create: {
-        tenantId: SEED_TENANT_ID,
+        tenantId: SYSTEM_TENANT_ID,
         namespace: NAMESPACE,
         name: gate.name,
         key: gate.key,

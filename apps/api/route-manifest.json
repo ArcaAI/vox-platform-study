@@ -3086,7 +3086,7 @@
       ],
       "isPublic": false,
       "permissionMode": "AND",
-      "requiresIfMatch": false,
+      "requiresIfMatch": true,
       "apiExcluded": false
     },
     {
@@ -3201,7 +3201,7 @@
       ],
       "isPublic": false,
       "permissionMode": "AND",
-      "requiresIfMatch": false,
+      "requiresIfMatch": true,
       "apiExcluded": false
     },
     {
@@ -6876,7 +6876,7 @@
       ],
       "isPublic": false,
       "permissionMode": "AND",
-      "requiresIfMatch": false,
+      "requiresIfMatch": true,
       "apiExcluded": false
     },
     {
@@ -7210,7 +7210,7 @@
       ],
       "isPublic": false,
       "permissionMode": "OR",
-      "requiresIfMatch": false,
+      "requiresIfMatch": true,
       "apiExcluded": false
     },
     {
@@ -10617,7 +10617,7 @@
       "requiredPermissions": [],
       "isPublic": false,
       "permissionMode": "AND",
-      "requiresIfMatch": false,
+      "requiresIfMatch": true,
       "apiExcluded": false
     },
     {
@@ -11588,7 +11588,7 @@
       "requiredPermissions": [],
       "isPublic": false,
       "permissionMode": "AND",
-      "requiresIfMatch": false,
+      "requiresIfMatch": true,
       "apiExcluded": false
     },
     {
@@ -11764,7 +11764,7 @@
       "requiredPermissions": [],
       "isPublic": false,
       "permissionMode": "AND",
-      "requiresIfMatch": false,
+      "requiresIfMatch": true,
       "apiExcluded": false
     },
     {

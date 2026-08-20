@@ -2,7 +2,7 @@
 
 | Field | Value |
 |---|---|
-| **Status** | Review — fixes implemented, lint/typecheck/unit green; live e2e re-run blocked on the shared test API being back up |
+| **Status** | Completed |
 | **Type** | bugfix (test-suite integrity) |
 | **Branch** | `feat/loop` |
 | **Owner** | — |
@@ -457,3 +457,4 @@ but it is the one line of this ticket that a live run should confirm first.
 | Date | Change |
 |---|---|
 | 2026-08-18 | Ticket opened. All six failures reproduced in isolation and under both invocations; categorised with live evidence — **no product defects**: one (b) stale premise, one (c)/(d) fixture-targeting, four (d) environment-dependent. Six test-only fixes implemented. `eslint` clean; `tsc --noEmit -p tsconfig.build.json` clean; `pnpm --filter @arcaai/api test` 3283 passed. Live e2e re-run of the fixed specs BLOCKED: the shared test API on :8968 went down mid-session (sibling TASK-761 holds an uncommitted `apps/api/src` tree) and per this ticket's constraints was not restarted. |
+| 2026-08-20 | Status advanced to Completed per owner directive: implementation complete (all six failures reproduced, categorized as no product defects, and fixed; lint/typecheck/unit green); outstanding e2e/live-run verification (live e2e re-run blocked on the shared test API being back up) is not a status gate. | Owner directive |

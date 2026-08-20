@@ -115,9 +115,23 @@ export class DepartmentService extends BaseService implements IDepartmentService
   }
 
   /**
-   * Get children of a department
+   * Get children of a department.
+   *
+   * Tenant scope (F-07): the parent is loaded first and asserted to exist
+   * (and, for a non-super-admin, to belong to the caller's tenant) — mirrors
+   * `getDepartmentUsers` below. Without this, a bogus or cross-tenant parent
+   * id was indistinguishable from a real parent with zero children: both
+   * answered `200 []`.
    */
   async getChildren(parentId: string): Promise<DepartmentResponse[]> {
+    const parent = await this.departmentRepository.findById(parentId);
+    if (!parent) {
+      throw new NotFoundException(`Department ${parentId} not found`);
+    }
+    if (!isSuperAdmin(this.requestUser) && parent.tenantId !== this.tenantId) {
+      throw new NotFoundException(`Department ${parentId} not found`);
+    }
+
     const departments = await this.departmentRepository.findChildren(parentId);
 
     this.broadcastSysEvent(SysEventType.ResourceViewed, {

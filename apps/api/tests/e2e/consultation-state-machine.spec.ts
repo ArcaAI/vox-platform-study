@@ -156,10 +156,15 @@ test.describe('TASK-711 — session state machine (RUNNABLE-HERE, apps/api + Pos
 
   // ── Case 7: TASK-701's forgery containment, re-asserted now that Task 10 deletes the field ──
   test('case 7: PATCH :id with metadata.status is a no-op on the typed status column', async ({ request }) => {
-    const { id } = await openConsultation(request, doctorToken, uniquePatientId('case7'));
+    const { id, version } = await openConsultation(request, doctorToken, uniquePatientId('case7'));
 
+    // TASK-776 H-1 phase 2: `PATCH /consultations/:id` now carries
+    // `@RequiresIfMatch()` — it was the last unprotected write on an aggregate
+    // whose every OTHER write (prime/close/reopen, context, summary) already
+    // required the precondition. Without the header this request is a 428, so
+    // the validator read from `open` is echoed here.
     const patchRes = await request.patch(`/api/v1/consultations/${id}`, {
-      headers: bearer(doctorToken),
+      headers: { ...bearer(doctorToken), 'If-Match': `"${version}"` },
       data: { metadata: { status: 'SIGNED', note: 'forgery attempt' } },
     });
     expect(patchRes.status(), 'PATCH must succeed (metadata is a legitimate free-form field now)').toBe(200);

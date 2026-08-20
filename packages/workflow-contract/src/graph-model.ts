@@ -9,10 +9,23 @@
  * convention" for tenant-authored keys.
  */
 
+/** Client-authored canvas coordinates (Workflow Studio, TASK-719). Purely presentational —
+ *  never read by the compiler/interpreter — but it is a first-class sibling of `config`, not
+ *  smuggled inside it: `compileNode`/`compileGate` (`compiler.ts`) copy `node.config` verbatim
+ *  into `CompiledNode.config`, so nesting layout under a reserved config key would leak client
+ *  bookkeeping into the interpreter's input contract. */
+export interface WorkflowNodePosition {
+  x: number;
+  y: number;
+}
+
 export interface WorkflowGraphNode {
   id: string;
   type: string;
   config: Record<string, unknown>;
+  /** Canvas layout, optional — absent for a graph authored before Workflow Studio's layout
+   *  persistence landed, or for one built entirely through the list/tree editor. */
+  position?: WorkflowNodePosition;
 }
 
 export interface WorkflowGraphEdge {
@@ -43,6 +56,10 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
 
 function isPlainString(value: unknown): value is string {
   return typeof value === 'string';
+}
+
+function isFiniteNumber(value: unknown): value is number {
+  return typeof value === 'number' && Number.isFinite(value);
 }
 
 /**
@@ -108,6 +125,12 @@ export function workflowGraphProblems(value: unknown): string[] {
     }
     if (node.config !== undefined && !isPlainObject(node.config)) {
       problems.push(`${path}/config: must be a JSON object when present`);
+    }
+    if (node.position !== undefined) {
+      const position = node.position;
+      if (!isPlainObject(position) || !isFiniteNumber(position.x) || !isFiniteNumber(position.y)) {
+        problems.push(`${path}/position: must be an object with finite numeric x/y when present`);
+      }
     }
   });
 

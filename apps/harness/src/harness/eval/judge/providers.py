@@ -44,7 +44,7 @@ def _secret_value(value: object) -> str:
 # ---------------------------------------------------------------------------
 
 # Per-wire raw→normalized stop-reason tables (subset mirroring text.models.stats
-# for the wires these clients speak: OpenAI-compatible, Bedrock converse).
+# for the wires these clients speak: OpenAI-compatible, Ollama, Bedrock converse).
 _OPENAI_WIRE_STOP: dict[str, str] = {
     "stop": "stop",
     "eos": "stop",
@@ -54,6 +54,12 @@ _OPENAI_WIRE_STOP: dict[str, str] = {
     "content_filter": "content_filter",
     "tool_calls": "tool_call",
     "function_call": "tool_call",
+}
+_OLLAMA_STOP: dict[str, str] = {
+    "stop": "stop",
+    "length": "length",
+    "load": "other",
+    "unload": "other",
 }
 _BEDROCK_STOP: dict[str, str] = {
     "end_turn": "stop",
@@ -71,6 +77,7 @@ _STOP_TABLES: dict[str, dict[str, str]] = {
     "vllm": _OPENAI_WIRE_STOP,
     "azure": _OPENAI_WIRE_STOP,
     "azure-openai": _OPENAI_WIRE_STOP,
+    "ollama": _OLLAMA_STOP,
     "bedrock": _BEDROCK_STOP,
     "llama-cpp": _OPENAI_WIRE_STOP,
 }
@@ -474,12 +481,15 @@ def build_judge_client(config: JudgeConfig | None = None) -> JudgeClient:
         config = get_judge_config()
 
     provider = config.provider
-    # The production engines vLLM and llama.cpp also speak the OpenAI wire, so
-    # they route through the same client (base_url points at the engine);
-    # native stop-reason normalization is provider-aware (see ``_STOP_TABLES``:
-    # both ``vllm`` and ``llama-cpp`` are registered).
+    # Ollama exposes an OpenAI-compatible ``/v1`` — it shares the openai_compat
+    # client, gaining no vendor-specific transport of its own. The production
+    # engines vLLM and llama.cpp also speak the OpenAI wire, so they route
+    # through the same client (base_url points at the engine); native
+    # stop-reason normalization is provider-aware (see ``_STOP_TABLES``:
+    # ``ollama``, ``vllm`` and ``llama-cpp`` are all registered).
     if provider in (
         JudgeProvider.OPENAI_COMPAT,
+        JudgeProvider.OLLAMA,
         JudgeProvider.VLLM,
         JudgeProvider.LLAMA_CPP,
     ):

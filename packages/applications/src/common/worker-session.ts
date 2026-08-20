@@ -33,7 +33,11 @@ export type WorkerSessionKind =
   | 'webhook-delivery'
   // Usage-outbox drain tick: rates each claimed row and appends the
   // AiUsageEvent + rollups. One context PER ROW — the batch spans tenants.
-  | 'usage-outbox-drain';
+  | 'usage-outbox-drain'
+  // Session-timeout sweep tick (TASK-711 state-machine.md §1a): transitions
+  // stale sweep-eligible consultations to CLOSED_INCOMPLETE. One context PER
+  // ROW — the sweep query itself spans every tenant.
+  | 'session-timeout-sweep';
 
 /**
  * Init shape for `createWorkerSession`.

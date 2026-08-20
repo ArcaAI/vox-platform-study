@@ -396,6 +396,41 @@ export class ConsultationRepository extends Repository<ConsultationEntity, Consu
   }
 
   /**
+   * TASK-711 (state-machine.md §1a) — consultations sitting in a
+   * sweep-eligible state (`PRIMED`, `DRAINING`, `DRAFT_PENDING_SENSORS`,
+   * `TIMED_OUT`, `REOPENED`) whose `updatedAt` is older than `cutoff`, oldest
+   * first. Backs `ConsultationTimeoutSweepService`'s scheduled tick.
+   *
+   * Deliberately cross-tenant, like `findCreatedInRange`: the sweep runs with
+   * no CLS tenant context (a platform-wide maintenance tick, not a per-tenant
+   * request), so this must see every tenant's stale rows in one query rather
+   * than being called once per tenant. `OPEN` is deliberately NOT in the
+   * eligible set — a consultation never even primed has no clinical content
+   * to be "incomplete" about (state-machine.md §1a "Sweep-ineligible"); nor is
+   * `PENDING_REVIEW`, which has its own narrower gate-SLA path
+   * (`recordEscalation` → `TIMED_OUT`), or `RECORDING`, an active capture
+   * session that force-terminating live audio would wrongly interrupt.
+   */
+  async findTimeoutSweepEligible(cutoff: Date): Promise<ConsultationEntity[]> {
+    return this.findAll({
+      filters: {
+        status: {
+          in: [
+            ConsultationStatus.PRIMED,
+            ConsultationStatus.DRAINING,
+            ConsultationStatus.DRAFT_PENDING_SENSORS,
+            ConsultationStatus.TIMED_OUT,
+            ConsultationStatus.REOPENED,
+          ],
+        },
+        updatedAt: { lt: cutoff },
+        resourceStatus: ResourceStatusType.ENABLED,
+      },
+      sort: [{ updatedAt: 'asc' }],
+    });
+  }
+
+  /**
    * Minimal projection of consultations created inside
    * [rangeStart, rangeEnd] (inclusive), for the new-vs-
    * revisit range aggregation. Rows are returned raw (`createdAt` +

@@ -133,10 +133,16 @@ describe('consultation-gate seed ↔ registry parity', () => {
   });
 
   it('writes the same row coordinates the registry write lane resolves', () => {
+    // Owner ruling 2026-08-20 (TASK-763 OD-1): the runtime cascade is request
+    // tenant → SYSTEM, full stop. `SettingsRegistryWriteService.targetTenantFor`
+    // resolves a `system`-scope write to `SYSTEM_TENANT_ID`, so the seed's row
+    // coordinates must match it exactly, or the operator's first PUT creates a
+    // second platform row for the same key. GLOBAL/`SEED_TENANT_ID`
+    // (`50000000-…`) is a CUSTOMER tenant and must never be the target.
     const source = seedSource();
     expect(source).toContain("const NAMESPACE = 'registry'");
-    expect(source).toContain('tenantId: SEED_TENANT_ID');
-    expect(source).not.toMatch(/tenantId: SYSTEM_TENANT_ID/);
+    expect(source).toContain('tenantId: SYSTEM_TENANT_ID');
+    expect(source).not.toMatch(/tenantId: SEED_TENANT_ID/);
     expect(source).not.toMatch(/tenantId: SEED_CUSTOMER_TENANT_IDS/);
   });
 

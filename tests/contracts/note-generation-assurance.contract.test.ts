@@ -6,10 +6,12 @@
  * code path creates a `RAW_SUMMARY` without a `SummaryMeta`" — its own
  * Acceptance Criteria). TASK-732 deleted that legacy path and its floor.
  * This test is the PERMANENT form of the same property: after this ticket
- * there is exactly one signable generator left (harness), plus the
- * kept-non-signable helper generators (pre-summary, comprehensive-summary,
- * sync `SummaryService.generateSummary`) — and EVERY one of them still
- * writes a `SummaryMeta` alongside the `RAW_SUMMARY` `ContextItem` it
+ * there is the harness path, plus the kept helper/rollup generators
+ * (`ComprehensiveSummaryProcessor` + its sync twin `ChainSummaryService`,
+ * and sync `SummaryService.generateSummary`) which are ALSO signable — only
+ * `PreSummaryProcessor`'s `PRE_SUMMARY` output is structurally non-signable
+ * (see `kept-generators-signability.task732.test.ts`) — and EVERY one of
+ * them still writes a `SummaryMeta` alongside the `RAW_SUMMARY` `ContextItem` it
  * creates.
  *
  * Static source scan (node:fs, no imports), following the shape of the

@@ -79,6 +79,33 @@ async def await_query(
         await asyncio.sleep(delay)
 
 
+async def await_history_event(
+    handle: Any,
+    predicate: Callable[[Any], bool],
+    *,
+    attempts: int = 200,
+    delay: float = 0.02,
+    description: str = "matching event",
+) -> None:
+    """Poll ``handle``'s event history until an event satisfying ``predicate`` is recorded.
+
+    The deterministic alternative to signalling a workflow after a fixed real-time
+    delay and hoping it has reached a particular point by then (TASK-718 Task 12 —
+    a raw ``asyncio.sleep`` before a signal is exactly the flakiness rule 06's
+    Pitfalls section warns about: a busy machine can push scheduling past any fixed
+    margin). Waiting for e.g. a specific ``EVENT_TYPE_ACTIVITY_TASK_SCHEDULED`` event
+    (optionally narrowed by ``predicate`` to one activity type — several activities can
+    be scheduled in a single run) to actually appear proves the workflow has reached
+    that point, however long it took.
+    """
+    for _ in range(attempts):
+        async for event in handle.fetch_history_events():
+            if predicate(event):
+                return
+        await asyncio.sleep(delay)
+    raise AssertionError(f"{description} never appeared in history")
+
+
 async def start_time_skipping(*, attempts: int = 3, **kwargs: Any) -> WorkflowEnvironment:
     """``WorkflowEnvironment.start_time_skipping`` that survives a port race.
 

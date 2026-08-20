@@ -883,7 +883,7 @@ export class ConsultationService extends BaseService implements IConsultationSer
    * `transitionTo` via the dedicated prime/close/reopen/recording routes)
    * are NOT mutable here.
    */
-  async updateConsultation(id: string, request: UpdateConsultationRequest): Promise<ConsultationResponse> {
+  async updateConsultation(id: string, request: UpdateConsultationRequest, expectedVersion?: number): Promise<ConsultationResponse> {
     const tenantId = this.tenantId;
     if (!tenantId) {
       throw new BadRequestException('Tenant ID is required');
@@ -917,14 +917,24 @@ export class ConsultationService extends BaseService implements IConsultationSer
       consultation.updatedBy = this.requestUserId;
     }
 
-    await this.consultationRepository.update(id, consultation);
+    // `PATCH /consultations/:id` carries `@RequiresIfMatch()`, so the CAS is the
+    // enforcement point for the precondition — the same shape the lifecycle
+    // transitions (prime/close/reopen) on this aggregate already use. The
+    // `?? consultation.version` fall-through keeps the documented
+    // service-to-service path (no header) working unchanged.
+    const updated = await this.consultationRepository.updateWithVersion(id, consultation, expectedVersion ?? consultation.version);
 
     this.broadcastSysEvent(SysEventType.ResourceUpdated, {
       resourceId: id,
       data: { action: 'updateConsultation', fields: Object.keys(request ?? {}) },
     });
 
-    return ConsultationDtoMapper.toResponseWithContext(consultation);
+    // Map the FRESHLY-PERSISTED entity, not the stale pre-write one: the CAS
+    // bumps `_version`, so returning `consultation` handed the caller version N
+    // while the row was already at N+1 — and any client chaining `If-Match`
+    // from this response would get an immediate 412. Same fix as
+    // `reopenConsultation` above.
+    return ConsultationDtoMapper.toResponseWithContext(updated);
   }
 
   // ============================================

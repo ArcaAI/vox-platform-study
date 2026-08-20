@@ -14,14 +14,20 @@ by ``task_type``, ACKs on success (or on a task-level failure — see
 ``services/task_manager.TaskManager``'s job (unchanged, extended not
 replaced) — this process updates it, never invents a parallel store.
 
-**Scope note:** the EMBEDDING handler is fully implemented (TASK-725's net-new
-capability, §2.7). The BATCH_GENERATION handler is a clearly-flagged
-``NotImplementedError`` stub — wiring full batch-generation dispatch would mean
-re-threading ``/generate``'s retry/circuit-breaker/audit machinery
-(``api/endpoints/generate.py``) for an out-of-process caller, which Phase A's
-design (Task 1) scoped as the envelope/queue/drain contract, not a full
-execution engine for both task types. Flagged here and in the ticket README
-(§7) as a residual, not silently faked as working.
+**Scope note:** both handlers are fully implemented. EMBEDDING was TASK-725's
+net-new capability (§2.7): resolve ``tei-embed`` from the embedding registry,
+call ``.embed(texts)``. BATCH_GENERATION reuses the SAME ``ProviderRegistry``
++ ``LLMProvider.generate()`` contract the synchronous ``/generate`` endpoint
+calls (``api/endpoints/generate.py``) — the provider itself already enforces
+the fail-closed model-selection guard (``require_model``, ``providers/base.py``)
+for cloud engines, so the worker does not duplicate it. What it deliberately
+does NOT re-thread out-of-process is ``/generate``'s per-request
+rate-limiter/circuit-breaker/semaphore/idempotency-cache machinery — those are
+same-pod backpressure concerns for the SYNCHRONOUS request path, orthogonal to
+a worker pool that already serializes work per consumer and lets
+``WorkerPoolConsumer``'s ack-on-failure loop (never re-running an
+already-terminal task, per idempotency-key convention) absorb a bad task
+without wedging the stream.
 """
 
 from __future__ import annotations
@@ -37,8 +43,11 @@ import structlog
 
 from text.core.config import get_settings
 from text.core.logging import setup_logging
+from text.main import _register_provider_factories
+from text.models.requests import GenerateRequest
 from text.models.task import TaskStatus
 from text.models.worker_task import WorkerTaskEnvelope, WorkerTaskType
+from text.providers.base import ProviderRegistry
 from text.providers.tei_embed import TeiEmbedProvider
 from text.services.task_manager import TaskManager
 from text.services.worker_pool_queue import WorkerPoolQueue
@@ -125,17 +134,24 @@ async def _handle_embedding(envelope: WorkerTaskEnvelope, *, embedding_provider:
     await embedding_provider.embed(texts)
 
 
-async def _handle_batch_generation(envelope: WorkerTaskEnvelope) -> None:
-    # See module docstring — flagged residual, not silently faked.
-    raise NotImplementedError(
-        "Batch-generation worker dispatch is not implemented in TASK-725 — the "
-        "envelope/queue/drain plumbing is built and reusable (WorkerTaskEnvelope, "
-        "WorkerPoolQueue, WorkerPoolConsumer), but executing a batch generate() "
-        "call out-of-process needs its own design (re-threading /generate's "
-        "retry/circuit-breaker/audit machinery for an out-of-process caller). "
-        "Flagged in design-notes.md and the ticket README, not silently stubbed "
-        "to succeed."
-    )
+async def _handle_batch_generation(
+    envelope: WorkerTaskEnvelope, *, provider_registry: ProviderRegistry
+) -> None:
+    """Execute one queued batch-generation task.
+
+    ``envelope.payload`` is the same shape ``GenerateRequest`` validates on
+    the synchronous ``/generate`` path — fails closed (``pydantic.ValidationError``)
+    on a malformed payload rather than dispatching a garbage request to a paid
+    engine. Provider resolution reuses ``ProviderRegistry.get()`` unchanged, so
+    an unregistered provider fails closed with the SAME ``ProviderNotFoundError``
+    ``/generate`` raises; a cloud provider missing its model still fails closed
+    via that provider's own ``require_model`` guard. Either exception propagates
+    to ``WorkerPoolConsumer._process``, which records the task FAILED and ACKs
+    it — one bad task never wedges the stream.
+    """
+    request = GenerateRequest.model_validate(envelope.payload)
+    provider = provider_registry.get(request.provider)
+    await provider.generate(request)
 
 
 async def main() -> None:
@@ -144,7 +160,12 @@ async def main() -> None:
     settings = get_settings()
     setup_logging(settings.log_level)
 
-    http_client = httpx.AsyncClient(timeout=httpx.Timeout(settings.tei_embed.timeout_s))
+    # Shared client for BOTH embedding (tei-embed) and generation (the nine
+    # LLM providers `_register_provider_factories` wires below) — mirrors
+    # `main.py`'s lifespan client (`httpx.Timeout(300.0)`), not the shorter
+    # tei-embed-only timeout this used to carry, since it now also backs
+    # batch-generation calls that can run far longer than an embed call.
+    http_client = httpx.AsyncClient(timeout=httpx.Timeout(300.0))
     redis_client = aioredis.from_url(settings.redis.redis_url, decode_responses=True)
     task_manager = TaskManager(
         redis=redis_client,
@@ -154,13 +175,23 @@ async def main() -> None:
     queue = WorkerPoolQueue(redis=redis_client)
     embedding_provider = TeiEmbedProvider(settings.tei_embed, http_client)
 
+    # Same lazy, connection-gated factory registration the FastAPI app uses
+    # (`main.py::lifespan`) — a provider is available here iff it would be
+    # available to the synchronous `/generate` endpoint too, so batch
+    # generation never has a wider (or narrower) provider surface than sync.
+    provider_registry = ProviderRegistry()
+    _register_provider_factories(provider_registry, settings, http_client)
+
     async def _embedding_handler(envelope: WorkerTaskEnvelope) -> None:
         await _handle_embedding(envelope, embedding_provider=embedding_provider)
+
+    async def _batch_generation_handler(envelope: WorkerTaskEnvelope) -> None:
+        await _handle_batch_generation(envelope, provider_registry=provider_registry)
 
     consumers = [
         WorkerPoolConsumer(WorkerTaskType.EMBEDDING, queue, task_manager, _embedding_handler),
         WorkerPoolConsumer(
-            WorkerTaskType.BATCH_GENERATION, queue, task_manager, _handle_batch_generation
+            WorkerTaskType.BATCH_GENERATION, queue, task_manager, _batch_generation_handler
         ),
     ]
 

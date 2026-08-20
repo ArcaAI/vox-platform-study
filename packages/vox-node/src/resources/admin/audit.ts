@@ -114,7 +114,8 @@ export class AdminAuditResource extends AdminResource {
           | 'TenantNlpTaskInstructions'
           | 'KnowledgeDocument'
           | 'ServiceAccount'
-          | 'WorkflowAssignment';
+          | 'WorkflowAssignment'
+          | 'WorkflowInvariantRule';
         search?: string;
         searchFields?: string;
         sort?: string;
@@ -232,7 +233,8 @@ export class AdminAuditResource extends AdminResource {
           | 'TenantNlpTaskInstructions'
           | 'KnowledgeDocument'
           | 'ServiceAccount'
-          | 'WorkflowAssignment';
+          | 'WorkflowAssignment'
+          | 'WorkflowInvariantRule';
         to?: string;
         userId?: string;
       };
@@ -332,7 +334,8 @@ export class AdminAuditResource extends AdminResource {
           | 'TenantNlpTaskInstructions'
           | 'KnowledgeDocument'
           | 'ServiceAccount'
-          | 'WorkflowAssignment';
+          | 'WorkflowAssignment'
+          | 'WorkflowInvariantRule';
         search?: string;
         searchFields?: string;
         sort?: string;

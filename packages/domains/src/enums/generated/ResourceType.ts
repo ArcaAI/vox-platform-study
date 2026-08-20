@@ -120,4 +120,8 @@ export enum ResourceType {
   // assignment is a governance act distinct from the definition it points
   // at. Parity with audit.prisma; see resourceType.enum-parity.test.ts.
   WorkflowAssignment = 'WorkflowAssignment',
+  // Workflow-graph safety rule (TASK-716) — a SYSTEM-tenant row is the
+  // platform invariant register made executable; a tenant row may only ADD
+  // strictness. Parity with audit.prisma; see resourceType.enum-parity.test.ts.
+  WorkflowInvariantRule = 'WorkflowInvariantRule',
 }

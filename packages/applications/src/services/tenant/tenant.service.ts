@@ -1100,20 +1100,32 @@ export class TenantService extends BaseService implements ITenantService {
   }
 
   /**
-   * Replaces the tenant's full tag set. Non-OCC set
-   * semantics (idempotent). Reuses the existing `Tenant.tags` scalar.
+   * Replaces the tenant's full tag set (idempotent set semantics) under
+   * optimistic concurrency.
+   *
+   * `PUT /admin/tenants/:id/tags` carries `@RequiresIfMatch()`, so
+   * `expectedVersion` is always supplied by a browser client; it stays optional
+   * here for the documented service-to-service body fallback.
    */
-  async setTags(id: EntityId, tags: string[]): Promise<TenantEntity> {
+  async setTags(id: EntityId, tags: string[], expectedVersion?: number): Promise<TenantEntity> {
     const tenant = await this.tenantRepository.findById(id);
 
     const previousData = tenant.toObject();
     tenant.tags = tags;
 
+    // OCC precondition BEFORE the no-changes short-circuit: re-sending the
+    // SAME tag set is the common case here, and a stale client must still be
+    // told to refetch (412) rather than get a silent 200 off the idempotent
+    // return below. The CAS still guards writers racing after this comparison.
+    this.assertExpectedVersion(tenant, expectedVersion);
     if (!tenant.hasChanges) {
       return tenant;
     }
 
-    const updated = await this.tenantRepository.update(id, tenant);
+    const updated =
+      expectedVersion === undefined
+        ? await this.tenantRepository.update(id, tenant)
+        : await this.tenantRepository.updateWithVersion(id, tenant, expectedVersion);
 
     this.broadcastSysEvent(SysEventType.ResourceUpdated, {
       resourceId: updated.id,

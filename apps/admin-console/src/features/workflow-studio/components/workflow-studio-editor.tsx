@@ -100,12 +100,16 @@ function EditorBody({ definition, etag, registryNodes }: WorkflowStudioEditorPro
   const readOnly = definition.status === 'PUBLISHED' || definition.status === 'DEPRECATED';
   const createNewVersion = useCreateWorkflowDefinition();
 
+  // Keyed once per registry fetch, not per hydrate — the inspector needs it live for whichever
+  // node is currently selected, not just at hydration time.
+  const descriptorByType = useMemo(() => new Map(registryNodes.map((descriptor) => [descriptor.type, descriptor])), [registryNodes]);
+  const selectedNodeConfigSchema = selectedNode ? (descriptorByType.get(selectedNode.type)?.configSchema ?? undefined) : undefined;
+
   const hydratedRef = useRef<string | null>(null);
   useEffect(() => {
     if (hydratedRef.current === definition.id) return;
     hydratedRef.current = definition.id;
     const { nodes: loadedNodes, edges: loadedEdges } = fromWorkflowGraph(definition.graph);
-    const descriptorByType = new Map(registryNodes.map((descriptor) => [descriptor.type, descriptor]));
     storeApi.getState().hydrate(
       loadedNodes.map((node) => ({ ...node, safetyClasses: descriptorByType.get(node.type)?.classes ?? node.safetyClasses })),
       loadedEdges,
@@ -113,7 +117,7 @@ function EditorBody({ definition, etag, registryNodes }: WorkflowStudioEditorPro
     setName(definition.name);
     setDescription(definition.description ?? '');
     setMetadataDirty(false);
-  }, [definition.id, definition.graph, definition.name, definition.description, registryNodes, storeApi]);
+  }, [definition.id, definition.graph, definition.name, definition.description, descriptorByType, storeApi]);
 
   const autosave = useAutosave({
     definitionId: definition.id,
@@ -407,7 +411,7 @@ function EditorBody({ definition, etag, registryNodes }: WorkflowStudioEditorPro
         <aside className="flex min-h-0 flex-col gap-4 [@media(min-width:64rem)_and_(min-height:32rem)]:overflow-y-auto" aria-label="Inspector and validation panel">
           <InspectorPanel
             node={selectedNode}
-            configSchema={undefined}
+            configSchema={selectedNodeConfigSchema}
             problems={selectedNode ? (problemsByNodeId.get(selectedNode.id) ?? []) : []}
             onConfigChange={(config) => selectedNode && storeApi.getState().updateNodeConfig(selectedNode.id, config)}
             readOnly={readOnly}

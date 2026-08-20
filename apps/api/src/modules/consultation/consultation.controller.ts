@@ -451,11 +451,33 @@ export class ConsultationController {
     path: ':id',
     by: ['id'],
   })
+  @RequiresIfMatch()
+  @ApiOperation({
+    summary: 'Update the safely-mutable fields of a consultation',
+    description:
+      'Optimistic concurrency is ENFORCED: the `If-Match` header (RFC 7232) is REQUIRED and the server runs a ' +
+      "Compare-And-Set against the row's `_version`. This closes the last unprotected write on the Consultation " +
+      'aggregate — `prime`/`close`/`reopen` and the context/summary sub-resource writes already required it, so a ' +
+      'second open tab could previously clobber an edit here silently. Drift is `412 Precondition Failed`; a ' +
+      'missing header is `428 Precondition Required`.',
+  })
+  @ApiHeader({
+    name: 'If-Match',
+    description: 'RFC 7232 strong validator carrying the consultation version the client read (e.g. `"7"`).',
+    required: true,
+    example: '"7"',
+  })
   @ApiParam({ name: 'id', description: 'Consultation ID' })
   @ApiResponse({ status: 404, description: 'Consultation not found' })
-  async update(@Param('id') id: string, @Body() request: UpdateConsultationRequest): Promise<ConsultationResponse> {
+  @ApiResponse({ status: 412, description: 'Optimistic concurrency conflict — re-fetch and try again with the new version.' })
+  @ApiResponse({ status: 428, description: 'If-Match header is required for this operation.' })
+  async update(
+    @Param('id') id: string,
+    @Body() request: UpdateConsultationRequest,
+    @ExpectedVersion() expectedFromHeader: number | undefined,
+  ): Promise<ConsultationResponse> {
     await this.verifyConsultationOwnership(id);
-    return this.consultationService.updateConsultation(id, request);
+    return this.consultationService.updateConsultation(id, request, expectedFromHeader);
   }
 
   // TASK-711 — session state machine. `prime`/`close`/`reopen` are the API

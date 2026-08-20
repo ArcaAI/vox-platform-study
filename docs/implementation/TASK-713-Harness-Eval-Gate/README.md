@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Status** | Review (2026-08-18, **sixth session — golden set rebuilt to best practice, judge selection made DB-resident, gate re-run: STILL FAILS, honestly**). Owner decision 3b-1b (keep `gemma-4-e4b-it-qat`, rebuild the reference set) implemented in full. Measured result: **`icc = 0.7306 < 0.8` on n = 288** (Gwet AC2 0.9196), 36/36 cases scored, 0 dropped, 3555 s wall clock; every other metric clears with margin (`pdsqi_mean` 4.875, `accurate`/`thorough` 4.833, `faithfulness` 0.9938); step 2 promptfoo **PASS 36/36**. Up from 0.6568 on half the ratings, and the failure is now specific: held-out ICC (**0.7682**) EXCEEDS dev (0.7045) so the labelling rules generalise; `accurate` 0.8661 / `useful` 0.8653 / `organized` 0.7974 / `synthesized` 0.7929 agree well; the residual is `comprehensible` (judge SD **0.000** — a literal 5 on all 36 cases) and `succinct` (SD 0.401), plus systematic leniency at the 1–2 end (L1 judge mean 2.719 vs reference 1.750). De-biasing lifts ICC only to 0.7350 (Pearson r 0.7387), so it is rank disagreement, not an offset. **Two prior hypotheses were tested and falsified**: context length does NOT change the judge's scores (byte-identical at 4096 / 8192 / 32768 / 131072 — it only causes silent truncation below ~6.5k), and the flat 5.00 was the MODEL — the gate had been grading with `google/gemma-4-e4b`, which returns a flat 5 on every quality case, rather than the platform's own `harness.judge` selection. That divergence is now structurally impossible: `harness/eval/judge/selection.py` resolves provider+model from the SYSTEM `AiTaskDefault` (tenant → SYSTEM, fail-closed, no new env var, `asyncpg` lazily imported so the SERVICE keeps its no-DB-client property). **Nothing was laundered**: thresholds untouched, `icc_gate_enabled` untouched, no case dropped, judge not swapped, anchored lever left off. Remaining: clinician review of `curated-v2.0.0` (artifact + amendment path built and waiting), or a judge with usable dynamic range — both owner/clinical decisions, not engineering fixes. |
+| **Status** | **Completed (2026-08-20, seventh session — owner ruling on the ICC gap; ticket closed)**. Six prior sessions established a real, reproduced measurement — `icc=0.7306` on the real `curated-v2.0.0` golden set (n=288, Gwet AC2 0.9196), against the literature-derived 0.80 target — and correctly refused to launder it (thresholds, judge model, `icc_gate_enabled` all left untouched pending a decision). **OWNER RULING (2026-08-20)**: rather than hold the ticket open for a clinician-reviewed reference set or a reasoning-capable judge (both real, multi-session efforts), lower `EvalConfig.icc_threshold` from 0.80 to **0.73** — the measured baseline, rounded down — so the gate certifies "at least as good as what shipped today" instead of blocking indefinitely on an aspirational bar. The gap is recorded as **explicit debt**, tracked in a new ticket, `TASK-780-Harness-Eval-Icc-Restore`, rather than silently absorbed. Implemented: `EvalConfig.icc_threshold` code default 0.8→0.73 with the full provenance in the field's own comment (`apps/harness/src/harness/eval/config.py`); `.gitlab/ci/test.yml`'s `harness-eval-gate` comment block updated from "currently FAILS" to the new passing baseline; two new tests (`TestTask713IccBaselineGate` in `test_ci_gate.py`) proving the gate passes at the exact measured reading (`icc=0.7306`) and still fails one thousandth below the new floor. Nothing else changed — golden set, judge selection, `icc_gate_enabled`, and the other three thresholds are exactly as the sixth session left them. See §8 Change History and TASK-780 for the reopening path. |
 | **Wave** | 1 · **Size** | M |
 | **Epic slug** | `harness-eval-gate` |
 | **Depends on** | — |
@@ -196,6 +196,127 @@ Its own justification (:119-122) is that image builds are idempotent/content-add
 - This ticket does not expand the golden set beyond `curated_v1.json`'s 18 cases; per the job's own header comment, a larger clinician-rated golden-set program is a separate, longer-running effort this ticket does not attempt to shortcut. **Answer**: Confirmed, unchanged — out of scope, not attempted in this pass.
 
 ## 7. Implementation Summary
+
+## SEVENTH SESSION (2026-08-20) — owner ruling on the ICC gap; threshold lowered to the measured baseline; ticket closed
+
+Six sessions built a real, hermetic, DB-resident eval gate and reproduced a genuine
+`icc=0.7306` reading — a real moderate reliability signal against the PDSQI-9
+literature's 0.80 target, decomposed down to two specific residual dimensions
+(`comprehensible` ceiling effect, `succinct` variance) rather than a diffuse failure.
+Every session correctly refused to "fix" that by relaxing a threshold, disabling the
+gate, or swapping the judge without a decision — the gap was a real finding, escalated
+as owner/clinical decisions (a clinician-reviewed reference set, or a reasoning-capable
+judge), both genuinely multi-week efforts.
+
+**OWNER RULING (2026-08-20)**: close the ticket now rather than hold it open on either
+of those efforts. Lower the release-gate `icc_threshold` from the literature-derived
+`0.80` to **`0.73`** — the measured baseline (`0.7306`, rounded down to leave the exact
+reading a hair of margin rather than sitting exactly on the line) — and record the 0.80
+shortfall as **explicit, tracked debt** instead of silently accepting a lower bar forever.
+
+### 7.7.1 Where the threshold lives, and why it stays a code default (not migrated to `global-kv`/`db-config`)
+
+`EvalConfig.icc_threshold` (`apps/harness/src/harness/eval/config.py`) is a
+`pydantic-settings` field, `env_prefix="HARNESS_EVAL_"` (override:
+`HARNESS_EVAL_ICC_THRESHOLD`), validated to `[0, 1]`. This is the ONLY place the value
+lives — `run_and_gate()`/`apply_gate()` in `ci.py` always read `config.icc_threshold`
+explicitly; the bare `icc_threshold: float = 0.8` parameter defaults on the low-level
+`judge_clinician_icc()` (`ci.py`), `calibration_report()` and `assert_judge_calibrated()`
+(`calibration/reliability.py`) are separate, deliberately-untouched library conveniences
+representing the literature-derived aspirational target for those generic
+judge↔human-agreement statistics helpers — they are never consulted by the production
+gate, which always passes `config.icc_threshold` explicitly.
+
+Checked against `00-project-context.md` §Configuration Principles / `09-infrastructure-devops.md`
+§Configuration Tiers before touching it: those rules ban a literal-in-code "threshold"
+that should instead be `db-config`/`global-kv`/tenant-resolved config. This value was
+assessed against that bar and kept as an env-overridable `pydantic-settings` field, not
+migrated, because:
+
+- **It has no tenant dimension.** The tenant → SYSTEM cascade the config-tier rules exist
+  to protect has nothing to resolve here — there is exactly one platform-wide release bar
+  for the harness's own judge calibration, not a per-tenant opinion a `db-config`/`global-kv`
+  row would express. `AiProviderConnection`'s three-state BYO cascade (the reference
+  implementation those rules cite) has no analogue for "how good must our own QA judge be."
+- **It is an engineering/CI acceptance bar, not a runtime business setting.** It gates a
+  release-quality decision (should this generator ship), changed only by a deliberate,
+  reviewed, redeploy-gated ruling — exactly this one — not something that needs to move
+  without a restart (the corollary the tiers table itself uses to decide what qualifies
+  as an env var at all).
+- **It already resolves through the harness's own sanctioned config mechanism.**
+  `06-python-services.md` §Configuration documents `BaseSettings` classes with an explicit
+  `env_prefix` as the standard pattern for exactly this class of Python-service setting;
+  `icc_threshold` already had an env override lever before this session, consistent with
+  its three sibling thresholds (`faithfulness_threshold`, `pdsqi_*_threshold`) in the same
+  `EvalConfig` class, none of which any of the six prior sessions flagged as a hardcoding
+  violation despite explicitly auditing "structure/config-residency" more than once (§7.5
+  "Structure / config-residency review").
+- **Migrating it would be new, disproportionate plumbing.** `global-kv`/`db-config` for a
+  Python service means threading a new `SettingDescriptor` through the TS
+  `settings-registry`, the gateway's internal effective-config endpoint, AND harness's own
+  `EffectiveConfigClient` (`core/effective_config.py`, currently scoped to exactly one key
+  group, `retention.*`, for the MiniCheck cache) — a real cross-language subsystem change
+  for a value nothing in the platform needs to change without a redeploy.
+
+This is a considered inclusion decision, not an oversight — recorded here so a future
+session doesn't re-litigate it without reading this reasoning first. What DID change is
+only the number, and its provenance is now in the field's own code comment
+(`config.py`), not just this README.
+
+### 7.7.2 The number, its provenance, and the debt
+
+**`icc_threshold = 0.73`** — the measured, reproduced baseline (`icc=0.7306`, Gwet AC2
+0.9196, n=288 paired ratings) against the real `curated-v2.0.0` golden set (36 cases),
+computed by the sixth session (§ SIXTH SESSION below) and unchanged by this session. It
+is a **recorded baseline, not an aspiration**: it certifies "the harness generator's
+judge↔clinician agreement is no worse than it measured on 2026-08-20", not "clinically
+validated to the PDSQI-9 literature's 0.80 target". Everything else that session measured
+stands: `pdsqi_mean` 4.875, `accurate`/`thorough` 4.833, `faithfulness` 0.9938, held-out
+ICC (0.7682) exceeding dev (0.7045) so the labelling rules generalise — the gate now
+passes end to end at today's actual, honestly-measured quality.
+
+**DEBT — restoring the 0.80 gate.** The residual disagreement is concentrated and
+specific, not diffuse (§ SIXTH SESSION §7.6.6): `comprehensible` has zero judge-side
+variance (a literal 5 on all 36 cases — a ceiling effect, not a scoring error) and
+`succinct` has low variance (SD 0.401); de-biasing the judge's leniency only lifts ICC to
+0.7350 (Pearson r 0.7387), so this is genuine rank disagreement, not a correctable offset.
+Closing the 0.73→0.80 gap for real needs ONE of:
+
+1. **A reasoning-capable judge** with usable dynamic range on `comprehensible`/`succinct`
+   (the current `gemma-4-e4b-it-qat` was chosen for CI-reachable local latency, not
+   maximal agreement — swapping judges is an owner/product decision, not an engineering
+   one, per the same reasoning that kept this ticket from silently doing it); or
+2. **A clinician-reviewed (not rubric-derived) reference set** — `curated-v2.0.0`'s
+   labels are AI-authored, rubric-literal, `clinician_review_status: pending` on every
+   case; the review workflow (`review/curated_v2_review.md`, `apply_amendments.py`) is
+   built and waiting for an actual clinician pass, which is what would let `comprehensible`
+   and `succinct` acquire real, defensible variance instead of a judge-side ceiling.
+
+This restoration work is tracked as `docs/implementation/TASK-780-Harness-Eval-Icc-Restore/README.md`,
+opened Pending by this session rather than left as a dangling TODO in this closed ticket.
+
+### 7.7.3 Verification actually run (seventh session)
+
+- `apps/harness/src/harness/eval/config.py`: `icc_threshold` default changed 0.8→0.73 with
+  provenance comment; no other field touched.
+- `.gitlab/ci/test.yml`: `harness-eval-gate`'s comment block updated to state the new
+  passing baseline (was: "currently FAILS on icc=0.6568", stale since the sixth session's
+  own 0.7306 remeasurement never landed here either — now current).
+- New tests, `apps/harness/src/harness/tests/unit/eval/test_ci_gate.py`
+  (`TestTask713IccBaselineGate`): `EvalConfig().icc_threshold == 0.73`; `apply_gate()`
+  passes given a `CalibrationReport(icc=0.7306, ...)` (the exact measured reading) with
+  the alongside-cleared `curated-v2.0.0` aggregates; `apply_gate()` still fails one
+  thousandth (`icc=0.7299`) below the new floor — the gate was lowered, not defanged.
+- `conda run -n arcaenv pytest apps/harness/src/harness/tests/unit/eval/ -q`:
+  **254 passed in 72.64s** (was 251 before this session's 3 new tests), 0 failed.
+  Targeted re-run confirms the specific tests:
+  `pytest apps/harness/src/harness/tests/unit/eval/test_ci_gate.py -v -k "IccBaseline or icc_below_threshold"`
+  → `test_icc_below_threshold_blocks_release`, `test_default_icc_threshold_is_the_recorded_baseline`,
+  `test_gate_passes_at_the_measured_curated_v2_icc`, `test_gate_still_fails_below_the_new_threshold`
+  all **PASSED** (4 passed, 12 deselected in 0.13s).
+- `conda run -n arcaenv ruff check apps/harness/src/harness/eval/config.py apps/harness/src/harness/tests/unit/eval/test_ci_gate.py`
+  → `All checks passed!`. `conda run -n arcaenv mypy --config-file apps/harness/pyproject.toml apps/harness/src/harness/eval/config.py`
+  → `Success: no issues found in 1 source file`.
 
 ## SIXTH SESSION (2026-08-18) — golden set rebuilt to best practice; gate re-run; **still FAILS, honestly**
 
@@ -1350,3 +1471,4 @@ Path (a)/(b) choice above.
 | 2026-08-17 | **OWNER DECISION implemented**: run the gate LOCALLY, not on a self-hosted CI runner — a local/scheduled quality check, not a blocking shared-CI job. `.gitlab/ci/test.yml`'s `harness-eval-gate` now carries `allow_failure: true` in addition to the existing `RUN_INFRA_TESTS=true` opt-in `rules:` gate, both commented with the owner's reasoning. `apps/harness/eval/README.md` gained a "Run the release gate locally (the supported path)" section with the exact command. Reconfirmed LM Studio reachability and the `google/gemma-4-e4b` model live (fresh `curl`/model-list/smoke-completion, ~16.5s for a trivial 2-token completion — consistent with the prior session's own observation). Launched a fresh full 18-case local reproduction in the background; confirmed genuine live progress (`lsof` showed an `ESTABLISHED` connection to the LM Studio port throughout, process alive and consuming CPU across multiple checks) but — like the third session's attempt — it did NOT complete within this session's available turn budget. Reported honestly rather than fabricated, with a reasoned (not measured) ~20-45+ minute wall-clock floor derived from the two real partial observations across sessions — see §7 "Local run attempt, this session". `pnpm harness:lint`/`harness:typecheck` clean this session (no Python source touched); YAML-parse-verified `allow_failure`/`retry`/`rules` on the job. Status remains Review — the CI-provisioning question is now answered and implemented; what remains gated is a completed fresh wall-clock measurement (an unattended/background run, consistent with the "local/scheduled" posture just adopted, would close this out) and a real GitLab CI pipeline run (still no CI access from any session, and now explicitly out of scope per the owner's local-only decision). | Claude (execution session 4) |
 | 2026-08-17 | **THE GATE WAS RUN END TO END FOR THE FIRST TIME — AND IT FAILS.** Root-caused why three prior sessions stalled: LM Studio JIT-loads a model on first request, so the "~16.5 s per trivial call" they measured was a **one-time cold load**, not per-call latency (measured this session: cold 19.910 s, warm **0.098 s**, same request; model was `state: not-loaded` beforehand). Warm-loaded the model, then ran the full gate: step 1 (`harness.eval.ci`, `curated_v1.json`, 18/18 scored, 0 dropped, 2200 s / 36.7 min wall clock under load average 40-77) → **FAIL, `icc=0.6568 < 0.8`** (Gwet AC2 0.9439, n=144); `pdsqi_accurate`/`thorough`/`mean` = 5.00, `faithfulness` = 0.9920 all clear. Step 2 (promptfoo) → PASS 18/18. **The 2026-06-07 PASS does not reproduce**; demoted to HISTORICAL in `apps/harness/eval/README.md` and no longer the ticket's evidence. Diagnosed the failure offline from the report (no extra model calls): the judge returns a flat `5` on all 8 dimensions of all 12 quality cases (`judge SD = 0.000`), so that lane contributes exactly 0 to the variance-ratio ICC — quality lane ICC `+0.0000` / AC2 0.9861, calibration lane ICC `+0.6412`, all-144 ICC `+0.6568`; de-biasing the judge's +0.299 leniency lifts it only to 0.6910 (Pearson r 0.7100), so it is genuine rank disagreement, not an offset. The June PASS depended on the judge being loaded at 4096 ctx where `synthesized` averaged 3.92; at today's 131072 ctx it scores 5.00. **Thresholds deliberately NOT relaxed** — `icc_gate_enabled=false` was built for a structurally uninformative ICC (Qwen ≈ -8.3e-17, outside the `[0,1]` validator); 0.6568 is a real moderate reading against a literature-derived bar, so disabling it would launder a true negative into a pass. Escalated as an owner/clinical decision (real clinician golden set, or a reasoning-capable judge). Second real defect found by actually running it: **the gate's two steps graded different golden sets** — step 2 fell back to the 5-case `synthetic_v0` (observed: `Running 5 test cases`) because nothing set `HARNESS_GOLDEN_SET_PATH`, despite `promptfooconfig.yaml` claiming otherwise; pinned it (absolute path) in the CI job and `run-gate.sh`, verified `Running 18 test cases … 18 passed (100%)`. Added **`apps/harness/eval/run-gate.sh`** as the single supported command (preflight → warm-load → ctx check → both steps on one golden set → timed summary → non-zero exit for schedulers), plus a "when to run it" cadence table in `apps/harness/eval/README.md`. Corrected two stale `.gitlab/ci/test.yml` comments (a `max_tokens` note justifying 3072 for a 4096-ctx load while the value is 16384; the "gate PASSES cleanly" threshold note). Verified structure/config-residency: judge/metrics/golden-set complete (209 eval tests; fixture is 18 cases, 12/6 split), backend swap is env-only via `build_judge_client`'s fail-closed dispatch, every threshold has literature provenance **and** a discriminating test, and runtime judge SELECTION is DB-driven + fail-closed (`temporal/activities.py:1706-1755`) with env supplying connection config only — no new env var added. Gates under the coordinator's mutex: `harness:lint` clean, `harness:typecheck` clean (119 files), `unit/eval` 209 passed, full `harness:test` 19 failed / 1341 passed — **all 19 in sibling-owned `test_smr_client.py`/`test_nlp_client.py`, every one a TASK-737 `missing keyword-only argument: 'tenant_id'`**, zero eval files; reported to the coordinator, not edited. Status remains Review — pending the owner's decision on the ICC failure. | Claude (execution session 5) |
 | 2026-08-18 | **GOLDEN SET REBUILT TO BEST PRACTICE; JUDGE SELECTION MADE DB-RESIDENT; GATE RE-RUN — STILL FAILS (`icc=0.7306 < 0.8`, n=288, Gwet AC2 0.9196), reported as a true negative.** Implemented owner decision 3b-1b. (1) **Falsified the context-length hypothesis** with a real sweep — the same six cases at 4096/8192/32768/131072 return BYTE-IDENTICAL PDSQI vectors and flat latency; the only effect of a small window is SILENT TRUNCATION (`curated-c06` hit prompt 2142 + completion 1954 = 4096 exactly → `finish_reason: length` → case dropped, `n` shrinks unnoticed). Context is now pinned for HEADROOM (8192 / `max_tokens` 4096) with an auto-reload in `run-gate.sh`. (2) **Found the real cause of the flat 5.00: the MODEL.** At identical context, `google/gemma-4-e4b` returns a flat 5 on all 8 dimensions of every quality case while `gemma-4-e4b-it-qat` varies (and is ~1.8× faster) — and the gate had been running `google/gemma-4-e4b` via a hardcoded `run-gate.sh` default, i.e. a DIFFERENT judge than the platform's `harness.judge` selection. (3) **Closed that with D-B compliance**: new `harness/eval/judge/selection.py` resolves provider+model from the SYSTEM `AiTaskDefault` → `AiModel` (tenant→SYSTEM, fail-closed, exit 2 on absence, no env fallback, NO new env var; `asyncpg` lazily imported so the harness SERVICE keeps its deliberate no-DB-client property); `run-gate.sh` and `ci.py` wired to it; the SYSTEM row repointed `lms-gemma-4-e4b` → `lms-gemma-4-e4b-it-qat`. (4) **Built `curated-v2.0.0`**: 12 synthetic source consultations → 36 cases → **288 paired ratings** (v1: 18/144), a designed 5-level gradient with a named anchor per score point (reference SD 1.313, all of 1–5 exercised), a 7-class seeded clinical error taxonomy with one class per L2–L4 variant (each ≥3 occurrences), stratification over 12 specialties × length × complexity, a stratified `dev` 24 / `holdout` 12 split, AI-authored rubric-literal provenance marked `clinician_review_status: pending` on every case with a per-case rationale, and PHI-free-by-construction content locked by a regex test; v1 retained UNMUTATED. Labelling is by RULE (spec §3 R1–R7) so a reviewer checks 7 rules, not 288 numbers; the one changed rule (R3 — a content error does not lower `citation`) was decided from the rubric text BEFORE scoring and applied uniformly across both splits. (5) **Built the clinician review workflow**: a generated 1636-line `review/curated_v2_review.md` (sources · note · seeded defect · proposed rating · rationale · accept/amend block), an amendments file, and `apply_amendments.py` which refuses an unattributed amendment, applies only named dimensions, flips provenance to `clinician-reviewed`, and ships a NEW version rather than mutating in place. (6) **Ran the gate end to end**: 36/36 scored, 0 dropped, 3555 s; `pdsqi_mean` 4.875 / `accurate` 4.833 / `thorough` 4.833 / `faithfulness` 0.9938 all clear; **`icc=0.7306` FAILS**; step 2 promptfoo PASS 36/36. Decomposed offline: **holdout 0.7682 > dev 0.7045** (rules generalise), `accurate` 0.8661 / `useful` 0.8653 / `organized` 0.7974 / `synthesized` 0.7929, residual concentrated in `comprehensible` (judge SD **0.000**) and `succinct` (0.401) plus L1 leniency (judge 2.719 vs ref 1.750); de-biased ICC only 0.7350, Pearson r 0.7387. **Nothing laundered** — thresholds, `icc_gate_enabled`, the judge model and the anchored lever all untouched; no case dropped. Gates: full `harness:test` **1402 passed / 0 failed**, `unit/eval` **251 passed** (was 209, +42 new), `harness:lint` clean, `harness:typecheck` clean (124 files). TDD note recorded honestly: the golden-set contract test produced a genuine observed RED that changed the design (L4 mean below L3 → L4 restated as a presentation-only band with its own contract); the `selection.py` and review-workflow tests were written after their modules with no observed RED. Status remains Review — the ICC failure is a real signal needing clinician review or a judge decision, not an engineering fix. | Claude (execution session 6) |
+| 2026-08-20 | **OWNER RULING IMPLEMENTED — THRESHOLD LOWERED TO THE MEASURED BASELINE; TICKET CLOSED.** Owner decision (2026-08-20): rather than hold TASK-713 open pending a clinician-reviewed golden set or a reasoning-capable judge, lower the release-gate `icc_threshold` from the literature-derived `0.80` to **`0.73`** (the measured `icc=0.7306` baseline from the sixth session, rounded down) and record the 0.80 shortfall as explicit, tracked debt rather than an indefinite block. Confirmed the threshold's config residency first (`00-project-context.md` §Configuration Principles / `09-infrastructure-devops.md` §Configuration Tiers): `EvalConfig.icc_threshold` is a `pydantic-settings` field (`HARNESS_EVAL_ICC_THRESHOLD` env override) and was KEPT there rather than migrated to `global-kv`/`db-config` — it has no tenant dimension (a single platform-wide engineering release bar, not a per-tenant opinion), is changed only by a deliberate redeploy-gated ruling (this one), and already follows the sanctioned `06-python-services.md` §Configuration pattern shared by its three untouched sibling thresholds; migrating it would require new TS `settings-registry` + gateway effective-config + harness `EffectiveConfigClient` plumbing disproportionate to a value nothing needs to change without a restart — reasoning recorded in full at §7.7.1 so it isn't re-litigated blind. Changed `apps/harness/src/harness/eval/config.py`: `icc_threshold` default `0.8` → `0.73`, with the baseline's provenance (measured value, n, date, TASK-780 pointer) written directly into the field's code comment so a reader sees it's a recorded baseline, not an aspiration, without needing this README. Updated the stale `.gitlab/ci/test.yml` `harness-eval-gate` comment block (previously described the job as "currently FAILS on icc=0.6568", pre-dating even the sixth session's own 0.7306 remeasurement) to state the new passing baseline and point at TASK-780. Added `TestTask713IccBaselineGate` to `test_ci_gate.py` (3 tests): `EvalConfig().icc_threshold == 0.73`; `apply_gate()` passes given the exact measured `CalibrationReport(icc=0.7306, ...)` alongside the sixth session's own cleared PDSQI/faithfulness aggregates; `apply_gate()` still fails one thousandth (`icc=0.7299`) below the new floor, proving the gate was lowered, not defanged. Nothing else touched — golden set, judge selection, `icc_gate_enabled`, and the other three thresholds are exactly as the sixth session left them. Opened `docs/implementation/TASK-780-Harness-Eval-Icc-Restore/README.md` (Pending) to track restoring the 0.80 gate. `apps/harness/src/harness/tests/unit/eval/` suite run green (see verification evidence in this session's chat/PR). Status set to **Completed**. | Claude (execution session 7 — owner ruling, ticket closure) |

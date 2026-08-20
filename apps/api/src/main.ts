@@ -12,6 +12,7 @@ import { auditBusinessPlaneApiKeyExemptions } from './bootstrap/business-plane-a
 import { auditConsentRouteCoverage } from './bootstrap/consent-route-coverage-audit';
 import { auditServiceAccountSurface } from './bootstrap/service-account-surface-audit';
 import { auditWebSocketGatewayOwnerBinding } from './bootstrap/ws-gateway-owner-audit';
+import { auditCaslEnforcePairReachability } from './bootstrap/casl-enforce-reachability-audit';
 import { auditOptimisticConcurrencyCoverage } from './bootstrap/occ-coverage-audit';
 import { assertGenaiContentCaptureDisabled } from './bootstrap/genai-content-capture-audit';
 import { assertJwtSecretNotPlaceholder } from './bootstrap/jwt-secret-placeholder-audit';
@@ -357,6 +358,17 @@ async function bootstrap() {
   // ship without someone answering "may THIS caller drive THIS stream?"), never
   // the behaviour; the behaviour is pinned by the specs each entry names.
   auditWebSocketGatewayOwnerBinding(app);
+
+  // Refuses to start if a pair listed in `CASL_ENFORCED_PAIRS` cannot actually
+  // produce the 403 it claims (TASK-781). TASK-712 listed three `ApiKey` pairs
+  // whose resolver loads its row through a 404-throwing accessor, so on the
+  // deny case the resolver threw, the guard failed open, and
+  // `casl_enforce_denial_total` could never move — a counter reading zero
+  // because it CANNOT fire is indistinguishable from one reading zero because
+  // nothing diverged (TASK-779 F-1). Also refuses an enforced pair on an
+  // OR-mode route, where an enforced denial would override an allow earned by
+  // another alternative. Passes vacuously while the enforce list is empty.
+  auditCaslEnforcePairReachability(app);
 
   // WARN-ONLY (REST review H-1). Reports version-bearing PATCH/PUT routes that
   // do not require `If-Match`. Deliberately does NOT refuse boot: closing the

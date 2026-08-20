@@ -1,12 +1,14 @@
 import type { CorePrismaClient } from '../../../client';
 import { ValueType } from '../../../generated/core-prisma-client/client.js';
-import { SEED_TENANT_ID, SEED_USER_IDS, SEED_GLOBAL_SETTING_IDS } from './00-constants';
+import { SYSTEM_TENANT_ID, SEED_USER_IDS, SEED_GLOBAL_SETTING_IDS } from './00-constants';
 
 /**
  * DB-backed, admin-controlled rate-limit configuration seed.
  *
  * Rate limiting is a gateway-wide concern, so a SINGLE authoritative set of
- * rows lives under the platform tenant (`SEED_TENANT_ID`). The
+ * rows lives under the SYSTEM tenant (`SYSTEM_TENANT_ID`) — the sole platform
+ * configuration tier (owner ruling 2026-08-20, TASK-763 OD-1; GLOBAL/`SEED_TENANT_ID`
+ * is a CUSTOMER tenant, never a runtime tier). The
  * `AppSettingsService` cache is keyed by flat `key` across all tenants;
  * seeding one platform row per key keeps that lookup deterministic and avoids
  * tripping the boot-time duplicate-key invariant.
@@ -121,7 +123,7 @@ export const seedRateLimitSettings = async (client: CorePrismaClient) => {
     await client.globalSetting.upsert({
       where: {
         GlobalSetting_tenantId_name_key_unique: {
-          tenantId: SEED_TENANT_ID,
+          tenantId: SYSTEM_TENANT_ID,
           name: s.name,
           key: s.key,
         },
@@ -136,7 +138,7 @@ export const seedRateLimitSettings = async (client: CorePrismaClient) => {
       },
       create: {
         id: s.id,
-        tenantId: SEED_TENANT_ID,
+        tenantId: SYSTEM_TENANT_ID,
         namespace: NAMESPACE,
         name: s.name,
         key: s.key,

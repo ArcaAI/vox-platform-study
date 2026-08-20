@@ -95,3 +95,4 @@ export * from './WorkflowRunEntityMapper';
 export * from './WorkflowDefinitionEntityMapper';
 export * from './WorkflowAssignmentEntityMapper';
 export * from './WorkflowAssignmentChangeEntityMapper';
+export * from './WorkflowInvariantRuleEntityMapper';

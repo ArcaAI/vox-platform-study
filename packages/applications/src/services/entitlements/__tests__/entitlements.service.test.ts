@@ -3,7 +3,7 @@ import { BadRequestException, Logger, NotFoundException } from '@nestjs/common';
 import { SysEventType, ValueType } from '@arcaai/domains';
 import { QuotaExceededException } from '@arcaai/exceptions';
 import { EntitlementsService } from '../entitlements.service';
-import { GIB, ENTITLEMENTS_QUOTA_BLOCKED_EVENT, ENTITLEMENTS_STORAGE_WARN_EVENT } from '../entitlements.constants';
+import { GIB, ENTITLEMENTS_QUOTA_BLOCKED_EVENT, ENTITLEMENTS_STORAGE_WARN_EVENT, ENTITLEMENTS_TENANT_ID } from '../entitlements.constants';
 
 /*
  * EntitlementsService.
@@ -172,7 +172,7 @@ describe('EntitlementsService', () => {
           value: 'true',
           dataType: ValueType.Boolean,
           namespace: 'entitlements',
-          tenantId: '50000000-0000-0000-0000-000000000000',
+          tenantId: ENTITLEMENTS_TENANT_ID,
         }),
       );
       expect(appSettings.refreshCache).toHaveBeenCalledTimes(1);
@@ -220,6 +220,35 @@ describe('EntitlementsService', () => {
 
       expect(resolved.limits.maxUsers).toBe(999);
       expect(resolved.limits.maxDepartments).toBe(10); // inherited PRO default
+    });
+
+    /*
+     * TASK-766 OD-2 (owner decision, 2026-08-20): the ArcaAI day-1 tenant is
+     * seeded with `plan: 'ENTERPRISE'` (packages/database seed/05-tenant.ts,
+     * pinned by `tenant-plan-seed.test.ts`). This proves the OTHER half of
+     * that decision — that the entitlement path actually resolves a REAL,
+     * gated ENTERPRISE quota set for a tenant carrying that plan, rather than
+     * silently falling through to `UNGATED_ENTITLEMENTS` (the null-plan Q3
+     * default every un-planned seeded tenant — SYSTEM, Global — still gets).
+     */
+    it('resolves an ENTERPRISE-plan tenant (as seeded for ArcaAI) to real gated quotas, never ungated-legacy', async () => {
+      tenantRepository.findById.mockResolvedValue({ plan: 'ENTERPRISE', trialEndsAt: null });
+      planEntitlementRepository.findByPlan.mockResolvedValue(null);
+      tenantEntitlementRepository.findByTenant.mockResolvedValue(null);
+
+      const resolved = await makeService().resolveForTenant('arcaai-tenant');
+
+      expect(resolved.gated).toBe(true);
+      expect(resolved.plan).toBe('ENTERPRISE');
+      // Structural caps are finite on ENTERPRISE (RATIFIED 2026-08-08) —
+      // an ungated-legacy resolution would have every one of these `null`.
+      expect(resolved.limits.maxUsers).toBe(100);
+      expect(resolved.limits.maxDepartments).toBe(40);
+      expect(resolved.limits.maxApiKeys).toBe(50);
+      // Usage meters are unlimited on ENTERPRISE by design (negotiated), so
+      // this alone would NOT distinguish it from ungated-legacy — the
+      // structural caps above are the load-bearing assertion.
+      expect(resolved.limits.monthlyConsultations).toBeNull();
     });
   });
 

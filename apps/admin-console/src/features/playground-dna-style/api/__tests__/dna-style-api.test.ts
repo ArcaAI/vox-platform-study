@@ -96,11 +96,15 @@ describe('playground dna style client', () => {
     expect(calls[0].body).toEqual({ styleText: 'Concise clinical prose.', changeReason: 'tone fix', expectedVersion: 3 });
   });
 
-  it('promotes a report to default', async () => {
-    const calls = installFetchMock(() => Response.json({ id: 'rep-2', isLatest: true }));
-    await setDefaultReport('rep-2');
+  // TASK-776 H-1 phase 2: `PATCH :reportId/default` now requires `If-Match`.
+  // The validator is the report row's `version` from the list read — the
+  // console echoes it rather than inventing one.
+  it('promotes a report to default under If-Match', async () => {
+    const calls = installFetchMock(() => Response.json({ id: 'rep-2', isLatest: true, version: 7 }));
+    await setDefaultReport('rep-2', '"6"');
     expect(calls.map((call) => `${call.method} ${call.url}`)).toEqual(['PATCH /api/hope/dna-writing-styles/rep-2/default']);
-    expect(calls[0].body).toBeUndefined();
+    expect(calls[0].headers.get('if-match')).toBe('"6"');
+    expect(calls[0].body).toEqual({});
   });
 
   it('erases the whole learned profile through DELETE my-style (no body)', async () => {
@@ -156,11 +160,15 @@ describe('playground dna style client', () => {
     expect(calls[0].body).toEqual({ enabled: false, expectedVersion: 2 });
   });
 
-  it('writes the first toggle WITHOUT If-Match when no DOCTOR row exists yet (version 0)', async () => {
+  // TASK-776 H-1 phase 2: `PUT settings` now requires `If-Match`, so the FIRST
+  // write carries the gateway's create-intent validator `"0"` — the value
+  // `GET settings` actually returned — instead of omitting the header. The body
+  // field is still withheld, because its validator rejects 0.
+  it('writes the first toggle with the create-intent If-Match "0" when no DOCTOR row exists yet', async () => {
     const calls = installFetchMock(() => Response.json({ doctorToggle: true, tenantEnabled: true, effective: true, version: 1 }));
     await updateDnaSettings({ enabled: true }, 0);
     expect(calls.map((call) => `${call.method} ${call.url}`)).toEqual(['PUT /api/hope/dna-writing-styles/settings']);
-    expect(calls[0].headers.get('if-match')).toBeNull();
+    expect(calls[0].headers.get('if-match')).toBe('"0"');
     expect(calls[0].body).toEqual({ enabled: true });
   });
 

@@ -335,17 +335,23 @@ don't) to this pass.
 
 **R-2 boundary (Task 8), recorded by the same owner decision:** KEEP the v1-compat `pre-summary`
 and `summary` surfaces — they are to be transformed into standalone features in a later ticket.
-"Legacy deleted" is scoped to the **signable generator path only**: `summary.processor.ts` (the
-async `SUMMARY_REGENERATE` BullMQ generator that, post-TASK-704, is the sole path capable of
-producing an `isFinalSummary` draft reachable by `approveSummary`) and its NER companion
-`ner.processor.ts`, plus TASK-714's now-throwaway legacy safety floor. `PreSummaryProcessor`,
-`ComprehensiveSummaryProcessor`, and `SummaryService.generateSummary`'s sync legacy body (the
-"third generator," `summary.service.ts:402`, permanently excluded from ever routing to harness per
-TASK-704's own decision — deletion-manifest.md §0.1) all **survive**, per option (b) of the
-ticket's own §2.6 decision table: kept, un-gated, as explicitly non-signable helper generators.
-The frozen `@Controller('api/smr/api/v1')` wire route (`apps/api/src/modules/smr-compat/`) and its
-four vox-node/admin-console consumers (§2.7) are untouched by this scope. This is the Task 8
-decision — recorded here and cross-referenced from `deletion-manifest.md` §5.
+"Legacy deleted" is scoped to the **generator this ticket actually removed**: `summary.processor.ts`
+(the async `SUMMARY_REGENERATE` BullMQ generator) and its NER companion `ner.processor.ts`, plus
+TASK-714's now-throwaway legacy safety floor. `PreSummaryProcessor`, `ComprehensiveSummaryProcessor`,
+and `SummaryService.generateSummary`'s sync legacy body (the "third generator,"
+`summary.service.ts:402`, permanently excluded from ever routing to harness per TASK-704's own
+decision — deletion-manifest.md §0.1) all **survive**, per option (b) of the ticket's own §2.6
+decision table: kept, un-gated. **Correction (2026-08-20, see deletion-manifest.md §5 and
+README.md §8 Change History):** "non-signable helper generators" does NOT describe all three —
+only `PreSummaryProcessor`'s `PRE_SUMMARY` output is structurally excluded from
+`approveSummary`'s `isFinalSummary` gate. `SummaryService.generateSummary` (by original design —
+it produces the actual clinical note) and `ComprehensiveSummaryProcessor` (by original design,
+matching its sync twin `ChainSummaryService.generateComprehensiveSummary`) both remain fully
+signable; deleted `summary.processor.ts` was never the *sole* path capable of producing an
+`isFinalSummary` draft, only the sole *legacy-BullMQ* one. The frozen
+`@Controller('api/smr/api/v1')` wire route (`apps/api/src/modules/smr-compat/`) and its four
+vox-node/admin-console consumers (§2.7) are untouched by this scope. This is the Task 8 decision —
+recorded here and cross-referenced from `deletion-manifest.md` §5.
 
 **Phases 2-4 proceed on this basis.** See `harness-migration-runbook.md` for the mechanism and
 `deletion-manifest.md` §5 for Task 8's full record.

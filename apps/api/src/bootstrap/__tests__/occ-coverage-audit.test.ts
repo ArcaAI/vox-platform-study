@@ -9,10 +9,43 @@
 import { describe, it, expect, vi } from 'vitest';
 import { Test, TestingModule } from '@nestjs/testing';
 import { Body, Controller, Module, Patch, Put } from '@nestjs/common';
+import { Reflector } from '@nestjs/core';
+import { ModulesContainer } from '@nestjs/core/injector/modules-container';
 import { ApiProperty, ApiResponse } from '@nestjs/swagger';
 import { UnifiedAuthGuard } from '@arcaai/applications';
-import { auditOptimisticConcurrencyCoverage } from '../occ-coverage-audit';
+import { auditOptimisticConcurrencyCoverage, SANCTIONED_EXCEPTIONS } from '../occ-coverage-audit';
 import { ExpectedVersion, NoOptimisticConcurrency, RequiresIfMatch } from '../../decorators';
+// The REAL controllers that owned the seven tier-A routes, plus the two
+// create-or-update exceptions. Imported as VALUES on purpose: this file is the
+// regression gate for the H-1 migration, and only the shipped decorators can
+// prove it.
+import { ConsultationController } from '../../modules/consultation/consultation.controller';
+import { DnaWritingStyleController } from '../../modules/dna-writing-style/dna-writing-style.controller';
+import { EntitlementsAdminController } from '../../modules/entitlements/entitlements-admin.controller';
+import { TenantController } from '../../modules/tenant/tenant.controller';
+import { TenantIdpConfigAdminController } from '../../modules/tenant-idp-config/tenant-idp-config-admin.controller';
+import { SettingsRegistryWriteController } from '../../modules/settings-catalog/settings-registry-write.controller';
+import { TenantFrontendConfigAdminController } from '../../modules/tenant-frontend-config/tenant-frontend-config-admin.controller';
+
+/**
+ * Metadata-only application context over REAL controller classes.
+ *
+ * `Test.createTestingModule` cannot be used here: these controllers inject
+ * service tokens, `ClsService` and guards, so compiling them would drag the
+ * whole DI graph (Prisma, Redis, Vault) into a unit test. The audit only ever
+ * touches `ModulesContainer` (for `{ metatype, instance }` pairs) and
+ * `Reflector`, and it reads metadata off the PROTOTYPE — so a bare
+ * `Object.create(Class.prototype)` is indistinguishable from a constructed
+ * instance for everything the audit inspects.
+ */
+function metadataAppFor(controllers: Array<new (...args: never[]) => unknown>) {
+  const wrappers = new Map(controllers.map((Controller_, index) => [index, { metatype: Controller_, instance: Object.create(Controller_.prototype) }]));
+  const modulesContainer = new Map([['synthetic', { controllers: wrappers }]]);
+  const reflector = new Reflector();
+  return {
+    get: (token: unknown) => (token === ModulesContainer ? modulesContainer : reflector),
+  } as unknown as Parameters<typeof auditOptimisticConcurrencyCoverage>[0];
+}
 
 class VersionedResponse {
   @ApiProperty()
@@ -184,5 +217,49 @@ describe('boot-time OCC coverage audit', () => {
     const report = auditOptimisticConcurrencyCoverage(await buildApp([WidgetController]), silentLogger());
     expect(report.findings).toEqual([]);
     expect(report.protectedCount).toBe(1);
+  });
+
+  // ── H-1 phase 2: tier A is closed ─────────────────────────────────────────
+
+  it('reports NOTHING for the five controllers that owned the seven tier-A routes', () => {
+    const report = auditOptimisticConcurrencyCoverage(
+      metadataAppFor([
+        ConsultationController,
+        DnaWritingStyleController,
+        EntitlementsAdminController,
+        TenantController,
+        TenantIdpConfigAdminController,
+      ]),
+      silentLogger(),
+    );
+
+    // The seven routes the boot audit named before the migration:
+    //   PATCH /consultations/:id                              PATCH /dna-writing-styles/:reportId/default
+    //   PUT   /dna-writing-styles/settings                    PATCH /admin/entitlements/plans/:plan
+    //   PUT   /admin/entitlements/tenants/:tenantId/override  PUT   /admin/tenants/:id/tags
+    //   PUT   /admin/tenant-idp-config/:id/directory-credentials
+    expect(report.findings).toEqual([]);
+    // Nothing was retired by declaring an exception instead of enforcing one.
+    expect(report.sanctioned).toEqual([]);
+    expect(report.contradictions).toEqual([]);
+  });
+
+  it('records the two create-or-update exceptions from an IN-PLACE @NoOptimisticConcurrency, not a lookup table', () => {
+    // The audit's static allow-list must stay empty: an exception belongs on
+    // the route it excuses, where a reader of the controller can see it.
+    expect(SANCTIONED_EXCEPTIONS.size).toBe(0);
+
+    const report = auditOptimisticConcurrencyCoverage(
+      metadataAppFor([SettingsRegistryWriteController, TenantFrontendConfigAdminController]),
+      silentLogger(),
+    );
+
+    expect(report.findings).toEqual([]);
+    expect(report.sanctioned).toHaveLength(2);
+    expect(report.sanctioned.join('\n')).toContain('PUT /admin/settings/registry/:key');
+    expect(report.sanctioned.join('\n')).toContain('PUT /admin/tenant-frontend-config');
+    for (const entry of report.sanctioned) {
+      expect(entry).toContain('create-or-update');
+    }
   });
 });

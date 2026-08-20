@@ -67,7 +67,7 @@ export abstract class IDnaWritingStyleService {
    * Promote a historical report to the caller's active/default
    * (`isLatest`) report, demoting the previous default. Tenant + owner scoped.
    */
-  abstract setDefaultReport(reportId: string): Promise<DnaReportResponse>;
+  abstract setDefaultReport(reportId: string, expectedVersion?: number): Promise<DnaReportResponse>;
   /** Erase the caller's OWN learned writing-style profile in full (INV-240). */
   abstract resetMyDnaProfile(): Promise<DnaErasureResponse>;
   /** Erase one of the caller's own writing-style reports (404 cross-tenant, 403 cross-doctor). */

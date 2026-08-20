@@ -136,7 +136,7 @@ export abstract class IConsultationService {
    * COLUMN is NOT settable here — see `primeConsultation`/
    * `closeConsultation`/`reopenConsultation`/`startRecording`/`stopRecording`.
    */
-  abstract updateConsultation(id: string, request: UpdateConsultationRequest): Promise<ConsultationResponse>;
+  abstract updateConsultation(id: string, request: UpdateConsultationRequest, expectedVersion?: number): Promise<ConsultationResponse>;
 
   /**
    * Clinical Workflow Playground (WS2) — `PRIMED → RECORDING` (TASK-711;

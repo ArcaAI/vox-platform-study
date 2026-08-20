@@ -709,33 +709,27 @@ harness-eval-gate:
     # here to inherit both defaults rather than re-asserting them.
     #
     # TASK-713 Task 3 — release-gate thresholds: EvalConfig's CODE DEFAULTS
-    # (icc_threshold=0.8, faithfulness_threshold=0.85, pdsqi_*_threshold=4.0,
+    # (icc_threshold=0.73, faithfulness_threshold=0.85, pdsqi_*_threshold=4.0,
     # icc_gate_enabled=true) are used UNCHANGED — no CI override.
     #
-    # HONEST CURRENT STATE (measured 2026-08-17, full 18-case run to
-    # completion against the owner's live LM Studio; README §7 and
-    # apps/harness/eval/README.md §"Live gate results — CURRENT run"):
-    # this gate currently **FAILS** on `icc=0.6568 < 0.8`
-    # (Gwet AC2=0.9439, n=144). Everything else clears with margin:
-    # pdsqi_accurate/thorough/mean=5.00, faithfulness=0.9920.
-    # An earlier 2026-06-07 run recorded icc=0.821/PASS; it does NOT
-    # reproduce — that PASS depended on the judge being loaded at 4096 ctx,
-    # where `synthesized` averaged 3.92 and supplied the quality lane's
-    # variance. At the 131072 ctx the model now loads at, the judge scores a
-    # flat 5 on every quality dimension (judge SD = 0.000), so the quality
-    # lane contributes exactly 0 to a variance-ratio statistic.
-    #
-    # The thresholds are deliberately NOT relaxed to make this green.
-    # `HARNESS_EVAL_ICC_GATE_ENABLED=false` exists for a judge whose ICC is
-    # structurally uninformative (the rejected Qwen backend measured ~-8.3e-17,
-    # outside what the [0,1]-validated icc_threshold could ever admit). 0.6568
-    # is not that: it is a real, moderate reliability reading against a bar
-    # taken from the PDSQI-9 literature (reasoning judge ~0.818, see
-    # calibration/reliability.py). Disabling or lowering it here would launder
-    # a true negative into a pass. The gate is working; it is reporting that
-    # this judge is not release-grade against this reference set. The open
-    # resolutions are a real clinician-authored golden set or a
-    # reasoning-capable judge — see README §7.
+    # OWNER RULING (2026-08-20, TASK-713 closure — see its README Change
+    # History): after six sessions rebuilding the golden set to best practice
+    # and making judge selection DB-resident, the measured ICC against the
+    # real `curated-v2.0.0` golden set (36 cases, n=288 paired ratings) is
+    # **`icc=0.7306`** (Gwet AC2 0.9196) — short of the literature-derived
+    # 0.80 target but a real, reproduced (2026-08-18) reading, not a
+    # structurally-uninformative one. The owner LOWERED `icc_threshold` to
+    # **0.73** (the measured baseline, rounded down) rather than relax it
+    # further or disable the gate — this is a recorded floor certifying
+    # "no worse than 2026-08-20", not a claim of clinical validation.
+    # Gate now **PASSES** at this baseline: `icc=0.7306 >= 0.73`; everything
+    # else already cleared with margin (pdsqi_mean=4.875, accurate/thorough
+    # =4.833, faithfulness=0.9938). Raising the bar back to 0.80 is tracked
+    # as explicit debt in `docs/implementation/TASK-780-Harness-Eval-Icc-Restore/README.md`
+    # (needs a reasoning-capable judge or a clinician-reviewed, not
+    # rubric-derived, reference set). Nothing else here was touched: the
+    # judge model, `icc_gate_enabled`, and the other three thresholds are
+    # unchanged from the state this job already documented.
   cache:
     - key: pip-harness-eval-gate
       paths:

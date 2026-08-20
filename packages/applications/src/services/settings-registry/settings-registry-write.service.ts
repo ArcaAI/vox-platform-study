@@ -19,10 +19,13 @@ import { SettingDataType, SettingDescriptor, SettingScope } from './registry.typ
  */
 export const REGISTRY_SETTING_NAMESPACE = 'registry';
 
-/** Platform-owned KV rows live on the reserved global tenant, like rate-limit.*. */
-const GLOBAL_TENANT_ID = '50000000-0000-0000-0000-000000000000';
-
-/** The reserved SYSTEM tenant. Platform capability rows are seeded here. */
+/**
+ * The reserved SYSTEM tenant. Platform-owned KV rows (rate-limit.*, and every
+ * other `global-kv` row written at `system` scope) live here — the SOLE
+ * platform-configuration tier (owner ruling 2026-08-20, TASK-763 OD-1).
+ * GLOBAL (`50000000-…`) is a CUSTOMER tenant, never a config tier: it must
+ * never be the target of a `system`-scope write.
+ */
 const SYSTEM_TENANT_ID = '00000000-0000-0000-0000-000000000000';
 
 /**
@@ -32,7 +35,7 @@ const SYSTEM_TENANT_ID = '00000000-0000-0000-0000-000000000000';
  * lane is sound only because its contents are platform-only). Mirrors
  * `PLATFORM_TENANT_IDS` in `AppSettingsService`.
  */
-const PLATFORM_TENANT_IDS: readonly string[] = [GLOBAL_TENANT_ID, SYSTEM_TENANT_ID];
+const PLATFORM_TENANT_IDS: readonly string[] = [SYSTEM_TENANT_ID];
 
 export interface WriteRegistrySettingOptions {
   /** Scope the value is being set at. Defaults to `system` for global-kv keys. */
@@ -224,7 +227,7 @@ export class SettingsRegistryWriteService extends BaseService {
    */
   private targetTenantFor(scope: SettingScope, key: string): string {
     if (scope === 'system') {
-      return GLOBAL_TENANT_ID;
+      return SYSTEM_TENANT_ID;
     }
     if (scope !== 'tenant') {
       throw new ArgumentInvalidException(`Setting '${key}' cannot be written at '${scope}' scope through the registry lane.`);

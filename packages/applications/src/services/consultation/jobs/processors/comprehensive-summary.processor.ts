@@ -49,14 +49,22 @@ import { INoteGenerationService, GenerationTrigger } from '../../note-generation
  *
  * TASK-732 R-2 boundary (owner decision, deletion-manifest.md §5): KEPT,
  * un-gated — never had a harness equivalent (`GenerationTrigger.COMPREHENSIVE_SUMMARY`
- * is not in `HARNESS_SUPPORTED_TRIGGERS`). **NOT structurally non-signable**:
+ * is not in `HARNESS_SUPPORTED_TRIGGERS`). **Deliberately (not incidentally) signable**:
  * it writes its rollup via `ContextItemFactory.CreateRawSummary` against the
  * root consultation the job was created for, which DOES satisfy
  * `ContextItemEntity.isFinalSummary` — the same as a real single-consultation
- * note. Whether a cross-chain rollup should be reachable by
- * `SummaryService.approveSummary` as if it were that consultation's own note
- * is an open product question this ticket does not decide; the CURRENT
- * (unchanged) behavior is locked as a finding, not an endorsement, by
+ * note, and the same as this generator's own sync twin
+ * (`ChainSummaryService.generateComprehensiveSummary`, `chain-summary.service.ts`),
+ * whose own doc comment calls its output "a FINAL comprehensive summary" and
+ * stores it as `ContextItem(RAW_SUMMARY)` on the requesting consultation. A
+ * clinician who explicitly requests a chain rollup for the consultation they
+ * are viewing is choosing to make that rollup this consultation's note — the
+ * same product decision `SummaryService.generateSummary` implements for a
+ * single consultation. TASK-732's §2.6 originally assumed comprehensive
+ * summaries were non-signable "the same way" `PreSummaryProcessor` is,
+ * without checking; that assumption was corrected (not the code) once this
+ * ticket verified it against `ContextItemEntity.isFinalSummary` — see
+ * `deletion-manifest.md` §5 and README.md §7A. Locked by
  * `jobs/processors/__tests__/kept-generators-signability.task732.test.ts`.
  */
 @Processor(JobQueue.GenerateComprehensiveSummary)

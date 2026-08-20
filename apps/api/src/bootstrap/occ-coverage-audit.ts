@@ -91,28 +91,24 @@ import { extractExpectedVersion } from '../decorators/expectedVersion.decorator'
 const AUDIT_LOGGER_CONTEXT = 'OccCoverageAudit';
 
 /**
- * Deliberate exceptions that predate `@NoOptimisticConcurrency()`.
+ * Legacy holding pen for deliberate exceptions that predated
+ * `@NoOptimisticConcurrency()`.
  *
- * Both are the create-or-update config-write shape: `@ExpectedVersion()`
- * WITHOUT `@RequiresIfMatch()`, on purpose, because a first-time create has no
- * row to precondition on (the reasoning is written out at both call sites).
- * They are recorded here rather than by decorating the controllers because
- * controller files are owned elsewhere in this change; migrating each entry to
- * an in-place `@NoOptimisticConcurrency(reason)` is a mechanical follow-up and
- * this list should shrink to empty as that happens.
+ * **It is empty, and it must stay empty.** Both original entries
+ * (`SettingsRegistryWriteController.putSetting`,
+ * `TenantFrontendConfigAdminController.upsert`) now carry an in-place
+ * `@NoOptimisticConcurrency('<reason>')` on the controller, which is the only
+ * sanctioned way to record an exception: the reason lives next to the route it
+ * excuses instead of in a table a reader of the controller never opens.
+ *
+ * The lookup is retained (rather than deleted outright) purely so the audit's
+ * `sanctioned` accounting has one code path whether an exception is declared
+ * or inherited; adding a key here instead of decorating the controller is a
+ * regression, not a shortcut.
  *
  * Keyed `ControllerClass.handlerName`.
  */
-export const SANCTIONED_EXCEPTIONS: ReadonlyMap<string, string> = new Map([
-  [
-    'SettingsRegistryWriteController.putSetting',
-    'create-or-update: `@RequiresIfMatch()` would 428 the FIRST write (no row ⇒ no ETag ⇒ nothing to echo); the service applies the precondition only when a row exists',
-  ],
-  [
-    'TenantFrontendConfigAdminController.upsert',
-    'create-or-update: one row per tenant, OCC applies on UPDATE only; first-time creation legitimately carries no version',
-  ],
-]);
+export const SANCTIONED_EXCEPTIONS: ReadonlyMap<string, string> = new Map<string, string>();
 
 export interface OccCoverageFinding {
   readonly controller: string;

@@ -86,8 +86,9 @@ not the data-driven verdict R-1 envisaged — plus the R-2 boundary (keep the v1
 pre-summary/summary surfaces). Phases 2 (SYSTEM-default flip only; no real cohorts existed to
 migrate through), 3 (deletion) and 4 (grep-gate + contract test + doc sync) executed against that
 boundary. `docs/implementation/TASK-732-Legacy-Migration-Deletion/README.md` §7 has the full
-record; `deletion-manifest.md` §5 has an open finding on `ComprehensiveSummaryProcessor`'s
-signability this pass did not resolve.
+record; `deletion-manifest.md` §5's finding on `ComprehensiveSummaryProcessor`'s signability was
+resolved 2026-08-20 — its signable output is correct, by design, matching its sync twin
+`ChainSummaryService.generateComprehensiveSummary` (README.md §8 Change History).
 
 ## Dependency graph
 

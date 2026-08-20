@@ -78,14 +78,11 @@ const FLAGS: FlagSpec[] = [
     default: false,
     killSwitch: true,
   },
-  {
-    key: 'workflowExposure.allowCloudProviders',
-    label: 'Workflow exposure — cloud LLM providers',
-    description:
-      "Decision #6 (R-8): may a workflow invoked through the PUBLIC exposure plane route to a cloud LLM provider (azure/bedrock/openai/anthropic/vertex — `isCloudByoProvider('llm', …)`)? OFF by default — public exposure inherits the strictest egress posture; a tenant opts in explicitly, never by default. Platform-wide today, not yet per-tenant: no node type in the code-owned registry selects a provider yet (`WORKFLOW_NODE_REGISTRY` ships only `noop`/`passthrough`), so there is nothing to differentiate BY tenant until TASK-720/731 add one — see the TASK-722 ticket README §7 for the reasoning.",
-    default: false,
-    killSwitch: true,
-  },
+  // `workflowExposure.allowCloudProviders` (decision #6, R-8) REMOVED by owner decision,
+  // TASK-720 R-4 (2026-08-20): a publicly-exposed workflow MAY select a cloud AI provider — the
+  // tenant carries the risk (BYOK), consistent with the platform's BYO-first posture. See
+  // `docs/implementation/TASK-720-Palette-Summarization/README.md` R-4 and
+  // `docs/implementation/TASK-722-Exposure-V1/README.md`'s Change History.
   {
     key: 'entitlements.enabledDefault',
     label: 'Entitlements enforcement seed default',

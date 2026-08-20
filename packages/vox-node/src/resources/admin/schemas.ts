@@ -3923,6 +3923,8 @@ export interface ServiceReleaseResponse {
 export interface SetDirectoryCredentialsRequest {
   /** Directory-provider-specific credential bundle (JSON-stringified, then Vault-sealed) */
   credentials: Record<string, unknown>;
+  /** Row version the client read (OCC). The `If-Match` header overrides it. */
+  expectedVersion?: number;
 }
 
 export interface SetEnforcementEnabledRequest {
@@ -5903,6 +5905,8 @@ export interface WorkflowNodeResponse {
   /** The Temporal-registered activity name the compiler stamps into compiledConfig. */
   activityName: string;
   classes: string[];
+  /** The node type’s config JSON Schema (authorable subset), or null when none has been authored for it yet — a real, structural state, not every node type has one. */
+  configSchema?: Record<string, unknown> | null;
   /** Code-owned safety property — never tenant-configurable. */
   critical: boolean;
   defaultMaxAttempts: number;

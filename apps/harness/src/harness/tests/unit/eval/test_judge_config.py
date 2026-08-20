@@ -78,14 +78,18 @@ class TestProviderSelection:
         with pytest.raises((ValueError, TypeError)):
             build_judge_client(JudgeConfig(provider="totally-not-a-provider"))  # type: ignore[arg-type]
 
-    def test_ollama_provider_no_longer_exists(self):
-        # TASK-736 R1: Ollama is removed entirely — "ollama" is no longer a
-        # member of JudgeProvider, so it must fail the same way as any other
-        # unrecognized provider string (fail-fast, not silently accepted).
-        with pytest.raises(ValueError):
-            JudgeProvider("ollama")
-        with pytest.raises((ValueError, TypeError)):
-            build_judge_client(JudgeConfig(provider="ollama"))  # type: ignore[arg-type]
+    def test_ollama_provider_is_accepted_via_openai_compat_client(self):
+        # Owner decision 2026-08-20 (TASK-736/TASK-740 D-740-3): Ollama provider
+        # logic stays available platform-wide, including for harness judge
+        # selection. Ollama speaks the OpenAI wire over its own ``/v1`` endpoint,
+        # so it reuses the shared OpenAICompatJudgeClient — harness gains no
+        # Ollama-specific vendor adapter, only an accepted enum member + stop
+        # table entry (same treatment as vllm/llama-cpp).
+        assert JudgeProvider("ollama") == JudgeProvider.OLLAMA
+        cfg = JudgeConfig(provider=JudgeProvider.OLLAMA, model="qwen3:4b")
+        cfg.openai_compat.base_url = "http://localhost:11434/v1"
+        client = build_judge_client(cfg)
+        assert isinstance(client, OpenAICompatJudgeClient)
 
     # production engines: vllm / llama-cpp are first-class judge
     # providers, both served over the OpenAI-compatible client (they speak the

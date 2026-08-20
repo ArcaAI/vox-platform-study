@@ -40,14 +40,34 @@ describe('layoutGraphNodes', () => {
     expect(positions.get('a')!.y).not.toBe(positions.get('b')!.y);
   });
 
-  it('prefers an authored config.__position over the computed layout', () => {
+  it('prefers an authored node.position over the computed layout', () => {
     const graph: WorkflowGraph = {
       version: 1,
-      nodes: [{ id: 'n1', type: 'interpreter.noop', config: { __position: { x: 999, y: 111 } } }],
+      nodes: [{ id: 'n1', type: 'interpreter.noop', config: {}, position: { x: 999, y: 111 } }],
       edges: [],
     };
     const positions = layoutGraphNodes(graph);
     expect(positions.get('n1')).toEqual({ x: 999, y: 111 });
+  });
+
+  it('falls back to a legacy config.__position when node.position is absent', () => {
+    const graph: WorkflowGraph = {
+      version: 1,
+      nodes: [{ id: 'n1', type: 'interpreter.noop', config: { __position: { x: 5, y: 6 } } }],
+      edges: [],
+    };
+    const positions = layoutGraphNodes(graph);
+    expect(positions.get('n1')).toEqual({ x: 5, y: 6 });
+  });
+
+  it('prefers node.position over a legacy config.__position when both are present', () => {
+    const graph: WorkflowGraph = {
+      version: 1,
+      nodes: [{ id: 'n1', type: 'interpreter.noop', config: { __position: { x: 999, y: 999 } }, position: { x: 1, y: 2 } }],
+      edges: [],
+    };
+    const positions = layoutGraphNodes(graph);
+    expect(positions.get('n1')).toEqual({ x: 1, y: 2 });
   });
 
   it('never infinite-loops on a cyclic graph (cycle guard)', () => {

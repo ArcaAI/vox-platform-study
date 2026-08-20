@@ -9,7 +9,7 @@ import {
 import { Body, Controller, Get, NotFoundException, Param, Put, Query } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiParam, ApiQuery, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { ClsService } from 'nestjs-cls';
-import { CanManage, CanRead, ExpectedVersion, ForbidApiKey, RequiredSvcScopes } from '../../decorators';
+import { CanManage, CanRead, ExpectedVersion, ForbidApiKey, NoOptimisticConcurrency, RequiredSvcScopes } from '../../decorators';
 import { resolveScopedTenantId } from '../../shared/tenant-scope';
 import { EffectiveSettingResponse } from './dto/setting-catalog.response';
 import { WriteRegistrySettingRequest, WriteRegistrySettingResponse } from './dto/registry-setting.dto';
@@ -105,6 +105,9 @@ export class SettingsRegistryWriteController {
 
   @Put('registry/:key')
   @CanManage('GlobalSetting')
+  @NoOptimisticConcurrency(
+    'create-or-update: `@RequiresIfMatch()` would 428 the FIRST write (no row ⇒ no ETag ⇒ nothing to echo); the service applies the precondition only when a row exists',
+  )
   @ApiOperation({
     summary: 'Write one registry setting through the single descriptor-driven enforcement point.',
     description:

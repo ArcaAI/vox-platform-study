@@ -13,14 +13,17 @@ export const RATE_LIMIT_NAMESPACE = 'rate-limit';
 
 /**
  * Platform tenant that owns the single authoritative set of rate-limit rows.
- * Matches `AppSettingsService.GLOBAL_TENANT_ID` and the seed `SEED_TENANT_ID`.
+ * Matches `AppSettingsService.PLATFORM_TENANT_IDS` (SYSTEM only — owner ruling
+ * 2026-08-20, TASK-763 OD-1) and the seed `SYSTEM_TENANT_ID`. NEVER the
+ * GLOBAL/default tenant (`50000000-…`) — that id is a CUSTOMER tenant, never a
+ * runtime tier.
  *
  * Rate limiting is a gateway-wide concern, so exactly one row exists per key.
  * The `AppSettingsService` cache is keyed by flat `key` across all tenants;
  * seeding a single platform row per key keeps that lookup deterministic and
  * avoids tripping the boot-time duplicate-key invariant.
  */
-export const RATE_LIMIT_TENANT_ID = '50000000-0000-0000-0000-000000000000';
+export const RATE_LIMIT_TENANT_ID = '00000000-0000-0000-0000-000000000000';
 
 /** The four named throttler tiers configured by `rate-limit-config.service.ts`. */
 export type RateLimitTierName = 'default' | 'strict' | 'heavy' | 'relaxed';

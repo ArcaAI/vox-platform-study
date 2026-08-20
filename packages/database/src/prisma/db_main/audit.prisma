@@ -326,5 +326,13 @@ enum ResourceType {
   // mutation they record, exactly as PipelinePolicyChange is.
   WorkflowAssignment
 
+  // Workflow-graph safety rule (TASK-716). SYSTEM-tenant rows are the
+  // platform's authoring-time invariant register made executable; a tenant
+  // row ADDS strictness on top (never disables/loosens a SYSTEM rule — see
+  // workflow-invariant-rule.prisma). Both create/update/enable/disable/delete
+  // broadcast against this ResourceType, mirroring the
+  // ConsultationContextSchema precedent.
+  WorkflowInvariantRule
+
   @@schema("core")
 }

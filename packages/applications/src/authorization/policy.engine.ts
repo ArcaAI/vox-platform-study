@@ -64,7 +64,7 @@ const caslShadowDivergenceTotal: Counter<'action' | 'subject' | 'direction'> =
   });
 
 /**
- * TASK-712 Phase 5 Task 15 — ENFORCE.
+ * TASK-712 Phase 5 Task 15 — ENFORCE. Corrected by TASK-781.
  *
  * The explicit, per-`(action, subject)` enforce list. For a pair in this set,
  * AND ONLY for a route that opted into instance resolution via
@@ -73,18 +73,10 @@ const caslShadowDivergenceTotal: Counter<'action' | 'subject' | 'direction'> =
  * Every other pair keeps Task 14's shadow semantics exactly — computed,
  * recorded, never applied.
  *
- * **It ships EMPTY, deliberately.** Owner directive R1 is binding — shadow →
- * MEASURE → enforce, per pair — and the measure step has produced no data:
- * Task 14 wired the shadow mechanism to ZERO production routes, so
- * `casl_shadow_divergence_total` has never been incremented and the set of
- * pairs with "zero measured divergence" is empty by construction, not by
- * observation. Enforcing a pair on the strength of a static survey rather
- * than a measurement is exactly the R1 outage risk this rollout exists to
- * avoid.
- *
- * Two candidates were investigated and are DISQUALIFIED regardless of what a
- * future measurement shows. Both findings are structural, so record them here
- * rather than re-deriving them:
+ * **It ships EMPTY.** Not "empty until measured" — empty because every
+ * candidate investigated so far is DISQUALIFIED for a structural reason, and
+ * the three that were briefly listed turned out to be unreachable. Record the
+ * findings here rather than re-deriving them:
  *
  * 1. **`read`/`manage:Consultation`** (`casl-blast-radius.md` §7 step 1) —
  *    `consultation.controller.ts`'s `verifyConsultationAccess` runs a
@@ -99,36 +91,57 @@ const caslShadowDivergenceTotal: Counter<'action' | 'subject' | 'direction'> =
  *    is indistinguishable from probing a non-existent one. Guards run BEFORE
  *    interceptors, so enforcing this pair would pre-empt that check and
  *    downgrade a deliberate 404 into an existence-leaking 403 — a security
- *    REGRESSION, not a tightening.
+ *    REGRESSION, not a tightening. (DEF-C3.)
+ * 3. **`read`/`update`/`delete:ApiKey`** — listed by TASK-712, REMOVED by
+ *    TASK-781, for BOTH of the reasons above at once:
  *
- * Finding 2 generalises into the rule that governs every future entry:
- * **a subject already protected by `@TenantOwnedResource` must not be
- * enforced here**, because the guard precedes the interceptor and would
- * replace its 404-over-403 posture with a 403.
+ *    - *Unreachable.* `ApiKeyController.resolveApiKeyInstance` loads the row
+ *      through `IApiKeyService.fetchById`, which runs `assertKeyAccess` and
+ *      throws 404 for a key the caller does not own. On exactly the request
+ *      the pair existed to deny, the resolver threw, `runCaslInstanceChecks`
+ *      swallowed it on its fail-open path, and the service's 404 answered.
+ *      Where the resolver succeeded, `assertKeyAccess` had already passed, so
+ *      the instance verdict was necessarily `true`. TASK-779 proved this by
+ *      e2e: `casl_enforce_denial_total` could not increment, which made any
+ *      future "measure then enforce" reading of that counter vacuously zero.
+ *    - *And unfixable at this layer.* Making it fire requires the resolver to
+ *      read the row WITHOUT the ownership assertion — at which point the
+ *      guard's denial pre-empts `assertKeyAccess`'s deliberate 404 with a 403.
+ *      Same regression as (2).
  *
- * Adding a pair is an authorization-semantics change; a pinned unit test
- * (`casl-conditions.enforce.test.ts`) fails until the ticket records the
- * measurement that justifies it.
+ * Findings 2 and 3 generalise into the rule that governs every future entry —
+ * and note that TASK-712 stated only the first half of it, which is how
+ * `ApiKey` slipped through:
+ *
+ * > **A subject whose ownership boundary is already enforced downstream with
+ * > a deliberate 404 must not be enforced here** — whether that downstream
+ * > enforcement lives in an INTERCEPTOR (`@TenantOwnedResource`) or in the
+ * > SERVICE (`assertKeyAccess`). The guard precedes both, so it can only
+ * > replace their 404-over-403 posture with a 403.
+ *
+ * Two mechanical gates back this up, so the class of defect cannot return
+ * silently:
+ *
+ * - `assertCaslEnforcePairReachability` (`enforce-reachability.ts`), run at
+ *   gateway boot by `auditCaslEnforcePairReachability`: a listed pair must be
+ *   declared on an AND-mode route carrying an ENFORCE-GRADE resolver, or the
+ *   gateway refuses to start.
+ * - `casl-conditions.enforce.test.ts` pins this set, so adding an entry fails
+ *   a test until the ticket records the evidence that justifies it.
  */
 export const CASL_ENFORCED_PAIRS: ReadonlySet<string> = new Set<string>([
-  // ApiKey — the `api-key-own-manage` seeded rule
-  // (`[read, update, delete, list]:ApiKey { tenantId, userId }`). Enforced on
-  // the strength of the exhaustive offline evidence in
-  // `casl-conditions.enforce-apikey.test.ts`, which builds abilities from the
-  // REAL seeded `DEFAULT_POLICIES` and pins the whole verdict table: every
-  // legitimate principal (own key, tenant admin, super admin) keeps its
-  // access, and the ONLY behaviour that changes is an own-keys-only principal
-  // addressing a key that is not theirs.
+  // EMPTY — and the emptiness is the honest state, not a gap.
   //
-  // Safe to enforce at the GUARD specifically because `admin/api-keys/:id`
-  // carries no `@TenantOwnedResource` interceptor to pre-empt (that is what
-  // disqualifies `UserVoiceProfile`) and no post-guard broadening fallback
-  // (that is what disqualifies `Consultation`). `list` is deliberately absent:
-  // a collection route has no single instance, and `getAccessibleBy` — not a
-  // per-row verdict — is the mechanism for those.
-  'read:ApiKey',
-  'update:ApiKey',
-  'delete:ApiKey',
+  // TASK-712 listed `read`/`update`/`delete:ApiKey` here. TASK-779's e2e
+  // proved by observation that none of them could ever fire, and TASK-781
+  // removed them. Both halves of that finding are recorded above; the short
+  // version is that the boundary those pairs described is already enforced by
+  // `ApiKeyService.assertKeyAccess`, one layer down, with the SAFER status.
+  //
+  // Adding an entry is an authorization-semantics change and now costs three
+  // things, not one: evidence in the ticket README, an enforce-grade resolver
+  // on the declaring route, and a green `auditCaslEnforcePairReachability` —
+  // which refuses to boot the gateway if the pair cannot actually fire.
 ]);
 
 /** Prometheus counter name for an authorization denied by the ENFORCED instance verdict. */

@@ -18,6 +18,7 @@ export * from './hexDecode';
 export * from './httpMethod.enum';
 export * from './modelFilterTypes';
 export * from './paginatedQueryParamConverters';
+export * from './phi-audit-scrub';
 export * from './phi-field-encryption';
 export * from './storage-uri';
 export * from './tenant-guards';

@@ -15,11 +15,15 @@ import { TenantPlan } from '@arcaai/domains';
 export const ENTITLEMENTS_NAMESPACE = 'entitlements';
 
 /**
- * Platform tenant that owns the single authoritative kill-switch row. Matches
- * `RATE_LIMIT_TENANT_ID` / the seed `SEED_TENANT_ID` — one platform row keeps
- * the flat `AppSettingsService` cache lookup deterministic.
+ * Platform tenant that owns the single authoritative kill-switch row. The
+ * SYSTEM tenant is the SOLE platform-configuration tier (owner ruling
+ * 2026-08-20, TASK-763 OD-1) — matches `RATE_LIMIT_TENANT_ID` and
+ * `PLATFORM_TENANT_IDS` in `AppSettingsService` / `SettingsRegistryWriteService`,
+ * and the seed's `SYSTEM_TENANT_ID`. One platform row keeps the flat
+ * `AppSettingsService` cache lookup deterministic. NEVER the GLOBAL/default
+ * tenant (`50000000-…`) — that id is a CUSTOMER tenant, never a runtime tier.
  */
-export const ENTITLEMENTS_TENANT_ID = '50000000-0000-0000-0000-000000000000';
+export const ENTITLEMENTS_TENANT_ID = '00000000-0000-0000-0000-000000000000';
 
 /** `GlobalSetting` key for the enforcement kill-switch. */
 export const entitlementsEnabledKey = (): string => `${ENTITLEMENTS_NAMESPACE}.enabled`;

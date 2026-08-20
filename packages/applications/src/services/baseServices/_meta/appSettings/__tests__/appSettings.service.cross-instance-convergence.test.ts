@@ -22,12 +22,12 @@ import { Subject } from 'rxjs';
 import { AppSettingsService, APP_SETTINGS_INVALIDATION_CHANNEL } from '../appSettings.service';
 import { GlobalSettingFactory, ResourceType, SysEvent, SysEventType, ValueType } from '@arcaai/domains';
 
-const GLOBAL_TENANT_ID = '50000000-0000-0000-0000-000000000000';
+const SYSTEM_TENANT_ID = '00000000-0000-0000-0000-000000000000';
 const KEY = 'f007.cross-instance.key';
 
 const buildSetting = (value: string) =>
   GlobalSettingFactory.CreateGlobalSetting({
-    tenantId: GLOBAL_TENANT_ID,
+    tenantId: SYSTEM_TENANT_ID,
     key: KEY,
     value,
     dataType: ValueType.String,
@@ -47,7 +47,7 @@ const cls = { get: vi.fn(), set: vi.fn(),
 const scheduler = { addCronJob: vi.fn(), getCronJob: vi.fn(), deleteCronJob: vi.fn() };
 
 const buildResourceUpdatedEvent = (resourceType: ResourceType): SysEvent =>
-  ({ type: SysEventType.ResourceUpdated, resourceType, tenantId: GLOBAL_TENANT_ID }) as SysEvent;
+  ({ type: SysEventType.ResourceUpdated, resourceType, tenantId: SYSTEM_TENANT_ID }) as SysEvent;
 
 const buildRedisCache = () => ({ publish: vi.fn().mockResolvedValue(undefined) });
 

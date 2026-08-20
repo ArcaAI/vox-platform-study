@@ -29,6 +29,7 @@ import {
   CONSULTATION_OCR_ENABLED_KEY,
   CONSULTATION_REQUIRE_PRIMED_BEFORE_RECORDING_KEY,
   CONSULTATION_SESSION_TIMEOUT_MINUTES_KEY,
+  CONSULTATION_SESSION_TIMEOUT_SWEEP_CRON_KEY,
   HARNESS_LOOP_EMERGENCY_STOP_KEY,
 } from '../../consultation/consultation-gates.constants';
 import { SettingDescriptor } from '../registry.types';
@@ -105,7 +106,30 @@ export const CONSULTATION_GATE_SETTINGS: SettingDescriptor[] = [
     category: 'Feature Flags',
     label: 'Consultation session idle timeout (minutes)',
     description:
-      'Minutes a consultation may sit in a sweep-eligible state (PRIMED, DRAINING, DRAFT_PENDING_SENSORS, TIMED_OUT, REOPENED) with no clinician activity before the scheduled sweep transitions it to CLOSED_INCOMPLETE (state-machine.md §1a). Documented default 1440 (24h), provisional — tune down once real abandonment-rate data exists. The sweep job itself is not yet built (application/worker-layer follow-up); this descriptor fixes the contract it will read.',
+      'Minutes a consultation may sit in a sweep-eligible state (PRIMED, DRAINING, DRAFT_PENDING_SENSORS, TIMED_OUT, REOPENED) with no clinician activity before the scheduled sweep transitions it to CLOSED_INCOMPLETE (state-machine.md §1a). Documented default 1440 (24h), provisional — tune down once real abandonment-rate data exists. Consumed by `ConsultationTimeoutSweepService`.',
     default: CONSULTATION_GATE_DEFAULTS[CONSULTATION_SESSION_TIMEOUT_MINUTES_KEY],
+  },
+  // TASK-711 (state-machine.md §1a mechanism) — how OFTEN
+  // `ConsultationTimeoutSweepService` ticks. A tuning knob, not a kill-switch
+  // (no `enabled` gate — the sweep runs unconditionally once the module is
+  // wired, matching the "ship complete, not flag-gated" pre-production
+  // posture; unlike `audit-retention.enabled`/`agentic.trajectory.enabled`
+  // this worker performs a reversible-in-intent clinical status transition,
+  // not a hard delete, so there is no destructive action to gate behind an
+  // opt-in).
+  {
+    key: CONSULTATION_SESSION_TIMEOUT_SWEEP_CRON_KEY,
+    tier: 'global-kv',
+    dataType: 'string',
+    sensitivity: 'internal',
+    maxScope: 'system',
+    editableBy: 'GlobalSetting',
+    globalOnly: true,
+    failMode: 'open-to-default',
+    category: 'Feature Flags',
+    label: 'Consultation session-timeout sweep schedule',
+    description:
+      'Cron expression for how often `ConsultationTimeoutSweepService` checks for sweep-eligible consultations past `consultation.state.sessionTimeoutMinutes`. Default every 15 minutes.',
+    default: CONSULTATION_GATE_DEFAULTS[CONSULTATION_SESSION_TIMEOUT_SWEEP_CRON_KEY],
   },
 ];

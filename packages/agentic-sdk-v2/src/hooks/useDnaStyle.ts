@@ -11,6 +11,7 @@ import { DNA_STYLE_ENDPOINTS } from '../core/constants';
 import { SSEClient, type SSEApiClient } from '../core/SSEClient';
 import { withIdempotencyKey } from '../utils/idempotency';
 import { appendFilters } from '../utils/urlUtils';
+import { ifMatchFor, toOccError } from '../utils/occ';
 import type { DnaReport, DnaStyleVersion, DnaGenerateInput, DnaUpdateInput, DnaJobStatus, DnaErasureResult } from '../types';
 
 /**
@@ -77,7 +78,7 @@ export interface UseDnaStyleReturn {
    * Promote a historical report to the doctor's active/default
    * (`isLatest`) report. Owner + tenant scoped on the backend.
    */
-  setDefault: (reportId: string) => Promise<DnaReport>;
+  setDefault: (reportId: string, expectedVersion?: number) => Promise<DnaReport>;
   /** Fetch the doctor's own report history (owner-scoped). */
   getMyReports: () => Promise<DnaReport[]>;
   getVersions: (reportId: string) => Promise<DnaStyleVersion[]>;
@@ -173,14 +174,32 @@ export function useDnaStyle(): UseDnaStyleReturn {
   );
 
   // Promote a historical report to the doctor's active default.
+  //
+  // `PATCH :reportId/default` is `@RequiresIfMatch()`. The version comes from
+  // the report the SDK already holds (`reports` from `getMyReports`, or the
+  // loaded `style`), or explicitly from the caller. When none is known we send
+  // NO `If-Match` rather than inventing one — the gateway then answers 428,
+  // which names the real problem instead of hiding it behind a fabricated CAS.
   const setDefault = useCallback(
-    (reportId: string): Promise<DnaReport> =>
+    (reportId: string, expectedVersion?: number): Promise<DnaReport> =>
       execute<DnaReport>('setDefault', async (client) => {
-        const data = await client.patch<DnaReport>(DNA_STYLE_ENDPOINTS.SET_DEFAULT(reportId), {});
-        setStyle(data);
-        return data;
+        const known =
+          expectedVersion ??
+          reports.find((r) => r.id === reportId)?.version ??
+          (style?.id === reportId ? style.version : undefined);
+
+        try {
+          const data =
+            typeof known === 'number'
+              ? await client.patchWithIfMatch<DnaReport>(DNA_STYLE_ENDPOINTS.SET_DEFAULT(reportId), {}, ifMatchFor(known))
+              : await client.patch<DnaReport>(DNA_STYLE_ENDPOINTS.SET_DEFAULT(reportId), {});
+          setStyle(data);
+          return data;
+        } catch (error) {
+          throw typeof known === 'number' ? toOccError(error, reportId, known) : error;
+        }
       }),
-    [execute],
+    [execute, reports, style],
   );
 
   // Erasure — the other half of the opt-out (the toggle only stops FUTURE

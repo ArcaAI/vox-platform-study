@@ -2,7 +2,7 @@
 
 | Field | Value |
 |---|---|
-| **Status** | Review |
+| **Status** | Completed |
 | **Type** | bugfix (public error-contract change) |
 | **Branch** | `feat/loop` |
 | **Opened** | 2026-08-19 |
@@ -303,3 +303,4 @@ the old statuses (502/502/500) before being updated.
 | 2026-08-19 | Ticket opened. Requirement analysis, call-site inventory (A1–A9, B1–B3, C1–C2), plan. |
 | 2026-08-19 | RED: three new test files added (`downstream-error.test.ts`, `downstream-error-leak-sweep.test.ts`, `exception.interceptor.downstream.test.ts`) — all failing. |
 | 2026-08-19 | GREEN: `filters/downstream-error.ts` added; `ExceptionInterceptor` wired (downstream branch + `Retry-After` pass); 14 call sites fixed; 5 pre-existing tests updated to the new contract. Status: **Review** — pending a test-API rebuild for the e2e leg. |
+| 2026-08-20 | Status advanced to Completed per owner directive: implementation complete (GREEN, 14 call sites fixed, all unit gates passing); outstanding e2e/live-run verification (Playwright e2e not run — test API needs a rebuild) is not a status gate. |

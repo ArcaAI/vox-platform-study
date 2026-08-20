@@ -2,7 +2,7 @@
 
 | Field | Value |
 |---|---|
-| **Status** | Review |
+| **Status** | Completed |
 | **Type** | bugfix |
 | **Branch** | `feat/loop` |
 | **Opened** | 2026-08-19 |
@@ -199,3 +199,4 @@ and 177 API controller tests pass.
 |---|---|
 | 2026-08-19 | Diagnosed six e2e failures to four independent causes; fixed all four; rebuilt the approve OCC block onto a signable consultation; recorded the newly-un-skipped streaming flake as open. |
 | 2026-08-20 | Follow-up from TASK-776: cause A left a stale unit test. Changing the S3 readiness gate from `getSecretSync` to `await getSecretOptional` (`s3.service.ts`) was correct, but `s3.service.secret-gate.test.ts` mocks SecretsService with ONLY `getSecretSync`, so the gate resolved no credentials and the suite failed with the misleading `S3 configuration validation failed: S3_ENDPOINT must be a valid URL` — the endpoint was fine; the credentials were not. Fixed in TASK-776 (`c13ddd967`) by stubbing both forms from the same map. `packages/applications` is green again (519 files / 9566 tests). |
+| 2026-08-20 | Status advanced to Completed per owner directive: diagnosis and implementation complete; outstanding e2e execution/verification is not a status gate. |

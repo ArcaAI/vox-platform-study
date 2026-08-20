@@ -336,6 +336,7 @@ describe('DepartmentService', () => {
 
   describe('getChildren', () => {
     it('should return empty array when no children exist', async () => {
+      mockDepartmentRepository.findById.mockResolvedValue(createMockDepartmentEntity({ id: 'parent-id', tenantId: 'tenant-1' }));
       mockDepartmentRepository.findChildren.mockResolvedValue([]);
 
       const result = await service.getChildren('parent-id');
@@ -345,6 +346,7 @@ describe('DepartmentService', () => {
     });
 
     it('should return child departments', async () => {
+      mockDepartmentRepository.findById.mockResolvedValue(createMockDepartmentEntity({ id: 'parent-id', tenantId: 'tenant-1' }));
       const children = [
         createMockDepartmentEntity({
           id: 'child-1',
@@ -364,6 +366,37 @@ describe('DepartmentService', () => {
       expect(result).toHaveLength(2);
       expect(result[0].parentDepartmentId).toBe('parent-id');
       expect(result[1].parentDepartmentId).toBe('parent-id');
+    });
+
+    // F-07: a nonexistent or cross-tenant parent must 404, never a silent
+    // `200 []` — both are indistinguishable from "a real parent with zero
+    // children" without this guard.
+    it('throws NotFoundException when the parent department does not exist', async () => {
+      mockDepartmentRepository.findById.mockResolvedValue(null);
+
+      await expect(service.getChildren('missing-id')).rejects.toBeInstanceOf(NotFoundException);
+      expect(mockDepartmentRepository.findChildren).not.toHaveBeenCalled();
+    });
+
+    it('throws NotFoundException (never leaks) when the parent department belongs to another tenant', async () => {
+      mockDepartmentRepository.findById.mockResolvedValue(createMockDepartmentEntity({ id: 'foreign-id', tenantId: 'tenant-OTHER' }));
+
+      await expect(service.getChildren('foreign-id')).rejects.toBeInstanceOf(NotFoundException);
+      expect(mockDepartmentRepository.findChildren).not.toHaveBeenCalled();
+    });
+
+    it('lets a SUPER_ADMIN read children of a cross-tenant parent', async () => {
+      mockClsService.get.mockImplementation((key: string) => {
+        if (key === 'user') return { id: 'admin', roles: ['SUPER_ADMIN'] };
+        if (key === 'tenantId') return null;
+        return null;
+      });
+      mockDepartmentRepository.findById.mockResolvedValue(createMockDepartmentEntity({ id: 'foreign-id', tenantId: 'tenant-OTHER' }));
+      mockDepartmentRepository.findChildren.mockResolvedValue([]);
+
+      const result = await service.getChildren('foreign-id');
+
+      expect(result).toEqual([]);
     });
   });
 

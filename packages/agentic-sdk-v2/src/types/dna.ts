@@ -27,6 +27,13 @@ export interface DnaReport {
   currentVersionNumber: number;
   createdAt: string;
   updatedAt: string;
+  /**
+   * Row `_version` — the OCC validator, NOT `currentVersionNumber` (which
+   * counts the report's content snapshots). `PATCH :reportId/default` requires
+   * `If-Match`, so `useDnaStyle.setDefault` echoes this back. Optional: when
+   * the SDK holds no version it sends no precondition rather than guessing.
+   */
+  version?: number;
 }
 
 /**

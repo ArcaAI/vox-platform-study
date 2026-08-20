@@ -96,7 +96,7 @@ export class TenantSettingsService {
   constructor(@Inject(IAppSettingsService) private readonly appSettings: IAppSettingsService) {}
 
   /**
-   * The platform lane only: SYSTEM/GLOBAL row → descriptor default.
+   * The platform lane only: SYSTEM row → descriptor default.
    * Use for `maxScope: 'system'` keys and for any caller with no tenant in
    * context (the throttler before a token is decoded, a boot-time reader).
    */

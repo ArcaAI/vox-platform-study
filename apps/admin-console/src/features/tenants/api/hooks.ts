@@ -122,10 +122,11 @@ export function useRestoreTenant() {
   return useMutation({ mutationFn: (id: string) => restoreTenant(id), onSuccess: invalidate });
 }
 
+/** OCC write: `etag` is the tenant DETAIL ETag (`useTenant`), which the tag route CASes against. */
 export function useSetTenantTags() {
   const invalidate = useInvalidateTenants();
   return useMutation({
-    mutationFn: ({ id, tags }: { id: string; tags: string[] }) => setTenantTags(id, tags),
+    mutationFn: ({ id, tags, etag }: { id: string; tags: string[]; etag: string }) => setTenantTags(id, tags, etag),
     onSuccess: invalidate,
   });
 }
