@@ -19,7 +19,7 @@ import { BOOTSTRAP_ENV_SETTINGS, toEnvVarName } from '@arcaai/applications';
 import { readFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { buildArtifacts, declaredSurface, getBootstrapFloorContent } from '../env-sync.mts';
+import { buildArtifacts, declaredSurface, DOCUMENTATION_SURFACES, getBootstrapFloorContent, scanTypeScriptReads } from '../env-sync.mts';
 
 const ROOT = resolve(__dirname, '..', '..');
 const artifacts = buildArtifacts();
@@ -186,6 +186,45 @@ describe('env:sync — turbo.json#globalEnv', () => {
 
   it('is sorted and free of duplicates', () => {
     expect(globalEnv).toEqual([...new Set(globalEnv)].sort());
+  });
+});
+
+describe('env:sync — rendered documentation is not a read', () => {
+  /**
+   * The admin console's developer portal ships copy-pasteable SDK snippets as
+   * `.tsx` template literals. The names inside them are the API CONSUMER's own
+   * (`process.env.HOPE_API_KEY` in THEIR service) — this repo never reads them,
+   * so they must not enter the turbo cache key, and must not be documented as
+   * part of HOPE's platform env surface. See `DOCUMENTATION_SURFACES`.
+   *
+   * `HOPE_API_BASE_URL` / `HOPE_API_TOKEN` predate the portal and ARE genuine
+   * declared keys — the assertion below is deliberately exact, not a
+   * `HOPE_*` prefix sweep, so it cannot swallow them.
+   */
+  const CONSUMER_SNIPPET_ONLY = ['HOPE_API_KEY', 'HOPE_API_URL', 'HOPE_SA_CLIENT_ID', 'HOPE_SA_CLIENT_SECRET', 'HOPE_TENANT_ID'];
+
+  it('registers no snippet-only consumer variable in turbo.json#globalEnv', () => {
+    const globalEnv: string[] = JSON.parse(artifact('turbo.json')).globalEnv;
+    expect(CONSUMER_SNIPPET_ONLY.filter((name) => globalEnv.includes(name))).toEqual([]);
+  });
+
+  it('does not scan the declared documentation surfaces', () => {
+    const found = scanTypeScriptReads();
+    expect(CONSUMER_SNIPPET_ONLY.filter((name) => found.has(name))).toEqual([]);
+  });
+
+  it('excludes directories only, so the skip can never widen to a single file', () => {
+    for (const dir of DOCUMENTATION_SURFACES) {
+      expect(dir.endsWith('/'), `${dir} must be a directory prefix, not a file`).toBe(true);
+    }
+  });
+
+  it('still detects the bracket form of a genuine read', () => {
+    // `packages/applications/src/common/authenticateJwt.ts` reads
+    // `process.env['JWT_SECRET_KEY']`. Stripping string literals wholesale to
+    // hide the doc snippets would lose this — the exclusion is scoped to
+    // documentation trees precisely so it cannot.
+    expect(scanTypeScriptReads().has('JWT_SECRET_KEY')).toBe(true);
   });
 });
 
