@@ -36,27 +36,40 @@ import {
  * departments for the tenant admins). Exempt users — service accounts and the
  * platform `super_admin` (system tenant) — are intentionally omitted.
  */
+/**
+ * Raised when a seeded user cannot be given the department half of its tenant
+ * membership. Distinct from the ordinary per-user errors the create loop logs
+ * and continues past, because this one produces a user that cannot log in.
+ */
+class SeedMembershipError extends Error {}
+
 export const PRIMARY_DEPARTMENT_CODE_BY_USERNAME: Record<string, string> = {
-  tenant_admin: 'GEN',
-  doctor: 'GEN',
-  doctor2: 'CARD',
-  department_head: 'GEN',
-  nurse: 'GEN',
-  senior_nurse: 'GEN',
-  nurse_card: 'CARD',
-  nurse_med: 'MED',
-  doctor_surgery: 'SURG',
-  doctor_neuro: 'NEUR',
+  // Global-tenant users resolve against the platform-generic CARE-SETTING
+  // catalog (`DEFAULT_DEPARTMENTS` in 04-department.ts — OPD/IPD/ER/PERI/RAD/
+  // LAB/BEH/PEDS), NOT the specialty roster, which owner ruling OD-8 moved
+  // exclusively to ArcaAI. These codes mirror each user's
+  // `primaryDepartmentId` SDK preference below; the two must move together.
+  tenant_admin: 'OPD',
+  doctor: 'OPD',
+  doctor2: 'OPD',
+  department_head: 'OPD',
+  nurse: 'OPD',
+  senior_nurse: 'OPD',
+  nurse_card: 'OPD',
+  nurse_med: 'OPD',
+  doctor_surgery: 'PERI',
+  doctor_neuro: 'OPD',
   doctor_peds: 'PEDS',
   doctor_er: 'ER',
-  doctor_bren: 'BREN',
-  doctor_rheum: 'RHEUM',
-  doctor_heme: 'HEME',
-  doctor_derm: 'DERM',
-  doctor_diet: 'DIET',
-  doctor_neph: 'NEPH',
-  doctor_sonc: 'SONC',
-  doctor_med: 'MED',
+  doctor_bren: 'OPD',
+  doctor_rheum: 'OPD',
+  doctor_heme: 'OPD',
+  doctor_derm: 'OPD',
+  doctor_diet: 'OPD',
+  doctor_neph: 'OPD',
+  doctor_sonc: 'OPD',
+  doctor_med: 'OPD',
+  // ArcaAI keeps the BCMCH specialty roster, so its users keep specialty codes.
   arcaai_admin: 'GEN',
   // Per-customer-tenant impersonatable clinical users.
   arcaai_doctor: 'GEN',
@@ -904,12 +917,25 @@ export const seedUser = async (client: CorePrismaClient) => {
             console.log(`  Assigned primary department "${departmentCode}" to user "${userData.username}"`);
           }
         } else {
-          console.warn(`  Warning: Department "${departmentCode}" not found in tenant ${userData.tenantId} for user "${userData.username}"`);
+          // NOT a warning. A non-exempt user without a `UserDepartment` fails
+          // login with "User does not have access to the specified tenant"
+          // (auth.controller.ts) even though its role assignment is perfect —
+          // which is how a retired department catalog silently produced a seed
+          // whose every Global user was unloggable, and took the whole e2e
+          // suite down at globalSetup. Fail loudly at seed time instead.
+          throw new SeedMembershipError(
+            `Department "${departmentCode}" not found in tenant ${userData.tenantId} for user "${userData.username}". ` +
+              `PRIMARY_DEPARTMENT_CODE_BY_USERNAME is out of sync with the tenant's department catalog ` +
+              `(04-department.ts); the user would be created unable to log in.`,
+          );
         }
       }
 
       console.log(`Created user: ${userData.username}`);
     } catch (error) {
+      // An incomplete tenant membership is not a per-user hiccup to log past —
+      // it silently yields a user that cannot authenticate. Propagate it.
+      if (error instanceof SeedMembershipError) throw error;
       console.error(`Error creating user ${userData.username}:`, error);
     }
   }

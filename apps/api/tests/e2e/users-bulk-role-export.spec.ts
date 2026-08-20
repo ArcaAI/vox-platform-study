@@ -171,7 +171,12 @@ test.describe.serial('P1-6 — bulk assign-role', () => {
 test.describe('P1-7 — export email + department-name enrichment', () => {
   const exportUrl = (fmt: string) => `/api/v1/admin/users/export?format=${fmt}`;
   const DOCTOR_EMAIL = SEEDED_USERS.doctor.email; // doctor.smith@example.com
-  const DOCTOR_DEPT = 'General Practice'; // seeded primary department of `doctor`
+  // Seeded primary department of `doctor` — the Global tenant's catalog is the
+  // platform-generic CARE-SETTING roster (`DEFAULT_DEPARTMENTS` in
+  // packages/database/src/prisma/db_main/seed/04-department.ts), not the
+  // specialty roster that owner ruling OD-8 confined to ArcaAI. Was
+  // 'General Practice' (the retired GEN row) before TASK-763.
+  const DOCTOR_DEPT = 'General Outpatient';
 
   test('P1-7 csv carries a real email and department NAME (not ids)', async ({ request }) => {
     const res = await request.get(exportUrl('csv'), { headers: bearer(saGlobalToken) });

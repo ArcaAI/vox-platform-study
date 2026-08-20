@@ -1,14 +1,14 @@
 /**
- * TASK-740 — the `text` identifier is eliminated from the AiTaskDefault task-key
+ * TASK-740 — the `smr` identifier is eliminated from the AiTaskDefault task-key
  * plane.
  *
  * Owner directive 2026-08-17 (`owner-decisions-2026-08-17.md` §3b decision 3):
- * "`text` was renamed to `text`. Do NOT use `text` anymore!" — which REVERSES the
+ * "`smr` was renamed to `text`. Do NOT use `smr` anymore!" — which REVERSES the
  * frozen-identifier position TASK-707 took on the DB-persisted keys.
  *
  * These are the DB-persisted `AiTaskDefault.taskKey` values, so this test is the
  * guard that the constant list, the seeded rows and the settings-registry
- * descriptor keys all move together. A key that reappears under `text.` is a
+ * descriptor keys all move together. A key that reappears under `smr.` is a
  * regression, not a leftover.
  */
 import { describe, expect, it } from 'vitest';
@@ -23,8 +23,8 @@ describe('TASK-740 — text.* task keys', () => {
     expect(AI_TASK_KEYS).toContain('text.finalize.fallback');
   });
 
-  it('registers no `text.`-prefixed key at all', () => {
-    expect(AI_TASK_KEYS.filter((k) => k.startsWith('text.'))).toEqual([]);
+  it('registers no `smr.`-prefixed key at all', () => {
+    expect(AI_TASK_KEYS.filter((k) => k.startsWith('smr.'))).toEqual([]);
   });
 
   it('maps every text.* key to TEXT_GENERATION', () => {
