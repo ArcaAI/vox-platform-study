@@ -106,7 +106,7 @@ documentation generation. The jobs themselves are enqueued by the summarization 
 | Key modules | `apps/api/src/modules/consultation` (`consultation-job.controller.ts`); `packages/applications/src/services/consultation/jobs` (`consultation-job.service.ts`, `processors/`) |
 | Prisma models | — (job state in Redis/BullMQ; results land as `ContextItem` / `SummaryMeta`) |
 | Key API endpoints | `@Controller('consultations/jobs')`: `GET /consultations/jobs/:jobId`, `PATCH /consultations/jobs/:jobId/cancel`, SSE `GET /consultations/jobs/:jobId/stream` |
-| Tests | unit(app): `consultation/jobs/__tests__/*`; unit(api): `consultation/__tests__/consultation-job.controller.test.ts`; e2e: `consultation-jobs.e2e-spec.ts`, `consultation-job-cross-user.spec.ts`, `consultation-job-cross-tenant.spec.ts` |
+| Tests | unit(app): `consultation/jobs/__tests__/*`; unit(api): `consultation/__tests__/consultation-job.controller.test.ts`; e2e: `consultation-jobs.spec.ts`, `consultation-job-cross-user.spec.ts`, `consultation-job-cross-tenant.spec.ts` |
 
 ## Honest notes / gaps
 
