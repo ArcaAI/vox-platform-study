@@ -17,7 +17,7 @@ describe('Department seed persistence key', () => {
       where: {
         tenantId_code: {
           tenantId: DEFAULT_TENANT_ID,
-          code: 'GEN',
+          code: 'OPD',
         },
       },
       create: expect.objectContaining({ id: firstDepartment.id }),

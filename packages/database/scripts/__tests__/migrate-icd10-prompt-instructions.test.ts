@@ -28,8 +28,14 @@ describe('parseArgs', () => {
 });
 
 describe('MIGRATION_TARGETS (real data, sanity checks)', () => {
-  it('covers the 12 base-catalog rows + 22 ArcaAI rows named in the ticket README', () => {
-    expect(MIGRATION_TARGETS).toHaveLength(34);
+  it('covers the 1 remaining base-catalog row + 22 ArcaAI rows', () => {
+    // Was 12 base-catalog rows. Eleven of them were the Global-tenant specialty
+    // templates retired by TASK-763 OD-8 (their bodies were BCMCH's and now live
+    // only on the ArcaAI tenant), leaving SOAP_SUMMARY as the only base-catalog
+    // target. The 22 ArcaAI rows are untouched and still carry the authoritative
+    // fingerprints. Dropping a target only NARROWS what this script will
+    // overwrite, so a stale deployed row is left alone rather than mis-rewritten.
+    expect(MIGRATION_TARGETS).toHaveLength(23);
   });
 
   it('every target has a non-empty newContent that does NOT mention ICD-10', () => {
@@ -43,7 +49,7 @@ describe('MIGRATION_TARGETS (real data, sanity checks)', () => {
     const withNewVersionRow = MIGRATION_TARGETS.filter((t) => t.newVersionRow);
     const withCorrectVersionNumber = MIGRATION_TARGETS.filter((t) => t.correctVersionNumber !== undefined);
     expect(withNewVersionRow).toHaveLength(1);
-    expect(withCorrectVersionNumber).toHaveLength(33);
+    expect(withCorrectVersionNumber).toHaveLength(22);
   });
 
   it('ids are unique', () => {

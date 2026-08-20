@@ -445,6 +445,13 @@ dedicated follow-up ticket, not something to force through as a drive-by alongsi
 owner decisions in this pass. A follow-up task has been flagged (see this ticket's Change History
 for the date) so it is not lost.
 
+> **CLOSED 2026-08-20 — the follow-up above was carried out. See §7.** The Global/SYSTEM
+> catalog is now eight generic CARE SETTINGS instead of a duplicated specialty roster, the 22
+> BCMCH-format Global templates were removed (their bodies remain on the ArcaAI tenant), the
+> golden library and every FK-bound template were re-derived, and the shape pins in the tests
+> were replaced. The line references in the paragraphs above describe the catalog **as it was
+> found** and are deliberately left as the historical audit record.
+
 **Two other OD-8 sub-items were reviewed and explicitly NOT selected by the owner — left exactly
 as they are, kept, owner reviewed 2026-08-20:**
 
@@ -603,3 +610,90 @@ SERVICE_ACCOUNT raw key as `X-Internal-Service-Key` against `/internal/stt/*`, w
 | 2026-08-20 | **OD-1 RESOLVED** by owner ruling (quoted verbatim in §5 OD-1): the runtime cascade is request-tenant → SYSTEM, full stop — GLOBAL never appears in it, and reaches other tenants only by an explicit promotion into SYSTEM. The audit + ranking correction landed in a sibling ticket: `AppSettingsService.PLATFORM_TENANT_IDS` and `SettingsRegistryWriteService`'s own copy now admit SYSTEM only (GLOBAL no longer outranks — or even enters — the platform cache); `ENTITLEMENTS_TENANT_ID` / `RATE_LIMIT_TENANT_ID` repointed to SYSTEM; seeds `11a-platform-knob-settings.ts`, `11c-consultation-gate-settings.ts`, `12-rate-limit-settings.ts`, `15-entitlements.ts` now write their platform row under `SYSTEM_TENANT_ID` (matching the corrected write-lane target); `.claude/rules/09-infrastructure-devops.md` §"Config caches" corrected to name SYSTEM as the sole platform tier. Confirmed NOT a regression: Global's own `tenantSettings(SEED_TENANT_ID, …)` rows in `11-global-setting.ts` (general/feature-flags/admin-menu-order) still resolve correctly through the tenant-scoped `GlobalSettingService` CRUD path — they were never meant to enter the flat platform cache. Confirmed NOT yet fixed, tracked as its own follow-up ticket: `TenantService.provisionTenantConfigs` still clones new-tenant `GlobalSetting` rows from GLOBAL (`__GLOBAL__`) rather than SYSTEM, unlike `provisionTenantModelCatalog`/`provisionTenantPipelineCatalog`/`provisionTenantAgentCatalog`, which already clone from SYSTEM correctly. |
 | 2026-08-20 | Four more owner decisions applied. **OD-3 (CORS) RESOLVED — KEEP AS IS**: no code change; the seeded `*.taphuynh.dev`/`*.4bits.vn`/browser-extension origins stay trusted in every environment including production, recorded so the finding stops recurring. **OD-4/OD-5 (localhost endpoints) RESOLVED — KEEP the seed, ADD a runbook**: no change to `17-ai-provider-connection.ts` or `05c-platform-storage-config.ts`; the day-1 operator correction steps are now tracked at `docs/operations/day-one-deployment.md` §3, linked from both OD-4 and OD-5. **OD-8 (departments) PARTIALLY RESOLVED**: re-verified ArcaAI/Global/SYSTEM department seeding is unchanged from the original audit — ArcaAI's 11 BCMCH departments are correctly kept (no action needed); the SYSTEM/GLOBAL half of the owner's ruling ("use different [department sets]") is **not yet closed** — SYSTEM's golden department catalog is *derived* from Global's `DEFAULT_DEPARTMENTS`, which duplicates 11 of ArcaAI's BCMCH codes verbatim, and every one of those 18 codes is a hard FK target from `PromptTemplate.departmentId` plus production code in `packages/applications` (`agent-template-resync.service.ts`) — decoupling it safely is a dedicated follow-up, flagged as its own task rather than risked as a same-session rewrite. The other two OD-8 sub-items (`password123` demo accounts, the ambiguous `DEFAULT_TENANT_ID` symbol) were reviewed and explicitly NOT selected by the owner this round — kept exactly as they are. |
 | 2026-08-20 | **OD-2 RESOLVED** by owner ruling: the day-1-no-machine-path posture is unacceptable — CI/automation needs machine access from day one — while TASK-762's DoD (no recoverable secret in seed data) stands unchanged. Resolution: `94-service-account.ts` gained `BOOTSTRAP_SERVICE_ACCOUNT_SECRET`, the same operator-supplied/seed-time-only/never-in-a-tracked-file shape as `BOOTSTRAP_SUPER_ADMIN_PASSWORD`. Set (any `NODE_ENV`) → the value is peppered-HMAC'd via the existing `computeSecretVerifier` (identical construction to `ServiceAccountService.exchangeToken`'s check) and written as `secretVerifier`, so the seeded `ARCAAI_ADMIN` account authenticates at `POST /api/v1/auth/service-token` immediately, no human login or `rotate` call needed. Unset → unchanged TASK-766 behavior (dev/test fixture, else inert CSPRNG verifier with no preimage) — the seed still invents no credential. Scope set is unchanged (`ARCAAI_TENANT_ADMIN_SVC_SCOPES`, tenant-scoped, never super-admin) since the ruling asked to remove the human-activation step, not to widen authority. Validation mirrors the two existing bootstrap credentials: 32-character floor, same well-known-value stop-list checked before length. CREATE-ONLY preserved — this only affects first creation, never an existing row. Tests added: `packages/database/.../seed/__tests__/service-account-seed.test.ts` (new describe block: no-op when unset, well-known-value/length rejection, never-a-literal-in-source check, HMAC construction parity, precedence-over-dev-fixture-in-source, resolved-in-every-environment) and `packages/applications/.../serviceAccount/__tests__/service-account.service.test.ts` (new test: a verifier built the same way the seed builds it authenticates through `exchangeToken`). Operator documentation: `docs/operations/day-one-deployment.md` new §2.4. |
+
+
+---
+
+## 7. OD-8 closure — the Global/SYSTEM catalog is no longer BCMCH's
+
+Carries out the follow-up flagged in §5 OD-8. The ArcaAI half is untouched: its 11
+v1-parity departments and its 22 clinical templates
+(`07b-arcaai-clinical-templates.ts`) are byte-for-byte unchanged. Only the Global/SYSTEM
+half moved.
+
+### 7.1 Why this was more than fixture data
+
+`07a-agent-golden-library.ts` promotes `DEFAULT_DEPARTMENTS` **1:1 onto the SYSTEM
+tenant**. So the duplicated roster was not merely the Global playground's data — it was the
+GOLDEN LIBRARY that `TenantService.provisionTenantAgentCatalog` clones into every
+newly-provisioned tenant and that `AgentTemplateResyncService` reconciles existing tenants
+against. Every future customer was being handed one hospital's department list, section
+vocabulary (`BIODATA`, `Fitness for Surgery`, `MDT Plan`,
+`style_DNA_doctor_department_*`) and note format on day 1.
+
+### 7.2 The replacement — a different axis, not a renamed roster
+
+Eight **care settings** rather than clinical specialties. A care setting is something every
+healthcare organisation has, which is what a platform default must be; a specialty roster
+is a tenant's own configuration.
+
+| code | name | format | new / revisit body |
+|---|---|---|---|
+| `OPD` | General Outpatient | SOAP | ✓ / ✓ |
+| `IPD` | Inpatient Ward | Progress-Note | ✓ / ✓ |
+| `ER` | Emergency & Urgent Care | ED-Encounter | ✓ / — |
+| `PERI` | Perioperative Care | Periop-Assessment | ✓ / ✓ |
+| `RAD` | Diagnostic Imaging | Imaging-Report | ✓ / — |
+| `LAB` | Laboratory Medicine | Lab-Report | ✓ / — |
+| `BEH` | Behavioral Health | Behavioral-Assessment | ✓ / ✓ |
+| `PEDS` | Pediatrics & Child Health | Pediatric-SOAP | ✓ / ✓ |
+
+ER/RAD/LAB have no revisit body deliberately: one is single-episode, two are
+report-producing services. 13 new `GENERIC_*` templates were authored to standard
+clinical-documentation section conventions, APPROVED at v1 so a fresh tenant generates on
+day 1 with no admin step.
+
+### 7.3 Consequences that had to be handled, not just edited
+
+- **`PromptTemplate.departmentId` is a real FK.** The 22 BCMCH-format Global templates were
+  removed and three survivors re-homed (`CARD_CUSTOM`, `TEXT_SYSTEM_CARD` → `null`;
+  `TEXT_SYSTEM_PSYCH` → `BEH`). A test now asserts no template points at a missing
+  department.
+- **ID allocation.** New departments use a fresh `70000000-0000-0000-0003-…` block. The
+  retired `-0000-…001-018` slots are NOT reused: within that prefix, slots 019+ already
+  belong to `SEED_USER_IDS`, so the block is not extensible, and re-pointing a retired slot
+  at a different code would collide with rows in long-lived dev DBs.
+- **The ArcaAI resync no-op got _stronger_.** `arcaai-agent-column-equality.test.ts` asserted
+  "every ArcaAI agent slug is also a golden slug", because resync rule (i) clones a golden
+  agent only when its slug is absent. That held only while the two catalogs duplicated each
+  other — the no-op was a coincidence of the very duplication being removed here. It is now
+  guaranteed one tier earlier: `resolveTenantDepartment` resolves the golden department's
+  **code** against the tenant and returns null when absent (*"Skipped golden agent - tenant
+  has no department with this code"*). Disjoint code sets make every golden agent unclonable
+  into ArcaAI regardless of slugs. The test now locks that disjointness.
+- **Four hardcoded department literals** carried the id as a raw string with the symbol only
+  in a comment, so neither `tsc` nor the seed tests caught them: `10-audit-log.ts` (a
+  dangling `departmentId` inside seeded audit data), `harness-consultation-seed.ts`,
+  `media-seed.ts`, `auth-revocation-audit.spec.ts`. All repointed to `OPD`.
+- **Guard tests added** so the catalog cannot silently re-acquire a tenant's roster: no
+  specialty code may appear in `GOLDEN_DEPARTMENTS`/`DEFAULT_DEPARTMENTS`, and no
+  `promptConfig` may contain BCMCH house vocabulary.
+
+### 7.4 Verification
+
+```
+packages/database      59 files / 1549 tests passing
+packages/applications  519 files (1 skipped) / 9563 tests passing (4 skipped)
+```
+
+### 7.5 Known follow-ups (NOT done here)
+
+- **Existing dev databases keep orphan rows.** The seed upserts by `tenantId_code`, so the 18
+  retired Global departments and 22 retired templates remain as rows in any already-seeded
+  DB. A fresh deploy is clean. No destructive SQL was run — cleanup needs explicit approval.
+- **`DEFAULT_PROMPT_VERSIONS` ids are positional** (`VERSION_IDS[V01..]` by array index), so
+  changing the template list shifts which version id each template gets. 29 templates vs 51
+  contiguous slots means nothing resolves `undefined`, and `tenantId` follows the template so
+  ownership stays correct — but a re-seed on an existing DB writes new version rows rather
+  than updating the old ones. Same orphan class as above.
+- `DEFAULT_TENANT_ID` still names two different tenants across the chain (OD-8, unchanged).
