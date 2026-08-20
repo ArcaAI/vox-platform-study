@@ -6080,7 +6080,7 @@
             "type": "number"
           },
           "deletedVersions": {
-            "description": "Number of historical report versions soft-deleted alongside them.",
+            "description": "Number of historical report versions associated with the erased report(s). Not mutated here — DnaWritingStyleVersion has no soft-delete column, so these rows are only counted; they become unreachable the moment their parent report is soft-deleted, and are hard-deleted alongside it later by the scheduled DnaProfileRetentionService purge (TASK-733 Task 10).",
             "type": "number"
           },
           "doctorId": {
@@ -13179,6 +13179,10 @@
             "description": "Resource status",
             "type": "string"
           },
+          "tenantId": {
+            "description": "Owning tenant. The reserved SYSTEM tenant (00000000-0000-0000-0000-000000000000) marks a platform built-in, which every tenant can read and assign but only a super admin can edit; any other value is a tenant-owned custom role, editable by that tenant. Lets the console decide whether to offer Edit or Clone.",
+            "type": "string"
+          },
           "updatedAt": {
             "description": "Updated at timestamp",
             "format": "date-time",
@@ -13187,6 +13191,7 @@
         },
         "required": [
           "id",
+          "tenantId",
           "name",
           "isSystemRole",
           "resourceStatus",
@@ -14150,10 +14155,10 @@
               "nlp": {
                 "$ref": "#/components/schemas/ServiceSessionCount"
               },
-              "text": {
+              "stt": {
                 "$ref": "#/components/schemas/ServiceSessionCount"
               },
-              "stt": {
+              "text": {
                 "$ref": "#/components/schemas/ServiceSessionCount"
               }
             },
@@ -20776,14 +20781,19 @@
         "bearerFormat": "JWT",
         "scheme": "bearer",
         "type": "http"
+      },
+      "service-account": {
+        "in": "header",
+        "name": "x-service-account-token",
+        "type": "apiKey"
       }
     }
   },
   "info": {
     "contact": {},
-    "description": "Main api backend",
-    "title": "Api",
-    "version": "1.0"
+    "description": "The HOPE platform gateway — multi-tenant clinical consultation transcription, medical NLP,\nLLM summarization, guardrails, and clinical documentation.\n\n## Planes\n\nRoutes belong to one of two planes, and the distinction decides which credentials can reach them.\n\n- **Business plane** — tenant-facing. Reachable with a user JWT, a tenant **API key**, or a service-account token.\n- **Administration plane** (`/api/v1/admin/**`) — reachable with a user JWT or a **service-account token** only.\n  Every route carries `@ForbidApiKey()`, enforced BEFORE scope and ability checks, so a broadly-scoped API key\n  is rejected there unconditionally.\n\nScopes bind the *credential*; abilities bind the *human* the credential acts for. They compose as AND —\na credential can never exceed the user it is bound to.\n\n## Errors\n\n| Status | Meaning |\n| --- | --- |\n| `401` | No credential, or the credential is expired, revoked, or malformed. |\n| `403` | A privilege boundary: the credential class, scope, or ability is insufficient. |\n| `404` | Either the resource does not exist, **or it belongs to another tenant**. The gateway returns 404 rather than 403 across a tenant boundary so resource existence is never disclosed. Treat it as \"not yours\", not \"wrong URL\". |\n| `409` | A conflict — commonly a quota ceiling from the tenant's plan entitlements. |\n| `412` | Optimistic-concurrency drift: your `If-Match` no longer matches the current `ETag`. Re-read and retry. |\n| `428` | This route requires `If-Match` and you did not send one. Read the resource, take its `ETag`, resend. |\n| `429` | Rate limited. |\n\n## Optimistic concurrency\n\nVersioned resources return a strong `ETag`. To modify one, send it back as `If-Match`.\nOmitting the header is a `428`; sending a stale one is a `412`. Never retry a `412` blindly —\nre-read the resource first, because someone else changed it.",
+    "title": "HOPE Platform API",
+    "version": "1.0.0"
   },
   "openapi": "3.0.0",
   "paths": {
@@ -21939,7 +21949,7 @@
         ],
         "summary": "DEPRECATED — use `GET admin/providers/llm`. List LLM provider connections (keys never returned).",
         "tags": [
-          "Admin: AI Provider Connections (legacy alias)"
+          "admin-ai-provider-connections-legacy"
         ]
       }
     },
@@ -21983,7 +21993,7 @@
         ],
         "summary": "DEPRECATED — use `DELETE admin/providers/llm/:provider`. Soft-delete one LLM provider connection.",
         "tags": [
-          "Admin: AI Provider Connections (legacy alias)"
+          "admin-ai-provider-connections-legacy"
         ]
       },
       "get": {
@@ -22032,7 +22042,7 @@
         ],
         "summary": "DEPRECATED — use `GET admin/providers/llm/:provider`.",
         "tags": [
-          "Admin: AI Provider Connections (legacy alias)"
+          "admin-ai-provider-connections-legacy"
         ]
       },
       "put": {
@@ -22108,7 +22118,7 @@
         ],
         "summary": "DEPRECATED — use `PUT admin/providers/llm/:provider`. Create or update one LLM provider connection.",
         "tags": [
-          "Admin: AI Provider Connections (legacy alias)"
+          "admin-ai-provider-connections-legacy"
         ]
       }
     },
@@ -22141,7 +22151,7 @@
         ],
         "summary": "List every platform runtime profile.",
         "tags": [
-          "Admin: AI Runtime Profiles"
+          "admin-ai-runtime-profiles"
         ]
       }
     },
@@ -22182,7 +22192,7 @@
         ],
         "summary": "Resolve the effective runtime profile for a (provider, modelSlug).",
         "tags": [
-          "Admin: AI Runtime Profiles"
+          "admin-ai-runtime-profiles"
         ]
       }
     },
@@ -22225,7 +22235,7 @@
         ],
         "summary": "Soft-delete one runtime profile row.",
         "tags": [
-          "Admin: AI Runtime Profiles"
+          "admin-ai-runtime-profiles"
         ]
       },
       "get": {
@@ -22272,7 +22282,7 @@
         ],
         "summary": "Read one runtime profile row (placeholder when absent).",
         "tags": [
-          "Admin: AI Runtime Profiles"
+          "admin-ai-runtime-profiles"
         ]
       },
       "put": {
@@ -22350,7 +22360,7 @@
         ],
         "summary": "Create or update one runtime profile row.",
         "tags": [
-          "Admin: AI Runtime Profiles"
+          "admin-ai-runtime-profiles"
         ]
       }
     },
@@ -28005,6 +28015,48 @@
       }
     },
     "/api/v1/admin/dna-writing-styles/doctor/{doctorId}": {
+      "delete": {
+        "description": "Soft-deletes every DNA writing-style report the doctor owns; the report versions are counted but left in place (they carry no resourceStatus column and become unreachable once the parent report is deleted). Complements the doctor's own self-service `DELETE /dna-writing-styles/my-style`. Idempotent — a doctor with no profile gets zero counts.",
+        "operationId": "DnaWritingStyleAdminController_resetDoctorProfile",
+        "parameters": [
+          {
+            "description": "Target doctor ID",
+            "in": "path",
+            "name": "doctorId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DnaErasureResponse"
+                }
+              }
+            },
+            "description": "Erasure counts"
+          },
+          "404": {
+            "description": "Doctor not found (or not a member of the caller tenant)"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Erase a doctor's entire learned DNA writing-style profile (admin)",
+        "tags": [
+          "admin-dna-writing-styles"
+        ]
+      },
       "get": {
         "operationId": "DnaWritingStyleAdminController_getReportForDoctor",
         "parameters": [
@@ -32711,7 +32763,7 @@
         ],
         "summary": "List provider connections for one service and the scoped tenant (keys never returned).",
         "tags": [
-          "Admin: Provider Connections"
+          "admin-provider-connections"
         ]
       }
     },
@@ -32770,7 +32822,7 @@
         ],
         "summary": "Soft-delete one provider connection.",
         "tags": [
-          "Admin: Provider Connections"
+          "admin-provider-connections"
         ]
       },
       "get": {
@@ -32833,7 +32885,7 @@
         ],
         "summary": "Read one provider connection (key never returned; placeholder when absent).",
         "tags": [
-          "Admin: Provider Connections"
+          "admin-provider-connections"
         ]
       },
       "put": {
@@ -32923,7 +32975,7 @@
         ],
         "summary": "Create or update one provider connection.",
         "tags": [
-          "Admin: Provider Connections"
+          "admin-provider-connections"
         ]
       }
     },
@@ -33759,7 +33811,7 @@
         ],
         "summary": "List all policies",
         "tags": [
-          "RBAC - Policies"
+          "admin-rbac-policies"
         ]
       },
       "post": {
@@ -33803,7 +33855,7 @@
         ],
         "summary": "Create a new policy",
         "tags": [
-          "RBAC - Policies"
+          "admin-rbac-policies"
         ]
       }
     },
@@ -33846,7 +33898,7 @@
         ],
         "summary": "Validate policy rules",
         "tags": [
-          "RBAC - Policies"
+          "admin-rbac-policies"
         ]
       }
     },
@@ -33906,7 +33958,7 @@
         ],
         "summary": "Delete a policy (requires break-glass confirmation)",
         "tags": [
-          "RBAC - Policies"
+          "admin-rbac-policies"
         ]
       },
       "get": {
@@ -33949,7 +34001,7 @@
         ],
         "summary": "Get policy by ID",
         "tags": [
-          "RBAC - Policies"
+          "admin-rbac-policies"
         ]
       },
       "patch": {
@@ -34002,7 +34054,7 @@
         ],
         "summary": "Partially update a policy",
         "tags": [
-          "RBAC - Policies"
+          "admin-rbac-policies"
         ]
       },
       "put": {
@@ -34055,7 +34107,7 @@
         ],
         "summary": "Update a policy",
         "tags": [
-          "RBAC - Policies"
+          "admin-rbac-policies"
         ]
       }
     },
@@ -34113,7 +34165,7 @@
         ],
         "summary": "List all roles",
         "tags": [
-          "RBAC - Roles"
+          "admin-rbac-roles"
         ]
       },
       "post": {
@@ -34157,7 +34209,7 @@
         ],
         "summary": "Create a new role",
         "tags": [
-          "RBAC - Roles"
+          "admin-rbac-roles"
         ]
       }
     },
@@ -34214,7 +34266,7 @@
         ],
         "summary": "Delete a role (requires break-glass confirmation)",
         "tags": [
-          "RBAC - Roles"
+          "admin-rbac-roles"
         ]
       },
       "get": {
@@ -34257,7 +34309,7 @@
         ],
         "summary": "Get role by ID",
         "tags": [
-          "RBAC - Roles"
+          "admin-rbac-roles"
         ]
       },
       "patch": {
@@ -34310,7 +34362,7 @@
         ],
         "summary": "Partially update a role",
         "tags": [
-          "RBAC - Roles"
+          "admin-rbac-roles"
         ]
       },
       "put": {
@@ -34363,7 +34415,7 @@
         ],
         "summary": "Update a role",
         "tags": [
-          "RBAC - Roles"
+          "admin-rbac-roles"
         ]
       }
     },
@@ -34418,7 +34470,7 @@
         ],
         "summary": "Clone a role (SYSTEM or CUSTOM) into a new CUSTOM role, copying its policies",
         "tags": [
-          "RBAC - Roles"
+          "admin-rbac-roles"
         ]
       }
     },
@@ -34479,7 +34531,7 @@
         ],
         "summary": "List users assigned this role (paginated, tenant-scoped)",
         "tags": [
-          "RBAC - Roles"
+          "admin-rbac-roles"
         ]
       }
     },
@@ -34547,7 +34599,7 @@
         ],
         "summary": "Remove a policy from a role (requires break-glass confirmation)",
         "tags": [
-          "RBAC - Roles"
+          "admin-rbac-roles"
         ]
       },
       "post": {
@@ -34608,7 +34660,7 @@
         ],
         "summary": "Assign a policy to a role",
         "tags": [
-          "RBAC - Roles"
+          "admin-rbac-roles"
         ]
       }
     },
@@ -35827,7 +35879,7 @@
         ],
         "summary": "List the capability/settings catalog (RBAC-filtered metadata).",
         "tags": [
-          "Admin: Settings Catalog"
+          "admin-settings-catalog"
         ]
       }
     },
@@ -35892,7 +35944,7 @@
         ],
         "summary": "Resolve the effective value of one non-secret setting for a context (with cascade trace).",
         "tags": [
-          "Admin: Settings Catalog"
+          "admin-settings-catalog"
         ]
       }
     },
@@ -35973,7 +36025,7 @@
         ],
         "summary": "Read one registry setting: its descriptor metadata plus the effective value and cascade trace.",
         "tags": [
-          "Admin: Settings Registry"
+          "admin-settings-registry"
         ]
       },
       "put": {
@@ -36034,7 +36086,7 @@
         ],
         "summary": "Write one registry setting through the single descriptor-driven enforcement point.",
         "tags": [
-          "Admin: Settings Registry"
+          "admin-settings-registry"
         ]
       }
     },
@@ -42898,7 +42950,7 @@
     },
     "/api/v1/admin/workflow-definitions/{id}/publish": {
       "post": {
-        "description": "Rejected 400 if the engine gate is not clean (a cycle, an unregistered node type, or malformed shape) — the sole publish-blocking predicate; DRAFT rule-catalogue findings never block publish. `activate` (default true) makes this the version the dispatcher resolves for new runs, demoting the slug’s previous active version.",
+        "description": "Rejected 400 if the engine gate is not clean (a cycle, an unregistered node type, or malformed shape) — the sole publish-blocking predicate; DRAFT rule-catalogue findings never block publish. `activate` (default true) makes this the version the dispatcher resolves for new runs, demoting the slug’s previous active version. Once published (and WORKFLOW_EXPOSURE_ENABLED), this version becomes invokable through the public exposure plane (`POST /workflows/:slug/invoke`) — if its resolved AI task default (e.g. `smr.finalize`, set under AI Task Defaults) selects a cloud provider, public invocations send this tenant's data to that vendor. Public exposure does NOT restrict provider choice (TASK-720 R-4 owner ruling, 2026-08-20): the tenant carries that risk.",
         "operationId": "WorkflowDefinitionController_publish",
         "parameters": [
           {
@@ -47454,6 +47506,9 @@
               }
             },
             "description": "Retrieving a single SummaryResponse by id"
+          },
+          "404": {
+            "description": "Consultation not found (or cross-tenant), or no summary has been generated yet."
           }
         },
         "security": [
@@ -47594,6 +47649,9 @@
               }
             },
             "description": "Retrieving a single SummaryResponse by id"
+          },
+          "404": {
+            "description": "Consultation not found (or cross-tenant), or no pre-summary has been generated yet."
           }
         },
         "security": [
@@ -50547,7 +50605,7 @@
         ],
         "summary": "Get current user's effective permissions",
         "tags": [
-          "RBAC - Permission Check"
+          "rbac-permission-check"
         ]
       }
     },
@@ -50814,7 +50872,7 @@
         ],
         "summary": "Check if a user has a specific permission",
         "tags": [
-          "RBAC - Permission Check"
+          "rbac-permission-check"
         ]
       }
     },
@@ -50864,7 +50922,7 @@
         ],
         "summary": "Check multiple permissions at once",
         "tags": [
-          "RBAC - Permission Check"
+          "rbac-permission-check"
         ]
       }
     },
@@ -51193,6 +51251,7 @@
     },
     "/api/v1/workflows/{slug}/invoke": {
       "post": {
+        "description": "If the published definition selects a cloud AI provider (via the tenant's own `smr.*` task-default configuration — see AI Task Defaults), this run sends the tenant's data to that vendor. Public exposure does NOT restrict provider choice: TASK-720 R-4 (owner ruling, 2026-08-20) allows a publicly-exposed workflow to select a cloud provider — the tenant carries that egress risk, consistent with the platform's BYO-first posture. Configure/disclose provider choice where the tenant sets it (AI Task Defaults), not only here.",
         "operationId": "WorkflowsController_invoke",
         "parameters": [
           {
@@ -51234,7 +51293,7 @@
             "description": ""
           },
           "403": {
-            "description": "Scope violation, or the definition selects a cloud provider this tenant has not opted into (decision #6)."
+            "description": "Scope violation."
           },
           "404": {
             "description": "Unknown, unpublished, or cross-tenant slug."
@@ -51414,5 +51473,358 @@
     }
   },
   "servers": [],
-  "tags": []
+  "tags": [
+    {
+      "description": "Login, token refresh, logout, stream tickets, and impersonation.",
+      "name": "auth"
+    },
+    {
+      "description": "Exchange service-account client credentials for a short-lived platform token. The only path to the administration plane.",
+      "name": "service-account-auth"
+    },
+    {
+      "description": "The authenticated user's own profile, preferences, and department membership.",
+      "name": "user"
+    },
+    {
+      "description": "The caller's own tenant: profile, configuration, and context schema.",
+      "name": "tenant"
+    },
+    {
+      "description": "The core clinical record: create and manage consultations, case notes, transcripts, and generated summaries.",
+      "name": "consultations"
+    },
+    {
+      "description": "Asynchronous consultation work: submit a job, poll its status, retrieve its result.",
+      "name": "consultation-jobs"
+    },
+    {
+      "description": "Speech-to-text job lifecycle — submit audio, track progress, fetch transcripts.",
+      "name": "transcription-jobs"
+    },
+    {
+      "description": "Speech synthesis and streaming speech surfaces.",
+      "name": "speech"
+    },
+    {
+      "description": "Multi-provider text generation and summarization, synchronous and SSE-streamed.",
+      "name": "text"
+    },
+    {
+      "description": "Direct inference surfaces — medical NER, classification, diagnosis suggestion, and guardrail analysis.",
+      "name": "ai-inference"
+    },
+    {
+      "description": "Trigger and observe agentic workflow runs.",
+      "name": "workflows"
+    },
+    {
+      "description": "Read and manage the prompt templates available to the caller, including personal ones.",
+      "name": "prompt-templates"
+    },
+    {
+      "description": "Per-clinician writing-style profiles used to shape generated documentation.",
+      "name": "dna-writing-styles"
+    },
+    {
+      "description": "Per-user voice profiles for speaker identification and synthesis.",
+      "name": "voice-profile"
+    },
+    {
+      "description": "The ASR pipeline configurations a caller may select when starting audio capture.",
+      "name": "audio-pipelines"
+    },
+    {
+      "description": "Upload, download, and manage tenant-scoped objects.",
+      "name": "storage"
+    },
+    {
+      "description": "The caller's own invoices and spend.",
+      "name": "billing"
+    },
+    {
+      "description": "The caller's own consumption summary and quota burndown.",
+      "name": "usage"
+    },
+    {
+      "description": "The plan limits and features in effect for the caller's tenant.",
+      "name": "entitlements"
+    },
+    {
+      "description": "Platform changelog entries visible to the caller.",
+      "name": "changelog"
+    },
+    {
+      "description": "Ask whether the caller may perform an action — single, bulk, or \"list everything I can do\".",
+      "name": "rbac-permission-check"
+    },
+    {
+      "description": "Legacy v1-compatible summarization paths. Exempt from the /api/v1 prefix; kept for existing integrations.",
+      "name": "text-compat"
+    },
+    {
+      "description": "Legacy v1-compatible STT session paths. Exempt from the /api/v1 prefix; kept for existing integrations.",
+      "name": "stt-compat"
+    },
+    {
+      "description": "Promote an agent configuration between environments.",
+      "name": "admin-agent-promotions"
+    },
+    {
+      "description": "Inspect the step-by-step trajectory of an agent run.",
+      "name": "admin-agent-trajectory"
+    },
+    {
+      "description": "Platform-wide agentic policy and live harness configuration.",
+      "name": "admin-agentic"
+    },
+    {
+      "description": "The model catalog: which models exist, their metadata, and their label taxonomies.",
+      "name": "admin-ai-models"
+    },
+    {
+      "description": "Deprecated alias of the provider-connection routes. Use admin-provider-connections.",
+      "name": "admin-ai-provider-connections-legacy"
+    },
+    {
+      "description": "Runtime tuning profiles applied to inference requests.",
+      "name": "admin-ai-runtime-profiles"
+    },
+    {
+      "description": "Registration and health of the downstream Python inference services.",
+      "name": "admin-ai-services"
+    },
+    {
+      "description": "Which provider and model serve each AI task, resolved tenant-first with a SYSTEM fallback.",
+      "name": "admin-ai-task-defaults"
+    },
+    {
+      "description": "Per-tenant CORS origin allow-list.",
+      "name": "admin-allowed-origins"
+    },
+    {
+      "description": "Mint, scope, rotate, and revoke tenant API keys.",
+      "name": "admin-api-keys"
+    },
+    {
+      "description": "Author and manage the ASR pipeline configurations tenants may select.",
+      "name": "admin-audio-pipelines"
+    },
+    {
+      "description": "Query the immutable audit trail.",
+      "name": "admin-audit-logs"
+    },
+    {
+      "description": "Generate, inspect, and adjust tenant invoices.",
+      "name": "admin-billing-invoices"
+    },
+    {
+      "description": "The price list metering is billed against.",
+      "name": "admin-billing-rate-card"
+    },
+    {
+      "description": "Author the platform changelog entries tenants see.",
+      "name": "admin-changelog"
+    },
+    {
+      "description": "Patient consent grants governing what may be processed.",
+      "name": "admin-consent-grants"
+    },
+    {
+      "description": "The structured-context schemas consultations are validated against.",
+      "name": "admin-consultation-context-schemas"
+    },
+    {
+      "description": "Cross-tenant consultation administration and review.",
+      "name": "admin-consultations"
+    },
+    {
+      "description": "Which agents are assigned to which department.",
+      "name": "admin-department-agents"
+    },
+    {
+      "description": "The tenant department tree.",
+      "name": "admin-departments"
+    },
+    {
+      "description": "Administer per-clinician writing-style profiles, including erasure.",
+      "name": "admin-dna-writing-styles"
+    },
+    {
+      "description": "Plan definitions and the per-tenant ceilings they impose.",
+      "name": "admin-entitlements"
+    },
+    {
+      "description": "Browser-side pipeline configuration served to the SDK.",
+      "name": "admin-frontend-pipeline-config"
+    },
+    {
+      "description": "Platform-wide non-secret knobs (global-kv tier).",
+      "name": "admin-global-settings"
+    },
+    {
+      "description": "Harness policy, evaluation, assurance, and live configuration.",
+      "name": "admin-harness"
+    },
+    {
+      "description": "Knowledge documents and their retrieval indexes.",
+      "name": "admin-knowledge"
+    },
+    {
+      "description": "Registered MCP servers and the tools they expose.",
+      "name": "admin-mcp-servers"
+    },
+    {
+      "description": "Per-task instruction overrides for the medical NLP service.",
+      "name": "admin-nlp-task-instructions"
+    },
+    {
+      "description": "Platform notification delivery and templates.",
+      "name": "admin-notifications"
+    },
+    {
+      "description": "Aggregate cross-tenant platform metrics.",
+      "name": "admin-platform-metrics"
+    },
+    {
+      "description": "Author, version, and approve prompt templates. SYSTEM-owned templates are super-admin only.",
+      "name": "admin-prompt-templates"
+    },
+    {
+      "description": "Bring-your-own-key vendor connections, resolved tenant-first with a SYSTEM fallback.",
+      "name": "admin-provider-connections"
+    },
+    {
+      "description": "Read-only database inspection surface.",
+      "name": "admin-pstudio"
+    },
+    {
+      "description": "BullMQ queue depth, job inspection, retry, and drain.",
+      "name": "admin-queues"
+    },
+    {
+      "description": "Tiered rate-limit configuration.",
+      "name": "admin-rate-limit"
+    },
+    {
+      "description": "CASL policy documents and their bindings.",
+      "name": "admin-rbac-policies"
+    },
+    {
+      "description": "Roles, their abilities, and their assignment to users.",
+      "name": "admin-rbac-roles"
+    },
+    {
+      "description": "Server-sent-event subscriptions to resource change streams.",
+      "name": "admin-resource-subscriptions"
+    },
+    {
+      "description": "Cron schedules and their run history.",
+      "name": "admin-schedulers"
+    },
+    {
+      "description": "Machine identities for the administration plane. Issuance is deliberately absent from the SDK.",
+      "name": "admin-service-accounts"
+    },
+    {
+      "description": "Deployed service versions and their build identity.",
+      "name": "admin-service-releases"
+    },
+    {
+      "description": "The declared settings catalog — every governed key and its tier.",
+      "name": "admin-settings-catalog"
+    },
+    {
+      "description": "Read and write governed settings through their descriptors.",
+      "name": "admin-settings-registry"
+    },
+    {
+      "description": "Bucket and tenant storage configuration, cascading to a SYSTEM default.",
+      "name": "admin-storage-config"
+    },
+    {
+      "description": "STT engine configuration and per-tenant overrides.",
+      "name": "admin-stt"
+    },
+    {
+      "description": "Per-tenant OIDC identity-provider configuration.",
+      "name": "admin-tenant-idp-config"
+    },
+    {
+      "description": "Tenant lifecycle, profile, and configuration.",
+      "name": "admin-tenants"
+    },
+    {
+      "description": "Cross-tenant transcription job administration.",
+      "name": "admin-transcription-jobs"
+    },
+    {
+      "description": "TTS provider configuration and per-tenant credentials.",
+      "name": "admin-tts"
+    },
+    {
+      "description": "Metered consumption, cost attribution, and provider reconciliation.",
+      "name": "admin-usage"
+    },
+    {
+      "description": "Assignment of users to departments.",
+      "name": "admin-user-departments"
+    },
+    {
+      "description": "User lifecycle, credentials, and role assignment.",
+      "name": "admin-users"
+    },
+    {
+      "description": "Outbound webhook endpoints, secrets, and delivery history.",
+      "name": "admin-webhooks"
+    },
+    {
+      "description": "Which workflow definition serves which trigger.",
+      "name": "admin-workflow-assignments"
+    },
+    {
+      "description": "Author, compile, and version agentic workflow definitions.",
+      "name": "admin-workflow-definitions"
+    },
+    {
+      "description": "The node palette available to the workflow compiler.",
+      "name": "admin-workflow-nodes"
+    },
+    {
+      "description": "Inspect and replay workflow runs.",
+      "name": "admin-workflow-runs"
+    },
+    {
+      "description": "Trial runs of a workflow definition against fixtures, without touching real data.",
+      "name": "admin-workflow-sandbox-runs"
+    },
+    {
+      "description": "The fixtures sandbox runs execute against.",
+      "name": "admin-workflow-test-fixtures"
+    },
+    {
+      "description": "Service health roll-up and dependency probes.",
+      "name": "monitoring"
+    },
+    {
+      "description": "Per-tenant bucket administration.",
+      "name": "tenant-storage"
+    },
+    {
+      "description": "Storage credentials, held in Vault behind a credentials reference — never in a database column.",
+      "name": "tenant-storage-keys"
+    },
+    {
+      "description": "Service-to-service STT callbacks. Excluded from the public reference; reachable only with the internal service token.",
+      "name": "internal-stt"
+    },
+    {
+      "description": "Liveness, readiness, and dependency health probes.",
+      "name": "health"
+    },
+    {
+      "description": "The Prometheus scrape endpoint (`/metrics`), served by the vendored @willsoto/nestjs-prometheus controller. Exempt from the /api/v1 prefix.",
+      "name": "Prometheus"
+    }
+  ]
 }

@@ -12,7 +12,7 @@
  * Request and response types for the `/api/v1/admin/**` surface, derived from
  * the gateway's own DTOs via `openapi.json`.
  *
- * Only the 353 component schemas the generated surface transitively
+ * Only the 354 component schemas the generated surface transitively
  * reaches are emitted — the document declares more, and importing shapes no
  * method can produce would be noise.
  *
@@ -1627,6 +1627,15 @@ export interface DnaDashboardUsageEntry {
   doctorId: string;
   /** Usage record ID */
   id: string;
+}
+
+export interface DnaErasureResponse {
+  /** Number of DNA writing-style reports soft-deleted. */
+  deletedReports: number;
+  /** Number of historical report versions associated with the erased report(s). Not mutated here — DnaWritingStyleVersion has no soft-delete column, so these rows are only counted; they become unreachable the moment their parent report is soft-deleted, and are hard-deleted alongside it later by the scheduled DnaProfileRetentionService purge (TASK-733 Task 10). */
+  deletedVersions: number;
+  /** The clinician whose writing-style profile was erased. */
+  doctorId: string;
 }
 
 export interface DnaJobResponseDto {
@@ -3692,6 +3701,8 @@ export interface RoleResponse {
   policies?: PolicySummary[];
   /** Resource status */
   resourceStatus: string;
+  /** Owning tenant. The reserved SYSTEM tenant (00000000-0000-0000-0000-000000000000) marks a platform built-in, which every tenant can read and assign but only a super admin can edit; any other value is a tenant-owned custom role, editable by that tenant. Lets the console decide whether to offer Edit or Clone. */
+  tenantId: string;
   /** Updated at timestamp */
   updatedAt: string;
 }

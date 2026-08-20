@@ -284,7 +284,7 @@ export class AdminWorkflowDefinitionResource extends AdminResource {
   /**
    * Compile the graph and publish this version
    *
-   * Rejected 400 if the engine gate is not clean (a cycle, an unregistered node type, or malformed shape) — the sole publish-blocking predicate; DRAFT rule-catalogue findings never block publish. `activate` (default true) makes this the version the dispatcher resolves for new runs, demoting the slug’s previous active version.
+   * Rejected 400 if the engine gate is not clean (a cycle, an unregistered node type, or malformed shape) — the sole publish-blocking predicate; DRAFT rule-catalogue findings never block publish. `activate` (default true) makes this the version the dispatcher resolves for new runs, demoting the slug’s previous active version. Once published (and WORKFLOW_EXPOSURE_ENABLED), this version becomes invokable through the public exposure plane (`POST /workflows/:slug/invoke`) — if its resolved AI task default (e.g. `smr.finalize`, set under AI Task Defaults) selects a cloud provider, public invocations send this tenant's data to that vendor. Public exposure does NOT restrict provider choice (TASK-720 R-4 owner ruling, 2026-08-20): the tenant carries that risk.
    *
    * `POST /api/v1/admin/workflow-definitions/{id}/publish` — `WorkflowDefinitionController.publish`.
    */

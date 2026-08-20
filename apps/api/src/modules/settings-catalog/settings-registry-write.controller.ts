@@ -34,7 +34,7 @@ import { WriteRegistrySettingRequest, WriteRegistrySettingResponse } from './dto
  * this lane writes under the reserved `registry` namespace so the two write
  * paths over the same table stay distinguishable until they are reconciled.
  */
-@ApiTags('Admin: Settings Registry')
+@ApiTags('admin-settings-registry')
 @ApiBearerAuth()
 @ForbidApiKey()
 @RequiredSvcScopes('svc:admin:settings:manage')

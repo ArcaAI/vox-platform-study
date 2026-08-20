@@ -28,7 +28,7 @@ import { Authorize, ExpectedVersion, RequiresIfMatch, ForbidApiKey, RequiredSvcS
  * route; `AiRuntimeProfileService` re-asserts both rules with a
  * `ForbiddenException` so a service-to-service caller cannot bypass them.
  */
-@ApiTags('Admin: AI Runtime Profiles')
+@ApiTags('admin-ai-runtime-profiles')
 @ApiBearerAuth()
 @ForbidApiKey()
 @RequiredSvcScopes('svc:admin:ai-runtime-profile:manage')

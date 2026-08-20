@@ -56,7 +56,7 @@ const resolveRoleInstance = async (request: any, ctx: SubjectResolverContext): P
  * `IRbacRoleService`; direct `CoreDatabaseService` access is forbidden
  * by ESLint rule.
  */
-@ApiTags('RBAC - Roles')
+@ApiTags('admin-rbac-roles')
 @ApiBearerAuth()
 @ForbidApiKey()
 /*

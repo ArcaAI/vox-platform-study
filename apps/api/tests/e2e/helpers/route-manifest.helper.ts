@@ -53,12 +53,11 @@ export function routeLabel(r: ManifestRoute): string {
   return `${r.method} ${r.path} (${r.controller}.${r.handler})`;
 }
 
-export type SkipReason = 'apiExcluded' | 'streaming' | 'auth-endpoint';
+export type SkipReason = 'streaming' | 'auth-endpoint';
 
 /**
- * Routes deliberately excluded from the sweep.
+ * Routes deliberately excluded from the sweep. Currently: NONE.
  *
- * - `apiExcluded`: not part of the public HTTP surface.
  * - `streaming`: SSE routes. Every assertion here expects a guard REJECTION, which happens
  *   before the stream opens — but if the guard were to let one through, the response would
  *   never end and the sweep would hang. The per-request timeout already bounds that, so these
@@ -66,11 +65,35 @@ export type SkipReason = 'apiExcluded' | 'streaming' | 'auth-endpoint';
  * - `auth-endpoint`: the credential-minting endpoints the sweep itself depends on. Sweeping
  *   them with a valid credential is safe (they are rejections too), so none are excluded.
  *
- * Net effect: only `apiExcluded` routes are skipped. The list is expressed as a predicate so
- * any future exclusion must state its reason explicitly — silent truncation is worse than a gap.
+ * ## Why `apiExcluded` is NOT a skip reason — do not reinstate it
+ *
+ * This predicate used to skip `apiExcluded` routes, justified as "not part of the public HTTP
+ * surface". That premise is FALSE. `@ApiExcludeController()` / `@ApiExcludeEndpoint()` only
+ * hide a route from the generated OpenAPI DOCUMENT. The route is still mounted, still served
+ * over HTTP, and still runs the full guard chain — so it is still an authorization surface,
+ * and an attacker does not consult `openapi.json` before sending a request.
+ *
+ * Documentation visibility and authorization reachability are orthogonal. `apiExcluded` is the
+ * right oracle for the FORMER (see `packages/vox-node-codegen/src/surface.ts`, which uses it to
+ * tell a deliberate doc omission from a stale artifact) and carries no information about the
+ * latter.
+ *
+ * The routes it covers are precisely the ones this sweep most needs: every `/internal/*`
+ * controller carries `@ApiExcludeController()` — including the 24 `@Public()` routes assertion
+ * A5b proves are service-token-gated rather than publicly reachable — and the TASK-760 redirect
+ * shims carry `@ApiExcludeEndpoint()` while deliberately REPRODUCING their target's
+ * `@Authorize()`/`@ForbidApiKey()` decorators, a reproduction nothing else verifies.
+ *
+ * The bug was dormant only because the emitter mis-read the metadata (`=== true` against
+ * `@nestjs/swagger`'s wrapped `{ disable: true }` / `[true]` shapes), so the flag was always
+ * `false` and the predicate skipped nothing. Once TASK-783 made the flag truthful, 70 of 657
+ * routes would have silently dropped out of the sweep — the exact "silent truncation" the
+ * predicate below exists to prevent.
+ *
+ * The list stays expressed as a predicate so any future exclusion must state its reason
+ * explicitly — silent truncation is worse than a gap.
  */
-export function skipReasonFor(r: ManifestRoute): SkipReason | null {
-  if (r.apiExcluded) return 'apiExcluded';
+export function skipReasonFor(_r: ManifestRoute): SkipReason | null {
   return null;
 }
 

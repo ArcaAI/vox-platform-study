@@ -19,7 +19,7 @@ import { EffectiveSettingResponse, SettingCatalogItemResponse, SettingCatalogRes
  * registered BEFORE `GlobalSettingModule` in `app.module` so this static route
  * wins over the global-setting `admin/settings/:id` param route.
  */
-@ApiTags('Admin: Settings Catalog')
+@ApiTags('admin-settings-catalog')
 @ApiBearerAuth()
 @ForbidApiKey()
 @RequiredSvcScopes('svc:admin:settings:manage')

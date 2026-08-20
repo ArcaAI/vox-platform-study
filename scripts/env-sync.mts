@@ -548,6 +548,54 @@ function renderConsolidatedSample(apiContent: string, adminConsoleContent: strin
 // ─────────────────────────────────────────────────────────────────────────────
 
 /**
+ * Source trees whose `process.env.X` occurrences are DOCUMENTATION, not reads.
+ *
+ * `scanTypeScriptReads()` already excludes `docs/` on exactly this principle:
+ * prose ABOUT a variable is not a program that READS one. A rendered
+ * documentation portal is the same thing wearing a different hat — its "prose"
+ * ships as `.tsx` template-literal constants holding copy-pasteable snippets —
+ * but it lives under `apps/`, where the `docs/` prefix cannot reach it.
+ *
+ * The names in those snippets belong to the API CONSUMER's own service
+ * (`HOPE_API_KEY`, `HOPE_SA_CLIENT_ID`, …); they are set in the reader's
+ * deployment and nothing in this repo ever reads them. Declaring them would
+ * poison the turbo cache key with names no build input depends on, and would
+ * document another company's configuration as part of HOPE's platform env
+ * surface in `env-surface.generated.md`.
+ *
+ * ## What is skipped, precisely: template literals — NOT whole files
+ *
+ * In these trees the snippets live in backtick constants, so only
+ * TEMPLATE-LITERAL contents are blanked before matching. A `process.env.X`
+ * written as ordinary code — a real member expression outside a snippet — is
+ * still detected and still lands in `globalEnv`.
+ *
+ * That distinction is the safety net, and it has to be here: `eslint-config-turbo`
+ * (whose `turbo/no-undeclared-env-vars` rule is the usual backstop for an
+ * undeclared read) is spread into `flat/core.js` but NOT into `flat/next.js`,
+ * which `apps/admin-console` uses and which is deliberately self-contained.
+ * Verified by `eslint --print-config` on a console file: zero `turbo/*` rules
+ * resolve there. So for a Next.js app there is no second line of defence — a
+ * whole-file exclusion here would mean a genuine read could silently never
+ * reach the turbo cache key.
+ *
+ * ADDING A SNIPPET to one of these trees: write `process.env.WHATEVER`
+ * normally, inside the backtick constant. The snippet should read exactly like
+ * the code you want a developer to copy — do NOT contort it to dodge this
+ * scanner.
+ *
+ * ADDING A TREE to this list: only for a surface whose entire job is rendering
+ * documentation, and state which one. It is not an escape hatch for a real read
+ * you would rather not declare — write that read outside a template literal, as
+ * you naturally would, and it is picked up regardless.
+ */
+export const DOCUMENTATION_SURFACES = [
+    // The admin console's developer portal: @arcaai/vox-node SDK and REST
+    // samples showing a consumer how to configure THEIR service.
+    'apps/admin-console/src/features/developer-docs/',
+];
+
+/**
  * Every environment variable TypeScript code actually READS.
  *
  * `turbo.json#globalEnv` is a CACHE-CORRECTNESS declaration, not documentation:
@@ -559,9 +607,36 @@ function renderConsolidatedSample(apiContent: string, adminConsoleContent: strin
  *
  * WRITES are excluded (`process.env.NO_COLOR = '1'` is not a config input), and
  * comments are stripped first so a `process.env.X` inside prose cannot register
- * a phantom variable.
+ * a phantom variable. In rendered-documentation trees the template-literal
+ * SNIPPETS are blanked for the same reason — see `DOCUMENTATION_SURFACES`.
  */
-function scanTypeScriptReads(): Set<string> {
+/**
+ * The per-file half of {@link scanTypeScriptReads}, exported so the
+ * snippet-vs-real-read distinction can be tested directly on a string instead
+ * of by planting a probe file in the repo.
+ */
+export function scanSourceForTests(raw: string, file: string): Set<string> {
+    const READ = /process\.env(?:\.([A-Z][A-Z0-9_]{1,})|\[\s*['"`]([A-Z][A-Z0-9_]{1,})['"`]\s*\])\s*(=[^=]|$|[^=])/g;
+    let source = raw.replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:])\/\/[^\n]*/g, '$1');
+
+    // In a documentation surface the backtick constants are RENDERED SNIPPETS —
+    // prose about someone else's configuration. Blank their contents so the
+    // names inside them do not register, while leaving real code untouched.
+    if (DOCUMENTATION_SURFACES.some((dir) => file.startsWith(dir))) {
+        source = source.replace(/`(?:[^`\\]|\\[\s\S])*`/g, '``');
+    }
+
+    const found = new Set<string>();
+    let match: RegExpExecArray | null;
+    while ((match = READ.exec(source)) !== null) {
+        // `process.env.X =` is a WRITE — not an input to the cache key.
+        if (/^=[^=]/.test(match[3] ?? '')) continue;
+        found.add((match[1] ?? match[2]) as string);
+    }
+    return found;
+}
+
+export function scanTypeScriptReads(): Set<string> {
     const listed = execSync('git ls-files "*.ts" "*.tsx" "*.mts" "*.cts" "*.mjs" "*.js"', { cwd: ROOT, encoding: 'utf8' })
         .split('\n')
         .filter(Boolean)
@@ -573,15 +648,8 @@ function scanTypeScriptReads(): Set<string> {
     const found = new Set<string>();
     for (const file of listed) {
         if (isTestFile(file)) continue;
-        const source = readFileSync(join(ROOT, file), 'utf8')
-            .replace(/\/\*[\s\S]*?\*\//g, '')
-            .replace(/(^|[^:])\/\/[^\n]*/g, '$1');
-        let match: RegExpExecArray | null;
-        while ((match = READ.exec(source)) !== null) {
-            const tail = match[3] ?? '';
-            // `process.env.X =` is a WRITE — not an input to the cache key.
-            if (/^=[^=]/.test(tail)) continue;
-            found.add((match[1] ?? match[2]) as string);
+        for (const name of scanSourceForTests(readFileSync(join(ROOT, file), 'utf8'), file)) {
+            found.add(name);
         }
     }
     return found;

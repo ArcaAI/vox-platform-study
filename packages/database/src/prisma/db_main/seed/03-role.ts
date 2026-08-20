@@ -37,7 +37,7 @@ export const SYSTEM_ROLES = [
     externalName: 'Tenant Administrator',
     isSystemRole: true,
     parentRoleId: null,
-    policies: ['tenant-full-access', 'rbac-tenant-manage', 'rbac-delegate', 'user-profile-own', 'prompt-template-manage', 'audit-log-read'],
+    policies: ['tenant-full-access', 'rbac-tenant-manage', 'rbac-delegate', 'user-profile-own', 'prompt-template-manage', 'audit-log-read', 'api-documentation-read'],
   },
   {
     id: SEED_ROLE_IDS.DOCTOR,
@@ -57,6 +57,12 @@ export const SYSTEM_ROLES = [
       'api-key-own-manage',
       'storage-upload',
       'prompt-template-read',
+      // TASK-783: this role already holds `api-key-own-manage`, so it can mint
+      // a credential and integrate against the business plane. Reading the
+      // reference for the API it may already call is the matching privilege —
+      // the portal exposes the contract's SHAPE, never tenant data, and the
+      // business projection contains only routes an API key can reach.
+      'api-documentation-read',
     ],
   },
   {

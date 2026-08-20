@@ -15,7 +15,7 @@ import { Authorize, RequiredScopes } from '../../decorators';
  * faithful target is the caller, and the body's `userId` (the thing that
  * actually selected another user) rides through the 308 unchanged.
  */
-@ApiTags('RBAC - Permission Check')
+@ApiTags('rbac-permission-check')
 @ApiBearerAuth()
 @Controller('rbac/check')
 @RequiredScopes('user:profile:read')

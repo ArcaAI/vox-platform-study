@@ -366,6 +366,15 @@ test.describe('TASK-776 route authorization conformance matrix', () => {
 
   test('A5b — @Public() /internal/* routes are service-token-gated, not publicly reachable', () => {
     assertAll('A5b PUBLIC-BUT-SERVICE-TOKEN-GATED', casesA5Internal, 'none', (s) => s === 401, '401');
+    // Inventory derived from `apps/api/route-manifest.json`:
+    //   routes where isPublic === true && path startsWith '/api/v1/internal/'
+    //   = 20 HarnessInternalController + 2 ServiceReleaseInternalController
+    //   + 1 ConsentInternalController + 1 EffectiveConfigController = 24.
+    //
+    // Every one of those controllers also carries `@ApiExcludeController()`. That flag is a
+    // DOCUMENTATION-visibility signal only, and must never be allowed to shrink this inventory
+    // (see `skipReasonFor` in ./helpers/route-manifest.helper.ts). If this number collapses
+    // toward 0, suspect the sweep's skip predicate before suspecting the routes.
     expect(casesA5Internal.length, 'inventory of @Public() /internal/* routes').toBe(24);
   });
 });

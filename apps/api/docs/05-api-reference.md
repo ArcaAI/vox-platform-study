@@ -21,6 +21,16 @@
 
 This document provides a technical reference for the HOPE API Gateway internal architecture, including guards, decorators, interceptors, controllers, and services.
 
+> **Looking for the endpoint reference?** This file documents the gateway's INTERNAL
+> architecture. The per-endpoint reference — every route, its request/response shapes, and which
+> credential classes can reach it — is generated from the code and served in the admin console at
+> **`/developer/reference`**, behind `read:ApiDocumentation` (TASK-783). The pipeline that builds
+> it, and what you must do so a new route appears in it correctly, are documented in
+> [`docs/operations/api-documentation.md`](../../../docs/operations/api-documentation.md).
+>
+> `/api/v1/docs` (Swagger UI) still exists for local development only — it is `!isProduction` and
+> unauthenticated where it exists.
+
 ---
 
 ## Base Configuration

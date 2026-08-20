@@ -84,22 +84,23 @@ import { AppModule } from '../app.module';
 import '../bootstrap/third-party-public-routes';
 import { REQUIRES_IF_MATCH_KEY } from '../decorators/requiresIfMatch.decorator';
 import { API_GLOBAL_PREFIX, API_GLOBAL_PREFIX_OPTIONS } from '../global-prefix.config';
+import { isControllerApiExcluded, isEndpointApiExcluded } from '../openapi/api-exclude-metadata';
 
 const OUTPUT_PATH = resolve(__dirname, '..', '..', 'route-manifest.json');
 
 /**
- * `@nestjs/swagger`'s own metadata keys for the two exclusion decorators.
- * Inlined as string literals (they are `DECORATORS.API_EXCLUDE_ENDPOINT` /
- * `DECORATORS.API_EXCLUDE_CONTROLLER` in `@nestjs/swagger/dist/constants`)
- * so this script does not reach into that package's internal module layout.
+ * The two exclusion-decorator readers live in `../openapi/api-exclude-metadata`
+ * so they can be unit-tested against the REAL `@ApiExcludeController()` /
+ * `@ApiExcludeEndpoint()` decorators (this script self-executes on import, so
+ * a test cannot import it). See that module for why neither decorator stores a
+ * boolean and why reading them with `=== true` silently reported "nothing is
+ * excluded" for all 657 routes until TASK-783.
  *
  * Load-bearing for the cross-check: a route carrying one of these is ABSENT
- * from `openapi.json` BY DESIGN, so the generator must be able to tell that
- * apart from a route that is missing its Swagger decorators — which is a
+ * from `openapi.json` BY DESIGN, so `check-openapi-coverage.ts` can tell that
+ * apart from a route that is missing its Swagger decorators — which IS a
  * documentation defect worth failing on.
  */
-const API_EXCLUDE_ENDPOINT_KEY = 'swagger/apiExcludeEndpoint';
-const API_EXCLUDE_CONTROLLER_KEY = 'swagger/apiExcludeController';
 
 const HTTP_METHOD_NAMES: Record<number, string> = {
   [RequestMethod.GET]: 'GET',
@@ -229,7 +230,7 @@ function collect(app: Awaited<ReturnType<typeof NestFactory.create>>): RouteMani
       if (!proto) continue;
 
       const controllerPath = readPath(ControllerClass);
-      const controllerExcluded = Reflect.getMetadata(API_EXCLUDE_CONTROLLER_KEY, ControllerClass) === true;
+      const controllerExcluded = isControllerApiExcluded(ControllerClass);
 
       for (const handler of metadataScanner.getAllMethodNames(proto)) {
         const methodRef = proto[handler];
@@ -262,7 +263,7 @@ function collect(app: Awaited<ReturnType<typeof NestFactory.create>>): RouteMani
             reflector.getAllAndOverride<boolean>('isPublic', [...targets]) === true,
           permissionMode: rawMode === 'AND' || rawMode === 'OR' ? rawMode : null,
           requiresIfMatch: reflector.getAllAndOverride<boolean>(REQUIRES_IF_MATCH_KEY, [...targets]) === true,
-          apiExcluded: controllerExcluded || Reflect.getMetadata(API_EXCLUDE_ENDPOINT_KEY, methodRef) === true,
+          apiExcluded: controllerExcluded || isEndpointApiExcluded(methodRef),
         };
 
         // A controller instantiated in two modules is walked twice; the route

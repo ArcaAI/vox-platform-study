@@ -275,11 +275,26 @@ describe('Policy Seed Data', () => {
   });
 
   describe('Default Policies', () => {
-    it('should define 21 policies', () => {
+    it('should define 22 policies', () => {
       // Includes the `prompt-template-read` policy, the clinical
       // documentation harness policies (`harness-platform-manage`,
-      // `harness-tenant-manage`), and the `prisma-studio-manage` policy.
-      expect(DEFAULT_POLICIES.length).toBe(21);
+      // `harness-tenant-manage`), the `prisma-studio-manage` policy, and
+      // TASK-783's `api-documentation-read` (21 -> 22).
+      expect(DEFAULT_POLICIES.length).toBe(22);
+    });
+
+    it('should include the api-documentation-read policy as a dedicated, delegable grant', () => {
+      const apiDocs = DEFAULT_POLICIES.find((p) => p.name === 'api-documentation-read');
+
+      expect(apiDocs).toBeDefined();
+      // GLOBAL, like `prisma-studio-manage`: the API contract is a property of
+      // the PLATFORM, not of a tenant's data, so there is no tenantId condition.
+      expect(apiDocs?.scope).toBe(PolicyScope.GLOBAL);
+      // A DEDICATED subject, so the developer portal can be delegated to tenant
+      // developers without granting `manage:all`. `read` serves the business
+      // projection; the administration projection needs `manage`, which in
+      // practice only `system-full-access` grants.
+      expect(apiDocs?.rules).toEqual([{ action: 'read', subject: 'ApiDocumentation' }]);
     });
 
     it('should include system-full-access policy', () => {
