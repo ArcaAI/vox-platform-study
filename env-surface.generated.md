@@ -11,13 +11,13 @@ disagree with those declarations.
 
 | Metric | Value |
 |---|---:|
-| Declared keys (distinct) | 157 |
+| Declared keys (distinct) | 163 |
 | … of which required (`failMode: closed`) | 32 |
 | … of which secret | 31 |
-| … tier `env` | 121 |
+| … tier `env` | 127 |
 | … tier `global-kv` | 9 |
 | … tier `vault-kv` | 27 |
-| `turbo.json#globalEnv` entries | 173 |
+| `turbo.json#globalEnv` entries | 179 |
 
 ## Variables
 
@@ -89,6 +89,12 @@ disagree with those declarations.
 | `NEXT_PUBLIC_API_HOST` | `env` | no | `http://localhost:8868` | `apps/admin-console` | Origin the BROWSER connects to directly for SSE/WS streams (authenticated with single-use stream tickets). Inlined into the client bundle by Next.js, so it must be non-secret (`src/config/public-env.ts`). |
 | `NLP_INFERENCE_BATCH_LINGER_MS` | `env` | no | `5` | `apps/nlp` | How long an otherwise-idle NLP request waits for company before dispatching. This is the ENTIRE latency price of batching — keep it well under the p50 forward pass. |
 | `NLP_INFERENCE_BATCH_MAX_SIZE` | `env` | no | `8` | `apps/nlp` | Maximum items coalesced into one NLP forward pass. |
+| `NLP_INFERENCE_DEVICE` | `env` | no | `cpu` | `apps/nlp` | Where NLP guard tensors execute: "cpu" (safe on every host), "auto" (best device present), or an explicit "mps"/"cuda", which RAISES when absent rather than silently running several times slower. Transport/topology, never model identity. |
+| `NLP_INFERENCE_DEVICE_CPU_ONLY_MODULES` | `env` | no | `count_embed.gru` | `apps/nlp` | Comma-separated dotted submodule paths kept on CPU when the device is an accelerator. A runtime-COMPATIBILITY fact about the installed gliner2/torch build, not policy: `count_embed.gru` trips an MPSNDArray assertion that ABORTS the process rather than raising, so the relocation is mandatory wherever that build runs on MPS. |
+| `NLP_INFERENCE_INTERACTIVE_BATCH_LINGER_MS` | `env` | no | `2` | `apps/nlp` | How long an otherwise-idle INTERACTIVE-lane request waits for company. Measured against the gate budget, not the bulk pass. |
+| `NLP_INFERENCE_INTERACTIVE_BATCH_MAX_SIZE` | `env` | no | `2` | `apps/nlp` | Maximum items coalesced into one INTERACTIVE-lane forward pass (TASK-782). The synchronous inline gate and the asynchronous per-utterance pass are different service classes with different latency budgets, so they do not share a queue geometry. |
+| `NLP_INFERENCE_INTERACTIVE_QUEUE_MAX_DEPTH` | `env` | no | `64` | `apps/nlp` | Bounded INTERACTIVE-lane queue depth; at the bound the gate sheds with 503 + `Retry-After`. |
+| `NLP_INFERENCE_INTERACTIVE_QUEUE_MAX_WAIT_SECONDS` | `env` | no | `2` | `apps/nlp` | Wait ceiling for a queued INTERACTIVE-lane item — this IS the declared inline-gate SLO. Past it the verdict is too late to gate anything, so a 503 the caller fails closed on beats a stale 200. |
 | `NLP_INFERENCE_MAX_CONCURRENT` | `env` | no | `4` | `apps/nlp` | Concurrent forward passes across all NLP models (bootstrap fallback; the runtime value comes from the control plane). |
 | `NLP_INFERENCE_MAX_INFLIGHT_BATCHES` | `env` | no | `2` | `apps/nlp` | Concurrent forward passes against ONE NLP model. |
 | `NLP_INFERENCE_QUEUE_MAX_DEPTH` | `env` | no | `256` | `apps/nlp` | Bounded NLP inference queue depth; at the bound the service sheds with 503 + `Retry-After` instead of growing until OOM. |
