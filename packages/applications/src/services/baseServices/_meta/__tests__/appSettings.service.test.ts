@@ -125,10 +125,12 @@ describe('AppSettingsService', () => {
     },
   ) => ({
     id: `setting-${key}`,
-    // `GlobalSetting.tenantId` is NOT NULL, and the
-    // cache admits platform-reserved tenants only — so a fixture without a
-    // tenant is not a row the loader can ever see.
-    tenantId: '50000000-0000-0000-0000-000000000000',
+    // `GlobalSetting.tenantId` is NOT NULL, and the platform cache admits the
+    // reserved SYSTEM tenant EXCLUSIVELY (owner ruling 2026-08-20, TASK-763
+    // OD-1) — so a fixture on any other tenant is not a row the platform cache
+    // can ever hold. GLOBAL (`50000000-…`) is a CUSTOMER tenant, not a tier;
+    // `filters customer-tenant rows out of the platform cache` below pins that.
+    tenantId: '00000000-0000-0000-0000-000000000000',
     key,
     value,
     parsedValue: parsedValue ?? value,
@@ -316,7 +318,7 @@ describe('AppSettingsService', () => {
 
     it('should fallback to raw value if parsing fails', async () => {
       const mockSetting = {
-        tenantId: '50000000-0000-0000-0000-000000000000',
+        tenantId: '00000000-0000-0000-0000-000000000000',
         key: 'broken.setting',
         value: 'raw-value',
         get parsedValue() {
@@ -412,6 +414,31 @@ describe('AppSettingsService', () => {
       expect(stats).toHaveProperty('isInitialized');
       expect(stats.isInitialized).toBe(true);
       expect(stats.settingsCount).toBe(2);
+    });
+
+    it('filters customer-tenant rows out of the platform cache', async () => {
+      // TASK-763 OD-1: the platform (key-only) cache is sound ONLY because it
+      // admits the reserved SYSTEM tenant EXCLUSIVELY. GLOBAL (`50000000-…`) is
+      // the platform-admin PLAYGROUND — a customer tenant — so its rows must
+      // never widen into the platform tier, or one customer's configuration is
+      // served to every other tenant.
+      // The tenant lane only carries settings-registry overrides, so the
+      // fixture must declare that namespace to be reachable under its tenant.
+      const globalRow = {
+        ...createMockSetting('leaky.key', 'playground-value'),
+        tenantId: '50000000-0000-0000-0000-000000000000',
+        namespace: 'registry',
+      };
+
+      service = await createService([createMockSetting('platform.key', 'system-value'), globalRow]);
+
+      expect(service.getValueFromCache('platform.key')).toBe('system-value');
+      expect(service.hasSetting('leaky.key')).toBe(false);
+      expect(service.getValueFromCache('leaky.key')).toBeNull();
+      expect(service.getAllKeys()).toEqual(['platform.key']);
+
+      // It is not discarded — it is reachable only under its own tenant.
+      expect(service.getTenantValueFromCache('50000000-0000-0000-0000-000000000000', 'leaky.key')).toBe('playground-value');
     });
   });
 
