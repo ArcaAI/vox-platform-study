@@ -280,11 +280,11 @@ authoring→publish→invoke→status→cancel *mechanism* now is.
    (deferred), so `WorkflowStreamService` polls the JSON status read and
    translates each snapshot into an async-contract envelope; no synthetic resume token
    is minted (Temporal polling has no transport-native cursor — async-contract §3.6 forbids
-   inventing one). Decision #6 (cloud-provider selection through a public workflow, R-8): OFF by
-   default (`WORKFLOW_EXPOSURE_ALLOW_CLOUD_PROVIDERS`), checked against `compiledConfig`'s
-   per-node `config.provider` field via the SAME `isCloudByoProvider('llm', …)` classification
-   the BYO-credential plane uses — currently inert (no node type sets `config.provider` yet)
-   but wired for the moment one does.
+   inventing one). Decision #6 (cloud-provider selection through a public workflow, R-8) is
+   REVERSED by owner ruling (TASK-720 R-4, 2026-08-20): a publicly-exposed workflow MAY select
+   a cloud AI provider — the tenant carries the risk (BYOK), consistent with the platform's
+   BYO-first posture. The former `WORKFLOW_EXPOSURE_ALLOW_CLOUD_PROVIDERS` gate is removed, not
+   merely defaulted on; see the TASK-720/TASK-722 ticket READMEs.
 6. **Seeded platform default.** One SYSTEM-tenant, `PUBLISHED`, `isActive` `WorkflowDefinition`
    row (`packages/database/src/prisma/db_main/seed/21-workflow-definition.ts`)
    — the dispatcher's fallback when a tenant has authored no workflow of its own. `graph` /
@@ -300,8 +300,9 @@ once wave 2+ lands).
 non-removable and nothing routes around it (`WF-SUMM-004`/`006`); `compiledConfig` is
 server-produced only, never accepted from a request DTO; a published row is hard-immutable
 (service guard + DTO whitelist + checksum drift-detection + a DB trigger); a
-publicly-invoked workflow never routes to a cloud LLM provider without an explicit tenant
-opt-in (exposure-plane decision #6); provider/model selection for `generate.text` is `failMode:
+publicly-invoked workflow MAY route to a cloud LLM provider — the tenant's own BYOK choice,
+carrying the tenant's own egress risk (TASK-720 R-4 owner ruling, reversing the former
+exposure-plane decision #6); provider/model selection for `generate.text` is `failMode:
 closed` (no env fallback).
 
 ---
