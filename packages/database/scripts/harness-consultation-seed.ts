@@ -26,7 +26,8 @@ import { getPlatformAdminPrismaClient_Unscoped } from '../src/client';
 
 const TENANT_A = '50000000-0000-0000-0000-000000000000'; // Global customer tenant
 const DOCTOR_A = '70000000-0000-0000-0000-000000000010'; // Global doctor (SEED_USER_IDS.DOCTOR)
-const DEPT_GEN = '70000000-0000-0000-0000-000000000001'; // GEN department
+const DEPT_GEN = '70000000-0000-0000-0003-000000000001'; // OPD (General Outpatient) — the Global catalog's care-setting
+// replacement for the retired GEN specialty department (TASK-763 OD-8).
 const HYPERTENSION_DOC_ID = 'bbbbbbbb-0000-0000-0000-000000000001'; // from harness-knowledge-ingest-seed.ts
 
 // Fresh id per run (last 4 digits). Default 0331 supersedes the parked 0330 run.

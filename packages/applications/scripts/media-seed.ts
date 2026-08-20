@@ -50,7 +50,7 @@ import { ensureBucket, makeS3Client, putObject } from './media-storage';
 // --- Stable FKs (proven Global-tenant rows; see seed/00-constants.ts) --------
 const TENANT_ID = '50000000-0000-0000-0000-000000000000'; // SEED_TENANT_ID (Global customer tenant)
 const DOCTOR_ID = '70000000-0000-0000-0000-000000000010'; // SEED_USER_IDS.DOCTOR
-const DEPARTMENT_ID = '70000000-0000-0000-0000-000000000001'; // SEED_DEPARTMENT_IDS.GEN
+const DEPARTMENT_ID = '70000000-0000-0000-0003-000000000001'; // SEED_DEPARTMENT_IDS.OPD
 
 // --- Stable ids for the seeded rows (outside every existing seed range) ------
 const CONSULTATION_ID = '90000000-0000-0000-0000-000000000376';

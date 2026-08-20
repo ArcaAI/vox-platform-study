@@ -64,7 +64,7 @@ const authAsTenant = (token: string, tenantId: string) => ({
 // the database package's seed module.
 const SEED_TENANT_ID = '50000000-0000-0000-0000-000000000000';
 const SEED_DOCTOR_ROLE_ID = '00000000-0000-0000-0000-000000000010';
-const SEED_GEN_DEPARTMENT_ID = '70000000-0000-0000-0000-000000000001';
+const SEED_GEN_DEPARTMENT_ID = '70000000-0000-0000-0003-000000000001'; // OPD (was the retired GEN department)
 
 /** A user id that is unique per run so parallel/retried runs never collide. */
 function throwawayUsername(): string {
