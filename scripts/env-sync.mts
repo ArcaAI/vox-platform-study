@@ -548,6 +548,43 @@ function renderConsolidatedSample(apiContent: string, adminConsoleContent: strin
 // ─────────────────────────────────────────────────────────────────────────────
 
 /**
+ * Source trees whose `process.env.X` occurrences are DOCUMENTATION, not reads.
+ *
+ * `scanTypeScriptReads()` already excludes `docs/` on exactly this principle:
+ * prose ABOUT a variable is not a program that READS one. A rendered
+ * documentation portal is the same thing wearing a different hat — its "prose"
+ * ships as `.tsx` template-literal constants holding copy-pasteable snippets —
+ * but it lives under `apps/`, where the `docs/` prefix cannot reach it.
+ *
+ * The names in those snippets belong to the API CONSUMER's own service
+ * (`HOPE_API_KEY`, `HOPE_SA_CLIENT_ID`, …); they are set in the reader's
+ * deployment and nothing in this repo ever reads them. Declaring them would
+ * poison the turbo cache key with names no build input depends on, and would
+ * document another company's configuration as part of HOPE's platform env
+ * surface in `env-surface.generated.md`.
+ *
+ * This exclusion is needed only because this scanner matches TEXT. The lint
+ * gate it feeds — `turbo/no-undeclared-env-vars` — matches the AST, where
+ * `process.env.X` inside a template literal is a `TemplateElement`, not a
+ * member expression, so it never flagged these snippets in the first place.
+ *
+ * ADDING A SNIPPET to one of these trees: write `process.env.WHATEVER`
+ * normally. The snippet should read exactly like the code you want a developer
+ * to copy — do NOT contort it to dodge this scanner.
+ *
+ * ADDING A TREE to this list: only for a surface whose entire job is rendering
+ * documentation, and state which one. This is not an escape hatch for a real
+ * read you would rather not declare — and it would not work as one: a genuine
+ * read here is a real member expression, so `turbo/no-undeclared-env-vars`
+ * still fails `pnpm lint` on it.
+ */
+export const DOCUMENTATION_SURFACES = [
+    // The admin console's developer portal: @arcaai/vox-node SDK and REST
+    // samples showing a consumer how to configure THEIR service.
+    'apps/admin-console/src/features/developer-docs/',
+];
+
+/**
  * Every environment variable TypeScript code actually READS.
  *
  * `turbo.json#globalEnv` is a CACHE-CORRECTNESS declaration, not documentation:
@@ -559,13 +596,15 @@ function renderConsolidatedSample(apiContent: string, adminConsoleContent: strin
  *
  * WRITES are excluded (`process.env.NO_COLOR = '1'` is not a config input), and
  * comments are stripped first so a `process.env.X` inside prose cannot register
- * a phantom variable.
+ * a phantom variable. Rendered-documentation trees are skipped wholesale for
+ * the same reason — see `DOCUMENTATION_SURFACES` above.
  */
-function scanTypeScriptReads(): Set<string> {
+export function scanTypeScriptReads(): Set<string> {
     const listed = execSync('git ls-files "*.ts" "*.tsx" "*.mts" "*.cts" "*.mjs" "*.js"', { cwd: ROOT, encoding: 'utf8' })
         .split('\n')
         .filter(Boolean)
-        .filter((f) => !f.includes('node_modules') && !f.startsWith('docs/'));
+        .filter((f) => !f.includes('node_modules') && !f.startsWith('docs/'))
+        .filter((f) => !DOCUMENTATION_SURFACES.some((dir) => f.startsWith(dir)));
 
     const isTestFile = (f: string) => /(^|\/)(__tests__|__mocks__|tests|test)\//.test(f) || /\.(test|spec|e2e-spec)\.[cm]?[jt]sx?$/.test(f);
 
