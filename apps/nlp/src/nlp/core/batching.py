@@ -35,7 +35,7 @@ import asyncio
 from collections import deque
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
-from typing import Any, Generic, TypeVar
+from typing import Any, Generic, Protocol, TypeVar
 
 import structlog
 
@@ -52,6 +52,35 @@ DEFAULT_LINGER_MS = 5
 DEFAULT_MAX_QUEUE = 256
 DEFAULT_MAX_WAIT_S = 20.0
 DEFAULT_MAX_INFLIGHT_BATCHES = 2
+
+
+class InflightGate(Protocol):
+    """Whatever bounds concurrent forward passes against the underlying weights.
+
+    Injectable because the bound belongs to the MODEL, not to the queue: once
+    TASK-782 split the interactive and bulk lanes into two batchers over one
+    weight slot, a per-batcher semaphore would let total in-flight passes
+    DOUBLE, and would give the inline gate no way to overtake a bulk pass that
+    is merely queued. `nlp.core.priority_gate.PriorityGate` is the shared,
+    priority-ordered implementation; the default below is the single-lane one.
+    """
+
+    async def acquire(self, priority: int = ...) -> None: ...
+
+    def release(self) -> None: ...
+
+
+class _SemaphoreGate:
+    """Default gate — one batcher, one bound, priority ignored."""
+
+    def __init__(self, limit: int) -> None:
+        self._semaphore = asyncio.Semaphore(limit)
+
+    async def acquire(self, priority: int = 0) -> None:
+        await self._semaphore.acquire()
+
+    def release(self) -> None:
+        self._semaphore.release()
 
 
 class InferenceQueueFull(RuntimeError):
@@ -90,6 +119,8 @@ class MicroBatcher(Generic[ItemT, ResultT]):
         max_inflight_batches: int = DEFAULT_MAX_INFLIGHT_BATCHES,
         name: str = "micro_batcher",
         on_batch: Callable[[str, int], None] | None = None,
+        inflight_gate: InflightGate | None = None,
+        priority: int = 0,
     ) -> None:
         if max_batch_size < 1:
             raise ValueError("max_batch_size must be >= 1")
@@ -108,7 +139,10 @@ class MicroBatcher(Generic[ItemT, ResultT]):
 
         self._pending: deque[_Waiter[ItemT, ResultT]] = deque()
         self._arrival = asyncio.Event()
-        self._inflight = asyncio.Semaphore(max_inflight_batches)
+        # A SHARED gate (one per weight slot) when the caller supplies one, so
+        # the two lanes bound the model rather than each bounding themselves.
+        self._inflight: InflightGate = inflight_gate or _SemaphoreGate(max_inflight_batches)
+        self._priority = priority
         self._dispatcher: asyncio.Task[None] | None = None
         self._running_batches: set[asyncio.Task[None]] = set()
         self._closed = False
@@ -177,7 +211,7 @@ class MicroBatcher(Generic[ItemT, ResultT]):
             # `queue_depth` AND immune to the `max_wait_s` ceiling, so under
             # exactly the overload these bounds exist for, items would sit
             # unbounded in a blind spot and then be served stale.
-            await self._inflight.acquire()
+            await self._inflight.acquire(self._priority)
             batch = self._take_batch()
             if not batch:
                 self._inflight.release()
