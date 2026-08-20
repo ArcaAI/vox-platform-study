@@ -122,6 +122,25 @@ describe('EffectiveConfigService', () => {
       expect(res.retention).toMatchObject({ ttlSeconds: 600, maxModels: 3 });
     });
 
+    // A SEPARATE bound for nlp's outbound peer-call concurrency (the nlp → text
+    // delegation), never sharing nlp.inference.maxConcurrent.
+    it('serves nlp its OWN peerCallMaxConcurrent, independent of maxConcurrent', async () => {
+      const svc = serviceWith(settingsStub(), [profile({ provider: 'nlp-local' })]);
+      const res = await svc.resolveForService('nlp');
+
+      expect(res.concurrency?.maxConcurrent).toBe(4);
+      expect(res.concurrency?.peerCallMaxConcurrent).toBe(8);
+    });
+
+    it('resolves an admin override of nlp.peerCall.maxConcurrent without moving nlp.inference.maxConcurrent', async () => {
+      const svc = serviceWith(settingsStub({ 'nlp.peerCall.maxConcurrent': 32 }), [profile({ provider: 'nlp-local' })]);
+      const res = await svc.resolveForService('nlp');
+
+      expect(res.concurrency?.peerCallMaxConcurrent).toBe(32);
+      expect(res.concurrency?.maxConcurrent).toBe(4);
+      expect(res.concurrency?.source).toBe('db');
+    });
+
     it('serves stt retention + worker/streaming concurrency, and NO runtimeProfiles', async () => {
       const svc = serviceWith(settingsStub(), [profile()]);
       const res = await svc.resolveForService('stt');

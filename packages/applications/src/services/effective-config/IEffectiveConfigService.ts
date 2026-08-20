@@ -57,6 +57,14 @@ export interface EffectiveConcurrency {
   maxConcurrent: number | null;
   workerConcurrency: number | null;
   streamingMaxConcurrent: number | null;
+  /**
+   * nlp's OUTBOUND PEER HTTP bound — the `nlp` → `text` delegation behind
+   * `/classify/topic` / `/classify/intent`. Deliberately a SEPARATE field from
+   * `maxConcurrent` (nlp's local-inference bound): sharing one ceiling between
+   * local GPU/CPU inference and an outbound HTTP round-trip to a peer service
+   * would let either starve the other. Null ⇒ nlp keeps its own bootstrap value.
+   */
+  peerCallMaxConcurrent: number | null;
   source: EffectiveConfigSource;
 }
 

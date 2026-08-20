@@ -94,7 +94,7 @@ export class EffectiveConfigService implements IEffectiveConfigService {
           ...base,
           runtimeProfiles: await this.listProfiles(),
           retention: await this.resolveRetention('nlp'),
-          concurrency: await this.resolveConcurrency(['nlp.inference.maxConcurrent']),
+          concurrency: await this.resolveConcurrency(['nlp.inference.maxConcurrent', 'nlp.peerCall.maxConcurrent']),
         };
 
       case 'stt':
@@ -197,6 +197,7 @@ export class EffectiveConfigService implements IEffectiveConfigService {
       maxConcurrent: pick('nlp.inference.maxConcurrent'),
       workerConcurrency: pick('stt.workers.concurrency'),
       streamingMaxConcurrent: pick('stt.streaming.maxConcurrent'),
+      peerCallMaxConcurrent: pick('nlp.peerCall.maxConcurrent'),
       source: groupSource([...resolved.values()]),
     };
   }
