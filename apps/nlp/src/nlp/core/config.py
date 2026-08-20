@@ -233,6 +233,47 @@ class NLPServiceConfig(BaseSettings):
     # buys cache contention rather than throughput.
     inference_max_inflight_batches: int = Field(default=2, ge=1, le=32)
 
+    # ── Two service classes, two queue geometries (TASK-782) ───────────────
+    #
+    # TASK-778 shipped ONE geometry and measured p95 ~1.7 s at 100 concurrent —
+    # fine for the asynchronous per-utterance redaction pass, unfit for a
+    # SYNCHRONOUS inline gate on a clinician's turn. The two jobs have different
+    # latency budgets, so they no longer share a queue.
+    #
+    # The interactive lane trades coalescing for latency: a small batch, a
+    # linger measured against ITS budget rather than the bulk pass, and a wait
+    # ceiling short enough that a shed is still useful to the caller. Its
+    # ceiling IS its declared SLO: past it the answer would arrive too late to
+    # gate anything, so a 503 the caller can fail closed on beats a stale 200.
+    #
+    # `latency_class` on the request selects the lane; absent ⇒ bulk, so an
+    # existing caller keeps byte-identical behaviour.
+    # 2, not 4: the lane exists for latency, and the measured cost of a wider
+    # gate batch is paid by the request that is waiting for the verdict
+    # (TASK-782 §5.4).
+    inference_interactive_batch_max_size: int = Field(default=2, ge=1, le=64)
+    inference_interactive_batch_linger_ms: int = Field(default=2, ge=0, le=1000)
+    inference_interactive_queue_max_depth: int = Field(default=64, ge=1)
+    inference_interactive_queue_max_wait_seconds: float = Field(default=2.0, gt=0)
+
+    # ── Where the tensors execute (TASK-782) ───────────────────────────────
+    #
+    # TRANSPORT/TOPOLOGY, not model identity — env-tier for the same reason the
+    # batch geometry is, and unlike a model id, which may never be a settings
+    # default. "cpu" is the bootstrap floor because it is the only placement
+    # that is correct on every host; "auto" degrades to the best device present;
+    # an explicit "mps"/"cuda" that is absent RAISES rather than silently
+    # running 3x slower on CPU (see `nlp.core.device`).
+    inference_device: str = Field(default="cpu")
+
+    # Submodules kept on CPU when the device is an accelerator. This is a
+    # runtime-COMPATIBILITY fact about the installed `gliner2`/torch build, not
+    # policy: `count_embed.gru` trips an MPSNDArray assertion that ABORTS the
+    # process (SIGABRT, not an exception), so the relocation is mandatory
+    # wherever that build is used. A torch release that fixes it is answered by
+    # emptying this list, not by editing code.
+    inference_device_cpu_only_modules: str = Field(default="count_embed.gru")
+
     # Model-cache retention.
     #
     # BOOTSTRAP FALLBACK ONLY — the runtime value comes from the control plane
