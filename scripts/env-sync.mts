@@ -101,7 +101,7 @@ const TOOLS_ENV_SETTINGS: SettingDescriptor[] = [
  * pydantic-settings surfaces this generator cannot import. But
  * `turbo.json#globalEnv` is a cache-correctness declaration for the WHOLE repo,
  * so a Python-read variable that is missing from it is undeclared all the same.
- * These nine were hand-added straight to `turbo.json` and would therefore be
+ * These (originally nine, now fifteen) were hand-added straight to `turbo.json` and would therefore be
  * deleted by the next `pnpm env:sync` — declaring them is what makes the
  * generator idempotent over them.
  *
@@ -142,6 +142,12 @@ const PYTHON_SERVICE_ENV_SETTINGS: SettingDescriptor[] = [
             ['nlp.modelCache.ttlSeconds', 'Idle TTL before an NLP model is evicted from the in-process cache.', 600],
             ['nlp.modelCache.maxModels', 'LRU ceiling on resident NLP models.', 3],
             ['nlp.model.localRoots', 'Optional allow-list of filesystem roots a configured LOCAL model path must resolve inside. Unset = unrestricted, deliberately and documented.', ''],
+            ['nlp.inference.interactiveBatchMaxSize', 'Maximum items coalesced into one INTERACTIVE-lane forward pass (TASK-782). The synchronous inline gate and the asynchronous per-utterance pass are different service classes with different latency budgets, so they do not share a queue geometry.', 2],
+            ['nlp.inference.interactiveBatchLingerMs', 'How long an otherwise-idle INTERACTIVE-lane request waits for company. Measured against the gate budget, not the bulk pass.', 2],
+            ['nlp.inference.interactiveQueueMaxDepth', 'Bounded INTERACTIVE-lane queue depth; at the bound the gate sheds with 503 + `Retry-After`.', 64],
+            ['nlp.inference.interactiveQueueMaxWaitSeconds', 'Wait ceiling for a queued INTERACTIVE-lane item — this IS the declared inline-gate SLO. Past it the verdict is too late to gate anything, so a 503 the caller fails closed on beats a stale 200.', 2],
+            ['nlp.inference.device', 'Where NLP guard tensors execute: "cpu" (safe on every host), "auto" (best device present), or an explicit "mps"/"cuda", which RAISES when absent rather than silently running several times slower. Transport/topology, never model identity.', 'cpu'],
+            ['nlp.inference.deviceCpuOnlyModules', 'Comma-separated dotted submodule paths kept on CPU when the device is an accelerator. A runtime-COMPATIBILITY fact about the installed gliner2/torch build, not policy: `count_embed.gru` trips an MPSNDArray assertion that ABORTS the process rather than raising, so the relocation is mandatory wherever that build runs on MPS.', 'count_embed.gru'],
         ] as const
     ).map(([key, description, defaultValue]): SettingDescriptor => ({
         key,

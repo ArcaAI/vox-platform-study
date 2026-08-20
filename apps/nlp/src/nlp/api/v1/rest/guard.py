@@ -28,7 +28,6 @@ from fastapi import APIRouter, Depends, HTTPException
 
 from nlp.core.batching import InferenceQueueFull, InferenceQueueTimeout
 from nlp.core.concurrency import ResizableSemaphore
-from nlp.core.config import settings
 from nlp.core.logging import get_logger
 from nlp.core.metrics import observe_queue_wait, publish_queue_depths, record_rejection
 from nlp.dependencies import (
@@ -46,9 +45,11 @@ from nlp.schemas.guard import (
     GuardPiiResponse,
 )
 from nlp.services.guard_dispatch import (
+    batch_size_for,
     classify_group_key,
     get_batcher,
     live_batchers,
+    normalize_lane,
     pii_group_key,
 )
 from nlp.services.model_cache import ModelUnavailableError
@@ -99,15 +100,18 @@ async def _acquire_scorer(model_name: str, model_path: str | None = None) -> Asy
         yield scorer
 
 
-def _shed(route: str, exc: Exception, reason: str) -> HTTPException:
+def _shed(route: str, exc: Exception, reason: str, lane: str) -> HTTPException:
     """Turn a declared backpressure signal into a retryable 503.
 
     Deliberately NOT an empty result: an empty PII list means "scanned, found
     nothing", so returning one under overload would silently switch redaction
     off at exactly the moment the platform is busiest.
     """
-    record_rejection(route, reason)
-    logger.warning(f"nlp.guard.shed route={route} reason={reason}")
+    # Shedding is attributed to a SERVICE CLASS: the interactive ceiling is
+    # deliberately short, so its timeouts are an expected, declared outcome and
+    # must not read as bulk-lane overload on a dashboard.
+    record_rejection(route, reason, lane)
+    logger.warning(f"nlp.guard.shed route={route} lane={lane} reason={reason}")
     return HTTPException(
         status_code=503,
         detail=f"inference {reason.replace('_', ' ')}: {exc}",
@@ -128,6 +132,7 @@ async def _submit_pii(
     labels: list[str],
     threshold: float,
     batch_size: int,
+    lane: str,
 ) -> list[dict[str, Any]]:
     """Enqueue one text onto the (slot, pii) batcher and await ITS spans.
 
@@ -141,7 +146,7 @@ async def _submit_pii(
         )
         return spans
 
-    batcher = await get_batcher(slot_key, "pii", run_batch)
+    batcher = await get_batcher(slot_key, "pii", run_batch, lane)
     started = time.perf_counter()
     try:
         entities: list[dict[str, Any]] = await batcher.submit(
@@ -160,6 +165,7 @@ async def _submit_classify(
     tasks: dict[str, Any],
     threshold: float,
     batch_size: int,
+    lane: str,
 ) -> dict[str, Any]:
     """Enqueue one text onto the (slot, classify) batcher and await ITS verdicts."""
 
@@ -169,7 +175,7 @@ async def _submit_classify(
         )
         return verdicts
 
-    batcher = await get_batcher(slot_key, "classify", run_batch)
+    batcher = await get_batcher(slot_key, "classify", run_batch, lane)
     started = time.perf_counter()
     try:
         results: dict[str, Any] = await batcher.submit(
@@ -198,7 +204,10 @@ async def guard_pii(
             detail="no PII label taxonomy supplied; the caller owns it as policy (fail-closed).",
         )
 
-    batch_size = settings.service.inference_batch_max_size
+    # The lane decides the geometry, so the runtime `batch_size` comes from the
+    # lane rather than from the single global bound TASK-778 used.
+    lane = normalize_lane(request.latency_class)
+    batch_size = batch_size_for(lane)
     try:
         async with _acquire_guard(model_name, request.model_path) as service:
             # The semaphore still bounds how many requests may be RESIDENT in the
@@ -214,11 +223,12 @@ async def guard_pii(
                     list(request.labels),
                     request.threshold,
                     batch_size,
+                    lane,
                 )
     except InferenceQueueFull as exc:
-        raise _shed("guard_pii", exc, "queue_full") from exc
+        raise _shed("guard_pii", exc, "queue_full", lane) from exc
     except InferenceQueueTimeout as exc:
-        raise _shed("guard_pii", exc, "queue_timeout") from exc
+        raise _shed("guard_pii", exc, "queue_timeout", lane) from exc
     except ModelUnavailableError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
     except HTTPException:
@@ -258,7 +268,8 @@ async def guard_classify(
             entry["cls_threshold"] = spec.cls_threshold
         tasks[name] = entry
 
-    batch_size = settings.service.inference_batch_max_size
+    lane = normalize_lane(request.latency_class)
+    batch_size = batch_size_for(lane)
     try:
         async with _acquire_guard(model_name, request.model_path) as service:
             async with inference_bound:
@@ -269,11 +280,12 @@ async def guard_classify(
                     tasks,
                     request.threshold,
                     batch_size,
+                    lane,
                 )
     except InferenceQueueFull as exc:
-        raise _shed("guard_classify", exc, "queue_full") from exc
+        raise _shed("guard_classify", exc, "queue_full", lane) from exc
     except InferenceQueueTimeout as exc:
-        raise _shed("guard_classify", exc, "queue_timeout") from exc
+        raise _shed("guard_classify", exc, "queue_timeout", lane) from exc
     except ModelUnavailableError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
     except HTTPException:

@@ -76,18 +76,44 @@ class Gliner2GuardService:
     is driven through ``asyncio.to_thread`` by the model-cache factory).
     """
 
-    def __init__(self, weights_source: str, model_id: str) -> None:
+    def __init__(
+        self,
+        weights_source: str,
+        model_id: str,
+        device: str = "cpu",
+        cpu_only_modules: tuple[str, ...] = (),
+    ) -> None:
         self.model_id = model_id
         self._weights_source = weights_source
+        # WHERE the tensors execute. Resolved by the caller from configuration
+        # (`nlp.core.device`), never chosen here — and never guessed at load
+        # time: an unsupported op on MPS aborts the PROCESS rather than raising,
+        # so there is no failure to recover from afterwards.
+        self._device = device
+        self._cpu_only_modules = cpu_only_modules
         self.runtime: Any = None
+
+    @property
+    def device(self) -> str:
+        return self._device
 
     def load(self) -> None:
         """Load the GLiNER2 runtime (blocking; call via ``to_thread``)."""
         from gliner2 import GLiNER2
 
-        logger.info(f"nlp.gliner2_guard.loading model_id={self.model_id}")
+        from nlp.core.device import apply_device_placement
+
+        logger.info(
+            f"nlp.gliner2_guard.loading model_id={self.model_id} device={self._device}"
+        )
+        # `map_location` would place the weights but NOT relocate the submodules
+        # that cannot execute on the accelerator, so the move goes through
+        # `apply_device_placement`, which does both as one step.
         self.runtime = GLiNER2.from_pretrained(self._weights_source)
-        logger.info(f"nlp.gliner2_guard.ready model_id={self.model_id}")
+        apply_device_placement(self.runtime, self._device, self._cpu_only_modules)
+        logger.info(
+            f"nlp.gliner2_guard.ready model_id={self.model_id} device={self._device}"
+        )
 
     # ── sync cores (thread-pool bound) ───────────────────────────────────
 
