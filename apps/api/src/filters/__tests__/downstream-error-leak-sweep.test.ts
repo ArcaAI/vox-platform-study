@@ -15,8 +15,7 @@
  * Throw the cause (or rethrow it) and let `ExceptionInterceptor` +
  * `apps/api/src/filters/downstream-error.ts` build the body.
  */
-import { execFileSync } from 'node:child_process';
-import { readFileSync } from 'node:fs';
+import { readdirSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 
 import { describe, expect, it } from 'vitest';
@@ -36,14 +35,34 @@ function isCommentLine(line: string): boolean {
   return t.startsWith('//') || t.startsWith('*') || t.startsWith('/*');
 }
 
+// Directories that never hold hand-authored source we need to sweep, even
+// though none are currently nested under SEARCH_ROOTS — defensive in case
+// that changes.
+const SKIP_DIRS = new Set(['node_modules', 'dist', '.turbo', 'coverage', '__tests__']);
+
+/**
+ * Plain filesystem walk rather than `git ls-files`: this sweep only needs to
+ * see the source tree as it sits on disk (there is nothing gitignored inside
+ * `apps/api/src` or `packages/applications/src` to filter out — see
+ * `.gitignore`), so it does not need git at all. That also means it keeps
+ * working in a CI image with no `git` binary, unlike the previous
+ * `execFileSync('git', ...)` form.
+ */
 function sourceFiles(): string[] {
-  const out = execFileSync('git', ['ls-files', '--cached', '--others', '--exclude-standard', '*.ts'], { cwd: REPO_ROOT, encoding: 'utf8' });
-  return out
-    .split('\n')
-    .filter(Boolean)
-    .map((rel) => path.join(REPO_ROOT, rel))
-    .filter((abs) => SEARCH_ROOTS.some((root) => abs.startsWith(root + path.sep)))
-    .filter((abs) => !abs.includes(`${path.sep}__tests__${path.sep}`) && !abs.endsWith('.test.ts') && !abs.endsWith('.spec.ts'));
+  const out: string[] = [];
+  const walk = (dir: string): void => {
+    for (const entry of readdirSync(dir, { withFileTypes: true })) {
+      if (SKIP_DIRS.has(entry.name)) continue;
+      const abs = path.join(dir, entry.name);
+      if (entry.isDirectory()) {
+        walk(abs);
+      } else if (entry.isFile() && entry.name.endsWith('.ts') && !entry.name.endsWith('.test.ts') && !entry.name.endsWith('.spec.ts')) {
+        out.push(abs);
+      }
+    }
+  };
+  for (const root of SEARCH_ROOTS) walk(root);
+  return out;
 }
 
 /**
