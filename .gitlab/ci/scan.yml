@@ -67,7 +67,7 @@ scan-api:
   rules:
     - if: $PIPELINE_TYPE == "merge_request" || $PIPELINE_TYPE == "feature" || $PIPELINE_TYPE == "release_sdk" || $PIPELINE_TYPE == "main"
       when: never
-    - !reference [.skip-on-dev-2-1, rules]
+    - !reference [.skip-vuln-scan-on-dev-2-x, rules]
     - !reference [.rules-api, rules]
 
 scan-stt:
@@ -80,7 +80,7 @@ scan-stt:
   rules:
     - if: $PIPELINE_TYPE == "merge_request" || $PIPELINE_TYPE == "feature" || $PIPELINE_TYPE == "release_sdk" || $PIPELINE_TYPE == "main"
       when: never
-    - !reference [.skip-on-dev-2-1, rules]
+    - !reference [.skip-vuln-scan-on-dev-2-x, rules]
     - !reference [.rules-stt, rules]
 
 scan-text:
@@ -93,7 +93,7 @@ scan-text:
   rules:
     - if: $PIPELINE_TYPE == "merge_request" || $PIPELINE_TYPE == "feature" || $PIPELINE_TYPE == "release_sdk" || $PIPELINE_TYPE == "main"
       when: never
-    - !reference [.skip-on-dev-2-1, rules]
+    - !reference [.skip-vuln-scan-on-dev-2-x, rules]
     - !reference [.rules-text, rules]
 
 scan-nlp:
@@ -106,7 +106,7 @@ scan-nlp:
   rules:
     - if: $PIPELINE_TYPE == "merge_request" || $PIPELINE_TYPE == "feature" || $PIPELINE_TYPE == "release_sdk" || $PIPELINE_TYPE == "main"
       when: never
-    - !reference [.skip-on-dev-2-1, rules]
+    - !reference [.skip-vuln-scan-on-dev-2-x, rules]
     - !reference [.rules-nlp, rules]
 
 scan-compat-playground:
@@ -119,7 +119,7 @@ scan-compat-playground:
   rules:
     - if: $PIPELINE_TYPE == "merge_request" || $PIPELINE_TYPE == "feature" || $PIPELINE_TYPE == "release_sdk" || $PIPELINE_TYPE == "main"
       when: never
-    - !reference [.skip-on-dev-2-1, rules]
+    - !reference [.skip-vuln-scan-on-dev-2-x, rules]
     - !reference [.rules-compat-playground, rules]
 
 # ── Filesystem scan (source code SAST) — runs on ALL pipelines ───────────────
@@ -143,7 +143,7 @@ scan-source:
         .
   allow_failure: true
   rules:
-    - !reference [.skip-on-dev-2-1, rules]
+    - !reference [.skip-vuln-scan-on-dev-2-x, rules]
     - if: $CI_COMMIT_TAG =~ /^v\d+/
     - if: $PIPELINE_TYPE
 
@@ -159,7 +159,7 @@ scan-guardrail:
   rules:
     - if: $PIPELINE_TYPE == "merge_request" || $PIPELINE_TYPE == "feature" || $PIPELINE_TYPE == "release_sdk" || $PIPELINE_TYPE == "main"
       when: never
-    - !reference [.skip-on-dev-2-1, rules]
+    - !reference [.skip-vuln-scan-on-dev-2-x, rules]
     - !reference [.rules-guardrail, rules]
 
 scan-harness:
@@ -172,7 +172,7 @@ scan-harness:
   rules:
     - if: $PIPELINE_TYPE == "merge_request" || $PIPELINE_TYPE == "feature" || $PIPELINE_TYPE == "release_sdk" || $PIPELINE_TYPE == "main"
       when: never
-    - !reference [.skip-on-dev-2-1, rules]
+    - !reference [.skip-vuln-scan-on-dev-2-x, rules]
     - !reference [.rules-harness, rules]
 
 scan-tts:
@@ -185,7 +185,7 @@ scan-tts:
   rules:
     - if: $PIPELINE_TYPE == "merge_request" || $PIPELINE_TYPE == "feature" || $PIPELINE_TYPE == "release_sdk" || $PIPELINE_TYPE == "main"
       when: never
-    - !reference [.skip-on-dev-2-1, rules]
+    - !reference [.skip-vuln-scan-on-dev-2-x, rules]
     - !reference [.rules-tts, rules]
 
 scan-admin-console:
@@ -198,7 +198,7 @@ scan-admin-console:
   rules:
     - if: $PIPELINE_TYPE == "merge_request" || $PIPELINE_TYPE == "feature" || $PIPELINE_TYPE == "release_sdk" || $PIPELINE_TYPE == "main"
       when: never
-    - !reference [.skip-on-dev-2-1, rules]
+    - !reference [.skip-vuln-scan-on-dev-2-x, rules]
     - !reference [.rules-admin-console, rules]
 
 scan-database:
@@ -211,7 +211,7 @@ scan-database:
   rules:
     - if: $PIPELINE_TYPE == "merge_request" || $PIPELINE_TYPE == "feature" || $PIPELINE_TYPE == "release_sdk" || $PIPELINE_TYPE == "main"
       when: never
-    - !reference [.skip-on-dev-2-1, rules]
+    - !reference [.skip-vuln-scan-on-dev-2-x, rules]
     - !reference [.rules-database, rules]
 
 scan-stt-worker:
@@ -224,7 +224,7 @@ scan-stt-worker:
   rules:
     - if: $PIPELINE_TYPE == "merge_request" || $PIPELINE_TYPE == "feature" || $PIPELINE_TYPE == "release_sdk" || $PIPELINE_TYPE == "main"
       when: never
-    - !reference [.skip-on-dev-2-1, rules]
+    - !reference [.skip-vuln-scan-on-dev-2-x, rules]
     - !reference [.rules-stt, rules]
 
 scan-python-base:
@@ -257,7 +257,7 @@ scan-harness-worker:
   rules:
     - if: $PIPELINE_TYPE == "merge_request" || $PIPELINE_TYPE == "feature" || $PIPELINE_TYPE == "release_sdk" || $PIPELINE_TYPE == "main"
       when: never
-    - !reference [.skip-on-dev-2-1, rules]
+    - !reference [.skip-vuln-scan-on-dev-2-x, rules]
     - !reference [.rules-harness, rules]
 
 scan-qdrant-init:

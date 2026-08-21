@@ -66,6 +66,17 @@ workflow:
       variables:
         PIPELINE_TYPE: "dev"
         SKIP_TESTS: "true"
+    # dev-2.2: NO tests and NO vulnerability scans, but validate (lint/typecheck/
+    # generate-*) still runs — a narrower opt-out than dev-2.1's. Tests are off
+    # via SKIP_TESTS below (every test job, and prepare-test-db, honors it);
+    # the Trivy image/source scans are off via `.skip-vuln-scan-on-dev-2-x` in
+    # .gitlab/ci/rules.yml. `scan-gitleaks` deliberately still runs — a secret
+    # scan is not a vulnerability scan, and it is the cheap gate that stops a
+    # credential landing. Must precede the generic /^dev-/ rule below.
+    - if: $CI_COMMIT_BRANCH == "dev-2.2"
+      variables:
+        PIPELINE_TYPE: "dev"
+        SKIP_TESTS: "true"
     # Release-line branches: dev-* / staging-* / prod-* (e.g. dev-2.1). A plain
     # push runs the full test suite then builds all images (env-tagged).
     - if: $CI_COMMIT_BRANCH =~ /^dev-/
