@@ -47,6 +47,7 @@ typecheck:
     - pnpm turbo build --filter=@arcaai/logger
     - pnpm turbo build --filter=@arcaai/domains
     - pnpm turbo build --filter=@arcaai/applications
+    - pnpm turbo build --filter=@arcaai/async-contract
     - pnpm --filter @arcaai/api exec tsc --noEmit
     # Packages exposing a `typecheck` script that is currently green. Scoped
     # rather than a repo-wide `pnpm turbo run typecheck` because @arcaai/vox
