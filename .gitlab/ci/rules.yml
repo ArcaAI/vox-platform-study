@@ -25,6 +25,21 @@
     - if: $CI_COMMIT_BRANCH == "dev-2.1"
       when: never
 
+# ── Skip the VULNERABILITY scans on the dev-2.x release lines ───────────────
+# Referenced at the TOP of every Trivy job's rules (scan.yml) so the branch
+# guard wins before any run condition. Broader than `.skip-on-dev-2-1` by one
+# branch and narrower in scope: dev-2.2 opted out of tests + vuln scans only,
+# so it keeps the validate stage, which still references the fragment above.
+# `scan-gitleaks` references NEITHER — a secret scan runs on every branch.
+# Branches are listed explicitly, not matched by `/^dev-2\./`, so each new
+# release line opting out stays a deliberate edit rather than an inherited
+# default.
+
+.skip-vuln-scan-on-dev-2-x:
+  rules:
+    - if: $CI_COMMIT_BRANCH == "dev-2.1" || $CI_COMMIT_BRANCH == "dev-2.2"
+      when: never
+
 # ── Always-run conditions ───────────────────────────────────────────────────
 
 .rules-always:
