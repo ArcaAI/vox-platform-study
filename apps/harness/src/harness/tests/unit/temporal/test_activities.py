@@ -158,6 +158,27 @@ def env() -> ActivityEnvironment:
     return ActivityEnvironment()
 
 
+class _PassThroughRedactor:
+    """A ``PhiRedactor``-shaped stub: no model, no network, no redaction.
+
+    Several activities below run with a CLOUD provider (e.g. ``azure-openai``), so
+    the real ``activities._phi_redactor()`` would build a Presidio analyzer and load
+    the ``en_core_web_lg`` spaCy model — a ~400 MB download on any host that has not
+    staged it (the hermetic CI image). These tests are about input→client mapping,
+    NOT egress policy: the PHI guard's wiring is covered end-to-end in
+    ``test_activities_phi_egress.py`` with its own contract fakes.
+    """
+
+    def ensure_safe_for_cloud(self, text: str, *, provider: str, settings: Any) -> str:
+        return text
+
+
+@pytest.fixture(autouse=True)
+def _no_phi_model(monkeypatch) -> None:
+    """Keep this module hermetic — no activity here may build a real redactor."""
+    monkeypatch.setattr(activities, "_phi_redactor", _PassThroughRedactor)
+
+
 class TestToolClientFactoriesSendServiceToken:
     """Regression guard: ``_text_client``/``_nlp_client`` must build their clients
     with the configured peer-service token, or every real ``generate``/

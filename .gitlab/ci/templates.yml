@@ -7,6 +7,13 @@
 .node-base:
   image: node:24-alpine
   tags: [fast]
+  variables:
+    # Same memory-poor runner VM as `.test-node-base` below (12 cores / 12 GB,
+    # shared with test-runner-01), so turbo is capped here too — uncapped,
+    # `turbo lint` fanned out to one task per core and the @arcaai/ui build it
+    # pulls in was OOM-killed (exit 137). 2 is the value lint-ts and typecheck
+    # are proven green at; the heavier test lane runs at 1.
+    TURBO_CONCURRENCY: "2"
   # The ID token is minted for every job on this base, but is
   # only USED by jobs that declare VAULT_SECRETS. Minting is local and free; the
   # token grants nothing without a Vault role whose bound_claims match the job.
@@ -51,6 +58,23 @@
   image: node:24-alpine
   tags: [test]
   id_tokens: !reference [.vault-oidc-id-token, id_tokens]
+  variables:
+    # ── Parallelism caps: the runner VM is CPU-rich and MEMORY-POOR ───────────
+    # 12 cores / 12 GB, shared by test-runner-01 (limit=2) AND fast-runner-01.
+    # Both turbo and vitest size themselves off the CORE count, so an uncapped
+    # job opens ~12 package tasks each spawning ~11 vitest workers — 1 GB/core
+    # does not cover that, and the kernel OOM-killer takes whichever build is
+    # resident (`Killed` + exit 137: @arcaai/ui#build and
+    # @arcaai/applications#build both died this way, and the surviving
+    # @arcaai/ui vitest suites hit 5 s timeouts on tests that run in 0.4 s
+    # unstarved). Peak RSS, not total work, is the constraint.
+    #
+    # Both are read by the tools themselves, so they cap EVERY invocation in
+    # every job on this base — including turbo runs nested inside a package's
+    # own `test` script. Do not re-add a `--concurrency` flag: the CLI flag
+    # overrides the env and silently restores the failure.
+    TURBO_CONCURRENCY: "1"
+    VITEST_MAX_WORKERS: "2"
   cache:
     - key:
         files:

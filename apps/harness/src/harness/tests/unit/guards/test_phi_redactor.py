@@ -24,7 +24,12 @@ from typing import cast
 import pytest
 
 from harness.core.config import PhiConfig, Settings
-from harness.guards.phi import PhiEgressBlocked, PhiRedactor, RedactionResult
+from harness.guards.phi import (
+    PhiEgressBlocked,
+    PhiModelUnavailable,
+    PhiRedactor,
+    RedactionResult,
+)
 
 # A crafted clinical line carrying four distinct PHI types.
 _PHI_TEXT = (
@@ -251,3 +256,39 @@ class TestUnknownProviderDefaultsToRedact:
             _PHI_TEXT, provider="some-new-cloud-provider", settings=_settings(fail_closed=False)
         )
         assert out == _PHI_TEXT
+
+
+class TestModelIsNeverDownloadedOnDemand:
+    """A missing spaCy model must FAIL CLOSED, not trigger a ~400 MB download.
+
+    Presidio's ``NlpEngineProvider`` downloads the model on first use. Inside a
+    PHI egress check that means: unbounded network I/O on a possibly air-gapped
+    clinical host, minutes added to a running activity, and — because spaCy's
+    downloader shells out to pip and exits — a bare ``SystemExit`` no caller can
+    handle. The guard refuses instead, and the refusal blocks the egress.
+    """
+
+    def test_absent_model_raises_instead_of_downloading(self, monkeypatch) -> None:
+        import spacy.util
+
+        from harness.guards.phi import redactor as redactor_module
+
+        monkeypatch.setattr(spacy.util, "is_package", lambda name: False)
+
+        with pytest.raises(PhiModelUnavailable) as excinfo:
+            redactor_module._build_analyzer("en_core_web_lg")
+
+        message = str(excinfo.value)
+        assert "en_core_web_lg" in message, "the error must name the missing model"
+        assert "spacy download" in message, "the error must say how to stage it"
+
+    def test_absent_model_blocks_cloud_egress_fail_closed(self, monkeypatch) -> None:
+        """End to end: no model ⇒ PhiEgressBlocked, never an unredacted send."""
+        import spacy.util
+
+        monkeypatch.setattr(spacy.util, "is_package", lambda name: False)
+
+        with pytest.raises(PhiEgressBlocked):
+            PhiRedactor().ensure_safe_for_cloud(
+                _PHI_TEXT, provider="azure-openai", settings=_settings(fail_closed=True)
+            )

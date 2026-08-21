@@ -17,6 +17,8 @@ So the guard plane fails CLOSED on an unusable path, with an attributable error.
 
 from __future__ import annotations
 
+import os
+
 import pytest
 
 from nlp.core.guard_model_reference import (
@@ -68,6 +70,15 @@ class TestResolution:
         with pytest.raises(GuardModelReferenceError):
             resolve_guard_weights_source("/nonexistent/staged/pii", None)
 
+    @pytest.mark.skipif(
+        os.geteuid() == 0,
+        reason=(
+            "root bypasses POSIX permission bits, so os.access(..., R_OK) reports a "
+            "chmod-000 directory as readable and the unreadable case cannot be staged. "
+            "The CI image runs as root; the assertion holds for the unprivileged "
+            "service account this guard actually protects."
+        ),
+    )
     def test_an_unreadable_path_fails_closed(self, tmp_path) -> None:
         staged = tmp_path / "locked"
         staged.mkdir()
@@ -77,6 +88,24 @@ class TestResolution:
                 resolve_guard_weights_source(str(staged), None)
         finally:
             staged.chmod(0o755)
+
+    def test_an_unreadable_path_fails_closed_regardless_of_uid(
+        self, tmp_path, monkeypatch
+    ) -> None:
+        """The same invariant, staged without POSIX bits so it runs as root too.
+
+        ``os.access`` is the readability probe the resolver uses; denying it is
+        exactly what the kernel does for an unprivileged process on a chmod-000
+        directory, and it is the only part of the check root can subvert.
+        """
+        staged = tmp_path / "locked"
+        staged.mkdir()
+        monkeypatch.setattr(
+            "nlp.core.guard_model_reference.os.access",
+            lambda path, mode: False,
+        )
+        with pytest.raises(GuardModelReferenceError):
+            resolve_guard_weights_source(str(staged), None)
 
     def test_an_empty_reference_fails_closed(self) -> None:
         with pytest.raises(GuardModelReferenceError):
