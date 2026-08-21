@@ -45,6 +45,11 @@ COPY packages/py-env ./packages/py-env
 # file:///app/packages/py-otel". Its only dep (opentelemetry-api) is already in
 # the lock, so it costs no meaningful layer-cache churn.
 COPY packages/py-otel ./packages/py-otel
+# Async task/event envelope contract (`hope-async-contract`). Same workspace
+# path-dependency rule again: text declares it in [tool.uv.sources], so `uv
+# sync` needs it on disk or layer 1 fails with "Distribution not found at:
+# file:///app/packages/py-async-contract". Zero runtime deps.
+COPY packages/py-async-contract ./packages/py-async-contract
 RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --frozen --package text --no-dev --no-install-project --no-editable
 
