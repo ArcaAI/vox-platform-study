@@ -23,6 +23,39 @@ const nextConfig: NextConfig = {
     optimizePackageImports: ['@arcaai/ui'],
   },
   output: 'standalone',
+  // `next build` traces the files the server will need by following STATIC
+  // requires. Next's own `dist/server/require-hook.js` loads the swc helpers
+  // through the wildcard subpath export `"./esm/*": "./esm/*"`, which no static
+  // tracer can enumerate — so standalone shipped exactly 3 of the package's
+  // files (cjs/_interop_require_default.cjs, cjs/_interop_require_wildcard.cjs,
+  // package.json) and none of the 108 under esm/. The container then died at
+  // boot on `Cannot find module '.../@swc/helpers/esm/_interop_require_default.js'`
+  // (dev-1c410d31, 786 restarts). Force-include the whole package; it is 1.8 MB.
+  //
+  // Scope is deliberately `@swc/helpers/**` and NOT the whole `.pnpm` entry.
+  // Widening it to `@swc+helpers@*/node_modules/**` makes the glob match the
+  // sibling `tslib` symlink, which Turbopack then tries to read as a file and
+  // dies: `reading file ".../@swc+helpers@0.5.23/node_modules/tslib" - Is a
+  // directory (os error 21)`. Verified — that widening fails the build.
+  //
+  // KNOWN RESIDUAL: 7 of the 108 helpers (`_ts_decorate`, `_ts_metadata`,
+  // `_ts_param`, `_ts_values`, `_ts_dispose_resources`,
+  // `_ts_add_disposable_resource`, `_ts_rewrite_relative_import_extension`)
+  // `import ... from 'tslib'`, and tslib is not traced into the output. They are
+  // the TypeScript decorator/`using` helpers; this app emits neither, and the
+  // observed crash was `_interop_require_default` only. Copying tslib in would
+  // NOT fix it regardless — resolution runs through that same sibling symlink,
+  // so the package would ship unreachable. If a `_ts_*` helper ever appears in a
+  // MODULE_NOT_FOUND here, the fix is a real dependency on tslib in this app's
+  // package.json, not a wider glob.
+  //
+  // Globs are relative to this project directory. The tracing root stays
+  // INFERRED (the pnpm-lock at the monorepo root): the standalone layout it
+  // produces is what `CMD ["node", "apps/admin-console/server.js"]` expects, so
+  // pinning outputFileTracingRoot here would risk moving server.js.
+  outputFileTracingIncludes: {
+    '/**/*': ['../../node_modules/.pnpm/@swc+helpers@*/node_modules/@swc/helpers/**'],
+  },
 };
 
 export default nextConfig;

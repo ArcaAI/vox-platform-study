@@ -176,6 +176,18 @@ COPY --from=builder --chown=api:hope /app/packages/types/package.json ./packages
 # @arcaai/utils is require()d at runtime by @arcaai/applications (build-info service).
 COPY --from=builder --chown=api:hope /app/packages/utils/dist ./packages/utils/dist
 COPY --from=builder --chown=api:hope /app/packages/utils/package.json ./packages/utils/package.json
+# @arcaai/async-contract (direct dep of apps/api) and @arcaai/workflow-contract
+# (dep of @arcaai/applications) both resolve to ./dist/index.js. Their manifests
+# are copied above so `pnpm install --prod` can LINK them — but a workspace
+# symlink pointing at a directory that has only a package.json is not an install
+# error, it is a MODULE_NOT_FOUND at boot. dev-1c410d31 crash-looped on exactly
+# that: `Cannot find module '/app/packages/applications/node_modules/
+# @arcaai/workflow-contract/dist/index.js'`. Manifest presence and dist presence
+# are two separate obligations; `dockerfile-runtime-dist.test.ts` guards this one.
+COPY --from=builder --chown=api:hope /app/packages/async-contract/dist ./packages/async-contract/dist
+COPY --from=builder --chown=api:hope /app/packages/async-contract/package.json ./packages/async-contract/package.json
+COPY --from=builder --chown=api:hope /app/packages/workflow-contract/dist ./packages/workflow-contract/dist
+COPY --from=builder --chown=api:hope /app/packages/workflow-contract/package.json ./packages/workflow-contract/package.json
 
 # Copy packages that don't build but are needed at runtime (source code packages)
 COPY --from=builder --chown=api:hope /app/packages/database ./packages/database
