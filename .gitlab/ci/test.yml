@@ -439,6 +439,10 @@ test-text:
     - pip install --quiet --retries 5 --timeout 120 packages/py-runtime-models
     - pip install --quiet --retries 5 --timeout 120 packages/py-env
     - pip install --quiet --retries 5 --timeout 120 packages/py-otel
+    # `hope-async-contract` is a workspace path dependency of apps/text
+    # (TASK-717 envelope contract) and is NOT on any package index, so pip
+    # resolves it only if it is installed from the repo first.
+    - pip install --quiet --retries 5 --timeout 120 packages/py-async-contract
     - cd apps/text
     - pip install --quiet --retries 5 --timeout 120 ".[test]"
     - PYTHONPATH=src python -m pytest src/text/tests/ -v --tb=short --junitxml=../../junit-text.xml -x
@@ -943,6 +947,12 @@ test-nlp:
     - echo "── Test infra → PostgreSQL=${CI_DATABASE_URL:+set} Redis=${CI_REDIS_URL:+set} ──"
     - pip install --quiet --retries 5 --timeout 120 packages/py-runtime-models
     - pip install --quiet --retries 5 --timeout 120 packages/py-env
+    # `llama-cpp-python` (MiniCheck GGUF scorer) publishes NO wheels — pip
+    # always builds it from sdist via scikit-build-core/CMake, which fails in
+    # `python:3.11-slim` with "Could not find the compiler specified in CC:
+    # gcc". Same toolchain apps/nlp/Dockerfile installs for the same reason.
+    # The built wheel lands in PIP_CACHE_DIR, so only the first run pays.
+    - apt-get update -qq && apt-get install -y -qq --no-install-recommends build-essential
     - cd apps/nlp
     - pip install --quiet --retries 5 --timeout 120 --index-url https://download.pytorch.org/whl/cpu "torch>=2.1.0"
     - pip install --quiet --retries 5 --timeout 120 ".[test]"

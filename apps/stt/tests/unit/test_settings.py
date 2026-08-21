@@ -222,11 +222,21 @@ class TestSettings:
             assert settings.huggingface_token is None
 
     def test_cors_origins_default(self):
-        """Test CORS origins default."""
-        with patch.dict(os.environ, {}, clear=True):
-            settings = Settings()
+        """CORS is EMPTY by default — no wildcard.
 
-            assert settings.cors_origins == ["*"]
+        stt handles PHI audio and the browser never talks to :8861 directly
+        (the gateway fronts every route), so the service names no origin of its
+        own. An operator with a genuine direct-browser need sets CORS_ORIGINS
+        explicitly; ``["*"]`` was the old shipped default and must not return.
+
+        ``_env_file=None`` skips the gitignored service-local ``apps/stt/.env``
+        dev overlay (which sets ``CORS_ORIGINS=["*"]``) so this asserts the
+        code default, not the developer's machine.
+        """
+        with patch.dict(os.environ, {}, clear=True):
+            settings = Settings(_env_file=None)
+
+            assert settings.cors_origins == []
 
     def test_log_level_validation(self):
         """Test log level is constrained to valid values."""
