@@ -34,7 +34,7 @@ import {
   auditSvcScopeCoverage,
   auditTokenExchangeRouteIsPublicAndGuarded,
 } from '../service-account-surface-audit';
-import { TASK_773_ADMIN_SCOPE_MAP, type AdminScopeMapRow } from './fixtures/task-773-admin-scope-map';
+import { TASK_773_ADMIN_SCOPE_MAP, type AdminScopeMapRow } from '../task-773-admin-scope-map';
 import { ServiceAccountController } from '../../modules/service-account/service-account.controller';
 import { ServiceAccountTokenController } from '../../modules/service-account/service-account-token.controller';
 // The six admin-prefixed controllers deliberately absent from the fixture —

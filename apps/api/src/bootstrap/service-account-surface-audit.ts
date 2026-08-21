@@ -70,15 +70,20 @@ import {
 import './third-party-public-routes';
 // The TASK-773 evidence fixture is EVIDENCE, not configuration: a mechanical
 // transcription of the 64 class-level `@RequiredScopes('admin:<area>')`
-// decorators commit 276f96a32 removed. It lives beside its own consistency test
-// (`__tests__/task-773-admin-scope-map.test.ts`, which proves every row still
-// names a real class and a live registry scope) and is imported here rather
-// than re-typed, because a second copy of the map in boot code is exactly the
-// drift this audit exists to catch. It is pure data — no test framework, no
-// runtime dependency — and `tsconfig.build.json` compiles it as a normal import
-// of `src/**` despite the `__tests__` exclude, which only filters the ENTRY
-// glob.
-import { TASK_773_ADMIN_SCOPE_MAP } from './__tests__/fixtures/task-773-admin-scope-map';
+// decorators commit 276f96a32 removed. Its own consistency test
+// (`__tests__/task-773-admin-scope-map.test.ts`) proves every row still names a
+// real class and a live registry scope; it is imported here rather than
+// re-typed, because a second copy of the map in boot code is exactly the drift
+// this audit exists to catch.
+//
+// It lives in `src/bootstrap/` and NOT under `__tests__/fixtures/`, where it
+// started. `tsconfig.build.json` did compile it from there (its `__tests__`
+// exclude only filters the ENTRY glob) — but `.dockerignore` strips
+// `**/__tests__` from the image build context entirely, so the file simply did
+// not exist in the container and `build-api` failed with TS2307 while every
+// local build and every test passed. Boot code may not import out of a test
+// directory; `no-production-imports-from-tests.test.ts` now enforces that.
+import { TASK_773_ADMIN_SCOPE_MAP } from './task-773-admin-scope-map';
 
 /**
  * The service-token guard class NAMES the audit recognises. Matched by name,
