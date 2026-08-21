@@ -24,6 +24,7 @@ from __future__ import annotations
 import asyncio
 import time
 from collections.abc import Callable
+from datetime import timedelta
 from typing import Any
 
 from temporalio.service import RPCError, RPCStatusCode
@@ -47,6 +48,15 @@ _TRANSIENT_QUERY_STATUSES = frozenset(
 # workflow was progressing perfectly well.
 _QUERY_TIMEOUT_S = 30.0
 
+# The per-ATTEMPT RPC deadline, which is the other half of that same problem.
+# The SDK default is ~10s, so a query long-polling across a `continue_as_new`
+# handover ate a THIRD of the budget above per attempt and the poll got only
+# three tries before the budget ran out — observed as
+# `RPCError: query deadline exceeded` on a loaded CI runner while the workflow
+# itself was fine. A short attempt deadline turns the same 30s into ~15 tries,
+# so "the next workflow task is late" costs a retry instead of the whole budget.
+_QUERY_ATTEMPT_TIMEOUT = timedelta(seconds=2)
+
 
 async def await_query(
     handle: Any,
@@ -67,10 +77,13 @@ async def await_query(
     last: Any = None
     while True:
         try:
-            last = await handle.query(query)
+            last = await handle.query(query, rpc_timeout=_QUERY_ATTEMPT_TIMEOUT)
         except RPCError as exc:
             if exc.status not in _TRANSIENT_QUERY_STATUSES or time.monotonic() >= deadline:
                 raise
+            # A fast-failing transient (UNAVAILABLE/NOT_FOUND) would otherwise
+            # hot-loop; a deadline already waited out its own timeout.
+            await asyncio.sleep(delay)
             continue
         if predicate(last):
             return last
