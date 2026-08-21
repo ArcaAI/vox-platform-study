@@ -401,6 +401,23 @@ export class StreamSocket {
     return found !== null || this.transcripts.length >= min;
   }
 
+  /**
+   * Resolve once the gateway's `{type:'ready'}` registration ack arrives, or
+   * `false` on timeout.
+   *
+   * WHY EVERY SENDER MUST GATE ON THIS. `handleConnection` runs async work
+   * (ticket consume, binding + session-meta lookups) BEFORE it calls
+   * `attachMessageHandler`. `ws` does not buffer frames that arrive with no
+   * `message` listener attached, so audio sent between the transport `open`
+   * event and that registration is discarded with NO error frame and NO
+   * server-side counter — the gateway emits this ack precisely so a client
+   * never has to guess. The SDK gates on it; so must any e2e client.
+   */
+  async waitForReady(timeoutMs = 10000): Promise<boolean> {
+    const ack = await this.waitForMessage((raw) => raw.type === 'ready', timeoutMs);
+    return ack !== null;
+  }
+
   waitForClosedStatus(timeoutMs = 20000): Promise<Record<string, unknown> | null> {
     return this.waitForMessage((raw) => raw.type === 'status' && (raw.status === 'closed' || raw.status === 'cancelled'), timeoutMs);
   }

@@ -64,12 +64,19 @@ test.describe('AC-3 — backpressure / overload recovery', () => {
   test('documented baseline: ingest overload recovers (socket stays open, captions resume, session finalizes)', async ({ request }, testInfo) => {
     // Budget note: the assertion is "captions RESUME after the overload", with
     // no claim about how fast. Draining FLOOD_SECONDS of audio through real
-    // Whisper inference takes ~20s on an idle machine (measured), so the
-    // original 30s caption window carried a ~1.5x margin — which the rest of
-    // the suite running in parallel erased, reporting `transcriptsReceived: 0`
-    // and failing a recovery that had simply not finished yet. The windows
-    // below are sized off that measurement with real headroom so the outcome
-    // depends on the transport, not on what else the machine is doing.
+    // Whisper inference takes ~20s on an idle machine (measured); the caption
+    // window below carries generous headroom over that.
+    //
+    // CORRECTION to the earlier reading of this test's flakes. A
+    // `transcriptsReceived: 0` run was previously attributed to the rest of the
+    // suite running in parallel, and the window was widened from 30s to 120s in
+    // response. That diagnosis was wrong: the failure reproduces on a
+    // completely IDLE machine (measured 3 times in 15 consecutive runs) and no
+    // window can fix it, because on a failing run the gateway XADDs ZERO audio
+    // frames — the burst raced socket registration and was dropped before the
+    // ingest path (see the readiness gate below). A passing run finishes in
+    // ~6s, so the 120s window was never the binding constraint; it stays only
+    // as slack for a genuinely loaded ASR worker.
     test.setTimeout(240_000);
 
     const created = await createStreamSession(request, { token });
@@ -83,6 +90,27 @@ test.describe('AC-3 — backpressure / overload recovery', () => {
         sessionId: session.sessionId,
         ticket: session.ticket,
       });
+
+      // GATE THE FLOOD ON THE GATEWAY'S REGISTRATION ACK — not on the
+      // transport `open` event.
+      //
+      // `handleConnection` consumes the ticket and reads the binding +
+      // session meta (async) BEFORE it calls `attachMessageHandler`, and `ws`
+      // does not buffer frames that arrive while no `message` listener is
+      // attached. A client that bursts the instant the socket opens therefore
+      // races registration and its frames are discarded with NO error frame
+      // and NO server-side counter: the observed failure was
+      // `transcriptsReceived: 0` with `bridgeErrorFrames: 0` and ZERO entries
+      // in `stt:audio:{sid}` — a pre-ingest race, never the ingest overload
+      // this test exists to measure. (A partial race is just as real: a run
+      // that lost the first 15 frames XADDed 285 of 300.)
+      //
+      // `{type:'ready'}` is emitted AFTER registration + result subscription
+      // for exactly this purpose; the SDK gates on it, and so does
+      // `streaming-resume-after-drop.spec.ts`. Waiting on it makes the flood
+      // deterministic instead of widening a window and hoping.
+      const readyAck = await socket.waitForReady(15_000);
+      expect(readyAck, 'gateway must ack registration with {type:"ready"} before any audio is sent').toBe(true);
 
       const pcm = loadPcm16(undefined, { maxSeconds: FLOOD_SECONDS });
       const floodStart = performance.now();
@@ -103,6 +131,7 @@ test.describe('AC-3 — backpressure / overload recovery', () => {
       socket.sendStop();
       const closed = await socket.waitForClosedStatus(10_000);
 
+      report.readyAckReceived = readyAck;
       report.framesSent = framesSent;
       report.floodDurationMs = floodMs;
       report.floodRealtimeRatio = Number((floodMs / 1000 / FLOOD_SECONDS).toFixed(3));
