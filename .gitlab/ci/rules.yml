@@ -31,6 +31,11 @@
 # branch and narrower in scope: dev-2.2 opted out of tests + vuln scans only,
 # so it keeps the validate stage, which still references the fragment above.
 # `scan-gitleaks` references NEITHER — a secret scan runs on every branch.
+# All 15 Trivy jobs reference this one: the 13 that previously carried
+# `.skip-on-dev-2-1` plus `scan-python-base` / `scan-qdrant-init`, which
+# carried no branch guard at all and so kept scanning two images on a line
+# that had opted out. That also stops those two on dev-2.1 — the same
+# opt-out it already expressed for every other image.
 # Branches are listed explicitly, not matched by `/^dev-2\./`, so each new
 # release line opting out stays a deliberate edit rather than an inherited
 # default.
