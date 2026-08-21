@@ -24,11 +24,9 @@ lint-ts:
     DATABASE_URL: "postgresql://generate:generate@127.0.0.1:5432/generate_only?schema=public"
   script:
     - pnpm --filter @arcaai/database db:generate
-    # --concurrency=2: `turbo lint` builds each package's upstream deps first,
-    # so the @arcaai/ui build (tsup + tsc over 57 primitives) ran alongside the
-    # vox build and was OOM-killed (exit 137). Peak RSS, not total work, is the
-    # constraint on this shared runner — same cap as `test-sdk`.
-    - pnpm turbo lint --concurrency=2
+    # Concurrency is capped by TURBO_CONCURRENCY on `.node-base` (a
+    # --concurrency flag here would override it).
+    - pnpm turbo lint
   rules:
     - !reference [.skip-on-dev-2-1, rules]
     - !reference [.rules-any-ts, rules]

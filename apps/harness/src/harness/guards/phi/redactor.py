@@ -52,6 +52,14 @@ DEFAULT_SPACY_MODEL = "en_core_web_lg"
 _PLACEHOLDER_RE = re.compile(r"<[A-Z_]+>")
 
 
+class PhiModelUnavailable(RuntimeError):
+    """Raised when the spaCy NER model backing Presidio is not installed.
+
+    Deliberately NOT a trigger for an install: the redactor refuses rather than
+    downloading. See :func:`_build_analyzer`.
+    """
+
+
 class PhiEgressBlocked(RuntimeError):
     """Raised when the fail-closed guard refuses to release text to a cloud provider."""
 
@@ -117,9 +125,33 @@ def _build_clinical_recognizer() -> Any:
 
 
 def _build_analyzer(spacy_model: str) -> Any:
-    """Build a Presidio ``AnalyzerEngine`` backed by the given spaCy model."""
+    """Build a Presidio ``AnalyzerEngine`` backed by the given spaCy model.
+
+    The model must already be INSTALLED. Presidio's ``NlpEngineProvider`` otherwise
+    "helpfully" downloads it (~400 MB from GitHub release assets) the first time a
+    redaction runs — i.e. inside a PHI egress check, on a host that may be
+    air-gapped, with the activity clock running, and (because spaCy's downloader
+    shells out to pip and calls ``sys.exit``) surfacing as a bare ``SystemExit``
+    rather than anything a caller can act on. Same posture as the nlp guard plane:
+    an unusable model reference fails CLOSED with an attributable error and never
+    reaches for the network.
+
+    The raised :class:`PhiModelUnavailable` is converted by
+    :meth:`PhiRedactor.ensure_safe_for_cloud` into a fail-closed
+    :class:`PhiEgressBlocked`, so a missing model blocks cloud egress — it never
+    degrades into an unredacted send. Stage the model with
+    ``python -m spacy download en_core_web_lg`` at image-build time.
+    """
+    import spacy.util
     from presidio_analyzer import AnalyzerEngine
     from presidio_analyzer.nlp_engine import NlpEngineProvider
+
+    if not spacy.util.is_package(spacy_model):
+        raise PhiModelUnavailable(
+            f"spaCy model {spacy_model!r} is not installed, so PHI redaction cannot "
+            "run. Install it at build time (`python -m spacy download "
+            f"{spacy_model}`); it is never downloaded on demand."
+        )
 
     provider = NlpEngineProvider(
         nlp_configuration={
