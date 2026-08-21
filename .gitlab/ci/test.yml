@@ -77,11 +77,13 @@ test-api:
   script:
     - echo "── Test infra → PostgreSQL=${CI_DATABASE_URL:+set} Redis=${CI_REDIS_URL:+set} ──"
     - pnpm --filter @arcaai/database db:generate
-    - pnpm turbo build --filter=@arcaai/database
-    - pnpm turbo build --filter=@arcaai/exceptions
-    - pnpm turbo build --filter=@arcaai/logger
-    - pnpm turbo build --filter=@arcaai/domains
-    - pnpm turbo build --filter=@arcaai/applications
+    # Build apps/api's WHOLE upstream DAG (`^...` = dependencies only, not
+    # apps/api itself, whose nest build these unit tests do not need). A
+    # hand-maintained subset was listed here and silently omitted
+    # `@arcaai/async-contract`, so every suite importing it failed to resolve
+    # its `dist` entry. `^...` picks up new workspace deps automatically —
+    # same idiom as the compat-playground job below.
+    - pnpm turbo build --filter=@arcaai/api^...
     - pnpm --filter @arcaai/api test -- --reporter=junit --outputFile=junit-api.xml
   artifacts:
     when: always

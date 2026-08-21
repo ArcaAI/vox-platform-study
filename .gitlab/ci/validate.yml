@@ -42,12 +42,11 @@ typecheck:
     DATABASE_URL: "postgresql://generate:generate@127.0.0.1:5432/generate_only?schema=public"
   script:
     - pnpm --filter @arcaai/database db:generate
-    - pnpm turbo build --filter=@arcaai/database
-    - pnpm turbo build --filter=@arcaai/exceptions
-    - pnpm turbo build --filter=@arcaai/logger
-    - pnpm turbo build --filter=@arcaai/domains
-    - pnpm turbo build --filter=@arcaai/applications
-    - pnpm turbo build --filter=@arcaai/async-contract
+    # Build apps/api's WHOLE upstream DAG (`^...` = dependencies only). This
+    # replaced a hand-maintained subset that had drifted: it omitted
+    # `@arcaai/async-contract`, so `tsc` reported TS2307 on every module
+    # importing it. `^...` picks up new workspace deps automatically.
+    - pnpm turbo build --filter=@arcaai/api^...
     - pnpm --filter @arcaai/api exec tsc --noEmit
     # Packages exposing a `typecheck` script that is currently green. Scoped
     # rather than a repo-wide `pnpm turbo run typecheck` because @arcaai/vox
