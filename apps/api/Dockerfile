@@ -24,6 +24,13 @@ COPY apps/api/package.json ./apps/api/
 COPY packages/types/package.json ./packages/types/
 COPY packages/eslint-plugin-arcaai-internal/package.json ./packages/eslint-plugin-arcaai-internal/
 COPY packages/applications/package.json ./packages/applications/
+# @arcaai/async-contract = runtime dep of apps/api; @arcaai/workflow-contract =
+# runtime dep of @arcaai/applications. Both were added after this list was
+# written and neither was appended, so `pnpm install` aborted with
+# ERR_PNPM_WORKSPACE_PKG_NOT_FOUND. `dockerfile-workspace-manifests.test.ts`
+# now recomputes the closure and fails when this list falls behind again.
+COPY packages/async-contract/package.json ./packages/async-contract/
+COPY packages/workflow-contract/package.json ./packages/workflow-contract/
 COPY packages/json-schema-subset/package.json ./packages/json-schema-subset/
 COPY packages/database/package.json ./packages/database/
 COPY packages/domains/package.json ./packages/domains/
@@ -116,6 +123,13 @@ COPY apps/api/package.json ./apps/api/
 COPY packages/types/package.json ./packages/types/
 COPY packages/eslint-plugin-arcaai-internal/package.json ./packages/eslint-plugin-arcaai-internal/
 COPY packages/applications/package.json ./packages/applications/
+# @arcaai/async-contract = runtime dep of apps/api; @arcaai/workflow-contract =
+# runtime dep of @arcaai/applications. Both were added after this list was
+# written and neither was appended, so `pnpm install` aborted with
+# ERR_PNPM_WORKSPACE_PKG_NOT_FOUND. `dockerfile-workspace-manifests.test.ts`
+# now recomputes the closure and fails when this list falls behind again.
+COPY packages/async-contract/package.json ./packages/async-contract/
+COPY packages/workflow-contract/package.json ./packages/workflow-contract/
 COPY packages/json-schema-subset/package.json ./packages/json-schema-subset/
 COPY packages/database/package.json ./packages/database/
 COPY packages/domains/package.json ./packages/domains/
