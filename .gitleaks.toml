@@ -22,6 +22,21 @@ description = "JWT secret committed (non-empty value)"
 regex = '''(?i)(JWT_SECRET_KEY|JWT_REFRESH_SECRET|SESSION_SECRET_KEY)\s*[:=]\s*["']?[A-Za-z0-9+/=_-]{32,}["']?'''
 tags = ["jwt", "session", "secret"]
 
+  # Allowlisted by MATCH FORM, not by path (same posture as hope-db-url-password
+  # above). `apps/api/package.json`'s `openapi`/`route-manifest` scripts set
+  # JWT_SECRET_KEY=offline-<name>-emit-placeholder so those offline emit
+  # scripts can boot without Vault. The bootstrap placeholder audit
+  # (`apps/api/src/bootstrap/jwt-secret-placeholder-audit.ts`) only refuses the
+  # literal `default-jwt-secret-key-change-in-production`, so this exact
+  # non-secret shape is safe wherever it appears — it never resolves to a
+  # real credential.
+  [rules.allowlist]
+  description = "Offline-emit JWT placeholder, not a credential"
+  regexTarget = "match"
+  regexes = [
+    '''JWT_SECRET_KEY\s*[:=]\s*["']?offline-[a-z-]+-emit-placeholder["']?''',
+  ]
+
 [[rules]]
 id = "hope-s3-credentials"
 description = "S3 access/secret committed (non-placeholder)"
