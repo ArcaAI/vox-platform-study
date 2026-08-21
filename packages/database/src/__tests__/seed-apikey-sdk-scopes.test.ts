@@ -37,6 +37,12 @@ const SDK_CAPABLE_KEY_IDS = [
   SEED_API_KEY_IDS.SDK_DOCTOR2,
   SEED_API_KEY_IDS.SDK_ARCAAI,
   SEED_API_KEY_IDS.SDK_SURGERY,
+  // The compat key spreads `SDK_DAY_ONE_SCOPES` exactly like its four
+  // siblings, but was omitted from this list, so nothing pinned it: trimming
+  // its scopes would have gone unnoticed until a compat app 403'd. It is the
+  // key `<ArcaCompatProvider>` is driven with, so it is at least as load-bearing
+  // as the four above.
+  SEED_API_KEY_IDS.SDK_COMPAT_ARCAAI,
 ] as const;
 
 describe('seeded API keys — day-1 Node SDK scope coverage', () => {
@@ -149,4 +155,67 @@ describe('seeded SDK keys — TASK-758 business-plane coverage', () => {
       expect(seeded!.scopes).toEqual([...SDK_DAY_ONE_SCOPES]);
     });
   }
+});
+
+/**
+ * The COMPAT surface — `@arcaai/vox/compat` (SDK compat) and the frozen v1 wire
+ * contract (API compat) — for the two capabilities a migrating v1 app needs on
+ * day one: TRANSCRIPTION and SUMMARIZATION.
+ *
+ * Distinct from `DAY_ONE_SDK_SCOPES` above, which only covers the summarization
+ * half. The STT strings below were unpinned by anything in this file, yet every
+ * compat transcription path dies without them:
+ *
+ *   - `stt:stream:write`        → POST /api/stt/{start_session,switch,stop_session}
+ *                                 (`SttCompatController`, class-level
+ *                                 `@RequiredScopes`) — the frozen v1 session
+ *                                 lifecycle the compat audio socket `/stt` rides on.
+ *   - `stt:transcription:write` → POST /audio/transcription-jobs/stream/session
+ *                                 (+ /refresh-ticket, /switch-to-{primary,fallback}),
+ *                                 which mints the `stt_session:<id>` ticket for
+ *                                 `/ws/stt/stream`, AND the batch job routes
+ *                                 (`POST /audio/transcription-jobs`, `/{id}`).
+ *   - `stt:transcription:read`  → transcription result reads.
+ *   - `consultation:report:write` → POST /api/smr/api/v1/{summary/sync,presummary}
+ *                                 (`TextCompatController`) — the API-compat
+ *                                 summarization pair `useText()` calls.
+ *
+ * `stt:model:read` (GET /audio/pipelines) is already pinned by the
+ * business-plane block above; the compat `PipelinePicker` depends on it too.
+ */
+const COMPAT_SURFACE_SCOPES: ReadonlyArray<readonly [scope: string, why: string]> = [
+  ['stt:stream:write', 'POST /api/stt/{start_session,switch,stop_session} — the frozen v1 STT session lifecycle'],
+  ['stt:transcription:write', 'POST /audio/transcription-jobs/stream/session (live ticket mint) and the batch job routes'],
+  ['stt:transcription:read', 'transcription result reads'],
+  ['consultation:report:write', 'POST /api/smr/api/v1/{summary/sync,presummary} — v1-compat summarization'],
+];
+
+describe('seeded SDK keys — compat surface (transcription + summarization)', () => {
+  for (const [scope, why] of COMPAT_SURFACE_SCOPES) {
+    it(`the shared SDK scope set carries "${scope}"`, () => {
+      expect(SDK_DAY_ONE_SCOPES as readonly string[], why).toContain(scope);
+    });
+  }
+
+  it('the ArcaAI compat key carries every compat-surface scope', () => {
+    const seeded = DEFAULT_API_KEYS.find((k) => k.id === SEED_API_KEY_IDS.SDK_COMPAT_ARCAAI);
+
+    expect(seeded, 'no seeded key with id SDK_COMPAT_ARCAAI').toBeDefined();
+    const scopes = seeded!.scopes as string[];
+    const missing = COMPAT_SURFACE_SCOPES.map(([scope]) => scope).filter((required) => !scopes.includes(required));
+
+    expect(missing, 'missing scope(s) — the compat app will 403 on transcription or summarization').toEqual([]);
+  });
+
+  it('the ArcaAI compat key is ACTIVE, never-expiring, and bound to a user whose ability can be evaluated', () => {
+    const seeded = DEFAULT_API_KEYS.find((k) => k.id === SEED_API_KEY_IDS.SDK_COMPAT_ARCAAI);
+
+    expect(seeded).toBeDefined();
+    // `UnifiedAuthGuard` evaluates a route's `@Authorize()` permissions against
+    // the key's BOUND USER and refuses outright when there is none — so an
+    // unbound key cannot reach `POST /consultations/open` (`create:Consultation`).
+    expect(seeded!.userId, 'an unbound key cannot satisfy any CASL-gated route').toBeTruthy();
+    expect(seeded!.keyStatus).toBe('ACTIVE');
+    expect('expiresAt' in seeded!, 'a seeded dev fixture must not expire out from under a developer').toBe(false);
+  });
 });
