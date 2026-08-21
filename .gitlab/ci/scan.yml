@@ -245,6 +245,9 @@ scan-python-base:
   # differently from its build either never runs or waits on a job that
   # never ran.
   rules:
+    # These last two Trivy jobs never carried the branch guard the other 13 do,
+    # so a "no vulnerability scans" release line still scanned two images.
+    - !reference [.skip-vuln-scan-on-dev-2-x, rules]
     - !reference [.build-common-rules, rules]
 
 scan-harness-worker:
@@ -272,6 +275,7 @@ scan-qdrant-init:
   # alone, so this mirrors it exactly rather than inventing a path-based rule
   # in rules.yml for a one-shot provisioning image.
   rules:
+    - !reference [.skip-vuln-scan-on-dev-2-x, rules]
     - !reference [.build-common-rules, rules]
     - if: $CI_COMMIT_TAG =~ /^ALL-/
 
