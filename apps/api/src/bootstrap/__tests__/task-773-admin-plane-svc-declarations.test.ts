@@ -20,7 +20,7 @@ import { describe, expect, it } from 'vitest';
 import { resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { SERVICE_ACCOUNT_REQUIRED_SCOPES, toServiceAccountScope } from '@arcaai/applications';
-import { TASK_773_ADMIN_SCOPE_MAP } from './fixtures/task-773-admin-scope-map';
+import { TASK_773_ADMIN_SCOPE_MAP } from '../task-773-admin-scope-map';
 
 /** Repo root, from `apps/api/src/bootstrap/__tests__/`. */
 const REPO_ROOT = resolve(__dirname, '..', '..', '..', '..', '..');

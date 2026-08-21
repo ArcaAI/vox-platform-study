@@ -1,5 +1,5 @@
 /**
- * TASK-773 — proves the evidence fixture (`fixtures/task-773-admin-scope-map.ts`)
+ * TASK-773 — proves the evidence fixture (`../task-773-admin-scope-map.ts`)
  * is internally consistent and still matches the real controllers on disk.
  *
  * This does NOT assert that any controller actually carries
@@ -13,7 +13,7 @@ import { readFileSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, it, expect } from 'vitest';
 import { API_KEY_SCOPE_REGISTRY } from '@arcaai/applications';
-import { TASK_773_ADMIN_SCOPE_MAP } from './fixtures/task-773-admin-scope-map';
+import { TASK_773_ADMIN_SCOPE_MAP } from '../task-773-admin-scope-map';
 
 // Anchor on cwd, which vitest sets to either the monorepo root (root
 // workspace run) or `apps/api` (filtered run) — same shortcut
