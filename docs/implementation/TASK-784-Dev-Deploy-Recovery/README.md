@@ -29,6 +29,7 @@ exactly as designed — **the images themselves were defective**. Three independ
 | 1 | `hope-api` CrashLoopBackOff, 750 restarts | `@arcaai/workflow-contract` / `@arcaai/async-contract` dist never copied into the api production stage |
 | 2 | `hope-admin-console` CrashLoopBackOff, 786 restarts | Next standalone traced 3 of `@swc/helpers`' 441 files; the `esm/` tree it loads at runtime was absent |
 | 3 | `hope-db-migrate` P3009, 4 failed pods | Dev DB carried the pre-squash migration lineage; the `20260817000000_init` squash failed on `type "AgentSessionKind" already exists` |
+| 4 | Argo operation `Failed`; the wedged Job could not be replaced | `Replace=true` issues `kubectl replace` (a PUT), which a Job's immutable fields still reject. `Force=true` was missing |
 
 ## Current State Evaluation
 
@@ -89,6 +90,33 @@ Blast radius checked before acting: `vox-dev` is a distinct database on a server
 `hope`, `hope-staging`, `vox_staging`, `temporal`, `langfuse`; its only live connections were 9
 from `10.10.1.200` (the hope-v2-dev node).
 
+### 4. `Replace=true` cannot re-run a Job — found while clearing fault 3
+
+With the ledger repaired, the Job still would not re-run: the Argo operation was not hanging, it
+had **failed** at 14:50:09Z after 3 retries.
+
+```
+error when replacing "/dev/shm/3945899133": Job.batch "hope-db-migrate" is invalid:
+  [spec.selector: Required value,
+   spec.template.metadata.labels: `selector` does not match template `labels`,
+   spec.selector: Invalid value: null: field is immutable,
+   spec.template: ... field is immutable]
+```
+
+The dev overlay's note asserted *"`Replace=true` makes Argo delete and recreate instead of
+patching."* It does not. `Replace=true` selects `kubectl replace` — still a PUT against the
+existing object — so `Job.spec.template` and the auto-generated `Job.spec.selector` are as
+immutable as they were under PATCH. Only the error text changed, from "error when patching" to
+"error when replacing", which is why the 2026-08-09 fix looked correct.
+
+`Force=true` is the missing half: with Replace it performs `kubectl replace --force`, deleting
+and recreating. That also clears the `selector does not match template labels` half of the error,
+since `commonLabels` adds `environment: dev` to the template and only a freshly created Job gets
+a matching auto-generated selector.
+
+This was a latent blocker for every environment, not just this incident: after its first
+successful run the Job could never be replaced again.
+
 ## Implementation Plan
 
 1. api: copy the two missing dists into the production stage → verify by recomputing the closure.
@@ -97,6 +125,8 @@ from `10.10.1.200` (the hope-v2-dev node).
 3. admin-console: `outputFileTracingIncludes` for `@swc/helpers` → verify by building standalone
    and asserting the previously-missing file is present.
 4. DB: `migrate reset --force`, then seed `RUN_SEED=all` / `NODE_ENV=development`.
+5. deployment repo: `Replace=true` → `Replace=true,Force=true` on the dev overlay's db-migrate
+   patch → verify by rendering the overlay, then by watching Argo actually recreate the Job.
 
 ## Implementation Summary
 
@@ -107,6 +137,7 @@ from `10.10.1.200` (the hope-v2-dev node).
 | `apps/api/Dockerfile` | +12 lines: `dist` + `package.json` for `async-contract` and `workflow-contract` in the production stage |
 | `apps/api/src/__tests__/dockerfile-runtime-dist.test.ts` | **new** — runtime-dist closure sweep |
 | `apps/admin-console/next.config.ts` | +33 lines: `outputFileTracingIncludes` for `@swc/helpers` |
+| `arca/hope-v2-deployment` @ `cc681db` — `deployment/k8s/overlays/dev/kustomization.yaml` | `Replace=true` → `Replace=true,Force=true`; the note that claimed Replace deletes-and-recreates is corrected |
 
 ### Evidence
 
@@ -154,6 +185,18 @@ Tenant 3 · User 32 · Role 7 · Department 27 · DepartmentAgent 23 · PromptTe
 ApiKey 10 · Consultation 11 · AuditLog 15 · AiModel 135 · AiTaskDefault 12 · ServiceAccount 1
 ```
 
+Argo, after `cc681db`: the wedged Job (uid `c1c5bfa8`, created 14:43:19Z, `failed: 4`) went to
+`health: Missing` — i.e. `Force=true` actually deleted it — and a fresh Job (uid `266c79b5`,
+created 15:28:15Z, annotation `Replace=true,Force=true`) was created and ran to
+`exitCode: 0, reason: Completed`:
+
+```
+[migrate] 12 migrations found in prisma/migrations
+[migrate] No pending migrations to apply.
+[migrate] Skipping database seed (RUN_SEED=none).
+[migrate] Database initialization completed successfully!
+```
+
 ### Notes and residuals
 
 - **`outputFileTracingRoot` deliberately left inferred.** The inferred root already produces the
@@ -181,10 +224,18 @@ ApiKey 10 · Consultation 11 · AuditLog 15 · AiModel 135 · AiTaskDefault 12 �
 
 `hope-api` and `hope-admin-console` keep serving their previous pods (`1/2` ready each) and stay
 Degraded until a pipeline builds images containing these fixes and `promote-dev` publishes them.
-The DB and migration ledger are already clean, so `hope-db-migrate` will pass on its next run.
+Pipelines [960](https://git.taphuynh.dev/arca/hope-v2/-/pipelines/960) (`dev-2.2`, the one that
+builds and promotes) and [961](https://git.taphuynh.dev/arca/hope-v2/-/pipelines/961)
+(`feat/loop`) were started by the push of `4883e1c3b`.
+
+Two debug pods (`ac-image-inspect`, `db-toolbox-784`, both labelled
+`purpose=task-784-debug`) were created to inspect the shipped image and drive the DB, and are
+still present — the Rancher MCP in use exposes no delete verb. They idle on `sleep` and exit on
+their own; remove them with
+`kubectl delete pod -n hope-v2-dev -l purpose=task-784-debug`.
 
 ## Change History
 
 | Date | Change |
 |---|---|
-| 2026-08-21 | Diagnosed the three faults; established `promote-dev` had already succeeded and needed no re-run. Fixed the api runtime dist closure and added its guard sweep; fixed admin-console standalone tracing for `@swc/helpers`. Reset `vox-dev` (88 → 12 migration rows) and reseeded with `RUN_SEED=all`. |
+| 2026-08-21 | Diagnosed four faults; established `promote-dev` had already succeeded and needed no re-run. Fixed the api runtime dist closure and added its guard sweep; fixed admin-console standalone tracing for `@swc/helpers`. Reset `vox-dev` (88 → 12 migration rows) and reseeded with `RUN_SEED=all`. Added `Force=true` to the dev db-migrate sync-options (`hope-v2-deployment` @ `cc681db`), after which Argo recreated the Job and it completed successfully. |
