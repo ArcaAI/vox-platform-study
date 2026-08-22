@@ -192,6 +192,14 @@ export interface CaseNoteColumnProps {
   /** Manual generate — hidden entirely when the harness owns drafting. */
   onGenerate: (() => void) | null;
   generatePending: boolean;
+  /**
+   * W5/M-7 — current step of the async generation job, when one is running.
+   * The manual Generate path is now the queued job + its SSE progress stream
+   * (previously dead code); this is that stream's `currentStep`.
+   */
+  generateStatus?: string | null;
+  /** Cancels the running generation job. Rendered only while one is running. */
+  onCancelGenerate?: (() => void) | null;
   onApprove: (options: { overrideSafetyFlag: boolean }) => void;
   approvePending: boolean;
   approved: boolean;
@@ -221,6 +229,8 @@ export function CaseNoteColumn(props: CaseNoteColumnProps) {
     assurance,
     onGenerate,
     generatePending,
+    generateStatus = null,
+    onCancelGenerate = null,
     onApprove,
     approvePending,
     approved,
@@ -485,6 +495,18 @@ export function CaseNoteColumn(props: CaseNoteColumnProps) {
         ) : null}
         {/* W1/R5: the write path the backend has always had and the UI never
             called (`PATCH :id/summary/:summaryId`, If-Match enforced). */}
+        {generatePending && onCancelGenerate ? (
+          <>
+            <span className="text-muted-foreground flex items-center gap-1.5 text-xs" aria-live="polite">
+              <Spinner aria-hidden className="size-3.5" />
+              {generateStatus ?? 'Generating note'}…
+            </span>
+            <Button variant="ghost" size="sm" onClick={onCancelGenerate}>
+              <IconX aria-hidden />
+              Cancel generation
+            </Button>
+          </>
+        ) : null}
         {canEdit && editor && !isEditing ? (
           <Button variant="outline" size="sm" onClick={editor.beginEdit}>
             <IconPencil aria-hidden />

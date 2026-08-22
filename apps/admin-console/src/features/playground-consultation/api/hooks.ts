@@ -7,7 +7,6 @@ import {
   approveSummary,
   cancelConsultationJob,
   consultationJobStreamPath,
-  generateSummary,
   generateSummaryAsync,
   getConsultationJob,
   getLatestSummary,
@@ -139,14 +138,6 @@ export function useStopRecording() {
   return useMutation({
     mutationFn: ({ consultationId, persistSnapshot }: { consultationId: string; persistSnapshot?: boolean }) =>
       stopRecording(consultationId, persistSnapshot ?? true),
-  });
-}
-
-export function useGenerateSummary() {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: ({ consultationId, body }: { consultationId: string; body?: GenerateSummaryRequest }) => generateSummary(consultationId, body),
-    onSuccess: () => void queryClient.invalidateQueries({ queryKey: playgroundConsultationKeys.root }),
   });
 }
 

@@ -214,3 +214,33 @@ describe('CaseNoteColumn', () => {
     });
   });
 });
+
+/**
+ * W5 / M-7 — the async summary path had zero call sites. It is now the manual
+ * Generate path, so the column has to surface job progress and offer a cancel;
+ * the sync mutation used to block for the whole generation with no feedback.
+ */
+describe('CaseNoteColumn — async generation progress', () => {
+  it('shows the current step and a cancel action while a job is running', () => {
+    const onCancelGenerate = vi.fn();
+    render(
+      <CaseNoteColumn
+        {...baseProps({
+          draft: null,
+          generatePending: true,
+          generateStatus: 'Summarizing transcript',
+          onCancelGenerate,
+        })}
+      />,
+    );
+
+    expect(screen.getByText(/summarizing transcript/i)).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: /cancel generation/i }));
+    expect(onCancelGenerate).toHaveBeenCalled();
+  });
+
+  it('offers no cancel action when nothing is generating', () => {
+    render(<CaseNoteColumn {...baseProps({ draft: null, generatePending: false, onCancelGenerate: vi.fn() })} />);
+    expect(screen.queryByRole('button', { name: /cancel generation/i })).toBeNull();
+  });
+});
