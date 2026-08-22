@@ -331,7 +331,7 @@ Both are deletions of expressive range, taken deliberately:
 
 ---
 
-## J-17 / J-18 — surfaced by Phase 5, OPEN (owner decision required)
+## J-17 / J-18 — surfaced by Phase 5, RESOLVED 2026-08-22 (`3f6c129d3`)
 
 Neither is a defect in the migration. Both are consequences of the achromatic
 identity (OD-1) that only become visible once the whole system is on it.
@@ -349,10 +349,39 @@ became invisible. It was re-expressed as `font-medium` vs `font-normal`.
 Distribution: 20 billingsdk · 15 manifest · 14 shadcn · 12 prompt-kit · 6 diceui ·
 6 basecn · 4 magicui · 4 playground-llm · rest scattered.
 
-| Option | Consequence |
-|---|---|
-| **Accept (recommended)** | This IS the Tatva model — emphasis comes from weight, size and position, not hue. `text-primary` becomes a synonym for `text-foreground` and should be swept to it so the redundancy is not mistaken for intent. |
-| Introduce an accent ink | HOPE already has `--link: #3333cc` (indigo, 8.09:1 on background). Point interactive/emphasis text at it. Departs from Tatva's achromatic discipline, which its investigation records as deliberate. |
+**RESOLVED — Accept, and guard it.** This IS the Tatva model: emphasis comes from
+weight, size and position, not hue.
+
+The audit was the valuable half. Every in-scope site was read in context, and
+**three** genuine collapses were found where `text-primary` was THE branch
+differentiator — not the one already known:
+
+| Site | Impact | Re-expressed as |
+|---|---|---|
+| `custom/workflow-toggle.tsx:61` | Both branches were `font-medium`; the selected option's **label was invisible** (card kept `border-primary` + radio dot, so impaired not dead) | weight 500 / 400 |
+| `transcription-jobs-screen.tsx:129` | Unselected branch was an empty string relying on an inherited weight — one restyle from collapsing | weight 500 / 400, pinned |
+| `playground-llm-screen.tsx:136` | "Notable" emphasis in a meta strip, gone | weight 500 / 400 |
+
+~20 further conditionals were checked and keep a working signal (distinct icons,
+fills, muted-vs-foreground pairs, presence/absence), so sweeping them is a pixel
+no-op. **48 occurrences → `text-foreground` across 41 files.**
+`text-primary-foreground` is a different token and untouched (53 intact).
+
+**42 vendored `registries/**` sites are deliberately exempt** — sweeping them
+costs re-application on every upstream sync for zero visual change.
+
+Guarded per tree (a guard in one package cannot fail the other's CI job):
+`packages/ui/src/components/__tests__/emphasis-canon.vitest.ts` and
+`apps/admin-console/src/shared/__tests__/emphasis-canon.test.ts`. The
+`packages/ui` guard also **pins the vendored exemption as real** — it fails if
+`registries/` ever reaches zero hits, so the exemption cannot quietly become an
+unlogged sweep. Both validated by deliberate reintroduction.
+
+*Not taken:* introducing an accent ink (`--link: #3333cc`, already declared).
+That would depart from the achromatic discipline the reference records as
+deliberate. The place it would land if ever revisited is the `link` variant of
+`Button` and `Badge`, which now read `text-foreground` with `hover:underline`
+as the sole affordance.
 
 ### J-18 — 110 `<hN>` section headings are now pixel-identical to `<Label>`
 
@@ -361,11 +390,22 @@ The 400/500 weight rule collapses `text-sm … font-medium` headings onto the
 (`packages/ui/src/components/shadcn/label.tsx:13`). 29 headings at `text-base`+
 stay above it.
 
-**Not an a11y defect** — heading semantics and levels are intact — but a
-Card-header heading and a form label inside it are visually indistinguishable.
-Fixing means bumping ~110 headings to `text-base`, which is a design decision
-affecting `packages/ui` equally. Recommended if adopted: one shared heading
-class at `text-base font-medium`, decided once for both trees.
+**RESOLVED — fix the primitive, not the 110 call sites.** `Label` becomes
+`font-normal`; headings keep `font-medium`. A label is a descriptor, a heading is
+a title. One file instead of 110, and it preserves the console's deliberate
+12–14px density — bumping every heading to `text-base` would have made card
+headers 16px in a product whose body text is 12–14px.
+
+Contrast is unaffected and was **checked, not assumed**: this changes
+`font-weight` only, no colour token moves, and `text-sm` is 14px at weight 400 —
+not bold — so the same 4.5:1 floor applied before and applies after. One test
+moved (`label.test.tsx:30`); the other 15 `font-medium` assertions target
+components carrying their own weight and were verified unaffected.
+
+**Follow-up, not blocking:** ~14 admin-console call sites pass `font-medium`
+explicitly to `<Label>`, locally re-creating the collision on those surfaces.
+Some may genuinely want an emphasised label, so it is a decision rather than a
+sweep.
 
 ## Team Execution Practices
 
@@ -474,3 +514,4 @@ it measures clear the bar comfortably: inactive trigger `--muted-foreground` on 
 | 2026-08-22 | **Renumbered TASK-785 → TASK-787.** `TASK-785` was already taken by an in-flight concurrent workstream (`TASK-785-Tiered-Rate-Limit-Governance`, status *In Progress*, with a landed migration `20260822051931_task_785_rate_limit_rules`). Caught before any commit, so no history rewrite was needed. Sibling renumbered TASK-786 → TASK-788 in the same pass; all cross-references updated and verified clean. |
 | 2026-08-22 | **Baseline moved mid-planning — counts are a floor, not a contract.** Two commits landed during this ticket's planning (`8a2449816` TASK-786 credential policy, `f8c8e1b4a` TASK-785 tiered rate-limits), adding the `/security-policy` screen and four `rate-limits` panel components. All static counts in this document (2,517 type call sites, 152 stock shadow uses, 115 `text-2xs`, 19 `text-4xl`) were measured at `d97e9b71e` and are now low. **Every phase agent MUST re-measure its own scope before sweeping** and report the delta — do not sweep to the numbers written here. The mapping, the resolved decisions and the geometry contract are unaffected; only the volumes moved. |
 | 2026-08-22 | **All five phases executed and merged to `dev-2.2`.** J-13…J-16 raised and resolved during execution; J-17 (142 `text-primary` sites no longer an emphasis signal) and J-18 (110 headings pixel-identical to `Label`) surfaced by Phase 5 and left OPEN for an owner decision. Gates green both packages. Status → Review. |
+| 2026-08-22 | **J-17 and J-18 resolved (`3f6c129d3`); ticket closed out.** The J-17 audit found **three** branch-differentiator collapses, not the one already known — `workflow-toggle.tsx` had rendered a selected label invisibly. 48 sites swept, 42 vendored deliberately exempt, both trees guarded with a test that also pins the exemption as real. J-18 fixed at the `Label` primitive rather than 110 call sites. Also deleted `accent-themes.stories.tsx` (`08923ac51`), which still documented the `data-accent` feature J-4 removed. Full verification: `@arcaai/ui` 708/708 + **1717 CT (0 failed)**, `@arcaai/admin-console` 1762/1762, lint/typecheck/build clean both. The e2e a11y suite remains unverifiable here — pre-existing, owned by TASK-772. |
