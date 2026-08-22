@@ -45,6 +45,13 @@ enum AgentStepType {
   SIGNAL
   GATE
   PHASE
+  // One `WorkflowInterpreter` graph-node dispatch (Substrate B). Shares this vocabulary with the
+  // HarnessDocWorkflow phase types so both workflow families feed one trajectory read model —
+  // see `STEP_NODE` in apps/harness/src/harness/temporal/activities.py. Added by TASK-789 (C-9):
+  // the harness had emitted "NODE" since the interpreter shipped, but this enum never carried it,
+  // so `@IsEnum(AgentStepType)` rejected every interpreter trajectory post 400 and the
+  // fire-and-forget caller swallowed it — every graph run's trace silently vanished.
+  NODE
 
   @@schema("core")
 }

@@ -18,6 +18,11 @@ export * from './live-documentation';
 // Loop event plane — publishes ConsultationLoopWorkflow output for
 // the `consultation:loop:{id}` SSE relay.
 export * from './loop';
+
+// TASK-789 C-1: consultation-open dispatch of a tenant-authored `consultation`-palette workflow.
+// The first production caller of the WorkflowAssignment cascade, and the only thing that stamps
+// `WorkflowRun.trigger = 'consultation open'`.
+export * from './workflow-dispatch';
 // The ONE NER usage-ledger builder, shared by the
 // consultation-scoped call sites (ner.processor.ts, summary.service.ts) and
 // the standalone `/ai/nlp/entities` playground proxy in apps/api. Exported
