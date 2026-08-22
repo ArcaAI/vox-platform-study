@@ -1,4 +1,4 @@
-# TASK-789 — Admin-Console E2E Suite Triage
+# TASK-794 — Admin-Console E2E Suite Triage
 
 | Field | Value |
 |---|---|
@@ -102,4 +102,5 @@ Both cost real time during TASK-787 verification.
 
 | Date | Change |
 |---|---|
+| 2026-08-22 | **Renumbered TASK-789 → TASK-794** — `TASK-789` was taken by a concurrent session (`TASK-789-Agentic-Loop-Coherence-Review`, committed in `6b066dd0f` alongside 790–793) between this ticket being written and committed. Caught immediately after; the fix commit `c38b76263` predates the collision and its message still says "TASK-789" for this work — noted here rather than rewritten, since the history is shared. |
 | 2026-08-22 | Opened during TASK-787/788 verification. All 27 failures diagnosed, 16 fixed, four root causes recorded. 26 of 27 predate this sprint's UI work; the one that did not was TASK-788's nav scoping. Suite 212/128/27 → 293/50/11. Status → Review. |
