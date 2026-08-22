@@ -337,13 +337,15 @@ const EXEMPTIONS: Exemption[] = [
   //     below (`the dark-theme prohibition has a viable alternative`) asserts
   //     that the prescribed alternative actually clears the floor, so the rule
   //     is enforceable rather than merely written down.
-  {
-    fg: 'muted-foreground',
-    bg: 'secondary',
-    themes: ['dark'],
-    ratio: { dark: 4.1 },
-    why: 'dark-theme emphasis collapse — the combination is PROHIBITED; use --foreground',
-  },
+  // muted-foreground on secondary was PROHIBITED here at 4.10:1 until the live
+  // browser found it: the real-browser axe suite reported exactly this pair on
+  // four screens (departments, queues, workflow-studio), so the prohibition was
+  // being violated in practice rather than respected. Dark --muted-foreground
+  // was a DERIVED value — the reference system ships no dark data for this pair —
+  // and it was derived one step too dark. Raised #949494 -> #a0a0a0, which clears
+  // 4.5:1 on every dark surface (4.76 secondary / 5.94 background / 6.38 card) and
+  // widens every other pairing too. The prohibition is gone because the hazard is
+  // gone; the pair is now enforced by the normal sweep above.
   {
     fg: 'muted-foreground-subtle',
     bg: 'secondary',
