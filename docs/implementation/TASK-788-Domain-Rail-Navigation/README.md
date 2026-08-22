@@ -2,7 +2,7 @@
 
 | Field | Value |
 |---|---|
-| **Status** | Pending |
+| **Status** | Review |
 | **Type** | refactor |
 | **Branch** | TBD (branch off the current active branch — confirm with owner, do not assume `dev`) |
 | **Opened** | 2026-08-22 |
@@ -216,7 +216,62 @@ Same as TASK-787 §Team Execution Practices. Two additions specific to this tick
 
 ## Implementation Summary
 
-_Not started. Populate per phase as work lands._
+Both phases landed on `dev-2.2`.
+
+| Phase | Commit | Outcome |
+|---|---|---|
+| A · data model | `f1c367ab5` | `domain` added to all 56 entries; 9 `NAV_DOMAINS`; `/developer` + `/account` moved to the user menu. Written test-first — 16/49 failed before implementation |
+| B · rail + scoped sidebar | `a55c82b39` | `DomainRail` (56px, two variants), `useRovingFocus`, sidebar scoped to the active domain. `nav-config.ts` **+30/−0** |
+
+### Acceptance criteria
+
+| AC | Status |
+|---|---|
+| AC-1 `domain` added, everything else unchanged | **Met** — verified `+30/−0`, zero `route`/`tier`/`required` lines in the diff |
+| AC-2 no route group moves, no tier guard modified | **Met** — `FROZEN_RAIL_ENTRIES` pins all 54 as `[route, tier, required]` tuples in declaration order, generated not transcribed |
+| AC-3 domain visible only if ≥1 route is | **Met** — `visibleNavDomains()` reuses `visibleNavEntries` wholesale; no second ability path |
+| AC-4 every rail item and the collapse control named | **Met** |
+| AC-5 two state signals each | **Met** — fill (1.14:1, cannot carry it) + 2px `--foreground` rule (18.42:1 / 13.11:1) + `font-medium`. **Also closes TASK-787 J-11** |
+| AC-6 URL is the source of truth | **Met** — derived from `usePathname()`, longest-prefix |
+| AC-7 off-canvas below `md` | **Met** — named trigger, Radix moves focus in |
+| AC-8 one tab stop each, no traps | **Met** — the tab stop is the ACTIVE item; Tab asserted never intercepted |
+| AC-9 gates green + axe both themes | **Met** — 1760/1760, lint/typecheck/build clean |
+
+### Open Question — resolved
+
+**A rail click always navigates to the domain's first *visible* entry.** The
+single-route case therefore needs no special case, and no domain size produces a
+dead click. Verified against `NARROW_TENANT_FIXTURE` (`manage:Consultation` +
+`PromptTemplate` + `KnowledgeDocument`, role `DEPARTMENT_HEAD`): the rail shows
+exactly Knowledge & Agents and Clinical; Clinical lands on `/consultations` with
+that single entry `data-active="true"`. A companion test proves the landing route
+skips entries the caller cannot see, so a rail click can never target a 403.
+
+Incidental finding: with `roles: ['TENANT_ADMIN']` the Playground domain stays
+visible at near-zero abilities, because its five demo planes carry `required: []`
+and only the role check gates them. Correct, but it means "narrow tenant admin"
+is never as narrow as it looks — hence the non-admin role in the fixture.
+
+### Decisions taken during execution
+
+| Decision | Rationale |
+|---|---|
+| `collapsible="icon"` → `"offcanvas"` | With a permanent rail, an icon-collapsed sidebar is a SECOND column of unlabelled icons — the exact defect this ticket removes. Collapsed now means rail-only. |
+| Sidebar offset by `md:translate-x-14`, not a `left` override | The primitive's own collapse rule is a `left` calc; a second one would race it in the cascade. A transform cannot. |
+| Desktop rail is full-bleed with `border-r`, not a floating 12px panel | A rounded floating rail beside a square full-bleed sidebar reads as inconsistent. `rounded-surface` IS applied to the inline mobile variant, which genuinely is a panel. Accepted as a deviation from the Geometry Contract's nominal 12px rail radius; reversible in one line plus a matching `variant="floating"`. |
+
+### Not done — carried to Phase C
+
+Runtime verification could not run: the gateway (8868) is not up and the console
+layout redirects to `/login` without a session. Outstanding:
+
+- 200%-zoom / reflow check at 320px
+- A real screen-reader pass
+- Visual confirmation of the 56 + 248 offset in a browser
+
+All keyboard and focus behaviour above is verified **by test in happy-dom**, and
+the axe passes cannot catch contrast there — which is why AC-5's ratios are
+computed from `globals.css` rather than measured.
 
 ---
 
@@ -227,3 +282,4 @@ _Not started. Populate per phase as work lands._
 | 2026-08-22 | Ticket opened, split from TASK-787 Phase 6 per its OD-5. Owner selected the domain-rail axis (OD-2). All 55 nav routes inventoried from `nav-config.ts` and partitioned into 9 domains of 3–10 routes; `/developer` and `/account` moved out of the rail to the user menu. Four reference anti-patterns recorded as explicit non-goals. Status: Pending. |
 | 2026-08-22 | **Renumbered TASK-786 → TASK-788.** `TASK-786` was already taken by a concurrent workstream (`TASK-786-Generated-Secret-Policy-Governance`, status *Completed*). Caught before any commit. Parent renumbered TASK-785 → TASK-787 in the same pass; all cross-references updated and verified clean. |
 | 2026-08-22 | **Re-measured against `f8c8e1b4a`** (two commits landed mid-session: TASK-785 tiered rate-limits, TASK-786 credential policy). Nav entries **55 → 56**; pages **72 → 73**. The new `/security-policy` ("Credential policy", tier 10-19) is assigned to **Identity & Access**, taking it 6 → 7. Rail totals 54 routes across 9 domains; sizes 3·6·10·5·3·7·7·7·6, all still inside the 3–10 band. No domain boundary needed redrawing — evidence the partition is stable under growth. |
+| 2026-08-22 | **Both phases executed and merged to `dev-2.2`** (`f1c367ab5`, `a55c82b39`). All nine ACs met; the Open Question resolved against a real permission fixture. Phase A caught two regressions its own scope would have shipped — breadcrumbs and ⌘K search both silently lost `/developer` and `/account` — and both were closed before merge. AC-5 also closes TASK-787's J-11. Runtime verification (zoom/reflow, screen reader, visual offset) deferred to Phase C: no gateway available. Status → Review. |
