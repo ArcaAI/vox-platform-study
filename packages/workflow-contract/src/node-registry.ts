@@ -513,6 +513,64 @@ const WORKFLOW_NODE_REGISTRY_BASE: Readonly<Record<string, Omit<WorkflowNodeDesc
     defaultMaxAttempts: 1,
     entitlementKey: null,
   }),
+  // -------------------------------------------------------------------------------------------
+  // R3's three missing capabilities (TASK-791 W1-W3). The owner's R3 asks ONE workflow to
+  // coordinate record -> transcribe -> realtime entity extraction -> REALTIME SHORT SUMMARIES ->
+  // autofill SOAP -> INTELLIGENT SUGGESTIONS -> SPELLING/MEDICAL-TERM/DRUG-NAME CORRECTION.
+  // TASK-789 verified the last three had no node, activity or sensor anywhere: the nearest
+  // neighbours only VERIFY (`consultation.bindTerminology` validates codes read-only,
+  // `sensors/computational/numeric_dose.py` flags a dose mismatch and never corrects it).
+  //
+  // None carries `critical` — CR-14 makes only consentGate/hitlGate critical, and a suggestion
+  // or a spelling proposal failing must never fail a consultation that is otherwise producing a
+  // note. Mirrors `registry.py`'s matching three entries and the committed parity fixture.
+  // -------------------------------------------------------------------------------------------
+  'consultation.realtimeSummary': Object.freeze({
+    key: 'consultation.realtimeSummary',
+    implemented: true,
+    activityName: 'interpreter.consultation_realtime_summary',
+    // `generation` for the same reason `consultation.synthesize` carries it: this node calls a
+    // model to produce prose. `externalWrite` because it PUBLISHES each interim summary to the
+    // live consultation feed — which also makes the interpreter's sandbox suppression correct
+    // for free, since a sandbox run must not push summaries into a real consultation's UI.
+    classes: Object.freeze(['activity', 'generation']),
+    paletteKey: 'consultation',
+    critical: false,
+    externalWrite: true,
+    defaultTimeoutSeconds: 150,
+    defaultMaxAttempts: 2,
+    entitlementKey: null,
+  }),
+  'consultation.suggestions': Object.freeze({
+    key: 'consultation.suggestions',
+    implemented: true,
+    activityName: 'interpreter.consultation_suggestions',
+    classes: Object.freeze(['activity', 'generation']),
+    paletteKey: 'consultation',
+    critical: false,
+    // A PROPOSAL surface: it returns suggestions and writes nothing.
+    externalWrite: false,
+    defaultTimeoutSeconds: 150,
+    defaultMaxAttempts: 2,
+    entitlementKey: null,
+  }),
+  'consultation.proposeCorrections': Object.freeze({
+    key: 'consultation.proposeCorrections',
+    implemented: true,
+    activityName: 'interpreter.consultation_propose_corrections',
+    classes: Object.freeze(['activity', 'generation']),
+    paletteKey: 'consultation',
+    critical: false,
+    // `externalWrite: false` is a SAFETY property here, not a performance one. This node
+    // PROPOSES spelling/medical-term/drug-name corrections with provenance and never applies
+    // them: a system that silently rewrites a drug name or a dose in clinical text is a
+    // patient-safety defect, not a feature. The clinician accepts; the console (TASK-793) is
+    // the surface that offers the choice.
+    externalWrite: false,
+    defaultTimeoutSeconds: 150,
+    defaultMaxAttempts: 2,
+    entitlementKey: null,
+  }),
 });
 
 /**

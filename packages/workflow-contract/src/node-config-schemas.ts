@@ -154,7 +154,18 @@ const GUARDRAIL_CHECK_SCHEMA: NodeConfigSchema = Object.freeze({
   properties: {
     guardrailType: { type: 'string', minLength: 1, maxLength: 64 },
     failOn: { type: 'string', enum: ['unsafe_or_unknown'], default: 'unsafe_or_unknown' },
-    onFail: { type: 'string', enum: ['mark', 'abort'] },
+    // `abort` is DELIBERATELY not offered (TASK-791 W4, closing TASK-789's M-1). The shipped v1
+    // interpreter has no mechanism for a per-node CONFIG value to override a CODE-OWNED registry
+    // property: `critical` lives on `NODE_REGISTRY` (`guardrail.check` is `critical: false`) and
+    // `NodeActivityResult.status` is `Literal['SUCCEEDED','DEGRADED','SKIPPED']` — an activity
+    // cannot return `FAILED`, and only the workflow body promotes a degraded CRITICAL node to a
+    // run-level failure. So a tenant authoring `onFail: 'abort'` previously got SILENT
+    // NON-ENFORCEMENT: the value validated, was recorded on the trajectory, and gated nothing —
+    // while the tenant believed they had made that run's guardrail failure fatal. Rejecting the
+    // value at authoring time is the honest half of "enforce it or reject it"; same posture as
+    // `failOn` above, which is likewise pinned to its one v1-permitted value. Restore `abort`
+    // only together with a real promotion mechanism.
+    onFail: { type: 'string', enum: ['mark'] },
   },
 });
 
