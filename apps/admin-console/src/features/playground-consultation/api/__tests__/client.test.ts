@@ -25,6 +25,7 @@ import {
   openConsultation,
   startRecording,
   stopRecording,
+  updateSummary,
 } from '../client';
 import { playgroundConsultationKeys } from '../keys';
 
@@ -233,5 +234,72 @@ describe('playground consultation client', () => {
     expect(harnessProgressStreamPath('c-1')).toBe('consultations/c-1/harness-progress/stream');
     expect(harnessAssuranceStreamPath('c-1')).toBe('consultations/c-1/harness-assurance/stream');
     expect(consultationJobStreamPath('j-1')).toBe('consultations/jobs/j-1/stream');
+  });
+});
+
+/**
+ * TASK-793 W1/W2 — the two request shapes TASK-789 found were never sent.
+ * Asserted at the network boundary, because "the field exists on the type" was
+ * exactly the evidence that misled the earlier audit.
+ */
+describe('TASK-793 — the previously-unsent request shapes', () => {
+  interface HeaderCall {
+    url: string;
+    method: string;
+    body: Record<string, unknown> | undefined;
+    headers: Record<string, string>;
+  }
+
+  function installHeaderAwareFetch(response: () => Response = () => Response.json({})): HeaderCall[] {
+    const calls: HeaderCall[] = [];
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
+        const headers: Record<string, string> = {};
+        new Headers(init?.headers).forEach((value, key) => {
+          headers[key] = value;
+        });
+        calls.push({
+          url: String(input),
+          method: init?.method ?? 'GET',
+          body: typeof init?.body === 'string' ? JSON.parse(init.body) : undefined,
+          headers,
+        });
+        return response();
+      }),
+    );
+    return calls;
+  }
+
+  afterEach(() => vi.unstubAllGlobals());
+
+  it('updateSummary PATCHes under If-Match and echoes expectedVersion (W1)', async () => {
+    const calls = installHeaderAwareFetch(() => Response.json({ id: 'sum-1', content: 'x', version: 8 }));
+
+    await updateSummary('c-1', 'sum-1', { content: 'edited', changeSource: 'doctor_edit' }, 7);
+
+    expect(calls[0].method).toBe('PATCH');
+    expect(calls[0].url).toBe('/api/hope/consultations/c-1/summary/sum-1');
+    // `@RequiresIfMatch()` — without this header the route is 428, not a write.
+    expect(calls[0].headers['if-match']).toBe('"7"');
+    expect(calls[0].body).toMatchObject({ content: 'edited', changeSource: 'doctor_edit', expectedVersion: 7 });
+  });
+
+  it('generateSummary carries dnaStyleId when one is selected (W2)', async () => {
+    const calls = installHeaderAwareFetch();
+
+    await generateSummary('c-1', { dnaStyleId: 'dna-42' });
+
+    expect(calls[0].method).toBe('POST');
+    expect(calls[0].url).toBe('/api/hope/consultations/c-1/summary');
+    expect(calls[0].body).toEqual({ dnaStyleId: 'dna-42' });
+  });
+
+  it('openConsultation carries departmentId so the department tier can resolve (W2)', async () => {
+    const calls = installHeaderAwareFetch();
+
+    await openConsultation({ patientId: 'P-1', departmentId: 'dept-cardio' });
+
+    expect(calls[0].body).toEqual({ patientId: 'P-1', departmentId: 'dept-cardio' });
   });
 });

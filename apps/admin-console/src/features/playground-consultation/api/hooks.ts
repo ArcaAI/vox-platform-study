@@ -3,11 +3,11 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEventStream, type StreamStatus } from '@/shared/streams';
+import { foldLoopActivity, type LoopActivityEntry, type LoopEvent } from '../hooks/use-loop-activity';
 import {
   approveSummary,
   cancelConsultationJob,
   consultationJobStreamPath,
-  generateSummary,
   generateSummaryAsync,
   getConsultationJob,
   getLatestSummary,
@@ -17,8 +17,12 @@ import {
   harnessAssuranceStreamPath,
   harnessProgressStreamPath,
   listAudioPipelines,
+  listDnaStyleOptions,
+  loopStreamPath,
+  listScopingDepartments,
   startRecording,
   stopRecording,
+  updateSummary,
 } from './client';
 import { playgroundConsultationKeys } from './keys';
 import type {
@@ -27,10 +31,35 @@ import type {
   GenerateSummaryRequest,
   HarnessAssuranceSnapshot,
   HarnessProgressSnapshot,
+  SummaryResult,
+  UpdateSummaryRequest,
 } from './types';
 import { isTerminalConsultationJob } from './types';
 
 // ─── REST queries + mutations ───
+
+/**
+ * W2 scoping pickers. Best-effort by design: `retry: false` and callers hide
+ * the control on error, so a role without the admin read still gets a working
+ * workspace (scoping simply falls back to the tenant tier).
+ */
+export function useScopingDepartments() {
+  return useQuery({
+    queryKey: [...playgroundConsultationKeys.root, 'scoping-departments'],
+    queryFn: listScopingDepartments,
+    retry: false,
+    staleTime: 5 * 60_000,
+  });
+}
+
+export function useDnaStyleOptions() {
+  return useQuery({
+    queryKey: [...playgroundConsultationKeys.root, 'dna-style-options'],
+    queryFn: listDnaStyleOptions,
+    retry: false,
+    staleTime: 5 * 60_000,
+  });
+}
 
 export function useAudioPipelines() {
   return useQuery({ queryKey: playgroundConsultationKeys.pipelines(), queryFn: listAudioPipelines });
@@ -42,6 +71,30 @@ export function useLatestSummary(consultationId: string | null, enabled = true) 
     queryKey: playgroundConsultationKeys.latestSummary(consultationId ?? 'none'),
     queryFn: () => getLatestSummary(consultationId as string),
     enabled: enabled && !!consultationId,
+  });
+}
+
+/**
+ * W1 — persist a clinician edit to the SOAP note under If-Match.
+ *
+ * Deliberately does NOT invalidate on error: a 412 must leave the cached draft
+ * alone so `useNoteEditor` can show the clinician's text beside the server's.
+ */
+export function useUpdateSummary() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      consultationId,
+      summaryId,
+      body,
+      expectedVersion,
+    }: {
+      consultationId: string;
+      summaryId: string;
+      body: UpdateSummaryRequest;
+      expectedVersion: number;
+    }): Promise<SummaryResult> => updateSummary(consultationId, summaryId, body, expectedVersion),
+    onSuccess: () => void queryClient.invalidateQueries({ queryKey: playgroundConsultationKeys.root }),
   });
 }
 
@@ -87,14 +140,6 @@ export function useStopRecording() {
   return useMutation({
     mutationFn: ({ consultationId, persistSnapshot }: { consultationId: string; persistSnapshot?: boolean }) =>
       stopRecording(consultationId, persistSnapshot ?? true),
-  });
-}
-
-export function useGenerateSummary() {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: ({ consultationId, body }: { consultationId: string; body?: GenerateSummaryRequest }) => generateSummary(consultationId, body),
-    onSuccess: () => void queryClient.invalidateQueries({ queryKey: playgroundConsultationKeys.root }),
   });
 }
 
@@ -214,6 +259,37 @@ export function useHarnessAssuranceStream(consultationId: string | null, enabled
     accept: (parsed) => Array.isArray(parsed.claims),
     eventNames: ['assurance_complete'],
   });
+}
+
+/**
+ * W4 — the agentic loop plane's live feed. APPEND-ONLY, unlike the snapshot
+ * streams above: `LoopEventDto` messages are self-contained with no fold and
+ * no late-join replay, so events are accumulated rather than replaced.
+ */
+export function useConsultationLoopStream(consultationId: string | null, enabled = true) {
+  const [feed, setFeed] = useState<LoopActivityEntry[]>([]);
+
+  // Render-time derived-state reset: a new consultation starts a new feed.
+  const [trackedId, setTrackedId] = useState(consultationId);
+  if (consultationId !== trackedId) {
+    setTrackedId(consultationId);
+    setFeed([]);
+  }
+
+  const handleEvent = useCallback((_type: string, data: string) => {
+    const parsed = parseJson<LoopEvent>(data);
+    if (!parsed?.kind) return;
+    setFeed((current) => foldLoopActivity(current, parsed));
+  }, []);
+
+  const stream = useEventStream({
+    path: consultationId ? loopStreamPath(consultationId) : null,
+    scope: consultationId ? `consultation_loop:${consultationId}` : null,
+    onEvent: handleEvent,
+    enabled: enabled && !!consultationId,
+  });
+
+  return { feed, status: stream.status, error: stream.error };
 }
 
 // ─── Async summary job progress (the useDnaJobProgress pattern) ───

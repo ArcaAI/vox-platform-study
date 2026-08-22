@@ -35,21 +35,29 @@ import { PageHeader } from '@/shared/page/page-header';
 import { ScreenTemplate } from '@/shared/page/screen-template';
 import { WorkingTenantGate } from '@/shared/tenant-scope/working-tenant-gate';
 import {
+  getLatestSummary,
   playgroundConsultationKeys,
   useApproveSummary,
   useAudioPipelines,
-  useGenerateSummary,
+  useCancelConsultationJob,
+  useConsultationLoopStream,
+  useDnaStyleOptions,
+  useGenerateSummaryAsync,
   useHarnessAssuranceStream,
   useHarnessProgressStream,
   useLatestSummary,
+  useScopingDepartments,
   useStartRecording,
+  useSummaryJobProgress,
   useStopRecording,
   useSummaryProvenance,
   useTranscriptions,
+  useUpdateSummary,
   type CitedSegment,
 } from '../api';
 import { useColumnLayout } from '../hooks/use-column-layout';
 import { useLiveMetrics } from '../hooks/use-live-metrics';
+import { useNoteEditor, type EditableDraft } from '../hooks/use-note-editor';
 import { CaseNoteColumn } from './scribe/case-note-column';
 import { ConsultationsColumn, type ConsultationListRow } from './scribe/consultations-column';
 import { LiveSessionColumn, type SdkTranscriptSegment, type TranscriptReviewHighlight } from './scribe/live-session-column';
@@ -206,6 +214,11 @@ function ScribeWorkspace() {
   // end-user STT language mode. Empty ⇒ pipeline default. The
   // backend guarantees the chosen mode fits the session's engines (422 otherwise).
   const [languageMode, setLanguageMode] = useState('');
+  // W2 — the two scoping inputs TASK-789 H-4 found were never supplied.
+  // `departmentId` is bound at OPEN (it is a property of the consultation and
+  // feeds the workflow-assignment cascade); `dnaStyleId` is bound at GENERATE.
+  const [departmentId, setDepartmentId] = useState('');
+  const [dnaStyleId, setDnaStyleId] = useState('');
   const languageModes = useArcaSttLanguageModes();
   // the citation currently highlighted in the live-session
   // column's transcript-review pane (click-to-source from the case-note
@@ -213,13 +226,22 @@ function ScribeWorkspace() {
   const [selectedCitationId, setSelectedCitationId] = useState<string | null>(null);
 
   const pipelines = useAudioPipelines();
+  const departments = useScopingDepartments();
+  const dnaStyles = useDnaStyleOptions();
   const defaultPipelineId = pipelines.data ? ((pipelines.data.find((pipeline) => pipeline.isDefault) ?? pipelines.data[0])?.id ?? '') : '';
   const pipelineId = pipelineChoice || defaultPipelineId;
 
   const recordingStart = useStartRecording();
   const recordingStop = useStopRecording();
-  const summarySync = useGenerateSummary();
+  // W5/M-7 — manual generation runs as a QUEUED JOB with an SSE progress
+  // stream, not a blocking mutation. That path was fully built and had zero
+  // call sites; the sync mutation it replaces held the button for the whole
+  // LLM generation with no feedback and no way out.
+  const summaryAsync = useGenerateSummaryAsync();
+  const cancelSummaryJob = useCancelConsultationJob();
+  const [summaryJobId, setSummaryJobId] = useState<string | null>(null);
   const approve = useApproveSummary();
+  const summaryEdit = useUpdateSummary();
 
   const consultationId = consultation?.id ?? null;
   const isRecording = (consultation?.status ?? '').toUpperCase() === 'RECORDING';
@@ -231,6 +253,8 @@ function ScribeWorkspace() {
   const draft = useLatestSummary(consultationId, !!consultationId);
   const progress = useHarnessProgressStream(consultationId, !!consultationId);
   const assurance = useHarnessAssuranceStream(consultationId, !!consultationId);
+  // W4 — the agentic loop's live activity feed (realtime summaries etc).
+  const loop = useConsultationLoopStream(consultationId, !!consultationId);
 
   // the evidence panel + its transcript-review highlight
   // only apply once a persisted draft exists (the reviewable artifact); both
@@ -295,9 +319,11 @@ function ScribeWorkspace() {
     }
   }
 
-  async function handleOpenPatient(patientId: string) {
+  async function handleOpenPatient(patientId: string, department?: string) {
     try {
-      const opened = await sdkSession.open({ patientId });
+      // `departmentId` reaches the gateway DTO verbatim; the SDK forwards the
+      // input object as the request body.
+      const opened = await sdkSession.open({ patientId, ...(department ? { departmentId: department } : {}) });
       const row: ConsultationListRow = {
         id: opened.id,
         patientId: opened.patientId,
@@ -356,15 +382,32 @@ function ScribeWorkspace() {
     }
   }
 
+  const summaryJob = useSummaryJobProgress(summaryJobId, {
+    onTerminal: (job) => {
+      setSummaryJobId(null);
+      const status = job.status.toUpperCase();
+      if (status === 'COMPLETED') toast.success('Note generated');
+      else if (status === 'CANCELLED') toast.success('Note generation cancelled');
+      else toast.error(job.errorMessage || 'Note generation failed');
+    },
+  });
+
   function handleGenerate() {
     if (!consultation) return;
-    summarySync.mutate(
-      { consultationId: consultation.id },
+    summaryAsync.mutate(
+      { consultationId: consultation.id, body: dnaStyleId ? { dnaStyleId } : undefined },
       {
-        onSuccess: () => toast.success('Note generated'),
+        onSuccess: (job) => setSummaryJobId(job.jobId),
         onError: (error) => toast.error(errorMessage(error, 'Note generation failed')),
       },
     );
+  }
+
+  function handleCancelGenerate() {
+    if (!summaryJobId) return;
+    cancelSummaryJob.mutate(summaryJobId, {
+      onError: (error) => toast.error(errorMessage(error, 'Could not cancel the generation')),
+    });
   }
 
   function handleApprove({ overrideSafetyFlag }: { overrideSafetyFlag: boolean }) {
@@ -381,6 +424,34 @@ function ScribeWorkspace() {
       },
     );
   }
+
+  // W1/R5 — the clinician's editing buffer over the persisted draft. The
+  // two-writer policy lives in the hook (see its docblock); this only supplies
+  // the transport: an If-Match PATCH, and a fresh read for the 412 comparison.
+  const editableDraft = useMemo<EditableDraft | null>(
+    () => (draft.data ? { id: draft.data.id, content: draft.data.content, version: draft.data.version } : null),
+    [draft.data],
+  );
+  const noteEditor = useNoteEditor({
+    draft: editableDraft,
+    onSave: async ({ summaryId, content, expectedVersion }) => {
+      const saved = await summaryEdit.mutateAsync({
+        consultationId: consultationId as string,
+        summaryId,
+        body: { content, changeSource: 'doctor_edit', changeReason: 'Clinician edit' },
+        expectedVersion,
+      });
+      toast.success('Note saved');
+      return { id: saved.id, content: saved.content, version: saved.version };
+    },
+    // Deliberately NOT the cached query: a 412 means the cache is the stale
+    // thing, so the comparison must come off the wire.
+    onReload: async () => {
+      if (!consultationId) return null;
+      const latest = await getLatestSummary(consultationId);
+      return latest ? { id: latest.id, content: latest.content, version: latest.version } : null;
+    },
+  });
 
   // Harness owns drafting once its progress stream reports stages — hide the
   // manual generate action then (avoids the generate-vs-auto-harness race).
@@ -427,6 +498,9 @@ function ScribeWorkspace() {
           noteModels={noteModels}
           selectedNoteId={noteModelName ?? ''}
           onNoteChange={() => undefined}
+          dnaStyles={dnaStyles.data ?? []}
+          selectedDnaStyleId={dnaStyleId}
+          onDnaStyleChange={setDnaStyleId}
           metrics={{ tokensPerSecond: metrics.tokensPerSecond, latencyP95Ms: metrics.latencyP95Ms, uplinkBitsPerSecond: audio.uplinkBitrate || null }}
         />
       }
@@ -451,6 +525,9 @@ function ScribeWorkspace() {
               onSelect={handleSelect}
               onOpenPatient={handleOpenPatient}
               activeIsRecording={isRecording}
+              departments={departments.data ?? []}
+              selectedDepartmentId={departmentId}
+              onDepartmentChange={setDepartmentId}
             />
           </ResizablePanel>
           <ResizableHandle withHandle />
@@ -484,7 +561,9 @@ function ScribeWorkspace() {
               progress={progress.snapshot}
               assurance={assurance.snapshot}
               onGenerate={harnessActive ? null : handleGenerate}
-              generatePending={summarySync.isPending}
+              generatePending={summaryAsync.isPending || (!!summaryJobId && !summaryJob.isTerminal)}
+              generateStatus={summaryJob.job?.currentStep ?? null}
+              onCancelGenerate={summaryJobId ? handleCancelGenerate : null}
               onApprove={handleApprove}
               approvePending={approve.isPending}
               approved={approved}
@@ -492,6 +571,8 @@ function ScribeWorkspace() {
               transcriptText={transcriptText}
               selectedCitationId={selectedCitationId}
               onSelectCitation={(segment) => setSelectedCitationId(segment.id)}
+              editor={noteEditor}
+              loopActivity={loop.feed}
             />
           </ResizablePanel>
         </ResizablePanelGroup>
