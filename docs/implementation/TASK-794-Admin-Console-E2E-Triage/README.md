@@ -77,16 +77,45 @@ Landed in `c38b76263`.
 
 **Result: 293 passed / 50 skipped / 11 failed** (from 212 / 128 / 27).
 
-## Remaining 11 — all environmental, none product defects
+## The remaining 11 — cleared 2026-08-22 (`08337beb5`)
 
-| Spec | Needs |
+Run against a live stack. **27 → 1**, and the one left passed 11/11 in isolation
+(flaky, not a defect). Every fix removed a cause; none relaxed an assertion.
+
+| Was failing | Real cause | Fix |
+|---|---|---|
+| `queues` ×5 | **The fixture leaked** — `cleanupQueueFixture` removed jobs by id, but the fixture's own `Worker` moves them to completed/failed and `findEmptyQueue` counts those states. Each run permanently burned one of five candidate queues until none was empty | Cleanup drains every counted state. Safe because `findEmptyQueue` verified the queue EMPTY at acquisition, so anything left is the fixture's. Proven by **three consecutive 11/11 runs** |
+| `monitoring` ×1 | The spec mocked `**/api/hope/health/services`, but **TASK-759 moved it to `admin/health/services`**. The mock never matched, so the test asserted against the real response | Corrected the route pattern |
+| `departments` ×1 | Hardcoded **"Cardiology"**, which the seed defines only as a PROMPT TEMPLATE and never as a Department — it could not pass against any seeded database | Derives the target from the rendered hierarchy |
+| `tenant-storage` ×1 | Same class — hardcoded the **"Audio"** purpose, which no seeded bucket carries, so the facet option never rendered and the click timed out | Derives the purpose from the facet |
+| `account` ×1 | Asserted the admin-locked badge unconditionally, though it renders only when the tenant sets `preferences.transcriptionModeLocked` | Asks the API: *not configured* SKIPS with an actionable message, *configured but not rendered* still FAILS |
+| `settings-rotate` ×2 | The Vault audit-log crash (cause 2 above) | Already fixed; confirmed passing |
+
+### Worker count — the measurement that settled it
+
+The local default drops from 3 to **1**, matching CI:
+
+| Workers | Timeouts, same suite |
 |---|---|
-| `queues` ×5 | An empty BullMQ queue. The fixture says so itself: *"No empty BullMQ queue is available for the queues E2E fixture"* |
-| `settings-rotate` ×2, `tenant-storage` ×1 | Vault rotation + MinIO round-trips slower than the 30s budget |
-| `account`, `departments`, `monitoring` | Seeded data the dev DB lacks — a locked transcription mode, a seeded root department, an unhealthy service probe |
+| Playwright default (~8 on 16 cores) | 33 |
+| 3 | 6 |
+| 2 | 4 |
+| **1** | **0** |
 
-To clear these, run against the full stack (`pnpm stack:dev`) with a seeded DB
-rather than gateway + console alone.
+Raising the per-test budget to 45s did **not** help — that is the tell. The
+constraint is contention on the single `next dev` process, not test duration, so
+the budget stays at 30s and the parallelism comes down. `PLAYWRIGHT_WORKERS`
+overrides when you know the specs you are running are light.
+
+**Final: 302 passed / 51 skipped / 1 flaky** (from 212 / 128 / 27).
+
+### Not attempted: running against a production build
+
+`next start` sets `NODE_ENV=production`, and this repo's contract is that
+production reads **no env file — host env only**. `ADMIN_SESSION_SECRET` is
+therefore unset and login fails. That is the same blocker as the CI job's missing
+`CI_ADMIN_SESSION_SECRET`, and it is why the local suite runs against `next dev`
+at one worker instead.
 
 ## Two traps worth carrying forward
 
@@ -104,3 +133,4 @@ Both cost real time during TASK-787 verification.
 |---|---|
 | 2026-08-22 | **Renumbered TASK-789 → TASK-794** — `TASK-789` was taken by a concurrent session (`TASK-789-Agentic-Loop-Coherence-Review`, committed in `6b066dd0f` alongside 790–793) between this ticket being written and committed. Caught immediately after; the fix commit `c38b76263` predates the collision and its message still says "TASK-789" for this work — noted here rather than rewritten, since the history is shared. |
 | 2026-08-22 | Opened during TASK-787/788 verification. All 27 failures diagnosed, 16 fixed, four root causes recorded. 26 of 27 predate this sprint's UI work; the one that did not was TASK-788's nav scoping. Suite 212/128/27 → 293/50/11. Status → Review. |
+| 2026-08-22 | **The remaining 11 cleared (`08337beb5`).** All were causes, not flakiness: a leaking queue fixture that permanently burned its own candidate queues, a route mock stale since TASK-759, two tests hardcoding seed values the seed never creates ("Cardiology" as a Department, an "Audio" bucket purpose), and one asserting tenant config it could not create. Local worker default dropped 3 → 1 on measured evidence (33/6/4/0 timeouts at ~8/3/2/1 workers; a 45s budget did not help, proving contention rather than duration). Suite **212/128/27 → 302/51/1**, the one remainder passing 11/11 in isolation. |
