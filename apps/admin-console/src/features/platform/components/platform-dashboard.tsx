@@ -194,7 +194,7 @@ function RecentActivityCard() {
       <CardHeader>
         <SectionTitle>Recent admin activity</SectionTitle>
         <CardAction>
-          <Link href="/audit-logs" className="text-primary inline-flex items-center gap-1 text-sm hover:underline">
+          <Link href="/audit-logs" className="text-foreground inline-flex items-center gap-1 text-sm hover:underline">
             Audit Logs
             <IconArrowRight aria-hidden className="size-3.5" />
           </Link>

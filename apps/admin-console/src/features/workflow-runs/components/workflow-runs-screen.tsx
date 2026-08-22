@@ -169,7 +169,7 @@ function WorkflowRunsBody() {
             <>
               {runsQuery.data ? <span>{formatNumber(rows.length)} runs shown</span> : <Skeleton className="h-4 w-32" />}
               <span>Definition-scoped &middot; tenant view</span>
-              <Link href="/ai-operations/runs" className="text-primary underline underline-offset-2">
+              <Link href="/ai-operations/runs" className="text-foreground underline underline-offset-2">
                 See all agentic runs (cross-tenant platform ops) →
               </Link>
             </>

@@ -14,9 +14,9 @@ import {
 
 /** Glyph + accessible label per cell state (never color-only — WCAG 1.4.1). */
 const CELL_META: Record<CellState, { glyph: string; label: string; className: string }> = {
-  granted: { glyph: '✓', label: 'Granted', className: 'text-primary' },
+  granted: { glyph: '✓', label: 'Granted', className: 'text-foreground' },
   inherited: { glyph: '◐', label: 'Inherited from a system policy', className: 'text-muted-foreground' },
-  conditional: { glyph: '✓', label: 'Granted with conditions', className: 'text-primary' },
+  conditional: { glyph: '✓', label: 'Granted with conditions', className: 'text-foreground' },
   none: { glyph: '—', label: 'Not granted', className: 'text-muted-foreground/60' },
 };
 

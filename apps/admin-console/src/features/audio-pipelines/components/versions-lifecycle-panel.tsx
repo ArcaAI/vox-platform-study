@@ -55,7 +55,7 @@ export function PipelineVersionsTab({ pipelineId }: { pipelineId: string }) {
             <li key={version.id} className="flex items-baseline gap-2 border-b py-1.5 text-sm last:border-0">
               <span className="font-mono text-xs">v{version.versionNumber}</span>
               <span className="text-muted-foreground text-xs">{formatDateTime(version.createdAt, 'date')}</span>
-              {index === 0 ? <span className="text-primary text-xs font-medium">current</span> : null}
+              {index === 0 ? <span className="text-foreground text-xs font-medium">current</span> : null}
               {version.changeReason ? (
                 <span className="text-muted-foreground min-w-0 truncate text-xs" title={version.changeReason}>
                   {version.changeReason}

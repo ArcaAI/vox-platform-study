@@ -98,7 +98,7 @@ export function TemplatePicker({ id, value, onChange }: { id?: string; value: st
                   }}
                 >
                   <span className="text-muted-foreground flex-1">No template — raw prompt</span>
-                  {!value ? <IconCheck aria-hidden="true" className="text-primary size-4" /> : null}
+                  {!value ? <IconCheck aria-hidden="true" className="text-foreground size-4" /> : null}
                 </CommandItem>
                 {results.length === 0 ? (
                   <div className="text-muted-foreground py-6 text-center text-sm">
@@ -117,7 +117,7 @@ export function TemplatePicker({ id, value, onChange }: { id?: string; value: st
                         }}
                       >
                         <span className="flex-1 truncate">{templateLabel(template)}</span>
-                        {active ? <IconCheck aria-hidden="true" className="text-primary size-4" /> : null}
+                        {active ? <IconCheck aria-hidden="true" className="text-foreground size-4" /> : null}
                       </CommandItem>
                     );
                   })

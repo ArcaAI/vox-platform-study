@@ -63,7 +63,7 @@ export function PromptTemplatePicker({ id, label, description, value, onChange, 
           </SelectContent>
         </Select>
       )}
-      <Link href="/prompt-templates" className="text-primary inline-flex w-fit items-center gap-1 text-xs hover:underline">
+      <Link href="/prompt-templates" className="text-foreground inline-flex w-fit items-center gap-1 text-xs hover:underline">
         <IconExternalLink aria-hidden className="size-3" />
         Manage prompt templates
       </Link>

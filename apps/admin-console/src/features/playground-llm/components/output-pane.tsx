@@ -126,7 +126,7 @@ function AssemblyMetaPanel({ debug }: { debug: AssembledDebugMeta }) {
 
 function StreamCaret({ live }: { live: boolean }) {
   return live ? (
-    <span aria-hidden className="text-primary animate-pulse">
+    <span aria-hidden className="text-foreground animate-pulse">
       ▍
     </span>
   ) : null;

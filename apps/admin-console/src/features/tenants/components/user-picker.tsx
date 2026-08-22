@@ -67,7 +67,7 @@ export function UserPicker({
                     >
                       <span className="flex-1 truncate">{user.username}</span>
                       <span className="font-mono text-muted-foreground text-xs">{user.id.slice(0, 8)}</span>
-                      {active ? <IconCheck aria-hidden="true" className="size-4 text-primary" /> : null}
+                      {active ? <IconCheck aria-hidden="true" className="size-4 text-foreground" /> : null}
                     </CommandItem>
                   );
                 })}

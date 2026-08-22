@@ -83,12 +83,12 @@ test.describe('AudioMeter', () => {
   test.describe('speaking indicator', () => {
     test('shows broadcast icon when speaking', async ({ mount }) => {
       const component = await mount(<AudioMeter level={60} isCapturing={true} isSpeaking={true} isMuted={false} />);
-      await expect(component.locator('.text-primary').first()).toBeVisible();
+      await expect(component.locator('.text-foreground').first()).toBeVisible();
     });
 
     test('hides broadcast icon when not speaking', async ({ mount }) => {
       const component = await mount(<AudioMeter level={20} isCapturing={true} isSpeaking={false} isMuted={false} />);
-      const broadcastIcons = component.locator('svg.text-primary');
+      const broadcastIcons = component.locator('svg.text-foreground');
       await expect(broadcastIcons).toHaveCount(0);
     });
   });

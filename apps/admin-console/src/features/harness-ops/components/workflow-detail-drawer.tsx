@@ -70,7 +70,7 @@ function HistorySection({ detail }: { detail: HarnessWorkflowDetail }) {
             const Icon = isDone ? IconCircleCheck : isCurrent ? IconCircleDot : IconCircle;
             return (
               <li key={name} className="flex items-center gap-2 text-sm">
-                <Icon aria-hidden className={isDone ? 'text-success size-4' : isCurrent ? 'text-primary size-4' : 'text-muted-foreground size-4'} />
+                <Icon aria-hidden className={isDone ? 'text-success size-4' : isCurrent ? 'text-foreground size-4' : 'text-muted-foreground size-4'} />
                 <span className={isCurrent ? 'font-medium' : isDone ? '' : 'text-muted-foreground'}>
                   {name.toLowerCase()}
                   <span className="sr-only">{isDone ? ' (done)' : isCurrent ? ' (in progress)' : ' (not started)'}</span>

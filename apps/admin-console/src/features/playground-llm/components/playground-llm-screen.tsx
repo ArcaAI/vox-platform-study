@@ -133,7 +133,7 @@ function RequestSummaryStrip({
         {maxTokens}
       </span>
       {separator}
-      <span className={streaming ? 'text-primary' : ''}>{streaming ? 'streaming' : 'sync'}</span>
+      <span className={streaming ? 'font-medium' : ''}>{streaming ? 'streaming' : 'sync'}</span>
       {taskId ? (
         <>
           {separator}

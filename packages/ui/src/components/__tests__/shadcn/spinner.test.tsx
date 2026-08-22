@@ -52,8 +52,8 @@ test.describe('Spinner', () => {
 
   test.describe('custom className', () => {
     test('accepts and merges custom className', async ({ mount }) => {
-      const component = await mount(<Spinner className="text-primary" />);
-      await expect(component).toHaveClass(/text-primary/);
+      const component = await mount(<Spinner className="text-foreground" />);
+      await expect(component).toHaveClass(/text-foreground/);
       await expect(component).toHaveClass(/animate-spin/);
     });
 

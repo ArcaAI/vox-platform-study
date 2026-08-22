@@ -69,7 +69,7 @@ function OverviewTab({ release }: { release: ServiceRelease }) {
         <dt className="text-muted-foreground text-xs">Pipeline</dt>
         <dd>
           {release.ciPipelineUrl ? (
-            <a href={release.ciPipelineUrl} target="_blank" rel="noreferrer" className="text-primary underline underline-offset-2">
+            <a href={release.ciPipelineUrl} target="_blank" rel="noreferrer" className="text-foreground underline underline-offset-2">
               View pipeline
             </a>
           ) : (

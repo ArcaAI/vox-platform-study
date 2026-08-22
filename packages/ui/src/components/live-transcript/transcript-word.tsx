@@ -48,7 +48,7 @@ export function TranscriptWord({ word, active, interactive = true, label, onSele
       className={cn(
         'cursor-pointer rounded-sm px-0.5 text-left transition-colors hover:bg-accent hover:text-accent-foreground',
         'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
-        'data-[active=true]:bg-primary/15 data-[active=true]:text-primary data-[active=true]:font-medium',
+        'data-[active=true]:bg-primary/15 data-[active=true]:text-foreground data-[active=true]:font-medium',
         className,
       )}
     >

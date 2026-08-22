@@ -133,7 +133,7 @@ export function RateLimitExplainPanel() {
                     {offer.limitValue} / {Math.round(offer.windowMs / 1000)}s
                   </span>
                   {!offer.active ? <Badge variant="secondary">Exempts this scope</Badge> : null}
-                  {offer.winner ? <span className="text-primary ms-auto text-sm font-medium">Applied</span> : null}
+                  {offer.winner ? <span className="text-foreground ms-auto text-sm font-medium">Applied</span> : null}
                 </li>
               ))}
             </ul>
