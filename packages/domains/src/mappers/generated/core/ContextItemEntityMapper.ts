@@ -3,17 +3,36 @@ import * as Entities from '../../../entities';
 import * as Models from '../../../models';
 import * as Mappers from '../../../mappers';
 
+// `_version` is DATABASE-OWNED: its only legitimate writer is `Repository.updateWithVersion`'s
+// compare-and-set. `ContextItem` is OCC-written (the clinician SOAP-note edit path calls
+// `updateWithVersion`), so rule 03 requires the strip here — the same treatment
+// `SummaryMetaEntityMapper` and `DepartmentEntityMapper` give it. Reads are unaffected:
+// `toDomainEntity` still carries the row's real version onto the entity, which is what the CAS
+// needs. `updateWithVersion` also deletes `version` defensively, but that is a second line of
+// defense, not a substitute for this one — a write path that does not go through it would
+// otherwise leak `_version` into Prisma and silently break optimistic concurrency.
+const FIELDS_NOT_WRITABLE: string[] = ['version'];
+
+function stripNonWritableFields<T extends object>(model: T, fields: string[]): T {
+  for (const field of fields) {
+    delete (model as Record<string, unknown>)[field];
+  }
+  return model;
+}
+
 export class ContextItemEntityMapper extends BaseMapper<Entities.ContextItemEntity, Models.ContextItem> {
   constructor() {
     super();
   }
 
   public toPersistence(entity: Entities.ContextItemEntity): Models.ContextItem {
-    return AutoClassMapper(entity, Models.ContextItem, ContextItemEntityMapperHandlers.$toPersistence);
+    const result = AutoClassMapper(entity, Models.ContextItem, ContextItemEntityMapperHandlers.$toPersistence);
+    return stripNonWritableFields(result, FIELDS_NOT_WRITABLE);
   }
 
   public toPersistenceChanges(entity: Entities.ContextItemEntity): Partial<Models.ContextItem> {
-    return AutoEntityChangeMapper(entity, Models.ContextItem, ContextItemEntityMapperHandlers.$toPersistence);
+    const result = AutoEntityChangeMapper(entity, Models.ContextItem, ContextItemEntityMapperHandlers.$toPersistence);
+    return stripNonWritableFields(result, FIELDS_NOT_WRITABLE);
   }
 
   public toDomainEntity(dataModel: Models.ContextItem): Entities.ContextItemEntity {
