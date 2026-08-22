@@ -66,6 +66,17 @@ function makeController(ctx: Ctx) {
       curationStatus: 'APPROVED',
       previousStatus: 'PENDING',
     }),
+    // TASK-792 W4: the JSONL fine-tuning export. Declared here (not assigned
+    // onto the object at the call site) so the mock's inferred type carries
+    // them and `tsc --noEmit` stays clean.
+    exportFineTuningDataset: vi.fn().mockResolvedValue({
+      schemaVersion: 'hope.gate-edit.finetune.v1',
+      tenantId: 'tenant-1',
+      reviewStatus: 'SME_APPROVED',
+      count: 0,
+      records: [],
+    }),
+    toJsonl: vi.fn().mockReturnValue(''),
   };
   const evalRunService = {
     runGoldenSet: vi.fn().mockResolvedValue({ id: 'run-1' }),
@@ -589,14 +600,14 @@ describe('HarnessAdminController — gate-edit loop tail (TASK-792)', () => {
 
   it('fine-tuning export serialises the dataset to JSONL', async () => {
     const { controller, gateEditMiningService } = makeController({ user: TENANT_ADMIN('tenant-1'), tenantId: 'tenant-1' });
-    gateEditMiningService.exportFineTuningDataset = vi.fn().mockResolvedValue({
+    gateEditMiningService.exportFineTuningDataset.mockResolvedValue({
       schemaVersion: 'hope.gate-edit.finetune.v1',
       tenantId: 'tenant-1',
       reviewStatus: 'SME_APPROVED',
       count: 1,
       records: [{ exemplarId: 'ex-1' }],
     });
-    gateEditMiningService.toJsonl = vi.fn().mockReturnValue('{"exemplarId":"ex-1"}');
+    gateEditMiningService.toJsonl.mockReturnValue('{"exemplarId":"ex-1"}');
 
     const body = await controller.exportGateEditFineTuningDataset({});
 
