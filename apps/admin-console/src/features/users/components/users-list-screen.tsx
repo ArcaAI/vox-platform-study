@@ -458,7 +458,7 @@ export function UsersListScreen() {
               title="No users match your filters"
               description="Try a different search or clear the filters."
               action={
-                <Button variant="outline" onClick={clearFilters}>
+                <Button variant="outline" onClick={clearFilters} aria-label="Clear filters and show all rows">
                   <IconFilterOff aria-hidden />
                   Clear filters
                 </Button>

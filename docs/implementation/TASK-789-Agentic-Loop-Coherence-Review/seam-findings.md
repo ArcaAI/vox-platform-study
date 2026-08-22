@@ -392,3 +392,34 @@ untouched by those commits.
 
 Per rule 14 §3 this checkout has more than one writer; anyone acting on these findings should
 re-verify against `HEAD` at the time of the fix rather than trusting this document's line numbers.
+
+---
+
+## Corrections found during remediation (TASK-790..793)
+
+Four TASK-789 claims were wrong. All four share one root cause: **a report or a code comment was
+trusted over the source**. Recorded so the next reader does not inherit them.
+
+| # | Original claim | Reality | Found by |
+|---|---|---|---|
+| 1 | C-2: the real invoke path is broken (`payload` never forwarded) | `workflow-exposure.service.ts:141` forwards `payload: dto.input`. The Python docstring asserting otherwise is STALE. | Stage 2 |
+| 2 | R1 blanket CONTRADICTED | TRUE for the `stt` palette — publishing writes a real `AsrPipeline` that reaches the playground's Listener selector. Revised to PARTIAL. | Stage 2 |
+| 3 | C-8 fix = a palette allow-list on the declared `paletteKey` | **This would not be a boundary.** `validate.ts:62` only SKIPS other palettes' rules; nothing asserts a graph's nodes belong to its declared palette. A `summarization`-declared graph carrying `consultation.persistDraft` compiles clean. The gate must key on ACTUAL COMPILED NODE TYPES. | TASK-790 |
+| 4 | H-4: `departmentId` exists on the SDK's `OpenSessionInput` | It does not. `packages/agentic-sdk-v2/src/types/consultation.ts` declares `department?: string` — a NAME the gateway does not accept. Because the global pipe runs `forbidNonWhitelisted`, sending it **400s**. | TASK-793 |
+
+Correction 4 has a live consequence TASK-789 missed entirely: a v1-compat consumer setting
+`providerInfo.department` gets a 400 on open today.
+
+## Ownership gap
+
+`packages/ui` has **no owner** in `OWNERSHIP-MAP.md`. TASK-793's live-browser pass found a real
+WCAG AA failure there: `shadcn/select.tsx:32` renders `data-[placeholder]:text-muted-foreground`
+over `dark:bg-input/30` = **4.33:1** (AA needs 4.5:1), firing for **every unset Select in dark mode
+console-wide**. Needs an owner and a ticket.
+
+## Process note
+
+`OWNERSHIP-MAP.md` was not included in the commit that created the four ticket READMEs; it landed
+later in an unrelated commit from a concurrent session. Three of the four agents therefore started
+without their binding boundary document, and two made out-of-boundary edits they later reverted
+when it was copied in. The map must be committed WITH the tickets it governs.

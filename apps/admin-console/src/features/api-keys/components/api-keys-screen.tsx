@@ -340,7 +340,7 @@ export function ApiKeysScreen() {
               title="No keys match your filters"
               description="Try a different search or clear the filters."
               action={
-                <Button variant="outline" onClick={() => query.setQueryState({ ...query.queryState, globalSearch: undefined, filters: [] })}>
+                <Button variant="outline" onClick={() => query.setQueryState({ ...query.queryState, globalSearch: undefined, filters: [] })} aria-label="Clear filters and show all rows">
                   <IconFilterOff aria-hidden />
                   Clear filters
                 </Button>

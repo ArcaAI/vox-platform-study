@@ -254,7 +254,7 @@ export function PoliciesScreen() {
               title="No policies match"
               description="Seeded platform defaults always exist — adjust the filters or create a new policy."
               action={
-                <Button variant="outline" onClick={() => query.setQueryState({ ...query.queryState, globalSearch: undefined, filters: [] })}>
+                <Button variant="outline" onClick={() => query.setQueryState({ ...query.queryState, globalSearch: undefined, filters: [] })} aria-label="Clear filters and show all rows">
                   Clear filters
                 </Button>
               }

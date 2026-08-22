@@ -396,7 +396,7 @@ export function QueueDetailScreen({ name }: { name: string }) {
               title="No jobs match the filters"
               description="No jobs match the current state or search — clear the filters to see the full queue."
               action={
-                <Button variant="outline" onClick={clearFilters}>
+                <Button variant="outline" onClick={clearFilters} aria-label="Clear filters and show all rows">
                   <IconFilterOff aria-hidden />
                   Clear filters
                 </Button>

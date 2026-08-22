@@ -238,7 +238,7 @@ function ConsultationsScreenBody() {
       title="No consultations in range"
       description={'Filter mismatch \u2014 empty is not an error. Clear the filters to see every consultation in scope.'}
       action={
-        <Button variant="outline" onClick={clearFilters}>
+        <Button variant="outline" onClick={clearFilters} aria-label="Clear filters and show all rows">
           <IconFilterOff aria-hidden />
           Clear filters
         </Button>
