@@ -234,7 +234,7 @@ export function ScrollSpyTimeline(props: ScrollSpyTimelineProps) {
                 >
                   <div className="flex flex-wrap items-baseline gap-2">
                     {m.version ? <span className="font-mono text-xs text-muted-foreground">{m.version}</span> : null}
-                    <span id={titleId} className="text-sm font-semibold">
+                    <span id={titleId} className="text-sm font-medium">
                       {m.title}
                     </span>
                   </div>

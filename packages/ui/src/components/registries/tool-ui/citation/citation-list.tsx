@@ -293,7 +293,7 @@ function StackedCitations({ id, citations, className, onNavigate }: StackedCitat
                   <div
                     key={citation.id}
                     className={cn(
-                      'border-border bg-background dark:border-foreground/20 relative flex size-6 items-center justify-center rounded-full border shadow-xs',
+                      'border-border bg-background dark:border-foreground/20 relative flex size-6 items-center justify-center rounded-full border',
                       index > 0 && '-ml-2',
                     )}
                     style={{ zIndex: maxIcons - index }}
@@ -308,10 +308,10 @@ function StackedCitations({ id, citations, className, onNavigate }: StackedCitat
               })}
               {remainingCount > 0 && (
                 <div
-                  className="border-border bg-background dark:border-foreground/20 relative -ml-2 flex size-6 items-center justify-center rounded-full border shadow-xs"
+                  className="border-border bg-background dark:border-foreground/20 relative -ml-2 flex size-6 items-center justify-center rounded-full border"
                   style={{ zIndex: 0 }}
                 >
-                  <span className="text-muted-foreground text-2xs font-medium tracking-tight">•••</span>
+                  <span className="text-muted-foreground text-xs font-medium tracking-tight">•••</span>
                 </div>
               )}
             </div>

@@ -215,7 +215,7 @@ const DeckCard = ({ children, onSwipe, threshold, style, exitDirection }: DeckCa
       whileDrag={{ scale: 1.05 }}
     >
       {cloneElement(castedChildren, {
-        className: cn('h-full w-full select-none rounded-lg shadow-lg', castedChildren.props.className),
+        className: cn('h-full w-full select-none rounded-lg', castedChildren.props.className),
       })}
     </motion.div>
   );
@@ -224,10 +224,7 @@ const DeckCard = ({ children, onSwipe, threshold, style, exitDirection }: DeckCa
 export type DeckItemProps = HTMLAttributes<HTMLDivElement>;
 
 export const DeckItem = ({ className, ...props }: DeckItemProps) => (
-  <div
-    className={cn('flex h-full w-full items-center justify-center rounded-lg border bg-card text-card-foreground shadow-lg', className)}
-    {...props}
-  />
+  <div className={cn('flex h-full w-full items-center justify-center rounded-lg border bg-card text-card-foreground', className)} {...props} />
 );
 
 export type DeckEmptyProps = HTMLAttributes<HTMLDivElement>;

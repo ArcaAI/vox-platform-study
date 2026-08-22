@@ -681,7 +681,7 @@ export function ParameterSlider({
       data-slot="parameter-slider"
       data-tool-ui-id={id}
     >
-      <div className={cn('bg-card flex w-full flex-col overflow-hidden rounded-2xl border px-5 py-3 shadow-xs')}>
+      <div className={cn('bg-card flex w-full flex-col overflow-hidden rounded-2xl border px-5 py-3')}>
         {sliders.map((slider) => (
           <SliderRow
             key={slider.id}

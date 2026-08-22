@@ -89,7 +89,7 @@ export const editorTheme: EditorThemeClasses = {
   tableCell: 'EditorTheme__tableCell w-24 relative border px-4 py-2 text-left [&[align=center]]:text-center [&[align=right]]:text-right"',
   tableCellActionButton: 'EditorTheme__tableCellActionButton bg-background block border-0 rounded-2xl w-5 h-5 text-foreground cursor-pointer',
   tableCellActionButtonContainer: 'EditorTheme__tableCellActionButtonContainer block right-1 top-1.5 absolute z-10 w-5 h-5',
-  tableCellEditing: 'EditorTheme__tableCellEditing rounded-sm shadow-sm',
+  tableCellEditing: 'EditorTheme__tableCellEditing rounded-sm',
   tableCellHeader:
     'EditorTheme__tableCellHeader bg-muted border px-4 py-2 text-left font-bold [&[align=center]]:text-center [&[align=right]]:text-right',
   tableCellPrimarySelected:

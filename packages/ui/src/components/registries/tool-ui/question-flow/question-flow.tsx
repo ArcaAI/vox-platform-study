@@ -136,7 +136,7 @@ function QuestionFlowReceipt({ id, choice, className }: QuestionFlowReceiptProps
       role="status"
       aria-label={choice.title}
     >
-      <div className={cn('bg-card/60 flex w-full flex-col gap-3 rounded-2xl border px-5 py-4 shadow-xs')}>
+      <div className={cn('bg-card/60 flex w-full flex-col gap-3 rounded-2xl border px-5 py-4')}>
         <div className="flex items-center justify-between gap-3">
           <span className="text-base font-medium">{choice.title}</span>
           <span className="flex items-center gap-1.5 text-xs font-medium text-emerald-600 dark:text-emerald-500">
@@ -413,7 +413,7 @@ function StepContent({
       aria-labelledby={titleId}
       aria-describedby={description ? descriptionId : undefined}
     >
-      <div className={cn('bg-card flex w-full flex-col gap-4 rounded-2xl border p-5 shadow-xs')}>
+      <div className={cn('bg-card flex w-full flex-col gap-4 rounded-2xl border p-5')}>
         <div className="flex flex-col gap-1">
           <div className="flex flex-col gap-2">
             <span className="text-muted-foreground text-xs font-medium uppercase tracking-wide" aria-label={stepLabel}>

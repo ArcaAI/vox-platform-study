@@ -11,9 +11,10 @@ export interface AudioMeterProps {
 }
 
 function levelColor(level: number) {
-  if (level <= 40) return 'bg-green-500';
-  if (level <= 70) return 'bg-yellow-500';
-  return 'bg-red-500';
+  // Meter fills, not ink — the bare role values are the fill step.
+  if (level <= 40) return 'bg-success';
+  if (level <= 70) return 'bg-warning';
+  return 'bg-destructive';
 }
 
 export function AudioMeter({ level, isCapturing, isSpeaking, isMuted, className }: AudioMeterProps) {
@@ -24,8 +25,8 @@ export function AudioMeter({ level, isCapturing, isSpeaking, isMuted, className 
       <div className="flex shrink-0 items-center gap-2">
         {isCapturing && (
           <span className="relative flex size-2.5">
-            <span className="absolute inline-flex size-full animate-pulse rounded-full bg-red-500 opacity-75" />
-            <span className="relative inline-flex size-2.5 rounded-full bg-red-500" />
+            <span className="absolute inline-flex size-full animate-pulse rounded-full bg-destructive opacity-75" />
+            <span className="relative inline-flex size-2.5 rounded-full bg-destructive" />
           </span>
         )}
 

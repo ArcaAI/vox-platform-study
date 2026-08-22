@@ -20,7 +20,7 @@ export function JumpToLive({ onClick, className, hasBacklog }: JumpToLiveProps) 
       variant="secondary"
       onClick={onClick}
       aria-label="Jump to latest"
-      className={cn('absolute bottom-3 left-1/2 -translate-x-1/2 shadow-md', className)}
+      className={cn('absolute bottom-3 left-1/2 -translate-x-1/2', className)}
     >
       <ArrowDown className="size-4" />
       {hasBacklog ? 'New messages' : 'Jump to live'}

@@ -9,8 +9,8 @@ export type AnnouncementProps = ComponentProps<typeof Badge> & {
 export const Announcement = ({ variant = 'outline', themed = false, className, ...props }: AnnouncementProps) => (
   <Badge
     className={cn(
-      'group max-w-full gap-2 rounded-full bg-background px-3 py-0.5 font-medium shadow-sm transition-all',
-      'hover:shadow-md',
+      'group max-w-full gap-2 rounded-full bg-background px-3 py-0.5 font-medium transition-all',
+      '',
       themed && 'announcement-themed border-foreground/5',
       className,
     )}

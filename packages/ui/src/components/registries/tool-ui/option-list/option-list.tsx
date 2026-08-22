@@ -125,7 +125,7 @@ function OptionListConfirmation({ id, options, selectedIds, className }: OptionL
       role="status"
       aria-label="Confirmed selection"
     >
-      <div className={cn('bg-card/60 flex w-full flex-col overflow-hidden rounded-2xl border px-5 py-2.5 shadow-xs')}>
+      <div className={cn('bg-card/60 flex w-full flex-col overflow-hidden rounded-2xl border px-5 py-2.5')}>
         {confirmedOptions.map((option, index) => (
           <Fragment key={option.id}>
             {index > 0 && <Separator className="my-1.5" orientation="horizontal" />}
@@ -428,7 +428,7 @@ export function OptionList({
           aria-label="Option list"
         >
           <div
-            className={cn('group/list bg-card flex w-full flex-col overflow-hidden rounded-2xl border px-4 py-1.5 shadow-xs')}
+            className={cn('group/list bg-card flex w-full flex-col overflow-hidden rounded-2xl border px-4 py-1.5')}
             role="listbox"
             aria-multiselectable={selectionMode === 'multi'}
             onKeyDown={handleListboxKeyDown}

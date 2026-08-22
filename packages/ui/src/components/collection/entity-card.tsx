@@ -81,7 +81,7 @@ export function EntityCard({
           </span>
         ) : null}
         <div className="min-w-0 flex-1">
-          <div className="truncate text-sm font-semibold text-card-foreground">{title}</div>
+          <div className="truncate text-sm font-medium text-card-foreground">{title}</div>
           {meta ? <div className="mt-0.5 text-xs text-muted-foreground">{meta}</div> : null}
         </div>
         {status ? <StatusBadge label={status.label} colorRole={status.colorRole} /> : null}

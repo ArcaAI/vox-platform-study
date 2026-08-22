@@ -468,7 +468,7 @@ function MarkerContent({ children, className }: MarkerContentProps) {
 }
 
 function DefaultMarkerIcon() {
-  return <div className="relative h-4 w-4 rounded-full border-2 border-white bg-blue-500 shadow-lg" />;
+  return <div className="relative h-4 w-4 rounded-full border-2 border-white bg-blue-500" />;
 }
 
 type MarkerPopupProps = {
@@ -524,7 +524,7 @@ function MarkerPopup({ children, className, closeButton = false, ...popupOptions
   const handleClose = () => popup.remove();
 
   return createPortal(
-    <div className={cn('relative rounded-md border bg-popover p-3 text-popover-foreground shadow-md animate-in fade-in-0 zoom-in-95', className)}>
+    <div className={cn('relative rounded-md border bg-popover p-3 text-popover-foreground animate-in fade-in-0 zoom-in-95', className)}>
       {closeButton && (
         <button
           type="button"
@@ -599,9 +599,7 @@ function MarkerTooltip({ children, className, ...popupOptions }: MarkerTooltipPr
   }
 
   return createPortal(
-    <div className={cn('rounded-md bg-foreground px-2 py-1 text-xs text-background shadow-md animate-in fade-in-0 zoom-in-95', className)}>
-      {children}
-    </div>,
+    <div className={cn('rounded-md bg-foreground px-2 py-1 text-xs text-background animate-in fade-in-0 zoom-in-95', className)}>{children}</div>,
     container,
   );
 }
@@ -625,7 +623,7 @@ function MarkerLabel({ children, className, position = 'top' }: MarkerLabelProps
     <div
       className={cn(
         'absolute left-1/2 -translate-x-1/2 whitespace-nowrap',
-        'text-2xs font-medium text-foreground',
+        'text-xs font-medium text-foreground',
         positionClasses[position],
         className,
       )}
@@ -661,7 +659,7 @@ const positionClasses = {
 
 function ControlGroup({ children }: { children: React.ReactNode }) {
   return (
-    <div className="flex flex-col rounded-md border border-border bg-background shadow-sm overflow-hidden [&>button:not(:last-child)]:border-b [&>button:not(:last-child)]:border-border">
+    <div className="flex flex-col rounded-md border border-border bg-background overflow-hidden [&>button:not(:last-child)]:border-b [&>button:not(:last-child)]:border-border">
       {children}
     </div>
   );
@@ -898,7 +896,7 @@ function MapPopup({ longitude, latitude, onClose, children, className, closeButt
   };
 
   return createPortal(
-    <div className={cn('relative rounded-md border bg-popover p-3 text-popover-foreground shadow-md animate-in fade-in-0 zoom-in-95', className)}>
+    <div className={cn('relative rounded-md border bg-popover p-3 text-popover-foreground animate-in fade-in-0 zoom-in-95', className)}>
       {closeButton && (
         <button
           type="button"

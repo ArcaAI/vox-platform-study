@@ -417,7 +417,7 @@ export function PaymentDetails({
 
   return (
     <>
-      <div className={cn('relative w-full max-w-xl rounded-3xl p-6 shadow-sm', className)} style={themeStyles}>
+      <div className={cn('relative w-full max-w-xl rounded-3xl p-6', className)} style={themeStyles}>
         <div className="mb-6">
           <h1 className="text-foreground mb-2 font-sans text-3xl font-bold">{title}</h1>
           <p className="text-muted-foreground font-sans">{description}</p>
@@ -665,7 +665,7 @@ export function PaymentDetails({
           <button
             onClick={handleSubmit}
             disabled={isSubmitting || isLoading}
-            className={`flex transform items-center gap-2 rounded-xl px-6 py-3 font-sans font-medium shadow-sm transition-all duration-300 hover:scale-105 hover:shadow-lg active:scale-95 ${
+            className={`flex transform items-center gap-2 rounded-xl px-6 py-3 font-sans font-medium transition-all duration-300 hover:scale-105 active:scale-95 ${
               isSubmitting || isLoading
                 ? 'bg-primary text-primary-foreground cursor-not-allowed opacity-70'
                 : 'bg-primary text-primary-foreground hover:bg-primary/90 hover:shadow-primary/25'
@@ -685,7 +685,7 @@ export function PaymentDetails({
 
       {showConfirmation && (
         <div className="animate-in fade-in fixed inset-0 z-50 flex items-center justify-center bg-black/50 duration-300">
-          <div className="bg-background border-border animate-in zoom-in-95 mx-4 max-w-md rounded-2xl border p-8 shadow-lg duration-300">
+          <div className="bg-background border-border animate-in zoom-in-95 mx-4 max-w-md rounded-2xl border p-8 duration-300">
             <div className="text-center">
               <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-green-100 dark:bg-green-900/20">
                 <Check className="h-8 w-8 text-green-600 dark:text-green-400" />

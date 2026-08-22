@@ -46,7 +46,7 @@ function ApprovalCardReceipt({ id, title, choice, actionLabel, className }: Appr
       role="status"
       aria-label={displayLabel}
     >
-      <div className={cn('bg-card/60 flex w-full items-center gap-3 rounded-2xl border px-4 py-3 shadow-xs')}>
+      <div className={cn('bg-card/60 flex w-full items-center gap-3 rounded-2xl border px-4 py-3')}>
         <span
           className={cn(
             'flex size-8 shrink-0 items-center justify-center rounded-full bg-muted',
@@ -135,7 +135,7 @@ export function ApprovalCard({
           aria-describedby={description ? `${id}-description` : undefined}
           onKeyDown={handleKeyDown}
         >
-          <div className="bg-card flex w-full flex-col gap-4 rounded-2xl border p-5 shadow-xs">
+          <div className="bg-card flex w-full flex-col gap-4 rounded-2xl border p-5">
             <div className="flex items-start gap-3">
               {Icon && (
                 <span

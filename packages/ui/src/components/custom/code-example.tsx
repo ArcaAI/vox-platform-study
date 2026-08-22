@@ -49,7 +49,7 @@ export function CodeExample({ title, code, language = 'typescript', defaultOpen 
               {language && <span className="rounded bg-muted px-1.5 py-0.5 text-xs font-normal text-muted-foreground">{language}</span>}
             </CardTitle>
             <Button variant="ghost" size="sm" onClick={handleCopy} aria-label="Copy code">
-              {copied ? <IconCheck className="size-3.5 text-green-500" /> : <IconCopy className="size-3.5" />}
+              {copied ? <IconCheck className="size-3.5 text-success" /> : <IconCopy className="size-3.5" />}
             </Button>
           </CardHeader>
           <CardContent>
