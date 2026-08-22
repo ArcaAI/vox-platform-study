@@ -1,6 +1,17 @@
 import { describe, expect, it } from 'vitest';
 import type { PermissionRule } from '@/shared/auth/ability';
-import { matchNavEntry, NAV_ENTRIES, NAV_SECTIONS, visibleNavEntries } from '../nav-config';
+import {
+  matchNavEntry,
+  NAV_DOMAINS,
+  NAV_ENTRIES,
+  NAV_SECTIONS,
+  USER_MENU_ENTRIES,
+  visibleNavDomains,
+  visibleNavEntries,
+  visibleUserMenuEntries,
+  type NavDomainId,
+  type NavTier,
+} from '../nav-config';
 
 const SUPER_ADMIN_RULES: PermissionRule[] = [{ action: 'manage', subject: 'all' }];
 
@@ -37,13 +48,19 @@ describe('NAV_ENTRIES (capabilities-matrix section 3, reviewed 2026-07-04; playg
   // taking 54 -> 55.
   // /security-policy (tier 10-19, TASK-786 — the platform credential policy:
   // password complexity/rotation + issued-secret entropy), taking 55 -> 56.
-  it('covers the full 56-route map across the four tiers (including /context-schemas, /playground/workbench, /workflow-runs, /workflow-studio, /developer, /security-policy)', () => {
-    // 56 total: TASK-786 added /security-policy after this count was last set at 55.
-    expect(NAV_ENTRIES).toHaveLength(56);
+  // TASK-788 Phase A moved /developer and /account OUT of the rail and into
+  // USER_MENU_ENTRIES (they are personal chrome, not a capability domain),
+  // taking 56 -> 54 and tier 20-29 from 8 -> 6. No route was deleted: both are
+  // still declared, still gated identically, and still reachable — see the
+  // USER_MENU_ENTRIES describe below.
+  it('covers the full 54-route rail map across the four tiers (including /context-schemas, /playground/workbench, /workflow-runs, /workflow-studio, /security-policy)', () => {
+    expect(NAV_ENTRIES).toHaveLength(54);
     expect(NAV_ENTRIES.filter((entry) => entry.tier === '10-19')).toHaveLength(22);
-    expect(NAV_ENTRIES.filter((entry) => entry.tier === '20-29')).toHaveLength(8);
+    expect(NAV_ENTRIES.filter((entry) => entry.tier === '20-29')).toHaveLength(6);
     expect(NAV_ENTRIES.filter((entry) => entry.tier === '30-49')).toHaveLength(20);
     expect(NAV_ENTRIES.filter((entry) => entry.tier === '50-59')).toHaveLength(6);
+    // The two moved routes are accounted for, not lost.
+    expect(NAV_ENTRIES.length + USER_MENU_ENTRIES.length).toBe(56);
   });
 
   it('gates the credential policy on manage:all — every backing key is a globalOnly descriptor', () => {
@@ -58,28 +75,14 @@ describe('NAV_ENTRIES (capabilities-matrix section 3, reviewed 2026-07-04; playg
     expect(policy?.implemented).toBe(true);
   });
 
-  it('gates the developer portal on the dedicated ApiDocumentation subject, not on manage:all', () => {
-    const developer = NAV_ENTRIES.find((entry) => entry.route === '/developer');
-
-    expect(developer).toBeDefined();
-    expect(developer?.tier).toBe('20-29');
-    // TASK-783 D-1: a DEDICATED subject, so access is delegable to tenant
-    // developers. Gating on `manage:all` here would make the portal
-    // super-admin-only and defeat the point of the ticket.
-    expect(developer?.required).toEqual([['read', 'ApiDocumentation']]);
-    expect(developer?.implemented).toBe(true);
-  });
-
-  it('shows the developer portal to a tenant developer holding only read:ApiDocumentation', () => {
-    const visible = visibleNavEntries([{ action: 'read', subject: 'ApiDocumentation' }], ['DOCTOR']);
-
-    expect(visible.map((entry) => entry.route)).toContain('/developer');
-  });
-
-  it('hides the developer portal from a caller without the ability', () => {
-    const visible = visibleNavEntries([{ action: 'manage', subject: 'Consultation' }], ['DOCTOR']);
-
-    expect(visible.map((entry) => entry.route)).not.toContain('/developer');
+  // TASK-783's developer-portal gate assertions moved with the entry itself
+  // into the USER_MENU_ENTRIES describe below — the ability contract
+  // (`read:ApiDocumentation`, a DEDICATED delegable subject rather than
+  // `manage:all`) is unchanged and still asserted there.
+  it('no longer surfaces the developer portal or the account page from the rail', () => {
+    const developerRules: PermissionRule[] = [{ action: 'read', subject: 'ApiDocumentation' }];
+    expect(visibleNavEntries(developerRules, ['DOCTOR']).map((entry) => entry.route)).not.toContain('/developer');
+    expect(visibleNavEntries(SUPER_ADMIN_RULES, ['SUPER_ADMIN']).map((entry) => entry.route)).not.toContain('/account');
   });
 
   it('merges the standalone /stt-config, /tts-config and /ai-providers screens into the /ai-configuration hub', () => {
@@ -286,20 +289,25 @@ describe('visibleNavEntries', () => {
     expect(visible).not.toContain('/ai-models');
     expect(visible).toContain('/users');
     expect(visible).toContain('/tenant-profile');
-    expect(visible).toContain('/account');
+    // TASK-788: /account left the rail for the user menu.
+    expect(visible).not.toContain('/account');
+    expect(visibleUserMenuEntries(TENANT_ADMIN_RULES).map((entry) => entry.route)).toContain('/account');
     expect(visible).toContain('/playground/consultation');
     expect(visible).toContain('/playground/llm');
     // A tenant admin now reaches the retiered allowed-origins screen.
     expect(visible).toContain('/allowed-origins');
   });
 
-  it('shows only ungated entries (account) for an authenticated user with zero grants', () => {
-    expect(visibleNavEntries([]).map((entry) => entry.route)).toEqual(['/account']);
+  it('shows an authenticated user with zero grants nothing in the rail', () => {
+    // Every rail route is now ability-gated: /account was the one ungated entry
+    // and TASK-788 moved it to the user menu, where it still renders.
+    expect(visibleNavEntries([]).map((entry) => entry.route)).toEqual([]);
+    expect(visibleUserMenuEntries([]).map((entry) => entry.route)).toEqual(['/account']);
   });
 
   it('hides the playground tier from non-admin roles even though its ability gate is empty', () => {
     const visible = visibleNavEntries([], ['DOCTOR']).map((entry) => entry.route);
-    expect(visible).toEqual(['/account']);
+    expect(visible).toEqual([]);
     expect(visibleNavEntries([]).some((entry) => entry.tier === '50-59')).toBe(false);
   });
 
@@ -311,5 +319,393 @@ describe('visibleNavEntries', () => {
   it('filters unimplemented entries even when the ability grants them', () => {
     const visible = visibleNavEntries(SUPER_ADMIN_RULES, ['SUPER_ADMIN']);
     expect(visible.every((entry) => entry.implemented)).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// TASK-788 Phase A — the capability-DOMAIN axis.
+//
+// The rail groups by capability domain (OD-2); the existing NavTier keeps
+// answering *who may open a screen* and is untouched (OD-3). AC-1/AC-2 promise
+// the new axis is PURELY additive, so the guard below pins every route string,
+// tier and ability pair verbatim: a future edit cannot relocate a guard without
+// the diff also touching this table.
+// ---------------------------------------------------------------------------
+
+/**
+ * FROZEN 2026-08-22 (dev-2.2, pre-Phase-A). The 54 rail routes with their tier
+ * and ability gate, dumped from `NAV_ENTRIES` before the `domain` field was
+ * added. Declaration order is pinned too — it is the order the sidebar renders.
+ */
+const FROZEN_RAIL_ENTRIES: ReadonlyArray<readonly [string, NavTier, ReadonlyArray<readonly [string, string]>]> = [
+  ['/dashboard', '10-19', [['manage', 'PlatformMetrics']]],
+  [
+    '/monitoring',
+    '10-19',
+    [
+      ['manage', 'all'],
+      ['read', 'TenantTelemetry'],
+    ],
+  ],
+  [
+    '/releases',
+    '10-19',
+    [
+      ['manage', 'all'],
+      ['read', 'TenantTelemetry'],
+    ],
+  ],
+  [
+    '/tenants',
+    '10-19',
+    [
+      ['manage', 'Tenant'],
+      ['update', 'Tenant'],
+    ],
+  ],
+  ['/entitlements', '10-19', [['manage', 'all']]],
+  [
+    '/tenants/storage',
+    '10-19',
+    [
+      ['manage', 'Tenant'],
+      ['read', 'Storage'],
+    ],
+  ],
+  ['/ai-models', '10-19', [['manage', 'all']]],
+  ['/ai-task-defaults', '10-19', [['manage', 'all']]],
+  ['/rate-limits', '10-19', [['manage', 'all']]],
+  ['/security-policy', '10-19', [['manage', 'all']]],
+  ['/agentic-policy', '10-19', [['manage', 'all']]],
+  ['/ai-services', '10-19', [['manage', 'all']]],
+  ['/ai-operations/runs', '10-19', [['manage', 'all']]],
+  ['/ai-operations/metrics', '10-19', [['manage', 'all']]],
+  ['/ai-operations/consumption', '10-19', [['manage', 'all']]],
+  ['/ai-operations/reconciliation', '10-19', [['manage', 'all']]],
+  ['/billing', '10-19', [['manage', 'all']]],
+  ['/tools-mcp', '10-19', [['manage', 'all']]],
+  ['/queues', '10-19', [['manage', 'all']]],
+  ['/schedulers', '10-19', [['manage', 'all']]],
+  ['/audit-logs', '10-19', [['read', 'AuditLog']]],
+  ['/db-studio', '10-19', [['manage', 'all']]],
+  ['/users', '20-29', [['manage', 'User']]],
+  [
+    '/rbac/roles',
+    '20-29',
+    [
+      ['read', 'Role'],
+      ['manage', 'Role'],
+    ],
+  ],
+  [
+    '/rbac/policies',
+    '20-29',
+    [
+      ['read', 'Policy'],
+      ['manage', 'Policy'],
+    ],
+  ],
+  [
+    '/api-keys',
+    '20-29',
+    [
+      ['read', 'ApiKey'],
+      ['manage', 'ApiKey'],
+    ],
+  ],
+  ['/settings', '20-29', [['manage', 'GlobalSetting']]],
+  [
+    '/tenant-profile',
+    '20-29',
+    [
+      ['read', 'Tenant'],
+      ['update', 'Tenant'],
+    ],
+  ],
+  ['/departments', '30-49', [['manage', 'Department']]],
+  [
+    '/identity-providers',
+    '30-49',
+    [
+      ['read', 'TenantIdentityProvider'],
+      ['manage', 'TenantIdentityProvider'],
+    ],
+  ],
+  [
+    '/allowed-origins',
+    '30-49',
+    [
+      ['read', 'TenantAllowedOrigin'],
+      ['manage', 'TenantAllowedOrigin'],
+    ],
+  ],
+  [
+    '/storage',
+    '30-49',
+    [
+      ['read', 'Storage'],
+      ['manage', 'Storage'],
+    ],
+  ],
+  ['/agents', '30-49', [['manage', 'PromptTemplate']]],
+  ['/prompt-templates', '30-49', [['manage', 'PromptTemplate']]],
+  ['/context-schemas', '30-49', [['manage', 'ConsultationContextSchema']]],
+  ['/knowledge', '30-49', [['manage', 'KnowledgeDocument']]],
+  ['/dna-writing-styles', '30-49', [['manage', 'DnaWritingStyleReport']]],
+  ['/audio/pipelines', '30-49', [['manage', 'AsrPipeline']]],
+  [
+    '/audio/transcription-jobs',
+    '30-49',
+    [
+      ['read', 'AsrPipeline'],
+      ['manage', 'Tenant'],
+    ],
+  ],
+  [
+    '/harness/policy',
+    '30-49',
+    [
+      ['read', 'HarnessPolicy'],
+      ['manage', 'HarnessPolicy'],
+    ],
+  ],
+  [
+    '/harness/observability',
+    '30-49',
+    [
+      ['read', 'HarnessAudit'],
+      ['read', 'HarnessEval'],
+      ['read', 'HarnessWorkflow'],
+    ],
+  ],
+  [
+    '/harness/workflows',
+    '30-49',
+    [
+      ['read', 'HarnessWorkflow'],
+      ['manage', 'HarnessWorkflow'],
+    ],
+  ],
+  [
+    '/harness/pipeline-policy',
+    '30-49',
+    [
+      ['read', 'PipelinePolicy'],
+      ['manage', 'PipelinePolicy'],
+    ],
+  ],
+  ['/workflow-runs', '30-49', [['read', 'WorkflowRun']]],
+  ['/workflow-studio', '30-49', [['manage', 'WorkflowDefinition']]],
+  ['/workflow-studio/assignments', '30-49', [['manage', 'WorkflowDefinition']]],
+  [
+    '/ai-configuration',
+    '30-49',
+    [
+      ['read', 'AiTaskDefault'],
+      ['read', 'TenantSttConfig'],
+      ['read', 'TenantTtsConfig'],
+      ['read', 'GlobalSetting'],
+    ],
+  ],
+  ['/consultations', '30-49', [['manage', 'Consultation']]],
+  ['/playground/consultation', '50-59', []],
+  ['/playground/live-transcription', '50-59', []],
+  ['/playground/voice-profiles', '50-59', []],
+  ['/playground/dna-writing-style', '50-59', []],
+  ['/playground/llm', '50-59', []],
+  [
+    '/playground/workbench',
+    '50-59',
+    [
+      ['manage', 'WorkflowDefinition'],
+      ['manage', 'WorkflowRun'],
+    ],
+  ],
+];
+
+/** The 9 domains of the ticket's Domain Model, verbatim. */
+const FROZEN_DOMAIN_MEMBERSHIP: ReadonlyArray<readonly [NavDomainId, readonly string[]]> = [
+  ['overview', ['/dashboard', '/monitoring', '/releases']],
+  ['tenancy', ['/tenants', '/tenants/storage', '/entitlements', '/billing', '/tenant-profile', '/departments']],
+  [
+    'ai-platform',
+    [
+      '/ai-models',
+      '/ai-task-defaults',
+      '/ai-services',
+      '/agentic-policy',
+      '/ai-configuration',
+      '/tools-mcp',
+      '/ai-operations/runs',
+      '/ai-operations/metrics',
+      '/ai-operations/consumption',
+      '/ai-operations/reconciliation',
+    ],
+  ],
+  ['knowledge-agents', ['/agents', '/prompt-templates', '/context-schemas', '/knowledge', '/dna-writing-styles']],
+  ['clinical', ['/consultations', '/audio/pipelines', '/audio/transcription-jobs']],
+  [
+    'workflow-harness',
+    [
+      '/harness/policy',
+      '/harness/observability',
+      '/harness/workflows',
+      '/harness/pipeline-policy',
+      '/workflow-runs',
+      '/workflow-studio',
+      '/workflow-studio/assignments',
+    ],
+  ],
+  ['identity-access', ['/users', '/rbac/roles', '/rbac/policies', '/api-keys', '/identity-providers', '/allowed-origins', '/security-policy']],
+  ['platform-ops', ['/queues', '/schedulers', '/audit-logs', '/db-studio', '/rate-limits', '/settings', '/storage']],
+  [
+    'playground',
+    [
+      '/playground/consultation',
+      '/playground/live-transcription',
+      '/playground/voice-profiles',
+      '/playground/dna-writing-style',
+      '/playground/llm',
+      '/playground/workbench',
+    ],
+  ],
+];
+
+describe('TASK-788 AC-2 — the domain axis is purely additive', () => {
+  it('leaves every route string, tier and ability pair exactly where it was', () => {
+    expect(NAV_ENTRIES.map((entry) => [entry.route, entry.tier, entry.required.map(([action, subject]) => [action, subject])])).toEqual(
+      FROZEN_RAIL_ENTRIES.map(([route, tier, required]) => [route, tier, required.map(([action, subject]) => [action, subject])]),
+    );
+  });
+
+  it('keeps the four tier sections and their labels (OD-3 — tier still governs the guards)', () => {
+    expect(NAV_SECTIONS).toEqual([
+      { tier: '10-19', label: 'Platform' },
+      { tier: '20-29', label: 'Administration' },
+      { tier: '30-49', label: 'Tenant' },
+      { tier: '50-59', label: 'Playground' },
+    ]);
+  });
+});
+
+describe('NAV_DOMAINS', () => {
+  it('declares the 9 rail domains in a stable, unique order', () => {
+    expect(NAV_DOMAINS.map((domain) => domain.id)).toEqual(FROZEN_DOMAIN_MEMBERSHIP.map(([id]) => id));
+    expect(new Set(NAV_DOMAINS.map((domain) => domain.order)).size).toBe(NAV_DOMAINS.length);
+    expect([...NAV_DOMAINS].sort((a, b) => a.order - b.order).map((domain) => domain.id)).toEqual(NAV_DOMAINS.map((domain) => domain.id));
+  });
+
+  it('gives every domain a label and a unique icon', () => {
+    for (const domain of NAV_DOMAINS) {
+      expect(domain.label, `${domain.id} is missing a label`).toBeTruthy();
+      expect(domain.icon, `${domain.id} is missing an icon`).toBeDefined();
+    }
+    expect(new Set(NAV_DOMAINS.map((domain) => domain.icon)).size).toBe(NAV_DOMAINS.length);
+  });
+
+  it('assigns every nav entry to a declared domain', () => {
+    const ids = new Set<string>(NAV_DOMAINS.map((domain) => domain.id));
+    for (const entry of NAV_ENTRIES) {
+      expect(entry.domain, `${entry.route} has no domain`).toBeDefined();
+      expect(ids.has(entry.domain), `${entry.route} has an undeclared domain "${entry.domain}"`).toBe(true);
+    }
+  });
+
+  it('gives every declared domain at least one entry', () => {
+    for (const domain of NAV_DOMAINS) {
+      expect(NAV_ENTRIES.filter((entry) => entry.domain === domain.id).length, `domain "${domain.id}" has no entries`).toBeGreaterThanOrEqual(1);
+    }
+  });
+
+  it('partitions the 54 rail routes exactly as the ticket Domain Model does (3·6·10·5·3·7·7·7·6)', () => {
+    for (const [id, routes] of FROZEN_DOMAIN_MEMBERSHIP) {
+      expect(
+        NAV_ENTRIES.filter((entry) => entry.domain === id)
+          .map((entry) => entry.route)
+          .sort(),
+        `domain "${id}" membership drifted`,
+      ).toEqual([...routes].sort());
+    }
+    expect(NAV_ENTRIES).toHaveLength(54);
+  });
+
+  it('keeps domain orthogonal to tier — /ai-configuration is tenant-tier but AI Platform (OD-2)', () => {
+    const aiConfiguration = NAV_ENTRIES.find((entry) => entry.route === '/ai-configuration');
+    expect(aiConfiguration?.tier).toBe('30-49');
+    expect(aiConfiguration?.domain).toBe('ai-platform');
+    // Two domains deliberately span more than one tier; that is the point.
+    const tiersOf = (id: NavDomainId) => new Set(NAV_ENTRIES.filter((entry) => entry.domain === id).map((entry) => entry.tier));
+    expect(tiersOf('ai-platform').size).toBeGreaterThan(1);
+    expect(tiersOf('platform-ops').size).toBeGreaterThan(1);
+  });
+
+  it('separates the storage BROWSER (Platform Ops) from tenant storage CONFIG (Tenancy)', () => {
+    expect(NAV_ENTRIES.find((entry) => entry.route === '/storage')?.domain).toBe('platform-ops');
+    expect(NAV_ENTRIES.find((entry) => entry.route === '/tenants/storage')?.domain).toBe('tenancy');
+  });
+});
+
+describe('USER_MENU_ENTRIES — the two routes that leave the rail', () => {
+  it('removes /developer and /account from the rail', () => {
+    expect(NAV_ENTRIES.some((entry) => entry.route === '/developer')).toBe(false);
+    expect(NAV_ENTRIES.some((entry) => entry.route === '/account')).toBe(false);
+  });
+
+  it('keeps both reachable from the topbar user menu with an unchanged gate (AC-2)', () => {
+    expect(USER_MENU_ENTRIES.map((entry) => entry.route)).toEqual(['/developer', '/account']);
+
+    const developer = USER_MENU_ENTRIES.find((entry) => entry.route === '/developer');
+    expect(developer?.tier).toBe('20-29');
+    expect(developer?.required).toEqual([['read', 'ApiDocumentation']]);
+    expect(developer?.implemented).toBe(true);
+
+    const account = USER_MENU_ENTRIES.find((entry) => entry.route === '/account');
+    expect(account?.tier).toBe('20-29');
+    expect(account?.required).toEqual([]);
+    expect(account?.implemented).toBe(true);
+  });
+
+  it('still resolves both for the breadcrumb (matchNavEntry spans rail + user menu)', () => {
+    expect(matchNavEntry('/developer')?.label).toBe('Developer');
+    expect(matchNavEntry('/account')?.label).toBe('Account');
+  });
+
+  it('gates the developer portal on the dedicated ApiDocumentation subject, not on manage:all', () => {
+    expect(visibleUserMenuEntries([{ action: 'read', subject: 'ApiDocumentation' }]).map((entry) => entry.route)).toEqual(['/developer', '/account']);
+    expect(visibleUserMenuEntries([{ action: 'manage', subject: 'Consultation' }]).map((entry) => entry.route)).toEqual(['/account']);
+    // Permissions still loading: nothing is asserted, exactly as the sidebar does.
+    expect(visibleUserMenuEntries(null)).toEqual([]);
+  });
+});
+
+describe('visibleNavDomains (AC-3)', () => {
+  it('shows a super admin every domain', () => {
+    expect(visibleNavDomains(SUPER_ADMIN_RULES, ['SUPER_ADMIN']).map((domain) => domain.id)).toEqual(NAV_DOMAINS.map((domain) => domain.id));
+  });
+
+  it('derives visibility from the same entry gate the sidebar uses, never a hardcoded list', () => {
+    const visible = visibleNavDomains(TENANT_ADMIN_RULES, ['TENANT_ADMIN']);
+    const expected = NAV_DOMAINS.filter((domain) =>
+      visibleNavEntries(TENANT_ADMIN_RULES, ['TENANT_ADMIN']).some((entry) => entry.domain === domain.id),
+    );
+    expect(visible).toEqual(expected);
+    // A tenant admin holds none of the manage:all platform surfaces.
+    expect(visible.map((domain) => domain.id)).not.toContain('overview');
+  });
+
+  it('hides a domain whose only routes the caller cannot see', () => {
+    const clinicalOnly: PermissionRule[] = [{ action: 'manage', subject: 'Consultation' }];
+    expect(visibleNavDomains(clinicalOnly, ['DOCTOR']).map((domain) => domain.id)).toEqual(['clinical']);
+  });
+
+  it('honours the playground role check, not just the ability gate', () => {
+    const workflowRules: PermissionRule[] = [{ action: 'manage', subject: 'WorkflowDefinition' }];
+    expect(visibleNavDomains(workflowRules, ['DOCTOR']).map((domain) => domain.id)).not.toContain('playground');
+    expect(visibleNavDomains(workflowRules, ['TENANT_ADMIN']).map((domain) => domain.id)).toContain('playground');
+  });
+
+  it('shows nothing while permissions are unknown', () => {
+    expect(visibleNavDomains(null, ['SUPER_ADMIN'])).toEqual([]);
+    expect(visibleNavDomains(undefined)).toEqual([]);
   });
 });

@@ -1,6 +1,7 @@
 'use client';
 
 import { IconLogout, IconUserCircle } from '@tabler/icons-react';
+import Link from 'next/link';
 import { Button } from '@arcaai/ui/components/shadcn/button';
 import {
   DropdownMenu,
@@ -11,8 +12,15 @@ import {
   DropdownMenuTrigger,
 } from '@arcaai/ui/components/shadcn/dropdown-menu';
 import type { SafeSession } from '@/shared/auth/hooks';
+import { usePermissions } from '@/shared/auth/hooks';
+import { visibleUserMenuEntries } from '@/shared/navigation/nav-config';
 
 export function UserMenu({ session }: { session: SafeSession }) {
+  // TASK-788: /developer and /account are personal chrome, not rail domains.
+  // Same ability gate they carried in the sidebar — see USER_MENU_ENTRIES.
+  const { data: rules } = usePermissions();
+  const entries = visibleUserMenuEntries(rules);
+
   async function handleLogout() {
     await fetch('/api/auth/logout', { method: 'POST' });
     // Full navigation so every client cache (queries, zustand) is dropped.
@@ -34,6 +42,18 @@ export function UserMenu({ session }: { session: SafeSession }) {
           </div>
         </DropdownMenuLabel>
         <DropdownMenuSeparator />
+        {entries.map((entry) => {
+          const Icon = entry.icon;
+          return (
+            <DropdownMenuItem key={entry.route} asChild>
+              <Link href={entry.route}>
+                <Icon aria-hidden />
+                {entry.label}
+              </Link>
+            </DropdownMenuItem>
+          );
+        })}
+        {entries.length > 0 ? <DropdownMenuSeparator /> : null}
         <DropdownMenuItem variant="destructive" onSelect={() => void handleLogout()}>
           <IconLogout />
           Log out

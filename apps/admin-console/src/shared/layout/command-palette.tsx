@@ -7,7 +7,7 @@ import { useTheme } from 'next-themes';
 import { CommandDialog, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@arcaai/ui/components/shadcn/command';
 import { Kbd } from '@arcaai/ui/components/shadcn/kbd';
 import { usePermissions } from '@/shared/auth/hooks';
-import { NAV_SECTIONS, visibleNavEntries } from '@/shared/navigation/nav-config';
+import { NAV_SECTIONS, visibleNavEntries, visibleUserMenuEntries } from '@/shared/navigation/nav-config';
 
 /**
  * ⌘K palette (frame 07): jump to any implemented screen the ability grants,
@@ -19,7 +19,10 @@ export function CommandPalette() {
   const router = useRouter();
   const { resolvedTheme, setTheme } = useTheme();
   const { data: rules } = usePermissions();
-  const entries = visibleNavEntries(rules);
+  // TASK-788 Phase A: /developer and /account left NAV_ENTRIES for the user menu,
+  // but they are still screens a user jumps to — keep them searchable here, or the
+  // nav reorganisation silently removes two routes from ⌘K.
+  const entries = [...visibleNavEntries(rules), ...visibleUserMenuEntries(rules)];
 
   useEffect(() => {
     function onKeyDown(event: KeyboardEvent) {
