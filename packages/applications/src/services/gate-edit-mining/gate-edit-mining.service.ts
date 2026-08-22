@@ -17,6 +17,12 @@ import {
   AGENTIC_FEWSHOT_CURATION_MODE_KEY,
   type FewShotCurationMode,
 } from '../settings-registry/descriptors/agentic-fewshot.descriptors';
+import {
+  AGENTIC_FEWSHOT_APPROVED_CLEAN_MAX_RATIO_DEFAULT,
+  AGENTIC_FEWSHOT_APPROVED_CLEAN_MAX_RATIO_KEY,
+  AGENTIC_FEWSHOT_HEAVILY_EDITED_MIN_RATIO_DEFAULT,
+  AGENTIC_FEWSHOT_HEAVILY_EDITED_MIN_RATIO_KEY,
+} from './gate-edit-mining.settings';
 import { EffectiveSettingsService } from '../settings-registry/effective-settings.service';
 import { IPhiRedactor } from './IPhiRedactor';
 
@@ -28,9 +34,22 @@ import { IPhiRedactor } from './IPhiRedactor';
  * written — that is the "imitate this" signal. Above the heavy threshold it was
  * materially reworked. The band between the two is deliberately NOT mined: an
  * ambiguous example teaches the model an ambiguous lesson.
+ *
+ * TASK-792 W5 (M-9): these are now GOVERNED settings resolved per candidate, not
+ * TS literals — they decide a training-label taxonomy, and rule 00 puts a
+ * threshold in config. The values below are the code DEFAULTS the governed read
+ * degrades to; they are numerically identical to the literals they replaced, so
+ * an unconfigured deployment labels exactly as before.
  */
-const APPROVED_CLEAN_MAX_RATIO = 0.05;
-const HEAVILY_EDITED_MIN_RATIO = 0.3;
+interface QualityThresholds {
+  approvedCleanMaxRatio: number;
+  heavilyEditedMinRatio: number;
+}
+
+const DEFAULT_QUALITY_THRESHOLDS: QualityThresholds = {
+  approvedCleanMaxRatio: AGENTIC_FEWSHOT_APPROVED_CLEAN_MAX_RATIO_DEFAULT,
+  heavilyEditedMinRatio: AGENTIC_FEWSHOT_HEAVILY_EDITED_MIN_RATIO_DEFAULT,
+};
 
 /** Retrieval is on the prompt-assembly hot path — never an unbounded scan. */
 const MAX_RETRIEVAL_LIMIT = 5;
@@ -71,6 +90,67 @@ export interface GateEditCorpusExport {
   reviewStatus: 'PENDING_SME_REVIEW';
   count: number;
   candidates: GateEditCorpusCandidate[];
+}
+
+/**
+ * Fine-tuning dataset schema (TASK-792 W4 / C-6).
+ *
+ * Versioned in-band because a training artifact outlives the code that produced
+ * it: a JSONL file found on disk in six months must still say what it is.
+ */
+export const GATE_EDIT_FINETUNE_SCHEMA_VERSION = 'hope.gate-edit.finetune.v1';
+
+/** The non-text signal that makes a training pair interpretable. */
+export interface GateEditFineTuningContext {
+  departmentId: string | null;
+  visitType: string | null;
+  gateDecision: string;
+  qualitySignal: string;
+  editDistance: number | null;
+  editDistanceRatio: number | null;
+  timeToSignSeconds: number | null;
+  modelName: string | null;
+  promptTemplateId: string | null;
+  signedAt: string | null;
+}
+
+/**
+ * One `(original, edited, context)` training triple — the exact shape R7 asks
+ * for. `original` is the AI draft AS DELIVERED; `edited` is what the clinician
+ * actually signed. Both are the PHI-redacted forms; the raw text lives only in
+ * the encrypted WORM/version rows and never reaches this artifact.
+ */
+export interface GateEditFineTuningRecord {
+  exemplarId: string;
+  tenantId: string;
+  consultationId: string;
+  /**
+   * Real clinician behaviour, as opposed to the harness's synthetic golden
+   * fixture. Stated per record so a downstream consumer can never present a
+   * synthetic-derived result as clinical evidence by accident
+   * (`apps/harness/.../golden/sources.py` §OPEN PREREQUISITE).
+   */
+  provenance: 'CLINICIAN_EDIT';
+  /** Which redaction mode produced the text. `full` for retained artifacts. */
+  phiRedaction: 'FULL';
+  original: string;
+  edited: string;
+  context: GateEditFineTuningContext;
+}
+
+/**
+ * A curation-GATED training corpus.
+ *
+ * `reviewStatus` is `SME_APPROVED` rather than the sibling export's
+ * `PENDING_SME_REVIEW`, and that difference is the whole point: this artifact
+ * may only ever contain rows a curator explicitly approved.
+ */
+export interface GateEditFineTuningExport {
+  schemaVersion: typeof GATE_EDIT_FINETUNE_SCHEMA_VERSION;
+  tenantId: string;
+  reviewStatus: 'SME_APPROVED';
+  count: number;
+  records: GateEditFineTuningRecord[];
 }
 
 /**
@@ -163,7 +243,8 @@ export class GateEditMiningService extends BaseService {
         signedAt: candidate.signedAt ?? null,
       });
 
-      const qualitySignal = this.classify(burden.editDistanceRatio);
+      const thresholds = await this.resolveThresholds(candidate.tenantId);
+      const qualitySignal = this.classify(burden.editDistanceRatio, thresholds);
       if (!qualitySignal) {
         // The ambiguous middle band — deliberately not mined.
         return;
@@ -327,6 +408,98 @@ export class GateEditMiningService extends BaseService {
   }
 
   /**
+   * Assemble the PHI-redacted fine-tuning corpus for one tenant (W4 / C-6).
+   *
+   * Deliberately stricter than either sibling consumer:
+   *
+   *  * `retrieveExemplars` honours a default-OFF curation knob, because an
+   *    un-curated few-shot block is a prompt-quality question and is reversible
+   *    on the next request.
+   *  * `exportCorpusCandidates` ships UNREVIEWED proposals on purpose — its job
+   *    is to give a human the triage queue.
+   *  * This one admits ONLY `curationStatus = APPROVED`, unconditionally and
+   *    with no knob. Training bakes the corpus into weights, where an SME's
+   *    absence cannot be retracted after the fact.
+   *
+   * Like `exportCorpusCandidates` a store failure THROWS: this is an explicit
+   * admin request, and a silent `[]` would read as "nothing approved yet" — a
+   * false negative on a governance surface.
+   */
+  async exportFineTuningDataset(params: {
+    tenantId: string;
+    departmentId?: string | null;
+    qualitySignal?: string;
+    limit: number;
+  }): Promise<GateEditFineTuningExport> {
+    const rows = await this.exemplarRepository.findForCorpusExport({
+      tenantId: params.tenantId,
+      departmentId: params.departmentId ?? null,
+      qualitySignal: params.qualitySignal,
+      limit: Math.min(Math.max(params.limit, 0), MAX_EXPORT_LIMIT),
+    });
+
+    const records = (rows ?? [])
+      // Same belt-and-braces tenant re-check as the other two consumers. A
+      // foreign row here would be a cross-tenant PHI leak laundered into model
+      // weights — the least recoverable version of that failure.
+      .filter((row) => row.tenantId === params.tenantId)
+      // The SME gate. Filtered here rather than in the query only because
+      // `findForCorpusExport` has no `curationStatus` predicate yet (an
+      // index-backed one is requested from TASK-790, which owns that layer);
+      // the semantics are identical, the read is merely wider than it needs to be.
+      .filter((row) => row.curationStatus === ExemplarCurationStatus.APPROVED)
+      // A pair missing either half cannot train anything, and reaching past the
+      // redacted columns to fill the gap would defeat the redaction entirely.
+      .filter((row) => !!row.redactedBefore && !!row.redactedAfter)
+      .map((row) => this.toFineTuningRecord(row));
+
+    return {
+      schemaVersion: GATE_EDIT_FINETUNE_SCHEMA_VERSION,
+      tenantId: params.tenantId,
+      reviewStatus: 'SME_APPROVED',
+      count: records.length,
+      records,
+    };
+  }
+
+  /**
+   * Serialise an export to JSONL — the shape every fine-tuning toolchain reads.
+   *
+   * `JSON.stringify` per record is what makes this safe: clinical notes are
+   * multi-line, and an embedded newline would otherwise split one training pair
+   * across two lines and corrupt every record after it. Stringify escapes them
+   * to `\n`, so one record is always exactly one line.
+   */
+  toJsonl(dataset: GateEditFineTuningExport): string {
+    return dataset.records.map((record) => JSON.stringify(record)).join('\n');
+  }
+
+  /** Project one entity into a training record. Explicit — never a spread. */
+  private toFineTuningRecord(row: GateEditExemplarEntity): GateEditFineTuningRecord {
+    return {
+      exemplarId: row.id,
+      tenantId: row.tenantId,
+      consultationId: row.consultationId,
+      provenance: 'CLINICIAN_EDIT',
+      phiRedaction: 'FULL',
+      original: row.redactedBefore as string,
+      edited: row.redactedAfter as string,
+      context: {
+        departmentId: row.departmentId ?? null,
+        visitType: row.visitType ?? null,
+        gateDecision: row.gateDecision,
+        qualitySignal: row.qualitySignal,
+        editDistance: row.editDistance ?? null,
+        editDistanceRatio: row.editDistanceRatio ?? null,
+        timeToSignSeconds: row.timeToSignSeconds ?? null,
+        modelName: row.modelName ?? null,
+        promptTemplateId: row.promptTemplateId ?? null,
+        signedAt: row.createdAt instanceof Date ? row.createdAt.toISOString() : ((row.createdAt as unknown as string) ?? null),
+      },
+    };
+  }
+
+  /**
    * Record a curator's verdict on one mined exemplar (F-24).
    *
    * The counterpart to `exportCorpusCandidates`: export shows a human the
@@ -389,11 +562,70 @@ export class GateEditMiningService extends BaseService {
   }
 
   /** Map an edit ratio onto the learning signal, or null for the ambiguous band. */
-  private classify(ratio: number | null): string | null {
+  private classify(ratio: number | null, thresholds: QualityThresholds): string | null {
     if (ratio === null) return null;
-    if (ratio <= APPROVED_CLEAN_MAX_RATIO) return 'APPROVED_CLEAN';
-    if (ratio >= HEAVILY_EDITED_MIN_RATIO) return 'HEAVILY_EDITED';
+    if (ratio <= thresholds.approvedCleanMaxRatio) return 'APPROVED_CLEAN';
+    if (ratio >= thresholds.heavilyEditedMinRatio) return 'HEAVILY_EDITED';
     return null;
+  }
+
+  /**
+   * The effective quality-signal thresholds for one tenant.
+   *
+   * Degrades to the code defaults on EVERY failure path — an unset key, an
+   * unwired settings service, a backend outage, or a value that fails the
+   * sanity check below. That is the declared `open-to-default` failure mode:
+   * these are tuning knobs, and the safe direction is "label exactly as this
+   * deployment did before", never "stop mining" or "relabel the corpus".
+   *
+   * The sanity check is not defensive padding. An INVERTED band
+   * (`clean >= heavy`) makes every ratio satisfy both arms, so whichever branch
+   * is tested first wins and the entire corpus is silently relabelled — a
+   * mislabelled training set is far worse than an unconfigured one. A
+   * non-numeric or out-of-[0,1] value is rejected for the same reason.
+   */
+  private async resolveThresholds(tenantId: string): Promise<QualityThresholds> {
+    if (!this.effectiveSettings) return DEFAULT_QUALITY_THRESHOLDS;
+    try {
+      const [clean, heavy] = await Promise.all([
+        this.readRatio(AGENTIC_FEWSHOT_APPROVED_CLEAN_MAX_RATIO_KEY, tenantId),
+        this.readRatio(AGENTIC_FEWSHOT_HEAVILY_EDITED_MIN_RATIO_KEY, tenantId),
+      ]);
+
+      const approvedCleanMaxRatio = clean ?? DEFAULT_QUALITY_THRESHOLDS.approvedCleanMaxRatio;
+      const heavilyEditedMinRatio = heavy ?? DEFAULT_QUALITY_THRESHOLDS.heavilyEditedMinRatio;
+
+      if (approvedCleanMaxRatio >= heavilyEditedMinRatio) {
+        this.logger.warn({
+          message: 'Gate-edit quality thresholds are inverted (approvedCleanMaxRatio >= heavilyEditedMinRatio) — falling back to the code defaults',
+          tenantId,
+          approvedCleanMaxRatio,
+          heavilyEditedMinRatio,
+        });
+        return DEFAULT_QUALITY_THRESHOLDS;
+      }
+
+      return { approvedCleanMaxRatio, heavilyEditedMinRatio };
+    } catch (error) {
+      this.logger.warn({
+        message: 'Gate-edit quality-threshold lookup failed — falling back to the code defaults',
+        tenantId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return DEFAULT_QUALITY_THRESHOLDS;
+    }
+  }
+
+  /** One governed ratio in [0,1], or null when unset/unusable. */
+  private async readRatio(key: string, tenantId: string): Promise<number | null> {
+    try {
+      const resolved = await this.effectiveSettings!.resolveEffective(key, { tenantId });
+      const value = typeof resolved.value === 'string' ? Number(resolved.value) : resolved.value;
+      if (typeof value !== 'number' || !Number.isFinite(value) || value < 0 || value > 1) return null;
+      return value;
+    } catch {
+      return null;
+    }
   }
 
   /**

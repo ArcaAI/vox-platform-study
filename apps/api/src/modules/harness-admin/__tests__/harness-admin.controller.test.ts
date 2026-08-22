@@ -66,9 +66,24 @@ function makeController(ctx: Ctx) {
       curationStatus: 'APPROVED',
       previousStatus: 'PENDING',
     }),
+    // TASK-792 W4: the JSONL fine-tuning export. Declared here (not assigned
+    // onto the object at the call site) so the mock's inferred type carries
+    // them and `tsc --noEmit` stays clean.
+    exportFineTuningDataset: vi.fn().mockResolvedValue({
+      schemaVersion: 'hope.gate-edit.finetune.v1',
+      tenantId: 'tenant-1',
+      reviewStatus: 'SME_APPROVED',
+      count: 0,
+      records: [],
+    }),
+    toJsonl: vi.fn().mockReturnValue(''),
   };
   const evalRunService = {
     runGoldenSet: vi.fn().mockResolvedValue({ id: 'run-1' }),
+  };
+  // TASK-792 W3 — backs `POST gate-edit-exemplars/:id/promote-to-golden-set`.
+  const goldenCasePromotionService = {
+    promoteExemplarToGoldenCase: vi.fn().mockResolvedValue({ id: 'gc-1', label: 'CLINICIAN_DERIVED_PENDING_SME:ex-1' }),
   };
   const controller = new HarnessAdminController(
     policyService as never,
@@ -79,6 +94,7 @@ function makeController(ctx: Ctx) {
     evalService as never,
     gateEditMiningService as never,
     evalRunService as never,
+    goldenCasePromotionService as never,
   );
   return {
     controller,
@@ -88,6 +104,7 @@ function makeController(ctx: Ctx) {
     liveDocumentationService,
     evalService,
     gateEditMiningService,
+    goldenCasePromotionService,
     evalRunService,
   };
 }
@@ -556,5 +573,48 @@ describe('HarnessAdminController — gate-edit exemplar curation', () => {
     await controller.curateGateEditExemplar('ex-1', { status: 'REJECTED' } as never, {});
 
     expect(gateEditMiningService.curateExemplar).toHaveBeenCalledWith(expect.objectContaining({ tenantId: 'tenant-1', status: 'REJECTED' }));
+  });
+});
+
+/**
+ * TASK-792 W3 + W4 — the two routes that close the feedback loop's tail.
+ *
+ * Both are thin: the service owns the rules (curation gate, fail-closed
+ * redaction, tenant checks) and is unit-tested there. What the CONTROLLER must
+ * get right is that it does not leak clinical text into a response, and that it
+ * scopes to the resolved tenant rather than a caller-supplied one.
+ */
+describe('HarnessAdminController — gate-edit loop tail (TASK-792)', () => {
+  it('promote-to-golden-set returns ids + provenance only, never note text', async () => {
+    const { controller, goldenCasePromotionService } = makeController({ user: TENANT_ADMIN('tenant-1'), tenantId: 'tenant-1' });
+
+    const result = await controller.promoteExemplarToGoldenSet('ex-1', { goldenSetId: 'gs-1' } as never, {});
+
+    expect(goldenCasePromotionService.promoteExemplarToGoldenCase).toHaveBeenCalledWith(
+      expect.objectContaining({ exemplarId: 'ex-1', goldenSetId: 'gs-1' }),
+    );
+    expect(result).toEqual({ goldenCaseId: 'gc-1', goldenSetId: 'gs-1', label: 'CLINICIAN_DERIVED_PENDING_SME:ex-1' });
+    // No transcript / referenceNote / redacted* key may appear in the response.
+    expect(Object.keys(result)).toEqual(['goldenCaseId', 'goldenSetId', 'label']);
+  });
+
+  it('fine-tuning export serialises the dataset to JSONL', async () => {
+    const { controller, gateEditMiningService } = makeController({ user: TENANT_ADMIN('tenant-1'), tenantId: 'tenant-1' });
+    gateEditMiningService.exportFineTuningDataset.mockResolvedValue({
+      schemaVersion: 'hope.gate-edit.finetune.v1',
+      tenantId: 'tenant-1',
+      reviewStatus: 'SME_APPROVED',
+      count: 1,
+      records: [{ exemplarId: 'ex-1' }],
+    });
+    gateEditMiningService.toJsonl.mockReturnValue('{"exemplarId":"ex-1"}');
+
+    const body = await controller.exportGateEditFineTuningDataset({});
+
+    expect(gateEditMiningService.exportFineTuningDataset).toHaveBeenCalledWith(
+      // An omitted limit must never become an unbounded read of clinical text.
+      expect.objectContaining({ tenantId: 'tenant-1', limit: 100 }),
+    );
+    expect(body).toBe('{"exemplarId":"ex-1"}');
   });
 });
