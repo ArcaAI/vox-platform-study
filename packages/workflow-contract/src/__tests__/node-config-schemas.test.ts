@@ -44,6 +44,25 @@ describe('NODE_CONFIG_SCHEMAS', () => {
   });
 });
 
+describe('guardrail.check onFail (TASK-791 W4 — M-1)', () => {
+  // The interpreter has NO mechanism for a per-node CONFIG value to override a CODE-OWNED
+  // registry property: `critical` lives on `NODE_REGISTRY` and `NodeActivityResult.status` is
+  // `Literal['SUCCEEDED','DEGRADED','SKIPPED']` — there is no `FAILED` an activity can return,
+  // and only the workflow body promotes a degraded CRITICAL node to a run-level failure.
+  // `guardrail.check` is `critical: false`. So a tenant authoring `onFail: 'abort'` got SILENT
+  // NON-ENFORCEMENT: the value validated, was recorded, and changed nothing.
+  //
+  // Of the two acceptable fixes — enforce it, or reject it at compile time — only the second is
+  // available to the shipped v1 interpreter. Rejecting at authoring time is also the safer half:
+  // a tenant who asks for "abort" and silently gets "mark" believes they have a hard gate they
+  // do not have. `failOn` already set this precedent (restricted to its one v1-permitted value).
+  it('does not offer `abort`, which the v1 interpreter cannot enforce', () => {
+    const schema = NODE_CONFIG_SCHEMAS['guardrail.check'];
+    const onFail = schema.properties?.onFail as { enum?: string[] } | undefined;
+    expect(onFail?.enum).toEqual(['mark']);
+  });
+});
+
 describe('WORKFLOW_NODE_REGISTRY.configSchema wiring', () => {
   it('attaches the real schema to a summarization node type', () => {
     const schema = WORKFLOW_NODE_REGISTRY['generate.text'].configSchema;
