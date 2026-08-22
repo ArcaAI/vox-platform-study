@@ -172,6 +172,14 @@ export function harnessAssuranceStreamPath(consultationId: string): string {
   return consultationPath(consultationId, 'harness-assurance/stream');
 }
 
+/**
+ * Scope `consultation_loop:<id>` — the agentic loop plane's append-only feed
+ * (`LoopEventDto`). Carries kind/label/ids only, never PHI.
+ */
+export function loopStreamPath(consultationId: string): string {
+  return consultationPath(consultationId, 'loop/stream');
+}
+
 /** Scope `consultation_job:<jobId>` (default `message` events, UPPERCASE states). */
 export function consultationJobStreamPath(jobId: string): string {
   return `${BASE}/jobs/${encodeURIComponent(jobId)}/stream`;
