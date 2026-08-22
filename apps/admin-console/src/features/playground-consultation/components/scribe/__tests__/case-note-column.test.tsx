@@ -244,3 +244,27 @@ describe('CaseNoteColumn — async generation progress', () => {
     expect(screen.queryByRole('button', { name: /cancel generation/i })).toBeNull();
   });
 });
+
+/**
+ * W4 / R3 — the realtime-summary feed. TASK-791's event carries progress
+ * metadata and NO text, so the UI must show progress and must not imply a
+ * body it does not have.
+ */
+describe('CaseNoteColumn — loop activity (realtime summaries)', () => {
+  const feed = [
+    { kind: 'summary.interim', kindKey: 'soap.subjective', ordinal: 1, total: 4, chars: 210, publishedAt: 'a' },
+    { kind: 'summary.interim', kindKey: 'soap.objective', ordinal: 2, total: 4, chars: 88, publishedAt: 'b' },
+  ];
+
+  it('renders interim-summary progress from metadata', () => {
+    render(<CaseNoteColumn {...baseProps({ draft: null, isRecording: true, loopActivity: feed })} />);
+    expect(screen.getByText(/assistant activity/i)).toBeTruthy();
+    expect(screen.getByText(/soap.objective/i)).toBeTruthy();
+    expect(screen.getByText(/2 of 4/i)).toBeTruthy();
+  });
+
+  it('renders nothing when the loop has produced no events', () => {
+    render(<CaseNoteColumn {...baseProps({ draft: null, loopActivity: [] })} />);
+    expect(screen.queryByText(/assistant activity/i)).toBeNull();
+  });
+});

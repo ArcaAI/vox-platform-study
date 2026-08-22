@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEventStream, type StreamStatus } from '@/shared/streams';
+import { foldLoopActivity, type LoopActivityEntry, type LoopEvent } from '../hooks/use-loop-activity';
 import {
   approveSummary,
   cancelConsultationJob,
@@ -17,6 +18,7 @@ import {
   harnessProgressStreamPath,
   listAudioPipelines,
   listDnaStyleOptions,
+  loopStreamPath,
   listScopingDepartments,
   startRecording,
   stopRecording,
@@ -257,6 +259,37 @@ export function useHarnessAssuranceStream(consultationId: string | null, enabled
     accept: (parsed) => Array.isArray(parsed.claims),
     eventNames: ['assurance_complete'],
   });
+}
+
+/**
+ * W4 — the agentic loop plane's live feed. APPEND-ONLY, unlike the snapshot
+ * streams above: `LoopEventDto` messages are self-contained with no fold and
+ * no late-join replay, so events are accumulated rather than replaced.
+ */
+export function useConsultationLoopStream(consultationId: string | null, enabled = true) {
+  const [feed, setFeed] = useState<LoopActivityEntry[]>([]);
+
+  // Render-time derived-state reset: a new consultation starts a new feed.
+  const [trackedId, setTrackedId] = useState(consultationId);
+  if (consultationId !== trackedId) {
+    setTrackedId(consultationId);
+    setFeed([]);
+  }
+
+  const handleEvent = useCallback((_type: string, data: string) => {
+    const parsed = parseJson<LoopEvent>(data);
+    if (!parsed?.kind) return;
+    setFeed((current) => foldLoopActivity(current, parsed));
+  }, []);
+
+  const stream = useEventStream({
+    path: consultationId ? loopStreamPath(consultationId) : null,
+    scope: consultationId ? `consultation_loop:${consultationId}` : null,
+    onEvent: handleEvent,
+    enabled: enabled && !!consultationId,
+  });
+
+  return { feed, status: stream.status, error: stream.error };
 }
 
 // ─── Async summary job progress (the useDnaJobProgress pattern) ───

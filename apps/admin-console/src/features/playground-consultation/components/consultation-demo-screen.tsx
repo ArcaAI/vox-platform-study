@@ -40,6 +40,7 @@ import {
   useApproveSummary,
   useAudioPipelines,
   useCancelConsultationJob,
+  useConsultationLoopStream,
   useDnaStyleOptions,
   useGenerateSummaryAsync,
   useHarnessAssuranceStream,
@@ -252,6 +253,8 @@ function ScribeWorkspace() {
   const draft = useLatestSummary(consultationId, !!consultationId);
   const progress = useHarnessProgressStream(consultationId, !!consultationId);
   const assurance = useHarnessAssuranceStream(consultationId, !!consultationId);
+  // W4 — the agentic loop's live activity feed (realtime summaries etc).
+  const loop = useConsultationLoopStream(consultationId, !!consultationId);
 
   // the evidence panel + its transcript-review highlight
   // only apply once a persisted draft exists (the reviewable artifact); both
@@ -569,6 +572,7 @@ function ScribeWorkspace() {
               selectedCitationId={selectedCitationId}
               onSelectCitation={(segment) => setSelectedCitationId(segment.id)}
               editor={noteEditor}
+              loopActivity={loop.feed}
             />
           </ResizablePanel>
         </ResizablePanelGroup>

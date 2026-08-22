@@ -40,6 +40,7 @@ import { Spinner } from '@arcaai/ui/components/shadcn/spinner';
 import { Textarea } from '@arcaai/ui/components/shadcn/textarea';
 import { cn } from '@arcaai/ui';
 import { EmptyState } from '@/shared/state/empty-state';
+import type { LoopActivityEntry } from '../../hooks/use-loop-activity';
 import type { UseNoteEditorResult } from '../../hooks/use-note-editor';
 import {
   claimVerdictBucket,
@@ -216,6 +217,13 @@ export interface CaseNoteColumnProps {
    * before, so every other caller of this column is unaffected.
    */
   editor?: UseNoteEditorResult;
+  /**
+   * W4/R3 — the agentic loop's live activity (`consultation.realtimeSummary`
+   * and friends). PROGRESS ONLY: TASK-791's `summary.interim` event carries
+   * `{ kindKey, ordinal, total, chars }` and deliberately no text, so this
+   * renders what the assistant is working on, never a synthesised body.
+   */
+  loopActivity?: readonly LoopActivityEntry[];
 }
 
 export function CaseNoteColumn(props: CaseNoteColumnProps) {
@@ -239,6 +247,7 @@ export function CaseNoteColumn(props: CaseNoteColumnProps) {
     selectedCitationId = null,
     onSelectCitation,
     editor,
+    loopActivity = [],
   } = props;
   const [overrideSafety, setOverrideSafety] = useState(false);
   const noteFieldId = useId();
@@ -439,6 +448,33 @@ export function CaseNoteColumn(props: CaseNoteColumnProps) {
             }
           />
         )}
+
+        {loopActivity.length > 0 ? (
+          <div className="border-t pt-3" aria-label="Assistant activity">
+            <div className="text-muted-foreground mb-1.5 flex items-center gap-1.5 text-xs font-medium">
+              Assistant activity
+              <span className="bg-ai/10 text-ai rounded px-1 text-xs font-medium">AI</span>
+            </div>
+            <ul className="flex list-none flex-col gap-1" aria-live="polite">
+              {loopActivity.slice(-5).map((entry, index) => (
+                <li key={`${entry.publishedAt}-${index}`} className="flex flex-wrap items-center gap-2 text-xs">
+                  <span className="text-muted-foreground font-mono">{entry.kindKey ?? entry.kind}</span>
+                  {entry.label ? <span className="truncate">{entry.label}</span> : null}
+                  {entry.ordinal != null && entry.total != null ? (
+                    <span className="text-muted-foreground tabular-nums">
+                      {entry.ordinal} of {entry.total}
+                    </span>
+                  ) : null}
+                  {entry.chars != null ? <span className="text-muted-foreground tabular-nums">{entry.chars} chars</span> : null}
+                </li>
+              ))}
+            </ul>
+            {/* The interim TEXT is not on the wire (TASK-791 W5, blocked on a
+                TASK-790 column). Say so rather than implying the note below is
+                what the assistant just produced. */}
+            <p className="text-muted-foreground mt-1.5 text-xs">Interim text is not yet available on this feed — progress only.</p>
+          </div>
+        ) : null}
 
         {vitals.length > 0 ? (
           <div className="border-t pt-3" aria-label="Extracted vitals">
