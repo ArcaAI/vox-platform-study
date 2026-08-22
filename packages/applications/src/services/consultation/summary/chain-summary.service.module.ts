@@ -10,6 +10,7 @@ import { HarnessPolicyServiceModule } from '../../harness-policy/harness-policy.
 import { ConfigResolverModule } from '../../config-resolver';
 import { UsageLedgerServiceModule } from '../../usageLedger/usage-ledger.service.module';
 import { NoteGenerationServiceModule } from '../note-generation/note-generation.service.module';
+import { GateEditMiningServiceModule } from '../../gate-edit-mining/gate-edit-mining.service.module';
 
 @Module({
   // HarnessPolicyServiceModule supplies the TEXT-selection resolver.
@@ -28,6 +29,9 @@ import { NoteGenerationServiceModule } from '../note-generation/note-generation.
     // TASK-704 seam — always resolves to 'legacy' for this trigger (no
     // harness equivalent); logging-only, never short-circuits generation.
     NoteGenerationServiceModule,
+    // TASK-792 W2 — supplies `IGateEditExemplarRetriever` for the
+    // `PromptAssemblyService` provided below; absent ⇒ silent zero-shot.
+    GateEditMiningServiceModule,
   ],
   providers: [PromptAssemblyService, ChainSummaryService],
   exports: [ChainSummaryService],

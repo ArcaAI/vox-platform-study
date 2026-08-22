@@ -439,7 +439,12 @@ export class PromptAssemblyService {
 
     if (snippets.length === 0) return '';
 
-    const version = fingerprintExemplarSet(snippets.join(' '));
+    // NUL joiner: a separator that cannot occur inside a note, so two different
+    // exemplar SETS can never fingerprint identically by concatenation.
+    // Written as the ESCAPE, never a literal NUL byte — a raw NUL makes this
+    // whole file `binary` to grep/ripgrep, which silently drops it from every
+    // tree-wide search and hides the few-shot code from anyone auditing it.
+    const version = fingerprintExemplarSet(snippets.join('\u0000'));
 
     // The framing header is platform-authored guidance (stays outside the
     // delimiters); the OTHER-patients note text is DATA, wrapped in the same

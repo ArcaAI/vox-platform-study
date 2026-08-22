@@ -72,6 +72,7 @@ import { generateJsonWithRepair, looksLikeJsonObject, parsesAsJsonObject, type J
 import { IAiTaskDefaultService } from '../../ai-task-default/IAiTaskDefaultService';
 import { INoteGenerationService, GenerationTrigger } from '../note-generation';
 import { IPhiRedactor } from '../../gate-edit-mining/IPhiRedactor';
+import { IGateEditMiningQueue } from '../../gate-edit-mining/IGateEditMiningQueue';
 
 /**
  * the AD-1 GenerationStats headline fields the summary
@@ -275,6 +276,15 @@ export class SummaryService extends BaseService implements ISummaryService {
     // `jobs/processors/ner.processor.ts`, which TASK-732 deleted, leaving this
     // synchronous path posting `contextItem.content` raw (finding A-02).
     @Inject(IPhiRedactor) private readonly phiRedactor?: IPhiRedactor,
+    // TASK-792 W1 — the gate-edit learning loop's enqueue seam.
+    //
+    // `@Optional()` and TRAILING, deliberately, for the reason the port itself
+    // documents: this is the clinician SIGN-OFF path. A deployment with no
+    // miner wired must simply not mine — it must never fail, delay, or roll
+    // back a signature. Absent ⇒ byte-identical behaviour to before this
+    // ticket. Trailing also keeps every existing positional
+    // `new SummaryService(...)` fixture compiling untouched.
+    @Optional() @Inject(IGateEditMiningQueue) private readonly gateEditMiningQueue?: IGateEditMiningQueue,
   ) {
     super(eventEmitter, clsService, ResourceType.ContextItem);
     this.textServiceUrl = this.configService.get<string>('TEXT_URL') ?? 'http://localhost:8862';
@@ -1222,6 +1232,40 @@ export class SummaryService extends BaseService implements ISummaryService {
     } catch (error) {
       this.logger.warn({
         message: 'Harness approval signal failed (best-effort, sign-off not rolled back)',
+        consultationId: contextItem.consultationId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+
+    // 5. TASK-792 W1 — hand the sign-off to the gate-edit learning loop.
+    //
+    //    This is the ONLY live writer of `GateEditExemplar`: the miner compares
+    //    the immutable `ai_draft_v1` snapshot against the note the clinician
+    //    actually signed, and stores the PHI-REDACTED pair as a training /
+    //    few-shot exemplar. Both halves of that comparison already exist here —
+    //    this call is what stops them being discarded.
+    //
+    //    Deliberately LAST, deliberately best-effort, and deliberately AFTER the
+    //    sign-off has committed:
+    //      * it must never fail a signature (mirrors the harness signal above),
+    //      * it must never delay one — `enqueue` only adds a BullMQ job; the
+    //        comparison, redaction and persistence all happen in the worker,
+    //      * and it cannot alter consultation status, so R6's single-writer
+    //        property is untouched. Nothing on this path can reach SIGNED.
+    try {
+      await this.gateEditMiningQueue?.enqueue({
+        tenantId,
+        consultationId: contextItem.consultationId,
+        contextItemId,
+        // A clinician sign-off, not a harness gate verdict. 'SIGNED' is a
+        // CLEAN_DECISIONS token in `edit-burden.ts`, so a clean signature is
+        // never miscounted as a deferral.
+        gateDecision: 'SIGNED',
+        signedAt: attestedAt.toISOString(),
+      });
+    } catch (error) {
+      this.logger.warn({
+        message: 'Gate-edit mining enqueue failed (best-effort, sign-off not rolled back)',
         consultationId: contextItem.consultationId,
         error: error instanceof Error ? error.message : String(error),
       });

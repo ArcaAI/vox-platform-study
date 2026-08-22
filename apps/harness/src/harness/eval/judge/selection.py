@@ -98,34 +98,53 @@ class JudgeSelection:
     tier: str
 
 
+@dataclass(frozen=True)
+class RawSelection:
+    """A resolved `AiTaskDefault` row, provider kept as the RAW `AiModel.provider` string.
+
+    The judge path maps this onto a :class:`JudgeProvider` transport; the SAFETY
+    path (``harness.eval.safety_selection``) needs the raw name instead, because
+    ``SafetyGuardConfig`` selects its engine BY NAME and the mapping is lossy
+    (``lm-studio`` and ``openai_compat`` both collapse to ``OPENAI_COMPAT``).
+    """
+
+    provider: str
+    model: str
+    model_slug: str
+    #: "tenant" or "system" — which tier answered. Reported, never inferred.
+    tier: str
+
+
 def _asyncpg_dsn(raw: str) -> str:
     """Strip a Prisma-style query string; asyncpg rejects `?schema=`/`?pgbouncer=`."""
     parts = urlsplit(raw)
     return urlunsplit((parts.scheme, parts.netloc, parts.path, "", ""))
 
 
-async def resolve_eval_judge_selection(
+async def resolve_eval_selection(
     *,
+    task_key: str,
     tenant_id: str | None = None,
-    task_key: str = EVAL_JUDGE_TASK_KEY,
     dsn: str | None = None,
-) -> JudgeSelection:
-    """Resolve the judge SELECTION from the database, tenant -> SYSTEM, fail closed.
+) -> RawSelection:
+    """Resolve any eval-tool `AiTaskDefault` SELECTION from the database, fail closed.
 
-    Parameters
-    ----------
-    tenant_id:
-        Optional request tenant. ``None`` (the eval gate's normal case) resolves the
-        SYSTEM tier ONLY — never a customer tenant.
-    dsn:
-        Override for ``DATABASE_URL`` (tests).
+    The shared engine behind :func:`resolve_eval_judge_selection` (``harness.judge``)
+    and :func:`harness.eval.safety_selection.resolve_eval_safety_selection`
+    (``guardrail.safety``). Extracted so a second offline eval consumer cannot
+    drift from the judge's resolution order, failure posture, or DSN handling by
+    reimplementing them.
+
+    **Resolution order is tenant -> SYSTEM, two tiers, no third.** A caller with no
+    request tenant resolves SYSTEM only and must never widen to a customer tenant.
 
     Raises
     ------
     JudgeSelectionUnavailable
-        When ``DATABASE_URL`` is unset, the database is unreachable, the task default
-        is absent/disabled, or its model row is absent/disabled/unknown-provider.
+        When ``DATABASE_URL`` is unset, the database is unreachable, the task
+        default is absent/disabled, or its model row is absent/disabled/empty.
     """
+
     resolved_dsn = dsn or os.environ.get("DATABASE_URL", "")
     if not resolved_dsn:
         raise JudgeSelectionUnavailable(
@@ -160,11 +179,10 @@ async def resolve_eval_judge_selection(
             if row is None:
                 continue
             provider_key = str(row["provider"] or "").strip()
-            provider = _PROVIDER_MAP.get(provider_key)
-            if provider is None:
+            if not provider_key:
                 raise JudgeSelectionUnavailable(
-                    f"{task_key} resolves to AiModel provider {provider_key!r}, which no "
-                    f"judge transport serves (known: {sorted(_PROVIDER_MAP)})."
+                    f"{task_key} resolves to model slug {row['model_slug']!r} with an empty "
+                    "provider; there is no engine to select."
                 )
             model = str(row["model_id"] or "").strip()
             if not model:
@@ -172,18 +190,18 @@ async def resolve_eval_judge_selection(
                     f"{task_key} resolves to model slug {row['model_slug']!r} with an empty "
                     "sourceUri; there is no model id to select."
                 )
-            selection = JudgeSelection(
-                provider=provider,
+            selection = RawSelection(
+                provider=provider_key,
                 model=model,
                 model_slug=str(row["model_slug"]),
                 tier=tier,
             )
             logger.info(
-                "harness.eval.judge_selection_resolved",
+                "harness.eval.selection_resolved",
                 task_key=task_key,
                 tier=tier,
                 model_slug=selection.model_slug,
-                provider=str(provider),
+                provider=provider_key,
                 model=model,
             )
             return selection
@@ -233,3 +251,43 @@ def _cli() -> int:  # pragma: no cover - thin shell adapter
 
 if __name__ == "__main__":  # pragma: no cover
     raise SystemExit(_cli())
+
+
+async def resolve_eval_judge_selection(
+    *,
+    tenant_id: str | None = None,
+    task_key: str = EVAL_JUDGE_TASK_KEY,
+    dsn: str | None = None,
+) -> JudgeSelection:
+    """Resolve the LLM-as-judge SELECTION, tenant -> SYSTEM, fail closed.
+
+    Thin mapping over :func:`resolve_eval_selection`: the DB read is shared, and
+    only the provider -> transport mapping is judge-specific.
+
+    Parameters
+    ----------
+    tenant_id:
+        Optional request tenant. ``None`` (the eval gate's normal case) resolves the
+        SYSTEM tier ONLY — never a customer tenant.
+    dsn:
+        Override for ``DATABASE_URL`` (tests).
+
+    Raises
+    ------
+    JudgeSelectionUnavailable
+        When ``DATABASE_URL`` is unset, the database is unreachable, the task default
+        is absent/disabled, or its model row is absent/disabled/unknown-provider.
+    """
+    raw = await resolve_eval_selection(task_key=task_key, tenant_id=tenant_id, dsn=dsn)
+    provider = _PROVIDER_MAP.get(raw.provider)
+    if provider is None:
+        raise JudgeSelectionUnavailable(
+            f"{task_key} resolves to AiModel provider {raw.provider!r}, which no "
+            f"judge transport serves (known: {sorted(_PROVIDER_MAP)})."
+        )
+    return JudgeSelection(
+        provider=provider,
+        model=raw.model,
+        model_slug=raw.model_slug,
+        tier=raw.tier,
+    )

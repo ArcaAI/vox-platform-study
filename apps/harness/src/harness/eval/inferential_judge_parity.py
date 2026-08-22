@@ -46,6 +46,7 @@ from harness.eval.inferential_corpus_eval import build_inferential_context
 from harness.eval.judge.base import JudgeClient
 from harness.eval.judge.providers import build_judge_client
 from harness.eval.models import GoldenCase, GoldenSet
+from harness.eval.safety_selection import resolve_eval_safety_config
 from harness.sensors.config import SensorThresholds
 from harness.sensors.inferential import GraniteGroundednessJudge, GroundednessSensor
 from harness.sensors.inferential.groundedness import _claim_ref
@@ -238,7 +239,10 @@ async def run_parity(
 ) -> dict[str, Any]:
     """Score every case with the incumbent + R-8a candidate judges; return the report."""
     incumbent = build_judge_client(get_runtime_judge_config())
-    candidate = GraniteGroundednessJudge(get_settings().safety)
+    # TASK-791 W7 / TASK-792: DB-resolved guardian selection (tenant -> SYSTEM),
+    # fail-closed. See `harness.eval.safety_selection` for why the literals in
+    # SafetyGuardConfig must not be relied on here.
+    candidate = GraniteGroundednessJudge(await resolve_eval_safety_config(get_settings().safety))
 
     cases = golden_set.cases if limit is None else golden_set.cases[:limit]
     results: list[ParityCaseResult] = []

@@ -17,6 +17,7 @@ import { UsageLedgerServiceModule } from '../../usageLedger/usage-ledger.service
 import { BillingServiceModule } from '../../billing/billing.service.module';
 import { NoteGenerationServiceModule } from '../note-generation/note-generation.service.module';
 import { PhiRedactionServiceModule } from '../../phi-redaction/phi-redaction.service.module';
+import { GateEditMiningServiceModule } from '../../gate-edit-mining/gate-edit-mining.service.module';
 
 @Module({
   // HarnessAuditServiceModule supplies the WORM audit trail
@@ -58,6 +59,13 @@ import { PhiRedactionServiceModule } from '../../phi-redaction/phi-redaction.ser
     // fails module initialization loudly rather than silently leaking raw PHI
     // (the failure mode TASK-732's deletion of `ner.processor.ts` re-opened).
     PhiRedactionServiceModule,
+    // TASK-792 W1+W2 — BOTH halves of the gate-edit learning loop.
+    // WRITE: supplies `IGateEditMiningQueue` so `approveSummary` can hand the
+    // clinician's sign-off to the miner. READ: supplies
+    // `IGateEditExemplarRetriever`, which the `PromptAssemblyService` provided
+    // BELOW injects with `@Optional()` — without this import that resolves to
+    // `undefined` and few-shot silently degrades to zero-shot.
+    GateEditMiningServiceModule,
   ],
   providers: [
     PromptAssemblyService,
