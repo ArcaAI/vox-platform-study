@@ -49,6 +49,11 @@ with workflow.unsafe.imports_passed_through():
         interpreter_consultation_finalize_assurance,
         interpreter_consultation_persist_draft,
     )
+    from harness.temporal.interpreter.nodes.consultation_realtime import (
+        interpreter_consultation_propose_corrections,
+        interpreter_consultation_realtime_summary,
+        interpreter_consultation_suggestions,
+    )
     from harness.temporal.interpreter.nodes.consultation_verify import (
         interpreter_consultation_inferential_sensors,
         interpreter_consultation_sensors,
@@ -407,5 +412,47 @@ NODE_REGISTRY: dict[str, NodeSpec] = {
         external_write=True,
         default_timeout_seconds=60,
         default_max_attempts=1,
+    ),
+    # R3's three missing capabilities (TASK-791 W1-W3). TASK-789 verified none of them had a
+    # node, activity or sensor anywhere. Mirrors node-registry.ts's matching three entries and
+    # the committed parity fixture exactly.
+    #
+    # `realtimeSummary` is `external_write=True` because it PUBLISHES to the live consultation
+    # feed; that also makes the interpreter's sandbox suppression correct for free — a sandbox
+    # run must not push interim summaries into a real consultation's UI.
+    #
+    # `suggestions` and `proposeCorrections` are `external_write=False` on purpose: both are
+    # PROPOSAL surfaces that return their output and write nothing. `proposeCorrections` in
+    # particular must never be the thing that edits clinical text — see
+    # nodes/consultation_realtime.py's module docstring.
+    #
+    # None is `critical`: CR-14 makes only consentGate/hitlGate critical, and a suggestion or a
+    # spelling proposal failing must never fail a consultation that is otherwise producing a note.
+    "consultation.realtimeSummary": NodeSpec(
+        key="consultation.realtimeSummary",
+        implemented=True,
+        activity=interpreter_consultation_realtime_summary,
+        critical=False,
+        external_write=True,
+        default_timeout_seconds=150,
+        default_max_attempts=2,
+    ),
+    "consultation.suggestions": NodeSpec(
+        key="consultation.suggestions",
+        implemented=True,
+        activity=interpreter_consultation_suggestions,
+        critical=False,
+        external_write=False,
+        default_timeout_seconds=150,
+        default_max_attempts=2,
+    ),
+    "consultation.proposeCorrections": NodeSpec(
+        key="consultation.proposeCorrections",
+        implemented=True,
+        activity=interpreter_consultation_propose_corrections,
+        critical=False,
+        external_write=False,
+        default_timeout_seconds=150,
+        default_max_attempts=2,
     ),
 }
