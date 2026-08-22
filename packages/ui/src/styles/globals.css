@@ -11,170 +11,200 @@
 @custom-variant dark (&:is(.dark *));
 
 /* ============================================================================
- * HOPE Design System — "Calm Clinical Teal" (tokens, adopted via
- *). Single token source for @arcaai/ui. CSS variable NAMES are
- * kept stable so existing consumers don't break; only VALUES changed
- * (green→teal), plus added HOPE roles (--ai/--hope/--success/--warning/--info).
- * later in this file. The rainbow --color-1..5 tokens (magicui) are preserved.
+ * HOPE Design System — Sarvam "Tatva" achromatic identity (TASK-787, OD-1).
+ * Single token source for @arcaai/ui. CSS variable NAMES are kept stable so
+ * existing consumers do not churn; the VALUES are re-derived from Tatva's
+ * primitives. "Calm Clinical Teal" is retired — the --teal-* ramp is deleted
+ * with no successor, and the data-accent theme axis is deleted with it (J-4).
+ *
+ * The identity in one line: THE ACCENT IS THE NEUTRAL. --primary is near-black
+ * in light and near-white in dark; hue is reserved for STATE (destructive /
+ * success / warning / info) and for DATA (charts). The rainbow --color-1..5
+ * tokens (magicui) and the fixed --code-editor-* surface are preserved verbatim.
  * ==========================================================================*/
 :root {
-  /* --- Brand ramps (raw) ------------------------------------------------- */
-  --teal-50: #ecfbfc;
-  --teal-100: #cff2f5;
-  --teal-200: #a1e3e9;
-  --teal-300: #69cdd8;
-  --teal-400: #2fafc0;
-  --teal-500: #1597a5;
-  --teal-600: #0f7a8b;
-  --teal-700: #0e626e;
-  --teal-800: #0e505a;
-  --teal-900: #103f47;
-  --teal-950: #07262c;
+  /* --- calc() base architecture (Tatva BP-04) -----------------------------
+     Three authored bases that every derived step multiplies. They MUST live
+     here in :root and NOT inside `@theme inline`: that at-rule inlines the
+     literal text of a value into each generated utility and does not emit the
+     key as a custom property, so the var() has to resolve against a real :root
+     property at paint time.
 
-  --indigo-50: #eef0fe;
-  --indigo-100: #e0e3fc;
-  --indigo-200: #c6cbf9;
-  --indigo-300: #a3a9f3;
-  --indigo-400: #7c82ea;
-  --indigo-500: #5e66e0;
-  --indigo-600: #4f5bd5;
-  --indigo-700: #4147bb;
-  --indigo-800: #363b95;
-  --indigo-900: #2f3576;
-  --indigo-950: #1d2046;
+     Only --spacing has a native Tailwind multiplier (`p-<n>` compiles to
+     calc(var(--spacing) * <n>)). There is no equivalent for --radius-* or
+     --text-*, so every radius and type step below is hand-authored off these
+     bases rather than generated. */
+  --hope-spacing-base: 2px;
+  --hope-radius-base: 4px;
+  --hope-font-size-base: 12px;
 
-  --saffron-50: #fef6ec;
-  --saffron-100: #fbe7c9;
-  --saffron-200: #f7cf96;
-  --saffron-300: #f2b463;
-  --saffron-400: #ed9c3b;
-  --saffron-500: #e8912a;
-  --saffron-600: #cb7a1c;
-  --saffron-700: #a45f18;
-  --saffron-800: #824c1a;
-  --saffron-900: #6c4019;
-  --saffron-950: #3d2109;
+  /* --- Neutral ramp (raw) -------------------------------------------------
+     Tatva's achromatic ramp, the 1:1 successor to the retired --slate-* scale.
+     Tatva ships no 700 step, so none is invented here.
 
-  --green-50: #e9f8f0;
-  --green-100: #c8eedb;
-  --green-200: #97debd;
-  --green-300: #5dc998;
-  --green-400: #2fae7c;
-  --green-500: #1f9e6b;
-  --green-600: #1a8259;
-  --green-700: #176a4a;
-  --green-800: #16543c;
-  --green-900: #134632;
+     Two steps ARE authored with no Tatva source, each for exactly one job the
+     published ramp cannot do (J-13 numbers them by luminance, so the ramp
+     reads monotonically 400 -> 500 -> 520 -> 560 -> 600):
+       --neutral-520  the form-field boundary (--input), >=3:1 on white
+       --neutral-560  tertiary text (--muted-foreground-subtle), >=4.5:1 on
+                      EVERY light surface — see the EX-04 correction below */
+  --neutral-0: #ffffff;
+  --neutral-50: #fafafa;
+  --neutral-100: #f5f5f5;
+  --neutral-150: #f0f0f0;
+  --neutral-200: #e6e6e6;
+  --neutral-300: #cccccc;
+  --neutral-400: #b3b3b3;
+  --neutral-500: #999999;
+  --neutral-520: #8a8a8a;
+  --neutral-560: #6a6a6a;
+  --neutral-600: #525252;
+  --neutral-800: #333333;
+  --neutral-900: #141414;
+  --neutral-950: #0a0a0a;
 
-  --red-50: #fceeee;
-  --red-100: #f8d6d6;
-  --red-200: #f0aeae;
-  --red-300: #e68585;
-  --red-400: #da6262;
-  --red-500: #cc4f4f;
-  --red-600: #c24a4a;
-  --red-700: #9f3a3a;
-  --red-800: #7e2f2f;
-  --red-900: #682929;
+  /* --- Accent primitives (raw), from Tatva -------------------------------
+     Hue carries state and data only. These are Tatva's own primitives; where a
+     role below needs a step Tatva never published (the dark-theme tints, and
+     the darkened "strong" inks for text-on-tint), the value is written at the
+     role as a literal and marked AUTHORED, so this ramp stays exactly the
+     reference set and nothing invented hides inside it. */
+  --indigo-500: #516cdc;
+  --indigo-800: #3333cc;
+  --indigo-900: #212191;
+  --green-500: #5f9637;
+  --green-800: #385418;
+  --red-50: #fde7e2;
+  --red-500: #b81514;
+  --yellow-50: #fff8e6;
+  --yellow-700: #c08827;
+  --orange-800: #e6651b;
+  --pink-600: #9d2055;
 
-  --amber-400: #efb751;
-  --amber-500: #e0a53b;
-  --amber-600: #c7861f;
+  /* --- shadcn semantic roles (light) ------------------------------------- */
+  --background: var(--neutral-50);
+  --foreground: var(--neutral-900);
+  --card: var(--neutral-0);
+  --card-foreground: var(--neutral-900);
+  --popover: var(--neutral-0);
+  --popover-foreground: var(--neutral-900);
+  --primary: var(--neutral-900);
+  --primary-foreground: var(--neutral-0);
+  --secondary: var(--neutral-150);
+  --secondary-foreground: var(--neutral-900);
+  --muted: var(--neutral-100);
+  --muted-foreground: var(--neutral-600);
+  /* J-2: --secondary and --accent deliberately collide on one sunken fill,
+     as Tatva does. The hover step is what keeps them legible as controls. */
+  --accent: var(--neutral-150);
+  --accent-foreground: var(--neutral-900);
+  --secondary-hover: var(--neutral-200);
+  --accent-hover: var(--neutral-200);
+  --destructive: var(--red-500);
+  --destructive-foreground: var(--neutral-0);
+  --border: var(--neutral-200);
+  /* --input is SPLIT from --border (it used to alias it at 1.20:1). A form
+     field's boundary is a UI component boundary and owes 3:1 under WCAG 1.4.11;
+     a decorative hairline divider does not. --neutral-520 is 3.31:1 on
+     --background and 3.45:1 on --card. This closes AC-3's first failure. */
+  --input: var(--neutral-520);
+  /* EX-01 prescribed fix: the ring was 2.10:1 teal. Near-black is 17.65:1. */
+  --ring: var(--neutral-900);
 
-  --slate-0: #ffffff;
-  --slate-50: #f5f7f8;
-  --slate-100: #edf1f3;
-  --slate-200: #e2e8ec;
-  --slate-300: #cfd8de;
-  --slate-400: #a7b4bd;
-  --slate-500: #7c8b95;
-  --slate-600: #5a6a77;
-  --slate-700: #44535e;
-  --slate-800: #2b3942;
-  --slate-900: #18242b;
-  --slate-950: #0e1a24;
-
-  /* --- shadcn semantic roles (light) ------------------------------------ */
-  --background: #fbfcfd;
-  --foreground: var(--slate-950);
-  --card: var(--slate-0);
-  --card-foreground: var(--slate-950);
-  --popover: var(--slate-0);
-  --popover-foreground: var(--slate-950);
-  --primary: var(--teal-600);
-  --primary-foreground: #ffffff;
-  --secondary: var(--slate-100);
-  --secondary-foreground: var(--slate-900);
-  --muted: var(--slate-50);
-  --muted-foreground: var(--slate-600);
-  --accent: #e6f3f5;
-  --accent-foreground: var(--teal-700);
-  --destructive: var(--red-600);
-  --destructive-foreground: #ffffff;
-  --border: var(--slate-200);
-  --input: var(--slate-200);
-  --ring: var(--teal-600);
+  /* Tertiary text. Tatva's own EX-04 prescribes #767676, but that value is
+     calibrated against #ffffff ALONE — it lands at 4.35:1 on a #fafafa canvas
+     and fails. --neutral-560 clears 4.5:1 on every light surface HOPE paints:
+     5.41 on --card, 5.18 on --background, 4.96 on --muted, 4.75 on --secondary. */
+  --muted-foreground-subtle: var(--neutral-560);
 
   /* --- HOPE brand semantic roles (custom) ------------------------------- */
-  --ai: var(--indigo-600);
-  --ai-foreground: #ffffff;
-  --hope: var(--saffron-500);
-  --hope-foreground: var(--saffron-950);
-  --success: var(--green-600);
-  --success-foreground: #ffffff;
-  --warning: var(--amber-500);
-  --warning-foreground: var(--saffron-950);
-  --info: var(--indigo-600);
-  --info-foreground: #ffffff;
-  --link: var(--indigo-600);
+  --ai: var(--indigo-800);
+  --ai-foreground: var(--neutral-0);
+  --hope: var(--orange-800);
+  --hope-foreground: var(--neutral-900);
+  --success: var(--green-800);
+  --success-foreground: var(--neutral-0);
+  --warning: var(--yellow-700);
+  --warning-foreground: var(--neutral-900);
+  --info: var(--indigo-800);
+  --info-foreground: var(--neutral-0);
+  --link: var(--indigo-800);
 
-  /* Text-on-tint roles: darker steps that keep >=4.5:1 (WCAG 2.2 AA) when the
-     role color is used as 12px text over its own /10 tint (StatusBadge etc). */
-  --primary-strong: var(--teal-700);
-  --success-strong: var(--green-700);
-  --warning-strong: var(--saffron-800);
-  --destructive-strong: var(--red-700);
-  --hope-strong: var(--saffron-800);
+  /* Text-on-tint roles: the ink to use when a role colour becomes 12px TEXT
+     over its own /10 tint, rather than a fill. These keep >=4.5:1 where the
+     fill value would not — #c08827 is only 2.96:1 on --background, which is
+     the whole reason --warning-strong exists and why --chart-3 uses the strong
+     step too. Values marked AUTHORED have no Tatva source. */
+  --primary-strong: var(--primary); /* J-3: kept as an alias — zero call-site churn */
+  --success-strong: var(--green-800);
+  --warning-strong: #8a5f12; /* AUTHORED — darkened yellow-700, 5.40:1 on --background */
+  --destructive-strong: var(--red-500);
+  --hope-strong: #a8410c; /* AUTHORED — darkened orange-800, 5.87:1 on --background */
 
-  --chart-1: var(--teal-500);
-  --chart-2: var(--indigo-500);
-  --chart-3: var(--saffron-500);
-  --chart-4: var(--green-500);
-  --chart-5: var(--slate-500);
+  --chart-1: var(--indigo-800);
+  --chart-2: var(--pink-600);
+  --chart-3: var(--warning-strong); /* NOT --yellow-700: 2.96:1 fails even the 3:1 non-text floor */
+  --chart-4: var(--green-800);
+  --chart-5: var(--neutral-600);
 
-  --radius: 0.625rem;
+  /* --- Geometry -----------------------------------------------------------
+     The radius ladder itself is authored in `@theme inline` off
+     --hope-radius-base (it has to be, to generate `rounded-*` utilities).
+     `--radius: 0.625rem` is DELETED — there is no single seed value any more. */
 
-  /* --- Elevation (TASK-765) ------------------------------------------------
-     Three declared roles, not seven ad-hoc Tailwind steps. Light expresses
-     depth as a soft ink shadow over a hairline border; dark expresses it
-     tonally (--card already sits ABOVE --background) with a deeper, more
-     diffuse shadow, because a black shadow on a near-black canvas is
-     invisible. Consumed as `shadow-raised` / `shadow-overlay` via @theme
-     inline below; `shadow-flat` is the explicit no-elevation role. */
-  --elevation-raised: 0 1px 2px 0 rgb(14 26 36 / 0.05), 0 1px 3px 0 rgb(14 26 36 / 0.08);
-  --elevation-overlay: 0 4px 12px -2px rgb(14 26 36 / 0.10), 0 12px 32px -8px rgb(14 26 36 / 0.14);
+  /* --- Elevation (TASK-765 roles, TASK-787 values) ------------------------
+     The three declared roles keep their NAMES and their `@theme inline` wiring
+     so no call site churns, and both are re-valued to `none`: the system goes
+     flat (J-12). Depth is expressed as border + surface in light, and as tonal
+     surfaces in dark — where, per Tatva, --card (#1e1e1e) is DARKER than
+     --background (#242424), reversing HOPE's previous relationship.
+     Watch item (J-9): menus/popovers ship flat and borderless-shadowed; if
+     Phase 3 finds they do not separate, the sanctioned fallback is restoring
+     --elevation-raised for menus only. */
+  --elevation-raised: none;
+  --elevation-overlay: none;
 
-  /* --- Motion (TASK-765) ---------------------------------------------------
-     Six durations and two custom easings. These are the ONLY sanctioned
-     transition timings; a literal `duration-300` at a call site is drift.
-     The reduced-motion block at the end of this file rewrites every duration
-     here to 0s at the root, which neutralises every consumer at once —
-     including components written after this comment. */
+  /* --- Overlay, focus, press ---------------------------------------------
+     Consumed via arbitrary values at the call site (Phase 3); deliberately not
+     mapped into a Tailwind namespace, because each has exactly one consumer
+     shape. Overlay depth applies to MODALS only. */
+  --overlay-scrim: #14141480;
+  --overlay-blur: 4px;
+  --focus-ring-width: 2px;
+  --focus-ring-offset: 2px;
+  --scale-pressed: 0.97;
+
+  /* --- Motion (TASK-765 tokens, TASK-787 values) --------------------------
+     Six durations. These are the ONLY sanctioned transition timings; a literal
+     `duration-300` at a call site is drift. The reduced-motion block at the end
+     of this file rewrites every one of them to 0s at the root, which
+     neutralises every consumer at once — including components written after
+     this comment. Only `normal` moves under TASK-787 (200ms -> 160ms, J-10);
+     the other five already matched Tatva exactly. */
   --motion-duration-instant: 80ms;
   --motion-duration-fast: 120ms;
-  --motion-duration-normal: 200ms;
+  --motion-duration-normal: 160ms;
   --motion-duration-slow: 240ms;
   --motion-duration-reveal: 320ms;
   --motion-duration-slower: 400ms;
 
-  --sidebar: #f7f9fa;
-  --sidebar-foreground: var(--slate-800);
-  --sidebar-primary: var(--teal-600);
-  --sidebar-primary-foreground: #ffffff;
-  --sidebar-accent: #e6f3f5;
-  --sidebar-accent-foreground: var(--teal-700);
-  --sidebar-border: var(--slate-200);
-  --sidebar-ring: var(--teal-600);
+  /* --- Sidebar ------------------------------------------------------------
+     The sidebar sits on the raised surface, not the canvas: #ffffff in light,
+     #1e1e1e in dark. --sidebar-accent is the active-item FILL and is
+     deliberately below 3:1 against --sidebar (1.14:1 light / 1.34:1 dark).
+     That is J-11, not an oversight: an achromatic palette cannot reach a 3:1
+     fill on a white sidebar, so the fill is never the sole signal. The second
+     and third signals — font-weight 500 plus a 2px --foreground left rule —
+     are implemented in TASK-788 AC-5. Do not "fix" this by darkening the fill
+     in isolation; that changes the surface without adding a signal. */
+  --sidebar: var(--neutral-0);
+  --sidebar-foreground: var(--neutral-900);
+  --sidebar-primary: var(--neutral-900);
+  --sidebar-primary-foreground: var(--neutral-0);
+  --sidebar-accent: var(--neutral-150);
+  --sidebar-accent-foreground: var(--neutral-900);
+  --sidebar-border: var(--neutral-200);
+  --sidebar-ring: var(--neutral-900);
 
   /* Rainbow tokens (magicui) — preserved from legacy theme. */
   --color-1: oklch(66.2% 0.225 25.9);
@@ -200,66 +230,80 @@
 }
 
 .dark {
-  /* Elevation in dark is tonal-first; the shadow is deeper and more diffuse
-     so it still reads against the #0c1418 canvas (see :root, TASK-765). */
-  --elevation-raised: 0 1px 2px 0 rgb(0 0 0 / 0.40), 0 1px 3px 0 rgb(0 0 0 / 0.50);
-  --elevation-overlay: 0 4px 12px -2px rgb(0 0 0 / 0.55), 0 12px 32px -8px rgb(0 0 0 / 0.65);
+  /* Flat in dark too (J-12). Depth here is purely tonal — and note the
+     inversion Tatva prescribes: --card and --popover (#1e1e1e) sit BELOW
+     --background (#242424). This is correct and must not be "fixed". */
+  --elevation-raised: none;
+  --elevation-overlay: none;
 
-  --background: #0c1418;
-  --foreground: #e6edf0;
-  --card: #111d23;
-  --card-foreground: #e6edf0;
-  --popover: #14222a;
-  --popover-foreground: #e6edf0;
-  --primary: var(--teal-400);
-  --primary-foreground: #042a30;
-  --secondary: #1c2a31;
-  --secondary-foreground: #e6edf0;
-  --muted: #16242b;
-  --muted-foreground: #93a4ae;
-  --accent: #16323b;
-  --accent-foreground: #bbe7ec;
-  --destructive: #e06a6a;
-  --destructive-foreground: #2a0e0e;
-  --border: #25333b;
-  --input: #25333b;
-  --ring: var(--teal-400);
+  --background: #242424;
+  --foreground: #e4e4e4;
+  --card: #1e1e1e;
+  --card-foreground: #e4e4e4;
+  --popover: #1e1e1e;
+  --popover-foreground: #e4e4e4;
+  --primary: #e8e8e8;
+  --primary-foreground: var(--neutral-900);
+  --secondary: #343434;
+  --secondary-foreground: #e4e4e4;
+  --muted: #1e1e1e;
+  --muted-foreground: #949494;
+  --accent: #343434;
+  --accent-foreground: #e4e4e4;
+  /* AUTHORED — J-2 gives the hover step only for light (#e6e6e6); the dark
+     counterpart is one tonal step above the #343434 sunken fill. */
+  --secondary-hover: #3f3f3f;
+  --accent-hover: #3f3f3f;
+  --destructive: #f08a86;
+  --destructive-foreground: var(--neutral-900);
+  --border: #343434;
+  --input: #6f6f6f;
+  --ring: #e4e4e4;
 
-  --ai: var(--indigo-400);
-  --ai-foreground: #11122e;
-  --hope: var(--saffron-400);
-  --hope-foreground: var(--saffron-950);
-  --success: var(--green-400);
-  --success-foreground: #04231a;
-  --warning: var(--amber-400);
-  --warning-foreground: #2a1b05;
-  /* indigo-300 (not -400): -400 (#7c82ea) on the dark card is 4.47:1 — just
-     under WCAG AA 4.5:1 for the small status-badge text; -300 clears it. */
-  --info: var(--indigo-300);
-  --info-foreground: #11122e;
-  --link: var(--indigo-300);
+  /* Tatva's own dark.muted (#646464) is 2.62:1 and fails; #8f8f8f is 4.80:1 on
+     --background and 5.15:1 on --card.
+     ⚠ DARK-THEME EMPHASIS COLLAPSE — a hard rule for this ticket: #8f8f8f
+     (tertiary) and #949494 (secondary) sit 0.35 apart and are visually
+     indistinguishable, and NEITHER clears 4.5:1 on the #343434
+     --secondary/--accent fill. In dark theme, no secondary or tertiary text on
+     a --secondary/--accent fill: badges and chips use --foreground. */
+  --muted-foreground-subtle: #8f8f8f;
 
-  /* Dark role colors already clear 4.5:1 on their /10 tints — reuse them. */
+  /* AUTHORED dark tints — Tatva publishes light-theme primitives only, so each
+     of these is the lightened step needed to clear 4.5:1 on #242424/#1e1e1e. */
+  --ai: #96a7f2;
+  --ai-foreground: var(--neutral-900);
+  --hope: #f0965a;
+  --hope-foreground: var(--neutral-900);
+  --success: #9ccc6f;
+  --success-foreground: var(--neutral-900);
+  --warning: #e2b05a;
+  --warning-foreground: var(--neutral-900);
+  --info: #96a7f2;
+  --info-foreground: var(--neutral-900);
+  --link: #96a7f2;
+
+  /* Dark role colours already clear 4.5:1 on their /10 tints — reuse them. */
   --primary-strong: var(--primary);
   --success-strong: var(--success);
   --warning-strong: var(--warning);
   --destructive-strong: var(--destructive);
   --hope-strong: var(--hope);
 
-  --chart-1: var(--teal-400);
-  --chart-2: var(--indigo-400);
-  --chart-3: var(--saffron-400);
-  --chart-4: var(--green-400);
-  --chart-5: var(--slate-400);
+  --chart-1: #96a7f2;
+  --chart-2: #e08aa8; /* AUTHORED — lightened pink-600, 6.19:1 on --background */
+  --chart-3: #e2b05a;
+  --chart-4: #9ccc6f;
+  --chart-5: #949494;
 
-  --sidebar: #0e171c;
-  --sidebar-foreground: #c7d2d8;
-  --sidebar-primary: var(--teal-400);
-  --sidebar-primary-foreground: #042a30;
-  --sidebar-accent: #16323b;
-  --sidebar-accent-foreground: #bbe7ec;
-  --sidebar-border: #25333b;
-  --sidebar-ring: var(--teal-400);
+  --sidebar: #1e1e1e;
+  --sidebar-foreground: #e4e4e4;
+  --sidebar-primary: #e8e8e8;
+  --sidebar-primary-foreground: var(--neutral-900);
+  --sidebar-accent: #343434;
+  --sidebar-accent-foreground: #e4e4e4;
+  --sidebar-border: #343434;
+  --sidebar-ring: #e4e4e4;
 
   /* Rainbow tokens (magicui) — preserved from legacy theme. */
   --color-1: oklch(66.2% 0.225 25.9);
@@ -269,117 +313,10 @@
   --color-5: oklch(90.7% 0.231 133);
 }
 
-/* ============================================================================
- * Accent themes. Teal is the no-attribute default (above) — zero
- * visual change without opt-in. Setting `data-accent` on <html> remaps only the
- * accent-derived semantic tokens (primary/accent/ring/sidebar/chart-1) from the
- * existing raw ramps; no component is restyled. The "amber" accent maps to the
- * fuller saffron ramp (the amber ramp has only 400–600 steps).
- *
- * Cascade: the light blocks and the `.dark` blocks share specificity (0,2,0), so
- * the `.dark` blocks are placed AFTER the light blocks — in dark mode they win by
- * source order; in light mode the `.dark[...]` selectors simply don't match. Both
- * groups sit after the base `.dark {}` block so they override its teal defaults.
- * The dark blocks match BOTH the accented element itself (`.dark[data-accent]`,
- * the production case: next-themes puts `.dark` and `data-accent` on the same
- * <html>) AND any nested `.dark` region under an accented root
- * (`[data-accent].dark`) — otherwise a nested `.dark` wrapper (e.g. Storybook's
- * theme decorator) re-declares the base teal tokens and clobbers the accent for
- * its subtree. Contrast (primary-on-background, both themes) is spot-checked in
- * the "Foundation/Accent Themes" Storybook story.
- * ==========================================================================*/
-:root[data-accent="indigo"] {
-  --primary: var(--indigo-600);
-  --primary-foreground: #ffffff;
-  --primary-strong: var(--indigo-700);
-  --accent: var(--indigo-50);
-  --accent-foreground: var(--indigo-700);
-  --ring: var(--indigo-600);
-  --chart-1: var(--indigo-500);
-  --sidebar-primary: var(--indigo-600);
-  --sidebar-primary-foreground: #ffffff;
-  --sidebar-accent: var(--indigo-50);
-  --sidebar-accent-foreground: var(--indigo-700);
-  --sidebar-ring: var(--indigo-600);
-}
-
-:root[data-accent="green"] {
-  --primary: var(--green-600);
-  --primary-foreground: #ffffff;
-  --primary-strong: var(--green-700);
-  --accent: var(--green-50);
-  --accent-foreground: var(--green-700);
-  --ring: var(--green-600);
-  --chart-1: var(--green-500);
-  --sidebar-primary: var(--green-600);
-  --sidebar-primary-foreground: #ffffff;
-  --sidebar-accent: var(--green-50);
-  --sidebar-accent-foreground: var(--green-700);
-  --sidebar-ring: var(--green-600);
-}
-
-:root[data-accent="amber"] {
-  --primary: var(--saffron-500);
-  --primary-foreground: var(--saffron-950);
-  --primary-strong: var(--saffron-800);
-  --accent: var(--saffron-50);
-  --accent-foreground: var(--saffron-800);
-  --ring: var(--saffron-500);
-  --chart-1: var(--saffron-500);
-  --sidebar-primary: var(--saffron-600);
-  --sidebar-primary-foreground: var(--saffron-950);
-  --sidebar-accent: var(--saffron-50);
-  --sidebar-accent-foreground: var(--saffron-800);
-  --sidebar-ring: var(--saffron-500);
-}
-
-.dark[data-accent="indigo"],
-[data-accent="indigo"] .dark {
-  --primary: var(--indigo-400);
-  --primary-foreground: var(--indigo-950);
-  --primary-strong: var(--indigo-400);
-  --accent: color-mix(in oklab, var(--indigo-400) 22%, var(--background));
-  --accent-foreground: var(--indigo-200);
-  --ring: var(--indigo-400);
-  --chart-1: var(--indigo-400);
-  --sidebar-primary: var(--indigo-400);
-  --sidebar-primary-foreground: var(--indigo-950);
-  --sidebar-accent: color-mix(in oklab, var(--indigo-400) 22%, var(--background));
-  --sidebar-accent-foreground: var(--indigo-200);
-  --sidebar-ring: var(--indigo-400);
-}
-
-.dark[data-accent="green"],
-[data-accent="green"] .dark {
-  --primary: var(--green-400);
-  --primary-foreground: #04231a;
-  --primary-strong: var(--green-400);
-  --accent: color-mix(in oklab, var(--green-400) 22%, var(--background));
-  --accent-foreground: var(--green-200);
-  --ring: var(--green-400);
-  --chart-1: var(--green-400);
-  --sidebar-primary: var(--green-400);
-  --sidebar-primary-foreground: #04231a;
-  --sidebar-accent: color-mix(in oklab, var(--green-400) 22%, var(--background));
-  --sidebar-accent-foreground: var(--green-200);
-  --sidebar-ring: var(--green-400);
-}
-
-.dark[data-accent="amber"],
-[data-accent="amber"] .dark {
-  --primary: var(--saffron-400);
-  --primary-foreground: var(--saffron-950);
-  --primary-strong: var(--saffron-400);
-  --accent: color-mix(in oklab, var(--saffron-400) 22%, var(--background));
-  --accent-foreground: var(--saffron-200);
-  --ring: var(--saffron-400);
-  --chart-1: var(--saffron-400);
-  --sidebar-primary: var(--saffron-400);
-  --sidebar-primary-foreground: var(--saffron-950);
-  --sidebar-accent: color-mix(in oklab, var(--saffron-400) 22%, var(--background));
-  --sidebar-accent-foreground: var(--saffron-200);
-  --sidebar-ring: var(--saffron-400);
-}
+/* The `data-accent` theme axis (6 selectors, ~45 declarations) is DELETED under
+   J-4. With --primary and --ring both resolving to the neutral ink, the axis
+   had nothing left to vary; a "teal / indigo / green / amber" switch on an
+   achromatic identity only reintroduces the hue OD-1 retired. */
 
 @theme inline {
   --font-sans: "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
@@ -395,10 +332,13 @@
   --color-primary-foreground: var(--primary-foreground);
   --color-secondary: var(--secondary);
   --color-secondary-foreground: var(--secondary-foreground);
+  --color-secondary-hover: var(--secondary-hover);
   --color-muted: var(--muted);
   --color-muted-foreground: var(--muted-foreground);
+  --color-muted-foreground-subtle: var(--muted-foreground-subtle);
   --color-accent: var(--accent);
   --color-accent-foreground: var(--accent-foreground);
+  --color-accent-hover: var(--accent-hover);
   --color-destructive: var(--destructive);
   --color-destructive-foreground: var(--destructive-foreground);
   --color-border: var(--border);
@@ -428,10 +368,33 @@
   --color-chart-3: var(--chart-3);
   --color-chart-4: var(--chart-4);
   --color-chart-5: var(--chart-5);
-  --radius-sm: calc(var(--radius) - 4px);
-  --radius-md: calc(var(--radius) - 2px);
-  --radius-lg: var(--radius);
-  --radius-xl: calc(var(--radius) + 4px);
+  /* Radius ladder — hand-authored off --hope-radius-base (4px), because
+     Tailwind gives --radius-* no native multiplier the way it does --spacing.
+     Every step is an integer multiple of the base:
+       xs 4px (x1) · sm 8px (x2) · md 12px (x3) · lg 20px (x5) · xl 28px (x7)
+       2xl 36px (x9) · 3xl 48px (x12)
+       full 3996px (x999 — Tatva EX-03's own pill value, deliberately NOT 9999)
+     `--radius` (0.625rem) is deleted; there is no single seed any more.
+     J-14: 2xl and 3xl are HOPE-ONLY extensions above Tatva's authored scale,
+     which closes at 28px. They are declared rather than left to fall through
+     to Tailwind's stock 16px / 24px, which would sit BELOW --radius-xl and
+     invert the ladder under 32 existing call sites. Declaring them keeps the
+     order 4/8/12/20/28/36/48/pill at zero call-site churn. */
+  --radius-xs: calc(var(--hope-radius-base) * 1);
+  --radius-sm: calc(var(--hope-radius-base) * 2);
+  --radius-md: calc(var(--hope-radius-base) * 3);
+  --radius-lg: calc(var(--hope-radius-base) * 5);
+  --radius-xl: calc(var(--hope-radius-base) * 7);
+  --radius-2xl: calc(var(--hope-radius-base) * 9);
+  --radius-3xl: calc(var(--hope-radius-base) * 12);
+  --radius-full: calc(var(--hope-radius-base) * 999);
+  /* Role aliases from the Geometry Contract. They repeat the calc rather than
+     saying var(--radius-md): `@theme inline` does not emit its own keys as
+     custom properties, so a var() pointing at a sibling theme key resolves to
+     nothing at paint time. --hope-radius-base is a real :root property. */
+  --radius-surface: calc(var(--hope-radius-base) * 3);
+  --radius-overlay: calc(var(--hope-radius-base) * 5);
+  --radius-control: calc(var(--hope-radius-base) * 999);
   --color-sidebar: var(--sidebar);
   --color-sidebar-foreground: var(--sidebar-foreground);
   --color-sidebar-primary: var(--sidebar-primary);
@@ -704,18 +667,23 @@
     }
   }
 
-  /* ==== TASK-765 · Design-system conformance ==============================
-     Motion, elevation and the small-text floor become TOKENS rather than
-     literals at call sites. See
-     docs/implementation/TASK-765-Design-System-Conformance/README.md. ==== */
+  /* ==== Motion, elevation and type, as TOKENS rather than call-site literals
+     (roles from TASK-765, values from TASK-787). ========================== */
 
-  /* Motion easings. `ease-in` / `ease-out` / `ease-in-out` ship with Tailwind;
-     these two do not: `emphasized` for overlay entrance, `spring` (which
-     overshoots) reserved for confirmation moments — a check landing, a badge
-     appearing. The named DURATIONS are @utility rules further down: Tailwind
-     v4 has an `--ease-*` theme namespace but no `--duration-*` one, so a
-     `--duration-fast` key here would generate nothing. */
-  --ease-emphasized: cubic-bezier(0.23, 1, 0.32, 1);
+  /* Motion easings. `emphasized` and `spring` are HOPE additions; `ease-out`
+     and `ease-in-out` OVERRIDE Tailwind's stock curves, and `ease-in` is left
+     at Tailwind's. The named DURATIONS are @utility rules further down:
+     Tailwind v4 has an `--ease-*` theme namespace but no `--duration-*` one,
+     so a `--duration-fast` key here would generate nothing.
+     J-10: --ease-emphasized was holding Tatva's ease-out curve. Give each
+     curve its own name — emphasized for overlay entrance, ease-out re-valued
+     to the curve Tatva actually measured, ease-in-out for reversible
+     transitions. `ease-in` needs no override. `spring` (which overshoots) is
+     reserved for confirmation moments — a check landing, a badge appearing —
+     and is already an exact match to the reference, so it is untouched. */
+  --ease-emphasized: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+  --ease-in-out: cubic-bezier(0.645, 0.045, 0.355, 1);
   --ease-spring: cubic-bezier(0.34, 1.42, 0.5, 1);
 
   /* Elevation — generates `shadow-flat`, `shadow-raised`, `shadow-overlay`. */
@@ -723,12 +691,44 @@
   --shadow-raised: var(--elevation-raised);
   --shadow-overlay: var(--elevation-overlay);
 
-  /* Small-text floor — generates `text-2xs`. The console's dense metadata was
-     written with 58 uses of the arbitrary `text-[10px]` and 8 of
-     `text-[11px]`; this is the ONE declared step below `text-xs` (12px), and
-     nothing may go below it. */
-  --text-2xs: 0.6875rem;
-  --text-2xs--line-height: 1rem;}
+  /* Type scale — additive off --hope-font-size-base (12px). Tailwind has no
+     multiplier for --text-*, so each step is base + a hand-authored offset.
+     Line heights are absolute, and tighten at every step except 16px.
+
+       xs   12px / 14    sm   14px / 18    md 15px / 20 (NEW step)
+       base 16px / 24    lg   18px / 24    xl 20px / 24
+       2xl  24px / 28.8  3xl  32px / 38.4
+
+     `--text-2xs` (11px) is DELETED under J-5: 12px is the floor. Its ~115 call
+     sites are Phase 5's codemod, and they are left to break loudly here rather
+     than be silently re-pointed. `--text-4xl` is deliberately NOT redeclared —
+     J-6 collapses its call sites onto `text-3xl` in the same codemod. */
+  --text-xs: calc(var(--hope-font-size-base) + 0px);
+  --text-xs--line-height: 14px;
+  --text-sm: calc(var(--hope-font-size-base) + 2px);
+  --text-sm--line-height: 18px;
+  --text-md: calc(var(--hope-font-size-base) + 3px);
+  --text-md--line-height: 20px;
+  --text-base: calc(var(--hope-font-size-base) + 4px);
+  --text-base--line-height: 24px;
+  --text-lg: calc(var(--hope-font-size-base) + 6px);
+  --text-lg--line-height: 24px;
+  --text-xl: calc(var(--hope-font-size-base) + 8px);
+  --text-xl--line-height: 24px;
+  --text-2xl: calc(var(--hope-font-size-base) + 12px);
+  --text-2xl--line-height: 28.8px;
+  --text-3xl: calc(var(--hope-font-size-base) + 20px);
+  --text-3xl--line-height: 38.4px;
+}
+
+/* The one Tailwind namespace that DOES multiply for us. Non-inline on purpose:
+   `--spacing` must be emitted as a real custom property because Tailwind's own
+   utilities and arbitrary values reference `var(--spacing)` at paint time.
+   2px x 2 = the same 4px grid Tailwind ships by default, now expressed through
+   the BP-04 base so the grid has one owner. */
+@theme {
+  --spacing: calc(var(--hope-spacing-base) * 2);
+}
 
 /* ============================================================================
  * TASK-765 · Stacking order

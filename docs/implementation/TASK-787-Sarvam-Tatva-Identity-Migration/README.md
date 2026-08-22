@@ -290,6 +290,15 @@ unblocked.** Recorded here as binding — a phase agent implements these, it doe
 | J-11 | Sidebar active item — EX-12, 1.14:1 | **Fill + `font-weight: 500` + 2px `--foreground` left rule.** EX-12's own ≥3:1 fill guardrail is unachievable with an achromatic palette on a white sidebar, so the fill cannot be the sole signal | **Implemented in [TASK-788](../TASK-788-Domain-Rail-Navigation/README.md) AC-5**, not here |
 | J-12 | 152 stock shadow call sites | **Sweep to flat.** Includes `shadow-xs` on the `outline` button variant — it becomes border-only | Phase 4 |
 
+### J-13 / J-14 — raised during Phase 1 execution, resolved 2026-08-22
+
+Both surfaced by the Phase 1 agent and confirmed by the orchestrator against the emitted bundle.
+
+| # | Decision | Resolution |
+|---|---|---|
+| J-13 | The two authored neutral steps made the ramp **non-monotonic** — `--neutral-450: #8a8a8a` is darker than `--neutral-500: #999999` | The VALUE is right for `--input`; the NAME was wrong. Renumber to **`--neutral-520`** (`#8a8a8a`) and **`--neutral-560`** (`#6a6a6a`), giving `400 → 500 → 520 → 560 → 600` |
+| J-14 | `--radius-2xl` / `--radius-3xl` were never declared, so they fall through to Tailwind stock 16px/24px — now **below** `--radius-xl` (28px), across 30 + 2 call sites | **Extend the ladder monotonically** rather than sweep 32 sites for no design reason: `--radius-2xl` = base×9 (36px), `--radius-3xl` = base×12 (48px). Zero call-site churn. Documented as HOPE-only extensions above Tatva's authored scale, which closes at 28px |
+
 ### Watch item — J-9 is the one resolution not proven by the reference
 
 A borderless flat menu over a flat card is hard to separate, and **Tatva's only measured overlay was
@@ -351,7 +360,62 @@ catches ≲57%).
 
 ## Implementation Summary
 
-_Not started. Populate per phase as work lands._
+### Phase 2 — the contrast gate (landed 2026-08-22)
+
+**AC-4 is met.** A palette change can no longer pass CI while regressing contrast.
+
+| # | Deliverable | Outcome |
+|---|---|---|
+| 1 | `packages/ui/src/styles/__tests__/token-contrast.vitest.ts` (NEW) | Parses `globals.css`, resolves every role through its `var()` chain to a concrete hex in both themes, computes the WCAG 2.x ratio arithmetically. **150 enforced pairs** (74 light / 76 dark) + **20 pinned exemptions**. Browser-independent — runs in `test-sdk`. |
+| 2 | `test-admin-console-a11y` in `.gitlab/ci/test.yml` (NEW) | Scheduled, opt-in (`RUN_A11Y_E2E=true`) job that composes gateway + seeded DB + a production console build and runs the 40 `@axe-core/playwright` specs. **Written, not proven on a runner** — see the two blockers below. |
+| 3 | `test-ui-ct` | `RUN_UI_CT != "true" → when: never` and `allow_failure: true` both removed. The two genuine rendered-contrast tests now block. |
+| 4 | `accent-tokens.vitest.ts` | **Deleted** (J-4). Two invariants migrated into the new gate, inverted: no `data-accent` axis may return, and no `--teal-*` reference may survive. |
+| 5 | `focus-canon.vitest.ts` | Comments only. Ratios refreshed to `--ring` 17.65:1 light / 12.21:1 dark; the "tokens are HEX" note re-anchored off the retired teal example. Assertions untouched. |
+
+**Gate validated by deliberate failure.** `--muted-foreground` was set to `#b3b3b3`; the gate
+failed naming each offending pair and its ratio (`--muted-foreground (#b3b3b3) on --card (#ffffff)
+= 2.10:1, below the 4.5:1 WCAG 1.4.3 text floor [light]`, and four more). `globals.css` was then
+reverted exactly.
+
+**Two findings the phase brief did not anticipate — both encoded as pinned exemptions, neither
+silently dropped:**
+
+1. **`--hope` as bare text fails in light** (3.22:1 on `--background`, 3.36:1 on `--card`) — the
+   same adjudication as `--warning`, and for the same reason: it is a FILL, and `--hope-strong`
+   (#a8410c, 5.87:1) is the text step. `globals.css` already documents this; the brief named only
+   `--warning`. Dark stays enforced, since the lightened tints clear 4.5:1 as text.
+2. **Dark `--muted-foreground` (4.10:1) and `--muted-foreground-subtle` (3.85:1) on `--secondary`**
+   — the "dark-theme emphasis collapse" hard rule already written into `globals.css`. Encoded as a
+   PROHIBITION rather than a tolerance: the exemption is pinned, and a companion assertion proves
+   the prescribed alternative (`--foreground` on `--secondary`/`--accent`, 9.79:1) actually clears
+   the floor, so the rule is enforceable rather than merely recorded.
+
+`--sidebar-accent` vs `--sidebar` (J-11) is pinned as an exemption that carries an **open** a11y
+debt, not a closed decision — the second and third signals land in TASK-788 AC-5.
+
+**Not done — the composed stack is only partly expressible in this repo's CI today:**
+
+- **No `CI_ADMIN_SESSION_SECRET` variable exists.** The console refuses to boot without
+  `ADMIN_SESSION_SECRET` (≥32 chars, `src/config/env.ts`, `required: true`). The job hard-fails
+  with a named message rather than booting a broken stack.
+- **Redis provisioning is unconfirmed.** `test-api-e2e` records that `CI_REDIS_URL` and the API
+  secrets are *not* provisioned, which is why that job is `RUN_INFRA_TESTS != "true" → never`.
+  The new job inherits that uncertainty.
+- **`CI_PIPELINE_SOURCE == "schedule"` is not handled in `.gitlab-ci.yml`'s workflow rules.** A
+  scheduled pipeline on `dev-2.2` resolves to `PIPELINE_TYPE=dev` + `SKIP_TESTS=true`, so every
+  test job — including this one — is skipped. The schedule must target a branch that does not
+  opt out, or the workflow rules need a `schedule` arm.
+- **The skip trap is guarded, not wished away.** `tests/e2e/helpers/stack.ts` makes specs SKIP
+  when the stack is unreachable, so a naive job reports green having asserted nothing. The job
+  hard-exits if either health probe fails and fails if fewer than `MIN_EXPECTED_SPECS` (30) tests
+  actually executed.
+
+**Threshold check on `tabs.test.tsx`:** its hardcoded 4.5:1 assumes 14px text and **still holds**.
+`text-sm` resolves to `calc(12px + 2px)` = 14px under the new scale, and `font-medium` (500) is
+not bold, so WCAG's large-text relaxation does not apply. No size-awareness is needed. The tokens
+it measures clear the bar comfortably: inactive trigger `--muted-foreground` on `--muted` is
+7.17:1 light / 5.50:1 dark; on the transparent `line` variant's `--background` ancestor, 7.49:1 /
+5.12:1.
 
 ---
 
