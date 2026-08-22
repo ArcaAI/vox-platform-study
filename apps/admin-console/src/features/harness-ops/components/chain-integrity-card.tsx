@@ -165,7 +165,7 @@ export function ChainIntegrityCard({
                 ) : (
                   <>
                     No evals have run yet either {'\u2014'} the trail fills as consultations flow through the harness.{' '}
-                    <Link href="/harness/policy" className="text-primary underline-offset-4 hover:underline">
+                    <Link href="/harness/policy" className="text-foreground underline-offset-4 hover:underline">
                       Review the harness policy
                     </Link>
                     .

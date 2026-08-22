@@ -71,7 +71,7 @@ function ServiceCell({ serviceName, onClick }: { serviceName: string; onClick: (
     <button
       type="button"
       onClick={onClick}
-      className="text-primary font-medium underline-offset-2 hover:underline focus-visible:underline"
+      className="text-foreground font-medium underline-offset-2 hover:underline focus-visible:underline"
     >
       {serviceName}
     </button>
@@ -144,7 +144,7 @@ export function ReleasesScreen() {
     sha: <ShaCell release={release} />,
     built: <span title={formatDateTime(release.buildAt)}>{formatRelativeTime(release.buildAt)}</span>,
     pipeline: release.ciPipelineUrl ? (
-      <a href={release.ciPipelineUrl} target="_blank" rel="noreferrer" className="text-primary underline underline-offset-2">
+      <a href={release.ciPipelineUrl} target="_blank" rel="noreferrer" className="text-foreground underline underline-offset-2">
         Pipeline
       </a>
     ) : (

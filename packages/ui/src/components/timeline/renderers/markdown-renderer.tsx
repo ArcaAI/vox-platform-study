@@ -16,7 +16,7 @@ export function MarkdownRenderer({ content }: TimelineRendererProps) {
       data-slot="timeline-markdown"
       className={cn(
         'space-y-2 text-sm leading-relaxed text-foreground',
-        '[&_a]:text-primary [&_a]:underline [&_code]:rounded [&_code]:bg-muted [&_code]:px-1 [&_code]:font-mono',
+        '[&_a]:text-foreground [&_a]:underline [&_code]:rounded [&_code]:bg-muted [&_code]:px-1 [&_code]:font-mono',
         '[&_strong]:font-semibold [&_ul]:list-disc [&_ul]:pl-5 [&_ol]:list-decimal [&_ol]:pl-5',
       )}
     >

@@ -74,7 +74,7 @@ export function AiOperationsRunsScreen() {
                   {/* TASK-723: reciprocal cross-link to the definition-scoped
                       tenant view — this screen is the cross-tenant platform-ops
                       sibling (§2.4); neither forks the other's components. */}
-                  <Link href="/workflow-runs" className="text-primary underline underline-offset-2">
+                  <Link href="/workflow-runs" className="text-foreground underline underline-offset-2">
                     See workflow-definition runs (tenant view) →
                   </Link>
                 </>

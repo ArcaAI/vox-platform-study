@@ -27,7 +27,7 @@ test.describe('Label', () => {
     test('has correct default styling', async ({ mount }) => {
       const component = await mount(<Label>Label</Label>);
       await expect(component).toHaveClass(/text-sm/);
-      await expect(component).toHaveClass(/font-medium/);
+      await expect(component).toHaveClass(/font-normal/);
     });
 
     test('has flex display with gap', async ({ mount }) => {

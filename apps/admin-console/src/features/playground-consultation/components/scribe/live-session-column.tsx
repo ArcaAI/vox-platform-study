@@ -198,7 +198,7 @@ export function LiveSessionColumn({
             {formatElapsed(displayElapsed)}
           </span>
         </div>
-        <div aria-hidden className="text-primary min-w-0 flex-1">
+        <div aria-hidden className="text-foreground min-w-0 flex-1">
           <Waveform data={displayWave} active={isCapturing} height={40} />
         </div>
         {/* On-the-fly switch to the tenant fallback pipeline. */}

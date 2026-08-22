@@ -30,7 +30,7 @@ export function AudioMeter({ level, isCapturing, isSpeaking, isMuted, className 
           </span>
         )}
 
-        {isSpeaking && <IconBroadcast className="size-4 text-primary" />}
+        {isSpeaking && <IconBroadcast className="size-4 text-foreground" />}
 
         {isMuted ? <IconMicrophoneOff className="size-4 text-destructive" /> : <IconMicrophone className="size-4 text-muted-foreground" />}
       </div>

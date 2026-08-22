@@ -162,7 +162,7 @@ function UploadCard({ pipelineId, onEnqueue }: { pipelineId: string | null; onEn
         >
           <IconUpload aria-hidden className="text-muted-foreground size-6" />
           <span className="text-sm">
-            Drag &amp; drop audio files here, or <span className="text-primary underline underline-offset-2">browse</span>
+            Drag &amp; drop audio files here, or <span className="text-foreground underline underline-offset-2">browse</span>
           </span>
           <span className="text-muted-foreground text-xs">
             wav {'·'} mp3 {'·'} mp4/m4a {'·'} ogg {'·'} flac {'·'} webm {'·'} aac {'—'} up to 100 MB each, one job

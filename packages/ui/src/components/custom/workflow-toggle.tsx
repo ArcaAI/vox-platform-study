@@ -57,8 +57,8 @@ export function WorkflowToggle({ mode, onChange, localContent, remoteContent, cl
               </div>
               <div className="min-w-0 flex-1">
                 <div className="flex items-center gap-1.5">
-                  <Icon className={cn('size-3.5 shrink-0', selected ? 'text-primary' : 'text-muted-foreground')} />
-                  <span className={cn('text-sm font-medium', selected && 'text-primary')}>{opt.label}</span>
+                  <Icon className={cn('size-3.5 shrink-0', selected ? 'text-foreground' : 'text-muted-foreground')} />
+                  <span className={cn('text-sm', selected ? 'font-medium' : 'font-normal')}>{opt.label}</span>
                 </div>
                 <p className="mt-0.5 text-xs text-muted-foreground">{opt.description}</p>
               </div>

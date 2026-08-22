@@ -143,7 +143,7 @@ export function TenantFilter({
 function SelectedMark() {
   return (
     <>
-      <Check data-slot="tenant-filter-check" aria-hidden="true" className="size-4 text-primary" />
+      <Check data-slot="tenant-filter-check" aria-hidden="true" className="size-4 text-foreground" />
       <span className="sr-only">Current selection</span>
     </>
   );

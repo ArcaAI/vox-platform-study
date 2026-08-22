@@ -169,7 +169,7 @@ export function ObjectBrowserPanel({
               <span className={cx('min-w-0 truncate font-mono text-xs', selected && 'font-medium')}>{entry.name}</span>
               {selected ? (
                 <>
-                  <IconCircleDot aria-hidden className="text-primary size-3.5 shrink-0" />
+                  <IconCircleDot aria-hidden className="text-foreground size-3.5 shrink-0" />
                   <span className="sr-only">(selected)</span>
                 </>
               ) : null}

@@ -53,7 +53,7 @@ const statCardVariants = cva('flex flex-col gap-1 border-l-4', {
 
 const ICON_CHIP: Record<StatCardAccent, string> = {
   default: 'bg-muted text-muted-foreground',
-  primary: 'bg-primary/10 text-primary',
+  primary: 'bg-primary/10 text-foreground',
   ai: 'bg-ai/10 text-ai',
   success: 'bg-success/10 text-success',
   warning: 'bg-warning/10 text-warning',

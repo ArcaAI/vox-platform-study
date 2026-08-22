@@ -176,7 +176,7 @@ export function DepartmentPromptConfigPanel({ departmentId, onEdit }: { departme
           </p>
           <p className="text-muted-foreground text-xs">
             Graph-based authoring is moving to{' '}
-            <Link href="/workflow-studio" className="text-primary inline-flex items-center gap-0.5 hover:underline">
+            <Link href="/workflow-studio" className="text-foreground inline-flex items-center gap-0.5 hover:underline">
               Workflow Studio
               <IconArrowRight aria-hidden className="size-3" />
             </Link>

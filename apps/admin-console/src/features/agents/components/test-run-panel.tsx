@@ -251,7 +251,7 @@ function GoldenCasePicker({
                       }}
                     >
                       <span className="flex-1 truncate">{caseLabel(row)}</span>
-                      {active ? <IconCheck aria-hidden="true" className="text-primary size-4" /> : null}
+                      {active ? <IconCheck aria-hidden="true" className="text-foreground size-4" /> : null}
                     </CommandItem>
                   );
                 })}

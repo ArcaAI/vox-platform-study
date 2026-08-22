@@ -50,7 +50,7 @@ function StageIcon({ status }: { status: HarnessStage['status'] }) {
     case 'completed':
       return <IconCircleCheck aria-hidden className="text-success size-4 shrink-0" />;
     case 'active':
-      return <Spinner className="text-primary size-4 shrink-0" />;
+      return <Spinner className="text-foreground size-4 shrink-0" />;
     case 'failed':
       return <IconAlertTriangle aria-hidden className="text-destructive size-4 shrink-0" />;
     default:

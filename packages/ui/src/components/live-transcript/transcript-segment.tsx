@@ -20,8 +20,8 @@ import type { LiveTranscriptSegment, SpeakerConfig } from './types';
 const LazySegmentEditor = React.lazy(() => import('./segment-editor.js') as unknown as Promise<{ default: React.ComponentType<SegmentEditorProps> }>);
 
 const SPEAKER_TONE: Record<NonNullable<SpeakerConfig['colorRole']>, string> = {
-  primary: 'text-primary',
-  ai: 'text-primary',
+  primary: 'text-foreground',
+  ai: 'text-foreground',
   // Speaker names are TEXT, so each role uses its text step: --warning as bare
   // ink is 2.96:1 and fails, which is what --warning-strong exists for. --info
   // has no strong step and clears 4.5:1 on --background/--card as-is.

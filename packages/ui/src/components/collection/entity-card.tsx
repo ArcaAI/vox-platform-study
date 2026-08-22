@@ -73,7 +73,7 @@ export function EntityCard({
           <span
             aria-hidden="true"
             className={cn(
-              'flex shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary',
+              'flex shrink-0 items-center justify-center rounded-lg bg-primary/10 text-foreground',
               density === 'compact' ? 'size-8' : 'size-9',
             )}
           >

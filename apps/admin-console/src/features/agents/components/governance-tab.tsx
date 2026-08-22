@@ -260,7 +260,7 @@ function EvalPanel({ template }: { template: PromptTemplate }) {
         </>
       )}
 
-      <Link href="/harness/observability" className="text-primary text-xs underline-offset-4 hover:underline">
+      <Link href="/harness/observability" className="text-foreground text-xs underline-offset-4 hover:underline">
         Manage golden sets on the Harness Observability board &rarr;
       </Link>
     </Card>
