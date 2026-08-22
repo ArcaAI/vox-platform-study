@@ -47,7 +47,8 @@ export class WorkflowDefinitionDtoMapper {
     // publish, so a DRAFT can never drift. The stored column is OR'd, never overwritten, so a row
     // flagged for some other reason stays flagged.
     dto.currentRegistryChecksum = runningRegistryChecksum();
-    const registryDrifted = entity.registryChecksum !== null && entity.registryChecksum !== undefined && entity.registryChecksum !== dto.currentRegistryChecksum;
+    const registryDrifted =
+      entity.registryChecksum !== null && entity.registryChecksum !== undefined && entity.registryChecksum !== dto.currentRegistryChecksum;
     dto.needsReview = entity.needsReview || registryDrifted;
     dto.validatedAt = entity.validatedAt ? entity.validatedAt.toISOString() : null;
     dto.publishedAt = entity.publishedAt ? entity.publishedAt.toISOString() : null;

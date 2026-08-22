@@ -139,7 +139,7 @@ describe('WorkflowRunService', () => {
       expect(page.nextCursor).toBeNull();
     });
 
-    it('round-trips a cursor from one page into the next page\'s keyset predicate', async () => {
+    it("round-trips a cursor from one page into the next page's keyset predicate", async () => {
       const { service, repository } = buildDeps();
       const first = [buildRun({ runId: 'run-a', startedAt: new Date('2026-08-16T10:00:00.000Z') })];
       repository.findAll.mockResolvedValueOnce(first);
@@ -282,11 +282,7 @@ describe('WorkflowRunService', () => {
 
   describe('foldStepsIntoNodeRollups (pure helper)', () => {
     it('starts a NEW group for a non-consecutive repeat of the same name', () => {
-      const nodes = foldStepsIntoNodeRollups([
-        makeStep({ seq: 0, name: 'a' }),
-        makeStep({ seq: 4, name: 'b' }),
-        makeStep({ seq: 8, name: 'a' }),
-      ]);
+      const nodes = foldStepsIntoNodeRollups([makeStep({ seq: 0, name: 'a' }), makeStep({ seq: 4, name: 'b' }), makeStep({ seq: 8, name: 'a' })]);
       expect(nodes).toHaveLength(3);
       expect(nodes.map((n) => n.nodeType)).toEqual(['a', 'b', 'a']);
     });
@@ -365,9 +361,9 @@ describe('WorkflowRunService', () => {
     it('throws NotFoundException when no matching run row exists', async () => {
       const { service, repository } = buildDeps();
       repository.findByRunKey.mockResolvedValueOnce(null);
-      await expect(
-        service.recordRunFinished({ tenantId: TENANT, sessionId: SESSION_ID, runId: RUN_ID, status: 'FAILED' }),
-      ).rejects.toThrow(NotFoundException);
+      await expect(service.recordRunFinished({ tenantId: TENANT, sessionId: SESSION_ID, runId: RUN_ID, status: 'FAILED' })).rejects.toThrow(
+        NotFoundException,
+      );
     });
 
     it('never emits a sys-event (telemetry exemption)', async () => {

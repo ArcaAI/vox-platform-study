@@ -384,7 +384,7 @@ export const API_TAGS: readonly ApiTagDefinition[] = [
     name: 'admin-workflow-invariant-rules',
     displayName: 'Workflow Invariant Rules',
     plane: 'admin',
-    description: 'The validator rule rows a graph is checked against — the SYSTEM platform register plus a tenant\'s own stricter additions.',
+    description: "The validator rule rows a graph is checked against — the SYSTEM platform register plus a tenant's own stricter additions.",
   },
   {
     name: 'admin-workflow-nodes',

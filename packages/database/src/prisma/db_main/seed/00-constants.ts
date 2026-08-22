@@ -339,8 +339,7 @@ export const SEED_API_KEY_RAW = {
   SDK_SURGERY: 'hope_sk_test_g2i3k12d10i0093lhj3ik3jjk5_297804',
   INTEGRATION_ARCAAI: 'hope_ig_test_h3j4l23e21j1104mik4jl4kkl6_308915',
   EXPIRED_DOCTOR2: 'hope_sk_test_i4k5m34f32k2215njl5km5llm7_419026',
-  SDK_COMPAT_ARCAAI:
-    'hope_sk_7548d66e07c25f8d0d079fa4f22e20abad3a0d919a83bd24ce6b0da58074c19a_a619ea',
+  SDK_COMPAT_ARCAAI: 'hope_sk_7548d66e07c25f8d0d079fa4f22e20abad3a0d919a83bd24ce6b0da58074c19a_a619ea',
 } as const;
 
 // =============================================================================

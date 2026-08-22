@@ -57,7 +57,7 @@ export class WorkflowDefinitionResponse {
 
   @ApiProperty({
     description:
-      "The node registry checksum of the RUNNING server, for comparison against `registryChecksum` (the value stamped at publish). Present on every response so a client seeing `needsReview: true` can tell WHAT drifted, rather than only that something did.",
+      'The node registry checksum of the RUNNING server, for comparison against `registryChecksum` (the value stamped at publish). Present on every response so a client seeing `needsReview: true` can tell WHAT drifted, rather than only that something did.',
   })
   currentRegistryChecksum: string;
 

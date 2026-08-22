@@ -34,21 +34,35 @@ export class CreateWorkflowInvariantRuleRequest {
   @IsString({ each: true })
   registerRefs?: string[];
 
-  @ApiProperty({ enum: WorkflowRulePredicateType, description: 'The code-owned predicate KIND. Adding a new kind is a deploy; this row is one parameterization of an existing one.' })
+  @ApiProperty({
+    enum: WorkflowRulePredicateType,
+    description: 'The code-owned predicate KIND. Adding a new kind is a deploy; this row is one parameterization of an existing one.',
+  })
   @IsEnum(WorkflowRulePredicateType)
   predicateType: WorkflowRulePredicateType;
 
-  @ApiProperty({ type: 'object', additionalProperties: true, description: "Validated against the predicate's own configProblems() at evaluation time." })
+  @ApiProperty({
+    type: 'object',
+    additionalProperties: true,
+    description: "Validated against the predicate's own configProblems() at evaluation time.",
+  })
   @IsObject()
   predicateConfig: Record<string, unknown>;
 
-  @ApiPropertyOptional({ nullable: true, description: 'Null applies the rule to every palette (the structural class). Otherwise a registry-declared palette key.', example: 'consultation' })
+  @ApiPropertyOptional({
+    nullable: true,
+    description: 'Null applies the rule to every palette (the structural class). Otherwise a registry-declared palette key.',
+    example: 'consultation',
+  })
   @IsOptional()
   @IsString()
   @MaxLength(80)
   paletteKey?: string;
 
-  @ApiPropertyOptional({ enum: WorkflowRuleSeverity, description: 'Defaults to ERROR — a rule that silently defaulted to WARNING would be authored as a gate and behave as advice.' })
+  @ApiPropertyOptional({
+    enum: WorkflowRuleSeverity,
+    description: 'Defaults to ERROR — a rule that silently defaulted to WARNING would be authored as a gate and behave as advice.',
+  })
   @IsOptional()
   @IsEnum(WorkflowRuleSeverity)
   severity?: WorkflowRuleSeverity;
