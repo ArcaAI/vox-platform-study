@@ -7,8 +7,10 @@
 // directly with stubbed Redis dependencies and assert:
 //   - The bootstrap noops when SECRETS_PROVIDER != vault.
 //   - The bootstrap noops when VAULT_AUDIT_LOG_PATH is unset.
+//   - The bootstrap noops when VAULT_AUDIT_LOG_PATH points at a missing file.
 //   - The leader lock is attempted via Redis SET …NX EX.
 //   - The worker does not start when the leader lock is taken.
+import { fileURLToPath } from 'node:url';
 import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest';
 import { VaultRotationWorkerService } from '../vault-rotation.worker.module';
 
@@ -76,10 +78,12 @@ describe('VaultRotationWorkerService bootstrap guards', () => {
 
   it('attempts leader acquisition via Redis SET …NX EX', async () => {
     process.env.SECRETS_PROVIDER = 'vault';
-    // Point at a non-existent path; the worker startup is best-effort
-    // (statSync may throw but the bootstrap returns synchronously after
-    // the lock acquisition).
-    process.env.VAULT_AUDIT_LOG_PATH = '/tmp/__nonexistent_audit_log__';
+    // Point at a file that EXISTS. The bootstrap used to reach the lock with a
+    // non-existent path and let statSync throw ("best-effort"), which surfaced as
+    // a bare ENOENT crash log on every fresh checkout — `.env.dev` ships
+    // ./temp/vault.log and nothing creates it. Absence now disables the worker
+    // before it takes a lock it could not use; this test covers the happy path.
+    process.env.VAULT_AUDIT_LOG_PATH = fileURLToPath(import.meta.url);
     const pub = makePub();
     const leader = makeLeader({ acquire: false }); // simulate peer pod
     const svc = new VaultRotationWorkerService(undefined, pub as never, leader as never);
@@ -90,6 +94,18 @@ describe('VaultRotationWorkerService bootstrap guards', () => {
     expect(args[2]).toBe('EX');
     expect(args[3]).toBe(30);
     expect(args[4]).toBe('NX');
+    await svc.onModuleDestroy();
+  });
+
+  it('noops when VAULT_AUDIT_LOG_PATH points at a file that does not exist', async () => {
+    process.env.SECRETS_PROVIDER = 'vault';
+    process.env.VAULT_AUDIT_LOG_PATH = '/tmp/__nonexistent_audit_log__';
+    const pub = makePub();
+    const leader = makeLeader();
+    const svc = new VaultRotationWorkerService(undefined, pub as never, leader as never);
+    await svc.onApplicationBootstrap();
+    // No lock is taken: there is nothing to tail, so leadership would be useless.
+    expect(leader.set).not.toHaveBeenCalled();
     await svc.onModuleDestroy();
   });
 });

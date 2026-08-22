@@ -29,6 +29,33 @@ async function probe(url: string, requireOk: boolean): Promise<boolean> {
   }
 }
 
+/**
+ * Downstream service URLs. The gateway PROXIES these — it answers 200 on its own
+ * health while a proxied service is down, so `apiAvailable()` cannot stand in for
+ * them. A spec that drives a harness workflow or a transcription job needs the
+ * service itself, and must SKIP with an actionable message rather than fail on a
+ * locator that was never going to resolve. That is this module's stated contract;
+ * it just did not extend past the gateway.
+ */
+export const SERVICE_URLS: Record<string, string> = {
+  stt: process.env.STT_URL ?? 'http://localhost:8861',
+  text: process.env.TEXT_URL ?? 'http://localhost:8862',
+  guardrail: process.env.GUARDRAIL_URL ?? 'http://localhost:8863',
+  nlp: process.env.NLP_URL ?? 'http://localhost:8864',
+  harness: process.env.HARNESS_URL ?? 'http://localhost:8866',
+};
+
+export const serviceDownMessage = (name: string) =>
+  `${name} service is not healthy at ${SERVICE_URLS[name]} — start the full stack with \`pnpm stack:dev\` (or set ${name.toUpperCase()}_URL)`;
+
+const serviceUp: Record<string, Promise<boolean> | undefined> = {};
+
+/** Probed once per worker, like the app and gateway probes above. */
+export function serviceAvailable(name: keyof typeof SERVICE_URLS | string): Promise<boolean> {
+  serviceUp[name] ??= probe(`${SERVICE_URLS[name]}/api/v1/health`, true);
+  return serviceUp[name] as Promise<boolean>;
+}
+
 let appUp: Promise<boolean> | undefined;
 let apiUp: Promise<boolean> | undefined;
 

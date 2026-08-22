@@ -7,11 +7,12 @@
 import { expect, test, type Page } from '@playwright/test';
 import { expectNoA11yViolations } from './helpers/a11y';
 import { loginAsAdmin, selectWorkingTenant } from './helpers/auth';
-import { API_DOWN_MESSAGE, APP_DOWN_MESSAGE, apiAvailable, appAvailable } from './helpers/stack';
+import { API_DOWN_MESSAGE, APP_DOWN_MESSAGE, apiAvailable, appAvailable, serviceAvailable, serviceDownMessage } from './helpers/stack';
 
 test.beforeEach(async ({ page }) => {
   test.skip(!(await appAvailable()), APP_DOWN_MESSAGE);
   test.skip(!(await apiAvailable()), API_DOWN_MESSAGE);
+  test.skip(!(await serviceAvailable('stt')), serviceDownMessage('stt'));
   await loginAsAdmin(page);
   // The jobs surface is tenant-scoped: elevated sessions see the "Select a
   // working tenant" gate until one is chosen.

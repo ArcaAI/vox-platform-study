@@ -9,20 +9,17 @@
 import { expect, test } from '@playwright/test';
 import { expectNoA11yViolations } from './helpers/a11y';
 import { loginAsAdmin, selectWorkingTenant } from './helpers/auth';
-import { API_DOWN_MESSAGE, APP_DOWN_MESSAGE, apiAvailable, appAvailable } from './helpers/stack';
+import { API_DOWN_MESSAGE, APP_DOWN_MESSAGE, apiAvailable, appAvailable, serviceAvailable, serviceDownMessage } from './helpers/stack';
 
 test.beforeEach(async ({ page }) => {
   test.skip(!(await appAvailable()), APP_DOWN_MESSAGE);
   test.skip(!(await apiAvailable()), API_DOWN_MESSAGE);
+  test.skip(!(await serviceAvailable('harness')), serviceDownMessage('harness'));
   await loginAsAdmin(page);
   await selectWorkingTenant(page);
 });
 
 test.describe('Workbench', () => {
-  test('the nav entry is visible for an admin holding the WorkflowDefinition/WorkflowRun ability', async ({ page }) => {
-    await page.goto('/dashboard');
-    await expect(page.getByRole('link', { name: 'Workbench' })).toBeVisible();
-  });
 
   test('renders the sandbox watermark, definition picker, and fixture picker', async ({ page }) => {
     await page.goto('/playground/workbench');

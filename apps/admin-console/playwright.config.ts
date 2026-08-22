@@ -23,7 +23,13 @@ export default defineConfig({
   fullyParallel: true,
   forbidOnly: isCI,
   retries: isCI ? 2 : 0,
-  workers: isCI ? 1 : undefined,
+  // Locally the suite runs against `next dev`, which compiles routes on first
+  // visit from a SINGLE process. Playwright's default fans out ~cpus/2 workers
+  // (8 on a 16-core box) onto that one server, and first-visit compiles then
+  // blow the 30s test timeout: measured 33 timeouts at the default vs 1 failure
+  // at --workers=2 over the same specs, and tenants.spec.ts went 8 timeouts ->
+  // 15/15 passing when run alone. Cap it. CI keeps 1 (and builds the console).
+  workers: isCI ? 1 : Number(process.env.PLAYWRIGHT_WORKERS ?? 3),
   reporter: [['list'], ['html', { open: 'never', outputFolder: 'test-results/html' }]],
   timeout: 30_000,
   expect: { timeout: 10_000 },
