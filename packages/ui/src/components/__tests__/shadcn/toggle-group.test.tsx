@@ -163,7 +163,7 @@ test.describe('ToggleGroup', () => {
 
       const item = page.locator('[data-slot="toggle-group-item"]').first();
       await expect(item).toHaveAttribute('data-size', 'sm');
-      await expect(item).toHaveClass(/h-8/);
+      await expect(item).toHaveClass(/h-7/);
     });
 
     test('passes lg size through context', async ({ mount, page }) => {
@@ -174,7 +174,7 @@ test.describe('ToggleGroup', () => {
 
       const item = page.locator('[data-slot="toggle-group-item"]').first();
       await expect(item).toHaveAttribute('data-size', 'lg');
-      await expect(item).toHaveClass(/h-10/);
+      await expect(item).toHaveClass(/h-11/);
     });
   });
 
@@ -217,11 +217,11 @@ test.describe('ToggleGroup', () => {
       await expect(group).toHaveClass(/items-center/);
     });
 
-    test('group has rounded-md', async ({ mount, page }) => {
+    test('group has rounded-control', async ({ mount, page }) => {
       await mount(<SingleToggleGroup />);
 
       const group = page.locator('[data-slot="toggle-group"]');
-      await expect(group).toHaveClass(/rounded-md/);
+      await expect(group).toHaveClass(/rounded-control/);
     });
 
     test('items have data-state on/off', async ({ mount, page }) => {

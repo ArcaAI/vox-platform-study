@@ -80,10 +80,10 @@ test.describe('Popover', () => {
   });
 
   test.describe('styling', () => {
-    test('popover content has rounded-md class', async ({ mount, page }) => {
+    test('popover content has rounded-surface class', async ({ mount, page }) => {
       await mount(<BasicPopover defaultOpen />);
       const content = page.locator('[data-slot="popover-content"]');
-      await expect(content).toHaveClass(/rounded-md/);
+      await expect(content).toHaveClass(/rounded-surface/);
     });
 
     test('popover content has border class', async ({ mount, page }) => {
@@ -98,10 +98,10 @@ test.describe('Popover', () => {
       await expect(content).toHaveClass(/p-4/);
     });
 
-    test('popover content has shadow-md class', async ({ mount, page }) => {
+    test('popover content has shadow-overlay class', async ({ mount, page }) => {
       await mount(<BasicPopover defaultOpen />);
       const content = page.locator('[data-slot="popover-content"]');
-      await expect(content).toHaveClass(/shadow-md/);
+      await expect(content).toHaveClass(/shadow-overlay/);
     });
 
     test('popover content has animation classes', async ({ mount, page }) => {
@@ -159,7 +159,7 @@ test.describe('Popover', () => {
     test('preserves default classes with custom className', async ({ mount, page }) => {
       await mount(<PopoverWithCustomClass defaultOpen />);
       const content = page.locator('[data-slot="popover-content"]');
-      await expect(content).toHaveClass(/rounded-md/);
+      await expect(content).toHaveClass(/rounded-surface/);
       await expect(content).toHaveClass(/custom-popover-class/);
     });
   });

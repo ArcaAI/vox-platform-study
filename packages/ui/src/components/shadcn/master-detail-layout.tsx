@@ -63,7 +63,7 @@ interface MasterDetailLayoutProps {
 
 function MasterDetailRoot({ className, style, children, ...props }: React.ComponentProps<'div'>) {
   return (
-    <div data-slot="master-detail" className={cn('grid overflow-hidden rounded-lg border', className)} style={style} {...props}>
+    <div data-slot="master-detail" className={cn('grid overflow-hidden rounded-surface border', className)} style={style} {...props}>
       {children}
     </div>
   );
@@ -86,7 +86,7 @@ function MasterDetailColumnHeader({ className, children, ...props }: React.Compo
 }
 
 function MasterDetailColumnTitle({ className, ...props }: React.ComponentProps<'h3'>) {
-  return <h3 data-slot="master-detail-column-title" className={cn('text-sm font-semibold', className)} {...props} />;
+  return <h3 data-slot="master-detail-column-title" className={cn('text-sm font-medium', className)} {...props} />;
 }
 
 function MasterDetailColumnDescription({ className, ...props }: React.ComponentProps<'p'>) {

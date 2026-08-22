@@ -203,7 +203,7 @@ test.describe('ButtonGroup', () => {
     test('has border and rounded styling', async ({ mount }) => {
       const component = await mount(<ButtonGroupText>Label</ButtonGroupText>);
       await expect(component).toHaveClass(/border/);
-      await expect(component).toHaveClass(/rounded-md/);
+      await expect(component).toHaveClass(/rounded-control/);
     });
 
     test('has flex layout with gap', async ({ mount }) => {

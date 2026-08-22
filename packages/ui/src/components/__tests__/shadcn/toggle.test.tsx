@@ -30,7 +30,8 @@ test.describe('Toggle', () => {
       const component = await mount(<Toggle variant="outline">Outline</Toggle>);
       await expect(component).toHaveClass(/border/);
       await expect(component).toHaveClass(/border-input/);
-      await expect(component).toHaveClass(/shadow-xs/);
+      // TASK-787 J-12: the outline toggle is border-only — no elevation.
+      await expect(component).not.toHaveClass(/shadow-(xs|sm|md|lg|xl|raised|overlay)/);
     });
   });
 
@@ -44,14 +45,14 @@ test.describe('Toggle', () => {
 
     test('renders sm size', async ({ mount }) => {
       const component = await mount(<Toggle size="sm">Small</Toggle>);
-      await expect(component).toHaveClass(/h-8/);
-      await expect(component).toHaveClass(/min-w-8/);
+      await expect(component).toHaveClass(/h-7/);
+      await expect(component).toHaveClass(/min-w-7/);
     });
 
     test('renders lg size', async ({ mount }) => {
       const component = await mount(<Toggle size="lg">Large</Toggle>);
-      await expect(component).toHaveClass(/h-10/);
-      await expect(component).toHaveClass(/min-w-10/);
+      await expect(component).toHaveClass(/h-11/);
+      await expect(component).toHaveClass(/min-w-11/);
     });
   });
 
@@ -138,9 +139,9 @@ test.describe('Toggle', () => {
       await expect(component).toHaveClass(/items-center/);
     });
 
-    test('has rounded-md', async ({ mount }) => {
+    test('has rounded-control', async ({ mount }) => {
       const component = await mount(<Toggle>Styled</Toggle>);
-      await expect(component).toHaveClass(/rounded-md/);
+      await expect(component).toHaveClass(/rounded-control/);
     });
 
     test('has text-sm and font-medium', async ({ mount }) => {
