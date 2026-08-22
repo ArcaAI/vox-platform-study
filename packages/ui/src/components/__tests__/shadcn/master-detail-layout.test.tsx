@@ -1,7 +1,5 @@
 import { test, expect } from '@playwright/experimental-ct-react';
 import {
-  MasterDetailLayout,
-  MasterDetailComposed,
   MasterDetailRoot,
   MasterDetailColumn,
   MasterDetailColumnHeader,
@@ -10,36 +8,21 @@ import {
   MasterDetailItem,
   MasterDetailSkeleton,
   MasterDetailEmpty,
-  type MasterDetailColumnDefinition,
-  type MasterDetailColumnState,
 } from '../../shadcn/master-detail-layout';
-import { FruitMasterDetail, InteractiveFruitMasterDetail } from '../fixtures/shadcn/master-detail-layout-fixtures';
+import {
+  ComposedFruitMasterDetail,
+  EmptyFruitMasterDetail,
+  FruitMasterDetail,
+  InteractiveFruitMasterDetail,
+  LoadingFruitMasterDetail,
+  TwoColumnFruitMasterDetail,
+} from '../fixtures/shadcn/master-detail-layout-fixtures';
 
-// ---------------------------------------------------------------------------
-// Fixtures
-// ---------------------------------------------------------------------------
-
-interface FruitItem {
-  id: string;
-  name: string;
-}
-
-const fruits: FruitItem[] = [
-  { id: 'apple', name: 'Apple' },
-  { id: 'banana', name: 'Banana' },
-  { id: 'cherry', name: 'Cherry' },
-];
-
-const fruitColumn: MasterDetailColumnDefinition<FruitItem> = {
-  id: 'fruits',
-  title: 'Fruits',
-  description: '3 total',
-  skeletonCount: 3,
-  emptyTitle: 'No fruits',
-  emptyDescription: 'No fruits found.',
-  renderItem: (item) => <span>{item.name}</span>,
-  keyExtractor: (item) => item.id,
-};
+// Column definitions carry `renderItem`/`keyExtractor` render props. Playwright
+// CT proxies function props as async RPC to Node, so such a callback returns a
+// Promise in the browser and React throws on it — taking the whole mount down.
+// Every `MasterDetailLayout`/`MasterDetailComposed` case therefore lives in the
+// browser-bundled fixture module and is driven by serializable props only.
 
 // ---------------------------------------------------------------------------
 // Sub-component tests
@@ -187,24 +170,7 @@ test.describe('MasterDetailEmpty', () => {
 
 test.describe('MasterDetailLayout', () => {
   test('renders correct number of columns', async ({ mount, page }) => {
-    const columns: MasterDetailColumnDefinition<FruitItem>[] = [fruitColumn, { ...fruitColumn, id: 'col2', title: 'Column 2' }];
-    const states: MasterDetailColumnState<FruitItem>[] = [
-      {
-        data: fruits,
-        isLoading: false,
-        selectedId: null,
-        onSelect: () => {},
-      },
-      {
-        data: [],
-        isLoading: false,
-        selectedId: null,
-        onSelect: () => {},
-        enabled: true,
-      },
-    ];
-
-    await mount(<MasterDetailLayout columns={columns} states={states} />);
+    await mount(<TwoColumnFruitMasterDetail />);
 
     const cols = page.locator('[data-slot="master-detail-column"]');
     await expect(cols).toHaveCount(2);
@@ -219,57 +185,20 @@ test.describe('MasterDetailLayout', () => {
   });
 
   test('shows skeletons when loading', async ({ mount, page }) => {
-    const columns: MasterDetailColumnDefinition<FruitItem>[] = [{ ...fruitColumn, skeletonCount: 4 }];
-    const states: MasterDetailColumnState<FruitItem>[] = [
-      {
-        data: [],
-        isLoading: true,
-        selectedId: null,
-        onSelect: () => {},
-      },
-    ];
-
-    await mount(<MasterDetailLayout columns={columns} states={states} />);
+    await mount(<LoadingFruitMasterDetail skeletonCount={4} />);
 
     const skeletons = page.locator('[data-slot="skeleton"]');
     await expect(skeletons).toHaveCount(4);
   });
 
   test('shows empty state when no data and not loading', async ({ mount, page }) => {
-    const columns: MasterDetailColumnDefinition<FruitItem>[] = [fruitColumn];
-    const states: MasterDetailColumnState<FruitItem>[] = [
-      {
-        data: [],
-        isLoading: false,
-        selectedId: null,
-        onSelect: () => {},
-      },
-    ];
-
-    await mount(<MasterDetailLayout columns={columns} states={states} />);
+    await mount(<EmptyFruitMasterDetail />);
 
     await expect(page.locator('[data-slot="empty-title"]')).toHaveText('No fruits');
   });
 
   test('shows disabled empty state when enabled=false', async ({ mount, page }) => {
-    const columns: MasterDetailColumnDefinition<FruitItem>[] = [
-      {
-        ...fruitColumn,
-        emptyTitle: 'No selection',
-        emptyDescription: 'Select an item first.',
-      },
-    ];
-    const states: MasterDetailColumnState<FruitItem>[] = [
-      {
-        data: [],
-        isLoading: false,
-        selectedId: null,
-        onSelect: () => {},
-        enabled: false,
-      },
-    ];
-
-    await mount(<MasterDetailLayout columns={columns} states={states} />);
+    await mount(<EmptyFruitMasterDetail emptyTitle="No selection" emptyDescription="Select an item first." enabled={false} />);
 
     await expect(page.locator('[data-slot="empty-title"]')).toHaveText('No selection');
   });
@@ -290,17 +219,7 @@ test.describe('MasterDetailLayout', () => {
   });
 
   test('renders column headers with title and description', async ({ mount, page }) => {
-    const columns: MasterDetailColumnDefinition<FruitItem>[] = [fruitColumn];
-    const states: MasterDetailColumnState<FruitItem>[] = [
-      {
-        data: fruits,
-        isLoading: false,
-        selectedId: null,
-        onSelect: () => {},
-      },
-    ];
-
-    await mount(<MasterDetailLayout columns={columns} states={states} />);
+    await mount(<FruitMasterDetail />);
 
     await expect(page.locator('[data-slot="master-detail-column-title"]')).toHaveText('Fruits');
     await expect(page.locator('[data-slot="master-detail-column-description"]')).toHaveText('3 total');
@@ -313,28 +232,7 @@ test.describe('MasterDetailLayout', () => {
 
 test.describe('MasterDetailComposed', () => {
   test('renders list columns + detail column', async ({ mount, page }) => {
-    await mount(
-      <MasterDetailComposed
-        listColumns={[fruitColumn]}
-        listStates={[
-          {
-            data: fruits,
-            isLoading: false,
-            selectedId: 'apple',
-            onSelect: () => {},
-          },
-        ]}
-        detailColumn={{
-          id: 'detail',
-          title: 'Detail',
-          description: 'Fruit detail',
-        }}
-        detailState={{
-          hasSelection: true,
-          content: <div data-testid="detail-content">Apple detail</div>,
-        }}
-      />,
-    );
+    await mount(<ComposedFruitMasterDetail selectedId="apple" hasSelection detailDescription="Fruit detail" />);
 
     const cols = page.locator('[data-slot="master-detail-column"]');
     await expect(cols).toHaveCount(2);
@@ -342,49 +240,13 @@ test.describe('MasterDetailComposed', () => {
   });
 
   test('shows empty state in detail when no selection', async ({ mount, page }) => {
-    await mount(
-      <MasterDetailComposed
-        listColumns={[fruitColumn]}
-        listStates={[
-          {
-            data: fruits,
-            isLoading: false,
-            selectedId: null,
-            onSelect: () => {},
-          },
-        ]}
-        detailColumn={{
-          id: 'detail',
-          title: 'Detail',
-          emptyTitle: 'Nothing selected',
-          emptyDescription: 'Pick a fruit.',
-        }}
-        detailState={{
-          hasSelection: false,
-          content: null,
-        }}
-      />,
-    );
+    await mount(<ComposedFruitMasterDetail detailEmptyTitle="Nothing selected" detailEmptyDescription="Pick a fruit." />);
 
     await expect(page.locator('[data-slot="empty-title"]').last()).toHaveText('Nothing selected');
   });
 
   test('last column has no border-r', async ({ mount, page }) => {
-    await mount(
-      <MasterDetailComposed
-        listColumns={[fruitColumn]}
-        listStates={[
-          {
-            data: fruits,
-            isLoading: false,
-            selectedId: null,
-            onSelect: () => {},
-          },
-        ]}
-        detailColumn={{ id: 'detail', title: 'Detail' }}
-        detailState={{ hasSelection: false, content: null }}
-      />,
-    );
+    await mount(<ComposedFruitMasterDetail />);
 
     const cols = page.locator('[data-slot="master-detail-column"]');
     const lastCol = cols.last();
