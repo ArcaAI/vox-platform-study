@@ -19,6 +19,7 @@ import {
   listAudioPipelines,
   startRecording,
   stopRecording,
+  updateSummary,
 } from './client';
 import { playgroundConsultationKeys } from './keys';
 import type {
@@ -27,6 +28,8 @@ import type {
   GenerateSummaryRequest,
   HarnessAssuranceSnapshot,
   HarnessProgressSnapshot,
+  SummaryResult,
+  UpdateSummaryRequest,
 } from './types';
 import { isTerminalConsultationJob } from './types';
 
@@ -42,6 +45,30 @@ export function useLatestSummary(consultationId: string | null, enabled = true) 
     queryKey: playgroundConsultationKeys.latestSummary(consultationId ?? 'none'),
     queryFn: () => getLatestSummary(consultationId as string),
     enabled: enabled && !!consultationId,
+  });
+}
+
+/**
+ * W1 — persist a clinician edit to the SOAP note under If-Match.
+ *
+ * Deliberately does NOT invalidate on error: a 412 must leave the cached draft
+ * alone so `useNoteEditor` can show the clinician's text beside the server's.
+ */
+export function useUpdateSummary() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      consultationId,
+      summaryId,
+      body,
+      expectedVersion,
+    }: {
+      consultationId: string;
+      summaryId: string;
+      body: UpdateSummaryRequest;
+      expectedVersion: number;
+    }): Promise<SummaryResult> => updateSummary(consultationId, summaryId, body, expectedVersion),
+    onSuccess: () => void queryClient.invalidateQueries({ queryKey: playgroundConsultationKeys.root }),
   });
 }
 
