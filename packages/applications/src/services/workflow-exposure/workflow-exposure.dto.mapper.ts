@@ -23,7 +23,15 @@ export class WorkflowExposureDtoMapper {
     };
   }
 
-  static toStatusResponse(slug: string, workflowVersionNumber: number, upstream: GetWorkflowRunResult): WorkflowRunStatusResponse {
+  /** `resultRef` comes from the durable run READ MODEL, never from `upstream`: Temporal state
+   *  carries per-node status only, which is precisely why the delivered output needed a column
+   *  (TASK-790, finding M-2). */
+  static toStatusResponse(
+    slug: string,
+    workflowVersionNumber: number,
+    upstream: GetWorkflowRunResult,
+    resultRef: Record<string, unknown> | null = null,
+  ): WorkflowRunStatusResponse {
     return {
       runId: upstream.runId,
       slug,
@@ -32,6 +40,7 @@ export class WorkflowExposureDtoMapper {
       stages: upstream.stages,
       startedAt: upstream.startedAt,
       endedAt: upstream.endedAt,
+      resultRef,
     };
   }
 
