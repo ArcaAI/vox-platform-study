@@ -709,7 +709,7 @@ export const NAV_ENTRIES: readonly NavEntry[] = [
   {
     route: '/playground/consultation',
     domain: 'playground',
-    label: 'Consultation Demo',
+    label: 'Consultation Scribe',
     tier: '50-59',
     icon: IconHeartbeat,
     required: [],
