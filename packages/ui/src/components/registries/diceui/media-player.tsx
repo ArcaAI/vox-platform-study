@@ -1799,7 +1799,7 @@ function MediaPlayerSeek(props: MediaPlayerSeekProps) {
           )}
           {chapterSeparators}
         </SliderPrimitive.Track>
-        <SliderPrimitive.Thumb className="relative z-10 block size-2.5 shrink-0 rounded-full bg-primary shadow-sm ring-ring/50 transition-[color,box-shadow] will-change-transform hover:ring-4 focus-visible:outline-hidden focus-visible:ring-4 disabled:pointer-events-none disabled:opacity-50" />
+        <SliderPrimitive.Thumb className="relative z-10 block size-2.5 shrink-0 rounded-full bg-primary ring-ring/50 transition-[color,box-shadow] will-change-transform hover:ring-4 focus-visible:outline-hidden focus-visible:ring-4 disabled:pointer-events-none disabled:opacity-50" />
       </SliderPrimitive.Root>
       {!withoutTooltip && !context.withoutTooltip && seekState.isHovering && seekableEnd > 0 && (
         <MediaPlayerPortal>
@@ -1817,7 +1817,7 @@ function MediaPlayerSeek(props: MediaPlayerSeekProps) {
           >
             <div
               className={cn(
-                'flex flex-col items-center gap-1.5 rounded-md border bg-background text-foreground shadow-sm dark:bg-zinc-900',
+                'flex flex-col items-center gap-1.5 rounded-md border bg-background text-foreground dark:bg-zinc-900',
                 thumbnail && 'min-h-10',
                 !thumbnail && currentChapterCue && 'px-3 py-1.5',
               )}
@@ -1983,7 +1983,7 @@ function MediaPlayerVolume(props: MediaPlayerVolumeProps) {
         <SliderPrimitive.Track className="relative h-1 w-full grow overflow-hidden rounded-full bg-zinc-500">
           <SliderPrimitive.Range className="absolute h-full bg-primary will-change-[width]" />
         </SliderPrimitive.Track>
-        <SliderPrimitive.Thumb className="block size-2.5 shrink-0 rounded-full bg-primary shadow-sm ring-ring/50 transition-[color,box-shadow] will-change-transform hover:ring-4 focus-visible:outline-hidden focus-visible:ring-4 disabled:pointer-events-none disabled:opacity-50" />
+        <SliderPrimitive.Thumb className="block size-2.5 shrink-0 rounded-full bg-primary ring-ring/50 transition-[color,box-shadow] will-change-transform hover:ring-4 focus-visible:outline-hidden focus-visible:ring-4 disabled:pointer-events-none disabled:opacity-50" />
       </SliderPrimitive.Root>
     </div>
   );
@@ -2644,10 +2644,7 @@ function MediaPlayerTooltip(props: MediaPlayerTooltipProps) {
         {Array.isArray(shortcut) ? (
           <div className="flex items-center gap-1">
             {shortcut.map((shortcutKey) => (
-              <kbd
-                key={shortcutKey}
-                className="select-none rounded border bg-secondary px-1.5 py-0.5 font-mono text-[11.2px] text-foreground shadow-xs"
-              >
+              <kbd key={shortcutKey} className="select-none rounded border bg-secondary px-1.5 py-0.5 font-mono text-[11.2px] text-foreground">
                 <abbr title={shortcutKey} className="no-underline">
                   {shortcutKey}
                 </abbr>
@@ -2656,7 +2653,7 @@ function MediaPlayerTooltip(props: MediaPlayerTooltipProps) {
           </div>
         ) : (
           shortcut && (
-            <kbd key={shortcut} className="select-none rounded border bg-secondary px-1.5 py-px font-mono text-[11.2px] text-foreground shadow-xs">
+            <kbd key={shortcut} className="select-none rounded border bg-secondary px-1.5 py-px font-mono text-[11.2px] text-foreground">
               <abbr title={shortcut} className="no-underline">
                 {shortcut}
               </abbr>

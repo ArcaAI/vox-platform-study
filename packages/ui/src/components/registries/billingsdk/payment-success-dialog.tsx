@@ -120,7 +120,7 @@ export const PaymentSuccessDialog = forwardRef<PaymentSuccessDialogRef, PaymentS
                 transition={{ duration: 0.5, ease: 'easeOut' }}
               />
               <div className="relative">
-                <div className="size-16 rounded-full bg-primary/10 flex items-center justify-center border border-primary/30 shadow-sm">
+                <div className="size-16 rounded-full bg-primary/10 flex items-center justify-center border border-primary/30">
                   <CheckCircle2 className="size-10 text-primary" />
                 </div>
                 <motion.span

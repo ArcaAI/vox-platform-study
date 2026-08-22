@@ -383,7 +383,7 @@ export function MessageDraft(props: MessageDraftProps) {
       aria-labelledby={`${id}-title`}
       onKeyDown={handleKeyDown}
     >
-      <div className="bg-card flex w-full flex-col gap-3 rounded-2xl border px-5 pt-3 pb-5 shadow-xs transition-none">
+      <div className="bg-card flex w-full flex-col gap-3 rounded-2xl border px-5 pt-3 pb-5 transition-none">
         {props.channel === 'email' ? (
           <EmailDraftContent draft={props} titleId={`${id}-title`} isExpanded={isExpanded} onNeedsExpansionChange={handleNeedsExpansionChange} />
         ) : (

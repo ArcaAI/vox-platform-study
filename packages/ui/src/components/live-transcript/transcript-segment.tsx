@@ -22,9 +22,12 @@ const LazySegmentEditor = React.lazy(() => import('./segment-editor.js') as unkn
 const SPEAKER_TONE: Record<NonNullable<SpeakerConfig['colorRole']>, string> = {
   primary: 'text-primary',
   ai: 'text-primary',
-  success: 'text-emerald-600 dark:text-emerald-400',
-  warning: 'text-amber-600 dark:text-amber-400',
-  info: 'text-indigo-600 dark:text-indigo-400',
+  // Speaker names are TEXT, so each role uses its text step: --warning as bare
+  // ink is 2.96:1 and fails, which is what --warning-strong exists for. --info
+  // has no strong step and clears 4.5:1 on --background/--card as-is.
+  success: 'text-success-strong',
+  warning: 'text-warning-strong',
+  info: 'text-info',
 };
 
 function formatClock(seconds?: number): string | null {
@@ -87,7 +90,7 @@ export function TranscriptSegment({
       {(showSpeakers && speakerLabel) || (showTimestamps && timestamp) || (showConfidence && segment.confidence != null) || canEdit ? (
         <div className="flex items-center gap-2">
           {showSpeakers && speakerLabel ? (
-            <span className={cn('text-xs font-semibold', SPEAKER_TONE[speakerConfig?.colorRole ?? 'primary'])}>{speakerLabel}</span>
+            <span className={cn('text-xs font-medium', SPEAKER_TONE[speakerConfig?.colorRole ?? 'primary'])}>{speakerLabel}</span>
           ) : null}
           {showTimestamps && timestamp ? (
             <time className="text-xs tabular-nums text-muted-foreground" dateTime={`PT${Math.floor(segment.startTime ?? 0)}S`}>
@@ -95,7 +98,7 @@ export function TranscriptSegment({
             </time>
           ) : null}
           {showConfidence && segment.confidence != null ? (
-            <Badge variant="outline" className="text-2xs">
+            <Badge variant="outline" className="text-xs">
               {Math.round(segment.confidence * 100)}%
             </Badge>
           ) : null}

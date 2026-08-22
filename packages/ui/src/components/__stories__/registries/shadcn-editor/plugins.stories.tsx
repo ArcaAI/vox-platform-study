@@ -20,7 +20,7 @@ const meta = {
   decorators: [
     (Story) => (
       <LexicalComposer initialConfig={editorConfig}>
-        <div className="overflow-hidden rounded-lg border shadow" style={{ width: 500 }}>
+        <div className="overflow-hidden rounded-lg border" style={{ width: 500 }}>
           <Story />
         </div>
       </LexicalComposer>

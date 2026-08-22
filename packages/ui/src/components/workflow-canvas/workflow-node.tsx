@@ -58,7 +58,7 @@ function WorkflowNode({ id, data, selected }: NodeProps & { data: WorkflowNodeDa
       data-node-type={node.type}
       data-mandatory={mandatory ? 'true' : 'false'}
       className={cn(
-        'min-w-[180px] rounded-md border-2 bg-[var(--workflow-canvas-node-bg)] px-3 py-2 text-[var(--workflow-canvas-node-fg)] shadow-sm',
+        'min-w-[180px] rounded-md border-2 bg-[var(--workflow-canvas-node-bg)] px-3 py-2 text-[var(--workflow-canvas-node-fg)]',
         problem ? SEVERITY_BORDER[problem.severity] : 'border-[var(--workflow-canvas-node-border)]',
         selected && 'ring-2 ring-primary ring-offset-1',
       )}
@@ -87,12 +87,12 @@ function WorkflowNode({ id, data, selected }: NodeProps & { data: WorkflowNodeDa
 
       <div className="mt-1 flex flex-wrap items-center gap-1">
         {mandatory ? (
-          <Badge variant="outline" className="text-2xs">
+          <Badge variant="outline" className="text-xs">
             mandatory
           </Badge>
         ) : null}
         {problem ? (
-          <Badge variant={SEVERITY_BADGE_VARIANT[problem.severity]} className="text-2xs">
+          <Badge variant={SEVERITY_BADGE_VARIANT[problem.severity]} className="text-xs">
             {problem.severity === 'ERROR' ? 'error' : 'warning'}
           </Badge>
         ) : null}

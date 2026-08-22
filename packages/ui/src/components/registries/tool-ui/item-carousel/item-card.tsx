@@ -26,7 +26,7 @@ export function ItemCard({ item, onItemClick, onItemAction }: ItemCardProps) {
     <Card
       className={cn(
         'group @container/card relative flex w-52 min-w-48 flex-col gap-0 self-stretch overflow-clip rounded-md p-0 @lg:w-56',
-        isCardInteractive && 'cursor-pointer hover:shadow',
+        isCardInteractive && 'cursor-pointer',
         'touch-manipulation',
       )}
     >

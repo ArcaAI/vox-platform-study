@@ -138,7 +138,7 @@ const plansWrapperVariants = cva('flex', {
 });
 
 const cardVariants = cva(
-  'bg-card text-card-foreground border shadow-sm flex w-full flex-col justify-between text-center rounded-xl md:rounded-none transition-all duration-300',
+  'bg-card text-card-foreground border flex w-full flex-col justify-between text-center rounded-xl md:rounded-none transition-all duration-300',
   {
     variants: {
       size: {
@@ -148,7 +148,7 @@ const cardVariants = cva(
       },
       theme: {
         minimal: '',
-        classic: 'hover:shadow-xl backdrop-blur-sm bg-card/50 border-border/50',
+        classic: 'backdrop-blur-sm bg-card/50 border-border/50',
       },
       highlight: {
         true: '',
@@ -159,12 +159,12 @@ const cardVariants = cva(
       {
         theme: 'classic',
         highlight: true,
-        className: 'bg-gradient-to-b from-primary/5 to-transparent relative overflow-hidden shadow-2xl',
+        className: 'bg-gradient-to-b from-primary/5 to-transparent relative overflow-hidden',
       },
       {
         theme: 'minimal',
         highlight: true,
-        className: 'bg-muted/30 shadow-lg',
+        className: 'bg-muted/30',
       },
     ],
     defaultVariants: {
@@ -220,7 +220,7 @@ const tableWrapperVariants = cva('relative w-full overflow-x-auto', {
     },
     theme: {
       minimal: '',
-      classic: 'mt-16 bg-card/30 backdrop-blur-sm rounded-xl border border-border/50 shadow-sm',
+      classic: 'mt-16 bg-card/30 backdrop-blur-sm rounded-xl border border-border/50',
     },
   },
   defaultVariants: {
@@ -264,7 +264,7 @@ const buttonVariants = cva('w-full hover:cursor-pointer transition-all duration-
   variants: {
     theme: {
       minimal: '',
-      classic: 'hover:shadow-xl active:scale-95',
+      classic: 'active:scale-95',
     },
   },
   defaultVariants: {
@@ -286,7 +286,7 @@ function DefaultCheckoutButton({ plan, theme, onPlanSelect }: DefaultCheckoutBut
         buttonVariants({ theme }),
         plan.highlight &&
           theme === 'minimal' &&
-          'focus-visible:ring-ring hover:bg-primary/90 group bg-primary text-primary-foreground ring-primary before:from-primary-foreground/20 after:from-primary-foreground/10 relative isolate inline-flex h-9 w-full items-center justify-center gap-2 overflow-hidden rounded-md px-3 py-2 text-left text-sm font-medium whitespace-nowrap shadow ring-1 transition duration-300 ease-[cubic-bezier(0.4,0.36,0,1)] before:pointer-events-none before:absolute before:inset-0 before:-z-10 before:rounded-md before:bg-gradient-to-b before:opacity-80 before:transition-opacity before:duration-300 before:ease-[cubic-bezier(0.4,0.36,0,1)] after:pointer-events-none after:absolute after:inset-0 after:-z-10 after:rounded-md after:bg-gradient-to-b after:to-transparent after:mix-blend-overlay focus-visible:ring-1 focus-visible:outline-none disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:size-4 [&_svg]:shrink-0',
+          'focus-visible:ring-ring hover:bg-primary/90 group bg-primary text-primary-foreground ring-primary before:from-primary-foreground/20 after:from-primary-foreground/10 relative isolate inline-flex h-9 w-full items-center justify-center gap-2 overflow-hidden rounded-md px-3 py-2 text-left text-sm font-medium whitespace-nowrap ring-1 transition duration-300 ease-[cubic-bezier(0.4,0.36,0,1)] before:pointer-events-none before:absolute before:inset-0 before:-z-10 before:rounded-md before:bg-gradient-to-b before:opacity-80 before:transition-opacity before:duration-300 before:ease-[cubic-bezier(0.4,0.36,0,1)] after:pointer-events-none after:absolute after:inset-0 after:-z-10 after:rounded-md after:bg-gradient-to-b after:to-transparent after:mix-blend-overlay focus-visible:ring-1 focus-visible:outline-none disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:size-4 [&_svg]:shrink-0',
         plan.highlight &&
           theme === 'classic' &&
           'from-primary to-primary/80 text-primary-foreground border-primary/20 relative overflow-hidden rounded-lg border bg-gradient-to-r px-6 py-3 font-semibold',

@@ -95,7 +95,7 @@ export const WithMarkerLabel: Story = {
       <Map center={[-73.935242, 40.73061]} zoom={12}>
         <MapMarker longitude={-73.935242} latitude={40.73061}>
           <MarkerContent>
-            <div className="relative h-4 w-4 rounded-full border-2 border-white bg-red-500 shadow-lg" />
+            <div className="relative h-4 w-4 rounded-full border-2 border-white bg-red-500" />
             <MarkerLabel position="top">NYC</MarkerLabel>
           </MarkerContent>
         </MapMarker>
@@ -136,12 +136,12 @@ export const WithRoute: Story = {
           <MapRoute coordinates={routeCoordinates} color="#ef4444" width={4} opacity={0.9} />
           <MapMarker longitude={routeCoordinates[0][0]} latitude={routeCoordinates[0][1]}>
             <MarkerContent>
-              <div className="h-3 w-3 rounded-full border-2 border-white bg-green-500 shadow-lg" />
+              <div className="h-3 w-3 rounded-full border-2 border-white bg-green-500" />
             </MarkerContent>
           </MapMarker>
           <MapMarker longitude={routeCoordinates[routeCoordinates.length - 1][0]} latitude={routeCoordinates[routeCoordinates.length - 1][1]}>
             <MarkerContent>
-              <div className="h-3 w-3 rounded-full border-2 border-white bg-red-500 shadow-lg" />
+              <div className="h-3 w-3 rounded-full border-2 border-white bg-red-500" />
             </MarkerContent>
           </MapMarker>
         </Map>
