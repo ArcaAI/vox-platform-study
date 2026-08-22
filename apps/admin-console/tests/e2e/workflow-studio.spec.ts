@@ -45,15 +45,49 @@ async function waitForListSettled(page: Page) {
   await expect(dataRows.first().or(emptyState.first()).or(errorCard.first())).toBeVisible();
 }
 
+/**
+ * Every draft this suite creates, so `afterEach` can soft-delete it.
+ *
+ * WHY. `WorkflowDefinition` is entitlement-capped (`maxWorkflowDefinitions`,
+ * 20 on the seeded plan). Without cleanup the suite leaks one row per
+ * `createDraft` per run, and once the tenant crosses the cap EVERY subsequent
+ * run fails — the POST returns 409 QUOTA_EXCEEDED, the form stays put, and
+ * `waitForURL` below times out with no hint that a quota is the cause. That is
+ * exactly how this suite died: 21/20 definitions, all `e2e_*` litter.
+ */
+const createdDefinitionIds: string[] = [];
+
 async function createDraft(page: Page, slug: string): Promise<string> {
   await page.goto('/workflow-studio/new');
   await page.getByLabel('Slug *').fill(slug);
   await page.getByLabel('Name *').fill(`E2E ${slug}`);
   await page.getByLabel('Palette key *').fill('summarization');
   await page.getByRole('button', { name: 'Create draft' }).click();
-  await page.waitForURL(/\/workflow-studio\/(?!new$).+/);
-  return page.url().split('/workflow-studio/')[1] ?? '';
+  // Surface a failed create as itself rather than as an opaque navigation
+  // timeout — a quota rejection renders an alert and never navigates.
+  const alert = page.getByRole('alert').filter({ hasText: /Plan limit reached|Could not|failed/i });
+  await Promise.race([
+    page.waitForURL(/\/workflow-studio\/(?!new$).+/),
+    alert.first().waitFor({ state: 'visible' }),
+  ]);
+  if (!/\/workflow-studio\/(?!new$).+/.test(page.url())) {
+    throw new Error(`Draft creation failed: ${(await alert.first().textContent()) ?? 'no navigation and no alert'}`);
+  }
+  const id = page.url().split('/workflow-studio/')[1] ?? '';
+  if (id) createdDefinitionIds.push(id);
+  return id;
 }
+
+test.afterEach(async ({ page }) => {
+  // Soft-delete through the app's own route — the platform never hard-deletes.
+  // Best-effort: a cleanup failure must not mask the test's own result.
+  while (createdDefinitionIds.length > 0) {
+    const id = createdDefinitionIds.pop() as string;
+    await page
+      .evaluate((defId) => fetch(`/api/hope/admin/workflow-definitions/${defId}`, { method: 'DELETE' }).then(() => undefined), id)
+      .catch(() => undefined);
+  }
+});
 
 test.describe('workflow definitions list', () => {
   test('shows the header, fill-height grid and a New definition action', async ({ page }) => {

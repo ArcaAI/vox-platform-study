@@ -261,7 +261,10 @@ export function CaseNoteColumn(props: CaseNoteColumnProps) {
         ) : null}
       </div>
 
-      <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto p-3">
+      {/* tabIndex: a scrollable region must be reachable by keyboard (axe scrollable-region-focusable).
+          No role/aria-label here — the parent <section aria-label="Case note"> already names this area, and a
+          nested region with the same name is screen-reader noise. */}
+      <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto p-3" tabIndex={0}>
         <AssuranceStrip progress={progress} assurance={assurance} />
 
         {!hasConsultation ? (

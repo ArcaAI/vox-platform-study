@@ -38,44 +38,45 @@ test.describe('app shell chrome (frame 07)', () => {
     expect(headerBox?.y).toBe(0);
   });
 
-  test('collapsed sidebar shows an icon-only rail that scrolls and tooltips the labels', async ({ page }) => {
-    // Short viewport: 29 nav entries always overflow the rail height.
+  test('collapsing hides the sidebar off-canvas and leaves the domain rail', async ({ page }) => {
+    // TASK-788 changed this behaviour deliberately. The sidebar was
+    // `collapsible="icon"`; with a permanent 56px domain rail beside it, an
+    // icon-collapsed sidebar is a SECOND column of unlabelled icons — the exact
+    // defect the domain rail exists to remove (HOPE-16: 56 routes, collapsed to
+    // 56 unlabelled icons). Collapsed now means "rail only".
     await page.setViewportSize({ width: 1280, height: 480 });
     await page.goto('/dashboard');
 
-    // Scope to the sidebar landmark — the breadcrumb exposes a same-name link role.
-    const nav = page.getByRole('navigation', { name: 'Main' });
+    // Scope by data-slot, not by landmark name: TASK-788 names the sidebar's nav
+    // after the ACTIVE DOMAIN ("Overview navigation", "Tenancy navigation", …) so
+    // it is distinguishable from the rail's "Capability domains". The name is
+    // therefore route-dependent and not a stable test handle.
+    const nav = page.locator('[data-slot="sidebar-content"]');
     const dashboardLink = nav.getByRole('link', { name: 'Dashboard' });
     await expect(dashboardLink).toBeVisible();
-    // Expanded state: every entry leads with a decorative icon.
     await expect(dashboardLink.locator('svg[aria-hidden="true"]')).toBeVisible();
     expect(await dashboardLink.getAttribute('aria-current')).toBe('page');
+
+    const rail = page.getByRole('navigation', { name: 'Capability domains' });
+    await expect(rail).toBeVisible();
 
     await page.locator('[data-slot="sidebar-trigger"]').click();
     const sidebar = page.locator('[data-slot="sidebar"]');
     await expect(sidebar).toHaveAttribute('data-state', 'collapsed');
-    await expect(sidebar).toHaveAttribute('data-collapsible', 'icon');
+    await expect(sidebar).toHaveAttribute('data-collapsible', 'offcanvas');
 
-    // Icon-only rail: 3rem wide (retried until the width transition settles),
-    // icon still visible inside it.
-    await expect(page.locator('[data-slot="sidebar-container"]')).toHaveCSS('width', '48px');
-    await expect(dashboardLink.locator('svg[aria-hidden="true"]')).toBeVisible();
+    // "Left the layout" is the sidebar GAP collapsing to 0 — that is the primitive's
+    // actual contract. The fixed panel itself slides to left:-248px and its last
+    // 56px still overlaps the viewport behind the opaque rail, so asserting the
+    // panel's own position would test an implementation detail, not the behaviour.
+    await expect(page.locator('[data-slot="sidebar-gap"]')).toHaveCSS('width', '0px');
 
-    // The rail must scroll so below-the-fold entries stay reachable.
-    const content = page.locator('[data-slot="sidebar-content"]');
-    expect(await content.evaluate((el) => el.scrollHeight > el.clientHeight)).toBe(true);
-    const scrolled = await content.evaluate((el) => {
-      el.scrollTop = el.scrollHeight;
-      return el.scrollTop;
-    });
-    expect(scrolled).toBeGreaterThan(0);
-    await expect(nav.getByRole('link', { name: 'Consultations' })).toBeInViewport();
+    // The rail stays, so every domain is still one click away and nothing
+    // collapses to a bare icon column.
+    await expect(rail).toBeVisible();
+    await expect(rail).toBeInViewport();
 
-    // Collapsed buttons reveal their label as a tooltip.
-    await nav.getByRole('link', { name: 'Consultations' }).hover();
-    await expect(page.locator('[data-slot="tooltip-content"]', { hasText: 'Consultations' })).toBeVisible();
-
-    // Toggle round-trip: expanding restores the full labels.
+    // Toggle round-trip: expanding restores the labelled sidebar.
     await page.locator('[data-slot="sidebar-trigger"]').click();
     await expect(sidebar).toHaveAttribute('data-state', 'expanded');
     await expect(dashboardLink).toContainText('Dashboard');

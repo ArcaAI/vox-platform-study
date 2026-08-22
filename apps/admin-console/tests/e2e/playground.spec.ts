@@ -114,7 +114,7 @@ test.describe('playground — consultation demo', () => {
 
   test('renders the screen with no WCAG 2.2 AA violations', async ({ page }) => {
     await page.goto('/playground/consultation');
-    await expect(page.getByRole('heading', { level: 1, name: 'Consultation Demo' })).toBeVisible();
+    await expect(page.getByRole('heading', { level: 1, name: 'Consultation Scribe' })).toBeVisible();
     await expectNoA11yViolations(page);
   });
 });
