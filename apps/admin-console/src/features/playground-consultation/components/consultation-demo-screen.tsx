@@ -39,13 +39,15 @@ import {
   playgroundConsultationKeys,
   useApproveSummary,
   useAudioPipelines,
+  useCancelConsultationJob,
   useDnaStyleOptions,
-  useGenerateSummary,
+  useGenerateSummaryAsync,
   useHarnessAssuranceStream,
   useHarnessProgressStream,
   useLatestSummary,
   useScopingDepartments,
   useStartRecording,
+  useSummaryJobProgress,
   useStopRecording,
   useSummaryProvenance,
   useTranscriptions,
@@ -230,7 +232,13 @@ function ScribeWorkspace() {
 
   const recordingStart = useStartRecording();
   const recordingStop = useStopRecording();
-  const summarySync = useGenerateSummary();
+  // W5/M-7 — manual generation runs as a QUEUED JOB with an SSE progress
+  // stream, not a blocking mutation. That path was fully built and had zero
+  // call sites; the sync mutation it replaces held the button for the whole
+  // LLM generation with no feedback and no way out.
+  const summaryAsync = useGenerateSummaryAsync();
+  const cancelSummaryJob = useCancelConsultationJob();
+  const [summaryJobId, setSummaryJobId] = useState<string | null>(null);
   const approve = useApproveSummary();
   const summaryEdit = useUpdateSummary();
 
@@ -371,15 +379,32 @@ function ScribeWorkspace() {
     }
   }
 
+  const summaryJob = useSummaryJobProgress(summaryJobId, {
+    onTerminal: (job) => {
+      setSummaryJobId(null);
+      const status = job.status.toUpperCase();
+      if (status === 'COMPLETED') toast.success('Note generated');
+      else if (status === 'CANCELLED') toast.success('Note generation cancelled');
+      else toast.error(job.errorMessage || 'Note generation failed');
+    },
+  });
+
   function handleGenerate() {
     if (!consultation) return;
-    summarySync.mutate(
+    summaryAsync.mutate(
       { consultationId: consultation.id, body: dnaStyleId ? { dnaStyleId } : undefined },
       {
-        onSuccess: () => toast.success('Note generated'),
+        onSuccess: (job) => setSummaryJobId(job.jobId),
         onError: (error) => toast.error(errorMessage(error, 'Note generation failed')),
       },
     );
+  }
+
+  function handleCancelGenerate() {
+    if (!summaryJobId) return;
+    cancelSummaryJob.mutate(summaryJobId, {
+      onError: (error) => toast.error(errorMessage(error, 'Could not cancel the generation')),
+    });
   }
 
   function handleApprove({ overrideSafetyFlag }: { overrideSafetyFlag: boolean }) {
@@ -533,7 +558,9 @@ function ScribeWorkspace() {
               progress={progress.snapshot}
               assurance={assurance.snapshot}
               onGenerate={harnessActive ? null : handleGenerate}
-              generatePending={summarySync.isPending}
+              generatePending={summaryAsync.isPending || (!!summaryJobId && !summaryJob.isTerminal)}
+              generateStatus={summaryJob.job?.currentStep ?? null}
+              onCancelGenerate={summaryJobId ? handleCancelGenerate : null}
               onApprove={handleApprove}
               approvePending={approve.isPending}
               approved={approved}
