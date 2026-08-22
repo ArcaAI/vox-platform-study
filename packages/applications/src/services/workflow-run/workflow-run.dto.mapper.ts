@@ -22,6 +22,7 @@ export class WorkflowRunDtoMapper {
     dto.failedNodeCount = entity.failedNodeCount;
     dto.degradedNodeCount = entity.degradedNodeCount;
     dto.firstErrorCode = entity.firstErrorCode ?? null;
+    dto.resultRef = (entity.resultRef as Record<string, unknown> | null) ?? null;
     dto.createdAt = entity.createdAt.toISOString();
     return dto;
   }

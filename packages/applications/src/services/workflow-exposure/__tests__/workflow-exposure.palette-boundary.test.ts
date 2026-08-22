@@ -129,3 +129,59 @@ describe('TASK-790 W1 — exposure-plane palette boundary (C-8)', () => {
     });
   });
 });
+
+/**
+ * TASK-790 (M-2) — an invoker can retrieve what the run actually produced.
+ *
+ * `getRunStatus` read Temporal state only, so `output.deliver`'s real external write was
+ * unrecoverable. The read model now carries the delivered output; the status route surfaces it.
+ */
+describe('TASK-790 M-2 — getRunStatus reads back the delivered output', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockConfigService.getConfigValue.mockImplementation((key: string) => (key === 'WORKFLOW_EXPOSURE_ENABLED' ? true : undefined));
+    mockHarnessGateway.getWorkflowRun.mockResolvedValue({
+      runId: 'run-1',
+      status: 'COMPLETED',
+      stages: [],
+      startedAt: '2026-08-22T00:00:00Z',
+      endedAt: '2026-08-22T00:01:00Z',
+    });
+    mockWorkflowRunService.recordRunFinished.mockResolvedValue(undefined);
+  });
+
+  it('surfaces the run row resultRef on the status response', async () => {
+    const delivered = { resultRef: { bucket: 'harness-claim-check', key: 'sha256/abc', sizeBytes: 4096 } };
+    mockWorkflowRunService.getRun.mockResolvedValue({
+      runId: 'run-1',
+      tenantId: 'tenant-1',
+      workflowSlug: 'discharge_summary',
+      workflowVersionId: 'def-1',
+      workflowVersionNumber: 1,
+      sessionId: 'workflow-interpreter-run-1',
+      status: 'COMPLETED',
+      resultRef: delivered,
+    });
+
+    const result = await build().getRunStatus('discharge_summary', 'run-1');
+
+    expect(result.resultRef).toEqual(delivered);
+  });
+
+  it('is null for a run that delivered nothing', async () => {
+    mockWorkflowRunService.getRun.mockResolvedValue({
+      runId: 'run-1',
+      tenantId: 'tenant-1',
+      workflowSlug: 'discharge_summary',
+      workflowVersionId: 'def-1',
+      workflowVersionNumber: 1,
+      sessionId: 'workflow-interpreter-run-1',
+      status: 'COMPLETED',
+      resultRef: null,
+    });
+
+    const result = await build().getRunStatus('discharge_summary', 'run-1');
+
+    expect(result.resultRef).toBeNull();
+  });
+});

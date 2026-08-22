@@ -198,7 +198,7 @@ export class WorkflowExposureService extends BaseService implements IWorkflowExp
     const upstream = await this.harnessGateway.getWorkflowRun(runId);
     await this.syncTerminalStatus(tenantId, run, upstream);
 
-    return WorkflowExposureDtoMapper.toStatusResponse(run.workflowSlug, run.workflowVersionNumber, upstream);
+    return WorkflowExposureDtoMapper.toStatusResponse(run.workflowSlug, run.workflowVersionNumber, upstream, run.resultRef ?? null);
   }
 
   async cancelRun(slug: string, runId: string): Promise<WorkflowRunCancelResponse> {

@@ -24,6 +24,7 @@ export class WorkflowRun extends BaseTenantDataModel {
   public failedNodeCount: number;
   public degradedNodeCount: number;
   public firstErrorCode: string | null;
+  public resultRef: JsonValue | null;
 
   constructor(data: WorkflowRun & BaseTenantDataModel) {
     super(data);
@@ -43,5 +44,6 @@ export class WorkflowRun extends BaseTenantDataModel {
     this.failedNodeCount = data.failedNodeCount;
     this.degradedNodeCount = data.degradedNodeCount;
     this.firstErrorCode = data.firstErrorCode;
+    this.resultRef = data.resultRef;
   }
 }

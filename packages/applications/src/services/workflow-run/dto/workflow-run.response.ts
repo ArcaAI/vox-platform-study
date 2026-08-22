@@ -61,6 +61,15 @@ export class WorkflowRunResponse {
   @ApiPropertyOptional({ nullable: true })
   firstErrorCode: string | null;
 
+  @ApiPropertyOptional({
+    nullable: true,
+    type: 'object',
+    additionalProperties: true,
+    description:
+      "The run's delivered output, from its `output.deliver` node. Either `{ resultRef: { bucket, key, sizeBytes } }` — a claim-check pointer to fetch out of band — or `{ outputs: { ... } }` inline for a small payload. Null while the run is in flight, and for any graph with no `output.deliver` node.",
+  })
+  resultRef: Record<string, unknown> | null;
+
   @ApiProperty({ description: 'Row creation instant (ISO-8601).' })
   createdAt: string;
 }
