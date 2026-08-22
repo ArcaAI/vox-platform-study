@@ -2,7 +2,7 @@
 
 | Field | Value |
 |---|---|
-| **Status** | Pending |
+| **Status** | Review |
 | **Type** | refactor |
 | **Branch** | TBD (branch off the current active branch — confirm with owner, do not assume `dev`) |
 | **Opened** | 2026-08-22 |
@@ -113,6 +113,15 @@ mechanically so nothing is invented at the keyboard.
 | Control radius | pill (`--radius-full`, 3996px) | anything clickable with no content flow — button, toggle, badge, chip, pagination |
 | Field radius | 12px (`--radius-surface`) | input, textarea, select trigger, OTP cell — **a pill text field is a search idiom, not a form idiom** |
 | Container radius | 12px card / 20px dialog | card, popover, dropdown, menu, tooltip = 12px; modal dialog, alert-dialog, sheet, drawer = 20px |
+
+**J-15 — express radius by ROLE, not by raw scale step.** Phase 1 shipped semantic aliases
+`--radius-surface` (12px), `--radius-overlay` (20px) and `--radius-control` (pill), generating
+`rounded-surface` / `rounded-overlay` / `rounded-control`. Use those wherever a role applies.
+`rounded-md`/`rounded-lg`/`rounded-full` produce identical pixels today but express a scale
+position rather than an intent, and would silently diverge from the role the first time the scale
+is retuned — which is the whole reason the `calc()` base architecture exists. Raw steps stay
+correct only where no role fits (e.g. `rounded-xs` on a checkbox). Raised by the Phase 3 agent
+2026-08-22; resolved the same day.
 | Border | 1px hairline, always present | every surface edge |
 | Elevation | **flat — `none`** | all surfaces. Depth is border+surface in light, tonal surfaces in dark |
 | Overlay depth | scrim `#14141480` + `backdrop-filter: blur(4px)` | modals only |
@@ -322,6 +331,42 @@ Both are deletions of expressive range, taken deliberately:
 
 ---
 
+## J-17 / J-18 — surfaced by Phase 5, OPEN (owner decision required)
+
+Neither is a defect in the migration. Both are consequences of the achromatic
+identity (OD-1) that only become visible once the whole system is on it.
+
+### J-17 — `text-primary` is no longer an emphasis signal. **142 sites.**
+
+`--primary` and `--foreground` resolve to the SAME token in light
+(`var(--neutral-900)`) and to 1.03:1 in dark. Any UI that used `text-primary`
+to mean *emphasised / active / selected* now has no signal at all. Phase 5 hit
+this concretely: `audio-pipelines-screen.tsx:118` was
+`selected ? 'text-primary font-semibold' : 'font-medium'`, and under the new
+palette **both branches collapsed to identical rendering** — the selected row
+became invisible. It was re-expressed as `font-medium` vs `font-normal`.
+
+Distribution: 20 billingsdk · 15 manifest · 14 shadcn · 12 prompt-kit · 6 diceui ·
+6 basecn · 4 magicui · 4 playground-llm · rest scattered.
+
+| Option | Consequence |
+|---|---|
+| **Accept (recommended)** | This IS the Tatva model — emphasis comes from weight, size and position, not hue. `text-primary` becomes a synonym for `text-foreground` and should be swept to it so the redundancy is not mistaken for intent. |
+| Introduce an accent ink | HOPE already has `--link: #3333cc` (indigo, 8.09:1 on background). Point interactive/emphasis text at it. Departs from Tatva's achromatic discipline, which its investigation records as deliberate. |
+
+### J-18 — 110 `<hN>` section headings are now pixel-identical to `<Label>`
+
+The 400/500 weight rule collapses `text-sm … font-medium` headings onto the
+`Label` primitive's exact `text-sm leading-none font-medium`
+(`packages/ui/src/components/shadcn/label.tsx:13`). 29 headings at `text-base`+
+stay above it.
+
+**Not an a11y defect** — heading semantics and levels are intact — but a
+Card-header heading and a form label inside it are visually indistinguishable.
+Fixing means bumping ~110 headings to `text-base`, which is a design decision
+affecting `packages/ui` equally. Recommended if adopted: one shared heading
+class at `text-base font-medium`, decided once for both trees.
+
 ## Team Execution Practices
 
 1. **One writer per file, per branch.** If two tasks would touch the same file, they are one task.
@@ -428,3 +473,4 @@ it measures clear the bar comfortably: inactive trigger `--muted-foreground` on 
 | 2026-08-22 | **Owner resolved all twelve judgement calls as recommended (OD-6).** AC-7 met; Phase 3 unblocked. Notable outcomes: `data-accent` is deleted outright (J-4), `--text-2xs` collapses to 12px across 115 sites (J-5), `text-3xl`/`text-4xl` merge at 32px (J-6), and all 152 stock shadow call sites go flat (J-12). J-9 (flat borderless menus) recorded as a **watch item** — it is the one resolution the reference does not evidence, with `--elevation-raised` for menus only as the sanctioned fallback if Phase 3 finds separation fails. |
 | 2026-08-22 | **Renumbered TASK-785 → TASK-787.** `TASK-785` was already taken by an in-flight concurrent workstream (`TASK-785-Tiered-Rate-Limit-Governance`, status *In Progress*, with a landed migration `20260822051931_task_785_rate_limit_rules`). Caught before any commit, so no history rewrite was needed. Sibling renumbered TASK-786 → TASK-788 in the same pass; all cross-references updated and verified clean. |
 | 2026-08-22 | **Baseline moved mid-planning — counts are a floor, not a contract.** Two commits landed during this ticket's planning (`8a2449816` TASK-786 credential policy, `f8c8e1b4a` TASK-785 tiered rate-limits), adding the `/security-policy` screen and four `rate-limits` panel components. All static counts in this document (2,517 type call sites, 152 stock shadow uses, 115 `text-2xs`, 19 `text-4xl`) were measured at `d97e9b71e` and are now low. **Every phase agent MUST re-measure its own scope before sweeping** and report the delta — do not sweep to the numbers written here. The mapping, the resolved decisions and the geometry contract are unaffected; only the volumes moved. |
+| 2026-08-22 | **All five phases executed and merged to `dev-2.2`.** J-13…J-16 raised and resolved during execution; J-17 (142 `text-primary` sites no longer an emphasis signal) and J-18 (110 headings pixel-identical to `Label`) surfaced by Phase 5 and left OPEN for an owner decision. Gates green both packages. Status → Review. |
