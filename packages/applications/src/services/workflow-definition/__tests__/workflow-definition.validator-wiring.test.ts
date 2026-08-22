@@ -28,7 +28,11 @@ const mockWorkflowDefinitionRepository = {
   findPublishedBySlug: vi.fn(),
 };
 const mockDatabaseService = { baseClient: { $transaction: vi.fn((cb: (tx: unknown) => unknown) => cb({})) } };
-const mockEntitlements = { isEnforcementEnabled: vi.fn(() => false), assertQuantityQuota: vi.fn(), isFeatureEnabled: vi.fn(() => Promise.resolve(true)) };
+const mockEntitlements = {
+  isEnforcementEnabled: vi.fn(() => false),
+  assertQuantityQuota: vi.fn(),
+  isFeatureEnabled: vi.fn(() => Promise.resolve(true)),
+};
 const mockSttPipelineCompiler = { compileAndPublish: vi.fn() };
 
 /** Stands in for the real `WorkflowValidatorService` at the seam — its own resolution/merge

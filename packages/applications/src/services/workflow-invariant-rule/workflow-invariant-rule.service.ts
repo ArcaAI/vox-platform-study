@@ -12,7 +12,12 @@ import { ArgumentInvalidException } from '@arcaai/exceptions';
 import { BaseService, FetchResponse, isSuperAdmin, PaginatedQuery, withFormattedCountProps, withFormattedPaginatedProps } from '../../common';
 import { IActiveUserContext } from '../../interfaces';
 import { KNOWN_PALETTE_KEYS } from '../workflow-exposure/exposure-palette-policy';
-import { CreateWorkflowInvariantRuleRequest, PaginatedWorkflowInvariantRuleResponse, UpdateWorkflowInvariantRuleRequest, WorkflowInvariantRuleResponse } from './dto';
+import {
+  CreateWorkflowInvariantRuleRequest,
+  PaginatedWorkflowInvariantRuleResponse,
+  UpdateWorkflowInvariantRuleRequest,
+  WorkflowInvariantRuleResponse,
+} from './dto';
 import { IWorkflowInvariantRuleService } from './IWorkflowInvariantRuleService';
 import { SYSTEM_TENANT_ID } from './system-tenant';
 import { WorkflowInvariantRuleDtoMapper } from './workflow-invariant-rule.dto.mapper';
@@ -183,7 +188,9 @@ export class WorkflowInvariantRuleService extends BaseService implements IWorkfl
     this.assertReadable(entity);
 
     if (entity.tenantId === SYSTEM_TENANT_ID && !isSuperAdmin(this.requestUser)) {
-      throw new ForbiddenException('This is a platform invariant rule. A tenant may add its own stricter rule, but cannot modify the platform register.');
+      throw new ForbiddenException(
+        'This is a platform invariant rule. A tenant may add its own stricter rule, but cannot modify the platform register.',
+      );
     }
   }
 

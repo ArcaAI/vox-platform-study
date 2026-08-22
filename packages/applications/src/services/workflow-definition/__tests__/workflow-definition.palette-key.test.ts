@@ -28,7 +28,11 @@ const mockWorkflowDefinitionRepository = {
   findMaxVersionNumber: vi.fn(),
 };
 const mockDatabaseService = { baseClient: { $transaction: vi.fn((cb: (tx: unknown) => unknown) => cb({})) } };
-const mockEntitlements = { isEnforcementEnabled: vi.fn(() => false), assertQuantityQuota: vi.fn(), isFeatureEnabled: vi.fn(() => Promise.resolve(true)) };
+const mockEntitlements = {
+  isEnforcementEnabled: vi.fn(() => false),
+  assertQuantityQuota: vi.fn(),
+  isFeatureEnabled: vi.fn(() => Promise.resolve(true)),
+};
 const mockSttPipelineCompiler = { compileAndPublish: vi.fn() };
 
 const VALID_GRAPH = { version: 1, nodes: [{ id: 'n1', type: 'noop', config: {} }], edges: [] };
@@ -94,18 +98,16 @@ describe('TASK-790 W1 — server-side paletteKey validation (C-5/D-5)', () => {
   it.each(['summarisation', 'Summarization', 'stt ', 'clinical', ''])(
     'rejects an unknown paletteKey %j with 400 and writes nothing',
     async (paletteKey) => {
-      await expect(
-        service.create({ slug: 'discharge_summary', name: 'Discharge Summary', paletteKey, graph: VALID_GRAPH }),
-      ).rejects.toBeInstanceOf(BadRequestException);
+      await expect(service.create({ slug: 'discharge_summary', name: 'Discharge Summary', paletteKey, graph: VALID_GRAPH })).rejects.toBeInstanceOf(
+        BadRequestException,
+      );
 
       expect(mockWorkflowDefinitionRepository.create).not.toHaveBeenCalled();
     },
   );
 
   it.each(['summarization', 'stt', 'consultation'])('accepts the registry-declared palette %j', async (paletteKey) => {
-    await expect(
-      service.create({ slug: 'discharge_summary', name: 'Discharge Summary', paletteKey, graph: VALID_GRAPH }),
-    ).resolves.toBeDefined();
+    await expect(service.create({ slug: 'discharge_summary', name: 'Discharge Summary', paletteKey, graph: VALID_GRAPH })).resolves.toBeDefined();
 
     expect(mockWorkflowDefinitionRepository.create).toHaveBeenCalledTimes(1);
   });

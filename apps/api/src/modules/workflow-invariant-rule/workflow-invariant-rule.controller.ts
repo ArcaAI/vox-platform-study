@@ -101,7 +101,12 @@ export class WorkflowInvariantRuleController {
       'DIFFERENT rule, which is an insert. Bump `ruleVersion` whenever `predicateConfig` changes, or published ' +
       'definitions silently keep an old verdict.',
   })
-  @ApiHeader({ name: 'If-Match', description: 'RFC 7232 strong validator carrying the version the client read (e.g. `"1"`).', required: true, example: '"1"' })
+  @ApiHeader({
+    name: 'If-Match',
+    description: 'RFC 7232 strong validator carrying the version the client read (e.g. `"1"`).',
+    required: true,
+    example: '"1"',
+  })
   @ApiParam({ name: 'id', description: 'WorkflowInvariantRule id' })
   @ApiResponse({ status: 200, type: WorkflowInvariantRuleResponse })
   @ApiResponse({ status: 403, description: 'The row is SYSTEM-owned (the platform register) and the caller is not a super admin.' })

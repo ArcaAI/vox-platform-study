@@ -1,5 +1,10 @@
 import { PaginatedQuery } from '../../common';
-import { CreateWorkflowInvariantRuleRequest, PaginatedWorkflowInvariantRuleResponse, UpdateWorkflowInvariantRuleRequest, WorkflowInvariantRuleResponse } from './dto';
+import {
+  CreateWorkflowInvariantRuleRequest,
+  PaginatedWorkflowInvariantRuleResponse,
+  UpdateWorkflowInvariantRuleRequest,
+  WorkflowInvariantRuleResponse,
+} from './dto';
 
 export const IWorkflowInvariantRuleService = Symbol('IWorkflowInvariantRuleService');
 

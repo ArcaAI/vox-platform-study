@@ -8,7 +8,7 @@ export class WorkflowInvariantRuleResponse {
   @ApiProperty({ description: 'The SYSTEM tenant owns platform rules; any other value is a tenant addition.' })
   tenantId: string;
 
-  @ApiProperty({ description: 'True when this row is the platform register rather than the caller tenant\'s own — read-only for a tenant admin.' })
+  @ApiProperty({ description: "True when this row is the platform register rather than the caller tenant's own — read-only for a tenant admin." })
   isSystemOwned: boolean;
 
   @ApiProperty()

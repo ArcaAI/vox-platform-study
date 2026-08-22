@@ -45,7 +45,13 @@ function compiledConfig(nodes: Array<{ type: string; config: Record<string, unkn
       },
     ],
     gates: [],
-    policyBindings: { guardrailProfile: 'STANDARD', redactionRuleSetId: null, promptTemplateRefs: [], contextSchemaVersionId: null, entitlementKeys: [] },
+    policyBindings: {
+      guardrailProfile: 'STANDARD',
+      redactionRuleSetId: null,
+      promptTemplateRefs: [],
+      contextSchemaVersionId: null,
+      entitlementKeys: [],
+    },
     caps: { maxTotalSeconds: 3600, maxNodeSeconds: 600, maxAttempts: 5 },
     checksum: 'checksum-1',
   };
