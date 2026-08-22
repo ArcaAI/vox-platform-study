@@ -848,3 +848,33 @@ export function visibleNavDomains(rules: readonly PermissionRule[] | null | unde
   const reachable = new Set(visibleNavEntries(rules, roles).map((entry) => entry.domain));
   return NAV_DOMAINS.filter((domain) => reachable.has(domain.id));
 }
+
+/**
+ * The rail domain the CURRENT ROUTE belongs to (TASK-788 AC-6).
+ *
+ * Selection is derived, never stored: there is no domain state, no
+ * localStorage key and no click handler that "remembers" a choice — the URL is
+ * the only input. Longest-prefix matching means a detail route
+ * (`/tenants/t-123`) resolves to its parent's domain, and `/tenants/storage`
+ * resolves to its own entry rather than `/tenants`.
+ *
+ * Returns `undefined` for a route no visible entry owns (`/account`,
+ * `/developer`, a 404) — the caller decides the fallback frame.
+ */
+export function activeNavDomainId(pathname: string, entries: readonly NavEntry[]): NavDomainId | undefined {
+  const matched = matchNavEntry(pathname, entries);
+  return matched && entries.find((entry) => entry.route === matched.route)?.domain;
+}
+
+/**
+ * Where a rail click goes: the domain's FIRST visible entry.
+ *
+ * This is the Phase B answer to the ticket's Open Question. A domain with
+ * exactly one visible route — routine for a narrowly-permissioned tenant admin
+ * — needs no special case, because the general rule already lands on that one
+ * route. Every rail item therefore navigates (no dead click), and the sidebar
+ * renders the same frame at every domain size, with the landed entry selected.
+ */
+export function domainLandingRoute(domainId: NavDomainId, entries: readonly NavEntry[]): string | undefined {
+  return entries.find((entry) => entry.domain === domainId)?.route;
+}

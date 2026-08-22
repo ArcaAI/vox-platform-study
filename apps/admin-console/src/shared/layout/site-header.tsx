@@ -10,7 +10,11 @@ import { Breadcrumbs } from '@/shared/navigation/breadcrumbs';
 export function SiteHeader({ session }: { session: SafeSession }) {
   return (
     <header className="flex h-14 shrink-0 items-center gap-2 border-b px-4">
-      <SidebarTrigger className="-ml-1" />
+      {/* AC-4/AC-7: the one control that opens the off-canvas navigation below
+          `md` and collapses it to the rail above — named for what it does, not
+          "Toggle Sidebar". The reference system's equivalent has no accessible
+          name at all (its 4.1.2 failure); do not regress this to an icon. */}
+      <SidebarTrigger className="-ml-1" aria-label="Toggle navigation" />
       <Separator orientation="vertical" className="mx-1 data-[orientation=vertical]:h-4" />
       <Breadcrumbs />
       <div className="ml-auto flex items-center gap-2">
