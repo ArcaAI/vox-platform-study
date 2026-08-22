@@ -35,13 +35,27 @@ describe('NAV_ENTRIES (capabilities-matrix section 3, reviewed 2026-07-04; playg
   // assignment-matrix screen), taking 53 -> 54.
   // /developer (tier 20-29, TASK-783 — the API documentation portal),
   // taking 54 -> 55.
-  it('covers the full 55-route map across the four tiers (including /context-schemas, /playground/workbench, /workflow-runs, /workflow-studio, /developer)', () => {
-    // 55 total: TASK-783 added /developer after this count was last set at 54.
-    expect(NAV_ENTRIES).toHaveLength(55);
-    expect(NAV_ENTRIES.filter((entry) => entry.tier === '10-19')).toHaveLength(21);
+  // /security-policy (tier 10-19, TASK-786 — the platform credential policy:
+  // password complexity/rotation + issued-secret entropy), taking 55 -> 56.
+  it('covers the full 56-route map across the four tiers (including /context-schemas, /playground/workbench, /workflow-runs, /workflow-studio, /developer, /security-policy)', () => {
+    // 56 total: TASK-786 added /security-policy after this count was last set at 55.
+    expect(NAV_ENTRIES).toHaveLength(56);
+    expect(NAV_ENTRIES.filter((entry) => entry.tier === '10-19')).toHaveLength(22);
     expect(NAV_ENTRIES.filter((entry) => entry.tier === '20-29')).toHaveLength(8);
     expect(NAV_ENTRIES.filter((entry) => entry.tier === '30-49')).toHaveLength(20);
     expect(NAV_ENTRIES.filter((entry) => entry.tier === '50-59')).toHaveLength(6);
+  });
+
+  it('gates the credential policy on manage:all — every backing key is a globalOnly descriptor', () => {
+    const policy = NAV_ENTRIES.find((entry) => entry.route === '/security-policy');
+
+    expect(policy).toBeDefined();
+    // Tier 10-19: cross-tenant, never requires a selected working tenant. The
+    // gateway 403s a tenant admin regardless of what the nav shows, but showing
+    // an entry that always 403s is its own defect.
+    expect(policy?.tier).toBe('10-19');
+    expect(policy?.required).toEqual([['manage', 'all']]);
+    expect(policy?.implemented).toBe(true);
   });
 
   it('gates the developer portal on the dedicated ApiDocumentation subject, not on manage:all', () => {

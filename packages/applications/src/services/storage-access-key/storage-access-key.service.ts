@@ -16,6 +16,14 @@ import { StorageAccessKeyDtoMapper } from './storage-access-key.dto.mapper';
 import { BaseService } from '../../common';
 import { IActiveUserContext } from '../../interfaces';
 import { SecretsService } from '../baseServices/_meta/secrets';
+import { IAppSettingsService } from '../baseServices/_meta/appSettings/IAppSettingsService';
+import {
+  DEFAULT_GENERATED_SECRET_POLICY,
+  GeneratedSecretPolicy,
+  STORAGE_ACCESS_KEY_ENCODING,
+  generateSecretString,
+  resolveGeneratedSecretPolicy,
+} from '../security/secretPolicy';
 
 @Injectable()
 export class StorageAccessKeyService extends BaseService implements IStorageAccessKeyService {
@@ -30,8 +38,39 @@ export class StorageAccessKeyService extends BaseService implements IStorageAcce
     // Optional so legacy/direct-construction tests still work (they fall back
     // to un-peppered SHA-256), mirroring ApiKeyService.
     @Optional() @Inject(SecretsService) private readonly secretsService?: SecretsService,
+    // The platform `security.secret.*` policy behind an issued secret access
+    // key. Optional (append-only DI) so fixtures that construct this service
+    // directly keep the pre-policy 32-byte base64url behaviour exactly as it was.
+    @Optional() @Inject(IAppSettingsService) private readonly appSettings?: IAppSettingsService,
   ) {
     super(eventEmitter, clsService, ResourceType.StorageAccessKey);
+  }
+
+  /**
+   * The SUPER_ADMIN-managed `security.secret.*` policy, or the platform
+   * defaults when no settings cache is wired (legacy fixtures).
+   */
+  private secretPolicy(): GeneratedSecretPolicy {
+    return this.appSettings ? resolveGeneratedSecretPolicy(this.appSettings) : DEFAULT_GENERATED_SECRET_POLICY;
+  }
+
+  /**
+   * CSPRNG material for one secret access key, drawn to the CONFIGURED
+   * `byteLength` and PINNED to base64url (`STORAGE_ACCESS_KEY_ENCODING`) —
+   * the shipped S3-style shape, 32 bytes as 43 url-safe characters.
+   *
+   * Generation moved OUT of `StorageAccessKeyFactory.generateRawSecret()` for
+   * this: a domain factory is DI-free by the layer contract, so it can never
+   * reach the settings cache and would have kept issuing a hardcoded 32 bytes
+   * forever. The factory's static remains for the domain's own tests; the
+   * application layer no longer calls it.
+   *
+   * Policy applies at ISSUANCE only. The stored form is a peppered one-way
+   * hash of whatever string this produced, so length may change freely without
+   * breaking authentication of keys already issued.
+   */
+  generateRawSecret(): string {
+    return generateSecretString(this.secretPolicy(), STORAGE_ACCESS_KEY_ENCODING);
   }
 
   /**
@@ -93,7 +132,7 @@ export class StorageAccessKeyService extends BaseService implements IStorageAcce
     // Generate the raw secret, persist only its hash, and
     // return the plaintext to the caller exactly once. The plaintext is never
     // stored and cannot be retrieved afterwards.
-    const rawSecret = StorageAccessKeyFactory.generateRawSecret();
+    const rawSecret = this.generateRawSecret();
     const secretHash = await this.hashSecretForStorage(rawSecret);
 
     const key = StorageAccessKeyFactory.CreateKey({

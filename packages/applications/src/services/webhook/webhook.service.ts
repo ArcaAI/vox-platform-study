@@ -18,6 +18,8 @@ import { CreateWebhookRequest, UpdateWebhookRequest } from './dto';
 import { assertEqualTenants, BaseService, FetchResponse, PaginatedQuery, withFormattedCountProps, withFormattedPaginatedProps } from '../../common';
 import { IActiveUserContext } from '../../interfaces';
 import { SecretsService } from '../baseServices/_meta/secrets';
+import { IAppSettingsService } from '../baseServices/_meta/appSettings/IAppSettingsService';
+import { DEFAULT_GENERATED_SECRET_POLICY, GeneratedSecretPolicy, generateSecretString, resolveGeneratedSecretPolicy } from '../security/secretPolicy';
 import { SUPER_ADMIN_ROLE } from '../tenant/constants';
 
 /** Vault kv-v2 secret name for the DEDICATED webhook-secret encryption pepper (§ platform-secrets.descriptors.ts `webhook.secretPepper`). */
@@ -90,17 +92,49 @@ export class WebhookService extends BaseService implements IWebhookService {
     // `deriveEncryptionKey` — same fallback shape as ApiKeyService's
     // `secretsService` dependency).
     @Optional() @Inject(SecretsService) private readonly secretsService?: SecretsService,
+    // The platform `security.secret.*` policy behind an issued signing secret.
+    // Optional (append-only DI) so fixtures that construct this service
+    // directly keep the pre-policy 32-byte hex behaviour exactly as it was.
+    @Optional() @Inject(IAppSettingsService) private readonly appSettings?: IAppSettingsService,
   ) {
     super(eventEmitter, clsService, ResourceType.Webhook);
   }
 
   /**
-   * Generate a cryptographically secure raw webhook signing secret.
-   * 32 random bytes, hex-encoded (64 hex chars) — same primitive
-   * `ApiKeyService.generateRawKey` uses.
+   * The SUPER_ADMIN-managed `security.secret.*` policy, or the platform
+   * defaults when no settings cache is wired (legacy fixtures) — identical to
+   * the pre-policy behaviour, 32 bytes as 64 hex characters.
    */
-  static generateRawSecret(): string {
-    return randomBytes(32).toString('hex');
+  private secretPolicy(): GeneratedSecretPolicy {
+    return this.appSettings ? resolveGeneratedSecretPolicy(this.appSettings) : DEFAULT_GENERATED_SECRET_POLICY;
+  }
+
+  /**
+   * Generate a cryptographically secure raw webhook signing secret, drawn to
+   * the CONFIGURED policy — the same `security.secret.*` policy behind
+   * service-account client secrets and API keys.
+   *
+   * Unlike the API key, this one honours `encoding` as well as `byteLength`:
+   * the secret is only ever used as an HMAC key (and stored reversibly, so a
+   * subscriber can be shown it again), so no format regex constrains its
+   * alphabet.
+   *
+   * Policy applies at ISSUANCE — `create` and `rotateSecret` — never
+   * retroactively: a live webhook's subscriber is verifying signatures with
+   * the secret it already holds, and rewriting that on a policy change would
+   * break every in-flight integration. Tightening the policy is a prompt to
+   * rotate.
+   */
+  generateRawSecret(): string {
+    return generateSecretString(this.secretPolicy());
+  }
+
+  /**
+   * @deprecated Policy-blind fallback kept for callers that have no service
+   * instance. Prefer the instance method, which honours `security.secret.*`.
+   */
+  static generateRawSecretWithDefaults(): string {
+    return generateSecretString(DEFAULT_GENERATED_SECRET_POLICY);
   }
 
   /**
@@ -179,7 +213,7 @@ export class WebhookService extends BaseService implements IWebhookService {
    */
   async create(request: CreateWebhookRequest): Promise<CreateWebhookResult> {
     const effectiveTenantId = this.resolveEffectiveTenantId(request.tenantId);
-    const rawSecret = WebhookService.generateRawSecret();
+    const rawSecret = this.generateRawSecret();
     const hashedSecret = await this.encryptSecretForStorage(rawSecret);
     const newWebhook = WebhookFactory.CreateWebhook({
       ...request,
@@ -400,7 +434,7 @@ export class WebhookService extends BaseService implements IWebhookService {
 
     const previousData = webhook.toObject();
     const previousVersion = webhook.version;
-    const rawSecret = WebhookService.generateRawSecret();
+    const rawSecret = this.generateRawSecret();
     webhook.hashedSecret = await this.encryptSecretForStorage(rawSecret);
 
     const updatedWebhook = await this.webhookRepository.updateWithVersion(id, webhook, expectedVersion);

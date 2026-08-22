@@ -321,6 +321,12 @@ export const API_TAGS: readonly ApiTagDefinition[] = [
     description: 'Deployed service versions and their build identity.',
   },
   {
+    name: 'admin-security-policy',
+    displayName: 'Security Policy',
+    plane: 'admin',
+    description: 'Platform credential policy — password complexity/rotation and issued-secret entropy.',
+  },
+  {
     name: 'admin-settings-catalog',
     displayName: 'Settings Catalog',
     plane: 'admin',

@@ -67,6 +67,7 @@ import { GlobalSettingModule } from './modules/global-setting/global-setting.mod
 // /admin/settings/catalog capability inventory (registered
 // BEFORE GlobalSettingModule so the static route wins over admin/settings/:id).
 import { PlatformKnobsModule } from './modules/platform-knobs/platform-knobs.module';
+import { SecurityPolicyModule } from './modules/security-policy/security-policy.module';
 import { SettingsCatalogModule } from './modules/settings-catalog/settings-catalog.module';
 import { ConsultationModule } from './modules/consultation/consultation.module';
 import { ConsentModule } from './modules/consent/consent.module';
@@ -462,6 +463,7 @@ const featureModules: any[] = [
   PlatformKnobsModule,
   // /admin/settings/catalog. MUST precede GlobalSettingModule
   // so the static `catalog` route registers before `admin/settings/:id`.
+  SecurityPolicyModule,
   SettingsCatalogModule,
   // /admin/settings (global-settings CRUD; wires the existing service).
   GlobalSettingModule,

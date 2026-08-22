@@ -27,6 +27,7 @@ import {
   IconLayoutGrid,
   IconLicense,
   IconListTree,
+  IconLockCog,
   IconMicrophone,
   IconPlugConnected,
   IconRobot,
@@ -162,6 +163,18 @@ export const NAV_ENTRIES: readonly NavEntry[] = [
     implemented: true,
   },
   { route: '/rate-limits', label: 'Rate limits', tier: '10-19', icon: IconGauge, required: [['manage', 'all']], implemented: true },
+  // Platform credential policy — password complexity/rotation and the entropy
+  // behind every machine credential the platform issues. SUPER_ADMIN-only:
+  // every backing key is a `globalOnly` descriptor, so the gateway 403s a
+  // tenant admin regardless of what the nav shows.
+  {
+    route: '/security-policy',
+    label: 'Credential policy',
+    tier: '10-19',
+    icon: IconLockCog,
+    required: [['manage', 'all']],
+    implemented: true,
+  },
   // Phase 3B agentic super-admin console (all SUPER_ADMIN-only).
   { route: '/agentic-policy', label: 'Agentic policy', tier: '10-19', icon: IconShieldBolt, required: [['manage', 'all']], implemented: true },
   // `/prompt-studio` retired — prompt governance folded

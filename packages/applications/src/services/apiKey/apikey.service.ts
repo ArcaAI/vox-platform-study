@@ -23,9 +23,11 @@ import { IActiveUserContext } from '../../interfaces';
 import { SecretsService } from '../baseServices/_meta/secrets';
 import { IEntitlementsService } from '../entitlements/IEntitlementsService';
 import { TenantSettingsService } from '../settings-registry/tenant-settings.service';
+import { IAppSettingsService } from '../baseServices/_meta/appSettings/IAppSettingsService';
 import { SUPER_ADMIN_ROLE } from '../tenant/constants';
 import { CreateApiKeyResult, IApiKeyService } from './IApiKeyService';
 import { isReservedScope, resolveImpliedPermissions } from './apikey-scopes.registry';
+import { API_KEY_ENCODING, DEFAULT_GENERATED_SECRET_POLICY, GeneratedSecretPolicy, resolveGeneratedSecretPolicy } from '../security/secretPolicy';
 import { CreateApiKeyRequest, UpdateApiKeyRequest } from './dto';
 
 /**
@@ -100,6 +102,10 @@ export class ApiKeyService extends BaseService implements IApiKeyService {
     // (platform-only). Optional so legacy fixtures that construct this service
     // directly keep the env-var behaviour exactly as it was.
     @Optional() private readonly tenantSettings?: TenantSettingsService,
+    // The platform `security.secret.*` policy behind generated key material.
+    // Optional (append-only DI) so legacy fixtures keep the pre-policy 32-byte
+    // hex behaviour exactly as it was.
+    @Optional() @Inject(IAppSettingsService) private readonly appSettingsService?: IAppSettingsService,
   ) {
     super(eventEmitter, clsService, ResourceType.ApiKey);
   }
@@ -141,12 +147,28 @@ export class ApiKeyService extends BaseService implements IApiKeyService {
    * The checksum is the first 6 hex characters of the SHA-256 hash of the
    * random portion, allowing fast client-side rejection without a DB lookup.
    */
-  static generateRawKey(keyType: ApiKeyType = ApiKeyType.SDK): string {
+  static generateRawKey(keyType: ApiKeyType = ApiKeyType.SDK, policy: GeneratedSecretPolicy = DEFAULT_GENERATED_SECRET_POLICY): string {
     const typePrefix = KEY_TYPE_PREFIX[keyType] || 'sk';
-    const randomPart = randomBytes(32).toString('hex'); // 64 hex chars
+    // `byteLength` is honoured; the ALPHABET is pinned to hex (API_KEY_ENCODING)
+    // because KEY_FORMAT_REGEX/extractChecksum parse the raw key structurally —
+    // see the note on API_KEY_ENCODING. Default 32 bytes = 64 hex chars.
+    const randomPart = randomBytes(policy.byteLength).toString(API_KEY_ENCODING);
     const checksum = createHash('sha256').update(randomPart).digest('hex').substring(0, 6);
 
     return `${KEY_SERVICE_PREFIX}_${typePrefix}_${randomPart}_${checksum}`;
+  }
+
+  /**
+   * The SUPER_ADMIN-managed `security.secret.*` policy for issued key material,
+   * or the platform defaults when no settings cascade is wired (legacy
+   * fixtures) — identical to the pre-policy behaviour.
+   *
+   * Read from the SYSTEM tier, not per tenant: how much entropy the platform
+   * puts behind its own credentials is a floor it owes every tenant, and the
+   * per-tenant credential dial is `apiKey.maxLifetimeDays` (tighten-only).
+   */
+  private resolveSecretPolicy(): GeneratedSecretPolicy {
+    return this.appSettingsService ? resolveGeneratedSecretPolicy(this.appSettingsService) : DEFAULT_GENERATED_SECRET_POLICY;
   }
 
   /**
@@ -321,7 +343,7 @@ export class ApiKeyService extends BaseService implements IApiKeyService {
     // refused mint must leave nothing behind.
     this.assertScopeCeiling(request.scopes);
 
-    const rawKey = ApiKeyService.generateRawKey(keyType);
+    const rawKey = ApiKeyService.generateRawKey(keyType, this.resolveSecretPolicy());
     const keyHash = await this.hashKeyForStorage(rawKey);
     const keyPrefix = ApiKeyService.extractPrefix(rawKey);
     const keyChecksum = ApiKeyService.extractChecksum(rawKey);
@@ -689,7 +711,7 @@ export class ApiKeyService extends BaseService implements IApiKeyService {
     }
 
     const keyType = oldKey.keyType ?? ApiKeyType.SDK;
-    const rawKey = ApiKeyService.generateRawKey(keyType);
+    const rawKey = ApiKeyService.generateRawKey(keyType, this.resolveSecretPolicy());
     const keyHash = await this.hashKeyForStorage(rawKey);
     const keyPrefix = ApiKeyService.extractPrefix(rawKey);
     const keyChecksum = ApiKeyService.extractChecksum(rawKey);
