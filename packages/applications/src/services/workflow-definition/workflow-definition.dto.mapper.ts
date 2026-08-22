@@ -1,7 +1,21 @@
 import { WorkflowDefinitionEntity } from '@arcaai/domains';
+import { registryChecksum } from '@arcaai/workflow-contract';
 import type { WorkflowNodeDescriptor } from '@arcaai/workflow-contract';
 import { FetchResponse } from '../../common';
 import { PaginatedWorkflowDefinitionResponse, WorkflowDefinitionResponse, WorkflowNodeResponse } from './dto';
+
+/**
+ * The running node registry's checksum, computed once.
+ *
+ * `WORKFLOW_NODE_REGISTRY` is `Object.freeze`d at module load and `registryChecksum()` is a pure
+ * function of it, so the value cannot change within a process — memoised so mapping a page of
+ * definitions costs one sha256, not one per row.
+ */
+let RUNNING_REGISTRY_CHECKSUM: string | undefined;
+function runningRegistryChecksum(): string {
+  RUNNING_REGISTRY_CHECKSUM ??= registryChecksum();
+  return RUNNING_REGISTRY_CHECKSUM;
+}
 
 export class WorkflowDefinitionDtoMapper {
   static toResponse(entity: WorkflowDefinitionEntity): WorkflowDefinitionResponse {
@@ -21,7 +35,20 @@ export class WorkflowDefinitionDtoMapper {
     dto.compiledConfigChecksum = entity.compiledConfigChecksum ?? null;
     dto.registryChecksum = entity.registryChecksum ?? null;
     dto.validationReport = (entity.validationReport as Record<string, unknown> | null) ?? null;
-    dto.needsReview = entity.needsReview;
+
+    // TASK-790 W2 (TASK-789 H-2). `node-registry.ts` documents that a stamped `registryChecksum`
+    // "is compared against this at read time to trigger NEEDS_REVIEW re-validation" — the
+    // comparison was never implemented, so `needsReview` was never assigned `true` anywhere, and
+    // the seeded platform-default row (stamped over a 7-entry registry, now 30) has been silently
+    // stale ever since.
+    //
+    // Derived on READ rather than persisted: PUBLISHED rows are hard-immutable by service
+    // convention (`assertMutable`), and a read must not mutate. `registryChecksum` is null until
+    // publish, so a DRAFT can never drift. The stored column is OR'd, never overwritten, so a row
+    // flagged for some other reason stays flagged.
+    dto.currentRegistryChecksum = runningRegistryChecksum();
+    const registryDrifted = entity.registryChecksum !== null && entity.registryChecksum !== undefined && entity.registryChecksum !== dto.currentRegistryChecksum;
+    dto.needsReview = entity.needsReview || registryDrifted;
     dto.validatedAt = entity.validatedAt ? entity.validatedAt.toISOString() : null;
     dto.publishedAt = entity.publishedAt ? entity.publishedAt.toISOString() : null;
     dto.deprecatedAt = entity.deprecatedAt ? entity.deprecatedAt.toISOString() : null;
