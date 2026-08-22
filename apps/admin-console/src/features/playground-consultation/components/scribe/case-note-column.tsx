@@ -12,18 +12,36 @@
  * as the pre-emptive override affordance rather than a surprising 409.
  */
 
-import { useMemo, useState } from 'react';
-import { IconCheck, IconChevronDown, IconClipboardCheck, IconCopy, IconFileText, IconShieldCheck, IconShieldExclamation } from '@tabler/icons-react';
+import { useId, useMemo, useState } from 'react';
+import {
+  IconAlertTriangle,
+  IconCheck,
+  IconChevronDown,
+  IconClipboardCheck,
+  IconCopy,
+  IconDeviceFloppy,
+  IconFileText,
+  IconPencil,
+  IconShieldCheck,
+  IconShieldExclamation,
+  IconSparkles,
+  IconX,
+} from '@tabler/icons-react';
 import { toast } from 'sonner';
+import { Alert, AlertDescription, AlertTitle } from '@arcaai/ui/components/shadcn/alert';
 import { Badge } from '@arcaai/ui/components/shadcn/badge';
 import { Button } from '@arcaai/ui/components/shadcn/button';
 import { Checkbox } from '@arcaai/ui/components/shadcn/checkbox';
 import { Collapsible, CollapsibleTrigger } from '@arcaai/ui/components/shadcn/collapsible';
+import { Label } from '@arcaai/ui/components/shadcn/label';
 import { Progress } from '@arcaai/ui/components/shadcn/progress';
 import { Skeleton } from '@arcaai/ui/components/shadcn/skeleton';
 import { Spinner } from '@arcaai/ui/components/shadcn/spinner';
+import { Textarea } from '@arcaai/ui/components/shadcn/textarea';
 import { cn } from '@arcaai/ui';
 import { EmptyState } from '@/shared/state/empty-state';
+import type { LoopActivityEntry } from '../../hooks/use-loop-activity';
+import type { UseNoteEditorResult } from '../../hooks/use-note-editor';
 import {
   claimVerdictBucket,
   type CitedSegment,
@@ -175,6 +193,14 @@ export interface CaseNoteColumnProps {
   /** Manual generate — hidden entirely when the harness owns drafting. */
   onGenerate: (() => void) | null;
   generatePending: boolean;
+  /**
+   * W5/M-7 — current step of the async generation job, when one is running.
+   * The manual Generate path is now the queued job + its SSE progress stream
+   * (previously dead code); this is that stream's `currentStep`.
+   */
+  generateStatus?: string | null;
+  /** Cancels the running generation job. Rendered only while one is running. */
+  onCancelGenerate?: (() => void) | null;
   onApprove: (options: { overrideSafetyFlag: boolean }) => void;
   approvePending: boolean;
   approved: boolean;
@@ -185,6 +211,19 @@ export interface CaseNoteColumnProps {
   /** The citation currently highlighted in the live-session column. */
   selectedCitationId?: string | null;
   onSelectCitation?: (segment: CitedSegment) => void;
+  /**
+   * W1/R5 — the clinician's editing buffer and its two-writer conflict state
+   * ({@link useNoteEditor}). Absent ⇒ the note renders read-only, exactly as
+   * before, so every other caller of this column is unaffected.
+   */
+  editor?: UseNoteEditorResult;
+  /**
+   * W4/R3 — the agentic loop's live activity (`consultation.realtimeSummary`
+   * and friends). PROGRESS ONLY: TASK-791's `summary.interim` event carries
+   * `{ kindKey, ordinal, total, chars }` and deliberately no text, so this
+   * renders what the assistant is working on, never a synthesised body.
+   */
+  loopActivity?: readonly LoopActivityEntry[];
 }
 
 export function CaseNoteColumn(props: CaseNoteColumnProps) {
@@ -198,6 +237,8 @@ export function CaseNoteColumn(props: CaseNoteColumnProps) {
     assurance,
     onGenerate,
     generatePending,
+    generateStatus = null,
+    onCancelGenerate = null,
     onApprove,
     approvePending,
     approved,
@@ -205,8 +246,16 @@ export function CaseNoteColumn(props: CaseNoteColumnProps) {
     transcriptText = null,
     selectedCitationId = null,
     onSelectCitation,
+    editor,
+    loopActivity = [],
   } = props;
   const [overrideSafety, setOverrideSafety] = useState(false);
+  const noteFieldId = useId();
+  // Editing is only offered on a persisted, unsigned draft: the server locks an
+  // approved summary ("Summary is approved and locked", 400), so offering the
+  // control after sign-off would promise a write that cannot succeed.
+  const canEdit = !!editor && !!draft && !approved;
+  const isEditing = !!editor?.isEditing;
 
   // The live snapshot is the mid-recording scratch preview; the persisted
   // draft takes over as soon as it exists (it is the reviewable artifact).
@@ -277,9 +326,90 @@ export function CaseNoteColumn(props: CaseNoteColumnProps) {
             <Skeleton className="h-32 w-full" />
           </div>
         ) : draft ? (
-          <article aria-label="Personalized draft note" className="text-sm leading-relaxed whitespace-pre-wrap">
-            {draft.content}
-          </article>
+          <div className="flex flex-col gap-3">
+            {/* A newer machine draft landed on top of unsaved text. Announced
+                politely (role=status) — it is information, not an emergency —
+                and NEVER applied without the clinician saying so. */}
+            {editor?.supersededBy ? (
+              <Alert role="status" className="[&>svg]:text-ai">
+                <IconSparkles aria-hidden />
+                <AlertTitle>The assistant produced a newer draft</AlertTitle>
+                <AlertDescription className="flex flex-col gap-2">
+                  <span>Your unsaved edits are untouched. Choose which version to continue from.</span>
+                  <span className="flex flex-wrap gap-2">
+                    <Button size="sm" variant="outline" onClick={editor.keepMine}>
+                      Keep my version
+                    </Button>
+                    <Button size="sm" variant="ghost" onClick={editor.acceptIncoming}>
+                      Discard mine, use the new draft
+                    </Button>
+                  </span>
+                </AlertDescription>
+              </Alert>
+            ) : null}
+
+            {/* 412 from the If-Match precondition: the row moved under us. The
+                buffer below still holds every character the clinician typed. */}
+            {editor?.conflict ? (
+              <Alert variant="destructive">
+                <IconAlertTriangle aria-hidden />
+                <AlertTitle>This note changed while you were editing</AlertTitle>
+                <AlertDescription className="flex flex-col gap-2">
+                  <span>
+                    Someone or something saved version {editor.conflict.serverVersion} of this note. Your text is still in the editor below —
+                    nothing has been lost.
+                  </span>
+                  {editor.conflict.serverContent ? (
+                    <details className="w-full">
+                      <summary className="cursor-pointer text-xs font-medium underline underline-offset-2">Show the saved version</summary>
+                      <p className="bg-background/60 mt-1.5 max-h-40 overflow-y-auto rounded-md border p-2 text-xs whitespace-pre-wrap" tabIndex={0}>
+                        {editor.conflict.serverContent}
+                      </p>
+                    </details>
+                  ) : null}
+                  <span className="flex flex-wrap gap-2">
+                    <Button size="sm" variant="outline" onClick={() => void editor.overwriteConflict()} disabled={editor.saving}>
+                      {editor.saving ? <Spinner aria-hidden /> : null}
+                      Overwrite with my version
+                    </Button>
+                    <Button size="sm" variant="ghost" onClick={editor.cancel}>
+                      Discard mine, keep the saved version
+                    </Button>
+                  </span>
+                </AlertDescription>
+              </Alert>
+            ) : null}
+
+            {editor?.error ? (
+              <Alert variant="destructive">
+                <IconAlertTriangle aria-hidden />
+                <AlertTitle>Could not save the note</AlertTitle>
+                <AlertDescription>{editor.error}</AlertDescription>
+              </Alert>
+            ) : null}
+
+            {isEditing && editor ? (
+              <div className="flex min-h-0 flex-1 flex-col gap-1.5">
+                <Label htmlFor={noteFieldId}>Case note</Label>
+                <Textarea
+                  id={noteFieldId}
+                  value={editor.value}
+                  onChange={(event) => editor.change(event.target.value)}
+                  // rule 11 §1: the primary input grows with its container
+                  // rather than carrying a fixed `rows`.
+                  className="min-h-64 flex-1 resize-none text-sm leading-relaxed"
+                  aria-describedby={`${noteFieldId}-hint`}
+                />
+                <p id={`${noteFieldId}-hint`} className="text-muted-foreground text-xs">
+                  Transcription and drafting continue while you edit. A newer machine draft is offered, never applied on its own.
+                </p>
+              </div>
+            ) : (
+              <article aria-label="Personalized draft note" className="text-sm leading-relaxed whitespace-pre-wrap">
+                {editor ? editor.value : draft.content}
+              </article>
+            )}
+          </div>
         ) : showLive && liveSections.length > 0 ? (
           <div className="flex flex-col gap-4" aria-label="Live running summary">
             {liveSections.map((section) => (
@@ -318,6 +448,33 @@ export function CaseNoteColumn(props: CaseNoteColumnProps) {
             }
           />
         )}
+
+        {loopActivity.length > 0 ? (
+          <div className="border-t pt-3" aria-label="Assistant activity">
+            <div className="text-muted-foreground mb-1.5 flex items-center gap-1.5 text-xs font-medium">
+              Assistant activity
+              <span className="bg-ai/10 text-ai rounded px-1 text-xs font-medium">AI</span>
+            </div>
+            <ul className="flex list-none flex-col gap-1" aria-live="polite">
+              {loopActivity.slice(-5).map((entry, index) => (
+                <li key={`${entry.publishedAt}-${index}`} className="flex flex-wrap items-center gap-2 text-xs">
+                  <span className="text-muted-foreground font-mono">{entry.kindKey ?? entry.kind}</span>
+                  {entry.label ? <span className="truncate">{entry.label}</span> : null}
+                  {entry.ordinal != null && entry.total != null ? (
+                    <span className="text-muted-foreground tabular-nums">
+                      {entry.ordinal} of {entry.total}
+                    </span>
+                  ) : null}
+                  {entry.chars != null ? <span className="text-muted-foreground tabular-nums">{entry.chars} chars</span> : null}
+                </li>
+              ))}
+            </ul>
+            {/* The interim TEXT is not on the wire (TASK-791 W5, blocked on a
+                TASK-790 column). Say so rather than implying the note below is
+                what the assistant just produced. */}
+            <p className="text-muted-foreground mt-1.5 text-xs">Interim text is not yet available on this feed — progress only.</p>
+          </div>
+        ) : null}
 
         {vitals.length > 0 ? (
           <div className="border-t pt-3" aria-label="Extracted vitals">
@@ -366,11 +523,48 @@ export function CaseNoteColumn(props: CaseNoteColumnProps) {
           <IconCopy aria-hidden />
           Copy
         </Button>
-        {onGenerate ? (
+        {onGenerate && !isEditing ? (
           <Button variant="outline" size="sm" onClick={onGenerate} disabled={generatePending || isRecording}>
             {generatePending ? <Spinner aria-hidden /> : <IconClipboardCheck aria-hidden />}
             Generate note
           </Button>
+        ) : null}
+        {/* W1/R5: the write path the backend has always had and the UI never
+            called (`PATCH :id/summary/:summaryId`, If-Match enforced). */}
+        {generatePending && onCancelGenerate ? (
+          <>
+            <span className="text-muted-foreground flex items-center gap-1.5 text-xs" aria-live="polite">
+              <Spinner aria-hidden className="size-3.5" />
+              {generateStatus ?? 'Generating note'}…
+            </span>
+            <Button variant="ghost" size="sm" onClick={onCancelGenerate}>
+              <IconX aria-hidden />
+              Cancel generation
+            </Button>
+          </>
+        ) : null}
+        {canEdit && editor && !isEditing ? (
+          <Button variant="outline" size="sm" onClick={editor.beginEdit}>
+            <IconPencil aria-hidden />
+            Edit note
+          </Button>
+        ) : null}
+        {isEditing && editor ? (
+          <>
+            <Button size="sm" variant="outline" onClick={() => void editor.save()} disabled={editor.saving || !!editor.conflict}>
+              {editor.saving ? <Spinner aria-hidden /> : <IconDeviceFloppy aria-hidden />}
+              Save note
+            </Button>
+            <Button size="sm" variant="ghost" onClick={editor.cancel} disabled={editor.saving}>
+              <IconX aria-hidden />
+              Cancel
+            </Button>
+            {editor.isDirty ? (
+              <span className="text-muted-foreground text-xs" aria-live="polite">
+                Unsaved changes
+              </span>
+            ) : null}
+          </>
         ) : null}
         <div className="ms-auto flex items-center gap-3">
           {assurance?.safetyFlag && draft && !approved ? (
@@ -386,7 +580,7 @@ export function CaseNoteColumn(props: CaseNoteColumnProps) {
           <Button
             size="sm"
             onClick={() => onApprove({ overrideSafetyFlag: overrideSafety })}
-            disabled={!draft || approvePending || approved || (assurance?.safetyFlag === true && !overrideSafety)}
+            disabled={!draft || approvePending || approved || isEditing || (assurance?.safetyFlag === true && !overrideSafety)}
           >
             {approvePending ? <Spinner aria-hidden /> : <IconCheck aria-hidden />}
             {approved ? 'Signed' : 'Sign & save'}

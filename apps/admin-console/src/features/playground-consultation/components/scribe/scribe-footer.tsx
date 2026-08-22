@@ -14,6 +14,8 @@
 
 import { ModelSelector, type ModelOption } from '@arcaai/ui/components/custom/model-selector';
 import { SttLanguageModePicker, type SttLanguageModeOption } from '@arcaai/ui/components/custom/stt-language-mode-picker';
+import { Label } from '@arcaai/ui/components/shadcn/label';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@arcaai/ui/components/shadcn/select';
 import { StatCard } from '@arcaai/ui/components/metrics/stat-card';
 
 export interface ScribeMetrics {
@@ -49,8 +51,26 @@ export interface ScribeFooterProps {
   noteModels: ModelOption[];
   selectedNoteId: string;
   onNoteChange: (id: string) => void;
+  /**
+   * W2 — DNA writing styles selectable for the next generation
+   * (`GenerateSummaryRequest.dnaStyleId`). Empty ⇒ the control is hidden.
+   * The server still gates it: `resolveEffectiveDnaStyleId` drops the id
+   * unless DNA is effective for this tenant/department/doctor.
+   */
+  dnaStyles?: DnaStyleOption[];
+  selectedDnaStyleId?: string;
+  onDnaStyleChange?: (id: string) => void;
   metrics: ScribeMetrics;
 }
+
+/** A selectable DNA writing-style report. */
+export interface DnaStyleOption {
+  id: string;
+  label: string;
+}
+
+/** Sentinel for "no style" — Radix Select forbids an empty-string value. */
+const NO_DNA_STYLE = '__none__';
 
 export function ScribeFooter({
   transcriptionModels,
@@ -64,6 +84,9 @@ export function ScribeFooter({
   noteModels,
   selectedNoteId,
   onNoteChange,
+  dnaStyles = [],
+  selectedDnaStyleId = '',
+  onDnaStyleChange,
   metrics,
 }: ScribeFooterProps) {
   return (
@@ -88,6 +111,29 @@ export function ScribeFooter({
       <div className="bg-background min-w-52 flex-1 rounded-lg border p-2.5">
         <ModelSelector label="Note assistant" models={noteModels} selectedModelId={selectedNoteId} onChange={onNoteChange} />
       </div>
+      {dnaStyles.length > 0 ? (
+        <div className="bg-background flex min-w-52 flex-1 flex-col gap-1.5 rounded-lg border p-2.5">
+          <Label htmlFor="scribe-dna-style" className="text-xs">
+            Writing style
+          </Label>
+          <Select
+            value={selectedDnaStyleId || NO_DNA_STYLE}
+            onValueChange={(next) => onDnaStyleChange?.(next === NO_DNA_STYLE ? '' : next)}
+          >
+            <SelectTrigger id="scribe-dna-style" size="sm" className="w-full">
+              <SelectValue placeholder="Default style" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value={NO_DNA_STYLE}>Default style</SelectItem>
+              {dnaStyles.map((style) => (
+                <SelectItem key={style.id} value={style.id}>
+                  {style.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+      ) : null}
       <div className="grid flex-[2] grid-cols-1 gap-3 sm:grid-cols-3">
         <StatCard label="Throughput" value={formatThroughput(metrics.tokensPerSecond)} accent="success" hint="note model" density="compact" />
         <StatCard label="Bandwidth" value={formatBandwidth(metrics.uplinkBitsPerSecond)} accent="default" hint="audio uplink" density="compact" />

@@ -12,6 +12,7 @@ import { IconInbox, IconPlus, IconSearch, IconX } from '@tabler/icons-react';
 import { Badge } from '@arcaai/ui/components/shadcn/badge';
 import { Button } from '@arcaai/ui/components/shadcn/button';
 import { Input } from '@arcaai/ui/components/shadcn/input';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@arcaai/ui/components/shadcn/select';
 import { Label } from '@arcaai/ui/components/shadcn/label';
 import { Skeleton } from '@arcaai/ui/components/shadcn/skeleton';
 import { StatusBadge, type StatusColorRole } from '@arcaai/ui/components/shared/status-badge';
@@ -55,12 +56,40 @@ export interface ConsultationsColumnProps {
   selectedId: string | null;
   /** Select an existing consultation (loads it into the SDK session). */
   onSelect: (row: ConsultationListRow) => void;
-  /** Open (get-or-create) a consultation for a patient id. */
-  onOpenPatient: (patientId: string) => Promise<void>;
+  /**
+   * Open (get-or-create) a consultation for a patient id, optionally scoped to
+   * a department. `departmentId` is what makes the department prompt tier and
+   * the workflow-assignment department tier reachable at all (TASK-789 H-4).
+   */
+  onOpenPatient: (patientId: string, departmentId?: string) => Promise<void>;
   activeIsRecording: boolean;
+  /** Selectable departments; empty ⇒ the picker is hidden (unreadable or none exist). */
+  departments?: DepartmentOption[];
+  selectedDepartmentId?: string;
+  onDepartmentChange?: (id: string) => void;
 }
 
-export function ConsultationsColumn({ rows, isLoading, error, selectedId, onSelect, onOpenPatient, activeIsRecording }: ConsultationsColumnProps) {
+/** Minimal department shape the picker needs. */
+export interface DepartmentOption {
+  id: string;
+  name: string;
+}
+
+/** Sentinel for "no department" — Radix Select forbids an empty-string value. */
+const NO_DEPARTMENT = '__none__';
+
+export function ConsultationsColumn({
+  rows,
+  isLoading,
+  error,
+  selectedId,
+  onSelect,
+  onOpenPatient,
+  activeIsRecording,
+  departments = [],
+  selectedDepartmentId = '',
+  onDepartmentChange,
+}: ConsultationsColumnProps) {
   const [query, setQuery] = useState('');
   const [showNewForm, setShowNewForm] = useState(false);
   const [patientId, setPatientId] = useState('');
@@ -94,7 +123,7 @@ export function ConsultationsColumn({ rows, isLoading, error, selectedId, onSele
     setPatientIdError(null);
     setOpenPending(true);
     try {
-      await onOpenPatient(trimmed);
+      await onOpenPatient(trimmed, selectedDepartmentId || undefined);
       setShowNewForm(false);
     } finally {
       setOpenPending(false);
@@ -137,6 +166,30 @@ export function ConsultationsColumn({ rows, isLoading, error, selectedId, onSele
               <p id="scribe-patient-id-error" className="text-destructive text-sm">
                 {patientIdError}
               </p>
+            ) : null}
+            {departments.length > 0 ? (
+              <>
+                <Label htmlFor="scribe-department">Department</Label>
+                <Select
+                  value={selectedDepartmentId || NO_DEPARTMENT}
+                  onValueChange={(next) => onDepartmentChange?.(next === NO_DEPARTMENT ? '' : next)}
+                >
+                  <SelectTrigger id="scribe-department" className="w-full">
+                    <SelectValue placeholder="No department" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value={NO_DEPARTMENT}>No department</SelectItem>
+                    {departments.map((department) => (
+                      <SelectItem key={department.id} value={department.id}>
+                        {department.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <p className="text-muted-foreground text-xs">
+                  Scopes the drafted note to the department&apos;s prompt and agent configuration.
+                </p>
+              </>
             ) : null}
           </form>
         ) : (

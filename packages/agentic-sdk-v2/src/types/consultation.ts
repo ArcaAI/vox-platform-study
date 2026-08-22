@@ -102,7 +102,24 @@ export interface OpenSessionInput {
   patientId: string;
   /** Appointment date (YYYY-MM-DD). Defaults to today if not provided. */
   appointmentDate?: string;
-  /** Department/specialty */
+  /**
+   * Department id (a `Department` row id), forwarded verbatim to
+   * `POST /consultations/open`.
+   *
+   * This is the field that makes department-scoped SOAP autofill reachable:
+   * `SummaryService` resolves the department prompt tier from
+   * `consultation.departmentId`, and `ConsultationWorkflowDispatchService`
+   * resolves the workflow-assignment cascade's department tier from the same
+   * column. Omit it and both silently fall through to the tenant tier.
+   */
+  departmentId?: string;
+  /**
+   * @deprecated Not accepted by the gateway. `OpenConsultationRequest`
+   * declares no `department` field and the global validation pipe runs
+   * `forbidNonWhitelisted`, so sending this REJECTS the open with HTTP 400.
+   * Use {@link OpenSessionInput.departmentId}. Retained only so the v1-compat
+   * lane (`useArcaSessionManager`) keeps compiling; see TASK-793 notes.
+   */
   department?: string;
   /** Custom metadata */
   metadata?: Record<string, unknown>;

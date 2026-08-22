@@ -16,6 +16,7 @@ const DRAFT: SummaryResult = {
   consultationId: 'c-1',
   type: 'summary',
   content: 'S: Follow-up for hypertension. Improving.',
+  version: 1,
   structuredData: { llmProvider: 'lmstudio', modelName: 'hope-scribe-v2', processingTimeMs: 812 },
 };
 
@@ -211,5 +212,59 @@ describe('CaseNoteColumn', () => {
       render(<CaseNoteColumn {...baseProps()} />);
       expect(screen.queryByLabelText(/cited transcript evidence/i)).toBeNull();
     });
+  });
+});
+
+/**
+ * W5 / M-7 — the async summary path had zero call sites. It is now the manual
+ * Generate path, so the column has to surface job progress and offer a cancel;
+ * the sync mutation used to block for the whole generation with no feedback.
+ */
+describe('CaseNoteColumn — async generation progress', () => {
+  it('shows the current step and a cancel action while a job is running', () => {
+    const onCancelGenerate = vi.fn();
+    render(
+      <CaseNoteColumn
+        {...baseProps({
+          draft: null,
+          generatePending: true,
+          generateStatus: 'Summarizing transcript',
+          onCancelGenerate,
+        })}
+      />,
+    );
+
+    expect(screen.getByText(/summarizing transcript/i)).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: /cancel generation/i }));
+    expect(onCancelGenerate).toHaveBeenCalled();
+  });
+
+  it('offers no cancel action when nothing is generating', () => {
+    render(<CaseNoteColumn {...baseProps({ draft: null, generatePending: false, onCancelGenerate: vi.fn() })} />);
+    expect(screen.queryByRole('button', { name: /cancel generation/i })).toBeNull();
+  });
+});
+
+/**
+ * W4 / R3 — the realtime-summary feed. TASK-791's event carries progress
+ * metadata and NO text, so the UI must show progress and must not imply a
+ * body it does not have.
+ */
+describe('CaseNoteColumn — loop activity (realtime summaries)', () => {
+  const feed = [
+    { kind: 'summary.interim', kindKey: 'soap.subjective', ordinal: 1, total: 4, chars: 210, publishedAt: 'a' },
+    { kind: 'summary.interim', kindKey: 'soap.objective', ordinal: 2, total: 4, chars: 88, publishedAt: 'b' },
+  ];
+
+  it('renders interim-summary progress from metadata', () => {
+    render(<CaseNoteColumn {...baseProps({ draft: null, isRecording: true, loopActivity: feed })} />);
+    expect(screen.getByText(/assistant activity/i)).toBeTruthy();
+    expect(screen.getByText(/soap.objective/i)).toBeTruthy();
+    expect(screen.getByText(/2 of 4/i)).toBeTruthy();
+  });
+
+  it('renders nothing when the loop has produced no events', () => {
+    render(<CaseNoteColumn {...baseProps({ draft: null, loopActivity: [] })} />);
+    expect(screen.queryByText(/assistant activity/i)).toBeNull();
   });
 });
