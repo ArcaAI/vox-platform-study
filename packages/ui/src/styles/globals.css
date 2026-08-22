@@ -158,11 +158,19 @@
      flat (J-12). Depth is expressed as border + surface in light, and as tonal
      surfaces in dark — where, per Tatva, --card (#1e1e1e) is DARKER than
      --background (#242424), reversing HOPE's previous relationship.
-     Watch item (J-9): menus/popovers ship flat and borderless-shadowed; if
-     Phase 3 finds they do not separate, the sanctioned fallback is restoring
-     --elevation-raised for menus only. */
+     J-9 RESOLVED (Phase 3 measured it, 2026-08-22): flat menus DO NOT separate
+     in light. A dropdown over a card is #ffffff on #ffffff = 1.00:1 fill
+     separation, with only a 1.25:1 hairline as an edge. The sanctioned fallback
+     is invoked, narrowly: --elevation-overlay regains a real value so FLOATING
+     surfaces (popover, dropdown, menu, tooltip, hover-card, command) separate
+     from what they cover. --elevation-raised stays `none` — cards and panels
+     remain flat, so J-12 is honoured for everything that sits IN the page.
+     Tatva never measured a menu; this is the gap its investigation declared,
+     not a departure from it. */
   --elevation-raised: none;
-  --elevation-overlay: none;
+  --elevation-overlay:
+    0 4px 12px -2px rgb(20 20 20 / 0.10),
+    0 12px 32px -8px rgb(20 20 20 / 0.14);
 
   /* --- Overlay, focus, press ---------------------------------------------
      Consumed via arbitrary values at the call site (Phase 3); deliberately not
@@ -170,7 +178,12 @@
      shape. Overlay depth applies to MODALS only. */
   --overlay-scrim: #14141480;
   --overlay-blur: 4px;
-  --focus-ring-width: 2px;
+  /* J-16: 3px, not the Geometry Contract's nominal 2px. focus-canon.vitest.ts
+     asserts `focus-visible:ring-[3px]` across every primitive and Phase 2 left
+     those assertions deliberately untouched, so 3px is what actually renders.
+     The token now states the truth rather than a nominal the code contradicts;
+     3px is also the more visible indicator, so this is not a downgrade. */
+  --focus-ring-width: 3px;
   --focus-ring-offset: 2px;
   --scale-pressed: 0.97;
 
@@ -234,7 +247,11 @@
      inversion Tatva prescribes: --card and --popover (#1e1e1e) sit BELOW
      --background (#242424). This is correct and must not be "fixed". */
   --elevation-raised: none;
-  --elevation-overlay: none;
+  /* J-9: floating surfaces separate here too, but a black shadow on a near-black
+     canvas is invisible — dark needs a deeper, more diffuse cast to read at all. */
+  --elevation-overlay:
+    0 4px 12px -2px rgb(0 0 0 / 0.55),
+    0 12px 32px -8px rgb(0 0 0 / 0.65);
 
   --background: #242424;
   --foreground: #e4e4e4;
