@@ -13,8 +13,12 @@ import { BaseService } from '../../common';
 import { IActiveUserContext } from '../../interfaces';
 import { computeEditBurden } from '../harness-observability/edit-burden';
 import {
+  AGENTIC_FEWSHOT_APPROVED_CLEAN_MAX_RATIO_DEFAULT,
+  AGENTIC_FEWSHOT_APPROVED_CLEAN_MAX_RATIO_KEY,
   AGENTIC_FEWSHOT_CURATION_MODE_DEFAULT,
   AGENTIC_FEWSHOT_CURATION_MODE_KEY,
+  AGENTIC_FEWSHOT_HEAVILY_EDITED_MIN_RATIO_DEFAULT,
+  AGENTIC_FEWSHOT_HEAVILY_EDITED_MIN_RATIO_KEY,
   type FewShotCurationMode,
 } from '../settings-registry/descriptors/agentic-fewshot.descriptors';
 import { EffectiveSettingsService } from '../settings-registry/effective-settings.service';
@@ -28,9 +32,22 @@ import { IPhiRedactor } from './IPhiRedactor';
  * written — that is the "imitate this" signal. Above the heavy threshold it was
  * materially reworked. The band between the two is deliberately NOT mined: an
  * ambiguous example teaches the model an ambiguous lesson.
+ *
+ * TASK-792 W5 (M-9): these are now GOVERNED settings resolved per candidate, not
+ * TS literals — they decide a training-label taxonomy, and rule 00 puts a
+ * threshold in config. The values below are the code DEFAULTS the governed read
+ * degrades to; they are numerically identical to the literals they replaced, so
+ * an unconfigured deployment labels exactly as before.
  */
-const APPROVED_CLEAN_MAX_RATIO = 0.05;
-const HEAVILY_EDITED_MIN_RATIO = 0.3;
+interface QualityThresholds {
+  approvedCleanMaxRatio: number;
+  heavilyEditedMinRatio: number;
+}
+
+const DEFAULT_QUALITY_THRESHOLDS: QualityThresholds = {
+  approvedCleanMaxRatio: AGENTIC_FEWSHOT_APPROVED_CLEAN_MAX_RATIO_DEFAULT,
+  heavilyEditedMinRatio: AGENTIC_FEWSHOT_HEAVILY_EDITED_MIN_RATIO_DEFAULT,
+};
 
 /** Retrieval is on the prompt-assembly hot path — never an unbounded scan. */
 const MAX_RETRIEVAL_LIMIT = 5;
@@ -163,7 +180,8 @@ export class GateEditMiningService extends BaseService {
         signedAt: candidate.signedAt ?? null,
       });
 
-      const qualitySignal = this.classify(burden.editDistanceRatio);
+      const thresholds = await this.resolveThresholds(candidate.tenantId);
+      const qualitySignal = this.classify(burden.editDistanceRatio, thresholds);
       if (!qualitySignal) {
         // The ambiguous middle band — deliberately not mined.
         return;
@@ -389,11 +407,71 @@ export class GateEditMiningService extends BaseService {
   }
 
   /** Map an edit ratio onto the learning signal, or null for the ambiguous band. */
-  private classify(ratio: number | null): string | null {
+  private classify(ratio: number | null, thresholds: QualityThresholds): string | null {
     if (ratio === null) return null;
-    if (ratio <= APPROVED_CLEAN_MAX_RATIO) return 'APPROVED_CLEAN';
-    if (ratio >= HEAVILY_EDITED_MIN_RATIO) return 'HEAVILY_EDITED';
+    if (ratio <= thresholds.approvedCleanMaxRatio) return 'APPROVED_CLEAN';
+    if (ratio >= thresholds.heavilyEditedMinRatio) return 'HEAVILY_EDITED';
     return null;
+  }
+
+  /**
+   * The effective quality-signal thresholds for one tenant.
+   *
+   * Degrades to the code defaults on EVERY failure path — an unset key, an
+   * unwired settings service, a backend outage, or a value that fails the
+   * sanity check below. That is the declared `open-to-default` failure mode:
+   * these are tuning knobs, and the safe direction is "label exactly as this
+   * deployment did before", never "stop mining" or "relabel the corpus".
+   *
+   * The sanity check is not defensive padding. An INVERTED band
+   * (`clean >= heavy`) makes every ratio satisfy both arms, so whichever branch
+   * is tested first wins and the entire corpus is silently relabelled — a
+   * mislabelled training set is far worse than an unconfigured one. A
+   * non-numeric or out-of-[0,1] value is rejected for the same reason.
+   */
+  private async resolveThresholds(tenantId: string): Promise<QualityThresholds> {
+    if (!this.effectiveSettings) return DEFAULT_QUALITY_THRESHOLDS;
+    try {
+      const [clean, heavy] = await Promise.all([
+        this.readRatio(AGENTIC_FEWSHOT_APPROVED_CLEAN_MAX_RATIO_KEY, tenantId),
+        this.readRatio(AGENTIC_FEWSHOT_HEAVILY_EDITED_MIN_RATIO_KEY, tenantId),
+      ]);
+
+      const approvedCleanMaxRatio = clean ?? DEFAULT_QUALITY_THRESHOLDS.approvedCleanMaxRatio;
+      const heavilyEditedMinRatio = heavy ?? DEFAULT_QUALITY_THRESHOLDS.heavilyEditedMinRatio;
+
+      if (approvedCleanMaxRatio >= heavilyEditedMinRatio) {
+        this.logger.warn({
+          message:
+            'Gate-edit quality thresholds are inverted (approvedCleanMaxRatio >= heavilyEditedMinRatio) — falling back to the code defaults',
+          tenantId,
+          approvedCleanMaxRatio,
+          heavilyEditedMinRatio,
+        });
+        return DEFAULT_QUALITY_THRESHOLDS;
+      }
+
+      return { approvedCleanMaxRatio, heavilyEditedMinRatio };
+    } catch (error) {
+      this.logger.warn({
+        message: 'Gate-edit quality-threshold lookup failed — falling back to the code defaults',
+        tenantId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return DEFAULT_QUALITY_THRESHOLDS;
+    }
+  }
+
+  /** One governed ratio in [0,1], or null when unset/unusable. */
+  private async readRatio(key: string, tenantId: string): Promise<number | null> {
+    try {
+      const resolved = await this.effectiveSettings!.resolveEffective(key, { tenantId });
+      const value = typeof resolved.value === 'string' ? Number(resolved.value) : resolved.value;
+      if (typeof value !== 'number' || !Number.isFinite(value) || value < 0 || value > 1) return null;
+      return value;
+    } catch {
+      return null;
+    }
   }
 
   /**
