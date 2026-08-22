@@ -137,7 +137,8 @@ describe('TENANT_SCOPED_MODELS allow-list', () => {
     // platform's built-in roles (also SYSTEM-shared, see below); tenant rows
     // are a tenant admin's own custom roles, now protected by this extension
     // instead of a handler-level guard. `Policy`/`RolePolicy` stay global.
-    expect(TENANT_SCOPED_MODELS.size).toBe(85);
+    // +1 (86): RateLimitRule (TASK-785).
+    expect(TENANT_SCOPED_MODELS.size).toBe(86);
   });
 
   // The usage ledger, its outbox, the rollups and the whole billing

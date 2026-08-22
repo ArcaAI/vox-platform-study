@@ -26,7 +26,7 @@ import { ITenantService } from '../tenant/ITenantService';
 import { IMeteringService, MeterUsage } from '../metering/IMeteringService';
 import { ISocketRegistryService } from '../platform-metrics/socket-registry.service';
 import { EntitlementFeatureKey, IEntitlementsService, StorageSoftWarn, TenantRateLimitPolicy } from './IEntitlementsService';
-import { ResolvedEntitlements, resolveEntitlements } from './resolve-entitlements';
+import { ResolvedEntitlements, effectivePlan, resolveEntitlements } from './resolve-entitlements';
 import { buildCapabilityRow, computeTrialInfo } from './capability';
 import { EntitlementLimitKey, MeterCapabilityKey, wouldExceedLimit } from './enforcement';
 import { ENTITLEMENTS_QUOTA_BLOCKED_EVENT, ENTITLEMENTS_STORAGE_WARN_EVENT } from './entitlements.constants';
@@ -174,7 +174,9 @@ export class EntitlementsService extends BaseService implements IEntitlementsSer
 
   async resolveForTenant(tenantId: EntityId): Promise<ResolvedEntitlements> {
     const tenant = await this.tenantRepository.findById(tenantId);
-    const plan = (tenant.plan as TenantPlan | null | undefined) ?? null;
+    // TASK-785 OD-5: a plan-less CUSTOMER tenant resolves STARTER, not ungated.
+    // Reserved platform tenants (SYSTEM, Global) still resolve `null`.
+    const plan = effectivePlan(tenantId, tenant.plan as TenantPlan | null | undefined);
 
     const planRow = plan ? await this.planEntitlementRepository.findByPlan(plan) : null;
     const override = await this.tenantEntitlementRepository.findByTenant(tenantId);
@@ -184,7 +186,9 @@ export class EntitlementsService extends BaseService implements IEntitlementsSer
 
   async getCapabilities(tenantId: EntityId): Promise<EntitlementCapabilitiesResponse> {
     const tenant = await this.tenantRepository.findById(tenantId);
-    const plan = (tenant.plan as TenantPlan | null | undefined) ?? null;
+    // TASK-785 OD-5: a plan-less CUSTOMER tenant resolves STARTER, not ungated.
+    // Reserved platform tenants (SYSTEM, Global) still resolve `null`.
+    const plan = effectivePlan(tenantId, tenant.plan as TenantPlan | null | undefined);
 
     const planRow = plan ? await this.planEntitlementRepository.findByPlan(plan) : null;
     const override = await this.tenantEntitlementRepository.findByTenant(tenantId);
@@ -463,7 +467,7 @@ export class EntitlementsService extends BaseService implements IEntitlementsSer
     try {
       const resolved = await this.resolveForTenant(tenantId);
       // Ungated (null-plan / system tenant, Q3) → global tiers unchanged.
-      value = resolved.gated ? { tier: resolved.rateLimitTier, perMinute: resolved.rateLimitPerMinute } : null;
+      value = resolved.gated ? { tier: resolved.rateLimitTier, perMinute: resolved.rateLimitPerMinute, windowMs: resolved.rateLimitWindowMs } : null;
     } catch (err) {
       // A bad/unknown tenantId (e.g. from an unverified pre-auth token) must not
       // throw on the throttler path — fall back to the global tiers (null) and
@@ -561,6 +565,10 @@ export class EntitlementsService extends BaseService implements IEntitlementsSer
     if (request.featurePlatformDefaultCredential !== undefined) row.featurePlatformDefaultCredential = request.featurePlatformDefaultCredential;
     if (request.modelTier !== undefined) row.modelTier = request.modelTier;
     if (request.rateLimitTier !== undefined) row.rateLimitTier = request.rateLimitTier;
+    // TASK-785 — an ABSOLUTE per-plan limit. `null` is a MEANINGFUL value here
+    // (clear it and fall back to `rateLimitTier`), so the guard is `!== undefined`.
+    if (request.rateLimitPerMinute !== undefined) row.rateLimitPerMinute = request.rateLimitPerMinute;
+    if (request.rateLimitWindowMs !== undefined) row.rateLimitWindowMs = request.rateLimitWindowMs;
 
     if (this.requestUserId) row.updatedBy = this.requestUserId;
 
@@ -798,6 +806,8 @@ export class EntitlementsService extends BaseService implements IEntitlementsSer
       featurePlatformDefaultCredential: row.featurePlatformDefaultCredential,
       modelTier: row.modelTier,
       rateLimitTier: row.rateLimitTier,
+      rateLimitPerMinute: row.rateLimitPerMinute ?? null,
+      rateLimitWindowMs: row.rateLimitWindowMs ?? null,
       version: row.version,
     };
   }

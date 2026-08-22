@@ -6,11 +6,10 @@
  * `{ limit, ttl }` using the DB-backed tier baseline. This is the primitive a
  * post-auth throttle hookup would call.
  *
- * NOTE (documented follow-up): the live `TieredThrottlerGuard` runs BEFORE auth
- * resolution (no CLS tenant context yet), so wiring per-tenant limits onto the
- * hot path needs the tenant extracted pre-auth (from the JWT) or a post-auth
- * throttle stage — an architectural change not yet implemented. The
- * resolution + per-tenant override below are the source of truth for it.
+ * TASK-785: this is rank 3 of the five-level cascade in `rate-limit-resolver.ts`.
+ * `TieredThrottlerGuard` still runs BEFORE auth, so the tenant reaching this
+ * helper comes from a signature-VERIFIED bearer token; an unverifiable token
+ * resolves no tenant and never reaches rank 3.
  */
 
 /** A tier baseline `{ limit, ttl }` (from `IRateLimitSettingsService.getTier`). */
@@ -28,17 +27,31 @@ export interface EffectiveRateLimit {
 }
 
 /**
- * Q7 — resolve the effective rate-limit for a tenant. A non-null
- * `rateLimitPerMinute` (the per-tenant override) wins over the plan tier's
- * baseline limit; the window (`ttl`) always comes from the tier baseline.
+ * Resolve the effective rate limit a tenant's PLAN expresses (rank 3).
+ *
+ * Two layers, in increasing precedence:
+ *   1. the named tier the plan selects — its baseline supplies both numbers;
+ *   2. an ABSOLUTE `rateLimitPerMinute`, from the plan row or the per-tenant
+ *      entitlement override, which replaces the count.
+ *
+ * `windowMs` is read ONLY alongside an absolute count (TASK-785). On its own it
+ * would change the window without changing the count it bounds — which reads to
+ * an admin as a limit change nobody asked for. Absent it, the window stays the
+ * tier baseline's, preserving the pre-TASK-785 behaviour exactly.
  */
 export function resolvePlanRateLimit(
   rateLimitTier: string,
   rateLimitPerMinute: number | null | undefined,
   tierBaseline: RateLimitTierBaseline,
+  rateLimitWindowMs?: number | null,
 ): EffectiveRateLimit {
   if (rateLimitPerMinute !== null && rateLimitPerMinute !== undefined) {
-    return { tier: rateLimitTier, limit: rateLimitPerMinute, ttl: tierBaseline.ttl, source: 'per-tenant-override' };
+    return {
+      tier: rateLimitTier,
+      limit: rateLimitPerMinute,
+      ttl: rateLimitWindowMs ?? tierBaseline.ttl,
+      source: 'per-tenant-override',
+    };
   }
   return { tier: rateLimitTier, limit: tierBaseline.limit, ttl: tierBaseline.ttl, source: 'plan-tier' };
 }

@@ -34,6 +34,7 @@ export interface CreateTenantEntitlementProps extends BaseEntityFactoryCreatePro
   modelTier?: ITenantEntitlementEntity['modelTier'];
   rateLimitTier?: ITenantEntitlementEntity['rateLimitTier'];
   rateLimitPerMinute?: ITenantEntitlementEntity['rateLimitPerMinute'];
+  rateLimitWindowMs?: ITenantEntitlementEntity['rateLimitWindowMs'];
   tenantId: ITenantEntitlementEntity['tenantId'];
 
   createdAt?: ITenantEntitlementEntity['createdAt'];
@@ -84,6 +85,7 @@ export class TenantEntitlementFactory {
       modelTier: props.modelTier ?? null,
       rateLimitTier: props.rateLimitTier ?? null,
       rateLimitPerMinute: props.rateLimitPerMinute ?? null,
+      rateLimitWindowMs: props.rateLimitWindowMs ?? null,
     });
   }
 }

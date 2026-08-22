@@ -146,6 +146,18 @@ model PlanEntitlement {
   modelTier     String @default("full")
   rateLimitTier String @default("default")
 
+  // TASK-785 rank 3 — an ABSOLUTE per-plan rate limit. Null (the default) keeps
+  // the historical behaviour: the plan expresses its limit indirectly, by naming
+  // a `rateLimitTier` whose baseline lives in `rate-limit.tier.<t>.*`. Setting
+  // these lets a super admin price a plan's throughput directly, without minting
+  // a new named tier for every plan.
+  //
+  // `rateLimitWindowMs` is only read when `rateLimitPerMinute` is set; on its own
+  // it would change a window without changing the count it bounds, which reads as
+  // a limit change nobody asked for.
+  rateLimitPerMinute Int?
+  rateLimitWindowMs  Int?
+
   // resource status fields
   resourceStatus          ResourceStatusType @default(ENABLED)
   resourceStatusUpdatedAt DateTime?
@@ -239,6 +251,9 @@ model TenantEntitlement {
   modelTier          String?
   rateLimitTier      String?
   rateLimitPerMinute Int?
+  // TASK-785 — the window that pairs with `rateLimitPerMinute`. Read only when
+  // `rateLimitPerMinute` is set, for the same reason as on `PlanEntitlement`.
+  rateLimitWindowMs  Int?
 
   // resource status fields
   resourceStatus          ResourceStatusType @default(ENABLED)

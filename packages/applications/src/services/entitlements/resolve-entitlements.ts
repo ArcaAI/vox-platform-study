@@ -15,7 +15,13 @@
  */
 
 import { TenantPlan } from '@arcaai/domains';
-import { ModelTier, PLAN_ENTITLEMENT_DEFAULTS, PlanEntitlementValues } from './entitlements.constants';
+import {
+  DEFAULT_TENANT_PLAN,
+  ModelTier,
+  PLAN_ENTITLEMENT_DEFAULTS,
+  PlanEntitlementValues,
+  RESERVED_UNGATED_TENANT_IDS,
+} from './entitlements.constants';
 
 /** Resolved, fully-merged limits for a tenant. `null` = unlimited/ungated. */
 export interface ResolvedLimits {
@@ -104,6 +110,8 @@ export interface ResolvedEntitlements {
   rateLimitTier: string;
   /** Per-tenant absolute rate override (Q7); `null` = use the tier. */
   rateLimitPerMinute: number | null;
+  /** TASK-785 — the window paired with an absolute count; `null` = use the tier's. */
+  rateLimitWindowMs: number | null;
 }
 
 /**
@@ -140,6 +148,9 @@ export interface PlanEntitlementInput {
   featureAgenticLoop?: boolean;
   modelTier?: string;
   rateLimitTier?: string;
+  /** TASK-785 — an ABSOLUTE per-plan limit; `null` = express the limit via `rateLimitTier`. */
+  rateLimitPerMinute?: number | null;
+  rateLimitWindowMs?: number | null;
 }
 
 /**
@@ -176,6 +187,7 @@ export interface TenantEntitlementOverrideInput {
   modelTier?: string | null;
   rateLimitTier?: string | null;
   rateLimitPerMinute?: number | null;
+  rateLimitWindowMs?: number | null;
 }
 
 /** Ungated-legacy resolution for a `null` plan (Q3). */
@@ -235,7 +247,29 @@ export const UNGATED_ENTITLEMENTS: ResolvedEntitlements = {
   modelTier: 'full_custom',
   rateLimitTier: 'relaxed',
   rateLimitPerMinute: null,
+  rateLimitWindowMs: null,
 };
+
+/**
+ * The plan a tenant actually resolves against (TASK-785 OD-5).
+ *
+ * Three rules, in order:
+ *   1. An explicitly stamped `Tenant.plan` always wins — on every tenant,
+ *      reserved or not. This function changes a DEFAULT, never stated intent.
+ *   2. A reserved platform tenant (SYSTEM, Global) with no plan stays `null`,
+ *      i.e. ungated. They are not customers; see `RESERVED_UNGATED_TENANT_IDS`.
+ *   3. Any other tenant with no plan resolves to `DEFAULT_TENANT_PLAN`
+ *      (STARTER) — "no plan" must fail conservative, not generous.
+ *
+ * Call this at every site that reads `Tenant.plan` before handing it to
+ * `resolveEntitlements` / `resolveBillingAllowances`; the resolvers themselves
+ * stay pure and keep treating `null` as "ungated".
+ */
+export function effectivePlan(tenantId: string, plan: TenantPlan | null | undefined): TenantPlan | null {
+  if (plan) return plan;
+  if (RESERVED_UNGATED_TENANT_IDS.includes(tenantId)) return null;
+  return DEFAULT_TENANT_PLAN;
+}
 
 /** Normalize a `number | bigint | null | undefined` to `number | null`. */
 function toNum(v: number | bigint | null | undefined): number | null {
@@ -292,6 +326,8 @@ export function resolveEntitlements(
     featureAgenticLoop: pick(planRow?.featureAgenticLoop, seeded.featureAgenticLoop),
     modelTier: pick(planRow?.modelTier, seeded.modelTier) as ModelTier,
     rateLimitTier: pick(planRow?.rateLimitTier, seeded.rateLimitTier),
+    rateLimitPerMinute: pick(planRow?.rateLimitPerMinute, seeded.rateLimitPerMinute ?? null),
+    rateLimitWindowMs: pick(planRow?.rateLimitWindowMs, seeded.rateLimitWindowMs ?? null),
   };
 
   // Layer 2→3: the per-tenant override (null field = inherit `base`).
@@ -327,6 +363,10 @@ export function resolveEntitlements(
     },
     modelTier: pick(override?.modelTier, base.modelTier) as ModelTier,
     rateLimitTier: pick(override?.rateLimitTier, base.rateLimitTier),
-    rateLimitPerMinute: toNum(override?.rateLimitPerMinute),
+    // TASK-785: a per-tenant absolute override still wins, but the PLAN may now
+    // carry one of its own, so absence of an override falls back to the plan's
+    // value rather than straight to null.
+    rateLimitPerMinute: pick(toNum(override?.rateLimitPerMinute), toNum(base.rateLimitPerMinute) ?? null),
+    rateLimitWindowMs: pick(toNum(override?.rateLimitWindowMs), toNum(base.rateLimitWindowMs) ?? null),
   };
 }

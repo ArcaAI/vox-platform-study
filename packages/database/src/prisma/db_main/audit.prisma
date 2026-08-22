@@ -334,5 +334,15 @@ enum ResourceType {
   // ConsultationContextSchema precedent.
   WorkflowInvariantRule
 
+  // Rate-limit rule (TASK-785). SYSTEM-tenant rows are the platform-wide
+  // per-route limits; a customer-tenant row overrides them for that tenant
+  // alone. Its own audited resource rather than riding `GlobalSetting`: unlike
+  // the `rate-limit.tier.*` key-value rows, a rule has a lifecycle
+  // (create / retune / exempt / delete) and names a SUBJECT — which tenant, on
+  // which route — that a reviewer asking "who raised this customer's ceiling,
+  // and when?" needs to enumerate. `RateLimitRuleService` broadcasts on every
+  // mutation.
+  RateLimitRule
+
   @@schema("core")
 }

@@ -39,6 +39,8 @@ export interface StorageSoftWarn {
 export interface TenantRateLimitPolicy {
   tier: string;
   perMinute: number | null;
+  /** TASK-785 — the window paired with `perMinute`; `null` = use the tier baseline's. */
+  windowMs: number | null;
 }
 
 /**

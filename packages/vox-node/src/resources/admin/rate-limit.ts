@@ -10,8 +10,20 @@
 
 import { encodePathSegment } from '../../core/url';
 import { AdminResource } from './admin-resource';
-import type { AdminRequestOptions } from './admin-resource';
-import type { RateLimitPolicyResponse, SetRateLimitEnabledRequest, SetRateLimitRouteRequest, SetRateLimitTierRequest } from './schemas';
+import type { AdminRequestOptions, IfMatchPrecondition } from './admin-resource';
+import type {
+  CreateRateLimitRuleRequest,
+  RateLimitExplainResponse,
+  RateLimitPlanResponse,
+  RateLimitPolicyResponse,
+  RateLimitRuleResponse,
+  RouteCatalogEntryResponse,
+  SetRateLimitEnabledRequest,
+  SetRateLimitPlanRequest,
+  SetRateLimitRouteRequest,
+  SetRateLimitTierRequest,
+  UpdateRateLimitRuleRequest,
+} from './schemas';
 
 /**
  * `hope.admin.rateLimit` — the `svc:admin:rate-limit:manage` administration area.
@@ -21,7 +33,7 @@ import type { RateLimitPolicyResponse, SetRateLimitEnabledRequest, SetRateLimitR
  * names the scope in that error's message.
  *
  * Backed by controller RateLimitAdminController
- * (4 routes). Several controllers sharing one scope share one
+ * (13 routes). Several controllers sharing one scope share one
  * resource on purpose: the scope is the permission surface, so the SDK groups
  * by it rather than by URL.
  */
@@ -58,7 +70,75 @@ export class AdminRateLimitResource extends AdminResource {
   }
 
   /**
+   * Explain how a rate limit resolves for one tenant + route.
+   *
+   * Returns the winning level, the rule that decided, how the counter is bucketed, and what every other level offered. This is the supported answer to "why is this tenant being throttled?".
+   *
+   * `GET /api/v1/admin/rate-limit/explain` — `RateLimitAdminController.explain`.
+   */
+  explain(options: AdminRequestOptions & { query?: { method: string; path: string; tenantId?: string } } = {}): Promise<RateLimitExplainResponse> {
+    return this.request<RateLimitExplainResponse>({
+      method: 'GET',
+      path: 'admin/rate-limit/explain',
+      query: options.query,
+      signal: options.signal,
+      timeoutMs: options.timeoutMs,
+    });
+  }
+
+  /**
+   * List each subscription plan’s rate limit.
+   *
+   * Rank 3 of the precedence chain, applied to every tenant on the plan. A plan expresses its limit either through a named tier or through an absolute requests-per-window value.
+   *
+   * `GET /api/v1/admin/rate-limit/plans` — `RateLimitAdminController.listPlans`.
+   */
+  listPlans(options: AdminRequestOptions = {}): Promise<RateLimitPlanResponse[]> {
+    return this.request<RateLimitPlanResponse[]>({
+      method: 'GET',
+      path: 'admin/rate-limit/plans',
+      signal: options.signal,
+      timeoutMs: options.timeoutMs,
+    });
+  }
+
+  /**
+   * Set a subscription plan’s rate limit.
+   *
+   * Applies to every tenant on the plan that has no rule and no override of its own. Send `rateLimitPerMinute: null` to clear the absolute value and fall back to the named tier.
+   *
+   * `PATCH /api/v1/admin/rate-limit/plans/{plan}` — `RateLimitAdminController.setPlan`.
+   */
+  setPlan(plan: string, body: SetRateLimitPlanRequest, options: AdminRequestOptions = {}): Promise<RateLimitPlanResponse> {
+    return this.request<RateLimitPlanResponse>({
+      method: 'PATCH',
+      path: `admin/rate-limit/plans/${encodePathSegment(String(plan))}`,
+      body,
+      signal: options.signal,
+      timeoutMs: options.timeoutMs,
+    });
+  }
+
+  /**
+   * List every gateway route, for picking a rule target.
+   *
+   * Built at boot from the same module walk that produces `route-manifest.json`, so the two can never disagree about what exists.
+   *
+   * `GET /api/v1/admin/rate-limit/routes` — `RateLimitAdminController.listRoutes`.
+   */
+  listRoutes(options: AdminRequestOptions = {}): Promise<RouteCatalogEntryResponse[]> {
+    return this.request<RouteCatalogEntryResponse[]>({
+      method: 'GET',
+      path: 'admin/rate-limit/routes',
+      signal: options.signal,
+      timeoutMs: options.timeoutMs,
+    });
+  }
+
+  /**
    * Update a per-endpoint override for a known throttled route (e.g. auth.login).
+   *
+   * DEPRECATED — use `POST /admin/rate-limit/rules`, which covers every route and supports per-tenant scoping.
    *
    * `PUT /api/v1/admin/rate-limit/routes/{routeId}` — `RateLimitAdminController.setRoute`.
    */
@@ -67,6 +147,96 @@ export class AdminRateLimitResource extends AdminResource {
       method: 'PUT',
       path: `admin/rate-limit/routes/${encodePathSegment(String(routeId))}`,
       body,
+      signal: options.signal,
+      timeoutMs: options.timeoutMs,
+    });
+  }
+
+  /**
+   * List rate-limit rules.
+   *
+   * Ranks 1, 2 and 4 of the precedence chain. Filter by `tenantId`, or by `scope` to separate platform-wide from tenant-scoped rules.
+   *
+   * `GET /api/v1/admin/rate-limit/rules` — `RateLimitAdminController.listRules`.
+   */
+  listRules(options: AdminRequestOptions & { query?: { scope?: 'platform' | 'tenant'; tenantId?: string } } = {}): Promise<RateLimitRuleResponse[]> {
+    return this.request<RateLimitRuleResponse[]>({
+      method: 'GET',
+      path: 'admin/rate-limit/rules',
+      query: options.query,
+      signal: options.signal,
+      timeoutMs: options.timeoutMs,
+    });
+  }
+
+  /**
+   * Create a rate-limit rule.
+   *
+   * Omit `tenantId` for a platform-wide route rule (rank 4). Supply one for a tenant rule — `routeMatch: "*"` makes it tenant-wide (rank 2), any other pattern makes it tenant × route (rank 1).
+   *
+   * `POST /api/v1/admin/rate-limit/rules` — `RateLimitAdminController.createRule`.
+   */
+  createRule(body: CreateRateLimitRuleRequest, options: AdminRequestOptions = {}): Promise<RateLimitRuleResponse> {
+    return this.request<RateLimitRuleResponse>({
+      method: 'POST',
+      path: 'admin/rate-limit/rules',
+      body,
+      signal: options.signal,
+      timeoutMs: options.timeoutMs,
+    });
+  }
+
+  /**
+   * Delete a rate-limit rule.
+   *
+   * Soft-deletes the rule and refreshes the throttler cache, so the scope falls back to the next level of the precedence chain immediately.
+   *
+   * `DELETE /api/v1/admin/rate-limit/rules/{id}` — `RateLimitAdminController.deleteRule`.
+   */
+  deleteRule(id: string, options: AdminRequestOptions = {}): Promise<unknown> {
+    return this.request<unknown>({
+      method: 'DELETE',
+      path: `admin/rate-limit/rules/${encodePathSegment(String(id))}`,
+      signal: options.signal,
+      timeoutMs: options.timeoutMs,
+    });
+  }
+
+  /**
+   * Get one rate-limit rule.
+   *
+   * Returns the rule plus its `version`, which is the ETag a subsequent PATCH must echo back as `If-Match`.
+   *
+   * `GET /api/v1/admin/rate-limit/rules/{id}` — `RateLimitAdminController.getRule`.
+   */
+  getRule(id: string, options: AdminRequestOptions = {}): Promise<RateLimitRuleResponse> {
+    return this.request<RateLimitRuleResponse>({
+      method: 'GET',
+      path: `admin/rate-limit/rules/${encodePathSegment(String(id))}`,
+      signal: options.signal,
+      timeoutMs: options.timeoutMs,
+    });
+  }
+
+  /**
+   * Update a rate-limit rule.
+   *
+   * Optimistic concurrency: send the rule’s ETag as `If-Match`.
+   *
+   * `PATCH /api/v1/admin/rate-limit/rules/{id}` — `RateLimitAdminController.updateRule`.
+   *
+   * Carries `@RequiresIfMatch()`: `options.ifMatch` is required by the type, so the 428 branch is unreachable. On drift the gateway answers 412 (`VersionConflictError.currentVersion`).
+   */
+  updateRule(
+    id: string,
+    body: UpdateRateLimitRuleRequest,
+    options: AdminRequestOptions & { ifMatch: IfMatchPrecondition },
+  ): Promise<RateLimitRuleResponse> {
+    return this.requestWithPrecondition<RateLimitRuleResponse>({
+      method: 'PATCH',
+      path: `admin/rate-limit/rules/${encodePathSegment(String(id))}`,
+      body,
+      ifMatch: options.ifMatch,
       signal: options.signal,
       timeoutMs: options.timeoutMs,
     });

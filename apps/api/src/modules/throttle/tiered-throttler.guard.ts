@@ -1,6 +1,20 @@
 import { Inject, Injectable, Optional, type ExecutionContext } from '@nestjs/common';
 import { ThrottlerGuard, type ThrottlerRequest } from '@nestjs/throttler';
-import { IEntitlementsService, IRateLimitSettingsService, resolvePlanRateLimit, resolveRouteId, type RateLimitTierName } from '@arcaai/applications';
+import * as jwt from 'jsonwebtoken';
+import {
+  IApiKeyService,
+  IEntitlementsService,
+  IRateLimitSettingsService,
+  RateLimitRuleCache,
+  IServiceAccountService,
+  SecretsService,
+  buildRouteKey,
+  resolveRouteId,
+  resolvePlanRateLimit,
+  resolveRateLimit,
+  type RateLimitLevel,
+  type RateLimitTierName,
+} from '@arcaai/applications';
 
 // `@nestjs/throttler` does NOT re-export its constants barrel, so the
 // `THROTTLER_LIMIT` / `THROTTLER_TTL` keys (written by `@Throttle({ <name>:
@@ -10,44 +24,73 @@ import { IEntitlementsService, IRateLimitSettingsService, resolvePlanRateLimit, 
 const THROTTLER_LIMIT = 'THROTTLER:LIMIT';
 const THROTTLER_TTL = 'THROTTLER:TTL';
 
+/** Levels whose value came from the tenant's own identity — bucket per tenant (OD-3). */
+const TENANT_SCOPED_LEVELS: ReadonlySet<RateLimitLevel> = new Set<RateLimitLevel>(['tenant-route', 'tenant', 'plan']);
+
+/** Stashed on the request so `RateLimitHeadersInterceptor` can advertise the applied policy. */
+export const RATE_LIMIT_RESOLUTION_KEY = '__rateLimitResolution';
+
+export interface RequestRateLimitResolution {
+  limitValue: number;
+  windowMs: number;
+  level: RateLimitLevel;
+}
+
 /**
- * Named throttlers, non-default opt-in.
- * DB-backed, admin-controlled limits resolved live per request.
+ * Named throttlers with DB-backed, admin-controlled limits resolved live per
+ * request (TASK-785).
  *
- * Under throttler v6 a global guard enforces EVERY configured named throttler
- * on EVERY route unless that tier is skipped. With four registered tiers
- * (default/strict/heavy/relaxed) that would gate all traffic at the strictest
- * tier. To prevent that, the `default` tier always applies (honouring per-route
- * `@Throttle({ default: {...} })` overrides) while the non-default tiers only
- * apply to routes that explicitly opted in via `@Throttle({ strict|heavy|relaxed:
- * {...} })`.
+ * Under throttler v6 a global guard enforces EVERY configured named throttler on
+ * EVERY route unless that tier is skipped. With four registered tiers that would
+ * gate all traffic at the strictest one, so the `default` tier always applies
+ * while `strict`/`heavy`/`relaxed` only gate routes that opted in via
+ * `@Throttle({ <tier>: {...} })`.
  *
- * When `IRateLimitSettingsService` is available (the running gateway imports
- * `RateLimitServiceModule`), the effective limit/ttl is resolved live from the
- * DB-backed `GlobalSetting` cache with this precedence:
+ * ## Precedence (OD-1) — delegated to `resolveRateLimit`
  *
- *   1. `rate-limit.enabled === false`            → skip (global kill-switch)
- *   2. `rate-limit.route.<id>.enabled === false` → skip that route
- *   3. limit/ttl = per-endpoint DB override
- *                  > `@Throttle` decorator value
- *                  > per-tenant plan tier
- *                  > tier DB baseline
- *                  > static tier default
+ *   1. tenant × route rule    2. tenant rule    3. plan
+ *   4. platform route rule    5. platform base  (the `@Throttle` decorator value,
+ *                                                else the named tier baseline)
  *
- * Per-request plan rate-limits. The guard runs BEFORE auth, so
- * it derives the tenant identity early from the request (the JWT bearer /
- * SSE token payload — matching how the app identifies tenants) and asks
- * `IEntitlementsService.getTenantRateLimitPolicy` for that tenant's plan tier +
- * per-tenant absolute override. `resolvePlanRateLimit` then composes the
- * effective `{ limit, ttl }` from the DB tier baseline. This applies ONLY to the
- * always-on `default` tier and ONLY when the entitlements kill-switch is ON and
- * a tenant is resolvable — otherwise the global tiers are used unchanged. The
- * IP-based tracker is intentionally left untouched (so brute-force tiers keep
- * their per-IP semantics); only the effective limit/ttl is plan-aware.
+ * The decorator is rank 5's seed, NOT an override (OD-2). It used to outrank both
+ * the tenant and the plan, which meant an ENTERPRISE tenant could not be granted
+ * more than `auth/login`'s hardcoded 5/min without a redeploy — defeating the
+ * point of a runtime-tunable surface.
  *
- * Both service dependencies are `@Optional()` so the standalone
- * integration test (which wires only `ThrottleConfigModule`, no settings /
- * entitlements service) keeps its exact static behavior.
+ * ## Bucket keying (OD-3)
+ *
+ * A limit that resolved from ranks 1–3 is counted PER TENANT; one that resolved
+ * from ranks 4–5 keeps the historical per-IP counting. Before this, every limit
+ * was per-IP, so "500/min for tenant A" actually meant "500/min per source IP",
+ * and two tenants behind one NAT shared a bucket.
+ *
+ * ## Why the tenant id is VERIFIED here
+ *
+ * The guard runs before `UnifiedAuthGuard`, so there is no CLS tenant yet and the
+ * tenant must come from the credential itself. Deriving it unverified is fine for
+ * choosing a tier, but NOT for choosing a counter key: an attacker could then
+ * name a generous tenant and spend that tenant's budget (or borrow it). So every
+ * lane proves the credential first, and an unprovable one is UNTRUSTED — it
+ * resolves on ranks 4–5 and is IP-keyed, exactly as anonymous traffic is.
+ *
+ * Three credential classes, three lanes, none of which touches the database
+ * (TASK-785 O-4 — before it, only the JWT lane existed, so the ENTIRE machine
+ * plane, including every `@arcaai/vox-node` admin call, was ungoverned by tenant
+ * and plan limits):
+ *
+ *   - **JWT** — signature verified against the warm `JWT_SECRET_KEY`.
+ *   - **Service-account token** — one Redis GET of the token blob minted at
+ *     exchange; yields the bound `workingTenantId`.
+ *   - **API key** — a Redis hint published by `ApiKeyService` on the previous
+ *     successful authentication. The first request in each TTL window rides the
+ *     platform lane rather than paying a DB read here.
+ *
+ * All three deliberately skip revocation and ability checks: `UnifiedAuthGuard`
+ * runs immediately after and is authoritative, so a credential that has just
+ * lost its authority can only spend the budget it already owned.
+ *
+ * Both service dependencies stay `@Optional()` so the standalone integration test
+ * (which wires only `ThrottleConfigModule`) keeps its exact static behaviour.
  */
 @Injectable()
 export class TieredThrottlerGuard extends ThrottlerGuard {
@@ -59,6 +102,26 @@ export class TieredThrottlerGuard extends ThrottlerGuard {
   @Inject(IEntitlementsService)
   private readonly entitlements?: IEntitlementsService;
 
+  @Optional()
+  @Inject(RateLimitRuleCache)
+  private readonly ruleCache?: RateLimitRuleCache;
+
+  @Optional()
+  @Inject(SecretsService)
+  private readonly secrets?: SecretsService;
+
+  // Injected by INTERFACE token, not class: `ApiKeyServiceModule` exports only
+  // `IApiKeyService`, so a class-token injection would silently resolve to
+  // `undefined` under `@Optional()` and the whole API-key lane would be a
+  // no-op that still compiled and still passed every test.
+  @Optional()
+  @Inject(IServiceAccountService)
+  private readonly serviceAccounts?: IServiceAccountService;
+
+  @Optional()
+  @Inject(IApiKeyService)
+  private readonly apiKeys?: IApiKeyService;
+
   protected async handleRequest(requestProps: ThrottlerRequest): Promise<boolean> {
     const name = (requestProps.throttler.name ?? 'default') as RateLimitTierName;
     const context: ExecutionContext = requestProps.context;
@@ -66,6 +129,7 @@ export class TieredThrottlerGuard extends ThrottlerGuard {
     // The per-route `@Throttle` value for this tier (undefined = the route did
     // not decorate this tier). Doubles as the opt-in signal.
     const decoratorLimit = this.reflector.getAllAndOverride<number>(THROTTLER_LIMIT + name, [context.getHandler(), context.getClass()]);
+    const decoratorTtl = this.reflector.getAllAndOverride<number>(THROTTLER_TTL + name, [context.getHandler(), context.getClass()]);
 
     // Non-default tiers only gate routes that opted in.
     if (name !== 'default' && decoratorLimit === undefined) {
@@ -74,106 +138,189 @@ export class TieredThrottlerGuard extends ThrottlerGuard {
 
     const settings = this.rateLimitSettings;
 
-    // No DB settings wired → preserve the exact static behavior.
+    // No DB settings wired → preserve the exact static behaviour.
     if (!settings) {
       return super.handleRequest(requestProps);
     }
 
-    // The caller's tenant, decoded (unverified) from the bearer/SSE token —
-    // resolved ONCE here because both the kill-switch and the tier lane now
-    // need it.
-    const tenantId = this.extractTenantIdPreAuth(context);
+    const tenantId = await this.resolveTrustedTenantId(context);
 
-    // (1) Kill-switch: the platform master switch, then the tenant's own view
-    // of it. A tenant may only make this STRICTER (`tenant-clamp.ts`), so a
-    // tenant row can turn throttling ON for itself but never off.
+    // (1) Kill-switch: the platform master switch, then the tenant's own view of
+    // it. A tenant may only make this STRICTER (`tenant-clamp.ts`).
     if (!settings.isEnabledForTenant(tenantId)) {
       return true;
     }
 
-    // (2) Per-endpoint override — only the always-on `default` tier is tunable
-    // per endpoint; non-default tiers ride their decorator + tier baseline.
-    const routeId = name === 'default' ? resolveRouteId(context.getClass().name, context.getHandler().name) : undefined;
-    const override = routeId ? settings.getRouteOverride(routeId) : undefined;
+    const tierBaseline = settings.getTierForTenant(name, tenantId, {});
 
-    if (override?.enabled === false) {
+    // The opt-in tiers have no per-tenant, per-plan or per-route lane — they
+    // exist to bound brute force platform-wide. Resolve them exactly as before.
+    if (name !== 'default') {
+      return super.handleRequest({
+        ...requestProps,
+        limit: decoratorLimit ?? tierBaseline.limit,
+        ttl: decoratorTtl ?? tierBaseline.ttl,
+      });
+    }
+
+    // The LEGACY per-endpoint lane: `rate-limit.route.<slug>.*` GlobalSetting
+    // rows over the five hand-registered `KNOWN_THROTTLED_ROUTES`. Superseded by
+    // `RateLimitRule` (which governs any of the 657 routes and any tenant) and
+    // kept only so the shipped admin screen and SDK keep telling the truth —
+    // a lane still displayed as effective must still BE effective. It sits just
+    // above the decorator, which is where it always sat; a real rank-4 rule
+    // outranks it.
+    const legacyRouteId = resolveRouteId(context.getClass().name, context.getHandler().name);
+    const legacy = legacyRouteId ? settings.getRouteOverride(legacyRouteId) : undefined;
+    if (legacy?.enabled === false) {
       return true;
     }
 
-    const decoratorTtl = this.reflector.getAllAndOverride<number>(THROTTLER_TTL + name, [context.getHandler(), context.getClass()]);
+    // Rank 5 — the decorator seeds it (OD-2); the named tier baseline is the
+    // floor when the route declares nothing.
+    const base = {
+      limitValue: legacy?.limit ?? decoratorLimit ?? tierBaseline.limit,
+      windowMs: legacy?.ttl ?? decoratorTtl ?? tierBaseline.ttl,
+    };
 
-    // (3a) The tenant's plan tier, applied only to the always-on `default`
-    // tier. Resolved BEFORE the tier lane so its limit can serve as the
-    // entitlement CEILING for a tenant's own override (M2: a tenant may
-    // throttle itself harder than its plan, never softer).
-    const plan = name === 'default' ? await this.resolvePlanRateLimit(context, settings) : undefined;
+    const routeKey = this.resolveRouteKey(context);
+    const plan = await this.resolvePlanValue(tenantId, settings);
 
-    // (3b) The tier baseline as seen by THIS tenant — the `global-kv` cascade
-    // (tenant row → platform row → code baseline) with the tenant clamp and the
-    // plan ceiling applied. Before lane I this was `settings.getTier(name)`, a
-    // single platform-wide number read from `RATE_LIMIT_*` at boot.
-    const tier = settings.getTierForTenant(name, tenantId, plan ? { entitlement: plan.limit } : {});
+    // Re-resolve the tier now that the plan is known: its limit is the
+    // entitlement CEILING the tenant clamp applies to the tenant's own row (a
+    // tenant may throttle itself harder than its plan, never softer).
+    const tier = settings.getTierForTenant(name, tenantId, plan ? { entitlement: plan.limitValue } : {});
 
-    // (3c) Precedence. The tenant's OWN row sits ahead of its plan tier — a
-    // tenant that has explicitly throttled itself harder must not be widened
-    // back up to the plan limit. A value that merely FELL THROUGH to the
-    // platform row or the code baseline does not: it keeps its historical
-    // position at the end of the chain, so a tenant with no row of its own
-    // resolves exactly as it did before this lane.
-    const tenantLimit = tier.limitSource === 'tenant' ? tier.limit : undefined;
-    const tenantTtl = tier.ttlSource === 'tenant' ? tier.ttl : undefined;
+    // Rank 2's self-service lane — counted ONLY when the value genuinely came
+    // from the tenant's OWN row. A value that merely fell through to the
+    // platform row or the code baseline is rank 5, not rank 2.
+    const tenantOwnsLimit = tier.limitSource === 'tenant';
+    const tenantOwnsTtl = tier.ttlSource === 'tenant';
+    const tenantSetting = tenantOwnsLimit || tenantOwnsTtl ? { limitValue: tier.limit, windowMs: tier.ttl } : null;
 
-    const limit = override?.limit ?? decoratorLimit ?? tenantLimit ?? plan?.limit ?? tier.limit;
-    const ttl = override?.ttl ?? decoratorTtl ?? tenantTtl ?? plan?.ttl ?? tier.ttl;
+    const resolution = resolveRateLimit({
+      tenantId,
+      // No route pattern (a non-Express adapter, or a 404 that never matched a
+      // route) means we cannot key a bucket without unbounded cardinality, so
+      // route-scoped rules simply do not apply.
+      routeKey: routeKey ?? '',
+      tenantRules: this.ruleCache?.getRulesFor(tenantId) ?? [],
+      platformRules: this.ruleCache?.getPlatformRules() ?? [],
+      tenantSetting,
+      plan,
+      base,
+    });
 
-    return super.handleRequest({ ...requestProps, limit, ttl });
+    // A matching rule with `active: false` EXEMPTS the scope.
+    if (!resolution.effective) {
+      return true;
+    }
+
+    // Stash for the headers interceptor (AC-9).
+    const request = context.switchToHttp().getRequest<Record<string, unknown>>();
+    if (request) {
+      request[RATE_LIMIT_RESOLUTION_KEY] = {
+        limitValue: resolution.effective.limitValue,
+        windowMs: resolution.effective.windowMs,
+        level: resolution.level,
+      } satisfies RequestRateLimitResolution;
+    }
+
+    const tenantScoped = tenantId !== null && TENANT_SCOPED_LEVELS.has(resolution.level);
+
+    if (!tenantScoped) {
+      // Platform-resolved limits keep the library's own key — which already
+      // includes the handler identity, so each route keeps its own per-IP
+      // bucket exactly as before. Substituting our own key here would collapse
+      // every route into one shared counter.
+      return super.handleRequest({ ...requestProps, limit: resolution.effective.limitValue, ttl: resolution.effective.windowMs });
+    }
+
+    // OD-3: a limit that resolved from the tenant's own identity is counted PER
+    // TENANT. A tenant × route rule keeps a bucket per route; a tenant-wide or
+    // plan limit is deliberately ONE bucket across all of that tenant's traffic
+    // — that is what "500 requests per minute for tenant A" means.
+    const bucketScope = resolution.level === 'tenant-route' ? `t:${tenantId}:r:${routeKey ?? '-'}` : `t:${tenantId}`;
+
+    return super.handleRequest({
+      ...requestProps,
+      limit: resolution.effective.limitValue,
+      ttl: resolution.effective.windowMs,
+      getTracker: async () => `tenant:${tenantId}`,
+      generateKey: (_ctx, tracker, throttlerName) => `${throttlerName}:${bucketScope}:${tracker}`,
+    });
   }
 
   /**
-   * Resolve the caller-tenant's effective `{ limit, ttl }` from
-   * its plan rate-limit tier + per-tenant override, or `undefined` to leave the
-   * global tiers unchanged (kill-switch OFF, no tenant resolvable, or an ungated
-   * null-plan/system tenant). Never throws — a Redis/DB blip or a bad token
-   * falls back to the global tiers.
+   * `METHOD:/route/pattern` from the router's REGISTERED pattern
+   * (`/api/v1/tenants/:id`), never the resolved URL — a resolved URL would make
+   * both the rule set and the bucket keys unbounded in cardinality. Returns
+   * `null` when no pattern is available, which degrades to rank 5.
    */
-  private async resolvePlanRateLimit(
-    context: ExecutionContext,
-    settings: IRateLimitSettingsService,
-  ): Promise<{ limit: number; ttl: number } | undefined> {
-    if (!this.entitlements) return undefined;
+  private resolveRouteKey(context: ExecutionContext): string | null {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const request = context.switchToHttp().getRequest<any>();
+    const method: string | undefined = request?.method;
+    const pattern: string | undefined = request?.route?.path;
+    if (!method || !pattern) return null;
 
-    const tenantId = this.extractTenantIdPreAuth(context);
-    if (!tenantId) return undefined;
+    // Express strips the mount prefix from `route.path`; `baseUrl` carries it.
+    const baseUrl: string = typeof request.baseUrl === 'string' ? request.baseUrl : '';
+    const full = pattern.startsWith(baseUrl) ? pattern : `${baseUrl}${pattern}`;
+    return buildRouteKey(method, full);
+  }
+
+  /**
+   * Rank 3, or `null` when the tenant has no plan opinion. Never throws — an
+   * entitlements blip means "rank 3 has no opinion", never a 429 or a 500.
+   */
+  private async resolvePlanValue(
+    tenantId: string | null,
+    settings: IRateLimitSettingsService,
+  ): Promise<{ limitValue: number; windowMs: number } | null> {
+    if (!this.entitlements || !tenantId) return null;
 
     try {
       const policy = await this.entitlements.getTenantRateLimitPolicy(tenantId);
-      if (!policy) return undefined;
+      if (!policy) return null;
 
       const baseline = settings.getTier(policy.tier as RateLimitTierName);
-      const effective = resolvePlanRateLimit(policy.tier, policy.perMinute, baseline);
-      return { limit: effective.limit, ttl: effective.ttl };
+      const effective = resolvePlanRateLimit(policy.tier, policy.perMinute, baseline, policy.windowMs);
+      return { limitValue: effective.limit, windowMs: effective.ttl };
     } catch {
-      // Best-effort: any failure resolving the plan tier leaves the global tiers
-      // in force. The throttler must never fail-closed on an entitlements blip.
-      return undefined;
+      return null;
     }
   }
 
   /**
-   * Best-effort pre-auth tenant extraction. The throttler runs
-   * before `UnifiedAuthGuard`, so there is no CLS tenant yet; we read the tenant
-   * from the JWT bearer (or the SSE `?token=` fallback the auth guard also
-   * honours), DECODING the payload without verifying the signature. This is a
-   * rate-limit tiering hint only — never an authorization decision (the real
-   * auth guard still fully validates the token immediately after), so an
-   * unverified decode is acceptable and cheap. Returns `null` for API-key /
-   * unauthenticated traffic, which then rides the global tiers (API keys also
-   * carry their own per-key limiter in `UnifiedAuthGuard`).
+   * The caller's tenant, proven from whichever credential is present. Returns
+   * `null` for anonymous and unprovable traffic, which then rides the platform
+   * lanes and is IP-keyed.
+   *
+   * Verification is deliberately minimal: signature + expiry against the
+   * already-warm secret. No DB read, no revocation check, no CLS — those belong
+   * to `UnifiedAuthGuard`, which runs immediately after and is authoritative.
+   * A revoked-but-unexpired token can therefore still be counted against its own
+   * tenant's bucket for the few seconds before the real guard rejects it, which
+   * is harmless: it only ever spends the budget it already owned.
    */
-  private extractTenantIdPreAuth(context: ExecutionContext): string | null {
+  private async resolveTrustedTenantId(context: ExecutionContext): Promise<string | null> {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const request = context.switchToHttp().getRequest<any>();
     if (!request) return null;
+
+    // Machine credentials first: they are unambiguous (a single header each),
+    // and `UnifiedAuthGuard` rejects a request presenting both, so there is no
+    // precedence question to get wrong here.
+    const serviceAccountToken: string | undefined = request.headers?.['x-service-account-token'];
+    if (serviceAccountToken && this.serviceAccounts) {
+      return this.serviceAccounts.peekTenantForRateLimit(serviceAccountToken);
+    }
+
+    const apiKey: string | undefined = request.headers?.['x-api-key'];
+    if (apiKey && this.apiKeys) {
+      return this.apiKeys.peekTenantForRateLimit(apiKey);
+    }
 
     const authHeader: string | undefined = request.headers?.authorization;
     const bearer = authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : undefined;
@@ -182,23 +329,27 @@ export class TieredThrottlerGuard extends ThrottlerGuard {
     const token = bearer ?? (typeof request.query?.token === 'string' ? request.query.token : undefined);
     if (!token) return null;
 
-    return decodeJwtTenantId(token);
-  }
-}
+    const secret = this.secrets?.getSecretSync('JWT_SECRET_KEY');
+    if (!secret) return null;
 
-/**
- * Decode the `tenantId` claim from a JWT WITHOUT verifying its signature. Used
- * only for pre-auth rate-limit tiering — returns `null` on any
- * malformed input rather than throwing.
- */
-function decodeJwtTenantId(token: string): string | null {
-  const parts = token.split('.');
-  if (parts.length !== 3) return null;
-  try {
-    const json = Buffer.from(parts[1], 'base64url').toString('utf8');
-    const payload = JSON.parse(json) as { tenantId?: unknown };
-    return typeof payload.tenantId === 'string' && payload.tenantId.length > 0 ? payload.tenantId : null;
-  } catch {
-    return null;
+    try {
+      // ALGORITHMS PINNED. `jsonwebtoken@9` already infers HS* from a string
+      // secret, so `alg: none` and an RS256 header are rejected without this —
+      // but that is a library default protecting a security boundary, and the
+      // boundary should say so itself. Tokens are minted by `createJwt`, which
+      // signs with the library's string-secret default: HS256.
+      //
+      // Measured cost (TASK-785 R-2): ~95us/verify, ~0.1ms per request. A lean
+      // hand-rolled HMAC path benchmarks ~9x faster, and is deliberately NOT
+      // used: re-implementing JWT verification to save 85us on a request that
+      // also does Redis I/O trades a real security surface for an unmeasurable
+      // latency win. Revisit only if profiling shows this on the hot path.
+      const payload = jwt.verify(token, secret, { algorithms: ['HS256'] }) as { tenantId?: unknown };
+      return typeof payload.tenantId === 'string' && payload.tenantId.length > 0 ? payload.tenantId : null;
+    } catch {
+      // Forged, expired, or signed with another key — untrusted, so it must not
+      // reach any tenant-scoped lane or bucket.
+      return null;
+    }
   }
 }

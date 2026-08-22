@@ -94,6 +94,19 @@ describe('RateLimitsScreen', () => {
     expect(within(routeTable).getByText('POST /auth/login')).toBeDefined();
   });
 
+  it('exposes all four levels of the precedence chain as tabs', async () => {
+    // The five ranks are reachable from ONE screen: Policy owns rank 5 (and the
+    // kill-switch), Rules owns ranks 1/2/4, Plans owns rank 3, and Explain
+    // answers which of them won. A missing tab is a missing user story.
+    stubFetch(() => Response.json(POLICY));
+    renderWithProviders(<RateLimitsScreen />);
+
+    expect(await screen.findByRole('tab', { name: 'Policy' })).toBeDefined();
+    expect(screen.getByRole('tab', { name: 'Rules' })).toBeDefined();
+    expect(screen.getByRole('tab', { name: 'Plans' })).toBeDefined();
+    expect(screen.getByRole('tab', { name: 'Explain' })).toBeDefined();
+  });
+
   it('renders the source badges on a single line so the fixed-height row keeps its border', async () => {
     stubFetch(() => Response.json(POLICY));
     renderWithProviders(<RateLimitsScreen />);

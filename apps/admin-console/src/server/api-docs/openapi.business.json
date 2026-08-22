@@ -4656,6 +4656,52 @@
         ],
         "type": "object"
       },
+      "CreateRateLimitRuleRequest": {
+        "properties": {
+          "active": {
+            "description": "`false` EXEMPTS this scope from throttling. A matching rule always terminates resolution — it never falls through.",
+            "type": "boolean"
+          },
+          "description": {
+            "description": "Why this rule exists — shown in the admin list.",
+            "type": "string"
+          },
+          "limitValue": {
+            "description": "Requests allowed per window.",
+            "minimum": 1,
+            "type": "number"
+          },
+          "matchKind": {
+            "description": "EXACT compares the whole route key; PREFIX allows a trailing `*`. Defaults to EXACT.",
+            "enum": [
+              "EXACT",
+              "PREFIX"
+            ],
+            "type": "string"
+          },
+          "routeMatch": {
+            "description": "Route key `METHOD:/path` (METHOD may be `*`), or the reserved `*` for every route. A platform-scoped rule may not use `*` — set the platform-wide limit on the base tiers instead.",
+            "example": "POST:/api/v1/auth/login",
+            "type": "string"
+          },
+          "tenantId": {
+            "description": "Tenant this rule applies to. Omit (or pass the SYSTEM tenant) for a platform-wide rule. A tenant-scoped rule outranks every platform rule.",
+            "format": "uuid",
+            "type": "string"
+          },
+          "windowMs": {
+            "description": "Window length in milliseconds.",
+            "minimum": 1,
+            "type": "number"
+          }
+        },
+        "required": [
+          "routeMatch",
+          "limitValue",
+          "windowMs"
+        ],
+        "type": "object"
+      },
       "CreateResourceSubscriptionRequest": {
         "properties": {
           "resourceId": {
@@ -7300,6 +7346,27 @@
             "type": "string"
           }
         },
+        "type": "object"
+      },
+      "GeneratedSecretPolicyResponse": {
+        "properties": {
+          "byteLength": {
+            "description": "CSPRNG bytes drawn per issued machine secret (entropy, not characters).",
+            "type": "number"
+          },
+          "encoding": {
+            "description": "Alphabet of an issued secret, where the surface does not pin one.",
+            "enum": [
+              "hex",
+              "base64url"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "byteLength",
+          "encoding"
+        ],
         "type": "object"
       },
       "GenerationMetricsAggregateResponse": {
@@ -10634,6 +10701,48 @@
         ],
         "type": "object"
       },
+      "PasswordPolicyResponse": {
+        "properties": {
+          "maxAgeDays": {
+            "description": "Rotation window in days; 0 = rotation disabled. Warns at login, never blocks.",
+            "type": "number"
+          },
+          "maxLength": {
+            "description": "Maximum characters. NOT configurable — a hashing-DoS bound (bcrypt reads 72 bytes).",
+            "type": "number"
+          },
+          "minLength": {
+            "description": "Minimum characters for any password set through any path.",
+            "type": "number"
+          },
+          "requireDigit": {
+            "description": "Require at least one 0-9.",
+            "type": "boolean"
+          },
+          "requireLowercase": {
+            "description": "Require at least one a-z.",
+            "type": "boolean"
+          },
+          "requireSpecial": {
+            "description": "Require at least one non-alphanumeric character.",
+            "type": "boolean"
+          },
+          "requireUppercase": {
+            "description": "Require at least one A-Z.",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "minLength",
+          "maxLength",
+          "requireUppercase",
+          "requireLowercase",
+          "requireDigit",
+          "requireSpecial",
+          "maxAgeDays"
+        ],
+        "type": "object"
+      },
       "PermissionCheckResult": {
         "properties": {
           "action": {
@@ -11115,9 +11224,19 @@
             ],
             "type": "string"
           },
+          "rateLimitPerMinute": {
+            "description": "TASK-785 — ABSOLUTE requests-per-window for every tenant on this plan. Null = the plan expresses its limit through `rateLimitTier`.",
+            "nullable": true,
+            "type": "number"
+          },
           "rateLimitTier": {
             "description": "Rate-limit tier (strict | default | relaxed | heavy)",
             "type": "string"
+          },
+          "rateLimitWindowMs": {
+            "description": "Window paired with `rateLimitPerMinute`. Read only when that is set.",
+            "nullable": true,
+            "type": "number"
           },
           "storageQuotaBytes": {
             "description": "Storage quota in bytes; null = unlimited",
@@ -12362,6 +12481,144 @@
         ],
         "type": "object"
       },
+      "RateLimitExplainOfferResponse": {
+        "properties": {
+          "active": {
+            "type": "boolean"
+          },
+          "level": {
+            "enum": [
+              "tenant-route",
+              "tenant",
+              "plan",
+              "platform-route",
+              "platform-base"
+            ],
+            "type": "string"
+          },
+          "limitValue": {
+            "type": "number"
+          },
+          "ruleId": {
+            "type": "string"
+          },
+          "windowMs": {
+            "type": "number"
+          },
+          "winner": {
+            "description": "`true` for the level that decided.",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "level",
+          "limitValue",
+          "windowMs",
+          "active",
+          "winner"
+        ],
+        "type": "object"
+      },
+      "RateLimitExplainResponse": {
+        "properties": {
+          "bucket": {
+            "description": "How the counter is bucketed — the answer to \"why do these callers share a budget?\".",
+            "enum": [
+              "tenant",
+              "ip"
+            ],
+            "type": "string"
+          },
+          "effective": {
+            "properties": {
+              "limitValue": {
+                "type": "number"
+              },
+              "windowMs": {
+                "type": "number"
+              }
+            },
+            "required": [
+              "limitValue",
+              "windowMs"
+            ],
+            "type": "object"
+          },
+          "level": {
+            "enum": [
+              "tenant-route",
+              "tenant",
+              "plan",
+              "platform-route",
+              "platform-base"
+            ],
+            "type": "string"
+          },
+          "routeKey": {
+            "type": "string"
+          },
+          "ruleId": {
+            "type": "string"
+          },
+          "tenantId": {
+            "nullable": true,
+            "type": "string"
+          },
+          "trace": {
+            "items": {
+              "$ref": "#/components/schemas/RateLimitExplainOfferResponse"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "routeKey",
+          "level",
+          "bucket",
+          "trace"
+        ],
+        "type": "object"
+      },
+      "RateLimitPlanResponse": {
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "plan": {
+            "enum": [
+              "STARTER",
+              "TRIAL",
+              "PRO",
+              "ENTERPRISE"
+            ],
+            "type": "string"
+          },
+          "rateLimitPerMinute": {
+            "description": "ABSOLUTE requests-per-window; null = use the tier.",
+            "nullable": true,
+            "type": "number"
+          },
+          "rateLimitTier": {
+            "description": "Named tier this plan selects when it carries no absolute limit.",
+            "type": "string"
+          },
+          "rateLimitWindowMs": {
+            "nullable": true,
+            "type": "number"
+          },
+          "version": {
+            "description": "OCC token — echo as `expectedVersion` on update.",
+            "type": "number"
+          }
+        },
+        "required": [
+          "id",
+          "plan",
+          "rateLimitTier",
+          "version"
+        ],
+        "type": "object"
+      },
       "RateLimitPolicyResponse": {
         "properties": {
           "enabled": {
@@ -12456,6 +12713,66 @@
           "enabled",
           "limitSource",
           "ttlSource"
+        ],
+        "type": "object"
+      },
+      "RateLimitRuleResponse": {
+        "properties": {
+          "active": {
+            "type": "boolean"
+          },
+          "createdAt": {
+            "type": "string"
+          },
+          "description": {
+            "nullable": true,
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "limitValue": {
+            "type": "number"
+          },
+          "matchKind": {
+            "enum": [
+              "EXACT",
+              "PREFIX"
+            ],
+            "type": "string"
+          },
+          "platform": {
+            "description": "`true` when this is a SYSTEM-owned, platform-wide rule.",
+            "type": "boolean"
+          },
+          "routeMatch": {
+            "type": "string"
+          },
+          "tenantId": {
+            "type": "string"
+          },
+          "updatedAt": {
+            "type": "string"
+          },
+          "version": {
+            "type": "number"
+          },
+          "windowMs": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "id",
+          "tenantId",
+          "platform",
+          "routeMatch",
+          "matchKind",
+          "limitValue",
+          "windowMs",
+          "active",
+          "version",
+          "createdAt",
+          "updatedAt"
         ],
         "type": "object"
       },
@@ -13244,6 +13561,41 @@
         ],
         "type": "object"
       },
+      "RouteCatalogEntryResponse": {
+        "properties": {
+          "controller": {
+            "type": "string"
+          },
+          "decoratorLimit": {
+            "description": "The route’s `@Throttle` limit, which seeds rank 5.",
+            "type": "number"
+          },
+          "decoratorWindowMs": {
+            "type": "number"
+          },
+          "handler": {
+            "type": "string"
+          },
+          "method": {
+            "type": "string"
+          },
+          "path": {
+            "type": "string"
+          },
+          "routeId": {
+            "description": "Route key `METHOD:/path` — paste straight into a rule `routeMatch`.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "routeId",
+          "method",
+          "path",
+          "controller",
+          "handler"
+        ],
+        "type": "object"
+      },
       "RunGateStateResponse": {
         "properties": {
           "approved": {
@@ -13658,6 +14010,68 @@
           "nextExecution",
           "timeZone",
           "settingsKey"
+        ],
+        "type": "object"
+      },
+      "SecretPolicyBoundsResponse": {
+        "properties": {
+          "governedSurfaces": {
+            "description": "Credential surfaces governed by `secret`, i.e. what a change here will affect on the NEXT issuance.",
+            "example": [
+              "serviceAccountClientSecret",
+              "apiKey",
+              "webhookSigningSecret",
+              "storageAccessKey"
+            ],
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "maxByteLength": {
+            "description": "Hard ceiling on issued-secret entropy.",
+            "type": "number"
+          },
+          "minByteLength": {
+            "description": "Hard floor on issued-secret entropy, enforced in code after the row is read.",
+            "type": "number"
+          },
+          "pinnedEncodings": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "description": "Surfaces whose alphabet is PINNED and therefore ignore `encoding`: API keys are hex (their format regex parses the key structurally) and storage access keys are base64url (the shipped S3-style shape). `byteLength` applies everywhere.",
+            "example": {
+              "apiKey": "hex",
+              "storageAccessKey": "base64url"
+            },
+            "type": "object"
+          }
+        },
+        "required": [
+          "minByteLength",
+          "maxByteLength",
+          "pinnedEncodings",
+          "governedSurfaces"
+        ],
+        "type": "object"
+      },
+      "SecurityPolicyResponse": {
+        "properties": {
+          "bounds": {
+            "$ref": "#/components/schemas/SecretPolicyBoundsResponse"
+          },
+          "password": {
+            "$ref": "#/components/schemas/PasswordPolicyResponse"
+          },
+          "secret": {
+            "$ref": "#/components/schemas/GeneratedSecretPolicyResponse"
+          }
+        },
+        "required": [
+          "password",
+          "secret",
+          "bounds"
         ],
         "type": "object"
       },
@@ -14234,6 +14648,34 @@
         },
         "required": [
           "enabled"
+        ],
+        "type": "object"
+      },
+      "SetRateLimitPlanRequest": {
+        "properties": {
+          "expectedVersion": {
+            "description": "OCC token — the `_version` the caller believes it is updating.",
+            "type": "number"
+          },
+          "rateLimitPerMinute": {
+            "description": "ABSOLUTE requests-per-window for every tenant on this plan. Null/omitted keeps the plan expressing its limit through `rateLimitTier`.",
+            "minimum": 1,
+            "nullable": true,
+            "type": "number"
+          },
+          "rateLimitTier": {
+            "description": "Named tier this plan selects when it carries no absolute limit.",
+            "type": "string"
+          },
+          "rateLimitWindowMs": {
+            "description": "Window paired with `rateLimitPerMinute`. Read only when that is set.",
+            "minimum": 1,
+            "nullable": true,
+            "type": "number"
+          }
+        },
+        "required": [
+          "expectedVersion"
         ],
         "type": "object"
       },
@@ -17987,9 +18429,21 @@
             "nullable": true,
             "type": "number"
           },
+          "rateLimitPerMinute": {
+            "description": "TASK-785 — ABSOLUTE requests-per-window for this plan. Send `null` to clear it and fall back to `rateLimitTier`.",
+            "minimum": 1,
+            "nullable": true,
+            "type": "number"
+          },
           "rateLimitTier": {
             "description": "Rate-limit tier (strict | default | relaxed | heavy)",
             "type": "string"
+          },
+          "rateLimitWindowMs": {
+            "description": "Window paired with `rateLimitPerMinute`, in milliseconds.",
+            "minimum": 1,
+            "nullable": true,
+            "type": "number"
           },
           "storageQuotaBytes": {
             "description": "Storage quota in bytes; null = unlimited",
@@ -18103,6 +18557,29 @@
         },
         "type": "object"
       },
+      "UpdateRateLimitRuleRequest": {
+        "properties": {
+          "active": {
+            "description": "`false` EXEMPTS this scope from throttling.",
+            "type": "boolean"
+          },
+          "description": {
+            "description": "Why this rule exists.",
+            "type": "string"
+          },
+          "limitValue": {
+            "description": "Requests allowed per window.",
+            "minimum": 1,
+            "type": "number"
+          },
+          "windowMs": {
+            "description": "Window length in milliseconds.",
+            "minimum": 1,
+            "type": "number"
+          }
+        },
+        "type": "object"
+      },
       "UpdateResourceSubscriptionRequest": {
         "properties": {
           "resourceId": {
@@ -18187,6 +18664,53 @@
         "required": [
           "cronExpression"
         ],
+        "type": "object"
+      },
+      "UpdateSecurityPolicyRequest": {
+        "properties": {
+          "passwordMaxAgeDays": {
+            "description": "Password rotation window in days; 0 disables rotation. Raising it warns at login and never blocks.",
+            "maximum": 3650,
+            "minimum": 0,
+            "type": "number"
+          },
+          "passwordMinLength": {
+            "description": "Minimum password length. Floor of 8 is the NIST SP 800-63B minimum for a user-chosen secret; the platform default is 12. The MAXIMUM (128) is deliberately not settable — it is a hashing-DoS bound.",
+            "maximum": 128,
+            "minimum": 8,
+            "type": "number"
+          },
+          "passwordRequireDigit": {
+            "description": "Require at least one digit (0-9) in a password.",
+            "type": "boolean"
+          },
+          "passwordRequireLowercase": {
+            "description": "Require at least one lowercase letter (a-z) in a password.",
+            "type": "boolean"
+          },
+          "passwordRequireSpecial": {
+            "description": "Require at least one special character in a password.",
+            "type": "boolean"
+          },
+          "passwordRequireUppercase": {
+            "description": "Require at least one uppercase letter (A-Z) in a password.",
+            "type": "boolean"
+          },
+          "secretByteLength": {
+            "description": "CSPRNG bytes behind every machine credential the platform issues (service-account client secret, API key, webhook signing secret, storage access key). Applies to the NEXT issuance only.",
+            "maximum": 64,
+            "minimum": 16,
+            "type": "number"
+          },
+          "secretEncoding": {
+            "description": "Alphabet for issued secrets. Honoured by service-account client secrets and webhook signing secrets; IGNORED by API keys (hex-pinned by their format regex) and storage access keys (base64url-pinned S3 shape).",
+            "enum": [
+              "hex",
+              "base64url"
+            ],
+            "type": "string"
+          }
+        },
         "type": "object"
       },
       "UpdateServiceAccountRequest": {

@@ -1,7 +1,13 @@
 import { describe, it, expect } from 'vitest';
 import { TenantPlan } from '@arcaai/domains';
-import { resolveEntitlements, UNGATED_ENTITLEMENTS } from '../resolve-entitlements';
-import { GIB, PLAN_ENTITLEMENT_DEFAULTS } from '../entitlements.constants';
+import { effectivePlan, resolveEntitlements, UNGATED_ENTITLEMENTS } from '../resolve-entitlements';
+import {
+  DEFAULT_TENANT_PLAN,
+  ENTITLEMENTS_GLOBAL_TENANT_ID,
+  ENTITLEMENTS_TENANT_ID,
+  GIB,
+  PLAN_ENTITLEMENT_DEFAULTS,
+} from '../entitlements.constants';
 
 describe('resolveEntitlements', () => {
   describe('null plan → ungated-legacy', () => {
@@ -38,7 +44,11 @@ describe('resolveEntitlements', () => {
       const d = PLAN_ENTITLEMENT_DEFAULTS.STARTER;
       expect(r.gated).toBe(true);
       expect(r.limits.maxUsers).toBe(5);
-      expect(r.limits.maxDepartments).toBe(2);
+      // Derived from the matrix, not restated: these STRUCTURAL caps are sized to
+      // what tenant creation provisions (TASK-785), so a duplicated literal here
+      // just breaks whenever the provisioned catalog legitimately changes.
+      expect(r.limits.maxDepartments).toBe(d.maxDepartments);
+      expect(r.limits.maxAsrPipelines).toBe(d.maxAsrPipelines);
       expect(r.limits.storageQuotaBytes).toBe(5 * GIB);
       expect(r.limits.maxConcurrentSessions).toBe(5);
       // STARTER = $50/mo bundling 50 consultations.
@@ -86,7 +96,7 @@ describe('resolveEntitlements', () => {
       expect(r.limits.maxUsers).toBe(8);
       expect(r.rateLimitTier).toBe('default');
       // untouched fields still fall back to the seeded STARTER matrix
-      expect(r.limits.maxDepartments).toBe(2);
+      expect(r.limits.maxDepartments).toBe(PLAN_ENTITLEMENT_DEFAULTS.STARTER.maxDepartments);
     });
 
     it('a tenant override wins over both the DB row and the seeded default', () => {
@@ -234,7 +244,7 @@ describe('resolveEntitlements', () => {
    * reach the SYSTEM (platform-funded) tier. Resolution shape is identical to
    * the three existing booleans (plan default ← tri-state tenant override);
    * what is deliberately DIFFERENT is the ungated-legacy fallback and the
-   * seeded plan matrix, both of which are `false`. See and 
+   * seeded plan matrix, both of which are `false`. See and
    */
   describe('platformDefaultCredential grant', () => {
     // 22
@@ -343,5 +353,53 @@ describe('resolveEntitlements', () => {
       expect(a.features.agenticLoop).toBe(false);
       expect(b.features.agenticLoop).toBe(true);
     });
+  });
+});
+
+describe('effectivePlan — a plan-less tenant defaults to STARTER (TASK-785 OD-5)', () => {
+  const CUSTOMER = '11111111-1111-1111-1111-111111111111';
+
+  it('resolves a customer tenant with no plan to STARTER, not ungated', () => {
+    expect(effectivePlan(CUSTOMER, null)).toBe(DEFAULT_TENANT_PLAN);
+    expect(DEFAULT_TENANT_PLAN).toBe(TenantPlan.STARTER);
+  });
+
+  it('leaves an explicitly stamped plan untouched', () => {
+    expect(effectivePlan(CUSTOMER, TenantPlan.ENTERPRISE)).toBe(TenantPlan.ENTERPRISE);
+  });
+
+  it('keeps the SYSTEM tenant ungated — it is a config tier, never a customer', () => {
+    expect(effectivePlan(ENTITLEMENTS_TENANT_ID, null)).toBeNull();
+  });
+
+  it('keeps the Global playground tenant ungated — gating it would break the platform-admin playground', () => {
+    expect(effectivePlan(ENTITLEMENTS_GLOBAL_TENANT_ID, null)).toBeNull();
+  });
+
+  it('honours an explicit plan even on a reserved tenant (the default is what changes, never stated intent)', () => {
+    expect(effectivePlan(ENTITLEMENTS_GLOBAL_TENANT_ID, TenantPlan.PRO)).toBe(TenantPlan.PRO);
+  });
+
+  it('puts a plan-less customer on the STRICT rate-limit tier, not the loosest one', () => {
+    // Before OD-5 a plan-less tenant resolved `relaxed` (300/min) — LOOSER than
+    // the 100/min platform default. That inversion is what this fixes.
+    const before = resolveEntitlements(null);
+    const after = resolveEntitlements(effectivePlan(CUSTOMER, null));
+    expect(before.rateLimitTier).toBe('relaxed');
+    expect(after.rateLimitTier).toBe('strict');
+  });
+
+  it('makes a plan-less customer gated, so its tenant override is finally honoured', () => {
+    // `resolveEntitlements(null, …)` deliberately ignores overrides; routing the
+    // tenant through STARTER means a super admin can now override it at all.
+    const r = resolveEntitlements(effectivePlan(CUSTOMER, null), null, { maxUsers: 20 });
+    expect(r.gated).toBe(true);
+    expect(r.limits.maxUsers).toBe(20);
+  });
+
+  it('still resolves reserved tenants to the ungated snapshot end-to-end', () => {
+    const r = resolveEntitlements(effectivePlan(ENTITLEMENTS_TENANT_ID, null));
+    expect(r.gated).toBe(false);
+    expect(r.limits).toEqual(UNGATED_ENTITLEMENTS.limits);
   });
 });

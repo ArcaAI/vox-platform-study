@@ -34,6 +34,8 @@ export interface CreatePlanEntitlementProps extends BaseEntityFactoryCreateProps
   featureAgenticLoop?: IPlanEntitlementEntity['featureAgenticLoop'];
   modelTier?: IPlanEntitlementEntity['modelTier'];
   rateLimitTier?: IPlanEntitlementEntity['rateLimitTier'];
+  rateLimitPerMinute?: IPlanEntitlementEntity['rateLimitPerMinute'];
+  rateLimitWindowMs?: IPlanEntitlementEntity['rateLimitWindowMs'];
 
   createdAt?: IPlanEntitlementEntity['createdAt'];
   updatedAt?: IPlanEntitlementEntity['updatedAt'];
@@ -82,6 +84,8 @@ export class PlanEntitlementFactory {
       featureAgenticLoop: props.featureAgenticLoop ?? true,
       modelTier: props.modelTier ?? 'full',
       rateLimitTier: props.rateLimitTier ?? 'default',
+      rateLimitPerMinute: props.rateLimitPerMinute ?? null,
+      rateLimitWindowMs: props.rateLimitWindowMs ?? null,
     });
   }
 }

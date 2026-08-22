@@ -58,22 +58,27 @@ const GIB = 1024 ** 3;
  *
  *   - explicit env var still WINS, in both directions (`true|1|yes|on` ⇒ ON,
  *     `false|0|no|off` ⇒ OFF). An operator can still force either posture.
- *   - unset ⇒ {@link isDeployedEnvironment}: ON in a deployed env, OFF locally
- *     and in test/CI.
+ *   - unset ⇒ {@link seedsEnforcementOn}: ON everywhere a human runs the product,
+ *     OFF only in test/CI.
  *
- * Per-environment outcome (identical to the policy above, now actually enforced):
- *   - LOCAL DEV → loads `.env.dev` ⇒ OFF, so a developer never fights quota locally.
- *   - `hope-v2-dev` / STAGING / PRODUCTION → host-env-only, no file ⇒ **ON**, with
- *     no ConfigMap key and no `envFrom` on the migrate Job.
- *   - TEST/CI → `NODE_ENV=test` / `CI` ⇒ OFF, so the shared E2E baseline stays OFF
- *     even after a `pnpm test:db:reset`.
+ * Per-environment outcome (TASK-785 OD-6, owner decision 2026-08-22):
+ *   - LOCAL DEV → **ON**. Previously OFF ("a developer never fights quota locally"),
+ *     which meant every quota path was exercised for the first time in a deployed
+ *     environment. Enforcement is a product behaviour, not a deployment artifact:
+ *     if STARTER's caps are wrong, that must surface on a laptop, not in staging.
+ *   - `hope-v2-dev` / STAGING / PRODUCTION → **ON** (unchanged — these were already ON).
+ *   - TEST/CI → `NODE_ENV=test` / `CI` ⇒ **OFF**, deliberately unchanged. The E2E
+ *     baseline provisions well past STARTER's caps (5 users, 2 departments, 2 API
+ *     keys); flipping it here would fail dozens of specs for reasons unrelated to
+ *     what they assert. Turning CI ON is its own piece of work — it needs the seeded
+ *     e2e tenants put on an explicit plan first.
  *
  * This only affects a FRESH row (the `create` branch). On an existing DB the
  * kill-switch upsert's `update` branch intentionally omits `value`, so a re-seed
  * NEVER clobbers a live operator toggle (flip it any time via
- * `PUT /admin/entitlements/enabled`). `defaultValue` stays the canonical `'false'`
- * — it is the RESET target (the safe value an operator reverts to), not the
- * fresh-seed value.
+ * `PUT /admin/entitlements/enabled`). `defaultValue` TRACKS the resolved default
+ * (TASK-785): it is the RESET target, and reverting should restore the policy —
+ * enforcement ON — not silently disable quota gating platform-wide.
  *
  * KNOWN CONSEQUENCE: with enforcement ON by default in deployed envs, the open
  * fail-closed gap in `resolveForTenant` (TASK-646) becomes reachable there — a
@@ -85,17 +90,34 @@ const TRUTHY_ENV = new Set(['1', 'true', 'yes', 'on']);
 const FALSY_ENV = new Set(['0', 'false', 'no', 'off']);
 
 /**
+ * Enforcement seeds ON everywhere except an automated test run.
+ *
+ * This used to key off "is this a deployed environment?" (host-env-only, no
+ * `.env` file loaded), which made LOCAL DEV the one place a developer never saw
+ * a quota. TASK-785 OD-5 gives every plan-less tenant a real plan (STARTER), so
+ * quota behaviour is now something you want to meet early and locally.
+ *
+ * Only CI and `NODE_ENV=test` stay OFF — see the per-environment table above for
+ * why, and note that an explicit `ENTITLEMENTS_ENABLED_DEFAULT` still wins in
+ * both directions.
+ */
+function seedsEnforcementOn(): boolean {
+  if (isCI()) return false;
+  if (getNodeEnv() === 'test') return false;
+  return true;
+}
+
+/**
  * A deployed environment is HOST-ENV-ONLY: it reads no env file. That is the
  * repo's own env contract (`src/env.ts`, mirroring
  * `packages/applications/src/common/env/env-file-resolution.ts`), so it is
- * reused here rather than inventing a second signal. `loadDatabaseEnv()` is
- * idempotent (`override: false`) and already ran at import of `../../../env`;
- * calling it again only re-reports whether a file was found.
+ * reused here rather than inventing a second signal.
  *
- * Edge case, deliberate: a checkout with no `.env.dev` at all counts as
- * deployed and seeds ON. That is the contract read literally — no file means
- * host env is the only configuration source — and it is the safe direction for
- * a switch that must default ON.
+ * Still the fallback for the METERING RECONCILE switch, which TASK-785 did not
+ * touch: the reconcile sweep is a `TenantUsageMeter` snapshot-persist job, and
+ * enforcement does not depend on it (`assertMeterQuota` reads live usage, so
+ * meters are populated with the job off). Leaving it OFF locally keeps that
+ * change out of this ticket.
  */
 function isDeployedEnvironment(): boolean {
   if (isCI()) return false;
@@ -103,14 +125,14 @@ function isDeployedEnvironment(): boolean {
   return !loadDatabaseEnv().loaded;
 }
 
-function resolveKillSwitchSeedDefault(raw: string | undefined): boolean {
+function resolveKillSwitchSeedDefault(raw: string | undefined, fallback: () => boolean): boolean {
   const value = (raw ?? '').trim().toLowerCase();
   if (TRUTHY_ENV.has(value)) return true;
   if (FALSY_ENV.has(value)) return false;
-  return isDeployedEnvironment();
+  return fallback();
 }
 
-const ENTITLEMENTS_ENFORCEMENT_SEED_DEFAULT = resolveKillSwitchSeedDefault(process.env.ENTITLEMENTS_ENABLED_DEFAULT);
+const ENTITLEMENTS_ENFORCEMENT_SEED_DEFAULT = resolveKillSwitchSeedDefault(process.env.ENTITLEMENTS_ENABLED_DEFAULT, seedsEnforcementOn);
 
 /**
  * Same resolution as {@link ENTITLEMENTS_ENFORCEMENT_SEED_DEFAULT}, for the
@@ -120,7 +142,7 @@ const ENTITLEMENTS_ENFORCEMENT_SEED_DEFAULT = resolveKillSwitchSeedDefault(proce
  * snapshot-persist job) and an operator must be able to flip one without the
  * other.
  */
-const METERING_RECONCILE_SEED_DEFAULT = resolveKillSwitchSeedDefault(process.env.METERING_RECONCILE_ENABLED_DEFAULT);
+const METERING_RECONCILE_SEED_DEFAULT = resolveKillSwitchSeedDefault(process.env.METERING_RECONCILE_ENABLED_DEFAULT, isDeployedEnvironment);
 
 interface PlanEntitlementSeed {
   id: string;
@@ -231,9 +253,22 @@ export const PLAN_ENTITLEMENTS: PlanEntitlementSeed[] = [
     id: SEED_PLAN_ENTITLEMENT_IDS.STARTER,
     plan: TenantPlan.STARTER,
     maxUsers: 5,
-    maxDepartments: 2,
+    // TASK-785 (owner decision 2026-08-22): these two are STRUCTURAL floors, not
+    // commercial ones, and they are sized to what tenant creation actually
+    // provisions — 8 golden departments (`seed/04-department.ts`) and the 14
+    // SYSTEM pipelines `provisionTenantPipelineCatalog` clones. They were 2 and 1,
+    // which meant every new tenant landed 4x and 14x OVER its own caps the moment
+    // OD-5 stopped resolving plan-less tenants as ungated. Provisioning writes
+    // through the repository so creation never failed — but the tenant could not
+    // then add anything, and its capability snapshot read `exceeded` on day one.
+    //
+    // Sized to EXACTLY the provisioned catalog, deliberately: STARTER gets the
+    // standard set and no room to add its own, which is a price-ladder statement
+    // (upgrade to customise) rather than an accident. The commercial caps below
+    // (50 consultations/month, 5 users) are untouched.
+    maxDepartments: 8,
     maxPromptTemplates: 10,
-    maxAsrPipelines: 1,
+    maxAsrPipelines: 14,
     maxApiKeys: 2,
     maxWorkflowDefinitions: 1,
     storageQuotaBytes: BigInt(5 * GIB),
@@ -330,11 +365,17 @@ export const seedEntitlements = async (client: CorePrismaClient) => {
       namespace: 'entitlements',
       name: 'Entitlements Enabled',
       key: 'entitlements.enabled',
-      // Fresh-DB initial value is derived (DEPLOYED=ON, LOCAL/TEST/CI=OFF),
+      // Fresh-DB initial value is derived (ON everywhere except test/CI),
       // overridable either way by the env var.
-      // `defaultValue` stays the canonical safe 'false' (reset target).
+      //
+      // `defaultValue` tracks it (TASK-785, owner decision 2026-08-22) rather
+      // than staying pinned to `'false'`. It is the RESET target — the value an
+      // operator reverts to — and a reset that silently disables quota and
+      // feature enforcement platform-wide is not a "safe" default, it is the
+      // most dangerous button on the screen. Reverting should restore the
+      // POLICY, which is enforcement ON.
       value: String(ENTITLEMENTS_ENFORCEMENT_SEED_DEFAULT),
-      defaultValue: 'false',
+      defaultValue: String(ENTITLEMENTS_ENFORCEMENT_SEED_DEFAULT),
       dataType: ValueType.Boolean,
       description: 'Global entitlements enforcement kill-switch. Set to true to enable quota/feature gating platform-wide.',
       locked: false,

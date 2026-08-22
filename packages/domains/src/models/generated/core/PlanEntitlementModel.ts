@@ -34,6 +34,8 @@ export class PlanEntitlement extends BaseDataModel {
   public featureAgenticLoop: boolean;
   public modelTier: string;
   public rateLimitTier: string;
+  public rateLimitPerMinute: number | null;
+  public rateLimitWindowMs: number | null;
   public resourceStatus: Enums.ResourceStatusType;
   public resourceStatusUpdatedAt: Date | null;
   public resourceStatusUpdatedBy: string | null;
@@ -66,6 +68,8 @@ export class PlanEntitlement extends BaseDataModel {
     this.featureAgenticLoop = data.featureAgenticLoop;
     this.modelTier = data.modelTier;
     this.rateLimitTier = data.rateLimitTier;
+    this.rateLimitPerMinute = data.rateLimitPerMinute;
+    this.rateLimitWindowMs = data.rateLimitWindowMs;
     this.resourceStatus = data.resourceStatus;
     this.resourceStatusUpdatedAt = data.resourceStatusUpdatedAt;
     this.resourceStatusUpdatedBy = data.resourceStatusUpdatedBy;

@@ -35,6 +35,7 @@ export class TenantEntitlement extends BaseTenantDataModel {
   public modelTier: string | null;
   public rateLimitTier: string | null;
   public rateLimitPerMinute: number | null;
+  public rateLimitWindowMs: number | null;
   public resourceStatus: Enums.ResourceStatusType;
   public resourceStatusUpdatedAt: Date | null;
   public resourceStatusUpdatedBy: string | null;
@@ -68,6 +69,7 @@ export class TenantEntitlement extends BaseTenantDataModel {
     this.modelTier = data.modelTier;
     this.rateLimitTier = data.rateLimitTier;
     this.rateLimitPerMinute = data.rateLimitPerMinute;
+    this.rateLimitWindowMs = data.rateLimitWindowMs;
     this.resourceStatus = data.resourceStatus;
     this.resourceStatusUpdatedAt = data.resourceStatusUpdatedAt;
     this.resourceStatusUpdatedBy = data.resourceStatusUpdatedBy;

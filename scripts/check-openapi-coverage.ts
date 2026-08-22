@@ -59,8 +59,11 @@ export interface QualityRatchet {
 
 export const QUALITY_RATCHET: QualityRatchet = {
   withoutSummary: 1,
-  withoutDescription: 412,
-  withoutFailureMode: 290,
+  // Lowered 2026-08-22 (TASK-785): the nine new rate-limit rule/catalog/explain
+  // routes each ship a description and a 4xx, so the absolute counts fell even
+  // as the surface grew. Locking the gain in — that is what the ratchet is for.
+  withoutDescription: 411,
+  withoutFailureMode: 289,
 };
 
 /**
@@ -193,9 +196,7 @@ export function checkOpenApiCoverage(
   const documented = [...specOperations.values()];
   const withoutSummary = documented.filter((operation) => !operation.summary?.trim()).length;
   const withoutDescription = documented.filter((operation) => !operation.description?.trim()).length;
-  const withoutFailureMode = documented.filter(
-    (operation) => !Object.keys(operation.responses ?? {}).some((code) => code.startsWith('4')),
-  ).length;
+  const withoutFailureMode = documented.filter((operation) => !Object.keys(operation.responses ?? {}).some((code) => code.startsWith('4'))).length;
   const withoutTag = documented.filter((operation) => !operation.tags?.length).length;
 
   const excluded = manifest.routes.filter((route) => route.apiExcluded).length;

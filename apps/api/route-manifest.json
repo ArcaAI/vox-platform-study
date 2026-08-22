@@ -5311,6 +5311,98 @@
     },
     {
       "controller": "RateLimitAdminController",
+      "handler": "explain",
+      "method": "GET",
+      "path": "/api/v1/admin/rate-limit/explain",
+      "routePath": "/admin/rate-limit/explain",
+      "svcScopes": [
+        "svc:admin:rate-limit:manage"
+      ],
+      "forbidServiceAccount": false,
+      "apiKeyForbidden": true,
+      "apiKeyScopes": [],
+      "requiredPermissions": [
+        [
+          "manage",
+          "all"
+        ]
+      ],
+      "isPublic": false,
+      "permissionMode": "AND",
+      "requiresIfMatch": false,
+      "apiExcluded": false
+    },
+    {
+      "controller": "RateLimitAdminController",
+      "handler": "listPlans",
+      "method": "GET",
+      "path": "/api/v1/admin/rate-limit/plans",
+      "routePath": "/admin/rate-limit/plans",
+      "svcScopes": [
+        "svc:admin:rate-limit:manage"
+      ],
+      "forbidServiceAccount": false,
+      "apiKeyForbidden": true,
+      "apiKeyScopes": [],
+      "requiredPermissions": [
+        [
+          "manage",
+          "all"
+        ]
+      ],
+      "isPublic": false,
+      "permissionMode": "AND",
+      "requiresIfMatch": false,
+      "apiExcluded": false
+    },
+    {
+      "controller": "RateLimitAdminController",
+      "handler": "setPlan",
+      "method": "PATCH",
+      "path": "/api/v1/admin/rate-limit/plans/{plan}",
+      "routePath": "/admin/rate-limit/plans/:plan",
+      "svcScopes": [
+        "svc:admin:rate-limit:manage"
+      ],
+      "forbidServiceAccount": false,
+      "apiKeyForbidden": true,
+      "apiKeyScopes": [],
+      "requiredPermissions": [
+        [
+          "manage",
+          "all"
+        ]
+      ],
+      "isPublic": false,
+      "permissionMode": "AND",
+      "requiresIfMatch": false,
+      "apiExcluded": false
+    },
+    {
+      "controller": "RateLimitAdminController",
+      "handler": "listRoutes",
+      "method": "GET",
+      "path": "/api/v1/admin/rate-limit/routes",
+      "routePath": "/admin/rate-limit/routes",
+      "svcScopes": [
+        "svc:admin:rate-limit:manage"
+      ],
+      "forbidServiceAccount": false,
+      "apiKeyForbidden": true,
+      "apiKeyScopes": [],
+      "requiredPermissions": [
+        [
+          "manage",
+          "all"
+        ]
+      ],
+      "isPublic": false,
+      "permissionMode": "AND",
+      "requiresIfMatch": false,
+      "apiExcluded": false
+    },
+    {
+      "controller": "RateLimitAdminController",
       "handler": "setRoute",
       "method": "PUT",
       "path": "/api/v1/admin/rate-limit/routes/{routeId}",
@@ -5330,6 +5422,121 @@
       "isPublic": false,
       "permissionMode": "AND",
       "requiresIfMatch": false,
+      "apiExcluded": false
+    },
+    {
+      "controller": "RateLimitAdminController",
+      "handler": "listRules",
+      "method": "GET",
+      "path": "/api/v1/admin/rate-limit/rules",
+      "routePath": "/admin/rate-limit/rules",
+      "svcScopes": [
+        "svc:admin:rate-limit:manage"
+      ],
+      "forbidServiceAccount": false,
+      "apiKeyForbidden": true,
+      "apiKeyScopes": [],
+      "requiredPermissions": [
+        [
+          "manage",
+          "all"
+        ]
+      ],
+      "isPublic": false,
+      "permissionMode": "AND",
+      "requiresIfMatch": false,
+      "apiExcluded": false
+    },
+    {
+      "controller": "RateLimitAdminController",
+      "handler": "createRule",
+      "method": "POST",
+      "path": "/api/v1/admin/rate-limit/rules",
+      "routePath": "/admin/rate-limit/rules",
+      "svcScopes": [
+        "svc:admin:rate-limit:manage"
+      ],
+      "forbidServiceAccount": false,
+      "apiKeyForbidden": true,
+      "apiKeyScopes": [],
+      "requiredPermissions": [
+        [
+          "manage",
+          "all"
+        ]
+      ],
+      "isPublic": false,
+      "permissionMode": "AND",
+      "requiresIfMatch": false,
+      "apiExcluded": false
+    },
+    {
+      "controller": "RateLimitAdminController",
+      "handler": "deleteRule",
+      "method": "DELETE",
+      "path": "/api/v1/admin/rate-limit/rules/{id}",
+      "routePath": "/admin/rate-limit/rules/:id",
+      "svcScopes": [
+        "svc:admin:rate-limit:manage"
+      ],
+      "forbidServiceAccount": false,
+      "apiKeyForbidden": true,
+      "apiKeyScopes": [],
+      "requiredPermissions": [
+        [
+          "manage",
+          "all"
+        ]
+      ],
+      "isPublic": false,
+      "permissionMode": "AND",
+      "requiresIfMatch": false,
+      "apiExcluded": false
+    },
+    {
+      "controller": "RateLimitAdminController",
+      "handler": "getRule",
+      "method": "GET",
+      "path": "/api/v1/admin/rate-limit/rules/{id}",
+      "routePath": "/admin/rate-limit/rules/:id",
+      "svcScopes": [
+        "svc:admin:rate-limit:manage"
+      ],
+      "forbidServiceAccount": false,
+      "apiKeyForbidden": true,
+      "apiKeyScopes": [],
+      "requiredPermissions": [
+        [
+          "manage",
+          "all"
+        ]
+      ],
+      "isPublic": false,
+      "permissionMode": "AND",
+      "requiresIfMatch": false,
+      "apiExcluded": false
+    },
+    {
+      "controller": "RateLimitAdminController",
+      "handler": "updateRule",
+      "method": "PATCH",
+      "path": "/api/v1/admin/rate-limit/rules/{id}",
+      "routePath": "/admin/rate-limit/rules/:id",
+      "svcScopes": [
+        "svc:admin:rate-limit:manage"
+      ],
+      "forbidServiceAccount": false,
+      "apiKeyForbidden": true,
+      "apiKeyScopes": [],
+      "requiredPermissions": [
+        [
+          "manage",
+          "all"
+        ]
+      ],
+      "isPublic": false,
+      "permissionMode": "AND",
+      "requiresIfMatch": true,
       "apiExcluded": false
     },
     {
@@ -6027,6 +6234,52 @@
         [
           "manage",
           "all"
+        ]
+      ],
+      "isPublic": false,
+      "permissionMode": "AND",
+      "requiresIfMatch": false,
+      "apiExcluded": false
+    },
+    {
+      "controller": "SecurityPolicyController",
+      "handler": "getPolicy",
+      "method": "GET",
+      "path": "/api/v1/admin/security/policy",
+      "routePath": "/admin/security/policy",
+      "svcScopes": [
+        "svc:admin:settings:manage"
+      ],
+      "forbidServiceAccount": false,
+      "apiKeyForbidden": true,
+      "apiKeyScopes": [],
+      "requiredPermissions": [
+        [
+          "read",
+          "GlobalSetting"
+        ]
+      ],
+      "isPublic": false,
+      "permissionMode": "AND",
+      "requiresIfMatch": false,
+      "apiExcluded": false
+    },
+    {
+      "controller": "SecurityPolicyController",
+      "handler": "updatePolicy",
+      "method": "PUT",
+      "path": "/api/v1/admin/security/policy",
+      "routePath": "/admin/security/policy",
+      "svcScopes": [
+        "svc:admin:settings:manage"
+      ],
+      "forbidServiceAccount": false,
+      "apiKeyForbidden": true,
+      "apiKeyScopes": [],
+      "requiredPermissions": [
+        [
+          "manage",
+          "GlobalSetting"
         ]
       ],
       "isPublic": false,

@@ -300,6 +300,18 @@ export const TENANT_SCOPED_MODELS: ReadonlySet<string> = new Set([
   // ALSO a SYSTEM-shared read model (below): a tenant reads its own rows AND
   // the SYSTEM platform rule set, never writes to a SYSTEM-owned row.
   'WorkflowInvariantRule',
+  // rate-limit.prisma (TASK-785) — the rate-limit rule config plane. A
+  // SYSTEM-tenant row is a platform-wide per-route limit; a customer-tenant row
+  // overrides it for that tenant alone.
+  //
+  // Deliberately NOT added to SYSTEM_SHARED_READ_MODELS, unlike the other
+  // "SYSTEM row is the platform default" models above. Nothing resolves these
+  // rows under a tenant's CLS: `TieredThrottlerGuard` reads an in-memory cache
+  // that `RateLimitRuleCache` loads inside `clsService.exit(...)` (the TASK-771
+  // fix, so an in-request invalidation cannot poison it with one tenant's view),
+  // and there is no tenant-facing read surface — every rule route is
+  // `manage all`. Widening reads here would buy no consumer anything.
+  'RateLimitRule',
 ]);
 
 /**

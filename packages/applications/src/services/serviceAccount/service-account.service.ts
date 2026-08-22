@@ -422,6 +422,40 @@ export class ServiceAccountService extends BaseService {
     return createHmac('sha256', pepper).update(clientSecret).digest('hex');
   }
 
+  /**
+   * The tenant a service-account token is bound to, for RATE LIMITING ONLY
+   * (TASK-785 O-4). `null` when the token is unknown, expired or unreadable.
+   *
+   * Deliberately does LESS than {@link authenticateByToken}: one Redis GET, no
+   * DB confirmation read, no scope or ability check. `TieredThrottlerGuard` runs
+   * before `UnifiedAuthGuard`, on every request, and must not add a database
+   * round trip to the hot path — the same trade the JWT lane already makes.
+   *
+   * Skipping the DB revocation check is safe for this purpose: the real guard
+   * performs it a moment later and is authoritative, so a revoked-but-unexpired
+   * token can only spend the budget it already owned, for at most the remainder
+   * of its Redis TTL.
+   *
+   * Returns `workingTenantId` — the tenant the request actually acts on, and
+   * what `UnifiedAuthGuard` puts in CLS — not the account's home `tenantId`.
+   */
+  async peekTenantForRateLimit(token: string): Promise<string | null> {
+    try {
+      const raw = await this.cache.get(`${TOKEN_KEY_PREFIX}${ServiceAccountService.hashToken(token)}`);
+      if (!raw) return null;
+
+      const stored = JSON.parse(raw) as Partial<StoredToken>;
+      if (!stored?.expiresAt || stored.expiresAt <= Date.now()) return null;
+
+      return stored.workingTenantId ?? stored.tenantId ?? null;
+    } catch {
+      // Redis down, or an unparseable blob. Rate limiting must never fail a
+      // request over its own bookkeeping — the caller falls back to the
+      // platform lane.
+      return null;
+    }
+  }
+
   static hashToken(token: string): string {
     return createHmac('sha256', 'hope-service-account-token').update(token).digest('hex');
   }

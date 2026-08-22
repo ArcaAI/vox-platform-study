@@ -47,6 +47,7 @@ export * from './PolicyScope';
 export * from './PromptTemplateCategory';
 export * from './PromptTemplateScope';
 export * from './PromptTemplateStatus';
+export * from './RateLimitMatchKind';
 export * from './ResourceStatusType';
 export * from './ResourceSubscriptionType';
 export * from './ResourceType';

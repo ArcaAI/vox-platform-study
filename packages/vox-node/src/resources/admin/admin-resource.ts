@@ -284,7 +284,15 @@ export abstract class AdminResource {
    * {@link svcScope}, which is the case for all but the read routes widened by
    * TASK-773 decision O-3.
    */
-  private explain(error: unknown, scopes: readonly string[]): unknown {
+  /*
+   * NAME DELIBERATELY QUALIFIED. This was `explain()` until TASK-785 added a
+   * generated `admin.rateLimit.explain()` route method, which collided with it:
+   * a subclass cannot widen a private base member, so the whole resource failed
+   * to compile. Every generated method is named after its ROUTE, so any short
+   * verb here is a name a future route can take. Keep helpers on this base
+   * qualified.
+   */
+  private explainPermissionError(error: unknown, scopes: readonly string[]): unknown {
     if (!(error instanceof PermissionError) || scopes.some((scope) => error.message.includes(scope))) return error;
     const requirement =
       scopes.length === 1
@@ -304,7 +312,7 @@ export abstract class AdminResource {
     try {
       return await this.transport.request<T>(options);
     } catch (error) {
-      throw this.explain(error, svcScopes && svcScopes.length > 0 ? svcScopes : [this.svcScope]);
+      throw this.explainPermissionError(error, svcScopes && svcScopes.length > 0 ? svcScopes : [this.svcScope]);
     }
   }
 

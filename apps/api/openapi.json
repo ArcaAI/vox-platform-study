@@ -4656,6 +4656,52 @@
         ],
         "type": "object"
       },
+      "CreateRateLimitRuleRequest": {
+        "properties": {
+          "active": {
+            "description": "`false` EXEMPTS this scope from throttling. A matching rule always terminates resolution — it never falls through.",
+            "type": "boolean"
+          },
+          "description": {
+            "description": "Why this rule exists — shown in the admin list.",
+            "type": "string"
+          },
+          "limitValue": {
+            "description": "Requests allowed per window.",
+            "minimum": 1,
+            "type": "number"
+          },
+          "matchKind": {
+            "description": "EXACT compares the whole route key; PREFIX allows a trailing `*`. Defaults to EXACT.",
+            "enum": [
+              "EXACT",
+              "PREFIX"
+            ],
+            "type": "string"
+          },
+          "routeMatch": {
+            "description": "Route key `METHOD:/path` (METHOD may be `*`), or the reserved `*` for every route. A platform-scoped rule may not use `*` — set the platform-wide limit on the base tiers instead.",
+            "example": "POST:/api/v1/auth/login",
+            "type": "string"
+          },
+          "tenantId": {
+            "description": "Tenant this rule applies to. Omit (or pass the SYSTEM tenant) for a platform-wide rule. A tenant-scoped rule outranks every platform rule.",
+            "format": "uuid",
+            "type": "string"
+          },
+          "windowMs": {
+            "description": "Window length in milliseconds.",
+            "minimum": 1,
+            "type": "number"
+          }
+        },
+        "required": [
+          "routeMatch",
+          "limitValue",
+          "windowMs"
+        ],
+        "type": "object"
+      },
       "CreateResourceSubscriptionRequest": {
         "properties": {
           "resourceId": {
@@ -7300,6 +7346,27 @@
             "type": "string"
           }
         },
+        "type": "object"
+      },
+      "GeneratedSecretPolicyResponse": {
+        "properties": {
+          "byteLength": {
+            "description": "CSPRNG bytes drawn per issued machine secret (entropy, not characters).",
+            "type": "number"
+          },
+          "encoding": {
+            "description": "Alphabet of an issued secret, where the surface does not pin one.",
+            "enum": [
+              "hex",
+              "base64url"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "byteLength",
+          "encoding"
+        ],
         "type": "object"
       },
       "GenerationMetricsAggregateResponse": {
@@ -10634,6 +10701,48 @@
         ],
         "type": "object"
       },
+      "PasswordPolicyResponse": {
+        "properties": {
+          "maxAgeDays": {
+            "description": "Rotation window in days; 0 = rotation disabled. Warns at login, never blocks.",
+            "type": "number"
+          },
+          "maxLength": {
+            "description": "Maximum characters. NOT configurable — a hashing-DoS bound (bcrypt reads 72 bytes).",
+            "type": "number"
+          },
+          "minLength": {
+            "description": "Minimum characters for any password set through any path.",
+            "type": "number"
+          },
+          "requireDigit": {
+            "description": "Require at least one 0-9.",
+            "type": "boolean"
+          },
+          "requireLowercase": {
+            "description": "Require at least one a-z.",
+            "type": "boolean"
+          },
+          "requireSpecial": {
+            "description": "Require at least one non-alphanumeric character.",
+            "type": "boolean"
+          },
+          "requireUppercase": {
+            "description": "Require at least one A-Z.",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "minLength",
+          "maxLength",
+          "requireUppercase",
+          "requireLowercase",
+          "requireDigit",
+          "requireSpecial",
+          "maxAgeDays"
+        ],
+        "type": "object"
+      },
       "PermissionCheckResult": {
         "properties": {
           "action": {
@@ -11115,9 +11224,19 @@
             ],
             "type": "string"
           },
+          "rateLimitPerMinute": {
+            "description": "TASK-785 — ABSOLUTE requests-per-window for every tenant on this plan. Null = the plan expresses its limit through `rateLimitTier`.",
+            "nullable": true,
+            "type": "number"
+          },
           "rateLimitTier": {
             "description": "Rate-limit tier (strict | default | relaxed | heavy)",
             "type": "string"
+          },
+          "rateLimitWindowMs": {
+            "description": "Window paired with `rateLimitPerMinute`. Read only when that is set.",
+            "nullable": true,
+            "type": "number"
           },
           "storageQuotaBytes": {
             "description": "Storage quota in bytes; null = unlimited",
@@ -12362,6 +12481,144 @@
         ],
         "type": "object"
       },
+      "RateLimitExplainOfferResponse": {
+        "properties": {
+          "active": {
+            "type": "boolean"
+          },
+          "level": {
+            "enum": [
+              "tenant-route",
+              "tenant",
+              "plan",
+              "platform-route",
+              "platform-base"
+            ],
+            "type": "string"
+          },
+          "limitValue": {
+            "type": "number"
+          },
+          "ruleId": {
+            "type": "string"
+          },
+          "windowMs": {
+            "type": "number"
+          },
+          "winner": {
+            "description": "`true` for the level that decided.",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "level",
+          "limitValue",
+          "windowMs",
+          "active",
+          "winner"
+        ],
+        "type": "object"
+      },
+      "RateLimitExplainResponse": {
+        "properties": {
+          "bucket": {
+            "description": "How the counter is bucketed — the answer to \"why do these callers share a budget?\".",
+            "enum": [
+              "tenant",
+              "ip"
+            ],
+            "type": "string"
+          },
+          "effective": {
+            "properties": {
+              "limitValue": {
+                "type": "number"
+              },
+              "windowMs": {
+                "type": "number"
+              }
+            },
+            "required": [
+              "limitValue",
+              "windowMs"
+            ],
+            "type": "object"
+          },
+          "level": {
+            "enum": [
+              "tenant-route",
+              "tenant",
+              "plan",
+              "platform-route",
+              "platform-base"
+            ],
+            "type": "string"
+          },
+          "routeKey": {
+            "type": "string"
+          },
+          "ruleId": {
+            "type": "string"
+          },
+          "tenantId": {
+            "nullable": true,
+            "type": "string"
+          },
+          "trace": {
+            "items": {
+              "$ref": "#/components/schemas/RateLimitExplainOfferResponse"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "routeKey",
+          "level",
+          "bucket",
+          "trace"
+        ],
+        "type": "object"
+      },
+      "RateLimitPlanResponse": {
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "plan": {
+            "enum": [
+              "STARTER",
+              "TRIAL",
+              "PRO",
+              "ENTERPRISE"
+            ],
+            "type": "string"
+          },
+          "rateLimitPerMinute": {
+            "description": "ABSOLUTE requests-per-window; null = use the tier.",
+            "nullable": true,
+            "type": "number"
+          },
+          "rateLimitTier": {
+            "description": "Named tier this plan selects when it carries no absolute limit.",
+            "type": "string"
+          },
+          "rateLimitWindowMs": {
+            "nullable": true,
+            "type": "number"
+          },
+          "version": {
+            "description": "OCC token — echo as `expectedVersion` on update.",
+            "type": "number"
+          }
+        },
+        "required": [
+          "id",
+          "plan",
+          "rateLimitTier",
+          "version"
+        ],
+        "type": "object"
+      },
       "RateLimitPolicyResponse": {
         "properties": {
           "enabled": {
@@ -12456,6 +12713,66 @@
           "enabled",
           "limitSource",
           "ttlSource"
+        ],
+        "type": "object"
+      },
+      "RateLimitRuleResponse": {
+        "properties": {
+          "active": {
+            "type": "boolean"
+          },
+          "createdAt": {
+            "type": "string"
+          },
+          "description": {
+            "nullable": true,
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "limitValue": {
+            "type": "number"
+          },
+          "matchKind": {
+            "enum": [
+              "EXACT",
+              "PREFIX"
+            ],
+            "type": "string"
+          },
+          "platform": {
+            "description": "`true` when this is a SYSTEM-owned, platform-wide rule.",
+            "type": "boolean"
+          },
+          "routeMatch": {
+            "type": "string"
+          },
+          "tenantId": {
+            "type": "string"
+          },
+          "updatedAt": {
+            "type": "string"
+          },
+          "version": {
+            "type": "number"
+          },
+          "windowMs": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "id",
+          "tenantId",
+          "platform",
+          "routeMatch",
+          "matchKind",
+          "limitValue",
+          "windowMs",
+          "active",
+          "version",
+          "createdAt",
+          "updatedAt"
         ],
         "type": "object"
       },
@@ -13244,6 +13561,41 @@
         ],
         "type": "object"
       },
+      "RouteCatalogEntryResponse": {
+        "properties": {
+          "controller": {
+            "type": "string"
+          },
+          "decoratorLimit": {
+            "description": "The route’s `@Throttle` limit, which seeds rank 5.",
+            "type": "number"
+          },
+          "decoratorWindowMs": {
+            "type": "number"
+          },
+          "handler": {
+            "type": "string"
+          },
+          "method": {
+            "type": "string"
+          },
+          "path": {
+            "type": "string"
+          },
+          "routeId": {
+            "description": "Route key `METHOD:/path` — paste straight into a rule `routeMatch`.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "routeId",
+          "method",
+          "path",
+          "controller",
+          "handler"
+        ],
+        "type": "object"
+      },
       "RunGateStateResponse": {
         "properties": {
           "approved": {
@@ -13658,6 +14010,68 @@
           "nextExecution",
           "timeZone",
           "settingsKey"
+        ],
+        "type": "object"
+      },
+      "SecretPolicyBoundsResponse": {
+        "properties": {
+          "governedSurfaces": {
+            "description": "Credential surfaces governed by `secret`, i.e. what a change here will affect on the NEXT issuance.",
+            "example": [
+              "serviceAccountClientSecret",
+              "apiKey",
+              "webhookSigningSecret",
+              "storageAccessKey"
+            ],
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "maxByteLength": {
+            "description": "Hard ceiling on issued-secret entropy.",
+            "type": "number"
+          },
+          "minByteLength": {
+            "description": "Hard floor on issued-secret entropy, enforced in code after the row is read.",
+            "type": "number"
+          },
+          "pinnedEncodings": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "description": "Surfaces whose alphabet is PINNED and therefore ignore `encoding`: API keys are hex (their format regex parses the key structurally) and storage access keys are base64url (the shipped S3-style shape). `byteLength` applies everywhere.",
+            "example": {
+              "apiKey": "hex",
+              "storageAccessKey": "base64url"
+            },
+            "type": "object"
+          }
+        },
+        "required": [
+          "minByteLength",
+          "maxByteLength",
+          "pinnedEncodings",
+          "governedSurfaces"
+        ],
+        "type": "object"
+      },
+      "SecurityPolicyResponse": {
+        "properties": {
+          "bounds": {
+            "$ref": "#/components/schemas/SecretPolicyBoundsResponse"
+          },
+          "password": {
+            "$ref": "#/components/schemas/PasswordPolicyResponse"
+          },
+          "secret": {
+            "$ref": "#/components/schemas/GeneratedSecretPolicyResponse"
+          }
+        },
+        "required": [
+          "password",
+          "secret",
+          "bounds"
         ],
         "type": "object"
       },
@@ -14234,6 +14648,34 @@
         },
         "required": [
           "enabled"
+        ],
+        "type": "object"
+      },
+      "SetRateLimitPlanRequest": {
+        "properties": {
+          "expectedVersion": {
+            "description": "OCC token — the `_version` the caller believes it is updating.",
+            "type": "number"
+          },
+          "rateLimitPerMinute": {
+            "description": "ABSOLUTE requests-per-window for every tenant on this plan. Null/omitted keeps the plan expressing its limit through `rateLimitTier`.",
+            "minimum": 1,
+            "nullable": true,
+            "type": "number"
+          },
+          "rateLimitTier": {
+            "description": "Named tier this plan selects when it carries no absolute limit.",
+            "type": "string"
+          },
+          "rateLimitWindowMs": {
+            "description": "Window paired with `rateLimitPerMinute`. Read only when that is set.",
+            "minimum": 1,
+            "nullable": true,
+            "type": "number"
+          }
+        },
+        "required": [
+          "expectedVersion"
         ],
         "type": "object"
       },
@@ -17987,9 +18429,21 @@
             "nullable": true,
             "type": "number"
           },
+          "rateLimitPerMinute": {
+            "description": "TASK-785 — ABSOLUTE requests-per-window for this plan. Send `null` to clear it and fall back to `rateLimitTier`.",
+            "minimum": 1,
+            "nullable": true,
+            "type": "number"
+          },
           "rateLimitTier": {
             "description": "Rate-limit tier (strict | default | relaxed | heavy)",
             "type": "string"
+          },
+          "rateLimitWindowMs": {
+            "description": "Window paired with `rateLimitPerMinute`, in milliseconds.",
+            "minimum": 1,
+            "nullable": true,
+            "type": "number"
           },
           "storageQuotaBytes": {
             "description": "Storage quota in bytes; null = unlimited",
@@ -18103,6 +18557,29 @@
         },
         "type": "object"
       },
+      "UpdateRateLimitRuleRequest": {
+        "properties": {
+          "active": {
+            "description": "`false` EXEMPTS this scope from throttling.",
+            "type": "boolean"
+          },
+          "description": {
+            "description": "Why this rule exists.",
+            "type": "string"
+          },
+          "limitValue": {
+            "description": "Requests allowed per window.",
+            "minimum": 1,
+            "type": "number"
+          },
+          "windowMs": {
+            "description": "Window length in milliseconds.",
+            "minimum": 1,
+            "type": "number"
+          }
+        },
+        "type": "object"
+      },
       "UpdateResourceSubscriptionRequest": {
         "properties": {
           "resourceId": {
@@ -18187,6 +18664,53 @@
         "required": [
           "cronExpression"
         ],
+        "type": "object"
+      },
+      "UpdateSecurityPolicyRequest": {
+        "properties": {
+          "passwordMaxAgeDays": {
+            "description": "Password rotation window in days; 0 disables rotation. Raising it warns at login and never blocks.",
+            "maximum": 3650,
+            "minimum": 0,
+            "type": "number"
+          },
+          "passwordMinLength": {
+            "description": "Minimum password length. Floor of 8 is the NIST SP 800-63B minimum for a user-chosen secret; the platform default is 12. The MAXIMUM (128) is deliberately not settable — it is a hashing-DoS bound.",
+            "maximum": 128,
+            "minimum": 8,
+            "type": "number"
+          },
+          "passwordRequireDigit": {
+            "description": "Require at least one digit (0-9) in a password.",
+            "type": "boolean"
+          },
+          "passwordRequireLowercase": {
+            "description": "Require at least one lowercase letter (a-z) in a password.",
+            "type": "boolean"
+          },
+          "passwordRequireSpecial": {
+            "description": "Require at least one special character in a password.",
+            "type": "boolean"
+          },
+          "passwordRequireUppercase": {
+            "description": "Require at least one uppercase letter (A-Z) in a password.",
+            "type": "boolean"
+          },
+          "secretByteLength": {
+            "description": "CSPRNG bytes behind every machine credential the platform issues (service-account client secret, API key, webhook signing secret, storage access key). Applies to the NEXT issuance only.",
+            "maximum": 64,
+            "minimum": 16,
+            "type": "number"
+          },
+          "secretEncoding": {
+            "description": "Alphabet for issued secrets. Honoured by service-account client secrets and webhook signing secrets; IGNORED by API keys (hex-pinned by their format regex) and storage access keys (base64url-pinned S3 shape).",
+            "enum": [
+              "hex",
+              "base64url"
+            ],
+            "type": "string"
+          }
+        },
         "type": "object"
       },
       "UpdateServiceAccountRequest": {
@@ -24490,7 +25014,8 @@
                 "KnowledgeDocument",
                 "ServiceAccount",
                 "WorkflowAssignment",
-                "WorkflowInvariantRule"
+                "WorkflowInvariantRule",
+                "RateLimitRule"
               ],
               "type": "string"
             }
@@ -24721,7 +25246,8 @@
                 "KnowledgeDocument",
                 "ServiceAccount",
                 "WorkflowAssignment",
-                "WorkflowInvariantRule"
+                "WorkflowInvariantRule",
+                "RateLimitRule"
               ],
               "type": "string"
             }
@@ -24953,7 +25479,8 @@
                 "KnowledgeDocument",
                 "ServiceAccount",
                 "WorkflowAssignment",
-                "WorkflowInvariantRule"
+                "WorkflowInvariantRule",
+                "RateLimitRule"
               ],
               "type": "string"
             }
@@ -33644,8 +34171,207 @@
         ]
       }
     },
+    "/api/v1/admin/rate-limit/explain": {
+      "get": {
+        "description": "Returns the winning level, the rule that decided, how the counter is bucketed, and what every other level offered. This is the supported answer to \"why is this tenant being throttled?\".",
+        "operationId": "RateLimitAdminController_explain",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "method",
+            "required": true,
+            "schema": {
+              "example": "POST",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "path",
+            "required": true,
+            "schema": {
+              "example": "/api/v1/auth/login",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "tenantId",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RateLimitExplainResponse"
+                }
+              }
+            },
+            "description": ""
+          },
+          "400": {
+            "description": "`method` or `path` missing."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Explain how a rate limit resolves for one tenant + route.",
+        "tags": [
+          "admin-rate-limit"
+        ]
+      }
+    },
+    "/api/v1/admin/rate-limit/plans": {
+      "get": {
+        "description": "Rank 3 of the precedence chain, applied to every tenant on the plan. A plan expresses its limit either through a named tier or through an absolute requests-per-window value.",
+        "operationId": "RateLimitAdminController_listPlans",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/RateLimitPlanResponse"
+                  },
+                  "type": "array"
+                }
+              }
+            },
+            "description": ""
+          },
+          "403": {
+            "description": "Not a super admin, or an API-key credential."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "List each subscription plan’s rate limit.",
+        "tags": [
+          "admin-rate-limit"
+        ]
+      }
+    },
+    "/api/v1/admin/rate-limit/plans/{plan}": {
+      "patch": {
+        "description": "Applies to every tenant on the plan that has no rule and no override of its own. Send `rateLimitPerMinute: null` to clear the absolute value and fall back to the named tier.",
+        "operationId": "RateLimitAdminController_setPlan",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "plan",
+            "required": true,
+            "schema": {
+              "enum": [
+                "STARTER",
+                "TRIAL",
+                "PRO",
+                "ENTERPRISE"
+              ],
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SetRateLimitPlanRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RateLimitPlanResponse"
+                }
+              }
+            },
+            "description": ""
+          },
+          "400": {
+            "description": "A non-positive limit or window."
+          },
+          "404": {
+            "description": "No such plan."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Set a subscription plan’s rate limit.",
+        "tags": [
+          "admin-rate-limit"
+        ]
+      }
+    },
+    "/api/v1/admin/rate-limit/routes": {
+      "get": {
+        "description": "Built at boot from the same module walk that produces `route-manifest.json`, so the two can never disagree about what exists.",
+        "operationId": "RateLimitAdminController_listRoutes",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/RouteCatalogEntryResponse"
+                  },
+                  "type": "array"
+                }
+              }
+            },
+            "description": ""
+          },
+          "403": {
+            "description": "Not a super admin, or an API-key credential."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "List every gateway route, for picking a rule target.",
+        "tags": [
+          "admin-rate-limit"
+        ]
+      }
+    },
     "/api/v1/admin/rate-limit/routes/{routeId}": {
       "put": {
+        "deprecated": true,
+        "description": "DEPRECATED — use `POST /admin/rate-limit/rules`, which covers every route and supports per-tenant scoping.",
         "operationId": "RateLimitAdminController_setRoute",
         "parameters": [
           {
@@ -33678,6 +34404,9 @@
               }
             },
             "description": ""
+          },
+          "400": {
+            "description": "Unknown routeId, or a non-positive limit/ttl."
           }
         },
         "security": [
@@ -33689,6 +34418,246 @@
           }
         ],
         "summary": "Update a per-endpoint override for a known throttled route (e.g. auth.login).",
+        "tags": [
+          "admin-rate-limit"
+        ]
+      }
+    },
+    "/api/v1/admin/rate-limit/rules": {
+      "get": {
+        "description": "Ranks 1, 2 and 4 of the precedence chain. Filter by `tenantId`, or by `scope` to separate platform-wide from tenant-scoped rules.",
+        "operationId": "RateLimitAdminController_listRules",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "tenantId",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "scope",
+            "required": false,
+            "schema": {
+              "enum": [
+                "platform",
+                "tenant"
+              ],
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/RateLimitRuleResponse"
+                  },
+                  "type": "array"
+                }
+              }
+            },
+            "description": ""
+          },
+          "403": {
+            "description": "Not a super admin, or an API-key credential."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "List rate-limit rules.",
+        "tags": [
+          "admin-rate-limit"
+        ]
+      },
+      "post": {
+        "description": "Omit `tenantId` for a platform-wide route rule (rank 4). Supply one for a tenant rule — `routeMatch: \"*\"` makes it tenant-wide (rank 2), any other pattern makes it tenant × route (rank 1).",
+        "operationId": "RateLimitAdminController_createRule",
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateRateLimitRuleRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RateLimitRuleResponse"
+                }
+              }
+            },
+            "description": ""
+          },
+          "400": {
+            "description": "Malformed `routeMatch`, a non-positive limit/window, or `*` on a platform-scoped rule."
+          },
+          "403": {
+            "description": "Not a super admin, or an API-key credential."
+          },
+          "409": {
+            "description": "A rule already covers this scope + pattern, or the scope is at its rule cap."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Create a rate-limit rule.",
+        "tags": [
+          "admin-rate-limit"
+        ]
+      }
+    },
+    "/api/v1/admin/rate-limit/rules/{id}": {
+      "delete": {
+        "description": "Soft-deletes the rule and refreshes the throttler cache, so the scope falls back to the next level of the precedence chain immediately.",
+        "operationId": "RateLimitAdminController_deleteRule",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": ""
+          },
+          "403": {
+            "description": "Not a super admin, or an API-key credential."
+          },
+          "404": {
+            "description": "No such rule."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Delete a rate-limit rule.",
+        "tags": [
+          "admin-rate-limit"
+        ]
+      },
+      "get": {
+        "description": "Returns the rule plus its `version`, which is the ETag a subsequent PATCH must echo back as `If-Match`.",
+        "operationId": "RateLimitAdminController_getRule",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RateLimitRuleResponse"
+                }
+              }
+            },
+            "description": ""
+          },
+          "404": {
+            "description": "No such rule."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Get one rate-limit rule.",
+        "tags": [
+          "admin-rate-limit"
+        ]
+      },
+      "patch": {
+        "description": "Optimistic concurrency: send the rule’s ETag as `If-Match`.",
+        "operationId": "RateLimitAdminController_updateRule",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateRateLimitRuleRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RateLimitRuleResponse"
+                }
+              }
+            },
+            "description": ""
+          },
+          "400": {
+            "description": "A non-positive limit or window."
+          },
+          "404": {
+            "description": "No such rule."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Update a rate-limit rule.",
         "tags": [
           "admin-rate-limit"
         ]
@@ -35186,6 +36155,85 @@
         "summary": "Enable/disable a dynamic scheduler (static schedulers are rejected).",
         "tags": [
           "admin-schedulers"
+        ]
+      }
+    },
+    "/api/v1/admin/security/policy": {
+      "get": {
+        "description": "Returns the EFFECTIVE policy — stored `GlobalSetting` rows over the code defaults, read from the same cache the password validator and the credential issuers consult, so it is exactly what the next password check and the next credential issuance will apply. `bounds` carries the code-enforced entropy floor/ceiling, the surfaces whose alphabet is pinned (and therefore ignore `encoding`), and which credential surfaces the secret policy governs.",
+        "operationId": "SecurityPolicyController_getPolicy",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SecurityPolicyResponse"
+                }
+              }
+            },
+            "description": ""
+          },
+          "403": {
+            "description": "The caller may not read platform settings."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Read the platform credential policy.",
+        "tags": [
+          "admin-security-policy"
+        ]
+      },
+      "put": {
+        "description": "Only the fields present are written, each through the single descriptor-driven enforcement point — which is what makes this route super-admin-only (403), type-checks each value, refreshes the cache every reader consults and broadcasts a sys-event per key. NOT transactional: each key is its own row, so a mid-request failure leaves the earlier keys applied. Every field is independently valid, so a partial application is a coherent policy — the response is the re-read effective policy, which is what the caller should trust. Secret-policy changes apply to the NEXT issuance only and never invalidate a credential already handed out.",
+        "operationId": "SecurityPolicyController_updatePolicy",
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateSecurityPolicyRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SecurityPolicyResponse"
+                }
+              }
+            },
+            "description": ""
+          },
+          "400": {
+            "description": "A value is out of bounds or the wrong type for its declared dataType."
+          },
+          "403": {
+            "description": "The credential policy is managed by super administrators only."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Update the platform credential policy (partial).",
+        "tags": [
+          "admin-security-policy"
         ]
       }
     },
@@ -51729,6 +52777,10 @@
     {
       "description": "Deployed service versions and their build identity.",
       "name": "admin-service-releases"
+    },
+    {
+      "description": "Platform credential policy — password complexity/rotation and issued-secret entropy.",
+      "name": "admin-security-policy"
     },
     {
       "description": "The declared settings catalog — every governed key and its tier.",
