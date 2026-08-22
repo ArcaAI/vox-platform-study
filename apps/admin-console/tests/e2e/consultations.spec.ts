@@ -81,7 +81,9 @@ test.describe('consultations (frame 40)', () => {
     await page.goto('/consultations');
     await waitForSettled(page);
     await page.getByRole('button', { name: 'Filters' }).click();
-    await page.getByRole('option', { name: 'Signed' }).click();
+    // exact: the status list also holds "Signed note", and Playwright's default
+    // name match is a substring, so the bare name resolved to two options.
+    await page.getByRole('option', { name: 'Signed', exact: true }).click();
     await expect(page).toHaveURL(/status.*SIGNED/);
   });
 

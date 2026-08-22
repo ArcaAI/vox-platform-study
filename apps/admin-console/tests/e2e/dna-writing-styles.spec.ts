@@ -22,10 +22,15 @@ async function waitForSettled(page: Page) {
   await expect(page.getByRole('heading', { level: 1, name: 'DNA Writing Styles' })).toBeVisible();
   // Two empty variants: pristine ("No DNA reports yet") vs an active filter
   // ("No reports match your filters" — e.g. after toggling disabled=true).
-  const emptyState = page.getByText(/No DNA reports yet|No reports match your filters/);
+  // Scope to the empty-state slot and to <main>: Next renders a persistent
+  // `#__next-route-announcer__` with role="alert" that mirrors page text, so an
+  // unscoped getByText/getByRole('alert') matched it as well as the real node
+  // and tripped strict mode.
+  const emptyState = page.locator('[data-slot="empty"]').getByText(/No DNA reports yet|No reports match your filters/);
   // Data rows are focusable (row click -> doctor detail); skeleton rows are not.
   const dataRows = page.getByRole('grid', { name: 'DNA reports' }).locator('[data-slot="data-grid-row"]');
-  await expect(dataRows.first().or(emptyState.first()).or(page.getByRole('alert').first())).toBeVisible();
+  const errorAlert = page.getByRole('main').getByRole('alert');
+  await expect(dataRows.first().or(emptyState.first()).or(errorAlert.first()).first()).toBeVisible();
 }
 
 test.describe('dna writing styles (frame 33)', () => {
@@ -93,7 +98,14 @@ test.describe('dna writing styles — selection and generate flow (frame 33)', (
     await expect(page).toHaveURL(/doctorId/);
     await expect(page.getByText('No reports match your filters')).toBeVisible();
 
-    await page.getByRole('button', { name: 'Clear filters' }).click();
+    // Three buttons share this accessible name on a filtered grid: the empty
+    // state's own action plus two in the data-grid toolbar (desktop + the
+    // faceted-filter list). Target the empty state's, which is what the
+    // preceding assertion just proved is on screen.
+    await page
+      .locator('[data-slot="empty"]')
+      .getByRole('button', { name: 'Clear filters' })
+      .click();
     await page.keyboard.press('Escape');
     await expect(page).not.toHaveURL(/doctorId/);
     await waitForSettled(page);

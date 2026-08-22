@@ -1,8 +1,16 @@
 import { expect, test, type Page } from '@playwright/test';
 import { expectNoA11yViolations } from './helpers/a11y';
 import { loginAsAdmin } from './helpers/auth';
+import { API_DOWN_MESSAGE, APP_DOWN_MESSAGE, apiAvailable, appAvailable, serviceAvailable, serviceDownMessage } from './helpers/stack';
 
 test.beforeEach(async ({ page }) => {
+  // This spec was the only one in the suite with no stack gate, so it failed
+  // rather than skipped whenever the stack was absent — including on a bare
+  // checkout. Gated like every sibling, plus the harness service it actually
+  // drives (the gateway answers 200 while the service it proxies is down).
+  test.skip(!(await appAvailable()), APP_DOWN_MESSAGE);
+  test.skip(!(await apiAvailable()), API_DOWN_MESSAGE);
+  test.skip(!(await serviceAvailable('harness')), serviceDownMessage('harness'));
   await loginAsAdmin(page);
   await selectPipelinePolicyTenant(page);
 });

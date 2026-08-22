@@ -18,6 +18,7 @@ import { Inject, Injectable, Logger, Module, OnApplicationBootstrap, OnModuleDes
 import Redis from 'ioredis';
 import { VaultRotationWorker, type RotationPublisher } from '@arcaai/applications';
 import { IConfigService } from '@arcaai/applications';
+import { existsSync } from 'node:fs';
 
 /**
  * Token used to inject the Redis publisher into the rotation worker
@@ -56,6 +57,14 @@ export class VaultRotationWorkerService implements OnApplicationBootstrap, OnMod
     const auditPath = process.env.VAULT_AUDIT_LOG_PATH;
     if (!auditPath) {
       this.logger.log('VAULT_AUDIT_LOG_PATH not set — rotation worker disabled');
+      return;
+    }
+    // A CONFIGURED but absent file is the same situation as an unset path:
+    // there is nothing to tail. `.env.dev` ships `./temp/vault.log` and nothing
+    // creates it, so on a fresh checkout the worker crashed at boot with a bare
+    // ENOENT — disabling on absence keeps that a one-line log, as intended above.
+    if (!existsSync(auditPath)) {
+      this.logger.log(`VAULT_AUDIT_LOG_PATH ${auditPath} does not exist — rotation worker disabled`);
       return;
     }
     if (!this.publisher || !this.leaderRedis) {

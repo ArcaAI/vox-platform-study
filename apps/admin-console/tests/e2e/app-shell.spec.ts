@@ -81,4 +81,18 @@ test.describe('app shell chrome (frame 07)', () => {
     await expect(sidebar).toHaveAttribute('data-state', 'expanded');
     await expect(dashboardLink).toContainText('Dashboard');
   });
+
+  test('the domain rail gates on ability: Playground is reachable and holds Workbench', async ({ page }) => {
+    // Moved here from workbench.spec.ts (TASK-788). It guards the domain rail's
+    // ability gating, not any Workbench feature, and gating it on the harness
+    // service — as its old home is — would silently drop that coverage whenever
+    // the service is down.
+    await page.goto('/dashboard');
+    const rail = page.getByRole('navigation', { name: 'Capability domains' });
+    const playground = rail.getByRole('link', { name: 'Playground' });
+    await expect(playground).toBeVisible();
+
+    await playground.click();
+    await expect(page.getByRole('link', { name: 'Workbench' })).toBeVisible();
+  });
 });
