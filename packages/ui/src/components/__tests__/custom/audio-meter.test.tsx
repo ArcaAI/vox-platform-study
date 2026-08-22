@@ -37,22 +37,22 @@ test.describe('AudioMeter', () => {
   });
 
   test.describe('level colors', () => {
-    test('shows green for low levels (<=40)', async ({ mount }) => {
+    test('shows success for low levels (<=40)', async ({ mount }) => {
       const component = await mount(<AudioMeter level={25} isCapturing={true} isSpeaking={false} isMuted={false} />);
       const bar = component.locator('[role="meter"]').locator('div');
-      await expect(bar).toHaveClass(/bg-green-500/);
+      await expect(bar).toHaveClass(/bg-success/);
     });
 
-    test('shows yellow for medium levels (41-70)', async ({ mount }) => {
+    test('shows warning for medium levels (41-70)', async ({ mount }) => {
       const component = await mount(<AudioMeter level={55} isCapturing={true} isSpeaking={false} isMuted={false} />);
       const bar = component.locator('[role="meter"]').locator('div');
-      await expect(bar).toHaveClass(/bg-yellow-500/);
+      await expect(bar).toHaveClass(/bg-warning/);
     });
 
-    test('shows red for high levels (>70)', async ({ mount }) => {
+    test('shows destructive for high levels (>70)', async ({ mount }) => {
       const component = await mount(<AudioMeter level={85} isCapturing={true} isSpeaking={false} isMuted={false} />);
       const bar = component.locator('[role="meter"]').locator('div');
-      await expect(bar).toHaveClass(/bg-red-500/);
+      await expect(bar).toHaveClass(/bg-destructive/);
     });
   });
 

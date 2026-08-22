@@ -159,7 +159,11 @@ test.describe('Select', () => {
       const trigger = page.getByRole('combobox');
       await trigger.click();
 
-      await page.keyboard.press('ArrowDown');
+      // Radix moves focus onto the selected/first option as the listbox opens.
+      // Pressing before that settles drops the first key in Chromium but not in
+      // Firefox/WebKit, so wait for the initial highlight to land first.
+      await expect(page.getByRole('option', { name: 'Apple' })).toHaveAttribute('data-highlighted');
+
       await page.keyboard.press('ArrowDown');
 
       const bananaOption = page.getByRole('option', { name: 'Banana' });
