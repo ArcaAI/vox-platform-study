@@ -153,7 +153,7 @@ export function AccountScreen() {
       ) : (
         <div className="flex flex-col gap-6">
           <section aria-labelledby={`${uid}-identity`} className="flex flex-col gap-3">
-            <h2 id={`${uid}-identity`} className="text-base font-semibold">
+            <h2 id={`${uid}-identity`} className="text-base font-medium">
               Identity
             </h2>
             <Card className="gap-4 p-6">
@@ -162,12 +162,12 @@ export function AccountScreen() {
                   <AvatarFallback>{initials(identityUser.username)}</AvatarFallback>
                 </Avatar>
                 <div className="flex min-w-0 flex-col">
-                  <span className="text-lg font-semibold">{identityUser.username}</span>
+                  <span className="text-lg font-medium">{identityUser.username}</span>
                   {identityUser.email ? <span className="text-muted-foreground text-sm">{identityUser.email}</span> : null}
                 </div>
                 <div className="flex flex-wrap items-center gap-2 sm:ml-auto">
                   {identityUser.roles.map((role) => (
-                    <Badge key={role} variant="secondary" className="font-mono text-2xs">
+                    <Badge key={role} variant="secondary" className="font-mono text-xs">
                       {role}
                     </Badge>
                   ))}
@@ -188,7 +188,7 @@ export function AccountScreen() {
           </section>
           <section aria-labelledby={`${uid}-settings`} className="flex flex-col gap-3">
             <div className="flex flex-col gap-1">
-              <h2 id={`${uid}-settings`} className="text-base font-semibold">
+              <h2 id={`${uid}-settings`} className="text-base font-medium">
                 My settings
               </h2>
               <p className="text-muted-foreground text-sm">
@@ -220,7 +220,7 @@ export function AccountScreen() {
                         <div className="flex flex-wrap items-center gap-2">
                           <span className="text-sm font-medium">{setting.name}</span>
                           {setting.namespace ? <span className="text-muted-foreground text-xs">{setting.namespace}</span> : null}
-                          <Badge variant="outline" className="text-muted-foreground font-mono text-2xs">
+                          <Badge variant="outline" className="text-muted-foreground font-mono text-xs">
                             {setting.dataType}
                           </Badge>
                         </div>
@@ -253,7 +253,7 @@ export function AccountScreen() {
           </section>
           <section aria-labelledby={`${uid}-preferences`} className="flex flex-col gap-3">
             <div className="flex flex-col gap-1">
-              <h2 id={`${uid}-preferences`} className="text-base font-semibold">
+              <h2 id={`${uid}-preferences`} className="text-base font-medium">
                 Preferences
               </h2>
               <p className="text-muted-foreground text-sm">
@@ -319,7 +319,7 @@ export function AccountScreen() {
                 </div>
                 <dl className="grid gap-x-8 gap-y-3 border-t pt-4 sm:grid-cols-2">
                   <ReadOnlyField label="Transcription mode">
-                    <Badge variant="outline" className="font-mono text-2xs">
+                    <Badge variant="outline" className="font-mono text-xs">
                       {preferences.transcriptionMode}
                     </Badge>
                     {preferences.transcriptionModeLocked ? <Badge variant="outline">Locked by admin</Badge> : null}
@@ -327,7 +327,7 @@ export function AccountScreen() {
                   {preferences.remoteConfig ? (
                     <ReadOnlyField label="Assigned pipeline">
                       <span>{preferences.remoteConfig.pipelineName ?? preferences.remoteConfig.pipelineId}</span>
-                      <Badge variant="outline" className="text-muted-foreground font-mono text-2xs">
+                      <Badge variant="outline" className="text-muted-foreground font-mono text-xs">
                         {preferences.remoteConfig.assignedBy}
                       </Badge>
                       {preferences.remoteConfig.codeSwitchingEnabled ? <Badge variant="outline">Code-switching</Badge> : null}

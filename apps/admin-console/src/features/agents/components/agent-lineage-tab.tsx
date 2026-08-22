@@ -58,7 +58,7 @@ function ConfigVersionsSection({ agentId }: { agentId: string }) {
   if (versions.length === 0) {
     return (
       <Card className="gap-3 p-4">
-        <h3 className="text-sm font-semibold">Config versions</h3>
+        <h3 className="text-sm font-medium">Config versions</h3>
         <p className="text-muted-foreground text-sm">
           No loop-configuration versions recorded yet — a version is written the first time this agent&apos;s role, subscribed kinds, write scope, goal,
           guardrail profile, or always/never actions are set.
@@ -75,7 +75,7 @@ function ConfigVersionsSection({ agentId }: { agentId: string }) {
 
   return (
     <Card className="gap-4 p-4">
-      <h3 className="text-sm font-semibold">Config versions</h3>
+      <h3 className="text-sm font-medium">Config versions</h3>
       <ol aria-label="Loop-configuration versions" className="flex flex-col gap-1">
         {versions.map((version) => (
           <li key={version.id} className="flex min-h-8 flex-wrap items-center gap-x-3 gap-y-1 text-sm">
@@ -198,7 +198,7 @@ function PromotionLineageSection({ agentId }: { agentId: string }) {
 
   return (
     <Card className="gap-3 p-4">
-      <h3 className="text-sm font-semibold">Promotion lineage</h3>
+      <h3 className="text-sm font-medium">Promotion lineage</h3>
       {promotions.length === 0 ? (
         <p className="text-muted-foreground text-sm">This agent was not created by a cross-tenant promotion.</p>
       ) : (

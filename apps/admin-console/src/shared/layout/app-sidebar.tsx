@@ -45,7 +45,7 @@ export function AppSidebar() {
                 <div aria-hidden className="flex size-8 shrink-0 items-center justify-center">
                   <IconHeartRateMonitor className="size-5" />
                 </div>
-                <span className="truncate text-base font-semibold">HOPE Admin</span>
+                <span className="truncate text-base font-medium">HOPE Admin</span>
               </Link>
             </SidebarMenuButton>
           </SidebarMenuItem>

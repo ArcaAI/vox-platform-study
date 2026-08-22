@@ -30,7 +30,7 @@ function toTimelineItem(entry: ChangelogEntry): TimelineItemModel {
     timestamp: entry.publishedAt ?? new Date(0).toISOString(),
     title: (
       <div className="flex flex-wrap items-center gap-2">
-        <span className="font-semibold">{entry.title}</span>
+        <span className="font-medium">{entry.title}</span>
         <span className="text-muted-foreground font-mono text-xs">{entry.platformVersion}</span>
         {entry.publishStatus === 'DRAFT' ? <Badge variant="outline">DRAFT</Badge> : null}
         {!entry.acknowledged ? <Badge variant="secondary">New</Badge> : null}

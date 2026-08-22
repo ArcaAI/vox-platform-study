@@ -441,7 +441,7 @@ function PinControl({ agent, onChanged }: { agent: DepartmentAgent; onChanged: (
   return (
     <Card className="gap-3 p-4" aria-labelledby={`${uid}-title`}>
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <h3 id={`${uid}-title`} className="text-sm font-semibold">
+        <h3 id={`${uid}-title`} className="text-sm font-medium">
           Version pin
         </h3>
         <Badge variant={agent.pinnedVersionNumber != null ? 'default' : 'secondary'}>{currentLabel}</Badge>

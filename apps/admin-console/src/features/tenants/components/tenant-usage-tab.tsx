@@ -42,14 +42,14 @@ export function TenantUsageTab({ id }: { id: string }) {
         {tiles.map((tile) => (
           <Card key={tile.label} className="gap-1 p-4">
             <div className="text-muted-foreground text-xs font-medium">{tile.label}</div>
-            <div className="text-2xl font-semibold tabular-nums">{tile.value}</div>
+            <div className="text-2xl font-medium tabular-nums">{tile.value}</div>
           </Card>
         ))}
       </div>
       <Card className="gap-2 p-4">
         <div className="text-muted-foreground text-xs font-medium">Storage used</div>
         <div className="flex flex-wrap items-baseline gap-2">
-          <span className="text-2xl font-semibold tabular-nums">{formatBytes(data.storageUsedBytes)}</span>
+          <span className="text-2xl font-medium tabular-nums">{formatBytes(data.storageUsedBytes)}</span>
           <span className="text-muted-foreground text-sm">
             {quota ? `of ${formatBytes(quota)} quota (${formatPercent(usedPercent)})` : 'no quota set'}
           </span>

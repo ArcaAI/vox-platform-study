@@ -137,11 +137,11 @@ export function ConsultationReviewScreen({ consultationId }: { consultationId: s
                     <span className="text-sm">{claim.text}</span>
                     <span className="flex flex-wrap items-center gap-1">
                       {/* Never colour alone — the label states the state. */}
-                      <Badge variant={grounded ? 'secondary' : 'destructive'} className="text-2xs">
+                      <Badge variant={grounded ? 'secondary' : 'destructive'} className="text-xs">
                         {grounded ? 'Evidence linked' : 'No source'}
                       </Badge>
                       {typeof claim.confidence === 'number' ? (
-                        <span className="text-muted-foreground font-mono text-2xs">confidence {claim.confidence.toFixed(2)}</span>
+                        <span className="text-muted-foreground font-mono text-xs">confidence {claim.confidence.toFixed(2)}</span>
                       ) : null}
                     </span>
                   </span>
@@ -182,7 +182,7 @@ export function ConsultationReviewScreen({ consultationId }: { consultationId: s
                       <mark
                         key={index}
                         data-highlight="true"
-                        className="rounded-sm bg-amber-200/80 px-0.5 text-amber-950 dark:bg-amber-400/30 dark:text-amber-50"
+                        className="bg-warning/20 dark:bg-warning/25 text-foreground rounded-sm px-0.5"
                       >
                         {segment.text}
                       </mark>

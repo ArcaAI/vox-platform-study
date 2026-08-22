@@ -61,7 +61,7 @@ export function TextModelsSection() {
 
       <section aria-labelledby={`${uid}-primary`} className="flex flex-col gap-3">
         <div className="flex flex-col gap-1">
-          <h2 id={`${uid}-primary`} className="text-base font-semibold">
+          <h2 id={`${uid}-primary`} className="text-base font-medium">
             Primary models
           </h2>
           <p className="text-muted-foreground text-sm">
@@ -77,7 +77,7 @@ export function TextModelsSection() {
 
       <section aria-labelledby={`${uid}-test`} className="flex flex-col gap-3">
         <div className="flex flex-col gap-1">
-          <h2 id={`${uid}-test`} className="text-base font-semibold">
+          <h2 id={`${uid}-test`} className="text-base font-medium">
             Prompt test bench
           </h2>
           <p className="text-muted-foreground text-sm">
@@ -94,7 +94,7 @@ export function TextModelsSection() {
 
       <section aria-labelledby={`${uid}-fallback`} className="flex flex-col gap-3">
         <div className="flex flex-col gap-1">
-          <h2 id={`${uid}-fallback`} className="text-base font-semibold">
+          <h2 id={`${uid}-fallback`} className="text-base font-medium">
             Fallback models <span className="text-muted-foreground text-sm font-normal">(optional)</span>
           </h2>
           <p className="text-muted-foreground text-sm">

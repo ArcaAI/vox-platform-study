@@ -46,7 +46,7 @@ export function EffectiveHarnessPolicyCard() {
   return (
     <section aria-labelledby={`${uid}-title`} className="flex flex-col gap-3">
       <div className="flex flex-col gap-1">
-        <h2 id={`${uid}-title`} className="text-base font-semibold">
+        <h2 id={`${uid}-title`} className="text-base font-medium">
           Effective harness policy ({HARNESS_POLICY_FIELD_CONTROLS.length})
         </h2>
         <p className="text-muted-foreground text-sm">

@@ -180,7 +180,7 @@ function LinesTable({ invoice }: { invoice: BillingInvoice }) {
   }));
   return (
     <section aria-label="Invoice lines">
-      <h3 className="mb-2 text-sm font-semibold">Lines</h3>
+      <h3 className="mb-2 text-sm font-medium">Lines</h3>
       <MetricTable
         columns={[
           { key: 'kind', label: 'Kind' },
@@ -205,7 +205,7 @@ function AdjustmentsTable({ invoice }: { invoice: BillingInvoice }) {
   }));
   return (
     <section aria-label="Invoice adjustments">
-      <h3 className="mb-2 text-sm font-semibold">Adjustments (credit memos)</h3>
+      <h3 className="mb-2 text-sm font-medium">Adjustments (credit memos)</h3>
       <MetricTable
         columns={[
           { key: 'reason', label: 'Reason' },

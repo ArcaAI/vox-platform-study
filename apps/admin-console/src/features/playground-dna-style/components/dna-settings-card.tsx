@@ -98,7 +98,7 @@ export function DnaSettingsCard({ settings, gated, onGate }: { settings: ReturnT
   return (
     <Card className="gap-4">
       <CardHeader>
-        <h2 className="text-sm leading-none font-semibold">DNA settings</h2>
+        <h2 className="text-sm leading-none font-medium">DNA settings</h2>
         <CardAction>
           <span aria-hidden className="text-muted-foreground font-mono text-xs">
             GET/PUT /settings

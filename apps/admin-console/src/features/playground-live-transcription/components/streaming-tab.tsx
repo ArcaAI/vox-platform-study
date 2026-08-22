@@ -120,7 +120,7 @@ function SessionControlsCard({
   return (
     <Card className="gap-4">
       <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-2">
-        <h2 className="text-sm leading-none font-semibold">Session controls</h2>
+        <h2 className="text-sm leading-none font-medium">Session controls</h2>
         <div className="flex items-center gap-2">
           <StatusBadge label={meta.label} colorRole={meta.role} icon={<StatusDot colorRole={meta.role} size="sm" />} />
           {live.session && live.status === 'streaming' ? (
@@ -196,7 +196,7 @@ export function TranscriptPane({ live }: { live: UseLiveSttSessionResult }) {
   return (
     <Card className="gap-4">
       <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-2">
-        <h2 className="text-sm leading-none font-semibold">
+        <h2 className="text-sm leading-none font-medium">
           Live transcript{' '}
           <span aria-hidden className="text-muted-foreground font-normal">
             {'\u00b7'} WS ?sessionId&ticket

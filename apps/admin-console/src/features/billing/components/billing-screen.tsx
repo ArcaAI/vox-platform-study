@@ -164,7 +164,7 @@ function SpendBanner({ spend, period }: { spend: SpendStatus | null; period: str
     <div className={`rounded-lg border px-3 py-2 text-sm ${tone}`} role="status">
       <span className="font-medium">Overage spend</span> {formatMicros(spend.overageSpendMicros)} of {limit}
       {spend.utilizationPercent !== null ? <span className="text-muted-foreground"> · {formatPercent(spend.utilizationPercent)} used</span> : null}
-      {spend.exceeded ? <span className="ml-2 font-semibold">Spend limit reached ({period}).</span> : null}
+      {spend.exceeded ? <span className="ml-2 font-medium">Spend limit reached ({period}).</span> : null}
     </div>
   );
 }

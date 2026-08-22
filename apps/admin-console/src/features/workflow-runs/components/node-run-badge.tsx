@@ -51,12 +51,12 @@ export function NodeRunBadge({ rollup, degraded, className }: NodeRunBadgeProps)
           <StatusBadge label="Degraded" colorRole="warning" icon={<IconAlertTriangle aria-hidden />} />
         ) : null}
         {rollup.attemptCount > 1 ? (
-          <span className="text-muted-foreground text-2xs">
+          <span className="text-muted-foreground text-xs">
             {formatNumber(rollup.attemptCount)} attempts{rollup.attemptGroupingIsDerived ? ' (derived)' : ''}
           </span>
         ) : null}
       </div>
-      {rollup.durationMs !== null ? <p className="text-muted-foreground mt-0.5 text-2xs">{formatNumber(rollup.durationMs)} ms</p> : null}
+      {rollup.durationMs !== null ? <p className="text-muted-foreground mt-0.5 text-xs">{formatNumber(rollup.durationMs)} ms</p> : null}
     </div>
   );
 }

@@ -47,7 +47,7 @@ export function LiveConfigTab() {
   return (
     <Card className="max-w-2xl gap-4 p-6">
       <div className="flex flex-col gap-1">
-        <h2 className="text-base font-semibold">Live documentation engine</h2>
+        <h2 className="text-base font-medium">Live documentation engine</h2>
         <p className="text-muted-foreground text-sm">
           Runtime kill-switch (super admin, global scope). A Redis override fans out to every API instance &mdash; no redeploy. Disabling refuses new
           sessions while in-flight ones drain. Edited from Agentic policy, which owns this row.
@@ -58,10 +58,10 @@ export function LiveConfigTab() {
         <Badge variant={config.enabled ? 'default' : 'destructive'}>
           {config.enabled ? 'Engine enabled' : 'Engine disabled (kill-switch engaged)'}
         </Badge>
-        <Badge variant="outline" className="font-mono text-2xs">
+        <Badge variant="outline" className="font-mono text-xs">
           env default: {config.envDefault ? 'enabled' : 'disabled'}
         </Badge>
-        <Badge variant="outline" className="font-mono text-2xs">
+        <Badge variant="outline" className="font-mono text-xs">
           source: {config.source}
         </Badge>
         {config.updatedAt ? <span className="text-muted-foreground text-xs">overridden {formatRelativeTime(config.updatedAt)}</span> : null}

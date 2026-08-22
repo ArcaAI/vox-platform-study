@@ -166,7 +166,7 @@ export function ObjectBrowserPanel({
           return (
             <span className="flex items-center gap-2">
               <Icon aria-hidden className="text-muted-foreground size-4 shrink-0" />
-              <span className={cx('min-w-0 truncate font-mono text-xs', selected && 'font-semibold')}>{entry.name}</span>
+              <span className={cx('min-w-0 truncate font-mono text-xs', selected && 'font-medium')}>{entry.name}</span>
               {selected ? (
                 <>
                   <IconCircleDot aria-hidden className="text-primary size-3.5 shrink-0" />

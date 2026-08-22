@@ -125,9 +125,9 @@ function PreSummaryCard({
   return (
     <Card className="gap-4 p-4">
       <div className="flex flex-col gap-1">
-        <h2 className="flex flex-wrap items-baseline gap-x-2 text-sm leading-none font-semibold">
+        <h2 className="flex flex-wrap items-baseline gap-x-2 text-sm leading-none font-medium">
           Pre-summary
-          <Badge variant="secondary" className="text-2xs">
+          <Badge variant="secondary" className="text-xs">
             tenant-wide
           </Badge>
         </h2>
@@ -341,9 +341,9 @@ function SummaryMatrixCard({
   return (
     <Card className="gap-4 p-4">
       <div className="flex flex-col gap-1">
-        <h2 className="flex flex-wrap items-baseline gap-x-2 text-sm leading-none font-semibold">
+        <h2 className="flex flex-wrap items-baseline gap-x-2 text-sm leading-none font-medium">
           Summary
-          <Badge variant="outline" className="text-2xs">
+          <Badge variant="outline" className="text-xs">
             department &times; visit type
           </Badge>
         </h2>
@@ -406,7 +406,7 @@ function SummaryMatrixCard({
                 <TableCell>
                   {department.preSummaryPromptId ? (
                     <span className="flex flex-wrap items-center gap-2">
-                      <Badge variant="destructive" className="text-2xs">
+                      <Badge variant="destructive" className="text-xs">
                         legacy override
                       </Badge>
                       <Button

@@ -126,7 +126,7 @@ function TranscriptionJobsBody() {
         meta: { label: 'Job' },
         cell: ({ row }) => (
           <span
-            className={`block max-w-48 truncate font-mono text-xs ${row.original.id === selectedId ? 'text-primary font-semibold' : ''}`}
+            className={`block max-w-48 truncate font-mono text-xs ${row.original.id === selectedId ? 'text-primary font-medium' : ''}`}
             title={row.original.id}
           >
             {row.original.id}

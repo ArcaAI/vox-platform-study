@@ -126,7 +126,7 @@ export function HarnessPolicyForm({
       <div className="grid gap-4 lg:grid-cols-2">
         {POLICY_FIELD_GROUPS.map((group) => (
           <Card key={group.title} className="gap-3 p-4">
-            <h3 className="text-sm font-semibold">{group.title}</h3>
+            <h3 className="text-sm font-medium">{group.title}</h3>
             <div className="flex flex-col gap-3">
               {group.fields.map((field) => {
                 const id = `${uid}-${field.key}`;
@@ -153,7 +153,7 @@ export function HarnessPolicyForm({
           </Card>
         ))}
         <Card className="gap-3 p-4">
-          <h3 className="text-sm font-semibold">Change note</h3>
+          <h3 className="text-sm font-medium">Change note</h3>
           <div className="flex flex-col gap-1.5">
             <Label htmlFor={`${uid}-reason`} className="text-muted-foreground text-xs font-medium">
               Reason

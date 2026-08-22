@@ -58,7 +58,7 @@ function UsageBody({ apiKey }: { apiKey: ApiKey }) {
       <MetaItem label="Scopes">
         <span className="flex flex-wrap gap-1">
           {(apiKey.scopes ?? []).map((scope) => (
-            <Badge key={scope} variant="outline" className="font-mono text-2xs">
+            <Badge key={scope} variant="outline" className="font-mono text-xs">
               {scope}
             </Badge>
           ))}

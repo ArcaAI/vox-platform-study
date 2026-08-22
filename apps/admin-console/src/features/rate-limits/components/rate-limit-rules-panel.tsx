@@ -311,7 +311,7 @@ export function RateLimitRulesPanel() {
                   {rank.rank}. {rank.label}
                 </Badge>
                 <span className="font-mono text-sm">{rule.routeMatch}</span>
-                <Badge variant="outline" className="text-2xs font-mono">
+                <Badge variant="outline" className="text-xs font-mono">
                   {rule.matchKind}
                 </Badge>
                 {!rule.platform ? <span className="text-muted-foreground truncate font-mono text-xs">{rule.tenantId}</span> : null}

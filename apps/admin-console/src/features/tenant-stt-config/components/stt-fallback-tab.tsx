@@ -19,7 +19,7 @@ function EffectiveResolveCard({ effective }: { effective: EffectiveSttConfig }) 
   return (
     <Card className="gap-3 p-4" aria-labelledby={`${uid}-title`}>
       <div className="flex flex-wrap items-center gap-2">
-        <h2 id={`${uid}-title`} className="text-sm font-semibold">
+        <h2 id={`${uid}-title`} className="text-sm font-medium">
           Effective STT fallback
         </h2>
         <Badge variant="secondary">tenant over SYSTEM default</Badge>
@@ -73,7 +73,7 @@ export function SttFallbackTab() {
       <EffectiveResolveCard effective={effectiveQuery.data} />
       <section aria-labelledby={`${uid}-editor`} className="flex flex-col gap-3">
         <div className="flex flex-col gap-1">
-          <h2 id={`${uid}-editor`} className="text-base font-semibold">
+          <h2 id={`${uid}-editor`} className="text-base font-medium">
             Tenant STT fallback editor
           </h2>
           <p className="text-muted-foreground text-sm">

@@ -69,7 +69,7 @@ function DepartmentGroup({
 }) {
   return (
     <Card className="gap-2 p-4">
-      <h3 className="flex items-baseline gap-2 text-sm font-semibold">
+      <h3 className="flex items-baseline gap-2 text-sm font-medium">
         {department.code ?? department.name ?? department.id}
         <span className="text-muted-foreground text-xs font-normal">
           {agents.length} agent{agents.length === 1 ? '' : 's'}
@@ -174,7 +174,7 @@ export function AgentsTab() {
     <div className="flex flex-col gap-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="flex flex-col gap-1">
-          <h2 className="text-base font-semibold">Agent Catalog ({agents.length})</h2>
+          <h2 className="text-base font-medium">Agent Catalog ({agents.length})</h2>
           <p className="text-muted-foreground text-sm">
             One row per department Agent: an Agent Template bound to a department, pinned or tracking its latest approved Version.
           </p>

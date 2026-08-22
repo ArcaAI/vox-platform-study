@@ -236,7 +236,7 @@ export function DoctorDetailDrawer({
         <div className="flex flex-col gap-2">
           {!editing ? (
             <div className="flex items-center justify-between gap-2">
-              <h3 className="text-xs font-semibold">Style text</h3>
+              <h3 className="text-xs font-medium">Style text</h3>
               <Button variant="outline" size="sm" onClick={() => setEditing(true)} disabled={!etag}>
                 Edit
               </Button>
@@ -250,7 +250,7 @@ export function DoctorDetailDrawer({
         </div>
 
         <div className="flex flex-col gap-2">
-          <h3 className="text-xs font-semibold">Version timeline</h3>
+          <h3 className="text-xs font-medium">Version timeline</h3>
           <VersionTimeline reportId={payload.id} />
         </div>
 

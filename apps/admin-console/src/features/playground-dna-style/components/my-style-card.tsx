@@ -188,7 +188,7 @@ export function MyStyleCard({
 
         <div className="flex flex-col gap-2">
           <div className="flex items-center justify-between gap-2">
-            <h3 className="text-xs font-semibold">Style text</h3>
+            <h3 className="text-xs font-medium">Style text</h3>
             {!editing ? (
               <Button variant="outline" size="sm" onClick={() => setEditing(true)} disabled={!etag}>
                 Edit
@@ -216,7 +216,7 @@ export function MyStyleCard({
   return (
     <Card className="gap-4">
       <CardHeader>
-        <h2 className="text-sm leading-none font-semibold">My writing style</h2>
+        <h2 className="text-sm leading-none font-medium">My writing style</h2>
         <CardAction>
           <span className="flex items-center gap-2">
             {settings.data ? (

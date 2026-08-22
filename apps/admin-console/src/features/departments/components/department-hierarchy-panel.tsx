@@ -117,7 +117,7 @@ export function DepartmentHierarchyPanel({
   return (
     <Card className="gap-3 p-4">
       <div className="flex flex-col gap-0.5">
-        <h2 className="text-sm font-semibold">Hierarchy</h2>
+        <h2 className="text-sm font-medium">Hierarchy</h2>
         <p aria-hidden className="text-muted-foreground font-mono text-xs">
           GET /roots + :id/children
         </p>

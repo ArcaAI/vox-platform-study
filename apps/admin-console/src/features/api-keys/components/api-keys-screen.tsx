@@ -50,7 +50,7 @@ function ScopeBadges({ scopes }: { scopes: string[] | null | undefined }) {
   return (
     <span className="flex items-center gap-1">
       {scopes.slice(0, MAX_SCOPE_BADGES).map((scope) => (
-        <Badge key={scope} variant="outline" className="font-mono text-2xs">
+        <Badge key={scope} variant="outline" className="font-mono text-xs">
           {scope}
         </Badge>
       ))}

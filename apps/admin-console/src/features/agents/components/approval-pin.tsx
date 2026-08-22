@@ -49,7 +49,7 @@ export function ApprovalPin({ template }: { template: Pick<PromptTemplate, 'appr
     return (
       <Badge
         variant="outline"
-        className="font-mono text-2xs"
+        className="font-mono text-xs"
         title="No version is pinned. Clinical resolution skips this template and falls through to the next tier."
       >
         not approved
@@ -61,7 +61,7 @@ export function ApprovalPin({ template }: { template: Pick<PromptTemplate, 'appr
   return (
     <Badge
       variant={drifted ? 'destructive' : 'secondary'}
-      className="font-mono text-2xs"
+      className="font-mono text-xs"
       title={
         drifted
           ? `Resolution serves the pinned snapshot v${pinned}. The current content is v${template.currentVersionNumber} and will not run until it is approved again.`

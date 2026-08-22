@@ -133,7 +133,7 @@ export function ProviderCredentialCard({ service, meta }: { service: ProviderSer
   return (
     <Card className="gap-3 p-4" aria-labelledby={`${uid}-title`}>
       <div className="flex flex-wrap items-center gap-2">
-        <h3 id={`${uid}-title`} className="text-sm font-semibold">
+        <h3 id={`${uid}-title`} className="text-sm font-medium">
           {meta.label}
         </h3>
         {hasKey ? (

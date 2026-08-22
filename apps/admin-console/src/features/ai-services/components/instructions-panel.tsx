@@ -55,7 +55,7 @@ function InstructionsDocument({ instructions }: { instructions: AgenticInstructi
   return (
     <section className="flex flex-col gap-4" aria-labelledby={`${uid}-title`}>
       <div className="flex flex-wrap items-center gap-2">
-        <h2 id={`${uid}-title`} className="text-sm font-semibold">
+        <h2 id={`${uid}-title`} className="text-sm font-medium">
           Agentic instruction set
         </h2>
         <Badge variant={instructions.policySource === 'tenant' ? 'default' : 'secondary'}>{POLICY_SOURCE_LABELS[instructions.policySource]}</Badge>
@@ -67,7 +67,7 @@ function InstructionsDocument({ instructions }: { instructions: AgenticInstructi
 
       <div className="grid items-start gap-4 xl:grid-cols-2">
         <Card className="gap-3 p-4">
-          <h3 className="text-sm font-semibold">Resolved prompt tier</h3>
+          <h3 className="text-sm font-medium">Resolved prompt tier</h3>
           <FieldList
             rows={[
               { label: 'template', value: promptTier.template },
@@ -81,7 +81,7 @@ function InstructionsDocument({ instructions }: { instructions: AgenticInstructi
 
         <Card className="gap-3 p-4">
           <div className="flex flex-wrap items-center gap-2">
-            <h3 className="text-sm font-semibold">Judge prompt pin</h3>
+            <h3 className="text-sm font-medium">Judge prompt pin</h3>
             <Badge variant="outline">{judgePrompt.editable ? 'editable' : 'vendored'}</Badge>
           </div>
           <FieldList
@@ -98,12 +98,12 @@ function InstructionsDocument({ instructions }: { instructions: AgenticInstructi
         </Card>
 
         <Card className="gap-3 p-4">
-          <h3 className="text-sm font-semibold">Sensor thresholds</h3>
+          <h3 className="text-sm font-medium">Sensor thresholds</h3>
           <FieldList rows={Object.entries(sensorThresholds).map(([label, value]) => ({ label, value: String(value) }))} />
         </Card>
 
         <Card className="gap-3 p-4">
-          <h3 className="text-sm font-semibold">Safety criteria</h3>
+          <h3 className="text-sm font-medium">Safety criteria</h3>
           {safetyCriteria.length === 0 ? (
             <p className="text-muted-foreground text-xs">No safety criteria are enforced for this tenant.</p>
           ) : (

@@ -15,7 +15,7 @@ import { WorkingTenantGate } from '@/shared/tenant-scope/working-tenant-gate';
 import { useGateMetrics, useGenerationMetrics } from '../api';
 
 function SectionTitle({ children }: { children: ReactNode }) {
-  return <h2 className="text-sm leading-none font-semibold">{children}</h2>;
+  return <h2 className="text-sm leading-none font-medium">{children}</h2>;
 }
 
 function msLabel(value: number | null): ReactNode {

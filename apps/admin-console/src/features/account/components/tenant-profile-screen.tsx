@@ -86,7 +86,7 @@ function IdentityField({ label, children }: { label: string; children: React.Rea
 function CapabilityList({ title, rows }: { title: string; rows: CapabilityUsageRow[] }) {
   return (
     <Card className="gap-3 p-4">
-      <h3 className="text-sm font-semibold">{title}</h3>
+      <h3 className="text-sm font-medium">{title}</h3>
       <dl className="flex flex-col gap-2">
         {rows.map((row) => (
           <div key={row.key} className="flex flex-wrap items-center justify-between gap-2">
@@ -146,13 +146,13 @@ function PlanUsagePanel() {
     <div className="flex flex-col gap-3">
       <p className="text-muted-foreground text-sm">Resolved limits and live usage for this tenant. Limits are managed by the platform team.</p>
       <div className="flex flex-wrap items-center gap-2">
-        <Badge variant="outline" className="text-muted-foreground font-mono text-2xs">
+        <Badge variant="outline" className="text-muted-foreground font-mono text-xs">
           model: {capabilities.modelTier}
         </Badge>
-        <Badge variant="outline" className="text-muted-foreground font-mono text-2xs">
+        <Badge variant="outline" className="text-muted-foreground font-mono text-xs">
           rate tier: {capabilities.rateLimitTier}
         </Badge>
-        <Badge variant="outline" className="text-muted-foreground font-mono text-2xs">
+        <Badge variant="outline" className="text-muted-foreground font-mono text-xs">
           enforcement: {capabilities.enforcementEnabled ? 'on' : 'off'}
         </Badge>
         {capabilities.trial.isTrial ? (
@@ -171,7 +171,7 @@ function PlanUsagePanel() {
         <CapabilityList title="Quantity limits" rows={capabilities.quantities} />
         <CapabilityList title="Monthly meters" rows={capabilities.meters} />
         <Card className="gap-3 p-4">
-          <h3 className="text-sm font-semibold">Features</h3>
+          <h3 className="text-sm font-medium">Features</h3>
           <dl className="flex flex-col gap-2">
             {FEATURE_LABELS.map((feature) => (
               <div key={feature.key} className="flex flex-wrap items-center justify-between gap-2">

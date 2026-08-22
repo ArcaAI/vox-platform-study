@@ -46,7 +46,7 @@ function EffectiveResolveCard({ policy }: { policy: HarnessPolicy }) {
   return (
     <Card className="gap-3 p-4" aria-labelledby={`${uid}-title`}>
       <div className="flex flex-wrap items-center gap-2">
-        <h2 id={`${uid}-title`} className="text-sm font-semibold">
+        <h2 id={`${uid}-title`} className="text-sm font-medium">
           Effective policy resolve
         </h2>
         <Badge variant={policy.source === 'tenant' ? 'default' : 'secondary'}>{SOURCE_LABELS[policy.source]}</Badge>
@@ -165,7 +165,7 @@ function TenantPolicyTab({ isElevated }: { isElevated: boolean }) {
       ) : (
         <section aria-labelledby={`${uid}-save`} className="flex flex-col gap-3">
           <div className="flex flex-col gap-1">
-            <h2 id={`${uid}-save`} className="text-base font-semibold">
+            <h2 id={`${uid}-save`} className="text-base font-medium">
               Tenant policy editor
             </h2>
             <p className="text-muted-foreground text-sm">
@@ -214,7 +214,7 @@ function GlobalDefaultTab() {
   return (
     <section aria-labelledby={`${uid}-global`} className="flex flex-col gap-3">
       <div className="flex flex-col gap-1">
-        <h2 id={`${uid}-global`} className="text-base font-semibold">
+        <h2 id={`${uid}-global`} className="text-base font-medium">
           Global default
         </h2>
         <p className="text-muted-foreground text-sm">

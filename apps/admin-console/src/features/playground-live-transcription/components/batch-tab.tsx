@@ -143,7 +143,7 @@ function UploadCard({ pipelineId, onEnqueue }: { pipelineId: string | null; onEn
   return (
     <Card className="gap-4">
       <CardHeader>
-        <h2 className="text-sm leading-none font-semibold">
+        <h2 className="text-sm leading-none font-medium">
           Batch upload{' '}
           <span aria-hidden className="text-muted-foreground font-normal">
             {'·'} one POST {'…'}/transcribe per file
@@ -380,7 +380,7 @@ function QueueCard({
   return (
     <Card role="region" aria-label="Batch queue" className="gap-4">
       <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-2">
-        <h2 className="text-sm leading-none font-semibold">
+        <h2 className="text-sm leading-none font-medium">
           Queue ({items.length}){' '}
           <span aria-hidden className="text-muted-foreground font-normal">
             {'·'} 2 files in flight at a time
@@ -549,7 +549,7 @@ function ResultPanel({ selection, items }: { selection: Selection; items: BatchQ
   return (
     <Card role="region" aria-label="Transcript" className="gap-4">
       <CardHeader>
-        <h2 className="text-sm leading-none font-semibold">
+        <h2 className="text-sm leading-none font-medium">
           Transcript{' '}
           <span aria-hidden className="text-muted-foreground font-normal">
             {'·'} live segments, then the job{'’'}s result text
@@ -669,7 +669,7 @@ function MyJobsStrip({ selection, onSelectJob }: { selection: Selection; onSelec
   return (
     <Card role="region" aria-label="My jobs" className="gap-4">
       <CardHeader>
-        <h2 className="text-sm leading-none font-semibold">
+        <h2 className="text-sm leading-none font-medium">
           My jobs{jobsQuery.data ? ` (${jobsQuery.data.total})` : ''}{' '}
           <span aria-hidden className="text-muted-foreground font-normal">
             {'·'} owner-scoped {'·'} select a row to read its transcript

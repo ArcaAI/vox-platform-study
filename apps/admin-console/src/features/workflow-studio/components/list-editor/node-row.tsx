@@ -49,12 +49,12 @@ export function NodeRow({ node, edges, otherNodes, problems, selected, readOnly,
         >
           <span className="truncate text-sm font-medium">{label}</span>
           {node.safetyClasses.map((cls) => (
-            <Badge key={cls} variant={cls === 'mandatory' ? 'destructive' : 'outline'} className="text-2xs">
+            <Badge key={cls} variant={cls === 'mandatory' ? 'destructive' : 'outline'} className="text-xs">
               {cls}
             </Badge>
           ))}
           {worstSeverity ? (
-            <Badge variant={SEVERITY_VARIANT[worstSeverity]} className="text-2xs">
+            <Badge variant={SEVERITY_VARIANT[worstSeverity]} className="text-xs">
               {problems.length} {worstSeverity === 'ERROR' ? 'error' : 'warning'}
               {problems.length === 1 ? '' : 's'}
             </Badge>

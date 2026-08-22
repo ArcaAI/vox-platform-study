@@ -183,7 +183,7 @@ export function LiveSessionColumn({
 
   return (
     <section aria-label="Live session" className="bg-background flex h-full min-h-0 flex-col">
-      <div className="bg-card m-3 mb-1 flex shrink-0 items-center gap-3.5 rounded-xl border p-3 shadow-sm">
+      <div className="bg-card m-3 mb-1 flex shrink-0 items-center gap-3.5 rounded-xl border p-3">
         <div
           className={cn(
             'flex shrink-0 items-center gap-2 rounded-full border px-3 py-1.5',
@@ -191,10 +191,10 @@ export function LiveSessionColumn({
           )}
         >
           <span aria-hidden className={cn('size-2 rounded-full', isRecording ? 'bg-destructive animate-pulse' : 'bg-muted-foreground')} />
-          <span className={cn('text-sm font-bold', isRecording ? 'text-destructive' : 'text-muted-foreground')}>
+          <span className={cn('text-sm font-medium', isRecording ? 'text-destructive' : 'text-muted-foreground')}>
             {isRecording ? 'Recording' : 'Idle'}
           </span>
-          <span className="font-mono text-sm font-semibold" aria-label="Elapsed time">
+          <span className="font-mono text-sm font-medium" aria-label="Elapsed time">
             {formatElapsed(displayElapsed)}
           </span>
         </div>

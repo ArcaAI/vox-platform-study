@@ -9,7 +9,7 @@ import { Badge } from '@arcaai/ui';
 
 export function SafetyClassBadge({ className }: { className: string }) {
   return (
-    <Badge variant={className === 'mandatory' ? 'destructive' : 'outline'} className="text-2xs">
+    <Badge variant={className === 'mandatory' ? 'destructive' : 'outline'} className="text-xs">
       {className}
     </Badge>
   );

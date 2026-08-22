@@ -133,7 +133,7 @@ function AggregateScoreBadges({ aggregates }: { aggregates: unknown }) {
   return (
     <span className="flex flex-wrap gap-1">
       {entries.map(([key, value]) => (
-        <Badge key={key} variant="outline" className="font-mono text-2xs">
+        <Badge key={key} variant="outline" className="font-mono text-xs">
           {key}: {Math.round(value * 100) / 100}
         </Badge>
       ))}
@@ -184,7 +184,7 @@ function EvalPanel({ template }: { template: PromptTemplate }) {
   return (
     <Card className="gap-3 p-4">
       <div className="flex flex-col gap-1">
-        <h3 className="text-sm font-semibold">Eval gate</h3>
+        <h3 className="text-sm font-medium">Eval gate</h3>
         <p className="text-muted-foreground text-xs">
           Golden-set evaluation for this template&apos;s bound agents. Approving (or re-pointing a pin) runs this automatically when a golden set is
           attached &mdash; run it manually here to check first.
@@ -295,7 +295,7 @@ function ApprovePanel({ template, etag }: { template: PromptTemplate; etag: stri
   return (
     <Card className="gap-3 p-4">
       <div className="flex flex-col gap-1">
-        <h3 className="text-sm font-semibold">Governance approval</h3>
+        <h3 className="text-sm font-medium">Governance approval</h3>
         <p className="text-muted-foreground text-sm">
           Approves the current version for clinical flows &mdash; <span className="font-mono text-xs">POST :id/approve</span> with If-Match; pins a
           PromptVersion snapshot and writes a WORM change row. Until this runs, resolution keeps serving the previously pinned version.
@@ -351,7 +351,7 @@ function TemplateGovernanceDetail({ id }: { id: string }) {
     <div className="flex flex-col gap-3">
       <Card className="gap-2 p-4">
         <div className="flex flex-wrap items-center justify-between gap-2">
-          <h3 className="text-sm font-semibold">{template.name}</h3>
+          <h3 className="text-sm font-medium">{template.name}</h3>
           <span className="flex items-center gap-2">
             <TemplateStatusBadge status={template.status} />
             {/* Which PromptVersion the approval is pinned to — what
@@ -381,7 +381,7 @@ export function GovernanceTab() {
   return (
     <section className="flex min-h-0 flex-col gap-3">
       <div className="flex flex-col gap-1">
-        <h2 className="text-base font-semibold">Prompt governance</h2>
+        <h2 className="text-base font-medium">Prompt governance</h2>
         <p className="text-muted-foreground text-sm">
           Version history, field-level diffs and clinical approval for this tenant&apos;s prompt templates.
         </p>

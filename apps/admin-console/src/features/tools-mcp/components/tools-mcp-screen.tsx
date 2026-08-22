@@ -33,11 +33,11 @@ function LoadingTable() {
 
 function AuthPresence({ authRef }: { authRef?: string | null }) {
   return authRef ? (
-    <Badge variant="secondary" className="text-2xs">
+    <Badge variant="secondary" className="text-xs">
       Configured
     </Badge>
   ) : (
-    <Badge variant="outline" className="text-2xs">
+    <Badge variant="outline" className="text-xs">
       None
     </Badge>
   );
@@ -50,7 +50,7 @@ function AllowlistCell({ allowlist }: { allowlist?: string[] | null }) {
   return (
     <div className="flex flex-wrap gap-1">
       {allowlist.map((tool) => (
-        <Badge key={tool} variant="outline" className="font-mono text-2xs">
+        <Badge key={tool} variant="outline" className="font-mono text-xs">
           {tool}
         </Badge>
       ))}
@@ -190,7 +190,7 @@ function ToolsMcpBody() {
                     </TableCell>
                     <TableCell className="max-w-[220px] truncate font-mono text-xs">{server.baseUrl}</TableCell>
                     <TableCell>
-                      <Badge variant="outline" className="font-mono text-2xs">
+                      <Badge variant="outline" className="font-mono text-xs">
                         {server.phiBoundary}
                       </Badge>
                     </TableCell>
@@ -201,7 +201,7 @@ function ToolsMcpBody() {
                       <AuthPresence authRef={server.authRef} />
                     </TableCell>
                     <TableCell>
-                      <Badge variant={server.enabled ? 'secondary' : 'outline'} className="text-2xs">
+                      <Badge variant={server.enabled ? 'secondary' : 'outline'} className="text-xs">
                         {server.enabled ? 'Enabled' : 'Disabled'}
                       </Badge>
                     </TableCell>

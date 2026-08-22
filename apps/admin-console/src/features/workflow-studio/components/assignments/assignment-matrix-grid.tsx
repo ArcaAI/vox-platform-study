@@ -58,7 +58,7 @@ function MatrixCellButton({ cell, onClick, ariaLabel }: { cell: ResolvedAssignme
       className="hover:bg-muted focus-visible:ring-ring flex min-h-11 w-full min-w-40 flex-col items-start gap-1 rounded-md px-2 py-1.5 text-left focus-visible:ring-2 focus-visible:outline-none"
     >
       <span className="w-full truncate font-mono text-xs">{cell.slug ?? <span className="text-muted-foreground">&mdash;</span>}</span>
-      <Badge variant={badge.variant} className="text-[10px]">
+      <Badge variant={badge.variant} className="text-xs">
         {badge.label}
       </Badge>
     </button>
@@ -113,7 +113,7 @@ export function AssignmentMatrixGrid({ departments, paletteKeys, assignmentsByPa
         <ul aria-label="Legend" className="text-muted-foreground flex flex-wrap items-center gap-x-4 gap-y-1 text-xs">
           {(Object.keys(SOURCE_BADGE) as AssignmentCellSource[]).map((source) => (
             <li key={source} className="flex items-center gap-1.5">
-              <Badge variant={SOURCE_BADGE[source].variant} className="text-[10px]">
+              <Badge variant={SOURCE_BADGE[source].variant} className="text-xs">
                 {SOURCE_BADGE[source].label}
               </Badge>
               <span>

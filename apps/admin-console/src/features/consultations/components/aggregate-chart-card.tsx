@@ -63,7 +63,7 @@ export function AggregateChartCard({ className }: { className?: string }) {
   return (
     <Card className={className ? `gap-4 ${className}` : 'gap-4'}>
       <CardHeader>
-        <h2 className="text-sm leading-none font-semibold">New vs revisit {'\u00b7'} aggregate</h2>
+        <h2 className="text-sm leading-none font-medium">New vs revisit {'\u00b7'} aggregate</h2>
         <CardAction>
           <GranularityToggle value={granularity} onChange={setGranularity} />
         </CardAction>

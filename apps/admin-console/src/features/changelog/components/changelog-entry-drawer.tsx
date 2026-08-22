@@ -131,7 +131,7 @@ export function ChangelogEntryDrawer({ open, onOpenChange, entryId }: { open: bo
           </div>
           <div className="flex min-h-0 flex-1 flex-col gap-1.5">
             <Skeleton className="h-4 w-40" />
-            <Skeleton className="min-h-[240px] w-full flex-1" />
+            <Skeleton className="min-h-60 w-full flex-1" />
           </div>
         </div>
       ) : (
@@ -186,7 +186,7 @@ export function ChangelogEntryDrawer({ open, onOpenChange, entryId }: { open: bo
             <Label htmlFor="changelog-body">Body (markdown) *</Label>
             <Textarea
               id="changelog-body"
-              className="min-h-[240px] flex-1 resize-none"
+              className="min-h-60 flex-1 resize-none"
               value={draft.body}
               onChange={(event) => setDraft((prev) => ({ ...prev, body: event.target.value }))}
             />

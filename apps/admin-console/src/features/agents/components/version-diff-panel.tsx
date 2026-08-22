@@ -102,7 +102,7 @@ export function VersionsPanel({ template }: { template: PromptTemplate }) {
   return (
     <Card className="gap-4 py-4">
       <CardHeader className="px-4">
-        <h2 className="flex flex-wrap items-baseline gap-x-2 text-sm leading-none font-semibold">
+        <h2 className="flex flex-wrap items-baseline gap-x-2 text-sm leading-none font-medium">
           Versions
           <span aria-hidden className="text-muted-foreground font-mono text-xs font-normal">
             :id/versions + diff

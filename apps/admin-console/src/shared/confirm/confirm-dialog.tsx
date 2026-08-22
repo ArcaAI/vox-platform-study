@@ -64,7 +64,7 @@ export function ConfirmDialog({
         {typeToConfirm ? (
           <div className="flex flex-col gap-2">
             <Label htmlFor={inputId}>
-              Type <span className="font-mono font-semibold">{typeToConfirm}</span> to confirm
+              Type <span className="font-mono font-medium">{typeToConfirm}</span> to confirm
             </Label>
             <Input id={inputId} value={typed} onChange={(event) => setTyped(event.target.value)} autoComplete="off" />
           </div>

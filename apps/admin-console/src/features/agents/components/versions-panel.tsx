@@ -52,7 +52,7 @@ export function VersionsPanel({ template }: { template: PromptTemplate }) {
 
   return (
     <Card className="gap-4 p-4">
-      <h3 className="flex flex-wrap items-baseline gap-x-2 text-sm leading-none font-semibold">
+      <h3 className="flex flex-wrap items-baseline gap-x-2 text-sm leading-none font-medium">
         Version history
         <span aria-hidden className="text-muted-foreground font-mono text-xs font-normal">
           :id/versions + diff
@@ -83,12 +83,12 @@ export function VersionsPanel({ template }: { template: PromptTemplate }) {
                  */}
                 <span className="flex w-32 shrink-0 gap-1">
                   {version.versionNumber === template.approvedVersionNumber ? (
-                    <Badge variant="default" className="text-2xs">
+                    <Badge variant="default" className="text-xs">
                       serving
                     </Badge>
                   ) : null}
                   {version.versionNumber === template.currentVersionNumber ? (
-                    <Badge variant="secondary" className="text-2xs">
+                    <Badge variant="secondary" className="text-xs">
                       draft
                     </Badge>
                   ) : null}

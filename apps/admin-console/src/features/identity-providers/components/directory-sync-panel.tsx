@@ -219,7 +219,7 @@ function GoogleDirectoryCredentialsForm({ providerId, etag, onSaved }: { provide
           value={privateKey}
           onChange={(event) => setPrivateKey(event.target.value)}
           placeholder="-----BEGIN PRIVATE KEY-----"
-          className="border-input min-h-24 resize-none rounded-md border bg-transparent px-3 py-2 font-mono text-xs shadow-xs"
+          className="border-input min-h-24 resize-none rounded-md border bg-transparent px-3 py-2 font-mono text-xs"
         />
       </div>
       <div className="flex flex-col gap-2">
@@ -274,7 +274,7 @@ export function DirectorySyncPanel({ provider, etag, onSaved }: { provider: Tena
   return (
     <Card className="gap-4 py-4">
       <CardHeader className="px-4">
-        <h2 className="flex flex-wrap items-baseline gap-x-2 text-sm leading-none font-semibold">
+        <h2 className="flex flex-wrap items-baseline gap-x-2 text-sm leading-none font-medium">
           Directory sync
           <span aria-hidden className="text-muted-foreground font-mono text-xs font-normal">
             POST :id/sync

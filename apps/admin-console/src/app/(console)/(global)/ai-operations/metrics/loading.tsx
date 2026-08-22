@@ -20,11 +20,11 @@ export default function AiOperationsMetricsLoading() {
       <div className="grid items-start gap-4 lg:grid-cols-2">
         <div className="rounded-xl border p-6">
           <Skeleton className="h-4 w-40" />
-          <Skeleton className="mt-4 h-[200px] w-full" />
+          <Skeleton className="mt-4 h-50 w-full" />
         </div>
         <div className="rounded-xl border p-6">
           <Skeleton className="h-4 w-44" />
-          <Skeleton className="mt-4 h-[240px] w-full" />
+          <Skeleton className="mt-4 h-60 w-full" />
         </div>
       </div>
     </div>

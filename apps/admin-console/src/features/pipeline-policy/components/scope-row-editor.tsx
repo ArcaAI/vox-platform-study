@@ -117,7 +117,7 @@ export function ScopeRowEditor({
     <Card className="gap-3 p-4" aria-labelledby={`${uid}-title`}>
       <div className="flex items-start justify-between gap-2">
         <div className="flex flex-col gap-0.5">
-          <h2 id={`${uid}-title`} className="text-sm font-semibold">
+          <h2 id={`${uid}-title`} className="text-sm font-medium">
             Effective preview &middot; PUT row
           </h2>
           <p className="text-muted-foreground font-mono text-xs">

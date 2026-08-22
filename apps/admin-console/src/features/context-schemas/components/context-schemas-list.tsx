@@ -89,7 +89,7 @@ export function ContextSchemasList() {
     <div className="flex flex-col gap-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="flex flex-col gap-1">
-          <h2 className="text-base font-semibold">Context schemas ({schemas.length})</h2>
+          <h2 className="text-base font-medium">Context schemas ({schemas.length})</h2>
           <p className="text-muted-foreground text-sm">
             Each schema declares the kinds of context a consultation carries — pick a working kind vocabulary, publish it, and clients discover it at
             session open.

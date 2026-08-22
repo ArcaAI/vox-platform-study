@@ -155,7 +155,7 @@ export function TtsConfigForm({
       <div className="grid gap-4 lg:grid-cols-2">
         {TTS_FIELD_GROUPS.map((group) => (
           <Card key={group.title} className="gap-3 p-4">
-            <h3 className="text-sm font-semibold">{group.title}</h3>
+            <h3 className="text-sm font-medium">{group.title}</h3>
             <div className="flex flex-col gap-3">
               {group.fields.map((field) => {
                 const id = `${uid}-${String(field.key)}`;

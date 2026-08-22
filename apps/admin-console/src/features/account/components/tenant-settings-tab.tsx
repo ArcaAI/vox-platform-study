@@ -246,7 +246,7 @@ export function TenantSettingsTab({ readOnly = false }: { readOnly?: boolean } =
         )}
         <section aria-labelledby={`${uid}-cat-heading`} className="flex min-h-0 min-w-0 flex-1 flex-col gap-4 overflow-y-auto lg:pr-1">
           <div className="flex flex-col gap-1">
-            <h3 id={`${uid}-cat-heading`} className="text-base font-semibold">
+            <h3 id={`${uid}-cat-heading`} className="text-base font-medium">
               {activeMeta.label}
             </h3>
             <p className="text-muted-foreground text-sm">{activeMeta.description}</p>
@@ -307,7 +307,7 @@ export function TenantSettingsTab({ readOnly = false }: { readOnly?: boolean } =
             </Card>
           )}
           {!readOnly && dirtyRows.length > 0 ? (
-            <div className="bg-background sticky bottom-0 flex shrink-0 flex-wrap items-center justify-between gap-3 rounded-md border p-3 shadow-sm">
+            <div className="bg-background sticky bottom-0 flex shrink-0 flex-wrap items-center justify-between gap-3 rounded-md border p-3">
               <span className="text-sm" role="status">
                 {dirtyRows.length === 1 ? '1 unsaved change' : `${dirtyRows.length} unsaved changes`}
               </span>

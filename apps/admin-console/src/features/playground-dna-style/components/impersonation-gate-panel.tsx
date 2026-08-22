@@ -21,7 +21,7 @@ export function ImpersonationGatePanel({ session, gated }: { session: SafeSessio
     return (
       <Card className="gap-4">
         <CardHeader>
-          <h2 className="text-sm leading-none font-semibold">Doctor context</h2>
+          <h2 className="text-sm leading-none font-medium">Doctor context</h2>
           <CardAction>
             <StatusBadge label="ACTIVE" colorRole="success" />
           </CardAction>
@@ -40,7 +40,7 @@ export function ImpersonationGatePanel({ session, gated }: { session: SafeSessio
   return (
     <Card className="gap-4">
       <CardHeader>
-        <h2 className="text-sm leading-none font-semibold">Impersonation gate</h2>
+        <h2 className="text-sm leading-none font-medium">Impersonation gate</h2>
         <CardAction>
           <StatusBadge label="GATE 403" colorRole="warning" />
         </CardAction>

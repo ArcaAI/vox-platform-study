@@ -16,7 +16,7 @@ export function ProblemRow({ finding, onActivate }: ProblemRowProps) {
         onClick={() => onActivate(finding)}
         className="flex w-full items-start gap-2 rounded px-2 py-1.5 text-left text-sm hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
       >
-        <Badge variant={finding.severity === 'ERROR' ? 'destructive' : 'secondary'} className="mt-0.5 shrink-0 text-2xs">
+        <Badge variant={finding.severity === 'ERROR' ? 'destructive' : 'secondary'} className="mt-0.5 shrink-0 text-xs">
           {finding.severity}
         </Badge>
         <span className="min-w-0 flex-1">

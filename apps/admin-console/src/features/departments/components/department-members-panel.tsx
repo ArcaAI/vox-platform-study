@@ -96,7 +96,7 @@ export function DepartmentMembersPanel({ departmentId, departmentName }: { depar
   return (
     <Card className="gap-3 p-4">
       <div className="flex flex-col gap-0.5">
-        <h2 className="text-sm font-semibold">Members of {departmentName}</h2>
+        <h2 className="text-sm font-medium">Members of {departmentName}</h2>
         <p aria-hidden className="text-muted-foreground font-mono text-xs">
           GET :id/users
         </p>
