@@ -8,7 +8,7 @@
  */
 
 import { expect, test } from '@playwright/test';
-import { expectNoA11yViolations } from './helpers/a11y';
+import { expectDistinctControlNames, expectNoA11yViolations } from './helpers/a11y';
 import { loginAsAdmin } from './helpers/auth';
 import { API_DOWN_MESSAGE, APP_DOWN_MESSAGE, apiAvailable, appAvailable } from './helpers/stack';
 
@@ -65,6 +65,10 @@ test.describe('RBAC policies screen', () => {
     // and the empty state's. The test's subject is the FILTERED-EMPTY state, so
     // scope to it rather than letting strict mode pick.
     await expect(page.locator('[data-slot="empty"]').getByRole('button', { name: 'Clear filters' })).toBeVisible();
+    // The filtered-EMPTY state is where the duplicate-name defect lived: the
+    // toolbar's clear control and the empty state's are both on screen only here,
+    // so the default-state axe scans can never see it.
+    await expectDistinctControlNames(page);
   });
 
   test('the create sheet validates malformed JSON rules before allowing save', async ({ page }) => {
