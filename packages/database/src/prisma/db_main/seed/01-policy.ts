@@ -307,6 +307,16 @@ export const DEFAULT_POLICIES: DefaultPolicy[] = [
       // tenant admin (code-correct, unreachable-by-role — flagged as a gap in the ticket's Phase
       // B evidence, closed here now that Phase C's Workbench screen actually consumes it).
       { action: 'manage', subject: 'WorkflowTestFixture', conditions: { tenantId: '${context.tenantId}' } },
+      // The validator's rule rows (TASK-790 W3b). `WorkflowInvariantRuleController` gates on
+      // `@CanManage('WorkflowInvariantRule')`; without this row the surface 403s for every tenant
+      // admin — the same gap shape as the three grants above.
+      //
+      // The condition pins the grant to the caller's own tenant, which is exactly right and is NOT
+      // in tension with a tenant reading the SYSTEM platform register: that widening is the
+      // tenant-scope extension's SYSTEM_SHARED_READ_MODELS list, not an ability. Mutating a
+      // SYSTEM-owned row stays SUPER_ADMIN-only, enforced imperatively in the service (see the
+      // controller's AUTH-NOTE) — this grant can never reach it.
+      { action: 'manage', subject: 'WorkflowInvariantRule', conditions: { tenantId: '${context.tenantId}' } },
     ],
   },
   {
