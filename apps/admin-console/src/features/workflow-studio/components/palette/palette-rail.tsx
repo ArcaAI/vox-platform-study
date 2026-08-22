@@ -78,7 +78,7 @@ export function PaletteRail({ descriptors, entitledFeatureKeys, loading, onAddNo
   return (
     <nav aria-label="Node palette" className="flex flex-col gap-4">
       <div className="flex flex-col gap-1.5">
-        <Label htmlFor={searchId} className="text-muted-foreground text-xs font-semibold tracking-wide uppercase">
+        <Label htmlFor={searchId} className="text-muted-foreground text-xs font-medium tracking-wide uppercase">
           Filter nodes
         </Label>
         <div className="relative">
@@ -100,7 +100,7 @@ export function PaletteRail({ descriptors, entitledFeatureKeys, loading, onAddNo
       ) : null}
       {[...groups.entries()].map(([paletteKey, items]) => (
         <div key={paletteKey} className="flex flex-col gap-2">
-          <h3 className="text-muted-foreground text-xs font-semibold tracking-wide uppercase">
+          <h3 className="text-muted-foreground text-xs font-medium tracking-wide uppercase">
             {paletteKey === UTILITY_GROUP_LABEL ? UTILITY_GROUP_LABEL : humanizeKey(paletteKey)}
           </h3>
           <div className="flex flex-col gap-2">

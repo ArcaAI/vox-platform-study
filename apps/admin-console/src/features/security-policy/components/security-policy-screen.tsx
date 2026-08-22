@@ -148,7 +148,7 @@ export function SecurityPolicyScreen() {
           meta={
             <>
               <span>Platform-wide. Applies to every tenant.</span>
-              <Badge variant="outline" className="font-mono text-2xs">
+              <Badge variant="outline" className="font-mono text-xs">
                 security.password.* · security.secret.*
               </Badge>
             </>
@@ -192,7 +192,7 @@ export function SecurityPolicyScreen() {
         <form id={`${uid}-form`} onSubmit={handleSubmit} className="flex flex-col gap-6">
           <Card className="gap-4 p-4" aria-labelledby={`${uid}-password-title`}>
             <div className="flex flex-col gap-1">
-              <h2 id={`${uid}-password-title`} className="flex items-center gap-2 text-sm font-semibold">
+              <h2 id={`${uid}-password-title`} className="flex items-center gap-2 text-sm font-medium">
                 <IconLock className="size-4" aria-hidden />
                 Passwords
               </h2>
@@ -265,7 +265,7 @@ export function SecurityPolicyScreen() {
 
           <Card className="gap-4 p-4" aria-labelledby={`${uid}-secret-title`}>
             <div className="flex flex-col gap-1">
-              <h2 id={`${uid}-secret-title`} className="flex items-center gap-2 text-sm font-semibold">
+              <h2 id={`${uid}-secret-title`} className="flex items-center gap-2 text-sm font-medium">
                 <IconKey className="size-4" aria-hidden />
                 Issued machine credentials
               </h2>
@@ -275,7 +275,7 @@ export function SecurityPolicyScreen() {
               </p>
               <div className="mt-1 flex flex-wrap items-center gap-1.5">
                 {policy.bounds.governedSurfaces.map((surface) => (
-                  <Badge key={surface} variant="secondary" className="font-mono text-2xs">
+                  <Badge key={surface} variant="secondary" className="font-mono text-xs">
                     {surface}
                   </Badge>
                 ))}

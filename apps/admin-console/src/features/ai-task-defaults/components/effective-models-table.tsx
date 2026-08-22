@@ -97,7 +97,7 @@ export function EffectiveModelsTable() {
   return (
     <section aria-labelledby={`${uid}-title`} className="flex flex-col gap-3">
       <div className="flex flex-col gap-1">
-        <h2 id={`${uid}-title`} className="text-base font-semibold">
+        <h2 id={`${uid}-title`} className="text-base font-medium">
           Effective models ({READ_ONLY_TASK_KEYS.length})
         </h2>
         <p className="text-muted-foreground text-sm">

@@ -142,7 +142,7 @@ export function TextDefaultProviderControl() {
   return (
     <Card className="gap-3 p-4" aria-labelledby={`${uid}-title`}>
       <div className="flex flex-col gap-1">
-        <h2 id={`${uid}-title`} className="text-base font-semibold">
+        <h2 id={`${uid}-title`} className="text-base font-medium">
           Default text-generation provider
         </h2>
         <p className="text-muted-foreground text-sm">

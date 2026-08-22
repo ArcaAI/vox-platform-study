@@ -185,7 +185,7 @@ export function MyReportsCard({
   return (
     <Card className="gap-4">
       <CardHeader>
-        <h2 className="text-sm leading-none font-semibold">My reports {reports.data ? `(${reports.data.length})` : ''}</h2>
+        <h2 className="text-sm leading-none font-medium">My reports {reports.data ? `(${reports.data.length})` : ''}</h2>
         <CardAction>
           <span aria-hidden className="text-muted-foreground font-mono text-xs">
             GET /mine
@@ -195,7 +195,7 @@ export function MyReportsCard({
       <CardContent className="flex flex-col gap-4">
         {body}
         <div className="flex flex-col gap-2">
-          <h3 className="text-xs font-semibold">Version history</h3>
+          <h3 className="text-xs font-medium">Version history</h3>
           {selectedId ? (
             <VersionTimeline reportId={selectedId} />
           ) : (

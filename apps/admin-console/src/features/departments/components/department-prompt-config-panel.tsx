@@ -170,7 +170,7 @@ export function DepartmentPromptConfigPanel({ departmentId, onEdit }: { departme
     <Card className="gap-3 p-4">
       <div className="flex items-start justify-between gap-2">
         <div className="flex min-w-0 flex-col gap-0.5">
-          <h2 className="text-sm font-semibold">Prompt config</h2>
+          <h2 className="text-sm font-medium">Prompt config</h2>
           <p aria-hidden className="text-muted-foreground font-mono text-xs">
             PATCH :id/prompt-config
           </p>

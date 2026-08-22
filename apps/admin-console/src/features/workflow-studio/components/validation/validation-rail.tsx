@@ -77,7 +77,7 @@ export function ValidationRail({ report, nodes, onActivate }: ValidationRailProp
       <p className="text-muted-foreground text-sm">{summary}</p>
       {graphLevel.length > 0 ? (
         <div>
-          <h3 className="text-muted-foreground text-xs font-semibold tracking-wide uppercase">Graph</h3>
+          <h3 className="text-muted-foreground text-xs font-medium tracking-wide uppercase">Graph</h3>
           <ul className="flex flex-col gap-1">
             {graphLevel.map((finding) => (
               <ProblemRow key={`${finding.ruleId}-${finding.message}`} finding={finding} onActivate={onActivate} />
@@ -87,7 +87,7 @@ export function ValidationRail({ report, nodes, onActivate }: ValidationRailProp
       ) : null}
       {[...perNode.entries()].map(([nodeId, nodeFindings]) => (
         <div key={nodeId}>
-          <h3 className="text-muted-foreground text-xs font-semibold tracking-wide uppercase">{labelForNode(nodes, nodeId)}</h3>
+          <h3 className="text-muted-foreground text-xs font-medium tracking-wide uppercase">{labelForNode(nodes, nodeId)}</h3>
           <ul className="flex flex-col gap-1">
             {nodeFindings.map((finding) => (
               <ProblemRow key={`${finding.ruleId}-${finding.message}`} finding={finding} onActivate={onActivate} />

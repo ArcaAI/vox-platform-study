@@ -15,7 +15,7 @@ export default function ConsultationsLoading() {
       <div className="grid items-start gap-4 xl:grid-cols-5">
         <div className="flex flex-col gap-3 rounded-md border p-4 xl:col-span-2">
           <Skeleton className="h-4 w-44" />
-          <Skeleton className="h-[240px] w-full" />
+          <Skeleton className="h-60 w-full" />
           <Skeleton className="h-4 w-64" />
         </div>
         <div className="flex flex-col gap-3 rounded-md border p-3 xl:col-span-3">

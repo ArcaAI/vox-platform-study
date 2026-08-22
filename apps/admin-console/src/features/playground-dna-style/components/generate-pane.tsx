@@ -95,7 +95,7 @@ export function GeneratePane({
   return (
     <Card className="gap-4">
       <CardHeader>
-        <h2 className="text-sm leading-none font-semibold">Generate from my notes</h2>
+        <h2 className="text-sm leading-none font-medium">Generate from my notes</h2>
         <CardAction>
           <span aria-hidden className="text-muted-foreground font-mono text-xs">
             POST /generate

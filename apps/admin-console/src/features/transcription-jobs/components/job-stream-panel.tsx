@@ -146,7 +146,7 @@ export function JobStreamCard({ jobId }: { jobId: string | null }) {
   return (
     <Card className="gap-4">
       <CardHeader>
-        <h2 className="text-sm leading-none font-semibold">
+        <h2 className="text-sm leading-none font-medium">
           Job stream{' '}
           <span aria-hidden className="text-muted-foreground font-normal">
             {'\u00b7'} SSE

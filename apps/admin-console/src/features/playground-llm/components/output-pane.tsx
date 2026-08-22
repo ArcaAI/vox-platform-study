@@ -156,7 +156,7 @@ function FailClosedPanel({ message, onRetry }: { message: string; onRetry: () =>
     <div role="alert" className="bg-destructive/5 flex flex-col gap-2 rounded-lg p-4">
       <div className="flex items-center gap-2">
         <IconAlertTriangle aria-hidden className="text-destructive size-4 shrink-0" />
-        <p className="text-destructive text-sm font-semibold">422, text-generation fail-closed</p>
+        <p className="text-destructive text-sm font-medium">422, text-generation fail-closed</p>
       </div>
       <p className="text-sm font-medium">No model resolved for this tenant.</p>
       <p className="text-muted-foreground text-sm">{message}</p>
@@ -209,7 +209,7 @@ export function OutputPane({
   const isActive = isPending || run.kind !== 'idle';
 
   return (
-    <Card className={isActive ? 'border-primary/20 gap-4 shadow-sm' : 'gap-4 shadow-sm'}>
+    <Card className={isActive ? 'border-primary/20 gap-4' : 'gap-4'}>
       <CardHeader>
         <CardTitle>Response</CardTitle>
         <CardDescription>
@@ -317,7 +317,7 @@ export function OutputPane({
 function EmptyOutput() {
   return (
     <div className="bg-muted/40 flex flex-col items-center justify-center gap-3 rounded-lg p-12 text-center">
-      <div className="bg-background flex size-10 items-center justify-center rounded-full shadow-sm">
+      <div className="bg-background flex size-10 items-center justify-center rounded-full border">
         <IconSparkles aria-hidden className="text-muted-foreground size-5" />
       </div>
       <div className="flex flex-col gap-1">

@@ -35,7 +35,7 @@ function serviceStatusDetail(status: string, error?: string): string {
 
 /** Frame 10 card title — small semantic heading under the page h1. */
 function SectionTitle({ children }: { children: ReactNode }) {
-  return <h2 className="text-sm leading-none font-semibold">{children}</h2>;
+  return <h2 className="text-sm leading-none font-medium">{children}</h2>;
 }
 
 function StatStrip({ metrics }: { metrics: ReturnType<typeof usePlatformMetrics> }) {
@@ -279,7 +279,7 @@ export function PlatformDashboardSkeleton() {
       <div className="grid items-start gap-4 lg:grid-cols-2">
         <Card className="gap-4 px-6 py-6">
           <Skeleton className="h-4 w-40" />
-          <Skeleton className="h-[240px] w-full" />
+          <Skeleton className="h-60 w-full" />
         </Card>
         <Card className="gap-4 px-6 py-6">
           <Skeleton className="h-4 w-40" />

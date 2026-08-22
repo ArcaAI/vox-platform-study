@@ -86,13 +86,13 @@ function CascadeResolveCard({ column, matrixRows, rows }: { column: ToggleColumn
   const effective = rows.effective;
   return (
     <Card className="gap-3 p-4" role="group" aria-label={`Cascade resolve for ${column.param}`}>
-      <h2 className="text-sm font-semibold">Cascade resolve &middot; one key</h2>
+      <h2 className="text-sm font-medium">Cascade resolve &middot; one key</h2>
       <div className="flex flex-col gap-1 font-mono text-xs">
         <p className="text-muted-foreground">{column.param}</p>
         {matrixRows.map((matrixRow) => {
           const wins = winner === matrixRow.tier;
           return (
-            <p key={matrixRow.tier} className={wins ? 'font-semibold' : undefined}>
+            <p key={matrixRow.tier} className={wins ? 'font-medium' : undefined}>
               <span className="text-muted-foreground">{matrixRow.label}</span>{' '}
               <PinCell tier={matrixRow.tier} row={matrixRow.row} keyName={column.key} rows={rows} showEffective={false} />
               {wins ? <span> {'\u2190'} wins</span> : null}
@@ -100,7 +100,7 @@ function CascadeResolveCard({ column, matrixRows, rows }: { column: ToggleColumn
           );
         })}
         {effective ? (
-          <p className="mt-1 font-semibold">
+          <p className="mt-1 font-medium">
             EFFECTIVE {toggleLabel(column.key, effective[column.key])}
             {winner === null ? <span className="text-muted-foreground font-normal"> (code default)</span> : null}
           </p>
@@ -332,7 +332,7 @@ export function PipelinePolicyScreen() {
             </div>
             {selection === null ? (
               <Card className="gap-2 p-4">
-                <h2 className="text-sm font-semibold">Effective preview &middot; PUT row</h2>
+                <h2 className="text-sm font-medium">Effective preview &middot; PUT row</h2>
                 <p className="text-muted-foreground text-sm">
                   Select a matrix row to edit its pins. <span className="font-mono text-xs">PUT /admin/harness/pipeline-policy/row</span> upserts one
                   scope row &mdash; preview recomputes before save.
@@ -340,7 +340,7 @@ export function PipelinePolicyScreen() {
               </Card>
             ) : selection === 'SYSTEM' ? (
               <Card className="gap-2 p-4">
-                <h2 className="text-sm font-semibold">SYSTEM defaults</h2>
+                <h2 className="text-sm font-medium">SYSTEM defaults</h2>
                 <p className="text-muted-foreground text-sm">The SYSTEM tier is the platform default row and is read-only on this tenant surface.</p>
                 <div>
                   <Button variant="outline" size="sm" onClick={() => setSelectedTier(null)}>

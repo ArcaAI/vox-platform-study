@@ -73,7 +73,7 @@ const NO_GUARDRAIL_PROFILE = '__none__';
 function SectionHeading({ id, title, hint }: { id: string; title: string; hint?: string }) {
   return (
     <div className="flex flex-col gap-0.5">
-      <h3 id={id} className="text-sm font-semibold">
+      <h3 id={id} className="text-sm font-medium">
         {title}
       </h3>
       {hint ? <p className="text-muted-foreground text-xs">{hint}</p> : null}

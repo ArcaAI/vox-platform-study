@@ -64,17 +64,17 @@ export function LiveEngineTab() {
   return (
     <Card className="max-w-2xl gap-4 p-6">
       <div className="flex flex-col gap-1">
-        <h2 className="text-base font-semibold">Agentic engine</h2>
+        <h2 className="text-base font-medium">Agentic engine</h2>
         <p className="text-muted-foreground text-sm">
           Global runtime kill-switch. <span className="font-mono text-xs">PATCH /admin/harness/live/config</span> persists a Redis override that fans
           out to all API instances &mdash; no redeploy. Disabling refuses new sessions while in-flight ones drain.
         </p>
       </div>
       <div className="text-muted-foreground flex flex-wrap items-center gap-2 text-xs">
-        <Badge variant="outline" className="font-mono text-2xs">
+        <Badge variant="outline" className="font-mono text-xs">
           env default: {config.envDefault ? 'enabled' : 'disabled'}
         </Badge>
-        <Badge variant="outline" className="font-mono text-2xs">
+        <Badge variant="outline" className="font-mono text-xs">
           source: {config.source}
         </Badge>
         {config.updatedAt ? <span>overridden {formatRelativeTime(config.updatedAt)}</span> : null}

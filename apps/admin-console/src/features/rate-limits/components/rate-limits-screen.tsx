@@ -38,10 +38,10 @@ const STATUS_OPTIONS = [
 function SourceBadges({ limitSource, ttlSource }: { limitSource: string; ttlSource: string }) {
   return (
     <span className="flex items-center gap-1">
-      <Badge variant="outline" className="text-muted-foreground font-mono text-2xs">
+      <Badge variant="outline" className="text-muted-foreground font-mono text-xs">
         limit: {limitSource}
       </Badge>
-      <Badge variant="outline" className="text-muted-foreground font-mono text-2xs">
+      <Badge variant="outline" className="text-muted-foreground font-mono text-xs">
         ttl: {ttlSource}
       </Badge>
     </span>
@@ -416,7 +416,7 @@ export function RateLimitsScreen() {
                   className="bg-card flex flex-wrap items-center justify-between gap-4 rounded-md border p-4"
                 >
                   <div className="flex min-w-0 flex-col gap-1">
-                    <h2 id={`${headingId}-kill-switch`} className="text-base font-semibold">
+                    <h2 id={`${headingId}-kill-switch`} className="text-base font-medium">
                       Rate limiting
                     </h2>
                     <p className="text-muted-foreground text-sm">
@@ -424,7 +424,7 @@ export function RateLimitsScreen() {
                     </p>
                   </div>
                   <div className="flex shrink-0 items-center gap-3">
-                    <Badge variant="outline" className="text-muted-foreground font-mono text-2xs">
+                    <Badge variant="outline" className="text-muted-foreground font-mono text-xs">
                       source: {policy.enabledSource}
                     </Badge>
                     <span className="text-sm font-medium">{policy.enabled ? 'Enabled' : 'Disabled'}</span>
@@ -438,7 +438,7 @@ export function RateLimitsScreen() {
                 </section>
                 <section aria-labelledby={`${headingId}-tiers`} className="flex flex-col gap-3">
                   <div className="flex flex-col gap-1">
-                    <h2 id={`${headingId}-tiers`} className="text-base font-semibold">
+                    <h2 id={`${headingId}-tiers`} className="text-base font-medium">
                       Tier defaults
                     </h2>
                     <p className="text-muted-foreground text-sm">
@@ -467,7 +467,7 @@ export function RateLimitsScreen() {
                 </section>
                 <section aria-labelledby={`${headingId}-routes`} className="flex flex-col gap-3">
                   <div className="flex flex-col gap-1">
-                    <h2 id={`${headingId}-routes`} className="text-base font-semibold">
+                    <h2 id={`${headingId}-routes`} className="text-base font-medium">
                       Route overrides
                     </h2>
                     <p className="text-muted-foreground text-sm">

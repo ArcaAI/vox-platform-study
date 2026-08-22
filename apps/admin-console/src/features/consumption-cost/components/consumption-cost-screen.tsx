@@ -172,7 +172,7 @@ function CostByCapabilityCard({ summary }: { summary: UsageSummaryView }) {
   return (
     <Card className="gap-4">
       <CardHeader>
-        <h2 className="text-sm font-semibold">Cost by capability</h2>
+        <h2 className="text-sm font-medium">Cost by capability</h2>
       </CardHeader>
       <CardContent>
         <MetricChart
@@ -205,7 +205,7 @@ function CostPerEncounterCard({ cpe }: { cpe: CostPerEncounterView }) {
   return (
     <Card className="gap-4">
       <CardHeader>
-        <h2 className="text-sm font-semibold">Cost per encounter</h2>
+        <h2 className="text-sm font-medium">Cost per encounter</h2>
       </CardHeader>
       <CardContent>
         <MetricTable
@@ -238,7 +238,7 @@ function UsageDetailCard({ summary }: { summary: UsageSummaryView }) {
   return (
     <Card className="gap-4">
       <CardHeader>
-        <h2 className="text-sm font-semibold">Usage detail</h2>
+        <h2 className="text-sm font-medium">Usage detail</h2>
       </CardHeader>
       <CardContent>
         <MetricTable
@@ -271,7 +271,7 @@ function TopTenantsCard({ top }: { top: TopTenantsView }) {
   return (
     <Card className="gap-4">
       <CardHeader>
-        <h2 className="text-sm font-semibold">Platform · top spenders</h2>
+        <h2 className="text-sm font-medium">Platform · top spenders</h2>
         <p className="text-muted-foreground text-xs">Cross-tenant leaderboard (SUPER_ADMIN) — independent of the working tenant.</p>
       </CardHeader>
       <CardContent>

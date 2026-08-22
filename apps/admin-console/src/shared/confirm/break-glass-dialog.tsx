@@ -85,7 +85,7 @@ export function BreakGlassDialog({
           </div>
           <div className="flex flex-col gap-2">
             <Label htmlFor={nameId}>
-              Type <span className="font-mono font-semibold">{confirmationName}</span> to confirm
+              Type <span className="font-mono font-medium">{confirmationName}</span> to confirm
             </Label>
             <Input id={nameId} value={typedName} onChange={(event) => setTypedName(event.target.value)} autoComplete="off" />
           </div>

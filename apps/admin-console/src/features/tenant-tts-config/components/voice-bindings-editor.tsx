@@ -37,7 +37,7 @@ export function VoiceBindingsEditor({
   return (
     <Card className="gap-3 p-4 lg:col-span-2">
       <div className="flex flex-col gap-1">
-        <h3 className="text-sm font-semibold">Voice bindings</h3>
+        <h3 className="text-sm font-medium">Voice bindings</h3>
         <p className="text-muted-foreground text-xs">
           Per internal voice id, the provider voice name each engine speaks with. Empty = inherit the platform binding.
         </p>

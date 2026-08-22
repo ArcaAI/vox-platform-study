@@ -394,7 +394,7 @@ export function DnaRedactionCard({
   return (
     <Card className="gap-4">
       <CardHeader>
-        <h2 className="text-sm leading-none font-semibold">Redaction rules</h2>
+        <h2 className="text-sm leading-none font-medium">Redaction rules</h2>
         <CardAction>
           <span aria-hidden className="text-muted-foreground font-mono text-xs">
             GET /my-style/redaction-rules

@@ -118,7 +118,7 @@ export function RateLimitExplainPanel() {
           </section>
 
           <section className="flex flex-col gap-2">
-            <h3 className="text-base font-semibold">Resolution trace</h3>
+            <h3 className="text-base font-medium">Resolution trace</h3>
             <p className="text-muted-foreground text-sm">
               Levels are listed in precedence order. The first one with an opinion wins; the rest are what would apply if it were removed.
             </p>

@@ -36,11 +36,11 @@ function StepRow({ step }: { step: TrajectoryStep }) {
     <li className="flex flex-col gap-1 rounded-md border p-2">
       <div className="flex flex-wrap items-center gap-2">
         <span className="text-muted-foreground w-8 shrink-0 font-mono text-xs tabular-nums">#{step.seq}</span>
-        <Badge variant="outline" className="font-mono text-2xs">
+        <Badge variant="outline" className="font-mono text-xs">
           {step.stepType}
         </Badge>
         <span className="min-w-0 flex-1 truncate text-sm font-medium">{step.name}</span>
-        <Badge variant={statusVariant(step.status)} className="shrink-0 text-2xs">
+        <Badge variant={statusVariant(step.status)} className="shrink-0 text-xs">
           {step.status}
         </Badge>
         {step.durationMs !== null ? (
@@ -115,8 +115,8 @@ export function TrajectoryTimeline({ session }: { session: TrajectorySession }) 
     <Card className="flex min-h-0 flex-col gap-3 p-4">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="flex min-w-0 flex-col gap-1">
-          <h2 className="flex flex-wrap items-center gap-2 text-base font-semibold">
-            <Badge variant="secondary" className="text-2xs">
+          <h2 className="flex flex-wrap items-center gap-2 text-base font-medium">
+            <Badge variant="secondary" className="text-xs">
               {session.sessionKind}
             </Badge>
             <span className="min-w-0 truncate font-mono text-sm">{session.sessionId}</span>

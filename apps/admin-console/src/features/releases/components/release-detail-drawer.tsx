@@ -92,12 +92,12 @@ function ChangesTab({ release }: { release: ServiceRelease }) {
     <div className="flex flex-col gap-5">
       {groups.map((group) => (
         <div key={group.type} className="flex flex-col gap-2">
-          <h3 className="text-sm font-semibold">{group.label}</h3>
+          <h3 className="text-sm font-medium">{group.label}</h3>
           <ul className="flex flex-col gap-1.5">
             {group.items.map((item) => (
               <li key={item.sha + item.subject} className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5 text-sm">
                 {item.breaking ? (
-                  <Badge variant="destructive" className="text-2xs">
+                  <Badge variant="destructive" className="text-xs">
                     Breaking
                   </Badge>
                 ) : null}

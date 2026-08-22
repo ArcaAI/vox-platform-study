@@ -111,7 +111,7 @@ export function WhatsNewDialog() {
             {shownEntries.map((entry) => (
               <article key={entry.id} className="flex flex-col gap-2 border-b pb-6 last:border-b-0 last:pb-0">
                 <div className="flex flex-wrap items-center gap-2">
-                  <h3 className="text-lg font-semibold tracking-tight">{entry.title}</h3>
+                  <h3 className="text-lg font-medium tracking-tight">{entry.title}</h3>
                   <ChangelogSeverityBadge severity={entry.severity} />
                   <span className="text-muted-foreground font-mono text-xs">{entry.platformVersion}</span>
                 </div>

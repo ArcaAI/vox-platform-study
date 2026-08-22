@@ -237,7 +237,7 @@ export function CaseNoteColumn(props: CaseNoteColumnProps) {
     <section aria-label="Case note" className="bg-card flex h-full min-h-0 flex-col">
       <div className="flex shrink-0 items-center justify-between gap-2.5 border-b p-3">
         <div className="min-w-0">
-          <h2 className="text-sm font-bold">Case note</h2>
+          <h2 className="text-sm font-medium">Case note</h2>
           <p className="text-muted-foreground truncate text-xs">
             {draft
               ? provenance
@@ -254,7 +254,7 @@ export function CaseNoteColumn(props: CaseNoteColumnProps) {
             Note assistant unavailable — showing last update
           </Badge>
         ) : showLive && isRecording ? (
-          <span className="border-ai/40 bg-ai/10 text-ai flex shrink-0 items-center gap-2 rounded-full border px-3 py-1.5 text-xs font-semibold" aria-live="polite">
+          <span className="border-ai/40 bg-ai/10 text-ai flex shrink-0 items-center gap-2 rounded-full border px-3 py-1.5 text-xs font-medium" aria-live="polite">
             <Spinner aria-hidden className="size-3.5" />
             Note assistant drafting
           </span>
@@ -283,12 +283,12 @@ export function CaseNoteColumn(props: CaseNoteColumnProps) {
               <div key={section.title} className="flex gap-2.5">
                 <span
                   aria-hidden
-                  className={cn('flex size-5.5 shrink-0 items-center justify-center rounded-md text-xs font-extrabold', sectionAccent(section.title))}
+                  className={cn('flex size-5.5 shrink-0 items-center justify-center rounded-md text-xs font-medium', sectionAccent(section.title))}
                 >
                   {section.title.trim().charAt(0).toUpperCase()}
                 </span>
                 <div className="min-w-0 flex-1">
-                  <h3 className="mb-1 text-xs font-bold tracking-wide uppercase">{section.title}</h3>
+                  <h3 className="mb-1 text-xs font-medium tracking-wide uppercase">{section.title}</h3>
                   <p className="text-sm leading-relaxed whitespace-pre-wrap">{section.content}</p>
                 </div>
               </div>
@@ -318,15 +318,15 @@ export function CaseNoteColumn(props: CaseNoteColumnProps) {
 
         {vitals.length > 0 ? (
           <div className="border-t pt-3" aria-label="Extracted vitals">
-            <div className="text-muted-foreground mb-1.5 flex items-center gap-1.5 text-xs font-semibold">
+            <div className="text-muted-foreground mb-1.5 flex items-center gap-1.5 text-xs font-medium">
               Vitals
-              <span className="bg-ai/10 text-ai rounded px-1 text-2xs font-bold">AI</span>
+              <span className="bg-ai/10 text-ai rounded px-1 text-xs font-medium">AI</span>
             </div>
             <div className="grid grid-cols-3 gap-2">
               {vitals.map((cell) => (
                 <div key={cell.label} className="bg-background rounded-lg border px-2.5 py-1.5">
-                  <div className="text-muted-foreground text-2xs font-semibold">{cell.label}</div>
-                  <div className="font-mono text-sm font-bold tabular-nums">{cell.value}</div>
+                  <div className="text-muted-foreground text-xs font-medium">{cell.label}</div>
+                  <div className="font-mono text-sm font-medium tabular-nums">{cell.value}</div>
                 </div>
               ))}
             </div>
@@ -339,9 +339,9 @@ export function CaseNoteColumn(props: CaseNoteColumnProps) {
               <Badge key={`${entity.text}-${index}`} variant="secondary" className="gap-1">
                 {entity.text}
                 {entity.icd10 ? (
-                  <span className="bg-accent text-accent-foreground rounded px-1 font-mono text-2xs font-bold">{entity.icd10}</span>
+                  <span className="bg-accent text-accent-foreground rounded px-1 font-mono text-xs font-medium">{entity.icd10}</span>
                 ) : (
-                  <span className="text-muted-foreground font-mono text-2xs">{entity.type}</span>
+                  <span className="text-muted-foreground font-mono text-xs">{entity.type}</span>
                 )}
               </Badge>
             ))}

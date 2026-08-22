@@ -34,7 +34,7 @@ function EffectiveResolveCard({ effective }: { effective: EffectiveTtsConfig }) 
   return (
     <Card className="gap-3 p-4" aria-labelledby={`${uid}-title`}>
       <div className="flex flex-wrap items-center gap-2">
-        <h2 id={`${uid}-title`} className="text-sm font-semibold">
+        <h2 id={`${uid}-title`} className="text-sm font-medium">
           Effective TTS config
         </h2>
         <Badge variant="secondary">tenant over SYSTEM default</Badge>
@@ -103,7 +103,7 @@ export function TtsConfigTab() {
         <EffectiveResolveCard effective={effectiveQuery.data} />
         <section aria-labelledby={`${uid}-editor`} className="flex flex-col gap-3">
           <div className="flex flex-col gap-1">
-            <h2 id={`${uid}-editor`} className="text-base font-semibold">
+            <h2 id={`${uid}-editor`} className="text-base font-medium">
               Tenant TTS config editor
             </h2>
             <p className="text-muted-foreground text-sm">

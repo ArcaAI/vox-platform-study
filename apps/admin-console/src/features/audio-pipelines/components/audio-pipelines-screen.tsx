@@ -115,7 +115,7 @@ function AudioPipelinesBody() {
         minSize: 140,
         meta: { label: 'Pipeline' },
         cell: ({ row }) => (
-          <span className={row.original.id === selectedParam ? 'text-primary font-semibold' : 'font-medium'}>{row.original.name}</span>
+          <span className={row.original.id === selectedParam ? 'font-medium' : 'font-normal'}>{row.original.name}</span>
         ),
       },
       {

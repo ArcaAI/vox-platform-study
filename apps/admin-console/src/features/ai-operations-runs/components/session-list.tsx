@@ -80,13 +80,13 @@ export function SessionList({
                     )}
                   >
                     <span className="flex items-center justify-between gap-2">
-                      <Badge variant="secondary" className="shrink-0 text-2xs">
+                      <Badge variant="secondary" className="shrink-0 text-xs">
                         {session.sessionKind}
                       </Badge>
-                      <span className="text-muted-foreground shrink-0 font-mono text-2xs tabular-nums">{session.stepCount} steps</span>
+                      <span className="text-muted-foreground shrink-0 font-mono text-xs tabular-nums">{session.stepCount} steps</span>
                     </span>
                     <span className="min-w-0 truncate font-mono text-xs">{session.sessionId}</span>
-                    <span className="text-muted-foreground text-2xs">last {formatRelativeTime(session.lastStepAt)}</span>
+                    <span className="text-muted-foreground text-xs">last {formatRelativeTime(session.lastStepAt)}</span>
                   </button>
                 </li>
               );

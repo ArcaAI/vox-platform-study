@@ -109,10 +109,10 @@ export function AgenticContextRow({ item }: { item: SettingCatalogItem }) {
         ) : (
           <div className="flex flex-wrap items-center gap-1" id={`source-${item.key}`}>
             {/* Not colour alone: the text states the source. */}
-            <Badge variant={stored?.sourceScope === 'code-default' ? 'outline' : 'secondary'} className="font-mono text-2xs">
+            <Badge variant={stored?.sourceScope === 'code-default' ? 'outline' : 'secondary'} className="font-mono text-xs">
               {stored?.sourceScope ?? 'unknown'}
             </Badge>
-            {stored?.version ? <span className="text-muted-foreground font-mono text-2xs">v{stored.version}</span> : null}
+            {stored?.version ? <span className="text-muted-foreground font-mono text-xs">v{stored.version}</span> : null}
           </div>
         )}
       </TableCell>

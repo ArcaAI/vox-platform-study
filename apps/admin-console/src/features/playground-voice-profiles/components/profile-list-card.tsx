@@ -92,7 +92,7 @@ export function ProfileListCard({ query, onEnroll }: { query: ReturnType<typeof 
     <>
       <Card className="gap-4">
         <CardHeader>
-          <h2 className="text-sm leading-none font-semibold">My profiles</h2>
+          <h2 className="text-sm leading-none font-medium">My profiles</h2>
           <CardAction>
             <span aria-hidden className="text-muted-foreground font-mono text-xs">
               GET /voice-profiles

@@ -120,7 +120,7 @@ export function DefinitionEditor({
     <div className="flex flex-col gap-6">
       <section className="flex flex-col gap-3">
         <div className="flex items-center justify-between gap-2">
-          <h3 className="text-sm font-semibold">Kinds ({definition.kinds.length})</h3>
+          <h3 className="text-sm font-medium">Kinds ({definition.kinds.length})</h3>
           <Button type="button" size="sm" variant="outline" onClick={addKind}>
             <IconPlus aria-hidden />
             Add kind
@@ -153,7 +153,7 @@ export function DefinitionEditor({
 
       <section className="flex flex-col gap-3">
         <div className="flex items-center justify-between gap-2">
-          <h3 className="text-sm font-semibold">Outputs ({outputs.length})</h3>
+          <h3 className="text-sm font-medium">Outputs ({outputs.length})</h3>
           <Button type="button" size="sm" variant="outline" onClick={addOutput}>
             <IconPlus aria-hidden />
             Add output
@@ -182,7 +182,7 @@ export function DefinitionEditor({
       <Separator />
 
       <section className="flex flex-col gap-3">
-        <h3 className="text-sm font-semibold">Publish</h3>
+        <h3 className="text-sm font-medium">Publish</h3>
 
         {problems && problems.length > 0 ? (
           <Alert variant="destructive">

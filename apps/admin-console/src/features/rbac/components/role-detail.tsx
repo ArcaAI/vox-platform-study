@@ -603,7 +603,7 @@ export function RoleDetailPane({
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="flex min-w-0 flex-col gap-1.5">
           <div className="flex flex-wrap items-center gap-2">
-            <h2 className="text-lg font-semibold">{role.name}</h2>
+            <h2 className="text-lg font-medium">{role.name}</h2>
             <RoleTypeBadge role={role} />
             <ResourceStatusBadge status={role.resourceStatus} />
             <MemberCountBadge role={role} />

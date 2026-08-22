@@ -54,9 +54,9 @@ export function CitationEvidencePanel({ citedSegments, transcriptText, selectedS
 
   return (
     <div className="border-t pt-3" aria-label="Cited transcript evidence">
-      <div className="text-muted-foreground mb-1.5 flex items-center gap-1.5 text-xs font-semibold">
+      <div className="text-muted-foreground mb-1.5 flex items-center gap-1.5 text-xs font-medium">
         Evidence
-        <span className="bg-ai/10 text-ai rounded px-1 text-2xs font-bold">AI</span>
+        <span className="bg-ai/10 text-ai rounded px-1 text-xs font-medium">AI</span>
       </div>
       <ul className="flex list-none flex-col gap-1.5">
         {citedSegments.map((segment) => {
@@ -75,7 +75,7 @@ export function CitationEvidencePanel({ citedSegments, transcriptText, selectedS
               >
                 <span className="text-muted-foreground flex items-center gap-2 font-medium">
                   {segment.speaker ? (
-                    <Badge variant="outline" className="px-1.5 py-0 text-2xs">
+                    <Badge variant="outline" className="px-1.5 py-0 text-xs">
                       {segment.speaker}
                     </Badge>
                   ) : null}

@@ -403,7 +403,7 @@ export function TestRunPanel({ template }: { template: PromptTemplate }) {
   return (
     <Card className="gap-4 py-4">
       <CardHeader className="px-4">
-        <h2 className="flex flex-wrap items-baseline gap-x-2 text-sm leading-none font-semibold">
+        <h2 className="flex flex-wrap items-baseline gap-x-2 text-sm leading-none font-medium">
           Test run
           <span aria-hidden className="text-muted-foreground font-mono text-xs font-normal">
             POST :id/test {'\u2192'} SSE

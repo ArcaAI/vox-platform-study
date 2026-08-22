@@ -120,7 +120,7 @@ export function DocumentCard({ title, description, children }: { title: string; 
     <Card className="gap-3 p-4">
       <section className="flex flex-col gap-3" aria-labelledby={`${uid}-title`}>
         <div className="flex flex-col gap-1">
-          <h2 id={`${uid}-title`} className="text-sm font-semibold">
+          <h2 id={`${uid}-title`} className="text-sm font-medium">
             {title}
           </h2>
           {description ? <p className="text-muted-foreground text-xs">{description}</p> : null}

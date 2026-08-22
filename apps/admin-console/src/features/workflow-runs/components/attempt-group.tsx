@@ -26,7 +26,7 @@ export function AttemptGroup({ rollup }: { rollup: RunNodeRollup }) {
       </div>
       <div className="flex flex-wrap gap-1" aria-label="Trajectory step sequence numbers folded into this group">
         {rollup.attemptSeqs.map((seq, index) => (
-          <Badge key={seq} variant="outline" className="font-mono text-2xs">
+          <Badge key={seq} variant="outline" className="font-mono text-xs">
             attempt {index + 1} &middot; seq {seq}
           </Badge>
         ))}

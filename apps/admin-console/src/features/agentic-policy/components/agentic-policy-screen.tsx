@@ -49,7 +49,7 @@ function GlobalPolicyTab() {
   return (
     <section aria-labelledby={`${uid}-global`} className="flex flex-col gap-3">
       <div className="flex flex-col gap-1">
-        <h2 id={`${uid}-global`} className="text-base font-semibold">
+        <h2 id={`${uid}-global`} className="text-base font-medium">
           Global default agentic loop
         </h2>
         <p className="text-muted-foreground text-sm">

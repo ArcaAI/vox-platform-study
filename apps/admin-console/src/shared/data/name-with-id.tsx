@@ -11,7 +11,7 @@ export function NameWithId({ name, id, showId = true }: { name?: string | null; 
   return (
     <span className="flex flex-col gap-0.5">
       <span className="font-medium">{name}</span>
-      {showId ? <span className="text-muted-foreground font-mono text-2xs leading-tight break-all">{id}</span> : null}
+      {showId ? <span className="text-muted-foreground font-mono text-xs leading-tight break-all">{id}</span> : null}
     </span>
   );
 }

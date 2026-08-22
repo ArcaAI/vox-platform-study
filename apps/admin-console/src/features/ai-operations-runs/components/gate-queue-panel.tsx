@@ -68,15 +68,15 @@ export function GateQueuePanel() {
                   </TableCell>
                   <TableCell>
                     {item.escalated ? (
-                      <Badge variant="destructive" className="text-2xs">
+                      <Badge variant="destructive" className="text-xs">
                         escalated
                       </Badge>
                     ) : item.slaBreached ? (
-                      <Badge variant="destructive" className="text-2xs">
+                      <Badge variant="destructive" className="text-xs">
                         breached
                       </Badge>
                     ) : (
-                      <Badge variant="outline" className="text-2xs">
+                      <Badge variant="outline" className="text-xs">
                         on track
                       </Badge>
                     )}

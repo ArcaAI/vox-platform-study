@@ -105,7 +105,7 @@ export function ConsultationsColumn({ rows, isLoading, error, selectedId, onSele
     <section aria-label="Consultations" className="bg-card flex h-full min-h-0 flex-col">
       <div className="flex shrink-0 flex-col gap-2.5 border-b p-3">
         <div className="flex items-center justify-between gap-2">
-          <h2 className="text-sm font-semibold">Consultations ({rows.length})</h2>
+          <h2 className="text-sm font-medium">Consultations ({rows.length})</h2>
           <Button size="sm" onClick={toggleNewForm} aria-expanded={showNewForm}>
             {showNewForm ? <IconX aria-hidden /> : <IconPlus aria-hidden />}
             {showNewForm ? 'Cancel' : 'New'}
@@ -196,7 +196,7 @@ export function ConsultationsColumn({ rows, isLoading, error, selectedId, onSele
                     <span
                       aria-hidden
                       className={cn(
-                        'flex size-8 shrink-0 items-center justify-center rounded-full text-xs font-bold',
+                        'flex size-8 shrink-0 items-center justify-center rounded-full text-xs font-medium',
                         selected ? 'bg-ai text-ai-foreground' : 'bg-secondary text-secondary-foreground',
                       )}
                     >
@@ -204,9 +204,9 @@ export function ConsultationsColumn({ rows, isLoading, error, selectedId, onSele
                     </span>
                     <span className="flex min-w-0 flex-1 flex-col gap-1">
                       <span className="flex items-baseline justify-between gap-2">
-                        <span className="truncate text-sm font-semibold">{row.patientId}</span>
+                        <span className="truncate text-sm font-medium">{row.patientId}</span>
                         {row.createdAt ? (
-                          <span className="text-muted-foreground shrink-0 font-mono text-2xs">{formatDateTime(row.createdAt)}</span>
+                          <span className="text-muted-foreground shrink-0 font-mono text-xs">{formatDateTime(row.createdAt)}</span>
                         ) : null}
                       </span>
                       <span className="flex items-center gap-1.5">
