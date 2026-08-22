@@ -35,6 +35,7 @@ import { PageHeader } from '@/shared/page/page-header';
 import { ScreenTemplate } from '@/shared/page/screen-template';
 import { WorkingTenantGate } from '@/shared/tenant-scope/working-tenant-gate';
 import {
+  getLatestSummary,
   playgroundConsultationKeys,
   useApproveSummary,
   useAudioPipelines,
@@ -46,10 +47,12 @@ import {
   useStopRecording,
   useSummaryProvenance,
   useTranscriptions,
+  useUpdateSummary,
   type CitedSegment,
 } from '../api';
 import { useColumnLayout } from '../hooks/use-column-layout';
 import { useLiveMetrics } from '../hooks/use-live-metrics';
+import { useNoteEditor, type EditableDraft } from '../hooks/use-note-editor';
 import { CaseNoteColumn } from './scribe/case-note-column';
 import { ConsultationsColumn, type ConsultationListRow } from './scribe/consultations-column';
 import { LiveSessionColumn, type SdkTranscriptSegment, type TranscriptReviewHighlight } from './scribe/live-session-column';
@@ -220,6 +223,7 @@ function ScribeWorkspace() {
   const recordingStop = useStopRecording();
   const summarySync = useGenerateSummary();
   const approve = useApproveSummary();
+  const summaryEdit = useUpdateSummary();
 
   const consultationId = consultation?.id ?? null;
   const isRecording = (consultation?.status ?? '').toUpperCase() === 'RECORDING';
@@ -382,6 +386,34 @@ function ScribeWorkspace() {
     );
   }
 
+  // W1/R5 — the clinician's editing buffer over the persisted draft. The
+  // two-writer policy lives in the hook (see its docblock); this only supplies
+  // the transport: an If-Match PATCH, and a fresh read for the 412 comparison.
+  const editableDraft = useMemo<EditableDraft | null>(
+    () => (draft.data ? { id: draft.data.id, content: draft.data.content, version: draft.data.version } : null),
+    [draft.data],
+  );
+  const noteEditor = useNoteEditor({
+    draft: editableDraft,
+    onSave: async ({ summaryId, content, expectedVersion }) => {
+      const saved = await summaryEdit.mutateAsync({
+        consultationId: consultationId as string,
+        summaryId,
+        body: { content, changeSource: 'doctor_edit', changeReason: 'Clinician edit' },
+        expectedVersion,
+      });
+      toast.success('Note saved');
+      return { id: saved.id, content: saved.content, version: saved.version };
+    },
+    // Deliberately NOT the cached query: a 412 means the cache is the stale
+    // thing, so the comparison must come off the wire.
+    onReload: async () => {
+      if (!consultationId) return null;
+      const latest = await getLatestSummary(consultationId);
+      return latest ? { id: latest.id, content: latest.content, version: latest.version } : null;
+    },
+  });
+
   // Harness owns drafting once its progress stream reports stages — hide the
   // manual generate action then (avoids the generate-vs-auto-harness race).
   const harnessActive = !!progress.snapshot && (progress.snapshot.stages?.length ?? 0) > 0;
@@ -492,6 +524,7 @@ function ScribeWorkspace() {
               transcriptText={transcriptText}
               selectedCitationId={selectedCitationId}
               onSelectCitation={(segment) => setSelectedCitationId(segment.id)}
+              editor={noteEditor}
             />
           </ResizablePanel>
         </ResizablePanelGroup>

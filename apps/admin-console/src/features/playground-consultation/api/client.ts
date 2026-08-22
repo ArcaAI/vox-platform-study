@@ -7,7 +7,7 @@
  * and the review plane the SDK demo composes around it.
  */
 
-import { GatewayError, getJson, patchJson, postJson } from '@/shared/api';
+import { GatewayError, getJson, patchJson, patchWithEtag, postJson } from '@/shared/api';
 import type {
   ApproveSummaryRequest,
   AsyncSummaryJob,
@@ -22,6 +22,7 @@ import type {
   SummaryProvenance,
   SummaryResult,
   TranscriptContextItem,
+  UpdateSummaryRequest,
 } from './types';
 
 const BASE = 'consultations';
@@ -81,6 +82,31 @@ export async function getLatestSummary(consultationId: string): Promise<SummaryR
     if (error instanceof GatewayError && error.isNotFound) return null;
     throw error;
   }
+}
+
+/**
+ * W1 — the clinician's SOAP edit, under RFC 7232 optimistic concurrency.
+ *
+ * `If-Match` is MANDATORY on this route (`@RequiresIfMatch()`); omitting it is
+ * 428 and version drift is 412. The gateway's ETag for a summary IS
+ * `"<version>"` (`ETagInterceptor` renders the row's `_version`), and
+ * `SummaryResponse.version` documents echoing that same number back — so the
+ * precondition is derived from the version carried by the read, and sent BOTH
+ * as the header and as the DTO's required `expectedVersion` body field. The
+ * header wins server-side when both are present (house precedence).
+ */
+export async function updateSummary(
+  consultationId: string,
+  summaryId: string,
+  body: UpdateSummaryRequest,
+  expectedVersion: number,
+): Promise<SummaryResult> {
+  const result = await patchWithEtag<SummaryResult>(
+    consultationPath(consultationId, `summary/${encodeURIComponent(summaryId)}`),
+    { ...body, expectedVersion },
+    `"${expectedVersion}"`,
+  );
+  return result.data;
 }
 
 export function getNamedEntities(consultationId: string, scope?: 'single' | 'chain'): Promise<NamedEntitiesAggregate> {

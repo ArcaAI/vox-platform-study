@@ -16,6 +16,7 @@ const DRAFT: SummaryResult = {
   consultationId: 'c-1',
   type: 'summary',
   content: 'S: Follow-up for hypertension. Improving.',
+  version: 1,
   structuredData: { llmProvider: 'lmstudio', modelName: 'hope-scribe-v2', processingTimeMs: 812 },
 };
 

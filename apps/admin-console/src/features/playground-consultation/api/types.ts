@@ -73,6 +73,20 @@ export interface SummaryResult {
   };
   createdAt?: string;
   updatedAt?: string;
+  /**
+   * OCC row version (`SummaryResponse.version`). The ETag the gateway emits IS
+   * `"<version>"` (`ETagInterceptor`), and the DTO documents echoing this field
+   * back as `If-Match` — so W1's edit path derives the precondition from here.
+   */
+  version: number;
+}
+
+/** Body of `PATCH :id/summary/:summaryId` (UpdateSummaryRequest). */
+export interface UpdateSummaryRequest {
+  content?: string;
+  changeReason?: string;
+  changeSummary?: string;
+  changeSource?: 'doctor_edit' | 'ai_regeneration' | 'system';
 }
 
 /** AsyncJobResponse — `POST :id/summary/async` (lowercase states). */
