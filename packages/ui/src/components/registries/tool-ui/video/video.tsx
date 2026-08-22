@@ -124,7 +124,7 @@ function VideoInner(props: Omit<VideoProps, 'defaultMuted'>) {
       <div
         className={cn(
           'group @container relative isolate flex w-full min-w-0 flex-col overflow-hidden rounded-xl',
-          'border border-border bg-card text-sm shadow-xs',
+          'border border-border bg-card text-sm',
         )}
       >
         <div className={cn('group relative w-full overflow-hidden bg-black', ratio !== 'auto' ? RATIO_CLASS_MAP[ratio] : 'aspect-video')}>
@@ -179,7 +179,7 @@ function VideoInner(props: Omit<VideoProps, 'defaultMuted'>) {
                       Open
                     </Button>
                   )}
-                  <Button variant="default" size="sm" onClick={handleWatch} className="shadow-sm">
+                  <Button variant="default" size="sm" onClick={handleWatch}>
                     <Play className="mr-1 h-4 w-4" aria-hidden="true" />
                     Watch
                   </Button>

@@ -288,7 +288,7 @@ function CodeBlockRoot({
   return (
     <CodeBlockContext.Provider value={state}>
       <div className={cn('@container flex w-full min-w-80 flex-col gap-3', className)} data-tool-ui-id={id} data-slot="code-block">
-        <div className="border-border bg-card overflow-hidden rounded-lg border shadow-xs">
+        <div className="border-border bg-card overflow-hidden rounded-lg border">
           <Collapsible open={!isCollapsed}>{children}</Collapsible>
         </div>
       </div>

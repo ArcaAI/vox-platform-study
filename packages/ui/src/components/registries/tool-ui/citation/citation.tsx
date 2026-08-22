@@ -177,7 +177,7 @@ export function Citation(props: CitationProps) {
       <div
         className={cn(
           'group @container relative isolate flex w-full min-w-0 flex-col overflow-hidden rounded-xl',
-          'border-border bg-card border text-sm shadow-xs',
+          'border-border bg-card border text-sm',
           'transition-colors duration-150',
           sanitizedHref && [
             'cursor-pointer',

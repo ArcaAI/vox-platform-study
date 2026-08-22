@@ -130,7 +130,7 @@ function OrderSummaryRoot({ id, title = 'Order Summary', variant, items, pricing
         aria-labelledby={titleId}
         className={cn('flex max-w-md min-w-80 flex-col gap-3', className)}
       >
-        <div className="text-card-foreground rounded-lg border bg-card p-4 shadow-sm">
+        <div className="text-card-foreground rounded-lg border bg-card p-4">
           <h2 id={titleId} className="text-base font-semibold">
             {title}
           </h2>
@@ -147,7 +147,7 @@ function OrderSummaryRoot({ id, title = 'Order Summary', variant, items, pricing
       aria-labelledby={titleId}
       className={cn('flex max-w-md min-w-80 flex-col gap-3', className)}
     >
-      <div className={cn('text-card-foreground rounded-lg border shadow-sm', isReceipt ? 'bg-card/60' : 'bg-card')}>
+      <div className={cn('text-card-foreground rounded-lg border', isReceipt ? 'bg-card/60' : 'bg-card')}>
         <div className={cn('space-y-4 p-4', isReceipt && 'opacity-95')}>
           <div>
             <h2 id={titleId} className="flex items-center gap-2 text-base font-semibold">

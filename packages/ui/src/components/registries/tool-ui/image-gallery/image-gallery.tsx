@@ -19,7 +19,7 @@ export function ImageGallery({ id, images, title, description, className, onImag
 
   return (
     <article className={cn('relative w-full min-w-80 max-w-lg', className)} data-tool-ui-id={id} data-slot="image-gallery">
-      <div className={cn('@container relative isolate flex w-full min-w-0 flex-col rounded-xl', 'border border-border bg-card text-sm shadow-xs')}>
+      <div className={cn('@container relative isolate flex w-full min-w-0 flex-col rounded-xl', 'border border-border bg-card text-sm')}>
         <ImageGalleryProvider images={images}>
           <Header title={title} description={description} />
           <div className="p-3">

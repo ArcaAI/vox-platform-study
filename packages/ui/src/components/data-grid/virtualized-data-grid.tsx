@@ -299,8 +299,10 @@ export function VirtualizedDataGrid<TData extends RowData>(props: VirtualizedDat
   // them so aria-rowindex never exceeds aria-rowcount.
   const groupHeaderCount = displayRows.length - rows.length;
 
-  // Scroll-driven affordances (Δ5): header elevation once scrolled, and the
-  // pinned-column divider only while horizontally overflowing.
+  // Scroll-driven affordances (Δ5): the sticky header's divider strengthens once
+  // scrolled (elevation is flat under the Tatva geometry contract, so depth is
+  // carried by border + surface), and the pinned-column divider shows only while
+  // horizontally overflowing.
   const [scrolled, setScrolled] = React.useState(false);
   const [overflowX, setOverflowX] = React.useState(false);
 
@@ -393,7 +395,7 @@ export function VirtualizedDataGrid<TData extends RowData>(props: VirtualizedDat
 
     return (
       <>
-        <div role="rowgroup" className={cn('sticky top-0 z-20 border-b bg-card transition-shadow', scrolled && 'shadow-sm')}>
+        <div role="rowgroup" className={cn('sticky top-0 z-20 border-b bg-card transition-colors', scrolled && 'border-foreground/20')}>
           {headerGroups.map((headerGroup) => (
             <div role="row" aria-rowindex={1} key={headerGroup.id} className="flex bg-card" style={{ minHeight: headerHeight }}>
               <SortableContext items={columnOrderIds} strategy={horizontalListSortingStrategy}>

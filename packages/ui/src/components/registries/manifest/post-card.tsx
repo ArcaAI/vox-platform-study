@@ -131,7 +131,7 @@ export function PostCard({ data, actions, appearance }: PostCardProps) {
         <div className="absolute inset-0 bg-black/60" />
         <div className="absolute inset-0 flex flex-col justify-end p-4 text-white">
           <div>
-            {showCategory && post.category && <p className="text-2xs font-medium uppercase tracking-wide text-white/70">{post.category}</p>}
+            {showCategory && post.category && <p className="text-xs font-medium uppercase tracking-wide text-white/70">{post.category}</p>}
             {post.title && <h2 className="mt-1 text-lg font-semibold leading-tight">{post.title}</h2>}
             {post.excerpt && <p className="mt-1 line-clamp-2 text-sm text-white/80">{post.excerpt}</p>}
             {post.tags && post.tags.length > 0 && (
@@ -176,7 +176,7 @@ export function PostCard({ data, actions, appearance }: PostCardProps) {
         <div className="flex flex-1 flex-col justify-between">
           <div>
             {showCategory && post.category && (
-              <p className="mb-0.5 text-2xs font-medium uppercase tracking-wide text-muted-foreground">{post.category}</p>
+              <p className="mb-0.5 text-xs font-medium uppercase tracking-wide text-muted-foreground">{post.category}</p>
             )}
             {post.title && <h3 className="line-clamp-2 text-sm font-medium leading-tight">{post.title}</h3>}
             {post.excerpt && <p className="mt-1 line-clamp-2 text-xs text-muted-foreground">{post.excerpt}</p>}
@@ -215,7 +215,7 @@ export function PostCard({ data, actions, appearance }: PostCardProps) {
       <div className="flex h-full flex-col justify-between rounded-lg border bg-card p-3">
         <div>
           {showCategory && post.category && (
-            <p className="mb-0.5 text-2xs font-medium uppercase tracking-wide text-muted-foreground">{post.category}</p>
+            <p className="mb-0.5 text-xs font-medium uppercase tracking-wide text-muted-foreground">{post.category}</p>
           )}
           {post.title && <h3 className="line-clamp-2 text-sm font-medium">{post.title}</h3>}
           {post.excerpt && <p className="mt-1 line-clamp-2 text-xs text-muted-foreground">{post.excerpt}</p>}
@@ -252,9 +252,7 @@ export function PostCard({ data, actions, appearance }: PostCardProps) {
       )}
       <div className="flex flex-1 flex-col justify-between p-4">
         <div>
-          {showCategory && post.category && (
-            <p className="mb-1 text-2xs font-medium uppercase tracking-wide text-muted-foreground">{post.category}</p>
-          )}
+          {showCategory && post.category && <p className="mb-1 text-xs font-medium uppercase tracking-wide text-muted-foreground">{post.category}</p>}
           {post.title && <h3 className="line-clamp-2 font-medium">{post.title}</h3>}
           {post.excerpt && <p className="mt-2 line-clamp-2 text-sm text-muted-foreground">{post.excerpt}</p>}
           {post.tags && post.tags.length > 0 && (

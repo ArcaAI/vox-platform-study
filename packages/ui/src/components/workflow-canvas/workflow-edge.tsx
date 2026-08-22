@@ -21,7 +21,7 @@ function WorkflowEdge({ id, sourceX, sourceY, targetX, targetY, sourcePosition, 
         <EdgeLabelRenderer>
           <div
             className={cn(
-              'nodrag nopan pointer-events-none absolute rounded-sm bg-[var(--workflow-canvas-edge-label-bg)] px-1.5 py-0.5 text-2xs text-[var(--workflow-canvas-edge-label-fg)]',
+              'nodrag nopan pointer-events-none absolute rounded-sm bg-[var(--workflow-canvas-edge-label-bg)] px-1.5 py-0.5 text-xs text-[var(--workflow-canvas-edge-label-fg)]',
             )}
             style={{ transform: `translate(-50%, -50%) translate(${labelX}px, ${labelY}px)` }}
           >

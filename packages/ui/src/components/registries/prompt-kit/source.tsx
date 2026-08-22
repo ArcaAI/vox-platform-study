@@ -84,7 +84,7 @@ export function SourceContent({ title, description, className }: SourceContentPr
   const { href, domain } = useSourceContext();
 
   return (
-    <HoverCardContent className={cn('w-80 p-0 shadow-xs', className)}>
+    <HoverCardContent className={cn('w-80 p-0', className)}>
       <a href={href} target="_blank" rel="noopener noreferrer" className="flex flex-col gap-2 p-3">
         <div className="flex items-center gap-1.5">
           <img

@@ -49,7 +49,7 @@ function CreditCard({ balance, username, className }: { balance: string; usernam
         ref={cardRef}
         onMouseMove={handleMouseMove}
         onMouseLeave={handleMouseLeave}
-        className="group relative w-full overflow-hidden bg-zinc-950 p-6 shadow-xl ring ring-black/10 dark:bg-zinc-900"
+        className="group relative w-full overflow-hidden bg-zinc-950 p-6 ring ring-black/10 dark:bg-zinc-900"
         style={{
           aspectRatio: '190/123',
           alignSelf: 'stretch',

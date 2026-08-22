@@ -96,7 +96,7 @@ export function StatCard({ data }: StatCardProps) {
             <div key={index} className="rounded-md sm:rounded-lg border bg-card p-2 sm:p-3 space-y-0.5 sm:space-y-1">
               {(stat.label || stat.icon) && (
                 <div className="flex items-center justify-between">
-                  {stat.label && <span className="text-2xs sm:text-xs text-muted-foreground">{stat.label}</span>}
+                  {stat.label && <span className="text-xs text-muted-foreground">{stat.label}</span>}
                   {stat.icon}
                 </div>
               )}
@@ -104,14 +104,14 @@ export function StatCard({ data }: StatCardProps) {
                 <div className="flex flex-wrap items-baseline gap-1 sm:gap-2">
                   {stat.value !== undefined && <span className="text-base sm:text-xl font-bold">{stat.value}</span>}
                   {stat.change !== undefined && (
-                    <span className={cn('flex items-center gap-0.5 text-2xs sm:text-xs font-medium shrink-0', getTrendColor(stat.trend))}>
+                    <span className={cn('flex items-center gap-0.5 text-xs font-medium shrink-0', getTrendColor(stat.trend))}>
                       {getTrendIcon(stat.trend)}
                       {Math.abs(stat.change)}%
                     </span>
                   )}
                 </div>
               )}
-              {stat.changeLabel && <span className="text-2xs sm:text-xs text-muted-foreground">{stat.changeLabel}</span>}
+              {stat.changeLabel && <span className="text-xs text-muted-foreground">{stat.changeLabel}</span>}
             </div>
           );
         })}

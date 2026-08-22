@@ -381,7 +381,7 @@ export function PreferencesPanelReceipt({ id, title, sections, choice, error, cl
       aria-label={hasErrors ? 'Preferences with errors' : 'Confirmed preferences'}
       className={cn('@container/preferences-panel flex w-full max-w-md min-w-80 flex-col', className)}
     >
-      <div className="bg-card/60 flex w-full flex-col overflow-hidden rounded-2xl border opacity-95 shadow-xs">
+      <div className="bg-card/60 flex w-full flex-col overflow-hidden rounded-2xl border opacity-95">
         {title && <ReceiptHeader title={title} hasErrors={!!hasErrors} />}
         <div className={cn('flex flex-col gap-4 px-5', title ? 'py-6' : 'py-2')}>
           {sections.map((section, index) => (
@@ -494,7 +494,7 @@ function PreferencesPanelRoot({
       role="form"
       className={cn('text-foreground @container/preferences-panel flex w-full max-w-md min-w-80 flex-col gap-3', className)}
     >
-      <div className="bg-card flex w-full flex-col overflow-hidden rounded-2xl border shadow-xs">
+      <div className="bg-card flex w-full flex-col overflow-hidden rounded-2xl border">
         {title && (
           <>
             <div className="px-5 py-4">
