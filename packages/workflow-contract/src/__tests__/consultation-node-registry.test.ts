@@ -26,18 +26,31 @@ const CONSULTATION_KEYS = [
   'consultation.persistDraft',
   'consultation.finalizeAssurance',
   'consultation.hitlGate',
+  // R3's three missing capabilities (TASK-791 W1-W3) — added to the palette after the
+  // node-types.md table was written. TASK-789 verified none of them existed anywhere, which is
+  // why the owner's R3 pipeline (… -> realtime short summaries -> autofill SOAP -> intelligent
+  // suggestions -> spelling/medical-term/drug-name correction) could not be expressed at all.
+  'consultation.realtimeSummary',
+  'consultation.suggestions',
+  'consultation.proposeCorrections',
 ] as const;
 
-/** `external_write` column of the same table — the ContextItem writers. */
+/** `external_write` column of the same table — the ContextItem writers, plus the live-feed
+ *  publisher. `consultation.realtimeSummary` writes no ContextItem, but it DOES publish each
+ *  interim summary to the live consultation feed, and `externalWrite` is what makes the
+ *  interpreter suppress it on a sandboxed run — a sandbox must not push summaries into a real
+ *  consultation's UI. `suggestions`/`proposeCorrections` are deliberately absent: both are
+ *  PROPOSAL surfaces that write nothing. */
 const EXTERNAL_WRITE_KEYS = new Set<string>([
   'consultation.extractEntities', // the persist leg
   'consultation.persistDraft',
   'consultation.finalizeAssurance',
   'consultation.hitlGate',
+  'consultation.realtimeSummary',
 ]);
 
 describe('consultation palette node registry', () => {
-  it('carries all thirteen node types of the node-types.md table', () => {
+  it('carries all thirteen node types of the node-types.md table, plus TASK-791\'s three R3 capabilities', () => {
     for (const key of CONSULTATION_KEYS) {
       expect(WORKFLOW_NODE_REGISTRY[key], `${key} is missing from the registry`).toBeDefined();
     }
