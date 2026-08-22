@@ -56,6 +56,7 @@ from harness.eval.golden.sources import JSONFileGoldenSetSource
 from harness.eval.judge.base import JudgeClient
 from harness.eval.judge.providers import build_judge_client
 from harness.eval.models import GoldenCase, GoldenSet
+from harness.eval.safety_selection import resolve_eval_safety_config
 from harness.sensors.base import SensorContext
 from harness.sensors.config import SensorThresholds
 from harness.sensors.inferential import (
@@ -294,7 +295,12 @@ async def run_eval(
 ) -> dict[str, Any]:
     """Score every case (sequentially) and return ``{aggregate, cases, judge_model}``."""
     judge = build_judge_client(get_runtime_judge_config())
-    granite = GraniteGuardianClient(get_settings().safety)
+    # TASK-791 W7 / TASK-792: the guardian's provider+model come from the
+    # `guardrail.safety` AiTaskDefault (tenant -> SYSTEM), never from
+    # SafetyGuardConfig's hardcoded `lm-studio` / `granite-guardian-4.1-8b`
+    # defaults. Fails CLOSED — screening with a different guardian than the
+    # platform selects is worse than refusing to run.
+    granite = GraniteGuardianClient(await resolve_eval_safety_config(get_settings().safety))
 
     cases = golden_set.cases if limit is None else golden_set.cases[:limit]
     results: list[InferentialCaseResult] = []
