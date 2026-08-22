@@ -28,6 +28,7 @@ import { BaseService, assertEqualTenants, assertParentInScope, assertUserBelongs
 import { IActiveUserContext } from '../../../interfaces';
 import { IEntitlementsService } from '../../entitlements/IEntitlementsService';
 import { HarnessAuditService } from '../../harness-audit';
+import { IConsultationWorkflowDispatchService } from '../workflow-dispatch/IConsultationWorkflowDispatchService';
 import { TenantSettingsService } from '../../settings-registry/tenant-settings.service';
 import { CONSULTATION_REQUIRE_PRIMED_BEFORE_RECORDING_KEY } from '../consultation-gates.constants';
 
@@ -63,6 +64,13 @@ export class ConsultationService extends BaseService implements IConsultationSer
     // kill-switch. Absent ⇒ treated as OFF (the fail-safe default), mirroring
     // `OcrEnrichmentProcessor.ocrEnabled`.
     @Optional() @Inject(TenantSettingsService) private readonly tenantSettings?: TenantSettingsService,
+    // TASK-789 C-1 — optional: dispatches a tenant-authored `consultation`-palette workflow at
+    // open. Absent ⇒ no dispatch, and the consultation runs under the default loop (Substrate A),
+    // which is exactly the pre-TASK-789 behaviour. Optional so existing test fixtures and any
+    // module that does not import ConsultationWorkflowDispatchServiceModule keep constructing.
+    @Optional()
+    @Inject(IConsultationWorkflowDispatchService)
+    private readonly workflowDispatchService?: IConsultationWorkflowDispatchService,
   ) {
     super(eventEmitter, clsService, ResourceType.Consultation);
   }
@@ -166,6 +174,19 @@ export class ConsultationService extends BaseService implements IConsultationSer
       resourceId: saved.id,
       createdAt: saved.createdAt,
       data: { action: 'getOrCreate', created: true },
+    });
+
+    // TASK-789 C-1 — the ONE place `WorkflowRun.trigger = 'consultation open'` is stamped.
+    // Fires only on CREATE: `getOrCreate`'s existing-consultation branch returns earlier, so a
+    // re-opened consultation is never dispatched twice. Best-effort by contract — the dispatch
+    // service swallows its own failures and returns `dispatched: false`, because a harness
+    // outage must never stop a clinician opening a consultation.
+    await this.workflowDispatchService?.dispatchForConsultation({
+      consultationId: saved.id,
+      tenantId,
+      departmentId: saved.departmentId,
+      userId: userId ?? doctorId,
+      externalPatientId: saved.patientId,
     });
 
     const savedWithRelations = await this.consultationRepository.findWithRelations(saved.id);
