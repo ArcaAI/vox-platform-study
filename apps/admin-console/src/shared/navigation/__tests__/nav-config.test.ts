@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import type { PermissionRule } from '@/shared/auth/ability';
 import {
+  activeNavDomainId,
+  domainLandingRoute,
   matchNavEntry,
   NAV_DOMAINS,
   NAV_ENTRIES,
@@ -707,5 +709,70 @@ describe('visibleNavDomains (AC-3)', () => {
   it('shows nothing while permissions are unknown', () => {
     expect(visibleNavDomains(null, ['SUPER_ADMIN'])).toEqual([]);
     expect(visibleNavDomains(undefined)).toEqual([]);
+  });
+});
+
+describe('activeNavDomainId (TASK-788 AC-6 — selection is derived from the URL)', () => {
+  const all = [...NAV_ENTRIES];
+
+  it('resolves an exact route to its domain', () => {
+    expect(activeNavDomainId('/queues', all)).toBe('platform-ops');
+  });
+
+  it('resolves a detail route through its parent entry', () => {
+    expect(activeNavDomainId('/tenants/t-123', all)).toBe('tenancy');
+  });
+
+  it('prefers the longest prefix, so /tenants/storage keeps its own entry', () => {
+    expect(activeNavDomainId('/tenants/storage', all)).toBe('tenancy');
+    expect(activeNavDomainId('/workflow-studio/assignments', all)).toBe('workflow-harness');
+  });
+
+  it('follows the domain axis, not the tier axis (OD-2)', () => {
+    // Tier 30-49 but domain ai-platform — the divergence OD-2 exists for.
+    expect(activeNavDomainId('/ai-configuration', all)).toBe('ai-platform');
+    // …and the converse: a tier-10-19 route that is NOT AI platform work.
+    expect(activeNavDomainId('/rate-limits', all)).toBe('platform-ops');
+  });
+
+  it('returns undefined for a route the rail does not own', () => {
+    // Both moved to the user menu in Phase A; neither belongs to a domain.
+    expect(activeNavDomainId('/account', all)).toBeUndefined();
+    expect(activeNavDomainId('/developer', all)).toBeUndefined();
+    expect(activeNavDomainId('/nope', all)).toBeUndefined();
+  });
+
+  it('is computed against the VISIBLE subset, so a hidden route never selects its domain', () => {
+    const clinicalOnly: PermissionRule[] = [{ action: 'manage', subject: 'Consultation' }];
+    const visible = visibleNavEntries(clinicalOnly, ['DOCTOR']);
+    expect(activeNavDomainId('/consultations', visible)).toBe('clinical');
+    expect(activeNavDomainId('/queues', visible)).toBeUndefined();
+  });
+});
+
+describe('domainLandingRoute (TASK-788 Open Question — a rail click always navigates)', () => {
+  it('lands on the domain\'s first visible entry', () => {
+    expect(domainLandingRoute('overview', [...NAV_ENTRIES])).toBe('/dashboard');
+    expect(domainLandingRoute('platform-ops', [...NAV_ENTRIES])).toBe('/rate-limits');
+  });
+
+  it('needs no special case when a domain has exactly one visible route', () => {
+    const clinicalOnly: PermissionRule[] = [{ action: 'manage', subject: 'Consultation' }];
+    const visible = visibleNavEntries(clinicalOnly, ['DOCTOR']);
+    expect(visible.filter((entry) => entry.domain === 'clinical')).toHaveLength(1);
+    // The general rule already lands on that one route — no dead click, and no
+    // branch in the rail that only a narrow permission set would ever exercise.
+    expect(domainLandingRoute('clinical', visible)).toBe('/consultations');
+  });
+
+  it('skips entries the caller cannot see rather than linking to a 403', () => {
+    // /rate-limits (manage:all) is the first platform-ops entry declared; a
+    // caller holding only read:AuditLog must land on the audit log instead.
+    const auditOnly: PermissionRule[] = [{ action: 'read', subject: 'AuditLog' }];
+    expect(domainLandingRoute('platform-ops', visibleNavEntries(auditOnly, ['DOCTOR']))).toBe('/audit-logs');
+  });
+
+  it('returns undefined for a domain with nothing visible', () => {
+    expect(domainLandingRoute('playground', visibleNavEntries([{ action: 'read', subject: 'AuditLog' }], ['DOCTOR']))).toBeUndefined();
   });
 });

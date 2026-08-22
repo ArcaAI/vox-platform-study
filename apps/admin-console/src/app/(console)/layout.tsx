@@ -1,10 +1,11 @@
 import { redirect } from 'next/navigation';
-import type { ReactNode } from 'react';
+import type { CSSProperties, ReactNode } from 'react';
 import { SidebarInset, SidebarProvider } from '@arcaai/ui/components/shadcn/sidebar';
 import { WhatsNewDialog } from '@/features/changelog';
 import { toSafeSession } from '@/server/safe-user';
 import { getSession } from '@/server/session';
 import { AppSidebar } from '@/shared/layout/app-sidebar';
+import { DomainRail } from '@/shared/layout/domain-rail';
 import { ImpersonationBanner, WorkingTenantBanner } from '@/shared/layout/session-banners';
 import { SidebarTierSync } from '@/shared/layout/sidebar-tier-sync';
 import { SiteHeader } from '@/shared/layout/site-header';
@@ -25,8 +26,16 @@ export default async function ConsoleLayout({ children }: { children: ReactNode 
   return (
     <Providers session={safeSession}>
       <WhatsNewDialog />
-      <SidebarProvider>
+      {/* 248px scoped sidebar (TASK-788) — the primitive's 16rem default is
+          overridden here so the two-tier shell measures 56 + 248 exactly. */}
+      <SidebarProvider style={{ '--sidebar-width': '15.5rem' } as CSSProperties}>
         <SidebarTierSync />
+        {/* Tier one: the capability-domain rail. In flow at 56px on md+, gone
+            below it (its contents travel into the sidebar's sheet). The
+            sidebar's own container is `position: fixed` at left 0, so it is
+            translated clear of the rail rather than re-anchored — a transform
+            cannot collide with the primitive's collapse `left` rule. */}
+        <DomainRail />
         <AppSidebar />
         <SidebarInset className="h-svh overflow-hidden">
           {/* /: topbar + session banners are shell chrome,

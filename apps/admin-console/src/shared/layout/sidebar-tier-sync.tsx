@@ -5,11 +5,15 @@ import { useSidebar } from '@arcaai/ui/components/shadcn/sidebar';
 import { useViewportTier } from './use-viewport-tier';
 
 /**
- * Tablet auto-collapse (redesign build spec §2). Defaults the sidebar to the
- * icon rail on the tablet tier (768–1279) and keeps it expanded on desktop. The
+ * Tablet auto-collapse (redesign build spec §2). Collapses the scoped sidebar
+ * on the tablet tier (768–1279) and keeps it expanded on desktop. Since
+ * TASK-788 the sidebar is `collapsible="offcanvas"`, so collapsed means
+ * "capability rail only" — the rail keeps every domain reachable, which is why
+ * this no longer costs the tablet tier its navigation. The
  * user's manual toggle wins for the rest of the session — once they change the
  * state themselves, syncing stops. Mobile is untouched (it uses the off-canvas
- * sheet, not the rail). Rendered inside `SidebarProvider`; renders nothing.
+ * sheet, which carries the domain switcher inline). Rendered inside
+ * `SidebarProvider`; renders nothing.
  */
 export function SidebarTierSync() {
   const tier = useViewportTier();
