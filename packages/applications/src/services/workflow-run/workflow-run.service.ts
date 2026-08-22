@@ -330,6 +330,9 @@ export class WorkflowRunService extends BaseService implements IWorkflowRunServi
     if (input.failedNodeCount !== undefined) entity.failedNodeCount = input.failedNodeCount;
     if (input.degradedNodeCount !== undefined) entity.degradedNodeCount = input.degradedNodeCount;
     if (input.firstErrorCode !== undefined) entity.firstErrorCode = input.firstErrorCode;
+    // TASK-790 (M-2). `undefined` means the caller reported no delivered output (a graph with no
+    // `output.deliver` node) and must leave any existing value alone; an explicit `null` clears it.
+    if (input.resultRef !== undefined) entity.resultRef = input.resultRef as never;
 
     if (!entity.hasChanges) {
       return WorkflowRunDtoMapper.toResponse(entity);

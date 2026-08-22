@@ -55,7 +55,16 @@ export class WorkflowDefinitionResponse {
   @ApiPropertyOptional({ nullable: true, type: 'object', additionalProperties: true, description: 'The last server-side ValidationReport.' })
   validationReport: Record<string, unknown> | null;
 
-  @ApiProperty({ description: 'True when a published row is out of sync with the running node registry (checksum drift).' })
+  @ApiProperty({
+    description:
+      'The node registry checksum of the RUNNING server, for comparison against `registryChecksum` (the value stamped at publish). Present on every response so a client seeing `needsReview: true` can tell WHAT drifted, rather than only that something did.',
+  })
+  currentRegistryChecksum: string;
+
+  @ApiProperty({
+    description:
+      'True when a published row is out of sync with the running node registry (checksum drift), or when the row was explicitly flagged. Derived on read — a published definition is immutable, so drift is never written back.',
+  })
   needsReview: boolean;
 
   @ApiPropertyOptional({ nullable: true })

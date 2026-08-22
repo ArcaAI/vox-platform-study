@@ -311,6 +311,9 @@ describe('WorkflowExposureService', () => {
         stages: [{ stageIndex: 0 }],
         startedAt: '2026-08-16T00:00:00Z',
         endedAt: null,
+        // TASK-790 (M-2): the delivered-output read-back. Null here because this run's
+        // read-model fixture carries none — an in-flight run has delivered nothing.
+        resultRef: null,
       });
       expect(mockWorkflowRunService.recordRunFinished).not.toHaveBeenCalled();
     });

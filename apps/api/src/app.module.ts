@@ -132,6 +132,7 @@ import { VoiceProfileModule } from './modules/voice-profile/voice-profile.module
 // /admin/webhooks (CRUD + delivery-log reads).
 import { WebhookModule } from './modules/webhook/webhook.module';
 import { WorkflowDefinitionModule } from './modules/workflow-definition/workflow-definition.module';
+import { WorkflowInvariantRuleModule } from './modules/workflow-invariant-rule/workflow-invariant-rule.module';
 import { WorkflowAssignmentModule } from './modules/workflow-assignment/workflow-assignment.module';
 import { WorkflowNodeModule } from './modules/workflow-node/workflow-node.module';
 import { WorkflowRunModule } from './modules/workflow-run/workflow-run.module';
@@ -539,6 +540,7 @@ const featureModules: any[] = [
   WebhookModule,
   // /admin/workflow-definitions (TASK-734) — WorkflowDefinition CRUD + compile/validate/publish.
   WorkflowDefinitionModule,
+  WorkflowInvariantRuleModule,
   // /admin/workflow-assignments (TASK-733) — WHICH definition governs a
   // tenant/department for a palette (department -> tenant -> platform default).
   WorkflowAssignmentModule,

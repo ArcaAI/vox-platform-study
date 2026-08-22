@@ -5,6 +5,7 @@ import { IWorkflowRunService } from '../../workflow-run/IWorkflowRunService';
 import { HarnessGatewayService } from '../harness/harness-gateway.service';
 import { IS3Service } from '../../baseServices/storage/s3/IS3Service';
 import { mintCompiledConfigClaimCheckRef } from '../../workflow-exposure/claim-check';
+import { SttPipelineResolverService } from '../../workflow-definition/resolvers/stt-pipeline-resolver.service';
 import {
   ConsultationWorkflowDispatchResult,
   DispatchForConsultationInput,
@@ -13,6 +14,9 @@ import {
 
 /** The palette a consultation-governing graph must declare. */
 const CONSULTATION_PALETTE_KEY = 'consultation';
+
+/** The palette whose assignment resolves to an `AsrPipeline` rather than an interpreter run. */
+const STT_PALETTE_KEY = 'stt';
 
 /** Mirrors `WorkflowExposureService`'s bucket choice so both dispatchers mint refs the same way. */
 const DEFAULT_CLAIM_CHECK_BUCKET = 'hope-workflow-config';
@@ -36,17 +40,26 @@ export class ConsultationWorkflowDispatchService implements IConsultationWorkflo
     @Inject(IWorkflowRunService) private readonly workflowRunService: IWorkflowRunService,
     @Inject(HarnessGatewayService) private readonly harnessGateway: HarnessGatewayService,
     @Optional() @Inject(IS3Service) private readonly s3Service?: IS3Service,
+    // TASK-790 W4 — the FIRST production injector of this resolver, which TASK-789 H-5 found
+    // "exported for a future consumer, injected nowhere". `@Optional()` so unit fixtures still
+    // construct; production DI (WorkflowDefinitionServiceModule) supplies it.
+    @Optional() private readonly sttPipelineResolver?: SttPipelineResolverService,
   ) {}
 
   async dispatchForConsultation(input: DispatchForConsultationInput): Promise<ConsultationWorkflowDispatchResult> {
     const { consultationId, tenantId, departmentId, userId, externalPatientId } = input;
+
+    // TASK-790 W4 — resolved FIRST, and unconditionally, because the two palettes are separate
+    // assignments: a tenant may assign an `stt` graph and no `consultation` graph. Putting this
+    // after the early return below would silently skip the STT lane for exactly that tenant.
+    const sttPipelineId = await this.resolveSttPipelineId(tenantId, departmentId ?? null);
 
     const resolved = await this.assignments.resolve(tenantId, CONSULTATION_PALETTE_KEY, departmentId ?? null);
 
     // No tier assigned anything -> Substrate A keeps the consultation. This is the DEFAULT and
     // must stay the default: a tenant that has authored nothing sees today's behaviour exactly.
     if (!resolved.workflowDefinitionSlug) {
-      return { dispatched: false, source: resolved.source, workflowDefinitionSlug: null, runId: null };
+      return { dispatched: false, source: resolved.source, workflowDefinitionSlug: null, runId: null, sttPipelineId };
     }
 
     const notDispatched = (skippedReason: string): ConsultationWorkflowDispatchResult => ({
@@ -55,6 +68,7 @@ export class ConsultationWorkflowDispatchService implements IConsultationWorkflo
       workflowDefinitionSlug: resolved.workflowDefinitionSlug,
       runId: null,
       skippedReason,
+      sttPipelineId,
     });
 
     try {
@@ -113,13 +127,45 @@ export class ConsultationWorkflowDispatchService implements IConsultationWorkflo
         slug: definition.slug,
         source: resolved.source,
       });
-      return { dispatched: true, source: resolved.source, workflowDefinitionSlug: definition.slug, runId };
+      return { dispatched: true, source: resolved.source, workflowDefinitionSlug: definition.slug, runId, sttPipelineId };
     } catch (error) {
       // Best-effort BY DESIGN: a clinician must be able to open a consultation even when the
       // harness is down. The consultation proceeds under Substrate A and the reason is recorded.
       const reason = error instanceof Error ? error.message : String(error);
       this.logger.warn({ message: 'Consultation workflow dispatch failed — falling back to the default loop', consultationId, reason });
       return notDispatched(reason);
+    }
+  }
+
+  /**
+   * TASK-790 W4 (TASK-789 H-5) — completes the STT lane: assignment -> definition slug ->
+   * compiled `AsrPipeline` id.
+   *
+   * The rest of this lane was already live. Publishing an `stt`-palette graph writes a REAL
+   * `AsrPipeline` + `AsrPipelineVersion` through the production `PipelineService` (finding C-7),
+   * and that pipeline already shows up in the consultation Listener selector. The only unwired
+   * link was this one — `SttPipelineResolverService` had no injector at all.
+   *
+   * Best-effort, exactly like the dispatch path above: a resolution failure returns `null` ("fall
+   * back to the tenant's existing pipeline resolution"), never an exception, because nothing here
+   * may stop a clinician opening a consultation.
+   *
+   * NOT done here: binding this id into the realtime WS session. That lives under
+   * `apps/api/src/modules/streaming/**`, which TASK-724's grep-gate deliberately fences so a
+   * change there forces an explicit decision rather than riding along in an unrelated diff.
+   */
+  private async resolveSttPipelineId(tenantId: string, departmentId: string | null): Promise<string | null> {
+    if (!this.sttPipelineResolver) return null;
+
+    try {
+      const assignment = await this.assignments.resolve(tenantId, STT_PALETTE_KEY, departmentId);
+      if (!assignment.workflowDefinitionSlug) return null;
+
+      return await this.sttPipelineResolver.resolvePipelineId(tenantId, assignment.workflowDefinitionSlug);
+    } catch (error) {
+      const reason = error instanceof Error ? error.message : String(error);
+      this.logger.warn({ message: 'STT pipeline resolution failed — falling back to default pipeline resolution', tenantId, reason });
+      return null;
     }
   }
 }

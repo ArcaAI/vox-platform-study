@@ -3,6 +3,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { BusinessException } from '@arcaai/exceptions';
 import { BaseTenantEntity, IBaseTenantEntity } from '../../../common';
+import { JsonValue } from '../../../interfaces';
 import * as Enums from '../../../enums';
 import * as Entities from '../../../entities';
 
@@ -43,6 +44,11 @@ export interface IWorkflowRunEntity extends IBaseTenantEntity {
   failedNodeCount: number;
   degradedNodeCount: number;
   firstErrorCode?: string | null;
+  /** TASK-790 (M-2) — the run's delivered output, stored verbatim from the
+   *  `output.deliver` node: `{ resultRef: ClaimCheckRef }` when offloaded to
+   *  claim-check storage, or `{ outputs: {...} }` inline. Null while RUNNING and
+   *  for any graph with no `output.deliver` node. */
+  resultRef?: JsonValue | null;
 }
 
 export class WorkflowRunEntity extends BaseTenantEntity {
@@ -62,6 +68,7 @@ export class WorkflowRunEntity extends BaseTenantEntity {
   private _failedNodeCount: IWorkflowRunEntity['failedNodeCount'];
   private _degradedNodeCount: IWorkflowRunEntity['degradedNodeCount'];
   private _firstErrorCode?: IWorkflowRunEntity['firstErrorCode'];
+  private _resultRef?: IWorkflowRunEntity['resultRef'];
 
   constructor(init: IWorkflowRunEntity) {
     super(init);
@@ -81,6 +88,7 @@ export class WorkflowRunEntity extends BaseTenantEntity {
     this._failedNodeCount = init.failedNodeCount;
     this._degradedNodeCount = init.degradedNodeCount;
     this._firstErrorCode = init.firstErrorCode;
+    this._resultRef = init.resultRef;
   }
 
   get workflowVersionId(): IWorkflowRunEntity['workflowVersionId'] {
@@ -209,6 +217,14 @@ export class WorkflowRunEntity extends BaseTenantEntity {
 
   set firstErrorCode(value: IWorkflowRunEntity['firstErrorCode']) {
     this.setProperty('firstErrorCode', value);
+  }
+
+  get resultRef(): IWorkflowRunEntity['resultRef'] {
+    return this._resultRef;
+  }
+
+  set resultRef(value: IWorkflowRunEntity['resultRef']) {
+    this.setProperty('resultRef', value);
   }
 
   public override validate(): void {
