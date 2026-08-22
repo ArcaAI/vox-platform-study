@@ -145,7 +145,7 @@ function WorkflowRunsBody() {
       title="No runs match the filter"
       description="Try widening the date range or clearing a filter."
       action={
-        <Button variant="outline" onClick={() => updateFilters({ workflowSlug: null, status: null, trigger: null, from: null, to: null, includeSandbox: null })}>
+        <Button variant="outline" onClick={() => updateFilters({ workflowSlug: null, status: null, trigger: null, from: null, to: null, includeSandbox: null })} aria-label="Clear filters and show all rows">
           <IconFilterOff aria-hidden />
           Clear filters
         </Button>

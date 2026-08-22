@@ -283,7 +283,7 @@ export function AuditLogsScreen() {
               title="No events match the filters"
               description="Widen the date range or relax the filters — audit rows are append-only, so nothing is created here."
               action={
-                <Button variant="outline" onClick={clearFilters}>
+                <Button variant="outline" onClick={clearFilters} aria-label="Clear filters and show all rows">
                   <IconFilterOff aria-hidden />
                   Clear filters
                 </Button>

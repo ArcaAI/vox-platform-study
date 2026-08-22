@@ -100,6 +100,16 @@ export function DataGridToolbar<TData extends RowData>({ grid, searchPlaceholder
   );
 }
 
+/**
+ * The CANONICAL clear control — the one in the toolbar row. It keeps the bare
+ * accessible name "Clear filters"; its two siblings (the copy inside the filter
+ * panel below, and each screen's empty-state action) extend that name so the
+ * three are distinguishable to a screen reader when they coexist on a page.
+ *
+ * They extend rather than replace it because WCAG 2.5.3 (Label in Name) requires
+ * the accessible name to CONTAIN the visible label — so speech-input users can
+ * say what they see.
+ */
 function ClearFiltersButton({ onClick }: { onClick: () => void }) {
   return (
     <Button variant="ghost" size="sm" className="h-8 px-2" onClick={onClick}>
@@ -163,7 +173,7 @@ function CollapsedFilters<TData extends RowData>({
         </div>
       ))}
       {hasActiveFilters && (
-        <Button variant="ghost" size="sm" className="justify-start" onClick={onClear}>
+        <Button variant="ghost" size="sm" className="justify-start" onClick={onClear} aria-label="Clear filters in the filter panel">
           <X className="size-4" />
           Clear filters
         </Button>

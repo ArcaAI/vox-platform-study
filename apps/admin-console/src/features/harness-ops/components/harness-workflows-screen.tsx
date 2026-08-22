@@ -122,7 +122,7 @@ function WorkflowsBody() {
       title="No workflows match the filter"
       description="The id search and type filter only cover the loaded page; the state filter is applied by Temporal."
       action={
-        <Button variant="outline" onClick={() => updateFilters({ search: null, state: null, type: null })}>
+        <Button variant="outline" onClick={() => updateFilters({ search: null, state: null, type: null })} aria-label="Clear filters and show all rows">
           <IconFilterOff aria-hidden />
           Clear filters
         </Button>
