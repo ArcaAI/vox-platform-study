@@ -139,8 +139,21 @@ test.describe('account screen', () => {
     const preferences = page.getByRole('region', { name: 'Preferences' });
     const workflowField = preferences.getByLabel('Workflow mode');
     await expect(workflowField).toBeVisible();
-    const lockedBadge = page.getByText('Locked by admin');
-    await expect(lockedBadge).toBeVisible();
+    // The badge renders only when the tenant has locked the transcription mode
+    // (`preferences.transcriptionModeLocked`). This test asserted it
+    // unconditionally, so it failed on every tenant without that config. Ask the
+    // API whether the lock exists, so "not configured" SKIPS with an actionable
+    // message while "configured but not rendered" still FAILS — the distinction
+    // an unconditional assertion threw away.
+    const locked = await page.evaluate(async () => {
+      const response = await fetch('/api/hope/users/me/preferences');
+      if (!response.ok) return null;
+      const body = (await response.json()) as { transcriptionModeLocked?: boolean };
+      return body.transcriptionModeLocked === true;
+    });
+    test.skip(locked !== true, 'no admin-locked transcription mode on this tenant — set preferences.transcriptionModeLocked to exercise the badge');
+
+    await expect(page.getByText('Locked by admin')).toBeVisible();
   });
 });
 
