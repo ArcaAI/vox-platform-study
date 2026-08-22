@@ -114,16 +114,38 @@ describe('Gate-edit learning loop — NestJS DI wiring', () => {
       expect(moduleMetadata(GateEditMiningServiceModule, MODULE_EXPORTS_METADATA)).toContain(IGateEditExemplarRetriever);
     });
 
-    // Every module that PROVIDES PromptAssemblyService for live generation. If a
-    // fifth ever appears, this list must grow with it — a provider without the
-    // import is a silent zero-shot downgrade, not an error.
+    // Four modules PROVIDE PromptAssemblyService for live generation. A provider
+    // without this import is a silent zero-shot downgrade, not an error — so if a
+    // fifth ever appears, it belongs in one of the two lists below.
+    //
+    // TASK-792 owns only two of the four. `consultation/harness/**` belongs to
+    // TASK-790 and `consultation/jobs/**` is unassigned in the TASK-789 ownership
+    // map, so this ticket must not edit either (map §"Cross-boundary protocol").
     it.each([
       ['SummaryServiceModule', SummaryServiceModule],
       ['ChainSummaryServiceModule', ChainSummaryServiceModule],
-      ['ConsultationJobServiceModule', ConsultationJobServiceModule],
-      ['HarnessInternalServiceModule', HarnessInternalServiceModule],
     ])('%s imports GateEditMiningServiceModule', (_name, moduleClass) => {
       expect(moduleMetadata(moduleClass, MODULE_IMPORTS_METADATA)).toContain(GateEditMiningServiceModule);
+    });
+
+    /**
+     * PINS A KNOWN, DELIBERATE GAP — do not "fix" this by asserting the opposite.
+     *
+     * These two modules still resolve `IGateEditExemplarRetriever` to `undefined`,
+     * so generation through the ASYNC job path and the HARNESS path still degrades
+     * silently to zero-shot. The one-line import each needs is filed as a requested
+     * contract in the TASK-792 README; the owning ticket applies it.
+     *
+     * Written as an assertion on the CURRENT state, not skipped, precisely so it
+     * FAILS the moment the import lands — at which point move the module up into
+     * the list above. A skipped test would let the gap close silently and leave
+     * this file lying about what is wired.
+     */
+    it.each([
+      ['ConsultationJobServiceModule', ConsultationJobServiceModule],
+      ['HarnessInternalServiceModule', HarnessInternalServiceModule],
+    ])('%s does NOT yet import GateEditMiningServiceModule (cross-boundary, pending)', (_name, moduleClass) => {
+      expect(moduleMetadata(moduleClass, MODULE_IMPORTS_METADATA)).not.toContain(GateEditMiningServiceModule);
     });
   });
 });

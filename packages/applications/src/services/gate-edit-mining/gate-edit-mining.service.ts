@@ -13,14 +13,16 @@ import { BaseService } from '../../common';
 import { IActiveUserContext } from '../../interfaces';
 import { computeEditBurden } from '../harness-observability/edit-burden';
 import {
-  AGENTIC_FEWSHOT_APPROVED_CLEAN_MAX_RATIO_DEFAULT,
-  AGENTIC_FEWSHOT_APPROVED_CLEAN_MAX_RATIO_KEY,
   AGENTIC_FEWSHOT_CURATION_MODE_DEFAULT,
   AGENTIC_FEWSHOT_CURATION_MODE_KEY,
-  AGENTIC_FEWSHOT_HEAVILY_EDITED_MIN_RATIO_DEFAULT,
-  AGENTIC_FEWSHOT_HEAVILY_EDITED_MIN_RATIO_KEY,
   type FewShotCurationMode,
 } from '../settings-registry/descriptors/agentic-fewshot.descriptors';
+import {
+  AGENTIC_FEWSHOT_APPROVED_CLEAN_MAX_RATIO_DEFAULT,
+  AGENTIC_FEWSHOT_APPROVED_CLEAN_MAX_RATIO_KEY,
+  AGENTIC_FEWSHOT_HEAVILY_EDITED_MIN_RATIO_DEFAULT,
+  AGENTIC_FEWSHOT_HEAVILY_EDITED_MIN_RATIO_KEY,
+} from './gate-edit-mining.settings';
 import { EffectiveSettingsService } from '../settings-registry/effective-settings.service';
 import { IPhiRedactor } from './IPhiRedactor';
 
