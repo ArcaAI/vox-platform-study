@@ -49,7 +49,7 @@ const HEALTH = {
   status: 'degraded',
   timestamp: new Date().toISOString(),
   services: {
-    text: { status: 'healthy', service: 'Summarization', uptime_seconds: 86_400, duration_ms: 42 },
+    text: { status: 'healthy', service: 'Text', uptime_seconds: 86_400, duration_ms: 42 },
     stt: { status: 'healthy', service: 'Speech to Text', duration_ms: 118 },
     guardrail: { status: 'degraded', service: 'Guardrail', error: 'queue depth 117' },
     harness: { status: 'down', service: 'Clinical Documentation Harness', error: 'ECONNREFUSED' },
@@ -120,9 +120,9 @@ describe('PlatformDashboard', () => {
     installFetch();
     renderWithProviders(<PlatformDashboard />);
 
-    expect((await screen.findAllByText('Summarization')).length).toBeGreaterThan(0);
+    expect((await screen.findAllByText('Text')).length).toBeGreaterThan(0);
     const requestsChart = screen.getByRole('table');
-    expect(within(requestsChart).getByText('Summarization')).toBeDefined();
+    expect(within(requestsChart).getByText('Text')).toBeDefined();
     expect(within(requestsChart).getByText('Guardrail')).toBeDefined();
     expect(within(requestsChart).getByText('Clinical Documentation Harness')).toBeDefined();
     expect(within(requestsChart).getAllByText('0')).toHaveLength(2);

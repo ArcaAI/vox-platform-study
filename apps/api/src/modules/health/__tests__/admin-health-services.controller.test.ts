@@ -170,7 +170,7 @@ describe('AdminHealthServicesController', () => {
 
       const result = await controller.checkServices();
 
-      expect(result.services.text.service).toBe('Summarization');
+      expect(result.services.text.service).toBe('Text');
       expect(result.services.guardrail.service).toBe('Guardrail');
       expect(result.services.text).not.toHaveProperty('version');
       expect(result.services.guardrail).not.toHaveProperty('version');
@@ -238,7 +238,7 @@ describe('AdminHealthServicesController', () => {
       const result = await controller.checkServiceByKey('text');
 
       expect(result.status).toBe('healthy');
-      expect(result.service).toBe('Summarization');
+      expect(result.service).toBe('Text');
       expect(result.duration_ms).toBeGreaterThanOrEqual(0);
       expect(result).not.toHaveProperty('version');
       expect(result).not.toHaveProperty('checks');
@@ -250,7 +250,7 @@ describe('AdminHealthServicesController', () => {
       const result = await controller.checkServiceByKey('text');
 
       expect(result.status).toBe('down');
-      expect(result.service).toBe('Summarization');
+      expect(result.service).toBe('Text');
       expect(result.error).toContain('ECONNREFUSED');
     });
 

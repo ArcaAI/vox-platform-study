@@ -10,6 +10,7 @@
 #   1. Start infrastructure (core + vault + temporal + rag; optional -o/-e)
 #   2. Wait for Postgres + Vault (and the vault-init AppRole bootstrap) to be ready
 #   3. Apply Prisma migrations + seed                            (pnpm db:all)
+#      (db:all also terminates the Temporal workflows its reset orphaned)
 #   4. Refresh Vault AppRole creds in .env.dev (so the app can authenticate)
 #   5. Bootstrap Vault dynamic DB credentials    (vault_admin + DB engine)
 #   6. Finalize the env — build the settings registry and reconcile Vault
@@ -110,6 +111,11 @@ bold "── Step 3/6: applying migrations + seed (pnpm db:all) ─────�
 # bootstrap wants the full demo fixture set (incl. the super_admin login), so
 # it opts in explicitly. NODE_ENV=development satisfies seed-mode.ts's guard
 # that RUN_SEED=all is refused unless the environment is explicitly stated.
+# db:all's own tail runs scripts/temporal-terminate-orphans.sh: the force-reset
+# below only recreates `hope`, while Temporal keeps its history in its OWN
+# databases inside hope-postgres (`temporal` / `temporal_visibility`). Workflows
+# left open therefore keep polling for consultations that were just deleted, and
+# the Temporal worker retries them forever. No-op when Temporal is down.
 RUN_SEED=all NODE_ENV=development pnpm db:all
 
 bold "── Step 4/6: refreshing Vault AppRole creds in .env.dev ─────────────"

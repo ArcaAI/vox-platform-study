@@ -74,7 +74,7 @@ export class ServiceHealthMonitoringService implements IServiceHealthMonitoringS
     this.services = [
       {
         key: 'text',
-        name: 'Summarization',
+        name: 'Text',
         url: process.env.TEXT_SERVICE_URL || process.env.TEXT_URL || 'http://localhost:8862',
         healthEndpoint: '/api/v1/health',
       },

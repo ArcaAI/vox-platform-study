@@ -152,7 +152,7 @@ export const API_TAGS: readonly ApiTagDefinition[] = [
   },
   {
     name: 'text-compat',
-    displayName: 'Summarization (v1 compat)',
+    displayName: 'Text (v1 compat)',
     plane: 'business',
     description: 'Legacy v1-compatible summarization paths. Exempt from the /api/v1 prefix; kept for existing integrations.',
   },

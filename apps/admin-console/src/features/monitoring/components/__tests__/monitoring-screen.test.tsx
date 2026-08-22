@@ -41,7 +41,7 @@ const HEALTH = {
   status: 'degraded',
   timestamp: NOW,
   services: {
-    text: { status: 'healthy', service: 'Summarization', uptime_seconds: 86_400, duration_ms: 210 },
+    text: { status: 'healthy', service: 'Text', uptime_seconds: 86_400, duration_ms: 210 },
     stt: { status: 'healthy', service: 'Speech to Text', duration_ms: 118 },
     tts: { status: 'healthy', service: 'Text to Speech', duration_ms: 104 },
     nlp: { status: 'healthy', service: 'Medical NLP', duration_ms: 88 },
@@ -125,7 +125,7 @@ describe('MonitoringScreen', () => {
     expect(within(grid).getByText('exports depth 117')).toBeDefined();
     expect(within(grid).getByText('99.97%')).toBeDefined();
     expect(within(grid).getByText('15 of 20 recent checks up')).toBeDefined();
-    expect(within(screen.getByRole('table')).getByText('Summarization')).toBeDefined();
+    expect(within(screen.getByRole('table')).getByText('Text')).toBeDefined();
   });
 
   it('renders redis health facts and per-service session counts', async () => {
@@ -139,7 +139,7 @@ describe('MonitoringScreen', () => {
 
     const sessions = screen.getByRole('list', { name: /active sessions by service/i });
     expect(within(sessions).getByText('12')).toBeDefined();
-    expect(within(sessions).getByText('Summarization')).toBeDefined();
+    expect(within(sessions).getByText('Text')).toBeDefined();
     expect(screen.getByText(/19 unique users/i)).toBeDefined();
   });
 

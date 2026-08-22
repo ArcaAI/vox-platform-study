@@ -190,7 +190,7 @@ Located in `/docs/` (project root):
 ### Service Documentation
 
 - [STT Service](../../stt/README.md) - Speech-to-Text service
-- [Text Service](../../text/README.md) - Multi-provider text generation (formerly TEXT)
+- [Text Service](../../text/README.md) - Multi-provider text generation
 - [Guardrail Service](../../guardrail/README.md) - Safety/guardrail engine (port 8863)
 - [NLP Service](../../nlp/README.md) - Natural Language Processing service
 - [Harness Service](../../harness/README.md) - Clinical Documentation Harness (port 8866)
