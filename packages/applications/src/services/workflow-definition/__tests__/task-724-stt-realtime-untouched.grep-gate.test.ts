@@ -54,7 +54,11 @@ const SANCTIONED_LATER_CHANGES: ReadonlyArray<{ readonly path: string; readonly 
   // without this the fix would 401 every streaming session in a deployed environment.
   { path: 'apps/api/src/modules/streaming/stt-ws.gateway.ts', ticket: 'P0 F-01', why: 'threads tenant to stt session teardown' },
   { path: 'apps/api/src/modules/streaming/__tests__/stt-ws.gateway.test.ts', ticket: 'P0 F-01', why: 'covers the above' },
-  { path: 'apps/api/src/modules/streaming/session-removal-retry.service.ts', ticket: 'P0 F-01', why: 'a retry must stay as attributable as the first attempt' },
+  {
+    path: 'apps/api/src/modules/streaming/session-removal-retry.service.ts',
+    ticket: 'P0 F-01',
+    why: 'a retry must stay as attributable as the first attempt',
+  },
   { path: 'apps/api/src/modules/streaming/__tests__/session-removal-retry.service.test.ts', ticket: 'P0 F-01', why: 'covers the above' },
   { path: 'apps/api/src/modules/streaming/transcription-job.controller.ts', ticket: 'P0 F-01', why: 'presents token + tenant to stt' },
   { path: 'apps/api/src/modules/streaming/__tests__/transcription-job.controller.test.ts', ticket: 'P0 F-01', why: 'covers the above' },
@@ -105,13 +109,15 @@ function changedPaths(): string[] {
     if ((error as NodeJS.ErrnoException).code === 'ENOENT') return [];
     throw error;
   }
-  return raw
-    .split('\n')
-    .map((line) => line.trim())
-    .filter((line) => line.length > 0)
-    // porcelain format: "XY path" or "XY path -> newpath" for renames — take the last token.
-    .map((line) => line.split(' -> ').pop() ?? line)
-    .map((line) => line.replace(/^[ MADRCU?!]{1,2}\s+/, '').replace(/^"(.*)"$/, '$1'));
+  return (
+    raw
+      .split('\n')
+      .map((line) => line.trim())
+      .filter((line) => line.length > 0)
+      // porcelain format: "XY path" or "XY path -> newpath" for renames — take the last token.
+      .map((line) => line.split(' -> ').pop() ?? line)
+      .map((line) => line.replace(/^[ MADRCU?!]{1,2}\s+/, '').replace(/^"(.*)"$/, '$1'))
+  );
 }
 
 describe('TASK-724 realtime hot path untouched (grep-gate)', () => {

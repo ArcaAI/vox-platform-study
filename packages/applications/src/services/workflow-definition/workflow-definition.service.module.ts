@@ -3,6 +3,7 @@ import { CoreDatabaseModule } from '@arcaai/domains';
 import { CommonServiceModule } from '../baseServices';
 import { EntitlementsServiceModule } from '../entitlements/entitlements.service.module';
 import { PipelineServiceModule } from '../stt/pipeline/pipeline.service.module';
+import { WorkflowValidatorServiceModule } from '../workflow-validator/workflow-validator.service.module';
 import { SttPipelineCompilerService } from './compilers/stt-pipeline.compiler';
 import { IWorkflowDefinitionService } from './IWorkflowDefinitionService';
 import { SttPipelineResolverService } from './resolvers/stt-pipeline-resolver.service';
@@ -20,13 +21,19 @@ import { WorkflowDefinitionService } from './workflow-definition.service';
  *   writes an `stt`-palette publish's compiled graph through it (never a raw repository call);
  *   Task 6's `SttPipelineResolverService` reads it back the same way.
  *
+ * - WorkflowValidatorServiceModule -> `WorkflowValidatorService` (TASK-790 W3a). Resolves the
+ *   SYSTEM ∪ tenant `WorkflowInvariantRule` rows and applies the one-way-strictness merge, so
+ *   `validateGraph()` evaluates the rule set that actually applies to the tenant rather than only
+ *   the bundled code catalogue. Before this import the service was constructed nowhere outside
+ *   its own module (TASK-789 H-1).
+ *
  * `SttPipelineResolverService` is exported (not just provided) because its consumer — the
  * session/consultation-open call site that resolves `pipelineId` — is a FUTURE, separate wiring
  * pass (README §4 Task 6; deliberately not this ticket's diff, proved by
  * `task-724-stt-realtime-untouched.grep-gate.test.ts`), likely from a module outside this one.
  */
 @Module({
-  imports: [CommonServiceModule, CoreDatabaseModule, EntitlementsServiceModule, PipelineServiceModule],
+  imports: [CommonServiceModule, CoreDatabaseModule, EntitlementsServiceModule, PipelineServiceModule, WorkflowValidatorServiceModule],
   providers: [
     WorkflowDefinitionService,
     SttPipelineCompilerService,

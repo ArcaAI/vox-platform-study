@@ -138,6 +138,10 @@ export * from './workflow-definition';
 // evaluates a graph against the result. Total: never throws, never `ok: true`
 // on an internal failure.
 export * from './workflow-validator';
+// The rule ROWS the validator above resolves (TASK-790 W3b) — tenant-scoped CRUD so a tenant
+// admin can actually author strictness rules. Before this the model had no HTTP surface at all,
+// so the validator could only ever see seeded rows (TASK-789 H-1).
+export * from './workflow-invariant-rule';
 // Per-scope workflow assignment (TASK-733) — WHICH definition governs a
 // tenant/department for a palette, resolved with the shared cascade primitive.
 export * from './workflow-assignment';

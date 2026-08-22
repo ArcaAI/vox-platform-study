@@ -59,15 +59,18 @@ import { SEED_WORKFLOW_DEFINITION_IDS, SYSTEM_TENANT_ID, SYSTEM_USER_ID } from '
  * is the most that can honestly be claimed in this session.
  */
 
-const PLATFORM_DEFAULT_ID = SEED_WORKFLOW_DEFINITION_IDS.PLATFORM_DEFAULT_SUMMARIZATION;
-const SLUG = 'platform-default-summarization';
-const COMPILED_AT = '2026-08-16T00:00:00.000Z';
+// Exported (TASK-790 W6) so `scripts/regen-workflow-definition-seed.ts` can recompute the blobs
+// below from the REAL `compile()`/`validate()` instead of anyone hand-editing the JSON. These are
+// the regeneration INPUTS; everything derived from them is generated output.
+export const PLATFORM_DEFAULT_ID = SEED_WORKFLOW_DEFINITION_IDS.PLATFORM_DEFAULT_SUMMARIZATION;
+export const SLUG = 'platform-default-summarization';
+export const COMPILED_AT = '2026-08-16T00:00:00.000Z';
 // Real `registryChecksum()` output from `packages/workflow-contract/src/node-registry.ts`'s
 // `WORKFLOW_NODE_REGISTRY` (7 entries: noop/passthrough + the 5 summarization-palette node
 // types) — recomputed via a throwaway script against the built dist, see the module docstring.
 const REGISTRY_CHECKSUM = '2ae7222a1e7dc97191309a71a6e438a5088d07174f649d541e1d98878478f97b';
 
-const GRAPH = {
+export const GRAPH = {
   version: 1,
   nodes: [
     {
@@ -116,7 +119,7 @@ const GRAPH = {
 };
 
 // Verbatim `compile()` output — see the module docstring for how this was produced.
-const COMPILED_CONFIG = {
+export const COMPILED_CONFIG = {
   formatVersion: 1,
   definitionId: PLATFORM_DEFAULT_ID,
   slug: SLUG,

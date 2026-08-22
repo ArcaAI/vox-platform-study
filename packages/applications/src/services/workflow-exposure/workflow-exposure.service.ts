@@ -12,6 +12,7 @@ import { GetWorkflowRunResult, HarnessGatewayService } from '../consultation/har
 import { IEntitlementsService } from '../entitlements/IEntitlementsService';
 import { interpreterSessionId, IWorkflowRunService, WorkflowRunResponse } from '../workflow-run';
 import { mintCompiledConfigClaimCheckRef } from './claim-check';
+import { exposureBoundaryViolation } from './exposure-palette-policy';
 import {
   InvokeWorkflowRequest,
   WorkflowInvokeResponse,
@@ -59,9 +60,16 @@ export class WorkflowExposureService extends BaseService implements IWorkflowExp
 
     const rows = await this.workflowDefinitionRepository.findActivePublishedByTenant(tenantId);
 
-    this.broadcastSysEvent(SysEventType.ResourceViewed, { data: { action: 'listInvokable', count: rows.length } });
+    // W1 (C-8): the catalogue and the invoke gate must agree. Listing a slug that `invoke` then
+    // 404s would be an incoherent contract — and would disclose that a non-exposable definition
+    // exists. Filtered with the SAME predicate `invoke` enforces, never a second rule.
+    const invokable = rows.filter((row) => exposureBoundaryViolation(row) === null);
 
-    return { data: rows.map((row) => WorkflowExposureDtoMapper.toSummaryResponse(row)) };
+    this.broadcastSysEvent(SysEventType.ResourceViewed, {
+      data: { action: 'listInvokable', count: invokable.length, excludedByPaletteBoundary: rows.length - invokable.length },
+    });
+
+    return { data: invokable.map((row) => WorkflowExposureDtoMapper.toSummaryResponse(row)) };
   }
 
   async invoke(slug: string, dto: InvokeWorkflowRequest, opts: InvokeWorkflowOptions): Promise<WorkflowInvokeResponse> {
@@ -78,6 +86,24 @@ export class WorkflowExposureService extends BaseService implements IWorkflowExp
     // are ALL indistinguishable "not found" — `findPublishedBySlug` returns null for every case.
     const definition = await this.workflowDefinitionRepository.findPublishedBySlug(tenantId, slug);
     if (!definition) {
+      throw new NotFoundException(`Workflow '${slug}' not found.`);
+    }
+
+    // W1 (TASK-789 C-8): the exposure plane's palette boundary. A consultation-palette graph
+    // reached here writes real `ContextItem` rows through the same `persist_draft` activity the
+    // live consultation workflow uses — the interpreter's `external_write` suppression is
+    // sandbox-only and does not fire on this plane. See `exposure-palette-policy.ts` for why the
+    // gate resolves NODE types and not just the declared `paletteKey`.
+    //
+    // 404, not 403: consistent with `assertExposureEnabled` and with `findPublishedBySlug`'s
+    // unpublished/cross-tenant posture — a definition that is not an exposure product simply does
+    // not exist on this plane, and the reason is never disclosed to the caller.
+    const boundaryViolation = exposureBoundaryViolation(definition);
+    if (boundaryViolation) {
+      this.broadcastSysEvent(SysEventType.ResourceViewed, {
+        resourceId: definition.id,
+        data: { action: 'invokeRefusedByPaletteBoundary', slug: definition.slug, reason: boundaryViolation, apiKeyId: opts.apiKeyId ?? null },
+      });
       throw new NotFoundException(`Workflow '${slug}' not found.`);
     }
 
@@ -172,7 +198,7 @@ export class WorkflowExposureService extends BaseService implements IWorkflowExp
     const upstream = await this.harnessGateway.getWorkflowRun(runId);
     await this.syncTerminalStatus(tenantId, run, upstream);
 
-    return WorkflowExposureDtoMapper.toStatusResponse(run.workflowSlug, run.workflowVersionNumber, upstream);
+    return WorkflowExposureDtoMapper.toStatusResponse(run.workflowSlug, run.workflowVersionNumber, upstream, run.resultRef ?? null);
   }
 
   async cancelRun(slug: string, runId: string): Promise<WorkflowRunCancelResponse> {

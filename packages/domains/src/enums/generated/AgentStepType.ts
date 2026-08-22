@@ -12,6 +12,5 @@ export enum AgentStepType {
   SIGNAL = 'SIGNAL',
   GATE = 'GATE',
   PHASE = 'PHASE',
-  /** One WorkflowInterpreter graph-node dispatch (Substrate B). See TASK-789 C-9. */
   NODE = 'NODE',
 }

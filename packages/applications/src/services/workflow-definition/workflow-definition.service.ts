@@ -26,6 +26,8 @@ import { createHash } from 'node:crypto';
 import { assertEqualTenants, BaseService, FetchResponse, PaginatedQuery, withFormattedCountProps, withFormattedPaginatedProps } from '../../common';
 import { IActiveUserContext } from '../../interfaces';
 import { IEntitlementsService } from '../entitlements/IEntitlementsService';
+import { KNOWN_PALETTE_KEYS } from '../workflow-exposure/exposure-palette-policy';
+import { WorkflowValidatorService } from '../workflow-validator/workflow-validator.service';
 import { SttPipelineCompilerService } from './compilers/stt-pipeline.compiler';
 import {
   CreateWorkflowDefinitionRequest,
@@ -110,6 +112,12 @@ export class WorkflowDefinitionService extends BaseService implements IWorkflowD
     // publish() of an `stt`-palette workflow with this undefined is a MISCONFIGURATION, not a
     // silently-skipped feature — see the doc comment on `compileSttPipelineIfNeeded` below.
     @Optional() private readonly sttPipelineCompiler?: SttPipelineCompilerService,
+    // TASK-790 W3(a) — the rule-row resolver. `@Optional()` for the same reason as the two
+    // above (unit-fixture construction); production DI always supplies it via
+    // `WorkflowValidatorServiceModule`. When absent, `validateGraph` falls back to the bundled
+    // code-owned DRAFT catalogue — the behaviour that was UNIVERSAL before this ticket, so the
+    // fallback cannot be less safe than the previous state.
+    @Optional() private readonly workflowValidator?: WorkflowValidatorService,
   ) {
     super(eventEmitter, clsService, ResourceType.WorkflowDefinition);
   }
@@ -166,8 +174,10 @@ export class WorkflowDefinitionService extends BaseService implements IWorkflowD
       await this.entitlements.assertQuantityQuota(tenantId, 'maxWorkflowDefinitions', currentCount);
     }
 
+    this.assertKnownPaletteKey(dto.paletteKey);
+
     const graph = this.parseGraphOrThrow(dto.graph);
-    const report = this.validateGraph(graph, dto.paletteKey);
+    const report = await this.validateGraph(graph, dto.paletteKey, tenantId);
     if (reportIsShapeBroken(report)) {
       throw new BadRequestException({ message: 'The workflow graph is not valid.', findings: report.findings });
     }
@@ -227,7 +237,7 @@ export class WorkflowDefinitionService extends BaseService implements IWorkflowD
 
     if (rawGraph !== undefined) {
       const graph = this.parseGraphOrThrow(rawGraph);
-      const report = this.validateGraph(graph, entity.paletteKey);
+      const report = await this.validateGraph(graph, entity.paletteKey, entity.tenantId);
       if (reportIsShapeBroken(report)) {
         throw new BadRequestException({ message: 'The workflow graph is not valid.', findings: report.findings });
       }
@@ -287,7 +297,7 @@ export class WorkflowDefinitionService extends BaseService implements IWorkflowD
     this.assertMutable(entity);
 
     const graph = entity.graph as unknown as WorkflowGraph;
-    const report = this.validateGraph(graph, entity.paletteKey);
+    const report = await this.validateGraph(graph, entity.paletteKey, entity.tenantId);
     const compileResult = compile(graph, this.buildCompilerContext(entity));
     const engineClean = !reportIsShapeBroken(report) && !('findings' in compileResult);
 
@@ -319,7 +329,7 @@ export class WorkflowDefinitionService extends BaseService implements IWorkflowD
     await this.assertPaletteEntitled(entity);
 
     const graph = entity.graph as unknown as WorkflowGraph;
-    const report = this.validateGraph(graph, entity.paletteKey);
+    const report = await this.validateGraph(graph, entity.paletteKey, entity.tenantId);
     if (reportIsShapeBroken(report)) {
       throw new BadRequestException({ message: 'The workflow graph is not valid.', findings: report.findings });
     }
@@ -414,6 +424,26 @@ export class WorkflowDefinitionService extends BaseService implements IWorkflowD
   }
 
   /**
+   * TASK-790 W1 (TASK-789 C-5/D-5) — `paletteKey` must name a palette the node registry actually
+   * declares. The DTO only constrains it to a string of at most 80 chars, and Workflow Studio's
+   * palette field is a free-text `<Input>`, so a typo ('summarisation', 'Consultation') would
+   * otherwise produce a row that is published-looking but permanently inert: `validate()` skips
+   * every rule whose `paletteKey` does not match (`validate.ts`), so NO palette rule set ever
+   * applies, and the Assignment Matrix has no column to offer it under.
+   *
+   * Create-only by design: `UpdateWorkflowDefinitionRequest` carries no `paletteKey`, so a
+   * definition's palette is immutable after creation and there is no update path to guard.
+   *
+   * The valid set is DERIVED from `WORKFLOW_NODE_REGISTRY` (see `KNOWN_PALETTE_KEYS`), never
+   * re-typed here — a palette added to the registry is accepted with no edit to this service.
+   */
+  private assertKnownPaletteKey(paletteKey: string): void {
+    if (KNOWN_PALETTE_KEYS.has(paletteKey)) return;
+    const known = [...KNOWN_PALETTE_KEYS].sort().join(', ');
+    throw new BadRequestException(`Unknown paletteKey '${paletteKey}'. Known palettes: ${known}.`);
+  }
+
+  /**
    * TASK-724 Task 7 — publish-time-only entitlement gate, imitating
    * `assertProviderAvailable`'s `QuotaExceededException` call site (the "first ENFORCED boolean
    * entitlement" precedent). Checked ONLY here, never at runtime: an already-published
@@ -466,7 +496,25 @@ export class WorkflowDefinitionService extends BaseService implements IWorkflowD
     return raw as unknown as WorkflowGraph;
   }
 
-  private validateGraph(graph: WorkflowGraph, paletteKey: string): WorkflowValidationReport {
+  /**
+   * TASK-790 W3(a) (TASK-789 H-1) — resolve the rule set through `WorkflowValidatorService` so a
+   * tenant's `WorkflowInvariantRule` rows actually participate.
+   *
+   * Before this, every call went straight to `validate()` against the bundled, code-owned DRAFT
+   * catalogue, so the "a tenant may ADD strictness" capability `workflow-invariant-rule.prisma`'s
+   * header documents could not affect a single validation however many rows existed. The
+   * validator resolves SYSTEM ∪ tenant rows, applies the one-way-strictness merge, and stamps the
+   * real `ruleSetVersion`.
+   *
+   * Delegating cannot introduce a new throw: the validator is TOTAL by its own contract
+   * ("a validator that is not total is a validator that can be bypassed") — every failure path
+   * inside it, including a repository throw, resolves to a `WF-INTERNAL` ERROR finding with
+   * `ok: false`, never an exception and never `ok: true`.
+   */
+  private async validateGraph(graph: WorkflowGraph, paletteKey: string, tenantId: string): Promise<WorkflowValidationReport> {
+    if (this.workflowValidator) {
+      return this.workflowValidator.validateGraph(tenantId, paletteKey, graph);
+    }
     return validate(
       graph,
       { paletteKey, registry: workflowNodeClassLookup },

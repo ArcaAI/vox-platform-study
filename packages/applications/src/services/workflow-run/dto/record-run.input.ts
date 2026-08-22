@@ -28,4 +28,14 @@ export interface RecordRunFinishedInput {
   failedNodeCount?: number;
   degradedNodeCount?: number;
   firstErrorCode?: string | null;
+  /**
+   * TASK-790 (M-2) — the run's delivered output, the `output.deliver` node's `output` object
+   * stored VERBATIM. A discriminated union (`deliver.py`): `{ resultRef: ClaimCheckRef }` when
+   * claim-check is enabled and the blob was offloaded, or `{ outputs: {...} }` inline otherwise.
+   *
+   * OMITTED (not null) means "this run delivered nothing" — a graph with no `output.deliver`
+   * node, or a caller that does not report it — and leaves any existing value alone. An explicit
+   * `null` clears it.
+   */
+  resultRef?: Record<string, unknown> | null;
 }

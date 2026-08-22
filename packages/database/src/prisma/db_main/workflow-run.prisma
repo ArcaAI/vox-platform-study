@@ -104,6 +104,29 @@ model WorkflowRun {
   degradedNodeCount Int    @default(0)
   firstErrorCode    String?
 
+  // The run's delivered OUTPUT — closing TASK-789 finding M-2, requested by
+  // TASK-791. `output.deliver` performs a real external write and then had
+  // nowhere to record what it wrote, so a run's generated content was
+  // unrecoverable once the run finished and `getRunStatus` could only ever
+  // return Temporal state.
+  //
+  // SHAPE — a discriminated union, not just a claim-check pointer. The node
+  // returns EITHER `{ "resultRef": ClaimCheckRef }` (when claim-check is
+  // enabled AND `should_offload()` says the blob is big enough) OR
+  // `{ "outputs": {...} }` inline (deliver.py:104-110). A column recording
+  // only the pointer would silently lose the inline branch, which is the
+  // common one for a short note — so this stores the node's `output` object
+  // VERBATIM and the reader discriminates. The name is TASK-791's requested
+  // one, kept so the two tickets code against the same identifier.
+  //
+  // Null while RUNNING, and null for any graph with no `output.deliver` node.
+  //
+  // NOTE the map is `resultRef`, NOT the requested `_resultRef`: an
+  // underscore-prefixed column name is this schema's reserved marker for META
+  // fields (`_metadata`, `_version` — rule 02's model template). A business
+  // column wearing that prefix would misfile itself forever.
+  resultRef Json? @db.JsonB
+
   // audit fields
   createdBy String?  @default("60000000-0000-0000-0000-000000000000")
   updatedBy String?

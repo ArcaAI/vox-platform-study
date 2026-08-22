@@ -1,0 +1,22 @@
+-- TASK-790 (finding M-2, requested by TASK-791) — record a run's delivered OUTPUT.
+--
+-- `output.deliver` is the summarization palette's only `external_write` node: it
+-- performs a real write (claim-check blob, or shaped inline outputs) and then had
+-- nowhere to record WHAT it wrote. `WorkflowExposureService.getRunStatus()` reads
+-- Temporal state only, so a run's generated content was unrecoverable the moment
+-- the run finished.
+--
+-- Shape is a discriminated union stored verbatim from the node's `output` object:
+--   { "resultRef": { ...ClaimCheckRef... } }   -- claim-check enabled AND offloaded
+--   { "outputs":   { ...shaped outputs... } }  -- inline (small payload, or claim-check off)
+-- Recording only the pointer would silently drop the inline branch, which is the
+-- common one for a short note.
+--
+-- Nullable with NO default and NO backfill, deliberately: NULL is the honest value
+-- for every historical run (their output was never captured and cannot be
+-- reconstructed) and for any graph that has no `output.deliver` node at all.
+-- Additive and non-blocking on PostgreSQL — no table rewrite for a nullable column
+-- with no default.
+
+-- AlterTable
+ALTER TABLE "core"."WorkflowRun" ADD COLUMN     "resultRef" JSONB;
