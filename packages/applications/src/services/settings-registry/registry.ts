@@ -24,6 +24,7 @@ import { PIPELINE_SETTINGS } from './descriptors/pipeline.descriptors';
 import { PLATFORM_KNOB_SETTINGS, RATE_LIMIT_TIER_SETTINGS } from './descriptors/platform-knobs.descriptors';
 import { PLATFORM_OPS_SETTINGS } from './descriptors/platform-ops.descriptors';
 import { PLATFORM_SECRET_SETTINGS } from './descriptors/platform-secrets.descriptors';
+import { SECURITY_POLICY_SETTINGS } from './descriptors/security-policy.descriptors';
 import { SERVICE_RUNTIME_SETTINGS } from './descriptors/service-runtime.descriptors';
 import { TEXT_PROVIDER_CONNECTION_SETTINGS } from './descriptors/text-provider-connections.descriptors';
 import { STORAGE_SETTINGS } from './descriptors/storage.descriptors';
@@ -92,6 +93,11 @@ export const HOPE_SETTINGS_REGISTRY: SettingsRegistry = new SettingsRegistry().r
   ...RATE_LIMIT_TIER_SETTINGS,
   // Feature gates still read from env, carrying `targetTier: 'redis-flag'`.
   ...FEATURE_FLAG_SETTINGS,
+  // Credential policy — password complexity/rotation (readers already existed
+  // and already preferred the stored row; they were simply never cataloged, so
+  // no admin could reach them) and the issued-secret strength policy behind
+  // service-account client secrets and API keys.
+  ...SECURITY_POLICY_SETTINGS,
 
   // ── Configuration-tier compliance ────────────────────────────────────────
   // The two consultation-pipeline `@OnEvent(ContextAdded)` kill-switches,

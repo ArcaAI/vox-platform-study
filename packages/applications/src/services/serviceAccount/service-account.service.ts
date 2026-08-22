@@ -16,6 +16,8 @@ import { ResourceType, ServiceAccountEntity, ServiceAccountFactory, ServiceAccou
 import { BaseService } from '../../common/base.service';
 import { IActiveUserContext, IServiceAccountPrincipal } from '../../interfaces';
 import { IRedisCacheService } from '../baseServices/redis/redis-cache.service';
+import { IAppSettingsService } from '../baseServices/_meta/appSettings/IAppSettingsService';
+import { DEFAULT_GENERATED_SECRET_POLICY, GeneratedSecretPolicy, generateSecretString, resolveGeneratedSecretPolicy } from '../security/secretPolicy';
 import { SecretsService } from '../baseServices/_meta/secrets/SecretsService';
 import {
   CreateServiceAccountRequest,
@@ -119,6 +121,10 @@ export class ServiceAccountService extends BaseService {
     private readonly repository: ServiceAccountRepository,
     @Inject(IRedisCacheService) private readonly cache: IRedisCacheService,
     @Optional() private readonly secretsService?: SecretsService,
+    // The platform `security.secret.*` policy behind an issued client secret.
+    // Optional (append-only DI) so fixtures that construct this service
+    // directly keep the pre-policy 32-byte hex behaviour exactly as it was.
+    @Optional() @Inject(IAppSettingsService) private readonly appSettings?: IAppSettingsService,
   ) {
     super(eventEmitter, clsService, ResourceType.ServiceAccount);
   }
@@ -135,7 +141,7 @@ export class ServiceAccountService extends BaseService {
     this.assertScopeCeiling(dto.scopes);
 
     const clientId = `hope_svc_${randomBytes(12).toString('hex')}`;
-    const clientSecret = ServiceAccountService.generateClientSecret();
+    const clientSecret = this.generateClientSecret();
     const credentialsRef = ServiceAccountService.credentialsRefFor(clientId, 'current');
 
     const entity = ServiceAccountFactory.CreateServiceAccount({
@@ -234,7 +240,7 @@ export class ServiceAccountService extends BaseService {
     this.assertMayIssue();
     const entity = await this.loadOwned(id);
 
-    const clientSecret = ServiceAccountService.generateClientSecret();
+    const clientSecret = this.generateClientSecret();
 
     entity.previousSecretVerifier = entity.secretVerifier;
     entity.previousCredentialsRef = entity.credentialsRef;
@@ -372,9 +378,34 @@ export class ServiceAccountService extends BaseService {
 
   // ─── Credential primitives ────────────────────────────────────────────────
 
-  /** 64 hex chars of CSPRNG material. Never stored; returned exactly once. */
-  static generateClientSecret(): string {
-    return randomBytes(32).toString('hex');
+  /**
+   * The SUPER_ADMIN-managed `security.secret.*` policy, or the platform
+   * defaults when no settings cache is wired.
+   */
+  private secretPolicy(): GeneratedSecretPolicy {
+    return this.appSettings ? resolveGeneratedSecretPolicy(this.appSettings) : DEFAULT_GENERATED_SECRET_POLICY;
+  }
+
+  /**
+   * CSPRNG material for one client secret, drawn to the CONFIGURED policy
+   * (default 32 bytes as 64 hex chars). Never stored; returned exactly once.
+   *
+   * Policy applies at ISSUANCE, so it governs `create` and `rotate` and leaves
+   * already-issued secrets alone — tightening the policy is a prompt to rotate,
+   * not a retroactive invalidation. The stored verifier is a peppered HMAC of
+   * whatever string this produced, so length and alphabet may change freely
+   * without breaking authentication of older secrets.
+   */
+  generateClientSecret(): string {
+    return generateSecretString(this.secretPolicy());
+  }
+
+  /**
+   * @deprecated Policy-blind fallback kept for callers that have no service
+   * instance. Prefer the instance method, which honours `security.secret.*`.
+   */
+  static generateClientSecretWithDefaults(): string {
+    return generateSecretString(DEFAULT_GENERATED_SECRET_POLICY);
   }
 
   static credentialsRefFor(clientId: string, slot: 'current' | 'previous'): string {

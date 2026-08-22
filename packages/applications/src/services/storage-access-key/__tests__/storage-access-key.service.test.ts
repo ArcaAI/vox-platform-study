@@ -66,9 +66,10 @@ vi.mock('@arcaai/domains', async (importOriginal) => {
   return {
     ...actual,
     StorageAccessKeyFactory: {
-      // Raw-secret generation now lives in the factory; the service hashes
-      // the result before persistence.
-      generateRawSecret: vi.fn(() => RAW_SECRET),
+      // TASK-786: raw-secret generation moved OUT of the factory and into the
+      // SERVICE, so it can honour the `security.secret.*` policy (a domain
+      // factory is DI-free and can never reach the settings cache). The tests
+      // below stub the service's own generator instead of this one.
       CreateKey: vi.fn((props) => ({
         id: 'new-key-id',
         tenantId: props.tenantId,
@@ -168,6 +169,9 @@ describe('StorageAccessKeyService', () => {
         createdEntity = entity;
         return entity;
       });
+
+      // Pin the generated plaintext so the hash assertion below is exact.
+      vi.spyOn(service, 'generateRawSecret').mockReturnValue(RAW_SECRET);
 
       const result = await service.generateKey({
         name: 'Production Key',

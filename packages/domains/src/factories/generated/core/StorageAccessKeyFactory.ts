@@ -13,7 +13,7 @@ export interface CreateStorageAccessKeyProps {
   /**
    * The HASH of the secret access key, never the plaintext.
    * The application layer (`StorageAccessKeyService`) generates the raw secret
-   * via {@link StorageAccessKeyFactory.generateRawSecret}, hashes it (peppered
+   * via its own policy-aware `generateRawSecret()`, hashes it (peppered
    * when a SecretsService is available), and passes the digest here so only the
    * hash is ever persisted.
    */
@@ -31,6 +31,13 @@ export class StorageAccessKeyFactory {
    * This value is shown to the caller exactly once at creation time; the
    * database stores only its hash (computed by the service), so a leaked row
    * can never reveal a usable secret.
+   *
+   * @deprecated The application layer no longer calls this. Issuance moved to
+   * `StorageAccessKeyService.generateRawSecret()`, which honours the
+   * SUPER_ADMIN-managed `security.secret.*` policy — a domain factory is
+   * DI-free by the layer contract and can never reach the settings cache, so
+   * generation here would stay hardcoded at 32 bytes forever. Kept only for the
+   * domain's own tests; do not call it from a service.
    */
   static generateRawSecret(): string {
     return randomBytes(32).toString('base64url');
