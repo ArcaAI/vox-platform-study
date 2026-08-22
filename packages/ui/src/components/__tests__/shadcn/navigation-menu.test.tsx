@@ -113,10 +113,10 @@ test.describe('NavigationMenu', () => {
       await expect(trigger).toHaveClass(/h-9/);
     });
 
-    test('trigger has rounded-md class', async ({ mount, page }) => {
+    test('trigger has rounded-control class', async ({ mount, page }) => {
       await mount(<BasicNavigationMenu />);
       const trigger = page.locator('[data-slot="navigation-menu-trigger"]').first();
-      await expect(trigger).toHaveClass(/rounded-md/);
+      await expect(trigger).toHaveClass(/rounded-control/);
     });
 
     test('trigger includes chevron icon', async ({ mount, page }) => {

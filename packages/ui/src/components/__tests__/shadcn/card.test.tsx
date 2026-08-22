@@ -17,9 +17,10 @@ test.describe('Card', () => {
 
     test('has correct default styling', async ({ mount }) => {
       const component = await mount(<Card>Content</Card>);
-      await expect(component).toHaveClass(/rounded-xl/);
+      await expect(component).toHaveClass(/rounded-surface/);
       await expect(component).toHaveClass(/border/);
-      await expect(component).toHaveClass(/shadow-sm/);
+      // TASK-787 J-12: cards are flat — depth is border + surface, never elevation.
+      await expect(component).not.toHaveClass(/shadow-(xs|sm|md|lg|xl|raised|overlay)/);
     });
 
     test('renders children correctly', async ({ mount }) => {
@@ -65,7 +66,7 @@ test.describe('Card', () => {
 
     test('applies font styling', async ({ mount }) => {
       const component = await mount(<CardTitle>Title</CardTitle>);
-      await expect(component).toHaveClass(/font-semibold/);
+      await expect(component).toHaveClass(/font-medium/);
     });
 
     test('applies custom className', async ({ mount }) => {

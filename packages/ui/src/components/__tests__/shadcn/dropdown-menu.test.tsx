@@ -198,7 +198,7 @@ test.describe('DropdownMenu', () => {
 
       const content = page.locator('[data-slot="dropdown-menu-content"]');
       await expect(content).toHaveClass(/bg-popover/);
-      await expect(content).toHaveClass(/rounded-md/);
+      await expect(content).toHaveClass(/rounded-surface/);
       await expect(content).toHaveClass(/border/);
     });
 
