@@ -3,3 +3,4 @@ export * from './eval.service';
 export * from './eval-run.service';
 export * from './eval-promotion-gate.service';
 export * from './eval.service.module';
+export * from './golden-case-promotion.service';
