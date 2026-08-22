@@ -9,6 +9,9 @@ import {
   IconBroadcast,
   IconBuilding,
   IconBuildings,
+  IconBuildingSkyscraper,
+  IconBulb,
+  IconCpu,
   IconCalendarTime,
   IconChartHistogram,
   IconDatabase,
@@ -20,9 +23,12 @@ import {
   IconFlask,
   IconFolders,
   IconGauge,
+  IconFlask2,
   IconHeartbeat,
   IconHistory,
+  IconHome,
   IconKey,
+  IconLockAccess,
   IconLayoutDashboard,
   IconLayoutGrid,
   IconLicense,
@@ -30,8 +36,10 @@ import {
   IconLockCog,
   IconMicrophone,
   IconPlugConnected,
+  IconReportMedical,
   IconRobot,
   IconSchema,
+  IconServerBolt,
   IconServerCog,
   IconRoute,
   IconSettings,
@@ -45,6 +53,7 @@ import {
   IconTargetArrow,
   IconTelescope,
   IconTimeline,
+  IconTopologyStar3,
   IconUserCircle,
   IconUsers,
   IconUserScan,
@@ -69,7 +78,41 @@ import { canAny, isElevated, type PermissionRule } from '@/shared/auth/ability';
  */
 export type NavTier = '10-19' | '20-29' | '30-49' | '50-59';
 
-export interface NavEntry {
+/**
+ * Capability domain — the axis the navigation rail groups by (TASK-788 OD-2).
+ *
+ * ORTHOGONAL to `NavTier`, and deliberately so (OD-3): tier answers *who may
+ * open a screen* and keeps governing the `(global)`/`(shared)`/`(tenant)` route
+ * groups and their guards; domain answers *where a user looks for it*. Where
+ * the two disagree — `/ai-configuration` is tier `30-49` but domain
+ * `ai-platform` — the divergence is the point, not drift.
+ */
+export type NavDomainId =
+  'overview' | 'tenancy' | 'ai-platform' | 'knowledge-agents' | 'clinical' | 'workflow-harness' | 'identity-access' | 'platform-ops' | 'playground';
+
+export interface NavDomain {
+  id: NavDomainId;
+  label: string;
+  /** Rail icon; shown with the label as its accessible name, never alone. */
+  icon: TablerIcon;
+  /** Rail order, ascending. Declaration order matches it. */
+  order: number;
+}
+
+export const NAV_DOMAINS: readonly NavDomain[] = [
+  { id: 'overview', label: 'Overview', icon: IconHome, order: 1 },
+  { id: 'tenancy', label: 'Tenancy', icon: IconBuildingSkyscraper, order: 2 },
+  { id: 'ai-platform', label: 'AI Platform', icon: IconCpu, order: 3 },
+  { id: 'knowledge-agents', label: 'Knowledge & Agents', icon: IconBulb, order: 4 },
+  { id: 'clinical', label: 'Clinical', icon: IconReportMedical, order: 5 },
+  { id: 'workflow-harness', label: 'Workflow & Harness', icon: IconTopologyStar3, order: 6 },
+  { id: 'identity-access', label: 'Identity & Access', icon: IconLockAccess, order: 7 },
+  { id: 'platform-ops', label: 'Platform Ops', icon: IconServerBolt, order: 8 },
+  { id: 'playground', label: 'Playground', icon: IconFlask2, order: 9 },
+];
+
+/** Fields every addressable console route carries — rail entries and user-menu entries alike. */
+export interface NavRouteEntry {
   route: string;
   label: string;
   tier: NavTier;
@@ -82,6 +125,19 @@ export interface NavEntry {
   required: ReadonlyArray<readonly [string, string]>;
   implemented: boolean;
 }
+
+export interface NavEntry extends NavRouteEntry {
+  /** Rail bucket. Purely additive — it changes no guard, tier or route (AC-1/AC-2). */
+  domain: NavDomainId;
+}
+
+/**
+ * Personal chrome rather than domain work — the API documentation portal and
+ * the signed-in user's own profile. TASK-788 moves these two out of the rail
+ * (they fit no capability domain) and into the topbar user menu; their tier and
+ * ability gate are carried over verbatim.
+ */
+export type UserMenuEntry = NavRouteEntry;
 
 export interface NavSection {
   tier: NavTier;
@@ -98,9 +154,18 @@ export const NAV_SECTIONS: readonly NavSection[] = [
 export const NAV_ENTRIES: readonly NavEntry[] = [
   // Tier 10-19 — super admin (cross-tenant). Tenant frontend config is a
   // tenant-detail tab (matrix row 6), not a standalone nav entry.
-  { route: '/dashboard', label: 'Dashboard', tier: '10-19', icon: IconLayoutDashboard, required: [['manage', 'PlatformMetrics']], implemented: true },
+  {
+    route: '/dashboard',
+    domain: 'overview',
+    label: 'Dashboard',
+    tier: '10-19',
+    icon: IconLayoutDashboard,
+    required: [['manage', 'PlatformMetrics']],
+    implemented: true,
+  },
   {
     route: '/monitoring',
+    domain: 'overview',
     label: 'Monitoring',
     tier: '10-19',
     icon: IconActivity,
@@ -115,6 +180,7 @@ export const NAV_ENTRIES: readonly NavEntry[] = [
     // `/admin/monitoring` and `/admin/health/services` (frozen contract): grouped
     // together in the sidebar.
     route: '/releases',
+    domain: 'overview',
     label: 'Releases',
     tier: '10-19',
     icon: IconVersions,
@@ -126,6 +192,7 @@ export const NAV_ENTRIES: readonly NavEntry[] = [
   },
   {
     route: '/tenants',
+    domain: 'tenancy',
     label: 'Tenants',
     tier: '10-19',
     icon: IconBuildings,
@@ -135,9 +202,18 @@ export const NAV_ENTRIES: readonly NavEntry[] = [
     ],
     implemented: true,
   },
-  { route: '/entitlements', label: 'Entitlements & plans', tier: '10-19', icon: IconLicense, required: [['manage', 'all']], implemented: true },
+  {
+    route: '/entitlements',
+    domain: 'tenancy',
+    label: 'Entitlements & plans',
+    tier: '10-19',
+    icon: IconLicense,
+    required: [['manage', 'all']],
+    implemented: true,
+  },
   {
     route: '/tenants/storage',
+    domain: 'tenancy',
     label: 'Tenant storage',
     tier: '10-19',
     icon: IconDatabase,
@@ -152,23 +228,41 @@ export const NAV_ENTRIES: readonly NavEntry[] = [
   // live LM Studio/Ollama discovery + register), i.e. the surface a super admin
   // uses to see what the serving engines actually host. It was hidden only while
   // it was registry-only. The manage:all gate is unchanged.
-  { route: '/ai-models', label: 'AI models', tier: '10-19', icon: IconBrain, required: [['manage', 'all']], implemented: true },
+  {
+    route: '/ai-models',
+    domain: 'ai-platform',
+    label: 'AI models',
+    tier: '10-19',
+    icon: IconBrain,
+    required: [['manage', 'all']],
+    implemented: true,
+  },
   // SYSTEM-tenant task-default rows; guardrail config is super-admin-only by owner directive.
   {
     route: '/ai-task-defaults',
+    domain: 'ai-platform',
     label: 'AI task defaults',
     tier: '10-19',
     icon: IconAdjustmentsCog,
     required: [['manage', 'all']],
     implemented: true,
   },
-  { route: '/rate-limits', label: 'Rate limits', tier: '10-19', icon: IconGauge, required: [['manage', 'all']], implemented: true },
+  {
+    route: '/rate-limits',
+    domain: 'platform-ops',
+    label: 'Rate limits',
+    tier: '10-19',
+    icon: IconGauge,
+    required: [['manage', 'all']],
+    implemented: true,
+  },
   // Platform credential policy — password complexity/rotation and the entropy
   // behind every machine credential the platform issues. SUPER_ADMIN-only:
   // every backing key is a `globalOnly` descriptor, so the gateway 403s a
   // tenant admin regardless of what the nav shows.
   {
     route: '/security-policy',
+    domain: 'identity-access',
     label: 'Credential policy',
     tier: '10-19',
     icon: IconLockCog,
@@ -176,15 +270,32 @@ export const NAV_ENTRIES: readonly NavEntry[] = [
     implemented: true,
   },
   // Phase 3B agentic super-admin console (all SUPER_ADMIN-only).
-  { route: '/agentic-policy', label: 'Agentic policy', tier: '10-19', icon: IconShieldBolt, required: [['manage', 'all']], implemented: true },
+  {
+    route: '/agentic-policy',
+    domain: 'ai-platform',
+    label: 'Agentic policy',
+    tier: '10-19',
+    icon: IconShieldBolt,
+    required: [['manage', 'all']],
+    implemented: true,
+  },
   // `/prompt-studio` retired — prompt governance folded
   // into the elevated-only Governance tab of `/agents` (one authoritative
   // surface per resource). `/prompt-studio` still resolves for one release
   // via a redirect page.: `/ai-services` takes the freed slot,
   // surfacing the guardrail/NLP status + config backends that had no screen.
-  { route: '/ai-services', label: 'AI services', tier: '10-19', icon: IconServerCog, required: [['manage', 'all']], implemented: true },
+  {
+    route: '/ai-services',
+    domain: 'ai-platform',
+    label: 'AI services',
+    tier: '10-19',
+    icon: IconServerCog,
+    required: [['manage', 'all']],
+    implemented: true,
+  },
   {
     route: '/ai-operations/runs',
+    domain: 'ai-platform',
     label: 'AI operations — runs',
     tier: '10-19',
     icon: IconTimeline,
@@ -193,6 +304,7 @@ export const NAV_ENTRIES: readonly NavEntry[] = [
   },
   {
     route: '/ai-operations/metrics',
+    domain: 'ai-platform',
     label: 'AI operations — metrics',
     tier: '10-19',
     icon: IconChartHistogram,
@@ -201,6 +313,7 @@ export const NAV_ENTRIES: readonly NavEntry[] = [
   },
   {
     route: '/ai-operations/consumption',
+    domain: 'ai-platform',
     label: 'Consumption & cost',
     tier: '10-19',
     icon: IconReportMoney,
@@ -212,25 +325,75 @@ export const NAV_ENTRIES: readonly NavEntry[] = [
     // (a vendor bills the platform, not a tenant), so tier 10-19 with no
     // working-tenant gate, unlike its /ai-operations neighbours.
     route: '/ai-operations/reconciliation',
+    domain: 'ai-platform',
     label: 'Provider reconciliation',
     tier: '10-19',
     icon: IconScale,
     required: [['manage', 'all']],
     implemented: true,
   },
-  { route: '/billing', label: 'Billing & invoices', tier: '10-19', icon: IconReceipt, required: [['manage', 'all']], implemented: true },
-  { route: '/tools-mcp', label: 'Tools & MCP', tier: '10-19', icon: IconPlugConnected, required: [['manage', 'all']], implemented: true },
-  { route: '/queues', label: 'Queues & jobs', tier: '10-19', icon: IconStack2, required: [['manage', 'all']], implemented: true },
-  { route: '/schedulers', label: 'Schedulers', tier: '10-19', icon: IconCalendarTime, required: [['manage', 'all']], implemented: true },
-  { route: '/audit-logs', label: 'Audit logs', tier: '10-19', icon: IconHistory, required: [['read', 'AuditLog']], implemented: true },
+  {
+    route: '/billing',
+    domain: 'tenancy',
+    label: 'Billing & invoices',
+    tier: '10-19',
+    icon: IconReceipt,
+    required: [['manage', 'all']],
+    implemented: true,
+  },
+  {
+    route: '/tools-mcp',
+    domain: 'ai-platform',
+    label: 'Tools & MCP',
+    tier: '10-19',
+    icon: IconPlugConnected,
+    required: [['manage', 'all']],
+    implemented: true,
+  },
+  {
+    route: '/queues',
+    domain: 'platform-ops',
+    label: 'Queues & jobs',
+    tier: '10-19',
+    icon: IconStack2,
+    required: [['manage', 'all']],
+    implemented: true,
+  },
+  {
+    route: '/schedulers',
+    domain: 'platform-ops',
+    label: 'Schedulers',
+    tier: '10-19',
+    icon: IconCalendarTime,
+    required: [['manage', 'all']],
+    implemented: true,
+  },
+  {
+    route: '/audit-logs',
+    domain: 'platform-ops',
+    label: 'Audit logs',
+    tier: '10-19',
+    icon: IconHistory,
+    required: [['read', 'AuditLog']],
+    implemented: true,
+  },
   // Renamed from `/pstudio` (read as a typo'd "prompt
   // studio"). Console-only rename — the gateway path stays `/admin/pstudio/*`.
-  { route: '/db-studio', label: 'Database Studio', tier: '10-19', icon: IconDatabaseSearch, required: [['manage', 'all']], implemented: true },
+  {
+    route: '/db-studio',
+    domain: 'platform-ops',
+    label: 'Database Studio',
+    tier: '10-19',
+    icon: IconDatabaseSearch,
+    required: [['manage', 'all']],
+    implemented: true,
+  },
 
   // Tier 20-29 — shared (cross-tenant or tenant-scoped)
-  { route: '/users', label: 'Users', tier: '20-29', icon: IconUsers, required: [['manage', 'User']], implemented: true },
+  { route: '/users', domain: 'identity-access', label: 'Users', tier: '20-29', icon: IconUsers, required: [['manage', 'User']], implemented: true },
   {
     route: '/rbac/roles',
+    domain: 'identity-access',
     label: 'Roles',
     tier: '20-29',
     icon: IconUserShield,
@@ -242,6 +405,7 @@ export const NAV_ENTRIES: readonly NavEntry[] = [
   },
   {
     route: '/rbac/policies',
+    domain: 'identity-access',
     label: 'Policies',
     tier: '20-29',
     icon: IconShieldLock,
@@ -253,6 +417,7 @@ export const NAV_ENTRIES: readonly NavEntry[] = [
   },
   {
     route: '/api-keys',
+    domain: 'identity-access',
     label: 'API keys',
     tier: '20-29',
     icon: IconKey,
@@ -262,9 +427,18 @@ export const NAV_ENTRIES: readonly NavEntry[] = [
     ],
     implemented: true,
   },
-  { route: '/settings', label: 'Settings & secrets', tier: '20-29', icon: IconSettings, required: [['manage', 'GlobalSetting']], implemented: true },
+  {
+    route: '/settings',
+    domain: 'platform-ops',
+    label: 'Settings & secrets',
+    tier: '20-29',
+    icon: IconSettings,
+    required: [['manage', 'GlobalSetting']],
+    implemented: true,
+  },
   {
     route: '/tenant-profile',
+    domain: 'tenancy',
     label: 'Tenant profile',
     tier: '20-29',
     icon: IconBuilding,
@@ -274,30 +448,23 @@ export const NAV_ENTRIES: readonly NavEntry[] = [
     ],
     implemented: true,
   },
-  {
-    // TASK-783 — the developer API documentation portal. Tier 20-29: the
-    // audience is both super admins and tenant admins/developers, and the
-    // screens are not tenant-scoped (the API contract belongs to the platform).
-    //
-    // `read:ApiDocumentation` is a DEDICATED subject (seed policy
-    // `api-documentation-read`), so access can be delegated to tenant
-    // developers without granting `manage:all`. The admin-plane projection
-    // additionally needs `manage` on the same subject; that split is enforced
-    // server-side in `@/server/api-docs`, not here — this list only decides
-    // whether the sidebar entry renders.
-    route: '/developer',
-    label: 'Developer',
-    tier: '20-29',
-    icon: IconApi,
-    required: [['read', 'ApiDocumentation']],
-    implemented: true,
-  },
-  { route: '/account', label: 'Account', tier: '20-29', icon: IconUserCircle, required: [], implemented: true },
+  // `/developer` and `/account` used to sit here. TASK-788 moved them out of
+  // the rail into USER_MENU_ENTRIES (below) — they are personal chrome, not
+  // capability domains. Tier and ability gate are unchanged.
 
   // Tier 30-49 — tenant-admin scope (a super admin needs a working tenant)
-  { route: '/departments', label: 'Departments', tier: '30-49', icon: IconSitemap, required: [['manage', 'Department']], implemented: true },
+  {
+    route: '/departments',
+    domain: 'tenancy',
+    label: 'Departments',
+    tier: '30-49',
+    icon: IconSitemap,
+    required: [['manage', 'Department']],
+    implemented: true,
+  },
   {
     route: '/identity-providers',
+    domain: 'identity-access',
     label: 'Identity providers',
     tier: '30-49',
     icon: IconFingerprint,
@@ -312,6 +479,7 @@ export const NAV_ENTRIES: readonly NavEntry[] = [
   // in the service, not the nav gate.
   {
     route: '/allowed-origins',
+    domain: 'identity-access',
     label: 'Allowed origins',
     tier: '30-49',
     icon: IconWorld,
@@ -323,6 +491,7 @@ export const NAV_ENTRIES: readonly NavEntry[] = [
   },
   {
     route: '/storage',
+    domain: 'platform-ops',
     label: 'Storage browser',
     tier: '30-49',
     icon: IconFolders,
@@ -332,12 +501,21 @@ export const NAV_ENTRIES: readonly NavEntry[] = [
     ],
     implemented: true,
   },
-  { route: '/agents', label: 'Agents', tier: '30-49', icon: IconRobot, required: [['manage', 'PromptTemplate']], implemented: true },
+  {
+    route: '/agents',
+    domain: 'knowledge-agents',
+    label: 'Agents',
+    tier: '30-49',
+    icon: IconRobot,
+    required: [['manage', 'PromptTemplate']],
+    implemented: true,
+  },
   // Prompt instruction templates got their own route: the
   // pre-summary/summary resolution map, template CRUD + versions, and clinical
   // approval, previously buried as tabs 2 and 3 of the Agent Catalog.
   {
     route: '/prompt-templates',
+    domain: 'knowledge-agents',
     label: 'Prompt templates',
     tier: '30-49',
     icon: IconFileText,
@@ -347,6 +525,7 @@ export const NAV_ENTRIES: readonly NavEntry[] = [
   {
     // tenant-defined consultation context vocabulary.
     route: '/context-schemas',
+    domain: 'knowledge-agents',
     label: 'Context Schemas',
     tier: '30-49',
     icon: IconSchema,
@@ -360,6 +539,7 @@ export const NAV_ENTRIES: readonly NavEntry[] = [
   // class-level `@CanManage('KnowledgeDocument')` gate.
   {
     route: '/knowledge',
+    domain: 'knowledge-agents',
     label: 'Knowledge Base',
     tier: '30-49',
     icon: IconBook2,
@@ -368,6 +548,7 @@ export const NAV_ENTRIES: readonly NavEntry[] = [
   },
   {
     route: '/dna-writing-styles',
+    domain: 'knowledge-agents',
     label: 'DNA writing styles',
     tier: '30-49',
     icon: IconDna,
@@ -376,6 +557,7 @@ export const NAV_ENTRIES: readonly NavEntry[] = [
   },
   {
     route: '/audio/pipelines',
+    domain: 'clinical',
     label: 'Audio pipelines',
     tier: '30-49',
     icon: IconWaveSine,
@@ -384,6 +566,7 @@ export const NAV_ENTRIES: readonly NavEntry[] = [
   },
   {
     route: '/audio/transcription-jobs',
+    domain: 'clinical',
     label: 'Transcription jobs',
     tier: '30-49',
     icon: IconMicrophone,
@@ -395,6 +578,7 @@ export const NAV_ENTRIES: readonly NavEntry[] = [
   },
   {
     route: '/harness/policy',
+    domain: 'workflow-harness',
     label: 'Harness policy',
     tier: '30-49',
     icon: IconShieldCog,
@@ -406,6 +590,7 @@ export const NAV_ENTRIES: readonly NavEntry[] = [
   },
   {
     route: '/harness/observability',
+    domain: 'workflow-harness',
     label: 'Harness observability',
     tier: '30-49',
     icon: IconTelescope,
@@ -418,6 +603,7 @@ export const NAV_ENTRIES: readonly NavEntry[] = [
   },
   {
     route: '/harness/workflows',
+    domain: 'workflow-harness',
     label: 'Harness workflows',
     tier: '30-49',
     icon: IconRoute,
@@ -429,6 +615,7 @@ export const NAV_ENTRIES: readonly NavEntry[] = [
   },
   {
     route: '/harness/pipeline-policy',
+    domain: 'workflow-harness',
     label: 'Pipeline policy',
     tier: '30-49',
     icon: IconAdjustmentsAlt,
@@ -445,6 +632,7 @@ export const NAV_ENTRIES: readonly NavEntry[] = [
   // duplicating it (rule 13 "one authoritative editor" + cross-link posture).
   {
     route: '/workflow-runs',
+    domain: 'workflow-harness',
     label: 'Workflow Runs',
     tier: '30-49',
     icon: IconListTree,
@@ -458,6 +646,7 @@ export const NAV_ENTRIES: readonly NavEntry[] = [
   // itself requires.
   {
     route: '/workflow-studio',
+    domain: 'workflow-harness',
     label: 'Workflow Studio',
     tier: '30-49',
     icon: IconBinaryTree2,
@@ -472,6 +661,7 @@ export const NAV_ENTRIES: readonly NavEntry[] = [
   // Design gate waived for this screen (owner decision, TASK-733 Task 6).
   {
     route: '/workflow-studio/assignments',
+    domain: 'workflow-harness',
     label: 'Workflow Assignments',
     tier: '30-49',
     icon: IconLayoutGrid,
@@ -488,6 +678,7 @@ export const NAV_ENTRIES: readonly NavEntry[] = [
   // guardrail/nlp/harness model selection stays SUPER_ADMIN-only (read-only here).
   {
     route: '/ai-configuration',
+    domain: 'ai-platform',
     label: 'AI Configuration',
     tier: '30-49',
     icon: IconTargetArrow,
@@ -501,6 +692,7 @@ export const NAV_ENTRIES: readonly NavEntry[] = [
   },
   {
     route: '/consultations',
+    domain: 'clinical',
     label: 'Consultations',
     tier: '30-49',
     icon: IconStethoscope,
@@ -514,18 +706,43 @@ export const NAV_ENTRIES: readonly NavEntry[] = [
   // plain @Authorize() — visibility is role-gated (SUPER_ADMIN or
   // TENANT_ADMIN) via visibleNavEntries, mirroring the (tenant) tier guard.
   // Labels reconciled to the page titles: nav = breadcrumb = title.
-  { route: '/playground/consultation', label: 'Consultation Demo', tier: '50-59', icon: IconHeartbeat, required: [], implemented: true },
-  { route: '/playground/live-transcription', label: 'Live Transcription', tier: '50-59', icon: IconBroadcast, required: [], implemented: true },
+  {
+    route: '/playground/consultation',
+    domain: 'playground',
+    label: 'Consultation Demo',
+    tier: '50-59',
+    icon: IconHeartbeat,
+    required: [],
+    implemented: true,
+  },
+  {
+    route: '/playground/live-transcription',
+    domain: 'playground',
+    label: 'Live Transcription',
+    tier: '50-59',
+    icon: IconBroadcast,
+    required: [],
+    implemented: true,
+  },
   {
     route: '/playground/voice-profiles',
+    domain: 'playground',
     label: 'My Voice Enrollment & Profiles',
     tier: '50-59',
     icon: IconUserScan,
     required: [],
     implemented: true,
   },
-  { route: '/playground/dna-writing-style', label: 'My DNA Writing Style', tier: '50-59', icon: IconDna2, required: [], implemented: true },
-  { route: '/playground/llm', label: 'Agent Playground', tier: '50-59', icon: IconSparkles, required: [], implemented: true },
+  {
+    route: '/playground/dna-writing-style',
+    domain: 'playground',
+    label: 'My DNA Writing Style',
+    tier: '50-59',
+    icon: IconDna2,
+    required: [],
+    implemented: true,
+  },
+  { route: '/playground/llm', domain: 'playground', label: 'Agent Playground', tier: '50-59', icon: IconSparkles, required: [], implemented: true },
   // TASK-721: deliberate divergence from the `required: []` convention above.
   // The five entries before this one are own-account end-user demo planes
   // whose backend guards are plain @Authorize() (comment above). The
@@ -543,6 +760,7 @@ export const NAV_ENTRIES: readonly NavEntry[] = [
   // every tenant admin, so this is not a practical gap.
   {
     route: '/playground/workbench',
+    domain: 'playground',
     label: 'Workbench',
     tier: '50-59',
     icon: IconFlask,
@@ -554,9 +772,47 @@ export const NAV_ENTRIES: readonly NavEntry[] = [
   },
 ];
 
+/**
+ * Personal chrome, reached from the topbar user menu rather than the rail.
+ * Both entries carry the tier and ability gate they had as nav entries — the
+ * move is a placement change only.
+ */
+export const USER_MENU_ENTRIES: readonly UserMenuEntry[] = [
+  {
+    // TASK-783 — the developer API documentation portal. Tier 20-29: the
+    // audience is both super admins and tenant admins/developers, and the
+    // screens are not tenant-scoped (the API contract belongs to the platform).
+    //
+    // `read:ApiDocumentation` is a DEDICATED subject (seed policy
+    // `api-documentation-read`), so access can be delegated to tenant
+    // developers without granting `manage:all`. The admin-plane projection
+    // additionally needs `manage` on the same subject; that split is enforced
+    // server-side in `@/server/api-docs`, not here — this list only decides
+    // whether the menu item renders.
+    route: '/developer',
+    label: 'Developer',
+    tier: '20-29',
+    icon: IconApi,
+    required: [['read', 'ApiDocumentation']],
+    implemented: true,
+  },
+  { route: '/account', label: 'Account', tier: '20-29', icon: IconUserCircle, required: [], implemented: true },
+];
+
+/**
+ * Every addressable console route — rail plus user menu. Breadcrumbs resolve
+ * against this, so moving an entry out of the rail never costs it its trail.
+ */
+const ALL_ROUTE_ENTRIES: readonly NavRouteEntry[] = [...NAV_ENTRIES, ...USER_MENU_ENTRIES];
+
 /** The playground audience — mirrors the (console)/(tenant) tier guard. */
 function isAdminTier(roles: readonly string[] | null | undefined): boolean {
   return isElevated(roles) || !!roles?.includes('TENANT_ADMIN');
+}
+
+/** The one ability gate every nav surface shares: ANY granted pair, or any authenticated caller. */
+function isGranted(rules: readonly PermissionRule[] | null | undefined, entry: NavRouteEntry): boolean {
+  return entry.required.length === 0 ? !!rules : canAny(rules, entry.required);
 }
 
 /**
@@ -565,7 +821,7 @@ function isAdminTier(roles: readonly string[] | null | undefined): boolean {
  * (console)/(tenant) tier guard — ability rules alone cannot express it.
  */
 /** Longest-prefix nav match — `/tenants/storage` beats `/tenants`. */
-export function matchNavEntry(pathname: string, entries: readonly NavEntry[] = NAV_ENTRIES): NavEntry | undefined {
+export function matchNavEntry(pathname: string, entries: readonly NavRouteEntry[] = ALL_ROUTE_ENTRIES): NavRouteEntry | undefined {
   return entries.filter((e) => pathname === e.route || pathname.startsWith(`${e.route}/`)).sort((a, b) => b.route.length - a.route.length)[0];
 }
 
@@ -573,6 +829,22 @@ export function visibleNavEntries(rules: readonly PermissionRule[] | null | unde
   return NAV_ENTRIES.filter((entry) => {
     if (!entry.implemented) return false;
     if (entry.tier === '50-59' && !isAdminTier(roles)) return false;
-    return entry.required.length === 0 ? !!rules : canAny(rules, entry.required);
+    return isGranted(rules, entry);
   });
+}
+
+/** The user-menu counterpart of `visibleNavEntries` — same gate, no tier role check to apply. */
+export function visibleUserMenuEntries(rules: readonly PermissionRule[] | null | undefined): UserMenuEntry[] {
+  return USER_MENU_ENTRIES.filter((entry) => entry.implemented && isGranted(rules, entry));
+}
+
+/**
+ * Rail domains the caller can actually reach (TASK-788 AC-3): a domain shows
+ * when at least one of its entries is visible. Derived from `visibleNavEntries`
+ * so there is exactly ONE ability mechanism — including the playground's
+ * role check, which no ability rule can express.
+ */
+export function visibleNavDomains(rules: readonly PermissionRule[] | null | undefined, roles?: readonly string[] | null): NavDomain[] {
+  const reachable = new Set(visibleNavEntries(rules, roles).map((entry) => entry.domain));
+  return NAV_DOMAINS.filter((domain) => reachable.has(domain.id));
 }
