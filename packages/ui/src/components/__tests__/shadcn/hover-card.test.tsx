@@ -150,7 +150,7 @@ test.describe('HoverCard', () => {
     test('content has correct z-index class', async ({ mount, page }) => {
       await mount(<DefaultOpenHoverCard />);
       const content = page.locator('[data-slot="hover-card-content"]');
-      await expect(content).toHaveClass(/z-50/);
+      await expect(content).toHaveClass(/z-overlay/);
     });
   });
 });
