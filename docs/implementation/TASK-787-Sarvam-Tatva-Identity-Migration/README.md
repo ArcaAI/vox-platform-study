@@ -520,6 +520,43 @@ it measures clear the bar comfortably: inactive trigger `--muted-foreground` on 
 
 ---
 
+## Real-browser a11y pass — done 2026-08-22 (`55935d2b1`)
+
+Previously recorded as the one item genuinely unverified. It is now done, and the
+earlier diagnosis was wrong: **the suite was not flaky, the environment was.**
+
+| Cause | Detail |
+|---|---|
+| Dev servers were down | Repeated `next build` runs clobbered the `.next` directory a running `next dev` was serving from |
+| `globalTeardown` stops the Docker test containers | Unless `RESET_DB=false` — documented in `01-development-workflow.md`, and exactly the trap it warns about |
+
+*(TASK-772 does not cover this suite — it triaged the **API** e2e suite, four
+unrelated failures in `test:e2e:managed`.)*
+
+With a live stack: **321 passed / 9 skipped**, and **79 WCAG specs execute in a
+real browser with `color-contrast` active** — the check happy-dom cannot perform.
+It found three defects the token gate could not:
+
+| # | Defect | Impact |
+|---|---|---|
+| A | `badge.tsx` / `button.tsx` destructive carried `text-white` + `dark:bg-destructive/60`; the alpha composites to `#a86a68`, white on it is **4.26:1** | **8 violations.** The components bypassed their own tokens — `--destructive-foreground` is near-black in dark BY DESIGN, and the gate already asserted that pair at 7.62:1 |
+| B | Dark `--muted-foreground` on `--secondary` = **4.10:1** | **4 violations** across departments, queues, workflow-studio. The gate had *pinned this as a prohibition* — but a prohibition the code violates on four screens is a defect, not a rule. The token was DERIVED (no reference data for the pair) and one step too dark: `#949494` → `#a0a0a0` |
+| C | The obsolete prohibition removed from the gate | The hazard is gone; the pair is enforced by the normal sweep |
+
+**Zero `color-contrast` violations remain.** The 4 still-failing WCAG specs never
+reach their axe assertion — they die on fixtures (`createDraft` navigation
+timeout, a missing heading), unrelated to tokens.
+
+### The lesson worth keeping
+
+The token-level gate proved every pair it *knew about*, and was still blind to a
+component that hardcoded `text-white` over a token fill, and to an alpha that
+composited into a colour no token declares. **A computed gate and a rendered gate
+catch different classes of defect.** This ticket needed both, and shipping only
+the computed one would have left 12 real violations in the product.
+
+---
+
 ## Change History
 
 | Date | Change |
