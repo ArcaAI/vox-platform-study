@@ -42,7 +42,7 @@ export function DeptPromptSelector({
   return (
     <div className={cn('flex flex-col gap-4', className)}>
       <div className="flex flex-col gap-2">
-        <Label className="text-sm font-medium">
+        <Label className="text-sm">
           <IconBuilding className="size-4 text-muted-foreground" />
           Department
         </Label>
@@ -61,7 +61,7 @@ export function DeptPromptSelector({
       </div>
 
       <div className="flex flex-col gap-2">
-        <Label className="text-sm font-medium">
+        <Label className="text-sm">
           <IconMessage className="size-4 text-muted-foreground" />
           Prompt Template
         </Label>

@@ -246,7 +246,7 @@ export function SecurityPolicyScreen() {
                 {CHARACTER_CLASSES.map(({ field, label, hint }) => (
                   <div key={field} className="flex items-start justify-between gap-3 rounded-md border p-3">
                     <div className="flex min-w-0 flex-col gap-0.5">
-                      <Label htmlFor={`${uid}-${field}`} className="text-sm font-medium">
+                      <Label htmlFor={`${uid}-${field}`} className="text-sm">
                         {label}
                       </Label>
                       <p className="text-muted-foreground text-xs">{hint}</p>
