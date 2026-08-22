@@ -28,9 +28,14 @@ describe('shadcn primitives · focus indicator canon', () => {
     expect(files.length).toBeGreaterThan(50);
   });
 
-  // ring-ring/50 measures 2.06:1 (light) / 2.67:1 (dark) against the page
-  // background. WCAG 2.2 SC 1.4.11 requires 3:1. The same teal at full opacity
-  // reaches 4.89:1 / 7.10:1.
+  // ring-ring/50 halves the indicator's contrast against the page background.
+  // WCAG 2.2 SC 1.4.11 requires 3:1. Under the TASK-787 Tatva palette --ring is
+  // the near-black/near-white ink (#141414 light / #e4e4e4 dark) and reaches
+  // 17.65:1 on --background in light and 12.21:1 in dark at FULL opacity —
+  // headroom that only exists while the alpha stays off it. (The retired teal
+  // ring was 2.06:1 / 2.67:1 at 50%, which is the defect this guard was written
+  // for; the token-level floor is now enforced separately by
+  // src/styles/__tests__/token-contrast.vitest.ts.)
   it('never draws a focus ring at 50% alpha', () => {
     expect(offenders(/ring-ring\/50/)).toEqual([]);
   });
@@ -66,8 +71,9 @@ describe('shadcn primitives · focus indicator canon', () => {
 });
 
 describe('shadcn primitives · token conformance', () => {
-  // HOPE's design tokens are HEX (--teal-600: #0f7a8b). hsl(#0f7a8b) is not a
-  // valid colour, so the browser discards the whole declaration silently.
+  // HOPE's design tokens are plain HEX (e.g. --ring: #141414 via --neutral-900),
+  // not the bare HSL channel triplets upstream shadcn ships. hsl(#141414) is not
+  // a valid colour, so the browser discards the whole declaration silently.
   it('never wraps a HOPE token in hsl()', () => {
     expect(offenders(/hsl\(var\(--/)).toEqual([]);
   });

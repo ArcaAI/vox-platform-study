@@ -244,6 +244,177 @@ test-admin-console:
       when: never
     - !reference [.rules-admin-console, rules]
 
+# ── Admin Console E2E accessibility suite (Playwright + axe-core) ───────────
+#
+# TASK-787 Phase 2. The 40 specs under `apps/admin-console/tests/e2e/` are the
+# ONLY real-browser, rule-complete axe scans in the repo — `@axe-core/playwright`
+# against a painted page, with no rule disabled. Until this job existed they
+# were wired to no pipeline at all (the note on `test-admin-console` above said
+# so: "remains local-discipline until a nightly/scheduled job is built for it").
+# This is that job.
+#
+# SCHEDULED, NOT PER-MR, and off unless asked for. It composes the whole stack —
+# gateway + seeded database + a production build of the console — which is far
+# too heavy for an MR gate. Turn it on with a GitLab pipeline SCHEDULE that sets
+# RUN_A11Y_E2E=true (or the same variable on a manual "Run pipeline").
+#
+# ⚠ THE SKIP TRAP — read before editing the script.
+# `tests/e2e/helpers/stack.ts` makes every spec SKIP, not fail, when the stack
+# is not reachable. A naive job would therefore report GREEN while executing
+# zero assertions, which is worse than no job at all. Two guards below stop
+# that, and neither is optional:
+#   1. the health polls `exit 1` if the API or the console never comes up;
+#   2. the post-run check fails the job if the JSON report contains fewer than
+#      MIN_EXPECTED_SPECS executed tests.
+#
+# ⚠ NOT YET PROVEN ON A RUNNER. This job is modelled on `test-api-e2e` (the
+# existing background-boot + health-poll pattern) and has never been executed in
+# CI. It additionally needs a CI/CD variable that does not exist yet:
+#   CI_ADMIN_SESSION_SECRET — >=32 chars; the console refuses to boot without
+#   ADMIN_SESSION_SECRET (src/config/env.ts, required: true).
+# It also assumes CI_REDIS_URL actually reaches a Redis the gateway can use —
+# the comment on `test-api-e2e` records that this was NOT provisioned. Until
+# both hold, leaving RUN_A11Y_E2E unset keeps the job out of every pipeline.
+
+test-admin-console-a11y:
+  stage: test
+  image: mcr.microsoft.com/playwright:v1.62.1-noble
+  tags: [test]
+  # Deliberately blocking. The job cannot run at all unless someone sets
+  # RUN_A11Y_E2E=true, so a red result is always something that was asked for;
+  # `allow_failure: true` here would reduce a real-browser a11y sweep to a
+  # decorative one, which is the exact defect Phase 2 exists to remove.
+  allow_failure: false
+  timeout: 45m
+  # Declared explicitly: this job does not extend .test-node-base (custom image).
+  id_tokens: !reference [.vault-oidc-id-token, id_tokens]
+  cache:
+    - key:
+        files:
+          - pnpm-lock.yaml
+      paths:
+        - node_modules/
+        - apps/*/node_modules/
+        - packages/*/node_modules/
+      policy: pull
+  before_script:
+    - !reference [.vault-oidc, before_script]
+    - corepack enable
+    - corepack install -g --cache-only .gitlab/corepack/pnpm-10.34.5.tgz
+    - pnpm config set store-dir /pnpm-store
+    - pnpm install --frozen-lockfile --prefer-offline
+  needs:
+    - job: install-node
+      optional: true
+    - job: prepare-test-db
+      optional: true
+      artifacts: false
+  variables:
+    <<: *test-env-vars
+    VAULT_SECRETS: !reference [.vault-secret-sets, ci-full]
+    # prepare-test-db already reset + seeded; a second destructive reset here
+    # would race any sibling job still reading the same external database.
+    RESET_DB: "false"
+    SKIP_DB_PRECHECK: "true"
+    PRISMA_USER_CONSENT_FOR_DANGEROUS_AI_ACTION: "yes"
+    ADMIN_CONSOLE_URL: "http://localhost:5176"
+    NEXT_PUBLIC_API_HOST: "http://localhost:8868"
+    # The CLI `--reporter=json` writes to STDOUT unless this is set; the guard
+    # below reads the file, so without it the check would always fail open.
+    # Relative to cwd, which `pnpm --filter … exec` sets to apps/admin-console.
+    PLAYWRIGHT_JSON_OUTPUT_NAME: "test-results/report.json"
+    ADMIN_SESSION_SECRET: $CI_ADMIN_SESSION_SECRET
+    # Seeded super admin (packages/database seed 91-user.ts).
+    E2E_ADMIN_USERNAME: "super_admin"
+    E2E_ADMIN_PASSWORD: "password123"
+    # Floor for the "did anything actually run?" guard. Set below the 40-spec
+    # file count on purpose: individual specs may legitimately skip on a
+    # feature-flagged screen, a wholesale skip may not.
+    MIN_EXPECTED_SPECS: "30"
+  script:
+    - echo "── Test infra → PostgreSQL=${CI_DATABASE_URL:+set} Redis=${CI_REDIS_URL:+set} SessionSecret=${CI_ADMIN_SESSION_SECRET:+set} ──"
+    - |
+      if [ -z "$CI_ADMIN_SESSION_SECRET" ]; then
+        echo "✗ CI_ADMIN_SESSION_SECRET is not set — the admin console cannot boot (src/config/env.ts requires it)."
+        exit 1
+      fi
+    - pnpm --filter @arcaai/database db:generate
+    - pnpm turbo build --filter=@arcaai/api
+    - pnpm turbo build --filter=@arcaai/admin-console
+    - echo "── Booting API gateway in background..."
+    - pnpm --filter @arcaai/api start > api.log 2>&1 &
+    - echo $! > api.pid
+    - echo "── Booting admin console (next start) in background..."
+    - pnpm --filter @arcaai/admin-console exec next start -p 5176 > admin.log 2>&1 &
+    - echo $! > admin.pid
+    - |
+      wait_for() {
+        name="$1"; url="$2"; log="$3"
+        echo "── Waiting for ${name} at ${url} (90s timeout)..."
+        for i in $(seq 1 90); do
+          if wget -q -O- "$url" >/dev/null 2>&1; then
+            echo "  ✓ ${name} answered after ${i}s"
+            return 0
+          fi
+          sleep 1
+        done
+        echo "  ✗ ${name} never answered — dumping ${log}:"
+        tail -200 "$log" || true
+        # Hard failure, NOT a skip: stack.ts would turn an unreachable stack
+        # into 40 skipped specs and a green job.
+        exit 1
+      }
+    - wait_for "API gateway" "${API_URL}/api/v1/health" api.log
+    - wait_for "admin console" "${ADMIN_CONSOLE_URL}/login" admin.log
+    - pnpm exec playwright install chromium
+    - echo "── Running the 40-spec admin-console a11y suite..."
+    - pnpm --filter @arcaai/admin-console exec playwright test --reporter=line,json
+    - |
+      echo "── Verifying the suite actually executed (skip-trap guard)..."
+      node -e '
+        const fs = require("node:fs");
+        const path = "apps/admin-console/test-results/report.json";
+        if (!fs.existsSync(path)) { console.error("✗ no JSON report at " + path); process.exit(1); }
+        const report = JSON.parse(fs.readFileSync(path, "utf8"));
+        let ran = 0, skipped = 0;
+        const walk = (suite) => {
+          for (const spec of suite.specs ?? []) {
+            for (const test of spec.tests ?? []) {
+              for (const result of test.results ?? []) {
+                if (result.status === "skipped") skipped++; else ran++;
+              }
+            }
+          }
+          for (const child of suite.suites ?? []) walk(child);
+        };
+        for (const suite of report.suites ?? []) walk(suite);
+        const floor = Number(process.env.MIN_EXPECTED_SPECS);
+        console.log("   executed=" + ran + " skipped=" + skipped + " floor=" + floor);
+        if (ran < floor) {
+          console.error("✗ only " + ran + " tests executed (floor " + floor + ") — the stack was almost certainly down and the specs skipped themselves.");
+          process.exit(1);
+        }
+      '
+  after_script:
+    - if [ -f api.pid ]; then kill "$(cat api.pid)" 2>/dev/null || true; fi
+    - if [ -f admin.pid ]; then kill "$(cat admin.pid)" 2>/dev/null || true; fi
+  artifacts:
+    when: always
+    paths:
+      - apps/admin-console/test-results/
+      - api.log
+      - admin.log
+    expire_in: 30 days
+  rules:
+    - if: $SKIP_TESTS == "true"
+      when: never
+    - if: $SKIP_TESTS_TS == "true"
+      when: never
+    # Opt-IN only. A GitLab pipeline schedule sets RUN_A11Y_E2E=true; nothing
+    # else reaches this job, so it never lands on an MR or a normal push.
+    - if: $RUN_A11Y_E2E == "true"
+    - when: never
+
 test-compat-playground:
   stage: test
   extends: .test-node-base
@@ -269,9 +440,17 @@ test-compat-playground:
 #
 # @arcaai/ui ships 84 Playwright-CT specs (1729 cases) that mount
 # components in a real browser. They need the Playwright browser image, so this
-# job is gated on packages/ui changes and kept NON-BLOCKING (`allow_failure`)
-# initially to avoid blocking MRs on browser-runner cost/flakiness. Flip
-# `allow_failure` to false once it has proven stable on the integration branches.
+# job is gated on packages/ui changes.
+#
+# TASK-787 Phase 2 — this job is now BLOCKING and runs by default.
+# It holds the only two genuine RENDERED-contrast assertions in the repo
+# (`alert.test.tsx` destructive variant, `tabs.test.tsx` inactive trigger):
+# every other a11y suite in `packages/ui` runs under happy-dom, where axe
+# skips `color-contrast` entirely. While this job was `when: never` +
+# `allow_failure: true`, a palette change could regress contrast on every
+# screen and still show a green pipeline. The cost/flakiness that motivated
+# the opt-out is real but is the lesser risk; if the browser runner proves
+# unstable, narrow the browser matrix rather than re-disabling the job.
 # In CI the CT config runs Chromium + Firefox + WebKit (all preinstalled in the
 # image) for cross-browser coverage.
 
@@ -279,7 +458,6 @@ test-ui-ct:
   stage: test
   image: mcr.microsoft.com/playwright:v1.62.1-noble
   tags: [test]
-  allow_failure: true
   variables:
     NODE_OPTIONS: "--max-old-space-size=4096"
   cache:
@@ -310,10 +488,10 @@ test-ui-ct:
       - packages/ui/test-results/
     expire_in: 30 days
   rules:
-    # Disabled: Playwright cross-browser CT is very slow (30-min timeout).
-    # Re-enable by setting RUN_UI_CT=true on the pipeline.
-    - if: $RUN_UI_CT != "true"
-      when: never
+    # No RUN_UI_CT opt-out any more (TASK-787 Phase 2). The job is slow —
+    # cross-browser CT runs against a 30-min timeout — but it is the only
+    # real-browser contrast check that runs on a normal pipeline, so it is
+    # change-gated on packages/ui rather than switched off.
     - if: $SKIP_TESTS == "true"
       when: never
     - if: $SKIP_TESTS_TS == "true"
