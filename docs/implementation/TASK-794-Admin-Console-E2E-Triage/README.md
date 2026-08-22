@@ -107,7 +107,15 @@ constraint is contention on the single `next dev` process, not test duration, so
 the budget stays at 30s and the parallelism comes down. `PLAYWRIGHT_WORKERS`
 overrides when you know the specs you are running are light.
 
-**Final: 302 passed / 51 skipped / 1 flaky** (from 212 / 128 / 27).
+**Final: 303 passed / 51 skipped / 0 failed** (from 212 / 128 / 27).
+
+The last remaining failure was recorded as "flaky" and was not. `rbac-policies`
+carried the **same ambiguous `Clear filters` locator** as `dna-writing-styles`:
+once the grid empties, both the data-grid toolbar and the empty state render a
+button with that name. It looked flaky because it reproduced only in the full
+suite and passed 11/11 alone — in isolation the toolbar variant does not render
+alongside the empty state. Scoped to the empty state, which is the test's own
+stated subject.
 
 ### Not attempted: running against a production build
 
@@ -134,3 +142,4 @@ Both cost real time during TASK-787 verification.
 | 2026-08-22 | **Renumbered TASK-789 → TASK-794** — `TASK-789` was taken by a concurrent session (`TASK-789-Agentic-Loop-Coherence-Review`, committed in `6b066dd0f` alongside 790–793) between this ticket being written and committed. Caught immediately after; the fix commit `c38b76263` predates the collision and its message still says "TASK-789" for this work — noted here rather than rewritten, since the history is shared. |
 | 2026-08-22 | Opened during TASK-787/788 verification. All 27 failures diagnosed, 16 fixed, four root causes recorded. 26 of 27 predate this sprint's UI work; the one that did not was TASK-788's nav scoping. Suite 212/128/27 → 293/50/11. Status → Review. |
 | 2026-08-22 | **The remaining 11 cleared (`08337beb5`).** All were causes, not flakiness: a leaking queue fixture that permanently burned its own candidate queues, a route mock stale since TASK-759, two tests hardcoding seed values the seed never creates ("Cardiology" as a Department, an "Audio" bucket purpose), and one asserting tenant config it could not create. Local worker default dropped 3 → 1 on measured evidence (33/6/4/0 timeouts at ~8/3/2/1 workers; a 45s budget did not help, proving contention rather than duration). Suite **212/128/27 → 302/51/1**, the one remainder passing 11/11 in isolation. |
+| 2026-08-23 | **Suite fully green: 303 passed / 51 skipped / 0 failed.** The one failure previously recorded as flaky was the same ambiguous `Clear filters` locator as `dna-writing-styles` — it reproduced in two consecutive full runs while passing 11/11 in isolation, because the toolbar variant only renders alongside the empty state under full-suite conditions. Corrected rather than left labelled flaky. |
