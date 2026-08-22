@@ -164,7 +164,7 @@ export const VoiceButton = React.forwardRef<HTMLButtonElement, VoiceButtonProps>
           {shouldShowTrailing && (
             <div className="animate-in fade-in absolute inset-0 flex items-center justify-center duration-300">
               {typeof trailing === 'string' ? (
-                <span className="text-muted-foreground px-1.5 font-mono text-2xs font-medium select-none">{trailing}</span>
+                <span className="text-muted-foreground px-1.5 font-mono text-xs font-medium select-none">{trailing}</span>
               ) : (
                 trailing
               )}
@@ -177,7 +177,7 @@ export const VoiceButton = React.forwardRef<HTMLButtonElement, VoiceButtonProps>
 
           {isSuccess && showFeedback && (
             <div className="animate-in fade-in bg-background/80 absolute inset-0 flex items-center justify-center duration-300">
-              <span className="text-primary text-2xs font-medium">
+              <span className="text-primary text-xs font-medium">
                 <CheckIcon className="size-3.5" />
               </span>
             </div>
@@ -186,7 +186,7 @@ export const VoiceButton = React.forwardRef<HTMLButtonElement, VoiceButtonProps>
           {/* Error Icon */}
           {isError && showFeedback && (
             <div className="animate-in fade-in bg-background/80 absolute inset-0 flex items-center justify-center duration-300">
-              <span className="text-destructive text-2xs font-medium">
+              <span className="text-destructive text-xs font-medium">
                 <XIcon className="size-3.5" />
               </span>
             </div>

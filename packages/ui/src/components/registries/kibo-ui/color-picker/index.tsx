@@ -185,7 +185,7 @@ export const ColorPickerHue = ({ className, ...props }: ColorPickerHueProps) => 
       <Slider.Track className="relative my-0.5 h-3 w-full grow rounded-full bg-[linear-gradient(90deg,#FF0000,#FFFF00,#00FF00,#00FFFF,#0000FF,#FF00FF,#FF0000)]">
         <Slider.Range className="absolute h-full" />
       </Slider.Track>
-      <Slider.Thumb className="block h-4 w-4 rounded-full border border-primary/50 bg-background shadow transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50" />
+      <Slider.Thumb className="block h-4 w-4 rounded-full border border-primary/50 bg-background transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50" />
     </Slider.Root>
   );
 };
@@ -208,7 +208,7 @@ export const ColorPickerAlpha = ({ className, ...props }: ColorPickerAlphaProps)
         <div className="absolute inset-0 rounded-full bg-gradient-to-r from-transparent to-black/50 dark:to-white/50" />
         <Slider.Range className="absolute h-full rounded-full bg-transparent" />
       </Slider.Track>
-      <Slider.Thumb className="block h-4 w-4 rounded-full border border-primary/50 bg-background shadow transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50" />
+      <Slider.Thumb className="block h-4 w-4 rounded-full border border-primary/50 bg-background transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50" />
     </Slider.Root>
   );
 };
@@ -294,7 +294,7 @@ export const ColorPickerFormat = ({ className, ...props }: ColorPickerFormatProp
     const hex = color.hex();
 
     return (
-      <div className={cn('-space-x-px relative flex w-full items-center rounded-md shadow-sm', className)} {...props}>
+      <div className={cn('-space-x-px relative flex w-full items-center rounded-md', className)} {...props}>
         <Input className="h-8 rounded-r-none bg-secondary px-2 text-xs shadow-none" readOnly type="text" value={hex} />
         <PercentageInput value={alpha} />
       </div>
@@ -308,7 +308,7 @@ export const ColorPickerFormat = ({ className, ...props }: ColorPickerFormatProp
       .map((value) => Math.round(value));
 
     return (
-      <div className={cn('-space-x-px flex items-center rounded-md shadow-sm', className)} {...props}>
+      <div className={cn('-space-x-px flex items-center rounded-md', className)} {...props}>
         {rgb.map((value, index) => (
           <Input
             className={cn('h-8 rounded-r-none bg-secondary px-2 text-xs shadow-none', index && 'rounded-l-none', className)}
@@ -330,7 +330,7 @@ export const ColorPickerFormat = ({ className, ...props }: ColorPickerFormatProp
       .map((value) => Math.round(value));
 
     return (
-      <div className={cn('w-full rounded-md shadow-sm', className)} {...props}>
+      <div className={cn('w-full rounded-md', className)} {...props}>
         <Input
           className="h-8 w-full bg-secondary px-2 text-xs shadow-none"
           readOnly
@@ -349,7 +349,7 @@ export const ColorPickerFormat = ({ className, ...props }: ColorPickerFormatProp
       .map((value) => Math.round(value));
 
     return (
-      <div className={cn('-space-x-px flex items-center rounded-md shadow-sm', className)} {...props}>
+      <div className={cn('-space-x-px flex items-center rounded-md', className)} {...props}>
         {hsl.map((value, index) => (
           <Input
             className={cn('h-8 rounded-r-none bg-secondary px-2 text-xs shadow-none', index && 'rounded-l-none', className)}

@@ -58,7 +58,7 @@ export default function PdfDocument({ url, name, width = 640 }: PdfDocumentProps
         error={<DownloadFallback url={url} name={name} />}
       >
         {Array.from({ length: numPages }, (_, i) => (
-          <Page key={i} pageNumber={i + 1} width={width} renderTextLayer={false} renderAnnotationLayer={false} className="mx-auto mb-2 shadow-sm" />
+          <Page key={i} pageNumber={i + 1} width={width} renderTextLayer={false} renderAnnotationLayer={false} className="mx-auto mb-2" />
         ))}
       </Document>
     </div>

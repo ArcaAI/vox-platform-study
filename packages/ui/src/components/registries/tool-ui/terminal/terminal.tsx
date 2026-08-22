@@ -168,7 +168,7 @@ function TerminalRoot({
 
   return (
     <div className={cn('@container flex w-full min-w-80 flex-col gap-3', className)} data-tool-ui-id={id} data-slot="terminal">
-      <div className="border-border bg-card overflow-hidden rounded-lg border shadow-xs">
+      <div className="border-border bg-card overflow-hidden rounded-lg border">
         <TerminalHeader
           command={command}
           cwd={cwd}

@@ -108,7 +108,7 @@ function StepIndicator({ status }: StepIndicatorProps) {
   if (status === 'completed') {
     return (
       <span
-        className="bg-primary text-primary-foreground border-primary flex size-6 shrink-0 items-center justify-center rounded-full border shadow-sm motion-safe:animate-in motion-safe:fade-in motion-safe:zoom-in-75 motion-safe:duration-300 motion-safe:ease-out"
+        className="bg-primary text-primary-foreground border-primary flex size-6 shrink-0 items-center justify-center rounded-full border motion-safe:animate-in motion-safe:fade-in motion-safe:zoom-in-75 motion-safe:duration-300 motion-safe:ease-out"
         aria-hidden="true"
       >
         <Check
@@ -122,7 +122,7 @@ function StepIndicator({ status }: StepIndicatorProps) {
   if (status === 'failed') {
     return (
       <span
-        className="bg-destructive border-destructive flex size-6 shrink-0 items-center justify-center rounded-full border text-white shadow-sm motion-safe:animate-in motion-safe:fade-in motion-safe:zoom-in-75 motion-safe:duration-300 motion-safe:ease-out dark:border-red-600 dark:bg-red-600"
+        className="bg-destructive border-destructive flex size-6 shrink-0 items-center justify-center rounded-full border text-white motion-safe:animate-in motion-safe:fade-in motion-safe:zoom-in-75 motion-safe:duration-300 motion-safe:ease-out dark:border-red-600 dark:bg-red-600"
         aria-hidden="true"
       >
         <X
@@ -174,7 +174,7 @@ function ProgressTrackerReceipt({ id, steps, elapsedTime, className, choice }: P
       role="status"
       aria-label={choice.summary}
     >
-      <div className="bg-card/60 flex w-full flex-col gap-4 rounded-2xl border p-5 shadow-xs">
+      <div className="bg-card/60 flex w-full flex-col gap-4 rounded-2xl border p-5">
         <div className="flex items-center justify-between">
           <ElapsedTimeBadge elapsedTime={elapsedTime} />
           <span className={cn('flex items-center gap-1.5 text-xs font-medium', receiptState.toneClassName)}>
@@ -223,7 +223,7 @@ function ProgressTrackerLive({ id, steps, elapsedTime, className }: ProgressTrac
       aria-live="polite"
       aria-busy={hasInProgress}
     >
-      <div className="bg-card flex w-full flex-col gap-4 rounded-2xl border p-5 shadow-xs">
+      <div className="bg-card flex w-full flex-col gap-4 rounded-2xl border p-5">
         <ElapsedTimeBadge elapsedTime={elapsedTime} />
 
         <ol className="m-0 flex list-none flex-col gap-3 p-0">

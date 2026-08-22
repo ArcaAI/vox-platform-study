@@ -839,7 +839,7 @@ function ColorPickerArea(props: DivProps) {
         />
       </div>
       <div
-        className="absolute size-3 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-white shadow-sm"
+        className="absolute size-3 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-white"
         style={{
           left: `${hsv?.s ?? 0}%`,
           top: `${100 - (hsv?.v ?? 0)}%`,
@@ -885,7 +885,7 @@ function ColorPickerHueSlider(props: React.ComponentProps<typeof SliderPrimitive
       <SliderPrimitive.Track className="relative h-3 w-full grow overflow-hidden rounded-full bg-[linear-gradient(to_right,#ff0000_0%,#ffff00_16.66%,#00ff00_33.33%,#00ffff_50%,#0000ff_66.66%,#ff00ff_83.33%,#ff0000_100%)]">
         <SliderPrimitive.Range className="absolute h-full" />
       </SliderPrimitive.Track>
-      <SliderPrimitive.Thumb className="block size-4 rounded-full border border-primary/50 bg-background shadow transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50" />
+      <SliderPrimitive.Thumb className="block size-4 rounded-full border border-primary/50 bg-background transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50" />
     </SliderPrimitive.Root>
   );
 }
@@ -940,7 +940,7 @@ function ColorPickerAlphaSlider(props: React.ComponentProps<typeof SliderPrimiti
         />
         <SliderPrimitive.Range className="absolute h-full" />
       </SliderPrimitive.Track>
-      <SliderPrimitive.Thumb className="block size-4 rounded-full border border-primary/50 bg-background shadow transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50" />
+      <SliderPrimitive.Thumb className="block size-4 rounded-full border border-primary/50 bg-background transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50" />
     </SliderPrimitive.Root>
   );
 }
@@ -984,7 +984,7 @@ function ColorPickerSwatch(props: DivProps) {
       aria-label={ariaLabel}
       data-slot="color-picker-swatch"
       {...swatchProps}
-      className={cn('box-border size-8 rounded-sm border shadow-sm', context.disabled && 'opacity-50', className)}
+      className={cn('box-border size-8 rounded-sm border', context.disabled && 'opacity-50', className)}
       style={{
         ...backgroundStyle,
         forcedColorAdjust: 'none',

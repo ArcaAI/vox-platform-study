@@ -60,7 +60,7 @@ export function GalleryLightbox() {
           <div
             ref={lightboxContentRef}
             className={cn(
-              'pointer-events-auto relative w-fit max-w-full overflow-hidden rounded-lg shadow-2xl',
+              'pointer-events-auto relative w-fit max-w-full overflow-hidden rounded-lg',
               '[&>img]:block [&>img]:max-h-[80vh] [&>img]:max-w-full',
               '[&>img]:h-auto [&>img]:w-auto [&>img]:object-contain [&>img]:select-none',
             )}

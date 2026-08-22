@@ -172,7 +172,7 @@ export function StatCard(props: StatCardProps) {
           </span>
         ) : null}
       </div>
-      <div data-slot="stat-card-value" className="text-2xl leading-tight font-semibold tabular-nums text-card-foreground">
+      <div data-slot="stat-card-value" className="text-2xl leading-tight font-medium tabular-nums text-card-foreground">
         {empty ? '\u2014' : value}
       </div>
       {delta && direction && deltaRole && DeltaIconCmp ? (

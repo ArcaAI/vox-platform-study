@@ -55,7 +55,7 @@ export type BannerIconProps = HTMLAttributes<HTMLDivElement> & {
 };
 
 export const BannerIcon = ({ icon: Icon, className, ...props }: BannerIconProps) => (
-  <div className={cn('rounded-full border border-background/20 bg-background/10 p-1 shadow-sm', className)} {...props}>
+  <div className={cn('rounded-full border border-background/20 bg-background/10 p-1', className)} {...props}>
     <Icon size={16} />
   </div>
 );

@@ -177,7 +177,7 @@ function GridVariant({
               {product.badge && (
                 <span
                   className={cn(
-                    'absolute top-2 left-2 px-1.5 py-0.5 text-2xs font-medium rounded',
+                    'absolute top-2 left-2 px-1.5 py-0.5 text-xs font-medium rounded',
                     product.badge.startsWith('-') ? 'bg-foreground text-background' : 'bg-background text-foreground border border-border',
                   )}
                 >
@@ -187,12 +187,12 @@ function GridVariant({
             </div>
             <div className="p-2 sm:p-3 space-y-0.5 sm:space-y-1">
               {product.name && <p className="text-xs sm:text-sm font-medium line-clamp-1">{product.name}</p>}
-              {product.description && <p className="text-2xs sm:text-xs line-clamp-1 text-muted-foreground">{product.description}</p>}
+              {product.description && <p className="text-xs line-clamp-1 text-muted-foreground">{product.description}</p>}
               <div className="flex items-center justify-between">
                 <div className="flex items-baseline gap-1">
                   {product.price !== undefined && <span className="text-xs sm:text-sm font-semibold">{formatCurrency(product.price)}</span>}
                   {product.originalPrice && (
-                    <span className="text-2xs sm:text-xs line-through text-muted-foreground">{formatCurrency(product.originalPrice)}</span>
+                    <span className="text-xs line-through text-muted-foreground">{formatCurrency(product.originalPrice)}</span>
                   )}
                 </div>
                 {product.rating && (
@@ -202,7 +202,7 @@ function GridVariant({
                   </div>
                 )}
               </div>
-              {!product.inStock && <p className="text-2xs sm:text-xs text-destructive">Out of stock</p>}
+              {!product.inStock && <p className="text-xs text-destructive">Out of stock</p>}
             </div>
           </button>
         ))}
@@ -324,7 +324,7 @@ function CarouselVariant({
               disabled={currentIndex === 0}
               aria-label="Previous product"
               className={cn(
-                'absolute left-2 top-1/2 -translate-y-1/2 z-10 h-8 w-8 rounded-full bg-background/80 backdrop-blur-sm border shadow-sm flex items-center justify-center cursor-pointer',
+                'absolute left-2 top-1/2 -translate-y-1/2 z-10 h-8 w-8 rounded-full bg-background/80 backdrop-blur-sm border flex items-center justify-center cursor-pointer',
                 currentIndex === 0 ? 'opacity-0' : 'hover:bg-background',
               )}
             >
@@ -341,7 +341,7 @@ function CarouselVariant({
               disabled={isAtEnd}
               aria-label="Next product"
               className={cn(
-                'absolute right-2 top-1/2 -translate-y-1/2 z-10 h-8 w-8 rounded-full bg-background/80 backdrop-blur-sm border shadow-sm flex items-center justify-center cursor-pointer',
+                'absolute right-2 top-1/2 -translate-y-1/2 z-10 h-8 w-8 rounded-full bg-background/80 backdrop-blur-sm border flex items-center justify-center cursor-pointer',
                 isAtEnd ? 'opacity-0' : 'hover:bg-background',
               )}
             >
@@ -367,7 +367,7 @@ function CarouselVariant({
                       {product.badge && (
                         <span
                           className={cn(
-                            'absolute top-2 left-2 px-1.5 py-0.5 text-2xs font-medium rounded',
+                            'absolute top-2 left-2 px-1.5 py-0.5 text-xs font-medium rounded',
                             product.badge.startsWith('-') ? 'bg-foreground text-background' : 'bg-background text-foreground border',
                           )}
                         >

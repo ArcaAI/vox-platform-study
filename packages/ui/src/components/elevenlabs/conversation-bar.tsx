@@ -172,7 +172,7 @@ const ConversationBarInner = React.forwardRef<HTMLDivElement, ConversationBarPro
 
     return (
       <div ref={ref} className={cn('flex w-full items-end justify-center p-4', className)}>
-        <Card className="m-0 w-full gap-0 border p-0 shadow-lg">
+        <Card className="m-0 w-full gap-0 border p-0">
           <div className="flex flex-col-reverse">
             <div>
               {keyboardOpen && <Separator />}
@@ -203,7 +203,7 @@ const ConversationBarInner = React.forwardRef<HTMLDivElement, ConversationBarPro
                         />
                         {agentState === 'disconnected' && (
                           <div className="absolute inset-0 flex items-center justify-center">
-                            <span className="text-foreground/50 text-2xs font-medium">Customer Support</span>
+                            <span className="text-foreground/50 text-xs font-medium">Customer Support</span>
                           </div>
                         )}
                       </div>

@@ -164,7 +164,7 @@ export function Hero({ data, actions }: HeroProps) {
   const hasTechLogos = techLogos && techLogos.length > 0;
 
   return (
-    <div className="w-full rounded-xl border bg-card shadow-sm">
+    <div className="w-full rounded-xl border bg-card">
       <div className="flex flex-col items-center justify-center py-16 sm:py-20 lg:py-24 px-6 sm:px-8 lg:px-12">
         {/* Logos Section */}
         {hasLogos && (

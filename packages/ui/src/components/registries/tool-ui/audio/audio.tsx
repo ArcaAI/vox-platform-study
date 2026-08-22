@@ -118,7 +118,7 @@ function CompactPlayer({ artwork, title, description, controls }: CompactPlayerP
         </>
       )}
       {artwork && (
-        <div className="ring-background/20 relative size-12 shrink-0 overflow-hidden rounded-lg shadow-lg ring-1">
+        <div className="ring-background/20 relative size-12 shrink-0 overflow-hidden rounded-lg ring-1">
           <img src={artwork} alt="" aria-hidden="true" loading="lazy" decoding="async" className="absolute inset-0 h-full w-full object-cover" />
         </div>
       )}
@@ -138,7 +138,7 @@ function CompactPlayer({ artwork, title, description, controls }: CompactPlayerP
         variant="default"
         size="icon"
         onClick={controls.onPlayPause}
-        className="relative size-10 shrink-0 rounded-full shadow-md"
+        className="relative size-10 shrink-0 rounded-full"
         aria-label={controls.isPlaying ? 'Pause' : 'Play'}
       >
         {controls.isPlaying ? <Pause className="size-4" fill="currentColor" /> : <Play className="size-4 ml-0.5" fill="currentColor" />}
@@ -223,7 +223,7 @@ function AudioInner(props: AudioProps) {
       <div
         className={cn(
           'group @container relative isolate flex w-full min-w-0 flex-col overflow-hidden',
-          'border-border bg-card border text-sm shadow-xs',
+          'border-border bg-card border text-sm',
           'rounded-xl',
         )}
       >

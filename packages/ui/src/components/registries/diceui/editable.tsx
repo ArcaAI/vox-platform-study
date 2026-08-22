@@ -623,7 +623,7 @@ function EditableInput(props: EditableInputProps) {
       onChange={onChange}
       onKeyDown={onKeyDown}
       className={cn(
-        'flex rounded-sm border border-input bg-transparent py-1 text-base shadow-xs transition-colors file:border-0 file:bg-transparent file:font-medium file:text-foreground file:text-sm placeholder:text-muted-foreground focus-visible:outline-hidden focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50 md:text-sm',
+        'flex rounded-sm border border-input bg-transparent py-1 text-base transition-colors file:border-0 file:bg-transparent file:font-medium file:text-foreground file:text-sm placeholder:text-muted-foreground focus-visible:outline-hidden focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50 md:text-sm',
         context.autosize ? 'w-auto' : 'w-full',
         className,
       )}
