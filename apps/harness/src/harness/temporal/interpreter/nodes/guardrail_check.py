@@ -10,16 +10,21 @@ single v1-permitted value ``'unsafe_or_unknown'`` (an "unsafe-only" gate is exac
 posture that would let a guardrail outage launder into a silent pass — see the schema's own
 description).
 
-**Known, disclosed v1 gap on ``config.onFail: 'abort'``**: palette.md's own rationale reads
-"`onFail: 'abort'` in the node's own config is how a tenant makes a specific run's guardrail
-failure fatal". `critical` is a CODE-OWNED registry property (`NODE_REGISTRY['guardrail.check']`
-is `critical=False`, never tenant-configurable — execution-semantics.md §5/§9), and
-`NodeActivityResult.status` has no `FAILED` member (only the workflow body can promote a
-`DEGRADED` critical node to run-level `FAILED`) — there is therefore NO mechanism in the shipped
-v1 interpreter for a per-node CONFIG value to override a CODE-OWNED registry property. This
-activity accepts and records `onFail` (so the value survives to the trajectory / node output for
-a future ticket to act on) but does NOT fake a promotion to `FAILED` — recorded here, and in this
-ticket's README §7, as a real gap rather than silently implemented as a no-op.
+**``config.onFail: 'abort'`` is now REJECTED AT AUTHORING TIME** (TASK-791 W4, closing
+TASK-789's M-1). palette.md's rationale read "`onFail: 'abort'` in the node's own config is how a
+tenant makes a specific run's guardrail failure fatal" — but `critical` is a CODE-OWNED registry
+property (`NODE_REGISTRY['guardrail.check']` is `critical=False`, never tenant-configurable —
+execution-semantics.md §5/§9), and `NodeActivityResult.status` has no `FAILED` member (only the
+workflow body promotes a `DEGRADED` critical node to run-level `FAILED`). There is therefore NO
+mechanism in the shipped v1 interpreter for a per-node CONFIG value to override a code-owned
+registry property.
+
+That gap used to be disclosed and left open, which meant a tenant who authored `'abort'` got
+SILENT NON-ENFORCEMENT while believing they had a hard gate. `guardrail.check`'s config schema
+(`node-config-schemas.ts`) now pins `onFail` to `['mark']`, so the value cannot be authored at
+all — the same posture `failOn` already carried. This activity still READS `onFail` and reports
+it in the unsafe-verdict reason (harmless, and it keeps the field meaningful if a real promotion
+mechanism is added later), but nothing here fakes a promotion to `FAILED`.
 """
 
 from __future__ import annotations
