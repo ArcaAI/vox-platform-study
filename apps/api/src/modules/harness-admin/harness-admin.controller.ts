@@ -8,6 +8,7 @@ import {
   GateEditMiningService,
   GateEditCorpusExport,
   GateEditCurationResult,
+  GateEditFineTuningExport,
   GateQueueResponse,
   GoldenCaseListResponse,
   GoldenCaseMetaResponse,
@@ -26,7 +27,7 @@ import {
   UpdateHarnessPolicyRequest,
   UpdateLiveDocEngineConfigRequest,
 } from '@arcaai/applications';
-import { Body, Controller, ForbiddenException, Get, NotFoundException, Param, Patch, Post, Query } from '@nestjs/common';
+import { Body, Controller, ForbiddenException, Get, Header, NotFoundException, Param, Patch, Post, Query } from '@nestjs/common';
 import { ApiBearerAuth, ApiHeader, ApiOperation, ApiParam, ApiQuery, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { ClsService } from 'nestjs-cls';
 import { Authorize, ExpectedVersion, RequiresIfMatch, ForbidApiKey, RequiredSvcScopes } from '../../decorators';
@@ -395,6 +396,51 @@ export class HarnessAdminController {
       // become an unbounded read of redacted clinical text.
       limit: Number(query.limit) > 0 ? Number(query.limit) : 100,
     });
+  }
+
+  // TASK-792 W4 (C-6) — the fine-tuning export. R7's second clause
+  // ("used for fine-tuning and training models") had NO implementation at all:
+  // nothing assembled (original, edited, context) triples into a dataset
+  // artifact. This is that artifact.
+  //
+  // Two deliberate differences from `GET gate-edit-exemplars` directly above:
+  // it admits ONLY curator-APPROVED rows (a training set cannot be un-baked
+  // once it is in weights), and it emits JSONL rather than a JSON envelope,
+  // because that is what a fine-tuning toolchain actually consumes.
+  @Get('gate-edit-exemplars/fine-tuning-export')
+  @Authorize(['manage', 'HarnessPolicy'])
+  @Header('Content-Type', 'application/x-ndjson; charset=utf-8')
+  @Header('Content-Disposition', 'attachment; filename="gate-edit-finetune.jsonl"')
+  @ApiOperation({
+    summary: 'Export the curator-APPROVED gate-edit corpus as a JSONL fine-tuning dataset',
+    description:
+      'One JSON object per line: `{ original, edited, context }` — the AI draft as delivered, the note the clinician ' +
+      'actually signed, and the non-text signal that makes the pair interpretable. Both text fields are the ' +
+      'PHI-REDACTED forms written at mining time (`phiRedaction: FULL`); raw note text is never reachable from this ' +
+      'route. Unlike the sibling candidate export this is curation-GATED with no knob — only exemplars a curator moved ' +
+      'to APPROVED are included (`reviewStatus: SME_APPROVED`) — because a training corpus assembled from unreviewed ' +
+      'clinical text cannot be retracted once it has been trained on. Every record carries ' +
+      '`provenance: CLINICIAN_EDIT`, distinguishing it from the harness\'s synthetic golden fixture.',
+  })
+  @ApiQuery({ name: 'tenantId', required: false, description: 'Platform-admin only: target tenant. Tenant admins are pinned to their own tenant.' })
+  @ApiQuery({ name: 'departmentId', required: false, description: 'Narrow to one department.' })
+  @ApiQuery({ name: 'qualitySignal', required: false, description: 'APPROVED_CLEAN | HEAVILY_EDITED. Omit for both.' })
+  @ApiQuery({ name: 'limit', required: false, type: Number, description: 'Maximum records (default 100, hard-capped at 500).' })
+  @ApiResponse({ status: 200, description: 'JSONL dataset (`application/x-ndjson`). Empty body when nothing is approved yet.' })
+  @ApiResponse({ status: 403, description: 'Caller may not read this tenant\'s corpus.' })
+  async exportGateEditFineTuningDataset(
+    @Query() query: { tenantId?: string; departmentId?: string; qualitySignal?: string; limit?: number },
+  ): Promise<string> {
+    const tenantId = this.resolveReadTenantId(query.tenantId);
+    const dataset: GateEditFineTuningExport = await this.gateEditMiningService.exportFineTuningDataset({
+      tenantId,
+      departmentId: query.departmentId ?? null,
+      qualitySignal: query.qualitySignal,
+      // Defaulted, never undefined: an omitted limit must not become an
+      // unbounded read of redacted clinical text.
+      limit: Number(query.limit) > 0 ? Number(query.limit) : 100,
+    });
+    return this.gateEditMiningService.toJsonl(dataset);
   }
 
   // The curation half of the learning loop (F-24). Export shows a
