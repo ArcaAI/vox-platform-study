@@ -9,7 +9,7 @@ function Command({ className, ...props }: React.ComponentProps<typeof CommandPri
   return (
     <CommandPrimitive
       data-slot="command"
-      className={cn('bg-popover text-popover-foreground flex h-full w-full flex-col overflow-hidden rounded-md', className)}
+      className={cn('bg-popover text-popover-foreground flex h-full w-full flex-col overflow-hidden rounded-surface shadow-overlay', className)}
       {...props}
     />
   );
@@ -50,7 +50,7 @@ function CommandInput({ className, ...props }: React.ComponentProps<typeof Comma
       <CommandPrimitive.Input
         data-slot="command-input"
         className={cn(
-          'placeholder:text-muted-foreground flex h-10 w-full rounded-md bg-transparent py-3 text-sm outline-hidden disabled:cursor-not-allowed disabled:opacity-50',
+          'placeholder:text-muted-foreground flex h-10 w-full rounded-surface bg-transparent py-3 text-sm outline-hidden disabled:cursor-not-allowed disabled:opacity-50',
           className,
         )}
         {...props}

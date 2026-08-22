@@ -53,7 +53,7 @@ function Calendar({
         month_caption: cn('flex items-center justify-center h-(--cell-size) w-full px-(--cell-size)', defaultClassNames.month_caption),
         dropdowns: cn('w-full flex items-center text-sm font-medium justify-center h-(--cell-size) gap-1.5', defaultClassNames.dropdowns),
         dropdown_root: cn(
-          'relative has-focus:border-ring border border-input shadow-xs has-focus:ring-ring has-focus:ring-[3px] rounded-md',
+          'relative has-focus:border-ring border border-input has-focus:ring-ring has-focus:ring-[3px] rounded-surface',
           defaultClassNames.dropdown_root,
         ),
         dropdown: cn('absolute bg-popover inset-0 opacity-0', defaultClassNames.dropdown),

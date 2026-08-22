@@ -22,9 +22,9 @@ test.describe('Badge', () => {
       await expect(component).toHaveClass(/custom-badge/);
     });
 
-    test('has pill shape (rounded-full)', async ({ mount }) => {
+    test('has pill shape (rounded-control)', async ({ mount }) => {
       const component = await mount(<Badge>Badge</Badge>);
-      await expect(component).toHaveClass(/rounded-full/);
+      await expect(component).toHaveClass(/rounded-control/);
     });
   });
 
@@ -82,7 +82,7 @@ test.describe('Badge', () => {
           <a href="#">Styled Link Badge</a>
         </Badge>,
       );
-      await expect(component).toHaveClass(/rounded-full/);
+      await expect(component).toHaveClass(/rounded-control/);
       await expect(component).toHaveClass(/border-border/);
     });
 

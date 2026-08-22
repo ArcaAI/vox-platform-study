@@ -23,7 +23,7 @@ test.describe('Alert', () => {
 
     test('has correct default styling', async ({ mount }) => {
       const component = await mount(<Alert>Alert</Alert>);
-      await expect(component).toHaveClass(/rounded-lg/);
+      await expect(component).toHaveClass(/rounded-surface/);
       await expect(component).toHaveClass(/border/);
       await expect(component).toHaveClass(/w-full/);
     });

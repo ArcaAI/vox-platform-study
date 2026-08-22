@@ -85,7 +85,7 @@ test.describe('HoverCard', () => {
       await mount(<DefaultOpenHoverCard />);
       const content = page.locator('[data-slot="hover-card-content"]');
       await expect(content).toHaveClass(/border/);
-      await expect(content).toHaveClass(/shadow-md/);
+      await expect(content).toHaveClass(/shadow-overlay/);
     });
 
     test('content has animation classes', async ({ mount, page }) => {
