@@ -402,10 +402,26 @@ not bold — so the same 4.5:1 floor applied before and applies after. One test
 moved (`label.test.tsx:30`); the other 15 `font-medium` assertions target
 components carrying their own weight and were verified unaffected.
 
-**Follow-up, not blocking:** ~14 admin-console call sites pass `font-medium`
-explicitly to `<Label>`, locally re-creating the collision on those surfaces.
-Some may genuinely want an emphasised label, so it is a decision rather than a
-sweep.
+**Follow-up CLOSED 2026-08-22 (`c1484d0eb`) — and the recorded estimate was wrong.**
+Measured: of **317** `<Label>` usages, 21 override to `font-medium`, and only
+**4** are the collision.
+
+| Override | Count | Collides? |
+|---|---|---|
+| `text-sm font-medium` | **4** | **Yes** — same size AND weight as a section heading |
+| `text-xs font-medium` | 17 | **No** — 12px, usually `text-muted-foreground`; differs from a 14px foreground heading by both size and colour |
+
+The four were fixed (`security-policy-screen.tsx`, `tenant-settings-tab.tsx`,
+`dept-prompt-selector.tsx` ×2) — all setting-row titles where `text-sm` is
+already the `Label` default, so only `font-medium` was doing damage.
+
+**The 17 are deliberately kept.** They never collided, and dropping them to 400
+would reduce legibility at 12px muted — stripping them would be churn that makes
+text harder to read in service of a consistency the primitive does not need.
+
+Guarded: the console emphasis canon now also fails on a `<Label>` carrying both
+`text-sm` and `font-medium`, with `text-xs` explicitly not matched. Validated by
+reintroduction.
 
 ## Team Execution Practices
 
@@ -515,3 +531,4 @@ it measures clear the bar comfortably: inactive trigger `--muted-foreground` on 
 | 2026-08-22 | **Baseline moved mid-planning — counts are a floor, not a contract.** Two commits landed during this ticket's planning (`8a2449816` TASK-786 credential policy, `f8c8e1b4a` TASK-785 tiered rate-limits), adding the `/security-policy` screen and four `rate-limits` panel components. All static counts in this document (2,517 type call sites, 152 stock shadow uses, 115 `text-2xs`, 19 `text-4xl`) were measured at `d97e9b71e` and are now low. **Every phase agent MUST re-measure its own scope before sweeping** and report the delta — do not sweep to the numbers written here. The mapping, the resolved decisions and the geometry contract are unaffected; only the volumes moved. |
 | 2026-08-22 | **All five phases executed and merged to `dev-2.2`.** J-13…J-16 raised and resolved during execution; J-17 (142 `text-primary` sites no longer an emphasis signal) and J-18 (110 headings pixel-identical to `Label`) surfaced by Phase 5 and left OPEN for an owner decision. Gates green both packages. Status → Review. |
 | 2026-08-22 | **J-17 and J-18 resolved (`3f6c129d3`); ticket closed out.** The J-17 audit found **three** branch-differentiator collapses, not the one already known — `workflow-toggle.tsx` had rendered a selected label invisibly. 48 sites swept, 42 vendored deliberately exempt, both trees guarded with a test that also pins the exemption as real. J-18 fixed at the `Label` primitive rather than 110 call sites. Also deleted `accent-themes.stories.tsx` (`08923ac51`), which still documented the `data-accent` feature J-4 removed. Full verification: `@arcaai/ui` 708/708 + **1717 CT (0 failed)**, `@arcaai/admin-console` 1762/1762, lint/typecheck/build clean both. The e2e a11y suite remains unverifiable here — pre-existing, owned by TASK-772. |
+| 2026-08-22 | **J-18 follow-up closed (`c1484d0eb`).** Re-measuring corrected the recorded estimate: not ~14 colliding call sites but **4**, out of 317 `<Label>` usages and 21 `font-medium` overrides. The other 17 are `text-xs` and never collided; they are kept, because 400 at 12px muted is less legible. Guard extended to the `<Label>` + `text-sm` + `font-medium` shape. Final verification: `@arcaai/ui` 708/708 + 1717 CT (0 failed), `@arcaai/admin-console` 1763/1763, lint/typecheck/build clean both. |
