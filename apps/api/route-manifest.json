@@ -9679,6 +9679,111 @@
       "apiExcluded": false
     },
     {
+      "controller": "WorkflowInvariantRuleController",
+      "handler": "fetchAll",
+      "method": "GET",
+      "path": "/api/v1/admin/workflow-invariant-rules",
+      "routePath": "/admin/workflow-invariant-rules",
+      "svcScopes": [],
+      "forbidServiceAccount": false,
+      "apiKeyForbidden": true,
+      "apiKeyScopes": [],
+      "requiredPermissions": [
+        [
+          "manage",
+          "WorkflowInvariantRule"
+        ]
+      ],
+      "isPublic": false,
+      "permissionMode": "AND",
+      "requiresIfMatch": false,
+      "apiExcluded": false
+    },
+    {
+      "controller": "WorkflowInvariantRuleController",
+      "handler": "create",
+      "method": "POST",
+      "path": "/api/v1/admin/workflow-invariant-rules",
+      "routePath": "/admin/workflow-invariant-rules",
+      "svcScopes": [],
+      "forbidServiceAccount": false,
+      "apiKeyForbidden": true,
+      "apiKeyScopes": [],
+      "requiredPermissions": [
+        [
+          "manage",
+          "WorkflowInvariantRule"
+        ]
+      ],
+      "isPublic": false,
+      "permissionMode": "AND",
+      "requiresIfMatch": false,
+      "apiExcluded": false
+    },
+    {
+      "controller": "WorkflowInvariantRuleController",
+      "handler": "delete",
+      "method": "DELETE",
+      "path": "/api/v1/admin/workflow-invariant-rules/{id}",
+      "routePath": "/admin/workflow-invariant-rules/:id",
+      "svcScopes": [],
+      "forbidServiceAccount": false,
+      "apiKeyForbidden": true,
+      "apiKeyScopes": [],
+      "requiredPermissions": [
+        [
+          "manage",
+          "WorkflowInvariantRule"
+        ]
+      ],
+      "isPublic": false,
+      "permissionMode": "AND",
+      "requiresIfMatch": false,
+      "apiExcluded": false
+    },
+    {
+      "controller": "WorkflowInvariantRuleController",
+      "handler": "fetchById",
+      "method": "GET",
+      "path": "/api/v1/admin/workflow-invariant-rules/{id}",
+      "routePath": "/admin/workflow-invariant-rules/:id",
+      "svcScopes": [],
+      "forbidServiceAccount": false,
+      "apiKeyForbidden": true,
+      "apiKeyScopes": [],
+      "requiredPermissions": [
+        [
+          "manage",
+          "WorkflowInvariantRule"
+        ]
+      ],
+      "isPublic": false,
+      "permissionMode": "AND",
+      "requiresIfMatch": false,
+      "apiExcluded": false
+    },
+    {
+      "controller": "WorkflowInvariantRuleController",
+      "handler": "update",
+      "method": "PATCH",
+      "path": "/api/v1/admin/workflow-invariant-rules/{id}",
+      "routePath": "/admin/workflow-invariant-rules/:id",
+      "svcScopes": [],
+      "forbidServiceAccount": false,
+      "apiKeyForbidden": true,
+      "apiKeyScopes": [],
+      "requiredPermissions": [
+        [
+          "manage",
+          "WorkflowInvariantRule"
+        ]
+      ],
+      "isPublic": false,
+      "permissionMode": "AND",
+      "requiresIfMatch": true,
+      "apiExcluded": false
+    },
+    {
       "controller": "WorkflowNodeController",
       "handler": "fetchAll",
       "method": "GET",
