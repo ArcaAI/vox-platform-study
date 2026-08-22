@@ -37,6 +37,16 @@ const SELF = fileURLToPath(import.meta.url);
 
 const CODE = /\.(tsx?|css)$/;
 
+/**
+ * A `<Label>` carrying BOTH `text-sm` and `font-medium` (J-18). The primitive is
+ * `text-sm ... font-normal`; a section heading is `text-sm ... font-medium`. A
+ * Label that opts back into 500 is byte-identical to a heading, which is the
+ * collapse J-18 fixed at the primitive. `text-xs` Labels are NOT matched — at
+ * 12px and usually muted they differ from a 14px foreground heading by both size
+ * and colour, and 500 aids legibility at that size.
+ */
+const LABEL_HEADING_COLLISION = /<Label[^>]*\btext-sm\b[^>]*\bfont-medium\b/;
+
 /** `text-primary` but NOT `text-primary-foreground` (ink ON a primary fill — a different token). */
 const TEXT_PRIMARY = /text-primary(?![-\w])/;
 
@@ -66,6 +76,19 @@ describe('admin console · emphasis canon (J-17)', () => {
     // you mean body ink, and carry state on something that is actually visible.
     const offenders = files
       .filter((f) => TEXT_PRIMARY.test(f.source))
+      .map((f) => f.path.slice(SRC.length))
+      .sort();
+    expect(offenders).toEqual([]);
+  });
+
+  it('never gives a <Label> a heading weight at a heading size (J-18)', () => {
+    // `Label` is `text-sm font-normal`; a section heading is `text-sm font-medium`.
+    // Opting a Label back into 500 at 14px re-creates, on that surface, exactly the
+    // collapse J-18 fixed at the primitive — a form label indistinguishable from the
+    // card heading above it. Drop `font-medium` (the primitive's 400 is the point),
+    // or if the label genuinely IS the row's title, size it instead.
+    const offenders = files
+      .filter((f) => LABEL_HEADING_COLLISION.test(f.source))
       .map((f) => f.path.slice(SRC.length))
       .sort();
     expect(offenders).toEqual([]);
