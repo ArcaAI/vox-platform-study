@@ -47,6 +47,11 @@ from harness.temporal.interpreter.nodes.consultation_persist import (
     interpreter_consultation_finalize_assurance,
     interpreter_consultation_persist_draft,
 )
+from harness.temporal.interpreter.nodes.consultation_realtime import (
+    interpreter_consultation_propose_corrections,
+    interpreter_consultation_realtime_summary,
+    interpreter_consultation_suggestions,
+)
 from harness.temporal.interpreter.nodes.consultation_verify import (
     interpreter_consultation_inferential_sensors,
     interpreter_consultation_sensors,
@@ -195,6 +200,16 @@ NODE_ACTIVITIES: list[Callable[..., Any]] = [
     interpreter_consultation_persist_draft,
     interpreter_consultation_finalize_assurance,
     interpreter_consultation_hitl_gate,
+    # R3's three missing capabilities (TASK-791 W1-W3) — nodes/consultation_realtime.py.
+    # This list and `registry.py`'s NODE_REGISTRY are two SEPARATE hand-maintained lists: the
+    # registry decides what the interpreter DISPATCHES, this decides what the worker SERVES. A
+    # node in the first but not the second compiles, validates and passes the cross-language
+    # parity guard, then fails at runtime with an unregistered-activity error. Nothing enforced
+    # the agreement until `test_realtime_capability_nodes.py`'s
+    # `test_every_registered_node_activity_is_served_by_the_worker`.
+    interpreter_consultation_realtime_summary,
+    interpreter_consultation_suggestions,
+    interpreter_consultation_propose_corrections,
 ]
 
 # ---------------------------------------------------------------------------
