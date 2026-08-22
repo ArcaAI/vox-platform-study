@@ -91,6 +91,67 @@ export interface GateEditCorpusExport {
 }
 
 /**
+ * Fine-tuning dataset schema (TASK-792 W4 / C-6).
+ *
+ * Versioned in-band because a training artifact outlives the code that produced
+ * it: a JSONL file found on disk in six months must still say what it is.
+ */
+export const GATE_EDIT_FINETUNE_SCHEMA_VERSION = 'hope.gate-edit.finetune.v1';
+
+/** The non-text signal that makes a training pair interpretable. */
+export interface GateEditFineTuningContext {
+  departmentId: string | null;
+  visitType: string | null;
+  gateDecision: string;
+  qualitySignal: string;
+  editDistance: number | null;
+  editDistanceRatio: number | null;
+  timeToSignSeconds: number | null;
+  modelName: string | null;
+  promptTemplateId: string | null;
+  signedAt: string | null;
+}
+
+/**
+ * One `(original, edited, context)` training triple — the exact shape R7 asks
+ * for. `original` is the AI draft AS DELIVERED; `edited` is what the clinician
+ * actually signed. Both are the PHI-redacted forms; the raw text lives only in
+ * the encrypted WORM/version rows and never reaches this artifact.
+ */
+export interface GateEditFineTuningRecord {
+  exemplarId: string;
+  tenantId: string;
+  consultationId: string;
+  /**
+   * Real clinician behaviour, as opposed to the harness's synthetic golden
+   * fixture. Stated per record so a downstream consumer can never present a
+   * synthetic-derived result as clinical evidence by accident
+   * (`apps/harness/.../golden/sources.py` §OPEN PREREQUISITE).
+   */
+  provenance: 'CLINICIAN_EDIT';
+  /** Which redaction mode produced the text. `full` for retained artifacts. */
+  phiRedaction: 'FULL';
+  original: string;
+  edited: string;
+  context: GateEditFineTuningContext;
+}
+
+/**
+ * A curation-GATED training corpus.
+ *
+ * `reviewStatus` is `SME_APPROVED` rather than the sibling export's
+ * `PENDING_SME_REVIEW`, and that difference is the whole point: this artifact
+ * may only ever contain rows a curator explicitly approved.
+ */
+export interface GateEditFineTuningExport {
+  schemaVersion: typeof GATE_EDIT_FINETUNE_SCHEMA_VERSION;
+  tenantId: string;
+  reviewStatus: 'SME_APPROVED';
+  count: number;
+  records: GateEditFineTuningRecord[];
+}
+
+/**
  * The result of a curation decision. A PROJECTION, never the entity: the row
  * carries PHI-redacted clinical snippets and every derived mining stat, and a
  * curation response has no business echoing any of it back.
@@ -341,6 +402,98 @@ export class GateEditMiningService extends BaseService {
       reviewStatus: 'PENDING_SME_REVIEW',
       count: candidates.length,
       candidates,
+    };
+  }
+
+  /**
+   * Assemble the PHI-redacted fine-tuning corpus for one tenant (W4 / C-6).
+   *
+   * Deliberately stricter than either sibling consumer:
+   *
+   *  * `retrieveExemplars` honours a default-OFF curation knob, because an
+   *    un-curated few-shot block is a prompt-quality question and is reversible
+   *    on the next request.
+   *  * `exportCorpusCandidates` ships UNREVIEWED proposals on purpose — its job
+   *    is to give a human the triage queue.
+   *  * This one admits ONLY `curationStatus = APPROVED`, unconditionally and
+   *    with no knob. Training bakes the corpus into weights, where an SME's
+   *    absence cannot be retracted after the fact.
+   *
+   * Like `exportCorpusCandidates` a store failure THROWS: this is an explicit
+   * admin request, and a silent `[]` would read as "nothing approved yet" — a
+   * false negative on a governance surface.
+   */
+  async exportFineTuningDataset(params: {
+    tenantId: string;
+    departmentId?: string | null;
+    qualitySignal?: string;
+    limit: number;
+  }): Promise<GateEditFineTuningExport> {
+    const rows = await this.exemplarRepository.findForCorpusExport({
+      tenantId: params.tenantId,
+      departmentId: params.departmentId ?? null,
+      qualitySignal: params.qualitySignal,
+      limit: Math.min(Math.max(params.limit, 0), MAX_EXPORT_LIMIT),
+    });
+
+    const records = (rows ?? [])
+      // Same belt-and-braces tenant re-check as the other two consumers. A
+      // foreign row here would be a cross-tenant PHI leak laundered into model
+      // weights — the least recoverable version of that failure.
+      .filter((row) => row.tenantId === params.tenantId)
+      // The SME gate. Filtered here rather than in the query only because
+      // `findForCorpusExport` has no `curationStatus` predicate yet (an
+      // index-backed one is requested from TASK-790, which owns that layer);
+      // the semantics are identical, the read is merely wider than it needs to be.
+      .filter((row) => row.curationStatus === ExemplarCurationStatus.APPROVED)
+      // A pair missing either half cannot train anything, and reaching past the
+      // redacted columns to fill the gap would defeat the redaction entirely.
+      .filter((row) => !!row.redactedBefore && !!row.redactedAfter)
+      .map((row) => this.toFineTuningRecord(row));
+
+    return {
+      schemaVersion: GATE_EDIT_FINETUNE_SCHEMA_VERSION,
+      tenantId: params.tenantId,
+      reviewStatus: 'SME_APPROVED',
+      count: records.length,
+      records,
+    };
+  }
+
+  /**
+   * Serialise an export to JSONL — the shape every fine-tuning toolchain reads.
+   *
+   * `JSON.stringify` per record is what makes this safe: clinical notes are
+   * multi-line, and an embedded newline would otherwise split one training pair
+   * across two lines and corrupt every record after it. Stringify escapes them
+   * to `\n`, so one record is always exactly one line.
+   */
+  toJsonl(dataset: GateEditFineTuningExport): string {
+    return dataset.records.map((record) => JSON.stringify(record)).join('\n');
+  }
+
+  /** Project one entity into a training record. Explicit — never a spread. */
+  private toFineTuningRecord(row: GateEditExemplarEntity): GateEditFineTuningRecord {
+    return {
+      exemplarId: row.id,
+      tenantId: row.tenantId,
+      consultationId: row.consultationId,
+      provenance: 'CLINICIAN_EDIT',
+      phiRedaction: 'FULL',
+      original: row.redactedBefore as string,
+      edited: row.redactedAfter as string,
+      context: {
+        departmentId: row.departmentId ?? null,
+        visitType: row.visitType ?? null,
+        gateDecision: row.gateDecision,
+        qualitySignal: row.qualitySignal,
+        editDistance: row.editDistance ?? null,
+        editDistanceRatio: row.editDistanceRatio ?? null,
+        timeToSignSeconds: row.timeToSignSeconds ?? null,
+        modelName: row.modelName ?? null,
+        promptTemplateId: row.promptTemplateId ?? null,
+        signedAt: row.createdAt instanceof Date ? row.createdAt.toISOString() : ((row.createdAt as unknown as string) ?? null),
+      },
     };
   }
 
