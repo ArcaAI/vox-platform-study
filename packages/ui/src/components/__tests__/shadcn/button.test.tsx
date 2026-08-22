@@ -76,13 +76,13 @@ test.describe('Button', () => {
     test('renders sm size', async ({ mount }) => {
       const component = await mount(<Button size="sm">Small</Button>);
       await expect(component).toHaveAttribute('data-size', 'sm');
-      await expect(component).toHaveClass(/h-8/);
+      await expect(component).toHaveClass(/h-7/);
     });
 
     test('renders lg size', async ({ mount }) => {
       const component = await mount(<Button size="lg">Large</Button>);
       await expect(component).toHaveAttribute('data-size', 'lg');
-      await expect(component).toHaveClass(/h-10/);
+      await expect(component).toHaveClass(/h-11/);
     });
 
     test('renders icon size', async ({ mount }) => {
@@ -112,7 +112,7 @@ test.describe('Button', () => {
         </Button>,
       );
       await expect(component).toHaveAttribute('data-size', 'icon-sm');
-      await expect(component).toHaveClass(/size-8/);
+      await expect(component).toHaveClass(/size-7/);
     });
 
     test('renders icon-lg size', async ({ mount }) => {
@@ -122,7 +122,7 @@ test.describe('Button', () => {
         </Button>,
       );
       await expect(component).toHaveAttribute('data-size', 'icon-lg');
-      await expect(component).toHaveClass(/size-10/);
+      await expect(component).toHaveClass(/size-11/);
     });
   });
 

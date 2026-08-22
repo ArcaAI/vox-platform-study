@@ -165,13 +165,13 @@ test.describe('InputOTP', () => {
     test('first slot has left border radius', async ({ mount, page }) => {
       await mount(<BasicOTP />);
       const firstSlot = page.locator('[data-slot="input-otp-slot"]').first();
-      await expect(firstSlot).toHaveClass(/first:rounded-l-md/);
+      await expect(firstSlot).toHaveClass(/first:rounded-l-surface/);
     });
 
     test('last slot has right border radius', async ({ mount, page }) => {
       await mount(<BasicOTP />);
       const lastSlot = page.locator('[data-slot="input-otp-group"]:first-child [data-slot="input-otp-slot"]').last();
-      await expect(lastSlot).toHaveClass(/last:rounded-r-md/);
+      await expect(lastSlot).toHaveClass(/last:rounded-r-surface/);
     });
 
     test('active slot has ring styling class', async ({ mount, page }) => {

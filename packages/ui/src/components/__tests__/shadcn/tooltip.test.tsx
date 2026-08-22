@@ -110,7 +110,7 @@ test.describe('Tooltip', () => {
     test('tooltip content has correct styling', async ({ mount, page }) => {
       await mount(<OpenTooltip />);
       const content = page.locator('[data-slot="tooltip-content"]');
-      await expect(content).toHaveClass(/rounded-md/);
+      await expect(content).toHaveClass(/rounded-surface/);
       await expect(content).toHaveClass(/px-3/);
       await expect(content).toHaveClass(/py-1\.5/);
       await expect(content).toHaveClass(/text-xs/);

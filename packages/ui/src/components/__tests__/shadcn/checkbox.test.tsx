@@ -25,7 +25,7 @@ test.describe('Checkbox', () => {
       await mount(<Checkbox />);
       const checkbox = page.getByRole('checkbox');
       await expect(checkbox).toHaveClass(/size-4/);
-      await expect(checkbox).toHaveClass(/rounded-\[4px\]/);
+      await expect(checkbox).toHaveClass(/rounded-xs/);
       await expect(checkbox).toHaveClass(/border/);
     });
   });

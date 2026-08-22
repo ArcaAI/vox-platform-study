@@ -121,10 +121,10 @@ test.describe('Menubar', () => {
       await expect(menubar).toHaveClass(/border/);
     });
 
-    test('menubar has rounded-md class', async ({ mount, page }) => {
+    test('menubar has rounded-surface class', async ({ mount, page }) => {
       await mount(<BasicMenubar />);
       const menubar = page.locator('[data-slot="menubar"]');
-      await expect(menubar).toHaveClass(/rounded-md/);
+      await expect(menubar).toHaveClass(/rounded-surface/);
     });
 
     test('menubar has h-9 class', async ({ mount, page }) => {
@@ -133,13 +133,13 @@ test.describe('Menubar', () => {
       await expect(menubar).toHaveClass(/h-9/);
     });
 
-    test('menu content has rounded-md class', async ({ mount, page }) => {
+    test('menu content has rounded-surface class', async ({ mount, page }) => {
       await mount(<BasicMenubar />);
       const fileTrigger = page.locator('[data-slot="menubar-trigger"]').filter({ hasText: 'File' });
       await fileTrigger.click();
 
       const content = page.locator('[data-slot="menubar-content"]').first();
-      await expect(content).toHaveClass(/rounded-md/);
+      await expect(content).toHaveClass(/rounded-surface/);
     });
 
     test('menu content has border class', async ({ mount, page }) => {
@@ -151,13 +151,13 @@ test.describe('Menubar', () => {
       await expect(content).toHaveClass(/border/);
     });
 
-    test('menu content has shadow-md class', async ({ mount, page }) => {
+    test('menu content has shadow-overlay class', async ({ mount, page }) => {
       await mount(<BasicMenubar />);
       const fileTrigger = page.locator('[data-slot="menubar-trigger"]').filter({ hasText: 'File' });
       await fileTrigger.click();
 
       const content = page.locator('[data-slot="menubar-content"]').first();
-      await expect(content).toHaveClass(/shadow-md/);
+      await expect(content).toHaveClass(/shadow-overlay/);
     });
 
     test('shortcut has text-muted-foreground class', async ({ mount, page }) => {
@@ -210,7 +210,7 @@ test.describe('Menubar', () => {
     test('preserves default classes with custom className', async ({ mount, page }) => {
       await mount(<MenubarWithCustomClass />);
       const menubar = page.locator('[data-slot="menubar"]');
-      await expect(menubar).toHaveClass(/rounded-md/);
+      await expect(menubar).toHaveClass(/rounded-surface/);
       await expect(menubar).toHaveClass(/custom-menubar-class/);
     });
   });

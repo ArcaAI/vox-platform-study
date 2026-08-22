@@ -276,7 +276,7 @@ test.describe('Tabs', () => {
       await mount(<BasicTabs />);
 
       const tabsList = page.locator('[data-slot="tabs-list"]');
-      await expect(tabsList).toHaveClass(/rounded-lg/);
+      await expect(tabsList).toHaveClass(/rounded-control/);
       await expect(tabsList).toHaveClass(/inline-flex/);
     });
   });

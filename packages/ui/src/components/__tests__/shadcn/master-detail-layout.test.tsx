@@ -59,7 +59,7 @@ test.describe('MasterDetailRoot', () => {
   test('has grid and border styling', async ({ mount }) => {
     const c = await mount(<MasterDetailRoot>content</MasterDetailRoot>);
     await expect(c).toHaveClass(/grid/);
-    await expect(c).toHaveClass(/rounded-lg/);
+    await expect(c).toHaveClass(/rounded-surface/);
     await expect(c).toHaveClass(/border/);
   });
 });
@@ -90,10 +90,10 @@ test.describe('MasterDetailColumnHeader', () => {
 });
 
 test.describe('MasterDetailColumnTitle', () => {
-  test('renders with data-slot and font-semibold', async ({ mount }) => {
+  test('renders with data-slot and font-medium', async ({ mount }) => {
     const c = await mount(<MasterDetailColumnTitle>Title</MasterDetailColumnTitle>);
     await expect(c).toHaveAttribute('data-slot', 'master-detail-column-title');
-    await expect(c).toHaveClass(/font-semibold/);
+    await expect(c).toHaveClass(/font-medium/);
     await expect(c).toHaveText('Title');
   });
 });

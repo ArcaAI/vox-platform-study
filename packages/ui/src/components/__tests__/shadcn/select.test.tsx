@@ -65,7 +65,7 @@ test.describe('Select', () => {
       );
       const trigger = page.locator('[data-slot="select-trigger"]');
       await expect(trigger).toHaveAttribute('data-size', 'sm');
-      await expect(trigger).toHaveClass(/data-\[size=sm\]:h-8/);
+      await expect(trigger).toHaveClass(/data-\[size=sm\]:h-7/);
     });
   });
 
@@ -274,7 +274,7 @@ test.describe('Select', () => {
       await mount(<BasicSelect />);
       const trigger = page.locator('[data-slot="select-trigger"]');
       await expect(trigger).toHaveClass(/border/);
-      await expect(trigger).toHaveClass(/rounded-md/);
+      await expect(trigger).toHaveClass(/rounded-surface/);
     });
 
     test('shows chevron icon', async ({ mount, page }) => {

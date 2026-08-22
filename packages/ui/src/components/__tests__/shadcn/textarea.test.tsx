@@ -216,7 +216,7 @@ test.describe('Textarea', () => {
 
     test('has rounded corners', async ({ mount, page }) => {
       await mount(<Textarea />);
-      await expect(page.getByRole('textbox')).toHaveClass(/rounded-md/);
+      await expect(page.getByRole('textbox')).toHaveClass(/rounded-surface/);
     });
 
     test('has border styling', async ({ mount, page }) => {
