@@ -160,7 +160,7 @@ disagree with those declarations.
 | `TEXT_OPENAI_ORGANIZATION` | `env` | no | — | `apps/text` | Optional OpenAI organization id sent by TEXT’s platform-fallback client (`OpenAIConfig.organization`). Unset ⇒ the account default organization. |
 | `TEXT_PORT` | `env` | no | `8862` | `apps/text` | Port apps/text binds; the gateway keeps it only to build health-probe URLs. |
 | `TEXT_SERVICE_TOKEN` | `vault-kv` | yes | `CHANGE_ME` | `apps/api` | Shared secret on the gateway↔TEXT hop. TEXT reads it as `settings.service_token` under its `TEXT_` pydantic prefix; the gateway resolves the same name for outbound proxying and for `InternalServiceTokenGuard`'s inbound check. |
-| `TEXT_URL` | `env` | no | `http://localhost:8862` | `apps/api` | Summarization service base URL (apps/text, port 8862). |
+| `TEXT_URL` | `env` | no | `http://localhost:8862` | `apps/api` | Text service base URL (apps/text, port 8862). |
 | `TEXT_VERTEX_DEFAULT_MODEL` | `env` | no | `` | `apps/text` | Empty by design (TASK-579): provider/model SELECTION is fail-closed — `VertexConfig.default_model` has no compiled-in vendor value, and an unresolved model raises (`require_model()`) rather than being substituted. Informational only (providers listing). |
 | `TEXT_VERTEX_LOCATION` | `env` | no | `us-central1` | `apps/text` | GCP location/region for TEXT’s platform-fallback Vertex client (`VertexConfig.location`), e.g. `us-central1`. |
 | `TEXT_VERTEX_PROJECT` | `env` | no | `` | `apps/text` | GCP project id for TEXT’s platform-fallback Vertex client (`VertexConfig.project`). Empty ⇒ no platform fallback (Vertex is then usable only via a tenant BYO service-account connection). A Vertex client is bound to a `(project, location)`; a tenant override supplies its own. |

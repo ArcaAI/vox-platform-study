@@ -91,7 +91,7 @@ export class AdminHealthServicesController {
     this.downstreamServices = [
       {
         key: 'text',
-        name: 'Summarization',
+        name: 'Text',
         url: this.configService.getConfigValue('TEXT_URL'),
         healthEndpoint: '/api/v1/health',
       },

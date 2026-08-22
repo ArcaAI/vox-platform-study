@@ -442,9 +442,9 @@ X-API-Key: your-api-key
 
 ---
 
-### Medical Summarization (Text) Service
+### Text Service
 
-> Text endpoints are proxied to the Text service (formerly TEXT) on port 8862 via `/api/v1/text/...`.
+> Text endpoints are proxied to the Text service on port 8862 via `/api/v1/text-generations/...`.
 
 #### Summarize Medical Transcript
 

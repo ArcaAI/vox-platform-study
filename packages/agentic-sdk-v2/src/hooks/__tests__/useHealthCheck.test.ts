@@ -29,7 +29,7 @@ const CONSOLIDATED_SERVICES_RESPONSE = {
   timestamp: '2026-03-02T00:00:00Z',
   services: {
     guardrail: { status: 'healthy', service: 'Guardrail', version: '1.0.0' },
-    text: { status: 'healthy', service: 'Summarization', version: '2.0.0' },
+    text: { status: 'healthy', service: 'Text', version: '2.0.0' },
     nlp: { status: 'healthy', service: 'Medical NLP', version: '1.0.0' },
     stt: { status: 'healthy', service: 'Speech to Text', version: '1.0.0' },
   },

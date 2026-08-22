@@ -119,7 +119,7 @@ Variants: `pnpm setup:dev:observability` (adds Prometheus + Grafana), `pnpm setu
    pnpm db:seed         # phased, FK-ordered seed
    ```
 
-   `pnpm db:all` does force-push + generate + seed in one shot — it **drops and recreates the schema**, so only use it on a DB you are happy to lose (`setup:dev` calls it).
+   `pnpm db:all` does force-push + generate + seed in one shot — it **drops and recreates the schema**, so only use it on a DB you are happy to lose (`setup:dev` calls it). Its tail then runs `scripts/temporal-terminate-orphans.sh`: Temporal's history lives in its own `temporal` / `temporal_visibility` databases inside `hope-postgres`, which the reset does not touch, so any workflow still open would keep retrying against rows that were just deleted.
 
 6. **Vault.** `.env.dev` ships `SECRETS_PROVIDER=vault` + `PG_DYNAMIC_CREDS=true`, so the API will not boot until Vault AppRole credentials exist. `pnpm setup:dev` handles this; standalone repair is `./scripts/refresh-vault-creds.sh` (mint creds) and `./scripts/setup-dev-vault-db.sh` (wire the dynamic-DB engine). To opt out entirely, set `SECRETS_PROVIDER=env` and `PG_DYNAMIC_CREDS=false` in `.env.dev`.
 
@@ -250,7 +250,7 @@ The Prisma 7 schema is multi-file: `packages/database/src/prisma/db_main/*.prism
 | `pnpm db:migrate:deploy` / `:status` / `:reset` | deploy / status / reset                                                         |
 | `pnpm db:migrate:compat`                        | check a migration for backward compatibility with the running release           |
 | `pnpm db:studio`                                | Prisma Studio                                                                   |
-| `pnpm db:all`                                   | force push + generate + seed — **resets the database**                          |
+| `pnpm db:all`                                   | force push + generate + seed — **resets the database**, then terminates the Temporal workflows that reset orphaned |
 
 **Authoring a migration.** The local dev DB is `db push`-managed and has NO `_prisma_migrations` ledger — and `pnpm db:all` recreates it with `--force-reset`, which would wipe any ledger baselined onto it. That is deliberate and permanent: **migrations are authored against a throwaway shadow database, never against the dev DB.** The exact recipe (create `hope_shadow`, replay the ledger onto it, `db:migrate:create`, prove no drift with `prisma migrate diff`, then re-sync the dev DB and drop the shadow) is in `.claude/rules/02-database-prisma.md` §Migration Workflow. Two traps worth repeating: `-n <name>` must go to the package-level script (`pnpm --filter @arcaai/database db:migrate:create -n task_<nnn>_<desc>`) or it is swallowed and Prisma hangs on a prompt; and `prisma migrate dev` stopping at "Enter a name for the new migration" means real ledger drift, not a hung command.
 

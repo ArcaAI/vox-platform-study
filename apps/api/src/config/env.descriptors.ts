@@ -69,7 +69,7 @@ function envKnob(
 const TOPOLOGY: SettingDescriptor[] = [
   envKnob('url', 'string', 'Topology', 'Gateway base URL', 'Public base URL the gateway advertises for itself.', 'http://localhost'),
   envKnob('stt.url', 'string', 'Topology', 'STT service URL', 'Speech-to-text service base URL (apps/stt, port 8861).', 'http://localhost:8861'),
-  envKnob('text.url', 'string', 'Topology', 'Text service URL', 'Summarization service base URL (apps/text, port 8862).', 'http://localhost:8862'),
+  envKnob('text.url', 'string', 'Topology', 'Text service URL', 'Text service base URL (apps/text, port 8862).', 'http://localhost:8862'),
   envKnob('text.port', 'number', 'Topology', 'Text port', 'Port apps/text binds; the gateway keeps it only to build health-probe URLs.', 8862),
   envKnob(
     'guardrail.url',

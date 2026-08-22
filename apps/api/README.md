@@ -13,7 +13,7 @@ The HOPE API Gateway serves as the central entry point for all client requests i
 
 - **Multi-Authentication System**: JWT, OIDC, and API Key authentication strategies
 - **Multi-Tenant Architecture**: Organization-level data isolation with tenant-specific configurations
-- **Microservice Orchestration**: Proxies the Text service (formerly TEXT) and audio transcription to STT (via the `streaming` module) and health-monitors the downstream Python services (STT, Text, NLP, Guardrail, Harness)
+- **Microservice Orchestration**: Proxies the Text service and audio transcription to STT (via the `streaming` module) and health-monitors the downstream Python services (STT, Text, NLP, Guardrail, Harness)
 - **Real-Time Communication**: WebSocket support for streaming audio transcription
 - **Enterprise Security**: HIPAA-compliant audit trails, rate limiting, and CORS management
 - **Progressive Enhancement**: Cloud-first API with support for enhanced client-side capabilities
@@ -51,7 +51,7 @@ The HOPE API Gateway serves as the central entry point for all client requests i
 
 - **AI Service Integration**
   - **STT (Speech-to-Text)**: Real-time audio transcription via the `streaming` module (`/api/v1/audio/...`)
-  - **Text (formerly TEXT)**: Medical conversation summarization proxied by `TextProxyController` in the `streaming` module (`/api/v1/text-generations/...`)
+  - **Text**: Medical conversation summarization proxied by `TextProxyController` in the `streaming` module (`/api/v1/text-generations/...`)
   - **NLP**: Entity extraction / medical terminology — downstream Python service (port 8864), health-monitored; no gateway proxy route
   - **Guardrail**: Safety/guardrail engine (port 8863) — health-monitored downstream
   - **Harness**: Clinical Documentation Harness (port 8866) — health-monitored downstream; admin/observability via `harness-admin` (`/api/v1/admin/harness/...`)
@@ -341,7 +341,7 @@ All public API endpoints follow the pattern `/api/v1/<domain>`:
 | Prefix                | Purpose                     | Example                            |
 | --------------------- | --------------------------- | ---------------------------------- |
 | `/api/v1/audio/...`   | STT (Speech-to-Text)        | `/api/v1/audio/transcription-jobs` |
-| `/api/v1/text-generations/...`    | TEXT (Summarization)         | `/api/v1/text-generations/generate`            |
+| `/api/v1/text-generations/...`    | Text                         | `/api/v1/text-generations/generate`            |
 | `/api/v1/admin/...`   | Tenant admin endpoints      | `/api/v1/admin/settings`           |
 | `/api/v1/users/me/...` | Current user endpoints      | `/api/v1/users/me/settings`         |
 | `/internal/...`       | Internal service-to-service | `/internal/stt`                    |
@@ -382,7 +382,7 @@ GET    /api/v1/audio/ai-models                    # List AI models
 WS     /stt                                    # WebSocket for real-time STT
 ```
 
-#### Text Service (formerly TEXT)
+#### Text Service
 
 ```
 ALL  /api/v1/text-generations/**                      # TextProxyController (modules/streaming) → Text service (:8862)

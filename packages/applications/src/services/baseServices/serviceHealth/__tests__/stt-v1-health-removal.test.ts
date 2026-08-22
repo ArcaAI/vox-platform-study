@@ -85,7 +85,7 @@ describe('STT v1 Health Check Removal (Phase 1)', () => {
       expect(result!.status).toBe('unknown');
     });
 
-    it('should still return uptime for Summarization', async () => {
+    it('should still return uptime for Text', async () => {
       mockRedisInstance.lrange.mockResolvedValue([]);
       const result = await service.getServiceUptime('text');
       expect(result).not.toBeNull();

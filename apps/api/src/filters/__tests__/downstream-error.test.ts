@@ -135,7 +135,7 @@ describe('containsTopology — the predicate every client-facing body is held to
     expect(containsTopology(s)).toBe(true);
   });
 
-  it.each(['Summarization is temporarily unavailable. Please retry.', 'Service Unavailable', 'Note generation returned an invalid response.', 'updated at 12:34'])(
+  it.each(['Text is temporarily unavailable. Please retry.', 'Service Unavailable', 'Note generation returned an invalid response.', 'updated at 12:34'])(
     'does NOT flag %j',
     (s) => {
       expect(containsTopology(s)).toBe(false);
@@ -162,7 +162,7 @@ describe('redactTopology — strips topology while keeping an operator-legible r
   });
 
   it('leaves a clean message untouched', () => {
-    expect(redactTopology('Summarization is temporarily unavailable.')).toBe('Summarization is temporarily unavailable.');
+    expect(redactTopology('Text is temporarily unavailable.')).toBe('Text is temporarily unavailable.');
   });
 });
 
@@ -170,10 +170,10 @@ describe('capabilityForPath — names the CAPABILITY, never the topology', () =>
   it.each([
     ['/api/v1/consultations/abc/summary/async', 'Note generation'],
     ['/api/v1/admin/harness/workflows', 'Note generation'],
-    ['/api/v1/consultations/abc/summary', 'Summarization'],
-    ['/api/v1/admin/prompt-templates/t-1/test', 'Summarization'],
-    ['/api/v1/text-generations/tasks/x/stream', 'Summarization'],
-    ['/api/v1/api/smr/api/v1/summarize', 'Summarization'],
+    ['/api/v1/consultations/abc/summary', 'Text'],
+    ['/api/v1/admin/prompt-templates/t-1/test', 'Text'],
+    ['/api/v1/text-generations/tasks/x/stream', 'Text'],
+    ['/api/v1/api/smr/api/v1/summarize', 'Text'],
     ['/api/v1/speech/synthesize', 'Speech synthesis'],
     ['/api/v1/audio/transcription-jobs', 'Transcription'],
     ['/api/v1/api/stt/transcribe', 'Transcription'],
@@ -199,13 +199,13 @@ describe('buildDownstreamErrorBody — the ONLY client-facing body builder', () 
   it('builds a stable, opaque 503 body carrying the correlationId', () => {
     const body = buildDownstreamErrorBody({
       status: HttpStatus.SERVICE_UNAVAILABLE,
-      capability: 'Summarization',
+      capability: 'Text',
       correlationId: 'corr-1',
     });
     expect(body).toEqual({
       statusCode: 503,
       error: 'Service Unavailable',
-      message: 'Summarization is temporarily unavailable. Please retry.',
+      message: 'Text is temporarily unavailable. Please retry.',
       code: 'GATEWAY.DOWNSTREAM_UNAVAILABLE',
       correlationId: 'corr-1',
     });
@@ -223,9 +223,9 @@ describe('buildDownstreamErrorBody — the ONLY client-facing body builder', () 
   });
 
   it('builds a sanitized body for a propagated upstream 4xx', () => {
-    const body = buildDownstreamErrorBody({ status: 422, capability: 'Summarization', correlationId: 'c' });
+    const body = buildDownstreamErrorBody({ status: 422, capability: 'Text', correlationId: 'c' });
     expect(body.statusCode).toBe(422);
-    expect(body.message).toBe('Summarization rejected the request.');
+    expect(body.message).toBe('Text rejected the request.');
   });
 
   // AC-2, the headline requirement.
