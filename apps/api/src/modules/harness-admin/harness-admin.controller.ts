@@ -9,6 +9,7 @@ import {
   GateEditCorpusExport,
   GateEditCurationResult,
   GateEditFineTuningExport,
+  GoldenCasePromotionService,
   GateQueueResponse,
   GoldenCaseListResponse,
   GoldenCaseMetaResponse,
@@ -38,6 +39,7 @@ import {
   CreateGoldenSetRequest,
   EditBurdenQuery,
   ExemplarCurationRequest,
+  PromoteExemplarRequest,
   SignalWorkflowRequest,
   WorkflowActionRequest,
 } from './dto';
@@ -84,6 +86,9 @@ export class HarnessAdminController {
     private readonly gateEditMiningService: GateEditMiningService,
     // APPENDED: backs `POST golden-sets/:id/run`.
     private readonly evalRunService: EvalRunService,
+    // APPENDED (TASK-792 W3): backs
+    // `POST gate-edit-exemplars/:id/promote-to-golden-set`.
+    private readonly goldenCasePromotionService: GoldenCasePromotionService,
   ) {}
 
   // ───────────────────────── Policy ─────────────────────────
@@ -473,6 +478,49 @@ export class HarnessAdminController {
   ): Promise<GateEditCurationResult> {
     const tenantId = this.resolveReadTenantId(query.tenantId);
     return this.gateEditMiningService.curateExemplar({ id, tenantId, status: request.status });
+  }
+
+  // TASK-792 W3 (C-5) — the automated GoldenCase producer. Before
+  // this, `GoldenCase` had exactly ONE write path (a manual admin POST), so no
+  // eval result in this system was derived from real clinician behaviour, and
+  // curation advanced `curationStatus` and then went nowhere.
+  //
+  // The caller supplies only the DESTINATION set. The transcript is read from
+  // the consultation and redacted fail-closed; the reference note is the
+  // exemplar's redacted signed note. Notably the AI draft (`redactedBefore`) is
+  // NOT used as the transcript — that would grade the model against its own
+  // prior output while looking entirely plausible in the data.
+  @Post('gate-edit-exemplars/:id/promote-to-golden-set')
+  @Authorize(['manage', 'HarnessPolicy'])
+  @ApiOperation({
+    summary: 'Promote a curator-APPROVED gate-edit exemplar into a golden case',
+    description:
+      'Derives a `(transcript -> reference note)` golden case from a real signed, clinician-edited consultation. Only ' +
+      'curation-APPROVED exemplars are eligible. The transcript is PHI-redacted before persistence and the promotion ' +
+      'FAILS CLOSED on a missing transcript or unverifiable redaction — a fabricated golden case is worse than none, ' +
+      'because it becomes the yardstick. Each case is labelled `CLINICIAN_DERIVED_PENDING_SME`: it is real clinician ' +
+      'behaviour, but it is NOT the SME-authored multi-rater golden set that the harness declares an outstanding ' +
+      'prerequisite, and it must not be used to gate a clinical claim on its own.',
+  })
+  @ApiParam({ name: 'id', description: 'GateEditExemplar id to promote.' })
+  @ApiQuery({ name: 'tenantId', required: false, description: 'Platform-admin only: target tenant. Tenant admins are pinned to their own tenant.' })
+  @ApiResponse({ status: 201, description: 'The created golden case id + its provenance label.' })
+  @ApiResponse({ status: 400, description: 'Exemplar not curation-APPROVED, no transcript, or redaction could not be verified.' })
+  @ApiResponse({ status: 404, description: 'No such exemplar or golden set (absent, or belongs to another tenant).' })
+  async promoteExemplarToGoldenSet(
+    @Param('id') id: string,
+    @Body() request: PromoteExemplarRequest,
+    @Query() query: { tenantId?: string },
+  ): Promise<{ goldenCaseId: string; goldenSetId: string; label: string | null }> {
+    const tenantId = this.resolveReadTenantId(query.tenantId);
+    const created = await this.goldenCasePromotionService.promoteExemplarToGoldenCase({
+      tenantId,
+      exemplarId: id,
+      goldenSetId: request.goldenSetId,
+      createdBy: this.cls.get('user')?.id ?? null,
+    });
+    // Ids + provenance only — never the transcript or the reference note.
+    return { goldenCaseId: created.id, goldenSetId: request.goldenSetId, label: created.label ?? null };
   }
 
   // ───────────────────────── Operate (Temporal proxy) ─────────────────────────
