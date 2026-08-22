@@ -13,6 +13,7 @@ import { HarnessPolicyServiceModule } from '../../harness-policy/harness-policy.
 import { EffectiveSettingsModule } from '../../settings-registry/effective-settings.module';
 import { UsageLedgerServiceModule } from '../../usageLedger';
 import { NotificationServiceModule } from '../../notification';
+import { GateEditMiningServiceModule } from '../../gate-edit-mining/gate-edit-mining.service.module';
 
 /**
  * HarnessInternalService DI module. Wires the
@@ -54,6 +55,9 @@ import { NotificationServiceModule } from '../../notification';
     // TASK-711 — supplies the @Optional INotificationService the TIMED_OUT
     // path uses for the clinician notification (best-effort).
     NotificationServiceModule,
+    // TASK-792 W2 — supplies `IGateEditExemplarRetriever` for the
+    // `PromptAssemblyService` provided below; absent ⇒ silent zero-shot.
+    GateEditMiningServiceModule,
   ],
   providers: [HarnessInternalService, PromptAssemblyService],
   exports: [HarnessInternalService],

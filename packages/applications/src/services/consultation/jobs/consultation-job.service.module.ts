@@ -18,6 +18,7 @@ import { HarnessPolicyServiceModule } from '../../harness-policy/harness-policy.
 import { ConfigResolverModule } from '../../config-resolver';
 import { UsageLedgerServiceModule } from '../../usageLedger';
 import { NoteGenerationServiceModule } from '../note-generation/note-generation.service.module';
+import { GateEditMiningServiceModule } from '../../gate-edit-mining/gate-edit-mining.service.module';
 
 @Module({
   imports: [
@@ -32,6 +33,9 @@ import { NoteGenerationServiceModule } from '../note-generation/note-generation.
     ConfigResolverModule, // Realtime cascade + preferred-prompt threading (handler + pre-summary/comprehensive processors)
     UsageLedgerServiceModule, // usage emission for ComprehensiveSummaryProcessor
     EventEmitterModule, // Required for @OnEvent handlers and EventEmitter2 injection
+    // TASK-792 W2 — supplies `IGateEditExemplarRetriever` for the
+    // `PromptAssemblyService` provided below; absent ⇒ silent zero-shot.
+    GateEditMiningServiceModule,
     RedisCacheModule.register(), // For job status storage and pub/sub
     // TASK-732 — `GenerateSummary`/`ExtractNamedEntities` (the legacy
     // signable-generator queues) were removed here along with
