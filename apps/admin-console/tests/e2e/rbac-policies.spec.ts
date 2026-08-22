@@ -61,7 +61,10 @@ test.describe('RBAC policies screen', () => {
     await page.goto('/rbac/policies');
     await expect(page.getByRole('grid', { name: 'Policies' })).toBeVisible();
     await page.getByLabel('Search').fill('no-such-policy-xyz-000');
-    await expect(page.getByRole('button', { name: 'Clear filters' })).toBeVisible();
+    // Two buttons carry this name once the grid empties — the data-grid toolbar's
+    // and the empty state's. The test's subject is the FILTERED-EMPTY state, so
+    // scope to it rather than letting strict mode pick.
+    await expect(page.locator('[data-slot="empty"]').getByRole('button', { name: 'Clear filters' })).toBeVisible();
   });
 
   test('the create sheet validates malformed JSON rules before allowing save', async ({ page }) => {
