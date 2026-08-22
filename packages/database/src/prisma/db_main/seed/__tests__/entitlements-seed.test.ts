@@ -129,13 +129,17 @@ describe('seedEntitlements — metering.reconcile.enabled GlobalSetting row', ()
     expect(upserts.find((u) => (u.create as { key?: string }).key === 'metering.reconcile.enabled')!.create.value).toBe('true');
   });
 
-  it('defaults BOTH switches OFF when unset on a developer laptop (an env file was loaded)', async () => {
+  it('defaults enforcement ON but metering reconcile OFF on a developer laptop (TASK-785 OD-6)', async () => {
+    // The two switches diverge here, and only here. Enforcement is a product
+    // behaviour a developer should meet locally; the reconcile sweep is a
+    // background snapshot job that enforcement does not depend on, so it keeps
+    // its deployed-only posture.
     const seedEntitlements = await loadWithEnvPosture({ nodeEnv: 'development', ci: '', envFileLoaded: true });
     const { client, upserts } = makeMockClient();
 
     await seedEntitlements(client as never);
 
-    expect(upserts.find((u) => (u.create as { key?: string }).key === 'entitlements.enabled')!.create.value).toBe('false');
+    expect(upserts.find((u) => (u.create as { key?: string }).key === 'entitlements.enabled')!.create.value).toBe('true');
     expect(upserts.find((u) => (u.create as { key?: string }).key === 'metering.reconcile.enabled')!.create.value).toBe('false');
   });
 

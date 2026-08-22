@@ -1,0 +1,77 @@
+// ============================================================================
+// Rate-Limit Rules (TASK-785)
+//
+// The config plane for ranks 1, 2 and 4 of the rate-limit precedence chain:
+//
+//   1. tenant × route   RateLimitRule, tenantId = <customer>, routeMatch names a route
+//   2. tenant           RateLimitRule, tenantId = <customer>, routeMatch = '*'
+//   3. plan             PlanEntitlement / TenantEntitlement  (entitlement.prisma)
+//   4. platform route   RateLimitRule, tenantId = SYSTEM,     routeMatch names a route
+//   5. platform base    `rate-limit.tier.<t>.*` GlobalSetting (globalSetting.prisma)
+//
+// Ranks 1, 2 and 4 are ONE table distinguished by `tenantId` (SYSTEM vs a
+// customer) and by how specific `routeMatch` is. That is deliberate: it makes
+// the tenant → SYSTEM widening the SAME query the rest of the platform uses,
+// and it keeps the GLOBAL/default tenant (`50000000-…`, a CUSTOMER tenant and
+// the platform-admin playground) out of the cascade entirely — see
+// `00-project-context.md` §"The two reserved tenants are NOT two config tiers".
+//
+// Ranks 1 and 2 need no discriminator column: `'*'` is simply the least
+// specific pattern a tenant can write, so "most specific match wins" inside the
+// tenant scope produces rank 1 > rank 2 on its own.
+//
+// A SYSTEM-scoped rule may NOT use `routeMatch = '*'`. Rank 5 (the named tier
+// baselines) is the single platform-wide knob; a second one here would be an
+// ambiguous duplicate. Enforced in `RateLimitRuleService`, tested, and stated
+// here because the schema alone cannot express it.
+// ============================================================================
+
+model RateLimitRule {
+  // meta fields
+  metaData Json?  @map("_metadata") @db.JsonB
+  version  Int    @default(1) @map("_version")
+  id       String @id @default(uuid(7))
+
+  // multi tenant fields (SYSTEM tenant row = a platform-wide route rule)
+  tenantId String
+
+  // core fields
+  //
+  // `routeMatch` is a ROUTE KEY, never a raw URL: `METHOD:/route/pattern`, with
+  // the pattern exactly as the router registered it (`/api/v1/tenants/:id`).
+  // Matching on the pattern — not the resolved path — is what keeps the bucket
+  // key cardinality bounded; see `tiered-throttler.guard.ts`.
+  //   EXACT  : `POST:/api/v1/auth/login`
+  //   PREFIX : `*:/api/v1/admin/*`, or the reserved `*` for every route.
+  routeMatch String
+  matchKind  RateLimitMatchKind @default(EXACT)
+
+  limitValue Int // requests allowed per window
+  windowMs   Int // window length in milliseconds
+
+  // `false` = this scope is EXEMPT from throttling. It is NOT "no opinion": a
+  // matching rule always terminates resolution, so an inactive rule short-
+  // circuits the whole chain rather than deferring to the next rank.
+  active Boolean @default(true)
+
+  description String?
+
+  // resource status fields
+  resourceStatus          ResourceStatusType @default(ENABLED)
+  resourceStatusUpdatedAt DateTime?
+  resourceStatusUpdatedBy String?
+
+  // audit fields
+  createdBy String?  @default("60000000-0000-0000-0000-000000000000")
+  updatedBy String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // indexing — one rule per (scope, pattern, match kind).
+  // `routeMatch` is NOT nullable precisely so this unique index bites: Postgres
+  // treats NULLs as distinct, so a nullable "all routes" column would silently
+  // permit unlimited duplicate tenant-wide rules.
+  @@unique([tenantId, routeMatch, matchKind], name: "RateLimitRule_scope_unique", map: "RateLimitRule_tenantId_routeMatch_matchKind_key")
+  @@index([tenantId], name: "RateLimitRule_tenantId_idx")
+  @@schema("core")
+}

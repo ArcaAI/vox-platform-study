@@ -37,6 +37,10 @@ export interface IPlanEntitlementEntity extends Omit<IBaseEntity, 'tenantId'> {
   featureAgenticLoop: boolean;
   modelTier: string;
   rateLimitTier: string;
+  // TASK-785 rank 3 — an ABSOLUTE per-plan limit. Null keeps the indirect
+  // behaviour: the plan names a `rateLimitTier` whose baseline supplies the number.
+  rateLimitPerMinute?: number | null;
+  rateLimitWindowMs?: number | null;
 }
 
 export class PlanEntitlementEntity extends BaseEntity {
@@ -66,6 +70,8 @@ export class PlanEntitlementEntity extends BaseEntity {
   private _featureAgenticLoop: IPlanEntitlementEntity['featureAgenticLoop'];
   private _modelTier: IPlanEntitlementEntity['modelTier'];
   private _rateLimitTier: IPlanEntitlementEntity['rateLimitTier'];
+  private _rateLimitPerMinute?: IPlanEntitlementEntity['rateLimitPerMinute'];
+  private _rateLimitWindowMs?: IPlanEntitlementEntity['rateLimitWindowMs'];
 
   constructor(init: IPlanEntitlementEntity) {
     super(init);
@@ -95,6 +101,8 @@ export class PlanEntitlementEntity extends BaseEntity {
     this._featureAgenticLoop = init.featureAgenticLoop;
     this._modelTier = init.modelTier;
     this._rateLimitTier = init.rateLimitTier;
+    this._rateLimitPerMinute = init.rateLimitPerMinute;
+    this._rateLimitWindowMs = init.rateLimitWindowMs;
   }
 
   get plan(): IPlanEntitlementEntity['plan'] {
@@ -303,6 +311,22 @@ export class PlanEntitlementEntity extends BaseEntity {
 
   set rateLimitTier(value: IPlanEntitlementEntity['rateLimitTier']) {
     this.setProperty('rateLimitTier', value);
+  }
+
+  get rateLimitPerMinute(): IPlanEntitlementEntity['rateLimitPerMinute'] {
+    return this._rateLimitPerMinute;
+  }
+
+  set rateLimitPerMinute(value: IPlanEntitlementEntity['rateLimitPerMinute']) {
+    this.setProperty('rateLimitPerMinute', value);
+  }
+
+  get rateLimitWindowMs(): IPlanEntitlementEntity['rateLimitWindowMs'] {
+    return this._rateLimitWindowMs;
+  }
+
+  set rateLimitWindowMs(value: IPlanEntitlementEntity['rateLimitWindowMs']) {
+    this.setProperty('rateLimitWindowMs', value);
   }
 
   public override validate(): void {

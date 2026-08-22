@@ -96,3 +96,4 @@ export * from './ServiceAccountEntity';
 export * from './WorkflowAssignmentChangeEntity';
 export * from './WorkflowAssignmentEntity';
 export * from './WorkflowInvariantRuleEntity';
+export * from './RateLimitRuleEntity';

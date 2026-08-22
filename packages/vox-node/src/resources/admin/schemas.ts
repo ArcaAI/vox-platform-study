@@ -12,7 +12,7 @@
  * Request and response types for the `/api/v1/admin/**` surface, derived from
  * the gateway's own DTOs via `openapi.json`.
  *
- * Only the 354 component schemas the generated surface transitively
+ * Only the 367 component schemas the generated surface transitively
  * reaches are emitted — the document declares more, and importing shapes no
  * method can produce would be noise.
  *
@@ -1189,6 +1189,23 @@ export interface CreatePromptTemplateRequest {
   variables?: Record<string, unknown>;
 }
 
+export interface CreateRateLimitRuleRequest {
+  /** `false` EXEMPTS this scope from throttling. A matching rule always terminates resolution — it never falls through. */
+  active?: boolean;
+  /** Why this rule exists — shown in the admin list. */
+  description?: string;
+  /** Requests allowed per window. */
+  limitValue: number;
+  /** EXACT compares the whole route key; PREFIX allows a trailing `*`. Defaults to EXACT. */
+  matchKind?: 'EXACT' | 'PREFIX';
+  /** Route key `METHOD:/path` (METHOD may be `*`), or the reserved `*` for every route. A platform-scoped rule may not use `*` — set the platform-wide limit on the base tiers instead. */
+  routeMatch: string;
+  /** Tenant this rule applies to. Omit (or pass the SYSTEM tenant) for a platform-wide rule. A tenant-scoped rule outranks every platform rule. */
+  tenantId?: string;
+  /** Window length in milliseconds. */
+  windowMs: number;
+}
+
 export interface CreateResourceSubscriptionRequest {
   /** ID of the resource */
   resourceId?: string;
@@ -1993,6 +2010,13 @@ export interface GenerateDnaReportRequest {
   sourceIds?: string[];
   /** Text samples for analysis (if not provided, gathered from ContextItems) */
   textSamples?: string[];
+}
+
+export interface GeneratedSecretPolicyResponse {
+  /** CSPRNG bytes drawn per issued machine secret (entropy, not characters). */
+  byteLength: number;
+  /** Alphabet of an issued secret, where the surface does not pin one. */
+  encoding: 'hex' | 'base64url';
 }
 
 export interface GenerationMetricsAggregateResponse {
@@ -2930,6 +2954,23 @@ export interface PaginatedWorkflowTestFixtureResponse {
   page: number;
 }
 
+export interface PasswordPolicyResponse {
+  /** Rotation window in days; 0 = rotation disabled. Warns at login, never blocks. */
+  maxAgeDays: number;
+  /** Maximum characters. NOT configurable — a hashing-DoS bound (bcrypt reads 72 bytes). */
+  maxLength: number;
+  /** Minimum characters for any password set through any path. */
+  minLength: number;
+  /** Require at least one 0-9. */
+  requireDigit: boolean;
+  /** Require at least one a-z. */
+  requireLowercase: boolean;
+  /** Require at least one non-alphanumeric character. */
+  requireSpecial: boolean;
+  /** Require at least one A-Z. */
+  requireUppercase: boolean;
+}
+
 export interface PinConsultationContextSchemaVersionRequest {
   /** The immutable version number to serve. Must already exist. */
   versionNumber: number;
@@ -3087,8 +3128,12 @@ export interface PlanEntitlementResponse {
   monthlyWorkflowInvocations?: number | null;
   /** Commercial plan */
   plan: 'ENTERPRISE' | 'PRO' | 'TRIAL' | 'STARTER';
+  /** TASK-785 — ABSOLUTE requests-per-window for every tenant on this plan. Null = the plan expresses its limit through `rateLimitTier`. */
+  rateLimitPerMinute?: number | null;
   /** Rate-limit tier (strict | default | relaxed | heavy) */
   rateLimitTier: string;
+  /** Window paired with `rateLimitPerMinute`. Read only when that is set. */
+  rateLimitWindowMs?: number | null;
   /** Storage quota in bytes; null = unlimited */
   storageQuotaBytes?: number | null;
   /** OCC version token */
@@ -3489,6 +3534,39 @@ export interface QueueStatsResponse {
   workerCount: number;
 }
 
+export interface RateLimitExplainOfferResponse {
+  active: boolean;
+  level: 'tenant-route' | 'tenant' | 'plan' | 'platform-route' | 'platform-base';
+  limitValue: number;
+  ruleId?: string;
+  windowMs: number;
+  /** `true` for the level that decided. */
+  winner: boolean;
+}
+
+export interface RateLimitExplainResponse {
+  /** How the counter is bucketed — the answer to "why do these callers share a budget?". */
+  bucket: 'tenant' | 'ip';
+  effective?: { limitValue: number; windowMs: number };
+  level: 'tenant-route' | 'tenant' | 'plan' | 'platform-route' | 'platform-base';
+  routeKey: string;
+  ruleId?: string;
+  tenantId?: string | null;
+  trace: RateLimitExplainOfferResponse[];
+}
+
+export interface RateLimitPlanResponse {
+  id: string;
+  plan: 'STARTER' | 'TRIAL' | 'PRO' | 'ENTERPRISE';
+  /** ABSOLUTE requests-per-window; null = use the tier. */
+  rateLimitPerMinute?: number | null;
+  /** Named tier this plan selects when it carries no absolute limit. */
+  rateLimitTier: string;
+  rateLimitWindowMs?: number | null;
+  /** OCC token — echo as `expectedVersion` on update. */
+  version: number;
+}
+
 export interface RateLimitPolicyResponse {
   /** Effective global kill-switch state. */
   enabled: boolean;
@@ -3508,6 +3586,22 @@ export interface RateLimitRoutePolicyResponse {
   tier: 'default' | 'strict' | 'heavy' | 'relaxed';
   ttl: number;
   ttlSource: 'db' | 'code' | 'default';
+}
+
+export interface RateLimitRuleResponse {
+  active: boolean;
+  createdAt: string;
+  description?: string | null;
+  id: string;
+  limitValue: number;
+  matchKind: 'EXACT' | 'PREFIX';
+  /** `true` when this is a SYSTEM-owned, platform-wide rule. */
+  platform: boolean;
+  routeMatch: string;
+  tenantId: string;
+  updatedAt: string;
+  version: number;
+  windowMs: number;
 }
 
 export interface RateLimitTierPolicyResponse {
@@ -3723,6 +3817,18 @@ export interface RotateWebhookSecretRequest {
   expectedVersion: number;
 }
 
+export interface RouteCatalogEntryResponse {
+  controller: string;
+  /** The route’s `@Throttle` limit, which seeds rank 5. */
+  decoratorLimit?: number;
+  decoratorWindowMs?: number;
+  handler: string;
+  method: string;
+  path: string;
+  /** Route key `METHOD:/path` — paste straight into a rule `routeMatch`. */
+  routeId: string;
+}
+
 export interface RunGateStateResponse {
   /** True once a real approval signal has been received. */
   approved?: boolean;
@@ -3858,6 +3964,23 @@ export interface SchedulerInfoResponse {
   type: 'cron' | 'interval' | 'timeout';
 }
 
+export interface SecretPolicyBoundsResponse {
+  /** Credential surfaces governed by `secret`, i.e. what a change here will affect on the NEXT issuance. */
+  governedSurfaces: string[];
+  /** Hard ceiling on issued-secret entropy. */
+  maxByteLength: number;
+  /** Hard floor on issued-secret entropy, enforced in code after the row is read. */
+  minByteLength: number;
+  /** Surfaces whose alphabet is PINNED and therefore ignore `encoding`: API keys are hex (their format regex parses the key structurally) and storage access keys are base64url (the shipped S3-style shape). `byteLength` applies everywhere. */
+  pinnedEncodings: Record<string, string>;
+}
+
+export interface SecurityPolicyResponse {
+  bounds: SecretPolicyBoundsResponse;
+  password: PasswordPolicyResponse;
+  secret: GeneratedSecretPolicyResponse;
+}
+
 export interface SellRateResponse {
   bookVersion: string;
   capability?: 'STT' | 'LLM' | 'NLP' | 'TTS' | 'EMBEDDING' | null;
@@ -3946,6 +4069,17 @@ export interface SetEnforcementEnabledRequest {
 export interface SetRateLimitEnabledRequest {
   /** Global rate-limit kill-switch. `false` disables throttling for every route. */
   enabled: boolean;
+}
+
+export interface SetRateLimitPlanRequest {
+  /** OCC token — the `_version` the caller believes it is updating. */
+  expectedVersion: number;
+  /** ABSOLUTE requests-per-window for every tenant on this plan. Null/omitted keeps the plan expressing its limit through `rateLimitTier`. */
+  rateLimitPerMinute?: number | null;
+  /** Named tier this plan selects when it carries no absolute limit. */
+  rateLimitTier?: string;
+  /** Window paired with `rateLimitPerMinute`. Read only when that is set. */
+  rateLimitWindowMs?: number | null;
 }
 
 export interface SetRateLimitRouteRequest {
@@ -5141,8 +5275,12 @@ export interface UpdatePlanEntitlementRequest {
   monthlyTtsCharacters?: number | null;
   /** Monthly PUBLISHED-workflow invocations via /api/v1/workflows/:slug/invoke (TASK-722); null = unlimited */
   monthlyWorkflowInvocations?: number | null;
+  /** TASK-785 — ABSOLUTE requests-per-window for this plan. Send `null` to clear it and fall back to `rateLimitTier`. */
+  rateLimitPerMinute?: number | null;
   /** Rate-limit tier (strict | default | relaxed | heavy) */
   rateLimitTier?: string;
+  /** Window paired with `rateLimitPerMinute`, in milliseconds. */
+  rateLimitWindowMs?: number | null;
   /** Storage quota in bytes; null = unlimited */
   storageQuotaBytes?: number | null;
 }
@@ -5183,6 +5321,17 @@ export interface UpdatePromptTemplateRequest {
   variables?: Record<string, unknown>;
 }
 
+export interface UpdateRateLimitRuleRequest {
+  /** `false` EXEMPTS this scope from throttling. */
+  active?: boolean;
+  /** Why this rule exists. */
+  description?: string;
+  /** Requests allowed per window. */
+  limitValue?: number;
+  /** Window length in milliseconds. */
+  windowMs?: number;
+}
+
 export interface UpdateResourceSubscriptionRequest {
   /** ID of the resource */
   resourceId?: string;
@@ -5216,6 +5365,25 @@ export interface UpdateRoleDto {
 export interface UpdateSchedulerCronRequest {
   /** New 5/6-field cron expression. Validated server-side. */
   cronExpression: string;
+}
+
+export interface UpdateSecurityPolicyRequest {
+  /** Password rotation window in days; 0 disables rotation. Raising it warns at login and never blocks. */
+  passwordMaxAgeDays?: number;
+  /** Minimum password length. Floor of 8 is the NIST SP 800-63B minimum for a user-chosen secret; the platform default is 12. The MAXIMUM (128) is deliberately not settable — it is a hashing-DoS bound. */
+  passwordMinLength?: number;
+  /** Require at least one digit (0-9) in a password. */
+  passwordRequireDigit?: boolean;
+  /** Require at least one lowercase letter (a-z) in a password. */
+  passwordRequireLowercase?: boolean;
+  /** Require at least one special character in a password. */
+  passwordRequireSpecial?: boolean;
+  /** Require at least one uppercase letter (A-Z) in a password. */
+  passwordRequireUppercase?: boolean;
+  /** CSPRNG bytes behind every machine credential the platform issues (service-account client secret, API key, webhook signing secret, storage access key). Applies to the NEXT issuance only. */
+  secretByteLength?: number;
+  /** Alphabet for issued secrets. Honoured by service-account client secrets and webhook signing secrets; IGNORED by API keys (hex-pinned by their format regex) and storage access keys (base64url-pinned S3 shape). */
+  secretEncoding?: 'hex' | 'base64url';
 }
 
 export interface UpdateTenantAllowedOriginRequest {

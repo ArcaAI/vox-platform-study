@@ -11,6 +11,14 @@ import {
 export const IServiceAccountService = Symbol('IServiceAccountService');
 
 export interface IServiceAccountService {
+  /**
+   * TASK-785 O-4 — the tenant a token is bound to (`workingTenantId`), for RATE
+   * LIMITING ONLY. One Redis GET, no DB confirmation, no scope check; the
+   * authoritative validation is `authenticateByToken`, which runs a moment
+   * later in `UnifiedAuthGuard`.
+   */
+  peekTenantForRateLimit(token: string): Promise<string | null>;
+
   create(dto: CreateServiceAccountRequest): Promise<ServiceAccountSecretResponse>;
   getAll(): Promise<ServiceAccountResponse[]>;
   getById(id: string): Promise<ServiceAccountResponse>;

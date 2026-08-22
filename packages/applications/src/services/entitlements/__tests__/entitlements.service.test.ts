@@ -154,7 +154,15 @@ describe('EntitlementsService', () => {
   });
 
   describe('kill-switch', () => {
-    it('defaults enforcement OFF when the setting is absent', () => {
+    it('defaults enforcement ON when the setting is absent (TASK-785 OD-6)', () => {
+      // Was OFF, so an unseeded database silently granted every tenant
+      // unlimited quota. The seeded row still decides a live environment; this
+      // default only covers the "row is missing" case.
+      expect(makeService().isEnforcementEnabled()).toBe(true);
+    });
+
+    it('still reads an explicit OFF from the DB over the ON default', () => {
+      values.set('entitlements.enabled', false);
       expect(makeService().isEnforcementEnabled()).toBe(false);
     });
 
@@ -188,11 +196,11 @@ describe('EntitlementsService', () => {
   });
 
   describe('resolveForTenant', () => {
-    it('resolves a null-plan tenant to ungated-legacy', async () => {
+    it('resolves a plan-less RESERVED tenant to ungated-legacy (TASK-785 OD-5)', async () => {
       tenantRepository.findById.mockResolvedValue({ plan: null, trialEndsAt: null });
       tenantEntitlementRepository.findByTenant.mockResolvedValue(null);
 
-      const resolved = await makeService().resolveForTenant('sys-tenant');
+      const resolved = await makeService().resolveForTenant(ENTITLEMENTS_TENANT_ID);
 
       expect(resolved.gated).toBe(false);
       expect(resolved.limits.maxUsers).toBeNull();
@@ -310,7 +318,7 @@ describe('EntitlementsService', () => {
     it('honours the global kill switch: returns true (ungated) when entitlements.enabled is OFF (OD-6)', async () => {
       // Switch OFF — the tenant is explicitly DENIED in its override row, and
       // still reads `true`, because enforcement as a whole is off.
-      values.delete('entitlements.enabled');
+      values.set('entitlements.enabled', false);
       arrangeTenant({ featurePlatformDefaultCredential: false });
       await expect(makeService().isFeatureEnabled('tenant-1', 'platformDefaultCredential')).resolves.toBe(true);
       // Not even resolved — the early return happens before any DB read.
@@ -351,7 +359,7 @@ describe('EntitlementsService', () => {
       // Q5 — meters carry live rolling-monthly usage.
       const consultations = caps.meters.find((m) => m.key === 'monthlyConsultations')!;
       expect(consultations).toMatchObject({ limit: 50, used: 45, nearLimit: true, exceeded: false });
-      expect(caps.enforcementEnabled).toBe(false);
+      expect(caps.enforcementEnabled).toBe(true);
       expect(caps.gated).toBe(true);
       expect(caps.trial.isTrial).toBe(false);
     });
@@ -580,17 +588,18 @@ describe('EntitlementsService', () => {
     };
 
     it('is a NO-OP when the kill-switch is OFF, even over the limit', async () => {
+      values.set('entitlements.enabled', false);
       asStarter(); // enforcement default OFF
       await expect(makeService().assertQuantityQuota('tenant-1', 'maxUsers', 99)).resolves.toBeUndefined();
       expect(tenantRepository.findById).not.toHaveBeenCalled(); // short-circuits before resolving
     });
 
-    it('is a NO-OP for an unlimited (null-plan / ungated) tenant', async () => {
+    it('is a NO-OP for an unlimited (reserved, plan-less → ungated) tenant', async () => {
       values.set('entitlements.enabled', true);
       tenantRepository.findById.mockResolvedValue({ plan: null, trialEndsAt: null });
       tenantEntitlementRepository.findByTenant.mockResolvedValue(null);
 
-      await expect(makeService().assertQuantityQuota('sys-tenant', 'maxUsers', 10_000)).resolves.toBeUndefined();
+      await expect(makeService().assertQuantityQuota(ENTITLEMENTS_TENANT_ID, 'maxUsers', 10_000)).resolves.toBeUndefined();
       expect(eventEmitter.emit).not.toHaveBeenCalled();
     });
 
@@ -634,10 +643,7 @@ describe('EntitlementsService', () => {
 
       await expect(makeService().assertQuantityQuota('tenant-1', 'maxUsers', 5)).rejects.toBeInstanceOf(QuotaExceededException);
 
-      expect(eventEmitter.emit).toHaveBeenCalledWith(
-        ENTITLEMENTS_QUOTA_BLOCKED_EVENT,
-        expect.objectContaining({ responsibleEntityId: 'user-42' }),
-      );
+      expect(eventEmitter.emit).toHaveBeenCalledWith(ENTITLEMENTS_QUOTA_BLOCKED_EVENT, expect.objectContaining({ responsibleEntityId: 'user-42' }));
     });
 
     it('The blocked-event payload omits an author when CLS carries no user (background/system caller)', async () => {
@@ -660,6 +666,7 @@ describe('EntitlementsService', () => {
     };
 
     it('is a NO-OP when the kill-switch is OFF — never reads the live meter', async () => {
+      values.set('entitlements.enabled', false);
       asStarter(); // enforcement default OFF
       await expect(makeService().assertMeterQuota('tenant-1', 'monthlyConsultations')).resolves.toBeUndefined();
       expect(metering.getCurrentUsage).not.toHaveBeenCalled();
@@ -838,12 +845,13 @@ describe('EntitlementsService', () => {
           guardrailCalls: 555,
           embeddingTokens: 666,
         };
-        const cases: Array<[keyof typeof usage, 'monthlySttSessionSeconds' | 'monthlyLlmTokens' | 'monthlyNlpTextUnits' | 'monthlyEmbeddingTokens']> = [
-          ['sttSessionSeconds', 'monthlySttSessionSeconds'],
-          ['llmTokens', 'monthlyLlmTokens'],
-          ['nlpTextUnits', 'monthlyNlpTextUnits'],
-          ['embeddingTokens', 'monthlyEmbeddingTokens'],
-        ];
+        const cases: Array<[keyof typeof usage, 'monthlySttSessionSeconds' | 'monthlyLlmTokens' | 'monthlyNlpTextUnits' | 'monthlyEmbeddingTokens']> =
+          [
+            ['sttSessionSeconds', 'monthlySttSessionSeconds'],
+            ['llmTokens', 'monthlyLlmTokens'],
+            ['nlpTextUnits', 'monthlyNlpTextUnits'],
+            ['embeddingTokens', 'monthlyEmbeddingTokens'],
+          ];
 
         for (const [usageKey, capability] of cases) {
           tenantRepository.findById.mockResolvedValue({ plan: 'STARTER', trialEndsAt: null });
@@ -901,18 +909,19 @@ describe('EntitlementsService', () => {
     };
 
     it('is a NO-OP when the kill-switch is OFF — never reads the registry', async () => {
+      values.set('entitlements.enabled', false);
       asStarter(); // enforcement default OFF
       await expect(makeService().assertConcurrencyQuota('tenant-1')).resolves.toBeUndefined();
       expect(socketRegistry.getTenantAggregateCount).not.toHaveBeenCalled();
       expect(tenantRepository.findById).not.toHaveBeenCalled();
     });
 
-    it('is a NO-OP for an unlimited (null-plan / ungated) tenant', async () => {
+    it('is a NO-OP for an unlimited (reserved, plan-less → ungated) tenant', async () => {
       values.set('entitlements.enabled', true);
       tenantRepository.findById.mockResolvedValue({ plan: null, trialEndsAt: null });
       tenantEntitlementRepository.findByTenant.mockResolvedValue(null);
 
-      await expect(makeService().assertConcurrencyQuota('sys-tenant')).resolves.toBeUndefined();
+      await expect(makeService().assertConcurrencyQuota(ENTITLEMENTS_TENANT_ID)).resolves.toBeUndefined();
       expect(socketRegistry.getTenantAggregateCount).not.toHaveBeenCalled();
       expect(eventEmitter.emit).not.toHaveBeenCalled();
     });
@@ -967,6 +976,7 @@ describe('EntitlementsService', () => {
     };
 
     it('is a NO-OP (warn:false) when the kill-switch is OFF', async () => {
+      values.set('entitlements.enabled', false);
       asStarter();
       const result = await makeService().evaluateStorageSoftWarn('tenant-1', 10 * GIB);
       expect(result.warn).toBe(false);
@@ -974,11 +984,11 @@ describe('EntitlementsService', () => {
       expect(eventEmitter.emit).not.toHaveBeenCalled();
     });
 
-    it('is a NO-OP for an unlimited (null-plan / ungated) tenant', async () => {
+    it('is a NO-OP for an unlimited (reserved, plan-less → ungated) tenant', async () => {
       values.set('entitlements.enabled', true);
       tenantRepository.findById.mockResolvedValue({ plan: null, trialEndsAt: null });
       tenantEntitlementRepository.findByTenant.mockResolvedValue(null);
-      const result = await makeService().evaluateStorageSoftWarn('sys-tenant', 10 * GIB);
+      const result = await makeService().evaluateStorageSoftWarn(ENTITLEMENTS_TENANT_ID, 10 * GIB);
       expect(result.warn).toBe(false);
       expect(eventEmitter.emit).not.toHaveBeenCalled();
     });

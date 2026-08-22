@@ -96,3 +96,4 @@ export * from './ServiceAccountFactory';
 export * from './WorkflowAssignmentChangeFactory';
 export * from './WorkflowAssignmentFactory';
 export * from './WorkflowInvariantRuleFactory';
+export * from './RateLimitRuleFactory';

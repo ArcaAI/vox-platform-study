@@ -38,6 +38,8 @@ export interface ITenantEntitlementEntity extends IBaseTenantEntity {
   modelTier?: string | null;
   rateLimitTier?: string | null;
   rateLimitPerMinute?: number | null;
+  // TASK-785 — the window paired with `rateLimitPerMinute` (read only when it is set).
+  rateLimitWindowMs?: number | null;
 }
 
 export class TenantEntitlementEntity extends BaseTenantEntity {
@@ -68,6 +70,7 @@ export class TenantEntitlementEntity extends BaseTenantEntity {
   private _modelTier?: ITenantEntitlementEntity['modelTier'];
   private _rateLimitTier?: ITenantEntitlementEntity['rateLimitTier'];
   private _rateLimitPerMinute?: ITenantEntitlementEntity['rateLimitPerMinute'];
+  private _rateLimitWindowMs?: ITenantEntitlementEntity['rateLimitWindowMs'];
 
   constructor(init: ITenantEntitlementEntity) {
     super(init);
@@ -98,6 +101,7 @@ export class TenantEntitlementEntity extends BaseTenantEntity {
     this._modelTier = init.modelTier;
     this._rateLimitTier = init.rateLimitTier;
     this._rateLimitPerMinute = init.rateLimitPerMinute;
+    this._rateLimitWindowMs = init.rateLimitWindowMs;
   }
 
   get maxUsers(): ITenantEntitlementEntity['maxUsers'] {
@@ -314,5 +318,13 @@ export class TenantEntitlementEntity extends BaseTenantEntity {
 
   set rateLimitPerMinute(value: ITenantEntitlementEntity['rateLimitPerMinute']) {
     this.setProperty('rateLimitPerMinute', value);
+  }
+
+  get rateLimitWindowMs(): ITenantEntitlementEntity['rateLimitWindowMs'] {
+    return this._rateLimitWindowMs;
+  }
+
+  set rateLimitWindowMs(value: ITenantEntitlementEntity['rateLimitWindowMs']) {
+    this.setProperty('rateLimitWindowMs', value);
   }
 }

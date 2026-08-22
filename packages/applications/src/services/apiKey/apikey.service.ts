@@ -21,6 +21,7 @@ import { BaseService, FetchResponse, PaginatedQuery, withFormattedCountProps, wi
 import { assertUserBelongsToTenant } from '../../common/tenant-guards';
 import { IActiveUserContext } from '../../interfaces';
 import { SecretsService } from '../baseServices/_meta/secrets';
+import { IRedisCacheService } from '../baseServices/redis';
 import { IEntitlementsService } from '../entitlements/IEntitlementsService';
 import { TenantSettingsService } from '../settings-registry/tenant-settings.service';
 import { IAppSettingsService } from '../baseServices/_meta/appSettings/IAppSettingsService';
@@ -106,6 +107,10 @@ export class ApiKeyService extends BaseService implements IApiKeyService {
     // Optional (append-only DI) so legacy fixtures keep the pre-policy 32-byte
     // hex behaviour exactly as it was.
     @Optional() @Inject(IAppSettingsService) private readonly appSettingsService?: IAppSettingsService,
+    // TASK-785 O-4 — the key→tenant hint cache read by `TieredThrottlerGuard`.
+    // Optional (append-only DI): without it the throttler simply never sees a
+    // tenant for API-key traffic, which is exactly the pre-TASK-785 behaviour.
+    @Optional() @Inject(IRedisCacheService) private readonly redisCache?: IRedisCacheService,
   ) {
     super(eventEmitter, clsService, ResourceType.ApiKey);
   }
@@ -954,6 +959,58 @@ export class ApiKeyService extends BaseService implements IApiKeyService {
    * Authenticate a request by raw API key.
    * Full validation pipeline: hash → lookup → status/expiry → IP allowlist.
    */
+  /**
+   * Redis namespace for the key→tenant hint. Keyed by the SAME storage hash the
+   * DB row is keyed by, so the raw key never reaches Redis.
+   */
+  private static readonly RATE_LIMIT_TENANT_PREFIX = 'ratelimit:apikey-tenant:';
+
+  /**
+   * TTL on the hint. Short enough that a revoked or re-tenanted key stops
+   * influencing rate-limit bucketing quickly; long enough that a busy key is a
+   * cache hit essentially always. It is only ever a HINT — the authoritative
+   * check runs in `UnifiedAuthGuard` on the very same request.
+   */
+  private static readonly RATE_LIMIT_TENANT_TTL_SECONDS = 300;
+
+  /**
+   * The tenant an API key belongs to, for RATE LIMITING ONLY (TASK-785 O-4).
+   * `null` on a miss.
+   *
+   * Reads a Redis hint written by {@link authenticateByRawKey}; it NEVER falls
+   * back to the database. `TieredThrottlerGuard` runs before authentication on
+   * every request, and adding an indexed-but-real Postgres round trip there
+   * would put the hot path's cost in the hands of unauthenticated callers.
+   *
+   * Consequence, accepted: the FIRST request from a given key inside each TTL
+   * window resolves no tenant and rides the platform lane. That is the correct
+   * direction to be wrong — it under-attributes one request rather than
+   * attributing it to the wrong tenant.
+   */
+  async peekTenantForRateLimit(rawKey: string): Promise<string | null> {
+    if (!this.redisCache || !rawKey) return null;
+    try {
+      const keyHash = await this.hashKeyForStorage(rawKey);
+      return (await this.redisCache.get(`${ApiKeyService.RATE_LIMIT_TENANT_PREFIX}${keyHash}`)) ?? null;
+    } catch {
+      // Rate limiting must never fail a request over its own bookkeeping.
+      return null;
+    }
+  }
+
+  /**
+   * Publish the key→tenant hint. Fire-and-forget: the caller is on the
+   * authentication path and must not wait on, or fail for, a cache write.
+   */
+  private publishRateLimitTenantHint(keyHash: string, tenantId: string): void {
+    if (!this.redisCache) return;
+    void this.redisCache
+      .setex(`${ApiKeyService.RATE_LIMIT_TENANT_PREFIX}${keyHash}`, ApiKeyService.RATE_LIMIT_TENANT_TTL_SECONDS, tenantId)
+      .catch(() => {
+        /* Best-effort; a miss just means the next request rides the platform lane. */
+      });
+  }
+
   async authenticateByRawKey(rawKey: string, ipAddress?: string): Promise<ApiKeyEntity> {
     if (!rawKey) {
       throw new UnauthorizedException('API key is required');
@@ -988,6 +1045,11 @@ export class ApiKeyService extends BaseService implements IApiKeyService {
     }
 
     this.updateUsage(apiKeyEntity.id, ipAddress).catch(() => {});
+
+    // TASK-785 O-4 — publish the key→tenant hint for the NEXT request's
+    // throttler. Written only after every validity check above has passed, so a
+    // revoked, expired or IP-blocked key never seeds the cache.
+    this.publishRateLimitTenantHint(await this.hashKeyForStorage(rawKey), apiKeyEntity.tenantId);
 
     this.logger.debug({
       message: 'API key authenticated',

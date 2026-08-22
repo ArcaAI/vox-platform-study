@@ -21,22 +21,45 @@ import { APP_GUARD } from '@nestjs/core';
 import { Throttle, SkipThrottle } from '@nestjs/throttler';
 import { Test } from '@nestjs/testing';
 import request from 'supertest';
+import * as jwtLib from 'jsonwebtoken';
 import {
+  IApiKeyService,
   IEntitlementsService,
   IRateLimitSettingsService,
+  IServiceAccountService,
   RateLimitSettingsService,
+  SecretsService,
   TenantSettingsService,
   type TenantRateLimitPolicy,
 } from '@arcaai/applications';
 import { ThrottleConfigModule } from '../throttle.module';
 import { TieredThrottlerGuard } from '../tiered-throttler.guard';
 
-/** Craft an unsigned JWT carrying `tenantId` (the guard decodes, never verifies). */
+/**
+ * The guard now VERIFIES the token before trusting its `tenantId` (TASK-785),
+ * because that claim decides which tenant's COUNTER a request spends — not just
+ * which tier it gets. So these fixtures sign for real.
+ */
+const TEST_JWT_SECRET = 'throttle-guard-test-secret';
+
+/** A properly signed JWT carrying `tenantId` — the guard trusts this one. */
 function makeJwt(tenantId: string): string {
+  return jwtLib.sign({ tenantId }, TEST_JWT_SECRET, { algorithm: 'HS256', expiresIn: '5m' });
+}
+
+/**
+ * An `alg: "none"` token naming a tenant, exactly as an attacker would forge it.
+ * The guard must treat it as ANONYMOUS — if it did not, anyone could spend (or
+ * borrow) any tenant's budget just by claiming to be them.
+ */
+function makeForgedJwt(tenantId: string): string {
   const header = Buffer.from(JSON.stringify({ alg: 'none', typ: 'JWT' })).toString('base64url');
   const payload = Buffer.from(JSON.stringify({ tenantId })).toString('base64url');
   return `${header}.${payload}.sig`;
 }
+
+/** Supplies the verification key the guard reads via `getSecretSync`. */
+const secretsStub = { getSecretSync: (key: string) => (key === 'JWT_SECRET_KEY' ? TEST_JWT_SECRET : undefined) } as unknown as SecretsService;
 
 @Controller('t')
 class ThrottleTestController {
@@ -297,11 +320,17 @@ class Q7Controller {
     return { ok: 'anon' };
   }
 
-  // decorator baseline 5 must beat the plan tier (precedence: decorator > plan).
+  // TASK-785 OD-2: the decorator is rank 5's SEED, so the plan tier (2) beats
+  // this 5 — the reverse of the behaviour this route was added to prove.
   @Throttle({ default: { limit: 5, ttl: 60000 } })
   @Get('decorated')
   decorated() {
     return { ok: 'decorated' };
+  }
+
+  @Get('forged')
+  forged() {
+    return { ok: 'forged' };
   }
 }
 
@@ -311,8 +340,12 @@ describe('TieredThrottlerGuard (per-tenant plan rate-limits)', () => {
 
   // Per-tenant policy stub, keyed by the tenantId decoded from the JWT.
   const policies: Record<string, TenantRateLimitPolicy | null> = {
-    'tenant-strict': { tier: 'strict', perMinute: null },
-    'tenant-override': { tier: 'strict', perMinute: 4 },
+    'tenant-strict': { tier: 'strict', perMinute: null, windowMs: null },
+    // A tenant of its own for (e): a plan-resolved limit is now counted per
+    // TENANT across every route (OD-3), so two cases sharing a tenant would
+    // share one counter.
+    'tenant-decorated': { tier: 'strict', perMinute: null, windowMs: null },
+    'tenant-override': { tier: 'strict', perMinute: 4, windowMs: null },
     'tenant-off': null, // kill-switch OFF / ungated → global tiers unchanged
   };
 
@@ -348,6 +381,7 @@ describe('TieredThrottlerGuard (per-tenant plan rate-limits)', () => {
         { provide: APP_GUARD, useClass: TieredThrottlerGuard },
         { provide: IRateLimitSettingsService, useValue: settings },
         { provide: IEntitlementsService, useValue: entitlements },
+        { provide: SecretsService, useValue: secretsStub },
       ],
     }).compile();
 
@@ -389,11 +423,30 @@ describe('TieredThrottlerGuard (per-tenant plan rate-limits)', () => {
     }
   });
 
-  it('(e) precedence: a @Throttle decorator beats the plan tier — /q7/decorated allows 5 (not 2) then 429s on the 6th', async () => {
-    for (let i = 1; i <= 5; i++) {
-      expect((await hit('/q7/decorated', 'tenant-strict')).status).toBe(200);
+  /*
+   * REWRITTEN for TASK-785 OD-2. This case previously asserted the OPPOSITE —
+   * that a route's `@Throttle` decorator beat the tenant's plan tier. That was
+   * the shipped behaviour, and it is exactly what made the plan lane useless: an
+   * ENTERPRISE tenant could not be granted more than a hardcoded decorator value
+   * without a code change and a redeploy. The decorator is now rank 5's SEED,
+   * so the plan (rank 3) wins.
+   */
+  it('(e) precedence: the plan tier beats a @Throttle decorator — /q7/decorated 429s on the 3rd call (plan strict = 2, decorator = 5)', async () => {
+    expect((await hit('/q7/decorated', 'tenant-decorated')).status).toBe(200);
+    expect((await hit('/q7/decorated', 'tenant-decorated')).status).toBe(200);
+    expect((await hit('/q7/decorated', 'tenant-decorated')).status).toBe(429);
+  });
+
+  it('(f) a FORGED `alg:none` token is untrusted: it never reaches the tenant lane and rides the platform tier', async () => {
+    // `tenant-strict` would cap at 2/min if the claim were believed. Forged, it
+    // resolves no tenant at all, so the generous platform tier (1000) applies.
+    const forged = () =>
+      request(app.getHttpServer())
+        .get('/q7/forged')
+        .set('Authorization', `Bearer ${makeForgedJwt('tenant-strict')}`);
+    for (let i = 0; i < 8; i++) {
+      expect((await forged()).status).toBe(200);
     }
-    expect((await hit('/q7/decorated', 'tenant-strict')).status).toBe(429);
   });
 });
 
@@ -442,6 +495,14 @@ describe('TieredThrottlerGuard (per-tenant DB rate limits)', () => {
 
   const TENANT_TIGHT = 'tenant-tight';
   const TENANT_NORMAL = 'tenant-normal';
+  // TASK-785 OD-3: a tenant-wide limit is ONE bucket across every route, so a
+  // case that exhausts a tenant's budget exhausts it for every later case using
+  // that tenant. Each case below that spends a tenant-scoped budget therefore
+  // gets a tenant of its own — the same reason each already had its own route
+  // back when buckets were per-route.
+  const TENANT_ISOLATION_A = 'tenant-isolation-a';
+  const TENANT_ISOLATION_B = 'tenant-isolation-b';
+  const TENANT_CLAMPED = 'tenant-clamped';
 
   // The platform row + per-tenant override rows, mutable so a test can perform
   // an admin "write" mid-flight and prove it takes effect with no restart.
@@ -474,6 +535,7 @@ describe('TieredThrottlerGuard (per-tenant DB rate limits)', () => {
       providers: [
         { provide: APP_GUARD, useClass: TieredThrottlerGuard },
         { provide: IRateLimitSettingsService, useValue: settings },
+        { provide: SecretsService, useValue: secretsStub },
       ],
     }).compile();
 
@@ -490,12 +552,14 @@ describe('TieredThrottlerGuard (per-tenant DB rate limits)', () => {
     }
   });
 
-  // NOTE ON ROUTE-PER-TENANT. The throttler's TRACKER is IP-based by design
-  // (`tiered-throttler.guard.ts`: "only the effective limit/ttl is plan-aware"),
-  // so two tenants calling the SAME route from the same client share one
-  // counter and one block window. Each tenant therefore gets its own route
-  // here; what is under test is the LIMIT each tenant's request resolves to,
-  // which is exactly what lane I moved into the database.
+  // NOTE ON ROUTE-PER-TENANT. Historically the tracker was IP-based for EVERY
+  // request, so two tenants calling the same route from one client shared a
+  // counter — which is why each tenant gets its own route here. TASK-785 OD-3
+  // fixed that for tenant-resolved limits (they are now keyed on the tenant, so
+  // that sharing is gone; see the dedicated isolation case below), but the
+  // per-route split is kept because what these cases are really asserting is the
+  // LIMIT each tenant's request resolves to, which is what lane I moved into
+  // the database.
   it('enforces ONE tenant\u2019s own limit — the tight tenant 429s on its 3rd call', async () => {
     // The tight tenant's row says 2/min, against a platform row of 1000.
     expect((await hit('/lane-i/limited', TENANT_TIGHT)).status).toBe(200);
@@ -518,9 +582,19 @@ describe('TieredThrottlerGuard (per-tenant DB rate limits)', () => {
     }
 
     // An admin writes a tenant-scope row; the settings cache refresh publishes
-    // it. The very next request through the SAME running app enforces it — no
-    // restart, no redeploy.
+    // it. The very next request through the SAME running app resolves the new
+    // limit — no restart, no redeploy.
+    //
+    // TASK-785 OD-3: the write also moves this tenant from the platform lane
+    // (IP-keyed, per route) to the tenant lane (tenant-keyed), so the counter it
+    // is measured against CHANGES with it and the window restarts. That is
+    // inherent to per-tenant counting, and it is the safe direction — a scope
+    // change grants a fresh window rather than retroactively 429-ing traffic
+    // that was within its limit when it was served.
     tenantRows[TENANT_NORMAL] = { 'rateLimit.maxRequests': 3 };
+    expect((await hit('/lane-i/live', TENANT_NORMAL)).status).toBe(200);
+    expect((await hit('/lane-i/live', TENANT_NORMAL)).status).toBe(200);
+    expect((await hit('/lane-i/live', TENANT_NORMAL)).status).toBe(200);
     expect((await hit('/lane-i/live', TENANT_NORMAL)).status).toBe(429);
 
     // …and that write did not touch any other tenant's resolved limit.
@@ -528,13 +602,29 @@ describe('TieredThrottlerGuard (per-tenant DB rate limits)', () => {
     expect(settings.getTierForTenant('default', 'tenant-third').limit).toBe(1000);
   });
 
+  it('does NOT let two tenants on the same route share a counter (TASK-785 F-02)', async () => {
+    // Both tenants hit ONE route from ONE client IP. Before OD-3 the shared
+    // IP-keyed bucket meant the tight tenant's traffic could 429 the other's.
+    tenantRows[TENANT_ISOLATION_A] = { 'rateLimit.maxRequests': 2 };
+    tenantRows[TENANT_ISOLATION_B] = { 'rateLimit.maxRequests': 2 };
+
+    expect((await hit('/lane-i/normal', TENANT_ISOLATION_A)).status).toBe(200);
+    expect((await hit('/lane-i/normal', TENANT_ISOLATION_A)).status).toBe(200);
+    expect((await hit('/lane-i/normal', TENANT_ISOLATION_A)).status).toBe(429);
+
+    // B's budget is untouched by A having exhausted its own.
+    expect((await hit('/lane-i/normal', TENANT_ISOLATION_B)).status).toBe(200);
+    expect((await hit('/lane-i/normal', TENANT_ISOLATION_B)).status).toBe(200);
+    expect((await hit('/lane-i/normal', TENANT_ISOLATION_B)).status).toBe(429);
+  });
+
   it('clamps a tenant that writes itself a limit ABOVE the platform value', async () => {
     // A tenant trying to raise its own ceiling to 5000 gets the platform 1000.
-    tenantRows[TENANT_NORMAL] = { 'rateLimit.maxRequests': 5000 };
+    tenantRows[TENANT_CLAMPED] = { 'rateLimit.maxRequests': 5000 };
     for (let i = 0; i < 8; i++) {
-      expect((await hit('/lane-i/clamped', TENANT_NORMAL)).status).toBe(200);
+      expect((await hit('/lane-i/clamped', TENANT_CLAMPED)).status).toBe(200);
     }
-    expect(settings.getTierForTenant('default', TENANT_NORMAL).limit).toBe(1000);
+    expect(settings.getTierForTenant('default', TENANT_CLAMPED).limit).toBe(1000);
   });
 });
 
@@ -542,16 +632,16 @@ describe('TieredThrottlerGuard (per-tenant DB rate limits)', () => {
  * TASK-773 — the three credential classes are rate-limited IDENTICALLY.
  *
  * Owner decision, 2026-08-19: a service account gets the same rate-limit
- * treatment as every other caller — no tier of its own. That is already true,
- * but only by ABSENCE: nothing in `throttle/` mentions a credential class, and
- * `TieredThrottlerGuard` overrides no `getTracker`, so every caller shares the
- * IP-keyed bucket NestJS supplies by default.
+ * treatment as every other caller — no tier of its own.
  *
- * "True because nobody wrote the branch" is the state this ticket has repeatedly
- * had to convert into something declared, so it is pinned here. If someone later
- * keys buckets per credential — a reasonable thing to want, since one machine
- * integration can saturate a bucket its tenant's humans then share — this test
- * fails and they have to make the decision deliberately rather than inherit it.
+ * STILL TRUE after TASK-785 O-4, but for a better reason. A machine credential
+ * now resolves its tenant (service-account token → Redis blob, API key → Redis
+ * hint) and is counted against THAT TENANT's bucket, exactly as a human's JWT
+ * is. No credential class gets a tier of its own; they simply stopped being
+ * anonymous. What this block still pins is the fallback: when NO tenant is
+ * resolvable — no service-account/API-key service wired, a cold hint, an
+ * unverifiable JWT — every class shares the IP-keyed bucket and none is
+ * privileged over the others.
  *
  * Note the one asymmetry that is NOT a decision and cannot be fixed here:
  * `extractTenantIdPreAuth` resolves a tenant by DECODING A JWT, so per-tenant
@@ -592,5 +682,112 @@ describe('TieredThrottlerGuard — credential-class parity (TASK-773)', () => {
     // Fourth call — refused whichever credential it carries.
     expect((await request(app.getHttpServer()).get('/t/parity').set('X-Service-Account-Token', 'sat_test')).status).toBe(429);
     expect((await request(app.getHttpServer()).get('/t/parity')).status).toBe(429);
+  });
+});
+
+
+/**
+ * TASK-785 O-4 — the machine plane is no longer ungoverned.
+ *
+ * Before this, `resolveTrustedTenantId` looked only at a bearer JWT, so API-key
+ * and service-account traffic — including every `@arcaai/vox-node` admin call —
+ * resolved no tenant and could never reach the per-tenant or per-plan lanes.
+ */
+@Controller('machine')
+class MachineController {
+  @Get('svc')
+  svc() {
+    return { ok: 'svc' };
+  }
+
+  @Get('key')
+  key() {
+    return { ok: 'key' };
+  }
+
+  @Get('cold')
+  cold() {
+    return { ok: 'cold' };
+  }
+}
+
+describe('TieredThrottlerGuard (machine credentials — TASK-785 O-4)', () => {
+  let app: INestApplication;
+  const prevEnabled = process.env.RATE_LIMIT_ENABLED;
+
+  const SVC_TENANT = 'tenant-svc';
+  const KEY_TENANT = 'tenant-key';
+
+  const settings: IRateLimitSettingsService = {
+    isEnabled: () => true,
+    getTier: () => ({ limit: 1000, ttl: 60000 }),
+    getRouteOverride: () => undefined,
+    isEnabledForTenant: () => true,
+    getTierForTenant: () => ({ limit: 1000, ttl: 60000, limitSource: 'system', ttlSource: 'system' }),
+  };
+
+  // Both machine credentials resolve a tenant WITHOUT a database read: the
+  // service-account token from its Redis blob, the API key from a Redis hint the
+  // previous successful authentication published.
+  const serviceAccounts = {
+    peekTenantForRateLimit: async (token: string) => (token === 'good-svc-token' ? SVC_TENANT : null),
+  } as unknown as IServiceAccountService;
+
+  const apiKeys = {
+    peekTenantForRateLimit: async (raw: string) => (raw === 'good-api-key' ? KEY_TENANT : null),
+  } as unknown as IApiKeyService;
+
+  // Both machine tenants are on a 2/min plan; everyone else rides the platform 1000.
+  const entitlements = {
+    getTenantRateLimitPolicy: async (tenantId: string): Promise<TenantRateLimitPolicy | null> =>
+      tenantId === SVC_TENANT || tenantId === KEY_TENANT ? { tier: 'strict', perMinute: 2, windowMs: null } : null,
+  } as unknown as IEntitlementsService;
+
+  beforeAll(async () => {
+    process.env.RATE_LIMIT_ENABLED = 'true';
+
+    const moduleRef = await Test.createTestingModule({
+      imports: [ThrottleConfigModule],
+      controllers: [MachineController],
+      providers: [
+        { provide: APP_GUARD, useClass: TieredThrottlerGuard },
+        { provide: IRateLimitSettingsService, useValue: settings },
+        { provide: IEntitlementsService, useValue: entitlements },
+        { provide: IServiceAccountService, useValue: serviceAccounts },
+        { provide: IApiKeyService, useValue: apiKeys },
+      ],
+    }).compile();
+
+    app = moduleRef.createNestApplication();
+    await app.init();
+  });
+
+  afterAll(async () => {
+    if (app) await app.close();
+    if (prevEnabled === undefined) delete process.env.RATE_LIMIT_ENABLED;
+    else process.env.RATE_LIMIT_ENABLED = prevEnabled;
+  });
+
+  it('a service-account token reaches its tenant’s plan lane (2/min, not the platform 1000)', async () => {
+    const hit = () => request(app.getHttpServer()).get('/machine/svc').set('X-Service-Account-Token', 'good-svc-token');
+    expect((await hit()).status).toBe(200);
+    expect((await hit()).status).toBe(200);
+    expect((await hit()).status).toBe(429);
+  });
+
+  it('an API key reaches its tenant’s plan lane', async () => {
+    const hit = () => request(app.getHttpServer()).get('/machine/key').set('X-API-Key', 'good-api-key');
+    expect((await hit()).status).toBe(200);
+    expect((await hit()).status).toBe(200);
+    expect((await hit()).status).toBe(429);
+  });
+
+  it('an unknown credential (cold hint, revoked token) rides the platform lane rather than failing', async () => {
+    // The hint is a cache, not an oracle. A miss must under-attribute — never
+    // 429 a caller whose tenant simply is not known yet.
+    const hit = () => request(app.getHttpServer()).get('/machine/cold').set('X-API-Key', 'unknown-key');
+    for (let i = 0; i < 8; i++) {
+      expect((await hit()).status).toBe(200);
+    }
   });
 });

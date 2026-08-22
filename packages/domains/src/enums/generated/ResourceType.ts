@@ -124,4 +124,8 @@ export enum ResourceType {
   // platform invariant register made executable; a tenant row may only ADD
   // strictness. Parity with audit.prisma; see resourceType.enum-parity.test.ts.
   WorkflowInvariantRule = 'WorkflowInvariantRule',
+  // Rate-limit rule (TASK-785) — a SYSTEM-tenant row is a platform-wide
+  // per-route limit; a customer-tenant row overrides it for that tenant alone.
+  // Parity with audit.prisma; see resourceType.enum-parity.test.ts.
+  RateLimitRule = 'RateLimitRule',
 }

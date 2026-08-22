@@ -13,6 +13,7 @@ import { Label } from '@arcaai/ui/components/shadcn/label';
 import { Skeleton } from '@arcaai/ui/components/shadcn/skeleton';
 import { Spinner } from '@arcaai/ui/components/shadcn/spinner';
 import { Switch } from '@arcaai/ui/components/shadcn/switch';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@arcaai/ui/components/shadcn/tabs';
 import { StatusDot } from '@arcaai/ui/components/metrics/status-dot';
 import { StatusBadge } from '@arcaai/ui/components/shared/status-badge';
 import { ConfirmDialog } from '@/shared/confirm/confirm-dialog';
@@ -25,6 +26,9 @@ import { EmptyState } from '@/shared/state/empty-state';
 import { ErrorBanner, ErrorState } from '@/shared/state/error-state';
 import { useRateLimitPolicy, useSetRateLimitEnabled, useSetRouteOverride, useSetTierOverride } from '../api/hooks';
 import type { RateLimitRoutePolicy, RateLimitTierPolicy } from '../api/types';
+import { RateLimitExplainPanel } from './rate-limit-explain-panel';
+import { RateLimitPlansPanel } from './rate-limit-plans-panel';
+import { RateLimitRulesPanel } from './rate-limit-rules-panel';
 
 const STATUS_OPTIONS = [
   { value: 'active', label: 'Active' },
@@ -359,153 +363,178 @@ export function RateLimitsScreen() {
 
   return (
     <>
-      <ScreenTemplate
-        header={
-          <PageHeader
-            title="Rate Limits"
-            meta={
-              policy ? (
-                <>
-                  <span>{formatNumber(policy.tiers.length)} tiers</span>
-                  <span aria-hidden>&middot;</span>
-                  <span>{formatNumber(policy.routes.length)} routes</span>
-                </>
-              ) : null
-            }
-          />
-        }
-        statusBanner={policy && query.error ? <ErrorBanner error={query.error} onRetry={() => void query.refetch()} /> : null}
-        footer={
-          <StatusFooter
-            end={
-              <span aria-hidden className="font-mono">
-                GET /admin/rate-limit
-              </span>
-            }
-          />
-        }
-      >
-        <div className="flex flex-col gap-6">
-          {query.isPending ? (
-            <RateLimitsSkeleton />
-          ) : query.error && !policy ? (
-            <ErrorState error={query.error} onRetry={() => void query.refetch()} />
-          ) : policy ? (
-            <>
-              <section
-                aria-labelledby={`${headingId}-kill-switch`}
-                className="bg-card flex flex-wrap items-center justify-between gap-4 rounded-md border p-4"
-              >
-                <div className="flex min-w-0 flex-col gap-1">
-                  <h2 id={`${headingId}-kill-switch`} className="text-base font-semibold">
-                    Rate limiting
-                  </h2>
-                  <p className="text-muted-foreground text-sm">
-                    Global kill-switch for the Redis sliding-window limiter. Disabling leaves every route unprotected.
-                  </p>
-                </div>
-                <div className="flex shrink-0 items-center gap-3">
-                  <Badge variant="outline" className="text-muted-foreground font-mono text-2xs">
-                    source: {policy.enabledSource}
-                  </Badge>
-                  <span className="text-sm font-medium">{policy.enabled ? 'Enabled' : 'Disabled'}</span>
-                  <Switch
-                    checked={policy.enabled}
-                    onCheckedChange={handleEnabledChange}
-                    disabled={enabledMutation.isPending}
-                    aria-label="Rate limiting enabled"
-                  />
-                </div>
-              </section>
-              <section aria-labelledby={`${headingId}-tiers`} className="flex flex-col gap-3">
-                <div className="flex flex-col gap-1">
-                  <h2 id={`${headingId}-tiers`} className="text-base font-semibold">
-                    Tier defaults
-                  </h2>
-                  <p className="text-muted-foreground text-sm">
-                    Requests allowed per window for each guard tier. Saved overrides persist to the DB (source: db).
-                  </p>
-                </div>
-                <VirtualizedDataGrid<RateLimitTierPolicy>
-                  aria-label="Tier defaults"
-                  columns={tierColumns}
-                  data={policy.tiers}
-                  getRowId={(tier) => tier.tier}
-                  height={240}
-                  toolbar={false}
-                  features={{
-                    globalSearch: false,
-                    facetedFilters: false,
-                    sorting: false,
-                    rowSelection: false,
-                    columnReorder: false,
-                    columnResize: false,
-                    columnPinning: false,
-                    columnVisibility: false,
-                  }}
-                  emptyState={<EmptyState icon={IconRoute} title="No tiers reported" description="The gateway did not report any guard tiers." />}
-                />
-              </section>
-              <section aria-labelledby={`${headingId}-routes`} className="flex flex-col gap-3">
-                <div className="flex flex-col gap-1">
-                  <h2 id={`${headingId}-routes`} className="text-base font-semibold">
-                    Route overrides
-                  </h2>
-                  <p className="text-muted-foreground text-sm">
-                    Per-route limits registered by the gateway. Pausing a route disables its limiter entirely.
-                  </p>
-                </div>
-                <FilterBar shown={filteredRoutes.length} total={routes.length}>
-                  <FilterSearch label="Search routes" placeholder="Search routes…" value={search} onChange={(value) => void setSearch(value)} />
-                  <FilterSelect
-                    id="rate-limits-tier"
-                    label="Tier"
-                    value={tierFilter}
-                    onChange={(value) => void setTierFilter(value)}
-                    options={policy.tiers.map((tier) => ({ value: tier.tier, label: tier.tier }))}
-                  />
-                  <FilterSelect
-                    id="rate-limits-status"
-                    label="Status"
-                    value={statusFilter}
-                    onChange={(value) => void setStatusFilter(value)}
-                    options={STATUS_OPTIONS}
-                  />
-                </FilterBar>
-                <VirtualizedDataGrid<RateLimitRoutePolicy>
-                  aria-label="Route overrides"
-                  columns={routeColumns}
-                  data={filteredRoutes}
-                  getRowId={(route) => route.routeId}
-                  height={360}
-                  toolbar={false}
-                  features={{
-                    globalSearch: false,
-                    facetedFilters: false,
-                    sorting: false,
-                    rowSelection: false,
-                    columnReorder: false,
-                    columnResize: false,
-                    columnPinning: false,
-                    columnVisibility: false,
-                  }}
-                  emptyState={
-                    <EmptyState
-                      icon={IconRoute}
-                      title="No rate-limited routes"
-                      description={
-                        routes.length > 0
-                          ? 'No routes match the current filters.'
-                          : 'Built-in tier defaults apply until the gateway registers rate-limited routes.'
-                      }
+      {/*
+        Tabs wrap the template so the list can live in the pinned `tabs` region
+        while the panels are `children` — the shared-context shape
+        `11-ux-ui-principles.md` §Screen Template requires. `variant="line"` is
+        the console standard; the bare default renders a segmented pill.
+      */}
+      <Tabs defaultValue="policy">
+        <ScreenTemplate
+          header={
+            <PageHeader
+              title="Rate Limits"
+              meta={
+                policy ? (
+                  <>
+                    <span>{formatNumber(policy.tiers.length)} tiers</span>
+                    <span aria-hidden>&middot;</span>
+                    <span>{formatNumber(policy.routes.length)} routes</span>
+                  </>
+                ) : null
+              }
+            />
+          }
+          statusBanner={policy && query.error ? <ErrorBanner error={query.error} onRetry={() => void query.refetch()} /> : null}
+          tabs={
+            <TabsList variant="line">
+              <TabsTrigger value="policy">Policy</TabsTrigger>
+              <TabsTrigger value="rules">Rules</TabsTrigger>
+              <TabsTrigger value="plans">Plans</TabsTrigger>
+              <TabsTrigger value="explain">Explain</TabsTrigger>
+            </TabsList>
+          }
+          footer={
+            <StatusFooter
+              end={
+                <span aria-hidden className="font-mono">
+                  GET /admin/rate-limit
+                </span>
+              }
+            />
+          }
+        >
+          <TabsContent value="policy" className="flex flex-col gap-6">
+            {query.isPending ? (
+              <RateLimitsSkeleton />
+            ) : query.error && !policy ? (
+              <ErrorState error={query.error} onRetry={() => void query.refetch()} />
+            ) : policy ? (
+              <>
+                <section
+                  aria-labelledby={`${headingId}-kill-switch`}
+                  className="bg-card flex flex-wrap items-center justify-between gap-4 rounded-md border p-4"
+                >
+                  <div className="flex min-w-0 flex-col gap-1">
+                    <h2 id={`${headingId}-kill-switch`} className="text-base font-semibold">
+                      Rate limiting
+                    </h2>
+                    <p className="text-muted-foreground text-sm">
+                      Global kill-switch for the Redis sliding-window limiter. Disabling leaves every route unprotected.
+                    </p>
+                  </div>
+                  <div className="flex shrink-0 items-center gap-3">
+                    <Badge variant="outline" className="text-muted-foreground font-mono text-2xs">
+                      source: {policy.enabledSource}
+                    </Badge>
+                    <span className="text-sm font-medium">{policy.enabled ? 'Enabled' : 'Disabled'}</span>
+                    <Switch
+                      checked={policy.enabled}
+                      onCheckedChange={handleEnabledChange}
+                      disabled={enabledMutation.isPending}
+                      aria-label="Rate limiting enabled"
                     />
-                  }
-                />
-              </section>
-            </>
-          ) : null}
-        </div>
-      </ScreenTemplate>
+                  </div>
+                </section>
+                <section aria-labelledby={`${headingId}-tiers`} className="flex flex-col gap-3">
+                  <div className="flex flex-col gap-1">
+                    <h2 id={`${headingId}-tiers`} className="text-base font-semibold">
+                      Tier defaults
+                    </h2>
+                    <p className="text-muted-foreground text-sm">
+                      Requests allowed per window for each guard tier. Saved overrides persist to the DB (source: db).
+                    </p>
+                  </div>
+                  <VirtualizedDataGrid<RateLimitTierPolicy>
+                    aria-label="Tier defaults"
+                    columns={tierColumns}
+                    data={policy.tiers}
+                    getRowId={(tier) => tier.tier}
+                    height={240}
+                    toolbar={false}
+                    features={{
+                      globalSearch: false,
+                      facetedFilters: false,
+                      sorting: false,
+                      rowSelection: false,
+                      columnReorder: false,
+                      columnResize: false,
+                      columnPinning: false,
+                      columnVisibility: false,
+                    }}
+                    emptyState={<EmptyState icon={IconRoute} title="No tiers reported" description="The gateway did not report any guard tiers." />}
+                  />
+                </section>
+                <section aria-labelledby={`${headingId}-routes`} className="flex flex-col gap-3">
+                  <div className="flex flex-col gap-1">
+                    <h2 id={`${headingId}-routes`} className="text-base font-semibold">
+                      Route overrides
+                    </h2>
+                    <p className="text-muted-foreground text-sm">
+                      Per-route limits registered by the gateway. Pausing a route disables its limiter entirely.
+                    </p>
+                  </div>
+                  <FilterBar shown={filteredRoutes.length} total={routes.length}>
+                    <FilterSearch label="Search routes" placeholder="Search routes…" value={search} onChange={(value) => void setSearch(value)} />
+                    <FilterSelect
+                      id="rate-limits-tier"
+                      label="Tier"
+                      value={tierFilter}
+                      onChange={(value) => void setTierFilter(value)}
+                      options={policy.tiers.map((tier) => ({ value: tier.tier, label: tier.tier }))}
+                    />
+                    <FilterSelect
+                      id="rate-limits-status"
+                      label="Status"
+                      value={statusFilter}
+                      onChange={(value) => void setStatusFilter(value)}
+                      options={STATUS_OPTIONS}
+                    />
+                  </FilterBar>
+                  <VirtualizedDataGrid<RateLimitRoutePolicy>
+                    aria-label="Route overrides"
+                    columns={routeColumns}
+                    data={filteredRoutes}
+                    getRowId={(route) => route.routeId}
+                    height={360}
+                    toolbar={false}
+                    features={{
+                      globalSearch: false,
+                      facetedFilters: false,
+                      sorting: false,
+                      rowSelection: false,
+                      columnReorder: false,
+                      columnResize: false,
+                      columnPinning: false,
+                      columnVisibility: false,
+                    }}
+                    emptyState={
+                      <EmptyState
+                        icon={IconRoute}
+                        title="No rate-limited routes"
+                        description={
+                          routes.length > 0
+                            ? 'No routes match the current filters.'
+                            : 'Built-in tier defaults apply until the gateway registers rate-limited routes.'
+                        }
+                      />
+                    }
+                  />
+                </section>
+              </>
+            ) : null}
+          </TabsContent>
+          <TabsContent value="rules">
+            <RateLimitRulesPanel />
+          </TabsContent>
+          <TabsContent value="plans">
+            <RateLimitPlansPanel />
+          </TabsContent>
+          <TabsContent value="explain">
+            <RateLimitExplainPanel />
+          </TabsContent>
+        </ScreenTemplate>
+      </Tabs>
       <ConfirmDialog
         open={confirmDisable}
         onOpenChange={setConfirmDisable}

@@ -721,3 +721,22 @@ enum WorkflowRulePredicateType {
 
   @@schema("core")
 }
+
+// TASK-785 — how a `RateLimitRule.routeMatch` pattern is compared against the
+// live route key (`METHOD:/route/pattern`).
+//
+// EXACT  — the whole route key must match, e.g. `POST:/api/v1/auth/login`.
+// PREFIX — a `METHOD:` (or `*:`) part plus a path that may end in `/*`,
+//          e.g. `*:/api/v1/admin/*`. The reserved pattern `*` matches every
+//          route and is how a tenant expresses "all of my traffic".
+//
+// Within one scope, EXACT always beats PREFIX and a longer PREFIX beats a
+// shorter one — the "most specific match wins" convention every API gateway
+// uses. Across scopes, precedence is by scope, not by pattern (see
+// `rate-limit-resolver.ts`).
+enum RateLimitMatchKind {
+  EXACT
+  PREFIX
+
+  @@schema("core")
+}

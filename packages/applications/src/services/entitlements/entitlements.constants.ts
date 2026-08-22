@@ -25,6 +25,47 @@ export const ENTITLEMENTS_NAMESPACE = 'entitlements';
  */
 export const ENTITLEMENTS_TENANT_ID = '00000000-0000-0000-0000-000000000000';
 
+/**
+ * The GLOBAL/default tenant (`50000000-…`). A CUSTOMER tenant used by platform
+ * admins as a playground to trial configuration before promoting it into
+ * SYSTEM — never a configuration tier, and deliberately absent from every
+ * runtime cascade (`00-project-context.md` §"The two reserved tenants are NOT
+ * two config tiers").
+ *
+ * It is named here for ONE purpose: {@link RESERVED_UNGATED_TENANT_IDS}.
+ */
+export const ENTITLEMENTS_GLOBAL_TENANT_ID = '50000000-0000-0000-0000-000000000000';
+
+/**
+ * Tenants that never receive the {@link DEFAULT_TENANT_PLAN} fallback.
+ *
+ * SYSTEM is a configuration TIER, not a customer — metering it is meaningless.
+ * Global is the platform-admin playground; putting it on STARTER would cap the
+ * playground at 10 req/min with the agentic loop off, which is exactly the
+ * surface a platform admin uses to trial configuration.
+ *
+ * This list governs the DEFAULT only. An explicitly stamped `Tenant.plan` is
+ * always honoured, on these tenants as on any other — see {@link effectivePlan}.
+ */
+export const RESERVED_UNGATED_TENANT_IDS: readonly string[] = [ENTITLEMENTS_TENANT_ID, ENTITLEMENTS_GLOBAL_TENANT_ID] as const;
+
+/**
+ * The plan a CUSTOMER tenant resolves against when `Tenant.plan` is NULL
+ * (TASK-785 OD-5, owner decision 2026-08-22).
+ *
+ * Previously a NULL plan resolved to `UNGATED_ENTITLEMENTS`: unlimited quotas
+ * and `rateLimitTier: 'relaxed'` (300/min) — i.e. an unknown, unbilled tenant
+ * was granted MORE than a paying PRO customer and more than the 100/min platform
+ * default. Defaulting to the lowest paid plan makes "no plan" fail conservative
+ * instead of fail generous.
+ *
+ * This REVERSES the NULL-plan half of TASK-766 OD-2, which had SYSTEM and Global
+ * keep `plan = null` specifically to resolve ungated. That intent survives —
+ * it is now carried by {@link RESERVED_UNGATED_TENANT_IDS} rather than by the
+ * absence of a plan, so it no longer leaks to unknown customer tenants.
+ */
+export const DEFAULT_TENANT_PLAN: TenantPlan = TenantPlan.STARTER;
+
 /** `GlobalSetting` key for the enforcement kill-switch. */
 export const entitlementsEnabledKey = (): string => `${ENTITLEMENTS_NAMESPACE}.enabled`;
 
@@ -82,11 +123,18 @@ export const ENTITLEMENTS_STORAGE_WARN_EVENT = 'entitlements.storage-warn';
 export const ENTITLEMENTS_METER_SKIPPED_METRIC = 'entitlements_meter_check_skipped_total';
 
 /**
- * Enforcement ships OFF by default (proposal Q9). Until an operator flips
- * `entitlements.enabled` to `true` per-env, every quota/feature check is a
- * no-op — so a partial landing of this epic is safe.
+ * Enforcement ships ON by default (TASK-785 OD-6, owner decision 2026-08-22;
+ * supersedes proposal Q9's "OFF until an operator flips it per-env", which was
+ * the safe posture while the epic was landing in pieces — it has since landed).
+ *
+ * This constant is only the fallback used when the `entitlements.enabled`
+ * `GlobalSetting` row is ABSENT. The seeded row is what actually decides a live
+ * environment (`seed/15-entitlements.ts`), and an operator flip via
+ * `PUT /admin/entitlements/enabled` always wins over both. Flipping this to
+ * `true` matters for exactly one case — a database that was never seeded — where
+ * the old value silently granted unlimited quota to every tenant.
  */
-export const ENTITLEMENTS_GLOBAL_ENABLED_DEFAULT = false;
+export const ENTITLEMENTS_GLOBAL_ENABLED_DEFAULT = true;
 
 /** Model-access tiers driving the clone-subset at tenant create (Q8). */
 export type ModelTier = 'base' | 'full' | 'full_custom';
@@ -184,6 +232,14 @@ export interface PlanEntitlementValues {
   featureAgenticLoop: boolean;
   modelTier: ModelTier;
   rateLimitTier: string;
+  /**
+   * TASK-785 — an ABSOLUTE per-plan rate limit. Optional and unset across the
+   * seeded matrix on purpose: every seeded plan still expresses its limit
+   * INDIRECTLY, by naming a `rateLimitTier`. These exist so a super admin can
+   * price a plan's throughput directly without minting a new named tier.
+   */
+  rateLimitPerMinute?: number | null;
+  rateLimitWindowMs?: number | null;
 }
 
 /** PRO baseline — reused verbatim for TRIAL (Q4: trial = 1-week PRO experience). */
@@ -223,9 +279,22 @@ const PRO_VALUES: PlanEntitlementValues = {
 export const PLAN_ENTITLEMENT_DEFAULTS: Record<TenantPlan, PlanEntitlementValues> = {
   STARTER: {
     maxUsers: 5,
-    maxDepartments: 2,
+    // TASK-785 (owner decision 2026-08-22): these two are STRUCTURAL floors, not
+    // commercial ones, and they are sized to what tenant creation actually
+    // provisions — 8 golden departments (`seed/04-department.ts`) and the 14
+    // SYSTEM pipelines `provisionTenantPipelineCatalog` clones. They were 2 and 1,
+    // which meant every new tenant landed 4x and 14x OVER its own caps the moment
+    // OD-5 stopped resolving plan-less tenants as ungated. Provisioning writes
+    // through the repository so creation never failed — but the tenant could not
+    // then add anything, and its capability snapshot read `exceeded` on day one.
+    //
+    // Sized to EXACTLY the provisioned catalog, deliberately: STARTER gets the
+    // standard set and no room to add its own, which is a price-ladder statement
+    // (upgrade to customise) rather than an accident. The commercial caps below
+    // (50 consultations/month, 5 users) are untouched.
+    maxDepartments: 8,
     maxPromptTemplates: 10,
-    maxAsrPipelines: 1,
+    maxAsrPipelines: 14,
     maxApiKeys: 2,
     maxWorkflowDefinitions: 1,
     storageQuotaBytes: 5 * GIB,

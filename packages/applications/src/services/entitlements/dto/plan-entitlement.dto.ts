@@ -89,6 +89,16 @@ export class PlanEntitlementResponse {
   @ApiProperty({ description: 'Rate-limit tier (strict | default | relaxed | heavy)' })
   rateLimitTier: string;
 
+  @ApiPropertyOptional({
+    description:
+      'TASK-785 — ABSOLUTE requests-per-window for every tenant on this plan. Null = the plan expresses its limit through `rateLimitTier`.',
+    nullable: true,
+  })
+  rateLimitPerMinute?: number | null;
+
+  @ApiPropertyOptional({ description: 'Window paired with `rateLimitPerMinute`. Read only when that is set.', nullable: true })
+  rateLimitWindowMs?: number | null;
+
   @ApiProperty({ description: 'OCC version token' })
   version: number;
 }
@@ -246,6 +256,22 @@ export class UpdatePlanEntitlementRequest {
   @IsString()
   @MaxLength(50)
   rateLimitTier?: string;
+
+  @ApiPropertyOptional({
+    description: 'TASK-785 — ABSOLUTE requests-per-window for this plan. Send `null` to clear it and fall back to `rateLimitTier`.',
+    minimum: 1,
+    nullable: true,
+  })
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  rateLimitPerMinute?: number | null;
+
+  @ApiPropertyOptional({ description: 'Window paired with `rateLimitPerMinute`, in milliseconds.', minimum: 1, nullable: true })
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  rateLimitWindowMs?: number | null;
 
   @ApiProperty({ description: 'Current row version (OCC). REQUIRED; the update fails with 412 on drift.', example: 1 })
   @IsInt()

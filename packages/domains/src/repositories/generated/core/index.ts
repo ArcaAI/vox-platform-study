@@ -97,6 +97,7 @@ export * from './PromptTemplateRepository';
 export * from './PromptTemplateRepository.encryption';
 export * from './PromptUsageRecordRepository';
 export * from './PromptVersionRepository';
+export * from './RateLimitRuleRepository';
 export * from './ResourceSubscriptionRepository';
 export * from './RolePermissionRepository';
 export * from './RoleRepository';

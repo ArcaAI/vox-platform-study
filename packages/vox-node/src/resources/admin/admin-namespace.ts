@@ -64,7 +64,7 @@ import { AdminWorkflowTestFixtureResource } from './workflow-test-fixture';
 
 /**
  * `hope.admin` — every machine-reachable `/api/v1/admin/**` area, one property
- * per `svc:*` scope (52 areas, 391 routes).
+ * per `svc:*` scope (52 areas, 402 routes).
  *
  * Reaching any of it requires a SERVICE ACCOUNT: the admin plane refuses a
  * tenant API key by policy, not by omission. Construct the client with
@@ -144,7 +144,7 @@ export class AdminNamespace {
   readonly pstudio: AdminPstudioResource;
   /** `svc:admin:queue:manage` — 12 routes. */
   readonly queue: AdminQueueResource;
-  /** `svc:admin:rate-limit:manage` — 4 routes. */
+  /** `svc:admin:rate-limit:manage` — 13 routes. */
   readonly rateLimit: AdminRateLimitResource;
   /** `svc:admin:rbac-policy:write` — 7 routes. */
   readonly rbacPolicy: AdminRbacPolicyResource;
@@ -156,7 +156,7 @@ export class AdminNamespace {
   readonly scheduler: AdminSchedulerResource;
   /** `svc:admin:service-release:manage` — 3 routes. */
   readonly serviceRelease: AdminServiceReleaseResource;
-  /** `svc:admin:settings:manage` — 12 routes. */
+  /** `svc:admin:settings:manage` — 14 routes. */
   readonly settings: AdminSettingsResource;
   /** `svc:admin:storage-key:manage` — 3 routes. */
   readonly storageKey: AdminStorageKeyResource;

@@ -19,8 +19,10 @@ import type {
   RevealGlobalSettingRequest,
   RevealGlobalSettingResponse,
   RotateGlobalSettingRequest,
+  SecurityPolicyResponse,
   SettingCatalogResponse,
   UpdateGlobalSettingRequest,
+  UpdateSecurityPolicyRequest,
   WriteRegistrySettingRequest,
   WriteRegistrySettingResponse,
 } from './schemas';
@@ -32,13 +34,46 @@ import type {
  * authenticates normally and is then refused here with 403; {@link AdminResource}
  * names the scope in that error's message.
  *
- * Backed by controllers GlobalSettingController, SettingsCatalogController, SettingsRegistryWriteController
- * (12 routes). Several controllers sharing one scope share one
+ * Backed by controllers GlobalSettingController, SecurityPolicyController, SettingsCatalogController, SettingsRegistryWriteController
+ * (14 routes). Several controllers sharing one scope share one
  * resource on purpose: the scope is the permission surface, so the SDK groups
  * by it rather than by URL.
  */
 export class AdminSettingsResource extends AdminResource {
   readonly svcScope = 'svc:admin:settings:manage';
+
+  /**
+   * Read the platform credential policy.
+   *
+   * Returns the EFFECTIVE policy — stored `GlobalSetting` rows over the code defaults, read from the same cache the password validator and the credential issuers consult, so it is exactly what the next password check and the next credential issuance will apply. `bounds` carries the code-enforced entropy floor/ceiling, the surfaces whose alphabet is pinned (and therefore ignore `encoding`), and which credential surfaces the secret policy governs.
+   *
+   * `GET /api/v1/admin/security/policy` — `SecurityPolicyController.getPolicy`.
+   */
+  getPolicy(options: AdminRequestOptions = {}): Promise<SecurityPolicyResponse> {
+    return this.request<SecurityPolicyResponse>({
+      method: 'GET',
+      path: 'admin/security/policy',
+      signal: options.signal,
+      timeoutMs: options.timeoutMs,
+    });
+  }
+
+  /**
+   * Update the platform credential policy (partial).
+   *
+   * Only the fields present are written, each through the single descriptor-driven enforcement point — which is what makes this route super-admin-only (403), type-checks each value, refreshes the cache every reader consults and broadcasts a sys-event per key. NOT transactional: each key is its own row, so a mid-request failure leaves the earlier keys applied. Every field is independently valid, so a partial application is a coherent policy — the response is the re-read effective policy, which is what the caller should trust. Secret-policy changes apply to the NEXT issuance only and never invalidate a credential already handed out.
+   *
+   * `PUT /api/v1/admin/security/policy` — `SecurityPolicyController.updatePolicy`.
+   */
+  updatePolicy(body: UpdateSecurityPolicyRequest, options: AdminRequestOptions = {}): Promise<SecurityPolicyResponse> {
+    return this.request<SecurityPolicyResponse>({
+      method: 'PUT',
+      path: 'admin/security/policy',
+      body,
+      signal: options.signal,
+      timeoutMs: options.timeoutMs,
+    });
+  }
 
   /**
    * Retrieving multiple GlobalSettingResponses

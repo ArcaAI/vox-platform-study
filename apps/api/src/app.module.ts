@@ -1,5 +1,8 @@
 import {
   AgentTrajectoryRetentionServiceModule,
+  // TASK-785 O-4 — exports IApiKeyService so `TieredThrottlerGuard` (APP_GUARD
+  // below) can resolve an API key's tenant from this module's injector.
+  ApiKeyServiceModule,
   AuditLogServiceModule,
   AuditRetentionServiceModule,
   AuthServiceModule,
@@ -135,11 +138,19 @@ import { WorkflowRunModule } from './modules/workflow-run/workflow-run.module';
 import { WorkflowSandboxRunModule } from './modules/workflow-sandbox-run/workflow-sandbox-run.module';
 import { WorkflowTestFixtureModule } from './modules/workflow-test-fixture/workflow-test-fixture.module';
 import { WorkflowsModule } from './modules/workflows/workflows.module';
+import { RateLimitHeadersInterceptor } from './modules/throttle/rate-limit-headers.interceptor';
 
 const interceptors = [
   {
     provide: APP_INTERCEPTOR,
     useClass: MetricsInterceptor,
+  },
+  {
+    // Advertises the applied rate-limit policy (TASK-785 AC-9). Reads only what
+    // `TieredThrottlerGuard` stashed on the request, so it costs nothing on a
+    // route the guard skipped.
+    provide: APP_INTERCEPTOR,
+    useClass: RateLimitHeadersInterceptor,
   },
   {
     provide: APP_INTERCEPTOR,
@@ -351,6 +362,14 @@ const common = [
   // (APP_GUARD above) can resolve per-tenant plan rate-limit tiers on the hot
   // path. Placed alongside RateLimitServiceModule (its sibling guard dep).
   EntitlementsServiceModule,
+  // TASK-785 O-4 — the machine-credential tenant lanes. `TieredThrottlerGuard`
+  // is constructed in THIS module's injector, so a module imported only by a
+  // feature module is invisible to it: the `@Optional()` injections would
+  // resolve to `undefined` and both lanes would be a silent no-op that still
+  // compiles and still passes every test. Registered root-level for the same
+  // reason OriginRegistryServiceModule and ConsentServiceModule are.
+  ApiKeyServiceModule,
+  ServiceAccountServiceModule,
   ScheduleModule.forRoot(),
   EventEmitterModule.forRoot(),
   SysEventServiceModule,

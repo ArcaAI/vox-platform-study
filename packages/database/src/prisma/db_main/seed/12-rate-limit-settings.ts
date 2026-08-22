@@ -18,6 +18,14 @@ import { SYSTEM_TENANT_ID, SEED_USER_IDS, SEED_GLOBAL_SETTING_IDS } from './00-c
  * absence means "fall back to the route's `@Throttle` decorator", so the
  * shipped behavior is unchanged until an admin opts a specific endpoint in.
  *
+ * TASK-785 — `RateLimitRule` rows are NOT seeded either, for the same reason
+ * and one more. Under OD-2 a route's `@Throttle` decorator already seeds rank 5,
+ * so a platform rule mirroring it would add no behaviour; it would only add a
+ * second copy of a number that lives in code, which then drifts the moment the
+ * decorator changes. Instead `GET /admin/rate-limit/routes` surfaces each
+ * route's decorator value straight from the module walk, so an admin sees the
+ * effective default and writes a rule only when they want to CHANGE it.
+ *
  * Key scheme + defaults mirror
  * `packages/applications/src/services/rate-limit/rate-limit.constants.ts`
  * (kept in sync manually — the database package must not depend on

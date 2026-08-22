@@ -10,6 +10,7 @@ import { AiProviderConnectionRepository } from '../../../repositories/generated/
 import { ServiceAccountRepository } from '../../../repositories/generated/core/ServiceAccountRepository';
 import { AiRuntimeProfileRepository } from '../../../repositories/generated/core/AiRuntimeProfileRepository';
 import { AiTaskDefaultRepository } from '../../../repositories/generated/core/AiTaskDefaultRepository';
+import { RateLimitRuleRepository } from '../../../repositories/generated/core/RateLimitRuleRepository';
 import { AiUsageEventRepository } from '../../../repositories/generated/core/AiUsageEventRepository';
 import { TenantPlanHistoryRepository } from '../../../repositories/generated/core/TenantPlanHistoryRepository';
 import { AiUsageOutboxRepository } from '../../../repositories/generated/core/AiUsageOutboxRepository';
@@ -285,6 +286,10 @@ const repositories = [
   // Workflow-graph safety rule rows (TASK-716) — a SYSTEM_SHARED_READ_MODEL,
   // see tenant-scope.ts for why.
   WorkflowInvariantRuleRepository,
+  // Rate-limit rule rows (TASK-785) — ranks 1, 2 and 4 of the rate-limit
+  // precedence chain. Tenant-scoped but NOT a SYSTEM_SHARED_READ_MODEL; see
+  // tenant-scope.ts and RateLimitRuleRepository for why.
+  RateLimitRuleRepository,
 ];
 
 @Module({

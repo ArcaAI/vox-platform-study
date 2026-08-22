@@ -115,7 +115,8 @@ export class AdminAuditResource extends AdminResource {
           | 'KnowledgeDocument'
           | 'ServiceAccount'
           | 'WorkflowAssignment'
-          | 'WorkflowInvariantRule';
+          | 'WorkflowInvariantRule'
+          | 'RateLimitRule';
         search?: string;
         searchFields?: string;
         sort?: string;
@@ -234,7 +235,8 @@ export class AdminAuditResource extends AdminResource {
           | 'KnowledgeDocument'
           | 'ServiceAccount'
           | 'WorkflowAssignment'
-          | 'WorkflowInvariantRule';
+          | 'WorkflowInvariantRule'
+          | 'RateLimitRule';
         to?: string;
         userId?: string;
       };
@@ -335,7 +337,8 @@ export class AdminAuditResource extends AdminResource {
           | 'KnowledgeDocument'
           | 'ServiceAccount'
           | 'WorkflowAssignment'
-          | 'WorkflowInvariantRule';
+          | 'WorkflowInvariantRule'
+          | 'RateLimitRule';
         search?: string;
         searchFields?: string;
         sort?: string;

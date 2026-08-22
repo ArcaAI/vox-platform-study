@@ -53,6 +53,7 @@ export * from './PipelinePolicyEntityMapper';
 export * from './PromptTemplateEntityMapper';
 export * from './PromptUsageRecordEntityMapper';
 export * from './PromptVersionEntityMapper';
+export * from './RateLimitRuleEntityMapper';
 export * from './ResourceSubscriptionEntityMapper';
 export * from './RoleEntityMapper';
 export * from './RolePermissionEntityMapper';
