@@ -17,6 +17,8 @@ import {
   harnessAssuranceStreamPath,
   harnessProgressStreamPath,
   listAudioPipelines,
+  listDnaStyleOptions,
+  listScopingDepartments,
   startRecording,
   stopRecording,
   updateSummary,
@@ -34,6 +36,29 @@ import type {
 import { isTerminalConsultationJob } from './types';
 
 // ─── REST queries + mutations ───
+
+/**
+ * W2 scoping pickers. Best-effort by design: `retry: false` and callers hide
+ * the control on error, so a role without the admin read still gets a working
+ * workspace (scoping simply falls back to the tenant tier).
+ */
+export function useScopingDepartments() {
+  return useQuery({
+    queryKey: [...playgroundConsultationKeys.root, 'scoping-departments'],
+    queryFn: listScopingDepartments,
+    retry: false,
+    staleTime: 5 * 60_000,
+  });
+}
+
+export function useDnaStyleOptions() {
+  return useQuery({
+    queryKey: [...playgroundConsultationKeys.root, 'dna-style-options'],
+    queryFn: listDnaStyleOptions,
+    retry: false,
+    staleTime: 5 * 60_000,
+  });
+}
 
 export function useAudioPipelines() {
   return useQuery({ queryKey: playgroundConsultationKeys.pipelines(), queryFn: listAudioPipelines });

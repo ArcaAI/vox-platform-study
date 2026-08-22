@@ -56,7 +56,7 @@ describe('ConsultationsColumn', () => {
     fireEvent.click(screen.getByRole('button', { name: /new/i }));
     fireEvent.change(screen.getByLabelText(/patient id/i), { target: { value: 'P-900' } });
     fireEvent.click(screen.getByRole('button', { name: /^open$/i }));
-    await waitFor(() => expect(props.onOpenPatient).toHaveBeenCalledWith('P-900'));
+    await waitFor(() => expect(props.onOpenPatient).toHaveBeenCalledWith('P-900', undefined));
   });
 
   it('validates a required patient id before opening', () => {
@@ -80,5 +80,38 @@ describe('ConsultationsColumn', () => {
   it('shows an error message', () => {
     setup({ error: 'boom', rows: [] });
     expect(within(screen.getByRole('alert')).getByText('boom')).toBeTruthy();
+  });
+});
+
+/**
+ * TASK-793 W2 / TASK-789 H-4 — department scoping was structurally dead
+ * because the open call never carried a department. `consultation.departmentId`
+ * feeds BOTH the SOAP prompt-tier resolver (`summary.service.ts:367,606`) and
+ * the workflow-assignment cascade's department tier.
+ */
+describe('ConsultationsColumn — department scoping on open', () => {
+  const DEPARTMENTS = [
+    { id: 'dept-cardio', name: 'Cardiology' },
+    { id: 'dept-derm', name: 'Dermatology' },
+  ];
+
+  it('sends the selected departmentId with the open request', async () => {
+    const { props } = setup({ departments: DEPARTMENTS, selectedDepartmentId: 'dept-cardio', onDepartmentChange: vi.fn() });
+
+    fireEvent.click(screen.getByRole('button', { name: /^new$/i }));
+    fireEvent.change(screen.getByLabelText(/patient id/i), { target: { value: 'P-900' } });
+    fireEvent.click(screen.getByRole('button', { name: /^open$/i }));
+
+    await waitFor(() => expect(props.onOpenPatient).toHaveBeenCalledWith('P-900', 'dept-cardio'));
+  });
+
+  it('omits the department when none is chosen (tenant tier applies)', async () => {
+    const { props } = setup({ departments: DEPARTMENTS, selectedDepartmentId: '', onDepartmentChange: vi.fn() });
+
+    fireEvent.click(screen.getByRole('button', { name: /^new$/i }));
+    fireEvent.change(screen.getByLabelText(/patient id/i), { target: { value: 'P-901' } });
+    fireEvent.click(screen.getByRole('button', { name: /^open$/i }));
+
+    await waitFor(() => expect(props.onOpenPatient).toHaveBeenCalledWith('P-901', undefined));
   });
 });

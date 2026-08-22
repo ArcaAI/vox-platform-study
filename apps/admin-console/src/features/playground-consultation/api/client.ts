@@ -31,6 +31,31 @@ function consultationPath(consultationId: string, suffix: string): string {
   return `${BASE}/${encodeURIComponent(consultationId)}/${suffix}`;
 }
 
+/**
+ * TASK-793 W2 — picker data for the two scoping inputs the playground never
+ * sent (TASK-789 H-4).
+ *
+ * These two reads are on the ADMIN plane, unlike everything else in this file:
+ * no end-user route lists departments or DNA reports. That is sound HERE and
+ * only here — the playground routes are role-gated to SUPER_ADMIN /
+ * TENANT_ADMIN at the nav layer (`nav-config.ts`), which is the audience that
+ * holds `manage:Department` / `manage:DnaWritingStyleReport`. Both callers
+ * treat a failure as "no picker", never as a screen error, so a narrower role
+ * degrades to the tenant tier instead of breaking the workspace.
+ */
+export function listScopingDepartments(): Promise<Array<{ id: string; name: string }>> {
+  return getJson('admin/departments', { page: 1, limit: 100 });
+}
+
+/** DNA writing-style reports usable as `GenerateSummaryRequest.dnaStyleId`. */
+export async function listDnaStyleOptions(): Promise<Array<{ id: string; label: string }>> {
+  const page = await getJson<{ data?: Array<{ id: string; doctorId?: string; doctorName?: string; status?: string }> }>('admin/dna-writing-styles', {
+    page: 1,
+    limit: 100,
+  });
+  return (page.data ?? []).map((report) => ({ id: report.id, label: report.doctorName ?? report.doctorId ?? report.id }));
+}
+
 /** Pipeline picker data — AudioPipelinePublicController. */
 export function listAudioPipelines(): Promise<AudioPipeline[]> {
   return getJson('audio/pipelines');

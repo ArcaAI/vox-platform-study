@@ -39,10 +39,12 @@ import {
   playgroundConsultationKeys,
   useApproveSummary,
   useAudioPipelines,
+  useDnaStyleOptions,
   useGenerateSummary,
   useHarnessAssuranceStream,
   useHarnessProgressStream,
   useLatestSummary,
+  useScopingDepartments,
   useStartRecording,
   useStopRecording,
   useSummaryProvenance,
@@ -209,6 +211,11 @@ function ScribeWorkspace() {
   // end-user STT language mode. Empty ⇒ pipeline default. The
   // backend guarantees the chosen mode fits the session's engines (422 otherwise).
   const [languageMode, setLanguageMode] = useState('');
+  // W2 — the two scoping inputs TASK-789 H-4 found were never supplied.
+  // `departmentId` is bound at OPEN (it is a property of the consultation and
+  // feeds the workflow-assignment cascade); `dnaStyleId` is bound at GENERATE.
+  const [departmentId, setDepartmentId] = useState('');
+  const [dnaStyleId, setDnaStyleId] = useState('');
   const languageModes = useArcaSttLanguageModes();
   // the citation currently highlighted in the live-session
   // column's transcript-review pane (click-to-source from the case-note
@@ -216,6 +223,8 @@ function ScribeWorkspace() {
   const [selectedCitationId, setSelectedCitationId] = useState<string | null>(null);
 
   const pipelines = useAudioPipelines();
+  const departments = useScopingDepartments();
+  const dnaStyles = useDnaStyleOptions();
   const defaultPipelineId = pipelines.data ? ((pipelines.data.find((pipeline) => pipeline.isDefault) ?? pipelines.data[0])?.id ?? '') : '';
   const pipelineId = pipelineChoice || defaultPipelineId;
 
@@ -299,9 +308,11 @@ function ScribeWorkspace() {
     }
   }
 
-  async function handleOpenPatient(patientId: string) {
+  async function handleOpenPatient(patientId: string, department?: string) {
     try {
-      const opened = await sdkSession.open({ patientId });
+      // `departmentId` reaches the gateway DTO verbatim; the SDK forwards the
+      // input object as the request body.
+      const opened = await sdkSession.open({ patientId, ...(department ? { departmentId: department } : {}) });
       const row: ConsultationListRow = {
         id: opened.id,
         patientId: opened.patientId,
@@ -363,7 +374,7 @@ function ScribeWorkspace() {
   function handleGenerate() {
     if (!consultation) return;
     summarySync.mutate(
-      { consultationId: consultation.id },
+      { consultationId: consultation.id, body: dnaStyleId ? { dnaStyleId } : undefined },
       {
         onSuccess: () => toast.success('Note generated'),
         onError: (error) => toast.error(errorMessage(error, 'Note generation failed')),
@@ -459,6 +470,9 @@ function ScribeWorkspace() {
           noteModels={noteModels}
           selectedNoteId={noteModelName ?? ''}
           onNoteChange={() => undefined}
+          dnaStyles={dnaStyles.data ?? []}
+          selectedDnaStyleId={dnaStyleId}
+          onDnaStyleChange={setDnaStyleId}
           metrics={{ tokensPerSecond: metrics.tokensPerSecond, latencyP95Ms: metrics.latencyP95Ms, uplinkBitsPerSecond: audio.uplinkBitrate || null }}
         />
       }
@@ -483,6 +497,9 @@ function ScribeWorkspace() {
               onSelect={handleSelect}
               onOpenPatient={handleOpenPatient}
               activeIsRecording={isRecording}
+              departments={departments.data ?? []}
+              selectedDepartmentId={departmentId}
+              onDepartmentChange={setDepartmentId}
             />
           </ResizablePanel>
           <ResizableHandle withHandle />
