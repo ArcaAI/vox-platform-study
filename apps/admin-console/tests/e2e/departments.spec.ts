@@ -222,23 +222,40 @@ test.describe('departments — hierarchy and edit (frame 30)', () => {
     await waitForSettled(page);
 
     const hierarchy = page.getByRole('list', { name: 'Department hierarchy' });
-    const expand = hierarchy.getByRole('button', { name: /^(Expand|Collapse) Cardiology$/ });
+
+    // Derive the target from what is actually rendered. This previously hardcoded
+    // "Cardiology", which the seed defines only as a PROMPT TEMPLATE and never as
+    // a Department — so the test could not pass against any seeded database. The
+    // behaviour under test is the expand toggle and the members drawer, not the
+    // presence of one particular seeded row.
+    const expand = hierarchy.getByRole('button', { name: /^(Expand|Collapse) / }).first();
+    const label = (await expand.getAttribute('aria-label')) ?? '';
+    const name = label.replace(/^(Expand|Collapse) /, '');
+    expect(name).not.toBe('');
+
     await expect(expand).toHaveAttribute('aria-expanded', 'false');
 
     await expand.click();
     await expect(expand).toHaveAttribute('aria-expanded', 'true');
-    await expect(hierarchy.getByText('No sub-departments')).toBeVisible();
+    // A root either lists children or says it has none — both are a valid expansion.
+    await expect(
+      hierarchy
+        .getByText('No sub-departments')
+        .first()
+        .or(hierarchy.getByRole('button', { name: /^(Expand|Collapse) / }).nth(1))
+        .first(),
+    ).toBeVisible();
 
     await expand.click();
     await expect(expand).toHaveAttribute('aria-expanded', 'false');
 
-    await hierarchy.getByRole('button', { name: 'Cardiology CARD', exact: true }).click();
-    await expect(page.getByRole('heading', { level: 2, name: 'Members of Cardiology' })).toBeVisible();
+    await hierarchy.getByRole('button', { name: new RegExp(`^${name}\\b`) }).first().click();
+    await expect(page.getByRole('heading', { level: 2, name: `Members of ${name}` })).toBeVisible();
     await page.getByRole('button', { name: 'Edit', exact: true }).click();
 
-    const editDrawer = page.getByRole('dialog', { name: 'Edit: Cardiology' });
+    const editDrawer = page.getByRole('dialog', { name: `Edit: ${name}` });
     await expect(editDrawer).toBeVisible();
-    await expect(editDrawer.getByRole('textbox', { name: /^Name/ })).toHaveValue('Cardiology');
+    await expect(editDrawer.getByRole('textbox', { name: /^Name/ })).toHaveValue(name);
     await expect(editDrawer.getByRole('button', { name: 'Save changes' })).toBeDisabled();
   });
 });

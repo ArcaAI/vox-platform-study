@@ -80,15 +80,24 @@ test.describe('tenant storage (frame 14)', () => {
     expect(await dataRows(page).count(), 'No seeded tenant buckets available for filtering').toBeGreaterThan(0);
 
     await page.getByRole('button', { name: 'Filters', exact: true }).click();
-    await page.getByRole('option', { name: 'Audio' }).click();
+
+    // Derive the purpose from the facet itself. This hardcoded "Audio", which no
+    // seeded bucket carries, so the option never rendered and the click timed out —
+    // the same brittleness as a hardcoded department name. The behaviour under test
+    // is that filtering by A purpose narrows the grid to that purpose.
+    const options = page.getByRole('option');
+    await expect(options.first()).toBeVisible();
+    const purpose = ((await options.first().textContent()) ?? '').trim();
+    expect(purpose, 'the purpose facet offered no options').not.toBe('');
+    await options.first().click();
     await page.keyboard.press('Escape');
 
     const rows = dataRows(page);
     const emptyState = page.getByText('No buckets match your filters');
-    await expect(rows.first().or(emptyState)).toBeVisible();
+    await expect(rows.first().or(emptyState).first()).toBeVisible();
     const count = await rows.count();
     for (let index = 0; index < count; index += 1) {
-      await expect(rows.nth(index)).toContainText('Audio');
+      await expect(rows.nth(index)).toContainText(purpose);
     }
   });
 

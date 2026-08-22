@@ -111,6 +111,14 @@ async function createQueueFixture(): Promise<QueueFixture> {
 
 async function cleanupQueueFixture(fixture: QueueFixture): Promise<void> {
   for (const jobId of fixture.createdJobIds) await fixture.queue.remove(jobId).catch(() => undefined);
+  // The queue was verified EMPTY at acquisition (findEmptyQueue), so anything
+  // still in it is this fixture's. remove() does not reliably clear jobs the
+  // fixture's own Worker has already moved to completed/failed, and
+  // findEmptyQueue counts those states — so every run permanently burned one
+  // candidate queue until all five were dirty and the suite could not start.
+  for (const state of ['completed', 'failed', 'delayed', 'wait', 'paused', 'prioritized'] as const) {
+    await fixture.queue.clean(0, 10_000, state).catch(() => undefined);
+  }
   if ((await fixture.queue.isPaused()) !== fixture.wasPaused) {
     if (fixture.wasPaused) await fixture.queue.pause();
     else await fixture.queue.resume();

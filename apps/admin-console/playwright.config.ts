@@ -23,13 +23,16 @@ export default defineConfig({
   fullyParallel: true,
   forbidOnly: isCI,
   retries: isCI ? 2 : 0,
-  // Locally the suite runs against `next dev`, which compiles routes on first
-  // visit from a SINGLE process. Playwright's default fans out ~cpus/2 workers
-  // (8 on a 16-core box) onto that one server, and first-visit compiles then
-  // blow the 30s test timeout: measured 33 timeouts at the default vs 1 failure
-  // at --workers=2 over the same specs, and tenants.spec.ts went 8 timeouts ->
-  // 15/15 passing when run alone. Cap it. CI keeps 1 (and builds the console).
-  workers: isCI ? 1 : Number(process.env.PLAYWRIGHT_WORKERS ?? 3),
+  // Locally the suite runs against `next dev` — ONE process compiling routes on
+  // first visit and serving every worker. Parallelism starves it: measured on a
+  // 16-core box, the same full suite gave 33 timeouts at Playwright's default
+  // (~8 workers), 4 at 2 workers and 6 at 3, while every one of those specs
+  // passed at 1. Raising the per-test budget to 45s did NOT help, which is the
+  // tell — the constraint is server contention, not test duration.
+  //
+  // So the honest default is 1, matching CI. Set PLAYWRIGHT_WORKERS to trade
+  // reliability for wall-clock when you know the specs you are running are light.
+  workers: isCI ? 1 : Number(process.env.PLAYWRIGHT_WORKERS ?? 1),
   reporter: [['list'], ['html', { open: 'never', outputFolder: 'test-results/html' }]],
   timeout: 30_000,
   expect: { timeout: 10_000 },
