@@ -26,6 +26,7 @@ import { createHash } from 'node:crypto';
 import { assertEqualTenants, BaseService, FetchResponse, PaginatedQuery, withFormattedCountProps, withFormattedPaginatedProps } from '../../common';
 import { IActiveUserContext } from '../../interfaces';
 import { IEntitlementsService } from '../entitlements/IEntitlementsService';
+import { KNOWN_PALETTE_KEYS } from '../workflow-exposure/exposure-palette-policy';
 import { SttPipelineCompilerService } from './compilers/stt-pipeline.compiler';
 import {
   CreateWorkflowDefinitionRequest,
@@ -165,6 +166,8 @@ export class WorkflowDefinitionService extends BaseService implements IWorkflowD
       const currentCount = await this.workflowDefinitionRepository.count({ where: { tenantId } });
       await this.entitlements.assertQuantityQuota(tenantId, 'maxWorkflowDefinitions', currentCount);
     }
+
+    this.assertKnownPaletteKey(dto.paletteKey);
 
     const graph = this.parseGraphOrThrow(dto.graph);
     const report = this.validateGraph(graph, dto.paletteKey);
@@ -411,6 +414,26 @@ export class WorkflowDefinitionService extends BaseService implements IWorkflowD
     if (entity.status === WorkflowDefinitionStatus.PUBLISHED || entity.status === WorkflowDefinitionStatus.DEPRECATED) {
       throw new BadRequestException(`WorkflowDefinition ${entity.id} is ${entity.status} and can no longer be edited. Branch a new draft instead.`);
     }
+  }
+
+  /**
+   * TASK-790 W1 (TASK-789 C-5/D-5) — `paletteKey` must name a palette the node registry actually
+   * declares. The DTO only constrains it to a string of at most 80 chars, and Workflow Studio's
+   * palette field is a free-text `<Input>`, so a typo ('summarisation', 'Consultation') would
+   * otherwise produce a row that is published-looking but permanently inert: `validate()` skips
+   * every rule whose `paletteKey` does not match (`validate.ts`), so NO palette rule set ever
+   * applies, and the Assignment Matrix has no column to offer it under.
+   *
+   * Create-only by design: `UpdateWorkflowDefinitionRequest` carries no `paletteKey`, so a
+   * definition's palette is immutable after creation and there is no update path to guard.
+   *
+   * The valid set is DERIVED from `WORKFLOW_NODE_REGISTRY` (see `KNOWN_PALETTE_KEYS`), never
+   * re-typed here — a palette added to the registry is accepted with no edit to this service.
+   */
+  private assertKnownPaletteKey(paletteKey: string): void {
+    if (KNOWN_PALETTE_KEYS.has(paletteKey)) return;
+    const known = [...KNOWN_PALETTE_KEYS].sort().join(', ');
+    throw new BadRequestException(`Unknown paletteKey '${paletteKey}'. Known palettes: ${known}.`);
   }
 
   /**
