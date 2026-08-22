@@ -27,8 +27,8 @@ import {
   AGENTIC_FEWSHOT_APPROVED_CLEAN_MAX_RATIO_KEY,
   AGENTIC_FEWSHOT_HEAVILY_EDITED_MIN_RATIO_DEFAULT,
   AGENTIC_FEWSHOT_HEAVILY_EDITED_MIN_RATIO_KEY,
-  AGENTIC_FEWSHOT_SETTINGS,
-} from '../../settings-registry/descriptors/agentic-fewshot.descriptors';
+  GATE_EDIT_QUALITY_THRESHOLD_SETTINGS,
+} from '../gate-edit-mining.settings';
 
 const TENANT = 'tenant-1';
 
@@ -90,12 +90,12 @@ describe('GateEditMiningService — governed quality-signal thresholds (W5 / M-9
   });
 
   it('registers both thresholds as governed settings descriptors', () => {
-    const keys = AGENTIC_FEWSHOT_SETTINGS.map((d) => d.key);
+    const keys = GATE_EDIT_QUALITY_THRESHOLD_SETTINGS.map((d) => d.key);
     expect(keys).toContain(AGENTIC_FEWSHOT_APPROVED_CLEAN_MAX_RATIO_KEY);
     expect(keys).toContain(AGENTIC_FEWSHOT_HEAVILY_EDITED_MIN_RATIO_KEY);
 
     for (const key of [AGENTIC_FEWSHOT_APPROVED_CLEAN_MAX_RATIO_KEY, AGENTIC_FEWSHOT_HEAVILY_EDITED_MIN_RATIO_KEY]) {
-      const descriptor = AGENTIC_FEWSHOT_SETTINGS.find((d) => d.key === key)!;
+      const descriptor = GATE_EDIT_QUALITY_THRESHOLD_SETTINGS.find((d) => d.key === key)!;
       expect(descriptor.dataType).toBe('number');
       // A tuning knob: an unresolved value degrades to the code default rather
       // than raising. Selection keys are the fail-closed ones, not these.

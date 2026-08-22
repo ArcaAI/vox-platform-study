@@ -1,4 +1,5 @@
 export * from './IPhiRedactor';
+export * from './gate-edit-mining.settings';
 export * from './IGateEditExemplarRetriever';
 export * from './IGateEditMiningQueue';
 export * from './gate-edit-mining.service';
