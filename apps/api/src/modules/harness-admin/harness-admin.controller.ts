@@ -425,14 +425,14 @@ export class HarnessAdminController {
       'route. Unlike the sibling candidate export this is curation-GATED with no knob — only exemplars a curator moved ' +
       'to APPROVED are included (`reviewStatus: SME_APPROVED`) — because a training corpus assembled from unreviewed ' +
       'clinical text cannot be retracted once it has been trained on. Every record carries ' +
-      '`provenance: CLINICIAN_EDIT`, distinguishing it from the harness\'s synthetic golden fixture.',
+      "`provenance: CLINICIAN_EDIT`, distinguishing it from the harness's synthetic golden fixture.",
   })
   @ApiQuery({ name: 'tenantId', required: false, description: 'Platform-admin only: target tenant. Tenant admins are pinned to their own tenant.' })
   @ApiQuery({ name: 'departmentId', required: false, description: 'Narrow to one department.' })
   @ApiQuery({ name: 'qualitySignal', required: false, description: 'APPROVED_CLEAN | HEAVILY_EDITED. Omit for both.' })
   @ApiQuery({ name: 'limit', required: false, type: Number, description: 'Maximum records (default 100, hard-capped at 500).' })
   @ApiResponse({ status: 200, description: 'JSONL dataset (`application/x-ndjson`). Empty body when nothing is approved yet.' })
-  @ApiResponse({ status: 403, description: 'Caller may not read this tenant\'s corpus.' })
+  @ApiResponse({ status: 403, description: "Caller may not read this tenant's corpus." })
   async exportGateEditFineTuningDataset(
     @Query() query: { tenantId?: string; departmentId?: string; qualitySignal?: string; limit?: number },
   ): Promise<string> {

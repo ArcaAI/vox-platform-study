@@ -597,8 +597,7 @@ export class GateEditMiningService extends BaseService {
 
       if (approvedCleanMaxRatio >= heavilyEditedMinRatio) {
         this.logger.warn({
-          message:
-            'Gate-edit quality thresholds are inverted (approvedCleanMaxRatio >= heavilyEditedMinRatio) — falling back to the code defaults',
+          message: 'Gate-edit quality thresholds are inverted (approvedCleanMaxRatio >= heavilyEditedMinRatio) — falling back to the code defaults',
           tenantId,
           approvedCleanMaxRatio,
           heavilyEditedMinRatio,

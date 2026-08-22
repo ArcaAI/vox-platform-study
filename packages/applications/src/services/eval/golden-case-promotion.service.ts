@@ -1,11 +1,5 @@
 import { BadRequestException, Inject, Injectable, Logger, NotFoundException, Optional } from '@nestjs/common';
-import {
-  ContextItemRepository,
-  ExemplarCurationStatus,
-  GateEditExemplarRepository,
-  GoldenCaseEntity,
-  GoldenSetRepository,
-} from '@arcaai/domains';
+import { ContextItemRepository, ExemplarCurationStatus, GateEditExemplarRepository, GoldenCaseEntity, GoldenSetRepository } from '@arcaai/domains';
 import { IPhiRedactor } from '../gate-edit-mining/IPhiRedactor';
 import { EvalService } from './eval.service';
 
@@ -111,9 +105,7 @@ export class GoldenCasePromotionService {
 
     const referenceNote = exemplar.redactedAfter?.trim();
     if (!referenceNote) {
-      throw new BadRequestException(
-        `Exemplar ${params.exemplarId} carries no redacted signed note, so there is no reference note to promote.`,
-      );
+      throw new BadRequestException(`Exemplar ${params.exemplarId} carries no redacted signed note, so there is no reference note to promote.`);
     }
 
     // Read the encounter's own transcript. Same assembly the live generation
@@ -167,9 +159,7 @@ export class GoldenCasePromotionService {
    */
   private async redactOrThrow(text: string): Promise<string> {
     if (!this.phiRedactor) {
-      throw new BadRequestException(
-        'No PHI redactor is wired, so a transcript cannot be safely promoted into an eval corpus (fail-closed).',
-      );
+      throw new BadRequestException('No PHI redactor is wired, so a transcript cannot be safely promoted into an eval corpus (fail-closed).');
     }
 
     let redacted: string;
