@@ -4,7 +4,7 @@ import { IWorkflowAssignmentService } from '../../workflow-assignment/IWorkflowA
 import { IWorkflowRunService } from '../../workflow-run/IWorkflowRunService';
 import { HarnessGatewayService } from '../harness/harness-gateway.service';
 import { IS3Service } from '../../baseServices/storage/s3/IS3Service';
-import { mintCompiledConfigClaimCheckRef } from '../../workflow-exposure/claim-check';
+import { CLAIM_CHECK_BUCKET, mintCompiledConfigClaimCheckRef } from '../../workflow-exposure/claim-check';
 import { SttPipelineResolverService } from '../../workflow-definition/resolvers/stt-pipeline-resolver.service';
 import { withGoverningEngineMarker } from '../governing-engine';
 import {
@@ -19,8 +19,7 @@ const CONSULTATION_PALETTE_KEY = 'consultation';
 /** The palette whose assignment resolves to an `AsrPipeline` rather than an interpreter run. */
 const STT_PALETTE_KEY = 'stt';
 
-/** Mirrors `WorkflowExposureService`'s bucket choice so both dispatchers mint refs the same way. */
-const DEFAULT_CLAIM_CHECK_BUCKET = 'hope-workflow-config';
+
 
 /** Mirrors `interpreterSessionId` in the exposure plane. */
 function interpreterSessionId(runId: string): string {
@@ -92,7 +91,7 @@ export class ConsultationWorkflowDispatchService implements IConsultationWorkflo
       if (!definition.compiledConfig) return notDispatched('definition has no compiled configuration');
       if (!this.s3Service) return notDispatched('no claim-check storage backend is configured');
 
-      const configRef = await mintCompiledConfigClaimCheckRef(definition.compiledConfig, DEFAULT_CLAIM_CHECK_BUCKET, (b, key, data, contentType) =>
+      const configRef = await mintCompiledConfigClaimCheckRef(definition.compiledConfig, CLAIM_CHECK_BUCKET, (b, key, data, contentType) =>
         this.s3Service!.putFile(b, key, data, contentType),
       );
 

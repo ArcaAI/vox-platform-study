@@ -8,7 +8,7 @@ import {
 } from '@arcaai/applications';
 import { Body, Controller, Delete, Get, Inject, Param, Patch, Post, Query } from '@nestjs/common';
 import { ApiBearerAuth, ApiHeader, ApiOperation, ApiParam, ApiQuery, ApiResponse, ApiTags } from '@nestjs/swagger';
-import { CanManage, ExpectedVersion, ForbidApiKey, RequiresIfMatch } from '../../decorators';
+import { CanManage, ExpectedVersion, ForbidApiKey, ForbidServiceAccount, RequiresIfMatch } from '../../decorators';
 
 /**
  * WorkflowInvariantRuleController — tenant-scoped CRUD for the validator's rule rows
@@ -37,6 +37,13 @@ import { CanManage, ExpectedVersion, ForbidApiKey, RequiresIfMatch } from '../..
 // reachable only by a tenant-admin / super-admin JWT, which is the audience a governance surface
 // wants. Whoever owns the service-account registry can widen it later; see the ticket's
 // `requestedContracts`.
+//
+// TASK-789 day-1 fix: the reasoning above was recorded in a COMMENT but not in a DECORATOR,
+// and the TASK-762/773 boot audit refuses to start on exactly that ambiguity — "a deliberate
+// closure nobody wrote down". The gateway would not boot AT ALL. `@ForbidServiceAccount()`
+// states the decision above in the form the audit reads, closing this surface to the machine
+// class explicitly rather than by the absence of a scope. Same posture as MonitoringController.
+@ForbidServiceAccount()
 @Controller('admin/workflow-invariant-rules')
 @CanManage('WorkflowInvariantRule')
 export class WorkflowInvariantRuleController {

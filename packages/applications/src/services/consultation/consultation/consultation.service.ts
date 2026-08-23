@@ -181,13 +181,36 @@ export class ConsultationService extends BaseService implements IConsultationSer
     // re-opened consultation is never dispatched twice. Best-effort by contract — the dispatch
     // service swallows its own failures and returns `dispatched: false`, because a harness
     // outage must never stop a clinician opening a consultation.
-    await this.workflowDispatchService?.dispatchForConsultation({
-      consultationId: saved.id,
-      tenantId,
-      departmentId: saved.departmentId,
-      userId: userId ?? doctorId,
-      externalPatientId: saved.patientId,
-    });
+    // TASK-789 day-1: which engine governs a consultation must be OBSERVABLE. Every outcome —
+    // including "the dispatcher is not wired" and "no tenant workflow is assigned" — is logged.
+    // Both of those were previously SILENT, so a consultation that quietly fell through to the
+    // default engine was indistinguishable from one the dispatcher had never been asked about.
+    if (!this.workflowDispatchService) {
+      this.logger.warn({
+        message: 'Consultation workflow dispatch is NOT WIRED — the default loop governs by omission, not by decision',
+        consultationId: saved.id,
+      });
+    } else {
+      const dispatch = await this.workflowDispatchService.dispatchForConsultation({
+        consultationId: saved.id,
+        tenantId,
+        departmentId: saved.departmentId,
+        userId: userId ?? doctorId,
+        externalPatientId: saved.patientId,
+      });
+      this.logger.log({
+        message: dispatch.dispatched
+          ? 'Consultation governed by a tenant-authored workflow'
+          : 'Consultation governed by the default loop (no tenant workflow resolved)',
+        consultationId: saved.id,
+        departmentId: saved.departmentId ?? null,
+        dispatched: dispatch.dispatched,
+        source: dispatch.source,
+        workflowDefinitionSlug: dispatch.workflowDefinitionSlug,
+        runId: dispatch.runId,
+        skippedReason: dispatch.skippedReason,
+      });
+    }
 
     const savedWithRelations = await this.consultationRepository.findWithRelations(saved.id);
     return ConsultationDtoMapper.toResponse(savedWithRelations ?? saved, true);

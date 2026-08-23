@@ -1,3 +1,12 @@
+/**
+ * The ONE bucket every compiled-config claim check is minted into. Exported so the two
+ * dispatchers (the public exposure plane and consultation-open) cannot drift: they did.
+ * TASK-789 C-1 hard-coded a second literal (`hope-workflow-config`) while its own comment
+ * claimed it mirrored this value, so every consultation-open dispatch failed at runtime with
+ * "The specified bucket does not exist" — silently, because dispatch is best-effort.
+ */
+export const CLAIM_CHECK_BUCKET = 'harness-claim-check';
+
 import { createHash } from 'node:crypto';
 import { canonicalJson } from '@arcaai/workflow-contract';
 import { HarnessClaimCheckRef } from '../consultation/harness/harness-gateway.service';

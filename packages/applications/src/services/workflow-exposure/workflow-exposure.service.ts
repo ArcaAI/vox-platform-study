@@ -11,7 +11,7 @@ import { IS3Service } from '../baseServices/storage';
 import { GetWorkflowRunResult, HarnessGatewayService } from '../consultation/harness/harness-gateway.service';
 import { IEntitlementsService } from '../entitlements/IEntitlementsService';
 import { interpreterSessionId, IWorkflowRunService, WorkflowRunResponse } from '../workflow-run';
-import { mintCompiledConfigClaimCheckRef } from './claim-check';
+import { CLAIM_CHECK_BUCKET, mintCompiledConfigClaimCheckRef } from './claim-check';
 import { exposureBoundaryViolation } from './exposure-palette-policy';
 import {
   InvokeWorkflowRequest,
@@ -25,7 +25,7 @@ import { WorkflowExposureDtoMapper } from './workflow-exposure.dto.mapper';
 
 /** Default self-hosted MinIO bucket for the compiled-config claim-check — mirrors the harness's
  *  own `ClaimCheckConfig.bucket` default (`apps/harness/src/harness/core/config.py`). */
-const DEFAULT_CLAIM_CHECK_BUCKET = 'harness-claim-check';
+
 
 /** Terminal statuses `RecordRunFinishedInput.status` accepts — anything else (e.g. `RUNNING`,
  *  or an interpreter-internal stage label) is left alone; the read-model sync is opportunistic. */
@@ -127,7 +127,7 @@ export class WorkflowExposureService extends BaseService implements IWorkflowExp
       // a run the interpreter can never load its config for.
       throw new BadRequestException('Workflow invocation is unavailable: no claim-check storage backend is configured.');
     }
-    const bucket = DEFAULT_CLAIM_CHECK_BUCKET;
+    const bucket = CLAIM_CHECK_BUCKET;
     const configRef = await mintCompiledConfigClaimCheckRef(definition.compiledConfig, bucket, (b, key, data, contentType) =>
       this.s3Service!.putFile(b, key, data, contentType),
     );
