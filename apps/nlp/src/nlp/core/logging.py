@@ -44,6 +44,51 @@ class JsonFormatter(logging.Formatter):
         return json.dumps(log_data, ensure_ascii=False)
 
 
+#: The declared default for every log SINK knob (TASK-799 lane D).
+#:
+#: These were twelve scattered `os.getenv` / `_get_env_bool` calls with their
+#: defaults inlined at the call site, which is how the two sibling JSON switches
+#: ended up with OPPOSITE defaults and no explanation: `LOG_FILE_JSON_FORMAT`
+#: defaulted True, `LOG_CONSOLE_JSON_FORMAT` False, thirty lines apart.
+#:
+#: The split IS intentional — a file is machine-read (shipped to a log backend,
+#: so JSON), a console is human-read during `pnpm nlp:dev` (so plain). Declaring
+#: both here states that on purpose instead of leaving it to be inferred from two
+#: distant literals.
+#:
+#: The serving values come from the control plane (`nlp.logging.*`, `global-kv`);
+#: this table is the bootstrap floor. `LOG_LEVEL` and `LOG_FILE_PATH` stay in env
+#: and are deliberately absent: the level is what an operator reaches for FIRST
+#: during an incident (no control-plane round trip), and the path is a host fact
+#: about where this container's writable volume is mounted.
+LOG_SINK_DEFAULTS: dict[str, object] = {
+    "file_enabled": False,
+    "file_max_size": "10m",
+    "file_max_files": 1000,
+    "file_separate_error": False,
+    "console_enabled": True,
+    "file_json_format": True,
+    "console_json_format": False,
+    "rotation_when": "midnight",
+    "rotation_interval": 1,
+    "rotation_backup_count": 30,
+    "use_daily_rotation": True,
+}
+
+#: Control-plane overlay, applied over `LOG_SINK_DEFAULTS` by `apply_log_sinks`.
+_served_sinks: dict[str, object] = {}
+
+
+def apply_log_sinks(served: dict[str, object]) -> None:
+    """Adopt control-plane sink knobs. An absent key keeps the running value."""
+    _served_sinks.update(served)
+
+
+def log_sink(name: str) -> object:
+    """The effective value for one sink knob: control plane over the floor."""
+    return _served_sinks.get(name, LOG_SINK_DEFAULTS[name])
+
+
 class LoggingConfig:
     """Centralized logging configuration for the NLP application."""
 
@@ -114,22 +159,22 @@ class LoggingConfig:
         # as they now do in the settings class.
         raw_level = (os.getenv("NLP_LOG_LEVEL") or os.getenv("LOG_LEVEL") or cls.DEFAULT_LOG_LEVEL).strip()
         log_level = logging.getLevelName(int(raw_level)) if raw_level.isdigit() else raw_level.upper()
-        log_file_enabled = cls._get_env_bool("LOG_FILE_ENABLED", False)
+        # Sink configuration: control plane over the declared bootstrap floor.
+        # `LOG_FILE_PATH` stays a bare env read — it is a host fact about where
+        # this container's writable volume is mounted, not platform policy.
+        log_file_enabled = bool(log_sink("file_enabled"))
         log_file_path = os.getenv("LOG_FILE_PATH", cls.DEFAULT_LOG_PATH)
-        log_file_max_size = os.getenv("LOG_FILE_MAX_SIZE", cls.DEFAULT_MAX_SIZE)
-        log_file_max_files = int(os.getenv("LOG_FILE_MAX_FILES", cls.DEFAULT_MAX_FILES))
-        log_file_separate_error = cls._get_env_bool("LOG_FILE_SEPARATE_ERROR", False)
-        console_enabled = cls._get_env_bool("LOG_CONSOLE_ENABLED", cls.DEFAULT_CONSOLE_ENABLED)
-        # New option to enable/disable JSON formatting for file logs
-        json_format_enabled = cls._get_env_bool("LOG_FILE_JSON_FORMAT", True)
+        log_file_max_size = str(log_sink("file_max_size"))
+        log_file_max_files = int(log_sink("file_max_files"))  # type: ignore[call-overload]
+        log_file_separate_error = bool(log_sink("file_separate_error"))
+        console_enabled = bool(log_sink("console_enabled"))
+        json_format_enabled = bool(log_sink("file_json_format"))
 
         # Daily rotation configuration
-        rotation_when = os.getenv("LOG_ROTATION_WHEN", cls.DEFAULT_ROTATION_WHEN)
-        rotation_interval = int(os.getenv("LOG_ROTATION_INTERVAL", cls.DEFAULT_ROTATION_INTERVAL))
-        rotation_backup_count = int(
-            os.getenv("LOG_ROTATION_BACKUP_COUNT", cls.DEFAULT_ROTATION_BACKUP_COUNT)
-        )
-        use_daily_rotation = cls._get_env_bool("LOG_USE_DAILY_ROTATION", True)
+        rotation_when = str(log_sink("rotation_when"))
+        rotation_interval = int(log_sink("rotation_interval"))  # type: ignore[call-overload]
+        rotation_backup_count = int(log_sink("rotation_backup_count"))  # type: ignore[call-overload]
+        use_daily_rotation = bool(log_sink("use_daily_rotation"))
 
         # Clear any existing handlers to avoid duplication
         root_logger = logging.getLogger()
@@ -146,7 +191,7 @@ class LoggingConfig:
 
         handlers: list[logging.Handler] = []
 
-        console_json_format = cls._get_env_bool("LOG_CONSOLE_JSON_FORMAT", False)
+        console_json_format = bool(log_sink("console_json_format"))
 
         if console_enabled:
             console_handler = logging.StreamHandler()

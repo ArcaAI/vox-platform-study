@@ -90,11 +90,46 @@ def classify_group_key(tasks: dict[str, Any], threshold: float) -> str:
     return _policy_fingerprint("classify", tasks, threshold)
 
 
-def _batching_config(lane: str) -> dict[str, Any]:
-    """Serving bounds FOR ONE LANE. Env is the BOOTSTRAP FLOOR; the control
-    plane may move the per-model concurrency ceiling at runtime via
-    `inference_max_concurrent`.
+#: Control-plane batching geometry, keyed by lane (TASK-799 lane D).
+_served_batching: dict[str, Any] = {}
+
+
+async def apply_batching(served: dict[str, Any]) -> None:
+    """Adopt control-plane queue/batch geometry, rebuilding batchers if it moved.
+
+    A batcher captures its bounds at CONSTRUCTION, and they are constructed once
+    per (weight slot, verb, lane) and then cached for the process's life — so
+    storing new geometry without dropping them would leave the served value
+    visible in config and absent from behaviour. Dropping them is cheap and safe:
+    `reset_guard_batchers` drains in-flight work, and the next request rebuilds
+    on the new bounds.
+
+    A no-op when nothing changed, which is the overwhelmingly common case — this
+    runs off the same cached snapshot every request already reads.
     """
+    if not served or served == _served_batching:
+        return
+    _served_batching.clear()
+    _served_batching.update(served)
+    logger.info("nlp.guard_dispatch.batching_reconfigured", served=served)
+    await reset_guard_batchers()
+
+
+def _batching_config(lane: str) -> dict[str, Any]:
+    """Serving bounds FOR ONE LANE — control plane over the env bootstrap floor.
+
+    An omitted key keeps the floor value, so a gateway outage leaves the running
+    geometry byte-identical rather than reverting a deliberate platform tuning.
+    """
+    floor = _batching_floor(lane)
+    served = _served_batching.get(lane)
+    if isinstance(served, dict):
+        floor.update(served)
+    return floor
+
+
+def _batching_floor(lane: str) -> dict[str, Any]:
+    """The bootstrap geometry this process starts on, before any fetch."""
     service = settings.service
     if lane == LANE_INTERACTIVE:
         return {
@@ -126,13 +161,16 @@ def _gate_for(slot_key: str) -> PriorityGate:
     the moment a second lane appeared, and would leave the gate no way to
     overtake a merely-QUEUED bulk pass.
     """
+    limit = int(
+        _served_batching.get("max_inflight_batches", settings.service.inference_max_inflight_batches)
+    )
     gate = _gates.get(slot_key)
-    if gate is None or gate.limit != settings.service.inference_max_inflight_batches:
+    if gate is None or gate.limit != limit:
         # One model's weights are a single shared tensor graph; the number of
         # forward passes allowed in flight against it is deliberately small.
         # Torch already parallelises INSIDE a pass across cores, so stacking
         # passes buys contention, not throughput.
-        gate = PriorityGate(settings.service.inference_max_inflight_batches)
+        gate = PriorityGate(limit)
         _gates[slot_key] = gate
     return gate
 

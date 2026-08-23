@@ -153,6 +153,16 @@ async def refresh_inference_limit(client: Any) -> ResizableSemaphore:
 
         apply_model_cache_retention(snapshot.retention())
 
+        # Same refresh, same fail-safe posture, for the two other groups the
+        # control plane now serves (TASK-799 lane D). Both are no-ops when the
+        # served values match what is already running, which is every request but
+        # the first after a write.
+        from nlp.core.logging import apply_log_sinks
+        from nlp.services.guard_dispatch import apply_batching
+
+        apply_log_sinks(snapshot.logging())
+        await apply_batching(snapshot.batching())
+
         limit = snapshot.max_concurrent()
         if limit is not None and limit != semaphore.limit:
             previous = semaphore.limit

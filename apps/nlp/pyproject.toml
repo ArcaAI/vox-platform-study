@@ -65,11 +65,9 @@ dependencies = [
     "passlib[bcrypt]>=1.7.4",
     # --- Text processing ---
     "symspellpy>=6.10.0",
-    # --- Model sources ---
-    # MinIO-compatible client for `s3://` model sources. Imported LAZILY inside
-    # `core/model_source.py::_make_s3_client`, so a deployment that never
-    # declares an s3:// source_uri never imports it.
-    "minio>=7.2.20",
+    # `minio` is GONE with `core/model_source.py` (TASK-799 lane D): its only
+    # importer was that module's `_make_s3_client`, and that module's only
+    # importer was its own test.
     # --- Logging ---
     "structlog>=25.5.0",
     "python-dotenv>=1.2.0",
@@ -173,7 +171,6 @@ module = [
     "spacy",
     "passlib.*",
     "jose.*",
-    "minio",
     "gliner2",
     "llama_cpp",
     "llama_cpp.*",

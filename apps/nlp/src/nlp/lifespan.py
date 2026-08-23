@@ -73,12 +73,10 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     # triggers the first fetch, and a failure negative-caches into env behaviour.
     app.state.effective_config_client = EffectiveConfigClient(
         base_url=settings.service.gateway_url,
-        # Owner decision D-D: PRESENT the one shared `INTERNAL_ACCESS_TOKEN`, with
-        # the legacy per-service token only as the migration fallback. Reading
-        # `service_token` directly sent an EMPTY token whenever the platform was
-        # configured the way D-D specifies, so this pull 401'd and every node
-        # silently degraded to its env values.
-        token=settings.service.peer_service_token(settings.service.service_token),
+        # Owner decision D-D: PRESENT the ONE shared `INTERNAL_ACCESS_TOKEN`.
+        # The legacy per-service fallback is gone (TASK-799 lane D) now that the
+        # migration it existed for is complete.
+        token=settings.service.peer_service_token(),
         service="nlp",
     )
 
@@ -118,9 +116,8 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     app.state.external_text_client = ExternalTextClient(
         settings=settings.external_text,
         http_client=app.state.external_text_http_client,
-        # Owner decision D-D: PRESENT the one shared `INTERNAL_ACCESS_TOKEN`; the
-        # legacy `NLP_EXTERNAL_TEXT_SERVICE_TOKEN` is only the migration fallback.
-        service_token=settings.service.peer_service_token(settings.external_text.service_token),
+        # Owner decision D-D: the ONE shared `INTERNAL_ACCESS_TOKEN`.
+        service_token=settings.service.peer_service_token(),
     )
 
     setup_opentelemetry(app)
@@ -138,7 +135,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             http_client=registration_client,
             gateway_url=settings.service.gateway_url,
             # Owner decision D-D — see the effective-config client above.
-            service_token=settings.service.peer_service_token(settings.service.service_token),
+            service_token=settings.service.peer_service_token(),
             build_info=BuildInfoReader().get_build_info(),
             environment=settings.service.environment.value,
         )

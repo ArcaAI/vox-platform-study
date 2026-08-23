@@ -120,6 +120,116 @@ class EffectiveConfigSnapshot:
             warm.append((name, path if isinstance(path, str) and path.strip() else None))
         return warm
 
+    def setting(self, key: str) -> Any:
+        """One value off the GENERIC `settings` map, or None for "no opinion".
+
+        The declared extension point of the Phase-1 control plane: a descriptor
+        naming `consumedBy: ['nlp']` is served at `settings["<dotted.key>"]`
+        automatically, so a new knob needs no frozen group, no response-DTO field
+        and no per-service `switch`. The `concurrency`/`retention`/`warmModels`
+        accessors above are the pre-Phase-1 shape, kept for their consumers.
+
+        Every "no opinion" case — failed fetch, absent map, absent key, explicit
+        null — collapses to None, so a caller keeps its own value rather than
+        reading silence as an instruction.
+        """
+        settings = self.raw.get("settings")
+        if not isinstance(settings, dict):
+            return None
+        entry = settings.get(key)
+        if not isinstance(entry, dict):
+            return None
+        return entry.get("value")
+
+    def batching(self) -> dict[str, Any]:
+        """Queue and batch geometry for both service lanes (TASK-799 lane D).
+
+        Shaped as the two lanes' kwargs so the caller can splat them straight
+        into `MicroBatcher`, plus the shared in-flight bound (ONE per weight
+        slot, shared by both lanes — a per-lane bound would double the passes in
+        flight against one model).
+
+        A key with no opinion is OMITTED rather than defaulted. That matters
+        most for the queue bounds: coercing an absent `max_queue` into a number
+        is how a deliberately bounded queue silently becomes an unbounded one,
+        which converts an overload into an OOM kill instead of a 503.
+        """
+        lanes = {
+            "bulk": {
+                "max_batch_size": "nlp.inference.batchMaxSize",
+                "linger_ms": "nlp.inference.batchLingerMs",
+                "max_queue": "nlp.inference.queueMaxDepth",
+                "max_wait_s": "nlp.inference.queueMaxWaitSeconds",
+            },
+            "interactive": {
+                "max_batch_size": "nlp.interactiveInference.batchMaxSize",
+                "linger_ms": "nlp.interactiveInference.batchLingerMs",
+                "max_queue": "nlp.interactiveInference.queueMaxDepth",
+                "max_wait_s": "nlp.interactiveInference.queueMaxWaitSeconds",
+            },
+        }
+
+        served: dict[str, Any] = {}
+        for lane, mapping in lanes.items():
+            lane_values: dict[str, Any] = {}
+            for field_name, key in mapping.items():
+                value = _positive_int(self.setting(key))
+                if value is None:
+                    continue
+                # `max_wait_s` is a duration, and the batcher compares it against
+                # a float clock; the rest are counts.
+                lane_values[field_name] = float(value) if field_name == "max_wait_s" else value
+            if lane_values:
+                served[lane] = lane_values
+
+        inflight = _positive_int(self.setting("nlp.inference.maxInflightBatches"))
+        if inflight is not None:
+            served["max_inflight_batches"] = inflight
+
+        return served
+
+    def logging(self) -> dict[str, Any]:
+        """File/rotation sink knobs with an opinion (TASK-799 lane D).
+
+        `LOG_LEVEL` and `LOG_FILE_PATH` are deliberately NOT here: the level is
+        what an operator reaches for first during an incident (env, effective
+        immediately, no control-plane round trip), and the path is a host fact
+        about where this container's writable volume is mounted.
+        """
+        booleans = {
+            "file_enabled": "nlp.logging.fileEnabled",
+            "file_separate_error": "nlp.logging.fileSeparateError",
+            "console_enabled": "nlp.logging.consoleEnabled",
+            "file_json_format": "nlp.logging.fileJsonFormat",
+            "console_json_format": "nlp.logging.consoleJsonFormat",
+            "use_daily_rotation": "nlp.logging.useDailyRotation",
+        }
+        numbers = {
+            "file_max_files": "nlp.logging.fileMaxFiles",
+            "rotation_interval": "nlp.logging.rotationInterval",
+            "rotation_backup_count": "nlp.logging.rotationBackupCount",
+        }
+        strings = {
+            "file_max_size": "nlp.logging.fileMaxSize",
+            "rotation_when": "nlp.logging.rotationWhen",
+        }
+
+        served: dict[str, Any] = {}
+        for field_name, key in booleans.items():
+            value = self.setting(key)
+            # STRICTLY a bool — a truthy `"false"` string must not flip a sink.
+            if isinstance(value, bool):
+                served[field_name] = value
+        for field_name, key in numbers.items():
+            value = _positive_int(self.setting(key))
+            if value is not None:
+                served[field_name] = value
+        for field_name, key in strings.items():
+            value = self.setting(key)
+            if isinstance(value, str) and value.strip():
+                served[field_name] = value.strip()
+        return served
+
 
 def _positive_int(value: Any) -> int | None:
     # `bool` is an `int` subclass — exclude it, or `True` would become 1.

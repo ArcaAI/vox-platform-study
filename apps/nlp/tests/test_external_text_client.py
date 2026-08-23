@@ -65,8 +65,15 @@ class _RaiseThenSucceedClient:
         return _FakeResponse(self.payload)
 
 
-def _client(config: ExternalTextConfig, http_client: Any) -> ExternalTextClient:
-    return ExternalTextClient(settings=config, http_client=http_client)
+def _client(
+    config: ExternalTextConfig, http_client: Any, service_token: str | None = None
+) -> ExternalTextClient:
+    # The token is resolved by the CALLER (lifespan) and passed in — the
+    # client has no config-level fallback since TASK-799 lane D removed the
+    # legacy per-pair `NLP_EXTERNAL_TEXT_SERVICE_TOKEN`.
+    return ExternalTextClient(
+        settings=config, http_client=http_client, service_token=service_token
+    )
 
 
 @pytest.mark.asyncio
@@ -85,7 +92,7 @@ async def test_posts_to_generate_with_prompt_and_returns_content() -> None:
 @pytest.mark.asyncio
 async def test_service_token_forwarded_as_header() -> None:
     http = _RecordingClient({"content": "billing"})
-    client = _client(ExternalTextConfig(service_token="tok-123"), http)
+    client = _client(ExternalTextConfig(), http, service_token="tok-123")
 
     await client.generate_label("prompt", tenant_id="tenant-abc")
 
@@ -95,7 +102,7 @@ async def test_service_token_forwarded_as_header() -> None:
 @pytest.mark.asyncio
 async def test_no_service_token_header_when_unset() -> None:
     http = _RecordingClient({"content": "billing"})
-    client = _client(ExternalTextConfig(service_token=""), http)
+    client = _client(ExternalTextConfig(), http, service_token="")
 
     await client.generate_label("prompt", tenant_id="tenant-abc")
 

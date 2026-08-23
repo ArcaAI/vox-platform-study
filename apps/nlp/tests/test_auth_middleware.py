@@ -5,8 +5,8 @@ Covers three surfaces:
   missing/wrong token => 401, exempt paths reachable.
 - WebSocket: ``enforce_service_token_ws`` — ``BaseHTTPMiddleware`` never sees WS
   scopes, so the ``/ws/classify`` handlers gate themselves before ``accept()``.
-- Env binding: ``NLP_SERVICE_TOKEN`` actually binds to the config (not just a
-  monkeypatched attribute) and drives enforcement.
+- Env binding: ``INTERNAL_ACCESS_TOKEN`` actually binds to the config (not just
+  a monkeypatched attribute) and drives enforcement.
 
 The auth code reads the token from the ``nlp.core.config`` module singleton at
 dispatch time, so tests point ``settings.service`` at the desired token first.
@@ -42,13 +42,15 @@ EXEMPT_LIVE_PATHS = [
 def _set_token(monkeypatch: pytest.MonkeyPatch, value: str) -> None:
     """Point the module-singleton config at ``value``; the auth code reads it at dispatch.
 
-    BOTH accepted tokens are pinned. `Settings.accepted_service_tokens` admits either the
-    canonical shared `internal_access_token` or the legacy per-service `service_token`, and both
-    come from the environment — so setting only the legacy one left whatever
-    `INTERNAL_ACCESS_TOKEN` the loaded `.env.test` carried in play, and asking for `""`
-    ("auth disabled") still produced a configured token and a 401.
+    There is exactly ONE accepted token to pin. `accepted_service_tokens` admits
+    only the canonical shared `internal_access_token`; TASK-799 lane D removed
+    the legacy per-service `NLP_SERVICE_TOKEN` alongside it.
+
+    That removal is what makes this helper reliable. While both existed, pinning
+    only the legacy one left whatever `INTERNAL_ACCESS_TOKEN` the loaded
+    `.env.test` carried still in play — so asking for `""` ("auth disabled")
+    produced a configured token and a 401 anyway.
     """
-    monkeypatch.setattr(nlp_settings.service, "service_token", SecretStr(value), raising=False)
     monkeypatch.setattr(nlp_settings.service, "internal_access_token", SecretStr(value), raising=False)
 
 
@@ -56,7 +58,7 @@ def _set_token(monkeypatch: pytest.MonkeyPatch, value: str) -> None:
 
 
 def test_empty_token_bypasses_auth(client, monkeypatch):
-    """Empty service_token => auth fully bypassed (protected path is not 401)."""
+    """An empty shared token => auth fully bypassed (protected path is not 401)."""
     _set_token(monkeypatch, "")
     resp = client.get(PROBE_PATH)
     assert resp.status_code != 401
@@ -198,16 +200,18 @@ def test_real_ws_classify_endpoints_enforced(client, monkeypatch):
                 pass
 
 
-# ── Env binding (proves NLP_SERVICE_TOKEN actually binds, not just monkeypatch) ──
+# ── Env binding (proves INTERNAL_ACCESS_TOKEN binds, not just monkeypatch) ──
 
 
 def test_service_token_binds_from_env(client, monkeypatch):
-    """NLP_SERVICE_TOKEN in the env binds to the config and drives HTTP enforcement."""
+    """The shared INTERNAL_ACCESS_TOKEN binds to the config and drives HTTP
+    enforcement. It is the ONE accepted credential since TASK-799 lane D removed
+    the legacy per-service `NLP_SERVICE_TOKEN`."""
     from nlp.core.config import NLPServiceConfig
 
-    monkeypatch.setenv("NLP_SERVICE_TOKEN", "env-nlp-token-xyz")
+    monkeypatch.setenv("INTERNAL_ACCESS_TOKEN", "env-nlp-token-xyz")
     rebuilt = NLPServiceConfig()
-    assert rebuilt.service_token.get_secret_value() == "env-nlp-token-xyz"
+    assert rebuilt.internal_access_token.get_secret_value() == "env-nlp-token-xyz"
     # The auth code reads the module singleton; point it at the env-bound config.
     monkeypatch.setattr(nlp_settings, "service", rebuilt)
     resp = client.get(PROBE_PATH)
