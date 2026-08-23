@@ -70,6 +70,16 @@ import { EDITABLE_BY_NONE, SettingDescriptor } from '../registry.types';
  * `tier: 'env'` ⇒ `editableBy: EDITABLE_BY_NONE` (a governance test binds that
  * both ways) and NO `consumedBy`: a key the service does not read off the pull
  * route must not claim to be served on it.
+ *
+ * NAMING — note these do NOT all share a prefix with their `global-kv` siblings
+ * above (`tts.parler.enabled` next to `tts.indicParler.*`, `tts.indicf5.enabled`
+ * next to `tts.indicF5.*`). That is required, not sloppy: an `env`-tier key must
+ * DERIVE its real variable name through `toEnvVarName`, and the variables the
+ * service actually reads are `TTS_PARLER_ENABLED` and `TTS_INDICF5_ENABLED` —
+ * `tts.indicParler.enabled` would derive `TTS_INDIC_PARLER_ENABLED`, which no
+ * process reads. `global-kv` keys are DB-addressed and carry no such obligation,
+ * so they keep the readable camelCase spelling. When these flags eventually move
+ * to `redis-flag` the constraint lifts and the names can be unified.
  */
 const PROVIDER_ENABLE_FLAGS: ReadonlyArray<{ key: string; label: string; description: string; category: string }> = [
   {
@@ -100,14 +110,13 @@ const PROVIDER_ENABLE_FLAGS: ReadonlyArray<{ key: string; label: string; descrip
     category: 'TTS Engines',
   },
   {
-    key: 'tts.indicParler.enabled',
+    key: 'tts.parler.enabled',
     label: 'Indic Parler engine enabled',
-    description:
-      'Registers the self-hosted AI4Bharat Indic Parler-TTS Malayalam engine (env `TTS_PARLER_ENABLED`).',
+    description: 'Registers the self-hosted AI4Bharat Indic Parler-TTS Malayalam engine (env `TTS_PARLER_ENABLED`).',
     category: 'TTS Engines',
   },
   {
-    key: 'tts.indicF5.enabled',
+    key: 'tts.indicf5.enabled',
     label: 'IndicF5 engine enabled (LICENSE-GATED)',
     description:
       'Registers the experimental IndicF5 voice-clone engine (env `TTS_INDICF5_ENABLED`). Prod and ' +
