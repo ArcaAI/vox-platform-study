@@ -39,7 +39,15 @@ class _StubClient:
         self.calls += 1
         if self._explode:
             raise RuntimeError("control plane unreachable")
-        return type("Snapshot", (), {"model_weights": self._weights})()
+        # `model_weights` is a METHOD on the real `EffectiveConfigSnapshot`. This
+        # stub used to expose it as a plain attribute, which is precisely why
+        # F-16 stayed invisible: the resolver's `getattr` fallback made a real
+        # snapshot (with no such member) silently read as "no weights", and only
+        # this stub ever took the control-plane branch.
+        # `test_model_weights_loop.py` drives the REAL type; this file keeps the
+        # stub so the surrounding degradation cases stay hermetic.
+        weights = self._weights
+        return type("Snapshot", (), {"model_weights": staticmethod(lambda: weights)})()
 
 
 def _config(tmp_path: Path) -> ModelSourceConfig:
