@@ -55,7 +55,12 @@ async def client(settings: Settings):
 
 class TestProbeContract:
     @pytest.mark.asyncio
-    async def test_hung_provider_times_out_without_blocking(self, client):
+    async def test_hung_provider_times_out_without_blocking(self, client, monkeypatch):
+        # The probe cap is a resource-safety FLOOR now (`core/runtime_defaults.py`),
+        # not `TEXT_PROVIDER_PROBE_TIMEOUT_S` — one hung engine must never stall an
+        # admin listing, and that is not a per-deployment choice. Pinned to 1 s here
+        # so the timing assertion below stays about CONCURRENCY, not about the cap.
+        monkeypatch.setattr("text.api.endpoints.providers.PROVIDER_PROBE_TIMEOUT_S", 1)
         hung = AsyncMock()
 
         async def _sleep() -> ProviderInfo:
@@ -129,6 +134,10 @@ class TestLmStudioNativeEnrichment:
 
         provider._client = stub_client(provider, AsyncMock())  # type: ignore[assignment]
         provider._client.models.list = AsyncMock(return_value=_List())
+        # The LM Studio native probe (`/api/v0/models`) reaches the server ROOT
+        # rather than its `/v1` surface, so it derives its URL from the observed
+        # endpoint rather than from the OpenAI client.
+        provider._last_base_url = "http://lmstudio.test/v1"
         return provider, mod, native_handler
 
     @pytest.mark.asyncio

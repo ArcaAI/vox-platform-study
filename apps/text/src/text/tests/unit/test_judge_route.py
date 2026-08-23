@@ -353,9 +353,6 @@ class TestPoolIsolation:
         def configure(app):
             app.state.judge_semaphores = {_PROVIDER: judge_sem}
             app.state.provider_semaphores = {_PROVIDER: user_sem}
-            app.state.settings = app.state.settings.model_copy(
-                update={"judge": JudgeConfig(acquire_timeout_s=0.05)}
-            )
 
         client, _ = await client_factory(configure=configure)
 

@@ -13,6 +13,7 @@ import httpx
 import pytest
 
 from text.models.requests import GenerateRequest
+from text.tests.conftest import stub_endpoint
 
 
 
@@ -30,13 +31,19 @@ class TestOllamaProviderInit:
         from text.providers.ollama import OllamaProvider
 
         provider = OllamaProvider(mock_http_client)
+        stub_endpoint(provider)
         assert provider is not None
 
-    def test_default_model_from_config(self, mock_http_client):
+    def test_the_adapter_carries_no_model_of_its_own(self, mock_http_client):
+        """`TEXT_OLLAMA_DEFAULT_MODEL` is gone, and nothing replaced it in-process.
+
+        Its only reader was `get_info()`; the model arrives with the request,
+        resolved from `AiTaskDefault` upstream. An adapter-held default would be
+        a hardcoded SELECTION."""
         from text.providers.ollama import OllamaProvider
 
         provider = OllamaProvider(mock_http_client)
-        assert provider._default_model == "llama3.2:latest"
+        assert not hasattr(provider, "_default_model")
 
 
 # ── generate (non-streaming) ──
@@ -57,6 +64,7 @@ class TestOllamaGenerate:
         from text.models.stats import GenerationStats
 
         provider = OllamaProvider(mock_http_client)
+        stub_endpoint(provider)
         content, _reasoning, stats = await provider.generate(GenerateRequest(prompt="hi", model="test-model"))
         assert content == "Hello there!"
         assert isinstance(stats, GenerationStats)
@@ -72,6 +80,7 @@ class TestOllamaGenerate:
         mock_http_client.post.return_value = mock_response
 
         provider = OllamaProvider(mock_http_client)
+        stub_endpoint(provider)
         await provider.generate(GenerateRequest(prompt="hi", model="test-model"))
 
         call_args = mock_http_client.post.call_args
@@ -88,6 +97,7 @@ class TestOllamaGenerate:
         mock_http_client.post.return_value = mock_response
 
         provider = OllamaProvider(mock_http_client)
+        stub_endpoint(provider)
         await provider.generate(GenerateRequest(prompt="tell me a joke", model="llama3.2:latest"))
 
         call_kwargs = mock_http_client.post.call_args
@@ -107,6 +117,7 @@ class TestOllamaGenerate:
         mock_http_client.post.return_value = mock_response
 
         provider = OllamaProvider(mock_http_client)
+        stub_endpoint(provider)
         with pytest.raises(httpx.HTTPStatusError):
             await provider.generate(GenerateRequest(prompt="hi", model="test-model"))
 
@@ -143,6 +154,7 @@ class TestOllamaGenerateStream:
         mock_http_client.stream = _mock_stream_context(mock_response)
 
         provider = OllamaProvider(mock_http_client)
+        stub_endpoint(provider)
         chunks = []
         async for chunk in provider.generate_stream(GenerateRequest(prompt="hi", stream=True, model="test-model")):
             chunks.append(chunk)
@@ -171,6 +183,7 @@ class TestOllamaGenerateStream:
         mock_http_client.stream = _mock_stream_context(mock_response)
 
         provider = OllamaProvider(mock_http_client)
+        stub_endpoint(provider)
         captured = {}
         original_stream = mock_http_client.stream
 
@@ -207,6 +220,7 @@ class TestOllamaGenerateStream:
         mock_http_client.stream = _mock_stream_context(mock_response)
 
         provider = OllamaProvider(mock_http_client)
+        stub_endpoint(provider)
         chunks = []
         async for chunk in provider.generate_stream(GenerateRequest(prompt="hi", stream=True, model="test-model")):
             chunks.append(chunk)
@@ -244,6 +258,7 @@ class TestOllamaGenerateStream:
         mock_http_client.stream = _mock_stream_context(mock_response)
 
         provider = OllamaProvider(mock_http_client)
+        stub_endpoint(provider)
         chunks = []
         async for chunk in provider.generate_stream(GenerateRequest(prompt="hi", stream=True, model="test-model")):
             chunks.append(chunk)
@@ -273,6 +288,7 @@ class TestOllamaGenerateStream:
         mock_http_client.stream = _mock_stream_context(mock_response)
 
         provider = OllamaProvider(mock_http_client)
+        stub_endpoint(provider)
         chunks = []
         async for chunk in provider.generate_stream(GenerateRequest(prompt="hi", stream=True, model="test-model")):
             chunks.append(chunk)
@@ -294,6 +310,7 @@ class TestOllamaHealthCheck:
         mock_http_client.get.return_value = mock_response
 
         provider = OllamaProvider(mock_http_client)
+        stub_endpoint(provider)
         assert await provider.health_check() is True
 
     @pytest.mark.asyncio
@@ -303,6 +320,7 @@ class TestOllamaHealthCheck:
         mock_http_client.get.side_effect = httpx.ConnectError("Connection refused")
 
         provider = OllamaProvider(mock_http_client)
+        stub_endpoint(provider)
         assert await provider.health_check() is False
 
 
@@ -320,6 +338,7 @@ class TestOllamaGetInfo:
         mock_http_client.get.return_value = mock_response
 
         provider = OllamaProvider(mock_http_client)
+        stub_endpoint(provider)
         info = await provider.get_info()
         assert info.name == "ollama"
         assert info.supports_streaming is True

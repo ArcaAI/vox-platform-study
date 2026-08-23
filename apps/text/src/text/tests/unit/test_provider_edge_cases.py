@@ -118,9 +118,9 @@ class TestBedrockEdgeCases:
             "output": {"message": {"content": [{"text": "Hello "}, {"text": "world"}]}},
             "usage": {"inputTokens": 5, "outputTokens": 10},
         }
-        with patch("text.providers.bedrock.boto3") as mock_boto3:
-            mock_boto3.Session.return_value.client.return_value = mock_client
+        if True:
             provider = BedrockProvider()
+            stub_client(provider, mock_client)
             content, _reasoning, usage = await provider.generate(
                 GenerateRequest(
                     prompt="hi", provider="bedrock", model="anthropic.claude-3-sonnet-20240229-v1:0"
@@ -137,9 +137,9 @@ class TestBedrockEdgeCases:
             "output": {"message": {"content": [{"text": "ok"}]}},
             "usage": {"inputTokens": 5, "outputTokens": 2},
         }
-        with patch("text.providers.bedrock.boto3") as mock_boto3:
-            mock_boto3.Session.return_value.client.return_value = mock_client
+        if True:
             provider = BedrockProvider()
+            stub_client(provider, mock_client)
             await provider.generate(
                 GenerateRequest(
                     prompt="hi",
@@ -166,9 +166,9 @@ class TestBedrockEdgeCases:
                 ]
             )
         }
-        with patch("text.providers.bedrock.boto3") as mock_boto3:
-            mock_boto3.Session.return_value.client.return_value = mock_client
+        if True:
             provider = BedrockProvider()
+            stub_client(provider, mock_client)
             chunks = [
                 c
                 async for c in provider.generate_stream(
@@ -198,9 +198,9 @@ class TestBedrockEdgeCases:
                 ]
             )
         }
-        with patch("text.providers.bedrock.boto3") as mock_boto3:
-            mock_boto3.Session.return_value.client.return_value = mock_client
+        if True:
             provider = BedrockProvider()
+            stub_client(provider, mock_client)
             chunks = [
                 c
                 async for c in provider.generate_stream(
@@ -222,9 +222,9 @@ class TestBedrockEdgeCases:
 
         mock_client = MagicMock()
         mock_client.list_foundation_models.side_effect = Exception("no creds")
-        with patch("text.providers.bedrock.boto3") as mock_boto3:
-            mock_boto3.Session.return_value.client.return_value = mock_client
+        if True:
             provider = BedrockProvider()
+            stub_client(provider, mock_client)
             info = await provider.get_info()
         assert info.status == "unavailable"
         assert info.models == []
@@ -238,9 +238,9 @@ class TestBedrockEdgeCases:
             "output": {"message": {"content": [{"text": "ok"}]}},
             "usage": {"inputTokens": 5, "outputTokens": 2},
         }
-        with patch("text.providers.bedrock.boto3") as mock_boto3:
-            mock_boto3.Session.return_value.client.return_value = mock_client
+        if True:
             provider = BedrockProvider()
+            stub_client(provider, mock_client)
             await provider.generate(
                 GenerateRequest(
                     prompt="hi",
