@@ -36,13 +36,14 @@ export class TextRequestEnrichmentService {
   ) {}
 
   /**
-   * Fold the caller tenant's BYO cloud credential into the forwarded
-   * body as `provider_overrides`.
+   * Fold the resolved BYO credential for this request's provider into the
+   * forwarded body as `provider_overrides`.
    *
    * Three invariants:
-   *   - CLOUD ONLY. A self-host provider (ollama/lm-studio/vllm/llama-cpp/
-   *     built-in) is platform infrastructure; its endpoint is never a tenant
-   *     credential, and we do not even query for one.
+   *   - EVERY PROVIDER IS ASKED ABOUT. A credential may come from the tenant's
+   *     own row (cloud BYO only) or from the SYSTEM-tenant platform default
+   *     (cloud OR self-host). Which of those may serve is the RESOLVER's
+   *     decision, not this call site's — see the note below.
    *   - MINIMAL EXPOSURE. Only the entry for the RESOLVED provider is
    *     forwarded, so a tenant holding both azure and bedrock keys never ships
    *     the unused one to the service.
@@ -50,12 +51,26 @@ export class TextRequestEnrichmentService {
    *     the SYSTEM/env platform credentials — a broken BYO key must degrade,
    *     not take generation down. This deliberately differs from the
    *     fail-closed model-IDENTITY path.
+   *
+   * TASK-799 R2-C.1 — this method used to short-circuit on
+   * `isCloudByoProvider('llm', provider)` and return BEFORE the resolver was
+   * called, which made P1-C's resolver fix undeliverable on the TEXT path. That
+   * predicate answers "may a TENANT OWN a row for this provider?", and it was
+   * being used to answer "may the PLATFORM SERVE this provider?" — two
+   * different questions. A super-admin-keyed self-host engine (vLLM,
+   * openai-compat) is platform INFRASTRUCTURE and must reach every tenant, so
+   * `TEXT_OPENAI_COMPAT_API_KEY` / `TEXT_VLLM_API_KEY` had no migration target
+   * despite being listed as migratable. The guards that actually matter all
+   * live in the resolver and are unchanged: a keyless row injects on NEITHER
+   * tier (so a `base_url` still cannot become a credential), the TENANT tier
+   * still refuses non-cloud rows, and cloud SYSTEM rows stay entitlement-gated
+   * while self-host SYSTEM rows do not.
    */
   async applyTenantProviderOverrides<T extends { provider?: string }>(target: T): Promise<T> {
     const provider = target.provider;
     // TEXT is the LLM capability, so the service discriminator is always `llm`
     // (C2/C5). The 1-arg transition shims are retired here.
-    if (!this.aiProviderConnectionService || !provider || !isCloudByoProvider('llm', provider)) {
+    if (!this.aiProviderConnectionService || !provider) {
       return target;
     }
     const tenantId = this.clsService.get('tenantId');
@@ -91,7 +106,19 @@ export class TextRequestEnrichmentService {
     // no platform-default entitlement (403) — say so. Deliberately OUTSIDE the
     // fail-open catch above: a policy refusal is not a lookup failure, and
     // swallowing it would return the unattributable 503 this exists to replace.
-    assertProviderAvailable(resolved, 'llm', provider);
+    //
+    // Scoped to CLOUD providers, and that scoping is load-bearing now that the
+    // self-host path reaches here too. Both suppression reasons are statements
+    // about platform SPEND on a vendor account: the veto set is built only from
+    // cloud rows (a tenant cannot own a self-host row to veto), and the
+    // entitlement gate governs the platform's vendor spend. For a self-host
+    // provider "no entry" therefore means "no DB opinion — use the service's
+    // env configuration", which is the pre-existing downstream fallback. Without
+    // this scope an unentitled tenant would get a 403 for an unconfigured
+    // self-hosted engine the entitlement was never meant to cover.
+    if (isCloudByoProvider('llm', provider)) {
+      assertProviderAvailable(resolved, 'llm', provider);
+    }
     return target;
   }
 
