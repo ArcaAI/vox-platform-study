@@ -242,6 +242,22 @@ class NLPServiceConfig(BaseSettings):
     # effective-config route this URL points at.
     gateway_url: str = Field(default="http://localhost:8868/api/v1")
 
+    # ── How this process REACHES Redis (owner decision D-5, 2026-08-23) ────
+    #
+    # BOOTSTRAP TRANSPORT, and env-tier for the same reason `gateway_url` is:
+    # it is the ADDRESS of a backing service, not a value read from one. Rule 00
+    # §Configuration Principles keeps exactly this class of variable in env —
+    # "what is needed to reach the DB or authenticate to Vault" — and nothing
+    # else.
+    #
+    # It exists so the `arca:config:invalidate` subscriber built in
+    # `core/effective_config.py` has a transport. Before D-5 this service held
+    # no Redis client at all, so that channel had a handler and no wire, and
+    # every control-plane write took a full TTL window to be seen here. The TTL
+    # stays as the bounded-staleness backstop (rule 09 §"Config caches"), so a
+    # process that boots while Redis is down still starts and still converges.
+    redis_url: str = Field(default="redis://localhost:6379/0")
+
     # Bootstrap fallback; the runtime value comes from the control
     # plane (`nlp.inference.maxConcurrent`).
     inference_max_concurrent: int = Field(default=4, ge=1)

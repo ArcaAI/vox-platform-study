@@ -50,6 +50,12 @@ dependencies = [
     # CPU-only) for scanned pages/images. Route, don't OCR everything.
     "pymupdf>=1.28.2",
     "rapidocr-onnxruntime>=1.3.0",
+    # --- Config propagation (owner decision D-5, TASK-799) ---
+    # Subscriber-only: `apps/nlp` publishes nothing and stores nothing in Redis.
+    # It exists so the `arca:config:invalidate` channel the gateway publishes on
+    # has a transport here; without it this service converged on control-plane
+    # writes by 60s poll alone (rule 09 §"Config caches").
+    "redis>=5.0.0",
     # --- Async / HTTP ---
     "aiofiles>=25.1.0",
     "python-multipart>=0.0.22",
