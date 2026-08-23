@@ -28,7 +28,6 @@ class TestLifespanPresentsTheSharedToken:
         monkeypatch.setattr(
             settings.service, "internal_access_token", SecretStr("shared-internal"), raising=False
         )
-        monkeypatch.setattr(settings.service, "service_token", SecretStr(""), raising=False)
         return settings
 
     async def test_effective_config_client_carries_the_shared_token(

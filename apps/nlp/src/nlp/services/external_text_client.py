@@ -51,12 +51,12 @@ class ExternalTextClient:
         self.http_client = http_client
         self.base_url = settings.base_url.rstrip("/")
         # Owner decision D-D (2026-08-17): the caller resolves the ONE shared
-        # `INTERNAL_ACCESS_TOKEN` and passes it here. `None` ⇒ fall back to the
-        # legacy per-pair `NLP_EXTERNAL_TEXT_SERVICE_TOKEN` on the config, so an
-        # un-migrated environment (and every existing test) keeps working.
-        self._service_token = (
-            service_token if service_token is not None else settings.service_token.get_secret_value()
-        )
+        # `INTERNAL_ACCESS_TOKEN` and passes it here. The legacy per-pair
+        # `NLP_EXTERNAL_TEXT_SERVICE_TOKEN` fallback is gone (TASK-799 lane D) —
+        # the migration it covered is complete, and a second accepted credential
+        # is a second thing to rotate. `None` ⇒ no header, which is the
+        # dev / hermetic-CI bypass the middleware already recognises.
+        self._service_token = service_token or ""
 
     async def generate_label(
         self,
