@@ -36,7 +36,7 @@ import pytest
 from text.models.requests import GenerateRequest, ResponseFormat
 from text.models.stats import GenerationStats
 from text.models.stream import StreamChunk
-from text.tests.conftest import stub_client
+from text.tests.conftest import stub_client, stub_endpoint
 
 # Canonical fixture values every provider fake reports — a "length"-class finish
 # (proves the real stop reason is surfaced, not the frozen "stop") + exact counts.
@@ -53,7 +53,7 @@ _SCHEMA: dict[str, Any] = {
 def _req(**overrides: Any) -> GenerateRequest:
     payload: dict[str, Any] = {"prompt": "hello", "model": "caller-model"}
     payload.update(overrides)
-    return GenerateRequest(**payload, model="test-model")
+    return GenerateRequest(**payload)
 
 
 async def _aiter(items: list[Any]) -> AsyncIterator[Any]:
@@ -201,6 +201,7 @@ def _make_vllm() -> Any:
     from text.providers.vllm import VllmProvider
 
     provider = VllmProvider()
+    stub_endpoint(provider)
     provider._client = stub_client(provider, MagicMock())
     provider._client.chat.completions.create = AsyncMock()
     return provider
@@ -239,7 +240,9 @@ _LLAMA_CPP_DONE: dict[str, Any] = {
 def _make_llama_cpp() -> Any:
     from text.providers.llama_cpp import LlamaCppProvider
 
-    return LlamaCppProvider(LlamaCppConfig(base_url="http://localhost:8080", default_model="m"))
+    provider = LlamaCppProvider(AsyncMock())
+    stub_endpoint(provider, "http://localhost:8080")
+    return provider
 
 
 def _llama_cpp_set_nonstream(provider: Any) -> None:

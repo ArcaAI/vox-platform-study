@@ -78,7 +78,6 @@ class TestOpenAICompatConfig:
 
 
         _clear_text_env(monkeypatch)
-        cfg = OpenAICompatConfig()
         assert cfg.base_url == "http://localhost:1234/v1"
         # Must be an id LM Studio actually serves — sent verbatim as the wire
         # `model`. The old `google/gemma-4-e4b` 400d ("Failed to load model").
@@ -91,7 +90,6 @@ class TestOpenAICompatConfig:
         _clear_text_env(monkeypatch)
 
         _clear_text_env(monkeypatch)
-        cfg = OpenAICompatConfig()
         assert isinstance(cfg.api_key, SecretStr)
         assert cfg.api_key.get_secret_value() == "not-needed"
 

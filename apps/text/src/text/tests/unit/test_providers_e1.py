@@ -24,13 +24,6 @@ class TestAzurePayloadDefaults:
     def _make_provider(self):
         from text.providers.azure_openai import AzureOpenAIProvider
 
-        config = keyed(
-            AzureOpenAIConfig(
-                endpoint="https://test.openai.azure.com",
-                deployment_name="gpt-4",
-            ),
-            "test-key",
-        )
         provider = AzureOpenAIProvider()
         provider._client = stub_client(provider, AsyncMock())
         return provider
@@ -76,13 +69,6 @@ class TestAzureResponseFormat:
     def _make_provider(self):
         from text.providers.azure_openai import AzureOpenAIProvider
 
-        config = keyed(
-            AzureOpenAIConfig(
-                endpoint="https://test.openai.azure.com",
-                deployment_name="gpt-4",
-            ),
-            "test-key",
-        )
         provider = AzureOpenAIProvider()
         provider._client = stub_client(provider, AsyncMock())
         return provider
@@ -133,13 +119,6 @@ class TestAzureTokenUsage:
     def _make_provider(self):
         from text.providers.azure_openai import AzureOpenAIProvider
 
-        config = keyed(
-            AzureOpenAIConfig(
-                endpoint="https://test.openai.azure.com",
-                deployment_name="gpt-4",
-            ),
-            "test-key",
-        )
         provider = AzureOpenAIProvider()
         provider._client = stub_client(provider, AsyncMock())
         return provider
@@ -170,7 +149,6 @@ class TestBedrockPayloadDefaults:
     def _make_provider(self):
         from text.providers.bedrock import BedrockProvider
 
-        config = BedrockConfig(region="us-east-1")
         with patch("boto3.client"):
             return BedrockProvider()
 
@@ -197,7 +175,6 @@ class TestBedrockResponseFormat:
     def _make_provider(self):
         from text.providers.bedrock import BedrockProvider
 
-        config = BedrockConfig(region="us-east-1")
         with patch("boto3.client"):
             return BedrockProvider()
 
@@ -228,7 +205,6 @@ class TestBedrockTokenUsage:
     def _make_provider(self):
         from text.providers.bedrock import BedrockProvider
 
-        config = BedrockConfig(region="us-east-1")
         with patch("boto3.client"):
             provider = BedrockProvider()
         provider._client = stub_client(provider, MagicMock())

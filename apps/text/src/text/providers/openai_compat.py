@@ -104,6 +104,21 @@ class OpenAICompatProvider:
         """
         return self._last_base_url
 
+    def _probe_client(self) -> AsyncOpenAI | None:
+        """A client for the last-observed endpoint, or ``None`` if none was seen.
+
+        A distinct seam from `_client_for` because it answers a different
+        question: `_client_for` serves a REQUEST and therefore has a connection
+        to build from, while the admin probes have neither. Keeping it a method
+        also gives tests one place to stand a fake engine up.
+        """
+        probe_url = self._probe_url()
+        if probe_url is None:
+            return None
+        return AsyncOpenAI(
+            api_key="not-needed", base_url=probe_url, timeout=float(self._timeout_s)
+        )
+
     def _client_for(self, request: GenerateRequest) -> AsyncOpenAI:
         """Request-scoped, fail-closed client resolution.
 
@@ -340,13 +355,10 @@ class OpenAICompatProvider:
         (`services/pool_health.py`), so a freshly booted process must not report
         an engine it has simply not contacted yet as DOWN.
         """
-        probe_url = self._probe_url()
-        if probe_url is None:
+        if self._probe_client() is None:
             return True
         try:
-            await AsyncOpenAI(
-                api_key="not-needed", base_url=probe_url, timeout=float(self._timeout_s)
-            ).models.list()
+            await self._probe_client().models.list()
             return True
         except (APIError, APIConnectionError, APITimeoutError, ConnectionError, OSError) as exc:
             logger.warning("health_check.failed", provider=self._provider_name, error=str(exc))
@@ -389,8 +401,8 @@ class OpenAICompatProvider:
     async def get_info(self) -> ProviderInfo:
         models: list[ModelInfo] = []
         status = "unavailable"
-        probe_url = self._probe_url()
-        if probe_url is None:
+        probe_client = self._probe_client()
+        if probe_client is None:
             # Nothing observed yet — no endpoint to list models from. The
             # catalogue is authoritative on the gateway (`AiModel`) regardless.
             return ProviderInfo(
@@ -403,9 +415,7 @@ class OpenAICompatProvider:
                 supports_vision=True,
             )
         try:
-            model_list = await AsyncOpenAI(
-                api_key="not-needed", base_url=probe_url, timeout=float(self._timeout_s)
-            ).models.list()
+            model_list = await probe_client.models.list()
             for m in model_list.data:
                 models.append(ModelInfo(name=m.id, supports_streaming=True))
             status = "available"

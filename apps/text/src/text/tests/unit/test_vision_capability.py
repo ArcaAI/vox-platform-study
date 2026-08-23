@@ -19,7 +19,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from text.models.requests import GenerateRequest
-from text.tests.conftest import stub_client
+from text.tests.conftest import stub_client, stub_endpoint
 
 _PNG_B64 = base64.b64encode(b"fake-png-bytes").decode("ascii")
 
@@ -141,7 +141,6 @@ class TestTextOnlyRegression:
     def test_llama_cpp_does_not_raise_for_a_text_only_request(self):
         from text.providers.llama_cpp import LlamaCppProvider
 
-        provider = LlamaCppProvider(LlamaCppConfig(base_url="http://localhost:8080", default_model="m"))
         payload = provider._build_payload(_text_request(), stream=False)
         assert payload["prompt"] == "hello"
 
@@ -243,6 +242,7 @@ class TestImageReachesEachAdapter:
         from text.providers.vllm import VllmProvider
 
         provider = VllmProvider()
+        stub_endpoint(provider)
         messages = provider._build_messages(_image_request())
         content = messages[-1]["content"]
         assert content[1]["image_url"]["url"] == f"data:image/png;base64,{_PNG_B64}"
@@ -259,7 +259,6 @@ class TestLlamaCppRejectsVision:
         from text.core.exceptions import VisionNotSupportedError
         from text.providers.llama_cpp import LlamaCppProvider
 
-        provider = LlamaCppProvider(LlamaCppConfig(base_url="http://localhost:8080", default_model="m"))
         with pytest.raises(VisionNotSupportedError):
             await provider.generate(_image_request())
 
@@ -268,7 +267,6 @@ class TestLlamaCppRejectsVision:
         from text.core.exceptions import VisionNotSupportedError
         from text.providers.llama_cpp import LlamaCppProvider
 
-        provider = LlamaCppProvider(LlamaCppConfig(base_url="http://localhost:8080", default_model="m"))
         with pytest.raises(VisionNotSupportedError):
             async for _ in provider.generate_stream(_image_request()):
                 pass
@@ -286,7 +284,6 @@ class TestLlamaCppRejectsVision:
         from text.providers.llama_cpp import LlamaCppProvider
 
         http = AsyncMock()
-        provider = LlamaCppProvider(LlamaCppConfig(base_url="http://localhost:8080", default_model="m"), http)
         with pytest.raises(VisionNotSupportedError):
             await provider.generate(_image_request())
         http.post.assert_not_called()
@@ -313,6 +310,7 @@ class TestSupportsVisionPerProvider:
         from text.providers.vllm import VllmProvider
 
         provider = VllmProvider()
+        stub_endpoint(provider)
         provider._client = stub_client(provider, MagicMock())
         provider._client.models.list = AsyncMock(return_value=MagicMock(data=[]))
         info = await provider.get_info()
@@ -370,6 +368,5 @@ class TestSupportsVisionPerProvider:
 
         http = AsyncMock()
         http.get = AsyncMock(return_value=MagicMock(status_code=200))
-        provider = LlamaCppProvider(LlamaCppConfig(base_url="http://localhost:8080", default_model="m"), http)
         info = await provider.get_info()
         assert info.supports_vision is False

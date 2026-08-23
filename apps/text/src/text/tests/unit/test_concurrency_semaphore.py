@@ -78,12 +78,10 @@ class TestMaxConcurrentConfigFields:
     """Verify AzureOpenAIConfig and BedrockConfig have max_concurrent."""
 
     def test_azure_has_max_concurrent(self):
-        cfg = AzureOpenAIConfig()
         assert hasattr(cfg, "max_concurrent")
         assert cfg.max_concurrent == 10
 
     def test_bedrock_has_max_concurrent(self):
-        cfg = BedrockConfig()
         assert hasattr(cfg, "max_concurrent")
         assert cfg.max_concurrent == 10
 

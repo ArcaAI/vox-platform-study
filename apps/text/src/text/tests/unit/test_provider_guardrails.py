@@ -31,42 +31,59 @@ from text.tests.conftest import stub_client
 # ===========================================================================
 
 
-class TestBedrockGuardrailConfig:
-    """Verify guardrailConfig is injected into converse params."""
+def _bedrock_request(**guardrail: str) -> GenerateRequest:
+    """A request whose resolved connection may pin an AWS Bedrock Guardrail."""
+    connection: dict[str, str] = {"api_key": "k", "region": "us-east-1"}
+    connection.update(guardrail)
+    return GenerateRequest(
+        prompt="test prompt",
+        provider="bedrock",
+        model="test-model",
+        provider_overrides={"bedrock": connection},
+    )
 
-    def test_bedrock_guardrail_config_added_when_id_set(self):
+
+class TestBedrockGuardrailConfig:
+    """`guardrailConfig` is injected from the CONNECTION, not from the environment.
+
+    An AWS Bedrock Guardrail belongs to the AWS account the request
+    authenticates against, so it travels with that account's credential.
+    `TEXT_BEDROCK_GUARDRAIL_ID` was a process-wide value that would have applied
+    one tenant's guardrail — from another tenant's AWS account, where it does not
+    even exist — to every other tenant's traffic.
+    """
+
+    def test_guardrail_config_added_when_the_connection_pins_one(self):
         from text.providers.bedrock import BedrockProvider
 
-        with patch("text.providers.bedrock.boto3") as mock_boto3:
-            mock_boto3.Session.return_value.client.return_value = MagicMock()
-            provider = BedrockProvider()
+        provider = BedrockProvider()
+        params = provider._build_converse_params(
+            _bedrock_request(guardrail_id="gr-123", guardrail_version="1")
+        )
 
-        request = GenerateRequest(prompt="test prompt", provider="bedrock", model="test-model")
-        params = provider._build_converse_params(request)
-
-        assert "guardrailConfig" in params
         assert params["guardrailConfig"]["guardrailIdentifier"] == "gr-123"
         assert params["guardrailConfig"]["guardrailVersion"] == "1"
 
-    def test_bedrock_guardrail_config_absent_when_id_empty(self):
+    def test_guardrail_config_absent_when_the_connection_pins_none(self):
         from text.providers.bedrock import BedrockProvider
 
-        with patch("text.providers.bedrock.boto3") as mock_boto3:
-            mock_boto3.Session.return_value.client.return_value = MagicMock()
-            provider = BedrockProvider()
+        provider = BedrockProvider()
+        assert "guardrailConfig" not in provider._build_converse_params(_bedrock_request())
 
+    def test_guardrail_config_absent_when_there_is_no_connection_at_all(self):
+        from text.providers.bedrock import BedrockProvider
+
+        provider = BedrockProvider()
         request = GenerateRequest(prompt="test prompt", provider="bedrock", model="test-model")
-        params = provider._build_converse_params(request)
+        assert "guardrailConfig" not in provider._build_converse_params(request)
 
-        assert "guardrailConfig" not in params
+    def test_guardrail_version_defaults_to_draft(self):
+        """AWS's own default for an unversioned guardrail."""
+        from text.providers.bedrock import BedrockProvider
 
-    def test_bedrock_guardrail_config_default_version(self):
-        config = BedrockConfig(
-            region="us-east-1",
-            default_model="anthropic.claude-3-sonnet-20240229-v1:0",
-            guardrail_id="gr-456",
-        )
-        assert config.guardrail_version == "DRAFT"
+        provider = BedrockProvider()
+        params = provider._build_converse_params(_bedrock_request(guardrail_id="gr-123"))
+        assert params["guardrailConfig"]["guardrailVersion"] == "DRAFT"
 
 
 class TestBedrockGuardrailIntervened:
@@ -85,9 +102,9 @@ class TestBedrockGuardrailIntervened:
             "stopReason": "guardrail_intervened",
         }
 
-        with patch("text.providers.bedrock.boto3") as mock_boto3:
-            mock_boto3.Session.return_value.client.return_value = mock_client
+        if True:
             provider = BedrockProvider()
+            stub_client(provider, mock_client)
 
         with patch("text.providers.bedrock.logger") as mock_logger:
             content, _reasoning, stats = await provider.generate(
@@ -115,29 +132,22 @@ class TestBedrockGuardrailIntervened:
 # ===========================================================================
 
 
-class TestAzureContentFilterConfig:
-    """Verify content_filter_severity config field exists with correct default."""
+class TestAzureContentFilterSeverityIsNotAKnob:
+    """`TEXT_AZURE_CONTENT_FILTER_SEVERITY` is gone, and it never did anything.
 
-    def test_azure_content_filter_severity_config(self):
-        config = keyed(
-            AzureOpenAIConfig(
-                endpoint="https://test.openai.azure.com",
-                default_model="gpt-4",
-            ),
-            "test-key",
-        )
-        assert config.content_filter_severity == "medium"
+    The field was declared and read by nothing: Azure's content filter is
+    configured on the Azure RESOURCE, not on an API request, so a value here
+    could never have reached the wire. It was a knob that looked like a safety
+    control and was not one — which is worse than its absence.
 
-    def test_azure_content_filter_severity_custom(self):
-        config = keyed(
-            AzureOpenAIConfig(
-                endpoint="https://test.openai.azure.com",
-                default_model="gpt-4",
-                content_filter_severity="high",
-            ),
-            "test-key",
-        )
-        assert config.content_filter_severity == "high"
+    What Text actually does with Azure's filter is REACT to it, and that is
+    covered by `TestAzureContentFilterErrorHandling` below.
+    """
+
+    def test_no_content_filter_setting_exists(self):
+        from text.core.config import Settings
+
+        assert "content_filter_severity" not in Settings.model_fields
 
 
 class TestAzureContentFilterErrorHandling:

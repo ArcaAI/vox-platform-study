@@ -58,6 +58,13 @@ os.environ.update(_env_before_main_import)
 for _token_var in ("INTERNAL_ACCESS_TOKEN", "SERVICE_TOKEN"):
     os.environ[_token_var] = ""
 
+# Same reasoning, one var over. OTel export is now enabled by the PRESENCE of a
+# collector address (`TEXT_OTEL_ENABLED` is gone — a boolean that can disagree
+# with the URL it describes is a second source of truth). `.env.test` carries an
+# address, so without this pin every app the suite builds would start an exporter
+# and spend its startup retrying a collector nobody is running.
+os.environ["TEXT_OTEL_EXPORTER_ENDPOINT"] = ""
+
 def connection(
     key: str = "test-key",
     *,
@@ -124,6 +131,11 @@ def stub_client(provider, client):
     `test_task602_byok_credentials.py` and `test_provider_overrides.py`.
     """
     provider._client_for = lambda _request: client
+    # Adapters that ALSO probe (the self-host ones) build a separate probe client
+    # from the last-observed endpoint; bind that to the same stand-in so a test
+    # that stubs the wire covers `/providers` and `/health` too.
+    if hasattr(type(provider), "_probe_client"):
+        provider._probe_client = lambda: client
     provider._client = client
     return client
 
