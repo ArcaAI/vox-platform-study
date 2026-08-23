@@ -100,8 +100,20 @@ class LoggingConfig:
         Returns:
             Logger instance for the main application
         """
-        # Get configuration from environment variables
-        log_level = os.getenv("LOG_LEVEL", cls.DEFAULT_LOG_LEVEL).upper()
+        # Get configuration from environment variables.
+        #
+        # `NLP_LOG_LEVEL` is the name `NLPServiceConfig.log_level` declares
+        # (core/config.py) and the name `apps/nlp/.env.sample` documents; this
+        # module read only the bare `LOG_LEVEL`, so ONE service had two names
+        # for one concept and the documented one did nothing. Since every
+        # deployable now shares a single `.env.<NODE_ENV>`, the bare name is
+        # also whatever the gateway last set. Prefixed first, bare as the
+        # fallback (TASK-799 B.3).
+        # `NLPServiceConfig.log_level` is typed `int`, so the same variable is
+        # legitimately written as `20` or as `INFO`. Both resolve here, exactly
+        # as they now do in the settings class.
+        raw_level = (os.getenv("NLP_LOG_LEVEL") or os.getenv("LOG_LEVEL") or cls.DEFAULT_LOG_LEVEL).strip()
+        log_level = logging.getLevelName(int(raw_level)) if raw_level.isdigit() else raw_level.upper()
         log_file_enabled = cls._get_env_bool("LOG_FILE_ENABLED", False)
         log_file_path = os.getenv("LOG_FILE_PATH", cls.DEFAULT_LOG_PATH)
         log_file_max_size = os.getenv("LOG_FILE_MAX_SIZE", cls.DEFAULT_MAX_SIZE)
