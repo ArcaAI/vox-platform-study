@@ -43,6 +43,9 @@ import {
   LiveSummaryStatsDto,
   LiveSummaryAgentDto,
 } from './dto';
+// TASK-795 RC-1 — the harness inbound contract for interpreter summary text. Type-only: this
+// service consumes the shape, never the harness module's runtime code.
+import type { HarnessLiveSummaryRequest, HarnessRealtimeDeliveryAck } from '../harness/dto/realtime-delivery.dto';
 import { LIVE_SOAP_RESPONSE_FORMAT, buildRunningSummary, parseSoapJson, parseSoapSections } from './soap-parser';
 import {
   DEFAULT_LIVE_TOOL_PLAN,
@@ -2141,6 +2144,91 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
 
   private snapshotKey(consultationId: string): string {
     return `${this.CHANNEL_PREFIX}${consultationId}:last`;
+  }
+
+  /**
+   * TASK-795 RC-1 — publish an INTERPRETER-produced summary snapshot onto this
+   * service's own live-summary plane.
+   *
+   * ## Why this lives here and not in a service of its own
+   *
+   * `consultation:live-summary:{id}` and its `:last` snapshot key are this
+   * class's surface. A second class publishing to them would duplicate the key
+   * derivation and the TTL, and the first divergence would be a silent one —
+   * a snapshot written under a key nothing reads. One owner per channel.
+   *
+   * ## Why the existing channel at all
+   *
+   * TASK-796 established that the harness has no way to deliver summary TEXT to
+   * the gateway: of the 18 `/internal/harness/*` routes, the only text-accepting
+   * write creates a `RAW_SUMMARY` ContextItem — the FINAL note, not a
+   * mid-consultation snapshot. Publishing here instead means the existing SSE
+   * route, `useArcaLiveSummary` and the existing console panel all light up with
+   * zero new consumer surface.
+   *
+   * ## Two publishers on one plane — stated, not hidden
+   *
+   * When an interpreter graph governs a consultation, this service's own flush
+   * loop may still be running (it is started by `recording/start`, independently
+   * of the substrate decision), so both can publish here and the later write
+   * wins the snapshot. That is acceptable for an EPHEMERAL UX plane — nothing
+   * here is persisted per tick and the durable note is unaffected — but it is
+   * not invisible: every payload carries `source`, so a consumer can always say
+   * which engine produced what it is showing.
+   *
+   * Best-effort, like every sibling publish path: acks `{ ok: false }` rather
+   * than throwing, because a feed hiccup must never fail an interpreter run.
+   */
+  async publishInterpreterSummary(consultationId: string, dto: HarnessLiveSummaryRequest): Promise<HarnessRealtimeDeliveryAck> {
+    const payload: LiveSummaryEventDto = {
+      consultationId,
+      runningSummary: dto.runningSummary,
+      sections: dto.sections ?? [],
+      // The interpreter plane runs no NER pass of its own. `entities` is REQUIRED
+      // on the DTO, so it is an empty array — never omitted, never fabricated.
+      entities: [],
+      source: dto.source,
+      updatedAt: new Date().toISOString(),
+    };
+
+    // Absent optionals are OMITTED, never emitted as null: the harness client
+    // prunes on its side and the payload should not reintroduce what it dropped.
+    if (dto.nodeType !== undefined) payload.nodeType = dto.nodeType;
+    if (dto.ordinal !== undefined) payload.ordinal = dto.ordinal;
+    if (dto.total !== undefined) payload.total = dto.total;
+
+    const stats = this.interpreterStats(dto);
+    if (stats) payload.metadata = { stats };
+
+    try {
+      const serialized = JSON.stringify(payload);
+      await this.cacheService.setex(this.snapshotKey(consultationId), this.SNAPSHOT_TTL, serialized);
+      await this.cacheService.publish(this.channel(consultationId), serialized);
+      this.logger.debug({ message: 'Interpreter live summary published', consultationId, nodeType: dto.nodeType });
+      return { ok: true };
+    } catch (error) {
+      this.logger.warn({
+        message: 'Failed to publish interpreter live summary (best-effort — the interpreter run is unaffected)',
+        consultationId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return { ok: false };
+    }
+  }
+
+  /**
+   * The generation-provenance block, in the snake_case shape the console already
+   * reads for flush-loop payloads. `null` when the publish carried none of the
+   * three — an empty `metadata.stats` would read as "the engine reported
+   * nothing", which is different from "the caller sent nothing".
+   */
+  private interpreterStats(dto: HarnessLiveSummaryRequest): LiveSummaryStatsDto | null {
+    if (dto.provider === undefined && dto.model === undefined && dto.taskKey === undefined) return null;
+    const stats: LiveSummaryStatsDto = {};
+    if (dto.provider !== undefined) stats.provider = dto.provider;
+    if (dto.model !== undefined) stats.model = dto.model;
+    if (dto.taskKey !== undefined) stats.task_key = dto.taskKey;
+    return stats;
   }
 
   private emptyPayload(consultationId: string): LiveSummaryEventDto {

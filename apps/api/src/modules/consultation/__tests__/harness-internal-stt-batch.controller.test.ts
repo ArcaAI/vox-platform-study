@@ -47,6 +47,7 @@ describe('HarnessInternalController — STT batch-trigger routes (TASK-724 Task 
       undefined as any, // loopContextTextService
       undefined as any, // liveDocumentationService
       undefined as any, // promptManagementService
+      undefined as any, // harnessLiveAssistService (TASK-795 RC-2)
       jobService as any,
       realtimeService as any,
     );
@@ -162,6 +163,7 @@ describe('HarnessInternalController — STT batch-trigger routes (TASK-724 Task 
       undefined as any,
       undefined as any,
       undefined as any,
+      undefined as any, // harnessLiveAssistService (TASK-795 RC-2)
       undefined as any, // transcriptionJobService NOT wired
       undefined as any,
     );

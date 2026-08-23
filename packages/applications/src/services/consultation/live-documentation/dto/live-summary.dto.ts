@@ -294,6 +294,32 @@ export class LiveSummaryEventDto {
   })
   textFailed?: boolean;
 
+  /**
+   * TASK-795 RC-1 — WHICH engine produced this snapshot.
+   *
+   * The plane now has two possible publishers: this service's own flush loop
+   * (Substrate A's live documentation layer) and a tenant-authored interpreter
+   * graph (Substrate B) publishing through
+   * `POST /internal/harness/consultations/:id/live-summary`. Additive and
+   * back-compatible: ABSENT means the flush loop, which is every payload
+   * predating this field, so no existing consumer changes. `'interpreter'`
+   * means the graph.
+   *
+   * A consumer that cannot tell them apart cannot explain what it is showing,
+   * which is why this is carried rather than left implicit.
+   */
+  @ApiPropertyOptional({ description: "Publisher of this snapshot: absent = the live-documentation flush loop, 'interpreter' = a tenant-authored graph" })
+  source?: string;
+
+  @ApiPropertyOptional({ description: 'TASK-795 RC-1 — the interpreter node that produced this snapshot, e.g. `consultation.realtimeSummary`' })
+  nodeType?: string;
+
+  @ApiPropertyOptional({ description: 'TASK-795 RC-1 — 1-based position of this flush within the interpreter run' })
+  ordinal?: number;
+
+  @ApiPropertyOptional({ description: 'TASK-795 RC-1 — total flushes expected in the interpreter run, when known' })
+  total?: number;
+
   @ApiProperty({ description: 'ISO-8601 timestamp of when this snapshot was produced' })
   updatedAt: string;
 
