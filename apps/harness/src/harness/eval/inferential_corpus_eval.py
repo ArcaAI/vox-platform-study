@@ -7,8 +7,8 @@ micro-cases (see ``apps/harness/eval/README.md``), not a corpus. This module run
 the SAME two inferential sensors over EVERY case of a golden set (e.g.
 ``curated_v1.json``) using the live calibrated judge (LM Studio
 ``google/gemma-4-e4b`` via :func:`harness.core.config.get_runtime_judge_config`)
-and the live IBM Granite Guardian safety classifier (``granite-guardian-4.1-8b``
-over LM Studio by default; ``Settings.safety``), then aggregates a corpus-level delta: the
+and the live ``apps/guardrail`` outbound safety screen (TASK-799 A.1 — harness holds no
+guardian engine of its own), then aggregates a corpus-level delta: the
 ``groundedness`` + ``ragTriadScore`` distribution, the safety PASS/FLAG tally, and
 the agreement of each live signal against the fixture's curated PDSQI reference
 labels.
@@ -16,8 +16,8 @@ labels.
 It mirrors the Temporal ``run_inferential_sensors`` activity's context build
 (``SensorContext(note_text, transcript_text, citations_map)``) and per-draft
 ``asyncio.gather(groundedness, safety)`` fan-out (the two sensors are independent
-async model calls — groundedness → the LM Studio judge, safety → Granite Guardian
-— so they are concurrent within a case; cases run sequentially to be kind to a
+async model calls — groundedness → the LM Studio judge, safety → the guardrail
+service — so they are concurrent within a case; cases run sequentially to be kind to a
 single local GPU).
 
 **Claim provenance (integrity caveat).** The one input the activity gets upstream
@@ -25,7 +25,7 @@ that a golden case lacks is the ``citationsMap``: production derives it from liv
 NLP NER spans (:func:`harness.services.provenance.build_citations_map`). NLP is
 intentionally out of scope here, so claims are derived eval-side by segmenting the
 note into sentence-level claims and mapping each inline ``<Note ID:N>`` marker to
-its cited ``source_documents[N-1]`` as evidence. The judge / Granite verdicts are
+its cited ``source_documents[N-1]`` as evidence. The judge / guardrail verdicts are
 fully live; only the claim SEGMENTATION is eval-side.
 
 Run it (the judge defaults to LM Studio ``google/gemma-4-e4b``; set the json
@@ -56,14 +56,18 @@ from harness.eval.golden.sources import JSONFileGoldenSetSource
 from harness.eval.judge.base import JudgeClient
 from harness.eval.judge.providers import build_judge_client
 from harness.eval.models import GoldenCase, GoldenSet
-from harness.eval.safety_selection import resolve_eval_safety_config
 from harness.sensors.base import SensorContext
 from harness.sensors.config import SensorThresholds
 from harness.sensors.inferential import (
-    GraniteGuardianClient,
     GroundednessSensor,
+    GuardrailSafetyScreen,
     SafetySensor,
 )
+from harness.services.guardrail_client import GuardrailClient
+
+#: The offline tools run with NO request tenant, so they resolve the SYSTEM tier only —
+#: never a customer tenant (rule 00, "the two reserved tenants are NOT two config tiers").
+_SYSTEM_TENANT_ID = "00000000-0000-0000-0000-000000000000"
 
 # SOAP section header ("Subjective:" …) -> single-letter code (matches the sensors).
 _SECTION_HEADERS = {"subjective": "S", "objective": "O", "assessment": "A", "plan": "P"}
@@ -174,7 +178,7 @@ class InferentialCaseResult(BaseModel):
     ungrounded: list[str] = Field(default_factory=list)
     sections: list[str] = Field(default_factory=list)
 
-    # Safety (Granite Guardian; LM Studio ``granite-guardian-4.1-8b`` by default).
+    # Safety (the `apps/guardrail` outbound screen; guardrail selects the model).
     safety_unsafe: bool | None = None
     safety_passed: bool | None = None
     safety_degraded: bool = False
@@ -190,14 +194,14 @@ async def score_case(
     case: GoldenCase,
     *,
     judge: JudgeClient,
-    granite: GraniteGuardianClient,
+    safety_screen: GuardrailSafetyScreen,
     threshold: float,
 ) -> InferentialCaseResult:
     """Run groundedness + safety over one case (concurrently, like the activity)."""
     ctx = build_inferential_context(case)
     n_claims = len(ctx.claims())
     groundedness = GroundednessSensor(threshold=threshold)
-    safety = SafetySensor(granite)
+    safety = SafetySensor(safety_screen)
 
     started = time.monotonic()
     g_res, s_res = await asyncio.gather(
@@ -295,17 +299,28 @@ async def run_eval(
 ) -> dict[str, Any]:
     """Score every case (sequentially) and return ``{aggregate, cases, judge_model}``."""
     judge = build_judge_client(get_runtime_judge_config())
-    # TASK-791 W7 / TASK-792: the guardian's provider+model come from the
-    # `guardrail.safety` AiTaskDefault (tenant -> SYSTEM), never from
-    # SafetyGuardConfig's hardcoded `lm-studio` / `granite-guardian-4.1-8b`
-    # defaults. Fails CLOSED — screening with a different guardian than the
-    # platform selects is worse than refusing to run.
-    granite = GraniteGuardianClient(await resolve_eval_safety_config(get_settings().safety))
+    # The guardian's provider + model are resolved by `apps/guardrail` from the
+    # `guardrail.safety` AiTaskDefault (tenant -> SYSTEM), fail-closed. This tool no
+    # longer resolves a selection itself: it screens through the same service the
+    # Temporal activity does, so an eval verdict and a production verdict come from one
+    # policy. Screening with a different guardian than the platform selects would make
+    # the corpus number meaningless.
+    settings = get_settings()
+    safety_screen = GuardrailSafetyScreen(
+        GuardrailClient(
+            settings.guardrail_base_url,
+            service_token=settings.peer_service_token(settings.guardrail_service_token),
+            timeout=settings.guardrail_timeout_s,
+        ),
+        tenant_id=_SYSTEM_TENANT_ID,
+    )
 
     cases = golden_set.cases if limit is None else golden_set.cases[:limit]
     results: list[InferentialCaseResult] = []
     for case in cases:
-        res = await score_case(case, judge=judge, granite=granite, threshold=threshold)
+        res = await score_case(
+            case, judge=judge, safety_screen=safety_screen, threshold=threshold
+        )
         results.append(res)
         flagged = ",".join(res.safety_flagged) or "-"
         g_str = "DEGRADED" if res.groundedness_degraded else f"{res.groundedness:.3f}"
@@ -320,7 +335,7 @@ async def run_eval(
     return {
         "golden_set_version": golden_set.version,
         "judge_model": judge.model,
-        "granite_model": granite.model,
+        "safety_model": safety_screen.model,
         "groundedness_threshold": threshold,
         "aggregate": aggregate(results),
         "cases": [r.model_dump() for r in results],

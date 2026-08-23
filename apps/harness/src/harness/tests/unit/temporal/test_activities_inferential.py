@@ -24,11 +24,11 @@ import httpx
 import pytest
 from temporalio.testing import ActivityEnvironment
 
-from harness.core.config import SafetyGuardConfig
 from harness.core.llm_concurrency import reset_endpoint_limiters
 from harness.eval.judge.base import JudgeConnectionError
 from harness.eval.judge.providers import _create_with_retry
-from harness.sensors.inferential.granite_client import GraniteGuardianClient
+from harness.sensors.inferential.guardrail_screen import GuardrailSafetyScreen
+from harness.services.guardrail_client import GuardrailClient
 from harness.temporal import activities
 from harness.temporal.models import RunInferentialSensorsInput
 
@@ -102,10 +102,10 @@ class _CreateRetryJudge:
 
 
 class _FakeGranite:
-    """Granite stand-in: canned per-dimension verdicts (returns immediately)."""
+    """Safety-screen stand-in: canned per-dimension verdicts (returns immediately)."""
 
     def __init__(self, *, dimensions: dict[str, bool] | None = None) -> None:
-        self.model = "granite-fake"
+        self.model = "screen-fake"
         self._dimensions = dimensions or {}
         self.screened: list[str] = []
 
@@ -114,16 +114,20 @@ class _FakeGranite:
         return dict(self._dimensions)
 
 
-class _HangingTransport(httpx.AsyncBaseTransport):
-    """httpx transport that never responds — a wedged LM Studio box."""
+class _TimingOutTransport(httpx.AsyncBaseTransport):
+    """httpx transport that times out — a wedged peer whose client clock ran out.
+
+    Raises the exception a REAL bounded `httpx.AsyncClient` surfaces rather than
+    sleeping: httpx enforces its `timeout=` inside its own transport, so a custom
+    transport that merely sleeps would hang forever and prove nothing about harness.
+    """
 
     def __init__(self) -> None:
         self.requests = 0
 
     async def handle_async_request(self, request: httpx.Request) -> httpx.Response:
         self.requests += 1
-        await asyncio.sleep(30)
-        raise AssertionError("unreachable: must be aborted by the per-call timeout")
+        raise httpx.ReadTimeout("timed out", request=request)
 
 
 def _cited_claim_input(**kw: Any) -> RunInferentialSensorsInput:
@@ -131,6 +135,10 @@ def _cited_claim_input(**kw: Any) -> RunInferentialSensorsInput:
     premise) AND citation_verify (``knowledgeChunkIds`` + a resolvable chunk), so a hung
     judge degrades both judge sensors."""
     base: dict[str, Any] = {
+        # The safety screen is a tenant-scoped call into apps/guardrail
+        # (TASK-737: `X-Tenant-Id` mandatory), so both workflow call sites now thread
+        # the tenant onto this input; without it the safety sensor degrades by design.
+        "tenant_id": "11111111-1111-1111-1111-111111111111",
         "note_text": "Patient has hypertension; continue current plan.",
         "transcript_text": "Patient has hypertension.",
         # SYSTEM harness.judge selection the workflow snapshots onto the
@@ -160,7 +168,7 @@ class TestPerCallTimeout:
         judge = _CreateRetryJudge(delay_s=30)  # never returns within the 0.05s budget
         granite = _FakeGranite(dimensions={"harm": False})
         monkeypatch.setattr(activities, "_build_runtime_judge", lambda *a, **k: judge)
-        monkeypatch.setattr(activities, "_granite_client", lambda s: granite)
+        monkeypatch.setattr(activities, "_safety_screen_client", lambda s, t: granite)
 
         # Outer guard: before the fix the hung call burns ~30s; the per-call timeout must
         # abort it near-instantly. ``wait_for`` makes the RED observable instead of hanging.
@@ -177,22 +185,32 @@ class TestPerCallTimeout:
         assert result.degraded is True
 
     @pytest.mark.asyncio
-    async def test_hung_granite_call_degrades_safety_only(self, env, monkeypatch):
-        transport = _HangingTransport()
-        granite = GraniteGuardianClient(
-            SafetyGuardConfig(harm_criteria=["harm"]), transport=transport
+    async def test_hung_safety_screen_degrades_safety_only(self, env, monkeypatch):
+        """A wedged guardrail degrades the SAFETY sensor and nothing else.
+
+        The screen is a peer-service call now, not an LLM call, so it is bounded by the
+        client's own httpx timeout rather than the LLM governor's per-call budget — but
+        the property that matters is unchanged: one dead backend degrades one sensor.
+        """
+        transport = _TimingOutTransport()
+        screen = GuardrailSafetyScreen(
+            GuardrailClient(
+                "http://guardrail.test", service_token="", timeout=0.05, transport=transport
+            ),
+            tenant_id="11111111-1111-1111-1111-111111111111",
         )
         judge = _StubJudge()
         monkeypatch.setattr(activities, "_build_runtime_judge", lambda *a, **k: judge)
-        monkeypatch.setattr(activities, "_granite_client", lambda s: granite)
+        monkeypatch.setattr(activities, "_safety_screen_client", lambda s, t: screen)
 
         result = await asyncio.wait_for(
             env.run(activities.run_inferential_sensors, _cited_claim_input()), timeout=5.0
         )
 
         gd = result.guardrail_decisions
+        assert transport.requests == 1
         assert gd["safety"]["decision"] == "DEGRADED"
-        assert "timeout" in gd["safety"]["reason"].lower()
+        assert "safety screen unavailable" in gd["safety"]["reason"].lower()
         # Judge sensors used a healthy stub -> real results, not degraded.
         assert gd["groundedness"].get("degraded") is not True
         assert gd["citation_verify"].get("degraded") is not True
@@ -206,7 +224,7 @@ class TestPerCallTimeout:
         judge = _CreateRetryJudge(delay_s=0.05)
         granite = _FakeGranite(dimensions={"harm": False})
         monkeypatch.setattr(activities, "_build_runtime_judge", lambda *a, **k: judge)
-        monkeypatch.setattr(activities, "_granite_client", lambda s: granite)
+        monkeypatch.setattr(activities, "_safety_screen_client", lambda s, t: granite)
 
         result = await asyncio.wait_for(
             env.run(activities.run_inferential_sensors, _cited_claim_input()), timeout=5.0
@@ -224,7 +242,7 @@ class TestHeartbeat:
         monkeypatch.setattr(activities, "_HEARTBEAT_INTERVAL_S", 0.01, raising=False)
         monkeypatch.setattr(activities, "_build_runtime_judge", lambda *a, **k: _StubJudge())
         monkeypatch.setattr(
-            activities, "_granite_client", lambda s: _FakeGranite(dimensions={"harm": False})
+            activities, "_safety_screen_client", lambda s, t: _FakeGranite(dimensions={"harm": False})
         )
         beats: list[tuple] = []
         env.on_heartbeat = lambda *args: beats.append(args)
@@ -263,7 +281,7 @@ class TestAtomicFactWiring:
     async def test_disabled_by_default_no_atomic_fact_signal(self, env, monkeypatch):
         monkeypatch.setattr(activities, "_build_runtime_judge", lambda *a, **k: _StubJudge())
         monkeypatch.setattr(
-            activities, "_granite_client", lambda s: _FakeGranite(dimensions={"harm": False})
+            activities, "_safety_screen_client", lambda s, t: _FakeGranite(dimensions={"harm": False})
         )
         result = await env.run(activities.run_inferential_sensors, _cited_claim_input())
         assert "atomic_fact" not in result.guardrail_decisions
@@ -275,7 +293,7 @@ class TestAtomicFactWiring:
         monkeypatch.setattr(activities, "get_settings", lambda: Settings(atomic_fact_enabled=True))
         monkeypatch.setattr(activities, "_build_runtime_judge", lambda *a, **k: _StubJudge())
         monkeypatch.setattr(
-            activities, "_granite_client", lambda s: _FakeGranite(dimensions={"harm": False})
+            activities, "_safety_screen_client", lambda s, t: _FakeGranite(dimensions={"harm": False})
         )
         monkeypatch.setattr(activities, "_atomic_fact_entailer", lambda s: _StubNli())
         result = await env.run(activities.run_inferential_sensors, _cited_claim_input())
@@ -291,7 +309,7 @@ class TestAtomicFactWiring:
         monkeypatch.setattr(activities, "get_settings", lambda: Settings(atomic_fact_enabled=True))
         monkeypatch.setattr(activities, "_build_runtime_judge", lambda *a, **k: _StubJudge())
         monkeypatch.setattr(
-            activities, "_granite_client", lambda s: _FakeGranite(dimensions={"harm": False})
+            activities, "_safety_screen_client", lambda s, t: _FakeGranite(dimensions={"harm": False})
         )
         monkeypatch.setattr(
             activities,

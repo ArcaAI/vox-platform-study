@@ -210,7 +210,6 @@ class EvalConfig(BaseSettings):
 
     # Pinned golden-set version the gate runs against (CI overrides via env).
     golden_set_version: str = "synthetic-v0.1.0"
-    golden_set_path: str = ""
 
     # Hard cap on cases the SYNCHRONOUS internal ``/eval/run`` endpoint will score
     # in one request (apps/api promotion gate + admin run-now). Larger sets belong

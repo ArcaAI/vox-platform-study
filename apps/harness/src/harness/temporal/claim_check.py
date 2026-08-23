@@ -206,6 +206,33 @@ def content_key(data: bytes) -> str:
     return _sha256_hex(data)
 
 
+#: The registry key that supplies the PLATFORM default for the offload threshold.
+#: Registered as `global-kv`, `consumedBy: ['harness']` (D-2).
+CLAIM_CHECK_MIN_BYTES_KEY = "harness.claimCheck.minBytes"
+
+
+def resolve_min_bytes(snapshot: Any | None, bootstrap: int) -> int:
+    """The offload threshold in force: control plane, else the env bootstrap value.
+
+    Retunable without a redeploy on purpose — the safe threshold depends on how much
+    Temporal history an encounter is actually consuming, which differs per environment
+    and per workload, and the alternative to tuning it is a workflow that blows its
+    ~50 MB history budget mid-encounter.
+
+    A non-positive or non-integer value is REFUSED, not coerced: `min_bytes <= 0` would
+    offload EVERY payload including a two-word one, turning a history-budget guard into a
+    per-field store round trip. The bootstrap value stands in every rejection case, so a
+    degraded control plane changes nothing.
+    """
+    if snapshot is None or not getattr(snapshot, "ok", False):
+        return bootstrap
+    value = snapshot.setting(CLAIM_CHECK_MIN_BYTES_KEY)
+    # `bool` is an `int` subclass — exclude it, or `True` would become 1.
+    if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
+        return bootstrap
+    return value
+
+
 def should_offload(text: str, *, min_bytes: int) -> bool:
     """True when the utf-8 blob is at/above the offload threshold.
 

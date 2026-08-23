@@ -29,6 +29,7 @@ from temporalio.exceptions import ApplicationError
 
 from harness.core.config import Settings, get_runtime_judge_config, get_settings
 from harness.core.consent_client import ConsentClient, ConsentDecision, build_consent_client
+from harness.core.effective_config import get_effective_config_client
 from harness.core.logging import get_logger
 from harness.core.metrics import inc_gate_decision, inc_regen, observe_step_duration
 from harness.eval.judge.base import JudgeClient
@@ -51,7 +52,7 @@ from harness.redaction.engine import (
     apply_deterministic_redaction,
 )
 from harness.sensors.base import NEREntity, SensorContext, SensorResult
-from harness.sensors.config import SensorThresholds
+from harness.sensors.config import SensorThresholds, resolve_sensor_thresholds
 from harness.sensors.inferential import (
     ATOMIC_FACT_NAME,
     CITATION_VERIFY_NAME,
@@ -60,8 +61,8 @@ from harness.sensors.inferential import (
     AtomicFactSensor,
     CitationVerifySensor,
     DeterministicOverlapEntailer,
-    GraniteGuardianClient,
     GroundednessSensor,
+    GuardrailSafetyScreen,
     NliEntailer,
     SafetySensor,
 )
@@ -81,6 +82,7 @@ from harness.services.api_client import (
     TrajectoryStepInput,
 )
 from harness.services.embeddings_client import EmbeddingsClient
+from harness.services.guardrail_client import GuardrailClient
 from harness.services.nlp_client import NlpClient
 from harness.services.reranker_client import RerankerClient
 from harness.services.sensor_runner import SensorRunOutput, run_computational_sensors
@@ -90,6 +92,7 @@ from harness.temporal.claim_check import (
     build_blob_store,
     load_blob,
     maybe_offload,
+    resolve_min_bytes,
 )
 from harness.temporal.models import (
     AGENT_ROLE_SPECIALIST,
@@ -506,8 +509,29 @@ def _build_runtime_judge(*, provider: str | None = None, model: str | None = Non
     return build_judge_client(config)
 
 
-def _granite_client(settings: Settings) -> GraniteGuardianClient:
-    return GraniteGuardianClient(settings.safety)
+def _safety_screen_client(settings: Settings, tenant_id: str) -> GuardrailSafetyScreen:
+    """Build the safety screen — a DELEGATION to ``apps/guardrail``, not a local engine.
+
+    Harness used to construct an IBM Granite Guardian client here from
+    ``settings.safety`` (provider / base_url / model / harm-criteria taxonomy in env) and
+    post at an OpenAI-compatible endpoint itself, which is the second inference stack rule
+    06 forbids. It now uses the SAME ``GuardrailClient`` the interpreter lane already used
+    (``temporal/interpreter/nodes/guardrail_check.py``); guardrail owns the policy, the
+    tenant-resolved taxonomy and the engine delegation.
+
+    Factored out like the other client factories so tests can monkeypatch it with a stub.
+    """
+    return GuardrailSafetyScreen(
+        GuardrailClient(
+            settings.guardrail_base_url,
+            # The shared `INTERNAL_ACCESS_TOKEN`, legacy-falling-back to guardrail's own
+            # token — NOT `HARNESS_SERVICE_TOKEN`, which apps/guardrail never accepts.
+            # Same credential choice as the interpreter lane's guardrail hop (D-D).
+            service_token=settings.peer_service_token(settings.guardrail_service_token),
+            timeout=settings.guardrail_timeout_s,
+        ),
+        tenant_id=tenant_id,
+    )
 
 
 def _atomic_fact_entailer(settings: Settings, model_path: str | None = None) -> NliEntailer:
@@ -718,7 +742,13 @@ async def _offload_text(settings: Settings, text: str) -> tuple[str, ClaimCheckR
     if not cc.enabled:
         return text, None
     return await maybe_offload(
-        text, store=build_blob_store(cc), bucket=cc.bucket, min_bytes=cc.min_bytes
+        text,
+        store=build_blob_store(cc),
+        bucket=cc.bucket,
+        # PLATFORM default from the control plane, env as the bootstrap floor beneath it
+        # (TASK-799 A.2). A failed read keeps `cc.min_bytes`, so a degraded control plane
+        # leaves the offload behaviour byte-identical.
+        min_bytes=resolve_min_bytes(await _config_snapshot(), cc.min_bytes),
     )
 
 
@@ -1543,8 +1573,9 @@ async def dispatch_batch_transcription(
 async def run_sensors(payload: RunSensorsInput) -> SensorRunOutput:
     """Build the SensorContext + provenance and run all computational sensors.
 
-    ``payload.thresholds`` is the policy-driven :class:`SensorThresholds`;
-    ``None`` falls back to the sensors' own env-driven defaults.
+    ``payload.thresholds`` is the policy-driven (per-tenant) :class:`SensorThresholds`;
+    ``None`` falls back to the PLATFORM default the control plane resolves, and to the
+    sensors' own env values beneath that (see :func:`_platform_thresholds`).
     """
     # Resolve the (possibly offloaded) note + transcript inline-or-ref.
     settings = get_settings()
@@ -1562,7 +1593,7 @@ async def run_sensors(payload: RunSensorsInput) -> SensorRunOutput:
         transcript_context_item_id=payload.transcript_context_item_id,
         retrieved_chunk_ids=payload.retrieved_chunk_ids,
         allowed_segment_ids=payload.allowed_segment_ids,
-        thresholds=payload.thresholds,
+        thresholds=await _platform_thresholds(payload.thresholds),
     )
     batch = _TrajectoryBatch(settings, payload.trajectory)
     batch.record(
@@ -1806,6 +1837,49 @@ async def _run_atomic_fact_sensor(
     return await AtomicFactSensor(entailer, threshold=threshold).arun(ctx)
 
 
+async def _config_snapshot() -> Any | None:
+    """The process-wide control-plane snapshot, or `None` when it cannot be read.
+
+    Never raises: every consumer of this treats `None` as "keep the bootstrap value", so
+    a config read can never fail an activity that would otherwise have succeeded.
+    """
+    try:
+        return await get_effective_config_client().get()
+    except Exception as exc:  # noqa: BLE001 — a config read must never fail a pass
+        activity.logger.warning(
+            "harness.effective_config.unavailable",
+            extra={"error": str(exc), "error_type": type(exc).__name__},
+        )
+        return None
+
+
+async def _platform_thresholds(policy: SensorThresholds | None) -> SensorThresholds:
+    """The thresholds this run gates on: policy (tenant) then control plane then env.
+
+    `policy` is the PUSH lane — `HarnessPolicy` resolved per tenant by apps/api and
+    snapshotted onto the activity input at workflow start. When it is set, the tenant has
+    an opinion and it wins outright; the control plane is not consulted (owner decision
+    D-1: anything that varies BY TENANT travels PUSH, and PULL carries only the one
+    platform value).
+
+    When it is absent, the PLATFORM default comes from the control plane, with the
+    service's own env values as the bootstrap floor beneath it. Every failure degrades to
+    that floor — `resolve_sensor_thresholds` refuses an unresolved or out-of-contract
+    value rather than substituting one, so a degraded control plane leaves every clinical
+    gate exactly where it was.
+
+    Safe to call from an ACTIVITY (network I/O); never from a workflow body.
+    """
+    if policy is not None:
+        return policy
+    return resolve_sensor_thresholds(await _config_snapshot(), SensorThresholds())
+
+
+async def _already(result: SensorResult) -> SensorResult:
+    """Wrap an already-decided result so it can join the ``asyncio.gather`` fan-out."""
+    return result
+
+
 @activity.defn
 async def run_inferential_sensors(payload: RunInferentialSensorsInput) -> InferentialRunOutput:
     """Run the costly inferential sensors (groundedness + safety) once, concurrently.
@@ -1892,7 +1966,14 @@ async def run_inferential_sensors(payload: RunInferentialSensorsInput) -> Infere
                 citations_map=payload.citations_map,
                 knowledge_chunks=knowledge_chunks_in,
                 judge_provider=judge_provider,
-                safety_provider=settings.safety.provider if payload.safety_enabled else None,
+                # `None`, because the safety screen no longer egresses from harness to a
+                # provider at all: it posts the note to `apps/guardrail`, a first-party
+                # internal peer, exactly like the `text`/`nlp` hops this guard has never
+                # gated. Guardrail owns the PHI posture of whatever engine IT selects —
+                # harness cannot know that engine and must not guess it. The `judge_*`
+                # gating below is unchanged, because the judge client still posts to its
+                # selected provider directly from this process.
+                safety_provider=None,
                 settings=settings,
                 phi_enabled=payload.phi_enabled,
                 phi_fail_closed=payload.phi_fail_closed,
@@ -1938,7 +2019,9 @@ async def run_inferential_sensors(payload: RunInferentialSensorsInput) -> Infere
                 degraded.append(degraded_result(SAFETY_NAME, reason))
             return await _emit(_assemble_inferential_output(degraded, verdict_cache))
 
-        thresholds = SensorThresholds()
+        # The inferential input carries no policy thresholds of its own (the groundedness
+        # one arrives as its own field), so this is the platform-default lookup.
+        thresholds = await _platform_thresholds(None)
         # The groundedness pass threshold is policy-driven; the safety screen
         # is skipped entirely when the policy disables the safety guard.
         # Claim batching is env-driven (HARNESS_JUDGE_ENTAILMENT_BATCH_SIZE);
@@ -1966,11 +2049,20 @@ async def run_inferential_sensors(payload: RunInferentialSensorsInput) -> Infere
             # "safety" sensor identity, so its keys never collide with groundedness/citation
             # entries while an unchanged-content regen pass reuses the prior screen (no Granite
             # call). No new carrier field / workflow command — the existing dict is threaded.
-            tasks.append(
-                SafetySensor(_granite_client(settings)).arun(
-                    ctx, judge=judge, screen_cache=verdict_cache
+            if payload.tenant_id:
+                tasks.append(
+                    SafetySensor(_safety_screen_client(settings, payload.tenant_id)).arun(
+                        ctx, judge=judge, screen_cache=verdict_cache
+                    )
                 )
-            )
+            else:
+                # A tenant-scoped internal call with no tenant is a CALLER bug (TASK-737),
+                # not something to paper over with a default: guardrail would answer 428
+                # and the screen would look like an outage. Degrade explicitly and say why.
+                results_degraded = degraded_result(
+                    SAFETY_NAME, "safety screen unavailable: no tenant on the inferential input"
+                )
+                tasks.append(_already(results_degraded))
         # The DETERMINISTIC reference-free atomic-fact verifier runs
         # ALONGSIDE the judge sensors (defense-in-depth), gated by the runtime ops
         # kill-switch (default OFF). It uses a SELF-HOSTED NLI (NOT the judge), so it adds

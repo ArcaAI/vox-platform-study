@@ -77,6 +77,30 @@ class EffectiveConfigSnapshot:
             key: value for key, raw in mapping.items() if (value := _positive_int(raw)) is not None
         }
 
+    def setting(self, key: str) -> Any | None:
+        """One registry key's resolved value, or `None` when it is UNRESOLVED.
+
+        `None` is the whole contract: an absent `settings` block, an absent key, a stored
+        `null`, or a malformed entry all read the same way — *the control plane has no
+        opinion, keep the bootstrap value*. It is NEVER a stand-in for the descriptor's
+        default, because a client that cannot tell "no opinion" from "the default" cannot
+        implement a fail-closed key at all.
+
+        The wire shape is `{value, dataType, source}` per key
+        (`EffectiveConfigResponse.settings`). `dataType` is deliberately NOT re-validated
+        here: the gateway already refuses a value that does not match its DECLARED type
+        (`matchesDataType` in `effective-config.service.ts`), and a second, drifting copy
+        of that table is what this contract exists to avoid. Callers apply their own
+        RANGE contract instead — see `resolve_sensor_thresholds`.
+        """
+        group = self.raw.get("settings")
+        if not isinstance(group, dict):
+            return None
+        entry = group.get(key)
+        if not isinstance(entry, dict):
+            return None
+        return entry.get("value")
+
     def model_weights(self) -> dict[str, dict[str, Any]]:
         """Model slug → where that model's weights come from (F-16).
 
@@ -283,6 +307,35 @@ class EffectiveConfigClient:
             self._last_refresh_at = datetime.now(UTC)
             # Empty result cached for a full window ⇒ callers keep env values.
             return EffectiveConfigSnapshot(raw={}, ok=False, fetched_at=self._last_refresh_at)
+
+
+#: The ONE client per process. Populated by `get_effective_config_client`.
+_CLIENT: EffectiveConfigClient | None = None
+
+
+def get_effective_config_client() -> EffectiveConfigClient:
+    """The process-wide client — one TTL cache, one invalidation target.
+
+    A singleton is load-bearing, not a convenience. Every consumer must share ONE
+    instance or the cache and the push-invalidation path come apart: the worker's
+    invalidation listener (`temporal/worker.py`) evicts the instance it was handed, so a
+    second instance built by an activity would keep serving a stale snapshot for a full
+    TTL after a control-plane write — which is exactly the defect A.3 exists to close.
+
+    Not `functools.lru_cache`: the settings this reads are process-lifetime values, but a
+    test needs to reset the client, and `reset_effective_config_client` is clearer at the
+    call site than reaching into a cache's internals.
+    """
+    global _CLIENT
+    if _CLIENT is None:
+        _CLIENT = build_effective_config_client()
+    return _CLIENT
+
+
+def reset_effective_config_client() -> None:
+    """Drop the process-wide client (tests only)."""
+    global _CLIENT
+    _CLIENT = None
 
 
 def build_effective_config_client() -> EffectiveConfigClient:

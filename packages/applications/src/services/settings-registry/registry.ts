@@ -17,6 +17,7 @@ import { ENTITLEMENT_SETTINGS } from './descriptors/entitlements.descriptors';
 import { FEATURE_FLAG_SETTINGS } from './descriptors/feature-flags.descriptors';
 import { GUARDRAIL_POLICY_SETTINGS } from './descriptors/guardrail-policy.descriptors';
 import { HARNESS_LOOP_SETTINGS } from './descriptors/harness-loop.descriptors';
+import { HARNESS_CLAIM_CHECK_MIN_BYTES, HARNESS_SENSOR_SETTINGS } from './descriptors/harness-sensor.descriptors';
 import { METERING_SETTINGS } from './descriptors/metering.descriptors';
 import { MODEL_DEFAULT_SETTINGS } from './descriptors/model-defaults.descriptors';
 import { PHI_REDACTION_SETTINGS } from './descriptors/phi-redaction.descriptors';
@@ -111,6 +112,13 @@ export const HOPE_SETTINGS_REGISTRY: SettingsRegistry = new SettingsRegistry().r
   // The loop's IDLE bound. A tuning knob rather than a kill-switch, and PINNED
   // at workflow start rather than re-read per signal — see the descriptor.
   ...HARNESS_LOOP_SETTINGS,
+
+  // ── Clinical-assurance gate thresholds (TASK-799 A.2) ────────────────────
+  // The PLATFORM defaults for the harness sensor gates, served on the pull route.
+  // The per-tenant lane is `HarnessPolicy` (PUSH), not an override here — see the
+  // descriptor file for why the split falls that way (D-1).
+  ...HARNESS_SENSOR_SETTINGS,
+  HARNESS_CLAIM_CHECK_MIN_BYTES,
 
   // ╔══════════════════════════════════════════════════════════════════════════╗
   // ║ REGISTRATION POINT — storage config → DB + Vault                         ║
