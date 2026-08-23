@@ -34,6 +34,29 @@ export class SettingCatalogItemResponse {
 
   @ApiPropertyOptional()
   description?: string;
+
+  // TASK-799 Phase 4 — the GOVERNANCE half of a descriptor. Without these the
+  // console can render a control but cannot explain the rule behind it, so an
+  // admin learns `floorDirection` by being refused (403 on a loosening write,
+  // `settings-registry-write.service.ts`). Projecting them is what lets the
+  // screen answer "why is this value what it is" BEFORE the click.
+  @ApiPropertyOptional({ description: 'True = a kill-switch whose safe position is OFF.' })
+  killSwitch?: boolean;
+
+  @ApiPropertyOptional({ description: "`closed` = an unset value is an outage, not a fallback; `open-to-default` = falls back to `default`.", example: 'closed' })
+  failMode?: string;
+
+  @ApiPropertyOptional({ description: 'When set, a tenant may only move the value in this direction relative to the platform (tighten-only).', example: 'lower-is-stricter' })
+  floorDirection?: string;
+
+  @ApiPropertyOptional({ description: 'The descriptor default. OMITTED for secret-sensitivity keys — the read surface never carries secret material.' })
+  default?: unknown;
+
+  @ApiPropertyOptional({ type: [String], description: 'Deployables served this key on the effective-config pull route. Absent = the key travels per-request instead (tenant-scoped).' })
+  consumedBy?: readonly string[];
+
+  @ApiPropertyOptional({ description: 'Recorded eventual home when `tier` is not where the key ends up.', example: 'global-kv' })
+  targetTier?: string;
 }
 
 export class SettingCatalogResponse {

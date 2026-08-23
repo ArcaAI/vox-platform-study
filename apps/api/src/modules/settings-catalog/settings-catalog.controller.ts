@@ -49,6 +49,19 @@ export class SettingsCatalogController {
         globalOnly: d.globalOnly,
         label: d.label,
         description: d.description,
+        // TASK-799 Phase 4 — the governance half. The console builds its
+        // explain-before-you-click affordances from these; without them
+        // `floorDirection` was only discoverable as a 403.
+        killSwitch: d.killSwitch,
+        failMode: d.failMode,
+        floorDirection: d.floorDirection,
+        // `default` is withheld for SECRET-sensitivity descriptors. The rest of
+        // this catalog is metadata, but a secret's default is the one field that
+        // could carry material; the effective-read surface already refuses
+        // secrets outright, and this keeps the two surfaces consistent.
+        default: d.sensitivity === 'secret' ? undefined : d.default,
+        consumedBy: d.consumedBy,
+        targetTier: d.targetTier,
       }));
     const categories = [...new Set(items.map((i) => i.category))].sort();
     return { items, categories };
