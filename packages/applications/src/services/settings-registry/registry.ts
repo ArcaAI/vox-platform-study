@@ -30,6 +30,7 @@ import { TEXT_PROVIDER_CONNECTION_SETTINGS } from './descriptors/text-provider-c
 import { STORAGE_SETTINGS } from './descriptors/storage.descriptors';
 import { STT_FALLBACK_SETTINGS } from './descriptors/stt-fallback.descriptors';
 import { STT_RUNTIME_SETTINGS } from './descriptors/stt-runtime.descriptors';
+import { TTS_RUNTIME_SETTINGS } from './descriptors/tts-runtime.descriptors';
 import { TTS_SETTINGS } from './descriptors/tts.descriptors';
 import { SettingsRegistry } from './settings-registry';
 
@@ -38,6 +39,12 @@ export const HOPE_SETTINGS_REGISTRY: SettingsRegistry = new SettingsRegistry().r
   // Platform storage default: SYSTEM TenantStorageConfig row + Vault kv-v2.
   ...STORAGE_SETTINGS,
   ...TTS_SETTINGS,
+  // tts PLATFORM provider config — endpoints, local-engine model ids, timeouts,
+  // concurrency and synthesis limits, all of which were environment variables
+  // until TASK-799 lane C. The tenant-varying half stays in TTS_SETTINGS above
+  // and travels the push channel; these ride the pull route (D-1). The two cloud
+  // credentials appear in NEITHER: they have no env path at all by construction.
+  ...TTS_RUNTIME_SETTINGS,
   // Per-tenant STT fallback pipeline pointer + BYO provider credentials.
   ...STT_FALLBACK_SETTINGS,
   // Batch (pre-recorded file) upload ceilings — recordings per batch, minutes

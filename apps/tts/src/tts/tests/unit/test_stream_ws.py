@@ -17,7 +17,7 @@ from tts.tests.fakes import FakeEngine
 
 
 def _app(*, service_token: str = "", providers: dict | None = None):
-    app = create_app(settings_override=Settings(service_token=service_token))
+    app = create_app(settings_override=Settings(internal_access_token=service_token))
     if providers is None:
         providers = {"azure": FakeEngine("azure", chunks=1)}
     for name, engine in providers.items():
