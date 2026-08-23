@@ -41,7 +41,10 @@ def get_app() -> FastAPI:
     app.add_middleware(
         CORSMiddleware,
         allow_origins=settings.security.cors_origins,
-        allow_credentials=True,
+        # The DECLARED knob, not a literal: `SecurityConfig` refuses the
+        # wildcard-origins + credentials pairing at validation, so this can
+        # never re-open it.
+        allow_credentials=settings.security.cors_allow_credentials,
         allow_methods=settings.security.cors_methods,
         allow_headers=["*"],
     )
