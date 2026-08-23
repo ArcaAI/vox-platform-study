@@ -114,6 +114,13 @@ class TestSharedInternalTokenIsPresented:
             async def close(self) -> None:
                 return None
 
+            async def run_invalidation_listener(self, redis) -> None:
+                # The lifespan now starts the RC-6 push-invalidation listener on
+                # this client. Returning immediately keeps the task short-lived;
+                # the listener's own behaviour is pinned in
+                # `test_task799_config_invalidation.py`.
+                return None
+
         def _stub_start_registration(*, service_token, **_kwargs):
             captured["registration_token"] = service_token
             return None

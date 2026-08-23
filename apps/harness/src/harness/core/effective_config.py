@@ -19,6 +19,7 @@ settled, closed decision, not reopened here.
 from __future__ import annotations
 
 import asyncio
+import json
 import random
 import time
 from collections.abc import Callable
@@ -35,6 +36,16 @@ logger = structlog.get_logger(__name__)
 SERVICE_NAME = "harness"
 
 DEFAULT_TTL_S = 60
+
+#: The generalised Redis pub/sub channel the gateway publishes config
+#: invalidation on. Mirrors ``PYTHON_CONFIG_INVALIDATION_CHANNEL`` in
+#: ``packages/applications/src/services/settings-registry/settings-registry-write.service.ts``.
+#:
+#: ONE channel for every Python pull client, not one per service: the publisher
+#: would otherwise need a second copy of ``SettingDescriptor.consumedBy`` to
+#: decide who to tell, and a drifting literal is exactly what left
+#: ``arca:guardrail-config:invalidate`` subscribed-but-never-published (RC-6).
+CONFIG_INVALIDATION_CHANNEL = "arca:config:invalidate"
 DEFAULT_TIMEOUT_S = 5.0
 _JITTER_FRACTION = 0.10
 
@@ -64,6 +75,32 @@ class EffectiveConfigSnapshot:
         }
         return {
             key: value for key, raw in mapping.items() if (value := _positive_int(raw)) is not None
+        }
+
+    def model_weights(self) -> dict[str, dict[str, Any]]:
+        """Model slug → where that model's weights come from (F-16).
+
+        The gateway serves `modelWeights[<slug>] = {sourceUri, localPath,
+        checksum}` for the models this service's `AiTaskDefault` rows select.
+        `models/source_resolver.py` was coded against this block before it
+        existed on either side of the wire; this accessor is the Python half.
+
+        An ABSENT or malformed block reads as `{}` — "the control plane has no
+        opinion, keep the bootstrap env path" — never as "no weights exist".
+        Individual non-object entries are dropped for the same reason; the
+        resolver must not be handed something it would treat as a weight.
+
+        The `sourceUri` GRAMMAR (`hf:` / `file://` / `s3://`) is deliberately not
+        interpreted here — `resolve_model_dir` owns that dispatch, and a second
+        copy would drift.
+        """
+        group = self.raw.get("modelWeights")
+        if not isinstance(group, dict):
+            return {}
+        return {
+            slug: entry
+            for slug, entry in group.items()
+            if isinstance(slug, str) and isinstance(entry, dict)
         }
 
 
@@ -121,6 +158,73 @@ class EffectiveConfigClient:
         """Drop the cached snapshot so the next read refetches (tests/admin)."""
         self._snapshot = EffectiveConfigSnapshot()
         self._expires_at = None
+
+    def handle_invalidation_message(self, payload: Any) -> bool:
+        """Drop the cached snapshot in response to ONE pub/sub message.
+
+        Rule 09 §"Config caches": *invalidation is the propagation path; the TTL
+        is a bounded-staleness safety net*. This method is that path — before it,
+        this service converged on a control-plane write only by 60s poll, which
+        removes the property that justifies moving a value out of env at all.
+
+        Deliberately UNFILTERED. One snapshot covers every key this service
+        consumes, and which keys those are is declared once, on the gateway's
+        ``SettingDescriptor.consumedBy``; filtering here would need a second,
+        drifting copy of that mapping. A registry write is rare and a refetch is
+        one bounded HTTP call, so over-invalidation is the cheap side of the
+        trade and a stale value held for a full TTL is the expensive one — which
+        is also why an UNPARSEABLE payload still evicts.
+
+        Never raises: a malformed message must not kill the listener task.
+        Returns True when the cache was dropped.
+        """
+        self.clear_cache()
+
+        key: str | None = None
+        try:
+            text = (
+                payload.decode("utf-8", errors="replace")
+                if isinstance(payload, (bytes, bytearray))
+                else payload
+            )
+            if isinstance(text, str):
+                parsed = json.loads(text)
+                if isinstance(parsed, dict) and isinstance(parsed.get("key"), str):
+                    key = parsed["key"]
+        except Exception:  # noqa: BLE001 — the eviction already happened
+            key = None
+
+        logger.info("harness.effective_config.invalidated", service=self._service, key=key)
+        return True
+
+    async def run_invalidation_listener(self, redis: Any) -> None:
+        """Subscribe to the invalidation channel and evict on every message.
+
+        Runs until cancelled. Every failure mode EXCEPT cancellation degrades to
+        the TTL backstop instead of taking the service down: a process that boots
+        while Redis is unreachable must still start, and must still converge.
+        """
+        try:
+            pubsub = redis.pubsub()
+            await pubsub.subscribe(CONFIG_INVALIDATION_CHANNEL)
+        except Exception as exc:  # noqa: BLE001 — propagation degrades to the TTL
+            logger.warning("harness.effective_config.invalidation_unavailable", error=str(exc))
+            return
+
+        try:
+            async for message in pubsub.listen():
+                if message.get("type") != "message":
+                    continue
+                self.handle_invalidation_message(message.get("data"))
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:  # noqa: BLE001 — never take the service down
+            logger.warning("harness.effective_config.invalidation_stopped", error=str(exc))
+        finally:
+            try:
+                await pubsub.aclose()
+            except Exception:  # noqa: BLE001
+                pass
 
     def diagnostics(self) -> dict[str, Any]:
         """Source labels and timestamps only — never values."""
