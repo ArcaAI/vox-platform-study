@@ -26,7 +26,7 @@ from text.models.requests import GenerateRequest, ProviderOverride
 from text.models.stats import GenerationStats, build_generation_stats
 from text.models.stream import StreamChunk
 from text.models.usage import anthropic_usage_dict
-from text.providers.base import require_model
+from text.providers.base import CredentialPosture, require_model
 
 if TYPE_CHECKING:
     from opentelemetry.trace import Tracer
@@ -56,6 +56,8 @@ def _get_tracer() -> Tracer:
 
 class AnthropicProvider:
     """Anthropic provider using the anthropic Python SDK (``AsyncAnthropic``)."""
+
+    credential_posture = CredentialPosture.BYOK
 
     def __init__(self, config: AnthropicConfig) -> None:
         self._config = config

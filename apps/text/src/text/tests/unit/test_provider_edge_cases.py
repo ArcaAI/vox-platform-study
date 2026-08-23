@@ -26,8 +26,11 @@ def azure_config():
 
 @pytest.fixture
 def bedrock_config():
-    return BedrockConfig(
-        region="us-east-1", default_model="anthropic.claude-3-sonnet-20240229-v1:0"
+    # Keyed: no platform client is built without an explicit credential.
+    return keyed(
+        BedrockConfig(
+            region="us-east-1", default_model="anthropic.claude-3-sonnet-20240229-v1:0"
+        )
     )
 
 
@@ -137,7 +140,7 @@ class TestBedrockEdgeCases:
             "usage": {"inputTokens": 5, "outputTokens": 10},
         }
         with patch("text.providers.bedrock.boto3") as mock_boto3:
-            mock_boto3.client.return_value = mock_client
+            mock_boto3.Session.return_value.client.return_value = mock_client
             provider = BedrockProvider(config=bedrock_config)
             content, _reasoning, usage = await provider.generate(
                 GenerateRequest(
@@ -156,7 +159,7 @@ class TestBedrockEdgeCases:
             "usage": {"inputTokens": 5, "outputTokens": 2},
         }
         with patch("text.providers.bedrock.boto3") as mock_boto3:
-            mock_boto3.client.return_value = mock_client
+            mock_boto3.Session.return_value.client.return_value = mock_client
             provider = BedrockProvider(config=bedrock_config)
             await provider.generate(
                 GenerateRequest(
@@ -185,7 +188,7 @@ class TestBedrockEdgeCases:
             )
         }
         with patch("text.providers.bedrock.boto3") as mock_boto3:
-            mock_boto3.client.return_value = mock_client
+            mock_boto3.Session.return_value.client.return_value = mock_client
             provider = BedrockProvider(config=bedrock_config)
             chunks = [
                 c
@@ -217,7 +220,7 @@ class TestBedrockEdgeCases:
             )
         }
         with patch("text.providers.bedrock.boto3") as mock_boto3:
-            mock_boto3.client.return_value = mock_client
+            mock_boto3.Session.return_value.client.return_value = mock_client
             provider = BedrockProvider(config=bedrock_config)
             chunks = [
                 c
@@ -241,7 +244,7 @@ class TestBedrockEdgeCases:
         mock_client = MagicMock()
         mock_client.list_foundation_models.side_effect = Exception("no creds")
         with patch("text.providers.bedrock.boto3") as mock_boto3:
-            mock_boto3.client.return_value = mock_client
+            mock_boto3.Session.return_value.client.return_value = mock_client
             provider = BedrockProvider(config=bedrock_config)
             info = await provider.get_info()
         assert info.status == "unavailable"
@@ -257,7 +260,7 @@ class TestBedrockEdgeCases:
             "usage": {"inputTokens": 5, "outputTokens": 2},
         }
         with patch("text.providers.bedrock.boto3") as mock_boto3:
-            mock_boto3.client.return_value = mock_client
+            mock_boto3.Session.return_value.client.return_value = mock_client
             provider = BedrockProvider(config=bedrock_config)
             await provider.generate(
                 GenerateRequest(

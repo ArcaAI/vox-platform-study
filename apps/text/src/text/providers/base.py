@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import AsyncIterator, Callable
+from enum import StrEnum
 from typing import Protocol, runtime_checkable
 
 from text.core.exceptions import ModelNotSelectedError, VisionNotSupportedError
@@ -14,6 +15,36 @@ from text.models.stream import StreamChunk
 
 class ProviderNotFoundError(KeyError):
     """Raised when a requested provider is not registered."""
+
+
+class CredentialPosture(StrEnum):
+    """How an adapter obtains the credential it authenticates with.
+
+    This exists so the BYOK lock test can iterate the REGISTRY instead of a
+    hand-written list of provider names. That distinction is not cosmetic: the
+    previous list named azure/openai/anthropic, and underneath it ``bedrock``
+    built a ``boto3`` client with no credentials (silently authenticating from
+    ``AWS_ACCESS_KEY_ID`` / ``AWS_PROFILE`` / instance metadata) and ``vertex``
+    built a ``genai`` client with no ``credentials=`` (Google ADC) — for years,
+    because neither was on the list. A declaration each adapter must make, and
+    a test that reads it off every registered provider, cannot skip the adapter
+    nobody remembered.
+
+    An adapter that declares NOTHING fails the lock test. Default-deny is the
+    point: a new provider is not silently assumed credential-free.
+    """
+
+    #: Vendor credential REQUIRED. It arrives per request as a gateway-injected
+    #: ``ProviderOverride`` (tenant → SYSTEM), or — in tests only — as an
+    #: explicitly constructed platform key. Absent both, the adapter MUST raise
+    #: ``ProviderCredentialsError`` rather than construct a client that would
+    #: pick a credential up from the process environment.
+    BYOK = "byok"
+    #: An operator-run engine reached by topology ``base_url`` (Ollama, LM Studio /
+    #: OpenAI-compatible, vLLM, llama.cpp). No vendor credential is required, so
+    #: there is nothing to fail closed on — but a tenant fronting its own endpoint
+    #: may still supply one through the same override path.
+    SELF_HOST = "self_host"
 
 
 def require_model(model: str | None, *, provider: str) -> str:
@@ -64,6 +95,15 @@ class LLMProvider(Protocol):
     default) is unaffected; a provider with no vision wire capability must
     raise ``VisionNotSupportedError`` (see ``reject_vision``) rather than drop
     the image parts.
+
+    Every implementation must also carry a ``credential_posture`` class attribute
+    (see ``CredentialPosture``). It is deliberately NOT declared as a member of
+    this Protocol: ``runtime_checkable`` turns any non-method member into an
+    ``isinstance`` requirement, which would change ``isinstance(x, LLMProvider)``
+    for every duck-typed provider and test double in the codebase. The obligation
+    is enforced instead by the registry-iterating lock test
+    (``tests/unit/test_task602_byok_credentials.py``), which fails for any
+    registered adapter that does not declare one.
     """
 
     # AD-1: the third element is a normalized ``GenerationStats`` (real

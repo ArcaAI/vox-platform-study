@@ -12,13 +12,19 @@ import pytest
 
 from text.core.config import BedrockConfig
 from text.models.requests import GenerateRequest
+from text.tests.conftest import keyed
 
 
 @pytest.fixture
 def bedrock_config():
-    return BedrockConfig(
-        region="us-east-1",
-        default_model="anthropic.claude-3-sonnet-20240229-v1:0",
+    # Keyed: Bedrock builds no platform client without an explicit credential
+    # (TASK-799 closed its ambient boto3 chain), and these tests are about the
+    # converse/stream wire, not the credential contract.
+    return keyed(
+        BedrockConfig(
+            region="us-east-1",
+            default_model="anthropic.claude-3-sonnet-20240229-v1:0",
+        )
     )
 
 
@@ -27,7 +33,7 @@ class TestBedrockProviderInit:
         from text.providers.bedrock import BedrockProvider
 
         with patch("text.providers.bedrock.boto3") as mock_boto3:
-            mock_boto3.client.return_value = MagicMock()
+            mock_boto3.Session.return_value.client.return_value = MagicMock()
             provider = BedrockProvider(config=bedrock_config)
             assert provider is not None
 
@@ -45,7 +51,7 @@ class TestBedrockGenerate:
         }
 
         with patch("text.providers.bedrock.boto3") as mock_boto3:
-            mock_boto3.client.return_value = mock_client
+            mock_boto3.Session.return_value.client.return_value = mock_client
             provider = BedrockProvider(config=bedrock_config)
             from text.models.stats import GenerationStats
 
@@ -71,7 +77,7 @@ class TestBedrockGenerate:
         }
 
         with patch("text.providers.bedrock.boto3") as mock_boto3:
-            mock_boto3.client.return_value = mock_client
+            mock_boto3.Session.return_value.client.return_value = mock_client
             provider = BedrockProvider(config=bedrock_config)
             await provider.generate(
                 GenerateRequest(
@@ -94,7 +100,7 @@ class TestBedrockGenerate:
         mock_client.converse.side_effect = Exception("Bedrock error")
 
         with patch("text.providers.bedrock.boto3") as mock_boto3:
-            mock_boto3.client.return_value = mock_client
+            mock_boto3.Session.return_value.client.return_value = mock_client
             provider = BedrockProvider(config=bedrock_config)
             with pytest.raises(Exception, match="Bedrock error"):
                 await provider.generate(
@@ -122,7 +128,7 @@ class TestBedrockGenerateStream:
         mock_client.converse_stream.return_value = {"stream": iter(mock_stream_events)}
 
         with patch("text.providers.bedrock.boto3") as mock_boto3:
-            mock_boto3.client.return_value = mock_client
+            mock_boto3.Session.return_value.client.return_value = mock_client
             provider = BedrockProvider(config=bedrock_config)
             chunks = []
             async for chunk in provider.generate_stream(
@@ -152,7 +158,7 @@ class TestBedrockHealthCheck:
         mock_client.list_foundation_models.return_value = {"modelSummaries": []}
 
         with patch("text.providers.bedrock.boto3") as mock_boto3:
-            mock_boto3.client.return_value = mock_client
+            mock_boto3.Session.return_value.client.return_value = mock_client
             provider = BedrockProvider(config=bedrock_config)
             assert await provider.health_check() is True
 
@@ -164,7 +170,7 @@ class TestBedrockHealthCheck:
         mock_client.list_foundation_models.side_effect = Exception("down")
 
         with patch("text.providers.bedrock.boto3") as mock_boto3:
-            mock_boto3.client.return_value = mock_client
+            mock_boto3.Session.return_value.client.return_value = mock_client
             provider = BedrockProvider(config=bedrock_config)
             assert await provider.health_check() is False
 
@@ -180,7 +186,7 @@ class TestBedrockGetInfo:
         }
 
         with patch("text.providers.bedrock.boto3") as mock_boto3:
-            mock_boto3.client.return_value = mock_client
+            mock_boto3.Session.return_value.client.return_value = mock_client
             provider = BedrockProvider(config=bedrock_config)
             info = await provider.get_info()
             assert info.name == "bedrock"
