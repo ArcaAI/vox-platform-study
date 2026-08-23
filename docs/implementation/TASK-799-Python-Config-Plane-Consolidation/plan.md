@@ -240,6 +240,33 @@ Standard:
 5. `turbo.json#globalEnv` is regenerated from the same source, so `GUARDRAIL_PORT` /
    `NLP_PORT`-style phantoms cannot survive.
 
+## Phase 1.5 — env files and start scripts, cleaned and aligned (standalone task)
+
+Owner request, 2026-08-23: a discrete task covering ALL dot-env files AND the start
+scripts. Runs alongside Phase 1; it is disjoint from the control-plane lanes.
+
+Scope and definition of done:
+1. **One generated surface.** `.env.sample` — root and per-service — becomes generated
+   output of `pnpm env:sync` for all six Python services, from their pydantic-settings
+   declarations. Ends the verbatim inlining at `scripts/env-sync.mts:461-468`.
+2. **The drift gate learns Python.** `scanTypeScriptReads()` (`:639`) globs no `*.py`, so
+   243 of 297 Python vars are invisible to `env-drift-check`. Extend it, or have each
+   service emit its declared field list as a build artifact the generator consumes.
+   Without this the migration's completion is unfalsifiable.
+3. **No phantom declarations.** `turbo.json#globalEnv` carries `GUARDRAIL_PORT`,
+   `NLP_PORT` and `AZURE_FOUNDRY_API_KEY` with no readers; `.gitlab/ci/test.yml:693`
+   sets `GUARDRAIL_GLINER_ENABLED`. Every declared var must have a reader, and every
+   read var must be declared.
+4. **`setup` scripts produce a WORKING env with no hand-editing.** `pnpm setup:dev`
+   must yield a `.env.dev` where every variable the stack needs is present and correct
+   for local infra, and secrets are minted rather than left as `CHANGE_ME`. Same for
+   `setup:test`. Verify by running them against a clean checkout.
+5. **Alignment.** One name per concept across services (`NLP_LOG_LEVEL` vs bare
+   `LOG_LEVEL`; `LOG_CONSOLE_JSON_FORMAT` declared but `LOG_FILE_JSON_FORMAT` read;
+   `NLP_EXTERNAL_TEXT_BASE_URL` duplicating `TEXT_URL`). Deleted `.env.prod` files stay
+   deleted — production reads host env only, and a committed prod file that lies is
+   worse than none.
+
 ## F-04 / F-05 — no hardcoded models, anywhere
 
 Owner restatement: **services MUST work from the tenant's or the platform's
