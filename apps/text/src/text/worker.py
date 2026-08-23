@@ -43,7 +43,9 @@ import structlog
 
 from text.core.config import get_settings
 from text.core.logging import setup_logging
+from text.core.runtime_defaults import TASK_STREAM_MAX_LEN, TASK_TTL_S
 from text.main import _register_provider_factories
+from text.models.embedding import EmbeddingBatchRequest
 from text.models.requests import GenerateRequest
 from text.models.task import TaskStatus
 from text.models.worker_task import WorkerTaskEnvelope, WorkerTaskType
@@ -127,11 +129,20 @@ class WorkerPoolConsumer:
             await self._queue.ack(self._task_type, msg_id)
 
 
-async def _handle_embedding(envelope: WorkerTaskEnvelope, *, embedding_provider: TeiEmbedProvider) -> None:
-    texts = envelope.payload.get("texts") or []
-    if not texts:
-        raise ValueError("embedding task payload carries no 'texts'")
-    await embedding_provider.embed(texts)
+async def _handle_embedding(
+    envelope: WorkerTaskEnvelope, *, embedding_provider: TeiEmbedProvider
+) -> None:
+    """Execute one queued embedding task.
+
+    The payload is re-validated as an `EmbeddingBatchRequest` so the connection
+    the SUBMITTING request resolved travels with the job. The worker has no
+    gateway to ask and no endpoint of its own, so a payload that carries no
+    connection FAILS the task (visible on `TaskManager` as FAILED) rather than
+    inventing one — owner decision D-1 rule 2: a service that receives no
+    injected config fails closed.
+    """
+    request = EmbeddingBatchRequest.model_validate(envelope.payload)
+    await embedding_provider.embed(request.texts, request)
 
 
 async def _handle_batch_generation(
@@ -166,21 +177,21 @@ async def main() -> None:
     # tei-embed-only timeout this used to carry, since it now also backs
     # batch-generation calls that can run far longer than an embed call.
     http_client = httpx.AsyncClient(timeout=httpx.Timeout(300.0))
-    redis_client = aioredis.from_url(settings.redis.redis_url, decode_responses=True)
+    redis_client = aioredis.from_url(settings.redis_url, decode_responses=True)
     task_manager = TaskManager(
         redis=redis_client,
-        task_ttl=settings.redis.task_ttl_seconds,
-        stream_max_len=settings.redis.stream_max_len,
+        task_ttl=TASK_TTL_S,
+        stream_max_len=TASK_STREAM_MAX_LEN,
     )
     queue = WorkerPoolQueue(redis=redis_client)
-    embedding_provider = TeiEmbedProvider(settings.tei_embed, http_client)
+    embedding_provider = TeiEmbedProvider(http_client)
 
     # Same lazy, connection-gated factory registration the FastAPI app uses
     # (`main.py::lifespan`) — a provider is available here iff it would be
     # available to the synchronous `/generate` endpoint too, so batch
     # generation never has a wider (or narrower) provider surface than sync.
     provider_registry = ProviderRegistry()
-    _register_provider_factories(provider_registry, settings, http_client)
+    _register_provider_factories(provider_registry, http_client)
 
     async def _embedding_handler(envelope: WorkerTaskEnvelope) -> None:
         await _handle_embedding(envelope, embedding_provider=embedding_provider)

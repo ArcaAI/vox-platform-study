@@ -1,404 +1,66 @@
-"""Text configuration using pydantic-settings.
+"""Text configuration — the BOOTSTRAP FLOOR, and nothing else.
 
-Text is a stateless gateway: it does NOT select a provider or model
-from env. The gateway (apps/api) injects ``{provider, model}`` (DB-driven) on
-every request; Text only needs each provider's CONNECTION config (base_url /
-api_key / region / tuning). There is deliberately NO ``*_ENABLED`` selection
-flag — a provider is available iff its connection config is present, and it is
-instantiated lazily on first use (see ``main.py`` / ``ProviderRegistry``).
+`apps/text` is a STATELESS gateway. It selects no provider, holds no vendor
+credential, owns no endpoint and stores no tuning value. Everything that varies
+— by tenant, by provider, by model, by deployment — arrives from the control
+plane through exactly two channels (TASK-799 owner decision D-1):
 
-The SERVICE-LEVEL knobs below (``max_concurrent``, ``timeout_s``) are
-bootstrap fallbacks — their runtime values come from the control plane via
-``core/effective_config.py`` and are applied by ``services/runtime_limits.py``.
-The selection contract above is UNCHANGED: effective-config carries capacity and
-timeouts only, never a provider or model choice.
+| Channel | Carries | How it gets here |
+|---|---|---|
+| **PUSH** (per request) | provider connection, BYO credential, model selection, per-tenant policy | `ProviderOverride` / request body, resolved by the gateway's tenant → SYSTEM cascade with `funding` DERIVED from the row |
+| **PULL** (per service) | platform-scope capacity, timeouts, lane budgets, retention, generation defaults | `GET /internal/effective-config?service=text`, TTL-cached with push invalidation |
 
-the five CLOUD sub-configs (``AzureOpenAIConfig``, ``BedrockConfig``,
-``OpenAIConfig``, ``AnthropicConfig``, ``VertexConfig``) carry no compiled-in
-vendor ``default_model`` — the field defaults to ``""`` and is retained ONLY
-as informational metadata for the ``/providers`` listing. Provider/model
-SELECTION is ``failMode=closed``: a cloud generate request that resolves no
-model raises ``ModelNotSelectedError`` (``providers/base.py`` ``require_model``)
-instead of silently substituting a vendor model. Local/built-in engines
-(``OllamaConfig``, ``OpenAICompatConfig``, ``VllmConfig``, ``LlamaCppConfig``)
-are unaffected — their model default is acceptable built-in topology.
+What survives here is only what a process needs *before either channel can
+answer*: its own port and log level, the addresses of the things it must reach,
+the one shared internal credential it authenticates those hops with, and the
+PHI-safe-telemetry boot guard. `.claude/rules/09-infrastructure-devops.md`
+§Configuration Tiers: *"the only sanctioned defaults are bootstrap TRANSPORT
+addresses."*
+
+Everything else that used to live here is gone, not renamed:
+
+* **Eight per-provider blocks** (`TEXT_{OLLAMA,AZURE,BEDROCK,OPENAI,ANTHROPIC,
+  VERTEX,OPENAI_COMPAT,VLLM,LLAMA_CPP,SARVAM,TEI}_*`) — endpoint, credential,
+  model and capacity now ride `AiProviderConnection` / `AiTaskDefault` /
+  `AiRuntimeProfile`. An adapter with no injected connection FAILS CLOSED
+  (`core/connection.py`); it never substitutes a process-wide value, because a
+  process-wide value is one no tenant could ever override.
+* **Three spellings of four resilience concepts** (`TEXT_CB_*`, `TEXT_QUEUE_*`,
+  `TEXT_JUDGE_*`) — one `AiRuntimeProfile` keyed `(provider, lane)` replaces all
+  twelve (`core/runtime_defaults.py`).
+* **The `TEXT_V2_*` alias window** — nothing in the repo read the other side.
+
+The remaining literals in `core/runtime_defaults.py` are RESOURCE-SAFETY FLOORS,
+not configuration: the ceiling that keeps one wedged upstream from exhausting
+the process until the control plane answers. They are deliberately not settable.
 """
 
 from __future__ import annotations
 
-import os
-
 from hope_env import first_real_secret, hope_settings_sources, load_env, real_secret
-from pydantic import AliasChoices, Field, SecretStr, field_validator, model_validator
+from pydantic import Field, SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-# Env_prefix is TEXT_*; AliasChoices("…", "V2_…") + env_prefix_target
-# "all" also accepts TEXT_V2_* for the transition window.
-_SETTINGS_ALIASES = SettingsConfigDict(
-    env_prefix="TEXT_",
-    env_prefix_target="all",
-    populate_by_name=True,
-)
-
-
-class OllamaConfig(BaseSettings):
-    """Ollama provider configuration.
-
-    Ollama is a supported SELF-HOST engine (owner decision 2026-08-17: the
-    provider logic stays available even though the platform ships no Ollama
-    model catalog). Same "always available, no ENABLE flag" convention as the
-    other local engines — a topology-level ``base_url`` is always present, so
-    ``_register_provider_factories`` (``main.py``) registers it unconditionally.
-
-    ``default_model`` is deliberately EMPTY, unlike ``OpenAICompatConfig``'s.
-    The platform seeds no Ollama catalog row, so it has no model opinion to
-    encode here; a compiled-in id would be exactly the hardcoded configuration
-    `.claude/rules/00-project-context.md` §Configuration Principles forbids. The
-    model arrives with the request (gateway-resolved from the tenant's own
-    ``AiModel`` / ``AiTaskDefault``); this field is retained only as
-    informational metadata for the ``/providers`` listing.
-    """
-
-    # Init > host env > secrets_dir (Vault Agent) > .env.<NODE_ENV> > default.
-    settings_customise_sources = hope_settings_sources
-
-    model_config = SettingsConfigDict(env_prefix="TEXT_OLLAMA_")
-
-    base_url: str = "http://localhost:11434"
-    default_model: str = ""
-    # Bootstrap fallback; runtime value comes from the control plane
-    # (effective-config). Applies to `timeout_s` and `max_concurrent` below.
-    timeout_s: int = 300
-    max_concurrent: int = 4
-    queue_backoff_s: float = 2.0
-
-
-class AzureOpenAIConfig(BaseSettings):
-    """Azure OpenAI provider configuration."""
-
-    # Init > host env > secrets_dir (Vault Agent) > .env.<NODE_ENV> > default.
-    settings_customise_sources = hope_settings_sources
-
-    model_config = SettingsConfigDict(env_prefix="TEXT_AZURE_")
-
-    # Azure OpenAI is BYOK-only. The api_key is NEVER sourced from env —
-    # the `validation_alias` is a dead name no env var (nor Vault-Agent secrets_dir
-    # file) matches, and `populate_by_name` is OFF, so `TEXT_AZURE_API_KEY` cannot
-    # repopulate it either. The platform default and per-tenant keys both arrive as
-    # a request `ProviderOverride` (gateway tenant→SYSTEM cascade). A non-empty
-    # api_key here only occurs in tests (constructed via `model_copy`) — the
-    # provider builds its shared client lazily from it; empty ⇒ no client, and a
-    # keyless generate raises `ProviderCredentialsError` (503).
-    api_key: SecretStr = Field(
-        default=SecretStr(""),
-        validation_alias="TEXT_AZURE_API_KEY__ENV_REMOVED_TASK_602",
-    )
-    endpoint: str = ""
-    api_version: str = "2024-12-01-preview"
-    deployment_name: str = ""
-    # No compiled-in vendor model — provider/model SELECTION is
-    # failMode=closed (09-infrastructure-devops.md §Configuration Tiers).
-    # Informational only (providers listing); never substituted into a
-    # generation request — a missing model raises (see `providers/base.py`
-    # `require_model`).
-    default_model: str = ""
-    # Bootstrap fallbacks; runtime values come from the control plane.
-    timeout_s: int = 120
-    max_concurrent: int = 10
-    tpm_limit: int = 80_000
-    rpm_limit: int = 480
-    adaptive_limits: bool = True
-    content_filter_severity: str = "medium"
-
-
-class BedrockConfig(BaseSettings):
-    """AWS Bedrock provider configuration."""
-
-    # Init > host env > secrets_dir (Vault Agent) > .env.<NODE_ENV> > default.
-    settings_customise_sources = hope_settings_sources
-
-    model_config = SettingsConfigDict(env_prefix="TEXT_BEDROCK_")
-
-    # Bedrock is BYOK-only, and closing that hole took MORE than deleting a
-    # field: `boto3.client(...)` with no credentials silently authenticates from
-    # `AWS_ACCESS_KEY_ID` / `AWS_PROFILE` / EC2 instance metadata, so the adapter
-    # held a fully working PLATFORM credential that no config file ever mentioned.
-    # An SDK's ambient chain can only be closed by an EXPLICIT credential that
-    # raises when unset — see `providers/bedrock.py`.
-    #
-    # The credential is the AWS "Bedrock API key" bearer token, same shape the
-    # tenant override carries. It is never sourced from env: the
-    # `validation_alias` is a dead name no env var (nor Vault-Agent secrets_dir
-    # file) matches, and `populate_by_name` is OFF, so `TEXT_BEDROCK_API_KEY`
-    # cannot repopulate it either. The platform default and per-tenant keys both
-    # arrive as a request `ProviderOverride` (gateway tenant→SYSTEM cascade); a
-    # non-empty value here occurs only in tests.
-    api_key: SecretStr = Field(
-        default=SecretStr(""),
-        validation_alias="TEXT_BEDROCK_API_KEY__ENV_REMOVED_TASK_799",
-    )
-    region: str = "us-east-1"
-    # No compiled-in vendor model — see AzureOpenAIConfig.default_model.
-    default_model: str = ""
-    # Bootstrap fallbacks; runtime values come from the control plane.
-    timeout_s: int = 120
-    max_concurrent: int = 10
-    max_pool_connections: int = 150
-    tpm_limit: int = 100_000
-    rpm_limit: int = 100
-    throttle_backoff_s: float = 30.0
-    guardrail_id: str = ""
-    guardrail_version: str = "DRAFT"
-
-
-class OpenAICompatConfig(BaseSettings):
-    """Generic OpenAI-compatible provider configuration."""
-
-    # Init > host env > secrets_dir (Vault Agent) > .env.<NODE_ENV> > default.
-    settings_customise_sources = hope_settings_sources
-
-    model_config = SettingsConfigDict(env_prefix="TEXT_OPENAI_COMPAT_")
-
-    base_url: str = "http://localhost:1234/v1"
-    # `"not-needed"` is the keyless-local-server placeholder LM Studio expects, NOT
-    # a credential — and the env path to it is closed (dead `validation_alias`,
-    # `populate_by_name` OFF, inherited by `VllmConfig` so `TEXT_VLLM_API_KEY` is
-    # equally unreachable). `TEXT_OPENAI_COMPAT_API_KEY` used to be the ONLY way to
-    # set a key for this adapter, which made it a process-wide credential no tenant
-    # could override — a tenant fronting its own OpenAI-compatible endpoint now
-    # brings its key through the request `ProviderOverride` instead
-    # (`OpenAICompatProvider._client_for`).
-    api_key: SecretStr = Field(
-        default=SecretStr("not-needed"),
-        validation_alias="TEXT_OPENAI_COMPAT_API_KEY__ENV_REMOVED_TASK_799",
-    )
-    # This must be an identifier LM Studio actually serves — it is sent verbatim
-    # as the OpenAI-wire `model`. It read `google/gemma-4-e4b`, which LM Studio
-    # has never served under any configuration (the installed E4B build is
-    # `google/gemma-4-e4b-qat`), so anything reaching this default got a 400
-    # "Failed to load model". The same missing `-qat` reached the AiModel
-    # catalogue and broke `harness.judge`.
-    # Set to the model the SYSTEM AiTaskDefault actually selects for text.live /
-    # text.finalize, and the one pre-loaded on the dev host. Verified served:
-    # `curl http://<lmstudio>:1234/v1/models`.
-    default_model: str = "gemma-4-e2b-it-qat"
-    # Bootstrap fallbacks; runtime values come from the control plane.
-    timeout_s: int = 300
-    max_concurrent: int = 4
-    organization: str | None = None
-
-
-class VllmConfig(OpenAICompatConfig):
-    """vLLM provider configuration.
-
-    vLLM serves the OpenAI wire, so this extends ``OpenAICompatConfig`` (the
-    ``VllmProvider`` composes the same async client). ``base_url`` points at the
-    ``/v1`` OpenAI surface; ``/health`` and ``/metrics`` live at the server
-    root, derived by stripping the ``/v1`` suffix.
-    """
-
-    model_config = SettingsConfigDict(env_prefix="TEXT_VLLM_")
-
-    base_url: str = "http://localhost:8000/v1"
-    default_model: str = ""
-    # Bootstrap fallback; runtime value comes from the control plane.
-    max_concurrent: int = 8
-    # Structured-output routing: vLLM >= 0.8 accepts the native OpenAI
-    # ``response_format={"type":"json_schema",...}``. Older builds only support
-    # the ``extra_body.guided_json`` path — flip this on for those.
-    use_guided_json: bool = False
-    # Optional Prometheus scrape target for the prefix-cache hit rate. Empty ⇒
-    # derived from ``base_url`` (root + ``/metrics``).
-    metrics_url: str = ""
-
-
-class LlamaCppConfig(BaseSettings):
-    """llama.cpp server provider configuration.
-
-    Targets the native ``/completion`` endpoint (richer than llama.cpp's OpenAI
-    shim): engine-native ``timings`` + ``stopped_*`` flags feed AD-1 stats, and
-    GBNF ``grammar`` / ``json_schema`` structured output are first-class.
-    """
-
-    # Init > host env > secrets_dir (Vault Agent) > .env.<NODE_ENV> > default.
-    settings_customise_sources = hope_settings_sources
-
-    model_config = SettingsConfigDict(env_prefix="TEXT_LLAMA_CPP_")
-
-    base_url: str = "http://localhost:8080"
-    default_model: str = ""
-    # Bootstrap fallbacks; runtime values come from the control plane.
-    timeout_s: int = 300
-    max_concurrent: int = 4
-
-
-class OpenAIConfig(BaseSettings):
-    """OpenAI (api.openai.com) provider configuration — BYO/tenant-first.
-
-    The OpenAI wire is identical to ``OpenAICompatConfig``'s, but this is the
-    governed first-class ``openai`` provider (a tenant BYO key arrives per
-    request as a ``ProviderOverride``).
-
-    the api_key is BYOK-only — NEVER sourced from env (dead
-    `validation_alias`, `populate_by_name` OFF; ``TEXT_OPENAI_API_KEY`` no longer
-    populates it). The platform default and per-tenant keys both arrive as a
-    request ``ProviderOverride``; a keyless generate raises
-    ``ProviderCredentialsError`` (503). A non-empty api_key occurs only in tests
-    (via ``model_copy``).
-    """
-
-    # Init > host env > secrets_dir (Vault Agent) > .env.<NODE_ENV> > default.
-    settings_customise_sources = hope_settings_sources
-
-    model_config = SettingsConfigDict(env_prefix="TEXT_OPENAI_")
-
-    api_key: SecretStr = Field(
-        default=SecretStr(""),
-        validation_alias="TEXT_OPENAI_API_KEY__ENV_REMOVED_TASK_602",
-    )
-    base_url: str = "https://api.openai.com/v1"
-    # No compiled-in vendor model — see AzureOpenAIConfig.default_model.
-    default_model: str = ""
-    organization: str | None = None
-    # Bootstrap fallbacks; runtime values come from the control plane.
-    timeout_s: int = 120
-    max_concurrent: int = 10
-    tpm_limit: int = 0
-    rpm_limit: int = 0
-
-
-class AnthropicConfig(BaseSettings):
-    """Anthropic (Claude Messages API) provider configuration — BYO/tenant-first.
-
-    ``base_url`` empty ⇒ the SDK default (``https://api.anthropic.com``).
-
-    same BYOK-only credential rule as ``OpenAIConfig`` — the api_key is
-    NEVER sourced from env (dead `validation_alias`, `populate_by_name` OFF;
-    ``TEXT_ANTHROPIC_API_KEY`` no longer populates it). The credential arrives per
-    request as a ``ProviderOverride``; a keyless generate raises
-    ``ProviderCredentialsError`` (503).
-    """
-
-    # Init > host env > secrets_dir (Vault Agent) > .env.<NODE_ENV> > default.
-    settings_customise_sources = hope_settings_sources
-
-    model_config = SettingsConfigDict(env_prefix="TEXT_ANTHROPIC_")
-
-    api_key: SecretStr = Field(
-        default=SecretStr(""),
-        validation_alias="TEXT_ANTHROPIC_API_KEY__ENV_REMOVED_TASK_602",
-    )
-    base_url: str = ""
-    # No compiled-in vendor model — see AzureOpenAIConfig.default_model.
-    default_model: str = ""
-    # Bootstrap fallbacks; runtime values come from the control plane.
-    timeout_s: int = 120
-    max_concurrent: int = 10
-    tpm_limit: int = 0
-    rpm_limit: int = 0
-
-
-class VertexConfig(BaseSettings):
-    """Google Vertex AI (Gemini) provider configuration — BYO/tenant-first.
-
-    A Vertex client is bound to a ``(project, location)`` pair and authenticated
-    with Application Default Credentials by default. A tenant BYO credential
-    instead carries a service-account JSON (``ProviderOverride.api_key``) plus
-    its ``project``/``location``. The env values below are the platform fallback
-    (ADC-authenticated) used when no tenant override is present; an empty
-    ``project`` means no platform fallback is configured.
-    """
-
-    # Init > host env > secrets_dir (Vault Agent) > .env.<NODE_ENV> > default.
-    settings_customise_sources = hope_settings_sources
-
-    model_config = SettingsConfigDict(env_prefix="TEXT_VERTEX_")
-
-    # Vertex is BYOK-only, and — like Bedrock — deleting a field could never have
-    # closed the hole: `genai.Client(vertexai=True, ...)` with no `credentials=`
-    # resolves through Google Application Default Credentials
-    # (`GOOGLE_APPLICATION_CREDENTIALS`, gcloud login, GCE metadata), so the
-    # platform client authenticated from the ambient process environment. It must
-    # be constructed with an EXPLICIT credential and raise when none exists.
-    #
-    # The credential is a service-account JSON document — the same shape the
-    # tenant override carries in `ProviderOverride.api_key`. Never sourced from
-    # env: dead `validation_alias`, `populate_by_name` OFF.
-    api_key: SecretStr = Field(
-        default=SecretStr(""),
-        validation_alias="TEXT_VERTEX_API_KEY__ENV_REMOVED_TASK_799",
-    )
-    project: str = ""
-    location: str = "us-central1"
-    # No compiled-in vendor model — see AzureOpenAIConfig.default_model.
-    default_model: str = ""
-    # Bootstrap fallbacks; runtime values come from the control plane.
-    timeout_s: int = 120
-    max_concurrent: int = 10
-    tpm_limit: int = 0
-    rpm_limit: int = 0
-
-
-class SarvamConfig(BaseSettings):
-    """Sarvam AI translation provider configuration — BYOK-ONLY.
-
-    Text's ``translate`` capability routes to Sarvam's REST ``/translate``
-    endpoint. Sarvam is BYOK-only: the api_key NEVER comes from env — it always
-    arrives per request as a ``ProviderOverride`` (the gateway resolves it from
-    the tenant/super-admin provider-connection). This config therefore carries
-    only NON-secret operational settings; a request with no override key fails
-    closed (endpoint → 503).
-    """
-
-    # Init > host env > secrets_dir (Vault Agent) > .env.<NODE_ENV> > default.
-    settings_customise_sources = hope_settings_sources
-
-    model_config = SettingsConfigDict(env_prefix="TEXT_SARVAM_")
-
-    base_url: str = "https://api.sarvam.ai"
-    model: str | None = None
-
-
-class TeiEmbedConfig(BaseSettings):
-    """`tei-embed` (HuggingFace text-embeddings-inference) provider configuration.
-
-    Local, self-hosted embedding engine — same "always available, no ENABLE
-    flag" convention as the other local engines (Ollama/LM Studio/vLLM/
-    llama.cpp):
-    a topology-level default `base_url` is always present, so
-    `_register_provider_factories` (`main.py`) registers it unconditionally
-    (TASK-725 §2.7: `text` has no embedding capability today; this is net
-    new). Targets TEI's native `/embed` REST contract (`POST /embed` with
-    `{"inputs": [...]}` → `[[float, ...], ...]`) — the stable API present on
-    every TEI release, rather than the OpenAI-compatible `/v1/embeddings`
-    route TEI only added in 1.2+ (unverifiable which build the compose image
-    tag resolves to without live infra; `/embed` is the safer choice). See
-    `infrastructure/docker/docker-compose.dev.yml` (`tei-embed`,
-    `HOPE_TEI_EMBED_PORT:-8871`, `MODEL_ID:-BAAI/bge-m3`).
-    """
-
-    # Init > host env > secrets_dir (Vault Agent) > .env.<NODE_ENV> > default.
-    settings_customise_sources = hope_settings_sources
-
-    model_config = SettingsConfigDict(env_prefix="TEXT_TEI_")
-
-    base_url: str = "http://localhost:8871"
-    # Informational only — TEI serves exactly one model per container
-    # (`MODEL_ID`), so this is never sent on the wire; it is stamped onto
-    # `ProviderInfo`/`ModelInfo` for the admin listing.
-    default_model: str = "BAAI/bge-m3"
-    embedding_dim: int = 1024
-    timeout_s: int = 30
-    max_concurrent: int = 8
+#: This deployable's identity. A constant, not a setting: a process cannot be
+#: told what it is by the environment it runs in, and a mislabelled span is
+#: worse than an unlabelled one. Mirrors `build-info.json`'s `service`.
+SERVICE_NAME = "text"
+#: The platform every HOPE deployable reports under.
+SERVICE_NAMESPACE = "hope"
 
 
 class ExternalGuardrailConfig(BaseSettings):
-    """Input moderation posture for /generate.
+    """Where the guardrail peer lives. TRANSPORT ONLY.
 
-    Fail posture is degrade-safe → fail-CLOSED: a transient guardrail error is
-    absorbed by a bounded retry, a sustained outage rejects, and an errored
-    guardrail NEVER allows (there is deliberately no ``fail_open`` option — that
-    foot-gun was retired).
+    The POSTURE — whether moderation runs, its retry budget, and whether a
+    prompt must classify as medical — is no longer here. It resolves through the
+    control plane (`core/guardrail_posture.py`): the platform default arrives on
+    the PULL channel, and a tenant's own opinion is PUSHED per request, so a
+    non-clinical tenant can be exempted without a redeploy (owner decision D-1).
+
+    The fail posture itself is code, not config, and stays that way: a transient
+    error is absorbed by a bounded retry and a sustained outage REJECTS. There
+    has never been a `fail_open` and there must not be one.
     """
 
     # Init > host env > secrets_dir (Vault Agent) > .env.<NODE_ENV> > default.
@@ -406,58 +68,7 @@ class ExternalGuardrailConfig(BaseSettings):
 
     model_config = SettingsConfigDict(env_prefix="TEXT_EXTERNAL_GUARDRAIL_")
 
-    # Dev/CI bypass switch. When False (default) input moderation is intentionally
-    # OFF so local dev + hermetic CI run without a guardrail service (mirrors the
-    # empty-service-token bypass). Clinical/production deployments MUST
-    # enable it — an ops rollout step (guardrail reachable), not a code default that
-    # would break dev.
-    enabled: bool = False
     base_url: str = "http://localhost:8863"
-    timeout_s: int = 10
-    # Bounded retry for a transient guardrail blip: the moderation call is
-    # retried up to ``max_retries`` extra times (total tries = max_retries + 1) with a
-    # linear ``retry_backoff_ms`` backoff before the client fails CLOSED. A momentary
-    # error is absorbed (degrade-safe); a sustained outage rejects (never allows).
-    max_retries: int = 2
-    retry_backoff_ms: int = 100
-    # Clinical enforce switch (default True): a reachable guardrail must classify the
-    # prompt as medical to allow it. Setting it False is an EXPLICIT, documented
-    # non-clinical mode (allow any reachable verdict) — never a silent default.
-    require_medical: bool = True
-    include_reasoning: bool = False
-    service_token: SecretStr = SecretStr("")
-
-
-class JudgeConfig(BaseSettings):
-    """Resource budget for the INTERNAL judge lane (``/generate/internal/judge``).
-
-    A separate budget, not a separate mechanism: the judge lane uses the same
-    ``ResizableSemaphore`` and ``CircuitBreaker`` classes as the user-facing
-    path, keyed by the same provider names, in its OWN dicts on ``app.state``.
-    That is the whole isolation guarantee — a saturated user-facing pool cannot
-    starve a safety-plane judgement, and a wedged judge call cannot eat the
-    user-facing budget.
-
-    Deliberately small by default: judgement calls are short, and an unbounded
-    safety lane would just relocate the saturation problem. A judge call that
-    cannot get a permit within ``acquire_timeout_s`` fails fast with a 503 rather
-    than queueing — guardrail owns the retry budget for the safety plane, and
-    queueing here would add latency to a call that is already on the critical
-    path of a user-facing generation.
-
-    Same tier as ``QueueConfig``/``CircuitBreakerConfig``: bootstrap fallbacks.
-    """
-
-    # Init > host env > secrets_dir (Vault Agent) > .env.<NODE_ENV> > default.
-    settings_customise_sources = hope_settings_sources
-
-    model_config = SettingsConfigDict(env_prefix="TEXT_JUDGE_")
-
-    max_concurrent: int = 2
-    acquire_timeout_s: float = 5.0
-    timeout_s: int = 60
-    failure_threshold: int = 5
-    recovery_timeout_s: float = 30.0
 
 
 class InternalAccessConfig(BaseSettings):
@@ -468,15 +79,13 @@ class InternalAccessConfig(BaseSettings):
     only. It is what this service ACCEPTS as inbound ``X-Service-Token`` and what
     it PRESENTS on every outbound peer call.
 
-    Unprefixed on purpose: it belongs to no single service. ``Settings`` applies
-    ``env_prefix="TEXT_"`` with ``env_prefix_target="all"``, which would turn a
-    root-level field into ``TEXT_INTERNAL_ACCESS_TOKEN`` — a name nothing else
-    reads — so this nested config carries no prefix of its own, exactly like
-    :class:`TelemetryPhiGuardConfig` above.
+    Unprefixed on purpose: it belongs to no single service, so this nested config
+    carries no prefix of its own — exactly like :class:`TelemetryPhiGuardConfig`.
 
-    The legacy ``TEXT_SERVICE_TOKEN`` / ``TEXT_EXTERNAL_GUARDRAIL_SERVICE_TOKEN``
-    remain accepted as a zero-cost backward-compatibility fallback; they are not a
-    second design and are expected to be dropped once this one value is deployed.
+    The legacy per-pair fallbacks (``TEXT_SERVICE_TOKEN``,
+    ``TEXT_EXTERNAL_GUARDRAIL_SERVICE_TOKEN``) are RETIRED: they were declared as
+    a transition window that nothing on the other side ever used, and a second
+    accepted credential is a second thing to rotate.
     """
 
     settings_customise_sources = hope_settings_sources
@@ -493,10 +102,7 @@ class TelemetryPhiGuardConfig(BaseSettings):
     are cross-process conventions read identically by every HOPE deployable —
     the TypeScript gateway's ``assertGenaiContentCaptureDisabled``
     (``apps/api/src/bootstrap/genai-content-capture-audit.ts``) reads the
-    SAME bare names. ``Settings`` applies ``env_prefix="TEXT_"`` with
-    ``env_prefix_target="all"``, which would otherwise turn these into
-    ``TEXT_NODE_ENV`` / ``TEXT_OTEL_INSTRUMENTATION_...`` — names nothing else
-    reads — so this nested config carries no prefix of its own.
+    SAME bare names, so this nested config carries no prefix of its own.
 
     OTel GenAI instrumentation defaults to NOT capturing prompt/completion
     content, but the capture switch is an instrumentation-library convention
@@ -514,6 +120,11 @@ class TelemetryPhiGuardConfig(BaseSettings):
     production the var is unenforced (dev/test are not a PHI exposure
     surface, and the env-sample flow already pins ``NO_CONTENT`` as the
     template default there).
+
+    ``node_env`` doubles as this service's DEPLOYMENT ENVIRONMENT label. It is
+    read here rather than declared a second time as ``TEXT_OTEL_DEPLOYMENT_
+    ENVIRONMENT``: two names for one fact drift, and the drift direction that
+    matters is a developer laptop's spans arriving tagged ``production``.
     """
 
     settings_customise_sources = hope_settings_sources
@@ -538,85 +149,82 @@ class TelemetryPhiGuardConfig(BaseSettings):
         return self
 
 
-class RedisConfig(BaseSettings):
-    """Redis configuration for task management."""
-
-    # Init > host env > secrets_dir (Vault Agent) > .env.<NODE_ENV> > default.
-    settings_customise_sources = hope_settings_sources
-
-    model_config = SettingsConfigDict(env_prefix="TEXT_")
-
-    redis_url: str = "redis://localhost:6379/0"
-    task_ttl_seconds: int = 3600
-    stream_max_len: int = 10_000
-
-
-class CircuitBreakerConfig(BaseSettings):
-    """Circuit breaker configuration."""
-
-    # Init > host env > secrets_dir (Vault Agent) > .env.<NODE_ENV> > default.
-    settings_customise_sources = hope_settings_sources
-
-    model_config = SettingsConfigDict(env_prefix="TEXT_CB_")
-
-    failure_threshold: int = 5
-    recovery_timeout_s: float = 30.0
-    # ``None`` preserves the default unlimited/undecayed behavior
-    # (unlimited HALF_OPEN trial calls / no time-based failure-count decay) — a
-    # non-null literal default would silently start capping/decaying on every
-    # unconfigured deployment now that these fields are wired. Operators opt in
-    # via TEXT_CB_HALF_OPEN_MAX_CALLS / TEXT_CB_RESET_TIMEOUT_S.
-    half_open_max_calls: int | None = None
-    reset_timeout_s: float | None = None
-    count_rate_limits: bool = True
-
-
-class QueueConfig(BaseSettings):
-    """Request queue configuration."""
-
-    # Init > host env > secrets_dir (Vault Agent) > .env.<NODE_ENV> > default.
-    settings_customise_sources = hope_settings_sources
-
-    model_config = SettingsConfigDict(env_prefix="TEXT_QUEUE_")
-
-    max_size: int = 200
-    max_wait_s: float = 60.0
-
-
 class Settings(BaseSettings):
-    """Root application settings.
-
-    Each provider sub-config carries only CONNECTION settings (no selection
-    flag). A provider is available when its connection config is present and is
-    built lazily on first request.
-    """
+    """Root application settings — the bootstrap floor (see module docstring)."""
 
     # Init > host env > secrets_dir (Vault Agent) > .env.<NODE_ENV> > default.
     settings_customise_sources = hope_settings_sources
 
-    model_config = _SETTINGS_ALIASES
+    model_config = SettingsConfigDict(env_prefix="TEXT_", populate_by_name=True)
 
-    # Application — AliasChoices accepts TEXT_* and TEXT_V2_* (env_prefix_target=all).
-    host: str = Field(default="0.0.0.0", validation_alias=AliasChoices("HOST", "V2_HOST"))
-    port: int = Field(default=8862, validation_alias=AliasChoices("PORT", "V2_PORT"))
-    debug: bool = Field(default=False, validation_alias=AliasChoices("DEBUG", "V2_DEBUG"))
-    log_level: str = Field(
-        default="info", validation_alias=AliasChoices("LOG_LEVEL", "V2_LOG_LEVEL")
-    )
-    cors_origins: list[str] = Field(
-        default_factory=list, validation_alias=AliasChoices("CORS_ORIGINS", "V2_CORS_ORIGINS")
-    )
-    cors_enabled: bool = Field(
-        default=False, validation_alias=AliasChoices("CORS_ENABLED", "V2_CORS_ENABLED")
-    )
+    # --- process identity ---------------------------------------------------
+    port: int = 8862
+    log_level: str = "info"
 
-    # LEGACY per-service inter-service credential (empty = auth disabled for local
-    # dev). Superseded by the shared `INTERNAL_ACCESS_TOKEN` (owner decision D-D);
-    # still ACCEPTED inbound and used as the outbound fallback so an environment
-    # that has not migrated yet keeps working.
-    service_token: SecretStr = Field(
-        default=SecretStr(""), validation_alias=AliasChoices("SERVICE_TOKEN", "V2_SERVICE_TOKEN")
-    )
+    # --- bootstrap transport ------------------------------------------------
+    # Where the control plane lives. This is the ADDRESS of the config source,
+    # not config authority: everything the route serves is itself control-plane
+    # owned. Env var: TEXT_GATEWAY_URL.
+    gateway_url: str = "http://localhost:8868/api/v1"
+    # Env var: TEXT_REDIS_URL. Task state + the config-invalidation channel.
+    redis_url: str = "redis://localhost:6379/0"
+    # Env var: TEXT_OTEL_EXPORTER_ENDPOINT. EMPTY disables OTel export entirely
+    # — the presence of a collector address IS the enable signal, so there is no
+    # separate `TEXT_OTEL_ENABLED` that can disagree with it.
+    otel_exporter_endpoint: str = "http://localhost:4317"
+
+    # --- nested (own prefixes) ----------------------------------------------
+    external_guardrail: ExternalGuardrailConfig = Field(default_factory=ExternalGuardrailConfig)
+    internal_access: InternalAccessConfig = Field(default_factory=InternalAccessConfig)
+    # Raises at construction time (propagates out of `Settings()` ->
+    # `get_settings()` -> `create_app()`) when NODE_ENV=production and
+    # OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT is not pinned.
+    telemetry_phi_guard: TelemetryPhiGuardConfig = Field(default_factory=TelemetryPhiGuardConfig)
+
+    @field_validator("log_level")
+    @classmethod
+    def _normalise_log_level(cls, v: str) -> str:
+        return v.lower()
+
+    # --- derived process facts (NOT settings) -------------------------------
+    # Each of these used to be its own env var that could only ever disagree
+    # with something the process already knows.
+
+    @property
+    def node_env(self) -> str:
+        return self.telemetry_phi_guard.node_env
+
+    @property
+    def debug(self) -> bool:
+        return self.node_env != "production"
+
+    @property
+    def otel_enabled(self) -> bool:
+        """Export iff a collector address was given."""
+        return bool(self.otel_exporter_endpoint.strip())
+
+    @property
+    def otel_insecure(self) -> bool:
+        """TLS follows the endpoint SCHEME.
+
+        A separate boolean can contradict the URL it describes; the scheme
+        cannot contradict itself.
+        """
+        return not self.otel_exporter_endpoint.strip().lower().startswith("https://")
+
+    @property
+    def otel_service_name(self) -> str:
+        return SERVICE_NAME
+
+    @property
+    def otel_service_namespace(self) -> str:
+        return SERVICE_NAMESPACE
+
+    @property
+    def otel_deployment_environment(self) -> str:
+        return self.node_env
+
+    # --- the one internal credential ----------------------------------------
 
     @property
     def internal_access_token(self) -> SecretStr:
@@ -625,143 +233,26 @@ class Settings(BaseSettings):
 
     @property
     def accepted_service_tokens(self) -> tuple[str, ...]:
-        """Every token accepted as inbound ``X-Service-Token``, shared-first.
+        """Every token accepted as inbound ``X-Service-Token``.
 
         Empty tuple ⇒ auth is bypassed (local dev / hermetic CI), which is the
         pre-existing behaviour when no token is configured at all.
         """
-        # `real_secret` maps the unfilled-secret sentinel onto "" so a `CHANGE_ME` token is
-        # never ACCEPTED as a credential — see hope_env.placeholders.
-        return tuple(
-            t
-            for t in (
-                real_secret(self.internal_access_token),
-                real_secret(self.service_token),
-            )
-            if t
-        )
+        # `real_secret` maps the unfilled-secret sentinel onto "" so a `CHANGE_ME`
+        # token is never ACCEPTED as a credential — see hope_env.placeholders.
+        token = real_secret(self.internal_access_token)
+        return (token,) if token else ()
 
-    def peer_service_token(self, legacy: SecretStr) -> str:
-        """Token to PRESENT on an outbound peer call: shared first, legacy fallback."""
-        # `first_real_secret`, not `or`: the sentinel is a NON-EMPTY string, so a plain
-        # truthiness chain returns "CHANGE_ME" and never reaches the legacy fallback — the
-        # trap that made every internal hop 401 (see hope_env.placeholders).
-        return first_real_secret(self.internal_access_token, legacy)
+    def peer_service_token(self, legacy: SecretStr | None = None) -> str:
+        """Token to PRESENT on an outbound peer call.
 
-    # Where the control plane lives. This is BOOTSTRAP TRANSPORT (the
-    # address of the config source), NOT config authority: service-level knobs
-    # themselves come from the effective-config route this URL points at.
-    # Env var: TEXT_GATEWAY_URL.
-    gateway_url: str = Field(
-        default="http://localhost:8868/api/v1",
-        validation_alias=AliasChoices("GATEWAY_URL", "V2_GATEWAY_URL"),
-    )
-
-    # Connection pooling
-    httpx_max_connections: int = Field(
-        default=200,
-        validation_alias=AliasChoices("HTTPX_MAX_CONNECTIONS", "V2_HTTPX_MAX_CONNECTIONS"),
-    )
-    httpx_max_keepalive: int = Field(
-        default=100, validation_alias=AliasChoices("HTTPX_MAX_KEEPALIVE", "V2_HTTPX_MAX_KEEPALIVE")
-    )
-
-    # Observability
-    otel_enabled: bool = Field(
-        default=False, validation_alias=AliasChoices("OTEL_ENABLED", "V2_OTEL_ENABLED")
-    )
-    otel_exporter_endpoint: str = Field(
-        default="http://localhost:4317",
-        validation_alias=AliasChoices("OTEL_EXPORTER_ENDPOINT", "V2_OTEL_EXPORTER_ENDPOINT"),
-    )
-    otel_service_name: str = Field(
-        default="text", validation_alias=AliasChoices("OTEL_SERVICE_NAME", "V2_OTEL_SERVICE_NAME")
-    )
-    otel_service_namespace: str = Field(
-        default="hope",
-        validation_alias=AliasChoices("OTEL_SERVICE_NAMESPACE", "V2_OTEL_SERVICE_NAMESPACE"),
-    )
-    # Resolved from the environment, defaulting to DEVELOPMENT.
-    #
-    # This defaulted to "production" and was the ORIGIN of the defect across the
-    # fleet: `apps/text/core/observability.py` is the reference implementation
-    # every other service's OTel setup was copied from, so harness and TTS both
-    # inherited a hardcoded "production" when they were added in this ticket.
-    # STT had the same literal in its resource builder.
-    #
-    # A hardcoded "production" tags a developer laptop's spans as production
-    # data. That is the dangerous direction — a mislabelled dev span is noise,
-    # a mislabelled prod span corrupts an audit trail.
-    otel_deployment_environment: str = Field(
-        default_factory=lambda: os.getenv("DEPLOYMENT_ENVIRONMENT")
-        or os.getenv("NODE_ENV")
-        or "development",
-        validation_alias=AliasChoices(
-            "OTEL_DEPLOYMENT_ENVIRONMENT", "V2_OTEL_DEPLOYMENT_ENVIRONMENT"
-        ),
-    )
-    otel_insecure: bool = Field(
-        default=True, validation_alias=AliasChoices("OTEL_INSECURE", "V2_OTEL_INSECURE")
-    )
-    otel_logs_enabled: bool = Field(
-        default=True, validation_alias=AliasChoices("OTEL_LOGS_ENABLED", "V2_OTEL_LOGS_ENABLED")
-    )
-    metrics_enabled: bool = Field(
-        default=True, validation_alias=AliasChoices("METRICS_ENABLED", "V2_METRICS_ENABLED")
-    )
-
-    # Sub-configs (loaded from their own env prefixes)
-    ollama: OllamaConfig = Field(default_factory=OllamaConfig)
-    azure: AzureOpenAIConfig = Field(default_factory=AzureOpenAIConfig)
-    bedrock: BedrockConfig = Field(default_factory=BedrockConfig)
-    openai: OpenAIConfig = Field(default_factory=OpenAIConfig)
-    anthropic: AnthropicConfig = Field(default_factory=AnthropicConfig)
-    vertex: VertexConfig = Field(default_factory=VertexConfig)
-    openai_compat: OpenAICompatConfig = Field(default_factory=OpenAICompatConfig)
-    vllm: VllmConfig = Field(default_factory=VllmConfig)
-    llama_cpp: LlamaCppConfig = Field(default_factory=LlamaCppConfig)
-    sarvam: SarvamConfig = Field(default_factory=SarvamConfig)
-    tei_embed: TeiEmbedConfig = Field(default_factory=TeiEmbedConfig)
-    external_guardrail: ExternalGuardrailConfig = Field(default_factory=ExternalGuardrailConfig)
-    # THE canonical internal credential — see `InternalAccessConfig` (owner decision D-D).
-    internal_access: InternalAccessConfig = Field(default_factory=InternalAccessConfig)
-    # Raises at construction time (propagates out of
-    # `Settings()` -> `get_settings()` -> `create_app()`) when NODE_ENV=production
-    # and OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT is not pinned.
-    telemetry_phi_guard: TelemetryPhiGuardConfig = Field(default_factory=TelemetryPhiGuardConfig)
-    redis: RedisConfig = Field(default_factory=RedisConfig)
-    circuit_breaker: CircuitBreakerConfig = Field(default_factory=CircuitBreakerConfig)
-    queue: QueueConfig = Field(default_factory=QueueConfig)
-    # Resource budget for the internal judge lane — separate from the
-    # user-facing pool knobs above by design (see `JudgeConfig`).
-    judge: JudgeConfig = Field(default_factory=JudgeConfig)
-
-    # Per-provider cap for the `/providers` LISTING probe only
-    # (never generation). One hung engine must not stall the endpoint: the
-    # shared httpx/AsyncOpenAI clients carry a 300 s generation timeout, which
-    # is far too long for an admin-facing listing.
-    # Env var: TEXT_PROVIDER_PROBE_TIMEOUT_S.
-    provider_probe_timeout_s: int = Field(
-        default=5,
-        validation_alias=AliasChoices("PROVIDER_PROBE_TIMEOUT_S", "V2_PROVIDER_PROBE_TIMEOUT_S"),
-    )
-
-    # Model retention hint forwarded to SERVER-MANAGED engines
-    # (Ollama `keep_alive`, LM Studio `ttl`). Text holds no weights of its own, so
-    # this is propagation, not a cache.
-    #
-    # BOOTSTRAP FALLBACK ONLY — the runtime value comes from the control plane
-    # (`GET /internal/effective-config?service=text` → `retention.ttlSeconds`).
-    # Env var: TEXT_MODEL_RETENTION_TTL_S.
-    model_retention_ttl_s: int = Field(
-        default=600,
-        validation_alias=AliasChoices("MODEL_RETENTION_TTL_S", "V2_MODEL_RETENTION_TTL_S"),
-    )
-
-    @field_validator("log_level")
-    @classmethod
-    def _normalise_log_level(cls, v: str) -> str:
-        return v.lower()
+        ``legacy`` is accepted and ignored — the per-pair tokens it used to carry
+        are retired. The parameter survives only so call sites need not be
+        rewritten in lockstep; `first_real_secret` still maps the unfilled
+        sentinel onto "" (a plain truthiness chain would return "CHANGE_ME" and
+        401 every internal hop — see hope_env.placeholders).
+        """
+        return first_real_secret(self.internal_access_token)
 
 
 def get_settings() -> Settings:

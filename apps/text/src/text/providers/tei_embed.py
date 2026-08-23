@@ -10,8 +10,8 @@ from __future__ import annotations
 import httpx
 import structlog
 
-from text.core.config import TeiEmbedConfig
-from text.models.provider import ModelInfo, ProviderInfo
+from text.core.connection import require_base_url
+from text.models.provider import ProviderInfo
 
 logger = structlog.get_logger(__name__)
 
@@ -21,19 +21,39 @@ _ENGINE = "tei-embed"
 class TeiEmbedProvider:
     """`tei-embed` provider over the native ``/embed`` endpoint."""
 
-    def __init__(self, config: TeiEmbedConfig, http_client: httpx.AsyncClient) -> None:
-        self._config = config
+    def __init__(self, http_client: httpx.AsyncClient) -> None:
+        """No configuration. The TEI endpoint arrives with the embedding request
+        as a gateway-resolved connection (`core/connection.py`), the same channel
+        every other engine uses."""
         self._http = http_client
-        self._base_url = config.base_url.rstrip("/")
+        self._last_base_url: str | None = None
 
-    async def embed(self, texts: list[str]) -> list[list[float]]:
-        resp = await self._http.post(f"{self._base_url}/embed", json={"inputs": texts})
+    def _probe_url(self) -> str | None:
+        """The engine this process last talked to, or ``None`` — probes only."""
+        return self._last_base_url
+
+    async def embed(self, texts: list[str], request: object) -> list[list[float]]:
+        """Embed ``texts`` against the connection resolved for ``request``.
+
+        ``request`` is required rather than optional so a caller cannot silently
+        fall back to a process-wide endpoint: there is none. The out-of-process
+        batch worker passes the envelope it was submitted with, so the job runs
+        against the SAME engine the submitting request resolved.
+        """
+        base_url = require_base_url(request, provider=_ENGINE)
+        self._last_base_url = base_url
+        resp = await self._http.post(f"{base_url}/embed", json={"inputs": texts})
         resp.raise_for_status()
         return resp.json()  # type: ignore[no-any-return]
 
     async def health_check(self) -> bool:
+        """Probe the last-observed endpoint; True when none has been observed
+        yet ("no negative evidence" — see `OllamaProvider.health_check`)."""
+        probe_url = self._probe_url()
+        if probe_url is None:
+            return True
         try:
-            resp = await self._http.get(f"{self._base_url}/health")
+            resp = await self._http.get(f"{probe_url}/health")
             return resp.status_code == 200
         except (httpx.HTTPError, httpx.TimeoutException, ConnectionError, OSError) as exc:
             logger.warning("health_check.failed", provider=_ENGINE, error=str(exc))
@@ -44,9 +64,10 @@ class TeiEmbedProvider:
 
     async def get_info(self) -> ProviderInfo:
         status = "unavailable"
+        probe_url = self._probe_url()
         try:
-            resp = await self._http.get(f"{self._base_url}/health")
-            if resp.status_code == 200:
+            resp = await self._http.get(f"{probe_url}/health") if probe_url else None
+            if resp is not None and resp.status_code == 200:
                 status = "available"
         except (httpx.HTTPError, httpx.TimeoutException, ConnectionError, OSError) as exc:
             logger.warning("get_info.failed", provider=_ENGINE, error=str(exc))
@@ -56,12 +77,12 @@ class TeiEmbedProvider:
             name=_ENGINE,
             display_name="TEI Embeddings",
             status=status,
-            default_model=self._config.default_model,
-            models=(
-                [ModelInfo(name=self._config.default_model, supports_streaming=False)]
-                if self._config.default_model
-                else []
-            ),
+            # TEI serves exactly one model per container (`MODEL_ID`), which is a
+            # property of the deployed container, not of this adapter. It comes
+            # from `AiModel` on the gateway; ``TEXT_TEI_DEFAULT_MODEL`` was a
+            # second, silently drifting copy of it.
+            default_model="",
+            models=[],
             supports_streaming=False,
             supports_vision=False,
         )

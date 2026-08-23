@@ -59,6 +59,13 @@ class ProviderOverride(BaseModel):
     # Non-secret metadata, so deliberately NOT a SecretStr — the attribution
     # must survive ``model_dump()``.
     funding: ProviderFunding = "tenant"
+    # AWS Bedrock Guardrails. A guardrail belongs to the AWS ACCOUNT the request
+    # authenticates against, so it travels with that account's credential rather
+    # than as a process-wide `TEXT_BEDROCK_GUARDRAIL_ID` that would apply one
+    # tenant's guardrail to every other tenant's traffic. Ignored by every
+    # non-Bedrock provider.
+    guardrail_id: str | None = None
+    guardrail_version: str | None = None
 
     @field_validator("funding", mode="before")
     @classmethod
@@ -74,6 +81,30 @@ class ProviderOverride(BaseModel):
         silently convert tenant-funded spend into a platform COGS charge.
         """
         return value if value in ("tenant", "platform") else "tenant"
+
+
+class GuardrailPolicyOverride(BaseModel):
+    """The tenant's own input-moderation policy, injected per request.
+
+    `require_medical` and `include_reasoning` are the two parts of the guardrail
+    posture that legitimately differ BETWEEN tenants: a non-clinical tenant needs
+    medical enforcement off while every other tenant keeps it on. A process-wide
+    `TEXT_EXTERNAL_GUARDRAIL_REQUIRE_MEDICAL` could express only one of those, so
+    the real choice it offered was "redeploy, or force clinical validation on a
+    tenant it does not fit". Cardinality decides the channel (owner decision D-1
+    rule 3): anything that can differ per tenant is PUSHED.
+
+    ``None`` on a field means NO OPINION — the platform default stands. It is not
+    the same as ``False`` and must never be flattened into it. Resolution lives in
+    `core/guardrail_posture.resolve_posture`.
+
+    The remaining posture fields (`enabled`, retry budget) are platform-scope and
+    arrive on the PULL channel instead; the FAIL POSTURE is not configurable at
+    all — an errored guardrail can never return ``allowed: True``.
+    """
+
+    require_medical: bool | None = None
+    include_reasoning: bool | None = None
 
 
 class TextContentPart(BaseModel):
@@ -137,6 +168,10 @@ class GenerateRequest(BaseModel):
     # actually registered, a known-unhealthy ``provider`` reroutes to this name
     # instead — see ``services/pool_router.py``.
     fallback_provider: str | None = None
+    # ADDITIVE per-tenant moderation policy (see `GuardrailPolicyOverride`).
+    # ``None``/absent ⇒ the platform posture from the PULL channel stands, which
+    # is what every caller gets until the gateway resolves a tenant policy.
+    guardrail_policy: GuardrailPolicyOverride | None = None
 
     @field_validator("prompt")
     @classmethod

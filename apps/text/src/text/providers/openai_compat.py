@@ -10,9 +10,10 @@ import httpx
 import structlog
 from openai import APIConnectionError, APIError, APITimeoutError, AsyncOpenAI
 
-from text.core.config import OpenAICompatConfig
+from text.core.connection import require_connection
 from text.core.defaults import resolve_request_defaults
 from text.core.retention import DEFAULT_RETENTION_TTL_S, clamp_cache_ttl_seconds
+from text.core.runtime_defaults import PROVIDER_TIMEOUT_FLOOR_S
 from text.core.telemetry import get_tracer
 from text.models.provider import ModelInfo, ProviderInfo
 from text.models.requests import GenerateRequest, ProviderOverride
@@ -57,61 +58,76 @@ class OpenAICompatProvider:
 
     def __init__(
         self,
-        config: OpenAICompatConfig,
         *,
         provider_name: str = "openai_compat",
         display_name: str = "OpenAI Compatible",
     ) -> None:
-        self._config = config
-        self._default_model = config.default_model
-        # Engine identity — subclasses (vLLM, ) override so stats/spans
-        # /get_info carry the real engine name, not the generic wire name.
+        """No configuration. The engine endpoint and its key arrive per request
+        as a gateway-resolved ``ProviderOverride`` (`core/connection.py`).
+
+        ``TEXT_OPENAI_COMPAT_API_KEY`` (and the inherited ``TEXT_VLLM_API_KEY``)
+        used to be the ONLY way to set a key for this adapter — a process-wide
+        credential no tenant could override, which is exactly the shape
+        §Configuration Principles forbids. There is no shared client any more, so
+        two tenants fronting different OpenAI-compatible endpoints can never
+        collide on one.
+        """
+        # Engine identity — subclasses (vLLM) override so stats/spans/get_info
+        # carry the real engine name, not the generic wire name.
         self._provider_name = provider_name
         self._display_name = display_name
+        self._last_base_url: str | None = None
+        self._timeout_s = PROVIDER_TIMEOUT_FLOOR_S
         # Bootstrap retention hint; replaced by the
         # control-plane value on the first effective-config refresh.
         self._retention_ttl_s = clamp_cache_ttl_seconds(DEFAULT_RETENTION_TTL_S)
-        self._client = AsyncOpenAI(
-            api_key=config.api_key.get_secret_value(),
-            base_url=config.base_url,
-            organization=config.organization,
-            timeout=float(config.timeout_s),
-        )
+
+    def apply_timeout(self, timeout_s: int) -> None:
+        """Adopt the control-plane per-provider request timeout (see
+        `services/runtime_limits.py`). Replaces ``TEXT_OPENAI_COMPAT_TIMEOUT_S``,
+        and unlike it can change without a restart."""
+        self._timeout_s = timeout_s
 
     def _resolve_override(self, request: GenerateRequest) -> ProviderOverride | None:
-        """Tenant BYO credential/endpoint injected by the gateway for THIS provider,
-        keyed by ``request.provider`` (see `ProviderOverride`).
+        """The connection the gateway resolved for THIS request's provider."""
+        from text.core.connection import resolve_connection
 
-        A self-host engine has no VENDOR credential, but a tenant may still front
-        its own OpenAI-compatible endpoint with its own key. Until TASK-799 this
-        adapter had no override path at all, so ``TEXT_OPENAI_COMPAT_API_KEY`` (and
-        the inherited ``TEXT_VLLM_API_KEY``) was the only way to set a key — a
-        process-wide env credential that no tenant could ever override, which is
-        exactly the shape §Configuration Principles forbids. The env path is now
-        closed (dead ``validation_alias``, see `OpenAICompatConfig.api_key`) and
-        this is the way in.
+        return resolve_connection(request)
+
+    def _probe_url(self) -> str | None:
+        """The engine this process last talked to, or ``None``.
+
+        The admin probes have no request, so there is no connection to resolve.
+        Reporting on the last endpoint observed keeps `/providers` and `/health`
+        meaningful for a platform-run engine (one SYSTEM-tenant row, one address)
+        without ever inventing one.
         """
-        if not request.provider_overrides:
-            return None
-        return request.provider_overrides.get(request.provider)
+        return self._last_base_url
 
     def _client_for(self, request: GenerateRequest) -> AsyncOpenAI:
-        """Override-wins client resolution. A tenant credential builds a
-        request-scoped client (the shared client is never mutated) so concurrent
-        requests for different tenants can never interfere.
+        """Request-scoped, fail-closed client resolution.
 
-        Unlike the BYOK cloud adapters there is no fail-closed branch: a
-        self-host engine is reachable on its topology ``base_url`` without a
-        vendor credential, so absent an override the shared client stands.
+        A self-hosted engine needs no VENDOR credential, but it does need an
+        address, and Text no longer holds one. The connection row supplies both;
+        for a keyless local server the row carries whatever placeholder that
+        server expects (LM Studio's ``not-needed``), because a row with no key
+        injects on neither tier by design.
         """
-        override = self._resolve_override(request)
-        if override is None:
-            return self._client
+        connection = require_connection(request, provider=self._provider_name)
+        base_url = (connection.base_url or "").strip()
+        if not base_url:
+            from text.core.exceptions import ProviderConnectionMissingError
+
+            raise ProviderConnectionMissingError(
+                f"No base_url on the resolved connection for "
+                f"'{self._provider_name}'.",
+                provider=self._provider_name,
+            )
+        self._last_base_url = base_url
         return AsyncOpenAI(
-            api_key=override.api_key.get_secret_value(),
-            base_url=override.base_url or self._config.base_url,
-            organization=self._config.organization,
-            timeout=float(self._config.timeout_s),
+            api_key=connection.api_key.get_secret_value() or "not-needed",
+            base_url=base_url,
+            timeout=float(self._timeout_s),
         )
 
     def apply_retention(self, retention: dict[str, int]) -> None:
@@ -317,8 +333,20 @@ class OpenAICompatProvider:
             yield StreamChunk(type="done", data={"finish_reason": finish_reason or "stop"})
 
     async def health_check(self) -> bool:
+        """Probe the last-observed endpoint.
+
+        Returns True when none has been observed yet — "no negative evidence".
+        `PoolHealthTracker` acts only on a POSITIVELY known-unhealthy result
+        (`services/pool_health.py`), so a freshly booted process must not report
+        an engine it has simply not contacted yet as DOWN.
+        """
+        probe_url = self._probe_url()
+        if probe_url is None:
+            return True
         try:
-            await self._client.models.list()
+            await AsyncOpenAI(
+                api_key="not-needed", base_url=probe_url, timeout=float(self._timeout_s)
+            ).models.list()
             return True
         except (APIError, APIConnectionError, APITimeoutError, ConnectionError, OSError) as exc:
             logger.warning("health_check.failed", provider=self._provider_name, error=str(exc))
@@ -341,7 +369,9 @@ class OpenAICompatProvider:
         ANY failure returns `{}`: enrichment is strictly best-effort and must
         never degrade or fail the `/v1/models` listing.
         """
-        root = self._config.base_url.rstrip("/")
+        root = (self._probe_url() or "").rstrip("/")
+        if not root:
+            return {}
         if root.endswith("/v1"):
             root = root[: -len("/v1")].rstrip("/")
         try:
@@ -359,8 +389,23 @@ class OpenAICompatProvider:
     async def get_info(self) -> ProviderInfo:
         models: list[ModelInfo] = []
         status = "unavailable"
+        probe_url = self._probe_url()
+        if probe_url is None:
+            # Nothing observed yet — no endpoint to list models from. The
+            # catalogue is authoritative on the gateway (`AiModel`) regardless.
+            return ProviderInfo(
+                name=self._provider_name,
+                display_name=self._display_name,
+                status=status,
+                default_model="",
+                models=[],
+                supports_streaming=True,
+                supports_vision=True,
+            )
         try:
-            model_list = await self._client.models.list()
+            model_list = await AsyncOpenAI(
+                api_key="not-needed", base_url=probe_url, timeout=float(self._timeout_s)
+            ).models.list()
             for m in model_list.data:
                 models.append(ModelInfo(name=m.id, supports_streaming=True))
             status = "available"
@@ -384,7 +429,12 @@ class OpenAICompatProvider:
             name=self._provider_name,
             display_name=self._display_name,
             status=status,
-            default_model=self._default_model,
+            # The default model comes from `AiTaskDefault` on the gateway. This
+            # adapter used to echo ``TEXT_OPENAI_COMPAT_DEFAULT_MODEL``, whose
+            # value had to match an id LM Studio actually served — a hardcoded
+            # engine-specific string in a config file, which is how a stale
+            # `-qat` suffix once 400ed every request that reached the default.
+            default_model="",
             models=models,
             supports_streaming=True,
             supports_vision=True,
