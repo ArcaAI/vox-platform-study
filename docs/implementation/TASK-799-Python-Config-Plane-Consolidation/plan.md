@@ -99,6 +99,37 @@ so SYSTEM-only by construction; `baseUrl` = TEI reranker `:8870`, keyless) and
 `vector:qdrant` (`baseUrl` = platform Qdrant `:6333`, keyless; `qdrant` IS cloud-BYO
 eligible, so a tenant may override with its own Qdrant Cloud key).
 
+## Post-merge checklist — ORCHESTRATOR ONLY (shared artifacts, one writer)
+
+Phase 2 lanes cannot run these: they are single-writer artifacts that every lane
+touches. **`env:sync --check` WILL FAIL until step 1 runs**, so do not read that as a
+regression.
+
+1. `pnpm env:python-surface` then `pnpm env:sync` — regenerates
+   `turbo.json#globalEnv`, `env-surface.generated.md` and all six `.env.sample` files.
+   The generator shells out to `git ls-files`, which SIGABRTs under worktree isolation,
+   which is why no lane could run it.
+2. `uv lock` at the repo root — `apps/nlp` gained `redis` and dropped `minio`; other
+   Phase 2 lanes add `redis` to harness and tts. One lockfile, five writers.
+3. Re-run each service's suite AFTER merging, not just in its worktree.
+
+## Phase 2 follow-up — the nlp taxonomy lane (NOT done, needs BOTH sides)
+
+`apps/nlp` never reads `AiModel._metadata`: it is a pure EXECUTOR that receives an
+already-decoded taxonomy over the wire (guardrail resolves the blob and forwards it as
+request fields — `apps/nlp/src/nlp/schemas/guard.py:1-16` declares this contract).
+So moving these onto `_metadata` requires the GATEWAY to resolve and inject them, and
+that half lives in `apps/api` + `packages/applications`. A lane owning only `apps/nlp`
+would add a schema field the gateway never populates, leaving the env var as the
+effective source — half-wired config that reads as done.
+
+Still env- or code-owned, awaiting a lane that owns both sides:
+`entailment_scorer.py:60-78` (MiniCheck token ids + calibration bounds — a non-MiniCheck
+model yields silently meaningless scores on a clinical gate), `ontology_linker.py:94`
+(40 UMLS/SNOMED/RxNorm/ICD-10/LOINC rows), `vitals_extractor.py:22-27` (clinical
+plausibility ranges), `assertion.py:37` (ConText/NegEx triggers), and the five
+`TOKEN_CLASSIFIER_*` / `NLP_LINKER_*` fields.
+
 ## Phase 3 — Make it stick
 
 **3.1 — Extend the drift gate to Python** (`scripts/env-sync.mts:639` globs no `*.py`).
