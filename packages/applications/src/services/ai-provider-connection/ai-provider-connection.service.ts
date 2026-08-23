@@ -38,6 +38,7 @@ import {
 import { AiProviderConnectionDtoMapper } from './ai-provider-connection.dto.mapper';
 import { ProviderService, isCloudByoProvider } from './constants';
 import { AiProviderConnectionResponse, UpsertAiProviderConnectionRequest } from './dto';
+import { sanitizeProviderExtras } from './provider-extras';
 
 /**
  * Unified provider-connection service.
@@ -292,24 +293,44 @@ export class AiProviderConnectionService extends BaseService implements IProvide
     // not a policy decision: resolve to nothing and let SYSTEM/env serve.
     if (!this.secretsService) return { overrides: {} };
 
-    const { tenantRows, systemRows, vetoed, platformDefault } = await this.cascadeRows(service, tenantId);
+    const { tenantRows, systemRows, vetoed, platformDefault, systemEntitled } = await this.cascadeRows(service, tenantId);
 
     const overrides: ProviderOverrides = {};
     // SYSTEM first, then the tenant's own rows OVER it — the merge is per
     // provider KEY, never a whole-map "tenant if non-empty" short-circuit, so a
     // tenant with an azure key but no sarvam key still gets platform sarvam.
-    for (const row of [...systemRows, ...tenantRows]) {
-      // A non-listed row must never become a credential override even if one
-      // exists — the BYO lane is cloud-only per-service (C5), enforced
-      // independently of the write-side guard, and enforced at BOTH tiers so
-      // the SYSTEM tier cannot become a back door for injecting a self-host
-      // row's base_url as a credential.
-      if (!isCloudByoProvider(service, row.provider)) continue;
-      if (vetoed.has(row.provider)) continue;
-      if (!row.enabled || !row.encryptedApiKey) continue;
+    for (const [tier, rows] of [
+      ['system', systemRows],
+      ['tenant', tenantRows],
+    ] as const) {
+      for (const row of rows) {
+        if (vetoed.has(row.provider)) continue;
+        // A keyless row carries no credential to inject, whichever tier it is
+        // on. This is also what stops a SYSTEM row's `base_url` from being
+        // mistaken for a credential — an entry only ever exists behind real key
+        // material.
+        if (!row.enabled || !row.encryptedApiKey) continue;
 
-      const entry = await this.toOverrideEntry(row, service);
-      if (entry) overrides[row.provider] = entry;
+        const isCloud = isCloudByoProvider(service, row.provider);
+
+        // TENANT tier: a tenant may only ever OWN a cloud BYO row (C5).
+        // Enforced here as well as at the write guard, so a row that predates
+        // the guard cannot become a credential override.
+        if (tier === 'tenant' && !isCloud) continue;
+
+        // SYSTEM tier: this IS the platform default. TASK-799 P1-C — the tier
+        // is no longer filtered by `isCloudByoProvider`. That filter conflated
+        // two different rules and broke the second one: "a TENANT may not own
+        // this" is not "the PLATFORM may not serve it". A super-admin-written
+        // SYSTEM row for a self-host engine (a keyed vLLM/openai-compat
+        // endpoint, the TEI reranker, the platform Qdrant) is platform
+        // INFRASTRUCTURE and must reach every tenant; only a CLOUD row is
+        // platform SPEND, and only that is gated by R6.
+        if (tier === 'system' && isCloud && !systemEntitled) continue;
+
+        const entry = await this.toOverrideEntry(row, service);
+        if (entry) overrides[row.provider] = entry;
+      }
     }
 
     return platformDefault ? { overrides, platformDefault } : { overrides };
@@ -392,6 +413,13 @@ export class AiProviderConnectionService extends BaseService implements IProvide
     systemRows: AiProviderConnectionEntity[];
     vetoed: Set<string>;
     platformDefault?: PlatformDefaultOutcome;
+    /**
+     * Whether this caller may draw on the platform's VENDOR accounts. Returned
+     * (rather than merely applied) because the whole-service read cannot decide
+     * the question per row until it knows which rows came back — see the fold
+     * in `resolveTenantCloudOverrides`.
+     */
+    systemEntitled: boolean;
   }> {
     const tenantRows = await this.readTier(service, tenantId, provider);
 
@@ -408,27 +436,55 @@ export class AiProviderConnectionService extends BaseService implements IProvide
     // (and no gate — the SYSTEM tenant does not need permission to spend the
     // platform's own money).
     if (tenantId === SYSTEM_TENANT_ID) {
-      return { tenantRows, systemRows: [], vetoed };
+      return { tenantRows, systemRows: [], vetoed, systemEntitled: true };
     }
 
     // A single vetoed provider makes the SYSTEM read pointless for the
     // by-provider shape: skip it rather than fetch a secret we must discard.
     if (provider !== undefined && vetoed.has(provider)) {
-      return { tenantRows, systemRows: [], vetoed, platformDefault: { entitlementSuppressed: false, vetoed: [...vetoed] } };
+      return {
+        tenantRows,
+        systemRows: [],
+        vetoed,
+        platformDefault: { entitlementSuppressed: false, vetoed: [...vetoed] },
+        systemEntitled: false,
+      };
     }
 
-    // R6 — the gate, evaluated BEFORE the SYSTEM read. It governs platform
-    // SPEND, so it applies to cloud BYO providers only: a SYSTEM row for a
-    // self-host engine records where platform INFRASTRUCTURE lives and must
-    // stay resolvable for every tenant, entitled or not.
-    const gated = provider === undefined || isCloudByoProvider(service, provider);
-    if (gated && !(await this.mayConsumePlatformDefault(tenantId))) {
-      return { tenantRows, systemRows: [], vetoed, platformDefault: { entitlementSuppressed: true, vetoed: [...vetoed] } };
+    // R6 — the gate. It governs platform SPEND on a VENDOR account, so it is
+    // scoped to cloud BYO providers: a SYSTEM row for a self-host engine records
+    // where platform INFRASTRUCTURE lives and must stay resolvable for every
+    // tenant, entitled or not. Only ASK when the answer can matter, so a
+    // by-provider read for a self-host provider costs no entitlement lookup.
+    const gateApplies = provider === undefined || isCloudByoProvider(service, provider);
+    const systemEntitled = gateApplies ? await this.mayConsumePlatformDefault(tenantId) : true;
+
+    // BY-PROVIDER shape, cloud provider, gate denied: skip the SYSTEM read
+    // entirely — the platform's ciphertext is never even fetched for a caller
+    // that may not use it.
+    if (provider !== undefined && gateApplies && !systemEntitled) {
+      return {
+        tenantRows,
+        systemRows: [],
+        vetoed,
+        platformDefault: { entitlementSuppressed: true, vetoed: [...vetoed] },
+        systemEntitled,
+      };
     }
 
+    // WHOLE-SERVICE shape: the SYSTEM tier is read even when the gate denies,
+    // because the denial is PER PROVIDER and only the rows themselves say which
+    // ones it covers. TASK-799 P1-C: skipping the read wholesale also withheld
+    // the platform's SELF-HOST infrastructure rows — the ones the gate was
+    // never meant to touch — which is precisely why `rerank:tei` and
+    // `vector:qdrant` were storable but undeliverable. Suppression is applied
+    // per row in the fold, and a suppressed row is never DECRYPTED, so no
+    // plaintext key material is produced for a caller that may not use it.
     const systemRows = await this.readTier(service, SYSTEM_TENANT_ID, provider);
-    const platformDefault = vetoed.size > 0 ? { entitlementSuppressed: false, vetoed: [...vetoed] } : undefined;
-    return { tenantRows, systemRows, vetoed, platformDefault };
+    const entitlementSuppressed = gateApplies && !systemEntitled;
+    const platformDefault =
+      vetoed.size > 0 || entitlementSuppressed ? { entitlementSuppressed, vetoed: [...vetoed] } : undefined;
+    return { tenantRows, systemRows, vetoed, platformDefault, systemEntitled };
   }
 
   /**
@@ -487,24 +543,40 @@ export class AiProviderConnectionService extends BaseService implements IProvide
     if (!this.secretsService || !row.encryptedApiKey) return null;
     try {
       const apiKey = await decryptSecretField(this.secretsService, row.encryptedApiKey);
-      const entry: ProviderOverrideEntry = { api_key: apiKey, funding: this.fundingOf(row) };
+      // TASK-799 P1-C.2 — VALIDATED PASSTHROUGH, not an allow-list.
+      //
+      // This used to forward exactly four keys (`model`/`foundryModel`,
+      // `project`, `location`) while `extraJson` accepted anything, so every
+      // other per-endpoint quirk was stored and then silently DROPPED in
+      // transit. `sanitizeProviderExtras` instead checks the SHAPE (flat, safe
+      // keys, scalar or scalar-array values, bounded) and forwards whatever
+      // passes, so a new provider capability flag needs a console write and no
+      // code change here.
+      //
+      // ORDER MATTERS and is the security property: the extras are folded FIRST
+      // and the column-backed fields are written OVER them. The reserved-key
+      // rule in `provider-extras.ts` already refuses `api_key`, `funding`,
+      // `base_url`, `region`, `api_version` and `deployment_name`, so this is
+      // belt-and-braces — a row can never restate the credential, redirect the
+      // endpoint, or stamp the DERIVED funding label.
+      const extras = sanitizeProviderExtras(row.extraJson);
+
+      // `foundryModel` is the pre-unification spelling of `model` on STT rows.
+      // De-alias it (never overriding an explicit `model`) and drop the old
+      // spelling rather than putting both on the wire — this is what lets a
+      // SYSTEM-sourced STT entry keep its model id, since the caller-side
+      // `list()` fold that used to supply it is tenant-pinned and cannot see
+      // the platform row.
+      if (typeof extras.foundryModel === 'string' && extras.model === undefined) {
+        extras.model = extras.foundryModel;
+      }
+      delete extras.foundryModel;
+
+      const entry: ProviderOverrideEntry = { ...extras, api_key: apiKey, funding: this.fundingOf(row) };
       if (row.baseUrl) entry.base_url = row.baseUrl;
       if (row.region) entry.region = row.region;
       if (row.apiVersion) entry.api_version = row.apiVersion;
       if (row.deploymentName) entry.deployment_name = row.deploymentName;
-      // Columns cover azure/bedrock; the newer providers keep their per-request
-      // target in extraJson (console-written): `model` (openai/anthropic/stt),
-      // `project`/`location` (vertex). Without this, Vertex BYO never reaches
-      // the tenant's project and an LLM model override is silently dropped.
-      // `foundryModel` is the pre-unification spelling of `model` on STT rows;
-      // reading it here is what lets a SYSTEM-sourced STT entry keep its model
-      // id (the caller-side `list()` fold that used to supply it is
-      // tenant-pinned and cannot see the platform row).
-      const extra = (row.extraJson ?? {}) as Record<string, unknown>;
-      const model = extra.model ?? extra.foundryModel;
-      if (typeof model === 'string' && model.length > 0) entry.model = model;
-      if (typeof extra.project === 'string') entry.project = extra.project;
-      if (typeof extra.location === 'string') entry.location = extra.location;
       return entry;
     } catch {
       this.logger.warn({

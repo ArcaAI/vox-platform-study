@@ -10,11 +10,29 @@
  * being listed under its service below — the default is SYSTEM-only.
  */
 
-/** The capability a connection row serves. Validated string, no Prisma enum. */
-export type ProviderService = 'llm' | 'stt' | 'tts';
+/**
+ * The capability a connection row serves. Validated string, no Prisma enum.
+ *
+ * TASK-799 P1-C.1 — the first three are INFERENCE capabilities; the last three
+ * are the non-inference integrations that previously had NOWHERE to live.
+ * Because `service` was a closed `{llm,stt,tts}` set, a tenant secret that was
+ * not one of ~11 vendor LLM/STT/TTS slots could not be stored at all: a Qdrant
+ * API key, a TEI reranker or embeddings endpoint had to stay an environment
+ * variable, which is what blocked the harness and stt migrations.
+ *
+ * WHY WIDEN THIS COLUMN rather than add a sibling store: D-2 — "never invent a
+ * third home". A sibling table would have to re-implement all seven hops of the
+ * BYO credential contract (Vault-Transit at rest, the two-tier tenant → SYSTEM
+ * cascade, the three `enabled` states, derived funding, minimal-exposure
+ * injection, `SecretStr` transport, fail-closed consumption). Widening reuses
+ * every one of them, and reuses the OCC/ETag route, the masked read DTO, the
+ * repository and the audit `ResourceType` unchanged. `service` is already a
+ * plain `TEXT` column with no database CHECK constraint, so this costs NO DDL.
+ */
+export type ProviderService = 'llm' | 'stt' | 'tts' | 'embeddings' | 'rerank' | 'vector';
 
-/** All three services, for iteration/validation. */
-export const PROVIDER_SERVICES = ['llm', 'stt', 'tts'] as const;
+/** Every service, for iteration/validation (the route's `:service` guard reads this). */
+export const PROVIDER_SERVICES = ['llm', 'stt', 'tts', 'embeddings', 'rerank', 'vector'] as const;
 
 /**
  * C5 — the per-service governance map. A TENANT may hold its own connection row
@@ -35,6 +53,20 @@ export const CLOUD_BYO_PROVIDERS: Record<ProviderService, readonly string[]> = {
   llm: ['azure', 'bedrock', 'openai', 'anthropic', 'vertex'],
   stt: ['azure-speech', 'sarvam', 'openai'],
   tts: ['azure', 'sarvam'],
+  // TASK-799 P1-C.1 — the integration capabilities. Each list is EVIDENCE-BASED,
+  // not aspirational: a provider is listed only where a tenant can genuinely
+  // hold its own vendor account today.
+  //   `embeddings` — the same Azure/OpenAI accounts that already back `llm`.
+  //   `rerank`     — DELIBERATELY EMPTY. The only reranker is the self-hosted TEI
+  //                  service, which is platform INFRASTRUCTURE; there is no cloud
+  //                  rerank adapter for a tenant to bring a key to. A tenant row
+  //                  is therefore a 403 and only the SYSTEM row serves. This list
+  //                  is the extension point when that changes.
+  //   `vector`     — Qdrant Cloud is a real per-tenant subscription, so a tenant
+  //                  may point the plane at its own cluster with its own key.
+  embeddings: ['azure', 'openai'],
+  rerank: [],
+  vector: ['qdrant'],
 };
 
 /** The union of every cloud BYO provider name across all services. */

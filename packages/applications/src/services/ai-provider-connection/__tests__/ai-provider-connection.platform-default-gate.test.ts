@@ -59,14 +59,14 @@ function makeService(opts: { rowsByTenant?: Record<string, unknown[]>; entitled?
     entitlements as any,
   );
   vi.spyOn((svc as any).logger, 'warn').mockImplementation(() => undefined);
-  return { svc, repo, entitlements: entitlements as { isFeatureEnabled: ReturnType<typeof vi.fn> } };
+  return { svc, repo, secrets, entitlements: entitlements as { isFeatureEnabled: ReturnType<typeof vi.fn> } };
 }
 
 beforeEach(() => vi.clearAllMocks());
 
 describe('the entitlement gate (R6)', () => {
-  it('30. an UNGRANTED tenant gets nothing AND the SYSTEM read never happens', async () => {
-    const { svc, repo } = makeService({
+  it('30. an UNGRANTED tenant gets no platform VENDOR credential, and it is never decrypted', async () => {
+    const { svc, repo, secrets } = makeService({
       entitled: false,
       rowsByTenant: { [SYSTEM_TENANT_ID]: [makeRow({ tenantId: SYSTEM_TENANT_ID })] },
     });
@@ -74,10 +74,18 @@ describe('the entitlement gate (R6)', () => {
     const resolved = await svc.resolveTenantCloudOverrides('tts', TENANT_A);
     expect(resolved.overrides).toEqual({});
 
-    // ONE query — identical cost to the pre-cascade behaviour — and the
-    // platform's ciphertext is never fetched for a tenant that may not use it.
-    expect(repo.findByTenantIdAndService).toHaveBeenCalledTimes(1);
-    expect(repo.findByTenantIdAndService.mock.calls[0][1]).toBe(TENANT_A);
+    // TASK-799 P1-C — the whole-service read no longer skips the SYSTEM tier
+    // wholesale. It cannot: the denial is PER PROVIDER (it governs platform
+    // SPEND on a vendor account, never platform INFRASTRUCTURE), and only the
+    // rows themselves say which providers it covers. Skipping the read also
+    // withheld the platform's self-host rows, which is what made `rerank:tei`
+    // and `vector:qdrant` storable but undeliverable.
+    //
+    // The property that actually mattered is preserved exactly: a suppressed
+    // row is never DECRYPTED, so no plaintext key material is produced for a
+    // caller that may not use it. The ciphertext read is inert.
+    expect(secrets.decrypt).not.toHaveBeenCalled();
+    expect(repo.findByTenantIdAndService.mock.calls.map((c: any[]) => c[1])).toEqual([TENANT_A, SYSTEM_TENANT_ID]);
   });
 
   it('31. a GRANTED tenant reaches the SYSTEM tier', async () => {
@@ -111,13 +119,15 @@ describe('the entitlement gate (R6)', () => {
   });
 
   it('an ABSENT entitlements service denies — a missing gate must not spend the platform’s money', async () => {
-    const { svc, repo } = makeService({
+    const { svc, secrets } = makeService({
       entitlements: null,
       rowsByTenant: { [SYSTEM_TENANT_ID]: [makeRow({ tenantId: SYSTEM_TENANT_ID })] },
     });
     const resolved = await svc.resolveTenantCloudOverrides('tts', TENANT_A);
     expect(resolved.overrides).toEqual({});
-    expect(repo.findByTenantIdAndService).toHaveBeenCalledTimes(1);
+    expect(resolved.platformDefault?.entitlementSuppressed).toBe(true);
+    // As in test 30: the vendor row is read but never decrypted.
+    expect(secrets.decrypt).not.toHaveBeenCalled();
   });
 
   it('the gate is asked for the RESOLVING tenant and the platform-default feature, once', async () => {

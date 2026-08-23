@@ -149,9 +149,39 @@ describe('resolveTenantCloudOverrides — SYSTEM-tenant cascade (R1)', () => {
     expect(overrides).toEqual({});
   });
 
-  it('6. a SYSTEM row for a non-cloud-BYO provider is never injected (self-host base_url is not a credential)', async () => {
+  it('6. a KEYLESS self-host SYSTEM row is never injected — a base_url alone is not a credential', async () => {
     const { svc } = makeService({
-      rowsByTenant: { [SYSTEM_TENANT_ID]: [makeRow({ tenantId: SYSTEM_TENANT_ID, provider: 'ollama', baseUrl: 'http://localhost:11434' })] },
+      rowsByTenant: {
+        [SYSTEM_TENANT_ID]: [
+          makeRow({ tenantId: SYSTEM_TENANT_ID, provider: 'ollama', baseUrl: 'http://localhost:11434', encryptedApiKey: null }),
+        ],
+      },
+    });
+    const { overrides } = await svc.resolveTenantCloudOverrides('llm', TENANT_A);
+    expect(overrides).toEqual({});
+  });
+
+  it('6b. a KEYED self-host SYSTEM row IS injected — platform infrastructure is deliverable', async () => {
+    // TASK-799 P1-C. This tier used to be filtered by `isCloudByoProvider`,
+    // which conflated two different rules: "a TENANT may not OWN this provider"
+    // is not "the PLATFORM may not SERVE it". The filter meant a super admin
+    // could store a key for a self-hosted engine behind an auth proxy (an
+    // openai-compatible/vLLM endpoint, the TEI reranker, the platform Qdrant)
+    // and it would be silently dropped in transit — stored but undeliverable.
+    // The guarantee test 6 above actually rests on is the KEY guard, not the
+    // provider list: without key material there is still no entry.
+    const { svc } = makeService({
+      rowsByTenant: {
+        [SYSTEM_TENANT_ID]: [makeRow({ tenantId: SYSTEM_TENANT_ID, provider: 'openai-compat', baseUrl: 'https://vllm.internal' })],
+      },
+    });
+    const { overrides } = await svc.resolveTenantCloudOverrides('llm', TENANT_A);
+    expect(overrides['openai-compat']).toMatchObject({ base_url: 'https://vllm.internal', funding: 'platform' });
+  });
+
+  it('6c. a TENANT-owned row for a non-cloud-BYO provider is still never injected', async () => {
+    const { svc } = makeService({
+      rowsByTenant: { [TENANT_A]: [makeRow({ tenantId: TENANT_A, provider: 'ollama', baseUrl: 'http://localhost:11434' })] },
     });
     const { overrides } = await svc.resolveTenantCloudOverrides('llm', TENANT_A);
     expect(overrides).toEqual({});
