@@ -40,7 +40,10 @@ import structlog.testing
 from httpx import ASGITransport, AsyncClient
 from pydantic import SecretStr
 
-from text.core.config import ExternalGuardrailConfig, JudgeConfig, Settings
+from text.core.config import (
+    ExternalGuardrailConfig,
+    Settings,
+)
 from text.models.requests import GenerateRequest
 from text.models.stats import build_generation_stats
 from text.services.resizable_semaphore import ResizableSemaphore
@@ -98,7 +101,7 @@ def _hermetic_settings(**overrides) -> Settings:
     """
     base = {
         "service_token": SecretStr(""),
-        "external_guardrail": ExternalGuardrailConfig(enabled=False),
+        "external_guardrail": ExternalGuardrailConfig(),
     }
     base.update(overrides)
     return Settings(**base)
@@ -244,7 +247,7 @@ class TestCycleGuard:
         """`external_guardrail.enabled` fails the PUBLIC path closed when the
         client is unwired. The judge path is outside that gate by construction —
         otherwise a guardrail outage could never be judged its way out of."""
-        settings = _hermetic_settings(external_guardrail=ExternalGuardrailConfig(enabled=True))
+        settings = _hermetic_settings(external_guardrail=ExternalGuardrailConfig())
         client, _ = await client_factory(settings=settings, guardrail_client=None)
 
         resp = await client.post(JUDGE_PATH, json=_payload())
@@ -629,7 +632,7 @@ class TestPublicGeneratePathUnchanged:
 
     @pytest.mark.asyncio
     async def test_enforce_posture_with_unwired_client_is_503(self, client_factory, mock_provider):
-        settings = _hermetic_settings(external_guardrail=ExternalGuardrailConfig(enabled=True))
+        settings = _hermetic_settings(external_guardrail=ExternalGuardrailConfig())
         client, _ = await client_factory(settings=settings, guardrail_client=None)
 
         resp = await client.post("/api/v1/generate", json={"prompt": "hello", "model": "m"})

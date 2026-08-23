@@ -17,6 +17,7 @@ from httpx import ASGITransport, AsyncClient
 
 from text.models.requests import GenerateRequest
 from text.models.stream import StreamChunk
+from text.tests.conftest import stub_client
 
 # ---------------------------------------------------------------------------
 # GenerationStats model + AD-1 field shape
@@ -106,7 +107,6 @@ class TestOpenAiCompatMapping:
         ``stream_options`` usage-only chunk LAST) — the ordering the frozen
         early-return dropped. The usage chunk carries the real normalized stop
         reason (``length``) and ``predicted_tokens``."""
-        from text.core.config import OpenAICompatConfig
         from text.providers.openai_compat import OpenAICompatProvider
 
         content_chunk = MagicMock()
@@ -124,8 +124,8 @@ class TestOpenAiCompatMapping:
             for c in _chunks:
                 yield c
 
-        provider = OpenAICompatProvider(OpenAICompatConfig(default_model="m"))
-        provider._client = MagicMock()
+        provider = OpenAICompatProvider()
+        provider._client = stub_client(provider, MagicMock())
         provider._client.chat.completions.create = AsyncMock(
             return_value=_stream([content_chunk, usage_chunk])
         )

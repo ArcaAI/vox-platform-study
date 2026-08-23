@@ -95,21 +95,21 @@ class TestDefaultConstants:
     """Verify the default constants are accessible and correct."""
 
     def test_defaults_dict_exists(self):
-        from text.core.defaults import GENERATION_DEFAULTS
+        from text.core.defaults import GENERATION_FLOOR as GENERATION_DEFAULTS
 
         assert isinstance(GENERATION_DEFAULTS, dict)
 
     def test_default_temperature_is_0_1(self):
-        from text.core.defaults import GENERATION_DEFAULTS
+        from text.core.defaults import GENERATION_FLOOR as GENERATION_DEFAULTS
 
         assert GENERATION_DEFAULTS["temperature"] == 0.1
 
     def test_default_max_tokens_is_16_384(self):
-        from text.core.defaults import GENERATION_DEFAULTS
+        from text.core.defaults import GENERATION_FLOOR as GENERATION_DEFAULTS
 
         assert GENERATION_DEFAULTS["max_tokens"] == 16_384
 
     def test_default_top_p_is_0_95(self):
-        from text.core.defaults import GENERATION_DEFAULTS
+        from text.core.defaults import GENERATION_FLOOR as GENERATION_DEFAULTS
 
         assert GENERATION_DEFAULTS["top_p"] == 0.95

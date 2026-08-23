@@ -12,49 +12,18 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from text.core.config import AzureOpenAIConfig, BedrockConfig
 from text.models.requests import GenerateRequest
-from text.tests.conftest import keyed
+from text.tests.conftest import stub_client
 
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
 
 
-@pytest.fixture
-def bedrock_config_with_guardrail():
-    # Keyed: no platform client is built without an explicit credential.
-    return keyed(
-        BedrockConfig(
-            region="us-east-1",
-            default_model="anthropic.claude-3-sonnet-20240229-v1:0",
-            guardrail_id="gr-123",
-            guardrail_version="1",
-        )
-    )
 
 
-@pytest.fixture
-def bedrock_config_no_guardrail():
-    return keyed(
-        BedrockConfig(
-            region="us-east-1",
-            default_model="anthropic.claude-3-sonnet-20240229-v1:0",
-        )
-    )
 
 
-@pytest.fixture
-def azure_config():
-    return keyed(
-        AzureOpenAIConfig(
-            endpoint="https://test.openai.azure.com",
-            api_version="2024-06-01",
-            deployment_name="gpt-4",
-            default_model="gpt-4",
-        ),
-        "test-key",
-    )
 
 
 # ===========================================================================
@@ -65,28 +34,28 @@ def azure_config():
 class TestBedrockGuardrailConfig:
     """Verify guardrailConfig is injected into converse params."""
 
-    def test_bedrock_guardrail_config_added_when_id_set(self, bedrock_config_with_guardrail):
+    def test_bedrock_guardrail_config_added_when_id_set(self):
         from text.providers.bedrock import BedrockProvider
 
         with patch("text.providers.bedrock.boto3") as mock_boto3:
             mock_boto3.Session.return_value.client.return_value = MagicMock()
-            provider = BedrockProvider(config=bedrock_config_with_guardrail)
+            provider = BedrockProvider()
 
-        request = GenerateRequest(prompt="test prompt", provider="bedrock")
+        request = GenerateRequest(prompt="test prompt", provider="bedrock", model="test-model")
         params = provider._build_converse_params(request)
 
         assert "guardrailConfig" in params
         assert params["guardrailConfig"]["guardrailIdentifier"] == "gr-123"
         assert params["guardrailConfig"]["guardrailVersion"] == "1"
 
-    def test_bedrock_guardrail_config_absent_when_id_empty(self, bedrock_config_no_guardrail):
+    def test_bedrock_guardrail_config_absent_when_id_empty(self):
         from text.providers.bedrock import BedrockProvider
 
         with patch("text.providers.bedrock.boto3") as mock_boto3:
             mock_boto3.Session.return_value.client.return_value = MagicMock()
-            provider = BedrockProvider(config=bedrock_config_no_guardrail)
+            provider = BedrockProvider()
 
-        request = GenerateRequest(prompt="test prompt", provider="bedrock")
+        request = GenerateRequest(prompt="test prompt", provider="bedrock", model="test-model")
         params = provider._build_converse_params(request)
 
         assert "guardrailConfig" not in params
@@ -104,7 +73,7 @@ class TestBedrockGuardrailIntervened:
     """Verify guardrail_intervened stop reason is logged and handled."""
 
     @pytest.mark.asyncio
-    async def test_bedrock_guardrail_intervened_logged(self, bedrock_config_with_guardrail):
+    async def test_bedrock_guardrail_intervened_logged(self):
         from text.providers.bedrock import BedrockProvider
 
         mock_client = MagicMock()
@@ -118,7 +87,7 @@ class TestBedrockGuardrailIntervened:
 
         with patch("text.providers.bedrock.boto3") as mock_boto3:
             mock_boto3.Session.return_value.client.return_value = mock_client
-            provider = BedrockProvider(config=bedrock_config_with_guardrail)
+            provider = BedrockProvider()
 
         with patch("text.providers.bedrock.logger") as mock_logger:
             content, _reasoning, stats = await provider.generate(
@@ -175,13 +144,13 @@ class TestAzureContentFilterErrorHandling:
     """Verify content filter errors from Azure are logged and re-raised."""
 
     @pytest.mark.asyncio
-    async def test_azure_content_filter_error_logged(self, azure_config):
+    async def test_azure_content_filter_error_logged(self):
         from openai import BadRequestError
 
         from text.providers.azure_openai import AzureOpenAIProvider
 
-        provider = AzureOpenAIProvider(config=azure_config)
-        provider._client = AsyncMock()
+        provider = AzureOpenAIProvider()
+        provider._client = stub_client(provider, AsyncMock())
 
         error_body = {
             "error": {
@@ -200,7 +169,7 @@ class TestAzureContentFilterErrorHandling:
         with patch("text.providers.azure_openai.logger") as mock_logger:
             with pytest.raises(BadRequestError):
                 await provider.generate(
-                    GenerateRequest(prompt="bad prompt", provider="azure_openai")
+                    GenerateRequest(prompt="bad prompt", provider="azure_openai", model="test-model")
                 )
 
             mock_logger.warning.assert_called_once()
@@ -208,14 +177,14 @@ class TestAzureContentFilterErrorHandling:
             assert "content_filter" in call_args[0][0]
 
     @pytest.mark.asyncio
-    async def test_azure_non_content_filter_error_not_logged_as_filter(self, azure_config):
+    async def test_azure_non_content_filter_error_not_logged_as_filter(self):
         """Non-content-filter BadRequestError should NOT trigger filter logging."""
         from openai import BadRequestError
 
         from text.providers.azure_openai import AzureOpenAIProvider
 
-        provider = AzureOpenAIProvider(config=azure_config)
-        provider._client = AsyncMock()
+        provider = AzureOpenAIProvider()
+        provider._client = stub_client(provider, AsyncMock())
 
         error_body = {
             "error": {
@@ -233,6 +202,6 @@ class TestAzureContentFilterErrorHandling:
 
         with patch("text.providers.azure_openai.logger") as mock_logger:
             with pytest.raises(BadRequestError):
-                await provider.generate(GenerateRequest(prompt="hello", provider="azure_openai"))
+                await provider.generate(GenerateRequest(prompt="hello", provider="azure_openai", model="test-model"))
 
             mock_logger.warning.assert_not_called()

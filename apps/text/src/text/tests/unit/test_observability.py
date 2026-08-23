@@ -290,12 +290,12 @@ class TestUvicornLogging:
 
 class TestOtelLogsEnabledSetting:
     def test_default_true(self):
-        settings = Settings(host="127.0.0.1", port=5099)
+        settings = Settings(port=5099)
         assert settings.otel_logs_enabled is True
 
     def test_from_env(self, monkeypatch):
         monkeypatch.setenv("TEXT_OTEL_LOGS_ENABLED", "false")
-        settings = Settings(host="127.0.0.1", port=5099)
+        settings = Settings(port=5099)
         assert settings.otel_logs_enabled is False
 
 
@@ -306,13 +306,7 @@ class TestOtelLogsEnabledSetting:
 
 class TestCreateAppObservability:
     def test_initializes_logger_provider_state(self):
-        settings = Settings(
-            host="127.0.0.1",
-            port=5099,
-            debug=True,
-            otel_enabled=False,
-            metrics_enabled=False,
-        )
+        settings = Settings(port=5099)
         from text.main import create_app
 
         app = create_app(settings_override=settings)
@@ -320,13 +314,7 @@ class TestCreateAppObservability:
         assert app.state.logger_provider is None
 
     def test_calls_setup_opentelemetry_when_enabled(self):
-        settings = Settings(
-            host="127.0.0.1",
-            port=5099,
-            debug=True,
-            otel_enabled=True,
-            metrics_enabled=False,
-        )
+        settings = Settings(port=5099)
         with patch("text.core.observability.setup_opentelemetry") as mock_setup:
             from text.main import create_app
 
@@ -334,13 +322,7 @@ class TestCreateAppObservability:
             mock_setup.assert_called_once()
 
     def test_skips_setup_when_disabled(self):
-        settings = Settings(
-            host="127.0.0.1",
-            port=5099,
-            debug=True,
-            otel_enabled=False,
-            metrics_enabled=False,
-        )
+        settings = Settings(port=5099)
         with patch("text.core.observability.setup_opentelemetry") as mock_setup:
             from text.main import create_app
 

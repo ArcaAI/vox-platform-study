@@ -51,7 +51,7 @@ def app(mock_embedding_registry, mock_worker_pool_queue, mock_task_manager):
     from text.main import create_app
 
     application = create_app()
-    application.state.settings = Settings(host="127.0.0.1", port=5099, debug=True)
+    application.state.settings = Settings(port=5099)
     application.state.embedding_registry = mock_embedding_registry
     application.state.worker_pool_queue = mock_worker_pool_queue
     application.state.task_manager = mock_task_manager

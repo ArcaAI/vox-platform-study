@@ -28,7 +28,7 @@ def app(mock_worker_pool_queue):
     from text.services.shutdown_manager import ShutdownManager
 
     application = create_app()
-    application.state.settings = Settings(host="127.0.0.1", port=5099, debug=True)
+    application.state.settings = Settings(port=5099)
     application.state.worker_pool_queue = mock_worker_pool_queue
     application.state.shutdown_manager = ShutdownManager()
     return application

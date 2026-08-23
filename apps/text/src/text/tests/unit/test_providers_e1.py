@@ -13,7 +13,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from text.models.requests import GenerateRequest, ResponseFormat
-from text.tests.conftest import keyed
+from text.tests.conftest import stub_client
 
 # ── Azure OpenAI Provider ──
 
@@ -22,7 +22,6 @@ class TestAzurePayloadDefaults:
     """Azure provider should use resolved defaults for None values."""
 
     def _make_provider(self):
-        from text.core.config import AzureOpenAIConfig
         from text.providers.azure_openai import AzureOpenAIProvider
 
         config = keyed(
@@ -32,8 +31,8 @@ class TestAzurePayloadDefaults:
             ),
             "test-key",
         )
-        provider = AzureOpenAIProvider(config)
-        provider._client = AsyncMock()
+        provider = AzureOpenAIProvider()
+        provider._client = stub_client(provider, AsyncMock())
         return provider
 
     @pytest.mark.asyncio
@@ -44,7 +43,7 @@ class TestAzurePayloadDefaults:
         mock_resp.usage = MagicMock(prompt_tokens=5, completion_tokens=10, total_tokens=15)
         provider._client.chat.completions.create = AsyncMock(return_value=mock_resp)
 
-        req = GenerateRequest(prompt="hello")
+        req = GenerateRequest(prompt="hello", model="test-model")
         await provider.generate(req)
 
         call_kwargs = provider._client.chat.completions.create.call_args
@@ -62,7 +61,7 @@ class TestAzurePayloadDefaults:
         mock_resp.usage = MagicMock(prompt_tokens=5, completion_tokens=10, total_tokens=15)
         provider._client.chat.completions.create = AsyncMock(return_value=mock_resp)
 
-        req = GenerateRequest(prompt="hello", temperature=0.5, max_tokens=8000, top_p=0.8)
+        req = GenerateRequest(prompt="hello", temperature=0.5, max_tokens=8000, top_p=0.8, model="test-model")
         await provider.generate(req)
 
         call_kwargs = provider._client.chat.completions.create.call_args
@@ -75,7 +74,6 @@ class TestAzureResponseFormat:
     """Azure should map response_format to the OpenAI response_format parameter."""
 
     def _make_provider(self):
-        from text.core.config import AzureOpenAIConfig
         from text.providers.azure_openai import AzureOpenAIProvider
 
         config = keyed(
@@ -85,8 +83,8 @@ class TestAzureResponseFormat:
             ),
             "test-key",
         )
-        provider = AzureOpenAIProvider(config)
-        provider._client = AsyncMock()
+        provider = AzureOpenAIProvider()
+        provider._client = stub_client(provider, AsyncMock())
         return provider
 
     @pytest.mark.asyncio
@@ -104,10 +102,7 @@ class TestAzureResponseFormat:
         mock_resp.usage = MagicMock(prompt_tokens=5, completion_tokens=10, total_tokens=15)
         provider._client.chat.completions.create = AsyncMock(return_value=mock_resp)
 
-        req = GenerateRequest(
-            prompt="hello",
-            response_format=ResponseFormat(type="json_schema", json_schema=schema, strict=True),
-        )
+        req = GenerateRequest(prompt="hello", response_format=ResponseFormat(type="json_schema", json_schema=schema, strict=True), model="test-model")
         await provider.generate(req)
 
         call_kwargs = provider._client.chat.completions.create.call_args.kwargs
@@ -125,7 +120,7 @@ class TestAzureResponseFormat:
         mock_resp.usage = MagicMock(prompt_tokens=5, completion_tokens=10, total_tokens=15)
         provider._client.chat.completions.create = AsyncMock(return_value=mock_resp)
 
-        req = GenerateRequest(prompt="hello")
+        req = GenerateRequest(prompt="hello", model="test-model")
         await provider.generate(req)
 
         call_kwargs = provider._client.chat.completions.create.call_args.kwargs
@@ -136,7 +131,6 @@ class TestAzureTokenUsage:
     """Azure generate() should return content + token usage."""
 
     def _make_provider(self):
-        from text.core.config import AzureOpenAIConfig
         from text.providers.azure_openai import AzureOpenAIProvider
 
         config = keyed(
@@ -146,8 +140,8 @@ class TestAzureTokenUsage:
             ),
             "test-key",
         )
-        provider = AzureOpenAIProvider(config)
-        provider._client = AsyncMock()
+        provider = AzureOpenAIProvider()
+        provider._client = stub_client(provider, AsyncMock())
         return provider
 
     @pytest.mark.asyncio
@@ -160,7 +154,7 @@ class TestAzureTokenUsage:
         mock_resp.usage = MagicMock(prompt_tokens=50, completion_tokens=100, total_tokens=150)
         provider._client.chat.completions.create = AsyncMock(return_value=mock_resp)
 
-        content, _reasoning, stats = await provider.generate(GenerateRequest(prompt="hello"))
+        content, _reasoning, stats = await provider.generate(GenerateRequest(prompt="hello", model="test-model"))
         assert content == "Summary here"
         assert stats.prompt_tokens == 50
         assert stats.predicted_tokens == 100
@@ -174,16 +168,15 @@ class TestBedrockPayloadDefaults:
     """Bedrock _build_converse_params should use resolved defaults."""
 
     def _make_provider(self):
-        from text.core.config import BedrockConfig
         from text.providers.bedrock import BedrockProvider
 
         config = BedrockConfig(region="us-east-1")
         with patch("boto3.client"):
-            return BedrockProvider(config)
+            return BedrockProvider()
 
     def test_none_hyperparams_get_defaults(self):
         provider = self._make_provider()
-        req = GenerateRequest(prompt="hello")
+        req = GenerateRequest(prompt="hello", model="test-model")
         params = provider._build_converse_params(req)
         assert params["inferenceConfig"]["temperature"] == 0.1
         assert params["inferenceConfig"]["maxTokens"] == 16_384
@@ -191,7 +184,7 @@ class TestBedrockPayloadDefaults:
 
     def test_explicit_hyperparams_preserved(self):
         provider = self._make_provider()
-        req = GenerateRequest(prompt="hello", temperature=0.5, max_tokens=8000, top_p=0.8)
+        req = GenerateRequest(prompt="hello", temperature=0.5, max_tokens=8000, top_p=0.8, model="test-model")
         params = provider._build_converse_params(req)
         assert params["inferenceConfig"]["temperature"] == 0.5
         assert params["inferenceConfig"]["maxTokens"] == 8000
@@ -202,16 +195,15 @@ class TestBedrockResponseFormat:
     """Bedrock should map response_format to toolConfig with JSON schema."""
 
     def _make_provider(self):
-        from text.core.config import BedrockConfig
         from text.providers.bedrock import BedrockProvider
 
         config = BedrockConfig(region="us-east-1")
         with patch("boto3.client"):
-            return BedrockProvider(config)
+            return BedrockProvider()
 
     def test_no_response_format_no_tool_config(self):
         provider = self._make_provider()
-        req = GenerateRequest(prompt="hello")
+        req = GenerateRequest(prompt="hello", model="test-model")
         params = provider._build_converse_params(req)
         assert "toolConfig" not in params
 
@@ -222,10 +214,7 @@ class TestBedrockResponseFormat:
             "properties": {"plan": {"type": "string"}},
             "title": "ClinicalNote",
         }
-        req = GenerateRequest(
-            prompt="hello",
-            response_format=ResponseFormat(type="json_schema", json_schema=schema),
-        )
+        req = GenerateRequest(prompt="hello", response_format=ResponseFormat(type="json_schema", json_schema=schema), model="test-model")
         params = provider._build_converse_params(req)
         assert "toolConfig" in params
         tool = params["toolConfig"]["tools"][0]["toolSpec"]
@@ -237,13 +226,12 @@ class TestBedrockTokenUsage:
     """Bedrock generate() should return content + token usage."""
 
     def _make_provider(self):
-        from text.core.config import BedrockConfig
         from text.providers.bedrock import BedrockProvider
 
         config = BedrockConfig(region="us-east-1")
         with patch("boto3.client"):
-            provider = BedrockProvider(config)
-        provider._client = MagicMock()
+            provider = BedrockProvider()
+        provider._client = stub_client(provider, MagicMock())
         return provider
 
     @pytest.mark.asyncio

@@ -50,13 +50,7 @@ def _make_app(
     task_manager=None,
 ):
     """Helper to build a test app with a given service_token."""
-    settings = Settings(
-        host="127.0.0.1",
-        port=5099,
-        debug=True,
-        log_level="debug",
-        service_token=service_token,
-    )
+    settings = Settings(port=5099, log_level="debug")
     application = create_app(settings_override=settings)
     if provider_registry is not None:
         application.state.provider_registry = provider_registry

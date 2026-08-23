@@ -28,7 +28,7 @@ import pytest
 
 from text.core.exceptions import ModelNotSelectedError
 from text.models.requests import GenerateRequest
-from text.tests.conftest import keyed
+from text.tests.conftest import stub_client
 
 # ---------------------------------------------------------------------------
 # Provider factories — one per cloud provider (mirrors test_no_model_default_d7.py)
@@ -36,47 +36,37 @@ from text.tests.conftest import keyed
 
 
 def _azure():
-    from text.core.config import AzureOpenAIConfig
     from text.providers.azure_openai import AzureOpenAIProvider
 
     # deployment_name explicitly forced empty so it cannot mask the guard
     # (Azure routes by deployment name when one is configured — a separate,
     # unaffected contract covered by TestAzureDeploymentName).
-    return AzureOpenAIProvider(
-        keyed(
-            AzureOpenAIConfig(endpoint="https://test.openai.azure.com", deployment_name=""),
-            "k",
-        )
-    )
+    return AzureOpenAIProvider()
 
 
 def _bedrock():
-    from text.core.config import BedrockConfig
     from text.providers.bedrock import BedrockProvider
 
     with patch("boto3.client"):
-        return BedrockProvider(BedrockConfig(region="us-east-1"))
+        return BedrockProvider()
 
 
 def _openai():
-    from text.core.config import OpenAIConfig
     from text.providers.openai import OpenAIProvider
 
-    return OpenAIProvider(keyed(OpenAIConfig(), "k"))
+    return OpenAIProvider()
 
 
 def _anthropic():
-    from text.core.config import AnthropicConfig
     from text.providers.anthropic import AnthropicProvider
 
-    return AnthropicProvider(keyed(AnthropicConfig(), "k"))
+    return AnthropicProvider()
 
 
 def _vertex():
-    from text.core.config import VertexConfig
     from text.providers.vertex import VertexProvider
 
-    return VertexProvider(VertexConfig(project="proj"))
+    return VertexProvider()
 
 
 _CLOUD_PROVIDERS = [
@@ -96,7 +86,7 @@ class TestResolveModelNeverFallsBackToDefault:
     @pytest.mark.parametrize("name,factory", _CLOUD_PROVIDERS, ids=_CLOUD_IDS)
     def test_no_model_returns_none(self, name, factory):
         provider = factory()
-        assert provider._resolve_model(GenerateRequest(prompt="hi")) is None
+        assert provider._resolve_model(GenerateRequest(prompt="hi", model="test-model")) is None
 
     @pytest.mark.parametrize("name,factory", _CLOUD_PROVIDERS, ids=_CLOUD_IDS)
     def test_caller_model_is_honored(self, name, factory):
@@ -114,7 +104,7 @@ class TestGenerateRaisesWithoutModel:
     async def test_generate_raises(self, name, factory):
         provider = factory()
         with pytest.raises(ModelNotSelectedError):
-            await provider.generate(GenerateRequest(prompt="hi", provider=name))
+            await provider.generate(GenerateRequest(prompt="hi", provider=name, model="test-model"))
 
     @pytest.mark.parametrize("name,factory", _CLOUD_PROVIDERS, ids=_CLOUD_IDS)
     @pytest.mark.asyncio
@@ -122,7 +112,7 @@ class TestGenerateRaisesWithoutModel:
         provider = factory()
         with pytest.raises(ModelNotSelectedError):
             async for _ in provider.generate_stream(
-                GenerateRequest(prompt="hi", provider=name, stream=True)
+                GenerateRequest(prompt="hi", provider=name, stream=True, model="test-model")
             ):
                 pass
 
@@ -148,7 +138,7 @@ class TestGenerateSucceedsWithModel:
         mock_completion = MagicMock()
         mock_completion.choices = [mock_choice]
         mock_completion.usage = MagicMock(prompt_tokens=1, completion_tokens=1, total_tokens=2)
-        provider._client = AsyncMock()
+        provider._client = stub_client(provider, AsyncMock())
         provider._client.chat.completions.create = AsyncMock(return_value=mock_completion)
 
         content, _reasoning, _stats = await provider.generate(
@@ -159,7 +149,7 @@ class TestGenerateSucceedsWithModel:
     @pytest.mark.asyncio
     async def test_bedrock_succeeds_with_model(self):
         provider = _bedrock()
-        provider._client = MagicMock()
+        provider._client = stub_client(provider, MagicMock())
         provider._client.converse.return_value = {
             "output": {"message": {"content": [{"text": "ok"}]}},
             "usage": {"inputTokens": 1, "outputTokens": 1},
@@ -181,7 +171,7 @@ class TestGenerateSucceedsWithModel:
         mock_completion = MagicMock()
         mock_completion.choices = [mock_choice]
         mock_completion.usage = MagicMock(prompt_tokens=1, completion_tokens=1, total_tokens=2)
-        provider._client = AsyncMock()
+        provider._client = stub_client(provider, AsyncMock())
         provider._client.chat.completions.create = AsyncMock(return_value=mock_completion)
 
         content, _reasoning, _stats = await provider.generate(
@@ -199,7 +189,7 @@ class TestGenerateSucceedsWithModel:
         mock_message.content = [text_block]
         mock_message.stop_reason = "end_turn"
         mock_message.usage = MagicMock(input_tokens=1, output_tokens=1)
-        provider._client = MagicMock()
+        provider._client = stub_client(provider, MagicMock())
         provider._client.messages.create = AsyncMock(return_value=mock_message)
 
         content, _reasoning, _stats = await provider.generate(
@@ -218,7 +208,7 @@ class TestGenerateSucceedsWithModel:
         mock_response.usage_metadata = MagicMock(
             prompt_token_count=1, candidates_token_count=1, total_token_count=2
         )
-        provider._client = MagicMock()
+        provider._client = stub_client(provider, MagicMock())
         provider._client.aio.models.generate_content = AsyncMock(return_value=mock_response)
 
         content, _reasoning, _stats = await provider.generate(
@@ -233,7 +223,6 @@ class TestLocalEnginesUnaffected:
 
     @pytest.mark.asyncio
     async def test_openai_compat_generate_without_model_does_not_raise(self):
-        from text.core.config import OpenAICompatConfig
         from text.providers.openai_compat import OpenAICompatProvider
 
         mock_choice = MagicMock()
@@ -245,11 +234,11 @@ class TestLocalEnginesUnaffected:
         mock_completion.choices = [mock_choice]
         mock_completion.usage = MagicMock(prompt_tokens=1, completion_tokens=1, total_tokens=2)
 
-        provider = OpenAICompatProvider(OpenAICompatConfig(default_model="compat-default"))
-        provider._client = AsyncMock()
+        provider = OpenAICompatProvider()
+        provider._client = stub_client(provider, AsyncMock())
         provider._client.chat.completions.create = AsyncMock(return_value=mock_completion)
 
-        content, _reasoning, _stats = await provider.generate(GenerateRequest(prompt="hi"))
+        content, _reasoning, _stats = await provider.generate(GenerateRequest(prompt="hi", model="test-model"))
         assert content == "ok"
 
 
@@ -258,13 +247,6 @@ class TestCloudConfigsCarryNoVendorDefault:
     string as its default (Decision A)."""
 
     def test_no_cloud_default_model_is_a_vendor_string(self):
-        from text.core.config import (
-            AnthropicConfig,
-            AzureOpenAIConfig,
-            BedrockConfig,
-            OpenAIConfig,
-            VertexConfig,
-        )
 
         for cls in (AzureOpenAIConfig, BedrockConfig, OpenAIConfig, AnthropicConfig, VertexConfig):
             field = cls.model_fields["default_model"]

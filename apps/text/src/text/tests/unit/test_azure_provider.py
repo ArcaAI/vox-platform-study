@@ -10,41 +10,35 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from text.core.config import AzureOpenAIConfig
 from text.models.requests import GenerateRequest, ResponseFormat
-from text.tests.conftest import keyed
+from text.tests.conftest import stub_client
 
 
-@pytest.fixture
-def azure_config():
-    return keyed(
-        AzureOpenAIConfig(
-            endpoint="https://test.openai.azure.com",
-            api_version="2024-06-01",
-            deployment_name="gpt-4",
-            default_model="gpt-4",
-        ),
-        "test-key",
-    )
 
 
 class TestAzureProviderInit:
-    def test_creates_with_config(self, azure_config):
+    def test_creates_with_config(self):
         from text.providers.azure_openai import AzureOpenAIProvider
 
-        provider = AzureOpenAIProvider(config=azure_config)
+        provider = AzureOpenAIProvider()
         assert provider is not None
 
-    def test_default_model_from_config(self, azure_config):
+    def test_the_adapter_carries_no_model_of_its_own(self):
+        """`TEXT_AZURE_DEFAULT_MODEL` is gone, and nothing replaced it in-process.
+
+        Its only reader was `get_info()`; the model catalogue is authoritative on
+        the gateway (`AiModel` / `AiTaskDefault`), and a generation resolves its
+        model from the request. An adapter-held default would be a hardcoded
+        SELECTION, which is `failMode: closed`."""
         from text.providers.azure_openai import AzureOpenAIProvider
 
-        provider = AzureOpenAIProvider(config=azure_config)
-        assert provider._default_model == "gpt-4"
+        provider = AzureOpenAIProvider()
+        assert not hasattr(provider, "_default_model")
 
 
 class TestAzureGenerate:
     @pytest.mark.asyncio
-    async def test_generate_returns_text(self, azure_config):
+    async def test_generate_returns_text(self):
         from text.models.stats import GenerationStats
         from text.providers.azure_openai import AzureOpenAIProvider
 
@@ -55,18 +49,18 @@ class TestAzureGenerate:
         mock_completion.choices = [mock_choice]
         mock_completion.usage = MagicMock(prompt_tokens=5, completion_tokens=10, total_tokens=15)
 
-        provider = AzureOpenAIProvider(config=azure_config)
-        provider._client = AsyncMock()
+        provider = AzureOpenAIProvider()
+        provider._client = stub_client(provider, AsyncMock())
         provider._client.chat.completions.create = AsyncMock(return_value=mock_completion)
 
         content, _reasoning, stats = await provider.generate(
-            GenerateRequest(prompt="hi", provider="azure_openai")
+            GenerateRequest(prompt="hi", provider="azure_openai", model="test-model")
         )
         assert content == "Azure response!"
         assert isinstance(stats, GenerationStats)
 
     @pytest.mark.asyncio
-    async def test_generate_sends_messages(self, azure_config):
+    async def test_generate_sends_messages(self):
         from text.providers.azure_openai import AzureOpenAIProvider
 
         mock_choice = MagicMock()
@@ -76,14 +70,12 @@ class TestAzureGenerate:
         mock_completion.choices = [mock_choice]
         mock_completion.usage = MagicMock(prompt_tokens=5, completion_tokens=10, total_tokens=15)
 
-        provider = AzureOpenAIProvider(config=azure_config)
-        provider._client = AsyncMock()
+        provider = AzureOpenAIProvider()
+        provider._client = stub_client(provider, AsyncMock())
         provider._client.chat.completions.create = AsyncMock(return_value=mock_completion)
 
         await provider.generate(
-            GenerateRequest(
-                prompt="explain AI", system_prompt="You are helpful", provider="azure_openai"
-            )
+            GenerateRequest(prompt="explain AI", system_prompt="You are helpful", provider="azure_openai", model="test-model")
         )
 
         call_kwargs = provider._client.chat.completions.create.call_args.kwargs
@@ -93,20 +85,20 @@ class TestAzureGenerate:
         assert messages[1]["content"] == "explain AI"
 
     @pytest.mark.asyncio
-    async def test_generate_raises_on_api_error(self, azure_config):
+    async def test_generate_raises_on_api_error(self):
         from text.providers.azure_openai import AzureOpenAIProvider
 
-        provider = AzureOpenAIProvider(config=azure_config)
-        provider._client = AsyncMock()
+        provider = AzureOpenAIProvider()
+        provider._client = stub_client(provider, AsyncMock())
         provider._client.chat.completions.create = AsyncMock(side_effect=Exception("API Error"))
 
         with pytest.raises(Exception, match="API Error"):
-            await provider.generate(GenerateRequest(prompt="hi", provider="azure_openai"))
+            await provider.generate(GenerateRequest(prompt="hi", provider="azure_openai", model="test-model"))
 
 
 class TestAzureGenerateStream:
     @pytest.mark.asyncio
-    async def test_stream_yields_reasoning_then_content(self, azure_config):
+    async def test_stream_yields_reasoning_then_content(self):
         from text.providers.azure_openai import AzureOpenAIProvider
 
         async def _mock_stream():
@@ -124,13 +116,13 @@ class TestAzureGenerateStream:
             content_chunk.choices[0].finish_reason = "stop"
             yield content_chunk
 
-        provider = AzureOpenAIProvider(config=azure_config)
-        provider._client = AsyncMock()
+        provider = AzureOpenAIProvider()
+        provider._client = stub_client(provider, AsyncMock())
         provider._client.chat.completions.create = AsyncMock(return_value=_mock_stream())
 
         chunks = []
         async for chunk in provider.generate_stream(
-            GenerateRequest(prompt="hi", stream=True, provider="azure_openai")
+            GenerateRequest(prompt="hi", stream=True, provider="azure_openai", model="test-model")
         ):
             chunks.append(chunk)
 
@@ -139,7 +131,7 @@ class TestAzureGenerateStream:
         assert reasoning_chunks[0].content == "Thinking..."
 
     @pytest.mark.asyncio
-    async def test_stream_yields_chunks(self, azure_config):
+    async def test_stream_yields_chunks(self):
         from text.providers.azure_openai import AzureOpenAIProvider
 
         async def _mock_stream():
@@ -155,13 +147,13 @@ class TestAzureGenerateStream:
             final.choices[0].finish_reason = "stop"
             yield final
 
-        provider = AzureOpenAIProvider(config=azure_config)
-        provider._client = AsyncMock()
+        provider = AzureOpenAIProvider()
+        provider._client = stub_client(provider, AsyncMock())
         provider._client.chat.completions.create = AsyncMock(return_value=_mock_stream())
 
         chunks = []
         async for chunk in provider.generate_stream(
-            GenerateRequest(prompt="hi", stream=True, provider="azure_openai")
+            GenerateRequest(prompt="hi", stream=True, provider="azure_openai", model="test-model")
         ):
             chunks.append(chunk)
 
@@ -175,7 +167,7 @@ class TestAzureGenerateStream:
 
 class TestAzureStructuredOutput:
     @pytest.mark.asyncio
-    async def test_generate_with_json_format(self, azure_config):
+    async def test_generate_with_json_format(self):
         from text.providers.azure_openai import AzureOpenAIProvider
 
         mock_choice = MagicMock()
@@ -185,22 +177,18 @@ class TestAzureStructuredOutput:
         mock_completion.choices = [mock_choice]
         mock_completion.usage = MagicMock(prompt_tokens=5, completion_tokens=10, total_tokens=15)
 
-        provider = AzureOpenAIProvider(config=azure_config)
-        provider._client = AsyncMock()
+        provider = AzureOpenAIProvider()
+        provider._client = stub_client(provider, AsyncMock())
         provider._client.chat.completions.create = AsyncMock(return_value=mock_completion)
 
-        req = GenerateRequest(
-            prompt="Return JSON",
-            provider="azure_openai",
-            response_format=ResponseFormat(type="json"),
-        )
+        req = GenerateRequest(prompt="Return JSON", provider="azure_openai", response_format=ResponseFormat(type="json"), model="test-model")
         await provider.generate(req)
 
         call_kwargs = provider._client.chat.completions.create.call_args.kwargs
         assert call_kwargs["response_format"] == {"type": "json_object"}
 
     @pytest.mark.asyncio
-    async def test_generate_with_json_schema_format(self, azure_config):
+    async def test_generate_with_json_schema_format(self):
         from text.providers.azure_openai import AzureOpenAIProvider
 
         mock_choice = MagicMock()
@@ -210,16 +198,12 @@ class TestAzureStructuredOutput:
         mock_completion.choices = [mock_choice]
         mock_completion.usage = MagicMock(prompt_tokens=5, completion_tokens=10, total_tokens=15)
 
-        provider = AzureOpenAIProvider(config=azure_config)
-        provider._client = AsyncMock()
+        provider = AzureOpenAIProvider()
+        provider._client = stub_client(provider, AsyncMock())
         provider._client.chat.completions.create = AsyncMock(return_value=mock_completion)
 
         schema = {"title": "MySchema", "type": "object", "properties": {"name": {"type": "string"}}}
-        req = GenerateRequest(
-            prompt="Return JSON",
-            provider="azure_openai",
-            response_format=ResponseFormat(type="json_schema", json_schema=schema, strict=True),
-        )
+        req = GenerateRequest(prompt="Return JSON", provider="azure_openai", response_format=ResponseFormat(type="json_schema", json_schema=schema, strict=True), model="test-model")
         await provider.generate(req)
 
         call_kwargs = provider._client.chat.completions.create.call_args.kwargs
@@ -229,7 +213,7 @@ class TestAzureStructuredOutput:
         assert rf["json_schema"]["strict"] is True
 
     @pytest.mark.asyncio
-    async def test_stream_with_json_format(self, azure_config):
+    async def test_stream_with_json_format(self):
         from text.providers.azure_openai import AzureOpenAIProvider
 
         async def _mock_stream():
@@ -239,16 +223,11 @@ class TestAzureStructuredOutput:
             chunk.choices[0].finish_reason = "stop"
             yield chunk
 
-        provider = AzureOpenAIProvider(config=azure_config)
-        provider._client = AsyncMock()
+        provider = AzureOpenAIProvider()
+        provider._client = stub_client(provider, AsyncMock())
         provider._client.chat.completions.create = AsyncMock(return_value=_mock_stream())
 
-        req = GenerateRequest(
-            prompt="Return JSON",
-            provider="azure_openai",
-            stream=True,
-            response_format=ResponseFormat(type="json"),
-        )
+        req = GenerateRequest(prompt="Return JSON", provider="azure_openai", stream=True, response_format=ResponseFormat(type="json"), model="test-model")
         async for _ in provider.generate_stream(req):
             pass
 
@@ -257,7 +236,7 @@ class TestAzureStructuredOutput:
         assert call_kwargs["stream"] is True
 
     @pytest.mark.asyncio
-    async def test_stream_with_json_schema_format(self, azure_config):
+    async def test_stream_with_json_schema_format(self):
         from text.providers.azure_openai import AzureOpenAIProvider
 
         async def _mock_stream():
@@ -267,17 +246,12 @@ class TestAzureStructuredOutput:
             chunk.choices[0].finish_reason = "stop"
             yield chunk
 
-        provider = AzureOpenAIProvider(config=azure_config)
-        provider._client = AsyncMock()
+        provider = AzureOpenAIProvider()
+        provider._client = stub_client(provider, AsyncMock())
         provider._client.chat.completions.create = AsyncMock(return_value=_mock_stream())
 
         schema = {"title": "MySchema", "type": "object", "properties": {"name": {"type": "string"}}}
-        req = GenerateRequest(
-            prompt="Return JSON",
-            provider="azure_openai",
-            stream=True,
-            response_format=ResponseFormat(type="json_schema", json_schema=schema, strict=True),
-        )
+        req = GenerateRequest(prompt="Return JSON", provider="azure_openai", stream=True, response_format=ResponseFormat(type="json_schema", json_schema=schema, strict=True), model="test-model")
         async for _ in provider.generate_stream(req):
             pass
 
@@ -288,7 +262,7 @@ class TestAzureStructuredOutput:
         assert call_kwargs["stream"] is True
 
     @pytest.mark.asyncio
-    async def test_stream_without_response_format_omits_it(self, azure_config):
+    async def test_stream_without_response_format_omits_it(self):
         from text.providers.azure_openai import AzureOpenAIProvider
 
         async def _mock_stream():
@@ -298,11 +272,11 @@ class TestAzureStructuredOutput:
             chunk.choices[0].finish_reason = "stop"
             yield chunk
 
-        provider = AzureOpenAIProvider(config=azure_config)
-        provider._client = AsyncMock()
+        provider = AzureOpenAIProvider()
+        provider._client = stub_client(provider, AsyncMock())
         provider._client.chat.completions.create = AsyncMock(return_value=_mock_stream())
 
-        req = GenerateRequest(prompt="hi", provider="azure_openai", stream=True)
+        req = GenerateRequest(prompt="hi", provider="azure_openai", stream=True, model="test-model")
         async for _ in provider.generate_stream(req):
             pass
 
@@ -311,18 +285,17 @@ class TestAzureStructuredOutput:
 
 
 class TestAzureDeploymentName:
-    """D6 (dead-config sweep) — ``AzureOpenAIConfig.deployment_name``
-    was defined but never read; Azure OpenAI routes requests by *deployment
-    name*, not model name, so an operator-configured deployment must win over
-    the caller-supplied ``request.model``. When unset (the "" default), today's
-    behavior — forwarding ``request.model`` unchanged — must be preserved.
+    """Azure routes by DEPLOYMENT name, not model name.
+
+    A deployment belongs to the Azure resource the request authenticates against,
+    so it travels with that resource's credential on the connection row — not as
+    a process-wide `TEXT_AZURE_DEPLOYMENT_NAME` that would pin every tenant to one
+    tenant's deployment. Absent one, the caller-supplied `request.model` is
+    forwarded unchanged.
     """
 
     @pytest.mark.asyncio
-    async def test_generate_uses_deployment_name_when_configured(self, azure_config):
-        """RED: deployment_name (="gpt-4" on the fixture) is currently never
-        read, so the caller-supplied request.model is sent to Azure even when
-        an explicit deployment is configured."""
+    async def test_the_connections_deployment_wins_over_the_caller_model(self):
         from text.providers.azure_openai import AzureOpenAIProvider
 
         mock_choice = MagicMock()
@@ -332,37 +305,30 @@ class TestAzureDeploymentName:
         mock_completion.choices = [mock_choice]
         mock_completion.usage = MagicMock(prompt_tokens=5, completion_tokens=10, total_tokens=15)
 
-        provider = AzureOpenAIProvider(config=azure_config)
-        provider._client = AsyncMock()
+        provider = AzureOpenAIProvider()
+        provider._client = stub_client(provider, AsyncMock())
         provider._client.chat.completions.create = AsyncMock(return_value=mock_completion)
 
-        req = GenerateRequest(prompt="hi", provider="azure_openai", model="some-other-caller-model")
+        req = GenerateRequest(
+            prompt="hi",
+            provider="azure_openai",
+            model="some-other-caller-model",
+            provider_overrides={
+                "azure_openai": {
+                    "api_key": "k",
+                    "base_url": "https://tenant.openai.azure.com",
+                    "deployment_name": "tenant-deployment",
+                }
+            },
+        )
         await provider.generate(req)
 
         call_kwargs = provider._client.chat.completions.create.call_args.kwargs
-        assert call_kwargs["model"] == "gpt-4"
+        assert call_kwargs["model"] == "tenant-deployment"
 
     @pytest.mark.asyncio
-    async def test_generate_falls_back_to_request_model_when_deployment_name_unset(self):
-        """Default deployment_name ("") must preserve today's behavior: the
-        caller-supplied request.model is forwarded unchanged to Azure.
-
-        deployment_name="" is passed explicitly (not relied on as an implicit
-        pydantic default) so this test is deterministic regardless of ambient
-        TEXT_AZURE_DEPLOYMENT_NAME env state (e.g. the e2e conftest's
-        module-level os.environ mutation from the monorepo-root .env)."""
+    async def test_falls_back_to_the_request_model_when_no_deployment_is_pinned(self):
         from text.providers.azure_openai import AzureOpenAIProvider
-
-        config = keyed(
-            AzureOpenAIConfig(
-                endpoint="https://test.openai.azure.com",
-                api_version="2024-06-01",
-                default_model="gpt-4",
-                deployment_name="",
-            ),
-            "test-key",
-        )
-        assert config.deployment_name == ""
 
         mock_choice = MagicMock()
         mock_choice.message.content = "ok"
@@ -371,11 +337,18 @@ class TestAzureDeploymentName:
         mock_completion.choices = [mock_choice]
         mock_completion.usage = MagicMock(prompt_tokens=5, completion_tokens=10, total_tokens=15)
 
-        provider = AzureOpenAIProvider(config=config)
-        provider._client = AsyncMock()
+        provider = AzureOpenAIProvider()
+        provider._client = stub_client(provider, AsyncMock())
         provider._client.chat.completions.create = AsyncMock(return_value=mock_completion)
 
-        req = GenerateRequest(prompt="hi", provider="azure_openai", model="caller-model")
+        req = GenerateRequest(
+            prompt="hi",
+            provider="azure_openai",
+            model="caller-model",
+            provider_overrides={
+                "azure_openai": {"api_key": "k", "base_url": "https://tenant.openai.azure.com"}
+            },
+        )
         await provider.generate(req)
 
         call_kwargs = provider._client.chat.completions.create.call_args.kwargs
@@ -383,33 +356,45 @@ class TestAzureDeploymentName:
 
 
 class TestAzureHealthCheck:
+    """A BYOK adapter has no process-level connection, so there is nothing to probe.
+
+    `health_check` returns True — "no negative evidence" — because
+    `PoolHealthTracker` acts only on a POSITIVELY known-unhealthy result
+    (`services/pool_health.py`). Reporting False would take a perfectly usable
+    provider out of degrade routing for every tenant carrying a working key.
+    """
+
     @pytest.mark.asyncio
-    async def test_health_check_true(self, azure_config):
+    async def test_health_check_is_not_a_negative_signal(self):
         from text.providers.azure_openai import AzureOpenAIProvider
 
-        provider = AzureOpenAIProvider(config=azure_config)
-        provider._client = AsyncMock()
-        provider._client.models.list = AsyncMock(return_value=MagicMock())
-        assert await provider.health_check() is True
+        assert await AzureOpenAIProvider().health_check() is True
 
     @pytest.mark.asyncio
-    async def test_health_check_false_on_error(self, azure_config):
+    async def test_health_check_opens_no_connection(self):
         from text.providers.azure_openai import AzureOpenAIProvider
 
-        provider = AzureOpenAIProvider(config=azure_config)
-        provider._client = AsyncMock()
-        provider._client.models.list = AsyncMock(side_effect=Exception("down"))
-        assert await provider.health_check() is False
+        provider = AzureOpenAIProvider()
+        client = stub_client(provider, AsyncMock())
+        await provider.health_check()
+        client.models.list.assert_not_called()
 
 
 class TestAzureGetInfo:
     @pytest.mark.asyncio
-    async def test_get_info(self, azure_config):
+    async def test_get_info_reports_adapter_capabilities(self):
         from text.providers.azure_openai import AzureOpenAIProvider
 
-        provider = AzureOpenAIProvider(config=azure_config)
-        provider._client = AsyncMock()
-        provider._client.models.list = AsyncMock(return_value=MagicMock())
-        info = await provider.get_info()
+        info = await AzureOpenAIProvider().get_info()
         assert info.name == "azure_openai"
         assert info.supports_streaming is True
+        assert info.supports_vision is True
+
+    @pytest.mark.asyncio
+    async def test_get_info_advertises_no_model_of_its_own(self):
+        """The catalogue comes from `AiModel` on the gateway."""
+        from text.providers.azure_openai import AzureOpenAIProvider
+
+        info = await AzureOpenAIProvider().get_info()
+        assert info.default_model == ""
+        assert info.models == []

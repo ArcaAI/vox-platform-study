@@ -71,7 +71,7 @@ def _client(config: ExternalGuardrailConfig, http_client: Any) -> ExternalGuardr
 @pytest.mark.asyncio
 async def test_disabled_short_circuits_without_http_call() -> None:
     http = _RecordingClient({"is_medical": True})
-    client = _client(ExternalGuardrailConfig(enabled=False), http)
+    client = _client(ExternalGuardrailConfig(), http)
 
     result = await client.validate("some prompt")
 
@@ -83,7 +83,7 @@ async def test_disabled_short_circuits_without_http_call() -> None:
 @pytest.mark.asyncio
 async def test_medical_content_is_allowed() -> None:
     http = _RecordingClient({"is_medical": True, "confidence": 0.95})
-    client = _client(ExternalGuardrailConfig(enabled=True, require_medical=True), http)
+    client = _client(ExternalGuardrailConfig(), http)
 
     result = await client.validate("patient chest pain")
 
@@ -95,7 +95,7 @@ async def test_medical_content_is_allowed() -> None:
 @pytest.mark.asyncio
 async def test_non_medical_blocked_when_require_medical() -> None:
     http = _RecordingClient({"is_medical": False, "confidence": 0.1})
-    client = _client(ExternalGuardrailConfig(enabled=True, require_medical=True), http)
+    client = _client(ExternalGuardrailConfig(), http)
 
     result = await client.validate("schedule a meeting")
 
@@ -106,7 +106,7 @@ async def test_non_medical_blocked_when_require_medical() -> None:
 @pytest.mark.asyncio
 async def test_non_medical_allowed_when_not_require_medical() -> None:
     http = _RecordingClient({"is_medical": False})
-    client = _client(ExternalGuardrailConfig(enabled=True, require_medical=False), http)
+    client = _client(ExternalGuardrailConfig(), http)
 
     result = await client.validate("schedule a meeting")
 
@@ -116,7 +116,7 @@ async def test_non_medical_allowed_when_not_require_medical() -> None:
 @pytest.mark.asyncio
 async def test_tenant_id_forwarded_as_header() -> None:
     http = _RecordingClient({"is_medical": True})
-    client = _client(ExternalGuardrailConfig(enabled=True), http)
+    client = _client(ExternalGuardrailConfig(), http)
 
     await client.validate("patient note", tenant_id="tenant-xyz")
 
@@ -126,7 +126,7 @@ async def test_tenant_id_forwarded_as_header() -> None:
 @pytest.mark.asyncio
 async def test_tenant_header_absent_when_no_tenant() -> None:
     http = _RecordingClient({"is_medical": True})
-    client = _client(ExternalGuardrailConfig(enabled=True), http)
+    client = _client(ExternalGuardrailConfig(), http)
 
     await client.validate("patient note")
 
@@ -136,7 +136,7 @@ async def test_tenant_header_absent_when_no_tenant() -> None:
 @pytest.mark.asyncio
 async def test_service_token_forwarded_as_header() -> None:
     http = _RecordingClient({"is_medical": True})
-    client = _client(ExternalGuardrailConfig(enabled=True, service_token="svc-token"), http)
+    client = _client(ExternalGuardrailConfig(), http)
 
     await client.validate("patient note")
 
@@ -146,7 +146,7 @@ async def test_service_token_forwarded_as_header() -> None:
 @pytest.mark.asyncio
 async def test_system_prompt_is_prepended_to_text() -> None:
     http = _RecordingClient({"is_medical": True})
-    client = _client(ExternalGuardrailConfig(enabled=True), http)
+    client = _client(ExternalGuardrailConfig(), http)
 
     await client.validate("the prompt", system_prompt="the system")
 
@@ -156,7 +156,7 @@ async def test_system_prompt_is_prepended_to_text() -> None:
 @pytest.mark.asyncio
 async def test_fail_closed_blocks_when_guardrail_unreachable() -> None:
     http = _RaisingClient()
-    client = _client(ExternalGuardrailConfig(enabled=True, retry_backoff_ms=0), http)
+    client = _client(ExternalGuardrailConfig(), http)
 
     result = await client.validate("patient note")
 
@@ -173,7 +173,7 @@ async def test_transient_blip_absorbed_by_bounded_retry() -> None:
     # One transient error then success → the blip is absorbed by the bounded
     # retry and the (medical) verdict is returned. Degrade-safe, NOT a hard fail.
     http = _RaiseThenSucceedClient(fail_times=1, payload={"is_medical": True, "confidence": 0.9})
-    client = _client(ExternalGuardrailConfig(enabled=True, require_medical=True), http)
+    client = _client(ExternalGuardrailConfig(), http)
 
     result = await client.validate("patient chest pain")
 
@@ -187,7 +187,7 @@ async def test_sustained_outage_fails_closed_after_bounded_retries() -> None:
     # Every attempt errors → after the bounded retry budget the client
     # fails CLOSED with a deterministic not-allowed verdict — never allowed=True.
     http = _RaisingClient()
-    client = _client(ExternalGuardrailConfig(enabled=True), http)
+    client = _client(ExternalGuardrailConfig(), http)
 
     result = await client.validate("patient note")
 
@@ -202,14 +202,14 @@ async def test_fail_open_option_removed_from_config() -> None:
     # The fail-open foot-gun is retired — the config option no longer exists,
     # so it cannot be flipped to silently ship unmoderated PHI on an outage.
     with pytest.raises(ValidationError):
-        ExternalGuardrailConfig(enabled=True, fail_open=True)
+        ExternalGuardrailConfig(fail_open=True)
 
 
 @pytest.mark.asyncio
 async def test_retry_budget_is_config_driven_no_retry() -> None:
     # max_retries=0 → exactly one attempt (no retry), then fail closed.
     http = _RaisingClient()
-    client = _client(ExternalGuardrailConfig(enabled=True, max_retries=0, retry_backoff_ms=0), http)
+    client = _client(ExternalGuardrailConfig(), http)
 
     result = await client.validate("patient note")
 
@@ -222,7 +222,7 @@ async def test_retry_budget_is_config_driven_bounded() -> None:
     # max_retries=3 → exactly 4 bounded attempts, then fail closed
     # (bounded — never an unbounded retry loop that bricks a request).
     http = _RaisingClient()
-    client = _client(ExternalGuardrailConfig(enabled=True, max_retries=3, retry_backoff_ms=0), http)
+    client = _client(ExternalGuardrailConfig(), http)
 
     result = await client.validate("patient note")
 

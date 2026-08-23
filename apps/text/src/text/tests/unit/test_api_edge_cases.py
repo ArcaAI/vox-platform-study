@@ -22,9 +22,7 @@ from text.providers.base import ProviderRegistry
 
 @pytest.fixture
 def settings():
-    return Settings(
-        host="127.0.0.1", port=5099, debug=True, log_level="debug", metrics_enabled=False
-    )
+    return Settings(port=5099, log_level="debug")
 
 
 def _make_provider(*, generate_exc=None, health_result=True, health_exc=None, info=None):

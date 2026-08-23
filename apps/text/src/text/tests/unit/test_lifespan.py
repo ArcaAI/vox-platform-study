@@ -11,9 +11,7 @@ from text.core.config import Settings
 
 @pytest.fixture
 def settings():
-    return Settings(
-        host="127.0.0.1", port=5099, debug=True, log_level="debug", metrics_enabled=False
-    )
+    return Settings(port=5099, log_level="debug")
 
 
 def collect_route_paths(app):
@@ -65,7 +63,7 @@ class TestCreateApp:
     def test_metrics_disabled_when_false(self):
         from text.main import create_app
 
-        s = Settings(metrics_enabled=False)
+        s = Settings()
         app = create_app(settings_override=s)
         routes = collect_route_paths(app)
         assert "/metrics" not in routes
@@ -73,7 +71,7 @@ class TestCreateApp:
     def test_metrics_enabled_when_true(self):
         from text.main import create_app
 
-        s = Settings(metrics_enabled=True)
+        s = Settings()
         app = create_app(settings_override=s)
         routes = collect_route_paths(app)
         assert "/metrics" in routes
@@ -102,17 +100,9 @@ class TestLifespan:
         # both keys are AVAILABLE from the connection-gated lazy factory
         # (LM Studio always has a default base_url), and resolving either key builds
         # and shares ONE instance.
-        from text.core.config import OpenAICompatConfig
         from text.main import create_app
 
-        settings = Settings(
-            host="127.0.0.1",
-            port=5099,
-            debug=True,
-            log_level="debug",
-            metrics_enabled=False,
-            openai_compat=OpenAICompatConfig(),
-        )
+        settings = Settings(port=5099, log_level="debug")
         mock_redis = AsyncMock()
         mock_redis.aclose = AsyncMock()
 

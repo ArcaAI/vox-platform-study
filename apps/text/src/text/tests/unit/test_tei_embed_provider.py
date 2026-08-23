@@ -10,7 +10,6 @@ from __future__ import annotations
 import httpx
 import pytest
 
-from text.core.config import TeiEmbedConfig
 
 
 def _provider(handler):

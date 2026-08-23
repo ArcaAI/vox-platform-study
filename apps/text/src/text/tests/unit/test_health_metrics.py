@@ -25,19 +25,13 @@ from text.providers.base import ProviderRegistry
 
 @pytest.fixture
 def settings():
-    return Settings(host="127.0.0.1", port=5099, debug=True, log_level="debug")
+    return Settings(port=5099, log_level="debug")
 
 
 @pytest.fixture
 def auth_settings():
     """Settings with auth enabled."""
-    return Settings(
-        host="127.0.0.1",
-        port=5099,
-        debug=True,
-        log_level="debug",
-        service_token="test-secret-token-abc123",
-    )
+    return Settings(port=5099, log_level="debug")
 
 
 def _make_mock_provider(*, healthy: bool = True):

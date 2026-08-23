@@ -168,10 +168,13 @@ class Settings(BaseSettings):
     gateway_url: str = "http://localhost:8868/api/v1"
     # Env var: TEXT_REDIS_URL. Task state + the config-invalidation channel.
     redis_url: str = "redis://localhost:6379/0"
-    # Env var: TEXT_OTEL_EXPORTER_ENDPOINT. EMPTY disables OTel export entirely
-    # — the presence of a collector address IS the enable signal, so there is no
-    # separate `TEXT_OTEL_ENABLED` that can disagree with it.
-    otel_exporter_endpoint: str = "http://localhost:4317"
+    # Env var: TEXT_OTEL_EXPORTER_ENDPOINT. The presence of a collector address
+    # IS the enable signal, so there is no separate `TEXT_OTEL_ENABLED` that can
+    # disagree with it — and the default is EMPTY, i.e. no export, matching the
+    # `TEXT_OTEL_ENABLED=false` default it replaces. A default address would turn
+    # export on everywhere and make every process that has no collector spend its
+    # startup retrying one.
+    otel_exporter_endpoint: str = ""
 
     # --- nested (own prefixes) ----------------------------------------------
     external_guardrail: ExternalGuardrailConfig = Field(default_factory=ExternalGuardrailConfig)

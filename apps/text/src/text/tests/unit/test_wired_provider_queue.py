@@ -15,7 +15,7 @@ import pytest
 import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
 
-from text.core.config import QueueConfig, Settings
+from text.core.config import Settings
 from text.models.task import TaskState, TaskStatus
 from text.services.provider_queue import ProviderQueue
 from text.services.rate_limiter import RateLimitTracker
@@ -30,13 +30,7 @@ GENERATE_PAYLOAD = {
 
 @pytest.fixture
 def settings():
-    return Settings(
-        host="127.0.0.1",
-        port=5099,
-        debug=True,
-        log_level="debug",
-        queue=QueueConfig(max_size=2, max_wait_s=0.5),
-    )
+    return Settings(port=5099, log_level="debug")
 
 
 @pytest.fixture

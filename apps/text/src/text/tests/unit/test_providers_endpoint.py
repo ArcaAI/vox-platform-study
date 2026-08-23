@@ -16,8 +16,9 @@ import pytest
 import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
 
-from text.core.config import OpenAICompatConfig, Settings
+from text.core.config import Settings
 from text.models.provider import ModelInfo, ProviderInfo
+from text.tests.conftest import stub_client
 
 
 def _info(name: str) -> ProviderInfo:
@@ -32,9 +33,7 @@ def _info(name: str) -> ProviderInfo:
 
 @pytest.fixture
 def settings() -> Settings:
-    return Settings(
-        host="127.0.0.1", port=5099, debug=True, log_level="debug", provider_probe_timeout_s=1
-    )
+    return Settings(port=5099, log_level="debug")
 
 
 @pytest_asyncio.fixture
@@ -119,7 +118,7 @@ class TestLmStudioNativeEnrichment:
         from text.providers import openai_compat as mod
         from text.providers.openai_compat import OpenAICompatProvider
 
-        provider = OpenAICompatProvider(OpenAICompatConfig(base_url="http://lms.test/v1"))
+        provider = OpenAICompatProvider()
 
         class _Model:
             def __init__(self, mid: str) -> None:
@@ -128,7 +127,7 @@ class TestLmStudioNativeEnrichment:
         class _List:
             data = [_Model("qwen3-8b")]
 
-        provider._client = AsyncMock()  # type: ignore[assignment]
+        provider._client = stub_client(provider, AsyncMock())  # type: ignore[assignment]
         provider._client.models.list = AsyncMock(return_value=_List())
         return provider, mod, native_handler
 

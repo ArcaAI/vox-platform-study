@@ -33,10 +33,9 @@ pytestmark = [
 
 
 def _provider():
-    from text.core.config import VllmConfig
     from text.providers.vllm import VllmProvider
 
-    return VllmProvider(VllmConfig(base_url=_BASE_URL or "", default_model=_MODEL))
+    return VllmProvider()
 
 
 def _request(**overrides):

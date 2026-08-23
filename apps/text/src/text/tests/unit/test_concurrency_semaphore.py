@@ -13,7 +13,7 @@ import pytest
 import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
 
-from text.core.config import AzureOpenAIConfig, BedrockConfig, Settings
+from text.core.config import Settings
 from text.models.task import TaskState, TaskStatus
 from text.providers.base import ProviderRegistry
 
@@ -129,13 +129,7 @@ class TestSemaphoreDependency:
 
 @pytest.fixture
 def settings():
-    return Settings(
-        host="127.0.0.1",
-        port=5099,
-        debug=True,
-        log_level="debug",
-        metrics_enabled=False,
-    )
+    return Settings(port=5099, log_level="debug")
 
 
 class TestGenerateWithinConcurrencyLimit:
