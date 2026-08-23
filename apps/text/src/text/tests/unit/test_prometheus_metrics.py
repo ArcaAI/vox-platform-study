@@ -42,11 +42,8 @@ def _get_sample_value(metric_name: str, labels: dict[str, str]) -> float:
 
 def _make_settings(**overrides) -> Settings:
     defaults = {
-        "host": "127.0.0.1",
         "port": 5099,
-        "debug": True,
         "log_level": "debug",
-        "metrics_enabled": False,
     }
     defaults.update(overrides)
     return Settings(**defaults)

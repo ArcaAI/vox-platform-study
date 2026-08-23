@@ -208,7 +208,6 @@ class TestLmStudioNativeEnrichment:
                     "warning": lambda _self, ev, **kw: events.append((ev, kw)),
                     "error": lambda _self, ev, **kw: events.append((ev, kw)),
                     "info": lambda _self, ev, **kw: None,
-                    "debug": lambda _self, ev, **kw: None,
                 },
             )(),
         )
