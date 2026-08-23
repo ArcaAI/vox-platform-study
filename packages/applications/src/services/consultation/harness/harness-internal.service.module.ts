@@ -13,6 +13,7 @@ import { HarnessPolicyServiceModule } from '../../harness-policy/harness-policy.
 import { EffectiveSettingsModule } from '../../settings-registry/effective-settings.module';
 import { UsageLedgerServiceModule } from '../../usageLedger';
 import { NotificationServiceModule } from '../../notification';
+import { GateEditMiningServiceModule } from '../../gate-edit-mining/gate-edit-mining.service.module';
 
 /**
  * HarnessInternalService DI module. Wires the
@@ -54,6 +55,16 @@ import { NotificationServiceModule } from '../../notification';
     // TASK-711 — supplies the @Optional INotificationService the TIMED_OUT
     // path uses for the clinician notification (best-effort).
     NotificationServiceModule,
+    // TASK-795 W2 (finishing TASK-792's R7) — supplies `IGateEditExemplarRetriever` for the
+    // `PromptAssemblyService` provided below; `@Optional()` there, so absent ⇒ this path
+    // silently produced a zero-shot prompt.
+    //
+    // This is the one that mattered most. The admin console's ONLY "Generate" mutation is
+    // `useGenerateSummaryAsync` -> `POST :id/summary/async`, and that route resolves the
+    // note-generation seam to the HARNESS generator (`consultation.controller.ts` — the legacy
+    // branch now throws 503), which comes back through `HarnessInternalService.assemble`. So the
+    // product's primary generation path was one of the two that could not see an exemplar.
+    GateEditMiningServiceModule,
   ],
   providers: [HarnessInternalService, PromptAssemblyService],
   exports: [HarnessInternalService],
