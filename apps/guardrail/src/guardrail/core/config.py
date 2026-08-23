@@ -150,10 +150,9 @@ class RedisConfig(BaseSettings):
 
     model_config = SettingsConfigDict(env_prefix="GUARDRAIL_REDIS_")
 
+    # `redis_url` is the whole surface: the job plane's TTLs and stream bound
+    # were declared here and never read by anything (TASK-799 F-13).
     redis_url: str = "redis://localhost:6379/0"
-    task_ttl_seconds: int = 3600  # 1 hour
-    stream_max_len: int = 10000
-    cache_ttl_seconds: int = 1800  # 30 minutes
 
 
 class QueueConfig(BaseSettings):
@@ -164,14 +163,13 @@ class QueueConfig(BaseSettings):
 
     model_config = SettingsConfigDict(env_prefix="GUARDRAIL_V2_QUEUE_")
 
-    # Concurrent async analyse jobs. Lived on the deleted engine sub-config
+    # Concurrent async analyse jobs — the ONLY field here with a reader
+    # (`main.py`). Lived on the deleted engine sub-config
     # (`settings.engine.max_concurrent`), which made a queue bound look like an
-    # engine knob; it is the job queue's own limit.
+    # engine knob; it is the job queue's own limit. The wait/retry/backoff/batch
+    # quartet that sat alongside it had no reader at all (TASK-799 F-13);
+    # admission waiting is `transport.max_queue_wait_s`, which IS read.
     max_concurrent: int = 4
-    max_wait_s: float = 60.0
-    max_retries: int = 3
-    retry_backoff_s: float = 1.0
-    batch_size: int = 10
 
 
 class DatabaseConfig(BaseSettings):
@@ -181,7 +179,8 @@ class DatabaseConfig(BaseSettings):
     resolves the admin-chosen guardrail provider/model **per tenant** at request
     time by reading ``core."AiTaskDefault"`` ⋈ ``core."AiModel"`` directly
     (SQLAlchemy + asyncpg, mirroring STT), with a short TTL cache. When false
-    the service uses only the env-selected engine (``GUARDRAIL_V2_PROVIDER``).
+    there is nothing left to resolve WITH: guardrail hosts no LLM and names no
+    model in code, so every selection 503s (see ``db_config_enabled`` below).
     """
 
     # Init > host env > secrets_dir (Vault Agent) > .env.<NODE_ENV> > default.
@@ -193,9 +192,10 @@ class DatabaseConfig(BaseSettings):
     # core/dependencies.py) fails CLOSED (HTTP 503) when the SYSTEM
     # AiTaskDefault selection for "guardrail.validate" is missing or a DB
     # error occurs — there is no silent fallback to an env-selected engine.
-    # Setting this to False is a dev-only escape hatch: it makes the service
-    # use GUARDRAIL_V2_PROVIDER (below) directly, bypassing DB resolution
-    # entirely, for local development without a reachable Postgres.
+    # Setting this to False is NOT an env-engine escape hatch — there is no
+    # `GUARDRAIL_V2_PROVIDER` field and never was one, only comments claiming
+    # it (TASK-799 F-03). It bypasses DB resolution, and since guardrail names
+    # no engine in code the routes that need a selection answer 503 outright.
     db_config_enabled: bool = True
 
     # Read-only connection string to the shared HOPE core DB.
@@ -334,21 +334,12 @@ class Settings(BaseSettings):
     # route this URL points at.
     gateway_url: str = "http://localhost:8868/api/v1"
 
-    # Connection pooling. Superseded by `transport` below (TASK-777 B-1) and kept
-    # only so an existing deployment that set them keeps a voice; `build_http_client`
-    # reads `transport`.
-    httpx_max_connections: int = 100
-    httpx_max_keepalive: int = 50
-
-    # Aux-model cache policy. Infra tuning only — cache-policy bounds,
-    # NOT model selection. Idle TTL is clamped to the product window [60s, 3600s]
-    # so delegated-model metadata releases when idle. `model_cache_max_models`
-    # bounds how many distinct model ids are held per aux cache.
-    # Bootstrap fallback ONLY; the runtime value comes from the
-    # control plane (`guardrail.modelCache.{ttlSeconds,maxModels}`), consumed via
-    # `core/effective_config.py`.
-    model_cache_ttl_s: int = 600
-    model_cache_max_models: int = 2
+    # Connection pooling lives on `transport` (TASK-777 B-1) — the only thing
+    # `build_http_client` reads. The superseded `httpx_max_*` pair is gone: a
+    # settable knob nothing reads is not a "voice", it is a lie to the operator.
+    # Aux-model cache policy is likewise gone from env — the runtime values come
+    # from the control plane (`guardrail.modelCache.{ttlSeconds,maxModels}`) via
+    # `core/effective_config.py`, which carries its own bootstrap defaults.
 
     # Observability
     otel_enabled: bool = False
