@@ -204,13 +204,20 @@ class IntentClassificationResponse(BaseModel):
 
 
 # WebSocket
+#
+# The socket carries its tenant PER MESSAGE. A connection is long-lived and a
+# handshake header cannot be re-sent, so attribution has to travel with the work
+# rather than with the connection — and these routes carried no tenant at all
+# before. Cross-checked against `X-Tenant-Id` from the handshake when present.
 
 
 # Text Classification
 
 
 class WebSocketTextClassifyIncoming(TextClassificationRequest):
-    pass
+    tenant_id: str | None = Field(
+        default=None, description="Gateway-injected tenant id for this message"
+    )
 
 
 class WebSocketTextClassifyOutgoing(TextClassificationResponse):
@@ -221,7 +228,9 @@ class WebSocketTextClassifyOutgoing(TextClassificationResponse):
 
 
 class WebSocketTokenClassifyIncoming(TokenClassificationRequest):
-    pass
+    tenant_id: str | None = Field(
+        default=None, description="Gateway-injected tenant id for this message"
+    )
 
 
 class WebSocketTokenClassifyOutgoing(TokenClassificationResponse):
