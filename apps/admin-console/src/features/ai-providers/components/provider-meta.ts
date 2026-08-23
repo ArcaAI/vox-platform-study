@@ -101,9 +101,66 @@ const TTS_PROVIDERS: readonly ProviderMeta[] = [
   },
 ];
 
+/**
+ * Embeddings tab — mirrors `CLOUD_BYO_PROVIDERS.embeddings`. The same Azure /
+ * OpenAI accounts that already back `llm`, but a SEPARATE connection row:
+ * `provider` is capability-scoped, so a tenant may bring one vendor for
+ * generation and another (or none) for embeddings.
+ */
+const EMBEDDINGS_PROVIDERS: readonly ProviderMeta[] = [
+  {
+    id: 'azure',
+    label: 'Azure OpenAI',
+    fields: [
+      { name: 'baseUrl', label: 'Endpoint', placeholder: 'https://<resource>.openai.azure.com' },
+      { name: 'apiVersion', label: 'API version', placeholder: '2024-10-21' },
+      { name: 'deploymentName', label: 'Deployment name', placeholder: 'text-embedding-3-large' },
+    ],
+  },
+  {
+    id: 'openai',
+    label: 'OpenAI',
+    fields: [
+      { name: 'baseUrl', label: 'Base URL', placeholder: 'https://api.openai.com/v1' },
+      { name: 'model', label: 'Model (optional)', placeholder: 'text-embedding-3-small', store: 'extra' },
+    ],
+  },
+];
+
+/**
+ * Rerank tab — DELIBERATELY EMPTY, mirroring `CLOUD_BYO_PROVIDERS.rerank`.
+ *
+ * The only reranker is the self-hosted TEI service, which is platform
+ * INFRASTRUCTURE: there is no cloud rerank adapter for a tenant to bring a key
+ * to, so a tenant row is refused 403 and only the SYSTEM connection serves. The
+ * tab still exists rather than being hidden — the capability is real, and an
+ * admin looking for it deserves the reason instead of a missing tab.
+ */
+const RERANK_PROVIDERS: readonly ProviderMeta[] = [];
+
+/**
+ * Vector tab — mirrors `CLOUD_BYO_PROVIDERS.vector`. Qdrant Cloud is a genuine
+ * per-tenant subscription, so a tenant may point the plane at its own cluster.
+ */
+const VECTOR_PROVIDERS: readonly ProviderMeta[] = [
+  {
+    id: 'qdrant',
+    label: 'Qdrant Cloud',
+    keyLabel: 'API key',
+    keyPlaceholder: 'Qdrant Cloud API key',
+    fields: [
+      { name: 'baseUrl', label: 'Cluster URL', placeholder: 'https://<cluster>.qdrant.io:6333' },
+      { name: 'collection', label: 'Collection prefix (optional)', placeholder: 'hope', store: 'extra' },
+    ],
+  },
+];
+
 /** Per-service provider metadata, keyed to drive each tab's credential grid. */
 export const PROVIDERS_BY_SERVICE: Record<ProviderService, readonly ProviderMeta[]> = {
   llm: LLM_PROVIDERS,
   stt: STT_PROVIDERS,
   tts: TTS_PROVIDERS,
+  embeddings: EMBEDDINGS_PROVIDERS,
+  rerank: RERANK_PROVIDERS,
+  vector: VECTOR_PROVIDERS,
 };
