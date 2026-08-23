@@ -5389,6 +5389,78 @@
         ],
         "type": "object"
       },
+      "CreateWorkflowInvariantRuleRequest": {
+        "properties": {
+          "paletteKey": {
+            "description": "Null applies the rule to every palette (the structural class). Otherwise a registry-declared palette key.",
+            "example": "consultation",
+            "nullable": true,
+            "type": "string"
+          },
+          "predicateConfig": {
+            "additionalProperties": true,
+            "description": "Validated against the predicate's own configProblems() at evaluation time.",
+            "type": "object"
+          },
+          "predicateType": {
+            "description": "The code-owned predicate KIND. Adding a new kind is a deploy; this row is one parameterization of an existing one.",
+            "enum": [
+              "ACYCLIC",
+              "SINGLE_ENTRY",
+              "REACHABLE_FROM_ENTRY",
+              "REACHES_TERMINAL",
+              "REQUIRED_NODE_TYPE",
+              "FORBIDDEN_NODE_TYPE",
+              "REQUIRED_PATH_THROUGH",
+              "FORBIDDEN_PATH",
+              "ORDERED_BEFORE",
+              "BOUND",
+              "CONFIG_PREDICATE"
+            ],
+            "type": "string"
+          },
+          "rationale": {
+            "description": "Why the rule exists — shown beside a finding.",
+            "type": "string"
+          },
+          "registerRefs": {
+            "description": "INV ids from the invariant register this rule makes executable.",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "ruleId": {
+            "description": "Stable human id, e.g. \"WF-I-006\" — parity with contracts/rule-model.md.",
+            "example": "WF-I-900",
+            "type": "string"
+          },
+          "ruleVersion": {
+            "description": "Bumping this is what the re-validation sweep keys off. A predicateConfig change MUST bump it.",
+            "minimum": 1,
+            "type": "number"
+          },
+          "severity": {
+            "description": "Defaults to ERROR — a rule that silently defaulted to WARNING would be authored as a gate and behave as advice.",
+            "enum": [
+              "ERROR",
+              "WARNING"
+            ],
+            "type": "string"
+          },
+          "title": {
+            "example": "Every consultation graph must hop PHI",
+            "type": "string"
+          }
+        },
+        "required": [
+          "ruleId",
+          "title",
+          "predicateType",
+          "predicateConfig"
+        ],
+        "type": "object"
+      },
       "CreateWorkflowTestFixtureRequest": {
         "properties": {
           "description": {
@@ -10669,6 +10741,38 @@
         ],
         "type": "object"
       },
+      "PaginatedWorkflowInvariantRuleResponse": {
+        "properties": {
+          "count": {
+            "description": "Total number of items",
+            "example": 1234,
+            "type": "number"
+          },
+          "data": {
+            "items": {
+              "$ref": "#/components/schemas/WorkflowInvariantRuleResponse"
+            },
+            "type": "array"
+          },
+          "limit": {
+            "description": "Number of items per page",
+            "example": 10,
+            "type": "number"
+          },
+          "page": {
+            "description": "Page number",
+            "example": 0,
+            "type": "number"
+          }
+        },
+        "required": [
+          "count",
+          "limit",
+          "page",
+          "data"
+        ],
+        "type": "object"
+      },
       "PaginatedWorkflowTestFixtureResponse": {
         "properties": {
           "count": {
@@ -11727,6 +11831,19 @@
           "sourceAgentId",
           "fromTenantId",
           "toTenantId"
+        ],
+        "type": "object"
+      },
+      "PromoteExemplarRequest": {
+        "properties": {
+          "goldenSetId": {
+            "description": "The golden set to add the promoted case to. Must belong to the same tenant as the exemplar.",
+            "example": "019400aa-0000-7000-8000-000000000000",
+            "type": "string"
+          }
+        },
+        "required": [
+          "goldenSetId"
         ],
         "type": "object"
       },
@@ -19231,6 +19348,40 @@
         },
         "type": "object"
       },
+      "UpdateWorkflowInvariantRuleRequest": {
+        "properties": {
+          "expectedVersion": {
+            "description": "OCC precondition — comes from the If-Match header (@ExpectedVersion), which overrides this field.",
+            "type": "number"
+          },
+          "predicateConfig": {
+            "additionalProperties": true,
+            "type": "object"
+          },
+          "rationale": {
+            "type": "string"
+          },
+          "ruleVersion": {
+            "description": "Bump when predicateConfig changes, or published definitions silently keep an old verdict.",
+            "minimum": 1,
+            "type": "number"
+          },
+          "severity": {
+            "enum": [
+              "ERROR",
+              "WARNING"
+            ],
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "expectedVersion"
+        ],
+        "type": "object"
+      },
       "UpdateWorkflowTestFixtureRequest": {
         "properties": {
           "description": {
@@ -20758,6 +20909,10 @@
           "createdAt": {
             "type": "string"
           },
+          "currentRegistryChecksum": {
+            "description": "The node registry checksum of the RUNNING server, for comparison against `registryChecksum` (the value stamped at publish). Present on every response so a client seeing `needsReview: true` can tell WHAT drifted, rather than only that something did.",
+            "type": "string"
+          },
           "deprecatedAt": {
             "nullable": true,
             "type": "string"
@@ -20785,7 +20940,7 @@
             "type": "string"
           },
           "needsReview": {
-            "description": "True when a published row is out of sync with the running node registry (checksum drift).",
+            "description": "True when a published row is out of sync with the running node registry (checksum drift), or when the row was explicitly flagged. Derived on read — a published definition is immutable, so drift is never written back.",
             "type": "boolean"
           },
           "paletteKey": {
@@ -20859,6 +21014,7 @@
           "status",
           "graph",
           "graphChecksum",
+          "currentRegistryChecksum",
           "needsReview",
           "isActive",
           "resourceStatus",
@@ -20866,6 +21022,88 @@
           "updatedAt",
           "version",
           "tags"
+        ],
+        "type": "object"
+      },
+      "WorkflowInvariantRuleResponse": {
+        "properties": {
+          "createdAt": {
+            "type": "string"
+          },
+          "effectiveFrom": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "isSystemOwned": {
+            "description": "True when this row is the platform register rather than the caller tenant's own — read-only for a tenant admin.",
+            "type": "boolean"
+          },
+          "paletteKey": {
+            "description": "Null applies to every palette.",
+            "nullable": true,
+            "type": "string"
+          },
+          "predicateConfig": {
+            "additionalProperties": true,
+            "type": "object"
+          },
+          "predicateType": {
+            "type": "string"
+          },
+          "rationale": {
+            "nullable": true,
+            "type": "string"
+          },
+          "registerRefs": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "resourceStatus": {
+            "type": "string"
+          },
+          "ruleId": {
+            "type": "string"
+          },
+          "ruleVersion": {
+            "type": "number"
+          },
+          "severity": {
+            "type": "string"
+          },
+          "tenantId": {
+            "description": "The SYSTEM tenant owns platform rules; any other value is a tenant addition.",
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "updatedAt": {
+            "type": "string"
+          },
+          "version": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "id",
+          "tenantId",
+          "isSystemOwned",
+          "ruleId",
+          "registerRefs",
+          "title",
+          "predicateType",
+          "predicateConfig",
+          "severity",
+          "ruleVersion",
+          "effectiveFrom",
+          "resourceStatus",
+          "createdAt",
+          "updatedAt",
+          "version"
         ],
         "type": "object"
       },
@@ -21034,6 +21272,12 @@
             "nullable": true,
             "type": "number"
           },
+          "resultRef": {
+            "additionalProperties": true,
+            "description": "The run's delivered output, from its `output.deliver` node. Either `{ resultRef: { bucket, key, sizeBytes } }` — a claim-check pointer to fetch out of band — or `{ outputs: { ... } }` inline for a small payload. Null while the run is in flight, and for any graph with no `output.deliver` node.",
+            "nullable": true,
+            "type": "object"
+          },
           "runId": {
             "description": "The domain run id (empty-string sentinel convention).",
             "type": "string"
@@ -21097,6 +21341,12 @@
           "endedAt": {
             "nullable": true,
             "type": "string"
+          },
+          "resultRef": {
+            "additionalProperties": true,
+            "description": "What the run DELIVERED (TASK-790, closing finding M-2). Either `{ resultRef: { bucket, key, sizeBytes } }` — a claim-check pointer to fetch out of band — or `{ outputs: { ... } }` inline for a small payload. Null while the run is in flight, and for any graph with no `output.deliver` node. Sourced from the durable run read model, not from Temporal: Temporal state carries per-node status only.",
+            "nullable": true,
+            "type": "object"
           },
           "runId": {
             "type": "string"
@@ -29666,6 +29916,67 @@
         ]
       }
     },
+    "/api/v1/admin/harness/gate-edit-exemplars/fine-tuning-export": {
+      "get": {
+        "description": "One JSON object per line: `{ original, edited, context }` — the AI draft as delivered, the note the clinician actually signed, and the non-text signal that makes the pair interpretable. Both text fields are the PHI-REDACTED forms written at mining time (`phiRedaction: FULL`); raw note text is never reachable from this route. Unlike the sibling candidate export this is curation-GATED with no knob — only exemplars a curator moved to APPROVED are included (`reviewStatus: SME_APPROVED`) — because a training corpus assembled from unreviewed clinical text cannot be retracted once it has been trained on. Every record carries `provenance: CLINICIAN_EDIT`, distinguishing it from the harness's synthetic golden fixture.",
+        "operationId": "HarnessAdminController_exportGateEditFineTuningDataset",
+        "parameters": [
+          {
+            "description": "Maximum records (default 100, hard-capped at 500).",
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "type": "number"
+            }
+          },
+          {
+            "description": "APPROVED_CLEAN | HEAVILY_EDITED. Omit for both.",
+            "in": "query",
+            "name": "qualitySignal",
+            "required": false,
+            "schema": {}
+          },
+          {
+            "description": "Narrow to one department.",
+            "in": "query",
+            "name": "departmentId",
+            "required": false,
+            "schema": {}
+          },
+          {
+            "description": "Platform-admin only: target tenant. Tenant admins are pinned to their own tenant.",
+            "in": "query",
+            "name": "tenantId",
+            "required": false,
+            "schema": {}
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "JSONL dataset (`application/x-ndjson`). Empty body when nothing is approved yet."
+          },
+          "403": {
+            "description": "Caller may not read this tenant's corpus."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "bearer": []
+          },
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Export the curator-APPROVED gate-edit corpus as a JSONL fine-tuning dataset",
+        "tags": [
+          "admin-harness"
+        ]
+      }
+    },
     "/api/v1/admin/harness/gate-edit-exemplars/{id}/curation": {
       "patch": {
         "description": "Moves an exemplar between PENDING / APPROVED / REJECTED. Whether the verdict actually GATES prompt injection is governed separately by `agentic.fewshot.curationMode` (default `off`), so curating a corpus and enforcing the gate are two deliberate, independent steps.",
@@ -29721,6 +30032,66 @@
           }
         ],
         "summary": "Record the human curation verdict on one mined gate-edit exemplar",
+        "tags": [
+          "admin-harness"
+        ]
+      }
+    },
+    "/api/v1/admin/harness/gate-edit-exemplars/{id}/promote-to-golden-set": {
+      "post": {
+        "description": "Derives a `(transcript -> reference note)` golden case from a real signed, clinician-edited consultation. Only curation-APPROVED exemplars are eligible. The transcript is PHI-redacted before persistence and the promotion FAILS CLOSED on a missing transcript or unverifiable redaction — a fabricated golden case is worse than none, because it becomes the yardstick. Each case is labelled `CLINICIAN_DERIVED_PENDING_SME`: it is real clinician behaviour, but it is NOT the SME-authored multi-rater golden set that the harness declares an outstanding prerequisite, and it must not be used to gate a clinical claim on its own.",
+        "operationId": "HarnessAdminController_promoteExemplarToGoldenSet",
+        "parameters": [
+          {
+            "description": "GateEditExemplar id to promote.",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Platform-admin only: target tenant. Tenant admins are pinned to their own tenant.",
+            "in": "query",
+            "name": "tenantId",
+            "required": false,
+            "schema": {}
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PromoteExemplarRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "The created golden case id + its provenance label."
+          },
+          "400": {
+            "description": "Exemplar not curation-APPROVED, no transcript, or redaction could not be verified."
+          },
+          "404": {
+            "description": "No such exemplar or golden set (absent, or belongs to another tenant)."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "bearer": []
+          },
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Promote a curator-APPROVED gate-edit exemplar into a golden case",
         "tags": [
           "admin-harness"
         ]
@@ -44146,6 +44517,300 @@
         ]
       }
     },
+    "/api/v1/admin/workflow-invariant-rules": {
+      "get": {
+        "description": "SYSTEM rows carry `isSystemOwned: true` and are read-only for a tenant admin — render them as the register being added to.",
+        "operationId": "WorkflowInvariantRuleController_fetchAll",
+        "parameters": [
+          {
+            "description": "Page number (starting from 0)",
+            "in": "query",
+            "name": "page",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "example": 0,
+              "type": "number"
+            }
+          },
+          {
+            "description": "Number of items per page (10, 20, or 50)",
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 10,
+              "example": 10,
+              "type": "number"
+            }
+          },
+          {
+            "description": "Search query",
+            "in": "query",
+            "name": "search",
+            "required": false,
+            "schema": {
+              "default": "",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Search fields (comma separated: name,phoneNumber)",
+            "in": "query",
+            "name": "searchFields",
+            "required": false,
+            "schema": {
+              "default": "",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Filters (comma separated: name:John,phoneNumber:123456)",
+            "in": "query",
+            "name": "filters",
+            "required": false,
+            "schema": {
+              "default": "",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Sort (comma separated: name:asc,phoneNumber:desc)",
+            "in": "query",
+            "name": "sort",
+            "required": false,
+            "schema": {
+              "default": "",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PaginatedWorkflowInvariantRuleResponse"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "List the caller tenant's own rules UNION the SYSTEM platform register",
+        "tags": [
+          "admin-workflow-invariant-rules"
+        ]
+      },
+      "post": {
+        "description": "One parameterization of a code-owned predicate KIND. The row is always owned by the CALLER's tenant — `tenantId` is not accepted in the body. A rule sharing a `ruleId` with a SYSTEM rule may only RAISE its severity at evaluation time; it can never redefine what the platform rule checks.",
+        "operationId": "WorkflowInvariantRuleController_create",
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateWorkflowInvariantRuleRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkflowInvariantRuleResponse"
+                }
+              }
+            },
+            "description": ""
+          },
+          "400": {
+            "description": "Bad request — malformed ruleId, or a paletteKey the node registry does not declare."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Author a workflow invariant rule for the caller tenant",
+        "tags": [
+          "admin-workflow-invariant-rules"
+        ]
+      }
+    },
+    "/api/v1/admin/workflow-invariant-rules/{id}": {
+      "delete": {
+        "operationId": "WorkflowInvariantRuleController_delete",
+        "parameters": [
+          {
+            "description": "WorkflowInvariantRule id",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkflowInvariantRuleResponse"
+                }
+              }
+            },
+            "description": ""
+          },
+          "403": {
+            "description": "The row is SYSTEM-owned (the platform register) and the caller is not a super admin."
+          },
+          "404": {
+            "description": "Not found, or another tenant's row."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Soft-delete a rule",
+        "tags": [
+          "admin-workflow-invariant-rules"
+        ]
+      },
+      "get": {
+        "operationId": "WorkflowInvariantRuleController_fetchById",
+        "parameters": [
+          {
+            "description": "WorkflowInvariantRule id",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkflowInvariantRuleResponse"
+                }
+              }
+            },
+            "description": ""
+          },
+          "404": {
+            "description": "Not found, or another tenant's row (existence hidden)."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Get one rule — the caller tenant’s own, or a SYSTEM register row",
+        "tags": [
+          "admin-workflow-invariant-rules"
+        ]
+      },
+      "patch": {
+        "description": "Sparse patch. `If-Match` is REQUIRED and CASes against the row `_version`; drift → 412, missing → 428. `ruleId`, `predicateType` and `paletteKey` are not patchable — changing any of them makes the row a DIFFERENT rule, which is an insert. Bump `ruleVersion` whenever `predicateConfig` changes, or published definitions silently keep an old verdict.",
+        "operationId": "WorkflowInvariantRuleController_update",
+        "parameters": [
+          {
+            "description": "WorkflowInvariantRule id",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "RFC 7232 strong validator carrying the version the client read (e.g. `\"1\"`).",
+            "in": "header",
+            "name": "If-Match",
+            "required": true,
+            "schema": {
+              "example": "\"1\"",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateWorkflowInvariantRuleRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkflowInvariantRuleResponse"
+                }
+              }
+            },
+            "description": ""
+          },
+          "403": {
+            "description": "The row is SYSTEM-owned (the platform register) and the caller is not a super admin."
+          },
+          "404": {
+            "description": "Not found, or another tenant's row."
+          },
+          "412": {
+            "description": "Optimistic concurrency conflict — re-fetch and retry with the new version."
+          },
+          "428": {
+            "description": "If-Match header is required for this operation."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Update a rule (If-Match OCC)",
+        "tags": [
+          "admin-workflow-invariant-rules"
+        ]
+      }
+    },
     "/api/v1/admin/workflow-nodes": {
       "get": {
         "operationId": "WorkflowNodeController_fetchAll",
@@ -47807,6 +48472,50 @@
           }
         ],
         "summary": "Deleting a OkResponseDto by id and highlightId",
+        "tags": [
+          "consultations"
+        ]
+      }
+    },
+    "/api/v1/consultations/{id}/live-assist/stream": {
+      "get": {
+        "description": "Server-Sent Events stream relaying the Redis channel `consultation:live-assist:{id}`. Each event is a LiveAssistEventDto JSON carrying the current `suggestions` and `corrections` branches. CARRIES PHI: a correction proposal quotes the original span verbatim. Nothing on this feed has been applied to the note — `corrections.applied` is false and the clinician decides. Accepts either `Authorization: Bearer <jwt>` or a single-use `?ticket=<ticket>` issued by `POST /auth/stream-ticket` with scope `consultation_live_assist:<id>`. The feed has no terminal event; the client closes it.",
+        "operationId": "ConsultationController_streamLiveAssist",
+        "parameters": [
+          {
+            "description": "Consultation ID",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            },
+            "description": ""
+          },
+          "404": {
+            "description": "Consultation not found — also the answer for a cross-tenant id (404-over-403), resolved BEFORE the stream opens"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Stream interpreter suggestions and proposed corrections for a consultation via SSE",
         "tags": [
           "consultations"
         ]
@@ -52837,6 +53546,10 @@
     {
       "description": "Author, compile, and version agentic workflow definitions.",
       "name": "admin-workflow-definitions"
+    },
+    {
+      "description": "The validator rule rows a graph is checked against — the SYSTEM platform register plus a tenant's own stricter additions.",
+      "name": "admin-workflow-invariant-rules"
     },
     {
       "description": "The node palette available to the workflow compiler.",
