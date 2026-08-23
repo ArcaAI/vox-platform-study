@@ -158,6 +158,15 @@ export interface LiveSummaryEntity {
   confidence?: number;
   /** ICD-10-CM code from the NLP OntologyLinker (curated vocabulary); absent otherwise. */
   icd10?: string;
+  /**
+   * Character offsets into `runningSummary` — NOT into any one `sections[].content`
+   * (`LiveSummaryEntityDto:32-36`). Present on the wire since the DTO was written; the
+   * console's mirror omitted them, which is why entities could only ever be chips.
+   * Optional: an entity the NLP service could not anchor arrives without them and is
+   * simply not marked (see `lib/entity-highlights.ts`).
+   */
+  start?: number;
+  end?: number;
 }
 
 /**
