@@ -7,10 +7,17 @@
  *         packages/applications/src/services/ai-provider-connection/constants.ts (C5)
  */
 
-/** The capability a connection row serves (unified plane, C1/C2). */
-export type ProviderService = 'llm' | 'stt' | 'tts';
-
-export const PROVIDER_SERVICES: readonly ProviderService[] = ['llm', 'stt', 'tts'];
+/**
+ * The capability a connection row serves (unified plane, C1/C2).
+ *
+ * Both the type and the list now come from `./services`, where they are pinned
+ * to the gateway's `:service` OpenAPI enum by a drift test. They used to be
+ * hand-typed here as `'llm' | 'stt' | 'tts'` and went stale the moment
+ * TASK-799 P1-C.1 widened the union to six — re-exported rather than moved so
+ * the feature's existing `from './types'` imports keep working.
+ */
+export { PROVIDER_SERVICES, isProviderService, type ProviderService } from './services';
+import type { ProviderService } from './services';
 
 /**
  * C5 — providers a tenant may hold its own connection row for, per service.
@@ -19,11 +26,22 @@ export const PROVIDER_SERVICES: readonly ProviderService[] = ['llm', 'stt', 'tts
  * anything else is platform infrastructure (a tenant write is a 403 privilege
  * boundary on the caller's own tenant, not the 404-over-403 cross-tenant
  * posture).
+ *
+ * NOTE — unlike `PROVIDER_SERVICES` above, this map is NOT derivable from the
+ * contract: `:provider` is an open string in the OpenAPI document, and no route
+ * serves `CLOUD_BYO_PROVIDERS`. It is therefore the one transcription left on
+ * this surface, and it is reported as such (Phase 4 E.3). `rerank` is
+ * deliberately EMPTY — the only reranker is the self-hosted TEI service, which
+ * is platform infrastructure, so a tenant row is a 403 and only the SYSTEM row
+ * serves.
  */
 export const CLOUD_BYO_PROVIDERS: Record<ProviderService, readonly string[]> = {
   llm: ['azure', 'bedrock', 'openai', 'anthropic', 'vertex'],
   stt: ['azure-speech', 'sarvam', 'openai'],
   tts: ['azure', 'sarvam'],
+  embeddings: ['azure', 'openai'],
+  rerank: [],
+  vector: ['qdrant'],
 };
 
 /**
