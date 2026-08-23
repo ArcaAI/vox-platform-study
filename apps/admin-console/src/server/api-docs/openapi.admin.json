@@ -50721,6 +50721,9 @@
               }
             },
             "description": ""
+          },
+          "400": {
+            "description": "Bad request — malformed pagination parameters."
           }
         },
         "security": [
@@ -50803,7 +50806,7 @@
     },
     "/api/v1/admin/workflow-invariant-rules/{id}": {
       "delete": {
-        "description": "**Credentials** — user JWT accepted; API key **rejected (403)**; service-account token rejected.\n\n**Abilities** — `manage:WorkflowInvariantRule`.\n\nScopes bind the credential, abilities bind the user it acts for; they compose as AND.",
+        "description": "Sets `resourceStatus: DELETED` rather than removing the row, so a rule that once governed a published definition stays auditable. A SYSTEM-owned register row is SUPER_ADMIN-only (403 — a privilege boundary, deliberately not the 404-over-403 cross-tenant posture).\n\n**Credentials** — user JWT accepted; API key **rejected (403)**; service-account token rejected.\n\n**Abilities** — `manage:WorkflowInvariantRule`.\n\nScopes bind the credential, abilities bind the user it acts for; they compose as AND.",
         "operationId": "WorkflowInvariantRuleController_delete",
         "parameters": [
           {
@@ -50859,7 +50862,7 @@
         "x-hope-service-account-scopes": []
       },
       "get": {
-        "description": "**Credentials** — user JWT accepted; API key **rejected (403)**; service-account token rejected.\n\n**Abilities** — `manage:WorkflowInvariantRule`.\n\nScopes bind the credential, abilities bind the user it acts for; they compose as AND.",
+        "description": "A SYSTEM row is readable by every tenant (it is the platform register they inherit) but carries `isSystemOwned: true` and is not editable here. Another tenant’s row returns 404, not 403 — the 404-over-403 posture hides existence across the tenant boundary.\n\n**Credentials** — user JWT accepted; API key **rejected (403)**; service-account token rejected.\n\n**Abilities** — `manage:WorkflowInvariantRule`.\n\nScopes bind the credential, abilities bind the user it acts for; they compose as AND.",
         "operationId": "WorkflowInvariantRuleController_fetchById",
         "parameters": [
           {

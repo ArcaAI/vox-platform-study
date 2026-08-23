@@ -423,3 +423,46 @@ console-wide**. Needs an owner and a ticket.
 later in an unrelated commit from a concurrent session. Three of the four agents therefore started
 without their binding boundary document, and two made out-of-boundary edits they later reverted
 when it was copied in. The map must be committed WITH the tickets it governs.
+
+---
+
+## C-10 — DEGRADED is computed per node and cannot be stored. C-9's twin.
+
+Found during TASK-797, verified by the orchestrator.
+
+The interpreter computes a four-valued node status
+(`interpreter/models.py:21`):
+
+```
+NodeStatus = Literal["SUCCEEDED", "DEGRADED", "SKIPPED", "FAILED"]
+```
+
+The persistence enum cannot carry it (`agent-trajectory.prisma`):
+
+```
+enum AgentStepStatus { STARTED  OK  ERROR  SKIPPED  TIMEOUT }
+```
+
+There is no `DEGRADED`. And `interpreter/nodes/_shared.py:15` imports only `STATUS_ERROR` and
+`STATUS_OK` — so a degraded node is persisted as OK or ERROR and the distinction is lost before it
+ever reaches a reader.
+
+**This is structurally the same defect as C-9**: a producer emits a value the persistence enum does
+not carry, and the loss is silent.
+
+| | C-9 | C-10 |
+|---|---|---|
+| Producer emits | `stepType: "NODE"` | `status: "DEGRADED"` |
+| Enum lacking it | `AgentStepType` | `AgentStepStatus` |
+| Consequence | whole trajectory rejected 400, swallowed by fire-and-forget | degradation collapsed into OK/ERROR |
+
+Consequence for the product: a graph that *partially* degrades — the exact case an author most needs
+to see, and the case the interpreter is carefully designed to produce rather than crash — is
+indistinguishable from one that succeeded or one that failed outright. TASK-797 surfaced degradation
+at RUN level (the client was discarding a count it already received); per-NODE degradation remains
+unobservable.
+
+Fix is the C-9 shape: add `DEGRADED` to the prisma enum + domain enum + an `ALTER TYPE … ADD VALUE`
+migration, emit it from `_shared.py`, and extend the three-way parity guard
+(`agentStepType.enum-parity.test.ts`) to cover `AgentStepStatus` as well — that guard was written for
+exactly this class of drift and currently only watches the type enum, not the status enum.
