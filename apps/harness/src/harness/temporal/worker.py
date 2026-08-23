@@ -106,10 +106,13 @@ async def _refresh_model_cache_retention_once(client: Any) -> None:
 
 def _effective_config_client() -> Any:
     """The worker's control-plane client, or None when it cannot be built."""
-    from harness.core.effective_config import build_effective_config_client
+    from harness.core.effective_config import get_effective_config_client
 
     try:
-        return build_effective_config_client()
+        # The PROCESS-WIDE client, not a fresh one: the invalidation listener below and
+        # every activity that reads a control-plane knob must share one TTL cache, or an
+        # eviction here would leave the activities' own instance stale for a full window.
+        return get_effective_config_client()
     except Exception as exc:  # noqa: BLE001 — a worker must boot without the gateway
         logger.warning(
             "harness.worker.effective_config_client_unavailable",
