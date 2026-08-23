@@ -146,9 +146,7 @@ GENERATE_KEYS=(
 # Operator-supplied pass-throughs — folded in only if already in the environment.
 PASSTHROUGH_KEYS=(
   OIDC_CLIENT_SECRET
-  AZURE_SPEECH_KEY AZURE_FOUNDRY_API_KEY
-  TEXT_AZURE_API_KEY TEXT_OPENAI_API_KEY TEXT_ANTHROPIC_API_KEY
-  TTS_SARVAM_API_KEY HARNESS_JUDGE_OPENAI_COMPAT_API_KEY
+  AZURE_FOUNDRY_API_KEY HARNESS_JUDGE_OPENAI_COMPAT_API_KEY
   AZURE_STORAGE_CONNECTION_STRING AZURE_STORAGE_ACCOUNT_KEY
   REDIS_PASS MQTT_PASS
   MINIO_ACCESS_KEY MINIO_SECRET_KEY S3_ACCESS_KEY S3_SECRET_KEY
@@ -224,7 +222,7 @@ if [ "${#missing[@]}" -gt 0 ]; then
   yellow "Pass-throughs NOT in this bundle (supply real values before/at seed time,"
   yellow "or leave unset to keep that provider/integration off — consumers fail closed):"
   printf '     %s\n' "${missing[@]}" >&2
-  dim   "   e.g.  TEXT_OPENAI_API_KEY=sk-… REDIS_PASS=… ./scripts/generate-prod-secrets.sh --force"
+  dim   "   e.g.  OIDC_CLIENT_SECRET=… REDIS_PASS=… ./scripts/generate-prod-secrets.sh --force"
 fi
 
 echo ""
