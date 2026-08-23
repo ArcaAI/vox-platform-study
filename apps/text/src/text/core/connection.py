@@ -43,12 +43,13 @@ def resolve_connection(request: object) -> ProviderOverride | None:
     request that somehow carried more must not be able to cross-wire them.
     """
     overrides = getattr(request, "provider_overrides", None)
-    if not overrides:
+    if not isinstance(overrides, dict) or not overrides:
         return None
     provider = getattr(request, "provider", None)
     if not isinstance(provider, str) or not provider:
         return None
-    return overrides.get(provider)
+    resolved = overrides.get(provider)
+    return resolved if isinstance(resolved, ProviderOverride) else None
 
 
 def require_connection(request: object, *, provider: str) -> ProviderOverride:
