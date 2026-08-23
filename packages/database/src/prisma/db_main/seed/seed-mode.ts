@@ -49,9 +49,11 @@ const VALID_MODES: readonly SeedMode[] = ['all', 'safe', 'none'] as const;
  */
 export const SEED_PHASES_EXCLUDED_FROM_SAFE: readonly string[] = [
   '02-apikey',
+  '07f-arcaai-department-context-schemas',
   '08-dna-writing-style',
   '09-consultation',
   '10-audit-log',
+  '23-arcaai-workflow-authoring',
   '91-user',
 ] as const;
 
