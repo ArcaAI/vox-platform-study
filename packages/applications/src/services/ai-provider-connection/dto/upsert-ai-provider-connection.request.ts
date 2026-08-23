@@ -1,6 +1,43 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
-import { IsBoolean, IsIn, IsInt, IsObject, IsOptional, IsString, MaxLength, Min, MinLength } from 'class-validator';
-import { CONNECTION_ENABLED_SEMANTICS } from '../constants';
+import {
+  IsBoolean,
+  IsIn,
+  IsInt,
+  IsObject,
+  IsOptional,
+  IsString,
+  MaxLength,
+  Min,
+  MinLength,
+  Validate,
+  ValidationArguments,
+  ValidatorConstraint,
+  ValidatorConstraintInterface,
+} from 'class-validator';
+import { CONNECTION_ENABLED_SEMANTICS, PROVIDER_SERVICES, ProviderService } from '../constants';
+import { PROVIDER_EXTRA_LIMITS, validateProviderExtras } from '../provider-extras';
+
+/**
+ * TASK-799 P1-C.2 — `extraJson` was a bare `@IsObject()`, so anything at all
+ * could be stored and then silently dropped in transit. It is now shape-checked
+ * on the way IN, which is what makes the read-side passthrough safe: the wire
+ * envelope stays flat and bounded, and the keys the connection row itself owns
+ * (the credential, the endpoint, the derived `funding` label) cannot be
+ * restated here. The check validates SHAPE, never a key vocabulary — a new
+ * provider quirk must not require a code change.
+ */
+@ValidatorConstraint({ name: 'providerExtrasShape', async: false })
+class ProviderExtrasShapeConstraint implements ValidatorConstraintInterface {
+  validate(value: unknown): boolean {
+    return validateProviderExtras(value).length === 0;
+  }
+
+  defaultMessage(args: ValidationArguments): string {
+    // Echo the VIOLATIONS, never the value — extras may carry operator-sensitive
+    // identifiers, and a 400 body is the wrong place to reflect stored input.
+    return `extraJson is not a valid provider-extras object: ${validateProviderExtras(args.value).join('; ')}`;
+  }
+}
 
 /**
  * Upsert one (service, tenant, provider) connection row.
@@ -19,12 +56,12 @@ import { CONNECTION_ENABLED_SEMANTICS } from '../constants';
 export class UpsertAiProviderConnectionRequest {
   @ApiPropertyOptional({
     description: 'Capability the connection serves. The route `:service` path param is authoritative.',
-    enum: ['llm', 'stt', 'tts'],
+    enum: PROVIDER_SERVICES,
     example: 'llm',
   })
   @IsOptional()
-  @IsIn(['llm', 'stt', 'tts'])
-  service?: 'llm' | 'stt' | 'tts';
+  @IsIn(PROVIDER_SERVICES)
+  service?: ProviderService;
 
   @ApiPropertyOptional({
     description: 'Base URL of the serving endpoint (ollama / lm-studio / vllm / llama-cpp / azure).',
@@ -76,9 +113,19 @@ export class UpsertAiProviderConnectionRequest {
   @IsBoolean()
   enabled?: boolean;
 
-  @ApiPropertyOptional({ description: 'Provider-specific extras.', type: Object })
+  @ApiPropertyOptional({
+    description:
+      'Provider-specific extras, forwarded VERBATIM to the serving adapter as part of the per-request override ' +
+      'entry. A FLAT object: values must be strings, numbers, booleans, or arrays of those — nested objects are ' +
+      `rejected. At most ${PROVIDER_EXTRA_LIMITS.maxKeys} keys; strings up to ${PROVIDER_EXTRA_LIMITS.maxStringLength} ` +
+      'characters. The keys the connection row itself supplies (`api_key`, `funding`, `base_url`, `region`, ' +
+      '`api_version`, `deployment_name`) are reserved and rejected here.',
+    type: Object,
+    example: { json_response_format: true, reasoning_mode: 'medium' },
+  })
   @IsOptional()
   @IsObject()
+  @Validate(ProviderExtrasShapeConstraint)
   extraJson?: Record<string, unknown> | null;
 
   @ApiPropertyOptional({

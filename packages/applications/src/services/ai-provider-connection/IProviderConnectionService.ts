@@ -1,6 +1,7 @@
 import { AiProviderConnectionEntity } from '@arcaai/domains';
 import { ProviderService } from './constants';
 import { AiProviderConnectionResponse, UpsertAiProviderConnectionRequest } from './dto';
+import { ProviderExtraValue } from './provider-extras';
 
 export type { ProviderService } from './constants';
 
@@ -64,10 +65,27 @@ export interface ProviderOverrideEntry {
    * it in the connection row's `extraJson` (the console writes it there): an
    * OpenAI/Anthropic/STT `model` override, and Vertex's GCP `project`/`location`.
    * Forwarded verbatim so the Python adapter can target the tenant's resource.
+   *
+   * These three are DECLARED rather than merely admitted by the index signature
+   * below because they are the ones gateway code reads by name; they carry no
+   * special forwarding rule of their own.
    */
   model?: string;
   project?: string;
   location?: string;
+
+  /**
+   * TASK-799 P1-C.2 — every OTHER key of the row's `extraJson`, forwarded
+   * VERBATIM after shape validation (`provider-extras.ts`).
+   *
+   * This index signature is the type-level statement of the fix: forwarding is
+   * a VALIDATED PASSTHROUGH, not an allow-list, so a new per-endpoint quirk
+   * (`json_response_format`, `reasoning_mode`, `no_think`, `adaptive_limits`)
+   * needs a console write and NOTHING here. The four declared column-backed
+   * fields above stay reserved — `extraJson` cannot supply them, so a row can
+   * never restate the credential, the endpoint, or the derived `funding` label.
+   */
+  [extra: string]: ProviderExtraValue | undefined;
 }
 
 /** `provider → override`, keyed by the serving provider identifier. */
