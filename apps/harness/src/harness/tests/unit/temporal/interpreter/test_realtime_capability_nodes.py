@@ -49,13 +49,20 @@ def _payload(node_type: str, **overrides) -> NodeActivityInput:
 
 
 class _FakeApi:
-    """Resolves a provider/model, and records every loop event the node publishes."""
+    """Resolves a provider/model, and records every loop event the node publishes.
+
+    Also records the TASK-796 delivery publishes, so the assertions below keep testing the
+    ANNOUNCEMENT boundary (ids/counts only) rather than accidentally testing that no delivery
+    happens at all — the delivery is specified in ``test_realtime_delivery.py``.
+    """
 
     def __init__(self, *, provider="lm-studio", model="a-model"):
         self.provider = provider
         self.model = model
         self.events: list[dict[str, Any]] = []
         self.policy_task_keys: list[Any] = []
+        self.summaries: list[dict[str, Any]] = []
+        self.assists: list[dict[str, Any]] = []
 
     async def get_policy(self, tenant_id, consultation_id=None, task_key=None):
         self.policy_task_keys.append(task_key)
@@ -68,6 +75,14 @@ class _FakeApi:
 
     async def report_loop_event(self, consultation_id, **kwargs):
         self.events.append({"consultationId": consultation_id, **kwargs})
+        return True
+
+    async def publish_live_summary(self, consultation_id, **kwargs):
+        self.summaries.append({"consultationId": consultation_id, **kwargs})
+        return True
+
+    async def publish_live_assist(self, consultation_id, **kwargs):
+        self.assists.append({"consultationId": consultation_id, **kwargs})
         return True
 
 
@@ -215,9 +230,13 @@ class TestSuggestions:
         )
 
         assert result.status == "SUCCEEDED"
-        assert result.output["suggestions"] == [
-            {"text": "Ask about penicillin allergy", "category": "history"}
-        ]
+        [suggestion] = result.output["suggestions"]
+        assert suggestion["text"] == "Ask about penicillin allergy"
+        assert suggestion["category"] == "history"
+        # TASK-796 — the item is delivered to a clinician, so it carries an id and a status
+        # only the clinician advances. The delivery itself is specified separately.
+        assert suggestion["status"] == "PROPOSED"
+        assert suggestion["suggestionId"]
         assert result.output["count"] == 1
         # Delegated to apps/text — harness grows no second inference stack (rule 06).
         assert len(text.calls) == 1
