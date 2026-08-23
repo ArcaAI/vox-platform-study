@@ -403,7 +403,6 @@ def _request_state() -> SimpleNamespace:
     from guardrail.core.config import Settings
 
     settings = Settings()
-    settings.db.db_config_enabled = True
     return SimpleNamespace(
         settings=settings,
         http_client=object(),

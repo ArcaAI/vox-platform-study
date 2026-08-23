@@ -123,7 +123,7 @@ def _app(
     *,
     entities: list[FakeEntity] | Exception = DEFAULT_ENTITIES,
     token: str = "",
-    db_config_enabled: bool = False,
+    resolve_from_db: bool = False,
     provider: Any = None,
     chunk_chars: int | None = None,
 ) -> FastAPI:
@@ -136,11 +136,13 @@ def _app(
     # the environment — so setting only `service_token` left whatever `INTERNAL_ACCESS_TOKEN`
     # the loaded `.env.test` carried silently in play, and `token=""` (auth off) still 401'd.
     app.state.settings.internal_access_token = SecretStr(token)
-    app.state.settings.db.db_config_enabled = db_config_enabled
+    # No resolver wired: the fail-closed path the retired `db_config_enabled`
+    # flag used to reach is now expressed by the resolver's absence.
+    app.state.tenant_config_resolver = None
     if chunk_chars is not None:
         app.state.effective_config_client = FakeEffectiveConfigClient(chunk_chars)
 
-    if not db_config_enabled:
+    if not resolve_from_db:
         # TASK-735 Phase 3 — the models run in `apps/nlp`; the analyzer is the
         # seam the endpoint now depends on, so tests inject it there instead of
         # seeding a local model cache (guardrail has none).
@@ -258,7 +260,7 @@ async def test_redact_fails_closed_502_when_extraction_errors() -> None:
 
 
 async def test_redact_fails_closed_503_when_model_selection_missing() -> None:
-    app = _app(db_config_enabled=True)  # DB-on, but no tenant_config_resolver wired
+    app = _app(resolve_from_db=True)  # no analyzer stub and no resolver wired
 
     resp = await _post(app, {"text": TEXT, "mode": "full"})
 

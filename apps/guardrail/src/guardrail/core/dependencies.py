@@ -16,7 +16,7 @@ if TYPE_CHECKING:
     import httpx
     import redis.asyncio as aioredis
 
-    from guardrail.core.config import Settings
+    from guardrail.core.config import GroundednessConfig, Settings
     from guardrail.services.external_nlp_client import NlpGuardClient as NlpGuardClientT
     from guardrail.services.external_text_client import TextJudgeClient
     from guardrail.services.groundedness_nli import GroundednessNliVerifier
@@ -100,9 +100,10 @@ async def get_resolved_guardian_provider(request: Request) -> GuardianLike:
     **Fail-closed at every step and with no env engine left to fall back to**
     (TASK-735 Phase 2b deleted them): an absent ``X-Tenant-Id`` is 428, a DISABLED
     tenant row is a 503 veto, and a missing selection is a 503. The
-    ``db_config_enabled=False`` dev escape hatch now also fails closed here —
-    without a DB there is no model to name, and inventing one is precisely the
-    hardcoded selection this ticket removed.
+    ``db_config_enabled=False`` escape hatch is GONE (TASK-799 lane D) — without a
+    DB there is no model to name, and inventing one is precisely the hardcoded
+    selection this ticket removed. The unreachable-resolver case it used to
+    short-circuit is answered by the very next check, with the same 503.
     """
     from fastapi import HTTPException
 
@@ -110,15 +111,6 @@ async def get_resolved_guardian_provider(request: Request) -> GuardianLike:
     tenant_id = require_tenant_id(request)
 
     settings = request.app.state.settings
-
-    if not settings.db.db_config_enabled:
-        raise HTTPException(
-            status_code=503,
-            detail=(
-                "guardrail.validate selection requires DB config; there is no env "
-                "engine fallback (guardrail hosts no LLM)."
-            ),
-        )
 
     resolver = getattr(request.app.state, "tenant_config_resolver", None)
     if resolver is None:
@@ -279,15 +271,11 @@ async def _resolve_selection(
 ) -> Any:
     """Resolve one task key's model identity + taxonomy, tenant-first, fail-closed.
 
-    There is NO env fallback and no `db_config_enabled` escape hatch: guardrail
-    names no model in code, so without the registry there is nothing to name.
+    There is NO env fallback and no `db_config_enabled` escape hatch (the latter
+    deleted in TASK-799 lane D): guardrail names no model in code, so without the
+    registry there is nothing to name, and the resolver check below already says
+    so with the same error.
     """
-    settings = cast("Settings", app_state.settings)
-    if not settings.db.db_config_enabled:
-        raise SelectionUnavailableError(
-            f"{task_key!r} selection requires DB config; guardrail names no model in code."
-        )
-
     resolver = getattr(app_state, "tenant_config_resolver", None)
     if resolver is None:
         raise SelectionUnavailableError(
@@ -505,10 +493,16 @@ async def acquire_groundedness_verifier(
         yield pre_seeded
         return
 
-    settings = app_state.settings
-    if not settings.groundedness.enabled:
-        # Dev/CI bypass — degrades to `groundedness_disabled`, no selection needed.
-        yield GroundednessNliVerifier(settings.groundedness)
+    # The gate's platform-scope knobs now come from the control plane
+    # (`guardrail.groundedness.*`), with the env-era struct as the bootstrap
+    # floor. A gateway outage leaves the running values in force, and an absent
+    # `enabled` leaves the gate OFF — a safety gate is never switched on by
+    # silence.
+    gate = await _groundedness_gate(app_state)
+
+    if not gate.enabled:
+        # Bypass — degrades to `groundedness_disabled`, no selection needed.
+        yield GroundednessNliVerifier(gate)
         return
 
     from guardrail.core.tenant_config import TASK_KEY_GUARDRAIL_GROUNDEDNESS
@@ -520,6 +514,44 @@ async def acquire_groundedness_verifier(
     except SelectionUnavailableError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
 
-    yield GroundednessNliVerifier(
-        settings.groundedness, scorer=_nlp_client(app_state, tenant_id, cfg)
+    # The verdict-deciding threshold rides the SELECTED MODEL's own policy blob,
+    # resolved by the same tenant → SYSTEM cascade that chose the model — so a
+    # threshold can never be applied to a checkpoint it was not calibrated for.
+    policy = getattr(cfg, "policy", None)
+    threshold = (
+        policy.groundedness_entailment_threshold
+        if policy is not None
+        else gate.entailment_threshold
     )
+
+    yield GroundednessNliVerifier(
+        gate.model_copy(update={"entailment_threshold": threshold}),
+        scorer=_nlp_client(app_state, tenant_id, cfg),
+    )
+
+
+async def _groundedness_gate(app_state: Any) -> GroundednessConfig:
+    """The gate's platform-scope geometry, control plane over bootstrap floor.
+
+    NEVER raises: a config-plane outage must not take a safety route down. Keys
+    the control plane has no opinion on keep their running values.
+    """
+    settings = cast("Settings", app_state.settings)
+    gate = settings.groundedness
+
+    client = getattr(app_state, "effective_config_client", None)
+    if client is None:
+        return gate
+
+    try:
+        snapshot = await client.get()
+        served = snapshot.groundedness()
+    except Exception as exc:  # noqa: BLE001 — config refresh may never break the gate
+        logger.warning(
+            "guardrail.groundedness.config_refresh_failed",
+            error=str(exc),
+            error_type=type(exc).__name__,
+        )
+        return gate
+
+    return gate.model_copy(update=served) if served else gate

@@ -42,6 +42,7 @@ from guardrail.services.injection_defense import (
     contains_fence_echo,
     sanitize_untrusted,
 )
+from guardrail.services.safety_analyzer import _DEFAULT_BENIGN as _ANALYZER_DEFAULT_BENIGN
 
 logger = get_logger(__name__)
 
@@ -75,9 +76,16 @@ _DECLARED_FAIL_MODES: Final[dict[str, str]] = {
 
 #: Labels that mean "nothing detected". Bootstrap set only — the registry row's
 #: `benignLabels` overrides it through the analyzer's policy.
-_DEFAULT_BENIGN: Final[frozenset[str]] = frozenset(
-    {"benign", "none", "safe", "clean", "compliance", "no", "false"}
-)
+#:
+#: RE-EXPORTED from `safety_analyzer`, not restated (TASK-799 lane D, §D.2c). This
+#: module used to declare its own SUPERSET (`clean`/`no`/`false` on top), so one
+#: label set decided "benign" in the analyzer and a different one decided it here.
+#: The two are reached on different paths — the analyzer's rides
+#: `SafetyPolicy.benign_labels`, this one is the fallback when no policy is
+#: attached — so a model emitting `"clean"` was benign to the screener and UNSAFE
+#: to the analyzer. Two literals for one concept is the defect; the narrower set
+#: wins because a label that means "nothing detected" must be declared, not guessed.
+_DEFAULT_BENIGN: Final[frozenset[str]] = _ANALYZER_DEFAULT_BENIGN
 
 
 @dataclass(frozen=True)

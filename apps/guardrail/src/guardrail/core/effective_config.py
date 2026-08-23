@@ -88,6 +88,53 @@ class EffectiveConfigSnapshot:
         chunk_chars = _positive_int(group.get("chunkChars"))
         return {"chunk_chars": chunk_chars} if chunk_chars is not None else {}
 
+    def setting(self, key: str) -> Any:
+        """One value off the GENERIC `settings` map, or None for "no opinion".
+
+        This is the declared extension point of the Phase-1 control plane: a
+        descriptor naming `consumedBy: ['guardrail']` is served at
+        `settings["<dotted.key>"]` automatically, so a new knob needs no frozen
+        group, no response-DTO field and no per-service `switch`. The older
+        `retention`/`redaction` accessors above are the pre-Phase-1 shape, kept
+        because their consumers predate this one.
+
+        Returns None for a failed fetch, an absent map, an absent key or an
+        explicit null — every "the control plane has no opinion" case collapses
+        to the same answer, so callers keep their own value rather than reading
+        silence as an instruction.
+        """
+        settings = self.raw.get("settings")
+        if not isinstance(settings, dict):
+            return None
+        entry = settings.get(key)
+        if not isinstance(entry, dict):
+            return None
+        return entry.get("value")
+
+    def groundedness(self) -> dict[str, Any]:
+        """The groundedness gate's platform-scope knobs, for keys with an opinion.
+
+        An omitted key means "keep the running value"; a null or nonsensical one
+        is never coerced. The gate switch is read STRICTLY as a boolean — a
+        truthy string like `"false"` must not switch a clinical gate on, so
+        anything that is not a real `bool` counts as no opinion.
+        """
+        served: dict[str, Any] = {}
+
+        enabled = self.setting("guardrail.groundedness.enabled")
+        if isinstance(enabled, bool):
+            served["enabled"] = enabled
+
+        for field_name, key in (
+            ("batch_size", "guardrail.groundedness.batchSize"),
+            ("max_segments", "guardrail.groundedness.maxSegments"),
+        ):
+            value = _positive_int(self.setting(key))
+            if value is not None:
+                served[field_name] = value
+
+        return served
+
 
 def _positive_int(value: Any) -> int | None:
     # `bool` is an `int` subclass — exclude it, or `True` would become 1.
