@@ -5,7 +5,8 @@ Vertex client. A Vertex client is bound to a ``(project, location)`` pair; the
 tenant BYO credential is a service-account JSON (``ProviderOverride.api_key``)
 plus its ``project``/``location``. Mirrors the request-scoped, override-wins
 client pattern of ``azure_openai.py``/``bedrock.py``; the platform fallback
-client authenticates with Application Default Credentials.
+client is built from its OWN explicit service-account credential and is absent
+when none is configured — there is no Application Default Credentials fallback.
 """
 
 from __future__ import annotations
@@ -24,13 +25,14 @@ from google.oauth2 import service_account
 
 from text.core.config import VertexConfig
 from text.core.defaults import resolve_request_defaults
+from text.core.exceptions import ProviderCredentialsError
 from text.core.telemetry import get_tracer
 from text.models.provider import ModelInfo, ProviderInfo
 from text.models.requests import GenerateRequest, ProviderOverride
 from text.models.stats import GenerationStats, build_generation_stats
 from text.models.stream import StreamChunk
 from text.models.usage import vertex_usage_dict
-from text.providers.base import require_model
+from text.providers.base import CredentialPosture, require_model
 
 if TYPE_CHECKING:
     from opentelemetry.trace import Tracer
@@ -59,21 +61,44 @@ def _get_tracer() -> Tracer:
     return get_tracer(__name__)
 
 
+def _credentials_from_service_account(raw: str) -> Any:
+    """Build scoped Google credentials from a service-account JSON document.
+
+    Raises whatever ``json``/``google.oauth2`` raises — the callers turn that
+    into a typed ``ProviderCredentialsError`` WITHOUT the key in the message.
+    """
+    return service_account.Credentials.from_service_account_info(
+        json.loads(raw), scopes=[_CLOUD_PLATFORM_SCOPE]
+    )
+
+
 class VertexProvider:
     """Google Vertex AI provider using the google-genai SDK."""
+
+    credential_posture = CredentialPosture.BYOK
 
     def __init__(self, config: VertexConfig) -> None:
         self._config = config
         self._default_model = config.default_model
-        # The shared, env-configured PLATFORM fallback client (ADC-authenticated,
-        # bound to the env project/location). ``None`` when no project is
-        # configured — the provider is then usable only with a tenant override.
+        # The shared PLATFORM fallback client, built ONLY from an explicit
+        # service-account credential (never from env; see `VertexConfig`).
+        #
+        # It used to be `genai.Client(vertexai=True, project=..., location=...)`
+        # with no `credentials=`, which resolves through Google Application
+        # Default Credentials — `GOOGLE_APPLICATION_CREDENTIALS`, a gcloud login,
+        # or GCE metadata. That is an ambient credential chain: a working platform
+        # identity that appears in no config surface, cannot be revoked through
+        # the provider plane, and (see `_client_for`) was silently substituted for
+        # a tenant's own. `None` in production; the credential arrives per request
+        # as a `ProviderOverride`.
         self._client: Any = None
-        if config.project:
+        key = config.api_key.get_secret_value()
+        if config.project and key:
             self._client = genai.Client(
                 vertexai=True,
                 project=config.project,
                 location=config.location,
+                credentials=_credentials_from_service_account(key),
             )
 
     def _resolve_override(self, request: GenerateRequest) -> ProviderOverride | None:
@@ -87,30 +112,55 @@ class VertexProvider:
     def _client_for(self, request: GenerateRequest) -> Any:
         """Override-wins client resolution. A tenant service-account credential
         builds a request-scoped client bound to the tenant's project/location
-        (the shared ``self._client`` is never mutated). Fail-OPEN: a credential
-        that cannot be parsed/built degrades to the shared env client rather
-        than failing the request; the SA key is NEVER logged."""
+        (the shared ``self._client`` is never mutated).
+
+        Fail-CLOSED, in both directions:
+
+        * No override and no platform client ⇒ raise, rather than build an
+          ADC-authenticated client from the ambient process environment.
+        * An override that cannot be parsed or built ⇒ raise. This used to
+          ``return self._client`` — the PLATFORM client — while ``funding``
+          stayed ``tenant``, so a tenant whose key was revoked or malformed kept
+          generating happily on the platform's Google account, billed as BYOK.
+          A tenant's broken credential must surface as an error the tenant can
+          fix, never as platform spend attributed to them.
+
+        The service-account key is NEVER logged and never appears in the raised
+        message: only the exception TYPE is recorded.
+        """
         override = self._resolve_override(request)
         if override is None:
+            if self._client is None:
+                raise ProviderCredentialsError(
+                    "Google Vertex AI credentials not configured. Vertex is "
+                    "BYOK-only: configure a tenant Vertex credential, or the "
+                    "platform (SYSTEM-tenant) connection, in the "
+                    "provider-connection plane. There is no env fallback and no "
+                    "Application Default Credentials fallback.",
+                    provider=_PROVIDER_NAME,
+                )
             return self._client
         try:
-            sa_info = json.loads(override.api_key.get_secret_value())
-            credentials = service_account.Credentials.from_service_account_info(
-                sa_info, scopes=[_CLOUD_PLATFORM_SCOPE]
-            )
-            return genai.Client(
-                vertexai=True,
-                project=override.project or self._config.project,
-                location=override.location or self._config.location,
-                credentials=credentials,
-            )
-        except Exception as exc:  # noqa: BLE001 — fail-open, never leak the key
+            credentials = _credentials_from_service_account(override.api_key.get_secret_value())
+        except Exception as exc:  # noqa: BLE001 — never leak the key
             logger.warning(
                 "vertex.override_client_build_failed",
                 provider=_PROVIDER_NAME,
                 error=type(exc).__name__,
             )
-            return self._client
+            raise ProviderCredentialsError(
+                "The configured Vertex AI credential could not be used "
+                f"({type(exc).__name__}). It must be a Google service-account "
+                "JSON key. The request is refused rather than served on the "
+                "platform credential, which would bill platform spend as BYOK.",
+                provider=_PROVIDER_NAME,
+            ) from exc
+        return genai.Client(
+            vertexai=True,
+            project=override.project or self._config.project,
+            location=override.location or self._config.location,
+            credentials=credentials,
+        )
 
     def _resolve_model(self, request: GenerateRequest) -> str | None:
         # No in-gateway default — the caller-supplied model is

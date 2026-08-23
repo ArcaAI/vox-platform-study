@@ -25,7 +25,7 @@ from text.models.requests import GenerateRequest, ProviderOverride
 from text.models.stats import GenerationStats, stats_from_openai_usage
 from text.models.stream import StreamChunk
 from text.models.usage import openai_usage_dict
-from text.providers.base import require_model
+from text.providers.base import CredentialPosture, require_model
 
 if TYPE_CHECKING:
     from opentelemetry.trace import Tracer
@@ -41,6 +41,8 @@ def _get_tracer() -> Tracer:
 
 class OpenAIProvider:
     """OpenAI provider using the openai Python SDK (``AsyncOpenAI``)."""
+
+    credential_posture = CredentialPosture.BYOK
 
     def __init__(self, config: OpenAIConfig) -> None:
         self._config = config

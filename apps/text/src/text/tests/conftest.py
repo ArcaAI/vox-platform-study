@@ -61,9 +61,11 @@ _C = TypeVar("_C")
 def keyed(config: _C, key: str = "test-key") -> _C:
     """Return a copy of a cloud provider config with an explicit ``api_key``.
 
-    the cloud configs (Azure OpenAI / OpenAI / Anthropic) are BYOK-only
-    — ``api_key`` is no longer name- or env-populatable, so tests can no longer
-    pass ``api_key=`` to the constructor. This mirrors exactly how the gateway/
+    EVERY config carrying an ``api_key`` is BYOK-only — Azure OpenAI / OpenAI /
+    Anthropic, plus Bedrock / Vertex / OpenAI-compatible (and the vLLM subclass)
+    since TASK-799 closed their env paths too. ``api_key`` is not name- or
+    env-populatable on any of them, so tests can no longer pass ``api_key=`` to
+    the constructor. This mirrors exactly how the gateway/
     router applies a credential in production: ``model_copy(update=...)`` sets the
     field without re-opening a validation/env path. Use for any test that needs a
     provider built with a live platform key.

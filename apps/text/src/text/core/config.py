@@ -119,6 +119,24 @@ class BedrockConfig(BaseSettings):
 
     model_config = SettingsConfigDict(env_prefix="TEXT_BEDROCK_")
 
+    # Bedrock is BYOK-only, and closing that hole took MORE than deleting a
+    # field: `boto3.client(...)` with no credentials silently authenticates from
+    # `AWS_ACCESS_KEY_ID` / `AWS_PROFILE` / EC2 instance metadata, so the adapter
+    # held a fully working PLATFORM credential that no config file ever mentioned.
+    # An SDK's ambient chain can only be closed by an EXPLICIT credential that
+    # raises when unset — see `providers/bedrock.py`.
+    #
+    # The credential is the AWS "Bedrock API key" bearer token, same shape the
+    # tenant override carries. It is never sourced from env: the
+    # `validation_alias` is a dead name no env var (nor Vault-Agent secrets_dir
+    # file) matches, and `populate_by_name` is OFF, so `TEXT_BEDROCK_API_KEY`
+    # cannot repopulate it either. The platform default and per-tenant keys both
+    # arrive as a request `ProviderOverride` (gateway tenant→SYSTEM cascade); a
+    # non-empty value here occurs only in tests.
+    api_key: SecretStr = Field(
+        default=SecretStr(""),
+        validation_alias="TEXT_BEDROCK_API_KEY__ENV_REMOVED_TASK_799",
+    )
     region: str = "us-east-1"
     # No compiled-in vendor model — see AzureOpenAIConfig.default_model.
     default_model: str = ""
@@ -142,7 +160,18 @@ class OpenAICompatConfig(BaseSettings):
     model_config = SettingsConfigDict(env_prefix="TEXT_OPENAI_COMPAT_")
 
     base_url: str = "http://localhost:1234/v1"
-    api_key: SecretStr = SecretStr("not-needed")
+    # `"not-needed"` is the keyless-local-server placeholder LM Studio expects, NOT
+    # a credential — and the env path to it is closed (dead `validation_alias`,
+    # `populate_by_name` OFF, inherited by `VllmConfig` so `TEXT_VLLM_API_KEY` is
+    # equally unreachable). `TEXT_OPENAI_COMPAT_API_KEY` used to be the ONLY way to
+    # set a key for this adapter, which made it a process-wide credential no tenant
+    # could override — a tenant fronting its own OpenAI-compatible endpoint now
+    # brings its key through the request `ProviderOverride` instead
+    # (`OpenAICompatProvider._client_for`).
+    api_key: SecretStr = Field(
+        default=SecretStr("not-needed"),
+        validation_alias="TEXT_OPENAI_COMPAT_API_KEY__ENV_REMOVED_TASK_799",
+    )
     # This must be an identifier LM Studio actually serves — it is sent verbatim
     # as the OpenAI-wire `model`. It read `google/gemma-4-e4b`, which LM Studio
     # has never served under any configuration (the installed E4B build is
@@ -285,6 +314,20 @@ class VertexConfig(BaseSettings):
 
     model_config = SettingsConfigDict(env_prefix="TEXT_VERTEX_")
 
+    # Vertex is BYOK-only, and — like Bedrock — deleting a field could never have
+    # closed the hole: `genai.Client(vertexai=True, ...)` with no `credentials=`
+    # resolves through Google Application Default Credentials
+    # (`GOOGLE_APPLICATION_CREDENTIALS`, gcloud login, GCE metadata), so the
+    # platform client authenticated from the ambient process environment. It must
+    # be constructed with an EXPLICIT credential and raise when none exists.
+    #
+    # The credential is a service-account JSON document — the same shape the
+    # tenant override carries in `ProviderOverride.api_key`. Never sourced from
+    # env: dead `validation_alias`, `populate_by_name` OFF.
+    api_key: SecretStr = Field(
+        default=SecretStr(""),
+        validation_alias="TEXT_VERTEX_API_KEY__ENV_REMOVED_TASK_799",
+    )
     project: str = ""
     location: str = "us-central1"
     # No compiled-in vendor model — see AzureOpenAIConfig.default_model.

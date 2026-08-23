@@ -15,10 +15,11 @@ from text.core.defaults import resolve_request_defaults
 from text.core.retention import DEFAULT_RETENTION_TTL_S, clamp_cache_ttl_seconds
 from text.core.telemetry import get_tracer
 from text.models.provider import ModelInfo, ProviderInfo
-from text.models.requests import GenerateRequest
+from text.models.requests import GenerateRequest, ProviderOverride
 from text.models.stats import GenerationStats, stats_from_openai_usage
 from text.models.stream import StreamChunk
 from text.models.usage import openai_usage_dict
+from text.providers.base import CredentialPosture
 
 if TYPE_CHECKING:
     from opentelemetry.trace import Tracer
@@ -49,6 +50,11 @@ def _get_tracer() -> Tracer:
 class OpenAICompatProvider:
     """Generic provider for any OpenAI-compatible API server."""
 
+    # An operator-run engine reached by topology base_url (LM Studio by default),
+    # so there is no vendor credential to fail closed on. It still honours a tenant
+    # override — see `_client_for`.
+    credential_posture = CredentialPosture.SELF_HOST
+
     def __init__(
         self,
         config: OpenAICompatConfig,
@@ -70,6 +76,42 @@ class OpenAICompatProvider:
             base_url=config.base_url,
             organization=config.organization,
             timeout=float(config.timeout_s),
+        )
+
+    def _resolve_override(self, request: GenerateRequest) -> ProviderOverride | None:
+        """Tenant BYO credential/endpoint injected by the gateway for THIS provider,
+        keyed by ``request.provider`` (see `ProviderOverride`).
+
+        A self-host engine has no VENDOR credential, but a tenant may still front
+        its own OpenAI-compatible endpoint with its own key. Until TASK-799 this
+        adapter had no override path at all, so ``TEXT_OPENAI_COMPAT_API_KEY`` (and
+        the inherited ``TEXT_VLLM_API_KEY``) was the only way to set a key — a
+        process-wide env credential that no tenant could ever override, which is
+        exactly the shape §Configuration Principles forbids. The env path is now
+        closed (dead ``validation_alias``, see `OpenAICompatConfig.api_key`) and
+        this is the way in.
+        """
+        if not request.provider_overrides:
+            return None
+        return request.provider_overrides.get(request.provider)
+
+    def _client_for(self, request: GenerateRequest) -> AsyncOpenAI:
+        """Override-wins client resolution. A tenant credential builds a
+        request-scoped client (the shared client is never mutated) so concurrent
+        requests for different tenants can never interfere.
+
+        Unlike the BYOK cloud adapters there is no fail-closed branch: a
+        self-host engine is reachable on its topology ``base_url`` without a
+        vendor credential, so absent an override the shared client stands.
+        """
+        override = self._resolve_override(request)
+        if override is None:
+            return self._client
+        return AsyncOpenAI(
+            api_key=override.api_key.get_secret_value(),
+            base_url=override.base_url or self._config.base_url,
+            organization=self._config.organization,
+            timeout=float(self._config.timeout_s),
         )
 
     def apply_retention(self, retention: dict[str, int]) -> None:
@@ -165,7 +207,7 @@ class OpenAICompatProvider:
             self._apply_retention_hint(kwargs)
 
             start = time.monotonic()
-            response = await self._client.chat.completions.create(**kwargs)
+            response = await self._client_for(request).chat.completions.create(**kwargs)
             total_ms = int((time.monotonic() - start) * 1000)
 
             message = response.choices[0].message
@@ -236,7 +278,7 @@ class OpenAICompatProvider:
             finish_reason: str | None = None
             usage: dict[str, Any] | None = None
 
-            stream = await self._client.chat.completions.create(**kwargs)
+            stream = await self._client_for(request).chat.completions.create(**kwargs)
             async for chunk in stream:
                 if not chunk.choices:
                     if getattr(chunk, "usage", None):

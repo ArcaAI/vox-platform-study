@@ -201,9 +201,15 @@ class TestBedrockProviderOverrideConsumption:
             "stopReason": "end_turn",
         }
 
-        with patch("text.providers.bedrock.boto3") as mock_boto3:
-            mock_boto3.client.return_value = env_client
-            provider = BedrockProvider(config=bedrock_config)
+        # A KEYED platform config: the shared client only exists when an explicit
+        # credential was configured (TASK-799 — there is no ambient boto3 chain to
+        # fall back on). `_bearer_client` is the single construction site, so the
+        # call count proves nothing was built per request.
+        with patch(
+            "text.providers.bedrock._bearer_client", return_value=env_client
+        ) as build_client:
+            provider = BedrockProvider(config=keyed(bedrock_config))
+            built_at_construction = build_client.call_count
 
             req = GenerateRequest(
                 prompt="hi", provider="bedrock", model="anthropic.claude-3-5-haiku-20241022-v1:0"
@@ -211,8 +217,26 @@ class TestBedrockProviderOverrideConsumption:
             content, _reasoning, _stats = await provider.generate(req)
 
         assert content == "platform bedrock response"
-        mock_boto3.Session.assert_not_called()
+        assert build_client.call_count == built_at_construction
         env_client.converse.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_no_override_and_no_platform_key_raises(self, bedrock_config):
+        """The F-01 half: absent both, Bedrock must NOT reach boto3's ambient
+        credential chain (`AWS_ACCESS_KEY_ID` / `AWS_PROFILE` / instance
+        metadata). `bedrock_config` here is deliberately un-keyed."""
+        from text.core.exceptions import ProviderCredentialsError
+        from text.providers.bedrock import BedrockProvider
+
+        provider = BedrockProvider(config=bedrock_config)
+        with pytest.raises(ProviderCredentialsError):
+            await provider.generate(
+                GenerateRequest(
+                    prompt="hi",
+                    provider="bedrock",
+                    model="anthropic.claude-3-5-haiku-20241022-v1:0",
+                )
+            )
 
 
 class TestProviderOverrideNeverLogged:
@@ -568,13 +592,20 @@ class TestVertexProviderOverrideConsumption:
         mock_ctor.assert_not_called()
         provider._client.aio.models.generate_content.assert_called_once()
 
-    def test_fail_open_falls_back_to_env_client_when_override_build_raises(
-        self, vertex_config, caplog
-    ):
+    def test_fail_closed_when_override_build_raises(self, vertex_config, caplog):
+        """F-07 — INVERTED from the original assertion, deliberately.
+
+        This test used to assert `client is sentinel_env_client`: a tenant
+        credential that could not be built fell through to the PLATFORM client
+        while `funding` stayed `tenant`, so a revoked or malformed tenant key
+        kept generating on the platform's Google account, billed as BYOK. That
+        is un-invoiced COGS plus a cross-tier credential substitution, and it
+        must raise. The key must still never reach the log or the message.
+        """
+        from text.core.exceptions import ProviderCredentialsError
         from text.providers.vertex import VertexProvider
 
         provider = VertexProvider(config=vertex_config)
-        sentinel_env_client = provider._client
 
         with patch(
             "text.providers.vertex.service_account.Credentials.from_service_account_info",
@@ -585,7 +616,8 @@ class TestVertexProviderOverrideConsumption:
                 provider="vertex",
                 provider_overrides={"vertex": {"api_key": "byo-broken-vertex-sa-key"}},
             )
-            client = provider._client_for(req)
+            with pytest.raises(ProviderCredentialsError) as exc:
+                provider._client_for(req)
 
-        assert client is sentinel_env_client
         assert "byo-broken-vertex-sa-key" not in caplog.text
+        assert "byo-broken-vertex-sa-key" not in str(exc.value)
