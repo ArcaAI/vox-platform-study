@@ -19,6 +19,7 @@ docs/
 │   └── index.md                           # Roll-up index over the per-domain files
 ├── development-patterns-and-standards.md  # Coding patterns & layer standards
 ├── development-guide.md                   # Hands-on developer guide (setup, workflows)
+├── consultation-context-schema-integration-guide.md  # Context schema: codegen + vox / vox-node integration
 ├── section-syntax.md                      # Optional tabbed-rendering markers for docs
 ├── programs/                              # Multi-ticket program workspaces (planning artifacts)
 │   └── agentic-workflow-platform/         # Design, backlog, execution log, conformance reviews
@@ -46,6 +47,7 @@ docs/
 | -------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | [development-patterns-and-standards.md](./development-patterns-and-standards.md) | Layer-by-layer coding standards and patterns (database → domains → applications → API; Python services; SDK)                                                                 |
 | [development-guide.md](./development-guide.md)                                   | Practical developer guide: environment setup, dev stack, testing, common workflows                                                                                           |
+| [consultation-context-schema-integration-guide.md](./consultation-context-schema-integration-guide.md) | Building against a tenant-declared consultation context schema: the declaration + discovery contract, `@arcaai/vox-codegen` type generation, the backend lane (`@arcaai/vox-node` admin authoring + the business-plane gap), the frontend lane (`@arcaai/vox` discovery hooks + `addContext`), and how the schema feeds the `input.context_binding` workflow node |
 | [section-syntax.md](./section-syntax.md)                                         | Optional `<!-- @section -->` / `<!-- @example -->` / `<!-- @tabs -->` markers for docs that render with Content/Example tabs; files without markers render as plain markdown |
 
 ## Programs — `programs/`

@@ -2,7 +2,7 @@
 
 | Field | Value |
 |---|---|
-| Status | In Progress — Phases 0, 1, 1.5 complete |
+| Status | In Progress — Phases 0, 1, 1.5 and Round 2 complete |
 | Type | refactor / infrastructure |
 | Branch | `dev-2.2` |
 | Scope | `apps/{stt,text,guardrail,nlp,harness,tts}`, `packages/applications/src/services/{settings-registry,effective-config,ai-provider-connection,ai-task-default}`, `apps/api/src/modules/internal`, `apps/admin-console` |
@@ -145,6 +145,55 @@ demonstration, not assertion: planting an undeclared `os.environ` read in
 restoring it returned the gate to green. That demonstration is the point — a gate that
 is green because Python is excluded proves nothing.
 
+### Round 2 — complete (merged to `dev-2.2`, 2026-08-23)
+
+**C.2 has LANDED.** `4fa3d1f15` is now an ancestor of `dev-2.2`: zero hardcoded model
+ids remain in `apps/nlp/src`, and `/diagnosis/suggestions` works again on a
+gateway-resolved selection.
+
+**R2-B corrected the brief's premise, and was right to.** The brief said to add a new
+NER task key. `nlp.ner` ALREADY exists, and its SYSTEM seed row carries
+`sourceUri: 'blaze999/Medical-NER'` (`seed/ai-models/nlp.ts:21`) — the exact literal C.2
+removed from `TokenClassificationConfig`. Reusing it is behaviour-preserving and puts
+every medical-NER surface behind one key; a dedicated `nlp.diagnosis.ner` would have
+re-created the split it was meant to close.
+
+**R2-A repaired the dead listener and made recurrence impossible.** One generalised
+channel `arca:config:invalidate` replaces the never-published
+`arca:guardrail-config:invalidate`; guardrail was re-pointed rather than aliased, because
+keeping the old subscription would preserve the appearance of a channel nothing writes to
+— which IS the defect. A Python test now reads the channel literal out of the TypeScript
+source and asserts the constant matches, so the two halves cannot drift apart again.
+Publish happens AFTER `refreshCache()`: publishing earlier races the subscriber's refetch
+against the stale snapshot and re-caches the OLD value for a full TTL.
+
+Scope, stated honestly: **wired and live for guardrail, text, stt only.** `nlp`, `harness`
+and `tts` hold no Redis client at all, so nothing can deliver to them; giving them one is
+a new dependency plus a bootstrap env var for two deliberately stateless services — an
+owner decision, not a lane's. No live-Redis round trip is proven anywhere; the publish
+half is tested against a mocked cache service and the subscribe half against an
+in-process fake.
+
+**The `modelWeights` loop is closed.** Root cause was `getattr(snapshot, "model_weights",
+None)` against a snapshot type with no such member — it yielded `{}` and every deployment
+silently took the env branch. It stayed invisible because the only test exercising that
+branch used a stub that DID expose the attribute. The accessor now exists and is called
+directly, so an `AttributeError` degrades loudly.
+
+**R2-C closed the last BYO delivery gap** and caught a trap in doing so: removing the
+`isCloudByoProvider` short-circuit made `assertProviderAvailable` run for self-host
+providers, which would have returned 403 to an unentitled tenant on an unconfigured
+self-hosted engine. Both suppression reasons concern platform SPEND on a vendor account;
+self-hosted infrastructure is not spend, so the assertion is now cloud-scoped. Found by a
+pre-written test that passed BEFORE the fix and would have failed after it.
+
+**Two environment findings that explain earlier mysteries** (both pre-existing, both
+confirmed on the untouched primary checkout):
+- The harness suite needs `CI=true`. The `.env.dev` that worktree agents are told to copy
+  in leaks `HARNESS_CLAIM_CHECK_STORE=s3` into a hermetic suite. **This is the real cause
+  of the "15 harness failures" a Phase 0 lane reported and could not explain.**
+- The TTS suite HANGS under captured output; it passes in ~8s with `--capture=no`.
+
 ### Post-merge gate evidence (`dev-2.2`, primary checkout)
 
 | Service | Result |
@@ -231,4 +280,5 @@ decision in TASK-735 Phase 0 and is the precedent.
 | 2026-08-23 | Owner decisions D-1 (pull route splits by cardinality: platform=PULL, tenant=PUSH), D-2 (`global-kv` default, `db-config` reserved for values with their own table), D-3 (Phase 0 first) recorded in `plan.md`. |
 | 2026-08-23 | Phase 0 implemented across four worktree lanes and merged to `dev-2.2`. Gates re-run post-merge. C.2 held at `4fa3d1f15` for Phase 1 per owner decision. |
 | 2026-08-23 | Phases 1 and 1.5 implemented across three worktree lanes and merged to `dev-2.2`. Control plane generalised (non-numeric values, registry-driven payload), tenant-secret plane widened, env drift gate extended to Python (declared surface 40 → 652). |
+| 2026-08-23 | Round 2 merged: invalidation push (3 of 6 services wired), `modelWeights` loop closed, text-path BYO delivery gap closed, seed vocabulary widened, and **C.2 landed** — no hardcoded nlp model ids remain. |
 | 2026-08-23 | Round 2 lane R2-B: gateway resolves the second (`nlp.ner`) selection for `/diagnosis/suggestions` and injects both; C.2 (`4fa3d1f15`) merged, so the route works again with no literal. `nlp.*` SUPER_ADMIN-only tension recorded for owner decision. |
