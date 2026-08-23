@@ -38,8 +38,12 @@ const KNOWN_DUPLICATES: readonly string[] = [
   '/users::Reset password',
   '/tenants::Copy tenant key',
   '/playground::Generate my style',
-  // Facet chips: two filter groups each offering "All".
-  '/workflow-runs::All',
+  // NOTE: the '/workflow-runs::All' entry that used to sit here is GONE, and so
+  // is the defect. Those were <Select> triggers whose accessible name fell
+  // through to their VALUE ("All") because a native <label for> does not name a
+  // <button>. Fixed at the shared FilterSelect with aria-labelledby, which named
+  // every filter on every screen at once — the guard found a real bug, not an
+  // exemption to record.
   // The bucket name appears as both a breadcrumb link and a list entry.
   '/storage::e2e-test-bucket',
 ];
@@ -87,7 +91,20 @@ export async function expectDistinctControlNames(page: Page): Promise<void> {
           if (peers > 1) continue;
         }
 
-        const name = (element.getAttribute('aria-label') ?? element.textContent ?? '').replace(/\s+/g, ' ').trim();
+        // Accessible-name order, as the browser computes it:
+        // aria-labelledby > aria-label > content. Reading only the last two is
+        // how a first cut of this guard reported a FALSE POSITIVE against the
+        // very fix it prompted — filter comboboxes named via aria-labelledby
+        // still looked like their value ("All") to the check.
+        const labelledBy = element.getAttribute('aria-labelledby');
+        const fromLabelledBy = labelledBy
+          ?.split(/\s+/)
+          .map((ref) => document.getElementById(ref)?.textContent ?? '')
+          .join(' ')
+          .trim();
+        const name = (fromLabelledBy || element.getAttribute('aria-label') || element.textContent || '')
+          .replace(/\s+/g, ' ')
+          .trim();
         if (!name) continue;
         if (allowed.some((entry) => { const [prefix, allowedName] = entry.split('::'); return allowedName === name && location.pathname.startsWith(prefix); })) continue;
         counts.set(name, (counts.get(name) ?? 0) + 1);
