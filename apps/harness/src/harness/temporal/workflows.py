@@ -939,6 +939,13 @@ class HarnessDocWorkflow:
                         atomic_fact_enabled=atomic_fact_enabled,
                         phi_enabled=phi_enabled,
                         phi_fail_closed=phi_fail_closed,
+                        # The safety screen is a tenant-scoped call into
+                        # `apps/guardrail` and `X-Tenant-Id` is mandatory on it (TASK-737),
+                        # so this pass must carry the tenant too — the optimistic ASSURANCE
+                        # call site below already did. Populating an ALREADY-DECLARED
+                        # additive-optional input field changes no workflow COMMAND, so it
+                        # is replay-safe and needs no `workflow.patched()` marker.
+                        tenant_id=inp.tenant_id,
                         # Carry the prior passes' verdicts so unchanged
                         # claims reuse the cache (data-only; no new command / patch marker).
                         prior_verdicts=verdict_cache,

@@ -46,69 +46,6 @@ class TemporalConfig(BaseSettings):
     graceful_shutdown_timeout_s: float = 30.0
 
 
-_SAFETY_PROVIDERS = ("lm-studio", "ollama", "azure", "bedrock")
-
-
-class SafetyGuardConfig(BaseSettings):
-    """IBM Granite Guardian content-safety classifier over a selectable engine.
-
-    The safety sensor screens the generated note through Granite Guardian.
-    The **default** engine is **LM Studio** — an OpenAI-compatible endpoint: the
-    safety client posts to ``{base_url}/chat/completions`` (``base_url`` already
-    includes the ``/v1`` path) and reads ``choices[0].message.content``. ``provider``
-    switches the engine: ``lm-studio`` (default) | ``ollama`` | ``azure`` | ``bedrock``.
-    ``ollama`` is selected the same way as ``lm-studio``: point ``base_url`` at
-    Ollama's own OpenAI-compatible ``/v1`` endpoint (e.g. ``http://localhost:11434/v1``)
-    — harness carries no Ollama-specific transport of its own (owner decision
-    2026-08-20, TASK-736/TASK-740 D-740-3: harness must not grow a vendor adapter).
-    ``azure``/``bedrock`` require a guardian-capable model hosted on that engine.
-
-    ``harm_criteria`` is the Bring-Your-Own-Criteria (BYOC) list of risk dimensions
-    the guardian evaluates one-per-call via the canonical IBM 4.1 ``<guardian>``
-    block; ``no_think`` runs the classifier without an explicit reasoning pass for
-    fast, deterministic ``<score>yes/no</score>`` verdicts.
-
-    The default ``model`` slug is ``granite-guardian-4.1-8b``; operators load the
-    matching build in their engine (e.g. ``lmstudio-community/granite-guardian-4.1-8b-GGUF``,
-    resolving to the ``granite-guardian-4.1-8b`` id) or override via
-    ``HARNESS_SAFETY_MODEL``.
-    """
-
-    # Init > host env > secrets_dir (Vault Agent) > .env.<NODE_ENV> > default.
-    settings_customise_sources = hope_settings_sources
-
-    model_config = SettingsConfigDict(env_prefix="HARNESS_SAFETY_")
-
-    enabled: bool = True
-    # Engine selector: lm-studio (default, OpenAI-compatible) | ollama | azure | bedrock.
-    provider: str = "lm-studio"
-    # LM Studio OpenAI-compatible root (already includes ``/v1``).
-    base_url: str = "http://localhost:1234/v1"
-    model: str = "granite-guardian-4.1-8b"
-    # Guard classifier in no-think mode (fast, deterministic yes/no per criterion).
-    no_think: bool = True
-    timeout_s: float = 60.0
-    # BYOC risk dimensions screened on the generated note (env: JSON array).
-    harm_criteria: list[str] = Field(
-        default_factory=lambda: [
-            "harm",
-            "social_bias",
-            "jailbreak",
-            "violence",
-            "profanity",
-            "sexual_content",
-            "unethical_behavior",
-        ]
-    )
-
-    @field_validator("provider")
-    @classmethod
-    def _validate_provider(cls, v: str) -> str:
-        if v not in _SAFETY_PROVIDERS:
-            raise ValueError(f"provider must be one of {list(_SAFETY_PROVIDERS)}")
-        return v
-
-
 class PhiConfig(BaseSettings):
     """Pre-cloud-egress PHI redaction guard (Presidio + clinical NER), fail-closed.
 
@@ -189,6 +126,32 @@ class RetrievalConfig(BaseSettings):
 
     model_config = SettingsConfigDict(env_prefix="HARNESS_RETRIEVAL_")
 
+    # ── Why the endpoints below are still env, and stay env (TASK-799 A.2) ──────────
+    #
+    # Phase 1 widened `AiProviderConnection.service` to include `vector` / `rerank` /
+    # `embeddings`, which reads like an invitation to seed SYSTEM rows for the platform
+    # Qdrant and TEI reranker and delete these fields. It is not, and the plan's own
+    # "Phase 2 landmines" section is why: a KEYLESS row injects on NEITHER tier, so a
+    # seeded `vector:qdrant` row is resolvable via `resolveConnection` (a TypeScript API)
+    # but never appears in `provider_overrides`. The instruction is to settle the delivery
+    # path BEFORE relying on a row. Settled, with the evidence:
+    #
+    #   1. harness holds no DB handle, so `resolveConnection` is unreachable from here.
+    #   2. The gateway does not inject config into these calls — the retriever runs inside
+    #      a Temporal ACTIVITY, with no gateway request to inject into.
+    #   3. The pull route carries `settings` (registry keys) and `modelWeights` only;
+    #      `EffectiveConfigResponse` has no `connections` block.
+    #
+    # So there is NO delivery path for an `AiProviderConnection` row into this process,
+    # and seeding one would look like it silently did nothing — exactly the failure the
+    # landmine warns about. Meanwhile rule 09 §Configuration Tiers puts a transport
+    # address in the `env` tier by name, and rule 06 calls a `*_URL` default "the ONE
+    # sanctioned kind of hardcoded default" (see `guardrail_base_url` below). These are
+    # one platform Qdrant and one platform TEI with no tenant opinion, so by D-1's
+    # cardinality rule they are not PUSH candidates either.
+    #
+    # Conclusion: they are correctly tiered ALREADY. No row is seeded, and no field is
+    # deleted. Revisit only if the pull payload grows a connections block.
     enabled: bool = False
     qdrant_url: str = "http://localhost:6333"
     # Qdrant ships with NO authentication. Unauthenticated is
@@ -289,9 +252,18 @@ class ClaimCheckConfig(BaseSettings):
     secret_key: SecretStr = SecretStr("")
     region: str = "us-east-1"
     secure: bool = False
-    # Advisory blob lifetime (a bucket lifecycle rule enforces expiry out-of-band);
-    # a blob must outlive the longest workflow that may still dereference it.
-    ttl_seconds: int = 604_800  # 7 days
+    # There is deliberately no `ttl_seconds` here. It was declared as an "advisory blob
+    # lifetime (a bucket lifecycle rule enforces expiry out-of-band)" and read by NOTHING
+    # — the expiry really is enforced by the object store, so the field was documentation
+    # wearing a config costume, and an admin slider wired to it would control nothing.
+    # `test_task799_claim_check_config.py` keeps it gone.
+    #
+    # `bucket` / `endpoint_url` / `region` / `secure` above are the storage LOCATION, and
+    # they still belong in the `storage.platformDefault.*` / `TenantStorageConfig`
+    # cascade rather than in this parallel block. They are NOT migrated yet: those keys
+    # are `db-config` tier, and `EffectiveSettingsService.resolveEffective` resolves only
+    # `pipeline.*`, `models.*` and `global-kv` — so declaring `consumedBy: ['harness']`
+    # on them today would serve `null` on every pull. See the TASK-799 report.
 
     @field_validator("store")
     @classmethod
@@ -420,9 +392,16 @@ class Settings(BaseSettings):
     # BullMQ ingest processor presents this as the ingest contract's token.
     internal_service_token: SecretStr = SecretStr("")
 
-    # Connection pooling (used by the loop's httpx tool clients)
-    httpx_max_connections: int = 200
-    httpx_max_keepalive: int = 100
+    # Redis — ONE job: the `arca:config:invalidate` subscriber that makes a
+    # control-plane write reach this process without waiting out the 60s TTL
+    # (TASK-799 A.3 / owner decision D-5). harness stores nothing in Redis and queues
+    # nothing through it; its durable state is Temporal's.
+    #
+    # ENV-TIER and staying that way: this is how the process REACHES Redis, which is
+    # exactly the bootstrap floor rule 09 reserves for env — a value delivered over the
+    # channel it configures could never bootstrap itself. Unreachable ⇒ the service
+    # still boots and still converges on the TTL backstop.
+    redis_url: str = "redis://localhost:6379/0"
 
     # -- Loop / gate-adapter --------------------------------------------------
     # Tool-service base URLs the durable loop calls out to.
@@ -519,7 +498,6 @@ class Settings(BaseSettings):
     # Cache dir for weights materialised from an `s3://` source_uri.
     atomic_fact_model_cache_dir: str = "/models/harness-cache"
     atomic_fact_model_id: str = "nvhf/MiniCheck-Flan-T5-Large-Q6_K-GGUF"
-    atomic_fact_model_file: str = "minicheck-flan-t5-large-q6_k.gguf"
     # 512 matches Flan-T5's training context (`n_ctx_train`); MiniCheck windows long
     # documents to ~512-token chunks, so more only wastes the encoder KV alloc and trips
     # llama.cpp's `n_ctx_seq > n_ctx_train` overflow warning.
@@ -547,14 +525,20 @@ class Settings(BaseSettings):
     text_model: str | None = None
     conversation_language: str = "en"
 
-    # Tool-call + Temporal activity timeouts / retry budgets.
+    # Per-PEER-CALL httpx timeouts, read by the clients this process builds.
+    #
+    # There are deliberately NO `HARNESS_ACTIVITY_START_TO_CLOSE_S`,
+    # `HARNESS_ACTIVITY_MAX_ATTEMPTS` or `HARNESS_GENERATE_MAX_ATTEMPTS` knobs.
+    # They were declared here, advertised in `.env.sample` and `turbo.json`, and read by
+    # NOTHING: Temporal activity timeouts and retry policies are module-level constants
+    # in `temporal/workflows.py` (`_INFERENTIAL_TIMEOUT`, `_INFERENTIAL_RETRY`,
+    # `_GENERATE_RETRY`) and MUST be, because a workflow body may not read env — that is
+    # the determinism rule 06 states. Wiring them would break replay; the honest fix is
+    # that they are gone. `test_task799_dead_settings.py` keeps them gone.
     text_timeout_s: float = 120.0
     nlp_timeout_s: float = 30.0
     api_timeout_s: float = 30.0
     guardrail_timeout_s: float = 30.0
-    activity_start_to_close_s: float = 150.0
-    activity_max_attempts: int = 3
-    generate_max_attempts: int = 2
 
     # F-29 — Worker-level admission cap (``Worker(max_concurrent_activities=...)``,
     # ``worker.py``). Left unset, Temporal admits activities unbounded, which lets
@@ -567,15 +551,11 @@ class Settings(BaseSettings):
     # ``HARNESS_LLM_MAX_CONCURRENCY`` if the semaphore is ever raised.
     max_concurrent_activities: int = 8
 
-    # Per-call LLM wall-clock timeout. Bounds EACH individual judge /
-    # citation-verify / Granite Guardian request inside the inferential pass so a single
-    # hung LM Studio call can no longer burn the whole 900s start_to_close before Temporal
-    # retries; a timed-out call is transient (retried within HARNESS_LLM_MAX_ATTEMPTS) and
-    # the owning sensor then self-degrades. Enforced by the shared LLM governor (env
-    # ``HARNESS_LLM_REQUEST_TIMEOUT_S``; see ``core.llm_concurrency.LlmGovernorConfig`` and
-    # ``eval.judge.providers._create_with_retry``). Safety net for the raised
-    # HARNESS_LLM_MAX_CONCURRENCY: a hung call now ties up a real slot.
-    llm_request_timeout_s: float = 120.0
+    # NOTE: there is no `llm_request_timeout_s` field here. `HARNESS_LLM_REQUEST_TIMEOUT_S`
+    # is real and live — its reader is `core/llm_concurrency.py` (`LlmGovernorConfig`),
+    # which reads the environment directly. This class carried a SECOND declaration of the
+    # same knob that nothing read; two declarations of one setting is how a value and its
+    # documentation drift apart, so the unread one is gone.
 
     # F-19 — assembled-prompt size alarm (``HARNESS_PROMPT_SIZE_WARN_CHARS``).
     # The doc loop deliberately re-sends the ENTIRE template+transcript prefix on
@@ -670,8 +650,11 @@ class Settings(BaseSettings):
 
     # Sub-configs (loaded from their own env prefixes)
     temporal: TemporalConfig = Field(default_factory=TemporalConfig)
-    # Granite Guardian safety + fail-closed PHI.
-    safety: SafetyGuardConfig = Field(default_factory=SafetyGuardConfig)
+    # Fail-closed PHI redaction. There is deliberately NO `safety` sub-config: the
+    # content-safety screen is DELEGATED to `apps/guardrail` over `guardrail_base_url`
+    # (TASK-799 A.1 / F-02), so harness holds no guardian provider, endpoint, model id
+    # or harm-criteria taxonomy of its own. Do not reintroduce one — rule 06,
+    # "Do not grow a second inference stack".
     phi: PhiConfig = Field(default_factory=PhiConfig)
     # Institutional RAG: hybrid JIT retriever (flag-gated off).
     retrieval: RetrievalConfig = Field(default_factory=RetrievalConfig)

@@ -22,7 +22,7 @@ import inspect
 import pytest
 
 from harness.sensors.base import SensorContext
-from harness.sensors.inferential.granite_client import GraniteServiceError
+from harness.sensors.inferential.guardrail_screen import SafetyScreenError
 from harness.sensors.inferential.safety import SafetySensor
 
 
@@ -91,7 +91,7 @@ class TestSafetyContractPreserved:
 
     @pytest.mark.asyncio
     async def test_backend_error_degrades_fail_closed(self):
-        result = await SafetySensor(_StubGranite(error=GraniteServiceError("offline"))).arun(
+        result = await SafetySensor(_StubGranite(error=SafetyScreenError("offline"))).arun(
             _ctx(), judge=_NoopJudge()
         )
         assert result.degraded is True
@@ -151,7 +151,7 @@ class TestSafetyScreenScopingReusesCache:
         cache: dict[str, bool] = {}
 
         # A degraded screen must not populate the cache.
-        g_err = _StubGranite(error=GraniteServiceError("offline"))
+        g_err = _StubGranite(error=SafetyScreenError("offline"))
         r_err = await SafetySensor(g_err).arun(
             _ctx("note v1"), judge=_NoopJudge(), screen_cache=cache
         )

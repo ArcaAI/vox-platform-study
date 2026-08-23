@@ -14,7 +14,7 @@ import pytest
 
 from harness.sensors.base import SensorContext
 from harness.sensors.inferential.base import InferentialSensor
-from harness.sensors.inferential.granite_client import GraniteServiceError
+from harness.sensors.inferential.guardrail_screen import SafetyScreenError
 from harness.sensors.inferential.safety import NAME, SafetySensor
 
 
@@ -102,7 +102,7 @@ class TestSafety:
 class TestDegrade:
     @pytest.mark.asyncio
     async def test_granite_backend_failure_degrades_never_raises(self):
-        client = _StubGranite(error=GraniteServiceError("ollama offline"))
+        client = _StubGranite(error=SafetyScreenError("ollama offline"))
         result = await SafetySensor(client).arun(_ctx(), judge=_NoopJudge())
         assert result.degraded is True
         assert result.passed is False

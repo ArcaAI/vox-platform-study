@@ -26,6 +26,7 @@ from temporalio.worker import Worker
 
 from harness.core.config import _DEPLOYED_ENVIRONMENTS, Settings, get_settings
 from harness.core.logging import get_logger, setup_logging
+from harness.core.redis_client import build_invalidation_redis
 from harness.temporal.activities import (
     DOCUMENT_ACTIVITIES,
     LOOP_ACTIVITIES,
@@ -105,10 +106,13 @@ async def _refresh_model_cache_retention_once(client: Any) -> None:
 
 def _effective_config_client() -> Any:
     """The worker's control-plane client, or None when it cannot be built."""
-    from harness.core.effective_config import build_effective_config_client
+    from harness.core.effective_config import get_effective_config_client
 
     try:
-        return build_effective_config_client()
+        # The PROCESS-WIDE client, not a fresh one: the invalidation listener below and
+        # every activity that reads a control-plane knob must share one TTL cache, or an
+        # eviction here would leave the activities' own instance stale for a full window.
+        return get_effective_config_client()
     except Exception as exc:  # noqa: BLE001 — a worker must boot without the gateway
         logger.warning(
             "harness.worker.effective_config_client_unavailable",
@@ -116,6 +120,34 @@ def _effective_config_client() -> Any:
             error_type=type(exc).__name__,
         )
         return None
+
+
+def start_config_invalidation_listener() -> asyncio.Task[None] | None:
+    """Start the `arca:config:invalidate` subscriber, or return None.
+
+    PROCESS PLACEMENT, deliberately the WORKER and not the FastAPI app: the only thing
+    harness caches from the control plane is the MiniCheck entailer's retention and
+    weights, and that entailer is built inside a Temporal ACTIVITY — so the GGUF is
+    resident here, in the worker process. A listener in the app's lifespan would evict a
+    cache that holds nothing, which is the same reason the effective-config POLL is
+    driven from this module rather than from `main.py`.
+
+    `None` means no push path, and that is a supported state: the 60s TTL remains as the
+    bounded-staleness backstop, so a worker that boots while Redis is unreachable still
+    starts and still converges.
+    """
+    client = _effective_config_client()
+    if client is None:
+        return None
+
+    settings = get_settings()
+    redis = build_invalidation_redis(settings.redis_url)
+    if redis is None:
+        logger.warning("harness.worker.config_invalidation_unavailable")
+        return None
+
+    logger.info("harness.worker.config_invalidation_listening")
+    return asyncio.create_task(client.run_invalidation_listener(redis))
 
 
 async def _model_cache_housekeeping_once(client: Any = None) -> int:
@@ -297,6 +329,8 @@ async def run_worker() -> None:
     )
     sweeper = asyncio.create_task(_sweep_model_caches_forever())
     heartbeat = asyncio.create_task(_write_heartbeat_forever())
+    # Push invalidation for the control-plane pull client (TASK-799 A.3).
+    invalidation = start_config_invalidation_listener()
 
     # Self-registration: this worker has no inbound HTTP surface
     # of its own, so it registers+heartbeats independently, exactly like the
@@ -322,7 +356,9 @@ async def run_worker() -> None:
         async with worker:
             await interrupt_event.wait()
     finally:
-        for task in (sweeper, heartbeat):
+        for task in (sweeper, heartbeat, invalidation):
+            if task is None:
+                continue
             task.cancel()
             with contextlib.suppress(asyncio.CancelledError):
                 await task
