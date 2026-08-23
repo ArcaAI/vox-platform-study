@@ -46,6 +46,7 @@ from __future__ import annotations
 import asyncio
 import time
 import uuid
+from typing import Any
 
 import structlog.contextvars
 from fastapi import APIRouter, Depends, Header, HTTPException
@@ -55,14 +56,11 @@ from pydantic import BaseModel, Field
 # a second copy of `_used_byok_credential` is exactly how a call site starts
 # stamping its own attribution.
 from text.api.endpoints.generate import _coerce_stats, _extract_usage, _used_byok_credential
-from text.core.config import Settings
 from text.core.dependencies import (
+    get_app_state,
     get_judge_circuit_breakers,
     get_judge_semaphores,
     get_provider_registry,
-)
-from text.core.dependencies import (
-    get_settings as get_dep_settings,
 )
 from text.core.exceptions import (
     CircuitOpenError,
@@ -76,6 +74,7 @@ from text.core.exceptions import (
     ProviderTimeoutError as DomainProviderTimeoutError,
 )
 from text.core.logging import get_logger
+from text.core.runtime_defaults import LaneBudget
 from text.models.requests import GenerateRequest, ProviderOverride, ResponseFormat, RetryConfig
 from text.models.responses import ErrorResponse
 from text.models.stats import GenerationStats, degraded_stats
@@ -84,6 +83,7 @@ from text.providers.base import ProviderNotFoundError, ProviderRegistry
 from text.services.circuit_breaker import CircuitBreaker
 from text.services.judge_guard import judge_scope
 from text.services.resizable_semaphore import ResizableSemaphore
+from text.services.runtime_limits import lane_budget
 
 logger = get_logger(__name__)
 
@@ -140,7 +140,7 @@ class JudgeResponse(BaseModel):
 
 
 def _ensure_semaphore(
-    semaphores: dict[str, ResizableSemaphore], provider: str, settings: Settings
+    semaphores: dict[str, ResizableSemaphore], provider: str, budget: LaneBudget
 ) -> ResizableSemaphore:
     """The judge lane's permit for ``provider``, created on first use.
 
@@ -150,20 +150,20 @@ def _ensure_semaphore(
     """
     semaphore = semaphores.get(provider)
     if semaphore is None:
-        semaphore = ResizableSemaphore(settings.judge.max_concurrent)
+        semaphore = ResizableSemaphore(budget.max_concurrent)
         semaphores[provider] = semaphore
     return semaphore
 
 
 def _ensure_breaker(
-    breakers: dict[str, CircuitBreaker], provider: str, settings: Settings
+    breakers: dict[str, CircuitBreaker], provider: str, budget: LaneBudget
 ) -> CircuitBreaker:
     """The judge lane's breaker for ``provider``, created on first use."""
     breaker = breakers.get(provider)
     if breaker is None:
         breaker = CircuitBreaker(
-            failure_threshold=settings.judge.failure_threshold,
-            recovery_timeout=settings.judge.recovery_timeout_s,
+            failure_threshold=budget.failure_threshold,
+            recovery_timeout=budget.recovery_timeout_s,
         )
         breakers[provider] = breaker
     return breaker
@@ -184,7 +184,9 @@ async def judge(
     registry: ProviderRegistry = Depends(get_provider_registry),
     judge_semaphores: dict[str, ResizableSemaphore] = Depends(get_judge_semaphores),
     judge_breakers: dict[str, CircuitBreaker] = Depends(get_judge_circuit_breakers),
-    settings: Settings = Depends(get_dep_settings),
+    # Live control-plane state — the judge lane's budget is one `(provider,
+    # lane="judge")` AiRuntimeProfile row now, not the `TEXT_JUDGE_*` block.
+    app_state: Any = Depends(get_app_state),
     x_tenant_id: str | None = Header(default=None, alias="X-Tenant-Id"),
 ) -> JudgeResponse:
     """Run one safety-plane judgement on the isolated judge pool.
@@ -200,7 +202,7 @@ async def judge(
             registry=registry,
             judge_semaphores=judge_semaphores,
             judge_breakers=judge_breakers,
-            settings=settings,
+            app_state=app_state,
             tenant_id=x_tenant_id,
         )
 
@@ -211,7 +213,7 @@ async def _run_judge(
     registry: ProviderRegistry,
     judge_semaphores: dict[str, ResizableSemaphore],
     judge_breakers: dict[str, CircuitBreaker],
-    settings: Settings,
+    app_state: Any,
     tenant_id: str | None,
 ) -> JudgeResponse:
     provider_name = request_body.provider
@@ -238,7 +240,14 @@ async def _run_judge(
         provider_overrides=request_body.provider_overrides,
     )
 
-    breaker = _ensure_breaker(judge_breakers, provider_name, settings)
+    # ONE budget for this `(provider, judge)` pair — concurrency, acquire
+    # timeout, call timeout and breaker thresholds together. `TEXT_JUDGE_*`
+    # expressed the same four concepts as `TEXT_CB_*` and `TEXT_QUEUE_*` with
+    # different numbers; the judge lane's SMALLER budget is the real distinction
+    # and it survives as the lane's floor (`core/runtime_defaults.py`).
+    budget = lane_budget(app_state, provider_name, "judge")
+
+    breaker = _ensure_breaker(judge_breakers, provider_name, budget)
     if not breaker.allow_request():
         raise CircuitOpenError(
             "Judge lane temporarily unavailable (circuit open)",
@@ -253,9 +262,9 @@ async def _run_judge(
             provider=provider_name,
         ) from None
 
-    semaphore = _ensure_semaphore(judge_semaphores, provider_name, settings)
+    semaphore = _ensure_semaphore(judge_semaphores, provider_name, budget)
     try:
-        await asyncio.wait_for(semaphore.acquire(), timeout=settings.judge.acquire_timeout_s)
+        await asyncio.wait_for(semaphore.acquire(), timeout=budget.acquire_timeout_s)
     except TimeoutError:
         # Fail fast rather than queue: guardrail's own bounded retry decides what
         # a saturated judge lane means for the verdict.
@@ -268,7 +277,7 @@ async def _run_judge(
     try:
         content, reasoning, gen_result = await asyncio.wait_for(
             provider.generate(generate_request),
-            timeout=float(settings.judge.timeout_s),
+            timeout=float(budget.timeout_s),
         )
         breaker.record_success()
         latency_ms = int((time.monotonic() - start) * 1000)
@@ -328,10 +337,10 @@ async def _run_judge(
             "judge.timeout",
             provider=provider_name,
             model=model,
-            timeout_s=settings.judge.timeout_s,
+            timeout_s=budget.timeout_s,
         )
         raise DomainProviderTimeoutError(
-            f"Judge call timed out after {settings.judge.timeout_s}s "
+            f"Judge call timed out after {budget.timeout_s}s "
             f"for provider '{provider_name}'.",
             provider=provider_name,
         ) from None

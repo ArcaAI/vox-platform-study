@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from pydantic import BaseModel, Field
 
+from text.models.requests import ProviderOverride
+
 
 class EmbeddingRequest(BaseModel):
     """Synchronous, immediate embedding call — mirrors `/generate`'s shape for
@@ -11,10 +13,14 @@ class EmbeddingRequest(BaseModel):
 
     texts: list[str] = Field(..., min_length=1, max_length=32)
     provider: str = "tei-embed"
-    # Informational only today (TEI serves one model per container — see
-    # `core/config.py::TeiEmbedConfig`); carried for forward compat with a
-    # future multi-model embedding provider.
+    # Informational only today (TEI serves one model per container); carried for
+    # forward compat with a future multi-model embedding provider.
     model: str | None = None
+    # The resolved engine connection, same channel and same shape as
+    # `GenerateRequest.provider_overrides`. Text holds no `TEXT_TEI_BASE_URL` of
+    # its own, so this is where the endpoint comes from; absent, the call fails
+    # closed with a typed 503 (`core/connection.py`).
+    provider_overrides: dict[str, ProviderOverride] | None = None
 
     @property
     def text_count(self) -> int:
@@ -35,6 +41,10 @@ class EmbeddingBatchRequest(BaseModel):
 
     texts: list[str] = Field(..., min_length=1)
     provider: str = "tei-embed"
+    # Carried through the queue envelope so the out-of-process worker resolves
+    # the SAME connection the submitting request did — the worker has no gateway
+    # to ask, and must not invent an endpoint of its own.
+    provider_overrides: dict[str, ProviderOverride] | None = None
 
 
 class EmbeddingBatchAcceptedResponse(BaseModel):

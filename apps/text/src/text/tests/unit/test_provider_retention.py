@@ -17,14 +17,10 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from text.core.config import OpenAICompatConfig
 from text.models.requests import GenerateRequest
+from text.tests.conftest import stub_client
 
 # ── LM Studio: extra_body.ttl ───────────────────────────────────────────────
-
-
-def _compat_config() -> OpenAICompatConfig:
-    return OpenAICompatConfig(base_url="http://localhost:1234/v1", default_model="m")
 
 
 class TestLmStudioTtl:
@@ -32,11 +28,11 @@ class TestLmStudioTtl:
     async def test_lm_studio_generate_sends_extra_body_ttl(self):
         from text.providers.openai_compat import OpenAICompatProvider
 
-        provider = OpenAICompatProvider(_compat_config(), provider_name="lm-studio")
+        provider = OpenAICompatProvider(provider_name="lm-studio")
         provider.apply_retention({"ttl_seconds": 900})
 
         create = AsyncMock(return_value=_completion())
-        provider._client.chat.completions.create = create
+        stub_client(provider, AsyncMock()).chat.completions.create = create
 
         await provider.generate(GenerateRequest(prompt="hi", model="m", provider="lm-studio"))
 
@@ -47,11 +43,11 @@ class TestLmStudioTtl:
         """vLLM/generic endpoints reject unknown body fields — never send it."""
         from text.providers.openai_compat import OpenAICompatProvider
 
-        provider = OpenAICompatProvider(_compat_config(), provider_name="vllm")
+        provider = OpenAICompatProvider(provider_name="vllm")
         provider.apply_retention({"ttl_seconds": 900})
 
         create = AsyncMock(return_value=_completion())
-        provider._client.chat.completions.create = create
+        stub_client(provider, AsyncMock()).chat.completions.create = create
 
         await provider.generate(GenerateRequest(prompt="hi", model="m", provider="vllm"))
 
@@ -61,10 +57,10 @@ class TestLmStudioTtl:
     async def test_generic_openai_compat_does_not_send_extra_body(self):
         from text.providers.openai_compat import OpenAICompatProvider
 
-        provider = OpenAICompatProvider(_compat_config())
+        provider = OpenAICompatProvider()
 
         create = AsyncMock(return_value=_completion())
-        provider._client.chat.completions.create = create
+        stub_client(provider, AsyncMock()).chat.completions.create = create
 
         await provider.generate(GenerateRequest(prompt="hi", model="m"))
 
@@ -74,7 +70,7 @@ class TestLmStudioTtl:
     async def test_lm_studio_stream_sends_extra_body_ttl(self):
         from text.providers.openai_compat import OpenAICompatProvider
 
-        provider = OpenAICompatProvider(_compat_config(), provider_name="lm-studio")
+        provider = OpenAICompatProvider(provider_name="lm-studio")
         provider.apply_retention({"ttl_seconds": 300})
 
         async def _stream(*_args, **_kwargs):
@@ -82,7 +78,7 @@ class TestLmStudioTtl:
                 yield chunk
 
         create = AsyncMock(side_effect=lambda **kw: _stream(**kw))
-        provider._client.chat.completions.create = create
+        stub_client(provider, AsyncMock()).chat.completions.create = create
 
         async for _ in provider.generate_stream(
             GenerateRequest(prompt="hi", model="m", provider="lm-studio")
@@ -94,7 +90,7 @@ class TestLmStudioTtl:
     def test_lm_studio_ttl_is_clamped(self):
         from text.providers.openai_compat import OpenAICompatProvider
 
-        provider = OpenAICompatProvider(_compat_config(), provider_name="lm-studio")
+        provider = OpenAICompatProvider(provider_name="lm-studio")
         provider.apply_retention({"ttl_seconds": 99999})
         assert provider._retention_ttl_s == 3600
 

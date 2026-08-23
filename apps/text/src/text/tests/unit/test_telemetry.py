@@ -17,13 +17,9 @@ from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import SimpleSpanProcessor
 from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
 
-from text.core.config import (
-    AzureOpenAIConfig,
-    BedrockConfig,
-    Settings,
-)
+from text.core.config import Settings
 from text.models.requests import GenerateRequest
-from text.tests.conftest import keyed
+from text.tests.conftest import stub_client
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -58,24 +54,8 @@ def in_memory_exporter():
     return exporter
 
 
-@pytest.fixture
-def azure_config():
-    return keyed(
-        AzureOpenAIConfig(
-            endpoint="https://test.openai.azure.com",
-            deployment_name="gpt-4",
-            default_model="gpt-4",
-        ),
-        "test-key",
-    )
 
 
-@pytest.fixture
-def bedrock_config():
-    return BedrockConfig(
-        region="us-east-1",
-        default_model="anthropic.claude-3-haiku-20240307-v1:0",
-    )
 
 
 # ---------------------------------------------------------------------------
@@ -147,15 +127,9 @@ class TestGetTracer:
 class TestOtelEnabledFlag:
     """Tests for the otel_enabled config flag in create_app."""
 
-    def test_telemetry_not_setup_when_disabled(self):
-        """When otel_enabled=False, tracer provider must remain NoOp."""
-        settings = Settings(
-            host="127.0.0.1",
-            port=5099,
-            debug=True,
-            otel_enabled=False,
-            metrics_enabled=False,
-        )
+    def test_telemetry_not_setup_without_a_collector(self):
+        """No collector address ⇒ export is off and the tracer stays NoOp."""
+        settings = Settings(port=5099, otel_exporter_endpoint="")
         from text.main import create_app
 
         create_app(settings_override=settings)
@@ -163,33 +137,26 @@ class TestOtelEnabledFlag:
         provider = trace.get_tracer_provider()
         assert not isinstance(provider, TracerProvider)
 
-    def test_telemetry_setup_when_enabled(self):
-        """When otel_enabled=True, create_app must call setup_opentelemetry."""
-        settings = Settings(
-            host="127.0.0.1",
-            port=5099,
-            debug=True,
-            otel_enabled=True,
-            metrics_enabled=False,
-        )
+    def test_telemetry_setup_when_a_collector_is_configured(self):
+        """An address IS the enable signal — there is no separate flag to
+        disagree with it."""
+        settings = Settings(port=5099, otel_exporter_endpoint="http://collector:4317")
         with patch("text.core.observability.setup_opentelemetry") as mock_setup:
             from text.main import create_app
 
             create_app(settings_override=settings)
             mock_setup.assert_called_once()
 
-    def test_otel_service_name_setting_exists(self):
-        """Settings declares `otel_service_name` with the default 'text'.
+    def test_otel_service_name_is_a_constant_not_a_setting(self):
+        """The service cannot be told what it is by its environment.
 
-        Asserted against the FIELD DECLARATION, not against a constructed `Settings()`.
-        `otel_service_name` is env-populatable (`OTEL_SERVICE_NAME`), so constructing an instance
-        tests whatever the ambient environment holds — the loaded `.env.test` says
-        `api-gateway`, and something later in a full-suite run leaves `text` behind, which is
-        why this passed alone and failed in the full run. The declared default is what the test
-        name and docstring have always claimed to check, and it is order-independent.
+        This used to assert a FIELD DEFAULT because the value was env-populatable
+        and therefore order-dependent under a full-suite run — the loaded
+        `.env.test` says `api-gateway`. A process's own identity is not
+        configuration; it is derived, so there is nothing left to leak into.
         """
-        field = Settings.model_fields["otel_service_name"]
-        assert field.default == "text"
+        assert "otel_service_name" not in Settings.model_fields
+        assert Settings(port=5099).otel_service_name == "text"
 
 
 # ---------------------------------------------------------------------------
@@ -201,7 +168,7 @@ class TestAzureGenAISpans:
     """Azure OpenAI provider must create GenAI-attributed spans."""
 
     @pytest.mark.asyncio
-    async def test_azure_generate_creates_span(self, in_memory_exporter, azure_config):
+    async def test_azure_generate_creates_span(self, in_memory_exporter):
         from text.providers.azure_openai import AzureOpenAIProvider
 
         mock_usage = MagicMock()
@@ -217,21 +184,19 @@ class TestAzureGenAISpans:
         mock_response.choices = [mock_choice]
         mock_response.usage = mock_usage
 
-        with patch.object(AzureOpenAIProvider, "__init__", lambda self, config: None):
-            provider = AzureOpenAIProvider.__new__(AzureOpenAIProvider)
-            provider._config = azure_config
-            provider._default_model = azure_config.default_model
-            provider._client = AsyncMock()
+        if True:
+            provider = AzureOpenAIProvider()
+            provider._client = stub_client(provider, AsyncMock())
             provider._client.chat.completions.create = AsyncMock(return_value=mock_response)
 
-            content, _reasoning, usage = await provider.generate(GenerateRequest(prompt="hi"))
+            content, _reasoning, usage = await provider.generate(GenerateRequest(prompt="hi", model="test-model"))
 
         spans = in_memory_exporter.get_finished_spans()
         gen_spans = [s for s in spans if s.attributes.get("gen_ai.system") == "azure_openai"]
         assert len(gen_spans) == 1
 
     @pytest.mark.asyncio
-    async def test_azure_span_has_usage_attributes(self, in_memory_exporter, azure_config):
+    async def test_azure_span_has_usage_attributes(self, in_memory_exporter):
         from text.providers.azure_openai import AzureOpenAIProvider
 
         mock_usage = MagicMock()
@@ -247,14 +212,12 @@ class TestAzureGenAISpans:
         mock_response.choices = [mock_choice]
         mock_response.usage = mock_usage
 
-        with patch.object(AzureOpenAIProvider, "__init__", lambda self, config: None):
-            provider = AzureOpenAIProvider.__new__(AzureOpenAIProvider)
-            provider._config = azure_config
-            provider._default_model = azure_config.default_model
-            provider._client = AsyncMock()
+        if True:
+            provider = AzureOpenAIProvider()
+            provider._client = stub_client(provider, AsyncMock())
             provider._client.chat.completions.create = AsyncMock(return_value=mock_response)
 
-            await provider.generate(GenerateRequest(prompt="hi"))
+            await provider.generate(GenerateRequest(prompt="hi", model="test-model"))
 
         spans = in_memory_exporter.get_finished_spans()
         gen_span = next(s for s in spans if s.attributes.get("gen_ai.system") == "azure_openai")
@@ -263,7 +226,7 @@ class TestAzureGenAISpans:
         assert attrs["gen_ai.usage.output_tokens"] == 20
 
     @pytest.mark.asyncio
-    async def test_azure_streaming_creates_span(self, in_memory_exporter, azure_config):
+    async def test_azure_streaming_creates_span(self, in_memory_exporter):
         from text.providers.azure_openai import AzureOpenAIProvider
 
         mock_delta = MagicMock()
@@ -278,15 +241,13 @@ class TestAzureGenAISpans:
         async def _aiter_chunks():
             yield mock_chunk
 
-        with patch.object(AzureOpenAIProvider, "__init__", lambda self, config: None):
-            provider = AzureOpenAIProvider.__new__(AzureOpenAIProvider)
-            provider._config = azure_config
-            provider._default_model = azure_config.default_model
-            provider._client = AsyncMock()
+        if True:
+            provider = AzureOpenAIProvider()
+            provider._client = stub_client(provider, AsyncMock())
             provider._client.chat.completions.create = AsyncMock(return_value=_aiter_chunks())
 
             chunks = []
-            async for chunk in provider.generate_stream(GenerateRequest(prompt="hi", stream=True)):
+            async for chunk in provider.generate_stream(GenerateRequest(prompt="hi", stream=True, model="test-model")):
                 chunks.append(chunk)
 
         spans = in_memory_exporter.get_finished_spans()
@@ -300,7 +261,7 @@ class TestBedrockGenAISpans:
     """AWS Bedrock provider must create GenAI-attributed spans."""
 
     @pytest.mark.asyncio
-    async def test_bedrock_generate_creates_span(self, in_memory_exporter, bedrock_config):
+    async def test_bedrock_generate_creates_span(self, in_memory_exporter):
         from text.providers.bedrock import BedrockProvider
 
         mock_boto_response = {
@@ -309,11 +270,9 @@ class TestBedrockGenAISpans:
             "stopReason": "end_turn",
         }
 
-        with patch.object(BedrockProvider, "__init__", lambda self, config: None):
-            provider = BedrockProvider.__new__(BedrockProvider)
-            provider._config = bedrock_config
-            provider._default_model = bedrock_config.default_model
-            provider._client = MagicMock()
+        if True:
+            provider = BedrockProvider()
+            provider._client = stub_client(provider, MagicMock())
 
             async def _fake_to_thread(fn, *args, **kwargs):
                 return mock_boto_response
@@ -329,7 +288,7 @@ class TestBedrockGenAISpans:
         assert len(gen_spans) == 1
 
     @pytest.mark.asyncio
-    async def test_bedrock_span_has_usage_attributes(self, in_memory_exporter, bedrock_config):
+    async def test_bedrock_span_has_usage_attributes(self, in_memory_exporter):
         from text.providers.bedrock import BedrockProvider
 
         mock_boto_response = {
@@ -338,11 +297,9 @@ class TestBedrockGenAISpans:
             "stopReason": "end_turn",
         }
 
-        with patch.object(BedrockProvider, "__init__", lambda self, config: None):
-            provider = BedrockProvider.__new__(BedrockProvider)
-            provider._config = bedrock_config
-            provider._default_model = bedrock_config.default_model
-            provider._client = MagicMock()
+        if True:
+            provider = BedrockProvider()
+            provider._client = stub_client(provider, MagicMock())
 
             async def _fake_to_thread(fn, *args, **kwargs):
                 return mock_boto_response
@@ -360,7 +317,7 @@ class TestBedrockGenAISpans:
         assert attrs["gen_ai.usage.output_tokens"] == 8
 
     @pytest.mark.asyncio
-    async def test_bedrock_streaming_creates_span(self, in_memory_exporter, bedrock_config):
+    async def test_bedrock_streaming_creates_span(self, in_memory_exporter):
         from text.providers.bedrock import BedrockProvider
 
         events = [
@@ -369,13 +326,11 @@ class TestBedrockGenAISpans:
             {"metadata": {"usage": {"inputTokens": 5, "outputTokens": 3}}},
         ]
 
-        with patch.object(BedrockProvider, "__init__", lambda self, config: None):
-            provider = BedrockProvider.__new__(BedrockProvider)
-            provider._config = bedrock_config
-            provider._default_model = bedrock_config.default_model
+        if True:
+            provider = BedrockProvider()
             mock_client = MagicMock()
             mock_client.converse_stream.return_value = {"stream": iter(events)}
-            provider._client = mock_client
+            provider._client = stub_client(provider, mock_client)
 
             chunks = []
             async for chunk in provider.generate_stream(

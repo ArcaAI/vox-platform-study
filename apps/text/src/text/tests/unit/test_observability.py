@@ -288,15 +288,35 @@ class TestUvicornLogging:
 # ---------------------------------------------------------------------------
 
 
-class TestOtelLogsEnabledSetting:
-    def test_default_true(self):
-        settings = Settings(host="127.0.0.1", port=5099)
-        assert settings.otel_logs_enabled is True
+class TestOtelExportIsDerivedNotDeclared:
+    """One address decides everything about export.
 
-    def test_from_env(self, monkeypatch):
+    `TEXT_OTEL_ENABLED`, `TEXT_OTEL_LOGS_ENABLED` and `TEXT_OTEL_INSECURE` were
+    three booleans that could each disagree with the endpoint they described —
+    "enabled but no collector", "insecure=false over an http:// URL". They are
+    derived now, so they cannot contradict their own source.
+    """
+
+    def test_no_boolean_otel_settings_survive(self):
+        for retired in ("otel_enabled", "otel_logs_enabled", "otel_insecure"):
+            assert retired not in Settings.model_fields
+
+    def test_export_follows_the_presence_of_an_endpoint(self, monkeypatch):
+        monkeypatch.delenv("TEXT_OTEL_EXPORTER_ENDPOINT", raising=False)
+        assert Settings(port=5099, otel_exporter_endpoint="").otel_enabled is False
+        assert (
+            Settings(port=5099, otel_exporter_endpoint="http://collector:4317").otel_enabled
+            is True
+        )
+
+    def test_the_retired_flags_are_inert(self, monkeypatch):
+        """Setting the old names must not turn export off on a configured
+        collector — a stale env var that silently blinds telemetry is exactly the
+        failure mode deriving removes."""
+        monkeypatch.setenv("TEXT_OTEL_ENABLED", "false")
         monkeypatch.setenv("TEXT_OTEL_LOGS_ENABLED", "false")
-        settings = Settings(host="127.0.0.1", port=5099)
-        assert settings.otel_logs_enabled is False
+        settings = Settings(port=5099, otel_exporter_endpoint="http://collector:4317")
+        assert settings.otel_enabled is True
 
 
 # ---------------------------------------------------------------------------
@@ -306,41 +326,23 @@ class TestOtelLogsEnabledSetting:
 
 class TestCreateAppObservability:
     def test_initializes_logger_provider_state(self):
-        settings = Settings(
-            host="127.0.0.1",
-            port=5099,
-            debug=True,
-            otel_enabled=False,
-            metrics_enabled=False,
-        )
+        settings = Settings(port=5099)
         from text.main import create_app
 
         app = create_app(settings_override=settings)
         assert hasattr(app.state, "logger_provider")
         assert app.state.logger_provider is None
 
-    def test_calls_setup_opentelemetry_when_enabled(self):
-        settings = Settings(
-            host="127.0.0.1",
-            port=5099,
-            debug=True,
-            otel_enabled=True,
-            metrics_enabled=False,
-        )
+    def test_calls_setup_opentelemetry_when_a_collector_is_configured(self):
+        settings = Settings(port=5099, otel_exporter_endpoint="http://collector:4317")
         with patch("text.core.observability.setup_opentelemetry") as mock_setup:
             from text.main import create_app
 
             create_app(settings_override=settings)
             mock_setup.assert_called_once()
 
-    def test_skips_setup_when_disabled(self):
-        settings = Settings(
-            host="127.0.0.1",
-            port=5099,
-            debug=True,
-            otel_enabled=False,
-            metrics_enabled=False,
-        )
+    def test_skips_setup_when_no_collector_is_configured(self):
+        settings = Settings(port=5099, otel_exporter_endpoint="")
         with patch("text.core.observability.setup_opentelemetry") as mock_setup:
             from text.main import create_app
 

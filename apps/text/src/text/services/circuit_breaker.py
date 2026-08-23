@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import time
 from enum import StrEnum
+from typing import Any
 
 
 class CircuitState(StrEnum):
@@ -40,6 +41,25 @@ class CircuitBreaker:
         self._last_failure_time: float = 0.0
         self._state = CircuitState.CLOSED
         self._half_open_calls = 0
+
+    def apply_budget(self, budget: Any) -> None:
+        """Adopt a control-plane `LaneBudget`'s breaker thresholds, live.
+
+        `TEXT_CB_*` were settable; their replacement must be too, and a breaker
+        cannot simply be swapped for a new one — that would discard the failure
+        count and open/closed state of the very provider being retuned. So the
+        thresholds move on the LIVE object, the same way `ResizableSemaphore`
+        moves its ceiling.
+
+        Deliberately does NOT touch `_state`, `_failure_count` or
+        `_last_failure_time`: retuning a threshold is not a reason to forgive a
+        provider that is currently failing.
+        """
+        self._failure_threshold = budget.failure_threshold
+        self._recovery_timeout = budget.recovery_timeout_s
+        self._half_open_max_calls = budget.half_open_max_calls
+        self._reset_timeout_s = budget.reset_timeout_s
+        self._count_rate_limits = budget.count_rate_limits
 
     @property
     def state(self) -> CircuitState:

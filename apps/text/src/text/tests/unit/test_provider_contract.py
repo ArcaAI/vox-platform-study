@@ -36,7 +36,7 @@ import pytest
 from text.models.requests import GenerateRequest, ResponseFormat
 from text.models.stats import GenerationStats
 from text.models.stream import StreamChunk
-from text.tests.conftest import keyed
+from text.tests.conftest import stub_client, stub_endpoint
 
 # Canonical fixture values every provider fake reports — a "length"-class finish
 # (proves the real stop reason is surfaced, not the frozen "stop") + exact counts.
@@ -112,30 +112,19 @@ def _openai_stream_chunks() -> list[MagicMock]:
 
 
 def _make_openai_compat() -> Any:
-    from text.core.config import OpenAICompatConfig
     from text.providers.openai_compat import OpenAICompatProvider
 
-    provider = OpenAICompatProvider(OpenAICompatConfig(default_model="m"))
-    provider._client = MagicMock()
+    provider = OpenAICompatProvider()
+    provider._client = stub_client(provider, MagicMock())
     provider._client.chat.completions.create = AsyncMock()
     return provider
 
 
 def _make_azure() -> Any:
-    from text.core.config import AzureOpenAIConfig
     from text.providers.azure_openai import AzureOpenAIProvider
 
-    provider = AzureOpenAIProvider(
-        keyed(
-            AzureOpenAIConfig(
-                endpoint="https://test.openai.azure.com",
-                default_model="m",
-                deployment_name="",  # no-default-substitution contract under test; deployment override is separate
-            ),
-            "k",
-        )
-    )
-    provider._client = AsyncMock()
+    provider = AzureOpenAIProvider()
+    provider._client = stub_client(provider, AsyncMock())
     provider._client.chat.completions.create = AsyncMock()
     return provider
 
@@ -176,12 +165,11 @@ _BEDROCK_STREAM_EVENTS = [
 
 
 def _make_bedrock() -> Any:
-    from text.core.config import BedrockConfig
     from text.providers.bedrock import BedrockProvider
 
     with patch("boto3.client"):
-        provider = BedrockProvider(BedrockConfig(region="us-east-1", default_model="m"))
-    provider._client = MagicMock()
+        provider = BedrockProvider()
+    provider._client = stub_client(provider, MagicMock())
     return provider
 
 
@@ -210,11 +198,11 @@ def _bedrock_captured_schema(provider: Any) -> Any:
 
 
 def _make_vllm() -> Any:
-    from text.core.config import VllmConfig
     from text.providers.vllm import VllmProvider
 
-    provider = VllmProvider(VllmConfig(default_model="m"))
-    provider._client = MagicMock()
+    provider = VllmProvider()
+    stub_endpoint(provider)
+    provider._client = stub_client(provider, MagicMock())
     provider._client.chat.completions.create = AsyncMock()
     return provider
 
@@ -250,13 +238,11 @@ _LLAMA_CPP_DONE: dict[str, Any] = {
 
 
 def _make_llama_cpp() -> Any:
-    from text.core.config import LlamaCppConfig
     from text.providers.llama_cpp import LlamaCppProvider
 
-    return LlamaCppProvider(
-        LlamaCppConfig(base_url="http://localhost:8080", default_model="m"),
-        AsyncMock(),
-    )
+    provider = LlamaCppProvider(AsyncMock())
+    stub_endpoint(provider, "http://localhost:8080")
+    return provider
 
 
 def _llama_cpp_set_nonstream(provider: Any) -> None:

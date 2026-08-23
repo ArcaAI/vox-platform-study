@@ -102,9 +102,7 @@ def _build_app(settings, registry, task_manager, *, shutdown_manager=None):
 
 @pytest.fixture
 def settings():
-    return Settings(
-        host="127.0.0.1", port=5099, debug=True, log_level="debug", metrics_enabled=False
-    )
+    return Settings(port=5099, log_level="debug")
 
 
 # ===========================================================================

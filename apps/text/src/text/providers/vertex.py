@@ -19,15 +19,17 @@ from typing import TYPE_CHECKING, Any
 
 import structlog
 from google import genai
-from google.genai import errors as genai_errors
 from google.genai import types
 from google.oauth2 import service_account
 
-from text.core.config import VertexConfig
+from text.core.connection import resolve_connection
 from text.core.defaults import resolve_request_defaults
-from text.core.exceptions import ProviderCredentialsError
+from text.core.exceptions import (
+    ProviderConnectionMissingError,
+    ProviderCredentialsError,
+)
 from text.core.telemetry import get_tracer
-from text.models.provider import ModelInfo, ProviderInfo
+from text.models.provider import ProviderInfo
 from text.models.requests import GenerateRequest, ProviderOverride
 from text.models.stats import GenerationStats, build_generation_stats
 from text.models.stream import StreamChunk
@@ -77,69 +79,59 @@ class VertexProvider:
 
     credential_posture = CredentialPosture.BYOK
 
-    def __init__(self, config: VertexConfig) -> None:
-        self._config = config
-        self._default_model = config.default_model
-        # The shared PLATFORM fallback client, built ONLY from an explicit
-        # service-account credential (never from env; see `VertexConfig`).
-        #
-        # It used to be `genai.Client(vertexai=True, project=..., location=...)`
-        # with no `credentials=`, which resolves through Google Application
-        # Default Credentials — `GOOGLE_APPLICATION_CREDENTIALS`, a gcloud login,
-        # or GCE metadata. That is an ambient credential chain: a working platform
-        # identity that appears in no config surface, cannot be revoked through
-        # the provider plane, and (see `_client_for`) was silently substituted for
-        # a tenant's own. `None` in production; the credential arrives per request
-        # as a `ProviderOverride`.
-        self._client: Any = None
-        key = config.api_key.get_secret_value()
-        if config.project and key:
-            self._client = genai.Client(
-                vertexai=True,
-                project=config.project,
-                location=config.location,
-                credentials=_credentials_from_service_account(key),
-            )
+    #: Google's own default region, used when a connection pins a project but no
+    #: location. A property of the Vertex API, not a deployment choice.
+    DEFAULT_LOCATION = "us-central1"
+
+    def __init__(self) -> None:
+        """No configuration, and NO Application Default Credentials.
+
+        The service-account credential AND its `(project, location)` binding all
+        arrive per request as a gateway-resolved ``ProviderOverride``. There is no
+        shared client, so two tenants can never race on one.
+
+        This adapter used to hold `genai.Client(vertexai=True, project=...,
+        location=...)` with no `credentials=`, which resolves through Google ADC —
+        `GOOGLE_APPLICATION_CREDENTIALS`, a gcloud login, or GCE metadata. That
+        ambient identity appeared in no config surface and could not be revoked
+        through the provider plane; removing the config field removes the only
+        path that could construct such a client.
+        """
 
     def _resolve_override(self, request: GenerateRequest) -> ProviderOverride | None:
-        """Tenant BYO credential injected by the gateway for THIS provider,
-        keyed by ``request.provider``. ``None`` for every caller until a tenant
-        configures an enabled vertex connection."""
-        if not request.provider_overrides:
-            return None
-        return request.provider_overrides.get(request.provider)
+        """The connection the gateway resolved for THIS request's provider."""
+        return resolve_connection(request)
 
     def _client_for(self, request: GenerateRequest) -> Any:
-        """Override-wins client resolution. A tenant service-account credential
-        builds a request-scoped client bound to the tenant's project/location
-        (the shared ``self._client`` is never mutated).
+        """Request-scoped, fail-closed client bound to the connection's project.
 
-        Fail-CLOSED, in both directions:
-
-        * No override and no platform client ⇒ raise, rather than build an
-          ADC-authenticated client from the ambient process environment.
-        * An override that cannot be parsed or built ⇒ raise. This used to
-          ``return self._client`` — the PLATFORM client — while ``funding``
-          stayed ``tenant``, so a tenant whose key was revoked or malformed kept
-          generating happily on the platform's Google account, billed as BYOK.
-          A tenant's broken credential must surface as an error the tenant can
-          fix, never as platform spend attributed to them.
+        A credential that cannot be parsed RAISES. It used to fall through to the
+        platform client while ``funding`` stayed ``tenant``, so a tenant whose key
+        was revoked kept generating on the platform's Google account, billed as
+        BYOK. A broken tenant credential must surface as an error the tenant can
+        fix, never as platform spend attributed to them.
 
         The service-account key is NEVER logged and never appears in the raised
         message: only the exception TYPE is recorded.
         """
         override = self._resolve_override(request)
         if override is None:
-            if self._client is None:
-                raise ProviderCredentialsError(
-                    "Google Vertex AI credentials not configured. Vertex is "
-                    "BYOK-only: configure a tenant Vertex credential, or the "
-                    "platform (SYSTEM-tenant) connection, in the "
-                    "provider-connection plane. There is no env fallback and no "
-                    "Application Default Credentials fallback.",
-                    provider=_PROVIDER_NAME,
-                )
-            return self._client
+            raise ProviderConnectionMissingError(
+                "No Google Vertex AI connection resolved. Vertex is BYOK-only: "
+                "configure a tenant Vertex credential, or the platform "
+                "(SYSTEM-tenant) connection, in the provider-connection plane. "
+                "There is no env fallback and no Application Default Credentials "
+                "fallback.",
+                provider=_PROVIDER_NAME,
+            )
+        project = (override.project or "").strip()
+        if not project:
+            raise ProviderConnectionMissingError(
+                "No GCP project on the resolved Vertex connection. A Vertex "
+                "client is bound to a (project, location), so both travel with "
+                "the service-account key on the AiProviderConnection row.",
+                provider=_PROVIDER_NAME,
+            )
         try:
             credentials = _credentials_from_service_account(override.api_key.get_secret_value())
         except Exception as exc:  # noqa: BLE001 — never leak the key
@@ -151,23 +143,22 @@ class VertexProvider:
             raise ProviderCredentialsError(
                 "The configured Vertex AI credential could not be used "
                 f"({type(exc).__name__}). It must be a Google service-account "
-                "JSON key. The request is refused rather than served on the "
-                "platform credential, which would bill platform spend as BYOK.",
+                "JSON key. The request is refused rather than served on another "
+                "credential, which would misattribute the spend.",
                 provider=_PROVIDER_NAME,
             ) from exc
         return genai.Client(
             vertexai=True,
-            project=override.project or self._config.project,
-            location=override.location or self._config.location,
+            project=project,
+            location=override.location or self.DEFAULT_LOCATION,
             credentials=credentials,
         )
 
     def _resolve_model(self, request: GenerateRequest) -> str | None:
-        # No in-gateway default — the caller-supplied model is
-        # authoritative. ``_default_model`` is retained for the providers
-        # listing (informational) only and is NEVER substituted into a
-        # generation request (provider/model SELECTION is failMode=closed —
-        # a missing model raises via `require_model` in generate/generate_stream).
+        # No in-gateway default — the caller-supplied model is authoritative,
+        # unless the resolved connection pins one. Provider/model SELECTION is
+        # failMode=closed: a missing model raises via `require_model` in
+        # generate/generate_stream rather than being substituted.
         override = self._resolve_override(request)
         if override is not None and override.model:
             return override.model
@@ -349,35 +340,27 @@ class VertexProvider:
             yield StreamChunk(type="done", data={"finish_reason": raw_stop or "stop"})
 
     async def health_check(self) -> bool:
-        if self._client is None:
-            # No platform fallback configured — available only via tenant override.
-            return False
-        try:
-            await self._client.aio.models.list(config={"page_size": 1})
-            return True
-        except (genai_errors.APIError, ConnectionError, OSError) as exc:
-            logger.warning("health_check.failed", provider=_PROVIDER_NAME, error=str(exc))
-            return False
-        except Exception as exc:
-            logger.error("health_check.unexpected_error", provider=_PROVIDER_NAME, error=str(exc))
-            return False
+        """Nothing to probe: credential and project are per request, so there is
+        no process-level GCP project to reach.
+
+        Returns True — "no negative evidence". `PoolHealthTracker` acts only on a
+        POSITIVELY known-unhealthy result (`services/pool_health.py`).
+        """
+        return True
 
     async def get_info(self) -> ProviderInfo:
-        # Default_model is informational-only (may be unset now that
-        # cloud configs carry no compiled-in vendor model) — never advertise an
-        # empty-named model.
-        models: list[ModelInfo] = (
-            [ModelInfo(name=self._default_model, supports_streaming=True)]
-            if self._default_model
-            else []
-        )
-        status = "available" if self._client is not None else "unavailable"
+        """Adapter capabilities only — no probe.
+
+        The model catalogue comes from `AiModel` on the gateway; this adapter
+        used to echo ``TEXT_VERTEX_DEFAULT_MODEL``, an env var no generation path
+        ever read.
+        """
         return ProviderInfo(
             name=_PROVIDER_NAME,
             display_name="Google Vertex AI",
-            status=status,
-            default_model=self._default_model,
-            models=models,
+            status="unavailable",
+            default_model="",
+            models=[],
             supports_streaming=True,
             supports_vision=True,
         )

@@ -14,6 +14,9 @@ from httpx import ASGITransport, AsyncClient
 from pydantic import SecretStr
 
 from text.core.config import InternalAccessConfig, Settings
+from text.models.requests import GenerateRequest, ProviderOverride
+
+_R = TypeVar("_R", bound=GenerateRequest)
 
 # Test-environment isolation (same defect class fixed in
 # apps/tts/src/tts/tests/conftest.py).
@@ -52,52 +55,124 @@ os.environ.update(_env_before_main_import)
 #
 # Auth-specific suites (`test_auth_middleware.py`, `test_health_metrics.py`) pass an explicit
 # token to their own `Settings`, which still wins — this only removes the ambient one.
-for _token_var in ("INTERNAL_ACCESS_TOKEN", "TEXT_SERVICE_TOKEN", "SERVICE_TOKEN", "V2_SERVICE_TOKEN"):
+for _token_var in ("INTERNAL_ACCESS_TOKEN", "SERVICE_TOKEN"):
     os.environ[_token_var] = ""
 
-_C = TypeVar("_C")
+# Same reasoning, one var over. OTel export is now enabled by the PRESENCE of a
+# collector address (`TEXT_OTEL_ENABLED` is gone — a boolean that can disagree
+# with the URL it describes is a second source of truth). `.env.test` carries an
+# address, so without this pin every app the suite builds would start an exporter
+# and spend its startup retrying a collector nobody is running.
+os.environ["TEXT_OTEL_EXPORTER_ENDPOINT"] = ""
 
+def connection(
+    key: str = "test-key",
+    *,
+    base_url: str | None = None,
+    region: str | None = None,
+    project: str | None = None,
+    location: str | None = None,
+    model: str | None = None,
+    api_version: str | None = None,
+    deployment_name: str | None = None,
+    funding: str = "tenant",
+    **extra: object,
+) -> ProviderOverride:
+    """One resolved `AiProviderConnection` row, as the gateway injects it.
 
-def keyed(config: _C, key: str = "test-key") -> _C:
-    """Return a copy of a cloud provider config with an explicit ``api_key``.
-
-    EVERY config carrying an ``api_key`` is BYOK-only — Azure OpenAI / OpenAI /
-    Anthropic, plus Bedrock / Vertex / OpenAI-compatible (and the vLLM subclass)
-    since TASK-799 closed their env paths too. ``api_key`` is not name- or
-    env-populatable on any of them, so tests can no longer pass ``api_key=`` to
-    the constructor. This mirrors exactly how the gateway/
-    router applies a credential in production: ``model_copy(update=...)`` sets the
-    field without re-opening a validation/env path. Use for any test that needs a
-    provider built with a live platform key.
+    The successor to the old ``keyed(config)`` helper. That helper set an
+    ``api_key`` on a provider's pydantic config, which was the only way a test
+    could give an adapter a working credential — and it worked because the
+    adapter had a process-wide config to put one on. Since TASK-799 lane B it has
+    none: endpoint, credential and routing all arrive per request, so a test
+    supplies them the same way production does.
     """
-    return config.model_copy(update={"api_key": SecretStr(key)})
+    return ProviderOverride(
+        api_key=SecretStr(key),
+        base_url=base_url,
+        region=region,
+        project=project,
+        location=location,
+        model=model,
+        api_version=api_version,
+        deployment_name=deployment_name,
+        funding=funding,  # type: ignore[arg-type]
+        **extra,  # type: ignore[arg-type]
+    )
 
+
+def connected(request: _R, provider: str | None = None, **kwargs: object) -> _R:
+    """Attach a resolved connection for ``request``'s provider.
+
+    The request-level counterpart of `connection`: the single call a test makes
+    to say "the gateway resolved a connection for this provider", which is the
+    precondition for EVERY generation now that no adapter carries an endpoint of
+    its own.
+    """
+    name = provider or getattr(request, "provider", "")
+    return request.model_copy(  # type: ignore[return-value]
+        update={"provider_overrides": {name: connection(**kwargs)}}  # type: ignore[arg-type]
+    )
+
+
+
+def stub_client(provider, client):
+    """Bind ``client`` as the SDK client this provider builds for every request.
+
+    Adapter tests that exercise the WIRE (message shape, streaming, structured
+    output) are not about connection resolution, and since TASK-799 lane B there
+    is no process-wide client to assign — the client is built per request from
+    the injected connection. This says "assume a connection resolved, and it
+    produced this client".
+
+    Deliberately the only such shortcut. The connection contract itself —
+    fail-closed on absence, request-scoped so two tenants cannot share one,
+    funding derived from the row — is covered against the REAL resolution path by
+    `test_task602_byok_credentials.py` and `test_provider_overrides.py`.
+    """
+    provider._client_for = lambda _request: client
+    # Adapters that ALSO probe (the self-host ones) build a separate probe client
+    # from the last-observed endpoint; bind that to the same stand-in so a test
+    # that stubs the wire covers `/providers` and `/health` too.
+    if hasattr(type(provider), "_probe_client"):
+        provider._probe_client = lambda: client
+    provider._client = client
+    return client
+
+
+def stub_endpoint(provider, url: str = "http://engine.local"):
+    """Bind ``url`` as the engine endpoint this self-host provider resolves.
+
+    The self-host counterpart of `stub_client`: an adapter's `base_url` now comes
+    from the injected connection, so a test about the WIRE (request body, stream
+    parsing, retention hints) says "assume a connection resolved, and it pointed
+    here". Also seeds the probe memo so `health_check`/`get_info` have something
+    to reach.
+    """
+    provider._endpoint = lambda _request: url
+    provider._last_base_url = url
+    return url
 
 @pytest.fixture
 def settings() -> Settings:
-    """Default test settings with all providers disabled AND service auth off.
+    """Default test settings with service auth off.
 
-    Both tokens are pinned empty on purpose. `Settings` reads them from the environment, and
-    `accepted_service_tokens` admits EITHER the canonical shared `internal_access_token` or the
-    legacy per-service `service_token` — so whatever the loaded `.env.test` carries would turn
-    every suite-issued request into a 401 before its handler ran. These suites exercise handler
-    behaviour and send no `X-Service-Token`, so "auth disabled" is the state they have always
-    assumed; it just used to be true by accident (an unset token) rather than by declaration.
+    The token is pinned empty on purpose. `Settings` reads it from the environment, so whatever
+    the loaded `.env.test` carries would turn every suite-issued request into a 401 before its
+    handler ran. These suites exercise handler behaviour and send no `X-Service-Token`, so
+    "auth disabled" is the state they have always assumed; it just used to be true by accident
+    (an unset token) rather than by declaration.
+
+    There is no longer a "providers disabled" dimension to configure: a provider's availability
+    is not an env setting, and every adapter fails closed until a connection is injected with the
+    request (see `connection` / `connected` above).
 
     Tests that are ABOUT auth (`test_auth_middleware.py`, `test_health_metrics.py`) build their
     own `Settings` with an explicit token and are unaffected.
     """
-    return Settings(
-        host="127.0.0.1",
-        port=5099,
-        debug=True,
-        log_level="debug",
-        cors_origins=["http://localhost:8868/api/v1"],
-        service_token=SecretStr(""),
-        # `internal_access_token` is a read-only property over this nested config, so the shared
+    return Settings(port=5099, log_level="debug", # `internal_access_token` is a read-only property over this nested config, so the shared
         # token is cleared HERE — passing it as a kwarg is an `extra_forbidden` error.
-        internal_access=InternalAccessConfig(token=SecretStr("")),
-    )
+        internal_access=InternalAccessConfig(token=SecretStr("")))
 
 
 @pytest.fixture

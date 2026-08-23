@@ -21,7 +21,7 @@ def _info(name: str) -> ProviderInfo:
 
 @pytest.fixture
 def settings() -> Settings:
-    return Settings(host="127.0.0.1", port=5099, debug=True, provider_probe_timeout_s=1)
+    return Settings(port=5099)
 
 
 @pytest_asyncio.fixture

@@ -416,13 +416,17 @@ def test_anthropic_usage_dict_keeps_cache_counts_and_ttl_split() -> None:
 def _make_app(registry, task_manager, guardrail_client=None):
     from pydantic import SecretStr
 
+    from text.core.config import InternalAccessConfig
     from text.main import create_app
 
     app = create_app()
-    # Empty service token = the documented dev-mode auth bypass. Pinned here
-    # rather than inherited from the ambient env file so these tests behave the
-    # same run standalone as they do inside the full suite.
-    app.state.settings = app.state.settings.model_copy(update={"service_token": SecretStr("")})
+    # Empty token = the documented dev-mode auth bypass. Pinned here rather than
+    # inherited from the ambient env file so these tests behave the same run
+    # standalone as they do inside the full suite. The token lives on the nested
+    # `internal_access` config now — the legacy per-service one is retired.
+    app.state.settings = app.state.settings.model_copy(
+        update={"internal_access": InternalAccessConfig(token=SecretStr(""))}
+    )
     app.state.provider_registry = registry
     app.state.task_manager = task_manager
     if guardrail_client is not None:

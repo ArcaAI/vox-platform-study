@@ -14,8 +14,9 @@ from __future__ import annotations
 import ast
 from pathlib import Path
 from typing import get_type_hints
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, patch
 
+import httpx
 import pytest
 
 SRC_ROOT = Path(__file__).resolve().parents[3]
@@ -171,209 +172,95 @@ class TestGenerateReturnsPydanticModel:
 
 
 # ---------------------------------------------------------------------------
-# 5. Health check failures are logged (not silently swallowed)
+# 5-8. A health PROBE logs its failure and catches its transport's exceptions
 # ---------------------------------------------------------------------------
+#
+# These used to target Azure and Bedrock. Those adapters no longer probe at all:
+# their connection is per request, so a process-level probe has no endpoint to
+# reach and `health_check()` returns True ("no negative evidence" — see
+# `services/pool_health.py`). The BEHAVIOUR under test — a probe must catch its
+# transport's specific exceptions, log, and return False rather than raise — now
+# lives on the self-hosted adapters, which probe the last endpoint they served.
+
+
+def _probing_provider(cls, http_client, endpoint: str = "http://engine.local"):
+    """A self-host adapter with an endpoint already observed, so it will probe."""
+    provider = cls(http_client)
+    provider._last_base_url = endpoint
+    return provider
 
 
 class TestHealthCheckLogsOnFailure:
     @pytest.mark.asyncio
-    async def test_azure_health_check_logs_warning(self):
-        from openai import APIConnectionError
+    async def test_ollama_health_check_logs_warning(self):
+        import httpx
 
-        from text.providers.azure_openai import AzureOpenAIProvider
+        from text.providers.ollama import OllamaProvider
 
-        config = MagicMock()
-        config.api_key.get_secret_value.return_value = "fake-key"
-        config.endpoint = "https://fake.openai.azure.com"
-        config.api_version = "2024-02-15-preview"
-        config.default_model = "gpt-4"
+        http_client = AsyncMock()
+        http_client.get = AsyncMock(side_effect=httpx.ConnectError("refused"))
+        provider = _probing_provider(OllamaProvider, http_client)
 
-        provider = AzureOpenAIProvider(config)
-        provider._client = AsyncMock()
-        provider._client.models.list = AsyncMock(
-            side_effect=APIConnectionError(request=MagicMock())
-        )
-
-        with patch("text.providers.azure_openai.logger") as mock_logger:
-            result = await provider.health_check()
-            assert result is False
+        with patch("text.providers.ollama.logger") as mock_logger:
+            assert await provider.health_check() is False
             mock_logger.warning.assert_called_once()
-            call_args = mock_logger.warning.call_args
-            assert "health_check.failed" in call_args[0][0]
+            assert "health_check.failed" in mock_logger.warning.call_args[0][0]
 
     @pytest.mark.asyncio
-    async def test_bedrock_health_check_logs_warning(self):
-        from botocore.exceptions import ClientError
+    async def test_llama_cpp_health_check_logs_warning(self):
+        import httpx
 
-        from text.providers.bedrock import BedrockProvider
+        from text.providers.llama_cpp import LlamaCppProvider
 
-        config = MagicMock()
-        config.region = "us-east-1"
-        config.default_model = "anthropic.claude-v2"
+        http_client = AsyncMock()
+        http_client.get = AsyncMock(side_effect=httpx.ConnectError("refused"))
+        provider = _probing_provider(LlamaCppProvider, http_client)
 
-        with patch("boto3.client") as mock_boto:
-            mock_runtime = MagicMock()
-            mock_mgmt = MagicMock()
-            mock_boto.side_effect = [mock_runtime, mock_mgmt]
-            provider = BedrockProvider(config)
-
-        error_response = {"Error": {"Code": "AccessDeniedException", "Message": "denied"}}
-        exc = ClientError(error_response, "ListFoundationModels")
-        mock_mgmt.list_foundation_models.side_effect = exc
-
-        async def _fake_to_thread(func, *args, **kwargs):
-            return func(*args, **kwargs)
-
-        with patch("text.providers.bedrock.logger") as mock_logger:
-            with patch("text.providers.bedrock.asyncio.to_thread", side_effect=_fake_to_thread):
-                result = await provider.health_check()
-            assert result is False
+        with patch("text.providers.llama_cpp.logger") as mock_logger:
+            assert await provider.health_check() is False
             mock_logger.warning.assert_called_once()
-            call_args = mock_logger.warning.call_args
-            assert "health_check.failed" in call_args[0][0]
+            assert "health_check.failed" in mock_logger.warning.call_args[0][0]
 
 
-# ---------------------------------------------------------------------------
-# 6-8. Provider health_check catches specific exception types
-# ---------------------------------------------------------------------------
-
-
-class TestAzureSpecificExceptions:
+class TestProbeCatchesSpecificTransportExceptions:
     @pytest.mark.asyncio
-    async def test_catches_api_connection_error(self):
-        from openai import APIConnectionError
+    @pytest.mark.parametrize(
+        "exc",
+        [
+            httpx.ConnectError("refused"),
+            httpx.ReadTimeout("slow"),
+            httpx.HTTPError("boom"),
+            OSError("socket gone"),
+        ],
+        ids=["connect", "timeout", "http", "os"],
+    )
+    async def test_ollama_returns_false_rather_than_raising(self, exc):
+        from text.providers.ollama import OllamaProvider
 
+        http_client = AsyncMock()
+        http_client.get = AsyncMock(side_effect=exc)
+        provider = _probing_provider(OllamaProvider, http_client)
+        assert await provider.health_check() is False
+
+
+class TestUnprobedProviderIsNotReportedUnhealthy:
+    """Fail-OPEN on "never probed" — `PoolHealthTracker` acts only on a
+    POSITIVELY known-unhealthy result, so an adapter that has simply not been
+    contacted yet must not take itself out of degrade routing."""
+
+    @pytest.mark.asyncio
+    async def test_self_host_adapter_with_no_observed_endpoint(self):
+        from text.providers.ollama import OllamaProvider
+
+        http_client = AsyncMock()
+        assert await OllamaProvider(http_client).health_check() is True
+        http_client.get.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_byok_adapter_has_nothing_to_probe(self):
         from text.providers.azure_openai import AzureOpenAIProvider
 
-        config = MagicMock()
-        config.api_key.get_secret_value.return_value = "fake"
-        config.endpoint = "https://fake.openai.azure.com"
-        config.api_version = "2024-02-15-preview"
-        config.default_model = "gpt-4"
-
-        provider = AzureOpenAIProvider(config)
-        provider._client = AsyncMock()
-        provider._client.models.list = AsyncMock(
-            side_effect=APIConnectionError(request=MagicMock())
-        )
-        result = await provider.health_check()
-        assert result is False
-
-    @pytest.mark.asyncio
-    async def test_catches_api_timeout_error(self):
-        from openai import APITimeoutError
-
-        from text.providers.azure_openai import AzureOpenAIProvider
-
-        config = MagicMock()
-        config.api_key.get_secret_value.return_value = "fake"
-        config.endpoint = "https://fake.openai.azure.com"
-        config.api_version = "2024-02-15-preview"
-        config.default_model = "gpt-4"
-
-        provider = AzureOpenAIProvider(config)
-        provider._client = AsyncMock()
-        provider._client.models.list = AsyncMock(side_effect=APITimeoutError(request=MagicMock()))
-        result = await provider.health_check()
-        assert result is False
-
-    @pytest.mark.asyncio
-    async def test_catches_api_error(self):
-        from openai import APIError
-
-        from text.providers.azure_openai import AzureOpenAIProvider
-
-        config = MagicMock()
-        config.api_key.get_secret_value.return_value = "fake"
-        config.endpoint = "https://fake.openai.azure.com"
-        config.api_version = "2024-02-15-preview"
-        config.default_model = "gpt-4"
-
-        provider = AzureOpenAIProvider(config)
-        provider._client = AsyncMock()
-        provider._client.models.list = AsyncMock(
-            side_effect=APIError(message="server error", request=MagicMock(), body=None)
-        )
-        result = await provider.health_check()
-        assert result is False
-
-
-class TestBedrockSpecificExceptions:
-
-    @staticmethod
-    async def _fake_to_thread(func, *args, **kwargs):
-        return func(*args, **kwargs)
-
-    @pytest.mark.asyncio
-    async def test_catches_client_error(self):
-        from botocore.exceptions import ClientError
-
-        from text.providers.bedrock import BedrockProvider
-
-        config = MagicMock()
-        config.region = "us-east-1"
-        config.default_model = "anthropic.claude-v2"
-
-        with patch("boto3.client") as mock_boto:
-            mock_runtime = MagicMock()
-            mock_mgmt = MagicMock()
-            mock_boto.side_effect = [mock_runtime, mock_mgmt]
-            provider = BedrockProvider(config)
-
-        error_response = {"Error": {"Code": "AccessDeniedException", "Message": "denied"}}
-        mock_mgmt.list_foundation_models.side_effect = ClientError(
-            error_response, "ListFoundationModels"
-        )
-
-        with patch("text.providers.bedrock.asyncio.to_thread", side_effect=self._fake_to_thread):
-            result = await provider.health_check()
-        assert result is False
-
-    @pytest.mark.asyncio
-    async def test_catches_endpoint_connection_error(self):
-        from botocore.exceptions import EndpointConnectionError
-
-        from text.providers.bedrock import BedrockProvider
-
-        config = MagicMock()
-        config.region = "us-east-1"
-        config.default_model = "anthropic.claude-v2"
-
-        with patch("boto3.client") as mock_boto:
-            mock_runtime = MagicMock()
-            mock_mgmt = MagicMock()
-            mock_boto.side_effect = [mock_runtime, mock_mgmt]
-            provider = BedrockProvider(config)
-
-        mock_mgmt.list_foundation_models.side_effect = EndpointConnectionError(
-            endpoint_url="https://bedrock.us-east-1.amazonaws.com"
-        )
-
-        with patch("text.providers.bedrock.asyncio.to_thread", side_effect=self._fake_to_thread):
-            result = await provider.health_check()
-        assert result is False
-
-    @pytest.mark.asyncio
-    async def test_catches_botocore_error(self):
-        from botocore.exceptions import BotoCoreError
-
-        from text.providers.bedrock import BedrockProvider
-
-        config = MagicMock()
-        config.region = "us-east-1"
-        config.default_model = "anthropic.claude-v2"
-
-        with patch("boto3.client") as mock_boto:
-            mock_runtime = MagicMock()
-            mock_mgmt = MagicMock()
-            mock_boto.side_effect = [mock_runtime, mock_mgmt]
-            provider = BedrockProvider(config)
-
-        mock_mgmt.list_foundation_models.side_effect = BotoCoreError()
-
-        with patch("text.providers.bedrock.asyncio.to_thread", side_effect=self._fake_to_thread):
-            result = await provider.health_check()
-        assert result is False
+        assert await AzureOpenAIProvider().health_check() is True
 
 
 # ---------------------------------------------------------------------------

@@ -271,6 +271,98 @@ which is the same class of choice (which fine-tuned checkpoint serves this tenan
 is already tenant-configurable everywhere else. `guardrail.` left this same list by owner
 decision in TASK-735 Phase 0 and is the precedent.
 
+### Phase 2 lane B — `apps/text` (complete, worktree `worktree-agent-a98ce73d9cf651e2b`)
+
+**121 env-reachable pydantic fields → 9.** Plus three names read outside pydantic by
+`packages/py-env` (`CI`, `HOPE_SECRETS_DIR`, `HOSTNAME`) = **12 variables**, the plan's target.
+
+The nine survivors are the bootstrap floor and nothing else: `TEXT_PORT`, `TEXT_LOG_LEVEL`,
+`TEXT_GATEWAY_URL`, `TEXT_REDIS_URL`, `TEXT_OTEL_EXPORTER_ENDPOINT`,
+`TEXT_EXTERNAL_GUARDRAIL_BASE_URL`, `INTERNAL_ACCESS_TOKEN`, `NODE_ENV`,
+`OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT`.
+
+| Sub-config group | Before | After | Where it went |
+|---|---:|---:|---|
+| Per-provider blocks — endpoint / credential / model / capacity / vendor extras (ollama 5, azure 11, bedrock 11, openai 8, anthropic 7, vertex 8, openai_compat 6, vllm 8, llama_cpp 4, sarvam 2, tei_embed 5) | 75 | 0 | `AiProviderConnection` + `AiTaskDefault` + `AiRuntimeProfile`, injected per request |
+| `CircuitBreakerConfig` 5 + `QueueConfig` 2 + `JudgeConfig` 5 | 12 | 0 | one `AiRuntimeProfile` keyed `(provider, lane ∈ {user, judge})` |
+| `ExternalGuardrailConfig` | 8 | 1 (`base_url`) | posture split by cardinality — platform half `global-kv`/PULL, tenant half PUSHED |
+| Root `Settings` (host/debug/cors ×2/httpx ×2/otel ×7/metrics/probe/retention/service_token) | 20 | 4 (`port`, `log_level`, `gateway_url`, `otel_exporter_endpoint`) | derived from what the process already knows, or deleted with no reader |
+| `RedisConfig` (`task_ttl_seconds`, `stream_max_len`) | 3 | 1 (`redis_url`, promoted to root) | in-code storage-hygiene bounds |
+| `InternalAccessConfig` | 1 | 1 | unchanged — the one shared internal credential |
+| `TelemetryPhiGuardConfig` | 2 | 2 | unchanged — the PHI boot guard |
+| **Total** | **121** | **9** | |
+
+Separately, the 20-name `TEXT_V2_*` alias window is closed — those were `AliasChoices` on the
+root fields above rather than fields of their own, and nothing in the repo read the other side.
+
+#### What changed in kind, not just in count
+
+**Provider availability stopped being an env var.** `_register_provider_factories` registered a
+provider only when its `base_url` happened to be non-empty, so a pure-BYO tenant got a 404
+saying the provider did not exist when what was actually missing was the PLATFORM's connection —
+which that tenant was never going to use. Registration is unconditional now and resolution
+decides at call time, so the same request gets a typed 503 naming the `AiProviderConnection` row
+an admin has to create.
+
+**Fail-closed went from 3 adapters to 11.** `TEXT_<PROVIDER>_BASE_URL` was the same defect as
+`TEXT_<PROVIDER>_API_KEY` one field over — a process-wide value no tenant could override — so the
+self-hosted engines fail closed on a missing connection exactly as the BYOK ones do. There is no
+longer any code path that builds an SDK client without an explicit, tenant-attributable
+credential. `test_task602_byok_credentials.py` iterates the registry and now covers all eleven.
+
+**`TEXT_SARVAM_MODEL` was the one `*_MODEL` that reached the wire** (`sarvam.py` → the request's
+`model` field), so it was a process-wide model SELECTION for every tenant. It resolves from
+`AiTaskDefault` and RAISES when unresolved — omitting the field would hand the choice of
+translation model to the vendor's own default. The other ten `*_DEFAULT_MODEL` fields only fed
+`get_info()`; the catalogue is `AiModel` on the gateway.
+
+**Three booleans that could contradict their own source are gone.** `otel_enabled` follows the
+presence of a collector address, `otel_insecure` follows its scheme, and the deployment
+environment follows `NODE_ENV`. The endpoint default is EMPTY — a default address would turn
+export on everywhere.
+
+**What is left in code is a FLOOR, not a default** (`core/runtime_defaults.py`): the ceiling that
+keeps one wedged upstream from exhausting the process until the control plane answers. Never the
+intended operating value, uniform across providers, and deliberately not settable.
+
+#### Behaviour changes an operator must know about
+
+1. **A deployment that sets only `TEXT_SERVICE_TOKEN` and not `INTERNAL_ACCESS_TOKEN` will 401 on
+   every gateway→text hop.** The legacy per-pair token is no longer ACCEPTED inbound (owner
+   decision D-D says one shared token; a second accepted credential is a second thing to rotate).
+   The gateway already prefers `INTERNAL_ACCESS_TOKEN` and only falls back, so a deployment that
+   sets the shared token is unaffected.
+2. **Every provider — including the self-hosted engines — needs a resolving `AiProviderConnection`
+   row.** A KEYLESS row injects on neither tier by design, so a SYSTEM row for LM Studio / Ollama /
+   vLLM / llama.cpp / TEI must carry the keyless-local placeholder its engine expects
+   (`not-needed`) rather than be left blank.
+3. **`TEXT_BEDROCK_GUARDRAIL_ID` / `_VERSION` moved onto the connection.** A Bedrock Guardrail
+   belongs to the AWS account the request authenticates against, so a process-wide id would have
+   applied one tenant's guardrail — from an account where it does not exist — to everyone.
+4. **`TEXT_AZURE_CONTENT_FILTER_SEVERITY` is deleted, not migrated.** Nothing read it, and it could
+   not have worked: Azure's content filter is configured on the Azure RESOURCE, not per request.
+5. **`/providers` and `/health` report differently.** A BYOK adapter has no process-level connection
+   to probe, so `health_check()` returns True — "no negative evidence", because `PoolHealthTracker`
+   acts only on a POSITIVELY known-unhealthy result. Self-hosted adapters probe the last endpoint
+   they served.
+6. **The batch-embedding worker fails closed** when its queue envelope carries no connection. The
+   capability was net-new and unused; the worker has no gateway to ask and must not invent an
+   endpoint (D-1 rule 2).
+
+#### Left for the orchestrator — outside lane B's file boundary
+
+**`effective-config.service.ts` needs an `externalGuardrail` view.** The response groups there are
+hand-shaped views (`retentionView` / `concurrencyView`), not a generic dotted-key fold, so
+`consumedBy` alone does not put a key on the wire. `apps/text` already consumes the group
+(`core/effective_config.py::external_guardrail` → `{ enabled, timeoutS, maxRetries,
+retryBackoffMs, requireMedical, includeReasoning }`) and keeps its in-code floors until it lands —
+and those floors ARE the retired env defaults, so nothing changes behaviour in the meantime. The
+same is true of the `generation` group backing `core/defaults.py`.
+
+**The gateway must PUSH the tenant guardrail policy.** `GenerateRequest.guardrail_policy` is the
+receiving half of the D-1 push contract; `TextRequestEnrichmentService` does not populate it yet.
+Absent, the platform default stands, which is today's behaviour.
+
 ## Change History
 
 | Date | Change |
@@ -282,3 +374,4 @@ decision in TASK-735 Phase 0 and is the precedent.
 | 2026-08-23 | Phases 1 and 1.5 implemented across three worktree lanes and merged to `dev-2.2`. Control plane generalised (non-numeric values, registry-driven payload), tenant-secret plane widened, env drift gate extended to Python (declared surface 40 → 652). |
 | 2026-08-23 | Round 2 merged: invalidation push (3 of 6 services wired), `modelWeights` loop closed, text-path BYO delivery gap closed, seed vocabulary widened, and **C.2 landed** — no hardcoded nlp model ids remain. |
 | 2026-08-23 | Round 2 lane R2-B: gateway resolves the second (`nlp.ner`) selection for `/diagnosis/suggestions` and injects both; C.2 (`4fa3d1f15`) merged, so the route works again with no literal. `nlp.*` SUPER_ADMIN-only tension recorded for owner decision. |
+| 2026-08-23 | Phase 2 lane B (`apps/text`) complete: 121 env-reachable pydantic fields → 9 (12 variables with the three `hope_env` reads). The eight per-provider blocks, the three-way `TEXT_CB_*`/`TEXT_QUEUE_*`/`TEXT_JUDGE_*` duplication and the 20-name `TEXT_V2_*` window are gone; every adapter resolves its connection per request and fails closed, so fail-closed coverage went from 3 adapters to 11. Two wirings remain outside the lane's boundary — an `externalGuardrail` view in `effective-config.service.ts`, and gateway PUSH of `guardrail_policy`. |

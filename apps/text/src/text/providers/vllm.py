@@ -22,7 +22,6 @@ from typing import TYPE_CHECKING, Any
 import httpx
 import structlog
 
-from text.core.config import VllmConfig
 from text.core.metrics import TEXT_ENGINE_CACHE_HIT_RATE
 from text.models.requests import GenerateRequest
 from text.providers.openai_compat import OpenAICompatProvider
@@ -38,21 +37,43 @@ _ENGINE = "vllm"
 class VllmProvider(OpenAICompatProvider):
     """vLLM self-hosted provider (OpenAI-wire, engine-native identity)."""
 
-    def __init__(self, config: VllmConfig, http_client: httpx.AsyncClient | None = None) -> None:
-        super().__init__(config, provider_name=_ENGINE, display_name="vLLM")
-        self._vllm_config = config
+    def __init__(self, http_client: httpx.AsyncClient | None = None) -> None:
+        """No configuration — the engine endpoint arrives per request, exactly as
+        for the base OpenAI-compatible adapter."""
+        super().__init__(provider_name=_ENGINE, display_name="vLLM")
         self._http = http_client
-        # ``/health`` and ``/metrics`` live at the server ROOT, not under ``/v1``.
-        self._root_url = config.base_url.rstrip("/")
-        if self._root_url.endswith("/v1"):
-            self._root_url = self._root_url[: -len("/v1")]
-        self._metrics_url = config.metrics_url or f"{self._root_url}/metrics"
+        # Structured-output routing. vLLM >= 0.8 accepts the native OpenAI
+        # ``response_format={"type":"json_schema",...}``; older builds only
+        # support ``extra_body.guided_json``. This is a property of the ENGINE
+        # BUILD, so it rides the connection's `extra` rather than a process-wide
+        # ``TEXT_VLLM_USE_GUIDED_JSON`` that would apply one deployment's vLLM
+        # version to every other.
+        self._use_guided_json = False
+
+    def _metrics_url(self) -> str | None:
+        """Prometheus scrape target for the prefix-cache hit rate.
+
+        Derived from the observed endpoint rather than configured separately: a
+        ``TEXT_VLLM_METRICS_URL`` that disagrees with ``TEXT_VLLM_BASE_URL`` can
+        only be wrong, and the field was already documented as "empty ⇒ derived".
+        """
+        root = self._server_root()
+        return f"{root}/metrics" if root else None
+
+    def _server_root(self) -> str | None:
+        """``/health`` and ``/metrics`` live at the server ROOT, not under
+        ``/v1``, so strip the OpenAI suffix off the observed endpoint."""
+        base = self._probe_url()
+        if base is None:
+            return None
+        root = base.rstrip("/")
+        return root[: -len("/v1")] if root.endswith("/v1") else root
 
     def _apply_response_format(self, kwargs: dict[str, Any], request: GenerateRequest) -> None:
         # ``use_guided_json`` fallback (vLLM < 0.8): send the raw JSON schema via
         # ``extra_body.guided_json`` instead of the native ``response_format``.
         if (
-            self._vllm_config.use_guided_json
+            self._use_guided_json
             and request.response_format is not None
             and request.response_format.type == "json_schema"
             and request.response_format.json_schema
@@ -63,7 +84,12 @@ class VllmProvider(OpenAICompatProvider):
         super()._apply_response_format(kwargs, request)
 
     async def health_check(self) -> bool:
-        url = f"{self._root_url}/health"
+        """Probe the last-observed server root; True when none has been observed
+        yet ("no negative evidence" — see `OllamaProvider.health_check`)."""
+        root = self._server_root()
+        if root is None:
+            return True
+        url = f"{root}/health"
         try:
             if self._http is not None:
                 resp = await self._http.get(url)
@@ -85,13 +111,16 @@ class VllmProvider(OpenAICompatProvider):
         Never raises — a metrics-scrape failure must not affect generation.
         Returns the ratio (0.0-1.0) on success, else ``None``.
         """
+        metrics_url = self._metrics_url()
+        if metrics_url is None:
+            return None
         try:
             if self._http is not None:
-                resp = await self._http.get(self._metrics_url)
+                resp = await self._http.get(metrics_url)
                 text = resp.text
             else:
                 async with httpx.AsyncClient(timeout=10.0) as client:
-                    resp = await client.get(self._metrics_url)
+                    resp = await client.get(metrics_url)
                     text = resp.text
         except (httpx.HTTPError, httpx.TimeoutException, ConnectionError, OSError) as exc:
             logger.warning("scrape_cache_hit_rate.failed", provider=_ENGINE, error=str(exc))

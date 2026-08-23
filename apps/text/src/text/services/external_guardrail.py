@@ -7,7 +7,7 @@ from typing import Any
 
 import httpx
 
-from text.core.config import ExternalGuardrailConfig
+from text.core.guardrail_posture import GuardrailPosture, resolve_posture
 from text.core.logging import get_logger
 
 logger = get_logger(__name__)
@@ -32,28 +32,45 @@ class ExternalGuardrailClient:
     def __init__(
         self,
         *,
-        settings: ExternalGuardrailConfig,
+        base_url: str,
         http_client: httpx.AsyncClient,
-        service_token: str | None = None,
+        service_token: str = "",
+        app_state: Any = None,
     ) -> None:
-        self.settings = settings
+        """Only the ADDRESS is construction-time; the posture is per call.
+
+        ``app_state`` carries the platform posture the control plane last served
+        (`services/runtime_limits.apply_platform_posture`). It is read at call
+        time rather than snapshotted here, so a platform admin turning moderation
+        on takes effect on the next request rather than the next restart.
+        """
         self.http_client = http_client
-        self.base_url = settings.base_url.rstrip("/")
+        self.base_url = base_url.rstrip("/")
         # Owner decision D-D (2026-08-17): the caller resolves the ONE shared
-        # `INTERNAL_ACCESS_TOKEN` and passes it here. `None` ⇒ fall back to the
-        # legacy per-pair `TEXT_EXTERNAL_GUARDRAIL_SERVICE_TOKEN` on the config,
-        # so an un-migrated environment (and every existing test) keeps working.
-        self._service_token = (
-            service_token if service_token is not None else settings.service_token.get_secret_value()
-        )
+        # `INTERNAL_ACCESS_TOKEN` and passes it here.
+        self._service_token = service_token
+        self._app_state = app_state
+
+    def _platform_posture(self) -> GuardrailPosture:
+        """The last posture the control plane served, or the in-code floors."""
+        posture = getattr(self._app_state, "guardrail_posture", None)
+        return posture if isinstance(posture, GuardrailPosture) else GuardrailPosture()
 
     async def validate(
         self,
         prompt: str,
         system_prompt: str | None = None,
         tenant_id: str | None = None,
+        tenant_policy: Any = None,
     ) -> dict[str, Any]:
-        if not self.settings.enabled:
+        """Moderate ``prompt`` under the resolved posture.
+
+        ``tenant_policy`` is the request's PUSHED ``guardrail_policy`` block; it
+        folds over the platform default tenant-first, widening only on absence
+        (`core/guardrail_posture.resolve_posture`).
+        """
+        posture = resolve_posture(self._platform_posture(), tenant_policy)
+        if not posture.enabled:
             return {
                 "allowed": True,
                 "is_medical": True,
@@ -80,7 +97,7 @@ class ExternalGuardrailClient:
         # (3 * 10s + 0.3s) before the 503. The degrade-safe path therefore relies on
         # the CALLER's own request timeout as the outer bound; do not raise the
         # defaults without accounting for this ceiling.
-        attempts = self.settings.max_retries + 1
+        attempts = posture.max_retries + 1
         last_error = ""
         for attempt in range(attempts):
             try:
@@ -88,16 +105,16 @@ class ExternalGuardrailClient:
                     f"{self.base_url}/api/medical/validate",
                     json={
                         "text": text,
-                        "include_reasoning": self.settings.include_reasoning,
+                        "include_reasoning": posture.include_reasoning,
                     },
                     headers=headers,
-                    timeout=self.settings.timeout_s,
+                    timeout=posture.timeout_s,
                 )
                 response.raise_for_status()
                 payload = response.json()
                 is_medical = bool(payload.get("is_medical", False))
                 return {
-                    "allowed": is_medical if self.settings.require_medical else True,
+                    "allowed": is_medical if posture.require_medical else True,
                     "is_medical": is_medical,
                     "confidence": float(payload.get("confidence", 0.0)),
                     "reason": payload.get("reasoning")
@@ -118,7 +135,7 @@ class ExternalGuardrailClient:
                 )
                 if is_last:
                     break
-                backoff_s = (self.settings.retry_backoff_ms / 1000.0) * (attempt + 1)
+                backoff_s = (posture.retry_backoff_ms / 1000.0) * (attempt + 1)
                 if backoff_s > 0:
                     await asyncio.sleep(backoff_s)
 

@@ -32,6 +32,7 @@ import asyncio
 import inspect
 import json
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -40,7 +41,12 @@ import structlog.testing
 from httpx import ASGITransport, AsyncClient
 from pydantic import SecretStr
 
-from text.core.config import ExternalGuardrailConfig, JudgeConfig, Settings
+from text.core.config import (
+    ExternalGuardrailConfig,
+    InternalAccessConfig,
+    Settings,
+)
+from text.core.guardrail_posture import GuardrailPosture
 from text.models.requests import GenerateRequest
 from text.models.stats import build_generation_stats
 from text.services.resizable_semaphore import ResizableSemaphore
@@ -96,12 +102,23 @@ def _hermetic_settings(**overrides) -> Settings:
     `os.environ`; a developer token there would otherwise 401 every request in
     this module.
     """
-    base = {
-        "service_token": SecretStr(""),
-        "external_guardrail": ExternalGuardrailConfig(enabled=False),
+    base: dict[str, object] = {
+        # The ONE shared internal credential; empty ⇒ auth bypassed, the
+        # documented dev/CI posture.
+        "internal_access": InternalAccessConfig(token=SecretStr("")),
+        "external_guardrail": ExternalGuardrailConfig(),
     }
+    if "service_token" in overrides:
+        # The legacy per-pair token is retired; callers that still name it mean
+        # "this is the token the service accepts", which is now the shared one.
+        base["internal_access"] = InternalAccessConfig(token=overrides.pop("service_token"))
     base.update(overrides)
     return Settings(**base)
+
+
+def _enforcing_state() -> SimpleNamespace:
+    """App state whose served posture has moderation ON."""
+    return SimpleNamespace(guardrail_posture=GuardrailPosture(enabled=True), lane_budgets={})
 
 
 def _make_app(registry, task_manager, *, guardrail_client=None, settings=None):
@@ -244,7 +261,7 @@ class TestCycleGuard:
         """`external_guardrail.enabled` fails the PUBLIC path closed when the
         client is unwired. The judge path is outside that gate by construction —
         otherwise a guardrail outage could never be judged its way out of."""
-        settings = _hermetic_settings(external_guardrail=ExternalGuardrailConfig(enabled=True))
+        settings = _hermetic_settings(external_guardrail=ExternalGuardrailConfig())
         client, _ = await client_factory(settings=settings, guardrail_client=None)
 
         resp = await client.post(JUDGE_PATH, json=_payload())
@@ -286,7 +303,7 @@ class TestCycleGuard:
                     guardrail,
                     request_body=request_body,
                     tenant_id=None,
-                    settings=_hermetic_settings(),
+                    app_state=_enforcing_state(),
                 )
 
         guardrail.validate.assert_not_awaited()
@@ -303,7 +320,7 @@ class TestCycleGuard:
             guardrail,
             request_body=request_body,
             tenant_id="t-1",
-            settings=_hermetic_settings(),
+            app_state=_enforcing_state(),
         )
 
         assert usage is None  # verdict carried no stats
@@ -350,9 +367,6 @@ class TestPoolIsolation:
         def configure(app):
             app.state.judge_semaphores = {_PROVIDER: judge_sem}
             app.state.provider_semaphores = {_PROVIDER: user_sem}
-            app.state.settings = app.state.settings.model_copy(
-                update={"judge": JudgeConfig(acquire_timeout_s=0.05)}
-            )
 
         client, _ = await client_factory(configure=configure)
 
@@ -629,8 +643,13 @@ class TestPublicGeneratePathUnchanged:
 
     @pytest.mark.asyncio
     async def test_enforce_posture_with_unwired_client_is_503(self, client_factory, mock_provider):
-        settings = _hermetic_settings(external_guardrail=ExternalGuardrailConfig(enabled=True))
-        client, _ = await client_factory(settings=settings, guardrail_client=None)
+        """Moderation ON but no client wired ⇒ fail CLOSED, never silently skip.
+
+        The posture is read from LIVE state now, not from settings — that is what
+        lets a platform admin turn moderation on without a redeploy.
+        """
+        client, app = await client_factory(guardrail_client=None)
+        app.state.guardrail_posture = GuardrailPosture(enabled=True)
 
         resp = await client.post("/api/v1/generate", json={"prompt": "hello", "model": "m"})
 

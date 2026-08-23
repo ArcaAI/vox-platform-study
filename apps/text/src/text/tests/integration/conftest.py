@@ -95,10 +95,7 @@ class FailingMockProvider(MockProvider):
 @pytest.fixture
 def integration_settings() -> Settings:
     """Settings tuned for integration tests: auth disabled, guardrails off, metrics off."""
-    return Settings(
-        metrics_enabled=False,
-        otel_enabled=False,
-    )
+    return Settings()
 
 
 @pytest_asyncio.fixture

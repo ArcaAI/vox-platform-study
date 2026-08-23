@@ -1,12 +1,21 @@
-"""TDD tests — Text consumes gateway-injected `provider_overrides` (BYO cloud
-credentials for azure/bedrock).
+"""Text consumes gateway-injected `provider_overrides` — the ONLY source of a
+provider connection.
 
-RED: written before implementation. Verifies:
+Verifies:
   - `GenerateRequest.provider_overrides` / `ProviderOverride` exist and the
     `api_key` never leaks via repr/str/model_dump/logging.
-  - the override WINS over env/config in both provider clients.
-  - an ABSENT override leaves today's behavior byte-identical (the shared,
-    config-built client is reused, not rebuilt).
+  - the injected connection supplies endpoint, credential, routing and model.
+  - each request builds its OWN client, so two tenants can never share one.
+  - an ABSENT connection FAILS CLOSED.
+
+That last point is the TASK-799 lane B inversion, and it is the whole reason this
+file changed. These tests used to assert "absent override ⇒ the shared,
+config-built client is reused" — which was only expressible because the process
+held a credential of its own, read from `TEXT_<PROVIDER>_*`. A process-wide
+credential is one no tenant can override and no admin can rotate without a
+redeploy; worse, on the two adapters with an ambient SDK chain (bedrock's boto3,
+vertex's ADC) it was a working platform identity that appeared in no config
+surface at all. There is now nothing to fall back TO, and these tests say so.
 """
 
 from __future__ import annotations
@@ -15,9 +24,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from text.core.config import AzureOpenAIConfig, BedrockConfig
 from text.models.requests import GenerateRequest, ProviderOverride
-from text.tests.conftest import keyed
 
 
 class TestProviderOverrideModel:
@@ -53,26 +60,11 @@ class TestProviderOverrideModel:
         assert "byo-secret-value" not in req.model_dump_json()
 
 
-@pytest.fixture
-def azure_config():
-    return keyed(
-        AzureOpenAIConfig(
-            endpoint="https://env.openai.azure.com",
-            api_version="2024-06-01",
-            deployment_name="",
-            default_model="gpt-4",
-        ),
-        "env-key",
-    )
-
-
 class TestAzureProviderOverrideConsumption:
-    """override-wins-over-env/config, unit-testable against the client factory."""
+    """The connection is the only source, unit-testable against the client factory."""
 
     @pytest.mark.asyncio
-    async def test_override_builds_a_request_scoped_client_with_tenant_credential(
-        self, azure_config
-    ):
+    async def test_override_builds_a_request_scoped_client_with_tenant_credential(self):
         from text.providers.azure_openai import AzureOpenAIProvider
 
         mock_choice = MagicMock()
@@ -82,9 +74,7 @@ class TestAzureProviderOverrideConsumption:
         mock_completion.choices = [mock_choice]
         mock_completion.usage = MagicMock(prompt_tokens=1, completion_tokens=1, total_tokens=2)
 
-        provider = AzureOpenAIProvider(config=azure_config)
-        provider._client = AsyncMock()  # the shared/env client — must NOT be used
-
+        provider = AzureOpenAIProvider()
         override_client = AsyncMock()
         override_client.chat.completions.create = AsyncMock(return_value=mock_completion)
 
@@ -116,43 +106,24 @@ class TestAzureProviderOverrideConsumption:
         # ...and the deployment override won model resolution.
         call_kwargs = override_client.chat.completions.create.call_args.kwargs
         assert call_kwargs["model"] == "tenant-deployment"
-        # The shared env-configured client was never touched.
-        provider._client.chat.completions.create.assert_not_called()
 
     @pytest.mark.asyncio
-    async def test_absent_override_reuses_the_shared_client_unchanged(self, azure_config):
+    async def test_absent_connection_fails_closed(self):
+        """No injected connection ⇒ raise, and never build a client."""
+        from text.core.exceptions import ProviderCredentialsError
         from text.providers.azure_openai import AzureOpenAIProvider
 
-        mock_choice = MagicMock()
-        mock_choice.message.content = "platform response"
-        mock_choice.finish_reason = "stop"
-        mock_completion = MagicMock()
-        mock_completion.choices = [mock_choice]
-        mock_completion.usage = MagicMock(prompt_tokens=1, completion_tokens=1, total_tokens=2)
-
-        provider = AzureOpenAIProvider(config=azure_config)
-        provider._client = AsyncMock()
-        provider._client.chat.completions.create = AsyncMock(return_value=mock_completion)
-
+        provider = AzureOpenAIProvider()
         with patch("text.providers.azure_openai.AsyncAzureOpenAI") as mock_ctor:
             req = GenerateRequest(prompt="hi", provider="azure", model="caller-model")
-            content, _reasoning, _stats = await provider.generate(req)
-
-        assert content == "platform response"
+            with pytest.raises(ProviderCredentialsError):
+                await provider.generate(req)
         mock_ctor.assert_not_called()
-        provider._client.chat.completions.create.assert_called_once()
-
-
-@pytest.fixture
-def bedrock_config():
-    return BedrockConfig(
-        region="us-east-1", default_model="anthropic.claude-3-5-haiku-20241022-v1:0"
-    )
 
 
 class TestBedrockProviderOverrideConsumption:
     @pytest.mark.asyncio
-    async def test_override_builds_a_request_scoped_bearer_token_client(self, bedrock_config):
+    async def test_override_builds_a_request_scoped_bearer_token_client(self):
         from text.providers.bedrock import BedrockProvider
 
         env_client = MagicMock()  # the shared/env client — must NOT be used
@@ -164,8 +135,7 @@ class TestBedrockProviderOverrideConsumption:
         }
 
         with patch("text.providers.bedrock.boto3") as mock_boto3:
-            mock_boto3.client.return_value = env_client
-            provider = BedrockProvider(config=bedrock_config)
+            provider = BedrockProvider()
 
             mock_session = MagicMock()
             mock_session.client.return_value = override_client
@@ -187,56 +157,50 @@ class TestBedrockProviderOverrideConsumption:
         mock_session.client.assert_called_once()
         _, client_kwargs = mock_session.client.call_args
         assert client_kwargs["region_name"] == "eu-west-1"
-        # ...and the shared env-configured client was never invoked.
+        # ...and the ambient boto3 client factory was never used.
+        mock_boto3.client.assert_not_called()
         env_client.converse.assert_not_called()
 
     @pytest.mark.asyncio
-    async def test_absent_override_reuses_the_shared_client_unchanged(self, bedrock_config):
-        from text.providers.bedrock import BedrockProvider
-
-        env_client = MagicMock()
-        env_client.converse.return_value = {
-            "output": {"message": {"content": [{"text": "platform bedrock response"}]}},
-            "usage": {"inputTokens": 1, "outputTokens": 1},
-            "stopReason": "end_turn",
-        }
-
-        # A KEYED platform config: the shared client only exists when an explicit
-        # credential was configured (TASK-799 — there is no ambient boto3 chain to
-        # fall back on). `_bearer_client` is the single construction site, so the
-        # call count proves nothing was built per request.
-        with patch(
-            "text.providers.bedrock._bearer_client", return_value=env_client
-        ) as build_client:
-            provider = BedrockProvider(config=keyed(bedrock_config))
-            built_at_construction = build_client.call_count
-
-            req = GenerateRequest(
-                prompt="hi", provider="bedrock", model="anthropic.claude-3-5-haiku-20241022-v1:0"
-            )
-            content, _reasoning, _stats = await provider.generate(req)
-
-        assert content == "platform bedrock response"
-        assert build_client.call_count == built_at_construction
-        env_client.converse.assert_called_once()
-
-    @pytest.mark.asyncio
-    async def test_no_override_and_no_platform_key_raises(self, bedrock_config):
-        """The F-01 half: absent both, Bedrock must NOT reach boto3's ambient
-        credential chain (`AWS_ACCESS_KEY_ID` / `AWS_PROFILE` / instance
-        metadata). `bedrock_config` here is deliberately un-keyed."""
+    async def test_absent_connection_fails_closed(self):
+        """The F-01 half: absent a connection, Bedrock must NOT reach boto3's
+        ambient credential chain (`AWS_ACCESS_KEY_ID` / `AWS_PROFILE` / instance
+        metadata)."""
         from text.core.exceptions import ProviderCredentialsError
         from text.providers.bedrock import BedrockProvider
 
-        provider = BedrockProvider(config=bedrock_config)
-        with pytest.raises(ProviderCredentialsError):
-            await provider.generate(
-                GenerateRequest(
-                    prompt="hi",
-                    provider="bedrock",
-                    model="anthropic.claude-3-5-haiku-20241022-v1:0",
+        provider = BedrockProvider()
+        with patch("text.providers.bedrock._bearer_client") as build_client:
+            with pytest.raises(ProviderCredentialsError):
+                await provider.generate(
+                    GenerateRequest(
+                        prompt="hi",
+                        provider="bedrock",
+                        model="anthropic.claude-3-5-haiku-20241022-v1:0",
+                    )
                 )
-            )
+        build_client.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_a_connection_without_a_region_fails_closed(self):
+        """A Bedrock client is bound to a region, so the region travels with the
+        credential rather than being a process-wide `TEXT_BEDROCK_REGION` that
+        would pin every tenant's traffic to one AWS region."""
+        from text.core.exceptions import ProviderCredentialsError
+        from text.providers.bedrock import BedrockProvider
+
+        provider = BedrockProvider()
+        with patch("text.providers.bedrock._bearer_client") as build_client:
+            with pytest.raises(ProviderCredentialsError):
+                await provider.generate(
+                    GenerateRequest(
+                        prompt="hi",
+                        provider="bedrock",
+                        model="anthropic.claude-3-5-haiku-20241022-v1:0",
+                        provider_overrides={"bedrock": {"api_key": "k"}},
+                    )
+                )
+        build_client.assert_not_called()
 
 
 class TestProviderOverrideNeverLogged:
@@ -278,18 +242,9 @@ class TestProviderOverrideNewFields:
         assert override.location == "us-central1"
 
 
-@pytest.fixture
-def openai_config():
-    from text.core.config import OpenAIConfig
-
-    return keyed(OpenAIConfig(base_url="https://api.openai.com/v1"), "env-key")
-
-
 class TestOpenAIProviderOverrideConsumption:
     @pytest.mark.asyncio
-    async def test_override_builds_a_request_scoped_client_with_tenant_credential(
-        self, openai_config
-    ):
+    async def test_override_builds_a_request_scoped_client_with_tenant_credential(self):
         from text.providers.openai import OpenAIProvider
 
         mock_choice = MagicMock()
@@ -300,9 +255,7 @@ class TestOpenAIProviderOverrideConsumption:
         mock_completion.choices = [mock_choice]
         mock_completion.usage = MagicMock(prompt_tokens=1, completion_tokens=1, total_tokens=2)
 
-        provider = OpenAIProvider(config=openai_config)
-        provider._client = AsyncMock()  # shared env client — must NOT be used
-
+        provider = OpenAIProvider()
         override_client = AsyncMock()
         override_client.chat.completions.create = AsyncMock(return_value=mock_completion)
 
@@ -329,39 +282,26 @@ class TestOpenAIProviderOverrideConsumption:
         # override.model wins over the caller-supplied model.
         call_kwargs = override_client.chat.completions.create.call_args.kwargs
         assert call_kwargs["model"] == "tenant-model"
-        provider._client.chat.completions.create.assert_not_called()
 
     @pytest.mark.asyncio
-    async def test_absent_override_reuses_the_shared_client_unchanged(self, openai_config):
+    async def test_absent_connection_fails_closed(self):
+        from text.core.exceptions import ProviderCredentialsError
         from text.providers.openai import OpenAIProvider
 
-        mock_choice = MagicMock()
-        mock_choice.message.content = "platform response"
-        mock_choice.message.reasoning_content = None
-        mock_choice.finish_reason = "stop"
-        mock_completion = MagicMock()
-        mock_completion.choices = [mock_choice]
-        mock_completion.usage = MagicMock(prompt_tokens=1, completion_tokens=1, total_tokens=2)
-
-        provider = OpenAIProvider(config=openai_config)
-        provider._client = AsyncMock()
-        provider._client.chat.completions.create = AsyncMock(return_value=mock_completion)
-
+        provider = OpenAIProvider()
         with patch("text.providers.openai.AsyncOpenAI") as mock_ctor:
             req = GenerateRequest(prompt="hi", provider="openai", model="caller-model")
-            content, _reasoning, _stats = await provider.generate(req)
-
-        assert content == "platform response"
+            with pytest.raises(ProviderCredentialsError):
+                await provider.generate(req)
         mock_ctor.assert_not_called()
-        provider._client.chat.completions.create.assert_called_once()
 
     @pytest.mark.asyncio
-    async def test_two_tenants_do_not_share_a_client(self, openai_config):
+    async def test_two_tenants_do_not_share_a_client(self):
         """A fresh request-scoped client is built per override — two tenants'
         concurrent requests can never reuse one client instance."""
         from text.providers.openai import OpenAIProvider
 
-        provider = OpenAIProvider(config=openai_config)
+        provider = OpenAIProvider()
         with patch("text.providers.openai.AsyncOpenAI") as mock_ctor:
             mock_ctor.side_effect = lambda **_: AsyncMock()
             req_a = GenerateRequest(
@@ -380,13 +320,20 @@ class TestOpenAIProviderOverrideConsumption:
         assert client_a is not client_b
         assert mock_ctor.call_count == 2
 
-    def test_fail_open_falls_back_to_env_client_when_override_build_raises(
-        self, openai_config, caplog
-    ):
+    def test_fail_closed_when_the_connection_cannot_build_a_client(self, caplog):
+        """INVERTED from the original assertion, deliberately.
+
+        This used to degrade to the shared env client — so a tenant whose key was
+        revoked or malformed kept generating on the PLATFORM's OpenAI account
+        while `funding` still said `tenant`. That is un-invoiced spend plus a
+        silent cross-tier credential substitution. With no platform client to
+        degrade onto, a broken tenant credential surfaces as an error the tenant
+        can fix. The key must still never reach the log or the message.
+        """
+        from text.core.exceptions import ProviderCredentialsError
         from text.providers.openai import OpenAIProvider
 
-        provider = OpenAIProvider(config=openai_config)
-        sentinel_env_client = provider._client
+        provider = OpenAIProvider()
 
         with patch(
             "text.providers.openai.AsyncOpenAI",
@@ -397,29 +344,16 @@ class TestOpenAIProviderOverrideConsumption:
                 provider="openai",
                 provider_overrides={"openai": {"api_key": "byo-broken-openai-key"}},
             )
-            client = provider._client_for(req)
+            with pytest.raises(ProviderCredentialsError) as exc:
+                provider._client_for(req)
 
-        # Degrades to the shared env client rather than failing the request...
-        assert client is sentinel_env_client
-        # ...and the raw key never appears in any captured log line.
         assert "byo-broken-openai-key" not in caplog.text
-
-
-@pytest.fixture
-def anthropic_config():
-    from text.core.config import AnthropicConfig
-
-    return keyed(
-        AnthropicConfig(default_model="claude-3-5-haiku-20241022"),
-        "env-key",
-    )
+        assert "byo-broken-openai-key" not in str(exc.value)
 
 
 class TestAnthropicProviderOverrideConsumption:
     @pytest.mark.asyncio
-    async def test_override_builds_a_request_scoped_client_with_tenant_credential(
-        self, anthropic_config
-    ):
+    async def test_override_builds_a_request_scoped_client_with_tenant_credential(self):
         from text.providers.anthropic import AnthropicProvider
 
         text_block = MagicMock()
@@ -430,9 +364,7 @@ class TestAnthropicProviderOverrideConsumption:
         mock_message.stop_reason = "end_turn"
         mock_message.usage = MagicMock(input_tokens=3, output_tokens=4)
 
-        provider = AnthropicProvider(config=anthropic_config)
-        provider._client = MagicMock()  # shared env client — must NOT be used
-
+        provider = AnthropicProvider()
         override_client = MagicMock()
         override_client.messages.create = AsyncMock(return_value=mock_message)
 
@@ -459,36 +391,23 @@ class TestAnthropicProviderOverrideConsumption:
         assert call_kwargs["model"] == "tenant-model"
 
     @pytest.mark.asyncio
-    async def test_absent_override_reuses_the_shared_client_unchanged(self, anthropic_config):
+    async def test_absent_connection_fails_closed(self):
+        from text.core.exceptions import ProviderCredentialsError
         from text.providers.anthropic import AnthropicProvider
 
-        text_block = MagicMock()
-        text_block.type = "text"
-        text_block.text = "platform response"
-        mock_message = MagicMock()
-        mock_message.content = [text_block]
-        mock_message.stop_reason = "end_turn"
-        mock_message.usage = MagicMock(input_tokens=1, output_tokens=1)
-
-        provider = AnthropicProvider(config=anthropic_config)
-        provider._client = MagicMock()
-        provider._client.messages.create = AsyncMock(return_value=mock_message)
-
+        provider = AnthropicProvider()
         with patch("text.providers.anthropic.AsyncAnthropic") as mock_ctor:
             req = GenerateRequest(prompt="hi", provider="anthropic", model="caller-model")
-            content, _reasoning, _stats = await provider.generate(req)
-
-        assert content == "platform response"
+            with pytest.raises(ProviderCredentialsError):
+                await provider.generate(req)
         mock_ctor.assert_not_called()
-        provider._client.messages.create.assert_called_once()
 
-    def test_fail_open_falls_back_to_env_client_when_override_build_raises(
-        self, anthropic_config, caplog
-    ):
+    def test_fail_closed_when_the_connection_cannot_build_a_client(self, caplog):
+        """INVERTED — see `TestOpenAIProviderOverrideConsumption`."""
+        from text.core.exceptions import ProviderCredentialsError
         from text.providers.anthropic import AnthropicProvider
 
-        provider = AnthropicProvider(config=anthropic_config)
-        sentinel_env_client = provider._client
+        provider = AnthropicProvider()
 
         with patch(
             "text.providers.anthropic.AsyncAnthropic",
@@ -499,22 +418,16 @@ class TestAnthropicProviderOverrideConsumption:
                 provider="anthropic",
                 provider_overrides={"anthropic": {"api_key": "byo-broken-anthropic-key"}},
             )
-            client = provider._client_for(req)
+            with pytest.raises(ProviderCredentialsError) as exc:
+                provider._client_for(req)
 
-        assert client is sentinel_env_client
         assert "byo-broken-anthropic-key" not in caplog.text
-
-
-@pytest.fixture
-def vertex_config():
-    from text.core.config import VertexConfig
-
-    return VertexConfig(project="env-project", location="us-central1")
+        assert "byo-broken-anthropic-key" not in str(exc.value)
 
 
 class TestVertexProviderOverrideConsumption:
     @pytest.mark.asyncio
-    async def test_override_builds_a_request_scoped_client_with_tenant_sa_key(self, vertex_config):
+    async def test_override_builds_a_request_scoped_client_with_tenant_sa_key(self):
         from text.providers.vertex import VertexProvider
 
         candidate = MagicMock()
@@ -529,9 +442,7 @@ class TestVertexProviderOverrideConsumption:
         override_client = MagicMock()
         override_client.aio.models.generate_content = AsyncMock(return_value=mock_response)
 
-        provider = VertexProvider(config=vertex_config)
-        provider._client = MagicMock()  # shared env client — must NOT be used
-
+        provider = VertexProvider()
         sa_json = '{"type":"service_account","project_id":"tenant-proj"}'
         with (
             patch("text.providers.vertex.genai.Client", return_value=override_client) as mock_ctor,
@@ -568,31 +479,39 @@ class TestVertexProviderOverrideConsumption:
         assert call_kwargs["model"] == "gemini-1.5-pro"
 
     @pytest.mark.asyncio
-    async def test_absent_override_reuses_the_shared_client_unchanged(self, vertex_config):
+    async def test_absent_connection_fails_closed(self):
+        """No injected connection ⇒ raise, rather than build an
+        ADC-authenticated client from the ambient process environment."""
+        from text.core.exceptions import ProviderCredentialsError
         from text.providers.vertex import VertexProvider
 
-        candidate = MagicMock()
-        candidate.finish_reason = "STOP"
-        mock_response = MagicMock()
-        mock_response.text = "platform response"
-        mock_response.candidates = [candidate]
-        mock_response.usage_metadata = MagicMock(
-            prompt_token_count=1, candidates_token_count=1, total_token_count=2
-        )
-
-        provider = VertexProvider(config=vertex_config)
-        provider._client = MagicMock()
-        provider._client.aio.models.generate_content = AsyncMock(return_value=mock_response)
-
+        provider = VertexProvider()
         with patch("text.providers.vertex.genai.Client") as mock_ctor:
             req = GenerateRequest(prompt="hi", provider="vertex", model="gemini-2.0-flash")
-            content, _reasoning, _stats = await provider.generate(req)
-
-        assert content == "platform response"
+            with pytest.raises(ProviderCredentialsError):
+                await provider.generate(req)
         mock_ctor.assert_not_called()
-        provider._client.aio.models.generate_content.assert_called_once()
 
-    def test_fail_closed_when_override_build_raises(self, vertex_config, caplog):
+    @pytest.mark.asyncio
+    async def test_a_connection_without_a_project_fails_closed(self):
+        """A Vertex client is bound to a (project, location), so both travel with
+        the service-account key rather than being process-wide values."""
+        from text.core.exceptions import ProviderCredentialsError
+        from text.providers.vertex import VertexProvider
+
+        provider = VertexProvider()
+        with patch("text.providers.vertex.genai.Client") as mock_ctor:
+            req = GenerateRequest(
+                prompt="hi",
+                provider="vertex",
+                model="gemini-2.0-flash",
+                provider_overrides={"vertex": {"api_key": '{"type":"service_account"}'}},
+            )
+            with pytest.raises(ProviderCredentialsError):
+                await provider.generate(req)
+        mock_ctor.assert_not_called()
+
+    def test_fail_closed_when_override_build_raises(self, caplog):
         """F-07 — INVERTED from the original assertion, deliberately.
 
         This test used to assert `client is sentinel_env_client`: a tenant
@@ -605,7 +524,7 @@ class TestVertexProviderOverrideConsumption:
         from text.core.exceptions import ProviderCredentialsError
         from text.providers.vertex import VertexProvider
 
-        provider = VertexProvider(config=vertex_config)
+        provider = VertexProvider()
 
         with patch(
             "text.providers.vertex.service_account.Credentials.from_service_account_info",
@@ -614,7 +533,9 @@ class TestVertexProviderOverrideConsumption:
             req = GenerateRequest(
                 prompt="hi",
                 provider="vertex",
-                provider_overrides={"vertex": {"api_key": "byo-broken-vertex-sa-key"}},
+                provider_overrides={
+                    "vertex": {"api_key": "byo-broken-vertex-sa-key", "project": "p"}
+                },
             )
             with pytest.raises(ProviderCredentialsError) as exc:
                 provider._client_for(req)

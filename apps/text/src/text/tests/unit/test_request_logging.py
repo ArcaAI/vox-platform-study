@@ -44,9 +44,7 @@ def _reset_structlog():
 
 def _make_settings(**overrides) -> Settings:
     defaults = {
-        "host": "127.0.0.1",
         "port": 5099,
-        "debug": True,
         "log_level": "debug",
     }
     defaults.update(overrides)

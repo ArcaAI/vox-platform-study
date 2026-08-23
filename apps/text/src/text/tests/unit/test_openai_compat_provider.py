@@ -6,12 +6,11 @@ import os
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-from pydantic import SecretStr
 
 from text.core.config import Settings
 from text.models.requests import GenerateRequest, ResponseFormat
 from text.models.stream import StreamChunk
-from text.tests.conftest import keyed
+from text.tests.conftest import stub_client
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -19,7 +18,7 @@ from text.tests.conftest import keyed
 
 
 def _make_request(**overrides) -> GenerateRequest:
-    defaults = {"prompt": "Hello", "provider": "openai_compat"}
+    defaults = {"prompt": "Hello", "provider": "openai_compat", "model": "test-model"}
     defaults.update(overrides)
     return GenerateRequest(**defaults)
 
@@ -71,32 +70,42 @@ def _clear_text_env(monkeypatch):
             monkeypatch.delenv(key, raising=False)
 
 
-class TestOpenAICompatConfig:
-    def test_openai_compat_config_defaults(self, monkeypatch):
-        for key in list(os.environ):
-            if key.startswith("TEXT_"):
-                monkeypatch.delenv(key, raising=False)
+class TestOpenAICompatHasNoConfigOfItsOwn:
+    """`OpenAICompatConfig` is gone — endpoint, key, model and capacity all
+    arrive with the request.
 
-        from text.core.config import OpenAICompatConfig
+    Its `default_model` is the clearest illustration of why. It had to be an id
+    LM Studio actually SERVED, because it was sent verbatim as the wire `model`
+    — and when it drifted (`google/gemma-4-e4b` vs the installed `-qat` build)
+    every request that reached the default got a 400 "Failed to load model", and
+    the same stale id had already propagated into the AiModel catalogue. An
+    engine-specific string in a config file is a model SELECTION, and selection
+    belongs to `AiTaskDefault`, fail-closed.
+    """
 
-        _clear_text_env(monkeypatch)
-        cfg = OpenAICompatConfig()
-        assert cfg.base_url == "http://localhost:1234/v1"
-        # Must be an id LM Studio actually serves — sent verbatim as the wire
-        # `model`. The old `google/gemma-4-e4b` 400d ("Failed to load model").
-        assert cfg.default_model == "gemma-4-e2b-it-qat"
-        assert cfg.timeout_s == 300
-        assert cfg.max_concurrent == 4
-        assert cfg.organization is None
+    def test_the_config_class_is_gone(self):
+        import text.core.config as config_module
 
-    def test_openai_compat_config_api_key_is_secret(self, monkeypatch):
-        _clear_text_env(monkeypatch)
-        from text.core.config import OpenAICompatConfig
+        assert not hasattr(config_module, "OpenAICompatConfig")
 
-        _clear_text_env(monkeypatch)
-        cfg = OpenAICompatConfig()
-        assert isinstance(cfg.api_key, SecretStr)
-        assert cfg.api_key.get_secret_value() == "not-needed"
+    def test_no_env_var_can_configure_this_adapter(self, monkeypatch):
+        """Every retired name, set at once, must leave the adapter unchanged."""
+        from text.providers.openai_compat import OpenAICompatProvider
+
+        for stale in (
+            "TEXT_OPENAI_COMPAT_BASE_URL",
+            "TEXT_OPENAI_COMPAT_API_KEY",
+            "TEXT_OPENAI_COMPAT_DEFAULT_MODEL",
+            "TEXT_OPENAI_COMPAT_TIMEOUT_S",
+            "TEXT_OPENAI_COMPAT_MAX_CONCURRENT",
+            "TEXT_OPENAI_COMPAT_ORGANIZATION",
+        ):
+            monkeypatch.setenv(stale, "definitely-set")
+
+        assert "openai_compat" not in Settings.model_fields
+        provider = OpenAICompatProvider()
+        assert provider._probe_url() is None
+        assert not hasattr(provider, "_default_model")
 
 
 # ---------------------------------------------------------------------------
@@ -106,22 +115,6 @@ class TestOpenAICompatConfig:
 
 class TestOpenAICompatProvider:
     @pytest.fixture()
-    def config(self):
-        from text.core.config import OpenAICompatConfig
-
-        # `api_key` is no longer constructor- or env-populatable here either
-        # (TASK-799 closed `TEXT_OPENAI_COMPAT_API_KEY`), so it goes on through
-        # `keyed()` — the same `model_copy` route the cloud configs use.
-        return keyed(
-            OpenAICompatConfig(
-                base_url="http://localhost:1234/v1",
-                default_model="test-model",
-                timeout_s=60,
-                max_concurrent=2,
-            )
-        )
-
-    @pytest.fixture()
     def mock_client(self):
         client = AsyncMock()
         client.chat.completions.create = AsyncMock()
@@ -129,11 +122,11 @@ class TestOpenAICompatProvider:
         return client
 
     @pytest.fixture()
-    def provider(self, config, mock_client):
+    def provider(self, mock_client):
         from text.providers.openai_compat import OpenAICompatProvider
 
-        p = OpenAICompatProvider(config)
-        p._client = mock_client
+        p = OpenAICompatProvider()
+        p._client = stub_client(p, mock_client)
         return p
 
     # -- 3. generate returns content and AD-1 stats --
@@ -296,7 +289,8 @@ class TestOpenAICompatProvider:
         assert info.name == "openai_compat"
         assert info.display_name == "OpenAI Compatible"
         assert info.status == "available"
-        assert info.default_model == "test-model"
+        # The catalogue is `AiModel` on the gateway; the adapter advertises none.
+        assert info.default_model == ""
         assert len(info.models) == 1
         assert info.models[0].name == "my-model"
         assert info.supports_streaming is True
@@ -451,15 +445,11 @@ class TestOpenAICompatRegistration:
     async def test_provider_available_via_lazy_factory(self):
         # availability comes from a registered CONNECTION-gated factory
         # (no ENABLE flag); the instance is built only on the first ``get``.
-        from text.core.config import OpenAICompatConfig
         from text.providers.base import ProviderRegistry
         from text.providers.openai_compat import OpenAICompatProvider
 
-        settings = Settings(openai_compat=OpenAICompatConfig())
         registry = ProviderRegistry()
-        registry.register_factory(
-            "openai_compat", lambda: OpenAICompatProvider(settings.openai_compat)
-        )
+        registry.register_factory("openai_compat", OpenAICompatProvider)
 
         assert "openai_compat" in registry.list_providers()
         assert registry.is_instantiated("openai_compat") is False  # not built yet
@@ -467,15 +457,11 @@ class TestOpenAICompatRegistration:
         assert provider is not None
         assert registry.is_instantiated("openai_compat") is True  # built on demand
 
-    # -- 19. timeout map includes openai_compat --
-    def test_timeout_map_includes_openai_compat(self):
+    # -- 19. the control plane can set this provider's timeout --
+    def test_timeout_comes_from_the_control_plane(self):
+        """No alias map to forget an entry in: the served key IS the provider name."""
         from text.api.endpoints.generate import _get_provider_timeout
-        from text.core.config import OpenAICompatConfig
+        from text.core.runtime_defaults import PROVIDER_TIMEOUT_FLOOR_S
 
-        settings = Settings(
-            openai_compat=OpenAICompatConfig(timeout_s=42),
-        )
-
-        timeout = _get_provider_timeout(settings, "openai_compat")
-
-        assert timeout == 42.0
+        assert _get_provider_timeout({"openai_compat": 42}, "openai_compat") == 42.0
+        assert _get_provider_timeout({}, "openai_compat") == float(PROVIDER_TIMEOUT_FLOOR_S)

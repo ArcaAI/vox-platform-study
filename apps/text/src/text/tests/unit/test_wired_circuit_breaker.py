@@ -29,12 +29,10 @@ from text.services.shutdown_manager import ShutdownManager
 
 
 def _make_settings(**overrides) -> Settings:
-    defaults = {
-        "host": "127.0.0.1",
+    """`host` / `debug` / `metrics_enabled` are gone — derived or always-on now."""
+    defaults: dict[str, object] = {
         "port": 5099,
-        "debug": True,
         "log_level": "debug",
-        "metrics_enabled": False,
     }
     defaults.update(overrides)
     return Settings(**defaults)

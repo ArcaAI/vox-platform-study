@@ -11,8 +11,9 @@ from unittest.mock import AsyncMock
 import pytest
 import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
+from pydantic import SecretStr
 
-from text.core.config import Settings
+from text.core.config import InternalAccessConfig, Settings
 from text.main import create_app
 from text.models.provider import ModelInfo, ProviderInfo
 
@@ -49,13 +50,17 @@ def _make_app(
     provider_registry=None,
     task_manager=None,
 ):
-    """Helper to build a test app with a given service_token."""
+    """Helper to build a test app accepting a given inbound token.
+
+    The token is the ONE shared `INTERNAL_ACCESS_TOKEN` now — the legacy
+    per-service `TEXT_SERVICE_TOKEN` is retired, so it is set on the nested
+    config rather than as a root kwarg. Empty still means "auth bypassed", the
+    documented dev/CI posture.
+    """
     settings = Settings(
-        host="127.0.0.1",
         port=5099,
-        debug=True,
         log_level="debug",
-        service_token=service_token,
+        internal_access=InternalAccessConfig(token=SecretStr(service_token)),
     )
     application = create_app(settings_override=settings)
     if provider_registry is not None:

@@ -193,15 +193,13 @@ describe('env/vault-kv descriptor keys resolve to the real variable names', () =
     'harnessJudgeOpenaiCompat.apiKey': 'HARNESS_JUDGE_OPENAI_COMPAT_API_KEY',
     'harness.claimCheck.accessKey': 'HARNESS_CLAIM_CHECK_ACCESS_KEY',
     'harness.claimCheck.secretKey': 'HARNESS_CLAIM_CHECK_SECRET_KEY',
-    // ── env (TEXT cloud-provider connection config) ──
-    'textOpenai.baseUrl': 'TEXT_OPENAI_BASE_URL',
-    'textOpenai.organization': 'TEXT_OPENAI_ORGANIZATION',
-    'textOpenai.defaultModel': 'TEXT_OPENAI_DEFAULT_MODEL',
-    'textAnthropic.baseUrl': 'TEXT_ANTHROPIC_BASE_URL',
-    'textAnthropic.defaultModel': 'TEXT_ANTHROPIC_DEFAULT_MODEL',
-    'textVertex.project': 'TEXT_VERTEX_PROJECT',
-    'textVertex.location': 'TEXT_VERTEX_LOCATION',
-    'textVertex.defaultModel': 'TEXT_VERTEX_DEFAULT_MODEL',
+    // TEXT's cloud-provider connection config (`textOpenai.*`, `textAnthropic.*`,
+    // `textVertex.*`) is GONE from the registry — TASK-799 lane B deleted the env
+    // vars behind it. "The platform default for a provider" and "the tenant's own
+    // connection" were two data classes describing one thing, with only the
+    // tenant half governable; there is one now (`AiProviderConnection`, whose
+    // SYSTEM row IS the platform default). See
+    // `descriptors/text-provider-connections.descriptors.ts`.
     // ── env (bootstrap floor) ──
     nodeEnv: 'NODE_ENV',
     databaseUrl: 'DATABASE_URL',
@@ -249,7 +247,10 @@ describe('env/vault-kv descriptor keys resolve to the real variable names', () =
     'semanticEndpoint.enabled': 'SEMANTIC_ENDPOINT_ENABLED',
     'guardrailV2.groundedness.enabled': 'GUARDRAIL_V2_GROUNDEDNESS_ENABLED',
     'liveDoc.groundedness.enabled': 'LIVE_DOC_GROUNDEDNESS_ENABLED',
-    'text.externalGuardrail.enabled': 'TEXT_EXTERNAL_GUARDRAIL_ENABLED',
+    // `text.externalGuardrail.enabled` is no longer env-tier: TASK-799 lane B
+    // deleted `TEXT_EXTERNAL_GUARDRAIL_ENABLED` and made it a `global-kv`
+    // kill-switch served on the effective-config pull route, so a clinical
+    // deployment turns moderation on without a redeploy.
     'harness.warmStartEnabled': 'HARNESS_WARM_START_ENABLED',
     'harness.nerPriorsEnabled': 'HARNESS_NER_PRIORS_ENABLED',
     'harness.atomicFactEnabled': 'HARNESS_ATOMIC_FACT_ENABLED',

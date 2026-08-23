@@ -1,7 +1,7 @@
 """Provider listing endpoint.
 
 Probe contract. Every registered provider is probed IN PARALLEL
-under a per-provider ``TEXT_PROVIDER_PROBE_TIMEOUT_S`` cap (default 5 s), and
+under the per-provider probe cap in ``core/runtime_defaults.py`` (5 s), and
 each entry reports its own ``probe_status`` (``ok`` / ``timeout`` / ``error``),
 ``probe_latency_ms`` and ``probe_error``. Consequences, all deliberate:
 
@@ -24,6 +24,7 @@ from fastapi import APIRouter, Depends, Request
 
 from text.core.dependencies import get_pool_health_tracker, get_provider_registry
 from text.core.metrics import ACTIVE_GENERATIONS
+from text.core.runtime_defaults import PROVIDER_PROBE_TIMEOUT_S
 from text.models.provider import ProviderInfo
 from text.providers.base import ProviderRegistry
 from text.services.pool_health import PoolHealthTracker
@@ -85,7 +86,7 @@ async def list_providers(
     registry: ProviderRegistry = Depends(get_provider_registry),
     pool_health_tracker: PoolHealthTracker = Depends(get_pool_health_tracker),
 ) -> list[dict[str, Any]]:
-    timeout_s = float(request.app.state.settings.provider_probe_timeout_s)
+    timeout_s = float(PROVIDER_PROBE_TIMEOUT_S)
     names = registry.list_providers()
     return list(
         await asyncio.gather(
