@@ -294,7 +294,14 @@ class Settings(BaseSettings):
     # Azure AI Foundry — MAI-Transcribe (engine AZURE_FOUNDRY).
     # PREVIEW service (no SLA, no diarization) — disabled by default,
     # batch-only, and PHI must not flow until GA + data-residency sign-off.
-    # Env vars: AZURE_FOUNDRY_ENABLED / _ENDPOINT / _API_KEY / _MODEL.
+    # Azure Foundry is BYOK-only, like Azure Speech: the API KEY is NOT an env
+    # var and NOT a settings field — it is resolved per request from the
+    # provider-connection plane (tenant / SYSTEM AiProviderConnection), where
+    # `azure.foundryApiKey` has been a registered vault-kv descriptor all along.
+    # The MODEL is not a settings field either: selection is tenant/platform
+    # configuration carried by the pipeline's AiModel, and fails closed when
+    # unresolved. Only the non-secret enable flag and endpoint remain here.
+    # Env vars: AZURE_FOUNDRY_ENABLED / _ENDPOINT.
     azure_foundry_enabled: bool = Field(
         default=False,
         description="Enable the Azure AI Foundry MAI-Transcribe engine (preview, off by default)",
@@ -302,14 +309,6 @@ class Settings(BaseSettings):
     azure_foundry_endpoint: str | None = Field(
         default=None,
         description="Azure AI Foundry / Speech resource endpoint, e.g. https://<res>.cognitiveservices.azure.com",
-    )
-    azure_foundry_api_key: SecretStr | None = Field(
-        default=None,
-        description="Azure AI Foundry API key",
-    )
-    azure_foundry_model: str = Field(
-        default="mai-transcribe-1.5",
-        description="MAI transcription model name for enhancedMode",
     )
 
     # Sarvam AI speech-to-text (engine SARVAM, cloud engine).
@@ -346,10 +345,6 @@ class Settings(BaseSettings):
 
     # whisper.cpp — ggml runtime for GGUF whisper-large-v3-turbo
     # (engine WHISPER_CPP), via the maintained `pywhispercpp` binding.
-    whisper_cpp_library_path: str | None = Field(
-        default=None,
-        description="Optional path to a prebuilt libwhisper shared library (env WHISPER_CPP_LIBRARY_PATH)",
-    )
     whisper_cpp_num_threads: int = Field(
         default=8,
         description="CPU threads for whisper.cpp inference",
@@ -397,19 +392,11 @@ class Settings(BaseSettings):
         default=200,
         description="Padding applied to both segment ends in ms (200 per production ASR guidance)",
     )
-    vad_sample_rate: int = Field(
-        default=16000,
-        description="VAD input sample rate (16000 or 8000)",
-    )
 
     # Diarization -- Pyannote embeddings
     diarization_hf_model_id: str = Field(
         default="pyannote/wespeaker-voxceleb-resnet34-LM",
         description="HuggingFace model ID for speaker embedding extraction",
-    )
-    diarization_similarity_threshold: float = Field(
-        default=0.7,
-        description="Cosine similarity threshold for speaker matching (0.0–1.0)",
     )
     diarization_device: str = Field(
         default="auto",
@@ -443,15 +430,6 @@ class Settings(BaseSettings):
         default=4,
         description="Number of Dramatiq worker threads per process",
     )
-    worker_concurrency: int = Field(
-        default=4,
-        description=(
-            "DEPRECATED ALIAS — has no read sites anywhere in the service; "
-            "`worker_threads` is the field that actually reaches Worker(...). "
-            "The control-plane worker ceiling (effective-config) feeds "
-            "`worker_threads`, not this. Retained only for env-compatibility."
-        ),
-    )
     worker_poll_timeout_ms: int = Field(
         default=1000,
         description="Dramatiq consumer poll interval max-backoff in milliseconds",
@@ -459,11 +437,6 @@ class Settings(BaseSettings):
     worker_max_retries: int = Field(
         default=3,
         description="Maximum job retry attempts",
-    )
-    # Process pool for CPU-bound inference (separate from Dramatiq threads)
-    inference_pool_size: int = Field(
-        default=0,
-        description="ProcessPoolExecutor size for ML inference (0=auto: CPU cores)",
     )
 
     # ONNX Runtime threading
@@ -857,15 +830,6 @@ class Settings(BaseSettings):
         description="Enable Prometheus metrics on /metrics",
     )
 
-    # MLFlow (reserved — not yet implemented)
-    mlflow_tracking_uri: str | None = Field(
-        default=None,
-        description="MLFlow tracking server URI (reserved for future use)",
-    )
-    mlflow_model_registry: str | None = Field(
-        default=None,
-        description="MLFlow model registry URI (reserved for future use)",
-    )
 
     # -------------------------------------------------------------------------
     # Punctuation restoration (Cadence)
