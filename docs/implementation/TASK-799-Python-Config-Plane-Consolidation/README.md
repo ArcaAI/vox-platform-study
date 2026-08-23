@@ -2,7 +2,7 @@
 
 | Field | Value |
 |---|---|
-| Status | In Progress — Phase 0 complete |
+| Status | In Progress — Phases 0, 1, 1.5 complete |
 | Type | refactor / infrastructure |
 | Branch | `dev-2.2` |
 | Scope | `apps/{stt,text,guardrail,nlp,harness,tts}`, `packages/applications/src/services/{settings-registry,effective-config,ai-provider-connection,ai-task-default}`, `apps/api/src/modules/internal`, `apps/admin-console` |
@@ -85,6 +85,66 @@ one selection was ever injected, the second silently filled by a literal. The ow
 chose not to dark a clinical route between phases. **The Phase 1 gateway brief must
 carry this**, or the resequencing reason is lost.
 
+### Phase 1 + 1.5 — complete (merged to `dev-2.2`, 2026-08-23)
+
+Three parallel worktree lanes. Every load-bearing claim re-verified by the
+orchestrator against the merged tree.
+
+**P1-A — the control plane is now generic.** The binding constraint was never the
+`switch`: `effective-config.service.ts:219` coerced any non-number to the code default,
+so strings, enums, URLs, booleans and taxonomies could not traverse the pull path at
+all. `ResolvedKey.value` is now `unknown`, validated against the descriptor's declared
+`dataType`; a mismatch degrades to `null` rather than substituting a default, because
+substitution serves a plausible value and hides the defect. The hardcoded per-service
+`switch` is replaced by a registry query on a new `SettingDescriptor.consumedBy`, and a
+test computes the expected key set FROM the registry so the switch cannot return.
+`modelWeights` added (the consumer in `harness/models/source_resolver.py` was already
+written and waiting); `agenticContext` deleted after verifying zero consumers.
+`guardrail.policy.*` re-tiered to `global-kv` with both orphans deleted — the
+tighten-only floor is now a declared `SettingDescriptor.floorDirection` enforced
+generically instead of by naming one feature file.
+
+**The new contract** — adding one config key end-to-end used to need four coordinated
+edits plus a Python client change. It is now: one descriptor with `consumedBy`, register
+it, read it at `snapshot.raw["settings"]["<dotted.key>"]`. For anything that could vary
+per tenant: same descriptor, `maxScope: 'tenant'`, omit `consumedBy` so it travels PUSH.
+
+**P1-C — tenant secrets have a home.** `ProviderService` widened to
+`llm|stt|tts|embeddings|rerank|vector`, reusing the existing seven-hop BYO contract
+rather than building a sibling store (D-2: never a third home). **No migration was
+needed and none was written**: `service` is `TEXT NOT NULL DEFAULT 'llm'` with zero
+CHECK constraints (verified at `20260817000000_init/migration.sql:237`), so widening the
+vocabulary requires no DDL. The forwarding allow-list became a validated passthrough
+(`provider-extras.ts`) that checks SHAPE, not an enumerated key list, and reserves
+`api_key`/`funding`/`base_url`/`region`/`api_version`/`deployment_name` so a row can
+never restate the credential or stamp its own funding label.
+
+The one behavioural change, reviewed and approved: **the SYSTEM tier of the override
+fold is no longer filtered by `isCloudByoProvider`.** That filter conflated two rules —
+"a TENANT may not own this" is not "the PLATFORM may not serve it" — and the conflation
+is why a super-admin-configured self-hosted engine could never be delivered. The guards
+that matter are intact and were read in order: a keyless row injects on NEITHER tier
+(so a `base_url` still cannot become a credential); the tenant tier still refuses
+non-cloud rows; cloud SYSTEM rows (platform SPEND) stay entitlement-gated while
+self-host rows (platform INFRASTRUCTURE) do not; and every `continue` precedes
+`toOverrideEntry`, so a suppressed row is never decrypted.
+
+**P1-B — the drift gate now sees Python.** `scripts/python-env-surface.py` introspects
+every `BaseSettings` subclass using pydantic's OWN field extraction (a regex does not
+know a class's fields; pydantic does), harvests each field's comment block as its
+description, and AST-scans bare `os.environ` reads including one-line helper
+indirection. `env-sync.mts` consumes that manifest, GENERATES all six `.env.sample`
+files instead of inlining them verbatim, and folds every Python name into
+`turbo.json#globalEnv` (179 → 705 entries). Two gates with different failure modes:
+`env:python-surface --check` catches a stale manifest, `env:sync --check` catches a
+stale artifact.
+
+**Declared surface: 40 → 652** (147 TS keys + 505 Python fields). Verified by
+demonstration, not assertion: planting an undeclared `os.environ` read in
+`apps/tts/core/config.py` made `env:sync --check` FAIL and name the exact variable;
+restoring it returned the gate to green. That demonstration is the point — a gate that
+is green because Python is excluded proves nothing.
+
 ### Post-merge gate evidence (`dev-2.2`, primary checkout)
 
 | Service | Result |
@@ -113,3 +173,4 @@ produced false positives on `internal_access_token` and `qdrant_api_key`.
 | 2026-08-23 | Assessment complete (`assessment.md`) and plan drafted (`plan.md`). Awaiting owner decisions on the three open questions before implementation. |
 | 2026-08-23 | Owner decisions D-1 (pull route splits by cardinality: platform=PULL, tenant=PUSH), D-2 (`global-kv` default, `db-config` reserved for values with their own table), D-3 (Phase 0 first) recorded in `plan.md`. |
 | 2026-08-23 | Phase 0 implemented across four worktree lanes and merged to `dev-2.2`. Gates re-run post-merge. C.2 held at `4fa3d1f15` for Phase 1 per owner decision. |
+| 2026-08-23 | Phases 1 and 1.5 implemented across three worktree lanes and merged to `dev-2.2`. Control plane generalised (non-numeric values, registry-driven payload), tenant-secret plane widened, env drift gate extended to Python (declared surface 40 → 652). |
