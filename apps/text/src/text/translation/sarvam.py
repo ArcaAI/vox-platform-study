@@ -4,11 +4,20 @@ Ported into Text from the former ``apps/stt`` helper (that STT copy is being
 deleted by a separate task — do NOT import from STT). Translates each text via
 Sarvam's REST ``/translate`` endpoint.
 
-Sarvam is BYOK-ONLY: the ``api_key`` NEVER comes from env/platform config — it
-arrives per request as a ``ProviderOverride`` (the gateway resolves it from the
-tenant/super-admin provider-connection). A request with no override key fails
-closed (``SarvamCredentialError`` → endpoint 503). The config carries only
-non-secret operational settings (base_url / model).
+Sarvam is BYOK-ONLY and now connection-only: the ``api_key``, the ``base_url``
+AND the ``model`` all arrive per request as a ``ProviderOverride`` (the gateway
+resolves it from the tenant/super-admin provider-connection). A request with no
+override fails closed (``SarvamCredentialError`` / ``SarvamModelError`` → 503).
+
+The model matters more here than for the LLM adapters, and that is why
+``TEXT_SARVAM_MODEL`` had to go rather than merely being emptied: unlike every
+other ``*_MODEL`` env var in this service — which only decorated the `/providers`
+listing — this one REACHED THE WIRE as the request's ``model`` field. A
+process-wide value therefore chose the translation model for every tenant, which
+is precisely a model SELECTION, and selection is ``failMode: closed``
+(`.claude/rules/09-infrastructure-devops.md` §Configuration Tiers): it resolves
+through `AiTaskDefault` tenant → SYSTEM, and an unresolved selection raises
+rather than letting the vendor pick a default nobody chose.
 
 Security invariant: the ``api-subscription-key`` is passed in the request header
 and never formatted into a log line, exception message, or repr. Error paths
@@ -23,7 +32,6 @@ import asyncio
 import httpx
 import structlog
 
-from text.core.config import SarvamConfig
 from text.models.requests import ProviderOverride
 
 logger = structlog.get_logger(__name__)
@@ -43,10 +51,20 @@ class SarvamTranslateError(Exception):
 
 
 class SarvamCredentialError(SarvamTranslateError):
-    """No usable Sarvam API key — neither a tenant override nor platform config.
+    """No usable Sarvam API key — no connection was injected for this request.
 
     A distinct subclass so the endpoint can map a missing credential to a 503
     (retryable/misconfiguration) rather than the generic 502 upstream failure.
+    """
+
+
+class SarvamModelError(SarvamTranslateError):
+    """No translation model resolved for this request.
+
+    Selection is fail-closed: Sarvam's ``model`` reaches the wire, so an
+    unresolved value must raise rather than let the vendor substitute one. Mapped
+    to the same 503 as a missing credential — both are a platform-configuration
+    gap an admin can close, not a caller error.
     """
 
 
@@ -76,11 +94,12 @@ def _chunk_text(text: str, max_chars: int) -> list[str]:
 class SarvamTranslateProvider:
     """Sarvam translate provider (implements ``TranslateProvider``)."""
 
-    def __init__(self, config: SarvamConfig) -> None:
-        self._config = config
-        # Informational: the configured platform model, surfaced in the response
-        # when a request carries no override model. Never a credential.
-        self.model = config.model
+    def __init__(self) -> None:
+        """No configuration. Endpoint, credential and model all arrive with the
+        request as a gateway-resolved ``ProviderOverride``."""
+        #: Last model actually used, surfaced on the response. Never a default:
+        #: it is set only after a real selection resolved.
+        self.model: str | None = None
 
     def _resolve_key(self, overrides: ProviderOverride | None) -> str:
         """BYOK-only credential resolution. The api_key comes ONLY from the
@@ -98,16 +117,30 @@ class SarvamTranslateProvider:
         )
 
     def _resolve_base_url(self, overrides: ProviderOverride | None) -> str:
-        """Override base_url wins over the platform config base_url."""
+        """The endpoint from the injected connection. Fail-closed: Text holds no
+        ``TEXT_SARVAM_BASE_URL`` to fall back to."""
         if overrides is not None and overrides.base_url:
-            return overrides.base_url
-        return self._config.base_url
+            return overrides.base_url.rstrip("/")
+        raise SarvamCredentialError(
+            "No Sarvam connection: the endpoint must arrive per request via "
+            "provider_overrides (there is no platform/env fallback)."
+        )
 
-    def _resolve_model(self, overrides: ProviderOverride | None) -> str | None:
-        """Override model wins over the platform config model (both optional)."""
+    def _resolve_model(self, overrides: ProviderOverride | None) -> str:
+        """The model from the resolved `AiTaskDefault` selection. Fail-closed.
+
+        Sarvam's ``model`` goes on the wire, so an unresolved selection raises
+        instead of omitting the field and letting the vendor pick — which would
+        silently change the translation model on a vendor-side default change.
+        """
         if overrides is not None and overrides.model:
             return overrides.model
-        return self._config.model
+        raise SarvamModelError(
+            "No Sarvam translation model selected. Model selection is "
+            "fail-closed: configure an AiTaskDefault for the translate task "
+            "(tenant, or the SYSTEM-tenant platform default). Text substitutes "
+            "no model of its own."
+        )
 
     async def translate(
         self,
@@ -122,7 +155,9 @@ class SarvamTranslateProvider:
         ``httpx.AsyncClient`` per call with bounded concurrency."""
         api_key = self._resolve_key(overrides)  # raises SarvamCredentialError
         base_url = self._resolve_base_url(overrides)
-        model = self._resolve_model(overrides)
+        model = self._resolve_model(overrides)  # raises SarvamModelError
+        # Report what was actually used, not what was configured.
+        self.model = model
 
         if not any(text and text.strip() for text in texts):
             return list(texts)
@@ -155,7 +190,7 @@ class SarvamTranslateProvider:
         text: str,
         source_language: str,
         target_language: str,
-        model: str | None,
+        model: str,
     ) -> str:
         chunks = _chunk_text(text, _MAX_CHARS)
         translated = [
@@ -181,15 +216,14 @@ class SarvamTranslateProvider:
         chunk: str,
         source_language: str,
         target_language: str,
-        model: str | None,
+        model: str,
     ) -> str:
         body: dict[str, str] = {
             "input": chunk,
             "source_language_code": source_language,
             "target_language_code": target_language,
+            "model": model,
         }
-        if model:
-            body["model"] = model
         headers = {"api-subscription-key": api_key}
         url = base_url.rstrip("/") + "/translate"
 

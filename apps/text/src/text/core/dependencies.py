@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING, Any, cast
 
 from fastapi import Request
 
@@ -144,6 +144,16 @@ async def get_runtime_limits(request: Request) -> dict[str, int]:
 
     await refresh_runtime_limits(request.app.state)
     return getattr(request.app.state, "provider_timeouts", {}) or {}
+
+
+def get_app_state(request: Request) -> Any:
+    """The live app state, for the values the control plane REPLACES at runtime.
+
+    A route that reads a resolved posture or lane budget must read it when the
+    request arrives, not when the process booted — that is the whole difference
+    between a control-plane value and the env var it replaced.
+    """
+    return request.app.state
 
 
 def get_guardrail_client(request: Request) -> ExternalGuardrailClient | None:

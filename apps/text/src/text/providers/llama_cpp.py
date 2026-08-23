@@ -19,10 +19,10 @@ from typing import TYPE_CHECKING, Any
 import httpx
 import structlog
 
-from text.core.config import LlamaCppConfig
+from text.core.connection import require_base_url
 from text.core.defaults import resolve_request_defaults
 from text.core.telemetry import get_tracer
-from text.models.provider import ModelInfo, ProviderInfo
+from text.models.provider import ProviderInfo
 from text.models.requests import GenerateRequest
 from text.models.stats import GenerationStats, stats_from_llama_cpp
 from text.models.stream import StreamChunk
@@ -45,11 +45,28 @@ class LlamaCppProvider:
 
     credential_posture = CredentialPosture.SELF_HOST
 
-    def __init__(self, config: LlamaCppConfig, http_client: httpx.AsyncClient) -> None:
-        self._config = config
+    #: Name used when reporting a missing connection and on the admin listing.
+    _probe_name = _ENGINE
+
+    def __init__(self, http_client: httpx.AsyncClient) -> None:
+        """No configuration. The engine endpoint arrives per request as a
+        gateway-resolved ``ProviderOverride`` (`core/connection.py`)."""
         self._http = http_client
-        self._default_model = config.default_model
-        self._base_url = config.base_url.rstrip("/")
+        self._last_base_url: str | None = None
+
+    def _endpoint(self, request: GenerateRequest) -> str:
+        """The engine endpoint for THIS request, from the resolved connection.
+
+        Also remembered as ``_last_base_url`` so the admin-facing probes
+        (`health_check` / `get_info`), which have no request to resolve from, can
+        still report on the engine this process has actually been talking to. A
+        self-hosted engine is platform infrastructure with one SYSTEM-tenant row,
+        so that memo is accurate in practice — and it is never used to ROUTE a
+        generation, only to describe one.
+        """
+        base_url = require_base_url(request, provider=self._probe_name)
+        self._last_base_url = base_url
+        return base_url
 
     def _resolve_model(self, request: GenerateRequest) -> str | None:
         # The caller-supplied model is authoritative. A llama.cpp
@@ -104,7 +121,7 @@ class LlamaCppProvider:
                 "gen_ai.request.max_tokens": resolved["max_tokens"],
             },
         ) as span:
-            url = f"{self._base_url}/completion"
+            url = f"{self._endpoint(request)}/completion"
             payload = self._build_payload(request, stream=False)
             start = time.monotonic()
             resp = await self._http.post(url, json=payload)
@@ -136,7 +153,7 @@ class LlamaCppProvider:
                 "gen_ai.request.max_tokens": resolved["max_tokens"],
             },
         ) as span:
-            url = f"{self._base_url}/completion"
+            url = f"{self._endpoint(request)}/completion"
             payload = self._build_payload(request, stream=True)
             resolved_model = self._resolve_model(request)
             start = time.monotonic()
@@ -182,9 +199,25 @@ class LlamaCppProvider:
                         ttft_ms = int((time.monotonic() - start) * 1000)
                     yield StreamChunk(type="chunk", content=text)
 
+    def _probe_url(self) -> str | None:
+        """The engine this process last talked to, or ``None``.
+
+        The admin probes have no request, so there is no connection to resolve.
+        Reporting on the last endpoint observed keeps `/providers` and `/health`
+        meaningful for a platform-run engine (one SYSTEM-tenant row, one address)
+        without ever inventing one: before the first generation there is nothing
+        to report, and this returns ``None``.
+        """
+        return self._last_base_url
+
     async def health_check(self) -> bool:
+        """Probe the last-observed endpoint; True when none has been observed
+        yet ("no negative evidence" — see `OllamaProvider.health_check`)."""
+        probe_url = self._probe_url()
+        if probe_url is None:
+            return True
         try:
-            resp = await self._http.get(f"{self._base_url}/health")
+            resp = await self._http.get(f"{probe_url}/health")
             return resp.status_code == 200
         except (httpx.HTTPError, httpx.TimeoutException, ConnectionError, OSError) as exc:
             logger.warning("health_check.failed", provider=_ENGINE, error=str(exc))
@@ -195,25 +228,24 @@ class LlamaCppProvider:
 
     async def get_info(self) -> ProviderInfo:
         status = "unavailable"
+        probe_url = self._probe_url()
         try:
-            resp = await self._http.get(f"{self._base_url}/health")
-            if resp.status_code == 200:
+            resp = await self._http.get(f"{probe_url}/health") if probe_url else None
+            if resp is not None and resp.status_code == 200:
                 status = "available"
         except (httpx.HTTPError, httpx.TimeoutException, ConnectionError, OSError) as exc:
             logger.warning("get_info.failed", provider=_ENGINE, error=str(exc))
         except Exception as exc:
             logger.error("get_info.unexpected_error", provider=_ENGINE, error=str(exc))
-        models = (
-            [ModelInfo(name=self._default_model, supports_streaming=True)]
-            if self._default_model
-            else []
-        )
+        # A llama.cpp server loads ONE model at launch and ignores a per-request
+        # model, so the served identity is a property of the engine process, not
+        # of this adapter. The catalogue comes from `AiModel` on the gateway.
         return ProviderInfo(
             name=_ENGINE,
             display_name="llama.cpp",
             status=status,
-            default_model=self._default_model,
-            models=models,
+            default_model="",
+            models=[],
             supports_streaming=True,
             supports_vision=False,
         )

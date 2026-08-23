@@ -93,10 +93,96 @@ class EffectiveConfigSnapshot:
             timeout_s = _positive_int(profile.get("timeoutS"))
             if timeout_s is not None:
                 entry["timeout_s"] = timeout_s
+            # Vendor account quotas. `_non_negative_int`, not `_positive_int`:
+            # ZERO is a meaningful served value here — it means "no client-side
+            # rate limiting" — whereas for a timeout or a concurrency ceiling
+            # zero would take the provider offline.
+            tpm_limit = _non_negative_int(profile.get("tpmLimit"))
+            if tpm_limit is not None:
+                entry["tpm_limit"] = tpm_limit
+            rpm_limit = _non_negative_int(profile.get("rpmLimit"))
+            if rpm_limit is not None:
+                entry["rpm_limit"] = rpm_limit
 
             if entry:
                 limits[provider] = entry
         return limits
+
+    def lane_budgets(self) -> dict[tuple[str, str], dict[str, Any]]:
+        """Per-``(provider, lane)`` resource budgets.
+
+        One shape for what `TEXT_CB_*`, `TEXT_QUEUE_*` and `TEXT_JUDGE_*` each
+        expressed separately (see `core/runtime_defaults.LaneBudget`). A profile
+        row declares its lane; a row with no `lane` describes the user-facing
+        path, which is what every pre-existing provider-default row means.
+
+        Values are returned RAW (already snake_cased) and merged over the floor
+        by the caller, so an absent key keeps the floor rather than becoming a
+        zero.
+        """
+        budgets: dict[tuple[str, str], dict[str, Any]] = {}
+        for profile in self.runtime_profiles:
+            if not isinstance(profile, dict):
+                continue
+            provider = profile.get("provider")
+            if not isinstance(provider, str) or not provider:
+                continue
+            if profile.get("modelSlug") != _PROVIDER_DEFAULT_SLUG:
+                continue
+
+            lane = profile.get("lane")
+            lane = lane if lane in ("user", "judge") else "user"
+
+            entry: dict[str, Any] = {}
+            for served_name, field_name, coerce in (
+                ("maxConcurrent", "max_concurrent", _positive_int),
+                ("acquireTimeoutS", "acquire_timeout_s", _positive_float),
+                ("timeoutS", "timeout_s", _positive_int),
+                ("failureThreshold", "failure_threshold", _positive_int),
+                ("recoveryTimeoutS", "recovery_timeout_s", _positive_float),
+                ("queueMaxSize", "queue_max_size", _non_negative_int),
+                ("queueMaxWaitS", "queue_max_wait_s", _positive_float),
+                ("halfOpenMaxCalls", "half_open_max_calls", _positive_int),
+                ("resetTimeoutS", "reset_timeout_s", _positive_float),
+            ):
+                value = coerce(profile.get(served_name))
+                if value is not None:
+                    entry[field_name] = value
+
+            count_rate_limits = profile.get("countRateLimits")
+            if isinstance(count_rate_limits, bool):
+                entry["count_rate_limits"] = count_rate_limits
+
+            if entry:
+                budgets[(provider, lane)] = entry
+        return budgets
+
+    def generation_defaults(self) -> dict[str, float | int]:
+        """The platform generation profile (`core/defaults.py`).
+
+        Only keys the control plane actually served are returned, so an omitted
+        one keeps its in-code floor rather than being zeroed.
+        """
+        group = self.raw.get("generation")
+        if not isinstance(group, dict):
+            return {}
+
+        resolved: dict[str, float | int] = {}
+        temperature = _non_negative_float(group.get("temperature"))
+        if temperature is not None:
+            resolved["temperature"] = temperature
+        top_p = _positive_float(group.get("topP"))
+        if top_p is not None:
+            resolved["top_p"] = top_p
+        max_tokens = _positive_int(group.get("maxTokens"))
+        if max_tokens is not None:
+            resolved["max_tokens"] = max_tokens
+        return resolved
+
+    def external_guardrail(self) -> dict[str, Any]:
+        """The platform input-moderation posture (`core/guardrail_posture.py`)."""
+        group = self.raw.get("externalGuardrail")
+        return group if isinstance(group, dict) else {}
 
     def retention(self) -> dict[str, int]:
         """The idle-retention TTL forwarded to engines.
@@ -113,11 +199,37 @@ class EffectiveConfigSnapshot:
 
 
 def _positive_int(value: Any) -> int | None:
-    """Coerce a served number to a positive int, or None to keep the env value."""
+    """Coerce a served number to a positive int, or None to keep the floor."""
     if isinstance(value, bool) or not isinstance(value, (int, float)):
         return None
     coerced = int(value)
     return coerced if coerced > 0 else None
+
+
+def _non_negative_int(value: Any) -> int | None:
+    """As `_positive_int`, but ZERO is a meaningful served value.
+
+    Used where zero means "unlimited" (`tpmLimit`/`rpmLimit`) or "no queue"
+    (`queueMaxSize`) rather than "misconfigured".
+    """
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return None
+    coerced = int(value)
+    return coerced if coerced >= 0 else None
+
+
+def _positive_float(value: Any) -> float | None:
+    """Coerce a served number to a positive float, or None to keep the floor."""
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return None
+    return float(value) if value > 0 else None
+
+
+def _non_negative_float(value: Any) -> float | None:
+    """As `_positive_float`, but ZERO is meaningful (`temperature: 0`)."""
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return None
+    return float(value) if value >= 0 else None
 
 
 class EffectiveConfigClient:
@@ -253,7 +365,7 @@ class EffectiveConfigClient:
     def _sources(self) -> dict[str, str]:
         raw = self._snapshot.raw
         sources: dict[str, str] = {}
-        for group in ("runtimeProfiles", "retention", "concurrency"):
+        for group in ("runtimeProfiles", "retention", "concurrency", "generation", "externalGuardrail"):
             value = raw.get(group)
             if isinstance(value, dict) and isinstance(value.get("source"), str):
                 sources[group] = value["source"]

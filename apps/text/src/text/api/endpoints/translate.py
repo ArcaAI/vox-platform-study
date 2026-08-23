@@ -15,7 +15,11 @@ from text.core.logging import get_logger
 from text.models.responses import ErrorResponse
 from text.models.translate import TranslateRequest, TranslateResponse
 from text.translation.base import TranslateProviderNotFoundError, TranslateProviderRegistry
-from text.translation.sarvam import SarvamCredentialError, SarvamTranslateError
+from text.translation.sarvam import (
+    SarvamCredentialError,
+    SarvamModelError,
+    SarvamTranslateError,
+)
 
 logger = get_logger(__name__)
 
@@ -53,8 +57,10 @@ async def translate(
             target_language=request_body.target_language,
             overrides=overrides,
         )
-    except SarvamCredentialError as exc:
-        # Missing credential (no override, no platform key) — retryable/config.
+    except (SarvamCredentialError, SarvamModelError) as exc:
+        # No injected connection, or no resolved model selection. Both are a
+        # platform-configuration gap an admin can close, so both are a retryable
+        # 503 rather than a caller error — and neither is ever substituted for.
         raise HTTPException(
             status_code=503,
             detail=f"Translation unavailable: {exc}",
