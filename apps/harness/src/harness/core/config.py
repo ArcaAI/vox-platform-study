@@ -226,9 +226,18 @@ class ClaimCheckConfig(BaseSettings):
     secret_key: SecretStr = SecretStr("")
     region: str = "us-east-1"
     secure: bool = False
-    # Advisory blob lifetime (a bucket lifecycle rule enforces expiry out-of-band);
-    # a blob must outlive the longest workflow that may still dereference it.
-    ttl_seconds: int = 604_800  # 7 days
+    # There is deliberately no `ttl_seconds` here. It was declared as an "advisory blob
+    # lifetime (a bucket lifecycle rule enforces expiry out-of-band)" and read by NOTHING
+    # — the expiry really is enforced by the object store, so the field was documentation
+    # wearing a config costume, and an admin slider wired to it would control nothing.
+    # `test_task799_claim_check_config.py` keeps it gone.
+    #
+    # `bucket` / `endpoint_url` / `region` / `secure` above are the storage LOCATION, and
+    # they still belong in the `storage.platformDefault.*` / `TenantStorageConfig`
+    # cascade rather than in this parallel block. They are NOT migrated yet: those keys
+    # are `db-config` tier, and `EffectiveSettingsService.resolveEffective` resolves only
+    # `pipeline.*`, `models.*` and `global-kv` — so declaring `consumedBy: ['harness']`
+    # on them today would serve `null` on every pull. See the TASK-799 report.
 
     @field_validator("store")
     @classmethod
