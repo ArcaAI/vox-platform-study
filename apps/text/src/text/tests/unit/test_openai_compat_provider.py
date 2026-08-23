@@ -11,6 +11,7 @@ from pydantic import SecretStr
 from text.core.config import Settings
 from text.models.requests import GenerateRequest, ResponseFormat
 from text.models.stream import StreamChunk
+from text.tests.conftest import keyed
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -108,12 +109,16 @@ class TestOpenAICompatProvider:
     def config(self):
         from text.core.config import OpenAICompatConfig
 
-        return OpenAICompatConfig(
-            base_url="http://localhost:1234/v1",
-            api_key=SecretStr("test-key"),
-            default_model="test-model",
-            timeout_s=60,
-            max_concurrent=2,
+        # `api_key` is no longer constructor- or env-populatable here either
+        # (TASK-799 closed `TEXT_OPENAI_COMPAT_API_KEY`), so it goes on through
+        # `keyed()` — the same `model_copy` route the cloud configs use.
+        return keyed(
+            OpenAICompatConfig(
+                base_url="http://localhost:1234/v1",
+                default_model="test-model",
+                timeout_s=60,
+                max_concurrent=2,
+            )
         )
 
     @pytest.fixture()

@@ -26,7 +26,7 @@ from text.models.provider import ModelInfo, ProviderInfo
 from text.models.requests import GenerateRequest
 from text.models.stats import GenerationStats, stats_from_llama_cpp
 from text.models.stream import StreamChunk
-from text.providers.base import reject_vision
+from text.providers.base import CredentialPosture, reject_vision
 
 if TYPE_CHECKING:
     from opentelemetry.trace import Tracer
@@ -42,6 +42,8 @@ def _get_tracer() -> Tracer:
 
 class LlamaCppProvider:
     """llama.cpp server provider over the native ``/completion`` endpoint."""
+
+    credential_posture = CredentialPosture.SELF_HOST
 
     def __init__(self, config: LlamaCppConfig, http_client: httpx.AsyncClient) -> None:
         self._config = config

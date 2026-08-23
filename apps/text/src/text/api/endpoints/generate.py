@@ -270,60 +270,10 @@ def _get_provider_timeout(settings: Settings, provider_name: str) -> float:
 router = APIRouter(tags=["generate"])
 
 
-# TASK-737 — inbound tenant enforcement for the `/generate` surface.
-#
-# `X-Tenant-Id` is MANDATORY on every internal request carrying tenant-scoped work
-# (owner directive 2026-08-16), and this is the busiest such surface in the platform.
-# It resolves the tenant's BYOK provider/credential from this header, and TASK-735
-# derives `funding`/`cost_basis` from whichever tier supplied that credential — so a
-# dropped header mis-CONFIGURES and mis-BILLS the call in one move, with nothing
-# thrown or logged. That silence was the actual defect.
-#
-# This surface is now ENFORCING (owner decision D-A: finish properly and enabled for
-# day-1, no half-enabled flag). The earlier pass could only LOG here, because the
-# gateway callers listed in TASK-737 §7.4 still omitted the header and refusing them
-# would have taken down exactly the clinical traffic this ticket protects. Those
-# callers now send it, so the correct order — FIX THE CALLERS, THEN RAISE HERE — is
-# complete.
-#
-# 428 (not 400) mirrors the gateway's own `RequiresIfMatch`/ETag convention: a
-# mandatory request PRECONDITION is missing. It matches the two `apps/nlp` classify
-# routes already enforcing this, so one status code means one thing platform-wide.
-#
-# A DECLARED `tenantless:<reason>` marker is a legitimate value: some internal work
-# genuinely has no tenant (a platform-wide job queue, a control-plane pull), and it
-# says so rather than arriving indistinguishable from a header dropped in transit.
-# That distinction is precisely what makes ABSENT safe to refuse.
-_TENANTLESS_PREFIX = "tenantless:"
-
-
-def _require_inbound_tenant(x_tenant_id: str | None) -> None:
-    """Accept a real tenant or a DECLARED tenant-less marker; refuse absence.
-
-    Fails CLOSED — raised before any provider is selected or invoked, so a
-    tenant-less request never bills a credential resolved from the wrong tier.
-    """
-    raw = (x_tenant_id or "").strip()
-    if not raw:
-        logger.error(
-            "text.tenant_header.missing",
-            surface="/api/v1/generate",
-            detail=(
-                "internal request carried no X-Tenant-Id; refusing rather than "
-                "resolving the platform default provider and mis-attributing the "
-                "spend. This is a CALLER defect (TASK-737)."
-            ),
-        )
-        raise HTTPException(
-            status_code=428,
-            detail=(
-                "X-Tenant-Id is required on internal requests carrying tenant-scoped "
-                "work (TASK-737). Declare 'tenantless:<reason>' for genuinely "
-                "tenant-less internal work."
-            ),
-        )
-    if raw.startswith(_TENANTLESS_PREFIX):
-        logger.debug("text.tenant_header.declared_tenantless", marker=raw)
+# Inbound `X-Tenant-Id` enforcement used to live here as `_require_inbound_tenant`,
+# called by hand from this route and `/generate/batch`. It is now a middleware
+# precondition (`api/middleware/auth.py`) that every route inherits — the two
+# handlers below still declare the header because they READ it, not to guard it.
 
 
 @router.post(
@@ -362,8 +312,6 @@ async def generate(
 ) -> Any:
     if shutdown_manager and shutdown_manager.is_shutting_down:
         raise ShutdownError("Service is shutting down — not accepting new requests.")
-
-    _require_inbound_tenant(x_tenant_id)
 
     # Degrade-away-from-unhealthy routing (TASK-725 Task 2, design.md Services
     # program): a provider the LAST `/health` check marked unhealthy is never
@@ -852,8 +800,8 @@ async def submit_batch_generation(
     handler while the control plane is draining, exactly as it does there).
 
     Two additions beyond a literal mirror, both deliberate:
-    - ``X-Tenant-Id`` is REQUIRED (``_require_inbound_tenant``, the same 428 +
-      ``tenantless:<reason>`` gate ``/generate`` enforces) rather than merely
+    - ``X-Tenant-Id`` is REQUIRED (the 428 + ``tenantless:<reason>`` precondition
+      the auth middleware applies to every route) rather than merely
       forwarded — batch generation drives the same billable
       ``LLMProvider.generate()`` call the synchronous path does, so it carries
       the same per-request tenant-attribution requirement (owner directive,
@@ -865,8 +813,6 @@ async def submit_batch_generation(
       also fails closed with the same error, defense-in-depth for a task
       submitted directly onto the queue outside this endpoint).
     """
-    _require_inbound_tenant(x_tenant_id)
-
     try:
         registry.get(request_body.provider)
     except ProviderNotFoundError:

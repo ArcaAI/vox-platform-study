@@ -294,7 +294,13 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
         app.state.effective_config_client = EffectiveConfigClient(
             base_url=settings.gateway_url,
-            token=settings.service_token.get_secret_value(),
+            # Owner decision D-D: PRESENT the one shared `INTERNAL_ACCESS_TOKEN`;
+            # the legacy `TEXT_SERVICE_TOKEN` is only the fallback for an
+            # environment that has not migrated. Reading `settings.service_token`
+            # directly, as this did, sends an EMPTY token under the D-D posture —
+            # the gateway 401s, the failure is negative-cached, and the pod
+            # silently degrades to its env values with one warning per minute.
+            token=settings.peer_service_token(settings.service_token),
             service="text",
         )
 
@@ -322,7 +328,8 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         app.state.service_release_task = start_registration(
             http_client=http_client,
             gateway_url=settings.gateway_url,
-            service_token=settings.service_token.get_secret_value(),
+            # D-D, as above: the shared token first, legacy only as fallback.
+            service_token=settings.peer_service_token(settings.service_token),
             build_info=BuildInfoReader().get_build_info(),
             environment=settings.otel_deployment_environment,
         )

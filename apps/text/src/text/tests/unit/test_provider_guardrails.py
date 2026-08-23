@@ -23,19 +23,24 @@ from text.tests.conftest import keyed
 
 @pytest.fixture
 def bedrock_config_with_guardrail():
-    return BedrockConfig(
-        region="us-east-1",
-        default_model="anthropic.claude-3-sonnet-20240229-v1:0",
-        guardrail_id="gr-123",
-        guardrail_version="1",
+    # Keyed: no platform client is built without an explicit credential.
+    return keyed(
+        BedrockConfig(
+            region="us-east-1",
+            default_model="anthropic.claude-3-sonnet-20240229-v1:0",
+            guardrail_id="gr-123",
+            guardrail_version="1",
+        )
     )
 
 
 @pytest.fixture
 def bedrock_config_no_guardrail():
-    return BedrockConfig(
-        region="us-east-1",
-        default_model="anthropic.claude-3-sonnet-20240229-v1:0",
+    return keyed(
+        BedrockConfig(
+            region="us-east-1",
+            default_model="anthropic.claude-3-sonnet-20240229-v1:0",
+        )
     )
 
 
@@ -64,7 +69,7 @@ class TestBedrockGuardrailConfig:
         from text.providers.bedrock import BedrockProvider
 
         with patch("text.providers.bedrock.boto3") as mock_boto3:
-            mock_boto3.client.return_value = MagicMock()
+            mock_boto3.Session.return_value.client.return_value = MagicMock()
             provider = BedrockProvider(config=bedrock_config_with_guardrail)
 
         request = GenerateRequest(prompt="test prompt", provider="bedrock")
@@ -78,7 +83,7 @@ class TestBedrockGuardrailConfig:
         from text.providers.bedrock import BedrockProvider
 
         with patch("text.providers.bedrock.boto3") as mock_boto3:
-            mock_boto3.client.return_value = MagicMock()
+            mock_boto3.Session.return_value.client.return_value = MagicMock()
             provider = BedrockProvider(config=bedrock_config_no_guardrail)
 
         request = GenerateRequest(prompt="test prompt", provider="bedrock")
@@ -112,7 +117,7 @@ class TestBedrockGuardrailIntervened:
         }
 
         with patch("text.providers.bedrock.boto3") as mock_boto3:
-            mock_boto3.client.return_value = mock_client
+            mock_boto3.Session.return_value.client.return_value = mock_client
             provider = BedrockProvider(config=bedrock_config_with_guardrail)
 
         with patch("text.providers.bedrock.logger") as mock_logger:
