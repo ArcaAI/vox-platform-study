@@ -92,8 +92,15 @@ describe('model_path injection (NER)', () => {
 
 describe('model_path injection (diagnosis)', () => {
   it('injects model_path when the diagnosis row carries a localPath', async () => {
+    // The route resolves TWO keys, so each weight path must come
+    // from ITS OWN registry row — a blanket mock would let one row's localPath
+    // satisfy both assertions and hide a crossed pair.
     const aiTaskDefaults = {
-      getEffective: vi.fn().mockResolvedValue(effective('nlp.diagnosis', 'some/diagnosis-model', '/opt/hope/models/dx')),
+      getEffective: vi.fn(async (taskKey: string) =>
+        taskKey === 'nlp.ner'
+          ? effective('nlp.ner', 'blaze999/Medical-NER', '/opt/hope/models/ner')
+          : effective('nlp.diagnosis', 'some/diagnosis-model', '/opt/hope/models/dx'),
+      ),
     };
     const { controller, client } = makeController(aiTaskDefaults);
     client.suggestDiagnosis.mockResolvedValue({});
@@ -104,12 +111,18 @@ describe('model_path injection (diagnosis)', () => {
       text: 'chest pain',
       model_name: 'some/diagnosis-model',
       model_path: '/opt/hope/models/dx',
+      ner_model_name: 'blaze999/Medical-NER',
+      ner_model_path: '/opt/hope/models/ner',
     });
   });
 
-  it('omits model_path when the diagnosis row has none', async () => {
+  it('omits BOTH model_path fields when neither diagnosis row has one', async () => {
     const aiTaskDefaults = {
-      getEffective: vi.fn().mockResolvedValue(effective('nlp.diagnosis', 'some/diagnosis-model', null)),
+      getEffective: vi.fn(async (taskKey: string) =>
+        taskKey === 'nlp.ner'
+          ? effective('nlp.ner', 'blaze999/Medical-NER', null)
+          : effective('nlp.diagnosis', 'some/diagnosis-model', null),
+      ),
     };
     const { controller, client } = makeController(aiTaskDefaults);
     client.suggestDiagnosis.mockResolvedValue({});
@@ -119,6 +132,7 @@ describe('model_path injection (diagnosis)', () => {
     expect(client.suggestDiagnosis).toHaveBeenCalledWith({
       text: 'chest pain',
       model_name: 'some/diagnosis-model',
+      ner_model_name: 'blaze999/Medical-NER',
     });
   });
 });

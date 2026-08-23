@@ -62,6 +62,8 @@ class TestVaultSecretsDirCannotSetModelIdentity:
     def test_a_vault_file_cannot_select_a_model(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
+        import pydantic
+
         from nlp.core.config import TokenClassificationConfig
 
         secrets = tmp_path / "vault-secrets"
@@ -69,7 +71,11 @@ class TestVaultSecretsDirCannotSetModelIdentity:
         (secrets / "NLP_MODEL_NAME").write_text("attacker/model")
         monkeypatch.setenv("HOPE_SECRETS_DIR", str(secrets))
 
-        assert TokenClassificationConfig().model_name != "attacker/model"
+        # Stronger than "not the attacker's model": there is no default left for
+        # the filtered source to be compared against, so an unsupplied selection
+        # cannot resolve to anything at all (TASK-799 C.2).
+        with pytest.raises(pydantic.ValidationError):
+            TokenClassificationConfig()
 
     def test_a_vault_file_still_supplies_a_real_secret(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
@@ -87,7 +93,8 @@ class TestVaultSecretsDirCannotSetModelIdentity:
     def test_request_injection_remains_the_one_identity_lane(self) -> None:
         from nlp.core.config import TokenClassificationConfig
 
-        assert TokenClassificationConfig(model_name="db/selected").model_name == "db/selected"
+        config = TokenClassificationConfig(model_name="db/selected", tokenizer_name="db/selected")
+        assert config.model_name == "db/selected"
 
 
 class TestCacheKeyIncludesPath:

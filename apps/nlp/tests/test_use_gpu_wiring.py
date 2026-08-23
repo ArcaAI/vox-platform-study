@@ -24,6 +24,22 @@ from nlp.core.config import (
 )
 
 
+class _StubNer:
+    """A weightless stand-in for the suggester's NER.
+
+    `MedicalSuggester.initialize()` initializes its NER too (both selections are
+    required now), and these cases patch only the SUGGESTER's transformers
+    calls — a real classifier here would reach for the hub.
+    """
+
+    is_initialized = True
+
+    async def initialize(self) -> None: ...
+
+    async def shutdown(self) -> None: ...
+
+
+
 class TestTextClassifierUseGpu:
     @pytest.mark.asyncio
     async def test_use_gpu_false_forces_cpu_even_when_cuda_available(self):
@@ -78,7 +94,9 @@ class TestTokenClassifierUseGpu:
         when CUDA is reported available, regardless of config."""
         from nlp.services.token_classifier import TransformerTokenClassifier
 
-        config = TokenClassificationConfig(use_gpu=False)
+        config = TokenClassificationConfig(
+            model_name="test-org/ner", tokenizer_name="test-org/ner", use_gpu=False
+        )
         classifier = TransformerTokenClassifier(configs=config)
 
         with (
@@ -100,7 +118,9 @@ class TestTokenClassifierUseGpu:
         torch.cuda.is_available() exactly."""
         from nlp.services.token_classifier import TransformerTokenClassifier
 
-        config = TokenClassificationConfig()
+        config = TokenClassificationConfig(
+            model_name="test-org/ner", tokenizer_name="test-org/ner"
+        )
         assert config.use_gpu is True
         classifier = TransformerTokenClassifier(configs=config)
 
@@ -125,8 +145,10 @@ class TestMedicalSuggesterUseGpu:
         when CUDA is reported available, regardless of config."""
         from nlp.services.medical_suggester import MedicalSuggester
 
-        config = MedicalSuggesterConfig(use_gpu=False)
-        suggester = MedicalSuggester(config=config)
+        config = MedicalSuggesterConfig(
+            model_name="test-org/dx", tokenizer_name="test-org/dx", use_gpu=False
+        )
+        suggester = MedicalSuggester(config=config, token_classifier=_StubNer())
 
         with (
             patch("nlp.services.medical_suggester.AutoTokenizer"),
@@ -146,9 +168,11 @@ class TestMedicalSuggesterUseGpu:
         torch.cuda.is_available() exactly."""
         from nlp.services.medical_suggester import MedicalSuggester
 
-        config = MedicalSuggesterConfig()
+        config = MedicalSuggesterConfig(
+            model_name="test-org/dx", tokenizer_name="test-org/dx"
+        )
         assert config.use_gpu is True
-        suggester = MedicalSuggester(config=config)
+        suggester = MedicalSuggester(config=config, token_classifier=_StubNer())
 
         with (
             patch("nlp.services.medical_suggester.AutoTokenizer"),

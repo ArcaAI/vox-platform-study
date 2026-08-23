@@ -182,7 +182,24 @@ export class AiInferenceController {
   })
   @ApiOkResponse({ description: 'Upstream `{ suggestions[], ... }`, proxied verbatim.' })
   async suggestDiagnosis(@Body() body: SuggestDiagnosisRequest): Promise<Record<string, unknown>> {
+    // This route runs TWO models: `MedicalSuggester` extracts symptoms with an
+    // internal NER, then classifies disease over them. Only the disease
+    // selection was ever injected — the NER half was a hardcoded
+    // `blaze999/Medical-NER` literal inside apps/nlp, so half of a clinical
+    // route was un-configurable and invisible to the control plane.
+    //
+    // The NER half resolves the EXISTING `nlp.ner` key rather than a new one:
+    // it is the same medical token-classification task the playground NER tab
+    // and the three clinical NER callers already resolve, and its SYSTEM row
+    // (`medical-ner`) carries exactly the `sourceUri` the removed literal
+    // named — so one key governs every medical-NER surface, and re-pointing it
+    // moves them together instead of leaving this one behind.
+    //
+    // BOTH resolutions FAIL CLOSED (503, never a literal, never a neighbouring
+    // tenant's model), and both run BEFORE the upstream call, so an unresolved
+    // NER can never produce a half-configured request.
     const selection = await this.resolveDefaultModelSelection('nlp.diagnosis');
+    const nerSelection = await this.resolveDefaultModelSelection('nlp.ner');
     const runtimeParams = await this.resolveRuntimeParams(selection.provider, selection.modelSlug);
 
     return this.client.suggestDiagnosis({
@@ -192,6 +209,8 @@ export class AiInferenceController {
       ...(selection.sourceUri ? { model_name: selection.sourceUri } : {}),
       // Omitted when the row carries no localPath.
       ...(selection.localPath ? { model_path: selection.localPath } : {}),
+      ...(nerSelection.sourceUri ? { ner_model_name: nerSelection.sourceUri } : {}),
+      ...(nerSelection.localPath ? { ner_model_path: nerSelection.localPath } : {}),
       ...runtimeParams,
     });
   }
