@@ -55,14 +55,25 @@ describe('NAV_ENTRIES (capabilities-matrix section 3, reviewed 2026-07-04; playg
   // taking 56 -> 54 and tier 20-29 from 8 -> 6. No route was deleted: both are
   // still declared, still gated identically, and still reachable — see the
   // USER_MENU_ENTRIES describe below.
-  it('covers the full 54-route rail map across the four tiers (including /context-schemas, /playground/workbench, /workflow-runs, /workflow-studio, /security-policy)', () => {
-    expect(NAV_ENTRIES).toHaveLength(54);
-    expect(NAV_ENTRIES.filter((entry) => entry.tier === '10-19')).toHaveLength(22);
-    expect(NAV_ENTRIES.filter((entry) => entry.tier === '20-29')).toHaveLength(6);
+  // TASK-799 Phase 4 added the two screens whose gateway routes had shipped
+  // with no console consumer at all:
+  //   /ai-runtime-profiles (tier 10-19, E.2 — the hyperparameter / capacity /
+  //     timing plane; five operations under `admin/ai-runtime-profiles` and no
+  //     feature folder), taking 54 -> 55 and tier 10-19 from 22 -> 23.
+  //   /settings-registry (tier 20-29, E.1 — the descriptor-driven editor over
+  //     `admin/settings/catalog` + `admin/settings/registry/:key`; 210
+  //     descriptors with exactly ONE consumer, a single hardcoded category),
+  //     taking 55 -> 56 and tier 20-29 from 6 -> 7.
+  // `/settings` was NOT removed — it keeps the legacy raw-row and secret
+  // administration and is relabelled "Settings rows & secrets" to say so.
+  it('covers the full 56-route rail map across the four tiers (including /context-schemas, /playground/workbench, /workflow-runs, /workflow-studio, /security-policy)', () => {
+    expect(NAV_ENTRIES).toHaveLength(56);
+    expect(NAV_ENTRIES.filter((entry) => entry.tier === '10-19')).toHaveLength(23);
+    expect(NAV_ENTRIES.filter((entry) => entry.tier === '20-29')).toHaveLength(7);
     expect(NAV_ENTRIES.filter((entry) => entry.tier === '30-49')).toHaveLength(20);
     expect(NAV_ENTRIES.filter((entry) => entry.tier === '50-59')).toHaveLength(6);
-    // The two moved routes are accounted for, not lost.
-    expect(NAV_ENTRIES.length + USER_MENU_ENTRIES.length).toBe(56);
+    // The two routes moved to the user menu are accounted for, not lost.
+    expect(NAV_ENTRIES.length + USER_MENU_ENTRIES.length).toBe(58);
   });
 
   it('gates the credential policy on manage:all — every backing key is a globalOnly descriptor', () => {
@@ -376,6 +387,8 @@ const FROZEN_RAIL_ENTRIES: ReadonlyArray<readonly [string, NavTier, ReadonlyArra
   ],
   ['/ai-models', '10-19', [['manage', 'all']]],
   ['/ai-task-defaults', '10-19', [['manage', 'all']]],
+  // TASK-799 Phase 4 E.2 — hyperparameters/capacity/timing, SYSTEM-tenant only.
+  ['/ai-runtime-profiles', '10-19', [['manage', 'all']]],
   ['/rate-limits', '10-19', [['manage', 'all']]],
   ['/security-policy', '10-19', [['manage', 'all']]],
   ['/agentic-policy', '10-19', [['manage', 'all']]],
@@ -415,6 +428,13 @@ const FROZEN_RAIL_ENTRIES: ReadonlyArray<readonly [string, NavTier, ReadonlyArra
       ['manage', 'ApiKey'],
     ],
   ],
+  // TASK-799 Phase 4 E.1 — the descriptor-driven registry lane. `read` as well
+  // as `manage`: the catalog is RBAC-filtered and readable by any admin, and
+  // which keys are WRITABLE (and at which scope) is decided per descriptor.
+  ['/settings-registry', '20-29', [
+    ['read', 'GlobalSetting'],
+    ['manage', 'GlobalSetting'],
+  ]],
   ['/settings', '20-29', [['manage', 'GlobalSetting']]],
   [
     '/tenant-profile',
@@ -542,6 +562,8 @@ const FROZEN_DOMAIN_MEMBERSHIP: ReadonlyArray<readonly [NavDomainId, readonly st
       '/ai-operations/metrics',
       '/ai-operations/consumption',
       '/ai-operations/reconciliation',
+      // TASK-799 Phase 4 E.2.
+      '/ai-runtime-profiles',
     ],
   ],
   ['knowledge-agents', ['/agents', '/prompt-templates', '/context-schemas', '/knowledge', '/dna-writing-styles']],
@@ -559,7 +581,9 @@ const FROZEN_DOMAIN_MEMBERSHIP: ReadonlyArray<readonly [NavDomainId, readonly st
     ],
   ],
   ['identity-access', ['/users', '/rbac/roles', '/rbac/policies', '/api-keys', '/identity-providers', '/allowed-origins', '/security-policy']],
-  ['platform-ops', ['/queues', '/schedulers', '/audit-logs', '/db-studio', '/rate-limits', '/settings', '/storage']],
+  // `/settings-registry` (TASK-799 Phase 4 E.1) joins `/settings` here: same
+  // domain, different resource — descriptor-governed keys vs raw rows/secrets.
+  ['platform-ops', ['/queues', '/schedulers', '/audit-logs', '/db-studio', '/rate-limits', '/settings-registry', '/settings', '/storage']],
   [
     'playground',
     [
@@ -619,7 +643,9 @@ describe('NAV_DOMAINS', () => {
     }
   });
 
-  it('partitions the 54 rail routes exactly as the ticket Domain Model does (3·6·10·5·3·7·7·7·6)', () => {
+  // 3·6·11·5·3·7·7·8·6 — ai-platform 10 -> 11 (/ai-runtime-profiles) and
+  // platform-ops 7 -> 8 (/settings-registry), both TASK-799 Phase 4.
+  it('partitions the 56 rail routes exactly as the ticket Domain Model does (3·6·11·5·3·7·7·8·6)', () => {
     for (const [id, routes] of FROZEN_DOMAIN_MEMBERSHIP) {
       expect(
         NAV_ENTRIES.filter((entry) => entry.domain === id)
@@ -628,7 +654,7 @@ describe('NAV_DOMAINS', () => {
         `domain "${id}" membership drifted`,
       ).toEqual([...routes].sort());
     }
-    expect(NAV_ENTRIES).toHaveLength(54);
+    expect(NAV_ENTRIES).toHaveLength(56);
   });
 
   it('keeps domain orthogonal to tier — /ai-configuration is tenant-tier but AI Platform (OD-2)', () => {

@@ -18,6 +18,7 @@ import {
   IconDatabaseSearch,
   IconDna,
   IconDna2,
+  IconEngine,
   IconFileText,
   IconFingerprint,
   IconFlask,
@@ -32,6 +33,7 @@ import {
   IconLayoutDashboard,
   IconLayoutGrid,
   IconLicense,
+  IconListDetails,
   IconListTree,
   IconLockCog,
   IconMicrophone,
@@ -247,6 +249,19 @@ export const NAV_ENTRIES: readonly NavEntry[] = [
     required: [['manage', 'all']],
     implemented: true,
   },
+  // TASK-799 Phase 4 (E.2) — the hyperparameter / capacity / timing plane.
+  // `admin/ai-runtime-profiles` shipped five operations with no console screen,
+  // so these knobs were API-only. Every row is pinned to the SYSTEM tenant by
+  // the service, hence tier 10-19 and `manage:all`.
+  {
+    route: '/ai-runtime-profiles',
+    domain: 'ai-platform',
+    label: 'AI runtime profiles',
+    tier: '10-19',
+    icon: IconEngine,
+    required: [['manage', 'all']],
+    implemented: true,
+  },
   {
     route: '/rate-limits',
     domain: 'platform-ops',
@@ -427,10 +442,35 @@ export const NAV_ENTRIES: readonly NavEntry[] = [
     ],
     implemented: true,
   },
+  // TASK-799 Phase 4 (E.1) — the descriptor-driven registry lane. 210
+  // descriptors existed with exactly ONE console consumer (the Agentic Context
+  // tab, a single hardcoded category), so `GET admin/settings/catalog` +
+  // `PUT admin/settings/registry/:key` were fully functional and unreachable.
+  //
+  // Distinct from `/settings` below, which is the LEGACY raw-row CRUD over the
+  // same table keyed by a key-name regex. That screen keeps row + secret
+  // administration; this one owns the descriptor-governed keys, where tier /
+  // maxScope / failMode / killSwitch / floorDirection / sourceScope apply.
+  //
+  // `read:GlobalSetting` rather than `manage:` — the catalog is RBAC-filtered
+  // and readable by any admin; which keys are WRITABLE, and at which scope, is
+  // decided per descriptor in the drawer and enforced by the gateway.
+  {
+    route: '/settings-registry',
+    domain: 'platform-ops',
+    label: 'Settings registry',
+    tier: '20-29',
+    icon: IconListDetails,
+    required: [
+      ['read', 'GlobalSetting'],
+      ['manage', 'GlobalSetting'],
+    ],
+    implemented: true,
+  },
   {
     route: '/settings',
     domain: 'platform-ops',
-    label: 'Settings & secrets',
+    label: 'Settings rows & secrets',
     tier: '20-29',
     icon: IconSettings,
     required: [['manage', 'GlobalSetting']],
