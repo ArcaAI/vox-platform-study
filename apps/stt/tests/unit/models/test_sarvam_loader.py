@@ -11,10 +11,10 @@ from unittest.mock import MagicMock, patch
 import pytest
 from pydantic import SecretStr
 
-from stt.core.exceptions import CloudASRAuthError
+from stt.core.exceptions import CloudASRAuthError, ModelNotFoundError
 from stt.models.base_loader import LoadedModel
 from stt.models.cloud_asr import CloudRestConfig
-from stt.models.sarvam_loader import DEFAULT_SARVAM_MODEL, SarvamLoader
+from stt.models.sarvam_loader import SarvamLoader
 from stt.pipeline.dto import (
     AiModelConfig,
     AiModelDownloadStatus,
@@ -132,15 +132,40 @@ class TestSarvamLoaderLoad:
         assert exc.value.details["provider"] == "sarvam"
 
     @pytest.mark.asyncio
-    async def test_default_model_when_no_source_uri(self):
+    async def test_model_selection_fails_closed_when_no_source_uri(self):
+        """TASK-799 / F-11: an unresolved model SELECTION must raise, not default.
+
+        This loader used to fall back to a hardcoded `"saaras:v4"` when the
+        `AiModel` row carried no `source_uri`. That is the failure mode rule 09
+        names outright — "provider/model SELECTION is fail-closed (503, never an
+        env fallback)" — and it is worse than a plain outage: the caller gets a
+        successful load of a model NOBODY selected, billed to the tenant's own
+        Sarvam key, with nothing in the response saying which model ran.
+
+        The credential is present here on purpose, so the failure can only be
+        attributed to the missing selection.
+        """
+        loader = SarvamLoader()
+        with patch("stt.models.sarvam_loader.get_settings") as gs:
+            gs.return_value = _settings(None)
+            with pytest.raises(ModelNotFoundError) as exc:
+                await loader.load(
+                    _config(source_uri=None),
+                    provider_overrides={"sarvam": {"api_key": "byok-key"}},
+                )
+        assert exc.value.details["provider"] == "sarvam"
+        assert exc.value.details["slug"] == "sarvam-stt"
+
+    @pytest.mark.asyncio
+    async def test_a_resolved_selection_reaches_the_wire(self):
         loader = SarvamLoader()
         with patch("stt.models.sarvam_loader.get_settings") as gs:
             gs.return_value = _settings(None)
             result = await loader.load(
-                _config(source_uri=None),
+                _config(source_uri="saaras:v4"),
                 provider_overrides={"sarvam": {"api_key": "byok-key"}},
             )
-        assert result.model.model_name == DEFAULT_SARVAM_MODEL
+        assert result.model.model_name == "saaras:v4"
 
     @pytest.mark.asyncio
     async def test_key_absent_from_repr_and_logs(self, caplog):

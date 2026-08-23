@@ -45,7 +45,7 @@ async def _collect(provider, req):
 @pytest.mark.asyncio
 async def test_streams_pcm_chunk_per_segment():
     provider = KokoroProvider(
-        KokoroConfig(voice="af_heart"), pipeline=FakePipeline(segments=3, samples=2400)
+        KokoroConfig(), pipeline=FakePipeline(segments=3, samples=2400)
     )
     chunks = await _collect(provider, _req(fmt=AudioFormat.PCM))
     assert len(chunks) == 3
@@ -63,8 +63,14 @@ async def test_wav_is_single_chunk_with_riff_header():
 
 @pytest.mark.asyncio
 async def test_passes_requested_voice_to_pipeline():
+    """The catalog binding on the request is the ONLY source of the voice.
+
+    `KokoroConfig` no longer carries a `voice` (TASK-799 lane C): it held
+    `af_heart`, which is already the catalog's kokoro binding for `en-female-1`,
+    and the router passes that binding as `req.provider_voice` on every request.
+    """
     pipeline = FakePipeline()
-    provider = KokoroProvider(KokoroConfig(voice="af_default"), pipeline=pipeline)
+    provider = KokoroProvider(KokoroConfig(), pipeline=pipeline)
     await _collect(provider, _req(provider_voice="af_heart"))
     assert pipeline.voice == "af_heart"
 

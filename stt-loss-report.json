@@ -1,0 +1,204 @@
+{
+  "harness": "TASK-455 S1-EVAL streaming loss/latency (AC-5/6) — through the WS gateway",
+  "generated_at": "2026-08-23T13:36:38.258359+00:00",
+  "target": {
+    "api_url": "http://localhost:8868",
+    "ws_origin": "ws://localhost:8868",
+    "pipeline_id": "81000000-0000-0000-0001-000000000402",
+    "session_id": "01a02ed5-b536-7be9-bcde-90f31b097f9d",
+    "warmed": true
+  },
+  "fixture": {
+    "source": "wav",
+    "path": "/Users/taphuynh/Desktop/igglo/ARCAAI/hope-v2/.claude/worktrees/agent-ab38fb7f379110e26/apps/stt/tests/e2e/fixtures/20260205_52886591770282917_ml.wav",
+    "duration_s": 30.0,
+    "sample_rate": 16000,
+    "frame_ms": 80.0,
+    "n_frames": 375
+  },
+  "feed": {
+    "feed_span_s": 29.92,
+    "realtime_ratio": 0.997,
+    "closed_status_received": true
+  },
+  "metrics": {
+    "first_partial_ms": 2118.8,
+    "ttfw_ms": 2118.8,
+    "commit_latency_ms": {
+      "count": 3,
+      "mean": 12187.5,
+      "p50": 14582.5,
+      "p99": 14990.6,
+      "min": 6981.0,
+      "max": 14998.9
+    },
+    "partial_revision": {
+      "partials": 7,
+      "revisions": 5,
+      "rate": 0.7143
+    },
+    "committed_revision": {
+      "partials": 7,
+      "revisions": 0,
+      "rate": 0.0
+    },
+    "loss": {
+      "frames_sent": 375,
+      "audio_seconds_sent": 30.0,
+      "final_coverage_seconds_max": 29.86,
+      "final_coverage_seconds_sum": 29.57,
+      "audio_coverage_ratio": 0.995,
+      "seq": {
+        "max_seq": 10,
+        "distinct": 10,
+        "missing": [],
+        "gap_count": 0
+      }
+    },
+    "counts": {
+      "partials": 7,
+      "finals": 3,
+      "errors": 0,
+      "statuses": [
+        "finalizing",
+        "closed"
+      ]
+    },
+    "per_final": [
+      {
+        "seq": 5,
+        "end_time_s": 8.48,
+        "commit_latency_ms": 6981.0,
+        "text_preview": "வரும் இருக்கிறேன் கைங்க மாசம் நாலாத்தியதி யாயிருந்தல் லுராண்"
+      },
+      {
+        "seq": 9,
+        "end_time_s": 26.432,
+        "commit_latency_ms": 14582.5,
+        "text_preview": "இன்ன நமுகுத் துண்ணல் எடுகாம் இப்போம் மொதததில் என்கனி உன்ட மே"
+      },
+      {
+        "seq": 10,
+        "end_time_s": 29.856,
+        "commit_latency_ms": 14998.9,
+        "text_preview": "மடக்கொண்டு முட்ட, சந்தோஷ் பரங்கதுபோலே"
+      }
+    ]
+  },
+  "definitions": {
+    "clock": "all *_ms values are on this WS client's monotonic perf_counter clock (send = ws.send() return; receive = onmessage) — single clock, no skew; measures the full mic→WS→Redis→STT→Redis→WS caption loop",
+    "first_partial_ms": "first transcript (any) receive − send of first speech frame",
+    "ttfw_ms": "first non-empty-text transcript receive − send of first speech frame",
+    "commit_latency_ms": "per final: receive − send of the frame containing the segment endTime",
+    "partial_revision_rate": "fraction of partials whose text is not a startswith-extension of the prior partial",
+    "loss.audio_coverage_ratio": "max final endTime / audio seconds sent",
+    "loss.seq": "gaps in the gateway monotonic transcript seq = dropped captions"
+  },
+  "baseline_contract_for_TASK_457": "This is the BASELINE only (no thresholds asserted). TASK-457 (Redis consumer-groups migration) must show NO REGRESSION vs these numbers: commit_latency_ms P50/P99 not materially higher, partial_revision.rate not higher, loss.seq.gap_count and audio_coverage_ratio not worse, on the same fixture + pipeline + frame_ms.",
+  "events": [
+    {
+      "recv_ms": 1.5,
+      "kind": "other",
+      "seq": null,
+      "text_preview": "",
+      "end_time": 0.0,
+      "status": ""
+    },
+    {
+      "recv_ms": 2118.9,
+      "kind": "transcript_partial",
+      "seq": 1,
+      "text_preview": "Thank you.",
+      "end_time": 0.576,
+      "status": ""
+    },
+    {
+      "recv_ms": 3957.8,
+      "kind": "transcript_partial",
+      "seq": 2,
+      "text_preview": "Thank you.",
+      "end_time": 2.432,
+      "status": ""
+    },
+    {
+      "recv_ms": 6174.6,
+      "kind": "transcript_partial",
+      "seq": 3,
+      "text_preview": "Варю перекю каином.",
+      "end_time": 4.352,
+      "status": ""
+    },
+    {
+      "recv_ms": 13767.5,
+      "kind": "transcript_partial",
+      "seq": 4,
+      "text_preview": "입는 암흑",
+      "end_time": 9.216,
+      "status": ""
+    },
+    {
+      "recv_ms": 15462.4,
+      "kind": "transcript_final",
+      "seq": 5,
+      "text_preview": "வரும் இருக்கிறேன் கைங்க மாசம் நாலாத்தியதி யாயிருந்தல் லுராண்",
+      "end_time": 8.48,
+      "status": ""
+    },
+    {
+      "recv_ms": 19312.6,
+      "kind": "transcript_partial",
+      "seq": 6,
+      "text_preview": "இன்று நமுற்கு துண்ணல் எடுகாம் இப்போம் மொதததில் என்னின் உன்ட ",
+      "end_time": 14.016,
+      "status": ""
+    },
+    {
+      "recv_ms": 24006.7,
+      "kind": "transcript_partial",
+      "seq": 7,
+      "text_preview": "நாமஸ்காரம் டாக்டர் சரியருகி சேஷம் வாலி பத் தில் எற்றுன்டாய் ",
+      "end_time": 19.616,
+      "status": ""
+    },
+    {
+      "recv_ms": 29930.9,
+      "kind": "status",
+      "seq": null,
+      "text_preview": "",
+      "end_time": 0.0,
+      "status": "finalizing"
+    },
+    {
+      "recv_ms": 34008.0,
+      "kind": "transcript_partial",
+      "seq": 8,
+      "text_preview": "மாட்கு நான்",
+      "end_time": 26.976,
+      "status": ""
+    },
+    {
+      "recv_ms": 40984.4,
+      "kind": "transcript_final",
+      "seq": 9,
+      "text_preview": "இன்ன நமுகுத் துண்ணல் எடுகாம் இப்போம் மொதததில் என்கனி உன்ட மே",
+      "end_time": 26.432,
+      "status": ""
+    },
+    {
+      "recv_ms": 44839.3,
+      "kind": "transcript_final",
+      "seq": 10,
+      "text_preview": "மடக்கொண்டு முட்ட, சந்தோஷ் பரங்கதுபோலே",
+      "end_time": 29.856,
+      "status": ""
+    },
+    {
+      "recv_ms": 44840.6,
+      "kind": "status",
+      "seq": null,
+      "text_preview": "",
+      "end_time": 0.0,
+      "status": "closed"
+    }
+  ]
+}

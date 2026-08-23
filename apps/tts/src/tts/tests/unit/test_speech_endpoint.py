@@ -18,7 +18,7 @@ def _app(providers: dict | None = None):
     # picks up a real TTS_SERVICE_TOKEN from the host/.env.dev environment and
     # every unauthenticated test client call 401s (pre-existing env-coupling,
     # unrelated to; test_stream_ws.py's `_app` already does this).
-    app = create_app(settings_override=Settings(debug=True, service_token=""))
+    app = create_app(settings_override=Settings(debug=True, internal_access_token=""))
     for name, engine in (providers or {}).items():
         app.state.provider_registry.register(name, engine)
     return app

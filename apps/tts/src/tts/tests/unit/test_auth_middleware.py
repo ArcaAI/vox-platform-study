@@ -18,7 +18,7 @@ NONEXEMPT = "/api/v1/audio/speech"  # future synthesis route; non-exempt
 
 
 def _make_app(*, service_token: str = ""):
-    settings = Settings(host="127.0.0.1", port=5099, debug=True, service_token=service_token)
+    settings = Settings(host="127.0.0.1", port=5099, debug=True, internal_access_token=service_token)
     return create_app(settings_override=settings)
 
 

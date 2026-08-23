@@ -61,7 +61,12 @@ class SarvamProvider:
             "text": req.text,
             "target_language_code": self._target_language(req.locale),
             "model": self._config.model,
-            "speaker": req.provider_voice or self._config.voice_ml,
+            # The catalog binding, always. There is no config fallback since
+            # TASK-799 lane C: `voice_ml`/`voice_en` both held `ishita`, which is
+            # already the catalog's sarvam binding, and the router guarantees
+            # `provider_voice` is set (`candidates()` skips a provider the voice
+            # is not bound to).
+            "speaker": req.provider_voice,
             "speech_sample_rate": str(req.sample_rate),
             "output_audio_codec": _CODEC.get(req.fmt, "linear16"),
             "pace": max(0.5, min(req.speed, 2.0)),

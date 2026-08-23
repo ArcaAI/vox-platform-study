@@ -58,3 +58,23 @@ class VoiceCatalog:
 
     def list_voices(self) -> list[Voice]:
         return list(self._voices.values())
+
+    def default_binding(self, provider: str, locale_prefix: str) -> str | None:
+        """The first catalog voice for ``locale_prefix`` that ``provider`` can speak.
+
+        The catalog is the SINGLE source of provider voice names (TASK-799 lane
+        C): the per-provider `voice_en` / `voice_ml` / `speaker_*` / `voice`
+        settings that duplicated these strings are gone. On the request path the
+        router already resolves `voice.bindings[provider]` into
+        `req.provider_voice`, so this exists for the ONE path that has no
+        request to resolve from — boot-time warm-up.
+
+        Returns ``None`` when the provider has no binding at that locale, which
+        the caller must treat as "nothing to warm up" rather than substituting a
+        name. Inventing one here would put a voice into the catalog's job
+        without putting it in the catalog.
+        """
+        for voice in self._voices.values():
+            if voice.locale.startswith(locale_prefix) and provider in voice.bindings:
+                return voice.bindings[provider]
+        return None

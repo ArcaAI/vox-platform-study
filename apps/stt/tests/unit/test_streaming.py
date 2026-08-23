@@ -1429,18 +1429,38 @@ class TestSessionManager:
 
         assert captured == [300]
 
-    def test_inference_stop_timeout_configurable_via_env(self, monkeypatch):
-        """STREAMING_INFERENCE_STOP_TIMEOUT_S must actually control
-        SessionManager._inference_stop_timeout_s. It was a phantom knob:
-        streaming_inference_stop_timeout_s was never declared on Settings, so
-        getattr() always fell back to the hardcoded 30.0 default regardless
-        of env."""
+    def test_inference_stop_timeout_is_configurable_from_the_control_plane(
+        self, monkeypatch
+    ):
+        """The control-plane value must actually reach
+        `SessionManager._inference_stop_timeout_s`.
+
+        This knob has a history of being unreachable: it was once a phantom —
+        `streaming_inference_stop_timeout_s` was not declared on `Settings` at
+        all, so `getattr()` always fell back to a hardcoded 30.0 whatever the
+        env said. TASK-799 moves it to `stt.streaming.inferenceStopTimeoutS`,
+        so this asserts the NEW delivery path end-to-end rather than the
+        settings field in isolation — the same class of "the knob is declared
+        but nothing reads it" bug is what the assertion is here to catch.
+        """
         from stt.core.config.settings import get_settings
+        from stt.core.control_plane import apply_control_plane
 
         monkeypatch.setenv("LOG_LEVEL", "INFO")
-        monkeypatch.setenv("STREAMING_INFERENCE_STOP_TIMEOUT_S", "7.5")
         get_settings.cache_clear()
         try:
+            apply_control_plane(
+                get_settings(),
+                {
+                    "settings": {
+                        "stt.streaming.inferenceStopTimeoutS": {
+                            "value": 7.5,
+                            "dataType": "number",
+                            "source": "db",
+                        }
+                    }
+                },
+            )
             mgr = self._make_manager()
             assert mgr._inference_stop_timeout_s == 7.5
         finally:
@@ -1489,7 +1509,14 @@ class TestStreamingSettings:
         assert s.streaming_result_stream_expire_s == 3600
         assert s.streaming_session_metadata_expire_s == 86400
 
-    def test_override_via_env(self, monkeypatch):
+    def test_env_no_longer_overrides_the_streaming_knobs(self, monkeypatch):
+        """TASK-799: the streaming knobs are control-plane owned.
+
+        Streaming capacity and timeouts are exactly the values an operator needs
+        to retune while sessions are live, which is what makes them wrong as env
+        vars (rule 09: "env vars are immutable for the process lifetime").
+        The env path is now closed structurally, not merely deprecated.
+        """
         from stt.core.config.settings import Settings
 
         monkeypatch.setenv("LOG_LEVEL", "INFO")
@@ -1497,6 +1524,38 @@ class TestStreamingSettings:
         monkeypatch.setenv("STREAMING_EMBEDDING_DEVICE", "cuda:1")
         monkeypatch.setenv("STREAMING_INFERENCE_STOP_TIMEOUT_S", "12.5")
         s = Settings()
+        assert s.streaming_max_concurrent == 0
+        assert s.streaming_embedding_device == "auto"
+        assert s.streaming_inference_stop_timeout_s == 30.0
+
+    def test_the_control_plane_overrides_the_streaming_knobs(self, monkeypatch):
+        from stt.core.config.settings import Settings
+        from stt.core.control_plane import apply_control_plane
+
+        monkeypatch.setenv("LOG_LEVEL", "INFO")
+        s = Settings()
+        apply_control_plane(
+            s,
+            {
+                "settings": {
+                    "stt.streaming.maxConcurrent": {
+                        "value": 42,
+                        "dataType": "number",
+                        "source": "db",
+                    },
+                    "stt.streaming.embeddingDevice": {
+                        "value": "cuda:1",
+                        "dataType": "string",
+                        "source": "db",
+                    },
+                    "stt.streaming.inferenceStopTimeoutS": {
+                        "value": 12.5,
+                        "dataType": "number",
+                        "source": "db",
+                    },
+                }
+            },
+        )
         assert s.streaming_max_concurrent == 42
         assert s.streaming_embedding_device == "cuda:1"
         assert s.streaming_inference_stop_timeout_s == 12.5

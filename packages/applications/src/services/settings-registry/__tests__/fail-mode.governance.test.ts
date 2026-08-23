@@ -259,6 +259,22 @@ describe('env/vault-kv descriptor keys resolve to the real variable names', () =
     // per-service `*_SERVICE_TOKEN` entries above are retained only as a
     // backward-compatibility fallback, so both appear here during the overlap.
     'internal.accessToken': 'INTERNAL_ACCESS_TOKEN',
+    // tts provider/engine enable flags (TASK-799 lane C). Still env-read —
+    // they are deployment SHAPE, coupled to which optional extras an image
+    // installed, and `TTS_KOKORO_ENABLED=true` in the k8s ConfigMap is what
+    // makes a keyless deployment reach Ready at all. They carry
+    // `targetTier: 'redis-flag'` so the pending migration stays queryable.
+    //
+    // The last two keys deliberately break the camelCase spelling their
+    // `global-kv` siblings use (`tts.indicParler.*` / `tts.indicF5.*`): an
+    // env-tier key must DERIVE its real variable, and the variables the service
+    // reads are `TTS_PARLER_ENABLED` / `TTS_INDICF5_ENABLED`. This assertion is
+    // exactly what caught the mismatch.
+    'tts.azure.enabled': 'TTS_AZURE_ENABLED',
+    'tts.sarvam.enabled': 'TTS_SARVAM_ENABLED',
+    'tts.kokoro.enabled': 'TTS_KOKORO_ENABLED',
+    'tts.parler.enabled': 'TTS_PARLER_ENABLED',
+    'tts.indicf5.enabled': 'TTS_INDICF5_ENABLED',
   };
 
   /**
