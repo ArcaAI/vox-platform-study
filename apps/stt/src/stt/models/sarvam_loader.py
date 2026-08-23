@@ -15,15 +15,21 @@ import logging
 from pydantic import SecretStr
 
 from ..core.config.settings import get_settings
-from ..core.exceptions import CloudASRAuthError
+from ..core.exceptions import CloudASRAuthError, ModelNotFoundError
 from ..pipeline.dto import AiModelConfig, AiModelFormat
 from .base_loader import BaseModelLoader, LoadedModel
 from .cloud_asr import CloudRestConfig, resolve_override_key
 
 logger = logging.getLogger(__name__)
 
-# Sarvam speech-to-text default model (saaras family, code-switch capable).
-DEFAULT_SARVAM_MODEL = "saaras:v4"
+# There is deliberately NO `DEFAULT_SARVAM_MODEL` here (TASK-799 lane C,
+# assessment F-11). It used to be `"saaras:v4"` and was substituted whenever the
+# resolved `AiModel` row carried no `source_uri` — a hardcoded SELECTION, which
+# rule 09 forbids outright, and one that reached the wire under a tenant's own
+# BYO key. Selection is `failMode: 'closed'`: the row's `source_uri` (or an
+# explicit per-request `model` override) is the only authority, and its absence
+# raises rather than picking a model on the caller's behalf.
+#
 # The provider key under which a per-tenant override arrives (gateway wire).
 SARVAM_OVERRIDE_KEY = "sarvam"
 
@@ -56,7 +62,7 @@ class SarvamLoader(BaseModelLoader):
 
         api_key_str = None
         base_url = settings.sarvam_base_url
-        model_name = model_config.source_uri or DEFAULT_SARVAM_MODEL
+        model_name = model_config.source_uri
         used_override = False
 
         if override:
@@ -64,6 +70,15 @@ class SarvamLoader(BaseModelLoader):
             base_url = override.get("base_url") or base_url
             model_name = override.get("model") or model_name
             used_override = bool(api_key_str)
+
+        # FAIL CLOSED on an unresolved selection, and do it BEFORE the
+        # credential check so the operator is told which of the two is missing.
+        if not model_name:
+            raise ModelNotFoundError(
+                "No Sarvam model is selected: the resolved AiModel row carries no "
+                "source_uri and the request supplied no model override.",
+                details={"provider": SARVAM_OVERRIDE_KEY, "slug": model_config.slug},
+            )
 
         if not api_key_str:
             raise CloudASRAuthError(

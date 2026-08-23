@@ -484,13 +484,23 @@ class TestP507WhisperCppEngine:
 
 
 class TestP4EmbeddingDim:
-    """Settings-driven voice-profile embedding dim."""
+    """The voice-profile embedding dim follows the SCHEMA, not a setting."""
 
-    def test_extraction_dim_follows_settings(self):
+    def test_extraction_dim_follows_the_module_constant(self):
+        """TASK-799: `VOICE_PROFILE_EMBEDDING_DIM` is gone; the constant is the source.
+
+        It was previously settable from env *and* stated in the Prisma
+        `vector(N)` column — one fact, two homes, and an operator could move
+        only one of them. `test_task799_env_surface.py` now gates the constant
+        against `user.prisma` directly, so this asserts the remaining half:
+        the service reads that constant rather than any settings field.
+        """
         from unittest.mock import MagicMock, patch
 
         from stt.voice_profile import extraction_service as es
 
+        # A settings object that still carries the retired field must NOT be
+        # consulted — that is the regression this guards.
         settings = MagicMock(voice_profile_embedding_dim=192)
         with patch.object(es, "EXPECTED_EMBEDDING_DIM", 256):
             with patch("stt.core.config.settings.get_settings", return_value=settings):
@@ -499,7 +509,7 @@ class TestP4EmbeddingDim:
                     vad_service=MagicMock(),
                     min_cross_sample_similarity=0.5,
                 )
-        assert svc._expected_embedding_dim == 192
+        assert svc._expected_embedding_dim == 256
 
     def test_explicit_dim_still_wins(self):
         from unittest.mock import MagicMock

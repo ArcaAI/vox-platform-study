@@ -129,7 +129,11 @@ class TestSettings:
             assert not hasattr(settings, "azure_foundry_api_key")
             assert not hasattr(settings, "azure_foundry_model")
             assert settings.azure_foundry_enabled is False
-            assert settings.azure_foundry_endpoint == "https://res.cognitiveservices.azure.com"
+            # TASK-799: the ENDPOINT joined the enable flag in the control
+            # plane (`stt.azureFoundry.endpoint`). It is not a credential, but
+            # it IS the address a preview PHI-bearing engine is called at, and
+            # changing it must not need a redeploy.
+            assert settings.azure_foundry_endpoint is None
 
     def test_verified_dead_settings_fields_are_gone(self):
         """Fields with ZERO read sites anywhere in the service. `WORKER_CONCURRENCY`
@@ -161,7 +165,15 @@ class TestSettings:
             assert settings.diarization_hf_model_id == "pyannote/wespeaker-voxceleb-resnet34-LM"
 
     def test_env_override(self):
-        """Test environment variable overrides."""
+        """Process identity and topology stay env-settable; build identity does not.
+
+        `DEBUG` / `HOST` / `PORT` / `LOG_LEVEL` are the bootstrap floor — how the
+        process is launched and where it listens — so they remain env vars.
+        `APP_NAME` / `APP_VERSION` are BUILD identity and were removed from the
+        env surface by TASK-799: the authoritative version is the release tag in
+        the image's `build-info.json`, and a service that reports whatever
+        version an env var claims is the `apps/api` reported-`0.1.0` defect.
+        """
         env_vars = {
             "APP_NAME": "test-stt",
             "APP_VERSION": "3.0.0",
@@ -174,8 +186,8 @@ class TestSettings:
         with patch.dict(os.environ, env_vars, clear=True):
             settings = Settings()
 
-            assert settings.app_name == "test-stt"
-            assert settings.app_version == "3.0.0"
+            assert settings.app_name == "stt"
+            assert settings.app_version == "2.0.0"
             assert settings.debug is True
             assert settings.host == "127.0.0.1"
             assert settings.port == 9000
@@ -235,7 +247,11 @@ class TestSettings:
 
             assert settings.api_gateway_url == "http://api:8868/api/v1"
             assert settings.api_gateway_key.get_secret_value() == "secret-key"
-            assert settings.api_gateway_timeout == 60
+            # TASK-799: the URL and KEY stay in env — they are BOOTSTRAP
+            # TRANSPORT, the means by which this process reaches the config
+            # source, so they cannot themselves come from it. The TIMEOUT is
+            # ordinary tuning and moved to `stt.gateway.timeoutSeconds`.
+            assert settings.api_gateway_timeout == 30
 
     def test_huggingface_token_override(self):
         """Test HuggingFace token override."""
@@ -305,10 +321,14 @@ class TestSettings:
 
             assert settings.azure_speech_region is None
 
-    def test_azure_speech_region_env_override(self):
-        """Test the non-secret Azure Speech region env override.
+    def test_azure_speech_region_is_control_plane_owned_and_the_key_has_no_field(self):
+        """The region moved to `stt.azureSpeech.region`; the KEY never had a field.
 
-        AZURE_SPEECH_KEY is intentionally ignored (BYOK-only, no field).
+        Two different mechanisms with the same visible effect, and the
+        distinction matters: `AZURE_SPEECH_KEY` is BYOK-only, so it has no
+        settings field at all and arrives per request from the
+        provider-connection plane; `AZURE_SPEECH_REGION` is non-secret platform
+        config and still has a field — but no env path to it (TASK-799).
         """
         env_vars = {
             "AZURE_SPEECH_KEY": "test-azure-key-123",  # ignored (no field)
@@ -318,8 +338,27 @@ class TestSettings:
         with patch.dict(os.environ, env_vars, clear=True):
             settings = Settings()
 
-            assert settings.azure_speech_region == "eastus2"
+            assert settings.azure_speech_region is None
             assert not hasattr(settings, "azure_speech_key")
+
+    def test_azure_speech_region_is_settable_from_the_control_plane(self):
+        from stt.core.control_plane import apply_control_plane
+
+        with patch.dict(os.environ, {}, clear=True):
+            settings = Settings(_env_file=None)
+            apply_control_plane(
+                settings,
+                {
+                    "settings": {
+                        "stt.azureSpeech.region": {
+                            "value": "eastus2",
+                            "dataType": "string",
+                            "source": "db",
+                        }
+                    }
+                },
+            )
+            assert settings.azure_speech_region == "eastus2"
 
     def test_vad_defaults(self):
         """Test Silero VAD default configuration.
@@ -335,8 +374,13 @@ class TestSettings:
             assert settings.vad_min_silence_duration_ms == 500
             assert settings.vad_speech_pad_ms == 200
 
-    def test_vad_env_override(self):
-        """Test Silero VAD environment variable overrides."""
+    def test_vad_is_control_plane_owned_not_env_owned(self):
+        """TASK-799: the five VAD knobs no longer have an env path.
+
+        A VAD threshold is a clinical-accuracy tuning parameter — the archetypal
+        value an operator must be able to move against a measured scorecard
+        without a redeploy, which is precisely what an env var forbids.
+        """
         env_vars = {
             "VAD_MODEL_PATH": "/custom/vad.onnx",
             "VAD_THRESHOLD": "0.6",
@@ -346,11 +390,42 @@ class TestSettings:
         }
         with patch.dict(os.environ, env_vars, clear=True):
             settings = Settings()
+            assert settings.vad_model_path is None
+            assert settings.vad_threshold == 0.5
+            assert settings.vad_min_speech_duration_ms == 100
+            assert settings.vad_min_silence_duration_ms == 500
+            assert settings.vad_speech_pad_ms == 200
+
+    def test_vad_is_settable_from_the_control_plane(self):
+        from stt.core.control_plane import apply_control_plane
+
+        with patch.dict(os.environ, {}, clear=True):
+            settings = Settings(_env_file=None)
+            apply_control_plane(
+                settings,
+                {
+                    "settings": {
+                        "stt.vad.modelPath": {
+                            "value": "/custom/vad.onnx",
+                            "dataType": "string",
+                            "source": "db",
+                        },
+                        "stt.vad.threshold": {
+                            "value": 0.6,
+                            "dataType": "number",
+                            "source": "db",
+                        },
+                        "stt.vad.minSpeechDurationMs": {
+                            "value": 300,
+                            "dataType": "number",
+                            "source": "db",
+                        },
+                    }
+                },
+            )
             assert settings.vad_model_path == "/custom/vad.onnx"
             assert settings.vad_threshold == 0.6
             assert settings.vad_min_speech_duration_ms == 300
-            assert settings.vad_min_silence_duration_ms == 600
-            assert settings.vad_speech_pad_ms == 50
 
     def test_diarization_defaults(self):
         """Test Pyannote diarization default configuration."""
@@ -359,14 +434,46 @@ class TestSettings:
             assert settings.diarization_hf_model_id == "pyannote/wespeaker-voxceleb-resnet34-LM"
             assert settings.diarization_device == "auto"
 
-    def test_diarization_env_override(self):
-        """Test diarization environment variable overrides."""
+    def test_diarization_model_id_is_not_an_env_var(self):
+        """F-11: a MODEL ID as a pydantic default settable from env is a defect.
+
+        `DIARIZATION_HF_MODEL_ID` named a real speaker-embedding model
+        (`pyannote/wespeaker-…`) and could be repointed by anyone who could set
+        an environment variable — with no record of who chose it or when. It is
+        now `stt.diarization.hfModelId` in the control plane. The bootstrap
+        default is UNCHANGED, so the running model is the same one.
+        """
         env_vars = {
             "DIARIZATION_HF_MODEL_ID": "custom/embedding-model",
             "DIARIZATION_DEVICE": "cuda",
         }
         with patch.dict(os.environ, env_vars, clear=True):
             settings = Settings()
+            assert settings.diarization_hf_model_id == "pyannote/wespeaker-voxceleb-resnet34-LM"
+            assert settings.diarization_device == "auto"
+
+    def test_diarization_is_settable_from_the_control_plane(self):
+        from stt.core.control_plane import apply_control_plane
+
+        with patch.dict(os.environ, {}, clear=True):
+            settings = Settings(_env_file=None)
+            apply_control_plane(
+                settings,
+                {
+                    "settings": {
+                        "stt.diarization.hfModelId": {
+                            "value": "custom/embedding-model",
+                            "dataType": "string",
+                            "source": "db",
+                        },
+                        "stt.diarization.device": {
+                            "value": "cuda",
+                            "dataType": "string",
+                            "source": "db",
+                        },
+                    }
+                },
+            )
             assert settings.diarization_hf_model_id == "custom/embedding-model"
             assert settings.diarization_device == "cuda"
 
