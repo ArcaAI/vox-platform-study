@@ -116,14 +116,15 @@ const FLAGS: FlagSpec[] = [
     default: false,
     killSwitch: true,
   },
-  {
-    key: 'text.externalGuardrail.enabled',
-    label: 'TEXT input moderation',
-    description:
-      'Gates input moderation on TEXT `/generate` (`TEXT_EXTERNAL_GUARDRAIL_` prefix). OFF is the dev/CI bypass so local runs need no guardrail service. When ON the posture is fail-CLOSED by construction: a transient error is absorbed by a bounded retry, a sustained outage rejects, and an errored guardrail NEVER allows — there is deliberately no `fail_open` option.',
-    default: false,
-    killSwitch: true,
-  },
+  // `text.externalGuardrail.enabled` MOVED to `text-provider-connections.descriptors.ts`
+  // (TASK-799 lane B). This family is uniformly `tier: 'env'` — every flag here
+  // is still read from a process environment variable — and
+  // `TEXT_EXTERNAL_GUARDRAIL_ENABLED` no longer exists, so leaving it would have
+  // left a phantom declaration that `pnpm env:sync --check` exists to catch. It
+  // is a `global-kv` kill-switch now, served on the effective-config PULL route
+  // alongside the rest of TEXT's moderation posture, so turning moderation on
+  // for a clinical deployment takes effect on the next request rather than the
+  // next restart.
   {
     key: 'harness.nerPriorsEnabled',
     label: 'Harness NER priors reuse',

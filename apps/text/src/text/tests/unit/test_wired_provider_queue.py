@@ -33,6 +33,14 @@ def settings():
     return Settings(port=5099, log_level="debug")
 
 
+# The queue wait was `TEXT_QUEUE_MAX_WAIT_S`; it is one field of the
+# `(provider, lane)` budget now (`core/runtime_defaults.LaneBudget`), served by
+# the control plane and read off `app.state.lane_budgets`. A short wait is what
+# makes the timeout test finish in under a second rather than sitting on the
+# 60s floor, so the tests below set it the way production does.
+_SHORT_QUEUE_WAIT = {("ollama", "user"): {"queue_max_wait_s": 0.5}}
+
+
 @pytest.fixture
 def mock_provider():
     provider = AsyncMock()
@@ -171,8 +179,8 @@ class TestQueueTimeoutReturns429:
 
     @pytest.mark.asyncio
     async def test_queue_timeout_returns_429(self, app, client, settings):
-        """If the queued request waits longer than max_wait_s, return 429."""
-        assert settings.queue.max_wait_s == 0.5
+        """If the queued request waits longer than the served wait, return 429."""
+        app.state.lane_budgets = _SHORT_QUEUE_WAIT
 
         queue = ProviderQueue(max_size=2)
         rate_limiter = RateLimitTracker(rpm_limit=1, tpm_limit=0)
