@@ -281,15 +281,19 @@ The nine survivors are the bootstrap floor and nothing else: `TEXT_PORT`, `TEXT_
 `TEXT_EXTERNAL_GUARDRAIL_BASE_URL`, `INTERNAL_ACCESS_TOKEN`, `NODE_ENV`,
 `OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT`.
 
-| Group | Before | After | Where it went |
+| Sub-config group | Before | After | Where it went |
 |---|---:|---:|---|
-| Eight per-provider blocks (endpoint / credential / model / capacity / vendor extras) | 71 | 0 | `AiProviderConnection` + `AiTaskDefault` + `AiRuntimeProfile`, injected per request |
-| `TEXT_CB_*` + `TEXT_QUEUE_*` + `TEXT_JUDGE_*` | 12 | 0 | one `AiRuntimeProfile` keyed `(provider, lane ∈ {user, judge})` |
-| `TEXT_EXTERNAL_GUARDRAIL_*` | 8 | 1 (`base_url`) | posture split by cardinality — platform half `global-kv`/PULL, tenant half PUSHED |
-| Root `Settings` (host/debug/cors/httpx/otel/probe/retention/service_token) | 18 | 5 | derived, or deleted with no reader |
-| `RedisConfig` task bookkeeping | 3 | 1 (`redis_url`) | in-code storage-hygiene bounds |
+| Per-provider blocks — endpoint / credential / model / capacity / vendor extras (ollama 5, azure 11, bedrock 11, openai 8, anthropic 7, vertex 8, openai_compat 6, vllm 8, llama_cpp 4, sarvam 2, tei_embed 5) | 75 | 0 | `AiProviderConnection` + `AiTaskDefault` + `AiRuntimeProfile`, injected per request |
+| `CircuitBreakerConfig` 5 + `QueueConfig` 2 + `JudgeConfig` 5 | 12 | 0 | one `AiRuntimeProfile` keyed `(provider, lane ∈ {user, judge})` |
+| `ExternalGuardrailConfig` | 8 | 1 (`base_url`) | posture split by cardinality — platform half `global-kv`/PULL, tenant half PUSHED |
+| Root `Settings` (host/debug/cors ×2/httpx ×2/otel ×7/metrics/probe/retention/service_token) | 20 | 4 (`port`, `log_level`, `gateway_url`, `otel_exporter_endpoint`) | derived from what the process already knows, or deleted with no reader |
+| `RedisConfig` (`task_ttl_seconds`, `stream_max_len`) | 3 | 1 (`redis_url`, promoted to root) | in-code storage-hygiene bounds |
+| `InternalAccessConfig` | 1 | 1 | unchanged — the one shared internal credential |
 | `TelemetryPhiGuardConfig` | 2 | 2 | unchanged — the PHI boot guard |
-| `TEXT_V2_*` transition aliases | 20 | 0 | nothing in the repo read the other side |
+| **Total** | **121** | **9** | |
+
+Separately, the 20-name `TEXT_V2_*` alias window is closed — those were `AliasChoices` on the
+root fields above rather than fields of their own, and nothing in the repo read the other side.
 
 #### What changed in kind, not just in count
 
