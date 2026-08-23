@@ -78,6 +78,27 @@ Only after Phase 1. Each lane is disjoint, so these run concurrently.
 Per rule 14: one worktree per writer, orchestrator owns merges and DB resets, each
 lane re-runs its gates after the merge.
 
+## Phase 2 — landmines found in Round 2, read before seeding anything
+
+**A keyless connection row injects on NEITHER tier — by design.** That guard, not the
+provider allow-list, is what stops a SYSTEM row's `baseUrl` from being mistaken for a
+credential. Consequence for the self-hosted integrations Phase 2 wants to seed
+(`rerank:tei`, `vector:qdrant`): a keyless SYSTEM row makes the endpoint resolvable via
+`resolveConnection`, but it will **NOT** appear in `provider_overrides`. If a consumer
+expects delivery through the override fold, seeding the row will look like it silently
+did nothing. **Settle which delivery path each consumer uses BEFORE seeding.**
+
+**`isBuiltInLocalLlm` only recognises `service === 'llm'`.** The existing seed test
+"keeps every cloud-BYO / non-built-in row disabled" will therefore FAIL on a
+`vector:qdrant` row seeded `enabled: true`. That predicate needs widening to "platform-run
+self-host integration" in the same lane that seeds the rows.
+
+**Recommended SYSTEM rows** (assessed in Round 2, deliberately NOT implemented — the
+harness lane owns them): `rerank:tei` (`CLOUD_BYO_PROVIDERS.rerank` is deliberately empty,
+so SYSTEM-only by construction; `baseUrl` = TEI reranker `:8870`, keyless) and
+`vector:qdrant` (`baseUrl` = platform Qdrant `:6333`, keyless; `qdrant` IS cloud-BYO
+eligible, so a tenant may override with its own Qdrant Cloud key).
+
 ## Phase 3 — Make it stick
 
 **3.1 — Extend the drift gate to Python** (`scripts/env-sync.mts:639` globs no `*.py`).
