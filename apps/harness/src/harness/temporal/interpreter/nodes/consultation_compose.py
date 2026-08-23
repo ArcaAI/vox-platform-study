@@ -25,7 +25,7 @@ from harness.temporal.interpreter.nodes._consultation_shared import (
     run_identity,
 )
 from harness.temporal.interpreter.nodes._shared import (
-    STATUS_ERROR,
+    STATUS_DEGRADED,
     STATUS_OK,
     now,
     record_and_flush,
@@ -63,7 +63,7 @@ async def interpreter_consultation_retrieve_evidence(
         )
     except ApiServiceError as exc:
         await record_and_flush(
-            payload, status=STATUS_ERROR, started=started, error_code="retrieval_unreachable"
+            payload, status=STATUS_DEGRADED, started=started, error_code="retrieval_unreachable"
         )
         return NodeActivityResult(status="DEGRADED", reason=f"evidence retrieval failed: {exc}")
 
@@ -74,7 +74,7 @@ async def interpreter_consultation_retrieve_evidence(
     }
     if retrieved.degraded:
         await record_and_flush(
-            payload, status=STATUS_ERROR, started=started, error_code="retrieval_degraded"
+            payload, status=STATUS_DEGRADED, started=started, error_code="retrieval_degraded"
         )
         return NodeActivityResult(
             status="DEGRADED",
@@ -100,7 +100,7 @@ async def interpreter_consultation_assemble_prompt(
     identity = run_identity(payload.run_payload)
     if not identity.consultation_id:
         await record_and_flush(
-            payload, status=STATUS_ERROR, started=started, error_code="no_consultation_id"
+            payload, status=STATUS_DEGRADED, started=started, error_code="no_consultation_id"
         )
         return NodeActivityResult(
             status="DEGRADED", reason="run payload carries no consultationId to assemble for"
@@ -120,13 +120,13 @@ async def interpreter_consultation_assemble_prompt(
         )
     except ApiServiceError as exc:
         await record_and_flush(
-            payload, status=STATUS_ERROR, started=started, error_code="assemble_unreachable"
+            payload, status=STATUS_DEGRADED, started=started, error_code="assemble_unreachable"
         )
         return NodeActivityResult(status="DEGRADED", reason=f"prompt assembly failed: {exc}")
 
     if not assembled.user_prompt:
         await record_and_flush(
-            payload, status=STATUS_ERROR, started=started, error_code="empty_prompt"
+            payload, status=STATUS_DEGRADED, started=started, error_code="empty_prompt"
         )
         return NodeActivityResult(status="DEGRADED", reason="prompt assembly returned no prompt")
 

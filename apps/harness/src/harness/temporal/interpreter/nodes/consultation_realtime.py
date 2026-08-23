@@ -79,6 +79,7 @@ from harness.temporal.activities import (
 from harness.temporal.interpreter.models import NodeActivityInput, NodeActivityResult
 from harness.temporal.interpreter.nodes._consultation_shared import bound_text, run_identity
 from harness.temporal.interpreter.nodes._shared import (
+    STATUS_DEGRADED,
     STATUS_ERROR,
     STATUS_OK,
     now,
@@ -232,7 +233,7 @@ async def interpreter_consultation_realtime_summary(
     task_key = config.get("taskKey") or "text.live"
     if task_key not in _ALLOWED_TASK_KEYS:
         await record_and_flush(
-            payload, status=STATUS_ERROR, started=started, error_code="invalid_task_key"
+            payload, status=STATUS_DEGRADED, started=started, error_code="invalid_task_key"
         )
         return NodeActivityResult(
             status="DEGRADED",
@@ -242,7 +243,7 @@ async def interpreter_consultation_realtime_summary(
     text = bound_text(payload.bound_inputs)
     if not text:
         await record_and_flush(
-            payload, status=STATUS_ERROR, started=started, error_code="no_bound_text"
+            payload, status=STATUS_DEGRADED, started=started, error_code="no_bound_text"
         )
         return NodeActivityResult(
             status="DEGRADED", reason="no text bound from an upstream node to summarize"
@@ -299,7 +300,7 @@ async def interpreter_consultation_realtime_summary(
             )
         except PhiEgressBlocked as exc:
             await record_and_flush(
-                payload, status=STATUS_ERROR, started=started, error_code="phi_egress_blocked"
+                payload, status=STATUS_DEGRADED, started=started, error_code="phi_egress_blocked"
             )
             return NodeActivityResult(status="DEGRADED", reason=f"phi egress blocked: {exc}")
 
@@ -316,7 +317,7 @@ async def interpreter_consultation_realtime_summary(
             )
         except TextServiceError as exc:
             await record_and_flush(
-                payload, status=STATUS_ERROR, started=started, error_code="text_generate_failed"
+                payload, status=STATUS_DEGRADED, started=started, error_code="text_generate_failed"
             )
             return NodeActivityResult(
                 status="DEGRADED",
@@ -421,7 +422,7 @@ async def interpreter_consultation_suggestions(payload: NodeActivityInput) -> No
     task_key = config.get("taskKey") or "text.live"
     if task_key not in _ALLOWED_TASK_KEYS:
         await record_and_flush(
-            payload, status=STATUS_ERROR, started=started, error_code="invalid_task_key"
+            payload, status=STATUS_DEGRADED, started=started, error_code="invalid_task_key"
         )
         return NodeActivityResult(
             status="DEGRADED",
@@ -431,7 +432,7 @@ async def interpreter_consultation_suggestions(payload: NodeActivityInput) -> No
     text = bound_text(payload.bound_inputs)
     if not text:
         await record_and_flush(
-            payload, status=STATUS_ERROR, started=started, error_code="no_bound_text"
+            payload, status=STATUS_DEGRADED, started=started, error_code="no_bound_text"
         )
         return NodeActivityResult(
             status="DEGRADED", reason="no text bound from an upstream node to suggest from"
@@ -462,7 +463,7 @@ async def interpreter_consultation_suggestions(payload: NodeActivityInput) -> No
         )
     except PhiEgressBlocked as exc:
         await record_and_flush(
-            payload, status=STATUS_ERROR, started=started, error_code="phi_egress_blocked"
+            payload, status=STATUS_DEGRADED, started=started, error_code="phi_egress_blocked"
         )
         return NodeActivityResult(status="DEGRADED", reason=f"phi egress blocked: {exc}")
 
@@ -479,7 +480,7 @@ async def interpreter_consultation_suggestions(payload: NodeActivityInput) -> No
         )
     except TextServiceError as exc:
         await record_and_flush(
-            payload, status=STATUS_ERROR, started=started, error_code="text_generate_failed"
+            payload, status=STATUS_DEGRADED, started=started, error_code="text_generate_failed"
         )
         return NodeActivityResult(status="DEGRADED", reason=f"suggestion generation failed: {exc}")
 
@@ -487,7 +488,7 @@ async def interpreter_consultation_suggestions(payload: NodeActivityInput) -> No
     raw = parsed.get("suggestions") if isinstance(parsed, dict) else None
     if not isinstance(raw, list):
         await record_and_flush(
-            payload, status=STATUS_ERROR, started=started, error_code="unparseable_suggestions"
+            payload, status=STATUS_DEGRADED, started=started, error_code="unparseable_suggestions"
         )
         return NodeActivityResult(
             status="DEGRADED",
@@ -582,7 +583,7 @@ async def interpreter_consultation_propose_corrections(
     task_key = config.get("taskKey") or "text.live"
     if task_key not in _ALLOWED_TASK_KEYS:
         await record_and_flush(
-            payload, status=STATUS_ERROR, started=started, error_code="invalid_task_key"
+            payload, status=STATUS_DEGRADED, started=started, error_code="invalid_task_key"
         )
         return NodeActivityResult(
             status="DEGRADED",
@@ -592,7 +593,7 @@ async def interpreter_consultation_propose_corrections(
     text = bound_text(payload.bound_inputs)
     if not text:
         await record_and_flush(
-            payload, status=STATUS_ERROR, started=started, error_code="no_bound_text"
+            payload, status=STATUS_DEGRADED, started=started, error_code="no_bound_text"
         )
         return NodeActivityResult(
             status="DEGRADED", reason="no text bound from an upstream node to review"
@@ -610,7 +611,7 @@ async def interpreter_consultation_propose_corrections(
         )
     except NlpServiceError as exc:
         await record_and_flush(
-            payload, status=STATUS_ERROR, started=started, error_code="nlp_extract_failed"
+            payload, status=STATUS_DEGRADED, started=started, error_code="nlp_extract_failed"
         )
         return NodeActivityResult(
             status="DEGRADED",
@@ -664,7 +665,7 @@ async def interpreter_consultation_propose_corrections(
         )
     except PhiEgressBlocked as exc:
         await record_and_flush(
-            payload, status=STATUS_ERROR, started=started, error_code="phi_egress_blocked"
+            payload, status=STATUS_DEGRADED, started=started, error_code="phi_egress_blocked"
         )
         return NodeActivityResult(status="DEGRADED", reason=f"phi egress blocked: {exc}")
 
@@ -681,7 +682,7 @@ async def interpreter_consultation_propose_corrections(
         )
     except TextServiceError as exc:
         await record_and_flush(
-            payload, status=STATUS_ERROR, started=started, error_code="text_generate_failed"
+            payload, status=STATUS_DEGRADED, started=started, error_code="text_generate_failed"
         )
         return NodeActivityResult(
             status="DEGRADED",
@@ -693,7 +694,7 @@ async def interpreter_consultation_propose_corrections(
     raw = parsed.get("proposals") if isinstance(parsed, dict) else None
     if not isinstance(raw, list):
         await record_and_flush(
-            payload, status=STATUS_ERROR, started=started, error_code="unparseable_proposals"
+            payload, status=STATUS_DEGRADED, started=started, error_code="unparseable_proposals"
         )
         return NodeActivityResult(
             status="DEGRADED",

@@ -24,7 +24,7 @@ from temporalio import activity
 from harness.temporal.interpreter.models import NodeActivityInput, NodeActivityResult
 from harness.temporal.interpreter.nodes._shared import (
     MISSING,
-    STATUS_ERROR,
+    STATUS_DEGRADED,
     STATUS_OK,
     now,
     record_and_flush,
@@ -88,7 +88,7 @@ async def interpreter_context_binding(payload: NodeActivityInput) -> NodeActivit
 
     if problems:
         await record_and_flush(
-            payload, status=STATUS_ERROR, started=started, error_code="context_binding_failed"
+            payload, status=STATUS_DEGRADED, started=started, error_code="context_binding_failed"
         )
         return NodeActivityResult(status="DEGRADED", reason="; ".join(problems))
 

@@ -24,15 +24,37 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, it, expect } from 'vitest';
-import { AgentStepType as PrismaAgentStepType } from '@arcaai/database';
-import { AgentStepType as DomainAgentStepType } from '../index';
+import { AgentStepType as PrismaAgentStepType, AgentStepStatus as PrismaAgentStepStatus } from '@arcaai/database';
+import { AgentStepType as DomainAgentStepType, AgentStepStatus as DomainAgentStepStatus } from '../index';
 
 const HARNESS_ACTIVITIES = join(__dirname, '../../../../../apps/harness/src/harness/temporal/activities.py');
+const HARNESS_INTERPRETER_MODELS = join(__dirname, '../../../../../apps/harness/src/harness/temporal/interpreter/models.py');
 
 /** Extract every `STEP_<NAME> = "<VALUE>"` literal from the harness step-type vocabulary. */
 function pythonStepTypeValues(): string[] {
   const source = readFileSync(HARNESS_ACTIVITIES, 'utf8');
   return [...source.matchAll(/^STEP_[A-Z_]+\s*=\s*['"]([A-Z_]+)['"]/gm)].map((m) => m[1]);
+}
+
+/** Extract every `STATUS_<NAME> = "<VALUE>"` literal — the terminal step-status vocabulary. */
+function pythonStepStatusValues(): string[] {
+  const source = readFileSync(HARNESS_ACTIVITIES, 'utf8');
+  return [...source.matchAll(/^STATUS_[A-Z_]+\s*=\s*['"]([A-Z_]+)['"]/gm)].map((m) => m[1]);
+}
+
+/**
+ * The interpreter's per-node outcome vocabulary (`interpreter/models.py`). This is the SOURCE of
+ * the C-10 drift: the interpreter computes `DEGRADED` per node, but if `AgentStepStatus` cannot
+ * carry it, a degraded node is persisted as OK or ERROR and the distinction is lost before any
+ * reader sees it — so a graph that PARTIALLY degrades becomes indistinguishable from one that
+ * succeeded or one that failed outright. That is the single outcome a workflow author most needs
+ * to see, and the one the interpreter is deliberately designed to produce rather than crash.
+ */
+function pythonNodeStatusValues(): string[] {
+  const source = readFileSync(HARNESS_INTERPRETER_MODELS, 'utf8');
+  const line = /^NodeStatus\s*=\s*Literal\[(.*?)\]/m.exec(source);
+  if (!line) return [];
+  return [...line[1].matchAll(/['"]([A-Z_]+)['"]/g)].map((m) => m[1]);
 }
 
 describe('AgentStepType enum parity (domain ⇔ database ⇔ harness)', () => {
@@ -71,6 +93,45 @@ describe('AgentStepType enum parity (domain ⇔ database ⇔ harness)', () => {
       'The harness emits step types the AgentStepType enum does not carry. Every trajectory ' +
         'post using one is rejected 400 by @IsEnum and silently swallowed (fire-and-forget), so ' +
         `the trace vanishes. Add to the prisma enum + migration + domain enum: ${missing.join(', ')}`,
+    ).toEqual([]);
+  });
+});
+
+describe('AgentStepStatus enum parity (domain ⇔ database ⇔ harness) — TASK-789 C-10', () => {
+  const databaseValues = new Set<string>(Object.values(PrismaAgentStepStatus));
+  const domainValues = new Set<string>(Object.values(DomainAgentStepStatus));
+
+  it('every domain AgentStepStatus value exists in the database enum', () => {
+    const missing = Object.values(DomainAgentStepStatus).filter((v) => !databaseValues.has(v));
+    expect(missing, `Add to agent-trajectory.prisma + an ADD VALUE migration: ${missing.join(', ')}`).toEqual([]);
+  });
+
+  it('every database AgentStepStatus value exists in the domain enum', () => {
+    const missing = Object.values(PrismaAgentStepStatus).filter((v) => !domainValues.has(v));
+    expect(missing, `Add to packages/domains/src/enums/generated/AgentStepStatus.ts: ${missing.join(', ')}`).toEqual([]);
+  });
+
+  it('every harness STATUS_* value the Python side emits exists in the domain enum', () => {
+    const pythonValues = pythonStepStatusValues();
+    expect(pythonValues.length, `No STATUS_* constants extracted from ${HARNESS_ACTIVITIES}`).toBeGreaterThan(1);
+
+    const missing = pythonValues.filter((v) => !domainValues.has(v));
+    expect(missing, `The harness emits step statuses the enum does not carry: ${missing.join(', ')}`).toEqual([]);
+  });
+
+  it('every interpreter NodeStatus outcome is representable as a persisted step status', () => {
+    const nodeStatuses = pythonNodeStatusValues();
+    expect(nodeStatuses.length, `No NodeStatus Literal extracted from ${HARNESS_INTERPRETER_MODELS}`).toBeGreaterThan(2);
+
+    // SUCCEEDED/FAILED are the interpreter's names for OK/ERROR, which the enum already carries.
+    const ALIASES: Record<string, string> = { SUCCEEDED: 'OK', FAILED: 'ERROR' };
+    const missing = nodeStatuses.map((s) => ALIASES[s] ?? s).filter((v) => !domainValues.has(v));
+
+    expect(
+      missing,
+      'The interpreter computes per-node outcomes that cannot be PERSISTED, so they are silently ' +
+        'collapsed into OK/ERROR and a partially-degraded graph reads as success or outright ' +
+        `failure. Add to the prisma enum + migration + domain enum: ${missing.join(', ')}`,
     ).toEqual([]);
   });
 });
