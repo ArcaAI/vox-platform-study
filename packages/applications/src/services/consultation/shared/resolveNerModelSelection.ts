@@ -17,12 +17,27 @@ export const NLP_NER_TASK_KEY = 'nlp.ner';
  * callers: `ner.processor.ts` (durable BullMQ job), `summary.service.ts`
  * (synchronous extract-entities), `live-documentation.service.ts` (live plane).
  *
- * FAIL-OPEN — the deliberate OPPOSITE of the judge/TEXT routing lanes: a
- * resolver failure (service not wired, resolver error, no ENABLED model)
- * returns `{}` (no `model_name`) so the caller posts EXACTLY like it did
- * before this resolver existed — the NLP service falls back to its own env
- * default — rather than blocking clinical NER on a registry hiccup. A warning
- * is logged on every fallback path; this function never throws.
+ * FAIL-OPEN — a resolver failure (service not wired, resolver error, no
+ * ENABLED model) returns `{}` (no `model_name`) rather than blocking clinical
+ * NER on a registry hiccup. A warning is logged on every fallback path; this
+ * function never throws.
+ *
+ * ⚠ THE FALLBACK NO LONGER LANDS ANYWHERE. This posture was justified by "the
+ * NLP service falls back to its own env default". It does not: TASK-799 made
+ * `POST /api/v1/classify/tokens` REQUIRE `model_name` and answer 503 without
+ * it (`apps/nlp/src/nlp/api/v1/rest/classify.py:162`), and the env-owned model
+ * id is gone. So the fail-open branch produces the SAME failure one hop later,
+ * attributed to the NLP service rather than to the unresolved key, under a log
+ * line naming a fallback that cannot happen. Behaviour is unchanged either way
+ * — only the diagnostics differ — but model SELECTION is `failMode: closed`
+ * platform-wide (`.claude/rules/09-infrastructure-devops.md`), so this branch
+ * should be inverted to a 503 that names the key.
+ *
+ * NOT DONE HERE, deliberately: 49 tests across 7 consultation suites construct
+ * their service under test WITHOUT the optional `IAiTaskDefaultService` and
+ * depend on this `{}`. Re-wiring those fixtures is a bounded but separate
+ * change, and it is not what the diagnosis-route lane that found this was
+ * verifying. Owner decision + its own ticket.
  *
  * SYSTEM-PIN — `nlp.*` is SUPER_ADMIN_ONLY (system-row-only resolution;
  * `isSuperAdminOnlyTaskKey('nlp.ner')` in `ai-task-default/constants.ts`), but

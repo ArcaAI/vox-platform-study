@@ -30,7 +30,7 @@ function makeController(
   return { controller, client };
 }
 
-const effectiveWithModel = (taskKey: string, sourceUri: string) => ({
+const effectiveWithModel = (taskKey: string, sourceUri: string, localPath: string | null = null) => ({
   tenantId: 't1',
   taskKey,
   modelSlug: 'some-slug',
@@ -45,8 +45,21 @@ const effectiveWithModel = (taskKey: string, sourceUri: string) => ({
     taskType: 'X',
     format: 'SAFETENSOR',
     sourceUri,
+    localPath,
   },
 });
+
+/**
+ * `/text-analyses/diagnosis` resolves TWO task keys, so its fixtures cannot use
+ * a single blanket `mockResolvedValue`. Dispatches on the requested taskKey and
+ * throws for an unexpected one, so a test that forgets a key fails loudly
+ * instead of silently receiving the wrong model.
+ */
+const effectiveByKey = (byKey: Record<string, unknown>) =>
+  vi.fn(async (taskKey: string) => {
+    if (!(taskKey in byKey)) throw new Error(`unexpected taskKey '${taskKey}'`);
+    return byKey[taskKey];
+  });
 
 // TASK-760 — the guardrail route moved off `AiInferenceController` (prefix
 // `ai`) onto its own `SafetyCheckController` (prefix `safety-checks`). The
@@ -289,9 +302,21 @@ describe('AiInferenceController — NER usage-ledger emission', () => {
   });
 });
 
+// The route runs TWO models — a symptom-extraction NER feeding a
+// disease classifier — so it resolves TWO AiTaskDefault keys and injects both.
+// Before this, only `nlp.diagnosis` was injected and the NER half ran a
+// hardcoded `blaze999/Medical-NER` literal inside apps/nlp, which made half of
+// a clinical route un-configurable. `nlp.ner` is the SAME key the playground
+// NER tab and the three clinical NER callers already resolve, and it resolves
+// to that very checkpoint — so this is behaviour-preserving AND governed.
+const DIAGNOSIS_KEYS = {
+  'nlp.diagnosis': effectiveWithModel('nlp.diagnosis', 'shanover/symps_disease_bert_v3_c41'),
+  'nlp.ner': effectiveWithModel('nlp.ner', 'blaze999/Medical-NER'),
+};
+
 describe('AiInferenceController — diagnosis suggestions', () => {
-  it('maps minConfidence → min_confidence, forwards language, injects model_name from nlp.diagnosis', async () => {
-    const aiTaskDefaults = { getEffective: vi.fn().mockResolvedValue(effectiveWithModel('nlp.diagnosis', 'shanover/symps_disease_bert_v3_c41')) };
+  it('maps minConfidence → min_confidence, forwards language, injects BOTH model selections', async () => {
+    const aiTaskDefaults = { getEffective: effectiveByKey(DIAGNOSIS_KEYS) };
     const { controller, client } = makeController(aiTaskDefaults);
     const suggestions = { suggestions: [{ diagnosis: 'flu', confidence: 0.8 }] };
     client.suggestDiagnosis.mockResolvedValue(suggestions);
@@ -299,13 +324,65 @@ describe('AiInferenceController — diagnosis suggestions', () => {
     const result = await controller.suggestDiagnosis({ text: 'fever and cough', minConfidence: 0.3, language: 'en' });
 
     expect(aiTaskDefaults.getEffective).toHaveBeenCalledWith('nlp.diagnosis');
+    expect(aiTaskDefaults.getEffective).toHaveBeenCalledWith('nlp.ner');
     expect(client.suggestDiagnosis).toHaveBeenCalledWith({
       text: 'fever and cough',
       min_confidence: 0.3,
       language: 'en',
       model_name: 'shanover/symps_disease_bert_v3_c41',
+      ner_model_name: 'blaze999/Medical-NER',
     });
     expect(result).toBe(suggestions);
+  });
+
+  it('forwards ner_model_path from the NER registry row when it carries a localPath', async () => {
+    const aiTaskDefaults = {
+      getEffective: effectiveByKey({
+        'nlp.diagnosis': effectiveWithModel('nlp.diagnosis', 'shanover/symps_disease_bert_v3_c41', '/weights/symps'),
+        'nlp.ner': effectiveWithModel('nlp.ner', 'blaze999/Medical-NER', '/weights/medical-ner'),
+      }),
+    };
+    const { controller, client } = makeController(aiTaskDefaults);
+    client.suggestDiagnosis.mockResolvedValue({});
+
+    await controller.suggestDiagnosis({ text: 'fever' });
+
+    expect(client.suggestDiagnosis).toHaveBeenCalledWith({
+      text: 'fever',
+      model_name: 'shanover/symps_disease_bert_v3_c41',
+      model_path: '/weights/symps',
+      ner_model_name: 'blaze999/Medical-NER',
+      ner_model_path: '/weights/medical-ner',
+    });
+  });
+
+  it('FAILS CLOSED when the NER half is unresolved → 503, never a partial call', async () => {
+    const { ServiceUnavailableException } = await import('@nestjs/common');
+    const aiTaskDefaults = {
+      getEffective: effectiveByKey({
+        'nlp.diagnosis': effectiveWithModel('nlp.diagnosis', 'shanover/symps_disease_bert_v3_c41'),
+        // Row exists but has no ENABLED model — the fail-closed case.
+        'nlp.ner': { ...effectiveWithModel('nlp.ner', 'x'), model: null },
+      }),
+    };
+    const { controller, client } = makeController(aiTaskDefaults);
+
+    await expect(controller.suggestDiagnosis({ text: 'headache' })).rejects.toBeInstanceOf(ServiceUnavailableException);
+    expect(client.suggestDiagnosis).not.toHaveBeenCalled();
+  });
+
+  it('FAILS CLOSED when NER resolution throws → 503', async () => {
+    const { ServiceUnavailableException } = await import('@nestjs/common');
+    const aiTaskDefaults = {
+      getEffective: vi.fn(async (taskKey: string) => {
+        if (taskKey === 'nlp.ner') throw new Error('resolver down');
+        return effectiveWithModel('nlp.diagnosis', 'shanover/symps_disease_bert_v3_c41');
+      }),
+    };
+    const { controller, client } = makeController(aiTaskDefaults);
+
+    await expect(controller.suggestDiagnosis({ text: 'headache' })).rejects.toBeInstanceOf(ServiceUnavailableException);
+    expect(client.suggestDiagnosis).not.toHaveBeenCalled();
   });
 
   it('FAILS CLOSED on resolution error for diagnosis → 503', async () => {
@@ -318,9 +395,7 @@ describe('AiInferenceController — diagnosis suggestions', () => {
   });
 
   it('forwards minConfidence: 0 (falsy but valid) when SYSTEM default resolves', async () => {
-    const aiTaskDefaults = {
-      getEffective: vi.fn().mockResolvedValue(effectiveWithModel('nlp.diagnosis', 'shanover/symps_disease_bert_v3_c41')),
-    };
+    const aiTaskDefaults = { getEffective: effectiveByKey(DIAGNOSIS_KEYS) };
     const { controller, client } = makeController(aiTaskDefaults);
     client.suggestDiagnosis.mockResolvedValue({});
     await controller.suggestDiagnosis({ text: 'x', minConfidence: 0 });
@@ -328,6 +403,7 @@ describe('AiInferenceController — diagnosis suggestions', () => {
       text: 'x',
       min_confidence: 0,
       model_name: 'shanover/symps_disease_bert_v3_c41',
+      ner_model_name: 'blaze999/Medical-NER',
     });
   });
 });
