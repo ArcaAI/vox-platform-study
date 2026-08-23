@@ -35,6 +35,8 @@ function build(withResolver = true) {
   return new ConsultationWorkflowDispatchService(
     mockAssignments as any,
     mockDefinitionRepository as any,
+    // TASK-795 W1 — the dispatcher now records which engine governs.
+    ({ findById: vi.fn().mockResolvedValue({ id: 'c-1', metadata: null }), update: vi.fn().mockResolvedValue({}) }) as any,
     mockWorkflowRunService as any,
     mockHarnessGateway as any,
     mockS3Service as any,

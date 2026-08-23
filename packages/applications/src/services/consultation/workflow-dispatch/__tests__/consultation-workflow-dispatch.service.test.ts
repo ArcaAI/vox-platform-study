@@ -18,6 +18,8 @@ function makeDeps(overrides: Record<string, unknown> = {}) {
   return {
     assignments: { resolve: vi.fn().mockResolvedValue({ workflowDefinitionSlug: null, source: 'platform-default' }) },
     definitionRepository: { findPublishedBySlug: vi.fn().mockResolvedValue(null) },
+    // TASK-795 W1 — the dispatcher now records which engine governs.
+    consultationRepository: { findById: vi.fn().mockResolvedValue({ id: CONSULTATION, metadata: null }), update: vi.fn().mockResolvedValue({}) },
     workflowRunService: { recordRunStarted: vi.fn().mockResolvedValue({}) },
     harnessGateway: { startWorkflowRun: vi.fn().mockResolvedValue({ status: 'RUNNING' }) },
     s3Service: { putFile: vi.fn().mockResolvedValue(undefined) },
@@ -29,6 +31,7 @@ function makeService(deps: ReturnType<typeof makeDeps>) {
   const svc = new ConsultationWorkflowDispatchService(
     deps.assignments as never,
     deps.definitionRepository as never,
+    deps.consultationRepository as never,
     deps.workflowRunService as never,
     deps.harnessGateway as never,
     deps.s3Service as never,
