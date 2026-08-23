@@ -31,7 +31,7 @@ import { MODELS_WITHOUT_SOFT_DELETE } from '../../../../client';
 import { SYSTEM_SHARED_READ_MODELS, TENANT_SCOPED_MODELS } from '../../../../extensions/tenant-scope';
 import { AI_MODEL_PROVIDERS } from '../ai-models/shared';
 import { SYSTEM_TENANT_ID } from '../00-constants';
-import { SYSTEM_AI_PROVIDER_CONNECTIONS } from '../17-ai-provider-connection';
+import { SEEDABLE_PROVIDER_SERVICES, SYSTEM_AI_PROVIDER_CONNECTIONS } from '../17-ai-provider-connection';
 import { SYSTEM_AI_RUNTIME_PROFILES } from '../18-ai-runtime-profile';
 
 // =============================================================================
@@ -73,10 +73,33 @@ describe('AiProviderConnection SYSTEM seed rows', () => {
     expect(tts).toEqual(['azure', 'sarvam']);
   });
 
+  /**
+   * TASK-799 R2-C.2 — asserted against the DECLARED vocabulary, never a
+   * transcription of it.
+   *
+   * This used to read `['llm', 'stt', 'tts']` inline. P1-C widened
+   * `ProviderService` to add `embeddings`/`rerank`/`vector`, and the literal was
+   * green only because no row for a new service had been seeded yet — the first
+   * Phase 2 `vector:qdrant` or `rerank:tei` SYSTEM row would have failed a test
+   * describing a vocabulary that no longer existed. Reading the exported list
+   * means the next widening cannot desynchronise this assertion, and
+   * `tests/contracts/provider-connection-services.contract.test.ts` pins that
+   * list to `@arcaai/applications` `PROVIDER_SERVICES` (the source of truth,
+   * which this package cannot import — it would be a dependency cycle).
+   */
   it('carries a valid service discriminator on every row', () => {
     SYSTEM_AI_PROVIDER_CONNECTIONS.forEach((c) => {
-      expect(['llm', 'stt', 'tts'], `service for ${c.provider}`).toContain(c.service);
+      expect(SEEDABLE_PROVIDER_SERVICES, `service for ${c.service}:${c.provider}`).toContain(c.service);
     });
+  });
+
+  it('admits a Phase 2 integration row without needing a test change', () => {
+    // The rows Phase 2's harness lane will seed for the platform's self-hosted
+    // integrations. Asserting the GUARD rather than seeding the rows: those
+    // belong to that lane, and adding them here would collide with it.
+    for (const service of ['rerank', 'vector', 'embeddings'] as const) {
+      expect(SEEDABLE_PROVIDER_SERVICES).toContain(service);
+    }
   });
 
   it('keeps every row on the SYSTEM tenant', () => {
