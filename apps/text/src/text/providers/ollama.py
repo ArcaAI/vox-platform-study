@@ -18,6 +18,7 @@ from text.models.provider import ModelInfo, ProviderInfo
 from text.models.requests import GenerateRequest
 from text.models.stats import GenerationStats, stats_from_ollama_response
 from text.models.stream import StreamChunk
+from text.providers.base import CredentialPosture
 
 if TYPE_CHECKING:
     from opentelemetry.trace import Tracer
@@ -51,6 +52,8 @@ def _split_inline_think(
 
 class OllamaProvider:
     """Ollama self-hosted LLM provider."""
+
+    credential_posture = CredentialPosture.SELF_HOST
 
     def __init__(self, config: OllamaConfig, http_client: httpx.AsyncClient) -> None:
         self._config = config

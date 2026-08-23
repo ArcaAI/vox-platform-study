@@ -6,7 +6,7 @@ import asyncio
 import base64
 import time
 from collections.abc import AsyncIterator
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Literal
 
 import boto3
 import botocore.session
@@ -17,13 +17,13 @@ from botocore.tokens import FrozenAuthToken
 
 from text.core.config import BedrockConfig
 from text.core.defaults import resolve_request_defaults
-from text.core.exceptions import InputValidationError
+from text.core.exceptions import InputValidationError, ProviderCredentialsError
 from text.core.telemetry import get_tracer
 from text.models.provider import ModelInfo, ProviderInfo
 from text.models.requests import GenerateRequest, ImageContentPart, ProviderOverride
 from text.models.stats import GenerationStats, stats_from_bedrock
 from text.models.stream import StreamChunk
-from text.providers.base import require_model
+from text.providers.base import CredentialPosture, require_model
 
 if TYPE_CHECKING:
     from opentelemetry.trace import Tracer
@@ -73,19 +73,51 @@ class _StaticBearerTokenProvider:
         return FrozenAuthToken(token=self._token)
 
 
+def _bearer_client(
+    service: Literal["bedrock-runtime", "bedrock"], *, token: str, region: str
+) -> Any:
+    """A boto3 client bound to ONE explicit bearer token.
+
+    Every Bedrock client in this module is built here, platform and tenant alike,
+    so there is exactly one construction site and it always takes a credential.
+    The session is dedicated (never the process-wide default session), so two
+    tenants' concurrent requests can never race each other's token.
+    """
+    session = botocore.session.Session()
+    # botocore-stubs doesn't type this private attribute.
+    session._components.register_component(  # type: ignore[attr-defined]
+        "token_provider", _StaticBearerTokenProvider(token)
+    )
+    return boto3.Session(botocore_session=session).client(
+        service,
+        region_name=region,
+        config=BotocoreConfig(signature_version="bearer"),
+    )
+
+
 class BedrockProvider:
     """AWS Bedrock provider using boto3 converse / converse_stream APIs."""
+
+    credential_posture = CredentialPosture.BYOK
 
     def __init__(self, config: BedrockConfig) -> None:
         self._config = config
         self._default_model = config.default_model
-        self._client = boto3.client(
-            "bedrock-runtime",
-            region_name=config.region,
+        # BYOK, and NO AMBIENT CREDENTIAL CHAIN. This used to be a bare
+        # `boto3.client("bedrock-runtime", region_name=...)`, which resolves
+        # credentials from `AWS_ACCESS_KEY_ID` / `AWS_PROFILE` / EC2 instance
+        # metadata — so the adapter held a working PLATFORM credential that
+        # appeared in no env file, no `turbo.json`, and no registry, and every
+        # tenant's traffic silently ran on it. The shared platform client is now
+        # built ONLY from an explicit `config.api_key` (never from env; see
+        # `BedrockConfig`), and is `None` in production, where the credential must
+        # arrive per request as a `ProviderOverride`.
+        key = config.api_key.get_secret_value()
+        self._client: Any = (
+            _bearer_client("bedrock-runtime", token=key, region=config.region) if key else None
         )
-        self._mgmt_client = boto3.client(
-            "bedrock",
-            region_name=config.region,
+        self._mgmt_client: Any = (
+            _bearer_client("bedrock", token=key, region=config.region) if key else None
         )
 
     def _resolve_model(self, request: GenerateRequest) -> str | None:
@@ -105,25 +137,28 @@ class BedrockProvider:
 
     def _client_for(self, request: GenerateRequest) -> Any:
         """Override-wins client resolution. A tenant credential builds a
-        request-scoped bearer-token client (the shared/env-configured
-        ``self._client`` is never mutated) so concurrent requests for
-        different tenants can never interfere; absent an override, the
-        shared client is reused unchanged."""
+        request-scoped bearer-token client (the shared ``self._client`` is never
+        mutated) so concurrent requests for different tenants can never interfere.
+
+        BYOK, fail-closed: absent an override the shared client is reused ONLY
+        when a platform key was configured; when neither an override nor a
+        platform client exists, raise ``ProviderCredentialsError`` (503) rather
+        than falling back to boto3's ambient credential chain."""
         override = self._resolve_override(request)
         if override is None:
+            if self._client is None:
+                raise ProviderCredentialsError(
+                    "AWS Bedrock credentials not configured. Bedrock is BYOK-only: "
+                    "configure a tenant Bedrock credential, or the platform "
+                    "(SYSTEM-tenant) connection, in the provider-connection plane. "
+                    "There is no env fallback and no ambient AWS credential chain.",
+                    provider="bedrock",
+                )
             return self._client
-        # A dedicated session per request: botocore has no public API to bind a
-        # bearer token to one client instance, so this registers a scoped
-        # token-provider component directly (see _StaticBearerTokenProvider).
-        session = botocore.session.Session()
-        # botocore-stubs doesn't type this private attribute.
-        session._components.register_component(  # type: ignore[attr-defined]
-            "token_provider", _StaticBearerTokenProvider(override.api_key.get_secret_value())
-        )
-        return boto3.Session(botocore_session=session).client(
+        return _bearer_client(
             "bedrock-runtime",
-            region_name=override.region or self._config.region,
-            config=BotocoreConfig(signature_version="bearer"),
+            token=override.api_key.get_secret_value(),
+            region=override.region or self._config.region,
         )
 
     def _build_converse_params(self, request: GenerateRequest) -> dict[str, Any]:
@@ -307,6 +342,11 @@ class BedrockProvider:
             yield StreamChunk(type="done", data={"finish_reason": stop_reason or "stop"})
 
     async def health_check(self) -> bool:
+        # No platform key ⇒ no shared management client to probe. The provider is
+        # still registered (BYOK — usable per request via an override), but the
+        # platform connection itself is unhealthy. Mirrors azure_openai.
+        if self._mgmt_client is None:
+            return False
         try:
             await asyncio.to_thread(self._mgmt_client.list_foundation_models)
             return True
@@ -320,6 +360,18 @@ class BedrockProvider:
     async def get_info(self) -> ProviderInfo:
         models: list[ModelInfo] = []
         status = "unavailable"
+        if self._mgmt_client is None:
+            # No platform key ⇒ nothing to probe ⇒ unavailable at the platform
+            # level (still BYOK-usable per request).
+            return ProviderInfo(
+                name="bedrock",
+                display_name="AWS Bedrock",
+                status=status,
+                default_model=self._default_model,
+                models=models,
+                supports_streaming=True,
+                supports_vision=True,
+            )
         try:
             resp = await asyncio.to_thread(self._mgmt_client.list_foundation_models)
             for m in resp.get("modelSummaries", []):
