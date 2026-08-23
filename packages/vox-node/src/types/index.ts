@@ -40,3 +40,14 @@ export type {
   JobStatusResponse,
   JobStreamEvent,
 } from './consultation';
+
+export { CONTEXT_PRIMITIVES } from './consultation-context-schema';
+
+export type {
+  ConsultationSchemaBundle,
+  ConsultationContextSchemaDefinition,
+  ContextKindDeclaration,
+  ContextKindDeprecation,
+  ContextOutputDeclaration,
+  ContextPrimitive,
+} from './consultation-context-schema';

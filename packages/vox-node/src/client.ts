@@ -15,7 +15,7 @@
 import { ServiceAccountTokenProvider } from './core/service-account-token';
 import type { ServiceAccountCredentials } from './core/service-account-token';
 import { Transport } from './core/transport';
-import { AdminNamespace, ConsultationsResource, JobsResource, SummarizationResource } from './resources';
+import { AdminNamespace, ConsultationsResource, JobsResource, SummarizationResource, TenantsResource } from './resources';
 
 /**
  * Structured logger hook for `HopeClient`. Every method is optional so a
@@ -92,6 +92,12 @@ export class HopeClient {
   /** P0.5 — async job get/cancel/stream/waitFor. */
   readonly jobs: JobsResource;
   /**
+   * The caller's OWN tenant (`/api/v1/tenants/me/*`) — read-only, business
+   * plane. Today: consultation context-schema discovery, the bundle a
+   * schema-aware {@link ConsultationsResource.addContext} write pins against.
+   */
+  readonly tenants: TenantsResource;
+  /**
    * The `/api/v1/admin/**` administration plane — 52 areas, one property per
    * `svc:admin:*` scope (TASK-773).
    *
@@ -159,6 +165,7 @@ export class HopeClient {
     this.summarization = new SummarizationResource(transport);
     this.consultations = new ConsultationsResource(transport);
     this.jobs = new JobsResource(transport);
+    this.tenants = new TenantsResource(transport);
     this.admin = new AdminNamespace(transport);
   }
 }

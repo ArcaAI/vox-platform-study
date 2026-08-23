@@ -23,3 +23,6 @@ export { isTerminalJobStatus, JobsResource } from './jobs';
 
 export type { AddContextOptions, ConsultationRequestOptions } from './consultations';
 export { ConsultationsResource } from './consultations';
+
+export type { ContextSchemaDiscoveryOptions } from './tenants';
+export { TenantsResource } from './tenants';
