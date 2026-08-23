@@ -13,15 +13,15 @@ disagree with those declarations.
 
 | Metric | Value |
 |---|---:|
-| Declared keys (distinct) | 147 |
+| Declared keys (distinct) | 138 |
 | … of which required (`failMode: closed`) | 32 |
 | … of which secret | 31 |
-| … tier `env` | 111 |
+| … tier `env` | 102 |
 | … tier `global-kv` | 9 |
 | … tier `vault-kv` | 27 |
-| Python declared fields | 505 |
-| … distinct Python names (incl. aliases + `os.environ` reads) | 585 |
-| `turbo.json#globalEnv` entries | 705 |
+| Python declared fields | 396 |
+| … distinct Python names (incl. aliases + `os.environ` reads) | 457 |
+| `turbo.json#globalEnv` entries | 578 |
 
 ## Variables — the TypeScript platform surface
 
@@ -140,18 +140,9 @@ disagree with those declarations.
 | `STT_URL` | `env` | no | `http://localhost:8861` | `apps/api` | Speech-to-text service base URL (apps/stt, port 8861). |
 | `STT_WS_EGRESS_HIGH_WATERMARK_BYTES` | `env` | no | `524288` | `apps/stt` | Buffered-amount threshold above which partial transcripts are dropped. |
 | `STT_WS_RESUME_GRACE_MS` | `env` | no | `15000` | `apps/stt` | Window a disconnected STT session is held open for reconnect. |
-| `TEXT_ANTHROPIC_BASE_URL` | `env` | no | `` | `apps/api` | Anthropic API base URL for TEXT’s platform-fallback client (`AnthropicConfig.base_url`). Empty ⇒ the SDK default (`https://api.anthropic.com`); a tenant BYO connection may override it per request. |
-| `TEXT_ANTHROPIC_DEFAULT_MODEL` | `env` | no | `` | `apps/text` | Empty by design (TASK-579): provider/model SELECTION is fail-closed — `AnthropicConfig.default_model` has no compiled-in vendor value, and an unresolved model raises (`require_model()`) rather than being substituted. Informational only (providers listing). |
-| `TEXT_EXTERNAL_GUARDRAIL_ENABLED` | `env` | no | `false` | `apps/text` | Gates input moderation on TEXT `/generate` (`TEXT_EXTERNAL_GUARDRAIL_` prefix). OFF is the dev/CI bypass so local runs need no guardrail service. When ON the posture is fail-CLOSED by construction: a transient error is absorbed by a bounded retry, a sustained outage rejects, and an errored guardrail NEVER allows — there is deliberately no `fail_open` option. |
-| `TEXT_OPENAI_BASE_URL` | `env` | no | `https://api.openai.com/v1` | `apps/api` | OpenAI API base URL for TEXT’s platform-fallback OpenAI client (`OpenAIConfig.base_url`). Override for an OpenAI-compatible gateway; a tenant BYO connection may override it per request. |
-| `TEXT_OPENAI_DEFAULT_MODEL` | `env` | no | `` | `apps/text` | Empty by design (TASK-579): provider/model SELECTION is fail-closed — `OpenAIConfig.default_model` has no compiled-in vendor value, and an unresolved model raises (`require_model()`) rather than being substituted. Informational only (providers listing). |
-| `TEXT_OPENAI_ORGANIZATION` | `env` | no | — | `apps/text` | Optional OpenAI organization id sent by TEXT’s platform-fallback client (`OpenAIConfig.organization`). Unset ⇒ the account default organization. |
 | `TEXT_PORT` | `env` | no | `8862` | `apps/text` | Port apps/text binds; the gateway keeps it only to build health-probe URLs. |
 | `TEXT_SERVICE_TOKEN` | `vault-kv` | yes | `CHANGE_ME` | `apps/api` | Shared secret on the gateway↔TEXT hop. TEXT reads it as `settings.service_token` under its `TEXT_` pydantic prefix; the gateway resolves the same name for outbound proxying and for `InternalServiceTokenGuard`'s inbound check. |
 | `TEXT_URL` | `env` | no | `http://localhost:8862` | `apps/api` | Text service base URL (apps/text, port 8862). |
-| `TEXT_VERTEX_DEFAULT_MODEL` | `env` | no | `` | `apps/text` | Empty by design (TASK-579): provider/model SELECTION is fail-closed — `VertexConfig.default_model` has no compiled-in vendor value, and an unresolved model raises (`require_model()`) rather than being substituted. Informational only (providers listing). |
-| `TEXT_VERTEX_LOCATION` | `env` | no | `us-central1` | `apps/text` | GCP location/region for TEXT’s platform-fallback Vertex client (`VertexConfig.location`), e.g. `us-central1`. |
-| `TEXT_VERTEX_PROJECT` | `env` | no | `` | `apps/text` | GCP project id for TEXT’s platform-fallback Vertex client (`VertexConfig.project`). Empty ⇒ no platform fallback (Vertex is then usable only via a tenant BYO service-account connection). A Vertex client is bound to a `(project, location)`; a tenant override supplies its own. |
 | `TTS_PORT` | `env` | no | `8865` | `apps/tts` | Port apps/tts binds. |
 | `TTS_SERVICE_TOKEN` | `vault-kv` | yes | `CHANGE_ME` | `apps/api` | Shared secret on the gateway↔TTS hop (`X-Service-Token`). |
 | `TTS_URL` | `env` | no | `http://localhost:8865` | `apps/api` | Text-to-speech base URL (apps/tts, port 8865). |
@@ -449,7 +440,7 @@ default — see `renderPythonExample()` in `scripts/env-sync.mts`.
 | `SEMANTIC_ENDPOINT_MIN_SILENCE_MS` | `apps/stt` | no | no | `200` | commented | — |
 | `SEMANTIC_ENDPOINT_MIN_WORDS` | `apps/stt` | no | no | `3` | commented | — |
 | `SEMANTIC_ENDPOINT_MODEL_ID` | `apps/stt` | no | no | `` | commented | — |
-| `SPELLING_CORRECTOR_DICTIONARY_PATH` | `apps/nlp` | no | no | `/Users/taphuynh/Desktop/igglo/ARCAAI/hope-v2/.claude/worktrees/agent-a6a2441b6dc1baf67/apps/nlp/data/dictionaries` | commented | — |
+| `SPELLING_CORRECTOR_DICTIONARY_PATH` | `apps/nlp` | no | no | `/Users/taphuynh/Desktop/igglo/ARCAAI/hope-v2/.claude/worktrees/agent-a98ce73d9cf651e2b/apps/nlp/data/dictionaries` | commented | — |
 | `SPELLING_CORRECTOR_SYMSPELL_IGNORE_NON_WORDS` | `apps/nlp` | no | no | `true` | commented | — |
 | `SPELLING_CORRECTOR_SYMSPELL_IGNORE_TERM_WITH_DIGITS` | `apps/nlp` | no | no | `true` | commented | — |
 | `SPELLING_CORRECTOR_SYMSPELL_MAX_EDIT_DISTANCE` | `apps/nlp` | no | no | `2` | commented | — |
@@ -498,123 +489,14 @@ default — see `renderPythonExample()` in `scripts/env-sync.mts`.
 | `TEMPORAL_GRACEFUL_SHUTDOWN_TIMEOUT_S` | `apps/harness` | no | no | `30` | commented | — |
 | `TEMPORAL_NAMESPACE` | `apps/harness` | no | no | `default` | commented | — |
 | `TEMPORAL_TASK_QUEUE` | `apps/harness` | no | no | `harness-task-queue` | commented | — |
-| `TEXT_ANTHROPIC_BASE_URL` | `apps/text` | no | no | `` | commented | — |
-| `TEXT_ANTHROPIC_DEFAULT_MODEL` | `apps/text` | no | no | `` | commented | — |
-| `TEXT_ANTHROPIC_MAX_CONCURRENT` | `apps/text` | no | no | `10` | commented | — |
-| `TEXT_ANTHROPIC_RPM_LIMIT` | `apps/text` | no | no | `0` | commented | — |
-| `TEXT_ANTHROPIC_TIMEOUT_S` | `apps/text` | no | no | `120` | commented | — |
-| `TEXT_ANTHROPIC_TPM_LIMIT` | `apps/text` | no | no | `0` | commented | — |
-| `TEXT_AZURE_ADAPTIVE_LIMITS` | `apps/text` | no | no | `true` | commented | — |
-| `TEXT_AZURE_API_VERSION` | `apps/text` | no | no | `2024-12-01-preview` | commented | — |
-| `TEXT_AZURE_CONTENT_FILTER_SEVERITY` | `apps/text` | no | no | `medium` | commented | — |
-| `TEXT_AZURE_DEFAULT_MODEL` | `apps/text` | no | no | `` | commented | — |
-| `TEXT_AZURE_DEPLOYMENT_NAME` | `apps/text` | no | no | `` | commented | — |
-| `TEXT_AZURE_ENDPOINT` | `apps/text` | no | no | `` | commented | — |
-| `TEXT_AZURE_MAX_CONCURRENT` | `apps/text` | no | no | `10` | commented | — |
-| `TEXT_AZURE_RPM_LIMIT` | `apps/text` | no | no | `480` | commented | — |
-| `TEXT_AZURE_TIMEOUT_S` | `apps/text` | no | no | `120` | commented | — |
-| `TEXT_AZURE_TPM_LIMIT` | `apps/text` | no | no | `80000` | commented | — |
-| `TEXT_BEDROCK_API_KEY__ENV_REMOVED_TASK_799` | `apps/text` | no | yes | `CHANGE_ME` | live | — |
-| `TEXT_BEDROCK_DEFAULT_MODEL` | `apps/text` | no | no | `` | commented | — |
-| `TEXT_BEDROCK_GUARDRAIL_ID` | `apps/text` | no | no | `` | commented | — |
-| `TEXT_BEDROCK_GUARDRAIL_VERSION` | `apps/text` | no | no | `DRAFT` | commented | — |
-| `TEXT_BEDROCK_MAX_CONCURRENT` | `apps/text` | no | no | `10` | commented | — |
-| `TEXT_BEDROCK_MAX_POOL_CONNECTIONS` | `apps/text` | no | no | `150` | commented | — |
-| `TEXT_BEDROCK_REGION` | `apps/text` | no | no | `us-east-1` | commented | — |
-| `TEXT_BEDROCK_RPM_LIMIT` | `apps/text` | no | no | `100` | commented | — |
-| `TEXT_BEDROCK_THROTTLE_BACKOFF_S` | `apps/text` | no | no | `30` | commented | — |
-| `TEXT_BEDROCK_TIMEOUT_S` | `apps/text` | no | no | `120` | commented | — |
-| `TEXT_BEDROCK_TPM_LIMIT` | `apps/text` | no | no | `100000` | commented | — |
-| `TEXT_CB_COUNT_RATE_LIMITS` | `apps/text` | no | no | `true` | commented | — |
-| `TEXT_CB_FAILURE_THRESHOLD` | `apps/text` | no | no | `5` | commented | — |
-| `TEXT_CB_HALF_OPEN_MAX_CALLS` | `apps/text` | no | no | — | commented | — |
-| `TEXT_CB_RECOVERY_TIMEOUT_S` | `apps/text` | no | no | `30` | commented | — |
-| `TEXT_CB_RESET_TIMEOUT_S` | `apps/text` | no | no | — | commented | — |
 | `TEXT_CLASSIFIER_USE_GPU` | `apps/nlp` | no | no | `true` | commented | — |
-| `TEXT_CORS_ENABLED` | `apps/text` | no | no | `false` | commented | `TEXT_V2_CORS_ENABLED` |
-| `TEXT_CORS_ORIGINS` | `apps/text` | no | no | `[]` | commented | `TEXT_V2_CORS_ORIGINS` |
-| `TEXT_DEBUG` | `apps/text` | no | no | `false` | commented | `TEXT_V2_DEBUG` |
 | `TEXT_EXTERNAL_GUARDRAIL_BASE_URL` | `apps/text` | no | no | `http://localhost:8863` | commented | — |
-| `TEXT_EXTERNAL_GUARDRAIL_ENABLED` | `apps/text` | no | no | `false` | commented | — |
-| `TEXT_EXTERNAL_GUARDRAIL_INCLUDE_REASONING` | `apps/text` | no | no | `false` | commented | — |
-| `TEXT_EXTERNAL_GUARDRAIL_MAX_RETRIES` | `apps/text` | no | no | `2` | commented | — |
-| `TEXT_EXTERNAL_GUARDRAIL_REQUIRE_MEDICAL` | `apps/text` | no | no | `true` | commented | — |
-| `TEXT_EXTERNAL_GUARDRAIL_RETRY_BACKOFF_MS` | `apps/text` | no | no | `100` | commented | — |
-| `TEXT_EXTERNAL_GUARDRAIL_SERVICE_TOKEN` | `apps/text` | no | yes | `CHANGE_ME` | live | — |
-| `TEXT_EXTERNAL_GUARDRAIL_TIMEOUT_S` | `apps/text` | no | no | `10` | commented | — |
-| `TEXT_GATEWAY_URL` | `apps/text` | no | no | `http://localhost:8868/api/v1` | commented | `TEXT_V2_GATEWAY_URL` |
-| `TEXT_HOST` | `apps/text` | no | no | `0.0.0.0` | commented | `TEXT_V2_HOST` |
-| `TEXT_HTTPX_MAX_CONNECTIONS` | `apps/text` | no | no | `200` | commented | `TEXT_V2_HTTPX_MAX_CONNECTIONS` |
-| `TEXT_HTTPX_MAX_KEEPALIVE` | `apps/text` | no | no | `100` | commented | `TEXT_V2_HTTPX_MAX_KEEPALIVE` |
-| `TEXT_JUDGE_ACQUIRE_TIMEOUT_S` | `apps/text` | no | no | `5` | commented | — |
-| `TEXT_JUDGE_FAILURE_THRESHOLD` | `apps/text` | no | no | `5` | commented | — |
-| `TEXT_JUDGE_MAX_CONCURRENT` | `apps/text` | no | no | `2` | commented | — |
-| `TEXT_JUDGE_RECOVERY_TIMEOUT_S` | `apps/text` | no | no | `30` | commented | — |
-| `TEXT_JUDGE_TIMEOUT_S` | `apps/text` | no | no | `60` | commented | — |
-| `TEXT_LLAMA_CPP_BASE_URL` | `apps/text` | no | no | `http://localhost:8080` | commented | — |
-| `TEXT_LLAMA_CPP_DEFAULT_MODEL` | `apps/text` | no | no | `` | commented | — |
-| `TEXT_LLAMA_CPP_MAX_CONCURRENT` | `apps/text` | no | no | `4` | commented | — |
-| `TEXT_LLAMA_CPP_TIMEOUT_S` | `apps/text` | no | no | `300` | commented | — |
-| `TEXT_LOG_LEVEL` | `apps/text` | no | no | `info` | commented | `TEXT_V2_LOG_LEVEL` |
-| `TEXT_METRICS_ENABLED` | `apps/text` | no | no | `true` | commented | `TEXT_V2_METRICS_ENABLED` |
-| `TEXT_MODEL_RETENTION_TTL_S` | `apps/text` | no | no | `600` | commented | `TEXT_V2_MODEL_RETENTION_TTL_S` |
-| `TEXT_OLLAMA_BASE_URL` | `apps/text` | no | no | `http://localhost:11434` | commented | — |
-| `TEXT_OLLAMA_DEFAULT_MODEL` | `apps/text` | no | no | `` | commented | — |
-| `TEXT_OLLAMA_MAX_CONCURRENT` | `apps/text` | no | no | `4` | commented | — |
-| `TEXT_OLLAMA_QUEUE_BACKOFF_S` | `apps/text` | no | no | `2` | commented | — |
-| `TEXT_OLLAMA_TIMEOUT_S` | `apps/text` | no | no | `300` | commented | — |
-| `TEXT_OPENAI_BASE_URL` | `apps/text` | no | no | `https://api.openai.com/v1` | commented | — |
-| `TEXT_OPENAI_COMPAT_API_KEY__ENV_REMOVED_TASK_799` | `apps/text` | no | yes | `CHANGE_ME` | live | — |
-| `TEXT_OPENAI_COMPAT_API_KEY__ENV_REMOVED_TASK_799` | `apps/text` | no | yes | `CHANGE_ME` | live | — |
-| `TEXT_OPENAI_COMPAT_BASE_URL` | `apps/text` | no | no | `http://localhost:1234/v1` | commented | — |
-| `TEXT_OPENAI_COMPAT_DEFAULT_MODEL` | `apps/text` | no | no | `gemma-4-e2b-it-qat` | commented | — |
-| `TEXT_OPENAI_COMPAT_MAX_CONCURRENT` | `apps/text` | no | no | `4` | commented | — |
-| `TEXT_OPENAI_COMPAT_ORGANIZATION` | `apps/text` | no | no | — | commented | — |
-| `TEXT_OPENAI_COMPAT_TIMEOUT_S` | `apps/text` | no | no | `300` | commented | — |
-| `TEXT_OPENAI_DEFAULT_MODEL` | `apps/text` | no | no | `` | commented | — |
-| `TEXT_OPENAI_MAX_CONCURRENT` | `apps/text` | no | no | `10` | commented | — |
-| `TEXT_OPENAI_ORGANIZATION` | `apps/text` | no | no | — | commented | — |
-| `TEXT_OPENAI_RPM_LIMIT` | `apps/text` | no | no | `0` | commented | — |
-| `TEXT_OPENAI_TIMEOUT_S` | `apps/text` | no | no | `120` | commented | — |
-| `TEXT_OPENAI_TPM_LIMIT` | `apps/text` | no | no | `0` | commented | — |
-| `TEXT_OTEL_DEPLOYMENT_ENVIRONMENT` | `apps/text` | no | no | `development` | commented | `TEXT_V2_OTEL_DEPLOYMENT_ENVIRONMENT` |
-| `TEXT_OTEL_ENABLED` | `apps/text` | no | no | `false` | commented | `TEXT_V2_OTEL_ENABLED` |
-| `TEXT_OTEL_EXPORTER_ENDPOINT` | `apps/text` | no | no | `http://localhost:4317` | commented | `TEXT_V2_OTEL_EXPORTER_ENDPOINT` |
-| `TEXT_OTEL_INSECURE` | `apps/text` | no | no | `true` | commented | `TEXT_V2_OTEL_INSECURE` |
-| `TEXT_OTEL_LOGS_ENABLED` | `apps/text` | no | no | `true` | commented | `TEXT_V2_OTEL_LOGS_ENABLED` |
-| `TEXT_OTEL_SERVICE_NAME` | `apps/text` | no | no | `text` | commented | `TEXT_V2_OTEL_SERVICE_NAME` |
-| `TEXT_OTEL_SERVICE_NAMESPACE` | `apps/text` | no | no | `hope` | commented | `TEXT_V2_OTEL_SERVICE_NAMESPACE` |
-| `TEXT_PORT` | `apps/text` | no | no | `8862` | commented | `TEXT_V2_PORT` |
-| `TEXT_PROVIDER_PROBE_TIMEOUT_S` | `apps/text` | no | no | `5` | commented | `TEXT_V2_PROVIDER_PROBE_TIMEOUT_S` |
-| `TEXT_QUEUE_MAX_SIZE` | `apps/text` | no | no | `200` | commented | — |
-| `TEXT_QUEUE_MAX_WAIT_S` | `apps/text` | no | no | `60` | commented | — |
+| `TEXT_GATEWAY_URL` | `apps/text` | no | no | `http://localhost:8868/api/v1` | commented | — |
+| `TEXT_LOG_LEVEL` | `apps/text` | no | no | `info` | commented | — |
+| `TEXT_OTEL_EXPORTER_ENDPOINT` | `apps/text` | no | no | `` | commented | — |
+| `TEXT_PORT` | `apps/text` | no | no | `8862` | commented | — |
 | `TEXT_REDIS_URL` | `apps/text` | no | no | `redis://localhost:6379/0` | commented | — |
-| `TEXT_SARVAM_BASE_URL` | `apps/text` | no | no | `https://api.sarvam.ai` | commented | — |
-| `TEXT_SARVAM_MODEL` | `apps/text` | no | no | — | commented | — |
-| `TEXT_SERVICE_TOKEN` | `apps/text` | no | yes | `CHANGE_ME` | live | `TEXT_V2_SERVICE_TOKEN` |
-| `TEXT_STREAM_MAX_LEN` | `apps/text` | no | no | `10000` | commented | — |
-| `TEXT_TASK_TTL_SECONDS` | `apps/text` | no | no | `3600` | commented | — |
-| `TEXT_TEI_BASE_URL` | `apps/text` | no | no | `http://localhost:8871` | commented | — |
-| `TEXT_TEI_DEFAULT_MODEL` | `apps/text` | no | no | `BAAI/bge-m3` | commented | — |
-| `TEXT_TEI_EMBEDDING_DIM` | `apps/text` | no | no | `1024` | commented | — |
-| `TEXT_TEI_MAX_CONCURRENT` | `apps/text` | no | no | `8` | commented | — |
-| `TEXT_TEI_TIMEOUT_S` | `apps/text` | no | no | `30` | commented | — |
 | `TEXT_URL` | `apps/guardrail` | no | no | `http://localhost:8862` | commented | `GUARDRAIL_V2_TEXT_URL` |
-| `TEXT_VERTEX_API_KEY__ENV_REMOVED_TASK_799` | `apps/text` | no | yes | `CHANGE_ME` | live | — |
-| `TEXT_VERTEX_DEFAULT_MODEL` | `apps/text` | no | no | `` | commented | — |
-| `TEXT_VERTEX_LOCATION` | `apps/text` | no | no | `us-central1` | commented | — |
-| `TEXT_VERTEX_MAX_CONCURRENT` | `apps/text` | no | no | `10` | commented | — |
-| `TEXT_VERTEX_PROJECT` | `apps/text` | no | no | `` | commented | — |
-| `TEXT_VERTEX_RPM_LIMIT` | `apps/text` | no | no | `0` | commented | — |
-| `TEXT_VERTEX_TIMEOUT_S` | `apps/text` | no | no | `120` | commented | — |
-| `TEXT_VERTEX_TPM_LIMIT` | `apps/text` | no | no | `0` | commented | — |
-| `TEXT_VLLM_BASE_URL` | `apps/text` | no | no | `http://localhost:8000/v1` | commented | — |
-| `TEXT_VLLM_DEFAULT_MODEL` | `apps/text` | no | no | `` | commented | — |
-| `TEXT_VLLM_MAX_CONCURRENT` | `apps/text` | no | no | `8` | commented | — |
-| `TEXT_VLLM_METRICS_URL` | `apps/text` | no | no | `` | commented | — |
-| `TEXT_VLLM_ORGANIZATION` | `apps/text` | no | no | — | commented | — |
-| `TEXT_VLLM_TIMEOUT_S` | `apps/text` | no | no | `300` | commented | — |
-| `TEXT_VLLM_USE_GUIDED_JSON` | `apps/text` | no | no | `false` | commented | — |
 | `TOKEN_CLASSIFIER_AGGREGATION_STRATEGY` | `apps/nlp` | no | no | `simple` | commented | — |
 | `TOKEN_CLASSIFIER_ASSERTION_ENABLED` | `apps/nlp` | no | no | `true` | commented | — |
 | `TOKEN_CLASSIFIER_IGNORE_LABELS` | `apps/nlp` | no | no | `["O"]` | commented | — |
@@ -699,7 +581,7 @@ promotion into its service’s `BaseSettings`.
 
 | Variable | Read by |
 |---|---|
-| `DEPLOYMENT_ENVIRONMENT` | `apps/guardrail/src/guardrail/main.py`, `apps/harness/src/harness/core/config.py`, `apps/stt/src/stt/core/service_auth.py`, `apps/stt/src/stt/core/telemetry.py`, `apps/stt/src/stt/main.py`, `apps/stt/src/stt/worker.py`, `apps/text/src/text/core/config.py`, `apps/tts/src/tts/core/config.py`, `apps/tts/src/tts/core/service_auth.py` |
+| `DEPLOYMENT_ENVIRONMENT` | `apps/guardrail/src/guardrail/main.py`, `apps/harness/src/harness/core/config.py`, `apps/stt/src/stt/core/service_auth.py`, `apps/stt/src/stt/core/telemetry.py`, `apps/stt/src/stt/main.py`, `apps/stt/src/stt/worker.py`, `apps/tts/src/tts/core/config.py`, `apps/tts/src/tts/core/service_auth.py` |
 | `HARNESS_GOLDEN_SET_PATH` | `apps/harness/eval/promptfoo/tests.py` |
 | `HARNESS_LLM_BACKOFF_BASE_S` | `apps/harness/src/harness/core/llm_concurrency.py` |
 | `HARNESS_LLM_BACKOFF_JITTER_S` | `apps/harness/src/harness/core/llm_concurrency.py` |
