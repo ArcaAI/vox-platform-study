@@ -447,7 +447,7 @@ def _patch_real_activity_clients(monkeypatch, cap, *, text_stats=None, traj=None
     monkeypatch.setattr(activities, "_progress_api_client", lambda s: _FakeProgressApi())
     monkeypatch.setattr(activities, "_build_runtime_judge", lambda *a, **k: _StubJudge())
     monkeypatch.setattr(
-        activities, "_granite_client", lambda s: _FakeGranite(dimensions={"harm": False})
+        activities, "_safety_screen_client", lambda s, t: _FakeGranite(dimensions={"harm": False})
     )
     # Force a deterministic PASS computational verdict (no regen) while keeping the
     # real ``run_sensors`` activity body (and its SENSOR-step emission).

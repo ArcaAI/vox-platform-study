@@ -46,69 +46,6 @@ class TemporalConfig(BaseSettings):
     graceful_shutdown_timeout_s: float = 30.0
 
 
-_SAFETY_PROVIDERS = ("lm-studio", "ollama", "azure", "bedrock")
-
-
-class SafetyGuardConfig(BaseSettings):
-    """IBM Granite Guardian content-safety classifier over a selectable engine.
-
-    The safety sensor screens the generated note through Granite Guardian.
-    The **default** engine is **LM Studio** — an OpenAI-compatible endpoint: the
-    safety client posts to ``{base_url}/chat/completions`` (``base_url`` already
-    includes the ``/v1`` path) and reads ``choices[0].message.content``. ``provider``
-    switches the engine: ``lm-studio`` (default) | ``ollama`` | ``azure`` | ``bedrock``.
-    ``ollama`` is selected the same way as ``lm-studio``: point ``base_url`` at
-    Ollama's own OpenAI-compatible ``/v1`` endpoint (e.g. ``http://localhost:11434/v1``)
-    — harness carries no Ollama-specific transport of its own (owner decision
-    2026-08-20, TASK-736/TASK-740 D-740-3: harness must not grow a vendor adapter).
-    ``azure``/``bedrock`` require a guardian-capable model hosted on that engine.
-
-    ``harm_criteria`` is the Bring-Your-Own-Criteria (BYOC) list of risk dimensions
-    the guardian evaluates one-per-call via the canonical IBM 4.1 ``<guardian>``
-    block; ``no_think`` runs the classifier without an explicit reasoning pass for
-    fast, deterministic ``<score>yes/no</score>`` verdicts.
-
-    The default ``model`` slug is ``granite-guardian-4.1-8b``; operators load the
-    matching build in their engine (e.g. ``lmstudio-community/granite-guardian-4.1-8b-GGUF``,
-    resolving to the ``granite-guardian-4.1-8b`` id) or override via
-    ``HARNESS_SAFETY_MODEL``.
-    """
-
-    # Init > host env > secrets_dir (Vault Agent) > .env.<NODE_ENV> > default.
-    settings_customise_sources = hope_settings_sources
-
-    model_config = SettingsConfigDict(env_prefix="HARNESS_SAFETY_")
-
-    enabled: bool = True
-    # Engine selector: lm-studio (default, OpenAI-compatible) | ollama | azure | bedrock.
-    provider: str = "lm-studio"
-    # LM Studio OpenAI-compatible root (already includes ``/v1``).
-    base_url: str = "http://localhost:1234/v1"
-    model: str = "granite-guardian-4.1-8b"
-    # Guard classifier in no-think mode (fast, deterministic yes/no per criterion).
-    no_think: bool = True
-    timeout_s: float = 60.0
-    # BYOC risk dimensions screened on the generated note (env: JSON array).
-    harm_criteria: list[str] = Field(
-        default_factory=lambda: [
-            "harm",
-            "social_bias",
-            "jailbreak",
-            "violence",
-            "profanity",
-            "sexual_content",
-            "unethical_behavior",
-        ]
-    )
-
-    @field_validator("provider")
-    @classmethod
-    def _validate_provider(cls, v: str) -> str:
-        if v not in _SAFETY_PROVIDERS:
-            raise ValueError(f"provider must be one of {list(_SAFETY_PROVIDERS)}")
-        return v
-
-
 class PhiConfig(BaseSettings):
     """Pre-cloud-egress PHI redaction guard (Presidio + clinical NER), fail-closed.
 
@@ -670,8 +607,11 @@ class Settings(BaseSettings):
 
     # Sub-configs (loaded from their own env prefixes)
     temporal: TemporalConfig = Field(default_factory=TemporalConfig)
-    # Granite Guardian safety + fail-closed PHI.
-    safety: SafetyGuardConfig = Field(default_factory=SafetyGuardConfig)
+    # Fail-closed PHI redaction. There is deliberately NO `safety` sub-config: the
+    # content-safety screen is DELEGATED to `apps/guardrail` over `guardrail_base_url`
+    # (TASK-799 A.1 / F-02), so harness holds no guardian provider, endpoint, model id
+    # or harm-criteria taxonomy of its own. Do not reintroduce one — rule 06,
+    # "Do not grow a second inference stack".
     phi: PhiConfig = Field(default_factory=PhiConfig)
     # Institutional RAG: hybrid JIT retriever (flag-gated off).
     retrieval: RetrievalConfig = Field(default_factory=RetrievalConfig)

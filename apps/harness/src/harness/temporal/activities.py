@@ -60,8 +60,8 @@ from harness.sensors.inferential import (
     AtomicFactSensor,
     CitationVerifySensor,
     DeterministicOverlapEntailer,
-    GraniteGuardianClient,
     GroundednessSensor,
+    GuardrailSafetyScreen,
     NliEntailer,
     SafetySensor,
 )
@@ -81,6 +81,7 @@ from harness.services.api_client import (
     TrajectoryStepInput,
 )
 from harness.services.embeddings_client import EmbeddingsClient
+from harness.services.guardrail_client import GuardrailClient
 from harness.services.nlp_client import NlpClient
 from harness.services.reranker_client import RerankerClient
 from harness.services.sensor_runner import SensorRunOutput, run_computational_sensors
@@ -506,8 +507,29 @@ def _build_runtime_judge(*, provider: str | None = None, model: str | None = Non
     return build_judge_client(config)
 
 
-def _granite_client(settings: Settings) -> GraniteGuardianClient:
-    return GraniteGuardianClient(settings.safety)
+def _safety_screen_client(settings: Settings, tenant_id: str) -> GuardrailSafetyScreen:
+    """Build the safety screen — a DELEGATION to ``apps/guardrail``, not a local engine.
+
+    Harness used to construct an IBM Granite Guardian client here from
+    ``settings.safety`` (provider / base_url / model / harm-criteria taxonomy in env) and
+    post at an OpenAI-compatible endpoint itself, which is the second inference stack rule
+    06 forbids. It now uses the SAME ``GuardrailClient`` the interpreter lane already used
+    (``temporal/interpreter/nodes/guardrail_check.py``); guardrail owns the policy, the
+    tenant-resolved taxonomy and the engine delegation.
+
+    Factored out like the other client factories so tests can monkeypatch it with a stub.
+    """
+    return GuardrailSafetyScreen(
+        GuardrailClient(
+            settings.guardrail_base_url,
+            # The shared `INTERNAL_ACCESS_TOKEN`, legacy-falling-back to guardrail's own
+            # token — NOT `HARNESS_SERVICE_TOKEN`, which apps/guardrail never accepts.
+            # Same credential choice as the interpreter lane's guardrail hop (D-D).
+            service_token=settings.peer_service_token(settings.guardrail_service_token),
+            timeout=settings.guardrail_timeout_s,
+        ),
+        tenant_id=tenant_id,
+    )
 
 
 def _atomic_fact_entailer(settings: Settings, model_path: str | None = None) -> NliEntailer:
@@ -1806,6 +1828,11 @@ async def _run_atomic_fact_sensor(
     return await AtomicFactSensor(entailer, threshold=threshold).arun(ctx)
 
 
+async def _already(result: SensorResult) -> SensorResult:
+    """Wrap an already-decided result so it can join the ``asyncio.gather`` fan-out."""
+    return result
+
+
 @activity.defn
 async def run_inferential_sensors(payload: RunInferentialSensorsInput) -> InferentialRunOutput:
     """Run the costly inferential sensors (groundedness + safety) once, concurrently.
@@ -1892,7 +1919,14 @@ async def run_inferential_sensors(payload: RunInferentialSensorsInput) -> Infere
                 citations_map=payload.citations_map,
                 knowledge_chunks=knowledge_chunks_in,
                 judge_provider=judge_provider,
-                safety_provider=settings.safety.provider if payload.safety_enabled else None,
+                # `None`, because the safety screen no longer egresses from harness to a
+                # provider at all: it posts the note to `apps/guardrail`, a first-party
+                # internal peer, exactly like the `text`/`nlp` hops this guard has never
+                # gated. Guardrail owns the PHI posture of whatever engine IT selects —
+                # harness cannot know that engine and must not guess it. The `judge_*`
+                # gating below is unchanged, because the judge client still posts to its
+                # selected provider directly from this process.
+                safety_provider=None,
                 settings=settings,
                 phi_enabled=payload.phi_enabled,
                 phi_fail_closed=payload.phi_fail_closed,
@@ -1966,11 +2000,20 @@ async def run_inferential_sensors(payload: RunInferentialSensorsInput) -> Infere
             # "safety" sensor identity, so its keys never collide with groundedness/citation
             # entries while an unchanged-content regen pass reuses the prior screen (no Granite
             # call). No new carrier field / workflow command — the existing dict is threaded.
-            tasks.append(
-                SafetySensor(_granite_client(settings)).arun(
-                    ctx, judge=judge, screen_cache=verdict_cache
+            if payload.tenant_id:
+                tasks.append(
+                    SafetySensor(_safety_screen_client(settings, payload.tenant_id)).arun(
+                        ctx, judge=judge, screen_cache=verdict_cache
+                    )
                 )
-            )
+            else:
+                # A tenant-scoped internal call with no tenant is a CALLER bug (TASK-737),
+                # not something to paper over with a default: guardrail would answer 428
+                # and the screen would look like an outage. Degrade explicitly and say why.
+                results_degraded = degraded_result(
+                    SAFETY_NAME, "safety screen unavailable: no tenant on the inferential input"
+                )
+                tasks.append(_already(results_degraded))
         # The DETERMINISTIC reference-free atomic-fact verifier runs
         # ALONGSIDE the judge sensors (defense-in-depth), gated by the runtime ops
         # kill-switch (default OFF). It uses a SELF-HOSTED NLI (NOT the judge), so it adds
