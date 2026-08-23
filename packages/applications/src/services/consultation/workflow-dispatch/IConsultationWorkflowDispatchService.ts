@@ -25,10 +25,27 @@
  *
  *   - NO assignment resolves  -> `dispatched: false`, Substrate A keeps the consultation
  *     (today's behaviour, unchanged — this is the default and must stay the default);
- *   - an assignment resolves  -> Substrate B is dispatched and the decision is recorded, so which
- *     engine governs is an explicit, observable fact rather than an implicit default.
+ *   - an assignment resolves  -> Substrate B is dispatched, and a DURABLE marker is written to
+ *     `Consultation.metadata` so `LoopContextSignalService` stands Substrate A down.
  *
  * A tenant that has authored nothing sees exactly the behaviour it sees today.
+ *
+ * ## What "exclusive" meant before TASK-795, and what it means now
+ *
+ * This paragraph used to claim exclusivity that the code did not implement. Dispatch was
+ * conditional — `dispatched: false` with no assignment — but NOTHING gated Substrate A on the
+ * result, so with an assignment present both engines ran and both wrote one `ContextItem`. The
+ * claim was latent-only because zero `WorkflowAssignment` rows existed.
+ *
+ * TASK-795 W1 makes it true. The decision is taken here, once, at open, and PERSISTED (see
+ * `../governing-engine.ts` for why a marker and not a `WorkflowRun` query: that table has no
+ * consultation linkage to join on). `LoopContextSignalService.loopAllowedFor` reads it before
+ * every signal, so the decision survives a later signal, a different process, and a restart.
+ *
+ * The two halves fail in opposite directions ON PURPOSE, both towards "Substrate A documents
+ * this consultation": the write happens only AFTER the interpreter run actually starts, and the
+ * read treats an unreadable marker as absent. A consultation with no documentation is a worse
+ * clinical outcome than one documented by the default engine.
  */
 
 /** Why a consultation is (or is not) governed by a tenant-authored graph. */
@@ -41,6 +58,16 @@ export interface ConsultationWorkflowDispatchResult {
   readonly workflowDefinitionSlug: string | null;
   /** The started interpreter run id, when one was started. */
   readonly runId: string | null;
+  /**
+   * TASK-795 W1 — whether the durable "Substrate B governs" marker was persisted on the
+   * consultation.
+   *
+   * `dispatched: true` with `governanceRecorded: false` is the one residual this design leaves:
+   * the interpreter run started, but the marker write failed, so Substrate A will NOT stand down
+   * and both engines will write the document. It is logged at ERROR and reported here rather than
+   * swallowed. `false` on a non-dispatched result simply means there was nothing to record.
+   */
+  readonly governanceRecorded: boolean;
   /**
    * Set when an assignment resolved but dispatch could not proceed (e.g. no claim-check storage).
    * The consultation still runs under Substrate A — dispatch is best-effort by design, because a
