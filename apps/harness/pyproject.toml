@@ -54,6 +54,11 @@ dependencies = [
     # `memory`), but promoted to a base dep so the production S3 path is always
     # installable without an extra — matching the text base-dep precedent.
     "boto3>=1.43.72",
+    # Config-invalidation subscriber ONLY (TASK-799 A.3 / owner decision D-5):
+    # `arca:config:invalidate` pub/sub so a control-plane write reaches this process
+    # without waiting out the 60s TTL. harness stores nothing in Redis and queues
+    # nothing through it — its durable state is Temporal's.
+    "redis>=8.1.0,<9.0",
     # --- Shared runtime contracts ---
     "hope-runtime-models",
     # --- Shared env-file loader: NODE_ENV -> .env.<env>, host env wins ---
