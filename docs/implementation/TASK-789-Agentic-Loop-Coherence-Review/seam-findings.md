@@ -466,3 +466,60 @@ Fix is the C-9 shape: add `DEGRADED` to the prisma enum + domain enum + an `ALTE
 migration, emit it from `_shared.py`, and extend the three-way parity guard
 (`agentStepType.enum-parity.test.ts`) to cover `AgentStepStatus` as well — that guard was written for
 exactly this class of drift and currently only watches the type enum, not the status enum.
+
+---
+
+## Day-1 runtime findings (only surfaced by running the stack)
+
+Every one of these passed unit tests, builds and lint while the product was broken.
+
+### D-1 — The gateway refused to boot (FIXED)
+TASK-790's `WorkflowInvariantRuleController` declared nothing about service-account access.
+The TASK-762/773 boot audit refuses startup on that ambiguity — "a deliberate closure nobody
+wrote down". The reasoning WAS recorded, in a comment; the audit reads decorators.
+Fix: `@ForbidServiceAccount()`.
+
+### D-2 — Consultation dispatch failed silently on an invented bucket (FIXED)
+`ConsultationWorkflowDispatchService` hard-coded `hope-workflow-config` while its own comment
+claimed it mirrored `WorkflowExposureService` — which uses `harness-claim-check`. The invented
+bucket never existed. Every dispatch died with "The specified bucket does not exist", invisibly,
+because dispatch is best-effort. Fix: ONE exported `CLAIM_CHECK_BUCKET` shared by all three
+dispatchers, plus compose provisioning.
+
+### D-3 — The governing-engine decision was unobservable (FIXED)
+Both the not-wired and the no-assignment paths were silent, so a consultation quietly falling
+through to the default engine was indistinguishable from one the dispatcher was never asked
+about. That silence is what hid D-2; the log added to diagnose it found the cause on its first run.
+
+### D-4 — `HARNESS_CLAIM_CHECK_STORE=memory` cannot work for gateway-dispatched runs (FIXED in .env.dev)
+`config.py` documents `memory` as "correct for the hermetic suite and SINGLE-worker local dev".
+That reasoning misses this case: the GATEWAY (a separate TypeScript process) mints the compiled
+config into MinIO, and the harness worker reads it. It is inherently cross-process, so `memory`
+can never resolve a gateway-minted ref regardless of worker count — the interpreter failed every
+run with `ClaimCheckNotFound` while the blob sat in MinIO.
+
+**This is a docs/default gap, not just a local setting.** Any environment where the gateway
+dispatches interpreter runs requires `store=s3`. The "single-worker local dev" carve-out should be
+narrowed to "harness-internal offload only".
+
+### D-5 — Long-running services silently hold a stale env
+`.env.dev` changed at 12:45; services started at 12:21 kept the old values, and the gateway↔text
+hop failed 401 with a correct-looking config on disk. Restart Python services after any env change.
+
+### D-6 — Demo patients need consent grants (day-1 seeding gap)
+`recording/start` correctly returns 403 `Consent denied for purpose "AI_DOCUMENTATION" (no_grant)`.
+The ArcaAI tenant seeds exactly ONE `AI_DOCUMENTATION` grant, so any other demo patient cannot be
+recorded. A day-1 demo dataset should grant consent for every patient it expects to record.
+
+## End-to-end verification (observed, 2026-08-23)
+
+| Requirement | Evidence |
+|---|---|
+| R1 tenant-authored workflow governs | `WorkflowRun trigger='consultation open'`, slug `arcaai-rheum-consultation-soap`; Temporal `workflow-interpreter-01a02d42-…` **COMPLETED**; `Consultation.metadata.governingEngine = {"engine":"tenant-workflow"}` |
+| R3 realtime generation | Real LLM summary, 1496 chars in 14s from `lms-gemma-4-e2b-it-qat` via the tenant→SYSTEM cascade |
+| R4 department scoping | Department-scoped section template rendered; RHEUM assignment resolved by the cascade |
+| R5 edit while system writes | `PATCH` with `If-Match: "1"` accepted, version → 2 |
+| R6 clinician sole finalizer | State machine refused OPEN→SIGNED (409); consent gate refused recording without a grant (403) |
+| R7 original + edit captured | `ContextItemVersion`: `ai_draft_v1`/`ai_model` **and** `Manual edit`/`doctor_edit`, both encrypted |
+| C-9 fixed | `AgentTrajectoryStep stepType=NODE` **persisted** (previously rejected 400 and swallowed) |
+| C-10 fixed | `status=DEGRADED` **persisted** on `consultation.consentGate` (previously mislabelled ERROR) |
