@@ -146,6 +146,10 @@ services:
             /usr/bin/mc mb minio/generated-audio --ignore-existing;
             /usr/bin/mc mb minio/documents --ignore-existing;
             /usr/bin/mc mb minio/backups --ignore-existing;
+            # TASK-789: the compiled-config claim check every workflow dispatch mints into.
+            # Without it a consultation-open dispatch fails with "The specified bucket does
+            # not exist" — and because dispatch is best-effort, it fails SILENTLY.
+            /usr/bin/mc mb minio/harness-claim-check --ignore-existing;
             echo 'Setting bucket policies...';
             /usr/bin/mc policy set public minio/recordings;
             /usr/bin/mc policy set public minio/generated-audio;

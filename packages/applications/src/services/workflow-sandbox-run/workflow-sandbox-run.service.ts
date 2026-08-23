@@ -8,7 +8,7 @@ import { IActiveUserContext } from '../../interfaces';
 import { HarnessGatewayService } from '../consultation/harness/harness-gateway.service';
 import { IS3Service } from '../baseServices/storage';
 import { IWorkflowDefinitionService } from '../workflow-definition';
-import { mintCompiledConfigClaimCheckRef } from '../workflow-exposure/claim-check';
+import { CLAIM_CHECK_BUCKET, mintCompiledConfigClaimCheckRef } from '../workflow-exposure/claim-check';
 import { interpreterSessionId, IWorkflowRunService } from '../workflow-run';
 import { SandboxRunCancelResponse, SandboxRunResponse, SandboxRunStatusResponse, StartSandboxRunRequest } from './dto';
 import { IWorkflowSandboxRunService } from './IWorkflowSandboxRunService';
@@ -18,7 +18,6 @@ import { WorkflowSandboxRunDtoMapper } from './workflow-sandbox-run.dto.mapper';
  *  `WorkflowExposureService`'s `DEFAULT_CLAIM_CHECK_BUCKET`, itself mirroring the harness's own
  *  `ClaimCheckConfig.bucket` default. Kept as its own literal (not a cross-module import) —
  *  it is a fixed platform constant, not per-service configuration. */
-const CLAIM_CHECK_BUCKET = 'harness-claim-check';
 
 const TERMINAL_RUN_STATUSES = new Set(['COMPLETED', 'FAILED', 'CANCELED', 'TIMED_OUT']);
 
