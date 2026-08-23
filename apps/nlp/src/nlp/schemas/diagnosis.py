@@ -33,6 +33,9 @@ class DiagnosisSuggestionRequest(BaseModel):
         default=None,
         description="Optional local weights directory (gateway-injected AiModel.localPath)",
     )
+    tenant_id: str | None = Field(
+        default=None, description="Gateway-injected tenant id; cross-checked against X-Tenant-Id"
+    )
 
 
 class DiagnosisSuggestionResponse(BaseModel):
