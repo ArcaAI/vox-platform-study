@@ -77,12 +77,17 @@ export class WorkflowInvariantRuleController {
   @ApiQuery({ name: 'page', required: false, type: Number })
   @ApiQuery({ name: 'limit', required: false, type: Number })
   @ApiResponse({ status: 200, type: PaginatedWorkflowInvariantRuleResponse })
+  @ApiResponse({ status: 400, description: 'Bad request — malformed pagination parameters.' })
   async fetchAll(@Query() query: PaginatedQuery): Promise<PaginatedWorkflowInvariantRuleResponse> {
     return this.workflowInvariantRuleService.list(query);
   }
 
   @Get(':id')
-  @ApiOperation({ summary: 'Get one rule — the caller tenant’s own, or a SYSTEM register row' })
+  @ApiOperation({
+    summary: 'Get one rule — the caller tenant’s own, or a SYSTEM register row',
+    description:
+      'A SYSTEM row is readable by every tenant (it is the platform register they inherit) but carries `isSystemOwned: true` and is not editable here. Another tenant’s row returns 404, not 403 — the 404-over-403 posture hides existence across the tenant boundary.',
+  })
   @ApiParam({ name: 'id', description: 'WorkflowInvariantRule id' })
   @ApiResponse({ status: 200, type: WorkflowInvariantRuleResponse })
   @ApiResponse({ status: 404, description: "Not found, or another tenant's row (existence hidden)." })
@@ -125,7 +130,11 @@ export class WorkflowInvariantRuleController {
 
   @Delete(':id')
   // AUTH-NOTE: see the marker on `create` above — a SYSTEM-owned row is SUPER_ADMIN-only here.
-  @ApiOperation({ summary: 'Soft-delete a rule' })
+  @ApiOperation({
+    summary: 'Soft-delete a rule',
+    description:
+      'Sets `resourceStatus: DELETED` rather than removing the row, so a rule that once governed a published definition stays auditable. A SYSTEM-owned register row is SUPER_ADMIN-only (403 — a privilege boundary, deliberately not the 404-over-403 cross-tenant posture).',
+  })
   @ApiParam({ name: 'id', description: 'WorkflowInvariantRule id' })
   @ApiResponse({ status: 200, type: WorkflowInvariantRuleResponse })
   @ApiResponse({ status: 403, description: 'The row is SYSTEM-owned (the platform register) and the caller is not a super admin.' })
