@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from typing import Annotated
-
 from hope_env import first_real_secret, hope_settings_sources, load_env, real_secret
 from pydantic import AliasChoices, BaseModel, Field, SecretStr, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -102,7 +100,7 @@ class TransportPolicy(BaseModel):
     breaker_recovery_timeout_s: float = 15.0
 
 
-class GroundednessConfig(BaseSettings):
+class GroundednessConfig(BaseModel):
     """Live output-side NLI groundedness POLICY.
 
     ``False`` (default) is the dev / hermetic-CI bypass — the gate answers honestly
@@ -118,27 +116,32 @@ class GroundednessConfig(BaseSettings):
     `guardrail.groundedness` `AiTaskDefault` selection — resolved per request,
     tenant-first, fail-closed. What is left is the POLICY guardrail owns: whether
     the gate is on, what score counts as grounded, and how much it will score.
+
+    TASK-799 lane D — **none of that POLICY is env-reachable any more**, and this
+    class holds no field at all. It survives as the runtime carrier that
+    `GroundednessNliVerifier` reads, populated from the two config planes:
+
+    * ``enabled`` / ``batch_size`` / ``max_segments`` ride the control-plane pull
+      route (`guardrail.groundedness.*`, `global-kv`, `consumedBy: ['guardrail']`),
+      because they are platform-scope service geometry with no tenant opinion —
+      D-1's cardinality rule puts exactly that class on PULL;
+    * ``entailment_threshold`` rides `AiModel._metadata.policy`
+      (`groundednessEntailmentThreshold`), because it is MODEL-COUPLED: it
+      thresholds the scores of the specific NLI checkpoint the selection resolved.
+
+    The split is forced, not stylistic. Putting ``enabled`` on the model row would
+    be circular — it decides whether the selection is resolved at all — and putting
+    the threshold on the platform route would let it drift away from the checkpoint
+    it calibrates.
+
+    ``enabled`` still defaults to ``False``: a safety gate is never switched on by
+    silence, so a control plane with no opinion leaves it off.
     """
 
-    # Init > host env > secrets_dir (Vault Agent) > .env.<NODE_ENV> > default.
-    settings_customise_sources = hope_settings_sources
-
-    model_config = SettingsConfigDict(env_prefix="GUARDRAIL_V2_GROUNDEDNESS_")
-
+    # Not a `BaseSettings` any more — there is nothing left for env to reach.
     enabled: bool = False
-
-    # A segment is `grounded` only when its entailment score >= this threshold.
-    # Bounded to [0,1] so a fat-fingered threshold is rejected at startup ("fail
-    # fast") rather than silently marking everything grounded.
-    # Annotated (not a Field default) so a plain `0.5` default keeps
-    # GroundednessConfig zero-arg constructible for mypy.
-    entailment_threshold: Annotated[float, Field(ge=0.0, le=1.0)] = 0.5
-
-    # Segments per delegated batch — the throughput lever.
+    entailment_threshold: float = 0.5
     batch_size: int = 16
-
-    # Hard per-request bound on scored segments; excess segments degrade to
-    # `unverified` (never silently skipped as if verified).
     max_segments: int = 200
 
 
@@ -187,12 +190,16 @@ class QueueConfig(BaseSettings):
 class DatabaseConfig(BaseSettings):
     """Per-tenant config DB access.
 
-    When ``db_config_enabled`` is true (the default) the service
-    resolves the admin-chosen guardrail provider/model **per tenant** at request
-    time by reading ``core."AiTaskDefault"`` ⋈ ``core."AiModel"`` directly
-    (SQLAlchemy + asyncpg, mirroring STT), with a short TTL cache. When false
-    there is nothing left to resolve WITH: guardrail hosts no LLM and names no
-    model in code, so every selection 503s (see ``db_config_enabled`` below).
+    The service resolves the admin-chosen guardrail provider/model **per tenant**
+    at request time by reading ``core."AiTaskDefault"`` ⋈ ``core."AiModel"``
+    directly (SQLAlchemy + asyncpg, mirroring STT), with a short TTL cache. This
+    is the sanctioned transport exception in `06-python-services.md`: guardrail's
+    callers are peer services, not the gateway, so there is nothing to inject
+    config for it — and it covers the TRANSPORT only, never a SYSTEM-only lookup
+    or an env-owned engine.
+
+    There is no longer a switch that turns this off. See ``db_config_enabled``
+    below for why the one that existed was deleted.
     """
 
     # Init > host env > secrets_dir (Vault Agent) > .env.<NODE_ENV> > default.
@@ -202,13 +209,21 @@ class DatabaseConfig(BaseSettings):
 
     # Enabled by default: the resolver (get_resolved_guardian_provider in
     # core/dependencies.py) fails CLOSED (HTTP 503) when the SYSTEM
-    # AiTaskDefault selection for "guardrail.validate" is missing or a DB
-    # error occurs — there is no silent fallback to an env-selected engine.
-    # Setting this to False is NOT an env-engine escape hatch — there is no
-    # `GUARDRAIL_V2_PROVIDER` field and never was one, only comments claiming
-    # it (TASK-799 F-03). It bypasses DB resolution, and since guardrail names
-    # no engine in code the routes that need a selection answer 503 outright.
-    db_config_enabled: bool = True
+    # `db_config_enabled` is GONE (TASK-799 lane D, §D.2d).
+    #
+    # It was the last survivor of the era when guardrail could select an engine
+    # from env. Since TASK-735/736 deleted that plane, its only non-default value
+    # bypassed DB resolution while guardrail names no engine in code — so every
+    # route that needs a selection answered 503 outright. A knob whose "off"
+    # position bricks the service is not configuration, it is a fault injector
+    # with a settings name, and leaving it declared invited an operator to reach
+    # for it during exactly the incident it would deepen.
+    #
+    # Removing it does not remove a capability: DB config is how this service
+    # works. The failure it used to express — the DB is unreachable — is already
+    # modelled honestly by `TenantConfigUnavailableError` (503, and NOT cached as
+    # "no tenant opinion", so a stricter tenant is never downgraded to the
+    # platform floor).
 
     # Read-only connection string to the shared HOPE core DB.
     database_url: str = "postgresql+asyncpg://postgres:postgres@localhost:5432/hope"
@@ -299,7 +314,21 @@ class Settings(BaseSettings):
     debug: bool = False
     log_level: str = "info"
     cors_origins: list[str] = Field(default_factory=list)
-    cors_enabled: bool = False
+
+    @property
+    def cors_enabled(self) -> bool:
+        """CORS is on exactly when origins are named (TASK-799 lane D, §D.2e).
+
+        `GUARDRAIL_V2_CORS_ENABLED` was a second switch over the same fact, and
+        two switches over one fact can disagree: `enabled=true` with an empty
+        origin list adds a middleware that permits nothing, and `enabled=false`
+        with origins named silently ignores a deliberate configuration. Deriving
+        it makes the contradictory states unrepresentable.
+
+        Deliberately NOT settable — a derived value that keeps its own override is
+        the original bug wearing a property.
+        """
+        return bool(self.cors_origins)
 
     # Inter-service authentication. The gateway provisions this under the
     # canonical GUARDRAIL_SERVICE_TOKEN key (turbo.json / .env.example), so read

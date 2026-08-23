@@ -78,6 +78,25 @@ export const SERVICE_RUNTIME_DEFAULTS = {
   // value depends on the redaction worker's real memory limit, which differs
   // per environment.
   'guardrail.redact.chunkChars': 4000,
+
+  // ── guardrail output-side groundedness gate (TASK-799 lane D) ────────────
+  // The last guardrail policy plane that lived in environment variables
+  // (`GUARDRAIL_V2_GROUNDEDNESS_*`), so a platform admin could not switch the
+  // clinical gate on, or retune its throughput, without a redeploy.
+  //
+  // These three are PLATFORM-scope service geometry with no tenant opinion,
+  // which is exactly what D-1's cardinality rule puts on the PULL route. The
+  // gate's VERDICT-DECIDING `entailmentThreshold` deliberately does NOT appear
+  // here: it is model-coupled (it thresholds the scores of whichever NLI
+  // checkpoint the `guardrail.groundedness` selection resolved), so it rides
+  // `AiModel._metadata.policy` and is resolved by the same cascade that chose
+  // the model. Splitting them keeps a threshold from ever outliving the
+  // checkpoint it was calibrated against.
+  //
+  // `enabled` defaults FALSE — a safety gate is never switched on by silence.
+  'guardrail.groundedness.enabled': false,
+  'guardrail.groundedness.batchSize': 16,
+  'guardrail.groundedness.maxSegments': 200,
 } as const;
 
 export type ServiceRuntimeKey = keyof typeof SERVICE_RUNTIME_DEFAULTS;
@@ -171,6 +190,28 @@ const HAND_WRITTEN_META: Partial<Record<ServiceRuntimeKey, KeyMeta>> = {
       "nlp's own outbound connection/concurrency budget to a peer service — sharing one bound between " +
       'the two would let a slow peer round-trip starve local inference, or vice versa.',
   },
+  'guardrail.groundedness.enabled': {
+    label: 'Groundedness gate enabled',
+    description:
+      'Master switch for the output-side NLI groundedness gate. OFF (the default) answers every ' +
+      'segment honestly as `unverified` and resolves no model; ON is the clinical enforce posture. ' +
+      'Fail-closed either way — a disabled gate, an unreachable apps/nlp, or a scoring error all ' +
+      'degrade to `unverified`, and no path ever yields `grounded` without a model entailing the ' +
+      'segment. The verdict THRESHOLD is not here: it rides the selected model row ' +
+      '(`AiModel._metadata.policy.groundednessEntailmentThreshold`), because a threshold calibrated ' +
+      'for one NLI checkpoint is meaningless against another.',
+  },
+  'guardrail.groundedness.batchSize': {
+    label: 'Groundedness batch size (segments)',
+    description:
+      'Summary segments per delegated scoring call to apps/nlp — the throughput lever for the gate.',
+  },
+  'guardrail.groundedness.maxSegments': {
+    label: 'Groundedness max scored segments',
+    description:
+      'Hard per-request ceiling on scored segments. Segments beyond it are reported `unverified` ' +
+      'rather than silently skipped, so a truncated check never reads as a passed one.',
+  },
   'guardrail.redact.chunkChars': {
     label: 'PHI redaction chunk size (characters)',
     description:
@@ -222,7 +263,13 @@ export const SERVICE_RUNTIME_SETTINGS: SettingDescriptor[] = (Object.keys(SERVIC
     // field, so there is no switch case, response-DTO field or defaults map to
     // edit alongside it.
     consumedBy: consumerOf(key),
-    dataType: 'number',
+    // DERIVED from the declared default, not asserted. This family was
+    // number-only until the groundedness gate's boolean switch joined it, and a
+    // hardcoded `'number'` would have mislabelled it — which is not cosmetic:
+    // `EffectiveConfigService` validates the served value against this field and
+    // degrades a mismatch to `null`, so a boolean declared as a number would
+    // never reach the service at all.
+    dataType: typeof SERVICE_RUNTIME_DEFAULTS[key] === 'boolean' ? 'boolean' : 'number',
     sensitivity: 'internal',
     // Platform-owned capacity/retention knobs — never tenant-set.
     maxScope: 'system',

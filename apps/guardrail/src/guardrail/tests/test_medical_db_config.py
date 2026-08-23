@@ -56,29 +56,33 @@ class _VetoStubResolver:
         )
 
 
-def test_db_config_enabled_defaults_true(monkeypatch) -> None:
-    # DB-backed model resolution is the default AND the only source of a model
-    # identity: TASK-735 Phase 2b deleted the env engines it used to fall back to.
-    monkeypatch.delenv("GUARDRAIL_DB_CONFIG_ENABLED", raising=False)
+def test_db_config_cannot_be_switched_off(monkeypatch) -> None:
+    """DB-backed model resolution is the ONLY source of a model identity, so
+    there is no longer a switch that turns it off (TASK-799 lane D).
+
+    TASK-735 Phase 2b deleted the env engines the old `db_config_enabled=False`
+    branch fell back to, which left a flag whose only non-default value 503'd
+    every route. The variable is now inert."""
+    monkeypatch.setenv("GUARDRAIL_DB_CONFIG_ENABLED", "false")
     from guardrail.core.config import DatabaseConfig
 
-    assert DatabaseConfig().db_config_enabled is True
+    assert not hasattr(DatabaseConfig(), "db_config_enabled")
 
 
 @pytest.mark.asyncio
-async def test_db_config_disabled_fails_closed_rather_than_inventing_a_model() -> None:
-    """The dev escape hatch used to return the env-configured engine. There is no
-    env engine any more (guardrail hosts no LLM), and naming a model in code is
-    exactly the hardcoded selection this ticket removed — so DB-off is a 503."""
+async def test_an_unwired_resolver_fails_closed_rather_than_inventing_a_model() -> None:
+    """No resolver means no model, and naming one in code is exactly the
+    hardcoded selection this ticket removed — so it is a 503.
+
+    This is the case the retired `db_config_enabled=False` flag used to express.
+    Expressing it as the resolver's ABSENCE removes the second way of saying it,
+    and with it the state where the flag said "on" and no resolver was wired."""
     settings = Settings()
-    settings.db.db_config_enabled = False  # explicit opt-out (default is True)
 
     state = SimpleNamespace(
         settings=settings,
         http_client=object(),
-        tenant_config_resolver=_StubResolver(
-            GuardrailTenantConfig(provider="azure", model="should-not-be-used")
-        ),
+        tenant_config_resolver=None,
     )
     with pytest.raises(HTTPException) as exc_info:
         await get_resolved_guardian_provider(_FakeRequest(state))  # type: ignore[arg-type]
@@ -89,7 +93,6 @@ async def test_db_config_disabled_fails_closed_rather_than_inventing_a_model() -
 @pytest.mark.asyncio
 async def test_db_config_enabled_overrides_model_from_tenant() -> None:
     settings = Settings()
-    settings.db.db_config_enabled = True
     resolver = _StubResolver(
         GuardrailTenantConfig(provider="lm-studio", model="tenant-guardian-x", policy={"medicalValidationCriteria": "you are a medical context validator"})
     )
@@ -114,7 +117,6 @@ async def test_db_config_enabled_empty_config_fails_closed_503() -> None:
     # Fail-closed selection: DB enabled but no SYSTEM guardrail.validate row →
     # HTTP 503, never a silent env fallback (no model identity from env).
     settings = Settings()
-    settings.db.db_config_enabled = True
     resolver = _StubResolver(GuardrailTenantConfig())  # nothing resolved
 
     state = SimpleNamespace(
@@ -133,7 +135,6 @@ async def test_db_config_enabled_vetoed_tenant_fails_closed_503() -> None:
     # Tenant-first resolution (TASK-735 Phase 1): a DISABLED tenant row is a
     # VETO — 503, never a silent fold-through to the SYSTEM row.
     settings = Settings()
-    settings.db.db_config_enabled = True
     resolver = _VetoStubResolver()
 
     state = SimpleNamespace(
@@ -154,7 +155,6 @@ async def test_db_config_enabled_but_no_resolver_fails_closed_503() -> None:
     # DB enabled but the resolver was never wired (e.g. DB unreachable at boot)
     # → fail closed with 503; there is nothing else to fall back to.
     settings = Settings()
-    settings.db.db_config_enabled = True
     state = SimpleNamespace(
         settings=settings,
         http_client=object(),
