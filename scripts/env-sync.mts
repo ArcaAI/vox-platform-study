@@ -16,6 +16,9 @@
  *      (`apps/admin-console/src/config/`), which also build its zod schema.
  *   4. `TOOLS_ENV_SETTINGS`      — `@arcaai/tools`' single generator knob. It
  *      has no config module of its own, so it is declared below.
+ *   5. `scripts/generated/python-env-surface.json` — the six Python services'
+ *      pydantic-settings declarations plus their non-pydantic (`os.environ`)
+ *      reads, emitted by `pnpm env:python-surface`. See "THE PYTHON HALF" below.
  *
  * Env-var names come from `toEnvVarName()` for every registry-sourced dotted
  * key — never hand-copied.
@@ -24,11 +27,14 @@
  *   • `apps/api/.env.sample`               the platform contract beyond the floor
  *   • `apps/admin-console/.env.sample`     the console's own contract
  *   • `packages/tools/.env.sample`         the generator knob
+ *   • `apps/{stt,text,guardrail,nlp,harness,tts}/.env.sample`
+ *                                          the six Python services, generated
+ *                                          from their pydantic-settings
+ *                                          declarations (TASK-799 Phase 1.5)
  *   • `.env.sample`                        CONSOLIDATED — the bootstrap floor
- *                                          + the 3 files above + the 6 Python
- *                                          services' own `.env.sample` files,
- *                                          assembled into ONE root artifact.
- *                                          This is what
+ *                                          + the 3 TS files + the 6 Python
+ *                                          files above, assembled into ONE
+ *                                          root artifact. This is what
  *                                          `pnpm setup:dev`/`pnpm setup:test`
  *                                          copy to create `.env.dev`/`.env.test`.
  *   • `turbo.json#globalEnv`                declared surface ∪ real TS reads
@@ -42,16 +48,39 @@
  * section by THIS generator, `.env.example` no longer exists, and `--check`
  * covers the whole consolidated file end to end.)
  *
+ * ─── THE PYTHON HALF (TASK-799 Phase 1.5) ────────────────────────────────────
+ * This generator used to state that the six Python services were a "declared
+ * boundary, not an oversight": their `.env.sample` files were hand-maintained
+ * and inlined VERBATIM, and `scanTypeScriptReads()` globbed no `*.py`. The
+ * stated reason was sound — TypeScript cannot import pydantic-settings — but
+ * the consequence was not: 243 of 297 distinct Python env vars were invisible
+ * to `env-drift-check`, so "the config migration is finished" could never be
+ * falsified, and the assessment found the six samples understating the real
+ * surface by ~2x with 15 keys declared against no reader at all.
+ *
+ * The boundary is now crossed by a MANIFEST rather than by an import:
+ *
+ *   `pnpm env:python-surface`  (scripts/python-env-surface.py — needs Python)
+ *        introspects every `BaseSettings` subclass with pydantic's OWN
+ *        `EnvSettingsSource._extract_field_info`, harvests each field's `#`
+ *        comment block as its description, AST-scans non-pydantic
+ *        `os.environ` reads INCLUDING one-line helper indirection, and writes
+ *        `scripts/generated/python-env-surface.json`.
+ *
+ *   THIS generator (needs no Python) reads that manifest as a declaration
+ *        source and produces the six `.env.sample` files from it, folds every
+ *        Python name into `turbo.json#globalEnv`, and lists them in the docs
+ *        table. It ALSO regex-scans `*.py` for direct `os.environ` reads
+ *        (`scanPythonReads()`) as an independent second opinion, so a newly
+ *        added read fails `env:sync --check` even on a machine, or in a CI
+ *        job, with no Python at all.
+ *
+ * The two gates fail for different reasons and neither subsumes the other:
+ * `env:python-surface --check` catches a stale MANIFEST (a pydantic field
+ * changed), `env:sync --check` catches a stale ARTIFACT (a file generated from
+ * the manifest was not regenerated).
+ *
  * ─── DELIBERATELY *NOT* SCHEMA-VALIDATED (declared boundary, not an oversight) ─
- *   • `apps/{stt,text,guardrail,nlp,harness,tts}/.env.sample` — their schema is
- *     pydantic-settings, which the drift gate cannot import (CI has no Python
- *     service environment), and whose FULL field surface is ~500 keys against
- *     the ~120-key target. Their operator documentation therefore
- *     stays hand-maintained — this generator reads their CURRENT content
- *     verbatim into `.env.sample` (so that assembly can't drift out of sync
- *     the way the old by-hand script could), but does not validate it against
- *     the registry. The keys of theirs that ARE registry-declared appear in
- *     the generated docs table with an explicit owner column.
  *   • `apps/example` — a Vite demo whose vars are `import.meta.env.VITE_*`,
  *     not process env.
  *   • `.env.test`, per-app `.env.prod` — environment TEMPLATES with
@@ -75,6 +104,78 @@ const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 /** Tiers whose values are supplied through the process environment. */
 const ENV_SUPPLIED_TIERS = new Set(['env', 'vault-kv']);
 
+// ─────────────────────────────────────────────────────────────────────────────
+// The Python manifest (see "THE PYTHON HALF" in the header)
+// ─────────────────────────────────────────────────────────────────────────────
+
+interface PythonField {
+    name: string;
+    aliases: string[];
+    class: string;
+    field: string;
+    prefix: string;
+    required: boolean;
+    secret: boolean;
+    dataType: string;
+    default: string | number | boolean | null;
+    description: string;
+}
+
+interface PythonManifest {
+    distinctNames: number;
+    services: Record<string, { port: number; title: string; fields: PythonField[] }>;
+    /** Names read outside pydantic-settings (`os.environ`), name → files. */
+    bareReads: Record<string, string[]>;
+}
+
+const PYTHON_MANIFEST_PATH = 'scripts/generated/python-env-surface.json';
+
+const pythonManifest: PythonManifest = JSON.parse(readFileSync(join(ROOT, PYTHON_MANIFEST_PATH), 'utf8'));
+
+/** Fixed rendering order, so the consolidated file is stable across runs. */
+const PYTHON_SERVICES = ['guardrail', 'harness', 'nlp', 'stt', 'text', 'tts'] as const;
+
+/**
+ * Local-dev values that are NOT the code default — the only hand-owned data in
+ * the Python half, and the reason `pnpm setup:dev` yields a WORKING env
+ * (TASK-799 Phase 1.5 B.4) rather than one a developer must fix by hand.
+ *
+ * A local-dev value cannot be derived from the code: the code default is what
+ * the service should do in PRODUCTION, and these are the handful of places
+ * where a laptop's local infrastructure legitimately disagrees. Everything
+ * else renders from `default` and is emitted COMMENTED OUT — an env file
+ * should carry the deltas, not restate 500 defaults it would then hold
+ * hostage to drift.
+ *
+ * Each entry is seeded from the value the hand-maintained `.env.sample` it
+ * replaces actually carried, so this is a preservation list, not new policy.
+ * Add to it only with the reason written down.
+ */
+const PYTHON_LOCAL_DEV_VALUES: ReadonlyArray<readonly [name: string, value: string, why: string]> = [
+    // LM Studio is the default local OpenAI-compatible endpoint. It ignores the
+    // key's VALUE but rejects an EMPTY Authorization header, so the judge needs
+    // a non-empty placeholder to work at all against a local model.
+    ['HARNESS_JUDGE_OPENAI_COMPAT_API_KEY', 'lm-studio', 'LM Studio rejects an empty bearer token'],
+    // LM Studio's OpenAI-compat surface does not implement `json_object`
+    // response_format; asking for it fails the call outright.
+    ['HARNESS_JUDGE_OPENAI_COMPAT_JSON_RESPONSE_FORMAT', 'text', 'LM Studio has no `json_object` support'],
+    // PHI posture, not a tuning knob: the OTel GenAI instrumentation would
+    // otherwise capture prompt/completion CONTENT into spans. The code default
+    // is empty (= the upstream library default, which captures), so leaving it
+    // unset locally would put clinical text in telemetry.
+    ['OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT', 'NO_CONTENT', 'keeps clinical text out of spans'],
+    // The local TTS engine. Off by default because a cluster deploy has no
+    // Kokoro weights mounted; a laptop that ran `pnpm tts:setup` does.
+    ['TTS_KOKORO_ENABLED', 'true', 'local Kokoro weights are present after `pnpm tts:setup`'],
+    // WHERE Hugging Face caches weights, never WHICH checkpoint runs. It must
+    // be declared rather than inherited from an interactive login shell:
+    // `~/.zshrc` is not sourced by services, CI jobs or coding agents, so every
+    // download otherwise lands in `~/.cache/huggingface`.
+    ['HF_HOME', '/Volumes/aillusion/huggingface', 'services never see an interactive shell’s HF_HOME'],
+];
+
+const pythonLocalDevValue = new Map(PYTHON_LOCAL_DEV_VALUES.map(([name, value]) => [name, value]));
+
 /** `@arcaai/tools` has no config module; its one knob is declared here. */
 const TOOLS_ENV_SETTINGS: SettingDescriptor[] = [
     {
@@ -93,76 +194,44 @@ const TOOLS_ENV_SETTINGS: SettingDescriptor[] = [
 ];
 
 /**
- * `apps/nlp`'s own bootstrap-floor knobs (TASK-778).
+ * Prose that the Python source does not carry.
  *
- * WHY THEY ARE DECLARED HERE AND NOT IN `HOPE_SETTINGS_REGISTRY`: the registry
- * is the GATEWAY's catalog, and the header above records the deliberate
- * boundary — the six Python services' `.env.sample` files are hand-maintained
- * pydantic-settings surfaces this generator cannot import. But
- * `turbo.json#globalEnv` is a cache-correctness declaration for the WHOLE repo,
- * so a Python-read variable that is missing from it is undeclared all the same.
- * These (originally nine, now fifteen) were hand-added straight to `turbo.json` and would therefore be
- * deleted by the next `pnpm env:sync` — declaring them is what makes the
- * generator idempotent over them.
+ * These fifteen knobs (TASK-778 / TASK-782) used to be DECLARED here as
+ * `SettingDescriptor`s, because `turbo.json#globalEnv` is a repo-wide
+ * cache-correctness declaration and a Python-read variable missing from it is
+ * undeclared whatever language reads it. The Python manifest now declares them
+ * — along with the other ~500 this file could not see — so the declaration is
+ * gone and only the DESCRIPTIONS remain, keyed by env var name.
  *
- * They render into NO `.env.sample`: `apps/nlp/.env.sample` already documents
- * them and is inlined verbatim into the consolidated root file. They contribute
- * to `globalEnv` and to the generated docs table only.
+ * Keeping them is not sentiment: `scripts/python-env-surface.py` harvests each
+ * field's `#` comment block as its description, and six of these fifteen have
+ * no comment in `apps/nlp/src/nlp/core/config.py` at all. Dropping the overlay
+ * would silently downgrade the generated sample's documentation while the key
+ * count went up. An entry here is a standing invitation to move the prose into
+ * the Python source and delete the line.
  *
  * Every one is TRANSPORT or GEOMETRY — queue bounds, batch geometry, cache
  * retention, a filesystem root. None selects a model, a label set or a
  * threshold; those stay `AiTaskDefault` x `AiModel` per
  * `00-project-context.md` §Configuration Principles.
  */
-const PYTHON_SERVICE_ENV_SETTINGS: SettingDescriptor[] = [
-    {
-        key: 'hfHome',
-        tier: 'env',
-        dataType: 'string',
-        sensitivity: 'internal',
-        maxScope: 'system',
-        editableBy: 'none',
-        failMode: 'open-to-default',
-        category: 'Bootstrap',
-        label: 'Hugging Face cache root',
-        description:
-            'Filesystem root the Hugging Face libraries use for their model cache, read out of `os.environ` by `huggingface_hub` / `gliner2` after `hope_env.load_env()` populates it. ' +
-            'WHERE weights are cached, never WHICH checkpoint runs. It MUST be declared rather than inherited from an operator login shell: `~/.zshrc` is sourced by INTERACTIVE shells only, so services, CI jobs and coding agents never see it and every download silently lands in `~/.cache/huggingface`. ' +
-            'Unset = the Hugging Face default.',
-        sampleValue: '/Volumes/aillusion/huggingface',
-    },
-    ...(
-        [
-            ['nlp.inference.maxConcurrent', 'Concurrent forward passes across all NLP models (bootstrap fallback; the runtime value comes from the control plane).', 4],
-            ['nlp.inference.batchMaxSize', 'Maximum items coalesced into one NLP forward pass.', 8],
-            ['nlp.inference.batchLingerMs', 'How long an otherwise-idle NLP request waits for company before dispatching. This is the ENTIRE latency price of batching — keep it well under the p50 forward pass.', 5],
-            ['nlp.inference.queueMaxDepth', 'Bounded NLP inference queue depth; at the bound the service sheds with 503 + `Retry-After` instead of growing until OOM.', 256],
-            ['nlp.inference.queueMaxWaitSeconds', 'Wait ceiling for a queued NLP inference item; exceeding it sheds with 503 rather than serving a stale answer.', 20],
-            ['nlp.inference.maxInflightBatches', 'Concurrent forward passes against ONE NLP model.', 2],
-            ['nlp.modelCache.ttlSeconds', 'Idle TTL before an NLP model is evicted from the in-process cache.', 600],
-            ['nlp.modelCache.maxModels', 'LRU ceiling on resident NLP models.', 3],
-            ['nlp.model.localRoots', 'Optional allow-list of filesystem roots a configured LOCAL model path must resolve inside. Unset = unrestricted, deliberately and documented.', ''],
-            ['nlp.inference.interactiveBatchMaxSize', 'Maximum items coalesced into one INTERACTIVE-lane forward pass (TASK-782). The synchronous inline gate and the asynchronous per-utterance pass are different service classes with different latency budgets, so they do not share a queue geometry.', 2],
-            ['nlp.inference.interactiveBatchLingerMs', 'How long an otherwise-idle INTERACTIVE-lane request waits for company. Measured against the gate budget, not the bulk pass.', 2],
-            ['nlp.inference.interactiveQueueMaxDepth', 'Bounded INTERACTIVE-lane queue depth; at the bound the gate sheds with 503 + `Retry-After`.', 64],
-            ['nlp.inference.interactiveQueueMaxWaitSeconds', 'Wait ceiling for a queued INTERACTIVE-lane item — this IS the declared inline-gate SLO. Past it the verdict is too late to gate anything, so a 503 the caller fails closed on beats a stale 200.', 2],
-            ['nlp.inference.device', 'Where NLP guard tensors execute: "cpu" (safe on every host), "auto" (best device present), or an explicit "mps"/"cuda", which RAISES when absent rather than silently running several times slower. Transport/topology, never model identity.', 'cpu'],
-            ['nlp.inference.deviceCpuOnlyModules', 'Comma-separated dotted submodule paths kept on CPU when the device is an accelerator. A runtime-COMPATIBILITY fact about the installed gliner2/torch build, not policy: `count_embed.gru` trips an MPSNDArray assertion that ABORTS the process rather than raising, so the relocation is mandatory wherever that build runs on MPS.', 'count_embed.gru'],
-        ] as const
-    ).map(([key, description, defaultValue]): SettingDescriptor => ({
-        key,
-        tier: 'env',
-        dataType: typeof defaultValue === 'number' ? 'number' : 'string',
-        sensitivity: 'internal',
-        maxScope: 'system',
-        editableBy: 'none',
-        failMode: 'open-to-default',
-        category: 'NLP service',
-        label: key,
-        description,
-        default: defaultValue,
-    })),
-];
+const PYTHON_DESCRIPTION_OVERLAY: ReadonlyMap<string, string> = new Map([
+    ['NLP_INFERENCE_MAX_CONCURRENT', 'Concurrent forward passes across all NLP models (bootstrap fallback; the runtime value comes from the control plane).'],
+    ['NLP_INFERENCE_BATCH_MAX_SIZE', 'Maximum items coalesced into one NLP forward pass.'],
+    ['NLP_INFERENCE_BATCH_LINGER_MS', 'How long an otherwise-idle NLP request waits for company before dispatching. This is the ENTIRE latency price of batching — keep it well under the p50 forward pass.'],
+    ['NLP_INFERENCE_QUEUE_MAX_DEPTH', 'Bounded NLP inference queue depth; at the bound the service sheds with 503 + `Retry-After` instead of growing until OOM.'],
+    ['NLP_INFERENCE_QUEUE_MAX_WAIT_SECONDS', 'Wait ceiling for a queued NLP inference item; exceeding it sheds with 503 rather than serving a stale answer.'],
+    ['NLP_INFERENCE_MAX_INFLIGHT_BATCHES', 'Concurrent forward passes against ONE NLP model.'],
+    ['NLP_MODEL_CACHE_TTL_SECONDS', 'Idle TTL before an NLP model is evicted from the in-process cache.'],
+    ['NLP_MODEL_CACHE_MAX_MODELS', 'LRU ceiling on resident NLP models.'],
+    ['NLP_MODEL_LOCAL_ROOTS', 'Optional allow-list of filesystem roots a configured LOCAL model path must resolve inside. Unset = unrestricted, deliberately and documented.'],
+    ['NLP_INFERENCE_INTERACTIVE_BATCH_MAX_SIZE', 'Maximum items coalesced into one INTERACTIVE-lane forward pass (TASK-782). The synchronous inline gate and the asynchronous per-utterance pass are different service classes with different latency budgets, so they do not share a queue geometry.'],
+    ['NLP_INFERENCE_INTERACTIVE_BATCH_LINGER_MS', 'How long an otherwise-idle INTERACTIVE-lane request waits for company. Measured against the gate budget, not the bulk pass.'],
+    ['NLP_INFERENCE_INTERACTIVE_QUEUE_MAX_DEPTH', 'Bounded INTERACTIVE-lane queue depth; at the bound the gate sheds with 503 + `Retry-After`.'],
+    ['NLP_INFERENCE_INTERACTIVE_QUEUE_MAX_WAIT_SECONDS', 'Wait ceiling for a queued INTERACTIVE-lane item — this IS the declared inline-gate SLO. Past it the verdict is too late to gate anything, so a 503 the caller fails closed on beats a stale 200.'],
+    ['NLP_INFERENCE_DEVICE', 'Where NLP guard tensors execute: "cpu" (safe on every host), "auto" (best device present), or an explicit "mps"/"cuda", which RAISES when absent rather than silently running several times slower. Transport/topology, never model identity.'],
+    ['NLP_INFERENCE_DEVICE_CPU_ONLY_MODULES', 'Comma-separated dotted submodule paths kept on CPU when the device is an accelerator. A runtime-COMPATIBILITY fact about the installed gliner2/torch build, not policy: `count_embed.gru` trips an MPSNDArray assertion that ABORTS the process rather than raising, so the relocation is mandatory wherever that build runs on MPS.'],
+]);
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Render model
@@ -261,17 +330,100 @@ const platformSurface = [...apiDeclared, ...registryEnvSupplied.filter((v) => !a
 
 const adminConsoleSurface = ADMIN_CONSOLE_ENV_SETTINGS.map(fromAdminConsole);
 const toolsSurface = TOOLS_ENV_SETTINGS.map((d) => fromDescriptor(d, 'packages/tools'));
-/** Declared for `globalEnv` + docs only — rendered into no `.env.sample` (see the list's doc comment). */
-const pythonServiceSurface = PYTHON_SERVICE_ENV_SETTINGS.map((d) => fromDescriptor(d, 'apps/nlp'));
 
-/** Every declared key, deduplicated by name — the surface this generator counts. */
+/**
+ * Every declared key of the TYPESCRIPT surface, deduplicated by name.
+ *
+ * The Python surface is deliberately NOT folded in here: these two are governed
+ * by different mechanisms (a hand-authored descriptor with a `tier` and a
+ * `failMode` vs. a pydantic field introspected out of a service), they have
+ * different owners, and `env-sync.test.ts` holds this one to a ~149-key ceiling
+ * that exists to catch UNREVIEWED growth in the PLATFORM contract. Merging ~540
+ * Python names into it would silently retire that ceiling. Both surfaces meet
+ * in `computeGlobalEnv()` and in the docs table, which is where they belong.
+ */
 export const declaredSurface: EnvVar[] = (() => {
     const byName = new Map<string, EnvVar>();
-    for (const v of [...bootstrapFloor, ...platformSurface, ...adminConsoleSurface, ...toolsSurface, ...pythonServiceSurface]) {
+    for (const v of [...bootstrapFloor, ...platformSurface, ...adminConsoleSurface, ...toolsSurface]) {
         if (!byName.has(v.name)) byName.set(v.name, v);
     }
     return [...byName.values()];
 })();
+
+// ─────────────────────────────────────────────────────────────────────────────
+// The Python surface
+// ─────────────────────────────────────────────────────────────────────────────
+
+interface PythonEnvVar extends EnvVar {
+    /** Also accepted, in precedence order after `name`. */
+    aliases: string[];
+    /** `undefined` ⇔ the field is required and the operator must supply a value. */
+    codeDefault?: string;
+    /** True ⇔ the line is emitted live; false ⇔ commented out at its default. */
+    active: boolean;
+}
+
+function fromPythonField(field: PythonField, service: string): PythonEnvVar {
+    const localDev = pythonLocalDevValue.get(field.name);
+    const codeDefault = field.default === null ? undefined : String(field.default);
+    return {
+        name: field.name,
+        aliases: field.aliases,
+        tier: field.secret ? 'vault-kv' : 'env',
+        required: field.required,
+        secret: field.secret,
+        default: codeDefault,
+        category: field.class,
+        label: field.name,
+        description: PYTHON_DESCRIPTION_OVERLAY.get(field.name) ?? field.description,
+        owner: `apps/${service}`,
+        codeDefault,
+        // Three reasons to emit a LIVE line, and only three:
+        //   secret        — must be minted/pasted; `generate-env-file.sh` keys off
+        //                   the literal `CHANGE_ME` placeholder to fill it.
+        //   required      — pydantic has no default, so an absent line is a boot failure.
+        //   local-dev     — the code default is right for production and wrong here.
+        // Everything else is commented out AT its default: an env file should
+        // carry the deltas from the code, not a second copy of the code that
+        // then drifts from it.
+        active: field.secret || field.required || localDev !== undefined,
+    };
+}
+
+const pythonSurface: ReadonlyArray<{ service: string; port: number; title: string; vars: PythonEnvVar[] }> = PYTHON_SERVICES.map((service) => {
+    const payload = pythonManifest.services[service];
+    return {
+        service,
+        port: payload.port,
+        title: payload.title,
+        vars: payload.fields.map((f) => fromPythonField(f, service)),
+    };
+});
+
+/**
+ * Read, but PROCESS PLUMBING rather than configuration — excluded from
+ * `turbo.json#globalEnv`.
+ *
+ * `globalEnv` hashes each variable's VALUE into the turbo cache key, so a name
+ * whose value legitimately differs between two shells on the same machine does
+ * not "declare a config input", it destroys cache hits. `PYTHONPATH` is set
+ * differently by conda, by an IDE, by a worktree-scoped test run and by CI, and
+ * nothing in this repo treats it as a setting — it is how the interpreter finds
+ * modules.
+ *
+ * This list is for that failure mode ONLY. It is not a place to hide a variable
+ * you would rather not declare: anything an application READS to decide what to
+ * do belongs in `globalEnv`, however inconvenient.
+ */
+const NOT_CONFIGURATION: ReadonlySet<string> = new Set(['PYTHONPATH']);
+
+/** Every name any Python code can read — canonical, alias, or non-pydantic. */
+const pythonAllNames: ReadonlySet<string> = new Set([
+    ...pythonSurface.flatMap((s) => s.vars.flatMap((v) => [v.name, ...v.aliases])),
+    ...Object.keys(pythonManifest.bareReads),
+]);
+
+const pythonFieldCount = pythonSurface.reduce((total, s) => total + s.vars.length, 0);
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Rendering
@@ -445,6 +597,52 @@ function renderToolsExample(): string {
     return [BANNER('scripts/env-sync.mts (TOOLS_ENV_SETTINGS)'), ...renderVerbose(toolsSurface), ''].join('\n');
 }
 
+/**
+ * One Python service's `.env.sample`, grouped by the settings class that owns
+ * each field — the same grouping the source has, so a reader can go straight
+ * from a line here to the declaration that produced it.
+ */
+function renderPythonExample(service: (typeof pythonSurface)[number]): string {
+    const out: string[] = [
+        BANNER(`apps/${service.service}'s pydantic-settings classes, via ${PYTHON_MANIFEST_PATH}\n# (regenerate the manifest with \`pnpm env:python-surface\`, then \`pnpm env:sync\`)`),
+        '#',
+        `# ${service.title} — apps/${service.service}, port ${service.port}.`,
+        '#',
+        '# A line is LIVE only when it must be set: a secret, a field pydantic has no',
+        '# default for, or one of the few local-dev values that legitimately differ',
+        '# from the code default (PYTHON_LOCAL_DEV_VALUES in scripts/env-sync.mts).',
+        '# Every other knob is listed COMMENTED OUT at its code default — the default',
+        '# lives in the Python source, and an env file that restates it only creates',
+        '# something to drift. Uncomment a line to override it.',
+        '#',
+        '# `# also:` lists the other names pydantic accepts for the same field, in',
+        '# precedence order after the canonical one.',
+    ];
+
+    for (const [category, group] of byCategory(service.vars as EnvVar[])) {
+        out.push('', `# ── ${category} ${'─'.repeat(Math.max(0, 68 - category.length))}`);
+        for (const v of group as PythonEnvVar[]) {
+            out.push('');
+            // The name is already on the declaration line below; repeating it as
+            // a heading is noise on the ~250 fields that carry no prose at all.
+            if (v.required) out.push(`# ${v.label} (REQUIRED — no code default)`);
+            if (v.description) out.push(...wrap(v.description, 116, '#   '));
+            if (v.aliases.length > 0) out.push(`#   also: ${v.aliases.join(', ')}`);
+            const localDev = pythonLocalDevValue.get(v.name);
+            if (localDev !== undefined && v.codeDefault !== undefined) {
+                out.push(`#   local-dev value; the code default is \`${v.codeDefault}\``);
+            }
+            if (v.active) {
+                out.push(`${v.name}=${v.secret ? 'CHANGE_ME' : (localDev ?? v.codeDefault ?? 'CHANGE_ME')}`);
+            } else {
+                out.push(`# ${v.name}=${v.codeDefault ?? ''}`);
+            }
+        }
+    }
+    out.push('');
+    return out.join('\n');
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // `.env.sample` — the consolidated root artifact
 // ─────────────────────────────────────────────────────────────────────────────
@@ -453,19 +651,18 @@ function renderToolsExample(): string {
 const SAMPLE_KEY_RE = /^([A-Za-z_][A-Za-z0-9_]*)=/;
 
 /**
- * Hand-maintained Python service examples, read verbatim from disk. Their
- * schema is pydantic-settings (see the "DELIBERATELY NOT SCHEMA-VALIDATED"
- * note above) — this generator includes their CURRENT content, it does not
- * validate it.
+ * The six Python service sections of the consolidated file, GENERATED from the
+ * manifest (TASK-799 Phase 1.5). They used to be read VERBATIM off disk as
+ * hand-maintained files, which is exactly what let them drift ~2x away from the
+ * real surface and carry 15 keys with no reader at all — see "THE PYTHON HALF"
+ * in the header. Their content now comes from `renderPythonExample()`, the same
+ * function that writes the per-service file, so the two can never disagree.
  */
-const PYTHON_SAMPLE_SECTIONS: ReadonlyArray<{ path: string; title: string; note: string }> = [
-    { path: 'apps/guardrail/.env.sample', title: 'GUARDRAIL — Safety Engine (apps/guardrail, :8863)', note: 'Hand-maintained (pydantic-settings; too large for this generator to validate). Content audited TASK-582.' },
-    { path: 'apps/harness/.env.sample', title: 'HARNESS — Clinical Documentation (apps/harness, :8866)', note: 'Hand-maintained. Content audited TASK-582.' },
-    { path: 'apps/nlp/.env.sample', title: 'NLP — Medical NLP (apps/nlp, :8864)', note: 'Hand-maintained. Content audited TASK-582.' },
-    { path: 'apps/text/.env.sample', title: 'Text — LLM Summarization (apps/text, :8862)', note: 'Hand-maintained. Content audited TASK-582.' },
-    { path: 'apps/stt/.env.sample', title: 'STT — Speech-to-Text (apps/stt, :8861)', note: 'Hand-maintained. Content audited TASK-582.' },
-    { path: 'apps/tts/.env.sample', title: 'TTS — Text-to-Speech (apps/tts, :8865)', note: 'Hand-maintained. Created TASK-582 (previously the only Python service with no example file).' },
-];
+const PYTHON_SAMPLE_SECTIONS: ReadonlyArray<{ path: string; title: string; note: string }> = pythonSurface.map((s) => ({
+    path: `apps/${s.service}/.env.sample`,
+    title: `${s.service.toUpperCase()} — ${s.title} (apps/${s.service}, :${s.port})`,
+    note: `Generated by pnpm env:sync from ${PYTHON_MANIFEST_PATH}.`,
+}));
 
 const CONSOLIDATED_HEADER = [
     '# ============================================================================',
@@ -527,7 +724,7 @@ function appendDeduped(out: string[], seen: Map<string, string>, title: string, 
     out.push('');
 }
 
-function renderConsolidatedSample(apiContent: string, adminConsoleContent: string, toolsContent: string): string {
+function renderConsolidatedSample(apiContent: string, adminConsoleContent: string, toolsContent: string, pythonContent: ReadonlyMap<string, string>): string {
     const out: string[] = [CONSOLIDATED_HEADER];
     const seen = new Map<string, string>();
 
@@ -536,8 +733,9 @@ function renderConsolidatedSample(apiContent: string, adminConsoleContent: strin
     appendDeduped(out, seen, 'ADMIN CONSOLE (apps/admin-console)', 'apps/admin-console/.env.sample', 'Generated by pnpm env:sync.', adminConsoleContent);
     appendDeduped(out, seen, 'CODE GENERATORS (packages/tools)', 'packages/tools/.env.sample', 'Generated by pnpm env:sync.', toolsContent);
     for (const section of PYTHON_SAMPLE_SECTIONS) {
-        const content = readFileSync(join(ROOT, section.path), 'utf8');
-        appendDeduped(out, seen, section.title, section.path, section.note, content);
+        // From the SAME render call that wrote the per-service file — never
+        // re-read off disk, so the section and the file cannot disagree.
+        appendDeduped(out, seen, section.title, section.path, section.note, pythonContent.get(section.path) as string);
     }
 
     return out.join('\n') + '\n';
@@ -633,8 +831,33 @@ export function scanSourceForTests(raw: string, file: string): Set<string> {
         if (/^=[^=]/.test(match[3] ?? '')) continue;
         found.add((match[1] ?? match[2]) as string);
     }
+
+    // …and the same reads written through a helper (see `TS_ENV_HELPERS`).
+    const HELPER = new RegExp(`\\b(?:${TS_ENV_HELPERS.join('|')})\\(\\s*(['"\`])([A-Z][A-Z0-9_]{1,})\\1`, 'g');
+    while ((match = HELPER.exec(source)) !== null) found.add(match[2] as string);
+
     return found;
 }
+
+/**
+ * TypeScript env reads that go through a HELPER instead of `process.env.X`.
+ *
+ * `getEnvBoolean('OTEL_LOGS_ENABLED', false)` is as much a read as
+ * `process.env.OTEL_LOGS_ENABLED`, but the name never appears next to
+ * `process.env`, so `scanTypeScriptReads()`'s regex could not see it and
+ * `turbo.json#globalEnv` did not declare it. Found while adding the Python
+ * scanner, which had the identical blind spot: `apps/api/.env.prod` declares
+ * `OTEL_LOGS_ENABLED` and `OTEL_LOG_BRIDGE`, both genuinely read by
+ * `packages/applications/src/services/baseServices/logging/logging.service.ts`,
+ * and the reader check reported them as orphans.
+ *
+ * The helpers are named rather than discovered because there are exactly four
+ * of them and they live in one file
+ * (`.../baseServices/logging/env.utils.ts`); each takes the variable NAME as
+ * its first argument. Adding a fifth means adding it here — or, better,
+ * reading `process.env` directly at the call site, which needs no list.
+ */
+const TS_ENV_HELPERS = ['getEnvString', 'getEnvBoolean', 'getEnvNumber'] as const;
 
 export function scanTypeScriptReads(): Set<string> {
     const listed = execSync('git ls-files "*.ts" "*.tsx" "*.mts" "*.cts" "*.mjs" "*.js"', { cwd: ROOT, encoding: 'utf8' })
@@ -655,9 +878,63 @@ export function scanTypeScriptReads(): Set<string> {
     return found;
 }
 
+/**
+ * Direct `os.environ` reads in Python source — the second opinion.
+ *
+ * `scripts/python-env-surface.py` already AST-scans these, and more precisely
+ * (it resolves module constants and one-line helper indirection, which no regex
+ * can). This exists anyway because the manifest is a COMMITTED FILE: a developer
+ * who adds `os.getenv("NEW_THING")` and forgets `pnpm env:python-surface` would
+ * otherwise sail past `env-drift-check`, which is the exact class of invisibility
+ * TASK-799 Phase 1.5 exists to end. A regex over `*.py` needs no Python
+ * interpreter, so it runs in the same CI job as the rest of this generator and
+ * fails the build on the spot.
+ *
+ * Test files are excluded on the same principle as `scanTypeScriptReads()`: a
+ * test's environment is a fixture, not a configuration input.
+ */
+export function scanPythonReads(): Set<string> {
+    const listed = execSync('git ls-files "*.py"', { cwd: ROOT, encoding: 'utf8' })
+        .split('\n')
+        .filter(Boolean)
+        .filter((f) => !f.includes('node_modules') && !f.startsWith('docs/'));
+
+    const isTestFile = (f: string) => /(^|\/)(tests?|__tests__|__mocks__)\//.test(f) || /(^|\/)(test_[^/]+|[^/]+_test|conftest)\.py$/.test(f);
+
+    // `os.getenv("X")`, `os.environ.get("X")`, `os.environ["X"]`. A WRITE
+    // (`os.environ["X"] = …`) is not a config input, so `=` right after the
+    // bracket disqualifies the match — same rule the TypeScript scanner applies.
+    const READ = /os\.(?:getenv\(\s*|environ\.get\(\s*|environ\[\s*)(['"])([A-Z][A-Z0-9_]{2,})\1\s*(\]\s*=[^=]|.?)/g;
+
+    const found = new Set<string>();
+    for (const file of listed) {
+        if (isTestFile(file)) continue;
+        const source = readFileSync(join(ROOT, file), 'utf8')
+            // Strip `#` comments and both docstring forms: prose ABOUT a variable
+            // is not a program that reads one (`nlp/core/config.py` discusses
+            // `os.getenv` at length in exactly this way).
+            .replace(/"""[\s\S]*?"""/g, '""')
+            .replace(/'''[\s\S]*?'''/g, "''")
+            .replace(/(^|[^'"])#[^\n]*/g, '$1');
+        let match: RegExpExecArray | null;
+        while ((match = READ.exec(source)) !== null) {
+            if (/^\]\s*=[^=]/.test(match[3] ?? '')) continue;
+            found.add(match[2]);
+        }
+    }
+    return found;
+}
+
+/**
+ * `turbo.json#globalEnv` — every name any code in this repo reads, in any
+ * language. Cache correctness does not care which runtime performs the read.
+ */
 function computeGlobalEnv(): string[] {
     const names = new Set<string>(declaredSurface.map((v) => v.name));
     for (const name of scanTypeScriptReads()) names.add(name);
+    for (const name of pythonAllNames) names.add(name);
+    for (const name of scanPythonReads()) names.add(name);
+    for (const name of NOT_CONFIGURATION) names.delete(name);
     return [...names].sort();
 }
 
@@ -682,7 +959,9 @@ function renderDocsTable(globalEnv: string[]): string {
         '# TASK-558 — The declared environment surface',
         '',
         'Generated from the settings registry plus each TypeScript deployable’s own',
-        'schema. `pnpm env:sync --check` (CI job `env-drift-check`) fails when this file,',
+        'schema, AND — since TASK-799 Phase 1.5 — the six Python services’',
+        'pydantic-settings declarations via `scripts/generated/python-env-surface.json`.',
+        '`pnpm env:sync --check` (CI job `env-drift-check`) fails when this file,',
         'the `.env.sample` files (root consolidated / per-app), or `turbo.json#globalEnv`',
         'disagree with those declarations.',
         '',
@@ -694,18 +973,57 @@ function renderDocsTable(globalEnv: string[]): string {
         `| … of which required (\`failMode: closed\`) | ${rows.filter((r) => r.required).length} |`,
         `| … of which secret | ${rows.filter((r) => r.secret).length} |`,
         ...[...counts.entries()].sort().map(([tier, n]) => `| … tier \`${tier}\` | ${n} |`),
+        `| Python declared fields | ${pythonFieldCount} |`,
+        `| … distinct Python names (incl. aliases + \`os.environ\` reads) | ${pythonAllNames.size} |`,
         `| \`turbo.json#globalEnv\` entries | ${globalEnv.length} |`,
         '',
-        '## Variables',
+        '## Variables — the TypeScript platform surface',
         '',
         '| Variable | Tier | Required | Default | Read by | Purpose |',
         '|---|---|---|---|---|---|',
     ];
+    const cell = (text: string) => text.replace(/\|/g, '\\|').replace(/\n/g, ' ');
     for (const v of rows) {
         const dflt = v.secret ? '`CHANGE_ME`' : v.default === undefined ? '—' : `\`${String(v.default)}\``;
-        const purpose = (v.description || v.label).replace(/\|/g, '\\|').replace(/\n/g, ' ');
-        lines.push(`| \`${v.name}\` | \`${v.tier}\` | ${v.required ? 'yes' : 'no'} | ${dflt} | \`${v.owner}\` | ${purpose} |`);
+        lines.push(`| \`${v.name}\` | \`${v.tier}\` | ${v.required ? 'yes' : 'no'} | ${dflt} | \`${v.owner}\` | ${cell(v.description || v.label)} |`);
     }
+
+    lines.push(
+        '',
+        '## Variables — the Python services',
+        '',
+        'Introspected from each service’s pydantic-settings classes. **In file** says',
+        'whether the generated `.env.sample` emits the line LIVE (a secret, a field with',
+        'no code default, or a declared local-dev override) or commented out at its code',
+        'default — see `renderPythonExample()` in `scripts/env-sync.mts`.',
+        '',
+        '| Variable | Service | Required | Secret | Default | In file | Also accepted |',
+        '|---|---|---|---|---|---|---|',
+    );
+    const pythonRows = pythonSurface.flatMap((s) => s.vars.map((v) => [s.service, v] as const)).sort((a, b) => a[1].name.localeCompare(b[1].name));
+    for (const [service, v] of pythonRows) {
+        const dflt = v.secret ? '`CHANGE_ME`' : v.codeDefault === undefined ? '—' : `\`${v.codeDefault}\``;
+        const also = v.aliases.length > 0 ? v.aliases.map((a) => `\`${a}\``).join(', ') : '—';
+        lines.push(`| \`${v.name}\` | \`apps/${service}\` | ${v.required ? 'yes' : 'no'} | ${v.secret ? 'yes' : 'no'} | ${dflt} | ${v.active ? 'live' : 'commented'} | ${also} |`);
+    }
+
+    const bare = Object.entries(pythonManifest.bareReads);
+    lines.push(
+        '',
+        '## Python reads OUTSIDE pydantic-settings',
+        '',
+        'Direct `os.environ` / `os.getenv` reads, including those through a one-line',
+        'helper. They are declared in `turbo.json#globalEnv` but belong to no settings',
+        'class, so no service validates them at startup — each one is a candidate for',
+        'promotion into its service’s `BaseSettings`.',
+        '',
+        '| Variable | Read by |',
+        '|---|---|',
+    );
+    for (const [name, files] of bare) {
+        lines.push(`| \`${name}\` | ${files.map((f) => `\`${f}\``).join(', ')} |`);
+    }
+
     lines.push('');
     return lines.join('\n');
 }
@@ -724,11 +1042,13 @@ export function buildArtifacts(): Artifact[] {
     const apiContent = renderApiExample();
     const adminConsoleContent = renderAdminConsoleExample();
     const toolsContent = renderToolsExample();
+    const pythonContent = new Map(pythonSurface.map((s) => [`apps/${s.service}/.env.sample`, renderPythonExample(s)]));
     return [
         { path: 'apps/api/.env.sample', content: apiContent },
         { path: 'apps/admin-console/.env.sample', content: adminConsoleContent },
         { path: 'packages/tools/.env.sample', content: toolsContent },
-        { path: '.env.sample', content: renderConsolidatedSample(apiContent, adminConsoleContent, toolsContent) },
+        ...[...pythonContent].map(([path, content]) => ({ path, content })),
+        { path: '.env.sample', content: renderConsolidatedSample(apiContent, adminConsoleContent, toolsContent, pythonContent) },
         { path: 'turbo.json', content: renderTurboJson(globalEnv) },
         { path: 'env-surface.generated.md', content: renderDocsTable(globalEnv) },
     ];
@@ -741,6 +1061,75 @@ export function buildArtifacts(): Artifact[] {
  */
 export function getBootstrapFloorContent(): string {
     return renderRootExample();
+}
+
+/**
+ * Every key an operator-facing file DECLARES that nothing reads.
+ *
+ * The generated artifacts cannot drift — they are regenerated. The files below
+ * are hand-maintained on purpose and therefore can, and did: the per-app
+ * `.env.prod` templates are the ops reference for `docker --env-file` /
+ * systemd `EnvironmentFile=` (production loads no env file itself), so a key
+ * that lost its reader just sits there promising a knob that does nothing. That
+ * is finding F-03 — `apps/guardrail/.env.prod` documented an engine plane that
+ * had already been deleted — and deleting one file fixed one instance while
+ * leaving the class open.
+ *
+ * Checking is better than deleting here, because unlike guardrail's the
+ * surviving templates document a plane that really exists. This makes them
+ * falsifiable: add a key with no reader and `env:sync --check` says so.
+ */
+const READER_CHECKED_FILES: readonly string[] = PYTHON_SERVICES.map((s) => `apps/${s}/.env.prod`).concat('apps/api/.env.prod');
+
+/**
+ * Names expanded by SHELL or interpolated by compose — `${VAULT_DB_NAME:-hope}`,
+ * `"$GRAFANA_PORT"`.
+ *
+ * These belong to the reader check but NOT to `turbo.json#globalEnv`: turbo
+ * hashes the value into a cache key for TASK BUILDS, and a variable only an
+ * operator script expands is not a build input. `VAULT_ROLE_ID_FILE` and
+ * `VAULT_WRAPPED_SECRET_ID_FILE` are the motivating case — read by
+ * `infrastructure/single-deployment/vault/bootstrap/configure-app-auth.sh`,
+ * declared in `apps/api/.env.prod`, invisible to both language scanners.
+ *
+ * Deliberately generous: a name MENTIONED in a shell/compose file counts. The
+ * purpose is to avoid false accusations in a gate that blocks CI, and a missed
+ * orphan costs a stale comment line while a false one costs a red pipeline.
+ */
+function scanShellReads(): Set<string> {
+    const listed = execSync('git ls-files "*.sh" "*.yml" "*.yaml" "*.hcl" "Dockerfile*" "*/Dockerfile*"', { cwd: ROOT, encoding: 'utf8' })
+        .split('\n')
+        .filter(Boolean)
+        .filter((f) => !f.includes('node_modules') && !f.startsWith('docs/'));
+
+    const found = new Set<string>();
+    for (const file of listed) {
+        for (const m of readFileSync(join(ROOT, file), 'utf8').matchAll(/[A-Z][A-Z0-9_]{2,}/g)) {
+            found.add(m[0]);
+        }
+    }
+    return found;
+}
+
+function reportUnreadKeys(globalEnv: string[]): string[] {
+    const readable = new Set([...globalEnv, ...scanShellReads()]);
+    const problems: string[] = [];
+    for (const rel of READER_CHECKED_FILES) {
+        let content: string;
+        try {
+            content = readFileSync(join(ROOT, rel), 'utf8');
+        } catch {
+            continue; // Deleted on purpose (guardrail's, F-03). Absence is fine.
+        }
+        const orphans = content
+            .split('\n')
+            .map((line, i) => [SAMPLE_KEY_RE.exec(line)?.[1], i + 1] as const)
+            .filter((entry): entry is readonly [string, number] => Boolean(entry[0]) && !readable.has(entry[0] as string));
+        if (orphans.length > 0) {
+            problems.push(`✗ ${rel} declares ${orphans.length} key(s) no code reads:\n${orphans.map(([name, line]) => `      ${rel}:${line}  ${name}`).join('\n')}`);
+        }
+    }
+    return problems;
 }
 
 /**
@@ -798,19 +1187,31 @@ function main(): void {
 
     const keyCount = declaredSurface.length;
     const floorLines = getBootstrapFloorContent().split('\n').length;
+    const globalEnv = computeGlobalEnv();
+    const unread = reportUnreadKeys(globalEnv);
+    const surfaces = `${keyCount} TS keys + ${pythonFieldCount} Python fields · ${globalEnv.length} globalEnv entries`;
 
     if (check) {
-        if (drifted.length > 0) {
-            console.error('env:sync --check FAILED — generated artifacts are out of date.\n');
-            console.error(drifted.join('\n\n'));
-            console.error('\nRun `pnpm env:sync` and commit the result.');
+        if (drifted.length > 0 || unread.length > 0) {
+            if (drifted.length > 0) {
+                console.error('env:sync --check FAILED — generated artifacts are out of date.\n');
+                console.error(drifted.join('\n\n'));
+                console.error('\nRun `pnpm env:sync` and commit the result.');
+                console.error('(If a PYTHON declaration changed, run `pnpm env:python-surface` first.)');
+            }
+            if (unread.length > 0) {
+                console.error('\nenv:sync --check FAILED — an operator-facing file declares a key nothing reads.\n');
+                console.error(unread.join('\n\n'));
+                console.error('\nEither delete the line, or point it at the name the code actually reads.');
+            }
             process.exit(1);
         }
-        console.log(`env:sync --check OK — ${artifacts.length} artifacts match the declared surface (${keyCount} keys, bootstrap floor ${floorLines} lines).`);
+        console.log(`env:sync --check OK — ${artifacts.length} artifacts match their declarations (${surfaces}); no unread keys in ${READER_CHECKED_FILES.length} operator-facing files.`);
         return;
     }
 
-    console.log(`\nDeclared surface: ${keyCount} keys · bootstrap floor ${floorLines} lines · plan §8 targets ≤ ~120 keys and ≤ ~60 lines.`);
+    for (const problem of unread) console.warn(`\n${problem}`);
+    console.log(`\nDeclared surface: ${surfaces} · bootstrap floor ${floorLines} lines · plan §8 targets ≤ ~120 keys and ≤ ~60 lines.`);
 }
 
 // `import`ed by the unit tests; executed by `pnpm env:sync`.

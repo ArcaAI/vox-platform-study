@@ -156,9 +156,11 @@ vault kv put secret/hope/API_GATEWAY_KEY value="dev-api-gateway-key-not-for-prod
 vault kv put secret/hope/HARNESS_CLAIM_CHECK_ACCESS_KEY value="minio_admin" >/dev/null
 vault kv put secret/hope/HARNESS_CLAIM_CHECK_SECRET_KEY value="minio_admin" >/dev/null
 
-# DELIBERATELY NOT SEEDED — the five EXTERNAL provider credentials:
-#   AZURE_SPEECH_KEY  AZURE_FOUNDRY_API_KEY  TEXT_AZURE_API_KEY
-#   TTS_SARVAM_API_KEY  HARNESS_JUDGE_OPENAI_COMPAT_API_KEY
+# DELIBERATELY NOT SEEDED — the two remaining EXTERNAL provider credentials:
+#   AZURE_FOUNDRY_API_KEY  HARNESS_JUDGE_OPENAI_COMPAT_API_KEY
+# (AZURE_SPEECH_KEY, TEXT_AZURE_API_KEY and TTS_SARVAM_API_KEY are gone:
+#  TASK-602 made them BYOK-only db-secrets delivered per request, so their
+#  env/Vault names now match no field at all and seeding one would be inert.)
 # A placeholder would make an unconfigured provider look configured and turn a
 # clean "not configured" into a remote 401 that costs an afternoon to diagnose.
 # Every one is failMode 'closed', so absence is the correct, visible signal —

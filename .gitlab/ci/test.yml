@@ -35,7 +35,6 @@
   REDIS_URL: $CI_REDIS_URL
   REDIS_PASS: $CI_REDIS_PASS
   JWT_SECRET_KEY: $CI_JWT_SECRET
-  JWT_SECRET: $CI_JWT_SECRET
   API_KEY_PEPPER: $CI_API_KEY_PEPPER
   SESSION_SECRET_KEY: $CI_JWT_SECRET
   LOG_LEVEL: "error"
@@ -689,9 +688,6 @@ test-guardrail:
   variables:
     PIP_CACHE_DIR: "$CI_PROJECT_DIR/.pip-cache"
     VAULT_SECRETS: "ci/REDIS_URL=GUARDRAIL_REDIS_URL"
-    # Disable model loading — no HuggingFace downloads during CI
-    GUARDRAIL_GLINER_ENABLED: "false"
-    GUARDRAIL_OLLAMA_ENABLED: "false"
     GUARDRAIL_REDIS_URL: $CI_REDIS_URL
   cache:
     - key: pip-guardrail
