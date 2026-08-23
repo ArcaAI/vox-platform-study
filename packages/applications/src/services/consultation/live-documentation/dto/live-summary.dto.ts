@@ -308,7 +308,9 @@ export class LiveSummaryEventDto {
    * A consumer that cannot tell them apart cannot explain what it is showing,
    * which is why this is carried rather than left implicit.
    */
-  @ApiPropertyOptional({ description: "Publisher of this snapshot: absent = the live-documentation flush loop, 'interpreter' = a tenant-authored graph" })
+  @ApiPropertyOptional({
+    description: "Publisher of this snapshot: absent = the live-documentation flush loop, 'interpreter' = a tenant-authored graph",
+  })
   source?: string;
 
   @ApiPropertyOptional({ description: 'TASK-795 RC-1 — the interpreter node that produced this snapshot, e.g. `consultation.realtimeSummary`' })
