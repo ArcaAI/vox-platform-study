@@ -14,6 +14,7 @@ import {
   HighlightServiceModule,
   HarnessProgressServiceModule,
   HarnessAssuranceServiceModule,
+  HarnessLiveAssistServiceModule,
   // ordered-trajectory ingest (internal route) + SSE relay.
   AgentTrajectoryServiceModule,
   // Loop-event publish (internal route) + SSE relay.
@@ -68,6 +69,9 @@ import { ConsentInternalController } from './consent-internal.controller';
     HarnessProgressServiceModule,
     // Assurance per-claim publish (internal POST) + SSE relay.
     HarnessAssuranceServiceModule,
+    // TASK-795 RC-2 — supplies HarnessLiveAssistService to BOTH the internal
+    // publish route and the SSE relay.
+    HarnessLiveAssistServiceModule,
     // IAgentTrajectoryService for the internal ingest route.
     AgentTrajectoryServiceModule,
     // Loop-event publish (internal route) + SSE relay.

@@ -1,11 +1,12 @@
 import { Inject, Injectable, Logger, Optional } from '@nestjs/common';
-import { generateId, WorkflowDefinitionRepository } from '@arcaai/domains';
+import { ConsultationRepository, generateId, WorkflowDefinitionRepository } from '@arcaai/domains';
 import { IWorkflowAssignmentService } from '../../workflow-assignment/IWorkflowAssignmentService';
 import { IWorkflowRunService } from '../../workflow-run/IWorkflowRunService';
 import { HarnessGatewayService } from '../harness/harness-gateway.service';
 import { IS3Service } from '../../baseServices/storage/s3/IS3Service';
 import { mintCompiledConfigClaimCheckRef } from '../../workflow-exposure/claim-check';
 import { SttPipelineResolverService } from '../../workflow-definition/resolvers/stt-pipeline-resolver.service';
+import { withGoverningEngineMarker } from '../governing-engine';
 import {
   ConsultationWorkflowDispatchResult,
   DispatchForConsultationInput,
@@ -27,7 +28,8 @@ function interpreterSessionId(runId: string): string {
 }
 
 /**
- * Dispatches a tenant-authored `consultation`-palette workflow at consultation open.
+ * Dispatches a tenant-authored `consultation`-palette workflow at consultation open,
+ * and RECORDS that decision on the consultation so Substrate A stands down.
  * See `IConsultationWorkflowDispatchService` for why this is opt-in and exclusive.
  */
 @Injectable()
@@ -37,6 +39,11 @@ export class ConsultationWorkflowDispatchService implements IConsultationWorkflo
   constructor(
     @Inject(IWorkflowAssignmentService) private readonly assignments: IWorkflowAssignmentService,
     private readonly definitionRepository: WorkflowDefinitionRepository,
+    // TASK-795 W1 — carries the durable governing-engine marker. REQUIRED, not
+    // `@Optional()`: this is the exclusivity gate's write half, and a module that
+    // forgot `CoreDatabaseModule` must fail loudly at boot rather than quietly
+    // dispatch Substrate B while leaving Substrate A running alongside it.
+    @Inject(ConsultationRepository) private readonly consultationRepository: ConsultationRepository,
     @Inject(IWorkflowRunService) private readonly workflowRunService: IWorkflowRunService,
     @Inject(HarnessGatewayService) private readonly harnessGateway: HarnessGatewayService,
     @Optional() @Inject(IS3Service) private readonly s3Service?: IS3Service,
@@ -59,7 +66,7 @@ export class ConsultationWorkflowDispatchService implements IConsultationWorkflo
     // No tier assigned anything -> Substrate A keeps the consultation. This is the DEFAULT and
     // must stay the default: a tenant that has authored nothing sees today's behaviour exactly.
     if (!resolved.workflowDefinitionSlug) {
-      return { dispatched: false, source: resolved.source, workflowDefinitionSlug: null, runId: null, sttPipelineId };
+      return { dispatched: false, source: resolved.source, workflowDefinitionSlug: null, runId: null, governanceRecorded: false, sttPipelineId };
     }
 
     const notDispatched = (skippedReason: string): ConsultationWorkflowDispatchResult => ({
@@ -67,6 +74,7 @@ export class ConsultationWorkflowDispatchService implements IConsultationWorkflo
       source: resolved.source,
       workflowDefinitionSlug: resolved.workflowDefinitionSlug,
       runId: null,
+      governanceRecorded: false,
       skippedReason,
       sttPipelineId,
     });
@@ -120,20 +128,65 @@ export class ConsultationWorkflowDispatchService implements IConsultationWorkflo
         payload: { consultationId, userId, externalPatientId: externalPatientId ?? null },
       });
 
+      // TASK-795 W1 — record the decision AFTER the run has actually started. The
+      // order is the safety argument: every failure up to this line degrades to
+      // "Substrate A documents this consultation", never to "nobody does".
+      const governanceRecorded = await this.recordGovernance(consultationId, runId, definition.slug);
+
       this.logger.log({
         message: 'Consultation governed by tenant-authored workflow',
         consultationId,
         runId,
         slug: definition.slug,
         source: resolved.source,
+        governanceRecorded,
       });
-      return { dispatched: true, source: resolved.source, workflowDefinitionSlug: definition.slug, runId, sttPipelineId };
+      return { dispatched: true, source: resolved.source, workflowDefinitionSlug: definition.slug, runId, governanceRecorded, sttPipelineId };
     } catch (error) {
       // Best-effort BY DESIGN: a clinician must be able to open a consultation even when the
       // harness is down. The consultation proceeds under Substrate A and the reason is recorded.
       const reason = error instanceof Error ? error.message : String(error);
       this.logger.warn({ message: 'Consultation workflow dispatch failed — falling back to the default loop', consultationId, reason });
       return notDispatched(reason);
+    }
+  }
+
+  /**
+   * Persist the marker that makes Substrate A stand down for this consultation
+   * (TASK-795 W1). Returns whether the decision is now durable.
+   *
+   * Best-effort in the sense that it never throws — the interpreter run has already
+   * started by the time this runs, so raising here would report a dispatch that
+   * demonstrably happened as a failure. It is NOT best-effort in the sense of being
+   * ignorable: a `false` return means BOTH engines will write this consultation's
+   * document, so it is logged at ERROR and surfaced on the result rather than
+   * swallowed. (The window is narrow: `recordRunStarted` above is itself a DB write
+   * on the same connection, so a database that answered it will almost always answer
+   * this too.)
+   */
+  private async recordGovernance(consultationId: string, runId: string, workflowDefinitionSlug: string): Promise<boolean> {
+    try {
+      const consultation = await this.consultationRepository.findById(consultationId);
+      if (!consultation) {
+        this.logger.error({
+          message: 'Substrate B started but the consultation row could not be loaded — BOTH engines may now write this document',
+          consultationId,
+          runId,
+        });
+        return false;
+      }
+
+      consultation.metadata = withGoverningEngineMarker(consultation.metadata, { workflowRunId: runId, workflowDefinitionSlug });
+      await this.consultationRepository.update(consultationId, consultation);
+      return true;
+    } catch (error) {
+      this.logger.error({
+        message: 'Substrate B started but its governing-engine marker could not be persisted — BOTH engines may now write this document',
+        consultationId,
+        runId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return false;
     }
   }
 

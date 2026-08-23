@@ -19,6 +19,10 @@ export * from './live-documentation';
 // the `consultation:loop:{id}` SSE relay.
 export * from './loop';
 
+// TASK-795 W1: the SUBSTRATE EXCLUSIVITY marker — which agentic-loop engine governs a
+// consultation. Written by `workflow-dispatch` at open, read by `loop` before every signal.
+export * from './governing-engine';
+
 // TASK-789 C-1: consultation-open dispatch of a tenant-authored `consultation`-palette workflow.
 // The first production caller of the WorkflowAssignment cascade, and the only thing that stamps
 // `WorkflowRun.trigger = 'consultation open'`.

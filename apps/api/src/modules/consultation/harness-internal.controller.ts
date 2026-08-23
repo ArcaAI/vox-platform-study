@@ -12,9 +12,12 @@ import {
   HarnessGateDecisionRequest,
   HarnessInternalService,
   HarnessLiveDocAck,
+  HarnessLiveAssistRequest,
+  HarnessLiveAssistService,
   HarnessLiveDocStartRequest,
   HarnessLiveDocStopRequest,
   HarnessLoopEventAck,
+  HarnessLiveSummaryRequest,
   HarnessLoopEventRequest,
   HarnessPersistEntitiesRequest,
   HarnessPolicyResponse,
@@ -22,6 +25,7 @@ import {
   HarnessProgressAck,
   HarnessProgressRequest,
   HarnessProgressService,
+  HarnessRealtimeDeliveryAck,
   IActiveUserContext,
   IAgentTrajectoryService,
   ILoopConfigService,
@@ -323,6 +327,10 @@ export class HarnessInternalController {
     // client of its own (rule 06 — gateway-resolved injection is the default for a stateless
     // Python service).
     @Inject(IPromptManagementService) private readonly promptManagementService: IPromptManagementService,
+    // TASK-795 RC-2 — live clinician-assist feed (suggestions + correction
+    // proposals). Ephemeral Redis publish; DECLARED PHI-carrying, which is why it
+    // is its OWN channel and not a rider on the loop event plane.
+    private readonly harnessLiveAssistService: HarnessLiveAssistService,
     // TASK-724 Task 5 — batch-trigger binding. `@Optional()` so existing
     // positional test construction keeps its arity and a stack without the
     // STT batch modules wired still boots; the two new routes below throw a
@@ -528,6 +536,44 @@ export class HarnessInternalController {
   // publishes to `consultation:harness-progress:{id}` for the browser SSE
   // relay. Best-effort by contract: always acks ({ ok: boolean }), never 5xxs
   // the workflow over a progress hiccup.
+  // ── TASK-795 RC-1 / RC-2 — the realtime DELIVERY plane ────────────────────
+  //
+  // TASK-796 enumerated all 18 routes on this controller and found none that
+  // accepts clinical summary text: the only text-accepting write is
+  // `.../draft`, which creates a `RAW_SUMMARY` ContextItem — the FINAL note, the
+  // wrong kind for a mid-consultation snapshot, and the very row the
+  // substrate-exclusivity gate governs. So an interpreter graph could produce a
+  // realtime summary, suggestions or correction proposals and none of it could
+  // reach a clinician. These two routes are that missing plane.
+  //
+  // Both ack best-effort (`{ ok: boolean }`, HTTP 200) exactly like `progress`,
+  // `assurance-event` and `loop-event`: a live-feed hiccup must never 5xx an
+  // interpreter run.
+
+  // RC-1 — publishes VERBATIM onto the EXISTING `consultation:live-summary:{id}`
+  // channel, so the existing SSE route, `useArcaLiveSummary` and the existing
+  // console panel all work unchanged. Zero new consumer surface is the point.
+  @Post('consultations/:id/live-summary')
+  @HttpCode(200)
+  @ApiOperation({ summary: 'Publish an interpreter-produced running summary to the live-summary feed (ephemeral, best-effort)' })
+  @ApiParam({ name: 'id', description: 'Consultation ID' })
+  async publishLiveSummary(@Param('id') id: string, @Body() dto: HarnessLiveSummaryRequest): Promise<HarnessRealtimeDeliveryAck> {
+    return this.liveDocumentationService.publishInterpreterSummary(id, dto);
+  }
+
+  // RC-2 — a NEW channel, because this one is DECLARED PHI-CARRYING: a correction
+  // proposal quotes the span it would replace, verbatim. That makes it a sibling
+  // of `live-summary` (same tenancy posture, same ticket-scoped SSE guard) and
+  // NOT a use of `loop-event`, whose payload contract is `extra="forbid"` and
+  // states it carries ids/keys/labels only, never note or transcript text.
+  @Post('consultations/:id/live-assist')
+  @HttpCode(200)
+  @ApiOperation({ summary: 'Publish interpreter suggestions or correction proposals to the live-assist feed (ephemeral, best-effort)' })
+  @ApiParam({ name: 'id', description: 'Consultation ID' })
+  async publishLiveAssist(@Param('id') id: string, @Body() dto: HarnessLiveAssistRequest): Promise<HarnessRealtimeDeliveryAck> {
+    return this.harnessLiveAssistService.publishAssist(id, dto);
+  }
+
   @Post('consultations/:id/progress')
   // Nothing is created — the ack is best-effort and can be
   // `{ ok: false }`, so the default POST 201 would misreport the outcome.
