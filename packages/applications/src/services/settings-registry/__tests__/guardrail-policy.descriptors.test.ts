@@ -1,23 +1,28 @@
 // Guardrail policy descriptors (TASK-735 Phase 4).
 //
 // Covers: registration/shape, the failMode split (closed for anything that
-// decides a verdict, open-to-default for pure tuning), the tenant → SYSTEM →
-// declared-failure-mode cascade, and the tighten-only floor (D2) — a looser
-// tenant write is REJECTED (403), never clamped.
+// decides a verdict, open-to-default for pure tuning), and the tighten-only
+// floor (D2) — a looser tenant write is REJECTED (403), never clamped.
+//
+// The cascade and the floor are no longer this file's own code. Both were
+// orphans — `resolveGuardrailPolicyValue` and `assertGuardrailPolicyFloor` had
+// zero callers outside this test — so the cascade is now the shared `global-kv`
+// lane (`TenantSettingsService`, which walks tenant → SYSTEM → failMode for
+// every registry key) and the floor is `assertTightenOnlyFloor`, driven off the
+// `floorDirection` each descriptor declares and enforced once in the write
+// lane. What is asserted here is that the DECLARATIONS are right; the shared
+// mechanisms have their own tests.
 
 import { describe, expect, it } from 'vitest';
-import { ArgumentInvalidException } from '@arcaai/exceptions';
 import {
-  assertGuardrailPolicyFloor,
   GUARDRAIL_POLICY_DEFAULTS,
   GUARDRAIL_POLICY_FLOOR_DIRECTIONS,
   GUARDRAIL_POLICY_SETTINGS,
-  GuardrailPolicyFloorViolation,
   GuardrailPolicyKey,
   GuardrailPolicyShortKey,
-  resolveGuardrailPolicyValue,
 } from '../descriptors/guardrail-policy.descriptors';
 import { HOPE_SETTINGS_REGISTRY } from '../registry';
+import { assertTightenOnlyFloor, SettingFloorViolation } from '../tenant-clamp';
 
 const SHORT_KEYS = Object.keys(GUARDRAIL_POLICY_DEFAULTS) as GuardrailPolicyShortKey[];
 const CLOSED_KEYS: GuardrailPolicyShortKey[] = [
@@ -54,9 +59,13 @@ describe('guardrail policy descriptors — registration and shape', () => {
     }
   });
 
-  it('is tier db-config, tenant-scoped, and NOT super-admin-only (tenant may tighten its own row)', () => {
+  it('is tier global-kv, tenant-scoped, and NOT super-admin-only (tenant may tighten its own row)', () => {
     for (const d of GUARDRAIL_POLICY_SETTINGS) {
-      expect(d.tier, d.key).toBe('db-config');
+      // `global-kv` per owner decision D-2: the only tier with a complete
+      // read + write + cascade + invalidate loop. `db-config` is reserved for
+      // values with their own table, and these keys have none — which is why,
+      // under that tier, all 13 were unreachable by any admin.
+      expect(d.tier, d.key).toBe('global-kv');
       expect(d.maxScope, d.key).toBe('tenant');
       expect(d.globalOnly, d.key).toBeUndefined();
       expect(d.sensitivity, d.key).toBe('internal');
@@ -119,126 +128,88 @@ describe('guardrail policy descriptors — failMode split', () => {
   });
 });
 
-describe('resolveGuardrailPolicyValue — tenant → SYSTEM → declared failure mode', () => {
-  it('prefers the tenant row over the SYSTEM row and the default', () => {
-    const resolved = resolveGuardrailPolicyValue(fullKey('judgeMaxTokens'), { tenantValue: 750, systemValue: 600 });
-    expect(resolved).toEqual({ key: fullKey('judgeMaxTokens'), value: 750, source: 'tenant' });
-  });
-
-  it('falls back to the SYSTEM row when no tenant row is set', () => {
-    const resolved = resolveGuardrailPolicyValue(fullKey('judgeMaxTokens'), { systemValue: 600 });
-    expect(resolved).toEqual({ key: fullKey('judgeMaxTokens'), value: 600, source: 'system' });
-  });
-
-  it('a `false`/`0`/empty-string-shaped SET value still counts as set (only null/undefined inherit)', () => {
-    const resolved = resolveGuardrailPolicyValue(fullKey('groundednessMaxSegments'), { tenantValue: 0, systemValue: 200 });
-    expect(resolved).toEqual({ key: fullKey('groundednessMaxSegments'), value: 0, source: 'tenant' });
-  });
-
-  it('open-to-default keys fall back to descriptor.default when neither tier supplies a value', () => {
-    for (const short of TUNING_KEYS) {
-      const resolved = resolveGuardrailPolicyValue(fullKey(short), {});
-      expect(resolved, short).toEqual({ key: fullKey(short), value: GUARDRAIL_POLICY_DEFAULTS[short], source: 'code-default' });
-    }
-  });
-
-  it('closed keys RAISE rather than substitute anything when neither tier supplies a value', () => {
-    for (const short of CLOSED_KEYS) {
-      expect(() => resolveGuardrailPolicyValue(fullKey(short), {}), short).toThrow(ArgumentInvalidException);
-      expect(() => resolveGuardrailPolicyValue(fullKey(short), {}), short).toThrow(/fail-closed/i);
-    }
-  });
-
-  it('closed keys still resolve normally when a tenant or SYSTEM row IS set', () => {
-    expect(resolveGuardrailPolicyValue(fullKey('piiThreshold'), { tenantValue: 0.3 })).toEqual({
-      key: fullKey('piiThreshold'),
-      value: 0.3,
-      source: 'tenant',
-    });
-    expect(resolveGuardrailPolicyValue(fullKey('piiThreshold'), { systemValue: 0.5 })).toEqual({
-      key: fullKey('piiThreshold'),
-      value: 0.5,
-      source: 'system',
-    });
-  });
-
-  it('throws on an unregistered key', () => {
-    expect(() => resolveGuardrailPolicyValue('guardrail.policy.doesNotExist' as GuardrailPolicyKey, {})).toThrow(ArgumentInvalidException);
-  });
-});
-
-describe('assertGuardrailPolicyFloor — tighten-only (D2): reject, never clamp', () => {
-  describe('lower-is-stricter (classificationThreshold, piiThreshold)', () => {
-    it('accepts a tenant value AT or BELOW the platform floor', () => {
-      expect(() => assertGuardrailPolicyFloor(fullKey('piiThreshold'), 0.5, 0.5)).not.toThrow();
-      expect(() => assertGuardrailPolicyFloor(fullKey('piiThreshold'), 0.3, 0.5)).not.toThrow();
-    });
-
-    it('rejects a tenant value ABOVE the platform floor with a 403, not a clamp', () => {
-      expect(() => assertGuardrailPolicyFloor(fullKey('piiThreshold'), 0.9, 0.5)).toThrow(GuardrailPolicyFloorViolation);
-      try {
-        assertGuardrailPolicyFloor(fullKey('classificationThreshold'), 0.8, 0.4);
-        expect.unreachable('expected a GuardrailPolicyFloorViolation');
-      } catch (err) {
-        expect(err).toBeInstanceOf(GuardrailPolicyFloorViolation);
-        expect((err as GuardrailPolicyFloorViolation).getStatus()).toBe(403);
-        expect((err as GuardrailPolicyFloorViolation).requested).toBe(0.8);
-        expect((err as GuardrailPolicyFloorViolation).floor).toBe(0.4);
-      }
-    });
-  });
-
-  describe('higher-is-stricter (guardianMinConfidence, entailmentThreshold)', () => {
-    it('accepts a tenant value AT or ABOVE the platform floor', () => {
-      expect(() => assertGuardrailPolicyFloor(fullKey('guardianMinConfidence'), 0.75, 0.75)).not.toThrow();
-      expect(() => assertGuardrailPolicyFloor(fullKey('entailmentThreshold'), 0.9, 0.5)).not.toThrow();
-    });
-
-    it('rejects a tenant value BELOW the platform floor', () => {
-      expect(() => assertGuardrailPolicyFloor(fullKey('guardianMinConfidence'), 0.5, 0.75)).toThrow(GuardrailPolicyFloorViolation);
-      expect(() => assertGuardrailPolicyFloor(fullKey('entailmentThreshold'), 0.2, 0.5)).toThrow(GuardrailPolicyFloorViolation);
-    });
-  });
-
-  describe('superset-is-stricter (the four label taxonomies)', () => {
-    const floor = GUARDRAIL_POLICY_DEFAULTS.harmfulLabels;
-
-    it('accepts the floor set unchanged, and accepts a tenant-extended superset', () => {
-      expect(() => assertGuardrailPolicyFloor(fullKey('harmfulLabels'), [...floor], floor)).not.toThrow();
-      expect(() => assertGuardrailPolicyFloor(fullKey('harmfulLabels'), [...floor, 'self_harm'], floor)).not.toThrow();
-    });
-
-    it('rejects a tenant set that drops a platform-mandated label', () => {
-      const narrowed = floor.filter((label) => label !== 'weapons');
-      expect(() => assertGuardrailPolicyFloor(fullKey('harmfulLabels'), narrowed, floor)).toThrow(GuardrailPolicyFloorViolation);
-    });
-  });
-
-  describe('no-op for keys with no declared floor', () => {
-    it('never throws for a tuning key, regardless of value', () => {
-      for (const short of TUNING_KEYS) {
-        expect(GUARDRAIL_POLICY_FLOOR_DIRECTIONS[short], short).toBeUndefined();
-        expect(() => assertGuardrailPolicyFloor(fullKey(short), Number.MAX_SAFE_INTEGER, 1), short).not.toThrow();
-        expect(() => assertGuardrailPolicyFloor(fullKey(short), -1, 1), short).not.toThrow();
-      }
-    });
-
-    it('never throws when no platform floor is resolved yet (nothing to enforce against)', () => {
-      expect(() => assertGuardrailPolicyFloor(fullKey('piiThreshold'), 0.99, undefined)).not.toThrow();
-      expect(() => assertGuardrailPolicyFloor(fullKey('piiThreshold'), 0.99, null)).not.toThrow();
-    });
-
-    it('never throws for an unrecognised key', () => {
-      expect(() => assertGuardrailPolicyFloor('guardrail.policy.doesNotExist' as GuardrailPolicyKey, 999, 0)).not.toThrow();
-    });
-  });
-
-  it('every closed (verdict-deciding) key has a declared floor direction; every tuning key does not', () => {
-    for (const short of CLOSED_KEYS) {
-      expect(GUARDRAIL_POLICY_FLOOR_DIRECTIONS[short], short).toBeDefined();
-    }
-    for (const short of TUNING_KEYS) {
-      expect(GUARDRAIL_POLICY_FLOOR_DIRECTIONS[short], short).toBeUndefined();
+describe('guardrail policy descriptors — channel discipline (owner decision D-1)', () => {
+  // These keys are `maxScope: 'tenant'`, so they vary BY TENANT. The pull route
+  // caches ONE platform snapshot per service process; putting a tenant-varying
+  // key on it would turn that into one entry per customer. They travel PUSH.
+  it('declares NO consumedBy — a tenant-varying key never rides the platform pull route', () => {
+    for (const d of GUARDRAIL_POLICY_SETTINGS) {
+      expect(d.consumedBy, d.key).toBeUndefined();
     }
   });
 });
+
+describe('guardrail policy descriptors — the tighten-only floor is DECLARED, not hand-wired', () => {
+  it('declares floorDirection on exactly the verdict-deciding keys', () => {
+    for (const short of SHORT_KEYS) {
+      const declared = HOPE_SETTINGS_REGISTRY.getOrThrow(fullKey(short)).floorDirection;
+      expect(declared, short).toBe(GUARDRAIL_POLICY_FLOOR_DIRECTIONS[short]);
+    }
+  });
+
+  it('declares no floor on any pure-tuning key (nothing about them decides a verdict)', () => {
+    for (const short of TUNING_KEYS) {
+      expect(HOPE_SETTINGS_REGISTRY.getOrThrow(fullKey(short)).floorDirection, short).toBeUndefined();
+    }
+  });
+
+  describe('lower-is-stricter thresholds (a LOWER score catches more content)', () => {
+    it('permits an equal or tighter value', () => {
+      const d = HOPE_SETTINGS_REGISTRY.getOrThrow(fullKey('piiThreshold'));
+      expect(() => assertTightenOnlyFloor(d, 0.5, 0.5)).not.toThrow();
+      expect(() => assertTightenOnlyFloor(d, 0.3, 0.5)).not.toThrow();
+    });
+
+    it('REJECTS a looser value — 403, not a silent clamp', () => {
+      const d = HOPE_SETTINGS_REGISTRY.getOrThrow(fullKey('piiThreshold'));
+      expect(() => assertTightenOnlyFloor(d, 0.9, 0.5)).toThrow(SettingFloorViolation);
+      expect(() => assertTightenOnlyFloor(HOPE_SETTINGS_REGISTRY.getOrThrow(fullKey('classificationThreshold')), 0.8, 0.4)).toThrow(
+        SettingFloorViolation,
+      );
+    });
+  });
+
+  describe('higher-is-stricter gates (a HIGHER score makes a positive claim harder to earn)', () => {
+    it('permits an equal or tighter value', () => {
+      expect(() => assertTightenOnlyFloor(HOPE_SETTINGS_REGISTRY.getOrThrow(fullKey('guardianMinConfidence')), 0.75, 0.75)).not.toThrow();
+      expect(() => assertTightenOnlyFloor(HOPE_SETTINGS_REGISTRY.getOrThrow(fullKey('entailmentThreshold')), 0.9, 0.5)).not.toThrow();
+    });
+
+    it('REJECTS a looser value', () => {
+      expect(() => assertTightenOnlyFloor(HOPE_SETTINGS_REGISTRY.getOrThrow(fullKey('guardianMinConfidence')), 0.5, 0.75)).toThrow(
+        SettingFloorViolation,
+      );
+      expect(() => assertTightenOnlyFloor(HOPE_SETTINGS_REGISTRY.getOrThrow(fullKey('entailmentThreshold')), 0.2, 0.5)).toThrow(SettingFloorViolation);
+    });
+  });
+
+  describe('superset-is-stricter taxonomies (a tenant may ADD categories, never drop one)', () => {
+    const floor = [...GUARDRAIL_POLICY_DEFAULTS.harmfulLabels];
+
+    it('permits the same set, or a superset', () => {
+      const d = HOPE_SETTINGS_REGISTRY.getOrThrow(fullKey('harmfulLabels'));
+      expect(() => assertTightenOnlyFloor(d, [...floor], floor)).not.toThrow();
+      expect(() => assertTightenOnlyFloor(d, [...floor, 'self_harm'], floor)).not.toThrow();
+    });
+
+    it('REJECTS a set that drops a platform-mandated category', () => {
+      const d = HOPE_SETTINGS_REGISTRY.getOrThrow(fullKey('harmfulLabels'));
+      expect(() => assertTightenOnlyFloor(d, floor.filter((l) => l !== 'hate_speech'), floor)).toThrow(SettingFloorViolation);
+    });
+  });
+
+  it('is a no-op for a tuning key in EITHER direction — there is nothing to floor', () => {
+    for (const short of TUNING_KEYS) {
+      const d = HOPE_SETTINGS_REGISTRY.getOrThrow(fullKey(short));
+      expect(() => assertTightenOnlyFloor(d, Number.MAX_SAFE_INTEGER, 1), short).not.toThrow();
+      expect(() => assertTightenOnlyFloor(d, -1, 1), short).not.toThrow();
+    }
+  });
+
+  it('treats an absent platform floor as "nothing to enforce against", not a refusal', () => {
+    const d = HOPE_SETTINGS_REGISTRY.getOrThrow(fullKey('piiThreshold'));
+    expect(() => assertTightenOnlyFloor(d, 0.99, undefined)).not.toThrow();
+    expect(() => assertTightenOnlyFloor(d, 0.99, null)).not.toThrow();
+  });
+});
+

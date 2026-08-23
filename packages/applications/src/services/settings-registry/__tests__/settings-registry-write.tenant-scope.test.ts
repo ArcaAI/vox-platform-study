@@ -31,11 +31,14 @@ const SYSTEM_TENANT_ID = '00000000-0000-0000-0000-000000000000';
 const GLOBAL_TENANT_ID = '50000000-0000-0000-0000-000000000000';
 const CUSTOMER_TENANT = '11111111-1111-1111-1111-111111111111';
 
-function makeService(opts: { roles?: string[]; tenantId?: string | undefined; existing?: any } = {}) {
+function makeService(opts: { roles?: string[]; tenantId?: string | undefined; existing?: any; platformValue?: unknown } = {}) {
   const appSettings = {
     getFromCache: vi.fn().mockReturnValue(undefined),
     getValueWithDefault: vi.fn((_k: string, d: unknown) => d),
     getTenantValueFromCache: vi.fn().mockReturnValue(null),
+    // The PLATFORM row a tenant write is floored against (`platformFloorFor`).
+    // Null = no stored SYSTEM row, so the descriptor default is the floor.
+    getValueFromCache: vi.fn().mockReturnValue(opts.platformValue ?? null),
     refreshCache: vi.fn().mockResolvedValue(undefined),
   };
   const globalSettings = {
@@ -187,5 +190,58 @@ describe('reading the backing-row version is NOT a write', () => {
   it('reports 0 rather than throwing when a tenant-scope read has no working tenant', async () => {
     const { svc } = makeService({ roles: ['SUPER_ADMIN'], tenantId: undefined });
     await expect(svc.getBackingRowVersion('rateLimit.maxRequests', 'tenant')).resolves.toBe(0);
+  });
+});
+
+/**
+ * The tighten-only floor, enforced HERE — the wiring, not the policy.
+ *
+ * `guardrail.policy.*` declared this exact rule for 13 keys and shipped a
+ * correct guard that NOTHING called: the policy existed, the enforcement point
+ * did not. Now the direction is a descriptor field and this lane applies it
+ * generically, so the assertions below are about the write lane actually
+ * invoking it — the direction semantics have their own tests next door.
+ */
+describe('tighten-only floor — enforced in the write lane, descriptor-driven', () => {
+  it('REJECTS a tenant write that would loosen a verdict-deciding key (403, no row written)', async () => {
+    // `piiThreshold` is lower-is-stricter: 0.9 catches LESS PII than the
+    // platform floor of 0.5, so it is a privilege violation, not a clamp.
+    const { svc, globalSettings } = makeService({ roles: [], tenantId: CUSTOMER_TENANT, platformValue: 0.5 });
+
+    await expect(svc.write('guardrail.policy.piiThreshold', 0.9, { scope: 'tenant' })).rejects.toBeInstanceOf(ForbiddenException);
+    expect(globalSettings.create).not.toHaveBeenCalled();
+    expect(globalSettings.update).not.toHaveBeenCalled();
+  });
+
+  it('PERMITS a tenant write that tightens the same key, and writes it unclamped', async () => {
+    const { svc, globalSettings } = makeService({ roles: [], tenantId: CUSTOMER_TENANT, platformValue: 0.5 });
+
+    const result = await svc.write('guardrail.policy.piiThreshold', 0.3, { scope: 'tenant' });
+
+    expect(result).toMatchObject({ value: 0.3, scope: 'tenant' });
+    expect(globalSettings.create.mock.calls[0]![0]).toMatchObject({ value: '0.3', tenantId: CUSTOMER_TENANT });
+  });
+
+  it('REJECTS a taxonomy that drops a platform-mandated category', async () => {
+    const floor = ['harassment', 'hate_speech', 'violence'];
+    const { svc } = makeService({ roles: [], tenantId: CUSTOMER_TENANT, platformValue: floor });
+
+    await expect(svc.write('guardrail.policy.harmfulLabels', ['harassment', 'violence'], { scope: 'tenant' })).rejects.toBeInstanceOf(
+      ForbiddenException,
+    );
+  });
+
+  it('does NOT floor a system-scope write — that write IS the platform value', async () => {
+    const { svc, globalSettings } = makeService({ roles: ['SUPER_ADMIN'], tenantId: SYSTEM_TENANT_ID, platformValue: 0.5 });
+
+    await expect(svc.write('guardrail.policy.piiThreshold', 0.9, { scope: 'system' })).resolves.toMatchObject({ value: 0.9 });
+    expect(globalSettings.create).toHaveBeenCalledTimes(1);
+  });
+
+  it('leaves a key with no declared floor completely untouched', async () => {
+    // No `floorDirection`, so the guard never runs — a tenant may set this
+    // freely (subject to the READ-path clamp, which is a different mechanism).
+    const { svc } = makeService({ roles: [], tenantId: CUSTOMER_TENANT, platformValue: 5 });
+    await expect(svc.write('rateLimit.maxRequests', 999, { scope: 'tenant' })).resolves.toMatchObject({ value: 999 });
   });
 });

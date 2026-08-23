@@ -2,7 +2,7 @@
 //
 // Turns the values `apps/guardrail/src/guardrail/core/config.py` and
 // `providers/gliner.py` currently hardcode into governed `SettingDescriptor`s —
-// tier `db-config`, tenant → SYSTEM cascade, mirroring `models.guardrail.*`
+// tier `global-kv`, tenant → SYSTEM cascade, mirroring `models.guardrail.*`
 // (`model-defaults.descriptors.ts`) and `stt.fallback.*`
 // (`stt-fallback.descriptors.ts`). This file owns POLICY (thresholds, judge
 // tuning, groundedness tuning, label taxonomies) — it does NOT own model
@@ -60,16 +60,26 @@
 //
 // A tenant may only move a verdict-deciding key TOWARDS more safety relative
 // to the platform floor (the resolved SYSTEM row, or the code default absent
-// one) — never away from it. `assertGuardrailPolicyFloor` is the ONE place
-// that direction is expressed and enforced: it REJECTS a looser tenant value
-// with `GuardrailPolicyFloorViolation` (403 — a privilege boundary, not the
-// 404-over-403 cross-tenant posture and not a silent clamp, per D2 verbatim).
+// one) — never away from it. Each such key DECLARES its direction on its own
+// descriptor (`floorDirection`), and the settings write lane enforces every
+// declaration through ONE generic call to `assertTightenOnlyFloor`
+// (`tenant-clamp.ts`), which REJECTS a looser tenant value with
+// `SettingFloorViolation` (403 — a privilege boundary, not the 404-over-403
+// cross-tenant posture and not a silent clamp, per D2 verbatim).
+//
+// This file previously carried its own `assertGuardrailPolicyFloor` +
+// `GUARDRAIL_POLICY_FLOOR_DIRECTIONS` + `resolveGuardrailPolicyValue` trio.
+// The policy was right; the wiring never existed — all three had ZERO callers
+// outside their own unit test, because using them required the write lane to
+// know this feature file by name. Declaring the direction on the descriptor
+// removes that requirement: the enforcement point finds it by querying, so a
+// new floor-guarded key is one descriptor field, not a new call site.
+//
 // This is deliberately NOT `tenant-clamp.ts`'s `clampTenantSetting`: that
 // helper silently substitutes the bound and reports `clamped: true`, which is
 // the exact behaviour D2 rules out for a safety floor. The five tuning keys
-// carry no entry in `GUARDRAIL_POLICY_FLOOR_DIRECTIONS`, so
-// `assertGuardrailPolicyFloor` is a no-op for them — nothing about them
-// decides a verdict, so there is nothing to floor.
+// declare no `floorDirection`, so the guard is a no-op for them — nothing
+// about them decides a verdict, so there is nothing to floor.
 //
 // `entitlement`-tier interaction (a plan-tiered floor tighter than the
 // platform SYSTEM row, the way `TENANT_OVERRIDE_CLAMPS` layers an
@@ -103,10 +113,7 @@
 // tenant tightening `piiThreshold` needs no model-selection grant, and
 // nothing here reads or requires `featureGuardrailModelSelection`.
 
-import { ForbiddenException } from '@nestjs/common';
-import { ArgumentInvalidException } from '@arcaai/exceptions';
-import { walkCascade } from '../scope-cascade';
-import { SettingDescriptor } from '../registry.types';
+import { SettingDescriptor, SettingFloorDirection } from '../registry.types';
 
 /** Canonical dotted-key namespace for every descriptor in this file. */
 const GUARDRAIL_POLICY_KEY_PREFIX = 'guardrail.policy.';
@@ -223,9 +230,7 @@ function dataTypeFor(key: GuardrailPolicyShortKey): SettingDescriptor['dataType'
  *    claim (the judge's verdict is trustworthy; a segment is `grounded`), so
  *    a HIGHER number makes that claim harder to earn — stricter.
  */
-export const GUARDRAIL_POLICY_FLOOR_DIRECTIONS: Readonly<
-  Partial<Record<GuardrailPolicyShortKey, 'lower-is-stricter' | 'higher-is-stricter' | 'superset-is-stricter'>>
-> = Object.freeze({
+export const GUARDRAIL_POLICY_FLOOR_DIRECTIONS: Readonly<Partial<Record<GuardrailPolicyShortKey, SettingFloorDirection>>> = Object.freeze({
   classificationThreshold: 'lower-is-stricter',
   piiThreshold: 'lower-is-stricter',
   guardianMinConfidence: 'higher-is-stricter',
@@ -324,145 +329,35 @@ export const GUARDRAIL_POLICY_SETTINGS: SettingDescriptor[] = (
   const failMode = failModeFor(short);
   return {
     key: toRegistryKey(short),
-    tier: 'db-config',
+    // `global-kv` (owner decision D-2). These keys had NO table, NO repository
+    // and NO consumer under the `db-config` tier they used to claim — the
+    // guardrail source itself named the blocker: "blocked on the missing
+    // tenant-cascade read surface for db-config keys". `global-kv` is the tier
+    // that already has the complete read + write + cascade + invalidate loop,
+    // and `db-config` stays reserved for values with their own table
+    // (AiProviderConnection, AiTaskDefault, AiModel, AiRuntimeProfile,
+    // TenantStorageConfig). These are none of those.
+    tier: 'global-kv',
     dataType: dataTypeFor(short),
     sensitivity: 'internal',
     // Tenant-editable per Phase 0's governance flip (D2 presupposes a tenant
-    // write path): the tenant row may TIGHTEN, enforced by
-    // `assertGuardrailPolicyFloor`, not by capping maxScope at 'system'.
+    // write path): the tenant row may TIGHTEN, enforced by the declared
+    // `floorDirection` below, not by capping maxScope at 'system'.
     maxScope: 'tenant',
     editableBy: 'GuardrailPolicy',
     failMode,
+    // Declaring the direction is what WIRES the floor: the settings write lane
+    // enforces every descriptor that carries one, generically.
+    ...(GUARDRAIL_POLICY_FLOOR_DIRECTIONS[short] ? { floorDirection: GUARDRAIL_POLICY_FLOOR_DIRECTIONS[short] } : {}),
+    // NOT served on the effective-config pull route, and that is the rule
+    // rather than an omission: these are `maxScope: 'tenant'` — they vary BY
+    // TENANT, so per owner decision D-1 they travel the PUSH channel (guardrail
+    // resolves them per-tenant through its documented direct-SQL exception).
+    // Naming a service in `consumedBy` here would put a tenant-varying value on
+    // a route that caches ONE platform snapshot per process.
     category: 'Guardrail Policy',
     label: META[short].label,
     description: META[short].description,
     ...(failMode === 'open-to-default' ? { default: GUARDRAIL_POLICY_DEFAULTS[short] } : {}),
   };
 });
-
-const GUARDRAIL_POLICY_BY_KEY = new Map(GUARDRAIL_POLICY_SETTINGS.map((d) => [d.key, d] as const));
-
-function getGuardrailPolicyDescriptor(key: GuardrailPolicyKey): SettingDescriptor {
-  const descriptor = GUARDRAIL_POLICY_BY_KEY.get(key);
-  if (!descriptor) {
-    throw new ArgumentInvalidException(`Unknown guardrail policy setting '${key}'.`);
-  }
-  return descriptor;
-}
-
-// ─────────────────────────── Resolution (pure) ───────────────────────────
-
-export type GuardrailPolicySourceScope = 'tenant' | 'system' | 'code-default';
-
-export interface GuardrailPolicyRow {
-  /** The tenant's own row for this key, if one is stored. */
-  tenantValue?: unknown;
-  /** The SYSTEM/platform row for this key, if one is stored. */
-  systemValue?: unknown;
-}
-
-export interface ResolvedGuardrailPolicyValue {
-  key: GuardrailPolicyKey;
-  value: unknown;
-  source: GuardrailPolicySourceScope;
-}
-
-/**
- * The cascade THIS ticket requires: tenant row → SYSTEM row → declared
- * failure mode. Built on the shared, dependency-free `walkCascade` primitive
- * (`../scope-cascade`) so the walk itself cannot drift from every other
- * registry-driven resolver; only the fail-mode dispatch is local to this file
- * (importing the canonical `applyDeclaredFailMode` from
- * `tenant-settings.service.ts` would close a cycle back through `registry.ts`,
- * which this descriptors file is imported BY).
- *
- * `failMode: 'closed'` keys (the four thresholds, the four taxonomies) THROW
- * `ArgumentInvalidException` when neither tier supplies a value — no default
- * is substituted. `failMode: 'open-to-default'` keys (the five tuning knobs)
- * fall back to `descriptor.default`.
- */
-export function resolveGuardrailPolicyValue(key: GuardrailPolicyKey, row: GuardrailPolicyRow = {}): ResolvedGuardrailPolicyValue {
-  const descriptor = getGuardrailPolicyDescriptor(key);
-
-  const cascade = walkCascade<'tenant' | 'system', unknown>(
-    [
-      { source: 'tenant', value: row.tenantValue },
-      { source: 'system', value: row.systemValue },
-    ],
-    undefined,
-  );
-
-  if (cascade.source !== 'code-default') {
-    return { key, value: cascade.value, source: cascade.source };
-  }
-
-  if (descriptor.failMode === 'closed') {
-    throw new ArgumentInvalidException(
-      `Guardrail policy '${key}' could not be resolved (no tenant or SYSTEM row) and is declared fail-closed; ` +
-        'no default is substituted (this key decides a verdict).',
-    );
-  }
-  return { key, value: descriptor.default, source: 'code-default' };
-}
-
-// ────────────────────────── Tighten-only floor ───────────────────────────
-
-/**
- * Thrown by `assertGuardrailPolicyFloor` when a tenant-requested value would
- * make a verdict-deciding key LESS strict than the platform floor. A 403 —
- * a privilege boundary — deliberately NOT the 404-over-403 cross-tenant
- * posture (the caller unambiguously owns this row) and NOT a silent clamp
- * (decision D2, verbatim: "not a silent clamp and not a 404").
- */
-export class GuardrailPolicyFloorViolation extends ForbiddenException {
-  constructor(
-    public readonly key: GuardrailPolicyKey,
-    public readonly requested: unknown,
-    public readonly floor: unknown,
-  ) {
-    super(
-      `Guardrail policy '${key}' may only be tightened relative to the platform floor. ` +
-        `Requested ${JSON.stringify(requested)} is weaker than the floor ${JSON.stringify(floor)}.`,
-    );
-  }
-}
-
-/**
- * Enforce the tighten-only floor for ONE tenant write, ONCE, here — the
- * single place decision D2 calls for. `floor` is the value the caller already
- * resolved for the PLATFORM lane (the SYSTEM row if one exists, else
- * `descriptor.default` for the tuning keys — the four closed threshold/
- * taxonomy floors are never undefined in practice because a SYSTEM row is
- * seeded before any tenant may write, but an absent floor is treated as
- * "nothing to enforce against" rather than a spurious failure).
- *
- * A no-op for any key absent from `GUARDRAIL_POLICY_FLOOR_DIRECTIONS` — the
- * five tuning knobs, or an unrecognised key, both plainly out of scope. Never
- * mutates or substitutes `requested`; on a violation it throws
- * `GuardrailPolicyFloorViolation`, on success it returns without a value —
- * the caller writes exactly what was requested, unclamped.
- */
-export function assertGuardrailPolicyFloor(key: GuardrailPolicyKey, requested: unknown, floor: unknown): void {
-  const short = key.slice(GUARDRAIL_POLICY_KEY_PREFIX.length) as GuardrailPolicyShortKey;
-  const direction = GUARDRAIL_POLICY_FLOOR_DIRECTIONS[short];
-  if (!direction) return;
-  if (floor === null || floor === undefined) return;
-
-  if (direction === 'superset-is-stricter') {
-    if (!Array.isArray(requested) || !Array.isArray(floor)) return;
-    const missing = (floor as unknown[]).filter((label) => !requested.includes(label));
-    if (missing.length > 0) {
-      throw new GuardrailPolicyFloorViolation(key, requested, floor);
-    }
-    return;
-  }
-
-  if (typeof requested !== 'number' || typeof floor !== 'number') return;
-
-  if (direction === 'lower-is-stricter' && requested > floor) {
-    throw new GuardrailPolicyFloorViolation(key, requested, floor);
-  }
-  if (direction === 'higher-is-stricter' && requested < floor) {
-    throw new GuardrailPolicyFloorViolation(key, requested, floor);
-  }
-}

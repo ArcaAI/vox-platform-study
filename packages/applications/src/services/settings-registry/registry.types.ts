@@ -31,6 +31,36 @@ export const SCOPE_DEPTH: Record<SettingScope, number> = {
 
 export type SettingSensitivity = 'public' | 'internal' | 'secret';
 
+/**
+ * The deployables that can CONSUME a setting over the internal effective-config
+ * pull route. Declared here (not in `effective-config`) because a descriptor is
+ * pure metadata and must not depend on the read service that queries it — the
+ * dependency runs one way, `effective-config` → `settings-registry`.
+ *
+ * `EFFECTIVE_CONFIG_SERVICES` on the wire contract is THIS list, imported, so
+ * the two can never drift.
+ */
+export const CONSUMING_DEPLOYABLES = ['text', 'nlp', 'stt', 'guardrail', 'harness', 'tts'] as const;
+
+export type ConsumingDeployable = (typeof CONSUMING_DEPLOYABLES)[number];
+
+/**
+ * Which direction makes a value STRICTER, for keys a tenant may only TIGHTEN.
+ *
+ * Declaring it on the descriptor is what lets ONE generic enforcement point in
+ * the write lane cover every such key — the alternative (a per-feature floor
+ * function with its own key table) is what produced the orphaned
+ * `guardrail.policy.*` guard that nothing ever called.
+ *
+ *  - `lower-is-stricter`    a SMALLER number is tighter (a detection threshold:
+ *                           lower catches more content).
+ *  - `higher-is-stricter`   a LARGER number is tighter (a confidence gate: a
+ *                           positive claim becomes harder to earn).
+ *  - `superset-is-stricter` an array the tenant may only ADD to — it may never
+ *                           drop a category the platform floor mandates.
+ */
+export type SettingFloorDirection = 'lower-is-stricter' | 'higher-is-stricter' | 'superset-is-stricter';
+
 export type SettingDataType = 'boolean' | 'number' | 'string' | 'string[]' | 'enum' | 'json' | 'secret';
 
 /**
@@ -129,6 +159,39 @@ export interface SettingDescriptor {
    * migration is queryable instead of buried in prose. Absent ⇒ `tier` is final.
    */
   targetTier?: StorageTier;
+  /**
+   * The deployable(s) that receive this key over
+   * `GET /api/v1/internal/effective-config?service=<name>`. Naming a service
+   * here is the ONLY step needed to put a key on that wire: the read service
+   * QUERIES the registry on this field, so there is no per-service `switch`,
+   * no response-DTO field and no defaults map to edit alongside it.
+   *
+   * Absent ⇒ the key is not served on the pull route at all. That is the
+   * correct default, and deliberately so:
+   *
+   *  • CARDINALITY DECIDES THE CHANNEL (owner decision D-1). The pull route is
+   *    PLATFORM-scope — one cached snapshot per service process, forever. Only
+   *    a knob with NO tenant opinion belongs on it. Anything that could ever
+   *    differ per tenant travels the PUSH channel (per-request gateway
+   *    injection) instead, and naming a service here would turn one cached
+   *    entry into one per tenant.
+   *  • A `maxScope: 'tenant'` descriptor therefore must NOT declare
+   *    `consumedBy` — `guardrail.policy.*` is the worked example.
+   *  • Secrets are never served regardless of what this says; the read service
+   *    filters `sensitivity: 'secret'` out unconditionally.
+   */
+  consumedBy?: readonly ConsumingDeployable[];
+  /**
+   * Declares that a tenant override may only TIGHTEN this key relative to the
+   * platform value, and in which direction. Enforced ONCE, generically, in the
+   * settings write lane: a loosening write is REJECTED (403) rather than
+   * silently clamped, so an admin is told their value was refused instead of
+   * believing they set it.
+   *
+   * Absent ⇒ no floor. Only meaningful on a key a tenant may set at all
+   * (`maxScope` deeper than `system`).
+   */
+  floorDirection?: SettingFloorDirection;
   label?: string;
   description?: string;
   /** The code default — the last fallback in the cascade. */

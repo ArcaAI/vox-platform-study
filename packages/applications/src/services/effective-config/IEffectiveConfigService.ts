@@ -5,10 +5,18 @@
 // meaning, because the Python pull clients treat an omitted/null field as
 // "keep my env/bootstrap value".
 
-/** The services the internal route will serve a subset for. */
-export const EFFECTIVE_CONFIG_SERVICES = ['text', 'nlp', 'stt', 'guardrail', 'harness', 'tts'] as const;
+import { CONSUMING_DEPLOYABLES, type ConsumingDeployable, type SettingDataType } from '../settings-registry/registry.types';
 
-export type EffectiveConfigServiceName = (typeof EFFECTIVE_CONFIG_SERVICES)[number];
+/**
+ * The services the internal route will serve a subset for.
+ *
+ * This IS `CONSUMING_DEPLOYABLES` — the same list a descriptor names in its
+ * `consumedBy`, imported rather than transcribed, so the wire contract and the
+ * registry can never disagree about which deployables exist.
+ */
+export const EFFECTIVE_CONFIG_SERVICES = CONSUMING_DEPLOYABLES;
+
+export type EffectiveConfigServiceName = ConsumingDeployable;
 
 /**
  * Which lane supplied a group's values. Mirrored into each service's `/health`
@@ -80,6 +88,46 @@ export interface EffectiveRedaction {
   source: EffectiveConfigSource;
 }
 
+/**
+ * ONE resolved registry key on the wire — the GENERIC channel that replaced the
+ * hand-shaped, numeric-only groups below.
+ *
+ * `value` is `unknown` ON PURPOSE. It used to be typed `number | null`, and any
+ * non-number was silently replaced by the code default, so a string, boolean,
+ * enum, URL, threshold or label taxonomy could not cross the DB→Python boundary
+ * at all. `dataType` travels WITH the value so a client can check what it was
+ * promised instead of guessing from the runtime type.
+ *
+ * `value: null` means UNRESOLVED — either the control-plane read failed or the
+ * stored value did not match `dataType`. It never means "the default": a client
+ * keeps its own bootstrap value, exactly as it does for an omitted group.
+ */
+export interface EffectiveSetting {
+  value: unknown;
+  dataType: SettingDataType;
+  source: EffectiveConfigSource;
+}
+
+/**
+ * Where ONE model's weights can be materialised from — the block
+ * `apps/harness` already codes against
+ * (`models/source_resolver.py`: `modelWeights[<slug>]` → `sourceUri` /
+ * `localPath` / `checksum`) and which had no counterpart in this contract at
+ * all, so the consumer could only ever take its env branch.
+ *
+ * Transcribed verbatim from the resolved `AiModel` row. Deliberately NOT
+ * scheme-filtered: `sourceUri`'s grammar (`hf:` / `file://` / `s3://`) is
+ * interpreted by each service's own `resolve_model_dir`, and re-implementing
+ * that dispatch here would give it a second, drifting definition.
+ */
+export interface EffectiveModelWeight {
+  sourceUri: string;
+  /** Operator override — highest precedence in every service's resolver. */
+  localPath: string | null;
+  /** SHA256, when the registry row carries one. */
+  checksum: string | null;
+}
+
 export interface EffectiveConfigResponse {
   service: string;
   /** ISO-8601. Lets a client log how stale its cached snapshot is. */
@@ -89,8 +137,22 @@ export interface EffectiveConfigResponse {
   concurrency?: EffectiveConcurrency;
   /** Served for guardrail only. */
   redaction?: EffectiveRedaction;
-  /** Served for harness/live-doc agentic-context consumers only. */
-  agenticContext?: Record<string, unknown>;
+  /**
+   * Every registry key whose descriptor names this service in `consumedBy`,
+   * keyed by its canonical dotted key. THE extension point: a new key appears
+   * here the moment its descriptor declares the service, with no change to this
+   * contract, the read service, or any defaults map.
+   *
+   * The groups above are the frozen, pre-existing views of a subset of these
+   * same keys, kept verbatim so existing Python clients are unaffected.
+   */
+  settings?: Record<string, EffectiveSetting>;
+  /**
+   * Model slug → weight source, for the models this service's `AiTaskDefault`
+   * rows select. Served only to services that materialise weights in their own
+   * process; omitted (never empty) when there are none.
+   */
+  modelWeights?: Record<string, EffectiveModelWeight>;
 }
 
 export const IEffectiveConfigService = Symbol('IEffectiveConfigService');
