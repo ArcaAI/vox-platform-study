@@ -18,6 +18,7 @@ import { HarnessPolicyServiceModule } from '../../harness-policy/harness-policy.
 import { ConfigResolverModule } from '../../config-resolver';
 import { UsageLedgerServiceModule } from '../../usageLedger';
 import { NoteGenerationServiceModule } from '../note-generation/note-generation.service.module';
+import { GateEditMiningServiceModule } from '../../gate-edit-mining/gate-edit-mining.service.module';
 
 @Module({
   imports: [
@@ -31,6 +32,16 @@ import { NoteGenerationServiceModule } from '../note-generation/note-generation.
     HarnessPolicyServiceModule, // TEXT-selection resolver for the pre-summary/comprehensive processors
     ConfigResolverModule, // Realtime cascade + preferred-prompt threading (handler + pre-summary/comprehensive processors)
     UsageLedgerServiceModule, // usage emission for ComprehensiveSummaryProcessor
+    // TASK-795 W2 (finishing TASK-792's R7) — supplies `IGateEditExemplarRetriever` for the
+    // `PromptAssemblyService` provided below. `PromptAssemblyService` injects it `@Optional()`,
+    // so without this import it resolved to `undefined` and few-shot degraded to zero-shot with
+    // no error, no log and every unit test green.
+    //
+    // The two live consumers here are `PreSummaryProcessor` (POST
+    // `:id/summary/pre-summary/async`) and `ComprehensiveSummaryProcessor` (POST
+    // `:id/summary/comprehensive/async`); both call `promptAssemblyService.assemble(...)`
+    // directly.
+    GateEditMiningServiceModule,
     EventEmitterModule, // Required for @OnEvent handlers and EventEmitter2 injection
     RedisCacheModule.register(), // For job status storage and pub/sub
     // TASK-732 — `GenerateSummary`/`ExtractNamedEntities` (the legacy

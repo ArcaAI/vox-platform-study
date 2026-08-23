@@ -49,6 +49,8 @@
  * README.
  */
 
+import type { JsonObject } from '@arcaai/domains';
+
 /** The one value that means "a tenant-authored workflow governs this consultation". */
 export const TENANT_WORKFLOW_GOVERNS_MARKER = 'tenant-workflow';
 
@@ -90,7 +92,7 @@ export function tenantWorkflowGoverns(metadata: unknown): boolean {
  * lossless place to put it, and inventing one would be worse than the loud,
  * documented drop.
  */
-export function withGoverningEngineMarker(metadata: unknown, marker: GoverningEngineMarker): Record<string, unknown> {
+export function withGoverningEngineMarker(metadata: unknown, marker: GoverningEngineMarker): JsonObject {
   return {
     ...(isPlainObject(metadata) ? metadata : {}),
     [GOVERNING_ENGINE_METADATA_KEY]: {
