@@ -874,6 +874,107 @@ class ApiClient:
         data = await self._post(f"/consultations/{consultation_id}/live-documentation/stop", body)
         return bool(data.get("ok", False))
 
+    async def publish_live_summary(
+        self,
+        consultation_id: str,
+        *,
+        tenant_id: str,
+        running_summary: str,
+        sections: list[dict[str, str]],
+        source: str = "interpreter",
+        node_type: str | None = None,
+        ordinal: int | None = None,
+        total: int | None = None,
+        provider: str | None = None,
+        model: str | None = None,
+        task_key: str | None = None,
+        user_id: str | None = None,
+        job_id: str | None = None,
+        run_id: str | None = None,
+    ) -> bool:
+        """Publish ONE interim running summary onto the EXISTING live-summary plane.
+
+        ``POST {internal_prefix}/consultations/{id}/live-summary`` — the gateway relays the body
+        verbatim onto ``consultation:live-summary:{id}``, the same Redis channel
+        ``LiveDocumentationService`` publishes its own flushes on, so the already-shipped SSE
+        route, the already-shipped ``useArcaLiveSummary`` hook and the already-shipped console
+        panel render an interpreter-produced summary with no new consumer surface.
+
+        **This channel deliberately carries clinical text.** That is what separates it from
+        ``consultation:loop:{id}``, which carries ids/keys/labels only
+        (:class:`~harness.temporal.models.EmitLoopEventInput`) and must never be widened to
+        carry a summary. Both are tenant-guarded per-consultation SSE streams; only this one is
+        a PHI transport, and it already was one before this method existed.
+
+        Raises :class:`ApiServiceError` like every other method — the CALLING NODE is the
+        swallow layer, exactly as it already is for ``report_loop_event``: a live feed must
+        never cost the work that produced it.
+        """
+        body = _prune(
+            {
+                "tenantId": tenant_id,
+                "runningSummary": running_summary,
+                "sections": sections,
+                "source": source,
+                "nodeType": node_type,
+                "ordinal": ordinal,
+                "total": total,
+                "provider": provider,
+                "model": model,
+                "taskKey": task_key,
+                "userId": user_id,
+                "jobId": job_id,
+                "runId": run_id,
+            }
+        )
+        data = await self._post(f"/consultations/{consultation_id}/live-summary", body)
+        return bool(data.get("ok", False))
+
+    async def publish_live_assist(
+        self,
+        consultation_id: str,
+        *,
+        tenant_id: str,
+        kind: str,
+        node_type: str | None = None,
+        suggestions: list[dict[str, Any]] | None = None,
+        corrections: dict[str, Any] | None = None,
+        provider: str | None = None,
+        model: str | None = None,
+        user_id: str | None = None,
+        job_id: str | None = None,
+        run_id: str | None = None,
+    ) -> bool:
+        """Publish clinician-facing SUGGESTIONS or correction PROPOSALS.
+
+        ``POST {internal_prefix}/consultations/{id}/live-assist`` → the gateway relays onto
+        ``consultation:live-assist:{id}``. A separate plane from the running summary because the
+        payload is not a summary: each item is an actionable proposal with its own id and a
+        ``PROPOSED`` status the clinician resolves. Reusing ``live-summary`` would force the
+        summary panel to re-render on every suggestion tick, and reusing the loop plane is
+        forbidden outright — a correction proposal necessarily quotes clinical text.
+
+        ``kind`` discriminates the envelope: ``"suggestions"`` carries ``suggestions``,
+        ``"corrections"`` carries ``corrections``. Same swallow posture as
+        :meth:`publish_live_summary` — the caller absorbs the error, never the loop.
+        """
+        body = _prune(
+            {
+                "tenantId": tenant_id,
+                "kind": kind,
+                "nodeType": node_type,
+                "suggestions": suggestions,
+                "corrections": corrections,
+                "provider": provider,
+                "model": model,
+                "userId": user_id,
+                "jobId": job_id,
+                "runId": run_id,
+            }
+        )
+        data = await self._post(f"/consultations/{consultation_id}/live-assist", body)
+        return bool(data.get("ok", False))
+
     async def report_loop_event(
         self,
         consultation_id: str,

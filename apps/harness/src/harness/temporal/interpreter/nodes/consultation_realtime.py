@@ -57,6 +57,7 @@ the console (TASK-793).
 
 from __future__ import annotations
 
+import hashlib
 import json
 import re
 from typing import Any
@@ -82,6 +83,11 @@ from harness.temporal.interpreter.nodes._shared import (
     STATUS_OK,
     now,
     record_and_flush,
+)
+from harness.temporal.interpreter.nodes._soap import (
+    SOAP_OUTPUT_INSTRUCTION,
+    SOAP_RESPONSE_FORMAT,
+    sections_for,
 )
 from harness.temporal.models import ExtractEntitiesInput, HarnessPolicy
 
@@ -184,6 +190,28 @@ def _windows(text: str, size: int) -> list[str]:
     return chunks[:_MAX_WINDOWS] or [text]
 
 
+def text_digest(text: str) -> str:
+    """SHA-256 of the text a set of correction proposals was computed against.
+
+    Published alongside the proposals so a console can refuse to splice a replacement into text
+    that has since drifted. A span is only meaningful against the exact bytes it was measured
+    on; without this, a stale one-click accept edits the wrong characters — the same failure
+    ``_verified_proposals`` guards against locally.
+    """
+    return hashlib.sha256(text.encode("utf-8")).hexdigest()
+
+
+def _stable_id(*parts: str) -> str:
+    """A DETERMINISTIC id for one clinician-actionable item.
+
+    Not ``uuid4``: a Temporal activity retries, and a retry that re-publishes the same
+    suggestion or proposal under a fresh id would resurrect an item the clinician already
+    dismissed. Derived from the node and the item's own content, so a retry is a no-op and two
+    genuinely different items never collide.
+    """
+    return hashlib.sha256("\x1f".join(parts).encode("utf-8")).hexdigest()[:16]
+
+
 # ---------------------------------------------------------------------------
 # W1 — consultation.realtimeSummary
 # ---------------------------------------------------------------------------
@@ -239,14 +267,24 @@ async def interpreter_consultation_realtime_summary(
     text_client = _text_client(settings)
     api_client = _api_client(settings)
     identity = run_identity(payload.run_payload)
+    # The default asks for a SOAP-shaped running note, because R3's requirement is to autofill
+    # "summaries and gist into customized SOAP forms" — a flat blob cannot populate a form. The
+    # instruction is the DEFAULT ENGINE's own (``_soap.SOAP_OUTPUT_INSTRUCTION``), so a
+    # graph-governed consultation and a default one render identically in the same panel. A
+    # graph author who wants a different form supplies ``config.systemPrompt``.
     system_prompt = _optional_str(config.get("systemPrompt")) or (
-        "You are assisting during a live clinical consultation. Summarize the transcript "
-        "excerpt in at most three short sentences. State only what the excerpt supports. "
-        "Do not diagnose, do not recommend treatment, and do not invent details."
+        "You are assisting during a live clinical consultation. Maintain a short running note "
+        "of the consultation so far. State only what the transcript supports. Do not diagnose "
+        "beyond what was said, do not recommend treatment, and do not invent details.\n\n"
+        + SOAP_OUTPUT_INSTRUCTION
     )
+    response_format = config.get("responseFormat") or SOAP_RESPONSE_FORMAT
 
     summaries: list[str] = []
+    sections: list[dict[str, str]] = []
+    running_summary = ""
     announced = 0
+    published = 0
     for ordinal, window in enumerate(windows, start=1):
         try:
             safe_window = _screen(
@@ -274,6 +312,7 @@ async def interpreter_consultation_realtime_summary(
                 model=model,
                 temperature=config.get("temperature"),
                 max_tokens=config.get("maxTokens"),
+                response_format=response_format,
             )
         except TextServiceError as exc:
             await record_and_flush(
@@ -282,12 +321,45 @@ async def interpreter_consultation_realtime_summary(
             return NodeActivityResult(
                 status="DEGRADED",
                 reason=f"realtime summary generation failed: {exc}",
-                output={"summaries": summaries, "windowCount": len(summaries)},
+                output={
+                    "summaries": summaries,
+                    "windowCount": len(summaries),
+                    "published": published,
+                },
             )
 
         summaries.append(result.content)
+        sections, running_summary = sections_for("\n\n".join(summaries))
+
+        # DELIVERY (TASK-796). The summary TEXT travels on the live-summary plane — the same
+        # ``consultation:live-summary:{id}`` channel the default engine flushes onto, so the
+        # already-shipped SSE route, SDK hook and console panel render it with no new consumer.
+        # Best-effort in exactly the sense the announcement below is: a plane that is down costs
+        # the DELIVERY of this window, never the summary or the run.
+        if identity.consultation_id and running_summary:
+            try:
+                await api_client.publish_live_summary(
+                    identity.consultation_id,
+                    tenant_id=payload.tenant_id,
+                    running_summary=running_summary,
+                    sections=sections,
+                    source="interpreter",
+                    node_type=payload.node_type,
+                    ordinal=ordinal,
+                    total=len(windows),
+                    provider=provider,
+                    model=model,
+                    task_key=task_key,
+                    user_id=identity.user_id,
+                    job_id=identity.job_id,
+                )
+                published += 1
+            except ApiServiceError:
+                pass
 
         # Announce, best-effort. IDS AND COUNTS ONLY — never the summary or the transcript.
+        # UNCHANGED by TASK-796: ``EmitLoopEventInput`` stays ``extra="forbid"`` and this
+        # detail stays ``{ordinal, total, chars}``. The loop plane is not a PHI transport.
         if identity.consultation_id:
             try:
                 await api_client.report_loop_event(
@@ -312,8 +384,11 @@ async def interpreter_consultation_realtime_summary(
         output={
             "summaries": summaries,
             "text": "\n\n".join(summaries),
+            "sections": sections,
+            "runningSummary": running_summary,
             "windowCount": len(summaries),
             "announced": announced,
+            "published": published,
             "provider": provider,
             "model": model,
         },
@@ -427,12 +502,47 @@ async def interpreter_consultation_suggestions(payload: NodeActivityInput) -> No
     if isinstance(max_suggestions, int) and max_suggestions >= 0:
         suggestions = suggestions[:max_suggestions]
 
+    # TASK-796 — a suggestion the clinician can ACT on needs an identity and a resolvable
+    # state, not just prose: an id stable across activity retries (so a dismissed suggestion
+    # stays dismissed), the model that proposed it, and a status only the clinician advances.
+    suggestions = [
+        {
+            **item,
+            "suggestionId": _stable_id(payload.node_id, str(index), str(item.get("text") or "")),
+            "status": "PROPOSED",
+            "proposedBy": f"{provider}:{model}",
+        }
+        for index, item in enumerate(suggestions)
+    ]
+
+    identity = run_identity(payload.run_payload)
+    published = False
+    if identity.consultation_id and suggestions:
+        try:
+            await _api_client(settings).publish_live_assist(
+                identity.consultation_id,
+                tenant_id=payload.tenant_id,
+                kind="suggestions",
+                node_type=payload.node_type,
+                suggestions=suggestions,
+                provider=provider,
+                model=model,
+                user_id=identity.user_id,
+                job_id=identity.job_id,
+            )
+            published = True
+        except ApiServiceError:
+            # Best-effort, same posture as every other live plane: losing the delivery must
+            # never lose the work, and must never fail the run.
+            pass
+
     await record_and_flush(payload, status=STATUS_OK, started=started)
     return NodeActivityResult(
         status="SUCCEEDED",
         output={
             "suggestions": suggestions,
             "count": len(suggestions),
+            "published": published,
             "provider": provider,
             "model": model,
         },
@@ -591,7 +701,38 @@ async def interpreter_consultation_propose_corrections(
             output=unchanged,
         )
 
-    proposals, rejected = _verified_proposals(raw, text, provider=provider, model=model)
+    proposals, rejected = _verified_proposals(
+        raw, text, provider=provider, model=model, node_id=payload.node_id
+    )
+
+    # TASK-796 — deliver the PROPOSALS, and only the proposals. The envelope is explicitly
+    # proposal-first on the wire as well as in the output: nothing is applied, every item is
+    # ``PROPOSED``, and ``textSha256`` pins the exact bytes the spans were measured against so
+    # a console cannot accept one into text that has since drifted.
+    corrections = {
+        "proposals": proposals,
+        "applied": False,
+        "appliedCount": 0,
+        "rejectedProposals": rejected,
+        "textSha256": text_digest(text),
+    }
+    published = False
+    if identity.consultation_id and proposals:
+        try:
+            await _api_client(settings).publish_live_assist(
+                identity.consultation_id,
+                tenant_id=payload.tenant_id,
+                kind="corrections",
+                node_type=payload.node_type,
+                corrections=corrections,
+                provider=provider,
+                model=model,
+                user_id=identity.user_id,
+                job_id=identity.job_id,
+            )
+            published = True
+        except ApiServiceError:
+            pass
 
     await record_and_flush(payload, status=STATUS_OK, started=started)
     return NodeActivityResult(
@@ -603,6 +744,8 @@ async def interpreter_consultation_propose_corrections(
             "applied": False,
             "appliedCount": 0,
             "rejectedProposals": rejected,
+            "textSha256": corrections["textSha256"],
+            "published": published,
             "provider": provider,
             "model": model,
         },
@@ -610,7 +753,7 @@ async def interpreter_consultation_propose_corrections(
 
 
 def _verified_proposals(
-    raw: list[Any], source: str, *, provider: str, model: str
+    raw: list[Any], source: str, *, provider: str, model: str, node_id: str
 ) -> tuple[list[dict[str, Any]], int]:
     """Keep only proposals that can be safely offered for one-click acceptance.
 
@@ -654,6 +797,11 @@ def _verified_proposals(
         confidence = float(confidence) if isinstance(confidence, (int, float)) else 0.0
         proposals.append(
             {
+                # Stable across activity retries — a re-run must not resurrect a proposal the
+                # clinician already rejected under a fresh id.
+                "proposalId": _stable_id(
+                    node_id, str(start), str(end), original, proposed, category
+                ),
                 "start": start,
                 "end": end,
                 "original": original,
