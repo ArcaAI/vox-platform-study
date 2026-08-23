@@ -21,6 +21,9 @@ from hope_env.service_registration import start_registration, stop_registration
 from guardrail.core.breaker import CircuitBreaker, FailPosture
 from guardrail.core.concurrency import AdmissionGate
 from guardrail.core.config import Settings, get_settings
+from guardrail.core.effective_config import (
+    CONFIG_INVALIDATION_CHANNEL as EFFECTIVE_CONFIG_INVALIDATION_CHANNEL,
+)
 from guardrail.core.logging import get_logger, setup_logging
 from guardrail.core.metrics import record_config_cache_event
 
@@ -85,19 +88,52 @@ def build_circuit_breakers(settings: Settings) -> dict[str, CircuitBreaker]:
     }
 
 
-CONFIG_INVALIDATION_CHANNEL = "arca:guardrail-config:invalidate"
+#: The channel this listener watches. Re-pointed from the private
+#: ``arca:guardrail-config:invalidate`` to the GENERALISED one the gateway
+#: actually publishes on: the old literal appeared exactly once repo-wide — right
+#: here — and had ZERO publishers, so this listener has never fired and guardrail
+#: converged by 60s poll while believing it had push invalidation (RC-6). The old
+#: name is not kept as an alias; keeping a second subscription would preserve the
+#: appearance of a channel nothing writes to, which is the defect itself.
+CONFIG_INVALIDATION_CHANNEL = EFFECTIVE_CONFIG_INVALIDATION_CHANNEL
+
+
+def _invalidation_target(payload: str) -> tuple[str | None, str | None]:
+    """Which `(tenant_id, task_key)` one invalidation payload narrows to.
+
+    `(None, None)` means "drop everything" — the answer for an empty payload,
+    ``"*"``, and for the gateway's JSON envelope (a `global-kv` write is
+    platform-scope, so no tenant narrows it). The legacy
+    ``"<tenant_id>[|<task_key>]"`` form still narrows.
+    """
+    if not payload or payload == "*" or payload.startswith("{"):
+        return None, None
+    tenant, _, task_key = payload.partition("|")
+    return tenant or None, task_key or None
 
 
 async def _config_invalidation_listener(app: FastAPI) -> None:
-    """Drop cached per-tenant config when the control plane says it changed.
+    """Drop cached config when the control plane says it changed.
 
     **Invalidation is the propagation path; the TTL is a bounded-staleness safety
-    net** (rule 09 §Config caches). Message payload is either ``"*"`` (drop all) or
-    a tenant id, optionally ``"<tenant_id>|<task_key>"``. The listener never fails
-    the service: a Redis outage simply degrades propagation back to the TTL.
+    net** (rule 09 §Config caches).
+
+    Evicts BOTH caches this process holds, because a control-plane write can move
+    either: the per-tenant SQL resolver (`tenant_config`) and the platform-scope
+    effective-config snapshot. Payloads accepted:
+
+    * the gateway's JSON ``{"key", "scope", "tenantId"}`` — drops everything;
+    * ``"*"`` — drops everything;
+    * ``"<tenant_id>"`` / ``"<tenant_id>|<task_key>"`` — the narrow legacy form,
+      kept so a future per-tenant publisher (the `AiTaskDefault` / `AiModel` write
+      lanes, which are NOT this channel's publisher yet) can target one tenant.
+
+    The listener never fails the service: a Redis outage degrades propagation back
+    to the TTL.
     """
     resolver = getattr(app.state, "tenant_config_resolver", None)
-    if resolver is None:
+    effective_config = getattr(app.state, "effective_config_client", None)
+    if resolver is None and effective_config is None:
         return
     try:
         pubsub = app.state.redis.pubsub()
@@ -110,18 +146,24 @@ async def _config_invalidation_listener(app: FastAPI) -> None:
         async for message in pubsub.listen():
             if message.get("type") != "message":
                 continue
-            payload = str(message.get("data") or "").strip()
-            if not payload or payload == "*":
-                dropped = resolver.invalidate()
+            raw = message.get("data")
+            if isinstance(raw, (bytes, bytearray)):
+                raw = raw.decode("utf-8", errors="replace")
+            payload = str(raw or "").strip()
+
+            # The platform-scope snapshot is dropped on EVERY message: it has no
+            # tenant dimension to narrow by (D-1 — the pull route is one cached
+            # entry per process).
+            if effective_config is not None:
+                effective_config.handle_invalidation_message(payload)
+
+            if resolver is not None:
+                tenant_id, task_key = _invalidation_target(payload)
+                dropped = resolver.invalidate(tenant_id=tenant_id, task_key=task_key)
             else:
-                tenant, _, task_key = payload.partition("|")
-                dropped = resolver.invalidate(
-                    tenant_id=tenant or None, task_key=task_key or None
-                )
+                dropped = 0
             record_config_cache_event("invalidated")
-            logger.info(
-                "guardrail.config_invalidated", payload=payload, dropped=dropped
-            )
+            logger.info("guardrail.config_invalidated", payload=payload, dropped=dropped)
     except asyncio.CancelledError:
         raise
     except Exception as exc:  # noqa: BLE001
@@ -239,9 +281,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         logger.info("guardrail.job_processor_started")
 
     # Config invalidation listener — the propagation path for a policy change.
-    app.state.config_invalidation_task = asyncio.create_task(
-        _config_invalidation_listener(app)
-    )
+    app.state.config_invalidation_task = asyncio.create_task(_config_invalidation_listener(app))
 
     # Self-registration: fire-and-forget, bounded-timeout, NEVER
     # blocks or fails boot. Reuses the shared `http_client` above. Guardrail
@@ -341,9 +381,7 @@ def create_app() -> FastAPI:
     # too (same router/handler) so callers using the v1 path don't 404 while
     # /api/health keeps working for existing callers.
     app.include_router(health_router, prefix="/api/v1", tags=["health"])
-    app.include_router(
-        medical_router, prefix="/api", tags=["medical"]
-    )  # Primary endpoint
+    app.include_router(medical_router, prefix="/api", tags=["medical"])  # Primary endpoint
     app.include_router(guardrails_router, prefix="/api", tags=["guardrails"])
     # Live output-side groundedness gate — behind X-Service-Token.
     app.include_router(groundedness_router, prefix="/api", tags=["groundedness"])

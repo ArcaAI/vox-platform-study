@@ -5,6 +5,8 @@ FastAPI application with lifespan-managed shared resources.
 
 from __future__ import annotations
 
+import asyncio
+import contextlib
 from collections.abc import AsyncIterator, Callable
 from contextlib import asynccontextmanager
 from typing import TYPE_CHECKING
@@ -304,6 +306,15 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             service="text",
         )
 
+    # Push invalidation for that client. Rule 09 §"Config caches":
+    # invalidation is the propagation path, the TTL is only a bounded-staleness
+    # backstop — before this, a control-plane write took up to 60s to be seen
+    # here. The task never raises (every failure degrades to the TTL), so it is
+    # safe to start unconditionally.
+    app.state.config_invalidation_task = asyncio.create_task(
+        app.state.effective_config_client.run_invalidation_listener(redis_client)
+    )
+
     if app.state.shutdown_manager is None:
         from text.services.shutdown_manager import ShutdownManager
 
@@ -347,6 +358,13 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             logger.warning("text.drain_timeout", remaining=shutdown_mgr.active_count)
 
     logger.info("text.shutting_down")
+
+    invalidation_task = getattr(app.state, "config_invalidation_task", None)
+    if invalidation_task is not None:
+        invalidation_task.cancel()
+        with contextlib.suppress(asyncio.CancelledError, Exception):
+            await invalidation_task
+
     await stop_registration(app.state.service_release_task)
     await http_client.aclose()
     if redis_client and hasattr(redis_client, "aclose"):
@@ -410,6 +428,7 @@ def create_app(settings_override: Settings | None = None) -> FastAPI:
     # Control-plane overrides; empty ⇒ every provider keeps its env timeout.
     app.state.provider_timeouts = {}
     app.state.effective_config_client = None
+    app.state.config_invalidation_task = None
     app.state.tracer_provider = None
     app.state.logger_provider = None
 

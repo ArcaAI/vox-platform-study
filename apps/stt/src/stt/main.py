@@ -1,5 +1,7 @@
 """STT Service - FastAPI Application Entry Point."""
 
+import asyncio
+import contextlib
 import os
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
@@ -17,6 +19,9 @@ from stt.core.messaging.broker import close_redis, initialize_redis
 from stt.core.storage.minio_client import close_minio, initialize_minio
 from stt.health.api.routes import internal_router
 from stt.health.api.routes import router as health_router
+from stt.streaming._runtime import (
+    get_redis_client as get_streaming_redis_client,
+)
 from stt.streaming._runtime import initialize_streaming, shutdown_streaming
 from stt.streaming.api.routes import router as streaming_router
 from stt.transcription.api.routes import router as transcription_router
@@ -166,6 +171,22 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     await initialize_minio()
     await initialize_streaming()
 
+    # Push invalidation for the control-plane pull client. Rule 09
+    # §"Config caches": invalidation is the propagation path, the TTL is only a
+    # bounded-staleness backstop — before this a control-plane write took up to
+    # 60s to be seen here. Reuses the streaming module's `redis.asyncio` client
+    # (the Dramatiq broker's is SYNC and cannot serve an async pubsub loop)
+    # rather than opening a second connection; if streaming is unavailable the
+    # TTL simply remains the only path, which is the pre-existing behaviour.
+    app.state.config_invalidation_task = None
+    _invalidation_redis = get_streaming_redis_client()
+    if _invalidation_redis is not None:
+        from stt.core.effective_config import get_effective_config_client
+
+        app.state.config_invalidation_task = asyncio.create_task(
+            get_effective_config_client().run_invalidation_listener(_invalidation_redis)
+        )
+
     # Auxiliary ML models (Silero VAD, Pyannote embedding, Cadence
     # punctuation) are NOT loaded at boot. Each loads lazily on first use via
     # its own idempotent, concurrency-safe guard, so a freshly booted process
@@ -200,6 +221,11 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
 
     # Shutdown
     logger.info("Shutting down STT Service...")
+    invalidation_task = getattr(app.state, "config_invalidation_task", None)
+    if invalidation_task is not None:
+        invalidation_task.cancel()
+        with contextlib.suppress(asyncio.CancelledError, Exception):
+            await invalidation_task
     await stop_registration(app.state.service_release_task)
     if app.state.service_release_http_client is not None:
         await app.state.service_release_http_client.aclose()
