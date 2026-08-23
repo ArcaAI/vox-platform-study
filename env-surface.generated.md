@@ -13,15 +13,15 @@ disagree with those declarations.
 
 | Metric | Value |
 |---|---:|
-| Declared keys (distinct) | 138 |
+| Declared keys (distinct) | 144 |
 | … of which required (`failMode: closed`) | 32 |
 | … of which secret | 31 |
-| … tier `env` | 102 |
+| … tier `env` | 108 |
 | … tier `global-kv` | 9 |
 | … tier `vault-kv` | 27 |
-| Python declared fields | 396 |
-| … distinct Python names (incl. aliases + `os.environ` reads) | 457 |
-| `turbo.json#globalEnv` entries | 578 |
+| Python declared fields | 365 |
+| … distinct Python names (incl. aliases + `os.environ` reads) | 414 |
+| `turbo.json#globalEnv` entries | 545 |
 
 ## Variables — the TypeScript platform surface
 
@@ -140,10 +140,16 @@ disagree with those declarations.
 | `STT_URL` | `env` | no | `http://localhost:8861` | `apps/api` | Speech-to-text service base URL (apps/stt, port 8861). |
 | `STT_WS_EGRESS_HIGH_WATERMARK_BYTES` | `env` | no | `524288` | `apps/stt` | Buffered-amount threshold above which partial transcripts are dropped. |
 | `STT_WS_RESUME_GRACE_MS` | `env` | no | `15000` | `apps/stt` | Window a disconnected STT session is held open for reconnect. |
+| `TEXT_EXTERNAL_GUARDRAIL_ENABLED` | `env` | no | `false` | `apps/text` | Gates input moderation on TEXT `/generate` (`TEXT_EXTERNAL_GUARDRAIL_` prefix). OFF is the dev/CI bypass so local runs need no guardrail service. When ON the posture is fail-CLOSED by construction: a transient error is absorbed by a bounded retry, a sustained outage rejects, and an errored guardrail NEVER allows — there is deliberately no `fail_open` option. |
 | `TEXT_PORT` | `env` | no | `8862` | `apps/text` | Port apps/text binds; the gateway keeps it only to build health-probe URLs. |
 | `TEXT_SERVICE_TOKEN` | `vault-kv` | yes | `CHANGE_ME` | `apps/api` | Shared secret on the gateway↔TEXT hop. TEXT reads it as `settings.service_token` under its `TEXT_` pydantic prefix; the gateway resolves the same name for outbound proxying and for `InternalServiceTokenGuard`'s inbound check. |
 | `TEXT_URL` | `env` | no | `http://localhost:8862` | `apps/api` | Text service base URL (apps/text, port 8862). |
+| `TTS_AZURE_ENABLED` | `env` | no | `false` | `apps/tts` | Registers the Azure AI Speech provider at boot (env `TTS_AZURE_ENABLED`). A registered cloud provider with no platform credential is still not a routing candidate — it would 401 the live API — so enabling it without a key only makes it reachable to tenants that bring their own. |
+| `TTS_INDICF5_ENABLED` | `env` | no | `false` | `apps/tts` | Registers the experimental IndicF5 voice-clone engine (env `TTS_INDICF5_ENABLED`). Prod and commercial enablement are NO-GO pending license review: the released weights are a fine-tune of the CC-BY-NC SWivid F5-TTS base, and the MIT tag cannot override NonCommercial. That gate is currently enforced only by a code comment — moving this key to `redis-flag`, where enabling it is a SUPER_ADMIN write with an audit trail, is the reason `targetTier` is recorded here. |
+| `TTS_KOKORO_ENABLED` | `env` | no | `false` | `apps/tts` | Registers the self-hosted Kokoro English engine (env `TTS_KOKORO_ENABLED`). This is the flag a KEYLESS deployment needs to become Ready: the SYSTEM row routes `en` to kokoro, so without it the service registers no provider and reports 503. Weights load on the first synthesis request. |
+| `TTS_PARLER_ENABLED` | `env` | no | `false` | `apps/tts` | Registers the self-hosted AI4Bharat Indic Parler-TTS Malayalam engine (env `TTS_PARLER_ENABLED`). |
 | `TTS_PORT` | `env` | no | `8865` | `apps/tts` | Port apps/tts binds. |
+| `TTS_SARVAM_ENABLED` | `env` | no | `false` | `apps/tts` | Registers the Sarvam Bulbul provider (env `TTS_SARVAM_ENABLED`). The PUBLIC Sarvam API is not PHI-safe — no BAA, 30-day retention, not India-resident — so point `tts.sarvam.baseUrl` at the enterprise VPC or on-prem host before enabling it for real patient data. |
 | `TTS_SERVICE_TOKEN` | `vault-kv` | yes | `CHANGE_ME` | `apps/api` | Shared secret on the gateway↔TTS hop (`X-Service-Token`). |
 | `TTS_URL` | `env` | no | `http://localhost:8865` | `apps/api` | Text-to-speech base URL (apps/tts, port 8865). |
 | `TTS_WS_EGRESS_HIGH_WATERMARK_BYTES` | `env` | no | `524288` | `apps/tts` | Buffered-amount threshold above which TTS audio frames are dropped. |
@@ -176,13 +182,13 @@ default — see `renderPythonExample()` in `scripts/env-sync.mts`.
 | Variable | Service | Required | Secret | Default | In file | Also accepted |
 |---|---|---|---|---|---|---|
 | `API_GATEWAY_KEY` | `apps/stt` | no | yes | `CHANGE_ME` | live | — |
-| `API_GATEWAY_TIMEOUT` | `apps/stt` | no | no | `30` | commented | — |
+| `API_GATEWAY_TIMEOUT__MOVED_TO_CONTROL_PLANE_TASK_799` | `apps/stt` | no | no | `30` | commented | — |
 | `API_GATEWAY_URL` | `apps/stt` | no | no | `http://localhost:8868/api/v1` | commented | — |
-| `APP_NAME` | `apps/stt` | no | no | `stt` | commented | — |
-| `APP_VERSION` | `apps/stt` | no | no | `2.0.0` | commented | — |
-| `AZURE_FOUNDRY_ENABLED` | `apps/stt` | no | no | `false` | commented | — |
-| `AZURE_FOUNDRY_ENDPOINT` | `apps/stt` | no | no | — | commented | — |
-| `AZURE_SPEECH_REGION` | `apps/stt` | no | no | — | commented | — |
+| `APP_NAME__MOVED_TO_CONTROL_PLANE_TASK_799` | `apps/stt` | no | no | `stt` | commented | — |
+| `APP_VERSION__MOVED_TO_CONTROL_PLANE_TASK_799` | `apps/stt` | no | no | `2.0.0` | commented | — |
+| `AZURE_FOUNDRY_ENABLED__MOVED_TO_CONTROL_PLANE_TASK_799` | `apps/stt` | no | no | `false` | commented | — |
+| `AZURE_FOUNDRY_ENDPOINT__MOVED_TO_CONTROL_PLANE_TASK_799` | `apps/stt` | no | no | — | commented | — |
+| `AZURE_SPEECH_REGION__MOVED_TO_CONTROL_PLANE_TASK_799` | `apps/stt` | no | no | — | commented | — |
 | `AZURE_STORAGE_ACCOUNT` | `apps/stt` | no | no | `` | commented | — |
 | `AZURE_STORAGE_ACCOUNT_KEY` | `apps/stt` | no | yes | `CHANGE_ME` | live | — |
 | `AZURE_STORAGE_CONNECTION_STRING` | `apps/stt` | no | yes | `CHANGE_ME` | live | — |
@@ -191,24 +197,18 @@ default — see `renderPythonExample()` in `scripts/env-sync.mts`.
 | `DATABASE_MAX_OVERFLOW` | `apps/stt` | no | no | `10` | commented | — |
 | `DATABASE_POOL_SIZE` | `apps/stt` | no | no | `5` | commented | — |
 | `DATABASE_URL` | `apps/stt` | no | no | `postgresql+asyncpg://postgres:postgres@localhost:5432/hope` | commented | — |
-| `DIARIZATION_DEVICE` | `apps/stt` | no | no | `auto` | commented | — |
-| `DIARIZATION_HF_MODEL_ID` | `apps/stt` | no | no | `pyannote/wespeaker-voxceleb-resnet34-LM` | commented | — |
+| `DIARIZATION_DEVICE__MOVED_TO_CONTROL_PLANE_TASK_799` | `apps/stt` | no | no | `auto` | commented | — |
+| `DIARIZATION_HF_MODEL_ID__MOVED_TO_CONTROL_PLANE_TASK_799` | `apps/stt` | no | no | `pyannote/wespeaker-voxceleb-resnet34-LM` | commented | — |
 | `GUARDRAIL_CONFIG_CACHE_TTL_S` | `apps/guardrail` | no | no | `60` | commented | — |
 | `GUARDRAIL_DATABASE_URL` | `apps/guardrail` | no | no | `postgresql+asyncpg://postgres:postgres@localhost:5432/hope` | commented | — |
-| `GUARDRAIL_DB_CONFIG_ENABLED` | `apps/guardrail` | no | no | `true` | commented | — |
 | `GUARDRAIL_MAX_OVERFLOW` | `apps/guardrail` | no | no | `10` | commented | — |
 | `GUARDRAIL_POOL_SIZE` | `apps/guardrail` | no | no | `5` | commented | — |
 | `GUARDRAIL_PORT` | `apps/guardrail` | no | no | `8863` | commented | `GUARDRAIL_V2_PORT` |
 | `GUARDRAIL_REDIS_URL` | `apps/guardrail` | no | no | `redis://localhost:6379/0` | commented | `GUARDRAIL_REDIS_REDIS_URL` |
 | `GUARDRAIL_SERVICE_TOKEN` | `apps/guardrail` | no | yes | `CHANGE_ME` | live | — |
-| `GUARDRAIL_V2_CORS_ENABLED` | `apps/guardrail` | no | no | `false` | commented | — |
 | `GUARDRAIL_V2_CORS_ORIGINS` | `apps/guardrail` | no | no | `[]` | commented | — |
 | `GUARDRAIL_V2_DEBUG` | `apps/guardrail` | no | no | `false` | commented | — |
 | `GUARDRAIL_V2_GATEWAY_URL` | `apps/guardrail` | no | no | `http://localhost:8868/api/v1` | commented | — |
-| `GUARDRAIL_V2_GROUNDEDNESS_BATCH_SIZE` | `apps/guardrail` | no | no | `16` | commented | — |
-| `GUARDRAIL_V2_GROUNDEDNESS_ENABLED` | `apps/guardrail` | no | no | `false` | commented | — |
-| `GUARDRAIL_V2_GROUNDEDNESS_ENTAILMENT_THRESHOLD` | `apps/guardrail` | no | no | `0.5` | commented | — |
-| `GUARDRAIL_V2_GROUNDEDNESS_MAX_SEGMENTS` | `apps/guardrail` | no | no | `200` | commented | — |
 | `GUARDRAIL_V2_HOST` | `apps/guardrail` | no | no | `0.0.0.0` | commented | — |
 | `GUARDRAIL_V2_LOG_LEVEL` | `apps/guardrail` | no | no | `info` | commented | — |
 | `GUARDRAIL_V2_METRICS_ENABLED` | `apps/guardrail` | no | no | `true` | commented | — |
@@ -216,15 +216,12 @@ default — see `renderPythonExample()` in `scripts/env-sync.mts`.
 | `GUARDRAIL_V2_OTEL_EXPORTER_ENDPOINT` | `apps/guardrail` | no | no | `http://localhost:4317` | commented | — |
 | `GUARDRAIL_V2_OTEL_SERVICE_NAME` | `apps/guardrail` | no | no | `guardrail` | commented | — |
 | `GUARDRAIL_V2_QUEUE_MAX_CONCURRENT` | `apps/guardrail` | no | no | `4` | commented | — |
-| `HARNESS_ACTIVITY_MAX_ATTEMPTS` | `apps/harness` | no | no | `3` | commented | — |
-| `HARNESS_ACTIVITY_START_TO_CLOSE_S` | `apps/harness` | no | no | `150` | commented | — |
 | `HARNESS_API_BASE_URL` | `apps/harness` | no | no | `http://localhost:8868` | commented | — |
 | `HARNESS_API_INTERNAL_PREFIX` | `apps/harness` | no | no | `/api/v1/internal/harness` | commented | — |
 | `HARNESS_API_TIMEOUT_S` | `apps/harness` | no | no | `30` | commented | — |
 | `HARNESS_ATOMIC_FACT_ENABLED` | `apps/harness` | no | no | `false` | commented | — |
 | `HARNESS_ATOMIC_FACT_ENTAIL_THRESHOLD` | `apps/harness` | no | no | `0.5` | commented | — |
 | `HARNESS_ATOMIC_FACT_MODEL_CACHE_DIR` | `apps/harness` | no | no | `/models/harness-cache` | commented | — |
-| `HARNESS_ATOMIC_FACT_MODEL_FILE` | `apps/harness` | no | no | `minicheck-flan-t5-large-q6_k.gguf` | commented | — |
 | `HARNESS_ATOMIC_FACT_MODEL_ID` | `apps/harness` | no | no | `nvhf/MiniCheck-Flan-T5-Large-Q6_K-GGUF` | commented | — |
 | `HARNESS_ATOMIC_FACT_MODEL_PATH` | `apps/harness` | no | no | — | commented | — |
 | `HARNESS_ATOMIC_FACT_N_CTX` | `apps/harness` | no | no | `512` | commented | — |
@@ -239,7 +236,6 @@ default — see `renderPythonExample()` in `scripts/env-sync.mts`.
 | `HARNESS_CLAIM_CHECK_SECRET_KEY` | `apps/harness` | no | yes | `CHANGE_ME` | live | — |
 | `HARNESS_CLAIM_CHECK_SECURE` | `apps/harness` | no | no | `false` | commented | — |
 | `HARNESS_CLAIM_CHECK_STORE` | `apps/harness` | no | no | `memory` | commented | — |
-| `HARNESS_CLAIM_CHECK_TTL_SECONDS` | `apps/harness` | no | no | `604800` | commented | — |
 | `HARNESS_CONSENT_CACHE_TTL_SECONDS` | `apps/harness` | no | no | `30` | commented | — |
 | `HARNESS_CONSENT_INTERNAL_PREFIX` | `apps/harness` | no | no | `/api/v1/internal/consent` | commented | — |
 | `HARNESS_CONVERSATION_LANGUAGE` | `apps/harness` | no | no | `en` | commented | — |
@@ -249,7 +245,6 @@ default — see `renderPythonExample()` in `scripts/env-sync.mts`.
 | `HARNESS_ENVIRONMENT` | `apps/harness` | no | no | `development` | commented | — |
 | `HARNESS_EVAL_CASE_CONCURRENCY` | `apps/harness` | no | no | `1` | commented | — |
 | `HARNESS_EVAL_FAITHFULNESS_THRESHOLD` | `apps/harness` | no | no | `0.85` | commented | — |
-| `HARNESS_EVAL_GOLDEN_SET_PATH` | `apps/harness` | no | no | `` | commented | — |
 | `HARNESS_EVAL_GOLDEN_SET_VERSION` | `apps/harness` | no | no | `synthetic-v0.1.0` | commented | — |
 | `HARNESS_EVAL_ICC_GATE_ENABLED` | `apps/harness` | no | no | `true` | commented | — |
 | `HARNESS_EVAL_ICC_THRESHOLD` | `apps/harness` | no | no | `0.73` | commented | — |
@@ -259,13 +254,10 @@ default — see `renderPythonExample()` in `scripts/env-sync.mts`.
 | `HARNESS_EVAL_PDSQI_THOROUGH_THRESHOLD` | `apps/harness` | no | no | `4` | commented | — |
 | `HARNESS_GATE_ESCALATION_SECONDS` | `apps/harness` | no | no | `43200` | commented | — |
 | `HARNESS_GATE_SLA_SECONDS` | `apps/harness` | no | no | `86400` | commented | — |
-| `HARNESS_GENERATE_MAX_ATTEMPTS` | `apps/harness` | no | no | `2` | commented | — |
 | `HARNESS_GUARDRAIL_BASE_URL` | `apps/harness` | no | no | `http://localhost:8863` | commented | — |
 | `HARNESS_GUARDRAIL_SERVICE_TOKEN` | `apps/harness` | no | yes | `CHANGE_ME` | live | — |
 | `HARNESS_GUARDRAIL_TIMEOUT_S` | `apps/harness` | no | no | `30` | commented | — |
 | `HARNESS_HOST` | `apps/harness` | no | no | `0.0.0.0` | commented | — |
-| `HARNESS_HTTPX_MAX_CONNECTIONS` | `apps/harness` | no | no | `200` | commented | — |
-| `HARNESS_HTTPX_MAX_KEEPALIVE` | `apps/harness` | no | no | `100` | commented | — |
 | `HARNESS_INTERNAL_SERVICE_TOKEN` | `apps/harness` | no | yes | `CHANGE_ME` | live | — |
 | `HARNESS_JUDGE_ANCHORED` | `apps/harness` | no | no | `false` | commented | — |
 | `HARNESS_JUDGE_AZURE_API_KEY` | `apps/harness` | no | yes | `CHANGE_ME` | live | — |
@@ -293,7 +285,6 @@ default — see `renderPythonExample()` in `scripts/env-sync.mts`.
 | `HARNESS_JUDGE_TIMEOUT_S` | `apps/harness` | no | no | `300` | commented | — |
 | `HARNESS_JUDGE_TRANSIENT_RETRIES` | `apps/harness` | no | no | `3` | commented | — |
 | `HARNESS_JUDGE_TRANSIENT_RETRY_BACKOFF_S` | `apps/harness` | no | no | `12` | commented | — |
-| `HARNESS_LLM_REQUEST_TIMEOUT_S` | `apps/harness` | no | no | `120` | commented | — |
 | `HARNESS_LOG_LEVEL` | `apps/harness` | no | no | `info` | commented | — |
 | `HARNESS_MAX_CONCURRENT_ACTIVITIES` | `apps/harness` | no | no | `8` | commented | — |
 | `HARNESS_MAX_REGEN` | `apps/harness` | no | no | `2` | commented | — |
@@ -319,6 +310,7 @@ default — see `renderPythonExample()` in `scripts/env-sync.mts`.
 | `HARNESS_PHI_LOCAL_PROVIDERS` | `apps/harness` | no | no | `["lm-studio", "openai_compat", "ollama", "vllm", "llama-cpp"]` | commented | — |
 | `HARNESS_PORT` | `apps/harness` | no | no | `8866` | commented | — |
 | `HARNESS_PROMPT_SIZE_WARN_CHARS` | `apps/harness` | no | no | `400000` | commented | — |
+| `HARNESS_REDIS_URL` | `apps/harness` | no | no | `redis://localhost:6379/0` | commented | — |
 | `HARNESS_RETRIEVAL_COLLECTION` | `apps/harness` | no | no | `knowledge_chunks` | commented | — |
 | `HARNESS_RETRIEVAL_EMBEDDINGS_BASE_URL` | `apps/harness` | no | no | `http://localhost:1234/v1` | commented | — |
 | `HARNESS_RETRIEVAL_EMBEDDINGS_DIM` | `apps/harness` | no | no | `1024` | commented | — |
@@ -333,13 +325,6 @@ default — see `renderPythonExample()` in `scripts/env-sync.mts`.
 | `HARNESS_RETRIEVAL_RRF_K` | `apps/harness` | no | no | `60` | commented | — |
 | `HARNESS_RETRIEVAL_TOP_K_RERANK` | `apps/harness` | no | no | `5` | commented | — |
 | `HARNESS_RETRIEVAL_TOP_K_RETRIEVAL` | `apps/harness` | no | no | `20` | commented | — |
-| `HARNESS_SAFETY_BASE_URL` | `apps/harness` | no | no | `http://localhost:1234/v1` | commented | — |
-| `HARNESS_SAFETY_ENABLED` | `apps/harness` | no | no | `true` | commented | — |
-| `HARNESS_SAFETY_HARM_CRITERIA` | `apps/harness` | no | no | `["harm", "social_bias", "jailbreak", "violence", "profanity", "sexual_content", "unethical_behavior"]` | commented | — |
-| `HARNESS_SAFETY_MODEL` | `apps/harness` | no | no | `granite-guardian-4.1-8b` | commented | — |
-| `HARNESS_SAFETY_NO_THINK` | `apps/harness` | no | no | `true` | commented | — |
-| `HARNESS_SAFETY_PROVIDER` | `apps/harness` | no | no | `lm-studio` | commented | — |
-| `HARNESS_SAFETY_TIMEOUT_S` | `apps/harness` | no | no | `60` | commented | — |
 | `HARNESS_SENSOR_ATOMIC_FACT_THRESHOLD` | `apps/harness` | no | no | `0.8` | commented | — |
 | `HARNESS_SENSOR_CITATION_PRESENCE_THRESHOLD` | `apps/harness` | no | no | `1` | commented | — |
 | `HARNESS_SENSOR_CITATION_VERIFY_THRESHOLD` | `apps/harness` | no | no | `0.8` | commented | — |
@@ -373,13 +358,11 @@ default — see `renderPythonExample()` in `scripts/env-sync.mts`.
 | `MINIO_ENDPOINT` | `apps/stt` | no | no | `localhost:9000` | commented | — |
 | `MINIO_SECRET_KEY` | `apps/stt` | no | yes | `CHANGE_ME` | live | — |
 | `MINIO_SECURE` | `apps/stt` | no | no | `false` | commented | — |
-| `MODEL_CACHE_MAX_MODELS` | `apps/stt` | no | no | `5` | commented | — |
-| `MODEL_CACHE_TTL_SECONDS` | `apps/stt` | no | no | `3600` | commented | — |
+| `MODEL_CACHE_MAX_MODELS__MOVED_TO_CONTROL_PLANE_TASK_799` | `apps/stt` | no | no | `5` | commented | — |
+| `MODEL_CACHE_TTL_SECONDS__MOVED_TO_CONTROL_PLANE_TASK_799` | `apps/stt` | no | no | `3600` | commented | — |
 | `NLP_ENVIRONMENT` | `apps/nlp` | no | no | `development` | commented | — |
-| `NLP_EXTERNAL_TEXT_BASE_URL` | `apps/nlp` | no | no | `http://localhost:8862` | commented | — |
 | `NLP_EXTERNAL_TEXT_MAX_RETRIES` | `apps/nlp` | no | no | `2` | commented | — |
 | `NLP_EXTERNAL_TEXT_RETRY_BACKOFF_MS` | `apps/nlp` | no | no | `100` | commented | — |
-| `NLP_EXTERNAL_TEXT_SERVICE_TOKEN` | `apps/nlp` | no | yes | `CHANGE_ME` | live | — |
 | `NLP_EXTERNAL_TEXT_TIMEOUT_S` | `apps/nlp` | no | no | `30` | commented | — |
 | `NLP_GATEWAY_URL` | `apps/nlp` | no | no | `http://localhost:8868/api/v1` | commented | — |
 | `NLP_HOST` | `apps/nlp` | no | no | `0.0.0.0` | commented | `HOST` |
@@ -406,82 +389,81 @@ default — see `renderPythonExample()` in `scripts/env-sync.mts`.
 | `NLP_OTLP_ENDPOINT` | `apps/nlp` | no | no | — | commented | `OTEL_EXPORTER_OTLP_ENDPOINT` |
 | `NLP_PEER_CALL_MAX_CONCURRENT` | `apps/nlp` | no | no | `8` | commented | — |
 | `NLP_PORT` | `apps/nlp` | no | no | `8864` | commented | `PORT` |
+| `NLP_REDIS_URL` | `apps/nlp` | no | no | `redis://localhost:6379/0` | commented | — |
 | `NLP_SERVICE_NAME` | `apps/nlp` | no | no | `nlp` | commented | `OTEL_SERVICE_NAME`, `SERVICE_NAME`, `NLP_NAME` |
-| `NLP_SERVICE_TOKEN` | `apps/nlp` | no | yes | `CHANGE_ME` | live | — |
 | `NLP_SERVICE_VERSION` | `apps/nlp` | no | no | `0.1.0` | commented | `OTEL_SERVICE_VERSION`, `SERVICE_VERSION`, `NLP_VERSION` |
 | `NLP_TRACES_ENABLED` | `apps/nlp` | no | no | `true` | commented | `OTEL_TRACES_ENABLED` |
 | `NLP_URL` | `apps/guardrail` | no | no | `http://localhost:8864` | commented | `GUARDRAIL_V2_NLP_URL` |
 | `NLP_WORKERS` | `apps/nlp` | no | no | `1` | commented | `WORKERS` |
 | `NODE_ENV` | `apps/text` | no | no | `development` | commented | — |
-| `ONNX_NUM_THREADS` | `apps/stt` | no | no | `0` | commented | — |
-| `OPENAI_BASE_URL` | `apps/stt` | no | no | `https://api.openai.com/v1` | commented | — |
+| `ONNX_NUM_THREADS__MOVED_TO_CONTROL_PLANE_TASK_799` | `apps/stt` | no | no | `0` | commented | — |
+| `OPENAI_BASE_URL__MOVED_TO_CONTROL_PLANE_TASK_799` | `apps/stt` | no | no | `https://api.openai.com/v1` | commented | — |
 | `OTEL_ENABLED` | `apps/stt` | no | no | `false` | commented | — |
 | `OTEL_EXPORTER_ENDPOINT` | `apps/stt` | no | no | `http://localhost:4317` | commented | — |
 | `OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT` | `apps/text` | no | no | `` | live | `GENAI_CAPTURE_MESSAGE_CONTENT` |
-| `PARAKEET_CPP_LIBRARY_PATH` | `apps/stt` | no | no | — | commented | — |
-| `PARAKEET_CPP_NUM_THREADS` | `apps/stt` | no | no | `4` | commented | — |
-| `PRELOAD_PIPELINES` | `apps/stt` | no | no | `` | commented | — |
-| `PUBSUB_CHANNEL_PREFIX` | `apps/stt` | no | no | `stt:transcription:` | commented | — |
-| `PUBSUB_ENABLED` | `apps/stt` | no | no | `true` | commented | — |
-| `PUNCTUATION_DEVICE` | `apps/stt` | no | no | `auto` | commented | — |
-| `PUNCTUATION_ENABLED` | `apps/stt` | no | no | `false` | commented | — |
-| `PUNCTUATION_MAX_LENGTH` | `apps/stt` | no | no | `300` | commented | — |
-| `PUNCTUATION_MODEL_CACHE_DIR` | `apps/stt` | no | no | — | commented | — |
-| `PUNCTUATION_MODEL_NAME` | `apps/stt` | no | no | `Cadence` | commented | — |
+| `PARAKEET_CPP_LIBRARY_PATH__MOVED_TO_CONTROL_PLANE_TASK_799` | `apps/stt` | no | no | — | commented | — |
+| `PARAKEET_CPP_NUM_THREADS__MOVED_TO_CONTROL_PLANE_TASK_799` | `apps/stt` | no | no | `4` | commented | — |
+| `PUBSUB_CHANNEL_PREFIX__MOVED_TO_CONTROL_PLANE_TASK_799` | `apps/stt` | no | no | `stt:transcription:` | commented | — |
+| `PUBSUB_ENABLED__MOVED_TO_CONTROL_PLANE_TASK_799` | `apps/stt` | no | no | `true` | commented | — |
+| `PUNCTUATION_DEVICE__MOVED_TO_CONTROL_PLANE_TASK_799` | `apps/stt` | no | no | `auto` | commented | — |
+| `PUNCTUATION_ENABLED__MOVED_TO_CONTROL_PLANE_TASK_799` | `apps/stt` | no | no | `false` | commented | — |
+| `PUNCTUATION_MAX_LENGTH__MOVED_TO_CONTROL_PLANE_TASK_799` | `apps/stt` | no | no | `300` | commented | — |
+| `PUNCTUATION_MODEL_CACHE_DIR__MOVED_TO_CONTROL_PLANE_TASK_799` | `apps/stt` | no | no | — | commented | — |
+| `PUNCTUATION_MODEL_NAME__MOVED_TO_CONTROL_PLANE_TASK_799` | `apps/stt` | no | no | `Cadence` | commented | — |
 | `REDIS_URL` | `apps/stt` | no | no | `redis://localhost:6379/0` | commented | — |
-| `SARVAM_BASE_URL` | `apps/stt` | no | no | `https://api.sarvam.ai` | commented | — |
+| `SARVAM_BASE_URL__MOVED_TO_CONTROL_PLANE_TASK_799` | `apps/stt` | no | no | `https://api.sarvam.ai` | commented | — |
 | `SECURITY_CORS_ALLOW_CREDENTIALS` | `apps/nlp` | no | no | `false` | commented | — |
 | `SECURITY_CORS_METHODS` | `apps/nlp` | no | no | `["GET", "POST", "PUT", "DELETE", "OPTIONS"]` | commented | — |
 | `SECURITY_CORS_ORIGINS` | `apps/nlp` | no | no | `["*"]` | commented | — |
-| `SEGMENT_MERGE_GAP_THRESHOLD_S` | `apps/stt` | no | no | `2` | commented | — |
-| `SEMANTIC_ENDPOINT_CONFIDENCE_THRESHOLD` | `apps/stt` | no | no | `0.85` | commented | — |
-| `SEMANTIC_ENDPOINT_ENABLED` | `apps/stt` | no | no | `false` | commented | — |
-| `SEMANTIC_ENDPOINT_MAX_SILENCE_MS` | `apps/stt` | no | no | `500` | commented | — |
-| `SEMANTIC_ENDPOINT_MIN_SILENCE_MS` | `apps/stt` | no | no | `200` | commented | — |
-| `SEMANTIC_ENDPOINT_MIN_WORDS` | `apps/stt` | no | no | `3` | commented | — |
-| `SEMANTIC_ENDPOINT_MODEL_ID` | `apps/stt` | no | no | `` | commented | — |
-| `SPELLING_CORRECTOR_DICTIONARY_PATH` | `apps/nlp` | no | no | `/Users/taphuynh/Desktop/igglo/ARCAAI/hope-v2/.claude/worktrees/agent-a98ce73d9cf651e2b/apps/nlp/data/dictionaries` | commented | — |
+| `SEGMENT_MERGE_GAP_THRESHOLD_S__MOVED_TO_CONTROL_PLANE_TASK_799` | `apps/stt` | no | no | `2` | commented | — |
+| `SEMANTIC_ENDPOINT_CONFIDENCE_THRESHOLD__MOVED_TO_CONTROL_PLANE_TASK_799` | `apps/stt` | no | no | `0.85` | commented | — |
+| `SEMANTIC_ENDPOINT_ENABLED__MOVED_TO_CONTROL_PLANE_TASK_799` | `apps/stt` | no | no | `false` | commented | — |
+| `SEMANTIC_ENDPOINT_MAX_SILENCE_MS__MOVED_TO_CONTROL_PLANE_TASK_799` | `apps/stt` | no | no | `500` | commented | — |
+| `SEMANTIC_ENDPOINT_MIN_SILENCE_MS__MOVED_TO_CONTROL_PLANE_TASK_799` | `apps/stt` | no | no | `200` | commented | — |
+| `SEMANTIC_ENDPOINT_MIN_WORDS__MOVED_TO_CONTROL_PLANE_TASK_799` | `apps/stt` | no | no | `3` | commented | — |
+| `SEMANTIC_ENDPOINT_MODEL_ID__MOVED_TO_CONTROL_PLANE_TASK_799` | `apps/stt` | no | no | `` | commented | — |
+| `SPELLING_CORRECTOR_DICTIONARY_PATH` | `apps/nlp` | no | no | `/Users/taphuynh/Desktop/igglo/ARCAAI/hope-v2/apps/nlp/data/dictionaries` | commented | — |
 | `SPELLING_CORRECTOR_SYMSPELL_IGNORE_NON_WORDS` | `apps/nlp` | no | no | `true` | commented | — |
 | `SPELLING_CORRECTOR_SYMSPELL_IGNORE_TERM_WITH_DIGITS` | `apps/nlp` | no | no | `true` | commented | — |
 | `SPELLING_CORRECTOR_SYMSPELL_MAX_EDIT_DISTANCE` | `apps/nlp` | no | no | `2` | commented | — |
 | `SPELLING_CORRECTOR_SYMSPELL_PREFIX_LENGTH` | `apps/nlp` | no | no | `7` | commented | — |
 | `SPELLING_CORRECTOR_SYMSPELL_PRESERVE_CASE` | `apps/nlp` | no | no | `true` | commented | — |
 | `STORAGE_PROVIDER` | `apps/stt` | no | no | `minio` | commented | — |
-| `STREAMING_AUDIO_IDLE_TIMEOUT_S` | `apps/stt` | no | no | `300` | commented | — |
-| `STREAMING_AUDIO_STREAM_MAXLEN` | `apps/stt` | no | no | `10000` | commented | — |
-| `STREAMING_AUDIO_TRIM_INTERVAL_S` | `apps/stt` | no | no | `30` | commented | — |
-| `STREAMING_BATCH_WAIT_MS` | `apps/stt` | no | no | `0` | commented | — |
-| `STREAMING_EMBEDDING_DEVICE` | `apps/stt` | no | no | `auto` | commented | — |
-| `STREAMING_EXTRA_FILLER_PATTERNS` | `apps/stt` | no | no | `` | commented | — |
-| `STREAMING_INFERENCE_DRAIN_TIMEOUT_S` | `apps/stt` | no | no | `60` | commented | — |
-| `STREAMING_INFERENCE_QUEUE_MAXSIZE` | `apps/stt` | no | no | `64` | commented | — |
-| `STREAMING_INFERENCE_STOP_TIMEOUT_S` | `apps/stt` | no | no | `30` | commented | — |
-| `STREAMING_MAX_AUDIO_BUFFER_BYTES` | `apps/stt` | no | no | `500000000` | commented | — |
-| `STREAMING_MAX_BATCH_SIZE` | `apps/stt` | no | no | `0` | commented | — |
-| `STREAMING_MAX_CONCURRENT` | `apps/stt` | no | no | `0` | commented | — |
-| `STREAMING_MULTI_GPU_STRATEGY` | `apps/stt` | no | no | `auto` | commented | — |
-| `STREAMING_PARTIAL_INTERVAL_S` | `apps/stt` | no | no | `0.4` | commented | — |
-| `STREAMING_PARTIAL_WINDOW_S` | `apps/stt` | no | no | `6` | commented | — |
-| `STREAMING_PUNCTUATION_TIMEOUT_S` | `apps/stt` | no | no | `0.4` | commented | — |
-| `STREAMING_REAPER_INTERVAL_S` | `apps/stt` | no | no | `300` | commented | — |
-| `STREAMING_RESULT_STREAM_EXPIRE_S` | `apps/stt` | no | no | `3600` | commented | — |
-| `STREAMING_RESULT_STREAM_MAXLEN` | `apps/stt` | no | no | `10000` | commented | — |
-| `STREAMING_SESSION_METADATA_EXPIRE_S` | `apps/stt` | no | no | `86400` | commented | — |
-| `STREAMING_SESSION_PERSIST_INTERVAL_S` | `apps/stt` | no | no | `5` | commented | — |
-| `STREAMING_SESSION_TIMEOUT_S` | `apps/stt` | no | no | `60` | commented | — |
-| `STREAMING_SNAPSHOT_INTERVAL_S` | `apps/stt` | no | no | `30` | commented | — |
-| `STREAMING_TRANSCRIPT_OUTBOX_MAX_ATTEMPTS` | `apps/stt` | no | no | `10` | commented | — |
-| `STREAMING_TRANSCRIPT_PERSIST_BACKOFF_S` | `apps/stt` | no | no | `0.5` | commented | — |
-| `STREAMING_TRANSCRIPT_PERSIST_MAX_ATTEMPTS` | `apps/stt` | no | no | `3` | commented | — |
-| `STREAMING_WORKER_HEARTBEAT_S` | `apps/stt` | no | no | `10` | commented | — |
-| `STREAMING_WORKER_HEARTBEAT_TTL_S` | `apps/stt` | no | no | `30` | commented | — |
+| `STREAMING_AUDIO_IDLE_TIMEOUT_S__MOVED_TO_CONTROL_PLANE_TASK_799` | `apps/stt` | no | no | `300` | commented | — |
+| `STREAMING_AUDIO_STREAM_MAXLEN__MOVED_TO_CONTROL_PLANE_TASK_799` | `apps/stt` | no | no | `10000` | commented | — |
+| `STREAMING_AUDIO_TRIM_INTERVAL_S__MOVED_TO_CONTROL_PLANE_TASK_799` | `apps/stt` | no | no | `30` | commented | — |
+| `STREAMING_BATCH_WAIT_MS__MOVED_TO_CONTROL_PLANE_TASK_799` | `apps/stt` | no | no | `0` | commented | — |
+| `STREAMING_EMBEDDING_DEVICE__MOVED_TO_CONTROL_PLANE_TASK_799` | `apps/stt` | no | no | `auto` | commented | — |
+| `STREAMING_EXTRA_FILLER_PATTERNS__MOVED_TO_CONTROL_PLANE_TASK_799` | `apps/stt` | no | no | `` | commented | — |
+| `STREAMING_INFERENCE_DRAIN_TIMEOUT_S__MOVED_TO_CONTROL_PLANE_TASK_799` | `apps/stt` | no | no | `60` | commented | — |
+| `STREAMING_INFERENCE_QUEUE_MAXSIZE__MOVED_TO_CONTROL_PLANE_TASK_799` | `apps/stt` | no | no | `64` | commented | — |
+| `STREAMING_INFERENCE_STOP_TIMEOUT_S__MOVED_TO_CONTROL_PLANE_TASK_799` | `apps/stt` | no | no | `30` | commented | — |
+| `STREAMING_MAX_AUDIO_BUFFER_BYTES__MOVED_TO_CONTROL_PLANE_TASK_799` | `apps/stt` | no | no | `500000000` | commented | — |
+| `STREAMING_MAX_BATCH_SIZE__MOVED_TO_CONTROL_PLANE_TASK_799` | `apps/stt` | no | no | `0` | commented | — |
+| `STREAMING_MAX_CONCURRENT__MOVED_TO_CONTROL_PLANE_TASK_799` | `apps/stt` | no | no | `0` | commented | — |
+| `STREAMING_MULTI_GPU_STRATEGY__MOVED_TO_CONTROL_PLANE_TASK_799` | `apps/stt` | no | no | `auto` | commented | — |
+| `STREAMING_PARTIAL_INTERVAL_S__MOVED_TO_CONTROL_PLANE_TASK_799` | `apps/stt` | no | no | `0.4` | commented | — |
+| `STREAMING_PARTIAL_WINDOW_S__MOVED_TO_CONTROL_PLANE_TASK_799` | `apps/stt` | no | no | `6` | commented | — |
+| `STREAMING_PUNCTUATION_TIMEOUT_S__MOVED_TO_CONTROL_PLANE_TASK_799` | `apps/stt` | no | no | `0.4` | commented | — |
+| `STREAMING_REAPER_INTERVAL_S__MOVED_TO_CONTROL_PLANE_TASK_799` | `apps/stt` | no | no | `300` | commented | — |
+| `STREAMING_RESULT_STREAM_EXPIRE_S__MOVED_TO_CONTROL_PLANE_TASK_799` | `apps/stt` | no | no | `3600` | commented | — |
+| `STREAMING_RESULT_STREAM_MAXLEN__MOVED_TO_CONTROL_PLANE_TASK_799` | `apps/stt` | no | no | `10000` | commented | — |
+| `STREAMING_SESSION_METADATA_EXPIRE_S__MOVED_TO_CONTROL_PLANE_TASK_799` | `apps/stt` | no | no | `86400` | commented | — |
+| `STREAMING_SESSION_PERSIST_INTERVAL_S__MOVED_TO_CONTROL_PLANE_TASK_799` | `apps/stt` | no | no | `5` | commented | — |
+| `STREAMING_SESSION_TIMEOUT_S__MOVED_TO_CONTROL_PLANE_TASK_799` | `apps/stt` | no | no | `60` | commented | — |
+| `STREAMING_SNAPSHOT_INTERVAL_S__MOVED_TO_CONTROL_PLANE_TASK_799` | `apps/stt` | no | no | `30` | commented | — |
+| `STREAMING_TRANSCRIPT_OUTBOX_MAX_ATTEMPTS__MOVED_TO_CONTROL_PLANE_TASK_799` | `apps/stt` | no | no | `10` | commented | — |
+| `STREAMING_TRANSCRIPT_PERSIST_BACKOFF_S__MOVED_TO_CONTROL_PLANE_TASK_799` | `apps/stt` | no | no | `0.5` | commented | — |
+| `STREAMING_TRANSCRIPT_PERSIST_MAX_ATTEMPTS__MOVED_TO_CONTROL_PLANE_TASK_799` | `apps/stt` | no | no | `3` | commented | — |
+| `STREAMING_WORKER_HEARTBEAT_S__MOVED_TO_CONTROL_PLANE_TASK_799` | `apps/stt` | no | no | `10` | commented | — |
+| `STREAMING_WORKER_HEARTBEAT_TTL_S__MOVED_TO_CONTROL_PLANE_TASK_799` | `apps/stt` | no | no | `30` | commented | — |
 | `STT_DEBUG` | `apps/stt` | no | no | `false` | commented | `DEBUG` |
 | `STT_HOST` | `apps/stt` | no | no | `0.0.0.0` | commented | `HOST` |
 | `STT_LOG_LEVEL` | `apps/stt` | no | no | `INFO` | commented | `LOG_LEVEL` |
-| `STT_MODEL_S3_ACCESS_KEY` | `apps/stt` | no | yes | `CHANGE_ME` | live | `STT_V2_MODEL_S3_ACCESS_KEY` |
-| `STT_MODEL_S3_ENDPOINT` | `apps/stt` | no | no | — | commented | `STT_V2_MODEL_S3_ENDPOINT` |
-| `STT_MODEL_S3_SECRET_KEY` | `apps/stt` | no | yes | `CHANGE_ME` | live | `STT_V2_MODEL_S3_SECRET_KEY` |
-| `STT_MODEL_S3_SECURE` | `apps/stt` | no | no | `true` | commented | `STT_V2_MODEL_S3_SECURE` |
+| `STT_MODEL_S3_ACCESS_KEY` | `apps/stt` | no | yes | `CHANGE_ME` | live | — |
+| `STT_MODEL_S3_ENDPOINT` | `apps/stt` | no | no | — | commented | — |
+| `STT_MODEL_S3_SECRET_KEY` | `apps/stt` | no | yes | `CHANGE_ME` | live | — |
+| `STT_MODEL_S3_SECURE` | `apps/stt` | no | no | `true` | commented | — |
 | `STT_OTEL_SERVICE_NAME` | `apps/stt` | no | no | `stt` | commented | `OTEL_SERVICE_NAME` |
 | `STT_PORT` | `apps/stt` | no | no | `8861` | commented | `PORT` |
 | `TEMPORAL_ADDRESS` | `apps/harness` | no | no | `localhost:7233` | commented | — |
@@ -497,40 +479,38 @@ default — see `renderPythonExample()` in `scripts/env-sync.mts`.
 | `TEXT_PORT` | `apps/text` | no | no | `8862` | commented | — |
 | `TEXT_REDIS_URL` | `apps/text` | no | no | `redis://localhost:6379/0` | commented | — |
 | `TEXT_URL` | `apps/guardrail` | no | no | `http://localhost:8862` | commented | `GUARDRAIL_V2_TEXT_URL` |
+| `TEXT_URL` | `apps/nlp` | no | no | `http://localhost:8862` | commented | `NLP_EXTERNAL_TEXT_BASE_URL` |
 | `TOKEN_CLASSIFIER_AGGREGATION_STRATEGY` | `apps/nlp` | no | no | `simple` | commented | — |
 | `TOKEN_CLASSIFIER_ASSERTION_ENABLED` | `apps/nlp` | no | no | `true` | commented | — |
 | `TOKEN_CLASSIFIER_IGNORE_LABELS` | `apps/nlp` | no | no | `["O"]` | commented | — |
 | `TOKEN_CLASSIFIER_USE_GPU` | `apps/nlp` | no | no | `true` | commented | — |
-| `TORCH_NUM_INTEROP_THREADS` | `apps/stt` | no | no | `1` | commented | — |
-| `TORCH_NUM_THREADS` | `apps/stt` | no | no | `0` | commented | — |
-| `TRANSCRIPTION_CHUNK_LENGTH_S` | `apps/stt` | no | no | `15` | commented | — |
-| `TRANSCRIPTION_STRIDE_LENGTH_S` | `apps/stt` | no | no | `4,2` | commented | — |
-| `TRANSCRIPTION_TIMEOUT_SECONDS` | `apps/stt` | no | no | `600` | commented | — |
+| `TORCH_NUM_INTEROP_THREADS__MOVED_TO_CONTROL_PLANE_TASK_799` | `apps/stt` | no | no | `1` | commented | — |
+| `TORCH_NUM_THREADS__MOVED_TO_CONTROL_PLANE_TASK_799` | `apps/stt` | no | no | `0` | commented | — |
+| `TRANSCRIPTION_CHUNK_LENGTH_S__MOVED_TO_CONTROL_PLANE_TASK_799` | `apps/stt` | no | no | `15` | commented | — |
+| `TRANSCRIPTION_STRIDE_LENGTH_S__MOVED_TO_CONTROL_PLANE_TASK_799` | `apps/stt` | no | no | `4,2` | commented | — |
+| `TRANSCRIPTION_TIMEOUT_SECONDS__MOVED_TO_CONTROL_PLANE_TASK_799` | `apps/stt` | no | no | `600` | commented | — |
 | `TTS_AZURE_ENABLED` | `apps/tts` | no | no | `false` | commented | — |
-| `TTS_AZURE_MAX_CONCURRENT` | `apps/tts` | no | no | `10` | commented | — |
-| `TTS_AZURE_REGION` | `apps/tts` | no | no | `eastus` | commented | `AZURE_SPEECH_REGION` |
-| `TTS_AZURE_TIMEOUT_S` | `apps/tts` | no | no | `30` | commented | — |
-| `TTS_AZURE_VOICE_EN` | `apps/tts` | no | no | `en-IN-NeerjaNeural` | commented | — |
-| `TTS_AZURE_VOICE_ML` | `apps/tts` | no | no | `ml-IN-SobhanaNeural` | commented | — |
+| `TTS_AZURE_MAX_CONCURRENT__MOVED_TO_CONTROL_PLANE_TASK_799` | `apps/tts` | no | no | `10` | commented | — |
+| `TTS_AZURE_REGION__MOVED_TO_CONTROL_PLANE_TASK_799` | `apps/tts` | no | no | `eastus` | commented | — |
+| `TTS_AZURE_TIMEOUT_S__MOVED_TO_CONTROL_PLANE_TASK_799` | `apps/tts` | no | no | `30` | commented | — |
 | `TTS_CORS_ENABLED` | `apps/tts` | no | no | `false` | commented | — |
 | `TTS_CORS_ORIGINS` | `apps/tts` | no | no | `[]` | commented | — |
 | `TTS_DEBUG` | `apps/tts` | no | no | `false` | commented | — |
-| `TTS_DEFAULT_FORMAT` | `apps/tts` | no | no | `pcm` | commented | — |
+| `TTS_DEFAULT_FORMAT__MOVED_TO_CONTROL_PLANE_TASK_799` | `apps/tts` | no | no | `pcm` | commented | — |
 | `TTS_GATEWAY_URL` | `apps/tts` | no | no | `http://localhost:8868/api/v1` | commented | — |
 | `TTS_HOST` | `apps/tts` | no | no | `0.0.0.0` | commented | — |
-| `TTS_INDICF5_DEVICE` | `apps/tts` | no | no | `cpu` | commented | — |
+| `TTS_INDICF5_DEVICE__MOVED_TO_CONTROL_PLANE_TASK_799` | `apps/tts` | no | no | `cpu` | commented | — |
 | `TTS_INDICF5_ENABLED` | `apps/tts` | no | no | `false` | commented | — |
-| `TTS_INDICF5_HF_MODEL` | `apps/tts` | no | no | `ai4bharat/IndicF5` | commented | — |
-| `TTS_INDICF5_MODEL_PATH` | `apps/tts` | no | no | `` | commented | — |
-| `TTS_INDICF5_REF_AUDIO_PATH` | `apps/tts` | no | no | `` | commented | — |
-| `TTS_INDICF5_REF_TEXT` | `apps/tts` | no | no | `` | commented | — |
-| `TTS_KOKORO_DEVICE` | `apps/tts` | no | no | `cpu` | commented | — |
+| `TTS_INDICF5_HF_MODEL__MOVED_TO_CONTROL_PLANE_TASK_799` | `apps/tts` | no | no | `ai4bharat/IndicF5` | commented | — |
+| `TTS_INDICF5_MODEL_PATH__MOVED_TO_CONTROL_PLANE_TASK_799` | `apps/tts` | no | no | `` | commented | — |
+| `TTS_INDICF5_REF_AUDIO_PATH__MOVED_TO_CONTROL_PLANE_TASK_799` | `apps/tts` | no | no | `` | commented | — |
+| `TTS_INDICF5_REF_TEXT__MOVED_TO_CONTROL_PLANE_TASK_799` | `apps/tts` | no | no | `` | commented | — |
+| `TTS_KOKORO_DEVICE__MOVED_TO_CONTROL_PLANE_TASK_799` | `apps/tts` | no | no | `cpu` | commented | — |
 | `TTS_KOKORO_ENABLED` | `apps/tts` | no | no | `false` | live | — |
-| `TTS_KOKORO_VOICE` | `apps/tts` | no | no | `af_heart` | commented | — |
 | `TTS_LOG_LEVEL` | `apps/tts` | no | no | `info` | commented | — |
-| `TTS_MAX_INPUT_CHARS` | `apps/tts` | no | no | `4096` | commented | — |
+| `TTS_MAX_INPUT_CHARS__MOVED_TO_CONTROL_PLANE_TASK_799` | `apps/tts` | no | no | `4096` | commented | — |
 | `TTS_METRICS_ENABLED` | `apps/tts` | no | no | `true` | commented | — |
-| `TTS_MODEL_CACHE_TTL_SECONDS` | `apps/tts` | no | no | `600` | commented | — |
+| `TTS_MODEL_CACHE_TTL_SECONDS__MOVED_TO_CONTROL_PLANE_TASK_799` | `apps/tts` | no | no | `600` | commented | — |
 | `TTS_OTEL_DEPLOYMENT_ENVIRONMENT` | `apps/tts` | no | no | `development` | commented | — |
 | `TTS_OTEL_ENABLED` | `apps/tts` | no | no | `false` | commented | — |
 | `TTS_OTEL_EXPORTER_ENDPOINT` | `apps/tts` | no | no | `` | commented | — |
@@ -538,39 +518,34 @@ default — see `renderPythonExample()` in `scripts/env-sync.mts`.
 | `TTS_OTEL_LOGS_ENABLED` | `apps/tts` | no | no | `true` | commented | — |
 | `TTS_OTEL_SERVICE_NAME` | `apps/tts` | no | no | `tts` | commented | — |
 | `TTS_OTEL_SERVICE_NAMESPACE` | `apps/tts` | no | no | `hope` | commented | — |
-| `TTS_PARLER_DESC_ENCODER_PATH` | `apps/tts` | no | no | `` | commented | — |
-| `TTS_PARLER_DEVICE` | `apps/tts` | no | no | `cpu` | commented | — |
+| `TTS_PARLER_DESC_ENCODER_PATH__MOVED_TO_CONTROL_PLANE_TASK_799` | `apps/tts` | no | no | `` | commented | — |
+| `TTS_PARLER_DEVICE__MOVED_TO_CONTROL_PLANE_TASK_799` | `apps/tts` | no | no | `cpu` | commented | — |
 | `TTS_PARLER_ENABLED` | `apps/tts` | no | no | `false` | commented | — |
-| `TTS_PARLER_HF_MODEL` | `apps/tts` | no | no | `ai4bharat/indic-parler-tts` | commented | — |
-| `TTS_PARLER_MODEL_PATH` | `apps/tts` | no | no | `` | commented | — |
-| `TTS_PARLER_SPEAKER_EN` | `apps/tts` | no | no | `Mary` | commented | — |
-| `TTS_PARLER_SPEAKER_ML` | `apps/tts` | no | no | `Anjali` | commented | — |
+| `TTS_PARLER_HF_MODEL__MOVED_TO_CONTROL_PLANE_TASK_799` | `apps/tts` | no | no | `ai4bharat/indic-parler-tts` | commented | — |
+| `TTS_PARLER_MODEL_PATH__MOVED_TO_CONTROL_PLANE_TASK_799` | `apps/tts` | no | no | `` | commented | — |
 | `TTS_PORT` | `apps/tts` | no | no | `8865` | commented | — |
-| `TTS_SAMPLE_RATE` | `apps/tts` | no | no | `24000` | commented | — |
-| `TTS_SARVAM_BASE_URL` | `apps/tts` | no | no | `https://api.sarvam.ai` | commented | — |
+| `TTS_REDIS_URL` | `apps/tts` | no | no | `redis://localhost:6379/0` | commented | — |
+| `TTS_SAMPLE_RATE__MOVED_TO_CONTROL_PLANE_TASK_799` | `apps/tts` | no | no | `24000` | commented | — |
+| `TTS_SARVAM_BASE_URL__MOVED_TO_CONTROL_PLANE_TASK_799` | `apps/tts` | no | no | `https://api.sarvam.ai` | commented | — |
 | `TTS_SARVAM_ENABLED` | `apps/tts` | no | no | `false` | commented | — |
-| `TTS_SARVAM_MAX_CONCURRENT` | `apps/tts` | no | no | `4` | commented | — |
-| `TTS_SARVAM_MODEL` | `apps/tts` | no | no | `bulbul:v3` | commented | — |
-| `TTS_SARVAM_SAMPLE_RATE` | `apps/tts` | no | no | `24000` | commented | — |
-| `TTS_SARVAM_TIMEOUT_S` | `apps/tts` | no | no | `30` | commented | — |
-| `TTS_SARVAM_USE_STREAMING` | `apps/tts` | no | no | `false` | commented | — |
-| `TTS_SARVAM_VOICE_EN` | `apps/tts` | no | no | `ishita` | commented | — |
-| `TTS_SARVAM_VOICE_ML` | `apps/tts` | no | no | `ishita` | commented | — |
-| `TTS_SERVICE_TOKEN` | `apps/tts` | no | yes | `CHANGE_ME` | live | — |
-| `TTS_WARMUP_ENABLED` | `apps/tts` | no | no | `false` | commented | — |
-| `VAD_MIN_SILENCE_DURATION_MS` | `apps/stt` | no | no | `500` | commented | — |
-| `VAD_MIN_SPEECH_DURATION_MS` | `apps/stt` | no | no | `100` | commented | — |
-| `VAD_MODEL_PATH` | `apps/stt` | no | no | — | commented | — |
-| `VAD_SPEECH_PAD_MS` | `apps/stt` | no | no | `200` | commented | — |
-| `VAD_THRESHOLD` | `apps/stt` | no | no | `0.5` | commented | — |
-| `VOICE_PROFILE_EMBEDDING_DIM` | `apps/stt` | no | no | `256` | commented | — |
-| `VOICE_PROFILE_MIN_SIMILARITY` | `apps/stt` | no | no | `0.6` | commented | — |
-| `WHISPER_CPP_CONSULTATION_PROMPT_ENABLED` | `apps/stt` | no | no | `false` | commented | — |
-| `WHISPER_CPP_MAX_AUDIO_SECONDS` | `apps/stt` | no | no | `7` | commented | — |
-| `WHISPER_CPP_NUM_THREADS` | `apps/stt` | no | no | `8` | commented | — |
-| `WORKER_MAX_RETRIES` | `apps/stt` | no | no | `3` | commented | — |
-| `WORKER_POLL_TIMEOUT_MS` | `apps/stt` | no | no | `1000` | commented | — |
-| `WORKER_THREADS` | `apps/stt` | no | no | `4` | commented | — |
+| `TTS_SARVAM_MAX_CONCURRENT__MOVED_TO_CONTROL_PLANE_TASK_799` | `apps/tts` | no | no | `4` | commented | — |
+| `TTS_SARVAM_MODEL__MOVED_TO_CONTROL_PLANE_TASK_799` | `apps/tts` | no | no | `bulbul:v3` | commented | — |
+| `TTS_SARVAM_SAMPLE_RATE__MOVED_TO_CONTROL_PLANE_TASK_799` | `apps/tts` | no | no | `24000` | commented | — |
+| `TTS_SARVAM_TIMEOUT_S__MOVED_TO_CONTROL_PLANE_TASK_799` | `apps/tts` | no | no | `30` | commented | — |
+| `TTS_SARVAM_USE_STREAMING__MOVED_TO_CONTROL_PLANE_TASK_799` | `apps/tts` | no | no | `false` | commented | — |
+| `TTS_WARMUP_ENABLED__MOVED_TO_CONTROL_PLANE_TASK_799` | `apps/tts` | no | no | `false` | commented | — |
+| `VAD_MIN_SILENCE_DURATION_MS__MOVED_TO_CONTROL_PLANE_TASK_799` | `apps/stt` | no | no | `500` | commented | — |
+| `VAD_MIN_SPEECH_DURATION_MS__MOVED_TO_CONTROL_PLANE_TASK_799` | `apps/stt` | no | no | `100` | commented | — |
+| `VAD_MODEL_PATH__MOVED_TO_CONTROL_PLANE_TASK_799` | `apps/stt` | no | no | — | commented | — |
+| `VAD_SPEECH_PAD_MS__MOVED_TO_CONTROL_PLANE_TASK_799` | `apps/stt` | no | no | `200` | commented | — |
+| `VAD_THRESHOLD__MOVED_TO_CONTROL_PLANE_TASK_799` | `apps/stt` | no | no | `0.5` | commented | — |
+| `VOICE_PROFILE_MIN_SIMILARITY__MOVED_TO_CONTROL_PLANE_TASK_799` | `apps/stt` | no | no | `0.6` | commented | — |
+| `WHISPER_CPP_CONSULTATION_PROMPT_ENABLED__MOVED_TO_CONTROL_PLANE_TASK_799` | `apps/stt` | no | no | `false` | commented | — |
+| `WHISPER_CPP_MAX_AUDIO_SECONDS__MOVED_TO_CONTROL_PLANE_TASK_799` | `apps/stt` | no | no | `7` | commented | — |
+| `WHISPER_CPP_NUM_THREADS__MOVED_TO_CONTROL_PLANE_TASK_799` | `apps/stt` | no | no | `8` | commented | — |
+| `WORKER_MAX_RETRIES__MOVED_TO_CONTROL_PLANE_TASK_799` | `apps/stt` | no | no | `3` | commented | — |
+| `WORKER_POLL_TIMEOUT_MS__MOVED_TO_CONTROL_PLANE_TASK_799` | `apps/stt` | no | no | `1000` | commented | — |
+| `WORKER_THREADS__MOVED_TO_CONTROL_PLANE_TASK_799` | `apps/stt` | no | no | `4` | commented | — |
 
 ## Python reads OUTSIDE pydantic-settings
 
@@ -588,28 +563,19 @@ promotion into its service’s `BaseSettings`.
 | `HARNESS_LLM_BACKOFF_MAX_S` | `apps/harness/src/harness/core/llm_concurrency.py` |
 | `HARNESS_LLM_MAX_ATTEMPTS` | `apps/harness/src/harness/core/llm_concurrency.py` |
 | `HARNESS_LLM_MAX_CONCURRENCY` | `apps/harness/src/harness/core/llm_concurrency.py` |
+| `HARNESS_LLM_REQUEST_TIMEOUT_S` | `apps/harness/src/harness/core/llm_concurrency.py` |
 | `HARNESS_PROMPTFOO_API_KEY` | `apps/harness/eval/promptfoo/provider.py` |
 | `HARNESS_PROMPTFOO_BASE_URL` | `apps/harness/eval/promptfoo/provider.py` |
 | `HARNESS_PROMPTFOO_MODEL` | `apps/harness/eval/promptfoo/provider.py` |
 | `HARNESS_VERDICT_CACHE_HMAC_KEY` | `apps/harness/src/harness/sensors/inferential/verdict_cache.py` |
-| `HF_HUB_OFFLINE` | `apps/harness/src/harness/models/source_resolver.py`, `apps/nlp/src/nlp/core/model_source.py`, `apps/stt/src/stt/models/source_resolver.py` |
+| `HF_HUB_OFFLINE` | `apps/harness/src/harness/models/source_resolver.py`, `apps/stt/src/stt/models/source_resolver.py` |
 | `HOPE_SECRETS_DIR` | `packages/py-env/src/hope_env/settings_sources.py` |
 | `HOSTNAME` | `packages/py-env/src/hope_env/service_registration.py` |
-| `LOG_CONSOLE_ENABLED` | `apps/nlp/src/nlp/core/logging.py` |
-| `LOG_CONSOLE_JSON_FORMAT` | `apps/nlp/src/nlp/core/logging.py` |
-| `LOG_FILE_ENABLED` | `apps/nlp/src/nlp/core/logging.py` |
-| `LOG_FILE_JSON_FORMAT` | `apps/nlp/src/nlp/core/logging.py` |
-| `LOG_FILE_MAX_FILES` | `apps/nlp/src/nlp/core/logging.py` |
-| `LOG_FILE_MAX_SIZE` | `apps/nlp/src/nlp/core/logging.py` |
 | `LOG_FILE_PATH` | `apps/nlp/src/nlp/core/logging.py` |
-| `LOG_FILE_SEPARATE_ERROR` | `apps/nlp/src/nlp/core/logging.py` |
-| `LOG_ROTATION_BACKUP_COUNT` | `apps/nlp/src/nlp/core/logging.py` |
-| `LOG_ROTATION_INTERVAL` | `apps/nlp/src/nlp/core/logging.py` |
-| `LOG_ROTATION_WHEN` | `apps/nlp/src/nlp/core/logging.py` |
-| `LOG_USE_DAILY_ROTATION` | `apps/nlp/src/nlp/core/logging.py` |
 | `NLP_MODEL_LOCAL_ROOTS` | `apps/nlp/src/nlp/core/guard_model_reference.py` |
 | `OMP_NUM_THREADS` | `apps/stt/src/stt/main.py` |
 | `OPENAI_API_KEY` | `apps/harness/eval/promptfoo/provider.py` |
+| `OPENAI_BASE_URL` | `apps/harness/eval/promptfoo/provider.py` |
 | `QDRANT_API_KEY` | `infrastructure/docker/scripts/init-qdrant-collections.py` |
 | `QDRANT_HOST` | `infrastructure/docker/scripts/init-qdrant-collections.py` |
 | `QDRANT_KNOWLEDGE_COLLECTION` | `infrastructure/docker/scripts/init-qdrant-collections.py` |
@@ -618,4 +584,5 @@ promotion into its service’s `BaseSettings`.
 | `STT_BENCH_CORPUS` | `apps/stt/scripts/benchmark_pipelines.py` |
 | `STT_BENCH_PIPELINES` | `apps/stt/scripts/benchmark_pipelines.py` |
 | `STT_BENCH_REFERENCE_DIR` | `apps/stt/scripts/benchmark_pipelines.py` |
+| `WHISPER_CPP_MAX_AUDIO_SECONDS` | `apps/stt/scripts/mlen_scorecard.py` |
 | `WHISPER_MLEN_GGUF` | `apps/stt/scripts/mlen_scorecard.py` |

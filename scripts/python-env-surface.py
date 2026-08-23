@@ -372,11 +372,57 @@ def build() -> dict[str, Any]:
     }
 
 
+#: Directories a filesystem walk must skip. `git ls-files` gets this for free by
+#: listing only TRACKED files; the fallback below has to say it out loud.
+_WALK_SKIP_DIRS = frozenset(
+    {
+        ".git",
+        ".claude",
+        "node_modules",
+        "__pycache__",
+        ".venv",
+        "venv",
+        ".mypy_cache",
+        ".pytest_cache",
+        ".ruff_cache",
+        "dist",
+        "build",
+        ".next",
+        "htmlcov",
+        ".turbo",
+    }
+)
+
+
 def _git_tracked_python_files() -> list[str]:
-    listed = subprocess.run(
-        ["git", "ls-files", "*.py"], cwd=ROOT, capture_output=True, text=True, check=True
-    ).stdout.splitlines()
-    return [f for f in listed if f and "node_modules" not in f]
+    """Every Python file in the repo, preferring git's tracked-file list.
+
+    `git ls-files` is the accurate answer — it excludes ignored and generated
+    files by construction. But the subprocess spawn dies with SIGABRT under a
+    sandboxed interpreter, which made `pnpm env:python-surface` unrunnable both
+    locally and inside every agent worktree; a drift gate nobody can regenerate
+    is a gate that rots. So git is TRIED, and a filesystem walk is the fallback.
+
+    The walk is deliberately not a silent equivalent: it skips the ignore set
+    above rather than pretending to know what git tracks, and an untracked
+    scratch file under `apps/` would be picked up where git would omit it. That
+    is the safe direction for a DRIFT gate — surfacing an extra read is a false
+    alarm a human resolves, missing one is the blind spot this file exists to
+    close.
+    """
+    try:
+        listed = subprocess.run(
+            ["git", "ls-files", "*.py"], cwd=ROOT, capture_output=True, text=True, check=True
+        ).stdout.splitlines()
+        return [f for f in listed if f and "node_modules" not in f]
+    except (OSError, subprocess.SubprocessError):
+        walked: list[str] = []
+        for dirpath, dirnames, filenames in os.walk(ROOT):
+            dirnames[:] = [d for d in dirnames if d not in _WALK_SKIP_DIRS]
+            for name in filenames:
+                if name.endswith(".py"):
+                    walked.append(os.path.relpath(os.path.join(dirpath, name), ROOT))
+        return sorted(walked)
 
 
 def _is_test_file(path: str) -> bool:

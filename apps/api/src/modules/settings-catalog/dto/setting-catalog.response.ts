@@ -43,16 +43,27 @@ export class SettingCatalogItemResponse {
   @ApiPropertyOptional({ description: 'True = a kill-switch whose safe position is OFF.' })
   killSwitch?: boolean;
 
-  @ApiPropertyOptional({ description: "`closed` = an unset value is an outage, not a fallback; `open-to-default` = falls back to `default`.", example: 'closed' })
+  @ApiPropertyOptional({
+    description: '`closed` = an unset value is an outage, not a fallback; `open-to-default` = falls back to `default`.',
+    example: 'closed',
+  })
   failMode?: string;
 
-  @ApiPropertyOptional({ description: 'When set, a tenant may only move the value in this direction relative to the platform (tighten-only).', example: 'lower-is-stricter' })
+  @ApiPropertyOptional({
+    description: 'When set, a tenant may only move the value in this direction relative to the platform (tighten-only).',
+    example: 'lower-is-stricter',
+  })
   floorDirection?: string;
 
-  @ApiPropertyOptional({ description: 'The descriptor default. OMITTED for secret-sensitivity keys — the read surface never carries secret material.' })
+  @ApiPropertyOptional({
+    description: 'The descriptor default. OMITTED for secret-sensitivity keys — the read surface never carries secret material.',
+  })
   default?: unknown;
 
-  @ApiPropertyOptional({ type: [String], description: 'Deployables served this key on the effective-config pull route. Absent = the key travels per-request instead (tenant-scoped).' })
+  @ApiPropertyOptional({
+    type: [String],
+    description: 'Deployables served this key on the effective-config pull route. Absent = the key travels per-request instead (tenant-scoped).',
+  })
   consumedBy?: readonly string[];
 
   @ApiPropertyOptional({ description: 'Recorded eventual home when `tier` is not where the key ends up.', example: 'global-kv' })
