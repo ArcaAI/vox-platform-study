@@ -14979,9 +14979,20 @@
             "example": "Pipeline",
             "type": "string"
           },
+          "consumedBy": {
+            "description": "Deployables served this key on the effective-config pull route. Absent = the key travels per-request instead (tenant-scoped).",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
           "dataType": {
             "example": "boolean",
             "type": "string"
+          },
+          "default": {
+            "description": "The descriptor default. OMITTED for secret-sensitivity keys — the read surface never carries secret material.",
+            "type": "object"
           },
           "description": {
             "type": "string"
@@ -14991,6 +15002,16 @@
             "example": "PipelinePolicy",
             "type": "string"
           },
+          "failMode": {
+            "description": "`closed` = an unset value is an outage, not a fallback; `open-to-default` = falls back to `default`.",
+            "example": "closed",
+            "type": "string"
+          },
+          "floorDirection": {
+            "description": "When set, a tenant may only move the value in this direction relative to the platform (tighten-only).",
+            "example": "lower-is-stricter",
+            "type": "string"
+          },
           "globalOnly": {
             "description": "True = SUPER_ADMIN-only surface.",
             "type": "boolean"
@@ -14998,6 +15019,10 @@
           "key": {
             "description": "Canonical dotted key, e.g. pipeline.autoSummaryEnabled.",
             "type": "string"
+          },
+          "killSwitch": {
+            "description": "True = a kill-switch whose safe position is OFF.",
+            "type": "boolean"
           },
           "label": {
             "type": "string"
@@ -15014,6 +15039,11 @@
               "secret"
             ],
             "example": "internal",
+            "type": "string"
+          },
+          "targetTier": {
+            "description": "Recorded eventual home when `tier` is not where the key ends up.",
+            "example": "global-kv",
             "type": "string"
           },
           "tier": {
