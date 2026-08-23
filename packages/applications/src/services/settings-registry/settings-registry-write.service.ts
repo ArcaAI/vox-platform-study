@@ -1,4 +1,4 @@
-import { ForbiddenException, HttpException, HttpStatus, Inject, Injectable } from '@nestjs/common';
+import { ForbiddenException, HttpException, HttpStatus, Inject, Injectable, Logger, Optional } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { ClsService } from 'nestjs-cls';
 import { ArgumentInvalidException, DataNotFoundException } from '@arcaai/exceptions';
@@ -9,6 +9,7 @@ import { isSuperAdmin } from '../../common/tenant-guards';
 import { IActiveUserContext } from '../../interfaces';
 import { IAppSettingsService } from '../baseServices/_meta/appSettings/IAppSettingsService';
 import { IGlobalSettingService } from '../globalSetting/IGlobalSettingService';
+import { IRedisCacheService } from '../baseServices/redis';
 import { HOPE_SETTINGS_REGISTRY } from './registry';
 import { SettingDataType, SettingDescriptor, SettingScope } from './registry.types';
 import { assertTightenOnlyFloor } from './tenant-clamp';
@@ -19,6 +20,37 @@ import { assertTightenOnlyFloor } from './tenant-clamp';
  * table, two write paths) until that legacy surface is reconciled.
  */
 export const REGISTRY_SETTING_NAMESPACE = 'registry';
+
+/**
+ * The Redis pub/sub channel the PYTHON services watch for config invalidation
+ * (RC-6).
+ *
+ * WHY ONE GENERALISED CHANNEL, NOT SIX. Before this, the only Python-facing
+ * channel was `arca:guardrail-config:invalidate`, which appeared exactly once
+ * repo-wide — guardrail's SUBSCRIBER, with ZERO publishers. Guardrail believed
+ * it had push invalidation and actually had a 60s TTL poll, and the other five
+ * services never had a listener at all. Rule 09 §"Config caches" makes the
+ * ordering explicit: "Invalidation is the propagation path; TTL is a
+ * bounded-staleness safety net." A per-service channel would multiply the
+ * publish fan-out by the service count for a payload every service can filter
+ * itself, and would need this write lane to know which services consume which
+ * key — a mapping that already lives in `SettingDescriptor.consumedBy` and must
+ * not get a second, drifting definition here. One channel, every Python pull
+ * client subscribed, each dropping its own snapshot.
+ *
+ * DISTINCT FROM the two channels that already exist, on purpose:
+ *   • `app-settings:invalidate` converges GATEWAY nodes' `AppSettingsService`
+ *     caches. Its payload is `{ instanceId }` — a self-publish filter, carrying
+ *     no key — so it cannot tell a Python client WHAT changed.
+ *   • `arca:secrets:invalidate` evicts per-key SECRETS. Secrets never traverse
+ *     this lane at all (guard 2 of `write()`).
+ *
+ * PAYLOAD: `{ key, scope, tenantId }` — the canonical dotted registry key, the
+ * scope written at, and the row's tenant. Never a VALUE: a subscriber refetches
+ * through the authenticated `/internal/effective-config` route, so the channel
+ * carries no configuration and needs no trust.
+ */
+export const PYTHON_CONFIG_INVALIDATION_CHANNEL = 'arca:config:invalidate';
 
 /**
  * The reserved SYSTEM tenant. Platform-owned KV rows (rate-limit.*, and every
@@ -88,6 +120,8 @@ export interface WriteRegistrySettingResult {
  */
 @Injectable()
 export class SettingsRegistryWriteService extends BaseService {
+  private readonly logger = new Logger(SettingsRegistryWriteService.name);
+
   constructor(
     @Inject(IAppSettingsService) private readonly appSettings: IAppSettingsService,
     @Inject(IGlobalSettingService) private readonly globalSettings: IGlobalSettingService,
@@ -99,6 +133,12 @@ export class SettingsRegistryWriteService extends BaseService {
     // against the same stale number and the second would silently clobber the
     // first. Reading the row here costs one indexed lookup per write.
     private readonly globalSettingRepository: GlobalSettingRepository,
+    // The publish half of RC-6. `@Optional()` for the same reason
+    // `AppSettingsService` takes it optionally: a service graph assembled
+    // without the Redis module (unit tests, CLI tooling) must still be able to
+    // WRITE a setting — propagation degrades to each Python client's TTL
+    // backstop, which is exactly the pre-existing behaviour.
+    @Optional() @Inject(IRedisCacheService) private readonly redisCacheService?: IRedisCacheService,
   ) {
     super(eventEmitter, clsService, ResourceType.GlobalSetting);
   }
@@ -190,7 +230,39 @@ export class SettingsRegistryWriteService extends BaseService {
 
     await this.appSettings.refreshCache();
 
+    // The PYTHON half of propagation (RC-6). Published LAST, after the row is
+    // committed AND the gateway's own read cache has been refreshed: a
+    // subscriber refetches `/internal/effective-config` immediately on receipt,
+    // and that route reads through `AppSettingsService`. Publishing earlier
+    // would race the refetch against the stale snapshot and could re-cache the
+    // OLD value for a full TTL — the exact failure this channel exists to
+    // remove.
+    await this.publishPythonInvalidation(key, scope, targetTenantId);
+
     return { key, tier: descriptor.tier, value, scope, version: persisted.version };
+  }
+
+  /**
+   * Notify the Python pull clients that `key` changed. FAIL-OPEN by
+   * construction: the row is already committed, so a Redis outage may only
+   * delay propagation to each client's TTL backstop — it must never turn a
+   * successful write into an error the admin sees.
+   */
+  private async publishPythonInvalidation(key: string, scope: SettingScope, tenantId: string): Promise<void> {
+    if (!this.redisCacheService) {
+      return;
+    }
+
+    try {
+      await this.redisCacheService.publish(PYTHON_CONFIG_INVALIDATION_CHANNEL, JSON.stringify({ key, scope, tenantId }));
+    } catch (error) {
+      this.logger.warn({
+        message: 'Failed to publish Python config invalidation (fail-open — each service TTL still converges)',
+        channel: PYTHON_CONFIG_INVALIDATION_CHANNEL,
+        key,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
   }
 
   /**

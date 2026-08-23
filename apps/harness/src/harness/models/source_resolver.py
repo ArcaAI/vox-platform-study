@@ -456,8 +456,14 @@ async def resolve_atomic_fact_model_path(
 
     try:
         snapshot = await effective_config_client.get()
-        weights = getattr(snapshot, "model_weights", None) or {}
-        entry = weights.get(ATOMIC_FACT_MODEL_SLUG)
+        # `snapshot.model_weights()`, NOT `getattr(snapshot, "model_weights",
+        # None)`. The defensive getattr silently yielded `{}` against the real
+        # `EffectiveConfigSnapshot` (which had no such attribute at all), so this
+        # branch could never be taken and every deployment fell through to env —
+        # invisibly, because the only thing that exercised it was a stub that did
+        # expose the attribute. An `AttributeError` here now belongs to the
+        # `except` below, which degrades to `env_path` loudly.
+        entry = snapshot.model_weights().get(ATOMIC_FACT_MODEL_SLUG)
     except Exception as exc:  # noqa: BLE001 — never lose the staged env weights
         logger.warning(
             "harness.model_source.control_plane_unavailable",
