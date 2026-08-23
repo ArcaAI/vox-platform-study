@@ -20,6 +20,7 @@ import {
   IconClipboardCheck,
   IconCopy,
   IconDeviceFloppy,
+  IconLayoutList,
   IconFileText,
   IconPencil,
   IconShieldCheck,
@@ -50,9 +51,15 @@ import {
   type LiveSummaryEntity,
   type LiveSummarySnapshot,
   type LiveSummaryVitals,
+  type NamedEntitiesAggregate,
   type SummaryResult,
 } from '../../api';
 import { CitationEvidencePanel } from './citation-evidence-panel';
+import { HighlightedNoteText } from './highlighted-note-text';
+import { ClinicalSuggestionsPanel } from './clinical-suggestions-panel';
+import { CorrectionProposalsPanel } from './correction-proposals-panel';
+import { composeAutofill, formatSoapSections } from '../../lib/soap-autofill';
+import type { ClinicalSuggestion, CorrectionsEnvelope } from '../../api/live-assist';
 
 /** Ordered vitals for the Objective grid — only present values render. */
 function vitalCells(vitals: LiveSummaryVitals): Array<{ label: string; value: string }> {
@@ -224,6 +231,33 @@ export interface CaseNoteColumnProps {
    * renders what the assistant is working on, never a synthesised body.
    */
   loopActivity?: readonly LoopActivityEntry[];
+  /**
+   * W3 — the PERSISTED NER aggregate (`GET :id/named-entities`). Live entities ride the
+   * live-summary snapshot and vanish with it when recording stops, so without this a
+   * reviewed draft showed no entities at all. `AggregateNerResponse` carries no offsets
+   * into the draft content, so these are a grouped chip list and NOT inline marks —
+   * anchoring them by searching the text is exactly what `lib/entity-highlights.ts` refuses
+   * to do, and it would be worse here because the draft is a rewrite of the transcript.
+   */
+  namedEntities?: NamedEntitiesAggregate | null;
+  /**
+   * W2/R3 — spelling / medical-term / drug-name correction PROPOSALS, off the `live-assist`
+   * stream (TASK-796's brokered contract; shapes in `api/live-assist.ts`).
+   *
+   * ⚠ TRANSPORT PENDING: the gateway routes that carry this are TASK-795's, and do not exist
+   * yet, so nothing feeds this prop in a running system today.
+   *
+   * An accepted proposal is written through `editor.change` — the clinician's OWN buffer — so
+   * it is a clinician edit, never a machine write, and the R5 two-writer contract in
+   * `use-note-editor.ts` is untouched.
+   */
+  correctionProposals?: CorrectionsEnvelope | null;
+  /** W2/R3 — intelligent suggestions, same stream and the same transport caveat. */
+  suggestions?: readonly ClinicalSuggestion[] | null;
+  /** The interpreter node that produced the suggestions, for provenance. */
+  suggestionsNodeType?: string;
+  /** Re-request corrections after a digest mismatch (796 rule 2). */
+  onCorrectionsStale?: () => void;
 }
 
 export function CaseNoteColumn(props: CaseNoteColumnProps) {
@@ -248,6 +282,11 @@ export function CaseNoteColumn(props: CaseNoteColumnProps) {
     onSelectCitation,
     editor,
     loopActivity = [],
+    namedEntities = null,
+    correctionProposals = null,
+    suggestions = null,
+    suggestionsNodeType,
+    onCorrectionsStale,
   } = props;
   const [overrideSafety, setOverrideSafety] = useState(false);
   const noteFieldId = useId();
@@ -263,6 +302,39 @@ export function CaseNoteColumn(props: CaseNoteColumnProps) {
   const liveSections = live?.sections ?? [];
   const liveEntities: LiveSummaryEntity[] = live?.entities ?? [];
   const vitals = live?.vitals ? vitalCells(live.vitals) : [];
+
+  // Stable, non-empty groups only — an empty aggregate renders nothing rather than a
+  // labelled empty box (rule 11 §4: never a blank area presented as content).
+  const persistedEntityGroups = useMemo(
+    () => Object.entries(namedEntities?.entities ?? {}).filter(([, items]) => Array.isArray(items) && items.length > 0),
+    [namedEntities],
+  );
+
+  /**
+   * TASK-796 — an interpreter-produced INTERIM summary arrives on this same plane, marked
+   * `source: 'interpreter'`. Say so, and say where it sits in its sequence: an interim summary
+   * is a snapshot of work in progress, and a clinician reading it should know that.
+   */
+  const interimLabel = useMemo(() => {
+    if (live?.source !== 'interpreter') return null;
+    const position = typeof live.ordinal === 'number' && typeof live.total === 'number' ? ` · ${live.ordinal} of ${live.total}` : '';
+    return `Interim summary${position}`;
+  }, [live]);
+
+  // W2 — the SOAP block an autofill would insert. Empty when the live stream has no
+  // sections, which is what hides the affordance entirely rather than offering a no-op.
+  const autofillBlock = useMemo(() => formatSoapSections(live?.sections ?? []), [live]);
+
+  /**
+   * Corrections rewrite text, so they are offered live ONLY while the clinician is editing —
+   * that is the only moment a buffer exists to write into. Outside it they stay visible but
+   * inert, with the reason stated (rule 11 §5: a disabled control needs a visible reason).
+   */
+  const correctionsDisabledReason = approved
+    ? 'This note is signed — corrections can no longer be applied.'
+    : isEditing
+      ? null
+      : 'Choose "Edit note" to accept or reject a correction.';
 
   const provenance = useMemo(() => {
     const meta = draft?.structuredData;
@@ -293,7 +365,7 @@ export function CaseNoteColumn(props: CaseNoteColumnProps) {
                 ? `Personalized draft · ${provenance}`
                 : 'Personalized draft'
               : showLive
-                ? 'Running SOAP · auto-drafted live'
+                ? interimLabel ?? 'Running SOAP · auto-drafted live'
                 : 'Drafts appear here after a session'}
           </p>
         </div>
@@ -400,9 +472,26 @@ export function CaseNoteColumn(props: CaseNoteColumnProps) {
                   className="min-h-64 flex-1 resize-none text-sm leading-relaxed"
                   aria-describedby={`${noteFieldId}-hint`}
                 />
-                <p id={`${noteFieldId}-hint`} className="text-muted-foreground text-xs">
-                  Transcription and drafting continue while you edit. A newer machine draft is offered, never applied on its own.
-                </p>
+                <div className="flex flex-wrap items-center gap-2">
+                  <p id={`${noteFieldId}-hint`} className="text-muted-foreground text-xs">
+                    Transcription and drafting continue while you edit. A newer machine draft is offered, never applied on its own.
+                  </p>
+                  {/* W2/R3 — autofill the SOAP sections the live stream is already producing.
+                      Explicitly clinician-initiated, and it APPENDS rather than replaces, so it
+                      can never destroy typed text (see `lib/soap-autofill.ts`). */}
+                  {autofillBlock ? (
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      className="ms-auto"
+                      onClick={() => editor.change(composeAutofill(editor.value, autofillBlock))}
+                    >
+                      <IconLayoutList aria-hidden />
+                      Fill from live summary
+                    </Button>
+                  ) : null}
+                </div>
               </div>
             ) : (
               <article aria-label="Personalized draft note" className="text-sm leading-relaxed whitespace-pre-wrap">
@@ -428,9 +517,11 @@ export function CaseNoteColumn(props: CaseNoteColumnProps) {
             ))}
           </div>
         ) : showLive && live?.runningSummary ? (
-          <p className="text-sm leading-relaxed whitespace-pre-wrap" aria-label="Live running summary">
-            {live.runningSummary}
-          </p>
+          // W3: entities are MARKED in the text, not only listed as chips below it. Only the
+          // running summary is markable — `LiveSummaryEntityDto`'s offsets index
+          // `runningSummary`, so the sections branch above deliberately stays plain rather
+          // than splicing marks on offsets that do not belong to it.
+          <HighlightedNoteText text={live.runningSummary} entities={liveEntities} label="Live running summary" />
         ) : isRecording ? (
           <div className="flex flex-col gap-3" aria-label="Waiting for the first live summary">
             <Skeleton className="h-4 w-3/4" />
@@ -469,10 +560,11 @@ export function CaseNoteColumn(props: CaseNoteColumnProps) {
                 </li>
               ))}
             </ul>
-            {/* The interim TEXT is not on the wire (TASK-791 W5, blocked on a
-                TASK-790 column). Say so rather than implying the note below is
-                what the assistant just produced. */}
-            <p className="text-muted-foreground mt-1.5 text-xs">Interim text is not yet available on this feed — progress only.</p>
+            {/* This FEED is progress-only by design: `EmitLoopEventInput` is `extra="forbid"`
+                and carries "ids/keys/labels only, NEVER note or transcript text". Interim
+                summary TEXT rides the live-summary plane above instead (TASK-796) — say which
+                is which rather than implying this list is what the assistant produced. */}
+            <p className="text-muted-foreground mt-1.5 text-xs">Progress only — interim summary text appears in the note above.</p>
           </div>
         ) : null}
 
@@ -507,6 +599,41 @@ export function CaseNoteColumn(props: CaseNoteColumnProps) {
             ))}
           </div>
         ) : null}
+
+        {persistedEntityGroups.length > 0 ? (
+          <div className="border-t pt-3" aria-label="Detected entities in this consultation">
+            <div className="text-muted-foreground mb-1.5 flex items-center gap-1.5 text-xs font-medium">
+              Detected entities
+              <span className="bg-ai/10 text-ai rounded px-1 text-xs font-medium">AI</span>
+            </div>
+            <div className="flex flex-col gap-1.5">
+              {persistedEntityGroups.map(([className, items]) => (
+                <div key={className} className="flex flex-wrap items-center gap-1.5">
+                  {/* The class is readable text, never a colour (rule 11 §7). */}
+                  <span className="text-muted-foreground w-24 shrink-0 font-mono text-xs">{className}</span>
+                  {items.map((item, index) => (
+                    <Badge key={`${className}-${index}`} variant="secondary">
+                      {item.displayText ?? item.text}
+                    </Badge>
+                  ))}
+                </div>
+              ))}
+            </div>
+          </div>
+        ) : null}
+
+        <CorrectionProposalsPanel
+          corrections={correctionProposals}
+          onStale={onCorrectionsStale}
+          // Checked against what the clinician is actually looking at: the buffer while
+          // editing, the persisted draft otherwise. A proposal whose offsets stop matching
+          // simply stops being offered.
+          text={editor ? editor.value : (draft?.content ?? '')}
+          onAccept={(next) => editor?.change(next)}
+          disabledReason={correctionsDisabledReason}
+        />
+
+        <ClinicalSuggestionsPanel suggestions={suggestions} nodeType={suggestionsNodeType} />
 
         {draft ? (
           <CitationEvidencePanel

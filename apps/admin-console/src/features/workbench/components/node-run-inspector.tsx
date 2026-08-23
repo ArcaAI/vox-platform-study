@@ -1,13 +1,13 @@
 'use client';
 
 import { useState } from 'react';
-import { IconCircleCheck, IconCircleMinus, IconCircleX, IconClockExclamation, IconLoader2 } from '@tabler/icons-react';
+import { IconAlertTriangle, IconCircleCheck, IconCircleMinus, IconCircleX, IconClockExclamation, IconLoader2 } from '@tabler/icons-react';
 import { Badge } from '@arcaai/ui/components/shadcn/badge';
 import { Skeleton } from '@arcaai/ui/components/shadcn/skeleton';
 import { DetailDrawer } from '@/shared/detail/detail-drawer';
 import { formatDateTime, formatNumber } from '@/shared/format';
 import { useRunTrace } from '../api/hooks';
-import type { RunNodeRollup } from '../api/types';
+import type { RunNodeRollup, RunTrace } from '../api/types';
 
 /** Never color-only (rule 11 §7) — a distinct icon pairs with every status label, mirroring
  *  `features/workflow-runs/components/node-run-badge.tsx`'s own set (built fresh here per the
@@ -34,6 +34,42 @@ function statusMeta(status: string) {
  * with the SAME explicit "payload not available" message (pitfall 1: never an empty box that
  * reads as "no output").
  */
+/**
+ * Run-level outcome (TASK-797 W1). Rendered ABOVE the per-node list because a degraded node is
+ * invisible in that list by construction (see `RunTrace.run` in `../api/types`), so a reader who
+ * only scanned node badges would conclude a degraded run was clean.
+ *
+ * Absent counts render nothing at all rather than `0` — a fabricated zero is worse than silence.
+ */
+function RunOutcomeSummary({ run }: { run: RunTrace['run'] }) {
+  const failed = typeof run.failedNodeCount === 'number' ? run.failedNodeCount : null;
+  const degraded = typeof run.degradedNodeCount === 'number' ? run.degradedNodeCount : null;
+  if (failed === null && degraded === null) return null;
+
+  const clean = (failed ?? 0) === 0 && (degraded ?? 0) === 0;
+  const parts = [failed !== null ? `${failed} failed` : null, degraded !== null ? `${degraded} degraded` : null].filter(Boolean).join(' · ');
+
+  return (
+    <div
+      className={
+        clean
+          ? 'text-muted-foreground flex flex-wrap items-center gap-2 rounded-md border px-3 py-2 text-sm'
+          : 'border-destructive/40 flex flex-wrap items-center gap-2 rounded-md border px-3 py-2 text-sm'
+      }
+    >
+      {/* Never colour alone (rule 11 §7/§11): the icon and the words carry the meaning. */}
+      {clean ? <IconCircleCheck aria-hidden className="size-4" /> : <IconAlertTriangle aria-hidden className="text-destructive size-4" />}
+      <span>{clean ? 'No failed or degraded nodes.' : parts}</span>
+      {typeof run.nodeCount === 'number' ? <span className="text-muted-foreground">of {run.nodeCount} nodes</span> : null}
+      {run.firstErrorCode ? (
+        <span className="text-muted-foreground">
+          first error <code className="font-mono">{run.firstErrorCode}</code>
+        </span>
+      ) : null}
+    </div>
+  );
+}
+
 export function NodeRunInspector({ runId }: { runId: string | null }) {
   const traceQuery = useRunTrace(runId);
   const [selected, setSelected] = useState<RunNodeRollup | null>(null);
@@ -59,6 +95,7 @@ export function NodeRunInspector({ runId }: { runId: string | null }) {
 
   return (
     <div className="flex flex-col gap-2">
+      <RunOutcomeSummary run={trace.run} />
       <ul className="flex flex-col gap-1">
         {trace.nodes.map((node) => {
           const meta = statusMeta(node.status);

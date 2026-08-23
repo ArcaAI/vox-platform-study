@@ -110,7 +110,27 @@ export interface RunNodeRollup {
  *  Workbench's own node inspector (TASK-721 Task 8): a sandbox run IS a `WorkflowRun` row like
  *  any other, so the SAME bounded trajectory read TASK-723 built serves both surfaces. */
 export interface RunTrace {
-  run: { id: string; status: SandboxRunLiveStatus; isSandbox: boolean };
+  run: {
+    id: string;
+    status: SandboxRunLiveStatus;
+    isSandbox: boolean;
+    /**
+     * TASK-797: `RunTraceResponse.run` is the FULL `WorkflowRunResponse`, so these counts are
+     * already on the wire — this slice previously dropped them. They are optional here because
+     * an older/degraded gateway response may omit them, and "absent" must never render as `0`
+     * (pitfall 1 again: a fabricated zero reads as "nothing went wrong").
+     *
+     * `degradedNodeCount` matters disproportionately: a degraded node — one that produced a
+     * marked nothing — has NO per-node representation, because `AgentStepStatus` is
+     * `STARTED | OK | ERROR | SKIPPED | TIMEOUT` and `RunNodeRollupResponse`'s own docs record
+     * that degraded and critically-failed nodes both persist as `ERROR`. This run-level count is
+     * the only place degradation is observable at all.
+     */
+    nodeCount?: number | null;
+    failedNodeCount?: number | null;
+    degradedNodeCount?: number | null;
+    firstErrorCode?: string | null;
+  };
   nodes: RunNodeRollup[];
   stepCount: number;
   truncated: boolean;
