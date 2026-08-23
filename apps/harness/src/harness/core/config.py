@@ -126,6 +126,32 @@ class RetrievalConfig(BaseSettings):
 
     model_config = SettingsConfigDict(env_prefix="HARNESS_RETRIEVAL_")
 
+    # ── Why the endpoints below are still env, and stay env (TASK-799 A.2) ──────────
+    #
+    # Phase 1 widened `AiProviderConnection.service` to include `vector` / `rerank` /
+    # `embeddings`, which reads like an invitation to seed SYSTEM rows for the platform
+    # Qdrant and TEI reranker and delete these fields. It is not, and the plan's own
+    # "Phase 2 landmines" section is why: a KEYLESS row injects on NEITHER tier, so a
+    # seeded `vector:qdrant` row is resolvable via `resolveConnection` (a TypeScript API)
+    # but never appears in `provider_overrides`. The instruction is to settle the delivery
+    # path BEFORE relying on a row. Settled, with the evidence:
+    #
+    #   1. harness holds no DB handle, so `resolveConnection` is unreachable from here.
+    #   2. The gateway does not inject config into these calls — the retriever runs inside
+    #      a Temporal ACTIVITY, with no gateway request to inject into.
+    #   3. The pull route carries `settings` (registry keys) and `modelWeights` only;
+    #      `EffectiveConfigResponse` has no `connections` block.
+    #
+    # So there is NO delivery path for an `AiProviderConnection` row into this process,
+    # and seeding one would look like it silently did nothing — exactly the failure the
+    # landmine warns about. Meanwhile rule 09 §Configuration Tiers puts a transport
+    # address in the `env` tier by name, and rule 06 calls a `*_URL` default "the ONE
+    # sanctioned kind of hardcoded default" (see `guardrail_base_url` below). These are
+    # one platform Qdrant and one platform TEI with no tenant opinion, so by D-1's
+    # cardinality rule they are not PUSH candidates either.
+    #
+    # Conclusion: they are correctly tiered ALREADY. No row is seeded, and no field is
+    # deleted. Revisit only if the pull payload grows a connections block.
     enabled: bool = False
     qdrant_url: str = "http://localhost:6333"
     # Qdrant ships with NO authentication. Unauthenticated is
