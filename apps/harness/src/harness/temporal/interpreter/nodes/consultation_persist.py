@@ -32,7 +32,7 @@ from harness.temporal.interpreter.nodes._consultation_shared import (
     run_identity,
 )
 from harness.temporal.interpreter.nodes._shared import (
-    STATUS_ERROR,
+    STATUS_DEGRADED,
     STATUS_OK,
     now,
     record_and_flush,
@@ -59,7 +59,7 @@ async def interpreter_consultation_persist_draft(
     content = bound_text(payload.bound_inputs)
     if not content:
         await record_and_flush(
-            payload, status=STATUS_ERROR, started=started, error_code="no_bound_content"
+            payload, status=STATUS_DEGRADED, started=started, error_code="no_bound_content"
         )
         return NodeActivityResult(
             status="DEGRADED", reason="no draft content bound from an upstream node to persist"
@@ -68,7 +68,7 @@ async def interpreter_consultation_persist_draft(
     identity = run_identity(payload.run_payload)
     if not identity.consultation_id:
         await record_and_flush(
-            payload, status=STATUS_ERROR, started=started, error_code="no_consultation_id"
+            payload, status=STATUS_DEGRADED, started=started, error_code="no_consultation_id"
         )
         return NodeActivityResult(
             status="DEGRADED", reason="run payload carries no consultationId to persist against"
@@ -96,7 +96,7 @@ async def interpreter_consultation_persist_draft(
         )
     except ApiServiceError as exc:
         await record_and_flush(
-            payload, status=STATUS_ERROR, started=started, error_code="persist_draft_failed"
+            payload, status=STATUS_DEGRADED, started=started, error_code="persist_draft_failed"
         )
         return NodeActivityResult(status="DEGRADED", reason=f"draft persistence failed: {exc}")
 
@@ -129,7 +129,7 @@ async def interpreter_consultation_finalize_assurance(
     context_item_id = bound_value(payload.bound_inputs, "contextItemId")
     if not isinstance(context_item_id, str) or not context_item_id:
         await record_and_flush(
-            payload, status=STATUS_ERROR, started=started, error_code="no_context_item_id"
+            payload, status=STATUS_DEGRADED, started=started, error_code="no_context_item_id"
         )
         return NodeActivityResult(
             status="DEGRADED",
@@ -139,7 +139,7 @@ async def interpreter_consultation_finalize_assurance(
     identity = run_identity(payload.run_payload)
     if not identity.consultation_id:
         await record_and_flush(
-            payload, status=STATUS_ERROR, started=started, error_code="no_consultation_id"
+            payload, status=STATUS_DEGRADED, started=started, error_code="no_consultation_id"
         )
         return NodeActivityResult(
             status="DEGRADED", reason="run payload carries no consultationId to finalize against"
@@ -166,13 +166,13 @@ async def interpreter_consultation_finalize_assurance(
         )
     except ApiServiceError as exc:
         await record_and_flush(
-            payload, status=STATUS_ERROR, started=started, error_code="finalize_assurance_failed"
+            payload, status=STATUS_DEGRADED, started=started, error_code="finalize_assurance_failed"
         )
         return NodeActivityResult(status="DEGRADED", reason=f"assurance finalization failed: {exc}")
 
     if not result.recorded:
         await record_and_flush(
-            payload, status=STATUS_ERROR, started=started, error_code="finalize_assurance_refused"
+            payload, status=STATUS_DEGRADED, started=started, error_code="finalize_assurance_refused"
         )
         return NodeActivityResult(
             status="DEGRADED", reason="assurance verdict was not recorded by apps/api"

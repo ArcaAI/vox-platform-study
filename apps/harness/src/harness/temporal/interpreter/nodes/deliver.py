@@ -33,7 +33,7 @@ from harness.core.config import get_settings
 from harness.temporal.claim_check import build_blob_store, should_offload, store_blob
 from harness.temporal.interpreter.models import NodeActivityInput, NodeActivityResult
 from harness.temporal.interpreter.nodes._shared import (
-    STATUS_ERROR,
+    STATUS_DEGRADED,
     STATUS_OK,
     now,
     record_and_flush,
@@ -78,14 +78,14 @@ async def interpreter_deliver(payload: NodeActivityInput) -> NodeActivityResult:
     text = _extract_text(payload.bound_inputs)
     if not text:
         await record_and_flush(
-            payload, status=STATUS_ERROR, started=started, error_code="no_bound_content"
+            payload, status=STATUS_DEGRADED, started=started, error_code="no_bound_content"
         )
         return NodeActivityResult(status="DEGRADED", reason="no bound content to deliver")
 
     shaped = _shape_outputs(outputs_decl, text)
     if not shaped:
         await record_and_flush(
-            payload, status=STATUS_ERROR, started=started, error_code="no_declared_outputs"
+            payload, status=STATUS_DEGRADED, started=started, error_code="no_declared_outputs"
         )
         return NodeActivityResult(
             status="DEGRADED", reason="config.outputs declared no keys to shape"

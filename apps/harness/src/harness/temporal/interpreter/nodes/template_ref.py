@@ -27,6 +27,7 @@ from harness.services.api_client import ApiServiceError
 from harness.temporal.activities import _api_client
 from harness.temporal.interpreter.models import NodeActivityInput, NodeActivityResult
 from harness.temporal.interpreter.nodes._shared import (
+    STATUS_DEGRADED,
     STATUS_ERROR,
     STATUS_OK,
     now,
@@ -56,7 +57,7 @@ async def interpreter_template_ref(payload: NodeActivityInput) -> NodeActivityRe
 
     if not template_id:
         await record_and_flush(
-            payload, status=STATUS_ERROR, started=started, error_code="missing_prompt_template_id"
+            payload, status=STATUS_DEGRADED, started=started, error_code="missing_prompt_template_id"
         )
         return NodeActivityResult(status="DEGRADED", reason="config.promptTemplateId is required")
 
@@ -68,7 +69,7 @@ async def interpreter_template_ref(payload: NodeActivityInput) -> NodeActivityRe
     except ApiServiceError as exc:
         await record_and_flush(
             payload,
-            status=STATUS_ERROR,
+            status=STATUS_DEGRADED,
             started=started,
             error_code="prompt_resolution_unreachable",
         )

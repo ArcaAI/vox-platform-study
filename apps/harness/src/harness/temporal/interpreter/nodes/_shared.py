@@ -12,13 +12,13 @@ from __future__ import annotations
 from typing import Any
 
 from harness.core.config import get_settings
-from harness.temporal.activities import STATUS_ERROR, STATUS_OK, STEP_NODE, _now
+from harness.temporal.activities import STATUS_DEGRADED, STATUS_ERROR, STATUS_OK, STEP_NODE, _now
 from harness.temporal.activities import (
     _TrajectoryBatch as TrajectoryBatch,  # reuse, never a second emitter — noqa: SLF001
 )
 from harness.temporal.interpreter.models import NodeActivityInput
 
-__all__ = ["MISSING", "STATUS_ERROR", "STATUS_OK", "now", "record_and_flush", "resolve_dotted_path"]
+__all__ = ["MISSING", "STATUS_DEGRADED", "STATUS_ERROR", "STATUS_OK", "now", "record_and_flush", "resolve_dotted_path"]
 
 now = _now
 

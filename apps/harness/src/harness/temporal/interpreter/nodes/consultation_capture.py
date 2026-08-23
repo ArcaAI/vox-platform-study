@@ -20,7 +20,7 @@ from harness.temporal.activities import livedoc_start, livedoc_stop
 from harness.temporal.interpreter.models import NodeActivityInput, NodeActivityResult
 from harness.temporal.interpreter.nodes._consultation_shared import run_identity
 from harness.temporal.interpreter.nodes._shared import (
-    STATUS_ERROR,
+    STATUS_DEGRADED,
     STATUS_OK,
     now,
     record_and_flush,
@@ -38,7 +38,7 @@ async def interpreter_consultation_capture_binding(
     action = payload.config.get("action")
     if action not in _ACTIONS:
         await record_and_flush(
-            payload, status=STATUS_ERROR, started=started, error_code="invalid_action"
+            payload, status=STATUS_DEGRADED, started=started, error_code="invalid_action"
         )
         return NodeActivityResult(
             status="DEGRADED", reason=f"config.action {action!r} is not 'start' or 'stop'"
@@ -47,7 +47,7 @@ async def interpreter_consultation_capture_binding(
     identity = run_identity(payload.run_payload)
     if not identity.consultation_id:
         await record_and_flush(
-            payload, status=STATUS_ERROR, started=started, error_code="no_consultation_id"
+            payload, status=STATUS_DEGRADED, started=started, error_code="no_consultation_id"
         )
         return NodeActivityResult(
             status="DEGRADED", reason="run payload carries no consultationId to bind capture to"
@@ -64,7 +64,7 @@ async def interpreter_consultation_capture_binding(
         result = await livedoc_start(control) if action == "start" else await livedoc_stop(control)
     except ApiServiceError as exc:
         await record_and_flush(
-            payload, status=STATUS_ERROR, started=started, error_code="livedoc_unreachable"
+            payload, status=STATUS_DEGRADED, started=started, error_code="livedoc_unreachable"
         )
         return NodeActivityResult(
             status="DEGRADED", reason=f"live documentation {action} unreachable: {exc}"
@@ -72,7 +72,7 @@ async def interpreter_consultation_capture_binding(
 
     if not result.ok:
         await record_and_flush(
-            payload, status=STATUS_ERROR, started=started, error_code="livedoc_refused"
+            payload, status=STATUS_DEGRADED, started=started, error_code="livedoc_refused"
         )
         return NodeActivityResult(
             status="DEGRADED", reason=f"live documentation refused the {action} request"

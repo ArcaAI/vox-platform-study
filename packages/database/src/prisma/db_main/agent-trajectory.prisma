@@ -62,6 +62,13 @@ enum AgentStepStatus {
   ERROR
   SKIPPED
   TIMEOUT
+  // The interpreter's per-node "completed, but not fully" outcome (`NodeStatus` in
+  // apps/harness/.../interpreter/models.py). Added by TASK-789 (C-10): nodes RETURNED
+  // `status="DEGRADED"` while RECORDING their trajectory step as ERROR, because this enum had no
+  // member for it — so a partially-degraded graph was indistinguishable from one that failed
+  // outright, which is the single outcome a workflow author most needs to see and the one the
+  // interpreter is deliberately designed to produce rather than crash.
+  DEGRADED
 
   @@schema("core")
 }

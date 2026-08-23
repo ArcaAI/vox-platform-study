@@ -41,7 +41,7 @@ from harness.services.guardrail_client import (
 )
 from harness.temporal.interpreter.models import NodeActivityInput, NodeActivityResult
 from harness.temporal.interpreter.nodes._shared import (
-    STATUS_ERROR,
+    STATUS_DEGRADED,
     STATUS_OK,
     now,
     record_and_flush,
@@ -71,7 +71,7 @@ async def interpreter_guardrail_check(payload: NodeActivityInput) -> NodeActivit
     text = _extract_text(payload.bound_inputs)
     if not text:
         await record_and_flush(
-            payload, status=STATUS_ERROR, started=started, error_code="no_bound_text"
+            payload, status=STATUS_DEGRADED, started=started, error_code="no_bound_text"
         )
         return NodeActivityResult(status="DEGRADED", reason="no generated text bound to check")
 
@@ -91,7 +91,7 @@ async def interpreter_guardrail_check(payload: NodeActivityInput) -> NodeActivit
         )
     except GuardrailServiceError as exc:
         await record_and_flush(
-            payload, status=STATUS_ERROR, started=started, error_code="guardrail_unreachable"
+            payload, status=STATUS_DEGRADED, started=started, error_code="guardrail_unreachable"
         )
         return NodeActivityResult(
             status="DEGRADED", reason=f"guardrail unreachable — no verdict: {exc}"
@@ -101,7 +101,7 @@ async def interpreter_guardrail_check(payload: NodeActivityInput) -> NodeActivit
         # Guardrail's own fail-open branch fired. Its `safe` field is UNTRUSTED here — this is
         # exactly the "no verdict" case the module docstring names.
         await record_and_flush(
-            payload, status=STATUS_ERROR, started=started, error_code="guardrail_no_verdict"
+            payload, status=STATUS_DEGRADED, started=started, error_code="guardrail_no_verdict"
         )
         return NodeActivityResult(
             status="DEGRADED", reason=f"guardrail returned no verdict: {analysis.error}"
@@ -109,7 +109,7 @@ async def interpreter_guardrail_check(payload: NodeActivityInput) -> NodeActivit
 
     if not analysis.safe:
         await record_and_flush(
-            payload, status=STATUS_ERROR, started=started, error_code="guardrail_unsafe"
+            payload, status=STATUS_DEGRADED, started=started, error_code="guardrail_unsafe"
         )
         return NodeActivityResult(
             status="DEGRADED",

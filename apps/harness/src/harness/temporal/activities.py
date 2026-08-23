@@ -169,6 +169,10 @@ STEP_NODE = "NODE"
 STATUS_OK = "OK"
 STATUS_ERROR = "ERROR"
 STATUS_SKIPPED = "SKIPPED"
+# "Completed, but not fully." The interpreter's per-node DEGRADED outcome — persisted as itself
+# rather than collapsed into ERROR (TASK-789 C-10), so a partially-degraded graph is
+# distinguishable in the trace from one that failed outright.
+STATUS_DEGRADED = "DEGRADED"
 
 
 @dataclass

@@ -52,7 +52,7 @@ from harness.services.text_client import TextServiceError
 from harness.temporal.activities import _api_client, _phi_redactor, _text_client
 from harness.temporal.interpreter.models import NodeActivityInput, NodeActivityResult
 from harness.temporal.interpreter.nodes._shared import (
-    STATUS_ERROR,
+    STATUS_DEGRADED,
     STATUS_OK,
     now,
     record_and_flush,
@@ -98,7 +98,7 @@ async def interpreter_text_generate(payload: NodeActivityInput) -> NodeActivityR
     task_key = config.get("taskKey")
     if task_key not in _ALLOWED_TASK_KEYS:
         await record_and_flush(
-            payload, status=STATUS_ERROR, started=started, error_code="invalid_task_key"
+            payload, status=STATUS_DEGRADED, started=started, error_code="invalid_task_key"
         )
         return NodeActivityResult(
             status="DEGRADED",
@@ -108,7 +108,7 @@ async def interpreter_text_generate(payload: NodeActivityInput) -> NodeActivityR
     user_prompt = _assemble_prompt(payload.bound_inputs)
     if not user_prompt:
         await record_and_flush(
-            payload, status=STATUS_ERROR, started=started, error_code="no_bound_text"
+            payload, status=STATUS_DEGRADED, started=started, error_code="no_bound_text"
         )
         return NodeActivityResult(
             status="DEGRADED", reason="no text bound from an upstream node to generate from"
@@ -120,7 +120,7 @@ async def interpreter_text_generate(payload: NodeActivityInput) -> NodeActivityR
         raw_policy = await api_client.get_policy(payload.tenant_id, task_key=task_key)
     except ApiServiceError as exc:
         await record_and_flush(
-            payload, status=STATUS_ERROR, started=started, error_code="policy_fetch_unreachable"
+            payload, status=STATUS_DEGRADED, started=started, error_code="policy_fetch_unreachable"
         )
         return NodeActivityResult(
             status="DEGRADED", reason=f"effective policy fetch unreachable: {exc}"
@@ -131,7 +131,7 @@ async def interpreter_text_generate(payload: NodeActivityInput) -> NodeActivityR
     if not provider or not model:
         # Mirrors the text service's own fail-closed 422 ("no default model") — never substitute one.
         await record_and_flush(
-            payload, status=STATUS_ERROR, started=started, error_code="no_text_selection"
+            payload, status=STATUS_DEGRADED, started=started, error_code="no_text_selection"
         )
         return NodeActivityResult(
             status="DEGRADED", reason="no text provider/model resolved for this tenant"
@@ -162,7 +162,7 @@ async def interpreter_text_generate(payload: NodeActivityInput) -> NodeActivityR
         )
     except PhiEgressBlocked as exc:
         await record_and_flush(
-            payload, status=STATUS_ERROR, started=started, error_code="phi_egress_blocked"
+            payload, status=STATUS_DEGRADED, started=started, error_code="phi_egress_blocked"
         )
         return NodeActivityResult(status="DEGRADED", reason=f"phi egress blocked: {exc}")
 
@@ -184,7 +184,7 @@ async def interpreter_text_generate(payload: NodeActivityInput) -> NodeActivityR
         )
     except TextServiceError as exc:
         await record_and_flush(
-            payload, status=STATUS_ERROR, started=started, error_code="text_generate_failed"
+            payload, status=STATUS_DEGRADED, started=started, error_code="text_generate_failed"
         )
         return NodeActivityResult(status="DEGRADED", reason=f"text generate failed: {exc}")
 

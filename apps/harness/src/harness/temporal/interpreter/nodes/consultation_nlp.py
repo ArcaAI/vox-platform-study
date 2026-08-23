@@ -35,7 +35,7 @@ from harness.temporal.interpreter.nodes._consultation_shared import (
     run_identity,
 )
 from harness.temporal.interpreter.nodes._shared import (
-    STATUS_ERROR,
+    STATUS_DEGRADED,
     STATUS_OK,
     now,
     record_and_flush,
@@ -68,7 +68,7 @@ async def interpreter_consultation_extract_entities(
     text = bound_text(payload.bound_inputs)
     if not text:
         await record_and_flush(
-            payload, status=STATUS_ERROR, started=started, error_code="no_bound_text"
+            payload, status=STATUS_DEGRADED, started=started, error_code="no_bound_text"
         )
         return NodeActivityResult(
             status="DEGRADED", reason="no text bound from an upstream node to extract from"
@@ -86,7 +86,7 @@ async def interpreter_consultation_extract_entities(
         )
     except NlpServiceError as exc:
         await record_and_flush(
-            payload, status=STATUS_ERROR, started=started, error_code="nlp_extract_failed"
+            payload, status=STATUS_DEGRADED, started=started, error_code="nlp_extract_failed"
         )
         return NodeActivityResult(status="DEGRADED", reason=f"entity extraction failed: {exc}")
 
@@ -99,7 +99,7 @@ async def interpreter_consultation_extract_entities(
 
     if not identity.consultation_id:
         await record_and_flush(
-            payload, status=STATUS_ERROR, started=started, error_code="no_consultation_id"
+            payload, status=STATUS_DEGRADED, started=started, error_code="no_consultation_id"
         )
         return NodeActivityResult(
             status="DEGRADED",
@@ -118,7 +118,7 @@ async def interpreter_consultation_extract_entities(
         )
     except ApiServiceError as exc:
         await record_and_flush(
-            payload, status=STATUS_ERROR, started=started, error_code="persist_entities_failed"
+            payload, status=STATUS_DEGRADED, started=started, error_code="persist_entities_failed"
         )
         return NodeActivityResult(
             status="DEGRADED",
@@ -187,7 +187,7 @@ async def interpreter_consultation_bind_terminology(
     entities = bound_entities(payload.bound_inputs)
     if not entities:
         await record_and_flush(
-            payload, status=STATUS_ERROR, started=started, error_code="no_bound_entities"
+            payload, status=STATUS_DEGRADED, started=started, error_code="no_bound_entities"
         )
         return NodeActivityResult(
             status="DEGRADED", reason="no entities bound from an upstream extraction node"
@@ -200,7 +200,7 @@ async def interpreter_consultation_bind_terminology(
         raw_policy = await _api_client(get_settings()).get_policy(payload.tenant_id)
     except ApiServiceError as exc:
         await record_and_flush(
-            payload, status=STATUS_ERROR, started=started, error_code="policy_fetch_unreachable"
+            payload, status=STATUS_DEGRADED, started=started, error_code="policy_fetch_unreachable"
         )
         return NodeActivityResult(
             status="DEGRADED",
@@ -212,7 +212,7 @@ async def interpreter_consultation_bind_terminology(
     server = _select_terminology_server(policy.mcp_servers)
     if server is None:
         await record_and_flush(
-            payload, status=STATUS_ERROR, started=started, error_code="no_terminology_server"
+            payload, status=STATUS_DEGRADED, started=started, error_code="no_terminology_server"
         )
         return NodeActivityResult(
             status="DEGRADED",
@@ -239,7 +239,7 @@ async def interpreter_consultation_bind_terminology(
         # Same posture as `workflows.py`'s own `except ActivityError` around this call: the
         # terminology hop is best-effort, so it degrades rather than failing the run.
         await record_and_flush(
-            payload, status=STATUS_ERROR, started=started, error_code="mcp_tool_blocked"
+            payload, status=STATUS_DEGRADED, started=started, error_code="mcp_tool_blocked"
         )
         return NodeActivityResult(
             status="DEGRADED",
@@ -250,7 +250,7 @@ async def interpreter_consultation_bind_terminology(
     output = {**passthrough, "validation": result.content, "server": result.server}
     if result.degraded or not result.ok:
         await record_and_flush(
-            payload, status=STATUS_ERROR, started=started, error_code="mcp_tool_degraded"
+            payload, status=STATUS_DEGRADED, started=started, error_code="mcp_tool_degraded"
         )
         return NodeActivityResult(
             status="DEGRADED", reason="terminology server returned a degraded result", output=output

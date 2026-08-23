@@ -36,7 +36,7 @@ from harness.temporal.interpreter.nodes._consultation_shared import (
     run_identity,
 )
 from harness.temporal.interpreter.nodes._shared import (
-    STATUS_ERROR,
+    STATUS_DEGRADED,
     STATUS_OK,
     now,
     record_and_flush,
@@ -62,7 +62,7 @@ async def interpreter_consultation_sensors(payload: NodeActivityInput) -> NodeAc
     note_text = bound_text(payload.bound_inputs)
     if not note_text:
         await record_and_flush(
-            payload, status=STATUS_ERROR, started=started, error_code="no_bound_note"
+            payload, status=STATUS_DEGRADED, started=started, error_code="no_bound_note"
         )
         return NodeActivityResult(
             status="DEGRADED", reason="no draft note bound from an upstream node to verify"
@@ -80,7 +80,7 @@ async def interpreter_consultation_sensors(payload: NodeActivityInput) -> NodeAc
         )
     except Exception as exc:  # noqa: BLE001 — CR-14: a failing sensor degrades, never fails the run
         await record_and_flush(
-            payload, status=STATUS_ERROR, started=started, error_code="sensors_failed"
+            payload, status=STATUS_DEGRADED, started=started, error_code="sensors_failed"
         )
         return NodeActivityResult(status="DEGRADED", reason=f"sensor pass failed: {exc}")
 
@@ -105,7 +105,7 @@ async def interpreter_consultation_inferential_sensors(
     note_text = bound_text(payload.bound_inputs)
     if not note_text:
         await record_and_flush(
-            payload, status=STATUS_ERROR, started=started, error_code="no_bound_note"
+            payload, status=STATUS_DEGRADED, started=started, error_code="no_bound_note"
         )
         return NodeActivityResult(
             status="DEGRADED", reason="no draft note bound from an upstream node to verify"
@@ -115,7 +115,7 @@ async def interpreter_consultation_inferential_sensors(
         raw_policy = await _api_client(get_settings()).get_policy(payload.tenant_id)
     except ApiServiceError as exc:
         await record_and_flush(
-            payload, status=STATUS_ERROR, started=started, error_code="policy_fetch_unreachable"
+            payload, status=STATUS_DEGRADED, started=started, error_code="policy_fetch_unreachable"
         )
         return NodeActivityResult(
             status="DEGRADED", reason=f"effective policy fetch unreachable: {exc}"
@@ -125,7 +125,7 @@ async def interpreter_consultation_inferential_sensors(
     if not policy.judge_provider or not policy.judge_model:
         # Fail closed — never substitute an env-selected judge (see the module docstring).
         await record_and_flush(
-            payload, status=STATUS_ERROR, started=started, error_code="no_judge_selection"
+            payload, status=STATUS_DEGRADED, started=started, error_code="no_judge_selection"
         )
         return NodeActivityResult(
             status="DEGRADED", reason="no judge provider/model resolved for this tenant"
@@ -151,7 +151,7 @@ async def interpreter_consultation_inferential_sensors(
         )
     except Exception as exc:  # noqa: BLE001 — CR-14, same posture as the computational pass
         await record_and_flush(
-            payload, status=STATUS_ERROR, started=started, error_code="inferential_failed"
+            payload, status=STATUS_DEGRADED, started=started, error_code="inferential_failed"
         )
         return NodeActivityResult(status="DEGRADED", reason=f"inferential pass failed: {exc}")
 
@@ -163,7 +163,7 @@ async def interpreter_consultation_inferential_sensors(
     }
     if result.degraded:
         await record_and_flush(
-            payload, status=STATUS_ERROR, started=started, error_code="inferential_degraded"
+            payload, status=STATUS_DEGRADED, started=started, error_code="inferential_degraded"
         )
         return NodeActivityResult(
             status="DEGRADED",

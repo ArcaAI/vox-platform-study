@@ -28,7 +28,7 @@ from harness.services.guardrail_client import GuardrailClient, GuardrailServiceE
 from harness.temporal.activities import _check_consent
 from harness.temporal.interpreter.models import NodeActivityInput, NodeActivityResult
 from harness.temporal.interpreter.nodes._shared import (
-    STATUS_ERROR,
+    STATUS_DEGRADED,
     STATUS_OK,
     now,
     record_and_flush,
@@ -68,7 +68,7 @@ async def interpreter_consultation_consent_gate(payload: NodeActivityInput) -> N
     )
     if not decision.allowed:
         error_code = "consent_unavailable" if decision.unavailable else "consent_denied"
-        await record_and_flush(payload, status=STATUS_ERROR, started=started, error_code=error_code)
+        await record_and_flush(payload, status=STATUS_DEGRADED, started=started, error_code=error_code)
         return NodeActivityResult(
             status="DEGRADED",
             reason=f"consent gate did not pass (purpose={_CONSENT_PURPOSE_AI_DOCUMENTATION}): {error_code}",
@@ -99,7 +99,7 @@ async def interpreter_consultation_phi_hop(payload: NodeActivityInput) -> NodeAc
     mode = config.get("mode")
     if mode not in ("pseudonymize", "full"):
         await record_and_flush(
-            payload, status=STATUS_ERROR, started=started, error_code="invalid_mode"
+            payload, status=STATUS_DEGRADED, started=started, error_code="invalid_mode"
         )
         return NodeActivityResult(
             status="DEGRADED", reason=f"config.mode {mode!r} is not 'pseudonymize' or 'full'"
@@ -108,7 +108,7 @@ async def interpreter_consultation_phi_hop(payload: NodeActivityInput) -> NodeAc
     text = _extract_text(payload.bound_inputs)
     if not text:
         await record_and_flush(
-            payload, status=STATUS_ERROR, started=started, error_code="no_bound_text"
+            payload, status=STATUS_DEGRADED, started=started, error_code="no_bound_text"
         )
         return NodeActivityResult(status="DEGRADED", reason="no text bound to redact")
 
@@ -123,7 +123,7 @@ async def interpreter_consultation_phi_hop(payload: NodeActivityInput) -> NodeAc
         result = await client.redact(text=text, mode=mode, tenant_id=payload.tenant_id)
     except GuardrailServiceError as exc:
         await record_and_flush(
-            payload, status=STATUS_ERROR, started=started, error_code="guardrail_unreachable"
+            payload, status=STATUS_DEGRADED, started=started, error_code="guardrail_unreachable"
         )
         return NodeActivityResult(
             status="DEGRADED", reason=f"guardrail redact unreachable — no sanitized text: {exc}"
@@ -165,6 +165,6 @@ async def interpreter_consultation_hitl_gate(payload: NodeActivityInput) -> Node
     and `_HITL_GATE_NOT_AN_ACTIVITY`."""
     started = now()
     await record_and_flush(
-        payload, status=STATUS_ERROR, started=started, error_code="not_a_real_execution_path"
+        payload, status=STATUS_DEGRADED, started=started, error_code="not_a_real_execution_path"
     )
     return NodeActivityResult(status="DEGRADED", reason=_HITL_GATE_NOT_AN_ACTIVITY)
