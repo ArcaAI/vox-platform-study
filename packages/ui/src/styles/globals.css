@@ -264,7 +264,13 @@
   --secondary: #343434;
   --secondary-foreground: #e4e4e4;
   --muted: #1e1e1e;
-  --muted-foreground: #a0a0a0;
+  /* #aaaaaa, raised twice on measured evidence. #949494 failed on --secondary
+     (4.10); #a0a0a0 fixed that but still failed on --secondary-hover (4.03) and
+     its composited mid-tones, which the live browser found on the Workbench.
+     #aaaaaa is the first step that clears 4.5:1 on EVERY dark surface this token
+     is painted on: background 6.68 / card 7.18 / secondary 5.36 /
+     secondary-hover 4.53. */
+  --muted-foreground: #aaaaaa;
   --accent: #343434;
   --accent-foreground: #e4e4e4;
   /* AUTHORED — J-2 gives the hover step only for light (#e6e6e6); the dark
