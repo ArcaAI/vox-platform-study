@@ -357,9 +357,16 @@ class Settings(BaseSettings):
     # BullMQ ingest processor presents this as the ingest contract's token.
     internal_service_token: SecretStr = SecretStr("")
 
-    # Connection pooling (used by the loop's httpx tool clients)
-    httpx_max_connections: int = 200
-    httpx_max_keepalive: int = 100
+    # Redis — ONE job: the `arca:config:invalidate` subscriber that makes a
+    # control-plane write reach this process without waiting out the 60s TTL
+    # (TASK-799 A.3 / owner decision D-5). harness stores nothing in Redis and queues
+    # nothing through it; its durable state is Temporal's.
+    #
+    # ENV-TIER and staying that way: this is how the process REACHES Redis, which is
+    # exactly the bootstrap floor rule 09 reserves for env — a value delivered over the
+    # channel it configures could never bootstrap itself. Unreachable ⇒ the service
+    # still boots and still converges on the TTL backstop.
+    redis_url: str = "redis://localhost:6379/0"
 
     # -- Loop / gate-adapter --------------------------------------------------
     # Tool-service base URLs the durable loop calls out to.
@@ -456,7 +463,6 @@ class Settings(BaseSettings):
     # Cache dir for weights materialised from an `s3://` source_uri.
     atomic_fact_model_cache_dir: str = "/models/harness-cache"
     atomic_fact_model_id: str = "nvhf/MiniCheck-Flan-T5-Large-Q6_K-GGUF"
-    atomic_fact_model_file: str = "minicheck-flan-t5-large-q6_k.gguf"
     # 512 matches Flan-T5's training context (`n_ctx_train`); MiniCheck windows long
     # documents to ~512-token chunks, so more only wastes the encoder KV alloc and trips
     # llama.cpp's `n_ctx_seq > n_ctx_train` overflow warning.
@@ -484,14 +490,20 @@ class Settings(BaseSettings):
     text_model: str | None = None
     conversation_language: str = "en"
 
-    # Tool-call + Temporal activity timeouts / retry budgets.
+    # Per-PEER-CALL httpx timeouts, read by the clients this process builds.
+    #
+    # There are deliberately NO `HARNESS_ACTIVITY_START_TO_CLOSE_S`,
+    # `HARNESS_ACTIVITY_MAX_ATTEMPTS` or `HARNESS_GENERATE_MAX_ATTEMPTS` knobs.
+    # They were declared here, advertised in `.env.sample` and `turbo.json`, and read by
+    # NOTHING: Temporal activity timeouts and retry policies are module-level constants
+    # in `temporal/workflows.py` (`_INFERENTIAL_TIMEOUT`, `_INFERENTIAL_RETRY`,
+    # `_GENERATE_RETRY`) and MUST be, because a workflow body may not read env — that is
+    # the determinism rule 06 states. Wiring them would break replay; the honest fix is
+    # that they are gone. `test_task799_dead_settings.py` keeps them gone.
     text_timeout_s: float = 120.0
     nlp_timeout_s: float = 30.0
     api_timeout_s: float = 30.0
     guardrail_timeout_s: float = 30.0
-    activity_start_to_close_s: float = 150.0
-    activity_max_attempts: int = 3
-    generate_max_attempts: int = 2
 
     # F-29 — Worker-level admission cap (``Worker(max_concurrent_activities=...)``,
     # ``worker.py``). Left unset, Temporal admits activities unbounded, which lets
@@ -504,15 +516,11 @@ class Settings(BaseSettings):
     # ``HARNESS_LLM_MAX_CONCURRENCY`` if the semaphore is ever raised.
     max_concurrent_activities: int = 8
 
-    # Per-call LLM wall-clock timeout. Bounds EACH individual judge /
-    # citation-verify / Granite Guardian request inside the inferential pass so a single
-    # hung LM Studio call can no longer burn the whole 900s start_to_close before Temporal
-    # retries; a timed-out call is transient (retried within HARNESS_LLM_MAX_ATTEMPTS) and
-    # the owning sensor then self-degrades. Enforced by the shared LLM governor (env
-    # ``HARNESS_LLM_REQUEST_TIMEOUT_S``; see ``core.llm_concurrency.LlmGovernorConfig`` and
-    # ``eval.judge.providers._create_with_retry``). Safety net for the raised
-    # HARNESS_LLM_MAX_CONCURRENCY: a hung call now ties up a real slot.
-    llm_request_timeout_s: float = 120.0
+    # NOTE: there is no `llm_request_timeout_s` field here. `HARNESS_LLM_REQUEST_TIMEOUT_S`
+    # is real and live — its reader is `core/llm_concurrency.py` (`LlmGovernorConfig`),
+    # which reads the environment directly. This class carried a SECOND declaration of the
+    # same knob that nothing read; two declarations of one setting is how a value and its
+    # documentation drift apart, so the unread one is gone.
 
     # F-19 — assembled-prompt size alarm (``HARNESS_PROMPT_SIZE_WARN_CHARS``).
     # The doc loop deliberately re-sends the ENTIRE template+transcript prefix on
