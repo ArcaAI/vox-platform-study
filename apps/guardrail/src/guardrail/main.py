@@ -219,11 +219,14 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             token=settings.peer_service_token(settings.service_token),
         )
 
-    # Per-tenant config resolver. Only initialized when DB-config
-    # is enabled; otherwise the env-only engine path below is used unchanged.
+    # Per-tenant config resolver. Always initialized: the `db_config_enabled`
+    # gate that used to gate it is gone (TASK-799 lane D). It described an
+    # "otherwise the env-only engine path is used" fallback that TASK-735/736
+    # deleted, so its only effect was to leave the resolver unbuilt and 503 every
+    # route that needs a selection.
     if not hasattr(app.state, "tenant_config_resolver"):
         app.state.tenant_config_resolver = None
-    if settings.db.db_config_enabled and app.state.tenant_config_resolver is None:
+    if app.state.tenant_config_resolver is None:
         from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
         from guardrail.core.tenant_config import TenantConfigResolver

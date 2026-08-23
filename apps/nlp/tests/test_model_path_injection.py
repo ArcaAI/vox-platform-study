@@ -85,10 +85,10 @@ class TestVaultSecretsDirCannotSetModelIdentity:
 
         secrets = tmp_path / "vault-secrets"
         secrets.mkdir()
-        (secrets / "NLP_SERVICE_TOKEN").write_text("vault-nlp-token")
+        (secrets / "INTERNAL_ACCESS_TOKEN").write_text("vault-nlp-token")
         monkeypatch.setenv("HOPE_SECRETS_DIR", str(secrets))
 
-        assert NLPServiceConfig().service_token.get_secret_value() == "vault-nlp-token"
+        assert NLPServiceConfig().internal_access_token.get_secret_value() == "vault-nlp-token"
 
     def test_request_injection_remains_the_one_identity_lane(self) -> None:
         from nlp.core.config import TokenClassificationConfig

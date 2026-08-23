@@ -4,6 +4,7 @@ from contextlib import asynccontextmanager
 from typing import Any
 
 import httpx
+import redis.asyncio as aioredis
 from fastapi import FastAPI
 from hope_env import BuildInfoReader
 from hope_env.service_registration import start_registration, stop_registration
@@ -72,14 +73,40 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     # triggers the first fetch, and a failure negative-caches into env behaviour.
     app.state.effective_config_client = EffectiveConfigClient(
         base_url=settings.service.gateway_url,
-        # Owner decision D-D: PRESENT the one shared `INTERNAL_ACCESS_TOKEN`, with
-        # the legacy per-service token only as the migration fallback. Reading
-        # `service_token` directly sent an EMPTY token whenever the platform was
-        # configured the way D-D specifies, so this pull 401'd and every node
-        # silently degraded to its env values.
-        token=settings.service.peer_service_token(settings.service.service_token),
+        # Owner decision D-D: PRESENT the ONE shared `INTERNAL_ACCESS_TOKEN`.
+        # The legacy per-service fallback is gone (TASK-799 lane D) now that the
+        # migration it existed for is complete.
+        token=settings.service.peer_service_token(),
         service="nlp",
     )
+
+    # ── Push invalidation for that client (owner decision D-5) ─────────────
+    #
+    # Rule 09 §"Config caches": *invalidation is the propagation path; the TTL
+    # is a bounded-staleness safety net.* Round 2 built the subscriber and the
+    # gateway's publisher, but this service held no Redis client — so the
+    # handler existed with no wire under it and every control-plane write took
+    # a full TTL window to be seen here.
+    #
+    # Both halves degrade rather than fail: constructing the client is guarded
+    # because a service that cannot reach its cache is DEGRADED, not broken —
+    # taking the NLP plane down because a propagation optimisation is
+    # unavailable inverts the priority — and the listener task itself never
+    # raises (every failure inside it falls back to the TTL). A process that
+    # boots while Redis is down still starts, and still converges.
+    app.state.redis = None
+    app.state.config_invalidation_task = None
+    try:
+        app.state.redis = aioredis.from_url(
+            settings.service.redis_url, decode_responses=True
+        )
+        app.state.config_invalidation_task = asyncio.create_task(
+            app.state.effective_config_client.run_invalidation_listener(app.state.redis)
+        )
+    except Exception as exc:  # noqa: BLE001 — propagation degrades to the TTL backstop
+        logger.warning(
+            f"nlp.config_invalidation.unavailable error={type(exc).__name__} {exc}"
+        )
 
     # apps/nlp's first peer-service client (TASK-729): a dedicated,
     # long-lived httpx.AsyncClient for calling `text`'s /generate — mirrors
@@ -89,9 +116,8 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     app.state.external_text_client = ExternalTextClient(
         settings=settings.external_text,
         http_client=app.state.external_text_http_client,
-        # Owner decision D-D: PRESENT the one shared `INTERNAL_ACCESS_TOKEN`; the
-        # legacy `NLP_EXTERNAL_TEXT_SERVICE_TOKEN` is only the migration fallback.
-        service_token=settings.service.peer_service_token(settings.external_text.service_token),
+        # Owner decision D-D: the ONE shared `INTERNAL_ACCESS_TOKEN`.
+        service_token=settings.service.peer_service_token(),
     )
 
     setup_opentelemetry(app)
@@ -109,7 +135,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             http_client=registration_client,
             gateway_url=settings.service.gateway_url,
             # Owner decision D-D — see the effective-config client above.
-            service_token=settings.service.peer_service_token(settings.service.service_token),
+            service_token=settings.service.peer_service_token(),
             build_info=BuildInfoReader().get_build_info(),
             environment=settings.service.environment.value,
         )
@@ -130,6 +156,19 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     warm_task = getattr(app.state, "warm_models_task", None)
     if warm_task is not None and not warm_task.done():
         warm_task.cancel()
+
+    # Stop the subscriber before dropping the connection it listens on, or the
+    # cancelled task wakes onto a closed client and logs a spurious error.
+    invalidation_task = getattr(app.state, "config_invalidation_task", None)
+    if invalidation_task is not None and not invalidation_task.done():
+        invalidation_task.cancel()
+
+    redis_client = getattr(app.state, "redis", None)
+    if redis_client is not None:
+        try:
+            await redis_client.aclose()
+        except Exception as exc:  # noqa: BLE001 — shutdown must not raise
+            logger.warning(f"nlp.redis.close_failed error={type(exc).__name__} {exc}")
 
     # Drain the guard batchers so no request is left waiting on a dead loop.
     from nlp.services.guard_dispatch import reset_guard_batchers
