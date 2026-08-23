@@ -152,7 +152,19 @@ class RedisConfig(BaseSettings):
 
     # `redis_url` is the whole surface: the job plane's TTLs and stream bound
     # were declared here and never read by anything (TASK-799 F-13).
-    redis_url: str = "redis://localhost:6379/0"
+    #
+    # The alias is not decoration. `env_prefix="GUARDRAIL_REDIS_"` + a field
+    # named `redis_url` resolves to `GUARDRAIL_REDIS_REDIS_URL` — a stuttering
+    # name nothing sets. Every operator-facing file says `GUARDRAIL_REDIS_URL`
+    # (`.gitlab/ci/test.yml:695` even wires it to `$CI_REDIS_URL`), so the
+    # documented name has never actually reached this service and CI has been
+    # silently testing against the localhost default. Found by the Python drift
+    # gate added in TASK-799 Phase 1.5; the stuttering form stays accepted so
+    # nothing that DID set it breaks.
+    redis_url: str = Field(
+        default="redis://localhost:6379/0",
+        validation_alias=AliasChoices("GUARDRAIL_REDIS_URL", "GUARDRAIL_REDIS_REDIS_URL"),
+    )
 
 
 class QueueConfig(BaseSettings):
@@ -276,7 +288,14 @@ class Settings(BaseSettings):
 
     # Application
     host: str = "0.0.0.0"
-    port: int = 8863
+    # `GUARDRAIL_PORT` is the fleet-wide name for this concept: it is what
+    # `scripts/dev-service.sh:267` passes to uvicorn, what `.env.test` sets to
+    # 8963, and what `apps/api/src/__tests__/env-port-standardization.test.ts`
+    # pairs with `GUARDRAIL_URL`. Only `GUARDRAIL_V2_PORT` was ever readable
+    # here, so every one of those declarations reached the launcher and not the
+    # app — harmless while uvicorn always wins, and wrong the moment anything
+    # reads `settings.port`. Accept both; the fleet name first (TASK-799 B.3).
+    port: int = Field(default=8863, validation_alias=AliasChoices("GUARDRAIL_PORT", "GUARDRAIL_V2_PORT"))
     debug: bool = False
     log_level: str = "info"
     cors_origins: list[str] = Field(default_factory=list)

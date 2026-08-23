@@ -31,12 +31,30 @@ class Settings(BaseSettings):
     )
 
     # Application
+    #
+    # This class carries NO `env_prefix`, so every field below resolves to its
+    # BARE uppercased name. That was defensible when each service read its own
+    # file; since TASK-558 lane C all seven deployables read ONE
+    # `.env.<NODE_ENV>`, and a flat file has exactly one value per key. `PORT`,
+    # `HOST`, `DEBUG` and `LOG_LEVEL` therefore belong to whoever writes them
+    # last — in `.env.test` that is the gateway, which sets `PORT=8968`, so
+    # `settings.port` here reads the API's port. Nothing has broken only because
+    # `scripts/dev-service.sh` passes `--port` to uvicorn before the file is
+    # read; anything that consults `settings.port` gets the wrong answer.
+    #
+    # The prefixed name is listed FIRST so it wins, and the bare name stays
+    # accepted so existing deployments keep working (TASK-799 B.3). Fields that
+    # name genuinely SHARED infrastructure — `DATABASE_URL`, `REDIS_URL`,
+    # `MINIO_*` — are deliberately left bare: one address, one value, every
+    # service.
     app_name: str = "stt"
     app_version: str = "2.0.0"
-    debug: bool = False
-    host: str = "0.0.0.0"
-    port: int = 8861
-    log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR"] = "INFO"
+    debug: bool = Field(default=False, validation_alias=AliasChoices("STT_DEBUG", "DEBUG"))
+    host: str = Field(default="0.0.0.0", validation_alias=AliasChoices("STT_HOST", "HOST"))
+    port: int = Field(default=8861, validation_alias=AliasChoices("STT_PORT", "PORT"))
+    log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR"] = Field(
+        default="INFO", validation_alias=AliasChoices("STT_LOG_LEVEL", "LOG_LEVEL")
+    )
 
     @field_validator("log_level", mode="before")
     @classmethod
@@ -823,6 +841,11 @@ class Settings(BaseSettings):
     )
     otel_service_name: str = Field(
         default="stt",
+        # Bare `OTEL_SERVICE_NAME` is also `apps/nlp`'s first-choice alias and
+        # the gateway's own; in the one shared env file it can only ever name
+        # ONE service, so every other service's traces get mislabelled. Prefixed
+        # first, bare kept as the fallback (TASK-799 B.3).
+        validation_alias=AliasChoices("STT_OTEL_SERVICE_NAME", "OTEL_SERVICE_NAME"),
         description="Service name in traces and metrics",
     )
     metrics_enabled: bool = Field(

@@ -1,3 +1,4 @@
+import logging
 import os
 from enum import IntEnum, StrEnum
 from typing import Any
@@ -9,7 +10,7 @@ from hope_env import (
     load_env,
     real_secret,
 )
-from pydantic import AliasChoices, Field, SecretStr, model_validator
+from pydantic import AliasChoices, Field, SecretStr, field_validator, model_validator
 from pydantic.fields import FieldInfo
 from pydantic_settings import BaseSettings, PydanticBaseSettingsSource, SettingsConfigDict
 
@@ -144,7 +145,23 @@ class NLPServiceConfig(BaseSettings):
         ),
     )
     environment: Environment = Field(default=Environment.DEVELOPMENT)
+    # Typed `int` (a `logging` level number) but written by operators as a NAME
+    # — `apps/nlp/.env.sample` shipped `LOG_LEVEL=info`, and every other service
+    # in the fleet takes a name. So `NLP_LOG_LEVEL=INFO` used to be a boot-time
+    # ValidationError while `NLP_LOG_LEVEL=20` was undocumented anywhere. Accept
+    # both spellings of the ONE name (TASK-799 B.3); `core/logging.py` reads the
+    # same variable and resolves it the same way.
     log_level: int = Field(default=LogLevel.INFO)
+
+    @field_validator("log_level", mode="before")
+    @classmethod
+    def _coerce_log_level(cls, value: object) -> object:
+        """Map a level NAME (``"info"``, ``"WARNING"``) to its numeric level."""
+        if isinstance(value, str) and not value.strip().isdigit():
+            named = getattr(logging, value.strip().upper(), None)
+            if isinstance(named, int):
+                return named
+        return value
 
     host: str = Field(default="0.0.0.0", validation_alias=AliasChoices("NLP_HOST", "HOST"))
     port: int = Field(default=8864, validation_alias=AliasChoices("NLP_PORT", "PORT"))
