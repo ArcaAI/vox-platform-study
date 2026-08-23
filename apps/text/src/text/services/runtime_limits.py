@@ -24,6 +24,7 @@ import structlog
 from text.core.defaults import apply_generation_defaults
 from text.core.effective_config import EffectiveConfigSnapshot
 from text.core.guardrail_posture import platform_posture
+from text.core.runtime_defaults import LANE_FLOORS, USER_LANE_FLOOR
 from text.services.resizable_semaphore import ResizableSemaphore
 
 logger = structlog.get_logger(__name__)
@@ -99,16 +100,42 @@ def apply_provider_retention(snapshot: EffectiveConfigSnapshot, registry: Any) -
 
 
 def apply_lane_budgets(snapshot: EffectiveConfigSnapshot, state: Any) -> None:
-    """Publish the resolved `(provider, lane)` budgets onto app state.
+    """Publish the resolved `(provider, lane)` budgets, and apply the live half.
 
-    Read by the judge lane (`api/endpoints/judge.py`) and the user-facing queue
-    wait, replacing `TEXT_JUDGE_*` / `TEXT_QUEUE_*` / `TEXT_CB_*`. Stored rather
-    than applied in place because — unlike a semaphore's ceiling — a breaker
-    threshold is consulted at call time, so there is no live object to resize.
+    Replaces `TEXT_JUDGE_*` / `TEXT_QUEUE_*` / `TEXT_CB_*` — three spellings of
+    the same four concepts — with one budget keyed `(provider, lane)`.
+
+    Two halves, because the objects differ:
+      * the USER-lane circuit breakers already exist, so their thresholds move on
+        the live object (a fresh breaker would discard the failure count and
+        open/closed state of the provider being retuned);
+      * the judge lane builds its breakers and semaphores lazily on first use, so
+        its budget is simply published for `api/endpoints/judge.py` to read.
     """
     if not snapshot.ok:
         return
-    state.lane_budgets = snapshot.lane_budgets()
+    budgets = snapshot.lane_budgets()
+    state.lane_budgets = budgets
+
+    breakers = getattr(state, "circuit_breakers", None)
+    if not isinstance(breakers, dict):
+        return
+    for provider, breaker in breakers.items():
+        served = budgets.get((provider, "user"))
+        if not served:
+            continue
+        apply_budget = getattr(breaker, "apply_budget", None)
+        if apply_budget is None:
+            continue
+        try:
+            apply_budget(USER_LANE_FLOOR.merged(served))
+        except Exception as exc:  # noqa: BLE001 — never break a request path
+            logger.warning(
+                "text.effective_config.breaker_apply_error",
+                provider=provider,
+                error=str(exc),
+                error_type=type(exc).__name__,
+            )
 
 
 def apply_platform_posture(snapshot: EffectiveConfigSnapshot, state: Any) -> None:
@@ -160,8 +187,6 @@ async def refresh_runtime_limits(state: Any) -> None:
 
 def lane_budget(state: Any, provider: str, lane: str) -> Any:
     """The effective budget for one `(provider, lane)`: served over the floor."""
-    from text.core.runtime_defaults import LANE_FLOORS, USER_LANE_FLOOR
-
     floor = LANE_FLOORS.get(lane, USER_LANE_FLOOR)
     budgets = getattr(state, "lane_budgets", None)
     if not isinstance(budgets, dict):
