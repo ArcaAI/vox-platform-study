@@ -150,6 +150,30 @@ test.describe('workflow studio editor', () => {
     await expect(page.getByText(/(run validate|resolve every error) before publishing/i)).toBeVisible();
   });
 
+  /**
+   * TASK-797 W1 (R2) — "the tenant admin MUST be able to manage, control, TEST using
+   * playground". The sandbox plane itself already existed in the Workbench (TASK-721); what the
+   * Studio lacked was a way to reach it for the definition on screen. Rule 13's "one
+   * authoritative editor per backend resource" makes that a plain-href deep link rather than a
+   * second sandbox client, so this asserts the link AND that following it lands on a Workbench
+   * with that definition already selected.
+   */
+  test('offers a Workbench sandbox link for the definition being edited, and it preselects that definition', async ({ page }) => {
+    const definitionId = await createDraft(page, `e2e_sandbox_${Date.now()}`);
+    test.skip(!definitionId, 'Draft creation did not navigate to an editor id');
+
+    const link = page.getByRole('link', { name: /test in workbench/i });
+    await expect(link).toBeVisible();
+    await expect(link).toHaveAttribute('href', `/playground/workbench?definitionId=${definitionId}`);
+
+    await link.click();
+    await expect(page).toHaveURL(new RegExp(`/playground/workbench\\?definitionId=${definitionId}`));
+    // The Workbench marks a sandbox run as such — an admin must never mistake one for a real run.
+    await expect(page.getByRole('heading', { level: 1, name: 'Workbench' })).toBeVisible();
+    await expect(page.getByText(/sandbox/i).first()).toBeVisible();
+    await expect(page.getByRole('combobox', { name: 'Workflow definition' })).toBeVisible();
+  });
+
   test('a mandatory node exposes no Delete affordance in EITHER view mode', async ({ page }) => {
     // The live registry DOES class nodes `mandatory` now (`input.context_binding` and friends),
     // so this no longer skips as it did when TASK-720 had not landed.
