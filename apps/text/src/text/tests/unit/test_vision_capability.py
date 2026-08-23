@@ -33,13 +33,13 @@ def _image_request(**overrides: Any) -> GenerateRequest:
         ],
     }
     payload.update(overrides)
-    return GenerateRequest(**payload, model="test-model")
+    return GenerateRequest(**payload)
 
 
 def _text_request(**overrides: Any) -> GenerateRequest:
     payload: dict[str, Any] = {"prompt": "hello", "model": "caller-model"}
     payload.update(overrides)
-    return GenerateRequest(**payload, model="test-model")
+    return GenerateRequest(**payload)
 
 
 # ---------------------------------------------------------------------------
@@ -139,9 +139,24 @@ class TestTextOnlyRegression:
         assert params["messages"] == [{"role": "user", "content": [{"text": "hello"}]}]
 
     def test_llama_cpp_does_not_raise_for_a_text_only_request(self):
+        provider = _llama_cpp()
 
         payload = provider._build_payload(_text_request(), stream=False)
         assert payload["prompt"] == "hello"
+
+
+
+def _llama_cpp(http_client=None):
+    """A llama.cpp adapter with an endpoint already resolved.
+
+    The endpoint arrives with the request now, so a test about the WIRE binds one
+    up front (`stub_endpoint`) rather than configuring the adapter.
+    """
+    from text.providers.llama_cpp import LlamaCppProvider
+
+    provider = LlamaCppProvider(http_client if http_client is not None else AsyncMock())
+    stub_endpoint(provider, "http://localhost:8080")
+    return provider
 
 
 # ---------------------------------------------------------------------------
@@ -257,6 +272,7 @@ class TestLlamaCppRejectsVision:
     async def test_generate_raises_vision_not_supported_error(self):
         from text.core.exceptions import VisionNotSupportedError
 
+        provider = _llama_cpp()
         with pytest.raises(VisionNotSupportedError):
             await provider.generate(_image_request())
 
@@ -264,6 +280,7 @@ class TestLlamaCppRejectsVision:
     async def test_generate_stream_raises_vision_not_supported_error(self):
         from text.core.exceptions import VisionNotSupportedError
 
+        provider = _llama_cpp()
         with pytest.raises(VisionNotSupportedError):
             async for _ in provider.generate_stream(_image_request()):
                 pass
@@ -280,6 +297,7 @@ class TestLlamaCppRejectsVision:
         from text.core.exceptions import VisionNotSupportedError
 
         http = AsyncMock()
+        provider = _llama_cpp(http)
         with pytest.raises(VisionNotSupportedError):
             await provider.generate(_image_request())
         http.post.assert_not_called()
@@ -297,7 +315,6 @@ class TestSupportsVisionPerProvider:
 
         provider = OpenAICompatProvider()
         provider._client = stub_client(provider, MagicMock())
-        provider._client.models.list = AsyncMock(return_value=MagicMock(data=[]))
         info = await provider.get_info()
         assert info.supports_vision is True
 
@@ -308,7 +325,6 @@ class TestSupportsVisionPerProvider:
         provider = VllmProvider()
         stub_endpoint(provider)
         provider._client = stub_client(provider, MagicMock())
-        provider._client.models.list = AsyncMock(return_value=MagicMock(data=[]))
         info = await provider.get_info()
         assert info.supports_vision is True
 
@@ -317,7 +333,6 @@ class TestSupportsVisionPerProvider:
         from text.providers.azure_openai import AzureOpenAIProvider
 
         provider = AzureOpenAIProvider()
-        provider._client.models.list = AsyncMock()
         info = await provider.get_info()
         assert info.supports_vision is True
 
@@ -326,7 +341,6 @@ class TestSupportsVisionPerProvider:
         from text.providers.openai import OpenAIProvider
 
         provider = OpenAIProvider()
-        provider._client.models.list = AsyncMock(return_value=MagicMock(data=[]))
         info = await provider.get_info()
         assert info.supports_vision is True
 
@@ -335,7 +349,6 @@ class TestSupportsVisionPerProvider:
         from text.providers.anthropic import AnthropicProvider
 
         provider = AnthropicProvider()
-        provider._client.models.list = AsyncMock(return_value=MagicMock(data=[]))
         info = await provider.get_info()
         assert info.supports_vision is True
 
@@ -360,8 +373,8 @@ class TestSupportsVisionPerProvider:
 
     @pytest.mark.asyncio
     async def test_llama_cpp_does_not_support_vision(self):
-
         http = AsyncMock()
         http.get = AsyncMock(return_value=MagicMock(status_code=200))
+        provider = _llama_cpp(http)
         info = await provider.get_info()
         assert info.supports_vision is False
