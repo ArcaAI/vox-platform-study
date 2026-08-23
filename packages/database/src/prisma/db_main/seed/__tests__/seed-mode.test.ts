@@ -74,7 +74,19 @@ describe('resolveSeedMode — "all" is refused outside development/test', () => 
 });
 
 describe('isPhaseEnabled — which phases each mode runs', () => {
-  const DANGEROUS = ['02-apikey', '08-dna-writing-style', '09-consultation', '10-audit-log', '91-user'];
+  // TASK-798 added the last two. They are neither credentials nor PHI: both carry
+  // `createdBy: <the ArcaAI tenant admin>`, so running them in `safe` would attribute tenant
+  // configuration — and a PUBLISHED clinical workflow — to a named human who never authored it.
+  // See `seed-mode.ts`'s table for the full reasoning.
+  const DANGEROUS = [
+    '02-apikey',
+    '07f-arcaai-department-context-schemas',
+    '08-dna-writing-style',
+    '09-consultation',
+    '10-audit-log',
+    '23-arcaai-workflow-authoring',
+    '91-user',
+  ];
 
   it('runs nothing at all in "none"', () => {
     for (const phase of [...DANGEROUS, '01-policy', '15-entitlements']) {
@@ -88,7 +100,7 @@ describe('isPhaseEnabled — which phases each mode runs', () => {
     }
   });
 
-  it.each(DANGEROUS)('excludes %s from "safe" — demo credentials, synthetic PHI, or audit-trail writes', (phase) => {
+  it.each(DANGEROUS)('excludes %s from "safe" — demo credentials, synthetic PHI, audit-trail writes, or fabricated authorship', (phase) => {
     expect(isPhaseEnabled(phase, 'safe')).toBe(false);
   });
 
