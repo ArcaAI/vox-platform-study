@@ -311,7 +311,7 @@ async def run_worker() -> None:
         service_release_task = start_registration(
             http_client=service_release_http_client,
             gateway_url=f"{settings.api_base_url.rstrip('/')}/api/v1",
-            service_token=settings.service_token.get_secret_value(),
+            service_token=settings.peer_service_token(settings.service_token),
             build_info=worker_build_info,
             environment=settings.environment,
         )

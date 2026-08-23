@@ -79,7 +79,7 @@ class TestSettings:
         with patch.dict(os.environ, {}, clear=True):
             settings = Settings()
 
-            assert settings.worker_concurrency == 4
+            assert settings.worker_threads == 4
             assert settings.worker_max_retries == 3
 
     def test_transcription_defaults(self):
@@ -111,6 +111,54 @@ class TestSettings:
             # Non-secret operational fields are unaffected.
             assert settings.sarvam_base_url == "https://api.sarvam.ai"
             assert settings.openai_base_url == "https://api.openai.com/v1"
+
+    def test_azure_foundry_is_byok_only_and_carries_no_model_default(self):
+        """Azure Foundry joins the BYOK-only set: the API KEY is resolved per
+        request from the provider-connection plane (`azure.foundryApiKey` is a
+        registered vault-kv descriptor), and the MAI model is SELECTION, which
+        the pipeline's AiModel carries. Neither is a Settings field; the
+        non-secret enable flag and endpoint remain."""
+        env_vars = {
+            "AZURE_FOUNDRY_API_KEY": "leaked-foundry",
+            "AZURE_FOUNDRY_MODEL": "mai-transcribe-1.5",
+            "AZURE_FOUNDRY_ENDPOINT": "https://res.cognitiveservices.azure.com",
+        }
+        with patch.dict(os.environ, env_vars, clear=True):
+            settings = Settings(_env_file=None)
+
+            assert not hasattr(settings, "azure_foundry_api_key")
+            assert not hasattr(settings, "azure_foundry_model")
+            assert settings.azure_foundry_enabled is False
+            assert settings.azure_foundry_endpoint == "https://res.cognitiveservices.azure.com"
+
+    def test_verified_dead_settings_fields_are_gone(self):
+        """Fields with ZERO read sites anywhere in the service. `WORKER_CONCURRENCY`
+        was even self-documented as dead in `core/runtime_limits.py` and still
+        shipped — a dead knob an operator can set is worse than no knob, because
+        setting it looks like it did something.
+
+        Beware the same-named LIVE symbols: `resolve_worker_concurrency()` and the
+        effective-config snapshot's `worker_concurrency()` method both stay — only
+        the SETTINGS FIELD was dead. `worker_threads` is what reaches `Worker(...)`."""
+        dead = (
+            "whisper_cpp_library_path",
+            "vad_sample_rate",
+            "diarization_similarity_threshold",
+            "inference_pool_size",
+            "mlflow_tracking_uri",
+            "mlflow_model_registry",
+            "worker_concurrency",
+        )
+        for name in dead:
+            assert name not in Settings.model_fields, f"{name} is dead and must not be a field"
+
+        # The live neighbours these sat next to must survive.
+        with patch.dict(os.environ, {}, clear=True):
+            settings = Settings(_env_file=None)
+            assert settings.worker_threads == 4
+            assert settings.whisper_cpp_num_threads == 8
+            assert settings.vad_speech_pad_ms == 200
+            assert settings.diarization_hf_model_id == "pyannote/wespeaker-voxceleb-resnet34-LM"
 
     def test_env_override(self):
         """Test environment variable overrides."""
@@ -286,7 +334,6 @@ class TestSettings:
             assert settings.vad_min_speech_duration_ms == 100
             assert settings.vad_min_silence_duration_ms == 500
             assert settings.vad_speech_pad_ms == 200
-            assert settings.vad_sample_rate == 16000
 
     def test_vad_env_override(self):
         """Test Silero VAD environment variable overrides."""
@@ -296,7 +343,6 @@ class TestSettings:
             "VAD_MIN_SPEECH_DURATION_MS": "300",
             "VAD_MIN_SILENCE_DURATION_MS": "600",
             "VAD_SPEECH_PAD_MS": "50",
-            "VAD_SAMPLE_RATE": "8000",
         }
         with patch.dict(os.environ, env_vars, clear=True):
             settings = Settings()
@@ -305,48 +351,25 @@ class TestSettings:
             assert settings.vad_min_speech_duration_ms == 300
             assert settings.vad_min_silence_duration_ms == 600
             assert settings.vad_speech_pad_ms == 50
-            assert settings.vad_sample_rate == 8000
 
     def test_diarization_defaults(self):
         """Test Pyannote diarization default configuration."""
         with patch.dict(os.environ, {}, clear=True):
             settings = Settings(_env_file=None)
             assert settings.diarization_hf_model_id == "pyannote/wespeaker-voxceleb-resnet34-LM"
-            assert settings.diarization_similarity_threshold == 0.7
             assert settings.diarization_device == "auto"
 
     def test_diarization_env_override(self):
         """Test diarization environment variable overrides."""
         env_vars = {
             "DIARIZATION_HF_MODEL_ID": "custom/embedding-model",
-            "DIARIZATION_SIMILARITY_THRESHOLD": "0.8",
             "DIARIZATION_DEVICE": "cuda",
         }
         with patch.dict(os.environ, env_vars, clear=True):
             settings = Settings()
             assert settings.diarization_hf_model_id == "custom/embedding-model"
-            assert settings.diarization_similarity_threshold == 0.8
             assert settings.diarization_device == "cuda"
 
-    def test_inference_pool_defaults(self):
-        """Test inference pool default configuration."""
-        with patch.dict(os.environ, {}, clear=True):
-            settings = Settings()
-            assert settings.inference_pool_size == 0
-
-    def test_inference_pool_env_override(self):
-        """Test inference pool environment variable overrides."""
-        env_vars = {"INFERENCE_POOL_SIZE": "4"}
-        with patch.dict(os.environ, env_vars, clear=True):
-            settings = Settings()
-            assert settings.inference_pool_size == 4
-
-    def test_mlflow_defaults(self):
-        """Test MLFlow reserved fields default to None."""
-        with patch.dict(os.environ, {}, clear=True):
-            settings = Settings(_env_file=None)
-            assert settings.mlflow_tracking_uri is None
-            assert settings.mlflow_model_registry is None
 
 
 class TestGetSettings:
@@ -386,8 +409,8 @@ class TestSecretRedaction:
         "AZURE_STORAGE_CONNECTION_STRING": "leak-azure-conn",
         "API_GATEWAY_KEY": "leak-gateway",
         "HUGGINGFACE_TOKEN": "leak-hf",
-        # AZURE_SPEECH_KEY is no longer a settings field (BYOK-only).
-        "AZURE_FOUNDRY_API_KEY": "leak-foundry",
+        # AZURE_SPEECH_KEY and AZURE_FOUNDRY_API_KEY are no longer settings
+        # fields (both BYOK-only).
     }
 
     def _settings(self) -> Settings:
@@ -416,4 +439,3 @@ class TestSecretRedaction:
         assert settings.azure_storage_connection_string.get_secret_value() == "leak-azure-conn"
         assert settings.api_gateway_key.get_secret_value() == "leak-gateway"
         assert settings.huggingface_token.get_secret_value() == "leak-hf"
-        assert settings.azure_foundry_api_key.get_secret_value() == "leak-foundry"
