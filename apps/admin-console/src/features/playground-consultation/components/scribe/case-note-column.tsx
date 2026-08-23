@@ -59,7 +59,7 @@ import { HighlightedNoteText } from './highlighted-note-text';
 import { ClinicalSuggestionsPanel } from './clinical-suggestions-panel';
 import { CorrectionProposalsPanel } from './correction-proposals-panel';
 import { composeAutofill, formatSoapSections } from '../../lib/soap-autofill';
-import type { ClinicalSuggestionSet, CorrectionProposalSet } from '../../api/pending-contracts';
+import type { ClinicalSuggestion, CorrectionsEnvelope } from '../../api/live-assist';
 
 /** Ordered vitals for the Objective grid — only present values render. */
 function vitalCells(vitals: LiveSummaryVitals): Array<{ label: string; value: string }> {
@@ -241,20 +241,23 @@ export interface CaseNoteColumnProps {
    */
   namedEntities?: NamedEntitiesAggregate | null;
   /**
-   * W2/R3 — spelling / medical-term / drug-name correction PROPOSALS.
+   * W2/R3 — spelling / medical-term / drug-name correction PROPOSALS, off the `live-assist`
+   * stream (TASK-796's brokered contract; shapes in `api/live-assist.ts`).
    *
-   * ⚠ No transport exists yet. `consultation.proposeCorrections` runs in the harness and its
-   * output is an in-memory `NodeActivityResult` — there is no Prisma model, no gateway route
-   * and no DTO, so nothing feeds this prop today. TASK-796 is brokering the contract; the
-   * shape lives in `api/pending-contracts.ts` so exactly one module changes when it lands.
+   * ⚠ TRANSPORT PENDING: the gateway routes that carry this are TASK-795's, and do not exist
+   * yet, so nothing feeds this prop in a running system today.
    *
-   * An accepted proposal is written through `editor.change` — the clinician's OWN buffer —
-   * so it is a clinician edit, never a machine write, and the R5 two-writer contract in
+   * An accepted proposal is written through `editor.change` — the clinician's OWN buffer — so
+   * it is a clinician edit, never a machine write, and the R5 two-writer contract in
    * `use-note-editor.ts` is untouched.
    */
-  correctionProposals?: CorrectionProposalSet | null;
-  /** W2/R3 — intelligent suggestions. Same "no transport yet" caveat as above. */
-  suggestions?: ClinicalSuggestionSet | null;
+  correctionProposals?: CorrectionsEnvelope | null;
+  /** W2/R3 — intelligent suggestions, same stream and the same transport caveat. */
+  suggestions?: readonly ClinicalSuggestion[] | null;
+  /** The interpreter node that produced the suggestions, for provenance. */
+  suggestionsNodeType?: string;
+  /** Re-request corrections after a digest mismatch (796 rule 2). */
+  onCorrectionsStale?: () => void;
 }
 
 export function CaseNoteColumn(props: CaseNoteColumnProps) {
@@ -282,6 +285,8 @@ export function CaseNoteColumn(props: CaseNoteColumnProps) {
     namedEntities = null,
     correctionProposals = null,
     suggestions = null,
+    suggestionsNodeType,
+    onCorrectionsStale,
   } = props;
   const [overrideSafety, setOverrideSafety] = useState(false);
   const noteFieldId = useId();
@@ -304,6 +309,17 @@ export function CaseNoteColumn(props: CaseNoteColumnProps) {
     () => Object.entries(namedEntities?.entities ?? {}).filter(([, items]) => Array.isArray(items) && items.length > 0),
     [namedEntities],
   );
+
+  /**
+   * TASK-796 — an interpreter-produced INTERIM summary arrives on this same plane, marked
+   * `source: 'interpreter'`. Say so, and say where it sits in its sequence: an interim summary
+   * is a snapshot of work in progress, and a clinician reading it should know that.
+   */
+  const interimLabel = useMemo(() => {
+    if (live?.source !== 'interpreter') return null;
+    const position = typeof live.ordinal === 'number' && typeof live.total === 'number' ? ` · ${live.ordinal} of ${live.total}` : '';
+    return `Interim summary${position}`;
+  }, [live]);
 
   // W2 — the SOAP block an autofill would insert. Empty when the live stream has no
   // sections, which is what hides the affordance entirely rather than offering a no-op.
@@ -349,7 +365,7 @@ export function CaseNoteColumn(props: CaseNoteColumnProps) {
                 ? `Personalized draft · ${provenance}`
                 : 'Personalized draft'
               : showLive
-                ? 'Running SOAP · auto-drafted live'
+                ? interimLabel ?? 'Running SOAP · auto-drafted live'
                 : 'Drafts appear here after a session'}
           </p>
         </div>
@@ -544,10 +560,11 @@ export function CaseNoteColumn(props: CaseNoteColumnProps) {
                 </li>
               ))}
             </ul>
-            {/* The interim TEXT is not on the wire (TASK-791 W5, blocked on a
-                TASK-790 column). Say so rather than implying the note below is
-                what the assistant just produced. */}
-            <p className="text-muted-foreground mt-1.5 text-xs">Interim text is not yet available on this feed — progress only.</p>
+            {/* This FEED is progress-only by design: `EmitLoopEventInput` is `extra="forbid"`
+                and carries "ids/keys/labels only, NEVER note or transcript text". Interim
+                summary TEXT rides the live-summary plane above instead (TASK-796) — say which
+                is which rather than implying this list is what the assistant produced. */}
+            <p className="text-muted-foreground mt-1.5 text-xs">Progress only — interim summary text appears in the note above.</p>
           </div>
         ) : null}
 
@@ -606,7 +623,8 @@ export function CaseNoteColumn(props: CaseNoteColumnProps) {
         ) : null}
 
         <CorrectionProposalsPanel
-          proposalSet={correctionProposals}
+          corrections={correctionProposals}
+          onStale={onCorrectionsStale}
           // Checked against what the clinician is actually looking at: the buffer while
           // editing, the persisted draft otherwise. A proposal whose offsets stop matching
           // simply stops being offered.
@@ -615,7 +633,7 @@ export function CaseNoteColumn(props: CaseNoteColumnProps) {
           disabledReason={correctionsDisabledReason}
         />
 
-        <ClinicalSuggestionsPanel suggestionSet={suggestions} />
+        <ClinicalSuggestionsPanel suggestions={suggestions} nodeType={suggestionsNodeType} />
 
         {draft ? (
           <CitationEvidencePanel
