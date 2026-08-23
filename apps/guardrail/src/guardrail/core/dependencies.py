@@ -128,12 +128,24 @@ async def get_resolved_guardian_provider(request: Request) -> GuardianLike:
         )
 
     from guardrail.core.tenant_config import (
+        TenantConfigUnavailableError,
         TenantSelectionVetoedError,
         build_judge_client,
     )
 
     try:
         tenant_cfg = await resolver.resolve(tenant_id)
+    except TenantConfigUnavailableError as exc:
+        # The tenant's rows could not be READ, which is not the same as absent —
+        # answering with SYSTEM's would serve the platform safety FLOOR to a
+        # tenant that may have chosen something stricter (TASK-799 F-08).
+        raise HTTPException(
+            status_code=503,
+            detail=(
+                f"guardrail.validate config for tenant {exc.tenant_id!r} could not be "
+                "read — not falling through to the SYSTEM default."
+            ),
+        ) from exc
     except TenantSelectionVetoedError as exc:
         # Tenant-first resolution (TASK-735 Phase 1): a DISABLED tenant row is
         # a VETO, never a silent fold-through to the SYSTEM row.
@@ -282,10 +294,20 @@ async def _resolve_selection(
             f"AiTaskDefault for {task_key!r} is unavailable (resolver not wired)."
         )
 
-    from guardrail.core.tenant_config import TenantSelectionVetoedError
+    from guardrail.core.tenant_config import (
+        TenantConfigUnavailableError,
+        TenantSelectionVetoedError,
+    )
 
     try:
         cfg = await resolver.resolve(tenant_id, task_key)
+    except TenantConfigUnavailableError as exc:
+        # A failed READ is not "no tenant opinion" (TASK-799 F-08) — fail closed
+        # rather than widen to SYSTEM.
+        raise SelectionUnavailableError(
+            f"{task_key!r} config for tenant {exc.tenant_id!r} could not be read — "
+            "not falling through to the SYSTEM default."
+        ) from exc
     except TenantSelectionVetoedError as exc:
         # A DISABLED tenant row is a VETO (Phase 1) — never a silent fold-through
         # to the SYSTEM row.

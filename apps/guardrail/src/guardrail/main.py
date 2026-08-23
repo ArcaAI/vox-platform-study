@@ -168,7 +168,13 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
         app.state.effective_config_client = EffectiveConfigClient(
             base_url=settings.gateway_url,
-            token=settings.service_token.get_secret_value(),
+            # `peer_service_token`, never the legacy field directly: under owner
+            # decision D-D the shared `INTERNAL_ACCESS_TOKEN` is set and the
+            # per-service one is empty, so `get_secret_value()` sent "" and every
+            # pull 401'd — negative-cached, so the service silently ran on its env
+            # values. It also skips `real_secret`, transmitting a CHANGE_ME
+            # sentinel verbatim.
+            token=settings.peer_service_token(settings.service_token),
         )
 
     # Per-tenant config resolver. Only initialized when DB-config
@@ -247,7 +253,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         app.state.service_release_task = start_registration(
             http_client=http_client,
             gateway_url=settings.gateway_url,
-            service_token=settings.service_token.get_secret_value(),
+            service_token=settings.peer_service_token(settings.service_token),
             build_info=BuildInfoReader().get_build_info(),
             environment=os.getenv("DEPLOYMENT_ENVIRONMENT")
             or os.getenv("NODE_ENV")
