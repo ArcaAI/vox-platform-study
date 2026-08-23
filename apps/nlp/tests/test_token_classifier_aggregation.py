@@ -19,13 +19,14 @@ from __future__ import annotations
 
 import pytest
 
+from nlp.core.config import TokenClassificationConfig
 from nlp.schemas.classification import TokenClassificationRequest
 from nlp.services.token_classifier import TransformerTokenClassifier
 
 
 @pytest.mark.asyncio
 async def test_process_forwards_aggregation_strategy_to_pipeline():
-    classifier = TransformerTokenClassifier()
+    classifier = TransformerTokenClassifier(configs=TokenClassificationConfig(model_name="test-org/ner", tokenizer_name="test-org/ner"))
     seen: dict = {}
 
     def fake_pipeline(text, **kwargs):
@@ -49,7 +50,7 @@ async def test_process_forwards_aggregation_strategy_to_pipeline():
 
 @pytest.mark.asyncio
 async def test_process_falls_back_to_config_aggregation_strategy():
-    classifier = TransformerTokenClassifier()
+    classifier = TransformerTokenClassifier(configs=TokenClassificationConfig(model_name="test-org/ner", tokenizer_name="test-org/ner"))
     seen: dict = {}
 
     def fake_pipeline(text, **kwargs):
@@ -66,7 +67,7 @@ async def test_process_falls_back_to_config_aggregation_strategy():
 
 
 def test_to_entities_merges_multi_subword_medication_into_one_unprefixed_entity():
-    classifier = TransformerTokenClassifier()
+    classifier = TransformerTokenClassifier(configs=TokenClassificationConfig(model_name="test-org/ner", tokenizer_name="test-org/ner"))
 
     text = "patient takes amlodipine"
     start = text.index("amlodipine")
@@ -95,7 +96,7 @@ def test_to_entities_merges_multi_subword_medication_into_one_unprefixed_entity(
 
 
 def test_to_entities_filters_ignore_labels():
-    classifier = TransformerTokenClassifier()
+    classifier = TransformerTokenClassifier(configs=TokenClassificationConfig(model_name="test-org/ner", tokenizer_name="test-org/ner"))
     assert "O" in classifier.configs.ignore_labels  # guards the assumption
 
     results = [

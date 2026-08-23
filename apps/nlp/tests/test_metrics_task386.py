@@ -12,6 +12,7 @@ import pytest
 from prometheus_client import REGISTRY
 
 from nlp.core import metrics as m
+from nlp.core.config import TokenClassificationConfig
 from nlp.schemas.classification import TokenClassificationRequest
 from nlp.services.token_classifier import TransformerTokenClassifier
 
@@ -40,7 +41,7 @@ def test_track_model_inference_bumps_then_restores_and_observes():
 
 @pytest.mark.asyncio
 async def test_token_classifier_process_observes_medical_ner_latency():
-    classifier = TransformerTokenClassifier()
+    classifier = TransformerTokenClassifier(configs=TokenClassificationConfig(model_name="test-org/ner", tokenizer_name="test-org/ner"))
     # Stub out the HF pipeline so no model download/inference is needed.
     # Accept **kwargs so process()'s aggregation_strategy= call hits the SUCCESS
     # path (not the except branch).

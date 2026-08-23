@@ -136,9 +136,10 @@ NLP_DOCUMENTS_PROCESSED_TOTAL = Counter(
 SERVICE_NAME = "nlp"
 
 # Canonical platform model ids (apps/admin/src/features/platform-dashboard/models.ts).
-# The HuggingFace source paths (blaze999/Medical-NER,
-# shanover/symps_disease_bert_v3_c41) are mapped to these stable ids so the
-# per-model dashboards line up across services.
+# The selected checkpoint's source path is mapped to one of these stable ids so
+# the per-model dashboards line up across services — and so that swapping the
+# configured checkpoint does not fork the series. The source paths themselves
+# are configuration and are deliberately not named here.
 MODEL_MEDICAL_NER = "Medical-NER"
 MODEL_SYMPTOMS_DISEASE = "symps-disease-bert"
 
