@@ -3390,6 +3390,52 @@
     },
     {
       "controller": "HarnessAdminController",
+      "handler": "promoteExemplarToGoldenSet",
+      "method": "POST",
+      "path": "/api/v1/admin/harness/gate-edit-exemplars/{id}/promote-to-golden-set",
+      "routePath": "/admin/harness/gate-edit-exemplars/:id/promote-to-golden-set",
+      "svcScopes": [
+        "svc:admin:harness:manage"
+      ],
+      "forbidServiceAccount": false,
+      "apiKeyForbidden": true,
+      "apiKeyScopes": [],
+      "requiredPermissions": [
+        [
+          "manage",
+          "HarnessPolicy"
+        ]
+      ],
+      "isPublic": false,
+      "permissionMode": "AND",
+      "requiresIfMatch": false,
+      "apiExcluded": false
+    },
+    {
+      "controller": "HarnessAdminController",
+      "handler": "exportGateEditFineTuningDataset",
+      "method": "GET",
+      "path": "/api/v1/admin/harness/gate-edit-exemplars/fine-tuning-export",
+      "routePath": "/admin/harness/gate-edit-exemplars/fine-tuning-export",
+      "svcScopes": [
+        "svc:admin:harness:manage"
+      ],
+      "forbidServiceAccount": false,
+      "apiKeyForbidden": true,
+      "apiKeyScopes": [],
+      "requiredPermissions": [
+        [
+          "manage",
+          "HarnessPolicy"
+        ]
+      ],
+      "isPublic": false,
+      "permissionMode": "AND",
+      "requiresIfMatch": false,
+      "apiExcluded": false
+    },
+    {
+      "controller": "HarnessAdminController",
       "handler": "gateQueue",
       "method": "GET",
       "path": "/api/v1/admin/harness/gate-queue",
@@ -11303,6 +11349,24 @@
     },
     {
       "controller": "ConsultationController",
+      "handler": "streamLiveAssist",
+      "method": "GET",
+      "path": "/api/v1/consultations/{id}/live-assist/stream",
+      "routePath": "/consultations/:id/live-assist/stream",
+      "svcScopes": [],
+      "forbidServiceAccount": false,
+      "apiKeyForbidden": false,
+      "apiKeyScopes": [
+        "consultation:session:write"
+      ],
+      "requiredPermissions": [],
+      "isPublic": false,
+      "permissionMode": "AND",
+      "requiresIfMatch": false,
+      "apiExcluded": false
+    },
+    {
+      "controller": "ConsultationController",
       "handler": "streamLiveSummary",
       "method": "GET",
       "path": "/api/v1/consultations/{id}/live-summary/stream",
@@ -12425,6 +12489,22 @@
     },
     {
       "controller": "HarnessInternalController",
+      "handler": "publishLiveAssist",
+      "method": "POST",
+      "path": "/api/v1/internal/harness/consultations/{id}/live-assist",
+      "routePath": "/internal/harness/consultations/:id/live-assist",
+      "svcScopes": [],
+      "forbidServiceAccount": false,
+      "apiKeyForbidden": false,
+      "apiKeyScopes": [],
+      "requiredPermissions": null,
+      "isPublic": true,
+      "permissionMode": null,
+      "requiresIfMatch": false,
+      "apiExcluded": true
+    },
+    {
+      "controller": "HarnessInternalController",
       "handler": "startLiveDocumentation",
       "method": "POST",
       "path": "/api/v1/internal/harness/consultations/{id}/live-documentation/start",
@@ -12445,6 +12525,22 @@
       "method": "POST",
       "path": "/api/v1/internal/harness/consultations/{id}/live-documentation/stop",
       "routePath": "/internal/harness/consultations/:id/live-documentation/stop",
+      "svcScopes": [],
+      "forbidServiceAccount": false,
+      "apiKeyForbidden": false,
+      "apiKeyScopes": [],
+      "requiredPermissions": null,
+      "isPublic": true,
+      "permissionMode": null,
+      "requiresIfMatch": false,
+      "apiExcluded": true
+    },
+    {
+      "controller": "HarnessInternalController",
+      "handler": "publishLiveSummary",
+      "method": "POST",
+      "path": "/api/v1/internal/harness/consultations/{id}/live-summary",
+      "routePath": "/internal/harness/consultations/:id/live-summary",
       "svcScopes": [],
       "forbidServiceAccount": false,
       "apiKeyForbidden": false,

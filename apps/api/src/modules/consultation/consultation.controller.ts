@@ -41,6 +41,7 @@ import {
   HighlightResponse,
   HarnessProgressService,
   HarnessAssuranceService,
+  HarnessLiveAssistService,
   // dedicated Redis subscriber for the trajectory SSE relay.
   RedisSubscriberService,
   // Consultation-loop lifecycle signal caller.
@@ -189,6 +190,9 @@ export class ConsultationController {
     private readonly highlightService: IHighlightService,
     private readonly harnessProgressService: HarnessProgressService,
     private readonly harnessAssuranceService: HarnessAssuranceService,
+    // TASK-795 RC-2 — relays `consultation:live-assist:{id}` (interpreter
+    // suggestions + correction proposals) to the clinician surface.
+    private readonly harnessLiveAssistService: HarnessLiveAssistService,
     // dedicated Redis subscriber for the trajectory SSE relay.
     private readonly redisSubscriber: RedisSubscriberService,
     // Best-effort consultation-loop lifecycle signals
@@ -648,6 +652,37 @@ export class ConsultationController {
   @ApiParam({ name: 'id', description: 'Consultation ID' })
   streamLiveSummary(@Param('id') id: string): Observable<MessageEvent> {
     return this.liveDocumentationService.subscribeToLiveSummary(id);
+  }
+
+  // TASK-795 RC-2 — relays `consultation:live-assist:{id}` (published by the
+  // internal POST /internal/harness/consultations/:id/live-assist route) so the
+  // clinician surface can show interpreter suggestions and PROPOSED corrections
+  // live.
+  //
+  // This plane is DECLARED PHI-CARRYING — a correction proposal quotes the span
+  // it would replace, verbatim — so it gets the full sibling treatment of
+  // `live-summary`: @TenantOwnedResource 404s a cross-tenant probe BEFORE the
+  // stream opens, and it carries its OWN @StreamScope namespace so a
+  // live-summary ticket can never be replayed to read correction proposals.
+  //
+  // Proposal-first by contract: nothing on this feed has been written to any
+  // note. `corrections.applied` is the assertion, and the clinician decides.
+  @Get(':id/live-assist/stream')
+  @Sse()
+  @TenantOwnedResource({ modelName: 'Consultation', paramName: 'id' })
+  @StreamScope({ namespace: 'consultation_live_assist', param: 'id' })
+  @ApiOperation({
+    summary: 'Stream interpreter suggestions and proposed corrections for a consultation via SSE',
+    description:
+      'Server-Sent Events stream relaying the Redis channel `consultation:live-assist:{id}`. Each event is a LiveAssistEventDto JSON carrying the current `suggestions` and `corrections` branches. CARRIES PHI: a correction proposal quotes the original span verbatim. Nothing on this feed has been applied to the note — `corrections.applied` is false and the clinician decides. Accepts either `Authorization: Bearer <jwt>` or a single-use `?ticket=<ticket>` issued by `POST /auth/stream-ticket` with scope `consultation_live_assist:<id>`. The feed has no terminal event; the client closes it.',
+  })
+  @ApiParam({ name: 'id', description: 'Consultation ID' })
+  @ApiResponse({
+    status: 404,
+    description: 'Consultation not found — also the answer for a cross-tenant id (404-over-403), resolved BEFORE the stream opens',
+  })
+  streamLiveAssist(@Param('id') id: string): Observable<MessageEvent> {
+    return this.harnessLiveAssistService.subscribeToAssist(id);
   }
 
   // Relays `consultation:harness-progress:{id}` (published by the internal

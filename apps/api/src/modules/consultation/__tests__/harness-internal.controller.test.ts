@@ -40,6 +40,7 @@ describe('HarnessInternalController', () => {
       undefined as any,
       undefined as any,
       undefined as any, // promptManagementService (unused by this route)
+      undefined as any, // harnessLiveAssistService (TASK-795 RC-2, unused by this route)
     );
   });
 
@@ -176,6 +177,7 @@ describe('HarnessInternalController', () => {
         undefined as any,
         undefined as any,
         undefined as any, // promptManagementService (unused by this route)
+      undefined as any, // harnessLiveAssistService (TASK-795 RC-2, unused by this route)
       );
 
     it('threads consultationId through to getEffectivePolicy(tenantId, { consultationId })', async () => {
@@ -305,6 +307,7 @@ describe('HarnessInternalController', () => {
         undefined as any,
         undefined as any,
         undefined as any, // promptManagementService (unused by this route)
+      undefined as any, // harnessLiveAssistService (TASK-795 RC-2, unused by this route)
       );
 
     it('delegates to HarnessProgressService.reportProgress(consultationId, dto)', async () => {
@@ -347,6 +350,7 @@ describe('HarnessInternalController', () => {
         undefined as any, // loopContextTextService (unused by this route)
         undefined as any, // liveDocumentationService (unused by this route)
         undefined as any, // promptManagementService (unused by this route)
+      undefined as any, // harnessLiveAssistService (TASK-795 RC-2, unused by this route)
       );
 
     it('delegates to ConsultationLoopEventService.publishEvent(consultationId, dto)', async () => {
@@ -389,6 +393,7 @@ describe('HarnessInternalController', () => {
         undefined as any,
         undefined as any,
         undefined as any, // promptManagementService (unused by this route)
+      undefined as any, // harnessLiveAssistService (TASK-795 RC-2, unused by this route)
       );
 
     it('POST assurance -> harnessInternalService.finalizeAssurance(consultationId, dto, idempotencyKey)', async () => {
@@ -450,6 +455,7 @@ describe('HarnessInternalController', () => {
         undefined as any,
         undefined as any,
         undefined as any, // promptManagementService (unused by this route)
+      undefined as any, // harnessLiveAssistService (TASK-795 RC-2, unused by this route)
       );
 
     it('maps the harness batch (ISO → Date) and delegates to recordSteps, acking 202-style', async () => {
@@ -553,6 +559,7 @@ describe('HarnessInternalController', () => {
         undefined as any, // loopContextTextService (unused by this route)
         undefined as any, // liveDocumentationService (unused by this route)
         undefined as any, // promptManagementService (unused by this route)
+      undefined as any, // harnessLiveAssistService (TASK-795 RC-2, unused by this route)
       );
 
     it('delegates to LoopConfigService.resolveForConsultation(tenantId, consultationId)', async () => {
@@ -613,6 +620,7 @@ describe('HarnessInternalController', () => {
         undefined as any, // loopContextTextService (unused by these routes) — inserted this param
         mockLiveDocumentationService as any,
         undefined as any, // promptManagementService (unused by this route)
+      undefined as any, // harnessLiveAssistService (TASK-795 RC-2, unused by this route)
       );
 
     it('start delegates to LiveDocumentationService.start({ consultationId, tenantId, userId, sessionId })', async () => {

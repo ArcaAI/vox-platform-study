@@ -39,7 +39,9 @@ import { HarnessInternalServiceModule } from '../../consultation/harness/harness
  *    with `@Optional()`, but none of the four modules that PROVIDE
  *    `PromptAssemblyService` for live generation imported the module that
  *    exports that token. So even with rows present, generation saw `undefined`
- *    and silently degraded to zero-shot.
+ *    and silently degraded to zero-shot. TASK-792 closed two of the four;
+ *    TASK-795 W2 closed the remaining two (the async job path and the harness
+ *    path), so all four now resolve the token.
  *
  * These assertions check the tokens NestJS actually resolves — no container, no
  * database, no Redis.
@@ -114,38 +116,28 @@ describe('Gate-edit learning loop — NestJS DI wiring', () => {
       expect(moduleMetadata(GateEditMiningServiceModule, MODULE_EXPORTS_METADATA)).toContain(IGateEditExemplarRetriever);
     });
 
-    // Four modules PROVIDE PromptAssemblyService for live generation. A provider
-    // without this import is a silent zero-shot downgrade, not an error — so if a
-    // fifth ever appears, it belongs in one of the two lists below.
-    //
-    // TASK-792 owns only two of the four. `consultation/harness/**` belongs to
-    // TASK-790 and `consultation/jobs/**` is unassigned in the TASK-789 ownership
-    // map, so this ticket must not edit either (map §"Cross-boundary protocol").
+    /**
+     * ALL FOUR modules that provide `PromptAssemblyService` for live generation.
+     *
+     * TASK-792 wired the first two and could not reach the other two (they sat
+     * outside its ownership boundary), so it pinned their absence as a FAILING-
+     * on-close assertion rather than a skip. TASK-795 W2 owns
+     * `consultation/**` and applied both imports; this list is the closed form
+     * of that pin.
+     *
+     * A FIFTH provider is not this list's problem: `prompt-assembly.retriever-
+     * reachability.test.ts` (TASK-795 W3) DISCOVERS every provider from the
+     * filesystem and computes token reachability, so a new one is covered the
+     * moment it exists. This list stays as the named, readable statement of
+     * which four they are today.
+     */
     it.each([
       ['SummaryServiceModule', SummaryServiceModule],
       ['ChainSummaryServiceModule', ChainSummaryServiceModule],
-    ])('%s imports GateEditMiningServiceModule', (_name, moduleClass) => {
-      expect(moduleMetadata(moduleClass, MODULE_IMPORTS_METADATA)).toContain(GateEditMiningServiceModule);
-    });
-
-    /**
-     * PINS A KNOWN, DELIBERATE GAP — do not "fix" this by asserting the opposite.
-     *
-     * These two modules still resolve `IGateEditExemplarRetriever` to `undefined`,
-     * so generation through the ASYNC job path and the HARNESS path still degrades
-     * silently to zero-shot. The one-line import each needs is filed as a requested
-     * contract in the TASK-792 README; the owning ticket applies it.
-     *
-     * Written as an assertion on the CURRENT state, not skipped, precisely so it
-     * FAILS the moment the import lands — at which point move the module up into
-     * the list above. A skipped test would let the gap close silently and leave
-     * this file lying about what is wired.
-     */
-    it.each([
       ['ConsultationJobServiceModule', ConsultationJobServiceModule],
       ['HarnessInternalServiceModule', HarnessInternalServiceModule],
-    ])('%s does NOT yet import GateEditMiningServiceModule (cross-boundary, pending)', (_name, moduleClass) => {
-      expect(moduleMetadata(moduleClass, MODULE_IMPORTS_METADATA)).not.toContain(GateEditMiningServiceModule);
+    ])('%s imports GateEditMiningServiceModule', (_name, moduleClass) => {
+      expect(moduleMetadata(moduleClass, MODULE_IMPORTS_METADATA)).toContain(GateEditMiningServiceModule);
     });
   });
 });
