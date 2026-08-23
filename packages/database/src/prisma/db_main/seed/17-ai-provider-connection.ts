@@ -36,11 +36,41 @@ import { SYSTEM_TENANT_ID, SYSTEM_USER_ID } from './00-constants';
  * providers (self-host STT/TTS engines are not credential-bearing here).
  */
 
+/**
+ * The capability discriminator vocabulary a seed row may carry.
+ *
+ * MIRRORS `@arcaai/applications`
+ * `services/ai-provider-connection/constants.ts#PROVIDER_SERVICES`, which is the
+ * SOURCE OF TRUTH — it types `ProviderService`, backs the route's `:service`
+ * guard and keys `CLOUD_BYO_PROVIDERS`.
+ *
+ * It is mirrored rather than imported because it CANNOT be imported:
+ * `@arcaai/applications` depends on `@arcaai/database`, so importing it here
+ * would be a package cycle, and a relative import across the boundary is
+ * rejected by this package's `rootDir` (TS6059). The mirror is held in lock-step
+ * by `tests/contracts/provider-connection-services.contract.test.ts` — the same
+ * mechanism `AI_MODEL_PROVIDERS` and the `ResourceType` enum use for exactly
+ * this problem. Widen BOTH lists together, or that contract test fails.
+ *
+ * The first three are the INFERENCE capabilities; the last three are the
+ * non-inference integrations P1-C added so a Qdrant key, a TEI reranker or an
+ * embeddings credential has somewhere to live other than an environment
+ * variable.
+ */
+export const SEEDABLE_PROVIDER_SERVICES = ['llm', 'stt', 'tts', 'embeddings', 'rerank', 'vector'] as const;
+
+/** The capability a seeded connection row serves. */
+export type SeedableProviderService = (typeof SEEDABLE_PROVIDER_SERVICES)[number];
+
 export interface AiProviderConnectionSeed {
   id: string;
   tenantId: string;
-  /** Capability discriminator (llm | stt | tts). */
-  service: string;
+  /**
+   * Capability discriminator. Typed against the vocabulary rather than `string`,
+   * so a Phase 2 row with a typo (`vectors`) is a COMPILE error instead of a row
+   * that silently resolves for nobody.
+   */
+  service: SeedableProviderService;
   provider: string;
   baseUrl: string | null;
   region: string | null;
