@@ -34,6 +34,12 @@ dependencies = [
     "sse-starlette>=3.4.8",
     "prometheus-client>=0.26.0",
     "prometheus-fastapi-instrumentator>=8.1.0",
+    # Config-invalidation subscriber ONLY (owner decision D-5). tts subscribes to
+    # `arca:config:invalidate` and evicts a cache; it reads no keys, writes none,
+    # and holds no tenant state — this must not become a route to local tenant
+    # resolution. Version range matches `apps/guardrail`, which uses it the same
+    # way, so the shared `uv.lock` resolves one redis for the workspace.
+    "redis>=8.1.0,<9.0",
     "pysbd>=0.3.4",
     "azure-cognitiveservices-speech>=1.51.1",
     # --- Shared runtime contracts ---

@@ -44,9 +44,18 @@ def _clean_token_env(monkeypatch):
 
 
 def _app(*, shared: str = "", legacy: str = "", monkeypatch=None):
-    if shared and monkeypatch is not None:
-        monkeypatch.setenv("INTERNAL_ACCESS_TOKEN", shared)
-    settings = Settings(service_token=legacy)
+    """Build the app with a given credential configuration.
+
+    `legacy` sets the RETIRED `TTS_SERVICE_TOKEN` (TASK-799 lane C). It is kept
+    as a parameter precisely so a test can prove the old name is now INERT —
+    setting it must neither grant access nor, worse, silently disable auth.
+    """
+    if monkeypatch is not None:
+        if shared:
+            monkeypatch.setenv("INTERNAL_ACCESS_TOKEN", shared)
+        if legacy:
+            monkeypatch.setenv("TTS_SERVICE_TOKEN", legacy)
+    settings = Settings()
     app = create_app(settings_override=settings)
     app.state.provider_registry.register(
         "azure", FakeEngine("azure", native_streaming=False, chunks=1)
@@ -103,13 +112,31 @@ def test_ws_rejects_a_wrong_token_when_only_the_shared_token_is_set(monkeypatch)
         _assert_handshake_refused(client, headers={"x-service-token": "nope"})
 
 
-def test_ws_still_accepts_the_legacy_token_alongside_the_shared_one(monkeypatch):
-    """Backward compatibility: an un-migrated caller must not break."""
+def test_ws_refuses_the_retired_legacy_token(monkeypatch):
+    """`TTS_SERVICE_TOKEN` is retired and must now be inert (TASK-799 lane C).
+
+    Two things are asserted at once, and the second is the one that would hurt:
+    presenting the legacy token is refused, AND setting the legacy variable does
+    not quietly count as "a credential is configured" — which would leave the
+    service accepting the shared token only while an operator believed the old
+    name still worked.
+    """
     app = _app(shared=SHARED, legacy=LEGACY, monkeypatch=monkeypatch)
     with TestClient(app) as client:
-        with client.websocket_connect(WS_PATH, headers={"x-service-token": LEGACY}) as ws:
-            ws.send_json(_init_frame())
-            assert ws.receive_json()["type"] == "ready"
+        _assert_handshake_refused(client, headers={"x-service-token": LEGACY})
+
+
+def test_the_retired_legacy_variable_configures_nothing_at_all(monkeypatch):
+    """Set ONLY the legacy name: the service must behave as if none were set.
+
+    It must not become half-configured — the failure mode where one credential
+    is honoured on some hops and not others is exactly what retiring the second
+    name removes.
+    """
+    monkeypatch.setenv("TTS_SERVICE_TOKEN", LEGACY)
+    settings = Settings()
+    assert settings.accepted_service_tokens == ()
+    assert settings.peer_service_token() == ""
 
 
 # ── 2. the dev bypass is conditional on actually being in local development ────

@@ -31,12 +31,49 @@ async def refresh_model_cache_retention() -> None:
             from stt.models.cache import get_model_cache
 
             get_model_cache().apply_retention(retention)
+
+        # Same snapshot, second consumer: the ~70 registry keys that ARE
+        # settings fields (TASK-799 lane C). Applied HERE rather than only at
+        # boot because this is the read-triggered path — it is what runs after
+        # the invalidation listener drops the cache, so a control-plane write
+        # converges within one model-load rather than waiting for a restart.
+        from stt.core.config.settings import get_settings
+        from stt.core.control_plane import apply_control_plane
+
+        apply_control_plane(get_settings(), snapshot.raw)
     except Exception as exc:  # noqa: BLE001 — a config refresh may never break a load
         logger.warning(
             "stt.effective_config.apply_error",
             error=str(exc),
             error_type=type(exc).__name__,
         )
+
+
+async def refresh_settings_from_control_plane() -> list[str]:
+    """Overlay the pulled snapshot's generic `settings` map onto `get_settings()`.
+
+    The companion to :func:`refresh_model_cache_retention`: that one applies the
+    frozen `retention` VIEW to a live object the settings do not own, this one
+    applies the ~70 registry keys that ARE settings fields (TASK-799 lane C).
+    Both read the same cached snapshot, so calling them together costs one fetch.
+
+    Read-triggered and idempotent. NEVER raises — a control-plane outage leaves
+    every field on its bootstrap value, which is exactly the pre-TASK-799
+    behaviour.
+    """
+    try:
+        snapshot = await get_effective_config_client().get()
+        from stt.core.config.settings import get_settings
+        from stt.core.control_plane import apply_control_plane
+
+        return apply_control_plane(get_settings(), snapshot.raw)
+    except Exception as exc:  # noqa: BLE001 — a config refresh may never break a request
+        logger.warning(
+            "stt.control_plane.apply_error",
+            error=str(exc),
+            error_type=type(exc).__name__,
+        )
+        return []
 
 
 async def resolve_worker_concurrency(default: int) -> int:

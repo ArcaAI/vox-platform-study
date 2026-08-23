@@ -86,65 +86,10 @@ def _configure_torch_threading() -> None:
         logger.warning("Failed to configure PyTorch threading", error=str(exc))
 
 
-async def _preload_pipeline_models() -> None:
-    """Preload models for configured pipelines at startup.
-
-    Reads ``PRELOAD_PIPELINES`` from settings (comma-separated slugs),
-    resolves each pipeline from the database, and loads all its models
-    into the in-memory cache.  This eliminates cold-start latency on
-    the first transcription request.
-    """
-    raw = settings.preload_pipelines
-    if not raw or not raw.strip():
-        return
-
-    slugs = [s.strip() for s in raw.split(",") if s.strip()]
-    if not slugs:
-        return
-
-    import time
-
-    from stt.pipeline.config_reader import get_pipeline_reader
-    from stt.transcription.batch_service import BatchTranscriptionService
-
-    pipeline_reader = get_pipeline_reader()
-    batch_service = BatchTranscriptionService()
-
-    logger.info("Preloading models for pipelines", pipelines=slugs)
-    overall_start = time.time()
-
-    for slug in slugs:
-        t0 = time.time()
-        try:
-            pipeline_config = await pipeline_reader.get_pipeline(slug)
-            if pipeline_config is None:
-                logger.warning("Pipeline not found for preload", slug=slug)
-                continue
-
-            models = await batch_service._load_models(pipeline_config)
-            loaded = [k for k, v in models.items() if v is not None]
-            elapsed = time.time() - t0
-            logger.info(
-                "Pipeline models preloaded",
-                slug=slug,
-                models=loaded,
-                elapsed_seconds=round(elapsed, 2),
-            )
-        except Exception as exc:
-            elapsed = time.time() - t0
-            logger.warning(
-                "Failed to preload pipeline models (non-fatal)",
-                slug=slug,
-                error=str(exc),
-                elapsed_seconds=round(elapsed, 2),
-            )
-
-    total = time.time() - overall_start
-    logger.info(
-        "Model preloading complete",
-        total_seconds=round(total, 2),
-        pipelines_requested=len(slugs),
-    )
+# `_preload_pipeline_models` is REMOVED (TASK-799 lane C). It existed only to
+# read `PRELOAD_PIPELINES`, a knob whose own description said it was deprecated
+# and not used for selection; with the setting gone the function had no input
+# and no caller-visible effect. Models load lazily on first use.
 
 
 @asynccontextmanager
@@ -171,6 +116,18 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     await initialize_minio()
     await initialize_streaming()
 
+    # Pull the ~70 control-plane-owned settings ONCE at boot, so the values in
+    # force are the platform's rather than this process's bootstrap defaults
+    # from the first request onward. Deliberately AFTER the infrastructure block
+    # and deliberately non-fatal: an unreachable gateway leaves every field on
+    # its bootstrap value (the pre-TASK-799 behaviour), and boot must never
+    # depend on the config plane being up.
+    from stt.core.runtime_limits import refresh_settings_from_control_plane
+
+    applied = await refresh_settings_from_control_plane()
+    if applied:
+        logger.info("STT control-plane settings applied", fields=len(applied))
+
     # Push invalidation for the control-plane pull client. Rule 09
     # §"Config caches": invalidation is the propagation path, the TTL is only a
     # bounded-staleness backstop — before this a control-plane write took up to
@@ -190,9 +147,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     # Auxiliary ML models (Silero VAD, Pyannote embedding, Cadence
     # punctuation) are NOT loaded at boot. Each loads lazily on first use via
     # its own idempotent, concurrency-safe guard, so a freshly booted process
-    # holds no ML weights until a request needs them. Optional pipeline warm-up
-    # (PRELOAD_PIPELINES, empty by default) remains available below.
-    await _preload_pipeline_models()
+    # holds no ML weights until a request needs them.
 
     # Self-registration: fire-and-forget, bounded-timeout, NEVER
     # blocks or fails boot. `DEPLOYMENT_ENVIRONMENT` / `NODE_ENV` is the same

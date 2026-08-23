@@ -72,8 +72,13 @@ class IndicParlerProvider:
         generate_factory: Callable[[], Callable[[str, str], np.ndarray]] | None = None,
         ttl_seconds: int | None = None,
         time_func: Callable[[], float] = time.monotonic,
+        warmup_speaker: str | None = None,
     ) -> None:
         self._config = config
+        # Speaker used ONLY by the boot-time `warmup()` call, supplied from the
+        # voice catalog at construction (`main.create_app`). None ⇒ the catalog
+        # binds no Malayalam voice to indic_parler, so there is nothing to warm.
+        self._warmup_speaker = warmup_speaker
         # The model handle lives behind the
         # shared model cache, exactly as Kokoro's does, so it loads
         # on first use and is RELEASED when idle. An explicitly injected `generate`
@@ -90,8 +95,15 @@ class IndicParlerProvider:
             name="tts_indic_parler",
         )
 
-    def _describe(self, locale: str) -> str:
-        speaker = self._config.speaker_ml if locale.startswith("ml") else self._config.speaker_en
+    def _describe(self, speaker: str) -> str:
+        """The description prompt Parler conditions on, for one speaker.
+
+        Takes the SPEAKER, not the locale (TASK-799 lane C). It used to pick
+        between its own `speaker_ml` / `speaker_en` settings fields — which meant
+        this provider ignored `req.provider_voice` entirely and silently
+        discarded the catalog binding the router had already resolved for it.
+        Two representations of one fact, with the wrong one winning.
+        """
         return (
             f"{speaker} speaks in a clear, neutral, professional tone at a natural "
             "pace, with very high quality audio and no background noise."
@@ -158,15 +170,25 @@ class IndicParlerProvider:
         return _generate
 
     async def warmup(self) -> None:
+        """Load the weights, and run one generation when a speaker is known.
+
+        The LOAD is unconditional — see the note on `KokoroProvider.warmup`: the
+        fail-at-boot guarantee an operator buys with `TTS_WARMUP_ENABLED` lives
+        in the load, not in the trial generation, so an absent catalog binding
+        must not cost them the boot-time check.
+        """
         generate = await self._get_generate()
-        await asyncio.to_thread(generate, "warm up", self._describe("en-IN"))
+        speaker = self._warmup_speaker
+        if speaker is None:
+            return
+        await asyncio.to_thread(generate, "warm up", self._describe(speaker))
 
     async def health(self) -> bool:
         return True
 
     async def synthesize(self, req: SynthesisRequest) -> AsyncGenerator[AudioChunk, None]:
         generate = await self._get_generate()
-        description = self._describe(req.locale)
+        description = self._describe(req.provider_voice)
         sentences = chunk_text(req.text, req.locale, _MAX_SENTENCE_CHARS)
 
         pcm_parts: list[bytes] = []

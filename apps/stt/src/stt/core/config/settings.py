@@ -9,6 +9,8 @@ from hope_env import hope_settings_sources, load_env, register_settings_cache
 from pydantic import AliasChoices, Field, SecretStr, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+from stt.core.control_plane import moved_alias
+
 _SERVICE_ROOT = Path(__file__).resolve().parents[4]  # …/apps/stt
 # Service-local overlay, ranked BELOW os.environ by pydantic-settings and so
 # below both the host env and the root `.env.<env>` the shared loader applies.
@@ -47,8 +49,17 @@ class Settings(BaseSettings):
     # name genuinely SHARED infrastructure — `DATABASE_URL`, `REDIS_URL`,
     # `MINIO_*` — are deliberately left bare: one address, one value, every
     # service.
-    app_name: str = "stt"
-    app_version: str = "2.0.0"
+    # BUILD IDENTITY, not configuration — and therefore not settable from env
+    # (rule 09 §Release Versioning: build identity "must never be made settable
+    # from a Deployment manifest, an env file, or `turbo.json#globalEnv`"). The
+    # authoritative version is the release tag baked into the image's
+    # `build-info.json`, which `hope_env.BuildInfoReader` reads; these two are
+    # only the in-process labels used before that file is consulted. They were
+    # bare fields, so `APP_VERSION=9.9.9` in the shared env file would have made
+    # this service report a version nobody built — the exact defect that had
+    # `apps/api` reporting `0.1.0` in every deployed environment.
+    app_name: str = Field(default="stt", validation_alias=moved_alias("app_name"))
+    app_version: str = Field(default="2.0.0", validation_alias=moved_alias("app_version"))
     debug: bool = Field(default=False, validation_alias=AliasChoices("STT_DEBUG", "DEBUG"))
     host: str = Field(default="0.0.0.0", validation_alias=AliasChoices("STT_HOST", "HOST"))
     port: int = Field(default=8861, validation_alias=AliasChoices("STT_PORT", "PORT"))
@@ -113,8 +124,16 @@ class Settings(BaseSettings):
 
     # MinIO (Object storage)
     minio_endpoint: str = "localhost:9000"
-    minio_access_key: SecretStr = SecretStr("minio_admin")
-    minio_secret_key: SecretStr = SecretStr("minio_admin")
+    # EMPTY defaults, not `minio_admin`. A credential is never a literal in code
+    # (rule 00 §Configuration Principles), and a WORKING default is the worse
+    # half of that rule: it silently masks a failure to load the real one, so
+    # the first environment where the compiled-in credential does not happen to
+    # be valid is the first place anyone finds out. Both are registered
+    # `vault-kv` platform secrets (`minio.accessKey` / `minio.secretKey` in
+    # `platform-secrets.descriptors.ts`) and reach this process either through
+    # the Vault Agent `secrets_dir` tier or `.env.dev`.
+    minio_access_key: SecretStr = SecretStr("")
+    minio_secret_key: SecretStr = SecretStr("")
     minio_secure: bool = False
     minio_cert_check: bool = True
     minio_audio_bucket: str = "hope-audio"
@@ -204,12 +223,16 @@ class Settings(BaseSettings):
         default=SecretStr(""),
         description="Internal service authentication key",
     )
-    api_gateway_timeout: int = 30
+    api_gateway_timeout: int = Field(
+        default=30,
+        validation_alias=moved_alias("api_gateway_timeout"),
+    )
 
     # Model Cache
     # The two fields below are BOOTSTRAP FALLBACKS; their runtime values come
     # from the control plane (effective-config → ModelCache.apply_retention).
     model_cache_max_models: int = Field(
+        validation_alias=moved_alias("model_cache_max_models"),
         default=5,
         description=(
             "Maximum number of models in LRU cache. Bootstrap fallback — the runtime "
@@ -217,6 +240,7 @@ class Settings(BaseSettings):
         ),
     )
     model_cache_ttl_seconds: int = Field(
+        validation_alias=moved_alias("model_cache_ttl_seconds"),
         default=3600,
         ge=60,
         le=3600,
@@ -245,24 +269,33 @@ class Settings(BaseSettings):
     # than silently falling back. This `Settings` class carries NO env_prefix, so
     # the documented `STT_MODEL_S3_*` names are wired via explicit aliases —
     # every service shares one env file, and un-prefixed names would collide.
+    #
+    # ONE name each. The `STT_V2_MODEL_S3_*` second spelling is GONE (TASK-799
+    # lane C): it was a rename shim from the service's `stt-v2` days, and
+    # nothing anywhere — code, sample, or comment — ever stated when the two
+    # names would carry DIFFERENT values. So it was a coin flip which one an
+    # operator set and a coin flip which one won, on fields that carry
+    # credentials. `turbo.json#globalEnv` and the generated `.env.sample` still
+    # list the `_V2_` names; retiring those declarations belongs to the env-file
+    # lane (Phase 1.5), which owns both generated artifacts.
     model_s3_endpoint: str | None = Field(
         default=None,
-        validation_alias=AliasChoices("STT_MODEL_S3_ENDPOINT", "STT_V2_MODEL_S3_ENDPOINT"),
+        validation_alias="STT_MODEL_S3_ENDPOINT",
         description="S3/MinIO endpoint (host:port) backing s3:// model sources",
     )
     model_s3_access_key: SecretStr | None = Field(
         default=None,
-        validation_alias=AliasChoices("STT_MODEL_S3_ACCESS_KEY", "STT_V2_MODEL_S3_ACCESS_KEY"),
+        validation_alias="STT_MODEL_S3_ACCESS_KEY",
         description="Access key for s3:// model sources",
     )
     model_s3_secret_key: SecretStr | None = Field(
         default=None,
-        validation_alias=AliasChoices("STT_MODEL_S3_SECRET_KEY", "STT_V2_MODEL_S3_SECRET_KEY"),
+        validation_alias="STT_MODEL_S3_SECRET_KEY",
         description="Secret key for s3:// model sources",
     )
     model_s3_secure: bool = Field(
         default=True,
-        validation_alias=AliasChoices("STT_MODEL_S3_SECURE", "STT_V2_MODEL_S3_SECURE"),
+        validation_alias="STT_MODEL_S3_SECURE",
         description="Use TLS for the s3:// model endpoint (set false for local MinIO)",
     )
 
@@ -305,6 +338,7 @@ class Settings(BaseSettings):
     # provider-connection plane (tenant / SYSTEM AiProviderConnection). Only the
     # non-secret REGION remains here.
     azure_speech_region: str | None = Field(
+        validation_alias=moved_alias("azure_speech_region"),
         default=None,
         description="Azure Speech service region (e.g., eastus, westeurope)",
     )
@@ -321,10 +355,12 @@ class Settings(BaseSettings):
     # unresolved. Only the non-secret enable flag and endpoint remain here.
     # Env vars: AZURE_FOUNDRY_ENABLED / _ENDPOINT.
     azure_foundry_enabled: bool = Field(
+        validation_alias=moved_alias("azure_foundry_enabled"),
         default=False,
         description="Enable the Azure AI Foundry MAI-Transcribe engine (preview, off by default)",
     )
     azure_foundry_endpoint: str | None = Field(
+        validation_alias=moved_alias("azure_foundry_endpoint"),
         default=None,
         description="Azure AI Foundry / Speech resource endpoint, e.g. https://<res>.cognitiveservices.azure.com",
     )
@@ -334,6 +370,7 @@ class Settings(BaseSettings):
     # NOT a settings field — it is resolved per request from the provider-connection
     # plane. Only the non-secret base URL remains here.
     sarvam_base_url: str = Field(
+        validation_alias=moved_alias("sarvam_base_url"),
         default="https://api.sarvam.ai",
         description="Sarvam AI API base URL",
     )
@@ -344,6 +381,7 @@ class Settings(BaseSettings):
     # settings field — it is resolved per request from the provider-connection
     # plane. Only the non-secret base URL remains here.
     openai_base_url: str = Field(
+        validation_alias=moved_alias("openai_base_url"),
         default="https://api.openai.com/v1",
         description="OpenAI (or Azure-OpenAI-compatible) API base URL",
     )
@@ -353,10 +391,12 @@ class Settings(BaseSettings):
     # (mudler/parakeet.cpp is C API + CLI); the loader lazy-imports a
     # binding module when present, else loads the shared library path below.
     parakeet_cpp_library_path: str | None = Field(
+        validation_alias=moved_alias("parakeet_cpp_library_path"),
         default=None,
         description="Path to libparakeet shared library (env PARAKEET_CPP_LIBRARY_PATH)",
     )
     parakeet_cpp_num_threads: int = Field(
+        validation_alias=moved_alias("parakeet_cpp_num_threads"),
         default=4,
         description="CPU threads for parakeet.cpp inference",
     )
@@ -364,10 +404,12 @@ class Settings(BaseSettings):
     # whisper.cpp — ggml runtime for GGUF whisper-large-v3-turbo
     # (engine WHISPER_CPP), via the maintained `pywhispercpp` binding.
     whisper_cpp_num_threads: int = Field(
+        validation_alias=moved_alias("whisper_cpp_num_threads"),
         default=8,
         description="CPU threads for whisper.cpp inference",
     )
     whisper_cpp_max_audio_seconds: float = Field(
+        validation_alias=moved_alias("whisper_cpp_max_audio_seconds"),
         default=7.0,
         description=(
             "Max audio length (s) fed to whisper.cpp in one decode. The ml-en "
@@ -379,6 +421,7 @@ class Settings(BaseSettings):
         ),
     )
     whisper_cpp_consultation_prompt_enabled: bool = Field(
+        validation_alias=moved_alias("whisper_cpp_consultation_prompt_enabled"),
         default=False,
         description=(
             "Whether the whisper.cpp adapter prepends its language-derived "
@@ -391,38 +434,46 @@ class Settings(BaseSettings):
 
     # VAD — Silero v5 ONNX
     vad_model_path: str | None = Field(
+        validation_alias=moved_alias("vad_model_path"),
         default=None,
         description="Path to Silero VAD ONNX model (auto-downloaded if None)",
     )
     vad_threshold: float = Field(
+        validation_alias=moved_alias("vad_threshold"),
         default=0.5,
         description="Silero VAD speech detection threshold (0.0–1.0)",
     )
     vad_min_speech_duration_ms: int = Field(
+        validation_alias=moved_alias("vad_min_speech_duration_ms"),
         default=100,
         description="Minimum speech segment length in ms (100 so short clinical confirmations survive)",
     )
     vad_min_silence_duration_ms: int = Field(
+        validation_alias=moved_alias("vad_min_silence_duration_ms"),
         default=500,
         description="Minimum silence to end speech segment in ms",
     )
     vad_speech_pad_ms: int = Field(
+        validation_alias=moved_alias("vad_speech_pad_ms"),
         default=200,
         description="Padding applied to both segment ends in ms (200 per production ASR guidance)",
     )
 
     # Diarization -- Pyannote embeddings
     diarization_hf_model_id: str = Field(
+        validation_alias=moved_alias("diarization_hf_model_id"),
         default="pyannote/wespeaker-voxceleb-resnet34-LM",
         description="HuggingFace model ID for speaker embedding extraction",
     )
     diarization_device: str = Field(
+        validation_alias=moved_alias("diarization_device"),
         default="auto",
         description="Device for pyannote inference (auto, cuda, cpu)",
     )
 
     # Voice profile enrollment
     voice_profile_min_similarity: float = Field(
+        validation_alias=moved_alias("voice_profile_min_similarity"),
         default=0.6,
         ge=0.0,
         le=1.0,
@@ -433,32 +484,36 @@ class Settings(BaseSettings):
             "microphones; keep >=0.6 in production."
         ),
     )
-    voice_profile_embedding_dim: int = Field(
-        default=256,
-        description=(
-            "Speaker-embedding dimension — must match the deployed "
-            "UserVoiceProfile.embedding vector(N) column. 256 = wespeaker "
-            "(current); 192 = ECAPA-TDNN (cutover requires applying the "
-            "vector(192) migration and re-enrolling)"
-        ),
-    )
+    # There is deliberately NO `voice_profile_embedding_dim` (TASK-799 lane C).
+    # Its own description conceded it "must match the deployed
+    # `UserVoiceProfile.embedding vector(N)` column" — so it was one fact stored
+    # in two places, only one of which an operator could change. Setting it to
+    # 192 against a `vector(256)` column does not perform the ECAPA cutover; it
+    # just makes every enrollment fail dimension validation. The single source
+    # is `voice_profile.extraction_service.EXPECTED_EMBEDDING_DIM`, gated
+    # against `user.prisma` by `tests/unit/test_task799_env_surface.py`. A real
+    # cutover is a migration plus re-enrolment, which no env var can express.
 
     # Worker settings
     worker_threads: int = Field(
+        validation_alias=moved_alias("worker_threads"),
         default=4,
         description="Number of Dramatiq worker threads per process",
     )
     worker_poll_timeout_ms: int = Field(
+        validation_alias=moved_alias("worker_poll_timeout_ms"),
         default=1000,
         description="Dramatiq consumer poll interval max-backoff in milliseconds",
     )
     worker_max_retries: int = Field(
+        validation_alias=moved_alias("worker_max_retries"),
         default=3,
         description="Maximum job retry attempts",
     )
 
     # ONNX Runtime threading
     onnx_num_threads: int = Field(
+        validation_alias=moved_alias("onnx_num_threads"),
         default=0,
         description=(
             "Number of threads for ONNX Runtime intra_op parallelism. "
@@ -470,6 +525,7 @@ class Settings(BaseSettings):
 
     # PyTorch threading (critical for CPU-only inference performance)
     torch_num_threads: int = Field(
+        validation_alias=moved_alias("torch_num_threads"),
         default=0,
         description=(
             "Number of threads for PyTorch intra-op parallelism "
@@ -480,6 +536,7 @@ class Settings(BaseSettings):
         ),
     )
     torch_num_interop_threads: int = Field(
+        validation_alias=moved_alias("torch_num_interop_threads"),
         default=1,
         description=(
             "Number of threads for PyTorch inter-op parallelism "
@@ -489,25 +546,22 @@ class Settings(BaseSettings):
         ),
     )
 
-    # PRELOAD_PIPELINES is deprecated as a selection/control
-    # mechanism. Pipeline models load on first use; leave empty in production.
-    # Retained only as an optional warm-start of known slugs (not routing).
-    preload_pipelines: str = Field(
-        default="",
-        description=(
-            "DEPRECATED: optional comma-separated pipeline slugs "
-            "to warm at startup. Not used for provider/model/pipeline "
-            "selection — request-time pipeline_id + DB AsrPipeline is authority. "
-            "Prefer empty; models load on first use."
-        ),
-    )
+    # `PRELOAD_PIPELINES` is REMOVED (TASK-799 lane C). It had been marked
+    # "DEPRECATED … not used for provider/model/pipeline selection" in its own
+    # description while remaining fully settable, which is the worst of both:
+    # an operator who set it got no warning and no effect on routing, because
+    # request-time `pipeline_id` + the DB `AsrPipeline` row are the only
+    # authority. Models load lazily on first use; a warm-start knob, if one is
+    # ever wanted again, belongs in the control plane like every other.
 
     # Transcription settings
     transcription_timeout_seconds: int = Field(
+        validation_alias=moved_alias("transcription_timeout_seconds"),
         default=600,
         description="Maximum transcription job timeout in seconds (default: 10 min)",
     )
     transcription_chunk_length_s: int = Field(
+        validation_alias=moved_alias("transcription_chunk_length_s"),
         default=15,
         description=(
             "Audio chunk length (seconds) for Whisper inference. Whisper's "
@@ -519,6 +573,7 @@ class Settings(BaseSettings):
         ),
     )
     transcription_stride_length_s: str = Field(
+        validation_alias=moved_alias("transcription_stride_length_s"),
         default="4,2",
         description=(
             "Left and right overlap (seconds) between consecutive chunks, as "
@@ -530,6 +585,7 @@ class Settings(BaseSettings):
 
     # VAD segment merging
     segment_merge_gap_threshold_s: float = Field(
+        validation_alias=moved_alias("segment_merge_gap_threshold_s"),
         default=2.0,
         description=(
             "Maximum gap (seconds) between adjacent VAD speech segments "
@@ -545,6 +601,7 @@ class Settings(BaseSettings):
     # Streaming settings
     # -------------------------------------------------------------------------
     streaming_max_concurrent: int = Field(
+        validation_alias=moved_alias("streaming_max_concurrent"),
         default=0,
         description=(
             "Maximum number of concurrent streaming sessions. "
@@ -554,6 +611,7 @@ class Settings(BaseSettings):
         ),
     )
     streaming_max_batch_size: int = Field(
+        validation_alias=moved_alias("streaming_max_batch_size"),
         default=0,
         description=(
             "Maximum batch size for the dynamic batch scheduler (GPU inference). "
@@ -561,6 +619,7 @@ class Settings(BaseSettings):
         ),
     )
     streaming_batch_wait_ms: int = Field(
+        validation_alias=moved_alias("streaming_batch_wait_ms"),
         default=0,
         description=(
             "Maximum time (ms) the batch scheduler waits before dispatching "
@@ -568,6 +627,7 @@ class Settings(BaseSettings):
         ),
     )
     streaming_embedding_device: str = Field(
+        validation_alias=moved_alias("streaming_embedding_device"),
         default="auto",
         description=(
             "Device for speaker embedding extraction during streaming. "
@@ -575,6 +635,7 @@ class Settings(BaseSettings):
         ),
     )
     streaming_multi_gpu_strategy: str = Field(
+        validation_alias=moved_alias("streaming_multi_gpu_strategy"),
         default="auto",
         description=(
             "Multi-GPU strategy for streaming: 'auto' (detect), 'replicate' "
@@ -583,33 +644,40 @@ class Settings(BaseSettings):
         ),
     )
     streaming_session_persist_interval_s: float = Field(
+        validation_alias=moved_alias("streaming_session_persist_interval_s"),
         default=5.0,
         description="How often (seconds) to persist session metadata to Redis.",
     )
     streaming_snapshot_interval_s: float = Field(
+        validation_alias=moved_alias("streaming_snapshot_interval_s"),
         default=30.0,
         description="Interval (seconds) between audio snapshot uploads to S3 "
         "during active streaming sessions.",
     )
     streaming_max_audio_buffer_bytes: int = Field(
+        validation_alias=moved_alias("streaming_max_audio_buffer_bytes"),
         default=500_000_000,
         description="Hard cap (bytes) on the in-memory audio buffer per session. "
         "Once exceeded, new frames are silently dropped and a warning is logged. "
         "Default ~500 MB ≈ ~87 min of 16 kHz mono s16le audio.",
     )
     streaming_session_timeout_s: int = Field(
+        validation_alias=moved_alias("streaming_session_timeout_s"),
         default=60,
         description="Seconds of inactivity before a streaming session is auto-finalized by the reaper.",
     )
     streaming_audio_idle_timeout_s: int = Field(
+        validation_alias=moved_alias("streaming_audio_idle_timeout_s"),
         default=300,
         description="Seconds of no audio data before STT auto-stops a streaming session (default 5 min).",
     )
     streaming_reaper_interval_s: int = Field(
+        validation_alias=moved_alias("streaming_reaper_interval_s"),
         default=300,
         description="Interval (seconds) between background reaper scans for expired sessions.",
     )
     streaming_transcript_persist_max_attempts: int = Field(
+        validation_alias=moved_alias("streaming_transcript_persist_max_attempts"),
         default=3,
         description=(
             "Max attempts to persist the durable streaming transcript to the "
@@ -621,6 +689,7 @@ class Settings(BaseSettings):
         ),
     )
     streaming_transcript_persist_backoff_s: float = Field(
+        validation_alias=moved_alias("streaming_transcript_persist_backoff_s"),
         default=0.5,
         description=(
             "Base backoff (seconds) between durable-transcript persist retries; "
@@ -629,6 +698,7 @@ class Settings(BaseSettings):
         ),
     )
     streaming_transcript_outbox_max_attempts: int = Field(
+        validation_alias=moved_alias("streaming_transcript_outbox_max_attempts"),
         default=10,
         description=(
             "Max re-drive attempts for a transcript in the durable Redis outbox "
@@ -640,6 +710,7 @@ class Settings(BaseSettings):
         ),
     )
     streaming_inference_drain_timeout_s: float = Field(
+        validation_alias=moved_alias("streaming_inference_drain_timeout_s"),
         default=60.0,
         description=(
             "Max seconds finalize waits for the inference queue to drain before "
@@ -649,6 +720,7 @@ class Settings(BaseSettings):
         ),
     )
     streaming_inference_queue_maxsize: int = Field(
+        validation_alias=moved_alias("streaming_inference_queue_maxsize"),
         default=64,
         description=(
             "Bound on the per-session in-process inference queue "
@@ -663,6 +735,7 @@ class Settings(BaseSettings):
         ),
     )
     streaming_inference_stop_timeout_s: float = Field(
+        validation_alias=moved_alias("streaming_inference_stop_timeout_s"),
         default=30.0,
         description=(
             "Seconds to wait for a session's inference worker task to "
@@ -671,14 +744,17 @@ class Settings(BaseSettings):
         ),
     )
     streaming_worker_heartbeat_s: int = Field(
+        validation_alias=moved_alias("streaming_worker_heartbeat_s"),
         default=10,
         description="Interval (seconds) between worker heartbeat extensions in Redis.",
     )
     streaming_worker_heartbeat_ttl_s: int = Field(
+        validation_alias=moved_alias("streaming_worker_heartbeat_ttl_s"),
         default=30,
         description="TTL (seconds) for the worker heartbeat key in Redis.",
     )
     streaming_audio_stream_maxlen: int = Field(
+        validation_alias=moved_alias("streaming_audio_stream_maxlen"),
         default=10000,
         description=(
             "Approximate MAXLEN for Redis audio streams (per-session). "
@@ -689,6 +765,7 @@ class Settings(BaseSettings):
         ),
     )
     streaming_result_stream_maxlen: int = Field(
+        validation_alias=moved_alias("streaming_result_stream_maxlen"),
         default=10000,
         description=(
             "Approximate MAXLEN for the per-session Redis result stream "
@@ -699,6 +776,7 @@ class Settings(BaseSettings):
         ),
     )
     streaming_audio_trim_interval_s: float = Field(
+        validation_alias=moved_alias("streaming_audio_trim_interval_s"),
         default=30.0,
         description=(
             "Minimum interval (seconds) between XTRIM MINID calls on the "
@@ -707,6 +785,7 @@ class Settings(BaseSettings):
         ),
     )
     streaming_extra_filler_patterns: str = Field(
+        validation_alias=moved_alias("streaming_extra_filler_patterns"),
         default="",
         description=(
             "Pipe-separated extra regex alternates appended to the streaming "
@@ -715,6 +794,7 @@ class Settings(BaseSettings):
         ),
     )
     streaming_punctuation_timeout_s: float = Field(
+        validation_alias=moved_alias("streaming_punctuation_timeout_s"),
         default=0.4,
         description=(
             "Max seconds a streaming FINAL waits for Cadence-Fast "
@@ -724,6 +804,7 @@ class Settings(BaseSettings):
         ),
     )
     streaming_partial_window_s: float = Field(
+        validation_alias=moved_alias("streaming_partial_window_s"),
         default=6.0,
         description=(
             "Tail window (seconds) of the current utterance decoded for "
@@ -734,6 +815,7 @@ class Settings(BaseSettings):
         ),
     )
     streaming_partial_interval_s: float = Field(
+        validation_alias=moved_alias("streaming_partial_interval_s"),
         default=0.4,
         description=(
             "Minimum wall-clock interval (seconds) between successive PARTIAL "
@@ -752,6 +834,7 @@ class Settings(BaseSettings):
     # env names (e.g. SEMANTIC_ENDPOINT_ENABLED), NOT STT_*.
     # -------------------------------------------------------------------------
     semantic_endpoint_enabled: bool = Field(
+        validation_alias=moved_alias("semantic_endpoint_enabled"),
         default=False,
         description=(
             "Enable content-driven semantic end-of-utterance detection on the "
@@ -761,6 +844,7 @@ class Settings(BaseSettings):
         ),
     )
     semantic_endpoint_min_silence_ms: int = Field(
+        validation_alias=moved_alias("semantic_endpoint_min_silence_ms"),
         default=200,
         description=(
             "Trailing-silence floor (ms) before a semantic early cut is allowed "
@@ -769,6 +853,7 @@ class Settings(BaseSettings):
         ),
     )
     semantic_endpoint_max_silence_ms: int = Field(
+        validation_alias=moved_alias("semantic_endpoint_max_silence_ms"),
         default=500,
         description=(
             "Target-max EOU latency band (ms) — informational; the fixed VAD "
@@ -776,6 +861,7 @@ class Settings(BaseSettings):
         ),
     )
     semantic_endpoint_confidence_threshold: float = Field(
+        validation_alias=moved_alias("semantic_endpoint_confidence_threshold"),
         default=0.85,
         description=(
             "Minimum decision confidence (0–1) to cut a final early. Raise it if "
@@ -784,6 +870,7 @@ class Settings(BaseSettings):
         ),
     )
     semantic_endpoint_min_words: int = Field(
+        validation_alias=moved_alias("semantic_endpoint_min_words"),
         default=3,
         description=(
             "Minimum running-hypothesis word count before a semantic early cut; "
@@ -791,6 +878,7 @@ class Settings(BaseSettings):
         ),
     )
     semantic_endpoint_model_id: str = Field(
+        validation_alias=moved_alias("semantic_endpoint_model_id"),
         default="",
         description=(
             "OPTIONAL self-hosted turn/EOU model id. Empty = model-free "
@@ -800,10 +888,12 @@ class Settings(BaseSettings):
         ),
     )
     streaming_result_stream_expire_s: int = Field(
+        validation_alias=moved_alias("streaming_result_stream_expire_s"),
         default=3600,
         description="TTL (seconds) for Redis stream keys after session closes (1 hour).",
     )
     streaming_session_metadata_expire_s: int = Field(
+        validation_alias=moved_alias("streaming_session_metadata_expire_s"),
         default=86400,
         description="TTL (seconds) for Redis session metadata keys after session closes (24 hours).",
     )
@@ -812,6 +902,7 @@ class Settings(BaseSettings):
     # Real-time event publishing (Redis Pub/Sub)
     # -------------------------------------------------------------------------
     pubsub_channel_prefix: str = Field(
+        validation_alias=moved_alias("pubsub_channel_prefix"),
         default="stt:transcription:",
         description=(
             "Redis Pub/Sub channel prefix for real-time transcription events. "
@@ -820,6 +911,7 @@ class Settings(BaseSettings):
         ),
     )
     pubsub_enabled: bool = Field(
+        validation_alias=moved_alias("pubsub_enabled"),
         default=True,
         description=(
             "Enable Redis Pub/Sub publishing for real-time transcription events. "
@@ -858,6 +950,7 @@ class Settings(BaseSettings):
     # Punctuation restoration (Cadence)
     # -------------------------------------------------------------------------
     punctuation_enabled: bool = Field(
+        validation_alias=moved_alias("punctuation_enabled"),
         default=False,
         description=(
             "Enable Cadence punctuation restoration at startup and runtime. "
@@ -874,6 +967,7 @@ class Settings(BaseSettings):
         ),
     )
     punctuation_model_name: str = Field(
+        validation_alias=moved_alias("punctuation_model_name"),
         default="Cadence",
         description="Default punctuation model: 'Cadence' (1B) or 'Cadence-Fast' "
         "(270M) via the cadence-punctuation wrapper, or 'cadence-fast' for the "
@@ -881,14 +975,17 @@ class Settings(BaseSettings):
         "Can be overridden per-pipeline via YAML.",
     )
     punctuation_model_cache_dir: str | None = Field(
+        validation_alias=moved_alias("punctuation_model_cache_dir"),
         default=None,
         description="Cache dir for punctuation model weights (None = HF default cache)",
     )
     punctuation_device: str = Field(
+        validation_alias=moved_alias("punctuation_device"),
         default="auto",
         description="Device for punctuation inference: 'cpu', 'cuda', 'auto'",
     )
     punctuation_max_length: int = Field(
+        validation_alias=moved_alias("punctuation_max_length"),
         default=300,
         description="Max sequence length / sliding window width for punctuation model",
     )

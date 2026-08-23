@@ -81,8 +81,17 @@ class KokoroProvider:
         pipeline_factory: Callable[[], Any] | None = None,
         ttl_seconds: int | None = None,
         time_func: Callable[[], float] = time.monotonic,
+        warmup_voice: str | None = None,
     ) -> None:
         self._config = config
+        # The voice used ONLY by the boot-time `warmup()` call. It comes from the
+        # voice catalog at construction (`main.create_app`), which is the single
+        # source of provider voice names since TASK-799 lane C — the `voice`
+        # settings field that used to hold `af_heart` a second time is gone.
+        # None ⇒ the catalog binds no English voice to kokoro, so there is
+        # nothing to warm; inventing a name here would put a voice into the
+        # catalog's job without putting it in the catalog.
+        self._warmup_voice = warmup_voice
         # The pipeline handle lives behind the shared
         # model cache, so it loads on first use and is RELEASED when idle. An
         # explicitly injected `pipeline` bypasses the cache entirely (hermetic
@@ -164,8 +173,21 @@ class KokoroProvider:
         return await self._cache.sweep()
 
     async def warmup(self) -> None:
+        """Load the weights, and run one synthesis when a voice is known.
+
+        The LOAD is unconditional, and that split is the point: what
+        `TTS_WARMUP_ENABLED` buys an operator is fail-at-boot on a broken or
+        missing model, and that failure happens during the load. The trial
+        synthesis needs a voice name, which comes from the catalog — so if the
+        catalog binds no English voice to kokoro there is no name to use, but
+        skipping the load as well would silently give a fail-at-boot operator no
+        boot-time check at all.
+        """
         pipeline = await self._get_pipeline_async()
-        await asyncio.to_thread(lambda: list(pipeline("warm up.", voice=self._config.voice)))
+        voice = self._warmup_voice
+        if voice is None:
+            return
+        await asyncio.to_thread(lambda: list(pipeline("warm up.", voice=voice)))
 
     async def health(self) -> bool:
         return True
@@ -186,7 +208,12 @@ class KokoroProvider:
         utterance live at once.
         """
         pipeline = await self._get_pipeline_async()
-        voice = req.provider_voice or self._config.voice
+        # `req.provider_voice` is ALWAYS the catalog binding: the router resolves
+        # it from `voice.bindings[name]`, and `candidates()` skips any provider a
+        # voice is not bound to. There is deliberately no config fallback — one
+        # would only ever fire on a path that cannot occur, and would substitute
+        # a different voice than the caller asked for if it ever did.
+        voice = req.provider_voice
         worker = self._get_worker()
 
         if req.fmt == AudioFormat.PCM:

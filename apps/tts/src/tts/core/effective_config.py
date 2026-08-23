@@ -260,6 +260,55 @@ class EffectiveConfigClient:
             return EffectiveConfigSnapshot(raw={}, ok=False, fetched_at=self._last_refresh_at)
 
 
+def ensure_invalidation_listener(app_state: Any) -> None:
+    """Start the ``arca:config:invalidate`` subscriber once, lazily.
+
+    Owner decision D-5 approved giving tts a Redis client so a control-plane
+    write reaches it by PUSH rather than only by 60s poll — rule 09: invalidation
+    is the propagation path, the TTL is a bounded-staleness backstop.
+
+    Started here rather than in ``lifespan`` for a specific reason:
+    ``test_keyless_readiness_task642`` pins that reaching ``/health/ready`` opens
+    ZERO network connections, because a keyless deployment must become Ready with
+    no I/O at all. Connecting to Redis at boot breaks that outright. Deferring to
+    the first config refresh — i.e. the first synthesis — also preserves the
+    existing "a service that never synthesizes never polls" property, while any
+    process that actually serves traffic gets push invalidation on request one.
+
+    NEVER raises. Every failure leaves the TTL as the only propagation path,
+    which is exactly the pre-D-5 behaviour: a process that starts (or first
+    synthesizes) while Redis is down must still work, and must still converge.
+    """
+    if getattr(app_state, "config_invalidation_task", None) is not None:
+        return
+    client = getattr(app_state, "effective_config_client", None)
+    if client is None:
+        return
+    settings = getattr(app_state, "settings", None)
+    if settings is None:
+        return
+
+    try:
+        import redis.asyncio as redis_asyncio
+
+        # Bounded and non-retrying ON PURPOSE. This connection exists only to
+        # receive invalidation messages and the TTL covers everything it does,
+        # so a Redis that is slow or absent must surface as a fast, logged
+        # degradation — never as a synthesis request waiting on a subscribe.
+        invalidation_redis = redis_asyncio.from_url(
+            settings.redis_url,
+            socket_connect_timeout=2.0,
+            socket_timeout=5.0,
+            retry_on_timeout=False,
+        )
+        app_state.config_invalidation_redis = invalidation_redis
+        app_state.config_invalidation_task = asyncio.create_task(
+            client.run_invalidation_listener(invalidation_redis)
+        )
+    except Exception as exc:  # noqa: BLE001 — the TTL remains the backstop
+        logger.warning("tts.config_invalidation_unavailable", error=str(exc))
+
+
 async def refresh_model_cache_retention(app_state: Any) -> None:
     """Pull control-plane retention and apply it to every LIVE local provider.
 
@@ -276,8 +325,27 @@ async def refresh_model_cache_retention(app_state: Any) -> None:
     if client is None:
         return
 
+    # First refresh also arms push invalidation (see the docstring there for why
+    # it cannot happen at boot). Idempotent and non-blocking.
+    ensure_invalidation_listener(app_state)
+
     try:
         snapshot = await client.get()
+
+        # Same snapshot, second consumer (TASK-799 lane C): the ~29 registry
+        # keys that ARE settings fields — provider endpoints, timeouts,
+        # concurrency, local-engine model ids and the synthesis limits. Applied
+        # on this READ-TRIGGERED path rather than at boot because that is what
+        # runs after the invalidation listener drops the cache, so a
+        # control-plane write converges within one request instead of waiting
+        # for a restart — and because this service's boot contract is that
+        # construction performs no I/O.
+        settings = getattr(app_state, "settings", None)
+        if settings is not None:
+            from tts.core.control_plane import apply_control_plane
+
+            apply_control_plane(settings, snapshot.raw)
+
         retention = snapshot.retention()
         if not retention:
             return

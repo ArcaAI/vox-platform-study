@@ -54,10 +54,17 @@ async def test_resamples_44k_to_24k():
 
 
 @pytest.mark.asyncio
-async def test_uses_malayalam_speaker_in_description():
+async def test_uses_the_requested_speaker_in_the_description():
+    """The description conditions on the CATALOG binding, not a config copy.
+
+    This provider used to pick between its own `speaker_ml` / `speaker_en`
+    settings and ignore `req.provider_voice` entirely — so the catalog binding
+    the router had already resolved for it was silently discarded. Two
+    representations of one fact, with the wrong one winning (TASK-799 lane C).
+    """
     gen = FakeGenerate()
-    provider = IndicParlerProvider(IndicParlerConfig(speaker_ml="Anjali"), generate=gen)
-    await _collect(provider, _req(locale="ml-IN"))
+    provider = IndicParlerProvider(IndicParlerConfig(), generate=gen)
+    await _collect(provider, _req(locale="ml-IN", provider_voice="Anjali"))
     assert "Anjali" in gen.calls[0][1]
 
 
@@ -88,7 +95,9 @@ def test_model_source_defaults_to_gated_hub():
 
 def test_model_source_uses_mirror_offline_when_path_set():
     """Mirror path set (prod) → load from it, offline (never touch gated hub)."""
-    cfg = IndicParlerConfig(model_path="/models/indic-parler-tts/abc123")
+    cfg = IndicParlerConfig().model_copy(
+        update={"model_path": "/models/indic-parler-tts/abc123"}
+    )
     source, kwargs = _resolve_model_source(cfg)
     assert source == "/models/indic-parler-tts/abc123"
     assert kwargs == {"local_files_only": True}
@@ -103,7 +112,7 @@ def test_desc_source_defaults_to_baked_hub_id():
 
 def test_desc_source_uses_mirror_offline_when_path_set():
     """Desc mirror set → mirrored tokenizer, offline (baked id ignored)."""
-    cfg = IndicParlerConfig(desc_encoder_path="/models/flan-t5-large")
+    cfg = IndicParlerConfig().model_copy(update={"desc_encoder_path": "/models/flan-t5-large"})
     source, kwargs = _resolve_desc_source(cfg, "google/flan-t5-large")
     assert source == "/models/flan-t5-large"
     assert kwargs == {"local_files_only": True}

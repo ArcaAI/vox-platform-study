@@ -467,21 +467,52 @@ class TestPubSubSettings:
             settings = Settings()
             assert settings.pubsub_enabled is True
 
-    def test_pubsub_can_be_disabled_via_env(self):
-        """Verify pub/sub can be disabled via environment variable."""
-        with patch.dict("os.environ", {"PUBSUB_ENABLED": "false"}, clear=False):
+    def test_pubsub_is_no_longer_settable_from_env(self):
+        """TASK-799: both pub/sub knobs are control-plane owned.
+
+        `PUBSUB_ENABLED` / `PUBSUB_CHANNEL_PREFIX` used to be environment
+        variables, which meant retuning the relay channel — or turning the
+        real-time event feed off during an incident — required a redeploy.
+        They are now registry keys (`stt.pubsub.*`), and the env path is closed
+        STRUCTURALLY so an operator cannot set a value the next config pull
+        would silently overwrite.
+        """
+        with patch.dict(
+            "os.environ",
+            {"PUBSUB_ENABLED": "false", "PUBSUB_CHANNEL_PREFIX": "custom:prefix:"},
+            clear=False,
+        ):
             from stt.core.config.settings import Settings
 
             settings = Settings()
-            assert settings.pubsub_enabled is False
+            assert settings.pubsub_enabled is True
+            assert settings.pubsub_channel_prefix == "stt:transcription:"
 
-    def test_channel_prefix_override_via_env(self):
-        """Verify channel prefix can be overridden via environment."""
-        with patch.dict("os.environ", {"PUBSUB_CHANNEL_PREFIX": "custom:prefix:"}, clear=False):
-            from stt.core.config.settings import Settings
+    def test_pubsub_is_settable_from_the_control_plane(self):
+        """The replacement path: a served value reaches the running service."""
+        from stt.core.config.settings import Settings
+        from stt.core.control_plane import apply_control_plane
 
-            settings = Settings()
-            assert settings.pubsub_channel_prefix == "custom:prefix:"
+        settings = Settings(_env_file=None)
+        apply_control_plane(
+            settings,
+            {
+                "settings": {
+                    "stt.pubsub.enabled": {
+                        "value": False,
+                        "dataType": "boolean",
+                        "source": "db",
+                    },
+                    "stt.pubsub.channelPrefix": {
+                        "value": "custom:prefix:",
+                        "dataType": "string",
+                        "source": "db",
+                    },
+                }
+            },
+        )
+        assert settings.pubsub_enabled is False
+        assert settings.pubsub_channel_prefix == "custom:prefix:"
 
 
 # =============================================================================
