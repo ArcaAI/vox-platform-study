@@ -46,7 +46,7 @@ def test_explicit_model_name_marks_config_as_configured(clean_text_classifier_en
 async def test_initialize_when_unconfigured_warns_and_stays_uninitialized(
     clean_text_classifier_env, caplog
 ):
-    classifier = TransformerTextClassifier()
+    classifier = TransformerTextClassifier(config=TextClassificationConfig())
 
     with (
         patch("nlp.services.text_classifier.AutoTokenizer") as mock_tokenizer,

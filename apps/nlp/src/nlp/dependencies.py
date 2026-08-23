@@ -63,30 +63,10 @@ def get_external_text_client(request: Request) -> ExternalTextClient | None:
     return getattr(request.app.state, "external_text_client", None)
 
 
-def get_text_classifier() -> TextClassifier:
-    if globals().get("_text_classifier_instance") is None:
-        globals()["_text_classifier_instance"] = TransformerTextClassifier()
-    return cast(TextClassifier, globals()["_text_classifier_instance"])
-
-
-def get_token_classifier() -> TokenClassifier:
-    if globals().get("_token_classifier_instance") is None:
-        globals()["_token_classifier_instance"] = TransformerTokenClassifier()
-    return cast(TokenClassifier, globals()["_token_classifier_instance"])
-
-
 def get_text_corrector() -> TextCorrector:
     if globals().get("_text_corrector_instance") is None:
         globals()["_text_corrector_instance"] = SymSpellCorrector()
     return cast(TextCorrector, globals()["_text_corrector_instance"])
-
-
-def get_medical_suggester() -> MedicalSuggester:
-    if globals().get("_medical_suggester_instance") is None:
-        globals()["_medical_suggester_instance"] = MedicalSuggester(
-            token_classifier=get_token_classifier()
-        )
-    return cast(MedicalSuggester, globals()["_medical_suggester_instance"])
 
 
 def get_websocket_manager() -> WebSocketManager:
@@ -173,14 +153,40 @@ async def _create_text_classifier(cache_key: str) -> TextClassifier:
     return instance
 
 
+# The suggester runs TWO models, so its slot key carries BOTH weight
+# identities: the disease classifier AND the NER it extracts symptoms with.
+# Keying on the disease model alone would serve a cached instance whose NER is
+# whichever one an earlier request happened to select.
+def _suggester_cache_key(
+    model_name: str, model_path: str | None, ner_model_name: str, ner_model_path: str | None
+) -> str:
+    return _KEY_SEP.join((model_name, model_path or "", ner_model_name, ner_model_path or ""))
+
+
+def _split_suggester_cache_key(key: str) -> tuple[str, str | None, str, str | None]:
+    """Inverse of `_suggester_cache_key` (the factory receives the composed key)."""
+    model_name, model_path, ner_model_name, ner_model_path = key.split(_KEY_SEP)
+    return model_name, model_path or None, ner_model_name, ner_model_path or None
+
+
 async def _create_medical_suggester(cache_key: str) -> MedicalSuggester:
-    model_name, model_path = _split_cache_key(cache_key)
-    model_name = _weights_source(model_name, model_path)
-    # Overrides ONLY the disease-classification model — the internal NER stays
-    # the default token classifier (already initialized; initialize() is
-    # idempotent so the shared instance is never reloaded).
-    config = MedicalSuggesterConfig(model_name=model_name, tokenizer_name=model_name)
-    instance = MedicalSuggester(config=config, token_classifier=get_token_classifier())
+    model_name, model_path, ner_model_name, ner_model_path = _split_suggester_cache_key(cache_key)
+    source = _weights_source(model_name, model_path)
+    config = MedicalSuggesterConfig(model_name=source, tokenizer_name=source)
+    # The internal NER is the caller's selection too. It used to be the process
+    # singleton — i.e. the hardcoded default — which is how half of this route
+    # stayed un-configurable while the other half was gateway-injected. A
+    # DEDICATED instance, not one borrowed from the token-classifier cache: the
+    # suggester's own eviction calls `shutdown()` on it, which would unload
+    # weights that cache still believes it is serving.
+    ner_source = _weights_source(ner_model_name, ner_model_path)
+    instance = MedicalSuggester(
+        config=config,
+        token_classifier=TransformerTokenClassifier(
+            configs=TokenClassificationConfig(model_name=ner_source, tokenizer_name=ner_source)
+        ),
+    )
+    # `MedicalSuggester.initialize()` initializes its NER as well.
     await instance.initialize()
     return instance
 
@@ -382,11 +388,13 @@ async def pinned_text_classifier(
 
 @asynccontextmanager
 async def pinned_medical_suggester(
-    model_name: str, model_path: str | None = None
+    model_name: str,
+    model_path: str | None,
+    ner_model_name: str,
+    ner_model_path: str | None = None,
 ) -> AsyncIterator[MedicalSuggester]:
-    # Pin the (model_name, model_path) slot; `model_path` defaults to
-    # None so every existing caller keeps its exact slot and behaviour.
-    key = _model_cache_key(model_name, model_path)
+    # Pin the (disease model, NER model) slot — both selections are required.
+    key = _suggester_cache_key(model_name, model_path, ner_model_name, ner_model_path)
     cache = _medical_suggester_cache()
     await cache.pin(key)
     try:

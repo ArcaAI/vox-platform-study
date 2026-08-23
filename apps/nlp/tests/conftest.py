@@ -23,11 +23,13 @@ class FakeService:
 # just patched) so code holding a direct reference to the ORIGINAL getters —
 # router Depends defaults bound at import, monitoring's check table — also
 # resolves to the fake, independent of module import order.
+#
+# The classifier singletons are GONE (TASK-799 C.2): every model is resolved per
+# request from a caller-supplied selection through the model cache, so there is
+# no process-wide instance left to preset. Only the two weightless singletons
+# remain.
 _DEP_SLOTS = (
-    "_text_classifier_instance",
-    "_token_classifier_instance",
     "_text_corrector_instance",
-    "_medical_suggester_instance",
     "_websocket_manager_instance",
 )
 
@@ -41,10 +43,7 @@ def mock_services():
     for name in _DEP_SLOTS:
         deps.__dict__[name] = fake
     patches = [
-        patch("nlp.dependencies.get_text_classifier", return_value=fake),
-        patch("nlp.dependencies.get_token_classifier", return_value=fake),
         patch("nlp.dependencies.get_text_corrector", return_value=fake),
-        patch("nlp.dependencies.get_medical_suggester", return_value=fake),
         patch("nlp.dependencies.get_websocket_manager", return_value=fake),
         # lifespan no longer eager-loads the ML models; it only
         # initializes the (weightless) websocket manager.
