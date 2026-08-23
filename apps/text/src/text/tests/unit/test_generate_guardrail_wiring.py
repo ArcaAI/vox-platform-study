@@ -169,7 +169,7 @@ async def test_none_client_with_enforce_posture_fails_closed(
     from text.core.config import ExternalGuardrailConfig, Settings
 
     app = _make_app(mock_registry, mock_task_manager, None)
-    app.state.settings = Settings(external_guardrail=ExternalGuardrailConfig(enabled=True))
+    app.state.settings = Settings(external_guardrail=ExternalGuardrailConfig())
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as client:
         resp = await client.post("/api/v1/generate", json={"prompt": "patient note", "model": "m"})

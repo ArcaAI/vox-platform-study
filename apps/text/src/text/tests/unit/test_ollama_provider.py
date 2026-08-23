@@ -12,13 +12,9 @@ from unittest.mock import AsyncMock, MagicMock
 import httpx
 import pytest
 
-from text.core.config import OllamaConfig
 from text.models.requests import GenerateRequest
 
 
-@pytest.fixture
-def ollama_config():
-    return OllamaConfig(base_url="http://localhost:11434", default_model="llama3.2:latest")
 
 
 @pytest.fixture
@@ -30,16 +26,16 @@ def mock_http_client():
 
 
 class TestOllamaProviderInit:
-    def test_creates_with_config(self, ollama_config, mock_http_client):
+    def test_creates_with_config(self, mock_http_client):
         from text.providers.ollama import OllamaProvider
 
-        provider = OllamaProvider(config=ollama_config, http_client=mock_http_client)
+        provider = OllamaProvider(mock_http_client)
         assert provider is not None
 
-    def test_default_model_from_config(self, ollama_config, mock_http_client):
+    def test_default_model_from_config(self, mock_http_client):
         from text.providers.ollama import OllamaProvider
 
-        provider = OllamaProvider(config=ollama_config, http_client=mock_http_client)
+        provider = OllamaProvider(mock_http_client)
         assert provider._default_model == "llama3.2:latest"
 
 
@@ -48,7 +44,7 @@ class TestOllamaProviderInit:
 
 class TestOllamaGenerate:
     @pytest.mark.asyncio
-    async def test_generate_returns_text(self, ollama_config, mock_http_client):
+    async def test_generate_returns_text(self, mock_http_client):
         from text.providers.ollama import OllamaProvider
 
         response_data = {"model": "llama3.2:latest", "response": "Hello there!", "done": True}
@@ -60,13 +56,13 @@ class TestOllamaGenerate:
 
         from text.models.stats import GenerationStats
 
-        provider = OllamaProvider(config=ollama_config, http_client=mock_http_client)
-        content, _reasoning, stats = await provider.generate(GenerateRequest(prompt="hi"))
+        provider = OllamaProvider(mock_http_client)
+        content, _reasoning, stats = await provider.generate(GenerateRequest(prompt="hi", model="test-model"))
         assert content == "Hello there!"
         assert isinstance(stats, GenerationStats)
 
     @pytest.mark.asyncio
-    async def test_generate_uses_correct_endpoint(self, ollama_config, mock_http_client):
+    async def test_generate_uses_correct_endpoint(self, mock_http_client):
         from text.providers.ollama import OllamaProvider
 
         mock_response = MagicMock()
@@ -75,14 +71,14 @@ class TestOllamaGenerate:
         mock_response.raise_for_status = MagicMock()
         mock_http_client.post.return_value = mock_response
 
-        provider = OllamaProvider(config=ollama_config, http_client=mock_http_client)
-        await provider.generate(GenerateRequest(prompt="hi"))
+        provider = OllamaProvider(mock_http_client)
+        await provider.generate(GenerateRequest(prompt="hi", model="test-model"))
 
         call_args = mock_http_client.post.call_args
         assert "/api/generate" in call_args[0][0] or "/api/generate" in str(call_args)
 
     @pytest.mark.asyncio
-    async def test_generate_sends_model_and_prompt(self, ollama_config, mock_http_client):
+    async def test_generate_sends_model_and_prompt(self, mock_http_client):
         from text.providers.ollama import OllamaProvider
 
         mock_response = MagicMock()
@@ -91,7 +87,7 @@ class TestOllamaGenerate:
         mock_response.raise_for_status = MagicMock()
         mock_http_client.post.return_value = mock_response
 
-        provider = OllamaProvider(config=ollama_config, http_client=mock_http_client)
+        provider = OllamaProvider(mock_http_client)
         await provider.generate(GenerateRequest(prompt="tell me a joke", model="llama3.2:latest"))
 
         call_kwargs = mock_http_client.post.call_args
@@ -100,7 +96,7 @@ class TestOllamaGenerate:
         assert body["model"] == "llama3.2:latest"
 
     @pytest.mark.asyncio
-    async def test_generate_raises_on_http_error(self, ollama_config, mock_http_client):
+    async def test_generate_raises_on_http_error(self, mock_http_client):
         from text.providers.ollama import OllamaProvider
 
         mock_response = MagicMock()
@@ -110,9 +106,9 @@ class TestOllamaGenerate:
         )
         mock_http_client.post.return_value = mock_response
 
-        provider = OllamaProvider(config=ollama_config, http_client=mock_http_client)
+        provider = OllamaProvider(mock_http_client)
         with pytest.raises(httpx.HTTPStatusError):
-            await provider.generate(GenerateRequest(prompt="hi"))
+            await provider.generate(GenerateRequest(prompt="hi", model="test-model"))
 
 
 # ── generate_stream ──
@@ -120,7 +116,7 @@ class TestOllamaGenerate:
 
 class TestOllamaGenerateStream:
     @pytest.mark.asyncio
-    async def test_stream_yields_chunks(self, ollama_config, mock_http_client):
+    async def test_stream_yields_chunks(self, mock_http_client):
         from text.providers.ollama import OllamaProvider
 
         _raw_lines = [
@@ -146,9 +142,9 @@ class TestOllamaGenerateStream:
 
         mock_http_client.stream = _mock_stream_context(mock_response)
 
-        provider = OllamaProvider(config=ollama_config, http_client=mock_http_client)
+        provider = OllamaProvider(mock_http_client)
         chunks = []
-        async for chunk in provider.generate_stream(GenerateRequest(prompt="hi", stream=True)):
+        async for chunk in provider.generate_stream(GenerateRequest(prompt="hi", stream=True, model="test-model")):
             chunks.append(chunk)
 
         text_chunks = [c for c in chunks if c.type == "chunk"]
@@ -157,7 +153,7 @@ class TestOllamaGenerateStream:
         assert text_chunks[1].content == " world"
 
     @pytest.mark.asyncio
-    async def test_stream_requests_thinking(self, ollama_config, mock_http_client):
+    async def test_stream_requests_thinking(self, mock_http_client):
         from text.providers.ollama import OllamaProvider
 
         mock_response = MagicMock()
@@ -174,7 +170,7 @@ class TestOllamaGenerateStream:
         mock_response.aiter_lines = _aiter_lines
         mock_http_client.stream = _mock_stream_context(mock_response)
 
-        provider = OllamaProvider(config=ollama_config, http_client=mock_http_client)
+        provider = OllamaProvider(mock_http_client)
         captured = {}
         original_stream = mock_http_client.stream
 
@@ -183,14 +179,14 @@ class TestOllamaGenerateStream:
             return original_stream(*args, **kwargs)
 
         mock_http_client.stream = _capturing_stream
-        async for _ in provider.generate_stream(GenerateRequest(prompt="hi", stream=True)):
+        async for _ in provider.generate_stream(GenerateRequest(prompt="hi", stream=True, model="test-model")):
             pass
 
         assert captured["kwargs"]["json"]["think"] is True
 
     @pytest.mark.asyncio
     async def test_stream_yields_reasoning_chunks_from_thinking_field(
-        self, ollama_config, mock_http_client
+        self, mock_http_client
     ):
         from text.providers.ollama import OllamaProvider
 
@@ -210,9 +206,9 @@ class TestOllamaGenerateStream:
         mock_response.aiter_lines = _aiter_lines
         mock_http_client.stream = _mock_stream_context(mock_response)
 
-        provider = OllamaProvider(config=ollama_config, http_client=mock_http_client)
+        provider = OllamaProvider(mock_http_client)
         chunks = []
-        async for chunk in provider.generate_stream(GenerateRequest(prompt="hi", stream=True)):
+        async for chunk in provider.generate_stream(GenerateRequest(prompt="hi", stream=True, model="test-model")):
             chunks.append(chunk)
 
         reasoning_chunks = [c for c in chunks if c.type == "reasoning"]
@@ -224,7 +220,7 @@ class TestOllamaGenerateStream:
 
     @pytest.mark.asyncio
     async def test_stream_parses_inline_think_tags_when_no_native_thinking_field(
-        self, ollama_config, mock_http_client
+        self, mock_http_client
     ):
         from text.providers.ollama import OllamaProvider
 
@@ -247,9 +243,9 @@ class TestOllamaGenerateStream:
         mock_response.aiter_lines = _aiter_lines
         mock_http_client.stream = _mock_stream_context(mock_response)
 
-        provider = OllamaProvider(config=ollama_config, http_client=mock_http_client)
+        provider = OllamaProvider(mock_http_client)
         chunks = []
-        async for chunk in provider.generate_stream(GenerateRequest(prompt="hi", stream=True)):
+        async for chunk in provider.generate_stream(GenerateRequest(prompt="hi", stream=True, model="test-model")):
             chunks.append(chunk)
 
         reasoning_chunks = [c for c in chunks if c.type == "reasoning"]
@@ -258,7 +254,7 @@ class TestOllamaGenerateStream:
         assert "".join(c.content for c in content_chunks) == "Answer"
 
     @pytest.mark.asyncio
-    async def test_stream_ends_with_done(self, ollama_config, mock_http_client):
+    async def test_stream_ends_with_done(self, mock_http_client):
         from text.providers.ollama import OllamaProvider
 
         mock_response = MagicMock()
@@ -276,9 +272,9 @@ class TestOllamaGenerateStream:
         mock_response.aiter_lines = _aiter_lines
         mock_http_client.stream = _mock_stream_context(mock_response)
 
-        provider = OllamaProvider(config=ollama_config, http_client=mock_http_client)
+        provider = OllamaProvider(mock_http_client)
         chunks = []
-        async for chunk in provider.generate_stream(GenerateRequest(prompt="hi", stream=True)):
+        async for chunk in provider.generate_stream(GenerateRequest(prompt="hi", stream=True, model="test-model")):
             chunks.append(chunk)
 
         done_chunks = [c for c in chunks if c.type == "done"]
@@ -290,23 +286,23 @@ class TestOllamaGenerateStream:
 
 class TestOllamaHealthCheck:
     @pytest.mark.asyncio
-    async def test_health_check_returns_true_when_up(self, ollama_config, mock_http_client):
+    async def test_health_check_returns_true_when_up(self, mock_http_client):
         from text.providers.ollama import OllamaProvider
 
         mock_response = MagicMock()
         mock_response.status_code = 200
         mock_http_client.get.return_value = mock_response
 
-        provider = OllamaProvider(config=ollama_config, http_client=mock_http_client)
+        provider = OllamaProvider(mock_http_client)
         assert await provider.health_check() is True
 
     @pytest.mark.asyncio
-    async def test_health_check_returns_false_when_down(self, ollama_config, mock_http_client):
+    async def test_health_check_returns_false_when_down(self, mock_http_client):
         from text.providers.ollama import OllamaProvider
 
         mock_http_client.get.side_effect = httpx.ConnectError("Connection refused")
 
-        provider = OllamaProvider(config=ollama_config, http_client=mock_http_client)
+        provider = OllamaProvider(mock_http_client)
         assert await provider.health_check() is False
 
 
@@ -315,7 +311,7 @@ class TestOllamaHealthCheck:
 
 class TestOllamaGetInfo:
     @pytest.mark.asyncio
-    async def test_get_info_returns_provider_info(self, ollama_config, mock_http_client):
+    async def test_get_info_returns_provider_info(self, mock_http_client):
         from text.providers.ollama import OllamaProvider
 
         mock_response = MagicMock()
@@ -323,7 +319,7 @@ class TestOllamaGetInfo:
         mock_response.json.return_value = {"models": [{"name": "llama3.2:latest"}]}
         mock_http_client.get.return_value = mock_response
 
-        provider = OllamaProvider(config=ollama_config, http_client=mock_http_client)
+        provider = OllamaProvider(mock_http_client)
         info = await provider.get_info()
         assert info.name == "ollama"
         assert info.supports_streaming is True

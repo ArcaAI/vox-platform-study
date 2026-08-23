@@ -19,9 +19,9 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from text.core.config import BedrockConfig
 from text.models.requests import GenerateRequest
 from text.models.stream import StreamChunk
+from text.tests.conftest import stub_client
 
 # ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -73,8 +73,8 @@ def _make_provider():
 
     config = BedrockConfig(region="us-east-1")
     with patch("boto3.client"):
-        provider = BedrockProvider(config)
-    provider._client = MagicMock()
+        provider = BedrockProvider()
+    provider._client = stub_client(provider, MagicMock())
     return provider
 
 

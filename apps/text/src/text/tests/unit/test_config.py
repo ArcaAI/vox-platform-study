@@ -1,4 +1,16 @@
-"""Tests for core/config.py — all config classes, validators, defaults, env loading."""
+"""Tests for core/config.py — the bootstrap floor, its validators and its derivations.
+
+The per-provider config classes this file used to exercise (`AzureOpenAIConfig`,
+`BedrockConfig`, `OpenAIConfig`, `AnthropicConfig`, `VertexConfig`, plus
+`RedisConfig` / `CircuitBreakerConfig` / `QueueConfig`) no longer exist: TASK-799
+lane B moved every one of those values onto the connection and control planes.
+What is left to test here is what is left to configure — nine bootstrap values —
+plus the PHI boot guard and the properties that DERIVE process facts instead of
+declaring them as a second, drift-prone copy.
+
+The exhaustive "no field beyond the floor" assertion lives in
+`test_task799_config_surface.py`; this file covers behaviour.
+"""
 
 from __future__ import annotations
 
@@ -8,19 +20,12 @@ import pytest
 from pydantic import ValidationError
 
 from text.core.config import (
-    AnthropicConfig,
-    AzureOpenAIConfig,
-    BedrockConfig,
-    CircuitBreakerConfig,
-    OpenAIConfig,
-    QueueConfig,
-    RedisConfig,
+    ExternalGuardrailConfig,
+    InternalAccessConfig,
     Settings,
     TelemetryPhiGuardConfig,
-    VertexConfig,
     get_settings,
 )
-from text.tests.conftest import keyed
 
 
 def _clear_text_env(monkeypatch):
@@ -35,113 +40,6 @@ def _isolate_text_env(monkeypatch):
     _clear_text_env(monkeypatch)
 
 
-class TestAzureOpenAIConfig:
-    def test_defaults(self, monkeypatch):
-        _clear_text_env(monkeypatch)
-        cfg = AzureOpenAIConfig()
-        assert cfg.api_key.get_secret_value() == ""
-        assert cfg.endpoint == ""
-        # Cloud providers carry no compiled-in vendor model default —
-        # provider/model SELECTION is failMode=closed (informational-only field).
-        assert cfg.default_model == ""
-        assert cfg.tpm_limit == 80_000
-        assert cfg.rpm_limit == 480
-        assert cfg.adaptive_limits is True
-
-    def test_override(self):
-        cfg = keyed(
-            AzureOpenAIConfig(endpoint="https://my.openai.azure.com", deployment_name="gpt-4o"),
-            "sk-test",
-        )
-        assert cfg.api_key.get_secret_value() == "sk-test"
-        assert cfg.deployment_name == "gpt-4o"
-
-    def test_api_key_not_read_from_env(self, monkeypatch):
-        # Api_key is BYOK-only — TEXT_AZURE_API_KEY no longer populates it.
-        monkeypatch.setenv("TEXT_AZURE_API_KEY", "env-key")
-        monkeypatch.setenv("TEXT_AZURE_RPM_LIMIT", "1000")
-        cfg = AzureOpenAIConfig()
-        assert cfg.api_key.get_secret_value() == ""  # env ignored
-        assert cfg.rpm_limit == 1000  # non-secret still env-sourced
-
-
-class TestBedrockConfig:
-    def test_defaults(self):
-        cfg = BedrockConfig()
-        assert cfg.region == "us-east-1"
-        assert cfg.max_pool_connections == 150
-        assert cfg.tpm_limit == 100_000
-        assert cfg.rpm_limit == 100
-        # No compiled-in vendor model default (informational-only field).
-        assert cfg.default_model == ""
-
-    def test_override(self):
-        cfg = BedrockConfig(region="eu-west-1", default_model="amazon.titan-text-express-v1")
-        assert cfg.region == "eu-west-1"
-
-    def test_env_prefix(self, monkeypatch):
-        monkeypatch.setenv("TEXT_BEDROCK_REGION", "ap-southeast-1")
-        cfg = BedrockConfig()
-        assert cfg.region == "ap-southeast-1"
-
-
-class TestOpenAIConfig:
-    """No compiled-in vendor model default (informational-only field)."""
-
-    def test_defaults(self, monkeypatch):
-        _clear_text_env(monkeypatch)
-        cfg = OpenAIConfig()
-        assert cfg.default_model == ""
-        assert cfg.base_url == "https://api.openai.com/v1"
-
-
-class TestAnthropicConfig:
-    """No compiled-in vendor model default (informational-only field)."""
-
-    def test_defaults(self, monkeypatch):
-        _clear_text_env(monkeypatch)
-        cfg = AnthropicConfig()
-        assert cfg.default_model == ""
-
-
-class TestVertexConfig:
-    """No compiled-in vendor model default (informational-only field)."""
-
-    def test_defaults(self, monkeypatch):
-        _clear_text_env(monkeypatch)
-        cfg = VertexConfig()
-        assert cfg.default_model == ""
-        assert cfg.location == "us-central1"
-
-
-class TestRedisConfig:
-    def test_defaults(self):
-        cfg = RedisConfig()
-        assert cfg.redis_url == "redis://localhost:6379/0"
-        assert cfg.task_ttl_seconds == 3600
-        assert cfg.stream_max_len == 10_000
-
-
-class TestCircuitBreakerConfig:
-    def test_defaults(self):
-        cfg = CircuitBreakerConfig()
-        assert cfg.failure_threshold == 5
-        assert cfg.recovery_timeout_s == 30.0
-        assert cfg.count_rate_limits is True
-        # D6: None is the deliberate "no-op" sentinel — it preserves
-        # CircuitBreaker's pre-wiring behavior (unlimited HALF_OPEN calls, no
-        # failure-count decay) on an unconfigured deployment.
-        assert cfg.half_open_max_calls is None
-        assert cfg.reset_timeout_s is None
-
-
-class TestQueueConfig:
-    def test_defaults(self):
-        cfg = QueueConfig()
-        assert cfg.max_size == 200
-        assert cfg.max_wait_s == 60.0
-
-
 class TestTelemetryPhiGuardConfig:
     """PHI-safe telemetry boot guard.
 
@@ -152,12 +50,11 @@ class TestTelemetryPhiGuardConfig:
     env-sample flow pinning `NO_CONTENT` as a template default rather than a
     hard runtime requirement outside production.
 
-    Constructed via keyword args (the `init_settings` source outranks env),
-    so these tests do not depend on ambient process env / .env.test content —
-    consistent with `AzureOpenAIConfig`/`BedrockConfig` construction tests
-    above. `_isolate_text_env` (module-level, autouse) only clears `TEXT_*`
-    names, so this class adds its own autouse isolation for the two bare
-    names this config reads.
+    Constructed via keyword args (the `init_settings` source outranks env), so
+    these tests do not depend on ambient process env / .env.test content.
+    `_isolate_text_env` (module-level, autouse) only clears `TEXT_*` names, so
+    this class adds its own autouse isolation for the two bare names this config
+    reads.
     """
 
     @pytest.fixture(autouse=True)
@@ -225,21 +122,17 @@ class TestSettings:
     def test_defaults(self, monkeypatch):
         _clear_text_env(monkeypatch)
         s = Settings()
-        assert s.host == "0.0.0.0"
         assert s.port == 8862
-        assert s.debug is False
         assert s.log_level == "info"
-        assert s.metrics_enabled is True
-        assert s.cors_origins == []
-        assert s.cors_enabled is False
+        assert s.gateway_url == "http://localhost:8868/api/v1"
+        assert s.redis_url == "redis://localhost:6379/0"
+        assert s.otel_exporter_endpoint == "http://localhost:4317"
 
     def test_sub_configs_instantiated(self):
         s = Settings()
-        assert isinstance(s.azure, AzureOpenAIConfig)
-        assert isinstance(s.bedrock, BedrockConfig)
-        assert isinstance(s.redis, RedisConfig)
-        assert isinstance(s.circuit_breaker, CircuitBreakerConfig)
-        assert isinstance(s.queue, QueueConfig)
+        assert isinstance(s.external_guardrail, ExternalGuardrailConfig)
+        assert isinstance(s.internal_access, InternalAccessConfig)
+        assert isinstance(s.telemetry_phi_guard, TelemetryPhiGuardConfig)
 
     def test_log_level_normalised_to_lowercase(self):
         s = Settings(log_level="DEBUG")
@@ -249,14 +142,98 @@ class TestSettings:
         s = Settings(log_level="Warning")
         assert s.log_level == "warning"
 
-    def test_custom_cors_origins(self):
-        s = Settings(cors_origins=["https://app.example.com", "http://localhost:8868/api/v1"])
-        assert len(s.cors_origins) == 2
+    def test_no_provider_sub_configs_remain(self):
+        """The eight per-provider blocks are gone, not renamed."""
+        assert not {
+            "ollama",
+            "azure",
+            "bedrock",
+            "openai",
+            "anthropic",
+            "vertex",
+            "openai_compat",
+            "vllm",
+            "llama_cpp",
+            "sarvam",
+            "tei_embed",
+        } & set(Settings.model_fields)
 
-    def test_override_connection_pool(self):
-        s = Settings(httpx_max_connections=500, httpx_max_keepalive=250)
-        assert s.httpx_max_connections == 500
-        assert s.httpx_max_keepalive == 250
+
+class TestDerivedProcessFacts:
+    """A process fact is derived, never declared twice.
+
+    Each of these replaced its own env var. The property is the whole point: a
+    separate `TEXT_OTEL_INSECURE` can disagree with the endpoint it describes,
+    and a separate `TEXT_OTEL_DEPLOYMENT_ENVIRONMENT` can tag a laptop's spans as
+    production. A derivation cannot contradict its own source.
+    """
+
+    def test_otel_export_follows_the_presence_of_an_endpoint(self, monkeypatch):
+        _clear_text_env(monkeypatch)
+        assert Settings(otel_exporter_endpoint="http://collector:4317").otel_enabled is True
+        assert Settings(otel_exporter_endpoint="").otel_enabled is False
+        assert Settings(otel_exporter_endpoint="   ").otel_enabled is False
+
+    def test_otel_tls_follows_the_endpoint_scheme(self, monkeypatch):
+        _clear_text_env(monkeypatch)
+        assert Settings(otel_exporter_endpoint="http://collector:4317").otel_insecure is True
+        assert Settings(otel_exporter_endpoint="https://collector:4317").otel_insecure is False
+        # Case must not decide TLS.
+        assert Settings(otel_exporter_endpoint="HTTPS://collector:4317").otel_insecure is False
+
+    def test_service_identity_is_a_constant(self, monkeypatch):
+        _clear_text_env(monkeypatch)
+        monkeypatch.setenv("TEXT_OTEL_SERVICE_NAME", "impostor")
+        monkeypatch.setenv("TEXT_OTEL_SERVICE_NAMESPACE", "impostor")
+        s = Settings()
+        assert s.otel_service_name == "text"
+        assert s.otel_service_namespace == "hope"
+
+    def test_deployment_environment_and_debug_follow_node_env(self, monkeypatch):
+        _clear_text_env(monkeypatch)
+        monkeypatch.setenv("NODE_ENV", "development")
+        s = Settings()
+        assert s.otel_deployment_environment == "development"
+        assert s.debug is True
+
+        monkeypatch.setenv("NODE_ENV", "production")
+        monkeypatch.setenv("OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT", "NO_CONTENT")
+        s = Settings()
+        assert s.otel_deployment_environment == "production"
+        assert s.debug is False
+
+
+class TestInternalAccessToken:
+    """One shared internal credential; the legacy per-pair tokens are retired."""
+
+    @pytest.fixture(autouse=True)
+    def _isolate(self, monkeypatch):
+        monkeypatch.delenv("INTERNAL_ACCESS_TOKEN", raising=False)
+        monkeypatch.delenv("TEXT_SERVICE_TOKEN", raising=False)
+        monkeypatch.delenv("SERVICE_TOKEN", raising=False)
+
+    def test_the_shared_token_is_accepted_and_presented(self, monkeypatch):
+        monkeypatch.setenv("INTERNAL_ACCESS_TOKEN", "shared-token")
+        s = Settings()
+        assert s.accepted_service_tokens == ("shared-token",)
+        assert s.peer_service_token() == "shared-token"
+
+    def test_the_legacy_per_service_token_is_no_longer_accepted(self, monkeypatch):
+        """`TEXT_SERVICE_TOKEN` was declared as a transition window that nothing
+        on the other side ever used. A second accepted credential is a second
+        thing to rotate, so it is closed rather than left dangling."""
+        monkeypatch.setenv("TEXT_SERVICE_TOKEN", "legacy-token")
+        s = Settings()
+        assert s.accepted_service_tokens == ()
+        assert s.peer_service_token() == ""
+
+    def test_an_unfilled_placeholder_is_not_a_credential(self, monkeypatch):
+        """`CHANGE_ME` must never be ACCEPTED as a token — a plain truthiness
+        chain would return it and 401 every internal hop."""
+        monkeypatch.setenv("INTERNAL_ACCESS_TOKEN", "CHANGE_ME")
+        s = Settings()
+        assert s.accepted_service_tokens == ()
+        assert s.peer_service_token() == ""
 
 
 class TestGetSettings:

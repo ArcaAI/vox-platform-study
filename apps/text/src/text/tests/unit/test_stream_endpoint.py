@@ -29,9 +29,7 @@ from text.providers.base import ProviderRegistry
 
 @pytest.fixture
 def settings():
-    return Settings(
-        host="127.0.0.1", port=5099, debug=True, log_level="debug", metrics_enabled=False
-    )
+    return Settings(port=5099, log_level="debug")
 
 
 def _build_app(settings, task_manager):

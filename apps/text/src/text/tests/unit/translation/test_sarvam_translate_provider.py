@@ -1,11 +1,19 @@
-"""TDD tests for the Sarvam translate provider — BYOK-only.
+"""TDD tests for the Sarvam translate provider — connection-only.
 
-Sarvam's api_key NEVER comes from env/config; it arrives per request as a
-``ProviderOverride``. httpx is mocked at the import site
-(``text.translation.sarvam.httpx.AsyncClient``). Verifies the wire call, that the
-override supplies the key, that a missing/empty override key raises
-``SarvamCredentialError``, plus chunking, blank passthrough, order preservation,
-error mapping, and that the api-subscription-key never surfaces via repr/logs.
+The api_key, the base_url AND the model all arrive per request as a
+``ProviderOverride``; Sarvam holds no configuration of its own. httpx is mocked
+at the import site (``text.translation.sarvam.httpx.AsyncClient``).
+
+The MODEL is the part worth stating plainly. Unlike every other ``*_MODEL`` in
+this service — which only decorated the `/providers` listing — Sarvam's reaches
+the wire as the request's ``model`` field, so ``TEXT_SARVAM_MODEL`` was a
+process-wide model SELECTION for every tenant. Selection is ``failMode: closed``,
+so it resolves from `AiTaskDefault` and an unresolved value RAISES rather than
+letting the vendor pick its own default.
+
+Verifies the wire call, the three fail-closed paths (no connection, no key, no
+model), chunking, blank passthrough, order preservation, error mapping, and that
+the api-subscription-key never surfaces via repr/logs.
 """
 
 from __future__ import annotations
@@ -15,16 +23,18 @@ from unittest.mock import patch
 import httpx
 import pytest
 
-from text.core.config import SarvamConfig
 from text.models.requests import ProviderOverride
 from text.translation.sarvam import (
     SarvamCredentialError,
+    SarvamModelError,
     SarvamTranslateError,
     SarvamTranslateProvider,
 )
 
-# Every request needs a BYOK override key; the default carries one.
-_KEY = ProviderOverride(api_key="tenant-key")
+# Every request needs a resolved connection: key, endpoint AND model.
+_KEY = ProviderOverride(
+    api_key="tenant-key", base_url="https://api.sarvam.ai", model="bulbul:v3"
+)
 
 
 class _FakeResponse:
@@ -70,7 +80,7 @@ def _patch_client(fake: _FakeAsyncClient):
 
 @pytest.mark.asyncio
 async def test_override_supplies_key_and_posts_to_translate_endpoint():
-    provider = SarvamTranslateProvider(SarvamConfig(base_url="https://api.sarvam.ai"))
+    provider = SarvamTranslateProvider()
     fake = _FakeAsyncClient()
 
     with _patch_client(fake):
@@ -89,10 +99,17 @@ async def test_override_supplies_key_and_posts_to_translate_endpoint():
 
 
 @pytest.mark.asyncio
-async def test_override_base_url_wins_over_config():
-    provider = SarvamTranslateProvider(SarvamConfig(base_url="https://api.sarvam.ai"))
+async def test_the_connection_supplies_the_endpoint():
+    """A tenant fronting its own Sarvam endpoint is routed there.
+
+    There is no platform `base_url` for this to "win over" any more — the
+    connection is the only source, which is what makes a per-tenant endpoint
+    expressible at all."""
+    provider = SarvamTranslateProvider()
     fake = _FakeAsyncClient()
-    override = ProviderOverride(api_key="tenant-key", base_url="https://tenant.sarvam.ai")
+    override = ProviderOverride(
+        api_key="tenant-key", base_url="https://tenant.sarvam.ai", model="bulbul:v3"
+    )
 
     with _patch_client(fake):
         await provider.translate(
@@ -106,7 +123,7 @@ async def test_override_base_url_wins_over_config():
 
 @pytest.mark.asyncio
 async def test_no_override_raises_credential_error():
-    provider = SarvamTranslateProvider(SarvamConfig())
+    provider = SarvamTranslateProvider()
     with pytest.raises(SarvamCredentialError):
         await provider.translate(
             ["hi"], source_language="auto", target_language="en-IN", overrides=None
@@ -117,8 +134,8 @@ async def test_no_override_raises_credential_error():
 
 @pytest.mark.asyncio
 async def test_override_without_key_raises_credential_error():
-    provider = SarvamTranslateProvider(SarvamConfig())
-    empty_key_override = ProviderOverride(api_key="")
+    provider = SarvamTranslateProvider()
+    empty_key_override = ProviderOverride(api_key="", base_url="https://api.sarvam.ai")
     with pytest.raises(SarvamCredentialError):
         await provider.translate(
             ["hi"], source_language="auto", target_language="en-IN", overrides=empty_key_override
@@ -126,10 +143,42 @@ async def test_override_without_key_raises_credential_error():
 
 
 @pytest.mark.asyncio
+async def test_connection_without_a_model_fails_closed():
+    """Model selection is fail-closed: no `AiTaskDefault` resolved ⇒ raise.
+
+    Omitting the field instead would hand the choice of translation model to
+    Sarvam's own default — a silent change of clinical behaviour on a vendor-side
+    release, chosen by nobody.
+    """
+    provider = SarvamTranslateProvider()
+    fake = _FakeAsyncClient()
+    modelless = ProviderOverride(api_key="tenant-key", base_url="https://api.sarvam.ai")
+
+    with _patch_client(fake), pytest.raises(SarvamModelError):
+        await provider.translate(
+            ["hi"], source_language="auto", target_language="en-IN", overrides=modelless
+        )
+    assert fake.calls == [], "no request may reach the wire without a resolved model"
+
+
+@pytest.mark.asyncio
+async def test_connection_without_an_endpoint_fails_closed():
+    provider = SarvamTranslateProvider()
+    fake = _FakeAsyncClient()
+    endpointless = ProviderOverride(api_key="tenant-key", model="bulbul:v3")
+
+    with _patch_client(fake), pytest.raises(SarvamCredentialError):
+        await provider.translate(
+            ["hi"], source_language="auto", target_language="en-IN", overrides=endpointless
+        )
+    assert fake.calls == []
+
+
+@pytest.mark.asyncio
 async def test_no_network_call_when_credential_missing():
     """Credential is resolved BEFORE any client is opened — a missing key must
     never reach the transport."""
-    provider = SarvamTranslateProvider(SarvamConfig())
+    provider = SarvamTranslateProvider()
     fake = _FakeAsyncClient()
     with _patch_client(fake), pytest.raises(SarvamCredentialError):
         await provider.translate(
@@ -140,7 +189,7 @@ async def test_no_network_call_when_credential_missing():
 
 @pytest.mark.asyncio
 async def test_long_text_is_chunked_and_rejoined():
-    provider = SarvamTranslateProvider(SarvamConfig())
+    provider = SarvamTranslateProvider()
     # Echo each chunk's input so we can confirm multiple calls + rejoin.
     fake = _FakeAsyncClient(
         responder=lambda body: _FakeResponse(json_data={"translated_text": body["input"]})
@@ -159,7 +208,7 @@ async def test_long_text_is_chunked_and_rejoined():
 
 @pytest.mark.asyncio
 async def test_blank_entries_pass_through_without_a_call():
-    provider = SarvamTranslateProvider(SarvamConfig())
+    provider = SarvamTranslateProvider()
     fake = _FakeAsyncClient()
 
     with _patch_client(fake):
@@ -173,7 +222,7 @@ async def test_blank_entries_pass_through_without_a_call():
 
 @pytest.mark.asyncio
 async def test_all_blank_makes_no_network_call():
-    provider = SarvamTranslateProvider(SarvamConfig())
+    provider = SarvamTranslateProvider()
     fake = _FakeAsyncClient()
     with _patch_client(fake):
         result = await provider.translate(
@@ -185,7 +234,7 @@ async def test_all_blank_makes_no_network_call():
 
 @pytest.mark.asyncio
 async def test_order_preserved_across_many_texts():
-    provider = SarvamTranslateProvider(SarvamConfig())
+    provider = SarvamTranslateProvider()
     fake = _FakeAsyncClient(
         responder=lambda body: _FakeResponse(json_data={"translated_text": "T:" + body["input"]})
     )
@@ -201,7 +250,7 @@ async def test_order_preserved_across_many_texts():
 
 @pytest.mark.asyncio
 async def test_http_401_raises_translate_error():
-    provider = SarvamTranslateProvider(SarvamConfig())
+    provider = SarvamTranslateProvider()
     fake = _FakeAsyncClient(
         responder=lambda body: _FakeResponse(status_code=401, text="unauthorized")
     )
@@ -215,7 +264,7 @@ async def test_http_401_raises_translate_error():
 
 @pytest.mark.asyncio
 async def test_transport_error_raises_translate_error():
-    provider = SarvamTranslateProvider(SarvamConfig())
+    provider = SarvamTranslateProvider()
     fake = _FakeAsyncClient(raise_exc=httpx.ConnectError("boom"))
 
     with _patch_client(fake), pytest.raises(SarvamTranslateError):
@@ -226,7 +275,7 @@ async def test_transport_error_raises_translate_error():
 
 def test_api_key_never_appears_in_repr():
     override = ProviderOverride(api_key="super-secret-key")
-    provider = SarvamTranslateProvider(SarvamConfig())
+    provider = SarvamTranslateProvider()
     assert "super-secret-key" not in repr(provider)
     assert "super-secret-key" not in str(provider)
     # The override object itself must not leak the key either.
@@ -236,7 +285,7 @@ def test_api_key_never_appears_in_repr():
 
 @pytest.mark.asyncio
 async def test_key_never_logged_on_error(caplog):
-    provider = SarvamTranslateProvider(SarvamConfig())
+    provider = SarvamTranslateProvider()
     fake = _FakeAsyncClient(raise_exc=httpx.ConnectError("boom"))
     override = ProviderOverride(api_key="super-secret-key")
 
@@ -248,10 +297,13 @@ async def test_key_never_logged_on_error(caplog):
 
 
 @pytest.mark.asyncio
-async def test_override_model_included_in_request_body():
-    provider = SarvamTranslateProvider(SarvamConfig(model=None))
+async def test_the_resolved_model_is_sent_on_the_wire():
+    """The reason this model could never be an env var: it is a wire field."""
+    provider = SarvamTranslateProvider()
     fake = _FakeAsyncClient()
-    override = ProviderOverride(api_key="tenant-key", model="mayura:v1")
+    override = ProviderOverride(
+        api_key="tenant-key", base_url="https://api.sarvam.ai", model="mayura:v1"
+    )
 
     with _patch_client(fake):
         await provider.translate(
@@ -261,12 +313,14 @@ async def test_override_model_included_in_request_body():
 
 
 @pytest.mark.asyncio
-async def test_config_model_used_when_override_has_no_model():
-    provider = SarvamTranslateProvider(SarvamConfig(model="config-model"))
-    fake = _FakeAsyncClient()
+async def test_the_reported_model_is_the_one_used():
+    """`provider.model` reports what ran, never what was configured."""
+    provider = SarvamTranslateProvider()
+    assert provider.model is None
 
+    fake = _FakeAsyncClient()
     with _patch_client(fake):
         await provider.translate(
             ["hi"], source_language="auto", target_language="en-IN", overrides=_KEY
         )
-    assert fake.calls[0]["json"]["model"] == "config-model"
+    assert provider.model == "bulbul:v3"

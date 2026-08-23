@@ -68,7 +68,7 @@ def test_shared_token_binds_to_the_unprefixed_env_name(monkeypatch):
 
 
 def test_accepted_tokens_are_shared_first_then_legacy():
-    settings = Settings(service_token=LEGACY)
+    settings = Settings()
     settings.internal_access.token = type(settings.internal_access.token)(SHARED)
     assert settings.accepted_service_tokens == (SHARED, LEGACY)
 
@@ -84,7 +84,7 @@ class TestInboundAcceptsSharedToken:
     @pytest_asyncio.fixture
     async def client(self, _mock_provider_registry, monkeypatch):
         monkeypatch.setenv("INTERNAL_ACCESS_TOKEN", SHARED)
-        settings = Settings(host="127.0.0.1", port=5099, debug=True, service_token=LEGACY)
+        settings = Settings(port=5099)
         app = _make_app(settings, _mock_provider_registry)
         transport = ASGITransport(app=app)
         async with AsyncClient(transport=transport, base_url="http://test") as c:
@@ -139,7 +139,7 @@ async def test_outbound_guardrail_call_presents_the_injected_shared_token():
 
     http_client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
     client = ExternalGuardrailClient(
-        settings=ExternalGuardrailConfig(enabled=True, service_token="legacy-guardrail-token"),
+        settings=ExternalGuardrailConfig(),
         http_client=http_client,
         service_token=SHARED,
     )

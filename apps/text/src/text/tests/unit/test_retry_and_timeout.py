@@ -24,12 +24,7 @@ _BACKOFF_PATCH = "text.api.endpoints.generate.asyncio.sleep"
 
 @pytest.fixture
 def settings():
-    return Settings(
-        host="127.0.0.1",
-        port=5099,
-        debug=True,
-        log_level="debug",
-    )
+    return Settings(port=5099, log_level="debug")
 
 
 @pytest.fixture

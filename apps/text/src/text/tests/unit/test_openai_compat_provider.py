@@ -11,7 +11,6 @@ from pydantic import SecretStr
 from text.core.config import Settings
 from text.models.requests import GenerateRequest, ResponseFormat
 from text.models.stream import StreamChunk
-from text.tests.conftest import keyed
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -21,7 +20,7 @@ from text.tests.conftest import keyed
 def _make_request(**overrides) -> GenerateRequest:
     defaults = {"prompt": "Hello", "provider": "openai_compat"}
     defaults.update(overrides)
-    return GenerateRequest(**defaults)
+    return GenerateRequest(**defaults, model="test-model")
 
 
 def _mock_completion_response(
@@ -77,7 +76,6 @@ class TestOpenAICompatConfig:
             if key.startswith("TEXT_"):
                 monkeypatch.delenv(key, raising=False)
 
-        from text.core.config import OpenAICompatConfig
 
         _clear_text_env(monkeypatch)
         cfg = OpenAICompatConfig()
@@ -91,7 +89,6 @@ class TestOpenAICompatConfig:
 
     def test_openai_compat_config_api_key_is_secret(self, monkeypatch):
         _clear_text_env(monkeypatch)
-        from text.core.config import OpenAICompatConfig
 
         _clear_text_env(monkeypatch)
         cfg = OpenAICompatConfig()
@@ -107,7 +104,6 @@ class TestOpenAICompatConfig:
 class TestOpenAICompatProvider:
     @pytest.fixture()
     def config(self):
-        from text.core.config import OpenAICompatConfig
 
         # `api_key` is no longer constructor- or env-populatable here either
         # (TASK-799 closed `TEXT_OPENAI_COMPAT_API_KEY`), so it goes on through
@@ -132,7 +128,7 @@ class TestOpenAICompatProvider:
     def provider(self, config, mock_client):
         from text.providers.openai_compat import OpenAICompatProvider
 
-        p = OpenAICompatProvider(config)
+        p = OpenAICompatProvider()
         p._client = mock_client
         return p
 
@@ -451,14 +447,13 @@ class TestOpenAICompatRegistration:
     async def test_provider_available_via_lazy_factory(self):
         # availability comes from a registered CONNECTION-gated factory
         # (no ENABLE flag); the instance is built only on the first ``get``.
-        from text.core.config import OpenAICompatConfig
         from text.providers.base import ProviderRegistry
         from text.providers.openai_compat import OpenAICompatProvider
 
-        settings = Settings(openai_compat=OpenAICompatConfig())
+        settings = Settings()
         registry = ProviderRegistry()
         registry.register_factory(
-            "openai_compat", lambda: OpenAICompatProvider(settings.openai_compat)
+            "openai_compat", lambda: OpenAICompatProvider()
         )
 
         assert "openai_compat" in registry.list_providers()
@@ -470,11 +465,8 @@ class TestOpenAICompatRegistration:
     # -- 19. timeout map includes openai_compat --
     def test_timeout_map_includes_openai_compat(self):
         from text.api.endpoints.generate import _get_provider_timeout
-        from text.core.config import OpenAICompatConfig
 
-        settings = Settings(
-            openai_compat=OpenAICompatConfig(timeout_s=42),
-        )
+        settings = Settings()
 
         timeout = _get_provider_timeout(settings, "openai_compat")
 

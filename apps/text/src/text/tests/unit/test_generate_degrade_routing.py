@@ -68,7 +68,7 @@ def app(mock_registry, mock_task_manager):
     # tests/conftest.py's leak warning: `.env.dev` on the machine running
     # this suite can carry a real TEXT_SERVICE_TOKEN, which would make the
     # auth middleware reject every unauthenticated test request with 401).
-    application.state.settings = Settings(host="127.0.0.1", port=5099, debug=True)
+    application.state.settings = Settings(port=5099)
     application.state.provider_registry = mock_registry
     application.state.task_manager = mock_task_manager
     return application

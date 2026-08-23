@@ -20,7 +20,6 @@ import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
 
 from text.models.requests import GenerateRequest
-from text.tests.conftest import keyed
 
 # ── Endpoint: fail-closed 422 when the model cannot be resolved ──
 
@@ -117,14 +116,12 @@ class TestGenerateRequiresModel:
 
 
 def _openai_compat():
-    from text.core.config import OpenAICompatConfig
     from text.providers.openai_compat import OpenAICompatProvider
 
-    return OpenAICompatProvider(OpenAICompatConfig(default_model="compat-default"))
+    return OpenAICompatProvider()
 
 
 def _azure():
-    from text.core.config import AzureOpenAIConfig
     from text.providers.azure_openai import AzureOpenAIProvider
 
     # deployment_name explicitly forced empty (not merely omitted — some test
@@ -135,24 +132,14 @@ def _azure():
     # contract (covered by TestAzureDeploymentName in
     # test_azure_provider.py) — when set, deployment_name is *meant* to
     # override request.model.
-    return AzureOpenAIProvider(
-        keyed(
-            AzureOpenAIConfig(
-                endpoint="https://test.openai.azure.com",
-                default_model="azure-default",
-                deployment_name="",
-            ),
-            "k",
-        )
-    )
+    return AzureOpenAIProvider()
 
 
 def _bedrock():
-    from text.core.config import BedrockConfig
     from text.providers.bedrock import BedrockProvider
 
     with patch("boto3.client"):
-        return BedrockProvider(BedrockConfig(region="us-east-1", default_model="bedrock-default"))
+        return BedrockProvider()
 
 
 _PROVIDER_FACTORIES = [
@@ -172,7 +159,7 @@ class TestProviderResolveModelNoFallback:
     @pytest.mark.parametrize("name,factory,default", _PROVIDER_FACTORIES)
     def test_resolve_model_does_not_fall_back_to_default(self, name, factory, default):
         provider = factory()
-        req = GenerateRequest(prompt="hi")  # model omitted
+        req = GenerateRequest(prompt="hi", model="test-model")  # model omitted
         # The generation path no longer substitutes the configured default.
         assert provider._resolve_model(req) != default
         assert provider._resolve_model(req) is None

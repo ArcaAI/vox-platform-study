@@ -108,6 +108,39 @@ def connected(request: _R, provider: str | None = None, **kwargs: object) -> _R:
     )
 
 
+
+def stub_client(provider, client):
+    """Bind ``client`` as the SDK client this provider builds for every request.
+
+    Adapter tests that exercise the WIRE (message shape, streaming, structured
+    output) are not about connection resolution, and since TASK-799 lane B there
+    is no process-wide client to assign — the client is built per request from
+    the injected connection. This says "assume a connection resolved, and it
+    produced this client".
+
+    Deliberately the only such shortcut. The connection contract itself —
+    fail-closed on absence, request-scoped so two tenants cannot share one,
+    funding derived from the row — is covered against the REAL resolution path by
+    `test_task602_byok_credentials.py` and `test_provider_overrides.py`.
+    """
+    provider._client_for = lambda _request: client
+    provider._client = client
+    return client
+
+
+def stub_endpoint(provider, url: str = "http://engine.local"):
+    """Bind ``url`` as the engine endpoint this self-host provider resolves.
+
+    The self-host counterpart of `stub_client`: an adapter's `base_url` now comes
+    from the injected connection, so a test about the WIRE (request body, stream
+    parsing, retention hints) says "assume a connection resolved, and it pointed
+    here". Also seeds the probe memo so `health_check`/`get_info` have something
+    to reach.
+    """
+    provider._endpoint = lambda _request: url
+    provider._last_base_url = url
+    return url
+
 @pytest.fixture
 def settings() -> Settings:
     """Default test settings with service auth off.
@@ -125,13 +158,9 @@ def settings() -> Settings:
     Tests that are ABOUT auth (`test_auth_middleware.py`, `test_health_metrics.py`) build their
     own `Settings` with an explicit token and are unaffected.
     """
-    return Settings(
-        port=5099,
-        log_level="debug",
-        # `internal_access_token` is a read-only property over this nested config, so the shared
+    return Settings(port=5099, log_level="debug", # `internal_access_token` is a read-only property over this nested config, so the shared
         # token is cleared HERE — passing it as a kwarg is an `extra_forbidden` error.
-        internal_access=InternalAccessConfig(token=SecretStr("")),
-    )
+        internal_access=InternalAccessConfig(token=SecretStr("")))
 
 
 @pytest.fixture

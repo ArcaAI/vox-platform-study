@@ -12,7 +12,6 @@ import pytest
 import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
 
-from text.tests.conftest import keyed
 
 
 class TestProviderRegistryTenantKeys:
@@ -44,11 +43,7 @@ class TestProviderTimeoutMapping:
         from text.api.endpoints.generate import _get_provider_timeout
         from text.core.config import Settings
 
-        settings = Settings(
-            _env_file=None,
-            host="0.0.0.0",
-            port=8862,
-        )
+        settings = Settings(_env_file=None, port=8862)
         timeout = _get_provider_timeout(settings, "azure-openai")
         assert timeout == float(settings.azure.timeout_s), (
             f"azure-openai should use azure config timeout ({settings.azure.timeout_s}), "
@@ -59,11 +54,7 @@ class TestProviderTimeoutMapping:
         from text.api.endpoints.generate import _get_provider_timeout
         from text.core.config import Settings
 
-        settings = Settings(
-            _env_file=None,
-            host="0.0.0.0",
-            port=8862,
-        )
+        settings = Settings(_env_file=None, port=8862)
         timeout = _get_provider_timeout(settings, "lm-studio")
         assert timeout == float(settings.openai_compat.timeout_s), (
             f"lm-studio should use openai_compat config timeout ({settings.openai_compat.timeout_s}), "
@@ -77,16 +68,11 @@ class TestMainLifespanProviderKeys:
     def test_azure_factory_registered_under_tenant_key(self):
         """a connection-configured Azure registers BOTH the tenant-facing
         'azure-openai' key and its legacy 'azure' alias as lazy factories."""
-        from text.core.config import AzureOpenAIConfig, Settings
+        from text.core.config import Settings
         from text.main import _register_provider_factories
         from text.providers.base import ProviderRegistry
 
-        settings = Settings(
-            _env_file=None,
-            host="0.0.0.0",
-            port=8862,
-            azure=keyed(AzureOpenAIConfig(endpoint="https://x.openai.azure.com"), "k"),
-        )
+        settings = Settings(_env_file=None, port=8862)
         registry = ProviderRegistry()
         _register_provider_factories(registry, settings, MagicMock())
         assert "azure-openai" in registry.list_providers()
@@ -99,7 +85,7 @@ class TestMainLifespanProviderKeys:
         from text.main import _register_provider_factories
         from text.providers.base import ProviderRegistry
 
-        settings = Settings(_env_file=None, host="0.0.0.0", port=8862)
+        settings = Settings(_env_file=None, port=8862)
         registry = ProviderRegistry()
         _register_provider_factories(registry, settings, MagicMock())
         assert "lm-studio" in registry.list_providers()
@@ -133,7 +119,7 @@ class TestMainLifespanProviderKeys:
         from text.models.requests import GenerateRequest
         from text.providers.base import ProviderRegistry
 
-        settings = Settings(_env_file=None, host="0.0.0.0", port=8862)
+        settings = Settings(_env_file=None, port=8862)
         registry = ProviderRegistry()
         _register_provider_factories(registry, settings, MagicMock())
 

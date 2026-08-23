@@ -23,7 +23,7 @@ import pytest
 from httpx import ASGITransport, AsyncClient
 from pydantic import SecretStr
 
-from text.core.config import Settings, VertexConfig
+from text.core.config import Settings
 from text.core.exceptions import ProviderCredentialsError
 from text.models.requests import GenerateRequest, ProviderOverride
 from text.providers.vertex import VertexProvider
@@ -37,7 +37,7 @@ class TestVertexFailsClosedOnBrokenOverride:
     def test_unparseable_service_account_raises(self):
         """A tenant override that is not valid service-account JSON must raise, not
         silently fall through to the platform client."""
-        provider = VertexProvider(VertexConfig(project="platform-project"))
+        provider = VertexProvider()
         request = GenerateRequest(
             prompt="hi",
             provider="vertex",
@@ -50,7 +50,7 @@ class TestVertexFailsClosedOnBrokenOverride:
 
     def test_error_message_never_carries_the_key(self):
         secret = "super-secret-service-account-material"
-        provider = VertexProvider(VertexConfig(project="platform-project"))
+        provider = VertexProvider()
         request = GenerateRequest(
             prompt="hi",
             provider="vertex",
@@ -65,7 +65,7 @@ class TestVertexFailsClosedOnBrokenOverride:
         """Well-formed JSON that is not a usable service account still raises — the
         fall-through caught EVERY exception, so this shape reached the platform
         client too."""
-        provider = VertexProvider(VertexConfig(project="platform-project"))
+        provider = VertexProvider()
         request = GenerateRequest(
             prompt="hi",
             provider="vertex",
@@ -91,7 +91,7 @@ class TestSharedInternalTokenIsPresented:
     def settings(self, monkeypatch) -> Settings:
         monkeypatch.setenv("INTERNAL_ACCESS_TOKEN", "shared-internal-token")
         monkeypatch.delenv("TEXT_SERVICE_TOKEN", raising=False)
-        return Settings(_env_file=None, host="127.0.0.1", port=5099, metrics_enabled=False)
+        return Settings(_env_file=None, port=5099)
 
     def test_settings_expose_the_shared_token_only_via_the_helper(self, settings):
         assert settings.service_token.get_secret_value() == ""
@@ -185,9 +185,7 @@ class TestTenantHeaderIsEnforcedInMiddleware:
     async def client(self):
         from text.main import create_app
 
-        settings = Settings(
-            _env_file=None, host="127.0.0.1", port=5099, debug=True, metrics_enabled=False
-        )
+        settings = Settings(_env_file=None, port=5099)
         app = create_app(settings_override=settings)
         app.state.settings = settings
         # The app is deliberately UNWIRED (no lifespan): these cases are about the
@@ -262,9 +260,7 @@ class TestTenantHeaderIsEnforcedInMiddleware:
 
         monkeypatch.delenv("INTERNAL_ACCESS_TOKEN", raising=False)
         monkeypatch.delenv("TEXT_SERVICE_TOKEN", raising=False)
-        settings = Settings(
-            _env_file=None, host="127.0.0.1", port=5099, debug=True, metrics_enabled=False
-        )
+        settings = Settings(_env_file=None, port=5099)
         assert settings.accepted_service_tokens == ()
 
         app = create_app(settings_override=settings)

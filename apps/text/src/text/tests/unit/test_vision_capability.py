@@ -19,7 +19,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from text.models.requests import GenerateRequest
-from text.tests.conftest import keyed
+from text.tests.conftest import stub_client
 
 _PNG_B64 = base64.b64encode(b"fake-png-bytes").decode("ascii")
 
@@ -33,13 +33,13 @@ def _image_request(**overrides: Any) -> GenerateRequest:
         ],
     }
     payload.update(overrides)
-    return GenerateRequest(**payload)
+    return GenerateRequest(**payload, model="test-model")
 
 
 def _text_request(**overrides: Any) -> GenerateRequest:
     payload: dict[str, Any] = {"prompt": "hello", "model": "caller-model"}
     payload.update(overrides)
-    return GenerateRequest(**payload)
+    return GenerateRequest(**payload, model="test-model")
 
 
 # ---------------------------------------------------------------------------
@@ -81,10 +81,7 @@ class TestContentPartsModel:
 
     def test_image_media_type_must_be_image_mime(self):
         with pytest.raises(ValueError, match="image/"):
-            GenerateRequest(
-                prompt="hi",
-                content_parts=[{"type": "image", "data": _PNG_B64, "media_type": "text/plain"}],
-            )
+            GenerateRequest(prompt="hi", content_parts=[{"type": "image", "data": _PNG_B64, "media_type": "text/plain"}], model="test-model")
 
     def test_image_part_defaults_media_type_to_png(self):
         req = _text_request(content_parts=[{"type": "image", "data": _PNG_B64}])
@@ -103,10 +100,9 @@ class TestContentPartsModel:
 
 class TestTextOnlyRegression:
     def test_openai_compat_messages_unchanged(self):
-        from text.core.config import OpenAICompatConfig
         from text.providers.openai_compat import OpenAICompatProvider
 
-        provider = OpenAICompatProvider(OpenAICompatConfig(default_model="m"))
+        provider = OpenAICompatProvider()
         messages = provider._build_messages(_text_request(system_prompt="sys"))
         assert messages == [
             {"role": "system", "content": "sys"},
@@ -114,47 +110,38 @@ class TestTextOnlyRegression:
         ]
 
     def test_azure_messages_unchanged(self):
-        from text.core.config import AzureOpenAIConfig
         from text.providers.azure_openai import AzureOpenAIProvider
 
-        provider = AzureOpenAIProvider(
-            keyed(AzureOpenAIConfig(endpoint="https://test.openai.azure.com", default_model="m"), "k")
-        )
+        provider = AzureOpenAIProvider()
         messages = provider._build_messages(_text_request())
         assert messages == [{"role": "user", "content": "hello"}]
 
     def test_openai_messages_unchanged(self):
-        from text.core.config import OpenAIConfig
         from text.providers.openai import OpenAIProvider
 
-        provider = OpenAIProvider(keyed(OpenAIConfig(default_model="m"), "k"))
+        provider = OpenAIProvider()
         messages = provider._build_messages(_text_request())
         assert messages == [{"role": "user", "content": "hello"}]
 
     def test_anthropic_kwargs_content_stays_a_bare_string(self):
-        from text.core.config import AnthropicConfig
         from text.providers.anthropic import AnthropicProvider
 
-        provider = AnthropicProvider(keyed(AnthropicConfig(), "k"))
+        provider = AnthropicProvider()
         kwargs = provider._build_create_kwargs(_text_request())
         assert kwargs["messages"] == [{"role": "user", "content": "hello"}]
 
     def test_bedrock_params_content_stays_the_single_text_block(self):
-        from text.core.config import BedrockConfig
         from text.providers.bedrock import BedrockProvider
 
         with patch("boto3.client"):
-            provider = BedrockProvider(BedrockConfig(region="us-east-1", default_model="m"))
+            provider = BedrockProvider()
         params = provider._build_converse_params(_text_request())
         assert params["messages"] == [{"role": "user", "content": [{"text": "hello"}]}]
 
     def test_llama_cpp_does_not_raise_for_a_text_only_request(self):
-        from text.core.config import LlamaCppConfig
         from text.providers.llama_cpp import LlamaCppProvider
 
-        provider = LlamaCppProvider(
-            LlamaCppConfig(base_url="http://localhost:8080", default_model="m"), AsyncMock()
-        )
+        provider = LlamaCppProvider(LlamaCppConfig(base_url="http://localhost:8080", default_model="m"))
         payload = provider._build_payload(_text_request(), stream=False)
         assert payload["prompt"] == "hello"
 
@@ -166,10 +153,9 @@ class TestTextOnlyRegression:
 
 class TestImageReachesEachAdapter:
     def test_openai_compat_builds_content_parts_array(self):
-        from text.core.config import OpenAICompatConfig
         from text.providers.openai_compat import OpenAICompatProvider
 
-        provider = OpenAICompatProvider(OpenAICompatConfig(default_model="m"))
+        provider = OpenAICompatProvider()
         messages = provider._build_messages(_image_request())
         user_msg = messages[-1]
         assert user_msg["role"] == "user"
@@ -180,30 +166,25 @@ class TestImageReachesEachAdapter:
         assert content[1]["image_url"]["url"] == f"data:image/png;base64,{_PNG_B64}"
 
     def test_azure_builds_content_parts_array(self):
-        from text.core.config import AzureOpenAIConfig
         from text.providers.azure_openai import AzureOpenAIProvider
 
-        provider = AzureOpenAIProvider(
-            keyed(AzureOpenAIConfig(endpoint="https://test.openai.azure.com", default_model="m"), "k")
-        )
+        provider = AzureOpenAIProvider()
         messages = provider._build_messages(_image_request())
         content = messages[-1]["content"]
         assert content[1]["image_url"]["url"] == f"data:image/png;base64,{_PNG_B64}"
 
     def test_openai_builds_content_parts_array(self):
-        from text.core.config import OpenAIConfig
         from text.providers.openai import OpenAIProvider
 
-        provider = OpenAIProvider(keyed(OpenAIConfig(default_model="m"), "k"))
+        provider = OpenAIProvider()
         messages = provider._build_messages(_image_request())
         content = messages[-1]["content"]
         assert content[1]["image_url"]["url"] == f"data:image/png;base64,{_PNG_B64}"
 
     def test_anthropic_builds_image_and_text_blocks(self):
-        from text.core.config import AnthropicConfig
         from text.providers.anthropic import AnthropicProvider
 
-        provider = AnthropicProvider(keyed(AnthropicConfig(), "k"))
+        provider = AnthropicProvider()
         kwargs = provider._build_create_kwargs(_image_request())
         content = kwargs["messages"][0]["content"]
         assert isinstance(content, list)
@@ -217,11 +198,10 @@ class TestImageReachesEachAdapter:
         assert text_block["text"] == "Describe this image"
 
     def test_bedrock_builds_image_block_with_decoded_bytes(self):
-        from text.core.config import BedrockConfig
         from text.providers.bedrock import BedrockProvider
 
         with patch("boto3.client"):
-            provider = BedrockProvider(BedrockConfig(region="us-east-1", default_model="m"))
+            provider = BedrockProvider()
         params = provider._build_converse_params(_image_request())
         content = params["messages"][0]["content"]
         image_block = next(b for b in content if "image" in b)
@@ -229,11 +209,10 @@ class TestImageReachesEachAdapter:
         assert image_block["image"]["source"]["bytes"] == base64.b64decode(_PNG_B64)
 
     def test_bedrock_rejects_an_unsupported_image_media_type(self):
-        from text.core.config import BedrockConfig
         from text.providers.bedrock import BedrockProvider
 
         with patch("boto3.client"):
-            provider = BedrockProvider(BedrockConfig(region="us-east-1", default_model="m"))
+            provider = BedrockProvider()
         req = _image_request(
             content_parts=[{"type": "image", "data": _PNG_B64, "media_type": "image/tiff"}]
         )
@@ -241,10 +220,9 @@ class TestImageReachesEachAdapter:
             provider._build_converse_params(req)
 
     def test_vertex_builds_a_parts_list_with_from_bytes_image(self):
-        from text.core.config import VertexConfig
         from text.providers.vertex import VertexProvider
 
-        provider = VertexProvider(VertexConfig(project="proj"))
+        provider = VertexProvider()
         contents = provider._build_contents(_image_request())
         assert isinstance(contents, list)
         assert contents[-1] == "Describe this image"
@@ -256,17 +234,15 @@ class TestImageReachesEachAdapter:
         assert image_part.inline_data.data == base64.b64decode(_PNG_B64)
 
     def test_vertex_contents_stays_bare_prompt_when_no_image(self):
-        from text.core.config import VertexConfig
         from text.providers.vertex import VertexProvider
 
-        provider = VertexProvider(VertexConfig(project="proj"))
+        provider = VertexProvider()
         assert provider._build_contents(_text_request()) == "hello"
 
     def test_vllm_inherits_openai_compat_content_parts(self):
-        from text.core.config import VllmConfig
         from text.providers.vllm import VllmProvider
 
-        provider = VllmProvider(VllmConfig(default_model="m"))
+        provider = VllmProvider()
         messages = provider._build_messages(_image_request())
         content = messages[-1]["content"]
         assert content[1]["image_url"]["url"] == f"data:image/png;base64,{_PNG_B64}"
@@ -280,25 +256,19 @@ class TestImageReachesEachAdapter:
 class TestLlamaCppRejectsVision:
     @pytest.mark.asyncio
     async def test_generate_raises_vision_not_supported_error(self):
-        from text.core.config import LlamaCppConfig
         from text.core.exceptions import VisionNotSupportedError
         from text.providers.llama_cpp import LlamaCppProvider
 
-        provider = LlamaCppProvider(
-            LlamaCppConfig(base_url="http://localhost:8080", default_model="m"), AsyncMock()
-        )
+        provider = LlamaCppProvider(LlamaCppConfig(base_url="http://localhost:8080", default_model="m"))
         with pytest.raises(VisionNotSupportedError):
             await provider.generate(_image_request())
 
     @pytest.mark.asyncio
     async def test_generate_stream_raises_vision_not_supported_error(self):
-        from text.core.config import LlamaCppConfig
         from text.core.exceptions import VisionNotSupportedError
         from text.providers.llama_cpp import LlamaCppProvider
 
-        provider = LlamaCppProvider(
-            LlamaCppConfig(base_url="http://localhost:8080", default_model="m"), AsyncMock()
-        )
+        provider = LlamaCppProvider(LlamaCppConfig(base_url="http://localhost:8080", default_model="m"))
         with pytest.raises(VisionNotSupportedError):
             async for _ in provider.generate_stream(_image_request()):
                 pass
@@ -312,14 +282,11 @@ class TestLlamaCppRejectsVision:
 
     @pytest.mark.asyncio
     async def test_llama_cpp_http_client_never_called_for_an_image_request(self):
-        from text.core.config import LlamaCppConfig
         from text.core.exceptions import VisionNotSupportedError
         from text.providers.llama_cpp import LlamaCppProvider
 
         http = AsyncMock()
-        provider = LlamaCppProvider(
-            LlamaCppConfig(base_url="http://localhost:8080", default_model="m"), http
-        )
+        provider = LlamaCppProvider(LlamaCppConfig(base_url="http://localhost:8080", default_model="m"), http)
         with pytest.raises(VisionNotSupportedError):
             await provider.generate(_image_request())
         http.post.assert_not_called()
@@ -333,65 +300,57 @@ class TestLlamaCppRejectsVision:
 class TestSupportsVisionPerProvider:
     @pytest.mark.asyncio
     async def test_openai_compat_supports_vision(self):
-        from text.core.config import OpenAICompatConfig
         from text.providers.openai_compat import OpenAICompatProvider
 
-        provider = OpenAICompatProvider(OpenAICompatConfig(default_model="m"))
-        provider._client = MagicMock()
+        provider = OpenAICompatProvider()
+        provider._client = stub_client(provider, MagicMock())
         provider._client.models.list = AsyncMock(return_value=MagicMock(data=[]))
         info = await provider.get_info()
         assert info.supports_vision is True
 
     @pytest.mark.asyncio
     async def test_vllm_supports_vision(self):
-        from text.core.config import VllmConfig
         from text.providers.vllm import VllmProvider
 
-        provider = VllmProvider(VllmConfig(default_model="m"))
-        provider._client = MagicMock()
+        provider = VllmProvider()
+        provider._client = stub_client(provider, MagicMock())
         provider._client.models.list = AsyncMock(return_value=MagicMock(data=[]))
         info = await provider.get_info()
         assert info.supports_vision is True
 
     @pytest.mark.asyncio
     async def test_azure_supports_vision(self):
-        from text.core.config import AzureOpenAIConfig
         from text.providers.azure_openai import AzureOpenAIProvider
 
-        provider = AzureOpenAIProvider(
-            keyed(AzureOpenAIConfig(endpoint="https://test.openai.azure.com", default_model="m"), "k")
-        )
+        provider = AzureOpenAIProvider()
         provider._client.models.list = AsyncMock()
         info = await provider.get_info()
         assert info.supports_vision is True
 
     @pytest.mark.asyncio
     async def test_openai_supports_vision(self):
-        from text.core.config import OpenAIConfig
         from text.providers.openai import OpenAIProvider
 
-        provider = OpenAIProvider(keyed(OpenAIConfig(default_model="m"), "k"))
+        provider = OpenAIProvider()
         provider._client.models.list = AsyncMock(return_value=MagicMock(data=[]))
         info = await provider.get_info()
         assert info.supports_vision is True
 
     @pytest.mark.asyncio
     async def test_anthropic_supports_vision(self):
-        from text.core.config import AnthropicConfig
         from text.providers.anthropic import AnthropicProvider
 
-        provider = AnthropicProvider(keyed(AnthropicConfig(), "k"))
+        provider = AnthropicProvider()
         provider._client.models.list = AsyncMock(return_value=MagicMock(data=[]))
         info = await provider.get_info()
         assert info.supports_vision is True
 
     @pytest.mark.asyncio
     async def test_bedrock_supports_vision(self):
-        from text.core.config import BedrockConfig
         from text.providers.bedrock import BedrockProvider
 
         with patch("boto3.client"):
-            provider = BedrockProvider(BedrockConfig(region="us-east-1", default_model="m"))
+            provider = BedrockProvider()
         provider._mgmt_client = MagicMock()
         provider._mgmt_client.list_foundation_models = MagicMock(return_value={"modelSummaries": []})
         info = await provider.get_info()
@@ -399,22 +358,18 @@ class TestSupportsVisionPerProvider:
 
     @pytest.mark.asyncio
     async def test_vertex_supports_vision(self):
-        from text.core.config import VertexConfig
         from text.providers.vertex import VertexProvider
 
-        provider = VertexProvider(VertexConfig(project="proj"))
+        provider = VertexProvider()
         info = await provider.get_info()
         assert info.supports_vision is True
 
     @pytest.mark.asyncio
     async def test_llama_cpp_does_not_support_vision(self):
-        from text.core.config import LlamaCppConfig
         from text.providers.llama_cpp import LlamaCppProvider
 
         http = AsyncMock()
         http.get = AsyncMock(return_value=MagicMock(status_code=200))
-        provider = LlamaCppProvider(
-            LlamaCppConfig(base_url="http://localhost:8080", default_model="m"), http
-        )
+        provider = LlamaCppProvider(LlamaCppConfig(base_url="http://localhost:8080", default_model="m"), http)
         info = await provider.get_info()
         assert info.supports_vision is False
