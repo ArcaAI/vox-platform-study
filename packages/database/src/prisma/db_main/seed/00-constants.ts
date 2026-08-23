@@ -76,6 +76,13 @@
  *   98000000-xxxx  →  Transcription Jobs (ASR job queue rows)
  *   99000000-xxxx  →  Workflow Definitions (TASK-715 model; TASK-720 seeds the
  *                     SYSTEM-tenant platform-default Summarization row)
+ *   99000000-…-0001-…  →  ArcaAI tenant-authored consultation definitions (TASK-798)
+ *   9A000000-xxxx  →  Workflow Assignments. The THIRD UUID group discriminates the
+ *                     two tables that share the block: `…-0000-…` is a
+ *                     WorkflowAssignment row, `…-0001-…` its WorkflowAssignmentChange
+ *                     WORM entry. One block because a change row has no identity
+ *                     apart from the assignment it records.
+ *   9B000000-xxxx  →  Workflow Test Fixtures (Workbench synthetic inputs)
  *   A0000000-xxxx  →  Audit Log Entries
  *   F0000000-xxxx  →  Consent Grants (patient AI-documentation consent). MOVED here
  *                     from `E0000000-…` by TASK-790: that block belongs to
