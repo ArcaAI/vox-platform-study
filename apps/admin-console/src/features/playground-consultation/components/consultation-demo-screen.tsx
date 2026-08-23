@@ -46,6 +46,7 @@ import {
   useHarnessAssuranceStream,
   useHarnessProgressStream,
   useLatestSummary,
+  useNamedEntities,
   useScopingDepartments,
   useStartRecording,
   useSummaryJobProgress,
@@ -262,6 +263,14 @@ function ScribeWorkspace() {
   const draftId = draft.data?.id ?? null;
   const provenance = useSummaryProvenance(consultationId, draftId, !!draftId);
   const transcripts = useTranscriptions(consultationId, !!draftId);
+  /**
+   * W3 — the PERSISTED NER aggregate. `useNamedEntities` has existed since this feature
+   * was written and had ZERO callers, so `GET :id/named-entities` was never read: once
+   * recording stopped, the live snapshot's entities disappeared and nothing replaced them.
+   * Enabled only once a draft exists — that is the review phase this read serves, and it
+   * keeps the call off the recording path where the live stream is already authoritative.
+   */
+  const namedEntities = useNamedEntities(consultation?.id ?? null, 'single', !!draft.data);
   const transcriptText = transcripts.data?.length === 1 ? (transcripts.data[0].content ?? null) : null;
   const citedSegments: CitedSegment[] = provenance.data?.citedSegments ?? [];
   const selectedCitation = citedSegments.find((segment) => segment.id === selectedCitationId) ?? null;
@@ -573,6 +582,7 @@ function ScribeWorkspace() {
               onSelectCitation={(segment) => setSelectedCitationId(segment.id)}
               editor={noteEditor}
               loopActivity={loop.feed}
+              namedEntities={namedEntities.data ?? null}
             />
           </ResizablePanel>
         </ResizablePanelGroup>

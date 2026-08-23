@@ -50,9 +50,11 @@ import {
   type LiveSummaryEntity,
   type LiveSummarySnapshot,
   type LiveSummaryVitals,
+  type NamedEntitiesAggregate,
   type SummaryResult,
 } from '../../api';
 import { CitationEvidencePanel } from './citation-evidence-panel';
+import { HighlightedNoteText } from './highlighted-note-text';
 
 /** Ordered vitals for the Objective grid — only present values render. */
 function vitalCells(vitals: LiveSummaryVitals): Array<{ label: string; value: string }> {
@@ -224,6 +226,15 @@ export interface CaseNoteColumnProps {
    * renders what the assistant is working on, never a synthesised body.
    */
   loopActivity?: readonly LoopActivityEntry[];
+  /**
+   * W3 — the PERSISTED NER aggregate (`GET :id/named-entities`). Live entities ride the
+   * live-summary snapshot and vanish with it when recording stops, so without this a
+   * reviewed draft showed no entities at all. `AggregateNerResponse` carries no offsets
+   * into the draft content, so these are a grouped chip list and NOT inline marks —
+   * anchoring them by searching the text is exactly what `lib/entity-highlights.ts` refuses
+   * to do, and it would be worse here because the draft is a rewrite of the transcript.
+   */
+  namedEntities?: NamedEntitiesAggregate | null;
 }
 
 export function CaseNoteColumn(props: CaseNoteColumnProps) {
@@ -248,6 +259,7 @@ export function CaseNoteColumn(props: CaseNoteColumnProps) {
     onSelectCitation,
     editor,
     loopActivity = [],
+    namedEntities = null,
   } = props;
   const [overrideSafety, setOverrideSafety] = useState(false);
   const noteFieldId = useId();
@@ -263,6 +275,13 @@ export function CaseNoteColumn(props: CaseNoteColumnProps) {
   const liveSections = live?.sections ?? [];
   const liveEntities: LiveSummaryEntity[] = live?.entities ?? [];
   const vitals = live?.vitals ? vitalCells(live.vitals) : [];
+
+  // Stable, non-empty groups only — an empty aggregate renders nothing rather than a
+  // labelled empty box (rule 11 §4: never a blank area presented as content).
+  const persistedEntityGroups = useMemo(
+    () => Object.entries(namedEntities?.entities ?? {}).filter(([, items]) => Array.isArray(items) && items.length > 0),
+    [namedEntities],
+  );
 
   const provenance = useMemo(() => {
     const meta = draft?.structuredData;
@@ -428,9 +447,11 @@ export function CaseNoteColumn(props: CaseNoteColumnProps) {
             ))}
           </div>
         ) : showLive && live?.runningSummary ? (
-          <p className="text-sm leading-relaxed whitespace-pre-wrap" aria-label="Live running summary">
-            {live.runningSummary}
-          </p>
+          // W3: entities are MARKED in the text, not only listed as chips below it. Only the
+          // running summary is markable — `LiveSummaryEntityDto`'s offsets index
+          // `runningSummary`, so the sections branch above deliberately stays plain rather
+          // than splicing marks on offsets that do not belong to it.
+          <HighlightedNoteText text={live.runningSummary} entities={liveEntities} label="Live running summary" />
         ) : isRecording ? (
           <div className="flex flex-col gap-3" aria-label="Waiting for the first live summary">
             <Skeleton className="h-4 w-3/4" />
@@ -505,6 +526,28 @@ export function CaseNoteColumn(props: CaseNoteColumnProps) {
                 )}
               </Badge>
             ))}
+          </div>
+        ) : null}
+
+        {persistedEntityGroups.length > 0 ? (
+          <div className="border-t pt-3" aria-label="Detected entities in this consultation">
+            <div className="text-muted-foreground mb-1.5 flex items-center gap-1.5 text-xs font-medium">
+              Detected entities
+              <span className="bg-ai/10 text-ai rounded px-1 text-xs font-medium">AI</span>
+            </div>
+            <div className="flex flex-col gap-1.5">
+              {persistedEntityGroups.map(([className, items]) => (
+                <div key={className} className="flex flex-wrap items-center gap-1.5">
+                  {/* The class is readable text, never a colour (rule 11 §7). */}
+                  <span className="text-muted-foreground w-24 shrink-0 font-mono text-xs">{className}</span>
+                  {items.map((item, index) => (
+                    <Badge key={`${className}-${index}`} variant="secondary">
+                      {item.displayText ?? item.text}
+                    </Badge>
+                  ))}
+                </div>
+              ))}
+            </div>
           </div>
         ) : null}
 
