@@ -1,13 +1,14 @@
 /**
  * Unit tests for the shared `nlp.ner` model-injection resolver.
  *
- * Covers the contract: fail-open on any resolution hiccup
- * (never throws, never blocks the caller), and the SYSTEM-pin CLS discipline
- * (the SYSTEM-only read must not depend on — or leak into — the caller's
- * ambient CLS tenant).
+ * Covers the contract: fail-CLOSED on any resolution hiccup (throws
+ * `ServiceUnavailableException` naming the key, rather than posting without
+ * `model_name` and taking the same 503 back from NLP one hop later), and the
+ * SYSTEM-pin CLS discipline (the SYSTEM-only read must not depend on — or leak
+ * into — the caller's ambient CLS tenant).
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { Logger } from '@nestjs/common';
+import { Logger, ServiceUnavailableException } from '@nestjs/common';
 import { SYSTEM_TENANT_ID } from '@arcaai/domains';
 import { resolveNerModelInjection, NLP_NER_TASK_KEY } from '../resolveNerModelSelection';
 
@@ -37,13 +38,23 @@ describe('resolveNerModelInjection', () => {
     warnSpy = vi.spyOn(logger, 'warn').mockImplementation(() => undefined);
   });
 
-  it('returns {} (no model_name) when the AiTaskDefault service is not wired — fail-open', async () => {
+  it('throws naming the key when the AiTaskDefault service is not wired — fail-closed', async () => {
     const cls = createMockClsService({ tenantId: 'tenant-real' });
 
-    const result = await resolveNerModelInjection(undefined, cls as any, logger);
-
-    expect(result).toEqual({});
+    await expect(resolveNerModelInjection(undefined, cls as any, logger)).rejects.toBeInstanceOf(ServiceUnavailableException);
+    await expect(resolveNerModelInjection(undefined, cls as any, logger)).rejects.toThrow(NLP_NER_TASK_KEY);
     expect(cls.run).not.toHaveBeenCalled();
+  });
+
+  it('throws naming the key when there is no CLS scope to pin the SYSTEM-only read to — fail-closed', async () => {
+    const aiTaskDefaultService = {
+      getEffective: vi.fn().mockResolvedValue({ model: { sourceUri: 'some/model' } }),
+    };
+
+    await expect(resolveNerModelInjection(aiTaskDefaultService as any, undefined, logger)).rejects.toBeInstanceOf(ServiceUnavailableException);
+    await expect(resolveNerModelInjection(aiTaskDefaultService as any, undefined, logger)).rejects.toThrow(NLP_NER_TASK_KEY);
+    // The SYSTEM row is never read under whatever ambient tenant happens to apply.
+    expect(aiTaskDefaultService.getEffective).not.toHaveBeenCalled();
   });
 
   it('resolves model_name from the effective nlp.ner AiTaskDefault row', async () => {
@@ -79,27 +90,28 @@ describe('resolveNerModelInjection', () => {
     expect(cls.setOrder).toContainEqual(['tenantId', SYSTEM_TENANT_ID]);
   });
 
-  it('returns {} and logs a warning when the resolved AiTaskDefault has no ENABLED model', async () => {
+  it('throws naming the key when the resolved AiTaskDefault has no ENABLED model — fail-closed', async () => {
     const cls = createMockClsService({ tenantId: 'tenant-real' });
     const aiTaskDefaultService = {
       getEffective: vi.fn().mockResolvedValue({ model: null }),
     };
 
-    const result = await resolveNerModelInjection(aiTaskDefaultService as any, cls as any, logger);
-
-    expect(result).toEqual({});
-    expect(warnSpy).toHaveBeenCalled();
+    await expect(resolveNerModelInjection(aiTaskDefaultService as any, cls as any, logger)).rejects.toBeInstanceOf(
+      ServiceUnavailableException,
+    );
+    await expect(resolveNerModelInjection(aiTaskDefaultService as any, cls as any, logger)).rejects.toThrow(NLP_NER_TASK_KEY);
   });
 
-  it('returns {} and logs a warning (never throws) when resolution fails — fail-open', async () => {
+  it('throws naming the key, and logs, when resolution fails — fail-closed', async () => {
     const cls = createMockClsService({ tenantId: 'tenant-real' });
     const aiTaskDefaultService = {
       getEffective: vi.fn().mockRejectedValue(new Error('registry read failed')),
     };
 
-    const result = await resolveNerModelInjection(aiTaskDefaultService as any, cls as any, logger);
-
-    expect(result).toEqual({});
+    await expect(resolveNerModelInjection(aiTaskDefaultService as any, cls as any, logger)).rejects.toBeInstanceOf(
+      ServiceUnavailableException,
+    );
+    await expect(resolveNerModelInjection(aiTaskDefaultService as any, cls as any, logger)).rejects.toThrow(NLP_NER_TASK_KEY);
     expect(warnSpy).toHaveBeenCalled();
   });
 });

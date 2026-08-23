@@ -1847,17 +1847,19 @@ export class SummaryService extends BaseService implements ISummaryService {
   private async callNlpService(text: string): Promise<{
     entities: Record<string, unknown>[];
     /**
-     * The resolved `model_name` actually sent to NLP, or `null` when
-     * resolution fail-opened (NLP's own env default applied, which this
-     * caller has no visibility into — never guesses it).
+     * The resolved `model_name` actually sent to NLP. Always a real model id:
+     * resolution is fail-CLOSED, so an unresolved `nlp.ner` throws before the
+     * post rather than leaving this unknown.
      */
-    modelUsed: string | null;
+    modelUsed: string;
   }> {
     try {
       // Inject the effective `nlp.ner` AiTaskDefault model
       // (mirrors AiInferenceController's playground mapping) so a global
       // admin's re-point governs this synchronous clinical NER path too, not
-      // just the playground. Fail-open: {} on any resolution hiccup.
+      // just the playground. Fail-CLOSED: an unresolved key throws a 503 naming
+      // `nlp.ner` here, rather than posting without `model_name` and taking the
+      // same 503 back from NLP one hop later, attributed to the wrong thing.
       const modelSelection = await resolveNerModelInjection(this.aiTaskDefaultService, this.clsService, this.logger);
       // TASK-737/738: this call sent NO headers object at all — neither the
       // service token (so it only ever worked against an NLP with the empty-token
@@ -1876,7 +1878,7 @@ export class SummaryService extends BaseService implements ISummaryService {
           }),
         },
       );
-      return { ...response.data, modelUsed: modelSelection.model_name ?? null };
+      return { ...response.data, modelUsed: modelSelection.model_name };
     } catch (error) {
       // TASK-768 — see `callTextWithTenantFallback`: rethrow the cause, let the
       // gateway boundary classify and build the body. Composing a message here

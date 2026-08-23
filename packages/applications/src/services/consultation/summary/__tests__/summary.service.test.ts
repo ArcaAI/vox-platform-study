@@ -120,6 +120,17 @@ const createMockClsService = () => ({
   run: vi.fn((callback: () => unknown) => callback()),
 });
 
+/**
+ * The `nlp.ner` AiTaskDefault double every fixture that reaches
+ * `extractEntities` now needs. Model SELECTION is fail-CLOSED
+ * (`resolveNerModelInjection`): an unwired service or an unresolved key is a
+ * 503, not a silent post without `model_name` — so a fixture that reaches the
+ * NLP hop must wire a resolvable row, exactly as production does.
+ */
+const createMockAiTaskDefaultService = () => ({
+  getEffective: vi.fn().mockResolvedValue({ model: { sourceUri: 'blaze999/Medical-NER' } }),
+});
+
 const createMockEventEmitter = () => ({
   emit: vi.fn(),
 });
@@ -300,7 +311,7 @@ describe('SummaryService', () => {
       undefined, // configResolver (@Optional)
       undefined, // entitlements (@Optional)
       undefined, // trajectoryService (@Optional)
-      undefined, // aiTaskDefaultService (@Optional)
+      createMockAiTaskDefaultService() as any, // aiTaskDefaultService (@Optional; fail-closed resolver needs a row)
       undefined, // transcriptSegmentRepository (@Optional)
       undefined, // usageLedger (@Optional)
       undefined, // unitOfWork (@Optional)
@@ -550,7 +561,8 @@ describe('SummaryService', () => {
 
       expect(mockHttpService.axiosRef.post).toHaveBeenCalledWith(
         expect.stringContaining('/classify/tokens'),
-        { text: content },
+        // `model_name` is always present now — selection is fail-closed.
+        { text: content, model_name: 'blaze999/Medical-NER' },
         expect.objectContaining({ headers: expect.objectContaining({ 'X-Tenant-Id': expect.any(String) }) }),
       );
     });
@@ -851,10 +863,44 @@ describe('SummaryService', () => {
   });
 
   // ===========================================================================
-  // Nlp.ner AiTaskDefault model injection (fail-open)
+  // Nlp.ner AiTaskDefault model injection (fail-CLOSED)
   // ===========================================================================
 
   describe('extractEntities — nlp.ner model injection', () => {
+    /** A SummaryService wired with an explicit (possibly absent) AiTaskDefault double. */
+    const buildServiceWithAiTaskDefault = (aiTaskDefaultService: unknown) =>
+      new SummaryService(
+        mockContextItemRepository as any,
+        mockConsultationRepository as any,
+        mockSummaryMetaRepository as any,
+        mockNamedEntityRepository as any,
+        mockHttpService as any,
+        mockConfigService as any,
+        mockEventEmitter as any,
+        mockClsService as any,
+        mockContextItemVersionRepository as any,
+        mockPromptAssemblyService as any,
+        undefined, // secretsService
+        undefined, // userProfileRepository
+        undefined, // harnessAuditService
+        undefined, // harnessGatewayService
+        mockHarnessPolicyService as any,
+        undefined, // configResolver
+        undefined, // entitlements
+        undefined, // trajectoryService
+        aiTaskDefaultService as any,
+        undefined, // transcriptSegmentRepository
+        undefined, // usageLedger
+        undefined, // unitOfWork
+        undefined, // billing
+        undefined, // departmentAgentRepository
+        undefined, // aiModelRepository
+        undefined, // noteGenerationService
+        // TASK-710 — `IPhiRedactor` is a REQUIRED ctor dep; a pass-through
+        // double keeps this fixture's assertions byte-identical.
+        { redact: vi.fn(async (text: string) => text) } as any, // phiRedactor (#27)
+      );
+
     it('injects the effective nlp.ner model_name when the AiTaskDefault service resolves one', async () => {
       const aiTaskDefaultService = {
         getEffective: vi.fn().mockResolvedValue({
@@ -908,7 +954,7 @@ describe('SummaryService', () => {
       );
     });
 
-    it('posts without model_name (fail-open) when AiTaskDefault resolution fails', async () => {
+    it('refuses with a 503 naming nlp.ner (fail-closed) when AiTaskDefault resolution fails', async () => {
       const aiTaskDefaultService = {
         getEffective: vi.fn().mockRejectedValue(new Error('registry unavailable')),
       };
@@ -947,27 +993,22 @@ describe('SummaryService', () => {
       mockContextItemRepository.findById.mockResolvedValue(createMockContextItem({ content: 'Patient with Diabetes' }));
       mockHttpService.axiosRef.post.mockResolvedValue({ data: { entities: [] } });
 
-      await serviceWithResolver.extractEntities('ctx-item-123');
+      await expect(serviceWithResolver.extractEntities('ctx-item-123')).rejects.toThrow(/nlp\.ner/);
 
-      // extraction proceeds — a registry hiccup never blocks clinical NER.
-      expect(mockHttpService.axiosRef.post).toHaveBeenCalledWith(
-        'http://localhost:8864/api/v1/classify/tokens',
-        { text: 'Patient with Diabetes' },
-        expect.objectContaining({ headers: expect.objectContaining({ 'X-Tenant-Id': expect.any(String) }) }),
-      );
+      // NEVER posted without `model_name`: NLP now REQUIRES it and answers 503
+      // without it, so fail-open would only move the same failure one hop out
+      // and attribute it to the NLP service instead of the unresolved key.
+      expect(mockHttpService.axiosRef.post).not.toHaveBeenCalled();
     });
 
-    it('posts without model_name when no AiTaskDefault service is wired (legacy behavior preserved)', async () => {
+    it('refuses with a 503 naming nlp.ner when no AiTaskDefault service is wired', async () => {
+      const serviceWithoutResolver = buildServiceWithAiTaskDefault(undefined);
       mockContextItemRepository.findById.mockResolvedValue(createMockContextItem({ content: 'Patient with Diabetes' }));
       mockHttpService.axiosRef.post.mockResolvedValue({ data: { entities: [] } });
 
-      await service.extractEntities('ctx-item-123');
+      await expect(serviceWithoutResolver.extractEntities('ctx-item-123')).rejects.toThrow(/nlp\.ner/);
 
-      expect(mockHttpService.axiosRef.post).toHaveBeenCalledWith(
-        'http://localhost:8864/api/v1/classify/tokens',
-        { text: 'Patient with Diabetes' },
-        expect.objectContaining({ headers: expect.objectContaining({ 'X-Tenant-Id': expect.any(String) }) }),
-      );
+      expect(mockHttpService.axiosRef.post).not.toHaveBeenCalled();
     });
   });
 
@@ -1014,7 +1055,7 @@ describe('SummaryService', () => {
         undefined, // configResolver
         undefined, // entitlements
         undefined, // trajectoryService
-        undefined, // aiTaskDefaultService
+        createMockAiTaskDefaultService() as any, // aiTaskDefaultService (fail-closed resolver needs a row)
         undefined, // transcriptSegmentRepository
         undefined, // usageLedger
         undefined, // unitOfWork
@@ -1083,7 +1124,7 @@ describe('SummaryService', () => {
         undefined, // configResolver
         undefined, // entitlements
         undefined, // trajectoryService
-        undefined, // aiTaskDefaultService
+        createMockAiTaskDefaultService() as any, // aiTaskDefaultService (fail-closed resolver needs a row)
         undefined, // transcriptSegmentRepository
         undefined, // usageLedger
         undefined, // unitOfWork
@@ -1105,7 +1146,8 @@ describe('SummaryService', () => {
 
       expect(mockHttpService.axiosRef.post).toHaveBeenCalledWith(
         `${customNlpUrl}/api/v1/classify/tokens`,
-        { text: 'Patient data' },
+        // `model_name` is always present now — selection is fail-closed.
+        { text: 'Patient data', model_name: 'blaze999/Medical-NER' },
         expect.objectContaining({ headers: expect.objectContaining({ 'X-Tenant-Id': expect.any(String) }) }),
       );
     });
@@ -1164,7 +1206,7 @@ describe('SummaryService', () => {
         undefined, // configResolver
         undefined, // entitlements
         undefined, // trajectoryService
-        undefined, // aiTaskDefaultService
+        createMockAiTaskDefaultService() as any, // aiTaskDefaultService (fail-closed resolver needs a row)
         undefined, // transcriptSegmentRepository
         undefined, // usageLedger
         undefined, // unitOfWork
@@ -1221,7 +1263,7 @@ describe('SummaryService', () => {
         undefined, // configResolver
         undefined, // entitlements
         undefined, // trajectoryService
-        undefined, // aiTaskDefaultService
+        createMockAiTaskDefaultService() as any, // aiTaskDefaultService (fail-closed resolver needs a row)
         undefined, // transcriptSegmentRepository
         undefined, // usageLedger
         undefined, // unitOfWork
@@ -1297,7 +1339,7 @@ describe('SummaryService', () => {
         undefined, // configResolver
         undefined, // entitlements
         undefined, // trajectoryService
-        undefined, // aiTaskDefaultService
+        createMockAiTaskDefaultService() as any, // aiTaskDefaultService (fail-closed resolver needs a row)
         undefined, // transcriptSegmentRepository
         undefined, // usageLedger
         undefined, // unitOfWork
@@ -1341,7 +1383,7 @@ describe('SummaryService', () => {
         undefined, // configResolver
         undefined, // entitlements
         undefined, // trajectoryService
-        undefined, // aiTaskDefaultService
+        createMockAiTaskDefaultService() as any, // aiTaskDefaultService (fail-closed resolver needs a row)
         undefined, // transcriptSegmentRepository
         undefined, // usageLedger
         undefined, // unitOfWork
@@ -1616,7 +1658,7 @@ describe('SummaryService', () => {
         undefined, // configResolver
         undefined, // entitlements
         undefined, // trajectoryService
-        undefined, // aiTaskDefaultService
+        createMockAiTaskDefaultService() as any, // aiTaskDefaultService (fail-closed resolver needs a row)
         undefined, // transcriptSegmentRepository
         undefined, // usageLedger
         undefined, // unitOfWork
@@ -1677,7 +1719,7 @@ describe('SummaryService', () => {
         undefined, // configResolver
         undefined, // entitlements
         undefined, // trajectoryService
-        undefined, // aiTaskDefaultService
+        createMockAiTaskDefaultService() as any, // aiTaskDefaultService (fail-closed resolver needs a row)
         undefined, // transcriptSegmentRepository
         undefined, // usageLedger
         undefined, // unitOfWork
@@ -2802,23 +2844,24 @@ describe('SummaryService', () => {
       ]);
     });
 
-    it('carries a null model when AiTaskDefault resolution fail-opened', async () => {
+    it('meters nothing when AiTaskDefault resolution refuses — the NER call never happened', async () => {
       const usageLedger = createMockUsageLedger();
       const svc = buildServiceWithLedger(usageLedger); // no aiTaskDefaultService
       mockContextItemRepository.findById.mockResolvedValue(createMockContextItem({ content: 'Test content', consultationId: 'consult-sync-2' }));
       mockHttpService.axiosRef.post.mockResolvedValue({ data: { entities: [] } });
 
-      await svc.extractEntities('ctx-item-123');
+      // Fail-closed: there is no longer a "resolution fail-opened, model
+      // unknown" state to meter — the request is refused before the NLP hop.
+      await expect(svc.extractEntities('ctx-item-123')).rejects.toThrow(/nlp\.ner/);
 
-      const call = usageLedger.recordUsage.mock.calls[0][0];
-      expect(call.common.model).toBeNull();
+      expect(usageLedger.recordUsage).not.toHaveBeenCalled();
     });
 
     it('two extractEntities calls for the SAME consultation get DISTINCT idempotencyKeys (never dropped)', async () => {
       // Regression test for the earlier consultation-keyed design, which
       // silently dropped every call after the first for a consultation.
       const usageLedger = createMockUsageLedger();
-      const svc = buildServiceWithLedger(usageLedger);
+      const svc = buildServiceWithLedger(usageLedger, createMockAiTaskDefaultService());
       mockContextItemRepository.findById.mockResolvedValue(createMockContextItem({ content: 'Test content', consultationId: 'shared-consult' }));
       mockHttpService.axiosRef.post.mockResolvedValue({ data: { entities: [] } });
 
@@ -2844,7 +2887,7 @@ describe('SummaryService', () => {
 
     it('a metering failure never fails extractEntities (never let a metering failure fail the request)', async () => {
       const usageLedger = { recordUsage: vi.fn().mockRejectedValue(new Error('outbox write failed')) };
-      const svc = buildServiceWithLedger(usageLedger);
+      const svc = buildServiceWithLedger(usageLedger, createMockAiTaskDefaultService());
       mockContextItemRepository.findById.mockResolvedValue(createMockContextItem({ content: 'Test content' }));
       mockHttpService.axiosRef.post.mockResolvedValue({ data: { entities: [] } });
 
@@ -2881,7 +2924,7 @@ describe('SummaryService', () => {
         undefined, // configResolver
         undefined, // entitlements
         undefined, // trajectoryService
-        undefined, // aiTaskDefaultService
+        createMockAiTaskDefaultService() as any, // aiTaskDefaultService (fail-closed resolver needs a row)
         undefined, // transcriptSegmentRepository
         undefined, // usageLedger
         undefined, // unitOfWork
