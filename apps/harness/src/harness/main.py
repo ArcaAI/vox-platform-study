@@ -68,7 +68,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         app.state.service_release_task = start_registration(
             http_client=registration_client,
             gateway_url=f"{settings.api_base_url.rstrip('/')}/api/v1",
-            service_token=settings.service_token.get_secret_value(),
+            service_token=settings.peer_service_token(settings.service_token),
             build_info=BuildInfoReader().get_build_info(),
             environment=settings.environment,
         )

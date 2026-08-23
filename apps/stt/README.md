@@ -239,14 +239,12 @@ pip install -e ".[dev,test]"
 | `VAD_MIN_SPEECH_DURATION_MS`  | Min speech segment length                            | `250`   |
 | `VAD_MIN_SILENCE_DURATION_MS` | Min silence to end speech                            | `500`   |
 | `VAD_SPEECH_PAD_MS`           | Padding before speech onset                          | `30`    |
-| `VAD_SAMPLE_RATE`             | VAD input sample rate                                | `16000` |
 
 #### Speaker Diarization (Pyannote)
 
 | Variable                           | Description                                                                                                  | Default                                   |
 | ---------------------------------- | ------------------------------------------------------------------------------------------------------------ | ----------------------------------------- |
 | `DIARIZATION_HF_MODEL_ID`          | Speaker-embedding model (a `speechbrain/*` id selects the ECAPA-TDNN service)                                | `pyannote/wespeaker-voxceleb-resnet34-LM` |
-| `DIARIZATION_SIMILARITY_THRESHOLD` | Speaker matching threshold (0.0–1.0)                                                                         | `0.7`                                     |
 | `DIARIZATION_DEVICE`               | Inference device (auto, cuda, cpu)                                                                           | `auto`                                    |
 | `VOICE_PROFILE_EMBEDDING_DIM`      | Embedding dimension — must match the `UserVoiceProfile.embedding` column (256 = wespeaker; 192 = ECAPA-TDNN) | `256`                                     |
 
@@ -279,14 +277,6 @@ combination that is known to load the model.
 | `WORKER_THREADS`         | Dramatiq worker threads per process | `4`     |
 | `WORKER_POLL_TIMEOUT_MS` | Consumer poll max-backoff in ms     | `1000`  |
 | `WORKER_MAX_RETRIES`     | Max retry attempts                  | `3`     |
-| `INFERENCE_POOL_SIZE`    | ProcessPoolExecutor size (0 = auto) | `0`     |
-
-#### Future / Reserved
-
-| Variable                | Description                | Default |
-| ----------------------- | -------------------------- | ------- |
-| `MLFLOW_TRACKING_URI`   | MLFlow tracking server URI | -       |
-| `MLFLOW_MODEL_REGISTRY` | MLFlow model registry URI  | -       |
 
 ### Running the Service
 
