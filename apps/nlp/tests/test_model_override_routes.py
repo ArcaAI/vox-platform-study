@@ -25,13 +25,9 @@ import nlp.dependencies as deps
 # session. Importing the API package here binds the real dependencies first.
 from nlp.api.v1 import rest_api_router_v1
 from nlp.core.config import UNCONFIGURED_DOC_TYPE_CLASSIFIER_MODEL
-from nlp.schemas.classification import TokenClassificationResponse
 
 _SLOTS = (
-    "_text_classifier_instance",
-    "_token_classifier_instance",
     "_text_corrector_instance",
-    "_medical_suggester_instance",
     "_websocket_manager_instance",
     "_document_extractor_instance",
     "_token_classifier_cache_instance",
@@ -55,23 +51,6 @@ def client(clean_deps):
     app = FastAPI()
     app.include_router(rest_api_router_v1)
     return TestClient(app)
-
-
-class _FakeTokenClassifier:
-    def __init__(self, model_name: str = "blaze999/Medical-NER") -> None:
-        self.model_name = model_name
-        self.is_initialized = True
-        self.processed: list = []
-
-    async def initialize(self) -> None:
-        pass
-
-    async def shutdown(self) -> None:
-        pass
-
-    async def process(self, request) -> TokenClassificationResponse:
-        self.processed.append(request)
-        return TokenClassificationResponse(entities=[], model_version=f"fake:{self.model_name}")
 
 
 # ---------------------------------------------------------------------------
@@ -177,40 +156,58 @@ def test_classify_text_sentinel_model_name_rejected_503(client, clean_deps) -> N
 
 
 # ---------------------------------------------------------------------------
-# Diagnosis — model_name overrides ONLY the suggester's classification model
+# Diagnosis — BOTH selections are injected and BOTH drive their own load
 # ---------------------------------------------------------------------------
 
 
-def test_diagnosis_model_name_overrides_classifier_only(client, clean_deps) -> None:
-    # The suggester's internal NER stays the default token classifier: preset it
-    # as an already-initialized fake so only the disease classifier is loaded.
-    default_token = _FakeTokenClassifier()
-    clean_deps._token_classifier_instance = default_token
+def test_diagnosis_injects_both_the_classifier_and_the_ner(client, clean_deps) -> None:
+    """The suggester runs two models, so it takes two selections.
 
+    Its internal NER used to be the process singleton built from settings — the
+    hardcoded default. Now the caller names it, and the cache slot is keyed on
+    BOTH identities so a change to either is a miss.
+    """
     cls_pipe = MagicMock(return_value=[{"label": "LABEL_10", "score": 0.9}])
+    ner_pipe = MagicMock(return_value=[])
     with (
         patch("nlp.services.medical_suggester.AutoTokenizer") as cls_tok,
         patch("nlp.services.medical_suggester.AutoModelForSequenceClassification") as cls_mdl,
         patch("nlp.services.medical_suggester.pipeline", return_value=cls_pipe),
         patch("nlp.services.token_classifier.AutoTokenizer") as ner_tok,
         patch("nlp.services.token_classifier.AutoModelForTokenClassification") as ner_mdl,
+        patch("nlp.services.token_classifier.pipeline", return_value=ner_pipe),
     ):
+        ner_mdl.from_pretrained.return_value.config.id2label = {}
         r = client.post(
             "/api/v1/diagnosis/suggestions",
             json={
                 "text": "patient reports fever and chills",
                 "model_name": "org/custom-classifier",
+                "ner_model_name": "org/custom-ner",
+                "tenant_id": "tenant-a",
             },
         )
 
     assert r.status_code == 200
-    # the override drove the disease-classification model (loaded exactly once) …
     cls_tok.from_pretrained.assert_called_once_with("org/custom-classifier")
     cls_mdl.from_pretrained.assert_called_once_with("org/custom-classifier")
-    # … while the internal NER stayed the default token classifier
-    ner_tok.from_pretrained.assert_not_called()
-    ner_mdl.from_pretrained.assert_not_called()
-    assert len(default_token.processed) == 1
+    ner_tok.from_pretrained.assert_called_once_with("org/custom-ner")
+    ner_mdl.from_pretrained.assert_called_once_with("org/custom-ner")
+
     cache = clean_deps._medical_suggester_cache_instance
     assert cache is not None
-    assert cache.cached_models() == ["org/custom-classifier"]
+    assert cache.cached_models() == [
+        deps._suggester_cache_key("org/custom-classifier", None, "org/custom-ner", None)
+    ]
+
+
+def test_diagnosis_fails_closed_without_the_ner_selection(client) -> None:
+    r = client.post(
+        "/api/v1/diagnosis/suggestions",
+        json={
+            "text": "patient reports fever and chills",
+            "model_name": "org/custom-classifier",
+            "tenant_id": "tenant-a",
+        },
+    )
+    assert r.status_code == 503

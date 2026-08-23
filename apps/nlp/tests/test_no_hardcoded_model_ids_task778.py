@@ -24,15 +24,10 @@ SRC = Path(__file__).resolve().parents[1] / "src"
 # `hivetrace/*` (the GLiNER detector guardrail used before TASK-735). Extend
 # this tuple when a new vendor enters the roster — never the source.
 #
-# DELIBERATELY NOT COVERED: `blaze999/Medical-NER` and
-# `shanover/symps_disease_bert_v3_c41`, which are `pydantic-settings` DEFAULTS
-# on `TokenClassificationConfig` / `MedicalSuggesterConfig`
-# (`nlp/core/config.py:298,301,351,353`). Those are real config-rule violations
-# — a settings field with a live model default is a hardcoded value wearing a
-# config costume — but they belong to the NER/diagnosis plane, not the safety
-# plane, and removing them changes how the singleton NER model loads. Recorded
-# in the TASK-778 README §2.2 as a pre-existing finding rather than silently
-# widened into this ticket.
+# The NER and diagnosis planes were recorded here as a pre-existing finding
+# (`blaze999/*`, `shanover/*` as `pydantic-settings` defaults) rather than
+# silently widened into this ticket. They are CLOSED under TASK-799 lane C.2 and
+# are guarded by `test_task799_model_selection.py`, which owns those prefixes.
 FORBIDDEN_MODEL_ID = re.compile(r"(?<![\w/-])(?:fastino|nvhf|hivetrace)/[A-Za-z0-9._-]+")
 
 

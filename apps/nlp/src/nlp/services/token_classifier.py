@@ -51,14 +51,14 @@ class TransformerTokenClassifier(TokenClassifier):
 
     def __init__(
         self,
-        configs: TokenClassificationConfig | None = None,
+        configs: TokenClassificationConfig,
         linker: OntologyLinker | None = None,
         linker_config: OntologyLinkerConfig | None = None,
         assertion_classifier: AssertionModel | None = None,
     ):
-        if configs is None:
-            configs = TokenClassificationConfig()
-
+        # `configs` is REQUIRED: it carries the resolved model selection, and
+        # there is no default to fall back to — building one here would put a
+        # checkpoint id back into shipped Python.
         super().__init__(configs.model_name, configs.model_version)
 
         self.configs = configs

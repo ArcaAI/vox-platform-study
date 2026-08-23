@@ -20,14 +20,26 @@ async def get_diagnosis_suggestions(
 ) -> DiagnosisSuggestionResponse:
     assert_tenant_matches_header(request.tenant_id, http_request.headers.get(TENANT_HEADER))
 
-    # model_name (gateway-injected AiModel.sourceUri) is required and
-    # selects ONLY the suggester's disease-classification model (its internal
-    # NER stays the default token classifier). Missing/unloadable → 503.
+    # BOTH selections are gateway-injected (AiModel.sourceUri) and BOTH are
+    # required: this route runs a disease classifier over the symptoms an NER
+    # extracted. `ner_model_name` used to be absent, so that half ran a
+    # hardcoded default. Missing/unloadable → 503, never a substituted literal.
     if not request.model_name:
-        raise HTTPException(status_code=503, detail="Medical suggester service not available")
+        raise HTTPException(
+            status_code=503, detail="Diagnosis classification model selection is unresolved"
+        )
+    if not request.ner_model_name:
+        raise HTTPException(
+            status_code=503, detail="Diagnosis NER model selection is unresolved"
+        )
 
     try:
-        async with pinned_medical_suggester(request.model_name, request.model_path) as service:
+        async with pinned_medical_suggester(
+            request.model_name,
+            request.model_path,
+            request.ner_model_name,
+            request.ner_model_path,
+        ) as service:
             if not service.is_initialized:
                 raise HTTPException(
                     status_code=503, detail="Medical suggester service not available"

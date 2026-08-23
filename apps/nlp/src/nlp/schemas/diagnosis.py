@@ -23,15 +23,25 @@ class DiagnosisSuggestionRequest(BaseModel):
     language: SupportedLanguage | None = Field(
         default=SupportedLanguage.ENGLISH, description="Language of the text"
     )
-    # Overrides ONLY the suggester's disease-classification model;
-    # its internal NER stays the default token classifier.
+    # The suggester runs TWO models and BOTH selections are gateway-injected
+    # (`AiTaskDefault` ⋈ `AiModel`, tenant → SYSTEM). The NER pair used to be
+    # absent, which left that half of the route running a hardcoded default.
+    # Either one missing fails the request closed with 503.
     model_name: str | None = Field(
-        default=None, description="Optional HF model id overriding the classification model"
+        default=None, description="Gateway-injected AiModel.sourceUri for the disease classifier"
     )
     # Gateway-injected `AiModel.localPath`.
     model_path: str | None = Field(
         default=None,
         description="Optional local weights directory (gateway-injected AiModel.localPath)",
+    )
+    ner_model_name: str | None = Field(
+        default=None,
+        description="Gateway-injected AiModel.sourceUri for the symptom-extraction NER model",
+    )
+    ner_model_path: str | None = Field(
+        default=None,
+        description="Optional local weights directory for the NER model (AiModel.localPath)",
     )
     tenant_id: str | None = Field(
         default=None, description="Gateway-injected tenant id; cross-checked against X-Tenant-Id"
