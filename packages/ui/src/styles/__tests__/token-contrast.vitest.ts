@@ -167,7 +167,17 @@ const PAIRS: Pair[] = [
   // 2. Secondary and tertiary text on every surface either can land on. This is
   //    the EX-04 correction's whole point: #767676 clears 4.5:1 on #ffffff and
   //    fails on #fafafa, so calibrating against one surface is not enough.
-  ...cross(['muted-foreground', 'muted-foreground-subtle'], ['background', 'card', 'muted', 'secondary'], 'text'),
+  // The HOVER steps belong here too. They were swept for `foreground` below but
+  // not for muted ink, and that hole is exactly how a real failure reached a
+  // browser: --muted-foreground cleared --secondary at 4.76 while failing
+  // --secondary-hover at 4.03, and the live axe run on the Workbench caught what
+  // this gate had not been asked to look at.
+  ...cross(
+    ['muted-foreground'],
+    ['background', 'card', 'muted', 'secondary', 'accent', 'secondary-hover', 'accent-hover'],
+    'text',
+  ),
+  ...cross(['muted-foreground-subtle'], ['background', 'card', 'muted', 'secondary'], 'text'),
 
   // 3. Body ink on every surface it can be placed over.
   ...cross(

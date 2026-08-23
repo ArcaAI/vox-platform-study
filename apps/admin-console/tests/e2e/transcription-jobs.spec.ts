@@ -199,10 +199,12 @@ test.describe('transcription jobs — refresh and pagination', () => {
   test('walks to the next page when more than one page of jobs exists', async ({ page }) => {
     await page.goto('/audio/transcription-jobs');
     await waitForSettled(page);
-    const nextButton = page.getByRole('button', { name: /^(Next page|Go to next page)$/ });
+    // This screen renders TWO paginations (above and below the grid), so an
+    // unscoped pagination locator resolves to two elements and trips strict mode.
+    const nextButton = page.getByRole('button', { name: /^(Next page|Go to next page)$/ }).first();
     if (!(await nextButton.isEnabled().catch(() => false))) {
       await expect(nextButton).toBeDisabled();
-      await expect(page.getByText(/Page 1 of 1/)).toBeVisible();
+      await expect(page.getByText(/Page 1 of 1/).first()).toBeVisible();
       return;
     }
     const firstPageFirstRow = await page.getByRole('grid', { name: 'Transcription jobs' }).locator('[data-slot="data-grid-row"]').first().innerText();
