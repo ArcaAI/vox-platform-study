@@ -1,46 +1,127 @@
 // The read side of the config plane.
 //
 // Resolves the per-service SERVICE-LEVEL subset that the Python pull clients
-// consume. It is a thin composition over two existing resolvers — the
-// settings-registry effective facade (`global-kv` override lane) and the
-// `AiRuntimeProfile` service — and deliberately owns no data access of its own.
+// consume. It is a thin composition over the existing resolvers — the
+// settings-registry effective facade (`global-kv` override lane), the
+// `AiRuntimeProfile` service and the `AiTaskDefault`/`AiModel` pair — and
+// deliberately owns no data access of its own.
 //
-// House constraint: effective-config carries service-level knobs
-// ONLY, never per-request model choice. TEXT remains a stateless gateway; the
-// gateway injects `{provider, model}` per request, exactly as before.
+// TWO HOUSE CONSTRAINTS, both load-bearing:
+//
+//  1. SERVICE-LEVEL knobs ONLY, never per-request model choice. TEXT remains a
+//     stateless gateway; the gateway injects `{provider, model}` per request.
+//  2. PLATFORM SCOPE ONLY (owner decision D-1). This route is pinned to the
+//     SYSTEM tenant and stays that way: one cached snapshot per service
+//     process, forever. A per-tenant pull would scale cache-stampede and memory
+//     with customer count. Anything that can vary by tenant travels the PUSH
+//     channel — per-request gateway injection — instead. The registry enforces
+//     the split by convention: a `maxScope: 'tenant'` descriptor does not
+//     declare `consumedBy`.
+//
+// WHAT CHANGED, and why it is the whole point: the per-service payload used to
+// be a hand-written `switch` over a `number | null` value type, so (a) adding
+// one key meant four coordinated edits and (b) a non-number was SILENTLY
+// coerced to the code default, which made strings, enums, URLs, booleans and
+// label taxonomies impossible to serve at all. Both are gone: the payload is a
+// registry QUERY on `SettingDescriptor.consumedBy`, and values are carried as
+// `unknown`, validated against the DECLARED `dataType` and refused — never
+// substituted — when they do not match.
 
 import { Inject, Injectable, Logger, Optional } from '@nestjs/common';
 import { ArgumentInvalidException } from '@arcaai/exceptions';
 import { IAiRuntimeProfileService } from '../ai-runtime-profile/IAiRuntimeProfileService';
 import type { AiRuntimeProfileResponse } from '../ai-runtime-profile/dto';
+import { AI_TASK_KEYS, type AiTaskKey } from '../ai-task-default/constants';
+import { IAiTaskDefaultService } from '../ai-task-default/IAiTaskDefaultService';
+import type { AiModelService } from '../stt/model/aiModel.service';
 import { EffectiveSettingsService } from '../settings-registry/effective-settings.service';
-import { SERVICE_RUNTIME_DEFAULTS, ServiceRuntimeKey } from '../settings-registry/descriptors/service-runtime.descriptors';
+import { MODEL_CACHE_SERVICES } from '../settings-registry/descriptors/service-runtime.descriptors';
+import { HOPE_SETTINGS_REGISTRY } from '../settings-registry/registry';
+import type { SettingDataType, SettingDescriptor } from '../settings-registry/registry.types';
 import {
   EFFECTIVE_CONFIG_SERVICES,
   EffectiveConcurrency,
   EffectiveConfigResponse,
   EffectiveConfigServiceName,
   EffectiveConfigSource,
+  EffectiveModelWeight,
   EffectiveRedaction,
   EffectiveRetention,
   EffectiveRuntimeProfile,
+  EffectiveSetting,
   IEffectiveConfigService,
 } from './IEffectiveConfigService';
 
-/** These keys are platform-owned; the cascade context is always the SYSTEM tenant. */
+/** These keys are platform-owned; the cascade context is always the SYSTEM tenant (D-1). */
 const SYSTEM_TENANT_ID = '00000000-0000-0000-0000-000000000000';
 
 /**
- * One resolved registry key: its value plus whether a DB override supplied it.
- * `value: null` means the read failed — the client keeps its bootstrap value.
+ * The services served `runtimeProfiles`. NOT a per-key list — a runtime profile
+ * is an `AiRuntimeProfile` ROW, not a registry setting, so it has no descriptor
+ * to declare `consumedBy` on. Adding a config KEY never touches this.
+ */
+const RUNTIME_PROFILE_SERVICES: readonly EffectiveConfigServiceName[] = ['text', 'nlp'];
+
+/**
+ * Task keys whose selected model a service materialises LOCALLY even though the
+ * key lives under another service's prefix.
+ *
+ * One entry, and it is real: harness runs the MiniCheck entailer inside a
+ * Temporal activity, but MiniCheck's selection lives under
+ * `guardrail.groundedness` (harness has no task key of its own for it — see
+ * `apps/harness/src/harness/models/source_resolver.py`). Without this the slug
+ * harness looks up could never appear in its own `modelWeights` map.
+ */
+const CROSS_SERVICE_MODEL_WEIGHT_KEYS: Partial<Record<EffectiveConfigServiceName, readonly AiTaskKey[]>> = {
+  harness: ['guardrail.groundedness'],
+};
+
+/**
+ * One resolved registry key: its value plus which lane supplied it.
+ *
+ * `value: unknown` is the change that admits every data class. `null` means
+ * UNRESOLVED (read failed, or the stored value did not match the declared
+ * `dataType`) — the client keeps its bootstrap value. It is NEVER a stand-in
+ * for the code default.
  */
 interface ResolvedKey {
-  value: number | null;
+  value: unknown;
   source: EffectiveConfigSource;
 }
 
 function isKnownService(service: string): service is EffectiveConfigServiceName {
   return (EFFECTIVE_CONFIG_SERVICES as readonly string[]).includes(service);
+}
+
+/**
+ * Does `value` match the type its descriptor DECLARES?
+ *
+ * The gate that replaced `typeof result.value === 'number' ? … : default`.
+ * A mismatch is a control-plane defect (a hand-written row, a migration that
+ * stored the wrong shape), and the safe response is to refuse the value so the
+ * client keeps its own — never to quietly swap in a different one.
+ */
+export function matchesDataType(value: unknown, dataType: SettingDataType): boolean {
+  switch (dataType satisfies SettingDataType) {
+    case 'boolean':
+      return typeof value === 'boolean';
+    case 'number':
+      // `Number.isFinite` excludes NaN/Infinity, neither of which any consumer
+      // can act on; `typeof` alone would let both through.
+      return typeof value === 'number' && Number.isFinite(value);
+    case 'string':
+    case 'enum':
+      return typeof value === 'string';
+    case 'string[]':
+      return Array.isArray(value) && value.every((entry) => typeof entry === 'string');
+    case 'json':
+      return typeof value === 'object' && value !== null;
+    case 'secret':
+      // Unreachable: secrets are filtered out before resolution. Kept so the
+      // switch stays exhaustive, and answering `false` means that if the filter
+      // ever regressed, the value would be refused rather than served.
+      return false;
+  }
 }
 
 /** A row with no opinion on any tunable leaves the service on its own env values. */
@@ -67,6 +148,11 @@ export class EffectiveConfigService implements IEffectiveConfigService {
     // Optional so graphs that never serve text/nlp profiles (and unit tests) keep
     // working; an unwired service yields an empty profile list rather than a 500.
     @Optional() @Inject(IAiRuntimeProfileService) private readonly runtimeProfiles?: IAiRuntimeProfileService,
+    // Optional for the same reason: an unwired pair yields NO `modelWeights`
+    // block, which is exactly the state every consumer already handles (it is
+    // what they saw before the block existed).
+    @Optional() @Inject(IAiTaskDefaultService) private readonly taskDefaults?: IAiTaskDefaultService,
+    @Optional() private readonly aiModels?: AiModelService,
   ) {}
 
   async resolveForService(service: string): Promise<EffectiveConfigResponse> {
@@ -74,52 +160,41 @@ export class EffectiveConfigService implements IEffectiveConfigService {
       throw new ArgumentInvalidException(`Unknown service '${service}'. Expected one of: ${EFFECTIVE_CONFIG_SERVICES.join(', ')}.`);
     }
 
-    const base: EffectiveConfigResponse = { service, generatedAt: new Date().toISOString() };
+    // ONE registry query, ONE resolution pass. Every group below is a VIEW over
+    // this map — nothing resolves a key twice, and nothing is reachable that the
+    // descriptors did not declare for this service.
+    const resolved = await this.resolveDeclaredKeys(service);
 
-    switch (service) {
-      case 'text':
-        // Service-level knobs only. temperature/topP/maxTokens still travel
-        // per-request via the gateway's profile injection.
-        // `retention.ttlSeconds` is the ONLY retention field
-        // meaningful here — TEXT holds no weights, so it forwards this to the
-        // engine (Ollama `keep_alive` / LM Studio `ttl`) instead of caching.
-        return {
-          ...base,
-          runtimeProfiles: await this.listProfiles(),
-          retention: await this.resolveRetention('text'),
-        };
+    const [runtimeProfiles, modelWeights] = await Promise.all([
+      RUNTIME_PROFILE_SERVICES.includes(service) ? this.listProfiles() : Promise.resolve(undefined),
+      this.resolveModelWeights(service),
+    ]);
 
-      case 'nlp':
-        return {
-          ...base,
-          runtimeProfiles: await this.listProfiles(),
-          retention: await this.resolveRetention('nlp'),
-          concurrency: await this.resolveConcurrency(['nlp.inference.maxConcurrent', 'nlp.peerCall.maxConcurrent']),
-        };
+    return {
+      service,
+      generatedAt: new Date().toISOString(),
+      ...(runtimeProfiles ? { runtimeProfiles } : {}),
+      ...this.retentionView(service, resolved),
+      ...this.concurrencyView(resolved),
+      ...this.redactionView(resolved),
+      ...(modelWeights ? { modelWeights } : {}),
+      settings: toWire(resolved),
+    };
+  }
 
-      case 'stt':
-        return {
-          ...base,
-          retention: await this.resolveRetention('stt'),
-          concurrency: await this.resolveConcurrency(['stt.workers.concurrency', 'stt.streaming.maxConcurrent']),
-        };
+  /**
+   * The registry query that replaced the `switch`: every non-secret descriptor
+   * naming this service in `consumedBy`, resolved once.
+   *
+   * Secrets are filtered UNCONDITIONALLY, before resolution — a secret must not
+   * traverse a config read surface even if a descriptor mistakenly declares
+   * `consumedBy` (the settings facade refuses them too; this is the belt).
+   */
+  private async resolveDeclaredKeys(service: EffectiveConfigServiceName): Promise<Map<string, ResolvedKey>> {
+    const descriptors = HOPE_SETTINGS_REGISTRY.list().filter((d) => d.sensitivity !== 'secret' && d.consumedBy?.includes(service));
 
-      // These subsets were reserved and are now filled, in the same
-      // shape, so clients already polling them see fields appear rather than
-      // change meaning.
-      case 'guardrail':
-        return {
-          ...base,
-          retention: await this.resolveRetention('guardrail'),
-          redaction: await this.resolveRedaction(),
-        };
-
-      case 'harness':
-        return { ...base, retention: await this.resolveRetention('harness') };
-
-      case 'tts':
-        return { ...base, retention: await this.resolveRetention('tts') };
-    }
+    const entries = await Promise.all(descriptors.map(async (descriptor) => [descriptor.key, await this.resolveKey(descriptor)] as const));
+    return new Map(entries);
   }
 
   private async listProfiles(): Promise<EffectiveRuntimeProfile[]> {
@@ -146,69 +221,139 @@ export class EffectiveConfigService implements IEffectiveConfigService {
   }
 
   /**
-   * Resolve one service's retention subset.
+   * The frozen `retention` view over the already-resolved map.
    *
    * `text` gets ttlSeconds ONLY: it owns no cache, so `maxModels`/`maxMemoryMb`/
    * `vramBudgetMb` are meaningless there and stay null rather than being
    * invented. `maxMemoryMb` remains stt-only (its historical MB budget);
    * every other service uses the generalized `vramBudgetMb`.
    */
-  private async resolveRetention(service: 'stt' | 'nlp' | 'guardrail' | 'harness' | 'tts' | 'text'): Promise<EffectiveRetention> {
-    const ttl = await this.resolveKey(`${service}.modelCache.ttlSeconds` as ServiceRuntimeKey);
+  private retentionView(service: EffectiveConfigServiceName, resolved: Map<string, ResolvedKey>): { retention?: EffectiveRetention } {
+    const ttl = resolved.get(`${service}.modelCache.ttlSeconds`);
+    if (!ttl) return {};
 
     if (service === 'text') {
-      return { ttlSeconds: ttl.value, maxModels: null, maxMemoryMb: null, vramBudgetMb: null, source: ttl.source };
+      return { retention: { ttlSeconds: numberOrNull(ttl), maxModels: null, maxMemoryMb: null, vramBudgetMb: null, source: ttl.source } };
     }
 
-    const [maxModels, vramBudgetMb, maxMemoryMb] = await Promise.all([
-      this.resolveKey(`${service}.modelCache.maxModels` as ServiceRuntimeKey),
-      this.resolveKey(`${service}.modelCache.vramBudgetMb` as ServiceRuntimeKey),
-      service === 'stt' ? this.resolveKey('stt.modelCache.maxMemoryMb') : Promise.resolve<ResolvedKey>({ value: null, source: 'env-fallback' }),
-    ]);
+    const maxModels = resolved.get(`${service}.modelCache.maxModels`);
+    const vramBudgetMb = resolved.get(`${service}.modelCache.vramBudgetMb`);
+    const maxMemoryMb = resolved.get(`${service}.modelCache.maxMemoryMb`);
 
     return {
-      ttlSeconds: ttl.value,
-      maxModels: maxModels.value,
-      maxMemoryMb: maxMemoryMb.value,
-      vramBudgetMb: vramBudgetMb.value,
-      source: groupSource([ttl, maxModels, vramBudgetMb, maxMemoryMb]),
+      retention: {
+        ttlSeconds: numberOrNull(ttl),
+        maxModels: numberOrNull(maxModels),
+        maxMemoryMb: numberOrNull(maxMemoryMb),
+        vramBudgetMb: numberOrNull(vramBudgetMb),
+        source: groupSource([ttl, maxModels, vramBudgetMb, maxMemoryMb]),
+      },
     };
   }
 
   /**
-   * guardrail's PHI-redaction subset. Same degradation contract as retention: a
-   * failed read yields a null value and guardrail keeps its own built-in chunk
+   * The frozen `concurrency` view. Each field names the ONE key that feeds it;
+   * a service whose descriptors declare none of them gets no group at all,
+   * which is what a client reads as "leave my own values alone".
+   */
+  private concurrencyView(resolved: Map<string, ResolvedKey>): { concurrency?: EffectiveConcurrency } {
+    const maxConcurrent = resolved.get('nlp.inference.maxConcurrent');
+    const workerConcurrency = resolved.get('stt.workers.concurrency');
+    const streamingMaxConcurrent = resolved.get('stt.streaming.maxConcurrent');
+    const peerCallMaxConcurrent = resolved.get('nlp.peerCall.maxConcurrent');
+
+    const present = [maxConcurrent, workerConcurrency, streamingMaxConcurrent, peerCallMaxConcurrent].filter(isPresent);
+    if (present.length === 0) return {};
+
+    return {
+      concurrency: {
+        maxConcurrent: numberOrNull(maxConcurrent),
+        workerConcurrency: numberOrNull(workerConcurrency),
+        streamingMaxConcurrent: numberOrNull(streamingMaxConcurrent),
+        peerCallMaxConcurrent: numberOrNull(peerCallMaxConcurrent),
+        source: groupSource(present),
+      },
+    };
+  }
+
+  /**
+   * guardrail's PHI-redaction view. Same degradation contract as retention: an
+   * unresolved value yields null and guardrail keeps its own built-in chunk
    * bound, which is a real bound — never "unbounded".
    */
-  private async resolveRedaction(): Promise<EffectiveRedaction> {
-    const chunkChars = await this.resolveKey('guardrail.redact.chunkChars');
-    return { chunkChars: chunkChars.value, source: chunkChars.source };
+  private redactionView(resolved: Map<string, ResolvedKey>): { redaction?: EffectiveRedaction } {
+    const chunkChars = resolved.get('guardrail.redact.chunkChars');
+    if (!chunkChars) return {};
+    return { redaction: { chunkChars: numberOrNull(chunkChars), source: chunkChars.source } };
   }
 
   /**
-   * `keys` names only the ceilings this service actually consumes; every other
-   * field stays null so the client leaves its own value alone.
+   * `modelWeights`: slug → where the weights come from, for the models this
+   * service's `AiTaskDefault` rows select.
+   *
+   * Served only to services that hold weights in their OWN process
+   * (`MODEL_CACHE_SERVICES`) — `text` is excluded because it holds none, its
+   * models being served by remote engines. Resolution is SYSTEM-tenant, like
+   * everything else on this route (D-1): these are the platform's selections.
+   *
+   * Fail-SAFE throughout. A task with no selection, a slug with no registry row,
+   * or a resolver that throws each contributes nothing rather than failing the
+   * pull — every consumer already treats an absent entry as "use my bootstrap
+   * path", so a degraded control plane leaves them exactly where they are.
    */
-  private async resolveConcurrency(keys: ServiceRuntimeKey[]): Promise<EffectiveConcurrency> {
-    const resolved = new Map<ServiceRuntimeKey, ResolvedKey>(await Promise.all(keys.map(async (key) => [key, await this.resolveKey(key)] as const)));
-    const pick = (key: ServiceRuntimeKey): number | null => resolved.get(key)?.value ?? null;
+  private async resolveModelWeights(service: EffectiveConfigServiceName): Promise<Record<string, EffectiveModelWeight> | undefined> {
+    if (!this.taskDefaults || !this.aiModels) return undefined;
+    if (!(MODEL_CACHE_SERVICES as readonly string[]).includes(service)) return undefined;
 
-    return {
-      maxConcurrent: pick('nlp.inference.maxConcurrent'),
-      workerConcurrency: pick('stt.workers.concurrency'),
-      streamingMaxConcurrent: pick('stt.streaming.maxConcurrent'),
-      peerCallMaxConcurrent: pick('nlp.peerCall.maxConcurrent'),
-      source: groupSource([...resolved.values()]),
-    };
+    const taskKeys = [...AI_TASK_KEYS.filter((key) => key.startsWith(`${service}.`)), ...(CROSS_SERVICE_MODEL_WEIGHT_KEYS[service] ?? [])];
+    if (taskKeys.length === 0) return undefined;
+
+    const weights: Record<string, EffectiveModelWeight> = {};
+
+    await Promise.all(
+      taskKeys.map(async (taskKey) => {
+        try {
+          const effective = await this.taskDefaults!.getEffective(taskKey, SYSTEM_TENANT_ID);
+          const slug = effective.modelSlug;
+          if (!slug || weights[slug]) return;
+
+          const model = await this.aiModels!.getBySlug(slug);
+          if (!model) return;
+
+          weights[slug] = {
+            sourceUri: model.sourceUri,
+            localPath: model.localPath ?? null,
+            checksum: model.checksum ?? null,
+          };
+        } catch (error) {
+          this.logger.warn({
+            message: 'Model-weight resolution failed — the key is omitted and the client keeps its bootstrap path',
+            service,
+            taskKey,
+            error: error instanceof Error ? error.message : String(error),
+          });
+        }
+      }),
+    );
+
+    return Object.keys(weights).length > 0 ? weights : undefined;
   }
 
   /**
+   * Resolve ONE descriptor, typed.
+   *
    * A control-plane read failure is NOT an endpoint failure: it degrades to
    * `env-fallback` with a null value, so the client keeps its bootstrap value
    * and the service behaves exactly as it does today (deterministic
    * degradation). Logged once per read so the condition stays visible.
+   *
+   * A TYPE mismatch degrades the same way, and for the same reason — but note
+   * what it explicitly does NOT do: substitute `descriptor.default`. That
+   * substitution is what made this path numeric-only, and it hid the defect
+   * from operators by serving a plausible value.
    */
-  private async resolveKey(key: ServiceRuntimeKey): Promise<ResolvedKey> {
+  private async resolveKey(descriptor: SettingDescriptor): Promise<ResolvedKey> {
+    const { key, dataType } = descriptor;
     try {
       const result = await this.effectiveSettings.resolveEffective(key, {
         tenantId: SYSTEM_TENANT_ID,
@@ -216,10 +361,19 @@ export class EffectiveConfigService implements IEffectiveConfigService {
         doctorId: null,
       });
 
-      const value = typeof result.value === 'number' ? result.value : SERVICE_RUNTIME_DEFAULTS[key];
+      if (!matchesDataType(result.value, dataType)) {
+        this.logger.warn({
+          message: 'Effective-config value does not match its declared dataType — refusing it (no default is substituted)',
+          key,
+          dataType,
+          received: typeof result.value,
+        });
+        return { value: null, source: 'env-fallback' };
+      }
+
       // The facade reports the winning cascade tier; only `code-default` means
       // "no DB override exists", which is what the wire calls `env-fallback`.
-      return { value, source: result.sourceScope === 'code-default' ? 'env-fallback' : 'db' };
+      return { value: result.value, source: result.sourceScope === 'code-default' ? 'env-fallback' : 'db' };
     } catch (error) {
       this.logger.warn({
         message: 'Effective-config key read failed — degrading to env-fallback',
@@ -231,7 +385,36 @@ export class EffectiveConfigService implements IEffectiveConfigService {
   }
 }
 
+/** The resolved map as it goes on the wire, carrying each key's declared type. */
+function toWire(resolved: Map<string, ResolvedKey>): Record<string, EffectiveSetting> {
+  const out: Record<string, EffectiveSetting> = {};
+  for (const [key, entry] of resolved) {
+    out[key] = {
+      value: entry.value,
+      dataType: HOPE_SETTINGS_REGISTRY.getOrThrow(key).dataType,
+      source: entry.source,
+    };
+  }
+  return out;
+}
+
+function isPresent(entry: ResolvedKey | undefined): entry is ResolvedKey {
+  return entry !== undefined;
+}
+
+/**
+ * Narrow a resolved value for one of the FROZEN numeric group fields.
+ *
+ * Every key feeding those fields declares `dataType: 'number'`, so this only
+ * ever fires on an unresolved (null) value. It is not the old blanket
+ * coercion — that applied to EVERY key regardless of declared type, which is
+ * precisely what kept non-numeric values off this route.
+ */
+function numberOrNull(entry: ResolvedKey | undefined): number | null {
+  return typeof entry?.value === 'number' ? entry.value : null;
+}
+
 /** A group reads as `db` only if at least one of its keys was overridden. */
-function groupSource(keys: ResolvedKey[]): EffectiveConfigSource {
-  return keys.some((k) => k.source === 'db') ? 'db' : 'env-fallback';
+function groupSource(keys: (ResolvedKey | undefined)[]): EffectiveConfigSource {
+  return keys.some((k) => k?.source === 'db') ? 'db' : 'env-fallback';
 }

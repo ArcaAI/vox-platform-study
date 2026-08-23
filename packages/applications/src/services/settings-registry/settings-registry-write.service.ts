@@ -11,6 +11,7 @@ import { IAppSettingsService } from '../baseServices/_meta/appSettings/IAppSetti
 import { IGlobalSettingService } from '../globalSetting/IGlobalSettingService';
 import { HOPE_SETTINGS_REGISTRY } from './registry';
 import { SettingDataType, SettingDescriptor, SettingScope } from './registry.types';
+import { assertTightenOnlyFloor } from './tenant-clamp';
 
 /**
  * The reserved namespace for registry-lane writes. Keeps this lane's rows
@@ -145,6 +146,28 @@ export class SettingsRegistryWriteService extends BaseService {
     // 6. Type validation against the declared dataType.
     const { serialized, valueType } = this.serialize(descriptor, value);
 
+    // 6b. The tighten-only floor, for keys that DECLARE one
+    //     (`descriptor.floorDirection`). A tenant-scope write may move such a
+    //     key towards more safety and nowhere else; a loosening write is
+    //     REJECTED (403), never silently clamped, so an admin is told rather
+    //     than left believing they set something they did not.
+    //
+    //     Only a `tenant`-scope write is floored: a `system`-scope write IS the
+    //     platform value, so there is nothing above it to be measured against
+    //     (and it is already SUPER_ADMIN-only via `assertMayWriteAtScope`).
+    //
+    //     Descriptor-driven like every other guard here — this is one call, not
+    //     a per-feature branch. `guardrail.policy.*` is the first consumer; its
+    //     own `assertGuardrailPolicyFloor` expressed exactly this policy and had
+    //     ZERO callers, which is what wiring it generically fixes.
+    //
+    //     The floor is read ONLY for a key that declares a direction — for every
+    //     other key the guard would be a no-op, so resolving a floor first would
+    //     be a cache read per write that can never change the outcome.
+    if (scope !== 'system' && descriptor.floorDirection) {
+      assertTightenOnlyFloor(descriptor, value, this.platformFloorFor(descriptor));
+    }
+
     // 7. Upsert the backing row under COMPARE-AND-SET, then refresh the read cache.
     const existing = await this.findBackingRow(key, targetTenantId);
     const persisted = await this.actingOnTenant(targetTenantId, () =>
@@ -168,6 +191,21 @@ export class SettingsRegistryWriteService extends BaseService {
     await this.appSettings.refreshCache();
 
     return { key, tier: descriptor.tier, value, scope, version: persisted.version };
+  }
+
+  /**
+   * The PLATFORM value a tenant write is floored against: the stored SYSTEM row
+   * if one exists, otherwise the descriptor's code default.
+   *
+   * Read from the settings cache rather than the repository ON PURPOSE — unlike
+   * the OCC version (which must be fresh, see the constructor note), the floor
+   * is a POLICY bound. A floor read from a snapshot at most 45s old can only
+   * differ from the live one when a platform admin has just moved the floor,
+   * and the invalidation publish makes that window smaller still.
+   */
+  private platformFloorFor(descriptor: SettingDescriptor): unknown {
+    const stored = this.appSettings.getValueFromCache(descriptor.key);
+    return stored !== null && stored !== undefined ? stored : descriptor.default;
   }
 
   /**

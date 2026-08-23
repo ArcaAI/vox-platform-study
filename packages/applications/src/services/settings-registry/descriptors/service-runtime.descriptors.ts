@@ -29,7 +29,7 @@
 // The code value wins; reconciling or retiring the legacy row belongs to the
 // seed owner.
 
-import { SettingDescriptor } from '../registry.types';
+import { ConsumingDeployable, CONSUMING_DEPLOYABLES, SettingDescriptor } from '../registry.types';
 
 /**
  * Registry keys → the consuming Python service's current fallback. Shared by the
@@ -199,10 +199,29 @@ const META: Record<ServiceRuntimeKey, KeyMeta> = {
   ...HAND_WRITTEN_META,
 } as Record<ServiceRuntimeKey, KeyMeta>;
 
+/**
+ * The deployable that consumes a key, read off the key's own first segment.
+ *
+ * Every key in this family is `<service>.<group>.<knob>`, and that leading
+ * segment IS the consuming service — so the mapping is derived, not maintained.
+ * A key whose prefix is not a known deployable declares no consumer and simply
+ * never reaches the pull route (there are none today; the check exists so a
+ * typo fails silent-and-absent rather than mis-routing to another service).
+ */
+function consumerOf(key: ServiceRuntimeKey): readonly ConsumingDeployable[] {
+  const prefix = key.split('.')[0];
+  return (CONSUMING_DEPLOYABLES as readonly string[]).includes(prefix) ? [prefix as ConsumingDeployable] : [];
+}
+
 export const SERVICE_RUNTIME_SETTINGS: SettingDescriptor[] = (Object.keys(SERVICE_RUNTIME_DEFAULTS) as ServiceRuntimeKey[]).map<SettingDescriptor>(
   (key) => ({
     key,
     tier: 'global-kv',
+    // What puts this key on `GET /internal/effective-config?service=<name>`.
+    // It is the ONLY wiring step: the read service queries the registry on this
+    // field, so there is no switch case, response-DTO field or defaults map to
+    // edit alongside it.
+    consumedBy: consumerOf(key),
     dataType: 'number',
     sensitivity: 'internal',
     // Platform-owned capacity/retention knobs — never tenant-set.

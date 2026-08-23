@@ -19,6 +19,9 @@
 // Kept PURE (no DI, no I/O) so the policy is exhaustively unit-testable and can
 // be called from the resolver, the write lane, and a test with equal ease.
 
+import { ForbiddenException } from '@nestjs/common';
+import type { SettingDescriptor } from './registry.types';
+
 /** Which direction makes a tenant override stricter than the platform value. */
 export type ClampDirection =
   /** Numeric knob where a SMALLER number is tighter (request limits, TTLs, lifetimes). */
@@ -129,4 +132,74 @@ export function clampTenantSetting<T>(key: string, tenantValue: T, bounds: Tenan
   // higher-is-stricter: the platform value is a FLOOR the tenant may exceed.
   const floor = candidates.reduce((a, b) => (b.limit >= a.limit ? b : a));
   return tenantValue < floor.limit ? { value: floor.limit as T, clamped: true, bound: floor.bound } : { value: tenantValue, clamped: false };
+}
+
+// ───────────────────── The tighten-only floor (reject, never clamp) ─────────
+
+/**
+ * Thrown when a tenant write would make a floor-guarded key LESS strict than
+ * the platform value.
+ *
+ * A 403 — a PRIVILEGE boundary — deliberately NOT the 404-over-403 cross-tenant
+ * posture (the caller unambiguously owns the row it is writing), and
+ * deliberately NOT a silent clamp: an admin must be told their value was
+ * refused rather than believing they set something they did not.
+ *
+ * This is the counterpart to `clampTenantSetting` above, and the two are NOT
+ * redundant. The clamp narrows a value on READ, for knobs where quietly
+ * enforcing the bound is the right answer (a rate limit). The floor refuses on
+ * WRITE, for keys where a narrowed value would be a safety decision the tenant
+ * never made (a detection threshold, a PII label taxonomy).
+ */
+export class SettingFloorViolation extends ForbiddenException {
+  constructor(
+    public readonly key: string,
+    public readonly requested: unknown,
+    public readonly floor: unknown,
+  ) {
+    super(
+      `Setting '${key}' may only be tightened relative to the platform value. ` +
+        `Requested ${JSON.stringify(requested)} is weaker than the floor ${JSON.stringify(floor)}.`,
+    );
+  }
+}
+
+/**
+ * Enforce a descriptor's declared tighten-only floor for ONE write.
+ *
+ * DESCRIPTOR-DRIVEN, and that is the point: the direction is read off
+ * `descriptor.floorDirection`, so this single call site covers every key that
+ * declares one. The previous shape — a feature-specific `assert*Floor` carrying
+ * its own private key table — was correct code that nothing ever invoked,
+ * because wiring it required someone to remember its existence at the write
+ * lane.
+ *
+ * A no-op when the descriptor declares no direction, or when the platform
+ * supplies no floor to enforce against (an absent floor is "nothing to compare
+ * to", not a spurious refusal). Never mutates or substitutes `requested`: on a
+ * violation it throws, on success the caller writes exactly what was asked for.
+ */
+export function assertTightenOnlyFloor(descriptor: SettingDescriptor, requested: unknown, floor: unknown): void {
+  const direction = descriptor.floorDirection;
+  if (!direction) return;
+  if (floor === null || floor === undefined) return;
+
+  if (direction === 'superset-is-stricter') {
+    // A tenant may ADD categories; it may never drop one the platform mandates.
+    if (!Array.isArray(requested) || !Array.isArray(floor)) return;
+    const missing = (floor as unknown[]).filter((entry) => !requested.includes(entry));
+    if (missing.length > 0) {
+      throw new SettingFloorViolation(descriptor.key, requested, floor);
+    }
+    return;
+  }
+
+  if (typeof requested !== 'number' || typeof floor !== 'number') return;
+
+  if (direction === 'lower-is-stricter' && requested > floor) {
+    throw new SettingFloorViolation(descriptor.key, requested, floor);
+  }
+  if (direction === 'higher-is-stricter' && requested < floor) {
+    throw new SettingFloorViolation(descriptor.key, requested, floor);
+  }
 }
