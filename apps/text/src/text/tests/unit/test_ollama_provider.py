@@ -16,8 +16,6 @@ from text.models.requests import GenerateRequest
 from text.tests.conftest import stub_endpoint
 
 
-
-
 @pytest.fixture
 def mock_http_client():
     return AsyncMock(spec=httpx.AsyncClient)

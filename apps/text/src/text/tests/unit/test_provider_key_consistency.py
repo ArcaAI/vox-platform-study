@@ -13,7 +13,6 @@ import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
 
 
-
 class TestProviderRegistryTenantKeys:
     """Registry should accept and resolve tenant-facing provider keys."""
 
@@ -37,59 +36,73 @@ class TestProviderRegistryTenantKeys:
 
 
 class TestProviderTimeoutMapping:
-    """Timeout resolution should use provider-specific config, not the global default."""
+    """Timeouts come from the control plane, keyed by the SAME provider name.
 
-    def test_azure_openai_timeout_uses_azure_config(self):
+    This used to read one of ten `TEXT_<PROVIDER>_TIMEOUT_S` env vars through a
+    hand-maintained alias map — and the map was the bug this file is named after,
+    one level up: it silently dropped `ollama`, `openai`, `anthropic` and `vertex`
+    onto a module default nobody noticed, because a dictionary entry is easy to
+    forget. There is one source now (`AiRuntimeProfile` via effective-config) and
+    one fallback (the resource-safety floor), so no provider can be missed.
+    """
+
+    def test_a_served_timeout_is_used_for_the_tenant_facing_key(self):
         from text.api.endpoints.generate import _get_provider_timeout
-        from text.core.config import Settings
 
-        settings = Settings(_env_file=None, port=8862)
-        timeout = _get_provider_timeout(settings, "azure-openai")
-        assert timeout == float(settings.azure.timeout_s), (
-            f"azure-openai should use azure config timeout ({settings.azure.timeout_s}), "
-            f"got {timeout}"
+        assert _get_provider_timeout({"azure-openai": 42}, "azure-openai") == 42.0
+        assert _get_provider_timeout({"lm-studio": 17}, "lm-studio") == 17.0
+
+    def test_an_unserved_provider_falls_back_to_the_safety_floor(self):
+        from text.api.endpoints.generate import _get_provider_timeout
+        from text.core.runtime_defaults import PROVIDER_TIMEOUT_FLOOR_S
+
+        assert _get_provider_timeout({}, "ollama") == float(PROVIDER_TIMEOUT_FLOOR_S)
+        assert _get_provider_timeout({"azure-openai": 42}, "vertex") == float(
+            PROVIDER_TIMEOUT_FLOOR_S
         )
 
-    def test_lm_studio_timeout_uses_openai_compat_config(self):
-        from text.api.endpoints.generate import _get_provider_timeout
-        from text.core.config import Settings
+    def test_no_provider_is_reachable_only_through_an_alias_map(self):
+        """The regression guard: EVERY registered provider resolves a timeout."""
+        from unittest.mock import MagicMock
 
-        settings = Settings(_env_file=None, port=8862)
-        timeout = _get_provider_timeout(settings, "lm-studio")
-        assert timeout == float(settings.openai_compat.timeout_s), (
-            f"lm-studio should use openai_compat config timeout ({settings.openai_compat.timeout_s}), "
-            f"got {timeout}"
-        )
+        from text.api.endpoints.generate import _get_provider_timeout
+        from text.core.runtime_defaults import PROVIDER_TIMEOUT_FLOOR_S
+        from text.main import _register_provider_factories
+        from text.providers.base import ProviderRegistry
+
+        registry = ProviderRegistry()
+        _register_provider_factories(registry, MagicMock())
+        served = dict.fromkeys(registry.list_providers(), 99)
+        for name in registry.list_providers():
+            assert _get_provider_timeout(served, name) == 99.0
+            assert _get_provider_timeout({}, name) == float(PROVIDER_TIMEOUT_FLOOR_S)
 
 
 class TestMainLifespanProviderKeys:
     """Lifespan should register providers under tenant-facing keys."""
 
     def test_azure_factory_registered_under_tenant_key(self):
-        """a connection-configured Azure registers BOTH the tenant-facing
-        'azure-openai' key and its legacy 'azure' alias as lazy factories."""
-        from text.core.config import Settings
+        """Azure registers BOTH the tenant-facing 'azure-openai' key and its
+        legacy 'azure' alias as lazy factories."""
         from text.main import _register_provider_factories
         from text.providers.base import ProviderRegistry
 
-        settings = Settings(_env_file=None, port=8862)
         registry = ProviderRegistry()
-        _register_provider_factories(registry, settings, MagicMock())
+        _register_provider_factories(registry, MagicMock())
         assert "azure-openai" in registry.list_providers()
         assert "azure" in registry.list_providers()
 
     def test_openai_compat_factory_registered_under_lm_studio_key(self):
-        """LM Studio always has a default base_url, so the lazy factory is
-        registered under both the 'lm-studio' key and the 'openai_compat' alias."""
-        from text.core.config import Settings
+        """The lazy factory is registered under both the 'lm-studio' key and the
+        'openai_compat' alias, and both resolve to ONE shared instance."""
         from text.main import _register_provider_factories
         from text.providers.base import ProviderRegistry
 
-        settings = Settings(_env_file=None, port=8862)
         registry = ProviderRegistry()
-        _register_provider_factories(registry, settings, MagicMock())
+        _register_provider_factories(registry, MagicMock())
         assert "lm-studio" in registry.list_providers()
         assert "openai_compat" in registry.list_providers()
+        assert registry.get("lm-studio") is registry.get("openai_compat")
 
     def test_unconfigured_azure_registers_but_fails_closed_on_use(self, monkeypatch):
         """Unconfigured Azure is REGISTERED but unusable — fail-closed moved.
@@ -104,34 +117,33 @@ class TestMainLifespanProviderKeys:
         when there is neither an override nor a platform client.
 
         So the safety property is unchanged, only its location: an unconfigured
-        Azure must never serve a request. A stale TEXT_AZURE_ENABLED still
-        cannot force anything on — no such field exists.
+        Azure must never serve a request. And there is no longer ANY env var —
+        enable flag, endpoint or key — that could change either half.
         """
-        monkeypatch.setenv("TEXT_AZURE_ENABLED", "true")  # inert: no such field now
-        # Hermetic: a real Azure CONNECTION config can leak into os.environ from the
-        # dev .env or the e2e conftest's import-time overrides; scrub it so the
-        # "unconfigured" assertion is deterministic regardless of test order.
-        monkeypatch.delenv("TEXT_AZURE_ENDPOINT", raising=False)
-        monkeypatch.delenv("TEXT_AZURE_API_KEY", raising=False)
-        from text.core.config import Settings
+        for stale in (
+            "TEXT_AZURE_ENABLED",
+            "TEXT_AZURE_ENDPOINT",
+            "TEXT_AZURE_API_KEY",
+            "TEXT_AZURE_DEPLOYMENT_NAME",
+        ):
+            monkeypatch.setenv(stale, "definitely-set")
         from text.core.exceptions import ProviderCredentialsError
         from text.main import _register_provider_factories
         from text.models.requests import GenerateRequest
         from text.providers.base import ProviderRegistry
 
-        settings = Settings(_env_file=None, port=8862)
         registry = ProviderRegistry()
-        _register_provider_factories(registry, settings, MagicMock())
+        _register_provider_factories(registry, MagicMock())
 
-        # Registered, so a per-request BYOK override can reach it.
+        # Registered, so a per-request BYOK connection can reach it.
         assert "azure-openai" in registry.list_providers()
         provider = registry.get("azure-openai")
 
-        # ...but with no override and no platform key it fails CLOSED (503),
-        # rather than 401-ing an empty-keyed client downstream.
-        assert provider._client is None
+        # ...but with no connection it fails CLOSED (503), rather than 401-ing an
+        # empty-keyed client downstream — and none of those env vars helped.
+        assert not hasattr(provider, "_client")
         with pytest.raises(ProviderCredentialsError):
-            provider._client_for(GenerateRequest(prompt="hello"))
+            provider._client_for(GenerateRequest(prompt="hello", model="m"))
 
 
 class TestGenerateEndpointWithTenantKeys:

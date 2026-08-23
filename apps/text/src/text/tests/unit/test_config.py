@@ -126,7 +126,10 @@ class TestSettings:
         assert s.log_level == "info"
         assert s.gateway_url == "http://localhost:8868/api/v1"
         assert s.redis_url == "redis://localhost:6379/0"
-        assert s.otel_exporter_endpoint == "http://localhost:4317"
+        # EMPTY, not an address: export is enabled by the PRESENCE of a
+        # collector, so a default address would turn it on everywhere.
+        assert s.otel_exporter_endpoint == ""
+        assert s.otel_enabled is False
 
     def test_sub_configs_instantiated(self):
         s = Settings()

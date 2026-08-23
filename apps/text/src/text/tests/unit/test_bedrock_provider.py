@@ -14,8 +14,6 @@ from text.models.requests import GenerateRequest
 from text.tests.conftest import stub_client
 
 
-
-
 class TestBedrockProviderInit:
     def test_creates_with_config(self):
         from text.providers.bedrock import BedrockProvider

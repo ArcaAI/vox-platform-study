@@ -139,7 +139,6 @@ class TestTextOnlyRegression:
         assert params["messages"] == [{"role": "user", "content": [{"text": "hello"}]}]
 
     def test_llama_cpp_does_not_raise_for_a_text_only_request(self):
-        from text.providers.llama_cpp import LlamaCppProvider
 
         payload = provider._build_payload(_text_request(), stream=False)
         assert payload["prompt"] == "hello"
@@ -257,7 +256,6 @@ class TestLlamaCppRejectsVision:
     @pytest.mark.asyncio
     async def test_generate_raises_vision_not_supported_error(self):
         from text.core.exceptions import VisionNotSupportedError
-        from text.providers.llama_cpp import LlamaCppProvider
 
         with pytest.raises(VisionNotSupportedError):
             await provider.generate(_image_request())
@@ -265,7 +263,6 @@ class TestLlamaCppRejectsVision:
     @pytest.mark.asyncio
     async def test_generate_stream_raises_vision_not_supported_error(self):
         from text.core.exceptions import VisionNotSupportedError
-        from text.providers.llama_cpp import LlamaCppProvider
 
         with pytest.raises(VisionNotSupportedError):
             async for _ in provider.generate_stream(_image_request()):
@@ -281,7 +278,6 @@ class TestLlamaCppRejectsVision:
     @pytest.mark.asyncio
     async def test_llama_cpp_http_client_never_called_for_an_image_request(self):
         from text.core.exceptions import VisionNotSupportedError
-        from text.providers.llama_cpp import LlamaCppProvider
 
         http = AsyncMock()
         with pytest.raises(VisionNotSupportedError):
@@ -364,7 +360,6 @@ class TestSupportsVisionPerProvider:
 
     @pytest.mark.asyncio
     async def test_llama_cpp_does_not_support_vision(self):
-        from text.providers.llama_cpp import LlamaCppProvider
 
         http = AsyncMock()
         http.get = AsyncMock(return_value=MagicMock(status_code=200))

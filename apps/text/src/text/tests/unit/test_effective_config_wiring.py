@@ -178,8 +178,13 @@ class TestStatelessGatewayContract:
         }, "only capacity/timeout may be applied; selection fields must be inert"
 
     def test_config_module_docstring_still_declares_the_contract(self) -> None:
+        """The contract is documented where a new field would be added.
+
+        A greppable claim in the config module's own docstring is the last thing
+        someone reads before declaring `TEXT_<PROVIDER>_MODEL` again.
+        """
         import text.core.config as config_module
 
         doc = config_module.__doc__ or ""
-        assert "stateless gateway" in doc
-        assert "does NOT select a provider or model" in doc
+        assert "STATELESS gateway" in doc
+        assert "It selects no provider" in doc

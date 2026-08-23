@@ -164,12 +164,13 @@ async def test_missing_allowed_key_fails_closed(_client_factory, mock_provider):
 async def test_none_client_with_enforce_posture_fails_closed(
     mock_registry, mock_task_manager, mock_provider
 ):
-    # Enforce posture on (external_guardrail.enabled) but the client is unwired
-    # → fail CLOSED (503), not a silent skip that ships unmoderated PHI.
-    from text.core.config import ExternalGuardrailConfig, Settings
+    # Moderation ON but the client is unwired → fail CLOSED (503), not a silent
+    # skip that ships unmoderated PHI. The posture comes from the control plane,
+    # so it is read off live state rather than off settings.
+    from text.core.guardrail_posture import GuardrailPosture
 
     app = _make_app(mock_registry, mock_task_manager, None)
-    app.state.settings = Settings(external_guardrail=ExternalGuardrailConfig())
+    app.state.guardrail_posture = GuardrailPosture(enabled=True)
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as client:
         resp = await client.post("/api/v1/generate", json={"prompt": "patient note", "model": "m"})

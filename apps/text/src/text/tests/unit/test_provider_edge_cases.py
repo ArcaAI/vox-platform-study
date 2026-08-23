@@ -2,17 +2,13 @@
 
 from __future__ import annotations
 
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 import httpx
 import pytest
 
 from text.models.requests import GenerateRequest
 from text.tests.conftest import stub_client
-
-
-
-
 
 
 @pytest.fixture
