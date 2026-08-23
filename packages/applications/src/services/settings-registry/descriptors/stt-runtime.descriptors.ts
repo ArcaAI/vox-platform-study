@@ -103,9 +103,7 @@ const KNOBS: Record<string, SttKnob> = {
     dataType: 'string',
     default: '',
     label: 'Azure AI Foundry endpoint',
-    description:
-      'Azure AI Foundry / Speech resource endpoint, e.g. https://<res>.cognitiveservices.azure.com. ' +
-      'Empty = unset.',
+    description: 'Azure AI Foundry / Speech resource endpoint, e.g. https://<res>.cognitiveservices.azure.com. ' + 'Empty = unset.',
     category: 'STT Engines',
   },
   'stt.sarvam.baseUrl': {
@@ -121,9 +119,7 @@ const KNOBS: Record<string, SttKnob> = {
     dataType: 'string',
     default: 'https://api.openai.com/v1',
     label: 'OpenAI ASR base URL',
-    description:
-      'Base URL for the OpenAI (or Azure-OpenAI-compatible) speech-to-text API. The key is BYOK and ' +
-      'arrives per request.',
+    description: 'Base URL for the OpenAI (or Azure-OpenAI-compatible) speech-to-text API. The key is BYOK and ' + 'arrives per request.',
     category: 'STT Engines',
   },
 
@@ -284,8 +280,7 @@ const KNOBS: Record<string, SttKnob> = {
     default: 1,
     label: 'PyTorch inter-op threads',
     description:
-      'Threads for PyTorch inter-op parallelism. 1 is optimal for single-request inference; raise it ' +
-      'only for concurrent batch processing.',
+      'Threads for PyTorch inter-op parallelism. 1 is optimal for single-request inference; raise it ' + 'only for concurrent batch processing.',
     category: 'STT Runtime',
   },
   'stt.gateway.timeoutSeconds': {
@@ -343,35 +338,28 @@ const KNOBS: Record<string, SttKnob> = {
     dataType: 'number',
     default: 0,
     label: 'Streaming batch size',
-    description:
-      'Maximum batch size for the dynamic batch scheduler (GPU inference). 0 = auto-detect from the ' +
-      'hardware execution profile.',
+    description: 'Maximum batch size for the dynamic batch scheduler (GPU inference). 0 = auto-detect from the ' + 'hardware execution profile.',
     category: 'STT Streaming',
   },
   'stt.streaming.batchWaitMs': {
     dataType: 'number',
     default: 0,
     label: 'Streaming batch wait (ms)',
-    description:
-      'How long the batch scheduler waits before dispatching an incomplete batch. 0 = auto-detect.',
+    description: 'How long the batch scheduler waits before dispatching an incomplete batch. 0 = auto-detect.',
     category: 'STT Streaming',
   },
   'stt.streaming.embeddingDevice': {
     dataType: 'string',
     default: 'auto',
     label: 'Streaming embedding device',
-    description:
-      "Device for speaker-embedding extraction during streaming. 'auto' picks from the hardware " +
-      'profile (e.g. cuda:1, cpu, mps).',
+    description: "Device for speaker-embedding extraction during streaming. 'auto' picks from the hardware " + 'profile (e.g. cuda:1, cpu, mps).',
     category: 'STT Streaming',
   },
   'stt.streaming.multiGpuStrategy': {
     dataType: 'string',
     default: 'auto',
     label: 'Streaming multi-GPU strategy',
-    description:
-      "auto (detect) | replicate (same model on each GPU) | split (ASR on GPU 0, embeddings on GPU 1) " +
-      '| none (single GPU or CPU).',
+    description: 'auto (detect) | replicate (same model on each GPU) | split (ASR on GPU 0, embeddings on GPU 1) ' + '| none (single GPU or CPU).',
     category: 'STT Streaming',
   },
   'stt.streaming.sessionPersistIntervalS': {
@@ -433,9 +421,7 @@ const KNOBS: Record<string, SttKnob> = {
     dataType: 'number',
     default: 0.5,
     label: 'Transcript persist backoff (s)',
-    description:
-      'Base backoff between durable-transcript persist retries; the delay scales with attempt number. ' +
-      '0 disables the wait.',
+    description: 'Base backoff between durable-transcript persist retries; the delay scales with attempt number. ' + '0 disables the wait.',
     category: 'STT Streaming',
   },
   'stt.streaming.transcriptOutboxMaxAttempts': {
@@ -471,9 +457,7 @@ const KNOBS: Record<string, SttKnob> = {
     dataType: 'number',
     default: 30.0,
     label: 'Inference worker stop timeout (s)',
-    description:
-      "How long to wait for a session's inference worker to drain and stop, on both graceful removal " +
-      'and force-finalize.',
+    description: "How long to wait for a session's inference worker to drain and stop, on both graceful removal " + 'and force-finalize.',
     category: 'STT Streaming',
   },
   'stt.streaming.workerHeartbeatS': {
@@ -488,8 +472,7 @@ const KNOBS: Record<string, SttKnob> = {
     default: 30,
     label: 'Worker heartbeat TTL (s)',
     description:
-      'TTL for the worker heartbeat key. Must stay comfortably above the heartbeat interval, or a ' +
-      'healthy worker is reaped between beats.',
+      'TTL for the worker heartbeat key. Must stay comfortably above the heartbeat interval, or a ' + 'healthy worker is reaped between beats.',
     category: 'STT Streaming',
   },
   'stt.streaming.audioStreamMaxlen': {
@@ -600,8 +583,7 @@ const KNOBS: Record<string, SttKnob> = {
     default: 500,
     label: 'Semantic endpoint latency band max (ms)',
     description:
-      'Target-max end-of-utterance latency band — informational. The fixed VAD silence offset remains ' +
-      'the true upper bound and backstop.',
+      'Target-max end-of-utterance latency band — informational. The fixed VAD silence offset remains ' + 'the true upper bound and backstop.',
     category: 'STT Streaming',
   },
   'stt.semanticEndpoint.confidenceThreshold': {
@@ -617,9 +599,7 @@ const KNOBS: Record<string, SttKnob> = {
     dataType: 'number',
     default: 3,
     label: 'Semantic endpoint minimum words',
-    description:
-      'Minimum running-hypothesis word count before a semantic early cut; shorter fragments defer to ' +
-      'the fixed silence timer.',
+    description: 'Minimum running-hypothesis word count before a semantic early cut; shorter fragments defer to ' + 'the fixed silence timer.',
     category: 'STT Streaming',
   },
   'stt.semanticEndpoint.modelId': {
