@@ -5,7 +5,6 @@ from typing import Any
 
 from hope_env import (
     build_hope_sources,
-    first_real_secret,
     hope_settings_sources,
     load_env,
     real_secret,
@@ -28,19 +27,55 @@ load_env()
 _MODEL_IDENTITY_FIELDS = frozenset({"model_name", "tokenizer_name", "model_path", "model_version"})
 
 
-class _ModelIdentityFilteredSource(PydanticBaseSettingsSource):
-    """Wrap an env/dotenv settings source, dropping model-identity keys."""
+# Fields the CONTROL PLANE owns (TASK-799 lane D). Dropped from every env-ish
+# source for the same reason model identity is: the value has exactly one
+# writer, and a second way to set it is a way for the two to disagree.
+#
+# These are platform-scope SERVICE GEOMETRY — queue depths, batch sizes, linger
+# and wait ceilings, cache retention, concurrency bounds. D-1's cardinality rule
+# puts precisely this class on the PULL route: one cached snapshot per process,
+# no tenant dimension. Each field survives here as the BOOTSTRAP FLOOR the
+# process runs on until the first successful fetch, and as the value it keeps if
+# the control plane is unreachable — which is why the fields are not simply
+# deleted.
+#
+# Deliberately ABSENT: `inference_device` and `inference_device_cpu_only_modules`.
+# Those are HOST facts (which accelerator this pod has; which submodule the
+# installed torch/gliner2 build SIGABRTs on), not platform policy — serving them
+# from the control plane would push one host's hardware onto every other.
+_CONTROL_PLANE_FIELDS = frozenset(
+    {
+        "inference_max_concurrent",
+        "peer_call_max_concurrent",
+        "model_cache_ttl_seconds",
+        "model_cache_max_models",
+        "inference_batch_max_size",
+        "inference_batch_linger_ms",
+        "inference_queue_max_depth",
+        "inference_queue_max_wait_seconds",
+        "inference_max_inflight_batches",
+        "inference_interactive_batch_max_size",
+        "inference_interactive_batch_linger_ms",
+        "inference_interactive_queue_max_depth",
+        "inference_interactive_queue_max_wait_seconds",
+    }
+)
 
-    def __init__(self, wrapped: PydanticBaseSettingsSource) -> None:
+
+class _FilteredSource(PydanticBaseSettingsSource):
+    """Wrap an env/dotenv settings source, dropping a declared set of keys."""
+
+    def __init__(self, wrapped: PydanticBaseSettingsSource, dropped: frozenset[str]) -> None:
         super().__init__(wrapped.settings_cls)
         self._wrapped = wrapped
+        self._dropped = dropped
 
     def get_field_value(self, field: FieldInfo, field_name: str) -> tuple[Any, str, bool]:
         # Unused: the whole source is materialized via __call__ below.
         return None, field_name, False
 
     def __call__(self) -> dict[str, Any]:
-        return {k: v for k, v in self._wrapped().items() if k not in _MODEL_IDENTITY_FIELDS}
+        return {k: v for k, v in self._wrapped().items() if k not in self._dropped}
 
 
 def _model_identity_filtered_sources(
@@ -76,7 +111,36 @@ def _model_identity_filtered_sources(
         file_secret_settings=file_secret_settings,
     )
     return tuple(
-        source if source is init_settings else _ModelIdentityFilteredSource(source)
+        source if source is init_settings else _FilteredSource(source, _MODEL_IDENTITY_FIELDS)
+        for source in ordered
+    )
+
+
+def _control_plane_filtered_sources(
+    cls: type[BaseSettings],
+    settings_cls: type[BaseSettings],
+    init_settings: PydanticBaseSettingsSource,
+    env_settings: PydanticBaseSettingsSource,
+    dotenv_settings: PydanticBaseSettingsSource,
+    file_secret_settings: PydanticBaseSettingsSource,
+) -> tuple[PydanticBaseSettingsSource, ...]:
+    """`settings_customise_sources` that drops control-plane-owned keys.
+
+    Same shape and the same reasoning as `_model_identity_filtered_sources`
+    above, for `_CONTROL_PLANE_FIELDS`. Constructor kwargs still set them, which
+    is what keeps every existing test and the bootstrap floor constructible;
+    what is closed is the ENV path, so a host can no longer contradict the
+    platform value the control plane serves.
+    """
+    ordered = build_hope_sources(
+        settings_cls,
+        init_settings=init_settings,
+        env_settings=env_settings,
+        dotenv_settings=dotenv_settings,
+        file_secret_settings=file_secret_settings,
+    )
+    return tuple(
+        source if source is init_settings else _FilteredSource(source, _CONTROL_PLANE_FIELDS)
         for source in ordered
     )
 
@@ -116,8 +180,9 @@ def _parse_otel_resource_attributes(raw: str | None) -> dict[str, str]:
 class NLPServiceConfig(BaseSettings):
     """Main configuration for NLP service"""
 
-    # Init > host env > secrets_dir (Vault Agent) > .env.<NODE_ENV> > default.
-    settings_customise_sources = hope_settings_sources
+    # Init > host env > secrets_dir (Vault Agent) > .env.<NODE_ENV> > default,
+    # with `_CONTROL_PLANE_FIELDS` dropped from every source but `init`.
+    settings_customise_sources = classmethod(_control_plane_filtered_sources)
 
     # Every field below carries an explicit `validation_alias` and a STATIC
     # default. Neither half is decoration:
@@ -207,9 +272,12 @@ class NLPServiceConfig(BaseSettings):
         default=SecretStr(""), validation_alias=AliasChoices("INTERNAL_ACCESS_TOKEN")
     )
 
-    # LEGACY per-service credential. Reads NLP_SERVICE_TOKEN via the env_prefix
-    # below — superseded by INTERNAL_ACCESS_TOKEN above, kept as the fallback.
-    service_token: SecretStr = SecretStr("")
+    # The LEGACY per-service credential (`NLP_SERVICE_TOKEN`) is GONE
+    # (TASK-799 lane D). It existed only as a migration fallback while call
+    # sites were moved onto `peer_service_token()`; Phase 0 finished that move,
+    # so what remained was a SECOND accepted credential — a second thing to
+    # rotate, and a second way to be silently unauthenticated when only one of
+    # the two is set.
 
     @property
     def accepted_service_tokens(self) -> tuple[str, ...]:
@@ -220,27 +288,38 @@ class NLPServiceConfig(BaseSettings):
         """
         # `real_secret` maps the unfilled-secret sentinel onto "" so a `CHANGE_ME` token is
         # never ACCEPTED as a credential — see hope_env.placeholders.
-        return tuple(
-            t
-            for t in (
-                real_secret(self.internal_access_token),
-                real_secret(self.service_token),
-            )
-            if t
-        )
+        return tuple(t for t in (real_secret(self.internal_access_token),) if t)
 
-    def peer_service_token(self, legacy: SecretStr) -> str:
-        """Token to PRESENT on an outbound peer call: shared first, legacy fallback."""
-        # `first_real_secret`, not `or`: the sentinel is a NON-EMPTY string, so a plain
-        # truthiness chain returns "CHANGE_ME" and never reaches the legacy fallback — the
-        # trap that made every internal hop 401 (see hope_env.placeholders).
-        return first_real_secret(self.internal_access_token, legacy)
+    def peer_service_token(self) -> str:
+        """Token to PRESENT on an outbound peer call — the ONE shared credential.
+
+        `real_secret`, not `.get_secret_value()`: the unfilled-secret sentinel is
+        a NON-EMPTY string, so a plain read hands `CHANGE_ME` to a peer and every
+        internal hop 401s (see `hope_env.placeholders`).
+        """
+        return real_secret(self.internal_access_token)
 
     # Where the control plane lives (env NLP_GATEWAY_URL). This is
     # BOOTSTRAP TRANSPORT (the address of the config source), NOT config
     # authority: the service-level knobs themselves come from the
     # effective-config route this URL points at.
     gateway_url: str = Field(default="http://localhost:8868/api/v1")
+
+    # ── How this process REACHES Redis (owner decision D-5, 2026-08-23) ────
+    #
+    # BOOTSTRAP TRANSPORT, and env-tier for the same reason `gateway_url` is:
+    # it is the ADDRESS of a backing service, not a value read from one. Rule 00
+    # §Configuration Principles keeps exactly this class of variable in env —
+    # "what is needed to reach the DB or authenticate to Vault" — and nothing
+    # else.
+    #
+    # It exists so the `arca:config:invalidate` subscriber built in
+    # `core/effective_config.py` has a transport. Before D-5 this service held
+    # no Redis client at all, so that channel had a handler and no wire, and
+    # every control-plane write took a full TTL window to be seen here. The TTL
+    # stays as the bounded-staleness backstop (rule 09 §"Config caches"), so a
+    # process that boots while Redis is down still starts and still converges.
+    redis_url: str = Field(default="redis://localhost:6379/0")
 
     # Bootstrap fallback; the runtime value comes from the control
     # plane (`nlp.inference.maxConcurrent`).
@@ -532,15 +611,30 @@ class ExternalTextConfig(BaseSettings):
     # Init > host env > secrets_dir (Vault Agent) > .env.<NODE_ENV> > default.
     settings_customise_sources = hope_settings_sources
 
-    model_config = SettingsConfigDict(env_prefix="NLP_EXTERNAL_TEXT_")
+    # `populate_by_name` so `ExternalTextConfig(base_url=...)` still works:
+    # pydantic-settings matches init kwargs against the ALIAS once one is
+    # declared, and every existing caller and test builds this by field name.
+    model_config = SettingsConfigDict(
+        env_prefix="NLP_EXTERNAL_TEXT_", populate_by_name=True
+    )
 
-    base_url: str = "http://localhost:8862"
+    # `TEXT_URL` is the repo-wide name for this address — `apps/guardrail`
+    # already reads it under the same alias, and `turbo.json#globalEnv` declares
+    # it once for the whole fleet. `NLP_EXTERNAL_TEXT_BASE_URL` was a second name
+    # for the same endpoint (TASK-799 lane D): two names for one address is how
+    # half a fleet ends up pointed at a decommissioned host.
+    base_url: str = Field(
+        default="http://localhost:8862",
+        validation_alias=AliasChoices("TEXT_URL"),
+    )
     timeout_s: int = 30
     # Bounded retry for a transient blip, mirroring
     # `ExternalGuardrailConfig`: total tries = max_retries + 1, linear backoff.
     max_retries: int = 2
     retry_backoff_ms: int = 100
-    service_token: SecretStr = SecretStr("")
+
+    # No `service_token` here either — the one shared `INTERNAL_ACCESS_TOKEN` on
+    # `NLPServiceConfig` is what every outbound peer call presents.
 
 
 class Settings:

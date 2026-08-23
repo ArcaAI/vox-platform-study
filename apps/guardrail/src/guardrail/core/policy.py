@@ -33,6 +33,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Final
 
+from guardrail.core.config import JudgePolicy
 from guardrail.core.errors import REASON_UNSUPPORTED, GuardrailUndeterminedError
 
 FAIL_CLOSED: Final = "closed"
@@ -56,11 +57,35 @@ _SPECS: Final[dict[str, _KeySpec]] = {
     "medicalValidationCriteria": _KeySpec(FAIL_CLOSED),
     "injectionScreeningCriteria": _KeySpec(FAIL_CLOSED),
     # --- tuning (open-to-default, bounded) ---
-    "judgeMinConfidence": _KeySpec(FAIL_OPEN_TO_DEFAULT, 0.75, 0.0, 1.0),
-    "judgeTemperature": _KeySpec(FAIL_OPEN_TO_DEFAULT, 0.05, 0.0, 2.0),
-    "judgeMaxInputChars": _KeySpec(FAIL_OPEN_TO_DEFAULT, 2000.0, 1.0, 1_000_000.0),
+    #
+    # The default is DERIVED from `JudgePolicy`, not restated. Two literals for
+    # one number is how they drift: the judge would truncate at its own value
+    # while the registry advertised another.
+    #
+    # `judgeTemperature` and `judgeMaxInputChars` were declared here with ZERO
+    # readers anywhere in the tree, while the live values came from
+    # `AiRuntimeProfile.temperature` and `JudgePolicy.max_input_chars`
+    # respectively. A declared-but-unread knob is worse than an absent one — it
+    # advertises a control that cannot move the value, so an admin who sets it
+    # sees neither an effect nor an error. Removed rather than wired: the two
+    # sources that DO serve those values are the correct ones (§D.2b).
+    "judgeMinConfidence": _KeySpec(
+        FAIL_OPEN_TO_DEFAULT, JudgePolicy().min_confidence, 0.0, 1.0
+    ),
     "piiLeakMinScore": _KeySpec(FAIL_OPEN_TO_DEFAULT, 0.5, 0.0, 1.0),
     "maxUntrustedChars": _KeySpec(FAIL_OPEN_TO_DEFAULT, 100_000.0, 1.0, 10_000_000.0),
+    # --- groundedness (TASK-799 lane D) ---
+    #
+    # The VERDICT-DECIDING threshold for the clinical groundedness gate. It was a
+    # pydantic default (`GUARDRAIL_V2_GROUNDEDNESS_ENTAILMENT_THRESHOLD`), so a
+    # platform admin could not move it without a redeploy.
+    #
+    # It belongs on the MODEL row rather than the control plane because it is
+    # model-coupled: it thresholds the scores of the specific NLI checkpoint the
+    # `guardrail.groundedness` selection resolved, and a threshold calibrated for
+    # one checkpoint is meaningless against another. Resolving it through the same
+    # cascade that chose the model keeps the two in step by construction.
+    "groundednessEntailmentThreshold": _KeySpec(FAIL_OPEN_TO_DEFAULT, 0.5, 0.0, 1.0),
 }
 
 
@@ -130,12 +155,8 @@ class GuardrailPolicy:
         return self.number("judgeMinConfidence")
 
     @property
-    def judge_temperature(self) -> float:
-        return self.number("judgeTemperature")
-
-    @property
-    def judge_max_input_chars(self) -> int:
-        return int(self.number("judgeMaxInputChars"))
+    def groundedness_entailment_threshold(self) -> float:
+        return self.number("groundednessEntailmentThreshold")
 
     @property
     def pii_leak_min_score(self) -> float:

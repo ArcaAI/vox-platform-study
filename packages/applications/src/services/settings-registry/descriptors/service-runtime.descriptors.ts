@@ -46,6 +46,60 @@ export const SERVICE_RUNTIME_DEFAULTS = {
   'nlp.inference.maxConcurrent': 4,
   'nlp.peerCall.maxConcurrent': 8,
 
+  // ── nlp queue + batch geometry (TASK-799 lane D) ─────────────────────────
+  // Nine `NLP_INFERENCE_*` env vars become one control-plane group. Platform-
+  // scope service geometry with no tenant opinion — D-1's cardinality rule puts
+  // exactly this class on the PULL route.
+  //
+  // Two lanes with DIFFERENT budgets, deliberately not one shared geometry: the
+  // bulk lane serves the asynchronous per-utterance redaction pass, the
+  // interactive lane a synchronous inline gate on a clinician's turn. The
+  // interactive wait ceiling IS its declared SLO — past it the verdict arrives
+  // too late to gate anything, so a 503 the caller fails closed on beats a
+  // stale 200 that has already been acted on.
+  //
+  // `maxInflightBatches` is shared by both lanes because it bounds passes
+  // against ONE weight slot; a per-lane bound would double what is in flight
+  // against a single model the moment a second lane appeared.
+  //
+  // NOT here, deliberately: `NLP_INFERENCE_DEVICE` and
+  // `NLP_INFERENCE_DEVICE_CPU_ONLY_MODULES`. Those are HOST facts (which
+  // accelerator this pod has; which submodule the installed torch build
+  // SIGABRTs on), and serving them centrally would push one host's hardware
+  // onto every other.
+  'nlp.inference.batchMaxSize': 8,
+  'nlp.inference.batchLingerMs': 5,
+  'nlp.inference.queueMaxDepth': 256,
+  'nlp.inference.queueMaxWaitSeconds': 20,
+  'nlp.inference.maxInflightBatches': 2,
+  'nlp.interactiveInference.batchMaxSize': 2,
+  'nlp.interactiveInference.batchLingerMs': 2,
+  'nlp.interactiveInference.queueMaxDepth': 64,
+  'nlp.interactiveInference.queueMaxWaitSeconds': 2,
+
+  // ── nlp log sinks (TASK-799 lane D) ──────────────────────────────────────
+  // Nine file/rotation knobs that were bare `os.getenv` reads scattered through
+  // `nlp/core/logging.py`. `LOG_LEVEL` and `LOG_FILE_PATH` stay in env: the
+  // level is what an operator reaches for FIRST during an incident (no
+  // control-plane round trip), and the path is a host fact about where the
+  // container's writable volume is mounted.
+  //
+  // `fileJsonFormat` and `consoleJsonFormat` differ ON PURPOSE — a file is
+  // machine-read by a log backend, a console is human-read in `nlp:dev`. They
+  // previously carried these same opposite defaults thirty lines apart with
+  // nothing saying why, which read as a bug.
+  'nlp.logging.fileEnabled': false,
+  'nlp.logging.fileMaxSize': '10m',
+  'nlp.logging.fileMaxFiles': 1000,
+  'nlp.logging.fileSeparateError': false,
+  'nlp.logging.consoleEnabled': true,
+  'nlp.logging.fileJsonFormat': true,
+  'nlp.logging.consoleJsonFormat': false,
+  'nlp.logging.rotationWhen': 'midnight',
+  'nlp.logging.rotationInterval': 1,
+  'nlp.logging.rotationBackupCount': 30,
+  'nlp.logging.useDailyRotation': true,
+
   // ── the remaining in-process caches ───────────────────────────
   // The `<svc>.modelCache.<knob>` grammar originally served stt only,
   // leaving guardrail/harness/tts as explicitly reserved subsets. This
@@ -78,6 +132,25 @@ export const SERVICE_RUNTIME_DEFAULTS = {
   // value depends on the redaction worker's real memory limit, which differs
   // per environment.
   'guardrail.redact.chunkChars': 4000,
+
+  // ── guardrail output-side groundedness gate (TASK-799 lane D) ────────────
+  // The last guardrail policy plane that lived in environment variables
+  // (`GUARDRAIL_V2_GROUNDEDNESS_*`), so a platform admin could not switch the
+  // clinical gate on, or retune its throughput, without a redeploy.
+  //
+  // These three are PLATFORM-scope service geometry with no tenant opinion,
+  // which is exactly what D-1's cardinality rule puts on the PULL route. The
+  // gate's VERDICT-DECIDING `entailmentThreshold` deliberately does NOT appear
+  // here: it is model-coupled (it thresholds the scores of whichever NLI
+  // checkpoint the `guardrail.groundedness` selection resolved), so it rides
+  // `AiModel._metadata.policy` and is resolved by the same cascade that chose
+  // the model. Splitting them keeps a threshold from ever outliving the
+  // checkpoint it was calibrated against.
+  //
+  // `enabled` defaults FALSE — a safety gate is never switched on by silence.
+  'guardrail.groundedness.enabled': false,
+  'guardrail.groundedness.batchSize': 16,
+  'guardrail.groundedness.maxSegments': 200,
 } as const;
 
 export type ServiceRuntimeKey = keyof typeof SERVICE_RUNTIME_DEFAULTS;
@@ -171,6 +244,135 @@ const HAND_WRITTEN_META: Partial<Record<ServiceRuntimeKey, KeyMeta>> = {
       "nlp's own outbound connection/concurrency budget to a peer service — sharing one bound between " +
       'the two would let a slow peer round-trip starve local inference, or vice versa.',
   },
+  // ── nlp queue + batch geometry ──────────────────────────────────────────
+  'nlp.inference.batchMaxSize': {
+    label: 'NLP bulk batch size',
+    description:
+      'How many items may ride one coalesced forward pass on the BULK lane (the asynchronous ' +
+      'per-utterance redaction pass). An encoder pass over a batch costs far less than the same ' +
+      'items one at a time, because the per-pass overhead is paid once.',
+  },
+  'nlp.inference.batchLingerMs': {
+    label: 'NLP bulk batch linger (ms)',
+    description:
+      'How long an otherwise-idle bulk request waits for company before its batch is dispatched. ' +
+      'This is the ENTIRE latency price of batching — keep it well under the p50 forward pass, or ' +
+      'batching costs more than it saves.',
+  },
+  'nlp.inference.queueMaxDepth': {
+    label: 'NLP bulk queue depth',
+    description:
+      'Bounded queue for the bulk lane; submissions past it are REJECTED with 503 rather than ' +
+      'queued. Rejection is the point: an unbounded queue under overload converts a latency ' +
+      'problem into an out-of-memory kill and takes the safety plane down with it.',
+  },
+  'nlp.inference.queueMaxWaitSeconds': {
+    label: 'NLP bulk queue wait ceiling (s)',
+    description:
+      'An item that has waited longer than this is rejected rather than served stale.',
+  },
+  'nlp.inference.maxInflightBatches': {
+    label: 'NLP concurrent forward passes per model',
+    description:
+      'Forward passes allowed in flight against ONE weight slot, SHARED by both lanes. Small on ' +
+      'purpose: torch already parallelises inside a pass, so stacking passes on the same weights ' +
+      'buys cache contention rather than throughput. A per-lane bound would double what is in ' +
+      'flight against a single model.',
+  },
+  'nlp.interactiveInference.batchMaxSize': {
+    label: 'NLP interactive batch size',
+    description:
+      'Batch size for the INTERACTIVE lane — the synchronous inline gate on a clinician\'s turn. ' +
+      'Deliberately smaller than the bulk lane: the cost of a wider gate batch is paid by the ' +
+      'request waiting for the verdict.',
+  },
+  'nlp.interactiveInference.batchLingerMs': {
+    label: 'NLP interactive batch linger (ms)',
+    description: 'Coalescing window for the interactive lane, measured against ITS latency budget.',
+  },
+  'nlp.interactiveInference.queueMaxDepth': {
+    label: 'NLP interactive queue depth',
+    description: 'Bounded queue for the interactive lane; past it, shed load with a 503.',
+  },
+  'nlp.interactiveInference.queueMaxWaitSeconds': {
+    label: 'NLP interactive queue wait ceiling (s)',
+    description:
+      'The interactive lane\'s declared SLO. Past it the verdict would arrive too late to gate ' +
+      'anything, so a 503 the caller can fail closed on beats a stale 200 already acted upon.',
+  },
+
+  // ── nlp log sinks ───────────────────────────────────────────────────────
+  'nlp.logging.fileEnabled': {
+    label: 'NLP file logging enabled',
+    description: 'Write logs to a rotating file sink in addition to the console.',
+  },
+  'nlp.logging.fileMaxSize': {
+    label: 'NLP log file size cap',
+    description: 'Size at which a log file rotates, e.g. `10m`, `500k`, `1g`.',
+  },
+  'nlp.logging.fileMaxFiles': {
+    label: 'NLP log file count cap',
+    description: 'Maximum rotated size-based log files retained.',
+  },
+  'nlp.logging.fileSeparateError': {
+    label: 'NLP separate error log',
+    description: 'Write ERROR and above to their own file alongside the combined log.',
+  },
+  'nlp.logging.consoleEnabled': {
+    label: 'NLP console logging enabled',
+    description: 'Emit logs on stdout. Off only for deployments that ship exclusively from files.',
+  },
+  'nlp.logging.fileJsonFormat': {
+    label: 'NLP file logs as JSON',
+    description:
+      'Default ON — a file is machine-read by a log backend. Deliberately the OPPOSITE default ' +
+      'from the console switch below; the two sinks have different readers.',
+  },
+  'nlp.logging.consoleJsonFormat': {
+    label: 'NLP console logs as JSON',
+    description:
+      'Default OFF — a console is human-read during local development. See the file switch above ' +
+      'for why the two defaults differ on purpose.',
+  },
+  'nlp.logging.rotationWhen': {
+    label: 'NLP log rotation trigger',
+    description: 'Time-based rotation trigger, in Python `TimedRotatingFileHandler` terms.',
+  },
+  'nlp.logging.rotationInterval': {
+    label: 'NLP log rotation interval',
+    description: 'Number of `rotationWhen` units between rotations.',
+  },
+  'nlp.logging.rotationBackupCount': {
+    label: 'NLP log retention (files)',
+    description: 'How many rotated log files to keep — the service\'s local log retention window.',
+  },
+  'nlp.logging.useDailyRotation': {
+    label: 'NLP daily log rotation',
+    description: 'Rotate on a schedule rather than purely on size.',
+  },
+
+  'guardrail.groundedness.enabled': {
+    label: 'Groundedness gate enabled',
+    description:
+      'Master switch for the output-side NLI groundedness gate. OFF (the default) answers every ' +
+      'segment honestly as `unverified` and resolves no model; ON is the clinical enforce posture. ' +
+      'Fail-closed either way — a disabled gate, an unreachable apps/nlp, or a scoring error all ' +
+      'degrade to `unverified`, and no path ever yields `grounded` without a model entailing the ' +
+      'segment. The verdict THRESHOLD is not here: it rides the selected model row ' +
+      '(`AiModel._metadata.policy.groundednessEntailmentThreshold`), because a threshold calibrated ' +
+      'for one NLI checkpoint is meaningless against another.',
+  },
+  'guardrail.groundedness.batchSize': {
+    label: 'Groundedness batch size (segments)',
+    description:
+      'Summary segments per delegated scoring call to apps/nlp — the throughput lever for the gate.',
+  },
+  'guardrail.groundedness.maxSegments': {
+    label: 'Groundedness max scored segments',
+    description:
+      'Hard per-request ceiling on scored segments. Segments beyond it are reported `unverified` ' +
+      'rather than silently skipped, so a truncated check never reads as a passed one.',
+  },
   'guardrail.redact.chunkChars': {
     label: 'PHI redaction chunk size (characters)',
     description:
@@ -208,6 +410,21 @@ const META: Record<ServiceRuntimeKey, KeyMeta> = {
  * never reaches the pull route (there are none today; the check exists so a
  * typo fails silent-and-absent rather than mis-routing to another service).
  */
+/**
+ * The declared `dataType`, DERIVED from the default rather than asserted.
+ *
+ * This family was number-only until TASK-799 lane D added the groundedness
+ * gate's boolean switch and nlp's log-sink strings. Getting it wrong is not
+ * cosmetic: `EffectiveConfigService` validates every served value against this
+ * field and degrades a mismatch to `null`, so a boolean declared as a number
+ * would silently never reach the service that asked for it.
+ */
+function settingDataTypeOf(value: unknown): SettingDescriptor['dataType'] {
+  if (typeof value === 'boolean') return 'boolean';
+  if (typeof value === 'string') return 'string';
+  return 'number';
+}
+
 function consumerOf(key: ServiceRuntimeKey): readonly ConsumingDeployable[] {
   const prefix = key.split('.')[0];
   return (CONSUMING_DEPLOYABLES as readonly string[]).includes(prefix) ? [prefix as ConsumingDeployable] : [];
@@ -222,7 +439,13 @@ export const SERVICE_RUNTIME_SETTINGS: SettingDescriptor[] = (Object.keys(SERVIC
     // field, so there is no switch case, response-DTO field or defaults map to
     // edit alongside it.
     consumedBy: consumerOf(key),
-    dataType: 'number',
+    // DERIVED from the declared default, not asserted. This family was
+    // number-only until the groundedness gate's boolean switch joined it, and a
+    // hardcoded `'number'` would have mislabelled it — which is not cosmetic:
+    // `EffectiveConfigService` validates the served value against this field and
+    // degrades a mismatch to `null`, so a boolean declared as a number would
+    // never reach the service at all.
+    dataType: settingDataTypeOf(SERVICE_RUNTIME_DEFAULTS[key]),
     sensitivity: 'internal',
     // Platform-owned capacity/retention knobs — never tenant-set.
     maxScope: 'system',

@@ -196,10 +196,14 @@ async def test_pipeline_throughput_at_target_concurrency(monkeypatch) -> None:
     from nlp.services import guard_dispatch
 
     monkeypatch.setattr(
-        nlp_settings.service, "service_token", type(nlp_settings.service.service_token)("")
+        nlp_settings.service,
+        "internal_access_token",
+        type(nlp_settings.service.internal_access_token)(""),
     )
     monkeypatch.setattr(
-        nlp_settings.service, "internal_access_token", type(nlp_settings.service.service_token)("")
+        nlp_settings.service,
+        "internal_access_token",
+        type(nlp_settings.service.internal_access_token)(""),
     )
     # The bound must admit the target concurrency; 4 (the bootstrap floor) is a
     # single-node dev value, not the serving value.
@@ -254,8 +258,8 @@ async def test_real_model_throughput_at_target_concurrency(monkeypatch) -> None:
     from nlp.core.config import settings as nlp_settings
     from nlp.services import guard_dispatch
 
-    secret = type(nlp_settings.service.service_token)
-    monkeypatch.setattr(nlp_settings.service, "service_token", secret(""))
+    secret = type(nlp_settings.service.internal_access_token)
+    monkeypatch.setattr(nlp_settings.service, "internal_access_token", secret(""))
     monkeypatch.setattr(nlp_settings.service, "internal_access_token", secret(""))
     monkeypatch.setattr(nlp_settings.service, "inference_max_concurrent", CONCURRENCY)
     monkeypatch.setattr(nlp_settings.service, "inference_batch_max_size", BATCH)
@@ -302,8 +306,8 @@ def _apply_geometry(monkeypatch) -> None:
     """Pin the geometry under test onto the real settings the service reads."""
     from nlp.core.config import settings as nlp_settings
 
-    secret = type(nlp_settings.service.service_token)
-    monkeypatch.setattr(nlp_settings.service, "service_token", secret(""))
+    secret = type(nlp_settings.service.internal_access_token)
+    monkeypatch.setattr(nlp_settings.service, "internal_access_token", secret(""))
     monkeypatch.setattr(nlp_settings.service, "internal_access_token", secret(""))
     monkeypatch.setattr(
         nlp_settings.service, "inference_max_concurrent", CONCURRENCY + INTERACTIVE_COUNT

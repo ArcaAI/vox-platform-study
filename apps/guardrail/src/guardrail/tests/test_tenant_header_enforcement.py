@@ -89,7 +89,9 @@ async def test_groundedness_refuses_an_absent_tenant_header() -> None:
 async def test_declared_tenantless_marker_is_accepted() -> None:
     """Genuinely tenant-less internal work DECLARES itself and is let through."""
     request = _request({"X-Tenant-Id": TENANTLESS})
-    request.app.state.settings.db.db_config_enabled = False
+    # No resolver wired — the same fail-closed path the retired
+    # `db_config_enabled=False` flag used to reach (TASK-799 lane D).
+    request.app.state.tenant_config_resolver = None
 
     # The marker passes the 428 gate; the call then fails CLOSED on SELECTION
     # (503) because guardrail names no model in code — which is the point: the
