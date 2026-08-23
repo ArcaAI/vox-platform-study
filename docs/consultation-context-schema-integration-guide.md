@@ -286,54 +286,61 @@ function buildContext<K extends ConsultationContextKindKey>(
 }
 ```
 
-### 4.4 Submitting context from a backend — the gap, stated plainly
+### 4.4 Submitting context from a backend
 
-**`@arcaai/vox-node` has no typed business-plane context surface today.** `hope.consultations`
-exposes `get()` and the `.summaries` sub-resource, nothing else; there is no `addContext`, no
-discovery read, and `Transport` is deliberately not exported — so there is no escape hatch to route
-a raw call through the client.
-
-Until a resource is added, a backend integration calls the gateway directly. Handle discovery and
-version pinning yourself:
+`hope.consultations.addContext()` writes one context item, on both paths — legacy (no `kindKey`) and
+schema-aware (`kindKey`, optionally with a `STRUCTURED` `payload`).
 
 ```ts
-const API = `${process.env.HOPE_API_BASE_URL}/api/v1`;
-const auth = { 'X-API-Key': process.env.HOPE_API_KEY!, 'Content-Type': 'application/json' };
+import { HopeClient } from '@arcaai/vox-node';
+import type { ConsultationContextKindMap } from './generated/consultation-context';
 
-// 1. Discover — scope `tenant:context-schema:read`; `tenants/me` resolves to the KEY'S TENANT.
-const bundle = await (await fetch(`${API}/tenants/me/context-schema`, { headers: auth })).json();
+const hope = new HopeClient({ baseUrl, apiKey: process.env.HOPE_API_KEY! });
 
-// 2. Write, PINNED to the version you just read.
-await fetch(`${API}/consultations/${consultationId}/context`, {
-  method: 'POST',
-  headers: {
-    ...auth,
-    ...(bundle.contextSchemaVersionId
-      ? { 'X-Context-Schema-Version': bundle.contextSchemaVersionId }
-      : {}),
-  },
-  body: JSON.stringify({
-    type: 'STRUCTURED',   // ← ContextItemType, still REQUIRED alongside kindKey
-    kindKey: 'vitals',
-    payload: { systolic: 128, diastolic: 82 },
-  }),
+// Legacy path — no schema consulted.
+await hope.consultations.addContext(consultationId, {
+  type: 'CASE_NOTE',
+  content: 'Patient reports intermittent chest pain.',
 });
+
+// Schema-aware path, PINNED to the version you built against.
+const payload: ConsultationContextKindMap['vitals'] = { systolic: 128, diastolic: 82 };
+await hope.consultations.addContext(
+  consultationId,
+  { type: 'STRUCTURED', kindKey: 'vitals', payload },
+  { contextSchemaVersionId: bundle.contextSchemaVersionId },
+);
 ```
 
-Four traps in that snippet:
+What the method does and does not do:
+
+| | |
+|---|---|
+| **Pins on request** | `contextSchemaVersionId` is sent as `X-Context-Schema-Version`. Omit it and the server validates against whatever is pinned *right now* — rarely what a long-lived integration wants |
+| **Fails fast locally** | `payload` without `kindKey` throws a `TypeError` before any request is issued, rather than surfacing as a 400 in production |
+| **Never retried** | The route accepts no idempotency key, so the non-idempotent POST is left un-retried. A duplicated clinical note is worse than a surfaced 503 |
+| **Credential classes** | User JWT, or an API key holding `consultation:session:write`. **A service account gets 403** — the route declares no `@RequiredSvcScopes`, and absent scopes are deny-by-default for machine classes |
+| **Does not discover** | There is still no typed read for `tenants/me/context-schema`. You fetch the bundle yourself and thread `contextSchemaVersionId` through (below) |
+
+Discovery, until a typed read exists:
+
+```ts
+const bundle = await (
+  await fetch(`${baseUrl}/api/v1/tenants/me/context-schema`, {
+    headers: { 'X-API-Key': process.env.HOPE_API_KEY! },  // scope tenant:context-schema:read
+  })
+).json();                                                  // `tenants/me` = the KEY'S tenant
+```
+
+Three remaining traps:
 
 1. **`type` is still mandatory.** `kindKey` does not replace `ContextItemType` (`AUDIO_RECORDING`,
    `WORKNOTE`, `RAW_SUMMARY`, `MODIFIED_SUMMARY`, `PRE_SUMMARY`, `NAMED_ENTITY`, `TRANSCRIPT`,
    `CASE_NOTE`, `ATTACHMENT`, `SIGNED_NOTE`, `STRUCTURED`).
-2. **`payload` without `kindKey` is a 400.** There would be nothing to validate it against.
-3. **Omitting `X-Context-Schema-Version` means "validate against whatever is pinned right now"** —
-   your caller can be silently upgraded mid-run.
-4. **The gateway rejects undeclared body fields wholesale** (`forbidNonWhitelisted`). Extra keys are
-   a 400, not a silent drop.
-
-If your service submits context routinely, prefer adding a `ConsultationsResource.addContext` to
-`@arcaai/vox-node` (business plane, hand-authored — the generated `admin/**` tree is off-limits to
-hand edits) over spreading raw `fetch` calls through your codebase.
+2. **The gateway rejects undeclared body fields wholesale** (`forbidNonWhitelisted`). `AddContextRequest`
+   is closed on purpose — an extra key is a 400, not a silent drop.
+3. **The response carries no `kindKey` and no `contextSchemaVersionId`.** The DTO mapper does not
+   project them, so a caller that needs to know what it wrote under must remember, not read back.
 
 ---
 
@@ -435,7 +442,8 @@ either lane. The seeded day-1 defaults are a working reference:
 | Wrong department's kinds generated | Pass `--department <id>`; department scope shadows the tenant default |
 | Schema changed but types didn't | Codegen is build-time. Regenerate (or run `--watch`) |
 | Payload validated locally, rejected by server | Expected. Client validation is permissive; the server is authoritative |
-| `hope.consultations.addContext is not a function` | It does not exist. See §4.4 |
+| `addContext` throws `TypeError` before any HTTP call | `payload` was passed without `kindKey` — a local guard, not a server error |
+| Service account gets 403 on `addContext` | That route is API-key / user-JWT only. Machine classes are deny-by-default without a declared scope |
 
 ## 8. Reference
 

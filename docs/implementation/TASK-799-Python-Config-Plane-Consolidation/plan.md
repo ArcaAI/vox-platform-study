@@ -174,6 +174,35 @@ The standard:
 
 ### D-3 — Phase 0 first. ACCEPTED. Implementation starts there.
 
+### D-4 — NLP models are PLATFORM-SHARED. No tenant BYO. (owner, 2026-08-23)
+
+The platform super admin configures the shared models for NER, classification, token
+classification, clustering and the guardrail-serving tasks, for ALL tenants. A tenant
+admin has no BYO key and no BYO model for these.
+
+**Consequence: the CURRENT behaviour is correct and stays.** `nlp.*` in
+`SUPER_ADMIN_ONLY_TASK_PREFIXES` resolves SYSTEM-only by design, not by oversight —
+this closes the R2-B governance question in favour of the status quo, and the
+super-admin-only exception is now DOCUMENTED as rule 09 requires. Do not split the
+prefix. Do not add tenant rows for `nlp.*`. `AiProviderConnection` gains no
+tenant-facing nlp surface.
+
+Scope boundary that still needs owner confirmation: `guardrail.validate` selects an LLM
+that runs on **apps/text**, not on nlp, so it is a different case from
+`guardrail.safety` / `guardrail.groundedness` (which select nlp-hosted models and are
+therefore platform-shared under this decision). TASK-735 Phase 0 made `guardrail.*`
+tenant-admin configurable by explicit owner decision. This ruling is NOT read as
+reversing that for `guardrail.validate` — flagged, not assumed.
+
+### D-5 — Redis clients for nlp, harness and tts. APPROVED. (owner, 2026-08-23)
+
+Round 2 wired push invalidation for guardrail, text and stt only; the other three hold
+no Redis client, so nothing could deliver to them. The owner has approved adding one.
+Each gains a Redis dependency and its bootstrap connection var (a genuine env-tier
+value — it is how the process reaches Redis), the shared `arca:config:invalidate`
+subscriber, and the TTL demoted to a backstop. A service that starts while Redis is
+down must still converge.
+
 ## F-01 — BYO credential standard (the pattern every adapter must follow)
 
 Requirement: a tenant admin configures a BYO key; it is stored in the database; every

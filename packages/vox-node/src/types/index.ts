@@ -21,10 +21,16 @@ export type {
   PreSummaryStreamEvent,
 } from './summarization';
 
+export { CONTEXT_CONTENT_MAX_LENGTH } from './consultation';
+
 export type {
   GenerateSummaryRequest,
   GeneratePreSummaryRequest,
   UpdateSummaryRequest,
+  AddContextRequest,
+  ContextItemResponse,
+  ContextItemType,
+  ContextItemSource,
   ConsultationGetResponse,
   ConsultationSummaryStructuredData,
   ConsultationSummaryResponse,

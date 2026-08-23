@@ -18,6 +18,7 @@ export type { HopeClientOptions, HopeLogger } from './client';
 
 export { ConsultationSummariesResource, ConsultationsResource, isTerminalJobStatus, JobsResource, SummarizationResource } from './resources';
 export type {
+  AddContextOptions,
   ConsultationRequestOptions,
   ConsultationSummaryRequestOptions,
   GenerateSummaryOptions,
@@ -65,11 +66,17 @@ export {
 } from './core/errors';
 export type { HopeAPIErrorInit, RateLimitErrorInit, VersionConflictErrorInit } from './core/errors';
 
+export { CONTEXT_CONTENT_MAX_LENGTH } from './types';
+
 export type {
+  AddContextRequest,
   AsyncJobResponse,
   ConsultationGetResponse,
   ConsultationSummaryResponse,
   ConsultationSummaryStructuredData,
+  ContextItemResponse,
+  ContextItemSource,
+  ContextItemType,
   ConversationSegment,
   GeneratePreSummaryRequest,
   GenerateSummaryRequest,
