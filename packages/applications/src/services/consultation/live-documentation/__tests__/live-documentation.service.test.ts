@@ -130,9 +130,10 @@ interface BuildDepsOpts {
   // Vault-Transit encryption service — undefined by default (matches every
   // other buildDeps fixture's soft-no-op posture in dev/test).
   secretsService?: any;
-  // Nlp.ner model-injection resolver deps. Both undefined by
-  // default (matches production's optional-DI absent-service posture): the
-  // resolver's own "not wired" guard short-circuits before touching `cls`.
+  // Nlp.ner model-injection resolver deps. Both default to WORKING
+  // doubles: model selection is fail-CLOSED, so a fixture reaching the NER hop
+  // without them takes a 503 rather than posting without `model_name`. Pass an
+  // explicit `undefined` (the key present) to exercise a refusal.
   aiTaskDefaultService?: any;
   cls?: any;
 }
@@ -182,8 +183,11 @@ function buildDeps(httpMock = buildHttpMock(), opts: BuildDepsOpts = {}) {
   };
 
   const secretsService = opts.secretsService;
-  const aiTaskDefaultService = opts.aiTaskDefaultService;
-  const cls = opts.cls;
+  // `in` rather than `??` so an explicit `undefined` still means "absent" —
+  // that is how the fail-closed refusal cases are set up.
+  const aiTaskDefaultService =
+    'aiTaskDefaultService' in opts ? opts.aiTaskDefaultService : { getEffective: vi.fn().mockResolvedValue({ model: { sourceUri: 'blaze999/Medical-NER' } }) };
+  const cls = 'cls' in opts ? opts.cls : { run: vi.fn((callback: () => unknown) => callback()), set: vi.fn(), get: vi.fn() };
 
   const service = new LiveDocumentationService(
     httpMock as any,
@@ -396,7 +400,7 @@ describe('LiveDocumentationService', () => {
   });
 
   // ------------------------------------------------------------------
-  // Nlp.ner AiTaskDefault model injection (fail-open)
+  // Nlp.ner AiTaskDefault model injection (fail-CLOSED)
   // ------------------------------------------------------------------
   describe('nlp.ner model injection', () => {
     function makeCls() {
@@ -417,7 +421,7 @@ describe('LiveDocumentationService', () => {
       expect((nlpCall[1] as { model_name?: string }).model_name).toBe('blaze999/Medical-NER');
     });
 
-    it('posts without model_name (fail-open) when AiTaskDefault resolution fails', async () => {
+    it('never posts to /classify/tokens (fail-closed) when AiTaskDefault resolution fails', async () => {
       const aiTaskDefaultService = {
         getEffective: vi.fn().mockRejectedValue(new Error('registry unavailable')),
       };
@@ -425,22 +429,24 @@ describe('LiveDocumentationService', () => {
       const { service, httpMock } = buildDeps(buildHttpMock(), { aiTaskDefaultService, cls });
       service.start({ consultationId: CID, tenantId: TENANT });
       service.ingestSegment(CID, { text: 'hello', isFinal: true, segmentId: 's1' });
-      const payload = await service.flush(CID);
+      await service.flush(CID);
 
-      // The flush still succeeds — a registry hiccup never blocks the live plane.
-      expect(payload).not.toBeNull();
-      const nlpCall = httpMock.axiosRef.post.mock.calls.find((c: unknown[]) => String(c[0]).includes('/classify/tokens'))!;
-      expect((nlpCall[1] as { model_name?: string }).model_name).toBeUndefined();
+      // NEVER posted without `model_name`: NLP now REQUIRES it and answers 503
+      // without it, so fail-open would only move the same failure one hop out.
+      const nlpCall = httpMock.axiosRef.post.mock.calls.find((c: unknown[]) => String(c[0]).includes('/classify/tokens'));
+      expect(nlpCall).toBeUndefined();
     });
 
-    it('posts without model_name when CLS is not wired (legacy behavior preserved)', async () => {
-      const { service, httpMock } = buildDeps(); // no cls, no aiTaskDefaultService
+    it('never posts to /classify/tokens when CLS is not wired — the SYSTEM pin cannot be established', async () => {
+      // An absent CLS scope is a refusal like any other: without a scope to pin,
+      // the SYSTEM-only read would resolve under the ambient tenant instead.
+      const { service, httpMock } = buildDeps(buildHttpMock(), { aiTaskDefaultService: undefined, cls: undefined });
       service.start({ consultationId: CID, tenantId: TENANT });
       service.ingestSegment(CID, { text: 'hello', isFinal: true, segmentId: 's1' });
       await service.flush(CID);
 
-      const nlpCall = httpMock.axiosRef.post.mock.calls.find((c: unknown[]) => String(c[0]).includes('/classify/tokens'))!;
-      expect((nlpCall[1] as { model_name?: string }).model_name).toBeUndefined();
+      const nlpCall = httpMock.axiosRef.post.mock.calls.find((c: unknown[]) => String(c[0]).includes('/classify/tokens'));
+      expect(nlpCall).toBeUndefined();
     });
   });
 

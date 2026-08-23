@@ -54,6 +54,17 @@ interface HttpMockOptions {
   classifyVitals?: unknown;
 }
 
+/**
+ * Fail-CLOSED `nlp.ner` selection (`resolveNerModelInjection`) means any fixture
+ * reaching the NER hop must wire BOTH a resolvable AiTaskDefault row and a CLS
+ * scope to pin the SYSTEM-only read to — an absent either is a 503, not a
+ * silent post without `model_name`.
+ */
+const nerAiTaskDefaultDouble = () => ({
+  getEffective: vi.fn().mockResolvedValue({ model: { sourceUri: 'blaze999/Medical-NER' } }),
+});
+const nerClsDouble = () => ({ run: vi.fn((callback: () => unknown) => callback()), set: vi.fn(), get: vi.fn() });
+
 function buildHttpMock(opts: HttpMockOptions = {}) {
   const ground = opts.ground ?? (() => Promise.resolve({ data: GROUND_WIRE_MIXED }));
   const summary = opts.summary ?? TWO_SEGMENT_SUMMARY;
@@ -133,6 +144,10 @@ function buildDeps(httpMock = buildHttpMock(), opts: BuildDepsOpts = {}) {
     contextItemRepository as any,
     harnessPolicyService as any,
     secretsService as any,
+    undefined, // trajectoryService
+    undefined, // effectiveSettings
+    nerAiTaskDefaultDouble() as any,
+    nerClsDouble() as any,
   );
 
   return { service, cacheService, httpMock };

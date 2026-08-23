@@ -188,9 +188,11 @@ export class NlpExtractionTool implements ExtractionToolExecutor {
     // Inject the effective `nlp.ner` AiTaskDefault model
     // (mirrors AiInferenceController's playground mapping) so a global
     // admin's re-point governs the live plane too, not just the playground.
-    // Fail-open: {} on any resolution hiccup, or when CLS isn't wired (the
-    // live-doc service isn't otherwise request-scoped).
-    const modelSelection = this.deps.cls ? await resolveNerModelInjection(this.deps.aiTaskDefaultService, this.deps.cls, this.deps.logger) : {};
+    // Fail-CLOSED: an unresolved key throws a 503 naming `nlp.ner`. An absent
+    // `cls` is one of those refusals — the live-doc service isn't otherwise
+    // request-scoped, but without a scope the SYSTEM-only read cannot be pinned
+    // and would resolve under the ambient tenant, so the resolver refuses it.
+    const modelSelection = await resolveNerModelInjection(this.deps.aiTaskDefaultService, this.deps.cls, this.deps.logger);
     // The gateway→NLP hop is shared-secret authenticated the same way the
     // guardrail executor below already does it. This call omitted the header,
     // so wherever NLP enforces a token (`NLP_SERVICE_TOKEN` non-empty) entity

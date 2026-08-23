@@ -30,7 +30,15 @@ function makeDeps(post = vi.fn()): { deps: LiveToolRegistryDeps; post: ReturnTyp
   return {
     post,
     deps: {
-      nlp: { httpService, nlpServiceUrl: 'http://nlp.test:8864', logger },
+      // Fail-CLOSED `nlp.ner` selection: the NER tool needs BOTH a resolvable
+      // AiTaskDefault row and a CLS scope to pin the SYSTEM-only read to.
+      nlp: {
+        httpService,
+        nlpServiceUrl: 'http://nlp.test:8864',
+        logger,
+        aiTaskDefaultService: { getEffective: vi.fn().mockResolvedValue({ model: { sourceUri: 'blaze999/Medical-NER' } }) } as never,
+        cls: { run: vi.fn((callback: () => unknown) => callback()), set: vi.fn(), get: vi.fn() } as never,
+      },
       groundedness: {
         httpService,
         guardrailServiceUrl: 'http://guardrail.test:8863',
@@ -131,7 +139,9 @@ describe('NlpExtractionTool (C4-T4 + relocation parity)', () => {
     expect(post).toHaveBeenCalledTimes(1);
     const [url, body, config] = post.mock.calls[0];
     expect(url).toBe('http://nlp.test:8864/api/v1/classify/tokens');
-    expect(body).toEqual({ text: 'pt aspirin daily' });
+    // `model_name` is always present now — selection is fail-closed, so the
+    // body never goes out without the resolved `nlp.ner` model.
+    expect(body).toEqual({ text: 'pt aspirin daily', model_name: 'blaze999/Medical-NER' });
     expect(config.timeout).toBe(30000);
     expect(out.entities).toEqual([{ text: 'aspirin', type: 'MEDICATION', confidence: 0.9, icd10: undefined, start: 3, end: 10 }]);
     expect(out.vitals).toEqual({ systolic: 120, diastolic: 80 });
@@ -145,7 +155,9 @@ describe('NlpExtractionTool (C4-T4 + relocation parity)', () => {
     await tool.execute({ sourceText: 'TRANSCRIPT DELTA' });
 
     const [, body] = post.mock.calls[0];
-    expect(Object.keys(body)).toEqual(['text']);
+    // Still no channel for generated note text — the only other key is the
+    // fail-closed-resolved `model_name`.
+    expect(Object.keys(body).sort()).toEqual(['model_name', 'text']);
     expect(body.text).toBe('TRANSCRIPT DELTA');
   });
 

@@ -20,6 +20,17 @@ const TENANT = 'tenant-c4-001';
 
 const NOTE = 'Subjective: patient reports cough and takes aspirin\nObjective:\nAssessment:\nPlan:';
 
+/**
+ * Fail-CLOSED `nlp.ner` selection (`resolveNerModelInjection`) means any fixture
+ * reaching the NER hop must wire BOTH a resolvable AiTaskDefault row and a CLS
+ * scope to pin the SYSTEM-only read to — an absent either is a 503, not a
+ * silent post without `model_name`.
+ */
+const nerAiTaskDefaultDouble = () => ({
+  getEffective: vi.fn().mockResolvedValue({ model: { sourceUri: 'blaze999/Medical-NER' } }),
+});
+const nerClsDouble = () => ({ run: vi.fn((callback: () => unknown) => callback()), set: vi.fn(), get: vi.fn() });
+
 function httpMock() {
   const post = vi.fn().mockImplementation((url: string) => {
     if (url.includes('/classify/tokens')) {
@@ -82,10 +93,10 @@ function buildService(opts: { http: unknown; env?: Record<string, unknown>; reso
     undefined,
     { resolveTextSelection: vi.fn().mockResolvedValue({ provider: 'vllm', model: 'gemma' }) } as never,
     { encrypt: vi.fn(), decrypt: vi.fn(), getSecretOptional: vi.fn().mockResolvedValue('svc-token') } as never,
-    undefined,
-    undefined,
-    undefined,
-    undefined,
+    undefined, // trajectoryService
+    undefined, // effectiveSettings
+    nerAiTaskDefaultDouble() as never,
+    nerClsDouble() as never,
     opts.resolver as never,
   );
 }

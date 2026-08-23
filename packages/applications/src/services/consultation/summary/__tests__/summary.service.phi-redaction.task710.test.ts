@@ -80,7 +80,7 @@ describe('TASK-710 — SummaryService.extractEntities redacts before calling NLP
       undefined, // configResolver
       undefined, // entitlements
       undefined, // trajectoryService
-      undefined, // aiTaskDefaultService
+      { getEffective: vi.fn().mockResolvedValue({ model: { sourceUri: 'blaze999/Medical-NER' } }) } as any, // aiTaskDefaultService (fail-closed resolver needs a row)
       undefined, // transcriptSegmentRepository
       undefined, // usageLedger
       undefined, // unitOfWork

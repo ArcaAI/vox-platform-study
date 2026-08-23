@@ -1,4 +1,4 @@
-import { Logger } from '@nestjs/common';
+import { Logger, ServiceUnavailableException } from '@nestjs/common';
 import { ClsService } from 'nestjs-cls';
 import { SYSTEM_TENANT_ID } from '@arcaai/domains';
 import { IActiveUserContext } from '../../../interfaces';
@@ -13,16 +13,20 @@ export const NLP_NER_TASK_KEY = 'nlp.ner';
  * (`apps/api/src/modules/ai-inference/ai-inference.controller.ts`) applies to
  * the Agent-Playground NER tab. Without this, a super admin re-pointing
  * `nlp.ner` only changes the playground; every clinical NER caller keeps
- * silently using the NLP service's env default. Shared by the three clinical
- * callers: `ner.processor.ts` (durable BullMQ job), `summary.service.ts`
- * (synchronous extract-entities), `live-documentation.service.ts` (live plane).
+ * silently using the NLP service's env default. Shared by the two clinical
+ * callers: `summary.service.ts` (synchronous extract-entities) and
+ * `live-tool-registry.ts`'s `NlpExtractionTool` (the live plane's NER tool).
  *
- * FAIL-OPEN — the deliberate OPPOSITE of the judge/TEXT routing lanes: a
- * resolver failure (service not wired, resolver error, no ENABLED model)
- * returns `{}` (no `model_name`) so the caller posts EXACTLY like it did
- * before this resolver existed — the NLP service falls back to its own env
- * default — rather than blocking clinical NER on a registry hiccup. A warning
- * is logged on every fallback path; this function never throws.
+ * FAIL-CLOSED, matching `AiInferenceController.resolveDefaultModelSelection`
+ * and model SELECTION platform-wide: an unresolved key (service not wired, no
+ * CLS scope, resolver error, no ENABLED model) throws
+ * `ServiceUnavailableException` NAMING the key. This branch used to fail-OPEN
+ * — return `{}` and let the NLP service apply its own env default — but that
+ * fallback no longer exists: `POST /api/v1/classify/tokens` now REQUIRES
+ * `model_name` and answers 503 without it
+ * (`apps/nlp/src/nlp/api/v1/rest/classify.py`), and the env-owned model id was
+ * removed. Fail-open therefore produced the SAME failure one hop later,
+ * attributed to the NLP service instead of to the unresolved key.
  *
  * SYSTEM-PIN — `nlp.*` is SUPER_ADMIN_ONLY (system-row-only resolution;
  * `isSuperAdminOnlyTaskKey('nlp.ner')` in `ai-task-default/constants.ts`), but
@@ -37,15 +41,26 @@ export const NLP_NER_TASK_KEY = 'nlp.ner';
  * nested store from a COPY of the currently active one, so overwriting
  * `tenantId` inside the copy never touches the outer store the caller resumes
  * with, and Node's `AsyncLocalStorage` restores the outer store automatically
- * once the nested `run()` callback settles.
+ * once the nested `run()` callback settles. An ABSENT `cls` is therefore a
+ * refusal like any other: without a scope to pin, the SYSTEM read cannot be
+ * established at all, and reading under the ambient tenant would be the very
+ * cross-tenant leak the pin exists to prevent.
+ *
+ * @throws ServiceUnavailableException when `nlp.ner` cannot be resolved to an
+ * ENABLED model.
  */
 export async function resolveNerModelInjection(
   aiTaskDefaultService: IAiTaskDefaultService | undefined,
-  cls: ClsService<IActiveUserContext>,
+  cls: ClsService<IActiveUserContext> | undefined,
   logger: Logger,
-): Promise<{ model_name?: string }> {
+): Promise<{ model_name: string }> {
   if (!aiTaskDefaultService) {
-    return {};
+    throw new ServiceUnavailableException(`SYSTEM AiTaskDefault for '${NLP_NER_TASK_KEY}' is unavailable (AiTaskDefaultService not wired).`);
+  }
+  if (!cls) {
+    throw new ServiceUnavailableException(
+      `SYSTEM AiTaskDefault for '${NLP_NER_TASK_KEY}' is unavailable (no CLS scope to pin the SYSTEM-only read to).`,
+    );
   }
   try {
     const effective = await cls.run(async () => {
@@ -54,17 +69,15 @@ export async function resolveNerModelInjection(
     });
     const sourceUri = effective.model?.sourceUri;
     if (!sourceUri) {
-      logger.warn({
-        message: `AiTaskDefault '${NLP_NER_TASK_KEY}' has no ENABLED model; posting to NLP without model_name (fail-open, NLP env default applies)`,
-      });
-      return {};
+      throw new ServiceUnavailableException(`SYSTEM AiTaskDefault for '${NLP_NER_TASK_KEY}' is missing or has no ENABLED model. Run db:seed.`);
     }
     return { model_name: sourceUri };
   } catch (error) {
+    if (error instanceof ServiceUnavailableException) throw error;
     logger.warn({
-      message: `AiTaskDefault '${NLP_NER_TASK_KEY}' resolution failed; posting to NLP without model_name (fail-open, NLP env default applies)`,
+      message: `AiTaskDefault '${NLP_NER_TASK_KEY}' resolution failed (fail-closed)`,
       error: error instanceof Error ? error.message : String(error),
     });
-    return {};
+    throw new ServiceUnavailableException(`SYSTEM AiTaskDefault for '${NLP_NER_TASK_KEY}' could not be resolved.`);
   }
 }
