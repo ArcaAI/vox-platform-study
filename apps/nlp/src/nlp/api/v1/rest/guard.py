@@ -24,8 +24,9 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 
+from nlp.api.tenant import TENANT_HEADER, assert_tenant_matches_header
 from nlp.core.batching import InferenceQueueFull, InferenceQueueTimeout
 from nlp.core.concurrency import ResizableSemaphore
 from nlp.core.logging import get_logger
@@ -66,8 +67,15 @@ def _slot_key(model_name: str, model_path: str | None) -> str:
     return f"{model_name}\x00{model_path}" if model_path else model_name
 
 
-def _require(model_name: str | None, tenant_id: str | None, what: str) -> str:
-    """Fail closed on an unresolved selection (503) and on absent attribution (428)."""
+def _require(
+    model_name: str | None, tenant_id: str | None, what: str, header_tenant: str | None
+) -> str:
+    """Fail closed on an unresolved selection (503) and on absent attribution (428).
+
+    A header that CONTRADICTS the body is refused first (400): a request that
+    names two tenants cannot be attributed to either.
+    """
+    assert_tenant_matches_header(tenant_id, header_tenant)
     if not (tenant_id or "").strip():
         raise HTTPException(
             status_code=428,
@@ -190,6 +198,7 @@ async def _submit_classify(
 @router.post("/pii", response_model=GuardPiiResponse)
 async def guard_pii(
     request: GuardPiiRequest,
+    http_request: Request,
     inference_bound: ResizableSemaphore = Depends(get_inference_bound),
 ) -> GuardPiiResponse:
     """Extract PII spans with the caller's taxonomy.
@@ -197,7 +206,12 @@ async def guard_pii(
     Offsets index the SUBMITTED `text` byte-exactly — guardrail's `/guardrail/redact`
     slices the original string with them, so the round trip must be lossless.
     """
-    model_name = _require(request.model_name, request.tenant_id, "PII")
+    model_name = _require(
+        request.model_name,
+        request.tenant_id,
+        "PII",
+        http_request.headers.get(TENANT_HEADER),
+    )
     if not request.labels:
         raise HTTPException(
             status_code=503,
@@ -248,10 +262,16 @@ async def guard_pii(
 @router.post("/classify", response_model=GuardClassifyResponse)
 async def guard_classify(
     request: GuardClassifyRequest,
+    http_request: Request,
     inference_bound: ResizableSemaphore = Depends(get_inference_bound),
 ) -> GuardClassifyResponse:
     """Run the caller's moderation task schema; return ONLY the tasks requested."""
-    model_name = _require(request.model_name, request.tenant_id, "safety")
+    model_name = _require(
+        request.model_name,
+        request.tenant_id,
+        "safety",
+        http_request.headers.get(TENANT_HEADER),
+    )
     if not request.tasks:
         raise HTTPException(
             status_code=503,
@@ -309,10 +329,16 @@ async def guard_classify(
 @router.post("/entailment", response_model=GuardEntailmentResponse)
 async def guard_entailment(
     request: GuardEntailmentRequest,
+    http_request: Request,
     inference_bound: ResizableSemaphore = Depends(get_inference_bound),
 ) -> GuardEntailmentResponse:
     """Score `P(claim entailed by document)` per pair; the caller owns the threshold."""
-    model_name = _require(request.model_name, request.tenant_id, "entailment")
+    model_name = _require(
+        request.model_name,
+        request.tenant_id,
+        "entailment",
+        http_request.headers.get(TENANT_HEADER),
+    )
     if not request.pairs:
         return GuardEntailmentResponse(scores=[], model_version=model_name)
 

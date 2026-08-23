@@ -1,5 +1,6 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 
+from nlp.api.tenant import TENANT_HEADER, assert_tenant_matches_header
 from nlp.core.concurrency import ResizableSemaphore
 from nlp.core.logging import get_logger
 from nlp.dependencies import (
@@ -29,7 +30,7 @@ logger = get_logger(__name__)
 router = APIRouter(prefix="/classify", tags=["NLP REST Classify"])
 
 
-def _require_tenant(tenant_id: str | None, task: str) -> None:
+def _require_tenant(tenant_id: str | None, task: str, header_tenant: str | None) -> None:
     """TASK-737 — refuse tenant-scoped work that arrives with no tenant.
 
     `X-Tenant-Id` is MANDATORY on every internal request carrying tenant-scoped
@@ -41,8 +42,10 @@ def _require_tenant(tenant_id: str | None, task: str) -> None:
     mis-attribute the spend, silently.
 
     428 (not 400) mirrors the gateway's `RequiresIfMatch` convention: a mandatory
-    request precondition is missing.
+    request precondition is missing. A header that CONTRADICTS the body is a
+    different failure and is refused first, with 400.
     """
+    assert_tenant_matches_header(tenant_id, header_tenant)
     if not (tenant_id or "").strip():
         logger.error(f"nlp.tenant_header.missing task={task}")
         raise HTTPException(
@@ -206,6 +209,7 @@ def _build_intent_prompt(text: str, intents: list[str]) -> str:
 @router.post("/topic", response_model=TopicClassificationResponse)
 async def classify_topic(
     request: TopicClassificationRequest,
+    http_request: Request,
     external_text_client: ExternalTextClient | None = Depends(get_external_text_client),
     # Owner decision (2026-08-20, TASK-729 §6): a DEDICATED peer-call
     # semaphore, never `inference_bound`. That bound protects local GPU/CPU
@@ -232,7 +236,7 @@ async def classify_topic(
     # per-tenant work (the instruction list is the tenant's own taxonomy), so an
     # absent tenant is a CALLER defect and is refused rather than silently
     # delegated to `text` with no tenant.
-    _require_tenant(request.tenant_id, "topic")
+    _require_tenant(request.tenant_id, "topic", http_request.headers.get(TENANT_HEADER))
     prompt = _build_topic_prompt(request.text, request.instructions)
     try:
         async with peer_call_bound:
@@ -253,6 +257,7 @@ async def classify_topic(
 @router.post("/intent", response_model=IntentClassificationResponse)
 async def classify_intent(
     request: IntentClassificationRequest,
+    http_request: Request,
     external_text_client: ExternalTextClient | None = Depends(get_external_text_client),
     # See /topic above — a DEDICATED peer-call semaphore, never `inference_bound`.
     peer_call_bound: ResizableSemaphore = Depends(get_peer_call_bound),
@@ -270,7 +275,8 @@ async def classify_intent(
     if external_text_client is None:
         raise HTTPException(status_code=503, detail="Intent classification is not available")
 
-    _require_tenant(request.tenant_id, "intent")  # TASK-737 — see /topic above.
+    # TASK-737 — see /topic above.
+    _require_tenant(request.tenant_id, "intent", http_request.headers.get(TENANT_HEADER))
     prompt = _build_intent_prompt(request.text, request.instructions)
     try:
         async with peer_call_bound:

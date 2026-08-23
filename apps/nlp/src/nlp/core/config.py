@@ -9,7 +9,7 @@ from hope_env import (
     load_env,
     real_secret,
 )
-from pydantic import AliasChoices, Field, SecretStr
+from pydantic import AliasChoices, Field, SecretStr, model_validator
 from pydantic.fields import FieldInfo
 from pydantic_settings import BaseSettings, PydanticBaseSettingsSource, SettingsConfigDict
 
@@ -118,25 +118,53 @@ class NLPServiceConfig(BaseSettings):
     # Init > host env > secrets_dir (Vault Agent) > .env.<NODE_ENV> > default.
     settings_customise_sources = hope_settings_sources
 
-    name: str = Field(default="nlp")
-    version: str = Field(default="0.1.0")
-    namespace: str = Field(default="hope")
+    # Every field below carries an explicit `validation_alias` and a STATIC
+    # default. Neither half is decoration:
+    #
+    # * a `default=os.getenv(...)` is an env read evaluated once at class-
+    #   definition time — the module-scope pattern TASK-558 removed, and it
+    #   cannot be reached by the Vault `secrets_dir` tier at all;
+    # * an `__init__` that pre-fills these from `os.getenv` is worse, because
+    #   `init_settings` is the HIGHEST-precedence source in `build_hope_sources`,
+    #   so it outranks host env, `secrets_dir` AND the env file.
+    #
+    # Declaring the alias instead puts every one of them back on the shared
+    # chain: init > host env > secrets_dir > .env.<NODE_ENV> > default. The
+    # prefixed `NLP_*` name is listed FIRST so `turbo.json#globalEnv`'s
+    # declaration is the reachable one; the unprefixed / OTel-standard names the
+    # deployment already sets stay accepted behind it.
+    name: str = Field(
+        default="nlp",
+        validation_alias=AliasChoices("NLP_SERVICE_NAME", "OTEL_SERVICE_NAME", "SERVICE_NAME"),
+    )
+    version: str = Field(
+        default="0.1.0",
+        validation_alias=AliasChoices(
+            "NLP_SERVICE_VERSION", "OTEL_SERVICE_VERSION", "SERVICE_VERSION"
+        ),
+    )
     environment: Environment = Field(default=Environment.DEVELOPMENT)
-    debug: bool = Field(default=False)
     log_level: int = Field(default=LogLevel.INFO)
 
-    host: str = Field(default=os.getenv("HOST", "0.0.0.0"))
-    port: int = Field(default=int(os.getenv("PORT", "8864")))
-    workers: int = Field(default=int(os.getenv("WORKERS", "1")))
+    host: str = Field(default="0.0.0.0", validation_alias=AliasChoices("NLP_HOST", "HOST"))
+    port: int = Field(default=8864, validation_alias=AliasChoices("NLP_PORT", "PORT"))
+    workers: int = Field(default=1, validation_alias=AliasChoices("NLP_WORKERS", "WORKERS"))
 
-    opentelemetry_endpoint: str | None = Field(
-        default=os.getenv("OTEL_EXPORTER_OTLP_ENDPOINT", None)
+    otlp_endpoint: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices("NLP_OTLP_ENDPOINT", "OTEL_EXPORTER_OTLP_ENDPOINT"),
     )
-    otlp_endpoint: str | None = Field(default=os.getenv("OTEL_EXPORTER_OTLP_ENDPOINT", None))
-    resource_attributes_raw: str | None = Field(default=None)
+    resource_attributes_raw: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices(
+            "NLP_OTEL_RESOURCE_ATTRIBUTES", "OTEL_RESOURCE_ATTRIBUTES"
+        ),
+    )
     # Master switch: gates traces, metrics, AND log export (default off).
-    otel_enabled: bool = Field(default=os.getenv("NLP_OTEL_ENABLED", "false").lower() == "true")
-    traces_enabled: bool = Field(default=os.getenv("OTEL_TRACES_ENABLED", "true").lower() == "true")
+    otel_enabled: bool = Field(default=False, validation_alias=AliasChoices("NLP_OTEL_ENABLED"))
+    traces_enabled: bool = Field(
+        default=True, validation_alias=AliasChoices("NLP_TRACES_ENABLED", "OTEL_TRACES_ENABLED")
+    )
     # Gates the Prometheus /metrics endpoint AND the OTLP metric reader.
     #
     # Reads NLP_METRICS_ENABLED first (the fleet convention — every other
@@ -146,8 +174,8 @@ class NLPServiceConfig(BaseSettings):
     # OTEL_METRICS_ENABLED, which .env.dev sets to false — so NLP's /metrics
     # was disabled by a variable documented under the API gateway. OTEL_METRICS_ENABLED is kept as a fallback for compatibility.
     metrics_enabled: bool = Field(
-        default=os.getenv("NLP_METRICS_ENABLED", os.getenv("OTEL_METRICS_ENABLED", "true")).lower()
-        == "true"
+        default=True,
+        validation_alias=AliasChoices("NLP_METRICS_ENABLED", "OTEL_METRICS_ENABLED"),
     )
 
     # ── CANONICAL internal credential (owner decision D-D, 2026-08-17) ──────
@@ -299,31 +327,12 @@ class NLPServiceConfig(BaseSettings):
     # Empty = the huggingface default.
     hf_home: str = Field(default="", validation_alias=AliasChoices("HF_HOME"))
 
-    model_config = SettingsConfigDict(env_prefix="NLP_")
-
-    def __init__(self, **kwargs: Any) -> None:
-        kwargs.setdefault("name", os.getenv("OTEL_SERVICE_NAME", os.getenv("SERVICE_NAME", "nlp")))
-        kwargs.setdefault(
-            "version", os.getenv("OTEL_SERVICE_VERSION", os.getenv("SERVICE_VERSION", "0.1.0"))
-        )
-        kwargs.setdefault(
-            "namespace", os.getenv("OTEL_SERVICE_NAMESPACE", os.getenv("SERVICE_NAMESPACE", "hope"))
-        )
-        kwargs.setdefault("host", os.getenv("HOST", "0.0.0.0"))
-        kwargs.setdefault("port", int(os.getenv("PORT", "8864")))
-        kwargs.setdefault("workers", int(os.getenv("WORKERS", "1")))
-        kwargs.setdefault("otlp_endpoint", os.getenv("OTEL_EXPORTER_OTLP_ENDPOINT"))
-        kwargs.setdefault("resource_attributes_raw", os.getenv("OTEL_RESOURCE_ATTRIBUTES"))
-        kwargs.setdefault("otel_enabled", os.getenv("NLP_OTEL_ENABLED", "false").lower() == "true")
-        kwargs.setdefault(
-            "traces_enabled", os.getenv("OTEL_TRACES_ENABLED", "true").lower() == "true"
-        )
-        kwargs.setdefault(
-            "metrics_enabled",
-            os.getenv("NLP_METRICS_ENABLED", os.getenv("OTEL_METRICS_ENABLED", "true")).lower()
-            == "true",
-        )
-        super().__init__(**kwargs)
+    # `populate_by_name` because the fields above now declare a
+    # `validation_alias`, and pydantic-settings matches init kwargs against the
+    # (case-folded) ALIAS, not the field name — so without this, constructing
+    # `NLPServiceConfig(port=…)` raises `extra_forbidden`. Every existing caller
+    # and test builds this class by field name.
+    model_config = SettingsConfigDict(env_prefix="NLP_", populate_by_name=True)
 
     @property
     def resource_attributes(self) -> dict[str, str]:
@@ -354,18 +363,8 @@ class TextClassificationConfig(BaseSettings):
     model_path: str | None = Field(default=None)
     tokenizer_name: str = Field(default=UNCONFIGURED_DOC_TYPE_CLASSIFIER_MODEL)
 
-    # Processing settings
-    max_sequence_length: int = Field(default=512)
-    batch_size: int = Field(default=16)
-    num_labels: int = Field(default=11)  # Number of text classification labels
-
     # Performance settings
     use_gpu: bool = Field(default=True)
-    fp16: bool = Field(default=False)
-
-    # Confidence settings
-    confidence_threshold: float = Field(default=0.6, ge=0.0, le=1.0)
-    return_all_probabilities: bool = Field(default=True)
 
     model_config = SettingsConfigDict(env_prefix="TEXT_CLASSIFIER_")
 
@@ -388,11 +387,6 @@ class TokenClassificationConfig(BaseSettings):
     model_path: str | None = Field(default=None)
     tokenizer_name: str = Field(default="blaze999/Medical-NER")
 
-    # Processing settings
-    max_sequence_length: int = Field(default=512)
-    batch_size: int = Field(default=16)
-    stride: int = Field(default=128)  # For long text handling
-
     # NER specific settings
     aggregation_strategy: str = Field(default="simple")  # simple, first, max, average
     ignore_labels: list[str] = Field(default_factory=lambda: ["O"])
@@ -402,11 +396,6 @@ class TokenClassificationConfig(BaseSettings):
 
     # Performance settings
     use_gpu: bool = Field(default=True)
-    fp16: bool = Field(default=False)
-
-    # Confidence settings
-    confidence_threshold: float = Field(default=0.5, ge=0.0, le=1.0)
-    entity_confidence_aggregation: str = Field(default="mean")  # mean, max, min
 
     model_config = SettingsConfigDict(env_prefix="TOKEN_CLASSIFIER_")
 
@@ -442,40 +431,11 @@ class MedicalSuggesterConfig(BaseSettings):
 
     # Performance settings
     use_gpu: bool = Field(default=True)
-    fp16: bool = Field(default=False)
-
-    # Confidence settings
-    confidence_threshold: float = Field(default=0.5, ge=0.0, le=1.0)
 
     model_config = SettingsConfigDict(env_prefix="MEDICAL_SUGGESTER_")
 
     # model identity is DB/gateway-selected, never env-selected.
     settings_customise_sources = classmethod(_model_identity_filtered_sources)
-
-
-class WebSocketConfig(BaseSettings):
-    """WebSocket configuration"""
-
-    # Init > host env > secrets_dir (Vault Agent) > .env.<NODE_ENV> > default.
-    settings_customise_sources = hope_settings_sources
-
-    # WebSocket settings
-    max_connections: int = Field(default=100)
-    connection_timeout: int = Field(default=300)
-    heartbeat_interval: int = Field(default=30)
-    ping_timeout: int = Field(default=10)
-
-    model_config = SettingsConfigDict(env_prefix="WEBSOCKET_")
-
-
-class WebSocketTokenClassificationConfig(BaseSettings):
-    """WebSocket token classification configuration"""
-
-    # Init > host env > secrets_dir (Vault Agent) > .env.<NODE_ENV> > default.
-    settings_customise_sources = hope_settings_sources
-
-    class Config:
-        env_prefix = "WEBSOCKET_TOKEN_CLASSIFICATION_"
 
 
 class SecurityConfig(BaseSettings):
@@ -486,11 +446,30 @@ class SecurityConfig(BaseSettings):
 
     cors_origins: list[str] = Field(default=["*"])
     cors_methods: list[str] = Field(default=["GET", "POST", "PUT", "DELETE", "OPTIONS"])
-    cors_headers: list[str] = Field(default=["*"])
-    cors_allow_credentials: bool = Field(default=True)
-    cors_max_age: int = Field(default=3600)
+    # Credentialed CORS is OFF by default. `apps/nlp` is an internal service
+    # reached by the gateway and by peer services, never by a browser carrying a
+    # session — so it has nothing to gain from credentialed cross-origin
+    # requests, and everything to lose from `*` + credentials.
+    cors_allow_credentials: bool = Field(default=False)
 
     model_config = SettingsConfigDict(env_prefix="SECURITY_")
+
+    @model_validator(mode="after")
+    def _refuse_wildcard_with_credentials(self) -> "SecurityConfig":
+        """A wildcard origin and credentials may never be enabled together.
+
+        This pairing hands every origin a credentialed cross-origin channel. It
+        was live: the field below was declared and never read, while `app.py`
+        passed `allow_credentials=True` as a literal. Refusing it HERE, at
+        settings validation, means an operator who wants credentials must first
+        name the origins — the misconfiguration cannot boot.
+        """
+        if self.cors_allow_credentials and "*" in self.cors_origins:
+            raise ValueError(
+                "cors_allow_credentials cannot be enabled while cors_origins contains '*'; "
+                "name the permitted origins explicitly (SECURITY_CORS_ORIGINS)."
+            )
+        return self
 
 
 class TextCorrectorConfig(BaseSettings):
@@ -503,7 +482,6 @@ class TextCorrectorConfig(BaseSettings):
 
     symspell_max_edit_distance: int = Field(default=2)
     symspell_prefix_length: int = Field(default=7)
-    symspell_max_suggestions: int = Field(default=5)
     symspell_preserve_case: bool = Field(default=True)
     symspell_ignore_non_words: bool = Field(default=True)
     symspell_ignore_term_with_digits: bool = Field(default=True)
