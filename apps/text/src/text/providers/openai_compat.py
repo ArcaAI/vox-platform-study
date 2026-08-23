@@ -355,10 +355,11 @@ class OpenAICompatProvider:
         (`services/pool_health.py`), so a freshly booted process must not report
         an engine it has simply not contacted yet as DOWN.
         """
-        if self._probe_client() is None:
+        probe_client = self._probe_client()
+        if probe_client is None:
             return True
         try:
-            await self._probe_client().models.list()
+            await probe_client.models.list()
             return True
         except (APIError, APIConnectionError, APITimeoutError, ConnectionError, OSError) as exc:
             logger.warning("health_check.failed", provider=self._provider_name, error=str(exc))
