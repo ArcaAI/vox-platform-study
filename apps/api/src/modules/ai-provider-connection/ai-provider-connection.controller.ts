@@ -27,7 +27,8 @@ function assertProviderService(value: string): ProviderService {
  * mounted at `/admin/providers` (global prefix → `/api/v1/admin/providers`).
  *
  * A connection row is keyed by (tenant, SERVICE, provider): `service` is the
- * capability discriminator (`llm` | `stt` | `tts`) carried in the path, and
+ * capability discriminator (`PROVIDER_SERVICES` — the three inference
+ * capabilities plus the `embeddings`/`rerank`/`vector` integrations) carried in the path, and
  * `provider` is capability-scoped (`azure` is Azure OpenAI under `llm`, Azure
  * Speech under `stt`).
  *
@@ -69,7 +70,7 @@ export class ProviderConnectionController {
   @Get(':service')
   @CanRead('GlobalSetting')
   @ApiOperation({ summary: 'List provider connections for one service and the scoped tenant (keys never returned).' })
-  @ApiParam({ name: 'service', description: 'Capability the connection serves.', enum: ['llm', 'stt', 'tts'] })
+  @ApiParam({ name: 'service', description: 'Capability the connection serves.', enum: PROVIDER_SERVICES })
   @ApiQuery({ name: 'tenantId', required: false, description: 'Platform admins scope with this; tenant admins are pinned.' })
   @ApiResponse({ status: 200, type: [AiProviderConnectionResponse] })
   async list(@Param('service') service: string, @Query('tenantId') tenantId?: string): Promise<AiProviderConnectionResponse[]> {
@@ -79,7 +80,7 @@ export class ProviderConnectionController {
   @Get(':service/:provider')
   @CanRead('GlobalSetting')
   @ApiOperation({ summary: 'Read one provider connection (key never returned; placeholder when absent).' })
-  @ApiParam({ name: 'service', description: 'Capability the connection serves.', enum: ['llm', 'stt', 'tts'] })
+  @ApiParam({ name: 'service', description: 'Capability the connection serves.', enum: PROVIDER_SERVICES })
   @ApiParam({ name: 'provider', description: 'Capability-scoped provider identifier, e.g. `azure`.' })
   @ApiQuery({ name: 'tenantId', required: false })
   @ApiResponse({ status: 200, type: AiProviderConnectionResponse })
@@ -104,7 +105,7 @@ export class ProviderConnectionController {
       'A supplied `apiKey` is Vault-Transit encrypted and never returned; omitting it leaves the stored key intact. ' +
       `**\`enabled\` is three-state.** ${CONNECTION_ENABLED_SEMANTICS}`,
   })
-  @ApiParam({ name: 'service', description: 'Capability the connection serves.', enum: ['llm', 'stt', 'tts'] })
+  @ApiParam({ name: 'service', description: 'Capability the connection serves.', enum: PROVIDER_SERVICES })
   @ApiParam({ name: 'provider', description: 'Capability-scoped provider identifier, e.g. `azure`.' })
   @ApiHeader({
     name: 'If-Match',
@@ -143,7 +144,7 @@ export class ProviderConnectionController {
       'again (subject to the platform-default entitlement). To BLOCK the provider instead — including the ' +
       'platform-provided key — keep the row and set `enabled: false`, which is a veto.',
   })
-  @ApiParam({ name: 'service', description: 'Capability the connection serves.', enum: ['llm', 'stt', 'tts'] })
+  @ApiParam({ name: 'service', description: 'Capability the connection serves.', enum: PROVIDER_SERVICES })
   @ApiParam({ name: 'provider', description: 'Capability-scoped provider identifier, e.g. `azure`.' })
   @ApiQuery({ name: 'tenantId', required: false })
   @ApiResponse({ status: 200, description: 'Deleted.' })
