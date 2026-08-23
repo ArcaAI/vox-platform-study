@@ -523,3 +523,36 @@ recorded. A day-1 demo dataset should grant consent for every patient it expects
 | R7 original + edit captured | `ContextItemVersion`: `ai_draft_v1`/`ai_model` **and** `Manual edit`/`doctor_edit`, both encrypted |
 | C-9 fixed | `AgentTrajectoryStep stepType=NODE` **persisted** (previously rejected 400 and swallowed) |
 | C-10 fixed | `status=DEGRADED` **persisted** on `consultation.consentGate` (previously mislabelled ERROR) |
+
+### D-7 — The gate-edit miner never ran: BullMQ rejected its job id (FIXED)
+`GateEditMiningQueue.enqueue` built `jobId: ${tenantId}:${consultationId}`. BullMQ refuses a
+custom id containing `:` (it delimits BullMQ's own Redis key namespace), so **every sign-off threw**
+— caught by the best-effort wrapper, correctly not rolling back the signature, and the exemplar
+simply never appeared. TASK-792's capture worked; its mining never ran.
+
+Only visible because TASK-792 logged the failure rather than swallowing it silently:
+`WARN [SummaryService] Gate-edit mining enqueue failed … "Custom Id cannot contain :"`.
+Separator changed to `__`.
+
+### D-8 — The gateway's inbound internal auth does not accept the canonical token (observed, NOT fixed)
+`POST /internal/harness/consultations/:id/draft` accepts `HARNESS_SERVICE_TOKEN` but rejects
+`INTERNAL_ACCESS_TOKEN` (401), while `apps/text` accepts the canonical one. Owner directive
+(memory, 2026-08-16) is ONE shared internal token for every internal call; the gateway's inbound
+side has not converged on it. Left as a finding — changing an auth boundary is an owner decision.
+
+## R6 + R7 completed through the real lifecycle (observed, 2026-08-23)
+
+```
+open → recording/start (201) → recording/stop (201)   status: DRAINING
+harness persist_draft (201)                            status: PENDING_REVIEW
+clinician PATCH  If-Match:"1"  (200)                   version 1 → 2
+clinician approve If-Match:"2" (201)                   status: SIGNED
+        approvedBy 70000000-…-040 (arcaai_doctor), approvedAt stamped
+
+ContextItemVersion:  ai_draft_v1/ai_model → Manual edit/doctor_edit → approved/attestation
+GateEditExemplar:    SIGNED | HEAVILY_EDITED | editDistance 16 (ratio 1.455)
+                     redactedBefore ✓  redactedAfter ✓  curationStatus PENDING
+```
+
+The full loop is closed and observed: AI draft → clinician edit → clinician signature →
+PHI-redacted exemplar carrying BOTH halves, quality-signalled, awaiting curation.

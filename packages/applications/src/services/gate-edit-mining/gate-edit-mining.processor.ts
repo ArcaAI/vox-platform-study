@@ -26,7 +26,14 @@ export class GateEditMiningQueue implements IGateEditMiningQueue {
       // Deduped on the encounter: a repeat sign-off event collapses to one job.
       // The miner is idempotent anyway (unique on tenant+consultation), so this
       // is a cost optimisation, not a correctness requirement.
-      jobId: `${job.tenantId}:${job.consultationId}`,
+      //
+      // TASK-789 day-1: the separator MUST NOT be ':' — BullMQ rejects a custom id
+      // containing one ("Custom Id cannot contain :", because ':' delimits its own
+      // Redis key namespace). Every sign-off therefore threw here, and since the
+      // enqueue is best-effort the throw was caught and the exemplar simply never
+      // appeared: R7's capture worked, its mining never ran. Verified live before
+      // and after this change.
+      jobId: `${job.tenantId}__${job.consultationId}`,
       attempts: 3,
       backoff: { type: 'exponential', delay: 5_000 },
       removeOnComplete: true,

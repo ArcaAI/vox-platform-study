@@ -88,13 +88,22 @@ export function FilterSelect({
   allLabel?: string;
   id: string;
 }) {
+  // `htmlFor` alone does not name this control. The trigger is a <button> with
+  // role="combobox", and a native <label for> is not honoured on a button by
+  // browsers' accessible-name computation — the name falls through to the
+  // button's CONTENT, which is the selected value. Every unset filter therefore
+  // announced as "All, combobox", so two filters on one screen were
+  // indistinguishable and neither said what it filtered. aria-labelledby is what
+  // actually binds the visible label, and pointing it at that same element keeps
+  // the two from drifting apart.
+  const labelId = `${id}-label`;
   return (
     <div className="flex items-center gap-1.5">
-      <Label htmlFor={id} className="text-muted-foreground text-sm font-normal">
+      <Label id={labelId} htmlFor={id} className="text-muted-foreground text-sm font-normal">
         {label}:
       </Label>
       <Select value={value === '' ? ALL_SENTINEL : value} onValueChange={(next) => onChange(next === ALL_SENTINEL ? '' : next)}>
-        <SelectTrigger id={id} size="sm" className="min-w-28">
+        <SelectTrigger id={id} aria-labelledby={labelId} size="sm" className="min-w-28">
           <SelectValue />
         </SelectTrigger>
         <SelectContent>
