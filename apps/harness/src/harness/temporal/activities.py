@@ -345,7 +345,7 @@ def _progress_api_client(settings: Settings) -> ApiClient:
     return ApiClient(
         settings.api_base_url,
         internal_prefix=settings.api_internal_prefix,
-        service_token=settings.service_token.get_secret_value(),
+        service_token=settings.peer_service_token(settings.service_token),
         timeout=min(_PROGRESS_HTTP_TIMEOUT_S, settings.api_timeout_s),
     )
 
@@ -359,7 +359,7 @@ def _trajectory_api_client(settings: Settings) -> ApiClient:
     return ApiClient(
         settings.api_base_url,
         internal_prefix=settings.api_internal_prefix,
-        service_token=settings.service_token.get_secret_value(),
+        service_token=settings.peer_service_token(settings.service_token),
         timeout=min(_TRAJECTORY_HTTP_TIMEOUT_S, settings.api_timeout_s),
     )
 
@@ -2427,7 +2427,7 @@ def _loop_event_api_client(settings: Settings) -> ApiClient:
     return ApiClient(
         settings.api_base_url,
         internal_prefix=settings.api_internal_prefix,
-        service_token=settings.service_token.get_secret_value(),
+        service_token=settings.peer_service_token(settings.service_token),
         timeout=min(_LOOP_EVENT_HTTP_TIMEOUT_S, settings.api_timeout_s),
     )
 
