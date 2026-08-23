@@ -22,12 +22,12 @@ logger = logging.getLogger(__name__)
 class MedicalSuggester:
     def __init__(
         self,
-        config: MedicalSuggesterConfig | None = None,
-        token_classifier: TokenClassifier | None = None,
+        config: MedicalSuggesterConfig,
+        token_classifier: TokenClassifier,
     ):
-        if config is None:
-            config = MedicalSuggesterConfig()
-
+        # Both REQUIRED: this service runs TWO models — the disease classifier
+        # named by `config` and the NER named by `token_classifier` — and both
+        # selections are resolved by the caller. Neither has a default.
         self.config = config
         self.token_classifier = token_classifier
         self.is_initialized = False

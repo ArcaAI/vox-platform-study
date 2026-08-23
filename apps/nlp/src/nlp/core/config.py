@@ -398,11 +398,20 @@ class TextClassificationConfig(BaseSettings):
 class TokenClassificationConfig(BaseSettings):
     """Token classification model configuration"""
 
-    # Model settings
-    model_name: str = Field(default="blaze999/Medical-NER")
+    # Model settings.
+    #
+    # `model_name`/`tokenizer_name` are REQUIRED and have NO default. They used
+    # to default to a real HuggingFace NER checkpoint, which the env-source
+    # filter above then made unchangeable — the appearance of compliance around
+    # a live hardcoded selection. A model id is configuration
+    # (`AiTaskDefault` ⋈ `AiModel`, resolved tenant → SYSTEM by the gateway and
+    # injected per request), so an unresolved selection must be a REFUSAL, not a
+    # substitution: constructing this config without one raises, and the routes
+    # turn that into a fail-closed 503.
+    model_name: str
     model_version: str = Field(default="1.0.0")
     model_path: str | None = Field(default=None)
-    tokenizer_name: str = Field(default="blaze999/Medical-NER")
+    tokenizer_name: str
 
     # NER specific settings
     aggregation_strategy: str = Field(default="simple")  # simple, first, max, average
@@ -441,10 +450,11 @@ class OntologyLinkerConfig(BaseSettings):
 class MedicalSuggesterConfig(BaseSettings):
     """Medical Suggester configuration"""
 
-    # Model settings
-    model_name: str = Field(default="shanover/symps_disease_bert_v3_c41")
+    # Model settings. REQUIRED, no default — see `TokenClassificationConfig`
+    # above for why a real checkpoint id may not sit here.
+    model_name: str
     model_version: str = Field(default="1.0.0")
-    tokenizer_name: str = Field(default="shanover/symps_disease_bert_v3_c41")
+    tokenizer_name: str
 
     # Performance settings
     use_gpu: bool = Field(default=True)
@@ -534,14 +544,18 @@ class ExternalTextConfig(BaseSettings):
 
 
 class Settings:
-    """Main settings container for dual-model architecture"""
+    """Main settings container for the service-level (non-model) configuration.
+
+    The three per-model configs are DELIBERATELY absent: model identity is
+    resolved per request, so a process-wide instance would have to invent a
+    selection to exist at all — which is precisely how the hardcoded NER and
+    diagnosis checkpoints stayed live. They are constructed by the per-request
+    cache factories in `nlp.dependencies`, from the caller's selection.
+    """
 
     def __init__(self) -> None:
         self.service = NLPServiceConfig()
-        self.text_classification = TextClassificationConfig()
-        self.token_classification = TokenClassificationConfig()
         self.ontology_linker = OntologyLinkerConfig()
-        self.medical_suggester = MedicalSuggesterConfig()
         self.security = SecurityConfig()
         self.text_corrector = TextCorrectorConfig()
         self.external_text = ExternalTextConfig()

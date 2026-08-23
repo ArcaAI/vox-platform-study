@@ -18,7 +18,7 @@ from __future__ import annotations
 
 import pytest
 
-from nlp.core.config import OntologyLinkerConfig
+from nlp.core.config import OntologyLinkerConfig, TokenClassificationConfig
 from nlp.schemas.classification import TokenClassificationRequest
 from nlp.schemas.common import Entity
 from nlp.services.token_classifier import TransformerTokenClassifier
@@ -46,7 +46,7 @@ def test_entity_schema_has_nullable_ontology_code_fields():
 
 
 def _classifier_with_pipeline(results):
-    classifier = TransformerTokenClassifier()
+    classifier = TransformerTokenClassifier(configs=TokenClassificationConfig(model_name="test-org/ner", tokenizer_name="test-org/ner"))
 
     def fake_pipeline(text, **kwargs):
         return results

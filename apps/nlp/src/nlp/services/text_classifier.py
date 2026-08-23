@@ -50,10 +50,11 @@ class TextClassifier(ABC):
 class TransformerTextClassifier(TextClassifier):
     """Transformer-based text classification for medical documents"""
 
-    def __init__(self, config: TextClassificationConfig | None = None):
-        if config is None:
-            config = TextClassificationConfig()
-
+    def __init__(self, config: TextClassificationConfig):
+        # REQUIRED — see `TransformerTokenClassifier`. The doc-type plane keeps
+        # its unconfigured SENTINEL default on the config field (it is not a
+        # model id and never loads), but the classifier is still only ever built
+        # from a caller-supplied selection.
         super().__init__(config.model_name, config.model_version)
 
         self.config = config

@@ -151,7 +151,7 @@ is green because Python is excluded proves nothing.
 |---|---|
 | text | 1287 passed |
 | guardrail | 268 passed |
-| nlp | 401 passed (C.2 held) |
+| nlp | 401 passed (C.2 held; 471 after R2-B landed it) |
 | harness | 1549 passed |
 | stt | 2844 passed, 1 failed |
 
@@ -165,6 +165,63 @@ a lane's "15 harness failures are pre-existing" (the base and the merged tree ar
 fully green — they were worktree artifacts), and a lane's initial dead-field scan that
 produced false positives on `internal_access_token` and `qdrant_api_key`.
 
+### Round 2 lane R2-B — the second diagnosis model, and C.2 landed
+
+**C.2 is no longer held.** `4fa3d1f15` is merged; `/diagnosis/suggestions` works again,
+with a gateway-resolved NER selection rather than a literal.
+
+The blocking gap was one injection, not one key. `/text-analyses/diagnosis`
+(`apps/api/src/modules/ai-inference/ai-inference.controller.ts:184`) resolved only
+`nlp.diagnosis`; the suggester's internal symptom-extraction NER was filled by the
+hardcoded `blaze999/Medical-NER`, so half a clinical route was un-configurable. It now
+resolves `nlp.ner` alongside it and injects `ner_model_name` / `ner_model_path`.
+
+**No key was added to `AI_TASK_KEYS`.** The brief anticipated one, but `nlp.ner` already
+exists and is already the medical token-classification task the playground NER tab and
+the clinical NER callers resolve — and its SYSTEM row (`medical-ner`) carries exactly the
+`sourceUri` the removed literal named (`seed/ai-models/nlp.ts:21`). Reusing it makes the
+change behaviour-preserving AND puts every medical-NER surface behind one key, so a
+re-point moves them together instead of leaving the diagnosis route behind. A dedicated
+`nlp.diagnosis.ner` would have re-created the split it was meant to close.
+
+Both resolutions run before the upstream call and both fail closed through the existing
+`resolveDefaultModelSelection` (503; never a literal, never a neighbouring tenant's row).
+
+**The `config.py` merge.** Phase 1.5 and C.2 edit disjoint regions of the file, so it
+auto-merged — which is not evidence, so both halves were verified explicitly on the
+merged tree: C.2's required selections at `core/config.py:411,414` (Token) and `455,457`
+(MedicalSuggester) with zero `blaze999`/`symps_disease_bert` literals anywhere under
+`apps/nlp/src`, and the three per-model configs gone from the `Settings` container; Phase
+1.5's 16 `validation_alias` declarations and `populate_by_name=True` (`:352`) intact, with
+the `kwargs.setdefault` block still absent.
+
+**Finding, NOT fixed here — `resolveNerModelInjection` fail-open is now dead code paying
+no rent.** `packages/applications/src/services/consultation/shared/resolveNerModelSelection.ts`
+returns `{}` on an unresolved selection, justified by "the NLP service falls back to its
+own env default". It does not: `/api/v1/classify/tokens` already requires `model_name` and
+answers 503 without it (`apps/nlp/src/nlp/api/v1/rest/classify.py:162`), independently of
+C.2. So the branch produces the same failure one hop later, attributed to the NLP service
+rather than the unresolved key, under a log line naming an impossible fallback. Behaviour
+is identical either way; only diagnostics differ. Inverting it fails 49 tests across 7
+consultation suites whose fixtures omit the optional `IAiTaskDefaultService` — a bounded
+but separate change. The stale justification is corrected in the file's doc comment; the
+inversion needs its own ticket.
+
+**Open governance question for the owner — `nlp.*` is SUPER_ADMIN-only.**
+`SUPER_ADMIN_ONLY_TASK_PREFIXES` (`ai-task-default/constants.ts:119`) makes
+`getEffective` short-circuit the tenant read to `null` for every `nlp.*` key
+(`ai-task-default.service.ts:72`), so a tenant row is writable but can never win. Both
+keys this route now resolves are `nlp.*`, so the diagnosis route is SYSTEM-pinned end to
+end. That sits against the standing directive that services work from the configuration
+of *tenant or platform*, and `09-infrastructure-devops.md` requires super-admin-only to be
+a documented per-key exception rather than a blanket prefix. Not changed here (the lane
+implemented the new usage consistently with existing `nlp.*` policy). Recommendation:
+split the prefix — keep engine-level/safety-critical keys SYSTEM-pinned, and let
+`nlp.ner` / `nlp.diagnosis` follow the `text.*` / `guardrail.*` tenant → SYSTEM cascade,
+which is the same class of choice (which fine-tuned checkpoint serves this tenant) that
+is already tenant-configurable everywhere else. `guardrail.` left this same list by owner
+decision in TASK-735 Phase 0 and is the precedent.
+
 ## Change History
 
 | Date | Change |
@@ -174,3 +231,4 @@ produced false positives on `internal_access_token` and `qdrant_api_key`.
 | 2026-08-23 | Owner decisions D-1 (pull route splits by cardinality: platform=PULL, tenant=PUSH), D-2 (`global-kv` default, `db-config` reserved for values with their own table), D-3 (Phase 0 first) recorded in `plan.md`. |
 | 2026-08-23 | Phase 0 implemented across four worktree lanes and merged to `dev-2.2`. Gates re-run post-merge. C.2 held at `4fa3d1f15` for Phase 1 per owner decision. |
 | 2026-08-23 | Phases 1 and 1.5 implemented across three worktree lanes and merged to `dev-2.2`. Control plane generalised (non-numeric values, registry-driven payload), tenant-secret plane widened, env drift gate extended to Python (declared surface 40 → 652). |
+| 2026-08-23 | Round 2 lane R2-B: gateway resolves the second (`nlp.ner`) selection for `/diagnosis/suggestions` and injects both; C.2 (`4fa3d1f15`) merged, so the route works again with no literal. `nlp.*` SUPER_ADMIN-only tension recorded for owner decision. |
