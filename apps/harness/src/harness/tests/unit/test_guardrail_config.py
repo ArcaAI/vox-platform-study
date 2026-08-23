@@ -2,9 +2,9 @@
 
 Phase 2 needs
 
-* a **safety** sub-config (``HARNESS_SAFETY_*``) for the Granite Guardian
-  content-safety classifier — defaulting to the LM Studio (OpenAI-compatible)
-  engine with an optional ``provider`` switch (azure/bedrock),
+* NO safety sub-config at all — ``HARNESS_SAFETY_*`` and its Granite Guardian engine
+  plane were DELETED (TASK-799 A.1 / F-02); the content-safety screen is delegated to
+  ``apps/guardrail``. ``TestSafetyEnginePlaneDeleted`` locks that,
 * a fail-closed **PHI** sub-config (``HARNESS_PHI_*``) for the pre-cloud-egress
   redaction guard, and
 * the existing eval :class:`~harness.eval.config.JudgeConfig` (``HARNESS_JUDGE_*``)
@@ -18,9 +18,9 @@ from __future__ import annotations
 import pytest
 from pydantic import ValidationError
 
+import harness.core.config as harness_config
 from harness.core.config import (
     PhiConfig,
-    SafetyGuardConfig,
     Settings,
     get_runtime_judge_config,
 )
@@ -41,57 +41,43 @@ _PHI_ENV = (
 )
 
 
-class TestSafetyGuardConfig:
-    def test_defaults(self, monkeypatch: pytest.MonkeyPatch):
-        for var in _SAFETY_ENV:
-            monkeypatch.delenv(var, raising=False)
-        c = SafetyGuardConfig()
-        assert c.enabled is True
-        # Default engine is LM Studio (OpenAI-compatible /v1 endpoint).
-        assert c.provider == "lm-studio"
-        assert c.base_url == "http://localhost:1234/v1"
-        # Granite Guardian 4.1 slug (operator-overridable to match the loaded build).
-        assert c.model == "granite-guardian-4.1-8b"
-        assert "guardian" in c.model.lower()
-        # Guard classifier runs in no-think mode for fast, deterministic verdicts.
-        assert c.no_think is True
-        assert c.timeout_s > 0
-        assert isinstance(c.harm_criteria, list) and c.harm_criteria
+class TestSafetyEnginePlaneDeleted:
+    """`HARNESS_SAFETY_*` is gone, and must not come back (rule 06, rule 00 §Config).
 
-    def test_env_override_selects_azure_engine(self, monkeypatch: pytest.MonkeyPatch):
-        monkeypatch.setenv("HARNESS_SAFETY_PROVIDER", "azure")
-        monkeypatch.setenv("HARNESS_SAFETY_MODEL", "granite-guardian-deployment")
-        monkeypatch.setenv("HARNESS_SAFETY_BASE_URL", "https://example.openai.azure.com")
-        monkeypatch.setenv("HARNESS_SAFETY_ENABLED", "false")
-        monkeypatch.setenv("HARNESS_SAFETY_NO_THINK", "false")
-        monkeypatch.setenv("HARNESS_SAFETY_TIMEOUT_S", "90")
-        c = SafetyGuardConfig()
-        assert c.provider == "azure"
-        assert c.model == "granite-guardian-deployment"
-        assert c.base_url == "https://example.openai.azure.com"
-        assert c.enabled is False
-        assert c.no_think is False
-        assert c.timeout_s == 90.0
+    It declared a complete guardian ENGINE plane in environment — provider
+    (`lm-studio`|`ollama`|`azure`|`bedrock`), base_url, a hardcoded
+    `granite-guardian-4.1-8b` model id, and a 7-item clinical risk TAXONOMY in a JSON env
+    array. All of that is `apps/guardrail`'s, resolved per tenant. These assertions are
+    the regression lock: reintroducing the class or the sub-config field fails here.
+    """
 
-    def test_invalid_provider_rejected(self, monkeypatch: pytest.MonkeyPatch):
-        monkeypatch.setenv("HARNESS_SAFETY_PROVIDER", "not-an-engine")
-        with pytest.raises(ValidationError):
-            SafetyGuardConfig()
+    def test_safety_guard_config_class_is_gone(self) -> None:
+        assert not hasattr(harness_config, "SafetyGuardConfig")
 
-    def test_ollama_provider_accepted(self, monkeypatch: pytest.MonkeyPatch):
-        # Owner decision 2026-08-20 (TASK-736/TASK-740 D-740-3): Ollama provider
-        # logic stays available, including for the safety guard. Ollama's
-        # ``/v1`` endpoint speaks the OpenAI wire, so it is selected the same
-        # way as "lm-studio" — no native-transport branch is added anywhere.
-        monkeypatch.setenv("HARNESS_SAFETY_PROVIDER", "ollama")
-        monkeypatch.setenv("HARNESS_SAFETY_BASE_URL", "http://localhost:11434/v1")
-        c = SafetyGuardConfig()
-        assert c.provider == "ollama"
-        assert c.base_url == "http://localhost:11434/v1"
+    def test_settings_carry_no_safety_subconfig(self) -> None:
+        assert "safety" not in Settings.model_fields
 
-    def test_harm_criteria_parsed_from_env_json(self, monkeypatch: pytest.MonkeyPatch):
-        monkeypatch.setenv("HARNESS_SAFETY_HARM_CRITERIA", '["harm", "violence"]')
-        assert SafetyGuardConfig().harm_criteria == ["harm", "violence"]
+    @pytest.mark.parametrize("var", _SAFETY_ENV)
+    def test_no_field_binds_a_harness_safety_var(
+        self, var: str, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Setting any of the deleted vars changes nothing about the resolved settings."""
+        monkeypatch.setenv(var, "should-be-ignored")
+        assert not _reachable_env_names(Settings) & {var}
+
+
+def _reachable_env_names(model: type) -> set[str]:
+    """Every env var name the settings tree can bind, prefix-aware, recursively."""
+    from pydantic_settings import BaseSettings
+
+    prefix = model.model_config.get("env_prefix", "")
+    names: set[str] = set()
+    for field, info in model.model_fields.items():
+        names.add(f"{prefix}{field}".upper())
+        annotation = info.annotation
+        if isinstance(annotation, type) and issubclass(annotation, BaseSettings):
+            names |= _reachable_env_names(annotation)
+    return names
 
 
 class TestPhiConfig:
@@ -141,16 +127,8 @@ class TestPhiConfig:
 
 
 class TestSettingsWiring:
-    def test_settings_expose_safety_and_phi_subconfigs(self):
-        s = Settings()
-        assert isinstance(s.safety, SafetyGuardConfig)
-        assert isinstance(s.phi, PhiConfig)
-
-    def test_safety_subconfig_reads_its_prefix_through_settings(
-        self, monkeypatch: pytest.MonkeyPatch
-    ):
-        monkeypatch.setenv("HARNESS_SAFETY_MODEL", "granite-guardian-4.1-8b")
-        assert Settings().safety.model == "granite-guardian-4.1-8b"
+    def test_settings_expose_the_phi_subconfig(self):
+        assert isinstance(Settings().phi, PhiConfig)
 
 
 class TestRuntimeJudgeReuse:
@@ -168,8 +146,8 @@ class TestRuntimeJudgeReuse:
 
 
 class TestUnitIntervalUnaffected:
-    """Sanity: a bogus safety timeout is still a float (no silent coercion bug)."""
+    """Sanity: a bogus peer timeout is still a float (no silent coercion bug)."""
 
     def test_timeout_must_be_numeric(self):
         with pytest.raises(ValidationError):
-            SafetyGuardConfig(timeout_s="not-a-number")  # type: ignore[arg-type]
+            Settings(guardrail_timeout_s="not-a-number")  # type: ignore[arg-type]

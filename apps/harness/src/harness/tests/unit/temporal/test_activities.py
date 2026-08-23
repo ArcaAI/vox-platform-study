@@ -18,7 +18,7 @@ from temporalio.testing import ActivityEnvironment
 
 from harness.core.config import Settings
 from harness.sensors.base import NEREntity
-from harness.sensors.inferential.granite_client import GraniteServiceError
+from harness.sensors.inferential.guardrail_screen import SafetyScreenError
 from harness.services.api_client import (
     ApiServiceError,
     AssembleResponse,
@@ -1131,6 +1131,10 @@ class TestReportProgress:
 
 def _infer_input(**kw: Any) -> RunInferentialSensorsInput:
     base: dict[str, Any] = {
+        # The safety screen is a tenant-scoped call into apps/guardrail
+        # (TASK-737: `X-Tenant-Id` mandatory), so both workflow call sites now thread
+        # the tenant onto this input; without it the safety sensor degrades by design.
+        "tenant_id": "11111111-1111-1111-1111-111111111111",
         "note_text": "Patient stable; continue current plan.",
         "transcript_text": "Patient has hypertension.",
         # the SYSTEM harness.judge selection the workflow threads onto the
@@ -1162,7 +1166,7 @@ class TestRunInferentialSensors:
         judge = _StubJudge()
         granite = _FakeGranite(dimensions={"harm": False, "violence": False})
         monkeypatch.setattr(activities, "_build_runtime_judge", lambda *a, **k: judge)
-        monkeypatch.setattr(activities, "_granite_client", lambda s: granite)
+        monkeypatch.setattr(activities, "_safety_screen_client", lambda s, t: granite)
 
         result = await env.run(activities.run_inferential_sensors, _infer_input())
 
@@ -1187,8 +1191,8 @@ class TestRunInferentialSensors:
         monkeypatch.setattr(activities, "_build_runtime_judge", lambda *a, **k: _StubJudge())
         monkeypatch.setattr(
             activities,
-            "_granite_client",
-            lambda s: _FakeGranite(dimensions={"harm": False, "violence": True}),
+            "_safety_screen_client",
+            lambda s, t: _FakeGranite(dimensions={"harm": False, "violence": True}),
         )
 
         result = await env.run(
@@ -1206,7 +1210,7 @@ class TestRunInferentialSensors:
         judge = _StubJudge(unsupported_markers=("penicillin",))
         monkeypatch.setattr(activities, "_build_runtime_judge", lambda *a, **k: judge)
         monkeypatch.setattr(
-            activities, "_granite_client", lambda s: _FakeGranite(dimensions={"harm": False})
+            activities, "_safety_screen_client", lambda s, t: _FakeGranite(dimensions={"harm": False})
         )
 
         result = await env.run(
@@ -1236,8 +1240,8 @@ class TestRunInferentialSensors:
         monkeypatch.setattr(activities, "_build_runtime_judge", lambda *a, **k: _StubJudge())
         monkeypatch.setattr(
             activities,
-            "_granite_client",
-            lambda s: _FakeGranite(error=GraniteServiceError("ollama offline")),
+            "_safety_screen_client",
+            lambda s, t: _FakeGranite(error=SafetyScreenError("ollama offline")),
         )
 
         result = await env.run(
@@ -1258,7 +1262,7 @@ class TestRunInferentialSensors:
 
         monkeypatch.setattr(activities, "_build_runtime_judge", _boom)
         monkeypatch.setattr(
-            activities, "_granite_client", lambda s: _FakeGranite(dimensions={"harm": False})
+            activities, "_safety_screen_client", lambda s, t: _FakeGranite(dimensions={"harm": False})
         )
 
         result = await env.run(
@@ -1317,7 +1321,7 @@ class TestRunInferentialSensorsLiveAssurance:
         judge = _StubJudge(unsupported_markers=("penicillin",))
         monkeypatch.setattr(activities, "_build_runtime_judge", lambda *a, **k: judge)
         monkeypatch.setattr(
-            activities, "_granite_client", lambda s: _FakeGranite(dimensions={"harm": False})
+            activities, "_safety_screen_client", lambda s, t: _FakeGranite(dimensions={"harm": False})
         )
         fake = _FakeAssuranceApi()
         monkeypatch.setattr(activities, "_progress_api_client", lambda s: fake)
@@ -1349,7 +1353,7 @@ class TestRunInferentialSensorsLiveAssurance:
     async def test_no_publish_when_live_assurance_disabled(self, env, monkeypatch):
         monkeypatch.setattr(activities, "_build_runtime_judge", lambda *a, **k: _StubJudge())
         monkeypatch.setattr(
-            activities, "_granite_client", lambda s: _FakeGranite(dimensions={"harm": False})
+            activities, "_safety_screen_client", lambda s, t: _FakeGranite(dimensions={"harm": False})
         )
         fake = _FakeAssuranceApi()
         monkeypatch.setattr(activities, "_progress_api_client", lambda s: fake)
@@ -1365,7 +1369,7 @@ class TestRunInferentialSensorsLiveAssurance:
 
         monkeypatch.setattr(activities, "_build_runtime_judge", lambda *a, **k: _StubJudge())
         monkeypatch.setattr(
-            activities, "_granite_client", lambda s: _FakeGranite(dimensions={"harm": False})
+            activities, "_safety_screen_client", lambda s, t: _FakeGranite(dimensions={"harm": False})
         )
         fake = _FakeAssuranceApi(error=ApiServiceError("redis down"))
         monkeypatch.setattr(activities, "_progress_api_client", lambda s: fake)

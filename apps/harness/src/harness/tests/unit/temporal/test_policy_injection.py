@@ -301,12 +301,15 @@ class TestPolicyDrivesInferentialGate:
         judge = _StubJudge(unsupported_markers=("diabetes",))
         monkeypatch.setattr(activities, "_build_runtime_judge", lambda *a, **k: judge)
         monkeypatch.setattr(
-            activities, "_granite_client", lambda s: _FakeGranite(dimensions={"harm": False})
+            activities, "_safety_screen_client", lambda s, t: _FakeGranite(dimensions={"harm": False})
         )
 
         result = await env.run(
             activities.run_inferential_sensors,
             RunInferentialSensorsInput(
+                # tenant-scoped safety screen (TASK-737): both workflow call sites
+                # thread this; without it the safety sensor degrades by design.
+                tenant_id="11111111-1111-1111-1111-111111111111",
                 note_text="note",
                 transcript_text="hypertension",
                 citations_map=_TWO_CLAIMS,
@@ -322,12 +325,15 @@ class TestPolicyDrivesInferentialGate:
         judge = _StubJudge(unsupported_markers=("diabetes",))
         monkeypatch.setattr(activities, "_build_runtime_judge", lambda *a, **k: judge)
         monkeypatch.setattr(
-            activities, "_granite_client", lambda s: _FakeGranite(dimensions={"harm": False})
+            activities, "_safety_screen_client", lambda s, t: _FakeGranite(dimensions={"harm": False})
         )
 
         result = await env.run(
             activities.run_inferential_sensors,
             RunInferentialSensorsInput(
+                # tenant-scoped safety screen (TASK-737): both workflow call sites
+                # thread this; without it the safety sensor degrades by design.
+                tenant_id="11111111-1111-1111-1111-111111111111",
                 note_text="note",
                 transcript_text="hypertension",
                 citations_map=_TWO_CLAIMS,
@@ -344,11 +350,14 @@ class TestPolicyDrivesInferentialGate:
         judge = _StubJudge()
         granite = _FakeGranite(dimensions={"harm": True})  # would FLAG if it ran
         monkeypatch.setattr(activities, "_build_runtime_judge", lambda *a, **k: judge)
-        monkeypatch.setattr(activities, "_granite_client", lambda s: granite)
+        monkeypatch.setattr(activities, "_safety_screen_client", lambda s, t: granite)
 
         result = await env.run(
             activities.run_inferential_sensors,
             RunInferentialSensorsInput(
+                # tenant-scoped safety screen (TASK-737): both workflow call sites
+                # thread this; without it the safety sensor degrades by design.
+                tenant_id="11111111-1111-1111-1111-111111111111",
                 note_text="note",
                 transcript_text="t",
                 citations_map={"claims": []},
@@ -378,7 +387,7 @@ class TestJudgeSelectionFailClosed:
 
         granite = _FakeGranite(dimensions={"harm": False})  # would flag if ever run
         monkeypatch.setattr(activities, "_build_runtime_judge", _must_not_build)
-        monkeypatch.setattr(activities, "_granite_client", lambda s: granite)
+        monkeypatch.setattr(activities, "_safety_screen_client", lambda s, t: granite)
 
         import logging
 
@@ -386,6 +395,9 @@ class TestJudgeSelectionFailClosed:
             result = await env.run(
                 activities.run_inferential_sensors,
                 RunInferentialSensorsInput(
+                # tenant-scoped safety screen (TASK-737): both workflow call sites
+                # thread this; without it the safety sensor degrades by design.
+                tenant_id="11111111-1111-1111-1111-111111111111",
                     note_text="note",
                     transcript_text="hypertension",
                     citations_map=_TWO_CLAIMS,
@@ -409,12 +421,15 @@ class TestJudgeSelectionFailClosed:
             lambda *a, **k: (_ for _ in ()).throw(AssertionError("must not build")),
         )
         monkeypatch.setattr(
-            activities, "_granite_client", lambda s: _FakeGranite(dimensions={"harm": False})
+            activities, "_safety_screen_client", lambda s, t: _FakeGranite(dimensions={"harm": False})
         )
 
         result = await env.run(
             activities.run_inferential_sensors,
             RunInferentialSensorsInput(
+                # tenant-scoped safety screen (TASK-737): both workflow call sites
+                # thread this; without it the safety sensor degrades by design.
+                tenant_id="11111111-1111-1111-1111-111111111111",
                 note_text="note",
                 transcript_text="hypertension",
                 citations_map=_TWO_CLAIMS,
