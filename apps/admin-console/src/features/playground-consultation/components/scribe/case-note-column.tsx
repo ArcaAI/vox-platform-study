@@ -20,6 +20,7 @@ import {
   IconClipboardCheck,
   IconCopy,
   IconDeviceFloppy,
+  IconLayoutList,
   IconFileText,
   IconPencil,
   IconShieldCheck,
@@ -55,6 +56,10 @@ import {
 } from '../../api';
 import { CitationEvidencePanel } from './citation-evidence-panel';
 import { HighlightedNoteText } from './highlighted-note-text';
+import { ClinicalSuggestionsPanel } from './clinical-suggestions-panel';
+import { CorrectionProposalsPanel } from './correction-proposals-panel';
+import { composeAutofill, formatSoapSections } from '../../lib/soap-autofill';
+import type { ClinicalSuggestionSet, CorrectionProposalSet } from '../../api/pending-contracts';
 
 /** Ordered vitals for the Objective grid — only present values render. */
 function vitalCells(vitals: LiveSummaryVitals): Array<{ label: string; value: string }> {
@@ -235,6 +240,21 @@ export interface CaseNoteColumnProps {
    * to do, and it would be worse here because the draft is a rewrite of the transcript.
    */
   namedEntities?: NamedEntitiesAggregate | null;
+  /**
+   * W2/R3 — spelling / medical-term / drug-name correction PROPOSALS.
+   *
+   * ⚠ No transport exists yet. `consultation.proposeCorrections` runs in the harness and its
+   * output is an in-memory `NodeActivityResult` — there is no Prisma model, no gateway route
+   * and no DTO, so nothing feeds this prop today. TASK-796 is brokering the contract; the
+   * shape lives in `api/pending-contracts.ts` so exactly one module changes when it lands.
+   *
+   * An accepted proposal is written through `editor.change` — the clinician's OWN buffer —
+   * so it is a clinician edit, never a machine write, and the R5 two-writer contract in
+   * `use-note-editor.ts` is untouched.
+   */
+  correctionProposals?: CorrectionProposalSet | null;
+  /** W2/R3 — intelligent suggestions. Same "no transport yet" caveat as above. */
+  suggestions?: ClinicalSuggestionSet | null;
 }
 
 export function CaseNoteColumn(props: CaseNoteColumnProps) {
@@ -260,6 +280,8 @@ export function CaseNoteColumn(props: CaseNoteColumnProps) {
     editor,
     loopActivity = [],
     namedEntities = null,
+    correctionProposals = null,
+    suggestions = null,
   } = props;
   const [overrideSafety, setOverrideSafety] = useState(false);
   const noteFieldId = useId();
@@ -282,6 +304,21 @@ export function CaseNoteColumn(props: CaseNoteColumnProps) {
     () => Object.entries(namedEntities?.entities ?? {}).filter(([, items]) => Array.isArray(items) && items.length > 0),
     [namedEntities],
   );
+
+  // W2 — the SOAP block an autofill would insert. Empty when the live stream has no
+  // sections, which is what hides the affordance entirely rather than offering a no-op.
+  const autofillBlock = useMemo(() => formatSoapSections(live?.sections ?? []), [live]);
+
+  /**
+   * Corrections rewrite text, so they are offered live ONLY while the clinician is editing —
+   * that is the only moment a buffer exists to write into. Outside it they stay visible but
+   * inert, with the reason stated (rule 11 §5: a disabled control needs a visible reason).
+   */
+  const correctionsDisabledReason = approved
+    ? 'This note is signed — corrections can no longer be applied.'
+    : isEditing
+      ? null
+      : 'Choose "Edit note" to accept or reject a correction.';
 
   const provenance = useMemo(() => {
     const meta = draft?.structuredData;
@@ -419,9 +456,26 @@ export function CaseNoteColumn(props: CaseNoteColumnProps) {
                   className="min-h-64 flex-1 resize-none text-sm leading-relaxed"
                   aria-describedby={`${noteFieldId}-hint`}
                 />
-                <p id={`${noteFieldId}-hint`} className="text-muted-foreground text-xs">
-                  Transcription and drafting continue while you edit. A newer machine draft is offered, never applied on its own.
-                </p>
+                <div className="flex flex-wrap items-center gap-2">
+                  <p id={`${noteFieldId}-hint`} className="text-muted-foreground text-xs">
+                    Transcription and drafting continue while you edit. A newer machine draft is offered, never applied on its own.
+                  </p>
+                  {/* W2/R3 — autofill the SOAP sections the live stream is already producing.
+                      Explicitly clinician-initiated, and it APPENDS rather than replaces, so it
+                      can never destroy typed text (see `lib/soap-autofill.ts`). */}
+                  {autofillBlock ? (
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      className="ms-auto"
+                      onClick={() => editor.change(composeAutofill(editor.value, autofillBlock))}
+                    >
+                      <IconLayoutList aria-hidden />
+                      Fill from live summary
+                    </Button>
+                  ) : null}
+                </div>
               </div>
             ) : (
               <article aria-label="Personalized draft note" className="text-sm leading-relaxed whitespace-pre-wrap">
@@ -550,6 +604,18 @@ export function CaseNoteColumn(props: CaseNoteColumnProps) {
             </div>
           </div>
         ) : null}
+
+        <CorrectionProposalsPanel
+          proposalSet={correctionProposals}
+          // Checked against what the clinician is actually looking at: the buffer while
+          // editing, the persisted draft otherwise. A proposal whose offsets stop matching
+          // simply stops being offered.
+          text={editor ? editor.value : (draft?.content ?? '')}
+          onAccept={(next) => editor?.change(next)}
+          disabledReason={correctionsDisabledReason}
+        />
+
+        <ClinicalSuggestionsPanel suggestionSet={suggestions} />
 
         {draft ? (
           <CitationEvidencePanel
