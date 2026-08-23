@@ -28,6 +28,7 @@ from guardrail.core.tenant_config import (
     SYSTEM_TENANT_ID,
     TASK_KEY_GUARDRAIL_VALIDATE,
     TenantConfigResolver,
+    TenantConfigUnavailableError,
 )
 
 TENANT_A = "11111111-1111-1111-1111-111111111111"
@@ -98,11 +99,13 @@ async def test_single_flight_propagates_a_failure_to_every_waiter() -> None:
             raise RuntimeError("db down")
 
     r = _Boom({})
-    # A DB error is fail-SAFE for tuning (empty keys), so every waiter sees the
-    # same empty resolution — and only one attempt was made.
-    results = await asyncio.gather(*(r.resolve(TENANT_A) for _ in range(20)))
-    assert all(cfg.provider is None for cfg in results)
-    assert len(r.loads) == 2  # tenant miss + SYSTEM widening, once each
+    # A DB error is a FAILED READ, not an absent row (TASK-799 F-08), so every
+    # waiter sees the same raise — and only one attempt was made.
+    results = await asyncio.gather(
+        *(r.resolve(TENANT_A) for _ in range(20)), return_exceptions=True
+    )
+    assert all(isinstance(e, TenantConfigUnavailableError) for e in results)
+    assert len(r.loads) == 1  # one coalesced attempt; no SYSTEM widening after a failure
 
 
 # ---------------------------------------------------------------------------

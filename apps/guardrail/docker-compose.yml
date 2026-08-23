@@ -1,13 +1,12 @@
 # ── Guardrail docker-compose (local dev / single-node) ───────────────────────
 #
 # Architecture:
-#   guardrail  — FastAPI service (GLiNER ONNX + OpenAI-compatible LLM judge)
+#   guardrail  — FastAPI service (policy only; every engine is delegated)
 #   redis      — job queue + result cache
 #
-# The LLM engine is external (LM Studio / vLLM / llama.cpp). Point
-# GUARDRAIL_OPENAI_COMPAT_BASE_URL at it.
-# GLiNER model downloads from HuggingFace on first boot (~150 MB) and is
-# cached in the `hf-cache` volume.
+# Guardrail hosts NO model and NO LLM: medical validation posts to apps/text's
+# judge lane, PII/groundedness to apps/nlp, and provider/model come from
+# core."AiTaskDefault" per tenant. There is nothing here to point at an engine.
 # ─────────────────────────────────────────────────────────────────────────────
 
 services:
@@ -18,45 +17,23 @@ services:
       target: production
     ports:
       - "8863:8863"
-    volumes:
-      # Persist the GLiNER ONNX model across restarts
-      - hf-cache:/app/.hf-cache
     environment:
-      # ── GLiNER ONNX (content safety / adversarial / PII) ─────────────────
-      GUARDRAIL_GLINER_ENABLED: "true"
-      GUARDRAIL_GLINER_MODEL_ID: hivetrace/gliner-guard-uniencoder-onnx
-      GUARDRAIL_GLINER_PRECISION: fp32
-      GUARDRAIL_GLINER_CLASSIFICATION_THRESHOLD: "0.4"
-      GUARDRAIL_GLINER_PII_THRESHOLD: "0.5"
-      GUARDRAIL_GLINER_MAX_WORKERS: "2"
-
       # ── Redis ─────────────────────────────────────────────────────────────
-      GUARDRAIL_REDIS_URL: redis://redis:6379/0
-      GUARDRAIL_REDIS_TASK_TTL_SECONDS: "3600"
-      GUARDRAIL_REDIS_STREAM_MAX_LEN: "10000"
-      GUARDRAIL_REDIS_CACHE_TTL_SECONDS: "1800"
+      GUARDRAIL_REDIS_REDIS_URL: redis://redis:6379/0
 
       # ── Application ───────────────────────────────────────────────────────
-      GUARDRAIL_HOST: 0.0.0.0
-      GUARDRAIL_PORT: "8863"
-      GUARDRAIL_DEBUG: "false"
-      GUARDRAIL_LOG_LEVEL: info
-      GUARDRAIL_CORS_ENABLED: "true"
-      GUARDRAIL_CORS_ORIGINS: '["http://localhost:3000","http://localhost:8080"]'
-
-      # ── Connection pooling ────────────────────────────────────────────────
-      GUARDRAIL_HTTPX_MAX_CONNECTIONS: "100"
-      GUARDRAIL_HTTPX_MAX_KEEPALIVE: "50"
+      # env_prefix is GUARDRAIL_V2_ for the root Settings; a bare GUARDRAIL_
+      # name is silently ignored (which is what these all were).
+      GUARDRAIL_V2_HOST: 0.0.0.0
+      GUARDRAIL_V2_PORT: "8863"
+      GUARDRAIL_V2_DEBUG: "false"
+      GUARDRAIL_V2_LOG_LEVEL: info
+      GUARDRAIL_V2_CORS_ENABLED: "true"
+      GUARDRAIL_V2_CORS_ORIGINS: '["http://localhost:3000","http://localhost:8080"]'
 
       # ── Observability ─────────────────────────────────────────────────────
-      GUARDRAIL_METRICS_ENABLED: "true"
-      GUARDRAIL_OTEL_ENABLED: "false"
-
-      # ── Job queue ─────────────────────────────────────────────────────────
-      GUARDRAIL_QUEUE_MAX_WAIT_S: "60.0"
-      GUARDRAIL_QUEUE_MAX_RETRIES: "3"
-      GUARDRAIL_QUEUE_RETRY_BACKOFF_S: "1.0"
-      GUARDRAIL_QUEUE_BATCH_SIZE: "10"
+      GUARDRAIL_V2_METRICS_ENABLED: "true"
+      GUARDRAIL_V2_OTEL_ENABLED: "false"
     depends_on:
       redis:
         condition: service_healthy
@@ -82,8 +59,6 @@ services:
 
 volumes:
   redis-data:
-    driver: local
-  hf-cache:
     driver: local
 
 networks:

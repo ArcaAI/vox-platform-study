@@ -11,9 +11,10 @@ short TTL cache (~60s).
        widens to the SYSTEM tenant's rows, preferring the tenant's own
        ``AiTaskDefault`` row over the SYSTEM row for the same task key
     2. the SYSTEM tenant's rows (``00000000-…``) — the platform default tier
-    3. the provider-level ``AiRuntimeProfile`` row, for TUNING only; provider
-       and model SELECTION stays fail-closed (there is no env engine left to
-       fall back to — guardrail hosts no LLM, TASK-735 Phase 2b)
+    3. the provider-level ``AiRuntimeProfile`` row, for TUNING only — resolved
+       by the SAME two tiers, so a tenant that brought its own connection can
+       tune it; provider and model SELECTION stays fail-closed (there is no env
+       engine left to fall back to — guardrail hosts no LLM, TASK-735 Phase 2b)
 
 A request with **no** ``X-Tenant-Id`` has no tenant context and therefore
 resolves SYSTEM only. It must never act as some customer tenant.
@@ -41,10 +42,13 @@ Cross-worker contract (the seed provides the SYSTEM rows):
     ``AiModel``       — ``slug`` → provider / sourceUri / metaData.azureDeployment
 The model sent to the runtime is the AiModel row's **sourceUri**, not the slug.
 
-Selection is DB-only (fail-closed at the dependency layer when the
-resolved config is empty). DB load errors are still negatively cached for one
-TTL window so an unreachable DB costs at most one attempt per tenant per TTL;
-the caller must not fall back to env for provider/model selection.
+Selection is DB-only (fail-closed at the dependency layer when the resolved
+config is empty), and an ABSENT row is the only thing that widens to SYSTEM. A
+DB read that FAILS raises :class:`TenantConfigUnavailableError` instead — it is
+neither cached nor mistaken for "no tenant opinion", because a tenant may only
+TIGHTEN relative to SYSTEM and would otherwise be silently downgraded to the
+platform floor. The caller must not fall back to env for provider/model
+selection either way.
 
 Guardrail deliberately keeps this SQL resolver rather than adopting the HTTP
 effective-config client the other services use. The read is merely extended with
@@ -190,6 +194,26 @@ class TenantSelectionVetoedError(Exception):
         super().__init__(
             f"tenant {tenant_id!r} has DISABLED its own AiTaskDefault selection "
             f"for task_key {task_key!r} — veto, not falling through to SYSTEM."
+        )
+
+
+class TenantConfigUnavailableError(Exception):
+    """The tenant's rows could not be READ — which is NOT the same as absent.
+
+    Absence means "no opinion" and legitimately widens to SYSTEM. A failed read
+    means we do not KNOW the tenant's opinion, and because a tenant may only
+    TIGHTEN relative to SYSTEM, answering with the platform row silently
+    downgrades a tenant that chose a stricter posture. Same reasoning as
+    ``TENANTLESS_PREFIX`` above: an unknown is only safe once it stops being
+    indistinguishable from a declared absence. Callers map this to HTTP 503.
+    """
+
+    def __init__(self, *, tenant_id: str, task_key: str, cause: str) -> None:
+        self.tenant_id = tenant_id
+        self.task_key = task_key
+        super().__init__(
+            f"could not read guardrail config for tenant {tenant_id!r}, task_key "
+            f"{task_key!r}: {cause} — not widening to SYSTEM."
         )
 
 
@@ -462,10 +486,10 @@ class TenantConfigResolver:
     async def _get_for_tenant(self, tenant_id: str, task_key: str) -> dict[str, str]:
         """Return ``{key: value}`` for a tenant, using/refreshing the TTL cache.
 
-        A load error is negatively cached: the empty (fail-open) result is
-        stored for the same TTL, so an unreachable DB costs at most one
-        connection attempt per tenant per TTL window — not one per request.
-        The warning logs on the attempt, not on every cached read.
+        Only a RESULT is cached — a successful load, or a veto. A load ERROR
+        raises (see :class:`TenantConfigUnavailableError`) and is not stored, so
+        a recovered DB is served immediately rather than after the TTL window.
+        Concurrent misses still cost one connection attempt, via single-flight.
         """
         now = self._time()
         cache_key = f"{task_key}::{tenant_id}"
@@ -522,14 +546,24 @@ class TenantConfigResolver:
                 keys={}, expires_at=now + self._cache_ttl_s, vetoed=True
             )
             raise
-        except Exception as exc:  # fail-safe: fall back to env defaults
+        except Exception as exc:
+            # A failed READ is not an absent row. It used to become `{}`, which
+            # `resolve()` reads as "no tenant opinion" and widens to SYSTEM —
+            # silently serving the platform floor to a tenant that may have
+            # chosen something stricter, for a whole TTL window, with nothing
+            # raised anywhere. It is also deliberately NOT cached: a veto is a
+            # stable declaration and may be, but a transient error must not
+            # outlive the condition that caused it. Single-flight above already
+            # bounds the concurrent cost of an unreachable DB to one attempt.
             logger.warning(
                 "guardrail.tenant_config.db_error",
                 tenant_id=tenant_id,
                 task_key=task_key,
                 error=str(exc),
             )
-            keys = {}
+            raise TenantConfigUnavailableError(
+                tenant_id=tenant_id, task_key=task_key, cause=str(exc)
+            ) from exc
 
         self._cache[cache_key] = _CacheEntry(
             keys=keys, expires_at=now + self._cache_ttl_s
@@ -562,7 +596,7 @@ class TenantConfigResolver:
         # consumers that have no `AiTaskDefault` row (e.g. harness atomic-fact).
         if task_key.startswith(_SLUG_TASK_KEY_PREFIX):
             return await self._load_model_by_slug(
-                task_key[len(_SLUG_TASK_KEY_PREFIX) :], model_scope
+                task_key[len(_SLUG_TASK_KEY_PREFIX) :], model_scope, tenant_id
             )
 
         task_default_scope = (
@@ -649,7 +683,7 @@ class TenantConfigResolver:
         # cost us the selection keys we already resolved above.
         if row.provider:
             try:
-                keys.update(await self._load_runtime_profile(row.provider))
+                keys.update(await self._load_runtime_profile(row.provider, tenant_id))
             except Exception as exc:  # noqa: BLE001
                 logger.warning(
                     "guardrail.tenant_config.runtime_profile_error",
@@ -659,7 +693,7 @@ class TenantConfigResolver:
         return keys
 
     async def _load_model_by_slug(
-        self, slug: str, model_scope: list[str]
+        self, slug: str, model_scope: list[str], tenant_id: str
     ) -> dict[str, str]:
         """Read one ENABLED `AiModel` row by slug (no task-key join)."""
         async with self._session_factory() as session:
@@ -680,10 +714,10 @@ class TenantConfigResolver:
             )
             rows = result.all()
 
-        # Prefer the SYSTEM catalog row over a tenant-owned copy of the slug.
+        # Tenant-first, SYSTEM on absence — same order as the selection above.
         row = min(
             rows,
-            key=lambda r: (0 if r.model_tenant_id == SYSTEM_TENANT_ID else 1),
+            key=lambda r: self._model_rank(r.model_tenant_id, tenant_id),
             default=None,
         )
         if row is None:
@@ -702,28 +736,53 @@ class TenantConfigResolver:
                 keys[key] = value
         return keys
 
-    async def _load_runtime_profile(self, provider: str) -> dict[str, str]:
-        """Read the SYSTEM provider-DEFAULT profile row for ``provider``.
+    async def _load_runtime_profile(
+        self, provider: str, tenant_id: str
+    ) -> dict[str, str]:
+        """Read the provider-DEFAULT profile row for ``provider``, tenant-first.
 
         Only the ``modelSlug == ''`` row carries provider-level tuning; a
         model-specific row is per-request territory and is ignored here. An
         absent row returns ``{}``, leaving every engine value on its env default.
+
+        Resolution matches the selection above — the request tenant's own row
+        wins, SYSTEM applies only on ABSENCE. This read used to pin SYSTEM
+        unconditionally, so a tenant that brought its own connection still ran on
+        the platform's temperature/maxTokens/timeoutS and could not express its
+        own. Widening is ROW-level, as it is for the selection: a tenant row is
+        that tenant's whole opinion and is never blended with SYSTEM's, so a
+        profile can't end up half one tier and half the other.
+
+        There is no three-state veto here: ``AiTaskDefault`` declares one for
+        SELECTION, whereas a profile is TUNING (an absent one is byte-identical
+        to the env path), so a DISABLED row means "no opinion" and stays filtered
+        out exactly as before.
         """
+        profile_scope = (
+            [SYSTEM_TENANT_ID, tenant_id]
+            if tenant_id != SYSTEM_TENANT_ID
+            else [SYSTEM_TENANT_ID]
+        )
+
         async with self._session_factory() as session:
             result = await session.execute(
                 select(
+                    AiRuntimeProfileRead.tenant_id,
                     AiRuntimeProfileRead.temperature,
                     AiRuntimeProfileRead.max_tokens,
                     AiRuntimeProfileRead.timeout_s,
                 ).where(
-                    AiRuntimeProfileRead.tenant_id == SYSTEM_TENANT_ID,
+                    AiRuntimeProfileRead.tenant_id.in_(profile_scope),
                     AiRuntimeProfileRead.provider == provider,
                     AiRuntimeProfileRead.model_slug == "",
                     AiRuntimeProfileRead.resource_status == "ENABLED",
                 )
             )
-            row = result.first()
+            rows = result.all()
 
+        row = min(
+            rows, key=lambda r: self._model_rank(r.tenant_id, tenant_id), default=None
+        )
         if row is None:
             return {}
 
@@ -737,18 +796,33 @@ class TenantConfigResolver:
         return profile
 
     @staticmethod
+    def _model_rank(model_tenant_id: str | None, tenant_id: str) -> int:
+        """Catalog-row preference: the request tenant's own row, then SYSTEM.
+
+        ``AiModel`` is shared-read across ``[SYSTEM, request tenant]``, and the
+        tie-break used to prefer SYSTEM unconditionally — so a tenant that
+        registered its own row for a slug lost to the platform's copy of it,
+        which is the one thing a tenant's row cannot mean. ``None`` is the outer
+        join finding nothing at all and must lose to any real row.
+        """
+        if model_tenant_id == tenant_id:
+            return 0
+        if model_tenant_id == SYSTEM_TENANT_ID:
+            return 1
+        return 2
+
+    @staticmethod
     def _row_rank(row: Any, tenant_id: str) -> tuple[int, int]:
         """Preference rank for a joined row.
 
         First: the tenant's OWN ``AiTaskDefault`` row over the SYSTEM row
         (tenant-first resolution, TASK-735 Phase 1). Second, as a tie-break
-        within the winning owner: the SYSTEM catalog ``AiModel`` row over a
-        tenant-owned copy of the same slug (shared-read — matches
-        ``test_db_prefers_system_model_row_over_tenant_copy``).
+        within the winning owner: the same tenant-first order over the joined
+        ``AiModel`` catalog row (``_model_rank``).
         """
         return (
             0 if row.default_tenant_id == tenant_id else 1,
-            0 if row.model_tenant_id == SYSTEM_TENANT_ID else 1,
+            TenantConfigResolver._model_rank(row.model_tenant_id, tenant_id),
         )
 
     def clear_cache(self) -> None:

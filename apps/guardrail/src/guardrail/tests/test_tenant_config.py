@@ -25,6 +25,7 @@ from guardrail.core.tenant_config import (
     AiTaskDefaultRead,
     GuardrailTenantConfig,
     TenantConfigResolver,
+    TenantConfigUnavailableError,
     TenantSelectionVetoedError,
     build_judge_client,
     is_tenantless_marker,
@@ -249,57 +250,57 @@ async def test_vetoed_tenant_does_not_affect_a_different_tenants_resolution() ->
 
 
 # ---------------------------------------------------------------------------
-# Fail-safe: DB errors resolve to empty (caller falls back to env) and are
-# negatively cached for one TTL window — an env-only
-# deployment without a reachable Postgres pays at most one connection attempt
-# per tenant per TTL, not one per request.
+# A failed READ is not an absent row (TASK-799 F-08). It used to resolve to
+# empty and be negatively cached, which `resolve()` reads as "no tenant opinion"
+# and widens to SYSTEM — silently serving the platform safety FLOOR to a tenant
+# that may have chosen something stricter, for a whole TTL window. It now raises,
+# and is deliberately NOT cached: a veto is a stable declaration and may be
+# cached, a transient error must not outlive the condition that caused it.
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.asyncio
-async def test_db_error_resolves_to_empty_config() -> None:
+async def test_db_error_raises_rather_than_resolving_to_empty() -> None:
     r = _resolver({})
     r.raise_on = {TENANT_A, SYSTEM_TENANT_ID}
 
-    cfg = await r.resolve(TENANT_A)
-
-    assert cfg.provider is None
-    assert cfg.model is None
-    assert cfg.azure_deployment is None
+    with pytest.raises(TenantConfigUnavailableError):
+        await r.resolve(TENANT_A)
 
 
 @pytest.mark.asyncio
-async def test_db_error_is_negatively_cached_within_ttl() -> None:
-    r = _resolver({})
-    r.raise_on = {TENANT_A, SYSTEM_TENANT_ID}
+async def test_db_error_does_not_widen_to_system() -> None:
+    # SYSTEM has a perfectly usable row; the tenant's read failed, so we do not
+    # KNOW the tenant has no opinion and must not answer with the platform's.
+    r = _resolver({SYSTEM_TENANT_ID: {KEY_PROVIDER: "lm-studio"}})
+    r.raise_on = {TENANT_A}
 
-    await r.resolve(TENANT_A)
-    await r.resolve(TENANT_A)  # second resolve within TTL
+    with pytest.raises(TenantConfigUnavailableError):
+        await r.resolve(TENANT_A)
 
-    # One load attempt per tenant (request tenant + SYSTEM widening), not two.
-    assert r.calls == [TENANT_A, SYSTEM_TENANT_ID]
+    assert r.calls == [TENANT_A]  # the SYSTEM widening never ran
 
 
 @pytest.mark.asyncio
-async def test_db_error_negative_cache_expires_with_ttl() -> None:
+async def test_db_error_is_not_cached_so_recovery_is_immediate() -> None:
     clock = _Clock()
     data = {TENANT_A: {KEY_PROVIDER: "vllm"}}
     r = _resolver(data, clock=clock, ttl=60)
     r.raise_on = {TENANT_A}
 
-    first = await r.resolve(TENANT_A)
-    assert first.provider is None  # errored -> empty (fail-open)
+    with pytest.raises(TenantConfigUnavailableError):
+        await r.resolve(TENANT_A)
 
     r.raise_on.clear()
-    clock.t = 61.0  # negative entry expired
-    second = await r.resolve(TENANT_A)
-    assert second.provider == "vllm"  # refetched after the TTL window
+    # No clock advance: a recovered DB is served at once, not after the TTL.
+    assert (await r.resolve(TENANT_A)).provider == "vllm"
 
 
 @pytest.mark.asyncio
-async def test_db_error_one_session_attempt_per_tenant_per_ttl() -> None:
-    # Real _load_from_db path: a failing session factory is invoked once per
-    # tenant per TTL window even across repeated resolves.
+async def test_db_error_costs_one_session_attempt_per_resolve() -> None:
+    # Real _load_from_db path. Load-shedding for an unreachable DB comes from
+    # single-flight coalescing (concurrent callers share one attempt), not from
+    # caching the failure — see test_task777_policy_plane.py.
     count = 0
 
     def factory() -> _FakeSession:
@@ -309,10 +310,11 @@ async def test_db_error_one_session_attempt_per_tenant_per_ttl() -> None:
 
     r = TenantConfigResolver(session_factory=factory, cache_ttl_s=60)
 
-    await r.resolve(TENANT_A)
-    await r.resolve(TENANT_A)
+    for _ in range(2):
+        with pytest.raises(TenantConfigUnavailableError):
+            await r.resolve(TENANT_A)
 
-    assert count == 2  # TENANT_A + SYSTEM widening, once each — not 4
+    assert count == 2  # one attempt per resolve; no SYSTEM widening after a failure
 
 
 # ---------------------------------------------------------------------------
@@ -525,16 +527,17 @@ async def test_db_disabled_system_row_is_absent_not_a_veto() -> None:
 
 
 @pytest.mark.asyncio
-async def test_db_prefers_system_model_row_over_tenant_copy() -> None:
-    # SYSTEM task default joined against both the SYSTEM catalog row and a
-    # tenant-owned copy of the slug → the SYSTEM catalog row wins (shared-read).
+async def test_db_prefers_the_tenants_own_model_row_over_the_system_copy() -> None:
+    # SYSTEM task default joined against both catalog rows → the TENANT's own
+    # row wins (TASK-799 F-05). The tie-break used to prefer SYSTEM, which is the
+    # one thing a tenant-owned registry row cannot mean.
     rows = [
         _row(SYSTEM_TENANT_ID, TENANT_A, "lm-studio", "tenant-source-uri"),
         _row(SYSTEM_TENANT_ID, SYSTEM_TENANT_ID, "lm-studio", "system-source-uri"),
     ]
     cfg = await _db_resolver(rows).resolve(TENANT_A)
 
-    assert cfg.model == "system-source-uri"
+    assert cfg.model == "tenant-source-uri"
 
 
 @pytest.mark.asyncio
@@ -547,11 +550,9 @@ async def test_db_no_rows_resolves_empty_and_the_caller_fails_closed() -> None:
 
 
 @pytest.mark.asyncio
-async def test_db_session_error_resolves_empty_and_the_caller_fails_closed() -> None:
-    cfg = await _db_resolver(exc=RuntimeError("connection refused")).resolve(TENANT_A)
-
-    assert cfg.provider is None
-    assert cfg.model is None
+async def test_db_session_error_raises_and_the_caller_fails_closed() -> None:
+    with pytest.raises(TenantConfigUnavailableError):
+        await _db_resolver(exc=RuntimeError("connection refused")).resolve(TENANT_A)
 
 
 @pytest.mark.asyncio
