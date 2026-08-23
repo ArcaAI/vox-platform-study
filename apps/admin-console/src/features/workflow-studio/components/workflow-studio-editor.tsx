@@ -316,6 +316,7 @@ function EditorBody({ definition, etag, registryNodes }: WorkflowStudioEditorPro
           canRedo={canRedo}
           onUndo={handleUndo}
           onRedo={handleRedo}
+          sandboxDefinitionId={definition.id}
         />
       }
       footer={
