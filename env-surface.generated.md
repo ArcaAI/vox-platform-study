@@ -13,15 +13,15 @@ disagree with those declarations.
 
 | Metric | Value |
 |---|---:|
-| Declared keys (distinct) | 144 |
+| Declared keys (distinct) | 143 |
 | … of which required (`failMode: closed`) | 32 |
 | … of which secret | 31 |
-| … tier `env` | 108 |
+| … tier `env` | 107 |
 | … tier `global-kv` | 9 |
 | … tier `vault-kv` | 27 |
 | Python declared fields | 365 |
 | … distinct Python names (incl. aliases + `os.environ` reads) | 414 |
-| `turbo.json#globalEnv` entries | 545 |
+| `turbo.json#globalEnv` entries | 544 |
 
 ## Variables — the TypeScript platform surface
 
@@ -140,7 +140,6 @@ disagree with those declarations.
 | `STT_URL` | `env` | no | `http://localhost:8861` | `apps/api` | Speech-to-text service base URL (apps/stt, port 8861). |
 | `STT_WS_EGRESS_HIGH_WATERMARK_BYTES` | `env` | no | `524288` | `apps/stt` | Buffered-amount threshold above which partial transcripts are dropped. |
 | `STT_WS_RESUME_GRACE_MS` | `env` | no | `15000` | `apps/stt` | Window a disconnected STT session is held open for reconnect. |
-| `TEXT_EXTERNAL_GUARDRAIL_ENABLED` | `env` | no | `false` | `apps/text` | Gates input moderation on TEXT `/generate` (`TEXT_EXTERNAL_GUARDRAIL_` prefix). OFF is the dev/CI bypass so local runs need no guardrail service. When ON the posture is fail-CLOSED by construction: a transient error is absorbed by a bounded retry, a sustained outage rejects, and an errored guardrail NEVER allows — there is deliberately no `fail_open` option. |
 | `TEXT_PORT` | `env` | no | `8862` | `apps/text` | Port apps/text binds; the gateway keeps it only to build health-probe URLs. |
 | `TEXT_SERVICE_TOKEN` | `vault-kv` | yes | `CHANGE_ME` | `apps/api` | Shared secret on the gateway↔TEXT hop. TEXT reads it as `settings.service_token` under its `TEXT_` pydantic prefix; the gateway resolves the same name for outbound proxying and for `InternalServiceTokenGuard`'s inbound check. |
 | `TEXT_URL` | `env` | no | `http://localhost:8862` | `apps/api` | Text service base URL (apps/text, port 8862). |
