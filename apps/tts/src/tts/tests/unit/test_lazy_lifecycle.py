@@ -50,8 +50,29 @@ def test_warmup_is_disabled_by_default() -> None:
 def test_warmup_can_be_re_enabled_for_fail_at_boot_operators(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    """The switch moved to the control plane, so `TTS_WARMUP_ENABLED` is inert.
+
+    TASK-799 lane C. It is still fully available to an operator — as
+    `tts.warmupEnabled`, written once through the settings registry rather than
+    per deployment in an env file — and it still defaults OFF. What changed is
+    only which lane sets it, so the assertion tests the new lane rather than
+    dropping the coverage.
+    """
+    from tts.core.control_plane import apply_control_plane
+
     monkeypatch.setenv("TTS_WARMUP_ENABLED", "true")
-    assert Settings().warmup_enabled is True
+    settings = Settings()
+    assert settings.warmup_enabled is False
+
+    apply_control_plane(
+        settings,
+        {
+            "settings": {
+                "tts.warmupEnabled": {"value": True, "dataType": "boolean", "source": "db"}
+            }
+        },
+    )
+    assert settings.warmup_enabled is True
 
 
 # ── registration no longer gated on a successful load ───────────────────────

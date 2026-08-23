@@ -206,7 +206,12 @@ def make_fake_stream_sdk(*, cancel=False):
 def _config(key: str = "secret-key", region: str = "eastus") -> AzureSpeechConfig:
     # Api_key/region are no longer name-populatable (BYOK-only key,
     # aliased region); construct via model_copy as the router applies an override.
-    cfg = AzureSpeechConfig(enabled=True)
+    # `model_copy(update=…)`, not kwargs: these fields carry a `validation_alias`
+    # naming a variable nobody sets (TASK-799 lane C closes their env path), and
+    # `populate_by_name` is off — so the field NAME does not construct them either.
+    # This is the same mechanism `routing/router._build_override_engine` uses to
+    # apply a per-tenant provider override.
+    cfg = AzureSpeechConfig().model_copy(update={"enabled": True})
     return cfg.model_copy(update={"api_key": SecretStr(key), "region": region})
 
 

@@ -42,7 +42,12 @@ def _cfg(**kw) -> SarvamConfig:
     # Api_key is no longer env/name-populatable (BYOK-only); construct
     # via model_copy exactly as the router applies a per-tenant override.
     api_key = kw.pop("api_key", "sarvam-key")
-    cfg = SarvamConfig(enabled=True, **kw)
+    # `model_copy(update=…)`, not kwargs: these fields carry a `validation_alias`
+    # naming a variable nobody sets (TASK-799 lane C closes their env path), and
+    # `populate_by_name` is off — so the field NAME does not construct them either.
+    # This is the same mechanism `routing/router._build_override_engine` uses to
+    # apply a per-tenant provider override.
+    cfg = SarvamConfig().model_copy(update={"enabled": True, **kw})
     return cfg.model_copy(update={"api_key": SecretStr(api_key)})
 
 
@@ -147,7 +152,7 @@ async def test_live_sarvam_ml():
     assert await provider.health() is True
     req = SynthesisRequest(
         text="രോഗിക്ക് metformin 500 mg നൽകി.",
-        provider_voice=settings.sarvam.voice_ml,
+        provider_voice=VoiceCatalog().default_binding("sarvam", "ml") or "ishita",
         locale="ml-IN",
         fmt=AudioFormat.PCM,
     )

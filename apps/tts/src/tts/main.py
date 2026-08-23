@@ -8,6 +8,8 @@ provider registry, voice catalog, routing, and the
 
 from __future__ import annotations
 
+import asyncio
+import contextlib
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
@@ -43,10 +45,39 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     if not hasattr(app.state, "effective_config_client"):
         from tts.core.effective_config import EffectiveConfigClient
 
+        # `peer_service_token()`, not a raw field read. This call site used to
+        # pass `settings.service_token` directly — the legacy per-service
+        # credential — so a deployment configured the way owner decision D-D
+        # specifies (shared `INTERNAL_ACCESS_TOKEN` set, legacy empty) sent an
+        # EMPTY token here and 401'd every config pull, negative-cached it, and
+        # degraded silently to env values with one warning per minute. That is
+        # assessment F-06, and it was live in tts at two call sites. The legacy
+        # field is now gone, so there is nothing left to bypass.
         app.state.effective_config_client = EffectiveConfigClient(
             base_url=settings.gateway_url,
-            token=settings.service_token.get_secret_value(),
+            token=settings.peer_service_token(),
         )
+
+    # NOTE there is deliberately NO control-plane fetch here. The settings
+    # overlay rides the READ-TRIGGERED path instead
+    # (`effective_config.refresh_model_cache_retention`, called from the speech
+    # endpoint), preserving this service's boot contract: construction performs
+    # no I/O, so a process starts even with the gateway down and a service that
+    # never synthesises never polls. Pulling at boot would also put a network
+    # round-trip into every test that exercises the lifespan.
+
+    # Push invalidation (owner decision D-5) is NOT started here. The connection
+    # and its subscriber are opened LAZILY, on the first config refresh — i.e.
+    # the first synthesis — by `effective_config.ensure_invalidation_listener`.
+    #
+    # That is not a stylistic choice. `test_keyless_readiness_task642` pins the
+    # invariant that reaching `/health/ready` opens ZERO network connections,
+    # because a keyless deployment must become Ready without any I/O at all; a
+    # Redis connect in the lifespan breaks it directly. Deferring also keeps the
+    # existing "a service that never synthesizes never polls" property, and any
+    # process actually serving traffic gets the listener on its first request.
+    app.state.config_invalidation_task = None
+    app.state.config_invalidation_redis = None
 
     registry = app.state.provider_registry
     if settings.azure.enabled and "azure" not in registry:
@@ -79,6 +110,14 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         from tts.providers.registration import register_local_provider
 
         warmup = settings.warmup_enabled
+        # Warm-up voices come from the VOICE CATALOG, the single source of
+        # provider voice names since TASK-799 lane C. The per-provider `voice` /
+        # `speaker_*` settings that held the same strings a second time are gone,
+        # and on the request path the router already resolves these bindings into
+        # `req.provider_voice`; warm-up is the one path with no request to
+        # resolve from. `None` ⇒ the catalog binds no voice for that provider at
+        # that locale, and `warmup()` becomes a no-op rather than guessing.
+        catalog = app.state.voice_catalog
 
         if settings.kokoro.enabled and "kokoro" not in registry:
             from tts.providers.kokoro import KokoroProvider
@@ -86,7 +125,11 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             await register_local_provider(
                 registry,
                 "kokoro",
-                KokoroProvider(settings.kokoro, ttl_seconds=settings.model_cache_ttl_seconds),
+                KokoroProvider(
+                    settings.kokoro,
+                    ttl_seconds=settings.model_cache_ttl_seconds,
+                    warmup_voice=catalog.default_binding("kokoro", "en"),
+                ),
                 warmup=warmup,
                 logger=logger,
             )
@@ -98,7 +141,9 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
                 registry,
                 "indic_parler",
                 IndicParlerProvider(
-                    settings.indic_parler, ttl_seconds=settings.model_cache_ttl_seconds
+                    settings.indic_parler,
+                    ttl_seconds=settings.model_cache_ttl_seconds,
+                    warmup_speaker=catalog.default_binding("indic_parler", "ml"),
                 ),
                 warmup=warmup,
                 logger=logger,
@@ -126,7 +171,9 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         app.state.service_release_task = start_registration(
             http_client=registration_client,
             gateway_url=settings.gateway_url,
-            service_token=settings.service_token.get_secret_value(),
+            # The shared internal credential, via the accessor — see the note on
+            # the effective-config client above (assessment F-06).
+            service_token=settings.peer_service_token(),
             build_info=BuildInfoReader().get_build_info(),
             environment=settings.otel_deployment_environment,
         )
@@ -135,6 +182,16 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
     logger.info("tts.started", providers=registry.list_providers())
     yield
+
+    invalidation_task = getattr(app.state, "config_invalidation_task", None)
+    if invalidation_task is not None:
+        invalidation_task.cancel()
+        with contextlib.suppress(asyncio.CancelledError, Exception):
+            await invalidation_task
+    invalidation_redis = getattr(app.state, "config_invalidation_redis", None)
+    if invalidation_redis is not None:
+        with contextlib.suppress(Exception):
+            await invalidation_redis.aclose()
 
     await stop_registration(app.state.service_release_task)
     if app.state.service_release_http_client is not None:

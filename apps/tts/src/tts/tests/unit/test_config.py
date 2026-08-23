@@ -10,7 +10,7 @@ class TestDefaults:
         assert Settings().port == 8865
 
     def test_service_token_empty_by_default(self) -> None:
-        assert Settings().service_token.get_secret_value() == ""
+        assert Settings().internal_access_token.get_secret_value() == ""
 
     def test_synthesis_defaults(self) -> None:
         s = Settings()
@@ -32,9 +32,23 @@ class TestEnvPrefix:
         monkeypatch.setenv("TTS_PORT", "9999")
         assert Settings().port == 9999
 
-    def test_service_token_from_env(self, monkeypatch) -> None:
-        monkeypatch.setenv("TTS_SERVICE_TOKEN", "secret-tok")
-        assert Settings().service_token.get_secret_value() == "secret-tok"
+    def test_the_internal_credential_comes_from_the_unprefixed_shared_name(
+        self, monkeypatch
+    ) -> None:
+        """ONE internal credential, and `TTS_SERVICE_TOKEN` is not it.
+
+        The legacy per-service token is retired (TASK-799 lane C). It survived as
+        a "zero-cost backward-compatibility fallback", but the cost was that two
+        call sites read it DIRECTLY rather than through the accessor — so a
+        deployment configured the way owner decision D-D specifies (shared token
+        set, legacy empty) sent an EMPTY token on those hops and 401'd silently.
+        The shared name is deliberately UNPREFIXED: it belongs to no one service.
+        """
+        monkeypatch.setenv("TTS_SERVICE_TOKEN", "legacy-tok")
+        monkeypatch.setenv("INTERNAL_ACCESS_TOKEN", "shared-tok")
+        settings = Settings()
+        assert settings.internal_access_token.get_secret_value() == "shared-tok"
+        assert settings.accepted_service_tokens == ("shared-tok",)
 
     def test_routing_env_var_is_not_a_selectable_default(self, monkeypatch) -> None:
         # Setting the old env var must NOT reintroduce a routing default: there is
@@ -56,10 +70,34 @@ class TestAzureCredentialByok:
         monkeypatch.setenv("AZURE_SPEECH_KEY", "shared-key-123")
         assert AzureSpeechConfig().api_key.get_secret_value() == ""
 
-    def test_region_fallback_still_env_sourced(self, monkeypatch) -> None:
+    def test_region_is_control_plane_owned_not_env_sourced(self, monkeypatch) -> None:
+        """The region left env with the rest of the connection (TASK-799 lane C).
+
+        Same mechanism as the KEY above, different reason: the key is closed
+        because it is a secret, the region because region is a DATA RESIDENCY
+        decision for a service that synthesises clinical text — it belongs to a
+        platform admin with an audit trail, not to whoever edits the env file.
+        """
+        from tts.core.control_plane import apply_control_plane
+
         monkeypatch.delenv("TTS_AZURE_REGION", raising=False)
         monkeypatch.setenv("AZURE_SPEECH_REGION", "centralindia")
-        assert AzureSpeechConfig().region == "centralindia"
+        assert AzureSpeechConfig().region == "eastus"
+
+        settings = Settings()
+        apply_control_plane(
+            settings,
+            {
+                "settings": {
+                    "tts.azure.region": {
+                        "value": "centralindia",
+                        "dataType": "string",
+                        "source": "db",
+                    }
+                }
+            },
+        )
+        assert settings.azure.region == "centralindia"
 
 
 class TestSarvamCredentialByok:
