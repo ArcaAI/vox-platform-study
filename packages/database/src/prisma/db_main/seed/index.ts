@@ -18,6 +18,7 @@ import { seedAgentGoldenLibrary } from './07a-agent-golden-library';
 import { seedLiveAgentDefaults } from './07c-live-agent-defaults';
 import { seedDeptFreePreSummaryDefault } from './07d-dept-free-pre-summary-default';
 import { seedConsultationLoopDefaults } from './07e-consultation-loop-defaults';
+import { seedArcaaiDepartmentContextSchemas } from './07f-arcaai-department-context-schemas';
 import { seedDnaWritingStyle } from './08-dna-writing-style';
 import { seedConsultation } from './09-consultation';
 import { seedAuditLog } from './10-audit-log';
@@ -35,6 +36,7 @@ import { seedAiRuntimeProfile } from './18-ai-runtime-profile';
 import { seedTenantTtsConfig } from './19-tenant-tts-config';
 import { seedAiPriceBook } from './20-ai-price-book';
 import { seedWorkflowDefinition } from './21-workflow-definition';
+import { seedArcaaiWorkflowAuthoring } from './23-arcaai-workflow-authoring';
 import { seedConsentGrant } from './22-consent-grant';
 import { seedUser } from './91-user';
 import { seedBootstrapAdmin } from './92-bootstrap-admin';
@@ -209,6 +211,13 @@ export const seed = async () => {
     // rows and neither existed on a fresh install. CREATE-ONLY.
     await seedConsultationLoopDefaults(client);
     console.log('');
+    // Department-scoped consultation vocabularies for the two ArcaAI clinical
+    // departments. Runs AFTER 07e so the tenant-wide default already exists —
+    // these SHADOW it per department rather than replacing it. CREATE-ONLY.
+    if (isPhaseEnabled('07f-arcaai-department-context-schemas', mode)) {
+      await seedArcaaiDepartmentContextSchemas(client);
+      console.log('');
+    }
 
     // Phase 4: Depends on Phase 3
     // Demo accounts (*@example.com) with a documented default password. In
@@ -287,6 +296,15 @@ export const seed = async () => {
     // back to when a tenant has authored none (TASK-720). SYSTEM-tenant, CREATE-ONLY.
     await seedWorkflowDefinition(client);
     console.log('');
+    // The tenant-authored consultation workflows (TASK-798) — ArcaAI-owned,
+    // PUBLISHED, on the real `consultation` palette. Runs after 21 so the
+    // platform default exists first. Its WorkflowAssignment rows are GATED on
+    // the Substrate-A exclusivity mechanism and print a loud warning when they
+    // are skipped; see `substrate-exclusivity-guard.ts`.
+    if (isPhaseEnabled('23-arcaai-workflow-authoring', mode)) {
+      await seedArcaaiWorkflowAuthoring(client);
+      console.log('');
+    }
 
     // Phase 5: Depends on Phase 4 — synthetic clinician writing samples and
     // synthetic, Vault-encrypted PHI. Never outside development/test.

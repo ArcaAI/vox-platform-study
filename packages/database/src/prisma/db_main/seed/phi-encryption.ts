@@ -198,6 +198,15 @@ const SEED_PHI_MODELS = {
       { plaintext: 'styleText', ciphertext: 'encryptedStyleText' },
     ],
   },
+  // TASK-798 — the Workbench's saved SYNTHETIC test payload. Mirrors the read-side registry
+  // (`phi-read-decrypt.ts`: `encryptedInput: { plaintext: 'input', json: true }`) exactly; the
+  // plaintext `input` column was dropped, so ciphertext is the system of record. Registered even
+  // though the contract forbids real patient data in a fixture, because the column is encrypted
+  // regardless of whether that contract is honoured.
+  WorkflowTestFixture: {
+    keyVersionColumn: 'keyVersion',
+    fields: [{ plaintext: 'input', ciphertext: 'encryptedInput', json: true }],
+  },
 } satisfies Record<string, PhiModel>;
 
 export type SeedPhiModel = keyof typeof SEED_PHI_MODELS;
