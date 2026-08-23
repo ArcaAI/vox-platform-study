@@ -21,5 +21,5 @@ export { ConsultationSummariesResource } from './consultation-summaries';
 export type { JobRequestOptions, WaitForOptions } from './jobs';
 export { isTerminalJobStatus, JobsResource } from './jobs';
 
-export type { ConsultationRequestOptions } from './consultations';
+export type { AddContextOptions, ConsultationRequestOptions } from './consultations';
 export { ConsultationsResource } from './consultations';

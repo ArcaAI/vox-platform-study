@@ -257,3 +257,117 @@ export interface JobStatusResponse {
  * shapes by the presence of `error`.
  */
 export type JobStreamEvent = JobStatusResponse | { error: string; jobId: string };
+
+// -----------------------------------------------------------------------------
+// Context items (consultation.controller.ts `:id/context` routes)
+// -----------------------------------------------------------------------------
+
+/**
+ * `ContextItem.type` — the PLATFORM item type, mirroring the `ContextItemType`
+ * enum (`packages/domains/src/enums/generated/ContextItemType.ts`).
+ *
+ * Distinct from, and NOT replaced by, {@link AddContextRequest.kindKey}: the
+ * type says which substrate the item is stored on, the kind key says which
+ * TENANT-DECLARED vocabulary entry it is an instance of. A schema-aware write
+ * carries both.
+ */
+export type ContextItemType =
+  | 'AUDIO_RECORDING'
+  | 'WORKNOTE'
+  | 'RAW_SUMMARY'
+  | 'MODIFIED_SUMMARY'
+  | 'PRE_SUMMARY'
+  | 'NAMED_ENTITY'
+  | 'TRANSCRIPT'
+  | 'CASE_NOTE'
+  | 'ATTACHMENT'
+  | 'SIGNED_NOTE'
+  | 'STRUCTURED';
+
+/** `ContextItem.source` — who produced the item. Mirrors the `ContextItemSource` enum. */
+export type ContextItemSource = 'USER' | 'AI' | 'SYSTEM' | 'TRANSCRIPTION';
+
+/** Hard server-side cap on {@link AddContextRequest.content} (`CONTEXT_CONTENT_MAX_LENGTH`). */
+export const CONTEXT_CONTENT_MAX_LENGTH = 200_000;
+
+/**
+ * Body of `POST /api/v1/consultations/:id/context`. Mirrors `AddContextRequest`
+ * (`packages/applications/src/services/consultation/context/dto/add-context.request.ts`).
+ *
+ * The gateway validates this body with `whitelist + forbidNonWhitelisted`, so
+ * an undeclared field rejects the whole request — this interface is closed on
+ * purpose, and adding a field here without adding it to the server DTO first
+ * produces a 400, not a silently ignored key.
+ */
+export interface AddContextRequest {
+  /** Required. See {@link ContextItemType}. */
+  type: ContextItemType;
+  /** Content text. Required by the server for non-media types; capped at {@link CONTEXT_CONTENT_MAX_LENGTH}. */
+  content?: string;
+  /** Media id of an already-uploaded file (for `ATTACHMENT`). */
+  mediaId?: string;
+  /** DNA Writing Style id (summaries only). */
+  dnaWritingStyleId?: string;
+  /** Defaults to `'USER'` server-side. */
+  source?: ContextItemSource;
+  /** Free-form metadata. Convention: lab/exam attachments carry `{ subType: 'LAB_RESULT' }`. */
+  metadata?: Record<string, unknown>;
+  /**
+   * The tenant-declared context kind this item instantiates — `kinds[].key` of
+   * the tenant's pinned `ConsultationContextSchema` version, discoverable at
+   * `GET /api/v1/tenants/me/context-schema`.
+   *
+   * Omitting it is the legacy path: no schema is consulted and the write
+   * proceeds exactly as it did before the context-schema plane existed.
+   */
+  kindKey?: string;
+  /**
+   * Structured payload for a `STRUCTURED` kind, validated server-side against
+   * that kind's `fields` sub-schema in the PINNED version.
+   *
+   * **Requires {@link kindKey}** — a payload with nothing to validate it
+   * against is a 400, and `ConsultationsResource.addContext` refuses it
+   * locally rather than letting you discover that in production.
+   */
+  payload?: Record<string, unknown>;
+  /**
+   * The context item this one was DERIVED from, used only to compute the loop
+   * cascade depth. Never schema-validated; a bad or cross-tenant reference
+   * degrades to depth 0 rather than failing the write.
+   */
+  derivedFromContextItemId?: string;
+}
+
+/**
+ * Response body of `POST /api/v1/consultations/:id/context` (and the other
+ * `:id/context*` reads). Mirrors `ContextItemResponse`
+ * (`packages/applications/src/services/consultation/context/dto/context-item.response.ts`).
+ *
+ * A genuine PARTIAL VIEW, in the same spirit as {@link ConsultationGetResponse}:
+ * the server DTO additionally carries the media/derivative fields (`url`,
+ * `mimeType`, `thumbnailUrl`), the `is*` classification booleans, and the
+ * `audioRecordings` / `summaryMeta` / `namedEntities` / `versions` expansions.
+ * Those model the transcript-and-summary surface this SDK does not otherwise
+ * touch; reach for the fields below only.
+ *
+ * Note what is deliberately ABSENT: the response carries **no `kindKey` and no
+ * `contextSchemaVersionId`** — the DTO mapper does not project them. A caller
+ * that needs to know which kind or schema version an item was written under
+ * must remember what it sent, not read it back.
+ */
+export interface ContextItemResponse {
+  id: string;
+  consultationId: string;
+  type: ContextItemType;
+  source: ContextItemSource;
+  content?: string;
+  mediaId?: string;
+  dnaWritingStyleId?: string;
+  metadata?: Record<string, unknown>;
+  /** Content-revision pointer. DISTINCT from {@link ContextItemResponse.version}. */
+  currentVersionNumber: number;
+  /** Row `_version`, the OCC counter. Echo back as `If-Match: "<version>"` on a PATCH. */
+  version: number;
+  createdAt: string;
+  updatedAt: string;
+}
