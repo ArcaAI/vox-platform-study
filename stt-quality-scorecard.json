@@ -1,0 +1,359 @@
+{
+  "harness": "TASK-470 Theme-F streaming quality scorecard — through the WS gateway",
+  "thresholds_source": "streaming_thresholds.json",
+  "clips": [
+    {
+      "quality": {
+        "medical_wer": 0.016393,
+        "keyterm_recall": 1.0,
+        "keyphrase_recall": 1.0,
+        "detail": {
+          "wer": {
+            "wer": 0.016393,
+            "substitutions": 0,
+            "deletions": 1,
+            "insertions": 0,
+            "reference_words": 61,
+            "hypothesis_words": 60
+          },
+          "keyterm": {
+            "recall": 1.0,
+            "total": 7,
+            "matched": 7,
+            "missing": []
+          },
+          "keyphrase": {
+            "recall": 1.0,
+            "total": 3,
+            "matched": 3,
+            "missing": []
+          }
+        }
+      },
+      "transport": {
+        "first_partial_ms": 2443.5,
+        "ttfw_ms": 2443.5,
+        "commit_latency_ms": {
+          "count": 1,
+          "mean": 6127.7,
+          "p50": 6127.7,
+          "p99": 6127.7,
+          "min": 6127.7,
+          "max": 6127.7
+        },
+        "committed_revision_rate": 0.0,
+        "partial_revision_rate": 0.7778,
+        "seq_gap_count": 0,
+        "audio_coverage_ratio": 0.997
+      },
+      "clip": "cardiology_consult_01",
+      "session_id": "01a02ed6-680e-7c48-964b-99a609946579",
+      "closed_status_received": true,
+      "hypothesis_preview": "patient presents with shortness of breath on exertion and intermittent chest pain over the past two weeks. On examination the patient is in no acute distress. Heart rate is 88 and regular. Lungs are c",
+      "regression": {
+        "passed": true,
+        "checks": [
+          {
+            "metric": "medical_wer",
+            "observed": 0.016393,
+            "limit": 0.35,
+            "direction": "<= ceiling",
+            "passed": true
+          },
+          {
+            "metric": "medical_wer_vs_baseline",
+            "observed": 0.016393,
+            "limit": 0.11560000000000001,
+            "direction": "<= baseline+eps",
+            "passed": true
+          },
+          {
+            "metric": "keyterm_recall",
+            "observed": 1.0,
+            "limit": 0.7,
+            "direction": ">= floor",
+            "passed": true
+          },
+          {
+            "metric": "keyphrase_recall",
+            "observed": 1.0,
+            "limit": 0.7,
+            "direction": ">= floor",
+            "passed": true
+          },
+          {
+            "metric": "committed_revision_rate",
+            "observed": 0.0,
+            "limit": 0.02,
+            "direction": "<= baseline+eps",
+            "passed": true
+          },
+          {
+            "metric": "commit_latency_p50",
+            "observed": 6127.7,
+            "limit": 6926.679999999999,
+            "direction": "<= baseline*(1+eps)",
+            "passed": true
+          },
+          {
+            "metric": "commit_latency_p99",
+            "observed": 6127.7,
+            "limit": 8767.83,
+            "direction": "<= baseline*(1+eps)",
+            "passed": true
+          },
+          {
+            "metric": "seq_gap_count",
+            "observed": 0,
+            "limit": 0,
+            "direction": "<= max",
+            "passed": true
+          },
+          {
+            "metric": "audio_coverage_ratio",
+            "observed": 0.997,
+            "limit": 0.991,
+            "direction": ">= baseline-eps",
+            "passed": true
+          }
+        ]
+      }
+    },
+    {
+      "quality": {
+        "medical_wer": 0.048387,
+        "keyterm_recall": 0.833333,
+        "keyphrase_recall": 1.0,
+        "detail": {
+          "wer": {
+            "wer": 0.048387,
+            "substitutions": 1,
+            "deletions": 2,
+            "insertions": 0,
+            "reference_words": 62,
+            "hypothesis_words": 60
+          },
+          "keyterm": {
+            "recall": 0.833333,
+            "total": 6,
+            "matched": 5,
+            "missing": [
+              "community acquired pneumonia"
+            ]
+          },
+          "keyphrase": {
+            "recall": 1.0,
+            "total": 4,
+            "matched": 4,
+            "missing": []
+          }
+        }
+      },
+      "transport": {
+        "first_partial_ms": 2362.9,
+        "ttfw_ms": 2362.9,
+        "commit_latency_ms": {
+          "count": 1,
+          "mean": 5440.6,
+          "p50": 5440.6,
+          "p99": 5440.6,
+          "min": 5440.6,
+          "max": 5440.6
+        },
+        "committed_revision_rate": 0.0,
+        "partial_revision_rate": 0.8182,
+        "seq_gap_count": 0,
+        "audio_coverage_ratio": 0.998
+      },
+      "clip": "discharge_summary_01",
+      "session_id": "01a02ed6-d8b9-79e4-a649-d1831b060b87",
+      "closed_status_received": true,
+      "hypothesis_preview": "This is a discharge summary for a patient admitted with community-acquired pneumonia. The patient was treated with intravenous ceftriaxone and transitioned to oral amoxicillin. Oxygen saturation impro",
+      "regression": {
+        "passed": true,
+        "checks": [
+          {
+            "metric": "medical_wer",
+            "observed": 0.048387,
+            "limit": 0.35,
+            "direction": "<= ceiling",
+            "passed": true
+          },
+          {
+            "metric": "medical_wer_vs_baseline",
+            "observed": 0.048387,
+            "limit": 0.11560000000000001,
+            "direction": "<= baseline+eps",
+            "passed": true
+          },
+          {
+            "metric": "keyterm_recall",
+            "observed": 0.833333,
+            "limit": 0.7,
+            "direction": ">= floor",
+            "passed": true
+          },
+          {
+            "metric": "keyphrase_recall",
+            "observed": 1.0,
+            "limit": 0.7,
+            "direction": ">= floor",
+            "passed": true
+          },
+          {
+            "metric": "committed_revision_rate",
+            "observed": 0.0,
+            "limit": 0.02,
+            "direction": "<= baseline+eps",
+            "passed": true
+          },
+          {
+            "metric": "commit_latency_p50",
+            "observed": 5440.6,
+            "limit": 6926.679999999999,
+            "direction": "<= baseline*(1+eps)",
+            "passed": true
+          },
+          {
+            "metric": "commit_latency_p99",
+            "observed": 5440.6,
+            "limit": 8767.83,
+            "direction": "<= baseline*(1+eps)",
+            "passed": true
+          },
+          {
+            "metric": "seq_gap_count",
+            "observed": 0,
+            "limit": 0,
+            "direction": "<= max",
+            "passed": true
+          },
+          {
+            "metric": "audio_coverage_ratio",
+            "observed": 0.998,
+            "limit": 0.991,
+            "direction": ">= baseline-eps",
+            "passed": true
+          }
+        ]
+      }
+    },
+    {
+      "quality": {
+        "medical_wer": 0.065574,
+        "keyterm_recall": 1.0,
+        "keyphrase_recall": 1.0,
+        "detail": {
+          "wer": {
+            "wer": 0.065574,
+            "substitutions": 1,
+            "deletions": 3,
+            "insertions": 0,
+            "reference_words": 61,
+            "hypothesis_words": 58
+          },
+          "keyterm": {
+            "recall": 1.0,
+            "total": 8,
+            "matched": 8,
+            "missing": []
+          },
+          "keyphrase": {
+            "recall": 1.0,
+            "total": 3,
+            "matched": 3,
+            "missing": []
+          }
+        }
+      },
+      "transport": {
+        "first_partial_ms": 2060.5,
+        "ttfw_ms": 2060.5,
+        "commit_latency_ms": {
+          "count": 2,
+          "mean": 6910.0,
+          "p50": 6910.0,
+          "p99": 7197.6,
+          "min": 6616.5,
+          "max": 7203.5
+        },
+        "committed_revision_rate": 0.0,
+        "partial_revision_rate": 0.7692,
+        "seq_gap_count": 0,
+        "audio_coverage_ratio": 0.997
+      },
+      "clip": "medication_review_01",
+      "session_id": "01a02ed7-4f68-77bd-95d1-fe3719fd0729",
+      "closed_status_received": true,
+      "hypothesis_preview": "patient is a 62-year-old presenting for medication review. Current medications include metformin 500 mg twice daily for type 2 diabetes, lisinopril 10 mg once daily for hypertension, and atorvastatin ",
+      "regression": {
+        "passed": true,
+        "checks": [
+          {
+            "metric": "medical_wer",
+            "observed": 0.065574,
+            "limit": 0.35,
+            "direction": "<= ceiling",
+            "passed": true
+          },
+          {
+            "metric": "medical_wer_vs_baseline",
+            "observed": 0.065574,
+            "limit": 0.11560000000000001,
+            "direction": "<= baseline+eps",
+            "passed": true
+          },
+          {
+            "metric": "keyterm_recall",
+            "observed": 1.0,
+            "limit": 0.7,
+            "direction": ">= floor",
+            "passed": true
+          },
+          {
+            "metric": "keyphrase_recall",
+            "observed": 1.0,
+            "limit": 0.7,
+            "direction": ">= floor",
+            "passed": true
+          },
+          {
+            "metric": "committed_revision_rate",
+            "observed": 0.0,
+            "limit": 0.02,
+            "direction": "<= baseline+eps",
+            "passed": true
+          },
+          {
+            "metric": "commit_latency_p50",
+            "observed": 6910.0,
+            "limit": 6926.679999999999,
+            "direction": "<= baseline*(1+eps)",
+            "passed": true
+          },
+          {
+            "metric": "commit_latency_p99",
+            "observed": 7197.6,
+            "limit": 8767.83,
+            "direction": "<= baseline*(1+eps)",
+            "passed": true
+          },
+          {
+            "metric": "seq_gap_count",
+            "observed": 0,
+            "limit": 0,
+            "direction": "<= max",
+            "passed": true
+          },
+          {
+            "metric": "audio_coverage_ratio",
+            "observed": 0.997,
+            "limit": 0.991,
+            "direction": ">= baseline-eps",
+            "passed": true
+          }
+        ]
+      }
+    }
+  ]
+}

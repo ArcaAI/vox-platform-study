@@ -29,6 +29,7 @@ import { SERVICE_RUNTIME_SETTINGS } from './descriptors/service-runtime.descript
 import { TEXT_PROVIDER_CONNECTION_SETTINGS } from './descriptors/text-provider-connections.descriptors';
 import { STORAGE_SETTINGS } from './descriptors/storage.descriptors';
 import { STT_FALLBACK_SETTINGS } from './descriptors/stt-fallback.descriptors';
+import { STT_RUNTIME_SETTINGS } from './descriptors/stt-runtime.descriptors';
 import { TTS_SETTINGS } from './descriptors/tts.descriptors';
 import { SettingsRegistry } from './settings-registry';
 
@@ -69,6 +70,13 @@ export const HOPE_SETTINGS_REGISTRY: SettingsRegistry = new SettingsRegistry().r
   // effective-config route. Registered at their current Python defaults, so
   // cataloging them changes no behaviour.
   ...SERVICE_RUNTIME_SETTINGS,
+  // The rest of stt's runtime tuning — VAD, streaming geometry and timeouts,
+  // transcription chunking, punctuation, semantic endpointing, worker/threading
+  // and the non-secret halves of the cloud engine connections. All were
+  // environment variables until TASK-799 lane C; every `default` is transcribed
+  // verbatim from the Python field it replaces, so registering them changes no
+  // behaviour and needs no seeded rows.
+  ...STT_RUNTIME_SETTINGS,
   // Gateway-side PHI-redaction call budget (companion to the guardrail-side
   // chunk budget in SERVICE_RUNTIME_SETTINGS). Registered at the redactor's own
   // code default, so cataloging it changes no behaviour.

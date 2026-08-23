@@ -49,16 +49,17 @@ class ExtractionService:
         self._min_cross_sample_similarity = min_cross_sample_similarity
 
         if expected_embedding_dim is None:
-            # The dimension follows the deployed
-            # `UserVoiceProfile.embedding vector(N)` column via settings, so
-            # the ECAPA cutover (192-d) is a config + SQL step, not a code
-            # change. Default stays the wespeaker 256-d until the owner
-            # schedules re-enrollment.
-            from ..core.config.settings import get_settings
-
-            expected_embedding_dim = getattr(
-                get_settings(), "voice_profile_embedding_dim", EXPECTED_EMBEDDING_DIM
-            )
+            # The dimension is a property of the DEPLOYED
+            # `UserVoiceProfile.embedding vector(N)` column, so this module
+            # constant is the single source and is gated against `user.prisma`
+            # by `tests/unit/test_task799_env_surface.py`.
+            #
+            # It used to be a settings field too (TASK-799 lane C removed it):
+            # one fact in two places, only one of which was operator-settable.
+            # An ECAPA cutover (192-d) is a migration plus full re-enrolment —
+            # changing this number alone does not perform it, it only makes
+            # every enrollment fail dimension validation.
+            expected_embedding_dim = EXPECTED_EMBEDDING_DIM
         self._expected_embedding_dim = expected_embedding_dim
 
     async def extract(
