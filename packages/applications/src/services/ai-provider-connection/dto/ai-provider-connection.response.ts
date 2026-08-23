@@ -1,5 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { CONNECTION_ENABLED_SEMANTICS } from '../constants';
+import { CONNECTION_ENABLED_SEMANTICS, PROVIDER_SERVICES } from '../constants';
 
 /**
  * Masked read view of one (tenant, provider) connection row.
@@ -13,7 +13,7 @@ export class AiProviderConnectionResponse {
   @ApiProperty({ description: 'Owning tenant. The reserved SYSTEM tenant row is the platform default.' })
   tenantId!: string;
 
-  @ApiProperty({ description: 'Capability the connection serves.', example: 'llm', enum: ['llm', 'stt', 'tts'] })
+  @ApiProperty({ description: 'Capability the connection serves.', example: 'llm', enum: PROVIDER_SERVICES })
   service!: string;
 
   @ApiProperty({ description: 'Capability-scoped serving provider identifier.', example: 'azure' })

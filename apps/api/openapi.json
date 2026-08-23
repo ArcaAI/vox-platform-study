@@ -646,7 +646,10 @@
             "enum": [
               "llm",
               "stt",
-              "tts"
+              "tts",
+              "embeddings",
+              "rerank",
+              "vector"
             ],
             "example": "llm",
             "type": "string"
@@ -19447,7 +19450,11 @@
             "type": "number"
           },
           "extraJson": {
-            "description": "Provider-specific extras.",
+            "description": "Provider-specific extras, forwarded VERBATIM to the serving adapter as part of the per-request override entry. A FLAT object: values must be strings, numbers, booleans, or arrays of those — nested objects are rejected. At most 32 keys; strings up to 2048 characters. The keys the connection row itself supplies (`api_key`, `funding`, `base_url`, `region`, `api_version`, `deployment_name`) are reserved and rejected here.",
+            "example": {
+              "json_response_format": true,
+              "reasoning_mode": "medium"
+            },
             "type": "object"
           },
           "region": {
@@ -19460,7 +19467,10 @@
             "enum": [
               "llm",
               "stt",
-              "tts"
+              "tts",
+              "embeddings",
+              "rerank",
+              "vector"
             ],
             "example": "llm",
             "type": "string"
@@ -33621,7 +33631,10 @@
               "enum": [
                 "llm",
                 "stt",
-                "tts"
+                "tts",
+                "embeddings",
+                "rerank",
+                "vector"
               ],
               "type": "string"
             }
@@ -33679,7 +33692,10 @@
               "enum": [
                 "llm",
                 "stt",
-                "tts"
+                "tts",
+                "embeddings",
+                "rerank",
+                "vector"
               ],
               "type": "string"
             }
@@ -33735,7 +33751,10 @@
               "enum": [
                 "llm",
                 "stt",
-                "tts"
+                "tts",
+                "embeddings",
+                "rerank",
+                "vector"
               ],
               "type": "string"
             }
@@ -33799,7 +33818,10 @@
               "enum": [
                 "llm",
                 "stt",
-                "tts"
+                "tts",
+                "embeddings",
+                "rerank",
+                "vector"
               ],
               "type": "string"
             }

@@ -1,5 +1,6 @@
 export * from './assert-provider-available';
 export * from './constants';
+export * from './provider-extras';
 export * from './dto';
 export * from './IProviderConnectionService';
 export * from './ai-provider-connection.service';

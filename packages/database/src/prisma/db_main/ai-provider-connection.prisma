@@ -7,11 +7,27 @@
 // capabilities — LLM (TEXT), STT and TTS — unifying the former
 // TenantTtsProviderCredential / TenantSttProviderCredential tables.
 //
-// `service` is the capability discriminator (`llm` | `stt` | `tts`) — a
-// validated string (no Prisma enum, per the AiModel.provider convention). It
-// resolves the provider-NAME collision across capabilities: `azure` means Azure
-// OpenAI under `service='llm'` but Azure Speech under `service='stt'`, and
-// `(llm,azure)` / `(stt,azure)` are now distinct rows.
+// `service` is the capability discriminator — a validated string (no Prisma
+// enum, per the AiModel.provider convention), whose vocabulary is owned by
+// PROVIDER_SERVICES in the application service. It resolves the provider-NAME
+// collision across capabilities: `azure` means Azure OpenAI under
+// `service='llm'` but Azure Speech under `service='stt'`, and `(llm,azure)` /
+// `(stt,azure)` are distinct rows.
+//
+// TASK-799 P1-C.1 — the vocabulary is `llm | stt | tts` (INFERENCE) plus
+// `embeddings | rerank | vector` (non-inference INTEGRATIONS). It was widened
+// because the three-value set made this the home for vendor LLM/STT/TTS
+// credentials ONLY, so a tenant secret that was not one of ~11 vendor slots —
+// a Qdrant API key, a TEI reranker or embeddings endpoint — had nowhere to
+// live and had to stay an environment variable. Widening rather than adding a
+// sibling store is decision D-2 ("never invent a third home"): a sibling would
+// have to re-implement all seven hops of the BYO credential contract, whereas
+// this reuses the cascade, the veto, the entitlement gate, derived funding,
+// Vault-Transit at rest, the OCC route and the masked read DTO unchanged.
+//
+// NOTE: `service` is a plain TEXT column with NO database CHECK constraint (see
+// the init migration), so widening the vocabulary required NO DDL and NO
+// migration. The `@default("llm")` is unchanged.
 //
 // `provider` is a capability-scoped provider id (see CLOUD_BYO_PROVIDERS in the
 // application service). Tenant rows are allowed ONLY for the cloud API providers
@@ -42,9 +58,9 @@ model AiProviderConnection {
   tenantId String
 
   // core fields
-  service         String  @default("llm") // llm | stt | tts — capability discriminator; backfills existing rows to 'llm'
-  provider        String // capability-scoped provider id (e.g. llm:azure/bedrock, stt:azure-speech/sarvam/openai, tts:azure/sarvam)
-  baseUrl         String? // endpoint (ollama/lm-studio/vllm/llama-cpp/azure LLM; STT/TTS endpoint migrated from `endpoint`)
+  service         String  @default("llm") // capability discriminator (PROVIDER_SERVICES: llm|stt|tts|embeddings|rerank|vector); backfills existing rows to 'llm'
+  provider        String // capability-scoped provider id (e.g. llm:azure/bedrock, stt:azure-speech/sarvam/openai, tts:azure/sarvam, vector:qdrant, rerank:tei)
+  baseUrl         String? // endpoint (ollama/lm-studio/vllm/llama-cpp/azure LLM; STT/TTS endpoint migrated from `endpoint`; the Qdrant/TEI URL for the integration services)
   region          String? // bedrock; classic Azure Speech
   apiVersion      String? // azure
   deploymentName  String? // azure
