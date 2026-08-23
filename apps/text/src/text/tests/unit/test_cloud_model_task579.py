@@ -86,7 +86,7 @@ class TestResolveModelNeverFallsBackToDefault:
     @pytest.mark.parametrize("name,factory", _CLOUD_PROVIDERS, ids=_CLOUD_IDS)
     def test_no_model_returns_none(self, name, factory):
         provider = factory()
-        assert provider._resolve_model(GenerateRequest(prompt="hi", model="test-model")) is None
+        assert provider._resolve_model(GenerateRequest(prompt="hi")) is None
 
     @pytest.mark.parametrize("name,factory", _CLOUD_PROVIDERS, ids=_CLOUD_IDS)
     def test_caller_model_is_honored(self, name, factory):
@@ -104,7 +104,7 @@ class TestGenerateRaisesWithoutModel:
     async def test_generate_raises(self, name, factory):
         provider = factory()
         with pytest.raises(ModelNotSelectedError):
-            await provider.generate(GenerateRequest(prompt="hi", provider=name, model="test-model"))
+            await provider.generate(GenerateRequest(prompt="hi", provider=name))
 
     @pytest.mark.parametrize("name,factory", _CLOUD_PROVIDERS, ids=_CLOUD_IDS)
     @pytest.mark.asyncio
@@ -112,7 +112,7 @@ class TestGenerateRaisesWithoutModel:
         provider = factory()
         with pytest.raises(ModelNotSelectedError):
             async for _ in provider.generate_stream(
-                GenerateRequest(prompt="hi", provider=name, stream=True, model="test-model")
+                GenerateRequest(prompt="hi", provider=name, stream=True)
             ):
                 pass
 
@@ -218,8 +218,15 @@ class TestGenerateSucceedsWithModel:
 
 
 class TestLocalEnginesUnaffected:
-    """Local/built-in engines do NOT call the cloud guard — they keep their
-    topology-level model default and never raise ``ModelNotSelectedError``."""
+    """Local/built-in engines do NOT call the cloud guard.
+
+    They never carried a MODEL of their own either — since TASK-799 lane B not
+    even an informational one — but the engine itself has an opinion: LM Studio
+    and llama.cpp serve whatever is loaded when the wire `model` is absent. So
+    the distinction that survives is about the GUARD, not about a default:
+    `require_model` is a cloud-only fail-closed check, and these adapters simply
+    forward what the caller sent.
+    """
 
     @pytest.mark.asyncio
     async def test_openai_compat_generate_without_model_does_not_raise(self):
@@ -238,16 +245,49 @@ class TestLocalEnginesUnaffected:
         provider._client = stub_client(provider, AsyncMock())
         provider._client.chat.completions.create = AsyncMock(return_value=mock_completion)
 
-        content, _reasoning, _stats = await provider.generate(GenerateRequest(prompt="hi", model="test-model"))
+        content, _reasoning, _stats = await provider.generate(GenerateRequest(prompt="hi"))
         assert content == "ok"
 
 
-class TestCloudConfigsCarryNoVendorDefault:
-    """Grep-provable: no cloud sub-config ships a compiled-in vendor model
-    string as its default (Decision A)."""
+class TestNoConfigCarriesAModelAtAll:
+    """The guarantee got stronger: there is no `default_model` FIELD to inspect.
 
-    def test_no_cloud_default_model_is_a_vendor_string(self):
+    Decision A emptied the five cloud defaults, which left a typed, named field
+    one edit away from carrying a vendor string again — and left the five LOCAL
+    engines still holding real ids. TASK-799 lane B deleted all ten, so
+    "no compiled-in vendor model" is now a property of the settings TREE rather
+    than of ten separately-maintained default values.
+    """
 
-        for cls in (AzureOpenAIConfig, BedrockConfig, OpenAIConfig, AnthropicConfig, VertexConfig):
-            field = cls.model_fields["default_model"]
-            assert field.default == "", f"{cls.__name__}.default_model default must be ''"
+    def test_no_settings_field_anywhere_is_a_model(self):
+        from pydantic import BaseModel
+
+        from text.core.config import Settings
+
+        def walk(model: type[BaseModel], prefix: str = "") -> list[str]:
+            out: list[str] = []
+            for name, field in model.model_fields.items():
+                annotation = field.annotation
+                if isinstance(annotation, type) and issubclass(annotation, BaseModel):
+                    out.extend(walk(annotation, f"{prefix}{name}."))
+                else:
+                    out.append(f"{prefix}{name}")
+            return out
+
+        offenders = [
+            f for f in walk(Settings) if f.rsplit(".", 1)[-1] in {"default_model", "model"}
+        ]
+        assert offenders == []
+
+    def test_no_adapter_holds_a_model(self):
+        """Nor did the field simply move onto the adapter instances."""
+        from unittest.mock import MagicMock as _MagicMock
+
+        from text.main import _register_provider_factories
+        from text.providers.base import ProviderRegistry
+
+        registry = ProviderRegistry()
+        _register_provider_factories(registry, _MagicMock())
+        for name in registry.list_providers():
+            provider = registry.get(name)
+            assert not hasattr(provider, "_default_model"), name

@@ -90,12 +90,19 @@ class TestSharedInternalTokenIsPresented:
     @pytest.fixture
     def settings(self, monkeypatch) -> Settings:
         monkeypatch.setenv("INTERNAL_ACCESS_TOKEN", "shared-internal-token")
-        monkeypatch.delenv("TEXT_SERVICE_TOKEN", raising=False)
+        monkeypatch.setenv("TEXT_SERVICE_TOKEN", "legacy-must-be-ignored")
         return Settings(_env_file=None, port=5099)
 
     def test_settings_expose_the_shared_token_only_via_the_helper(self, settings):
-        assert settings.service_token.get_secret_value() == ""
-        assert settings.peer_service_token(settings.service_token) == "shared-internal-token"
+        """The legacy per-pair token is not merely empty — it no longer exists.
+
+        `TEXT_SERVICE_TOKEN` was declared as a transition window that nothing on
+        the other side ever used; a second accepted credential is a second thing
+        to rotate, so lane B closed it rather than leaving it dangling.
+        """
+        assert not hasattr(settings, "service_token")
+        assert settings.peer_service_token() == "shared-internal-token"
+        assert settings.accepted_service_tokens == ("shared-internal-token",)
 
     @pytest.mark.asyncio
     async def test_effective_config_client_and_registration_carry_the_shared_token(

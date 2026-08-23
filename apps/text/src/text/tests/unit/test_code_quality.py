@@ -14,7 +14,7 @@ from __future__ import annotations
 import ast
 from pathlib import Path
 from typing import get_type_hints
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, patch
 
 import httpx
 import pytest

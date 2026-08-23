@@ -18,12 +18,9 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from text.models.requests import GenerateRequest
+from text.tests.conftest import stub_client
 
 # ── LM Studio: extra_body.ttl ───────────────────────────────────────────────
-
-
-def _compat_config() -> OpenAICompatConfig:
-    return OpenAICompatConfig(base_url="http://localhost:1234/v1", default_model="m")
 
 
 class TestLmStudioTtl:
@@ -35,7 +32,7 @@ class TestLmStudioTtl:
         provider.apply_retention({"ttl_seconds": 900})
 
         create = AsyncMock(return_value=_completion())
-        provider._client.chat.completions.create = create
+        stub_client(provider, AsyncMock()).chat.completions.create = create
 
         await provider.generate(GenerateRequest(prompt="hi", model="m", provider="lm-studio"))
 
@@ -50,7 +47,7 @@ class TestLmStudioTtl:
         provider.apply_retention({"ttl_seconds": 900})
 
         create = AsyncMock(return_value=_completion())
-        provider._client.chat.completions.create = create
+        stub_client(provider, AsyncMock()).chat.completions.create = create
 
         await provider.generate(GenerateRequest(prompt="hi", model="m", provider="vllm"))
 
@@ -63,7 +60,7 @@ class TestLmStudioTtl:
         provider = OpenAICompatProvider()
 
         create = AsyncMock(return_value=_completion())
-        provider._client.chat.completions.create = create
+        stub_client(provider, AsyncMock()).chat.completions.create = create
 
         await provider.generate(GenerateRequest(prompt="hi", model="m"))
 
@@ -81,7 +78,7 @@ class TestLmStudioTtl:
                 yield chunk
 
         create = AsyncMock(side_effect=lambda **kw: _stream(**kw))
-        provider._client.chat.completions.create = create
+        stub_client(provider, AsyncMock()).chat.completions.create = create
 
         async for _ in provider.generate_stream(
             GenerateRequest(prompt="hi", model="m", provider="lm-studio")

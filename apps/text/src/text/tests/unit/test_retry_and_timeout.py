@@ -63,6 +63,11 @@ async def _app_factory(settings, mock_task_manager):
     """Return a factory that creates an app with a given mock provider."""
     from text.main import create_app
 
+    # Per-provider timeouts are a CONTROL-PLANE value now (`AiRuntimeProfile`
+    # via effective-config), so a test sets them where the request path reads
+    # them: `app.state.provider_timeouts`.
+    served_timeouts: dict[str, int] = {}
+
     def factory(mock_provider):
         application = create_app(settings_override=settings)
         application.state.provider_registry = _make_registry(mock_provider)
@@ -72,8 +77,10 @@ async def _app_factory(settings, mock_task_manager):
         application.state.rate_limiters = {}
         application.state.provider_queues = {}
         application.state.shutdown_manager = None
+        application.state.provider_timeouts = served_timeouts
         return application
 
+    factory.served_timeouts = served_timeouts
     return factory
 
 
@@ -233,7 +240,7 @@ class TestPerRequestTimeout:
     @pytest.mark.asyncio
     async def test_generate_times_out(self, _app_factory, settings):
         """Provider that takes too long gets TimeoutError → 502."""
-        settings.openai_compat.timeout_s = 1
+        _app_factory.served_timeouts["lm-studio"] = 1
 
         async def slow_generate(*args, **kwargs):
             await asyncio.sleep(10)
@@ -256,8 +263,8 @@ class TestPerRequestTimeout:
 
     @pytest.mark.asyncio
     async def test_timeout_uses_provider_config(self, _app_factory, settings):
-        """Timeout value comes from provider config (openai_compat.timeout_s)."""
-        settings.openai_compat.timeout_s = 1
+        """The timeout comes from the control plane, keyed by provider name."""
+        _app_factory.served_timeouts["lm-studio"] = 1
 
         call_count = 0
 
@@ -285,7 +292,7 @@ class TestPerRequestTimeout:
     @pytest.mark.asyncio
     async def test_timeout_triggers_retry(self, _app_factory, settings):
         """Timeout triggers retry when 'timeout' is in retry_on."""
-        settings.openai_compat.timeout_s = 1
+        _app_factory.served_timeouts["lm-studio"] = 1
 
         mock_provider = AsyncMock()
         mock_provider.generate = AsyncMock(
@@ -313,7 +320,7 @@ class TestPerRequestTimeout:
     @pytest.mark.asyncio
     async def test_timeout_returns_502_with_timeout_detail(self, _app_factory, settings):
         """Timed-out request returns 502 with 'timed out' in detail."""
-        settings.openai_compat.timeout_s = 1
+        _app_factory.served_timeouts["lm-studio"] = 1
 
         async def always_slow(*args, **kwargs):
             await asyncio.sleep(10)
@@ -345,7 +352,7 @@ class TestRetryWithTimeout:
     @pytest.mark.asyncio
     async def test_retry_with_timeout_eventually_succeeds(self, _app_factory, settings):
         """Times out twice, succeeds on third attempt."""
-        settings.openai_compat.timeout_s = 1
+        _app_factory.served_timeouts["lm-studio"] = 1
 
         mock_provider = AsyncMock()
         mock_provider.generate = AsyncMock(
@@ -373,7 +380,7 @@ class TestRetryWithTimeout:
     @pytest.mark.asyncio
     async def test_all_retries_timeout(self, _app_factory, settings):
         """All attempts timeout — returns error after exhausting retries."""
-        settings.openai_compat.timeout_s = 1
+        _app_factory.served_timeouts["lm-studio"] = 1
 
         mock_provider = AsyncMock()
         mock_provider.generate = AsyncMock(side_effect=TimeoutError("always times out"))

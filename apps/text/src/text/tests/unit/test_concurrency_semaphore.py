@@ -74,16 +74,65 @@ def _build_app(settings, registry, task_manager, *, semaphores=None):
 # ── Config field tests ───────────────────────────────────────────────────────
 
 
-class TestMaxConcurrentConfigFields:
-    """Verify AzureOpenAIConfig and BedrockConfig have max_concurrent."""
+class TestMaxConcurrentIsAControlPlaneValue:
+    """Per-provider capacity is an `AiRuntimeProfile` row, not an env field.
 
-    def test_azure_has_max_concurrent(self):
-        assert hasattr(cfg, "max_concurrent")
-        assert cfg.max_concurrent == 10
+    Ten providers carried ten `*_MAX_CONCURRENT` defaults and none of the
+    variation was a decision anyone made. What remains in code is one
+    resource-safety FLOOR, and the control plane moves the LIVE semaphore — so a
+    saturating provider can be given more headroom without a restart.
+    """
 
-    def test_bedrock_has_max_concurrent(self):
-        assert hasattr(cfg, "max_concurrent")
-        assert cfg.max_concurrent == 10
+    def test_no_provider_declares_max_concurrent_in_settings(self):
+        from pydantic import BaseModel
+
+        from text.core.config import Settings
+
+        def walk(model: type[BaseModel], prefix: str = "") -> list[str]:
+            out: list[str] = []
+            for name, field in model.model_fields.items():
+                annotation = field.annotation
+                if isinstance(annotation, type) and issubclass(annotation, BaseModel):
+                    out.extend(walk(annotation, f"{prefix}{name}."))
+                else:
+                    out.append(f"{prefix}{name}")
+            return out
+
+        assert [f for f in walk(Settings) if f.endswith("max_concurrent")] == []
+
+    def test_the_floor_seeds_every_registered_provider(self):
+        from unittest.mock import MagicMock as _MagicMock
+
+        from text.core.runtime_defaults import USER_LANE_FLOOR
+        from text.main import _register_provider_factories
+        from text.providers.base import ProviderRegistry
+        from text.services.resizable_semaphore import ResizableSemaphore
+
+        registry = ProviderRegistry()
+        _register_provider_factories(registry, _MagicMock())
+        semaphores = {
+            name: ResizableSemaphore(USER_LANE_FLOOR.max_concurrent)
+            for name in registry.list_providers()
+        }
+        assert semaphores
+        assert all(s.limit == USER_LANE_FLOOR.max_concurrent for s in semaphores.values())
+
+    def test_a_served_limit_moves_the_live_semaphore(self):
+        from text.core.effective_config import EffectiveConfigSnapshot
+        from text.services.resizable_semaphore import ResizableSemaphore
+        from text.services.runtime_limits import apply_provider_limits
+
+        semaphores = {"azure-openai": ResizableSemaphore(4)}
+        snapshot = EffectiveConfigSnapshot(
+            raw={
+                "runtimeProfiles": [
+                    {"provider": "azure-openai", "modelSlug": "", "maxConcurrent": 10}
+                ]
+            },
+            ok=True,
+        )
+        apply_provider_limits(snapshot, semaphores, {})
+        assert semaphores["azure-openai"].limit == 10
 
 
 # ── Concurrency metric tests ────────────────────────────────────────────────

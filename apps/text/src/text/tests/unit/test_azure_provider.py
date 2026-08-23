@@ -14,8 +14,6 @@ from text.models.requests import GenerateRequest, ResponseFormat
 from text.tests.conftest import stub_client
 
 
-
-
 class TestAzureProviderInit:
     def test_creates_with_config(self):
         from text.providers.azure_openai import AzureOpenAIProvider
