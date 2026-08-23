@@ -320,17 +320,7 @@ What the method does and does not do:
 | **Fails fast locally** | `payload` without `kindKey` throws a `TypeError` before any request is issued, rather than surfacing as a 400 in production |
 | **Never retried** | The route accepts no idempotency key, so the non-idempotent POST is left un-retried. A duplicated clinical note is worse than a surfaced 503 |
 | **Credential classes** | User JWT, or an API key holding `consultation:session:write`. **A service account gets 403** — the route declares no `@RequiredSvcScopes`, and absent scopes are deny-by-default for machine classes |
-| **Does not discover** | There is still no typed read for `tenants/me/context-schema`. You fetch the bundle yourself and thread `contextSchemaVersionId` through (below) |
-
-Discovery, until a typed read exists:
-
-```ts
-const bundle = await (
-  await fetch(`${baseUrl}/api/v1/tenants/me/context-schema`, {
-    headers: { 'X-API-Key': process.env.HOPE_API_KEY! },  // scope tenant:context-schema:read
-  })
-).json();                                                  // `tenants/me` = the KEY'S tenant
-```
+| **Pairs with discovery** | `hope.tenants.contextSchema()` returns the bundle whose `contextSchemaVersionId` this option wants (§4.5) |
 
 Three remaining traps:
 
@@ -341,6 +331,41 @@ Three remaining traps:
    is closed on purpose — an extra key is a 400, not a silent drop.
 3. **The response carries no `kindKey` and no `contextSchemaVersionId`.** The DTO mapper does not
    project them, so a caller that needs to know what it wrote under must remember, not read back.
+
+
+### 4.5 Discovering the schema — `hope.tenants.contextSchema()`
+
+```ts
+const bundle = await hope.tenants.contextSchema({ departmentId });
+
+if (bundle.schemaId === null) {
+  // Unconfigured tenant. A 200 with all-null fields and `etag: "none"` — a
+  // real state, not an error. Fall back to the legacy no-`kindKey` write.
+}
+
+const vitals = bundle.definition?.kinds.find((k) => k.key === 'vitals');
+```
+
+- **Resolution is `DEPARTMENT default → TENANT default`**, and only a SERVABLE schema participates
+  (published or approved **and** carrying a pin). What you get is what the tenant *pinned*, never
+  simply the latest published version.
+- **Pass the `departmentId` of the consultation you are about to write to.** This is the sharp edge.
+  An explicit `contextSchemaVersionId` on `addContext` wins **outright** — the server does no
+  department resolution at all when one is supplied. So discovering the *tenant* default, pinning
+  it, and then writing to a consultation whose department has its own vocabulary validates against a
+  declaration that may not declare your kind. It surfaces as
+  `Context schema version N does not declare a kind 'x'`, which reads like a typo rather than the
+  scope mismatch it is.
+- **Credentials**: user JWT, or an API key with `tenant:context-schema:read`. A service account gets
+  403 (no declared `svcScopes`). Under API-key auth, `me` is the **key's tenant** — not the key's
+  bound user, the way `users/me/*` resolves.
+- The bundle carries its own `etag`, so caching needs no header plumbing. Note the **plural** path:
+  `tenant/me/context-schema` is a 308 redirect shim and is not what the SDK calls.
+- Types are exported: `ConsultationSchemaBundle`, `ConsultationContextSchemaDefinition`,
+  `ContextKindDeclaration`, `ContextOutputDeclaration`, `ContextPrimitive`, `CONTEXT_PRIMITIVES`.
+  The enum-ish fields are widened with `| string` on purpose — a tenant can publish vocabulary a
+  shipped SDK build has never seen, and a client one release behind must still be able to parse the
+  bundle and ignore what it does not recognise.
 
 ---
 
@@ -443,7 +468,8 @@ either lane. The seeded day-1 defaults are a working reference:
 | Schema changed but types didn't | Codegen is build-time. Regenerate (or run `--watch`) |
 | Payload validated locally, rejected by server | Expected. Client validation is permissive; the server is authoritative |
 | `addContext` throws `TypeError` before any HTTP call | `payload` was passed without `kindKey` — a local guard, not a server error |
-| Service account gets 403 on `addContext` | That route is API-key / user-JWT only. Machine classes are deny-by-default without a declared scope |
+| Service account gets 403 on `addContext` or `contextSchema` | Both are API-key / user-JWT only. Machine classes are deny-by-default without a declared scope |
+| `does not declare a kind '<key>'` on a valid kind | You pinned a version from the TENANT default while writing to a consultation in a department with its own schema. Discover with that `departmentId` (§4.5) |
 
 ## 8. Reference
 
