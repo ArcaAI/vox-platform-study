@@ -12,12 +12,13 @@
  */
 import { describe, expect, it } from 'vitest';
 import { applyProposal, verifiedProposals } from '../correction-proposals';
-import type { CorrectionProposal } from '../../api/pending-contracts';
+import type { CorrectionProposal } from '../../api/live-assist';
 
 const TEXT = 'Patient started metfromin 500mg and lisinopril 10mg.';
 
 function proposal(overrides: Partial<CorrectionProposal> = {}): CorrectionProposal {
   return {
+    proposalId: 'p-metfromin',
     start: 16,
     end: 25,
     original: 'metfromin',

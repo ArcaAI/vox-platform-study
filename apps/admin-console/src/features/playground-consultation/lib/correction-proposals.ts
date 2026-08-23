@@ -15,7 +15,7 @@
  * Pure and framework-free so that property is testable without a component.
  */
 
-import type { CorrectionProposal } from '../api/pending-contracts';
+import type { CorrectionProposal } from '../api/live-assist';
 
 /** True when `proposal` still describes a real, non-empty, non-no-op edit to `text`. */
 function verifies(text: string, proposal: CorrectionProposal): boolean {
