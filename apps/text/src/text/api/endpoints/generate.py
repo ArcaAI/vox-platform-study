@@ -15,6 +15,7 @@ from opentelemetry import trace
 
 from text.core.config import Settings
 from text.core.dependencies import (
+    get_app_state,
     get_circuit_breakers,
     get_generation_audit_logger,
     get_guardrail_client,
@@ -69,6 +70,7 @@ from text.core.metrics import (
     WORKER_POOL_TASKS_TOTAL,
 )
 from text.core.observability import set_generation_span_attributes
+from text.core.runtime_defaults import PROVIDER_TIMEOUT_FLOOR_S
 from text.models.requests import GenerateBatchRequest, GenerateRequest
 from text.models.responses import (
     ErrorResponse,
@@ -105,6 +107,7 @@ from text.services.provider_queue import ProviderQueue, QueueFullError
 from text.services.rate_limiter import RateLimitTracker, estimate_tokens
 from text.services.resizable_semaphore import ResizableSemaphore
 from text.services.retry_handler import calculate_backoff, should_retry
+from text.services.runtime_limits import lane_budget
 from text.services.shutdown_manager import ShutdownManager
 from text.services.task_manager import TaskManager
 from text.services.worker_pool_queue import WorkerPoolQueue
@@ -201,7 +204,7 @@ async def _apply_guardrail_gate(
     *,
     request_body: GenerateRequest,
     tenant_id: str | None,
-    settings: Settings,
+    app_state: Any,
 ) -> UsageDetail | None:
     """Run the medical-content moderation gate; return guardrail's own usage.
 
@@ -226,6 +229,10 @@ async def _apply_guardrail_gate(
             prompt=request_body.prompt,
             system_prompt=request_body.system_prompt,
             tenant_id=tenant_id,
+            # The tenant's own moderation policy, PUSHED with the request. Folds
+            # over the platform default tenant-first; absent ⇒ the platform
+            # posture stands (`core/guardrail_posture.py`).
+            tenant_policy=request_body.guardrail_policy,
         )
         # Lifted BEFORE the allow/deny branch: a REJECTED prompt still burned
         # guardrail tokens, and metering the safety plane is exactly how its cost
@@ -241,7 +248,7 @@ async def _apply_guardrail_gate(
                 detail=f"Content rejected by guardrail: {reason}",
             )
         return guardrail_usage
-    if settings.external_guardrail.enabled:
+    if _platform_moderation_enabled(app_state):
         # Enforce posture on but the guardrail client is unwired — fail CLOSED rather
         # than silently skip moderation (a misconfiguration must not ship unmoderated
         # PHI). Retryable (503) once the client is provisioned.
@@ -252,19 +259,29 @@ async def _apply_guardrail_gate(
     return None
 
 
-def _get_provider_timeout(settings: Settings, provider_name: str) -> float:
-    """Get timeout in seconds for the given provider."""
-    config_map = {
-        "azure-openai": settings.azure.timeout_s,
-        "bedrock": settings.bedrock.timeout_s,
-        "lm-studio": settings.openai_compat.timeout_s,
-        "vllm": settings.vllm.timeout_s,
-        "llama-cpp": settings.llama_cpp.timeout_s,
-        # Backward-compatible aliases
-        "azure": settings.azure.timeout_s,
-        "openai_compat": settings.openai_compat.timeout_s,
-    }
-    return float(config_map.get(provider_name, _DEFAULT_TIMEOUT_S))
+def _platform_moderation_enabled(app_state: Any) -> bool:
+    """Whether the control plane says moderation is on.
+
+    Read from live state rather than from settings: the switch moved off env
+    onto the PULL channel, so a platform admin turning moderation on for a
+    clinical deployment takes effect on the next request, not the next restart.
+    """
+    posture = getattr(app_state, "guardrail_posture", None)
+    return bool(getattr(posture, "enabled", False))
+
+
+def _get_provider_timeout(runtime_timeouts: dict[str, int], provider_name: str) -> float:
+    """The per-provider request timeout, control-plane first.
+
+    This used to read one of ten ``TEXT_<PROVIDER>_TIMEOUT_S`` env vars through a
+    hand-maintained alias map — a map that silently dropped `ollama`, `openai`,
+    `anthropic` and `vertex` onto a module default nobody noticed. Now there is
+    one source (`AiRuntimeProfile` via `/internal/effective-config`) and one
+    fallback (the resource-safety floor), so no provider can be missed by
+    forgetting a dictionary entry.
+    """
+    served = runtime_timeouts.get(provider_name)
+    return float(served) if served else float(PROVIDER_TIMEOUT_FLOOR_S)
 
 
 router = APIRouter(tags=["generate"])
@@ -304,6 +321,9 @@ async def generate(
     # window) and yields per-provider timeout overrides; empty ⇒ env value wins.
     runtime_timeouts: dict[str, int] = Depends(get_runtime_limits),
     settings: Settings = Depends(get_dep_settings),
+    # Live control-plane state: the resolved moderation posture and lane budgets
+    # that replaced `TEXT_EXTERNAL_GUARDRAIL_*` / `TEXT_QUEUE_*`.
+    app_state: Any = Depends(get_app_state),
     guardrail_client: ExternalGuardrailClient | None = Depends(get_guardrail_client),
     redis_client: aioredis.Redis | None = Depends(get_redis),
     pool_health_tracker: PoolHealthTracker = Depends(get_pool_health_tracker),
@@ -365,7 +385,7 @@ async def generate(
         guardrail_client,
         request_body=request_body,
         tenant_id=x_tenant_id,
-        settings=settings,
+        app_state=app_state,
     )
 
     ctx = structlog.contextvars.get_contextvars()
@@ -393,7 +413,12 @@ async def generate(
                         priority=0, future=future, request_id=ctx.get("request_id", "unknown")
                     )
                     QUEUE_SIZE.labels(provider=request_body.provider).set(queue.size)
-                    await asyncio.wait_for(future, timeout=settings.queue.max_wait_s)
+                    await asyncio.wait_for(
+                        future,
+                        timeout=lane_budget(
+                            app_state, request_body.provider, "user"
+                        ).queue_max_wait_s,
+                    )
                     QUEUE_WAIT_TIME.labels(provider=request_body.provider).observe(
                         time.monotonic() - queue_start
                     )
@@ -491,7 +516,7 @@ async def generate(
     MODEL_RUNNING_INSTANCES.labels(service=SERVICE_NAME, model=model).inc()
     start = time.monotonic()
 
-    timeout_s = _get_provider_timeout(settings, request_body.provider)
+    timeout_s = _get_provider_timeout(runtime_timeouts, request_body.provider)
     max_retries = request_body.retry_config.max_retries
     retry_on = request_body.retry_config.retry_on
 

@@ -14,12 +14,20 @@ from typing import TYPE_CHECKING
 import httpx
 import redis.asyncio as aioredis
 from fastapi import FastAPI
-from fastapi.middleware.cors import CORSMiddleware
 from hope_env import BuildInfoReader
 from hope_env.service_registration import start_registration, stop_registration
 
 from text.core.config import Settings, get_settings
 from text.core.logging import get_logger, setup_logging
+from text.core.runtime_defaults import (
+    HTTPX_MAX_CONNECTIONS,
+    HTTPX_MAX_KEEPALIVE,
+    PROVIDER_RPM_FLOOR,
+    PROVIDER_TPM_FLOOR,
+    TASK_STREAM_MAX_LEN,
+    TASK_TTL_S,
+    USER_LANE_FLOOR,
+)
 
 if TYPE_CHECKING:
     from text.providers.base import LLMProvider, ProviderRegistry
@@ -28,20 +36,26 @@ logger = get_logger(__name__)
 
 
 def _register_provider_factories(
-    registry: ProviderRegistry, settings: Settings, http_client: httpx.AsyncClient
+    registry: ProviderRegistry, http_client: httpx.AsyncClient
 ) -> None:
-    """Register LAZY provider factories gated ONLY by connection config.
+    """Register LAZY provider factories — one per adapter, unconditionally.
 
-    Text selects nothing from env: the gateway injects the DB-resolved
-    ``{provider, model}`` on each request. Here we register a *factory* per
-    provider whose CONNECTION config is present; the (network/SDK-bearing)
-    instance is built on the first request that selects it (``registry.get``),
-    never at startup. A provider with no connection config is never registered,
-    so a request naming it fails closed with a 404 — there is no ENABLE flag.
+    Availability used to be gated on "is this provider's ``base_url`` non-empty",
+    which meant an ENV VAR decided which providers existed. That is backwards in
+    two ways at once: it made a pure-BYOK tenant's provider 404 because the
+    PLATFORM had no endpoint (fixed for the cloud four, still true for the local
+    engines), and it made a provider's existence un-reconfigurable without a
+    redeploy.
 
-    Local engines (LM Studio / Ollama / vLLM / llama.cpp) always carry a default
-    ``base_url`` so they are always available; Azure additionally requires an
-    endpoint + api_key; Bedrock requires a region.
+    A provider is available iff a CONNECTION resolves for it — and since Text is
+    stateless, that resolution happens per request, not at boot. So registration
+    is unconditional and resolution is fail-closed at call time
+    (`core/connection.py`): a request naming a provider with no resolved
+    connection gets a typed 503 that names the missing `AiProviderConnection`
+    row, instead of a 404 that says the provider does not exist.
+
+    The (network/SDK-bearing) instance is still built on the first request that
+    selects it (``registry.get``), never at startup.
     """
 
     def _shared(builder: Callable[[], LLMProvider]) -> Callable[[], LLMProvider]:
@@ -60,58 +74,26 @@ def _register_provider_factories(
             if key not in registry.list_providers():
                 registry.register_factory(key, factory)
 
-    # LM Studio (OpenAI-compatible) — primary local engine; product key + alias.
-    if settings.openai_compat.base_url:
-        from text.providers.openai_compat import OpenAICompatProvider
-
-        _register(
-            ("lm-studio", "openai_compat"),
-            _shared(lambda: OpenAICompatProvider(settings.openai_compat)),
-        )
-
-    if settings.ollama.base_url:
-        from text.providers.ollama import OllamaProvider
-
-        _register(("ollama",), lambda: OllamaProvider(settings.ollama, http_client))
-
-    if settings.bedrock.region:
-        from text.providers.bedrock import BedrockProvider
-
-        _register(("bedrock",), lambda: BedrockProvider(settings.bedrock))
-
-    # Cloud BYO providers (azure / openai / anthropic / vertex) — governed by the
-    # unified provider plane (C5). These are BYO-FIRST: the tenant credential
-    # (AND, for Azure, the endpoint) arrives per request as a ``provider_overrides``
-    # entry injected by the gateway, so they must be AVAILABLE even when no platform
-    # env credential/endpoint is configured. They are therefore registered
-    # UNCONDITIONALLY (env config is only the platform fallback / fail-open target).
-    #
-    # Azure was previously gated on ``settings.azure.endpoint`` — but a
-    # pure-BYOK tenant has NO platform endpoint (it lives in the tenant's
-    # AiProviderConnection row and rides the per-request override), so the gate
-    # made Text answer 404 for a valid BYOK override — the exact failure openai/
-    # anthropic/vertex already avoid by registering unconditionally. A keyless/
-    # endpoint-less call with no override fails closed with
-    # ProviderCredentialsError (503), never a 404.
     from text.providers.anthropic import AnthropicProvider
     from text.providers.azure_openai import AzureOpenAIProvider
+    from text.providers.bedrock import BedrockProvider
+    from text.providers.llama_cpp import LlamaCppProvider
+    from text.providers.ollama import OllamaProvider
     from text.providers.openai import OpenAIProvider
+    from text.providers.openai_compat import OpenAICompatProvider
     from text.providers.vertex import VertexProvider
+    from text.providers.vllm import VllmProvider
 
-    _register(("azure-openai", "azure"), _shared(lambda: AzureOpenAIProvider(settings.azure)))
-    _register(("openai",), _shared(lambda: OpenAIProvider(settings.openai)))
-    _register(("anthropic",), _shared(lambda: AnthropicProvider(settings.anthropic)))
-    _register(("vertex",), _shared(lambda: VertexProvider(settings.vertex)))
-
-    if settings.vllm.base_url:
-        from text.providers.vllm import VllmProvider
-
-        _register(("vllm",), lambda: VllmProvider(settings.vllm, http_client))
-
-    if settings.llama_cpp.base_url:
-        from text.providers.llama_cpp import LlamaCppProvider
-
-        _register(("llama-cpp",), lambda: LlamaCppProvider(settings.llama_cpp, http_client))
+    # LM Studio (OpenAI-compatible) — primary local engine; product key + alias.
+    _register(("lm-studio", "openai_compat"), _shared(OpenAICompatProvider))
+    _register(("ollama",), lambda: OllamaProvider(http_client))
+    _register(("bedrock",), _shared(BedrockProvider))
+    _register(("azure-openai", "azure"), _shared(AzureOpenAIProvider))
+    _register(("openai",), _shared(OpenAIProvider))
+    _register(("anthropic",), _shared(AnthropicProvider))
+    _register(("vertex",), _shared(VertexProvider))
+    _register(("vllm",), lambda: VllmProvider(http_client))
+    _register(("llama-cpp",), lambda: LlamaCppProvider(http_client))
 
 
 @asynccontextmanager
@@ -121,19 +103,19 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
     setup_logging(settings.log_level)
 
-    logger.info("text.starting", host=settings.host, port=settings.port, debug=settings.debug)
+    logger.info("text.starting", port=settings.port, environment=settings.node_env)
 
     http_client = httpx.AsyncClient(
         limits=httpx.Limits(
-            max_connections=settings.httpx_max_connections,
-            max_keepalive_connections=settings.httpx_max_keepalive,
+            max_connections=HTTPX_MAX_CONNECTIONS,
+            max_keepalive_connections=HTTPX_MAX_KEEPALIVE,
         ),
         timeout=httpx.Timeout(300.0),
     )
     app.state.http_client = http_client
 
     if not hasattr(app.state, "redis") or app.state.redis is None:
-        redis_client = aioredis.from_url(settings.redis.redis_url, decode_responses=True)
+        redis_client = aioredis.from_url(settings.redis_url, decode_responses=True)
         app.state.redis = redis_client
     else:
         redis_client = app.state.redis
@@ -143,8 +125,8 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
         app.state.task_manager = TaskManager(
             redis=redis_client,
-            task_ttl=settings.redis.task_ttl_seconds,
-            stream_max_len=settings.redis.stream_max_len,
+            task_ttl=TASK_TTL_S,
+            stream_max_len=TASK_STREAM_MAX_LEN,
         )
 
     # External Guardrail client — invoked per generate to
@@ -154,18 +136,15 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         from text.services.external_guardrail import ExternalGuardrailClient
 
         app.state.guardrail_client = ExternalGuardrailClient(
-            settings=settings.external_guardrail,
+            base_url=settings.external_guardrail.base_url,
             http_client=http_client,
-            # Owner decision D-D: PRESENT the one shared `INTERNAL_ACCESS_TOKEN`;
-            # the legacy per-pair `TEXT_EXTERNAL_GUARDRAIL_SERVICE_TOKEN` is only
-            # the fallback for an environment that has not migrated yet.
-            service_token=settings.peer_service_token(settings.external_guardrail.service_token),
+            # Owner decision D-D: PRESENT the one shared `INTERNAL_ACCESS_TOKEN`.
+            service_token=settings.peer_service_token(),
+            app_state=app.state,
         )
         logger.info(
             "text.guardrail_client_initialized",
-            enabled=settings.external_guardrail.enabled,
             base_url=settings.external_guardrail.base_url,
-            max_retries=settings.external_guardrail.max_retries,
         )
 
     if not hasattr(app.state, "provider_registry") or app.state.provider_registry is None:
@@ -179,7 +158,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     # request that selects it; the companion state below is keyed on the set of
     # AVAILABLE providers (factory-registered), so a request-driven build slots
     # straight into its rate limiter / queue / breaker / semaphore.
-    _register_provider_factories(registry, settings, http_client)
+    _register_provider_factories(registry, http_client)
 
     # Translate capability: a SEPARATE registry (its providers are not LLMs and
     # carry no rate-limit/circuit-breaker/queue companion state). Sarvam is
@@ -195,9 +174,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     if "sarvam" not in translate_registry.list_providers():
         from text.translation.sarvam import SarvamTranslateProvider
 
-        translate_registry.register_factory(
-            "sarvam", lambda: SarvamTranslateProvider(settings.sarvam)
-        )
+        translate_registry.register_factory("sarvam", SarvamTranslateProvider)
 
     # Embedding capability (TASK-725 Task 4) — a SEPARATE registry namespace
     # from the LLM `provider_registry` above (design-notes.md §(a)). `tei-embed`
@@ -213,80 +190,54 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         from text.providers.tei_embed import TeiEmbedProvider
 
         embedding_registry.register_factory(
-            "tei-embed", lambda: TeiEmbedProvider(settings.tei_embed, http_client)
+            "tei-embed", lambda: TeiEmbedProvider(http_client)
         )
 
+    # Companion per-provider state. Every one of these used to be seeded from a
+    # per-provider env block; they now start at the resource-safety FLOOR
+    # (`core/runtime_defaults.py`) and are moved to their real values by the
+    # control plane on the first effective-config refresh
+    # (`services/runtime_limits.py`). A gateway that never answers leaves the
+    # floors in place, which is the documented degraded posture.
     from text.services.rate_limiter import RateLimitTracker
 
-    rate_limiters: dict[str, RateLimitTracker] = {}
-    provider_configs = {
-        "ollama": settings.ollama,
-        "azure-openai": settings.azure,
-        "azure": settings.azure,
-        "bedrock": settings.bedrock,
-        "openai": settings.openai,
-        "anthropic": settings.anthropic,
-        "vertex": settings.vertex,
-        "lm-studio": settings.openai_compat,
-        "openai_compat": settings.openai_compat,
-        "vllm": settings.vllm,
-        "llama-cpp": settings.llama_cpp,
+    app.state.rate_limiters = {
+        name: RateLimitTracker(rpm_limit=PROVIDER_RPM_FLOOR, tpm_limit=PROVIDER_TPM_FLOOR)
+        for name in registry.list_providers()
     }
-    for name in registry.list_providers():
-        cfg = provider_configs.get(name)
-        rpm = getattr(cfg, "rpm_limit", 0) if cfg else 0
-        tpm = getattr(cfg, "tpm_limit", 0) if cfg else 0
-        rate_limiters[name] = RateLimitTracker(rpm_limit=rpm, tpm_limit=tpm)
-    app.state.rate_limiters = rate_limiters
 
     if not app.state.provider_queues:
         from text.services.provider_queue import ProviderQueue
 
-        queues: dict[str, ProviderQueue] = {}
-        for name in registry.list_providers():
-            queues[name] = ProviderQueue(max_size=settings.queue.max_size)
-        app.state.provider_queues = queues
+        app.state.provider_queues = {
+            name: ProviderQueue(max_size=USER_LANE_FLOOR.queue_max_size)
+            for name in registry.list_providers()
+        }
 
     if not app.state.circuit_breakers:
         from text.services.circuit_breaker import CircuitBreaker
 
-        cb_cfg = settings.circuit_breaker
-        cbs: dict[str, CircuitBreaker] = {}
-        for name in registry.list_providers():
-            cbs[name] = CircuitBreaker(
-                failure_threshold=cb_cfg.failure_threshold,
-                recovery_timeout=cb_cfg.recovery_timeout_s,
-                half_open_max_calls=cb_cfg.half_open_max_calls,
-                reset_timeout_s=cb_cfg.reset_timeout_s,
-                count_rate_limits=cb_cfg.count_rate_limits,
+        app.state.circuit_breakers = {
+            name: CircuitBreaker(
+                failure_threshold=USER_LANE_FLOOR.failure_threshold,
+                recovery_timeout=USER_LANE_FLOOR.recovery_timeout_s,
+                half_open_max_calls=USER_LANE_FLOOR.half_open_max_calls,
+                reset_timeout_s=USER_LANE_FLOOR.reset_timeout_s,
+                count_rate_limits=USER_LANE_FLOOR.count_rate_limits,
             )
-        app.state.circuit_breakers = cbs
+            for name in registry.list_providers()
+        }
 
     if not app.state.provider_semaphores:
-        provider_configs = {
-            "ollama": settings.ollama,
-            "azure-openai": settings.azure,
-            "azure": settings.azure,
-            "bedrock": settings.bedrock,
-            "openai": settings.openai,
-            "anthropic": settings.anthropic,
-            "vertex": settings.vertex,
-            "lm-studio": settings.openai_compat,
-            "openai_compat": settings.openai_compat,
-            "vllm": settings.vllm,
-            "llama-cpp": settings.llama_cpp,
-        }
         # ResizableSemaphore, not asyncio.Semaphore: an admin changing
         # `maxConcurrent` must move the ceiling of the LIVE object rather than
         # swap in a new one (which would strand in-flight permits and waiters).
         from text.services.resizable_semaphore import ResizableSemaphore
 
-        sems: dict[str, ResizableSemaphore] = {}
-        for name in registry.list_providers():
-            cfg = provider_configs.get(name)
-            max_conc = getattr(cfg, "max_concurrent", 10) if cfg else 10
-            sems[name] = ResizableSemaphore(max_conc)
-        app.state.provider_semaphores = sems
+        app.state.provider_semaphores = {
+            name: ResizableSemaphore(USER_LANE_FLOOR.max_concurrent)
+            for name in registry.list_providers()
+        }
 
     # The control-plane pull client. Construction performs NO I/O, so
     # boot never blocks on (or fails because of) the gateway; the first request
@@ -296,13 +247,11 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
         app.state.effective_config_client = EffectiveConfigClient(
             base_url=settings.gateway_url,
-            # Owner decision D-D: PRESENT the one shared `INTERNAL_ACCESS_TOKEN`;
-            # the legacy `TEXT_SERVICE_TOKEN` is only the fallback for an
-            # environment that has not migrated. Reading `settings.service_token`
-            # directly, as this did, sends an EMPTY token under the D-D posture —
-            # the gateway 401s, the failure is negative-cached, and the pod
-            # silently degrades to its env values with one warning per minute.
-            token=settings.peer_service_token(settings.service_token),
+            # Owner decision D-D: PRESENT the one shared `INTERNAL_ACCESS_TOKEN`.
+            # Sending an empty token 401s the gateway, the failure is
+            # negative-cached, and the pod silently degrades to its floors with
+            # one warning per minute — so this must never be the legacy field.
+            token=settings.peer_service_token(),
             service="text",
         )
 
@@ -340,7 +289,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             http_client=http_client,
             gateway_url=settings.gateway_url,
             # D-D, as above: the shared token first, legacy only as fallback.
-            service_token=settings.peer_service_token(settings.service_token),
+            service_token=settings.peer_service_token(),
             build_info=BuildInfoReader().get_build_info(),
             environment=settings.otel_deployment_environment,
         )
@@ -425,8 +374,12 @@ def create_app(settings_override: Settings | None = None) -> FastAPI:
     from text.services.pool_health import PoolHealthTracker
 
     app.state.pool_health_tracker = PoolHealthTracker()
-    # Control-plane overrides; empty ⇒ every provider keeps its env timeout.
+    # Control-plane overrides; empty ⇒ every provider keeps its safety floor.
     app.state.provider_timeouts = {}
+    # `(provider, lane)` -> served budget overrides; empty ⇒ the lane floors.
+    app.state.lane_budgets = {}
+    # The platform input-moderation posture; replaced on the first refresh.
+    app.state.guardrail_posture = None
     app.state.effective_config_client = None
     app.state.config_invalidation_task = None
     app.state.tracer_provider = None
@@ -439,14 +392,12 @@ def create_app(settings_override: Settings | None = None) -> FastAPI:
     from text.api.middleware.auth import ServiceAuthMiddleware
 
     app.add_middleware(ServiceAuthMiddleware)
-    if settings.cors_enabled and settings.cors_origins:
-        app.add_middleware(
-            CORSMiddleware,
-            allow_origins=settings.cors_origins,
-            allow_credentials=True,
-            allow_methods=["*"],
-            allow_headers=["*"],
-        )
+    # No CORS middleware. Text is an INTERNAL service: every browser-facing call
+    # reaches it through the gateway (`.claude/rules/06-python-services.md`
+    # §"Gateway Integration"), which owns the browser's origin policy. The
+    # `TEXT_CORS_ENABLED` / `TEXT_CORS_ORIGINS` pair defaulted to off and no
+    # deployment ever turned it on; keeping it would leave a way to widen a PHI
+    # service's origin policy from an env file.
 
     # LIFO order: last-added runs first.
     # RequestLoggingMiddleware added before RequestIDMiddleware in code
@@ -492,13 +443,15 @@ def create_app(settings_override: Settings | None = None) -> FastAPI:
             service_namespace=settings.otel_service_namespace,
             deployment_environment=settings.otel_deployment_environment,
             insecure=settings.otel_insecure,
-            logs_enabled=settings.otel_logs_enabled,
+            logs_enabled=True,
         )
 
-    if settings.metrics_enabled:
-        from prometheus_fastapi_instrumentator import Instrumentator
+    # Prometheus is always exposed. `/metrics` is scrape-only and carries no PHI,
+    # and a metrics endpoint that can be switched off from an env file is an
+    # observability gap nobody notices until they need it.
+    from prometheus_fastapi_instrumentator import Instrumentator
 
-        Instrumentator().instrument(app).expose(app, endpoint="/metrics")
+    Instrumentator().instrument(app).expose(app, endpoint="/metrics")
 
     return app
 

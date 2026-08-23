@@ -16,8 +16,9 @@ import pytest
 import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
 
-from text.core.config import OpenAICompatConfig, Settings
+from text.core.config import Settings
 from text.models.provider import ModelInfo, ProviderInfo
+from text.tests.conftest import stub_client
 
 
 def _info(name: str) -> ProviderInfo:
@@ -32,9 +33,7 @@ def _info(name: str) -> ProviderInfo:
 
 @pytest.fixture
 def settings() -> Settings:
-    return Settings(
-        host="127.0.0.1", port=5099, debug=True, log_level="debug", provider_probe_timeout_s=1
-    )
+    return Settings(port=5099, log_level="debug")
 
 
 @pytest_asyncio.fixture
@@ -56,7 +55,12 @@ async def client(settings: Settings):
 
 class TestProbeContract:
     @pytest.mark.asyncio
-    async def test_hung_provider_times_out_without_blocking(self, client):
+    async def test_hung_provider_times_out_without_blocking(self, client, monkeypatch):
+        # The probe cap is a resource-safety FLOOR now (`core/runtime_defaults.py`),
+        # not `TEXT_PROVIDER_PROBE_TIMEOUT_S` — one hung engine must never stall an
+        # admin listing, and that is not a per-deployment choice. Pinned to 1 s here
+        # so the timing assertion below stays about CONCURRENCY, not about the cap.
+        monkeypatch.setattr("text.api.endpoints.providers.PROVIDER_PROBE_TIMEOUT_S", 1)
         hung = AsyncMock()
 
         async def _sleep() -> ProviderInfo:
@@ -119,7 +123,7 @@ class TestLmStudioNativeEnrichment:
         from text.providers import openai_compat as mod
         from text.providers.openai_compat import OpenAICompatProvider
 
-        provider = OpenAICompatProvider(OpenAICompatConfig(base_url="http://lms.test/v1"))
+        provider = OpenAICompatProvider()
 
         class _Model:
             def __init__(self, mid: str) -> None:
@@ -128,8 +132,12 @@ class TestLmStudioNativeEnrichment:
         class _List:
             data = [_Model("qwen3-8b")]
 
-        provider._client = AsyncMock()  # type: ignore[assignment]
+        provider._client = stub_client(provider, AsyncMock())  # type: ignore[assignment]
         provider._client.models.list = AsyncMock(return_value=_List())
+        # The LM Studio native probe (`/api/v0/models`) reaches the server ROOT
+        # rather than its `/v1` surface, so it derives its URL from the observed
+        # endpoint rather than from the OpenAI client.
+        provider._last_base_url = "http://lmstudio.test/v1"
         return provider, mod, native_handler
 
     @pytest.mark.asyncio
@@ -200,7 +208,6 @@ class TestLmStudioNativeEnrichment:
                     "warning": lambda _self, ev, **kw: events.append((ev, kw)),
                     "error": lambda _self, ev, **kw: events.append((ev, kw)),
                     "info": lambda _self, ev, **kw: None,
-                    "debug": lambda _self, ev, **kw: None,
                 },
             )(),
         )

@@ -6,13 +6,18 @@ suite pins the three properties that make it usable as such:
 
 1. it is read from the UNPREFIXED env name (apps/text's `env_prefix="TEXT_"` with
    `env_prefix_target="all"` would otherwise turn it into `TEXT_INTERNAL_ACCESS_TOKEN`);
-2. inbound `X-Service-Token` accepts it — and still accepts the legacy
-   `TEXT_SERVICE_TOKEN` (zero-cost backward compatibility, not a second design);
-3. outbound peer calls PRESENT it in preference to the legacy per-pair secret.
+2. inbound `X-Service-Token` accepts it — and ONLY it;
+3. outbound peer calls PRESENT it.
+
+TASK-799 lane B closed the legacy `TEXT_SERVICE_TOKEN` window. It was described
+as zero-cost backward compatibility, but nothing on the other side ever used it,
+and a second ACCEPTED credential is a second thing to rotate and a second thing
+to forget when revoking. "One shared token" is only true if there is one.
 """
 
 from __future__ import annotations
 
+from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
 import httpx
@@ -20,7 +25,8 @@ import pytest
 import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
 
-from text.core.config import ExternalGuardrailConfig, Settings
+from text.core.config import Settings
+from text.core.guardrail_posture import GuardrailPosture
 from text.main import create_app
 from text.models.provider import ModelInfo, ProviderInfo
 from text.services.external_guardrail import ExternalGuardrailClient
@@ -67,10 +73,10 @@ def test_shared_token_binds_to_the_unprefixed_env_name(monkeypatch):
     assert Settings().internal_access_token.get_secret_value() == SHARED
 
 
-def test_accepted_tokens_are_shared_first_then_legacy():
-    settings = Settings(service_token=LEGACY)
-    settings.internal_access.token = type(settings.internal_access.token)(SHARED)
-    assert settings.accepted_service_tokens == (SHARED, LEGACY)
+def test_the_shared_token_is_the_only_accepted_one(monkeypatch):
+    monkeypatch.setenv("INTERNAL_ACCESS_TOKEN", SHARED)
+    monkeypatch.setenv("TEXT_SERVICE_TOKEN", LEGACY)
+    assert Settings().accepted_service_tokens == (SHARED,)
 
 
 def test_accepted_tokens_empty_when_nothing_configured_so_dev_bypass_survives():
@@ -84,7 +90,8 @@ class TestInboundAcceptsSharedToken:
     @pytest_asyncio.fixture
     async def client(self, _mock_provider_registry, monkeypatch):
         monkeypatch.setenv("INTERNAL_ACCESS_TOKEN", SHARED)
-        settings = Settings(host="127.0.0.1", port=5099, debug=True, service_token=LEGACY)
+        monkeypatch.setenv("TEXT_SERVICE_TOKEN", LEGACY)
+        settings = Settings(port=5099)
         app = _make_app(settings, _mock_provider_registry)
         transport = ASGITransport(app=app)
         async with AsyncClient(transport=transport, base_url="http://test") as c:
@@ -96,10 +103,11 @@ class TestInboundAcceptsSharedToken:
         assert resp.status_code == 200
 
     @pytest.mark.asyncio
-    async def test_legacy_token_is_still_accepted(self, client):
-        """Backward compatibility: an un-migrated caller must not break."""
+    async def test_the_legacy_token_is_no_longer_accepted(self, client):
+        """The transition window is closed: a second accepted credential is a
+        second thing to rotate."""
         resp = await client.get("/api/v1/providers", headers={"X-Service-Token": LEGACY})
-        assert resp.status_code == 200
+        assert resp.status_code == 401
 
     @pytest.mark.asyncio
     async def test_unknown_token_is_still_rejected(self, client):
@@ -115,18 +123,18 @@ class TestInboundAcceptsSharedToken:
 # ── 3. outbound preference ────────────────────────────────────────────────────
 
 
-def test_peer_service_token_prefers_shared_over_legacy(monkeypatch):
+def test_peer_service_token_presents_the_shared_token(monkeypatch):
     monkeypatch.setenv("INTERNAL_ACCESS_TOKEN", SHARED)
-    settings = Settings()
-    from pydantic import SecretStr
-
-    assert settings.peer_service_token(SecretStr("legacy-peer")) == SHARED
+    monkeypatch.setenv("TEXT_SERVICE_TOKEN", LEGACY)
+    assert Settings().peer_service_token() == SHARED
 
 
-def test_peer_service_token_falls_back_to_legacy_when_shared_unset():
-    from pydantic import SecretStr
-
-    assert Settings().peer_service_token(SecretStr("legacy-peer")) == "legacy-peer"
+def test_peer_service_token_is_empty_when_the_shared_token_is_unset(monkeypatch):
+    """No silent fallback onto a legacy secret: an unconfigured deployment
+    presents nothing, which is the visible failure, not a quiet one."""
+    monkeypatch.delenv("INTERNAL_ACCESS_TOKEN", raising=False)
+    monkeypatch.setenv("TEXT_SERVICE_TOKEN", LEGACY)
+    assert Settings().peer_service_token() == ""
 
 
 @pytest.mark.asyncio
@@ -139,9 +147,10 @@ async def test_outbound_guardrail_call_presents_the_injected_shared_token():
 
     http_client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
     client = ExternalGuardrailClient(
-        settings=ExternalGuardrailConfig(enabled=True, service_token="legacy-guardrail-token"),
+        base_url="http://guardrail.test",
         http_client=http_client,
         service_token=SHARED,
+        app_state=SimpleNamespace(guardrail_posture=GuardrailPosture(enabled=True)),
     )
     await client.validate("chest pain", tenant_id="11111111-1111-1111-1111-111111111111")
     await http_client.aclose()

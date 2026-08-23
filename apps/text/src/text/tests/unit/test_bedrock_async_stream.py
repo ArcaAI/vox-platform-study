@@ -19,9 +19,9 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from text.core.config import BedrockConfig
 from text.models.requests import GenerateRequest
 from text.models.stream import StreamChunk
+from text.tests.conftest import stub_client
 
 # ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -68,13 +68,17 @@ class ErrorEventStream:
 
 
 def _make_provider():
-    """Create a BedrockProvider with mocked boto3 clients."""
+    """A BedrockProvider whose per-request client is a stand-in.
+
+    These tests are about the STREAM BRIDGE (ordering, the queue, not blocking
+    the event loop), not about connection resolution — which
+    `test_task602_byok_credentials.py` and `test_provider_overrides.py` cover
+    against the real path.
+    """
     from text.providers.bedrock import BedrockProvider
 
-    config = BedrockConfig(region="us-east-1")
-    with patch("boto3.client"):
-        provider = BedrockProvider(config)
-    provider._client = MagicMock()
+    provider = BedrockProvider()
+    provider._client = stub_client(provider, MagicMock())
     return provider
 
 

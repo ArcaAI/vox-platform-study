@@ -15,13 +15,17 @@ from collections.abc import AsyncIterator
 from typing import TYPE_CHECKING, Any
 
 import structlog
-from anthropic import APIConnectionError, APIError, APITimeoutError, AsyncAnthropic
+from anthropic import AsyncAnthropic
 
-from text.core.config import AnthropicConfig
+from text.core.connection import resolve_connection
 from text.core.defaults import resolve_request_defaults
-from text.core.exceptions import ProviderCredentialsError
+from text.core.exceptions import (
+    ProviderConnectionMissingError,
+    ProviderCredentialsError,
+)
+from text.core.runtime_defaults import PROVIDER_TIMEOUT_FLOOR_S
 from text.core.telemetry import get_tracer
-from text.models.provider import ModelInfo, ProviderInfo
+from text.models.provider import ProviderInfo
 from text.models.requests import GenerateRequest, ProviderOverride
 from text.models.stats import GenerationStats, build_generation_stats
 from text.models.stream import StreamChunk
@@ -59,69 +63,54 @@ class AnthropicProvider:
 
     credential_posture = CredentialPosture.BYOK
 
-    def __init__(self, config: AnthropicConfig) -> None:
-        self._config = config
-        self._default_model = config.default_model
-        # BYOK — the shared platform client is built ONLY when an
-        # explicit api_key is present (never from env; see AnthropicConfig). In
-        # production api_key is empty ⇒ None, and the credential must arrive per
-        # request as a ProviderOverride. Never hand an empty key to the SDK.
-        key = config.api_key.get_secret_value()
-        self._client: AsyncAnthropic | None = (
-            AsyncAnthropic(
-                api_key=key,
-                base_url=config.base_url or None,
-                timeout=float(config.timeout_s),
-            )
-            if key
-            else None
-        )
+    def __init__(self) -> None:
+        """No configuration. Anthropic is BYOK-only and Text holds no connection
+        of its own: the credential (and any proxy base URL) arrive per request as
+        a gateway-resolved ``ProviderOverride``. Every request builds its own
+        client, so two tenants can never race on one.
+        """
+        self._timeout_s = PROVIDER_TIMEOUT_FLOOR_S
+
+    def apply_timeout(self, timeout_s: int) -> None:
+        """Adopt the control-plane per-provider request timeout (see
+        `services/runtime_limits.py`). Replaces ``TEXT_ANTHROPIC_TIMEOUT_S``."""
+        self._timeout_s = timeout_s
 
     def _resolve_override(self, request: GenerateRequest) -> ProviderOverride | None:
-        """Tenant BYO credential injected by the gateway for THIS provider,
-        keyed by ``request.provider``. ``None`` for every caller until a tenant
-        configures an enabled anthropic connection."""
-        if not request.provider_overrides:
-            return None
-        return request.provider_overrides.get(request.provider)
+        """The connection the gateway resolved for THIS request's provider."""
+        return resolve_connection(request)
 
-    def _shared_or_raise(self) -> AsyncAnthropic:
-        """The shared platform client, or ``ProviderCredentialsError`` (503) when
-        none was configured. BYOK, fail-closed — no env fallback, so a
-        request with no usable override and no platform client fails cleanly
-        rather than 401-ing an empty-keyed client."""
-        if self._client is None:
-            raise ProviderCredentialsError(
-                "Anthropic credentials not configured. Anthropic is BYOK-only: "
+    def _client_for(self, request: GenerateRequest) -> AsyncAnthropic:
+        """Request-scoped, fail-closed client resolution. A MALFORMED override
+        raises rather than degrading onto a process-wide credential. The key is
+        NEVER logged."""
+        override = self._resolve_override(request)
+        if override is None:
+            raise ProviderConnectionMissingError(
+                "No Anthropic connection resolved. Anthropic is BYOK-only: "
                 "configure a tenant Anthropic credential, or the platform "
                 "(SYSTEM-tenant) connection, in the provider-connection plane. "
                 "There is no env fallback.",
                 provider=_PROVIDER_NAME,
             )
-        return self._client
-
-    def _client_for(self, request: GenerateRequest) -> AsyncAnthropic:
-        """Override-wins client resolution. A tenant credential builds a
-        request-scoped client (the shared client is never mutated); absent an
-        override, the shared platform client is used (or 503 if none).
-        Fail-OPEN on a MALFORMED override: degrade to the shared platform client
-        (itself 503 if none). The key is NEVER logged."""
-        override = self._resolve_override(request)
-        if override is None:
-            return self._shared_or_raise()
         try:
             return AsyncAnthropic(
                 api_key=override.api_key.get_secret_value(),
-                base_url=override.base_url or self._config.base_url or None,
-                timeout=float(self._config.timeout_s),
+                base_url=override.base_url or None,
+                timeout=float(self._timeout_s),
             )
-        except Exception as exc:  # noqa: BLE001 — fail-open, never leak the key
+        except Exception as exc:  # noqa: BLE001 — never leak the key
             logger.warning(
                 "anthropic.override_client_build_failed",
                 provider=_PROVIDER_NAME,
                 error=type(exc).__name__,
             )
-            return self._shared_or_raise()
+            raise ProviderCredentialsError(
+                "The configured Anthropic credential could not be used "
+                f"({type(exc).__name__}). The request is refused rather than "
+                "served on another tenant's or the platform's credential.",
+                provider=_PROVIDER_NAME,
+            ) from exc
 
     def _resolve_model(self, request: GenerateRequest) -> str | None:
         override = self._resolve_override(request)
@@ -361,58 +350,25 @@ class AnthropicProvider:
             yield StreamChunk(type="done", data={"finish_reason": raw_stop or "end_turn"})
 
     async def health_check(self) -> bool:
-        # No platform key ⇒ no shared client to probe (still BYOK-usable
-        # per request via an override).
-        if self._client is None:
-            return False
-        try:
-            # A minimal, cheap round-trip; any successful response proves auth.
-            await self._client.models.list(limit=1)
-            return True
-        except (APIError, APIConnectionError, APITimeoutError) as exc:
-            logger.warning("health_check.failed", provider=_PROVIDER_NAME, error=str(exc))
-            return False
-        except Exception as exc:
-            logger.error("health_check.unexpected_error", provider=_PROVIDER_NAME, error=str(exc))
-            return False
+        """Nothing to probe: the connection is per request, so there is no
+        process-level endpoint to reach.
+
+        Returns True — "no negative evidence" — deliberately. `PoolHealthTracker`
+        acts only on a POSITIVELY known-unhealthy result
+        (`services/pool_health.py`), so reporting False here would take a
+        perfectly usable BYOK provider out of degrade routing for every tenant
+        that carries its own working credential.
+        """
+        return True
 
     async def get_info(self) -> ProviderInfo:
-        # Default_model is informational-only (may be unset now that
-        # cloud configs carry no compiled-in vendor model) — never advertise an
-        # empty-named model.
-        models: list[ModelInfo] = (
-            [ModelInfo(name=self._default_model, supports_streaming=True)]
-            if self._default_model
-            else []
-        )
-        status = "available"
-        # No platform key ⇒ unavailable at the platform level (still
-        # BYOK-usable per request).
-        if self._client is None:
-            return ProviderInfo(
-                name=_PROVIDER_NAME,
-                display_name="Anthropic",
-                status="unavailable",
-                default_model=self._default_model,
-                models=models,
-                supports_streaming=True,
-                supports_vision=True,
-            )
-        try:
-            listing = await self._client.models.list(limit=100)
-            models = [ModelInfo(name=m.id, supports_streaming=True) for m in listing.data]
-        except (APIError, APIConnectionError, APITimeoutError) as exc:
-            logger.warning("get_info.failed", provider=_PROVIDER_NAME, error=str(exc))
-            status = "unavailable"
-        except Exception as exc:
-            logger.error("get_info.unexpected_error", provider=_PROVIDER_NAME, error=str(exc))
-            status = "unavailable"
+        """Adapter capabilities only — no probe. See `OpenAIProvider.get_info`."""
         return ProviderInfo(
             name=_PROVIDER_NAME,
             display_name="Anthropic",
-            status=status,
-            default_model=self._default_model,
-            models=models,
+            status="unavailable",
+            default_model="",
+            models=[],
             supports_streaming=True,
             supports_vision=True,
         )

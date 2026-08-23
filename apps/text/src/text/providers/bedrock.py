@@ -12,14 +12,13 @@ import boto3
 import botocore.session
 import structlog
 from botocore.config import Config as BotocoreConfig
-from botocore.exceptions import BotoCoreError, ClientError, EndpointConnectionError
 from botocore.tokens import FrozenAuthToken
 
-from text.core.config import BedrockConfig
+from text.core.connection import resolve_connection
 from text.core.defaults import resolve_request_defaults
-from text.core.exceptions import InputValidationError, ProviderCredentialsError
+from text.core.exceptions import InputValidationError, ProviderConnectionMissingError
 from text.core.telemetry import get_tracer
-from text.models.provider import ModelInfo, ProviderInfo
+from text.models.provider import ProviderInfo
 from text.models.requests import GenerateRequest, ImageContentPart, ProviderOverride
 from text.models.stats import GenerationStats, stats_from_bedrock
 from text.models.stream import StreamChunk
@@ -100,65 +99,56 @@ class BedrockProvider:
 
     credential_posture = CredentialPosture.BYOK
 
-    def __init__(self, config: BedrockConfig) -> None:
-        self._config = config
-        self._default_model = config.default_model
-        # BYOK, and NO AMBIENT CREDENTIAL CHAIN. This used to be a bare
-        # `boto3.client("bedrock-runtime", region_name=...)`, which resolves
-        # credentials from `AWS_ACCESS_KEY_ID` / `AWS_PROFILE` / EC2 instance
-        # metadata — so the adapter held a working PLATFORM credential that
-        # appeared in no env file, no `turbo.json`, and no registry, and every
-        # tenant's traffic silently ran on it. The shared platform client is now
-        # built ONLY from an explicit `config.api_key` (never from env; see
-        # `BedrockConfig`), and is `None` in production, where the credential must
-        # arrive per request as a `ProviderOverride`.
-        key = config.api_key.get_secret_value()
-        self._client: Any = (
-            _bearer_client("bedrock-runtime", token=key, region=config.region) if key else None
-        )
-        self._mgmt_client: Any = (
-            _bearer_client("bedrock", token=key, region=config.region) if key else None
-        )
+    def __init__(self) -> None:
+        """No configuration, and NO AMBIENT CREDENTIAL CHAIN.
+
+        The credential AND the region both arrive per request as a
+        gateway-resolved ``ProviderOverride``. There is no shared client, so
+        every request builds its own bearer-token client and two tenants can
+        never race on one.
+
+        This adapter used to hold a bare `boto3.client("bedrock-runtime", ...)`,
+        which resolves credentials from `AWS_ACCESS_KEY_ID` / `AWS_PROFILE` / EC2
+        instance metadata — a working PLATFORM identity that appeared in no env
+        file, no `turbo.json` and no registry, on which every tenant's traffic
+        silently ran. Removing the config field is what makes that unreachable:
+        there is no longer any path to a client built without an explicit token.
+        """
 
     def _resolve_model(self, request: GenerateRequest) -> str | None:
-        # No in-gateway default — the caller-supplied model is
-        # authoritative. ``_default_model`` is retained for the providers
-        # listing (informational) only.
+        """The caller-supplied model is authoritative; a connection MAY pin it."""
+        override = self._resolve_override(request)
+        if override is not None and override.model:
+            return override.model
         return request.model
 
     def _resolve_override(self, request: GenerateRequest) -> ProviderOverride | None:
-        """Tenant BYO credential injected by the gateway for THIS provider,
-        keyed by ``request.provider`` (see `ProviderOverride`). ``None`` for
-        every caller until a tenant configures an enabled bedrock connection —
-        current (env/config) behavior is unchanged in that case."""
-        if not request.provider_overrides:
-            return None
-        return request.provider_overrides.get(request.provider)
+        """The connection the gateway resolved for THIS request's provider."""
+        return resolve_connection(request)
 
     def _client_for(self, request: GenerateRequest) -> Any:
-        """Override-wins client resolution. A tenant credential builds a
-        request-scoped bearer-token client (the shared ``self._client`` is never
-        mutated) so concurrent requests for different tenants can never interfere.
-
-        BYOK, fail-closed: absent an override the shared client is reused ONLY
-        when a platform key was configured; when neither an override nor a
-        platform client exists, raise ``ProviderCredentialsError`` (503) rather
-        than falling back to boto3's ambient credential chain."""
+        """Request-scoped, fail-closed bearer-token client."""
         override = self._resolve_override(request)
         if override is None:
-            if self._client is None:
-                raise ProviderCredentialsError(
-                    "AWS Bedrock credentials not configured. Bedrock is BYOK-only: "
-                    "configure a tenant Bedrock credential, or the platform "
-                    "(SYSTEM-tenant) connection, in the provider-connection plane. "
-                    "There is no env fallback and no ambient AWS credential chain.",
-                    provider="bedrock",
-                )
-            return self._client
+            raise ProviderConnectionMissingError(
+                "No AWS Bedrock connection resolved. Bedrock is BYOK-only: "
+                "configure a tenant Bedrock credential, or the platform "
+                "(SYSTEM-tenant) connection, in the provider-connection plane. "
+                "There is no env fallback and no ambient AWS credential chain.",
+                provider="bedrock",
+            )
+        region = (override.region or "").strip()
+        if not region:
+            raise ProviderConnectionMissingError(
+                "No AWS region on the resolved Bedrock connection. A Bedrock "
+                "client is bound to a region, so it travels with the credential "
+                "on the AiProviderConnection row.",
+                provider="bedrock",
+            )
         return _bearer_client(
             "bedrock-runtime",
             token=override.api_key.get_secret_value(),
-            region=override.region or self._config.region,
+            region=region,
         )
 
     def _build_converse_params(self, request: GenerateRequest) -> dict[str, Any]:
@@ -193,10 +183,15 @@ class BedrockProvider:
                 "toolChoice": {"tool": {"name": schema.get("title", "output")}},
             }
 
-        if self._config.guardrail_id:
+        # An AWS Bedrock Guardrail belongs to the AWS ACCOUNT the request
+        # authenticates against, so it travels with that account's credential on
+        # the connection row — never as a process-wide `TEXT_BEDROCK_GUARDRAIL_ID`
+        # that would apply one tenant's guardrail to every other tenant's traffic.
+        override = self._resolve_override(request)
+        if override is not None and override.guardrail_id:
             params["guardrailConfig"] = {
-                "guardrailIdentifier": self._config.guardrail_id,
-                "guardrailVersion": self._config.guardrail_version,
+                "guardrailIdentifier": override.guardrail_id,
+                "guardrailVersion": override.guardrail_version or "DRAFT",
             }
 
         return params
@@ -225,7 +220,7 @@ class BedrockProvider:
                 logger.warning(
                     "bedrock.guardrail_intervened",
                     model=params["modelId"],
-                    guardrail_id=self._config.guardrail_id,
+                    guardrail_id=params.get("guardrailConfig", {}).get("guardrailIdentifier"),
                 )
 
             content_blocks = response["output"]["message"]["content"]
@@ -342,51 +337,27 @@ class BedrockProvider:
             yield StreamChunk(type="done", data={"finish_reason": stop_reason or "stop"})
 
     async def health_check(self) -> bool:
-        # No platform key ⇒ no shared management client to probe. The provider is
-        # still registered (BYOK — usable per request via an override), but the
-        # platform connection itself is unhealthy. Mirrors azure_openai.
-        if self._mgmt_client is None:
-            return False
-        try:
-            await asyncio.to_thread(self._mgmt_client.list_foundation_models)
-            return True
-        except (ClientError, BotoCoreError, EndpointConnectionError) as exc:
-            logger.warning("health_check.failed", provider="bedrock", error=str(exc))
-            return False
-        except Exception as exc:
-            logger.error("health_check.unexpected_error", provider="bedrock", error=str(exc))
-            return False
+        """Nothing to probe: credential and region are per request, so there is
+        no process-level AWS account to reach.
+
+        Returns True — "no negative evidence". `PoolHealthTracker` acts only on a
+        POSITIVELY known-unhealthy result (`services/pool_health.py`).
+        """
+        return True
 
     async def get_info(self) -> ProviderInfo:
-        models: list[ModelInfo] = []
-        status = "unavailable"
-        if self._mgmt_client is None:
-            # No platform key ⇒ nothing to probe ⇒ unavailable at the platform
-            # level (still BYOK-usable per request).
-            return ProviderInfo(
-                name="bedrock",
-                display_name="AWS Bedrock",
-                status=status,
-                default_model=self._default_model,
-                models=models,
-                supports_streaming=True,
-                supports_vision=True,
-            )
-        try:
-            resp = await asyncio.to_thread(self._mgmt_client.list_foundation_models)
-            for m in resp.get("modelSummaries", []):
-                models.append(ModelInfo(name=m["modelId"], supports_streaming=True))
-            status = "available"
-        except (ClientError, BotoCoreError, EndpointConnectionError) as exc:
-            logger.warning("get_info.failed", provider="bedrock", error=str(exc))
-        except Exception as exc:
-            logger.error("get_info.unexpected_error", provider="bedrock", error=str(exc))
+        """Adapter capabilities only — no probe.
+
+        Listing Bedrock foundation models requires an AWS account to list them
+        IN, and this process has none: the account arrives per request. The model
+        catalogue comes from `AiModel` on the gateway.
+        """
         return ProviderInfo(
             name="bedrock",
             display_name="AWS Bedrock",
-            status=status,
-            default_model=self._default_model,
-            models=models,
+            status="unavailable",
+            default_model="",
+            models=[],
             supports_streaming=True,
             supports_vision=True,
         )

@@ -7,13 +7,13 @@ from collections.abc import AsyncIterator
 from typing import TYPE_CHECKING, Any
 
 import structlog
-from openai import APIConnectionError, APIError, APITimeoutError, AsyncAzureOpenAI, BadRequestError
+from openai import AsyncAzureOpenAI, BadRequestError
 
-from text.core.config import AzureOpenAIConfig
+from text.core.connection import resolve_connection
 from text.core.defaults import resolve_request_defaults
-from text.core.exceptions import ProviderCredentialsError
+from text.core.exceptions import ProviderConnectionMissingError
 from text.core.telemetry import get_tracer
-from text.models.provider import ModelInfo, ProviderInfo
+from text.models.provider import ProviderInfo
 from text.models.requests import GenerateRequest, ProviderOverride
 from text.models.stats import GenerationStats, stats_from_openai_usage
 from text.models.stream import StreamChunk
@@ -35,59 +35,40 @@ class AzureOpenAIProvider:
 
     credential_posture = CredentialPosture.BYOK
 
-    def __init__(self, config: AzureOpenAIConfig) -> None:
-        self._config = config
-        self._default_model = config.default_model
-        # BYOK — the shared platform client is built ONLY when an
-        # explicit api_key is present (never from env; see AzureOpenAIConfig).
-        # In production api_key is empty, so this is None and the credential must
-        # arrive per request as a ProviderOverride (tenant→SYSTEM). Never hand an
-        # empty key to the SDK constructor (it would build a client that 401s).
-        key = config.api_key.get_secret_value()
-        self._client: AsyncAzureOpenAI | None = (
-            AsyncAzureOpenAI(
-                api_key=key,
-                azure_endpoint=config.endpoint,
-                api_version=config.api_version,
-            )
-            if key
-            else None
-        )
+    #: Azure pins its wire contract by date. This is the version this ADAPTER is
+    #: written against — a property of the code, not a deployment choice — used
+    #: only when the resolved connection does not pin its own.
+    ADAPTER_API_VERSION = "2024-12-01-preview"
+
+    def __init__(self) -> None:
+        """No configuration. Azure OpenAI is BYOK-only and Text holds no
+        connection of its own: endpoint, credential and api-version all arrive
+        per request as a gateway-resolved ``ProviderOverride`` (tenant → SYSTEM).
+
+        There is therefore no shared client. Every request builds its own, so
+        two tenants can never race on one, and a request with no resolved
+        connection raises rather than 401-ing an empty-keyed client downstream.
+        """
 
     def _resolve_override(self, request: GenerateRequest) -> ProviderOverride | None:
-        """Tenant BYO credential injected by the gateway for THIS provider,
-        keyed by ``request.provider`` (see `ProviderOverride`). ``None`` for
-        every caller until a tenant configures an enabled azure connection —
-        current (env/config) behavior is unchanged in that case."""
-        if not request.provider_overrides:
-            return None
-        return request.provider_overrides.get(request.provider)
+        """The connection the gateway resolved for THIS request's provider."""
+        return resolve_connection(request)
 
     def _client_for(self, request: GenerateRequest) -> AsyncAzureOpenAI:
-        """Override-wins client resolution. A tenant credential builds a
-        request-scoped client (the shared client is never mutated) so concurrent
-        requests for different tenants can never interfere.
-
-         (BYOK, fail-closed): absent an override, the shared client is
-        reused ONLY when a platform key was configured; when neither an override
-        nor a platform client exists, raise ``ProviderCredentialsError`` (503)
-        rather than 401-ing an empty-keyed client downstream. There is no env
-        fallback."""
+        """Request-scoped, fail-closed client resolution."""
         override = self._resolve_override(request)
         if override is None:
-            if self._client is None:
-                raise ProviderCredentialsError(
-                    "Azure OpenAI credentials not configured. Azure OpenAI is "
-                    "BYOK-only: configure a tenant Azure OpenAI credential, or the "
-                    "platform (SYSTEM-tenant) connection, in the provider-connection "
-                    "plane. There is no env fallback.",
-                    provider="azure_openai",
-                )
-            return self._client
+            raise ProviderConnectionMissingError(
+                "No Azure OpenAI connection resolved. Azure OpenAI is BYOK-only: "
+                "configure a tenant Azure OpenAI credential, or the platform "
+                "(SYSTEM-tenant) connection, in the provider-connection plane. "
+                "There is no env fallback.",
+                provider="azure_openai",
+            )
         return AsyncAzureOpenAI(
             api_key=override.api_key.get_secret_value(),
-            azure_endpoint=override.base_url or self._config.endpoint,
-            api_version=override.api_version or self._config.api_version,
+            azure_endpoint=override.base_url or "",
+            api_version=override.api_version or self.ADAPTER_API_VERSION,
         )
 
     def _resolve_model(self, request: GenerateRequest) -> str | None:
@@ -101,7 +82,7 @@ class AzureOpenAIProvider:
         override = self._resolve_override(request)
         if override is not None and override.deployment_name:
             return override.deployment_name
-        return self._config.deployment_name or request.model
+        return request.model
 
     def _build_messages(self, request: GenerateRequest) -> list[dict[str, Any]]:
         messages: list[dict[str, Any]] = []
@@ -297,57 +278,31 @@ class AzureOpenAIProvider:
             yield StreamChunk(type="done", data={"finish_reason": finish_reason or "stop"})
 
     async def health_check(self) -> bool:
-        # No platform key ⇒ no shared client to probe. The provider is
-        # still registered (BYOK — usable per request via an override), but the
-        # platform connection itself is unhealthy.
-        if self._client is None:
-            return False
-        try:
-            await self._client.models.list()
-            return True
-        except (APIError, APIConnectionError, APITimeoutError) as exc:
-            logger.warning("health_check.failed", provider="azure", error=str(exc))
-            return False
-        except Exception as exc:
-            logger.error("health_check.unexpected_error", provider="azure", error=str(exc))
-            return False
+        """Nothing to probe: the connection is per request, so there is no
+        process-level Azure endpoint to reach.
+
+        Returns True — "no negative evidence" — deliberately. `PoolHealthTracker`
+        acts only on a POSITIVELY known-unhealthy result
+        (`services/pool_health.py`), so reporting False here would take a
+        perfectly usable BYOK provider out of degrade routing for every tenant
+        that carries its own working credential.
+        """
+        return True
 
     async def get_info(self) -> ProviderInfo:
-        # Default_model is informational-only (may be unset now that
-        # cloud configs carry no compiled-in vendor model) — never advertise an
-        # empty-named model.
-        models: list[ModelInfo] = (
-            [ModelInfo(name=self._default_model, supports_streaming=True)]
-            if self._default_model
-            else []
-        )
-        # No platform key ⇒ no shared client to probe ⇒ unavailable at
-        # the platform level (still BYOK-usable per request).
-        status = "available"
-        if self._client is None:
-            return ProviderInfo(
-                name="azure_openai",
-                display_name="Azure OpenAI",
-                status="unavailable",
-                default_model=self._default_model,
-                models=models,
-                supports_streaming=True,
-                supports_vision=True,
-            )
-        try:
-            await self._client.models.list()
-        except (APIError, APIConnectionError, APITimeoutError) as exc:
-            logger.warning("get_info.failed", provider="azure", error=str(exc))
-            status = "unavailable"
-        except Exception as exc:
-            logger.error("get_info.unexpected_error", provider="azure", error=str(exc))
-            status = "unavailable"
+        """Adapter capabilities only.
+
+        The MODEL listing and the default model come from `AiModel` /
+        `AiTaskDefault` on the gateway, which is where they have always been
+        authoritative — this adapter used to echo an env var
+        (``TEXT_AZURE_DEFAULT_MODEL``) that no generation path ever read.
+        """
         return ProviderInfo(
             name="azure_openai",
             display_name="Azure OpenAI",
-            status=status,
-            default_model=self._default_model,
-            models=models,
+            status="unavailable",
+            default_model="",
+            models=[],
             supports_streaming=True,
             supports_vision=True,
         )

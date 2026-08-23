@@ -10,7 +10,7 @@ from typing import TYPE_CHECKING, Any, Literal
 import httpx
 import structlog
 
-from text.core.config import OllamaConfig
+from text.core.connection import require_base_url
 from text.core.defaults import resolve_request_defaults
 from text.core.retention import DEFAULT_RETENTION_TTL_S, clamp_cache_ttl_seconds
 from text.core.telemetry import get_tracer
@@ -55,19 +55,34 @@ class OllamaProvider:
 
     credential_posture = CredentialPosture.SELF_HOST
 
-    def __init__(self, config: OllamaConfig, http_client: httpx.AsyncClient) -> None:
-        self._config = config
+    #: Name used when reporting a missing connection and on the admin listing.
+    _probe_name = "ollama"
+
+    def __init__(self, http_client: httpx.AsyncClient) -> None:
+        """No configuration. The engine endpoint arrives per request as a
+        gateway-resolved ``ProviderOverride`` (`core/connection.py`)."""
         self._http = http_client
-        self._default_model = config.default_model
-        self._base_url = config.base_url.rstrip("/")
+        self._last_base_url: str | None = None
         # Bootstrap retention hint; `apply_retention` replaces
         # it with the control-plane value on the first effective-config refresh.
         self._retention_ttl_s = clamp_cache_ttl_seconds(DEFAULT_RETENTION_TTL_S)
 
+    def _endpoint(self, request: GenerateRequest) -> str:
+        """The engine endpoint for THIS request, from the resolved connection.
+
+        Also remembered as ``_last_base_url`` so the admin-facing probes
+        (`health_check` / `get_info`), which have no request to resolve from, can
+        still report on the engine this process has actually been talking to. A
+        self-hosted engine is platform infrastructure with one SYSTEM-tenant row,
+        so that memo is accurate in practice — and it is never used to ROUTE a
+        generation, only to describe one.
+        """
+        base_url = require_base_url(request, provider=self._probe_name)
+        self._last_base_url = base_url
+        return base_url
+
     def _resolve_model(self, request: GenerateRequest) -> str | None:
-        # No in-gateway default — the caller-supplied model is
-        # authoritative. ``_default_model`` is retained for the providers
-        # listing (informational) only.
+        """The caller-supplied model is authoritative — Text selects nothing."""
         return request.model
 
     def apply_retention(self, retention: dict[str, int]) -> None:
@@ -132,7 +147,7 @@ class OllamaProvider:
                 "gen_ai.request.max_tokens": resolved["max_tokens"],
             },
         ) as span:
-            url = f"{self._base_url}/api/generate"
+            url = f"{self._endpoint(request)}/api/generate"
             payload = self._build_payload(request, stream=False)
             start = time.monotonic()
             resp = await self._http.post(url, json=payload)
@@ -165,7 +180,7 @@ class OllamaProvider:
                 "gen_ai.request.max_tokens": resolved["max_tokens"],
             },
         ) as span:
-            url = f"{self._base_url}/api/generate"
+            url = f"{self._endpoint(request)}/api/generate"
             payload = self._build_payload(request, stream=True)
             resolved_model = self._resolve_model(request)
             in_inline_think = False
@@ -217,9 +232,30 @@ class OllamaProvider:
                     else:
                         yield StreamChunk(type="chunk", content=text)
 
+    def _probe_url(self) -> str | None:
+        """The engine this process last talked to, or ``None``.
+
+        The admin probes have no request, so there is no connection to resolve.
+        Reporting on the last endpoint observed keeps `/providers` and `/health`
+        meaningful for a platform-run engine (one SYSTEM-tenant row, one address)
+        without ever inventing one: before the first generation there is nothing
+        to report, and this returns ``None``.
+        """
+        return self._last_base_url
+
     async def health_check(self) -> bool:
+        """Probe the last-observed endpoint.
+
+        Returns True when no endpoint has been observed yet — "no negative
+        evidence". `PoolHealthTracker` acts only on a POSITIVELY known-unhealthy
+        result (`services/pool_health.py`), so a freshly booted process must not
+        report an engine it has simply not contacted yet as DOWN.
+        """
+        probe_url = self._probe_url()
+        if probe_url is None:
+            return True
         try:
-            resp = await self._http.get(f"{self._base_url}/api/tags")
+            resp = await self._http.get(f"{probe_url}/api/tags")
             return resp.status_code == 200
         except (httpx.HTTPError, httpx.TimeoutException, ConnectionError, OSError) as exc:
             logger.warning("health_check.failed", provider="ollama", error=str(exc))
@@ -235,8 +271,11 @@ class OllamaProvider:
         UNKNOWN load state — never as "not loaded" (a transient `/api/ps` miss
         must not look like an unloaded engine).
         """
+        probe_url = self._probe_url()
+        if probe_url is None:
+            return None
         try:
-            resp = await self._http.get(f"{self._base_url}/api/ps")
+            resp = await self._http.get(f"{probe_url}/api/ps")
             if resp.status_code != 200:
                 return None
             return {m["name"] for m in resp.json().get("models", []) if m.get("name")}
@@ -249,9 +288,10 @@ class OllamaProvider:
 
     async def get_info(self) -> ProviderInfo:
         models: list[ModelInfo] = []
+        probe_url = self._probe_url()
         try:
-            resp = await self._http.get(f"{self._base_url}/api/tags")
-            if resp.status_code == 200:
+            resp = await self._http.get(f"{probe_url}/api/tags") if probe_url else None
+            if resp is not None and resp.status_code == 200:
                 for m in resp.json().get("models", []):
                     models.append(ModelInfo(name=m["name"], supports_streaming=True))
         except (httpx.HTTPError, httpx.TimeoutException, ConnectionError, OSError) as exc:
@@ -269,7 +309,10 @@ class OllamaProvider:
             name="ollama",
             display_name="Ollama (Self-Hosted)",
             status="available" if models else "unavailable",
-            default_model=self._default_model,
+            # The default model comes from `AiTaskDefault` on the gateway. This
+            # adapter used to echo ``TEXT_OLLAMA_DEFAULT_MODEL``, which no
+            # generation path ever read.
+            default_model="",
             models=models,
             supports_streaming=True,
             supports_vision=True,

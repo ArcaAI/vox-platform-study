@@ -101,6 +101,31 @@ class ProviderCredentialsError(TextError):
         super().__init__(message, error_code="PROVIDER_CREDENTIALS_MISSING")
 
 
+class ProviderConnectionMissingError(ProviderCredentialsError):
+    """No ``AiProviderConnection`` resolved for this request's provider.
+
+    The sibling of a missing CREDENTIAL: here nothing at all was injected, so the
+    adapter does not even know where to connect. A subclass rather than a peer
+    because both are the same operational fact from the caller's side — a
+    platform-configuration gap, retryable the moment an admin seeds the row — and
+    both must map to the same 503 ``PROVIDER_CREDENTIALS_MISSING`` contract that
+    `apps/api` and the SDK already handle.
+
+    Raised by `core/connection.py`. Since TASK-799 lane B this is also the posture
+    for SELF-HOSTED engines: `apps/text` no longer carries a
+    ``TEXT_<PROVIDER>_BASE_URL`` to fall back to, because a process-wide endpoint
+    is one no tenant can override.
+    """
+
+    def __init__(
+        self,
+        message: str = "Provider connection not configured",
+        *,
+        provider: str = "unknown",
+    ):
+        super().__init__(message, provider=provider)
+
+
 class CircuitOpenError(TextError):
     """Circuit breaker is open for the requested provider."""
 
