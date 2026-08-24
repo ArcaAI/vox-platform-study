@@ -185,9 +185,13 @@ def classify(consumers: dict[str, list[str]], configmap_path: str) -> None:
         print(f"    {k:38} {s}")
 
 
+# TASK-616 was archived and `docs/archive/**` is off-limits, so this pointed at a
+# path that no longer exists and `--check` failed with "missing — run with --write"
+# regardless of whether the inventory was actually stale. Repointed to the live
+# ticket that owns the consuming gate (TASK-803).
 GENERATED = (
     REPO
-    / "docs/implementation/TASK-616-Deployment-CICD-Observability-Modernization"
+    / "docs/implementation/TASK-803-Deployment-Config-Plane-Alignment"
     / "env-consumer-inventory.generated.json"
 )
 
