@@ -182,6 +182,30 @@ describe('S3Service', () => {
       // Should not throw, but S3 client should not be initialized
     });
 
+    it('reloads AppSettings once when S3_ENDPOINT is missing from the cache, rather than declaring the service unconfigured', async () => {
+      // The cache-miss case that is NOT "unconfigured": the row exists, the cache simply has not
+      // seen it yet (a boot that raced the row being written, or an invalidation in flight).
+      // Treating it as unconfigured made `updateBucket` answer 500 for a whole refresh window on
+      // a correctly-configured box, while every other storage route kept working.
+      const settings: Record<string, any> = { S3_ACCESS_KEY: 'test-access-key', S3_SECRET_KEY: 'test-secret-key' };
+      const refreshCache = vi.fn().mockImplementation(async () => {
+        settings.S3_ENDPOINT = 'http://localhost:9000';
+      });
+      mockAppSettingsService = {
+        getCacheStats: vi.fn().mockReturnValue({ isInitialized: true }),
+        hasSetting: vi.fn().mockImplementation((key: string) => key in settings),
+        getValueFromCache: vi.fn().mockImplementation((key: string) => settings[key]),
+        getValueWithDefault: vi.fn().mockImplementation((key: string, defaultValue: any) => settings[key] ?? defaultValue),
+        refreshCache,
+      } as unknown as IAppSettingsService;
+      service = makeService(mockAppSettingsService);
+
+      await service.onModuleInit();
+
+      expect(refreshCache).toHaveBeenCalledTimes(1);
+      await expect(service.isConfigured()).resolves.toBe(true);
+    });
+
     it('should detect MinIO endpoint and enable path style', async () => {
       mockAppSettingsService = createMockAppSettingsService({
         settings: {

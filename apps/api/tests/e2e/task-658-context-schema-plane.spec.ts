@@ -34,8 +34,6 @@ const DISCOVERY = '/api/v1/tenants/me/context-schema';
 
 /** Seeded `__GLOBAL__` consultation owned by the `doctor` user. */
 const GLOBAL_CONSULTATION_ID = '90000000-0000-0000-0000-000000000001';
-/** Seeded ARCAAI consultation owned by `arcaai_doctor`. */
-const ARCAAI_CONSULTATION_ID = '90000000-0000-0000-0001-000000000001';
 
 /** ARCAAI-scoped seed users; neither is in SEEDED_USERS (that map is `__GLOBAL__`). */
 const ARCAAI_TENANT_KEY = 'ARCAAI';
@@ -197,6 +195,21 @@ test.describe.serial('Context-schema plane end to end', () => {
   let schemaId: string;
   let publishedEtag: string;
   let pinnedVersionId: string;
+  /**
+   * A consultation with NO department, opened by this spec.
+   *
+   * It used to be the seeded ARCAAI consultation `90000000-…-0001-000000000001`, which sits in
+   * General Medicine. TASK-798 W3 then seeded DEPARTMENT-scoped default context schemas for
+   * ArcaAI's General Medicine and Rheumatology, and a DEPARTMENT default SHADOWS the tenant
+   * default wholesale (`resolveServableVersion`: department candidate first, tenant second) —
+   * which is the documented model, not a defect. A write on that consultation therefore resolves
+   * `consultation_gen_arcaai`, which does not declare this spec's kind, and the whole serial
+   * block died on "does not declare a kind".
+   *
+   * A departmentless consultation skips the DEPARTMENT tier entirely, so the TENANT-scoped probe
+   * schema below is the one that resolves — which is precisely what these tests are about.
+   */
+  let planeConsultationId: string;
 
   // Run-unique so the spec is re-runnable (`slug` is unique per tenant → 409).
   const slug = `task675_probe_${Date.now().toString(36)}`;
@@ -213,6 +226,16 @@ test.describe.serial('Context-schema plane end to end', () => {
     const globalAdmin = await loginUser(request, SEEDED_USERS.admin.username, SEEDED_USERS.admin.password, DEFAULT_TENANT_KEY);
     expect(globalAdmin, 'tenant_admin login (__GLOBAL__) failed — is the stack seeded?').toBeTruthy();
     superAdminToken = globalAdmin!.token;
+
+    // No `departmentId` — see `planeConsultationId` above.
+    const consultation = await request.post('/api/v1/consultations/open', {
+      headers: auth(arcaaiDoctorToken),
+      data: { patientId: `task675-probe-${Date.now()}` },
+    });
+    expect(consultation.status(), 'arcaai_doctor can open a departmentless consultation').toBe(201);
+    const opened = await consultation.json();
+    expect(opened.departmentId ?? null, 'the probe consultation must have no department').toBeNull();
+    planeConsultationId = opened.id;
   });
 
   test.afterAll(async ({ request }) => {
@@ -301,7 +324,7 @@ test.describe.serial('Context-schema plane end to end', () => {
   });
 
   test('a payload conforming to the pinned kind is accepted and canonicalised into content', async ({ request }) => {
-    const response = await request.post(`/api/v1/consultations/${ARCAAI_CONSULTATION_ID}/context`, {
+    const response = await request.post(`/api/v1/consultations/${planeConsultationId}/context`, {
       headers: auth(arcaaiDoctorToken),
       data: { type: 'STRUCTURED', kindKey: KIND, payload: { referrer: 'Dr Tan', urgency: 'urgent' } },
     });
@@ -315,7 +338,7 @@ test.describe.serial('Context-schema plane end to end', () => {
   });
 
   test('the same payload validates against an explicitly pinned version header', async ({ request }) => {
-    const response = await request.post(`/api/v1/consultations/${ARCAAI_CONSULTATION_ID}/context`, {
+    const response = await request.post(`/api/v1/consultations/${planeConsultationId}/context`, {
       headers: { ...auth(arcaaiDoctorToken), 'X-Context-Schema-Version': pinnedVersionId },
       data: { type: 'STRUCTURED', kindKey: KIND, payload: { referrer: 'Dr Lim' } },
     });
@@ -324,7 +347,7 @@ test.describe.serial('Context-schema plane end to end', () => {
   });
 
   test('an undeclared kind is refused', async ({ request }) => {
-    const response = await request.post(`/api/v1/consultations/${ARCAAI_CONSULTATION_ID}/context`, {
+    const response = await request.post(`/api/v1/consultations/${planeConsultationId}/context`, {
       headers: auth(arcaaiDoctorToken),
       data: { type: 'STRUCTURED', kindKey: 'not_a_declared_kind', payload: { x: 1 } },
     });
@@ -334,7 +357,7 @@ test.describe.serial('Context-schema plane end to end', () => {
   });
 
   test('a payload violating the kind sub-schema is refused and names the problem', async ({ request }) => {
-    const response = await request.post(`/api/v1/consultations/${ARCAAI_CONSULTATION_ID}/context`, {
+    const response = await request.post(`/api/v1/consultations/${planeConsultationId}/context`, {
       headers: auth(arcaaiDoctorToken),
       data: { type: 'STRUCTURED', kindKey: KIND, payload: { urgency: 'urgent' } },
     });
@@ -346,7 +369,7 @@ test.describe.serial('Context-schema plane end to end', () => {
   });
 
   test('K7 — a write that names no kindKey still succeeds on a tenant that HAS a schema', async ({ request }) => {
-    const response = await request.post(`/api/v1/consultations/${ARCAAI_CONSULTATION_ID}/context`, {
+    const response = await request.post(`/api/v1/consultations/${planeConsultationId}/context`, {
       headers: auth(arcaaiDoctorToken),
       data: { type: 'CASE_NOTE', content: 'K7 — schema exists, this write simply does not name a kind' },
     });

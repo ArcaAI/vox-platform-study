@@ -10,7 +10,14 @@
  * Seed-authoritative posture: the five built-in-local engines
  * (ollama, lm-studio, built-in, vllm, llama-cpp) seed ENABLED as the Day-1
  * default; the six cloud/BYO providers (azure, bedrock, sarvam, openai,
- * anthropic, vertex) seed DISABLED until a tenant brings a key. All seed keyless.
+ * anthropic, vertex) seed DISABLED until a tenant brings a key.
+ *
+ * No VENDOR credential is ever seeded, but "keyless" is not the same as "no key
+ * material": TASK-799 lane B gives the four self-hosted ENGINE rows the
+ * non-secret placeholder `not-needed`, because the `provider_overrides` fold
+ * that DELIVERS a connection to `apps/text` drops any row without key material,
+ * so a keyless self-host row resolves and then serves nothing (503). `built-in`
+ * is excluded on purpose — it has no remote endpoint to authenticate to.
  *
  * What these specs prove that unit tests cannot:
  *   1. The OCC chain really is wired end to end through the gateway —
@@ -48,11 +55,14 @@ test.describe('AI provider connections', () => {
     // retained, so its SYSTEM connection row is back and the llm connection
     // count returns to eleven. Only its MODEL CATALOG rows stay purged.
     const BUILTIN_LOCAL = new Set(['ollama', 'lm-studio', 'built-in', 'vllm', 'llama-cpp']);
+    // The self-hosted ENGINE rows carry the non-secret `not-needed` placeholder (see the header):
+    // `built-in` runs in-process, so it is the one built-in-local row with nothing to key.
+    const SELF_HOST_KEYED = new Set(['ollama', 'lm-studio', 'vllm', 'llama-cpp']);
 
     const rows = await res.json();
     expect(rows).toHaveLength(11);
     for (const row of rows) {
-      expect(row.hasKey, `${row.provider} must seed keyless`).toBe(false);
+      expect(row.hasKey, `${row.provider} key material must match the self-host placeholder posture`).toBe(SELF_HOST_KEYED.has(row.provider));
       expect(row.enabled, `${row.provider} enabled-state must match built-in-local posture`).toBe(BUILTIN_LOCAL.has(row.provider));
     }
     const enabled = rows
