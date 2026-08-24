@@ -57,9 +57,7 @@ class TestGoldenWireFormat:
         assert carrier[TRACEPARENT_HEADER] == GOLDEN_TRACEPARENT
 
     def test_helper_emits_the_same_string_as_the_typescript_side(self) -> None:
-        assert inject_trace_carrier(_golden_context()) == {
-            TRACEPARENT_HEADER: GOLDEN_TRACEPARENT
-        }
+        assert inject_trace_carrier(_golden_context()) == {TRACEPARENT_HEADER: GOLDEN_TRACEPARENT}
 
     def test_extracts_a_carrier_produced_by_the_typescript_side(self) -> None:
         ctx = extract_trace_context({TRACEPARENT_HEADER: GOLDEN_TRACEPARENT})
@@ -104,15 +102,11 @@ class TestCarrierFromRedisFields:
             b"data": b"\x00\x01binary-audio",
             TRACEPARENT_HEADER.encode(): GOLDEN_TRACEPARENT.encode(),
         }
-        assert carrier_from_redis_fields(fields) == {
-            TRACEPARENT_HEADER: GOLDEN_TRACEPARENT
-        }
+        assert carrier_from_redis_fields(fields) == {TRACEPARENT_HEADER: GOLDEN_TRACEPARENT}
 
     def test_reads_str_keys_and_values(self) -> None:
         fields = {"seq": "7", TRACEPARENT_HEADER: GOLDEN_TRACEPARENT}
-        assert carrier_from_redis_fields(fields) == {
-            TRACEPARENT_HEADER: GOLDEN_TRACEPARENT
-        }
+        assert carrier_from_redis_fields(fields) == {TRACEPARENT_HEADER: GOLDEN_TRACEPARENT}
 
     def test_carries_tracestate_when_present(self) -> None:
         fields = {TRACEPARENT_HEADER: GOLDEN_TRACEPARENT, TRACESTATE_HEADER: "hope=1"}

@@ -61,9 +61,7 @@ class TestInstanceId:
         monkeypatch.setenv("HOSTNAME", "text-7d8f9c-abcde")
         assert instance_id() == "text-7d8f9c-abcde"
 
-    def test_falls_back_to_hostname_colon_pid(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_falls_back_to_hostname_colon_pid(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.delenv("HOSTNAME", raising=False)
         result = instance_id()
         assert ":" in result
@@ -157,9 +155,7 @@ class TestStartRegistrationNeverBlocksBoot:
             await client.aclose()
 
     async def test_gateway_500_does_not_raise(self) -> None:
-        transport = _RecordingTransport(
-            lambda req: httpx.Response(500, json={"error": "boom"})
-        )
+        transport = _RecordingTransport(lambda req: httpx.Response(500, json={"error": "boom"}))
         client = httpx.AsyncClient(transport=transport)
         try:
             task = start_registration(
@@ -179,9 +175,7 @@ class TestStartRegistrationNeverBlocksBoot:
             await client.aclose()
 
     async def test_posts_the_expected_payload_and_headers_on_success(self) -> None:
-        transport = _RecordingTransport(
-            lambda req: httpx.Response(200, json={"id": "abc"})
-        )
+        transport = _RecordingTransport(lambda req: httpx.Response(200, json={"id": "abc"}))
         client = httpx.AsyncClient(transport=transport)
         try:
             task = start_registration(
@@ -196,10 +190,7 @@ class TestStartRegistrationNeverBlocksBoot:
             await asyncio.sleep(0.05)
             assert len(transport.calls) == 1
             request = transport.calls[0]
-            assert (
-                str(request.url)
-                == "http://gateway:8868/api/v1/internal/service-releases"
-            )
+            assert str(request.url) == "http://gateway:8868/api/v1/internal/service-releases"
             assert request.headers["x-service-token"] == "s3cr3t"
         finally:
             await stop_registration(task)
@@ -209,9 +200,7 @@ class TestStartRegistrationNeverBlocksBoot:
 @pytest.mark.asyncio
 class TestHeartbeatScheduling:
     async def test_heartbeats_on_the_configured_interval(self) -> None:
-        transport = _RecordingTransport(
-            lambda req: httpx.Response(200, json={"id": "abc"})
-        )
+        transport = _RecordingTransport(lambda req: httpx.Response(200, json={"id": "abc"}))
         client = httpx.AsyncClient(transport=transport)
         try:
             task = start_registration(
@@ -231,9 +220,7 @@ class TestHeartbeatScheduling:
             await client.aclose()
 
     async def test_stop_registration_cancels_the_task_cleanly(self) -> None:
-        transport = _RecordingTransport(
-            lambda req: httpx.Response(200, json={"id": "abc"})
-        )
+        transport = _RecordingTransport(lambda req: httpx.Response(200, json={"id": "abc"}))
         client = httpx.AsyncClient(transport=transport)
         try:
             task = start_registration(

@@ -86,9 +86,7 @@ def resolve_secrets_dir() -> Path | None:
     return path if path.is_dir() else None
 
 
-def _clone(
-    origin: PydanticBaseSettingsSource, cls: type[_SourceT], **overrides: Any
-) -> _SourceT:
+def _clone(origin: PydanticBaseSettingsSource, cls: type[_SourceT], **overrides: Any) -> _SourceT:
     """Copy a source instance under a new class, overriding chosen attributes.
 
     ``__init__`` is bypassed on purpose. The instance pydantic handed us already

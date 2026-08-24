@@ -95,3 +95,50 @@ conflicts = [
         { package = "harness", extra = "eval" },
     ],
 ]
+
+# ---------------------------------------------------------------------------
+# black — repo-root defaults (TASK-799)
+# ---------------------------------------------------------------------------
+# Every app already declares `line-length = 100` in its own pyproject.toml, and
+# the per-service `pnpm <svc>:format` scripts invoke black one path at a time so
+# each discovers its own config. This block exists for the OTHER invocation:
+#
+#     black apps/guardrail/src apps/harness/src ...       # or plain `black .`
+#
+# black resolves configuration from the COMMON BASE DIRECTORY of its arguments.
+# Span two apps and that base is the repo root — which, without this section,
+# contained no `[tool.black]` at all, so black silently fell back to its own
+# default line length of 88. The effect was not a warning but a wrong answer:
+# `--check` reported 738 of 1067 files as needing reformatting, and actually
+# running it would have rewritten ~600 correctly-formatted files to the wrong
+# width while looking exactly like a routine cleanup. Measured 2026-08-24;
+# per-path invocation put the real drift at 143 files.
+#
+# Keep `line-length` here EQUAL to every app's value. If they ever diverge, the
+# same command means two different things depending on how many paths you pass.
+[tool.black]
+line-length = 100
+target-version = ["py311"]
+include = '\.pyi?$'
+# A root-scoped run walks the whole monorepo, so it must skip what the
+# per-service runs never saw: agent worktrees (which contain full checkouts, and
+# would be formatted as if they were source), JS dependencies, and build output.
+extend-exclude = '''
+/(
+  \.eggs
+  | \.git
+  | \.claude/worktrees
+  | \.hg
+  | \.mypy_cache
+  | \.pytest_cache
+  | \.ruff_cache
+  | \.tox
+  | \.turbo
+  | \.venv
+  | \.next
+  | node_modules
+  | build
+  | dist
+  | htmlcov
+)/
+'''

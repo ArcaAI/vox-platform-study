@@ -129,9 +129,7 @@ def test_secrets_dir_beats_dotenv(fake_repo: Path, secrets_dir: Path) -> None:
     assert Probe().probe_token.get_secret_value() == "from-vault"
 
 
-def test_default_pydantic_order_loses_to_the_dotenv(
-    fake_repo: Path, secrets_dir: Path
-) -> None:
+def test_default_pydantic_order_loses_to_the_dotenv(fake_repo: Path, secrets_dir: Path) -> None:
     """Control: pin the BUG, so reverting the fix fails here and not only above.
 
     Two classes, one fixture. ``Unordered`` takes pydantic's stock order and is
@@ -163,15 +161,10 @@ def test_init_beats_host_env(secrets_dir: Path) -> None:
     os.environ["PROBE_TOKEN"] = "from-host"
     (secrets_dir / "PROBE_TOKEN").write_text("from-vault")
 
-    assert (
-        Probe(probe_token=SecretStr("from-init")).probe_token.get_secret_value()
-        == "from-init"
-    )
+    assert Probe(probe_token=SecretStr("from-init")).probe_token.get_secret_value() == "from-init"
 
 
-def test_full_precedence_chain_in_one_object(
-    fake_repo: Path, secrets_dir: Path
-) -> None:
+def test_full_precedence_chain_in_one_object(fake_repo: Path, secrets_dir: Path) -> None:
     """All five tiers live at once, each on a different field."""
     _dotenv(fake_repo, "PROBE_PLAIN=from-dotenv\n")
     load_env(start_dir=fake_repo)
@@ -224,9 +217,7 @@ def test_hope_secrets_dir_env_var_overrides_the_default(secrets_dir: Path) -> No
 # ---------------------------------------------------------------------------
 
 
-def test_ci_reads_no_dotenv_but_still_reads_secrets_dir(
-    fake_repo: Path, secrets_dir: Path
-) -> None:
+def test_ci_reads_no_dotenv_but_still_reads_secrets_dir(fake_repo: Path, secrets_dir: Path) -> None:
     os.environ["CI"] = "true"
     _dotenv(fake_repo, "PROBE_TOKEN=from-dotenv\n")
     load_env(start_dir=fake_repo)

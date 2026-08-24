@@ -89,9 +89,7 @@ def _default_run_git(args: list[str]) -> str | None:
             timeout=2,
             check=False,
         )
-    except (
-        Exception
-    ):  # noqa: BLE001 - the git shell-out must never raise past this point
+    except Exception:  # noqa: BLE001 - the git shell-out must never raise past this point
         return None
     if result.returncode != 0:
         return None
@@ -122,9 +120,7 @@ def _degraded_build_info(run_git: GitRunner) -> BuildInfo:
         if branch:
             git_branch = branch
     except Exception as error:  # noqa: BLE001 - never let a fallback attempt propagate
-        logger.warning(
-            "build_info.git_branch_lookup_failed", extra={"error": str(error)}
-        )
+        logger.warning("build_info.git_branch_lookup_failed", extra={"error": str(error)})
 
     return BuildInfo(
         service=_UNKNOWN_SERVICE,
@@ -175,9 +171,7 @@ class BuildInfoReader:
                 "build_info.wrong_shape",
                 extra={"path": str(self._path)},
             )
-        except (
-            Exception
-        ) as error:  # noqa: BLE001 - must never propagate on the boot path
+        except Exception as error:  # noqa: BLE001 - must never propagate on the boot path
             logger.warning(
                 "build_info.read_failed",
                 extra={"path": str(self._path), "error": str(error)},
