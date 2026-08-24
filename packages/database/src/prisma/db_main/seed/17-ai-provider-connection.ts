@@ -122,6 +122,26 @@ export const isPlatformSelfHostConnection = (c: { service: string; provider: str
   (PLATFORM_SELF_HOST_CONNECTIONS as readonly string[]).includes(`${c.service}:${c.provider}`);
 
 /**
+ * TASK-799 lane F — the ONE write this create-only phase makes to an existing row.
+ *
+ * True only when the seed carries the non-secret self-host placeholder AND the
+ * stored row has no key material whatsoever. Rows created before the placeholder
+ * existed are keyless, and a keyless row is dropped from the `provider_overrides`
+ * fold on BOTH tiers (see this file's delivery-path header) — so the provider
+ * silently serves nothing and a re-seed's create-only skip never repairs it.
+ *
+ * This cannot clobber anything an administrator owns: it writes only where
+ * nothing is written, only the constant `'not-needed'`, and only for endpoints
+ * the platform itself runs. A CLOUD row's keylessness is a real state (the key
+ * is the tenant's to supply), which is why `apiKeyPlaintext === null` returns
+ * false rather than being treated as a gap.
+ */
+export const needsSelfHostKeyBackfill = (
+  seedRow: { service: string; provider: string; apiKeyPlaintext: string | null },
+  existing: { encryptedApiKey: Uint8Array | null },
+): boolean => seedRow.apiKeyPlaintext !== null && isPlatformSelfHostConnection(seedRow) && (existing.encryptedApiKey?.length ?? 0) === 0;
+
+/**
  * The capability discriminator vocabulary a seed row may carry.
  *
  * MIRRORS `@arcaai/applications`
@@ -494,14 +514,35 @@ export const seedAiProviderConnection = async (client: CorePrismaClient): Promis
 
   let created = 0;
   let skipped = 0;
+  let backfilled = 0;
   for (const row of SYSTEM_AI_PROVIDER_CONNECTIONS) {
     const existing = await client.aiProviderConnection.findFirst({
       where: { tenantId: row.tenantId, service: row.service, provider: row.provider },
     });
 
     if (existing) {
-      // CREATE-ONLY — never clobber an admin-configured endpoint or key.
-      console.log(`  AiProviderConnection "${row.service}:${row.provider}" already exists, skipping`);
+      // CREATE-ONLY — never clobber an admin-configured endpoint or key. The
+      // single exception is repairing a self-host row that has NO key at all:
+      // such a row is dropped from `provider_overrides` and therefore serves
+      // nothing, and the value written is the non-secret placeholder, so there
+      // is nothing an admin could have chosen that this overwrites.
+      if (needsSelfHostKeyBackfill(row, existing)) {
+        const backfill = row.apiKeyPlaintext ? await encryptSeedSecret(row.apiKeyPlaintext) : null;
+        if (backfill) {
+          await client.aiProviderConnection.update({
+            where: { id: existing.id },
+            data: { encryptedApiKey: Uint8Array.from(backfill.ciphertext), keyVersion: backfill.keyVersion },
+          });
+          console.log(`  AiProviderConnection "${row.service}:${row.provider}" exists but was KEYLESS — backfilled the self-host placeholder`);
+          backfilled += 1;
+          continue;
+        }
+        console.warn(
+          `  ⚠️  AiProviderConnection "${row.service}:${row.provider}" is KEYLESS and could not be repaired ` +
+            '(Vault Transit unavailable, so the placeholder could not be encrypted). It will not appear in provider_overrides.',
+        );
+      }
+      console.log(`  AiProviderConnection "${row.service}:${row.provider}" exists — KEPT AS IS, not updated from the seed`);
       skipped += 1;
       continue;
     }
@@ -545,6 +586,14 @@ export const seedAiProviderConnection = async (client: CorePrismaClient): Promis
     created += 1;
   }
 
-  console.log(`Seeded AiProviderConnection: ${created} created, ${skipped} skipped`);
+  console.log(`Seeded AiProviderConnection: ${created} created, ${backfilled} key-backfilled, ${skipped} skipped`);
+  if (skipped > 0) {
+    console.warn(
+      `⚠️  ${skipped} AiProviderConnection row(s) already existed and were NOT UPDATED — baseUrl, region, enabled and any ` +
+        'vendor key were left exactly as stored. This phase is create-only by design: a re-seed must never clobber a ' +
+        "tenant's BYO credential or an admin's endpoint. If you expected the seed to change one, it did not — edit it " +
+        'through the admin API, or delete the row first and re-seed.',
+    );
+  }
   return { success: true, created, skipped };
 };

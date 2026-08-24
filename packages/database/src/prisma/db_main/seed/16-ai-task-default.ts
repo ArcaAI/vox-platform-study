@@ -44,6 +44,117 @@ export interface AiTaskDefaultSeed {
   modelSlug: string;
 }
 
+/**
+ * ─────────────────────────────────────────────────────────────────────────────
+ * WHY THE CUSTOMER TENANTS GET NO ROWS HERE — do not "complete" this.
+ * ─────────────────────────────────────────────────────────────────────────────
+ *
+ * Every row above targets SYSTEM. Neither seeded CUSTOMER tenant — Global
+ * (`50000000-…0000`) nor ArcaAI (`50000000-…0001`) — has an `AiTaskDefault`,
+ * `AiProviderConnection`, `AiRuntimeProfile` or `TenantStorageConfig` row, and
+ * that is CORRECT. It reads like a half-finished seed; it is not.
+ *
+ * Resolution is `request tenant → SYSTEM`, and ABSENCE is the load-bearing
+ * state: no row means "this tenant has no opinion", which is precisely what
+ * makes the tenant inherit the platform default — including every future
+ * change to it. Writing a customer-tenant row here would not "provision" that
+ * tenant, it would PIN it: the tenant would win its own cascade forever and
+ * silently stop tracking the platform default the moment a super admin moved
+ * it. Seeding a copy of today's SYSTEM value is therefore the one action
+ * guaranteed to break inheritance while looking like configuration.
+ *
+ * Global additionally must never appear in a runtime cascade at all — it is a
+ * platform-admin PLAYGROUND for trialling config before promoting it into
+ * SYSTEM, not a config tier (`.claude/rules/00-project-context.md`,
+ * "The two reserved tenants are NOT two config tiers").
+ *
+ * What a customer tenant DOES need to be usable is operational scaffolding, and
+ * it has it: users, role assignments, departments, storage buckets, a plan, and
+ * prompt templates/agents are all seeded for both. Per-tenant AI configuration
+ * is written at runtime by a tenant admin exercising BYO — never by this seed.
+ *
+ * Enforced by `__tests__/task-799-ai-task-default-completeness.test.ts`
+ * ("every seed row targets the SYSTEM tenant").
+ */
+
+/**
+ * Declared task keys that deliberately carry NO SYSTEM seed row, and why.
+ *
+ * The completeness guard (`__tests__/task-799-ai-task-default-completeness.test.ts`)
+ * fails on any `AI_TASK_KEYS` entry that is neither seeded above nor listed
+ * here. An absence must be a DECISION with a reason attached, never an
+ * oversight — every `models.<taskKey>` descriptor is `failMode: 'closed'`, so
+ * an unseeded key 503s forever on a platform that looks fully configured.
+ *
+ * Keys mapped to the empty string are refused by the guard: write the reason.
+ */
+export const SYSTEM_TASK_DEFAULT_EXEMPTIONS: Record<string, string> = {
+  // ── opt-in by construction: a SYSTEM row would CHANGE behaviour ──────────
+  'text.live.fallback':
+    'Opt-in per-tenant fallback. `resolveTextFallbackSelection` fails OPEN: no row means no fallback runs. ' +
+    'A SYSTEM row would not be a default — it would switch a second provider on for every tenant that never asked for one, ' +
+    'and bill them for it. Absence IS the correct platform posture, not a gap.',
+  'text.finalize.fallback':
+    'Opt-in per-tenant fallback, identical reasoning to `text.live.fallback`: fail-open, so a SYSTEM row would enable a ' +
+    'second provider platform-wide rather than express a default. Absence IS the correct platform posture.',
+
+  // ── no deployable model exists to point at ──────────────────────────────
+  'vlm.extract':
+    'DELIBERATE, and already documented at the model row: `lms-medgemma-1.5-4b-it-vision` (seed/ai-models/llm.ts) is ' +
+    'catalogued but its weights are not loaded on the LM Studio instance, so a SYSTEM default would replace a clean ' +
+    '"not configured" 503 with an upstream 404 from an engine that cannot serve it. Unlike the `nlp.*` keys this one is ' +
+    'tenant-admin configurable (NOT in SUPER_ADMIN_ONLY_TASK_PREFIXES), so a tenant with a BYOK vision credential can ' +
+    'configure it today — the absence blocks nobody permanently.',
+
+  // ── declared, but nothing can call them yet ─────────────────────────────
+  // Both keys were added by TASK-729 together with the `apps/nlp` endpoints
+  // that would serve them, but the GATEWAY half was never built: the only
+  // caller, `AiInferenceController`, types its resolver as
+  // `taskKey: 'nlp.ner' | 'nlp.diagnosis'` (ai-inference.controller.ts:379),
+  // so no request can reach either key. Seeding a model here would configure a
+  // capability nothing can invoke, and would have to name a checkpoint nobody
+  // has chosen — TASK-729 proved the plumbing against the FIXTURE ids
+  // `org/sentiment-model` / `org/toxicity-model`
+  // (apps/nlp/tests/test_classify_sentiment_toxicity.py:90,120), never a real
+  // one. On a clinical platform a plausible-but-unvetted classifier is worse
+  // than a 503: it returns confident numbers nobody validated. That is the same
+  // judgement that repointed `nlp.classification` away from the wrong-but-real
+  // `symps-disease-bert-v3-c41` and onto a DISABLED placeholder.
+  'nlp.sentiment':
+    'No checkpoint has been selected, and no gateway route can reach the key. Choosing a sentiment model is an OPEN OWNER ' +
+    'DECISION: the catalog holds no sentiment classifier, so `upsertRow` would reject every slug a super admin could name. ' +
+    'Seed an ENABLED SYSTEM AiModel (TEXT_CLASSIFICATION) first; the row here follows from that choice, not before it.',
+  'nlp.toxicity':
+    'No checkpoint has been selected, and no gateway route can reach the key. Same OPEN OWNER DECISION as `nlp.sentiment`, ' +
+    'with one extra constraint: toxicity is MULTI-LABEL (owner decision 2026-08-20), so the chosen checkpoint must expose an ' +
+    'independent per-label head and carry a `_metadata.labelTaxonomy.cls_threshold`, not a softmax over one winner.',
+};
+
+/**
+ * Seeded task keys that `AI_TASK_KEYS` does NOT declare — the mirror gap.
+ *
+ * These two rows ARE load-bearing: `apps/guardrail` reads `AiTaskDefault` by
+ * `task_key` over its own read-only SQL connection (the sanctioned peer-service
+ * exception — `apps/guardrail/src/guardrail/core/tenant_config.py:128` pins
+ * `TASK_KEY_GUARDRAIL_PII`), so the PII selection resolves at runtime without
+ * ever passing through `AiTaskDefaultService`.
+ *
+ * The consequence is a governance hole, not a runtime one: because the keys are
+ * absent from `AI_TASK_KEYS`, `assertKnownTaskKey` rejects them on every admin
+ * route, and no `models.guardrail.pii*` descriptor exists — so the platform's
+ * PII-model selection cannot be read or changed by any administrator, through
+ * any surface. Closing it means registering both keys AND adding their `META`
+ * entries in `settings-registry/descriptors/model-defaults.descriptors.ts`
+ * (whose `Record<AiTaskKey, …>` makes the two edits inseparable), which widens
+ * the settings catalog and is an owner-facing decision — `guardrail.*` is
+ * tenant-configurable, so registering these keys would also decide whether a
+ * tenant may pick its own PII model.
+ *
+ * The guard pins this set EXACTLY, so a third such row cannot appear silently
+ * while the decision is open.
+ */
+export const SEEDED_TASK_KEYS_NOT_IN_REGISTRY: readonly string[] = ['guardrail.pii', 'guardrail.pii.spans'];
+
 /** Deterministic ids — fresh `86000000-…` block (unused by any other seed). */
 export const SYSTEM_AI_TASK_DEFAULTS: AiTaskDefaultSeed[] = [
   {
@@ -187,7 +298,7 @@ export const seedAiTaskDefault = async (client: CorePrismaClient): Promise<{ suc
 
     if (existing) {
       // CREATE-ONLY — never overwrite an admin-managed default.
-      console.log(`  AiTaskDefault "${row.taskKey}" already exists, skipping`);
+      console.log(`  AiTaskDefault "${row.taskKey}" exists (→ ${existing.modelSlug}) — KEPT AS IS, not updated to "${row.modelSlug}"`);
       skipped += 1;
       continue;
     }
@@ -206,5 +317,13 @@ export const seedAiTaskDefault = async (client: CorePrismaClient): Promise<{ suc
   }
 
   console.log(`Seeded AiTaskDefault: ${created} created, ${skipped} skipped`);
+  if (skipped > 0) {
+    console.warn(
+      `⚠️  ${skipped} AiTaskDefault row(s) already existed and were NOT UPDATED. This phase is create-only by ` +
+        'design — a re-seed must never clobber a model selection an admin made at runtime. If you expected the seed to ' +
+        'change one of these, it did not: repoint it through PUT /api/v1/admin/ai-task-defaults/:taskKey, or delete the ' +
+        'row first and re-seed.',
+    );
+  }
   return { success: true, created, skipped };
 };
