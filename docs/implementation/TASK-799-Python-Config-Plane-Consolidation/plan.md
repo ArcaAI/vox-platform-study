@@ -113,22 +113,52 @@ regression.
    Phase 2 lanes add `redis` to harness and tts. One lockfile, five writers.
 3. Re-run each service's suite AFTER merging, not just in its worktree.
 
-## Phase 2 follow-up — the nlp taxonomy lane (NOT done, needs BOTH sides)
+## Phase 2 follow-up — the nlp taxonomy lane (DONE, lane G, 2026-08-24)
 
-`apps/nlp` never reads `AiModel._metadata`: it is a pure EXECUTOR that receives an
-already-decoded taxonomy over the wire (guardrail resolves the blob and forwards it as
-request fields — `apps/nlp/src/nlp/schemas/guard.py:1-16` declares this contract).
-So moving these onto `_metadata` requires the GATEWAY to resolve and inject them, and
-that half lives in `apps/api` + `packages/applications`. A lane owning only `apps/nlp`
-would add a schema field the gateway never populates, leaving the env var as the
-effective source — half-wired config that reads as done.
+The blocker was real: `apps/nlp` is a pure EXECUTOR that never reads `AiModel._metadata`
+(`apps/nlp/src/nlp/schemas/guard.py:1-16` declares that contract), so a lane owning only
+`apps/nlp` would have added a schema field the gateway never populates — half-wired config
+that reads as done. Lane G owned BOTH sides and closed it.
 
-Still env- or code-owned, awaiting a lane that owns both sides:
-`entailment_scorer.py:60-78` (MiniCheck token ids + calibration bounds — a non-MiniCheck
-model yields silently meaningless scores on a clinical gate), `ontology_linker.py:94`
-(40 UMLS/SNOMED/RxNorm/ICD-10/LOINC rows), `vitals_extractor.py:22-27` (clinical
-plausibility ranges), `assertion.py:37` (ConText/NegEx triggers), and the five
-`TOKEN_CLASSIFIER_*` / `NLP_LINKER_*` fields.
+**Where each item landed, and why there.**
+
+| Item | Now lives on | Judgment |
+|---|---|---|
+| Ontology vocabulary (`ontology_linker._VOCABULARY_ENTRIES`, 40 rows) | `AiModel._metadata.clinicalTaxonomy.linker.vocabulary` | A UMLS/SNOMED/RxNorm crosswalk is a taxonomy (rule 00), and the module's own docstring told the reader to "add an entry" to widen clinical coverage — i.e. a redeploy per drug |
+| Vitals plausibility bands (`vitals_extractor._*_RANGE`) | `…clinicalTaxonomy.vitals` | A clinical policy an operator may legitimately tune — a paediatric or neonatal service needs different bands and should not fork the extractor |
+| ConText/NegEx triggers (`assertion._TRIGGERS`) | `…clinicalTaxonomy.assertion.triggers` | A negation lexicon is language- and site-specific; a dictation-heavy clinic negates differently from a typed-note one |
+| The five `TOKEN_CLASSIFIER_*` / `NLP_LINKER_*` env fields | `…clinicalTaxonomy.tokenClassifier` / `.linker` | A LABEL SET in an env var is the exact thing rule 00 forbids; and `ignoreLabels`/`aggregationStrategy` are properties OF THE CHECKPOINT, which an env var cannot vary with |
+| MiniCheck **calibration bounds + reference pair** | `AiModel._metadata.entailment` on `minicheck-flan-t5-large` | A property of the specific build AND its quantisation — tolerances measured on a Q6 GGUF are meaningless for a Q4 one |
+| MiniCheck **label-token ids (3/209) + prompt template** | **STAYS IN CODE** | Not a knob: no other value of them makes `LlamaCppMiniCheckScorer` work, and a different NLI checkpoint needs a different template and logit read, not two different integers. Making them settable would ship a control that produces garbage for every value except the one it already has |
+
+**Why the model row and not a settings key.** Most of this IS a property of the checkpoint,
+so it must travel with the SELECTION. A knob keyed by service name would keep pointing at the
+old model's conventions the moment an admin re-points `nlp.ner`. This is the same mechanism
+`_metadata.labelTaxonomy` already uses for the guardrail plane. Under D-4 (nlp models are
+PLATFORM-SHARED) the read is SYSTEM-pinned, so no per-tenant cascade is involved.
+
+**The safety fix (item 1).** A non-MiniCheck model could previously be selected for
+`guardrail.groundedness` and scored with MiniCheck's own label-token ids read out of a
+different vocabulary — plausible-looking numbers on a clinical groundedness gate, with the
+loose 0.60/0.40 self-check unable to tell. `load_minicheck_scorer` now REFUSES three ways:
+no declared calibration, a declared `adapter` other than `minicheck-flan-t5`, or declared
+label tokens that disagree with the ones the adapter actually reads. All three degrade the
+gate to `unverified` instead of returning a score.
+
+**Fail posture (declared once, `nlp/schemas/clinical_taxonomy.py`).** An absent SECTION
+disables the pass it governs — no ontology codes, no vitals, no assertion labels — and never
+substitutes a literal. Deliberately NOT a 503 on the whole route: model SELECTION stays
+fail-closed (a missing `model_name` is already 503), but an unconfigured ENRICHMENT must not
+take entity extraction down with it. Nothing is fabricated and no code literal is
+substituted, which is what rule 00 actually asks for.
+
+**One gap left, outside the lane's boundary.** `/guard/entailment`'s only caller is
+`apps/guardrail/src/guardrail/services/external_nlp_client.py` (lane F's file), which does
+not yet populate the new `calibration` field. The executor contract and the seeded row are
+in place and proven by test; the guardrail client needs `body["calibration"] = <the
+`_metadata.entailment` blob it already resolves alongside `labelTaxonomy`>` in `_post`.
+Until then `/guard/entailment` fails closed to `unverified` rather than mis-scoring — the
+safe direction, and visible rather than silent.
 
 ## Phase 3 — Make it stick
 
