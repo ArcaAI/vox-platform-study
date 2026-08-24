@@ -103,7 +103,7 @@ class RetrievalConfig(BaseSettings):
     query built from the extracted entities is dense-embedded (self-hosted LM
     Studio ``/v1/embeddings``) **and** sparse-embedded (in-process fastembed
     ``Qdrant/bm25``), fused server-side via the Qdrant Query API
-    (``prefetch(dense)`` + ``prefetch(sparse)`` -> ``FusionQuery(RRF, k=rrf_k)``)
+    (``prefetch(dense)`` + ``prefetch(sparse)`` -> ``FusionQuery(RRF)``)
     filtered by ``tenant_id`` + ``status=APPROVED`` over the dedicated
     ``knowledge_chunks`` collection, then reranked by a HF TEI cross-encoder
     (``hope-reranker``) down to ``top_k_rerank``.
@@ -174,7 +174,6 @@ class RetrievalConfig(BaseSettings):
     # Hybrid knobs: dense+sparse prefetch limit -> RRF fusion -> cross-encoder rerank.
     top_k_retrieval: int = 20
     top_k_rerank: int = 5
-    rrf_k: int = 60
     embeddings_timeout_s: float = 30.0
     reranker_timeout_s: float = 30.0
     qdrant_timeout_s: float = 10.0
@@ -194,7 +193,7 @@ class RetrievalConfig(BaseSettings):
         raw = v.get_secret_value() if isinstance(v, SecretStr) else v
         return None if isinstance(raw, str) and raw == "" else v
 
-    @field_validator("embeddings_dim", "top_k_retrieval", "top_k_rerank", "rrf_k")
+    @field_validator("embeddings_dim", "top_k_retrieval", "top_k_rerank")
     @classmethod
     def _positive(cls, v: int) -> int:
         if v <= 0:
