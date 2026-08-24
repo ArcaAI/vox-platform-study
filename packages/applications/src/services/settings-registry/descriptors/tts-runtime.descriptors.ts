@@ -40,93 +40,111 @@
 // With no `GlobalSetting` row the cascade resolves the descriptor default, so an
 // unseeded deployment runs on exactly the values it ran on before.
 
-import { EDITABLE_BY_NONE, SettingDescriptor } from '../registry.types';
+import { SettingDescriptor } from '../registry.types';
 
 /**
- * The five provider `*_ENABLED` flags — still read from `process.env`, and
- * declared here so the surface is complete and the pending migration is
- * queryable rather than buried in prose. That is exactly what `targetTier` is
- * for (`platform-knobs.descriptors.ts` records ten keys migrated this way).
+ * The five provider/engine `*_ENABLED` flags — HALF-MIGRATED, and the halves
+ * are the point (TASK-799 lane H).
  *
- * WHY THEY DID NOT MOVE WITH EVERYTHING ELSE IN THIS FILE
- * --------------------------------------------------------
- * They are DEPLOYMENT SHAPE, not runtime policy: which engines a container runs
- * is chosen together with which optional extras were installed in its image, so
- * a flag that enables an engine whose package is absent does nothing useful.
+ * They now ride the pull route like every other key in this file
+ * (`tier: 'global-kv'`, `consumedBy: ['tts']`) AND `TTS_*_ENABLED` remains a
+ * live bootstrap fallback in the service. That is not "configured in two
+ * places": `apps/tts/src/tts/core/control_plane.py#ENV_BOOTSTRAP_KEYS` declares
+ * env SUBORDINATE, so only a value a DATABASE ROW supplied (`source: 'db'`)
+ * overrides it. An `env-fallback` entry — the gateway reporting that no row
+ * answered and it resolved the descriptor default — leaves the environment
+ * standing.
+ *
+ * WHY THE ENV PATH IS STILL OPEN
+ * --------------------------------
+ * Closing it is a THREE-step change and only two steps live in this repository:
+ *
+ *   1. seed the rows                → `seed/11d-tts-engine-flags.ts` (done)
+ *   2. update the k8s ConfigMaps    → `arca/hope-v2-deployment` — NOT this repo
+ *   3. close the env read           → here, but ONLY after (2)
  *
  * The binding constraint is concrete. `TTS_KOKORO_ENABLED=true` in the k8s
  * ConfigMap is what makes a KEYLESS deployment reach `/health/ready` at all —
  * `apps/tts/src/tts/tests/unit/test_keyless_readiness_task642.py` exists because
  * `hope-tts` once answered 503 forever, so its Service carried no endpoints and
- * `TTS_URL` resolved to nothing. Closing that env path with no seeded
- * `GlobalSetting` row, while the manifests live in a separate repository
- * (`arca/hope-v2-deployment`), would reproduce that outage on the next deploy.
+ * `TTS_URL` resolved to nothing. Doing (3) before (2) reproduces that outage on
+ * the next deploy, which is why the env read survives this lane.
  *
- * Moving them is therefore a COORDINATED change — seed the rows, update the
- * manifests, then close the env path — not something to slip in alongside a
- * tuning migration. `tts.indicF5.enabled` is the one that most wants it: its
- * CC-BY-NC licensing gate is still enforced only by a code comment.
+ * `tts.indicf5.enabled` is the flag that most wanted this move: its CC-BY-NC
+ * licensing restriction was enforced only by a code comment. As a `globalOnly`
+ * key on a `locked` SYSTEM row, enabling it is now a SUPER_ADMIN write with an
+ * audit trail.
  *
- * `tier: 'env'` ⇒ `editableBy: EDITABLE_BY_NONE` (a governance test binds that
- * both ways) and NO `consumedBy`: a key the service does not read off the pull
- * route must not claim to be served on it.
+ * DEFAULTS STAY `false`, INCLUDING KOKORO'S. The descriptor default must equal
+ * the Python field (`test_task799_descriptor_parity.py` asserts it verbatim), so
+ * an unseeded deployment resolves exactly what it always ran on. The seeded ROW
+ * is what turns kokoro on — the same split `11c-consultation-gate-settings.ts`
+ * uses for the OCR gate.
  *
- * NAMING — note these do NOT all share a prefix with their `global-kv` siblings
- * above (`tts.parler.enabled` next to `tts.indicParler.*`, `tts.indicf5.enabled`
- * next to `tts.indicF5.*`). That is required, not sloppy: an `env`-tier key must
- * DERIVE its real variable name through `toEnvVarName`, and the variables the
- * service actually reads are `TTS_PARLER_ENABLED` and `TTS_INDICF5_ENABLED` —
- * `tts.indicParler.enabled` would derive `TTS_INDIC_PARLER_ENABLED`, which no
- * process reads. `global-kv` keys are DB-addressed and carry no such obligation,
- * so they keep the readable camelCase spelling. When these flags eventually move
- * to `redis-flag` the constraint lifts and the names can be unified.
+ * NAMING — two of these do NOT share a prefix with their siblings above
+ * (`tts.parler.enabled` beside `tts.indicParler.*`, `tts.indicf5.enabled` beside
+ * `tts.indicF5.*`). The spelling was forced when they were `env`-tier, because
+ * an env key must DERIVE its real variable through `toEnvVarName` and the
+ * variables the service reads are `TTS_PARLER_ENABLED` / `TTS_INDICF5_ENABLED`.
+ * That constraint has lifted, but the names are KEPT: a registry key is the
+ * primary coordinate of its `GlobalSetting` row, so renaming one now would
+ * orphan the seeded row and silently revert the flag to its env value.
+ *
+ * SHAPE mirrors `KNOBS` below — the same 2-space-indented `'<key>': { … }`
+ * record — because `test_task799_descriptor_parity.py` PARSES this file to
+ * assert every control-plane key's default matches its Python field verbatim.
+ * A differently-shaped literal would be invisible to that gate, which is what
+ * these five were while they sat in a separate array.
  */
-const PROVIDER_ENABLE_FLAGS: ReadonlyArray<{ key: string; label: string; description: string; category: string }> = [
-  {
-    key: 'tts.azure.enabled',
+const PROVIDER_ENABLE_FLAGS: Record<string, { default: false; label: string; description: string; category: string }> = {
+  'tts.azure.enabled': {
+    default: false,
     label: 'Azure Speech provider enabled',
     description:
-      'Registers the Azure AI Speech provider at boot (env `TTS_AZURE_ENABLED`). A registered cloud ' +
-      'provider with no platform credential is still not a routing candidate — it would 401 the live ' +
-      'API — so enabling it without a key only makes it reachable to tenants that bring their own.',
+      'Registers the Azure AI Speech provider at boot (bootstrap fallback `TTS_AZURE_ENABLED`). A ' +
+      'registered cloud provider with no platform credential is still not a routing candidate — it ' +
+      'would 401 the live API — so enabling it without a key only makes it reachable to tenants that ' +
+      'bring their own.',
     category: 'TTS Providers',
   },
-  {
-    key: 'tts.sarvam.enabled',
+  'tts.sarvam.enabled': {
+    default: false,
     label: 'Sarvam provider enabled',
     description:
-      'Registers the Sarvam Bulbul provider (env `TTS_SARVAM_ENABLED`). The PUBLIC Sarvam API is not ' +
-      'PHI-safe — no BAA, 30-day retention, not India-resident — so point `tts.sarvam.baseUrl` at the ' +
-      'enterprise VPC or on-prem host before enabling it for real patient data.',
+      'Registers the Sarvam Bulbul provider (bootstrap fallback `TTS_SARVAM_ENABLED`). The PUBLIC ' +
+      'Sarvam API is not PHI-safe — no BAA, 30-day retention, not India-resident — so point ' +
+      '`tts.sarvam.baseUrl` at the enterprise VPC or on-prem host before enabling it for real patient data.',
     category: 'TTS Providers',
   },
-  {
-    key: 'tts.kokoro.enabled',
+  'tts.kokoro.enabled': {
+    default: false,
     label: 'Kokoro engine enabled',
     description:
-      'Registers the self-hosted Kokoro English engine (env `TTS_KOKORO_ENABLED`). This is the flag a ' +
-      'KEYLESS deployment needs to become Ready: the SYSTEM row routes `en` to kokoro, so without it ' +
-      'the service registers no provider and reports 503. Weights load on the first synthesis request.',
+      'Registers the self-hosted Kokoro English engine (bootstrap fallback `TTS_KOKORO_ENABLED`). ' +
+      'This is the flag a KEYLESS deployment needs to become Ready: the SYSTEM row routes `en` to ' +
+      'kokoro, so without it the service registers no provider and reports 503. The SEEDED ROW turns ' +
+      'it on — the descriptor default stays false so an unseeded deployment resolves what it always ' +
+      'ran on. Weights load on the first synthesis request.',
     category: 'TTS Engines',
   },
-  {
-    key: 'tts.parler.enabled',
+  'tts.parler.enabled': {
+    default: false,
     label: 'Indic Parler engine enabled',
-    description: 'Registers the self-hosted AI4Bharat Indic Parler-TTS Malayalam engine (env `TTS_PARLER_ENABLED`).',
+    description: 'Registers the self-hosted AI4Bharat Indic Parler-TTS Malayalam engine (bootstrap fallback `TTS_PARLER_ENABLED`).',
     category: 'TTS Engines',
   },
-  {
-    key: 'tts.indicf5.enabled',
+  'tts.indicf5.enabled': {
+    default: false,
     label: 'IndicF5 engine enabled (LICENSE-GATED)',
     description:
-      'Registers the experimental IndicF5 voice-clone engine (env `TTS_INDICF5_ENABLED`). Prod and ' +
-      'commercial enablement are NO-GO pending license review: the released weights are a fine-tune of ' +
-      'the CC-BY-NC SWivid F5-TTS base, and the MIT tag cannot override NonCommercial. That gate is ' +
-      'currently enforced only by a code comment — moving this key to `redis-flag`, where enabling it ' +
-      'is a SUPER_ADMIN write with an audit trail, is the reason `targetTier` is recorded here.',
+      'Registers the experimental IndicF5 voice-clone engine (bootstrap fallback ' +
+      '`TTS_INDICF5_ENABLED`). Prod and commercial enablement are NO-GO pending license review: the ' +
+      'released weights are a fine-tune of the CC-BY-NC SWivid F5-TTS base, and the MIT tag cannot ' +
+      'override NonCommercial. That gate used to be enforced only by a code comment; as a locked, ' +
+      'globalOnly registry key, enabling it is now a SUPER_ADMIN write with an audit trail.',
     category: 'TTS Engines',
   },
-];
+};
 
 type TtsKnob = {
   dataType: 'boolean' | 'number' | 'string';
@@ -337,28 +355,36 @@ const KNOBS: Record<string, TtsKnob> = {
   },
 };
 
-const ENABLE_FLAG_SETTINGS: SettingDescriptor[] = PROVIDER_ENABLE_FLAGS.map<SettingDescriptor>((flag) => ({
-  key: flag.key,
-  // The honest present-tense answer: this value lives in `process.env` TODAY.
-  tier: 'env',
-  targetTier: 'redis-flag',
+export const ENABLE_FLAG_SETTINGS: SettingDescriptor[] = Object.entries(PROVIDER_ENABLE_FLAGS).map<SettingDescriptor>(([key, flag]) => ({
+  key,
+  // D-2: `global-kv` is the home for a migrated Python knob — one tier, one
+  // write lane, one cascade, one invalidation channel. No `targetTier`: this IS
+  // where the key lives now, and a `targetTier` equal to a home it has already
+  // reached is noise a governance test rejects.
+  tier: 'global-kv',
   dataType: 'boolean',
   sensitivity: 'internal',
+  // D-1: PLATFORM scope. Which engines a deployment runs is one value for the
+  // whole deployment, so it rides the pull route rather than per-request
+  // injection.
   maxScope: 'system',
-  editableBy: EDITABLE_BY_NONE,
+  editableBy: 'all',
+  // SUPER_ADMIN-only in practice, which is what gives `tts.indicf5.enabled`'s
+  // CC-BY-NC gate an audit trail instead of a code comment.
   globalOnly: true,
   // NOT `killSwitch: true` — that flag marks an ENFORCING gate, and the registry
   // requires one to default OFF. These select which engines a deployment runs;
-  // `tts.kokoro.enabled` is set true in the live manifest precisely so the
-  // service can serve anything at all. Marking them would assert a fail-safe
-  // default that is not the one in force.
+  // `tts.kokoro.enabled` is seeded true precisely so the service can serve
+  // anything at all. Marking them would assert a fail-safe default that is not
+  // the one in force.
   failMode: 'open-to-default',
-  // Deliberately no `consumedBy`: the service reads these from env, not from the
-  // pull route. Declaring one would advertise a delivery path that does not exist.
+  consumedBy: ['tts'],
   category: flag.category,
   label: flag.label,
   description: flag.description,
-  default: false,
+  // Verbatim the Python field default. The seeded ROW carries the platform's
+  // actual decision — see the header.
+  default: flag.default,
 }));
 
 const KNOB_SETTINGS: SettingDescriptor[] = Object.entries(KNOBS).map<SettingDescriptor>(([key, knob]) => ({
