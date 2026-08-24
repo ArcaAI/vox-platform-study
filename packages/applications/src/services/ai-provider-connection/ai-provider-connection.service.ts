@@ -33,10 +33,11 @@ import {
   ProviderOverrideEntry,
   ProviderOverrides,
   ResolvedProviderConnection,
+  ResolvedProviderCredential,
   ResolvedProviderOverrides,
 } from './IProviderConnectionService';
 import { AiProviderConnectionDtoMapper } from './ai-provider-connection.dto.mapper';
-import { ProviderService, isCloudByoProvider } from './constants';
+import { PROVIDER_SERVICES, ProviderService, isCloudByoProvider } from './constants';
 import { AiProviderConnectionResponse, UpsertAiProviderConnectionRequest } from './dto';
 import { sanitizeProviderExtras } from './provider-extras';
 import { ConnectionRequirementSubject, validateProviderRequirements } from './provider-requirements';
@@ -634,6 +635,80 @@ export class AiProviderConnectionService extends BaseService implements IProvide
       });
       return null;
     }
+  }
+
+  /**
+   * TASK-799 — resolve ONE credential for a consumer that cannot reach the DB.
+   *
+   * The `/internal/*` projection of the cascade. See
+   * `IProviderConnectionService#resolveCredential` for the four-outcome contract
+   * and why `absent` and `unavailable` must stay distinct.
+   *
+   * The cascade is NOT reimplemented here: `resolveTenantCloudOverrides` is the
+   * one place tenant-vs-SYSTEM precedence, the veto set, the entitlement gate
+   * and derived funding live. This maps its result and nothing more — which is
+   * also why `funding` is read off the entry rather than computed a second time.
+   */
+  async resolveCredential(service: ProviderService, provider: string, tenantId: string): Promise<ResolvedProviderCredential> {
+    if (!PROVIDER_SERVICES.includes(service)) {
+      throw new BadRequestException(`Unknown provider service '${service}'. Expected one of: ${PROVIDER_SERVICES.join(', ')}.`);
+    }
+    if (!provider?.trim()) {
+      throw new BadRequestException('provider is required');
+    }
+    // No tenant-less form, deliberately: it could only mean "read SYSTEM
+    // unconditionally", which is the widen-without-absence bug the two-tier
+    // rule exists to prevent. A caller with no tenant of its own passes SYSTEM.
+    if (!tenantId?.trim()) {
+      throw new BadRequestException('tenantId is required');
+    }
+
+    let resolved: ResolvedProviderOverrides;
+    try {
+      resolved = await this.resolveTenantCloudOverrides(service, tenantId);
+    } catch (error) {
+      // Deliberately does NOT interpolate the error body — a Vault-Transit or
+      // driver error string can echo the payload it choked on. Same rule as
+      // `toOverrideEntry`'s decrypt-failure log.
+      this.logger.error(`Credential resolve failed for ${service}/${provider} (tenant ${tenantId})`);
+      void error;
+      return { outcome: 'unavailable', reason: 'credential resolution failed' };
+    }
+
+    const entry = resolved.overrides[provider];
+    if (entry) {
+      // Split the wire entry back into "the row's own fields" and "everything
+      // else". `provider-extras.ts` already refuses the reserved keys on write,
+      // so destructuring them out here is the belt-and-braces half of that same
+      // rule: `extras` may carry the NON-SECRET half of a two-part credential
+      // (`accessKeyId`) and can never carry the secret half or a stamped
+      // `funding` label.
+      const { api_key: apiKey, funding, base_url: baseUrl, region, api_version: apiVersion, deployment_name: deploymentName, ...extras } = entry;
+      return {
+        outcome: 'resolved',
+        apiKey,
+        funding,
+        ...(baseUrl ? { baseUrl } : {}),
+        ...(region ? { region } : {}),
+        ...(apiVersion ? { apiVersion } : {}),
+        ...(deploymentName ? { deploymentName } : {}),
+        ...(Object.keys(extras).length > 0 ? { extras } : {}),
+      };
+    }
+
+    const outcome = resolved.platformDefault;
+    if (outcome?.vetoed.includes(provider)) {
+      return { outcome: 'denied', reason: `tenant veto: '${provider}' is disabled for service '${service}'` };
+    }
+    // The entitlement gate governs platform SPEND on a VENDOR account, so it
+    // denies only a CLOUD provider. A SYSTEM row for platform infrastructure
+    // stays reachable — the same `isCloudByoProvider` split the cascade itself
+    // applies, read here rather than re-derived.
+    if (outcome?.entitlementSuppressed && isCloudByoProvider(service, provider)) {
+      return { outcome: 'denied', reason: 'the platform-default credential entitlement is not granted for this tenant' };
+    }
+
+    return { outcome: 'absent' };
   }
 
   /**
