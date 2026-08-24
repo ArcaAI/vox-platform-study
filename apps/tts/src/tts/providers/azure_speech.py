@@ -15,9 +15,16 @@ from collections.abc import AsyncGenerator, AsyncIterator
 from typing import Any
 from xml.sax.saxutils import escape
 
+from pydantic import SecretStr
+
 from tts.core.config import AzureSpeechConfig
 from tts.core.logging import get_logger
-from tts.providers.base import AudioChunk, AudioFormat, SynthesisRequest
+from tts.providers.base import (
+    AudioChunk,
+    AudioFormat,
+    CredentialPosture,
+    SynthesisRequest,
+)
 
 logger = get_logger(__name__)
 
@@ -47,6 +54,38 @@ class AzureSpeechProvider:
     name = "azure"
     supported_locales = {"en-IN", "en-US", "ml-IN"}
     native_streaming = True
+    # Cloud vendor credential REQUIRED; it arrives per request as a
+    # gateway-injected override (tenant -> SYSTEM AiProviderConnection). There is
+    # no env path to it: `AzureSpeechConfig.api_key` carries a dead
+    # `validation_alias` and `populate_by_name` is off - the reference pattern
+    # F-01 points every other adapter at.
+    credential_posture = CredentialPosture.BYOK
+
+    @classmethod
+    def from_override(
+        cls, settings: Any, override: dict[str, str]
+    ) -> AzureSpeechProvider | None:
+        """Build a REQUEST-SCOPED engine from an injected tenant credential.
+
+        The router calls this instead of matching provider names against
+        literals, so a new BYOK adapter gets override support from its own
+        declaration rather than from an edit to the router.
+
+        Returns ``None`` for a KEYLESS override. That guard - not the provider
+        list - is what stops a SYSTEM row's endpoint from being mistaken for a
+        credential (TASK-799 plan, "Phase 2 landmines"): a keyless row injects on
+        NEITHER tier.
+
+        `model_copy` clones the platform config rather than mutating it, so two
+        tenants on concurrent requests cannot race onto each other's key.
+        """
+        api_key = override.get("api_key")
+        if not api_key:
+            return None
+        update: dict[str, object] = {"api_key": SecretStr(api_key), "enabled": True}
+        if override.get("region"):
+            update["region"] = override["region"]
+        return cls(settings.azure.model_copy(update=update))
 
     def __init__(
         self,

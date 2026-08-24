@@ -13,6 +13,38 @@ from enum import StrEnum
 from typing import Protocol, runtime_checkable
 
 
+class CredentialPosture(StrEnum):
+    """How a TTS adapter obtains the credential it authenticates with.
+
+    This exists so the BYOK lock test can iterate the REGISTRY instead of a
+    hand-written list of provider names — and so the ROUTER can build a
+    per-tenant override engine by asking the adapter rather than by matching
+    its name against a literal.
+
+    That distinction is not cosmetic. ``router._build_override_engine`` used to
+    be an ``if name == "azure" / "sarvam"`` switch: a BYOK adapter the switch
+    did not name returned ``None``, silently fell back to the shared registered
+    engine, and served every tenant on the PLATFORM key. It is the same shape of
+    defect that let ``bedrock`` and ``vertex`` keep ambient credential chains in
+    ``apps/text`` for years — a list can only cover the adapters someone
+    remembered.
+
+    An adapter that declares NOTHING fails the lock test. Default-deny is the
+    point: a new provider is not silently assumed credential-free.
+    """
+
+    #: Vendor credential REQUIRED. It arrives per request as a gateway-injected
+    #: provider override (tenant → SYSTEM ``AiProviderConnection``). Absent it,
+    #: the adapter MUST report ``is_configured == False`` so the router excludes
+    #: it from candidates, rather than construct a client that would
+    #: authenticate from the process environment.
+    BYOK = "byok"
+    #: An operator-run engine whose weights are local (Kokoro, Indic Parler,
+    #: Indic F5). No vendor credential is required, so there is nothing to fail
+    #: closed on.
+    SELF_HOST = "self_host"
+
+
 class AudioFormat(StrEnum):
     """Output container/encoding. PCM is raw s16le mono (streaming default)."""
 
@@ -67,6 +99,17 @@ class TTSEngine(Protocol):
     incrementally as it synthesizes (True) or as a full utterance (False). For
     non-streaming engines the router applies a sentence adapter so first audio
     still ships after the first sentence.
+
+    Every implementation must also carry a ``credential_posture`` class attribute
+    (see ``CredentialPosture``), and a ``BYOK`` one must additionally implement
+    the ``from_override`` classmethod the router uses to build a request-scoped
+    per-tenant engine. Neither is declared as a member of this Protocol:
+    ``runtime_checkable`` turns any non-method member into an ``isinstance``
+    requirement, which would change ``isinstance(x, TTSEngine)`` for every
+    duck-typed test double in the codebase. The obligation is enforced instead by
+    the registry-iterating lock test
+    (``tests/unit/test_task799_byok_credentials.py``), which fails for any
+    adapter that does not declare one.
     """
 
     name: str
