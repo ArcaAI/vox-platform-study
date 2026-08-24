@@ -68,6 +68,16 @@ describe('env:sync — managed artifacts', () => {
         '.env.sample',
         'apps/admin-console/.env.sample',
         'apps/api/.env.sample',
+        // TASK-799 Phase 1.5: the six Python samples are GENERATED now, not
+        // inlined verbatim. That inlining is why 243 of 297 Python env vars were
+        // invisible to this gate — the generator could not validate what it only
+        // copied. Adding them here is the point of that change, not drift.
+        'apps/guardrail/.env.sample',
+        'apps/harness/.env.sample',
+        'apps/nlp/.env.sample',
+        'apps/stt/.env.sample',
+        'apps/text/.env.sample',
+        'apps/tts/.env.sample',
         'env-surface.generated.md',
         'packages/tools/.env.sample',
         'turbo.json',
@@ -350,12 +360,20 @@ describe('generate-env-file.sh — every declared secret is accounted for', () =
     return [...new Set([...sample.matchAll(/^([A-Z][A-Z0-9_]*)=CHANGE_ME\s*$/gm)].map((m) => m[1]))].sort();
   }
 
-  it('leaves no secret unclassified (neither generated, external, nor minted later)', () => {
+  it('leaves no secret unclassified (generated, external, minted later, or superseded)', () => {
     const generated = generatedKeys();
     const external = bashArray('_EXTERNAL_SECRET_KEYS');
     const minted = bashArray('_MINTED_LATER_KEYS');
+    // TASK-799: a fourth category. The legacy per-service tokens are SUPERSEDED
+    // by the one shared INTERNAL_ACCESS_TOKEN (owner decision D-D), so a fresh
+    // environment must leave them unset — `generate-env-file.sh` blanks them.
+    // They are neither generated, nor external, nor minted: telling a developer
+    // to paste a value would be instructing them to undo the migration.
+    const superseded = bashArray('_SUPERSEDED_KEYS');
 
-    const unclassified = declaredSecrets().filter((key) => !generated.has(key) && !external.has(key) && !minted.has(key));
+    const unclassified = declaredSecrets().filter(
+      (key) => !generated.has(key) && !external.has(key) && !minted.has(key) && !superseded.has(key),
+    );
 
     expect(
       unclassified,
@@ -363,7 +381,7 @@ describe('generate-env-file.sh — every declared secret is accounted for', () =
         'generate-env-file.sh nor declared as an external/minted-later credential, so a fresh ' +
         '.env.dev ships it as the literal string CHANGE_ME — which every consumer then treats ' +
         'as a real value. Add it to _fill_generated_secrets, _EXTERNAL_SECRET_KEYS, or ' +
-        '_MINTED_LATER_KEYS.',
+        '_MINTED_LATER_KEYS, or _SUPERSEDED_KEYS.',
     ).toEqual([]);
   });
 

@@ -53,7 +53,6 @@ describe('model_path injection (NER)', () => {
 
     expect(client.classifyTokens).toHaveBeenCalledWith({
       text: 'aspirin 100mg',
-      aggregation_strategy: 'simple',
       model_name: 'blaze999/Medical-NER',
       model_path: '/opt/hope/models/ner',
     });
@@ -71,7 +70,6 @@ describe('model_path injection (NER)', () => {
     const payload = client.classifyTokens.mock.calls[0][0];
     expect(payload).toEqual({
       text: 'aspirin 100mg',
-      aggregation_strategy: 'simple',
       model_name: 'blaze999/Medical-NER',
     });
     expect(Object.keys(payload)).not.toContain('model_path');
@@ -149,7 +147,6 @@ describe('override lane stays fail-closed', () => {
 
     expect(client.classifyTokens).toHaveBeenCalledWith({
       text: 'x',
-      aggregation_strategy: 'simple',
       model_name: 'org/ner-alt',
       model_path: '/opt/hope/models/ner-alt',
     });

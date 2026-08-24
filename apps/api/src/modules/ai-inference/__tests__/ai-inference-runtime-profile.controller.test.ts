@@ -78,7 +78,7 @@ describe('AiInferenceController — runtime-profile injection', () => {
     await controller.extractEntities({ text: 'chest pain' } as any);
 
     const payload = client.classifyTokens.mock.calls[0][0];
-    expect(payload).toEqual({ text: 'chest pain', aggregation_strategy: 'simple', model_name: 'hf/medical-ner' });
+    expect(payload).toEqual({ text: 'chest pain', model_name: 'hf/medical-ner' });
   });
 
   it('injects nothing when no profile resolver is wired', async () => {
@@ -87,7 +87,7 @@ describe('AiInferenceController — runtime-profile injection', () => {
     await controller.extractEntities({ text: 'chest pain' } as any);
 
     const payload = client.classifyTokens.mock.calls[0][0];
-    expect(payload).toEqual({ text: 'chest pain', aggregation_strategy: 'simple', model_name: 'hf/medical-ner' });
+    expect(payload).toEqual({ text: 'chest pain', model_name: 'hf/medical-ner' });
   });
 
   it('is FAIL-OPEN for profiles — a throwing resolver still forwards with model_name only', async () => {
