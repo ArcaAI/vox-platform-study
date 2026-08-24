@@ -240,17 +240,21 @@ describe('HarnessInternalController', () => {
 
     const buildController = (cls: ReturnType<typeof fakeCls>) =>
       new HarnessInternalController(
-        mockService as any,
-        undefined as any,
-        cls as any,
-        undefined as any,
-        undefined as any,
-        undefined as any,
-        undefined as any,
-        undefined as any,
-        undefined as any,
-        undefined as any,
-        mockPromptManagementService as any,
+        mockService as any, // harnessInternalService
+        undefined as any, // harnessPolicyService
+        cls as any, // cls
+        undefined as any, // harnessProgressService
+        undefined as any, // harnessAssuranceService
+        undefined as any, // agentTrajectoryService
+        undefined as any, // consultationLoopEventService
+        undefined as any, // loopConfigService
+        undefined as any, // loopContextTextService
+        undefined as any, // liveDocumentationService
+        mockPromptManagementService as any, // promptManagementService
+        // Labelled positionally: the list stopped one short of the 12 REQUIRED
+        // params, so the mock landed correctly by luck and only `tsc` caught it.
+        // The two trailing `@Optional()` transcription services stay omitted.
+        undefined as any, // harnessLiveAssistService
       );
 
     it('resolves the pinned approved version, never the mutable content column', async () => {

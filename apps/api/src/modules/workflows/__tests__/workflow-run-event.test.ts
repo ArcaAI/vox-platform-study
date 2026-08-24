@@ -22,6 +22,10 @@ const RUNNING_STATUS: WorkflowRunStatusResponse = {
   stages: [{ stageIndex: 0 }],
   startedAt: '2026-08-16T00:00:00.000Z',
   endedAt: null,
+  // Required-but-nullable on the response DTO, and `null` is the correct value
+  // for a RUNNING fixture: the field carries the `output.deliver` result, which
+  // its own doc says is "Null while the run is in flight".
+  resultRef: null,
 };
 
 describe('isTerminalRunStatus', () => {

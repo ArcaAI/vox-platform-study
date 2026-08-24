@@ -166,12 +166,16 @@ function buildController(
     cls as any,
     policyEngine as any,
     globalSettingRepo as any,
-    {} as any,
-    {} as any,
-    {} as any,
-    {} as any,
-    {} as any,
-    {} as any,
+    // Labelled to match the constructor positionally. These were bare `{} as any`
+    // placeholders, so when `harnessLiveAssistService` was inserted mid-list the
+    // arity silently drifted and only `tsc` noticed — the count is the contract.
+    {} as any, // tagService
+    {} as any, // liveDocumentationService
+    {} as any, // highlightService
+    {} as any, // harnessProgressService
+    {} as any, // harnessAssuranceService
+    {} as any, // harnessLiveAssistService
+    {} as any, // redisSubscriber
     {} as any, // loopContextSignalService
   );
 
