@@ -1,7 +1,6 @@
 import { Logger, Module } from '@nestjs/common';
 import { PassportModule } from '@nestjs/passport';
 import { OidcStrategy } from './oidc.strategy';
-import { allowInsecureRequests, discovery } from 'openid-client';
 import { JwtStrategy } from './jwt.strategy';
 import { ClsService } from 'nestjs-cls';
 
@@ -36,53 +35,32 @@ const logger = new Logger('AuthServiceModule');
   ],
   providers: [
     {
+      /**
+       * RETIRED — identity has no platform credential tier.
+       *
+       * This factory used to build a platform-wide relying-party client from
+       * `OIDC_DISCOVERY_URL` / `OIDC_CLIENT_ID` / `OIDC_CLIENT_SECRET`. Federated
+       * login is now resolved PER TENANT by `IdpResolverService`, which decrypts
+       * that tenant's own `TenantIdentityProvider.encryptedSecretRef` (Vault
+       * Transit) for every `/auth/sso/*` round-trip. Unlike every other provider
+       * credential on this platform, identity does NOT cascade to a SYSTEM
+       * fallback: a tenant federates against its own directory or not at all —
+       * falling back would authenticate its users against somebody else's IdP.
+       *
+       * So the platform secret was not a fallback, it was a SECOND credential
+       * path. It already authenticated nothing (its `OidcStrategy` is reachable
+       * from no route — `OidcAuthGuard` is applied to zero controllers), but
+       * leaving it wired kept `OIDC_CLIENT_SECRET` warmed at boot, seedable into
+       * Vault, and one re-attached guard away from serving logins again. It also
+       * forced a live `discovery()` network round-trip at module init.
+       *
+       * The token itself survives so `OidcStrategy` still resolves its injection
+       * (it short-circuits to an inert `{}` on `null`, as it always did when OIDC
+       * was unconfigured). Closure is pinned by
+       * `__tests__/oidc-platform-tier-closed.test.ts`.
+       */
       provide: 'OPENID_CLIENT',
-      useFactory: async (appSettingsService: IAppSettingsService, secretsService: SecretsService) => {
-        try {
-          const oidc_discovery_url = appSettingsService.getValueWithDefault(
-            'OIDC_DISCOVERY_URL',
-            'https://example.com/.well-known/openid_configuration',
-          );
-          const oidc_client_id = appSettingsService.getValueWithDefault('OIDC_CLIENT_ID', 'default-client-id');
-          // OIDC_CLIENT_SECRET (the only secret in this factory) reads from
-          // SecretsService. The other three (DISCOVERY_URL, CLIENT_ID,
-          // CALLBACK_URL) stay on AppSettings — they're public OIDC config,
-          // not secrets.
-          const oidc_client_secret = secretsService.getSecretSync('OIDC_CLIENT_SECRET') ?? 'default-client-secret';
-          const oidc_callback_url = appSettingsService.getValueWithDefault('OIDC_CALLBACK_URL', 'http://localhost:8001/auth/callback');
-
-          if (!oidc_discovery_url || oidc_discovery_url === 'https://example.com/.well-known/openid_configuration') {
-            logger.warn('OIDC_DISCOVERY_URL not configured — OIDC authentication disabled');
-            return null;
-          }
-          if (!oidc_client_id || oidc_client_id === 'default-client-id') {
-            logger.warn('OIDC_CLIENT_ID not configured — OIDC authentication disabled');
-            return null;
-          }
-          if (!oidc_client_secret || oidc_client_secret === 'default-client-secret') {
-            logger.warn('OIDC_CLIENT_SECRET not configured — OIDC authentication disabled');
-            return null;
-          }
-
-          const server = new URL(oidc_discovery_url);
-          const config = await discovery(server, oidc_client_id, {
-            client_secret: oidc_client_secret,
-            redirect_uris: [oidc_callback_url],
-            response_types: ['code'],
-          });
-          if (server.protocol === 'http:') {
-            allowInsecureRequests(config);
-          }
-
-          logger.log(`OIDC Client initialized successfully for issuer: ${config.serverMetadata().issuer}`);
-
-          return config;
-        } catch (error) {
-          logger.error(`Failed to initialize OIDC client: ${error instanceof Error ? error.message : String(error)}`);
-          return null;
-        }
-      },
-      inject: [IAppSettingsService, SecretsService],
+      useFactory: () => null,
     },
     {
       provide: IAuthService,

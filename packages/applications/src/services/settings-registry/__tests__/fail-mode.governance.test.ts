@@ -163,7 +163,9 @@ describe('env/vault-kv descriptor keys resolve to the real variable names', () =
     'jwt.secretKey': 'JWT_SECRET_KEY',
     'session.secretKey': 'SESSION_SECRET_KEY',
     'api.keyPepper': 'API_KEY_PEPPER',
-    'oidc.clientSecret': 'OIDC_CLIENT_SECRET',
+    // `oidc.clientSecret` was here — the platform OIDC tier is retired, so the
+    // descriptor is gone and nothing seeds `OIDC_CLIENT_SECRET` into Vault.
+    // Identity resolves the tenant's own `TenantIdentityProvider.encryptedSecretRef`.
     'api.gatewayKey': 'API_GATEWAY_KEY',
     'text.serviceToken': 'TEXT_SERVICE_TOKEN',
     'nlp.serviceToken': 'NLP_SERVICE_TOKEN',

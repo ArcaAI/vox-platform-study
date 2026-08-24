@@ -107,12 +107,17 @@ export const PLATFORM_SECRET_SETTINGS: SettingDescriptor[] = [
       'and `ApiKeyService.verify` has nothing to pass. Until that column, its migration, its domain trio and the issue/verify stamping land, ' +
       'a pepper change remains a cliff — the read path alone does not make the rotation staged.',
   },
-  platformSecret(
-    'oidc.clientSecret',
-    'OIDC client secret',
-    'Client secret for the platform OIDC relying-party registration. Absent ⇒ OIDC authentication is disabled (a logged WARN, not a crash) — see `auth.service.module.ts`.',
-    'Authentication',
-  ),
+  // `oidc.clientSecret` (OIDC_CLIENT_SECRET) was REMOVED. Identity is the one
+  // provider plane with NO platform tier: a tenant federates against its own
+  // directory or not at all, so there is no coherent SYSTEM fallback to hold a
+  // relying-party secret for. The live credential is per tenant —
+  // `TenantIdentityProvider.encryptedSecretRef`, a Vault-Transit ciphertext
+  // (`db-secret` class 2) decrypted per login by `IdpResolverService` — which is
+  // written through `TenantIdpConfigService` and never returned by any DTO
+  // (the read DTO carries `hasSecret: boolean`). Keeping a descriptor here would
+  // have kept `vault-seed-secrets.sh` provisioning the retired platform
+  // credential and kept it in `turbo.json#globalEnv`, both of which outlive the
+  // last reader. See `services/auth/auth.service.module.ts`.
 
   // ── Service-to-service tokens ─────────────────────────────────────────────
   // The gateway fronts every Python service; these are the shared secrets on the
