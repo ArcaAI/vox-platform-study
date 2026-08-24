@@ -53,14 +53,22 @@ _OLLAMA: dict[str, str] = {
     "unload": "other",
 }
 
-# Bedrock converse ``stopReason``.
+# Bedrock converse ``stopReason``. Covers the FULL vendor enum as shipped in
+# botocore's own service model (``bedrock-runtime/2023-09-30/service-2.json``,
+# shape ``StopReason``) — an unmapped member degrades to ``"other"``, which is
+# indistinguishable from a novel engine token and mis-meters a real outcome.
+# ``model_context_window_exceeded`` in particular is a LENGTH stop; the two
+# ``malformed_*`` members are the model failing to produce usable output.
 _BEDROCK: dict[str, str] = {
     "end_turn": "stop",
     "stop_sequence": "stop",
     "max_tokens": "length",
+    "model_context_window_exceeded": "length",
     "content_filtered": "content_filter",
     "guardrail_intervened": "content_filter",
     "tool_use": "tool_call",
+    "malformed_model_output": "error",
+    "malformed_tool_use": "error",
 }
 
 # llama.cpp server (native ``/completion``) — reference engine for AD-1 naming.
