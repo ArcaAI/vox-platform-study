@@ -2356,7 +2356,7 @@
           "required": false,
           "secret": false,
           "dataType": "string",
-          "default": "/Users/taphuynh/Desktop/igglo/ARCAAI/hope-v2/.claude/worktrees/agent-a185bbf3740fcaecc/apps/nlp/data/dictionaries",
+          "default": "<repo>/apps/nlp/data/dictionaries",
           "description": ""
         },
         {
@@ -2698,7 +2698,7 @@
           "required": false,
           "secret": false,
           "dataType": "string",
-          "default": "/Users/taphuynh/.cache/huggingface/hub",
+          "default": "<home>/.cache/huggingface/hub",
           "description": "HuggingFace model cache directory"
         },
         {
@@ -3913,7 +3913,7 @@
           "secret": false,
           "dataType": "boolean",
           "default": "false",
-          "description": "`enabled` stays an ENVIRONMENT variable (TASK-799 lane C) It is DEPLOYMENT SHAPE, not runtime policy: which engines a container runs is chosen together with which optional extras were installed in its image, so a flag that turns on an engine whose package is absent does nothing useful. Concretely, `TTS_KOKORO_ENABLED=true` in the k8s ConfigMap is what makes a keyless deployment REACH READY at all (`test_keyless_readiness_task642`) \u2014 moving it to the control plane with no seeded row, while the manifests live in a separate repository, would leave `hope-tts` answering 503 forever and its Service carrying no endpoints: exactly the outage that test was written to prevent. Registered as `tier: 'env'` + `targetTier: 'redis-flag'` in `tts-runtime.descriptors.ts` so the pending migration stays queryable."
+          "description": "These fields are read ONLY by boot registration in `main.py`, so a served value converges on the next restart and can never deregister a live provider mid-process."
         },
         {
           "name": "TTS_AZURE_MAX_CONCURRENT__MOVED_TO_CONTROL_PLANE_TASK_799",
@@ -3973,7 +3973,7 @@
           "secret": false,
           "dataType": "boolean",
           "default": "false",
-          "description": "\u26a0\ufe0f UNRESOLVED for this one flag: the licensing gate above is still enforced only by that comment. Moving it to a registry kill-switch \u2014 a SUPER_ADMIN write with an audit trail \u2014 is the right end state and was the intent of TASK-799 lane C, but it cannot land in the same step that keeps the other four flags on env for the readiness reason above: splitting one flag out of a family of five is how the \"configured in two places\" defect starts. Tracked as the outstanding item of that lane."
+          "description": "RESOLVED for this flag (lane H): the licensing gate above used to be enforced by the docstring alone. `tts.indicf5.enabled` is now a `globalOnly` registry key on a `locked` SYSTEM row seeded `'false'`, so enabling it is a SUPER_ADMIN write with an audit trail rather than an unreviewed env edit. The docstring warning stands as the REASON; the row is the enforcement. All five moved together \u2014 splitting one out of a family of five is how the \"configured in two places\" defect starts."
         },
         {
           "name": "TTS_INDICF5_HF_MODEL__MOVED_TO_CONTROL_PLANE_TASK_799",
@@ -4057,7 +4057,7 @@
           "secret": false,
           "dataType": "boolean",
           "default": "false",
-          "description": "`enabled` stays an ENVIRONMENT variable (TASK-799 lane C) It is DEPLOYMENT SHAPE, not runtime policy: which engines a container runs is chosen together with which optional extras were installed in its image, so a flag that turns on an engine whose package is absent does nothing useful. Concretely, `TTS_KOKORO_ENABLED=true` in the k8s ConfigMap is what makes a keyless deployment REACH READY at all (`test_keyless_readiness_task642`) \u2014 moving it to the control plane with no seeded row, while the manifests live in a separate repository, would leave `hope-tts` answering 503 forever and its Service carrying no endpoints: exactly the outage that test was written to prevent. Registered as `tier: 'env'` + `targetTier: 'redis-flag'` in `tts-runtime.descriptors.ts` so the pending migration stays queryable."
+          "description": "These fields are read ONLY by boot registration in `main.py`, so a served value converges on the next restart and can never deregister a live provider mid-process."
         },
         {
           "name": "TTS_PARLER_HF_MODEL__MOVED_TO_CONTROL_PLANE_TASK_799",
@@ -4105,7 +4105,7 @@
           "secret": false,
           "dataType": "boolean",
           "default": "false",
-          "description": "`enabled` stays an ENVIRONMENT variable (TASK-799 lane C) It is DEPLOYMENT SHAPE, not runtime policy: which engines a container runs is chosen together with which optional extras were installed in its image, so a flag that turns on an engine whose package is absent does nothing useful. Concretely, `TTS_KOKORO_ENABLED=true` in the k8s ConfigMap is what makes a keyless deployment REACH READY at all (`test_keyless_readiness_task642`) \u2014 moving it to the control plane with no seeded row, while the manifests live in a separate repository, would leave `hope-tts` answering 503 forever and its Service carrying no endpoints: exactly the outage that test was written to prevent. Registered as `tier: 'env'` + `targetTier: 'redis-flag'` in `tts-runtime.descriptors.ts` so the pending migration stays queryable."
+          "description": "These fields are read ONLY by boot registration in `main.py`, so a served value converges on the next restart and can never deregister a live provider mid-process."
         },
         {
           "name": "TTS_SARVAM_BASE_URL__MOVED_TO_CONTROL_PLANE_TASK_799",
@@ -4129,7 +4129,7 @@
           "secret": false,
           "dataType": "boolean",
           "default": "false",
-          "description": "`enabled` stays an ENVIRONMENT variable (TASK-799 lane C) It is DEPLOYMENT SHAPE, not runtime policy: which engines a container runs is chosen together with which optional extras were installed in its image, so a flag that turns on an engine whose package is absent does nothing useful. Concretely, `TTS_KOKORO_ENABLED=true` in the k8s ConfigMap is what makes a keyless deployment REACH READY at all (`test_keyless_readiness_task642`) \u2014 moving it to the control plane with no seeded row, while the manifests live in a separate repository, would leave `hope-tts` answering 503 forever and its Service carrying no endpoints: exactly the outage that test was written to prevent. Registered as `tier: 'env'` + `targetTier: 'redis-flag'` in `tts-runtime.descriptors.ts` so the pending migration stays queryable."
+          "description": "These fields are read ONLY by boot registration in `main.py`, so a served value converges on the next restart and can never deregister a live provider mid-process."
         },
         {
           "name": "TTS_SARVAM_MAX_CONCURRENT__MOVED_TO_CONTROL_PLANE_TASK_799",
