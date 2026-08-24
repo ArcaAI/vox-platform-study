@@ -5,9 +5,14 @@
  * the credential-injection contract reads as one unit.
  *
  * The contract:
- *   1. Injected ONLY when the RESOLVED provider is a cloud BYO provider
- *      (azure/bedrock) AND the tenant has an enabled credential. A self-host
- *      provider never carries `provider_overrides`.
+ *   1. Injected when the resolver returns an entry for the RESOLVED provider.
+ *      TASK-799: this is NO LONGER gated on the provider being cloud-BYO. That
+ *      predicate answers "may a TENANT OWN a row?" and was being used to answer
+ *      "may the PLATFORM SERVE it?" — so a super-admin-keyed self-host engine
+ *      (vLLM, openai-compat, the TEI reranker) could never reach any tenant,
+ *      which is why `TEXT_OPENAI_COMPAT_API_KEY` had no migration target. The
+ *      guard that actually prevents a `baseUrl` becoming a credential is that a
+ *      KEYLESS row injects on neither tier, enforced in the resolver.
  *   2. Only the MATCHING provider's entry is forwarded — a tenant with both
  *      azure and bedrock credentials does not leak the unused one to TEXT.
  *   3. FAIL OPEN: a throwing resolver forwards the request WITHOUT overrides
@@ -111,13 +116,28 @@ describe('TEXT proxy — tenant BYO credential injection', () => {
     expect(JSON.stringify(forwardedBody(http))).not.toContain('bedrock-secret');
   });
 
-  it('omits provider_overrides for a SELF-HOST provider', async () => {
-    const { ctrl, http, connections } = build({ overrides: { azure: { api_key: 'x' } } });
+  it('CONSULTS the resolver for a self-host provider, and injects a keyed platform row', async () => {
+    // TASK-799 — inverted, not deleted. This previously asserted the resolver
+    // was SKIPPED for a self-host provider; that short-circuit is the defect
+    // that made a keyed SYSTEM row for vLLM/openai-compat undeliverable.
+    const { ctrl, http, connections } = build({ overrides: { ollama: { api_key: 'not-needed', funding: 'platform' } } });
 
     await ctrl.generate({ prompt: 'p', provider: 'ollama', model: 'gemma-4', stream: false } as any);
 
+    expect(connections.resolveTenantCloudOverrides).toHaveBeenCalled();
+    expect(forwardedBody(http)).toHaveProperty('provider_overrides');
+    expect((forwardedBody(http) as any).provider_overrides).toHaveProperty('ollama');
+  });
+
+  it('omits provider_overrides for a self-host provider with NO resolving row', async () => {
+    // The keyless/absent case still yields nothing to inject — that, not the
+    // provider list, is what stops a `baseUrl` being mistaken for a credential.
+    const { ctrl, http, connections } = build({ overrides: {} });
+
+    await ctrl.generate({ prompt: 'p', provider: 'ollama', model: 'gemma-4', stream: false } as any);
+
+    expect(connections.resolveTenantCloudOverrides).toHaveBeenCalled();
     expect(forwardedBody(http)).not.toHaveProperty('provider_overrides');
-    expect(connections.resolveTenantCloudOverrides).not.toHaveBeenCalled();
   });
 
   it('omits provider_overrides when the tenant has no credential (byte-identical body)', async () => {

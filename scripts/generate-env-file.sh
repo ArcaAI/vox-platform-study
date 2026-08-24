@@ -76,6 +76,24 @@ _EXTERNAL_SECRET_KEYS=(
   OIDC_CLIENT_SECRET
   AZURE_FOUNDRY_API_KEY HARNESS_JUDGE_OPENAI_COMPAT_API_KEY
   AZURE_STORAGE_CONNECTION_STRING AZURE_STORAGE_ACCOUNT_KEY
+  # TASK-799: surfaced once the six per-service samples became GENERATED, which
+  # widened the consolidated sample this script reports on. All five are real
+  # third-party credentials with no local equivalent to synthesize.
+  HARNESS_JUDGE_AZURE_API_KEY            # Azure OpenAI, sibling of the openai-compat key above
+  HARNESS_RETRIEVAL_QDRANT_API_KEY       # Qdrant Cloud; the local Qdrant needs none
+  HUGGINGFACE_TOKEN                      # HF Hub, for gated/private checkpoints
+  STT_MODEL_S3_ACCESS_KEY STT_MODEL_S3_SECRET_KEY   # an external S3 model mirror
+)
+
+# Legacy per-service tokens SUPERSEDED by the one shared INTERNAL_ACCESS_TOKEN
+# (owner decision D-D). Every call site was routed through `peer_service_token()`
+# in TASK-799 Phase 0, which prefers the shared token and falls back to these only
+# for an environment that has not migrated yet. A FRESH env has therefore no use
+# for them, and leaving them as the literal CHANGE_ME is actively wrong: it reads
+# as "paste something here" for a credential that should stay unset. Blanked, and
+# reported as superseded rather than as an optional provider key.
+_SUPERSEDED_KEYS=(
+  HARNESS_TEXT_SERVICE_TOKEN HARNESS_NLP_SERVICE_TOKEN HARNESS_GUARDRAIL_SERVICE_TOKEN
 )
 
 # Secrets a LATER setup step mints — not external, not generated here. Listing them makes the
@@ -140,16 +158,29 @@ _fill_generated_secrets() {
   _set_env "$file" MINIO_ROOT_PASSWORD "$secret"
 }
 
+# Blank the superseded legacy tokens rather than leaving them as CHANGE_ME.
+# `real_secret()` already maps the sentinel to empty at runtime, so this changes
+# no behaviour — it changes what the file TELLS the reader. CHANGE_ME on a
+# credential that must stay unset is an instruction to do the wrong thing.
+_blank_superseded_secrets() {
+  local file="$1" k
+  for k in "${_SUPERSEDED_KEYS[@]}"; do
+    grep -qE "^${k}=CHANGE_ME\s*$" "$file" 2>/dev/null || continue
+    _set_env "$file" "$k" ""
+  done
+}
+
 # Report any CHANGE_ME the developer must still fill in by hand.
 _report_remaining_placeholders() {
-  local file="$1" remaining k external minted unexpected
+  local file="$1" remaining k external minted superseded unexpected
   remaining="$(grep -E '=CHANGE_ME' "$file" | cut -d= -f1 | sort || true)"
   [ -n "$remaining" ] || { green "→ Generated all local secrets; no CHANGE_ME placeholders remain."; return; }
 
-  external=""; minted=""; unexpected=""
+  external=""; minted=""; superseded=""; unexpected=""
   for k in $remaining; do
     case " ${_EXTERNAL_SECRET_KEYS[*]} " in *" $k "*) external="$external $k"; continue ;; esac
     case " ${_MINTED_LATER_KEYS[*]} "     in *" $k "*) minted="$minted $k";     continue ;; esac
+    case " ${_SUPERSEDED_KEYS[*]} "       in *" $k "*) superseded="$superseded $k"; continue ;; esac
     unexpected="$unexpected $k"
   done
 
@@ -161,6 +192,11 @@ _report_remaining_placeholders() {
   if [ -n "$minted" ]; then
     yellow "→ Minted by a later setup step, not by this script — leave them alone:"
     printf '     %s\n' $minted >&2
+  fi
+  if [ -n "$superseded" ]; then
+    yellow "→ Superseded by INTERNAL_ACCESS_TOKEN (owner decision D-D). Deliberately blank —"
+    yellow "  do NOT paste a value; a fresh environment uses the shared token instead:"
+    printf '     %s\n' $superseded >&2
   fi
   # A secret in NEITHER list is a gap in this script, not a task for the developer. Saying so
   # is the whole point: INTERNAL_ACCESS_TOKEN sat here unnoticed, mis-reported as an optional
@@ -321,6 +357,7 @@ ensure_env_file() {
   esac
 
   _fill_generated_secrets "$target"
+  _blank_superseded_secrets "$target"
   _report_remaining_placeholders "$target"
   [ -n "$snapshot" ] && rm -f "$snapshot"
   green "✔ $(basename "$target") ready."

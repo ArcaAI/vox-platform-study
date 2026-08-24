@@ -90,7 +90,12 @@ describe('SafetyCheckController — guardrail', () => {
 });
 
 describe('AiInferenceController — NER entities', () => {
-  it('maps aggregationStrategy → aggregation_strategy (default simple) and omits language when absent', async () => {
+  // TASK-799: the controller no longer substitutes `aggregation_strategy: 'simple'`
+  // when the caller omits one. That default silently outranked the model row's own
+  // `clinicalTaxonomy.aggregationStrategy` on EVERY request, so re-pointing
+  // `nlp.ner` at a checkpoint with different conventions had no effect. Absent a
+  // caller value the field is omitted and the row's declaration governs.
+  it('forwards aggregationStrategy when given, and omits it entirely when not', async () => {
     const aiTaskDefaults = { getEffective: vi.fn().mockResolvedValue(effectiveWithModel('nlp.ner', 'blaze999/Medical-NER')) };
     const { controller, client } = makeController(aiTaskDefaults);
     const entities = { entities: [], model_version: 'v1' };
@@ -100,7 +105,6 @@ describe('AiInferenceController — NER entities', () => {
 
     expect(client.classifyTokens).toHaveBeenCalledWith({
       text: 'aspirin 100mg',
-      aggregation_strategy: 'simple',
       model_name: 'blaze999/Medical-NER',
     });
     expect(result).toBe(entities);
@@ -127,7 +131,7 @@ describe('AiInferenceController — NER entities', () => {
     await controller.extractEntities({ text: 'x' });
 
     expect(aiTaskDefaults.getEffective).toHaveBeenCalledWith('nlp.ner');
-    expect(client.classifyTokens).toHaveBeenCalledWith({ text: 'x', aggregation_strategy: 'simple', model_name: 'blaze999/Medical-NER' });
+    expect(client.classifyTokens).toHaveBeenCalledWith({ text: 'x', model_name: 'blaze999/Medical-NER' });
   });
 
   // r2605 Finding B (security) — a caller-supplied modelName was previously
@@ -152,7 +156,7 @@ describe('AiInferenceController — NER entities', () => {
 
       expect(aiModels.getByTaskTypeSharedRead).toHaveBeenCalledWith('TOKEN_CLASSIFICATION');
       expect(aiTaskDefaults.getEffective).not.toHaveBeenCalled();
-      expect(client.classifyTokens).toHaveBeenCalledWith({ text: 'x', aggregation_strategy: 'simple', model_name: 'blaze999/Medical-NER' });
+      expect(client.classifyTokens).toHaveBeenCalledWith({ text: 'x', model_name: 'blaze999/Medical-NER' });
     });
 
     it('a registry SOURCE URI override passes and forwards that sourceUri', async () => {
@@ -162,7 +166,7 @@ describe('AiInferenceController — NER entities', () => {
 
       await controller.extractEntities({ text: 'x', modelName: 'org/clinical-ner-v2' });
 
-      expect(client.classifyTokens).toHaveBeenCalledWith({ text: 'x', aggregation_strategy: 'simple', model_name: 'org/clinical-ner-v2' });
+      expect(client.classifyTokens).toHaveBeenCalledWith({ text: 'x', model_name: 'org/clinical-ner-v2' });
     });
 
     it('an UNKNOWN override → 400 and nothing is forwarded upstream', async () => {
