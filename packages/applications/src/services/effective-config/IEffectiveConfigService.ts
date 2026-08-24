@@ -89,6 +89,52 @@ export interface EffectiveRedaction {
 }
 
 /**
+ * TEXT's input-moderation posture — the PLATFORM half (text only).
+ *
+ * Field names are the ones `apps/text` already reads
+ * (`core/effective_config.py::external_guardrail` →
+ * `core/guardrail_posture.platform_posture`), so this view is a transcription
+ * of an existing consumer contract, not a new one.
+ *
+ * Every field is nullable BY CONTRACT and null means UNRESOLVED — `apps/text`
+ * keeps its in-code floor, which IS the retired env default. A control plane
+ * with no opinion must never be read as an opinion of "off".
+ *
+ * `requireMedical` / `includeReasoning` appear here as the platform DEFAULT a
+ * tenant inherits when it has expressed none of its own. A tenant that HAS an
+ * opinion sends it per request as `guardrail_policy` (the PUSH channel) and
+ * wins — cardinality decides the channel (D-1), so the tenant's value never
+ * travels this platform-scope snapshot.
+ *
+ * There is deliberately no `failOpen` field: an errored guardrail must never
+ * return `allowed: true`, which is a safety invariant rather than a tunable.
+ */
+export interface EffectiveExternalGuardrail {
+  enabled: boolean | null;
+  timeoutS: number | null;
+  maxRetries: number | null;
+  retryBackoffMs: number | null;
+  requireMedical: boolean | null;
+  includeReasoning: boolean | null;
+  source: EffectiveConfigSource;
+}
+
+/**
+ * TEXT's platform generation profile (text only) — the LAST fallback before
+ * `apps/text`'s in-code `GENERATION_FLOOR`.
+ *
+ * Applies only to a request that set no value of its own AND for which no
+ * `AiRuntimeProfile` could be resolved and pushed onto the body; both of those
+ * are more specific and still win. Null ⇒ that hyperparameter keeps its floor.
+ */
+export interface EffectiveGeneration {
+  temperature: number | null;
+  topP: number | null;
+  maxTokens: number | null;
+  source: EffectiveConfigSource;
+}
+
+/**
  * ONE resolved registry key on the wire — the GENERIC channel that replaced the
  * hand-shaped, numeric-only groups below.
  *
@@ -137,6 +183,10 @@ export interface EffectiveConfigResponse {
   concurrency?: EffectiveConcurrency;
   /** Served for guardrail only. */
   redaction?: EffectiveRedaction;
+  /** Served for text only — the platform half of the moderation posture. */
+  externalGuardrail?: EffectiveExternalGuardrail;
+  /** Served for text only — the platform generation profile. */
+  generation?: EffectiveGeneration;
   /**
    * Every registry key whose descriptor names this service in `consumedBy`,
    * keyed by its canonical dotted key. THE extension point: a new key appears

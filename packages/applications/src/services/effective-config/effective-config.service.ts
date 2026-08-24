@@ -44,6 +44,8 @@ import {
   EffectiveConfigResponse,
   EffectiveConfigServiceName,
   EffectiveConfigSource,
+  EffectiveExternalGuardrail,
+  EffectiveGeneration,
   EffectiveModelWeight,
   EffectiveRedaction,
   EffectiveRetention,
@@ -183,6 +185,8 @@ export class EffectiveConfigService implements IEffectiveConfigService {
       ...this.retentionView(service, resolved),
       ...this.concurrencyView(resolved),
       ...this.redactionView(resolved),
+      ...this.externalGuardrailView(resolved),
+      ...this.generationView(resolved),
       ...(modelWeights ? { modelWeights } : {}),
       settings: toWire(resolved),
     };
@@ -291,6 +295,70 @@ export class EffectiveConfigService implements IEffectiveConfigService {
     const chunkChars = resolved.get('guardrail.redact.chunkChars');
     if (!chunkChars) return {};
     return { redaction: { chunkChars: numberOrNull(chunkChars), source: chunkChars.source } };
+  }
+
+  /**
+   * TEXT's `externalGuardrail` view — the PLATFORM half of the input-moderation
+   * posture.
+   *
+   * Hand-shaped, like every group above it, and for the same reason: the field
+   * names on the wire are `enabled` / `timeoutS` / … while the registry keys are
+   * `text.externalGuardrail.enabled` / `.timeoutS` / …, and `apps/text` reads
+   * the FORMER (`core/effective_config.py::external_guardrail`). A generic
+   * dotted-key fold would serve `{"text.externalGuardrail.enabled": …}`, which
+   * that consumer does not read — the generic `settings` map already carries
+   * exactly that, and carrying it is what proved insufficient.
+   *
+   * Presence is keyed on the switch: a service whose descriptors declare none
+   * of these keys gets NO group, which every client reads as "leave my own
+   * values alone".
+   */
+  private externalGuardrailView(resolved: Map<string, ResolvedKey>): { externalGuardrail?: EffectiveExternalGuardrail } {
+    const enabled = resolved.get('text.externalGuardrail.enabled');
+    if (!enabled) return {};
+
+    const timeoutS = resolved.get('text.externalGuardrail.timeoutS');
+    const maxRetries = resolved.get('text.externalGuardrail.maxRetries');
+    const retryBackoffMs = resolved.get('text.externalGuardrail.retryBackoffMs');
+    const requireMedical = resolved.get('text.externalGuardrail.requireMedical');
+    const includeReasoning = resolved.get('text.externalGuardrail.includeReasoning');
+
+    return {
+      externalGuardrail: {
+        enabled: booleanOrNull(enabled),
+        timeoutS: numberOrNull(timeoutS),
+        maxRetries: numberOrNull(maxRetries),
+        retryBackoffMs: numberOrNull(retryBackoffMs),
+        requireMedical: booleanOrNull(requireMedical),
+        includeReasoning: booleanOrNull(includeReasoning),
+        source: groupSource([enabled, timeoutS, maxRetries, retryBackoffMs, requireMedical, includeReasoning]),
+      },
+    };
+  }
+
+  /**
+   * TEXT's `generation` view — the platform hyperparameter profile.
+   *
+   * Same shape contract as above: `apps/text` reads `temperature` / `topP` /
+   * `maxTokens` off `raw["generation"]`, and treats an omitted key as "keep the
+   * in-code floor" rather than as a zero.
+   */
+  private generationView(resolved: Map<string, ResolvedKey>): { generation?: EffectiveGeneration } {
+    const temperature = resolved.get('text.generation.temperature');
+    const topP = resolved.get('text.generation.topP');
+    const maxTokens = resolved.get('text.generation.maxTokens');
+
+    const present = [temperature, topP, maxTokens].filter(isPresent);
+    if (present.length === 0) return {};
+
+    return {
+      generation: {
+        temperature: numberOrNull(temperature),
+        topP: numberOrNull(topP),
+        maxTokens: numberOrNull(maxTokens),
+        source: groupSource(present),
+      },
+    };
   }
 
   /**
@@ -422,6 +490,20 @@ function isPresent(entry: ResolvedKey | undefined): entry is ResolvedKey {
  */
 function numberOrNull(entry: ResolvedKey | undefined): number | null {
   return typeof entry?.value === 'number' ? entry.value : null;
+}
+
+/**
+ * The boolean counterpart of `numberOrNull`, for the frozen boolean group
+ * fields. Same contract: only ever fires on an unresolved (null) value, because
+ * every key feeding those fields declares `dataType: 'boolean'` — and a
+ * type-mismatched value was already refused upstream in `resolveKey`.
+ *
+ * `null`, not `false`. A control plane with no answer must never be read as an
+ * answer of "off": `apps/text` keeps its own floor on null, and `false` would
+ * override a floor of `true` (`requireMedical`) with an opinion nobody stated.
+ */
+function booleanOrNull(entry: ResolvedKey | undefined): boolean | null {
+  return typeof entry?.value === 'boolean' ? entry.value : null;
 }
 
 /** A group reads as `db` only if at least one of its keys was overridden. */

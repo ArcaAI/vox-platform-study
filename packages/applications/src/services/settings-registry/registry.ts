@@ -28,6 +28,8 @@ import { PLATFORM_SECRET_SETTINGS } from './descriptors/platform-secrets.descrip
 import { SECURITY_POLICY_SETTINGS } from './descriptors/security-policy.descriptors';
 import { SERVICE_RUNTIME_SETTINGS } from './descriptors/service-runtime.descriptors';
 import { TEXT_PROVIDER_CONNECTION_SETTINGS } from './descriptors/text-provider-connections.descriptors';
+import { TEXT_GENERATION_SETTINGS } from './descriptors/text-generation.descriptors';
+import { TEXT_GUARDRAIL_POLICY_SETTINGS } from './descriptors/text-guardrail-policy.descriptors';
 import { STORAGE_SETTINGS } from './descriptors/storage.descriptors';
 import { STT_FALLBACK_SETTINGS } from './descriptors/stt-fallback.descriptors';
 import { STT_RUNTIME_SETTINGS } from './descriptors/stt-runtime.descriptors';
@@ -93,6 +95,13 @@ export const HOPE_SETTINGS_REGISTRY: SettingsRegistry = new SettingsRegistry().r
   // tier `env`, read by apps/text. Registered at their config.py defaults, so
   // cataloging them changes no behaviour.
   ...TEXT_PROVIDER_CONNECTION_SETTINGS,
+  // TEXT's per-tenant moderation policy — the PUSH half of the guardrail
+  // posture. Deliberately NOT `consumedBy`: it varies by tenant, so it travels
+  // per-request injection, never the platform-scope pull snapshot (D-1).
+  ...TEXT_GUARDRAIL_POLICY_SETTINGS,
+  // TEXT's platform generation profile (temperature/maxTokens/topP), registered
+  // verbatim at `GENERATION_FLOOR`, so cataloging them changes no behaviour.
+  ...TEXT_GENERATION_SETTINGS,
 
   // ── Taxonomy coverage ────────────────────────────────────────────────────
   // Platform secrets (Vault kv-v2). Every one is `failMode: 'closed'`, enforced
