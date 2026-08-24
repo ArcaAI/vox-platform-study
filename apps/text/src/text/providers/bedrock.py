@@ -310,6 +310,19 @@ class BedrockProvider:
                             yield StreamChunk(type="chunk", content=text)
                     elif "messageStop" in event:
                         stop_reason = event["messageStop"].get("stopReason", stop_reason)
+                        if stop_reason == "guardrail_intervened":
+                            # Parity with `generate()`. A guardrail intervention
+                            # reaches the streaming path through the very same
+                            # `stopReason` field, and it is a safety event: it
+                            # must be as visible in the logs for a streamed
+                            # generation as for a synchronous one.
+                            logger.warning(
+                                "bedrock.guardrail_intervened",
+                                model=params["modelId"],
+                                guardrail_id=params.get("guardrailConfig", {}).get(
+                                    "guardrailIdentifier"
+                                ),
+                            )
                     elif "metadata" in event:
                         raw_usage = event["metadata"].get("usage", {}) or {}
             finally:
@@ -334,7 +347,13 @@ class BedrockProvider:
                 span.set_attribute("gen_ai.usage.output_tokens", raw_usage.get("outputTokens", 0))
             span.set_attribute("gen_ai.response.finish_reason", stop_reason or "stop")
             yield StreamChunk(type="usage", data=stats.model_dump())
-            yield StreamChunk(type="done", data={"finish_reason": stop_reason or "stop"})
+            # The terminal frame reports the reason the STATS beside it report.
+            # ``MessageStopEvent.stopReason`` is REQUIRED by the ConverseStream
+            # contract, so a stream that ended without a ``messageStop`` did not
+            # finish — substituting the literal ``"stop"`` here billed and
+            # audited a truncated generation as a complete one, while the very
+            # same frame's stats said ``"other"``. The two must never disagree.
+            yield StreamChunk(type="done", data={"finish_reason": stop_reason or stats.stop_reason})
 
     async def health_check(self) -> bool:
         """Nothing to probe: credential and region are per request, so there is
