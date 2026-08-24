@@ -246,4 +246,48 @@ describe('37. assertProviderAvailable — the attributable-error matrix', () => 
     };
     expect(assertProviderAvailable(resolved, 'tts', 'sarvam')).toBeUndefined();
   });
+
+  // ── model-registry — outside the gate by construction (owner ruling 2026-08-24)
+  //
+  // `gateApplies` keys off `isCloudByoProvider`, so making `model-registry`
+  // platform-managed did not merely close tenant WRITES — it also moved the
+  // plane out of the entitlement gate on the READ side. That is the consumption
+  // half of "SYSTEM default, used as default/fallback for ALL other tenants",
+  // and it is a behavioural consequence of a one-line map edit, so it is pinned
+  // here rather than left to be rediscovered.
+  describe('model-registry — the platform weight-fetch plane serves every tenant', () => {
+    it('resolves the SYSTEM row for an UNENTITLED tenant — the gate no longer reaches this plane', async () => {
+      const isFeatureEnabled = vi.fn(async () => false); // no platform-default grant
+      const { svc } = makeService({
+        rowsByTenant: {
+          [SYSTEM_TENANT_ID]: [makeRow({ tenantId: SYSTEM_TENANT_ID, service: 'model-registry', provider: 'huggingface' })],
+        },
+        entitlements: { isFeatureEnabled },
+      });
+
+      const res = await svc.resolveCredential('model-registry', 'huggingface', TENANT_A);
+
+      // The gate is still ASKED (resolveCredential uses the whole-service shape,
+      // which always evaluates it once), but suppression is applied PER ROW at
+      // `ai-provider-connection.service.ts:707`, behind the same
+      // `isCloudByoProvider` predicate the write guard uses. So the answer no
+      // longer reaches this plane, and the platform row serves regardless.
+      expect(res.outcome).toBe('resolved');
+      expect(res.funding).toBe('platform');
+      expect(isFeatureEnabled).toHaveBeenCalled();
+    });
+
+    it('still applies the gate to a genuinely cloud-BYO service, so this is a scoped exemption not a hole', async () => {
+      const isFeatureEnabled = vi.fn(async () => false);
+      const { svc } = makeService({
+        rowsByTenant: { [SYSTEM_TENANT_ID]: [makeRow({ tenantId: SYSTEM_TENANT_ID, service: 'tts', provider: 'azure' })] },
+        entitlements: { isFeatureEnabled },
+      });
+
+      const res = await svc.resolveCredential('tts', 'azure', TENANT_A);
+
+      expect(res.outcome).not.toBe('resolved');
+      expect(isFeatureEnabled).toHaveBeenCalled();
+    });
+  });
 });
