@@ -32,6 +32,12 @@ from harness.core.consent_client import ConsentClient, ConsentDecision, build_co
 from harness.core.effective_config import get_effective_config_client
 from harness.core.logging import get_logger
 from harness.core.metrics import inc_gate_decision, inc_regen, observe_step_duration
+from harness.core.provider_credentials import (
+    CredentialOutcome,
+    ProviderCredential,
+    connection_provider_for_judge,
+)
+from harness.eval.config import JudgeProvider
 from harness.eval.judge.base import JudgeClient
 from harness.eval.judge.providers import build_judge_client
 from harness.guards.phi import (
@@ -489,23 +495,80 @@ def _resolve_flag(policy_value: bool | None, *, env_default: bool) -> bool:
     return env_default if policy_value is None else policy_value
 
 
-def _build_runtime_judge(*, provider: str | None = None, model: str | None = None) -> JudgeClient:
+async def _resolve_provider_credential(
+    settings: Settings, service: str, provider: str, tenant_id: str | None
+) -> ProviderCredential:
+    """Resolve ONE BYO credential from the gateway, INSIDE the calling activity.
+
+    Factored out like the other client factories so the tests can monkeypatch it.
+    Never raises — every fault is ``UNAVAILABLE``, which the caller fails closed
+    on (see :mod:`harness.core.provider_credentials` for why the four outcomes are
+    not collapsible into "a key or None").
+    """
+    return await _api_client(settings).resolve_provider_credential(
+        service, provider, tenant_id=tenant_id
+    )
+
+
+def _build_runtime_judge(
+    *,
+    provider: str | None = None,
+    model: str | None = None,
+    credential: ProviderCredential | None = None,
+) -> JudgeClient:
     """Build the calibrated runtime judge from the DB-selected provider/model.
 
     the SELECTION (provider + model) comes from the SYSTEM
-    ``harness.judge`` policy, threaded here as ``provider``/``model``; env
-    (``HARNESS_JUDGE_*``) supplies only the CONNECTION config (base_url/api_key/
-    tuning), never the selection. When an override is given it wins over the
-    env-config provider/model via ``model_copy`` (the env provider/model are the
-    offline-eval defaults only). Factored out (like the other client factories) so
-    the tests can monkeypatch it with a stub.
+    ``harness.judge`` policy, threaded here as ``provider``/``model``. When an
+    override is given it wins over the env-config provider/model via
+    ``model_copy`` (the env provider/model are the offline-eval defaults only).
+    Factored out (like the other client factories) so the tests can monkeypatch it
+    with a stub.
+
+    The CONNECTION (api_key, and the Azure endpoint/deployment/api-version) now
+    comes from ``credential`` — a gateway-resolved ``AiProviderConnection`` row,
+    tenant → SYSTEM. Env supplies only the remaining TUNING knobs (timeouts,
+    retries, batch size, calibration levers); the three credential fields have a
+    dead ``validation_alias`` so there is no env path left to fall back to.
+
+    ``credential`` may be ``None`` (no resolve attempted) or carry outcome
+    ``ABSENT`` — both mean "no credential", which is the correct state for an
+    unauthenticated in-boundary endpoint. A DENIED/UNAVAILABLE credential must be
+    rejected by the CALLER before it gets here (`raise_if_unusable`); this
+    function does not silently ignore one.
     """
     config = get_runtime_judge_config()
-    updates: dict[str, str] = {}
+    updates: dict[str, Any] = {}
     if provider:
         updates["provider"] = provider
     if model:
         updates["model"] = model
+
+    if credential is not None and credential.outcome is CredentialOutcome.RESOLVED:
+        # The EFFECTIVE provider decides which sub-config the credential lands on
+        # — the override when there is one, never the env default underneath it.
+        effective_provider = provider or config.provider
+        # `model_copy` on the SUB-config, not a constructor call: the credential
+        # fields are `validation_alias`-closed, so re-validating would reject them.
+        if credential.api_key is not None:
+            if effective_provider == JudgeProvider.AZURE:
+                azure_updates: dict[str, Any] = {"api_key": credential.api_key}
+                # The Azure judge's endpoint/deployment/api-version live on the
+                # SAME connection row as its key — a tenant pointing at its own
+                # Azure resource brings all four together or none of them.
+                if credential.base_url:
+                    azure_updates["endpoint"] = credential.base_url
+                if credential.api_version:
+                    azure_updates["api_version"] = credential.api_version
+                if credential.deployment_name:
+                    azure_updates["deployment"] = credential.deployment_name
+                updates["azure"] = config.azure.model_copy(update=azure_updates)
+            else:
+                compat_updates: dict[str, Any] = {"api_key": credential.api_key}
+                if credential.base_url:
+                    compat_updates["base_url"] = credential.base_url
+                updates["openai_compat"] = config.openai_compat.model_copy(update=compat_updates)
+
     if updates:
         config = config.model_copy(update=updates)
     return build_judge_client(config)
@@ -698,14 +761,31 @@ def _effective_mcp_allowlist(
     return allowed & set(policy_allowlist)
 
 
-def _hybrid_retriever(settings: Settings) -> HybridRetriever:
+def _hybrid_retriever(
+    settings: Settings, credential: ProviderCredential | None = None
+) -> HybridRetriever:
     """Build the JIT hybrid retriever from the (flag-gated) ``RetrievalConfig``.
 
     Factored out (like the other client factories) so ``retrieve_context`` builds it
     once and the tests can monkeypatch it with a fake. The dense query stays on the
     self-hosted LM Studio path (the query can contain PHI).
+
+    The Qdrant CREDENTIAL (and, when the tenant brings its own cluster, its URL)
+    comes from a gateway-resolved
+    ``AiProviderConnection(service='vector', provider='qdrant')`` row, tenant →
+    SYSTEM. ``credential=None`` or outcome ``ABSENT`` keeps the unauthenticated
+    path, which is what local dev Qdrant needs and is NOT a fallback to env — the
+    env path is closed (`RetrievalConfig.qdrant_api_key`). A DENIED/UNAVAILABLE
+    credential is rejected by the CALLER before this is reached.
     """
     rc = settings.retrieval
+    if credential is not None and credential.outcome is CredentialOutcome.RESOLVED:
+        rc = rc.model_copy(
+            update={
+                "qdrant_api_key": credential.api_key,
+                **({"qdrant_url": credential.base_url} if credential.base_url else {}),
+            }
+        )
     return HybridRetriever(
         embeddings=EmbeddingsClient(
             rc.embeddings_base_url, model=rc.embeddings_model, timeout=rc.embeddings_timeout_s
@@ -1478,8 +1558,38 @@ async def retrieve_context(payload: RetrieveContextInput) -> RetrievedContext:
         await batch.flush()
         return RetrievedContext(degraded=True)
 
+    # Resolve the Qdrant credential from the BYO plane, INSIDE this activity, and
+    # discard it when the retriever is done: Temporal history is durable, so it
+    # never travels on an input, a result or a heartbeat.
+    #
+    # A DENIED (tenant veto) or UNAVAILABLE (gateway fault) credential degrades
+    # this activity exactly like a retrieval-backend outage — empty context,
+    # `degraded=True`, generation proceeds flagged — and NEVER falls back to an
+    # env key. `ABSENT` is not a failure: it is the unauthenticated in-boundary
+    # Qdrant that local dev and a keyless cluster both run.
+    qdrant_credential = await _resolve_provider_credential(
+        settings, "vector", "qdrant", payload.tenant_id
+    )
+    if not qdrant_credential.usable:
+        activity.logger.warning(
+            "harness.retrieval.credential_unavailable",
+            extra={"outcome": qdrant_credential.outcome.value, "reason": qdrant_credential.reason},
+        )
+        batch.record(
+            step_type=STEP_RETRIEVAL,
+            name="retrieve_context",
+            status=STATUS_ERROR,
+            started=started,
+            stats={"enabled": True, "chunk_count": 0},
+            error_code=f"credential_{qdrant_credential.outcome.value}",
+        )
+        await batch.flush()
+        return RetrievedContext(degraded=True)
+
     query = build_query(payload.entities)
-    result = await _hybrid_retriever(settings).retrieve(query=query, tenant_id=payload.tenant_id)
+    result = await _hybrid_retriever(settings, qdrant_credential).retrieve(
+        query=query, tenant_id=payload.tenant_id
+    )
     # Build the StrictCitations block from the FULL chunk text FIRST (it needs the text),
     # THEN offload each chunk's text so the reranked chunk texts don't enter
     # Temporal history; the inferential citation-verify pass resolves them inline-or-ref.
@@ -2040,7 +2150,30 @@ async def run_inferential_sensors(payload: RunInferentialSensorsInput) -> Infere
     heartbeat = asyncio.create_task(_heartbeat_periodically())
     try:
         try:
-            judge = _build_runtime_judge(provider=judge_provider, model=judge_model)
+            # Resolve the judge's BYO credential from the gateway INSIDE this
+            # activity, use it to build the client, and let it fall out of scope.
+            # It never reaches an activity input, result or heartbeat — Temporal
+            # history is durable storage.
+            #
+            # DENIED / UNAVAILABLE raise `CredentialUnavailable` into the SAME
+            # `except` that already degrades an un-buildable judge, so an
+            # unresolvable credential degrades the judge-dependent sensors rather
+            # than falling back to an env key (there is none left to fall back
+            # to). `ABSENT` proceeds unauthenticated — correct for a local
+            # OpenAI-compatible endpoint, and still fail-closed for Azure, whose
+            # `build_judge_client` refuses to construct without a key.
+            judge_credential = await _resolve_provider_credential(
+                settings,
+                "llm",
+                connection_provider_for_judge(judge_provider),
+                payload.tenant_id,
+            )
+            judge_credential.raise_if_unusable(
+                service="llm", provider=connection_provider_for_judge(judge_provider)
+            )
+            judge = _build_runtime_judge(
+                provider=judge_provider, model=judge_model, credential=judge_credential
+            )
         except Exception as exc:  # noqa: BLE001 — un-buildable judge degrades, never raises
             reason = f"inferential judge unavailable: {exc}"
             degraded = [

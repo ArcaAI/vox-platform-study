@@ -253,12 +253,19 @@ export const PLATFORM_SECRET_SETTINGS: SettingDescriptor[] = [
   // 2b/5: `apps/guardrail` no longer hosts an LLM engine, so it holds no vendor
   // credential of any kind. Judgement is delegated to `apps/text`, which resolves
   // the tenant's own key from `AiProviderConnection` (BYOK) or the platform tier.
-  platformSecret(
-    'harnessJudgeOpenaiCompat.apiKey',
-    'Harness judge endpoint key',
-    'Bearer credential for the harness LLM-as-judge OpenAI-compatible endpoint (`HARNESS_JUDGE_OPENAI_COMPAT_` prefix). Connection config only — WHICH judge model runs is `models.harness.judge`, a fail-closed db-config selection.',
-    'AI Providers',
-  ),
+  // `harnessJudgeOpenaiCompat.apiKey` (HARNESS_JUDGE_OPENAI_COMPAT_API_KEY) was
+  // REMOVED by TASK-799 lane B, for exactly the reason the block above gives for
+  // the STT/TTS/TEXT keys. The harness judge credential moved to the `db-secret`
+  // tier — `AiProviderConnection(service='llm', provider='openai-compat')`,
+  // tenant → SYSTEM — and `apps/harness` reads NO env fallback for it any more
+  // (`OpenAICompatJudgeConfig.api_key` carries a dead `validation_alias`). The
+  // worker resolves it per activity via
+  // `GET /internal/harness/provider-credential`. Leaving the descriptor
+  // registered would seed a `vault-kv` secret nothing reads and re-add the name
+  // to `turbo#globalEnv` and `.env.sample`, where it would advertise — as
+  // "REQUIRED, boot fails without it" — an env path that no longer exists.
+  // `HARNESS_JUDGE_AZURE_API_KEY` and `HARNESS_RETRIEVAL_QDRANT_API_KEY` moved in
+  // the same change; neither was ever registered here.
 
   // ── Harness claim-check object store (PHI blobs) ──────────────────────────
   platformSecret(

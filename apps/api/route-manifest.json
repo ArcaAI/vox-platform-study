@@ -12649,6 +12649,22 @@
     },
     {
       "controller": "HarnessInternalController",
+      "handler": "resolveProviderCredential",
+      "method": "GET",
+      "path": "/api/v1/internal/harness/provider-credential",
+      "routePath": "/internal/harness/provider-credential",
+      "svcScopes": [],
+      "forbidServiceAccount": false,
+      "apiKeyForbidden": false,
+      "apiKeyScopes": [],
+      "requiredPermissions": null,
+      "isPublic": true,
+      "permissionMode": null,
+      "requiresIfMatch": false,
+      "apiExcluded": true
+    },
+    {
+      "controller": "HarnessInternalController",
       "handler": "createSttBatchJob",
       "method": "POST",
       "path": "/api/v1/internal/harness/stt/batch-jobs",

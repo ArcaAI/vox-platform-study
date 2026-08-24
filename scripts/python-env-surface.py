@@ -53,6 +53,7 @@ import argparse
 import importlib
 import json
 import os
+import re
 import subprocess
 import sys
 from dataclasses import dataclass, field as dataclass_field
@@ -61,6 +62,11 @@ from typing import Any
 
 ROOT = Path(__file__).resolve().parent.parent
 MANIFEST = ROOT / "scripts" / "generated" / "python-env-surface.json"
+
+#: The shape of a CLOSED env path: a `validation_alias` pointed at a name nothing
+#: can set, so a BYOK-only credential has no environment fallback. Matched by
+#: shape rather than by one ticket's number — see the use site for why.
+_ENV_REMOVED_TOMBSTONE = re.compile(r"__ENV_REMOVED_TASK_\d+$")
 
 
 @dataclass(frozen=True)
@@ -288,14 +294,21 @@ def collect(spec: ServiceSpec) -> list[EnvField]:
                 names: list[str] = []
                 for _key, env_name, _complex in source._extract_field_info(info, field_name):
                     upper = env_name.upper()
-                    # `apps/text` enforces BYOK-only vendor credentials by pointing
-                    # the field's `validation_alias` at a name NOTHING can ever set
-                    # (`TEXT_AZURE_API_KEY__ENV_REMOVED_TASK_602`, config.py:94).
-                    # The name is a tombstone, not a knob: emitting it would
-                    # advertise an env credential path that TASK-602 deliberately
-                    # closed, and `test_task602_byok_credentials.py` asserts stays
-                    # closed.
-                    if upper.endswith("__ENV_REMOVED_TASK_602"):
+                    # A service enforces a BYOK-only credential by pointing the
+                    # field's `validation_alias` at a name NOTHING can ever set
+                    # (`TEXT_AZURE_API_KEY__ENV_REMOVED_TASK_602`, `apps/text`
+                    # config.py:94; the three `__ENV_REMOVED_TASK_799` harness
+                    # judge/Qdrant keys). The name is a TOMBSTONE, not a knob:
+                    # emitting it would advertise an env credential path that was
+                    # deliberately closed, and each closure has a test asserting
+                    # it stays closed.
+                    #
+                    # Matched by SHAPE, not by ticket number. This was
+                    # `endswith("__ENV_REMOVED_TASK_602")`, so the SECOND service to
+                    # adopt the pattern silently leaked its tombstones into the
+                    # manifest — and from there into `.env.sample`, the one place a
+                    # closed credential path must never appear.
+                    if _ENV_REMOVED_TOMBSTONE.search(upper):
                         continue
                     if upper not in names:
                         names.append(upper)

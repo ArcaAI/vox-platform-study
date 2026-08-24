@@ -722,3 +722,61 @@ export interface HarnessAssuranceEventDto {
   updatedAt: string;
   closed: boolean;
 }
+
+/**
+ * TASK-799 lane B — the harness worker's BYO credential resolve.
+ *
+ * The four outcomes are a DISCRIMINATED contract, not a nullable credential,
+ * because the consumer must act differently on each and the difference is a
+ * security property:
+ *
+ * - `resolved`    — a row on some tier supplied a credential: use it.
+ * - `absent`      — NO opinion on either tier (no row, or a keyless row): call
+ *                   the endpoint UNAUTHENTICATED. That is the correct state for
+ *                   a self-hosted, in-boundary endpoint, and it is never a
+ *                   reason to read an env var.
+ * - `denied`      — the tenant VETOED this `(service, provider)`, or the
+ *                   platform tier is entitlement-suppressed for a cloud one:
+ *                   FAIL CLOSED. Never fall through to another tier or provider.
+ * - `unavailable` — the gateway could not answer (unwired plane, decrypt fault,
+ *                   transport error): FAIL CLOSED. A fault must never be read as
+ *                   "no opinion".
+ *
+ * Collapsing `absent` and `unavailable` is precisely the bug this shape
+ * prevents: a Vault outage would otherwise present as "no credential
+ * configured" and silently downgrade an authenticated call to an
+ * unauthenticated one.
+ *
+ * NOTE the deliberate asymmetry with `EffectiveConfigResponse`: that contract
+ * degrades a failed control-plane read to `env-fallback`. This one cannot,
+ * because there is no env value left to fall back to — the harness env paths
+ * for these three credentials are structurally closed (dead `validation_alias`
+ * with `populate_by_name` off).
+ */
+export type HarnessCredentialOutcome = 'resolved' | 'absent' | 'denied' | 'unavailable';
+
+/** Which tier PAID for the credential. Derived from the row, never stamped. */
+export type HarnessCredentialFunding = 'tenant' | 'platform';
+
+/**
+ * One resolved `AiProviderConnection` in the shape the harness worker consumes.
+ *
+ * `apiKey` is PLAINTEXT key material. It exists only on the wire of the
+ * `X-Service-Token`-guarded `/internal/harness/*` plane and only for the
+ * duration of one activity; it is never persisted, never echoed into a response
+ * the worker returns, and never placed on a Temporal activity input, result or
+ * heartbeat — Temporal history is durable storage.
+ */
+export interface HarnessProviderCredentialResponse {
+  outcome: HarnessCredentialOutcome;
+  /** Human-readable cause for `denied` / `unavailable`. NEVER key material. */
+  reason?: string;
+  apiKey?: string;
+  baseUrl?: string;
+  region?: string;
+  apiVersion?: string;
+  deploymentName?: string;
+  /** Provider-specific per-request target carried on the row's `extraJson`. */
+  model?: string;
+  funding?: HarnessCredentialFunding;
+}

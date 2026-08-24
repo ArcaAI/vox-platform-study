@@ -190,7 +190,11 @@ describe('env/vault-kv descriptor keys resolve to the real variable names', () =
     // STT/TTS/TEXT cloud credentials are BYOK-only (db-secret / AiProviderConnection),
     // no longer vault-kv platform secrets. azure.foundryApiKey stays (out of scope).
     'azure.foundryApiKey': 'AZURE_FOUNDRY_API_KEY',
-    'harnessJudgeOpenaiCompat.apiKey': 'HARNESS_JUDGE_OPENAI_COMPAT_API_KEY',
+    // harnessJudgeOpenaiCompat.apiKey was removed for the same reason — the
+    // harness LLM-as-judge credential is BYO-only now
+    // (`AiProviderConnection(service='llm', provider='openai-compat')`), resolved
+    // per activity through `GET /internal/harness/provider-credential`, with the
+    // env path structurally closed on the Python side.
     'harness.claimCheck.accessKey': 'HARNESS_CLAIM_CHECK_ACCESS_KEY',
     'harness.claimCheck.secretKey': 'HARNESS_CLAIM_CHECK_SECRET_KEY',
     // TEXT's cloud-provider connection config (`textOpenai.*`, `textAnthropic.*`,

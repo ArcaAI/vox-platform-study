@@ -22,16 +22,25 @@ class TestRetrievalConfigApiKey:
         cfg = RetrievalConfig()
         assert cfg.qdrant_api_key is None
 
-    def test_api_key_reads_its_env_var(self, monkeypatch):
-        monkeypatch.setenv("HARNESS_RETRIEVAL_QDRANT_API_KEY", "s3cret-key")
-        cfg = RetrievalConfig()
-        assert cfg.qdrant_api_key is not None
-        assert cfg.qdrant_api_key.get_secret_value() == "s3cret-key"
+    def test_api_key_no_longer_reads_its_env_var(self, monkeypatch):
+        """TASK-799 lane B — the env path is CLOSED; the key is BYO-only now.
 
-    def test_api_key_is_not_printed_by_repr(self, monkeypatch):
-        """SecretStr, not str — the config is logged at startup."""
+        This assertion is INVERTED from what it was, deliberately. The Qdrant key
+        is a provider credential and lives on
+        `AiProviderConnection(service='vector', provider='qdrant')`, tenant →
+        SYSTEM; `qdrant_api_key` carries a dead `validation_alias` so no
+        environment variable can populate it. The FIELD survives (deleting it
+        would remove the only way to authenticate, the defect this file exists to
+        pin) — it is now written by injection only. Full contract:
+        `test_task799_byo_credentials.py`.
+        """
         monkeypatch.setenv("HARNESS_RETRIEVAL_QDRANT_API_KEY", "s3cret-key")
-        assert "s3cret-key" not in repr(RetrievalConfig())
+        assert RetrievalConfig().qdrant_api_key is None
+
+    def test_api_key_is_not_printed_by_repr(self):
+        """SecretStr, not str — the config is logged at startup."""
+        cfg = RetrievalConfig().model_copy(update={"qdrant_api_key": SecretStr("s3cret-key")})
+        assert "s3cret-key" not in repr(cfg)
 
 
 class TestStorePassesApiKey:

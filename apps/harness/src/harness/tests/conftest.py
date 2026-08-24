@@ -35,6 +35,42 @@ def _llm_governor_test_defaults(monkeypatch):
     reset_endpoint_limiters()
 
 
+@pytest.fixture(autouse=True)
+def _byo_credentials_absent(monkeypatch):
+    """TASK-799 lane B — the hermetic suite's BYO-credential posture is ABSENT.
+
+    The judge and the retriever now resolve their credentials from the gateway's
+    `AiProviderConnection` plane, INSIDE the activity that uses them. This suite
+    is hermetic by contract (rule 06: "Temporal/LLM/reranker stubbed, Qdrant
+    in-memory, no DB/Redis") — there is no gateway process and there are no
+    connection rows, so without this every judge/retrieval test would fail closed
+    on `UNAVAILABLE` while testing nothing about credentials.
+
+    `ABSENT` is the TRUTHFUL hermetic answer, not a convenience: "no tier has an
+    opinion" is exactly the state of a database that does not exist, and it is the
+    same state a local unauthenticated LM Studio / dev Qdrant runs in. It is the
+    same class of stub as the `_build_runtime_judge` / `_safety_screen_client`
+    monkeypatches these tests already apply.
+
+    It is deliberately NOT a blanket "credentials always succeed": `ABSENT` yields
+    NO key, so a test that asserts a credential actually reaches a client has to
+    say so explicitly. The FAIL-CLOSED paths (`DENIED` / `UNAVAILABLE`) are covered
+    by tests that override this with their own `monkeypatch.setattr`, which runs
+    after this fixture and therefore wins.
+    """
+    from harness.api.endpoints import knowledge
+    from harness.core.provider_credentials import CredentialOutcome, ProviderCredential
+    from harness.temporal import activities
+
+    absent = ProviderCredential(outcome=CredentialOutcome.ABSENT)
+
+    async def _absent(*_args, **_kwargs):
+        return absent
+
+    monkeypatch.setattr(activities, "_resolve_provider_credential", _absent)
+    monkeypatch.setattr(knowledge, "_resolve_qdrant_credential", _absent)
+
+
 @pytest.fixture
 def settings() -> Settings:
     """Default test settings (process-local, no external dependencies)."""

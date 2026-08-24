@@ -25,6 +25,7 @@ import {
   HarnessProgressAck,
   HarnessProgressRequest,
   HarnessProgressService,
+  HarnessProviderCredentialResponse,
   HarnessRealtimeDeliveryAck,
   IActiveUserContext,
   IAgentTrajectoryService,
@@ -440,6 +441,41 @@ export class HarnessInternalController {
       throw new BadRequestException('authRef query parameter is required');
     }
     return { token: await this.harnessInternalService.resolveMcpToken(authRef) };
+  }
+
+  /**
+   * TASK-799 lane B — resolve ONE BYO provider credential for the harness worker.
+   *
+   * The SAME reasoning as `mcp-token` above, generalised to the
+   * `AiProviderConnection` plane: the worker's judge and retriever run inside a
+   * Temporal ACTIVITY, so there is no inbound request to fold a
+   * `provider_overrides` envelope into, and the worker holds no DB handle to
+   * resolve the cascade itself. It therefore calls this route INSIDE the
+   * activity, uses the credential, and discards it. The value never reaches a
+   * workflow input, an activity result or a heartbeat — Temporal history is
+   * durable storage, so a credential in an input is a credential on disk.
+   *
+   * `(service, provider)` is validated against `PROVIDER_SERVICES` in the
+   * service; the cascade, the veto and the entitlement gate are the shared ones
+   * in `AiProviderConnectionService`, never reimplemented here. `tenantId` is
+   * REQUIRED: a tenant-less credential resolve could only mean "read SYSTEM
+   * unconditionally", which is the widen-without-absence bug the two-tier rule
+   * exists to prevent.
+   */
+  @Get('provider-credential')
+  @ApiOperation({ summary: 'Resolve a BYO AiProviderConnection credential (tenant → SYSTEM) for a harness worker activity' })
+  @ApiQuery({ name: 'service', required: true, description: 'Capability the connection serves: llm | stt | tts | embeddings | rerank | vector.' })
+  @ApiQuery({ name: 'provider', required: true, description: 'Serving provider identifier, e.g. azure / openai-compat / qdrant.' })
+  @ApiQuery({ name: 'tenantId', required: true, description: 'Tenant the harness is acting on behalf of. Never optional.' })
+  async resolveProviderCredential(
+    @Query('service') service?: string,
+    @Query('provider') provider?: string,
+    @Query('tenantId') tenantId?: string,
+  ): Promise<HarnessProviderCredentialResponse> {
+    if (!service || !provider || !tenantId) {
+      throw new BadRequestException('service, provider and tenantId query parameters are all required');
+    }
+    return this.harnessInternalService.resolveProviderCredential(service, provider, tenantId);
   }
 
   // The harness sends a deterministic `Idempotency-Key`

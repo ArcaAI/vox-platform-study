@@ -13,15 +13,15 @@ disagree with those declarations.
 
 | Metric | Value |
 |---|---:|
-| Declared keys (distinct) | 138 |
-| … of which required (`failMode: closed`) | 32 |
-| … of which secret | 31 |
+| Declared keys (distinct) | 137 |
+| … of which required (`failMode: closed`) | 31 |
+| … of which secret | 30 |
 | … tier `env` | 102 |
 | … tier `global-kv` | 9 |
-| … tier `vault-kv` | 27 |
-| Python declared fields | 359 |
-| … distinct Python names (incl. aliases + `os.environ` reads) | 408 |
-| `turbo.json#globalEnv` entries | 538 |
+| … tier `vault-kv` | 26 |
+| Python declared fields | 356 |
+| … distinct Python names (incl. aliases + `os.environ` reads) | 405 |
+| `turbo.json#globalEnv` entries | 535 |
 
 ## Variables — the TypeScript platform surface
 
@@ -56,7 +56,6 @@ disagree with those declarations.
 | `HARNESS_CLAIM_CHECK_ENABLED` | `env` | no | `true` | `apps/harness` | Moves large clinical blobs OUT of Temporal workflow history into a self-hosted content-addressed store, protecting the ~50 MB history budget. DEFAULTS **ON**, and is therefore NOT marked `killSwitch` — it is a PROTECTION, so turning it off REMOVES a safeguard (unbounded history growth) rather than disabling an enforcement path. Marking it a kill-switch would violate the defaults-OFF invariant and fail registry assembly. Same polarity as `rate-limit.enabled`. Turning it off is a deliberate acceptance of unbounded Temporal history, exactly as the harness startup validator states. |
 | `HARNESS_CLAIM_CHECK_SECRET_KEY` | `vault-kv` | yes | `CHANGE_ME` | `apps/harness` | S3/MinIO secret key for the harness claim-check blob store (self-hosted only; PHI must not egress). |
 | `HARNESS_INTERNAL_SERVICE_TOKEN` | `vault-kv` | yes | `CHANGE_ME` | `apps/api` | SECOND, SEPARATE harness credential — NOT an alias of `HARNESS_SERVICE_TOKEN`. It gates the knowledge-ingest endpoint only (`apps/harness/.../api/endpoints/knowledge.py`, pydantic field `internal_service_token` under the `HARNESS_` prefix) and is resolved by `KnowledgeIngestClient` for the outbound `X-Service-Token`. Added by lane J: it was read through SecretsService but had no descriptor, so `vault-seed-secrets.sh` never seeded it and every ingest call would 401 on a Vault-backed deployment. |
-| `HARNESS_JUDGE_OPENAI_COMPAT_API_KEY` | `vault-kv` | yes | `CHANGE_ME` | `apps/harness` | Bearer credential for the harness LLM-as-judge OpenAI-compatible endpoint (`HARNESS_JUDGE_OPENAI_COMPAT_` prefix). Connection config only — WHICH judge model runs is `models.harness.judge`, a fail-closed db-config selection. |
 | `HARNESS_NER_PRIORS_ENABLED` | `env` | no | `false` | `apps/harness` | Gates reuse of already-persisted CODED NER priors inside harness activities. A workflow-policy value may override it per run; this is the fallback when the policy says nothing. |
 | `HARNESS_PORT` | `env` | no | `8866` | `apps/harness` | Port apps/harness binds (test: 8966). |
 | `HARNESS_SERVICE_TOKEN` | `vault-kv` | yes | `CHANGE_ME` | `apps/api` | Shared secret on the gateway↔harness hop. Fetched on demand (not a warmup key) by `HarnessOpsClient` / `HarnessGatewayService` / `HarnessServiceTokenGuard`. It MUST equal the harness process’s own `HARNESS_SERVICE_TOKEN`, or every `/api/v1/internal/harness/*` call 401s. |
@@ -254,7 +253,6 @@ default — see `renderPythonExample()` in `scripts/env-sync.mts`.
 | `HARNESS_HOST` | `apps/harness` | no | no | `0.0.0.0` | commented | — |
 | `HARNESS_INTERNAL_SERVICE_TOKEN` | `apps/harness` | no | yes | `CHANGE_ME` | live | — |
 | `HARNESS_JUDGE_ANCHORED` | `apps/harness` | no | no | `false` | commented | — |
-| `HARNESS_JUDGE_AZURE_API_KEY` | `apps/harness` | no | yes | `CHANGE_ME` | live | — |
 | `HARNESS_JUDGE_AZURE_API_VERSION` | `apps/harness` | no | no | `2024-12-01-preview` | commented | — |
 | `HARNESS_JUDGE_AZURE_DEPLOYMENT` | `apps/harness` | no | no | `` | commented | — |
 | `HARNESS_JUDGE_AZURE_ENDPOINT` | `apps/harness` | no | no | `` | commented | — |
@@ -264,7 +262,6 @@ default — see `renderPythonExample()` in `scripts/env-sync.mts`.
 | `HARNESS_JUDGE_MAX_RETRIES` | `apps/harness` | no | no | `2` | commented | — |
 | `HARNESS_JUDGE_MAX_TOKENS` | `apps/harness` | no | no | `8192` | commented | — |
 | `HARNESS_JUDGE_MODEL` | `apps/harness` | no | no | `gemma-4-e2b-it-qat` | commented | — |
-| `HARNESS_JUDGE_OPENAI_COMPAT_API_KEY` | `apps/harness` | no | yes | `CHANGE_ME` | live | — |
 | `HARNESS_JUDGE_OPENAI_COMPAT_BASE_URL` | `apps/harness` | no | no | `http://localhost:1234/v1` | commented | — |
 | `HARNESS_JUDGE_OPENAI_COMPAT_JSON_RESPONSE_FORMAT` | `apps/harness` | no | no | `json_object` | live | — |
 | `HARNESS_JUDGE_OPENAI_COMPAT_ORGANIZATION` | `apps/harness` | no | no | — | commented | — |
@@ -311,7 +308,6 @@ default — see `renderPythonExample()` in `scripts/env-sync.mts`.
 | `HARNESS_RETRIEVAL_EMBEDDINGS_MODEL` | `apps/harness` | no | no | `text-embedding-bge-m3` | commented | — |
 | `HARNESS_RETRIEVAL_EMBEDDINGS_TIMEOUT_S` | `apps/harness` | no | no | `30` | commented | — |
 | `HARNESS_RETRIEVAL_ENABLED` | `apps/harness` | no | no | `false` | commented | — |
-| `HARNESS_RETRIEVAL_QDRANT_API_KEY` | `apps/harness` | no | yes | `CHANGE_ME` | live | — |
 | `HARNESS_RETRIEVAL_QDRANT_TIMEOUT_S` | `apps/harness` | no | no | `10` | commented | — |
 | `HARNESS_RETRIEVAL_QDRANT_URL` | `apps/harness` | no | no | `http://localhost:6333` | commented | — |
 | `HARNESS_RETRIEVAL_RERANKER_BASE_URL` | `apps/harness` | no | no | `http://localhost:8870` | commented | — |
