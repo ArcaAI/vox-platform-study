@@ -157,8 +157,12 @@ class LoggingConfig:
         # `NLPServiceConfig.log_level` is typed `int`, so the same variable is
         # legitimately written as `20` or as `INFO`. Both resolve here, exactly
         # as they now do in the settings class.
-        raw_level = (os.getenv("NLP_LOG_LEVEL") or os.getenv("LOG_LEVEL") or cls.DEFAULT_LOG_LEVEL).strip()
-        log_level = logging.getLevelName(int(raw_level)) if raw_level.isdigit() else raw_level.upper()
+        raw_level = (
+            os.getenv("NLP_LOG_LEVEL") or os.getenv("LOG_LEVEL") or cls.DEFAULT_LOG_LEVEL
+        ).strip()
+        log_level = (
+            logging.getLevelName(int(raw_level)) if raw_level.isdigit() else raw_level.upper()
+        )
         # Sink configuration: control plane over the declared bootstrap floor.
         # `LOG_FILE_PATH` stays a bare env read — it is a host fact about where
         # this container's writable volume is mounted, not platform policy.

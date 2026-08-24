@@ -98,7 +98,9 @@ class _FakeNlp:
     def __init__(self) -> None:
         self.text: str | None = None
 
-    async def classify_tokens(self, text: str, *, tenant_id: str = "", language: str = "en") -> list[NEREntity]:
+    async def classify_tokens(
+        self, text: str, *, tenant_id: str = "", language: str = "en"
+    ) -> list[NEREntity]:
         self.text = text
         return [NEREntity(text="hypertension", type="DISEASE", start=0, end=12)]
 
@@ -112,7 +114,10 @@ class TestGenerateOffloadsNote:
         _patch_store(monkeypatch, store)
         monkeypatch.setattr(activities, "_text_client", lambda s: _FakeText(_BIG_NOTE))
 
-        result = await env.run(activities.generate, GenerateInput(tenant_id="11111111-1111-1111-1111-111111111111", prompt="P"))
+        result = await env.run(
+            activities.generate,
+            GenerateInput(tenant_id="11111111-1111-1111-1111-111111111111", prompt="P"),
+        )
 
         assert result.content == ""  # inline emptied — note not serialized into history
         assert result.content_ref is not None
@@ -127,7 +132,10 @@ class TestGenerateOffloadsNote:
         _patch_store(monkeypatch, store)
         monkeypatch.setattr(activities, "_text_client", lambda s: _FakeText("small"))
 
-        result = await env.run(activities.generate, GenerateInput(tenant_id="11111111-1111-1111-1111-111111111111", prompt="P"))
+        result = await env.run(
+            activities.generate,
+            GenerateInput(tenant_id="11111111-1111-1111-1111-111111111111", prompt="P"),
+        )
 
         assert result.content == "small"
         assert result.content_ref is None
@@ -140,7 +148,10 @@ class TestGenerateOffloadsNote:
         _patch_store(monkeypatch, store)
         monkeypatch.setattr(activities, "_text_client", lambda s: _FakeText(_BIG_NOTE))
 
-        result = await env.run(activities.generate, GenerateInput(tenant_id="11111111-1111-1111-1111-111111111111", prompt="P"))
+        result = await env.run(
+            activities.generate,
+            GenerateInput(tenant_id="11111111-1111-1111-1111-111111111111", prompt="P"),
+        )
 
         assert result.content == _BIG_NOTE
         assert result.content_ref is None
@@ -157,7 +168,12 @@ class TestGenerateOffloadsNote:
 
         await env.run(
             activities.generate,
-            GenerateInput(tenant_id="11111111-1111-1111-1111-111111111111", prompt="", prompt_ref=prompt_ref, prompt_block="[[kb:1]] chunk"),
+            GenerateInput(
+                tenant_id="11111111-1111-1111-1111-111111111111",
+                prompt="",
+                prompt_ref=prompt_ref,
+                prompt_block="[[kb:1]] chunk",
+            ),
         )
         # generate resolved the offloaded prompt AND folded in the StrictCitations block.
         assert fake.kwargs["prompt"] == "BASE PROMPT\n\n[[kb:1]] chunk"
@@ -226,7 +242,10 @@ class TestConsumersResolveInlineOrRef:
         monkeypatch.setattr(activities, "_nlp_client", lambda s: nlp)
 
         result = await env.run(
-            activities.extract_entities, ExtractEntitiesInput(tenant_id="11111111-1111-1111-1111-111111111111", text="", text_ref=ref)
+            activities.extract_entities,
+            ExtractEntitiesInput(
+                tenant_id="11111111-1111-1111-1111-111111111111", text="", text_ref=ref
+            ),
         )
         assert nlp.text == _BIG_NOTE  # the NLP client saw the resolved (full) note
         assert [e.text for e in result.entities] == ["hypertension"]

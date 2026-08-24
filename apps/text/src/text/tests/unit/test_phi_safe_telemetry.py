@@ -105,7 +105,11 @@ class TestNoContentBearingGenAiAttributesAreStamped:
 
     def test_every_stamped_attribute_is_allow_listed(self):
         found = _scan_gen_ai_attribute_literals()
-        unexpected = {name: [str(p) for p in files] for name, files in found.items() if name not in ALLOWED_GEN_AI_ATTRIBUTES}
+        unexpected = {
+            name: [str(p) for p in files]
+            for name, files in found.items()
+            if name not in ALLOWED_GEN_AI_ATTRIBUTES
+        }
         assert not unexpected, (
             "Found gen_ai.* attribute name(s) not on the PHI-safe allow-list "
             "(docs/operations/telemetry-phi-guardrails.md): "

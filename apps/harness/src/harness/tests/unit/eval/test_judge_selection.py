@@ -34,7 +34,9 @@ class _FakeConn:
         self.closed = True
 
 
-def _install_fake_asyncpg(monkeypatch, conn: _FakeConn | None, *, connect_error: Exception | None = None):
+def _install_fake_asyncpg(
+    monkeypatch, conn: _FakeConn | None, *, connect_error: Exception | None = None
+):
     module = types.ModuleType("asyncpg")
 
     async def connect(_dsn: str):

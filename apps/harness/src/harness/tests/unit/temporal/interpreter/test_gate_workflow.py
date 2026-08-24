@@ -95,7 +95,15 @@ def _policy(max_escalations_irrelevant: bool = True) -> HarnessPolicy:
     )
 
 
-async def _run_gate(env: WorkflowEnvironment, client: Client, recorder: _Recorder, *, policy, signal_after=None, payload=None):
+async def _run_gate(
+    env: WorkflowEnvironment,
+    client: Client,
+    recorder: _Recorder,
+    *,
+    policy,
+    signal_after=None,
+    payload=None,
+):
     task_queue = f"gate-{uuid.uuid4()}"
     async with Worker(
         client,

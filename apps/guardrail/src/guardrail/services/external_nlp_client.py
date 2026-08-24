@@ -133,9 +133,7 @@ class NlpGuardClient:
             headers["X-Service-Token"] = self._service_token
         return headers
 
-    async def _post(
-        self, path: str, payload: dict[str, Any], what: str
-    ) -> dict[str, Any]:
+    async def _post(self, path: str, payload: dict[str, Any], what: str) -> dict[str, Any]:
         """One bounded, retried POST. Raises rather than returning a fabricated result."""
         body = {**payload, "tenant_id": self._tenant_id}
         if self.model_id:
@@ -178,9 +176,7 @@ class NlpGuardClient:
                 # a rejected request will be rejected identically next time.
                 if 400 <= exc.status_code < 500 and exc.status_code != 429:
                     break
-            except (
-                Exception
-            ) as exc:  # noqa: BLE001 — every transport failure is fail-closed
+            except Exception as exc:  # noqa: BLE001 — every transport failure is fail-closed
                 last_error = f"{type(exc).__name__}"
 
             if attempt + 1 < self._max_attempts and self._retry_backoff_s > 0:
@@ -223,9 +219,7 @@ class NlpGuardClient:
 
     async def classify(self, tasks: dict[str, Any], text: str) -> dict[str, Any]:
         """Run the caller's moderation task schema; return only what nlp answered."""
-        payload = await self._post(
-            CLASSIFY_PATH, {"text": text, "tasks": tasks}, "classify"
-        )
+        payload = await self._post(CLASSIFY_PATH, {"text": text, "tasks": tasks}, "classify")
         results = payload.get("results")
         return results if isinstance(results, dict) else {}
 

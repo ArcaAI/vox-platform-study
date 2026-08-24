@@ -63,7 +63,9 @@ class TestOllamaGenerate:
 
         provider = OllamaProvider(mock_http_client)
         stub_endpoint(provider)
-        content, _reasoning, stats = await provider.generate(GenerateRequest(prompt="hi", model="test-model"))
+        content, _reasoning, stats = await provider.generate(
+            GenerateRequest(prompt="hi", model="test-model")
+        )
         assert content == "Hello there!"
         assert isinstance(stats, GenerationStats)
 
@@ -154,7 +156,9 @@ class TestOllamaGenerateStream:
         provider = OllamaProvider(mock_http_client)
         stub_endpoint(provider)
         chunks = []
-        async for chunk in provider.generate_stream(GenerateRequest(prompt="hi", stream=True, model="test-model")):
+        async for chunk in provider.generate_stream(
+            GenerateRequest(prompt="hi", stream=True, model="test-model")
+        ):
             chunks.append(chunk)
 
         text_chunks = [c for c in chunks if c.type == "chunk"]
@@ -190,15 +194,15 @@ class TestOllamaGenerateStream:
             return original_stream(*args, **kwargs)
 
         mock_http_client.stream = _capturing_stream
-        async for _ in provider.generate_stream(GenerateRequest(prompt="hi", stream=True, model="test-model")):
+        async for _ in provider.generate_stream(
+            GenerateRequest(prompt="hi", stream=True, model="test-model")
+        ):
             pass
 
         assert captured["kwargs"]["json"]["think"] is True
 
     @pytest.mark.asyncio
-    async def test_stream_yields_reasoning_chunks_from_thinking_field(
-        self, mock_http_client
-    ):
+    async def test_stream_yields_reasoning_chunks_from_thinking_field(self, mock_http_client):
         from text.providers.ollama import OllamaProvider
 
         mock_response = MagicMock()
@@ -220,7 +224,9 @@ class TestOllamaGenerateStream:
         provider = OllamaProvider(mock_http_client)
         stub_endpoint(provider)
         chunks = []
-        async for chunk in provider.generate_stream(GenerateRequest(prompt="hi", stream=True, model="test-model")):
+        async for chunk in provider.generate_stream(
+            GenerateRequest(prompt="hi", stream=True, model="test-model")
+        ):
             chunks.append(chunk)
 
         reasoning_chunks = [c for c in chunks if c.type == "reasoning"]
@@ -258,7 +264,9 @@ class TestOllamaGenerateStream:
         provider = OllamaProvider(mock_http_client)
         stub_endpoint(provider)
         chunks = []
-        async for chunk in provider.generate_stream(GenerateRequest(prompt="hi", stream=True, model="test-model")):
+        async for chunk in provider.generate_stream(
+            GenerateRequest(prompt="hi", stream=True, model="test-model")
+        ):
             chunks.append(chunk)
 
         reasoning_chunks = [c for c in chunks if c.type == "reasoning"]
@@ -288,7 +296,9 @@ class TestOllamaGenerateStream:
         provider = OllamaProvider(mock_http_client)
         stub_endpoint(provider)
         chunks = []
-        async for chunk in provider.generate_stream(GenerateRequest(prompt="hi", stream=True, model="test-model")):
+        async for chunk in provider.generate_stream(
+            GenerateRequest(prompt="hi", stream=True, model="test-model")
+        ):
             chunks.append(chunk)
 
         done_chunks = [c for c in chunks if c.type == "done"]

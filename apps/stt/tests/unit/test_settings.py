@@ -70,9 +70,7 @@ class TestSettings:
         with patch.dict(os.environ, {}, clear=True):
             settings = Settings(_env_file=None)
 
-            assert settings.huggingface_cache_dir == os.path.expanduser(
-                "~/.cache/huggingface/hub"
-            )
+            assert settings.huggingface_cache_dir == os.path.expanduser("~/.cache/huggingface/hub")
 
     def test_worker_defaults(self):
         """Test worker default configuration."""
@@ -476,7 +474,6 @@ class TestSettings:
             )
             assert settings.diarization_hf_model_id == "custom/embedding-model"
             assert settings.diarization_device == "cuda"
-
 
 
 class TestGetSettings:

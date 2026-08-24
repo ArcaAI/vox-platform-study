@@ -45,9 +45,7 @@ class TestProfileFieldsAreOptional:
         assert cfg.max_tokens is None
         assert cfg.timeout_s is None
 
-    def test_judge_keeps_policy_values_when_no_profile_exists(
-        self, settings: Settings
-    ) -> None:
+    def test_judge_keeps_policy_values_when_no_profile_exists(self, settings: Settings) -> None:
         client = _judge(settings, GuardrailTenantConfig(model="m"))
 
         assert client.temperature == settings.judge.temperature
@@ -62,16 +60,12 @@ class TestProfileApplication:
         assert client.temperature == 0.42
 
     def test_applies_max_tokens_and_timeout(self, settings: Settings) -> None:
-        client = _judge(
-            settings, GuardrailTenantConfig(model="m", max_tokens=1234, timeout_s=99)
-        )
+        client = _judge(settings, GuardrailTenantConfig(model="m", max_tokens=1234, timeout_s=99))
 
         assert client.max_tokens == 1234
         assert client.timeout_s == 99
 
-    def test_applies_profile_even_without_a_model_override(
-        self, settings: Settings
-    ) -> None:
+    def test_applies_profile_even_without_a_model_override(self, settings: Settings) -> None:
         """Tuning must not be conditional on a model selection being present."""
         client = _judge(settings, GuardrailTenantConfig(temperature=0.33))
 
@@ -81,16 +75,10 @@ class TestProfileApplication:
         client = _judge(settings, GuardrailTenantConfig(model="m", temperature=0.2))
 
         assert client.temperature == 0.2
-        assert (
-            client.max_tokens == settings.judge.max_tokens
-        ), "unserved keys keep policy values"
+        assert client.max_tokens == settings.judge.max_tokens, "unserved keys keep policy values"
 
-    def test_model_override_still_applies_alongside_a_profile(
-        self, settings: Settings
-    ) -> None:
-        client = _judge(
-            settings, GuardrailTenantConfig(model="the-model", temperature=0.2)
-        )
+    def test_model_override_still_applies_alongside_a_profile(self, settings: Settings) -> None:
+        client = _judge(settings, GuardrailTenantConfig(model="the-model", temperature=0.2))
 
         assert client.model == "the-model"
         assert client.temperature == 0.2

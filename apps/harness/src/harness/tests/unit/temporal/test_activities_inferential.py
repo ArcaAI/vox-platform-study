@@ -242,7 +242,9 @@ class TestHeartbeat:
         monkeypatch.setattr(activities, "_HEARTBEAT_INTERVAL_S", 0.01, raising=False)
         monkeypatch.setattr(activities, "_build_runtime_judge", lambda *a, **k: _StubJudge())
         monkeypatch.setattr(
-            activities, "_safety_screen_client", lambda s, t: _FakeGranite(dimensions={"harm": False})
+            activities,
+            "_safety_screen_client",
+            lambda s, t: _FakeGranite(dimensions={"harm": False}),
         )
         beats: list[tuple] = []
         env.on_heartbeat = lambda *args: beats.append(args)
@@ -281,7 +283,9 @@ class TestAtomicFactWiring:
     async def test_disabled_by_default_no_atomic_fact_signal(self, env, monkeypatch):
         monkeypatch.setattr(activities, "_build_runtime_judge", lambda *a, **k: _StubJudge())
         monkeypatch.setattr(
-            activities, "_safety_screen_client", lambda s, t: _FakeGranite(dimensions={"harm": False})
+            activities,
+            "_safety_screen_client",
+            lambda s, t: _FakeGranite(dimensions={"harm": False}),
         )
         result = await env.run(activities.run_inferential_sensors, _cited_claim_input())
         assert "atomic_fact" not in result.guardrail_decisions
@@ -293,7 +297,9 @@ class TestAtomicFactWiring:
         monkeypatch.setattr(activities, "get_settings", lambda: Settings(atomic_fact_enabled=True))
         monkeypatch.setattr(activities, "_build_runtime_judge", lambda *a, **k: _StubJudge())
         monkeypatch.setattr(
-            activities, "_safety_screen_client", lambda s, t: _FakeGranite(dimensions={"harm": False})
+            activities,
+            "_safety_screen_client",
+            lambda s, t: _FakeGranite(dimensions={"harm": False}),
         )
         monkeypatch.setattr(activities, "_atomic_fact_entailer", lambda s: _StubNli())
         result = await env.run(activities.run_inferential_sensors, _cited_claim_input())
@@ -309,7 +315,9 @@ class TestAtomicFactWiring:
         monkeypatch.setattr(activities, "get_settings", lambda: Settings(atomic_fact_enabled=True))
         monkeypatch.setattr(activities, "_build_runtime_judge", lambda *a, **k: _StubJudge())
         monkeypatch.setattr(
-            activities, "_safety_screen_client", lambda s, t: _FakeGranite(dimensions={"harm": False})
+            activities,
+            "_safety_screen_client",
+            lambda s, t: _FakeGranite(dimensions={"harm": False}),
         )
         monkeypatch.setattr(
             activities,

@@ -28,4 +28,4 @@ def test_pywhispercpp_verification_checks_native_dependencies_in_driverless_buil
     assert extension_lookup < native_check
     assert "libwhisper.so" in verification
     assert 'grep -qiE "libcudart|libcublas"' in verification
-    assert 'import _pywhispercpp' not in verification
+    assert "import _pywhispercpp" not in verification

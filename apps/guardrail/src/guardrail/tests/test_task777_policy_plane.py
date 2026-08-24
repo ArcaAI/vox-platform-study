@@ -197,17 +197,13 @@ def test_tuning_knobs_fail_open_to_their_declared_default() -> None:
     assert policy.fail_mode("judgeMinConfidence") is FAIL_OPEN_TO_DEFAULT
     assert policy.judge_min_confidence == pytest.approx(0.75)
 
-    tightened = GuardrailPolicy.from_blob(
-        {"judgeMinConfidence": 0.9}, source_tenant_id=TENANT_A
-    )
+    tightened = GuardrailPolicy.from_blob({"judgeMinConfidence": 0.9}, source_tenant_id=TENANT_A)
     assert tightened.judge_min_confidence == pytest.approx(0.9)
 
 
 def test_out_of_range_policy_value_falls_back_rather_than_corrupting_the_gate() -> None:
     """A bad tuning value is ignored (declared open-to-default), never applied."""
-    policy = GuardrailPolicy.from_blob(
-        {"judgeMinConfidence": 7.5}, source_tenant_id=TENANT_A
-    )
+    policy = GuardrailPolicy.from_blob({"judgeMinConfidence": 7.5}, source_tenant_id=TENANT_A)
     assert policy.judge_min_confidence == pytest.approx(0.75)
 
 

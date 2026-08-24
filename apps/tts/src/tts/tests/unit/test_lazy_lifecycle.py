@@ -66,11 +66,7 @@ def test_warmup_can_be_re_enabled_for_fail_at_boot_operators(
 
     apply_control_plane(
         settings,
-        {
-            "settings": {
-                "tts.warmupEnabled": {"value": True, "dataType": "boolean", "source": "db"}
-            }
-        },
+        {"settings": {"tts.warmupEnabled": {"value": True, "dataType": "boolean", "source": "db"}}},
     )
     assert settings.warmup_enabled is True
 

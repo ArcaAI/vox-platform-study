@@ -72,10 +72,10 @@ def _wf_input(**overrides) -> ConsultationLoopWorkflowInput:
     return ConsultationLoopWorkflowInput(**base)
 
 
-def _ctx(item_id: str, *, kind: str = "transcript", depth: int = 0, at: str = "1") -> ContextAddedSignal:
-    return ContextAddedSignal(
-        context_item_id=item_id, kind_key=kind, depth=depth, occurred_at=at
-    )
+def _ctx(
+    item_id: str, *, kind: str = "transcript", depth: int = 0, at: str = "1"
+) -> ContextAddedSignal:
+    return ContextAddedSignal(context_item_id=item_id, kind_key=kind, depth=depth, occurred_at=at)
 
 
 async def _await_state(handle, predicate, **kwargs):
@@ -337,9 +337,7 @@ class TestCascadeTermination:
         assert result.degraded is True
         assert result.actions_dispatched == 2
         skipped = [
-            e
-            for e in h.recorder.payloads("emit_loop_event")
-            if e.event_type == "action.skipped"
+            e for e in h.recorder.payloads("emit_loop_event") if e.event_type == "action.skipped"
         ]
         assert {e.reason for e in skipped} == {LOOP_SKIP_BUDGET_EXHAUSTED}
 
@@ -372,9 +370,7 @@ class TestCascadeTermination:
 
         assert result.actions_dispatched == 0
         skipped = [
-            e
-            for e in h.recorder.payloads("emit_loop_event")
-            if e.event_type == "action.skipped"
+            e for e in h.recorder.payloads("emit_loop_event") if e.event_type == "action.skipped"
         ]
         assert [e.reason for e in skipped] == [LOOP_SKIP_UNSUPPORTED_ACTION]
 
@@ -504,7 +500,9 @@ class TestLifecycleActions:
         )
         async with _LoopHarness(LoopStubConfig(config=config)) as h:
             handle = await h.start(_wf_input())
-            await handle.signal(ConsultationLoopWorkflow.cancel, CancelLoopSignal(reason="abandoned"))
+            await handle.signal(
+                ConsultationLoopWorkflow.cancel, CancelLoopSignal(reason="abandoned")
+            )
             result = await handle.result()
 
         assert result.cancelled is True

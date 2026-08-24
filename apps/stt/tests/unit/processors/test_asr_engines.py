@@ -453,9 +453,7 @@ class TestP507WhisperCppEngine:
         )
         from unittest.mock import MagicMock
 
-        adapter = WhisperCppAsrAdapter(
-            loaded, MagicMock(language="en"), want_word_timestamps=True
-        )
+        adapter = WhisperCppAsrAdapter(loaded, MagicMock(language="en"), want_word_timestamps=True)
         out = adapter(np.zeros(16000, dtype=np.float32), 16000)
 
         assert out["text"] == "hello world"

@@ -29,9 +29,7 @@ async def get_diagnosis_suggestions(
             status_code=503, detail="Diagnosis classification model selection is unresolved"
         )
     if not request.ner_model_name:
-        raise HTTPException(
-            status_code=503, detail="Diagnosis NER model selection is unresolved"
-        )
+        raise HTTPException(status_code=503, detail="Diagnosis NER model selection is unresolved")
 
     try:
         async with pinned_medical_suggester(

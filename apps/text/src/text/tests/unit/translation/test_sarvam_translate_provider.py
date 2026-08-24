@@ -32,9 +32,7 @@ from text.translation.sarvam import (
 )
 
 # Every request needs a resolved connection: key, endpoint AND model.
-_KEY = ProviderOverride(
-    api_key="tenant-key", base_url="https://api.sarvam.ai", model="bulbul:v3"
-)
+_KEY = ProviderOverride(api_key="tenant-key", base_url="https://api.sarvam.ai", model="bulbul:v3")
 
 
 class _FakeResponse:

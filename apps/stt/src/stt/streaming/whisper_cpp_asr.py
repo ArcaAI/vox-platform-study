@@ -70,9 +70,7 @@ logger = structlog.get_logger(__name__)
 # the old priming prompt offline (see
 # ``stt.pipeline.language_modes.WHISPER_CPP_PRIMING_PROMPT_ENABLED``). The prompt
 # is keyed on the pipeline's configured ``inference.language``.
-_CONSULTATION_PROMPT_ML = (
-    "ഇത് ഒരു consultation ആണ്, ഒരു doctor നും ഒരു രോഗിക്കും തമ്മിലുള്ളത്."
-)
+_CONSULTATION_PROMPT_ML = "ഇത് ഒരു consultation ആണ്, ഒരു doctor നും ഒരു രോഗിക്കും തമ്മിലുള്ളത്."
 _CONSULTATION_PROMPT_EN = "This is a consultation between a doctor and a patient"
 
 
@@ -172,8 +170,7 @@ def _ensure_log_capture_installed() -> None:
             # Without the callback we lose poison auto-recovery, but the lock
             # (the primary fix) still prevents the corruption in the first place.
             logger.warning(
-                "whisper.cpp log capture unavailable; Metal poison "
-                "auto-recovery disabled",
+                "whisper.cpp log capture unavailable; Metal poison " "auto-recovery disabled",
                 error=str(exc),
             )
         _log_installed = True

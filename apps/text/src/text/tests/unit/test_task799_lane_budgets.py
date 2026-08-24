@@ -104,9 +104,12 @@ class TestLaneParsing:
 
     def test_a_model_specific_row_carries_no_lane_budget(self):
         """Capacity is a PROVIDER-level concern; a per-model row tunes generation."""
-        assert _snapshot(
-            {"provider": "openai", "modelSlug": "gpt-4", "maxConcurrent": 9}
-        ).lane_budgets() == {}
+        assert (
+            _snapshot(
+                {"provider": "openai", "modelSlug": "gpt-4", "maxConcurrent": 9}
+            ).lane_budgets()
+            == {}
+        )
 
     def test_a_zero_queue_size_is_a_real_opinion(self):
         """Zero means "no queue", not "misconfigured" — unlike a zero timeout."""
@@ -153,9 +156,7 @@ class TestLiveObjectsMove:
     def test_vendor_quotas_move(self):
         tracker = RateLimitTracker(rpm_limit=0, tpm_limit=0)
         apply_provider_limits(
-            _snapshot(
-                {"provider": "openai", "modelSlug": "", "rpmLimit": 60, "tpmLimit": 90_000}
-            ),
+            _snapshot({"provider": "openai", "modelSlug": "", "rpmLimit": 60, "tpmLimit": 90_000}),
             {},
             {},
             {"openai": tracker},

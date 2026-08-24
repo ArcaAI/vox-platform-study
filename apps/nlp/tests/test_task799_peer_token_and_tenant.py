@@ -75,9 +75,7 @@ async def _run_lifespan(lifespan_module, monkeypatch: pytest.MonkeyPatch) -> Non
 
         async def shutdown(self) -> None: ...
 
-    monkeypatch.setattr(
-        lifespan_module, "get_websocket_manager", lambda: _FakeWebSocketManager()
-    )
+    monkeypatch.setattr(lifespan_module, "get_websocket_manager", lambda: _FakeWebSocketManager())
     monkeypatch.setattr(lifespan_module, "warm_models", _noop_warm)
 
     app = FastAPI()

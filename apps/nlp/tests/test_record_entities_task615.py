@@ -79,7 +79,11 @@ class TestTokenClassifierWiresRecordEntities:
 
     @pytest.mark.asyncio
     async def test_process_records_entities_by_type(self) -> None:
-        classifier = TransformerTokenClassifier(configs=TokenClassificationConfig(model_name="test-org/ner", tokenizer_name="test-org/ner"))
+        classifier = TransformerTokenClassifier(
+            configs=TokenClassificationConfig(
+                model_name="test-org/ner", tokenizer_name="test-org/ner"
+            )
+        )
         classifier.pipeline = lambda text, **kwargs: [
             _FakeEntity("MEDICATION", "aspirin").data,
             _FakeEntity("MEDICATION", "ibuprofen").data,
@@ -105,7 +109,11 @@ class TestTokenClassifierWiresRecordEntities:
 
     @pytest.mark.asyncio
     async def test_process_increments_documents_processed_once_per_call(self) -> None:
-        classifier = TransformerTokenClassifier(configs=TokenClassificationConfig(model_name="test-org/ner", tokenizer_name="test-org/ner"))
+        classifier = TransformerTokenClassifier(
+            configs=TokenClassificationConfig(
+                model_name="test-org/ner", tokenizer_name="test-org/ner"
+            )
+        )
         classifier.pipeline = lambda text, **kwargs: []
         classifier.is_initialized = True
 
@@ -120,7 +128,11 @@ class TestTokenClassifierWiresRecordEntities:
     async def test_process_with_zero_entities_still_counts_the_document(self) -> None:
         # A document that yields no entities is still "processed" — the
         # documents-processed counter is NOT gated on entities.entities > 0.
-        classifier = TransformerTokenClassifier(configs=TokenClassificationConfig(model_name="test-org/ner", tokenizer_name="test-org/ner"))
+        classifier = TransformerTokenClassifier(
+            configs=TokenClassificationConfig(
+                model_name="test-org/ner", tokenizer_name="test-org/ner"
+            )
+        )
         classifier.pipeline = lambda text, **kwargs: []
         classifier.is_initialized = True
 

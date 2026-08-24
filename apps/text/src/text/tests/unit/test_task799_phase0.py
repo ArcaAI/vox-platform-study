@@ -254,7 +254,9 @@ class TestTenantHeaderIsEnforcedInMiddleware:
         assert "tenantless:" in detail
 
     @pytest.mark.asyncio
-    @pytest.mark.parametrize(("method", "path"), _EXEMPT_REQUESTS, ids=[p for _, p in _EXEMPT_REQUESTS])
+    @pytest.mark.parametrize(
+        ("method", "path"), _EXEMPT_REQUESTS, ids=[p for _, p in _EXEMPT_REQUESTS]
+    )
     async def test_exempt_paths_need_no_tenant(self, client, method, path):
         resp = await client.request(method, path)
         assert resp.status_code != 428

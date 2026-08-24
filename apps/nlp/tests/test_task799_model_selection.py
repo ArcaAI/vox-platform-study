@@ -107,10 +107,7 @@ class TestRestRoutesFailClosed:
             },
         )
         assert response.status_code == 503
-        assert (
-            response.json()["error"]
-            == "Diagnosis classification model selection is unresolved"
-        )
+        assert response.json()["error"] == "Diagnosis classification model selection is unresolved"
 
 
 @pytest.fixture()

@@ -80,9 +80,7 @@ class SafetyPolicy:
         elif guardrail_type == "pii_detection":
             wanted = set()
         else:  # comprehensive
-            wanted = (
-                set(PROMPT_SAFETY_TASKS) | set(ADVERSARIAL_TASKS) | set(RESPONSE_TASKS)
-            )
+            wanted = set(PROMPT_SAFETY_TASKS) | set(ADVERSARIAL_TASKS) | set(RESPONSE_TASKS)
         # Intersect with what the registry actually DECLARED: a taxonomy that
         # omits a task simply does not run it — guardrail never invents one.
         return {name: spec for name, spec in self.tasks.items() if name in wanted}
@@ -104,9 +102,7 @@ class SafetyAnalyzer:
 
     # ── the seam `services/screening.py` composes over ───────────────────
 
-    async def classify_tasks(
-        self, task_names: Sequence[str], text: str
-    ) -> dict[str, Any]:
+    async def classify_tasks(self, task_names: Sequence[str], text: str) -> dict[str, Any]:
         """Run exactly the named moderation tasks, from the resolved taxonomy.
 
         `analyze_content` collapses labels into guardrail's legacy
@@ -115,9 +111,7 @@ class SafetyAnalyzer:
         the same registry-sourced task schema — a task the taxonomy does not
         declare is simply absent from the result, never invented.
         """
-        wanted = {
-            name: spec for name, spec in self.policy.tasks.items() if name in task_names
-        }
+        wanted = {name: spec for name, spec in self.policy.tasks.items() if name in task_names}
         if not wanted:
             return {}
         if self._safety_client is None:
@@ -169,9 +163,7 @@ class SafetyAnalyzer:
                     continue
                 labels = [value] if isinstance(value, str) else [str(v) for v in value]
                 flagged = [
-                    label
-                    for label in labels
-                    if label.lower() not in self.policy.benign_labels
+                    label for label in labels if label.lower() not in self.policy.benign_labels
                 ]
                 if flagged:
                     safe = False

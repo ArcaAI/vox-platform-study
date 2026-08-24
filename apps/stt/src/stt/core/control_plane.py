@@ -354,8 +354,6 @@ def apply_control_plane(settings: Settings, payload: Any) -> list[str]:
         # (`get_settings()` is lru_cached), and a copy would be invisible to them.
         setattr(settings, field, served)
         applied.append(field)
-        logger.info(
-            "stt.control_plane.applied", key=key, field=field, source=entry.get("source")
-        )
+        logger.info("stt.control_plane.applied", key=key, field=field, source=entry.get("source"))
 
     return applied

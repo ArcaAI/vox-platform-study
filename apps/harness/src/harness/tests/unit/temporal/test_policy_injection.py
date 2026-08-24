@@ -301,7 +301,9 @@ class TestPolicyDrivesInferentialGate:
         judge = _StubJudge(unsupported_markers=("diabetes",))
         monkeypatch.setattr(activities, "_build_runtime_judge", lambda *a, **k: judge)
         monkeypatch.setattr(
-            activities, "_safety_screen_client", lambda s, t: _FakeGranite(dimensions={"harm": False})
+            activities,
+            "_safety_screen_client",
+            lambda s, t: _FakeGranite(dimensions={"harm": False}),
         )
 
         result = await env.run(
@@ -325,7 +327,9 @@ class TestPolicyDrivesInferentialGate:
         judge = _StubJudge(unsupported_markers=("diabetes",))
         monkeypatch.setattr(activities, "_build_runtime_judge", lambda *a, **k: judge)
         monkeypatch.setattr(
-            activities, "_safety_screen_client", lambda s, t: _FakeGranite(dimensions={"harm": False})
+            activities,
+            "_safety_screen_client",
+            lambda s, t: _FakeGranite(dimensions={"harm": False}),
         )
 
         result = await env.run(
@@ -395,9 +399,9 @@ class TestJudgeSelectionFailClosed:
             result = await env.run(
                 activities.run_inferential_sensors,
                 RunInferentialSensorsInput(
-                # tenant-scoped safety screen (TASK-737): both workflow call sites
-                # thread this; without it the safety sensor degrades by design.
-                tenant_id="11111111-1111-1111-1111-111111111111",
+                    # tenant-scoped safety screen (TASK-737): both workflow call sites
+                    # thread this; without it the safety sensor degrades by design.
+                    tenant_id="11111111-1111-1111-1111-111111111111",
                     note_text="note",
                     transcript_text="hypertension",
                     citations_map=_TWO_CLAIMS,
@@ -421,7 +425,9 @@ class TestJudgeSelectionFailClosed:
             lambda *a, **k: (_ for _ in ()).throw(AssertionError("must not build")),
         )
         monkeypatch.setattr(
-            activities, "_safety_screen_client", lambda s, t: _FakeGranite(dimensions={"harm": False})
+            activities,
+            "_safety_screen_client",
+            lambda s, t: _FakeGranite(dimensions={"harm": False}),
         )
 
         result = await env.run(

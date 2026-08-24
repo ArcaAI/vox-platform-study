@@ -70,9 +70,7 @@ async def submit_batch_embedding(
     # Task STATE is TaskManager's job (unchanged, extended not replaced);
     # `provider`/`model` are informational labels here, same as every other
     # TaskManager caller.
-    task = await task_manager.create_task(
-        provider=request_body.provider, model="embedding-batch"
-    )
+    task = await task_manager.create_task(provider=request_body.provider, model="embedding-batch")
     envelope = WorkerTaskEnvelope(
         task_id=task.task_id,
         task_type=WorkerTaskType.EMBEDDING,

@@ -162,7 +162,9 @@ def _gate_for(slot_key: str) -> PriorityGate:
     overtake a merely-QUEUED bulk pass.
     """
     limit = int(
-        _served_batching.get("max_inflight_batches", settings.service.inference_max_inflight_batches)
+        _served_batching.get(
+            "max_inflight_batches", settings.service.inference_max_inflight_batches
+        )
     )
     gate = _gates.get(slot_key)
     if gate is None or gate.limit != limit:

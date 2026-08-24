@@ -115,9 +115,7 @@ def _client(http_client: Any, **overrides: Any) -> TextJudgeClient:
 
 
 @pytest.mark.asyncio
-async def test_posts_to_the_isolated_judge_lane_with_service_and_tenant_headers() -> (
-    None
-):
+async def test_posts_to_the_isolated_judge_lane_with_service_and_tenant_headers() -> None:
     http = _RecordingClient()
     await _client(http).validate_medical_context("chest pain, BP 140/90")
 
@@ -177,9 +175,7 @@ async def test_unparseable_judgement_is_undetermined_not_a_keyword_guess() -> No
     judged the INPUT, and the result was indistinguishable on the wire from a real
     verdict. A response we cannot read is now simply undetermined.
     """
-    http = _RecordingClient(
-        _judge_body("the patient has a clear diagnosis, no JSON here")
-    )
+    http = _RecordingClient(_judge_body("the patient has a clear diagnosis, no JSON here"))
     with pytest.raises(GuardrailUndeterminedError):
         await _client(http).validate_medical_context("note")
 
@@ -198,9 +194,7 @@ async def test_text_outage_raises_rather_than_reporting_is_medical() -> None:
 
 
 @pytest.mark.asyncio
-async def test_batch_returns_per_item_exceptions_rather_than_voiding_the_batch() -> (
-    None
-):
+async def test_batch_returns_per_item_exceptions_rather_than_voiding_the_batch() -> None:
     class _Flaky:
         def __init__(self) -> None:
             self.n = 0
@@ -218,9 +212,7 @@ async def test_batch_returns_per_item_exceptions_rather_than_voiding_the_batch()
 
 @pytest.mark.asyncio
 async def test_declared_disable_is_a_bypass_not_a_failure() -> None:
-    result = await _client(_RecordingClient(), enabled=False).validate_medical_context(
-        "x"
-    )
+    result = await _client(_RecordingClient(), enabled=False).validate_medical_context("x")
     assert result["is_medical"] is True
     assert "disabled" in result["reasoning"].lower()
 

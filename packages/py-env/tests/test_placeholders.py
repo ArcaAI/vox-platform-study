@@ -14,7 +14,12 @@ from __future__ import annotations
 
 import pytest
 
-from hope_env import PLACEHOLDER_SENTINEL, first_real_secret, is_placeholder, real_secret
+from hope_env import (
+    PLACEHOLDER_SENTINEL,
+    first_real_secret,
+    is_placeholder,
+    real_secret,
+)
 
 
 class _Secret:
@@ -37,7 +42,9 @@ class TestIsPlaceholder:
         # configured than `KEY=CHANGE_ME`.
         assert is_placeholder(value) is True
 
-    @pytest.mark.parametrize("value", ["", None, "change_me", "CHANGE_ME_TOO", "real-token"])
+    @pytest.mark.parametrize(
+        "value", ["", None, "change_me", "CHANGE_ME_TOO", "real-token"]
+    )
     def test_does_not_over_match(self, value):
         assert is_placeholder(value) is False
 
@@ -77,4 +84,7 @@ class TestFirstRealSecret:
         assert first_real_secret(None, "") == ""
 
     def test_mixed_secretstr_and_plain_str(self):
-        assert first_real_secret(_Secret(PLACEHOLDER_SENTINEL), _Secret("legacy")) == "legacy"
+        assert (
+            first_real_secret(_Secret(PLACEHOLDER_SENTINEL), _Secret("legacy"))
+            == "legacy"
+        )

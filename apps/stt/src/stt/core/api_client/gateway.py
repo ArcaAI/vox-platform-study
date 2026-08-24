@@ -195,20 +195,20 @@ class APIGatewayClient:
     ) -> dict[str, Any]:
         """Mark a transcription job as COMPLETED with results.
 
-        Calls NestJS ``PATCH /internal/stt/jobs/{id}/complete`` which expects
-        an ``InternalCompleteJobRequest`` body with ``resultText`` and
-        optional ``resultMetadata``.
+                Calls NestJS ``PATCH /internal/stt/jobs/{id}/complete`` which expects
+                an ``InternalCompleteJobRequest`` body with ``resultText`` and
+                optional ``resultMetadata``.
 
-``duration_seconds``/``processing_time_seconds``/
-        ``engine``/``deployment`` ride as TYPED, top-level sibling fields —
-        NOT nested inside ``result_metadata`` — because the gateway encrypts
-        that blob into ciphertext on the completing persist
-        (``SttInternalService.completeJob``), making anything trapped only
-        inside it unqueryable. ``result_metadata`` is passed through
-        unchanged for compatibility; this is a second, typed channel, not a
-        move. Each is omitted from the JSON body (never sent as ``null``)
-        when left at its default ``None``, so an un-upgraded gateway sees an
-        unchanged request shape. ``0.0`` is a real value and IS sent.
+        ``duration_seconds``/``processing_time_seconds``/
+                ``engine``/``deployment`` ride as TYPED, top-level sibling fields —
+                NOT nested inside ``result_metadata`` — because the gateway encrypts
+                that blob into ciphertext on the completing persist
+                (``SttInternalService.completeJob``), making anything trapped only
+                inside it unqueryable. ``result_metadata`` is passed through
+                unchanged for compatibility; this is a second, typed channel, not a
+                move. Each is omitted from the JSON body (never sent as ``null``)
+                when left at its default ``None``, so an un-upgraded gateway sees an
+                unchanged request shape. ``0.0`` is a real value and IS sent.
         """
         payload: dict[str, Any] = {"resultText": result_text}
         if result_metadata is not None:

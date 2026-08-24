@@ -152,9 +152,7 @@ async def test_job_processor_resolves_the_model_for_the_jobs_tenant() -> None:
     seen: list[str | None] = []
 
     class _Provider:
-        async def analyze_content(
-            self, text: str, guardrail_type: str
-        ) -> dict[str, Any]:
+        async def analyze_content(self, text: str, guardrail_type: str) -> dict[str, Any]:
             return {"safe": True, "issues": [], "confidence": 1.0}
 
     class _Resolver:

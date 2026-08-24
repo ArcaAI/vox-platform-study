@@ -54,7 +54,9 @@ class TestAzurePayloadDefaults:
         mock_resp.usage = MagicMock(prompt_tokens=5, completion_tokens=10, total_tokens=15)
         provider._client.chat.completions.create = AsyncMock(return_value=mock_resp)
 
-        req = GenerateRequest(prompt="hello", temperature=0.5, max_tokens=8000, top_p=0.8, model="test-model")
+        req = GenerateRequest(
+            prompt="hello", temperature=0.5, max_tokens=8000, top_p=0.8, model="test-model"
+        )
         await provider.generate(req)
 
         call_kwargs = provider._client.chat.completions.create.call_args
@@ -88,7 +90,11 @@ class TestAzureResponseFormat:
         mock_resp.usage = MagicMock(prompt_tokens=5, completion_tokens=10, total_tokens=15)
         provider._client.chat.completions.create = AsyncMock(return_value=mock_resp)
 
-        req = GenerateRequest(prompt="hello", response_format=ResponseFormat(type="json_schema", json_schema=schema, strict=True), model="test-model")
+        req = GenerateRequest(
+            prompt="hello",
+            response_format=ResponseFormat(type="json_schema", json_schema=schema, strict=True),
+            model="test-model",
+        )
         await provider.generate(req)
 
         call_kwargs = provider._client.chat.completions.create.call_args.kwargs
@@ -133,7 +139,9 @@ class TestAzureTokenUsage:
         mock_resp.usage = MagicMock(prompt_tokens=50, completion_tokens=100, total_tokens=150)
         provider._client.chat.completions.create = AsyncMock(return_value=mock_resp)
 
-        content, _reasoning, stats = await provider.generate(GenerateRequest(prompt="hello", model="test-model"))
+        content, _reasoning, stats = await provider.generate(
+            GenerateRequest(prompt="hello", model="test-model")
+        )
         assert content == "Summary here"
         assert stats.prompt_tokens == 50
         assert stats.predicted_tokens == 100
@@ -162,7 +170,9 @@ class TestBedrockPayloadDefaults:
 
     def test_explicit_hyperparams_preserved(self):
         provider = self._make_provider()
-        req = GenerateRequest(prompt="hello", temperature=0.5, max_tokens=8000, top_p=0.8, model="test-model")
+        req = GenerateRequest(
+            prompt="hello", temperature=0.5, max_tokens=8000, top_p=0.8, model="test-model"
+        )
         params = provider._build_converse_params(req)
         assert params["inferenceConfig"]["temperature"] == 0.5
         assert params["inferenceConfig"]["maxTokens"] == 8000
@@ -191,7 +201,11 @@ class TestBedrockResponseFormat:
             "properties": {"plan": {"type": "string"}},
             "title": "ClinicalNote",
         }
-        req = GenerateRequest(prompt="hello", response_format=ResponseFormat(type="json_schema", json_schema=schema), model="test-model")
+        req = GenerateRequest(
+            prompt="hello",
+            response_format=ResponseFormat(type="json_schema", json_schema=schema),
+            model="test-model",
+        )
         params = provider._build_converse_params(req)
         assert "toolConfig" in params
         tool = params["toolConfig"]["tools"][0]["toolSpec"]

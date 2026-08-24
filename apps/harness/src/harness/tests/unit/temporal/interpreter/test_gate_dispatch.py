@@ -111,7 +111,9 @@ def _gate_row() -> dict:
 
 async def _config_ref(body: dict):
     checksum = hashlib.sha256(canonical_json(body).encode("utf-8")).hexdigest()
-    return await store_blob(json.dumps({**body, "checksum": checksum}), store=_MEMORY_STORE, bucket=_BUCKET)
+    return await store_blob(
+        json.dumps({**body, "checksum": checksum}), store=_MEMORY_STORE, bucket=_BUCKET
+    )
 
 
 class _Recorder:
@@ -166,7 +168,9 @@ async def _run_to_completion(env, recorder, *, body, payload=None, sandbox=False
                 tenant_id="t-1",
                 run_id=run_id,
                 sandbox=sandbox,
-                payload=payload if payload is not None else {"consultationId": "c1", "userId": "u1"},
+                payload=(
+                    payload if payload is not None else {"consultationId": "c1", "userId": "u1"}
+                ),
             ),
             id=f"wf-interp-{run_id}",
             task_queue=tq,
@@ -281,6 +285,8 @@ class TestSignalSurface:
         assert set(definition.signals) == {"cancel"}
 
     def test_the_gate_child_owns_approval(self):
-        definition = temporal_workflow._Definition.from_class(ConsultationGateWorkflow)  # noqa: SLF001
+        definition = temporal_workflow._Definition.from_class(
+            ConsultationGateWorkflow
+        )  # noqa: SLF001
         assert definition is not None
         assert set(definition.signals) == {"approval"}

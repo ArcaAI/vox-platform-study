@@ -64,11 +64,14 @@ class TestGroundednessThresholdIsPolicy:
         UNGROUNDED — both are silent clinical failures, so the declared default
         stands instead.
         """
-        assert GuardrailPolicy({"groundednessEntailmentThreshold": bad}).groundedness_entailment_threshold == 0.5
+        assert (
+            GuardrailPolicy(
+                {"groundednessEntailmentThreshold": bad}
+            ).groundedness_entailment_threshold
+            == 0.5
+        )
 
-    def test_env_can_no_longer_move_the_threshold(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_env_can_no_longer_move_the_threshold(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """The field survives as the runtime CARRIER; what is gone is the env
         PATH to it. Asserting the attribute's absence would be asserting the
         wrong thing — the verifier still has to read the value from somewhere."""
@@ -142,9 +145,7 @@ class TestJudgeTuningHasOneSourceEach:
 
         `temperature` is served by `AiRuntimeProfile.temperature`; `max_input_chars`
         by `JudgePolicy`. Neither ever consulted these."""
-        assert GuardrailPolicy.fail_mode(dead) == "closed", (
-            f"{dead} is still a declared tuning key"
-        )
+        assert GuardrailPolicy.fail_mode(dead) == "closed", f"{dead} is still a declared tuning key"
         with pytest.raises(KeyError):
             GuardrailPolicy({}).number(dead)
 

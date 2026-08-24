@@ -129,7 +129,11 @@ class TestGeneratePhiEgress:
         with pytest.raises(PhiEgressBlocked):
             await env.run(
                 activities.generate,
-                GenerateInput(tenant_id="11111111-1111-1111-1111-111111111111", prompt="John Smith has HTN", provider="azure"),
+                GenerateInput(
+                    tenant_id="11111111-1111-1111-1111-111111111111",
+                    prompt="John Smith has HTN",
+                    provider="azure",
+                ),
             )
         assert text_client.kwargs == {}, "Text must not be called when egress is blocked"
 
@@ -149,7 +153,9 @@ class TestGeneratePhiEgress:
             activities.generate,
             GenerateInput(
                 tenant_id="11111111-1111-1111-1111-111111111111",
-                prompt="John Smith has HTN", system_prompt="Sys John Smith", provider="azure"
+                prompt="John Smith has HTN",
+                system_prompt="Sys John Smith",
+                provider="azure",
             ),
         )
         assert text_client.kwargs["prompt"] == "<PERSON> has HTN"
@@ -169,7 +175,11 @@ class TestGeneratePhiEgress:
 
         await env.run(
             activities.generate,
-            GenerateInput(tenant_id="11111111-1111-1111-1111-111111111111", prompt="John Smith has HTN", provider="lm-studio"),
+            GenerateInput(
+                tenant_id="11111111-1111-1111-1111-111111111111",
+                prompt="John Smith has HTN",
+                provider="lm-studio",
+            ),
         )
         assert text_client.kwargs["prompt"] == "John Smith has HTN"
 
@@ -184,7 +194,12 @@ class TestGeneratePhiEgress:
 
         await env.run(
             activities.generate,
-            GenerateInput(tenant_id="11111111-1111-1111-1111-111111111111", prompt="John Smith has HTN", provider="azure", phi_enabled=False),
+            GenerateInput(
+                tenant_id="11111111-1111-1111-1111-111111111111",
+                prompt="John Smith has HTN",
+                provider="azure",
+                phi_enabled=False,
+            ),
         )
         assert text_client.kwargs["prompt"] == "John Smith has HTN"
         assert redactor.calls == []
@@ -201,7 +216,11 @@ class TestGeneratePhiEgress:
             with pytest.raises(PhiEgressBlocked):
                 await env.run(
                     activities.generate,
-                    GenerateInput(tenant_id="11111111-1111-1111-1111-111111111111", prompt="John Smith has HTN", provider="azure"),
+                    GenerateInput(
+                        tenant_id="11111111-1111-1111-1111-111111111111",
+                        prompt="John Smith has HTN",
+                        provider="azure",
+                    ),
                 )
         assert any("phi_egress" in r.getMessage() for r in caplog.records)
 

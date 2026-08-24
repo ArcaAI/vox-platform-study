@@ -85,7 +85,11 @@ def render(golden: dict[str, Any]) -> str:
     cases = golden["cases"]
     n_quality = sum(1 for c in cases if c.get("role") == "quality")
     n_ratings = sum(
-        sum(1 for d in PDSQI_LIKERT_DIMENSIONS if (c.get("clinician_pdsqi") or {}).get(d) is not None)
+        sum(
+            1
+            for d in PDSQI_LIKERT_DIMENSIONS
+            if (c.get("clinician_pdsqi") or {}).get(d) is not None
+        )
         for c in cases
     )
     statuses = {(c.get("metadata") or {}).get("clinician_review_status", "pending") for c in cases}
@@ -113,11 +117,11 @@ def render(golden: dict[str, Any]) -> str:
             seeded_md += "whether it genuinely merits 5 on every dimension._"
 
         sources = "\n\n".join(
-            f"**Source document {i + 1}**\n\n> {doc}" for i, doc in enumerate(case["source_documents"])
+            f"**Source document {i + 1}**\n\n> {doc}"
+            for i, doc in enumerate(case["source_documents"])
         )
 
-        body.append(
-            f"""### `{cid}`
+        body.append(f"""### `{cid}`
 
 | | |
 |---|---|
@@ -148,8 +152,7 @@ def render(golden: dict[str, Any]) -> str:
 **Reviewer decision** — ☐ accept as proposed ☐ amend (record in `curated_v2_amendments.json`)
 
 ---
-"""
-        )
+""")
 
     header = _HEADER.format(
         version=golden["version"],

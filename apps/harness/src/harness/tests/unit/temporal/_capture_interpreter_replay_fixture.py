@@ -132,7 +132,11 @@ async def capture(out_path: Path) -> None:
 
 
 if __name__ == "__main__":
-    target = Path(sys.argv[1]) if len(sys.argv) > 1 else Path(
-        "apps/harness/src/harness/tests/unit/temporal/fixtures/interpreter_v1_history.json"
+    target = (
+        Path(sys.argv[1])
+        if len(sys.argv) > 1
+        else Path(
+            "apps/harness/src/harness/tests/unit/temporal/fixtures/interpreter_v1_history.json"
+        )
     )
     asyncio.run(capture(target))

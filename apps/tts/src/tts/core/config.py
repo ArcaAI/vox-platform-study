@@ -272,9 +272,7 @@ class SarvamConfig(BaseSettings):
     # No `voice_ml` / `voice_en`: both held `ishita`, which is the catalog's
     # sarvam binding for `ml-female-1`. The router passes it as
     # `req.provider_voice`, so the fallback was unreachable.
-    sample_rate: int = Field(
-        default=24000, validation_alias=moved_alias("TTS_SARVAM_SAMPLE_RATE")
-    )
+    sample_rate: int = Field(default=24000, validation_alias=moved_alias("TTS_SARVAM_SAMPLE_RATE"))
     timeout_s: int = Field(default=30, validation_alias=moved_alias("TTS_SARVAM_TIMEOUT_S"))
     max_concurrent: int = Field(
         default=4, validation_alias=moved_alias("TTS_SARVAM_MAX_CONCURRENT")
@@ -353,12 +351,8 @@ class Settings(BaseSettings):
         return real_secret(self.internal_access_token)
 
     # Synthesis limits / defaults — control-plane owned (TASK-799).
-    max_input_chars: int = Field(
-        default=4096, validation_alias=moved_alias("TTS_MAX_INPUT_CHARS")
-    )
-    default_format: str = Field(
-        default="pcm", validation_alias=moved_alias("TTS_DEFAULT_FORMAT")
-    )
+    max_input_chars: int = Field(default=4096, validation_alias=moved_alias("TTS_MAX_INPUT_CHARS"))
+    default_format: str = Field(default="pcm", validation_alias=moved_alias("TTS_DEFAULT_FORMAT"))
     sample_rate: int = Field(default=24000, validation_alias=moved_alias("TTS_SAMPLE_RATE"))
 
     # NOTE: there is deliberately NO `routing_en` / `routing_ml` here ( /
@@ -379,9 +373,7 @@ class Settings(BaseSettings):
     # idle. Set TTS_WARMUP_ENABLED=true to restore boot-warm
     # behaviour (fail-at-boot rather than first-request 503) — see
     # docs/operations/inference/model-retention.md.
-    warmup_enabled: bool = Field(
-        default=False, validation_alias=moved_alias("TTS_WARMUP_ENABLED")
-    )
+    warmup_enabled: bool = Field(default=False, validation_alias=moved_alias("TTS_WARMUP_ENABLED"))
 
     # Where the control plane lives (env TTS_GATEWAY_URL). BOOTSTRAP
     # TRANSPORT (the address of the config source), NOT config authority.

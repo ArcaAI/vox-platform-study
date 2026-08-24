@@ -32,7 +32,9 @@ from harness.tests.unit.temporal._temporal_sync import await_history_event
 _BUCKET = "harness-claim-check"
 
 
-def _node(node_id: str, node_type: str, *, activity: str, config: dict | None = None, **overrides) -> dict:
+def _node(
+    node_id: str, node_type: str, *, activity: str, config: dict | None = None, **overrides
+) -> dict:
     node = {
         "nodeId": node_id,
         "type": node_type,
@@ -185,13 +187,19 @@ class TestDegradeAndContinue:
                     "stageIndex": 0,
                     "nodes": [
                         _node(
-                            "ok1", "noop", activity="interpreter.noop", config={"raise_error": False}
+                            "ok1",
+                            "noop",
+                            activity="interpreter.noop",
+                            config={"raise_error": False},
                         ),
                         _node(
                             "bad", "noop", activity="interpreter.noop", config={"raise_error": True}
                         ),
                         _node(
-                            "ok2", "noop", activity="interpreter.noop", config={"raise_error": False}
+                            "ok2",
+                            "noop",
+                            activity="interpreter.noop",
+                            config={"raise_error": False},
                         ),
                     ],
                 }
@@ -213,7 +221,9 @@ class TestCriticalNodeFails:
         # criticality is a registry (code-owned) property, never tenant config.
         from harness.temporal.interpreter.activities import interpreter_noop
 
-        critical_spec = NodeSpec(key="critical-noop", implemented=True, activity=interpreter_noop, critical=True)
+        critical_spec = NodeSpec(
+            key="critical-noop", implemented=True, activity=interpreter_noop, critical=True
+        )
         monkeypatch.setitem(NODE_REGISTRY, "critical-noop", critical_spec)
 
         body = _body(
@@ -265,7 +275,9 @@ class TestCapClamping:
         # (i.e. the clamp did not raise / reject the config, and the run isn't stalled by an
         # attempted 10,000s timeout).
         requested = 10_000
-        assert interpreter_caps.clamp_timeout(requested) == interpreter_caps.MAX_NODE_TIMEOUT_SECONDS
+        assert (
+            interpreter_caps.clamp_timeout(requested) == interpreter_caps.MAX_NODE_TIMEOUT_SECONDS
+        )
 
         body = _body(
             [

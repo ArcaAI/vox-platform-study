@@ -54,7 +54,9 @@ class AmendmentError(ValueError):
     """The amendments file does not apply cleanly to this golden set."""
 
 
-def apply_amendments(golden: dict[str, Any], amendments: dict[str, Any], *, version: str) -> dict[str, Any]:
+def apply_amendments(
+    golden: dict[str, Any], amendments: dict[str, Any], *, version: str
+) -> dict[str, Any]:
     """Return a NEW golden-set document with the reviewer's decisions applied."""
     reviewer = str(amendments.get("reviewer") or "").strip()
     reviewed_at = str(amendments.get("reviewed_at") or "").strip()
@@ -105,7 +107,9 @@ def apply_amendments(golden: dict[str, Any], amendments: dict[str, Any], *, vers
             meta["clinician_reviewed_at"] = reviewed_at
 
     reviewed = sum(
-        1 for c in out["cases"] if (c.get("metadata") or {}).get("clinician_review_status") == "reviewed"
+        1
+        for c in out["cases"]
+        if (c.get("metadata") or {}).get("clinician_review_status") == "reviewed"
     )
     out["description"] = (
         f"{out['description']} "
@@ -135,7 +139,9 @@ def main(argv: list[str] | None = None) -> int:
         raise AmendmentError("refusing to overwrite the reviewed set in place — ship a new version")
 
     out = apply_amendments(golden, amendments, version=args.version)
-    Path(args.output).write_text(json.dumps(out, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+    Path(args.output).write_text(
+        json.dumps(out, indent=2, ensure_ascii=False) + "\n", encoding="utf-8"
+    )
     print(f"wrote {args.output} as {args.version}")
     return 0
 

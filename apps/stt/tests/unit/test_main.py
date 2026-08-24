@@ -141,7 +141,10 @@ class TestNoCompetingSigtermHandler:
         call for SIGTERM at import time (the exact defect: it used to
         overwrite whatever uvicorn had already installed)."""
         src_dir = Path(__file__).resolve().parents[2] / "src"
-        env = {**os.environ, "PYTHONPATH": f"{src_dir}{os.pathsep}{os.environ.get('PYTHONPATH', '')}"}
+        env = {
+            **os.environ,
+            "PYTHONPATH": f"{src_dir}{os.pathsep}{os.environ.get('PYTHONPATH', '')}",
+        }
 
         result = subprocess.run(
             [

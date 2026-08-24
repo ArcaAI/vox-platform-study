@@ -218,9 +218,9 @@ def test_labelling_rule_R3_content_errors_do_not_move_citation(golden) -> None:
         if classes and classes <= content_classes and not citation_defect:
             if case.metadata["level"] == "L1":
                 continue  # L1 notes are genuinely uncited as well
-            assert case.clinician_pdsqi.citation == 5, (
-                f"{case.case_id}: a pure content error must not lower `citation` (rule R3)"
-            )
+            assert (
+                case.clinician_pdsqi.citation == 5
+            ), f"{case.case_id}: a pure content error must not lower `citation` (rule R3)"
 
 
 def test_labelling_rule_R4_thorough_moves_only_for_omissions(golden) -> None:
@@ -229,9 +229,9 @@ def test_labelling_rule_R4_thorough_moves_only_for_omissions(golden) -> None:
         if case.metadata["level"] in ("L2", "L3", "L4") and not (
             classes & {"omission_material", "omission_potentially_pertinent"}
         ):
-            assert case.clinician_pdsqi.thorough == 5, (
-                f"{case.case_id}: a non-omission defect must not lower `thorough` (rule R4)"
-            )
+            assert (
+                case.clinician_pdsqi.thorough == 5
+            ), f"{case.case_id}: a non-omission defect must not lower `thorough` (rule R4)"
 
 
 def test_labelling_rule_R6_presentation_dimensions_stay_clean(golden) -> None:
@@ -241,7 +241,11 @@ def test_labelling_rule_R6_presentation_dimensions_stay_clean(golden) -> None:
         classes = {e["class"] for e in case.metadata.get("seeded_errors", [])}
         if case.metadata["level"] == "L2" and classes and classes <= accuracy_only:
             score = case.clinician_pdsqi
-            assert (score.organized, score.comprehensible, score.succinct) == (5, 5, 5), case.case_id
+            assert (score.organized, score.comprehensible, score.succinct) == (
+                5,
+                5,
+                5,
+            ), case.case_id
 
 
 def test_phi_free_by_construction(golden) -> None:

@@ -18,7 +18,15 @@ from harness.temporal.activities import (
 )
 from harness.temporal.interpreter.models import NodeActivityInput
 
-__all__ = ["MISSING", "STATUS_DEGRADED", "STATUS_ERROR", "STATUS_OK", "now", "record_and_flush", "resolve_dotted_path"]
+__all__ = [
+    "MISSING",
+    "STATUS_DEGRADED",
+    "STATUS_ERROR",
+    "STATUS_OK",
+    "now",
+    "record_and_flush",
+    "resolve_dotted_path",
+]
 
 now = _now
 

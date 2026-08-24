@@ -62,13 +62,9 @@ class GuardrailResponse(BaseModel):
     """Response model for guardrail analysis."""
 
     safe: bool = Field(..., description="Whether the content is safe")
-    issues: list[str] = Field(
-        default_factory=list, description="List of detected issues"
-    )
+    issues: list[str] = Field(default_factory=list, description="List of detected issues")
     confidence: float = Field(..., description="Confidence score (0.0-1.0)")
-    processing_time_ms: float = Field(
-        ..., description="Processing time in milliseconds"
-    )
+    processing_time_ms: float = Field(..., description="Processing time in milliseconds")
     request_id: str = Field(..., description="Request ID for tracking")
     timestamp: str = Field(..., description="Analysis timestamp")
     error: str | None = Field(None, description="Error message if analysis failed")
@@ -170,16 +166,12 @@ async def analyze_batch(
         ) from exc
 
     processing_time = (time.monotonic() - start_time) * 1000
-    per_item_ms = (
-        processing_time / len(request.texts) if request.texts else processing_time
-    )
+    per_item_ms = processing_time / len(request.texts) if request.texts else processing_time
 
     responses = []
     for i, result in enumerate(results):
         if isinstance(result, Exception):
-            logger.error(
-                "guardrail.analyze_batch.item_undetermined", error=type(result).__name__
-            )
+            logger.error("guardrail.analyze_batch.item_undetermined", error=type(result).__name__)
             responses.append(
                 GuardrailResponse(
                     safe=False,  # FAIL-CLOSED: no verdict is not a pass

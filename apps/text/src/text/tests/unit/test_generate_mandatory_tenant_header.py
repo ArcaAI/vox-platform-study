@@ -98,9 +98,7 @@ class TestGenerateRequiresTenantHeader:
 
     @pytest.mark.asyncio
     async def test_blank_header_is_428(self, client):
-        response = await client.post(
-            "/api/v1/generate", json=_BODY, headers={"X-Tenant-Id": "   "}
-        )
+        response = await client.post("/api/v1/generate", json=_BODY, headers={"X-Tenant-Id": "   "})
         assert response.status_code == 428
 
     @pytest.mark.asyncio

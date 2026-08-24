@@ -48,12 +48,8 @@ class TestProcessSuccessAndFailure:
         await consumer._process("111-0", envelope)
 
         handler.assert_awaited_once_with(envelope)
-        mock_task_manager.update_task.assert_any_call(
-            "task-1", status=TaskStatus.RUNNING
-        )
-        mock_task_manager.update_task.assert_any_call(
-            "task-1", status=TaskStatus.COMPLETED
-        )
+        mock_task_manager.update_task.assert_any_call("task-1", status=TaskStatus.RUNNING)
+        mock_task_manager.update_task.assert_any_call("task-1", status=TaskStatus.COMPLETED)
         mock_queue.ack.assert_awaited_once_with(WorkerTaskType.EMBEDDING, "111-0")
 
     @pytest.mark.asyncio
@@ -67,7 +63,9 @@ class TestProcessSuccessAndFailure:
         async def _boom(_env):
             raise RuntimeError("engine down")
 
-        consumer = WorkerPoolConsumer(WorkerTaskType.EMBEDDING, mock_queue, mock_task_manager, _boom)
+        consumer = WorkerPoolConsumer(
+            WorkerTaskType.EMBEDDING, mock_queue, mock_task_manager, _boom
+        )
 
         await consumer._process("111-0", envelope)
 

@@ -228,16 +228,16 @@ class TestStreamEndpointResumeTokenTask717:
         """A caller storing an OLD raw Redis message id keeps working during rollout."""
         tm = AsyncMock()
         tm.get_task = AsyncMock(
-            return_value=TaskState(task_id="t1", status=TaskStatus.COMPLETED, provider="p", model="m")
+            return_value=TaskState(
+                task_id="t1", status=TaskStatus.COMPLETED, provider="p", model="m"
+            )
         )
         tm.read_chunk_entries_blocking = AsyncMock(return_value=[])
 
         app = _build_app(settings, tm)
         transport = ASGITransport(app=app)
         async with AsyncClient(transport=transport, base_url="http://test") as client:
-            resp = await client.get(
-                "/api/v1/tasks/t1/stream", headers={"last-event-id": "42-0"}
-            )
+            resp = await client.get("/api/v1/tasks/t1/stream", headers={"last-event-id": "42-0"})
 
         assert resp.status_code == 200
         tm.read_chunk_entries_blocking.assert_awaited_with("t1", last_id="42-0", block_ms=5000)
@@ -249,7 +249,9 @@ class TestStreamEndpointResumeTokenTask717:
 
         tm = AsyncMock()
         tm.get_task = AsyncMock(
-            return_value=TaskState(task_id="t1", status=TaskStatus.COMPLETED, provider="p", model="m")
+            return_value=TaskState(
+                task_id="t1", status=TaskStatus.COMPLETED, provider="p", model="m"
+            )
         )
         tm.read_chunk_entries_blocking = AsyncMock(return_value=[])
 
@@ -257,9 +259,7 @@ class TestStreamEndpointResumeTokenTask717:
         app = _build_app(settings, tm)
         transport = ASGITransport(app=app)
         async with AsyncClient(transport=transport, base_url="http://test") as client:
-            resp = await client.get(
-                "/api/v1/tasks/t1/stream", headers={"last-event-id": token}
-            )
+            resp = await client.get("/api/v1/tasks/t1/stream", headers={"last-event-id": token})
 
         assert resp.status_code == 200
         tm.read_chunk_entries_blocking.assert_awaited_with("t1", last_id="42-0", block_ms=5000)

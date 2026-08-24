@@ -189,9 +189,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     if "tei-embed" not in embedding_registry.list_providers():
         from text.providers.tei_embed import TeiEmbedProvider
 
-        embedding_registry.register_factory(
-            "tei-embed", lambda: TeiEmbedProvider(http_client)
-        )
+        embedding_registry.register_factory("tei-embed", lambda: TeiEmbedProvider(http_client))
 
     # Companion per-provider state. Every one of these used to be seeded from a
     # per-provider env block; they now start at the resource-safety FLOOR

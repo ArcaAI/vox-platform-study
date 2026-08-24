@@ -143,9 +143,10 @@ class McpToolClient:
                     follow_redirects=True,
                 )
                 async with http_client:
-                    async with streamable_http_client(
-                        base_url, http_client=http_client
-                    ) as (read, write):
+                    async with streamable_http_client(base_url, http_client=http_client) as (
+                        read,
+                        write,
+                    ):
                         async with ClientSession(read, write) as session:
                             await session.initialize()
                             result = await session.call_tool(tool, arguments=args)

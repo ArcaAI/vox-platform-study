@@ -202,7 +202,9 @@ async def create_speech(body: SpeechRequest, request: Request) -> Response:
 
         # X-Tts-Audio-Seconds is deliberately ABSENT: headers commit before the
         # stream (and therefore the duration) exists.
-        return StreamingResponse(raw(), media_type=content_type, headers={**base_headers, **_STREAM_HEADERS})
+        return StreamingResponse(
+            raw(), media_type=content_type, headers={**base_headers, **_STREAM_HEADERS}
+        )
 
     # Batch: collect the full utterance, then respond — duration IS knowable
     # here, so it rides as a header like everything else.

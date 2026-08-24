@@ -45,9 +45,7 @@ class _FakeRedis:
             if written_key != key:
                 continue
             wire = {
-                (k.encode() if isinstance(k, str) else k): (
-                    v.encode() if isinstance(v, str) else v
-                )
+                (k.encode() if isinstance(k, str) else k): (v.encode() if isinstance(v, str) else v)
                 for k, v in fields.items()
             }
             entries.append((f"{index}-0".encode(), wire))
@@ -62,7 +60,9 @@ class _FakeRedis:
             entries = [e for e in entries if int(e[0].decode().split("-")[0]) > start_seq]
         return [(key.encode(), entries)] if entries else []
 
-    async def xrange(self, key: str, min: str = "-", max: str = "+", **_kwargs: Any) -> Any:  # noqa: A002
+    async def xrange(
+        self, key: str, min: str = "-", max: str = "+", **_kwargs: Any
+    ) -> Any:  # noqa: A002
         entries = self._wire_entries(key)
         if min != "-":
             start_seq = int(min.lstrip("(").split("-")[0])
@@ -80,9 +80,7 @@ class TestAppendChunkEnvelopesWhenTenantKnown:
         redis = _FakeRedis()
         manager = TaskManager(redis)
 
-        await manager.append_chunk(
-            "t-1", _chunk(), tenant_id=TENANT_ID, correlation_id="req-1"
-        )
+        await manager.append_chunk("t-1", _chunk(), tenant_id=TENANT_ID, correlation_id="req-1")
 
         _key, fields = redis.writes[0]
         doc = json.loads(fields["data"])
@@ -203,5 +201,3 @@ class TestResumeTokensOnTheStreamPath:
 
     def test_from_beginning_sentinel_is_unchanged(self) -> None:
         assert RESUME_FROM_BEGINNING == "0-0"
-
-

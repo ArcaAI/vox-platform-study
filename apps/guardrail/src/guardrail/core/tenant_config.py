@@ -577,9 +577,7 @@ class TenantConfigResolver:
                 tenant_id=tenant_id, task_key=task_key, cause=str(exc)
             ) from exc
 
-        self._cache[cache_key] = _CacheEntry(
-            keys=keys, expires_at=now + self._cache_ttl_s
-        )
+        self._cache[cache_key] = _CacheEntry(keys=keys, expires_at=now + self._cache_ttl_s)
         return keys
 
     async def _load_from_db(
@@ -612,9 +610,7 @@ class TenantConfigResolver:
             )
 
         task_default_scope = (
-            [SYSTEM_TENANT_ID, tenant_id]
-            if tenant_id != SYSTEM_TENANT_ID
-            else [SYSTEM_TENANT_ID]
+            [SYSTEM_TENANT_ID, tenant_id] if tenant_id != SYSTEM_TENANT_ID else [SYSTEM_TENANT_ID]
         )
 
         async with self._session_factory() as session:
@@ -657,9 +653,7 @@ class TenantConfigResolver:
             raise TenantSelectionVetoedError(tenant_id=tenant_id, task_key=task_key)
 
         enabled_rows = [r for r in rows if r.default_resource_status == "ENABLED"]
-        row = min(
-            enabled_rows, key=lambda r: self._row_rank(r, tenant_id), default=None
-        )
+        row = min(enabled_rows, key=lambda r: self._row_rank(r, tenant_id), default=None)
         if row is None:
             return {}
 
@@ -751,9 +745,7 @@ class TenantConfigResolver:
                 keys[key] = value
         return keys
 
-    async def _load_runtime_profile(
-        self, provider: str, tenant_id: str
-    ) -> dict[str, str]:
+    async def _load_runtime_profile(self, provider: str, tenant_id: str) -> dict[str, str]:
         """Read the provider-DEFAULT profile row for ``provider``, tenant-first.
 
         Only the ``modelSlug == ''`` row carries provider-level tuning; a
@@ -774,9 +766,7 @@ class TenantConfigResolver:
         out exactly as before.
         """
         profile_scope = (
-            [SYSTEM_TENANT_ID, tenant_id]
-            if tenant_id != SYSTEM_TENANT_ID
-            else [SYSTEM_TENANT_ID]
+            [SYSTEM_TENANT_ID, tenant_id] if tenant_id != SYSTEM_TENANT_ID else [SYSTEM_TENANT_ID]
         )
 
         async with self._session_factory() as session:
@@ -795,9 +785,7 @@ class TenantConfigResolver:
             )
             rows = result.all()
 
-        row = min(
-            rows, key=lambda r: self._model_rank(r.tenant_id, tenant_id), default=None
-        )
+        row = min(rows, key=lambda r: self._model_rank(r.tenant_id, tenant_id), default=None)
         if row is None:
             return {}
 
@@ -844,9 +832,7 @@ class TenantConfigResolver:
         """Drop all cached entries (test/admin helper)."""
         self._cache.clear()
 
-    def invalidate(
-        self, *, tenant_id: str | None = None, task_key: str | None = None
-    ) -> int:
+    def invalidate(self, *, tenant_id: str | None = None, task_key: str | None = None) -> int:
         """Drop cached entries; return how many were dropped.
 
         **Invalidation is the propagation path; the TTL is a bounded-staleness
@@ -928,9 +914,7 @@ def build_judge_client(
         min_confidence=policy.judge_min_confidence,
         temperature=tenant_cfg.temperature,
         max_tokens=tenant_cfg.max_tokens,
-        timeout_s=(
-            float(tenant_cfg.timeout_s) if tenant_cfg.timeout_s is not None else None
-        ),
+        timeout_s=(float(tenant_cfg.timeout_s) if tenant_cfg.timeout_s is not None else None),
         provider_overrides=provider_overrides,
         breaker=breaker,
     )

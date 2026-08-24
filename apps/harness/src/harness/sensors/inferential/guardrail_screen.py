@@ -107,4 +107,3 @@ class GuardrailSafetyScreen:
         models = sorted({c.model for c in result.checks if c.outcome in _VERDICTS and c.model})
         self.model = ",".join(models) if models else None
         return dimensions
-

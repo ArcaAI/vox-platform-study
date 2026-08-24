@@ -82,7 +82,8 @@ def canonical_json(value: Any) -> str:
         entries = [
             f"{json.dumps(k, ensure_ascii=False)}:{canonical_json(v)}"
             for k, v in sorted(value.items())
-            if v is not None or k in value  # mirror the TS `!== undefined` filter (JSON has no undefined)
+            if v is not None
+            or k in value  # mirror the TS `!== undefined` filter (JSON has no undefined)
         ]
         return "{" + ",".join(entries) + "}"
     return _primitive(value)
@@ -242,7 +243,9 @@ def parse_and_verify(raw: str) -> CompiledWorkflowConfig:
         )
     for gate in gates:
         if not isinstance(gate, dict):
-            raise InterpreterConfigError("invalid_shape", "compiledConfig.gates[] entry is not an object")
+            raise InterpreterConfigError(
+                "invalid_shape", "compiledConfig.gates[] entry is not an object"
+            )
         if gate.get("blocking") is not True:
             # A non-blocking gate would mean "carry on without the human", which is a different
             # authority model, not a variation of this one. Refused rather than approximated.

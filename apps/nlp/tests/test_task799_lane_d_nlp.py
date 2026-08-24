@@ -159,9 +159,7 @@ class TestPeerAddressAndTokenAreNotDuplicated:
         monkeypatch.setenv("NLP_EXTERNAL_TEXT_BASE_URL", "http://stale:9999")
         assert ExternalTextConfig().base_url == "http://text.internal:8862"
 
-    @pytest.mark.parametrize(
-        "legacy", ["NLP_SERVICE_TOKEN", "NLP_EXTERNAL_TEXT_SERVICE_TOKEN"]
-    )
+    @pytest.mark.parametrize("legacy", ["NLP_SERVICE_TOKEN", "NLP_EXTERNAL_TEXT_SERVICE_TOKEN"])
     def test_the_legacy_per_service_tokens_are_gone(
         self, legacy: str, monkeypatch: pytest.MonkeyPatch
     ) -> None:

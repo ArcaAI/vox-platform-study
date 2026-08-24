@@ -248,9 +248,7 @@ class EngineSwitchController:
             self._active = _FALLBACK
             self._consecutive_failures = 0
 
-    async def _switch_to(
-        self, target: str, reason: str, utterance_index: int | None
-    ) -> bool:
+    async def _switch_to(self, target: str, reason: str, utterance_index: int | None) -> bool:
         """Directional swap. Returns True iff the live engine changed."""
         async with self._lock:
             if target == self._active:
@@ -277,9 +275,7 @@ class EngineSwitchController:
             await self._emit_switch(target, reason, utterance_index)
             return True
 
-    async def _emit_switch(
-        self, active: str, reason: str, utterance_index: int | None
-    ) -> None:
+    async def _emit_switch(self, active: str, reason: str, utterance_index: int | None) -> None:
         # from/to follow the direction of travel: to the fallback we go
         # primary→fallback; back to the primary we go fallback→primary.
         if active == _FALLBACK:

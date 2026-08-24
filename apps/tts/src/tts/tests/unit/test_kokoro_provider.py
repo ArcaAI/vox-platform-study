@@ -44,9 +44,7 @@ async def _collect(provider, req):
 
 @pytest.mark.asyncio
 async def test_streams_pcm_chunk_per_segment():
-    provider = KokoroProvider(
-        KokoroConfig(), pipeline=FakePipeline(segments=3, samples=2400)
-    )
+    provider = KokoroProvider(KokoroConfig(), pipeline=FakePipeline(segments=3, samples=2400))
     chunks = await _collect(provider, _req(fmt=AudioFormat.PCM))
     assert len(chunks) == 3
     assert all(len(c.data) == 4800 for c in chunks)  # 2400 samples × 2 bytes, 24k→24k

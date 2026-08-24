@@ -67,9 +67,7 @@ def _ctx(note_entities: list[NEREntity], transcript_entities: list[NEREntity]) -
 
 
 def _faithfulness(entailer, threshold: float = 1.0) -> EntityGroundingSensor:
-    return EntityGroundingSensor(
-        entailer, direction=Direction.FAITHFULNESS, threshold=threshold
-    )
+    return EntityGroundingSensor(entailer, direction=Direction.FAITHFULNESS, threshold=threshold)
 
 
 class TestFraming:
@@ -102,7 +100,7 @@ class TestLexicalFloorIsPreserved:
         assert escalated.passed == incumbent.passed
 
     async def test_absent_note_entities_are_excluded_like_the_incumbent(self) -> None:
-        """"no chest pain" is not a positive claim needing grounding."""
+        """ "no chest pain" is not a positive claim needing grounding."""
         ctx = _ctx(_ents("chest pain", assertion="ABSENT"), _ents("Tylenol"))
         result = await _faithfulness(_Entailer()).arun(ctx)
         assert result.passed

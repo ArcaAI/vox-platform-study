@@ -28,7 +28,11 @@ from text.models.worker_task import WorkerTaskType
 def mock_provider():
     provider = AsyncMock()
     provider.generate = AsyncMock(
-        return_value=("the answer", "", {"prompt_tokens": 1, "completion_tokens": 1, "total_tokens": 2})
+        return_value=(
+            "the answer",
+            "",
+            {"prompt_tokens": 1, "completion_tokens": 1, "total_tokens": 2},
+        )
     )
     return provider
 
@@ -120,9 +124,7 @@ class TestBatchGenerationSubmission:
         assert envelope.tenant_id == "tenantless:control-plane"
 
     @pytest.mark.asyncio
-    async def test_draining_control_plane_rejects_submission(
-        self, client, mock_worker_pool_queue
-    ):
+    async def test_draining_control_plane_rejects_submission(self, client, mock_worker_pool_queue):
         from text.core.exceptions import ShutdownError
 
         mock_worker_pool_queue.submit.side_effect = ShutdownError()

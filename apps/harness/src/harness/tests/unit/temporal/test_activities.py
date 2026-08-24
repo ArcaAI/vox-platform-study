@@ -53,7 +53,9 @@ class _FakeNlp:
     def __init__(self) -> None:
         self.calls: list[tuple[str, str]] = []
 
-    async def classify_tokens(self, text: str, *, tenant_id: str = "", language: str = "en") -> list[NEREntity]:
+    async def classify_tokens(
+        self, text: str, *, tenant_id: str = "", language: str = "en"
+    ) -> list[NEREntity]:
         self.calls.append((text, language))
         return [NEREntity(text="hypertension", type="DISEASE", start=0, end=12)]
 
@@ -226,7 +228,10 @@ class TestExtractEntities:
         fake = _FakeNlp()
         monkeypatch.setattr(activities, "_nlp_client", lambda s: fake)
         result = await env.run(
-            activities.extract_entities, ExtractEntitiesInput(tenant_id="11111111-1111-1111-1111-111111111111", text="hi", language="vi")
+            activities.extract_entities,
+            ExtractEntitiesInput(
+                tenant_id="11111111-1111-1111-1111-111111111111", text="hi", language="vi"
+            ),
         )
         assert [e.text for e in result.entities] == ["hypertension"]
         assert result.reused is False
@@ -306,7 +311,10 @@ class TestExtractEntities:
         monkeypatch.setattr(activities, "_nlp_client", lambda s: nlp)
         monkeypatch.setattr(activities, "_api_client", lambda s: api)
         result = await env.run(
-            activities.extract_entities, ExtractEntitiesInput(tenant_id="11111111-1111-1111-1111-111111111111", text="note", language="en")
+            activities.extract_entities,
+            ExtractEntitiesInput(
+                tenant_id="11111111-1111-1111-1111-111111111111", text="note", language="en"
+            ),
         )
         assert result.reused is False
         assert nlp.calls == [("note", "en")]
@@ -385,7 +393,10 @@ class TestGenerate:
                 )
 
         monkeypatch.setattr(activities, "_text_client", lambda s: _StatsText())
-        result = await env.run(activities.generate, GenerateInput(tenant_id="11111111-1111-1111-1111-111111111111", prompt="P"))
+        result = await env.run(
+            activities.generate,
+            GenerateInput(tenant_id="11111111-1111-1111-1111-111111111111", prompt="P"),
+        )
         assert result.content == "DRAFT"
         assert result.stats == stats
 
@@ -398,9 +409,15 @@ class TestGenerate:
         fake = _FakeText()
         monkeypatch.setattr(activities, "_text_client", lambda s: fake)
 
-        await env.run(activities.generate, GenerateInput(tenant_id="11111111-1111-1111-1111-111111111111", prompt="P"))
+        await env.run(
+            activities.generate,
+            GenerateInput(tenant_id="11111111-1111-1111-1111-111111111111", prompt="P"),
+        )
         first_key = fake.kwargs["idempotency_key"]
-        await env.run(activities.generate, GenerateInput(tenant_id="11111111-1111-1111-1111-111111111111", prompt="P"))
+        await env.run(
+            activities.generate,
+            GenerateInput(tenant_id="11111111-1111-1111-1111-111111111111", prompt="P"),
+        )
         second_key = fake.kwargs["idempotency_key"]
 
         # _idempotency_key() → workflow_run_id:activity_id (ActivityEnvironment defaults).
@@ -423,7 +440,10 @@ class TestGeneratePostSendFailure:
 
         monkeypatch.setattr(activities, "_text_client", lambda s: _LostText())
         with pytest.raises(ApplicationError) as ei:
-            await env.run(activities.generate, GenerateInput(tenant_id="11111111-1111-1111-1111-111111111111", prompt="P"))
+            await env.run(
+                activities.generate,
+                GenerateInput(tenant_id="11111111-1111-1111-1111-111111111111", prompt="P"),
+            )
         assert ei.value.non_retryable is True
 
     @pytest.mark.asyncio
@@ -435,7 +455,10 @@ class TestGeneratePostSendFailure:
         monkeypatch.setattr(activities, "_text_client", lambda s: _DownText())
         # Propagates unchanged (NOT wrapped non-retryable) → Temporal retries per policy.
         with pytest.raises(TextServiceError):
-            await env.run(activities.generate, GenerateInput(tenant_id="11111111-1111-1111-1111-111111111111", prompt="P"))
+            await env.run(
+                activities.generate,
+                GenerateInput(tenant_id="11111111-1111-1111-1111-111111111111", prompt="P"),
+            )
 
 
 class _FakePolicyApi:
@@ -1210,7 +1233,9 @@ class TestRunInferentialSensors:
         judge = _StubJudge(unsupported_markers=("penicillin",))
         monkeypatch.setattr(activities, "_build_runtime_judge", lambda *a, **k: judge)
         monkeypatch.setattr(
-            activities, "_safety_screen_client", lambda s, t: _FakeGranite(dimensions={"harm": False})
+            activities,
+            "_safety_screen_client",
+            lambda s, t: _FakeGranite(dimensions={"harm": False}),
         )
 
         result = await env.run(
@@ -1262,7 +1287,9 @@ class TestRunInferentialSensors:
 
         monkeypatch.setattr(activities, "_build_runtime_judge", _boom)
         monkeypatch.setattr(
-            activities, "_safety_screen_client", lambda s, t: _FakeGranite(dimensions={"harm": False})
+            activities,
+            "_safety_screen_client",
+            lambda s, t: _FakeGranite(dimensions={"harm": False}),
         )
 
         result = await env.run(
@@ -1321,7 +1348,9 @@ class TestRunInferentialSensorsLiveAssurance:
         judge = _StubJudge(unsupported_markers=("penicillin",))
         monkeypatch.setattr(activities, "_build_runtime_judge", lambda *a, **k: judge)
         monkeypatch.setattr(
-            activities, "_safety_screen_client", lambda s, t: _FakeGranite(dimensions={"harm": False})
+            activities,
+            "_safety_screen_client",
+            lambda s, t: _FakeGranite(dimensions={"harm": False}),
         )
         fake = _FakeAssuranceApi()
         monkeypatch.setattr(activities, "_progress_api_client", lambda s: fake)
@@ -1353,7 +1382,9 @@ class TestRunInferentialSensorsLiveAssurance:
     async def test_no_publish_when_live_assurance_disabled(self, env, monkeypatch):
         monkeypatch.setattr(activities, "_build_runtime_judge", lambda *a, **k: _StubJudge())
         monkeypatch.setattr(
-            activities, "_safety_screen_client", lambda s, t: _FakeGranite(dimensions={"harm": False})
+            activities,
+            "_safety_screen_client",
+            lambda s, t: _FakeGranite(dimensions={"harm": False}),
         )
         fake = _FakeAssuranceApi()
         monkeypatch.setattr(activities, "_progress_api_client", lambda s: fake)
@@ -1369,7 +1400,9 @@ class TestRunInferentialSensorsLiveAssurance:
 
         monkeypatch.setattr(activities, "_build_runtime_judge", lambda *a, **k: _StubJudge())
         monkeypatch.setattr(
-            activities, "_safety_screen_client", lambda s, t: _FakeGranite(dimensions={"harm": False})
+            activities,
+            "_safety_screen_client",
+            lambda s, t: _FakeGranite(dimensions={"harm": False}),
         )
         fake = _FakeAssuranceApi(error=ApiServiceError("redis down"))
         monkeypatch.setattr(activities, "_progress_api_client", lambda s: fake)

@@ -60,9 +60,7 @@ def _calibration_lane_agreement_mapping() -> dict[str, str]:
     mapping = {}
     for case in data["cases"]:
         if case.get("role") == "calibration" and case.get("clinician_pdsqi"):
-            mapping[_note_key(case["generated_note"])] = pdsqi_score_json(
-                **case["clinician_pdsqi"]
-            )
+            mapping[_note_key(case["generated_note"])] = pdsqi_score_json(**case["clinician_pdsqi"])
     return mapping
 
 

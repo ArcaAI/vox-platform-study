@@ -318,9 +318,7 @@ async def run_eval(
     cases = golden_set.cases if limit is None else golden_set.cases[:limit]
     results: list[InferentialCaseResult] = []
     for case in cases:
-        res = await score_case(
-            case, judge=judge, safety_screen=safety_screen, threshold=threshold
-        )
+        res = await score_case(case, judge=judge, safety_screen=safety_screen, threshold=threshold)
         results.append(res)
         flagged = ",".join(res.safety_flagged) or "-"
         g_str = "DEGRADED" if res.groundedness_degraded else f"{res.groundedness:.3f}"

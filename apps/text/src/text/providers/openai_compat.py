@@ -115,9 +115,7 @@ class OpenAICompatProvider:
         probe_url = self._probe_url()
         if probe_url is None:
             return None
-        return AsyncOpenAI(
-            api_key="not-needed", base_url=probe_url, timeout=float(self._timeout_s)
-        )
+        return AsyncOpenAI(api_key="not-needed", base_url=probe_url, timeout=float(self._timeout_s))
 
     def _client_for(self, request: GenerateRequest) -> AsyncOpenAI:
         """Request-scoped, fail-closed client resolution.
@@ -134,8 +132,7 @@ class OpenAICompatProvider:
             from text.core.exceptions import ProviderConnectionMissingError
 
             raise ProviderConnectionMissingError(
-                f"No base_url on the resolved connection for "
-                f"'{self._provider_name}'.",
+                f"No base_url on the resolved connection for " f"'{self._provider_name}'.",
                 provider=self._provider_name,
             )
         self._last_base_url = base_url

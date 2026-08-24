@@ -147,9 +147,7 @@ def _split_for_extraction(text: str, chunk_chars: int) -> list[str]:
 class RedactEntityModel(BaseModel):
     """One masked PII span; offsets index the SUBMITTED `text`."""
 
-    label: str = Field(
-        ..., description="GLiNER PII label, e.g. person, date_of_birth, email"
-    )
+    label: str = Field(..., description="GLiNER PII label, e.g. person, date_of_birth, email")
     start: int = Field(..., description="Character offset start within `text`")
     end: int = Field(..., description="Character offset end within `text`")
     score: float = Field(..., description="Confidence score (0.0-1.0)")
@@ -180,9 +178,7 @@ class RedactResponse(BaseModel):
         description="The PII spans that were masked — offsets index the ORIGINAL `text`",
     )
     mode: RedactMode
-    processing_time_ms: float = Field(
-        ..., description="Processing time in milliseconds"
-    )
+    processing_time_ms: float = Field(..., description="Processing time in milliseconds")
     request_id: str = Field(..., description="Request ID for tracking")
     timestamp: str = Field(..., description="Redaction timestamp")
 

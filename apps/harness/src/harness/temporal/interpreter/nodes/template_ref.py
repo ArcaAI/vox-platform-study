@@ -57,7 +57,10 @@ async def interpreter_template_ref(payload: NodeActivityInput) -> NodeActivityRe
 
     if not template_id:
         await record_and_flush(
-            payload, status=STATUS_DEGRADED, started=started, error_code="missing_prompt_template_id"
+            payload,
+            status=STATUS_DEGRADED,
+            started=started,
+            error_code="missing_prompt_template_id",
         )
         return NodeActivityResult(status="DEGRADED", reason="config.promptTemplateId is required")
 

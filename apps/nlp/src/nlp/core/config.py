@@ -238,9 +238,7 @@ class NLPServiceConfig(BaseSettings):
     )
     resource_attributes_raw: str | None = Field(
         default=None,
-        validation_alias=AliasChoices(
-            "NLP_OTEL_RESOURCE_ATTRIBUTES", "OTEL_RESOURCE_ATTRIBUTES"
-        ),
+        validation_alias=AliasChoices("NLP_OTEL_RESOURCE_ATTRIBUTES", "OTEL_RESOURCE_ATTRIBUTES"),
     )
     # Master switch: gates traces, metrics, AND log export (default off).
     otel_enabled: bool = Field(default=False, validation_alias=AliasChoices("NLP_OTEL_ENABLED"))
@@ -607,9 +605,7 @@ class ExternalTextConfig(BaseSettings):
     # `populate_by_name` so `ExternalTextConfig(base_url=...)` still works:
     # pydantic-settings matches init kwargs against the ALIAS once one is
     # declared, and every existing caller and test builds this by field name.
-    model_config = SettingsConfigDict(
-        env_prefix="NLP_EXTERNAL_TEXT_", populate_by_name=True
-    )
+    model_config = SettingsConfigDict(env_prefix="NLP_EXTERNAL_TEXT_", populate_by_name=True)
 
     # `TEXT_URL` is the repo-wide name for this address — `apps/guardrail`
     # already reads it under the same alias, and `turbo.json#globalEnv` declares

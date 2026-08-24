@@ -49,7 +49,9 @@ class TestResolveMinBytes:
 
     def test_a_failed_pull_keeps_the_bootstrap_value(self) -> None:
         base = ClaimCheckConfig()
-        assert resolve_min_bytes(EffectiveConfigSnapshot(ok=False), base.min_bytes) == base.min_bytes
+        assert (
+            resolve_min_bytes(EffectiveConfigSnapshot(ok=False), base.min_bytes) == base.min_bytes
+        )
 
     def test_a_resolved_value_wins(self) -> None:
         assert resolve_min_bytes(_snapshot(4096), 65_536) == 4096

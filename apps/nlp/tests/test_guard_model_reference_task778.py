@@ -89,9 +89,7 @@ class TestResolution:
         finally:
             staged.chmod(0o755)
 
-    def test_an_unreadable_path_fails_closed_regardless_of_uid(
-        self, tmp_path, monkeypatch
-    ) -> None:
+    def test_an_unreadable_path_fails_closed_regardless_of_uid(self, tmp_path, monkeypatch) -> None:
         """The same invariant, staged without POSIX bits so it runs as root too.
 
         ``os.access`` is the readability probe the resolver uses; denying it is

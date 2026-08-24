@@ -33,6 +33,7 @@ class TestUsageMeteringMetrics:
     """TTS was the one service missing the standardized
     {service, model} pair (current-state-review §2.0/§2.5); it also gets its
     own character/audio-second counters (README §5.3)."""
+
     def test_metric_names(self) -> None:
         # No `_total` in the base name — prometheus_client appends it at
         # export time (see test_exposed_with_total_suffix below).
@@ -59,7 +60,9 @@ class TestUsageMeteringMetrics:
         m.TTS_SYNTHESIZED_SECONDS_TOTAL.labels(**labels).inc(1.5)
 
         assert REGISTRY.get_sample_value("tts_characters_total", labels) == before_chars + 12
-        assert REGISTRY.get_sample_value("tts_synthesized_seconds_total", labels) == before_secs + 1.5
+        assert (
+            REGISTRY.get_sample_value("tts_synthesized_seconds_total", labels) == before_secs + 1.5
+        )
 
 
 class TestCrossServiceModelPair:
@@ -77,13 +80,18 @@ class TestCrossServiceModelPair:
     def test_track_model_inference_bumps_then_restores_and_observes(self) -> None:
         labels = {"service": "tts", "model": "kokoro"}
         before_gauge = REGISTRY.get_sample_value("model_running_instances", labels) or 0.0
-        before_count = REGISTRY.get_sample_value("model_inference_latency_seconds_count", labels) or 0.0
+        before_count = (
+            REGISTRY.get_sample_value("model_inference_latency_seconds_count", labels) or 0.0
+        )
 
         with m.track_model_inference("kokoro"):
             assert REGISTRY.get_sample_value("model_running_instances", labels) == before_gauge + 1
 
         assert REGISTRY.get_sample_value("model_running_instances", labels) == before_gauge
-        assert REGISTRY.get_sample_value("model_inference_latency_seconds_count", labels) == before_count + 1
+        assert (
+            REGISTRY.get_sample_value("model_inference_latency_seconds_count", labels)
+            == before_count + 1
+        )
 
     def test_gauge_decremented_even_on_error(self) -> None:
         labels = {"service": "tts", "model": "azure"}

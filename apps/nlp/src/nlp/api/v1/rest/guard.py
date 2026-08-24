@@ -188,9 +188,7 @@ async def _submit_classify(
     batcher = await get_batcher(slot_key, "classify", run_batch, lane)
     started = time.perf_counter()
     try:
-        results: dict[str, Any] = await batcher.submit(
-            classify_group_key(tasks, threshold), text
-        )
+        results: dict[str, Any] = await batcher.submit(classify_group_key(tasks, threshold), text)
         return results
     finally:
         observe_queue_wait(batcher.name, time.perf_counter() - started)

@@ -25,8 +25,12 @@ class _FakeExternalTextClient:
         self.calls: list[dict] = []
         self.raise_error = False
 
-    async def generate_label(self, prompt: str, system_prompt: str | None = None, tenant_id: str | None = None) -> str:
-        self.calls.append({"prompt": prompt, "system_prompt": system_prompt, "tenant_id": tenant_id})
+    async def generate_label(
+        self, prompt: str, system_prompt: str | None = None, tenant_id: str | None = None
+    ) -> str:
+        self.calls.append(
+            {"prompt": prompt, "system_prompt": system_prompt, "tenant_id": tenant_id}
+        )
         if self.raise_error:
             raise ExternalTextUnavailableError("text unreachable")
         return self.label
@@ -50,7 +54,9 @@ class TestClassifyTopic:
 
     def test_empty_instructions_fails_closed_503(self, app_and_client):
         _, client, fake = app_and_client
-        resp = client.post("/api/v1/classify/topic", json={"text": "I have a billing question", "instructions": []})
+        resp = client.post(
+            "/api/v1/classify/topic", json={"text": "I have a billing question", "instructions": []}
+        )
         assert resp.status_code == 503
         assert fake.calls == []
 
@@ -59,7 +65,11 @@ class TestClassifyTopic:
         fake.label = "billing"
         resp = client.post(
             "/api/v1/classify/topic",
-            json={"text": "I have a billing question", "instructions": ["billing", "appointments"], "tenant_id": "t1"},
+            json={
+                "text": "I have a billing question",
+                "instructions": ["billing", "appointments"],
+                "tenant_id": "t1",
+            },
         )
         assert resp.status_code == 200
         body = resp.json()
@@ -109,7 +119,11 @@ class TestClassifyIntent:
         fake.label = "schedule_appointment"
         resp = client.post(
             "/api/v1/classify/intent",
-            json={"text": "book me an appointment", "instructions": ["schedule_appointment", "cancel_appointment"], "tenant_id": "t1"},
+            json={
+                "text": "book me an appointment",
+                "instructions": ["schedule_appointment", "cancel_appointment"],
+                "tenant_id": "t1",
+            },
         )
         assert resp.status_code == 200
         body = resp.json()
@@ -162,7 +176,11 @@ class TestPeerCallBoundIndependence:
 
         resp = client.post(
             "/api/v1/classify/intent",
-            json={"text": "book an appointment", "instructions": ["schedule_appointment"], "tenant_id": "t1"},
+            json={
+                "text": "book an appointment",
+                "instructions": ["schedule_appointment"],
+                "tenant_id": "t1",
+            },
         )
 
         assert resp.status_code == 200

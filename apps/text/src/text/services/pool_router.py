@@ -39,8 +39,7 @@ def resolve_pool_route(
         if fallback and fallback_registered:
             return fallback
         raise PoolUnhealthyError(
-            f"Provider '{provider}' is marked unhealthy and no usable fallback was "
-            "supplied.",
+            f"Provider '{provider}' is marked unhealthy and no usable fallback was " "supplied.",
             provider=provider,
         )
     return provider

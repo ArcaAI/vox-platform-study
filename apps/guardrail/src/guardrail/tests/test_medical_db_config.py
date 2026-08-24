@@ -26,9 +26,7 @@ DEFAULT_TENANT = "11111111-1111-1111-1111-111111111111"
 
 
 class _FakeRequest:
-    def __init__(
-        self, state: SimpleNamespace, headers: dict[str, str] | None = None
-    ) -> None:
+    def __init__(self, state: SimpleNamespace, headers: dict[str, str] | None = None) -> None:
         self.app = SimpleNamespace(state=state)
         self.headers = {"X-Tenant-Id": DEFAULT_TENANT, **(headers or {})}
 
@@ -51,9 +49,7 @@ class _VetoStubResolver:
 
     async def resolve(self, tenant_id):  # noqa: ANN001
         self.seen_tenant = tenant_id
-        raise TenantSelectionVetoedError(
-            tenant_id=tenant_id, task_key="guardrail.validate"
-        )
+        raise TenantSelectionVetoedError(tenant_id=tenant_id, task_key="guardrail.validate")
 
 
 def test_db_config_cannot_be_switched_off(monkeypatch) -> None:
@@ -94,7 +90,11 @@ async def test_an_unwired_resolver_fails_closed_rather_than_inventing_a_model() 
 async def test_db_config_enabled_overrides_model_from_tenant() -> None:
     settings = Settings()
     resolver = _StubResolver(
-        GuardrailTenantConfig(provider="lm-studio", model="tenant-guardian-x", policy={"medicalValidationCriteria": "you are a medical context validator"})
+        GuardrailTenantConfig(
+            provider="lm-studio",
+            model="tenant-guardian-x",
+            policy={"medicalValidationCriteria": "you are a medical context validator"},
+        )
     )
 
     state = SimpleNamespace(

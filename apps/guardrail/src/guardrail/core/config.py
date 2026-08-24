@@ -310,7 +310,9 @@ class Settings(BaseSettings):
     # here, so every one of those declarations reached the launcher and not the
     # app — harmless while uvicorn always wins, and wrong the moment anything
     # reads `settings.port`. Accept both; the fleet name first (TASK-799 B.3).
-    port: int = Field(default=8863, validation_alias=AliasChoices("GUARDRAIL_PORT", "GUARDRAIL_V2_PORT"))
+    port: int = Field(
+        default=8863, validation_alias=AliasChoices("GUARDRAIL_PORT", "GUARDRAIL_V2_PORT")
+    )
     debug: bool = False
     log_level: str = "info"
     cors_origins: list[str] = Field(default_factory=list)

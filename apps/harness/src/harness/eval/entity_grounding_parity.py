@@ -135,9 +135,7 @@ async def preflight(entailer: JudgeEntailer) -> None:
     the check is only that a call completes and parses.
     """
     try:
-        await entailer.entail(
-            "The patient has a cough.", "The consultation record includes cough."
-        )
+        await entailer.entail("The patient has a cough.", "The consultation record includes cough.")
     except Exception as exc:  # noqa: BLE001 — surfaced as a hard stop, not a score
         raise BackendUnavailable(f"entailment backend preflight failed: {exc}") from exc
 

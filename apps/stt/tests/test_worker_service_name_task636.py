@@ -25,9 +25,7 @@ from stt.worker import _worker_service_name
         ("stt-worker", "stt-worker"),
     ],
 )
-def test_worker_service_name_is_suffixed_at_most_once(
-    configured: str, expected: str
-) -> None:
+def test_worker_service_name_is_suffixed_at_most_once(configured: str, expected: str) -> None:
     assert _worker_service_name(configured) == expected
 
 

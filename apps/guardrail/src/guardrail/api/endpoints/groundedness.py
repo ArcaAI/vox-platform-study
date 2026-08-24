@@ -42,17 +42,13 @@ router = APIRouter()
 class GroundednessSegmentModel(BaseModel):
     """Verdict for one summary segment; offsets index the submitted ``summary``."""
 
-    text: str = Field(
-        ..., description="The segment text (a stripped substring of `summary`)"
-    )
+    text: str = Field(..., description="The segment text (a stripped substring of `summary`)")
     verdict: str = Field(..., description="grounded | ungrounded | unverified")
     grounded: bool = Field(
         ...,
         description="STRICT: true only for a verified-grounded verdict — never on a degrade path",
     )
-    score: float | None = Field(
-        None, description="Entailment score (0.0-1.0) when the model ran"
-    )
+    score: float | None = Field(None, description="Entailment score (0.0-1.0) when the model ran")
     start: int = Field(..., description="Character offset start within `summary`")
     end: int = Field(..., description="Character offset end within `summary`")
 
@@ -68,18 +64,14 @@ class GroundRequest(BaseModel):
     """Request model for output-side groundedness verification."""
 
     summary: str = Field(..., description="Generated summary/note text to verify")
-    transcript: str = Field(
-        ..., description="Source transcript the summary must be grounded in"
-    )
+    transcript: str = Field(..., description="Source transcript the summary must be grounded in")
     request_id: str | None = Field(None, description="Optional request ID for tracking")
 
 
 class GroundResponse(BaseModel):
     """Response model for output-side groundedness verification."""
 
-    segments: list[GroundednessSegmentModel] = Field(
-        ..., description="Per-segment verdicts"
-    )
+    segments: list[GroundednessSegmentModel] = Field(..., description="Per-segment verdicts")
     flagged_spans: list[FlaggedSpanModel] = Field(
         default_factory=list,
         description="Offsets of the ungrounded segments within `summary`",
@@ -89,16 +81,12 @@ class GroundResponse(BaseModel):
         ...,
         description="checked | groundedness_disabled | nli_model_unavailable | nli_error",
     )
-    model_id: str = Field(
-        ..., description="The self-hosted NLI model this gate is configured for"
-    )
+    model_id: str = Field(..., description="The self-hosted NLI model this gate is configured for")
     throughput_docs_per_min: float | None = Field(
         None,
         description="Measured segments/min for this batched run (None on degrade paths)",
     )
-    processing_time_ms: float = Field(
-        ..., description="Processing time in milliseconds"
-    )
+    processing_time_ms: float = Field(..., description="Processing time in milliseconds")
     request_id: str = Field(..., description="Request ID for tracking")
     timestamp: str = Field(..., description="Verification timestamp")
 
@@ -127,9 +115,7 @@ async def ground_summary(
                 # not in-process CPU work, so it is awaited directly rather than
                 # offloaded to a thread. `_maybe_await` keeps a synchronous verifier
                 # (the in-process test seam) working through the same call site.
-                result = await _maybe_await(
-                    verifier.verify(request.summary, request.transcript)
-                )
+                result = await _maybe_await(verifier.verify(request.summary, request.transcript))
             except Exception as exc:
                 # FAIL-CLOSED backstop for an unexpected verifier crash: every segment
                 # is `unverified` — the deliberate inverse of the legacy fail-open
@@ -141,8 +127,7 @@ async def ground_summary(
                 spans = split_segments(request.summary)
                 result = GroundednessResult(
                     segments=[
-                        SegmentVerdict(text, UNVERIFIED, start, end)
-                        for text, start, end in spans
+                        SegmentVerdict(text, UNVERIFIED, start, end) for text, start, end in spans
                     ],
                     checked=False,
                     reason=REASON_ERROR,
@@ -169,8 +154,7 @@ async def ground_summary(
             for segment in result.segments
         ],
         flagged_spans=[
-            FlaggedSpanModel(start=start, end=end)
-            for start, end in result.flagged_spans
+            FlaggedSpanModel(start=start, end=end) for start, end in result.flagged_spans
         ],
         checked=result.checked,
         reason=result.reason,

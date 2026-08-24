@@ -69,9 +69,7 @@ _SPECS: Final[dict[str, _KeySpec]] = {
     # advertises a control that cannot move the value, so an admin who sets it
     # sees neither an effect nor an error. Removed rather than wired: the two
     # sources that DO serve those values are the correct ones (§D.2b).
-    "judgeMinConfidence": _KeySpec(
-        FAIL_OPEN_TO_DEFAULT, JudgePolicy().min_confidence, 0.0, 1.0
-    ),
+    "judgeMinConfidence": _KeySpec(FAIL_OPEN_TO_DEFAULT, JudgePolicy().min_confidence, 0.0, 1.0),
     "piiLeakMinScore": _KeySpec(FAIL_OPEN_TO_DEFAULT, 0.5, 0.0, 1.0),
     "maxUntrustedChars": _KeySpec(FAIL_OPEN_TO_DEFAULT, 100_000.0, 1.0, 10_000_000.0),
     # --- groundedness (TASK-799 lane D) ---

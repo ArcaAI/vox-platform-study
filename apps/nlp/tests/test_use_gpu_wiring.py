@@ -39,7 +39,6 @@ class _StubNer:
     async def shutdown(self) -> None: ...
 
 
-
 class TestTextClassifierUseGpu:
     @pytest.mark.asyncio
     async def test_use_gpu_false_forces_cpu_even_when_cuda_available(self):
@@ -118,9 +117,7 @@ class TestTokenClassifierUseGpu:
         torch.cuda.is_available() exactly."""
         from nlp.services.token_classifier import TransformerTokenClassifier
 
-        config = TokenClassificationConfig(
-            model_name="test-org/ner", tokenizer_name="test-org/ner"
-        )
+        config = TokenClassificationConfig(model_name="test-org/ner", tokenizer_name="test-org/ner")
         assert config.use_gpu is True
         classifier = TransformerTokenClassifier(configs=config)
 
@@ -168,9 +165,7 @@ class TestMedicalSuggesterUseGpu:
         torch.cuda.is_available() exactly."""
         from nlp.services.medical_suggester import MedicalSuggester
 
-        config = MedicalSuggesterConfig(
-            model_name="test-org/dx", tokenizer_name="test-org/dx"
-        )
+        config = MedicalSuggesterConfig(model_name="test-org/dx", tokenizer_name="test-org/dx")
         assert config.use_gpu is True
         suggester = MedicalSuggester(config=config, token_classifier=_StubNer())
 

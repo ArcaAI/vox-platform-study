@@ -63,6 +63,7 @@ JUDGE_PATH = "/api/v1/generate/internal/judge"
 # without any model having judged the input — a hardcoded taxonomy and a prompt-
 # injection bypass in the same twelve lines.
 
+
 def _stats_from_judge(payload: dict[str, Any], provider: str, model: str) -> GuardrailCallStats:
     """Map `text`'s `GenerationStats` onto guardrail's AD-1 mirror.
 

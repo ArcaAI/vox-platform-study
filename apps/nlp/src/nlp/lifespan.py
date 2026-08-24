@@ -97,16 +97,12 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     app.state.redis = None
     app.state.config_invalidation_task = None
     try:
-        app.state.redis = aioredis.from_url(
-            settings.service.redis_url, decode_responses=True
-        )
+        app.state.redis = aioredis.from_url(settings.service.redis_url, decode_responses=True)
         app.state.config_invalidation_task = asyncio.create_task(
             app.state.effective_config_client.run_invalidation_listener(app.state.redis)
         )
     except Exception as exc:  # noqa: BLE001 — propagation degrades to the TTL backstop
-        logger.warning(
-            f"nlp.config_invalidation.unavailable error={type(exc).__name__} {exc}"
-        )
+        logger.warning(f"nlp.config_invalidation.unavailable error={type(exc).__name__} {exc}")
 
     # apps/nlp's first peer-service client (TASK-729): a dedicated,
     # long-lived httpx.AsyncClient for calling `text`'s /generate — mirrors

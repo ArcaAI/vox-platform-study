@@ -635,6 +635,7 @@ class Settings(BaseSettings):
         if isinstance(v, str) and v.strip() == "":
             return os.getenv("DEPLOYMENT_ENVIRONMENT") or os.getenv("NODE_ENV") or "development"
         return v
+
     otel_insecure: bool = True
 
     metrics_enabled: bool = True

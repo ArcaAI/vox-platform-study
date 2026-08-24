@@ -46,9 +46,7 @@ class TestFireAndForgetApiClientsUseTheSharedToken:
         assert client._service_token == "shared-tok"
 
     @pytest.mark.parametrize("factory", FACTORIES)
-    def test_legacy_secret_is_the_fallback_when_the_shared_one_is_unset(
-        self, factory: str
-    ) -> None:
+    def test_legacy_secret_is_the_fallback_when_the_shared_one_is_unset(self, factory: str) -> None:
         settings = Settings(internal_access_token="", service_token="legacy-tok")
         client = getattr(activities, factory)(settings)
         assert client._service_token == "legacy-tok"

@@ -97,9 +97,7 @@ class TestSyncEmbeddings:
 class TestBatchEmbeddings:
     @pytest.mark.asyncio
     async def test_submits_envelope_and_returns_202(self, client, mock_worker_pool_queue):
-        resp = await client.post(
-            "/api/v1/embeddings/batch", json={"texts": ["a", "b", "c"]}
-        )
+        resp = await client.post("/api/v1/embeddings/batch", json={"texts": ["a", "b", "c"]})
 
         assert resp.status_code == 202
         data = resp.json()
@@ -125,9 +123,7 @@ class TestBatchEmbeddings:
         assert envelope.idempotency_key == "idem-9"
 
     @pytest.mark.asyncio
-    async def test_draining_control_plane_rejects_submission(
-        self, client, mock_worker_pool_queue
-    ):
+    async def test_draining_control_plane_rejects_submission(self, client, mock_worker_pool_queue):
         from text.core.exceptions import ShutdownError
 
         mock_worker_pool_queue.submit.side_effect = ShutdownError()

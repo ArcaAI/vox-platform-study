@@ -54,10 +54,6 @@ def in_memory_exporter():
     return exporter
 
 
-
-
-
-
 # ---------------------------------------------------------------------------
 # Task 2.1 — telemetry.py: setup_telemetry / get_tracer
 # ---------------------------------------------------------------------------
@@ -189,7 +185,9 @@ class TestAzureGenAISpans:
             provider._client = stub_client(provider, AsyncMock())
             provider._client.chat.completions.create = AsyncMock(return_value=mock_response)
 
-            content, _reasoning, usage = await provider.generate(GenerateRequest(prompt="hi", model="test-model"))
+            content, _reasoning, usage = await provider.generate(
+                GenerateRequest(prompt="hi", model="test-model")
+            )
 
         spans = in_memory_exporter.get_finished_spans()
         gen_spans = [s for s in spans if s.attributes.get("gen_ai.system") == "azure_openai"]
@@ -247,7 +245,9 @@ class TestAzureGenAISpans:
             provider._client.chat.completions.create = AsyncMock(return_value=_aiter_chunks())
 
             chunks = []
-            async for chunk in provider.generate_stream(GenerateRequest(prompt="hi", stream=True, model="test-model")):
+            async for chunk in provider.generate_stream(
+                GenerateRequest(prompt="hi", stream=True, model="test-model")
+            ):
                 chunks.append(chunk)
 
         spans = in_memory_exporter.get_finished_spans()

@@ -348,8 +348,7 @@ async def generate(
         request_body.provider,
         tracker=pool_health_tracker,
         fallback=fallback_name,
-        fallback_registered=bool(fallback_name)
-        and fallback_name in registry.list_providers(),
+        fallback_registered=bool(fallback_name) and fallback_name in registry.list_providers(),
     )
 
     # Idempotent replay. A deterministic Idempotency-Key (set by the harness
