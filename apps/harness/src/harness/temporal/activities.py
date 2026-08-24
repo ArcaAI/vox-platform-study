@@ -1983,13 +1983,29 @@ async def run_inferential_sensors(payload: RunInferentialSensorsInput) -> Infere
                 citations_map=payload.citations_map,
                 knowledge_chunks=knowledge_chunks_in,
                 judge_provider=judge_provider,
-                # `None`, because the safety screen no longer egresses from harness to a
-                # provider at all: it posts the note to `apps/guardrail`, a first-party
-                # internal peer, exactly like the `text`/`nlp` hops this guard has never
-                # gated. Guardrail owns the PHI posture of whatever engine IT selects —
-                # harness cannot know that engine and must not guess it. The `judge_*`
-                # gating below is unchanged, because the judge client still posts to its
-                # selected provider directly from this process.
+                # `None` = NO EGRESS TARGET, so the note passes through UNREDACTED. On a
+                # PHI boundary that literal has to be earned, not assumed, and the reason
+                # is stronger than "guardrail owns its own posture": the outbound screen
+                # never leaves the trust boundary AT ALL. `POST /guardrail/screen/outbound`
+                # composes exactly one executor — the self-hosted `apps/nlp` peer, whose
+                # `/guard/classify` runs local weights — and guardrail performs NO PHI
+                # redaction of the screened text, so "guardrail would protect it" is not a
+                # fallback that exists. Guardrail's cloud-capable client (`TextJudgeClient`
+                # → `apps/text` → BYO vendors) is reachable only from `/medical/validate`,
+                # which harness never calls.
+                #
+                # That is a property of OTHER services, so it is pinned by tests rather
+                # than by this comment:
+                #   * guardrail/tests/test_task799_outbound_screen_boundary.py — the screen
+                #     binds only the nlp peer at `settings.nlp_url`, never a provider-
+                #     derived endpoint, and never a cloud-capable client;
+                #   * TestRunInferentialSensorsPhiEgress in this activity's own suite — the
+                #     screen client IS the guardrail peer, and the note never reaches the
+                #     (possibly cloud) judge.
+                # If any of those fail, THIS argument is what must change.
+                #
+                # The `judge_*` gating below is unchanged, because the judge client does
+                # post to its selected provider directly from this process.
                 safety_provider=None,
                 settings=settings,
                 phi_enabled=payload.phi_enabled,
