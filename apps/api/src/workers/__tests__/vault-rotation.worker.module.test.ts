@@ -10,7 +10,8 @@
 //   - The bootstrap noops when VAULT_AUDIT_LOG_PATH points at a missing file.
 //   - The leader lock is attempted via Redis SET …NX EX.
 //   - The worker does not start when the leader lock is taken.
-import { fileURLToPath } from 'node:url';
+import { existsSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest';
 import { VaultRotationWorkerService } from '../vault-rotation.worker.module';
 
@@ -83,7 +84,19 @@ describe('VaultRotationWorkerService bootstrap guards', () => {
     // a bare ENOENT crash log on every fresh checkout — `.env.dev` ships
     // ./temp/vault.log and nothing creates it. Absence now disables the worker
     // before it takes a lock it could not use; this test covers the happy path.
-    process.env.VAULT_AUDIT_LOG_PATH = fileURLToPath(import.meta.url);
+    // Resolved from `cwd`, NOT `import.meta.url`: `apps/api` compiles as
+    // CommonJS and `tsc` rejects `import.meta` (TS1343) even though vitest runs
+    // it happily. Same pattern as `platform-knobs.binder.enforcement` and
+    // `cors.config.task641`. The suite runs from the repo root or from
+    // `apps/api` depending on the invocation, so both are tried — and the
+    // assertion below fails if neither resolves, rather than passing vacuously
+    // on a path that does not exist (which is the very condition this test
+    // exists to distinguish).
+    const existingFile = ['apps/api/package.json', 'package.json']
+      .map((candidate) => resolve(process.cwd(), candidate))
+      .find(existsSync);
+    expect(existingFile, `could not locate a real file from cwd ${process.cwd()}`).toBeDefined();
+    process.env.VAULT_AUDIT_LOG_PATH = existingFile as string;
     const pub = makePub();
     const leader = makeLeader({ acquire: false }); // simulate peer pod
     const svc = new VaultRotationWorkerService(undefined, pub as never, leader as never);
