@@ -86,11 +86,7 @@ def inject_trace_carrier(context: Context | None = None) -> dict[str, str]:
         propagate.inject(carrier, context=context)
     except Exception:  # pragma: no cover - a propagator must never break I/O
         return {}
-    return {
-        k: v
-        for k, v in carrier.items()
-        if k in _CARRIER_KEYS and isinstance(v, str) and v
-    }
+    return {k: v for k, v in carrier.items() if k in _CARRIER_KEYS and isinstance(v, str) and v}
 
 
 def extract_trace_context(carrier: Any) -> Context | None:
@@ -106,11 +102,7 @@ def extract_trace_context(carrier: Any) -> Context | None:
     if not isinstance(traceparent, str) or not traceparent:
         return None
     try:
-        clean = {
-            k: v
-            for k, v in carrier.items()
-            if k in _CARRIER_KEYS and isinstance(v, str)
-        }
+        clean = {k: v for k, v in carrier.items() if k in _CARRIER_KEYS and isinstance(v, str)}
         ctx = propagate.extract(clean)
     except Exception:  # pragma: no cover - defensive
         return None

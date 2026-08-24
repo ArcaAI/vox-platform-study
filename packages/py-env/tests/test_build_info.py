@@ -37,10 +37,7 @@ def _write(path: Path, data: object) -> None:
 
 class TestFormatUntaggedVersion:
     def test_matches_the_documented_example(self) -> None:
-        assert (
-            format_untagged_version("dev-2.1", "0ab258f9c1d2e3f4")
-            == "0.0.0-dev-2-1.0ab258f9"
-        )
+        assert format_untagged_version("dev-2.1", "0ab258f9c1d2e3f4") == "0.0.0-dev-2-1.0ab258f9"
 
     def test_falls_back_to_unknown_for_empty_inputs(self) -> None:
         assert format_untagged_version("", "") == "0.0.0-unknown.unknown"
