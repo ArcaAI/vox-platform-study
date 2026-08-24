@@ -289,6 +289,7 @@
     "env:sync:check": "pnpm env:sync --check",
     "env:python-surface": "conda run -n arcaenv --no-capture-output python scripts/python-env-surface.py",
     "env:python-surface:check": "conda run -n arcaenv --no-capture-output python scripts/python-env-surface.py --check",
+    "env:python-dead": "python3 scripts/python-env-surface.py --dead",
     "gen:service": "pnpm --filter @arcaai/tools generate-service-module",
     "gen:controller": "pnpm --filter @arcaai/tools generate-controller",
     "gen:token": "pnpm --filter @arcaai/tools gen-dev-token",
