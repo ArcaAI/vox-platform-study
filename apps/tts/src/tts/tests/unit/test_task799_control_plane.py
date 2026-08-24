@@ -155,18 +155,21 @@ class TestEnvPathIsStructurallyClosed:
         assert alias == moved_alias("TTS_AZURE_REGION")
 
 
-class TestProviderEnableFlagsStayInEnv:
-    """The five `*_ENABLED` flags did NOT move, and that is deliberate.
+class TestProviderEnableFlagsKeepTheirEnvBootstrap:
+    """The five `*_ENABLED` flags are SERVED by the control plane (lane H) and
+    are STILL settable from env — deliberately both, not by oversight.
 
-    They are deployment SHAPE — which engines a container runs, chosen together
-    with which optional extras its image installed. The binding constraint is
-    concrete: `TTS_KOKORO_ENABLED=true` in the k8s ConfigMap is what makes a
-    keyless deployment reach `/health/ready` at all (see
-    `test_keyless_readiness_task642`), and closing that path with no seeded
-    `GlobalSetting` row — while the manifests live in a separate repository —
-    would put `hope-tts` back to answering 503 forever, which is the outage that
-    test was written to prevent. Moving them is a coordinated change: seed, then
-    update the manifests, then close the env path.
+    Lane H did steps 1 and the read half of 3 of the coordinated change: the
+    `GlobalSetting` rows are seeded (`seed/11d-tts-engine-flags.ts`) and
+    `apply_control_plane` honours a `db`-sourced value. Step 2 — updating the
+    k8s ConfigMaps — lives in `arca/hope-v2-deployment` and cannot be done from
+    this repository, so the env read stays OPEN: `TTS_KOKORO_ENABLED=true` in
+    the live manifest is what makes a keyless deployment reach `/health/ready`
+    at all (`test_keyless_readiness_task642`), and closing it while the manifest
+    still supplies it puts `hope-tts` back to 503 forever.
+
+    The precedence rule that lets both be true — only a `db`-sourced value
+    overrides env — is pinned in `test_task799_tts_enable_flags.py`.
     """
 
     @pytest.mark.parametrize(
@@ -186,9 +189,21 @@ class TestProviderEnableFlagsStayInEnv:
         monkeypatch.setenv(env_var, "true")
         assert getattr(Settings(), group).enabled is True
 
-    def test_no_enable_flag_is_on_the_control_plane_key_table(self) -> None:
-        """One home each. A flag in both places is the defect, not the fix."""
-        assert not [p for p in CONTROL_PLANE_KEYS if p.endswith(".enabled")]
+    def test_every_enable_flag_is_on_the_control_plane_key_table(self) -> None:
+        """The inverse of what this asserted before lane H, on purpose.
+
+        Being in BOTH places is not the "configured in two places" defect while
+        one of them is declared subordinate: `ENV_BOOTSTRAP_KEYS` names env as
+        the BOOTSTRAP fallback and gives the database the only overriding vote.
+        The defect would be two peers with no stated precedence.
+        """
+        assert {p for p in CONTROL_PLANE_KEYS if p.endswith(".enabled")} == {
+            "azure.enabled",
+            "sarvam.enabled",
+            "kokoro.enabled",
+            "indic_parler.enabled",
+            "indic_f5.enabled",
+        }
 
 
 class TestVoiceNamesLiveOnlyInTheCatalog:
@@ -286,14 +301,16 @@ class TestOverlay:
         assert apply_control_plane(settings, {"settings": "nope"}) == []
         assert apply_control_plane(settings, None) == []
 
-    def test_an_enable_flag_on_the_wire_is_ignored(self) -> None:
-        """The flags are env-owned, so a served value must NOT take effect.
+    def test_a_key_this_service_does_not_declare_is_ignored(self) -> None:
+        """An unrecognised key contributes nothing — no attribute is invented.
 
-        This is the half that keeps "one home" honest: the descriptors declare
-        these keys (`tier: 'env'`, `targetTier: 'redis-flag'`) so the surface is
-        complete and the pending migration is queryable — but declaring a key is
-        not the same as consuming it, and a service that quietly honoured both
-        sources would be configured in two places at once.
+        `tts.indicF5.enabled` is the useful specimen: it is a plausible MISSPELLING
+        of the registered `tts.indicf5.enabled` (the flag keeps the lowercase
+        spelling it was registered with, beside its camelCase `tts.indicF5.*`
+        siblings). Before lane H this case passed for the wrong reason — the
+        module honoured no enable flag at all, so a typo and a correct key were
+        indistinguishable. Now that the correct key DOES take effect, this pins
+        that the near-miss still does not.
         """
         settings = Settings()
         assert settings.indic_f5.enabled is False
