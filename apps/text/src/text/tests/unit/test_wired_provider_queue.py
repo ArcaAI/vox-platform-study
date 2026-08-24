@@ -235,11 +235,20 @@ class TestQueueMetrics:
             mock_hist.labels.return_value = mock_hist_labels
 
             async def unblock():
-                await asyncio.sleep(0.05)
-                if queue.size > 0:
-                    item = await queue.dequeue()
-                    if not item.future.done():
-                        item.future.set_result(True)
+                # POLL for the request to reach the queue rather than assuming a
+                # fixed 50 ms gets it there. It usually does, but in a full,
+                # coverage-instrumented run the first request through the app can
+                # take longer — the single sleep then found `size == 0`, dequeued
+                # nothing, and left the request to sit out the whole 60 s
+                # queue-wait budget and come back 429, failing this assertion.
+                # The bound below is 2 s, so a genuine hang still fails fast.
+                for _ in range(200):
+                    if queue.size > 0:
+                        item = await queue.dequeue()
+                        if not item.future.done():
+                            item.future.set_result(True)
+                        return
+                    await asyncio.sleep(0.01)
 
             task = asyncio.create_task(unblock())
             resp = await client.post(GENERATE_URL, json=GENERATE_PAYLOAD)
