@@ -691,7 +691,25 @@ _TTS_CONTROL_PLANE_HANDOFF = (
     "will demand anyway."
 )
 
+#: TASK-799 — four STT credential fields whose ENV PATH is closed (a dead
+#: `validation_alias`, `populate_by_name` off) but whose FIELD must survive.
+#: Production reads none of them: the HuggingFace token and the model-registry
+#: S3 pair are now `AiProviderConnection` rows resolved per MODEL-OWNER tenant.
+#: The field stays because 11 tests construct `Settings(...)` with an explicit
+#: value to PROVE the env path is closed — deleting the field would delete the
+#: guard that keeps it closed. Unread here is the correct end state, not a
+#: migration that stalled.
+_STT_CREDENTIAL_ENV_CLOSED = (
+    "TASK-799: env path structurally closed; the value is now a model-registry "
+    "AiProviderConnection resolved per model-owner tenant. The field is retained "
+    "solely so the tests that assert the env path stays closed can construct it."
+)
+
 INTENTIONALLY_UNREAD: dict[str, str] = {
+    "stt:Settings.huggingface_token": _STT_CREDENTIAL_ENV_CLOSED,
+    "stt:Settings.model_s3_endpoint": _STT_CREDENTIAL_ENV_CLOSED,
+    "stt:Settings.model_s3_access_key": _STT_CREDENTIAL_ENV_CLOSED,
+    "stt:Settings.model_s3_secret_key": _STT_CREDENTIAL_ENV_CLOSED,
     "tts:AzureSpeechConfig.max_concurrent": _TTS_CONTROL_PLANE_HANDOFF,
     "tts:SarvamConfig.max_concurrent": _TTS_CONTROL_PLANE_HANDOFF,
     "tts:SarvamConfig.use_streaming": _TTS_CONTROL_PLANE_HANDOFF,
