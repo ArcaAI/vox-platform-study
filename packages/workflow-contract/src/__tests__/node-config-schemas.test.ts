@@ -58,8 +58,13 @@ describe('guardrail.check onFail (TASK-791 W4 — M-1)', () => {
   // do not have. `failOn` already set this precedent (restricted to its one v1-permitted value).
   it('does not offer `abort`, which the v1 interpreter cannot enforce', () => {
     const schema = NODE_CONFIG_SCHEMAS['guardrail.check'];
-    const onFail = schema.properties?.onFail as { enum?: string[] } | undefined;
-    expect(onFail?.enum).toEqual(['mark']);
+    // `NodeConfigSchema` is `Readonly<Record<string, unknown>>`, so `properties`
+    // is `unknown`. Optional-chaining it narrows to `{}` rather than to a
+    // record, so the member access has to be typed on the WAY IN, not on the way
+    // out — casting only the result (`... as { enum?: string[] }`) still leaves
+    // `.onFail` unresolvable and fails `tsc --noEmit`.
+    const properties = schema.properties as Record<string, { enum?: string[] } | undefined> | undefined;
+    expect(properties?.onFail?.enum).toEqual(['mark']);
   });
 });
 
