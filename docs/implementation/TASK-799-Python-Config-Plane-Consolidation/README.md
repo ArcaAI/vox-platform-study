@@ -579,13 +579,13 @@ remains.
 
 ## Open — needs an owner decision
 
-1. **The PHI boundary moved in harness.** `ensure_inferential_egress_safe` now
-   receives `safety_provider=None`: harness no longer egresses to a provider for
-   safety screening, it posts to `apps/guardrail`, a first-party peer, like the
-   text/nlp hops this guard never gated. Guardrail owns the PHI posture of whatever
-   engine IT selects. Net effect: if guardrail selects a cloud engine, the note
-   reaches it under guardrail's posture rather than harness's redaction. Recorded
-   by test rather than left implicit.
+1. ~~**The PHI boundary moved in harness.**~~ **RESOLVED 2026-08-24 — see
+   §"The harness PHI boundary (Round 5)" below.** The open question was whether
+   guardrail's posture is equivalent to the harness redaction that Phase 2 removed.
+   It is not equivalent — it is stronger on this route and weaker in the way the
+   note assumed: guardrail performs **no PHI redaction at all**, but its outbound
+   screen **never leaves the trust boundary**, so no vendor can receive the note.
+   Verified end to end and pinned by tests on both sides.
 2. **Phase 4 has no authenticated visual pass.** Both console screens build, lint
    clean, pass 2017 tests and scan axe-clean, but rendering them needs a sign-in —
    entering a password is outside what an agent may do. Both-themes verification
@@ -599,6 +599,58 @@ remains.
 Also outstanding, lower risk: `guardrail.validate` selects an LLM on `apps/text`,
 so D-4 was NOT read as reversing TASK-735 Phase 0's tenant-admin posture for it —
 flagged, not assumed.
+
+## The harness PHI boundary (Round 5, 2026-08-24)
+
+Phase 2 removed harness's own Granite guardian engine (F-02) and routed the Temporal
+safety sensor through `POST /guardrail/screen/outbound`. The side effect was
+`activities.py` passing `safety_provider=None` into `ensure_inferential_egress_safe`,
+i.e. the generated clinical note now leaves the activity **unredacted**. The open
+question was whether guardrail's PHI posture is equivalent. Four findings, each traced
+to source:
+
+| # | Question | Finding |
+|---|---|---|
+| 1 | What does the guard do with `safety_provider=None`? | `guards/phi/egress.py:157` — `_is_cloud(None)` is False, so `_gate(note_text, None)` reaches `ensure_egress_safe`, whose `provider is None ⇒ return text` (`egress.py:60`) returns the note **byte-identical, zero redaction**. With a cloud provider it would be `PhiRedactor.ensure_safe_for_cloud` — redact + confirm removal, or `PhiEgressBlocked`. The judge-bound fields (transcript, per-claim hypotheses/evidence, knowledge chunks) are unaffected and still gated on `judge_provider`. |
+| 2 | Does guardrail redact before delegating? | **No.** `services/screening.py:290` `screen_outbound` runs `sanitize_untrusted` (prompt-**injection** defence — character smuggling, length bound), then `_classify(OUTBOUND_TASKS, clean)` posts the full text on. No redaction anywhere on the path. "Guardrail screens PHI" must not be read as "guardrail removes PHI". |
+| 3 | Can guardrail reach a cloud engine on this path? | **No — structurally, not by configuration.** `core/dependencies.py:322` `_nlp_client` hardwires `base_url=settings.nlp_url` and **never reads `cfg.provider`**, so a `guardrail.safety` selection whose `AiModel` row names a cloud vendor still routes to the self-hosted peer; `build_screener` (`dependencies.py:410`) composes only the nlp-backed `SafetyAnalyzer`; and `apps/nlp`'s `/guard/classify` runs local gliner2 weights in-process (`nlp/services/gliner2_guard.py`, no HTTP, no provider). Guardrail's cloud-capable client (`TextJudgeClient` → `apps/text` → `CLOUD_BYO_PROVIDERS.llm` = azure/bedrock/openai/anthropic/vertex) is reachable **only** from `/medical/validate` (`api/endpoints/medical.py:30`) — and harness's `GuardrailClient` has exactly three methods (`analyze`, `screen_outbound`, `redact`), none of which touch it. So "guardrail can reach a vendor" is true of the SERVICE and false of this ROUTE. |
+| 4 | Is the `judge_*` asymmetry correct? | **Yes.** `_build_runtime_judge` → `build_judge_client` (`eval/judge/providers.py:476`) constructs an Azure/Bedrock/OpenAI-compat client that posts **from the harness process**. Harness IS the egressing party there, so it must gate; it is not the egressing party on the safety hop, so it must not pretend to be. |
+
+**Resolution.** The current state is correct, but for a *different and stronger reason
+than the code recorded*, and that reason was a property of two other services asserted
+only in a comment. The fix is therefore to state the true reason and make it executable
+on the side that owns it — not to add redaction (which would blind a moderation model
+reading `<PERSON>` placeholders, neuter guardrail's `pii_leak` source-comparison check,
+cost Presidio on every pass, and contradict the settled position that first-party peer
+hops are not egress), and not to thread an "effective provider" (there is none to
+thread, and asking guardrail would couple harness to guardrail's config plane).
+
+Pinned by four tests, each observed RED under the mutation it exists to catch:
+
+| Test | Catches | Mutation that reddened it |
+|---|---|---|
+| `guardrail/…/test_task799_outbound_screen_boundary.py::test_outbound_screen_executor_targets_the_self_hosted_nlp_peer` | routing becoming provider-derived | `base_url` built from `cfg.provider` → `https://azure.vendor.example.com` |
+| …`::test_screening_module_reaches_no_cloud_client` | a vendor-capable hop appearing in the screen composition | importing `TextJudgeClient` into `services/screening.py` |
+| `harness/…/test_activities_phi_egress.py::test_the_screened_note_never_reaches_the_cloud_judge` | the note being folded into the judge premise (past a guard that thinks that field is cleared) | `transcript_text=note_text + transcript_text` in the `SensorContext` |
+| …`::test_the_safety_screen_client_is_the_guardrail_peer_not_an_engine` | a direct-to-engine safety client returning (the F-02 shape) | `_safety_screen_client` pointed at `https://vendor.example.com` |
+
+The third mutation left all nine pre-existing tests in that file green, which is the
+evidence that nothing previously covered it.
+
+**Operator requirements.** No new setting. Two existing transport addresses are now
+load-bearing for PHI containment and must point INSIDE the trust boundary:
+`HARNESS_GUARDRAIL_BASE_URL` (harness → guardrail) and `GUARDRAIL_V2_NLP_URL`
+(guardrail → nlp; `core/config.py:298` also accepts the bare `NLP_URL` alias, so an
+environment-wide `NLP_URL` reaches it too). Both are bootstrap-floor `env` tier, and neither is gated
+by the PHI guard — same as every other first-party peer hop. Unchanged and still
+required for the cloud-**judge** path: `HARNESS_PHI_ENABLED=true`,
+`HARNESS_PHI_FAIL_CLOSED=true` (default), `HARNESS_PHI_LOCAL_PROVIDERS` listing only
+genuinely local providers, and the spaCy model staged at image-build time
+(`python -m spacy download en_core_web_lg`) — a missing model fails the egress CLOSED.
+
+**Not determined.** Whether an operator has in fact pointed those two URLs at
+in-boundary hosts in any given deployment; that is a manifest property, not a code
+property, and this lane could not read `arca/hope-v2-deployment`.
 
 ## Change History
 
@@ -617,3 +669,4 @@ flagged, not assumed.
 | 2026-08-24 | Infrastructure repairs: the Python env-surface generator made runnable (SIGABRT fallback), generated artifacts made machine-portable (`<repo>`/`<home>` tokens), repo-wide black pass + root `[tool.black]`, five pre-existing `apps/api` typecheck errors fixed, and the `pnpm typecheck` race closed by ordering `typecheck`/`build` after their OWN package's `db:generate`. |
 | 2026-08-24 | Orchestrator wired guardrail's `external_nlp_client` to forward `calibration` (lane G's out-of-boundary item), closing the `/guard/entailment` degrade-to-`unverified` gap. Test observed RED without the send. |
 | 2026-08-24 | **Phase 2 follow-up lane G (`apps/nlp` clinical taxonomies) complete — both sides.** The ontology vocabulary (40 UMLS/SNOMED/RxNorm/ICD-10/LOINC rows), the vitals plausibility bands, the ConText/NegEx trigger lexicon and the five `TOKEN_CLASSIFIER_*` / `NLP_LINKER_*` env fields moved onto `AiModel._metadata.clinicalTaxonomy` of the row `nlp.ner` selects; the gateway (`resolveNerModelInjection`, `AiInferenceController`) resolves and injects them verbatim, and `AiTaskModelSummary` gained the `metadata`/`localPath` fields callers were casting for. `apps/nlp` keeps NO fallback copy — an absent section disables the pass it governs rather than substituting a literal. Entailment split by judgment: the MiniCheck label-token ids and prompt template stay in code (they are the adapter, not a knob), while the calibration bounds and reference pair moved to `_metadata.entailment` and the loader now REFUSES a row declaring no calibration, a different adapter, or mismatched label tokens — closing the "non-MiniCheck model scored on MiniCheck's calibration" hole on a clinical gate. Remaining: guardrail's `external_nlp_client` (lane F's file) must forward `calibration`; until then `/guard/entailment` fails closed to `unverified`. |
+| 2026-08-24 | **Round 5 — the harness PHI boundary RESOLVED.** Open item 1 closed: guardrail does NOT redact the screened text (`screening.py:290` sanitizes for injection only), but its outbound screen never leaves the trust boundary — `_nlp_client` (`dependencies.py:322`) hardwires `settings.nlp_url` and never reads `cfg.provider`, and `apps/nlp`'s `/guard/classify` runs local gliner2 weights, so a `guardrail.safety` selection naming a cloud vendor changes nothing. Guardrail's cloud-capable `TextJudgeClient` is reachable only from `/medical/validate`, which harness never calls. `safety_provider=None` therefore stands, for a stronger reason than the code recorded; the comment was corrected to state it and four tests (two per service) now pin the chain, each observed RED under the mutation it catches. The judge asymmetry is confirmed correct — `build_judge_client` posts at the vendor from the harness process. Gates: harness 1597 passed (`test_replay_compat` 19 passed separately), guardrail 302 passed, ruff + mypy clean on both. |

@@ -327,3 +327,90 @@ class TestRunInferentialSensorsPhiEgress:
 
         assert granite.screened == ["John Smith stable"]
         assert result.degraded is False
+
+    @pytest.mark.asyncio
+    async def test_the_screened_note_never_reaches_the_cloud_judge(self, env, monkeypatch):
+        """The note is the ONE field the judge must never see.
+
+        ``safety_provider=None`` means the note leaves this activity UNREDACTED. That is
+        only safe while its sole destination is the ``apps/guardrail`` peer. The judge —
+        which under a cloud selection posts straight at a vendor from THIS process — must
+        therefore never receive it, directly or folded into a premise.
+
+        The guard cannot catch that on its own: it gates ``note_text`` on the SAFETY
+        consumer, so anything that put the note on the judge-bound payload would ship it
+        to the vendor raw, past a guard that believes that field is already cleared.
+        """
+        judge = _StubJudge()
+        screen = _FakeGranite(dimensions={"harm": False})
+        redactor = _ContractRedactor(transform=lambda t: t.replace("Marla Quintrell", "<PERSON>"))
+        monkeypatch.setattr(activities, "_build_runtime_judge", lambda *a, **k: judge)
+        monkeypatch.setattr(activities, "_safety_screen_client", lambda s, t: screen)
+        monkeypatch.setattr(activities, "get_settings", _infer_settings)
+        monkeypatch.setattr(
+            activities,
+            "get_runtime_judge_config",
+            lambda: JudgeConfig(provider=JudgeProvider.OPENAI_COMPAT),
+        )
+        monkeypatch.setattr(activities, "_phi_redactor", lambda: redactor)
+
+        note = "Marla Quintrell presents with chest pain."
+        await env.run(
+            activities.run_inferential_sensors,
+            _infer_input(
+                note_text=note,
+                transcript_text="Marla Quintrell reports chest pain.",
+                judge_provider="azure",
+                citations_map={
+                    "claims": [
+                        {
+                            "id": "c1",
+                            "text": "Marla Quintrell has chest pain",
+                            "section": "assessment",
+                            "evidence": [{"quote": "Marla Quintrell reports chest pain."}],
+                        }
+                    ]
+                },
+            ),
+        )
+
+        # The peer got the note verbatim — a moderation model must read real text.
+        assert screen.screened == [note]
+        # ...and the cloud judge never saw it, in any message, on any premise.
+        assert judge.calls, "the judge must actually have run for this to prove anything"
+        sent_to_judge = "\n".join(
+            str(m.get("content", "")) for messages in judge.calls for m in messages
+        )
+        assert "Marla Quintrell" not in sent_to_judge, (
+            "the raw note identifier reached the CLOUD judge — the egress guard gates "
+            "note_text on the safety consumer, so it went out unredacted"
+        )
+        # The note was never even offered to the redactor: it is not judge-bound.
+        assert note not in [text for text, _ in redactor.calls]
+
+    def test_the_safety_screen_client_is_the_guardrail_peer_not_an_engine(self):
+        """What makes ``safety_provider=None`` legitimate, asserted rather than commented.
+
+        The literal is correct ONLY because the screen's destination is a first-party
+        in-boundary peer. Re-introducing a direct-to-engine safety client (the F-02 shape:
+        harness posting the note at a vendor endpoint itself) would turn that same literal
+        into a silent unredacted cloud egress — the guard would still be told there is no
+        egress target.
+
+        The other half of the chain — that guardrail's outbound screen is itself
+        in-boundary, and does not redact — is pinned in guardrail's own suite:
+        ``guardrail/tests/test_task799_outbound_screen_boundary.py``.
+        """
+        from harness.sensors.inferential.guardrail_screen import GuardrailSafetyScreen
+        from harness.services.guardrail_client import GuardrailClient
+
+        settings = Settings(phi=PhiConfig(enabled=True))
+        client = activities._safety_screen_client(settings, "11111111-1111-1111-1111-111111111111")
+
+        assert isinstance(client, GuardrailSafetyScreen)
+        peer = client._client
+        assert isinstance(peer, GuardrailClient)
+        assert peer._base_url == settings.guardrail_base_url.rstrip("/"), (
+            "the safety screen must post to the apps/guardrail peer; any other endpoint "
+            "makes safety_provider=None an unredacted egress"
+        )
