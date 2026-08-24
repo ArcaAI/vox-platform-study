@@ -21,7 +21,12 @@ from tts.core.audio import encode_pcm, pcm16_to_mp3, pcm16_to_wav
 from tts.core.config import KokoroConfig
 from tts.core.logging import get_logger
 from tts.core.metrics import TTS_MODEL_LOADED, build_model_cache_metrics_sink
-from tts.providers.base import AudioChunk, AudioFormat, SynthesisRequest
+from tts.providers.base import (
+    AudioChunk,
+    AudioFormat,
+    CredentialPosture,
+    SynthesisRequest,
+)
 
 logger = get_logger(__name__)
 
@@ -71,6 +76,10 @@ class KokoroProvider:
     name = "kokoro"
     supported_locales = {"en-IN", "en-US"}
     native_streaming = True
+    # Operator-run engine with LOCAL weights — no vendor credential exists to
+    # fail closed on. Declared explicitly because the lock test is default-deny:
+    # an adapter that says nothing fails it.
+    credential_posture = CredentialPosture.SELF_HOST
     is_configured = True  # Self-hosted engine needs no credential
 
     def __init__(

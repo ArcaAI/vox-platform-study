@@ -30,6 +30,7 @@ from tts.core.usage import compute_audio_seconds
 from tts.providers.base import (
     AudioChunk,
     AudioFormat,
+    CredentialPosture,
     DuplexTTSEngine,
     ProviderRegistry,
     SynthesisRequest,
@@ -112,35 +113,84 @@ def _override_cache_key(name: str, override: dict[str, str]) -> str:
     return hashlib.sha256(raw.encode("utf-8")).hexdigest()
 
 
-def _build_override_engine(
-    settings: Settings, name: str, override: dict[str, str]
-) -> TTSEngine | None:
-    """Build a per-tenant provider from injected BYO credentials.
+#: Adapter classes that may serve a per-tenant override, keyed by provider name.
+#: Built lazily and ONCE (provider imports are heavy: native SDKs and ML stacks).
+_OVERRIDE_ADAPTERS: dict[str, type] | None = None
 
-    Clones the platform base config with the tenant's key/endpoint. Returns None
-    for a provider that takes no BYO key or an unknown name (→ fall back to the
-    shared registered engine). Provider imports are lazy to keep the router light.
+
+def _override_adapters() -> dict[str, type]:
+    """Discover every adapter that declares itself BYOK.
+
+    Discovery, not enumeration. The previous implementation was an
+    ``if name == "azure" / "sarvam"`` switch, which meant a BYOK adapter added
+    later returned ``None`` here, silently fell back to the shared registered
+    engine, and served EVERY tenant on the platform key. A hand-written list can
+    only cover the adapters someone remembered - which is exactly how ambient
+    credential chains survived a cleanup in ``apps/text``.
     """
-    from pydantic import SecretStr
+    global _OVERRIDE_ADAPTERS
+    if _OVERRIDE_ADAPTERS is not None:
+        return _OVERRIDE_ADAPTERS
 
-    api_key = override.get("api_key")
-    if not api_key:
+    import inspect
+    import pkgutil
+    from importlib import import_module
+
+    import tts.providers as providers_pkg
+
+    found: dict[str, type] = {}
+    for mod in pkgutil.iter_modules(providers_pkg.__path__):
+        if mod.name in ("base", "registration"):
+            continue
+        try:
+            module = import_module(f"tts.providers.{mod.name}")
+        except Exception:  # noqa: BLE001 - an unimportable optional engine (missing
+            # native/ML extra) must not take the override path down with it.
+            continue
+        for _, obj in inspect.getmembers(module, inspect.isclass):
+            if obj.__module__ != module.__name__:
+                continue
+            name = getattr(obj, "name", None)
+            if not isinstance(name, str):
+                continue
+            if getattr(obj, "credential_posture", None) != CredentialPosture.BYOK:
+                continue
+            found[name] = obj
+    _OVERRIDE_ADAPTERS = found
+    return found
+
+
+def _build_override_engine(
+    settings: Settings,
+    name: str,
+    override: dict[str, str],
+    *,
+    registry_class: type | None = None,
+) -> TTSEngine | None:
+    """Build a REQUEST-SCOPED per-tenant provider from an injected BYO credential.
+
+    Asks the ADAPTER (``from_override``) rather than matching ``name`` against a
+    literal, so override support travels with the adapter's own declaration.
+
+    Returns ``None`` when the adapter is not BYOK, is unknown, or the override is
+    KEYLESS. That last guard - not the provider list - is what stops a SYSTEM
+    row's ``base_url`` from being mistaken for a credential: a keyless row
+    injects on NEITHER tier, so the caller falls back to the shared registered
+    engine (which is itself keyless, hence excluded from candidates).
+
+    ``registry_class`` is a test seam for proving the builder is not a name
+    switch; production always resolves through discovery.
+    """
+    if not override.get("api_key"):
         return None
-    if name == "azure":
-        from tts.providers.azure_speech import AzureSpeechProvider
-
-        update: dict[str, object] = {"api_key": SecretStr(api_key), "enabled": True}
-        if override.get("region"):
-            update["region"] = override["region"]
-        return AzureSpeechProvider(settings.azure.model_copy(update=update))
-    if name == "sarvam":
-        from tts.providers.sarvam import SarvamProvider
-
-        update = {"api_key": SecretStr(api_key), "enabled": True}
-        if override.get("base_url"):
-            update["base_url"] = override["base_url"]
-        return SarvamProvider(settings.sarvam.model_copy(update=update))
-    return None
+    adapter = registry_class or _override_adapters().get(name)
+    if adapter is None:
+        return None
+    factory = getattr(adapter, "from_override", None)
+    if factory is None:
+        return None
+    engine: TTSEngine | None = factory(settings, override)
+    return engine
 
 
 class TTSRouter:

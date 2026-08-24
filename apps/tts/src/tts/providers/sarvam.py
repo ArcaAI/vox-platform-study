@@ -19,12 +19,19 @@ from __future__ import annotations
 
 import base64
 from collections.abc import AsyncGenerator
+from typing import Any
 
 import httpx
+from pydantic import SecretStr
 
 from tts.core.config import SarvamConfig
 from tts.core.logging import get_logger
-from tts.providers.base import AudioChunk, AudioFormat, SynthesisRequest
+from tts.providers.base import (
+    AudioChunk,
+    AudioFormat,
+    CredentialPosture,
+    SynthesisRequest,
+)
 
 logger = get_logger(__name__)
 
@@ -41,6 +48,37 @@ class SarvamProvider:
     name = "sarvam"
     supported_locales = {"ml-IN", "en-IN"}
     native_streaming = False
+    # Cloud vendor credential REQUIRED; it arrives per request as a
+    # gateway-injected override (tenant -> SYSTEM AiProviderConnection). There is
+    # no env path to it: `SarvamConfig.api_key` carries a dead `validation_alias`
+    # and `populate_by_name` is off.
+    credential_posture = CredentialPosture.BYOK
+
+    @classmethod
+    def from_override(
+        cls, settings: Any, override: dict[str, str]
+    ) -> SarvamProvider | None:
+        """Build a REQUEST-SCOPED engine from an injected tenant credential.
+
+        The router calls this instead of matching provider names against
+        literals, so a new BYOK adapter gets override support from its own
+        declaration rather than from an edit to the router.
+
+        Returns ``None`` for a KEYLESS override. That guard - not the provider
+        list - is what stops a SYSTEM row's `base_url` from being mistaken for a
+        credential (TASK-799 plan, "Phase 2 landmines"): a keyless row injects on
+        NEITHER tier.
+
+        `model_copy` clones the platform config rather than mutating it, so two
+        tenants on concurrent requests cannot race onto each other's key.
+        """
+        api_key = override.get("api_key")
+        if not api_key:
+            return None
+        update: dict[str, object] = {"api_key": SecretStr(api_key), "enabled": True}
+        if override.get("base_url"):
+            update["base_url"] = override["base_url"]
+        return cls(settings.sarvam.model_copy(update=update))
 
     def __init__(self, config: SarvamConfig, *, client: httpx.AsyncClient | None = None) -> None:
         self._config = config
