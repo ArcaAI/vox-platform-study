@@ -6023,6 +6023,14 @@
       },
       "DiscoveryProbe": {
         "properties": {
+          "connectionSource": {
+            "description": "Which tier of the connection cascade supplied the engine that was probed — the caller's own row, or the SYSTEM-tenant platform default. Absent when no connection resolved, in which case TEXT probed whatever endpoint it last served a generation from. DERIVED from the resolved row, never stamped by the call site.",
+            "enum": [
+              "tenant",
+              "system"
+            ],
+            "type": "string"
+          },
           "error": {
             "type": "string"
           },
