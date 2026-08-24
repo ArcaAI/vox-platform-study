@@ -4,6 +4,7 @@ import {
   AiRuntimeProfileServiceModule,
   AiTaskDefaultServiceModule,
   DnaWritingStyleServiceModule,
+  EffectiveSettingsModule,
   EntitlementsServiceModule,
   HarnessPolicyServiceModule,
   OriginRegistryServiceModule,
@@ -62,6 +63,11 @@ import { TranscriptionJobController } from './transcription-job.controller';
     // Tenant BYO cloud-credential resolver for the TEXT proxy's
     // cloud-only, minimal-exposure, fail-open `provider_overrides` injection.
     AiProviderConnectionServiceModule,
+    // TASK-799 A.2 — supplies `EffectiveSettingsService`, the tenant → SYSTEM
+    // cascade behind the TEXT proxy's `guardrail_policy` push. Absent it the
+    // proxy pushes nothing, which reads downstream as "this tenant has no
+    // opinion" and leaves the platform posture in force.
+    EffectiveSettingsModule,
     // Provides `ISocketRegistryService` so `SttWsGateway`
     // publishes its per-instance open-socket count for the platform aggregate.
     PlatformMetricsServiceModule,

@@ -1,6 +1,7 @@
 import {
   AiModelService,
   Authorize,
+  EffectiveSettingsService,
   HarnessPolicyService,
   IActiveUserContext,
   IAiRuntimeProfileService,
@@ -243,13 +244,24 @@ export class TextProxyController {
     @Optional()
     @Inject(IDnaWritingStyleService)
     private readonly dnaWritingStyleService?: IDnaWritingStyleService,
+    // TASK-799 A.2 — the tenant → SYSTEM cascade behind the `guardrail_policy`
+    // push. @Optional so existing positional test fixtures keep compiling;
+    // absent ⇒ no policy is pushed, which is identical to a tenant that has
+    // expressed no opinion (the platform posture then stands).
+    @Optional()
+    private readonly effectiveSettingsService?: EffectiveSettingsService,
   ) {
     // BUG-018 — the two enrichment steps now live in ONE applications-layer
     // service shared with the prompt-template test bench. Constructed here from
     // this controller's own (already injected) dependencies rather than taken as
     // another constructor parameter: the service is stateless, and every
     // existing positional test fixture keeps its arity and its exact behavior.
-    this.textRequestEnrichment = new TextRequestEnrichmentService(this.clsService, this.aiRuntimeProfileService, this.aiProviderConnectionService);
+    this.textRequestEnrichment = new TextRequestEnrichmentService(
+      this.clsService,
+      this.aiRuntimeProfileService,
+      this.aiProviderConnectionService,
+      this.effectiveSettingsService,
+    );
   }
 
   private readonly textRequestEnrichment: TextRequestEnrichmentService;
@@ -271,6 +283,11 @@ export class TextProxyController {
     // Runs for a caller-pinned model too: the caller chose the MODEL, not the
     // hyperparameters, and any parameter they did send still wins below.
     await this.applyTextRuntimeProfile(target);
+    // Then push the caller tenant's own moderation policy, if it has one. Runs
+    // BEFORE the credential fold because that step can legitimately RAISE (a
+    // provider veto → 409, a missing entitlement → 403), and a policy refusal
+    // should not be reached with a half-built body.
+    await this.textRequestEnrichment.applyTenantGuardrailPolicy(target);
     // Then fold in the caller tenant's BYO cloud credential, if any.
     return this.applyTenantProviderOverrides(target);
   }
