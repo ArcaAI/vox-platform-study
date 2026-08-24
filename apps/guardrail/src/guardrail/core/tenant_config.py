@@ -166,6 +166,15 @@ KEY_LABEL_TAXONOMY = "label-taxonomy"
 # resolved through the two-tier `request tenant → SYSTEM` cascade. See
 # `core/policy.py` for the governed key set and the per-key `failMode`.
 KEY_POLICY = "policy"
+#: The selected NLI checkpoint's ENTAILMENT CALIBRATION
+#: (`AiModel._metadata.entailment`). Distinct from `labelTaxonomy`: it declares
+#: which adapter the row expects and the score bounds that adapter's specific
+#: BUILD — including its quantisation — was calibrated against. `apps/nlp`
+#: refuses to score when it is absent or names a different adapter, so failing
+#: to forward it degrades the groundedness gate to `unverified` rather than
+#: letting it mis-score. That is the safe direction, but it is still a gate
+#: that silently stops working, so this key must travel with the selection.
+KEY_ENTAILMENT = "entailment"
 # Provider-level runtime-profile tuning, cached alongside the
 # selection keys so a profile read costs no extra round-trip or TTL window.
 KEY_TEMPERATURE = "temperature"
@@ -309,6 +318,8 @@ class GuardrailTenantConfig:
     # `core/policy.py` (fail-closed for criteria, open-to-default for tuning) —
     # never decided at the call site.
     policy: dict[str, Any] | None = None
+    #: `AiModel._metadata.entailment` — the selected NLI build's calibration.
+    entailment: dict[str, Any] | None = None
     # The tenant the primary lookup targeted (request tenant or default tenant).
     source_tenant_id: str | None = None
     # Provider-level runtime profile (``core."AiRuntimeProfile"``).
@@ -455,6 +466,7 @@ class TenantConfigResolver:
             azure_deployment=_clean(keys.get(KEY_AZURE_DEPLOYMENT)),
             label_taxonomy=_decode_taxonomy(keys.get(KEY_LABEL_TAXONOMY)),
             policy=_decode_taxonomy(keys.get(KEY_POLICY)),
+            entailment=_decode_taxonomy(keys.get(KEY_ENTAILMENT)),
             source_tenant_id=source,
             temperature=_as_float(keys.get(KEY_TEMPERATURE)),
             max_tokens=_as_int(keys.get(KEY_MAX_TOKENS)),
@@ -666,6 +678,9 @@ class TenantConfigResolver:
         policy = meta.get("policy")
         if isinstance(policy, dict) and policy:
             keys[KEY_POLICY] = json.dumps(policy)
+        entailment = meta.get("entailment")
+        if isinstance(entailment, dict) and entailment:
+            keys[KEY_ENTAILMENT] = json.dumps(entailment)
 
         # Weight-source columns. Absent values are simply not
         # set, so the caller's env fallback still applies.

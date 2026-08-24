@@ -332,6 +332,12 @@ def _nlp_client(
         model_path=cfg.local_path,
         labels=labels,
         threshold=threshold,
+        # The selected NLI build's calibration, forwarded so `apps/nlp` can bind
+        # its adapter and score. Absent, nlp refuses and the groundedness gate
+        # degrades to `unverified` — safe, but a gate that has silently stopped
+        # working, which is why this travels with the selection rather than
+        # being configured independently on either side.
+        calibration=getattr(cfg, "entailment", None),
         timeout_s=float(cfg.timeout_s or settings.judge.timeout_s),
         breaker=_breaker(app_state, "nlp"),
     )

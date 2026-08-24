@@ -86,6 +86,7 @@ class NlpGuardClient:
         model_path: str | None = None,
         labels: list[str] | None = None,
         threshold: float = 0.5,
+        calibration: dict[str, Any] | None = None,
         timeout_s: float = 60.0,
         max_attempts: int = 2,
         retry_backoff_s: float = 0.1,
@@ -109,6 +110,13 @@ class NlpGuardClient:
         self.model_path = model_path
         self.labels = labels or []
         self.threshold = threshold
+        # `AiModel._metadata.entailment` for the selected NLI build. `apps/nlp`
+        # refuses to score without it (or when it names a different adapter),
+        # so an unforwarded blob degrades the groundedness gate to `unverified`
+        # rather than mis-scoring — safe, but silently non-functional. It rides
+        # with the selection because the bounds are calibrated per BUILD, incl.
+        # quantisation: Q6 tolerances are meaningless for a Q4 of the same model.
+        self.calibration = calibration
         self._timeout_s = timeout_s
         self._max_attempts = max(1, max_attempts)
         self._retry_backoff_s = retry_backoff_s
@@ -134,6 +142,8 @@ class NlpGuardClient:
             body["model_name"] = self.model_id
         if self.model_path:
             body["model_path"] = self.model_path
+        if self.calibration:
+            body["calibration"] = self.calibration
 
         async def _once() -> dict[str, Any]:
             started = time.monotonic()
