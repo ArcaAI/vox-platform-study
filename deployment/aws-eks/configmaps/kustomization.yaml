@@ -1,0 +1,25 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+# Generators, not plain ConfigMaps: the content hash lands in the pod template,
+# so a config change actually rolls its consumers. A plain ConfigMap edit does not.
+#
+# `immutable: true` is deliberately NOT set — it pairs with Argo `prune`.
+# Without prune, superseded generations accumulate forever, and immutability
+# also blocks emergency `kubectl edit` while selfHeal is off. Enable both together.
+
+configMapGenerator:
+  - name: hope-platform-config
+    envs: [platform.env]
+  - name: hope-api-config
+    envs: [api.env]
+  - name: hope-stt-config
+    envs: [stt.env]
+  - name: hope-smr-config
+    envs: [smr.env]
+  - name: hope-harness-config
+    envs: [harness.env]
+  - name: hope-qdrant-config
+    envs: [qdrant.env]
+  - name: hope-admin-console-config
+    envs: [admin-console.env]

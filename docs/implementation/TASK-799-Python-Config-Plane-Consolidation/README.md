@@ -257,6 +257,74 @@ with no matching row (the `llm` rows must equal `AI_MODEL_PROVIDERS` exactly, en
 a test), so a caller selecting an alias name gets no override → 503. A gateway/text
 naming concern, not a seed one.
 
+### Round 5 — seed completeness (merged 2026-08-24)
+
+Commissioned to fill three "missing" platform defaults and seed the empty
+`AiRuntimeProfile` table. **Two of the six tasks were completed by DECLINING them,
+with evidence, and both refusals were verified as correct.**
+
+**`nlp.sentiment` / `nlp.toxicity` / `vlm.extract` are correctly ABSENT, not unseeded.**
+No gateway route can reach the first two — `ai-inference.controller.ts:379` types its
+resolver as `taskKey: 'nlp.ner' | 'nlp.diagnosis'` — and no checkpoint has ever been
+vetted (TASK-729 proved the plumbing against the fixture ids `org/sentiment-model` /
+`org/toxicity-model`). `upsertRow` also requires an ENABLED SYSTEM `AiModel` of matching
+taskType, and none exists, so a super admin could not create the row either. Seeding
+would have meant naming an unvetted checkpoint on a clinical platform for a capability
+nothing can invoke. All three are now DECLARED EXEMPTIONS with reasons, not silence —
+following the repo's own precedent, where `nlp.classification` was repointed away from a
+real-but-wrong model onto a DISABLED placeholder rather than keeping plausible numbers.
+
+**Seeding `AiRuntimeProfile` would have REGRESSED the platform.** The premise in the
+brief was wrong: Phase 2 did not migrate text's hyperparameters there — they went to the
+`global-kv` keys `text.generation.{temperature,topP,maxTokens}`
+(`text-generation.descriptors.ts`), which already have a write lane, cascade,
+invalidation and a Phase 4 screen. A profile row sits ABOVE that surface: the gateway
+writes profile values onto the request BODY, and `apps/text` applies `text.generation.*`
+only to omitted fields, so seeding would have silently disabled the admin editor for
+those keys. The capacity numbers are also FLOORS, not operating values (tpm/rpm are 0
+precisely so no guess throttles a real quota), and `hasOpinion()` flips the served
+`source` from `env-fallback` to `db` — the exact signal an operator reads to see a
+provider is unprofiled. The emptiness was already locked by a test with a 27-line
+rationale (`config-plane-seed.test.ts:317`).
+
+**NEW DEFECT, the mirror of the one commissioned — needs an owner decision.**
+`guardrail.pii` and `guardrail.pii.spans` are seeded AND read at runtime by guardrail's
+own SQL (`apps/guardrail/.../tenant_config.py:128`) but are ABSENT from `AI_TASK_KEYS`.
+So `assertKnownTaskKey` rejects them on every admin route and no `models.*` descriptor
+exists: **the platform's PII model selection cannot be read or changed by any
+administrator, through any surface.** Pinned by `SEEDED_TASK_KEYS_NOT_IN_REGISTRY`.
+Closing it also decides whether tenants may pick their own PII model — hence an owner
+call, not a lane's. Note this is the INVERSE of the Phase 3 "declared but never read"
+check and would not have been caught by it.
+
+**Customer-tenant absence is correct and is now enforced.** Global and ArcaAI hold zero
+`AiTaskDefault` / `AiProviderConnection` / `AiRuntimeProfile` / `TenantStorageConfig`
+rows, and that absence is LOAD-BEARING: a seeded copy pins the tenant and stops it
+tracking the platform default forever. Recorded as a "do not complete this" block plus a
+test asserting every seed row targets SYSTEM. Operational scaffolding does exist for
+both (Global: 21 users / 8 departments / 8 agents / 2 buckets; ArcaAI: 9 users /
+11 departments / 7 agents / 2 buckets / 1 service account / ENTERPRISE plan).
+
+**The create-only trap: keep create-only, make it announce itself, plus one narrow
+repair.** The repo already had the right split in `06-stt.ts` — reconcile the CATALOG
+(what the platform offers), never the SELECTION (what an admin chose). Upserting
+`AiTaskDefault` would clobber a runtime model choice; upserting `AiProviderConnection`
+would clobber a tenant's BYO credential. So skip lines now read "KEPT AS IS, not
+updated" and name what was preserved. The one repair is `needsSelfHostKeyBackfill`:
+backfill the non-secret `not-needed` placeholder onto a self-host row that has NO key at
+all — it writes only where nothing is written, only a constant, only for platform-run
+endpoints, and a keyless self-host row is non-functional anyway.
+
+**Verified by running the seed against live infra**, not by unit test alone: two SYSTEM
+rows were deliberately un-keyed, a plain re-seed restored both to `keyed=YES` with no
+deletion, and the backfilled ciphertext decrypts to `not-needed` under
+`hope-globalsetting`. `AiTaskDefault` stayed at 12 and `AiRuntimeProfile` at 0 as
+intended, and the API-key skip now names the real cause (`the "02-apikey" phase is
+excluded from RUN_SEED="safe"`) instead of the previous NODE_ENV falsehood.
+
+`setup:dev` and `setup:test` needed no change — both already pass `RUN_SEED` explicitly
+and `setup:dev` force-resets, so neither was ever exposed to the create-only trap.
+
 ### Post-merge gate evidence (`dev-2.2`, primary checkout)
 
 | Service | Result |
