@@ -266,15 +266,16 @@ class SileroVADService:
             from huggingface_hub import hf_hub_download
 
             settings = get_settings()
+            # TASK-799 — Silero VAD is a PLATFORM model with no tenant owner, so
+            # its token resolves the SYSTEM tier. The repo is public, so `None`
+            # (no tier has an opinion) is the normal, working case.
+            from stt.diarization.embedding_service import _resolve_hf_token
+
             cached_path = hf_hub_download(
                 repo_id="onnx-community/silero-vad",
                 filename="onnx/model.onnx",
                 cache_dir=settings.huggingface_cache_dir,
-                token=(
-                    settings.huggingface_token.get_secret_value()
-                    if settings.huggingface_token
-                    else None
-                ),
+                token=_resolve_hf_token(settings),
             )
             return Path(cached_path)
         except ImportError:

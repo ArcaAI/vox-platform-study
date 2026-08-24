@@ -1,6 +1,6 @@
 {
   "$comment": "GENERATED FILE \u2014 DO NOT EDIT BY HAND. Produced by `pnpm env:python-surface` from the services' pydantic-settings declarations plus an AST scan of non-pydantic reads. `pnpm env:python-surface --check` fails when it is stale; `pnpm env:sync` consumes it to generate every apps/<svc>/.env.sample, turbo.json#globalEnv and the docs table.",
-  "distinctNames": 405,
+  "distinctNames": 401,
   "services": {
     "guardrail": {
       "port": 8863,
@@ -2606,18 +2606,6 @@
           "description": "HuggingFace model cache directory"
         },
         {
-          "name": "HUGGINGFACE_TOKEN",
-          "aliases": [],
-          "class": "Settings",
-          "field": "huggingface_token",
-          "prefix": "",
-          "required": false,
-          "secret": true,
-          "dataType": "secret",
-          "default": null,
-          "description": "HuggingFace API token (optional)"
-        },
-        {
           "name": "INTERNAL_ACCESS_TOKEN",
           "aliases": [],
           "class": "Settings",
@@ -3402,42 +3390,6 @@
           "dataType": "string",
           "default": "INFO",
           "description": ""
-        },
-        {
-          "name": "STT_MODEL_S3_ACCESS_KEY",
-          "aliases": [],
-          "class": "Settings",
-          "field": "model_s3_access_key",
-          "prefix": "",
-          "required": false,
-          "secret": true,
-          "dataType": "secret",
-          "default": null,
-          "description": "Access key for s3:// model sources"
-        },
-        {
-          "name": "STT_MODEL_S3_ENDPOINT",
-          "aliases": [],
-          "class": "Settings",
-          "field": "model_s3_endpoint",
-          "prefix": "",
-          "required": false,
-          "secret": false,
-          "dataType": "string",
-          "default": null,
-          "description": "S3/MinIO endpoint (host:port) backing s3:// model sources"
-        },
-        {
-          "name": "STT_MODEL_S3_SECRET_KEY",
-          "aliases": [],
-          "class": "Settings",
-          "field": "model_s3_secret_key",
-          "prefix": "",
-          "required": false,
-          "secret": true,
-          "dataType": "secret",
-          "default": null,
-          "description": "Secret key for s3:// model sources"
         },
         {
           "name": "STT_MODEL_S3_SECURE",

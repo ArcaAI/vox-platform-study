@@ -26,9 +26,37 @@ logger = logging.getLogger(__name__)
 
 
 def _resolve_hf_token(settings: Any) -> str | None:
-    """Resolve HuggingFace auth token from settings or local cache."""
-    hf_token = settings.huggingface_token
-    token: str | None = hf_token.get_secret_value() if hf_token else None
+    """The HuggingFace token for a PLATFORM diarization model.
+
+    TASK-799 — the token is no longer an environment variable. Speaker
+    embedding/segmentation weights are platform infrastructure with no tenant
+    owner, so they resolve the SYSTEM tier (``owner_tenant_of(None)``): a model
+    every tenant shares is fetched with the PLATFORM's credential, never with
+    the quota of whichever tenant's job happened to trigger the load first.
+
+    Synchronous by necessity: this runs inside ``asyncio.to_thread`` under the
+    model constructors, so there is no loop to await on. ``asyncio.run`` on a
+    worker thread is safe here precisely because that thread has no running loop.
+
+    Falls back to the local ``huggingface_hub`` cache when no tier has an
+    opinion, unchanged — that is a machine-local artifact of a prior interactive
+    login, not a platform credential, and it is what lets an offline developer
+    box keep working.
+    """
+    del settings  # the token has not come from settings since TASK-799
+    token: str | None = None
+    try:
+        from stt.core.model_credentials import resolve_hf_token as _resolve
+
+        token = asyncio.run(_resolve(None))
+    except Exception:
+        # A control-plane fault must not take diarization down: a public
+        # pyannote/speechbrain repo loads anonymously, and a GATED one fails
+        # later with the hub's own explicit 401 rather than a config error here.
+        logger.warning(
+            "Could not resolve the platform HuggingFace token; continuing unauthenticated"
+        )
+
     if not token:
         try:
             from huggingface_hub import get_token as hf_get_token

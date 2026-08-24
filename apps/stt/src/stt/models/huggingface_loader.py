@@ -5,6 +5,8 @@ import logging
 import os
 from typing import Any
 
+from stt.core.model_credentials import resolve_hf_token
+
 from ..core.config.settings import get_settings
 from ..core.exceptions import ModelLoadError
 from ..pipeline.dto import AiModelConfig, AiModelFormat, ModelTaskType
@@ -54,6 +56,12 @@ class HuggingFaceLoader(BaseModelLoader):
             # own `from_pretrained` download path is unchanged.
             model_source = await resolve_weights_or_hf_id(model_config, settings)
 
+            # TASK-799 — `from_pretrained` performs its OWN hub download for a
+            # bare id, so the token has to reach it here rather than through the
+            # resolver. Resolved for the MODEL ROW'S OWNER; `None` means "pull
+            # anonymously", which is correct for a public repo.
+            hf_token = await resolve_hf_token(model_config.tenant_id)
+
             # Set cache directory
             cache_dir = settings.huggingface_cache_dir
             os.makedirs(cache_dir, exist_ok=True)
@@ -76,11 +84,10 @@ class HuggingFaceLoader(BaseModelLoader):
                     torch_dtype=torch_dtype,
                     cache_dir=cache_dir,
                     revision=model_config.source_revision,
-                    token=(
-                        settings.huggingface_token.get_secret_value()
-                        if settings.huggingface_token
-                        else None
-                    ),
+                    # TASK-799 — the token funds the fetch on behalf of the
+                    # tenant that OWNS this model row, never the caller. A
+                    # SYSTEM model always pulls with the platform's.
+                    token=hf_token,
                     attn_implementation=model_config.attn_implementation,
                 )
             )

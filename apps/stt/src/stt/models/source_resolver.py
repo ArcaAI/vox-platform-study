@@ -63,19 +63,57 @@ class ModelSourceError(Exception):
 
 
 def config_from_settings(settings: Any) -> ModelSourceConfig:
-    """Build a `ModelSourceConfig` from the stt `Settings` singleton."""
-    access = settings.model_s3_access_key
-    secret = settings.model_s3_secret_key
+    """The CREDENTIAL-FREE part of the resolver config: cache dirs and TLS.
+
+    TASK-799 — this used to be the single seam through which
+    ``HUGGINGFACE_TOKEN`` and the ``STT_MODEL_S3_*`` pair reached the resolver.
+    Both are now rows on ``AiProviderConnection`` (``service='model-registry'``)
+    and depend on WHICH MODEL is being fetched, which this function cannot know.
+    Use :func:`config_for_model` on any path that may actually pull bytes.
+
+    What is left here is genuinely settings-tier: where the cache lives, and
+    whether the object-store endpoint speaks TLS. Neither is a credential and
+    neither varies per tenant.
+    """
     return ModelSourceConfig(
         cache_dir=settings.huggingface_cache_dir,
         hf_cache_dir=settings.huggingface_cache_dir,
-        hf_token=(
-            settings.huggingface_token.get_secret_value() if settings.huggingface_token else None
-        ),
-        s3_endpoint=settings.model_s3_endpoint,
-        s3_access_key=access.get_secret_value() if access else None,
-        s3_secret_key=secret.get_secret_value() if secret else None,
         s3_secure=settings.model_s3_secure,
+    )
+
+
+async def config_for_model(model_config: Any, settings: Any) -> ModelSourceConfig:
+    """Resolver config for ONE model, credentials included.
+
+    The credentials are resolved for the tenant that OWNS the model row, never
+    the caller (:func:`stt.core.model_credentials.owner_tenant_of`). A
+    SYSTEM-owned model therefore always fetches with the platform's token even
+    when a tenant's job triggered the load — which is what stops one tenant
+    spending another's HuggingFace quota, and what makes the process-wide weight
+    cache safe to share.
+
+    Fails CLOSED (raises ``CredentialUnavailable``) when a tier VETOED the
+    provider or the gateway could not answer. ABSENT is not a failure: it means
+    no tier has an opinion, and the fetch proceeds anonymously — correct for a
+    public repo, and the only remaining meaning of "no credential" now that the
+    env paths are closed.
+    """
+    from stt.core.model_credentials import resolve_hf_token, resolve_s3_credentials
+
+    owner = getattr(model_config, "tenant_id", None)
+    base = config_from_settings(settings)
+
+    hf_token = await resolve_hf_token(owner)
+    s3 = await resolve_s3_credentials(owner)
+
+    return ModelSourceConfig(
+        cache_dir=base.cache_dir,
+        hf_cache_dir=base.hf_cache_dir,
+        hf_token=hf_token,
+        s3_endpoint=s3.base_url,
+        s3_access_key=s3.access_key_id,
+        s3_secret_key=s3.secret,
+        s3_secure=base.s3_secure,
     )
 
 
@@ -97,7 +135,7 @@ async def resolve_for_model_config(
     """Convenience seam used by the loaders: `AiModelConfig` -> weights dir."""
     return await resolve_model_dir(
         identity_from_model_config(model_config),
-        config=config_from_settings(settings),
+        config=await config_for_model(model_config, settings),
         allow_network=allow_network,
     )
 
@@ -129,7 +167,14 @@ async def resolve_weights_or_hf_id(model_config: Any, settings: Any) -> str:
 
     uri = (identity.source_uri or "").strip()
     if uri.startswith(("s3://", "file://")):
-        resolved = await resolve_model_dir(identity, config=config_from_settings(settings))
+        # Credentials are resolved ONLY on the branch that may actually fetch —
+        # `local_path` above already returned, and the `hf:`/bare-id branch below
+        # hands the id to a runtime that performs its own download. A cached or
+        # pre-staged model therefore never touches the gateway, so a control-plane
+        # outage cannot break a load that needed no network.
+        resolved = await resolve_model_dir(
+            identity, config=await config_for_model(model_config, settings)
+        )
         return str(resolved)
 
     if uri.startswith("hf:"):
@@ -172,9 +217,11 @@ def _make_s3_client(config: ModelSourceConfig) -> Any:
     """Build a MinIO-compatible S3 client. Imported lazily and stubbed in tests."""
     if not config.s3_endpoint or not config.s3_access_key or not config.s3_secret_key:
         raise ModelSourceError(
-            "Cannot resolve an S3 model source: S3 endpoint/access key/secret key "
-            "are not configured for this service. Set the *_MODEL_S3_ENDPOINT / "
-            "_ACCESS_KEY / _SECRET_KEY environment variables."
+            "Cannot resolve an S3 model source: the endpoint, access key id or "
+            "secret key is missing. These are no longer environment variables "
+            "(TASK-799) — configure the 'model-registry' / 's3' provider "
+            "connection for the tenant that OWNS this model, or for the SYSTEM "
+            "tenant to serve every model that has no owner of its own."
         )
 
     try:

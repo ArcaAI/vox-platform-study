@@ -268,9 +268,25 @@ class Settings(BaseSettings):
         or os.path.expanduser("~/.cache/huggingface/hub"),
         description="HuggingFace model cache directory",
     )
+    # TASK-799 — CLOSED. The HuggingFace token is a BYO credential on
+    # `AiProviderConnection` (`service='model-registry'`, `provider='huggingface'`),
+    # resolved tenant -> SYSTEM for the tenant that OWNS the model being
+    # fetched. See `stt/core/model_credentials.py`.
+    #
+    # The `validation_alias` is a DEAD name no environment variable matches, and
+    # `populate_by_name` is deliberately OFF, so the field name cannot re-open an
+    # env path either. This is structural, not advisory: the reference pattern is
+    # `apps/tts/src/tts/core/config.py` `AzureSpeechConfig.api_key`.
+    #
+    # The field itself remains so `Settings` stays constructible with an explicit
+    # value in tests; nothing in production reads it.
     huggingface_token: SecretStr | None = Field(
         default=None,
-        description="HuggingFace API token (optional)",
+        validation_alias="HUGGINGFACE_TOKEN__ENV_REMOVED_TASK_799",
+        description=(
+            "DEPRECATED and env-CLOSED (TASK-799). The HuggingFace token is a "
+            "model-registry provider connection, resolved per model-owner tenant."
+        ),
     )
 
     # Bootstrap credentials for `s3://` model sources (MinIO-compatible).
@@ -287,20 +303,31 @@ class Settings(BaseSettings):
     # credentials. `turbo.json#globalEnv` and the generated `.env.sample` still
     # list the `_V2_` names; retiring those declarations belongs to the env-file
     # lane (Phase 1.5), which owns both generated artifacts.
+    # TASK-799 — CLOSED, all three. Endpoint, access key id and secret key are
+    # ONE credential and now live together on `AiProviderConnection`
+    # (`service='model-registry'`, `provider='s3'`): `baseUrl` = endpoint,
+    # `extraJson.accessKeyId` = the non-secret principal, the encrypted field =
+    # the secret. The endpoint travels with them rather than staying in env,
+    # because a tenant that brings its own weights bucket brings its own host —
+    # splitting the pair across two tiers is how you get a credential pointed at
+    # the wrong endpoint.
+    #
+    # Dead `validation_alias` + `populate_by_name` OFF, same structural closure
+    # as `huggingface_token` above.
     model_s3_endpoint: str | None = Field(
         default=None,
-        validation_alias="STT_MODEL_S3_ENDPOINT",
-        description="S3/MinIO endpoint (host:port) backing s3:// model sources",
+        validation_alias="STT_MODEL_S3_ENDPOINT__ENV_REMOVED_TASK_799",
+        description="DEPRECATED and env-CLOSED (TASK-799). Now the model-registry/s3 connection's baseUrl.",
     )
     model_s3_access_key: SecretStr | None = Field(
         default=None,
-        validation_alias="STT_MODEL_S3_ACCESS_KEY",
-        description="Access key for s3:// model sources",
+        validation_alias="STT_MODEL_S3_ACCESS_KEY__ENV_REMOVED_TASK_799",
+        description="DEPRECATED and env-CLOSED (TASK-799). Now the model-registry/s3 connection's extraJson.accessKeyId.",
     )
     model_s3_secret_key: SecretStr | None = Field(
         default=None,
-        validation_alias="STT_MODEL_S3_SECRET_KEY",
-        description="Secret key for s3:// model sources",
+        validation_alias="STT_MODEL_S3_SECRET_KEY__ENV_REMOVED_TASK_799",
+        description="DEPRECATED and env-CLOSED (TASK-799). Now the model-registry/s3 connection's encrypted key.",
     )
     model_s3_secure: bool = Field(
         default=True,

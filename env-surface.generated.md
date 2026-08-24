@@ -19,9 +19,9 @@ disagree with those declarations.
 | … tier `env` | 102 |
 | … tier `global-kv` | 9 |
 | … tier `vault-kv` | 24 |
-| Python declared fields | 356 |
-| … distinct Python names (incl. aliases + `os.environ` reads) | 405 |
-| `turbo.json#globalEnv` entries | 533 |
+| Python declared fields | 352 |
+| … distinct Python names (incl. aliases + `os.environ` reads) | 401 |
+| `turbo.json#globalEnv` entries | 529 |
 
 ## Variables — the TypeScript platform surface
 
@@ -329,7 +329,6 @@ default — see `renderPythonExample()` in `scripts/env-sync.mts`.
 | `HARNESS_TEXT_TIMEOUT_S` | `apps/harness` | no | no | `120` | commented | — |
 | `HF_HOME` | `apps/nlp` | no | no | `` | live | `NLP_HF_HOME` |
 | `HUGGINGFACE_CACHE_DIR` | `apps/stt` | no | no | `<home>/.cache/huggingface/hub` | commented | — |
-| `HUGGINGFACE_TOKEN` | `apps/stt` | no | yes | `CHANGE_ME` | live | — |
 | `INTERNAL_ACCESS_TOKEN` | `apps/guardrail` | no | yes | `CHANGE_ME` | live | — |
 | `INTERNAL_ACCESS_TOKEN` | `apps/harness` | no | yes | `CHANGE_ME` | live | — |
 | `INTERNAL_ACCESS_TOKEN` | `apps/nlp` | no | yes | `CHANGE_ME` | live | `NLP_INTERNAL_ACCESS_TOKEN` |
@@ -445,9 +444,6 @@ default — see `renderPythonExample()` in `scripts/env-sync.mts`.
 | `STT_DEBUG` | `apps/stt` | no | no | `false` | commented | `DEBUG` |
 | `STT_HOST` | `apps/stt` | no | no | `0.0.0.0` | commented | `HOST` |
 | `STT_LOG_LEVEL` | `apps/stt` | no | no | `INFO` | commented | `LOG_LEVEL` |
-| `STT_MODEL_S3_ACCESS_KEY` | `apps/stt` | no | yes | `CHANGE_ME` | live | — |
-| `STT_MODEL_S3_ENDPOINT` | `apps/stt` | no | no | — | commented | — |
-| `STT_MODEL_S3_SECRET_KEY` | `apps/stt` | no | yes | `CHANGE_ME` | live | — |
 | `STT_MODEL_S3_SECURE` | `apps/stt` | no | no | `true` | commented | — |
 | `STT_OTEL_SERVICE_NAME` | `apps/stt` | no | no | `stt` | commented | `OTEL_SERVICE_NAME` |
 | `STT_PORT` | `apps/stt` | no | no | `8861` | commented | `PORT` |

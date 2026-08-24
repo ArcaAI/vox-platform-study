@@ -200,7 +200,7 @@ def test_byok_loader_never_leaks_the_credential_into_its_error(fmt, loader):
     cfg = _config(fmt, source_uri=None)
     override = {"api_key": _SECRET, "endpoint": "https://example/", "region": "eastus"}
     try:
-        asyncio.run(loader.load(cfg, provider_overrides={k: override for k in _OVERRIDE_KEYS}))
+        asyncio.run(loader.load(cfg, provider_overrides=dict.fromkeys(_OVERRIDE_KEYS, override)))
     except Exception as exc:  # noqa: BLE001 - any raise is fine; the LEAK is the assertion
         assert _SECRET not in str(exc), f"{fmt.value} leaked the credential into its error"
         assert _SECRET not in repr(exc)

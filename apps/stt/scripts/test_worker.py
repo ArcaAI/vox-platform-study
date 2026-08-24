@@ -67,11 +67,11 @@ def test_mock_job():
     job_id = str(uuid7())
     tenant_id = "50000000-0000-0000-0000-000000000000"
 
-    print(f"\n📤 Sending mock batch transcription job...")
+    print("\n📤 Sending mock batch transcription job...")
     print(f"   Job ID: {job_id}")
     print(f"   Tenant ID: {tenant_id}")
-    print(f"   Pipeline ID: mock-pipeline-id")
-    print(f"   Audio URI: mock://test/audio.wav")
+    print("   Pipeline ID: mock-pipeline-id")
+    print("   Audio URI: mock://test/audio.wav")
 
     # Send the job - it will fail (no real data) but tests connectivity
     message = transcribe_file.send(
@@ -83,12 +83,12 @@ def test_mock_job():
         media_id=None,
     )
 
-    print(f"\n✅ Job enqueued successfully!")
+    print("\n✅ Job enqueued successfully!")
     print(f"   Message ID: {message.message_id}")
     print(f"   Queue: {message.queue_name}")
-    print(f"\n⚠️  Note: This job will FAIL because it uses mock data.")
-    print(f"   Check the worker logs to see the failure message.")
-    print(f"   This confirms the worker is receiving messages from Redis.")
+    print("\n⚠️  Note: This job will FAIL because it uses mock data.")
+    print("   Check the worker logs to see the failure message.")
+    print("   This confirms the worker is receiving messages from Redis.")
 
     print("\n" + "=" * 60)
 
@@ -111,14 +111,14 @@ def test_real_file(audio_path: str, pipeline_id: str):
     # This example assumes the file is already uploaded
     audio_uri = f"hope-audio/test/{audio_file.name}"
 
-    print(f"\n📤 Sending real transcription job...")
+    print("\n📤 Sending real transcription job...")
     print(f"   Job ID: {job_id}")
     print(f"   Pipeline ID: {pipeline_id}")
     print(f"   Audio File: {audio_path}")
     print(f"   Audio URI: {audio_uri}")
 
     print(f"\n⚠️  Note: The audio file must be uploaded to MinIO at: {audio_uri}")
-    print(f"   You can upload using MinIO Console or mc CLI:")
+    print("   You can upload using MinIO Console or mc CLI:")
     print(f"   mc cp {audio_path} myminio/hope-audio/test/")
 
     # Uncomment to actually send the job:
@@ -142,7 +142,8 @@ async def check_pipeline_exists():
     try:
         await initialize_database()
 
-        from sqlalchemy import select, text
+        from sqlalchemy import select
+
         from stt.core.database.models import AsrPipelineRead
 
         async with get_session() as session:
