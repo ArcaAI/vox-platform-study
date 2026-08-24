@@ -586,10 +586,9 @@ remains.
    note assumed: guardrail performs **no PHI redaction at all**, but its outbound
    screen **never leaves the trust boundary**, so no vendor can receive the note.
    Verified end to end and pinned by tests on both sides.
-2. **Phase 4 has no authenticated visual pass.** Both console screens build, lint
-   clean, pass 2017 tests and scan axe-clean, but rendering them needs a sign-in —
-   entering a password is outside what an agent may do. Both-themes verification
-   and a real-gateway data pass remain outstanding, so Phase 4 is NOT closed.
+2. ~~**Phase 4 has no authenticated visual pass.**~~ **CLOSED 2026-08-24** — the owner
+   signed in and the pass was driven against the running app; see
+   §"Phase 4 runtime verification" below.
 3. **Closing the TTS env reads needs a manifest change** in `arca/hope-v2-deployment`
    (remove `TTS_KOKORO_ENABLED` from the `hope-tts` ConfigMap). Note `migrate.sh`
    defaults `RUN_SEED=none` and `hope-v2-dev` pins it — **the seeded row will not
@@ -652,6 +651,51 @@ genuinely local providers, and the spaCy model staged at image-build time
 in-boundary hosts in any given deployment; that is a manifest property, not a code
 property, and this lane could not read `arca/hope-v2-deployment`.
 
+## Phase 4 runtime verification (2026-08-24, signed in as `super_admin`, working tenant ArcaAI)
+
+Driven against `next dev` on :5179 with a real gateway and the reset dev database.
+Compiling was never the question — this is what it actually does.
+
+**`/settings-registry`** — renders **339 of 339 settings · 245 editable here**,
+grouped by category, with Key / Type / Scope / Editable columns and `Platform-wide`
+badges on `globalOnly` keys. Skeletons on load (rule 10), not a spinner.
+
+The detail drawer surfaces the governance half the catalog projection now carries:
+Storage tier `global-kv`, Data type `boolean`, Sensitivity, **Deepest settable scope**
+("Platform (all tenants)"), **Edit gated by**, **Stored row version** ("none stored —
+still the code default"), **Fail mode** ("open-to-default — an unset value falls back")
+and **Code default**. The Value tab explains the consequence BEFORE the click —
+*"This write changes the platform for every tenant … lands on the reserved SYSTEM
+tenant … Super administrators only"* — and reports **"Currently answered by `code
+default` · no row stored at this scope"**, which is `sourceScope` rendering.
+
+Selecting a working tenant produces the rule-12 §5 tier behaviour correctly: an
+`Acting on: ArcaAI` chip plus a persistent *"tenant-scoped actions run against this
+tenant's data"* banner with a Clear action.
+
+**`/ai-runtime-profiles`** — correct empty state rather than a blank region: *"No
+runtime profiles configured — nothing is injected today; every provider and model runs
+on the consuming service's own defaults."* Subtitle records the SYSTEM-tenant pinning
+the service enforces. Footer shows `0 configured row(s)` and the backing route.
+
+**Dark theme verified on both**; tokens, banner and badges all adapt.
+
+### One UX defect found — only a runtime pass could have caught it
+
+A super admin with **no working tenant selected** opens any setting and the Value tab
+shows a raw failure: *"Couldn't load this data — Platform admins must pass `?tenantId=`
+to scope this request."* The gateway is behaving correctly
+(`apps/api/src/shared/tenant-scope.ts:33` requires either `?tenantId=` or an elevated
+working tenant in CLS), and the console's client sends neither
+(`features/settings-registry/api/client.ts:27` passes only `scope`).
+
+Selecting a working tenant fixes it, so this is operator state rather than breakage —
+but a platform-wide `system`-scope key arguably should not need a tenant to be READ at
+all, and a raw 400 is the wrong way to say "pick a tenant first". Two candidate fixes:
+the console passes the working tenant explicitly, or it renders a select-a-tenant empty
+state instead of the error. Not a blocker; recorded rather than fixed, because it
+touches the shared `resolveScopedTenantId` posture used by several admin surfaces.
+
 ## Change History
 
 | Date | Change |
@@ -665,6 +709,7 @@ property, and this lane could not read `arca/hope-v2-deployment`.
 | 2026-08-23 | Round 2 lane R2-B: gateway resolves the second (`nlp.ner`) selection for `/diagnosis/suggestions` and injects both; C.2 (`4fa3d1f15`) merged, so the route works again with no literal. `nlp.*` SUPER_ADMIN-only tension recorded for owner decision. |
 | 2026-08-23 | Phase 2 lane B (`apps/text`) complete: 121 env-reachable pydantic fields → 9 (12 variables with the three `hope_env` reads). The eight per-provider blocks, the three-way `TEXT_CB_*`/`TEXT_QUEUE_*`/`TEXT_JUDGE_*` duplication and the 20-name `TEXT_V2_*` window are gone; every adapter resolves its connection per request and fails closed, so fail-closed coverage went from 3 adapters to 11. Two wirings remain outside the lane's boundary — an `externalGuardrail` view in `effective-config.service.ts`, and gateway PUSH of `guardrail_policy`. |
 | 2026-08-24 | Phase 3 lane F: `pnpm env:python-dead` added as a stdlib-only AST gate (`python-dead-settings` in CI, the mirror of `env-drift-check`), with a self-cleaning allow-list and a rule canary. Found 5 dead fields on an already-hand-swept tree: `harness` `rrf_k` DELETED (undeliverable — `FusionQuery` has no `k`), `harness` `qdrant_api_key` WIRED (a declared credential both construction sites dropped), three `apps/tts` fields reported and handed off. Two out-of-lane defects reported: `apps/nlp`'s checkout-dependent `dictionary_path` default makes `env:sync --check` non-reproducible, and `env:python-surface --check` is in no CI job. |
+| 2026-08-24 | Phase 4 runtime verification completed against a signed-in session (super_admin / ArcaAI): both screens, real data, both themes. Found one UX defect — a super admin with no working tenant gets a raw 400 on the value read. |
 | 2026-08-24 | Full `verify` suite green: lint 40/40, typecheck 45/45, mypy 475 files, ~34,000 tests, both drift gates OK. Status → Review. |
 | 2026-08-24 | Infrastructure repairs: the Python env-surface generator made runnable (SIGABRT fallback), generated artifacts made machine-portable (`<repo>`/`<home>` tokens), repo-wide black pass + root `[tool.black]`, five pre-existing `apps/api` typecheck errors fixed, and the `pnpm typecheck` race closed by ordering `typecheck`/`build` after their OWN package's `db:generate`. |
 | 2026-08-24 | Orchestrator wired guardrail's `external_nlp_client` to forward `calibration` (lane G's out-of-boundary item), closing the `/guard/entailment` degrade-to-`unverified` gap. Test observed RED without the send. |
