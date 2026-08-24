@@ -498,9 +498,10 @@ export const SYSTEM_AI_PROVIDER_CONNECTIONS: AiProviderConnectionSeed[] = [
   // would arm the platform-default cascade for every entitled tenant without an
   // administrator ever deciding to.
   //
-  // A tenant may hold its OWN row for either (`CLOUD_BYO_PROVIDERS`), but which
-  // credential a given fetch spends is decided by the MODEL ROW'S OWNER, never
-  // the caller — a SYSTEM-owned model always fetches with these.
+  // These two rows are the ONLY ones that can exist on this plane: owner ruling
+  // 2026-08-24 made `model-registry` platform-managed, so `CLOUD_BYO_PROVIDERS`
+  // lists no tenant-writable provider under it and a tenant row is a 403. Every
+  // weight fetch, for every tenant, spends the credential configured here.
   {
     // HuggingFace Hub. `extraJson.model` names the repo explicitly (there is no
     // discovery here); the token is what distinguishes an entitled pull of a

@@ -87,7 +87,11 @@ describe('CLOUD_BYO_PROVIDERS — the frozen C5 map', () => {
       // object store. WHOSE credential is spent is decided by the MODEL row's
       // owner, not the caller, so a SYSTEM model always fetches with the
       // platform's.
-      'model-registry': ['huggingface', 's3'],
+      // Owner ruling 2026-08-24: the built-in inference solutions are
+      // PLATFORM-MANAGED, and only a super admin sets the HuggingFace token or
+      // picks the provider/model behind an inference task. Empty for the same
+      // reason as `rerank` — platform infrastructure, not a tenant vendor account.
+      'model-registry': [],
     });
   });
 
