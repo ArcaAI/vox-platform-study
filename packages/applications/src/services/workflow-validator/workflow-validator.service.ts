@@ -26,7 +26,7 @@
 import { Injectable } from '@nestjs/common';
 import { WorkflowInvariantRuleRepository } from '@arcaai/domains';
 import {
-  DRAFT_SUMMARIZATION_RULE_SET,
+  ALL_DRAFT_RULES,
   WORKFLOW_RULE_PREDICATE_TYPES,
   buildValidationReport,
   internalErrorFinding,
@@ -119,13 +119,21 @@ export class WorkflowValidatorService {
    * `ruleSetVersion: 0`. That fallback is deliberate: on a database whose rule table has not
    * been seeded yet, returning an EMPTY rule set would make every graph validate clean — a
    * silent, total loss of the safety boundary that looks exactly like success.
+   *
+   * The stand-in is `ALL_DRAFT_RULES` — EVERY palette's bundled set, which is also what
+   * `validate()` uses when a caller supplies no `rules` at all. It used to be
+   * `DRAFT_SUMMARIZATION_RULE_SET` alone, which was a narrower loss of the same boundary rather
+   * than an obvious one: `validate()` skips any rule whose `paletteKey` does not match the
+   * graph's, so a consultation graph matched only the palette-agnostic `WF-S-*` rows and every
+   * `WF-CONS-*` clinical invariant (mandatory nodes, consent/HITL reachability) silently never
+   * evaluated — on a report that still said `ok: true`.
    */
   private async resolveRuleSet(tenantId: string, paletteKey: string): Promise<{ rules: ResolvedRule[]; ruleSetVersion: number }> {
     const rows = (await this.workflowInvariantRuleRepository.findApplicable(tenantId, paletteKey)) as unknown as RuleRowLike[];
 
     if (rows.length === 0) {
       return {
-        rules: DRAFT_SUMMARIZATION_RULE_SET.map((rule) => ({ ...rule, tenantId: SYSTEM_TENANT_ID, ruleVersion: 1 })),
+        rules: ALL_DRAFT_RULES.map((rule) => ({ ...rule, tenantId: SYSTEM_TENANT_ID, ruleVersion: 1 })),
         ruleSetVersion: UNSEEDED_RULE_SET_VERSION,
       };
     }

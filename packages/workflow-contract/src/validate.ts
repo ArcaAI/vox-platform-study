@@ -26,7 +26,7 @@ import type { DraftWorkflowRule } from './rule-catalogue';
  * engine, domain palettes onboard without engine changes") requires at the validator layer: a
  * new palette's rule set needs to be REACHABLE by default, not just definable.
  */
-const ALL_DRAFT_RULES: readonly DraftWorkflowRule[] = [...DRAFT_SUMMARIZATION_RULE_SET, ...DRAFT_STT_RULE_SET, ...DRAFT_CONSULTATION_RULE_SET];
+export const ALL_DRAFT_RULES: readonly DraftWorkflowRule[] = [...DRAFT_SUMMARIZATION_RULE_SET, ...DRAFT_STT_RULE_SET, ...DRAFT_CONSULTATION_RULE_SET];
 
 export interface ValidateOptions {
   /** Defaults to the union of every palette's DRAFT rule set — see `ALL_DRAFT_RULES` above and

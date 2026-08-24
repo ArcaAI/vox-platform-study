@@ -118,6 +118,58 @@ export class S3Service implements IS3Service, OnModuleInit {
   }
 
   /**
+   * Whether one required non-secret setting is present and non-empty.
+   *
+   * `hasSetting`/`getValueFromCache` are CACHE-ONLY reads, and the cache is populated at boot and
+   * then refreshed on a timer. A miss therefore has two very different causes that look identical
+   * here: the key is not configured at all, or the cache simply has not seen it yet (a boot that
+   * raced the row being written, or an invalidation still in flight). Treating the second as the
+   * first is what made `updateBucket` answer 500 "S3 service is not configured" for a whole
+   * refresh window on a correctly-configured box, while every sibling storage route kept working
+   * because `BlobStorageProviderFactory` reads the same configuration through the DB-backed
+   * tenant-storage cascade.
+   *
+   * So a miss forces ONE refresh and re-reads, mirroring the secret half below, which resolves
+   * through the LOADING `getSecretOptional` rather than the cache-only `getSecretSync` for exactly
+   * this reason. The refresh only ever runs on the miss path, so a genuinely-unconfigured
+   * deployment pays one settings read per attempt and a configured one pays none.
+   */
+  private async hasUsableSetting(key: string): Promise<boolean> {
+    const read = (): boolean => {
+      if (!this.appSettingsService.hasSetting(key)) return false;
+      const value = this.appSettingsService.getValueFromCache(key);
+      return Boolean(value) && !(typeof value === 'string' && value.trim() === '');
+    };
+
+    if (read()) return true;
+
+    this.logger.debug({
+      message: 'Required S3 setting missing from the AppSettings cache; forcing a refresh',
+      settingKey: key,
+    });
+
+    try {
+      await this.appSettingsService.refreshCache();
+    } catch (error) {
+      this.logger.warn({
+        message: 'AppSettings refresh failed while resolving S3 configuration',
+        settingKey: key,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return false;
+    }
+
+    const refreshed = read();
+    if (!refreshed) {
+      this.logger.debug({
+        message: 'Required S3 setting is still missing or empty after a refresh',
+        settingKey: key,
+      });
+    }
+    return refreshed;
+  }
+
+  /**
    * Check if required S3 configuration is available
    */
   private async hasRequiredConfiguration(): Promise<boolean> {
@@ -126,20 +178,7 @@ export class S3Service implements IS3Service, OnModuleInit {
       const requiredSettingKeys = ['S3_ENDPOINT'];
 
       for (const key of requiredSettingKeys) {
-        if (!this.appSettingsService.hasSetting(key)) {
-          this.logger.debug({
-            message: 'Required S3 setting missing',
-            settingKey: key,
-          });
-          return false;
-        }
-
-        const value = this.appSettingsService.getValueFromCache(key);
-        if (!value || (typeof value === 'string' && value.trim() === '')) {
-          this.logger.debug({
-            message: 'Required S3 setting is empty',
-            settingKey: key,
-          });
+        if (!(await this.hasUsableSetting(key))) {
           return false;
         }
       }

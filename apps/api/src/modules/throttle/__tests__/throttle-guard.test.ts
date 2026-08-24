@@ -61,6 +61,22 @@ function makeForgedJwt(tenantId: string): string {
 /** Supplies the verification key the guard reads via `getSecretSync`. */
 const secretsStub = { getSecretSync: (key: string) => (key === 'JWT_SECRET_KEY' ? TEST_JWT_SECRET : undefined) } as unknown as SecretsService;
 
+/**
+ * Bind ONE ephemeral listener per app, up front.
+ *
+ * supertest binds a FRESH port for every request when the server is not already listening
+ * (`Test.serverAddress` calls `app.listen(0)` whenever `app.address()` is null, and `Test.end`
+ * closes the server it opened). This file makes ~50 requests, so that is ~50 listen/close cycles.
+ * Under the full unit suite's parallelism a just-released ephemeral port can be re-bound by
+ * another worker between our bind and our connect, and the request then lands on a foreign
+ * server and comes back with a status these tests never assert against — observed once as a 400
+ * on `/t/skip`, a route with no way to produce one, in a run that passed in isolation. Listening
+ * once removes the churn; `app.close()` in `afterAll` still closes this listener.
+ */
+async function listenOnce(app: INestApplication): Promise<void> {
+  await app.listen(0, '127.0.0.1');
+}
+
 @Controller('t')
 class ThrottleTestController {
   @Get('open')
@@ -112,7 +128,7 @@ describe('TieredThrottlerGuard (integration)', () => {
     }).compile();
 
     app = moduleRef.createNestApplication();
-    await app.init();
+    await listenOnce(app);
   });
 
   afterAll(async () => {
@@ -236,7 +252,7 @@ describe('TieredThrottlerGuard (DB-backed live overrides)', () => {
     }).compile();
 
     app = moduleRef.createNestApplication();
-    await app.init();
+    await listenOnce(app);
   });
 
   afterAll(async () => {
@@ -386,7 +402,7 @@ describe('TieredThrottlerGuard (per-tenant plan rate-limits)', () => {
     }).compile();
 
     app = moduleRef.createNestApplication();
-    await app.init();
+    await listenOnce(app);
   });
 
   afterAll(async () => {
@@ -540,7 +556,7 @@ describe('TieredThrottlerGuard (per-tenant DB rate limits)', () => {
     }).compile();
 
     app = moduleRef.createNestApplication();
-    await app.init();
+    await listenOnce(app);
   });
 
   afterAll(async () => {
@@ -662,7 +678,7 @@ describe('TieredThrottlerGuard — credential-class parity (TASK-773)', () => {
       providers: [{ provide: APP_GUARD, useClass: TieredThrottlerGuard }],
     }).compile();
     app = moduleRef.createNestApplication();
-    await app.init();
+    await listenOnce(app);
   });
 
   afterAll(async () => {
@@ -759,7 +775,7 @@ describe('TieredThrottlerGuard (machine credentials — TASK-785 O-4)', () => {
     }).compile();
 
     app = moduleRef.createNestApplication();
-    await app.init();
+    await listenOnce(app);
   });
 
   afterAll(async () => {

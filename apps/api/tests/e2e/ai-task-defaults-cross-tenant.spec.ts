@@ -82,14 +82,21 @@ test.describe('AiTaskDefault admin surface (cross-tenant + guardrail governance)
     const body = (await resp.json()) as Array<{ taskKey: string }>;
     expect(Array.isArray(body)).toBe(true);
     // The full registry (AI_TASK_KEYS, ai-task-default/constants.ts):
-    // guardrail.validate/safety/groundedness, nlp.ner/classification/diagnosis
+    // guardrail.validate/safety/groundedness + TASK-799 R6's guardrail.pii and
+    // guardrail.pii.spans, nlp.ner/classification/diagnosis
     // + TASK-729's nlp.sentiment/toxicity, text.live/finalize + the
     // tenant-configurable text.*.fallback keys + text.test, harness.judge, and
     // vlm.extract.
+    //
+    // A super-admin-only key still LISTS for a tenant admin — the effective read is the whole
+    // registry, and the lock shows up as "the SYSTEM row always wins", not as a hidden key. That
+    // is already true of every `nlp.*` key below; the two PII keys join them (SUPER_ADMIN_ONLY_TASK_KEYS).
     expect(body.map((e) => e.taskKey)).toEqual([
       'guardrail.validate',
       'guardrail.safety',
       'guardrail.groundedness',
+      'guardrail.pii',
+      'guardrail.pii.spans',
       'nlp.ner',
       'nlp.classification',
       'nlp.diagnosis',

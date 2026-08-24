@@ -47,9 +47,15 @@ test.describe('Unified provider connections — admin/providers/llm', () => {
     for (const p of ['azure', 'bedrock', 'openai', 'anthropic', 'vertex']) {
       expect(providers.has(p), `llm connection for '${p}' must seed`).toBe(true);
     }
+    // No VENDOR credential is ever seeded. The four self-hosted ENGINE rows do carry the
+    // non-secret `not-needed` placeholder (TASK-799 lane B — the `provider_overrides` fold drops
+    // a keyless row, so without it the engine resolves and then serves nothing); `built-in` runs
+    // in-process and has no endpoint to authenticate to. Either way the ciphertext column never
+    // reaches the wire, which is what this route's masking contract is about.
+    const SELF_HOST_KEYED = new Set(['ollama', 'lm-studio', 'vllm', 'llama-cpp']);
     for (const row of rows) {
       expect(row.service, 'every row on this route is service=llm').toBe('llm');
-      expect(row.hasKey, `${row.provider} must seed keyless`).toBe(false);
+      expect(row.hasKey, `${row.provider} key material must match the self-host placeholder posture`).toBe(SELF_HOST_KEYED.has(row.provider));
       expect(row).not.toHaveProperty('encryptedApiKey');
     }
   });

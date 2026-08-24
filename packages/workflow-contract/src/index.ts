@@ -60,5 +60,11 @@ export type {
 export { DRAFT_SUMMARIZATION_RULE_SET } from './rule-catalogue';
 export type { DraftWorkflowRule } from './rule-catalogue';
 
-export { validate } from './validate';
+// `ALL_DRAFT_RULES` — every palette's bundled rule set, which is also `validate()`'s own
+// default. A consumer that supplies its OWN `rules` (the DB-backed resolver in
+// `@arcaai/applications`) needs this to stand in when no row applies: handing it
+// `DRAFT_SUMMARIZATION_RULE_SET` alone silently drops every non-summarization palette's rules,
+// because `validate()` filters by `paletteKey` and a consultation graph then matches only the
+// palette-agnostic rows.
+export { validate, ALL_DRAFT_RULES } from './validate';
 export type { ValidateOptions } from './validate';

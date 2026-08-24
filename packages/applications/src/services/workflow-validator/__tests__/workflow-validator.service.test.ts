@@ -82,6 +82,20 @@ describe('WorkflowValidatorService.validateGraph', () => {
     expect(report.findings.length).toBeGreaterThan(0);
   });
 
+  it("the empty-table fallback carries EVERY palette's rules, not just summarization's", async () => {
+    const { service } = makeService([]);
+
+    // A consultation graph missing every mandatory clinical node. `validate()` skips any rule
+    // whose `paletteKey` does not match, so a fallback seeded with `DRAFT_SUMMARIZATION_RULE_SET`
+    // alone matches only the palette-agnostic `WF-S-*` rows and reports NO `WF-CONS-*` finding —
+    // an `ok`-looking report on a graph that violates the palette's clinical invariants.
+    const report = await service.validateGraph(TENANT, 'consultation', GRAPH);
+
+    const ruleIds = report.findings.map((f) => f.ruleId);
+    expect(ruleIds).toContain('WF-CONS-007');
+    expect(report.ok).toBe(false);
+  });
+
   it('turns a repository failure into a WF-INTERNAL ERROR finding, never ok:true', async () => {
     const { service } = makeService([], { throws: true });
 
