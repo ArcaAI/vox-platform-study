@@ -8,7 +8,7 @@ from typing import Any
 from ..core.config.settings import get_settings
 from ..core.exceptions import ModelLoadError
 from ..pipeline.dto import AiModelConfig, AiModelFormat, ModelTaskType
-from .base_loader import BaseModelLoader, LoadedModel
+from .base_loader import BaseModelLoader, CredentialPosture, LoadedModel
 from .source_resolver import resolve_weights_or_hf_id
 
 logger = logging.getLogger(__name__)
@@ -16,6 +16,11 @@ logger = logging.getLogger(__name__)
 
 class HuggingFaceLoader(BaseModelLoader):
     """Load models from HuggingFace Hub using Transformers library."""
+
+    # Runs on platform hardware from local/downloaded weights - no vendor
+    # credential exists to fail closed on. Declared explicitly because the lock
+    # test is default-deny: a loader that says nothing fails it.
+    credential_posture = CredentialPosture.SELF_HOSTED
 
     @property
     def supported_formats(self) -> list[AiModelFormat]:

@@ -256,7 +256,27 @@ class ModelCache(SharedModelCache[LoadedModel]):
 
         self._cache = _CacheEntryView(self)
 
-        # Model loaders - map format/engine to appropriate loader
+        # Model loaders - map format/engine to appropriate loader.
+        # Extracted to `_install_loaders` so the registry has exactly ONE
+        # construction site, which the BYOK lock test
+        # (`tests/unit/test_task799_byok_credentials.py`) reads directly rather
+        # than rebuilding — a second copy would be one more hand-written list to
+        # drift, which is the defect that suite exists to prevent.
+        self._install_loaders()
+
+        logger.info(
+            f"ModelCache initialized: max_models={self._max_size}, "
+            f"max_memory_mb={self._max_bytes_estimate}, ttl_seconds={self._ttl_seconds}"
+        )
+
+    def _install_loaders(self) -> None:
+        """Build the format -> loader registry.
+
+        The single source of truth for which engines this service can run. Every
+        loader declares its `credential_posture`; the lock test iterates THIS map
+        so a new engine cannot be added without stating whether it needs a vendor
+        credential.
+        """
         self._loaders: dict[AiModelFormat, BaseModelLoader] = {
             AiModelFormat.SAFETENSOR: HuggingFaceLoader(),
             AiModelFormat.PYTORCH: HuggingFaceLoader(),
@@ -276,11 +296,6 @@ class ModelCache(SharedModelCache[LoadedModel]):
             AiModelFormat.SARVAM: SarvamLoader(),
             AiModelFormat.OPENAI: OpenAILoader(),
         }
-
-        logger.info(
-            f"ModelCache initialized: max_models={self._max_size}, "
-            f"max_memory_mb={self._max_bytes_estimate}, ttl_seconds={self._ttl_seconds}"
-        )
 
     # ── legacy internal spellings ───────────────────────────────────────────
     # The shared core calls these `_max_size` / `_max_bytes_estimate`. stt's
