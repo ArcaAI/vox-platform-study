@@ -103,8 +103,10 @@ async def _acquire_guard(model_name: str, model_path: str | None = None) -> Asyn
 
 
 @asynccontextmanager
-async def _acquire_scorer(model_name: str, model_path: str | None = None) -> AsyncIterator[Any]:
-    async with pinned_entailment_scorer(model_name, model_path) as scorer:
+async def _acquire_scorer(
+    model_name: str, model_path: str | None = None, calibration: Any = None
+) -> AsyncIterator[Any]:
+    async with pinned_entailment_scorer(model_name, model_path, calibration) as scorer:
         yield scorer
 
 
@@ -344,7 +346,9 @@ async def guard_entailment(
 
     pairs = [(pair.document, pair.claim) for pair in request.pairs]
     try:
-        async with _acquire_scorer(model_name, request.model_path) as scorer:
+        async with _acquire_scorer(
+            model_name, request.model_path, request.calibration
+        ) as scorer:
             async with inference_bound:
                 scores = await _maybe_await(scorer.score_pairs(pairs))
     except ModelUnavailableError as exc:

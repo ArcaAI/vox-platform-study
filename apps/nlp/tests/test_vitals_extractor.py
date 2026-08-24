@@ -4,7 +4,23 @@ The parser is cue-gated and range-guarded: a mis-parse must fail SAFE to
 ``None`` rather than emit a wrong number, and nothing is ever fabricated.
 """
 
-from nlp.services.vitals_extractor import extract_vitals
+from tests.clinical_taxonomy_fixture import seeded_taxonomy
+
+from nlp.services import vitals_extractor as _vitals_extractor
+
+_BANDS = seeded_taxonomy().vitals
+
+
+def extract_vitals(text):
+    """`extract_vitals` with the seeded plausibility bands supplied.
+
+    TASK-799 lane G: the bands are configuration and arrive per request on
+    `clinicalTaxonomy.vitals`, so every case here passes the seeded platform
+    baseline. `test_task799_lane_g_taxonomy.py` pins the other half — a narrowed
+    stored band discards a reading the wider one accepted, and no bands at all
+    means no vital is emitted.
+    """
+    return _vitals_extractor.extract_vitals(text, _BANDS)
 
 
 def test_returns_none_for_empty_or_vital_less_text():

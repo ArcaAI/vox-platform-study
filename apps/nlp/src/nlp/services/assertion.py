@@ -9,8 +9,9 @@ Algorithm (simplified ConText):
   1. Restrict scope to the *sentence* that contains the entity (a trigger in a
      neighbouring sentence must not leak across the boundary).
   2. Scan the sentence text *preceding* the entity for the nearest trigger
-     phrase from a category lexicon (pre-triggers; the dominant clinical case
-     — "no chest pain", "history of asthma", "family history of MI").
+     phrase from the CONFIGURED category lexicon (pre-triggers; the dominant
+     clinical case — "no chest pain", "history of asthma", "family history of
+     MI"). The lexicon is configuration, not code — see below.
   3. Apply a fixed category precedence when several fire, then fall back to
      PRESENT.
 
@@ -29,65 +30,23 @@ import re
 from abc import ABC, abstractmethod
 from collections.abc import Iterable, Sequence
 
+from nlp.schemas.clinical_taxonomy import AssertionTaxonomy
 from nlp.schemas.common import AssertionStatus, Entity
 
-# Pre-trigger lexicon, keyed by the status a match implies. Phrases are matched
-# on word boundaries in the (lowercased) pre-context. Ordered longest-first per
-# category at match time so "family history" wins over "history".
-_TRIGGERS: dict[AssertionStatus, tuple[str, ...]] = {
-    AssertionStatus.ABSENT: (
-        "no evidence of",
-        "no signs of",
-        "no history of",
-        "not been having",
-        "absence of",
-        "negative for",
-        "free of",
-        "without",
-        "denies",
-        "denied",
-        "no",
-        "not",
-    ),
-    AssertionStatus.FAMILY: (
-        "family history of",
-        "family hx of",
-        "fhx",
-        "mother",
-        "father",
-        "brother",
-        "sister",
-        "sibling",
-        "parents",
-        "maternal",
-        "paternal",
-        "familial",
-    ),
-    AssertionStatus.HYPOTHETICAL: (
-        "rule out",
-        "r/o",
-        "return if",
-        "call if",
-        "come back if",
-        "in case of",
-        "possibility of",
-        "possible",
-        "concern for",
-        "should there be",
-        "if",
-    ),
-    AssertionStatus.HISTORICAL: (
-        "history of",
-        "hx of",
-        "status post",
-        "s/p",
-        "previous",
-        "previously",
-        "prior",
-        "past medical history",
-        "in the past",
-    ),
-}
+# THE TRIGGER LEXICON IS CONFIGURATION (TASK-799 lane G).
+#
+# It used to be `_TRIGGERS`, four Python tuples of ConText/NegEx phrases. Rule 00
+# §Configuration Principles names a label set / taxonomy as something that is
+# never a literal in code, and a negation lexicon is exactly that: it is
+# language- and site-specific (a dictation-heavy clinic negates differently from
+# a typed-note one), and widening it should never require a redeploy. It now
+# lives on `AiModel._metadata.clinicalTaxonomy.assertion.triggers` of the row
+# `nlp.ner` selects and arrives per request.
+#
+# An UNCONFIGURED lexicon labels nothing: every span stays PRESENT, the schema's
+# own documented default for an un-triggered mention. That is the fail-safe
+# direction — this service never asserts "the patient does NOT have X" on
+# evidence it invented.
 
 # When multiple categories match in the pre-context, the first in this order
 # wins. ABSENT dominates (a negated finding is absent regardless of tense);
@@ -113,7 +72,8 @@ class NegExAssertionClassifier(AssertionModel):
     """Deterministic ConText/NegEx-style assertion classifier (default)."""
 
     def __init__(self, triggers: dict[AssertionStatus, tuple[str, ...]] | None = None):
-        self._triggers = triggers or _TRIGGERS
+        # NO bundled default: an absent lexicon means nothing is triggered.
+        self._triggers = triggers or {}
         # Pre-compile a word-boundary regex per phrase, longest-first per category.
         self._compiled: dict[AssertionStatus, list[re.Pattern[str]]] = {}
         for status, phrases in self._triggers.items():
@@ -121,6 +81,23 @@ class NegExAssertionClassifier(AssertionModel):
             self._compiled[status] = [
                 re.compile(r"(?<!\w)" + re.escape(p) + r"(?!\w)") for p in ordered
             ]
+
+    @classmethod
+    def from_taxonomy(cls, taxonomy: AssertionTaxonomy) -> "NegExAssertionClassifier":
+        """Build a classifier from the gateway-injected `assertion` section.
+
+        An unknown status key is IGNORED rather than rejected, so widening
+        `AssertionStatus` later never invalidates a stored taxonomy.
+        """
+        by_status: dict[AssertionStatus, tuple[str, ...]] = {}
+        for raw_status, phrases in taxonomy.triggers.items():
+            try:
+                status = AssertionStatus(raw_status)
+            except ValueError:
+                continue
+            if phrases:
+                by_status[status] = tuple(phrases)
+        return cls(by_status)
 
     def classify(self, text: str, entities: Sequence[Entity]) -> list[Entity]:
         result: list[Entity] = []

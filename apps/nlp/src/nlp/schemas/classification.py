@@ -1,5 +1,6 @@
 from pydantic import BaseModel, Field
 
+from nlp.schemas.clinical_taxonomy import ClinicalTaxonomy
 from nlp.schemas.common import Entity, SupportedLanguage
 
 # REST
@@ -98,7 +99,25 @@ class MultiLabelClassificationResponse(BaseModel):
 
 class TokenClassificationRequest(BaseModel):
     text: str = Field(..., description="Input text")
-    aggregation_strategy: str = Field(default="simple", description="Entity aggregation strategy")
+    # Absent ⇒ the SELECTED CHECKPOINT's declared strategy
+    # (`clinicalTaxonomy.tokenClassifier.aggregationStrategy`) applies. It used
+    # to default to "simple" here, which silently outranked the model row's own
+    # declaration on every request — a schema default that made the stored value
+    # unreachable. An explicit caller value still wins.
+    aggregation_strategy: str | None = Field(
+        default=None, description="Entity aggregation strategy; absent => the model row's own"
+    )
+    # The CLINICAL TAXONOMY this call executes against (TASK-799 lane G):
+    # ontology vocabulary, vitals plausibility bands, ConText/NegEx triggers and
+    # the checkpoint's own NER contract. The gateway resolves it from
+    # `AiModel._metadata.clinicalTaxonomy` on the row `nlp.ner` selects and
+    # injects it here, exactly as it already injects `model_name`/`model_path`.
+    # Absent ⇒ each pass it governs is DISABLED — never a code literal. See
+    # `nlp.schemas.clinical_taxonomy` for the full fail posture.
+    clinical_taxonomy: ClinicalTaxonomy | None = Field(
+        default=None,
+        description="Gateway-resolved AiModel._metadata.clinicalTaxonomy. Absent => enrichment passes are disabled.",
+    )
     language: SupportedLanguage | None = Field(
         default=SupportedLanguage.ENGLISH, description="Language of the text"
     )

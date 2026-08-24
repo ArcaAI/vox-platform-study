@@ -492,12 +492,15 @@ class TokenClassificationConfig(BaseSettings):
     model_path: str | None = Field(default=None)
     tokenizer_name: str
 
-    # NER specific settings
-    aggregation_strategy: str = Field(default="simple")  # simple, first, max, average
-    ignore_labels: list[str] = Field(default_factory=lambda: ["O"])
-    # negation/assertion pass over recognized spans (ConText/NegEx).
-    # Default ON; deterministic + offline. Disable to skip the pass entirely.
-    assertion_enabled: bool = Field(default=True)
+    # NER settings that used to live here are GONE (TASK-799 lane G):
+    # `aggregation_strategy`, `ignore_labels` and `assertion_enabled` were
+    # `TOKEN_CLASSIFIER_*` env fields. A LABEL SET in an env var is precisely
+    # what rule 00 §Configuration Principles forbids, and the first two are
+    # properties OF THE CHECKPOINT (which labels it emits meaning "nothing", how
+    # its subword pieces aggregate) — an env var cannot vary with the model it
+    # describes. They now ride on
+    # `AiModel._metadata.clinicalTaxonomy.tokenClassifier`, resolved by the
+    # gateway from the row `nlp.ner` selects and injected per request.
 
     # Performance settings
     use_gpu: bool = Field(default=True)
@@ -508,22 +511,12 @@ class TokenClassificationConfig(BaseSettings):
     settings_customise_sources = classmethod(_model_identity_filtered_sources)
 
 
-class OntologyLinkerConfig(BaseSettings):
-    """Clinical ontology linker configuration.
-
-    Gates the deterministic ``OntologyLinker`` wired into token classification:
-    a master toggle plus a confidence floor below which a recognized span is
-    left un-coded (avoids coding low-confidence NER noise). Reads ``NLP_LINKER_*``
-    via the env_prefix. The bundled vocabulary is self-hosted — no cloud PHI.
-    """
-
-    # Init > host env > secrets_dir (Vault Agent) > .env.<NODE_ENV> > default.
-    settings_customise_sources = hope_settings_sources
-
-    linker_enabled: bool = Field(default=True)
-    linker_confidence_floor: float = Field(default=0.0, ge=0.0, le=1.0)
-
-    model_config = SettingsConfigDict(env_prefix="NLP_")
+# `OntologyLinkerConfig` is GONE (TASK-799 lane G). Its two fields —
+# `NLP_LINKER_ENABLED` and `NLP_LINKER_CONFIDENCE_FLOOR` — were an env-owned
+# master switch and threshold for a CLINICAL enrichment. A threshold is not an
+# env var (rule 00), and neither is a per-model enrichment toggle: both now ride
+# on `AiModel._metadata.clinicalTaxonomy.linker`, resolved by the gateway and
+# injected per request, so a platform admin can retune them without a redeploy.
 
 
 class MedicalSuggesterConfig(BaseSettings):
@@ -649,7 +642,6 @@ class Settings:
 
     def __init__(self) -> None:
         self.service = NLPServiceConfig()
-        self.ontology_linker = OntologyLinkerConfig()
         self.security = SecurityConfig()
         self.text_corrector = TextCorrectorConfig()
         self.external_text = ExternalTextConfig()
