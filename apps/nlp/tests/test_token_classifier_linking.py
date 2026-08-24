@@ -71,7 +71,9 @@ def test_entity_schema_has_nullable_ontology_code_fields():
 
 
 def _classifier_with_pipeline(results):
-    classifier = TransformerTokenClassifier(configs=TokenClassificationConfig(model_name="test-org/ner", tokenizer_name="test-org/ner"))
+    classifier = TransformerTokenClassifier(
+        configs=TokenClassificationConfig(model_name="test-org/ner", tokenizer_name="test-org/ner")
+    )
 
     def fake_pipeline(text, **kwargs):
         return results
@@ -142,9 +144,7 @@ async def test_linking_disabled_toggle_leaves_codes_none():
         [{"entity_group": "MEDICATION", "score": 0.97, "word": "metformin", "start": 0, "end": 9}]
     )
     resp = await classifier.process(
-        TokenClassificationRequest(
-            text="metformin", clinical_taxonomy=_taxonomy(enabled=False)
-        )
+        TokenClassificationRequest(text="metformin", clinical_taxonomy=_taxonomy(enabled=False))
     )
 
     assert resp.entities[0].rxnorm_code is None

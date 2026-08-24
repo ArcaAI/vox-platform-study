@@ -54,7 +54,9 @@ class OntologyVocabularyEntry(BaseModel):
 
     model_config = ConfigDict(frozen=True)
 
-    aliases: list[str] = Field(..., min_length=1, description="Surface forms, matched after normalization")
+    aliases: list[str] = Field(
+        ..., min_length=1, description="Surface forms, matched after normalization"
+    )
     umls_cui: str | None = Field(default=None)
     snomed_code: str | None = Field(default=None)
     rxnorm_code: str | None = Field(default=None)

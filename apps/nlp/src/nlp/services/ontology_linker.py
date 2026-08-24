@@ -133,7 +133,7 @@ class OntologyLinker:
         self._vocabulary = vocabulary or {}
 
     @classmethod
-    def from_taxonomy(cls, taxonomy: "LinkerTaxonomy") -> "OntologyLinker":
+    def from_taxonomy(cls, taxonomy: LinkerTaxonomy) -> OntologyLinker:
         """Build a linker from the gateway-injected `linker` taxonomy section."""
         return cls(build_vocabulary(taxonomy.vocabulary))
 

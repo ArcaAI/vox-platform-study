@@ -83,7 +83,7 @@ class NegExAssertionClassifier(AssertionModel):
             ]
 
     @classmethod
-    def from_taxonomy(cls, taxonomy: AssertionTaxonomy) -> "NegExAssertionClassifier":
+    def from_taxonomy(cls, taxonomy: AssertionTaxonomy) -> NegExAssertionClassifier:
         """Build a classifier from the gateway-injected `assertion` section.
 
         An unknown status key is IGNORED rather than rejected, so widening

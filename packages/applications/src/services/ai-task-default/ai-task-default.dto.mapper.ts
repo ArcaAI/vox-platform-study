@@ -40,6 +40,12 @@ export class AiTaskDefaultDtoMapper {
       taskType: model.taskType,
       format: model.format,
       sourceUri: model.sourceUri,
+      localPath: model.localPath ?? null,
+      // `_metadata` carries the descriptors a consuming service needs but
+      // cannot look up itself (label/clinical taxonomies, entailment
+      // calibration). Omitting it here is what forced callers to cast the
+      // summary to an ad-hoc shape and get `undefined` back.
+      metadata: (model.metaData as Record<string, unknown> | null | undefined) ?? null,
     };
   }
 }

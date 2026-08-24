@@ -4,9 +4,8 @@ The parser is cue-gated and range-guarded: a mis-parse must fail SAFE to
 ``None`` rather than emit a wrong number, and nothing is ever fabricated.
 """
 
-from tests.clinical_taxonomy_fixture import seeded_taxonomy
-
 from nlp.services import vitals_extractor as _vitals_extractor
+from tests.clinical_taxonomy_fixture import seeded_taxonomy
 
 _BANDS = seeded_taxonomy().vitals
 

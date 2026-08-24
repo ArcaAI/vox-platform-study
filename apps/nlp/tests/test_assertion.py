@@ -23,10 +23,9 @@ from __future__ import annotations
 
 import uuid
 
-from tests.clinical_taxonomy_fixture import seeded_taxonomy
-
 from nlp.schemas.common import AssertionStatus, Entity, TextPosition
 from nlp.services.assertion import NegExAssertionClassifier
+from tests.clinical_taxonomy_fixture import seeded_taxonomy
 
 
 def _entity(text: str, full: str) -> Entity:

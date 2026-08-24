@@ -7,6 +7,32 @@ import { IAiTaskDefaultService } from '../../ai-task-default/IAiTaskDefaultServi
 /** The AiTaskDefault key clinical NER routes through (SUPER_ADMIN-only, SYSTEM-row resolution only). */
 export const NLP_NER_TASK_KEY = 'nlp.ner';
 
+/** The `_metadata` key the NER plane's configuration lives under. */
+export const CLINICAL_TAXONOMY_METADATA_KEY = 'clinicalTaxonomy';
+
+/** What the two clinical NER callers spread into the `/classify/tokens` body. */
+export interface NerModelInjection {
+  model_name: string;
+  /** Present only when the selected row declares one — never an invented default. */
+  clinical_taxonomy?: Record<string, unknown>;
+}
+
+/**
+ * Pull `clinicalTaxonomy` off the registry row's `_metadata`, or `undefined`.
+ *
+ * Deliberately only a SHAPE check (a JSON object, not an array or a scalar):
+ * validating the contents belongs to the executor that applies them, and a
+ * gateway that silently dropped a section it did not recognise would make an
+ * admin's stored value unreachable without saying so. A non-object is dropped
+ * because it cannot be spread into a JSON body at all.
+ */
+function readClinicalTaxonomy(metadata: unknown): Record<string, unknown> | undefined {
+  if (!metadata || typeof metadata !== 'object' || Array.isArray(metadata)) return undefined;
+  const candidate = (metadata as Record<string, unknown>)[CLINICAL_TAXONOMY_METADATA_KEY];
+  if (!candidate || typeof candidate !== 'object' || Array.isArray(candidate)) return undefined;
+  return candidate as Record<string, unknown>;
+}
+
 /**
  * Resolve the effective `nlp.ner` model for injection into a clinical
  * `/api/v1/classify/tokens` call — the SAME resolution `AiInferenceController`
@@ -46,6 +72,30 @@ export const NLP_NER_TASK_KEY = 'nlp.ner';
  * established at all, and reading under the ambient tenant would be the very
  * cross-tenant leak the pin exists to prevent.
  *
+ * CLINICAL TAXONOMY (TASK-799 lane G) — the same read also carries the NER
+ * plane's configuration. `apps/nlp` used to hold an ontology vocabulary, vitals
+ * plausibility bands, a ConText/NegEx trigger lexicon and its NER contract
+ * (`TOKEN_CLASSIFIER_*` / `NLP_LINKER_*`) as Python literals and env fields;
+ * rule 00 names a threshold, taxonomy or label set as neither. They now live on
+ * `AiModel._metadata.clinicalTaxonomy` of the SELECTED row — beside
+ * `labelTaxonomy`, which the guardrail plane already treats the same way — and
+ * this resolver forwards the blob VERBATIM as `clinical_taxonomy`.
+ *
+ * Verbatim matters: normalising or merging here would make the effective
+ * configuration a function of gateway code rather than of what the admin
+ * stored, which is the "half-wired config that reads as done" this ticket
+ * exists to remove. The executor validates the shape and declares its own fail
+ * posture (`nlp/schemas/clinical_taxonomy.py`): an absent section DISABLES the
+ * pass it governs, never substitutes a literal. So an unconfigured row omits the
+ * field entirely — it never ships an invented default — while model SELECTION
+ * stays fail-closed below.
+ *
+ * It rides on the SELECTION rather than on a settings-registry key because it
+ * is a property OF THE CHECKPOINT (which labels it emits meaning "nothing", how
+ * its subword pieces aggregate, which surface forms its NER produces); a knob
+ * keyed by service name would drift from the model the moment an admin
+ * re-points `nlp.ner`.
+ *
  * @throws ServiceUnavailableException when `nlp.ner` cannot be resolved to an
  * ENABLED model.
  */
@@ -53,7 +103,7 @@ export async function resolveNerModelInjection(
   aiTaskDefaultService: IAiTaskDefaultService | undefined,
   cls: ClsService<IActiveUserContext> | undefined,
   logger: Logger,
-): Promise<{ model_name: string }> {
+): Promise<NerModelInjection> {
   if (!aiTaskDefaultService) {
     throw new ServiceUnavailableException(`SYSTEM AiTaskDefault for '${NLP_NER_TASK_KEY}' is unavailable (AiTaskDefaultService not wired).`);
   }
@@ -71,7 +121,11 @@ export async function resolveNerModelInjection(
     if (!sourceUri) {
       throw new ServiceUnavailableException(`SYSTEM AiTaskDefault for '${NLP_NER_TASK_KEY}' is missing or has no ENABLED model. Run db:seed.`);
     }
-    return { model_name: sourceUri };
+    const clinicalTaxonomy = readClinicalTaxonomy(effective.model?.metadata);
+    return {
+      model_name: sourceUri,
+      ...(clinicalTaxonomy ? { clinical_taxonomy: clinicalTaxonomy } : {}),
+    };
   } catch (error) {
     if (error instanceof ServiceUnavailableException) throw error;
     logger.warn({

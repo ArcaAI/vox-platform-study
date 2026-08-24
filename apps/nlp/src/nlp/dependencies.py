@@ -438,9 +438,7 @@ async def _create_gliner2_guard(cache_key: str) -> Any:
         weights_source=resolve_guard_weights_source(model_name, model_path),
         model_id=model_name,
         device=resolve_inference_device(settings.service.inference_device),
-        cpu_only_modules=parse_cpu_only_modules(
-            settings.service.inference_device_cpu_only_modules
-        ),
+        cpu_only_modules=parse_cpu_only_modules(settings.service.inference_device_cpu_only_modules),
     )
     # GLiNER2 load is blocking/CPU-bound — keep the event loop responsive.
     await asyncio.to_thread(service.load)

@@ -222,9 +222,9 @@ class _FakePipeline:
 @pytest.fixture()
 def taxonomy_client(monkeypatch):
     """A minimal app whose token classifier is a fake pipeline (no weights)."""
-    import nlp.dependencies as deps
     from fastapi import FastAPI
 
+    import nlp.dependencies as deps
     from nlp.api.v1 import rest_api_router_v1
     from nlp.core.config import TokenClassificationConfig
     from nlp.services.token_classifier import TransformerTokenClassifier
