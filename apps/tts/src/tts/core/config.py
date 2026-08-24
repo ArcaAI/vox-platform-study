@@ -36,18 +36,22 @@ class AzureSpeechConfig(BaseSettings):
 
     model_config = SettingsConfigDict(env_prefix="TTS_AZURE_")
 
-    # ── `enabled` stays an ENVIRONMENT variable (TASK-799 lane C) ────────────
-    # It is DEPLOYMENT SHAPE, not runtime policy: which engines a container runs
-    # is chosen together with which optional extras were installed in its image,
-    # so a flag that turns on an engine whose package is absent does nothing
-    # useful. Concretely, `TTS_KOKORO_ENABLED=true` in the k8s ConfigMap is what
-    # makes a keyless deployment REACH READY at all
-    # (`test_keyless_readiness_task642`) — moving it to the control plane with no
-    # seeded row, while the manifests live in a separate repository, would leave
-    # `hope-tts` answering 503 forever and its Service carrying no endpoints:
-    # exactly the outage that test was written to prevent.
-    # Registered as `tier: 'env'` + `targetTier: 'redis-flag'` in
-    # `tts-runtime.descriptors.ts` so the pending migration stays queryable.
+    # ── `enabled` — control-plane SERVED, env BOOTSTRAP (TASK-799 lane H) ────
+    # The value now comes from the settings registry (`tts.<engine>.enabled`,
+    # tier `global-kv`, seeded by `seed/11d-tts-engine-flags.ts`), and this env
+    # path REMAINS OPEN as the bootstrap fallback. Only a value a DATABASE ROW
+    # supplied overrides it — see `control_plane.py#ENV_BOOTSTRAP_KEYS`.
+    #
+    # The env read survives because closing it is a THIRD step that belongs to
+    # a repository this one cannot change: `TTS_KOKORO_ENABLED=true` in the k8s
+    # ConfigMap (`arca/hope-v2-deployment`) is what makes a keyless deployment
+    # REACH READY at all (`test_keyless_readiness_task642`), and closing the
+    # path while the manifest still supplies it would leave `hope-tts` answering
+    # 503 forever with no Service endpoints — the outage that test exists for.
+    #
+    # These fields are read ONLY by boot registration in `main.py`, so a served
+    # value converges on the next restart and can never deregister a live
+    # provider mid-process.
     enabled: bool = False
     # Azure Speech is BYOK-only. The subscription KEY is never sourced
     # from env — the `validation_alias` is a dead name no env var matches, and
@@ -90,18 +94,22 @@ class KokoroConfig(BaseSettings):
 
     model_config = SettingsConfigDict(env_prefix="TTS_KOKORO_")
 
-    # ── `enabled` stays an ENVIRONMENT variable (TASK-799 lane C) ────────────
-    # It is DEPLOYMENT SHAPE, not runtime policy: which engines a container runs
-    # is chosen together with which optional extras were installed in its image,
-    # so a flag that turns on an engine whose package is absent does nothing
-    # useful. Concretely, `TTS_KOKORO_ENABLED=true` in the k8s ConfigMap is what
-    # makes a keyless deployment REACH READY at all
-    # (`test_keyless_readiness_task642`) — moving it to the control plane with no
-    # seeded row, while the manifests live in a separate repository, would leave
-    # `hope-tts` answering 503 forever and its Service carrying no endpoints:
-    # exactly the outage that test was written to prevent.
-    # Registered as `tier: 'env'` + `targetTier: 'redis-flag'` in
-    # `tts-runtime.descriptors.ts` so the pending migration stays queryable.
+    # ── `enabled` — control-plane SERVED, env BOOTSTRAP (TASK-799 lane H) ────
+    # The value now comes from the settings registry (`tts.<engine>.enabled`,
+    # tier `global-kv`, seeded by `seed/11d-tts-engine-flags.ts`), and this env
+    # path REMAINS OPEN as the bootstrap fallback. Only a value a DATABASE ROW
+    # supplied overrides it — see `control_plane.py#ENV_BOOTSTRAP_KEYS`.
+    #
+    # The env read survives because closing it is a THIRD step that belongs to
+    # a repository this one cannot change: `TTS_KOKORO_ENABLED=true` in the k8s
+    # ConfigMap (`arca/hope-v2-deployment`) is what makes a keyless deployment
+    # REACH READY at all (`test_keyless_readiness_task642`), and closing the
+    # path while the manifest still supplies it would leave `hope-tts` answering
+    # 503 forever with no Service endpoints — the outage that test exists for.
+    #
+    # These fields are read ONLY by boot registration in `main.py`, so a served
+    # value converges on the next restart and can never deregister a live
+    # provider mid-process.
     enabled: bool = False
     # No `voice` field: `af_heart` is already the catalog's kokoro binding for
     # `en-female-1`, and the router supplies it as `req.provider_voice`. The
@@ -118,18 +126,22 @@ class IndicParlerConfig(BaseSettings):
 
     model_config = SettingsConfigDict(env_prefix="TTS_PARLER_")
 
-    # ── `enabled` stays an ENVIRONMENT variable (TASK-799 lane C) ────────────
-    # It is DEPLOYMENT SHAPE, not runtime policy: which engines a container runs
-    # is chosen together with which optional extras were installed in its image,
-    # so a flag that turns on an engine whose package is absent does nothing
-    # useful. Concretely, `TTS_KOKORO_ENABLED=true` in the k8s ConfigMap is what
-    # makes a keyless deployment REACH READY at all
-    # (`test_keyless_readiness_task642`) — moving it to the control plane with no
-    # seeded row, while the manifests live in a separate repository, would leave
-    # `hope-tts` answering 503 forever and its Service carrying no endpoints:
-    # exactly the outage that test was written to prevent.
-    # Registered as `tier: 'env'` + `targetTier: 'redis-flag'` in
-    # `tts-runtime.descriptors.ts` so the pending migration stays queryable.
+    # ── `enabled` — control-plane SERVED, env BOOTSTRAP (TASK-799 lane H) ────
+    # The value now comes from the settings registry (`tts.<engine>.enabled`,
+    # tier `global-kv`, seeded by `seed/11d-tts-engine-flags.ts`), and this env
+    # path REMAINS OPEN as the bootstrap fallback. Only a value a DATABASE ROW
+    # supplied overrides it — see `control_plane.py#ENV_BOOTSTRAP_KEYS`.
+    #
+    # The env read survives because closing it is a THIRD step that belongs to
+    # a repository this one cannot change: `TTS_KOKORO_ENABLED=true` in the k8s
+    # ConfigMap (`arca/hope-v2-deployment`) is what makes a keyless deployment
+    # REACH READY at all (`test_keyless_readiness_task642`), and closing the
+    # path while the manifest still supplies it would leave `hope-tts` answering
+    # 503 forever with no Service endpoints — the outage that test exists for.
+    #
+    # These fields are read ONLY by boot registration in `main.py`, so a served
+    # value converges on the next restart and can never deregister a live
+    # provider mid-process.
     enabled: bool = False
     hf_model: str = Field(
         default="ai4bharat/indic-parler-tts", validation_alias=moved_alias("TTS_PARLER_HF_MODEL")
@@ -167,26 +179,30 @@ class IndicF5Config(BaseSettings):
 
     model_config = SettingsConfigDict(env_prefix="TTS_INDICF5_")
 
-    # ── `enabled` stays an ENVIRONMENT variable (TASK-799 lane C) ────────────
-    # It is DEPLOYMENT SHAPE, not runtime policy: which engines a container runs
-    # is chosen together with which optional extras were installed in its image,
-    # so a flag that turns on an engine whose package is absent does nothing
-    # useful. Concretely, `TTS_KOKORO_ENABLED=true` in the k8s ConfigMap is what
-    # makes a keyless deployment REACH READY at all
-    # (`test_keyless_readiness_task642`) — moving it to the control plane with no
-    # seeded row, while the manifests live in a separate repository, would leave
-    # `hope-tts` answering 503 forever and its Service carrying no endpoints:
-    # exactly the outage that test was written to prevent.
-    # Registered as `tier: 'env'` + `targetTier: 'redis-flag'` in
-    # `tts-runtime.descriptors.ts` so the pending migration stays queryable.
+    # ── `enabled` — control-plane SERVED, env BOOTSTRAP (TASK-799 lane H) ────
+    # The value now comes from the settings registry (`tts.<engine>.enabled`,
+    # tier `global-kv`, seeded by `seed/11d-tts-engine-flags.ts`), and this env
+    # path REMAINS OPEN as the bootstrap fallback. Only a value a DATABASE ROW
+    # supplied overrides it — see `control_plane.py#ENV_BOOTSTRAP_KEYS`.
     #
-    # ⚠️ UNRESOLVED for this one flag: the licensing gate above is still enforced
-    # only by that comment. Moving it to a registry kill-switch — a SUPER_ADMIN
-    # write with an audit trail — is the right end state and was the intent of
-    # TASK-799 lane C, but it cannot land in the same step that keeps the other
-    # four flags on env for the readiness reason above: splitting one flag out of
-    # a family of five is how the "configured in two places" defect starts.
-    # Tracked as the outstanding item of that lane.
+    # The env read survives because closing it is a THIRD step that belongs to
+    # a repository this one cannot change: `TTS_KOKORO_ENABLED=true` in the k8s
+    # ConfigMap (`arca/hope-v2-deployment`) is what makes a keyless deployment
+    # REACH READY at all (`test_keyless_readiness_task642`), and closing the
+    # path while the manifest still supplies it would leave `hope-tts` answering
+    # 503 forever with no Service endpoints — the outage that test exists for.
+    #
+    # These fields are read ONLY by boot registration in `main.py`, so a served
+    # value converges on the next restart and can never deregister a live
+    # provider mid-process.
+    #
+    # RESOLVED for this flag (lane H): the licensing gate above used to be
+    # enforced by the docstring alone. `tts.indicf5.enabled` is now a
+    # `globalOnly` registry key on a `locked` SYSTEM row seeded `'false'`, so
+    # enabling it is a SUPER_ADMIN write with an audit trail rather than an
+    # unreviewed env edit. The docstring warning stands as the REASON; the row
+    # is the enforcement. All five moved together — splitting one out of a
+    # family of five is how the "configured in two places" defect starts.
     enabled: bool = False
     hf_model: str = Field(
         default="ai4bharat/IndicF5", validation_alias=moved_alias("TTS_INDICF5_HF_MODEL")
@@ -215,18 +231,22 @@ class SarvamConfig(BaseSettings):
 
     model_config = SettingsConfigDict(env_prefix="TTS_SARVAM_")
 
-    # ── `enabled` stays an ENVIRONMENT variable (TASK-799 lane C) ────────────
-    # It is DEPLOYMENT SHAPE, not runtime policy: which engines a container runs
-    # is chosen together with which optional extras were installed in its image,
-    # so a flag that turns on an engine whose package is absent does nothing
-    # useful. Concretely, `TTS_KOKORO_ENABLED=true` in the k8s ConfigMap is what
-    # makes a keyless deployment REACH READY at all
-    # (`test_keyless_readiness_task642`) — moving it to the control plane with no
-    # seeded row, while the manifests live in a separate repository, would leave
-    # `hope-tts` answering 503 forever and its Service carrying no endpoints:
-    # exactly the outage that test was written to prevent.
-    # Registered as `tier: 'env'` + `targetTier: 'redis-flag'` in
-    # `tts-runtime.descriptors.ts` so the pending migration stays queryable.
+    # ── `enabled` — control-plane SERVED, env BOOTSTRAP (TASK-799 lane H) ────
+    # The value now comes from the settings registry (`tts.<engine>.enabled`,
+    # tier `global-kv`, seeded by `seed/11d-tts-engine-flags.ts`), and this env
+    # path REMAINS OPEN as the bootstrap fallback. Only a value a DATABASE ROW
+    # supplied overrides it — see `control_plane.py#ENV_BOOTSTRAP_KEYS`.
+    #
+    # The env read survives because closing it is a THIRD step that belongs to
+    # a repository this one cannot change: `TTS_KOKORO_ENABLED=true` in the k8s
+    # ConfigMap (`arca/hope-v2-deployment`) is what makes a keyless deployment
+    # REACH READY at all (`test_keyless_readiness_task642`), and closing the
+    # path while the manifest still supplies it would leave `hope-tts` answering
+    # 503 forever with no Service endpoints — the outage that test exists for.
+    #
+    # These fields are read ONLY by boot registration in `main.py`, so a served
+    # value converges on the next restart and can never deregister a live
+    # provider mid-process.
     enabled: bool = False
     # Sarvam is BYOK-only. The api-subscription-KEY is never sourced from
     # env — the `validation_alias` is a dead name and `populate_by_name` is OFF, so
