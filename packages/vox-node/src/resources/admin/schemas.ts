@@ -12,7 +12,7 @@
  * Request and response types for the `/api/v1/admin/**` surface, derived from
  * the gateway's own DTOs via `openapi.json`.
  *
- * Only the 367 component schemas the generated surface transitively
+ * Only the 368 component schemas the generated surface transitively
  * reaches are emitted — the document declares more, and importing shapes no
  * method can produce would be noise.
  *
@@ -157,7 +157,7 @@ export interface AiProviderConnectionResponse {
   /** Region identifier (bedrock). */
   region: string | null;
   /** Capability the connection serves. */
-  service: 'llm' | 'stt' | 'tts';
+  service: 'llm' | 'stt' | 'tts' | 'embeddings' | 'rerank' | 'vector';
   /** Owning tenant. The reserved SYSTEM tenant row is the platform default. */
   tenantId: string;
   /** Last update timestamp (ISO 8601). */
@@ -1585,6 +1585,8 @@ export interface DiscoveryEntry {
 }
 
 export interface DiscoveryProbe {
+  /** Which tier of the connection cascade supplied the engine that was probed — the caller's own row, or the SYSTEM-tenant platform default. Absent when no connection resolved, in which case TEXT probed whatever endpoint it last served a generation from. DERIVED from the resolved row, never stamped by the call site. */
+  connectionSource?: 'tenant' | 'system';
   error?: string;
   latencyMs?: number;
   probeStatus: 'ok' | 'timeout' | 'error' | 'skipped';
@@ -3258,6 +3260,11 @@ export interface PromoteAgentRequest {
   toTenantId: string;
 }
 
+export interface PromoteExemplarRequest {
+  /** The golden set to add the promoted case to. Must belong to the same tenant as the exemplar. */
+  goldenSetId: string;
+}
+
 export interface PromptDiffChangeDto {
   /** True when this segment was added in the "to" version */
   added?: boolean;
@@ -4159,18 +4166,30 @@ export interface SetUserDepartmentsRequest {
 export interface SettingCatalogItemResponse {
   /** Server-side taxonomy bucket. */
   category: string;
+  /** Deployables served this key on the effective-config pull route. Absent = the key travels per-request instead (tenant-scoped). */
+  consumedBy?: string[];
   dataType: string;
+  /** The descriptor default. OMITTED for secret-sensitivity keys — the read surface never carries secret material. */
+  default?: Record<string, unknown>;
   description?: string;
   /** CASL subject that gates who may edit it. */
   editableBy: string;
+  /** `closed` = an unset value is an outage, not a fallback; `open-to-default` = falls back to `default`. */
+  failMode?: string;
+  /** When set, a tenant may only move the value in this direction relative to the platform (tighten-only). */
+  floorDirection?: string;
   /** True = SUPER_ADMIN-only surface. */
   globalOnly?: boolean;
   /** Canonical dotted key, e.g. pipeline.autoSummaryEnabled. */
   key: string;
+  /** True = a kill-switch whose safe position is OFF. */
+  killSwitch?: boolean;
   label?: string;
   /** Deepest scope a tenant admin may set this at. */
   maxScope: string;
   sensitivity: 'public' | 'internal' | 'secret';
+  /** Recorded eventual home when `tier` is not where the key ends up. */
+  targetTier?: string;
   /** Storage tier / §3 data class. */
   tier: string;
 }
@@ -5580,12 +5599,12 @@ export interface UpsertAiProviderConnectionRequest {
   enabled?: boolean;
   /** Version the client read (optimistic concurrency). The `If-Match` header overrides this when both are present. Use 0 to create. */
   expectedVersion?: number;
-  /** Provider-specific extras. */
+  /** Provider-specific extras, forwarded VERBATIM to the serving adapter as part of the per-request override entry. A FLAT object: values must be strings, numbers, booleans, or arrays of those — nested objects are rejected. At most 32 keys; strings up to 2048 characters. The keys the connection row itself supplies (`api_key`, `funding`, `base_url`, `region`, `api_version`, `deployment_name`) are reserved and rejected here. */
   extraJson?: Record<string, unknown>;
   /** Region identifier (bedrock). */
   region?: string;
   /** Capability the connection serves. The route `:service` path param is authoritative. */
-  service?: 'llm' | 'stt' | 'tts';
+  service?: 'llm' | 'stt' | 'tts' | 'embeddings' | 'rerank' | 'vector';
 }
 
 export interface UpsertAiRuntimeProfileRequest {
@@ -6044,6 +6063,8 @@ export interface WorkflowDefinitionResponse {
   compiledConfig?: Record<string, unknown> | null;
   compiledConfigChecksum?: string | null;
   createdAt: string;
+  /** The node registry checksum of the RUNNING server, for comparison against `registryChecksum` (the value stamped at publish). Present on every response so a client seeing `needsReview: true` can tell WHAT drifted, rather than only that something did. */
+  currentRegistryChecksum: string;
   deprecatedAt?: string | null;
   description?: string | null;
   /** The canvas graph, exactly as authored. */
@@ -6053,7 +6074,7 @@ export interface WorkflowDefinitionResponse {
   /** The movable pointer: the version the dispatcher resolves for new runs. */
   isActive: boolean;
   name: string;
-  /** True when a published row is out of sync with the running node registry (checksum drift). */
+  /** True when a published row is out of sync with the running node registry (checksum drift), or when the row was explicitly flagged. Derived on read — a published definition is immutable, so drift is never written back. */
   needsReview: boolean;
   paletteKey: string;
   /** The published version this draft branched from, if any. */
@@ -6117,6 +6138,8 @@ export interface WorkflowRunResponse {
   id: string;
   isSandbox: boolean;
   nodeCount?: number | null;
+  /** The run's delivered output, from its `output.deliver` node. Either `{ resultRef: { bucket, key, sizeBytes } }` — a claim-check pointer to fetch out of band — or `{ outputs: { ... } }` inline for a small payload. Null while the run is in flight, and for any graph with no `output.deliver` node. */
+  resultRef?: Record<string, unknown> | null;
   /** The domain run id (empty-string sentinel convention). */
   runId: string;
   /** The AgentTrajectoryStep join key ("workflow-interpreter-{runId}"). */

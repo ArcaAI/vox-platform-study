@@ -8,6 +8,5 @@ export enum AgentStepStatus {
   ERROR = 'ERROR',
   SKIPPED = 'SKIPPED',
   TIMEOUT = 'TIMEOUT',
-  /** Completed, but not fully — the interpreter's per-node DEGRADED outcome. See TASK-789 C-10. */
   DEGRADED = 'DEGRADED',
 }
