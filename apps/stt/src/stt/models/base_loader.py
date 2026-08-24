@@ -4,11 +4,44 @@ import logging
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
+from enum import StrEnum
 from typing import Any
 
 from ..pipeline.dto import AiModelConfig, AiModelFormat
 
 logger = logging.getLogger(__name__)
+
+
+class CredentialPosture(StrEnum):
+    """How an ASR loader obtains the credential it authenticates with.
+
+    This exists so the BYOK lock test can iterate the loader REGISTRY instead of
+    a hand-written list of engine names.
+
+    The four cloud loaders already fail closed — but they do so because four
+    people each remembered to write the check, and three separate hand-written
+    maps (``_CLOUD_ASR_OVERRIDE_FORMATS`` and ``_OVERRIDE_KEY_BY_FORMAT`` in
+    ``transcription/batch_service.py``, plus the streaming set in
+    ``streaming/session_manager.py``) have to agree with them. Nothing structural
+    said a FIFTH cloud engine must fail closed, appear in those maps, or meter its
+    funding correctly. In ``apps/text`` that exact gap let ``bedrock`` and
+    ``vertex`` authenticate from the process environment for years: neither was on
+    the list, so neither was ever asked to fail closed.
+
+    A loader that declares NOTHING fails the lock test. Default-deny is the point:
+    a new engine is not silently assumed credential-free.
+    """
+
+    #: Vendor credential REQUIRED. It arrives per request as a gateway-injected
+    #: ``provider_overrides`` entry (tenant → SYSTEM ``AiProviderConnection``),
+    #: read under the loader's declared ``override_key``. Absent it, the loader
+    #: MUST raise rather than build a client that would authenticate from the
+    #: process environment. There is no env fallback for any of them.
+    BYOK = "byok"
+    #: Runs on the platform's own hardware from local or downloaded weights
+    #: (whisper.cpp, faster-whisper, NeMo, ONNX, transformers, Parakeet). No
+    #: vendor credential exists to fail closed on, and none may be declared.
+    SELF_HOSTED = "self_hosted"
 
 
 @dataclass
@@ -35,7 +68,26 @@ class LoadedModel:
 
 
 class BaseModelLoader(ABC):
-    """Abstract base class for model loaders."""
+    """Abstract base class for model loaders.
+
+    Every concrete loader must declare ``credential_posture`` (see
+    ``CredentialPosture``), and a ``BYOK`` one must additionally declare the
+    ``override_key`` it reads its credential from — the key the usage ledger
+    meters funding under, so a mismatch mis-bills real money.
+
+    Both are declared as plain class attributes with NO default here rather than
+    as abstract members: a default would be a silent answer for a loader whose
+    author never considered the question, which is the failure mode the
+    registry-iterating lock test
+    (``tests/unit/test_task799_byok_credentials.py``) exists to catch.
+    """
+
+    #: Declared by every concrete loader. ``None`` here so an undeclared loader
+    #: FAILS the lock test rather than inheriting a permissive answer.
+    credential_posture: "CredentialPosture | None" = None
+    #: The ``provider_overrides`` key a BYOK loader reads its credential from.
+    #: Must stay ``None`` for a SELF_HOSTED loader.
+    override_key: str | None = None
 
     @property
     @abstractmethod
