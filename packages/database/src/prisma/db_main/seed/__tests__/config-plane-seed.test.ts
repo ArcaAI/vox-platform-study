@@ -16,7 +16,12 @@
  *      `anthropic`/`vertex`/`sarvam`, and all stt/tts cloud rows) stays
  *      `enabled: false`: a cloud provider needs a tenant key, so an
  *      enabled-but-keyless cloud row must never serve.
- *   3. NO row ever carries key material.
+ *   3. No row carries a VENDOR credential, and no ciphertext is committed to
+ *      source. TASK-799 Round 4 lane B narrowed this from "no key material at
+ *      all": the self-hosted engines must carry the non-secret `not-needed`
+ *      placeholder, because the `provider_overrides` fold — the channel
+ *      `apps/text` actually reads — drops a keyless row on BOTH tiers. See the
+ *      delivery-path section at the top of `17-ai-provider-connection.ts`.
  *   4. `AiRuntimeProfile` seeds are EMPTY. Absence of a profile row means "no
  *      opinion" — the injection cascade falls through to the service's own
  *      pydantic/env default, so forwarded requests stay byte-identical.
@@ -31,7 +36,13 @@ import { MODELS_WITHOUT_SOFT_DELETE } from '../../../../client';
 import { SYSTEM_SHARED_READ_MODELS, TENANT_SCOPED_MODELS } from '../../../../extensions/tenant-scope';
 import { AI_MODEL_PROVIDERS } from '../ai-models/shared';
 import { SYSTEM_TENANT_ID } from '../00-constants';
-import { SEEDABLE_PROVIDER_SERVICES, SYSTEM_AI_PROVIDER_CONNECTIONS } from '../17-ai-provider-connection';
+import {
+  PLATFORM_SELF_HOST_CONNECTIONS,
+  SEEDABLE_PROVIDER_SERVICES,
+  SELF_HOST_PLACEHOLDER_API_KEY,
+  SYSTEM_AI_PROVIDER_CONNECTIONS,
+  isPlatformSelfHostConnection,
+} from '../17-ai-provider-connection';
 import { SYSTEM_AI_RUNTIME_PROFILES } from '../18-ai-runtime-profile';
 
 // =============================================================================
@@ -39,15 +50,19 @@ import { SYSTEM_AI_RUNTIME_PROFILES } from '../18-ai-runtime-profile';
 // =============================================================================
 
 /**
- * The built-in-local `llm` engines the platform runs itself — these are the ONLY
- * rows enabled Day-1. `sarvam`/`azure`/`bedrock`/`openai`/`anthropic`/
- * `vertex` are cloud providers and stay disabled (they need a tenant key).
+ * TASK-799 Round 4 lane B.2 — the predicate is IMPORTED, not transcribed.
+ *
+ * It used to be a local `c.service === 'llm' && provider in [...]`, which
+ * silently answered a narrower question than its name: "is this a built-in
+ * LOCAL LLM engine", not "is this a connection to something the PLATFORM runs
+ * itself". The first `rerank:tei` / `vector:qdrant` SYSTEM row seeded
+ * `enabled: true` would therefore have been classified as a cloud row by the
+ * test below and failed it — a test failure caused by the test's own vocabulary
+ * rather than by the seed. `isPlatformSelfHostConnection` is exported from the
+ * seed module (the same B.3 discipline as `SEEDABLE_PROVIDER_SERVICES`), so a
+ * future widening cannot desynchronise this file from the data it describes.
  */
-const BUILT_IN_LOCAL_LLM_PROVIDERS = ['ollama', 'lm-studio', 'built-in', 'vllm', 'llama-cpp'] as const;
-
-/** True iff the row is one of the enabled-Day-1 built-in-local llm engines. */
-const isBuiltInLocalLlm = (c: { service: string; provider: string }): boolean =>
-  c.service === 'llm' && (BUILT_IN_LOCAL_LLM_PROVIDERS as readonly string[]).includes(c.provider);
+const isBuiltInLocalLlm = isPlatformSelfHostConnection;
 
 describe('AiProviderConnection SYSTEM seed rows', () => {
   it('seeds one llm row per canonical serving provider', () => {
@@ -140,10 +155,94 @@ describe('AiProviderConnection SYSTEM seed rows', () => {
     });
   });
 
-  it('never seeds key material', () => {
+  it('never seeds ciphertext into source (the column is filled at seed time, via Vault)', () => {
     SYSTEM_AI_PROVIDER_CONNECTIONS.forEach((c) => {
       expect(c.encryptedApiKey ?? null, `connection ${c.provider} must have no ciphertext`).toBeNull();
       expect(c.keyVersion ?? null, `connection ${c.provider} must have no key version`).toBeNull();
+    });
+  });
+
+  /*
+   * ────────────────────────────────────────────────────────────────────────
+   * TASK-799 Round 4 lane B.1 — the DELIVERY-PATH invariants.
+   *
+   * Phase 2's text migration made every adapter resolve its connection per
+   * request and FAIL CLOSED (`apps/text/src/text/core/connection.py`), and the
+   * delivery channel it reads is the `provider_overrides` fold that
+   * `TextRequestEnrichmentService.applyTenantProviderOverrides` builds from
+   * `AiProviderConnectionService.resolveTenantCloudOverrides('llm', tenantId)`.
+   *
+   * That fold SKIPS a keyless row on BOTH tiers
+   * (`ai-provider-connection.service.ts`: `if (!row.enabled || !row.encryptedApiKey) continue;`),
+   * by design — it is what stops a SYSTEM row's `baseUrl` being mistaken for a
+   * credential. So the self-hosted engines, which need no vendor credential at
+   * all, must still carry KEY MATERIAL or they are never delivered and text
+   * answers 503 `No provider connection resolved for '<engine>'`.
+   *
+   * The reconciliation, stated once: a row that must be DELIVERED through the
+   * override fold needs key material even when its engine requires no auth —
+   * hence the non-secret placeholder `not-needed`, which is literally the value
+   * `openai_compat.py` substitutes for LM Studio when the field is empty.
+   * ────────────────────────────────────────────────────────────────────────
+   */
+
+  /** The self-host llm engines `apps/text` registers a provider factory for. */
+  const TEXT_SELF_HOST_ENGINES = ['llm:lm-studio', 'llm:ollama', 'llm:vllm', 'llm:llama-cpp'] as const;
+
+  it('gives every text-served self-host engine key material, so the override fold delivers it', () => {
+    TEXT_SELF_HOST_ENGINES.forEach((pair) => {
+      const row = SYSTEM_AI_PROVIDER_CONNECTIONS.find((c) => `${c.service}:${c.provider}` === pair);
+      expect(row, `${pair} must have a SYSTEM connection row`).toBeDefined();
+      expect(row!.apiKeyPlaintext, `${pair} must carry the keyless-engine placeholder or the fold drops it`).toBe(
+        SELF_HOST_PLACEHOLDER_API_KEY,
+      );
+      expect(row!.baseUrl, `${pair} must carry the engine endpoint`).toBeTruthy();
+    });
+  });
+
+  it('never seeds a VENDOR credential — the only seeded key material is the non-secret placeholder', () => {
+    SYSTEM_AI_PROVIDER_CONNECTIONS.forEach((c) => {
+      const key = c.apiKeyPlaintext;
+      if (key === null) return;
+      expect(key, `${c.service}:${c.provider} may only seed the sanctioned placeholder`).toBe(SELF_HOST_PLACEHOLDER_API_KEY);
+    });
+  });
+
+  it('leaves every cloud-BYO row keyless (a seeded placeholder would defeat fail-closed)', () => {
+    SYSTEM_AI_PROVIDER_CONNECTIONS.filter((c) => (CLOUD_BYO_SEED_PAIRS as readonly string[]).includes(`${c.service}:${c.provider}`)).forEach(
+      (c) => {
+        expect(c.apiKeyPlaintext, `cloud-BYO ${c.service}:${c.provider} must seed no key material at all`).toBeNull();
+      },
+    );
+  });
+
+  it('keeps `llm:built-in` keyless — it is in-process, so there is nothing to deliver a credential to', () => {
+    const builtIn = SYSTEM_AI_PROVIDER_CONNECTIONS.find((c) => c.service === 'llm' && c.provider === 'built-in');
+    expect(builtIn).toBeDefined();
+    expect(builtIn!.baseUrl).toBeNull();
+    expect(builtIn!.apiKeyPlaintext).toBeNull();
+  });
+
+  /*
+   * B.2 — the widened predicate, tested as a CLASSIFIER rather than through the
+   * rows that happen to be seeded today. `vector:qdrant` is the case the old
+   * `service === 'llm'` form got wrong: the provider IS cloud-BYO eligible (a
+   * tenant may point at its own Qdrant Cloud), yet the SYSTEM row is the
+   * platform-run cluster and would seed enabled.
+   */
+  it('classifies a platform-run self-host integration as self-host, whatever its service', () => {
+    expect(isPlatformSelfHostConnection({ service: 'vector', provider: 'qdrant' })).toBe(true);
+    expect(isPlatformSelfHostConnection({ service: 'rerank', provider: 'tei' })).toBe(true);
+    expect(isPlatformSelfHostConnection({ service: 'llm', provider: 'vllm' })).toBe(true);
+    // …and a cloud vendor is still not self-host, in any service.
+    expect(isPlatformSelfHostConnection({ service: 'llm', provider: 'azure' })).toBe(false);
+    expect(isPlatformSelfHostConnection({ service: 'stt', provider: 'openai' })).toBe(false);
+  });
+
+  it('declares the self-host classification once, as `service:provider` pairs', () => {
+    PLATFORM_SELF_HOST_CONNECTIONS.forEach((pair) => {
+      const [service] = pair.split(':');
+      expect(SEEDABLE_PROVIDER_SERVICES, `self-host pair ${pair} names a declared service`).toContain(service);
     });
   });
 
