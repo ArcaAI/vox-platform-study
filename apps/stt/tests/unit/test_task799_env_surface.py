@@ -96,10 +96,24 @@ class TestModelS3AliasCollapsed:
         assert settings.model_s3_endpoint is None
         assert settings.model_s3_access_key is None
 
-    def test_the_canonical_name_still_works(self, monkeypatch) -> None:
+    def test_the_canonical_name_is_now_CLOSED_TOO(self, monkeypatch) -> None:
+        """The surviving canonical spelling has since been closed as well.
+
+        Collapsing the `STT_V2_` alias left ONE env name for the model-store
+        credential; TASK-799 removed that one too. Endpoint, access key id and
+        secret key are ONE credential and moved together onto
+        `AiProviderConnection` (`model-registry` / `s3`), resolved for the
+        tenant that OWNS the model being fetched.
+
+        The endpoint moved WITH the pair rather than staying behind in env: a
+        tenant bringing its own weights bucket brings its own host, and keeping
+        the host in a different tier from the key is how a credential ends up
+        pointed at the wrong endpoint. Detail in
+        `test_settings.py::test_model_s3_credential_env_paths_are_CLOSED`.
+        """
         monkeypatch.setenv("STT_MODEL_S3_ENDPOINT", "minio:9000")
         settings = Settings(_env_file=None)
-        assert settings.model_s3_endpoint == "minio:9000"
+        assert settings.model_s3_endpoint is None
 
 
 class TestNoCredentialHasARealCodeDefault:

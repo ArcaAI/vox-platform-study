@@ -251,37 +251,46 @@ class TestSettings:
             # ordinary tuning and moved to `stt.gateway.timeoutSeconds`.
             assert settings.api_gateway_timeout == 30
 
-    def test_huggingface_token_override(self):
-        """Test HuggingFace token override."""
-        env_vars = {
-            "HUGGINGFACE_TOKEN": "hf_test_token",
-        }
+    def test_huggingface_token_env_path_is_CLOSED(self):
+        """TASK-799 — ``HUGGINGFACE_TOKEN`` no longer reaches this process.
 
-        with patch.dict(os.environ, env_vars, clear=True):
-            settings = Settings()
+        The token is a BYO credential on ``AiProviderConnection``
+        (``model-registry`` / ``huggingface``), resolved tenant -> SYSTEM for the
+        tenant that OWNS the model being fetched. The env path is closed
+        STRUCTURALLY — a dead ``validation_alias`` no variable matches, with
+        ``populate_by_name`` off so the field name cannot re-open it — rather
+        than by convention, so this cannot regress by someone reading a comment
+        and disagreeing with it.
 
-            assert settings.huggingface_token.get_secret_value() == "hf_test_token"
-
-    def test_huggingface_token_empty_string_normalized_to_none(self):
-        """An empty ``HUGGINGFACE_TOKEN`` must be treated as unset (None).
-
-        Regression: an explicitly-empty value (``HUGGINGFACE_TOKEN=``) was
-        forwarded to the HuggingFace libraries as ``token=""``, which builds an
-        ``Authorization: Bearer `` header with no credential and raises
-        ``Illegal header value b'Bearer '`` on every model load. It must become
-        ``None`` so huggingface_hub falls back to ``HF_TOKEN`` / anonymous.
+        Asserted with the variable SET, because "it is ignored when present" is
+        the property that matters; "absent yields None" would pass even if the
+        path were wide open.
         """
-        with patch.dict(os.environ, {"HUGGINGFACE_TOKEN": ""}, clear=True):
-            settings = Settings()
+        with patch.dict(os.environ, {"HUGGINGFACE_TOKEN": "hf_test_token"}, clear=True):
+            settings = Settings(_env_file=None)
 
             assert settings.huggingface_token is None
 
-    def test_huggingface_token_whitespace_normalized_to_none(self):
-        """A whitespace-only ``HUGGINGFACE_TOKEN`` must be treated as unset."""
-        with patch.dict(os.environ, {"HUGGINGFACE_TOKEN": "   "}, clear=True):
-            settings = Settings()
+    def test_model_s3_credential_env_paths_are_CLOSED(self):
+        """TASK-799 — the ``STT_MODEL_S3_*`` triple no longer reaches this process.
 
-            assert settings.huggingface_token is None
+        Endpoint, access key id and secret key are ONE credential and moved
+        together onto the ``model-registry`` / ``s3`` connection. The endpoint
+        travels WITH the pair rather than staying in env: a tenant that brings
+        its own weights bucket brings its own host, and splitting them across
+        two tiers is how a credential ends up pointed at the wrong endpoint.
+        """
+        env = {
+            "STT_MODEL_S3_ENDPOINT": "leaked-minio:9000",
+            "STT_MODEL_S3_ACCESS_KEY": "leaked-access",
+            "STT_MODEL_S3_SECRET_KEY": "leaked-secret",
+        }
+        with patch.dict(os.environ, env, clear=True):
+            settings = Settings(_env_file=None)
+
+            assert settings.model_s3_endpoint is None
+            assert settings.model_s3_access_key is None
+            assert settings.model_s3_secret_key is None
 
     def test_cors_origins_default(self):
         """CORS is EMPTY by default — no wildcard.
@@ -512,9 +521,10 @@ class TestSecretRedaction:
         "AZURE_STORAGE_ACCOUNT_KEY": "leak-azure-account",
         "AZURE_STORAGE_CONNECTION_STRING": "leak-azure-conn",
         "API_GATEWAY_KEY": "leak-gateway",
-        "HUGGINGFACE_TOKEN": "leak-hf",
         # AZURE_SPEECH_KEY and AZURE_FOUNDRY_API_KEY are no longer settings
-        # fields (both BYOK-only).
+        # fields (both BYOK-only), and HUGGINGFACE_TOKEN joined them in
+        # TASK-799 — its env path is closed, so it can no longer leak FROM env.
+        # `test_huggingface_token_env_path_is_CLOSED` covers that directly.
     }
 
     def _settings(self) -> Settings:
@@ -542,4 +552,3 @@ class TestSecretRedaction:
         assert settings.azure_storage_account_key.get_secret_value() == "leak-azure-account"
         assert settings.azure_storage_connection_string.get_secret_value() == "leak-azure-conn"
         assert settings.api_gateway_key.get_secret_value() == "leak-gateway"
-        assert settings.huggingface_token.get_secret_value() == "leak-hf"

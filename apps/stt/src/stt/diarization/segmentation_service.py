@@ -40,16 +40,13 @@ class SegmentationService:
 
             from stt.core.config.settings import get_settings
 
-            settings = get_settings()
-            hf_token = settings.huggingface_token
-            token = hf_token.get_secret_value() if hf_token else None
-            if not token:
-                try:
-                    from huggingface_hub import get_token as hf_get_token
+            # TASK-799 — one resolution path for the platform HuggingFace token,
+            # shared with the embedding services. Segmentation weights are
+            # platform infrastructure with no tenant owner, so this resolves the
+            # SYSTEM tier.
+            from .embedding_service import _resolve_hf_token
 
-                    token = hf_get_token()
-                except Exception:
-                    pass
+            token = _resolve_hf_token(get_settings())
 
             self._model = Model.from_pretrained(
                 self._hf_model_id,
