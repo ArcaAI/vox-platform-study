@@ -204,7 +204,11 @@ export class BlobStorageProviderFactory {
    */
   private async loadPlatformCredentials(credentialsRef: string | null): Promise<ResolvedStorageCredentials> {
     const fromRef = await this.loadCredentials(credentialsRef ?? undefined);
-    if (fromRef.accessKeyId || fromRef.connectionString || fromRef.accountKey) {
+    // EVERY field the ref can carry counts as "the Vault tier spoke". Omitting
+    // one (this test used to skip `secretAccessKey`) turns a partial Vault value
+    // into a silent downgrade to the env bootstrap tier — the platform would
+    // authenticate with an env secret the operator believed they had superseded.
+    if (fromRef.accessKeyId || fromRef.secretAccessKey || fromRef.connectionString || fromRef.accountKey) {
       return fromRef;
     }
     return {

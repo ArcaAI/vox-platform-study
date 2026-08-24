@@ -23,6 +23,24 @@ describe('Phase 3C — S3 + Config secret migrations', () => {
     it('reads S3_SECRET_KEY via SecretsService.getSecretSync', () => {
       expect(src).toMatch(/secretsService\??\.getSecretSync\(['"]S3_SECRET_KEY['"]\)/);
     });
+    /**
+     * The operator-facing SQL sample shipped alongside this service told
+     * operators to `INSERT` `S3_SECRET_KEY`, `JWT_SECRET_KEY` and
+     * `OIDC_CLIENT_SECRET` into `global_settings` as PLAINTEXT rows — the exact
+     * posture the migration above removed, and one `seed/06-stt.ts` actively
+     * purges (`PURGED_PLAINTEXT_SECRET_KEYS`). A copy-pasteable instruction to
+     * put a credential in a plaintext column is a live violation of
+     * `09-infrastructure-devops.md` §9.3 M10 however inert the file is: it is
+     * read by humans, and it is what they will run.
+     */
+    it('ships no example SQL that writes a credential into global_settings', () => {
+      const example = rel('services/baseServices/storage/s3/examples/minio-example.ts');
+      const offenders = ['S3_SECRET_KEY', 'S3_ACCESS_KEY', 'JWT_SECRET_KEY', 'OIDC_CLIENT_SECRET'].filter((key) =>
+        new RegExp(`\\('${key}'\\s*,`).test(example),
+      );
+      expect(offenders, 'Secrets live in Vault (SecretsService / credentialsRef), never in a global_settings row.').toEqual([]);
+    });
+
     // Non-secret surface stays on AppSettings:
     it('keeps S3_PUBLIC_BUCKET on AppSettings (non-secret)', () => {
       expect(src).toMatch(/appSettingsService\.getValueWithDefault\(['"]S3_PUBLIC_BUCKET['"]/);

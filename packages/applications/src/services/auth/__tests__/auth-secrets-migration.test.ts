@@ -48,20 +48,16 @@ describe('Phase 3B auth secret migration', () => {
     });
   });
 
-  describe('Task 3.8 — auth.service.module.ts: OIDC_CLIENT_SECRET', () => {
-    const src = rel('src/services/auth/auth.service.module.ts');
-    it('does not read OIDC_CLIENT_SECRET from AppSettings', () => {
-      expect(src).not.toMatch(/appSettingsService\.getValueWithDefault\(['"]OIDC_CLIENT_SECRET['"]/);
-    });
-    it('reads OIDC_CLIENT_SECRET from SecretsService', () => {
-      expect(src).toMatch(/secretsService\.getSecretSync\(['"]OIDC_CLIENT_SECRET['"]\)/);
-    });
-    it('keeps OIDC_DISCOVERY_URL on AppSettings (non-secret)', () => {
-      // Tolerate the multi-line call site `getValueWithDefault(\n 'OIDC_DISCOVERY_URL', ...`
-      expect(src).toMatch(/appSettingsService\.getValueWithDefault\(\s*['"]OIDC_DISCOVERY_URL['"]/);
-    });
-    it('keeps OIDC_CLIENT_ID on AppSettings (non-secret)', () => {
-      expect(src).toMatch(/appSettingsService\.getValueWithDefault\(['"]OIDC_CLIENT_ID['"]/);
-    });
-  });
+  // Task 3.8 — auth.service.module.ts: OIDC_CLIENT_SECRET — SUPERSEDED, and
+  // deliberately not rewritten here. It pinned an INTERMEDIATE state: that the
+  // platform OIDC client secret had moved from AppSettings to SecretsService.
+  // The platform OIDC tier is now retired outright — identity is a one-tier
+  // plane resolved from the tenant's own
+  // `TenantIdentityProvider.encryptedSecretRef` — so "reads it from the right
+  // place" no longer has a subject.
+  //
+  // The replacement is STRICTLY STRONGER and lives in
+  // `oidc-platform-tier-closed.test.ts`: no production call site reads the key
+  // at all, it is not warmed at boot, and no descriptor re-provisions it. Same
+  // supersession precedent as `gateway-auth.strategy.ts` above.
 });

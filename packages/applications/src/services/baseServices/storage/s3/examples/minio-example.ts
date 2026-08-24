@@ -174,28 +174,33 @@ export class MinIOExampleService {
 }
 
 /**
- * Database setup SQL for MinIO configuration
- * Run these commands in your database to configure MinIO:
+ * Database setup SQL for the NON-SECRET MinIO configuration.
+ *
+ * CREDENTIALS ARE NOT HERE, AND MUST NOT BE ADDED. `global_settings` is a
+ * plaintext table; a credential belongs in Vault
+ * (`09-infrastructure-devops.md` §9.3 M10). This block used to `INSERT`
+ * `S3_ACCESS_KEY`, `S3_SECRET_KEY`, `JWT_SECRET_KEY` and `OIDC_CLIENT_SECRET`
+ * as rows — copy-pasteable instructions to do the one thing the platform
+ * forbids, which `seed/06-stt.ts` (`PURGED_PLAINTEXT_SECRET_KEYS`) then had to
+ * clean up after.
+ *
+ * Where each of those actually lives now:
+ *   - `S3_ACCESS_KEY` / `S3_SECRET_KEY` — Vault, via `SecretsService`. The
+ *     platform default is the SYSTEM `TenantStorageConfig` row's
+ *     `credentialsRef` (a Vault kv-v2 PATH); these two are its bootstrap
+ *     fallback. A tenant's own backend is its own row + its own ref.
+ *   - `JWT_SECRET_KEY` — Vault (`vault-kv`); the gateway refuses to boot on a
+ *     placeholder.
+ *   - `OIDC_CLIENT_SECRET` — GONE. Identity has no platform tier: federated
+ *     login decrypts the tenant's own `TenantIdentityProvider.encryptedSecretRef`.
+ *
+ * Seed the Vault side with `scripts/vault-seed-secrets.sh`, whose key list is
+ * derived from the `vault-kv` descriptors.
  */
 export const MINIO_SETUP_SQL = `
--- Required MinIO configuration
+-- Required MinIO configuration (non-secret only)
 INSERT INTO global_settings (key, value, description) VALUES
-('S3_ENDPOINT', 'http://localhost:9000', 'MinIO server endpoint'),
-('S3_ACCESS_KEY', 'minioadmin', 'MinIO access key'),
-('S3_SECRET_KEY', 'minioadmin', 'MinIO secret key');
-
--- JWT Authentication settings (required for auth services)
-INSERT INTO global_settings (key, value, description) VALUES
-('JWT_SECRET_KEY', 'your-super-secret-jwt-key-change-in-production', 'JWT signing secret key'),
-('JWT_EXPIRES_IN', '24h', 'JWT token expiration time');
-
--- OIDC Authentication settings (if using OIDC auth)
-INSERT INTO global_settings (key, value, description) VALUES
-('OIDC_DISCOVERY_URL', 'https://your-oidc-provider.com/.well-known/openid_configuration', 'OIDC discovery URL'),
-('OIDC_CLIENT_ID', 'your-oidc-client-id', 'OIDC client ID'),
-('OIDC_CLIENT_SECRET', 'your-oidc-client-secret', 'OIDC client secret'),
-('OIDC_CALLBACK_URL', 'http://localhost:8001/auth/callback', 'OIDC callback URL'),
-('OIDC_SCOPES', 'openid profile email', 'OIDC scopes to request');
+('S3_ENDPOINT', 'http://localhost:9000', 'MinIO server endpoint');
 
 -- Optional MinIO configuration
 INSERT INTO global_settings (key, value, description) VALUES
