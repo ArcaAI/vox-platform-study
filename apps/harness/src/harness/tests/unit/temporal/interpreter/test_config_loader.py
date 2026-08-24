@@ -1,8 +1,9 @@
 """Activity-level tests for interpreter.load_config (Task 5, S-2).
 
-Same monkeypatching pattern as test_activities_claim_check.py: get_settings/build_blob_store
+Same monkeypatching pattern as test_activities_claim_check.py: get_settings/open_store
 are monkeypatched on the interpreter.activities module so the real activity body runs against
-an InMemoryBlobStore, no network / live MinIO.
+an InMemoryBlobStore, no network / live MinIO. (`open_store` replaced the bare
+`build_blob_store` seam in TASK-799 A.2 — it resolves the platform storage location first.)
 """
 
 from __future__ import annotations
@@ -13,7 +14,11 @@ import json
 import pytest
 
 from harness.core.config import ClaimCheckConfig, Settings
-from harness.temporal.claim_check import InMemoryBlobStore, store_blob
+from harness.temporal.claim_check import (
+    InMemoryBlobStore,
+    resolve_claim_check_location,
+    store_blob,
+)
 from harness.temporal.interpreter import activities as interpreter_activities
 from harness.temporal.interpreter.compiled_config import (
     CompiledWorkflowConfig,
@@ -25,6 +30,15 @@ _BUCKET = "harness-claim-check"
 
 def _settings() -> Settings:
     return Settings(claim_check=ClaimCheckConfig(enabled=True, store="memory", min_bytes=1))
+
+
+def _fake_open_store(store: InMemoryBlobStore):
+    """Stand in for `open_store` — the fake store at the bootstrap location."""
+
+    async def _open(cc: ClaimCheckConfig):
+        return store, resolve_claim_check_location(None, cc)
+
+    return _open
 
 
 def _valid_document() -> str:
@@ -59,7 +73,7 @@ class TestLoadConfigRoundTrip:
     async def test_store_ref_load_round_trips_to_identical_config(self, monkeypatch):
         store = InMemoryBlobStore()
         monkeypatch.setattr(interpreter_activities, "get_settings", lambda: _settings())
-        monkeypatch.setattr(interpreter_activities, "build_blob_store", lambda cc: store)
+        monkeypatch.setattr(interpreter_activities, "open_store", _fake_open_store(store))
 
         doc = _valid_document()
         ref = await store_blob(doc, store=store, bucket=_BUCKET)
@@ -74,7 +88,7 @@ class TestLoadConfigRoundTrip:
 
         store = InMemoryBlobStore()
         monkeypatch.setattr(interpreter_activities, "get_settings", lambda: _settings())
-        monkeypatch.setattr(interpreter_activities, "build_blob_store", lambda cc: store)
+        monkeypatch.setattr(interpreter_activities, "open_store", _fake_open_store(store))
 
         doc = _valid_document()
         ref = await store_blob(doc, store=store, bucket=_BUCKET)

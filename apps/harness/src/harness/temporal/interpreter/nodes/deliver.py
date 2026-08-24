@@ -30,7 +30,7 @@ from typing import Any
 from temporalio import activity
 
 from harness.core.config import get_settings
-from harness.temporal.claim_check import build_blob_store, should_offload, store_blob
+from harness.temporal.claim_check import open_store, should_offload, store_blob
 from harness.temporal.interpreter.models import NodeActivityInput, NodeActivityResult
 from harness.temporal.interpreter.nodes._shared import (
     STATUS_DEGRADED,
@@ -97,8 +97,8 @@ async def interpreter_deliver(payload: NodeActivityInput) -> NodeActivityResult:
     if settings.claim_check.enabled and should_offload(
         serialized, min_bytes=settings.claim_check.min_bytes
     ):
-        store = build_blob_store(settings.claim_check)
-        ref = await store_blob(serialized, store=store, bucket=settings.claim_check.bucket)
+        store, location = await open_store(settings.claim_check)
+        ref = await store_blob(serialized, store=store, bucket=location.bucket)
         result_output["resultRef"] = ref.model_dump()
     else:
         result_output["outputs"] = shaped

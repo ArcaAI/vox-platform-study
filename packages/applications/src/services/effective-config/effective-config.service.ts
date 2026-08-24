@@ -56,6 +56,12 @@ import {
 const SYSTEM_TENANT_ID = '00000000-0000-0000-0000-000000000000';
 
 /**
+ * Cascade tiers that are NOT a database answer, and therefore report as
+ * `env-fallback` on the wire. Everything else means a stored row won.
+ */
+const NON_DB_SOURCE_SCOPES = new Set(['code-default', 'env-bootstrap']);
+
+/**
  * The services served `runtimeProfiles`. NOT a per-key list — a runtime profile
  * is an `AiRuntimeProfile` ROW, not a registry setting, so it has no descriptor
  * to declare `consumedBy` on. Adding a config KEY never touches this.
@@ -371,9 +377,13 @@ export class EffectiveConfigService implements IEffectiveConfigService {
         return { value: null, source: 'env-fallback' };
       }
 
-      // The facade reports the winning cascade tier; only `code-default` means
-      // "no DB override exists", which is what the wire calls `env-fallback`.
-      return { value: result.value, source: result.sourceScope === 'code-default' ? 'env-fallback' : 'db' };
+      // The facade reports the winning cascade tier. Two of them mean "nothing
+      // in the DATABASE answered": `code-default` (the descriptor default) and
+      // `env-bootstrap` (the pre-SYSTEM-row `MINIO_*` fallback the storage
+      // cascade ends in). Both are `env-fallback` on the wire — labelling a
+      // bootstrap value `db` would tell an operator the platform row is
+      // configured when it is not.
+      return { value: result.value, source: NON_DB_SOURCE_SCOPES.has(result.sourceScope) ? 'env-fallback' : 'db' };
     } catch (error) {
       this.logger.warn({
         message: 'Effective-config key read failed — degrading to env-fallback',

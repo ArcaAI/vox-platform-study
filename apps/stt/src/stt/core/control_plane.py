@@ -53,7 +53,8 @@ or it is not. ``Settings`` is cached per process (``get_settings`` is
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any
+from functools import cache
+from typing import TYPE_CHECKING, Any, Literal, get_args, get_origin
 
 import structlog
 
@@ -189,9 +190,31 @@ CONTROL_PLANE_KEYS: dict[str, str] = {
     "punctuation_max_length": "stt.punctuation.maxLength",
 }
 
+#: ``Settings`` field  →  a PLATFORM-owned registry key that is NOT under `stt.*`.
+#:
+#: Separate from :data:`CONTROL_PLANE_KEYS` because that table carries an invariant
+#: worth keeping: every key in it is `stt.<group>.<knob>` and has a descriptor in
+#: `stt-runtime.descriptors.ts` (asserted both ways by
+#: `test_task799_descriptor_parity.py`). These keys satisfy neither, and merging them
+#: would have forced that invariant to be weakened rather than split.
+#:
+#: The distinction is real, not bookkeeping. `storage.platformDefault.provider`
+#: describes the PLATFORM's object storage — the SYSTEM `TenantStorageConfig` row that
+#: apps/api resolves through the same cascade — so stt CONSUMES it rather than owning
+#: it. Minting an `stt.storage.provider` twin would be the second-home failure that
+#: owner decision D-2 exists to prevent. It is `tier: 'db-config'`, and it is only
+#: reachable on the pull route because TASK-799 A.1 opened that tier.
+PLATFORM_CASCADE_KEYS: dict[str, str] = {
+    "storage_provider": "storage.platformDefault.provider",
+}
+
 #: Registry key → ``Settings`` field. Built once; the pull payload is keyed by
-#: registry key, so this is the direction the overlay actually walks.
-_FIELD_BY_KEY: dict[str, str] = {key: field for field, key in CONTROL_PLANE_KEYS.items()}
+#: registry key, so this is the direction the overlay actually walks. Both tables
+#: land in one map because the OVERLAY mechanism is identical — only the governance
+#: of where a key's descriptor lives differs.
+_FIELD_BY_KEY: dict[str, str] = {
+    key: field for field, key in {**CONTROL_PLANE_KEYS, **PLATFORM_CASCADE_KEYS}.items()
+}
 
 
 def bootstrap_defaults() -> dict[str, Any]:
@@ -247,6 +270,32 @@ def _acceptable(current: Any, served: Any) -> bool:
     return False
 
 
+@cache
+def _declared_choices(field: str) -> frozenset[str] | None:
+    """The string members a ``Literal``-typed field accepts; ``None`` if unconstrained.
+
+    Derived from the ANNOTATION rather than a hand-written table, so a field that
+    gains or loses a member needs no second edit here.
+
+    Why type agreement is not enough for these. ``_acceptable`` compares the served
+    value's SHAPE against the value already in the field, which is the right rule for
+    a free-form string (an endpoint, a device name). A ``Literal`` field is different:
+    its members are the complete set of values any consumer branches on, so an
+    out-of-vocabulary string type-checks and then silently takes the fall-through
+    branch — `storage_provider="gcs"` would leave stt on MinIO while an admin believed
+    they had switched backends. Refuse it and keep the bootstrap value instead.
+    """
+    from stt.core.config.settings import Settings as _Settings
+
+    annotation = _Settings.model_fields[field].annotation
+    if get_origin(annotation) is not Literal:
+        return None
+    members = get_args(annotation)
+    if not members or not all(isinstance(member, str) for member in members):
+        return None
+    return frozenset(members)
+
+
 def apply_control_plane(settings: Settings, payload: Any) -> list[str]:
     """Overlay one effective-config payload onto ``settings``. Returns the fields set.
 
@@ -283,6 +332,17 @@ def apply_control_plane(settings: Settings, payload: Any) -> list[str]:
                     served_type=type(served).__name__,
                     current_type=type(current).__name__,
                 )
+            continue
+
+        choices = _declared_choices(field)
+        if choices is not None and served not in choices:
+            logger.warning(
+                "stt.control_plane.value_outside_declared_choices",
+                key=key,
+                field=field,
+                served=served,
+                choices=sorted(choices),
+            )
             continue
 
         if served == current:

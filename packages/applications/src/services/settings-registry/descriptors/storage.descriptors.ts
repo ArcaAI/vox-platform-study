@@ -26,6 +26,17 @@ export const STORAGE_SETTINGS: SettingDescriptor[] = [
   {
     key: 'storage.platformDefault.provider',
     tier: 'db-config',
+    // stt selects its object-store backend from this; its `STORAGE_PROVIDER`
+    // env field is closed structurally (`stt/core/control_plane.py`), so this
+    // is the only surface that sets it.
+    //
+    // NOT declared for harness: the claim-check backend is chosen by
+    // `HARNESS_CLAIM_CHECK_STORE` (the in-memory dev fake vs the real
+    // S3-compatible store), which is a different axis from which cloud vendor
+    // the platform's object storage is. Harness consumes the LOCATION keys
+    // below and nothing else — a `consumedBy` nobody reads is the dead-knob
+    // class this ticket exists to remove.
+    consumedBy: ['stt'],
     dataType: 'enum',
     sensitivity: 'internal',
     maxScope: 'system',
@@ -42,6 +53,9 @@ export const STORAGE_SETTINGS: SettingDescriptor[] = [
   {
     key: 'storage.platformDefault.endpoint',
     tier: 'db-config',
+    // harness's claim-check store IS platform object storage; it reads the
+    // location from this cascade instead of a parallel HARNESS_CLAIM_CHECK_* block.
+    consumedBy: ['harness'],
     dataType: 'string',
     sensitivity: 'internal',
     maxScope: 'system',
@@ -57,6 +71,7 @@ export const STORAGE_SETTINGS: SettingDescriptor[] = [
   {
     key: 'storage.platformDefault.region',
     tier: 'db-config',
+    consumedBy: ['harness'],
     dataType: 'string',
     sensitivity: 'internal',
     maxScope: 'system',
@@ -73,6 +88,7 @@ export const STORAGE_SETTINGS: SettingDescriptor[] = [
   {
     key: 'storage.platformDefault.forcePathStyle',
     tier: 'db-config',
+    consumedBy: ['harness'],
     dataType: 'boolean',
     sensitivity: 'internal',
     maxScope: 'system',
@@ -89,6 +105,9 @@ export const STORAGE_SETTINGS: SettingDescriptor[] = [
   {
     key: 'storage.platformDefault.containerPrefix',
     tier: 'db-config',
+    // Applied by harness to its claim-check bucket name, so an operator can
+    // namespace every physical bucket in one place.
+    consumedBy: ['harness'],
     dataType: 'string',
     sensitivity: 'internal',
     maxScope: 'system',

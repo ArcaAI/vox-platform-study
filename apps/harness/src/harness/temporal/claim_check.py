@@ -37,6 +37,7 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
+from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
 
 from pydantic import BaseModel, ConfigDict
@@ -179,22 +180,135 @@ class S3BlobStore:
 _MEMORY_STORE = InMemoryBlobStore()
 
 
-def build_blob_store(config: ClaimCheckConfig) -> BlobStore:
+#: Registry keys describing WHERE the platform's object storage lives
+#: (TASK-799 A.2). `tier: 'db-config'`, backed by the SYSTEM `TenantStorageConfig`
+#: row, `consumedBy: ['harness']`. The claim-check store IS that storage — it is
+#: not a second backend — so harness reads the location from here rather than
+#: from a parallel `HARNESS_CLAIM_CHECK_*` block (owner decision D-2: never
+#: invent a second home for a concept that already has one).
+STORAGE_ENDPOINT_KEY = "storage.platformDefault.endpoint"
+STORAGE_REGION_KEY = "storage.platformDefault.region"
+STORAGE_CONTAINER_PREFIX_KEY = "storage.platformDefault.containerPrefix"
+
+
+@dataclass(frozen=True)
+class ClaimCheckLocation:
+    """WHERE the claim-check blobs live. Location only — never a credential.
+
+    The credential is deliberately absent: `access_key`/`secret_key` are
+    ``SecretStr`` fed from Vault (agent `secrets_dir`) and must never traverse a
+    config read surface. The gateway enforces the same rule from its side by
+    refusing `sensitivity: 'secret'` descriptors on the pull route.
+    """
+
+    bucket: str
+    endpoint_url: str
+    region: str
+    secure: bool
+
+
+def _served_str(snapshot: Any | None, key: str) -> str | None:
+    """A non-empty STRING from the pull snapshot, or ``None`` for "no opinion".
+
+    Refuses rather than coerces, for the reason ``resolve_min_bytes`` already
+    documents: a wrongly-typed value is a control-plane defect, and substituting
+    something plausible for it hides the defect behind behaviour that looks fine.
+    ``bool`` is excluded explicitly — it is not a string, but being explicit
+    costs nothing and the same trap bites the numeric helpers.
+    """
+    if snapshot is None or not getattr(snapshot, "ok", False):
+        return None
+    value = snapshot.setting(key)
+    if not isinstance(value, str) or isinstance(value, bool):
+        return None
+    stripped = value.strip()
+    return stripped or None
+
+
+def resolve_claim_check_location(
+    snapshot: Any | None, config: ClaimCheckConfig
+) -> ClaimCheckLocation:
+    """The store location in force: control plane first, env as the bootstrap floor.
+
+    Resolved PER FIELD, not all-or-nothing: a half-configured platform row must
+    not drag the fields it does answer back to env.
+
+    ``secure`` is DERIVED from a served endpoint rather than read as its own
+    knob. A URL is authoritative about its own scheme, and two settings that can
+    disagree about one fact is how a store ends up told to speak plaintext to an
+    ``https://`` host. When the control plane has no endpoint opinion, the
+    bootstrap ``secure`` stands untouched.
+
+    ``bucket`` keeps its harness-owned LOGICAL name and gains the platform's
+    namespace prefix. There is no `storage.platformDefault.bucket` key and there
+    must not be one — the platform default describes a BACKEND, not one
+    service's bucket; `containerPrefix` is the declared mechanism for placement
+    ("namespace prefix applied to physical bucket/container names").
+    """
+    endpoint = _served_str(snapshot, STORAGE_ENDPOINT_KEY)
+    region = _served_str(snapshot, STORAGE_REGION_KEY)
+    prefix = _served_str(snapshot, STORAGE_CONTAINER_PREFIX_KEY)
+
+    return ClaimCheckLocation(
+        bucket=f"{prefix}{config.bucket}" if prefix else config.bucket,
+        endpoint_url=endpoint or config.endpoint_url,
+        region=region or config.region,
+        secure=endpoint.lower().startswith("https://") if endpoint else config.secure,
+    )
+
+
+def build_blob_store(
+    config: ClaimCheckConfig, location: ClaimCheckLocation | None = None
+) -> BlobStore:
     """Construct the configured backend: ``s3`` (MinIO) or the in-memory fake.
 
     ``s3`` builds a fresh :class:`S3BlobStore` (stateless durable backend);
     ``memory`` returns the process-shared singleton so blobs survive across the
     per-call construction pattern the activities use.
+
+    ``location`` is the control-plane-resolved storage location
+    (:func:`resolve_claim_check_location`). Omitted ⇒ the bootstrap values on
+    ``config``, which is what every caller saw before A.2 and what a degraded
+    control plane still produces. ``store`` itself stays on ``config``: it
+    selects the dev fake vs the real backend — a deployment axis, not a location
+    — and the ``memory``-outside-development guard in ``core/config.py`` and
+    ``temporal/worker.py`` is unchanged.
     """
     if config.store == "s3":
+        resolved = location or resolve_claim_check_location(None, config)
         return S3BlobStore(
-            endpoint_url=config.endpoint_url,
+            endpoint_url=resolved.endpoint_url,
             access_key=config.access_key.get_secret_value(),
             secret_key=config.secret_key.get_secret_value(),
-            region=config.region,
-            secure=config.secure,
+            region=resolved.region,
+            secure=resolved.secure,
         )
     return _MEMORY_STORE
+
+
+async def open_store(config: ClaimCheckConfig) -> tuple[BlobStore, ClaimCheckLocation]:
+    """The location-resolved store, for a caller that holds no snapshot already.
+
+    One helper rather than a resolve/build pair repeated at each edge, so the
+    store and the bucket a caller writes to can never be resolved from different
+    tiers. A caller that ALREADY has the snapshot (``_offload_text`` needs it for
+    ``min_bytes`` too) should use :func:`resolve_claim_check_location` +
+    :func:`build_blob_store` directly rather than fetching twice.
+
+    NEVER raises on the config read: the client is TTL-cached and fail-safe, and
+    a control-plane hiccup must not fail an activity that would otherwise have
+    succeeded — it degrades to the bootstrap location.
+    """
+    snapshot: Any | None = None
+    try:
+        from harness.core.effective_config import get_effective_config_client
+
+        snapshot = await get_effective_config_client().get()
+    except Exception:  # noqa: BLE001 — a config read may never fail a claim-check
+        snapshot = None
+
+    location = resolve_claim_check_location(snapshot, config)
+    return build_blob_store(config, location), location
 
 
 def _sha256_hex(data: bytes) -> str:

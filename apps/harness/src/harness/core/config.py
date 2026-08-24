@@ -258,12 +258,14 @@ class ClaimCheckConfig(BaseSettings):
     # wearing a config costume, and an admin slider wired to it would control nothing.
     # `test_task799_claim_check_config.py` keeps it gone.
     #
-    # `bucket` / `endpoint_url` / `region` / `secure` above are the storage LOCATION, and
-    # they still belong in the `storage.platformDefault.*` / `TenantStorageConfig`
-    # cascade rather than in this parallel block. They are NOT migrated yet: those keys
-    # are `db-config` tier, and `EffectiveSettingsService.resolveEffective` resolves only
-    # `pipeline.*`, `models.*` and `global-kv` — so declaring `consumedBy: ['harness']`
-    # on them today would serve `null` on every pull. See the TASK-799 report.
+    # `bucket` / `endpoint_url` / `region` / `secure` above are the storage LOCATION and
+    # are now BOOTSTRAP FLOOR ONLY (TASK-799 A.2). The admin-managed source of truth is
+    # the `storage.platformDefault.*` cascade (the SYSTEM `TenantStorageConfig` row) —
+    # the claim-check store IS platform object storage, so it must not be described a
+    # second time here (D-2). `temporal/claim_check.py:resolve_claim_check_location`
+    # applies the cascade over these values; a degraded control plane leaves them in
+    # force, which is what makes the migration behaviour-neutral. Do not tune the
+    # deployed store by editing these — set the platform row.
 
     @field_validator("store")
     @classmethod

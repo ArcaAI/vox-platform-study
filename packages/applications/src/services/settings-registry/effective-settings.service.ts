@@ -10,6 +10,7 @@ import { Inject, Injectable, Optional } from '@nestjs/common';
 import { ArgumentInvalidException } from '@arcaai/exceptions';
 import { IAiTaskDefaultService } from '../ai-task-default/IAiTaskDefaultService';
 import { ConfigResolutionContext, ConfigResolver, PipelineToggleKey } from '../config-resolver/config-resolver.service';
+import { PlatformStorageSettingsResolver } from '../tenant-storage-config/platform-storage-settings.resolver';
 import { HOPE_SETTINGS_REGISTRY } from './registry';
 import type { SettingDescriptor } from './registry.types';
 import { applyDeclaredFailMode, TenantSettingsService } from './tenant-settings.service';
@@ -40,6 +41,48 @@ export function applyFailMode(descriptor: SettingDescriptor): EffectiveSettingRe
   return { key: descriptor.key, tier: descriptor.tier, value: applyDeclaredFailMode(descriptor), sourceScope: 'code-default' };
 }
 
+/**
+ * Which resolution lane a descriptor dispatches to — or `null` when NOTHING
+ * can answer it.
+ *
+ * Exported because it is the ONE fact two very different callers need:
+ * `resolveEffective` below dispatches on it, and the governance test
+ * (`consumed-by-resolvability.governance.test.ts`) asserts that no descriptor
+ * declaring `consumedBy` maps to `null`.
+ *
+ * That test is the structural half of the TASK-799 A.1 fix. The runtime half
+ * (this branch table) makes `db-config` resolvable; the test is what stops the
+ * NEXT unresolvable tier from shipping, because
+ * `EffectiveConfigService.resolveKey` cannot tell a permanently-missing
+ * resolver from a transient outage — it degrades to `null` for both, which is
+ * exactly how a key could be declared, deployed, and silently dead.
+ */
+export function effectiveResolverLane(descriptor: SettingDescriptor): string | null {
+  const { key, tier } = descriptor;
+  if (key.startsWith('pipeline.')) return 'pipeline';
+  if (key.startsWith('models.')) return 'models';
+  if (tier === 'global-kv') return 'global-kv';
+  // `db-config` is per-FAMILY, not per-tier: each family is owned by the
+  // service that owns its table, so opening the tier wholesale would be a lie.
+  if (tier === 'db-config' && PLATFORM_STORAGE_KEYS.has(key)) return 'db-config:platform-storage';
+  return null;
+}
+
+/**
+ * The `db-config` keys the platform-storage lane answers. Duplicated from the
+ * resolver's own table ON PURPOSE: `effectiveResolverLane` is a pure static
+ * predicate a test can call with no DI graph, while the resolver needs a
+ * repository. `platform-storage-settings.resolver.test.ts` pins the resolver's
+ * side and the governance test pins this side, so a divergence fails loudly.
+ */
+const PLATFORM_STORAGE_KEYS = new Set([
+  'storage.platformDefault.provider',
+  'storage.platformDefault.endpoint',
+  'storage.platformDefault.region',
+  'storage.platformDefault.forcePathStyle',
+  'storage.platformDefault.containerPrefix',
+]);
+
 @Injectable()
 export class EffectiveSettingsService {
   constructor(
@@ -58,6 +101,11 @@ export class EffectiveSettingsService {
     // the CALLER'S tenant or it would report a value that is not the one the
     // consumer will actually enforce.
     @Optional() private readonly tenantSettings?: TenantSettingsService,
+    // Backs the `db-config` lane for `storage.platformDefault.*`. Optional for
+    // the same reason as the two above: a graph that never reads storage config
+    // (and the existing unit tests) must keep working, and an unwired resolver
+    // falls through to the DECLARED failure mode rather than to a DI error.
+    @Optional() private readonly platformStorage?: PlatformStorageSettingsResolver,
   ) {}
 
   /**
@@ -109,6 +157,34 @@ export class EffectiveSettingsService {
       if (!this.tenantSettings) return applyFailMode(descriptor);
       const resolved = this.tenantSettings.resolve(key, ctx.tenantId ?? null);
       return { key, tier: descriptor.tier, value: resolved.value, sourceScope: resolved.source };
+    }
+
+    // The `db-config` lane (TASK-799 A.1).
+    //
+    // Dispatched per key FAMILY to the service that owns that family's table —
+    // never resolved here. `AiTaskDefault` (`models.*`) and `PipelinePolicy`
+    // (`pipeline.*`) are handled above; `TenantStorageConfig` is handled below.
+    // Families whose values vary BY TENANT (`tts.defaultVoiceEn`,
+    // `stt.fallback.*`) deliberately have no lane: per owner decision D-1 they
+    // travel the PUSH channel — per-request gateway injection — and putting
+    // them on this PLATFORM-scope read would serve one tenant's value to all.
+    //
+    // Note what does NOT change: the declared `failMode` is applied only when a
+    // cascade bottoms out with no value, and a backend ERROR propagates from
+    // the owning resolver untouched. A fail-open knob must never be able to
+    // disguise an unreachable control plane as "the default".
+    if (descriptor.tier === 'db-config' && this.platformStorage?.resolves(key)) {
+      const resolved = await this.platformStorage.resolve(key);
+      if (!resolved) return applyFailMode(descriptor);
+      return { key, tier: descriptor.tier, value: resolved.value, sourceScope: resolved.sourceScope };
+    }
+
+    // An unwired graph is NOT a defect — it is a composition that never reads
+    // this family (see the constructor). Falling through to the declared
+    // failure mode keeps such a graph on the descriptor default instead of
+    // turning a missing optional dependency into a 400.
+    if (descriptor.tier === 'db-config' && !this.platformStorage && PLATFORM_STORAGE_KEYS.has(key)) {
+      return applyFailMode(descriptor);
     }
 
     throw new ArgumentInvalidException(`No effective resolver is registered for setting '${key}'.`);

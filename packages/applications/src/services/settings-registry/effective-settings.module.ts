@@ -1,8 +1,10 @@
 import { Logger, Module, OnModuleInit } from '@nestjs/common';
+import { CoreDatabaseModule } from '@arcaai/domains';
 import { AiTaskDefaultServiceModule } from '../ai-task-default/ai-task-default.service.module';
 import { CommonServiceModule } from '../baseServices/common.service.module';
 import { ConfigResolverModule } from '../config-resolver/config-resolver.module';
 import { GlobalSettingServiceModule } from '../globalSetting/globalSetting.service.module';
+import { PlatformStorageSettingsResolver } from '../tenant-storage-config/platform-storage-settings.resolver';
 import { EffectiveSettingsService } from './effective-settings.service';
 import { HOPE_SETTINGS_REGISTRY } from './registry';
 import { SettingsRegistryWriteService } from './settings-registry-write.service';
@@ -18,9 +20,12 @@ import { TenantSettingsService } from './tenant-settings.service';
  * invariant AT BOOT rather than only in a unit test.
  */
 @Module({
-  imports: [ConfigResolverModule, AiTaskDefaultServiceModule, CommonServiceModule, GlobalSettingServiceModule],
-  providers: [EffectiveSettingsService, SettingsRegistryWriteService, TenantSettingsService],
-  exports: [EffectiveSettingsService, SettingsRegistryWriteService, TenantSettingsService],
+  // `CoreDatabaseModule` supplies `TenantStorageConfigRepository`, the ONLY new
+  // dependency the `db-config` lane needs — the cascade itself is the pure
+  // function the upload path already uses.
+  imports: [ConfigResolverModule, AiTaskDefaultServiceModule, CommonServiceModule, GlobalSettingServiceModule, CoreDatabaseModule],
+  providers: [EffectiveSettingsService, SettingsRegistryWriteService, TenantSettingsService, PlatformStorageSettingsResolver],
+  exports: [EffectiveSettingsService, SettingsRegistryWriteService, TenantSettingsService, PlatformStorageSettingsResolver],
 })
 export class EffectiveSettingsModule implements OnModuleInit {
   private readonly logger = new Logger(EffectiveSettingsModule.name);

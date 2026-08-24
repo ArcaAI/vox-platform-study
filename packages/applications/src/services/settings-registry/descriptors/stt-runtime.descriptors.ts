@@ -48,14 +48,17 @@
 //    PLATFORM scope, one cached snapshot per process forever, so every key here
 //    is `maxScope: 'system'` + `globalOnly`. A tenant-varying value travels the
 //    PUSH channel (per-request gateway injection) instead.
-//  • `STORAGE_PROVIDER` and the `AZURE_STORAGE_*` companions. Their correct home
-//    is the `storage.platformDefault.*` cascade, which is `tier: 'db-config'` —
-//    and `EffectiveSettingsService.resolveEffective` has no resolver for that
-//    tier (it throws for anything that is not `pipeline.*` / `models.*` /
-//    `global-kv`). Declaring `consumedBy` on those descriptors today would
-//    compile, deploy, and silently do NOTHING: `resolveKey` catches the throw
-//    and degrades to `env-fallback`. They stay in env until the db-config read
-//    lane exists (assessment RC-5).
+//  • `STORAGE_PROVIDER` and the `AZURE_STORAGE_*` companions. Their home is the
+//    `storage.platformDefault.*` cascade (`tier: 'db-config'`, backed by the
+//    SYSTEM `TenantStorageConfig` row), and as of TASK-799 A.1 that tier IS
+//    resolvable on the pull route — `storage.platformDefault.provider` now
+//    declares `consumedBy: ['stt']` and `stt`'s `storage_provider` env path is
+//    closed. Duplicating it as an `stt.storage.provider` key here would be the
+//    second-home failure D-2 forbids, so it stays where it is.
+//    (Historical note, because it explains the shape of this file: until that
+//    lane existed, declaring `consumedBy` on a `db-config` key compiled,
+//    deployed and served `null` forever — `resolveKey` catches the "no resolver"
+//    throw and degrades to `env-fallback`. That is assessment RC-5, now closed.)
 
 import { SettingDescriptor } from '../registry.types';
 

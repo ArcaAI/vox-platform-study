@@ -24,7 +24,12 @@ from harness.sensors.base import NEREntity
 from harness.services.api_client import DraftResponse
 from harness.services.text_client import TextGenerationResult
 from harness.temporal import activities
-from harness.temporal.claim_check import InMemoryBlobStore, load_blob, store_blob
+from harness.temporal.claim_check import (
+    InMemoryBlobStore,
+    load_blob,
+    resolve_claim_check_location,
+    store_blob,
+)
 from harness.temporal.models import (
     ExtractEntitiesInput,
     GenerateInput,
@@ -47,6 +52,27 @@ def _settings(*, enabled: bool = True, min_bytes: int = 16) -> Settings:
 @pytest.fixture
 def env() -> ActivityEnvironment:
     return ActivityEnvironment()
+
+
+def _patch_store(monkeypatch: pytest.MonkeyPatch, store: InMemoryBlobStore) -> None:
+    """Pin BOTH store-construction seams to one in-memory fake.
+
+    TASK-799 A.2 introduced `open_store` (resolve the platform storage location, then
+    build) alongside the primitive `build_blob_store`. Patching only one leaves the
+    other reaching for the real control plane, so they are patched together — and the
+    `location` a caller writes to is the bootstrap bucket, unchanged, because no
+    snapshot is served here.
+    """
+    monkeypatch.setattr(activities, "build_blob_store", lambda cc, location=None: store)
+    monkeypatch.setattr(
+        activities,
+        "open_store",
+        lambda cc: _resolved(store, cc),
+    )
+
+
+async def _resolved(store: InMemoryBlobStore, cc: ClaimCheckConfig):
+    return store, resolve_claim_check_location(None, cc)
 
 
 class _FakeText:
@@ -83,7 +109,7 @@ class TestGenerateOffloadsNote:
         """An offloaded note ⇒ ``content`` emptied + ref; the blob is NOT in the result."""
         store = InMemoryBlobStore()
         monkeypatch.setattr(activities, "get_settings", lambda: _settings())
-        monkeypatch.setattr(activities, "build_blob_store", lambda cc: store)
+        _patch_store(monkeypatch, store)
         monkeypatch.setattr(activities, "_text_client", lambda s: _FakeText(_BIG_NOTE))
 
         result = await env.run(activities.generate, GenerateInput(tenant_id="11111111-1111-1111-1111-111111111111", prompt="P"))
@@ -98,7 +124,7 @@ class TestGenerateOffloadsNote:
     async def test_small_note_stays_inline(self, env, monkeypatch):
         store = InMemoryBlobStore()
         monkeypatch.setattr(activities, "get_settings", lambda: _settings(min_bytes=100_000))
-        monkeypatch.setattr(activities, "build_blob_store", lambda cc: store)
+        _patch_store(monkeypatch, store)
         monkeypatch.setattr(activities, "_text_client", lambda s: _FakeText("small"))
 
         result = await env.run(activities.generate, GenerateInput(tenant_id="11111111-1111-1111-1111-111111111111", prompt="P"))
@@ -111,7 +137,7 @@ class TestGenerateOffloadsNote:
         """The disabled path is byte-identical to a no-offload path (no offload, no ref)."""
         store = InMemoryBlobStore()
         monkeypatch.setattr(activities, "get_settings", lambda: _settings(enabled=False))
-        monkeypatch.setattr(activities, "build_blob_store", lambda cc: store)
+        _patch_store(monkeypatch, store)
         monkeypatch.setattr(activities, "_text_client", lambda s: _FakeText(_BIG_NOTE))
 
         result = await env.run(activities.generate, GenerateInput(tenant_id="11111111-1111-1111-1111-111111111111", prompt="P"))
@@ -126,7 +152,7 @@ class TestGenerateOffloadsNote:
         prompt_ref = await store_blob("BASE PROMPT", store=store, bucket=_BUCKET)
         fake = _FakeText("small")
         monkeypatch.setattr(activities, "get_settings", lambda: _settings(min_bytes=100_000))
-        monkeypatch.setattr(activities, "build_blob_store", lambda cc: store)
+        _patch_store(monkeypatch, store)
         monkeypatch.setattr(activities, "_text_client", lambda s: fake)
 
         await env.run(
@@ -168,7 +194,7 @@ class TestConsumersResolveInlineOrRef:
         store = InMemoryBlobStore()
         api = _FakeApiPersist()
         monkeypatch.setattr(activities, "get_settings", lambda: _settings())
-        monkeypatch.setattr(activities, "build_blob_store", lambda cc: store)
+        _patch_store(monkeypatch, store)
         monkeypatch.setattr(activities, "_api_client", lambda s: api)
 
         # (a) inline content → apps/api receives it verbatim.
@@ -196,7 +222,7 @@ class TestConsumersResolveInlineOrRef:
         ref = await store_blob(_BIG_NOTE, store=store, bucket=_BUCKET)
         nlp = _FakeNlp()
         monkeypatch.setattr(activities, "get_settings", lambda: _settings())
-        monkeypatch.setattr(activities, "build_blob_store", lambda cc: store)
+        _patch_store(monkeypatch, store)
         monkeypatch.setattr(activities, "_nlp_client", lambda s: nlp)
 
         result = await env.run(
@@ -219,7 +245,7 @@ class TestAssembleOffloadsPrompt:
 
         store = InMemoryBlobStore()
         monkeypatch.setattr(activities, "get_settings", lambda: _settings())
-        monkeypatch.setattr(activities, "build_blob_store", lambda cc: store)
+        _patch_store(monkeypatch, store)
         monkeypatch.setattr(activities, "_api_client", lambda s: _FakeApiAssemble())
 
         from harness.temporal.models import AssembleInput

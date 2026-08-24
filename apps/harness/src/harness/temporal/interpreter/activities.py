@@ -23,7 +23,7 @@ from harness.temporal.activities import (
 from harness.temporal.activities import (
     _TrajectoryBatch as TrajectoryBatch,  # reuse, never a second emitter (Task 7) — noqa: SLF001
 )
-from harness.temporal.claim_check import ClaimCheckRef, build_blob_store, load_blob
+from harness.temporal.claim_check import ClaimCheckRef, load_blob, open_store
 from harness.temporal.interpreter.compiled_config import CompiledWorkflowConfig, parse_and_verify
 from harness.temporal.interpreter.models import NodeActivityInput, NodeActivityResult
 from harness.temporal.interpreter.nodes.consultation import (
@@ -227,7 +227,7 @@ async def load_config(ref: ClaimCheckRef) -> CompiledWorkflowConfig:
     bounds). A corrupt/invalid config must fail the run — never execute a partial graph.
     """
     settings = get_settings()
-    store = build_blob_store(settings.claim_check)
+    store, _ = await open_store(settings.claim_check)
     # ClaimCheckNotFound / ClaimCheckIntegrityError propagate unmodified — fail loud
     # (S-2's contract), never substitute an empty config.
     raw = await load_blob(ref, store=store)
