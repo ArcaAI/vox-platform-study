@@ -14,6 +14,7 @@ from text.core.connection import require_base_url
 from text.core.defaults import resolve_request_defaults
 from text.core.retention import DEFAULT_RETENTION_TTL_S, clamp_cache_ttl_seconds
 from text.core.telemetry import get_tracer
+from text.models.probe import ProbeConnection
 from text.models.provider import ModelInfo, ProviderInfo
 from text.models.requests import GenerateRequest
 from text.models.stats import GenerationStats, stats_from_ollama_response
@@ -264,18 +265,23 @@ class OllamaProvider:
             logger.error("health_check.unexpected_error", provider="ollama", error=str(exc))
             return False
 
-    async def _running_model_names(self) -> set[str] | None:
+    async def _running_model_names(
+        self, base_url: str | None = None, headers: dict[str, str] | None = None
+    ) -> set[str] | None:
         """`GET /api/ps` lists the models Ollama currently has resident.
 
         Returns ``None`` when the probe fails, which the caller renders as an
         UNKNOWN load state — never as "not loaded" (a transient `/api/ps` miss
         must not look like an unloaded engine).
+
+        ``base_url`` is explicit so a connection-scoped discovery probe asks the
+        engine it was GIVEN; omitted, it falls back to the process memo.
         """
-        probe_url = self._probe_url()
+        probe_url = base_url or self._probe_url()
         if probe_url is None:
             return None
         try:
-            resp = await self._http.get(f"{probe_url}/api/ps")
+            resp = await self._http.get(f"{probe_url}/api/ps", headers=headers)
             if resp.status_code != 200:
                 return None
             return {m["name"] for m in resp.json().get("models", []) if m.get("name")}
@@ -286,11 +292,25 @@ class OllamaProvider:
             logger.error("get_info.ps_unexpected_error", provider="ollama", error=str(exc))
             return None
 
-    async def get_info(self) -> ProviderInfo:
+    async def _list_models(
+        self, base_url: str | None, headers: dict[str, str] | None = None
+    ) -> ProviderInfo:
+        """Ollama's NATIVE listing — `GET {base_url}/api/tags`, enriched with the
+        resident set from `/api/ps`.
+
+        Ollama also exposes an OpenAI-compatible `/v1`, but `/api/tags` is the
+        surface this adapter already speaks and the only one that carries the
+        residency information the console renders, so discovery reuses it rather
+        than adding a second HTTP path.
+
+        The one listing body shared by the memo probe (`get_info`) and the
+        connection-scoped one (`discover_models`).
+        """
         models: list[ModelInfo] = []
-        probe_url = self._probe_url()
         try:
-            resp = await self._http.get(f"{probe_url}/api/tags") if probe_url else None
+            resp = (
+                await self._http.get(f"{base_url}/api/tags", headers=headers) if base_url else None
+            )
             if resp is not None and resp.status_code == 200:
                 for m in resp.json().get("models", []):
                     models.append(ModelInfo(name=m["name"], supports_streaming=True))
@@ -300,7 +320,7 @@ class OllamaProvider:
             logger.error("get_info.unexpected_error", provider="ollama", error=str(exc))
 
         if models:
-            running = await self._running_model_names()
+            running = await self._running_model_names(base_url, headers)
             if running is not None:
                 for model in models:
                     model.state = "loaded" if model.name in running else "not-loaded"
@@ -317,3 +337,23 @@ class OllamaProvider:
             supports_streaming=True,
             supports_vision=True,
         )
+
+    async def get_info(self) -> ProviderInfo:
+        return await self._list_models(self._probe_url())
+
+    async def discover_models(self, connection: ProbeConnection) -> ProviderInfo:
+        """Enumerate the Ollama instance the GATEWAY resolved for this caller.
+
+        Deliberately does not touch ``_last_base_url``: this describes an engine,
+        it must never re-point the endpoint a concurrently-serving generation
+        remembers. Ollama's native API needs no credential, so a keyless
+        connection — the normal self-hosted shape — probes unauthenticated; a key
+        is sent as a bearer token only when the resolved row actually carries
+        one, for an instance fronted by an authenticating proxy.
+        """
+        headers = (
+            {"Authorization": f"Bearer {connection.api_key.get_secret_value()}"}
+            if connection.api_key and connection.api_key.get_secret_value()
+            else None
+        )
+        return await self._list_models(connection.base_url.strip().rstrip("/"), headers)
