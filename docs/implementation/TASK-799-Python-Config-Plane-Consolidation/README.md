@@ -194,6 +194,66 @@ confirmed on the untouched primary checkout):
   of the "15 harness failures" a Phase 0 lane reported and could not explain.**
 - The TTS suite HANGS under captured output; it passes in ~8s with `--capture=no`.
 
+### Round 4 — `db-config` resolver + SYSTEM connection rows (merged 2026-08-24)
+
+**The `db-config` tier is open on the READ path only, and the asymmetry is deliberate.**
+`EffectiveSettingsService` now dispatches `storage.platformDefault.*` to the SYSTEM
+`TenantStorageConfig` row through the SAME pure cascade the upload path uses — a
+dispatch adapter, not a second cascade and not a new table. Writing stays refused,
+because writing a `db-config` key means CAS-updating a row in a dedicated table whose
+service carries semantics the registry lane cannot express (super-admin assertion,
+version-0-means-create, per-field merge, phantom-write suppression, RFC 7232 ordering,
+provider-factory invalidation). Reading has no such content — it is "which tier answered
+and what did it say". This mirrors `models.*`, which already reads through the facade and
+writes through its own service.
+
+Two details that are load-bearing:
+- The resolver reads via `findAllTenantDefaults(SYSTEM)`, NOT `findSystemDefault` — the
+  latter swallows lookup errors and returns `null`, which is right for an upload and
+  catastrophic for a config read (an unreachable DB would become "no opinion" → the
+  descriptor default). Pinned by a test.
+- Harness's claim-check `secure` flag is DERIVED from the served endpoint's scheme rather
+  than kept as a second setting. Two settings that can disagree about one fact is how a
+  store gets told to speak plaintext to an `https://` host.
+
+**The systemic fix: `consumed-by-resolvability.governance.test.ts`** fails CI if any
+`consumedBy` descriptor maps to no resolver lane. Runtime cannot distinguish
+"permanently unresolvable" from "transient outage" — both degrade to `null` — which is
+precisely how this shipped three times.
+
+**The SYSTEM connection rows already existed; they were KEYLESS.** That was the real
+cause of text's post-migration 503s, not missing rows.
+`ai-provider-connection.service.ts:312` skips keyless rows on BOTH tiers, so every
+self-hosted engine was simultaneously resolvable (`resolveConnection`) and undeliverable
+(the override fold) — and `apps/text` reads only the fold. The four self-host rows now
+carry an encrypted `not-needed` placeholder; `llm:built-in` stays keyless because it is
+in-process with no endpoint to authenticate to.
+
+`rerank:tei` and `vector:qdrant` were deliberately NOT seeded: **no delivery path exists
+for them.** Harness holds no DB handle, its retriever runs inside a Temporal activity
+with no gateway request to inject into, and `EffectiveConfigResponse` has no
+`connections` block. Seeding them would have produced a row that looks correct and
+silently does nothing.
+
+**Verified end to end on local infra**, not just by unit test: the four rows read back
+`keyed=YES / keyVersion=1`, the stored value is real Vault Transit ciphertext
+(`vault:v1:…`), and it decrypts to `not-needed` under `hope-globalsetting` — the key
+`VAULT_TRANSIT_KEY` names and the runtime resolver uses.
+
+**Operational notes for any non-local environment:**
+1. `SECRETS_PROVIDER=vault` must be set at seed time or rows are created keyless again
+   and text still 503s. The seed warns rather than letting that surface as a 503.
+2. **The seed is CREATE-ONLY** — confirmed empirically: re-running it skipped all
+   sixteen existing rows and left them keyless. An environment with existing rows needs
+   the four self-host rows keyed through the admin route, or deleted first.
+3. `pnpm db:all` cannot be run by an agent — Prisma refuses destructive commands when it
+   detects Claude Code. A human must run it.
+
+Still open: `apps/text` registers provider ALIASES `openai_compat` and `azure-openai`
+with no matching row (the `llm` rows must equal `AI_MODEL_PROVIDERS` exactly, enforced by
+a test), so a caller selecting an alias name gets no override → 503. A gateway/text
+naming concern, not a seed one.
+
 ### Post-merge gate evidence (`dev-2.2`, primary checkout)
 
 | Service | Result |
