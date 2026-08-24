@@ -1,6 +1,7 @@
 import type { CorePrismaClient } from '../../../client';
 import { AI_MODEL_PROVIDERS } from './ai-models/shared';
 import { SYSTEM_TENANT_ID, SYSTEM_USER_ID } from './00-constants';
+import { encryptSeedSecret, isSeedSecretEncryptionAvailable } from './phi-encryption';
 
 /**
  * AiProviderConnection Seed (config-plane core)
@@ -23,8 +24,13 @@ import { SYSTEM_TENANT_ID, SYSTEM_USER_ID } from './00-constants';
  *     provider needs a tenant-supplied key, so an enabled-but-keyless cloud row
  *     must never serve. A tenant enables one by bringing its own credential.
  *
- * In all cases: no `encryptedApiKey` / `keyVersion` is ever seeded — no key
- * material lives in a seed.
+ * KEY MATERIAL — narrowed by TASK-799 Round 4 lane B. No VENDOR credential is
+ * ever seeded, and no ciphertext is ever committed to source. But a self-hosted
+ * engine row now seeds the non-secret placeholder `not-needed`
+ * (`SELF_HOST_PLACEHOLDER_API_KEY`), encrypted at seed time through the same
+ * Vault-Transit key the runtime writes with. See §"Why a keyless row is not
+ * enough" below — without it the row is resolvable but never DELIVERED, and
+ * `apps/text` answers 503 for every self-hosted engine.
  *
  * CREATE-ONLY: an existing (tenantId, service, provider) row is NEVER
  * overwritten — the connection is admin-tunable at runtime and a re-seed must
@@ -35,6 +41,85 @@ import { SYSTEM_TENANT_ID, SYSTEM_USER_ID } from './00-constants';
  * cloud providers anthropic/vertex); `stt` and `tts` seed only their CLOUD
  * providers (self-host STT/TTS engines are not credential-bearing here).
  */
+
+/**
+ * ## Why a keyless row is not enough (TASK-799 Round 4, lane B)
+ *
+ * There are TWO ways a connection row reaches a consumer, and they have
+ * different requirements. Seeding a row for the wrong one produces a seed that
+ * looks correct and silently does nothing.
+ *
+ * | Path | Who reads it | Keyless row? |
+ * |---|---|---|
+ * | `provider_overrides` FOLD — `AiProviderConnectionService.resolveTenantCloudOverrides` → `TextRequestEnrichmentService.applyTenantProviderOverrides` → the forwarded request body | `apps/text` (`core/connection.py`), `apps/tts`, the STT config service | **Dropped.** The fold skips `!row.enabled \|\| !row.encryptedApiKey` on BOTH tiers — that guard is what stops a SYSTEM row's `baseUrl` being mistaken for a credential |
+ * | `resolveConnection(service, provider, tenantId)` — a direct TypeScript call | nothing in production today | Fine — it returns the row, credential or not |
+ *
+ * `apps/text` is on the FOLD path: `require_connection()` looks up
+ * `provider_overrides[request.provider]` and raises
+ * `ProviderConnectionMissingError` → 503 when it is absent, with no env fallback
+ * (Phase 2 removed the `TEXT_<PROVIDER>_BASE_URL` plane). So the self-hosted
+ * engines it registers — `lm-studio`, `ollama`, `vllm`, `llama-cpp` — must carry
+ * key material even though their engines require no auth. The placeholder is
+ * literally the value `providers/openai_compat.py` substitutes when the field is
+ * empty (`api_key=connection.api_key.get_secret_value() or "not-needed"`).
+ *
+ * NOT seeded, deliberately: `rerank:tei` and `vector:qdrant`. Their only
+ * consumer is `apps/harness`'s retrieval stack, which has NO delivery path for a
+ * connection row — it holds no DB handle (so `resolveConnection` is
+ * unreachable), it runs inside a Temporal activity (so there is no gateway
+ * request to inject into), and `EffectiveConfigResponse` carries no
+ * `connections` block. That assessment is recorded at
+ * `apps/harness/src/harness/core/config.py` §"Why the endpoints below are still
+ * env, and stay env", which keeps them env-tier transport addresses. Seeding
+ * them here would be the exact silent no-op this section exists to prevent.
+ * `embeddings:tei-embed` is the same story on the other side: `apps/text`'s TEI
+ * embedding provider IS on the fold path, but no gateway route proxies
+ * `POST /embeddings`, so nothing would ever build the override to deliver.
+ */
+
+/**
+ * The non-secret stand-in a keyless self-hosted engine accepts as an API key.
+ *
+ * It is NOT a credential and must never be treated as one: it exists only so the
+ * override fold has key material to carry, because the fold is the delivery
+ * channel and it drops keyless rows by design.
+ */
+export const SELF_HOST_PLACEHOLDER_API_KEY = 'not-needed';
+
+/**
+ * Connections to endpoints the PLATFORM runs itself, as `service:provider` pairs.
+ *
+ * TASK-799 lane B.2 widened this concept out of the old
+ * `service === 'llm' && provider in [...]` form, which conflated "built-in local
+ * LLM engine" with "platform-run self-host integration" and so would have
+ * misclassified the first `rerank:tei` / `vector:qdrant` row as a cloud row.
+ *
+ * `vector:qdrant` is the case that proves the two questions are different:
+ * `qdrant` IS cloud-BYO eligible (`CLOUD_BYO_PROVIDERS.vector`, so a tenant may
+ * point at its own Qdrant Cloud), yet the SYSTEM row is the platform's own
+ * cluster. "May a TENANT own a row here?" and "is the PLATFORM's row self-host?"
+ * have different answers, so neither can be derived from the other.
+ *
+ * Pairs with no seeded row today are listed anyway — the list is a CLASSIFIER,
+ * not an inventory, and pre-classifying them is what lets a future lane seed one
+ * without editing a test.
+ */
+export const PLATFORM_SELF_HOST_CONNECTIONS = [
+  'llm:ollama',
+  'llm:lm-studio',
+  'llm:built-in',
+  'llm:vllm',
+  'llm:llama-cpp',
+  // Not seeded (see the delivery-path table above) — classified for the lane
+  // that eventually gets a delivery path for them.
+  'rerank:tei',
+  'vector:qdrant',
+  'embeddings:tei-embed',
+] as const;
+
+/** Whether `(service, provider)` names an endpoint the platform runs itself. */
+export const isPlatformSelfHostConnection = (c: { service: string; provider: string }): boolean =>
+  (PLATFORM_SELF_HOST_CONNECTIONS as readonly string[]).includes(`${c.service}:${c.provider}`);
 
 /**
  * The capability discriminator vocabulary a seed row may carry.
@@ -76,8 +161,22 @@ export interface AiProviderConnectionSeed {
   region: string | null;
   apiVersion: string | null;
   deploymentName: string | null;
+  /**
+   * Ciphertext is NEVER a literal in this file — it is produced at seed time from
+   * `apiKeyPlaintext`. The field stays on the shape so the static tests can keep
+   * asserting that no committed row carries key bytes.
+   */
   encryptedApiKey: Uint8Array | null;
   keyVersion: number | null;
+  /**
+   * Plaintext to encrypt into `encryptedApiKey` at seed time, or `null` for a
+   * genuinely keyless row.
+   *
+   * The ONLY legal non-null value is `SELF_HOST_PLACEHOLDER_API_KEY` — a vendor
+   * credential in a seed would arm the platform-default cascade for every
+   * entitled tenant without an admin ever deciding to (see the cloud-BYO tests).
+   */
+  apiKeyPlaintext: string | null;
   enabled: boolean;
   metaData: { placeholder?: boolean; note?: string } | null;
 }
@@ -104,6 +203,7 @@ export const SYSTEM_AI_PROVIDER_CONNECTIONS: AiProviderConnectionSeed[] = [
     deploymentName: null,
     encryptedApiKey: null,
     keyVersion: null,
+    apiKeyPlaintext: SELF_HOST_PLACEHOLDER_API_KEY,
     enabled: true,
     metaData: { note: 'Base URL from TEXT_OLLAMA_BASE_URL (env-tier connection identity).' },
   },
@@ -120,6 +220,7 @@ export const SYSTEM_AI_PROVIDER_CONNECTIONS: AiProviderConnectionSeed[] = [
     deploymentName: null,
     encryptedApiKey: null,
     keyVersion: null,
+    apiKeyPlaintext: SELF_HOST_PLACEHOLDER_API_KEY,
     enabled: true,
     metaData: { note: 'Base URL from TEXT_OPENAI_COMPAT_BASE_URL (env-tier connection identity).' },
   },
@@ -136,6 +237,7 @@ export const SYSTEM_AI_PROVIDER_CONNECTIONS: AiProviderConnectionSeed[] = [
     deploymentName: null,
     encryptedApiKey: null,
     keyVersion: null,
+    apiKeyPlaintext: null,
     enabled: false,
     metaData: null,
   },
@@ -151,6 +253,7 @@ export const SYSTEM_AI_PROVIDER_CONNECTIONS: AiProviderConnectionSeed[] = [
     deploymentName: null,
     encryptedApiKey: null,
     keyVersion: null,
+    apiKeyPlaintext: null,
     enabled: false,
     metaData: null,
   },
@@ -166,6 +269,7 @@ export const SYSTEM_AI_PROVIDER_CONNECTIONS: AiProviderConnectionSeed[] = [
     deploymentName: null,
     encryptedApiKey: null,
     keyVersion: null,
+    apiKeyPlaintext: null,
     enabled: true,
     metaData: null,
   },
@@ -182,6 +286,7 @@ export const SYSTEM_AI_PROVIDER_CONNECTIONS: AiProviderConnectionSeed[] = [
     deploymentName: null,
     encryptedApiKey: null,
     keyVersion: null,
+    apiKeyPlaintext: null,
     enabled: false,
     metaData: null,
   },
@@ -200,6 +305,7 @@ export const SYSTEM_AI_PROVIDER_CONNECTIONS: AiProviderConnectionSeed[] = [
     deploymentName: null,
     encryptedApiKey: null,
     keyVersion: null,
+    apiKeyPlaintext: null,
     enabled: false,
     metaData: null,
   },
@@ -215,6 +321,7 @@ export const SYSTEM_AI_PROVIDER_CONNECTIONS: AiProviderConnectionSeed[] = [
     deploymentName: null,
     encryptedApiKey: null,
     keyVersion: null,
+    apiKeyPlaintext: SELF_HOST_PLACEHOLDER_API_KEY,
     enabled: true,
     metaData: { note: 'Base URL from TEXT_VLLM_BASE_URL (k3s Service; env-tier connection identity).' },
   },
@@ -230,6 +337,7 @@ export const SYSTEM_AI_PROVIDER_CONNECTIONS: AiProviderConnectionSeed[] = [
     deploymentName: null,
     encryptedApiKey: null,
     keyVersion: null,
+    apiKeyPlaintext: SELF_HOST_PLACEHOLDER_API_KEY,
     enabled: true,
     metaData: { note: 'Base URL from TEXT_LLAMA_CPP_BASE_URL (k3s Service; env-tier connection identity).' },
   },
@@ -249,6 +357,7 @@ export const SYSTEM_AI_PROVIDER_CONNECTIONS: AiProviderConnectionSeed[] = [
     deploymentName: null,
     encryptedApiKey: null,
     keyVersion: null,
+    apiKeyPlaintext: null,
     enabled: false,
     metaData: null,
   },
@@ -265,6 +374,7 @@ export const SYSTEM_AI_PROVIDER_CONNECTIONS: AiProviderConnectionSeed[] = [
     deploymentName: null,
     encryptedApiKey: null,
     keyVersion: null,
+    apiKeyPlaintext: null,
     enabled: false,
     metaData: null,
   },
@@ -282,6 +392,7 @@ export const SYSTEM_AI_PROVIDER_CONNECTIONS: AiProviderConnectionSeed[] = [
     deploymentName: null,
     encryptedApiKey: null,
     keyVersion: null,
+    apiKeyPlaintext: null,
     enabled: false,
     metaData: null,
   },
@@ -297,6 +408,7 @@ export const SYSTEM_AI_PROVIDER_CONNECTIONS: AiProviderConnectionSeed[] = [
     deploymentName: null,
     encryptedApiKey: null,
     keyVersion: null,
+    apiKeyPlaintext: null,
     enabled: false,
     metaData: null,
   },
@@ -312,6 +424,7 @@ export const SYSTEM_AI_PROVIDER_CONNECTIONS: AiProviderConnectionSeed[] = [
     deploymentName: null,
     encryptedApiKey: null,
     keyVersion: null,
+    apiKeyPlaintext: null,
     enabled: false,
     metaData: null,
   },
@@ -329,6 +442,7 @@ export const SYSTEM_AI_PROVIDER_CONNECTIONS: AiProviderConnectionSeed[] = [
     deploymentName: null,
     encryptedApiKey: null,
     keyVersion: null,
+    apiKeyPlaintext: null,
     enabled: false,
     metaData: null,
   },
@@ -344,6 +458,7 @@ export const SYSTEM_AI_PROVIDER_CONNECTIONS: AiProviderConnectionSeed[] = [
     deploymentName: null,
     encryptedApiKey: null,
     keyVersion: null,
+    apiKeyPlaintext: null,
     enabled: false,
     metaData: null,
   },
@@ -364,6 +479,19 @@ void _llmProviderCoverage;
 export const seedAiProviderConnection = async (client: CorePrismaClient): Promise<{ success: true; created: number; skipped: number }> => {
   console.log('Seeding SYSTEM AiProviderConnection rows (TASK-524)...');
 
+  // A row that declares key material and cannot get it seeds keyless — and a
+  // keyless row is DROPPED by the override fold, so `apps/text` will answer 503
+  // for every self-hosted engine. That is the correct outcome (the runtime
+  // resolver is equally inert without Vault: no SecretsService means no
+  // overrides at all), but it must be VISIBLE rather than discovered as a 503.
+  const canEncrypt = isSeedSecretEncryptionAvailable();
+  if (!canEncrypt) {
+    console.warn(
+      '  SECRETS_PROVIDER != vault — self-hosted engine rows will seed WITHOUT key material. ' +
+        'The provider_overrides fold drops keyless rows, so apps/text will 503 until Vault is configured and the seed re-run.',
+    );
+  }
+
   let created = 0;
   let skipped = 0;
   for (const row of SYSTEM_AI_PROVIDER_CONNECTIONS) {
@@ -378,7 +506,15 @@ export const seedAiProviderConnection = async (client: CorePrismaClient): Promis
       continue;
     }
 
-    console.log(`  Creating AiProviderConnection "${row.service}:${row.provider}" (${row.enabled ? 'enabled' : 'disabled'})`);
+    // Encrypt the (non-secret) placeholder through the SAME Vault-Transit key the
+    // runtime writes with, so `toOverrideEntry`'s decrypt round-trips. `null`
+    // when Vault is absent — the row is then created keyless, as before.
+    const key = row.apiKeyPlaintext ? await encryptSeedSecret(row.apiKeyPlaintext) : null;
+
+    console.log(
+      `  Creating AiProviderConnection "${row.service}:${row.provider}" ` +
+        `(${row.enabled ? 'enabled' : 'disabled'}${key ? ', keyed' : ''})`,
+    );
     await client.aiProviderConnection.create({
       data: {
         id: row.id,
@@ -394,6 +530,15 @@ export const seedAiProviderConnection = async (client: CorePrismaClient): Promis
         // with `exactOptionalPropertyTypes`, so an explicit `undefined`
         // is not assignable to Prisma's JSON input type.
         ...(row.metaData ? { metaData: row.metaData } : {}),
+        ...(key
+          ? {
+              // `Uint8Array.from`, not the Buffer itself: Prisma's `Bytes` input is
+              // `Uint8Array<ArrayBuffer>` and Node's Buffer widens to `ArrayBufferLike`,
+              // which `exactOptionalPropertyTypes` rejects.
+              encryptedApiKey: Uint8Array.from(key.ciphertext),
+              keyVersion: key.keyVersion,
+            }
+          : {}),
         createdBy: SYSTEM_USER_ID,
       },
     });

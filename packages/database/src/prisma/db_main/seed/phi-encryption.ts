@@ -1,5 +1,10 @@
 /**
- * Data Encryption Initiative — seed-time PHI encryption.
+ * Data Encryption Initiative — seed-time Vault-Transit encryption.
+ *
+ * PHI field encryption (the bulk of this file) plus — since TASK-799 Round 4 —
+ * non-PHI SECRET-FIELD encryption under a second Transit key
+ * (`encryptSeedSecret`, at the bottom). One file because this holds the seed's
+ * ONLY Vault client and its AppRole/unwrap/login dance.
  *
  * The plaintext clinical-PHI columns were DROPPED, so the seeds can no longer
  * write free-text into them. Instead they must persist Vault-Transit (`hope-phi`)
@@ -105,17 +110,17 @@ function parseKeyVersion(ciphertext: string): number {
 }
 
 /** transit/encrypt a plaintext Buffer → `vault:vN:<b64>` ciphertext string. */
-async function transitEncrypt(plaintext: Buffer): Promise<string> {
+async function transitEncrypt(plaintext: Buffer, keyName: string = PHI_TRANSIT_KEY): Promise<string> {
   const client = await getVaultClient();
-  const res = (await client.write(`${TRANSIT_MOUNT}/encrypt/${PHI_TRANSIT_KEY}`, {
+  const res = (await client.write(`${TRANSIT_MOUNT}/encrypt/${keyName}`, {
     plaintext: plaintext.toString('base64'),
   })) as { data?: { ciphertext?: string } };
   const ct = res?.data?.ciphertext;
-  if (!ct) throw new Error(`${TRANSIT_MOUNT}/encrypt/${PHI_TRANSIT_KEY} returned empty ciphertext`);
+  if (!ct) throw new Error(`${TRANSIT_MOUNT}/encrypt/${keyName} returned empty ciphertext`);
   return ct;
 }
 
-interface SeedCiphertext {
+export interface SeedCiphertext {
   ciphertext: Buffer;
   keyVersion: number;
 }
@@ -255,4 +260,52 @@ export async function encryptSeedRow<TOut extends Record<string, unknown> = Reco
   }
   if (keyVersion !== undefined) out[spec.keyVersionColumn] = keyVersion;
   return out as TOut;
+}
+
+// ─────────────────── seed-time SECRET-FIELD encryption (non-PHI) ───────────────────
+//
+// A second Transit key lives in this file because this is the seed's ONLY Vault
+// client, and duplicating the AppRole/unwrap/login dance for a second caller is
+// exactly the kind of copy the module header warns about.
+//
+// The KEY differs from the PHI one and that difference is load-bearing:
+// `AiProviderConnection.encryptedApiKey` is written by
+// `@arcaai/applications` `encryptSecretField(secretsService, plaintext)` with NO
+// `keyName`, so it lands on `SecretsService`'s default transit key —
+// `VAULT_TRANSIT_KEY ?? 'hope-globalsetting'` (`secrets.module.ts`). Seeding
+// under `hope-phi` would produce a row the runtime cannot decrypt.
+//
+// Read from `process.env` at CALL time rather than module scope so a caller that
+// stubs the environment (tests, a script that loads its env file late) observes
+// the value it set.
+
+/** The Transit key `SecretsService` encrypts secret FIELDS under (not the PHI key). */
+const secretTransitKey = (): string => process.env.VAULT_TRANSIT_KEY || 'hope-globalsetting';
+
+/**
+ * Whether seed-time secret-field encryption can run at all.
+ *
+ * Same gate as `isSeedPhiEncryptionRequired` and for the same reason: without
+ * `SECRETS_PROVIDER=vault` there is no Transit provider, and the RUNTIME resolver
+ * is equally inert — `AiProviderConnectionService.resolveTenantCloudOverrides`
+ * returns `{}` when no `SecretsService` is wired, and `toOverrideEntry` bails on
+ * any row it cannot decrypt. So a non-Vault environment has no working provider
+ * plane whether or not the seed writes ciphertext; it must not ABORT the seed.
+ */
+export function isSeedSecretEncryptionAvailable(env: NodeJS.ProcessEnv = process.env): boolean {
+  return env.SECRETS_PROVIDER === 'vault';
+}
+
+/**
+ * Encrypt a NON-PHI seed secret into the `{ ciphertext, keyVersion }` column
+ * shape, or `null` when Vault is not configured for this environment.
+ *
+ * Byte-identical to `encryptSecretField` in `@arcaai/applications` (which this
+ * package cannot import — dependency cycle): the raw `vault:vN:<b64>` string
+ * stored as UTF-8 bytes, plus the version parsed out of it.
+ */
+export async function encryptSeedSecret(plaintext: string): Promise<SeedCiphertext | null> {
+  if (!plaintext || !isSeedSecretEncryptionAvailable()) return null;
+  const ct = await transitEncrypt(Buffer.from(plaintext, 'utf8'), secretTransitKey());
+  return { ciphertext: Buffer.from(ct, 'utf8'), keyVersion: parseKeyVersion(ct) };
 }
