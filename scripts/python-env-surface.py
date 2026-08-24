@@ -344,7 +344,7 @@ def build() -> dict[str, Any]:
                     "required": f.required,
                     "secret": f.secret,
                     "dataType": f.data_type,
-                    "default": f.default,
+                    "default": _portable_default(f.default),
                     "description": f.description,
                 }
                 for f in sorted(fields, key=lambda f: (f.cls, f.name))
@@ -398,6 +398,44 @@ _WALK_SKIP_DIRS = frozenset(
         ".turbo",
     }
 )
+
+
+#: The repo root, as it appears inside a machine-specific default. A field like
+#: `dictionary_path: str = Field(default=str(get_project_root() / "data" / ...))`
+#: resolves at IMPORT time, so its default embeds whatever checkout produced the
+#: manifest. Committed verbatim that value (a) leaks the generating developer's
+#: home directory into a tracked file, and (b) makes `env:sync --check` pass ONLY
+#: on the machine that last ran `env:sync` — it cannot pass in CI or in any
+#: worktree, which is a drift gate that reports on the wrong thing.
+_ROOT_TOKEN = "<repo>"
+#: Same problem, different anchor: a default built from `Path.home()` (the
+#: Hugging Face cache root is the live example) bakes the GENERATING USER'S
+#: username into a tracked file, on top of the same CI-can-never-match failure.
+_HOME_TOKEN = "<home>"
+
+
+def _portable_default(value: object) -> object:
+    """Replace an embedded absolute repo path with a stable token.
+
+    Applied to the RECORDED default only — the runtime value is untouched, since
+    the field still resolves its own absolute path at import. This makes the
+    manifest (and every artifact generated from it) byte-identical across
+    checkouts, which is the property a drift gate needs to mean anything.
+    """
+    root = str(ROOT)
+    home = str(Path.home())
+    if isinstance(value, str):
+        # Repo first: a checkout living under $HOME would otherwise be rewritten
+        # to `<home>/...` and lose the more specific, more useful anchor.
+        if root in value:
+            return value.replace(root, _ROOT_TOKEN)
+        if home and home != "/" and value.startswith(home):
+            return value.replace(home, _HOME_TOKEN, 1)
+    if isinstance(value, list):
+        return [_portable_default(v) for v in value]
+    if isinstance(value, dict):
+        return {k: _portable_default(v) for k, v in value.items()}
+    return value
 
 
 def _git_tracked_python_files() -> list[str]:

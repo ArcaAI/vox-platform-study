@@ -13,10 +13,10 @@ disagree with those declarations.
 
 | Metric | Value |
 |---|---:|
-| Declared keys (distinct) | 143 |
+| Declared keys (distinct) | 138 |
 | … of which required (`failMode: closed`) | 32 |
 | … of which secret | 31 |
-| … tier `env` | 107 |
+| … tier `env` | 102 |
 | … tier `global-kv` | 9 |
 | … tier `vault-kv` | 27 |
 | Python declared fields | 364 |
@@ -143,12 +143,7 @@ disagree with those declarations.
 | `TEXT_PORT` | `env` | no | `8862` | `apps/text` | Port apps/text binds; the gateway keeps it only to build health-probe URLs. |
 | `TEXT_SERVICE_TOKEN` | `vault-kv` | yes | `CHANGE_ME` | `apps/api` | Shared secret on the gateway↔TEXT hop. TEXT reads it as `settings.service_token` under its `TEXT_` pydantic prefix; the gateway resolves the same name for outbound proxying and for `InternalServiceTokenGuard`'s inbound check. |
 | `TEXT_URL` | `env` | no | `http://localhost:8862` | `apps/api` | Text service base URL (apps/text, port 8862). |
-| `TTS_AZURE_ENABLED` | `env` | no | `false` | `apps/tts` | Registers the Azure AI Speech provider at boot (env `TTS_AZURE_ENABLED`). A registered cloud provider with no platform credential is still not a routing candidate — it would 401 the live API — so enabling it without a key only makes it reachable to tenants that bring their own. |
-| `TTS_INDICF5_ENABLED` | `env` | no | `false` | `apps/tts` | Registers the experimental IndicF5 voice-clone engine (env `TTS_INDICF5_ENABLED`). Prod and commercial enablement are NO-GO pending license review: the released weights are a fine-tune of the CC-BY-NC SWivid F5-TTS base, and the MIT tag cannot override NonCommercial. That gate is currently enforced only by a code comment — moving this key to `redis-flag`, where enabling it is a SUPER_ADMIN write with an audit trail, is the reason `targetTier` is recorded here. |
-| `TTS_KOKORO_ENABLED` | `env` | no | `false` | `apps/tts` | Registers the self-hosted Kokoro English engine (env `TTS_KOKORO_ENABLED`). This is the flag a KEYLESS deployment needs to become Ready: the SYSTEM row routes `en` to kokoro, so without it the service registers no provider and reports 503. Weights load on the first synthesis request. |
-| `TTS_PARLER_ENABLED` | `env` | no | `false` | `apps/tts` | Registers the self-hosted AI4Bharat Indic Parler-TTS Malayalam engine (env `TTS_PARLER_ENABLED`). |
 | `TTS_PORT` | `env` | no | `8865` | `apps/tts` | Port apps/tts binds. |
-| `TTS_SARVAM_ENABLED` | `env` | no | `false` | `apps/tts` | Registers the Sarvam Bulbul provider (env `TTS_SARVAM_ENABLED`). The PUBLIC Sarvam API is not PHI-safe — no BAA, 30-day retention, not India-resident — so point `tts.sarvam.baseUrl` at the enterprise VPC or on-prem host before enabling it for real patient data. |
 | `TTS_SERVICE_TOKEN` | `vault-kv` | yes | `CHANGE_ME` | `apps/api` | Shared secret on the gateway↔TTS hop (`X-Service-Token`). |
 | `TTS_URL` | `env` | no | `http://localhost:8865` | `apps/api` | Text-to-speech base URL (apps/tts, port 8865). |
 | `TTS_WS_EGRESS_HIGH_WATERMARK_BYTES` | `env` | no | `524288` | `apps/tts` | Buffered-amount threshold above which TTS audio frames are dropped. |
@@ -339,7 +334,7 @@ default — see `renderPythonExample()` in `scripts/env-sync.mts`.
 | `HARNESS_TEXT_SERVICE_TOKEN` | `apps/harness` | no | yes | `CHANGE_ME` | live | — |
 | `HARNESS_TEXT_TIMEOUT_S` | `apps/harness` | no | no | `120` | commented | — |
 | `HF_HOME` | `apps/nlp` | no | no | `` | live | `NLP_HF_HOME` |
-| `HUGGINGFACE_CACHE_DIR` | `apps/stt` | no | no | `/Users/taphuynh/.cache/huggingface/hub` | commented | — |
+| `HUGGINGFACE_CACHE_DIR` | `apps/stt` | no | no | `<home>/.cache/huggingface/hub` | commented | — |
 | `HUGGINGFACE_TOKEN` | `apps/stt` | no | yes | `CHANGE_ME` | live | — |
 | `INTERNAL_ACCESS_TOKEN` | `apps/guardrail` | no | yes | `CHANGE_ME` | live | — |
 | `INTERNAL_ACCESS_TOKEN` | `apps/harness` | no | yes | `CHANGE_ME` | live | — |
@@ -420,7 +415,7 @@ default — see `renderPythonExample()` in `scripts/env-sync.mts`.
 | `SEMANTIC_ENDPOINT_MIN_SILENCE_MS__MOVED_TO_CONTROL_PLANE_TASK_799` | `apps/stt` | no | no | `200` | commented | — |
 | `SEMANTIC_ENDPOINT_MIN_WORDS__MOVED_TO_CONTROL_PLANE_TASK_799` | `apps/stt` | no | no | `3` | commented | — |
 | `SEMANTIC_ENDPOINT_MODEL_ID__MOVED_TO_CONTROL_PLANE_TASK_799` | `apps/stt` | no | no | `` | commented | — |
-| `SPELLING_CORRECTOR_DICTIONARY_PATH` | `apps/nlp` | no | no | `/Users/taphuynh/Desktop/igglo/ARCAAI/hope-v2/.claude/worktrees/agent-a185bbf3740fcaecc/apps/nlp/data/dictionaries` | commented | — |
+| `SPELLING_CORRECTOR_DICTIONARY_PATH` | `apps/nlp` | no | no | `<repo>/apps/nlp/data/dictionaries` | commented | — |
 | `SPELLING_CORRECTOR_SYMSPELL_IGNORE_NON_WORDS` | `apps/nlp` | no | no | `true` | commented | — |
 | `SPELLING_CORRECTOR_SYMSPELL_IGNORE_TERM_WITH_DIGITS` | `apps/nlp` | no | no | `true` | commented | — |
 | `SPELLING_CORRECTOR_SYMSPELL_MAX_EDIT_DISTANCE` | `apps/nlp` | no | no | `2` | commented | — |
