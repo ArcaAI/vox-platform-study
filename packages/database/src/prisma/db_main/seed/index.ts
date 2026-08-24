@@ -4,7 +4,7 @@
 import { getPlatformAdminPrismaClient_Unscoped } from '../../../client';
 import { getNodeEnv } from '../../../env';
 import { seedPolicy } from './01-policy';
-import { seedApiKey, shouldSeedApiKeys } from './02-apikey';
+import { describeApiKeySeedingSkip, seedApiKey, shouldSeedApiKeys } from './02-apikey';
 import { seedRole } from './03-role';
 import { seedDepartment } from './04-department';
 import { seedTenant, seedTenantFrontendConfig } from './05-tenant';
@@ -257,8 +257,12 @@ export const seed = async () => {
     if (SEED_DEMO_DATA) {
       await seedApiKey(client);
     } else {
+      // `SEED_DEMO_DATA` has TWO independent causes (see its definition above),
+      // and reporting only the NODE_ENV one sent operators down the wrong path:
+      // with `RUN_SEED=safe` and `NODE_ENV=development` the old message asserted
+      // that NODE_ENV was not development, which is simply false.
       console.warn(
-        `⚠️  Skipping API-key seeding: NODE_ENV="${seedEnv}" is not development/test. ` +
+        `⚠️  Skipping API-key seeding: ${describeApiKeySeedingSkip(mode, seedEnv)}. ` +
           'Demo API-key fixtures contain raw secrets and are never seeded outside local dev/test.',
       );
     }

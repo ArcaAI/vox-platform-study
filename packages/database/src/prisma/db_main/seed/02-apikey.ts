@@ -4,6 +4,10 @@ import { getNodeEnv, type Environment } from '../../../env';
 import { ApiKeyStatus, ApiKeyType } from '../../../generated/core-prisma-client/client.js';
 import { SEED_TENANT_ID, SEED_CUSTOMER_TENANT_IDS, SEED_API_KEY_IDS, SEED_API_KEY_RAW, SEED_USER_IDS } from './00-constants';
 import { resolveApiKeyPepper } from './api-key-pepper';
+import { isPhaseEnabled, type SeedMode } from './seed-mode';
+
+/** This file's phase stem, as `SEED_PHASES_EXCLUDED_FROM_SAFE` spells it. */
+const API_KEY_SEED_PHASE = '02-apikey';
 
 /**
  * Dev/test gate predicate (single source of truth).
@@ -16,6 +20,37 @@ import { resolveApiKeyPepper } from './api-key-pepper';
  */
 export function shouldSeedApiKeys(env: Environment = getNodeEnv()): boolean {
   return env === 'development' || env === 'test';
+}
+
+/**
+ * TASK-799 lane E — explain an API-key seeding skip by the gate that ACTUALLY
+ * closed.
+ *
+ * Demo API-key seeding is gated twice and independently: the seed MODE must
+ * include the `02-apikey` phase, AND `NODE_ENV` must be development/test. The
+ * skip warning used to report only the second, so `RUN_SEED=safe` with
+ * `NODE_ENV=development` printed "NODE_ENV is not development/test" — a false
+ * statement that sends an operator to fix the one thing that was already
+ * correct.
+ *
+ * Lives here, beside `shouldSeedApiKeys`, so neither half of the predicate is
+ * transcribed at the call site and the two can never drift apart.
+ *
+ * @throws when neither gate is closed — a caller asking why a skip happened
+ *   that did not happen is a bug, and a plausible sentence would conceal it.
+ */
+export function describeApiKeySeedingSkip(mode: SeedMode, env: Environment = getNodeEnv()): string {
+  const reasons: string[] = [];
+  if (!isPhaseEnabled(API_KEY_SEED_PHASE, mode)) {
+    reasons.push(`the "${API_KEY_SEED_PHASE}" phase is excluded from RUN_SEED="${mode}"`);
+  }
+  if (!shouldSeedApiKeys(env)) {
+    reasons.push(`NODE_ENV="${env}" is not development/test`);
+  }
+  if (reasons.length === 0) {
+    throw new Error(`API-key seeding is not skipped for mode="${mode}" and NODE_ENV="${env}"; there is no reason to describe.`);
+  }
+  return reasons.join(' and ');
 }
 
 /**
