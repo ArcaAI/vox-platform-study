@@ -126,32 +126,39 @@ class RetrievalConfig(BaseSettings):
 
     model_config = SettingsConfigDict(env_prefix="HARNESS_RETRIEVAL_")
 
-    # ── Why the endpoints below are still env, and stay env (TASK-799 A.2) ──────────
+    # ── Why the ENDPOINTS below are still env, and stay env (TASK-799 A.2) ─────────
     #
-    # Phase 1 widened `AiProviderConnection.service` to include `vector` / `rerank` /
-    # `embeddings`, which reads like an invitation to seed SYSTEM rows for the platform
-    # Qdrant and TEI reranker and delete these fields. It is not, and the plan's own
-    # "Phase 2 landmines" section is why: a KEYLESS row injects on NEITHER tier, so a
-    # seeded `vector:qdrant` row is resolvable via `resolveConnection` (a TypeScript API)
-    # but never appears in `provider_overrides`. The instruction is to settle the delivery
-    # path BEFORE relying on a row. Settled, with the evidence:
+    # A.2 recorded that there was NO delivery path for an `AiProviderConnection` row
+    # into this process, on three grounds: harness holds no DB handle (so
+    # `resolveConnection` is unreachable); the retriever runs inside a Temporal
+    # ACTIVITY with no gateway request to inject into; and `EffectiveConfigResponse`
+    # carries `settings` + `modelWeights` only, with no `connections` block.
     #
-    #   1. harness holds no DB handle, so `resolveConnection` is unreachable from here.
-    #   2. The gateway does not inject config into these calls — the retriever runs inside
-    #      a Temporal ACTIVITY, with no gateway request to inject into.
-    #   3. The pull route carries `settings` (registry keys) and `modelWeights` only;
-    #      `EffectiveConfigResponse` has no `connections` block.
+    # THE THIRD GROUND STILL HOLDS AND THE FIRST TWO ARE NOW ROUTED AROUND
+    # (TASK-799 lane B). The worker asks the gateway for ONE credential from inside
+    # the activity that uses it — `GET /internal/harness/provider-credential`,
+    # generalising the shipped `mcp-token` precedent — so a `vector:qdrant` row DOES
+    # reach this process now. See `harness/core/provider_credentials.py` for why that
+    # shape was chosen over snapshotting onto the workflow input (Temporal history is
+    # durable) or extending the platform-scope pull (the D-1 cardinality failure).
     #
-    # So there is NO delivery path for an `AiProviderConnection` row into this process,
-    # and seeding one would look like it silently did nothing — exactly the failure the
-    # landmine warns about. Meanwhile rule 09 §Configuration Tiers puts a transport
-    # address in the `env` tier by name, and rule 06 calls a `*_URL` default "the ONE
-    # sanctioned kind of hardcoded default" (see `guardrail_base_url` below). These are
-    # one platform Qdrant and one platform TEI with no tenant opinion, so by D-1's
-    # cardinality rule they are not PUSH candidates either.
+    # What that changed and what it did NOT:
     #
-    # Conclusion: they are correctly tiered ALREADY. No row is seeded, and no field is
-    # deleted. Revisit only if the pull payload grows a connections block.
+    #   * `qdrant_api_key` (below) is now BYO-only — its env path is CLOSED, and the
+    #     value arrives from the connection row, tenant → SYSTEM.
+    #   * The ENDPOINTS stay env. Rule 09 §Configuration Tiers puts a transport
+    #     address in the `env` tier by name, and rule 06 calls a `*_URL` default "the
+    #     ONE sanctioned kind of hardcoded default" (see `guardrail_base_url` below).
+    #     These are one platform Qdrant and one platform TEI reranker; where a TENANT
+    #     brings its own Qdrant cluster, its `base_url` rides its OWN connection row
+    #     and overrides `qdrant_url` for that tenant only — which is the tenant-first
+    #     rule satisfied, not bypassed.
+    #   * `embeddings_*` and `reranker_*` are untouched: no tenant opinion exists for
+    #     either today, so by D-1's cardinality rule they are correctly env-tiered.
+    #
+    # The landmine A.2 cited is still live and still worth heeding: a KEYLESS row
+    # injects on NEITHER tier. That is now a DEFINED outcome (`absent` ⇒ call the
+    # endpoint unauthenticated) rather than a silent no-op.
     enabled: bool = False
     qdrant_url: str = "http://localhost:6333"
     # Qdrant ships with NO authentication. Unauthenticated is
@@ -159,7 +166,28 @@ class RetrievalConfig(BaseSettings):
     # read or delete the tenant knowledge corpus. SecretStr because the settings
     # object is logged at startup. Default None, not "" — an empty string is
     # itself a credential to Qdrant, so absent must mean absent.
-    qdrant_api_key: SecretStr | None = None
+    #
+    # ── BYO-only credential (TASK-799 lane B) ─────────────────────────────
+    # The key moved onto `AiProviderConnection(service='vector',
+    # provider='qdrant')` — Qdrant Cloud is a real per-tenant subscription, so
+    # `vector:qdrant` is listed in `CLOUD_BYO_PROVIDERS` and a tenant may point
+    # the plane at its own cluster with its own key; the SYSTEM row is the
+    # platform Qdrant fallback.
+    #
+    # The env path is CLOSED STRUCTURALLY (dead `validation_alias`,
+    # `populate_by_name` OFF for this class) rather than merely discouraged.
+    # The field itself STAYS, and stays wired to `KnowledgeQdrantStore` at both
+    # construction sites: it is now populated by INJECTION only — `model_copy`
+    # from the gateway-resolved credential — which bypasses validation and this
+    # guard. Deleting it would remove the only way to authenticate to Qdrant,
+    # which is the defect a previous lane just finished fixing.
+    #
+    # `None`, never `""` — an empty string is itself a credential to Qdrant, so
+    # absent must mean absent (the `KnowledgeQdrantStore` unauthenticated path).
+    qdrant_api_key: SecretStr | None = Field(
+        default=None,
+        validation_alias="HARNESS_RETRIEVAL_QDRANT_API_KEY__ENV_REMOVED_TASK_799",
+    )
     collection: str = "knowledge_chunks"
     # LM Studio OpenAI-compatible root (already includes ``/v1``); the embeddings
     # client posts to ``{base_url}/embeddings``.

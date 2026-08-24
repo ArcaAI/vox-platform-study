@@ -14,6 +14,7 @@ import { EffectiveSettingsModule } from '../../settings-registry/effective-setti
 import { UsageLedgerServiceModule } from '../../usageLedger';
 import { NotificationServiceModule } from '../../notification';
 import { GateEditMiningServiceModule } from '../../gate-edit-mining/gate-edit-mining.service.module';
+import { AiProviderConnectionServiceModule } from '../../ai-provider-connection/ai-provider-connection.service.module';
 
 /**
  * HarnessInternalService DI module. Wires the
@@ -65,6 +66,13 @@ import { GateEditMiningServiceModule } from '../../gate-edit-mining/gate-edit-mi
     // branch now throws 503), which comes back through `HarnessInternalService.assemble`. So the
     // product's primary generation path was one of the two that could not see an exemplar.
     GateEditMiningServiceModule,
+    // TASK-799 lane B — supplies `IProviderConnectionService` for
+    // `resolveProviderCredential`, the harness worker's ONLY route to a BYO
+    // credential. `@Optional()` in the service, so an unwired plane degrades to
+    // the fail-closed `unavailable` outcome rather than a DI error; wiring it
+    // here is what makes the tenant → SYSTEM cascade actually reachable from a
+    // Temporal activity.
+    AiProviderConnectionServiceModule,
   ],
   providers: [HarnessInternalService, PromptAssemblyService],
   exports: [HarnessInternalService],

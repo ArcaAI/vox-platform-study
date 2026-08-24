@@ -1,6 +1,6 @@
 {
   "$comment": "GENERATED FILE \u2014 DO NOT EDIT BY HAND. Produced by `pnpm env:python-surface` from the services' pydantic-settings declarations plus an AST scan of non-pydantic reads. `pnpm env:python-surface --check` fails when it is stale; `pnpm env:sync` consumes it to generate every apps/<svc>/.env.sample, turbo.json#globalEnv and the docs table.",
-  "distinctNames": 408,
+  "distinctNames": 405,
   "services": {
     "guardrail": {
       "port": 8863,
@@ -260,18 +260,6 @@
       "port": 8866,
       "title": "Clinical Documentation Harness",
       "fields": [
-        {
-          "name": "HARNESS_JUDGE_AZURE_API_KEY",
-          "aliases": [],
-          "class": "AzureJudgeConfig",
-          "field": "api_key",
-          "prefix": "HARNESS_JUDGE_AZURE_",
-          "required": false,
-          "secret": true,
-          "dataType": "secret",
-          "default": null,
-          "description": ""
-        },
         {
           "name": "HARNESS_JUDGE_AZURE_API_VERSION",
           "aliases": [],
@@ -777,18 +765,6 @@
           "description": "Per-call wall-clock timeout for a single MCP tool invocation."
         },
         {
-          "name": "HARNESS_JUDGE_OPENAI_COMPAT_API_KEY",
-          "aliases": [],
-          "class": "OpenAICompatJudgeConfig",
-          "field": "api_key",
-          "prefix": "HARNESS_JUDGE_OPENAI_COMPAT_",
-          "required": false,
-          "secret": true,
-          "dataType": "secret",
-          "default": null,
-          "description": ""
-        },
-        {
           "name": "HARNESS_JUDGE_OPENAI_COMPAT_BASE_URL",
           "aliases": [],
           "class": "OpenAICompatJudgeConfig",
@@ -930,19 +906,7 @@
           "secret": false,
           "dataType": "boolean",
           "default": "false",
-          "description": "Conclusion: they are correctly tiered ALREADY. No row is seeded, and no field is deleted. Revisit only if the pull payload grows a connections block."
-        },
-        {
-          "name": "HARNESS_RETRIEVAL_QDRANT_API_KEY",
-          "aliases": [],
-          "class": "RetrievalConfig",
-          "field": "qdrant_api_key",
-          "prefix": "HARNESS_RETRIEVAL_",
-          "required": false,
-          "secret": true,
-          "dataType": "secret",
-          "default": null,
-          "description": "Qdrant ships with NO authentication. Unauthenticated is correct for local dev; in-cluster it means any pod in the namespace can read or delete the tenant knowledge corpus. SecretStr because the settings object is logged at startup. Default None, not \"\" \u2014 an empty string is itself a credential to Qdrant, so absent must mean absent."
+          "description": "The landmine A.2 cited is still live and still worth heeding: a KEYLESS row injects on NEITHER tier. That is now a DEFINED outcome (`absent` \u21d2 call the endpoint unauthenticated) rather than a silent no-op."
         },
         {
           "name": "HARNESS_RETRIEVAL_QDRANT_TIMEOUT_S",

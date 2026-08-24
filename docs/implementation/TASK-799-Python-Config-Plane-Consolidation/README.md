@@ -567,6 +567,114 @@ store CAN present one — and nothing asserted they were connected. That is RC-3
    six services to import. The header now says so rather than asserting a gate that does not exist.
    The new dead-field gate is unaffected — it deliberately does not depend on the manifest.
 
+### Round 6 lane B — the harness judge + retrieval credentials reach the BYO plane
+
+Three credentials moved off env onto `AiProviderConnection`, tenant → SYSTEM:
+
+| was (env) | is now |
+|---|---|
+| `HARNESS_JUDGE_OPENAI_COMPAT_API_KEY` | `AiProviderConnection(service='llm', provider='openai-compat')` |
+| `HARNESS_JUDGE_AZURE_API_KEY` | `AiProviderConnection(service='llm', provider='azure')` |
+| `HARNESS_RETRIEVAL_QDRANT_API_KEY` | `AiProviderConnection(service='vector', provider='qdrant')` |
+
+#### The delivery decision, and the two shapes rejected
+
+The blocker recorded in `core/config.py` §"Why the endpoints below are still env" was
+real and is now closed: harness reached **neither** shipped BYO delivery path.
+
+**Rejected — (a) snapshot the credential at workflow start**, alongside the
+`harness.judge` SELECTION. It fits the existing pattern and is the tempting
+answer, and it is the wrong one. The judge selection travels as an *activity
+result* (`fetch_policy`) and then on *activity inputs*, and **every one of those
+is persisted to Temporal workflow history**, which is durable, replayable, and
+retained for the workflow's full retention window. A credential placed there is a
+credential on disk, readable by anyone with Temporal UI access, surviving the
+rotation that was supposed to retire it, and re-delivered verbatim on every
+replay. The selection is a model id — safe to persist. A key is not.
+
+**Rejected — (b) a `connections` block on the effective-config pull.** That route
+is platform-scope by construction: `resolveForService(service)` takes no tenant,
+serves ONE process-wide TTL-cached snapshot, and degrades to `env-fallback` on a
+control-plane error. Putting a per-tenant credential on it is exactly the
+cardinality failure D-1 exists to prevent (one snapshot would have to become N,
+keyed by tenant, in a cache the invalidation channel treats as singular), and its
+degrade direction is the opposite of what a credential needs.
+
+**Chosen — (c) resolve per activity, from the gateway, and discard.** This is not
+a third invention: it is the generalisation of a path this repo already ships for
+precisely this situation. `GET /internal/harness/mcp-token` exists because "the
+harness has no Vault client by design: secret material stays on the gateway side
+of the boundary… the worker calls this INSIDE the activity that performs the
+call, uses the token, and discards it — it is never put into workflow state,
+activity inputs, or heartbeats, because Temporal history is durable storage"
+(`harness-internal.controller.ts`). The new route obeys the same rule.
+
+#### What resolves, carries and consumes each credential
+
+| | judge (`openai-compat` / `azure`) | retrieval (`vector:qdrant`) |
+|---|---|---|
+| **Resolves** | `HarnessInternalService.resolveProviderCredential` (`packages/applications/src/services/consultation/harness/harness-internal.service.ts:329`), delegating to the single shared cascade `AiProviderConnectionService.resolveTenantCloudOverrides` | same |
+| **Serves** | `GET /internal/harness/provider-credential` (`apps/api/src/modules/consultation/harness-internal.controller.ts:470`), `X-Service-Token`-guarded, `@ApiExcludeController` | same |
+| **Carries** | `ApiClient.resolve_provider_credential` (`apps/harness/src/harness/services/api_client.py:403`) → `ProviderCredential` (`apps/harness/src/harness/core/provider_credentials.py`) | same |
+| **Consumes** | `_build_runtime_judge` (`apps/harness/src/harness/temporal/activities.py:513`), called from `run_inferential_sensors` (`activities.py:2174`) | `_hybrid_retriever` (`activities.py:764`) from `retrieve_context` (`activities.py:1590`); `_qdrant_store` (`apps/harness/src/harness/api/endpoints/knowledge.py:118`) from ingest + delete |
+
+The judge TRANSPORT is mapped to its connection row by
+`connection_provider_for_judge`: `openai_compat` / `ollama` / `vllm` /
+`llama-cpp` all share ONE `openai-compat` row, mirroring the single
+`HARNESS_JUDGE_OPENAI_COMPAT_*` block those four transports already shared in
+`JudgeConfig`; `azure` and `bedrock` keep their own.
+
+#### Four outcomes, because two of them must behave differently
+
+`resolved` → use it. `absent` (no row, or a keyless row on either tier) → call the
+endpoint UNAUTHENTICATED, which is the correct state for an in-boundary
+self-hosted judge server or an unauthenticated dev Qdrant. `denied` (tenant veto,
+or the platform-default entitlement withheld for a cloud provider) → FAIL CLOSED.
+`unavailable` (unwired plane, decrypt fault, transport error) → FAIL CLOSED.
+Collapsing `absent` and `unavailable` into "a key or `None`" is the bug this shape
+prevents: a Vault outage would otherwise read as "no credential configured" and
+silently downgrade an authenticated call to an unauthenticated one.
+
+Failing closed means the SENSOR degrades — the judge-dependent inferential
+sensors return `degraded`, retrieval returns an empty flagged context, ingest and
+delete return 503 so Lane B retries — never a fallback to env, because there is
+no env left to fall back to (B.2). Funding stays DERIVED from the row inside
+`AiProviderConnectionService`; this lane only projects it onto the wire.
+
+#### B.2 — the env paths are structurally closed
+
+All three fields carry a dead `validation_alias` (`…__ENV_REMOVED_TASK_799`) with
+`populate_by_name` OFF — the `apps/tts` reference pattern. With
+`extra="forbid"` this closes the constructor too, so the only way in is an
+explicit `model_copy`. The three names are gone from `turbo.json#globalEnv`,
+`.env.sample`, `apps/harness/.env.sample` and `env-surface.generated.md`, and the
+now-false `harnessJudgeOpenaiCompat.apiKey` **`vault-kv` descriptor was
+deregistered** — it would otherwise have kept seeding a Vault secret nothing
+reads and re-advertising the closed path as "REQUIRED — boot fails without it".
+
+`scripts/python-env-surface.py` matched tombstones with
+`endswith("__ENV_REMOVED_TASK_602")`, so the second service to adopt the pattern
+leaked its tombstones into the manifest and from there into `.env.sample`. It now
+matches by SHAPE (`__ENV_REMOVED_TASK_<n>`).
+
+#### B.3 — the Qdrant wiring is not regressed
+
+`RetrievalConfig.qdrant_api_key` is kept and still reaches
+`KnowledgeQdrantStore` at BOTH construction sites; only its SOURCE changed from
+env to injection. `test_qdrant_api_key.py` keeps pinning the connection, and
+`test_task799_byo_credentials.py` adds the end-to-end assertion the old file
+could not make.
+
+#### Replay safety
+
+**No workflow input, activity input, activity result or heartbeat gained a
+field.** The credential is a local variable inside an activity body, and activity
+bodies are non-deterministic code replay never re-executes — so replay safety
+here is structural, not a judgement call. It is asserted mechanically by
+`TestNoCredentialFieldOnAnyWorkflowInput`, which walks every pydantic model in
+`temporal/models.py` for credential-shaped field names.
+`test_replay_compat` — 19 passed.
+
 ## Final verification (2026-08-24, `dev-2.2`, primary checkout)
 
 Full `verify` suite — lint, typecheck and test across both languages. **~34,000
@@ -782,4 +890,5 @@ touches the shared `resolveScopedTenantId` posture used by several admin surface
 | 2026-08-24 | Infrastructure repairs: the Python env-surface generator made runnable (SIGABRT fallback), generated artifacts made machine-portable (`<repo>`/`<home>` tokens), repo-wide black pass + root `[tool.black]`, five pre-existing `apps/api` typecheck errors fixed, and the `pnpm typecheck` race closed by ordering `typecheck`/`build` after their OWN package's `db:generate`. |
 | 2026-08-24 | Orchestrator wired guardrail's `external_nlp_client` to forward `calibration` (lane G's out-of-boundary item), closing the `/guard/entailment` degrade-to-`unverified` gap. Test observed RED without the send. |
 | 2026-08-24 | **Phase 2 follow-up lane G (`apps/nlp` clinical taxonomies) complete — both sides.** The ontology vocabulary (40 UMLS/SNOMED/RxNorm/ICD-10/LOINC rows), the vitals plausibility bands, the ConText/NegEx trigger lexicon and the five `TOKEN_CLASSIFIER_*` / `NLP_LINKER_*` env fields moved onto `AiModel._metadata.clinicalTaxonomy` of the row `nlp.ner` selects; the gateway (`resolveNerModelInjection`, `AiInferenceController`) resolves and injects them verbatim, and `AiTaskModelSummary` gained the `metadata`/`localPath` fields callers were casting for. `apps/nlp` keeps NO fallback copy — an absent section disables the pass it governs rather than substituting a literal. Entailment split by judgment: the MiniCheck label-token ids and prompt template stay in code (they are the adapter, not a knob), while the calibration bounds and reference pair moved to `_metadata.entailment` and the loader now REFUSES a row declaring no calibration, a different adapter, or mismatched label tokens — closing the "non-MiniCheck model scored on MiniCheck's calibration" hole on a clinical gate. Remaining: guardrail's `external_nlp_client` (lane F's file) must forward `calibration`; until then `/guard/entailment` fails closed to `unverified`. |
+| 2026-08-24 | **Round 6 lane B — the harness judge + retrieval credentials moved onto the BYO plane.** The delivery blocker recorded in `core/config.py` is closed. Snapshot-at-workflow-start was REJECTED (a credential on an activity input is a credential on disk — Temporal history is durable and replayed verbatim) and a `connections` block on the effective-config pull was REJECTED (platform-scope, one process-wide snapshot, degrades to `env-fallback` — the D-1 cardinality failure and the wrong degrade direction). Chosen: a per-activity gateway resolve, generalising the shipped `GET /internal/harness/mcp-token` precedent. New `GET /internal/harness/provider-credential` projects the SHARED `resolveTenantCloudOverrides` cascade onto four outcomes — `resolved` / `absent` (call unauthenticated) / `denied` / `unavailable` — where the last two fail closed by degrading the sensor and the `absent`-vs-`unavailable` split is what stops a Vault outage silently downgrading an authenticated call. Env paths closed structurally (dead `validation_alias`, `populate_by_name` off, `extra="forbid"` closing the constructor too); the stale `harnessJudgeOpenaiCompat.apiKey` `vault-kv` descriptor deregistered; the tombstone filter in `python-env-surface.py` generalised from one ticket number to a shape (it was leaking every non-TASK-602 tombstone into `.env.sample`). No workflow/activity payload gained a field, asserted mechanically. Gates: harness 1632 passed (+35), `test_replay_compat` 19 passed separately, ruff + mypy clean, applications 10089 passed, `pnpm api:build` + `pnpm lint` 40/40 green, `env:sync --check` / `env:python-surface --check` / `env:python-dead` OK. |
 | 2026-08-24 | **Round 5 — the harness PHI boundary RESOLVED.** Open item 1 closed: guardrail does NOT redact the screened text (`screening.py:290` sanitizes for injection only), but its outbound screen never leaves the trust boundary — `_nlp_client` (`dependencies.py:322`) hardwires `settings.nlp_url` and never reads `cfg.provider`, and `apps/nlp`'s `/guard/classify` runs local gliner2 weights, so a `guardrail.safety` selection naming a cloud vendor changes nothing. Guardrail's cloud-capable `TextJudgeClient` is reachable only from `/medical/validate`, which harness never calls. `safety_provider=None` therefore stands, for a stronger reason than the code recorded; the comment was corrected to state it and four tests (two per service) now pin the chain, each observed RED under the mutation it catches. The judge asymmetry is confirmed correct — `build_judge_client` posts at the vendor from the harness process. Gates: harness 1597 passed (`test_replay_compat` 19 passed separately), guardrail 302 passed, ruff + mypy clean on both. |

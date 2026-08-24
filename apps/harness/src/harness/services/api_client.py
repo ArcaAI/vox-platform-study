@@ -17,11 +17,15 @@ from collections.abc import Sequence
 from typing import Any, cast
 
 import httpx
+import structlog
 from pydantic import BaseModel, ConfigDict, Field
 
+from harness.core.provider_credentials import ProviderCredential
 from harness.sensors.base import NEREntity, normalize_text
 from harness.temporal.claim_check import ClaimCheckRef
 from harness.temporal.models import SegmentCitationRef
+
+logger = structlog.get_logger(__name__)
 
 
 class ApiServiceError(RuntimeError):
@@ -395,6 +399,50 @@ class ApiClient:
         response = await self._get("/mcp-token", {"authRef": auth_ref})
         token = response.get("token")
         return token if isinstance(token, str) and token else None
+
+    async def resolve_provider_credential(
+        self, service: str, provider: str, *, tenant_id: str | None
+    ) -> ProviderCredential:
+        """Resolve ONE BYO ``AiProviderConnection`` credential, tenant -> SYSTEM.
+
+        The same boundary rule as :meth:`resolve_mcp_token`: the harness holds no
+        Vault client and no DB handle by design, so secret material stays on the
+        gateway side and the worker asks for it INSIDE the activity that uses it.
+        The value is never persisted, never returned to Temporal, and never
+        logged — see :mod:`harness.core.provider_credentials`.
+
+        NEVER RAISES. Every fault (missing tenant, transport error, non-2xx,
+        malformed body, unknown outcome) becomes
+        :attr:`~harness.core.provider_credentials.CredentialOutcome.UNAVAILABLE`,
+        which the caller fails CLOSED on. Returning rather than raising keeps the
+        four outcomes in one place instead of splitting "denied" and "the gateway
+        was down" across a return value and an exception — and the two must stay
+        distinguishable from ``ABSENT``, which is a legitimate resolved state.
+
+        ``tenant_id`` is MANDATORY and checked before the request is built. A
+        tenant-less credential resolve could only mean "read SYSTEM
+        unconditionally", which is the widen-without-absence bug the two-tier
+        rule exists to prevent; an absent tenant is a defect in the CALLER.
+        """
+        if not tenant_id:
+            return ProviderCredential.unavailable("no tenant context on the credential resolve")
+        try:
+            payload = await self._get(
+                "/provider-credential",
+                {"service": service, "provider": provider, "tenantId": tenant_id},
+            )
+        except ApiServiceError as exc:
+            # The MESSAGE is logged, never the response body: a gateway error can
+            # echo request material. `ApiServiceError` already carries only the
+            # path + the httpx error class.
+            logger.warning(
+                "harness.provider_credential.unavailable",
+                service=service,
+                provider=provider,
+                error=str(exc),
+            )
+            return ProviderCredential.unavailable("credential resolve failed")
+        return ProviderCredential.from_payload(payload)
 
     async def persist_entities(
         self,

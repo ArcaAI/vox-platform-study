@@ -92,7 +92,7 @@ async def harness_app(monkeypatch) -> AsyncGenerator[tuple, None]:
     store = _FakeStore()
     monkeypatch.setattr(knowledge, "_embeddings_client", lambda s: emb)
     monkeypatch.setattr(knowledge, "_sparse_embedder", lambda: sparse)
-    monkeypatch.setattr(knowledge, "_qdrant_store", lambda s: store)
+    monkeypatch.setattr(knowledge, "_qdrant_store", lambda s, *_c: store)
 
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as http:
@@ -199,7 +199,7 @@ class TestIngestAuth:
         app = create_app(settings_override=settings)
         monkeypatch.setattr(knowledge, "_embeddings_client", lambda s: _FakeEmbeddings())
         monkeypatch.setattr(knowledge, "_sparse_embedder", lambda: _FakeSparse())
-        monkeypatch.setattr(knowledge, "_qdrant_store", lambda s: _FakeStore())
+        monkeypatch.setattr(knowledge, "_qdrant_store", lambda s, *_c: _FakeStore())
         transport = ASGITransport(app=app)
         async with AsyncClient(transport=transport, base_url="http://test") as http:
             resp = await http.post(_URL, headers={"X-Service-Token": "shared-secret"}, json=_body())
@@ -211,7 +211,7 @@ class TestIngestAuth:
         app = create_app(settings_override=settings)
         monkeypatch.setattr(knowledge, "_embeddings_client", lambda s: _FakeEmbeddings())
         monkeypatch.setattr(knowledge, "_sparse_embedder", lambda: _FakeSparse())
-        monkeypatch.setattr(knowledge, "_qdrant_store", lambda s: _FakeStore())
+        monkeypatch.setattr(knowledge, "_qdrant_store", lambda s, *_c: _FakeStore())
         transport = ASGITransport(app=app)
         async with AsyncClient(transport=transport, base_url="http://test") as http:
             resp = await http.post(_URL, json=_body())
@@ -227,7 +227,7 @@ class TestIngestDegrade:
         monkeypatch.setattr(knowledge, "_embeddings_client", lambda s: emb)
         monkeypatch.setattr(knowledge, "_sparse_embedder", lambda: _FakeSparse())
         store = _FakeStore()
-        monkeypatch.setattr(knowledge, "_qdrant_store", lambda s: store)
+        monkeypatch.setattr(knowledge, "_qdrant_store", lambda s, *_c: store)
         transport = ASGITransport(app=app)
         async with AsyncClient(transport=transport, base_url="http://test") as http:
             resp = await http.post(_URL, headers=_HEADERS, json=_body())
@@ -242,7 +242,7 @@ class TestIngestDegrade:
         monkeypatch.setattr(knowledge, "_embeddings_client", lambda s: _FakeEmbeddings())
         monkeypatch.setattr(knowledge, "_sparse_embedder", lambda: _FakeSparse())
         store = _FakeStore(error=RuntimeError("qdrant down"))
-        monkeypatch.setattr(knowledge, "_qdrant_store", lambda s: store)
+        monkeypatch.setattr(knowledge, "_qdrant_store", lambda s, *_c: store)
         transport = ASGITransport(app=app)
         async with AsyncClient(transport=transport, base_url="http://test") as http:
             resp = await http.post(_URL, headers=_HEADERS, json=_body())
@@ -311,7 +311,7 @@ class TestDeleteEndpoint:
         settings = _settings()
         app = create_app(settings_override=settings)
         store = _FakeStore(error=RuntimeError("qdrant down"))
-        monkeypatch.setattr(knowledge, "_qdrant_store", lambda s: store)
+        monkeypatch.setattr(knowledge, "_qdrant_store", lambda s, *_c: store)
         transport = ASGITransport(app=app)
         async with AsyncClient(transport=transport, base_url="http://test") as http:
             resp = await http.delete(

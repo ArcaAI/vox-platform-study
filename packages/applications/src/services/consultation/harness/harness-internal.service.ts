@@ -28,6 +28,11 @@ import {
 import { OptimisticConcurrencyException } from '@arcaai/exceptions';
 import { attachSegmentEvidence, extractAndStripSegmentCitationMarkers, type SegmentOffsetRef } from '../lib/transcript-segments';
 import { HarnessAuditService } from '../../harness-audit';
+// Imported from the leaf modules rather than the package barrel: the barrel
+// re-exports `ai-provider-connection.service.module`, and pulling a NestJS
+// module in from a service file is how an import cycle starts.
+import { IProviderConnectionService } from '../../ai-provider-connection/IProviderConnectionService';
+import { PROVIDER_SERVICES, isCloudByoProvider, type ProviderService } from '../../ai-provider-connection/constants';
 import { SecretsService } from '../../baseServices/_meta/secrets';
 import { IRedisCacheService } from '../../baseServices/redis';
 import { HarnessAssuranceService } from './harness-assurance.service';
@@ -58,6 +63,7 @@ import type {
   HarnessFinalizeAssuranceRequest,
   HarnessFinalizeAssuranceResponse,
   HarnessEntitiesResponse,
+  HarnessProviderCredentialResponse,
   HarnessGateDecisionRequest,
   HarnessGateDecisionResponse,
   HarnessPersistEntitiesRequest,
@@ -232,6 +238,12 @@ export class HarnessInternalService {
     // TIMED_OUT transition or its WORM append — the record is the WORM row,
     // the notification is the courtesy (README §4 Task 7).
     @Optional() @Inject(INotificationService) private readonly notificationService?: INotificationService,
+    // TASK-799 lane B — THE BYO provider plane, used ONLY by
+    // `resolveProviderCredential`. Optional + trailing so existing positional
+    // unit fixtures keep their arity; absent ⇒ every resolve is `unavailable`,
+    // which is the FAIL-CLOSED direction (never `absent`, which would let a
+    // consumer proceed unauthenticated because the gateway was misconfigured).
+    @Optional() @Inject(IProviderConnectionService) private readonly providerConnectionService?: IProviderConnectionService,
   ) {
     const raw = String(this.configService?.get('HARNESS_WARM_START_ENABLED') ?? '')
       .trim()
@@ -281,6 +293,97 @@ export class HarnessInternalService {
       void error;
       return null;
     }
+  }
+
+  /**
+   * TASK-799 lane B — resolve ONE `AiProviderConnection` credential for the
+   * harness worker, tenant → SYSTEM.
+   *
+   * WHY THIS EXISTS AT ALL. `apps/harness` reaches neither of the two shipped
+   * BYO delivery paths. It holds no DB handle, so `resolveConnection` is
+   * unreachable from the worker process; and its judge/retriever run inside a
+   * Temporal ACTIVITY, so there is no inbound gateway request to fold a
+   * `provider_overrides` envelope into the way `apps/text` receives one. The
+   * remaining option is the one this file ALREADY implements for exactly this
+   * situation — `resolveMcpToken` — so this is that precedent generalised, not
+   * a new channel: the worker asks INSIDE the activity, uses the value, and
+   * discards it. Temporal history is durable, so a credential on an activity
+   * input is a credential on disk; nothing here ever reaches one.
+   *
+   * The cascade is NOT reimplemented. `resolveTenantCloudOverrides` is the one
+   * place in the codebase that decides tenant-vs-SYSTEM precedence, the veto set
+   * and the platform-default entitlement, and it is what derives `funding` from
+   * the row rather than letting a call site stamp it. This method only PROJECTS
+   * its result onto the four-outcome wire contract the worker needs.
+   *
+   * The `absent` / `unavailable` split is the load-bearing part. `absent` means
+   * "no tier has an opinion", which for a self-hosted in-boundary endpoint
+   * (a local OpenAI-compatible judge server, an unauthenticated dev Qdrant) is
+   * the CORRECT resolved state and lets the worker call it unauthenticated.
+   * `unavailable` means the gateway could not answer, and the worker must fail
+   * closed. Collapsing the two would turn a Vault outage into a silent
+   * downgrade from authenticated to unauthenticated.
+   *
+   * Never returns key material through an error, a log line or `reason`.
+   */
+  async resolveProviderCredential(service: string, provider: string, tenantId: string): Promise<HarnessProviderCredentialResponse> {
+    if (!PROVIDER_SERVICES.includes(service as ProviderService)) {
+      throw new BadRequestException(`Unknown provider service '${service}'. Expected one of: ${PROVIDER_SERVICES.join(', ')}.`);
+    }
+    if (!provider || !provider.trim()) {
+      throw new BadRequestException('provider is required');
+    }
+    // No tenant-less form, deliberately. A credential resolve without a tenant
+    // could only mean "read SYSTEM directly", which is the unconditional-widen
+    // bug rule 09 names; tenant-less harness work must not reach this route.
+    if (!tenantId || !tenantId.trim()) {
+      throw new BadRequestException('tenantId is required');
+    }
+    if (!this.providerConnectionService) {
+      this.logger.warn(`Harness credential resolve requested but the provider-connection plane is unwired (${service}/${provider})`);
+      return { outcome: 'unavailable', reason: 'provider-connection plane unavailable' };
+    }
+
+    const typedService = service as ProviderService;
+    let resolved: Awaited<ReturnType<IProviderConnectionService['resolveTenantCloudOverrides']>>;
+    try {
+      resolved = await this.providerConnectionService.resolveTenantCloudOverrides(typedService, tenantId);
+    } catch (error) {
+      // Deliberately does NOT interpolate the error body — same rule as
+      // `resolveMcpToken` and `toOverrideEntry`: a Vault-Transit error string
+      // can echo the payload it choked on.
+      this.logger.error(`Harness credential resolve failed for ${service}/${provider} (tenant ${tenantId})`);
+      void error;
+      return { outcome: 'unavailable', reason: 'credential resolution failed' };
+    }
+
+    const entry = resolved.overrides[provider];
+    if (entry) {
+      return {
+        outcome: 'resolved',
+        apiKey: entry.api_key,
+        funding: entry.funding,
+        ...(entry.base_url ? { baseUrl: entry.base_url } : {}),
+        ...(entry.region ? { region: entry.region } : {}),
+        ...(entry.api_version ? { apiVersion: entry.api_version } : {}),
+        ...(entry.deployment_name ? { deploymentName: entry.deployment_name } : {}),
+        ...(typeof entry.model === 'string' ? { model: entry.model } : {}),
+      };
+    }
+
+    const outcome = resolved.platformDefault;
+    if (outcome?.vetoed.includes(provider)) {
+      return { outcome: 'denied', reason: `tenant veto: '${provider}' is disabled for service '${service}'` };
+    }
+    // The entitlement gate governs platform SPEND on a VENDOR account, so it
+    // only denies a CLOUD provider. A SYSTEM row for a self-host engine is
+    // platform INFRASTRUCTURE and stays reachable — the same `isCloudByoProvider`
+    // split the cascade itself applies, read here rather than re-derived.
+    if (outcome?.entitlementSuppressed && isCloudByoProvider(typedService, provider)) {
+      return { outcome: 'denied', reason: 'the platform-default credential entitlement is not granted for this tenant' };
+    }
+
+    return { outcome: 'absent' };
   }
 
   /**

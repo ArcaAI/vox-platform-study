@@ -47,7 +47,27 @@ class OpenAICompatJudgeConfig(BaseSettings):
     model_config = SettingsConfigDict(env_prefix="HARNESS_JUDGE_OPENAI_COMPAT_")
 
     base_url: str = "http://localhost:1234/v1"  # LM Studio default
-    api_key: SecretStr = SecretStr("lm-studio")
+    # ── BYO-only credential (TASK-799 lane B) ─────────────────────────────
+    # The judge key is a PROVIDER CREDENTIAL and now lives on the
+    # `AiProviderConnection(service='llm', provider='openai-compat')` row —
+    # tenant → SYSTEM, Vault-encrypted at rest, changeable without a redeploy.
+    #
+    # The env path is CLOSED STRUCTURALLY, not by convention: the
+    # `validation_alias` below is a dead name no environment variable matches,
+    # and `populate_by_name` is deliberately OFF for this class so the FIELD name
+    # cannot re-open the path either. This is the `apps/tts` reference pattern
+    # (`tts/core/config.py` `AzureSpeechConfig.api_key`). Do NOT add
+    # `populate_by_name=True` here — one flag re-opens an env path to a cloud
+    # credential for every field on the class at once.
+    #
+    # The default is the harmless LM Studio placeholder, which is what an
+    # unauthenticated local endpoint sees when no row exists (outcome `absent`).
+    # A resolved row is applied by `_build_runtime_judge` via `model_copy`,
+    # which bypasses validation and therefore this guard.
+    api_key: SecretStr = Field(
+        default=SecretStr("lm-studio"),
+        validation_alias="HARNESS_JUDGE_OPENAI_COMPAT_API_KEY__ENV_REMOVED_TASK_799",
+    )
     organization: str | None = None
     # ``response_format.type`` sent on json_mode calls (claim extraction / verify).
     # "json_object" works on Ollama/vLLM; LM Studio rejects it ("must be json_schema
@@ -65,7 +85,21 @@ class AzureJudgeConfig(BaseSettings):
 
     model_config = SettingsConfigDict(env_prefix="HARNESS_JUDGE_AZURE_")
 
-    api_key: SecretStr = SecretStr("")
+    # ── BYO-only credential (TASK-799 lane B) ─────────────────────────────
+    # Azure OpenAI is a CLOUD vendor account: the key belongs on
+    # `AiProviderConnection(service='llm', provider='azure')`, tenant → SYSTEM,
+    # never in env. Closed with the same dead-alias guard as the
+    # OpenAI-compatible block above; see that comment for the mechanism and the
+    # `populate_by_name` warning.
+    #
+    # The empty default is load-bearing: `build_judge_client` REFUSES to build an
+    # Azure judge without a key, so an unresolved credential fails closed at
+    # construction and the inferential pass degrades — it can no longer be
+    # rescued by an environment variable.
+    api_key: SecretStr = Field(
+        default=SecretStr(""),
+        validation_alias="HARNESS_JUDGE_AZURE_API_KEY__ENV_REMOVED_TASK_799",
+    )
     endpoint: str = ""
     api_version: str = "2024-12-01-preview"
     deployment: str = ""

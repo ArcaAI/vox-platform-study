@@ -171,7 +171,7 @@ async def ingest_http(monkeypatch, store, sparse_embedder):
     fastapi_app = create_app(settings_override=settings)
     monkeypatch.setattr(knowledge, "_embeddings_client", lambda s: _StubDense())
     monkeypatch.setattr(knowledge, "_sparse_embedder", lambda: sparse_embedder)
-    monkeypatch.setattr(knowledge, "_qdrant_store", lambda s: store)
+    monkeypatch.setattr(knowledge, "_qdrant_store", lambda s, *_c: store)
     transport = ASGITransport(app=fastapi_app)
     async with AsyncClient(transport=transport, base_url="http://test") as http:
         yield http

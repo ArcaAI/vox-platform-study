@@ -30,6 +30,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from harness.core.config import Settings
 from harness.core.logging import get_logger
+from harness.core.provider_credentials import CredentialOutcome, ProviderCredential
 from harness.guides.retrieval.chunker import chunk_text
 from harness.guides.retrieval.qdrant_store import (
     APPROVED_STATUS,
@@ -37,6 +38,7 @@ from harness.guides.retrieval.qdrant_store import (
     UpsertItem,
 )
 from harness.guides.retrieval.sparse import SparseBm25Embedder
+from harness.services.api_client import ApiClient
 from harness.services.embeddings_client import EmbeddingsClient, EmbeddingsServiceError
 
 logger = get_logger(__name__)
@@ -90,8 +92,46 @@ def _sparse_embedder() -> SparseBm25Embedder:
     return SparseBm25Embedder()
 
 
-def _qdrant_store(settings: Settings) -> KnowledgeQdrantStore:
+async def _resolve_qdrant_credential(settings: Settings, tenant_id: str) -> ProviderCredential:
+    """Resolve this tenant's Qdrant credential from the gateway's BYO plane.
+
+    The mirror of the Temporal activity's resolve, for the two endpoints the
+    gateway calls directly. It IS an extra hop back to the caller — the gateway
+    invokes ingest/delete, and this asks the gateway for the credential — but the
+    route it calls (`/internal/harness/provider-credential`) makes no onward call
+    into harness, so nothing waits on itself. That extra hop buys the property
+    that matters: ONE resolution path for the Qdrant credential, so a secured
+    cluster is reachable from ingest and delete exactly as it is from retrieval.
+    Never raises; see :mod:`harness.core.provider_credentials`.
+
+    Factored out like every other client factory here so tests can stub it.
+    """
+    client = ApiClient(
+        settings.api_base_url,
+        internal_prefix=settings.api_internal_prefix,
+        service_token=settings.peer_service_token(settings.service_token),
+        timeout=settings.api_timeout_s,
+    )
+    return await client.resolve_provider_credential("vector", "qdrant", tenant_id=tenant_id)
+
+
+def _qdrant_store(
+    settings: Settings, credential: ProviderCredential | None = None
+) -> KnowledgeQdrantStore:
+    """Build the store, applying a gateway-resolved credential when there is one.
+
+    `credential=None` / outcome `ABSENT` keeps the UNAUTHENTICATED path — correct
+    for a local dev Qdrant, and not an env fallback (there is no env path left:
+    `RetrievalConfig.qdrant_api_key` is `validation_alias`-closed).
+    """
     rc = settings.retrieval
+    if credential is not None and credential.outcome is CredentialOutcome.RESOLVED:
+        rc = rc.model_copy(
+            update={
+                "qdrant_api_key": credential.api_key,
+                **({"qdrant_url": credential.base_url} if credential.base_url else {}),
+            }
+        )
     return KnowledgeQdrantStore(
         rc.qdrant_url,
         rc.collection,
@@ -190,8 +230,27 @@ async def ingest_knowledge(body: IngestRequest, request: Request) -> dict[str, A
             }
         )
 
+    # A DENIED (tenant veto) / UNAVAILABLE (gateway fault) credential is a 503,
+    # matching this endpoint's existing fail-closed posture for a Qdrant outage:
+    # Lane B fails and retries the job. It NEVER writes unauthenticated on the
+    # assumption the cluster is open.
+    qdrant_credential = await _resolve_qdrant_credential(settings, body.tenant_id)
+    if not qdrant_credential.usable:
+        logger.warning(
+            "harness.knowledge.ingest.credential_unavailable",
+            knowledge_document_id=body.knowledge_document_id,
+            outcome=qdrant_credential.outcome.value,
+        )
+        raise HTTPException(
+            status_code=503,
+            detail={
+                "error": "qdrant_credential_unavailable",
+                "detail": qdrant_credential.reason or qdrant_credential.outcome.value,
+            },
+        )
+
     try:
-        _qdrant_store(settings).upsert_chunks(items)
+        _qdrant_store(settings, qdrant_credential).upsert_chunks(items)
     except Exception as exc:  # noqa: BLE001 — Qdrant outage degrades the job (retryable)
         logger.warning(
             "harness.knowledge.ingest.qdrant_unavailable",
@@ -230,8 +289,27 @@ async def delete_knowledge_document(
     matching points is a normal 200, not an error.
     """
     settings = _settings(request)
+    # Fail closed for the same reason the Qdrant-outage branch below does: Lane B
+    # aborts its Postgres soft-delete on a 503, so a credential we cannot resolve
+    # must never leave vectors retrievable behind a "deleted" row (TASK-728).
+    qdrant_credential = await _resolve_qdrant_credential(settings, tenant_id)
+    if not qdrant_credential.usable:
+        logger.warning(
+            "harness.knowledge.delete.credential_unavailable",
+            knowledge_document_id=document_id,
+            tenant_id=tenant_id,
+            outcome=qdrant_credential.outcome.value,
+        )
+        raise HTTPException(
+            status_code=503,
+            detail={
+                "error": "qdrant_credential_unavailable",
+                "detail": qdrant_credential.reason or qdrant_credential.outcome.value,
+            },
+        )
+
     try:
-        _qdrant_store(settings).delete_by_document(
+        _qdrant_store(settings, qdrant_credential).delete_by_document(
             tenant_id=tenant_id, knowledge_document_id=document_id
         )
     except Exception as exc:  # noqa: BLE001 — Qdrant outage aborts the caller's delete (retryable)

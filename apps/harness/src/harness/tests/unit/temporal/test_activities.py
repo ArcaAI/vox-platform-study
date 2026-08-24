@@ -921,7 +921,7 @@ class TestRetrieveContext:
         settings = Settings(retrieval={"enabled": True})
         monkeypatch.setattr(activities, "get_settings", lambda: settings)
         fake = _FakeRetriever(["kc-1", "kc-2"])
-        monkeypatch.setattr(activities, "_hybrid_retriever", lambda s: fake)
+        monkeypatch.setattr(activities, "_hybrid_retriever", lambda s, *_c: fake)
         monkeypatch.setattr(activities, "_consent_client", lambda s: _AllowConsentClient())
 
         result = await env.run(
@@ -947,7 +947,7 @@ class TestRetrieveContext:
         settings = Settings(retrieval={"enabled": True})
         monkeypatch.setattr(activities, "get_settings", lambda: settings)
         monkeypatch.setattr(
-            activities, "_hybrid_retriever", lambda s: _FakeRetriever([], degraded=True)
+            activities, "_hybrid_retriever", lambda s, *_c: _FakeRetriever([], degraded=True)
         )
         monkeypatch.setattr(activities, "_consent_client", lambda s: _AllowConsentClient())
 
