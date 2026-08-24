@@ -1,7 +1,8 @@
 import uuid
 from abc import ABC, abstractmethod
 from collections import OrderedDict
-from typing import Any
+from collections.abc import Callable
+from typing import Any, TypeVar
 
 import torch
 from transformers import AutoModelForTokenClassification, AutoTokenizer, pipeline
@@ -15,8 +16,8 @@ from nlp.core.metrics import (
     track_model_inference,
 )
 from nlp.schemas.classification import TokenClassificationRequest, TokenClassificationResponse
-from nlp.schemas.common import Entity, TextPosition
 from nlp.schemas.clinical_taxonomy import AssertionTaxonomy, ClinicalTaxonomy, LinkerTaxonomy
+from nlp.schemas.common import Entity, TextPosition
 from nlp.services.assertion import AssertionModel, NegExAssertionClassifier
 from nlp.services.ontology_linker import OntologyLinker
 from nlp.services.vitals_extractor import extract_vitals
@@ -60,11 +61,12 @@ class TokenClassifier(ABC):
 # --------------------------------------------------------------------------
 
 _BUILDER_CACHE_MAX = 8
-_linker_cache: "OrderedDict[str, OntologyLinker]" = OrderedDict()
-_assertion_cache: "OrderedDict[str, NegExAssertionClassifier]" = OrderedDict()
+_T = TypeVar("_T")
+_linker_cache: OrderedDict[str, OntologyLinker] = OrderedDict()
+_assertion_cache: OrderedDict[str, NegExAssertionClassifier] = OrderedDict()
 
 
-def _cached(cache: OrderedDict, key: str, build):  # type: ignore[type-arg]
+def _cached(cache: OrderedDict[str, _T], key: str, build: Callable[[], _T]) -> _T:
     hit = cache.get(key)
     if hit is not None:
         cache.move_to_end(key)
@@ -227,7 +229,9 @@ class TransformerTokenClassifier(TokenClassifier):
         for entity in entities:
             counts[entity.entity_type] = counts.get(entity.entity_type, 0) + 1
         for entity_type, count in counts.items():
-            nlp_metrics.record_entities(entity_count=count, entity_type=entity_type, model=MODEL_MEDICAL_NER)
+            nlp_metrics.record_entities(
+                entity_count=count, entity_type=entity_type, model=MODEL_MEDICAL_NER
+            )
         NLP_DOCUMENTS_PROCESSED_TOTAL.labels(model=MODEL_MEDICAL_NER).inc()
 
     def _to_entities(

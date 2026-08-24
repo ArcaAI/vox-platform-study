@@ -233,12 +233,8 @@ def _make_llama_logit_fn(llama: object) -> LogitFn:
         dec_batch = LlamaBatch(n_tokens=1, embd=0, n_seq_max=1, verbose=False)
         dec_batch.set_batch([dec_start], n_past=0, logits_all=False)
         ctx.decode(dec_batch)  # one decoder step; set_batch marks it logits=True
-        logits = np.ctypeslib.as_array(ctx.get_logits(), shape=(n_vocab,)).astype(
-            np.float64
-        )
-        return float(logits[MINICHECK_LABEL_TOKEN_NO]), float(
-            logits[MINICHECK_LABEL_TOKEN_YES]
-        )
+        logits = np.ctypeslib.as_array(ctx.get_logits(), shape=(n_vocab,)).astype(np.float64)
+        return float(logits[MINICHECK_LABEL_TOKEN_NO]), float(logits[MINICHECK_LABEL_TOKEN_YES])
 
     return logit_fn
 

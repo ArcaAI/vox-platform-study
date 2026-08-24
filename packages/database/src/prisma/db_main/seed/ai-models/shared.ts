@@ -127,6 +127,93 @@ export type TtsVoiceBinding = { id: string; locale: string };
  * (like `TtsVoiceBinding`) so it keeps an implicit index signature and stays
  * assignable to `InputJsonValue`.
  */
+/**
+ * The CLINICAL TAXONOMY a token-classification (NER) checkpoint executes against
+ * (TASK-799 lane G). `apps/nlp` used to carry all four of these as Python
+ * literals or `TOKEN_CLASSIFIER_*` / `NLP_LINKER_*` env fields; rule 00
+ * §Configuration Principles names a threshold, taxonomy or label set as neither.
+ *
+ * It rides on the MODEL ROW rather than in a settings key because most of it IS
+ * a property of the checkpoint — which labels it emits meaning "nothing", how
+ * its subword pieces aggregate, which surface forms its NER can be expected to
+ * produce. Re-pointing `nlp.ner` at a different checkpoint therefore swaps the
+ * taxonomy with it, instead of leaving a service-keyed knob pointed at the old
+ * model's conventions.
+ *
+ * The gateway resolves it (`resolveNerModelInjection`, SYSTEM-pinned per
+ * decision D-4: nlp models are PLATFORM-SHARED) and injects it verbatim as
+ * `clinical_taxonomy`. An absent SECTION disables the pass it governs in the
+ * executor — it is never backfilled with a literal.
+ */
+export type OntologyVocabularyEntry = {
+  /** Surface forms, matched after normalization (case/punctuation/subword markers). */
+  aliases: string[];
+  umls_cui?: string;
+  snomed_code?: string;
+  rxnorm_code?: string;
+  icd_code?: string;
+  loinc_code?: string;
+};
+
+export type VitalsRange = { min: number; max: number };
+
+export type ClinicalTaxonomy = {
+  /** The checkpoint's own NER contract. */
+  tokenClassifier?: {
+    /** HF pipeline aggregation: simple | first | max | average. */
+    aggregationStrategy?: string;
+    /** Labels this checkpoint emits that mean "nothing" (e.g. the BIO `O` tag). */
+    ignoreLabels?: string[];
+    /** Whether the ConText/NegEx assertion pass runs over recognized spans. */
+    assertionEnabled?: boolean;
+  };
+  /** Deterministic ontology linker: gate, floor, and the crosswalk itself. */
+  linker?: {
+    enabled?: boolean;
+    confidenceFloor?: number;
+    vocabulary?: OntologyVocabularyEntry[];
+  };
+  /**
+   * Physiologic plausibility bands. A parsed vital outside its band is DISCARDED
+   * (never clamped); a vital with no band configured is never emitted at all, so
+   * a paediatric or neonatal deployment retunes these rather than shipping a
+   * fork of the extractor.
+   */
+  vitals?: {
+    systolic?: VitalsRange;
+    diastolic?: VitalsRange;
+    heartRate?: VitalsRange;
+    spo2?: VitalsRange;
+    temperatureC?: VitalsRange;
+    weightKg?: VitalsRange;
+  };
+  /** ConText/NegEx pre-trigger lexicon, keyed by the AssertionStatus it implies. */
+  assertion?: {
+    triggers?: Record<string, string[]>;
+  };
+};
+
+/**
+ * The MiniCheck calibration gate's ground truth (TASK-799 lane G), for an NLI
+ * entailment checkpoint. `apps/nlp` keeps the ADAPTER (the `'predict: '`
+ * template and the 3/209 label-token read) in code — no other value of those
+ * makes it work — but refuses to load a row whose declared `adapter` is
+ * something else, or which declares no calibration at all. The bounds and the
+ * reference pair are configuration because they depend on the specific build
+ * AND its quantisation: tolerances measured on a Q6 GGUF are meaningless for a
+ * Q4 one, and a re-published model card changes the reference probabilities.
+ */
+export type EntailmentCalibration = {
+  adapter: string;
+  labelTokenNo: number;
+  labelTokenYes: number;
+  supportedMin: number;
+  unsupportedMax: number;
+  document: string;
+  supportedClaim: string;
+  unsupportedClaim: string;
+};
+
 export type LabelTaxonomyTask = {
   labels: string[];
   multi_label?: boolean;
@@ -198,6 +285,8 @@ export interface AiModelSeed {
     languages?: string[];
     capabilities?: AiModelCapability[];
     labelTaxonomy?: LabelTaxonomy;
+    clinicalTaxonomy?: ClinicalTaxonomy;
+    entailment?: EntailmentCalibration;
   };
   /** Only set when a row must seed in a non-default status (indic-f5). */
   resourceStatus?: ResourceStatusType;

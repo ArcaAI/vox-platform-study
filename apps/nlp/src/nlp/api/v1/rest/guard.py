@@ -346,9 +346,7 @@ async def guard_entailment(
 
     pairs = [(pair.document, pair.claim) for pair in request.pairs]
     try:
-        async with _acquire_scorer(
-            model_name, request.model_path, request.calibration
-        ) as scorer:
+        async with _acquire_scorer(model_name, request.model_path, request.calibration) as scorer:
             async with inference_bound:
                 scores = await _maybe_await(scorer.score_pairs(pairs))
     except ModelUnavailableError as exc:

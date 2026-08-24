@@ -48,6 +48,22 @@ const CLINICIAN_ROLES = ['DOCTOR', 'SPECIALIST', 'CONSULTANT'];
  * Contrast: `/admin/ai-services/*` (AiServiceAdminController) is the
  * SUPER_ADMIN-only READ-ONLY status/config plane over the same services.
  */
+/**
+ * Pull the NER plane's clinical taxonomy off a registry row's `_metadata`
+ * (TASK-799 lane G), or null.
+ *
+ * The same shape-only check `resolveNerModelInjection` applies on the clinical
+ * path — validating the CONTENTS belongs to the executor that applies them, and
+ * a gateway that quietly dropped a section it did not recognise would make a
+ * platform admin's stored value unreachable without saying so.
+ */
+function readClinicalTaxonomy(metadata: unknown): Record<string, unknown> | null {
+  if (!metadata || typeof metadata !== 'object' || Array.isArray(metadata)) return null;
+  const candidate = (metadata as Record<string, unknown>).clinicalTaxonomy;
+  if (!candidate || typeof candidate !== 'object' || Array.isArray(candidate)) return null;
+  return candidate as Record<string, unknown>;
+}
+
 @ApiTags('ai-inference')
 @ApiBearerAuth()
 @Controller('text-analyses')
@@ -113,23 +129,36 @@ export class AiInferenceController {
     // payload stays byte-for-byte identical to pre-527 for every existing row.
     let modelPath: string | null = null;
     let runtimeParams: Record<string, unknown> = {};
+    // The CLINICAL TAXONOMY the resolved checkpoint declares (TASK-799 lane G):
+    // ontology vocabulary, vitals plausibility bands, ConText/NegEx triggers and
+    // the NER contract, all previously Python literals / `TOKEN_CLASSIFIER_*`
+    // env fields inside `apps/nlp`. It travels with the MODEL, so an override
+    // gets the OVERRIDDEN row's taxonomy — not the default row's, which would
+    // apply one checkpoint's conventions to another's output.
+    let clinicalTaxonomy: Record<string, unknown> | null = null;
     if (body.modelName) {
       const override = await this.resolveValidatedModelOverride(body.modelName);
       modelName = override.sourceUri;
       modelPath = override.localPath;
+      clinicalTaxonomy = override.clinicalTaxonomy;
     } else {
       const selection = await this.resolveDefaultModelSelection('nlp.ner');
       modelName = selection.sourceUri;
       modelPath = selection.localPath;
+      clinicalTaxonomy = selection.clinicalTaxonomy;
       runtimeParams = await this.resolveRuntimeParams(selection.provider, selection.modelSlug);
     }
 
     const result = await this.client.classifyTokens({
       text: body.text,
-      aggregation_strategy: body.aggregationStrategy ?? 'simple',
+      // Absent => the model row's own declared strategy applies downstream.
+      ...(body.aggregationStrategy ? { aggregation_strategy: body.aggregationStrategy } : {}),
       ...(body.language ? { language: body.language } : {}),
       ...(modelName ? { model_name: modelName } : {}),
       ...(modelPath ? { model_path: modelPath } : {}),
+      // OMITTED when the row declares none — the executor then disables the
+      // passes it governs rather than substituting a literal.
+      ...(clinicalTaxonomy ? { clinical_taxonomy: clinicalTaxonomy } : {}),
       ...runtimeParams,
     });
 
@@ -300,7 +329,9 @@ export class AiInferenceController {
    * an unvalidatable override is never forwarded (unlike the fail-open
    * default injection below, which only ever forwards registry-derived ids).
    */
-  private async resolveValidatedModelOverride(requested: string): Promise<{ sourceUri: string; localPath: string | null }> {
+  private async resolveValidatedModelOverride(
+    requested: string,
+  ): Promise<{ sourceUri: string; localPath: string | null; clinicalTaxonomy: Record<string, unknown> | null }> {
     const rejection = () =>
       new BadRequestException(
         `modelName '${requested}' is not an ENABLED TOKEN_CLASSIFICATION model in the registry (expected a registry slug or sourceUri).`,
@@ -327,6 +358,7 @@ export class AiInferenceController {
     return {
       sourceUri: match.sourceUri,
       localPath: (match as { localPath?: string | null }).localPath ?? null,
+      clinicalTaxonomy: readClinicalTaxonomy((match as { metaData?: unknown }).metaData),
     };
   }
 
@@ -344,9 +376,13 @@ export class AiInferenceController {
    * but keeping the `provider` / `modelSlug` the runtime-profile cascade is
    * keyed on. Split out rather than re-calling `getEffective` a second time.
    */
-  private async resolveDefaultModelSelection(
-    taskKey: 'nlp.ner' | 'nlp.diagnosis',
-  ): Promise<{ sourceUri: string; provider: string | null; modelSlug: string | null; localPath: string | null }> {
+  private async resolveDefaultModelSelection(taskKey: 'nlp.ner' | 'nlp.diagnosis'): Promise<{
+    sourceUri: string;
+    provider: string | null;
+    modelSlug: string | null;
+    localPath: string | null;
+    clinicalTaxonomy: Record<string, unknown> | null;
+  }> {
     if (!this.aiTaskDefaultService) {
       throw new ServiceUnavailableException(`SYSTEM AiTaskDefault for '${taskKey}' is unavailable (AiTaskDefaultService not wired).`);
     }
@@ -361,7 +397,8 @@ export class AiInferenceController {
         provider: (effective.model as { provider?: string } | null)?.provider ?? null,
         modelSlug: effective.modelSlug ?? null,
         // Operator weight override from the registry row.
-        localPath: (effective.model as { localPath?: string | null } | null)?.localPath ?? null,
+        localPath: effective.model?.localPath ?? null,
+        clinicalTaxonomy: readClinicalTaxonomy(effective.model?.metadata),
       };
     } catch (err) {
       if (err instanceof ServiceUnavailableException) throw err;

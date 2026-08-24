@@ -33,7 +33,9 @@ _NER_CONTRACT = ClinicalTaxonomy.model_validate(
 
 @pytest.mark.asyncio
 async def test_process_forwards_aggregation_strategy_to_pipeline():
-    classifier = TransformerTokenClassifier(configs=TokenClassificationConfig(model_name="test-org/ner", tokenizer_name="test-org/ner"))
+    classifier = TransformerTokenClassifier(
+        configs=TokenClassificationConfig(model_name="test-org/ner", tokenizer_name="test-org/ner")
+    )
     seen: dict = {}
 
     def fake_pipeline(text, **kwargs):
@@ -57,7 +59,9 @@ async def test_process_forwards_aggregation_strategy_to_pipeline():
 
 @pytest.mark.asyncio
 async def test_process_falls_back_to_the_model_rows_aggregation_strategy():
-    classifier = TransformerTokenClassifier(configs=TokenClassificationConfig(model_name="test-org/ner", tokenizer_name="test-org/ner"))
+    classifier = TransformerTokenClassifier(
+        configs=TokenClassificationConfig(model_name="test-org/ner", tokenizer_name="test-org/ner")
+    )
     seen: dict = {}
 
     def fake_pipeline(text, **kwargs):
@@ -82,7 +86,9 @@ async def test_process_falls_back_to_the_model_rows_aggregation_strategy():
 
 
 def test_to_entities_merges_multi_subword_medication_into_one_unprefixed_entity():
-    classifier = TransformerTokenClassifier(configs=TokenClassificationConfig(model_name="test-org/ner", tokenizer_name="test-org/ner"))
+    classifier = TransformerTokenClassifier(
+        configs=TokenClassificationConfig(model_name="test-org/ner", tokenizer_name="test-org/ner")
+    )
 
     text = "patient takes amlodipine"
     start = text.index("amlodipine")
@@ -111,7 +117,9 @@ def test_to_entities_merges_multi_subword_medication_into_one_unprefixed_entity(
 
 
 def test_to_entities_filters_ignore_labels():
-    classifier = TransformerTokenClassifier(configs=TokenClassificationConfig(model_name="test-org/ner", tokenizer_name="test-org/ner"))
+    classifier = TransformerTokenClassifier(
+        configs=TokenClassificationConfig(model_name="test-org/ner", tokenizer_name="test-org/ner")
+    )
     # The label set is the MODEL ROW's, not a code default -- guards the assumption.
     assert "O" in _NER_CONTRACT.token_classifier.ignore_labels
 

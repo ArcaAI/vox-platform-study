@@ -16,9 +16,8 @@ These tests pin:
 
 from __future__ import annotations
 
-from tests.clinical_taxonomy_fixture import seeded_taxonomy
-
 from nlp.services.ontology_linker import OntologyCodes, OntologyLinker
+from tests.clinical_taxonomy_fixture import seeded_taxonomy
 
 
 def _linker() -> OntologyLinker:

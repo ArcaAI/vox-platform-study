@@ -25,6 +25,25 @@ export class AiTaskModelSummary {
 
   @ApiProperty({ description: 'Provider-native identifier sent to the runtime' })
   sourceUri!: string;
+
+  @ApiPropertyOptional({ description: 'Optional staged weights directory (operator override)', nullable: true })
+  localPath!: string | null;
+
+  /**
+   * The row's `_metadata` blob (`AiModel._metadata`) — non-secret registry
+   * extras that describe WHAT THIS CHECKPOINT IS and therefore travel with it:
+   * `labelTaxonomy` (guardrail plane), `clinicalTaxonomy` (the nlp NER plane's
+   * ontology vocabulary, vitals bands, ConText/NegEx triggers and NER contract),
+   * `entailment` (the MiniCheck calibration gate's ground truth), `languages`,
+   * `capabilities`, `policy`.
+   *
+   * It is surfaced here because the gateway is the ONLY tenant resolver: a
+   * Python executor never reads the registry itself, so anything a caller must
+   * forward has to arrive through this DTO. Nothing secret belongs in
+   * `_metadata` — credentials live in `AiProviderConnection.encryptedApiKey`.
+   */
+  @ApiPropertyOptional({ description: 'Registry row `_metadata` (non-secret model descriptors)', nullable: true, type: Object })
+  metadata!: Record<string, unknown> | null;
 }
 
 /**

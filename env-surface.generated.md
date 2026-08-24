@@ -19,9 +19,9 @@ disagree with those declarations.
 | … tier `env` | 107 |
 | … tier `global-kv` | 9 |
 | … tier `vault-kv` | 27 |
-| Python declared fields | 365 |
-| … distinct Python names (incl. aliases + `os.environ` reads) | 414 |
-| `turbo.json#globalEnv` entries | 544 |
+| Python declared fields | 360 |
+| … distinct Python names (incl. aliases + `os.environ` reads) | 409 |
+| `turbo.json#globalEnv` entries | 539 |
 
 ## Variables — the TypeScript platform surface
 
@@ -377,8 +377,6 @@ default — see `renderPythonExample()` in `scripts/env-sync.mts`.
 | `NLP_INFERENCE_MAX_INFLIGHT_BATCHES` | `apps/nlp` | no | no | `2` | commented | — |
 | `NLP_INFERENCE_QUEUE_MAX_DEPTH` | `apps/nlp` | no | no | `256` | commented | — |
 | `NLP_INFERENCE_QUEUE_MAX_WAIT_SECONDS` | `apps/nlp` | no | no | `20` | commented | — |
-| `NLP_LINKER_CONFIDENCE_FLOOR` | `apps/nlp` | no | no | `0` | commented | — |
-| `NLP_LINKER_ENABLED` | `apps/nlp` | no | no | `true` | commented | — |
 | `NLP_LOG_LEVEL` | `apps/nlp` | no | no | `20` | commented | — |
 | `NLP_METRICS_ENABLED` | `apps/nlp` | no | no | `true` | commented | `OTEL_METRICS_ENABLED` |
 | `NLP_MODEL_CACHE_MAX_MODELS` | `apps/nlp` | no | no | `3` | commented | — |
@@ -421,13 +419,13 @@ default — see `renderPythonExample()` in `scripts/env-sync.mts`.
 | `SEMANTIC_ENDPOINT_MIN_SILENCE_MS__MOVED_TO_CONTROL_PLANE_TASK_799` | `apps/stt` | no | no | `200` | commented | — |
 | `SEMANTIC_ENDPOINT_MIN_WORDS__MOVED_TO_CONTROL_PLANE_TASK_799` | `apps/stt` | no | no | `3` | commented | — |
 | `SEMANTIC_ENDPOINT_MODEL_ID__MOVED_TO_CONTROL_PLANE_TASK_799` | `apps/stt` | no | no | `` | commented | — |
-| `SPELLING_CORRECTOR_DICTIONARY_PATH` | `apps/nlp` | no | no | `/Users/taphuynh/Desktop/igglo/ARCAAI/hope-v2/apps/nlp/data/dictionaries` | commented | — |
+| `SPELLING_CORRECTOR_DICTIONARY_PATH` | `apps/nlp` | no | no | `/Users/taphuynh/Desktop/igglo/ARCAAI/hope-v2/.claude/worktrees/agent-a931c565397aac046/apps/nlp/data/dictionaries` | commented | — |
 | `SPELLING_CORRECTOR_SYMSPELL_IGNORE_NON_WORDS` | `apps/nlp` | no | no | `true` | commented | — |
 | `SPELLING_CORRECTOR_SYMSPELL_IGNORE_TERM_WITH_DIGITS` | `apps/nlp` | no | no | `true` | commented | — |
 | `SPELLING_CORRECTOR_SYMSPELL_MAX_EDIT_DISTANCE` | `apps/nlp` | no | no | `2` | commented | — |
 | `SPELLING_CORRECTOR_SYMSPELL_PREFIX_LENGTH` | `apps/nlp` | no | no | `7` | commented | — |
 | `SPELLING_CORRECTOR_SYMSPELL_PRESERVE_CASE` | `apps/nlp` | no | no | `true` | commented | — |
-| `STORAGE_PROVIDER` | `apps/stt` | no | no | `minio` | commented | — |
+| `STORAGE_PROVIDER__MOVED_TO_CONTROL_PLANE_TASK_799` | `apps/stt` | no | no | `minio` | commented | — |
 | `STREAMING_AUDIO_IDLE_TIMEOUT_S__MOVED_TO_CONTROL_PLANE_TASK_799` | `apps/stt` | no | no | `300` | commented | — |
 | `STREAMING_AUDIO_STREAM_MAXLEN__MOVED_TO_CONTROL_PLANE_TASK_799` | `apps/stt` | no | no | `10000` | commented | — |
 | `STREAMING_AUDIO_TRIM_INTERVAL_S__MOVED_TO_CONTROL_PLANE_TASK_799` | `apps/stt` | no | no | `30` | commented | — |
@@ -479,9 +477,6 @@ default — see `renderPythonExample()` in `scripts/env-sync.mts`.
 | `TEXT_REDIS_URL` | `apps/text` | no | no | `redis://localhost:6379/0` | commented | — |
 | `TEXT_URL` | `apps/guardrail` | no | no | `http://localhost:8862` | commented | `GUARDRAIL_V2_TEXT_URL` |
 | `TEXT_URL` | `apps/nlp` | no | no | `http://localhost:8862` | commented | `NLP_EXTERNAL_TEXT_BASE_URL` |
-| `TOKEN_CLASSIFIER_AGGREGATION_STRATEGY` | `apps/nlp` | no | no | `simple` | commented | — |
-| `TOKEN_CLASSIFIER_ASSERTION_ENABLED` | `apps/nlp` | no | no | `true` | commented | — |
-| `TOKEN_CLASSIFIER_IGNORE_LABELS` | `apps/nlp` | no | no | `["O"]` | commented | — |
 | `TOKEN_CLASSIFIER_USE_GPU` | `apps/nlp` | no | no | `true` | commented | — |
 | `TORCH_NUM_INTEROP_THREADS__MOVED_TO_CONTROL_PLANE_TASK_799` | `apps/stt` | no | no | `1` | commented | — |
 | `TORCH_NUM_THREADS__MOVED_TO_CONTROL_PLANE_TASK_799` | `apps/stt` | no | no | `0` | commented | — |

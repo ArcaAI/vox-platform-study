@@ -58,7 +58,8 @@ class MultiLabelClassificationRequest(BaseModel):
         default=SupportedLanguage.ENGLISH, description="Language of the text"
     )
     model_name: str | None = Field(
-        default=None, description="Gateway-injected AiModel.sourceUri; required, fails closed with 503"
+        default=None,
+        description="Gateway-injected AiModel.sourceUri; required, fails closed with 503",
     )
     model_path: str | None = Field(
         default=None,
@@ -69,7 +70,10 @@ class MultiLabelClassificationRequest(BaseModel):
     # Independent per-label decision boundary — NOT a softmax top-1 pick, so
     # zero, one, or several labels may all clear it on the same input.
     cls_threshold: float = Field(
-        default=0.5, ge=0.0, le=1.0, description="Per-label score threshold for a label to count as a positive"
+        default=0.5,
+        ge=0.0,
+        le=1.0,
+        description="Per-label score threshold for a label to count as a positive",
     )
 
 
@@ -191,7 +195,8 @@ class TopicClassificationRequest(BaseModel):
     # into no topics" default, mirroring /classify/text's fail-closed
     # missing-model_name posture.
     instructions: list[str] | None = Field(
-        default=None, description="Tenant's topic list (gateway-injected from TenantNlpTaskInstructions)"
+        default=None,
+        description="Tenant's topic list (gateway-injected from TenantNlpTaskInstructions)",
     )
     tenant_id: str | None = Field(
         default=None, description="Gateway-injected tenant id, forwarded to text as X-Tenant-Id"
@@ -199,8 +204,12 @@ class TopicClassificationRequest(BaseModel):
 
 
 class TopicClassificationResponse(BaseModel):
-    predicted_topic: str = Field(..., description="The topic label text selected, from the tenant's instructed list")
-    available_topics: list[str] = Field(default_factory=list, description="The tenant's topic list this call was constrained to")
+    predicted_topic: str = Field(
+        ..., description="The topic label text selected, from the tenant's instructed list"
+    )
+    available_topics: list[str] = Field(
+        default_factory=list, description="The tenant's topic list this call was constrained to"
+    )
 
 
 class IntentClassificationRequest(BaseModel):
@@ -210,7 +219,8 @@ class IntentClassificationRequest(BaseModel):
     )
     # Gateway-injected from TenantNlpTaskInstructions (nlp.intent).
     instructions: list[str] | None = Field(
-        default=None, description="Tenant's intent list (gateway-injected from TenantNlpTaskInstructions)"
+        default=None,
+        description="Tenant's intent list (gateway-injected from TenantNlpTaskInstructions)",
     )
     tenant_id: str | None = Field(
         default=None, description="Gateway-injected tenant id, forwarded to text as X-Tenant-Id"
@@ -218,8 +228,12 @@ class IntentClassificationRequest(BaseModel):
 
 
 class IntentClassificationResponse(BaseModel):
-    predicted_intent: str = Field(..., description="The intent label text selected, from the tenant's instructed list")
-    available_intents: list[str] = Field(default_factory=list, description="The tenant's intent list this call was constrained to")
+    predicted_intent: str = Field(
+        ..., description="The intent label text selected, from the tenant's instructed list"
+    )
+    available_intents: list[str] = Field(
+        default_factory=list, description="The tenant's intent list this call was constrained to"
+    )
 
 
 # WebSocket
