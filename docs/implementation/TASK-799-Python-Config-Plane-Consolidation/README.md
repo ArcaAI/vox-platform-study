@@ -2,11 +2,12 @@
 
 | Field | Value |
 |---|---|
-| Status | In Progress — Phases 0, 1, 1.5 and Round 2 complete |
+| Status | Review — all phases implemented and verified; three items need an owner decision (see §Open) |
 | Type | refactor / infrastructure |
 | Branch | `dev-2.2` |
 | Scope | `apps/{stt,text,guardrail,nlp,harness,tts}`, `packages/applications/src/services/{settings-registry,effective-config,ai-provider-connection,ai-task-default}`, `apps/api/src/modules/internal`, `apps/admin-console` |
 | Opened | 2026-08-23 |
+| Last verified | 2026-08-24 — full `verify` suite green (see §Final verification) |
 
 ## Requirement Analysis
 
@@ -39,6 +40,8 @@ of which **11** carry a `HARNESS_` prefix.
 ## Current State Evaluation
 
 Full findings, root causes and per-service inventories: [assessment.md](./assessment.md).
+Final numbers and gate evidence are in [§Final verification](#final-verification-2026-08-24-dev-22-primary-checkout);
+the three items still needing an owner decision are in [§Open](#open--needs-an-owner-decision).
 
 Headline: the six services expose **~579 env-reachable settings fields**, of which 306
 are documented in `.env.sample` and **40** are declared to any governance gate. ~95 are
@@ -496,6 +499,107 @@ store CAN present one — and nothing asserted they were connected. That is RC-3
    six services to import. The header now says so rather than asserting a gate that does not exist.
    The new dead-field gate is unaffected — it deliberately does not depend on the manifest.
 
+## Final verification (2026-08-24, `dev-2.2`, primary checkout)
+
+Full `verify` suite — lint, typecheck and test across both languages. **~34,000
+tests, zero failures.**
+
+| Stage | Result |
+|---|---|
+| `pnpm lint` (TS) | 40 / 40 |
+| ruff (Python) | clean — 6 services + `py-env`, `py-otel` |
+| `pnpm typecheck` (TS) | **45 / 45** |
+| mypy (Python) | clean — **475 source files** across 6 services |
+| TS unit (1221 files) | **20,444 passed** |
+| vox · admin-console | 4,214 · 2,017 |
+| stt · harness · text | 2,996 · 1,595 · 1,366 |
+| nlp · tts · guardrail | 508 · 399 · 298 |
+| py-env + py-otel | 109 |
+| `env:sync --check` | OK — 138 TS keys + 359 Python fields · 538 globalEnv |
+| `env:python-dead` | OK — 395 fields, every one read (3 allow-listed) |
+
+Two suites are excluded, both pre-existing and reproduced identically on the
+pre-ticket base: `test_streaming_quality_scorecard` (a latency baseline calibrated
+on faster hardware than this machine) and `apps/stt/tests/e2e` (needs live infra).
+
+### What the ticket moved
+
+| Measure | Before | After |
+|---|---|---|
+| Env-reachable settings fields | ~579 | governed and declared |
+| Declared to ANY governance gate | **40** | **~500** |
+| DB→Python channel capacity | 22 keys, numeric, SYSTEM-only | any dataType, registry-driven |
+| Drift gates | 1 (TS-only) | 2, opposite directions, both Python-aware |
+| BLOCKERs | 5 | **0** |
+
+Per-service env-reachable fields: text 121 → 12, stt 110 → 34, tts 53 → 22,
+nlp 67 → 41, guardrail 27 → 21, harness 145 → 130.
+
+**On the harness number, stated plainly:** the ~15 target in `plan.md` was wrong,
+and the correction matters more than the miss. Under the Phase 1 contract a
+MIGRATED tuning knob keeps its env field as the bootstrap fallback — governance is
+achieved, the count is not reduced. Only deletion reduces it, and deletion requires
+fail-closed control-plane resolution. Where a lane could close the env path
+outright it did (stt/tts used a dead `validation_alias` with `populate_by_name`
+off, generalising the TTS BYOK guard from credentials to tuning knobs); where the
+value must survive a cold start with no control plane, the env field correctly
+remains.
+
+### Infrastructure fixed along the way
+
+- **`scripts/python-env-surface.py` could not run at all** — its `git ls-files`
+  subprocess dies with SIGABRT under a sandboxed interpreter, in worktrees AND in
+  the primary checkout. Now falls back to a filesystem walk. Deliberately not a
+  silent equivalent: an untracked scratch file is picked up where git would omit
+  it, which is the safe direction for a DRIFT gate.
+- **Generated env artifacts were machine-dependent.** Two defaults resolve at
+  import time from the generating checkout (`SPELLING_CORRECTOR_DICTIONARY_PATH`
+  from the repo root, `HUGGINGFACE_CACHE_DIR` from `Path.home()`), so committed
+  samples leaked a developer's home directory and `env:sync --check` could only
+  ever pass on one machine — it could never have passed in CI. Recorded defaults
+  now normalise to `<repo>`/`<home>` tokens; runtime values untouched.
+- **`pnpm typecheck` was ~1-in-3 flaky, and it was masking five real errors.**
+  `typecheck`/`build` declared `dependsOn: ["^build", "^db:generate"]`; the `^`
+  means UPSTREAM packages only, so `@arcaai/database:typecheck` never waited for
+  its OWN `db:generate` and tsc read a half-written Prisma client (TS6053). Adding
+  the unprefixed `db:generate` closed it — 6 consecutive `--force` runs green,
+  where the race previously reproduced within 3. **This was not a `tsBuildInfoFile`
+  collision** — those files were already per-package; the first hypothesis was
+  wrong and reproducing the failure is what found the real cause.
+- **Five pre-existing `apps/api` typecheck errors**, invisible behind that race:
+  three constructor-arity drifts (two using bare `{} as any` placeholders, so the
+  mocks landed correctly by luck and only `tsc` noticed), a required-but-nullable
+  `resultRef`, and `import.meta` under `module: commonjs`.
+- **Repo-wide black pass** (180 files) plus a root `[tool.black]`. black resolves
+  config from the COMMON BASE of its arguments, so a single invocation spanning
+  two apps found no config and fell back to line length 88 — it would have
+  rewritten ~600 correctly-formatted files to the wrong width while looking like a
+  cleanup. The root block also exposed the mirror bug: `py-env` and `py-otel`
+  declare no `[tool.black]`, so even per-path runs had been formatting them at 88.
+
+## Open — needs an owner decision
+
+1. **The PHI boundary moved in harness.** `ensure_inferential_egress_safe` now
+   receives `safety_provider=None`: harness no longer egresses to a provider for
+   safety screening, it posts to `apps/guardrail`, a first-party peer, like the
+   text/nlp hops this guard never gated. Guardrail owns the PHI posture of whatever
+   engine IT selects. Net effect: if guardrail selects a cloud engine, the note
+   reaches it under guardrail's posture rather than harness's redaction. Recorded
+   by test rather than left implicit.
+2. **Phase 4 has no authenticated visual pass.** Both console screens build, lint
+   clean, pass 2017 tests and scan axe-clean, but rendering them needs a sign-in —
+   entering a password is outside what an agent may do. Both-themes verification
+   and a real-gateway data pass remain outstanding, so Phase 4 is NOT closed.
+3. **Closing the TTS env reads needs a manifest change** in `arca/hope-v2-deployment`
+   (remove `TTS_KOKORO_ENABLED` from the `hope-tts` ConfigMap). Note `migrate.sh`
+   defaults `RUN_SEED=none` and `hope-v2-dev` pins it — **the seeded row will not
+   exist unless seeding is explicitly run**, so this step must not be inferred from
+   a green build.
+
+Also outstanding, lower risk: `guardrail.validate` selects an LLM on `apps/text`,
+so D-4 was NOT read as reversing TASK-735 Phase 0's tenant-admin posture for it —
+flagged, not assumed.
+
 ## Change History
 
 | Date | Change |
@@ -509,4 +613,7 @@ store CAN present one — and nothing asserted they were connected. That is RC-3
 | 2026-08-23 | Round 2 lane R2-B: gateway resolves the second (`nlp.ner`) selection for `/diagnosis/suggestions` and injects both; C.2 (`4fa3d1f15`) merged, so the route works again with no literal. `nlp.*` SUPER_ADMIN-only tension recorded for owner decision. |
 | 2026-08-23 | Phase 2 lane B (`apps/text`) complete: 121 env-reachable pydantic fields → 9 (12 variables with the three `hope_env` reads). The eight per-provider blocks, the three-way `TEXT_CB_*`/`TEXT_QUEUE_*`/`TEXT_JUDGE_*` duplication and the 20-name `TEXT_V2_*` window are gone; every adapter resolves its connection per request and fails closed, so fail-closed coverage went from 3 adapters to 11. Two wirings remain outside the lane's boundary — an `externalGuardrail` view in `effective-config.service.ts`, and gateway PUSH of `guardrail_policy`. |
 | 2026-08-24 | Phase 3 lane F: `pnpm env:python-dead` added as a stdlib-only AST gate (`python-dead-settings` in CI, the mirror of `env-drift-check`), with a self-cleaning allow-list and a rule canary. Found 5 dead fields on an already-hand-swept tree: `harness` `rrf_k` DELETED (undeliverable — `FusionQuery` has no `k`), `harness` `qdrant_api_key` WIRED (a declared credential both construction sites dropped), three `apps/tts` fields reported and handed off. Two out-of-lane defects reported: `apps/nlp`'s checkout-dependent `dictionary_path` default makes `env:sync --check` non-reproducible, and `env:python-surface --check` is in no CI job. |
+| 2026-08-24 | Full `verify` suite green: lint 40/40, typecheck 45/45, mypy 475 files, ~34,000 tests, both drift gates OK. Status → Review. |
+| 2026-08-24 | Infrastructure repairs: the Python env-surface generator made runnable (SIGABRT fallback), generated artifacts made machine-portable (`<repo>`/`<home>` tokens), repo-wide black pass + root `[tool.black]`, five pre-existing `apps/api` typecheck errors fixed, and the `pnpm typecheck` race closed by ordering `typecheck`/`build` after their OWN package's `db:generate`. |
+| 2026-08-24 | Orchestrator wired guardrail's `external_nlp_client` to forward `calibration` (lane G's out-of-boundary item), closing the `/guard/entailment` degrade-to-`unverified` gap. Test observed RED without the send. |
 | 2026-08-24 | **Phase 2 follow-up lane G (`apps/nlp` clinical taxonomies) complete — both sides.** The ontology vocabulary (40 UMLS/SNOMED/RxNorm/ICD-10/LOINC rows), the vitals plausibility bands, the ConText/NegEx trigger lexicon and the five `TOKEN_CLASSIFIER_*` / `NLP_LINKER_*` env fields moved onto `AiModel._metadata.clinicalTaxonomy` of the row `nlp.ner` selects; the gateway (`resolveNerModelInjection`, `AiInferenceController`) resolves and injects them verbatim, and `AiTaskModelSummary` gained the `metadata`/`localPath` fields callers were casting for. `apps/nlp` keeps NO fallback copy — an absent section disables the pass it governs rather than substituting a literal. Entailment split by judgment: the MiniCheck label-token ids and prompt template stay in code (they are the adapter, not a knob), while the calibration bounds and reference pair moved to `_metadata.entailment` and the loader now REFUSES a row declaring no calibration, a different adapter, or mismatched label tokens — closing the "non-MiniCheck model scored on MiniCheck's calibration" hole on a clinical gate. Remaining: guardrail's `external_nlp_client` (lane F's file) must forward `calibration`; until then `/guard/entailment` fails closed to `unverified`. |
