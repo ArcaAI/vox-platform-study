@@ -711,7 +711,12 @@ def _hybrid_retriever(settings: Settings) -> HybridRetriever:
             rc.embeddings_base_url, model=rc.embeddings_model, timeout=rc.embeddings_timeout_s
         ),
         sparse=SparseBm25Embedder(),
-        store=KnowledgeQdrantStore(rc.qdrant_url, rc.collection, timeout=rc.qdrant_timeout_s),
+        store=KnowledgeQdrantStore(
+            rc.qdrant_url,
+            rc.collection,
+            timeout=rc.qdrant_timeout_s,
+            api_key=rc.qdrant_api_key.get_secret_value() if rc.qdrant_api_key else None,
+        ),
         reranker=RerankerClient(rc.reranker_base_url, timeout=rc.reranker_timeout_s),
         top_k_retrieval=rc.top_k_retrieval,
         top_k_rerank=rc.top_k_rerank,

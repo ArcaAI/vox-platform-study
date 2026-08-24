@@ -37,6 +37,15 @@ WHAT IS DELIBERATELY ABSENT
 * **Per-provider VOICE names.** They are not config at all any more: the voice
   catalog is the single source (see ``catalog/voices.py``), and the router
   already passes the resolved binding as ``req.provider_voice``.
+
+WHAT IS HALF-PRESENT, AND WHY THAT IS THE INTENDED STATE
+---------------------------------------------------------
+The five provider/engine ``*_ENABLED`` flags ARE served here now (lane H), but
+their environment path stays OPEN — see :data:`ENV_BOOTSTRAP_KEYS`. Closing a
+config path is three steps and only two of them are in this repository: seed the
+rows (done), update the k8s manifests (``arca/hope-v2-deployment`` — not ours),
+then close the env read. Doing the third before the second is a real outage, not
+a tidiness question.
 """
 
 from __future__ import annotations
@@ -102,6 +111,24 @@ CONTROL_PLANE_KEYS: dict[str, str] = {
     "default_format": "tts.limits.defaultFormat",
     "sample_rate": "tts.limits.sampleRate",
     "warmup_enabled": "tts.warmupEnabled",
+    # ── provider/engine enable flags (TASK-799 lane H) ───────────────────────
+    # HALF-MIGRATED ON PURPOSE, and the halves are named in `ENV_BOOTSTRAP_KEYS`
+    # below: the control plane now SERVES these, but `TTS_*_ENABLED` is still a
+    # live bootstrap fallback because the k8s manifests that set them live in a
+    # SEPARATE repository (`arca/hope-v2-deployment`) and cannot be updated from
+    # here. Closing the env path before those manifests stop supplying the value
+    # reproduces the outage `test_keyless_readiness_task642` exists to pin.
+    #
+    # Note the two spellings that do NOT match their `global-kv` siblings
+    # (`tts.parler.enabled` beside `tts.indicParler.*`; `tts.indicf5.enabled`
+    # beside `tts.indicF5.*`). They are kept AS THEY WERE REGISTERED: the key is
+    # the row's primary coordinate in `GlobalSetting`, so renaming one now would
+    # orphan the seeded row rather than tidy anything.
+    "azure.enabled": "tts.azure.enabled",
+    "sarvam.enabled": "tts.sarvam.enabled",
+    "kokoro.enabled": "tts.kokoro.enabled",
+    "indic_parler.enabled": "tts.parler.enabled",
+    "indic_f5.enabled": "tts.indicf5.enabled",
     # Already registered by `service-runtime.descriptors.ts` and already applied
     # at runtime through `refresh_model_cache_retention`. What changes here is
     # only that its env path closes: it was documented as a "BOOTSTRAP FALLBACK
@@ -111,6 +138,38 @@ CONTROL_PLANE_KEYS: dict[str, str] = {
 }
 
 _PATH_BY_KEY: dict[str, str] = {key: path for path, key in CONTROL_PLANE_KEYS.items()}
+
+#: Keys whose ENVIRONMENT path is still open, so an unresolved control-plane
+#: value must not overwrite what the environment supplied (TASK-799 lane H).
+#:
+#: The gateway answers every declared key, even when no ``GlobalSetting`` row
+#: exists — in that case it resolves ``descriptor.default`` and labels the entry
+#: ``source: "env-fallback"``. For the ~24 knobs above that is exactly right:
+#: their env path is DEAD (:func:`moved_alias`), the descriptor default is
+#: transcribed verbatim from the Python field, and applying it is a no-op that
+#: keeps one authority.
+#:
+#: For the five flags it is wrong, and dangerously so. ``env-fallback`` there
+#: means "no row answered" — an ABSENCE of platform opinion — while the live
+#: value sits in the container's environment. Applying the descriptor default
+#: (``False``) over an operator's ``TTS_KOKORO_ENABLED=true`` would unregister
+#: the only engine a keyless deployment has, and ``hope-tts`` would answer 503
+#: forever with no Service endpoints. That is the exact regression
+#: ``test_keyless_readiness_task642`` was written for.
+#:
+#: So the rule is narrow and stated once: for a key in this set, only a value
+#: that a DATABASE ROW supplied (``source == "db"``) may override the
+#: environment. Remove a key from this set in the SAME change that closes its
+#: env path with :func:`moved_alias` — never before, never after.
+ENV_BOOTSTRAP_KEYS: frozenset[str] = frozenset(
+    {
+        "tts.azure.enabled",
+        "tts.sarvam.enabled",
+        "tts.kokoro.enabled",
+        "tts.parler.enabled",
+        "tts.indicf5.enabled",
+    }
+)
 
 
 def _resolve(settings: Settings, path: str) -> tuple[Any, str] | None:
@@ -192,6 +251,20 @@ def apply_control_plane(settings: Settings, payload: Any) -> list[str]:
         owner, attr = resolved
         current = getattr(owner, attr)
         served = entry.get("value")
+
+        # A key whose env path is still open only yields to a real DATABASE
+        # opinion; `env-fallback` there is the gateway reporting that no row
+        # answered, and the environment is the live authority. See
+        # `ENV_BOOTSTRAP_KEYS`.
+        if key in ENV_BOOTSTRAP_KEYS and entry.get("source") != "db":
+            logger.debug(
+                "tts.control_plane.env_bootstrap_retained",
+                key=key,
+                path=path,
+                source=entry.get("source"),
+            )
+            continue
+
         if not _acceptable(current, served):
             if served is not None:
                 logger.warning(

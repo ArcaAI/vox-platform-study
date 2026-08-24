@@ -18,14 +18,20 @@ writes the result to a COMMITTED JSON manifest. `env-sync.mts` then reads that
 manifest as just another declaration source, exactly like it reads
 `HOPE_SETTINGS_REGISTRY`.
 
-So there are two gates, and they fail for different reasons:
+So there are THREE gates, and they fail for different reasons:
 
-  * `pnpm env:python-surface --check`  (needs Python, runs in `lint-python`)
+  * `pnpm env:python-surface --check`  (needs pydantic + all six services)
         the manifest is stale — a pydantic field was added/renamed/removed and
-        the manifest was not regenerated.
+        the manifest was not regenerated. NOT in CI: it can only run where all
+        six services import, and no validate-stage job carries that.
   * `pnpm env:sync --check`            (needs no Python, runs in `env-drift-check`)
         an artifact generated FROM the manifest is stale — `.env.sample`,
-        `turbo.json#globalEnv` or the docs table.
+        `turbo.json#globalEnv` or the docs table. Catches an env var that is
+        READ but not DECLARED.
+  * `pnpm env:python-dead`             (stdlib only, runs in `python-dead-settings`)
+        the opposite direction — an env var that is DECLARED but never READ.
+        A settings field an operator can set while nothing consumes the value.
+        See the section that introduces it, further down this file.
 
 ── WHY INTROSPECTION AND NOT A REGEX ─────────────────────────────────────────
 A pydantic-settings field's env name is not textually present in the source. It
@@ -338,7 +344,7 @@ def build() -> dict[str, Any]:
                     "required": f.required,
                     "secret": f.secret,
                     "dataType": f.data_type,
-                    "default": f.default,
+                    "default": _portable_default(f.default),
                     "description": f.description,
                 }
                 for f in sorted(fields, key=lambda f: (f.cls, f.name))
@@ -392,6 +398,44 @@ _WALK_SKIP_DIRS = frozenset(
         ".turbo",
     }
 )
+
+
+#: The repo root, as it appears inside a machine-specific default. A field like
+#: `dictionary_path: str = Field(default=str(get_project_root() / "data" / ...))`
+#: resolves at IMPORT time, so its default embeds whatever checkout produced the
+#: manifest. Committed verbatim that value (a) leaks the generating developer's
+#: home directory into a tracked file, and (b) makes `env:sync --check` pass ONLY
+#: on the machine that last ran `env:sync` — it cannot pass in CI or in any
+#: worktree, which is a drift gate that reports on the wrong thing.
+_ROOT_TOKEN = "<repo>"
+#: Same problem, different anchor: a default built from `Path.home()` (the
+#: Hugging Face cache root is the live example) bakes the GENERATING USER'S
+#: username into a tracked file, on top of the same CI-can-never-match failure.
+_HOME_TOKEN = "<home>"
+
+
+def _portable_default(value: object) -> object:
+    """Replace an embedded absolute repo path with a stable token.
+
+    Applied to the RECORDED default only — the runtime value is untouched, since
+    the field still resolves its own absolute path at import. This makes the
+    manifest (and every artifact generated from it) byte-identical across
+    checkouts, which is the property a drift gate needs to mean anything.
+    """
+    root = str(ROOT)
+    home = str(Path.home())
+    if isinstance(value, str):
+        # Repo first: a checkout living under $HOME would otherwise be rewritten
+        # to `<home>/...` and lose the more specific, more useful anchor.
+        if root in value:
+            return value.replace(root, _ROOT_TOKEN)
+        if home and home != "/" and value.startswith(home):
+            return value.replace(home, _HOME_TOKEN, 1)
+    if isinstance(value, list):
+        return [_portable_default(v) for v in value]
+    if isinstance(value, dict):
+        return {k: _portable_default(v) for k, v in value.items()}
+    return value
 
 
 def _git_tracked_python_files() -> list[str]:
@@ -534,14 +578,427 @@ def scan_bare_reads() -> dict[str, list[str]]:
     return {name: sorted(files) for name, files in sorted(reads.items())}
 
 
+# ── The declared-but-never-read check (TASK-799 Phase 3.2) ────────────────────
+#
+# A settings field nobody reads is CONFIG THEATRE: an operator sets it, nothing
+# happens, and nobody finds out. Phases 0-2 of TASK-799 deleted ~95 of them, all
+# found by hand — which is why they accumulated at all (assessment RC-3:
+# "migrations were executed per-item by hand, so coverage equals the set that
+# existed on the day someone ran the sweep"). This is the check that stops the
+# next ~95 from accumulating.
+#
+# ── WHY THIS HALF IS AST AND THE MANIFEST HALF IS INTROSPECTION ───────────────
+# The manifest above needs pydantic because an env NAME is not textually present
+# in the source (`env_prefix` + field name, unless `validation_alias` overrides
+# it...). This check needs no env name at all: it asks whether a FIELD is read,
+# and both the field name and the read ARE textually present. So it is a pure
+# AST pass over the standard library — which matters for three reasons:
+#
+#   * it runs on a bare `python:3.11-slim` CI runner with ZERO installs, where
+#     importing all six services (torch, presidio, qdrant-client, ...) is not
+#     affordable in a validate-stage job;
+#   * it cannot go stale. A manifest-driven version would miss a dead field
+#     added without regenerating the manifest — which is exactly the hole the
+#     check exists to close;
+#   * it needs no conda env, so it runs from any worktree.
+#
+# ── THE RULE: WHAT COUNTS AS A READ ───────────────────────────────────────────
+# Field `F` declared on settings class `C` in service `S` counts as READ when the
+# non-test Python source under `apps/S/` contains either:
+#
+#   (R1) an ATTRIBUTE LOAD `<anything>.F` that is NOT the callee of a call.
+#        The "not the callee" half is load-bearing, and was learned from this
+#        ticket's own false positives: `stt` had a live
+#        `resolve_worker_concurrency()` function AND a live
+#        `worker_concurrency()` snapshot METHOD while the settings FIELD of that
+#        name was genuinely dead. A substring grep credits the field for both;
+#        this rule credits neither, because `snapshot.worker_concurrency()` is a
+#        method INVOCATION and `resolve_worker_concurrency` is a bare Name, never
+#        an attribute.
+#        A Store context (`settings.F = v`) is a WRITE and is not a read either
+#        — that is what the control-plane overlay does, and a value written and
+#        never read is precisely the defect being hunted.
+#
+#   (R2) a STRING LITERAL exactly equal to `"F"`, located OUTSIDE the body of
+#        class `C`. That is how an indirect read is spelled in this repo:
+#        `getattr(settings, "streaming_max_concurrent", 0)`
+#        (`stt/streaming/execution_profile.py`), the `(metric, attr)` table in
+#        `harness/eval/ci.py`, and the field -> dotted-key overlay table in
+#        `stt/core/control_plane.py`. The "OUTSIDE class C" qualifier is what
+#        makes the rule sharp rather than merely permissive: `@field_validator
+#        ("rrf_k")` inside `RetrievalConfig` NAMES the field without consuming
+#        it, and so does `validation_alias=moved_alias("storage_provider")`.
+#        Without that qualifier every validated or alias-carrying field is
+#        credited by its own declaration and the check finds nothing at all.
+#
+# Two deliberate limitations, both chosen to UNDER-report rather than cry wolf,
+# because a gate that produces false positives gets disabled:
+#
+#   * Matching is by NAME within a service, not by resolved receiver type. Two
+#     classes in one service that both declare `enabled` are credited by a single
+#     read. Making that precise needs type inference over the receiver
+#     expression, which is not worth it while a sweep's payload is a handful of
+#     fields.
+#   * A field named by bare string in an indirection table is credited even if
+#     nothing downstream `getattr`s it, because telling those apart needs
+#     dataflow. `apps/tts`'s overlay table happens to be keyed by DOTTED path
+#     ("azure.max_concurrent") rather than bare field name, which is the only
+#     reason its three genuinely-unread fields surface — luck, not design.
+#     Stated here so the next reader does not mistake it for a guarantee.
+#
+# Tests are NOT scanned (the same `_is_test_file` rule the bare-read scan uses):
+# a field read only by its own test is config theatre with a witness, and should
+# surface here rather than hide behind it.
+
+#: `"<service>:<Class>.<field>"` -> why the field is declared and deliberately
+#: never read.
+#:
+#: An explicit, reviewed allow-list, NOT a looser rule. The assessment's lesson
+#: (RC-3, F-13) is that "this is dead" written in a code comment was treated as
+#: sufficient and the deletion never happened; an entry here is a line a reviewer
+#: sees in a diff. It is also SELF-CLEANING — an entry naming a field that no
+#: longer exists, or that something now reads, FAILS the check — so the list
+#: cannot decay into a permanent amnesty.
+#:
+#: EMPTY is the correct steady state. Reach for an entry only when a field must
+#: exist unread (a compatibility tombstone; a value consumed by a generator
+#: rather than by the service), or when the finding is real but the file belongs
+#: to a lane that is not yours — a HANDOFF, and the self-cleaning rule turns it
+#: into a one-line deletion for whoever fixes it. "No time to delete it" is not
+#: a reason; deleting it is the cheaper action.
+_TTS_CONTROL_PLANE_HANDOFF = (
+    "REAL FINDING, not an exemption. `tts/core/control_plane.py` WRITES this "
+    "field from the control plane (its table is keyed by dotted path, "
+    "'azure.max_concurrent'), and nothing in apps/tts then READS it — so the "
+    "registry key, the descriptor and the overlay all exist to move a value "
+    "that lands nowhere. Found by `pnpm env:python-dead` during TASK-799 Phase "
+    "3.2, whose lane owned apps/{text,stt,guardrail,harness} and NOT apps/tts. "
+    "Fix is to wire it at the provider or drop the field, the overlay entry and "
+    "the descriptor together; then delete this line, which the staleness rule "
+    "will demand anyway."
+)
+
+INTENTIONALLY_UNREAD: dict[str, str] = {
+    "tts:AzureSpeechConfig.max_concurrent": _TTS_CONTROL_PLANE_HANDOFF,
+    "tts:SarvamConfig.max_concurrent": _TTS_CONTROL_PLANE_HANDOFF,
+    "tts:SarvamConfig.use_streaming": _TTS_CONTROL_PLANE_HANDOFF,
+}
+
+
+#: Base classes that make a `ClassDef` a settings class. Locally-defined
+#: subclasses are added as they are discovered, so a class extending another
+#: settings class in the same module is walked too.
+_SETTINGS_BASES = frozenset({"BaseSettings"})
+
+#: A string literal is only a candidate field reference if it could BE a field
+#: name. Anything with a dot, space or dash is a log event, a dotted config key
+#: or prose.
+_PY_IDENT = __import__("re").compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
+
+
+@dataclass(frozen=True)
+class DeclaredField:
+    """One pydantic-settings field, as the AST sees it."""
+
+    service: str
+    cls: str
+    name: str
+    where: str
+
+    @property
+    def key(self) -> str:
+        return f"{self.service}:{self.cls}.{self.name}"
+
+
+def _settings_field_declarations(tree: Any, rel: str, service: str) -> list[DeclaredField]:
+    """Every `BaseSettings` field declared in one parsed module.
+
+    `model_config`, private (`_`-prefixed) attributes and `ClassVar`s are
+    configuration OF the settings class, not knobs ON it.
+    """
+    import ast
+
+    local_settings_classes: set[str] = set()
+    out: list[DeclaredField] = []
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.ClassDef):
+            continue
+        bases = {b.id for b in node.bases if isinstance(b, ast.Name)}
+        bases |= {b.attr for b in node.bases if isinstance(b, ast.Attribute)}
+        if not (bases & (_SETTINGS_BASES | local_settings_classes)):
+            continue
+        local_settings_classes.add(node.name)
+        for item in node.body:
+            if not isinstance(item, ast.AnnAssign) or not isinstance(item.target, ast.Name):
+                continue
+            field_name = item.target.id
+            if field_name.startswith("_") or field_name == "model_config":
+                continue
+            if item.annotation and ast.unparse(item.annotation).startswith("ClassVar"):
+                continue
+            out.append(DeclaredField(service, node.name, field_name, f"{rel}:{item.lineno}"))
+    return out
+
+
+@dataclass
+class _Reads:
+    """Read evidence for one service."""
+
+    #: attribute name -> `file:line` sites (R1).
+    attributes: dict[str, set[str]] = dataclass_field(default_factory=dict)
+    #: literal -> (enclosing class chain, `file:line`) occurrences (R2).
+    literals: dict[str, list[tuple[tuple[str, ...], str]]] = dataclass_field(
+        default_factory=dict
+    )
+
+    def add_module(self, tree: Any, rel: str) -> None:
+        import ast
+
+        # An attribute that IS a call's callee is a method INVOCATION, not a
+        # field read — collected first so the walk below can exclude them.
+        callees = {
+            id(node.func)
+            for node in ast.walk(tree)
+            if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)
+        }
+        evidence = self
+
+        class Walker(ast.NodeVisitor):
+            def __init__(self) -> None:
+                self.stack: list[str] = []
+
+            def visit_ClassDef(self, node: ast.ClassDef) -> None:
+                self.stack.append(node.name)
+                self.generic_visit(node)
+                self.stack.pop()
+
+            def visit_Attribute(self, node: ast.Attribute) -> None:
+                if isinstance(node.ctx, ast.Load) and id(node) not in callees:
+                    evidence.attributes.setdefault(node.attr, set()).add(f"{rel}:{node.lineno}")
+                self.generic_visit(node)
+
+            def visit_Constant(self, node: ast.Constant) -> None:
+                if isinstance(node.value, str) and _PY_IDENT.match(node.value):
+                    evidence.literals.setdefault(node.value, []).append(
+                        (tuple(self.stack), f"{rel}:{node.lineno}")
+                    )
+                self.generic_visit(node)
+
+        Walker().visit(tree)
+
+    def reads(self, field: DeclaredField) -> bool:
+        if field.name in self.attributes:
+            return True
+        return any(
+            field.cls not in stack for stack, _ in self.literals.get(field.name, ())
+        )
+
+
+def scan_service_settings(service: str) -> tuple[list[DeclaredField], _Reads]:
+    """Declared settings fields and read evidence for one `apps/<service>` tree."""
+    import ast
+
+    declared: list[DeclaredField] = []
+    evidence = _Reads()
+    for dirpath, dirnames, filenames in os.walk(ROOT / "apps" / service):
+        dirnames[:] = [d for d in dirnames if d not in _WALK_SKIP_DIRS]
+        for filename in sorted(filenames):
+            if not filename.endswith(".py"):
+                continue
+            path = Path(dirpath) / filename
+            rel = os.path.relpath(path, ROOT)
+            if _is_test_file(rel):
+                continue
+            try:
+                tree = ast.parse(path.read_text())
+            except (OSError, SyntaxError, UnicodeDecodeError):
+                continue
+            declared.extend(_settings_field_declarations(tree, rel, service))
+            evidence.add_module(tree, rel)
+    return declared, evidence
+
+
+@dataclass
+class DeadFieldReport:
+    scanned: int = 0
+    dead: list[DeclaredField] = dataclass_field(default_factory=list)
+    excused: list[DeclaredField] = dataclass_field(default_factory=list)
+    stale_allow_entries: list[str] = dataclass_field(default_factory=list)
+
+
+#: A synthetic module exercising every discrimination the rule above claims to
+#: make. It is checked on EVERY run, before the real scan.
+#:
+#: The failure this defends against is the worst one a gate can have: a rule
+#: that silently stops discriminating and reports "every field is read" forever.
+#: That green is indistinguishable from a real green, and the ~95 dead fields
+#: this check exists to prevent would accumulate underneath it. Six lines of
+#: fixture make it impossible.
+_CANARY_SOURCE = '''
+class Cfg(BaseSettings):
+    live_by_attribute: int = 1
+    live_by_literal: int = 2
+    dead_but_validated: int = 3
+    dead_with_namesakes: int = 4
+
+    @field_validator("dead_but_validated")
+    def _v(cls, v): return v
+
+def read_it(cfg):
+    return cfg.live_by_attribute
+
+def use_literal(cfg):
+    return getattr(cfg, "live_by_literal")
+
+def dead_with_namesakes(default):
+    return default
+
+class Snapshot:
+    def dead_with_namesakes(self):
+        return dead_with_namesakes(4)
+
+def invoke_the_method(snapshot):
+    return snapshot.dead_with_namesakes()
+'''
+
+#: field -> is it expected to read as LIVE?
+_CANARY_EXPECTED = {
+    "live_by_attribute": True,  # R1: plain attribute load
+    "live_by_literal": True,  # R2: getattr with a string literal
+    "dead_but_validated": False,  # its only literal is inside the declaring class
+    "dead_with_namesakes": False,  # a live function AND a live method share the name
+}
+
+
+def _assert_rule_is_live() -> None:
+    """Fail loudly if the read rule has stopped discriminating."""
+    import ast
+
+    tree = ast.parse(_CANARY_SOURCE)
+    declared = _settings_field_declarations(tree, "<canary>", "<canary>")
+    evidence = _Reads()
+    evidence.add_module(tree, "<canary>")
+
+    actual = {field.name: evidence.reads(field) for field in declared}
+    if actual != _CANARY_EXPECTED:
+        raise AssertionError(
+            "The declared-but-never-read RULE is broken — refusing to report a "
+            "result.\n"
+            f"  expected: {_CANARY_EXPECTED}\n"
+            f"  actual:   {actual}\n"
+            "Fix the rule (see `_CANARY_SOURCE` and the section that documents "
+            "R1/R2) before trusting any output from this check."
+        )
+
+
+def find_dead_fields() -> DeadFieldReport:
+    _assert_rule_is_live()
+    report = DeadFieldReport()
+    for spec in SERVICES:
+        declared, evidence = scan_service_settings(spec.name)
+        report.scanned += len(declared)
+        for field in declared:
+            if evidence.reads(field):
+                continue
+            bucket = report.excused if field.key in INTENTIONALLY_UNREAD else report.dead
+            bucket.append(field)
+    excused_keys = {f.key for f in report.excused}
+    report.stale_allow_entries = sorted(set(INTENTIONALLY_UNREAD) - excused_keys)
+    return report
+
+
+def _env_names_by_field() -> dict[str, str]:
+    """Best-effort `service:Class.field` -> env var, for a friendlier message.
+
+    Read from the committed manifest so the report can name the variable an
+    operator would have set. Missing or stale, the check still works — it just
+    prints the field alone. The check must never DEPEND on the manifest; that
+    dependency is the staleness hole it was designed to avoid.
+    """
+    try:
+        payload = json.loads(MANIFEST.read_text())
+    except (OSError, ValueError):
+        return {}
+    return {
+        f"{service}:{entry['class']}.{entry['field']}": entry["name"]
+        for service, body in payload.get("services", {}).items()
+        for entry in body.get("fields", [])
+    }
+
+
+def report_dead_fields() -> int:
+    report = find_dead_fields()
+    env_names = _env_names_by_field()
+
+    # stderr, so the allow-list detail cannot interleave ahead of, or behind,
+    # the failure block below — they would otherwise land on two streams and a
+    # CI log would show the reasons AFTER the failure they do not explain.
+    for key in sorted(f.key for f in report.excused):
+        print(
+            f"allow-listed  {key}\n              {INTENTIONALLY_UNREAD[key]}",
+            file=sys.stderr,
+        )
+
+    if report.stale_allow_entries:
+        print(
+            "\nenv:python-dead FAILED — INTENTIONALLY_UNREAD carries stale entries.\n"
+            "Each names a field that no longer exists, or one that something now "
+            "reads.\nDelete the entry.",
+            file=sys.stderr,
+        )
+        for key in report.stale_allow_entries:
+            print(f"  stale: {key}", file=sys.stderr)
+        return 1
+
+    if report.dead:
+        print(
+            f"\nenv:python-dead FAILED — {len(report.dead)} settings field(s) are "
+            "DECLARED and NEVER READ.\n"
+            "An operator can set each of these and nothing happens: the value is "
+            "parsed,\nvalidated, and dropped. Delete the field together with its "
+            "documentation, or\nwire it to the code that was supposed to consume "
+            "it. If it must exist unread,\nadd it to `INTENTIONALLY_UNREAD` in "
+            "scripts/python-env-surface.py with a reason.",
+            file=sys.stderr,
+        )
+        for field in sorted(report.dead, key=lambda f: f.key):
+            env = env_names.get(field.key)
+            print(
+                f"  {field.key}{f'   env: {env}' if env else ''}\n"
+                f"      declared at {field.where}",
+                file=sys.stderr,
+            )
+        return 1
+
+    print(
+        f"env:python-dead OK — {report.scanned} declared settings fields across "
+        f"{len(SERVICES)} Python services; every one is read "
+        f"({len(report.excused)} allow-listed)."
+    )
+    return 0
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--check", action="store_true", help="fail if the manifest is stale")
+    parser.add_argument(
+        "--dead",
+        action="store_true",
+        help=(
+            "fail if any settings field is declared and never read "
+            "(needs no pydantic and no conda env — see the section above)"
+        ),
+    )
     args = parser.parse_args()
 
     # The services read `.env.<NODE_ENV>` at import time through `hope_env`; a
     # host env file must not be able to change what this manifest DECLARES.
     os.environ["CI"] = "true"
+
+    # A pure AST pass: it must run BEFORE anything imports a service, so it stays
+    # usable on a runner where those imports would fail.
+    if args.dead:
+        return report_dead_fields()
 
     payload = build()
     rendered = json.dumps(payload, indent=2, sort_keys=False) + "\n"

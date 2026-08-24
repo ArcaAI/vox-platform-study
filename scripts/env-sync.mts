@@ -75,10 +75,19 @@
  *        added read fails `env:sync --check` even on a machine, or in a CI
  *        job, with no Python at all.
  *
- * The two gates fail for different reasons and neither subsumes the other:
+ * The gates fail for different reasons and none subsumes another:
  * `env:python-surface --check` catches a stale MANIFEST (a pydantic field
  * changed), `env:sync --check` catches a stale ARTIFACT (a file generated from
  * the manifest was not regenerated).
+ *
+ * A THIRD gate covers the direction none of the above can see. Everything here
+ * asks "is every var that is READ also DECLARED?"; `pnpm env:python-dead`
+ * (TASK-799 Phase 3.2, also in scripts/python-env-surface.py) asks the reverse
+ * — "is every DECLARED settings field actually READ?" A field nobody reads is
+ * config theatre: an operator sets it, nothing happens, and no gate here would
+ * ever notice. It is a stdlib AST pass, so it runs in its own zero-install CI
+ * job (`python-dead-settings`) and needs neither this generator nor the
+ * manifest.
  *
  * ─── DELIBERATELY *NOT* SCHEMA-VALIDATED (declared boundary, not an oversight) ─
  *   • `apps/example` — a Vite demo whose vars are `import.meta.env.VITE_*`,

@@ -423,6 +423,79 @@ same is true of the `generation` group backing `core/defaults.py`.
 receiving half of the D-1 push contract; `TextRequestEnrichmentService` does not populate it yet.
 Absent, the platform default stands, which is today's behaviour.
 
+### Phase 3 lane F — the declared-but-never-read gate (worktree `worktree-agent-a185bbf3740fcaecc`)
+
+Phases 0-2 deleted ~95 dead settings fields, **every one found by hand** — which is the whole of
+assessment RC-3 ("coverage equals the set that existed on the day someone ran the sweep"). Nothing
+stopped the next ~95. Plan items 3.2 and 3.3.
+
+**The check** — `pnpm env:python-dead`, a new `--dead` mode on `scripts/python-env-surface.py`
+(the existing machinery, extended; no second tool). A settings field `F` on class `C` in service
+`S` counts as READ when the non-test Python under `apps/S/` contains either:
+
+| | Rule | Why it is written that way |
+|---|---|---|
+| R1 | an attribute LOAD `<expr>.F` that is **not the callee of a call** | `stt` had a live `resolve_worker_concurrency()` function AND a live `worker_concurrency()` snapshot METHOD while the FIELD of that name was dead. A substring grep credits the field for both; this credits neither. A Store context (`settings.F = v`) is a WRITE — which is what the control-plane overlay does, and a value written but never read is the defect being hunted. |
+| R2 | a string literal exactly `"F"`, **outside the body of class `C`** | Indirect reads are spelled `getattr(settings, "streaming_max_concurrent", 0)`, the `(metric, attr)` table in `harness/eval/ci.py`, and the overlay table in `stt/core/control_plane.py`. The "outside class `C`" qualifier is what makes it sharp: `@field_validator("rrf_k")` and `validation_alias=moved_alias("storage_provider")` NAME a field without consuming it — without that qualifier every validated field is credited by its own declaration and the check finds nothing. |
+
+Two limitations are documented in the source and both UNDER-report, because a gate that cries
+wolf gets disabled: matching is by name within a service (not by resolved receiver type), and a
+field listed by bare name in an indirection table is credited even if nothing later `getattr`s it.
+
+**Why it is a stdlib AST pass and not introspection.** The manifest half needs pydantic because an
+env NAME is not textually present; this half needs only the FIELD name and the read, both of which
+are. So it runs on a bare `python:3.11-slim` with zero installs (importing all six services is not
+affordable in a validate-stage job), it cannot go stale behind an un-regenerated manifest, and it
+runs from any worktree with no conda env. Verified against system Python 3.9 with no pydantic
+installed.
+
+**Two self-defences, because a gate that is green by accident is worse than no gate.**
+`INTENTIONALLY_UNREAD` is SELF-CLEANING — an entry naming a field that no longer exists, or one
+that something now reads, fails the check, so it cannot rot into permanent amnesty. And
+`_assert_rule_is_live()` runs a synthetic fixture through the rule on every invocation and refuses
+to report at all if the discrimination has stopped working. (That canary earned its place
+immediately: its first version passed while R1 was deliberately broken, because the fixture had no
+method INVOCATION in it.)
+
+**What it found, on a tree where Phases 0-2 had already swept by hand:** 5 fields out of 400.
+
+| Field | Disposition |
+|---|---|
+| `harness:RetrievalConfig.rrf_k` | **DELETED.** Undeliverable, not merely unused: the installed `qdrant-client` `FusionQuery` accepts only `fusion` (verified — `model_fields` is exactly `{'fusion'}`), so there is no API to pass `k` to. `qdrant_store.py` said so in a NOTE and kept the knob "for forward-compat"; an operator setting `HARNESS_RETRIEVAL_RRF_K=42` changed nothing. |
+| `harness:RetrievalConfig.qdrant_api_key` | **WIRED, not deleted.** A declared credential that reached no client: `KnowledgeQdrantStore.__init__` takes `api_key`, and BOTH construction sites (`temporal/activities.py::_hybrid_retriever`, `api/endpoints/knowledge.py::_qdrant_store`) omitted it. `HARNESS_QDRANT_API_KEY` was parsed, validated by a bespoke empty-string validator, logged as configured, and dropped — so a secured in-cluster Qdrant would have been unreachable while the config claimed otherwise. Deleting it would remove the only way to authenticate; it is now passed at both sites. |
+| `tts:AzureSpeechConfig.max_concurrent`, `tts:SarvamConfig.max_concurrent`, `tts:SarvamConfig.use_streaming` | **REPORTED + allow-listed as a HANDOFF.** `apps/tts` belongs to a sibling lane. All three are written by `tts/core/control_plane.py` from the registry and read by nothing, so a descriptor, a registry key and an overlay entry all exist to move a value that lands nowhere. The allow-list entries name the finding and the fix; the staleness rule forces their removal when the tts lane acts. |
+
+Nothing dead in `apps/text`, `apps/stt`, `apps/guardrail`, or `packages/**` — the latter declares
+no `BaseSettings` classes at all (`packages/py-env` only supplies source plumbing).
+
+**Existing tests did not catch the `qdrant_api_key` defect and could not have.**
+`test_qdrant_api_key.py` already proved each half in isolation — the config CAN hold a key, the
+store CAN present one — and nothing asserted they were connected. That is RC-3's shape exactly. A
+`TestFactoriesPassApiKey` class now covers both construction sites (seen RED first: `assert None ==
+'s3cret-key'` at each).
+
+**CI.** New `python-dead-settings` job in `.gitlab/ci/validate.yml`, next to `env-drift-check`, on
+`.rules-any-python`. The pair is deliberately symmetric and they fail for opposite reasons:
+
+| Gate | Fails when |
+|---|---|
+| `env-drift-check` | an env var is READ but not DECLARED — a generated artifact disagrees with the source that reads it |
+| `python-dead-settings` | an env var is DECLARED but never READ — an operator can set it and nothing happens |
+
+**Found and NOT fixed (outside this lane's boundary), reported for an owner:**
+
+1. **`apps/nlp` makes the generated env surface non-reproducible.**
+   `nlp/core/config.py:587` declares `dictionary_path: str = Field(default=str(get_project_root() /
+   "data" / "dictionaries"))` — an ABSOLUTE PATH derived from the checkout location. `pnpm env:sync`
+   therefore emits a different `.env.sample` on every machine, so `pnpm env:sync --check` can only
+   pass on the machine that last ran `env:sync`, and in CI it must fail on that line regardless of
+   what changed. It is also a hardcoded-config smell in its own right (rule 00 §Configuration
+   Principles). This is the ONLY residual hunk in this lane's `env:sync --check` output.
+2. **`pnpm env:python-surface --check` is in no CI job**, though the script's header claimed it runs
+   in `lint-python`. It cannot: `lint-python` is `python:3.11-slim` + ruff, and that check needs all
+   six services to import. The header now says so rather than asserting a gate that does not exist.
+   The new dead-field gate is unaffected — it deliberately does not depend on the manifest.
+
 ## Change History
 
 | Date | Change |
@@ -435,4 +508,5 @@ Absent, the platform default stands, which is today's behaviour.
 | 2026-08-23 | Round 2 merged: invalidation push (3 of 6 services wired), `modelWeights` loop closed, text-path BYO delivery gap closed, seed vocabulary widened, and **C.2 landed** — no hardcoded nlp model ids remain. |
 | 2026-08-23 | Round 2 lane R2-B: gateway resolves the second (`nlp.ner`) selection for `/diagnosis/suggestions` and injects both; C.2 (`4fa3d1f15`) merged, so the route works again with no literal. `nlp.*` SUPER_ADMIN-only tension recorded for owner decision. |
 | 2026-08-23 | Phase 2 lane B (`apps/text`) complete: 121 env-reachable pydantic fields → 9 (12 variables with the three `hope_env` reads). The eight per-provider blocks, the three-way `TEXT_CB_*`/`TEXT_QUEUE_*`/`TEXT_JUDGE_*` duplication and the 20-name `TEXT_V2_*` window are gone; every adapter resolves its connection per request and fails closed, so fail-closed coverage went from 3 adapters to 11. Two wirings remain outside the lane's boundary — an `externalGuardrail` view in `effective-config.service.ts`, and gateway PUSH of `guardrail_policy`. |
+| 2026-08-24 | Phase 3 lane F: `pnpm env:python-dead` added as a stdlib-only AST gate (`python-dead-settings` in CI, the mirror of `env-drift-check`), with a self-cleaning allow-list and a rule canary. Found 5 dead fields on an already-hand-swept tree: `harness` `rrf_k` DELETED (undeliverable — `FusionQuery` has no `k`), `harness` `qdrant_api_key` WIRED (a declared credential both construction sites dropped), three `apps/tts` fields reported and handed off. Two out-of-lane defects reported: `apps/nlp`'s checkout-dependent `dictionary_path` default makes `env:sync --check` non-reproducible, and `env:python-surface --check` is in no CI job. |
 | 2026-08-24 | **Phase 2 follow-up lane G (`apps/nlp` clinical taxonomies) complete — both sides.** The ontology vocabulary (40 UMLS/SNOMED/RxNorm/ICD-10/LOINC rows), the vitals plausibility bands, the ConText/NegEx trigger lexicon and the five `TOKEN_CLASSIFIER_*` / `NLP_LINKER_*` env fields moved onto `AiModel._metadata.clinicalTaxonomy` of the row `nlp.ner` selects; the gateway (`resolveNerModelInjection`, `AiInferenceController`) resolves and injects them verbatim, and `AiTaskModelSummary` gained the `metadata`/`localPath` fields callers were casting for. `apps/nlp` keeps NO fallback copy — an absent section disables the pass it governs rather than substituting a literal. Entailment split by judgment: the MiniCheck label-token ids and prompt template stay in code (they are the adapter, not a knob), while the calibration bounds and reference pair moved to `_metadata.entailment` and the loader now REFUSES a row declaring no calibration, a different adapter, or mismatched label tokens — closing the "non-MiniCheck model scored on MiniCheck's calibration" hole on a clinical gate. Remaining: guardrail's `external_nlp_client` (lane F's file) must forward `calibration`; until then `/guard/entailment` fails closed to `unverified`. |
