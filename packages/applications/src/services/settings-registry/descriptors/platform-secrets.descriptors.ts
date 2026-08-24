@@ -251,9 +251,21 @@ export const PLATFORM_SECRET_SETTINGS: SettingDescriptor[] = [
   // injected per request. The Python services no longer read any env fallback for
   // them, so registering them here (which would seed a `vault-kv` secret and add
   // them to `turbo#globalEnv`) is wrong — they are removed. Bedrock/Vertex use
-  // ambient cloud credentials (no static key). `azure.foundryApiKey` stays: it is a
-  // disabled-by-default preview engine, out of that credential-move's scope.
-  platformSecret('azure.foundryApiKey', 'Azure AI Foundry key', 'Azure AI Foundry credential used by the STT Foundry model loader.', 'AI Providers'),
+  // ambient cloud credentials (no static key).
+  //
+  // `azure.foundryApiKey` (AZURE_FOUNDRY_API_KEY) is REMOVED TOO. It was kept as
+  // "a disabled-by-default preview engine, out of that credential-move's scope" —
+  // but its scope exemption stopped being true when Phase 0 closed the env
+  // fallback in `apps/stt/src/stt/models/azure_foundry_loader.py`: the key now
+  // comes ONLY from a tenant / SYSTEM `AiProviderConnection` override, exactly
+  // like every other cloud vendor above.
+  //
+  // Leaving the descriptor registered was not inert. `vault-seed-secrets.sh`
+  // derives its key list from these descriptors, so it kept provisioning a Vault
+  // secret nothing reads, and the catalog kept advertising a PLATFORM tier for a
+  // provider that is BYO-only — telling an operator to paste a vendor key that
+  // can no longer reach the code. Same defect, and same fix, as
+  // `harnessJudgeOpenaiCompat.apiKey`.
   // `guardrailVllm.apiKey` (GUARDRAIL_VLLM_API_KEY) was REMOVED by TASK-735 Phase
   // 2b/5: `apps/guardrail` no longer hosts an LLM engine, so it holds no vendor
   // credential of any kind. Judgement is delegated to `apps/text`, which resolves

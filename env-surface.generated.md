@@ -13,15 +13,15 @@ disagree with those declarations.
 
 | Metric | Value |
 |---|---:|
-| Declared keys (distinct) | 136 |
-| … of which required (`failMode: closed`) | 30 |
-| … of which secret | 29 |
+| Declared keys (distinct) | 135 |
+| … of which required (`failMode: closed`) | 29 |
+| … of which secret | 28 |
 | … tier `env` | 102 |
 | … tier `global-kv` | 9 |
-| … tier `vault-kv` | 25 |
+| … tier `vault-kv` | 24 |
 | Python declared fields | 356 |
 | … distinct Python names (incl. aliases + `os.environ` reads) | 405 |
-| `turbo.json#globalEnv` entries | 534 |
+| `turbo.json#globalEnv` entries | 533 |
 
 ## Variables — the TypeScript platform surface
 
@@ -38,7 +38,6 @@ disagree with those declarations.
 | `API_PORT` | `env` | no | `8868` | `apps/api` | Port the dev/test supervisor expects the gateway on; the gateway itself binds `PORT`. |
 | `API_URL` | `env` | no | `http://localhost:8868` | `apps/admin-console` | Origin the BFF proxy (`src/app/api/hope/[...path]/route.ts`) forwards to. Server-side only — never reaches the client bundle. |
 | `APP_SETTINGS_BOOT_INVARIANT` | `env` | no | — | `apps/api` | Set to `skip` (development only) to bypass the AppSettings boot invariant (`appSettings.service.ts`). |
-| `AZURE_FOUNDRY_API_KEY` | `vault-kv` | yes | `CHANGE_ME` | `apps/api` | Azure AI Foundry credential used by the STT Foundry model loader. |
 | `AZURE_STORAGE_ACCOUNT_KEY` | `vault-kv` | yes | `CHANGE_ME` | `apps/api` | Azure Storage shared account key — the alternative to `AZURE_STORAGE_CONNECTION_STRING` when the endpoint is composed from `accountName` + `endpointSuffix` on the storage config row. |
 | `AZURE_STORAGE_CONNECTION_STRING` | `vault-kv` | yes | `CHANGE_ME` | `apps/api` | Full Azure Storage connection string (carries the account key) for the AZURE storage provider. Read by `BlobStorageProviderFactory.buildAzureProvider` AFTER the SYSTEM row’s `credentialsRef`, i.e. it is the env/kv fallback of the same two-step order as `S3_ACCESS_KEY`. Preferred over `AZURE_STORAGE_ACCOUNT_KEY`. |
 | `DATABASE_URL` | `env` | yes | — | `apps/api` | Primary PostgreSQL connection string (PgBouncer transaction mode in production). Cannot come from the database or from Vault — this IS the credential that reaches them. No fallback exists: absence is a hard boot error. |

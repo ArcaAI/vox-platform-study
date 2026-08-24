@@ -191,7 +191,11 @@ describe('env/vault-kv descriptor keys resolve to the real variable names', () =
     // textAnthropic.apiKey / ttsSarvam.apiKey were removed from the registry — the
     // STT/TTS/TEXT cloud credentials are BYOK-only (db-secret / AiProviderConnection),
     // no longer vault-kv platform secrets. azure.foundryApiKey stays (out of scope).
-    'azure.foundryApiKey': 'AZURE_FOUNDRY_API_KEY',
+    // `azure.foundryApiKey` REMOVED: Phase 0 closed the env fallback in
+    // `azure_foundry_loader.py`, so the key now comes only from a tenant / SYSTEM
+    // AiProviderConnection override. Registering it kept `vault-seed-secrets.sh`
+    // provisioning a Vault secret nothing reads, and advertised a platform tier
+    // for a BYO-only provider.
     // harnessJudgeOpenaiCompat.apiKey was removed for the same reason — the
     // harness LLM-as-judge credential is BYO-only now
     // (`AiProviderConnection(service='llm', provider='openai-compat')`), resolved
