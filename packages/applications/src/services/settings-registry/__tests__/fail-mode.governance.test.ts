@@ -260,17 +260,20 @@ describe('env/vault-kv descriptor keys resolve to the real variable names', () =
     // per-service `*_SERVICE_TOKEN` entries above are retained only as a
     // backward-compatibility fallback, so both appear here during the overlap.
     'internal.accessToken': 'INTERNAL_ACCESS_TOKEN',
-    // tts provider/engine enable flags (TASK-799 lane C). Still env-read —
-    // they are deployment SHAPE, coupled to which optional extras an image
-    // installed, and `TTS_KOKORO_ENABLED=true` in the k8s ConfigMap is what
-    // makes a keyless deployment reach Ready at all. They carry
-    // `targetTier: 'redis-flag'` so the pending migration stays queryable.
+    // tts provider/engine enable flags. Re-tiered to `global-kv` by lane H, so
+    // they no longer appear in the `bound` set the 1:1 assertion iterates — and
+    // they are kept here ON PURPOSE rather than deleted: `TTS_*_ENABLED` is
+    // still a live BOOTSTRAP FALLBACK in `apps/tts`
+    // (`control_plane.py#ENV_BOOTSTRAP_KEYS`), because the k8s manifests that
+    // set them live in `arca/hope-v2-deployment` and cannot be changed from this
+    // repository. Delete these five in the SAME change that closes the env read
+    // with `moved_alias` — never before.
     //
-    // The last two keys deliberately break the camelCase spelling their
-    // `global-kv` siblings use (`tts.indicParler.*` / `tts.indicF5.*`): an
-    // env-tier key must DERIVE its real variable, and the variables the service
-    // reads are `TTS_PARLER_ENABLED` / `TTS_INDICF5_ENABLED`. This assertion is
-    // exactly what caught the mismatch.
+    // The last two keys break the camelCase spelling their siblings use
+    // (`tts.indicParler.*` / `tts.indicF5.*`). That was forced while they were
+    // env-tier — an env key must DERIVE its real variable — and the names are
+    // now KEPT because a registry key is the primary coordinate of its
+    // `GlobalSetting` row: renaming one would orphan the seeded row.
     'tts.azure.enabled': 'TTS_AZURE_ENABLED',
     'tts.sarvam.enabled': 'TTS_SARVAM_ENABLED',
     'tts.kokoro.enabled': 'TTS_KOKORO_ENABLED',
