@@ -21,6 +21,8 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
+from nlp.services.entailment_scorer import EntailmentCalibration
+
 
 class _GuardModelSelection(BaseModel):
     """The caller-resolved weight identity + attribution shared by every route."""
@@ -118,6 +120,16 @@ class GuardEntailmentPair(BaseModel):
 
 class GuardEntailmentRequest(_GuardModelSelection):
     pairs: list[GuardEntailmentPair] = Field(default_factory=list)
+    #: The selected checkpoint's `AiModel._metadata.entailment` — the calibration
+    #: gate's ground truth (adapter id, expected label-token ids, direction+margin
+    #: tolerances, reference pair). It rides with the SELECTION, exactly as
+    #: `labelTaxonomy` does for the PII/safety routes, because tolerances measured
+    #: on one quantisation are meaningless for another. Absent ⇒ 503: this service
+    #: will not score a checkpoint against another model's calibration.
+    calibration: EntailmentCalibration | None = Field(
+        default=None,
+        description="AiModel._metadata.entailment for the selected checkpoint. Absent => 503.",
+    )
 
 
 class GuardEntailmentResponse(BaseModel):

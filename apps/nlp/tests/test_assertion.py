@@ -12,11 +12,18 @@ claim its mention makes about the patient:
 
 It is a deterministic, offline rule engine over a trigger lexicon (no model
 download, no network) with a documented seam to swap in a learned model.
+
+TASK-799 lane G: the lexicon is CONFIGURATION and arrives per request on the
+gateway-resolved `clinicalTaxonomy.assertion.triggers`, so these cases build the
+classifier from the seeded platform baseline. The behaviour they pin is
+unchanged; where the phrases come from is not.
 """
 
 from __future__ import annotations
 
 import uuid
+
+from tests.clinical_taxonomy_fixture import seeded_taxonomy
 
 from nlp.schemas.common import AssertionStatus, Entity, TextPosition
 from nlp.services.assertion import NegExAssertionClassifier
@@ -35,7 +42,7 @@ def _entity(text: str, full: str) -> Entity:
 
 
 def _classify(full: str, span: str) -> AssertionStatus:
-    clf = NegExAssertionClassifier()
+    clf = NegExAssertionClassifier.from_taxonomy(seeded_taxonomy().assertion)
     [entity] = clf.classify(full, [_entity(span, full)])
     return entity.assertion
 
@@ -92,7 +99,7 @@ def test_scope_does_not_leak_across_sentence_boundary():
 
 
 def test_classify_is_idempotent_and_batch():
-    clf = NegExAssertionClassifier()
+    clf = NegExAssertionClassifier.from_taxonomy(seeded_taxonomy().assertion)
     full = "No chest pain. History of asthma."
     entities = [_entity("chest pain", full), _entity("asthma", full)]
     out = clf.classify(full, entities)

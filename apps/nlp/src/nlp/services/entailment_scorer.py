@@ -19,10 +19,13 @@ time (no GPU/weights on CI) and the llama.cpp T5 logit read + Q6 quantisation ca
 perturb the score. A fail-closed wrapper (``GroundednessNliVerifier``) already
 contains *errors*, but NOT a plausible-but-wrong probability that silently passes
 ungrounded clinical text. So ``load_minicheck_scorer`` runs ``verify_calibration()``
-against MiniCheck's own published reference pair before returning: a supported
-example must score ``>= CAL_SUPPORTED_MIN`` and an unsupported example
-``<= CAL_UNSUPPORTED_MAX``, else it raises ``NliModelUnavailableError`` and the gate
-degrades to ``unverified``. A mis-wired template/logit read (which collapses toward
+against the reference pair the CHECKPOINT'S OWN REGISTRY ROW declares
+(``AiModel._metadata.entailment``, arriving per request as
+:class:`EntailmentCalibration`): a supported example must score
+``>= supported_min`` and an unsupported one ``<= unsupported_max``, else it raises
+``NliModelUnavailableError`` and the gate degrades to ``unverified``. A row that
+declares NO calibration, or declares a different adapter, is refused outright —
+this service will not score a checkpoint against another model's tolerances. A mis-wired template/logit read (which collapses toward
 ~0.5 or inverts) or a too-lossy quant therefore **refuses to enable** rather than
 mis-passing. Direction+margin — not exact value — so a correct-but-quantised scorer
 still passes.
@@ -45,6 +48,8 @@ import math
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 
+from pydantic import BaseModel, ConfigDict, Field
+
 from nlp.core.logging import get_logger
 
 
@@ -53,6 +58,33 @@ class NliModelUnavailableError(RuntimeError):
 
 
 logger = get_logger(__name__)
+
+# THE ADAPTER STAYS IN CODE. THE CALIBRATION DOES NOT. (TASK-799 lane G)
+#
+# Two things used to sit here as module constants, and they are NOT the same kind
+# of thing — a judgment worth stating rather than sweeping both into config:
+#
+#  * `MINICHECK_LABEL_TOKEN_NO/YES` (3 / 209) and the `'predict: ' + doc + '</s>'
+#    + claim` template ARE THE MINICHECK ADAPTER. They are not a knob: no other
+#    value of them makes this class work, and a different NLI checkpoint needs a
+#    different template and a different logit read, not two different integers.
+#    Making them settable would create a control that produces garbage for every
+#    value except the one it already has. They stay, scoped to the adapter that
+#    owns them, and the adapter now REFUSES a checkpoint declared to be anything
+#    else (see `EntailmentCalibration.adapter` and `load_minicheck_scorer`).
+#
+#  * The CALIBRATION BOUNDS and the reference pair ARE configuration. They are a
+#    property of the specific checkpoint AND its quantisation — a Q4 build needs
+#    looser tolerances than a Q6 one, and a re-published model card changes the
+#    reference probabilities — so they belong on `AiModel._metadata.entailment`
+#    of the row `guardrail.groundedness` selects, travelling with the weights they
+#    were measured against. They arrive per request; there is NO default here, so
+#    an undeclared checkpoint refuses to load rather than being scored against
+#    tolerances measured on a different model.
+
+#: The one adapter this module implements. A checkpoint whose registry row
+#: declares a different adapter cannot be served here.
+MINICHECK_ADAPTER = "minicheck-flan-t5"
 
 # MiniCheck flan-t5 label tokens (HF vocab ids, preserved by the GGUF conversion):
 # id 3 = "no" (index 0, unsupported), id 209 = "yes" (index 1, supported).
@@ -64,18 +96,36 @@ MINICHECK_LABEL_TOKEN_YES = 209
 _PROMPT_PREFIX = "predict: "
 _EOS = "</s>"
 
-# Published model-card reference pair (lytang/MiniCheck-Flan-T5-Large) — the
-# calibration gate's ground truth. raw_prob ≈ 0.981 (supported) / ≈ 0.007 (unsupported).
-_CAL_DOC = (
-    "A group of students gather in the school library to study for their "
-    "upcoming final exams."
-)
-_CAL_SUPPORTED_CLAIM = "The students are preparing for an examination."
-_CAL_UNSUPPORTED_CLAIM = "The students are on vacation."
-# Direction+margin tolerances: loose enough to pass a correct-but-Q6-quantised scorer,
-# strict enough to fail a broken template/logit read (~0.5) or an inverted mapping.
-CAL_SUPPORTED_MIN = 0.60
-CAL_UNSUPPORTED_MAX = 0.40
+
+class EntailmentCalibration(BaseModel):
+    """The calibration gate's ground truth, declared on the model registry row.
+
+    `AiModel._metadata.entailment` for the checkpoint `guardrail.groundedness`
+    selects. Every field is REQUIRED: a partially-declared calibration is not a
+    weaker gate, it is an unvalidated one.
+
+    `label_token_no` / `label_token_yes` are declared here too, but as an
+    ASSERTION rather than a knob — the row states which ids it expects, and the
+    adapter refuses to run if they disagree with the ids its logit read actually
+    uses. That turns a silent mismatch into a refusal.
+    """
+
+    model_config = ConfigDict(frozen=True, populate_by_name=True)
+
+    #: Which adapter implementation this checkpoint requires.
+    adapter: str
+    label_token_no: int = Field(..., alias="labelTokenNo")
+    label_token_yes: int = Field(..., alias="labelTokenYes")
+    #: A supported example must score at/above `supported_min`, an unsupported
+    #: one at/below `unsupported_max`. Direction + margin, not an exact value, so
+    #: a correct-but-quantised scorer still passes.
+    supported_min: float = Field(..., ge=0.0, le=1.0, alias="supportedMin")
+    unsupported_max: float = Field(..., ge=0.0, le=1.0, alias="unsupportedMax")
+    #: The reference pair, from the checkpoint's own model card.
+    document: str
+    supported_claim: str = Field(..., alias="supportedClaim")
+    unsupported_claim: str = Field(..., alias="unsupportedClaim")
+
 
 LogitFn = Callable[[str], tuple[float, float]]
 """``prompt -> (logit_no, logit_yes)`` at the first decoder step."""
@@ -98,8 +148,9 @@ class LlamaCppMiniCheckScorer:
     tests), which keeps this class hermetically testable without llama.cpp.
     """
 
-    def __init__(self, logit_fn: LogitFn) -> None:
+    def __init__(self, logit_fn: LogitFn, calibration: EntailmentCalibration) -> None:
         self._logit_fn = logit_fn
+        self._calibration = calibration
 
     @staticmethod
     def build_prompt(source: str, claim: str) -> str:
@@ -121,17 +172,19 @@ class LlamaCppMiniCheckScorer:
         raises ``NliModelUnavailableError`` so the scorer refuses to enable instead of
         silently mis-passing ungrounded clinical text.
         """
+        cal = self._calibration
         supported, unsupported = self.score_pairs(
-            [(_CAL_DOC, _CAL_SUPPORTED_CLAIM), (_CAL_DOC, _CAL_UNSUPPORTED_CLAIM)]
+            [(cal.document, cal.supported_claim), (cal.document, cal.unsupported_claim)]
         )
-        if supported < CAL_SUPPORTED_MIN or unsupported > CAL_UNSUPPORTED_MAX:
+        if supported < cal.supported_min or unsupported > cal.unsupported_max:
             raise NliModelUnavailableError(
                 "MiniCheck GGUF calibration self-check failed "
-                f"(supported={supported:.3f} < {CAL_SUPPORTED_MIN} or "
-                f"unsupported={unsupported:.3f} > {CAL_UNSUPPORTED_MAX}): the llama.cpp "
+                f"(supported={supported:.3f} < {cal.supported_min} or "
+                f"unsupported={unsupported:.3f} > {cal.unsupported_max}): the llama.cpp "
                 "template/label-logit read is likely mis-wired or the quant is too lossy "
                 "— refusing to enable (fail-closed to 'unverified'). Re-validate the "
-                "MiniCheck flan-t5 template + token ids (3/209) on this host."
+                "MiniCheck flan-t5 template + token ids "
+                f"({cal.label_token_no}/{cal.label_token_yes}) on this host."
             )
 
 
@@ -201,6 +254,10 @@ class MiniCheckLoadSpec:
 
     model_id: str
     model_path: str | None
+    #: `AiModel._metadata.entailment` for this checkpoint. `None` means the
+    #: registry row declared none, which is a REFUSAL — never a reason to borrow
+    #: another checkpoint's tolerances.
+    calibration: EntailmentCalibration | None = None
     n_ctx: int = 512
     n_threads: int | None = None
     n_gpu_layers: int = 0
@@ -214,6 +271,32 @@ def load_minicheck_scorer(config: MiniCheckLoadSpec) -> LlamaCppMiniCheckScorer:
     llama-cpp-python, an unloadable model, or a failed calibration self-check all raise
     ``NliModelUnavailableError`` so ``GroundednessNliVerifier`` degrades to ``unverified``.
     """
+    calibration = config.calibration
+    if calibration is None:
+        raise NliModelUnavailableError(
+            f"MiniCheck GGUF '{config.model_id}' declares no `_metadata.entailment` calibration: "
+            "the clinical groundedness gate cannot validate a scorer it has no ground truth for, "
+            "and will not borrow another checkpoint's tolerances. Fail-closed to 'unverified'."
+        )
+    if calibration.adapter != MINICHECK_ADAPTER:
+        raise NliModelUnavailableError(
+            f"model '{config.model_id}' declares entailment adapter "
+            f"'{calibration.adapter}', but this service implements only "
+            f"'{MINICHECK_ADAPTER}'. Running it here would read MiniCheck's own label-token "
+            "logits out of a different vocabulary and return plausible-looking nonsense on a "
+            "clinical gate. Fail-closed to 'unverified'."
+        )
+    if (
+        calibration.label_token_no != MINICHECK_LABEL_TOKEN_NO
+        or calibration.label_token_yes != MINICHECK_LABEL_TOKEN_YES
+    ):
+        raise NliModelUnavailableError(
+            f"model '{config.model_id}' declares label tokens "
+            f"({calibration.label_token_no}/{calibration.label_token_yes}) but this adapter "
+            f"reads ({MINICHECK_LABEL_TOKEN_NO}/{MINICHECK_LABEL_TOKEN_YES}). "
+            "A silent mismatch would score the wrong vocabulary entries. "
+            "Fail-closed to 'unverified'."
+        )
     if not config.model_path:
         raise NliModelUnavailableError(
             f"MiniCheck GGUF '{config.model_id}' is not staged: the registry row must carry "
@@ -244,7 +327,7 @@ def load_minicheck_scorer(config: MiniCheckLoadSpec) -> LlamaCppMiniCheckScorer:
             f"{type(exc).__name__} — fail-closed to 'unverified'."
         ) from exc
 
-    scorer = LlamaCppMiniCheckScorer(_make_llama_logit_fn(llama))
+    scorer = LlamaCppMiniCheckScorer(_make_llama_logit_fn(llama), calibration)
     try:
         scorer.verify_calibration()  # raises NliModelUnavailableError if mis-wired / too-lossy
     except NliModelUnavailableError:

@@ -1,11 +1,12 @@
 import uuid
 from abc import ABC, abstractmethod
+from collections import OrderedDict
 from typing import Any
 
 import torch
 from transformers import AutoModelForTokenClassification, AutoTokenizer, pipeline
 
-from nlp.core.config import OntologyLinkerConfig, TokenClassificationConfig
+from nlp.core.config import TokenClassificationConfig
 from nlp.core.logging import get_logger
 from nlp.core.metrics import (
     MODEL_MEDICAL_NER,
@@ -15,6 +16,7 @@ from nlp.core.metrics import (
 )
 from nlp.schemas.classification import TokenClassificationRequest, TokenClassificationResponse
 from nlp.schemas.common import Entity, TextPosition
+from nlp.schemas.clinical_taxonomy import AssertionTaxonomy, ClinicalTaxonomy, LinkerTaxonomy
 from nlp.services.assertion import AssertionModel, NegExAssertionClassifier
 from nlp.services.ontology_linker import OntologyLinker
 from nlp.services.vitals_extractor import extract_vitals
@@ -46,14 +48,54 @@ class TokenClassifier(ABC):
         pass
 
 
+# --------------------------------------------------------------------------
+# Per-taxonomy builders, memoized.
+#
+# The taxonomy arrives per REQUEST, but building from it is not free: the linker
+# expands ~40 vocabulary rows into a lookup table and the assertion engine
+# compiles one regex per trigger phrase. In practice a deployment serves ONE
+# taxonomy (the platform-shared `nlp.ner` row — decision D-4), so a tiny
+# insertion-ordered cache keyed on the taxonomy's canonical JSON makes the steady
+# state a dict hit while an admin edit is still picked up immediately.
+# --------------------------------------------------------------------------
+
+_BUILDER_CACHE_MAX = 8
+_linker_cache: "OrderedDict[str, OntologyLinker]" = OrderedDict()
+_assertion_cache: "OrderedDict[str, NegExAssertionClassifier]" = OrderedDict()
+
+
+def _cached(cache: OrderedDict, key: str, build):  # type: ignore[type-arg]
+    hit = cache.get(key)
+    if hit is not None:
+        cache.move_to_end(key)
+        return hit
+    built = build()
+    cache[key] = built
+    while len(cache) > _BUILDER_CACHE_MAX:
+        cache.popitem(last=False)
+    return built
+
+
+def _linker_for(section: LinkerTaxonomy) -> OntologyLinker:
+    return _cached(
+        _linker_cache, section.model_dump_json(), lambda: OntologyLinker.from_taxonomy(section)
+    )
+
+
+def _assertion_classifier_for(section: AssertionTaxonomy) -> NegExAssertionClassifier:
+    return _cached(
+        _assertion_cache,
+        section.model_dump_json(),
+        lambda: NegExAssertionClassifier.from_taxonomy(section),
+    )
+
+
 class TransformerTokenClassifier(TokenClassifier):
     """Transformer-based token classification for medical entity extraction"""
 
     def __init__(
         self,
         configs: TokenClassificationConfig,
-        linker: OntologyLinker | None = None,
-        linker_config: OntologyLinkerConfig | None = None,
         assertion_classifier: AssertionModel | None = None,
     ):
         # `configs` is REQUIRED: it carries the resolved model selection, and
@@ -65,16 +107,13 @@ class TransformerTokenClassifier(TokenClassifier):
         self.tokenizer: Any = None
         self.model: Any = None
         self.pipeline: Any = None
-        # Deterministic, offline clinical ontology linker. Runs
-        # post-`_to_entities` in `process()` to populate the entity code fields.
-        self.linker = linker if linker is not None else OntologyLinker()
-        self.linker_config = linker_config if linker_config is not None else OntologyLinkerConfig()
-        # deterministic ConText/NegEx assertion classifier. Runs after
-        # linking to label each span's polarity (PRESENT/ABSENT/…). The injected
-        # AssertionModel is the model-swap seam for a future learned model.
-        self.assertion_classifier = (
-            assertion_classifier if assertion_classifier is not None else NegExAssertionClassifier()
-        )
+        # The linker and the assertion classifier are built PER REQUEST from the
+        # gateway-injected taxonomy, NOT held on the instance: this object lives
+        # in a model cache keyed on weight identity alone, so instance-level
+        # taxonomy state would serve one caller's configuration to the next.
+        # `assertion_classifier` stays as the model-swap seam (a future learned
+        # model), and when supplied it overrides the taxonomy-built rule engine.
+        self._assertion_override = assertion_classifier
 
     async def initialize(self) -> None:
         """Load transformer token classification model"""
@@ -113,22 +152,36 @@ class TransformerTokenClassifier(TokenClassifier):
             await self.initialize()
 
         try:
-            # Honor the request's aggregation strategy (config fallback).
-            # Without a non-"none" strategy the HF pipeline emits `##` subword
-            # fragments with raw BIO labels instead of merged whole-word entities.
-            strategy = request.aggregation_strategy or self.configs.aggregation_strategy
+            # The clinical taxonomy the gateway resolved from
+            # `AiModel._metadata.clinicalTaxonomy` for THIS request. Absent ⇒ an
+            # empty taxonomy, which disables every pass it governs rather than
+            # substituting a literal (see `nlp.schemas.clinical_taxonomy`).
+            taxonomy = request.clinical_taxonomy or ClinicalTaxonomy()
+
+            # Aggregation strategy: the request's own field wins (it is part of
+            # the public API), then the checkpoint's declared strategy. Without a
+            # non-"none" strategy the HF pipeline emits `##` subword fragments
+            # with raw BIO labels instead of merged whole-word entities.
+            strategy = (
+                request.aggregation_strategy
+                or taxonomy.token_classifier.aggregation_strategy
+                or "simple"
+            )
             # Per-model running gauge + inference latency (Medical-NER).
             with track_model_inference(MODEL_MEDICAL_NER):
                 pipeline_results = self.pipeline(request.text, aggregation_strategy=strategy)
 
-            entities = self._to_entities(pipeline_results)
+            entities = self._to_entities(pipeline_results, taxonomy)
             # Resolve ontology codes for each recognized span so the
             # NLP service is the authoritative producer of CODED entities.
-            entities = self._link_entities(entities)
-            # label each span's assertion polarity (negation/family/
-            # historical/hypothetical) over the request text. Config-gated.
-            if self.configs.assertion_enabled and entities:
-                entities = self.assertion_classifier.classify(request.text, entities)
+            entities = self._link_entities(entities, taxonomy)
+            # Label each span's assertion polarity (negation/family/historical/
+            # hypothetical) over the request text. Taxonomy-gated.
+            if entities and taxonomy.token_classifier.assertion_enabled:
+                classifier = self._assertion_override or _assertion_classifier_for(
+                    taxonomy.assertion
+                )
+                entities = classifier.classify(request.text, entities)
 
             # Wire the previously dead record_entities at the
             # real call-site (current-state-review §2.4 — zero call-sites
@@ -146,7 +199,7 @@ class TransformerTokenClassifier(TokenClassifier):
                 entities=entities,
                 model_version=self.version,
                 # Deterministic vitals over the request text (null-safe; None when absent).
-                vitals=extract_vitals(request.text),
+                vitals=extract_vitals(request.text, taxonomy.vitals),
             )
 
         except Exception as e:
@@ -177,10 +230,15 @@ class TransformerTokenClassifier(TokenClassifier):
             nlp_metrics.record_entities(entity_count=count, entity_type=entity_type, model=MODEL_MEDICAL_NER)
         NLP_DOCUMENTS_PROCESSED_TOTAL.labels(model=MODEL_MEDICAL_NER).inc()
 
-    def _to_entities(self, pipeline_results: list[dict[str, Any]]) -> list[Entity]:
+    def _to_entities(
+        self, pipeline_results: list[dict[str, Any]], taxonomy: ClinicalTaxonomy
+    ) -> list[Entity]:
         """Convert pipeline results to MedicalEntity objects"""
         entities = []
-        ignore_labels = set(self.configs.ignore_labels)
+        # The labels this CHECKPOINT emits meaning "nothing" — declared on its
+        # own registry row, because they differ per checkpoint and an env var
+        # could not vary with the model it describes.
+        ignore_labels = set(taxonomy.token_classifier.ignore_labels)
 
         for result in pipeline_results:
             # With aggregation != "none" the HF pipeline merges subwords and keys
@@ -209,22 +267,24 @@ class TransformerTokenClassifier(TokenClassifier):
 
         return entities
 
-    def _link_entities(self, entities: list[Entity]) -> list[Entity]:
+    def _link_entities(self, entities: list[Entity], taxonomy: ClinicalTaxonomy) -> list[Entity]:
         """Resolve ontology codes for each recognized span.
 
-        Config-gated: skipped entirely when the linker is disabled, and only
-        entities at/above the confidence floor are linked (low-confidence NER
-        noise stays un-coded). Un-resolvable spans keep None codes — the mapping
-        stays null-safe end to end. Deterministic + offline (no network).
+        Taxonomy-gated: skipped entirely when the linker is disabled OR carries
+        no vocabulary, and only entities at/above the configured confidence floor
+        are linked (low-confidence NER noise stays un-coded). Un-resolvable spans
+        keep None codes — the mapping stays null-safe end to end. Deterministic +
+        offline (no network).
         """
-        if not self.linker_config.linker_enabled:
+        if not taxonomy.linker.enabled or not taxonomy.linker.vocabulary:
             return entities
 
-        floor = self.linker_config.linker_confidence_floor
+        linker = _linker_for(taxonomy.linker)
+        floor = taxonomy.linker.confidence_floor
         for entity in entities:
             if entity.confidence < floor:
                 continue
-            codes = self.linker.link(entity.normalized_text or entity.text)
+            codes = linker.link(entity.normalized_text or entity.text)
             if codes.has_any:
                 entity.umls_cui = codes.umls_cui
                 entity.snomed_code = codes.snomed_code

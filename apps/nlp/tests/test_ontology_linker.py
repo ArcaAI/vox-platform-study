@@ -2,8 +2,8 @@
 
 RED-first: written before ``nlp.services.ontology_linker`` exists. The linker
 resolves a recognized clinical span to standardized ontology codes (UMLS CUI +
-cross-walks to SNOMED CT / RxNorm / ICD-10 / LOINC) against a bundled,
-self-hosted vocabulary subset. It is fully deterministic and offline — no
+cross-walks to SNOMED CT / RxNorm / ICD-10 / LOINC) against the
+gateway-injected, self-hosted vocabulary subset. It is fully deterministic and offline — no
 network, no cloud vendor, no model download.
 
 These tests pin:
@@ -16,11 +16,18 @@ These tests pin:
 
 from __future__ import annotations
 
+from tests.clinical_taxonomy_fixture import seeded_taxonomy
+
 from nlp.services.ontology_linker import OntologyCodes, OntologyLinker
 
 
+def _linker() -> OntologyLinker:
+    """The linker as the runtime builds it — from the injected vocabulary."""
+    return OntologyLinker.from_taxonomy(seeded_taxonomy().linker)
+
+
 def test_links_known_medication_to_rxnorm_and_umls():
-    linker = OntologyLinker()
+    linker = _linker()
 
     codes = linker.link("metformin")
 
@@ -31,7 +38,7 @@ def test_links_known_medication_to_rxnorm_and_umls():
 
 
 def test_links_known_condition_to_icd_snomed_and_umls():
-    linker = OntologyLinker()
+    linker = _linker()
 
     codes = linker.link("pneumonia")
 
@@ -41,7 +48,7 @@ def test_links_known_condition_to_icd_snomed_and_umls():
 
 
 def test_lookup_is_normalization_robust():
-    linker = OntologyLinker()
+    linker = _linker()
 
     # Case, surrounding whitespace, a leading article, and a SentencePiece "▁"
     # marker must all normalize to the same vocabulary key.
@@ -52,7 +59,7 @@ def test_lookup_is_normalization_robust():
 
 
 def test_unknown_span_returns_all_none_record():
-    linker = OntologyLinker()
+    linker = _linker()
 
     codes = linker.link("qwerty zzz not-a-clinical-term")
 
@@ -66,7 +73,7 @@ def test_unknown_span_returns_all_none_record():
 
 
 def test_lookup_is_deterministic():
-    linker = OntologyLinker()
+    linker = _linker()
 
     first = linker.link("amoxicillin")
     second = linker.link("amoxicillin")
@@ -76,7 +83,7 @@ def test_lookup_is_deterministic():
 
 
 def test_links_a_lab_analyte_to_loinc():
-    linker = OntologyLinker()
+    linker = _linker()
 
     codes = linker.link("hemoglobin a1c")
 
@@ -85,7 +92,7 @@ def test_links_a_lab_analyte_to_loinc():
 
 
 def test_empty_span_returns_all_none_record():
-    linker = OntologyLinker()
+    linker = _linker()
 
     assert linker.link("").has_any is False
     assert linker.link("   ").has_any is False

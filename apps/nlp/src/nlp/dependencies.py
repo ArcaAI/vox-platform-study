@@ -447,13 +447,27 @@ async def _create_gliner2_guard(cache_key: str) -> Any:
     return service
 
 
+#: `cache_key -> EntailmentCalibration` for the load currently being requested.
+#: The cache factory receives only the slot key, but the calibration is part of
+#: the slot's IDENTITY (it is folded into the key by `_entailment_cache_key`), so
+#: a changed calibration is a cache MISS and this map is read exactly once per
+#: construction. Entries are dropped as soon as the factory has consumed them.
+_pending_entailment_calibration: dict[str, Any] = {}
+
+
 async def _create_entailment_scorer(cache_key: str) -> Any:
     from nlp.services.entailment_scorer import MiniCheckLoadSpec, load_minicheck_scorer
 
     model_name, model_path = _split_cache_key(cache_key)
     # The clinical gate NEVER auto-downloads: the GGUF must be staged, and the
-    # path comes from the caller's registry row, not from an env var here.
-    spec = MiniCheckLoadSpec(model_id=model_name, model_path=model_path)
+    # path comes from the caller's registry row, not from an env var here. The
+    # calibration comes from that same row — absent ⇒ `load_minicheck_scorer`
+    # refuses (fail-closed), it does not substitute a MiniCheck default.
+    spec = MiniCheckLoadSpec(
+        model_id=model_name,
+        model_path=model_path,
+        calibration=_pending_entailment_calibration.pop(cache_key, None),
+    )
     return await asyncio.to_thread(load_minicheck_scorer, spec)
 
 
@@ -491,12 +505,26 @@ async def pinned_gliner2_guard(
         await cache.unpin(key)
 
 
+def _entailment_cache_key(model_name: str, model_path: str | None, calibration: Any) -> str:
+    """Slot key = weight identity + calibration identity.
+
+    The calibration is part of what the loaded object IS (it is what the
+    fail-closed self-check was run against), so an admin retuning the tolerances
+    must be a cache MISS. Keying on the weights alone would keep serving a scorer
+    validated against the OLD bounds under the new configuration.
+    """
+    base = _model_cache_key(model_name, model_path)
+    return base if calibration is None else f"{base}{_KEY_SEP}{calibration.model_dump_json()}"
+
+
 @asynccontextmanager
 async def pinned_entailment_scorer(
-    model_name: str, model_path: str | None = None
+    model_name: str, model_path: str | None = None, calibration: Any = None
 ) -> AsyncIterator[Any]:
     """Resolve + lazily load + pin the MiniCheck NLI scorer for one request."""
-    key = _model_cache_key(model_name, model_path)
+    key = _entailment_cache_key(model_name, model_path, calibration)
+    if calibration is not None:
+        _pending_entailment_calibration[key] = calibration
     cache = _entailment_scorer_cache()
     await cache.pin(key)
     try:

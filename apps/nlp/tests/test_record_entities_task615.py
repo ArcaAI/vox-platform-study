@@ -87,9 +87,8 @@ class TestTokenClassifierWiresRecordEntities:
         ]
         classifier.is_initialized = True
         # Ontology linking + assertion classification are unrelated to this
-        # metric and slow (offline models); disable to keep the unit test fast.
-        classifier.linker_config.linker_enabled = False
-        classifier.configs.assertion_enabled = False
+        # metric; an ABSENT clinical taxonomy disables both (TASK-799 lane G),
+        # which is exactly what this request carries.
 
         labels_med = {"model": m.MODEL_MEDICAL_NER, "entity_type": "MEDICATION"}
         labels_sym = {"model": m.MODEL_MEDICAL_NER, "entity_type": "SYMPTOM"}
