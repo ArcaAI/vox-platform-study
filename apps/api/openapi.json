@@ -837,6 +837,16 @@
             "description": "Registry row id",
             "type": "string"
           },
+          "localPath": {
+            "description": "Optional staged weights directory (operator override)",
+            "nullable": true,
+            "type": "string"
+          },
+          "metadata": {
+            "description": "Registry row `_metadata` (non-secret model descriptors)",
+            "nullable": true,
+            "type": "object"
+          },
           "name": {
             "description": "Human-readable model name",
             "type": "string"
@@ -23249,7 +23259,7 @@
     },
     "/api/v1/admin/ai-task-defaults": {
       "get": {
-        "description": "Cascade: tenant row → SYSTEM platform row → null (the consuming service falls back to its env bootstrap default). Valid task keys: guardrail.validate, guardrail.safety, guardrail.groundedness, nlp.ner, nlp.classification, nlp.diagnosis, nlp.sentiment, nlp.toxicity, text.live, text.finalize, text.live.fallback, text.finalize.fallback, text.test, harness.judge, vlm.extract. Omit taskKey to receive an array covering every key.",
+        "description": "Cascade: tenant row → SYSTEM platform row → null (the consuming service falls back to its env bootstrap default). Valid task keys: guardrail.validate, guardrail.safety, guardrail.groundedness, guardrail.pii, guardrail.pii.spans, nlp.ner, nlp.classification, nlp.diagnosis, nlp.sentiment, nlp.toxicity, text.live, text.finalize, text.live.fallback, text.finalize.fallback, text.test, harness.judge, vlm.extract. Omit taskKey to receive an array covering every key.",
         "operationId": "AiTaskDefaultAdminController_getEffective",
         "parameters": [
           {
@@ -23262,6 +23272,8 @@
                 "guardrail.validate",
                 "guardrail.safety",
                 "guardrail.groundedness",
+                "guardrail.pii",
+                "guardrail.pii.spans",
                 "nlp.ner",
                 "nlp.classification",
                 "nlp.diagnosis",
@@ -23324,6 +23336,8 @@
                 "guardrail.validate",
                 "guardrail.safety",
                 "guardrail.groundedness",
+                "guardrail.pii",
+                "guardrail.pii.spans",
                 "nlp.ner",
                 "nlp.classification",
                 "nlp.diagnosis",
@@ -23387,6 +23401,8 @@
                 "guardrail.validate",
                 "guardrail.safety",
                 "guardrail.groundedness",
+                "guardrail.pii",
+                "guardrail.pii.spans",
                 "nlp.ner",
                 "nlp.classification",
                 "nlp.diagnosis",
@@ -23454,6 +23470,8 @@
                 "guardrail.validate",
                 "guardrail.safety",
                 "guardrail.groundedness",
+                "guardrail.pii",
+                "guardrail.pii.spans",
                 "nlp.ner",
                 "nlp.classification",
                 "nlp.diagnosis",

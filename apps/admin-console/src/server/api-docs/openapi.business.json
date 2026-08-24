@@ -837,6 +837,16 @@
             "description": "Registry row id",
             "type": "string"
           },
+          "localPath": {
+            "description": "Optional staged weights directory (operator override)",
+            "nullable": true,
+            "type": "string"
+          },
+          "metadata": {
+            "description": "Registry row `_metadata` (non-secret model descriptors)",
+            "nullable": true,
+            "type": "object"
+          },
           "name": {
             "description": "Human-readable model name",
             "type": "string"

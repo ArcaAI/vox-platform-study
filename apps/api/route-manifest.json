@@ -9731,7 +9731,7 @@
       "path": "/api/v1/admin/workflow-invariant-rules",
       "routePath": "/admin/workflow-invariant-rules",
       "svcScopes": [],
-      "forbidServiceAccount": false,
+      "forbidServiceAccount": true,
       "apiKeyForbidden": true,
       "apiKeyScopes": [],
       "requiredPermissions": [
@@ -9752,7 +9752,7 @@
       "path": "/api/v1/admin/workflow-invariant-rules",
       "routePath": "/admin/workflow-invariant-rules",
       "svcScopes": [],
-      "forbidServiceAccount": false,
+      "forbidServiceAccount": true,
       "apiKeyForbidden": true,
       "apiKeyScopes": [],
       "requiredPermissions": [
@@ -9773,7 +9773,7 @@
       "path": "/api/v1/admin/workflow-invariant-rules/{id}",
       "routePath": "/admin/workflow-invariant-rules/:id",
       "svcScopes": [],
-      "forbidServiceAccount": false,
+      "forbidServiceAccount": true,
       "apiKeyForbidden": true,
       "apiKeyScopes": [],
       "requiredPermissions": [
@@ -9794,7 +9794,7 @@
       "path": "/api/v1/admin/workflow-invariant-rules/{id}",
       "routePath": "/admin/workflow-invariant-rules/:id",
       "svcScopes": [],
-      "forbidServiceAccount": false,
+      "forbidServiceAccount": true,
       "apiKeyForbidden": true,
       "apiKeyScopes": [],
       "requiredPermissions": [
@@ -9815,7 +9815,7 @@
       "path": "/api/v1/admin/workflow-invariant-rules/{id}",
       "routePath": "/admin/workflow-invariant-rules/:id",
       "svcScopes": [],
-      "forbidServiceAccount": false,
+      "forbidServiceAccount": true,
       "apiKeyForbidden": true,
       "apiKeyScopes": [],
       "requiredPermissions": [

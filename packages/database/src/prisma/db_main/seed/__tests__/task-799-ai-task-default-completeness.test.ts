@@ -48,7 +48,15 @@ function declaredTaskKeys(): string[] {
       `Could not locate the AI_TASK_KEYS array in ${CONSTANTS_PATH}. The registry moved or was reshaped; fix this parser rather than deleting the guard.`,
     );
   }
-  return [...block[1]!.matchAll(/'([^']+)'/g)].map((m) => m[1]!);
+  // Strip comments BEFORE extracting quoted strings. The array is interleaved
+  // with prose, and an apostrophe in it (`guardrail's own SQL`) reads as a
+  // quoted literal to a naive scan — which manufactured a phantom "task key"
+  // out of a comment fragment and failed this guard for a gap that did not
+  // exist. A guard that cries wolf over its own documentation gets deleted, so
+  // the parser has to ignore commentary rather than the comments being written
+  // around the parser.
+  const code = block[1]!.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/[^\n]*/g, '');
+  return [...code.matchAll(/'([^']+)'/g)].map((m) => m[1]!);
 }
 
 const DECLARED = declaredTaskKeys();

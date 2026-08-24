@@ -153,7 +153,14 @@ export const SYSTEM_TASK_DEFAULT_EXEMPTIONS: Record<string, string> = {
  * The guard pins this set EXACTLY, so a third such row cannot appear silently
  * while the decision is open.
  */
-export const SEEDED_TASK_KEYS_NOT_IN_REGISTRY: readonly string[] = ['guardrail.pii', 'guardrail.pii.spans'];
+// TASK-799 R6 — CLOSED. Both keys are now declared in `AI_TASK_KEYS` and are
+// SUPER_ADMIN-only via `SUPER_ADMIN_ONLY_TASK_KEYS` (owner decision 2026-08-24:
+// they select nlp-hosted TOKEN_CLASSIFICATION models, and D-4 makes those
+// platform-shared; PII redaction is a PHI control, so one vetted model serves
+// every tenant). The list stays as the declared-exemption mechanism — it is
+// EMPTY, and the completeness test fails if a future seed adds a key here
+// without registering it.
+export const SEEDED_TASK_KEYS_NOT_IN_REGISTRY: readonly string[] = [];
 
 /** Deterministic ids — fresh `86000000-…` block (unused by any other seed). */
 export const SYSTEM_AI_TASK_DEFAULTS: AiTaskDefaultSeed[] = [

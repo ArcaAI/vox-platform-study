@@ -16,7 +16,7 @@
 // the D2 platform-approved-list floor enforced in `AiTaskDefaultService` —
 // this descriptor only governs WHO may attempt the write, not WHICH slugs.
 
-import { AI_TASK_KEYS, AiTaskKey, SUPER_ADMIN_ONLY_TASK_PREFIXES } from '../../ai-task-default/constants';
+import { AI_TASK_KEYS, AiTaskKey, isSuperAdminOnlyTaskKey } from '../../ai-task-default/constants';
 import { SettingDescriptor } from '../registry.types';
 
 const META: Record<AiTaskKey, { label: string; description: string }> = {
@@ -36,6 +36,22 @@ const META: Record<AiTaskKey, { label: string; description: string }> = {
     label: 'Guardrail groundedness model',
     description:
       'Default MiniCheck NLI/entailment fact-checker used by the safety engine for groundedness verification. Selection is limited to the platform-approved model catalog.',
+  },
+  // TASK-799 R6 — PII redaction selections. SUPER_ADMIN-only by owner decision
+  // (2026-08-24) via `SUPER_ADMIN_ONLY_TASK_KEYS`, not by the `guardrail.`
+  // prefix, which stays tenant-configurable: these two select nlp-hosted
+  // TOKEN_CLASSIFICATION models, and D-4 makes nlp-hosted models
+  // platform-shared. So `superAdminOnly` below resolves true for them and the
+  // descriptor is flagged `globalOnly`, exactly like `nlp.*`.
+  'guardrail.pii': {
+    label: 'PII redaction model',
+    description:
+      'Default GLiNER2 span extractor used to detect and redact PII. Platform-wide: one vetted model serves every tenant (super admins only).',
+  },
+  'guardrail.pii.spans': {
+    label: 'PII + safety span model',
+    description:
+      'Default GLiNER2 model returning PII spans and safety labels in one pass. Platform-wide: one vetted model serves every tenant (super admins only).',
   },
   'nlp.ner': {
     label: 'Medical NER model',
@@ -103,7 +119,12 @@ const META: Record<AiTaskKey, { label: string; description: string }> = {
 };
 
 export const MODEL_DEFAULT_SETTINGS: SettingDescriptor[] = AI_TASK_KEYS.map<SettingDescriptor>((taskKey) => {
-  const superAdminOnly = SUPER_ADMIN_ONLY_TASK_PREFIXES.some((p) => taskKey.startsWith(p));
+  // Call the shared predicate rather than re-deriving it from the prefix list:
+  // a second copy of the rule is how `SUPER_ADMIN_ONLY_TASK_KEYS` (the
+  // key-level exceptions a prefix cannot express) would have been silently
+  // dropped here, leaving the descriptor tenant-editable while the service
+  // refused the write.
+  const superAdminOnly = isSuperAdminOnlyTaskKey(taskKey);
   return {
     key: `models.${taskKey}`,
     tier: 'db-config',
