@@ -12,6 +12,14 @@ each entry reports its own ``probe_status`` (``ok`` / ``timeout`` / ``error``),
   ``openai_compat`` and the shared instance reports ``openai_compat`` for both,
   so the key is the only stable identity the gateway discovery merge
   (``admin/ai-models/discovery``) can join on.
+
+Two surfaces, one probe body. ``GET /providers`` reports each adapter's own
+process memo (``_last_base_url``) and is unchanged. ``POST /providers/probe``
+takes the connection the GATEWAY resolved per provider through the one tenant →
+SYSTEM cascade and enumerates THAT instance instead — which is what lets model
+discovery show a tenant its own LM Studio / Ollama rather than the platform's.
+Text stays the single aggregator either way: the gateway supplies an address and
+never opens an engine connection of its own.
 """
 
 from __future__ import annotations
@@ -25,8 +33,9 @@ from fastapi import APIRouter, Depends, Request
 from text.core.dependencies import get_pool_health_tracker, get_provider_registry
 from text.core.metrics import ACTIVE_GENERATIONS
 from text.core.runtime_defaults import PROVIDER_PROBE_TIMEOUT_S
+from text.models.probe import ProbeConnection, ProviderProbeRequest
 from text.models.provider import ProviderInfo
-from text.providers.base import ProviderRegistry
+from text.providers.base import ConnectionAwareProbe, LLMProvider, ProviderRegistry
 from text.services.pool_health import PoolHealthTracker
 
 router = APIRouter(tags=["providers"])
@@ -42,19 +51,37 @@ def _unavailable(name: str) -> dict[str, Any]:
     ).model_dump()
 
 
+async def _describe(provider: LLMProvider, connection: ProbeConnection | None) -> ProviderInfo:
+    """Enumerate the engine the CALLER resolved, falling back to the process memo.
+
+    ``get_info()`` reports on ``_last_base_url`` — the endpoint this process last
+    served a generation from — which can only ever describe one engine per
+    provider name. A ``connection`` says which instance the gateway's tenant →
+    SYSTEM cascade actually resolved for this caller, so a tenant sees ITS LM
+    Studio / Ollama rather than the platform's.
+
+    An adapter that cannot be enumerated per connection (every cloud provider)
+    falls through to ``get_info()`` unchanged, so this is strictly additive.
+    """
+    if connection is not None and isinstance(provider, ConnectionAwareProbe):
+        return await provider.discover_models(connection)
+    return await provider.get_info()
+
+
 async def _probe(
     registry: ProviderRegistry,
     name: str,
     timeout_s: float,
     *,
     pool_health_tracker: PoolHealthTracker,
+    connection: ProbeConnection | None = None,
 ) -> dict[str, Any]:
     start = time.monotonic()
     probe_status = "ok"
     probe_error: str | None = None
     try:
         provider = registry.get(name)
-        info = await asyncio.wait_for(provider.get_info(), timeout=timeout_s)
+        info = await asyncio.wait_for(_describe(provider, connection), timeout=timeout_s)
         payload = info.model_dump()
     except TimeoutError:
         payload = _unavailable(name)
@@ -80,19 +107,56 @@ async def _probe(
     return payload
 
 
-@router.get("/providers", response_model=list[ProviderInfo])
-async def list_providers(
-    request: Request,
-    registry: ProviderRegistry = Depends(get_provider_registry),
-    pool_health_tracker: PoolHealthTracker = Depends(get_pool_health_tracker),
+async def _probe_all(
+    registry: ProviderRegistry,
+    pool_health_tracker: PoolHealthTracker,
+    connections: dict[str, ProbeConnection],
 ) -> list[dict[str, Any]]:
     timeout_s = float(PROVIDER_PROBE_TIMEOUT_S)
     names = registry.list_providers()
     return list(
         await asyncio.gather(
             *(
-                _probe(registry, name, timeout_s, pool_health_tracker=pool_health_tracker)
+                _probe(
+                    registry,
+                    name,
+                    timeout_s,
+                    pool_health_tracker=pool_health_tracker,
+                    connection=connections.get(name),
+                )
                 for name in names
             )
         )
     )
+
+
+@router.get("/providers", response_model=list[ProviderInfo])
+async def list_providers(
+    request: Request,
+    registry: ProviderRegistry = Depends(get_provider_registry),
+    pool_health_tracker: PoolHealthTracker = Depends(get_pool_health_tracker),
+) -> list[dict[str, Any]]:
+    return await _probe_all(registry, pool_health_tracker, {})
+
+
+@router.post("/providers/probe", response_model=list[ProviderInfo])
+async def probe_providers(
+    request: Request,
+    body: ProviderProbeRequest,
+    registry: ProviderRegistry = Depends(get_provider_registry),
+    pool_health_tracker: PoolHealthTracker = Depends(get_pool_health_tracker),
+) -> list[dict[str, Any]]:
+    """The CONNECTION-AWARE twin of `GET /providers`.
+
+    Same response shape, same per-provider isolation and same probe cap; the only
+    difference is that each provider is enumerated against the endpoint the
+    GATEWAY resolved for the calling tenant (tenant → SYSTEM, resolved once by
+    `AiProviderConnectionService` — Text does not resolve, cache or store it).
+    Text remains the single probe aggregator: the gateway hands down an address
+    and never opens an engine connection itself.
+
+    A POST rather than a GET because the body carries credential material for a
+    keyed self-hosted engine, which must never travel in a URL or a query string.
+    `ProviderInfo` has no credential field, so nothing comes back.
+    """
+    return await _probe_all(registry, pool_health_tracker, body.connections)

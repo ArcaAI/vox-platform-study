@@ -1,4 +1,4 @@
-import { AiModelServiceModule, CommonServiceModule } from '@arcaai/applications';
+import { AiModelServiceModule, AiProviderConnectionServiceModule, CommonServiceModule } from '@arcaai/applications';
 import { HttpModule } from '@nestjs/axios';
 import { Module } from '@nestjs/common';
 import { AiModelAdminController } from './ai-model-admin.controller';
@@ -10,12 +10,14 @@ import { AiModelDiscoveryService } from './ai-model-discovery.service';
  * already-existing `AiModelService`. Mirrors `PipelineModule`.
  *
  * Also wires the discovery surface (merge view + explicit register). It needs
- * `HttpModule` to reach TEXT's provider aggregator and `CommonServiceModule` for
+ * `HttpModule` to reach TEXT's provider aggregator, `CommonServiceModule` for
  * `IConfigService` (`TEXT_URL`) / `SecretsService` — direct `process.env` reads
- * for downstream URLs are lint-banned in `src/modules/**`.
+ * for downstream URLs are lint-banned in `src/modules/**` — and
+ * `AiProviderConnectionServiceModule` so discovery can ask the ONE cascade which
+ * engine each provider means for the calling tenant (see the service header).
  */
 @Module({
-  imports: [AiModelServiceModule, CommonServiceModule, HttpModule],
+  imports: [AiModelServiceModule, AiProviderConnectionServiceModule, CommonServiceModule, HttpModule],
   // ORDER MATTERS: Nest registers routes in controller order,
   // and `AiModelAdminController` carries `GET ':id'` — if it registers first it
   // captures `GET admin/ai-models/discovery` as id="discovery" (404). The

@@ -20,23 +20,46 @@ type TextProviderEntry = {
   probe_error?: string | null;
 };
 
+type OverrideEntry = { api_key: string; funding: 'tenant' | 'platform'; base_url?: string };
+
 function makeService(opts: {
   text?: TextProviderEntry[];
   textError?: Error;
   dbRows?: Array<Record<string, unknown>>;
   create?: ReturnType<typeof vi.fn>;
+  tenantId?: string | null;
+  overrides?: Record<string, OverrideEntry>;
+  overridesError?: Error;
+  rows?: Record<string, { baseUrl: string | null; source: 'tenant' | 'system' } | null>;
 }) {
-  const get = opts.textError ? vi.fn().mockRejectedValue(opts.textError) : vi.fn().mockResolvedValue({ data: opts.text ?? [] });
-  const httpService = { axiosRef: { get } } as never;
+  const post = opts.textError ? vi.fn().mockRejectedValue(opts.textError) : vi.fn().mockResolvedValue({ data: opts.text ?? [] });
+  const httpService = { axiosRef: { post } } as never;
   const configService = { getConfigValue: vi.fn().mockReturnValue('http://text.test') } as never;
   const create = opts.create ?? vi.fn().mockResolvedValue({ id: 'new-id', slug: 's' });
   const aiModelService = {
     getAllForAdmin: vi.fn().mockResolvedValue(opts.dbRows ?? []),
     create,
   };
-  const service = new AiModelDiscoveryService(httpService, configService, aiModelService as never, undefined);
-  return { service, get, create, aiModelService };
+  const clsService = { get: vi.fn().mockReturnValue(opts.tenantId === undefined ? 'tenant-1' : opts.tenantId) };
+  const connections = {
+    resolveTenantCloudOverrides: opts.overridesError
+      ? vi.fn().mockRejectedValue(opts.overridesError)
+      : vi.fn().mockResolvedValue({ overrides: opts.overrides ?? {} }),
+    resolveConnection: vi.fn(async (_service: string, provider: string) => opts.rows?.[provider] ?? null),
+  };
+  const service = new AiModelDiscoveryService(
+    httpService,
+    configService,
+    aiModelService as never,
+    undefined,
+    clsService as never,
+    connections as never,
+  );
+  return { service, post, create, aiModelService, clsService, connections };
 }
+
+/** The `connections` map the gateway POSTs to TEXT for this call. */
+const sentConnections = (post: ReturnType<typeof vi.fn>) => post.mock.calls[0]?.[1]?.connections ?? {};
 
 const dbRow = (over: Record<string, unknown> = {}) => ({
   id: 'row-1',
@@ -146,6 +169,113 @@ describe('AiModelDiscoveryService.discover — merge rule', () => {
     const result = await service.discover();
 
     expect(result.entries).toHaveLength(0);
+  });
+});
+
+// =============================================================================
+// Tenant-aware discovery (TASK-799 A.1)
+// =============================================================================
+describe('AiModelDiscoveryService.discover — tenant-aware engine resolution', () => {
+  it("probes the TENANT's own LM Studio when it has one", async () => {
+    const { service, post, connections } = makeService({
+      text: [{ name: 'lm-studio', probe_status: 'ok', models: [{ name: 'tenant-qwen' }] }],
+      overrides: { 'lm-studio': { api_key: 'tenant-key', funding: 'tenant', base_url: 'http://tenant-lms.test/v1' } },
+    });
+
+    const result = await service.discover('lm-studio');
+
+    expect(connections.resolveTenantCloudOverrides).toHaveBeenCalledWith('llm', 'tenant-1');
+    expect(sentConnections(post)).toEqual({ 'lm-studio': { base_url: 'http://tenant-lms.test/v1', api_key: 'tenant-key' } });
+    expect(result.probes.find((p) => p.provider === 'lm-studio')?.connectionSource).toBe('tenant');
+    expect(result.entries.map((e) => e.modelName)).toEqual(['tenant-qwen']);
+  });
+
+  it('falls back to the SYSTEM engine when the tenant has no connection of its own', async () => {
+    const { service, post } = makeService({
+      text: [{ name: 'lm-studio', probe_status: 'ok', models: [{ name: 'platform-qwen' }] }],
+      overrides: { 'lm-studio': { api_key: 'platform-key', funding: 'platform', base_url: 'http://platform-lms.test/v1' } },
+    });
+
+    const result = await service.discover('lm-studio');
+
+    expect(sentConnections(post)['lm-studio']).toMatchObject({ base_url: 'http://platform-lms.test/v1' });
+    expect(result.probes.find((p) => p.provider === 'lm-studio')?.connectionSource).toBe('system');
+  });
+
+  it('sends a KEYLESS self-hosted row so the probe goes out unauthenticated', async () => {
+    // A keyless row injects on neither tier, so it never appears in `overrides`
+    // — the cascade still knows its endpoint via `resolveConnection`.
+    const { service, post, connections } = makeService({
+      text: [{ name: 'ollama', probe_status: 'ok', models: [{ name: 'llama3.1:8b' }] }],
+      overrides: {},
+      rows: { ollama: { baseUrl: 'http://sys-ollama.test', source: 'system' } },
+    });
+
+    const result = await service.discover('ollama');
+
+    expect(connections.resolveConnection).toHaveBeenCalledWith('llm', 'ollama', 'tenant-1');
+    expect(sentConnections(post)).toEqual({ ollama: { base_url: 'http://sys-ollama.test' } });
+    expect(sentConnections(post).ollama).not.toHaveProperty('api_key');
+    expect(result.entries.map((e) => e.modelName)).toEqual(['llama3.1:8b']);
+  });
+
+  it('sends no connection for a provider the cascade resolves nothing for', async () => {
+    const { service, post } = makeService({
+      text: [{ name: 'ollama', probe_status: 'ok', models: [] }],
+      overrides: {},
+      rows: { ollama: null },
+    });
+
+    await service.discover('ollama');
+
+    expect(sentConnections(post)).toEqual({});
+  });
+
+  it('fails OPEN: a resolver error still probes, it never 500s the listing', async () => {
+    const { service, post } = makeService({
+      text: [{ name: 'lm-studio', probe_status: 'ok', models: [{ name: 'x' }] }],
+      overridesError: new Error('config db down'),
+    });
+
+    const result = await service.discover('lm-studio');
+
+    expect(sentConnections(post)).toEqual({});
+    expect(result.entries.map((e) => e.modelName)).toEqual(['x']);
+  });
+
+  it('resolves nothing when there is no tenant context', async () => {
+    const { service, post, connections } = makeService({
+      text: [{ name: 'lm-studio', probe_status: 'ok', models: [] }],
+      tenantId: null,
+    });
+
+    await service.discover();
+
+    expect(connections.resolveTenantCloudOverrides).not.toHaveBeenCalled();
+    expect(sentConnections(post)).toEqual({});
+  });
+
+  it('never leaks a credential into the discovery response', async () => {
+    const { service } = makeService({
+      text: [{ name: 'lm-studio', probe_status: 'ok', models: [{ name: 'x' }] }],
+      overrides: { 'lm-studio': { api_key: 'super-secret-key', funding: 'tenant', base_url: 'http://x.test/v1' } },
+    });
+
+    const result = await service.discover('lm-studio');
+
+    expect(JSON.stringify(result)).not.toContain('super-secret-key');
+  });
+
+  it('only asks about the providers actually being discovered', async () => {
+    const { service, connections } = makeService({
+      text: [{ name: 'ollama', probe_status: 'ok', models: [] }],
+      overrides: {},
+      rows: {},
+    });
+
+    await service.discover('ollama');
+
+    expect(connections.resolveConnection.mock.calls.map((c: unknown[]) => c[1])).toEqual(['ollama']);
   });
 });
 
