@@ -92,6 +92,8 @@ from harness.temporal.claim_check import (
     build_blob_store,
     load_blob,
     maybe_offload,
+    open_store,
+    resolve_claim_check_location,
     resolve_min_bytes,
 )
 from harness.temporal.models import (
@@ -726,10 +728,17 @@ def _hybrid_retriever(settings: Settings) -> HybridRetriever:
 
 
 async def _resolve_ref(settings: Settings, inline: str, ref: ClaimCheckRef | None) -> str:
-    """Inline-or-ref at an activity's edge: dereference ``ref`` when set, else the inline."""
+    """Inline-or-ref at an activity's edge: dereference ``ref`` when set, else the inline.
+
+    The BUCKET comes off the recorded ref, never off current config: an
+    already-offloaded blob must stay readable after an admin renames or
+    re-namespaces the platform bucket. Only the store's endpoint/region follow
+    the cascade.
+    """
     if ref is None:
         return inline
-    return await load_blob(ref, store=build_blob_store(settings.claim_check))
+    store, _ = await open_store(settings.claim_check)
+    return await load_blob(ref, store=store)
 
 
 async def _offload_text(settings: Settings, text: str) -> tuple[str, ClaimCheckRef | None]:
@@ -741,14 +750,16 @@ async def _offload_text(settings: Settings, text: str) -> tuple[str, ClaimCheckR
     cc = settings.claim_check
     if not cc.enabled:
         return text, None
+    snapshot = await _config_snapshot()
+    location = resolve_claim_check_location(snapshot, cc)
     return await maybe_offload(
         text,
-        store=build_blob_store(cc),
-        bucket=cc.bucket,
+        store=build_blob_store(cc, location),
+        bucket=location.bucket,
         # PLATFORM default from the control plane, env as the bootstrap floor beneath it
         # (TASK-799 A.2). A failed read keeps `cc.min_bytes`, so a degraded control plane
         # leaves the offload behaviour byte-identical.
-        min_bytes=resolve_min_bytes(await _config_snapshot(), cc.min_bytes),
+        min_bytes=resolve_min_bytes(snapshot, cc.min_bytes),
     )
 
 
@@ -758,7 +769,7 @@ async def _resolve_knowledge_chunks(
     """Merge the inline chunk texts with any offloaded (ref) ones, resolving each ref."""
     if not refs:
         return inline
-    store = build_blob_store(settings.claim_check)
+    store, _ = await open_store(settings.claim_check)
     out = dict(inline)
     for chunk_id, ref in refs.items():
         out[chunk_id] = await load_blob(ref, store=store)
@@ -1122,8 +1133,9 @@ async def call_mcp_tool(payload: CallMcpToolInput) -> McpToolCallResult:
     if result_bytes > cap:
         cc = settings.claim_check
         if cc.enabled:
+            store, location = await open_store(cc)
             content, content_ref = await maybe_offload(
-                content, store=build_blob_store(cc), bucket=cc.bucket, min_bytes=cap
+                content, store=store, bucket=location.bucket, min_bytes=cap
             )
         else:
             content = content.encode("utf-8")[:cap].decode("utf-8", "ignore")

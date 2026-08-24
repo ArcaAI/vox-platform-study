@@ -1,5 +1,6 @@
 export * from './dto';
 export * from './platform-storage-config';
+export * from './platform-storage-settings.resolver';
 export * from './tenant-storage-config.dto.mapper';
 export * from './ITenantStorageConfigService';
 export * from './tenant-storage-config.service';

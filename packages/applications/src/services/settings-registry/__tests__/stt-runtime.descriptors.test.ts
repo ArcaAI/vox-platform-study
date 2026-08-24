@@ -96,13 +96,22 @@ describe('STT_RUNTIME_SETTINGS', () => {
     expect(pubsub?.default).toBe(true);
   });
 
-  it('does not claim the db-config storage keys', () => {
+  it('leaves the storage keys to the db-config cascade rather than re-declaring them here', () => {
     // `STORAGE_PROVIDER` / `AZURE_STORAGE_*` belong in the
-    // `storage.platformDefault.*` cascade, which is `tier: 'db-config'` — a tier
-    // `EffectiveSettingsService.resolveEffective` has no resolver for. Declaring
-    // `consumedBy` on those would deploy cleanly and do nothing at all.
+    // `storage.platformDefault.*` cascade — a `TenantStorageConfig` row, which
+    // is what `db-config` is reserved for (D-2). This file must not grow an
+    // `stt.storage.provider` twin of it; that is the second-home failure mode.
+    expect(STT_RUNTIME_SETTINGS.map((d) => d.key).filter((k) => k.startsWith('stt.storage'))).toEqual([]);
+
+    // TASK-799 A.1 inverted the assertion that used to live here. Until the
+    // `db-config` read lane existed, declaring `consumedBy` on these keys
+    // deployed cleanly and served `null` forever, so the test pinned
+    // `consumedBy: undefined` to stop anyone shipping the dead declaration.
+    // The lane exists now, so the honest invariant is the opposite one: stt
+    // MUST be served the provider, because its `storage_provider` env path is
+    // closed and this is the only surface left that can set it.
     const storage = HOPE_SETTINGS_REGISTRY.get('storage.platformDefault.provider');
     expect(storage?.tier).toBe('db-config');
-    expect(storage?.consumedBy).toBeUndefined();
+    expect(storage?.consumedBy).toEqual(['stt']);
   });
 });

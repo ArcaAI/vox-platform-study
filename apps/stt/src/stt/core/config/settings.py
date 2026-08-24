@@ -155,12 +155,21 @@ class Settings(BaseSettings):
 
     # Object storage provider (platform default for the no-descriptor path).
     # Per-tenant requests may override this via a `storage` descriptor.
+    #
+    # CONTROL-PLANE OWNED (TASK-799 A.3). The value comes from
+    # `storage.platformDefault.provider` — the SYSTEM `TenantStorageConfig` row that
+    # apps/api resolves through the same cascade — so the env path is closed
+    # structurally, like every other migrated field. The default below is the
+    # BOOTSTRAP floor and is byte-identical to the pre-migration one, so a service
+    # that starts against an unreachable control plane behaves exactly as before.
     storage_provider: Literal["minio", "aws_s3", "azure_blob"] = Field(
         default="minio",
+        validation_alias=moved_alias("storage_provider"),
         description=(
             "Default object-storage provider when no per-tenant storage "
             "descriptor is supplied. The default keeps using the global MinIO "
-            "client unless set to 'azure_blob'."
+            "client unless set to 'azure_blob'. Set it on the platform storage "
+            "row, not in env — STORAGE_PROVIDER no longer reaches this field."
         ),
     )
     azure_storage_account: str = Field(
