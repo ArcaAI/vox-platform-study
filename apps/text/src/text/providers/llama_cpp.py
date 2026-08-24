@@ -22,6 +22,7 @@ import structlog
 from text.core.connection import require_base_url
 from text.core.defaults import resolve_request_defaults
 from text.core.telemetry import get_tracer
+from text.models.probe import ProbeConnection
 from text.models.provider import ProviderInfo
 from text.models.requests import GenerateRequest
 from text.models.stats import GenerationStats, stats_from_llama_cpp
@@ -226,17 +227,37 @@ class LlamaCppProvider:
             logger.error("health_check.unexpected_error", provider=_ENGINE, error=str(exc))
             return False
 
-    async def get_info(self) -> ProviderInfo:
+    async def _probe_health(self, base_url: str | None) -> str:
+        """`GET {base_url}/health` — the one availability check shared by the memo
+        probe (`get_info`) and the connection-scoped one (`discover_models`)."""
         status = "unavailable"
-        probe_url = self._probe_url()
         try:
-            resp = await self._http.get(f"{probe_url}/health") if probe_url else None
+            resp = await self._http.get(f"{base_url}/health") if base_url else None
             if resp is not None and resp.status_code == 200:
                 status = "available"
         except (httpx.HTTPError, httpx.TimeoutException, ConnectionError, OSError) as exc:
             logger.warning("get_info.failed", provider=_ENGINE, error=str(exc))
         except Exception as exc:
             logger.error("get_info.unexpected_error", provider=_ENGINE, error=str(exc))
+        return status
+
+    async def discover_models(self, connection: ProbeConnection) -> ProviderInfo:
+        """Report on the llama.cpp server the GATEWAY resolved for this caller.
+
+        A llama.cpp process serves exactly ONE model, chosen at launch, and
+        exposes no listing endpoint — so there is nothing to enumerate and the
+        model list stays empty here exactly as it does in `get_info`. What the
+        connection DOES change is which instance's availability is reported, so a
+        tenant fronting its own llama.cpp is not told the platform's is up.
+
+        Deliberately does not touch ``_last_base_url`` (see the base protocol).
+        """
+        return self._info(await self._probe_health(connection.base_url.strip().rstrip("/")))
+
+    async def get_info(self) -> ProviderInfo:
+        return self._info(await self._probe_health(self._probe_url()))
+
+    def _info(self, status: str) -> ProviderInfo:
         # A llama.cpp server loads ONE model at launch and ignores a per-request
         # model, so the served identity is a property of the engine process, not
         # of this adapter. The catalogue comes from `AiModel` on the gateway.
