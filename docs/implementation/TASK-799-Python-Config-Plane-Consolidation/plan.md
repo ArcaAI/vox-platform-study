@@ -264,6 +264,41 @@ value — it is how the process reaches Redis), the shared `arca:config:invalida
 subscriber, and the TTL demoted to a backstop. A service that starts while Redis is
 down must still converge.
 
+### D-6 — The built-in inference solutions are PLATFORM-MANAGED. (owner, 2026-08-24)
+
+LM Studio, Ollama, Transformers + HuggingFace, llama.cpp and (future) vLLM are
+built-in solutions, not tenant vendor accounts. Only a platform super admin sets
+the HuggingFace token, points a built-in at its endpoint, or chooses the
+provider/model behind an inference task. Those rows live on the SYSTEM tenant and
+serve every other tenant as the default/fallback.
+
+**This REVERSES an earlier round in this ticket**, which had listed
+`model-registry: ['huggingface', 's3']` in `CLOUD_BYO_PROVIDERS` on the reasoning
+that a tenant bringing its own gated model must bring the org token that reaches
+it. The list is now empty — the `rerank` shape, for the same reason: the
+capability is platform INFRASTRUCTURE.
+
+Two consequences, both load-bearing, both now pinned by tests:
+
+1. **Writes.** A tenant row on the plane is a 403 at `assertWriteAllowed`, and the
+   resolver drops tenant rows before the cascade. The SYSTEM seed rows are
+   unchanged (blank + disabled, filled in by a super admin through the console) —
+   what changed is that they are the only rows the plane can hold.
+2. **Reads.** `gateApplies` (`:507`) and the per-row suppression branch (`:707`)
+   both key off `isCloudByoProvider`, so emptying the map ALSO moved the plane out
+   of the platform-default entitlement gate: an unentitled tenant now resolves the
+   platform token rather than being suppressed. That is the consumption half of
+   "default/fallback for all other tenants" and it followed from a one-line map
+   edit, so it is asserted explicitly in
+   `ai-provider-connection.platform-default-gate.test.ts`.
+
+**What this does NOT change:** per-task model SELECTION. `SUPER_ADMIN_ONLY_TASK_PREFIXES`
+stays `['nlp.', 'harness.']`; `text.*` and `guardrail.*` remain tenant-configurable,
+which is exactly "SYSTEM is the default, a tenant may still override". A tenant
+binding its task default to a SYSTEM-published model is the platform default being
+used as intended — it manages nothing, and consumption of a SYSTEM CLOUD credential
+is still entitlement-gated.
+
 ## F-01 — BYO credential standard (the pattern every adapter must follow)
 
 Requirement: a tenant admin configures a BYO key; it is stored in the database; every
