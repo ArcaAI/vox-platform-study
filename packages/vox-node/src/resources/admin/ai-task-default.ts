@@ -30,7 +30,7 @@ export class AdminAiTaskDefaultResource extends AdminResource {
   /**
    * Resolve the effective default model for one AI task key — or ALL keys when taskKey is omitted
    *
-   * Cascade: tenant row → SYSTEM platform row → null (the consuming service falls back to its env bootstrap default). Valid task keys: guardrail.validate, guardrail.safety, guardrail.groundedness, nlp.ner, nlp.classification, nlp.diagnosis, nlp.sentiment, nlp.toxicity, text.live, text.finalize, text.live.fallback, text.finalize.fallback, text.test, harness.judge, vlm.extract. Omit taskKey to receive an array covering every key.
+   * Cascade: tenant row → SYSTEM platform row → null (the consuming service falls back to its env bootstrap default). Valid task keys: guardrail.validate, guardrail.safety, guardrail.groundedness, guardrail.pii, guardrail.pii.spans, nlp.ner, nlp.classification, nlp.diagnosis, nlp.sentiment, nlp.toxicity, text.live, text.finalize, text.live.fallback, text.finalize.fallback, text.test, harness.judge, vlm.extract. Omit taskKey to receive an array covering every key.
    *
    * `GET /api/v1/admin/ai-task-defaults` — `AiTaskDefaultAdminController.getEffective`.
    */
@@ -41,6 +41,8 @@ export class AdminAiTaskDefaultResource extends AdminResource {
           | 'guardrail.validate'
           | 'guardrail.safety'
           | 'guardrail.groundedness'
+          | 'guardrail.pii'
+          | 'guardrail.pii.spans'
           | 'nlp.ner'
           | 'nlp.classification'
           | 'nlp.diagnosis'
@@ -80,6 +82,8 @@ export class AdminAiTaskDefaultResource extends AdminResource {
           | 'guardrail.validate'
           | 'guardrail.safety'
           | 'guardrail.groundedness'
+          | 'guardrail.pii'
+          | 'guardrail.pii.spans'
           | 'nlp.ner'
           | 'nlp.classification'
           | 'nlp.diagnosis'
@@ -118,6 +122,8 @@ export class AdminAiTaskDefaultResource extends AdminResource {
           | 'guardrail.validate'
           | 'guardrail.safety'
           | 'guardrail.groundedness'
+          | 'guardrail.pii'
+          | 'guardrail.pii.spans'
           | 'nlp.ner'
           | 'nlp.classification'
           | 'nlp.diagnosis'
@@ -160,6 +166,8 @@ export class AdminAiTaskDefaultResource extends AdminResource {
           | 'guardrail.validate'
           | 'guardrail.safety'
           | 'guardrail.groundedness'
+          | 'guardrail.pii'
+          | 'guardrail.pii.spans'
           | 'nlp.ner'
           | 'nlp.classification'
           | 'nlp.diagnosis'

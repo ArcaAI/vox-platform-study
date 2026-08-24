@@ -30,6 +30,7 @@ import type {
   LiveDocEngineConfigResponse,
   LiveDocSessionStatsResponse,
   LiveDocSessionsListResponse,
+  PromoteExemplarRequest,
   SignalWorkflowRequest,
   UpdateHarnessPolicyRequest,
   UpdateLiveDocEngineConfigRequest,
@@ -44,7 +45,7 @@ import type {
  * names the scope in that error's message.
  *
  * Backed by controller HarnessAdminController
- * (26 routes). Several controllers sharing one scope share one
+ * (28 routes). Several controllers sharing one scope share one
  * resource on purpose: the scope is the permission surface, so the SDK groups
  * by it rather than by URL.
  */
@@ -163,6 +164,47 @@ export class AdminHarnessResource extends AdminResource {
       path: `admin/harness/gate-edit-exemplars/${encodePathSegment(String(id))}/curation`,
       query: options.query,
       body,
+      signal: options.signal,
+      timeoutMs: options.timeoutMs,
+    });
+  }
+
+  /**
+   * Promote a curator-APPROVED gate-edit exemplar into a golden case
+   *
+   * Derives a `(transcript -> reference note)` golden case from a real signed, clinician-edited consultation. Only curation-APPROVED exemplars are eligible. The transcript is PHI-redacted before persistence and the promotion FAILS CLOSED on a missing transcript or unverifiable redaction — a fabricated golden case is worse than none, because it becomes the yardstick. Each case is labelled `CLINICIAN_DERIVED_PENDING_SME`: it is real clinician behaviour, but it is NOT the SME-authored multi-rater golden set that the harness declares an outstanding prerequisite, and it must not be used to gate a clinical claim on its own.
+   *
+   * `POST /api/v1/admin/harness/gate-edit-exemplars/{id}/promote-to-golden-set` — `HarnessAdminController.promoteExemplarToGoldenSet`.
+   */
+  promoteExemplarToGoldenSet(
+    id: string,
+    body: PromoteExemplarRequest,
+    options: AdminRequestOptions & { query?: { tenantId?: QueryValue } } = {},
+  ): Promise<unknown> {
+    return this.request<unknown>({
+      method: 'POST',
+      path: `admin/harness/gate-edit-exemplars/${encodePathSegment(String(id))}/promote-to-golden-set`,
+      query: options.query,
+      body,
+      signal: options.signal,
+      timeoutMs: options.timeoutMs,
+    });
+  }
+
+  /**
+   * Export the curator-APPROVED gate-edit corpus as a JSONL fine-tuning dataset
+   *
+   * One JSON object per line: `{ original, edited, context }` — the AI draft as delivered, the note the clinician actually signed, and the non-text signal that makes the pair interpretable. Both text fields are the PHI-REDACTED forms written at mining time (`phiRedaction: FULL`); raw note text is never reachable from this route. Unlike the sibling candidate export this is curation-GATED with no knob — only exemplars a curator moved to APPROVED are included (`reviewStatus: SME_APPROVED`) — because a training corpus assembled from unreviewed clinical text cannot be retracted once it has been trained on. Every record carries `provenance: CLINICIAN_EDIT`, distinguishing it from the harness's synthetic golden fixture.
+   *
+   * `GET /api/v1/admin/harness/gate-edit-exemplars/fine-tuning-export` — `HarnessAdminController.exportGateEditFineTuningDataset`.
+   */
+  exportGateEditFineTuningDataset(
+    options: AdminRequestOptions & { query?: { departmentId?: QueryValue; limit?: number; qualitySignal?: QueryValue; tenantId?: QueryValue } } = {},
+  ): Promise<unknown> {
+    return this.request<unknown>({
+      method: 'GET',
+      path: 'admin/harness/gate-edit-exemplars/fine-tuning-export',
+      query: options.query,
       signal: options.signal,
       timeoutMs: options.timeoutMs,
     });
