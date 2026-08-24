@@ -28,7 +28,7 @@ from datetime import UTC, datetime
 from ..core.config.settings import get_settings
 from ..core.exceptions import ModelLoadError
 from ..pipeline.dto import AiModelConfig, AiModelFormat
-from .base_loader import BaseModelLoader, LoadedModel
+from .base_loader import BaseModelLoader, CredentialPosture, LoadedModel
 from .source_resolver import ModelSourceError, resolve_for_model_config
 
 logger = logging.getLogger(__name__)
@@ -41,6 +41,11 @@ _INSTALL_HINT = (
 
 class WhisperCppLoader(BaseModelLoader):
     """Loader for whisper.cpp (ggml) ASR models, via ``pywhispercpp``."""
+
+    # Runs on platform hardware from local/downloaded weights - no vendor
+    # credential exists to fail closed on. Declared explicitly because the lock
+    # test is default-deny: a loader that says nothing fails it.
+    credential_posture = CredentialPosture.SELF_HOSTED
 
     @property
     def supported_formats(self) -> list[AiModelFormat]:

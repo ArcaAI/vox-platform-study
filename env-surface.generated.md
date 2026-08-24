@@ -13,15 +13,15 @@ disagree with those declarations.
 
 | Metric | Value |
 |---|---:|
-| Declared keys (distinct) | 137 |
-| … of which required (`failMode: closed`) | 31 |
-| … of which secret | 30 |
+| Declared keys (distinct) | 136 |
+| … of which required (`failMode: closed`) | 30 |
+| … of which secret | 29 |
 | … tier `env` | 102 |
 | … tier `global-kv` | 9 |
-| … tier `vault-kv` | 26 |
+| … tier `vault-kv` | 25 |
 | Python declared fields | 356 |
 | … distinct Python names (incl. aliases + `os.environ` reads) | 405 |
-| `turbo.json#globalEnv` entries | 535 |
+| `turbo.json#globalEnv` entries | 534 |
 
 ## Variables — the TypeScript platform surface
 
@@ -93,7 +93,6 @@ disagree with those declarations.
 | `NLP_SERVICE_TOKEN` | `vault-kv` | yes | `CHANGE_ME` | `apps/api` | Shared secret on the gateway↔NLP hop (`X-Service-Token`). |
 | `NLP_URL` | `env` | no | `http://localhost:8864` | `apps/api` | Medical-NLP base URL (apps/nlp, port 8864). |
 | `NODE_ENV` | `env` | no | `development` | `apps/api` | Selects the env file `loadEnv()` reads (`.env.dev` / `.env.test` / `.env.production`); CI and production load NO file and use host env only. |
-| `OIDC_CLIENT_SECRET` | `vault-kv` | yes | `CHANGE_ME` | `apps/api` | Client secret for the platform OIDC relying-party registration. Absent ⇒ OIDC authentication is disabled (a logged WARN, not a crash) — see `auth.service.module.ts`. |
 | `OTEL_DEBUG` | `env` | no | `false` | `apps/api` | Enables the OpenTelemetry diagnostic logger. |
 | `OTEL_EXPORTER_OTLP_ENDPOINT` | `env` | no | — | `apps/api` | gRPC OTLP collector endpoint. Unset disables the exporters. |
 | `OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT` | `env` | no | — | `apps/api` | Pins the OTel GenAI instrumentation-library content-capture switch off, so prompt/completion text (PHI) is never stamped onto spans. Boot-time audit refuses to start in production unless this is exactly NO_CONTENT. |

@@ -17,10 +17,10 @@
  *   2. Every `@Processor()` class is collected by `BullExplorer` at
  *      `onModuleInit` and a `Worker` is created — each Worker is yet
  *      another ioredis client.
- *   3. `AuthServiceModule.OPENID_CLIENT` factory calls
- *      `Issuer.discover(OIDC_DISCOVERY_URL)`; on a misconfigured env
- *      the factory short-circuits, but a partially-set URL hangs on
- *      the network round-trip.
+ *   3. (RESOLVED) `AuthServiceModule.OPENID_CLIENT` used to call
+ *      `discovery(OIDC_DISCOVERY_URL)` at module init, so a partially-set
+ *      URL hung on the network round-trip. The platform OIDC tier is
+ *      retired and the factory is now a constant `null` — no I/O.
  *   4. `AppSettingsService.onModuleInit()` issues
  *      `globalSettingRepository.findAll()` (Prisma) which awaits the
  *      DB pool.
@@ -70,9 +70,9 @@
  *     pattern most consumers use.
  *
  * - `'OPENID_CLIENT'` → `null`
- *     `AuthServiceModule`'s OIDC factory normally returns `null` when
- *     `OIDC_DISCOVERY_URL` is unset, but we hard-pin the override so a
- *     stray env var doesn't surface a partially-initialized client.
+ *     Now redundant — the factory itself is a constant `null` since the
+ *     platform OIDC tier was retired — but kept so this override surface
+ *     stays a complete description of the token's value under test.
  *
  * - `SecretsService` → in-memory stub with synthetic JWT secret
  *     `JwtStrategy` refuses to boot if
@@ -205,7 +205,9 @@ const SYNTHETIC_SECRETS: Record<string, string> = {
   JWT_SECRET_KEY: TEST_ONLY_JWT_SECRET,
   API_KEY_PEPPER: TEST_ONLY_API_KEY_PEPPER,
   TEXT_SERVICE_TOKEN: TEST_ONLY_TEXT_SERVICE_TOKEN,
-  OIDC_CLIENT_SECRET: 'task-309-test-oidc-client-secret-not-for-production',
+  // No OIDC entry: the platform OIDC tier is retired, so nothing asks
+  // SecretsService for a client secret. Federated login resolves the tenant's own
+  // `TenantIdentityProvider.encryptedSecretRef` via Vault Transit instead.
 };
 
 const STUB_SECRETS_SERVICE = {

@@ -18,7 +18,7 @@ from pydantic import SecretStr
 from ..core.config.settings import get_settings
 from ..core.exceptions import CloudASRAuthError
 from ..pipeline.dto import AiModelConfig, AiModelFormat
-from .base_loader import BaseModelLoader, LoadedModel
+from .base_loader import BaseModelLoader, CredentialPosture, LoadedModel
 from .cloud_asr import CloudRestConfig, resolve_override_key
 
 logger = logging.getLogger(__name__)
@@ -32,6 +32,12 @@ OPENAI_OVERRIDE_KEY = "openai"
 
 class OpenAILoader(BaseModelLoader):
     """Loader for OpenAI speech-to-text (cloud REST)."""
+
+    # Cloud vendor credential REQUIRED; it arrives per request as a
+    # gateway-injected `provider_overrides` entry (tenant -> SYSTEM
+    # AiProviderConnection) read under `override_key`. There is no env fallback.
+    credential_posture = CredentialPosture.BYOK
+    override_key = OPENAI_OVERRIDE_KEY
 
     @property
     def supported_formats(self) -> list[AiModelFormat]:

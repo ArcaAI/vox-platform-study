@@ -21,13 +21,19 @@ import logging
 from ..core.config.settings import get_settings
 from ..core.exceptions import CloudASRAuthError, ConfigurationError
 from ..pipeline.dto import AiModelConfig, AiModelFormat
-from .base_loader import BaseModelLoader, LoadedModel
+from .base_loader import BaseModelLoader, CredentialPosture, LoadedModel
 
 logger = logging.getLogger(__name__)
 
 
 class AzureFoundryLoader(BaseModelLoader):
     """Loader for the Azure AI Foundry LLM Speech API (MAI-Transcribe)."""
+
+    # Cloud vendor credential REQUIRED; it arrives per request as a
+    # gateway-injected `provider_overrides` entry (tenant -> SYSTEM
+    # AiProviderConnection) read under `override_key`. There is no env fallback.
+    credential_posture = CredentialPosture.BYOK
+    override_key = "azure-speech"
 
     @property
     def supported_formats(self) -> list[AiModelFormat]:

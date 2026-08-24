@@ -153,4 +153,76 @@ describe('BlobStorageProviderFactory', () => {
       expect(h.S3BlobProvider).toHaveBeenCalledWith(expect.objectContaining({ accessKeyId: '', secretAccessKey: '' }));
     });
   });
+
+  /**
+   * The SYSTEM row's Vault `credentialsRef` is the PLATFORM credential tier;
+   * `S3_ACCESS_KEY` / `S3_SECRET_KEY` are only the documented BOOTSTRAP fallback
+   * used before that ref holds a value (`09-infrastructure-devops.md`
+   * §Configuration Tiers).
+   *
+   * The "did the ref supply anything?" test must therefore consider EVERY field
+   * the ref can carry. It originally omitted `secretAccessKey`, so a Vault value
+   * carrying only that field scored as empty and the whole ref was discarded in
+   * favour of env — a silent downgrade from the Vault tier to the bootstrap tier
+   * on a credential path, which is the drift this ticket exists to remove.
+   */
+  describe('platform credentials — the Vault credentialsRef outranks the env bootstrap tier', () => {
+    /** A SYSTEM `TenantStorageConfig` row carrying a Vault path and nothing else. */
+    function systemRowRepo(credentialsRef: string) {
+      return {
+        findSystemDefault: vi.fn().mockResolvedValue({
+          provider: 'MINIO',
+          endpoint: 'http://minio:9000',
+          region: 'us-east-1',
+          forcePathStyle: true,
+          accountName: null,
+          endpointSuffix: null,
+          containerPrefix: null,
+          credentialsRef,
+        }),
+        findTenantDefault: vi.fn(),
+        findForBucket: vi.fn(),
+      };
+    }
+
+    function buildWithSystemRow(secrets: Record<string, string>, credentialsRef = 'platform/storage/minio') {
+      return new BlobStorageProviderFactory(makeAppSettings({}) as any, makeSecrets(secrets) as any, systemRowRepo(credentialsRef) as any);
+    }
+
+    it('uses a credentialsRef that carries BOTH halves of the key pair', async () => {
+      const factory = buildWithSystemRow({
+        'platform/storage/minio': JSON.stringify({ accessKeyId: 'vault-ak', secretAccessKey: 'vault-sk' }),
+        S3_ACCESS_KEY: 'env-ak',
+        S3_SECRET_KEY: 'env-sk',
+      });
+
+      await factory.getProvider();
+
+      expect(h.S3BlobProvider).toHaveBeenCalledWith(expect.objectContaining({ accessKeyId: 'vault-ak', secretAccessKey: 'vault-sk' }));
+    });
+
+    it('uses a credentialsRef that carries ONLY secretAccessKey rather than silently reverting to env', async () => {
+      const factory = buildWithSystemRow({
+        'platform/storage/minio': JSON.stringify({ secretAccessKey: 'vault-sk' }),
+        S3_ACCESS_KEY: 'env-ak',
+        S3_SECRET_KEY: 'env-sk',
+      });
+
+      await factory.getProvider();
+
+      // The ref spoke, so it IS the platform tier and it wins wholesale. Falling
+      // through here would authenticate with an env secret the operator believed
+      // they had superseded in Vault.
+      expect(h.S3BlobProvider).toHaveBeenCalledWith(expect.objectContaining({ secretAccessKey: 'vault-sk' }));
+      expect(h.S3BlobProvider).not.toHaveBeenCalledWith(expect.objectContaining({ secretAccessKey: 'env-sk' }));
+    });
+
+    it('still falls back to the env bootstrap tier when the ref holds nothing at all', async () => {
+      const factory = buildWithSystemRow({ S3_ACCESS_KEY: 'env-ak', S3_SECRET_KEY: 'env-sk' });
+
+      await factory.getProvider();
+
+      expect(h.S3BlobProvider).toHaveBeenCalledWith(expect.objectContaining({ accessKeyId: 'env-ak', secretAccessKey: 'env-sk' }));
+    });
+  });
 });
