@@ -92,7 +92,12 @@ def _sparse_embedder() -> SparseBm25Embedder:
 
 def _qdrant_store(settings: Settings) -> KnowledgeQdrantStore:
     rc = settings.retrieval
-    return KnowledgeQdrantStore(rc.qdrant_url, rc.collection, timeout=rc.qdrant_timeout_s)
+    return KnowledgeQdrantStore(
+        rc.qdrant_url,
+        rc.collection,
+        timeout=rc.qdrant_timeout_s,
+        api_key=rc.qdrant_api_key.get_secret_value() if rc.qdrant_api_key else None,
+    )
 
 
 def _point_id(tenant_id: str, document_id: str, chunk_index: int) -> str:

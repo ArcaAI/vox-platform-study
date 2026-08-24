@@ -16,9 +16,8 @@ chunks are ever retrievable. The :class:`~qdrant_client.QdrantClient` is
 injectable so unit tests run without a live Qdrant.
 
 NOTE: the installed qdrant-client ``FusionQuery`` exposes only ``fusion`` (no
-explicit RRF ``k``); fusion uses Qdrant's server-side RRF. The configured
-``rrf_k`` is carried in :class:`~harness.core.config.RetrievalConfig` for
-forward-compat but is not passed to this API version.
+explicit RRF ``k``); fusion uses Qdrant's server-side RRF, and there is no knob
+to configure it with.
 """
 
 from __future__ import annotations

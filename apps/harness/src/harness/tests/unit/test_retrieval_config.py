@@ -25,7 +25,6 @@ _RETRIEVAL_ENV = (
     "HARNESS_RETRIEVAL_RERANKER_BASE_URL",
     "HARNESS_RETRIEVAL_TOP_K_RETRIEVAL",
     "HARNESS_RETRIEVAL_TOP_K_RERANK",
-    "HARNESS_RETRIEVAL_RRF_K",
 )
 
 
@@ -45,10 +44,9 @@ class TestRetrievalConfig:
         # BAAI/bge-m3 default dim (1536 only if a 1536-dim model is loaded).
         assert c.embeddings_dim == 1024
         assert c.reranker_base_url
-        # Hybrid knobs: RRF(60), retrieve 20 -> rerank to top-5.
+        # Hybrid knobs: retrieve 20 -> rerank to top-5 (RRF k is server-side).
         assert c.top_k_retrieval == 20
         assert c.top_k_rerank == 5
-        assert c.rrf_k == 60
 
     def test_env_override(self, monkeypatch: pytest.MonkeyPatch):
         monkeypatch.setenv("HARNESS_RETRIEVAL_ENABLED", "true")
@@ -60,7 +58,6 @@ class TestRetrievalConfig:
         monkeypatch.setenv("HARNESS_RETRIEVAL_RERANKER_BASE_URL", "http://reranker:80")
         monkeypatch.setenv("HARNESS_RETRIEVAL_TOP_K_RETRIEVAL", "30")
         monkeypatch.setenv("HARNESS_RETRIEVAL_TOP_K_RERANK", "8")
-        monkeypatch.setenv("HARNESS_RETRIEVAL_RRF_K", "42")
         c = RetrievalConfig()
         assert c.enabled is True
         assert c.qdrant_url == "http://qdrant:6333"
@@ -71,7 +68,6 @@ class TestRetrievalConfig:
         assert c.reranker_base_url == "http://reranker:80"
         assert c.top_k_retrieval == 30
         assert c.top_k_rerank == 8
-        assert c.rrf_k == 42
 
     def test_dim_must_be_positive(self):
         with pytest.raises(ValidationError):

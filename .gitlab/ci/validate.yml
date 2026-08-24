@@ -163,6 +163,36 @@ env-drift-check:
     - !reference [.skip-on-dev-2-1, rules]
     - !reference [.rules-env-declarations, rules]
 
+# ── Dead settings-field gate (TASK-799 Phase 3.2) ────────────────────────────
+# The MIRROR of `env-drift-check` above, and the two fail for opposite reasons:
+#
+#   env-drift-check          an env var is READ but not DECLARED — a generated
+#                            artifact (.env.sample, turbo.json#globalEnv, the
+#                            docs table) disagrees with the source that reads it.
+#   python-dead-settings     an env var is DECLARED but never READ — a
+#                            pydantic-settings field an operator can set while
+#                            nothing consumes the value. Config theatre.
+#
+# The second was the unwatched direction: TASK-799 Phases 0-2 deleted ~95 such
+# fields, every one found by hand (assessment RC-3), and nothing stopped the
+# next ~95 accumulating.
+#
+# Runs on a bare python:3.11-slim with NO installs: the check is a stdlib AST
+# pass, deliberately, because importing all six services (torch, presidio,
+# qdrant-client, ...) is not affordable in a validate-stage job. See the
+# "WHY THIS HALF IS AST" section in scripts/python-env-surface.py.
+
+python-dead-settings:
+  stage: validate
+  image: python:3.11-slim
+  tags: [fast]
+  needs: []
+  script:
+    - python scripts/python-env-surface.py --dead
+  rules:
+    - !reference [.skip-on-dev-2-1, rules]
+    - !reference [.rules-any-python, rules]
+
 # ── vox-node admin surface drift gate (TASK-773) ─────────────────────────────
 # The same shape as the three `generate-*-check` gates above, for
 # `@arcaai/vox-node`'s ~380-method `/api/v1/admin/**` surface.

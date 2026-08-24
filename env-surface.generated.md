@@ -19,9 +19,9 @@ disagree with those declarations.
 | … tier `env` | 107 |
 | … tier `global-kv` | 9 |
 | … tier `vault-kv` | 27 |
-| Python declared fields | 365 |
-| … distinct Python names (incl. aliases + `os.environ` reads) | 414 |
-| `turbo.json#globalEnv` entries | 544 |
+| Python declared fields | 364 |
+| … distinct Python names (incl. aliases + `os.environ` reads) | 413 |
+| `turbo.json#globalEnv` entries | 543 |
 
 ## Variables — the TypeScript platform surface
 
@@ -321,7 +321,6 @@ default — see `renderPythonExample()` in `scripts/env-sync.mts`.
 | `HARNESS_RETRIEVAL_QDRANT_URL` | `apps/harness` | no | no | `http://localhost:6333` | commented | — |
 | `HARNESS_RETRIEVAL_RERANKER_BASE_URL` | `apps/harness` | no | no | `http://localhost:8870` | commented | — |
 | `HARNESS_RETRIEVAL_RERANKER_TIMEOUT_S` | `apps/harness` | no | no | `30` | commented | — |
-| `HARNESS_RETRIEVAL_RRF_K` | `apps/harness` | no | no | `60` | commented | — |
 | `HARNESS_RETRIEVAL_TOP_K_RERANK` | `apps/harness` | no | no | `5` | commented | — |
 | `HARNESS_RETRIEVAL_TOP_K_RETRIEVAL` | `apps/harness` | no | no | `20` | commented | — |
 | `HARNESS_SENSOR_ATOMIC_FACT_THRESHOLD` | `apps/harness` | no | no | `0.8` | commented | — |
@@ -421,13 +420,13 @@ default — see `renderPythonExample()` in `scripts/env-sync.mts`.
 | `SEMANTIC_ENDPOINT_MIN_SILENCE_MS__MOVED_TO_CONTROL_PLANE_TASK_799` | `apps/stt` | no | no | `200` | commented | — |
 | `SEMANTIC_ENDPOINT_MIN_WORDS__MOVED_TO_CONTROL_PLANE_TASK_799` | `apps/stt` | no | no | `3` | commented | — |
 | `SEMANTIC_ENDPOINT_MODEL_ID__MOVED_TO_CONTROL_PLANE_TASK_799` | `apps/stt` | no | no | `` | commented | — |
-| `SPELLING_CORRECTOR_DICTIONARY_PATH` | `apps/nlp` | no | no | `/Users/taphuynh/Desktop/igglo/ARCAAI/hope-v2/apps/nlp/data/dictionaries` | commented | — |
+| `SPELLING_CORRECTOR_DICTIONARY_PATH` | `apps/nlp` | no | no | `/Users/taphuynh/Desktop/igglo/ARCAAI/hope-v2/.claude/worktrees/agent-a185bbf3740fcaecc/apps/nlp/data/dictionaries` | commented | — |
 | `SPELLING_CORRECTOR_SYMSPELL_IGNORE_NON_WORDS` | `apps/nlp` | no | no | `true` | commented | — |
 | `SPELLING_CORRECTOR_SYMSPELL_IGNORE_TERM_WITH_DIGITS` | `apps/nlp` | no | no | `true` | commented | — |
 | `SPELLING_CORRECTOR_SYMSPELL_MAX_EDIT_DISTANCE` | `apps/nlp` | no | no | `2` | commented | — |
 | `SPELLING_CORRECTOR_SYMSPELL_PREFIX_LENGTH` | `apps/nlp` | no | no | `7` | commented | — |
 | `SPELLING_CORRECTOR_SYMSPELL_PRESERVE_CASE` | `apps/nlp` | no | no | `true` | commented | — |
-| `STORAGE_PROVIDER` | `apps/stt` | no | no | `minio` | commented | — |
+| `STORAGE_PROVIDER__MOVED_TO_CONTROL_PLANE_TASK_799` | `apps/stt` | no | no | `minio` | commented | — |
 | `STREAMING_AUDIO_IDLE_TIMEOUT_S__MOVED_TO_CONTROL_PLANE_TASK_799` | `apps/stt` | no | no | `300` | commented | — |
 | `STREAMING_AUDIO_STREAM_MAXLEN__MOVED_TO_CONTROL_PLANE_TASK_799` | `apps/stt` | no | no | `10000` | commented | — |
 | `STREAMING_AUDIO_TRIM_INTERVAL_S__MOVED_TO_CONTROL_PLANE_TASK_799` | `apps/stt` | no | no | `30` | commented | — |
