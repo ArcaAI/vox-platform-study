@@ -122,6 +122,48 @@ export interface ResolvedProviderOverrides {
   platformDefault?: PlatformDefaultOutcome;
 }
 
+/**
+ * TASK-799 — the four outcomes a FAIL-CLOSED consumer needs from one credential
+ * resolve, and the wire shape `/internal/*` routes return.
+ *
+ * Why four and not two. `absent` and `unavailable` MUST stay distinct:
+ *
+ *   `resolved`    — a row supplied a credential. Use it.
+ *   `absent`      — no tier has an opinion (no row, or a keyless row). Proceed
+ *                   UNAUTHENTICATED. For a PUBLIC model repo or an in-boundary
+ *                   self-hosted endpoint this is the CORRECT resolved state,
+ *                   and it is never a licence to read an environment variable.
+ *   `denied`      — the tenant VETOED this `(service, provider)` by disabling
+ *                   its row, or the platform-default entitlement is not
+ *                   granted. Fail closed; never fall through to another tier.
+ *   `unavailable` — the resolve itself faulted. Fail closed. Collapsing this
+ *                   into `absent` would turn a Vault or database outage into a
+ *                   silent downgrade from an entitled fetch to an anonymous
+ *                   one — which on a gated resource fails, and on a public one
+ *                   quietly fetches something nobody authorised.
+ */
+export type ProviderCredentialOutcome = 'resolved' | 'absent' | 'denied' | 'unavailable';
+
+/** One resolved credential, or the reason there is none. */
+export interface ResolvedProviderCredential {
+  outcome: ProviderCredentialOutcome;
+  /** Cause for `denied` / `unavailable`. NEVER key material, and never a backend error string. */
+  reason?: string;
+  apiKey?: string;
+  baseUrl?: string;
+  region?: string;
+  apiVersion?: string;
+  deploymentName?: string;
+  /**
+   * The row's validated `extraJson`, minus every reserved key. This is how the
+   * NON-SECRET half of a two-part credential travels — `accessKeyId` for
+   * `model-registry:s3` — beside the secret half in `apiKey`.
+   */
+  extras?: Record<string, unknown>;
+  /** DERIVED from the row that supplied the credential. Never stamped by a caller. */
+  funding?: ProviderFunding;
+}
+
 // C2 published aliases — the program doc names these; downstream lanes import them.
 export type ProviderConnectionResponse = AiProviderConnectionResponse;
 export type ResolvedConnection = ResolvedProviderConnection;
@@ -222,6 +264,25 @@ export interface IProviderConnectionService {
   resolveTenantCloudOverrides(service: ProviderService, tenantId: string): Promise<ResolvedProviderOverrides>;
   /** @deprecated 1-arg form assumes `service='llm'`; kept for the text-proxy transition (removes it). */
   resolveTenantCloudOverrides(tenantId: string): Promise<ResolvedProviderOverrides>;
+
+  /**
+   * TASK-799 — ONE credential, projected onto the four-outcome contract above.
+   *
+   * For a consumer that holds no DB handle and receives no request to fold a
+   * `provider_overrides` envelope into — the STT worker fetching model weights,
+   * a Temporal activity — the gateway is the only channel. This is what an
+   * `/internal/*` route returns.
+   *
+   * It does NOT reimplement the cascade. `resolveTenantCloudOverrides` remains
+   * the single place tenant-vs-SYSTEM precedence, the veto set, the entitlement
+   * gate and derived funding live; this only maps its result.
+   *
+   * `tenantId` is REQUIRED. A tenant-less resolve could only mean "read SYSTEM
+   * unconditionally", which is the widen-without-absence bug the two-tier rule
+   * exists to prevent — a caller with no tenant of its own passes SYSTEM
+   * EXPLICITLY.
+   */
+  resolveCredential(service: ProviderService, provider: string, tenantId: string): Promise<ResolvedProviderCredential>;
 }
 
 /** @deprecated Use `IProviderConnectionService`. */
