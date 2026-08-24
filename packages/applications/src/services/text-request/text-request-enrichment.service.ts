@@ -5,6 +5,8 @@ import { IAiRuntimeProfileService } from '../ai-runtime-profile/IAiRuntimeProfil
 import { IProviderConnectionService, ResolvedProviderOverrides } from '../ai-provider-connection/IProviderConnectionService';
 import { isCloudByoProvider } from '../ai-provider-connection/constants';
 import { assertProviderAvailable } from '../ai-provider-connection/assert-provider-available';
+import { EffectiveSettingsService } from '../settings-registry/effective-settings.service';
+import { TEXT_GUARDRAIL_POLICY_PUSH_FIELDS } from '../settings-registry/descriptors/text-guardrail-policy.descriptors';
 
 /**
  * The ONE implementation of the two enrichments every outgoing TEXT
@@ -33,6 +35,13 @@ export class TextRequestEnrichmentService {
     @Optional()
     @Inject(IProviderConnectionService)
     private readonly aiProviderConnectionService?: IProviderConnectionService,
+    // Backs `applyTenantGuardrailPolicy`. @Optional for the same reason as the
+    // two above: a composition that never pushes moderation policy (and every
+    // existing positional test fixture) keeps its arity, and an unwired
+    // resolver pushes NOTHING — which is precisely "this tenant has no
+    // opinion", the state the receiving service already handles.
+    @Optional()
+    private readonly effectiveSettings?: EffectiveSettingsService,
   ) {}
 
   /**
@@ -118,6 +127,79 @@ export class TextRequestEnrichmentService {
     // self-hosted engine the entitlement was never meant to cover.
     if (isCloudByoProvider('llm', provider)) {
       assertProviderAvailable(resolved, 'llm', provider);
+    }
+    return target;
+  }
+
+  /**
+   * Push the caller tenant's OWN input-moderation policy into the forwarded
+   * body as `guardrail_policy`.
+   *
+   * The producing half of the D-1 push contract whose receiving half already
+   * existed: `GenerateRequest.guardrail_policy`
+   * (`apps/text/src/text/models/requests.py`), folded over the platform posture
+   * by `core/guardrail_posture.resolve_posture`. Absent it, the platform
+   * default stood for every tenant and the per-tenant half of the split was
+   * unreachable.
+   *
+   * Why these two fields and no others: `require_medical` and
+   * `include_reasoning` are the parts of the posture that legitimately differ
+   * BETWEEN tenants — a non-clinical tenant needs medical enforcement off while
+   * every other tenant keeps it on. The rest (`enabled`, the retry budget) are
+   * platform capacity decisions and travel the PULL channel instead, and the
+   * FAIL POSTURE travels neither: an errored guardrail can never allow.
+   *
+   * Three invariants:
+   *   - ABSENCE IS NOT `false`. A field is pushed ONLY when the cascade reports
+   *     `sourceScope: 'tenant'` — a row that actually exists under this tenant.
+   *     A `system`/`code-default` resolution is the cascade falling through,
+   *     i.e. NO OPINION, and pushing the descriptor default there would be
+   *     indistinguishable on the wire from a tenant that chose it — pinning the
+   *     tenant to today's platform value forever after. The receiving field is
+   *     `bool | None` precisely to keep those two states apart.
+   *   - A WRONG-TYPED ROW IS REFUSED, not coerced. Same posture as the pull
+   *     path's `matchesDataType` gate: a control-plane defect must leave the
+   *     consumer on its own value rather than silently supply another one.
+   *   - FAIL OPEN. A resolver error pushes nothing and the request proceeds on
+   *     the platform posture. Note this method has no policy-refusal
+   *     counterpart to `applyTenantProviderOverrides`'s `assertProviderAvailable`
+   *     — there is no veto or entitlement to state here, so everything really
+   *     is a lookup failure and the whole body belongs inside the catch. That
+   *     is why the split above it stays where it is rather than being
+   *     generalised over both methods.
+   */
+  async applyTenantGuardrailPolicy<T extends object>(target: T): Promise<T> {
+    if (!this.effectiveSettings) return target;
+    const tenantId = this.clsService.get('tenantId');
+    if (!tenantId) return target;
+
+    const policy: Record<string, boolean> = {};
+    try {
+      for (const [key, field] of TEXT_GUARDRAIL_POLICY_PUSH_FIELDS) {
+        const resolved = await this.effectiveSettings.resolveEffective(key, { tenantId, departmentId: null, doctorId: null });
+        // Not this tenant's row ⇒ no opinion ⇒ nothing to say.
+        if (resolved.sourceScope !== 'tenant') continue;
+        if (typeof resolved.value !== 'boolean') {
+          this.logger.warn({
+            message: 'Tenant guardrail-policy row is not a boolean — refusing it; the platform posture stands for this field',
+            key,
+            received: typeof resolved.value,
+          });
+          continue;
+        }
+        policy[field] = resolved.value;
+      }
+    } catch (error) {
+      // Non-secret log only, matching the sibling enrichments.
+      this.logger.warn({
+        message: 'Tenant guardrail-policy resolution failed; forwarding without a pushed policy (fail-open)',
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return target;
+    }
+
+    if (Object.keys(policy).length > 0) {
+      (target as Record<string, unknown>).guardrail_policy = policy;
     }
     return target;
   }
