@@ -24,7 +24,11 @@ export const COMMON_SERVICE_WARMUP_KEYS = [
   'JWT_SECRET_KEY',
   'SESSION_SECRET_KEY',
   'API_KEY_PEPPER',
-  'OIDC_CLIENT_SECRET',
+  // `OIDC_CLIENT_SECRET` was here. Identity has no platform credential tier —
+  // federated login decrypts the TENANT's own
+  // `TenantIdentityProvider.encryptedSecretRef` per request, so nothing reads a
+  // platform-wide OIDC secret and warming one only kept a retired credential
+  // resident in every process. See `services/auth/auth.service.module.ts`.
   'MINIO_ACCESS_KEY',
   'MINIO_SECRET_KEY',
   'S3_ACCESS_KEY',

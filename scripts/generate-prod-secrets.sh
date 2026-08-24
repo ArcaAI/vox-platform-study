@@ -144,8 +144,9 @@ GENERATE_KEYS=(
 )
 
 # Operator-supplied pass-throughs — folded in only if already in the environment.
+# `OIDC_CLIENT_SECRET` was here — retired with the platform OIDC tier. A tenant's
+# client secret lives on its own `TenantIdentityProvider.encryptedSecretRef`.
 PASSTHROUGH_KEYS=(
-  OIDC_CLIENT_SECRET
   AZURE_FOUNDRY_API_KEY HARNESS_JUDGE_OPENAI_COMPAT_API_KEY
   AZURE_STORAGE_CONNECTION_STRING AZURE_STORAGE_ACCOUNT_KEY
   REDIS_PASS MQTT_PASS
@@ -222,7 +223,7 @@ if [ "${#missing[@]}" -gt 0 ]; then
   yellow "Pass-throughs NOT in this bundle (supply real values before/at seed time,"
   yellow "or leave unset to keep that provider/integration off — consumers fail closed):"
   printf '     %s\n' "${missing[@]}" >&2
-  dim   "   e.g.  OIDC_CLIENT_SECRET=… REDIS_PASS=… ./scripts/generate-prod-secrets.sh --force"
+  dim   "   e.g.  AZURE_FOUNDRY_API_KEY=… REDIS_PASS=… ./scripts/generate-prod-secrets.sh --force"
 fi
 
 echo ""
