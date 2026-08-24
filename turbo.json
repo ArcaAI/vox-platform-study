@@ -7,7 +7,8 @@
         "build": {
             "dependsOn": [
                 "^build",
-                "^db:generate"
+                "^db:generate",
+                "db:generate"
             ],
             "cache": false,
             "outputs": [
@@ -46,7 +47,8 @@
         "typecheck": {
             "dependsOn": [
                 "^build",
-                "^db:generate"
+                "^db:generate",
+                "db:generate"
             ],
             "outputs": []
         },
