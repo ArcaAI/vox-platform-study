@@ -466,7 +466,6 @@
         "NLP_VERSION",
         "NLP_WORKERS",
         "NODE_ENV",
-        "OIDC_CLIENT_SECRET",
         "OMP_NUM_THREADS",
         "ONNX_NUM_THREADS__MOVED_TO_CONTROL_PLANE_TASK_799",
         "OPENAI_API_KEY",

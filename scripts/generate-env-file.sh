@@ -72,8 +72,11 @@ _fill_secret() {
 # to exercise that provider. Left as CHANGE_ME on purpose and reported at the
 # end so it's obvious what remains. (Provider SELECTION is fail-closed, so an
 # unfilled one simply means "that provider is off", never a silent bad default.)
+# `OIDC_CLIENT_SECRET` was here. Identity has no platform tier — a tenant's OIDC
+# client secret is written through the admin API and sealed with Vault Transit on
+# its own `TenantIdentityProvider` row, so there is no env var for a developer to
+# paste and nothing to report as unfilled.
 _EXTERNAL_SECRET_KEYS=(
-  OIDC_CLIENT_SECRET
   AZURE_FOUNDRY_API_KEY HARNESS_JUDGE_OPENAI_COMPAT_API_KEY
   AZURE_STORAGE_CONNECTION_STRING AZURE_STORAGE_ACCOUNT_KEY
   # TASK-799: surfaced once the six per-service samples became GENERATED, which
