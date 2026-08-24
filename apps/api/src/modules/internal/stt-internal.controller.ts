@@ -7,12 +7,13 @@ import {
   InternalFailJobRequest,
   InternalStartJobRequest,
   InternalUpdateProgressRequest,
+  IProviderConnectionService,
   ITenantSttConfigService,
   SecretsService,
   StreamingSessionService,
   SttInternalService,
 } from '@arcaai/applications';
-import type { SttProviderOverrides, StreamingSessionTeardownSummary } from '@arcaai/applications';
+import type { ResolvedProviderCredential, SttProviderOverrides, StreamingSessionTeardownSummary } from '@arcaai/applications';
 import { SttStreamingUsagePushbackRequest } from './dto/stt-streaming-usage.request';
 import {
   BadRequestException,
@@ -84,6 +85,10 @@ export class SttInternalController {
     // Records the reaper-built usage summary on the STT-side push-back path
     // . Optional so positional test construction still works.
     @Optional() private readonly streamingSession?: StreamingSessionService,
+    // TASK-799 — backs `model-registry-credential`, the weight fetcher's only
+    // route to the HuggingFace token and the model-store S3 pair. Optional and
+    // TRAILING so existing positional test construction is unaffected.
+    @Optional() @Inject(IProviderConnectionService) private readonly providerConnections?: IProviderConnectionService,
   ) {}
 
   /** The secret the STT worker presents as `X-Internal-Service-Key`. */
@@ -297,6 +302,58 @@ export class SttInternalController {
    * repository query filters on. Fails OPEN per credential inside the service; a
    * broken/absent key simply drops out of the map (worker falls back to env).
    */
+  /**
+   * TASK-799 — resolve ONE `model-registry` credential for the weight fetcher.
+   *
+   * `HUGGINGFACE_TOKEN` and the `STT_MODEL_S3_*` pair were the last two
+   * credentials this service read from the environment. They now live on
+   * `AiProviderConnection` under `service = 'model-registry'`, and this is how
+   * the worker reaches them: it holds no DB handle, and a model load is not an
+   * inbound gateway request, so nothing can be folded into a request envelope.
+   *
+   * WHOSE credential is spent is decided by the MODEL ROW'S OWNER, never the
+   * caller. `tenantId` here is `AiModel.tenantId` — a SYSTEM-owned model always
+   * resolves the platform's token, so one tenant can never cause another's
+   * token to be spent, and a shared in-process weight cache stays safe. The
+   * worker passes SYSTEM explicitly for a platform model rather than omitting
+   * the parameter; there is no tenant-less form.
+   *
+   * Distinct from `provider-overrides` above in BOTH shape and failure
+   * direction: that route returns a whole-service map and fails OPEN (a broken
+   * BYO ASR key drops out and transcription proceeds on the platform's). This
+   * one returns a single four-outcome verdict and the consumer fails CLOSED on
+   * `denied`/`unavailable`, because after the env paths are closed there is no
+   * longer anything to fall back TO — and a fault silently read as "no
+   * credential configured" would downgrade an entitled pull to an anonymous one.
+   */
+  @Get('model-registry-credential')
+  @ApiOperation({ summary: 'Resolve one model-registry credential (tenant → SYSTEM) for the STT weight fetcher' })
+  async getModelRegistryCredential(
+    @Req() request: RequestWithAuth,
+    @Query('provider') provider?: string,
+    @Query('tenantId') tenantId?: string,
+  ): Promise<ResolvedProviderCredential> {
+    this.ensureInternalApiKey(request);
+    if (!provider?.trim()) {
+      throw new BadRequestException('provider query parameter is required');
+    }
+    if (!tenantId?.trim()) {
+      throw new BadRequestException('tenantId query parameter is required');
+    }
+    if (!this.providerConnections || !this.cls) {
+      throw new BadRequestException('The provider-connection plane is not configured on this gateway');
+    }
+    const scopedTenantId = tenantId.trim();
+    // The connection model is tenant-scoped and its Prisma extension fails
+    // closed without a tenant context; a service-to-service call carries none.
+    // Pinned to the SAME tenant the cascade reads, exactly as the sibling
+    // `provider-overrides` route does.
+    return this.cls.run(async () => {
+      this.cls!.set('tenantId', scopedTenantId);
+      return this.providerConnections!.resolveCredential('model-registry', provider.trim(), scopedTenantId);
+    });
+  }
+
   @Get('provider-overrides')
   @ApiOperation({ summary: 'Resolve a tenant’s decrypted BYO STT provider overrides (batch-worker pull)' })
   async getProviderOverrides(@Req() request: RequestWithAuth, @Query('tenantId') tenantId?: string): Promise<SttProviderOverrides> {

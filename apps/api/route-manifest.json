@@ -12871,6 +12871,24 @@
     },
     {
       "controller": "SttInternalController",
+      "handler": "getModelRegistryCredential",
+      "method": "GET",
+      "path": "/api/v1/internal/stt/model-registry-credential",
+      "routePath": "/internal/stt/model-registry-credential",
+      "svcScopes": [],
+      "forbidServiceAccount": false,
+      "apiKeyForbidden": false,
+      "apiKeyScopes": [
+        "internal:stt:worker"
+      ],
+      "requiredPermissions": [],
+      "isPublic": false,
+      "permissionMode": "AND",
+      "requiresIfMatch": false,
+      "apiExcluded": true
+    },
+    {
+      "controller": "SttInternalController",
       "handler": "getProviderOverrides",
       "method": "GET",
       "path": "/api/v1/internal/stt/provider-overrides",

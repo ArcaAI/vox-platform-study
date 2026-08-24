@@ -1,4 +1,5 @@
 import {
+  AiProviderConnectionServiceModule,
   EffectiveConfigServiceModule,
   SttInternalServiceModule,
   StreamingSessionServiceModule,
@@ -13,7 +14,15 @@ import { SttInternalController } from './stt-internal.controller';
   // EffectiveConfigServiceModule backs the per-service config pull.
   // TenantSttConfigServiceModule backs the batch-worker BYO override pull.
   // StreamingSessionServiceModule backs the reaper usage push-back.
-  imports: [SttInternalServiceModule, EffectiveConfigServiceModule, TenantSttConfigServiceModule, StreamingSessionServiceModule],
+  // AiProviderConnectionServiceModule backs `model-registry-credential`, the
+  // weight fetcher's route to the HF token and the model-store S3 pair.
+  imports: [
+    SttInternalServiceModule,
+    EffectiveConfigServiceModule,
+    TenantSttConfigServiceModule,
+    StreamingSessionServiceModule,
+    AiProviderConnectionServiceModule,
+  ],
   controllers: [SttInternalController, EffectiveConfigController],
   // Applied via `@UseGuards` on the controller, but provided here so Nest can
   // inject SecretsService into it.
