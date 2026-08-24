@@ -45,10 +45,12 @@
  *     two-part credential that way has precedent: `ServiceAccount.clientId`
  *     sits in plaintext beside a Vault-referenced secret.
  *
- * WHOSE credential is used is decided by the MODEL ROW'S OWNER, never the
- * caller — a SYSTEM model always fetches with the platform token. That is what
- * makes one tenant unable to cause another's token to be spent, and what makes
- * a shared in-process weight cache safe.
+ * WHOSE credential is used is not a question on this plane: owner ruling
+ * 2026-08-24 made `model-registry` PLATFORM-MANAGED (see `CLOUD_BYO_PROVIDERS`
+ * below), so only the SYSTEM rows exist and every fetch, for every tenant,
+ * spends the platform credential. One tenant therefore cannot cause another's
+ * token to be spent — there are no tenant tokens here — and a shared in-process
+ * weight cache is safe by construction rather than by convention.
  */
 export type ProviderService = 'llm' | 'stt' | 'tts' | 'embeddings' | 'rerank' | 'vector' | 'model-registry';
 
@@ -88,13 +90,21 @@ export const CLOUD_BYO_PROVIDERS: Record<ProviderService, readonly string[]> = {
   embeddings: ['azure', 'openai'],
   rerank: [],
   vector: ['qdrant'],
-  // TASK-799 — a tenant that brings its OWN models brings the account they are
-  // fetched from: a HuggingFace org token (the only way to reach a gated repo)
-  // and, for weights it stages itself, its own object store. Both are genuine
-  // per-tenant subscriptions, so both are BYO-eligible. The SYSTEM rows remain
-  // the platform's own hub token and weights bucket, and a SYSTEM-owned model
-  // always fetches with those.
-  'model-registry': ['huggingface', 's3'],
+  // `model-registry` — DELIBERATELY EMPTY (owner ruling 2026-08-24).
+  //
+  // An earlier round listed `['huggingface', 's3']` on the reasoning that a
+  // tenant bringing its own gated model must bring the org token that reaches
+  // it. The owner ruled otherwise: the built-in inference solutions — LM Studio,
+  // Ollama, Transformers + HuggingFace, llama.cpp and (future) vLLM — are
+  // PLATFORM-MANAGED, and only a platform super admin sets the HuggingFace
+  // token or chooses the provider/model behind an inference task. Those live on
+  // the SYSTEM tenant and serve every other tenant as the default/fallback.
+  //
+  // So a tenant row here is a 403 and only the SYSTEM row serves — the same
+  // shape as `rerank` above, and for the same reason: the capability is platform
+  // INFRASTRUCTURE, not a per-tenant vendor account. This list stays as the
+  // extension point if that ruling is ever revisited.
+  'model-registry': [],
 };
 
 /** The union of every cloud BYO provider name across all services. */
