@@ -38,6 +38,14 @@ export const AI_TASK_KEYS = [
   'guardrail.validate',
   'guardrail.safety',
   'guardrail.groundedness',
+  // TASK-799 R6 — the PII redaction selections. Seeded and read at runtime by
+  // guardrail's own SQL (`core/tenant_config.py`) since TASK-776, but never
+  // declared here, so `assertKnownTaskKey` rejected them on every admin route
+  // and no `models.*` descriptor was generated: the platform's PII model was
+  // unmanageable through ANY surface. Both are SUPER_ADMIN-only — see
+  // `SUPER_ADMIN_ONLY_TASK_KEYS`.
+  'guardrail.pii',
+  'guardrail.pii.spans',
   'nlp.ner',
   'nlp.classification',
   'nlp.diagnosis',
@@ -65,6 +73,12 @@ export const AI_TASK_MODEL_TASK_TYPES: Record<AiTaskKey, ModelTaskType> = {
   // MiniCheck is an NLI/entailment fact-checker; TEXT_CLASSIFICATION
   // is the closest existing ModelTaskType (no dedicated NLI type exists).
   'guardrail.groundedness': ModelTaskType.TEXT_CLASSIFICATION,
+  // Both PII selections are span extractors (GLiNER2), so TOKEN_CLASSIFICATION —
+  // matching `seed/ai-models/nlp.ts` for `gliner2-privacy-filter-pii-multi` and
+  // `gliner2-guardrails-pii-multi`. An upsert rejects a slug whose registry row
+  // declares a different task type, so a mismatch here is a runtime refusal.
+  'guardrail.pii': ModelTaskType.TOKEN_CLASSIFICATION,
+  'guardrail.pii.spans': ModelTaskType.TOKEN_CLASSIFICATION,
   'nlp.ner': ModelTaskType.TOKEN_CLASSIFICATION,
   'nlp.classification': ModelTaskType.TEXT_CLASSIFICATION,
   // diagnosis suggester (symptom→disease text classification).
@@ -119,6 +133,28 @@ export const AI_TASK_MODEL_TASK_TYPES: Record<AiTaskKey, ModelTaskType> = {
 export const SUPER_ADMIN_ONLY_TASK_PREFIXES = ['nlp.', 'harness.'] as const;
 
 /**
+ * SUPER_ADMIN-only task keys that do NOT follow a locked PREFIX.
+ *
+ * `guardrail.` is deliberately tenant-configurable (TASK-735 Phase 0), so a
+ * prefix cannot express these two — and widening the prefix would silently
+ * re-lock `guardrail.validate` / `.safety` / `.groundedness`, reversing that
+ * owner decision as a side effect. Hence a KEY-level list.
+ *
+ * WHY THESE TWO (owner decision, 2026-08-24): `guardrail.pii` and
+ * `guardrail.pii.spans` select TOKEN_CLASSIFICATION models that run in
+ * `apps/nlp` (`guardrail/core/tenant_config.py`: "The models themselves run in
+ * apps/nlp"), and D-4 rules that nlp-hosted models — naming token
+ * classification and guardrail tasks explicitly — are PLATFORM-SHARED with no
+ * tenant BYO. PII redaction is also a PHI-protection control: one vetted model
+ * for every tenant is the point, not a per-tenant choice.
+ *
+ * A tenant row for these keys may still be WRITTEN, and will never WIN —
+ * `getEffective` short-circuits the tenant read for a super-admin-only key.
+ * That is the same shape as every `nlp.*` key.
+ */
+export const SUPER_ADMIN_ONLY_TASK_KEYS = ['guardrail.pii', 'guardrail.pii.spans'] as const;
+
+/**
  * @deprecated Use {@link SUPER_ADMIN_ONLY_TASK_PREFIXES}. Retained for
  * back-compat with zero production callers (verified 2026-08-16, TASK-735).
  * Historically pinned to `'guardrail.'`; guardrail left the super-admin-only
@@ -127,9 +163,19 @@ export const SUPER_ADMIN_ONLY_TASK_PREFIXES = ['nlp.', 'harness.'] as const;
  */
 export const SUPER_ADMIN_ONLY_TASK_PREFIX = SUPER_ADMIN_ONLY_TASK_PREFIXES[0];
 
-/** True when `taskKey` is under a SUPER_ADMIN-only prefix. */
+/**
+ * True when `taskKey` is SUPER_ADMIN-only — by locked PREFIX, or by explicit
+ * KEY for the exceptions a prefix cannot express.
+ *
+ * This is the single predicate every consumer reads (the service's tenant-read
+ * short-circuit, the `globalOnly` descriptor flag, the admin authz checks), so
+ * folding the key list in here is what makes one edit reach all of them.
+ */
 export function isSuperAdminOnlyTaskKey(taskKey: string): boolean {
-  return SUPER_ADMIN_ONLY_TASK_PREFIXES.some((p) => taskKey.startsWith(p));
+  return (
+    SUPER_ADMIN_ONLY_TASK_PREFIXES.some((p) => taskKey.startsWith(p)) ||
+    (SUPER_ADMIN_ONLY_TASK_KEYS as readonly string[]).includes(taskKey)
+  );
 }
 
 /**
