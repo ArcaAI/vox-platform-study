@@ -10,7 +10,7 @@ import {
 } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { ClsService } from 'nestjs-cls';
-import { OptimisticConcurrencyException } from '@arcaai/exceptions';
+import { ArgumentInvalidException, OptimisticConcurrencyException } from '@arcaai/exceptions';
 import {
   AiProviderConnectionEntity,
   AiProviderConnectionFactory,
@@ -39,6 +39,7 @@ import { AiProviderConnectionDtoMapper } from './ai-provider-connection.dto.mapp
 import { ProviderService, isCloudByoProvider } from './constants';
 import { AiProviderConnectionResponse, UpsertAiProviderConnectionRequest } from './dto';
 import { sanitizeProviderExtras } from './provider-extras';
+import { ConnectionRequirementSubject, validateProviderRequirements } from './provider-requirements';
 
 /**
  * Unified provider-connection service.
@@ -134,6 +135,19 @@ export class AiProviderConnectionService extends BaseService implements IProvide
         return this.restoreAndOverwrite(deleted, dto, service, provider, scopedTenantId, tx);
       }
 
+      // Requirements BEFORE encryption, for the same reason the precondition
+      // check comes before it: a row that will be refused must not spend a
+      // Vault round trip, and a Transit outage must not turn a 400 into a 500.
+      this.assertRequirementsSatisfied(service, provider, {
+        enabled: dto.enabled ?? false,
+        baseUrl: dto.baseUrl ?? null,
+        region: dto.region ?? null,
+        apiVersion: dto.apiVersion ?? null,
+        deploymentName: dto.deploymentName ?? null,
+        hasApiKey: dto.apiKey !== undefined,
+        extraJson: dto.extraJson ?? null,
+      });
+
       // Encrypt only when the caller actually supplied a key — and only AFTER
       // the precondition verdict above (encrypting first would turn a
       // stale-If-Match 412 into a 500 whenever Transit was down).
@@ -177,6 +191,25 @@ export class AiProviderConnectionService extends BaseService implements IProvide
         currentVersion: existing.version,
       });
     }
+
+    // The requirement check reads the MERGED row, never the request body. A DTO
+    // that changes only `deploymentName` must be judged against the endpoint,
+    // api-version and key ALREADY STORED — otherwise every partial edit of a
+    // complete Azure row would be refused for fields it never mentioned.
+    // Symmetrically, an edit that CLEARS a required field, or flips an
+    // incomplete row to `enabled`, is refused here even though the request
+    // itself looks innocent.
+    this.assertRequirementsSatisfied(service, provider, {
+      enabled: dto.enabled ?? existing.enabled,
+      baseUrl: dto.baseUrl !== undefined ? dto.baseUrl : existing.baseUrl,
+      region: dto.region !== undefined ? dto.region : existing.region,
+      apiVersion: dto.apiVersion !== undefined ? dto.apiVersion : existing.apiVersion,
+      deploymentName: dto.deploymentName !== undefined ? dto.deploymentName : existing.deploymentName,
+      // Key material the row WILL hold: the incoming key if one was supplied,
+      // otherwise whatever is already stored.
+      hasApiKey: dto.apiKey !== undefined || (existing.encryptedApiKey?.length ?? 0) > 0,
+      extraJson: dto.extraJson !== undefined ? dto.extraJson : existing.extraJson,
+    });
 
     // Encrypt only when the caller actually supplied a key; omitting `apiKey`
     // leaves the stored ciphertext untouched (rotate vs. edit-other-fields).
@@ -353,6 +386,19 @@ export class AiProviderConnectionService extends BaseService implements IProvide
     tx?: CoreDatabaseService['baseClient'],
   ): Promise<AiProviderConnectionResponse> {
     const currentVersion = deleted.version;
+
+    // A revive is a FRESH write — every field below is set from the DTO with no
+    // carry-over from the tombstone — so it is judged exactly like a create.
+    this.assertRequirementsSatisfied(service, provider, {
+      enabled: dto.enabled ?? false,
+      baseUrl: dto.baseUrl ?? null,
+      region: dto.region ?? null,
+      apiVersion: dto.apiVersion ?? null,
+      deploymentName: dto.deploymentName ?? null,
+      hasApiKey: dto.apiKey !== undefined,
+      extraJson: dto.extraJson ?? null,
+    });
+
     const secret = dto.apiKey !== undefined ? await this.encryptKey(dto.apiKey) : undefined;
 
     deleted.enable(this.requestUserId ?? undefined);
@@ -587,6 +633,26 @@ export class AiProviderConnectionService extends BaseService implements IProvide
         keyVersion: row.keyVersion ?? null,
       });
       return null;
+    }
+  }
+
+  /**
+   * TASK-799 — refuse a connection that cannot serve a request, at SAVE time.
+   *
+   * `provider-requirements.ts` holds the declarations and the reasoning; this is
+   * only the throw. `ArgumentInvalidException` (→ 400) rather than a Forbidden
+   * or a Conflict: the caller is permitted to write this row, and no version
+   * raced them — the BODY is incomplete, and the message names exactly which
+   * field to add. Every miss is reported at once so an operator fixes the form
+   * in one round trip.
+   *
+   * DISABLED rows are exempt inside the predicate, not here — see that file for
+   * why the veto has to stay expressible.
+   */
+  private assertRequirementsSatisfied(service: ProviderService, provider: string, subject: ConnectionRequirementSubject): void {
+    const errors = validateProviderRequirements(service, provider, subject);
+    if (errors.length > 0) {
+      throw new ArgumentInvalidException(errors.join(' '));
     }
   }
 

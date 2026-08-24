@@ -28,11 +28,32 @@
  * every one of them, and reuses the OCC/ETag route, the masked read DTO, the
  * repository and the audit `ResourceType` unchanged. `service` is already a
  * plain `TEXT` column with no database CHECK constraint, so this costs NO DDL.
+ *
+ * TASK-799 — `model-registry` is the SEVENTH, and it is not an inference
+ * capability at all: it is the plane that authenticates the fetch of MODEL
+ * WEIGHTS. Two credentials had nowhere else to live —
+ *
+ *   `HUGGINGFACE_TOKEN`  -> `model-registry:huggingface`. HF is a model HUB that
+ *     authenticates with a bearer token, not object storage. Forcing it into
+ *     `TenantStorageConfig` was rejected: that table carries a `TenantBucket`
+ *     FK, so a token stored there would surface model weights in the tenant's
+ *     own bucket listing — a browsing surface for something that is not the
+ *     tenant's data.
+ *   `STT_MODEL_S3_ACCESS_KEY` / `_SECRET_KEY` -> `model-registry:s3`, where
+ *     `baseUrl` is the endpoint, `encryptedApiKey` is the SECRET key, and
+ *     `extraJson.accessKeyId` is the non-secret principal id. Splitting a
+ *     two-part credential that way has precedent: `ServiceAccount.clientId`
+ *     sits in plaintext beside a Vault-referenced secret.
+ *
+ * WHOSE credential is used is decided by the MODEL ROW'S OWNER, never the
+ * caller — a SYSTEM model always fetches with the platform token. That is what
+ * makes one tenant unable to cause another's token to be spent, and what makes
+ * a shared in-process weight cache safe.
  */
-export type ProviderService = 'llm' | 'stt' | 'tts' | 'embeddings' | 'rerank' | 'vector';
+export type ProviderService = 'llm' | 'stt' | 'tts' | 'embeddings' | 'rerank' | 'vector' | 'model-registry';
 
 /** Every service, for iteration/validation (the route's `:service` guard reads this). */
-export const PROVIDER_SERVICES = ['llm', 'stt', 'tts', 'embeddings', 'rerank', 'vector'] as const;
+export const PROVIDER_SERVICES = ['llm', 'stt', 'tts', 'embeddings', 'rerank', 'vector', 'model-registry'] as const;
 
 /**
  * C5 — the per-service governance map. A TENANT may hold its own connection row
@@ -67,6 +88,13 @@ export const CLOUD_BYO_PROVIDERS: Record<ProviderService, readonly string[]> = {
   embeddings: ['azure', 'openai'],
   rerank: [],
   vector: ['qdrant'],
+  // TASK-799 — a tenant that brings its OWN models brings the account they are
+  // fetched from: a HuggingFace org token (the only way to reach a gated repo)
+  // and, for weights it stages itself, its own object store. Both are genuine
+  // per-tenant subscriptions, so both are BYO-eligible. The SYSTEM rows remain
+  // the platform's own hub token and weights bucket, and a SYSTEM-owned model
+  // always fetches with those.
+  'model-registry': ['huggingface', 's3'],
 };
 
 /** The union of every cloud BYO provider name across all services. */

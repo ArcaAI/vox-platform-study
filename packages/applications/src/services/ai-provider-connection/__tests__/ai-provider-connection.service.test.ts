@@ -24,6 +24,21 @@ import { AiProviderConnectionService } from '../ai-provider-connection.service';
 
 const TENANT = 'tenant-abc';
 
+/**
+ * TASK-799 — the fields an ENABLED connection must carry, per provider.
+ *
+ * These suites use `azure`/`bedrock` as stand-ins for "a cloud provider" while
+ * testing the tenant lane, the factory, secret containment and sys-events —
+ * none of which is about completeness. Spreading the required fields in keeps
+ * each test on its own subject instead of tripping the requirement check first.
+ * The requirement check itself is owned by
+ * `ai-provider-connection.requirements.test.ts`.
+ */
+const REQUIRED: Record<string, Record<string, unknown>> = {
+  azure: { baseUrl: 'https://acme.openai.azure.com', apiVersion: '2024-10-21', deploymentName: 'gpt-4o-mini', apiKey: 'sk-azure' },
+  bedrock: { region: 'us-east-1', apiKey: 'sk-bedrock' },
+};
+
 function makeRow(
   overrides: {
     tenantId?: string;
@@ -107,14 +122,14 @@ describe('AiProviderConnectionService — tenant lane (tests 1–2)', () => {
 
   it.each(['azure', 'bedrock'])('allows a tenant-scoped row for cloud provider %s', async (provider) => {
     const { svc, repo } = makeService();
-    const res = await svc.upsertRow('llm', provider, { enabled: true }, TENANT);
+    const res = await svc.upsertRow('llm', provider, { ...REQUIRED[provider], enabled: true }, TENANT);
     expect(repo.create).toHaveBeenCalledTimes(1);
     expect(res.provider).toBe(provider);
   });
 
   it('builds the entity through the factory (never `new`), stamping a uuid id', async () => {
     const { svc, repo } = makeService();
-    await svc.upsertRow('llm', 'azure', { enabled: true }, TENANT);
+    await svc.upsertRow('llm', 'azure', { ...REQUIRED.azure, enabled: true }, TENANT);
     const created = repo.create.mock.calls[0][0];
     expect(created.constructor.name).toBe('AiProviderConnectionEntity');
     expect(created.id).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-/i);
@@ -157,7 +172,7 @@ describe('AiProviderConnectionService — secret containment (test 3)', () => {
 
   it('encrypts a supplied apiKey through the Vault util and stores only ciphertext', async () => {
     const { svc, repo, secrets } = makeService();
-    await svc.upsertRow('llm', 'azure', { enabled: true, apiKey: 'sk-live-secret' }, TENANT);
+    await svc.upsertRow('llm', 'azure', { ...REQUIRED.azure, enabled: true, apiKey: 'sk-live-secret' }, TENANT);
     expect(secrets!.encrypt).toHaveBeenCalledTimes(1);
     const created = repo.create.mock.calls[0][0];
     expect(created.encryptedApiKey).not.toBeNull();
@@ -168,7 +183,7 @@ describe('AiProviderConnectionService — secret containment (test 3)', () => {
 
   it('refuses to write a key when Vault is not configured (no plaintext-at-rest fallback)', async () => {
     const { svc } = makeService({ withVault: false });
-    await expect(svc.upsertRow('llm', 'azure', { enabled: true, apiKey: 'sk-live' }, TENANT)).rejects.toThrow(/Vault/i);
+    await expect(svc.upsertRow('llm', 'azure', { ...REQUIRED.azure, enabled: true, apiKey: 'sk-live' }, TENANT)).rejects.toThrow(/Vault/i);
   });
 
   it('refuses with 400 (not 503) when SecretsService IS injected but the configured provider has no Transit support (SECRETS_PROVIDER=env/aws/azure/in-memory)', async () => {
@@ -180,7 +195,7 @@ describe('AiProviderConnectionService — secret containment (test 3)', () => {
     // capability-guard `Error` and was misreported as a transient 503.
     const { svc, secrets } = makeService();
     (secrets!.supportsTransit as ReturnType<typeof vi.fn>).mockReturnValue(false);
-    await expect(svc.upsertRow('llm', 'azure', { enabled: true, apiKey: 'sk-live' }, TENANT)).rejects.toThrow(/Vault/i);
+    await expect(svc.upsertRow('llm', 'azure', { ...REQUIRED.azure, enabled: true, apiKey: 'sk-live' }, TENANT)).rejects.toThrow(/Vault/i);
     expect(secrets!.encrypt).not.toHaveBeenCalled();
   });
 
@@ -230,7 +245,12 @@ describe('AiProviderConnectionService — secret containment (test 3)', () => {
     deletedRow.delete(); // resourceStatus -> DELETED (mirrors repository.softDelete's terminal state)
     repo.findDeletedByTenantServiceProvider.mockResolvedValue(deletedRow);
 
-    const res = await svc.upsertRow('llm', 'azure', { baseUrl: 'https://revived.example', enabled: true, expectedVersion: 0 }, TENANT);
+    const res = await svc.upsertRow(
+      'llm',
+      'azure',
+      { ...REQUIRED.azure, baseUrl: 'https://revived.example', enabled: true, expectedVersion: 0 },
+      TENANT,
+    );
 
     // Restored via CAS against the tombstone's OWN version, never a plain insert.
     expect(repo.create).not.toHaveBeenCalled();
@@ -254,7 +274,11 @@ describe('AiProviderConnectionService — secret containment (test 3)', () => {
     deletedRow.delete();
     repo.findDeletedByTenantServiceProvider.mockResolvedValue(deletedRow);
 
-    const res = await svc.upsertRow('llm', 'azure', { enabled: true, expectedVersion: 0 }, TENANT);
+    // Revived DISABLED on purpose: the subject here is "a revive that omits
+    // `apiKey` clears the stale ciphertext", which requires NOT sending a key —
+    // and TASK-799 requires a key of an ENABLED azure row. The restore lane runs
+    // either way, so the assertion below is unaffected.
+    const res = await svc.upsertRow('llm', 'azure', { enabled: false, expectedVersion: 0 }, TENANT);
     // Must actually go through the restore lane (not merely coincide with a
     // plain create that also happens to omit the key).
     expect(repo.create).not.toHaveBeenCalled();
@@ -291,7 +315,7 @@ describe('AiProviderConnectionService — SYSTEM governance (test 4)', () => {
 
   it('broadcasts ResourceCreated on create', async () => {
     const { svc, emitter } = makeService();
-    await svc.upsertRow('llm', 'azure', { enabled: true }, TENANT);
+    await svc.upsertRow('llm', 'azure', { ...REQUIRED.azure, enabled: true }, TENANT);
     expect(emitter.emit).toHaveBeenCalledWith(SysEventType.ResourceCreated, expect.anything());
   });
 
@@ -299,7 +323,7 @@ describe('AiProviderConnectionService — SYSTEM governance (test 4)', () => {
     const { svc, repo, emitter } = makeService();
     const existing = makeRow({ enabled: false });
     repo.findByTenantServiceProvider.mockResolvedValue(existing);
-    await svc.upsertRow('llm', 'azure', { enabled: true, expectedVersion: existing.version }, TENANT);
+    await svc.upsertRow('llm', 'azure', { ...REQUIRED.azure, enabled: true, expectedVersion: existing.version }, TENANT);
     expect(emitter.emit).toHaveBeenCalledWith(SysEventType.ResourceUpdated, expect.anything());
   });
 
