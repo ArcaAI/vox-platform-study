@@ -48,9 +48,7 @@ class TestDatabaseEngineCreation:
 
         try:
             with (
-                patch(
-                    "stt.core.database.connection.create_async_engine", return_value=mock_engine
-                ),
+                patch("stt.core.database.connection.create_async_engine", return_value=mock_engine),
                 patch(
                     "stt.core.database.connection.async_sessionmaker",
                     return_value=mock_session_factory,
@@ -78,9 +76,7 @@ class TestDatabaseEngineCreation:
 
         try:
             with (
-                patch(
-                    "stt.core.database.connection.create_async_engine", return_value=mock_engine
-                ),
+                patch("stt.core.database.connection.create_async_engine", return_value=mock_engine),
                 patch(
                     "stt.core.database.connection.async_sessionmaker", return_value=mock_factory
                 ) as sessionmaker,
@@ -140,9 +136,7 @@ class TestDatabaseInitialization:
 
         try:
             with (
-                patch(
-                    "stt.core.database.connection.create_async_engine", return_value=mock_engine
-                ),
+                patch("stt.core.database.connection.create_async_engine", return_value=mock_engine),
                 patch("stt.core.database.connection.async_sessionmaker", return_value=MagicMock()),
             ):
                 conn_module._get_or_create_engine()

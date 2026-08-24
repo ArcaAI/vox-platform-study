@@ -51,9 +51,7 @@ class KeywordOverlapScorer:
         scores: list[float] = []
         for source, claim in pairs:
             source_words = set(re.findall(r"[a-z0-9]+", source.lower()))
-            claim_words = [
-                w for w in re.findall(r"[a-z0-9]+", claim.lower()) if len(w) > 2
-            ]
+            claim_words = [w for w in re.findall(r"[a-z0-9]+", claim.lower()) if len(w) > 2]
             if not claim_words:
                 scores.append(0.0)
                 continue
@@ -76,9 +74,7 @@ class MismatchedScorer:
         return [1.0] * (len(pairs) + 1)
 
 
-def _verifier(
-    scorer: object | None = None, **config_overrides: object
-) -> GroundednessNliVerifier:
+def _verifier(scorer: object | None = None, **config_overrides: object) -> GroundednessNliVerifier:
     config = GroundednessConfig(enabled=True, **config_overrides)  # type: ignore[arg-type]
     return GroundednessNliVerifier(config, scorer=scorer)  # type: ignore[arg-type]
 
@@ -133,9 +129,7 @@ async def test_flagged_spans_cover_exactly_the_ungrounded_segments() -> None:
 async def test_batched_scoring_respects_configured_batch_size() -> None:
     """N segments with batch_size B → ceil(N/B) scorer calls, each ≤ B pairs."""
     scorer = KeywordOverlapScorer()
-    sentences = " ".join(
-        f"Patient reports cough episode number {i}." for i in range(10)
-    )
+    sentences = " ".join(f"Patient reports cough episode number {i}." for i in range(10))
     result = await _verifier(scorer, batch_size=4).verify(sentences, TRANSCRIPT)
 
     assert len(result.segments) == 10
@@ -155,9 +149,7 @@ async def test_throughput_reported_for_batched_run() -> None:
 async def test_max_segments_cap_marks_excess_unverified() -> None:
     """Segments beyond the per-request cap are honestly ``unverified`` — never scored-by-omission."""
     sentences = " ".join(f"Patient reports cough episode number {i}." for i in range(6))
-    result = await _verifier(KeywordOverlapScorer(), max_segments=4).verify(
-        sentences, TRANSCRIPT
-    )
+    result = await _verifier(KeywordOverlapScorer(), max_segments=4).verify(sentences, TRANSCRIPT)
 
     assert len(result.segments) == 6
     assert [s.verdict for s in result.segments[:4]] != [UNVERIFIED] * 4
@@ -171,9 +163,7 @@ async def test_disabled_gate_degrades_to_unverified_never_grounded() -> None:
     """enabled=False (dev/CI bypass) → every segment ``unverified``, checked=False."""
     config = GroundednessConfig(enabled=False)
     verifier = GroundednessNliVerifier(config, scorer=KeywordOverlapScorer())
-    result = await verifier.verify(
-        f"{SUPPORTED_CLAIM} {HALLUCINATED_CLAIM}", TRANSCRIPT
-    )
+    result = await verifier.verify(f"{SUPPORTED_CLAIM} {HALLUCINATED_CLAIM}", TRANSCRIPT)
 
     assert result.checked is False
     assert result.reason == "groundedness_disabled"
@@ -184,9 +174,7 @@ async def test_disabled_gate_degrades_to_unverified_never_grounded() -> None:
 async def test_model_unavailable_degrades_to_unverified_never_grounded() -> None:
     """An un-loadable model (the un-staged MiniCheck) → ``unverified``, never grounded."""
     verifier = _verifier(scorer=None)  # no scorer ⇒ fail-closed degrade
-    result = await verifier.verify(
-        f"{SUPPORTED_CLAIM} {HALLUCINATED_CLAIM}", TRANSCRIPT
-    )
+    result = await verifier.verify(f"{SUPPORTED_CLAIM} {HALLUCINATED_CLAIM}", TRANSCRIPT)
 
     assert result.checked is False
     assert result.reason == "nli_model_unavailable"

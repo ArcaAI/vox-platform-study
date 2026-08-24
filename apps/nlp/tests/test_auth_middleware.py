@@ -51,7 +51,9 @@ def _set_token(monkeypatch: pytest.MonkeyPatch, value: str) -> None:
     `.env.test` carried still in play — so asking for `""` ("auth disabled")
     produced a configured token and a 401 anyway.
     """
-    monkeypatch.setattr(nlp_settings.service, "internal_access_token", SecretStr(value), raising=False)
+    monkeypatch.setattr(
+        nlp_settings.service, "internal_access_token", SecretStr(value), raising=False
+    )
 
 
 # ── HTTP auth disabled (dev mode) ──

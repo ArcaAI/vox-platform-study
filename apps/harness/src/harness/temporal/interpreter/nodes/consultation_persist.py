@@ -172,7 +172,10 @@ async def interpreter_consultation_finalize_assurance(
 
     if not result.recorded:
         await record_and_flush(
-            payload, status=STATUS_DEGRADED, started=started, error_code="finalize_assurance_refused"
+            payload,
+            status=STATUS_DEGRADED,
+            started=started,
+            error_code="finalize_assurance_refused",
         )
         return NodeActivityResult(
             status="DEGRADED", reason="assurance verdict was not recorded by apps/api"

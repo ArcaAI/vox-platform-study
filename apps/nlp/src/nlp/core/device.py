@@ -100,8 +100,7 @@ def resolve_inference_device(requested: str | None) -> str:
 
     if name not in _SUPPORTED:
         raise DevicePlacementError(
-            f"unsupported inference device {name!r}; expected one of "
-            f"{_AUTO!r} or {_SUPPORTED}"
+            f"unsupported inference device {name!r}; expected one of " f"{_AUTO!r} or {_SUPPORTED}"
         )
     if not _available(name):
         raise DevicePlacementError(

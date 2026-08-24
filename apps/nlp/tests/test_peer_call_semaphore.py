@@ -108,7 +108,9 @@ class TestLiveResize:
 class _FakeClient:
     """A minimal stand-in for `EffectiveConfigClient` — just `.get()`."""
 
-    def __init__(self, snapshot: EffectiveConfigSnapshot | None = None, raises: Exception | None = None) -> None:
+    def __init__(
+        self, snapshot: EffectiveConfigSnapshot | None = None, raises: Exception | None = None
+    ) -> None:
         self._snapshot = snapshot
         self._raises = raises
 
@@ -129,7 +131,9 @@ class TestRefreshFromControlPlane:
         assert sem.limit == 8
 
     async def test_applies_a_served_bound(self) -> None:
-        snapshot = EffectiveConfigSnapshot(raw={"concurrency": {"peerCallMaxConcurrent": 32}}, ok=True)
+        snapshot = EffectiveConfigSnapshot(
+            raw={"concurrency": {"peerCallMaxConcurrent": 32}}, ok=True
+        )
         sem = await refresh_peer_call_limit(_FakeClient(snapshot=snapshot))
         assert sem.limit == 32
 
@@ -148,7 +152,9 @@ class TestRefreshFromControlPlane:
         inference = get_inference_semaphore()
         assert inference.limit == 4
 
-        snapshot = EffectiveConfigSnapshot(raw={"concurrency": {"peerCallMaxConcurrent": 50}}, ok=True)
+        snapshot = EffectiveConfigSnapshot(
+            raw={"concurrency": {"peerCallMaxConcurrent": 50}}, ok=True
+        )
         await refresh_peer_call_limit(_FakeClient(snapshot=snapshot))
 
         assert inference.limit == 4, "peer-call refresh must never resize the inference bound"

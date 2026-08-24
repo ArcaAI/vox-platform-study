@@ -46,9 +46,7 @@ class _FakeResponse:
 
 
 class _FakeChatClient:
-    async def post(
-        self, url: str, json=None, headers=None, timeout=None
-    ) -> _FakeResponse:
+    async def post(self, url: str, json=None, headers=None, timeout=None) -> _FakeResponse:
         return _FakeResponse()
 
 
@@ -81,9 +79,7 @@ class TestGuardianProviderEmitsPerModelMetrics:
         before_count = _val("model_inference_latency_seconds_count", labels)
         before_gauge = _val("model_running_instances", labels)
 
-        result = await provider.validate_medical_context(
-            "patient presents with chest pain"
-        )
+        result = await provider.validate_medical_context("patient presents with chest pain")
 
         assert result["is_medical"] is True
         # one inference observed, gauge restored (no leak)

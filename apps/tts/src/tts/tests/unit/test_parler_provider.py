@@ -95,9 +95,7 @@ def test_model_source_defaults_to_gated_hub():
 
 def test_model_source_uses_mirror_offline_when_path_set():
     """Mirror path set (prod) → load from it, offline (never touch gated hub)."""
-    cfg = IndicParlerConfig().model_copy(
-        update={"model_path": "/models/indic-parler-tts/abc123"}
-    )
+    cfg = IndicParlerConfig().model_copy(update={"model_path": "/models/indic-parler-tts/abc123"})
     source, kwargs = _resolve_model_source(cfg)
     assert source == "/models/indic-parler-tts/abc123"
     assert kwargs == {"local_files_only": True}

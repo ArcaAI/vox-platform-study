@@ -52,7 +52,11 @@ def test_auto_degrades_to_cpu_rather_than_raising() -> None:
 def test_an_explicit_but_unavailable_device_fails_closed() -> None:
     """A latency SLO built on an accelerator that is not there is a false promise."""
     absent = "cuda" if not torch.cuda.is_available() else "mps"
-    if absent == "mps" and getattr(torch.backends, "mps", None) and torch.backends.mps.is_available():
+    if (
+        absent == "mps"
+        and getattr(torch.backends, "mps", None)
+        and torch.backends.mps.is_available()
+    ):
         pytest.skip("both accelerators present on this host")
     with pytest.raises(DevicePlacementError):
         resolve_inference_device(absent)

@@ -266,9 +266,7 @@ class SelectionUnavailableError(RuntimeError):
 ModelUnavailableError = SelectionUnavailableError
 
 
-async def _resolve_selection(
-    app_state: Any, tenant_id: str | None, task_key: str
-) -> Any:
+async def _resolve_selection(app_state: Any, tenant_id: str | None, task_key: str) -> Any:
     """Resolve one task key's model identity + taxonomy, tenant-first, fail-closed.
 
     There is NO env fallback and no `db_config_enabled` escape hatch (the latter
@@ -305,9 +303,7 @@ async def _resolve_selection(
         ) from exc
 
     if not cfg.model:
-        raise SelectionUnavailableError(
-            f"AiTaskDefault for {task_key!r} is missing. Run db:seed."
-        )
+        raise SelectionUnavailableError(f"AiTaskDefault for {task_key!r} is missing. Run db:seed.")
     return cfg
 
 
@@ -361,9 +357,7 @@ async def build_safety_analyzer(app_state: Any, tenant_id: str) -> SafetyAnalyze
     )
     from guardrail.services.safety_analyzer import SafetyAnalyzer, SafetyPolicy
 
-    safety_cfg = await _resolve_selection(
-        app_state, tenant_id, TASK_KEY_GUARDRAIL_SAFETY
-    )
+    safety_cfg = await _resolve_selection(app_state, tenant_id, TASK_KEY_GUARDRAIL_SAFETY)
     pii_cfg = await _resolve_selection(app_state, tenant_id, TASK_KEY_GUARDRAIL_PII)
 
     safety_taxonomy = _taxonomy(safety_cfg)
@@ -425,9 +419,7 @@ async def build_screener(app_state: Any, tenant_id: str) -> Any:
     from guardrail.services.screening import Screener
 
     analyzer = await build_safety_analyzer(app_state, tenant_id)
-    safety_cfg = await _resolve_selection(
-        app_state, tenant_id, TASK_KEY_GUARDRAIL_SAFETY
-    )
+    safety_cfg = await _resolve_selection(app_state, tenant_id, TASK_KEY_GUARDRAIL_SAFETY)
     policy = GuardrailPolicy.from_blob(
         getattr(safety_cfg, "policy", None),
         source_tenant_id=getattr(safety_cfg, "source_tenant_id", None),
@@ -514,9 +506,7 @@ async def acquire_groundedness_verifier(
     from guardrail.core.tenant_config import TASK_KEY_GUARDRAIL_GROUNDEDNESS
 
     try:
-        cfg = await _resolve_selection(
-            app_state, tenant_id, TASK_KEY_GUARDRAIL_GROUNDEDNESS
-        )
+        cfg = await _resolve_selection(app_state, tenant_id, TASK_KEY_GUARDRAIL_GROUNDEDNESS)
     except SelectionUnavailableError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
 

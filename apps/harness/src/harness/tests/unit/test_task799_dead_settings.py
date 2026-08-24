@@ -48,12 +48,16 @@ DELETED_FIELDS = [
 ]
 
 
-@pytest.mark.parametrize(("model", "field"), DELETED_FIELDS, ids=lambda v: getattr(v, "__name__", v))
+@pytest.mark.parametrize(
+    ("model", "field"), DELETED_FIELDS, ids=lambda v: getattr(v, "__name__", v)
+)
 def test_field_is_gone(model: type[BaseSettings], field: str) -> None:
     assert field not in model.model_fields
 
 
-@pytest.mark.parametrize(("model", "field"), DELETED_FIELDS, ids=lambda v: getattr(v, "__name__", v))
+@pytest.mark.parametrize(
+    ("model", "field"), DELETED_FIELDS, ids=lambda v: getattr(v, "__name__", v)
+)
 def test_field_has_no_reader_left_behind(model: type[BaseSettings], field: str) -> None:
     """The static check the plan asks for, applied to the fields it already caught.
 

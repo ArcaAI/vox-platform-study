@@ -146,9 +146,7 @@ class WorkflowInterpreter:
         # Skipped when a critical node already failed: there is nothing to sign off.
         if config.gates and workflow.patched(_GATE_PATCH):
             gate_result = await self._run_gate(config.gates[0], inp, blocked=run_failed)
-            self._stages.append(
-                StageResult(stage_index=len(self._stages), nodes=[gate_result])
-            )
+            self._stages.append(StageResult(stage_index=len(self._stages), nodes=[gate_result]))
             if gate_result.status == "FAILED":
                 run_failed = True
             elif gate_result.status in ("DEGRADED", "SKIPPED"):
@@ -287,7 +285,9 @@ class WorkflowInterpreter:
             node_id=node.node_id, node_type=node.type, status="SKIPPED", reason=result.reason
         )
 
-    async def _run_gate(self, gate: CompiledGate, inp: InterpreterInput, *, blocked: bool) -> NodeResult:
+    async def _run_gate(
+        self, gate: CompiledGate, inp: InterpreterInput, *, blocked: bool
+    ) -> NodeResult:
         """Execute the one blocking HITL gate as a CHILD workflow.
 
         A child rather than an in-line `wait_condition` is what keeps the interpreter's own
@@ -311,20 +311,37 @@ class WorkflowInterpreter:
         node_type = gate.gate_type
 
         if spec is None or not spec.implemented:
-            return NodeResult(node_id=gate.node_id, node_type=node_type, status="SKIPPED", reason="unsupported_node_type")
+            return NodeResult(
+                node_id=gate.node_id,
+                node_type=node_type,
+                status="SKIPPED",
+                reason="unsupported_node_type",
+            )
 
         if inp.sandbox:
-            return NodeResult(node_id=gate.node_id, node_type=node_type, status="SKIPPED", reason="sandbox")
+            return NodeResult(
+                node_id=gate.node_id, node_type=node_type, status="SKIPPED", reason="sandbox"
+            )
 
         if blocked:
-            return NodeResult(node_id=gate.node_id, node_type=node_type, status="SKIPPED", reason="upstream_failed")
+            return NodeResult(
+                node_id=gate.node_id,
+                node_type=node_type,
+                status="SKIPPED",
+                reason="upstream_failed",
+            )
 
         consultation_id = inp.payload.get("consultationId")
         if not isinstance(consultation_id, str) or not consultation_id:
             # `critical: true` on the gate node makes this a run-level FAILED, which is correct:
             # a consultation graph that reached its gate with no consultation to gate is not a
             # run that succeeded.
-            return NodeResult(node_id=gate.node_id, node_type=node_type, status="FAILED", reason="no_consultation_id")
+            return NodeResult(
+                node_id=gate.node_id,
+                node_type=node_type,
+                status="FAILED",
+                reason="no_consultation_id",
+            )
 
         gate_input = ConsultationGateInput(
             run_id=inp.run_id,
@@ -358,7 +375,12 @@ class WorkflowInterpreter:
         except Exception:  # noqa: BLE001 — ChildWorkflowError and cancellation both land here
             # A gate that could not run is NOT an approval. `critical: true` promotes this to a
             # run-level FAILED, which is the only safe reading.
-            return NodeResult(node_id=gate.node_id, node_type=node_type, status="FAILED", reason="gate_unavailable")
+            return NodeResult(
+                node_id=gate.node_id,
+                node_type=node_type,
+                status="FAILED",
+                reason="gate_unavailable",
+            )
 
         if result.approved:
             self._node_outputs[gate.node_id] = {
@@ -372,7 +394,9 @@ class WorkflowInterpreter:
         # ABANDONED — the SLA ladder ran out without a clinician decision. DEGRADED here would be
         # promoted to FAILED anyway (the gate is `critical: true`); naming it FAILED directly
         # keeps the reason honest rather than routing an unsigned gate through a "degraded" word.
-        return NodeResult(node_id=gate.node_id, node_type=node_type, status="FAILED", reason="gate_abandoned")
+        return NodeResult(
+            node_id=gate.node_id, node_type=node_type, status="FAILED", reason="gate_abandoned"
+        )
 
     def _gate_context_item_id(self) -> str | None:
         """The `contextItemId` a `consultation.persistDraft` node published upstream, if any —

@@ -33,7 +33,7 @@ def _make_task_manager_mock(**overrides) -> AsyncMock:
 
     NOTE: `read_chunks_blocking` overrides are mirrored onto
     `read_chunk_entries_blocking` (as 3-tuples) so existing call sites that
-    only know the 2-tuple shape keep working after """
+    only know the 2-tuple shape keep working after"""
     tm = AsyncMock(spec=TaskManager)
     tm.get_task = AsyncMock(
         return_value=TaskState(
@@ -55,10 +55,12 @@ def _make_task_manager_mock(**overrides) -> AsyncMock:
     # A test that overrides the 2-tuple reader must also
     # drive the 3-tuple one the SSE endpoint actually calls, or the
     # override is silently ignored and the AsyncMock(spec=) default wins.
-    if 'read_chunks_blocking' in overrides and 'read_chunk_entries_blocking' not in overrides:
-        _inner = overrides['read_chunks_blocking']
+    if "read_chunks_blocking" in overrides and "read_chunk_entries_blocking" not in overrides:
+        _inner = overrides["read_chunks_blocking"]
+
         async def _as_entries(*a, **kw):
             return [(mid, ch, {}) for mid, ch in await _inner(*a, **kw)]
+
         tm.read_chunk_entries_blocking = AsyncMock(side_effect=_as_entries)
     return tm
 
@@ -288,7 +290,9 @@ class TestSSEXreadStreaming:
         body = resp.text
         # TASK-717: the SSE `id:` is an opaque resume token wrapping the Redis
         # message id, not the raw id itself — decode it back to compare.
-        emitted_ids = [line.removeprefix("id: ") for line in body.splitlines() if line.startswith("id: ")]
+        emitted_ids = [
+            line.removeprefix("id: ") for line in body.splitlines() if line.startswith("id: ")
+        ]
         cursors = [decode_resume_token(token)["cursor"] for token in emitted_ids]
         assert cursors == ["100-0", "101-0"]
 
@@ -387,6 +391,8 @@ class TestSSEXreadStreaming:
         body = resp.text
         assert "resumed" in body
         # TASK-717: opaque resume token, not the raw Redis message id.
-        emitted_ids = [line.removeprefix("id: ") for line in body.splitlines() if line.startswith("id: ")]
+        emitted_ids = [
+            line.removeprefix("id: ") for line in body.splitlines() if line.startswith("id: ")
+        ]
         cursors = [decode_resume_token(token)["cursor"] for token in emitted_ids]
         assert cursors[0] == "51-0"

@@ -228,7 +228,9 @@ async def classify_topic(
     posture (there is no meaningful "classify into no topics" default).
     """
     if not request.instructions:
-        raise HTTPException(status_code=503, detail="Topic instructions not configured for this tenant")
+        raise HTTPException(
+            status_code=503, detail="Topic instructions not configured for this tenant"
+        )
     if external_text_client is None:
         raise HTTPException(status_code=503, detail="Topic classification is not available")
 
@@ -243,7 +245,9 @@ async def classify_topic(
             label = await external_text_client.generate_label(
                 prompt, tenant_id=str(request.tenant_id)
             )
-        return TopicClassificationResponse(predicted_topic=label, available_topics=request.instructions)
+        return TopicClassificationResponse(
+            predicted_topic=label, available_topics=request.instructions
+        )
     except ExternalTextUnavailableError as e:
         logger.error(f"Topic classification upstream (text) unavailable: {str(e)}")
         raise HTTPException(status_code=503, detail="Topic classification is not available") from e
@@ -271,7 +275,9 @@ async def classify_intent(
     posture.
     """
     if not request.instructions:
-        raise HTTPException(status_code=503, detail="Intent instructions not configured for this tenant")
+        raise HTTPException(
+            status_code=503, detail="Intent instructions not configured for this tenant"
+        )
     if external_text_client is None:
         raise HTTPException(status_code=503, detail="Intent classification is not available")
 
@@ -283,7 +289,9 @@ async def classify_intent(
             label = await external_text_client.generate_label(
                 prompt, tenant_id=str(request.tenant_id)
             )
-        return IntentClassificationResponse(predicted_intent=label, available_intents=request.instructions)
+        return IntentClassificationResponse(
+            predicted_intent=label, available_intents=request.instructions
+        )
     except ExternalTextUnavailableError as e:
         logger.error(f"Intent classification upstream (text) unavailable: {str(e)}")
         raise HTTPException(status_code=503, detail="Intent classification is not available") from e

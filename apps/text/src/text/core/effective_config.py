@@ -365,7 +365,13 @@ class EffectiveConfigClient:
     def _sources(self) -> dict[str, str]:
         raw = self._snapshot.raw
         sources: dict[str, str] = {}
-        for group in ("runtimeProfiles", "retention", "concurrency", "generation", "externalGuardrail"):
+        for group in (
+            "runtimeProfiles",
+            "retention",
+            "concurrency",
+            "generation",
+            "externalGuardrail",
+        ):
             value = raw.get(group)
             if isinstance(value, dict) and isinstance(value.get("source"), str):
                 sources[group] = value["source"]

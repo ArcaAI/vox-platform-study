@@ -98,7 +98,9 @@ class TestDescriptorParity:
         here would resolve to null forever — a knob that silently never arrives —
         while also advertising a credential's existence on a non-secret channel.
         """
-        suspicious = [k for k in descriptor_defaults if "apikey" in k.lower() or "credential" in k.lower()]
+        suspicious = [
+            k for k in descriptor_defaults if "apikey" in k.lower() or "credential" in k.lower()
+        ]
         assert suspicious == []
         assert not [p for p in CONTROL_PLANE_KEYS if p.endswith("api_key")]
 

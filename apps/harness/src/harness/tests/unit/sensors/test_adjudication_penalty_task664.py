@@ -174,8 +174,7 @@ CASES: list[AdjudicationCase] = [
         specialist_a="Community-acquired pneumonia, right lower lobe.",
         specialist_b="Acute bronchitis; no consolidation demonstrated.",
         parroted_note=(
-            "Assessment: Cough with green phlegm, temperature 38.4, crackles at the "
-            "right base."
+            "Assessment: Cough with green phlegm, temperature 38.4, crackles at the " "right base."
         ),
         parroted_entities=_ents("cough", "green phlegm", "temperature 38.4", "crackles"),
         adjudicated_note=(
@@ -238,7 +237,9 @@ def _context(case: AdjudicationCase, *, adjudicated: bool) -> SensorContext:
     )
 
 
-def _scores(case: AdjudicationCase, *, adjudicated: bool) -> tuple[float, float, list[str], list[str]]:
+def _scores(
+    case: AdjudicationCase, *, adjudicated: bool
+) -> tuple[float, float, list[str], list[str]]:
     ctx = _context(case, adjudicated=adjudicated)
     faith = EntityFaithfulnessSensor(threshold=FAITHFULNESS_THRESHOLD).run(ctx)
     cov = CoverageOmissionSensor(threshold=COVERAGE_THRESHOLD).run(ctx)
@@ -260,7 +261,9 @@ class TestAdjudicatedNotesArePenalised:
 
     def test_clinically_correct_adjudication_fails_entity_faithfulness(self) -> None:
         """Abstracted note entities read as FABRICATIONS to a lexical matcher."""
-        failing = [c.name for c in CASES if _scores(c, adjudicated=True)[0] < FAITHFULNESS_THRESHOLD]
+        failing = [
+            c.name for c in CASES if _scores(c, adjudicated=True)[0] < FAITHFULNESS_THRESHOLD
+        ]
         assert failing, (
             "No adjudicated case was penalised — either the cases stopped being "
             "lexically divergent, or the sensor stopped being lexical. Re-measure "
@@ -317,10 +320,14 @@ class TestPenaltyMagnitude:
         print("-" * 92)
         print(f"{'MEAN':<28}{pf_avg:>11.3f}{af_avg:>11.3f}{pc_avg:>10.3f}{ac_avg:>10.3f}")
         print()
-        print(f"  entity_faithfulness penalty : {pf_avg - af_avg:.3f} absolute "
-              f"({(pf_avg - af_avg) / pf_avg * 100:.1f}% relative)")
-        print(f"  coverage_omission   penalty : {pc_avg - ac_avg:.3f} absolute "
-              f"({(pc_avg - ac_avg) / pc_avg * 100:.1f}% relative)")
+        print(
+            f"  entity_faithfulness penalty : {pf_avg - af_avg:.3f} absolute "
+            f"({(pf_avg - af_avg) / pf_avg * 100:.1f}% relative)"
+        )
+        print(
+            f"  coverage_omission   penalty : {pc_avg - ac_avg:.3f} absolute "
+            f"({(pc_avg - ac_avg) / pc_avg * 100:.1f}% relative)"
+        )
         print(f"  adjudicated notes passing entity_faithfulness : {faith_pass}/{n}")
         print(f"  adjudicated notes passing coverage_omission   : {cov_pass}/{n}")
         print()

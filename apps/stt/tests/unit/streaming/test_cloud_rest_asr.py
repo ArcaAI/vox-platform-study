@@ -161,7 +161,9 @@ class TestOpenAIRecognize:
     @pytest.mark.asyncio
     async def test_detected_language_is_surfaced_when_present(self):
         # verbose_json responses include `language`; carry it through.
-        client = _mock_client(status_code=200, text="ok", payload={"text": "hola", "language": "es"})
+        client = _mock_client(
+            status_code=200, text="ok", payload={"text": "hola", "language": "es"}
+        )
         with patch("stt.streaming.openai_asr.httpx.AsyncClient", return_value=client):
             result = await openai_recognize_utterance(_config("openai"), SAMPLES, SR, "en-US")
         assert result["language"] == "es"

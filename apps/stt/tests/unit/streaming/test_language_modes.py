@@ -60,7 +60,11 @@ def test_resolve_code_switch_per_engine() -> None:
     )
     # Azure flag: pin primary + code_switching.
     azure = resolve_mode_for_engine("ml-en", AiModelFormat.AZURE_SPEECH)
-    assert (azure.language, azure.code_switching, azure.streaming_english_gloss) == ("ml", True, False)
+    assert (azure.language, azure.code_switching, azure.streaming_english_gloss) == (
+        "ml",
+        True,
+        False,
+    )
     # Whisper gloss: pin primary + English gloss track.
     whisper = resolve_mode_for_engine("ml-en", AiModelFormat.FASTER_WHISPER)
     assert (whisper.language, whisper.code_switching, whisper.streaming_english_gloss) == (
@@ -102,7 +106,11 @@ def test_resolve_single_and_auto() -> None:
         False,
     )
     auto = resolve_mode_for_engine("auto", AiModelFormat.NEMO)
-    assert (auto.language, auto.code_switching, auto.streaming_english_gloss) == (None, False, False)
+    assert (auto.language, auto.code_switching, auto.streaming_english_gloss) == (
+        None,
+        False,
+        False,
+    )
 
 
 def test_resolve_raises_on_unsupported() -> None:

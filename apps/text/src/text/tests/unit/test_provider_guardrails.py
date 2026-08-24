@@ -20,12 +20,6 @@ from text.tests.conftest import stub_client
 # ---------------------------------------------------------------------------
 
 
-
-
-
-
-
-
 # ===========================================================================
 # Task 1.11 — Bedrock Guardrails
 # ===========================================================================
@@ -179,7 +173,9 @@ class TestAzureContentFilterErrorHandling:
         with patch("text.providers.azure_openai.logger") as mock_logger:
             with pytest.raises(BadRequestError):
                 await provider.generate(
-                    GenerateRequest(prompt="bad prompt", provider="azure_openai", model="test-model")
+                    GenerateRequest(
+                        prompt="bad prompt", provider="azure_openai", model="test-model"
+                    )
                 )
 
             mock_logger.warning.assert_called_once()
@@ -212,6 +208,8 @@ class TestAzureContentFilterErrorHandling:
 
         with patch("text.providers.azure_openai.logger") as mock_logger:
             with pytest.raises(BadRequestError):
-                await provider.generate(GenerateRequest(prompt="hello", provider="azure_openai", model="test-model"))
+                await provider.generate(
+                    GenerateRequest(prompt="hello", provider="azure_openai", model="test-model")
+                )
 
             mock_logger.warning.assert_not_called()

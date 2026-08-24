@@ -68,7 +68,9 @@ async def interpreter_consultation_consent_gate(payload: NodeActivityInput) -> N
     )
     if not decision.allowed:
         error_code = "consent_unavailable" if decision.unavailable else "consent_denied"
-        await record_and_flush(payload, status=STATUS_DEGRADED, started=started, error_code=error_code)
+        await record_and_flush(
+            payload, status=STATUS_DEGRADED, started=started, error_code=error_code
+        )
         return NodeActivityResult(
             status="DEGRADED",
             reason=f"consent gate did not pass (purpose={_CONSENT_PURPOSE_AI_DOCUMENTATION}): {error_code}",
@@ -149,7 +151,7 @@ def _extract_text(bound_inputs: dict[str, Any]) -> str | None:
 
 
 _HITL_GATE_NOT_AN_ACTIVITY = (
-    "consultation.hitlGate is a `kind=\"child_workflow\"` node: the compiler lifts every "
+    'consultation.hitlGate is a `kind="child_workflow"` node: the compiler lifts every '
     "`gate`-classed node out of `stages` into `gates`, and `WorkflowInterpreter._run_gate` starts "
     "`ConsultationGateWorkflow` for it (see interpreter/gate_workflow.py). This activity is never "
     "the execution path — it exists because `NodeSpec.activity` requires a callable and because "

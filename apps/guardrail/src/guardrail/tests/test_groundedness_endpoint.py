@@ -42,15 +42,11 @@ class KeywordOverlapScorer:
         scores: list[float] = []
         for source, claim in pairs:
             source_words = set(re.findall(r"[a-z0-9]+", source.lower()))
-            claim_words = [
-                w for w in re.findall(r"[a-z0-9]+", claim.lower()) if len(w) > 2
-            ]
+            claim_words = [w for w in re.findall(r"[a-z0-9]+", claim.lower()) if len(w) > 2]
             if not claim_words:
                 scores.append(0.0)
                 continue
-            scores.append(
-                sum(1 for w in claim_words if w in source_words) / len(claim_words)
-            )
+            scores.append(sum(1 for w in claim_words if w in source_words) / len(claim_words))
         return scores
 
 
@@ -105,9 +101,7 @@ def _app(
 TEST_TENANT = "11111111-1111-1111-1111-111111111111"
 
 
-async def _post(
-    app: FastAPI, body: dict[str, Any], headers: dict[str, str] | None = None
-) -> Any:
+async def _post(app: FastAPI, body: dict[str, Any], headers: dict[str, str] | None = None) -> Any:
     transport = ASGITransport(app=app)
     merged = {"X-Tenant-Id": TEST_TENANT, **(headers or {})}
     async with AsyncClient(transport=transport, base_url="http://test") as client:

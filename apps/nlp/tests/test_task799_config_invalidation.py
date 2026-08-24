@@ -51,9 +51,7 @@ class _CountingTransport(httpx.AsyncBaseTransport):
 
     async def handle_async_request(self, request: httpx.Request) -> httpx.Response:
         self.calls += 1
-        return httpx.Response(
-            200, json={"service": "nlp", "generatedAt": "2026-08-23T00:00:00Z"}
-        )
+        return httpx.Response(200, json={"service": "nlp", "generatedAt": "2026-08-23T00:00:00Z"})
 
 
 def test_channel_literal_matches_the_gateway_publisher() -> None:
@@ -70,9 +68,7 @@ def test_channel_literal_matches_the_gateway_publisher() -> None:
 async def test_a_published_write_evicts_without_a_ttl_wait() -> None:
     transport = _CountingTransport()
     # A deliberately ENORMOUS TTL: nothing here may converge by expiry.
-    client = EffectiveConfigClient(
-        "http://gateway/api/v1", "t", ttl_s=86_400, transport=transport
-    )
+    client = EffectiveConfigClient("http://gateway/api/v1", "t", ttl_s=86_400, transport=transport)
 
     await client.get()
     await client.get()

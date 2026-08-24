@@ -340,8 +340,7 @@ async def _run_judge(
             timeout_s=budget.timeout_s,
         )
         raise DomainProviderTimeoutError(
-            f"Judge call timed out after {budget.timeout_s}s "
-            f"for provider '{provider_name}'.",
+            f"Judge call timed out after {budget.timeout_s}s " f"for provider '{provider_name}'.",
             provider=provider_name,
         ) from None
     except ProviderCredentialsError:

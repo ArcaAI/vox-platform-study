@@ -185,9 +185,7 @@ def test_the_route_drives_the_lane_s_batch_size(lane_client) -> None:
     assert runtime.batch_sizes[-1] == 16, "an unclassed request must stay bulk"
 
     assert (
-        test_client.post(
-            "/api/v1/guard/pii", json=_body(latency_class="interactive")
-        ).status_code
+        test_client.post("/api/v1/guard/pii", json=_body(latency_class="interactive")).status_code
         == 200
     )
     assert runtime.batch_sizes[-1] == 3

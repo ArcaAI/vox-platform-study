@@ -73,9 +73,7 @@ class _FakeRedis:
             if written_key != key:
                 continue
             wire = {
-                (k.encode() if isinstance(k, str) else k): (
-                    v.encode() if isinstance(v, str) else v
-                )
+                (k.encode() if isinstance(k, str) else k): (v.encode() if isinstance(v, str) else v)
                 for k, v in fields.items()
             }
             entries.append((f"{index}-0".encode(), wire))
@@ -149,7 +147,10 @@ class TestSseReaderRecoversProducerContext:
 
         ctx = extract_trace_context(carrier)
         assert ctx is not None
-        assert format(trace.get_current_span(ctx).get_span_context().trace_id, "032x") == GOLDEN_TRACE_ID
+        assert (
+            format(trace.get_current_span(ctx).get_span_context().trace_id, "032x")
+            == GOLDEN_TRACE_ID
+        )
 
     @pytest.mark.asyncio
     async def test_carrier_is_empty_when_the_producer_was_untraced(self) -> None:
@@ -228,7 +229,9 @@ class TestEndToEndTaskStreamHop:
             assert ctx is not None
             reader_token = context_api.attach(ctx)
             try:
-                observed.append(format(trace.get_current_span().get_span_context().trace_id, "032x"))
+                observed.append(
+                    format(trace.get_current_span().get_span_context().trace_id, "032x")
+                )
             finally:
                 context_api.detach(reader_token)
 
@@ -240,5 +243,8 @@ class TestSharedHelperMatchesTheGoldenWireFormat:
         assert inject_trace_carrier(_golden_context()) == {TRACEPARENT_HEADER: GOLDEN_TRACEPARENT}
 
     def test_carrier_from_redis_fields_ignores_payload(self) -> None:
-        fields = {b"data": b'{"type":"chunk"}', TRACEPARENT_HEADER.encode(): GOLDEN_TRACEPARENT.encode()}
+        fields = {
+            b"data": b'{"type":"chunk"}',
+            TRACEPARENT_HEADER.encode(): GOLDEN_TRACEPARENT.encode(),
+        }
         assert carrier_from_redis_fields(fields) == {TRACEPARENT_HEADER: GOLDEN_TRACEPARENT}

@@ -108,7 +108,9 @@ def _wf_input(**overrides) -> ConsultationLoopWorkflowInput:
     return ConsultationLoopWorkflowInput(**base)
 
 
-def _ctx(item_id: str, *, kind: str = "transcript", depth: int = 0, at: str = "1") -> ContextAddedSignal:
+def _ctx(
+    item_id: str, *, kind: str = "transcript", depth: int = 0, at: str = "1"
+) -> ContextAddedSignal:
     return ContextAddedSignal(
         context_item_id=item_id, kind_key=kind, depth=depth, occurred_at=at, text="chest pain"
     )
@@ -370,8 +372,12 @@ class TestSpecialistScopedReads:
         """TDD-3 — the parent hands each specialist ONLY its subscribed slice."""
         async with _ReasoningHarness() as h:
             handle = await h.start(_wf_input())
-            await handle.signal(ConsultationLoopWorkflow.context_added, _ctx("t-1", kind="transcript", at="1"))
-            await handle.signal(ConsultationLoopWorkflow.context_added, _ctx("w-1", kind="worknote", at="2"))
+            await handle.signal(
+                ConsultationLoopWorkflow.context_added, _ctx("t-1", kind="transcript", at="1")
+            )
+            await handle.signal(
+                ConsultationLoopWorkflow.context_added, _ctx("w-1", kind="worknote", at="2")
+            )
             await _await_state(handle, lambda s: s.specialists_run >= 2)
             await handle.signal(
                 ConsultationLoopWorkflow.consultation_ending, ConsultationEndingSignal()
@@ -404,13 +410,15 @@ class TestSpecialistFailureIsIsolated:
     @pytest.mark.asyncio
     async def test_a_failing_specialist_degrades_the_run_but_does_not_abort_it(self):
         """TDD-4 — own failure isolation is the reason specialists are children."""
-        stub = LoopStubConfig(
-            config=reasoning_loop_config(), failing_specialists={"agent-cardio"}
-        )
+        stub = LoopStubConfig(config=reasoning_loop_config(), failing_specialists={"agent-cardio"})
         async with _ReasoningHarness(stub) as h:
             handle = await h.start(_wf_input())
-            await handle.signal(ConsultationLoopWorkflow.context_added, _ctx("t-1", kind="transcript", at="1"))
-            await handle.signal(ConsultationLoopWorkflow.context_added, _ctx("w-1", kind="worknote", at="2"))
+            await handle.signal(
+                ConsultationLoopWorkflow.context_added, _ctx("t-1", kind="transcript", at="1")
+            )
+            await handle.signal(
+                ConsultationLoopWorkflow.context_added, _ctx("w-1", kind="worknote", at="2")
+            )
             await _await_state(handle, lambda s: s.events_processed == 2)
             await handle.signal(
                 ConsultationLoopWorkflow.consultation_ending, ConsultationEndingSignal()
@@ -425,13 +433,15 @@ class TestSpecialistFailureIsIsolated:
 
     @pytest.mark.asyncio
     async def test_the_healthy_specialists_still_contribute(self):
-        stub = LoopStubConfig(
-            config=reasoning_loop_config(), failing_specialists={"agent-cardio"}
-        )
+        stub = LoopStubConfig(config=reasoning_loop_config(), failing_specialists={"agent-cardio"})
         async with _ReasoningHarness(stub) as h:
             handle = await h.start(_wf_input())
-            await handle.signal(ConsultationLoopWorkflow.context_added, _ctx("w-1", kind="worknote", at="2"))
-            await handle.signal(ConsultationLoopWorkflow.context_added, _ctx("t-1", kind="transcript", at="1"))
+            await handle.signal(
+                ConsultationLoopWorkflow.context_added, _ctx("w-1", kind="worknote", at="2")
+            )
+            await handle.signal(
+                ConsultationLoopWorkflow.context_added, _ctx("t-1", kind="transcript", at="1")
+            )
             await _await_state(handle, lambda s: s.events_processed == 2)
             await handle.signal(
                 ConsultationLoopWorkflow.consultation_ending, ConsultationEndingSignal()
@@ -660,8 +670,12 @@ class TestSpecialistBudget:
         )
         async with _ReasoningHarness(LoopStubConfig(config=config)) as h:
             handle = await h.start(_wf_input())
-            await handle.signal(ConsultationLoopWorkflow.context_added, _ctx("t-1", kind="transcript", at="1"))
-            await handle.signal(ConsultationLoopWorkflow.context_added, _ctx("w-1", kind="worknote", at="2"))
+            await handle.signal(
+                ConsultationLoopWorkflow.context_added, _ctx("t-1", kind="transcript", at="1")
+            )
+            await handle.signal(
+                ConsultationLoopWorkflow.context_added, _ctx("w-1", kind="worknote", at="2")
+            )
             await _await_state(handle, lambda s: s.events_processed == 2)
             await handle.signal(
                 ConsultationLoopWorkflow.consultation_ending, ConsultationEndingSignal()
@@ -710,9 +724,7 @@ class TestPrimaryIsTheOnlyWriter:
                 task_queue=task_queue,
                 workflows=[ConsultationLoopWorkflow, SpecialistWorkflow, HarnessDocWorkflow],
                 activities=[
-                    *make_loop_stub_activities(
-                        LoopStubConfig(config=config), loop_recorder
-                    ),
+                    *make_loop_stub_activities(LoopStubConfig(config=config), loop_recorder),
                     *make_stub_activities(StubConfig(), doc_recorder),
                 ],
             ):
@@ -774,7 +786,9 @@ class TestDerivedContextCascade:
         """An action's output re-enters the bus as context."""
         config = reasoning_loop_config(
             subscriptions=[
-                LoopSubscription(kind_key="attachment", actions=[LOOP_ACTION_DOCUMENT_EXTRACT_TEXT]),
+                LoopSubscription(
+                    kind_key="attachment", actions=[LOOP_ACTION_DOCUMENT_EXTRACT_TEXT]
+                ),
                 LoopSubscription(kind_key="attachment_text", actions=["client.emit"]),
             ],
             budget=LoopBudget(max_depth=3, max_actions=50, max_specialist_runs=5),
@@ -804,7 +818,9 @@ class TestDerivedContextCascade:
         """The cascade is real, so the depth cap must actually bound it."""
         config = reasoning_loop_config(
             subscriptions=[
-                LoopSubscription(kind_key="attachment", actions=[LOOP_ACTION_DOCUMENT_EXTRACT_TEXT]),
+                LoopSubscription(
+                    kind_key="attachment", actions=[LOOP_ACTION_DOCUMENT_EXTRACT_TEXT]
+                ),
                 # The derived kind derives AGAIN — an unbounded cascade but for the cap.
                 LoopSubscription(
                     kind_key="attachment_text", actions=[LOOP_ACTION_NLP_EXTRACT_ENTITIES]

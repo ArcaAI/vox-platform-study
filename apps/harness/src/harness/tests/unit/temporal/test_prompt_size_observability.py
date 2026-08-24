@@ -82,7 +82,12 @@ class TestPromptSizeStats:
 
         await env.run(
             activities.generate,
-            GenerateInput(tenant_id="11111111-1111-1111-1111-111111111111", prompt="U" * 400, system_prompt="S" * 100, trajectory=_traj(7)),
+            GenerateInput(
+                tenant_id="11111111-1111-1111-1111-111111111111",
+                prompt="U" * 400,
+                system_prompt="S" * 100,
+                trajectory=_traj(7),
+            ),
         )
 
         step = _llm_step(cap)
@@ -104,7 +109,12 @@ class TestPromptSizeStats:
         block = "KNOWLEDGE CONTEXT BLOCK"
         await env.run(
             activities.generate,
-            GenerateInput(tenant_id="11111111-1111-1111-1111-111111111111", prompt="U" * 100, prompt_block=block, trajectory=_traj()),
+            GenerateInput(
+                tenant_id="11111111-1111-1111-1111-111111111111",
+                prompt="U" * 100,
+                prompt_block=block,
+                trajectory=_traj(),
+            ),
         )
 
         step = _llm_step(cap)
@@ -120,7 +130,14 @@ class TestPromptSizeStats:
         monkeypatch.setattr(activities, "_text_client", lambda s: _StatsText(stats=None))
         monkeypatch.setattr(activities, "_trajectory_api_client", lambda s: cap)
 
-        await env.run(activities.generate, GenerateInput(tenant_id="11111111-1111-1111-1111-111111111111", prompt="P" * 12, trajectory=_traj()))
+        await env.run(
+            activities.generate,
+            GenerateInput(
+                tenant_id="11111111-1111-1111-1111-111111111111",
+                prompt="P" * 12,
+                trajectory=_traj(),
+            ),
+        )
 
         step = _llm_step(cap)
         assert step.stats["prompt_chars"] == 12
@@ -139,7 +156,11 @@ class TestPromptSizeWarning:
         with caplog.at_level(logging.WARNING):
             result = await env.run(
                 activities.generate,
-                GenerateInput(tenant_id="11111111-1111-1111-1111-111111111111", prompt="X" * 120, trajectory=_traj()),
+                GenerateInput(
+                    tenant_id="11111111-1111-1111-1111-111111111111",
+                    prompt="X" * 120,
+                    trajectory=_traj(),
+                ),
             )
 
         assert any("harness.prompt_size_warn" in r.getMessage() for r in caplog.records)
@@ -157,7 +178,14 @@ class TestPromptSizeWarning:
         monkeypatch.setattr(activities, "_trajectory_api_client", lambda s: cap)
 
         with caplog.at_level(logging.WARNING):
-            await env.run(activities.generate, GenerateInput(tenant_id="11111111-1111-1111-1111-111111111111", prompt="X" * 120, trajectory=_traj()))
+            await env.run(
+                activities.generate,
+                GenerateInput(
+                    tenant_id="11111111-1111-1111-1111-111111111111",
+                    prompt="X" * 120,
+                    trajectory=_traj(),
+                ),
+            )
 
         assert not any("harness.prompt_size_warn" in r.getMessage() for r in caplog.records)
 
@@ -183,7 +211,12 @@ class TestPromptCacheStatsPassthrough:
         monkeypatch.setattr(activities, "_text_client", lambda s: _StatsText(stats=stats))
         monkeypatch.setattr(activities, "_trajectory_api_client", lambda s: cap)
 
-        await env.run(activities.generate, GenerateInput(tenant_id="11111111-1111-1111-1111-111111111111", prompt="P", trajectory=_traj()))
+        await env.run(
+            activities.generate,
+            GenerateInput(
+                tenant_id="11111111-1111-1111-1111-111111111111", prompt="P", trajectory=_traj()
+            ),
+        )
 
         step = _llm_step(cap)
         for key, value in stats.items():

@@ -25,7 +25,9 @@ def env() -> ActivityEnvironment:
     return ActivityEnvironment()
 
 
-def _payload(*, raise_error: bool = False, trajectory: TrajectoryContext | None) -> NodeActivityInput:
+def _payload(
+    *, raise_error: bool = False, trajectory: TrajectoryContext | None
+) -> NodeActivityInput:
     return NodeActivityInput(
         node_id="n1",
         node_type="noop",

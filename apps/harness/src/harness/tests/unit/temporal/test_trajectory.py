@@ -182,7 +182,14 @@ class TestActivityEmission:
         monkeypatch.setattr(activities, "_text_client", lambda s: _StatsText())
         monkeypatch.setattr(activities, "_trajectory_api_client", lambda s: cap)
 
-        await env.run(activities.generate, GenerateInput(tenant_id="11111111-1111-1111-1111-111111111111", prompt="P", trajectory=_traj_ctx(seq=32)))
+        await env.run(
+            activities.generate,
+            GenerateInput(
+                tenant_id="11111111-1111-1111-1111-111111111111",
+                prompt="P",
+                trajectory=_traj_ctx(seq=32),
+            ),
+        )
 
         assert _pairs(cap.steps) == [("LLM_CALL", "generate")]
         step = cap.steps[0]
@@ -214,7 +221,14 @@ class TestActivityEmission:
         monkeypatch.setattr(activities, "_text_client", lambda s: _NoStatsText())
         monkeypatch.setattr(activities, "_trajectory_api_client", lambda s: cap)
 
-        await env.run(activities.generate, GenerateInput(tenant_id="11111111-1111-1111-1111-111111111111", prompt="P", trajectory=_traj_ctx(seq=10)))
+        await env.run(
+            activities.generate,
+            GenerateInput(
+                tenant_id="11111111-1111-1111-1111-111111111111",
+                prompt="P",
+                trajectory=_traj_ctx(seq=10),
+            ),
+        )
 
         step = cap.steps[0]
         assert step.stats["provider"] == "anthropic"
@@ -241,7 +255,14 @@ class TestActivityEmission:
         monkeypatch.setattr(activities, "_text_client", lambda s: _StatsText())
         monkeypatch.setattr(activities, "_trajectory_api_client", lambda s: cap)
 
-        await env.run(activities.generate, GenerateInput(tenant_id="11111111-1111-1111-1111-111111111111", prompt="P", trajectory=_traj_ctx(seq=11)))
+        await env.run(
+            activities.generate,
+            GenerateInput(
+                tenant_id="11111111-1111-1111-1111-111111111111",
+                prompt="P",
+                trajectory=_traj_ctx(seq=11),
+            ),
+        )
 
         step = cap.steps[0]
         assert step.stats["provider"] == "lm-studio"
@@ -265,7 +286,14 @@ class TestActivityEmission:
         monkeypatch.setattr(activities, "_text_client", lambda s: _ReasoningText())
         monkeypatch.setattr(activities, "_trajectory_api_client", lambda s: cap)
 
-        await env.run(activities.generate, GenerateInput(tenant_id="11111111-1111-1111-1111-111111111111", prompt="P", trajectory=_traj_ctx(seq=64)))
+        await env.run(
+            activities.generate,
+            GenerateInput(
+                tenant_id="11111111-1111-1111-1111-111111111111",
+                prompt="P",
+                trajectory=_traj_ctx(seq=64),
+            ),
+        )
 
         assert _pairs(cap.steps) == [("LLM_CALL", "generate"), ("THINKING", "reasoning")]
         llm, thinking = cap.steps
@@ -288,7 +316,12 @@ class TestActivityEmission:
         before = REGISTRY.get_sample_value("harness_regen_total") or 0.0
         # is_regen=True ⇒ this generation is a bounded-regen iteration.
         await env.run(
-            activities.generate, GenerateInput(tenant_id="11111111-1111-1111-1111-111111111111", prompt="P", trajectory=_traj_ctx(is_regen=True))
+            activities.generate,
+            GenerateInput(
+                tenant_id="11111111-1111-1111-1111-111111111111",
+                prompt="P",
+                trajectory=_traj_ctx(is_regen=True),
+            ),
         )
         after = REGISTRY.get_sample_value("harness_regen_total") or 0.0
         assert after - before == pytest.approx(1.0)
@@ -370,7 +403,9 @@ class TestActivityEmission:
 
 
 class _FakeNlp:
-    async def classify_tokens(self, text: str, *, tenant_id: str = "", language: str = "en") -> list[NEREntity]:
+    async def classify_tokens(
+        self, text: str, *, tenant_id: str = "", language: str = "en"
+    ) -> list[NEREntity]:
         return [NEREntity(text="hypertension", type="DISEASE", start=0, end=12)]
 
 

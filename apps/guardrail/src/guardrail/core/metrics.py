@@ -263,9 +263,7 @@ def record_admission_rejection(gate: str) -> None:
 
 def observe_peer_latency(peer: str, operation: str, seconds: float) -> None:
     try:
-        GUARDRAIL_PEER_LATENCY.labels(peer=peer, operation=operation).observe(
-            max(0.0, seconds)
-        )
+        GUARDRAIL_PEER_LATENCY.labels(peer=peer, operation=operation).observe(max(0.0, seconds))
     except Exception:  # noqa: BLE001
         return
 

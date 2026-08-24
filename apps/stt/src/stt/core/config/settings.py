@@ -954,7 +954,6 @@ class Settings(BaseSettings):
         description="Enable Prometheus metrics on /metrics",
     )
 
-
     # -------------------------------------------------------------------------
     # Punctuation restoration (Cadence)
     # -------------------------------------------------------------------------

@@ -103,17 +103,13 @@ class Gliner2GuardService:
 
         from nlp.core.device import apply_device_placement
 
-        logger.info(
-            f"nlp.gliner2_guard.loading model_id={self.model_id} device={self._device}"
-        )
+        logger.info(f"nlp.gliner2_guard.loading model_id={self.model_id} device={self._device}")
         # `map_location` would place the weights but NOT relocate the submodules
         # that cannot execute on the accelerator, so the move goes through
         # `apply_device_placement`, which does both as one step.
         self.runtime = GLiNER2.from_pretrained(self._weights_source)
         apply_device_placement(self.runtime, self._device, self._cpu_only_modules)
-        logger.info(
-            f"nlp.gliner2_guard.ready model_id={self.model_id} device={self._device}"
-        )
+        logger.info(f"nlp.gliner2_guard.ready model_id={self.model_id} device={self._device}")
 
     # ── sync cores (thread-pool bound) ───────────────────────────────────
 

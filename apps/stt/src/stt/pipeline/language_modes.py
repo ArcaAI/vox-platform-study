@@ -66,8 +66,29 @@ _WHISPER_FAMILY: frozenset[AiModelFormat] = frozenset(
 # `_SARVAM_LANGUAGE_ALIASES` in `streaming/sarvam_asr.py` (its keys + 'en').
 _SARVAM_LANGUAGES: frozenset[str] = frozenset(
     {
-        "as", "bn", "brx", "doi", "en", "gu", "hi", "kn", "kok", "ks", "mai",
-        "ml", "mni", "mr", "ne", "od", "pa", "sa", "sat", "sd", "ta", "te", "ur",
+        "as",
+        "bn",
+        "brx",
+        "doi",
+        "en",
+        "gu",
+        "hi",
+        "kn",
+        "kok",
+        "ks",
+        "mai",
+        "ml",
+        "mni",
+        "mr",
+        "ne",
+        "od",
+        "pa",
+        "sa",
+        "sat",
+        "sd",
+        "ta",
+        "te",
+        "ur",
     }
 )
 
@@ -200,9 +221,7 @@ def _is_prompt_capable(engine: AiModelFormat) -> bool:
     resolution emits no prompt (the capability matrix itself is unaffected: the
     engine still SERVES the code-switch modes).
     """
-    return (
-        WHISPER_CPP_PRIMING_PROMPT_ENABLED and _CODE_SWITCH_CAPABILITY.get(engine) == "prompt"
-    )
+    return WHISPER_CPP_PRIMING_PROMPT_ENABLED and _CODE_SWITCH_CAPABILITY.get(engine) == "prompt"
 
 
 @dataclass(frozen=True)

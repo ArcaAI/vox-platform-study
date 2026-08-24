@@ -45,9 +45,9 @@ _CLOSE_AUTH = 4401
 
 class _SessionUsage:
     """Accumulates one session's accepted characters + synthesized audio bytes
-. Shared mutable state between the main audio loop and the
-    ``_pump_input`` reader task, since "characters accepted" is everything the
-    client pushed regardless of whether it was ever successfully synthesized.
+    . Shared mutable state between the main audio loop and the
+        ``_pump_input`` reader task, since "characters accepted" is everything the
+        client pushed regardless of whether it was ever successfully synthesized.
     """
 
     def __init__(self) -> None:
@@ -222,7 +222,9 @@ async def audio_stream(ws: WebSocket) -> None:
         with contextlib.suppress(asyncio.CancelledError, Exception):
             await reader
         await stream.aclose()  # free upstream (Azure conn / GPU task)
-        audio_seconds = compute_audio_seconds(AudioFormat.PCM, usage.audio_bytes, settings.sample_rate)
+        audio_seconds = compute_audio_seconds(
+            AudioFormat.PCM, usage.audio_bytes, settings.sample_rate
+        )
         record_usage_metrics(
             provider=usage.provider,
             locale=locale,

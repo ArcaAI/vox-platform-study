@@ -896,7 +896,7 @@ class BatchTranscriptionService:
         pipeline: PipelineConfig,
         provider_overrides: dict[str, Any] | None = None,
     ) -> dict[str, LoadedModel | None]:
-        """        Load all models required by pipeline.
+        """Load all models required by pipeline.
 
         Handles both slug references (from database) and inline model definitions.
 

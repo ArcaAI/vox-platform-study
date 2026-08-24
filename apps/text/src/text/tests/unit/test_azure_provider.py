@@ -73,7 +73,12 @@ class TestAzureGenerate:
         provider._client.chat.completions.create = AsyncMock(return_value=mock_completion)
 
         await provider.generate(
-            GenerateRequest(prompt="explain AI", system_prompt="You are helpful", provider="azure_openai", model="test-model")
+            GenerateRequest(
+                prompt="explain AI",
+                system_prompt="You are helpful",
+                provider="azure_openai",
+                model="test-model",
+            )
         )
 
         call_kwargs = provider._client.chat.completions.create.call_args.kwargs
@@ -91,7 +96,9 @@ class TestAzureGenerate:
         provider._client.chat.completions.create = AsyncMock(side_effect=Exception("API Error"))
 
         with pytest.raises(Exception, match="API Error"):
-            await provider.generate(GenerateRequest(prompt="hi", provider="azure_openai", model="test-model"))
+            await provider.generate(
+                GenerateRequest(prompt="hi", provider="azure_openai", model="test-model")
+            )
 
 
 class TestAzureGenerateStream:
@@ -179,7 +186,12 @@ class TestAzureStructuredOutput:
         provider._client = stub_client(provider, AsyncMock())
         provider._client.chat.completions.create = AsyncMock(return_value=mock_completion)
 
-        req = GenerateRequest(prompt="Return JSON", provider="azure_openai", response_format=ResponseFormat(type="json"), model="test-model")
+        req = GenerateRequest(
+            prompt="Return JSON",
+            provider="azure_openai",
+            response_format=ResponseFormat(type="json"),
+            model="test-model",
+        )
         await provider.generate(req)
 
         call_kwargs = provider._client.chat.completions.create.call_args.kwargs
@@ -201,7 +213,12 @@ class TestAzureStructuredOutput:
         provider._client.chat.completions.create = AsyncMock(return_value=mock_completion)
 
         schema = {"title": "MySchema", "type": "object", "properties": {"name": {"type": "string"}}}
-        req = GenerateRequest(prompt="Return JSON", provider="azure_openai", response_format=ResponseFormat(type="json_schema", json_schema=schema, strict=True), model="test-model")
+        req = GenerateRequest(
+            prompt="Return JSON",
+            provider="azure_openai",
+            response_format=ResponseFormat(type="json_schema", json_schema=schema, strict=True),
+            model="test-model",
+        )
         await provider.generate(req)
 
         call_kwargs = provider._client.chat.completions.create.call_args.kwargs
@@ -225,7 +242,13 @@ class TestAzureStructuredOutput:
         provider._client = stub_client(provider, AsyncMock())
         provider._client.chat.completions.create = AsyncMock(return_value=_mock_stream())
 
-        req = GenerateRequest(prompt="Return JSON", provider="azure_openai", stream=True, response_format=ResponseFormat(type="json"), model="test-model")
+        req = GenerateRequest(
+            prompt="Return JSON",
+            provider="azure_openai",
+            stream=True,
+            response_format=ResponseFormat(type="json"),
+            model="test-model",
+        )
         async for _ in provider.generate_stream(req):
             pass
 
@@ -249,7 +272,13 @@ class TestAzureStructuredOutput:
         provider._client.chat.completions.create = AsyncMock(return_value=_mock_stream())
 
         schema = {"title": "MySchema", "type": "object", "properties": {"name": {"type": "string"}}}
-        req = GenerateRequest(prompt="Return JSON", provider="azure_openai", stream=True, response_format=ResponseFormat(type="json_schema", json_schema=schema, strict=True), model="test-model")
+        req = GenerateRequest(
+            prompt="Return JSON",
+            provider="azure_openai",
+            stream=True,
+            response_format=ResponseFormat(type="json_schema", json_schema=schema, strict=True),
+            model="test-model",
+        )
         async for _ in provider.generate_stream(req):
             pass
 

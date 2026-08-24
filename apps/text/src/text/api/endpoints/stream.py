@@ -47,7 +47,9 @@ async def stream_task(
     if state is None:
         raise HTTPException(status_code=404, detail=f"Task '{task_id}' not found")
 
-    raw_last_event_id = last_event_id or request.headers.get("last-event-id") or RESUME_FROM_BEGINNING
+    raw_last_event_id = (
+        last_event_id or request.headers.get("last-event-id") or RESUME_FROM_BEGINNING
+    )
     cursor_start = _cursor_from_last_event_id(raw_last_event_id)
 
     async def event_generator() -> AsyncIterator[dict[str, str]]:

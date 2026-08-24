@@ -53,9 +53,7 @@ def test_settings_name_no_model_and_no_label_taxonomy():
         "jailbreak_detection",
         "prompt_safety",
     ):
-        assert (
-            literal not in source
-        ), f"{literal!r} is configuration, not a code literal"
+        assert literal not in source, f"{literal!r} is configuration, not a code literal"
 
 
 def test_no_model_id_or_taxonomy_literal_anywhere_in_guardrail_source():
@@ -194,9 +192,7 @@ async def test_a_moderation_verdict_fails_closed_to_unsafe():
             retry_backoff_s=0.0,
         )
         with pytest.raises(GuardrailUndeterminedError):
-            await client.classify(
-                {"prompt_safety": {"labels": ["safe", "unsafe"]}}, "hello"
-            )
+            await client.classify({"prompt_safety": {"labels": ["safe", "unsafe"]}}, "hello")
 
 
 # ── taxonomy is CONFIG, resolved tenant → SYSTEM ─────────────────────────

@@ -91,9 +91,7 @@ class EntityGroundingSensor:
         self._entailer = entailer
         self._direction = direction
         self.threshold = threshold
-        self.name = (
-            NAME_FAITHFULNESS if direction is Direction.FAITHFULNESS else NAME_COVERAGE
-        )
+        self.name = NAME_FAITHFULNESS if direction is Direction.FAITHFULNESS else NAME_COVERAGE
 
     def _hypotheses_and_premise(self, ctx: SensorContext) -> tuple[list[str], str, set[str]]:
         """The entities to check, the premise to check them against, and the lexical haystack.
@@ -114,9 +112,7 @@ class EntityGroundingSensor:
             haystack = normalize_text(ctx.note_blob())
 
         lexically_grounded = {
-            e.text
-            for e in checked
-            if e.normalized in support_texts or e.normalized in haystack
+            e.text for e in checked if e.normalized in support_texts or e.normalized in haystack
         }
         return [e.text for e in checked], premise, lexically_grounded
 

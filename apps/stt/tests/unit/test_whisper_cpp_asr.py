@@ -152,9 +152,7 @@ def test_prompt_enabled_prepends_consultation_context(
 ) -> None:
     """With the setting ON, the language-derived consultation context leads and a
     carry-forward prompt is appended after it."""
-    monkeypatch.setattr(
-        whisper_cpp_asr, "get_settings", lambda: _settings(prompt_enabled=True)
-    )
+    monkeypatch.setattr(whisper_cpp_asr, "get_settings", lambda: _settings(prompt_enabled=True))
     model = _CapturingModel()
     adapter = WhisperCppAsrAdapter(_loaded_model(model), _cfg("ml"))
 
@@ -162,10 +160,7 @@ def test_prompt_enabled_prepends_consultation_context(
     assert model.calls[0]["initial_prompt"] == _CONSULTATION_PROMPT_ML
 
     adapter(_audio(), 16000, prompt="previous transcript text")
-    assert (
-        model.calls[1]["initial_prompt"]
-        == f"{_CONSULTATION_PROMPT_ML} previous transcript text"
-    )
+    assert model.calls[1]["initial_prompt"] == f"{_CONSULTATION_PROMPT_ML} previous transcript text"
 
 
 # --- Decode mode: clean (default) vs word-timestamp -------------------------
@@ -210,12 +205,8 @@ def test_word_timestamp_mode_splits_and_space_joins() -> None:
     """When word timestamps ARE requested: word-split decode is used, per-word
     timings are emitted, and the transcript is SPACE-joined (correct for the
     space-trimmed word segments)."""
-    model = _CapturingModel_returning(
-        [_seg("Hello", 0, 40, 0.9), _seg("there", 40, 80, 0.8)]
-    )
-    adapter = WhisperCppAsrAdapter(
-        _loaded_model(model), _cfg("en"), want_word_timestamps=True
-    )
+    model = _CapturingModel_returning([_seg("Hello", 0, 40, 0.9), _seg("there", 40, 80, 0.8)])
+    adapter = WhisperCppAsrAdapter(_loaded_model(model), _cfg("en"), want_word_timestamps=True)
 
     result = adapter(_audio(), 16000)
 
@@ -394,8 +385,7 @@ def test_serializes_concurrent_decode_on_shared_context() -> None:
         adapter(_audio(), 16000)
 
     threads = [
-        threading.Thread(target=call, args=(adapter_a if i % 2 else adapter_b,))
-        for i in range(8)
+        threading.Thread(target=call, args=(adapter_a if i % 2 else adapter_b,)) for i in range(8)
     ]
     for t in threads:
         t.start()
@@ -409,9 +399,7 @@ def test_recovers_from_poisoned_backend(monkeypatch: pytest.MonkeyPatch) -> None
     """When whisper.cpp logs a poison marker and returns no segments, the
     adapter recreates the context in place and retries once."""
 
-    healthy = SimpleNamespace(
-        transcribe=lambda audio, **kw: [_seg("hello", 0, 50, 0.9)]
-    )
+    healthy = SimpleNamespace(transcribe=lambda audio, **kw: [_seg("hello", 0, 50, 0.9)])
 
     rebuilt = SimpleNamespace(count=0)
 
@@ -424,9 +412,7 @@ def test_recovers_from_poisoned_backend(monkeypatch: pytest.MonkeyPatch) -> None
     class _PoisonModel:
         def transcribe(self, audio: np.ndarray, **kwargs: object) -> list:
             # Mimic whisper.cpp's native log on a poisoned Metal backend.
-            whisper_cpp_asr._dispatch_log(
-                2, "whisper_full_with_state: failed to encode\n"
-            )
+            whisper_cpp_asr._dispatch_log(2, "whisper_full_with_state: failed to encode\n")
             return []
 
     loaded = _loaded_model(_PoisonModel())

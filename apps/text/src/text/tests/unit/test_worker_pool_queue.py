@@ -125,7 +125,9 @@ class TestClaimAndAck:
     async def test_claim_tolerates_group_already_existing(self, mock_redis):
         from text.services.worker_pool_queue import WorkerPoolQueue
 
-        mock_redis.xgroup_create.side_effect = Exception("BUSYGROUP Consumer Group name already exists")
+        mock_redis.xgroup_create.side_effect = Exception(
+            "BUSYGROUP Consumer Group name already exists"
+        )
         queue = WorkerPoolQueue(redis=mock_redis)
 
         claimed = await queue.claim(WorkerTaskType.EMBEDDING, consumer="worker-1", count=1)

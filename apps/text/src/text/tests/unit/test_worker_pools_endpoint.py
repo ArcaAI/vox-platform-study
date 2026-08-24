@@ -16,9 +16,11 @@ from text.core.config import Settings
 @pytest.fixture
 def mock_worker_pool_queue():
     queue = AsyncMock()
-    queue.depth = AsyncMock(side_effect=lambda task_type: {"embedding": 3}.get(
-        task_type.value if hasattr(task_type, "value") else task_type, 0
-    ))
+    queue.depth = AsyncMock(
+        side_effect=lambda task_type: {"embedding": 3}.get(
+            task_type.value if hasattr(task_type, "value") else task_type, 0
+        )
+    )
     return queue
 
 

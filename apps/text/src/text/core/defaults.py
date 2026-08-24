@@ -70,6 +70,4 @@ def resolve_request_defaults(request: GenerateRequest) -> dict[str, float | int]
         "max_tokens": request.max_tokens,
         "top_p": request.top_p,
     }
-    return {
-        name: defaults[name] if value is None else value for name, value in values.items()
-    }
+    return {name: defaults[name] if value is None else value for name, value in values.items()}

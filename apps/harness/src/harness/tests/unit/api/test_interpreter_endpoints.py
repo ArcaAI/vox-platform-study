@@ -85,9 +85,7 @@ class TestStartWorkflowRun:
     @pytest.mark.asyncio
     async def test_starts_with_deterministic_workflow_id_and_task_queue(self, harness):
         http, client, _handle, settings = harness
-        resp = await http.post(
-            f"{_BASE}/workflow-runs:start", headers=_HEADERS, json=_start_body()
-        )
+        resp = await http.post(f"{_BASE}/workflow-runs:start", headers=_HEADERS, json=_start_body())
         assert resp.status_code == 200
         body = resp.json()
         assert body["runId"] == "run-1"
@@ -129,9 +127,7 @@ class TestStartWorkflowRun:
         http, client, _handle, _settings = harness
         client.start_workflow = AsyncMock(side_effect=WorkflowAlreadyStartedError("x", "y"))
 
-        resp = await http.post(
-            f"{_BASE}/workflow-runs:start", headers=_HEADERS, json=_start_body()
-        )
+        resp = await http.post(f"{_BASE}/workflow-runs:start", headers=_HEADERS, json=_start_body())
         assert resp.status_code == 200
         body = resp.json()
         assert body["status"] == "already_running"
@@ -178,9 +174,7 @@ class TestGetWorkflowRun:
     @pytest.mark.asyncio
     async def test_not_found_returns_404(self, harness):
         http, _client, handle, _settings = harness
-        handle.describe = AsyncMock(
-            side_effect=RPCError("not found", RPCStatusCode.NOT_FOUND, b"")
-        )
+        handle.describe = AsyncMock(side_effect=RPCError("not found", RPCStatusCode.NOT_FOUND, b""))
         resp = await http.get(f"{_BASE}/workflow-runs/does-not-exist", headers=_HEADERS)
         assert resp.status_code == 404
 

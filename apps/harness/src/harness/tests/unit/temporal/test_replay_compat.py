@@ -411,9 +411,7 @@ class TestConsultationLoopReplayCompatibility:
             workflows=[ConsultationLoopWorkflow],
             data_converter=pydantic_data_converter,
         )
-        await replayer.replay_workflow(
-            _history("consultation_loop_task664_reasoning_history")
-        )
+        await replayer.replay_workflow(_history("consultation_loop_task664_reasoning_history"))
 
     @pytest.mark.asyncio
     async def test_pre_idle_bound_loop_histories_replay_after_task685(self):
@@ -437,9 +435,7 @@ class TestConsultationLoopReplayCompatibility:
             data_converter=pydantic_data_converter,
         )
         await replayer.replay_workflow(_history("consultation_loop_task662_history"))
-        await replayer.replay_workflow(
-            _history("consultation_loop_task664_reasoning_history")
-        )
+        await replayer.replay_workflow(_history("consultation_loop_task664_reasoning_history"))
 
     @pytest.mark.asyncio
     async def test_idle_timeout_history_replays_on_current_definition(self):
@@ -462,9 +458,7 @@ class TestConsultationLoopReplayCompatibility:
             workflows=[ConsultationLoopWorkflow],
             data_converter=pydantic_data_converter,
         )
-        await replayer.replay_workflow(
-            _history("consultation_loop_task685_idle_timeout_history")
-        )
+        await replayer.replay_workflow(_history("consultation_loop_task685_idle_timeout_history"))
 
 
 class TestWorkflowInterpreterReplayCompatibility:

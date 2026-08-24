@@ -63,13 +63,13 @@ def _touch(path: str) -> None:
         fh.write(b"GGUF")
 
 
-
 def _fake_pywhispercpp(model):
     package = types.ModuleType("pywhispercpp")
     model_module = types.ModuleType("pywhispercpp.model")
     model_module.Model = model
     package.model = model_module
     return {"pywhispercpp": package, "pywhispercpp.model": model_module}
+
 
 # ── _select_gguf_file ────────────────────────────────────────────────────────
 
@@ -168,7 +168,6 @@ async def test_load_raises_when_ctx_is_null(_patched_env):
             await loader.load(_config("q8_0"))
 
 
-
 async def test_load_succeeds_when_ctx_present(_patched_env):
     """A real whisper_context handle loads into a LoadedModel."""
     live_handle = MagicMock(_ctx=object())
@@ -177,7 +176,6 @@ async def test_load_succeeds_when_ctx_present(_patched_env):
     with patch.dict(sys.modules, _fake_pywhispercpp(model)):
         loader = WhisperCppLoader()
         loaded = await loader.load(_config("q8_0"))
-
 
     assert loaded.model is live_handle
     assert loaded.format is AiModelFormat.WHISPER_CPP

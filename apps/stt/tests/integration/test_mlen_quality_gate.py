@@ -99,11 +99,17 @@ def scores() -> dict[str, float]:
     from stt.streaming.whisper_cpp_asr import WhisperCppAsrAdapter
 
     assert _GGUF is not None and _EVAL_DIR is not None
-    model = Model(model=_GGUF, context_params={"use_gpu": True},
-                  print_progress=False, print_realtime=False)
-    loaded = LoadedModel(model_id="mlen", model_slug="arcaai-whisper-large-ml-en-gguf",
-                         model=model, format=AiModelFormat.WHISPER_CPP, device="auto",
-                         extra={"model_path": _GGUF, "num_threads": 4})
+    model = Model(
+        model=_GGUF, context_params={"use_gpu": True}, print_progress=False, print_realtime=False
+    )
+    loaded = LoadedModel(
+        model_id="mlen",
+        model_slug="arcaai-whisper-large-ml-en-gguf",
+        model=model,
+        format=AiModelFormat.WHISPER_CPP,
+        device="auto",
+        extra={"model_path": _GGUF, "num_threads": 4},
+    )
     adapter = WhisperCppAsrAdapter(
         loaded, type("C", (), {"language": "ml-en"})(), want_word_timestamps=False
     )
@@ -123,9 +129,9 @@ def _baseline() -> dict:
 def test_mean_cer_within_ceiling(scores: dict[str, float]) -> None:
     base = _baseline()
     mean = sum(scores.values()) / len(scores)
-    assert mean <= base["mean_cer_ceiling"], (
-        f"mean CER {mean:.3f} exceeds ceiling {base['mean_cer_ceiling']}"
-    )
+    assert (
+        mean <= base["mean_cer_ceiling"]
+    ), f"mean CER {mean:.3f} exceeds ceiling {base['mean_cer_ceiling']}"
 
 
 def test_no_clip_regresses_past_baseline(scores: dict[str, float]) -> None:
@@ -136,7 +142,6 @@ def test_no_clip_regresses_past_baseline(scores: dict[str, float]) -> None:
         for cid, cer in scores.items()
         if cid in base["clips"] and cer > base["clips"][cid] + tol
     }
-    assert not regressed, (
-        "clips regressed past baseline+tolerance "
-        + ", ".join(f"{c}: {now:.3f} (was {was:.3f})" for c, (now, was) in regressed.items())
+    assert not regressed, "clips regressed past baseline+tolerance " + ", ".join(
+        f"{c}: {now:.3f} (was {was:.3f})" for c, (now, was) in regressed.items()
     )

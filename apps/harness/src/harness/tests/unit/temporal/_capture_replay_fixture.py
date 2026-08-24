@@ -331,9 +331,7 @@ async def capture_loop(out_path: Path) -> None:
             task_queue=task_queue,
             workflows=[ConsultationLoopWorkflow, HarnessDocWorkflow],
             activities=[
-                *make_loop_stub_activities(
-                    LoopStubConfig(config=loop_config), loop_recorder
-                ),
+                *make_loop_stub_activities(LoopStubConfig(config=loop_config), loop_recorder),
                 *make_stub_activities(StubConfig(), doc_recorder),
             ],
         ):
@@ -452,9 +450,7 @@ async def capture_idle_timeout(out_path: Path) -> None:
             env.client,
             task_queue=task_queue,
             workflows=[ConsultationLoopWorkflow],
-            activities=make_loop_stub_activities(
-                LoopStubConfig(config=loop_config), recorder
-            ),
+            activities=make_loop_stub_activities(LoopStubConfig(config=loop_config), recorder),
         ):
             handle = await env.client.start_workflow(
                 ConsultationLoopWorkflow.run,
@@ -520,9 +516,7 @@ async def capture_reasoning(out_path: Path) -> None:
     consultation_id = "c-reasoning-fixture"
     loop_config = reasoning_loop_config(
         subscriptions=[
-            LoopSubscription(
-                kind_key="attachment", actions=[LOOP_ACTION_DOCUMENT_EXTRACT_TEXT]
-            ),
+            LoopSubscription(kind_key="attachment", actions=[LOOP_ACTION_DOCUMENT_EXTRACT_TEXT]),
             LoopSubscription(kind_key="transcript", actions=["client.emit"]),
         ],
         budget=LoopBudget(max_depth=3, max_actions=50, max_specialist_runs=5),
@@ -537,9 +531,7 @@ async def capture_reasoning(out_path: Path) -> None:
             env.client,
             task_queue=task_queue,
             workflows=[ConsultationLoopWorkflow, SpecialistWorkflow],
-            activities=make_loop_stub_activities(
-                LoopStubConfig(config=loop_config), recorder
-            ),
+            activities=make_loop_stub_activities(LoopStubConfig(config=loop_config), recorder),
         ):
             handle = await env.client.start_workflow(
                 ConsultationLoopWorkflow.run,

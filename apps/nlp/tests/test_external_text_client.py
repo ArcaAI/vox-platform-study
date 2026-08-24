@@ -71,9 +71,7 @@ def _client(
     # The token is resolved by the CALLER (lifespan) and passed in — the
     # client has no config-level fallback since TASK-799 lane D removed the
     # legacy per-pair `NLP_EXTERNAL_TEXT_SERVICE_TOKEN`.
-    return ExternalTextClient(
-        settings=config, http_client=http_client, service_token=service_token
-    )
+    return ExternalTextClient(settings=config, http_client=http_client, service_token=service_token)
 
 
 @pytest.mark.asyncio
@@ -81,7 +79,9 @@ async def test_posts_to_generate_with_prompt_and_returns_content() -> None:
     http = _RecordingClient({"content": "billing", "provider": "lm-studio", "model": "gemma"})
     client = _client(ExternalTextConfig(base_url="http://text.local"), http)
 
-    label = await client.generate_label("Which topic does this note discuss?", tenant_id="tenant-abc")
+    label = await client.generate_label(
+        "Which topic does this note discuss?", tenant_id="tenant-abc"
+    )
 
     assert label == "billing"
     assert http.calls[0]["url"] == "http://text.local/generate"

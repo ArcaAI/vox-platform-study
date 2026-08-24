@@ -52,7 +52,14 @@ class TestAzureEdgeCases:
         provider._client = stub_client(provider, AsyncMock())
         provider._client.chat.completions.create = AsyncMock(return_value=mock_completion)
         await provider.generate(
-            GenerateRequest(prompt="hi", temperature=0.2, max_tokens=100, top_p=0.8, provider="azure_openai", model="test-model")
+            GenerateRequest(
+                prompt="hi",
+                temperature=0.2,
+                max_tokens=100,
+                top_p=0.8,
+                provider="azure_openai",
+                model="test-model",
+            )
         )
         call_kw = provider._client.chat.completions.create.call_args.kwargs
         assert call_kw["temperature"] == 0.2
@@ -84,7 +91,9 @@ class TestAzureEdgeCases:
         chunks = [
             c
             async for c in provider.generate_stream(
-                GenerateRequest(prompt="hi", stream=True, provider="azure_openai", model="test-model")
+                GenerateRequest(
+                    prompt="hi", stream=True, provider="azure_openai", model="test-model"
+                )
             )
         ]
         text = [c for c in chunks if c.type == "chunk"]

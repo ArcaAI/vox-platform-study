@@ -1429,9 +1429,7 @@ class TestSessionManager:
 
         assert captured == [300]
 
-    def test_inference_stop_timeout_is_configurable_from_the_control_plane(
-        self, monkeypatch
-    ):
+    def test_inference_stop_timeout_is_configurable_from_the_control_plane(self, monkeypatch):
         """The control-plane value must actually reach
         `SessionManager._inference_stop_timeout_s`.
 

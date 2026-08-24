@@ -136,9 +136,7 @@ class JobProcessor:
         """
         if tenant_id is None:
             return True
-        return (
-            bool(job_data.get("tenant_id")) and job_data.get("tenant_id") == tenant_id
-        )
+        return bool(job_data.get("tenant_id")) and job_data.get("tenant_id") == tenant_id
 
     async def get_job_status(
         self, job_id: str, tenant_id: str | None = None
@@ -150,9 +148,7 @@ class JobProcessor:
         so the 404-over-403 posture is what stops existence itself from leaking.
         """
 
-        status_data: dict[str, Any] = await self.redis.hgetall(
-            f"{self.status_key_prefix}{job_id}"
-        )
+        status_data: dict[str, Any] = await self.redis.hgetall(f"{self.status_key_prefix}{job_id}")
 
         if not status_data:
             return None
@@ -362,9 +358,7 @@ class JobProcessor:
                 await self.redis.zrem(self.processing_queue, job_id)
                 continue
 
-            priority_score = int(
-                status_data.get("priority_score", self.priority_map["normal"])
-            )
+            priority_score = int(status_data.get("priority_score", self.priority_map["normal"]))
             created_at_ms = int(status_data.get("created_at_ms", "0") or "0")
             await self.redis.hset(
                 f"{self.status_key_prefix}{job_id}",
@@ -402,9 +396,7 @@ class JobProcessor:
             async with nullcontext(self.analyzer) as provider:
                 yield provider
         else:  # pragma: no cover - construction guarantees one is set
-            raise RuntimeError(
-                "JobProcessor has no safety analyzer or resolver configured"
-            )
+            raise RuntimeError("JobProcessor has no safety analyzer or resolver configured")
 
     def _create_processing_task(self, job_id: str) -> asyncio.Task[None]:
         """Create a task to process a job."""
@@ -419,9 +411,7 @@ class JobProcessor:
 
         try:
             async with self.semaphore:
-                status_data = await self.redis.hgetall(
-                    f"{self.status_key_prefix}{job_id}"
-                )
+                status_data = await self.redis.hgetall(f"{self.status_key_prefix}{job_id}")
                 if not status_data:
                     await self.redis.zrem(self.processing_queue, job_id)
                     return
@@ -435,9 +425,7 @@ class JobProcessor:
                 guardrail_type = status_data.get("guardrail_type", "comprehensive")
                 tenant_id = status_data.get("tenant_id") or None
 
-                logger.info(
-                    "job_processor.job_started", job_id=job_id, tenant_id=tenant_id
-                )
+                logger.info("job_processor.job_started", job_id=job_id, tenant_id=tenant_id)
 
                 start_time = time.monotonic()
                 async with self._acquire_analyzer(tenant_id) as analyzer:
@@ -450,14 +438,10 @@ class JobProcessor:
                 result["processing_time_ms"] = processing_time
                 result["timestamp"] = datetime.now(UTC).isoformat()
 
-                latest_status = await self.redis.hgetall(
-                    f"{self.status_key_prefix}{job_id}"
-                )
+                latest_status = await self.redis.hgetall(f"{self.status_key_prefix}{job_id}")
                 if latest_status.get("status") == "cancelled":
                     await self.redis.zrem(self.processing_queue, job_id)
-                    logger.info(
-                        "job_processor.job_cancelled_during_processing", job_id=job_id
-                    )
+                    logger.info("job_processor.job_cancelled_during_processing", job_id=job_id)
                     return
 
                 await self.redis.hset(

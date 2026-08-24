@@ -356,7 +356,9 @@ def _usage_detail_from_blob(blob: dict[str, Any]) -> UsageDetail | None:
         raw=blob.get("raw") if isinstance(blob.get("raw"), dict) else None,
         interrupted=bool(blob.get("interrupted", False)),
         byok=bool(blob.get("byok", False)),
-        service_tier=blob.get("service_tier") if isinstance(blob.get("service_tier"), str) else None,
+        service_tier=(
+            blob.get("service_tier") if isinstance(blob.get("service_tier"), str) else None
+        ),
         occurred_at=occurred_at,
     )
 

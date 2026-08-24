@@ -166,8 +166,7 @@ class GroundednessNliVerifier:
         def degrade(reason: str) -> GroundednessResult:
             return GroundednessResult(
                 segments=[
-                    SegmentVerdict(text, UNVERIFIED, start, end)
-                    for text, start, end in spans
+                    SegmentVerdict(text, UNVERIFIED, start, end) for text, start, end in spans
                 ],
                 checked=False,
                 reason=reason,
@@ -180,9 +179,7 @@ class GroundednessNliVerifier:
             return degrade(REASON_DISABLED)
 
         scorer = self._scorer
-        if (
-            scorer is None
-        ):  # No scorer was supplied — the `guardrail.groundedness` selection did
+        if scorer is None:  # No scorer was supplied — the `guardrail.groundedness` selection did
             # not produce one. FAIL-CLOSED to `unverified`; never `grounded`.
             logger.warning(
                 "guardrail.groundedness.model_unavailable",
@@ -195,9 +192,7 @@ class GroundednessNliVerifier:
         scores: list[float] = []
         try:
             for batch in _chunked(capped, self._config.batch_size):
-                raw_scores = scorer.score_pairs(
-                    [(transcript, text) for text, _, _ in batch]
-                )
+                raw_scores = scorer.score_pairs([(transcript, text) for text, _, _ in batch])
                 if hasattr(raw_scores, "__await__"):
                     raw_scores = await raw_scores
                 batch_scores = list(raw_scores)
@@ -233,9 +228,7 @@ class GroundednessNliVerifier:
         )
 
         elapsed_s = time.monotonic() - started
-        throughput = (
-            (len(capped) / elapsed_s) * 60.0 if capped and elapsed_s > 0 else None
-        )
+        throughput = (len(capped) / elapsed_s) * 60.0 if capped and elapsed_s > 0 else None
         return GroundednessResult(
             segments=segments,
             checked=True,

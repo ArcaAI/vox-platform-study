@@ -55,9 +55,7 @@ class TestPrecedenceChainApplies:
         monkeypatch.setenv("PORT", "9002")
         assert NLPServiceConfig().port == 9001
 
-    def test_host_env_reaches_the_boolean_switches(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_host_env_reaches_the_boolean_switches(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setenv("NLP_TRACES_ENABLED", "false")
         monkeypatch.setenv("NLP_OTEL_ENABLED", "true")
         config = NLPServiceConfig()

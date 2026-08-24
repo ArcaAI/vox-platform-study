@@ -125,9 +125,7 @@ async def test_async_job_lifecycle_end_to_end(integration_client) -> None:
     assert jobs_payload["total"] >= 1
     assert any(job["job_id"] == "integration-job-1" for job in jobs_payload["jobs"])
 
-    stats_response = await client.get(
-        "/api/jobs/stats", headers={"X-Tenant-Id": TEST_TENANT}
-    )
+    stats_response = await client.get("/api/jobs/stats", headers={"X-Tenant-Id": TEST_TENANT})
     assert stats_response.status_code == 200
     stats_payload = stats_response.json()
     assert stats_payload["completed"] >= 1
@@ -226,9 +224,7 @@ async def _submit(client: AsyncClient, job_id: str, tenant: str) -> None:
     ],
 )
 @pytest.mark.asyncio
-async def test_jobs_routes_require_tenant_header(
-    integration_client, method, path
-) -> None:
+async def test_jobs_routes_require_tenant_header(integration_client, method, path) -> None:
     client, _app, _provider = integration_client
 
     response = await client.request(method, path)
@@ -252,18 +248,12 @@ async def test_other_tenant_cannot_read_status_or_result(integration_client) -> 
 
     assert owner_status.json()["status"] == "completed"
     assert (
-        await client.get(
-            "/api/jobs/result/scoped-job", headers={"X-Tenant-Id": TEST_TENANT}
-        )
+        await client.get("/api/jobs/result/scoped-job", headers={"X-Tenant-Id": TEST_TENANT})
     ).status_code == 200
 
     other = {"X-Tenant-Id": OTHER_TENANT}
-    assert (
-        await client.get("/api/jobs/status/scoped-job", headers=other)
-    ).status_code == 404
-    assert (
-        await client.get("/api/jobs/result/scoped-job", headers=other)
-    ).status_code == 404
+    assert (await client.get("/api/jobs/status/scoped-job", headers=other)).status_code == 404
+    assert (await client.get("/api/jobs/result/scoped-job", headers=other)).status_code == 404
 
 
 @pytest.mark.asyncio
@@ -322,13 +312,8 @@ async def test_declared_tenantless_marker_scopes_like_any_other_owner(
     await _submit(client, "tenant-job", TEST_TENANT)
 
     marker = {"X-Tenant-Id": TENANTLESS}
-    assert (
-        await client.get("/api/jobs/status/queue-job", headers=marker)
-    ).status_code == 200
-    assert (
-        await client.get("/api/jobs/status/tenant-job", headers=marker)
-    ).status_code == 404
+    assert (await client.get("/api/jobs/status/queue-job", headers=marker)).status_code == 200
+    assert (await client.get("/api/jobs/status/tenant-job", headers=marker)).status_code == 404
     assert {
-        job["job_id"]
-        for job in (await client.get("/api/jobs/list", headers=marker)).json()["jobs"]
+        job["job_id"] for job in (await client.get("/api/jobs/list", headers=marker)).json()["jobs"]
     } == {"queue-job"}

@@ -64,15 +64,11 @@ def _entry(value: object, source: str) -> dict[str, object]:
 
 class TestTheFlagsAreOnTheControlPlane:
     @pytest.mark.parametrize(("path", "key", "_env"), FLAGS)
-    def test_the_flag_is_a_declared_control_plane_key(
-        self, path: str, key: str, _env: str
-    ) -> None:
+    def test_the_flag_is_a_declared_control_plane_key(self, path: str, key: str, _env: str) -> None:
         assert CONTROL_PLANE_KEYS.get(path) == key
 
     @pytest.mark.parametrize(("path", "key", "_env"), FLAGS)
-    def test_a_seeded_row_wins_over_the_env_default(
-        self, path: str, key: str, _env: str
-    ) -> None:
+    def test_a_seeded_row_wins_over_the_env_default(self, path: str, key: str, _env: str) -> None:
         """A `db`-sourced value is the platform's decision and takes effect."""
         settings = Settings()
         applied = apply_control_plane(settings, _snapshot({key: _entry(True, "db")}))
@@ -177,9 +173,9 @@ class TestReadinessCannotRegressAtRuntime:
                         readers.append(f"{path.relative_to(src)}:{lineno}")
 
         assert readers, "expected boot registration to read the flags"
-        assert {r.split(":")[0] for r in readers} == {"main.py"}, (
-            f"the enable flags must be read ONLY by boot registration; also read at: {readers}"
-        )
+        assert {r.split(":")[0] for r in readers} == {
+            "main.py"
+        }, f"the enable flags must be read ONLY by boot registration; also read at: {readers}"
 
 
 class TestTheLicensingGateHasARealHome:

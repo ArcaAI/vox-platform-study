@@ -305,8 +305,7 @@ class TestOtelExportIsDerivedNotDeclared:
         monkeypatch.delenv("TEXT_OTEL_EXPORTER_ENDPOINT", raising=False)
         assert Settings(port=5099, otel_exporter_endpoint="").otel_enabled is False
         assert (
-            Settings(port=5099, otel_exporter_endpoint="http://collector:4317").otel_enabled
-            is True
+            Settings(port=5099, otel_exporter_endpoint="http://collector:4317").otel_enabled is True
         )
 
     def test_the_retired_flags_are_inert(self, monkeypatch):

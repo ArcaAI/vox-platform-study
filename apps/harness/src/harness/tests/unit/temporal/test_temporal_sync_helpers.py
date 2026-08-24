@@ -53,9 +53,9 @@ class TestAwaitQueryAttemptDeadline:
         assert handle.rpc_timeouts, "the helper must pass an explicit rpc_timeout"
         for timeout in handle.rpc_timeouts:
             assert timeout is not None
-            assert timeout <= timedelta(seconds=5), (
-                "a per-attempt deadline near the 30s budget defeats retrying"
-            )
+            assert timeout <= timedelta(
+                seconds=5
+            ), "a per-attempt deadline near the 30s budget defeats retrying"
 
     @pytest.mark.asyncio
     async def test_repeated_deadlines_are_retried_not_raised(self) -> None:

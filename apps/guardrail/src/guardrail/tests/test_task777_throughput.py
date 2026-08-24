@@ -204,9 +204,7 @@ def test_fail_posture_must_be_declared_at_construction() -> None:
 
 @pytest.mark.asyncio
 async def test_breaker_success_resets_the_failure_run() -> None:
-    breaker = CircuitBreaker(
-        name="text", posture=FailPosture.FAIL_CLOSED, failure_threshold=3
-    )
+    breaker = CircuitBreaker(name="text", posture=FailPosture.FAIL_CLOSED, failure_threshold=3)
 
     async def boom() -> None:
         raise RuntimeError("blip")
@@ -293,10 +291,7 @@ async def test_one_hundred_concurrent_screenings_all_resolve() -> None:
             headers={"X-Tenant-Id": "11111111-1111-1111-1111-111111111111"},
         )
         results = await asyncio.gather(
-            *(
-                screen_inbound(InboundScreenRequest(text="chest pain"), request)
-                for _ in range(100)
-            )
+            *(screen_inbound(InboundScreenRequest(text="chest pain"), request) for _ in range(100))
         )
     finally:
         screen_mod.build_screener = original

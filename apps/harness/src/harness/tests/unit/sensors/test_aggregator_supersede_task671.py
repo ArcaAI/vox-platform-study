@@ -54,10 +54,9 @@ class TestWiring:
         assert NAME_FAITHFULNESS in HIGHEST_HARM_SENSORS
         assert NAME_COVERAGE in REGEN_FIXABLE_SENSORS
         for inferential, lexical in SUPERSEDED_BY.items():
-            same_class = (
-                (inferential in HIGHEST_HARM_SENSORS) == (lexical in HIGHEST_HARM_SENSORS)
-                and (inferential in REGEN_FIXABLE_SENSORS) == (lexical in REGEN_FIXABLE_SENSORS)
-            )
+            same_class = (inferential in HIGHEST_HARM_SENSORS) == (
+                lexical in HIGHEST_HARM_SENSORS
+            ) and (inferential in REGEN_FIXABLE_SENSORS) == (lexical in REGEN_FIXABLE_SENSORS)
             assert same_class, f"{inferential} does not inherit {lexical}'s severity"
 
 
@@ -107,9 +106,7 @@ class TestRetention:
 
     def test_no_escalation_leaves_the_incumbent_behaviour_untouched(self) -> None:
         """Kill-switch OFF / backend absent: the gate is byte-for-byte what it was."""
-        verdict = aggregate(
-            _baseline(_fail("entity_faithfulness", "tramadol")), regens_remaining=1
-        )
+        verdict = aggregate(_baseline(_fail("entity_faithfulness", "tramadol")), regens_remaining=1)
         assert verdict.decision == GateDecision.FLAG
 
 

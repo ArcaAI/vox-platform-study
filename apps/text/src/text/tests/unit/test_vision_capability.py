@@ -81,7 +81,11 @@ class TestContentPartsModel:
 
     def test_image_media_type_must_be_image_mime(self):
         with pytest.raises(ValueError, match="image/"):
-            GenerateRequest(prompt="hi", content_parts=[{"type": "image", "data": _PNG_B64, "media_type": "text/plain"}], model="test-model")
+            GenerateRequest(
+                prompt="hi",
+                content_parts=[{"type": "image", "data": _PNG_B64, "media_type": "text/plain"}],
+                model="test-model",
+            )
 
     def test_image_part_defaults_media_type_to_png(self):
         req = _text_request(content_parts=[{"type": "image", "data": _PNG_B64}])
@@ -143,7 +147,6 @@ class TestTextOnlyRegression:
 
         payload = provider._build_payload(_text_request(), stream=False)
         assert payload["prompt"] == "hello"
-
 
 
 def _llama_cpp(http_client=None):
@@ -359,7 +362,9 @@ class TestSupportsVisionPerProvider:
         with patch("boto3.client"):
             provider = BedrockProvider()
         provider._mgmt_client = MagicMock()
-        provider._mgmt_client.list_foundation_models = MagicMock(return_value={"modelSummaries": []})
+        provider._mgmt_client.list_foundation_models = MagicMock(
+            return_value={"modelSummaries": []}
+        )
         info = await provider.get_info()
         assert info.supports_vision is True
 

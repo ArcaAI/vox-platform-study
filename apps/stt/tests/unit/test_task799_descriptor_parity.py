@@ -95,9 +95,7 @@ class TestDescriptorParity:
         missing = sorted(expected - set(descriptor_defaults))
         assert missing == [], f"env path closed but no descriptor registered: {missing}"
 
-    def test_no_descriptor_is_orphaned(
-        self, descriptor_defaults: dict[str, object]
-    ) -> None:
+    def test_no_descriptor_is_orphaned(self, descriptor_defaults: dict[str, object]) -> None:
         """The other direction: a descriptor nothing consumes is dead weight."""
         expected = {k for k in CONTROL_PLANE_KEYS.values() if k not in _IN_SERVICE_RUNTIME}
         extra = sorted(set(descriptor_defaults) - expected)

@@ -165,7 +165,12 @@ class TestUsageMetering:
         with TestClient(app) as client:
             with client.websocket_connect("/api/v1/audio/stream") as ws:
                 ws.send_json(
-                    {"type": "init", "voice": "en-female-1", "format": "pcm", "routing_en": ["azure"]}
+                    {
+                        "type": "init",
+                        "voice": "en-female-1",
+                        "format": "pcm",
+                        "routing_en": ["azure"],
+                    }
                 )
                 assert ws.receive_json()["type"] == "ready"
                 ws.send_json({"type": "text", "text": "Hi. "})
@@ -189,7 +194,12 @@ class TestUsageMetering:
         with TestClient(app) as client:
             with client.websocket_connect("/api/v1/audio/stream") as ws:
                 ws.send_json(
-                    {"type": "init", "voice": "en-female-1", "format": "pcm", "routing_en": ["azure"]}
+                    {
+                        "type": "init",
+                        "voice": "en-female-1",
+                        "format": "pcm",
+                        "routing_en": ["azure"],
+                    }
                 )
                 assert ws.receive_json()["type"] == "ready"
                 ws.send_json({"type": "text", "text": "Hi. "})
@@ -214,7 +224,12 @@ class TestUsageMetering:
         with TestClient(app) as client:
             with client.websocket_connect("/api/v1/audio/stream") as ws:
                 ws.send_json(
-                    {"type": "init", "voice": "en-female-1", "format": "pcm", "routing_en": ["azure"]}
+                    {
+                        "type": "init",
+                        "voice": "en-female-1",
+                        "format": "pcm",
+                        "routing_en": ["azure"],
+                    }
                 )
                 assert ws.receive_json()["type"] == "ready"
                 ws.send_json({"type": "text", "text": "Hi. "})

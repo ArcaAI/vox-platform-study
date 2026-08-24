@@ -83,13 +83,9 @@ class TestOtelDisabledByDefault:
 
 
 class TestOtelEnabledGating:
-    def test_calls_setup_when_flag_and_endpoint_set(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_calls_setup_when_flag_and_endpoint_set(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setenv("GUARDRAIL_V2_OTEL_ENABLED", "true")
-        monkeypatch.setenv(
-            "GUARDRAIL_V2_OTEL_EXPORTER_ENDPOINT", "http://collector:4317"
-        )
+        monkeypatch.setenv("GUARDRAIL_V2_OTEL_EXPORTER_ENDPOINT", "http://collector:4317")
 
         with patch("guardrail.core.observability.setup_opentelemetry") as mock_setup:
             from guardrail.main import create_app
@@ -115,9 +111,7 @@ class TestOtelEnabledGating:
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         monkeypatch.setenv("GUARDRAIL_V2_OTEL_ENABLED", "false")
-        monkeypatch.setenv(
-            "GUARDRAIL_V2_OTEL_EXPORTER_ENDPOINT", "http://collector:4317"
-        )
+        monkeypatch.setenv("GUARDRAIL_V2_OTEL_EXPORTER_ENDPOINT", "http://collector:4317")
 
         with patch("guardrail.core.observability.setup_opentelemetry") as mock_setup:
             from guardrail.main import create_app
@@ -146,9 +140,7 @@ class TestSetupOpentelemetry:
         from guardrail.core.observability import setup_opentelemetry
 
         app = MagicMock()
-        setup_opentelemetry(
-            app, endpoint="http://localhost:4317", service_name="guardrail-v2"
-        )
+        setup_opentelemetry(app, endpoint="http://localhost:4317", service_name="guardrail-v2")
 
         provider = trace.get_tracer_provider()
         attrs = dict(provider.resource.attributes)
@@ -246,9 +238,7 @@ class TestSetupDegradesGracefully:
 
     def test_does_not_raise_when_fastapi_instrumentation_fails(self) -> None:
         with patch("guardrail.core.observability.FastAPIInstrumentor") as MockFastAPI:
-            MockFastAPI.instrument_app.side_effect = RuntimeError(
-                "instrumentation failed"
-            )
+            MockFastAPI.instrument_app.side_effect = RuntimeError("instrumentation failed")
 
             from guardrail.core.observability import setup_opentelemetry
 

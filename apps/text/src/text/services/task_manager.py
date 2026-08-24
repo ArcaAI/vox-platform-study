@@ -121,7 +121,9 @@ class TaskManager:
         # this field is the only thing that can join a streamed chunk to the
         # generation that produced it. Empty (and the entry byte-identical to
         # prior) when tracing is off.
-        fields: dict[str, str] = {"data": self._encode_chunk_data(task_id, chunk, tenant_id, correlation_id)}
+        fields: dict[str, str] = {
+            "data": self._encode_chunk_data(task_id, chunk, tenant_id, correlation_id)
+        }
         fields.update(inject_trace_carrier())
         msg_id = await self._redis.xadd(
             self._stream_key(task_id),

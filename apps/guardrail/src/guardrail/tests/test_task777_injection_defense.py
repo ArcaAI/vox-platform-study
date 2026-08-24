@@ -134,9 +134,7 @@ class _StubAnalyzer:
         self._spans = spans or []
         self._raises = raises
         self.seen: list[str] = []
-        self.policy = type(
-            "P", (), {"pii_labels": ["PERSON"], "classification_threshold": 0.4}
-        )()
+        self.policy = type("P", (), {"pii_labels": ["PERSON"], "classification_threshold": 0.4})()
 
     async def classify_tasks(self, task_names, text):
         self.seen.append(text)
@@ -154,9 +152,7 @@ class _StubAnalyzer:
 
 
 def _screener(analyzer, **kw) -> Screener:
-    return Screener(
-        analyzer=analyzer, tenant_id=TENANT, policy_source_tenant_id=SYSTEM, **kw
-    )
+    return Screener(analyzer=analyzer, tenant_id=TENANT, policy_source_tenant_id=SYSTEM, **kw)
 
 
 @pytest.mark.asyncio

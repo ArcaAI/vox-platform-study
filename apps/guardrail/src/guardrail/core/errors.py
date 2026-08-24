@@ -56,7 +56,11 @@ class GuardrailUndeterminedError(RuntimeError):
     def __init__(self, reason: str, detail: str = "") -> None:
         self.reason = reason
         self.detail = detail
-        super().__init__(f"guardrail verdict undetermined ({reason}): {detail}" if detail else f"guardrail verdict undetermined ({reason})")
+        super().__init__(
+            f"guardrail verdict undetermined ({reason}): {detail}"
+            if detail
+            else f"guardrail verdict undetermined ({reason})"
+        )
 
     def as_detail(self) -> str:
         """The HTTP ``detail`` string for a fail-closed 503."""

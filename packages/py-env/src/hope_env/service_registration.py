@@ -125,7 +125,10 @@ async def _post_once(
         if response.status_code >= 400:
             logger.warning(
                 "service_registration.rejected",
-                extra={"status_code": response.status_code, "service": payload.get("service")},
+                extra={
+                    "status_code": response.status_code,
+                    "service": payload.get("service"),
+                },
             )
     except Exception as error:  # noqa: BLE001 - must never propagate past registration
         logger.warning(

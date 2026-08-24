@@ -72,24 +72,36 @@ class TestTelemetryPhiGuardConfig:
         assert cfg.genai_capture_message_content == ""
 
     def test_passes_outside_production_with_permissive_value(self):
-        cfg = TelemetryPhiGuardConfig(node_env="test", genai_capture_message_content="SPAN_AND_EVENT")
+        cfg = TelemetryPhiGuardConfig(
+            node_env="test", genai_capture_message_content="SPAN_AND_EVENT"
+        )
         assert cfg.genai_capture_message_content == "SPAN_AND_EVENT"
 
     def test_passes_in_production_when_exactly_no_content(self):
-        cfg = TelemetryPhiGuardConfig(node_env="production", genai_capture_message_content="NO_CONTENT")
+        cfg = TelemetryPhiGuardConfig(
+            node_env="production", genai_capture_message_content="NO_CONTENT"
+        )
         assert cfg.genai_capture_message_content == "NO_CONTENT"
 
     def test_refuses_in_production_when_unset(self):
-        with pytest.raises(ValidationError, match="OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT"):
+        with pytest.raises(
+            ValidationError, match="OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT"
+        ):
             TelemetryPhiGuardConfig(node_env="production")
 
     def test_refuses_in_production_with_permissive_value(self):
-        with pytest.raises(ValidationError, match="OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT"):
-            TelemetryPhiGuardConfig(node_env="production", genai_capture_message_content="SPAN_AND_EVENT")
+        with pytest.raises(
+            ValidationError, match="OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT"
+        ):
+            TelemetryPhiGuardConfig(
+                node_env="production", genai_capture_message_content="SPAN_AND_EVENT"
+            )
 
     def test_refuses_in_production_on_near_miss_case(self):
         with pytest.raises(ValidationError):
-            TelemetryPhiGuardConfig(node_env="production", genai_capture_message_content="no_content")
+            TelemetryPhiGuardConfig(
+                node_env="production", genai_capture_message_content="no_content"
+            )
 
     def test_reads_bare_env_names_not_service_prefixed(self, monkeypatch):
         # These are cross-process conventions — TEXT_NODE_ENV / TEXT_OTEL_... must
@@ -98,7 +110,9 @@ class TestTelemetryPhiGuardConfig:
         monkeypatch.setenv("NODE_ENV", "test")
         monkeypatch.setenv("OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT", "NO_CONTENT")
         monkeypatch.setenv("TEXT_NODE_ENV", "production")
-        monkeypatch.setenv("TEXT_OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT", "SPAN_AND_EVENT")
+        monkeypatch.setenv(
+            "TEXT_OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT", "SPAN_AND_EVENT"
+        )
         cfg = TelemetryPhiGuardConfig()
         assert cfg.node_env == "test"
         assert cfg.genai_capture_message_content == "NO_CONTENT"
@@ -107,7 +121,9 @@ class TestTelemetryPhiGuardConfig:
         _clear_text_env(monkeypatch)
         monkeypatch.setenv("NODE_ENV", "production")
         monkeypatch.delenv("OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT", raising=False)
-        with pytest.raises(ValidationError, match="OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT"):
+        with pytest.raises(
+            ValidationError, match="OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT"
+        ):
             Settings()
 
     def test_settings_construction_passes_in_production_when_pinned(self, monkeypatch):

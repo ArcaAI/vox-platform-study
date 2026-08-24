@@ -116,9 +116,7 @@ async def test_guardian_error_raises_instead_of_is_medical_true() -> None:
 
 
 @pytest.mark.asyncio
-async def test_delegated_classification_error_raises_instead_of_returning_safe() -> (
-    None
-):
+async def test_delegated_classification_error_raises_instead_of_returning_safe() -> None:
     """TASK-735 Phase 3 — the same posture now that `apps/nlp` runs the model."""
     from guardrail.services.safety_analyzer import SafetyAnalyzer, SafetyPolicy
 
@@ -155,9 +153,7 @@ async def test_declared_disable_remains_a_bypass_not_a_failure() -> None:
 
 
 class _UndeterminedAnalyzer:
-    async def analyze_content(
-        self, text: str, guardrail_type: str = "comprehensive"
-    ) -> Any:
+    async def analyze_content(self, text: str, guardrail_type: str = "comprehensive") -> Any:
         raise GuardrailUndeterminedError("timeout", "engine timed out")
 
     async def batch_analyze(
@@ -166,9 +162,7 @@ class _UndeterminedAnalyzer:
         guardrail_type: str = "comprehensive",
         gate: Any = None,  # TASK-777 B-4: batch fan-out is bounded by a gate
     ) -> list[Any]:
-        return [
-            GuardrailUndeterminedError("timeout", "engine timed out") for _ in texts
-        ]
+        return [GuardrailUndeterminedError("timeout", "engine timed out") for _ in texts]
 
 
 def _app_state_with(provider: Any) -> Any:

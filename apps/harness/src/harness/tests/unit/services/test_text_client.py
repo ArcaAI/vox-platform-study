@@ -78,7 +78,9 @@ class TestTextClient:
         _seen, handler = _capture(content='{"subjective": "Patient reports cough."}')
         client = TextClient("http://text:8862", transport=httpx.MockTransport(handler))
 
-        result = await client.generate(tenant_id="11111111-1111-1111-1111-111111111111", prompt="hi")
+        result = await client.generate(
+            tenant_id="11111111-1111-1111-1111-111111111111", prompt="hi"
+        )
 
         assert result.content == '{"subjective": "Patient reports cough."}'
         assert result.model == "gpt-4o"
@@ -92,7 +94,13 @@ class TestTextClient:
         seen, handler = _capture()
         client = TextClient("http://text:8862", transport=httpx.MockTransport(handler))
 
-        await client.generate(tenant_id="11111111-1111-1111-1111-111111111111", prompt="hi", provider="azure-openai", model="gpt-4o", top_p=0.9)
+        await client.generate(
+            tenant_id="11111111-1111-1111-1111-111111111111",
+            prompt="hi",
+            provider="azure-openai",
+            model="gpt-4o",
+            top_p=0.9,
+        )
 
         body = json.loads(seen["request"].content)
         assert body["provider"] == "azure-openai"
@@ -107,7 +115,11 @@ class TestTextClient:
         seen, handler = _capture()
         client = TextClient("http://text:8862", transport=httpx.MockTransport(handler))
 
-        await client.generate(tenant_id="11111111-1111-1111-1111-111111111111", prompt="hi", idempotency_key="wf-run-1:generate")
+        await client.generate(
+            tenant_id="11111111-1111-1111-1111-111111111111",
+            prompt="hi",
+            idempotency_key="wf-run-1:generate",
+        )
 
         req = seen["request"]
         assert req.headers["Idempotency-Key"] == "wf-run-1:generate"
@@ -186,7 +198,9 @@ class TestTextClientStats:
             )
 
         client = TextClient("http://text:8862", transport=httpx.MockTransport(handler))
-        result = await client.generate(tenant_id="11111111-1111-1111-1111-111111111111", prompt="hi")
+        result = await client.generate(
+            tenant_id="11111111-1111-1111-1111-111111111111", prompt="hi"
+        )
         assert result.stats == stats
 
     @pytest.mark.asyncio
@@ -195,7 +209,9 @@ class TestTextClientStats:
         # to None (never raises over missing stats).
         _seen, handler = _capture()
         client = TextClient("http://text:8862", transport=httpx.MockTransport(handler))
-        result = await client.generate(tenant_id="11111111-1111-1111-1111-111111111111", prompt="hi")
+        result = await client.generate(
+            tenant_id="11111111-1111-1111-1111-111111111111", prompt="hi"
+        )
         assert result.stats is None
 
 
@@ -225,7 +241,9 @@ class TestGenerateLostResponseNoReinvoke:
 
         client = TextClient("http://text-c104:8862", transport=httpx.MockTransport(handler))
         with pytest.raises(TextServiceError) as ei:
-            await client.generate(tenant_id="11111111-1111-1111-1111-111111111111", prompt="Summarize the consult.")
+            await client.generate(
+                tenant_id="11111111-1111-1111-1111-111111111111", prompt="Summarize the consult."
+            )
         # The prompt reached the model EXACTLY once — never re-invoked.
         assert calls["n"] == 1
         # The error is tagged as a post-send failure so the activity can mark the
@@ -267,7 +285,9 @@ class TestGenerateLostResponseNoReinvoke:
 
         client = TextClient("http://text-c104c:8862", transport=httpx.MockTransport(handler))
         with pytest.raises((TextServiceError, TimeoutError)) as ei:
-            await client.generate(tenant_id="11111111-1111-1111-1111-111111111111", prompt="Summarize the consult.")
+            await client.generate(
+                tenant_id="11111111-1111-1111-1111-111111111111", prompt="Summarize the consult."
+            )
         # The model was invoked EXACTLY once — the per-call timeout is not re-issued.
         assert calls["n"] == 1
         # Surfaces as a non-retryable post-send Text failure (so the activity marks the

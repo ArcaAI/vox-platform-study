@@ -56,14 +56,12 @@ class TestDeadAndDuplicatedKnobsAreGone:
 
         schema = _USER_PRISMA.read_text(encoding="utf-8")
         match = re.search(r'embedding\s+Unsupported\("vector\((\d+)\)"\)', schema)
-        assert match is not None, f"no `embedding Unsupported(\"vector(N)\")` in {_USER_PRISMA}"
+        assert match is not None, f'no `embedding Unsupported("vector(N)")` in {_USER_PRISMA}'
         assert EXPECTED_EMBEDDING_DIM == int(match.group(1))
 
 
 class TestBuildIdentityIsNotConfiguration:
-    def test_app_name_and_version_are_not_settable_from_env(
-        self, monkeypatch
-    ) -> None:
+    def test_app_name_and_version_are_not_settable_from_env(self, monkeypatch) -> None:
         """Rule 09: build identity "must never be made settable from an env file".
 
         `APP_VERSION` was a plain field defaulting to `"2.0.0"`, so the service

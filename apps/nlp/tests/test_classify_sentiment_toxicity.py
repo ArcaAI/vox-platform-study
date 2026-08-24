@@ -85,7 +85,10 @@ def test_classify_text_serves_sentiment_via_model_name(client, clean_deps) -> No
     ):
         r = client.post(
             "/api/v1/classify/text",
-            json={"text": "The patient reports feeling much better today.", "model_name": "org/sentiment-model"},
+            json={
+                "text": "The patient reports feeling much better today.",
+                "model_name": "org/sentiment-model",
+            },
         )
 
     assert r.status_code == 200
@@ -125,7 +128,9 @@ def test_classify_text_serves_toxicity_via_model_name(client, clean_deps) -> Non
     mdl.from_pretrained.assert_called_once_with("org/toxicity-model")
 
 
-def test_toxicity_multi_label_returns_per_label_scores_and_simultaneous_positives(client, clean_deps) -> None:
+def test_toxicity_multi_label_returns_per_label_scores_and_simultaneous_positives(
+    client, clean_deps
+) -> None:
     """Owner decision (2026-08-20, TASK-729 §6): toxicity is MULTI-LABEL — an
     utterance may be toxic AND a threat AND an insult at once. `/classify/text/
     multi-label` returns a per-label score for every label the model exposes,
@@ -192,7 +197,9 @@ def test_toxicity_multi_label_requires_model_name_fails_closed_503(client, clean
     assert resp.status_code == 503
 
 
-def test_sentiment_and_toxicity_are_the_same_generic_path_no_task_specific_branching(client, clean_deps) -> None:
+def test_sentiment_and_toxicity_are_the_same_generic_path_no_task_specific_branching(
+    client, clean_deps
+) -> None:
     """Both task types load through the identical `pinned_text_classifier`
     code path — i.e. confirming there is no per-task branching to maintain."""
     fake_pipe = MagicMock(return_value=[{"label": "x", "score": 1.0}])
@@ -201,8 +208,12 @@ def test_sentiment_and_toxicity_are_the_same_generic_path_no_task_specific_branc
         patch("nlp.services.text_classifier.AutoModelForSequenceClassification"),
         patch("nlp.services.text_classifier.pipeline", return_value=fake_pipe),
     ):
-        r1 = client.post("/api/v1/classify/text", json={"text": "a", "model_name": "org/sentiment-model"})
-        r2 = client.post("/api/v1/classify/text", json={"text": "b", "model_name": "org/toxicity-model"})
+        r1 = client.post(
+            "/api/v1/classify/text", json={"text": "a", "model_name": "org/sentiment-model"}
+        )
+        r2 = client.post(
+            "/api/v1/classify/text", json={"text": "b", "model_name": "org/toxicity-model"}
+        )
 
     assert r1.status_code == 200 and r2.status_code == 200
     cache = clean_deps._text_classifier_cache_instance
