@@ -81,6 +81,13 @@ describe('CLOUD_BYO_PROVIDERS — the frozen C5 map', () => {
       embeddings: ['azure', 'openai'],
       rerank: [],
       vector: ['qdrant'],
+      // TASK-799 — the weight-fetch plane. A tenant that brings its own models
+      // brings the account they are fetched from: an HF org token (the only way
+      // to reach a gated repo) and, for weights it stages itself, its own
+      // object store. WHOSE credential is spent is decided by the MODEL row's
+      // owner, not the caller, so a SYSTEM model always fetches with the
+      // platform's.
+      'model-registry': ['huggingface', 's3'],
     });
   });
 

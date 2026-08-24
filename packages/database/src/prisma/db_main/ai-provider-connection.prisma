@@ -58,7 +58,7 @@ model AiProviderConnection {
   tenantId String
 
   // core fields
-  service         String  @default("llm") // capability discriminator (PROVIDER_SERVICES: llm|stt|tts|embeddings|rerank|vector); backfills existing rows to 'llm'
+  service         String  @default("llm") // capability discriminator (PROVIDER_SERVICES: llm|stt|tts|embeddings|rerank|vector|model-registry); backfills existing rows to 'llm'. Plain TEXT with no CHECK constraint on purpose — widening the vocabulary costs NO DDL; the governance list in @arcaai/applications constants.ts is the source of truth.
   provider        String // capability-scoped provider id (e.g. llm:azure/bedrock, stt:azure-speech/sarvam/openai, tts:azure/sarvam, vector:qdrant, rerank:tei)
   baseUrl         String? // endpoint (ollama/lm-studio/vllm/llama-cpp/azure LLM; STT/TTS endpoint migrated from `endpoint`; the Qdrant/TEI URL for the integration services)
   region          String? // bedrock; classic Azure Speech

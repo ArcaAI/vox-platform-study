@@ -157,12 +157,17 @@ export const needsSelfHostKeyBackfill = (
  * mechanism `AI_MODEL_PROVIDERS` and the `ResourceType` enum use for exactly
  * this problem. Widen BOTH lists together, or that contract test fails.
  *
- * The first three are the INFERENCE capabilities; the last three are the
+ * The first three are the INFERENCE capabilities; the next three are the
  * non-inference integrations P1-C added so a Qdrant key, a TEI reranker or an
  * embeddings credential has somewhere to live other than an environment
  * variable.
+ *
+ * `model-registry` (TASK-799) is the seventh and serves none of those: it is
+ * the plane that authenticates the fetch of MODEL WEIGHTS, and it is where the
+ * last two env-resident credentials moved — `HUGGINGFACE_TOKEN` and the
+ * `STT_MODEL_S3_*` pair.
  */
-export const SEEDABLE_PROVIDER_SERVICES = ['llm', 'stt', 'tts', 'embeddings', 'rerank', 'vector'] as const;
+export const SEEDABLE_PROVIDER_SERVICES = ['llm', 'stt', 'tts', 'embeddings', 'rerank', 'vector', 'model-registry'] as const;
 
 /** The capability a seeded connection row serves. */
 export type SeedableProviderService = (typeof SEEDABLE_PROVIDER_SERVICES)[number];
@@ -481,6 +486,57 @@ export const SYSTEM_AI_PROVIDER_CONNECTIONS: AiProviderConnectionSeed[] = [
     apiKeyPlaintext: null,
     enabled: false,
     metaData: null,
+  },
+
+  // ── model-registry: the weight-fetch plane (TASK-799) ─────────────────────
+  //
+  // Both rows are seeded BLANK and DISABLED, and that is the whole point. They
+  // are the platform's placeholders, in exactly the shape the Azure/Bedrock
+  // catalog rows above use: a super admin fills in the endpoint and pastes the
+  // credential through the console, and the row becomes live at that moment —
+  // no redeploy, no env var, no secret in this file. Seeding a real token here
+  // would arm the platform-default cascade for every entitled tenant without an
+  // administrator ever deciding to.
+  //
+  // A tenant may hold its OWN row for either (`CLOUD_BYO_PROVIDERS`), but which
+  // credential a given fetch spends is decided by the MODEL ROW'S OWNER, never
+  // the caller — a SYSTEM-owned model always fetches with these.
+  {
+    // HuggingFace Hub. `extraJson.model` names the repo explicitly (there is no
+    // discovery here); the token is what distinguishes an entitled pull of a
+    // gated repo from an anonymous one. Replaces the `HUGGINGFACE_TOKEN` env var.
+    id: '87000000-0000-0000-0000-0000000000e1',
+    tenantId: SYSTEM_TENANT_ID,
+    service: 'model-registry',
+    provider: 'huggingface',
+    baseUrl: null,
+    region: null,
+    apiVersion: null,
+    deploymentName: null,
+    encryptedApiKey: null,
+    keyVersion: null,
+    apiKeyPlaintext: null,
+    enabled: false,
+    metaData: { note: 'Platform HuggingFace Hub token. Blank until a super admin supplies one; anonymous pulls still work for public repos.' },
+  },
+  {
+    // MinIO/S3 weights bucket. The credential is a PAIR: the secret half is the
+    // encrypted key, and the non-secret principal id rides in
+    // `extraJson.accessKeyId` — the `ServiceAccount.clientId` precedent.
+    // Replaces the `STT_MODEL_S3_ACCESS_KEY` / `_SECRET_KEY` env vars.
+    id: '87000000-0000-0000-0000-0000000000e2',
+    tenantId: SYSTEM_TENANT_ID,
+    service: 'model-registry',
+    provider: 's3',
+    baseUrl: null,
+    region: null,
+    apiVersion: null,
+    deploymentName: null,
+    encryptedApiKey: null,
+    keyVersion: null,
+    apiKeyPlaintext: null,
+    enabled: false,
+    metaData: { note: 'Platform model-weights object store. baseUrl = endpoint; accessKeyId rides in extraJson; the secret key is the encrypted field.' },
   },
 ];
 
