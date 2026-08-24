@@ -11,7 +11,7 @@ from openai import AsyncAzureOpenAI, BadRequestError
 
 from text.core.connection import resolve_connection
 from text.core.defaults import resolve_request_defaults
-from text.core.exceptions import ProviderConnectionMissingError
+from text.core.exceptions import ProviderConnectionMissingError, ProviderCredentialsError
 from text.core.telemetry import get_tracer
 from text.models.provider import ProviderInfo
 from text.models.requests import GenerateRequest, ProviderOverride
@@ -28,6 +28,35 @@ logger = structlog.get_logger(__name__)
 
 def _get_tracer() -> Tracer:
     return get_tracer(__name__)
+
+
+def _annotation(source: Any, name: str) -> dict[str, Any] | list[Any] | None:
+    """One content-filter annotation off an OpenAI-typed SDK object.
+
+    The annotations are Azure EXTRA fields on OpenAI's models; the SDK's
+    ``extra="allow"`` is what makes them reachable by attribute at all. The
+    isinstance guard is load-bearing for the streaming path, where a delta may
+    legitimately not carry the field.
+    """
+    value = getattr(source, name, None)
+    return value if isinstance(value, (dict, list)) else None
+
+
+def _filter_annotations(response: Any, choice: Any) -> dict[str, Any]:
+    """Azure's content-filter annotations, each from where Azure puts it.
+
+    ``prompt_filter_results`` is a ROOT member (results for the prompt);
+    ``content_filter_results`` is a member of each element of ``choices``
+    (results for that generation).
+    """
+    out: dict[str, Any] = {}
+    prompt_filter = _annotation(response, "prompt_filter_results")
+    if prompt_filter is not None:
+        out["prompt_filter_results"] = prompt_filter
+    choice_filter = _annotation(choice, "content_filter_results")
+    if choice_filter is not None:
+        out["content_filter_results"] = choice_filter
+    return out
 
 
 class AzureOpenAIProvider:
@@ -65,11 +94,45 @@ class AzureOpenAIProvider:
                 "There is no env fallback.",
                 provider="azure_openai",
             )
-        return AsyncAzureOpenAI(
-            api_key=override.api_key.get_secret_value(),
-            azure_endpoint=override.base_url or "",
-            api_version=override.api_version or self.ADAPTER_API_VERSION,
-        )
+        endpoint = (override.base_url or "").strip()
+        if not endpoint:
+            # Azure addresses a DEPLOYMENT on a named resource
+            # (``https://<resource>.openai.azure.com``), so the endpoint travels
+            # with that resource's credential on the connection row. Checked
+            # explicitly because ``AsyncAzureOpenAI(azure_endpoint="")`` does NOT
+            # raise — it builds a client whose base_url is the relative string
+            # ``/openai/``, which fails much later with an error naming neither
+            # the tenant nor the missing row. Bedrock refuses a connection with
+            # no ``region`` for exactly this reason.
+            raise ProviderConnectionMissingError(
+                "No endpoint on the resolved Azure OpenAI connection. Azure "
+                "routes by deployment on a named resource, so the endpoint "
+                "travels with the credential on the AiProviderConnection row.",
+                provider="azure_openai",
+            )
+        try:
+            return AsyncAzureOpenAI(
+                api_key=override.api_key.get_secret_value(),
+                azure_endpoint=endpoint,
+                api_version=override.api_version or self.ADAPTER_API_VERSION,
+            )
+        except Exception as exc:  # noqa: BLE001 — never leak the key
+            # A MALFORMED override is refused, not degraded onto another
+            # credential. Bare `OpenAIError` (what an empty key raises) would
+            # otherwise escape as a 500 instead of the 503
+            # PROVIDER_CREDENTIALS_MISSING contract. Same shape as
+            # ``providers/openai.py``; the key is never logged.
+            logger.warning(
+                "azure.override_client_build_failed",
+                provider="azure_openai",
+                error=type(exc).__name__,
+            )
+            raise ProviderCredentialsError(
+                "The configured Azure OpenAI credential could not be used "
+                f"({type(exc).__name__}). The request is refused rather than "
+                "served on another tenant's or the platform's credential.",
+                provider="azure_openai",
+            ) from exc
 
     def _resolve_model(self, request: GenerateRequest) -> str | None:
         # No in-gateway default — the caller-supplied model is
@@ -158,26 +221,31 @@ class AzureOpenAIProvider:
                 raise
             total_ms = int((time.monotonic() - start) * 1000)
 
-            message = response.choices[0].message
+            choice = response.choices[0]
+            message = choice.message
             content = message.content or ""
             reasoning = (
                 getattr(message, "reasoning_content", None)
                 or getattr(message, "reasoning", None)
                 or ""
             )
-            finish_reason = response.choices[0].finish_reason
+            finish_reason = choice.finish_reason
             usage_obj = getattr(response, "usage", None)
             # Keep the provider's OWN usage object, breakdown intact: the cache
             # and reasoning splits are priced separately by the ledger and the
             # three headline fields cannot express them.
             usage = openai_usage_dict(usage_obj)
-            # engine_native: OpenAI ``usage`` + Azure ``prompt_filter_results`` /
-            # ``content_filter_results`` when present (content-safety audit blob).
+            # engine_native: OpenAI ``usage`` + Azure's content-filter annotations
+            # (the content-safety audit blob), each read from where Azure
+            # actually puts it. They are NOT both at the response root:
+            # ``prompt_filter_results`` is a root member (prompt side), while
+            # ``content_filter_results`` is a member of each element of
+            # ``choices`` (completion side). Reading the completion-side one off
+            # the root — as this did — can never find it, which left a
+            # 200-with-``content_filter`` refusal indistinguishable from a model
+            # that simply returned nothing.
             native: dict[str, Any] = {"usage": usage}
-            for attr in ("prompt_filter_results", "content_filter_results"):
-                val = getattr(response, attr, None)
-                if isinstance(val, (dict, list)):
-                    native[attr] = val
+            native.update(_filter_annotations(response, choice))
             stats = stats_from_openai_usage(
                 provider="azure_openai",
                 model=resolved_model,
@@ -238,16 +306,30 @@ class AzureOpenAIProvider:
             ttft_ms: int | None = None
             finish_reason: str | None = None
             usage: dict[str, Any] | None = None
+            # Content-filter annotations ride in their own frames on a stream:
+            # the PROMPT annotation is the leading choice-less frame
+            # (``{"choices": [], "prompt_filter_results": [...]}``), and
+            # COMPLETION annotations arrive as annotation messages whose text is
+            # empty. Several may refer to the same tokens, so they accumulate.
+            prompt_filter_results: dict[str, Any] | list[Any] | None = None
+            content_filter_results: list[Any] = []
 
             stream = await self._client_for(request).chat.completions.create(**kwargs)
             async for chunk in stream:
+                prompt_filter = _annotation(chunk, "prompt_filter_results")
+                if prompt_filter is not None:
+                    prompt_filter_results = prompt_filter
                 if not chunk.choices:
                     if getattr(chunk, "usage", None):
                         usage = openai_usage_dict(chunk.usage)
                     continue
-                delta = chunk.choices[0].delta
-                if chunk.choices[0].finish_reason:
-                    finish_reason = chunk.choices[0].finish_reason
+                choice = chunk.choices[0]
+                choice_filter = _annotation(choice, "content_filter_results")
+                if choice_filter is not None:
+                    content_filter_results.append(choice_filter)
+                delta = choice.delta
+                if choice.finish_reason:
+                    finish_reason = choice.finish_reason
                 reasoning = getattr(delta, "reasoning_content", None) or getattr(
                     delta, "reasoning", None
                 )
@@ -261,6 +343,13 @@ class AzureOpenAIProvider:
                     yield StreamChunk(type="chunk", content=delta.content)
 
             total_ms = int((time.monotonic() - start) * 1000)
+            native: dict[str, Any] = {}
+            if usage:
+                native["usage"] = usage
+            if prompt_filter_results is not None:
+                native["prompt_filter_results"] = prompt_filter_results
+            if content_filter_results:
+                native["content_filter_results"] = content_filter_results
             stats = stats_from_openai_usage(
                 provider="azure_openai",
                 model=resolved_model,
@@ -268,14 +357,22 @@ class AzureOpenAIProvider:
                 finish_reason=finish_reason,
                 total_ms=total_ms,
                 ttft_ms=ttft_ms,
-                engine_native={"usage": usage} if usage else None,
+                engine_native=native or None,
             )
             if usage:
                 span.set_attribute("gen_ai.usage.input_tokens", usage["prompt_tokens"])
                 span.set_attribute("gen_ai.usage.output_tokens", usage["completion_tokens"])
             span.set_attribute("gen_ai.response.finish_reason", finish_reason or "stop")
             yield StreamChunk(type="usage", data=stats.model_dump())
-            yield StreamChunk(type="done", data={"finish_reason": finish_reason or "stop"})
+            # The terminal frame reports the reason the STATS beside it report.
+            # A stream that never delivered a ``finish_reason`` did not stop
+            # cleanly, and substituting the literal ``"stop"`` here turned a
+            # truncated answer into a complete one for the audit log and the
+            # STOP_REASON_TOTAL metric — while the very same frame's stats said
+            # ``"other"``. The two must never disagree.
+            yield StreamChunk(
+                type="done", data={"finish_reason": finish_reason or stats.stop_reason}
+            )
 
     async def health_check(self) -> bool:
         """Nothing to probe: the connection is per request, so there is no

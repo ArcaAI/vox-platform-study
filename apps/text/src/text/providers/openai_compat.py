@@ -15,6 +15,7 @@ from text.core.defaults import resolve_request_defaults
 from text.core.retention import DEFAULT_RETENTION_TTL_S, clamp_cache_ttl_seconds
 from text.core.runtime_defaults import PROVIDER_TIMEOUT_FLOOR_S
 from text.core.telemetry import get_tracer
+from text.models.probe import ProbeConnection
 from text.models.provider import ModelInfo, ProviderInfo
 from text.models.requests import GenerateRequest, ProviderOverride
 from text.models.stats import GenerationStats, stats_from_openai_usage
@@ -367,7 +368,9 @@ class OpenAICompatProvider:
             )
             return False
 
-    async def _lm_studio_native_models(self) -> dict[str, dict[str, Any]]:
+    async def _lm_studio_native_models(
+        self, base_url: str | None = None
+    ) -> dict[str, dict[str, Any]]:
         """LM Studio's native REST listing, keyed by model id.
 
         `/v1/models` (OpenAI wire) carries no load state, but LM Studio also
@@ -376,10 +379,14 @@ class OpenAICompatProvider:
         reach it (it prefixes `/v1`), so this uses a plain httpx call against
         `base_url` minus its trailing `/v1`.
 
+        ``base_url`` is explicit so a connection-scoped discovery probe enriches
+        the engine it was GIVEN; omitted, it falls back to the process memo, which
+        is what `get_info()` has always used.
+
         ANY failure returns `{}`: enrichment is strictly best-effort and must
         never degrade or fail the `/v1/models` listing.
         """
-        root = (self._probe_url() or "").rstrip("/")
+        root = (base_url or self._probe_url() or "").rstrip("/")
         if not root:
             return {}
         if root.endswith("/v1"):
@@ -396,43 +403,7 @@ class OpenAICompatProvider:
             )
             return {}
 
-    async def get_info(self) -> ProviderInfo:
-        models: list[ModelInfo] = []
-        status = "unavailable"
-        probe_client = self._probe_client()
-        if probe_client is None:
-            # Nothing observed yet — no endpoint to list models from. The
-            # catalogue is authoritative on the gateway (`AiModel`) regardless.
-            return ProviderInfo(
-                name=self._provider_name,
-                display_name=self._display_name,
-                status=status,
-                default_model="",
-                models=[],
-                supports_streaming=True,
-                supports_vision=True,
-            )
-        try:
-            model_list = await probe_client.models.list()
-            for m in model_list.data:
-                models.append(ModelInfo(name=m.id, supports_streaming=True))
-            status = "available"
-        except (APIError, APIConnectionError, APITimeoutError, ConnectionError, OSError) as exc:
-            # Narrower than a bare `except Exception: pass` so diagnostics
-            # aren't swallowed. Mirrors `health_check` above.
-            logger.warning("get_info.failed", provider=self._provider_name, error=str(exc))
-        except Exception as exc:
-            logger.error("get_info.unexpected_error", provider=self._provider_name, error=str(exc))
-
-        if models and self._provider_name in _LM_STUDIO_PROVIDER_NAMES:
-            native = await self._lm_studio_native_models()
-            for model in models:
-                meta = native.get(model.name)
-                if not meta:
-                    continue
-                model.state = meta.get("state")
-                model.engine_native = meta
-
+    def _info(self, status: str, models: list[ModelInfo]) -> ProviderInfo:
         return ProviderInfo(
             name=self._provider_name,
             display_name=self._display_name,
@@ -447,3 +418,63 @@ class OpenAICompatProvider:
             supports_streaming=True,
             supports_vision=True,
         )
+
+    async def _list_models(self, client: AsyncOpenAI, base_url: str | None) -> ProviderInfo:
+        """`GET {base_url}/models` (OpenAI wire) + LM Studio's native enrichment.
+
+        The one listing body shared by the memo probe (`get_info`) and the
+        connection-scoped one (`discover_models`); they differ ONLY in which
+        client and endpoint they hand in, so an engine cannot be enumerated one
+        way here and another way there.
+        """
+        models: list[ModelInfo] = []
+        status = "unavailable"
+        try:
+            model_list = await client.models.list()
+            for m in model_list.data:
+                models.append(ModelInfo(name=m.id, supports_streaming=True))
+            status = "available"
+        except (APIError, APIConnectionError, APITimeoutError, ConnectionError, OSError) as exc:
+            # Narrower than a bare `except Exception: pass` so diagnostics
+            # aren't swallowed. Mirrors `health_check` above.
+            logger.warning("get_info.failed", provider=self._provider_name, error=str(exc))
+        except Exception as exc:
+            logger.error("get_info.unexpected_error", provider=self._provider_name, error=str(exc))
+
+        if models and self._provider_name in _LM_STUDIO_PROVIDER_NAMES:
+            native = await self._lm_studio_native_models(base_url)
+            for model in models:
+                meta = native.get(model.name)
+                if not meta:
+                    continue
+                model.state = meta.get("state")
+                model.engine_native = meta
+
+        return self._info(status, models)
+
+    async def get_info(self) -> ProviderInfo:
+        probe_client = self._probe_client()
+        if probe_client is None:
+            # Nothing observed yet — no endpoint to list models from. The
+            # catalogue is authoritative on the gateway (`AiModel`) regardless.
+            return self._info("unavailable", [])
+        return await self._list_models(probe_client, self._probe_url())
+
+    async def discover_models(self, connection: ProbeConnection) -> ProviderInfo:
+        """Enumerate the engine the GATEWAY resolved for this caller.
+
+        Deliberately does not touch ``_last_base_url``: this describes an engine,
+        it must never re-point the endpoint a concurrently-serving generation
+        remembers. A keyless connection is the normal self-hosted shape — the
+        OpenAI SDK requires a non-empty ``api_key`` string, so the same
+        ``not-needed`` placeholder ``_client_for`` uses stands in, and the probe
+        goes out unauthenticated.
+        """
+        base_url = connection.base_url.strip()
+        key = connection.api_key.get_secret_value() if connection.api_key else ""
+        client = AsyncOpenAI(
+            api_key=key or "not-needed",
+            base_url=base_url,
+            timeout=float(self._timeout_s),
+        )
+        return await self._list_models(client, base_url)

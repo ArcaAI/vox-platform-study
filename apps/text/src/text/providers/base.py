@@ -7,6 +7,7 @@ from enum import StrEnum
 from typing import Protocol, runtime_checkable
 
 from text.core.exceptions import ModelNotSelectedError, VisionNotSupportedError
+from text.models.probe import ProbeConnection
 from text.models.provider import ProviderInfo
 from text.models.requests import GenerateRequest
 from text.models.stats import GenerationStats
@@ -123,6 +124,42 @@ class LLMProvider(Protocol):
 
     async def health_check(self) -> bool:
         """Return True if the provider is reachable and operational."""
+        ...
+
+
+@runtime_checkable
+class ConnectionAwareProbe(Protocol):
+    """An adapter that can enumerate an engine it is TOLD about.
+
+    ``get_info()`` on a self-hosted adapter probes ``self._last_base_url`` — the
+    endpoint this process happened to serve a generation from last. That memo is
+    process-wide, so it can only ever describe ONE engine per provider name,
+    which is why model discovery could not show a tenant its own LM Studio or
+    Ollama instance.
+
+    ``discover_models`` is the connection-scoped answer: the gateway resolves the
+    caller's row through the one tenant → SYSTEM cascade and hands the endpoint
+    down, exactly as ``/generate`` hands down ``provider_overrides``. The gateway
+    still never opens an engine connection itself.
+
+    Two obligations for an implementation, both asserted by
+    ``tests/unit/test_task799_provider_discovery.py``:
+
+    * build a REQUEST-SCOPED client and do NOT write ``_last_base_url`` — a
+      probe describes an engine, it must never re-point the generation memo of a
+      concurrently-serving process;
+    * a connection with no ``api_key`` is the NORMAL self-hosted shape and must
+      probe UNAUTHENTICATED, never raise.
+
+    Declared as a ``Protocol`` rather than added to ``LLMProvider`` because only
+    the self-hosted engines can be enumerated at all: a cloud provider has no
+    per-tenant model listing to fetch, and forcing every adapter to grow a method
+    it cannot implement would buy nothing. ``_probe`` falls back to ``get_info()``
+    for anything that does not satisfy this.
+    """
+
+    async def discover_models(self, connection: ProbeConnection) -> ProviderInfo:
+        """Enumerate the models served by ``connection.base_url``."""
         ...
 
 
