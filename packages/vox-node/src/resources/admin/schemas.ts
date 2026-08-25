@@ -157,7 +157,7 @@ export interface AiProviderConnectionResponse {
   /** Region identifier (bedrock). */
   region: string | null;
   /** Capability the connection serves. */
-  service: 'llm' | 'stt' | 'tts' | 'embeddings' | 'rerank' | 'vector';
+  service: 'llm' | 'stt' | 'tts' | 'embeddings' | 'rerank' | 'vector' | 'model-registry';
   /** Owning tenant. The reserved SYSTEM tenant row is the platform default. */
   tenantId: string;
   /** Last update timestamp (ISO 8601). */
@@ -5604,7 +5604,7 @@ export interface UpsertAiProviderConnectionRequest {
   /** Region identifier (bedrock). */
   region?: string;
   /** Capability the connection serves. The route `:service` path param is authoritative. */
-  service?: 'llm' | 'stt' | 'tts' | 'embeddings' | 'rerank' | 'vector';
+  service?: 'llm' | 'stt' | 'tts' | 'embeddings' | 'rerank' | 'vector' | 'model-registry';
 }
 
 export interface UpsertAiRuntimeProfileRequest {
