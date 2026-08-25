@@ -269,17 +269,25 @@ export class ServiceReleaseService extends BaseService implements IServiceReleas
    * `TenantScope: tenant context required for model ServiceRelease operation
    * findMany`. Neither writer supplies one:
    *
-   * - the internal HTTP route is `@Public()` + `ServiceReleaseTokenGuard`, so
-   *   no guard ever populated CLS `tenantId` (there is no user and no tenant to
-   *   derive it from — a service token identifies a PROCESS, not a tenant);
+   * - the internal HTTP route (every service EXCEPT the gateway) is `@Public()`
+   *   + `ServiceReleaseTokenGuard`, so the global CLS middleware opens a
+   *   context but no guard ever populates `tenantId` — a service token
+   *   identifies a PROCESS, not a tenant. `ClsTenantContextProvider` then
+   *   reports `tenantId: undefined` with `isSuperAdmin(): false`, and the
+   *   extension throws;
    * - the gateway registers ITSELF in-process from
-   *   `startServiceReleaseRegistration`, outside any HTTP request, so there is
-   *   no CLS context at all.
+   *   `startServiceReleaseRegistration`, outside any HTTP request. That path
+   *   was NOT broken: with no CLS context at all the provider returns
+   *   `isSuperAdmin(): true` and the extension passes through.
    *
-   * Every boot registration and every 5-minute heartbeat therefore 500'd — and
-   * the gateway's own failed silently, because its registration is deliberately
-   * best-effort. The registry that exists to answer "what version is running"
-   * could never record anything.
+   * So the registry held only `api` rows, and every OTHER service's boot
+   * registration and 5-minute heartbeat 500'd.
+   *
+   * The pin is applied to BOTH paths deliberately. The in-process path
+   * currently works by leaning on "no context ⇒ elevated pass-through", which
+   * `tenant-context.provider.ts` documents as a deliberately permissive stance
+   * that a later phase will tighten for exactly this kind of caller. Naming the
+   * tenant explicitly survives that tightening.
    *
    * The pin is not a widening: these rows ARE SYSTEM-owned, so this re-states
    * the tenant `ServiceReleaseFactory`/`ServiceInstanceFactory` already stamp.

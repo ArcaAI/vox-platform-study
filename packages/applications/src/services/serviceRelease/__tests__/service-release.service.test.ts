@@ -361,12 +361,16 @@ describe('ServiceReleaseService', () => {
    *   Error: TenantScope: tenant context required for model ServiceRelease
    *          operation findMany
    *
-   * Both writers arrive without one — the internal HTTP route is `@Public()` +
-   * service-token guard (no user, no tenant), and the gateway registers
-   * IN-PROCESS from `startServiceReleaseRegistration`, outside any request. So
-   * every register/heartbeat 500'd (and the gateway's own heartbeat was
-   * swallowed by its best-effort `onError`), leaving the release registry empty
-   * for every service in the cluster.
+   * The internal HTTP route is `@Public()` + service-token guard, so the CLS
+   * middleware opens a context that no guard ever populates: `tenantId`
+   * undefined AND `isSuperAdmin()` false, which is the combination that throws.
+   * Every service except the gateway therefore 500'd on boot and on every
+   * 5-minute heartbeat.
+   *
+   * The gateway's own IN-PROCESS registration was NOT failing — with no CLS
+   * context at all the provider reports `isSuperAdmin(): true` and the
+   * extension passes through. Both paths are pinned anyway: that pass-through
+   * is a documented-permissive stance, not a guarantee.
    *
    * The pin is SYSTEM because these rows ARE SYSTEM-owned
    * (`SERVICE_REGISTRY_TENANT_ID`) — it re-states the tenant the factory
