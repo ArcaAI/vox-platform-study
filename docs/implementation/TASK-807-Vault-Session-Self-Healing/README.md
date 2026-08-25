@@ -1,6 +1,6 @@
 # TASK-807 — Vault session self-healing (AppRole re-authentication)
 
-- **Status:** Completed (code); **deploy pending** — the running dev image predates this fix
+- **Status:** Completed — merged to `dev-2.2`, built, promoted and verified running in `hope-v2-dev`
 - **Type:** bugfix
 - **Branch:** `dev-2.2`
 - **Reported as:** "cannot login to admin-console: `{"message":"Authentication system not configured"}`"
@@ -104,10 +104,27 @@ Two pre-existing tests pinned the **buggy** behaviour and were updated deliberat
 deployment `Healthy`, 1/1. `POST /api/v1/auth/login` now answers `401 Invalid credentials`
 instead of `Authentication system not configured` — auth is serving again.
 
+### Deploy (completed)
+
+| Step | Evidence |
+|---|---|
+| Commit | `fe7fc77c` on `dev-2.2` |
+| Pipeline | [997](https://git.taphuynh.dev/arca/hope-v2/-/pipelines/997) — 30/30 jobs passed |
+| Promotion | `promote-dev` (job 14606) pinned the digest and pushed `2d3d02c` to `arca/hope-v2-deployment@main` |
+| Argo CD sync | `hope-api` deployment revision 100; image `api@sha256:62312998…` (was `b87c4368…`); 1/1 ready |
+| Running code | `/app/build-info.json` → `gitCommitSha fe7fc77c…`, `ciPipelineId 997`; all six new markers (`reauthenticate`, `isAuthError`, `REAUTH_TTL_FLOOR_SEC`, `RENEW_RETRY_MIN_MS`, `resolvedSecretId`, `reauthInFlight`) present in the shipped bundle |
+| Functional | `POST /api/v1/auth/login` → `401 Invalid credentials` (not `Authentication system not configured`) |
+
 ## Follow-ups (NOT done here)
 
-- **Deploy required.** The running image `api@sha256:b87c4368…` predates this fix. Until a
-  rebuilt image ships, the dev pod will die again ~4h after each restart.
+- **Same defect class, dormant: `VaultLeaseRenewer`.** It renews a Vault DB-engine lease with
+  the identical "count failures, latch degraded, KEEP trying" shape and no re-acquire path. A DB
+  lease has a `max_ttl` too, so it would wedge the same way. `SecretsService.ts:537` claims it
+  "falls back to a fresh `requestDbCredential()`-backed pool swap once max_ttl is reached" —
+  **that fallback does not exist in the code.** Currently harmless: nothing constructs a
+  `VaultLeaseRenewer` anywhere in the repo, and the API uses a static `DATABASE_URL`. It is a
+  trap for whoever wires up dynamic DB credentials. Fixing it means swapping a live connection
+  pool, so it wants its own ticket.
 - **Secret drift.** `hope-vault-rebuild-3` (08:36:27Z) reported `restored 26 keys (4 regenerated)`.
   Vault's `JWT_SECRET_KEY` (`39c33816…`) no longer matches the value baked into the
   `hope-secrets` manifest (`c668ee5a…`). Vault wins at runtime; the stale manifest value is a
@@ -120,4 +137,5 @@ instead of `Authentication system not configured` — auth is serving again.
 
 | Date | Change |
 |---|---|
-| 2026-08-25 | Diagnosed the 4h `token_max_ttl` session death; implemented AppRole re-authentication, pre-emptive rotation, bounded backoff and read-path self-heal; restarted `hope-api` to restore dev login. |
+| 2026-08-25 | Diagnosed the 4h `token_max_ttl` session death; implemented AppRole re-authentication, pre-emptive rotation, bounded backoff and read-path self-heal; restarted `hope-api` to restore dev login immediately. |
+| 2026-08-25 | Committed `fe7fc77c`, pipeline 997 green, `promote-dev` pinned the digest, Argo CD synced. Fix verified running in `hope-v2-dev` via `build-info.json` + shipped-bundle markers. Audited for recurrence: one dormant instance of the same defect class recorded above. |
