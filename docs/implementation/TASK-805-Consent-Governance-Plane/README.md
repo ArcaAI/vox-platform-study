@@ -147,6 +147,17 @@ and the four `Record<ProviderService, …>` maps. Field shapes are copied from
 because the plane is platform-managed by owner ruling — the same shape `rerank`
 already had.
 
+**I-3 — the four-artifact rule is missing a fifth.** `05-nestjs-api.md`'s
+definition of done says to regenerate `api:build && api:route-manifest &&
+api:openapi && api:portal` together. It omits
+`pnpm --filter @arcaai/vox-node gen:admin`, whose output (`schemas.ts`) is
+derived from `openapi.json` and is gated by `generate-vox-node-admin-check` just
+as tightly. Following the documented list exactly still produced a red pipeline
+(#990). The drift was, again, only the `model-registry` enum — the same I-1
+staleness — and nothing consent-related, since `ConsentGrantController` is
+absent from the generated SDK by owner decision D-3. Worth folding into the
+rule's DoD list.
+
 **I-2 — out of scope, reported not fixed.** Every admin-console screen logs a
 React `Received false for a non-boolean attribute active` error from a shared
 `packages/ui` component. Reproduced on `/audio/pipelines`, untouched by this
@@ -202,4 +213,5 @@ made the attestation — which is the entire point of refusing to auto-grant.
 | Date | Change |
 |---|---|
 | 2026-08-25 | Ticket opened; root cause verified against `vox-dev`; plan approved (full governance plane, clinician gate noted not changed). |
+| 2026-08-25 | Pipeline #990 red on `generate-vox-node-admin-check`; regenerated `vox-node` `schemas.ts` (2 lines, the `model-registry` enum). Recorded as I-3. |
 | 2026-08-25 | Implemented all four layers. Fixed D-1 (unstable pagination sort) and I-1 (stale OpenAPI hiding the missing `model-registry` console surface). All gates green; live browser pass recorded. Status → Completed. |
