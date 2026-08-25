@@ -1,6 +1,13 @@
-import { ConsentGrantResponse, CreateConsentGrantRequest, IConsentGrantService, RevokeConsentGrantRequest } from '@arcaai/applications';
+import {
+  ConsentGrantResponse,
+  CreateConsentGrantRequest,
+  IConsentGrantService,
+  ListConsentGrantsQuery,
+  PaginatedConsentGrantResponse,
+  RevokeConsentGrantRequest,
+} from '@arcaai/applications';
 import { Body, Controller, Get, Inject, Param, Patch, Post, Query } from '@nestjs/common';
-import { ApiBearerAuth, ApiHeader, ApiOperation, ApiParam, ApiQuery, ApiResponse, ApiTags } from '@nestjs/swagger';
+import { ApiBearerAuth, ApiHeader, ApiOperation, ApiParam, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { CanManage, ExpectedVersion, RequiresIfMatch, ForbidApiKey, ForbidServiceAccount } from '../../decorators';
 
 /**
@@ -58,12 +65,26 @@ export class ConsentGrantController {
     return this.consentGrantService.create(request);
   }
 
+  /**
+   * The consent register (TASK-805). `externalPatientId` is OPTIONAL here —
+   * it was required, and returned a bare array, which made this route a
+   * per-patient lookup rather than a governance surface: HOPE stores no
+   * `Patient` model, so an admin auditing consent had no way to discover the
+   * patient ids to ask about. Now paginated and tenant-wide, with the same
+   * patient filter available when the caller does know the id.
+   */
   @Get()
-  @ApiOperation({ summary: "List a patient's consent grants within the caller tenant" })
-  @ApiQuery({ name: 'externalPatientId', required: true, description: 'External patient identifier (trim-normalized on lookup — Q3)' })
-  @ApiResponse({ status: 200, type: [ConsentGrantResponse] })
-  async getByPatient(@Query('externalPatientId') externalPatientId: string): Promise<ConsentGrantResponse[]> {
-    return this.consentGrantService.getByPatient(externalPatientId);
+  @ApiOperation({
+    summary: 'List consent grants for the caller tenant',
+    description:
+      'Paginated register of `ConsentGrant` rows in the caller tenant. Filter by `externalPatientId` (trim-normalized, exact-case — Q3), ' +
+      '`purpose`, and `state`. `state=ACTIVE` applies the SAME predicate the ABAC choke point evaluates (not revoked and not expired as of now), ' +
+      'so an Active row here is exactly a row `assertConsent` would allow at that instant.',
+  })
+  @ApiResponse({ status: 200, type: PaginatedConsentGrantResponse })
+  @ApiResponse({ status: 400, description: 'Bad request — invalid query parameter.' })
+  async list(@Query() query: ListConsentGrantsQuery): Promise<PaginatedConsentGrantResponse> {
+    return this.consentGrantService.list(query);
   }
 
   @Patch(':id/revoke')

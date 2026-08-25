@@ -649,7 +649,8 @@
               "tts",
               "embeddings",
               "rerank",
-              "vector"
+              "vector",
+              "model-registry"
             ],
             "example": "llm",
             "type": "string"
@@ -10042,6 +10043,38 @@
           "data": {
             "items": {
               "$ref": "#/components/schemas/ChangelogEntryResponse"
+            },
+            "type": "array"
+          },
+          "limit": {
+            "description": "Number of items per page",
+            "example": 10,
+            "type": "number"
+          },
+          "page": {
+            "description": "Page number",
+            "example": 0,
+            "type": "number"
+          }
+        },
+        "required": [
+          "count",
+          "limit",
+          "page",
+          "data"
+        ],
+        "type": "object"
+      },
+      "PaginatedConsentGrantResponse": {
+        "properties": {
+          "count": {
+            "description": "Total number of items",
+            "example": 1234,
+            "type": "number"
+          },
+          "data": {
+            "items": {
+              "$ref": "#/components/schemas/ConsentGrantResponse"
             },
             "type": "array"
           },
@@ -19518,7 +19551,8 @@
               "tts",
               "embeddings",
               "rerank",
-              "vector"
+              "vector",
+              "model-registry"
             ],
             "example": "llm",
             "type": "string"

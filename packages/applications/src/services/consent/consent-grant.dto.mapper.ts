@@ -1,5 +1,6 @@
 import { ConsentGrantEntity } from '@arcaai/domains';
-import { ConsentGrantResponse } from './dto';
+import { ConsentGrantResponse, PaginatedConsentGrantResponse } from './dto';
+import { FetchResponse } from '../../common';
 
 export class ConsentGrantDtoMapper {
   static toResponse(entity: ConsentGrantEntity): ConsentGrantResponse {
@@ -21,5 +22,14 @@ export class ConsentGrantDtoMapper {
       updatedAt: entity.updatedAt.toISOString(),
       version: entity.version,
     };
+  }
+
+  static ToPaginatedResponse({ page, limit, count, data }: FetchResponse<ConsentGrantEntity>): PaginatedConsentGrantResponse {
+    return new PaginatedConsentGrantResponse({
+      page,
+      limit,
+      count,
+      data: data.map((grant) => this.toResponse(grant)),
+    });
   }
 }

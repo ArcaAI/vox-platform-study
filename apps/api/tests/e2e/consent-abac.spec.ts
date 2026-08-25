@@ -163,6 +163,131 @@ test.describe('TASK-712 — consent enforcement is ON by default', () => {
     expect(stale.status()).toBe(412);
   });
 
+  // ─── TASK-805: the consent REGISTER ───
+  //
+  // `GET /admin/consent-grants` was a per-patient lookup returning a bare
+  // array. It is now the governance surface: tenant-wide, paginated, and
+  // filterable — which is what makes an admin able to AUDIT consent rather
+  // than only confirm a patient id they already knew.
+  test.describe('TASK-805 — the consent register', () => {
+    interface RegisterPage {
+      data: ConsentGrantBody[];
+      count: number;
+      page: number;
+      limit: number;
+    }
+
+    async function register(request: import('@playwright/test').APIRequestContext, query = ''): Promise<RegisterPage> {
+      const res = await request.get(`/api/v1/admin/consent-grants${query}`, { headers: bearer(token) });
+      expect(res.status(), `GET /admin/consent-grants${query}`).toBe(200);
+      return (await res.json()) as RegisterPage;
+    }
+
+    test('lists tenant-wide with NO patient filter — the read the old contract could not express', async ({ request }) => {
+      const page = await register(request);
+
+      expect(Array.isArray(page.data), 'paginated envelope, not a bare array').toBe(true);
+      // The seed ships grants for the demo patients, so a tenant-wide read
+      // must return rows without anyone naming a patient first.
+      expect(page.count).toBeGreaterThan(0);
+      expect(page.data.length).toBeGreaterThan(0);
+      // More than one distinct patient proves this is not silently
+      // patient-scoped.
+      const patients = new Set(page.data.map((row) => (row as unknown as { externalPatientId: string }).externalPatientId));
+      expect(patients.size).toBeGreaterThan(1);
+    });
+
+    test('paginates — page 2 returns different rows and echoes the requested limit', async ({ request }) => {
+      const first = await register(request, '?page=1&limit=2');
+      expect(first.limit, 'the envelope echoes the EFFECTIVE limit (TASK-776 F-02)').toBe(2);
+      expect(first.data.length).toBeLessThanOrEqual(2);
+
+      if (first.count > 2) {
+        const second = await register(request, '?page=2&limit=2');
+        const firstIds = first.data.map((row) => row.id);
+        expect(
+          second.data.every((row) => !firstIds.includes(row.id)),
+          'page 2 must not repeat page 1',
+        ).toBe(true);
+      }
+    });
+
+    test('filters by purpose', async ({ request }) => {
+      const page = await register(request, '?purpose=AI_DOCUMENTATION&limit=50');
+      expect(page.data.length).toBeGreaterThan(0);
+      expect(page.data.every((row) => row.purpose === 'AI_DOCUMENTATION')).toBe(true);
+    });
+
+    test('state=ACTIVE hides a revoked grant, state=REVOKED shows only it', async ({ request }) => {
+      const patientId = `PAT-REGISTER-${Date.now()}`;
+      const created = await grant(request, patientId, 'QUALITY_REVIEW');
+      expect([200, 201]).toContain(created.status());
+      const row = (await created.json()) as ConsentGrantBody;
+
+      // Present as ACTIVE before revocation.
+      const before = await register(request, `?externalPatientId=${patientId}&state=ACTIVE`);
+      expect(before.data.map((g) => g.id)).toContain(row.id);
+
+      const revoked = await request.patch(`/api/v1/admin/consent-grants/${row.id}/revoke`, {
+        headers: { ...bearer(token), 'If-Match': `"${row.version}"` },
+        // `expectedVersion` is a REQUIRED body field as well as the If-Match
+        // header (the header wins server-side); omitting it is a 400 from the
+        // global validation pipe, before OCC is ever evaluated.
+        data: { expectedVersion: row.version, reason: 'register e2e' },
+      });
+      expect(revoked.status()).toBe(200);
+
+      // ACTIVE must now exclude it; REVOKED must include it. The row is kept
+      // either way — revocation is never a delete.
+      const active = await register(request, `?externalPatientId=${patientId}&state=ACTIVE`);
+      expect(
+        active.data.map((g) => g.id),
+        'a revoked grant is not ACTIVE',
+      ).not.toContain(row.id);
+
+      const withdrawn = await register(request, `?externalPatientId=${patientId}&state=REVOKED`);
+      expect(
+        withdrawn.data.map((g) => g.id),
+        'the revoked row is still on record',
+      ).toContain(row.id);
+    });
+
+    test('state=ACTIVE excludes an EXPIRED grant — the same predicate the ABAC gate applies', async ({ request }) => {
+      const patientId = `PAT-EXPIRED-${Date.now()}`;
+      const created = await grant(request, patientId, 'STYLE_LEARNING', { expiresAt: new Date(Date.now() - 60_000).toISOString() });
+      expect([200, 201]).toContain(created.status());
+      const row = (await created.json()) as ConsentGrantBody;
+
+      const active = await register(request, `?externalPatientId=${patientId}&state=ACTIVE`);
+      expect(
+        active.data.map((g) => g.id),
+        'an expired grant is not ACTIVE',
+      ).not.toContain(row.id);
+
+      const all = await register(request, `?externalPatientId=${patientId}&state=ALL`);
+      expect(
+        all.data.map((g) => g.id),
+        'ALL still shows it',
+      ).toContain(row.id);
+    });
+
+    test("never leaks another tenant's grants", async ({ request }) => {
+      // Every row the register returns must belong to the caller's tenant.
+      // A cross-tenant row here would be a PHI leak, not a display bug.
+      const patientId = `PAT-TENANCY-${Date.now()}`;
+      await grant(request, patientId, 'EXTERNAL_TOOL_LOOKUP');
+
+      const mine = await register(request, `?externalPatientId=${patientId}&limit=50`);
+      expect(mine.data.length).toBe(1);
+
+      // A patient id that exists only in another tenant returns an empty page,
+      // never that tenant's row.
+      const foreign = await register(request, '?externalPatientId=__no-such-patient-in-this-tenant__');
+      expect(foreign.count).toBe(0);
+      expect(foreign.data).toEqual([]);
+    });
+  });
+
   test('the legacy-grant backfill covers a pre-existing seeded patient (09-consultation.ts PAT-20250101-001) — proves migration -> backfill -> guard ordering', async ({
     request,
   }) => {
@@ -173,9 +298,13 @@ test.describe('TASK-712 — consent enforcement is ON by default', () => {
     // this spec granting anything itself.
     const legacyPatientId = 'PAT-20250101-001';
 
+    // TASK-805: this route is now the paginated consent REGISTER — the
+    // patient filter is optional and the body is an envelope, not a bare array.
     const listed = await request.get(`/api/v1/admin/consent-grants?externalPatientId=${legacyPatientId}`, { headers: bearer(token) });
     expect(listed.status()).toBe(200);
-    const grants = (await listed.json()) as ConsentGrantBody[];
+    const page = (await listed.json()) as { data: ConsentGrantBody[]; count: number; page: number; limit: number };
+    expect(Array.isArray(page.data), 'the register returns a paginated envelope').toBe(true);
+    const grants = page.data;
     test.skip(grants.length === 0, `${legacyPatientId} has no consultations in this tenant/environment to prove the backfill against`);
     expect(grants.some((g) => g.purpose === 'HISTORY_RETRIEVAL')).toBe(true);
 

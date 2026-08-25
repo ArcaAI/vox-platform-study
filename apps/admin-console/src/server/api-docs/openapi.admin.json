@@ -649,7 +649,8 @@
               "tts",
               "embeddings",
               "rerank",
-              "vector"
+              "vector",
+              "model-registry"
             ],
             "example": "llm",
             "type": "string"
@@ -10042,6 +10043,38 @@
           "data": {
             "items": {
               "$ref": "#/components/schemas/ChangelogEntryResponse"
+            },
+            "type": "array"
+          },
+          "limit": {
+            "description": "Number of items per page",
+            "example": 10,
+            "type": "number"
+          },
+          "page": {
+            "description": "Page number",
+            "example": 0,
+            "type": "number"
+          }
+        },
+        "required": [
+          "count",
+          "limit",
+          "page",
+          "data"
+        ],
+        "type": "object"
+      },
+      "PaginatedConsentGrantResponse": {
+        "properties": {
+          "count": {
+            "description": "Total number of items",
+            "example": 1234,
+            "type": "number"
+          },
+          "data": {
+            "items": {
+              "$ref": "#/components/schemas/ConsentGrantResponse"
             },
             "type": "array"
           },
@@ -19518,7 +19551,8 @@
               "tts",
               "embeddings",
               "rerank",
-              "vector"
+              "vector",
+              "model-registry"
             ],
             "example": "llm",
             "type": "string"
@@ -28160,15 +28194,109 @@
     },
     "/api/v1/admin/consent-grants": {
       "get": {
-        "description": "**Credentials** — user JWT accepted; API key **rejected (403)**; service-account token rejected.\n\n**Abilities** — `manage:ConsentGrant`.\n\nScopes bind the credential, abilities bind the user it acts for; they compose as AND.",
-        "operationId": "ConsentGrantController_getByPatient",
+        "description": "Paginated register of `ConsentGrant` rows in the caller tenant. Filter by `externalPatientId` (trim-normalized, exact-case — Q3), `purpose`, and `state`. `state=ACTIVE` applies the SAME predicate the ABAC choke point evaluates (not revoked and not expired as of now), so an Active row here is exactly a row `assertConsent` would allow at that instant.\n\n**Credentials** — user JWT accepted; API key **rejected (403)**; service-account token rejected.\n\n**Abilities** — `manage:ConsentGrant`.\n\nScopes bind the credential, abilities bind the user it acts for; they compose as AND.",
+        "operationId": "ConsentGrantController_list",
         "parameters": [
           {
-            "description": "External patient identifier (trim-normalized on lookup — Q3)",
+            "description": "Page number (starting from 0)",
+            "in": "query",
+            "name": "page",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "example": 0,
+              "type": "number"
+            }
+          },
+          {
+            "description": "Number of items per page (10, 20, or 50)",
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 10,
+              "example": 10,
+              "type": "number"
+            }
+          },
+          {
+            "description": "Search query",
+            "in": "query",
+            "name": "search",
+            "required": false,
+            "schema": {
+              "default": "",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Search fields (comma separated: name,phoneNumber)",
+            "in": "query",
+            "name": "searchFields",
+            "required": false,
+            "schema": {
+              "default": "",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Filters (comma separated: name:John,phoneNumber:123456)",
+            "in": "query",
+            "name": "filters",
+            "required": false,
+            "schema": {
+              "default": "",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Sort (comma separated: name:asc,phoneNumber:desc)",
+            "in": "query",
+            "name": "sort",
+            "required": false,
+            "schema": {
+              "default": "",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Filter to one patient. Trim-normalized on lookup, exact-case (Q3) — same normalization the write path applies.",
             "in": "query",
             "name": "externalPatientId",
-            "required": true,
+            "required": false,
             "schema": {
+              "example": "EHR-A:12345",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Filter to one purpose-of-use",
+            "in": "query",
+            "name": "purpose",
+            "required": false,
+            "schema": {
+              "enum": [
+                "AI_DOCUMENTATION",
+                "HISTORY_RETRIEVAL",
+                "EXTERNAL_TOOL_LOOKUP",
+                "STYLE_LEARNING",
+                "QUALITY_REVIEW"
+              ],
+              "type": "string"
+            }
+          },
+          {
+            "description": "Lifecycle filter. ACTIVE = not revoked and not expired (what the ABAC gate would allow now); REVOKED = revoked only; ALL = both.",
+            "in": "query",
+            "name": "state",
+            "required": false,
+            "schema": {
+              "default": "ALL",
+              "enum": [
+                "ACTIVE",
+                "REVOKED",
+                "ALL"
+              ],
               "type": "string"
             }
           }
@@ -28178,14 +28306,14 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "items": {
-                    "$ref": "#/components/schemas/ConsentGrantResponse"
-                  },
-                  "type": "array"
+                  "$ref": "#/components/schemas/PaginatedConsentGrantResponse"
                 }
               }
             },
             "description": ""
+          },
+          "400": {
+            "description": "Bad request — invalid query parameter."
           }
         },
         "security": [
@@ -28196,7 +28324,7 @@
             "bearer": []
           }
         ],
-        "summary": "List a patient's consent grants within the caller tenant",
+        "summary": "List consent grants for the caller tenant",
         "tags": [
           "admin-consent-grants"
         ],
@@ -36813,7 +36941,8 @@
                 "tts",
                 "embeddings",
                 "rerank",
-                "vector"
+                "vector",
+                "model-registry"
               ],
               "type": "string"
             }
@@ -36888,7 +37017,8 @@
                 "tts",
                 "embeddings",
                 "rerank",
-                "vector"
+                "vector",
+                "model-registry"
               ],
               "type": "string"
             }
@@ -36962,7 +37092,8 @@
                 "tts",
                 "embeddings",
                 "rerank",
-                "vector"
+                "vector",
+                "model-registry"
               ],
               "type": "string"
             }
@@ -37043,7 +37174,8 @@
                 "tts",
                 "embeddings",
                 "rerank",
-                "vector"
+                "vector",
+                "model-registry"
               ],
               "type": "string"
             }

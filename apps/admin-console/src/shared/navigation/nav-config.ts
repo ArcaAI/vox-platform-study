@@ -19,6 +19,7 @@ import {
   IconDna,
   IconDna2,
   IconEngine,
+  IconFileCheck,
   IconFileText,
   IconFingerprint,
   IconFlask,
@@ -593,6 +594,19 @@ export const NAV_ENTRIES: readonly NavEntry[] = [
     tier: '30-49',
     icon: IconDna,
     required: [['manage', 'DnaWritingStyleReport']],
+    implemented: true,
+  },
+  // TASK-805 — the consent register. Tier 30-49 because grants key on
+  // (tenantId, externalPatientId, purpose): a super admin reads them through
+  // the working tenant, never cross-tenant. `manage:ConsentGrant` mirrors
+  // `ConsentGrantController`'s class-level `@CanManage('ConsentGrant')`.
+  {
+    route: '/consent',
+    domain: 'clinical',
+    label: 'Patient consent',
+    tier: '30-49',
+    icon: IconFileCheck,
+    required: [['manage', 'ConsentGrant']],
     implemented: true,
   },
   {
