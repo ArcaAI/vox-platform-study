@@ -28,6 +28,7 @@ import { BaseService, assertEqualTenants, assertParentInScope, assertUserBelongs
 import { IActiveUserContext } from '../../../interfaces';
 import { IEntitlementsService } from '../../entitlements/IEntitlementsService';
 import { HarnessAuditService } from '../../harness-audit';
+import { IConsentGrantService } from '../../consent/IConsentGrantService';
 import { IConsultationWorkflowDispatchService } from '../workflow-dispatch/IConsultationWorkflowDispatchService';
 import { TenantSettingsService } from '../../settings-registry/tenant-settings.service';
 import { CONSULTATION_REQUIRE_PRIMED_BEFORE_RECORDING_KEY } from '../consultation-gates.constants';
@@ -71,6 +72,12 @@ export class ConsultationService extends BaseService implements IConsultationSer
     @Optional()
     @Inject(IConsultationWorkflowDispatchService)
     private readonly workflowDispatchService?: IConsultationWorkflowDispatchService,
+    // TASK-805 owner directive (2026-08-25) — optional + trailing (append-only
+    // DI, so existing positional test fixtures keep constructing). Records the
+    // consent the doctor gives by opening the consultation. Absent ⇒ no grant
+    // is written and the ABAC gate will refuse recording, which is why
+    // `getOrCreate` logs loudly rather than silently when it is unwired.
+    @Optional() @Inject(IConsentGrantService) private readonly consentGrantService?: IConsentGrantService,
   ) {
     super(eventEmitter, clsService, ResourceType.Consultation);
   }
@@ -175,6 +182,32 @@ export class ConsultationService extends BaseService implements IConsultationSer
       createdAt: saved.createdAt,
       data: { action: 'getOrCreate', created: true },
     });
+
+    // ─── Consent (TASK-805 owner directive, 2026-08-25) ───
+    //
+    // A doctor opening a consultation IS the consent event: the clinician is
+    // with the patient and attests, by that act, that the patient consented to
+    // every purpose. Grants are written here — inside the doctor's own request
+    // context, so `grantedBy` is the doctor and each row lands on the WORM
+    // ledger — because `POST /admin/consent-grants` requires
+    // `manage:ConsentGrant`, a TENANT-ADMIN ability no clinician holds. Before
+    // this, a doctor could open a consultation they were then forbidden to
+    // record and forbidden to fix (403 `Missing permissions: manage:ConsentGrant`).
+    //
+    // FAIL-CLOSED, unlike the best-effort workflow dispatch below. Once opening
+    // a consultation MEANS consent was recorded, a consultation whose consent
+    // did not persist is not "opened with a degraded feature" — it is a
+    // consultation the clinician cannot record and cannot repair. Failing here
+    // surfaces that immediately and retryably, instead of as a mystifying 403
+    // at the moment they press Record.
+    if (!this.consentGrantService) {
+      this.logger.warn({
+        message: 'Consent grant service is NOT WIRED — recording this consultation will be refused by PatientConsentGuard',
+        consultationId: saved.id,
+      });
+    } else {
+      await this.consentGrantService.ensureConsultationConsent(saved.patientId);
+    }
 
     // TASK-789 C-1 — the ONE place `WorkflowRun.trigger = 'consultation open'` is stamped.
     // Fires only on CREATE: `getOrCreate`'s existing-consultation branch returns earlier, so a

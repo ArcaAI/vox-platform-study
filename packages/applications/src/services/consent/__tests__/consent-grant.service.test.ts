@@ -21,6 +21,7 @@ const mockHarnessAuditService = { append: vi.fn() };
 const mockConsentGrantRepository = {
   findById: vi.fn(),
   findByTenantAndPatient: vi.fn(),
+  findByTenantPatientPurpose: vi.fn(),
   findAll: vi.fn(),
   count: vi.fn(),
   create: vi.fn(),
@@ -66,6 +67,13 @@ const createMockEntity = (
     hasChanges: overrides.hasChanges ?? false,
     changes: overrides.changes ?? {},
     revoke: vi.fn(),
+    // Mirrors ConsentGrantEntity.isActive: not revoked as of `now`, and not
+    // expired as of `now`.
+    isActive: (now: Date = new Date()) => {
+      const revokedAt = overrides.revokedAt ?? null;
+      if (revokedAt && revokedAt.getTime() <= now.getTime()) return false;
+      return true;
+    },
   };
   return entity;
 };
@@ -222,6 +230,82 @@ describe('ConsentGrantService', () => {
       // The mutation itself was NOT rolled back (documented, ATTEST-mirroring
       // trade-off) — the repository write already happened.
       expect(mockConsentGrantRepository.create).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  // TASK-805 owner directive (2026-08-25) — a doctor opening a consultation IS
+  // the consent event, so every purpose is granted at that moment.
+  describe('ensureConsultationConsent', () => {
+    beforeEach(() => {
+      mockConsentGrantRepository.create.mockImplementation(async (entity: { purpose: ConsentPurpose }) =>
+        createMockEntity({ purpose: entity.purpose }),
+      );
+    });
+
+    it('grants EVERY purpose when the patient has none', async () => {
+      mockConsentGrantRepository.findByTenantPatientPurpose.mockResolvedValue(null);
+
+      const granted = await service.ensureConsultationConsent('EHR-A:12345');
+
+      const allPurposes = Object.values(ConsentPurpose);
+      expect(granted).toHaveLength(allPurposes.length);
+      expect(mockConsentGrantRepository.create).toHaveBeenCalledTimes(allPurposes.length);
+      // Enumerated from the enum, so a newly added purpose is covered too.
+      const created = mockConsentGrantRepository.create.mock.calls.map((c) => c[0].purpose);
+      expect(new Set(created)).toEqual(new Set(allPurposes));
+    });
+
+    it('attributes every grant to the requesting clinician, not to a machine', async () => {
+      mockConsentGrantRepository.findByTenantPatientPurpose.mockResolvedValue(null);
+
+      await service.ensureConsultationConsent('EHR-A:12345');
+
+      // `create()` stamps grantedBy from the CLS request user — the whole
+      // reason this does not violate owner decision D-3.
+      for (const call of mockConsentGrantRepository.create.mock.calls) {
+        expect(call[0].grantedBy).toBe('clinician-1');
+      }
+    });
+
+    it('is idempotent — an already-ACTIVE purpose is skipped, never duplicated', async () => {
+      const active = createMockEntity();
+      // Active for AI_DOCUMENTATION only; every other purpose is absent.
+      mockConsentGrantRepository.findByTenantPatientPurpose.mockImplementation(async (_t: string, _p: string, purpose: ConsentPurpose) =>
+        purpose === ConsentPurpose.AI_DOCUMENTATION ? active : null,
+      );
+
+      const granted = await service.ensureConsultationConsent('EHR-A:12345');
+
+      const created = mockConsentGrantRepository.create.mock.calls.map((c) => c[0].purpose);
+      expect(created).not.toContain(ConsentPurpose.AI_DOCUMENTATION);
+      expect(granted).toHaveLength(Object.values(ConsentPurpose).length - 1);
+    });
+
+    it('re-grants a purpose whose previous grant was REVOKED — a new consultation is a new consent event', async () => {
+      const revoked = createMockEntity({ revokedAt: new Date('2026-08-02T00:00:00Z') });
+      mockConsentGrantRepository.findByTenantPatientPurpose.mockImplementation(async (_t: string, _p: string, purpose: ConsentPurpose) =>
+        purpose === ConsentPurpose.AI_DOCUMENTATION ? revoked : null,
+      );
+
+      await service.ensureConsultationConsent('EHR-A:12345');
+
+      const created = mockConsentGrantRepository.create.mock.calls.map((c) => c[0].purpose);
+      expect(created).toContain(ConsentPurpose.AI_DOCUMENTATION);
+    });
+
+    it('trim-normalizes the patient id before looking anything up', async () => {
+      mockConsentGrantRepository.findByTenantPatientPurpose.mockResolvedValue(null);
+
+      await service.ensureConsultationConsent('  EHR-A:12345  ');
+
+      expect(mockConsentGrantRepository.findByTenantPatientPurpose.mock.calls[0][1]).toBe('EHR-A:12345');
+    });
+
+    it('rejects without a tenant context rather than writing across tenants', async () => {
+      mockClsService.get.mockImplementation((key: string) => (key === 'tenantId' ? undefined : { id: 'user-1' }));
+
+      await expect(service.ensureConsultationConsent('EHR-A:12345')).rejects.toThrow('Tenant context required');
+      expect(mockConsentGrantRepository.create).not.toHaveBeenCalled();
     });
   });
 

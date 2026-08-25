@@ -6,21 +6,42 @@ export function formatFindAllProps<T = DefaultDbFieldType>({ page, limit, filter
     skip = Math.max(0, (page - 1) * limit);
   }
 
-  let whereConditions: DbFilters<T> = {};
+  // Merge `filters` and `where` into ONE predicate.
+  //
+  // The branch structure below is the original one, and the shape it produces
+  // (the AND-less side pushed INTO the other side's `AND`) is unchanged and
+  // still asserted by this file's tests. What changed is that each branch used
+  // to keep ONLY the `AND` array and silently DISCARD every sibling scalar key
+  // on the same object. A caller passing
+  // `where: { tenantId, externalPatientId, AND: [...] }` therefore lost its
+  // `tenantId` and read ACROSS TENANTS — while `formatCountProps` (which wraps
+  // instead of branching) counted the correct rows, so the bug surfaced as a
+  // page whose contents disagreed with its own count rather than as an obvious
+  // leak. No caller passed a where-with-AND until TASK-805's consent register,
+  // which is why it went unnoticed. Sibling keys are now carried through at the
+  // top level, where Prisma ANDs them with the array anyway.
+  //
+  // The `[...]` copies also stop this mutating the CALLER's `filters.AND`.
+  const { AND: whereAnd, ...whereRest } = (where ?? {}) as DbFilters<T> & { AND?: unknown[] };
+  const { AND: filtersAnd, ...filtersRest } = (filters ?? {}) as DbFilters<T> & { AND?: unknown[] };
 
-  // Merge filters and where conditions into a single AND condition array if both are provided
-  if (filters && filters.AND && where && where.AND) {
-    whereConditions.AND = [...filters.AND, ...where.AND];
-  } else if (filters && filters.AND) {
-    whereConditions.AND = filters.AND;
-    if (where) whereConditions.AND.push(where);
-  } else if (where && where.AND) {
-    whereConditions.AND = where.AND;
-    if (filters) whereConditions.AND.push(filters);
+  /* eslint-disable @typescript-eslint/no-explicit-any -- the generic `T` cannot describe Prisma's per-model AND element shape */
+  let whereConditions: DbFilters<T> = {};
+  if (filtersAnd && whereAnd) {
+    whereConditions = { ...filtersRest, ...whereRest } as DbFilters<T>;
+    whereConditions.AND = [...filtersAnd, ...whereAnd] as any;
+  } else if (filtersAnd) {
+    whereConditions = { ...filtersRest } as DbFilters<T>;
+    whereConditions.AND = [...filtersAnd] as any;
+    if (where) (whereConditions.AND as any[]).push(where);
+  } else if (whereAnd) {
+    whereConditions = { ...whereRest } as DbFilters<T>;
+    whereConditions.AND = [...whereAnd] as any;
+    if (filters) (whereConditions.AND as any[]).push(filters);
   } else {
-    if (filters) whereConditions = filters;
-    if (where) whereConditions = { ...whereConditions, ...where };
+    whereConditions = { ...filtersRest, ...whereRest } as DbFilters<T>;
   }
+  /* eslint-enable @typescript-eslint/no-explicit-any */
 
   if (search && searchFields && searchFields.length > 0) {
     const searchConditions = searchFields.map((field) => ({

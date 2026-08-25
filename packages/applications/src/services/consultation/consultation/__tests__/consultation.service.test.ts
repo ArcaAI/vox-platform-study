@@ -177,6 +177,74 @@ describe('ConsultationService', () => {
     );
   });
 
+  // TASK-805 owner directive (2026-08-25) — opening a consultation IS the
+  // doctor's consent event, because `POST /admin/consent-grants` needs
+  // `manage:ConsentGrant`, a tenant-admin ability no clinician holds.
+  describe('getOrCreate — consent on open', () => {
+    let consentService: { ensureConsultationConsent: ReturnType<typeof vi.fn> };
+    let wired: ConsultationService;
+
+    beforeEach(() => {
+      consentService = { ensureConsultationConsent: vi.fn().mockResolvedValue([]) };
+      mockConsultationRepository.create.mockResolvedValue(createMockConsultationEntity({ id: 'new-consultation-id' }));
+      /* eslint-disable @typescript-eslint/no-explicit-any */
+      wired = new ConsultationService(
+        mockConsultationRepository as any,
+        mockDepartmentRepository as any,
+        mockUserRoleAssignmentRepository as any,
+        mockUserDepartmentRepository as any,
+        mockUserRepository as any,
+        mockEventEmitter as any,
+        mockClsService as any,
+        // Positional optionals, in constructor order: entitlements,
+        // harnessAudit, tenantSettings, workflowDispatch — then the consent
+        // service this block is about.
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        consentService as any,
+      );
+      /* eslint-enable @typescript-eslint/no-explicit-any */
+    });
+
+    it('records consent for the patient when a consultation is CREATED', async () => {
+      mockConsultationRepository.findByUniqueKey.mockResolvedValue(null);
+
+      await wired.getOrCreate({ patientId: 'patient-1' }, 'doctor-1');
+
+      expect(consentService.ensureConsultationConsent).toHaveBeenCalledWith('patient-1');
+    });
+
+    it('does NOT re-grant when an existing consultation is returned', async () => {
+      // The existing branch returns early. Re-granting here would silently
+      // resurrect an admin's deliberate revocation every time the clinician
+      // re-opened the same consultation.
+      mockConsultationRepository.findByUniqueKey.mockResolvedValue(createMockConsultationEntity());
+
+      await wired.getOrCreate({ patientId: 'patient-1' }, 'doctor-1');
+
+      expect(consentService.ensureConsultationConsent).not.toHaveBeenCalled();
+    });
+
+    it('FAILS the open when consent cannot be recorded — never a consultation that cannot be recorded or repaired', async () => {
+      mockConsultationRepository.findByUniqueKey.mockResolvedValue(null);
+      consentService.ensureConsultationConsent.mockRejectedValue(new Error('vault unreachable'));
+
+      await expect(wired.getOrCreate({ patientId: 'patient-1' }, 'doctor-1')).rejects.toThrow('vault unreachable');
+    });
+
+    it('still opens the consultation when the consent service is NOT wired', async () => {
+      // The unwired path must not break consultation open — it degrades to the
+      // pre-directive behaviour, where PatientConsentGuard refuses recording.
+      mockConsultationRepository.findByUniqueKey.mockResolvedValue(null);
+
+      const result = await service.getOrCreate({ patientId: 'patient-1' }, 'doctor-1');
+
+      expect(result.id).toBeDefined();
+    });
+  });
+
   describe('getOrCreate', () => {
     it('should throw BadRequestException when tenant ID is not available', async () => {
       mockClsService.get.mockImplementation((key: string) => {
