@@ -197,6 +197,52 @@ HarnessAuditEvent  action=CONSENT_GIVEN  clinicianId=70000000-…-002
 i.e. the WORM ledger append fired and the grant is attributed to the human who
 made the attestation — which is the entire point of refusing to auto-grant.
 
+### Deployment (dev, 2026-08-25)
+
+| Step | Evidence |
+|---|---|
+| Commits | `5f20284f1` (feature) · `4e626db24` (vox-node regen) · `5daca9ddd` (docs) on `dev-2.2` |
+| Pipeline | [#991](https://git.taphuynh.dev/arca/hope-v2/-/pipelines/991) green (see D-2 below) |
+| Promote | `c0e10bd7` `promote(dev): dev-5daca9dd from pipeline #784` in `arca/hope-v2-deployment` |
+| Argo | `hope-v2-dev` **Synced** at `c0e10bd7`; 105/107 Synced+Healthy (2 unrelated rollouts finishing) |
+| Images | `api@sha256:b7f8cf62…` (was `d532d046…`), `admin-console@sha256:b52c40ff…` (was `ba097d10…`) |
+| Running build-info | both services report `gitCommitSha 5daca9ddd…`, `ciPipelineId 991` |
+| Live API contract | `GET /api/v1/admin/consent-grants` → `operationId ConsentGrantController_list`, params include `externalPatientId` (OPTIONAL), `purpose`, `state`; 200 = `PaginatedConsentGrantResponse` |
+| Live console route | `/consent` → `307 /login?from=%2Fconsent` (exists, auth-gated) |
+
+**D-2 — the CI/CD facts this deploy exposed, none caused by this change.**
+
+1. *No tests run in CI.* Pipelines 988/990/991 instantiate ZERO jobs from
+   `.gitlab/ci/test.yml` — every one is gated behind `SKIP_TESTS` /
+   `SKIP_TESTS_TS`, which something sets at project level. The pipeline is
+   lint + typecheck + codegen-drift + gitleaks only. TASK-805's evidence is
+   therefore entirely local (§Verification above); CI re-verified none of it,
+   and would not catch anyone else's regression either.
+2. *Python image builds time out.* `build-nlp`, `build-harness` and
+   `build-harness-worker` all hit `job_execution_timeout` at 1800s pulling
+   82 MB of Debian packages at ~30-60 KB/s; they passed on retry off a warm
+   cache. None of them contains a line of this change — they rebuilt only
+   because `build-python-base` came up cold and invalidated their layers.
+   Worth a mirror/proxy for the build runner, and worth asking whether
+   `promote-dev` should gate on images that did not change.
+3. *The `hope-db-migrate` Argo failure is a live overlay bug.* Before this
+   deploy the app was OutOfSync/Missing with its last sync FAILED:
+   `Job.batch "hope-db-migrate" is invalid: spec.selector: Required value …
+   field is immutable`. `base/db-migrate.yaml` declares it correctly as a
+   `PreSync` hook with `hook-delete-policy: BeforeHookCreation`, but the DEV
+   OVERLAY strips those annotations and substitutes
+   `argocd.argoproj.io/sync-options: Replace=true`. `Replace=true` against an
+   EXISTING Job sends a manifest with no auto-generated `controller-uid`, so
+   the replace is rejected. It self-cleared here only because the Job had been
+   deleted by hand at ~04:50Z, so Argo took the create path; it recreated
+   cleanly (`succeeded: 1` at 06:58:59Z). **It will re-break on the next sync
+   where the Job still exists.** The fix is to stop overriding the base's hook
+   annotations — in `arca/hope-v2-deployment`, so out of scope here.
+
+   Worth noting for confidence: even while that sync was failing, the
+   Deployments still applied — the pod running before this deploy carried
+   `e3de6a43` from the pipeline whose sync was marked Failed.
+
 ## 5. Follow-ups (not in this ticket)
 
 - **F-1 — clinician bedside capture.** `POST /admin/consent-grants` is gated by
@@ -214,4 +260,5 @@ made the attestation — which is the entire point of refusing to auto-grant.
 |---|---|
 | 2026-08-25 | Ticket opened; root cause verified against `vox-dev`; plan approved (full governance plane, clinician gate noted not changed). |
 | 2026-08-25 | Pipeline #990 red on `generate-vox-node-admin-check`; regenerated `vox-node` `schemas.ts` (2 lines, the `model-registry` enum). Recorded as I-3. |
+| 2026-08-25 | Deployed to dev: pipeline #991 green, promote `c0e10bd7`, Argo Synced, both services verified on `5daca9dd`. Recorded D-2 (CI runs no tests; Python builds time out; the db-migrate overlay bug). |
 | 2026-08-25 | Implemented all four layers. Fixed D-1 (unstable pagination sort) and I-1 (stale OpenAPI hiding the missing `model-registry` console surface). All gates green; live browser pass recorded. Status → Completed. |
