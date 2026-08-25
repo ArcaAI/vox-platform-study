@@ -66,6 +66,10 @@ export class ServiceReleaseService extends BaseService implements IServiceReleas
    * wrote (and the loser broadcasts nothing, because it created nothing).
    */
   async registerInstance(input: RegisterInstanceRequest): Promise<ServiceReleaseResponse> {
+    return this.runAsSystemTenant(() => this.registerInstanceScoped(input));
+  }
+
+  private async registerInstanceScoped(input: RegisterInstanceRequest): Promise<ServiceReleaseResponse> {
     const releaseTag = input.releaseTag ?? null;
 
     let release = await this.findRelease({ serviceName: input.service, gitCommitSha: input.gitCommitSha, releaseTag });
@@ -117,6 +121,10 @@ export class ServiceReleaseService extends BaseService implements IServiceReleas
    * (service, sha) is a 404. Re-attaching the same digest writes nothing.
    */
   async attachDigest(input: AttachDigestRequest): Promise<ServiceReleaseResponse> {
+    return this.runAsSystemTenant(() => this.attachDigestScoped(input));
+  }
+
+  private async attachDigestScoped(input: AttachDigestRequest): Promise<ServiceReleaseResponse> {
     // Keyed on (service, sha) only — the tag is deliberately not part of the
     // key. Newest build wins if a SHA somehow carries several tagged rows.
     const [release] = await this.serviceReleaseRepository.findAll({
@@ -251,6 +259,48 @@ export class ServiceReleaseService extends BaseService implements IServiceReleas
     }
 
     return releases.map(ServiceReleaseDtoMapper.toResponse);
+  }
+
+  /**
+   * TASK-804 — run a WRITE path under the SYSTEM tenant context.
+   *
+   * `ServiceRelease` and `ServiceInstance` are in `TENANT_SCOPED_MODELS`, and
+   * that Prisma extension fails CLOSED without a tenant context:
+   * `TenantScope: tenant context required for model ServiceRelease operation
+   * findMany`. Neither writer supplies one:
+   *
+   * - the internal HTTP route is `@Public()` + `ServiceReleaseTokenGuard`, so
+   *   no guard ever populated CLS `tenantId` (there is no user and no tenant to
+   *   derive it from — a service token identifies a PROCESS, not a tenant);
+   * - the gateway registers ITSELF in-process from
+   *   `startServiceReleaseRegistration`, outside any HTTP request, so there is
+   *   no CLS context at all.
+   *
+   * Every boot registration and every 5-minute heartbeat therefore 500'd — and
+   * the gateway's own failed silently, because its registration is deliberately
+   * best-effort. The registry that exists to answer "what version is running"
+   * could never record anything.
+   *
+   * The pin is not a widening: these rows ARE SYSTEM-owned, so this re-states
+   * the tenant `ServiceReleaseFactory`/`ServiceInstanceFactory` already stamp.
+   * Read paths stay unpinned — they run under the caller's own CLS and reach
+   * these rows through `SYSTEM_SHARED_READ_MODELS` widening, which is how a
+   * tenant admin sees the platform's releases at all.
+   *
+   * An ACTIVE context is pinned IN PLACE rather than replaced: the global
+   * `ClsModule` middleware has already stamped `requestId`/`correlationId` on
+   * it, and opening a nested `run()` would drop both from every log line the
+   * request goes on to emit.
+   */
+  private runAsSystemTenant<T>(work: () => Promise<T>): Promise<T> {
+    if (this.clsService.isActive()) {
+      this.clsService.set('tenantId', SERVICE_REGISTRY_TENANT_ID);
+      return work();
+    }
+    return this.clsService.run(async () => {
+      this.clsService.set('tenantId', SERVICE_REGISTRY_TENANT_ID);
+      return work();
+    });
   }
 
   private isLive(lastSeenAt: Date, now: number): boolean {

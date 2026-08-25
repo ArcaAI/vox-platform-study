@@ -11,7 +11,7 @@ import { DataNotFoundException } from '@arcaai/exceptions';
 import { SysEventType } from '@arcaai/domains';
 import { ServiceReleaseService, INSTANCE_LIVENESS_THRESHOLD_MS, SERVICE_REGISTRY_TENANT_ID } from '../serviceRelease.service';
 
-const mockClsService = { get: vi.fn(), set: vi.fn() };
+const mockClsService = { get: vi.fn(), set: vi.fn(), isActive: vi.fn(), run: vi.fn() };
 const mockEventEmitter = { emit: vi.fn() };
 
 const mockReleaseRepository = {
@@ -118,6 +118,10 @@ describe('ServiceReleaseService', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockClsService.get.mockReturnValue(undefined);
+    // Default: no ambient request context (the gateway's in-process boot
+    // registration and heartbeat). `run` establishes one.
+    mockClsService.isActive.mockReturnValue(false);
+    mockClsService.run.mockImplementation((callback: () => unknown) => callback());
   });
 
   describe('registerInstance', () => {
@@ -344,6 +348,92 @@ describe('ServiceReleaseService', () => {
       mockReleaseRepository.findAll.mockResolvedValue([]);
 
       await expect(createService().getHistory('nope')).rejects.toBeInstanceOf(DataNotFoundException);
+    });
+  });
+
+  /**
+   * TASK-804 — the registration path carries NO tenant CLS, and every row it
+   * touches is tenant-scoped.
+   *
+   * `ServiceRelease`/`ServiceInstance` are in `TENANT_SCOPED_MODELS`, whose
+   * Prisma extension fails CLOSED without a tenant context:
+   *
+   *   Error: TenantScope: tenant context required for model ServiceRelease
+   *          operation findMany
+   *
+   * Both writers arrive without one — the internal HTTP route is `@Public()` +
+   * service-token guard (no user, no tenant), and the gateway registers
+   * IN-PROCESS from `startServiceReleaseRegistration`, outside any request. So
+   * every register/heartbeat 500'd (and the gateway's own heartbeat was
+   * swallowed by its best-effort `onError`), leaving the release registry empty
+   * for every service in the cluster.
+   *
+   * The pin is SYSTEM because these rows ARE SYSTEM-owned
+   * (`SERVICE_REGISTRY_TENANT_ID`) — it re-states the tenant the factory
+   * already stamps, rather than widening a read. Read paths
+   * (`listReleases`/`listCurrent`/`getHistory`) are deliberately NOT pinned:
+   * they run under the caller's own CLS and see these rows through
+   * `SYSTEM_SHARED_READ_MODELS` widening.
+   */
+  describe('SYSTEM tenant pinning on the write paths', () => {
+    it('registerInstance pins the tenant BEFORE any tenant-scoped query', async () => {
+      const order: string[] = [];
+      mockClsService.run.mockImplementation((callback: () => unknown) => {
+        order.push('run');
+        return callback();
+      });
+      mockClsService.set.mockImplementation((key: string, value: unknown) => {
+        order.push(`set:${key}=${String(value)}`);
+      });
+      mockReleaseRepository.findAll.mockImplementation(() => {
+        order.push('release.findAll');
+        return Promise.resolve([makeReleaseEntity()]);
+      });
+      mockInstanceRepository.findAll.mockResolvedValue([makeInstanceEntity()]);
+      mockInstanceRepository.update.mockImplementation((_id, entity) => Promise.resolve(entity));
+
+      await createService().registerInstance(REGISTER_INPUT);
+
+      expect(order.slice(0, 3)).toEqual(['run', `set:tenantId=${SERVICE_REGISTRY_TENANT_ID}`, 'release.findAll']);
+    });
+
+    it('attachDigest pins the tenant BEFORE any tenant-scoped query', async () => {
+      const order: string[] = [];
+      mockClsService.run.mockImplementation((callback: () => unknown) => {
+        order.push('run');
+        return callback();
+      });
+      mockClsService.set.mockImplementation((key: string, value: unknown) => {
+        order.push(`set:${key}=${String(value)}`);
+      });
+      mockReleaseRepository.findAll.mockImplementation(() => {
+        order.push('release.findAll');
+        return Promise.resolve([makeReleaseEntity()]);
+      });
+
+      await createService().attachDigest({
+        service: 'text',
+        gitCommitSha: 'a'.repeat(40),
+        imageDigest: `sha256:${'c'.repeat(64)}`,
+      });
+
+      expect(order.slice(0, 3)).toEqual(['run', `set:tenantId=${SERVICE_REGISTRY_TENANT_ID}`, 'release.findAll']);
+    });
+
+    it('reuses the ambient request context instead of replacing it (internal HTTP route)', async () => {
+      // The internal route DOES run inside the global CLS middleware's context,
+      // which already carries `requestId`/`correlationId`. Opening a fresh
+      // `run()` there would drop both from every log line the request emits, so
+      // an active context is pinned in place.
+      mockClsService.isActive.mockReturnValue(true);
+      mockReleaseRepository.findAll.mockResolvedValue([makeReleaseEntity()]);
+      mockInstanceRepository.findAll.mockResolvedValue([makeInstanceEntity()]);
+      mockInstanceRepository.update.mockImplementation((_id, entity) => Promise.resolve(entity));
+
+      await createService().registerInstance(REGISTER_INPUT);
+
+      expect(mockClsService.run).not.toHaveBeenCalled();
+      expect(mockClsService.set).toHaveBeenCalledWith('tenantId', SERVICE_REGISTRY_TENANT_ID);
     });
   });
 });
