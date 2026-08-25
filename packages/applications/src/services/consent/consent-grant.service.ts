@@ -1,12 +1,36 @@
 import { Inject, Injectable, InternalServerErrorException, Logger, Optional } from '@nestjs/common';
 import { ClsService } from 'nestjs-cls';
 import { EventEmitter2 } from '@nestjs/event-emitter';
-import { ConsentGrantEntity, ConsentGrantFactory, ConsentGrantRepository, HarnessAuditAction, ResourceType, SysEventType } from '@arcaai/domains';
+import {
+  ConsentGrantEntity,
+  ConsentGrantFactory,
+  ConsentGrantRepository,
+  HarnessAuditAction,
+  ResourceStatusType,
+  ResourceType,
+  SysEventType,
+  type ConsentGrant,
+} from '@arcaai/domains';
 import { ArgumentInvalidException } from '@arcaai/exceptions';
 import { IConsentGrantService } from './IConsentGrantService';
-import { CreateConsentGrantRequest, RevokeConsentGrantRequest, ConsentGrantResponse } from './dto';
+import {
+  ConsentGrantResponse,
+  ConsentGrantState,
+  CreateConsentGrantRequest,
+  ListConsentGrantsQuery,
+  PaginatedConsentGrantResponse,
+  RevokeConsentGrantRequest,
+} from './dto';
 import { ConsentGrantDtoMapper } from './consent-grant.dto.mapper';
-import { assertEqualTenants, BaseService } from '../../common';
+import {
+  assertEqualTenants,
+  BaseService,
+  DEFAULT_PAGE,
+  DEFAULT_PAGE_SIZE,
+  FetchResponse,
+  withFormattedCountProps,
+  withFormattedPaginatedProps,
+} from '../../common';
 import { IActiveUserContext } from '../../interfaces';
 import { CONSENT_INVALIDATE_EVENT, normalizeExternalPatientId } from './consent.constants';
 import { HarnessAuditService } from '../harness-audit/harness-audit.service';
@@ -137,19 +161,104 @@ export class ConsentGrantService extends BaseService implements IConsentGrantSer
     return ConsentGrantDtoMapper.toResponse(updated);
   }
 
-  async getByPatient(externalPatientId: string): Promise<ConsentGrantResponse[]> {
+  /**
+   * The consent register (TASK-805). Tenant-scoped, paginated, with optional
+   * patient / purpose / lifecycle filters.
+   *
+   * Replaces the original `getByPatient(externalPatientId)`, which REQUIRED a
+   * patient id and returned a bare array — usable as a per-patient lookup but
+   * not as a governance surface, because a tenant admin auditing consent has
+   * no way to enumerate the patients in the first place (HOPE stores no
+   * `Patient` model; `externalPatientId` is an opaque caller-supplied string).
+   *
+   * `state: ACTIVE` is evaluated with the SAME predicate the ABAC choke point
+   * uses (`ConsentGrantEntity.isActive` — not revoked as of now, not expired
+   * as of now), so a row this register calls Active is exactly a row
+   * `assertConsent` would allow at that instant. Expressed here as a Prisma
+   * predicate rather than a post-filter so `count` stays consistent with
+   * `data` across pages.
+   */
+  async list(query: ListConsentGrantsQuery): Promise<PaginatedConsentGrantResponse> {
     const tenantId = this.tenantId;
     if (!tenantId) {
       throw new ArgumentInvalidException('Tenant context required');
     }
-    const normalized = normalizeExternalPatientId(externalPatientId);
-    const grants = await this.consentGrantRepository.findByTenantAndPatient(tenantId, normalized);
 
-    this.broadcastSysEvent(SysEventType.ResourceViewed, {
-      data: { externalPatientId: normalized, items: grants.map((g) => g.id) },
+    const { page, limit } = query;
+    const where = this.buildListWhere(tenantId, query);
+
+    const paginatedProps = withFormattedPaginatedProps<ConsentGrant>(query);
+    const countProps = withFormattedCountProps(query);
+
+    const grants = await this.consentGrantRepository.findAll({
+      ...paginatedProps,
+      sort: this.stableSort(paginatedProps.sort),
+      where: { ...paginatedProps.where, ...where },
+    });
+    const count = await this.consentGrantRepository.count({
+      ...countProps,
+      where: { ...countProps.where, ...where },
     });
 
-    return grants.map((g) => ConsentGrantDtoMapper.toResponse(g));
+    this.broadcastSysEvent(SysEventType.ResourceViewed, {
+      data: { items: grants.map((grant) => grant.id), count },
+    });
+
+    return ConsentGrantDtoMapper.ToPaginatedResponse(
+      new FetchResponse<ConsentGrantEntity>({ data: grants, count, limit: limit ?? DEFAULT_PAGE_SIZE, page: page ?? DEFAULT_PAGE }),
+    );
+  }
+
+  /**
+   * A TOTAL order, always — the requested sort (or `grantedAt` desc) with `id`
+   * appended as the tiebreaker.
+   *
+   * Without it offset pagination is unsound on this table: `grantedAt` is not
+   * unique (the seed stamps every demo grant with the same instant, and a bulk
+   * import does the same), and Postgres gives no ordering guarantee between
+   * rows that tie on every ORDER BY key. Page 2 is then free to repeat rows
+   * from page 1 and silently omit others — caught by the register's own
+   * pagination e2e. `id` is a UUIDv7, so appending it is both unique and
+   * monotonic in creation time, which keeps the tiebreak stable rather than
+   * merely deterministic.
+   */
+  private stableSort(requested: Array<Record<string, 'asc' | 'desc'>> | undefined): Array<Record<string, 'asc' | 'desc'>> {
+    const base = requested?.length ? requested : [{ grantedAt: 'desc' as const }];
+    return base.some((rule) => 'id' in rule) ? base : [...base, { id: 'desc' as const }];
+  }
+
+  /**
+   * Prisma predicate for the register's filters. `now` is captured ONCE and
+   * reused by both the `findAll` and the `count` call so a page boundary
+   * cannot straddle an expiry instant and report a count the rows disagree
+   * with.
+   */
+  private buildListWhere(tenantId: string, query: ListConsentGrantsQuery): Record<string, unknown> {
+    const now = new Date();
+    const where: Record<string, unknown> = { tenantId, resourceStatus: ResourceStatusType.ENABLED };
+
+    if (query.externalPatientId) {
+      where.externalPatientId = normalizeExternalPatientId(query.externalPatientId);
+    }
+    if (query.purpose) {
+      where.purpose = query.purpose;
+    }
+
+    switch (query.state ?? ConsentGrantState.ALL) {
+      case ConsentGrantState.ACTIVE:
+        // Mirrors ConsentGrantEntity.isActive(now): never revoked (or revoked
+        // in the future), and either no expiry or an expiry still ahead.
+        where.AND = [{ OR: [{ revokedAt: null }, { revokedAt: { gt: now } }] }, { OR: [{ expiresAt: null }, { expiresAt: { gt: now } }] }];
+        break;
+      case ConsentGrantState.REVOKED:
+        where.revokedAt = { not: null, lte: now };
+        break;
+      case ConsentGrantState.ALL:
+      default:
+        break;
+    }
+
+    return where;
   }
 
   /**

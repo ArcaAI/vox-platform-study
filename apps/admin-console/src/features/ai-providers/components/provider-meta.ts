@@ -155,6 +155,36 @@ const VECTOR_PROVIDERS: readonly ProviderMeta[] = [
   },
 ];
 
+/**
+ * Model-registry tab — the weight-FETCH plane, not an inference capability.
+ * Both entries are SYSTEM-only (`CLOUD_BYO_PROVIDERS['model-registry']` is
+ * empty), so these cards are reachable by a platform super admin and 403 for a
+ * tenant admin — the same shape as `rerank`. Field lists mirror
+ * `PROVIDER_REQUIREMENTS['model-registry:*']` in @arcaai/applications.
+ */
+const MODEL_REGISTRY_PROVIDERS: readonly ProviderMeta[] = [
+  {
+    id: 'huggingface',
+    label: 'Hugging Face Hub',
+    keyLabel: 'Access token',
+    keyPlaceholder: 'hf_…',
+    fields: [{ name: 'model', label: 'Model id (org/repo)', placeholder: 'openai/whisper-large-v3', store: 'extra' }],
+  },
+  {
+    id: 's3',
+    label: 'S3 / MinIO weight store',
+    // An S3 credential is a PAIR: the SECRET half is the encrypted key, and the
+    // non-secret principal id rides in extras (the ServiceAccount.clientId
+    // precedent). Neither half alone can sign a request.
+    keyLabel: 'Secret access key',
+    keyPlaceholder: 'S3 secret access key',
+    fields: [
+      { name: 'baseUrl', label: 'Endpoint', placeholder: 'https://s3.us-east-1.amazonaws.com' },
+      { name: 'accessKeyId', label: 'Access key id', placeholder: 'AKIA…', store: 'extra' },
+    ],
+  },
+];
+
 /** Per-service provider metadata, keyed to drive each tab's credential grid. */
 export const PROVIDERS_BY_SERVICE: Record<ProviderService, readonly ProviderMeta[]> = {
   llm: LLM_PROVIDERS,
@@ -163,4 +193,5 @@ export const PROVIDERS_BY_SERVICE: Record<ProviderService, readonly ProviderMeta
   embeddings: EMBEDDINGS_PROVIDERS,
   rerank: RERANK_PROVIDERS,
   vector: VECTOR_PROVIDERS,
+  'model-registry': MODEL_REGISTRY_PROVIDERS,
 };

@@ -22,6 +22,7 @@ const TAB_LABEL: Record<ProviderService, string> = {
   embeddings: 'Embeddings',
   rerank: 'Rerank',
   vector: 'Vector DB',
+  'model-registry': 'Model registry',
 };
 
 const DEFAULT_SERVICE: ProviderService = 'llm';

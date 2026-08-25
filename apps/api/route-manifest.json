@@ -2016,7 +2016,7 @@
     },
     {
       "controller": "ConsentGrantController",
-      "handler": "getByPatient",
+      "handler": "list",
       "method": "GET",
       "path": "/api/v1/admin/consent-grants",
       "routePath": "/admin/consent-grants",

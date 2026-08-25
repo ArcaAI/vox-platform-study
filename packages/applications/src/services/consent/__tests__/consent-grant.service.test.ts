@@ -12,6 +12,7 @@ import { NotFoundException } from '@nestjs/common';
 import { ConsentGrantService } from '../consent-grant.service';
 import { CONSENT_INVALIDATE_EVENT } from '../consent.constants';
 import { SysEventType, ResourceStatusType, ConsentPurpose, ConsentGrantMethod, HarnessAuditAction } from '@arcaai/domains';
+import { ConsentGrantState } from '../dto';
 
 const mockClsService = { get: vi.fn(), set: vi.fn() };
 const mockEventEmitter = { emit: vi.fn() };
@@ -20,6 +21,8 @@ const mockHarnessAuditService = { append: vi.fn() };
 const mockConsentGrantRepository = {
   findById: vi.fn(),
   findByTenantAndPatient: vi.fn(),
+  findAll: vi.fn(),
+  count: vi.fn(),
   create: vi.fn(),
   updateWithVersion: vi.fn(),
 };
@@ -99,10 +102,7 @@ describe('ConsentGrantService', () => {
       expect(createdEntityArg.tenantId).toBe('tenant-1');
       expect(createdEntityArg.purpose).toBe(ConsentPurpose.AI_DOCUMENTATION);
 
-      expect(mockEventEmitter.emit).toHaveBeenCalledWith(
-        SysEventType.ResourceCreated,
-        expect.objectContaining({ resourceId: saved.id }),
-      );
+      expect(mockEventEmitter.emit).toHaveBeenCalledWith(SysEventType.ResourceCreated, expect.objectContaining({ resourceId: saved.id }));
       expect(mockEventEmitter.emit).toHaveBeenCalledWith(
         CONSENT_INVALIDATE_EVENT,
         expect.objectContaining({ tenantId: 'tenant-1', externalPatientId: 'EHR-A:12345', purpose: ConsentPurpose.AI_DOCUMENTATION }),
@@ -225,16 +225,104 @@ describe('ConsentGrantService', () => {
     });
   });
 
-  describe('getByPatient', () => {
-    it('normalizes the patient id, lists ENABLED grants, and broadcasts ResourceViewed', async () => {
-      const entity = createMockEntity();
-      mockConsentGrantRepository.findByTenantAndPatient.mockResolvedValue([entity]);
+  // TASK-805 — the consent register. `getByPatient` (patient id REQUIRED, bare
+  // array) is gone; `list` is tenant-wide, paginated and filterable.
+  describe('list', () => {
+    /** The `where` clause the service handed to findAll (both calls share one). */
+    const capturedWhere = (): Record<string, unknown> => mockConsentGrantRepository.findAll.mock.calls[0][0].where as Record<string, unknown>;
 
-      const result = await service.getByPatient('  EHR-A:12345  ');
+    beforeEach(() => {
+      mockConsentGrantRepository.findAll.mockResolvedValue([createMockEntity()]);
+      mockConsentGrantRepository.count.mockResolvedValue(1);
+    });
 
-      expect(mockConsentGrantRepository.findByTenantAndPatient).toHaveBeenCalledWith('tenant-1', 'EHR-A:12345');
+    it('scopes every read to the caller tenant and returns a paginated envelope', async () => {
+      const result = await service.list({ page: 0, limit: 10 });
+
+      expect(capturedWhere()).toMatchObject({ tenantId: 'tenant-1', resourceStatus: ResourceStatusType.ENABLED });
+      expect(result.count).toBe(1);
+      expect(result.page).toBe(0);
+      expect(result.limit).toBe(10);
+      expect(result.data).toHaveLength(1);
+    });
+
+    it('rejects when there is no tenant context rather than reading across tenants', async () => {
+      mockClsService.get.mockImplementation((key: string) => (key === 'tenantId' ? undefined : { id: 'user-1' }));
+
+      await expect(service.list({ page: 0, limit: 10 })).rejects.toThrow('Tenant context required');
+      expect(mockConsentGrantRepository.findAll).not.toHaveBeenCalled();
+    });
+
+    it('trim-normalizes the patient filter with the SAME function the write path uses', async () => {
+      await service.list({ page: 0, limit: 10, externalPatientId: '  EHR-A:12345  ' });
+
+      expect(capturedWhere()).toMatchObject({ externalPatientId: 'EHR-A:12345' });
+    });
+
+    it('filters by purpose when asked', async () => {
+      await service.list({ page: 0, limit: 10, purpose: ConsentPurpose.AI_DOCUMENTATION });
+
+      expect(capturedWhere()).toMatchObject({ purpose: ConsentPurpose.AI_DOCUMENTATION });
+    });
+
+    it('state=ACTIVE excludes revoked AND expired rows — the predicate assertConsent evaluates', async () => {
+      await service.list({ page: 0, limit: 10, state: ConsentGrantState.ACTIVE });
+
+      const and = capturedWhere().AND as Array<Record<string, unknown>>;
+      expect(and).toHaveLength(2);
+      // revoked-ness: null, or a revocation that has not taken effect yet
+      expect(and[0].OR).toEqual([{ revokedAt: null }, { revokedAt: { gt: expect.any(Date) } }]);
+      // expiry: none, or still in the future
+      expect(and[1].OR).toEqual([{ expiresAt: null }, { expiresAt: { gt: expect.any(Date) } }]);
+    });
+
+    it('state=REVOKED returns only grants already revoked', async () => {
+      await service.list({ page: 0, limit: 10, state: ConsentGrantState.REVOKED });
+
+      expect(capturedWhere().revokedAt).toEqual({ not: null, lte: expect.any(Date) });
+    });
+
+    it('state=ALL (the default) applies no lifecycle predicate', async () => {
+      await service.list({ page: 0, limit: 10 });
+
+      expect(capturedWhere().AND).toBeUndefined();
+      expect(capturedWhere().revokedAt).toBeUndefined();
+    });
+
+    it('counts with the SAME predicate it lists with, so a page and its total never disagree', async () => {
+      await service.list({ page: 0, limit: 10, state: ConsentGrantState.ACTIVE });
+
+      const listWhere = mockConsentGrantRepository.findAll.mock.calls[0][0].where;
+      const countWhere = mockConsentGrantRepository.count.mock.calls[0][0].where;
+      expect(countWhere).toEqual(listWhere);
+    });
+
+    // Offset pagination over a non-unique sort key is unsound without a
+    // tiebreaker: `grantedAt` ties (the seed stamps every demo grant with the
+    // same instant), and Postgres may then return page 2 rows that already
+    // appeared on page 1.
+    it('always appends `id` as a sort tiebreaker so pages cannot overlap', async () => {
+      await service.list({ page: 0, limit: 10 });
+
+      expect(mockConsentGrantRepository.findAll.mock.calls[0][0].sort).toEqual([{ grantedAt: 'desc' }, { id: 'desc' }]);
+    });
+
+    it('keeps a caller-supplied sort and still appends the tiebreaker', async () => {
+      await service.list({ page: 0, limit: 10, sort: 'expiresAt:asc' });
+
+      expect(mockConsentGrantRepository.findAll.mock.calls[0][0].sort).toEqual([{ expiresAt: 'asc' }, { id: 'desc' }]);
+    });
+
+    it('does not double-append when the caller already sorted by id', async () => {
+      await service.list({ page: 0, limit: 10, sort: 'id:asc' });
+
+      expect(mockConsentGrantRepository.findAll.mock.calls[0][0].sort).toEqual([{ id: 'asc' }]);
+    });
+
+    it('broadcasts ResourceViewed', async () => {
+      await service.list({ page: 0, limit: 10 });
+
       expect(mockEventEmitter.emit).toHaveBeenCalledWith(SysEventType.ResourceViewed, expect.anything());
-      expect(result).toHaveLength(1);
     });
   });
 });

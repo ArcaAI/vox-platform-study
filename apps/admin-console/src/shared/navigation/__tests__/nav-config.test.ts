@@ -64,16 +64,18 @@ describe('NAV_ENTRIES (capabilities-matrix section 3, reviewed 2026-07-04; playg
   //     `admin/settings/catalog` + `admin/settings/registry/:key`; 210
   //     descriptors with exactly ONE consumer, a single hardcoded category),
   //     taking 55 -> 56 and tier 20-29 from 6 -> 7.
+  // TASK-805 added `/consent` (the consent register), taking 56 -> 57 and
+  // tier 30-49 / domain `clinical` up by one.
   // `/settings` was NOT removed — it keeps the legacy raw-row and secret
   // administration and is relabelled "Settings rows & secrets" to say so.
-  it('covers the full 56-route rail map across the four tiers (including /context-schemas, /playground/workbench, /workflow-runs, /workflow-studio, /security-policy)', () => {
-    expect(NAV_ENTRIES).toHaveLength(56);
+  it('covers the full 57-route rail map across the four tiers (including /context-schemas, /playground/workbench, /workflow-runs, /workflow-studio, /security-policy)', () => {
+    expect(NAV_ENTRIES).toHaveLength(57);
     expect(NAV_ENTRIES.filter((entry) => entry.tier === '10-19')).toHaveLength(23);
     expect(NAV_ENTRIES.filter((entry) => entry.tier === '20-29')).toHaveLength(7);
-    expect(NAV_ENTRIES.filter((entry) => entry.tier === '30-49')).toHaveLength(20);
+    expect(NAV_ENTRIES.filter((entry) => entry.tier === '30-49')).toHaveLength(21);
     expect(NAV_ENTRIES.filter((entry) => entry.tier === '50-59')).toHaveLength(6);
     // The two routes moved to the user menu are accounted for, not lost.
-    expect(NAV_ENTRIES.length + USER_MENU_ENTRIES.length).toBe(58);
+    expect(NAV_ENTRIES.length + USER_MENU_ENTRIES.length).toBe(59);
   });
 
   it('gates the credential policy on manage:all — every backing key is a globalOnly descriptor', () => {
@@ -474,6 +476,8 @@ const FROZEN_RAIL_ENTRIES: ReadonlyArray<readonly [string, NavTier, ReadonlyArra
   ['/context-schemas', '30-49', [['manage', 'ConsultationContextSchema']]],
   ['/knowledge', '30-49', [['manage', 'KnowledgeDocument']]],
   ['/dna-writing-styles', '30-49', [['manage', 'DnaWritingStyleReport']]],
+  // TASK-805 — the consent register.
+  ['/consent', '30-49', [['manage', 'ConsentGrant']]],
   ['/audio/pipelines', '30-49', [['manage', 'AsrPipeline']]],
   [
     '/audio/transcription-jobs',
@@ -567,7 +571,7 @@ const FROZEN_DOMAIN_MEMBERSHIP: ReadonlyArray<readonly [NavDomainId, readonly st
     ],
   ],
   ['knowledge-agents', ['/agents', '/prompt-templates', '/context-schemas', '/knowledge', '/dna-writing-styles']],
-  ['clinical', ['/consultations', '/audio/pipelines', '/audio/transcription-jobs']],
+  ['clinical', ['/consultations', '/consent', '/audio/pipelines', '/audio/transcription-jobs']],
   [
     'workflow-harness',
     [
@@ -643,9 +647,10 @@ describe('NAV_DOMAINS', () => {
     }
   });
 
-  // 3·6·11·5·3·7·7·8·6 — ai-platform 10 -> 11 (/ai-runtime-profiles) and
-  // platform-ops 7 -> 8 (/settings-registry), both TASK-799 Phase 4.
-  it('partitions the 56 rail routes exactly as the ticket Domain Model does (3·6·11·5·3·7·7·8·6)', () => {
+  // 3·6·11·5·4·7·7·8·6 — ai-platform 10 -> 11 (/ai-runtime-profiles) and
+  // platform-ops 7 -> 8 (/settings-registry), both TASK-799 Phase 4; clinical
+  // 3 -> 4 (/consent, TASK-805).
+  it('partitions the 57 rail routes exactly as the ticket Domain Model does (3·6·11·5·4·7·7·8·6)', () => {
     for (const [id, routes] of FROZEN_DOMAIN_MEMBERSHIP) {
       expect(
         NAV_ENTRIES.filter((entry) => entry.domain === id)
@@ -654,7 +659,7 @@ describe('NAV_DOMAINS', () => {
         `domain "${id}" membership drifted`,
       ).toEqual([...routes].sort());
     }
-    expect(NAV_ENTRIES).toHaveLength(56);
+    expect(NAV_ENTRIES).toHaveLength(57);
   });
 
   it('keeps domain orthogonal to tier — /ai-configuration is tenant-tier but AI Platform (OD-2)', () => {

@@ -26,6 +26,9 @@ import { useEffect, useMemo, useState, useSyncExternalStore } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { AgenticProvider, useArca, useArcaLiveSummary, useArcaSttLanguageModes, useStoreApi } from '@arcaai/vox';
 import { toast } from 'sonner';
+import { GatewayError } from '@/shared/api';
+import { PURPOSE_META, grantLifecycle, isConsentDenied, usePatientConsentGrants } from '@/features/consent/api';
+import { RecordConsentDialog } from '@/features/consent/components/record-consent-dialog';
 import type { ModelOption } from '@arcaai/ui/components/custom/model-selector';
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from '@arcaai/ui/components/shadcn/resizable';
 import { Skeleton } from '@arcaai/ui/components/shadcn/skeleton';
@@ -303,6 +306,35 @@ function ScribeWorkspace() {
   const rows = listQuery.data ?? [];
   const listError = listQuery.error ? errorMessage(listQuery.error, 'Could not load consultations') : null;
 
+  // ─── Consent gate (TASK-805) ───
+  //
+  // `recording/start` and `prime` both carry
+  // `@RequiresConsent(AI_DOCUMENTATION)`, so without an active grant for this
+  // patient the session cannot start at all. Reading it here turns a raw 403
+  // at the end of a failed start (mic already open, audio already running)
+  // into a pre-flight block with the fix attached.
+  const patientId = consultation?.patientId ?? null;
+  const consentQuery = usePatientConsentGrants(patientId);
+  const [consentDialogOpen, setConsentDialogOpen] = useState(false);
+
+  const hasDocumentationConsent = useMemo(
+    () => (consentQuery.data ?? []).some((grant) => grant.purpose === 'AI_DOCUMENTATION' && grantLifecycle(grant) === 'ACTIVE'),
+    [consentQuery.data],
+  );
+
+  /**
+   * Null ⇒ do not block. Deliberately blocks ONLY on a settled, successful read
+   * that found no active grant: while the read is in flight, or when it failed
+   * (a role that cannot read the consent register still holds a valid session),
+   * the server stays the authority and the clinician is not locked out of a
+   * gate the console merely could not see.
+   */
+  const consentBlockedReason = useMemo(() => {
+    if (!consultation || consentQuery.isPending || consentQuery.error) return null;
+    if (hasDocumentationConsent) return null;
+    return `Recording is blocked: patient ${consultation.patientId} has no active ${PURPOSE_META.AI_DOCUMENTATION.label} consent on record.`;
+  }, [consultation, consentQuery.isPending, consentQuery.error, hasDocumentationConsent]);
+
   function selectConsultation(next: ConsultationListRow | null) {
     setConsultation(next);
     setApproved(false);
@@ -350,6 +382,13 @@ function ScribeWorkspace() {
 
   async function handleStart() {
     if (!consultation) return;
+    // Pre-flight: never open the microphone for a session the gateway will
+    // refuse. The button is already disabled in this state; this covers the
+    // programmatic path.
+    if (consentBlockedReason) {
+      setConsentDialogOpen(true);
+      return;
+    }
     setCaptureBusy(true);
     try {
       await audio.start({ pipelineId: pipelineId || undefined, ...(languageMode ? { languageMode } : {}) });
@@ -359,7 +398,18 @@ function ScribeWorkspace() {
       live.start(consultation.id);
       toast.success('Recording started');
     } catch (error) {
-      toast.error(errorMessage(error, 'Could not start recording'));
+      // A consent denial is not a fault the clinician can debug from a raw
+      // exception message — it is an action they can take. It can still land
+      // here despite the pre-flight above: the grant may have been revoked
+      // between the read and the start, or the read may have failed and been
+      // (correctly) treated as "let the server decide".
+      if (error instanceof GatewayError && isConsentDenied(error)) {
+        void consentQuery.refetch();
+        setConsentDialogOpen(true);
+        toast.error('Recording needs patient consent for AI documentation.');
+      } else {
+        toast.error(errorMessage(error, 'Could not start recording'));
+      }
       void audio.stop().catch(() => undefined);
     } finally {
       setCaptureBusy(false);
@@ -557,6 +607,8 @@ function ScribeWorkspace() {
               sttConnectionState={audio.sttConnectionState}
               onFallback={audio.activePipeline?.isFallback ?? false}
               onSwitchToFallback={handleSwitchToFallback}
+              consentBlockedReason={consentBlockedReason}
+              onRecordConsent={() => setConsentDialogOpen(true)}
             />
           </ResizablePanel>
           <ResizableHandle withHandle />
@@ -591,6 +643,17 @@ function ScribeWorkspace() {
           <ConsultationDemoSkeleton />
         </div>
       )}
+
+      {/* Point-of-care consent capture (TASK-805). The patient is fixed to the
+          open consultation and the purpose to the one recording needs, so the
+          clinician confirms an attestation rather than filling a form. */}
+      <RecordConsentDialog
+        open={consentDialogOpen}
+        onOpenChange={setConsentDialogOpen}
+        patientId={consultation?.patientId}
+        defaultPurpose="AI_DOCUMENTATION"
+        onRecorded={() => void consentQuery.refetch()}
+      />
     </ScreenTemplate>
   );
 }

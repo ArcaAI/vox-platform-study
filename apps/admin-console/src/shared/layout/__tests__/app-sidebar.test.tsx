@@ -24,13 +24,13 @@ function scopedNav(domainLabel: string) {
 }
 
 describe('AppSidebar — scoped to the active domain', () => {
-  it('renders only the active domain, not the 56-entry flat list', async () => {
+  it('renders only the active domain, not the 57-entry flat list', async () => {
     usePathnameMock.mockReturnValue('/consultations');
     renderInShell(<AppSidebar />);
     await screen.findByRole('link', { name: 'Consultations' });
 
     const links = within(scopedNav('Clinical')).getAllByRole('link');
-    expect(links.map((link) => link.textContent)).toEqual(['Audio pipelines', 'Transcription jobs', 'Consultations']);
+    expect(links.map((link) => link.textContent)).toEqual(['Patient consent', 'Audio pipelines', 'Transcription jobs', 'Consultations']);
     expect(links.length).toBeLessThan(NAV_ENTRIES.length);
     // A route from another domain is simply absent — not hidden-but-focusable.
     expect(screen.queryByRole('link', { name: 'Queues & jobs' })).toBeNull();

@@ -14,6 +14,8 @@ const SERVICE_COPY: Record<ProviderService, string> = {
     'Bring your own Azure OpenAI or OpenAI account for embedding generation. This is a separate connection from LLM: a tenant may bring one vendor for generation and another for embeddings.',
   rerank: 'Reranking is served by the platform’s self-hosted TEI service.',
   vector: 'Bring your own Qdrant Cloud cluster for vector storage and retrieval. Without one, the platform’s shared vector plane serves this tenant.',
+  'model-registry':
+    'Credentials the platform uses to FETCH model weights — a Hugging Face token for gated repos, or an S3/MinIO key pair for a private weight store. Platform-managed: these are set once for every tenant, never per tenant.',
 };
 
 /**

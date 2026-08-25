@@ -26,13 +26,21 @@
  */
 
 /** The capability a connection row serves. Mirrors `ProviderService` in @arcaai/applications. */
-export type ProviderService = 'llm' | 'stt' | 'tts' | 'embeddings' | 'rerank' | 'vector';
+export type ProviderService = 'llm' | 'stt' | 'tts' | 'embeddings' | 'rerank' | 'vector' | 'model-registry';
 
 /**
  * Every capability, in the gateway's declared order. Pinned to the OpenAPI
  * `:service` enum by the drift test — do not edit by hand without the snapshot.
  */
-export const PROVIDER_SERVICES = ['llm', 'stt', 'tts', 'embeddings', 'rerank', 'vector'] as const satisfies readonly ProviderService[];
+export const PROVIDER_SERVICES = [
+  'llm',
+  'stt',
+  'tts',
+  'embeddings',
+  'rerank',
+  'vector',
+  'model-registry',
+] as const satisfies readonly ProviderService[];
 
 /** Narrowing guard for a `?psvc=` query param or any other untrusted string. */
 export function isProviderService(value: string): value is ProviderService {

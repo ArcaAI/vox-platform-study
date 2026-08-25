@@ -22,7 +22,7 @@
  */
 
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { IconArrowsExchange, IconMicrophone, IconPlayerPlay, IconPlayerStop } from '@tabler/icons-react';
+import { IconArrowsExchange, IconMicrophone, IconPlayerPlay, IconPlayerStop, IconShieldLock } from '@tabler/icons-react';
 import { LiveTranscript, type LiveTranscriptSegment } from '@arcaai/ui';
 import { Waveform } from '@arcaai/ui/components/elevenlabs/waveform';
 import { Button } from '@arcaai/ui/components/shadcn/button';
@@ -131,6 +131,19 @@ export interface LiveSessionColumnProps {
   onFallback?: boolean;
   /** Request an on-the-fly switch to the tenant fallback pipeline (SDK `audio.switchToFallback`). */
   onSwitchToFallback?: () => void;
+  /**
+   * TASK-805 — why recording is blocked on consent, or null when it is not.
+   *
+   * A CONVENIENCE gate, never the security boundary: `PatientConsentGuard`
+   * remains authoritative and 403s regardless of what this column renders. It
+   * is set only when the console has POSITIVELY established that no active
+   * AI_DOCUMENTATION grant exists — never while the read is in flight and never
+   * when it failed — so an unreadable consent register degrades to "let the
+   * server decide", not to a locked-out clinician.
+   */
+  consentBlockedReason?: string | null;
+  /** Opens the attestation dialog. Absent ⇒ the gate explains but offers no action. */
+  onRecordConsent?: () => void;
 }
 
 export function LiveSessionColumn({
@@ -149,6 +162,8 @@ export function LiveSessionColumn({
   sttConnectionState = 'connected',
   onFallback = false,
   onSwitchToFallback,
+  consentBlockedReason = null,
+  onRecordConsent,
 }: LiveSessionColumnProps) {
   // Rolling amplitude buffer + elapsed seconds. State is written ONLY inside
   // the interval callbacks (never synchronously in the effect body, and no
@@ -214,12 +229,37 @@ export function LiveSessionColumn({
             Stop
           </Button>
         ) : (
-          <Button onClick={onStart} disabled={!canRecord || captureBusy} className="shrink-0">
+          <Button
+            onClick={onStart}
+            disabled={!canRecord || captureBusy || Boolean(consentBlockedReason)}
+            aria-describedby={consentBlockedReason ? 'consent-gate' : undefined}
+            className="shrink-0"
+          >
             {captureBusy ? <Spinner aria-hidden /> : <IconPlayerPlay aria-hidden />}
             Start
           </Button>
         )}
       </div>
+      {/* Consent gate (TASK-805). A disabled control must always carry a
+          visible reason (rule 11 §5) — and here the reason is also the fix, so
+          the banner carries the action rather than only explaining the block. */}
+      {consentBlockedReason ? (
+        <div
+          id="consent-gate"
+          role="status"
+          className="border-warning/35 bg-warning/10 mx-3 mb-1 flex shrink-0 items-start gap-2 rounded-lg border px-3 py-2 text-sm"
+        >
+          <IconShieldLock aria-hidden className="text-warning-strong mt-0.5 size-4 shrink-0" />
+          <div className="flex min-w-0 flex-1 flex-col gap-1.5">
+            <p>{consentBlockedReason}</p>
+            {onRecordConsent ? (
+              <Button size="sm" variant="outline" onClick={onRecordConsent} className="self-start">
+                Record consent
+              </Button>
+            ) : null}
+          </div>
+        </div>
+      ) : null}
       {/* Switch / connection banner: shown only off the nominal state. */}
       {onFallback || sttConnectionState === 'reconnecting' || sttConnectionState === 'error' ? (
         <div

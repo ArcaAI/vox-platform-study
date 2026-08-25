@@ -42,6 +42,11 @@ export const CLOUD_BYO_PROVIDERS: Record<ProviderService, readonly string[]> = {
   embeddings: ['azure', 'openai'],
   rerank: [],
   vector: ['qdrant'],
+  // TASK-799 owner ruling 2026-08-24 — the weight-fetch plane is
+  // PLATFORM-MANAGED: only SYSTEM rows exist, so a tenant row is a 403 on the
+  // caller's own tenant (a privilege boundary, not the 404-over-403
+  // cross-tenant posture). Empty for the same reason `rerank` is.
+  'model-registry': [],
 };
 
 /**
