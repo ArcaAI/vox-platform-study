@@ -178,6 +178,52 @@ rollback) and `hope-api` restarted. All three verified 200.
 
 ---
 
+## 5b. Vault: HA cluster recovery + `hope-vault-0` rebuild
+
+Investigating D-1's Vault copy surfaced two larger problems.
+
+### The Proxmox Vault HA cluster had been down ~2 weeks
+
+`infrastructure/single-deployment/` is really deployed — on Proxmox VMs 430-432
+with the seal Vault on 434, not in a `vault-system` namespace. `vault-seal`
+restarted on 2026-08-23 and nobody unsealed it, so all three Raft nodes
+crash-looped on `503 Vault is sealed` from
+`PUT https://10.10.1.134:8200/v1/transit/encrypt/autounseal`.
+
+**Auto-unseal removes the human from the HA nodes, not from the seal Vault.**
+That one component still needs a human after every restart, and nothing alerts.
+Unsealed from its own `/root/vault-seal-init.json`; quorum restored, leader
+`10.10.1.132`, `raft_committed == raft_applied`.
+
+### `hope-vault-0` rebuilt on Transit auto-unseal
+
+Its 3-of-5 Shamir shares existed nowhere, and `hope-phi`/`hope-globalsetting`
+were `exportable=false` — so a restart was not an outage, it was permanent loss
+of every Transit-encrypted column across 20 repositories.
+
+In-place migration was impossible (`rekey` and `generate-root` both need the
+shares). So: enable backup on both keys → back them up plus 26 KV secrets and
+the auth inventory into the HA cluster at `secret/hope-recovery/` → wipe
+`/vault/data` → re-init on the transit seal → restore everything → mint a new
+`hope-app` secret_id into `hope-secrets`.
+
+**Verified end to end:** an AppRole login on the new credentials decrypted a
+REAL pre-rebuild `ContextItem.encryptedContent` row (1681-byte ciphertext →
+1225 bytes of the original clinical transcript). Then the pod was restarted on
+purpose: `Sealed: false`, no human action.
+
+Two notes for the record:
+
+- `VAULT_ROLE_ID` is the **`hope-app`** role, not `hope-api` (which exists but
+  is unwired). A rebuild invalidates it — miss that and the gateway boots
+  env-only with no `API_KEY_PEPPER`, so every API key silently fails.
+- `exportable=true` on the PHI key is **irreversible**. Chosen over a key nobody
+  could restore; worth rotating and re-encrypting later.
+
+Manifests + runbook §11 in `hope-v2-deployment` (`b38a5b6`).
+
+---
+
 ## 6. Residual Risk / Follow-ups
 1. **Nothing detects this class of drift.** `check-config-refs.py` proves a `secretKeyRef`
    *exists*; it cannot know this value must also resolve to a live DB row. A post-seed
@@ -202,3 +248,4 @@ rollback) and `hope-api` restarted. All three verified 200.
 | 2026-08-25 | Ticket opened from a 502 report; D-1 and D-2 diagnosed, fixed and verified |
 | 2026-08-25 | Vault's stale `API_GATEWAY_KEY` found and aligned (the other half of D-1); D-2 deployed via pipeline #981 and verified live |
 | 2026-08-25 | Corrected the D-2 root-cause: the gateway's in-process registration was never broken (`isSuperAdmin: true` when no CLS context). Only the HTTP path threw |
+| 2026-08-25 | Recovered the Proxmox Vault HA cluster (down ~2 weeks on a sealed seal-Vault); rebuilt `hope-vault-0` on Transit auto-unseal with all data restored and restart-verified |
