@@ -476,15 +476,18 @@ describe('VaultSecretsProvider AppRole token renewal', () => {
   });
 
   it('reschedules at 50% of the freshly-returned TTL after each renewal', async () => {
-    // login TTL 3600 → first tick at 1800s; renewal returns 60 → next at 30s.
-    const renewSelf = vi.fn().mockResolvedValue({ auth: { lease_duration: 60, renewable: true } });
+    // login TTL 3600 → first tick at 1800s; renewal returns 1200 → next at 600s.
+    // The renewed TTL must stay ABOVE REAUTH_TTL_FLOOR_SEC — a TTL at/below the
+    // floor deliberately rotates the session instead of renewing again (see the
+    // self-healing suite below).
+    const renewSelf = vi.fn().mockResolvedValue({ auth: { lease_duration: 1200, renewable: true } });
     const { p } = await bootRenewable({ loginTtl: 3600, renewSelf });
 
     await vi.advanceTimersByTimeAsync(1_800_000);
     expect(renewSelf).toHaveBeenCalledTimes(1);
-    await vi.advanceTimersByTimeAsync(30_000);
+    await vi.advanceTimersByTimeAsync(600_000);
     expect(renewSelf).toHaveBeenCalledTimes(2);
-    await vi.advanceTimersByTimeAsync(30_000);
+    await vi.advanceTimersByTimeAsync(600_000);
     expect(renewSelf).toHaveBeenCalledTimes(3);
 
     await (p as unknown as { onModuleDestroy: () => Promise<void> }).onModuleDestroy();
@@ -505,11 +508,12 @@ describe('VaultSecretsProvider AppRole token renewal', () => {
     const health = vi.fn().mockResolvedValue({ initialized: true, sealed: false });
     const { p } = await bootRenewable({ loginTtl: 3600, renewSelf, health });
 
-    // Each failure reschedules at 50% of the last-known TTL (3600 → 1800s).
+    // First tick at 50% of the login TTL; each NON-auth failure then retries on
+    // a bounded backoff (5s, 10s, ...) instead of waiting another half-TTL.
     await vi.advanceTimersByTimeAsync(1_800_000); // failure 1
-    await vi.advanceTimersByTimeAsync(1_800_000); // failure 2
+    await vi.advanceTimersByTimeAsync(5_000); // failure 2
     expect((await p.health()).degraded).toBeFalsy();
-    await vi.advanceTimersByTimeAsync(1_800_000); // failure 3 → degraded
+    await vi.advanceTimersByTimeAsync(10_000); // failure 3 → degraded
     expect(renewSelf).toHaveBeenCalledTimes(3);
 
     const h = await p.health();
@@ -530,11 +534,11 @@ describe('VaultSecretsProvider AppRole token renewal', () => {
     const { p } = await bootRenewable({ loginTtl: 3600, renewSelf });
 
     await vi.advanceTimersByTimeAsync(1_800_000); // fail 1
-    await vi.advanceTimersByTimeAsync(1_800_000); // fail 2
-    await vi.advanceTimersByTimeAsync(1_800_000); // fail 3 → degraded
+    await vi.advanceTimersByTimeAsync(5_000); // fail 2
+    await vi.advanceTimersByTimeAsync(10_000); // fail 3 → degraded
     expect((await p.health()).degraded).toBe(true);
 
-    await vi.advanceTimersByTimeAsync(1_800_000); // success → recover
+    await vi.advanceTimersByTimeAsync(20_000); // success → recover
     expect((await p.health()).degraded).toBeFalsy();
 
     await (p as unknown as { onModuleDestroy: () => Promise<void> }).onModuleDestroy();
@@ -547,6 +551,142 @@ describe('VaultSecretsProvider AppRole token renewal', () => {
     await (p as unknown as { onModuleDestroy: () => Promise<void> }).onModuleDestroy();
     await vi.advanceTimersByTimeAsync(10_000_000);
     expect(renewSelf).not.toHaveBeenCalled();
+  });
+});
+
+// Self-healing re-authentication. Renewal alone cannot keep a session alive
+// past the AppRole's token_max_ttl: Vault then answers "permission denied /
+// invalid token" forever. The pre-fix provider retried renewal for the life of
+// the pod, so /auth/login answered "Authentication system not configured" until
+// somebody recycled it by hand. These tests pin the recovery paths.
+describe('VaultSecretsProvider self-healing re-authentication', () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  /** A Vault rejection of the CURRENT token, shaped like node-vault's. */
+  function authError(message = '2 errors occurred:\n\t* permission denied\n\t* invalid token') {
+    return Object.assign(new Error(message), { response: { statusCode: 403 } });
+  }
+
+  async function bootProvider(overrides: Record<string, unknown> = {}) {
+    const p = new VaultSecretsProvider(cfg());
+    const approleLogin = vi.fn().mockResolvedValue({ auth: { client_token: 'hvs.first', lease_duration: 3600, renewable: true } });
+    const client: Record<string, unknown> & { token: string } = {
+      token: '',
+      approleLogin,
+      tokenRenewSelf: vi.fn().mockResolvedValue({ auth: { lease_duration: 3600, renewable: true } }),
+      health: vi.fn().mockResolvedValue({ initialized: true, sealed: false }),
+      read: vi.fn(),
+      ...overrides,
+    };
+    (p as unknown as { client: unknown }).client = client;
+    await p.boot();
+    return { p, client, approleLogin: client.approleLogin as ReturnType<typeof vi.fn> };
+  }
+
+  it('re-logs in via AppRole when renewal is rejected with permission denied / invalid token', async () => {
+    const renewSelf = vi.fn().mockRejectedValue(authError());
+    const { p, approleLogin, client } = await bootProvider({ tokenRenewSelf: renewSelf });
+    approleLogin.mockResolvedValue({ auth: { client_token: 'hvs.second', lease_duration: 3600, renewable: true } });
+
+    expect(approleLogin).toHaveBeenCalledTimes(1); // boot
+
+    await vi.advanceTimersByTimeAsync(1_800_000); // renewal fires and is rejected
+
+    // The dead token is REPLACED, not retried.
+    expect(approleLogin).toHaveBeenCalledTimes(2);
+    expect(client.token).toBe('hvs.second');
+    expect((await p.health()).degraded).toBeFalsy();
+
+    await (p as unknown as { onModuleDestroy: () => Promise<void> }).onModuleDestroy();
+  });
+
+  it('rotates the session BEFORE expiry once the renewed TTL falls to the re-auth floor', async () => {
+    // Vault shrinks lease_duration as a token nears token_max_ttl.
+    const renewSelf = vi.fn().mockResolvedValue({ auth: { lease_duration: 60, renewable: true } });
+    const { p, approleLogin } = await bootProvider({ tokenRenewSelf: renewSelf });
+
+    await vi.advanceTimersByTimeAsync(1_800_000);
+
+    // Renewal SUCCEEDED, but 60s <= the 300s floor, so we re-login pre-emptively.
+    expect(renewSelf).toHaveBeenCalledTimes(1);
+    expect(approleLogin).toHaveBeenCalledTimes(2);
+
+    await (p as unknown as { onModuleDestroy: () => Promise<void> }).onModuleDestroy();
+  });
+
+  it('keeps retrying re-authentication on a bounded backoff instead of giving up', async () => {
+    const renewSelf = vi.fn().mockRejectedValue(authError());
+    const { p, approleLogin } = await bootProvider({ tokenRenewSelf: renewSelf });
+    approleLogin.mockRejectedValue(new Error('Vault is sealed'));
+
+    await vi.advanceTimersByTimeAsync(1_800_000); // renew fails -> reauth attempt 1 fails
+    expect(approleLogin).toHaveBeenCalledTimes(2);
+    expect((await p.health()).degraded).toBe(true);
+
+    await vi.advanceTimersByTimeAsync(5_000); // backoff 1
+    expect(approleLogin).toHaveBeenCalledTimes(3);
+    await vi.advanceTimersByTimeAsync(10_000); // backoff 2
+    expect(approleLogin).toHaveBeenCalledTimes(4);
+
+    // ...and it heals the moment Vault comes back.
+    approleLogin.mockResolvedValue({ auth: { client_token: 'hvs.healed', lease_duration: 3600, renewable: true } });
+    await vi.advanceTimersByTimeAsync(20_000);
+    expect((await p.health()).degraded).toBeFalsy();
+
+    await (p as unknown as { onModuleDestroy: () => Promise<void> }).onModuleDestroy();
+  });
+
+  it('never lets a shrinking TTL arm a sub-second hot loop', async () => {
+    // The observed production failure: lease_duration=1 -> a 500ms timer that
+    // fired 20k times in an afternoon. TTL 1 is now handled by re-auth, and the
+    // retry cadence is floored at RENEW_RETRY_MIN_MS.
+    const renewSelf = vi.fn().mockRejectedValue(Object.assign(new Error('500'), { response: { statusCode: 500 } }));
+    const { p } = await bootProvider({ tokenRenewSelf: renewSelf });
+    (p as unknown as { lastTokenTtlSec: number }).lastTokenTtlSec = 1;
+
+    await vi.advanceTimersByTimeAsync(1_800_000); // failure 1
+    const afterFirst = renewSelf.mock.calls.length;
+    await vi.advanceTimersByTimeAsync(4_000); // less than the 5s floor
+    expect(renewSelf.mock.calls.length).toBe(afterFirst);
+
+    await (p as unknown as { onModuleDestroy: () => Promise<void> }).onModuleDestroy();
+  });
+
+  it('re-authenticates and replays a read that Vault rejected with 403', async () => {
+    const read = vi
+      .fn()
+      .mockRejectedValueOnce(authError())
+      .mockResolvedValue({ data: { data: { value: 'jwt-secret' } } });
+    const { p, approleLogin } = await bootProvider({ read });
+    approleLogin.mockResolvedValue({ auth: { client_token: 'hvs.second', lease_duration: 3600, renewable: true } });
+
+    await expect(p.getSecret('JWT_SECRET_KEY')).resolves.toBe('jwt-secret');
+    expect(approleLogin).toHaveBeenCalledTimes(2);
+    expect(read).toHaveBeenCalledTimes(2);
+
+    await (p as unknown as { onModuleDestroy: () => Promise<void> }).onModuleDestroy();
+  });
+
+  it('collapses concurrent re-authentications into a single AppRole login', async () => {
+    const read = vi
+      .fn()
+      .mockRejectedValueOnce(authError())
+      .mockRejectedValueOnce(authError())
+      .mockRejectedValueOnce(authError())
+      .mockResolvedValue({ data: { data: { value: 'v' } } });
+    const { p, approleLogin } = await bootProvider({ read });
+
+    await Promise.all([p.getSecret('A'), p.getSecret('B'), p.getSecret('C')]);
+
+    // 1 boot login + exactly 1 shared re-login, not one per in-flight reader.
+    expect(approleLogin).toHaveBeenCalledTimes(2);
+
+    await (p as unknown as { onModuleDestroy: () => Promise<void> }).onModuleDestroy();
   });
 });
 

@@ -105,6 +105,42 @@ export class VaultSecretsProvider implements ISecretsProvider, OnModuleDestroy {
   private tokenRenewDegraded = false;
   private readonly tokenRenewFailureThreshold = 3;
 
+  // ---------- self-healing re-authentication state ----------
+  // Renewal alone can NEVER keep a session alive: Vault refuses to extend a
+  // token past `token_max_ttl` (4h on the hope-app role), after which every
+  // tokenRenewSelf() answers "permission denied / invalid token" forever. The
+  // pre-fix build treated that as a transient failure and retried renewal for
+  // the life of the pod, so every Vault-backed read — JWT_SECRET_KEY included —
+  // failed until a human recycled the pod. A dead session is now repaired by
+  // logging in again, which is the only operation that can actually fix it.
+  /**
+   * The plaintext secret_id resolved during boot(), retained IN MEMORY so a
+   * re-login is possible without a human. It is never logged and never written
+   * to disk. A wrapped secret_id is one-shot for UNWRAPPING only; the secret_id
+   * it yields is reusable until `secret_id_ttl` / `secret_id_num_uses` run out.
+   */
+  private resolvedSecretId?: string;
+  /** Single-flight guard so N concurrent readers cause ONE re-login, not N. */
+  private reauthInFlight: Promise<boolean> | null = null;
+  private reauthFailures = 0;
+
+  /**
+   * Vault shrinks the TTL it hands back as a token approaches token_max_ttl —
+   * that shrinking number is the ONLY advance warning that renewal is about to
+   * stop working. At/below this floor we stop renewing and re-login instead, so
+   * the session is replaced BEFORE it dies rather than after.
+   */
+  private static readonly REAUTH_TTL_FLOOR_SEC = 300;
+  /**
+   * Floor/ceiling for the retry cadence. The floor also stops the observed
+   * hot-loop: a near-expiry token renews with lease_duration=1, and "half of
+   * 1s" armed the timer at 500ms — 20k failed renewals in one afternoon.
+   */
+  private static readonly RENEW_RETRY_MIN_MS = 5_000;
+  private static readonly RENEW_RETRY_MAX_MS = 60_000;
+  /** A non-renewable token below this TTL is a dev/root artifact; leave it alone. */
+  private static readonly REAUTH_MIN_TTL_SEC = 60;
+
   constructor(private readonly config: VaultProviderConfig) {
     if (!config.addr) throw new Error('VaultSecretsProvider: VAULT_ADDR is required');
     if (!config.roleId) throw new Error('VaultSecretsProvider: VAULT_ROLE_ID is required');
@@ -169,14 +205,87 @@ export class VaultSecretsProvider implements ISecretsProvider, OnModuleDestroy {
     if (!secretId) {
       throw new Error('VaultSecretsProvider.boot(): no secret_id available after unwrap');
     }
+    // Retained so renewTokenTick()/withRetry() can re-authenticate unattended.
+    this.resolvedSecretId = secretId;
+    await this.approleLogin('boot');
+  }
+
+  /**
+   * AppRole login + arm the renewal loop. Shared by boot() and by every
+   * unattended re-authentication, so a recovered session is configured
+   * IDENTICALLY to a freshly-booted one (same TTL bookkeeping, same timer,
+   * cleared failure counters) and the two paths cannot drift.
+   */
+  private async approleLogin(reason: 'boot' | 'reauth'): Promise<void> {
+    if (!this.resolvedSecretId) {
+      throw new Error('VaultSecretsProvider: no secret_id retained; cannot authenticate');
+    }
     const login = await this.client.approleLogin({
       role_id: this.config.roleId,
-      secret_id: secretId,
+      secret_id: this.resolvedSecretId,
     });
     this.client.token = login.auth.client_token;
     this.booted = true;
-    this.logger.log(`Vault AppRole login successful (lease_duration=${login.auth.lease_duration}s, renewable=${login.auth.renewable})`);
+    this.tokenRenewFailures = 0;
+    this.tokenRenewDegraded = false;
+    this.logger.log(`Vault AppRole login successful (${reason}, lease_duration=${login.auth.lease_duration}s, renewable=${login.auth.renewable})`);
     this.scheduleTokenRenewal(login.auth.lease_duration, login.auth.renewable);
+  }
+
+  /**
+   * Replace a dead or dying Vault session with a fresh AppRole login.
+   *
+   * Single-flight: concurrent callers (the renewal timer and any number of
+   * in-flight reads) await the SAME login instead of stampeding Vault. Returns
+   * whether the provider now holds a usable token, so a read can decide between
+   * replaying itself and surfacing the original error.
+   */
+  private async reauthenticate(reason: string): Promise<boolean> {
+    if (this.reauthInFlight) return this.reauthInFlight;
+    this.reauthInFlight = (async (): Promise<boolean> => {
+      try {
+        this.logger.warn(`Vault session lost (${reason}); re-authenticating via AppRole`);
+        await this.approleLogin('reauth');
+        this.reauthFailures = 0;
+        this.logger.log('Vault session recovered without a restart');
+        return true;
+      } catch (err: unknown) {
+        this.reauthFailures += 1;
+        this.tokenRenewDegraded = true;
+        // Renewal cannot help a session we failed to establish; going straight
+        // back to reauth on the next tick avoids a pointless renew round-trip.
+        this.tokenRenewable = false;
+        this.logger.error(
+          `Vault AppRole re-authentication FAILED (attempt=${this.reauthFailures}): ${(err as Error).message}. ` +
+            'Retrying with backoff; Vault-backed reads fail until it succeeds.',
+        );
+        this.armTokenRenewTimer(this.lastTokenTtlSec, this.retryBackoffMs(this.reauthFailures));
+        return false;
+      } finally {
+        this.reauthInFlight = null;
+      }
+    })();
+    return this.reauthInFlight;
+  }
+
+  /**
+   * Is this error Vault telling us our token is no longer accepted? Such an
+   * error is terminal for the CURRENT session — retrying the same call can
+   * never succeed — and is the signal to re-login. Both the status code and the
+   * message are checked because Vault's renew-self rejection arrives as a
+   * multi-error body ("permission denied" + "invalid token").
+   */
+  private isAuthError(err: unknown): boolean {
+    const status = (err as { response?: { statusCode?: number } })?.response?.statusCode;
+    if (status === 401 || status === 403) return true;
+    const msg = ((err as Error)?.message ?? '').toLowerCase();
+    return msg.includes('permission denied') || msg.includes('invalid token') || msg.includes('bad token');
+  }
+
+  /** Exponential backoff for renewal/re-auth retries, clamped to the min/max. */
+  private retryBackoffMs(failures: number): number {
+    const grown = VaultSecretsProvider.RENEW_RETRY_MIN_MS * 2 ** Math.max(0, failures - 1);
+    return Math.min(VaultSecretsProvider.RENEW_RETRY_MAX_MS, grown);
   }
 
   // ---------- AppRole token renewal ----------
@@ -188,15 +297,26 @@ export class VaultSecretsProvider implements ISecretsProvider, OnModuleDestroy {
    * provider-construction unit tests timer-free.
    */
   private scheduleTokenRenewal(ttlSec: number, renewable: boolean): void {
-    if (!renewable || !ttlSec || ttlSec <= 0) return;
-    this.tokenRenewable = true;
+    this.tokenRenewable = !!renewable;
+    // TTL 0 = a token that never expires (root/dev). Nothing to keep alive.
+    if (!ttlSec || ttlSec <= 0) return;
+    // A short-lived NON-renewable token is a dev/root artifact; arming a loop
+    // for it would spin unit tests. A long-lived one still needs replacing
+    // before it expires, and re-login is the only way to do that.
+    if (!renewable && ttlSec < VaultSecretsProvider.REAUTH_MIN_TTL_SEC) return;
     this.lastTokenTtlSec = ttlSec;
     this.armTokenRenewTimer(ttlSec);
   }
 
-  private armTokenRenewTimer(ttlSec: number): void {
+  /**
+   * Arm the next tick at 50% of `ttlSec`, or at an explicit `overrideMs` for
+   * the backoff paths. The RENEW_RETRY_MIN_MS floor is load-bearing: without
+   * it a near-expiry token (lease_duration=1) armed the timer at 500ms and
+   * hammered Vault twice a second indefinitely.
+   */
+  private armTokenRenewTimer(ttlSec: number, overrideMs?: number): void {
     if (this.tokenRenewTimer) clearTimeout(this.tokenRenewTimer);
-    const intervalMs = Math.max(1, Math.floor((ttlSec * 1000) / 2));
+    const intervalMs = overrideMs ?? Math.max(VaultSecretsProvider.RENEW_RETRY_MIN_MS, Math.floor((ttlSec * 1000) / 2));
     this.tokenRenewTimer = setTimeout(() => void this.renewTokenTick(), intervalMs);
     // Never keep the event loop alive solely for renewal: prod is held open by
     // the HTTP server; short-lived CLI/test processes should still exit cleanly.
@@ -212,7 +332,15 @@ export class VaultSecretsProvider implements ISecretsProvider, OnModuleDestroy {
    * login. The first success resets the run and clears degraded.
    */
   private async renewTokenTick(): Promise<void> {
-    if (!this.booted || !this.tokenRenewable) return;
+    if (!this.booted) return;
+
+    // A token Vault declared non-renewable can never be extended, and one whose
+    // last re-login failed has nothing to renew. Both go straight to a login.
+    if (!this.tokenRenewable) {
+      await this.reauthenticate('token is not renewable');
+      return;
+    }
+
     try {
       const res = await this.client.tokenRenewSelf();
       const newTtl = res?.auth?.lease_duration;
@@ -223,27 +351,44 @@ export class VaultSecretsProvider implements ISecretsProvider, OnModuleDestroy {
       if (wasDegraded) {
         this.logger.log(`Vault token renewal recovered (lease_duration=${this.lastTokenTtlSec}s)`);
       }
+
+      // The renewal SUCCEEDED but Vault handed back a shrinking TTL, which is
+      // how it signals that token_max_ttl is close. Replace the session now,
+      // while we still hold a valid token, instead of waiting for the cliff.
+      if (newTtl !== undefined && newTtl > 0 && newTtl <= VaultSecretsProvider.REAUTH_TTL_FLOOR_SEC) {
+        this.logger.log(`Vault token TTL ${newTtl}s is at/below the re-auth floor; rotating the session via AppRole login`);
+        await this.reauthenticate(`token approaching max_ttl (lease_duration=${newTtl}s)`);
+        return;
+      }
+      this.armTokenRenewTimer(this.lastTokenTtlSec);
     } catch (err: unknown) {
       this.tokenRenewFailures += 1;
       this.logger.warn(`Vault token renewal failed (attempt=${this.tokenRenewFailures}): ${(err as Error).message}`);
+
+      // "permission denied" / "invalid token" = the session is GONE (expired at
+      // token_max_ttl, revoked, or lost to a Vault rebuild). Renewing it again
+      // can NEVER succeed, so re-login instead of retrying forever.
+      if (this.isAuthError(err)) {
+        await this.reauthenticate('Vault rejected the token during renewal');
+        return;
+      }
+
+      // Anything else (5xx, network) is genuinely transient: keep renewing, on
+      // a bounded backoff, and surface degraded once the run gets long enough.
       if (this.tokenRenewFailures >= this.tokenRenewFailureThreshold && !this.tokenRenewDegraded) {
         this.tokenRenewDegraded = true;
         this.logger.error(
-          `Vault token renewal DEGRADED after ${this.tokenRenewFailures} consecutive failures; secrets-health reports degraded until renewal succeeds or the pod is recycled.`,
+          `Vault token renewal DEGRADED after ${this.tokenRenewFailures} consecutive failures; secrets-health reports degraded until renewal or re-authentication succeeds.`,
         );
       }
-    } finally {
-      // Keep renewing while booted; on failure reuse the last-known TTL so
-      // attempts cluster close enough to recover before the token expires.
-      if (this.booted && this.tokenRenewable) {
-        this.armTokenRenewTimer(this.lastTokenTtlSec);
-      }
+      this.armTokenRenewTimer(this.lastTokenTtlSec, this.retryBackoffMs(this.tokenRenewFailures));
     }
   }
 
   /** Cancel the renewal loop on app shutdown. Idempotent. */
   async onModuleDestroy(): Promise<void> {
     this.tokenRenewable = false;
+    this.reauthInFlight = null;
     if (this.tokenRenewTimer) {
       clearTimeout(this.tokenRenewTimer);
       this.tokenRenewTimer = null;
@@ -304,11 +449,19 @@ export class VaultSecretsProvider implements ISecretsProvider, OnModuleDestroy {
    */
   private async withRetry<T>(op: () => Promise<T>): Promise<T> {
     let lastErr: unknown;
+    let reauthTried = false;
     for (let attempt = 0; attempt < VaultSecretsProvider.RETRY_MAX_ATTEMPTS; attempt++) {
       try {
         return await op();
       } catch (err: unknown) {
         lastErr = err;
+        // The session can die between two renewal ticks (revocation, a Vault
+        // rebuild). Rather than surfacing a spurious authz failure to the
+        // caller, re-login ONCE and replay the read with the fresh token.
+        if (this.isAuthError(err) && !reauthTried) {
+          reauthTried = true;
+          if (await this.reauthenticate('a Vault read was rejected with an auth error')) continue;
+        }
         const isLast = attempt === VaultSecretsProvider.RETRY_MAX_ATTEMPTS - 1;
         if (!this.isTransient(err) || isLast) throw err;
         this.logger.warn(

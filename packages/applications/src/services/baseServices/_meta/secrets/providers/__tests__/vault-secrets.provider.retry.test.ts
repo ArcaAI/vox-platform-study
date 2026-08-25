@@ -2,7 +2,9 @@
 //
 // getSecret() must ride out a short Vault blip (5xx / transport error) with
 // bounded exponential backoff instead of surfacing a 5xx to the end user, but
-// it must NOT retry 4xx (auth/not-found) — those have to fail fast. Fake timers
+// it must NOT retry 4xx (not-found / malformed) — those have to fail fast. The
+// one exception is an AUTH 4xx (401/403), which usually means our own session
+// died: that triggers a single re-login + replay, not a backoff loop. Fake timers
 // drive the backoff so the suite stays sub-millisecond.
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { VaultSecretsProvider, VaultProviderConfig } from '../vault-secrets.provider';
@@ -58,12 +60,25 @@ describe('VaultSecretsProvider getSecret retry/backoff', () => {
     expect(read).toHaveBeenCalledTimes(3);
   });
 
-  it('does not retry on 4xx (auth/permission errors surface immediately)', async () => {
-    const read = vi.fn().mockRejectedValue(err(403));
+  it('does not retry a non-auth 4xx (malformed request surfaces immediately)', async () => {
+    const read = vi.fn().mockRejectedValue(err(400));
     const p = await bootedWithRead(read);
 
     await expect(p.getSecret('JWT_SECRET_KEY')).rejects.toBeDefined();
     expect(read).toHaveBeenCalledTimes(1);
+  });
+
+  // A 403 is NOT a permanent authz verdict here: the far commoner cause is our
+  // own session dying between renewal ticks. Re-login once and replay; if the
+  // replay still 403s, surface it without further backoff retries.
+  it('re-authenticates once on a 403 and replays the read, then surfaces a persistent 403', async () => {
+    const read = vi.fn().mockRejectedValue(err(403));
+    const p = await bootedWithRead(read);
+    const approleLogin = (p as unknown as { client: { approleLogin: ReturnType<typeof vi.fn> } }).client.approleLogin;
+
+    await expect(p.getSecret('JWT_SECRET_KEY')).rejects.toBeDefined();
+    expect(read).toHaveBeenCalledTimes(2); // original + one post-re-auth replay
+    expect(approleLogin).toHaveBeenCalledTimes(2); // boot + one re-login
   });
 
   it('preserves 404 fast-fail semantics (no retry, maps to not-found)', async () => {
