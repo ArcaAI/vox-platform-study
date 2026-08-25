@@ -59,18 +59,27 @@ weights succeeded seconds earlier).
 
 ### D-2 — the release registry could never write
 
-`ServiceRelease` / `ServiceInstance` are in `TENANT_SCOPED_MODELS`, whose Prisma
-extension fails closed without a tenant CLS context. **Neither writer supplies one:**
+`ServiceRelease` / `ServiceInstance` are in `TENANT_SCOPED_MODELS`. The extension
+throws only when `tenantId` is absent **and** `isSuperAdmin()` is false — and
+`ClsTenantContextProvider` returns `isSuperAdmin(): true` whenever no CLS context
+exists at all (the documented pass-through for seeds/CLI/startup hooks).
 
-- the internal HTTP route is `@Public()` + `ServiceReleaseTokenGuard`, so no guard ever
-  populates CLS `tenantId` — a service token identifies a *process*, not a tenant;
-- the gateway registers **itself in-process** from `startServiceReleaseRegistration`,
-  outside any HTTP request, so there is no CLS context at all.
+That distinction decides which writer broke:
 
-So every boot registration and every 5-minute heartbeat 500'd — and the gateway's own
-failed *silently*, because its registration is deliberately best-effort
-(`registerOnce` swallows everything). The registry that exists to answer "what version
-is running" could never record anything.
+| Writer | CLS state | Result |
+|---|---|---|
+| Internal HTTP route (every service **except** the gateway) | middleware opens a context; `@Public()` + service-token guard populate no `tenantId`, no user | `tenantId: undefined` + `isSuperAdmin: false` → **throws** |
+| Gateway self-registration (`startServiceReleaseRegistration`, in-process) | no context at all | `isSuperAdmin: true` → **passes through, worked fine** |
+
+**Correction to the first draft of this ticket:** it claimed both writers were broken
+and that the gateway's own heartbeat failed silently. The database disproves it — `api`
+rows exist from 2026-08-24 19:06 and 19:24, the gateway's boot times. Only the HTTP
+path was affected, which is why the registry contained `api` and nothing else.
+
+Both paths are pinned anyway: the in-process path works by leaning on
+"no context ⇒ elevated pass-through", which `tenant-context.provider.ts` explicitly
+describes as a permissive stance a later phase will tighten. Naming the tenant
+survives that.
 
 ---
 
@@ -144,22 +153,43 @@ The test session was deleted afterwards.
 
 ---
 
-## 6. Residual Risk / Follow-ups
+### Post-deploy (pipeline #981 → promote `dev-c8c371e3`)
 
-1. **The D-2 code fix is NOT in the cluster.** It needs a `hope-api` image build and a
-   digest promote. Until then `service_registration.rejected` continues — cosmetic
-   (registry telemetry only), no user-facing impact.
-2. **Nothing detects this class of drift.** `check-config-refs.py` proves a `secretKeyRef`
+`hope-api` now runs `build-info.version = 0.0.0-dev-2-2.c8c371e3`. Re-probed:
+
+```
+POST /internal/service-releases -> 200 {"id":"01a036e4-…","serviceName":"stt",…}
+```
+
+The registry is populating for the first time — `api`, `harness`, `harness-worker`,
+`stt-ml-runtime` all registered within minutes of the rollout.
+
+### The second half of the credential fix (found after the first report)
+
+Vault held its own copy of `API_GATEWAY_KEY`, still the dead `hope_sk_fa2c12…`. The
+gateway resolves that name **from Vault** in three gates:
+`InternalServiceTokenGuard.SERVICE_SECRETS.stt`, `ServiceReleaseTokenGuard.KNOWN_SECRETS`,
+and `SttInternalController.assertPlatformInternalCredential`.
+
+Before this ticket the k8s Secret and Vault were both stale — *consistently* stale, so
+those three passed. Patching only the k8s Secret broke that alignment and would have
+started 401/403-ing all three. Vault was updated to match (KV-v2 → v3; v2 retained for
+rollback) and `hope-api` restarted. All three verified 200.
+
+---
+
+## 6. Residual Risk / Follow-ups
+1. **Nothing detects this class of drift.** `check-config-refs.py` proves a `secretKeyRef`
    *exists*; it cannot know this value must also resolve to a live DB row. A post-seed
    smoke check running the §12.1 probe would have caught D-1 in seconds.
-3. **A 401 on `/internal/*` is not logged by the gateway** — the reason the STT log was
+2. **A 401 on `/internal/*` is not logged by the gateway** — the reason the STT log was
    the only witness. Worth a deliberate warn-level line.
-4. **`hope-secrets` is behind the TASK-803 rename** (out of scope, flagged as runbook
+3. **`hope-secrets` is behind the TASK-803 rename** (out of scope, flagged as runbook
    open item 17): still carries `SMR_SERVICE_TOKEN` / `SMR_V2_SERVICE_TOKEN`, and has no
    `INTERNAL_ACCESS_TOKEN`, `TEXT_SERVICE_TOKEN`, `HARNESS_INTERNAL_SERVICE_TOKEN`,
    `GUARDRAIL_SERVICE_TOKEN` or `GRAFANA_ADMIN_PASSWORD` — so every internal hop is in
    `X-Service-Token` dev-bypass and Grafana is on its default admin password.
-5. **The cleartext-annotation leak is confirmed real** (runbook §12 open item 8): the
+4. **The cleartext-annotation leak is confirmed real** (runbook §12 open item 8): the
    `last-applied-configuration` annotation exposes every value, including the Postgres
    superuser password and `VAULT_TOKEN`. Unchanged by this ticket; still needs rotation.
 
@@ -170,3 +200,5 @@ The test session was deleted afterwards.
 | Date | Change |
 |---|---|
 | 2026-08-25 | Ticket opened from a 502 report; D-1 and D-2 diagnosed, fixed and verified |
+| 2026-08-25 | Vault's stale `API_GATEWAY_KEY` found and aligned (the other half of D-1); D-2 deployed via pipeline #981 and verified live |
+| 2026-08-25 | Corrected the D-2 root-cause: the gateway's in-process registration was never broken (`isSuperAdmin: true` when no CLS context). Only the HTTP path threw |
