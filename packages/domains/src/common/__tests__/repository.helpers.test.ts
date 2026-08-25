@@ -423,3 +423,75 @@ describe('formatCountProps', () => {
     });
   });
 });
+
+/**
+ * TASK-805 regression — `formatFindAllProps` used to branch on which side
+ * carried an `AND` and keep ONLY that array, discarding every sibling scalar
+ * key. A `where` carrying BOTH `tenantId` and an `AND` therefore lost its
+ * tenant scope and read across tenants, while `formatCountProps` counted the
+ * right rows — surfacing as a page whose contents disagreed with its count.
+ */
+describe('formatFindAllProps — where/filters merge keeps BOTH halves', () => {
+  it('keeps sibling scalar keys when `where` also carries an AND (the tenant-scope leak)', () => {
+    const result = formatFindAllProps({
+      page: 1,
+      limit: 10,
+      where: {
+        tenantId: 'tenant-1',
+        externalPatientId: 'PAT-1',
+        AND: [{ OR: [{ revokedAt: null }] }],
+      },
+    } as never);
+
+    expect(result.where.tenantId, 'tenantId must survive — dropping it reads across tenants').toBe('tenant-1');
+    expect(result.where.externalPatientId).toBe('PAT-1');
+    expect(result.where.AND).toEqual([{ OR: [{ revokedAt: null }] }]);
+  });
+
+  it('keeps sibling scalar keys when `filters` carries the AND', () => {
+    const result = formatFindAllProps({
+      page: 1,
+      limit: 10,
+      filters: { status: 'ENABLED', AND: [{ a: 1 }] },
+      where: { tenantId: 'tenant-1' },
+    } as never);
+
+    // `filters`' own sibling survives at the top level; the AND-less `where` is
+    // pushed INTO the AND array (the long-standing shape this file pins
+    // elsewhere). Position differs, but both conditions are applied — which is
+    // all Prisma cares about, and all that was broken.
+    expect(result.where.status).toBe('ENABLED');
+    expect(result.where.AND).toContainEqual({ a: 1 });
+    expect(result.where.AND).toContainEqual({ tenantId: 'tenant-1' });
+  });
+
+  it('concatenates both AND arrays when both sides carry one, keeping both sets of scalars', () => {
+    const result = formatFindAllProps({
+      page: 1,
+      limit: 10,
+      filters: { status: 'ENABLED', AND: [{ a: 1 }] },
+      where: { tenantId: 'tenant-1', AND: [{ b: 2 }] },
+    } as never);
+
+    expect(result.where.tenantId).toBe('tenant-1');
+    expect(result.where.status).toBe('ENABLED');
+    expect(result.where.AND).toEqual([{ a: 1 }, { b: 2 }]);
+  });
+
+  it('does not mutate the caller’s filters.AND array', () => {
+    const filters = { AND: [{ a: 1 }] };
+    formatFindAllProps({ page: 1, limit: 10, filters, where: { tenantId: 't' } } as never);
+
+    expect(filters.AND, 'the caller’s array must be left alone').toEqual([{ a: 1 }]);
+  });
+
+  it('agrees with formatCountProps on which rows match', () => {
+    const props = { where: { tenantId: 'tenant-1', AND: [{ OR: [{ revokedAt: null }] }] } };
+    const list = formatFindAllProps({ page: 1, limit: 10, ...props } as never);
+    const count = formatCountProps(props as never);
+
+    // Both must constrain by tenant; before the fix only the count did.
+    expect(list.where.tenantId).toBe('tenant-1');
+    expect(JSON.stringify(count.where)).toContain('tenant-1');
+  });
+});

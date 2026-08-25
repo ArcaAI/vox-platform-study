@@ -4,7 +4,9 @@ import { EventEmitter2 } from '@nestjs/event-emitter';
 import {
   ConsentGrantEntity,
   ConsentGrantFactory,
+  ConsentGrantMethod,
   ConsentGrantRepository,
+  ConsentPurpose,
   HarnessAuditAction,
   ResourceStatusType,
   ResourceType,
@@ -159,6 +161,76 @@ export class ConsentGrantService extends BaseService implements IConsentGrantSer
     });
 
     return ConsentGrantDtoMapper.toResponse(updated);
+  }
+
+  /**
+   * Every purpose a consultation implies (TASK-805 owner directive,
+   * 2026-08-25). Enumerated from the enum rather than hand-listed so a new
+   * `ConsentPurpose` is covered the day it is added — a purpose that exists
+   * but is silently never granted would reintroduce exactly the dead-end this
+   * directive removes.
+   */
+  private static readonly CONSULTATION_PURPOSES: readonly ConsentPurpose[] = Object.values(ConsentPurpose);
+
+  /**
+   * Record the consent a doctor gives by ACT OF OPENING A CONSULTATION
+   * (owner directive, 2026-08-25): starting a consultation for a patient IS
+   * the attestation that the patient consented, so every purpose is granted
+   * at that moment.
+   *
+   * This does NOT contradict owner decision D-3 (`@ForbidServiceAccount` on
+   * this controller — "consent is an act of a PERSON"). The caller here is a
+   * clinician's own request context: `create()` stamps `grantedBy` with the
+   * CLS request user, so every row is attributable to the human who opened the
+   * consultation, and each one still appends `CONSENT_GIVEN` to the WORM
+   * ledger. What D-3 forbids is a MACHINE identity with nobody behind it; this
+   * is the opposite.
+   *
+   * IDEMPOTENT, and deliberately not a revoke-override: a purpose that already
+   * has an ACTIVE grant is skipped (the DB's partial unique index would reject
+   * a second one anyway). A purpose whose previous grant was REVOKED is
+   * granted afresh — which is correct rather than a loophole, because a new
+   * consultation is a new consent event, and a patient who withdrew consent
+   * last month may consent again today. The consequence to know: a revocation
+   * blocks gated calls for the CURRENT consultation, but does not outlive the
+   * opening of the next one.
+   */
+  async ensureConsultationConsent(externalPatientId: string): Promise<ConsentGrantResponse[]> {
+    const tenantId = this.tenantId;
+    if (!tenantId) {
+      throw new ArgumentInvalidException('Tenant context required');
+    }
+    const normalized = normalizeExternalPatientId(externalPatientId);
+    const now = new Date();
+    const granted: ConsentGrantResponse[] = [];
+
+    for (const purpose of ConsentGrantService.CONSULTATION_PURPOSES) {
+      const existing = await this.consentGrantRepository.findByTenantPatientPurpose(tenantId, normalized, purpose);
+      if (existing?.isActive(now)) {
+        continue;
+      }
+      granted.push(
+        await this.create({
+          externalPatientId: normalized,
+          purpose,
+          // The clinician is attesting in person; there is no signed artifact
+          // and no portal interaction to point at.
+          grantMethod: ConsentGrantMethod.VERBAL_ATTESTED,
+        }),
+      );
+    }
+
+    if (granted.length > 0) {
+      this.logger.log({
+        message: 'Consultation open recorded consent for the patient',
+        tenantId,
+        externalPatientId: normalized,
+        grantedBy: this.requestUser?.id,
+        purposes: granted.map((g) => g.purpose),
+      });
+    }
+
+    return granted;
   }
 
   /**

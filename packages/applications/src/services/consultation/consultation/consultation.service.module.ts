@@ -7,6 +7,7 @@ import { EntitlementsServiceModule } from '../../entitlements/entitlements.servi
 import { HarnessAuditServiceModule } from '../../harness-audit';
 import { ConsultationWorkflowDispatchServiceModule } from '../workflow-dispatch/consultation-workflow-dispatch.service.module';
 import { EffectiveSettingsModule } from '../../settings-registry/effective-settings.module';
+import { ConsentServiceModule } from '../../consent/consent-grant.service.module';
 
 @Module({
   // TASK-711 — HarnessAuditServiceModule resolves the @Optional
@@ -21,6 +22,11 @@ import { EffectiveSettingsModule } from '../../settings-registry/effective-setti
     HarnessAuditServiceModule,
     EffectiveSettingsModule,
     ConsultationWorkflowDispatchServiceModule,
+    // TASK-805 — supplies IConsentGrantService so `getOrCreate` can record the
+    // consent the doctor gives by opening the consultation. No cycle:
+    // ConsentServiceModule imports neither this module nor anything that leads
+    // back to it.
+    ConsentServiceModule,
   ],
   providers: [
     ConsultationService,
