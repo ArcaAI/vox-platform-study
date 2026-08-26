@@ -112,5 +112,8 @@ function toPortResponse(port: WorkflowPortDescriptor): WorkflowNodePortResponse 
   dto.primitive = port.primitive;
   dto.required = port.required;
   dto.multiple = port.multiple;
+  // TASK-809 OD-15. Undefined on a `control` port — ordering carries no payload, so it names no
+  // runtime output key — and on every INPUT port, which is bound by its own `toPort`.
+  dto.outputKey = port.outputKey;
   return dto;
 }

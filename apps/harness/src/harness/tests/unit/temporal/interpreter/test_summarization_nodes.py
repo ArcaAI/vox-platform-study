@@ -72,7 +72,10 @@ class TestContextBinding:
         payload = _input(self._CONFIG, run_payload={"text": "hello world"})
         result = await context_binding_mod.interpreter_context_binding(payload)
         assert result.status == "SUCCEEDED"
-        assert result.output == {"source_text": "hello world"}
+        # TASK-809 OD-15: the bound kinds are published UNDER `context` — the key this node's
+        # `context<schemaRef>` output socket declares. `{kindKey: value}` at the top level named
+        # no key at all, which left only the interpreter's whole-object fallback.
+        assert result.output == {"context": {"source_text": "hello world"}}
 
     @pytest.mark.asyncio
     async def test_rejects_a_payload_violating_the_declared_shape_missing(self):
@@ -110,7 +113,7 @@ class TestContextBinding:
         payload = _input(config, run_payload={})
         result = await context_binding_mod.interpreter_context_binding(payload)
         assert result.status == "SUCCEEDED"
-        assert result.output == {}
+        assert result.output == {"context": {}}
 
 
 # ---------------------------------------------------------------------------

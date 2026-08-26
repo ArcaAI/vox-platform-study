@@ -25,6 +25,8 @@ interface FixtureEntry {
   defaultTimeoutSeconds: number;
   defaultMaxAttempts: number;
   entitlementKey: string | null;
+  /** TASK-809 OD-15 — the ONE port field that is SHARED, not TS-only. See the projection below. */
+  outputKeys: Record<string, string | null>;
 }
 
 function loadFixtureEntries(): FixtureEntry[] {
@@ -32,8 +34,24 @@ function loadFixtureEntries(): FixtureEntry[] {
   return raw.entries;
 }
 
-/** Projects this package's registry onto exactly the fields the fixture carries — mirrors what
- *  the Python test does to `NODE_REGISTRY` on its side. */
+/**
+ * Projects this package's registry onto exactly the fields the fixture carries — mirrors what
+ * the Python test does to `NODE_REGISTRY` on its side.
+ *
+ * ## `outputKeys` — TASK-809 OD-15 deliberately reopened the parity surface for ONE field
+ *
+ * Task 10 closed the port contract as TS-only, and the fixture's own `_comment` still says
+ * `classes`/`paletteKey` are excluded for that reason. `outputKey` is the exception, and it has
+ * to be: it is the ONLY thing that tells `_resolve_bound_inputs` which key of a producing
+ * activity's output a socket named `out` actually carries. Leaving it TS-only would put the
+ * mapping in a second table, in the other language, free to drift — which is the failure mode
+ * this whole fixture exists to prevent.
+ *
+ * The map is over EVERY output port, not just the data ones: a `null` says "this is a control
+ * port, ordering only, it carries no payload", which is what lets the interpreter tell a
+ * legitimate ordering edge apart from an edge naming a port that does not exist (the latter
+ * raises).
+ */
 function projectRegistry(): FixtureEntry[] {
   return Object.values(WORKFLOW_NODE_REGISTRY)
     .map((descriptor) => ({
@@ -45,6 +63,7 @@ function projectRegistry(): FixtureEntry[] {
       defaultTimeoutSeconds: descriptor.defaultTimeoutSeconds,
       defaultMaxAttempts: descriptor.defaultMaxAttempts,
       entitlementKey: descriptor.entitlementKey,
+      outputKeys: Object.fromEntries(descriptor.outputs.map((port) => [port.name, port.outputKey ?? null])),
     }))
     .sort((a, b) => a.key.localeCompare(b.key));
 }

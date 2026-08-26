@@ -74,19 +74,63 @@ export const WORKFLOW_PORT_PRIMITIVES = [
 export type WorkflowPortPrimitive = (typeof WORKFLOW_PORT_PRIMITIVES)[number];
 
 /**
- * One declared port on a node type. `required` and `multiple` describe the port's ARITY for the
- * canvas and for the interpreter's input binding; the type check itself (`portPrimitiveSatisfies`)
- * reads only `primitive`.
+ * The direction-independent half of a port declaration. `required` and `multiple` describe the
+ * port's ARITY for the canvas and for the interpreter's input binding; the type check itself
+ * (`portPrimitiveSatisfies`) reads only `primitive`.
  */
-export interface WorkflowPortDescriptor {
+interface WorkflowPortBase {
   /** Stable, node-type-local port name — what a graph edge's `fromPort`/`toPort` names. */
   readonly name: string;
-  readonly primitive: WorkflowPortPrimitive;
   /** An input the node cannot run without / an output the node always produces. */
   readonly required: boolean;
   /** Whether the port accepts (inputs) or feeds (outputs) more than one edge. */
   readonly multiple: boolean;
 }
+
+/**
+ * One declared port on a node type.
+ *
+ * ## `outputKey` — the socket's RUNTIME key (TASK-809 OD-15, option A)
+ *
+ * A port name is an AUTHORING handle: `out`, `entities`, `verdict` are what the canvas draws and
+ * what an edge's `fromPort`/`toPort` names. The interpreter, however, threads values by reading a
+ * KEY out of the producing activity's own output dict (`NodeActivityResult.output`), and no
+ * activity in this platform has ever emitted a key called `"out"`. Before OD-15 the two models
+ * only met through the interpreter's whole-object fallback — which is exactly the untyped
+ * "bundle" the port vocabulary exists to abolish (a bundle cannot be typed as "contains a
+ * document", so generated text could reach NER again).
+ *
+ * `outputKey` closes that gap in ONE place: the socket keeps its authored name, and declares
+ * beside it which key of the activity's output it carries. `_resolve_bound_inputs`
+ * (`apps/harness/.../interpreter/workflow.py`) reads `upstream_output[outputKey]`; an edge whose
+ * `fromPort` resolves to no declared output port RAISES rather than silently threading the whole
+ * object.
+ *
+ * Two invariants, one of them enforced by this type rather than by a test:
+ *
+ *  - a **`control`** port carries no payload at all — ordering only — so it can never declare an
+ *    `outputKey`. That is `outputKey?: never` below, not a convention.
+ *  - every non-control **OUTPUT** port MUST declare one. `node-contract.test.ts` asserts that
+ *    across the whole registry (an input port's `outputKey` is meaningless and is never set).
+ *
+ * There is deliberately NO "the whole output object" encoding. Where an activity's natural shape
+ * offered no key for a port — `input.context_binding`, `consultation.retrieveEvidence`,
+ * `consultation.sensors`, `consultation.inferentialSensors` — the ACTIVITY was changed to publish
+ * its object under a named key, because a nameless whole-object port is option C, which the owner
+ * rejected.
+ */
+export type WorkflowPortDescriptor =
+  | (WorkflowPortBase & {
+      readonly primitive: 'control';
+      /** Ordering carries no payload: a control port never names a runtime output key. */
+      readonly outputKey?: never;
+    })
+  | (WorkflowPortBase & {
+      readonly primitive: Exclude<WorkflowPortPrimitive, 'control'>;
+      /** The key of the producing activity's `output` dict this socket carries. Set on OUTPUT
+       *  ports only — an input port is bound BY `toPort`, so it has no key of its own. */
+      readonly outputKey?: string;
+    });
 
 /**
  * Each primitive's DIRECT supertype, or `null` when it is a lattice root. Widening is the

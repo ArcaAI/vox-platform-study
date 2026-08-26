@@ -14,7 +14,7 @@ package's own tests need (ticket §4 Task 4).
 
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -106,6 +106,25 @@ class NodeSpec:
     reserved for a future ``child_workflow`` dispatch (mirroring ``LoopActionSpec.kind``); v1 only
     ever uses ``"activity"``. ``critical``/``external_write`` are code-owned safety properties,
     never tenant-configurable (contracts/execution-semantics.md §5/§9).
+
+    ``output_keys`` is TASK-809 OD-15 (option A), and it is the ONE piece of the port contract
+    that is SHARED with the TypeScript side rather than TS-only. A port NAME is an authoring
+    handle — ``out``, ``entities``, ``verdict``, what the Studio canvas draws and what a graph
+    edge's ``fromPort``/``toPort`` names — but this interpreter threads values by reading a KEY
+    out of the producing activity's own ``NodeActivityResult.output`` dict, and no activity in
+    this platform emits a key called ``"out"``. Until OD-15 the only bridge was
+    ``_resolve_bound_inputs``' whole-object fallback, which is precisely the untyped bundle the
+    port vocabulary exists to abolish (a bundle cannot be typed as "contains a document", so
+    generated prose could reach NER again).
+
+    So each entry maps EVERY declared output port name to the output key it carries, or to
+    ``None`` for a ``control`` port, which carries no payload at all. That ``None`` is
+    load-bearing: it is what lets ``_resolve_bound_inputs`` tell a legitimate ORDERING edge
+    (skip, contribute nothing) apart from an edge naming a port that does not exist (raise).
+
+    Authored here by hand and asserted against the SAME committed fixture the TypeScript
+    projection is asserted against (``node-registry.snapshot.json``) — see
+    ``test_node_registry_parity.py``. Never add it to one side only.
     """
 
     key: str
@@ -118,6 +137,7 @@ class NodeSpec:
     default_timeout_seconds: int = 60
     default_max_attempts: int = 1
     entitlement_key: str | None = None
+    output_keys: Mapping[str, str | None] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
         # frozen dataclass: use object.__setattr__ for the derived field.
@@ -125,8 +145,15 @@ class NodeSpec:
 
 
 NODE_REGISTRY: dict[str, NodeSpec] = {
-    "noop": NodeSpec(key="noop", implemented=True, activity=interpreter_noop),
-    "passthrough": NodeSpec(key="passthrough", implemented=True, activity=interpreter_passthrough),
+    "noop": NodeSpec(
+        key="noop", implemented=True, activity=interpreter_noop, output_keys={"next": None}
+    ),
+    "passthrough": NodeSpec(
+        key="passthrough",
+        implemented=True,
+        activity=interpreter_passthrough,
+        output_keys={"next": None},
+    ),
     # Graph boundary markers (palette-agnostic). The palette-independent structural rules
     # WF-S-002/003/004/007 are written against these two literal types; until they were
     # registered no graph in ANY palette could satisfy them. They execute nothing (see
@@ -142,6 +169,7 @@ NODE_REGISTRY: dict[str, NodeSpec] = {
         external_write=False,
         default_timeout_seconds=30,
         default_max_attempts=1,
+        output_keys={"next": None},
     ),
     "core.end": NodeSpec(
         key="core.end",
@@ -151,6 +179,7 @@ NODE_REGISTRY: dict[str, NodeSpec] = {
         external_write=False,
         default_timeout_seconds=30,
         default_max_attempts=1,
+        output_keys={},
     ),
     # Summarization palette (TASK-720). `critical`/`external_write`/timeouts mirror
     # contracts/palette.md's node table and node-registry.ts's matching five entries exactly.
@@ -165,6 +194,7 @@ NODE_REGISTRY: dict[str, NodeSpec] = {
         critical=True,
         default_timeout_seconds=60,
         default_max_attempts=3,
+        output_keys={"out": "context", "next": None},
     ),
     "prompt.template_ref": NodeSpec(
         key="prompt.template_ref",
@@ -173,6 +203,7 @@ NODE_REGISTRY: dict[str, NodeSpec] = {
         critical=False,
         default_timeout_seconds=30,
         default_max_attempts=3,
+        output_keys={"out": "content", "next": None},
     ),
     "generate.text": NodeSpec(
         key="generate.text",
@@ -181,6 +212,7 @@ NODE_REGISTRY: dict[str, NodeSpec] = {
         critical=True,
         default_timeout_seconds=300,
         default_max_attempts=2,
+        output_keys={"out": "text", "next": None},
     ),
     "guardrail.check": NodeSpec(
         key="guardrail.check",
@@ -189,6 +221,7 @@ NODE_REGISTRY: dict[str, NodeSpec] = {
         critical=False,
         default_timeout_seconds=60,
         default_max_attempts=3,
+        output_keys={"out": "verdict", "next": None},
     ),
     "output.deliver": NodeSpec(
         key="output.deliver",
@@ -198,6 +231,7 @@ NODE_REGISTRY: dict[str, NodeSpec] = {
         external_write=True,
         default_timeout_seconds=60,
         default_max_attempts=3,
+        output_keys={"next": None},
     ),
     # STT palette (TASK-724). Mirrors
     # docs/implementation/TASK-724-Palette-Stt/contracts/palette.md's node table and
@@ -213,6 +247,7 @@ NODE_REGISTRY: dict[str, NodeSpec] = {
         critical=True,
         default_timeout_seconds=60,
         default_max_attempts=3,
+        output_keys={"out": "audio", "bypass": "audio", "next": None},
     ),
     "stt.vad": NodeSpec(
         key="stt.vad",
@@ -221,6 +256,7 @@ NODE_REGISTRY: dict[str, NodeSpec] = {
         critical=False,
         default_timeout_seconds=60,
         default_max_attempts=3,
+        output_keys={"out": "audio", "next": None},
     ),
     "stt.noiseFilter": NodeSpec(
         key="stt.noiseFilter",
@@ -229,6 +265,7 @@ NODE_REGISTRY: dict[str, NodeSpec] = {
         critical=False,
         default_timeout_seconds=60,
         default_max_attempts=3,
+        output_keys={"out": "audio", "next": None},
     ),
     "stt.diarization": NodeSpec(
         key="stt.diarization",
@@ -237,6 +274,7 @@ NODE_REGISTRY: dict[str, NodeSpec] = {
         critical=False,
         default_timeout_seconds=120,
         default_max_attempts=3,
+        output_keys={"out": "audio", "next": None},
     ),
     "stt.languageDetection": NodeSpec(
         key="stt.languageDetection",
@@ -245,6 +283,7 @@ NODE_REGISTRY: dict[str, NodeSpec] = {
         critical=False,
         default_timeout_seconds=30,
         default_max_attempts=3,
+        output_keys={"out": "audio", "next": None},
     ),
     "stt.asrEngine": NodeSpec(
         key="stt.asrEngine",
@@ -253,6 +292,7 @@ NODE_REGISTRY: dict[str, NodeSpec] = {
         critical=True,
         default_timeout_seconds=600,
         default_max_attempts=2,
+        output_keys={"out": "transcript", "loop": None, "next": None},
     ),
     "stt.transcriptOutput": NodeSpec(
         key="stt.transcriptOutput",
@@ -262,6 +302,7 @@ NODE_REGISTRY: dict[str, NodeSpec] = {
         external_write=True,
         default_timeout_seconds=60,
         default_max_attempts=3,
+        output_keys={"loop": None, "next": None},
     ),
     # PLACEHOLDER — implemented=False, see palette.md. TASK-710/phi-redactor is not landed.
     "stt.phiHop": NodeSpec(
@@ -271,6 +312,7 @@ NODE_REGISTRY: dict[str, NodeSpec] = {
         critical=False,
         default_timeout_seconds=60,
         default_max_attempts=1,
+        output_keys={"out": "transcript", "next": None},
     ),
     # Consultation palette (TASK-731) — all 13 node types from contracts/node-types.md's node
     # table. TASK-731 shipped only 3 (consentGate, phiHop, hitlGate); the other 10 were specified
@@ -294,6 +336,7 @@ NODE_REGISTRY: dict[str, NodeSpec] = {
         external_write=False,
         default_timeout_seconds=30,
         default_max_attempts=3,
+        output_keys={"out": None, "next": None},
     ),
     "consultation.captureBinding": NodeSpec(
         key="consultation.captureBinding",
@@ -303,6 +346,7 @@ NODE_REGISTRY: dict[str, NodeSpec] = {
         external_write=False,
         default_timeout_seconds=30,
         default_max_attempts=2,
+        output_keys={"out": "transcript", "next": None},
     ),
     # external_write=True for the persist leg (persist_entities), not the extraction — see
     # contracts/node-types.md's `critical` rationale, third bullet.
@@ -314,6 +358,7 @@ NODE_REGISTRY: dict[str, NodeSpec] = {
         external_write=True,
         default_timeout_seconds=150,
         default_max_attempts=2,
+        output_keys={"out": "entities", "next": None},
     ),
     "consultation.bindTerminology": NodeSpec(
         key="consultation.bindTerminology",
@@ -323,6 +368,7 @@ NODE_REGISTRY: dict[str, NodeSpec] = {
         external_write=False,
         default_timeout_seconds=30,
         default_max_attempts=1,
+        output_keys={"out": "entities", "next": None},
     ),
     "consultation.phiHop": NodeSpec(
         key="consultation.phiHop",
@@ -332,6 +378,7 @@ NODE_REGISTRY: dict[str, NodeSpec] = {
         external_write=False,
         default_timeout_seconds=60,
         default_max_attempts=3,
+        output_keys={"out": "text", "next": None},
     ),
     "consultation.retrieveEvidence": NodeSpec(
         key="consultation.retrieveEvidence",
@@ -341,6 +388,7 @@ NODE_REGISTRY: dict[str, NodeSpec] = {
         external_write=False,
         default_timeout_seconds=150,
         default_max_attempts=2,
+        output_keys={"out": "context", "next": None},
     ),
     "consultation.assemblePrompt": NodeSpec(
         key="consultation.assemblePrompt",
@@ -350,6 +398,7 @@ NODE_REGISTRY: dict[str, NodeSpec] = {
         external_write=False,
         default_timeout_seconds=150,
         default_max_attempts=3,
+        output_keys={"out": "text", "next": None},
     ),
     "consultation.synthesize": NodeSpec(
         key="consultation.synthesize",
@@ -359,6 +408,7 @@ NODE_REGISTRY: dict[str, NodeSpec] = {
         external_write=False,
         default_timeout_seconds=150,
         default_max_attempts=2,
+        output_keys={"out": "text", "next": None},
     ),
     "consultation.sensors": NodeSpec(
         key="consultation.sensors",
@@ -368,6 +418,7 @@ NODE_REGISTRY: dict[str, NodeSpec] = {
         external_write=False,
         default_timeout_seconds=150,
         default_max_attempts=2,
+        output_keys={"out": "verdict", "document": "text", "next": None},
     ),
     "consultation.inferentialSensors": NodeSpec(
         key="consultation.inferentialSensors",
@@ -377,6 +428,7 @@ NODE_REGISTRY: dict[str, NodeSpec] = {
         external_write=False,
         default_timeout_seconds=900,
         default_max_attempts=2,
+        output_keys={"out": "verdict", "document": "text", "next": None},
     ),
     "consultation.persistDraft": NodeSpec(
         key="consultation.persistDraft",
@@ -386,6 +438,7 @@ NODE_REGISTRY: dict[str, NodeSpec] = {
         external_write=True,
         default_timeout_seconds=150,
         default_max_attempts=3,
+        output_keys={"out": "text", "contextItemId": "contextItemId", "next": None},
     ),
     "consultation.finalizeAssurance": NodeSpec(
         key="consultation.finalizeAssurance",
@@ -395,6 +448,7 @@ NODE_REGISTRY: dict[str, NodeSpec] = {
         external_write=True,
         default_timeout_seconds=150,
         default_max_attempts=3,
+        output_keys={"contextItemId": "contextItemId", "next": None},
     ),
     # The ONE durable human wait in this substrate (TASK-731 Phase B). `kind="child_workflow"` is
     # the field NodeSpec has reserved for exactly this since TASK-718 and this is its first use:
@@ -412,6 +466,7 @@ NODE_REGISTRY: dict[str, NodeSpec] = {
         external_write=True,
         default_timeout_seconds=60,
         default_max_attempts=1,
+        output_keys={"out": None, "next": None},
     ),
     # R3's three missing capabilities (TASK-791 W1-W3). TASK-789 verified none of them had a
     # node, activity or sensor anywhere. Mirrors node-registry.ts's matching three entries and
@@ -436,6 +491,7 @@ NODE_REGISTRY: dict[str, NodeSpec] = {
         external_write=True,
         default_timeout_seconds=150,
         default_max_attempts=2,
+        output_keys={"out": "text", "next": None},
     ),
     "consultation.suggestions": NodeSpec(
         key="consultation.suggestions",
@@ -445,6 +501,7 @@ NODE_REGISTRY: dict[str, NodeSpec] = {
         external_write=False,
         default_timeout_seconds=150,
         default_max_attempts=2,
+        output_keys={"out": "suggestions", "next": None},
     ),
     "consultation.proposeCorrections": NodeSpec(
         key="consultation.proposeCorrections",
@@ -454,5 +511,6 @@ NODE_REGISTRY: dict[str, NodeSpec] = {
         external_write=False,
         default_timeout_seconds=150,
         default_max_attempts=2,
+        output_keys={"out": "proposals", "next": None},
     ),
 }

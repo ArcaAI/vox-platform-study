@@ -14,16 +14,16 @@
  *   pnpm --filter @arcaai/database exec tsx scripts/regen-arcaai-consultation-workflow-seed.ts
  */
 
-export const REGISTRY_CHECKSUM: string = "40c1424a0bc325129866f2aa2dcb64262a2fab083249d452d0bb63483b05aeb3" as const;
+export const REGISTRY_CHECKSUM: string = "d53a775b79b2d303c4b60bb1970b633244e29e67cca98ac03389dfb4c3a6c3d1" as const;
 
-export const GEN_GRAPH_CHECKSUM: string = "4bf333e993636d6ccfca08a681312fc399ff621f1f6fea314594c6e6f5eb7629" as const;
+export const GEN_GRAPH_CHECKSUM: string = "faf669b86aa4a6596e2c0daa1158a806d51fc5590fdd163af3cc2eb8f1a5374f" as const;
 
 export const GEN_VALIDATION_REPORT: Record<string, unknown> = {
   "reportVersion": 1,
   "ok": true,
   "findings": [],
   "ruleSetVersion": 1,
-  "registryChecksum": "40c1424a0bc325129866f2aa2dcb64262a2fab083249d452d0bb63483b05aeb3",
+  "registryChecksum": "d53a775b79b2d303c4b60bb1970b633244e29e67cca98ac03389dfb4c3a6c3d1",
   "evaluatedAt": "2026-08-23T00:00:00.000Z"
 } as const;
 
@@ -36,7 +36,7 @@ export const GEN_COMPILED_CONFIG: Record<string, unknown> = {
   "paletteKey": "consultation",
   "compiledAt": "2026-08-23T00:00:00.000Z",
   "compilerVersion": "0.1.0",
-  "registryChecksum": "40c1424a0bc325129866f2aa2dcb64262a2fab083249d452d0bb63483b05aeb3",
+  "registryChecksum": "d53a775b79b2d303c4b60bb1970b633244e29e67cca98ac03389dfb4c3a6c3d1",
   "ruleSetVersion": 1,
   "stages": [
     {
@@ -76,8 +76,8 @@ export const GEN_COMPILED_CONFIG: Record<string, unknown> = {
           "inputs": [
             {
               "fromNodeId": "n_start",
-              "fromPort": "out",
-              "toPort": "in"
+              "fromPort": "next",
+              "toPort": "after"
             }
           ],
           "onError": "fail",
@@ -107,7 +107,7 @@ export const GEN_COMPILED_CONFIG: Record<string, unknown> = {
             {
               "fromNodeId": "n_consent",
               "fromPort": "out",
-              "toPort": "in"
+              "toPort": "after"
             }
           ],
           "onError": "degrade",
@@ -154,7 +154,6 @@ export const GEN_COMPILED_CONFIG: Record<string, unknown> = {
           "type": "consultation.realtimeSummary",
           "activity": "interpreter.consultation_realtime_summary",
           "config": {
-            "publishTo": "live-summary",
             "onError": "degrade"
           },
           "timeoutSeconds": 60,
@@ -167,7 +166,7 @@ export const GEN_COMPILED_CONFIG: Record<string, unknown> = {
             {
               "fromNodeId": "n_entities",
               "fromPort": "out",
-              "toPort": "in"
+              "toPort": "entities"
             }
           ],
           "onError": "degrade",
@@ -196,6 +195,11 @@ export const GEN_COMPILED_CONFIG: Record<string, unknown> = {
           "inputs": [
             {
               "fromNodeId": "n_realtime",
+              "fromPort": "next",
+              "toPort": "after"
+            },
+            {
+              "fromNodeId": "n_entities",
               "fromPort": "out",
               "toPort": "in"
             }
@@ -225,8 +229,8 @@ export const GEN_COMPILED_CONFIG: Record<string, unknown> = {
           "inputs": [
             {
               "fromNodeId": "n_terms",
-              "fromPort": "out",
-              "toPort": "in"
+              "fromPort": "next",
+              "toPort": "after"
             }
           ],
           "onError": "degrade",
@@ -254,8 +258,8 @@ export const GEN_COMPILED_CONFIG: Record<string, unknown> = {
           "inputs": [
             {
               "fromNodeId": "n_phi",
-              "fromPort": "out",
-              "toPort": "in"
+              "fromPort": "next",
+              "toPort": "after"
             }
           ],
           "onError": "degrade",
@@ -286,6 +290,11 @@ export const GEN_COMPILED_CONFIG: Record<string, unknown> = {
               "fromNodeId": "n_evidence",
               "fromPort": "out",
               "toPort": "in"
+            },
+            {
+              "fromNodeId": "n_phi",
+              "fromPort": "out",
+              "toPort": "transcript"
             }
           ],
           "onError": "degrade",
@@ -342,8 +351,8 @@ export const GEN_COMPILED_CONFIG: Record<string, unknown> = {
           "inputs": [
             {
               "fromNodeId": "n_synth",
-              "fromPort": "out",
-              "toPort": "in"
+              "fromPort": "next",
+              "toPort": "after"
             }
           ],
           "onError": "degrade",
@@ -370,6 +379,11 @@ export const GEN_COMPILED_CONFIG: Record<string, unknown> = {
           "inputs": [
             {
               "fromNodeId": "n_suggest",
+              "fromPort": "next",
+              "toPort": "after"
+            },
+            {
+              "fromNodeId": "n_synth",
               "fromPort": "out",
               "toPort": "in"
             }
@@ -398,6 +412,11 @@ export const GEN_COMPILED_CONFIG: Record<string, unknown> = {
           "inputs": [
             {
               "fromNodeId": "n_correct",
+              "fromPort": "next",
+              "toPort": "after"
+            },
+            {
+              "fromNodeId": "n_synth",
               "fromPort": "out",
               "toPort": "in"
             }
@@ -427,8 +446,13 @@ export const GEN_COMPILED_CONFIG: Record<string, unknown> = {
           "inputs": [
             {
               "fromNodeId": "n_sensors",
-              "fromPort": "out",
+              "fromPort": "document",
               "toPort": "in"
+            },
+            {
+              "fromNodeId": "n_sensors",
+              "fromPort": "out",
+              "toPort": "verdict"
             }
           ],
           "onError": "degrade",
@@ -455,8 +479,18 @@ export const GEN_COMPILED_CONFIG: Record<string, unknown> = {
           "inputs": [
             {
               "fromNodeId": "n_persist",
+              "fromPort": "contextItemId",
+              "toPort": "contextItemId"
+            },
+            {
+              "fromNodeId": "n_persist",
               "fromPort": "out",
               "toPort": "in"
+            },
+            {
+              "fromNodeId": "n_sensors",
+              "fromPort": "out",
+              "toPort": "verdict"
             }
           ],
           "onError": "degrade",
@@ -481,8 +515,8 @@ export const GEN_COMPILED_CONFIG: Record<string, unknown> = {
           "inputs": [
             {
               "fromNodeId": "n_gate",
-              "fromPort": "out",
-              "toPort": "in"
+              "fromPort": "next",
+              "toPort": "after"
             }
           ],
           "onError": "fail",
@@ -512,17 +546,17 @@ export const GEN_COMPILED_CONFIG: Record<string, unknown> = {
     "maxNodeSeconds": 600,
     "maxAttempts": 5
   },
-  "checksum": "c5d8e4fbf17eb089a339b1b914e13a311223a6d23455c46169541435c308623a"
+  "checksum": "4bb1bb84dc92425156198e7beb39a36a24a80b165f01bf809ee08c9cd165ea6a"
 } as const;
 
-export const RHEUM_GRAPH_CHECKSUM: string = "39da99853c45c5b8b2520079d8ed148366de5713f8dfb23199e433700fc2cde9" as const;
+export const RHEUM_GRAPH_CHECKSUM: string = "2098e47009fe816fed744f659164b1ec2dbadf5ca150274745badc84d5ecf116" as const;
 
 export const RHEUM_VALIDATION_REPORT: Record<string, unknown> = {
   "reportVersion": 1,
   "ok": true,
   "findings": [],
   "ruleSetVersion": 1,
-  "registryChecksum": "40c1424a0bc325129866f2aa2dcb64262a2fab083249d452d0bb63483b05aeb3",
+  "registryChecksum": "d53a775b79b2d303c4b60bb1970b633244e29e67cca98ac03389dfb4c3a6c3d1",
   "evaluatedAt": "2026-08-23T00:00:00.000Z"
 } as const;
 
@@ -535,7 +569,7 @@ export const RHEUM_COMPILED_CONFIG: Record<string, unknown> = {
   "paletteKey": "consultation",
   "compiledAt": "2026-08-23T00:00:00.000Z",
   "compilerVersion": "0.1.0",
-  "registryChecksum": "40c1424a0bc325129866f2aa2dcb64262a2fab083249d452d0bb63483b05aeb3",
+  "registryChecksum": "d53a775b79b2d303c4b60bb1970b633244e29e67cca98ac03389dfb4c3a6c3d1",
   "ruleSetVersion": 1,
   "stages": [
     {
@@ -575,8 +609,8 @@ export const RHEUM_COMPILED_CONFIG: Record<string, unknown> = {
           "inputs": [
             {
               "fromNodeId": "n_start",
-              "fromPort": "out",
-              "toPort": "in"
+              "fromPort": "next",
+              "toPort": "after"
             }
           ],
           "onError": "fail",
@@ -606,7 +640,7 @@ export const RHEUM_COMPILED_CONFIG: Record<string, unknown> = {
             {
               "fromNodeId": "n_consent",
               "fromPort": "out",
-              "toPort": "in"
+              "toPort": "after"
             }
           ],
           "onError": "degrade",
@@ -653,7 +687,6 @@ export const RHEUM_COMPILED_CONFIG: Record<string, unknown> = {
           "type": "consultation.realtimeSummary",
           "activity": "interpreter.consultation_realtime_summary",
           "config": {
-            "publishTo": "live-summary",
             "onError": "degrade"
           },
           "timeoutSeconds": 60,
@@ -666,7 +699,7 @@ export const RHEUM_COMPILED_CONFIG: Record<string, unknown> = {
             {
               "fromNodeId": "n_entities",
               "fromPort": "out",
-              "toPort": "in"
+              "toPort": "entities"
             }
           ],
           "onError": "degrade",
@@ -695,6 +728,11 @@ export const RHEUM_COMPILED_CONFIG: Record<string, unknown> = {
           "inputs": [
             {
               "fromNodeId": "n_realtime",
+              "fromPort": "next",
+              "toPort": "after"
+            },
+            {
+              "fromNodeId": "n_entities",
               "fromPort": "out",
               "toPort": "in"
             }
@@ -724,8 +762,8 @@ export const RHEUM_COMPILED_CONFIG: Record<string, unknown> = {
           "inputs": [
             {
               "fromNodeId": "n_terms",
-              "fromPort": "out",
-              "toPort": "in"
+              "fromPort": "next",
+              "toPort": "after"
             }
           ],
           "onError": "degrade",
@@ -753,8 +791,8 @@ export const RHEUM_COMPILED_CONFIG: Record<string, unknown> = {
           "inputs": [
             {
               "fromNodeId": "n_phi",
-              "fromPort": "out",
-              "toPort": "in"
+              "fromPort": "next",
+              "toPort": "after"
             }
           ],
           "onError": "degrade",
@@ -786,6 +824,11 @@ export const RHEUM_COMPILED_CONFIG: Record<string, unknown> = {
               "fromNodeId": "n_evidence",
               "fromPort": "out",
               "toPort": "in"
+            },
+            {
+              "fromNodeId": "n_phi",
+              "fromPort": "out",
+              "toPort": "transcript"
             }
           ],
           "onError": "degrade",
@@ -842,8 +885,8 @@ export const RHEUM_COMPILED_CONFIG: Record<string, unknown> = {
           "inputs": [
             {
               "fromNodeId": "n_synth",
-              "fromPort": "out",
-              "toPort": "in"
+              "fromPort": "next",
+              "toPort": "after"
             }
           ],
           "onError": "degrade",
@@ -870,6 +913,11 @@ export const RHEUM_COMPILED_CONFIG: Record<string, unknown> = {
           "inputs": [
             {
               "fromNodeId": "n_suggest",
+              "fromPort": "next",
+              "toPort": "after"
+            },
+            {
+              "fromNodeId": "n_synth",
               "fromPort": "out",
               "toPort": "in"
             }
@@ -898,6 +946,11 @@ export const RHEUM_COMPILED_CONFIG: Record<string, unknown> = {
           "inputs": [
             {
               "fromNodeId": "n_correct",
+              "fromPort": "next",
+              "toPort": "after"
+            },
+            {
+              "fromNodeId": "n_synth",
               "fromPort": "out",
               "toPort": "in"
             }
@@ -926,8 +979,13 @@ export const RHEUM_COMPILED_CONFIG: Record<string, unknown> = {
           "inputs": [
             {
               "fromNodeId": "n_sensors",
-              "fromPort": "out",
+              "fromPort": "document",
               "toPort": "in"
+            },
+            {
+              "fromNodeId": "n_sensors",
+              "fromPort": "out",
+              "toPort": "verdict"
             }
           ],
           "onError": "degrade",
@@ -956,7 +1014,17 @@ export const RHEUM_COMPILED_CONFIG: Record<string, unknown> = {
             {
               "fromNodeId": "n_infer",
               "fromPort": "out",
+              "toPort": "assurance"
+            },
+            {
+              "fromNodeId": "n_infer",
+              "fromPort": "document",
               "toPort": "in"
+            },
+            {
+              "fromNodeId": "n_sensors",
+              "fromPort": "out",
+              "toPort": "verdict"
             }
           ],
           "onError": "degrade",
@@ -982,9 +1050,24 @@ export const RHEUM_COMPILED_CONFIG: Record<string, unknown> = {
           },
           "inputs": [
             {
+              "fromNodeId": "n_infer",
+              "fromPort": "out",
+              "toPort": "assurance"
+            },
+            {
+              "fromNodeId": "n_persist",
+              "fromPort": "contextItemId",
+              "toPort": "contextItemId"
+            },
+            {
               "fromNodeId": "n_persist",
               "fromPort": "out",
               "toPort": "in"
+            },
+            {
+              "fromNodeId": "n_sensors",
+              "fromPort": "out",
+              "toPort": "verdict"
             }
           ],
           "onError": "degrade",
@@ -1009,8 +1092,8 @@ export const RHEUM_COMPILED_CONFIG: Record<string, unknown> = {
           "inputs": [
             {
               "fromNodeId": "n_gate",
-              "fromPort": "out",
-              "toPort": "in"
+              "fromPort": "next",
+              "toPort": "after"
             }
           ],
           "onError": "fail",
@@ -1040,5 +1123,5 @@ export const RHEUM_COMPILED_CONFIG: Record<string, unknown> = {
     "maxNodeSeconds": 600,
     "maxAttempts": 5
   },
-  "checksum": "39d8fd6368eded0083b91240edbb605455ffd5f9fbd67a190ac14f8d36dfae29"
+  "checksum": "586b285a8bebb35380a149fcd1488c918e7f2ddf27a627c37f2c8a30c9149bde"
 } as const;
