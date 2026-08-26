@@ -128,4 +128,10 @@ export enum ResourceType {
   // per-route limit; a customer-tenant row overrides it for that tenant alone.
   // Parity with audit.prisma; see resourceType.enum-parity.test.ts.
   RateLimitRule = 'RateLimitRule',
+  // Clinical-document shape catalog (TASK-810) — the MUTABLE head row is the
+  // audited resource. `DocumentTemplateVersion` is deliberately NOT a
+  // ResourceType (an immutable snapshot written as part of its parent's
+  // publish; the ConsultationContextSchemaVersion / PromptVersion precedent).
+  // Parity with audit.prisma; see resourceType.enum-parity.test.ts.
+  DocumentTemplate = 'DocumentTemplate',
 }

@@ -29,6 +29,7 @@ export * from './ContextItemSource';
 export * from './ContextItemType';
 export * from './DepartmentAgentDnaPolicy';
 export * from './DepartmentAgentRole';
+export * from './DocumentTemplateStatus';
 export * from './ExemplarCurationStatus';
 export * from './FedlRoundStatus';
 export * from './HarnessAuditAction';

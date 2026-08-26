@@ -177,6 +177,15 @@ export const MODELS_WITHOUT_SOFT_DELETE: ReadonlySet<string> = new Set([
   // `ConsultationContextSchema` is deliberately NOT here — it keeps the
   // standard ENABLED/DELETED lifecycle.
   'ConsultationContextSchemaVersion',
+  // DocumentTemplateVersion (TASK-810) is an immutable published snapshot of a
+  // clinical-document shape plus the artifacts compiled from it — the exact
+  // shape of ConsultationContextSchemaVersion above, and with no
+  // `resourceStatus` column for the same reason. A consultation generated
+  // against version N must be able to resolve version N forever; retracting a
+  // version would orphan already-produced clinical documents. The MUTABLE head
+  // `DocumentTemplate` is deliberately NOT here — it keeps the standard
+  // ENABLED/DELETED lifecycle.
+  'DocumentTemplateVersion',
   // DepartmentAgentVersion is an immutable snapshot of a
   // DepartmentAgent's loop-configuration surface — the exact shape of
   // PromptVersion / AsrPipelineVersion / ConsultationContextSchemaVersion
