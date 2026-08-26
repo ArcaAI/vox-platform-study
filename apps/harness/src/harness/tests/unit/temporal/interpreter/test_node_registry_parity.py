@@ -30,7 +30,13 @@ def _load_fixture_entries() -> list[dict]:
 
 
 def _project_registry() -> list[dict]:
-    """Mirrors what the TS test's `projectRegistry()` does to `WORKFLOW_NODE_REGISTRY`."""
+    """Mirrors what the TS test's `projectRegistry()` does to `WORKFLOW_NODE_REGISTRY`.
+
+    `outputKeys` (TASK-809 OD-15) is the ONE port field that is shared rather than TS-only —
+    see `NodeSpec.output_keys`' docstring for why the interpreter cannot do its job without it,
+    and `node-registry-parity.test.ts` for the other half of this guard. A `None` value marks a
+    `control` port: ordering only, no payload.
+    """
     entries = [
         {
             "key": spec.key,
@@ -41,6 +47,7 @@ def _project_registry() -> list[dict]:
             "defaultTimeoutSeconds": spec.default_timeout_seconds,
             "defaultMaxAttempts": spec.default_max_attempts,
             "entitlementKey": spec.entitlement_key,
+            "outputKeys": dict(spec.output_keys),
         }
         for spec in NODE_REGISTRY.values()
     ]

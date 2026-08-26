@@ -26,6 +26,12 @@ export class WorkflowNodePortResponse {
 
   @ApiProperty({ description: 'Whether the port accepts (inputs) or feeds (outputs) more than one edge.' })
   multiple: boolean;
+
+  @ApiPropertyOptional({
+    description:
+      'The key of the producing activity’s output object that this socket carries (TASK-809 OD-15). A port NAME is an authoring handle — what the canvas draws and what a graph edge’s fromPort/toPort names — while the interpreter threads values by reading a KEY out of the activity’s own output, and no activity emits a key called “out”. Absent on a control port, which carries no payload at all, and on every input port, which is bound by its own toPort.',
+  })
+  outputKey?: string;
 }
 
 /** The golden-set binding, declared on the NODE rather than on a DepartmentAgent row (OD-11). */

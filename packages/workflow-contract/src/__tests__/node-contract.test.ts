@@ -16,7 +16,7 @@ import { describe, expect, it } from 'vitest';
 import { WORKFLOW_NODE_REGISTRY } from '../node-registry';
 import type { WorkflowNodeDescriptor } from '../node-registry';
 import { WORKFLOW_PORT_PRIMITIVES } from '../port-model';
-import { nodeDescriptorContractProblems } from '../port-validation';
+import { isValidConnection, nodeDescriptorContractProblems } from '../port-validation';
 
 const DESCRIPTORS = Object.values(WORKFLOW_NODE_REGISTRY);
 
@@ -149,5 +149,51 @@ describe('evalGate (OD-11) — optional, and shape-checked when present', () => 
     const problems = nodeDescriptorContractProblems(descriptorFixture({ evalGate: { goldenSetId: '', enabled: true } }));
     expect(problems).toHaveLength(1);
     expect(problems[0]).toContain('goldenSetId');
+  });
+});
+
+/**
+ * TASK-809 OD-15 (option A) — every DATA output socket declares the runtime key it carries.
+ *
+ * This is the invariant that lets `_resolve_bound_inputs` stop threading the whole upstream
+ * output object. A socket without an `outputKey` is unresolvable at runtime, so the interpreter
+ * would either raise on a legal graph or fall back to the untyped bundle the port vocabulary
+ * exists to abolish. The control half of the rule is enforced by the TYPE (`outputKey?: never`
+ * on the `control` member of `WorkflowPortDescriptor`); it is asserted here as well because a
+ * type is invisible to a JSON consumer of `GET /admin/workflow-nodes`.
+ */
+describe('OD-15 — outputKey is declared on every data output port, and on no control port', () => {
+  it.each(DESCRIPTORS.map((d) => [d.key, d] as const))('%s declares an outputKey on every data OUTPUT port', (_key, descriptor) => {
+    const missing = descriptor.outputs.filter((port) => port.primitive !== 'control' && !port.outputKey).map((port) => port.name);
+    expect(missing, `${descriptor.key}: data output ports with no outputKey — the interpreter cannot resolve them`).toEqual([]);
+  });
+
+  it.each(DESCRIPTORS.map((d) => [d.key, d] as const))('%s declares NO outputKey on a control port', (_key, descriptor) => {
+    const offenders = [...descriptor.inputs, ...descriptor.outputs]
+      .filter((port) => port.primitive === 'control' && (port as { outputKey?: string }).outputKey !== undefined)
+      .map((port) => port.name);
+    expect(offenders, `${descriptor.key}: control ports carry no payload, so they can name no output key`).toEqual([]);
+  });
+
+  it.each(DESCRIPTORS.map((d) => [d.key, d] as const))('%s declares NO outputKey on an INPUT port (a socket is bound by toPort)', (_key, descriptor) => {
+    const offenders = descriptor.inputs.filter((port) => (port as { outputKey?: string }).outputKey !== undefined).map((port) => port.name);
+    expect(offenders).toEqual([]);
+  });
+
+  it('the two nodes whose descriptor contradicted their activity now declare real data outputs (OD-15)', () => {
+    // `persistDraft` emits `{contextItemId, text}` and `finalizeAssurance` genuinely consumes the
+    // former — yet both declared `[NEXT]` only, so NO legal edge could express that flow.
+    const persist = WORKFLOW_NODE_REGISTRY['consultation.persistDraft'];
+    const assure = WORKFLOW_NODE_REGISTRY['consultation.finalizeAssurance'];
+
+    expect(persist.outputs.filter((p) => p.primitive !== 'control').map((p) => [p.name, p.outputKey])).toEqual([
+      ['out', 'text'],
+      ['contextItemId', 'contextItemId'],
+    ]);
+    expect(assure.outputs.filter((p) => p.primitive !== 'control').map((p) => [p.name, p.outputKey])).toEqual([['contextItemId', 'contextItemId']]);
+
+    // …and the flow is now expressible as a type-checked edge.
+    expect(isValidConnection('consultation.persistDraft', 'contextItemId', 'consultation.finalizeAssurance', 'contextItemId')).toBe(true);
+    expect(isValidConnection('consultation.persistDraft', 'out', 'consultation.finalizeAssurance', 'in')).toBe(true);
   });
 });
