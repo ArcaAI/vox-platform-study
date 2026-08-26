@@ -15,7 +15,7 @@
  */
 
 import { describe, it, expect, vi } from 'vitest';
-import { LiveDocumentationService, LIVE_SOAP_STABLE_SYSTEM_PREFIX, LIVE_SOAP_SYSTEM_PROMPT } from '../live-documentation.service';
+import { LiveDocumentationService, LIVE_DOCUMENT_STABLE_SYSTEM_PREFIX, LIVE_DOCUMENT_SYSTEM_PROMPT } from '../live-documentation.service';
 import { DEFAULT_LIVE_TOOL_PLAN, type FrozenLiveAgentSnapshot, type ILiveAgentResolver } from '../live-agent.port';
 
 const CID = 'consultation-agent-001';
@@ -148,8 +148,8 @@ describe('C3-T1 — default-prompt parity (the unconfigured tenant sees zero cha
     await service.flush(CID);
 
     expect(calls).toHaveLength(1);
-    expect(calls[0].prompt.startsWith(LIVE_SOAP_STABLE_SYSTEM_PREFIX)).toBe(true);
-    expect(calls[0].system_prompt).toBe(LIVE_SOAP_SYSTEM_PROMPT);
+    expect(calls[0].prompt.startsWith(LIVE_DOCUMENT_STABLE_SYSTEM_PREFIX)).toBe(true);
+    expect(calls[0].system_prompt).toBe(LIVE_DOCUMENT_SYSTEM_PROMPT);
   });
 
   it('with the port resolving the SYSTEM default (bytes == the constants), the payload is still byte-identical', async () => {
@@ -162,8 +162,8 @@ describe('C3-T1 — default-prompt parity (the unconfigured tenant sees zero cha
           agentName: null,
           promptTemplateId: '71000000-0000-0000-0004-000000000001',
           promptVersionNumber: 1,
-          stableUserPrefix: LIVE_SOAP_STABLE_SYSTEM_PREFIX,
-          systemPrompt: LIVE_SOAP_SYSTEM_PROMPT,
+          stableUserPrefix: LIVE_DOCUMENT_STABLE_SYSTEM_PREFIX,
+          systemPrompt: LIVE_DOCUMENT_SYSTEM_PROMPT,
         }),
       ),
     };
@@ -173,8 +173,8 @@ describe('C3-T1 — default-prompt parity (the unconfigured tenant sees zero cha
     service.ingestSegment(CID, { text: 'Patient reports cough', isFinal: true, segmentId: 's1' });
     await service.flush(CID);
 
-    expect(calls[0].prompt.startsWith(LIVE_SOAP_STABLE_SYSTEM_PREFIX)).toBe(true);
-    expect(calls[0].system_prompt).toBe(LIVE_SOAP_SYSTEM_PROMPT);
+    expect(calls[0].prompt.startsWith(LIVE_DOCUMENT_STABLE_SYSTEM_PREFIX)).toBe(true);
+    expect(calls[0].system_prompt).toBe(LIVE_DOCUMENT_SYSTEM_PROMPT);
   });
 
   it('a bound agent’s prompt bytes actually reach TEXT (the capability is real, not decorative)', async () => {
@@ -380,8 +380,8 @@ describe('C3-T4 — fail-open: a resolution failure never fails a live consultat
     const payload = await service.flush(CID);
 
     expect(payload).not.toBeNull();
-    expect(calls[0].prompt.startsWith(LIVE_SOAP_STABLE_SYSTEM_PREFIX)).toBe(true);
-    expect(calls[0].system_prompt).toBe(LIVE_SOAP_SYSTEM_PROMPT);
+    expect(calls[0].prompt.startsWith(LIVE_DOCUMENT_STABLE_SYSTEM_PREFIX)).toBe(true);
+    expect(calls[0].system_prompt).toBe(LIVE_DOCUMENT_SYSTEM_PROMPT);
   });
 
   it('a Redis outage on the agent key degrades to a fresh resolve rather than failing', async () => {

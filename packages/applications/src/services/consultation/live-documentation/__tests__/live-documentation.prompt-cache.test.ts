@@ -11,7 +11,7 @@
  * so the two flush kinds shared no prefix at all).
  */
 import { describe, it, expect, vi } from 'vitest';
-import { LiveDocumentationService, LIVE_SOAP_STABLE_SYSTEM_PREFIX } from '../live-documentation.service';
+import { LiveDocumentationService, LIVE_DOCUMENT_STABLE_SYSTEM_PREFIX } from '../live-documentation.service';
 
 const CID = 'consultation-cache-001';
 const TENANT = 'tenant-cache';
@@ -60,10 +60,14 @@ function buildService(httpMock: unknown) {
 }
 
 describe('4D.1 — prefix-cache-friendly live prompt ordering', () => {
-  it('exports a non-trivial stable system prefix carrying the SOAP output instruction', () => {
-    expect(typeof LIVE_SOAP_STABLE_SYSTEM_PREFIX).toBe('string');
-    expect(LIVE_SOAP_STABLE_SYSTEM_PREFIX.length).toBeGreaterThan(50);
-    expect(LIVE_SOAP_STABLE_SYSTEM_PREFIX).toContain('Output EXACTLY these four sections');
+  it('exports a non-trivial stable system prefix carrying the compiled output instruction', () => {
+    expect(typeof LIVE_DOCUMENT_STABLE_SYSTEM_PREFIX).toBe('string');
+    expect(LIVE_DOCUMENT_STABLE_SYSTEM_PREFIX.length).toBeGreaterThan(50);
+    // TASK-810 — the prefix is now COMPILED from the platform document shape
+    // rather than written out as four literal headings, so this asserts the
+    // compiled instruction's invariant parts instead of the old sentence.
+    expect(LIVE_DOCUMENT_STABLE_SYSTEM_PREFIX).toContain('Output a single JSON object with EXACTLY these keys');
+    expect(LIVE_DOCUMENT_STABLE_SYSTEM_PREFIX).toContain('set its value to null');
   });
 
   it('leads every flush with a byte-identical stable prefix (first flush AND update flush)', async () => {
@@ -79,8 +83,8 @@ describe('4D.1 — prefix-cache-friendly live prompt ordering', () => {
     expect(prompts.length).toBe(2);
     const [first, second] = prompts;
     // Both flush kinds share the identical stable prefix → prefix-cache reuse.
-    expect(first.startsWith(LIVE_SOAP_STABLE_SYSTEM_PREFIX)).toBe(true);
-    expect(second.startsWith(LIVE_SOAP_STABLE_SYSTEM_PREFIX)).toBe(true);
+    expect(first.startsWith(LIVE_DOCUMENT_STABLE_SYSTEM_PREFIX)).toBe(true);
+    expect(second.startsWith(LIVE_DOCUMENT_STABLE_SYSTEM_PREFIX)).toBe(true);
   });
 
   it('orders the delta instruction AFTER the transcript and current note on the update path', async () => {
@@ -93,9 +97,13 @@ describe('4D.1 — prefix-cache-friendly live prompt ordering', () => {
     await service.flush(CID);
 
     const update = prompts[1];
-    const noteIdx = update.indexOf('Current SOAP note so far');
+    // TASK-810 — the prose blocks now name the RESOLVED template's title
+    // instead of asserting "SOAP note" while the response schema described
+    // whatever the tenant actually published. With no template service wired
+    // this fixture resolves the platform shape, whose title is "SOAP Note".
+    const noteIdx = update.indexOf('Current SOAP Note so far');
     const transcriptIdx = update.indexOf('mild fever');
-    const instructionIdx = update.indexOf('Update the existing SOAP note');
+    const instructionIdx = update.indexOf('Update the existing SOAP Note');
     expect(noteIdx).toBeGreaterThanOrEqual(0);
     expect(transcriptIdx).toBeGreaterThanOrEqual(0);
     expect(instructionIdx).toBeGreaterThanOrEqual(0);
