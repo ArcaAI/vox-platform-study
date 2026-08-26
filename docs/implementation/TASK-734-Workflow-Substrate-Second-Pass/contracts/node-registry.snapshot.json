@@ -1,5 +1,5 @@
 {
-  "_comment": "The cross-language node-registry parity fixture (TASK-734 Task 3, extended by TASK-720 Task 5 with the five summarization-palette node types, by TASK-724 Task 3 with the eight STT-palette node types — stt.phiHop is implemented:false, a documented placeholder pending TASK-710 — and by TASK-731 Task 9 with the consultation palette. The consultation palette now carries ALL THIRTEEN node types of docs/implementation/TASK-731-Palette-Consultation/contracts/node-types.md's node table: TASK-731 shipped three (consentGate, phiHop, hitlGate) and left ten specified-but-unwired, which made the palette unbuildable because DRAFT_CONSULTATION_RULE_SET names nine node types by key; the remaining ten interpreter wrappers were added later over the compile targets palette-contract.md §1 had already verified. consultation.hitlGate remains implemented:false, a documented placeholder pending the interpreter's own durable-wait extension (Phase B), so compile() still refuses any graph containing it. Asserted from BOTH packages/workflow-contract/src/__tests__/node-registry-parity.test.ts (TS) and apps/harness/src/harness/tests/unit/temporal/interpreter/test_node_registry_parity.py (Python) — see packages/workflow-contract/src/node-registry.ts's module docstring for why the two sides check against this file instead of against each other. Also carries the two palette-agnostic GRAPH BOUNDARY MARKERS `core.start`/`core.end` (TS class `boundary`): the palette-independent structural rules WF-S-002/003/004/007 are written against these literal node types, so until they were registered no graph in any palette could validate — the platform's own seeded summarization graph scored 17 errors against its own validator. They execute nothing but are `implemented: true` because compile() refuses any graph containing an unimplemented type. `entries` sorted by `key`. Only fields BOTH registries carry today are listed here; `classes`/`paletteKey` (TS-only) and `kind` (Python-only) are intentionally excluded. Extended by TASK-791 with R3's three missing capabilities — consultation.realtimeSummary, consultation.suggestions and consultation.proposeCorrections — which TASK-789 verified had no node, activity or sensor anywhere. realtimeSummary is externalWrite:true because it publishes to the live consultation feed (so a sandboxed run skips it); suggestions and proposeCorrections are externalWrite:false because both are PROPOSAL surfaces that write nothing — proposeCorrections in particular must never be the thing that edits clinical text.",
+  "_comment": "The cross-language node-registry parity fixture (TASK-734 Task 3, extended by TASK-720 Task 5 with the five summarization-palette node types, by TASK-724 Task 3 with the eight STT-palette node types \u2014 stt.phiHop is implemented:false, a documented placeholder pending TASK-710 \u2014 and by TASK-731 Task 9 with the consultation palette. The consultation palette now carries ALL THIRTEEN node types of docs/implementation/TASK-731-Palette-Consultation/contracts/node-types.md's node table: TASK-731 shipped three (consentGate, phiHop, hitlGate) and left ten specified-but-unwired, which made the palette unbuildable because DRAFT_CONSULTATION_RULE_SET names nine node types by key; the remaining ten interpreter wrappers were added later over the compile targets palette-contract.md \u00a71 had already verified. consultation.hitlGate remains implemented:false, a documented placeholder pending the interpreter's own durable-wait extension (Phase B), so compile() still refuses any graph containing it. Asserted from BOTH packages/workflow-contract/src/__tests__/node-registry-parity.test.ts (TS) and apps/harness/src/harness/tests/unit/temporal/interpreter/test_node_registry_parity.py (Python) \u2014 see packages/workflow-contract/src/node-registry.ts's module docstring for why the two sides check against this file instead of against each other. Also carries the two palette-agnostic GRAPH BOUNDARY MARKERS `core.start`/`core.end` (TS class `boundary`): the palette-independent structural rules WF-S-002/003/004/007 are written against these literal node types, so until they were registered no graph in any palette could validate \u2014 the platform's own seeded summarization graph scored 17 errors against its own validator. They execute nothing but are `implemented: true` because compile() refuses any graph containing an unimplemented type. `entries` sorted by `key`. Only fields BOTH registries carry today are listed here; `classes`/`paletteKey` (TS-only) and `kind` (Python-only) are intentionally excluded. Extended by TASK-791 with R3's three missing capabilities \u2014 consultation.realtimeSummary, consultation.suggestions and consultation.proposeCorrections \u2014 which TASK-789 verified had no node, activity or sensor anywhere. realtimeSummary is externalWrite:true because it publishes to the live consultation feed (so a sandboxed run skips it); suggestions and proposeCorrections are externalWrite:false because both are PROPOSAL surfaces that write nothing \u2014 proposeCorrections in particular must never be the thing that edits clinical text. Extended by TASK-809 OD-15 (option A) with `outputKeys`: the ONE port field that is deliberately SHARED rather than TS-only. A port NAME is an authoring handle (`out`, `entities`, `verdict`) \u2014 what the canvas draws and what a graph edge's fromPort/toPort names \u2014 but the interpreter threads values by reading a KEY out of the producing activity's own NodeActivityResult.output dict, and no activity has ever emitted a key called \"out\". Before OD-15 the only bridge was the interpreter's whole-object fallback, which is exactly the untyped bundle the port vocabulary exists to abolish. `outputKeys` maps EVERY declared output port name to the key it carries, or to null for a `control` port, which carries no payload at all \u2014 that null is what lets _resolve_bound_inputs tell a legitimate ordering edge apart from an edge naming a port that does not exist (the latter raises). Asserted from BOTH sides exactly like every other field here; adding it to one language's projection without the other is a failing test, not a silent drift.",
   "entries": [
     {
       "key": "consultation.assemblePrompt",
@@ -9,7 +9,11 @@
       "externalWrite": false,
       "defaultTimeoutSeconds": 150,
       "defaultMaxAttempts": 3,
-      "entitlementKey": null
+      "entitlementKey": null,
+      "outputKeys": {
+        "out": "text",
+        "next": null
+      }
     },
     {
       "key": "consultation.bindTerminology",
@@ -19,7 +23,11 @@
       "externalWrite": false,
       "defaultTimeoutSeconds": 30,
       "defaultMaxAttempts": 1,
-      "entitlementKey": null
+      "entitlementKey": null,
+      "outputKeys": {
+        "out": "entities",
+        "next": null
+      }
     },
     {
       "key": "consultation.captureBinding",
@@ -29,7 +37,11 @@
       "externalWrite": false,
       "defaultTimeoutSeconds": 30,
       "defaultMaxAttempts": 2,
-      "entitlementKey": null
+      "entitlementKey": null,
+      "outputKeys": {
+        "out": "transcript",
+        "next": null
+      }
     },
     {
       "key": "consultation.consentGate",
@@ -39,7 +51,11 @@
       "externalWrite": false,
       "defaultTimeoutSeconds": 30,
       "defaultMaxAttempts": 3,
-      "entitlementKey": null
+      "entitlementKey": null,
+      "outputKeys": {
+        "out": null,
+        "next": null
+      }
     },
     {
       "key": "consultation.extractEntities",
@@ -49,7 +65,11 @@
       "externalWrite": true,
       "defaultTimeoutSeconds": 150,
       "defaultMaxAttempts": 2,
-      "entitlementKey": null
+      "entitlementKey": null,
+      "outputKeys": {
+        "out": "entities",
+        "next": null
+      }
     },
     {
       "key": "consultation.finalizeAssurance",
@@ -59,7 +79,11 @@
       "externalWrite": true,
       "defaultTimeoutSeconds": 150,
       "defaultMaxAttempts": 3,
-      "entitlementKey": null
+      "entitlementKey": null,
+      "outputKeys": {
+        "contextItemId": "contextItemId",
+        "next": null
+      }
     },
     {
       "key": "consultation.hitlGate",
@@ -69,7 +93,11 @@
       "externalWrite": true,
       "defaultTimeoutSeconds": 60,
       "defaultMaxAttempts": 1,
-      "entitlementKey": null
+      "entitlementKey": null,
+      "outputKeys": {
+        "out": null,
+        "next": null
+      }
     },
     {
       "key": "consultation.inferentialSensors",
@@ -79,7 +107,12 @@
       "externalWrite": false,
       "defaultTimeoutSeconds": 900,
       "defaultMaxAttempts": 2,
-      "entitlementKey": null
+      "entitlementKey": null,
+      "outputKeys": {
+        "out": "verdict",
+        "document": "text",
+        "next": null
+      }
     },
     {
       "key": "consultation.persistDraft",
@@ -89,7 +122,12 @@
       "externalWrite": true,
       "defaultTimeoutSeconds": 150,
       "defaultMaxAttempts": 3,
-      "entitlementKey": null
+      "entitlementKey": null,
+      "outputKeys": {
+        "out": "text",
+        "contextItemId": "contextItemId",
+        "next": null
+      }
     },
     {
       "key": "consultation.phiHop",
@@ -99,7 +137,11 @@
       "externalWrite": false,
       "defaultTimeoutSeconds": 60,
       "defaultMaxAttempts": 3,
-      "entitlementKey": null
+      "entitlementKey": null,
+      "outputKeys": {
+        "out": "text",
+        "next": null
+      }
     },
     {
       "key": "consultation.proposeCorrections",
@@ -109,7 +151,11 @@
       "externalWrite": false,
       "defaultTimeoutSeconds": 150,
       "defaultMaxAttempts": 2,
-      "entitlementKey": null
+      "entitlementKey": null,
+      "outputKeys": {
+        "out": "proposals",
+        "next": null
+      }
     },
     {
       "key": "consultation.realtimeSummary",
@@ -119,7 +165,11 @@
       "externalWrite": true,
       "defaultTimeoutSeconds": 150,
       "defaultMaxAttempts": 2,
-      "entitlementKey": null
+      "entitlementKey": null,
+      "outputKeys": {
+        "out": "text",
+        "next": null
+      }
     },
     {
       "key": "consultation.retrieveEvidence",
@@ -129,7 +179,11 @@
       "externalWrite": false,
       "defaultTimeoutSeconds": 150,
       "defaultMaxAttempts": 2,
-      "entitlementKey": null
+      "entitlementKey": null,
+      "outputKeys": {
+        "out": "context",
+        "next": null
+      }
     },
     {
       "key": "consultation.sensors",
@@ -139,7 +193,12 @@
       "externalWrite": false,
       "defaultTimeoutSeconds": 150,
       "defaultMaxAttempts": 2,
-      "entitlementKey": null
+      "entitlementKey": null,
+      "outputKeys": {
+        "out": "verdict",
+        "document": "text",
+        "next": null
+      }
     },
     {
       "key": "consultation.suggestions",
@@ -149,7 +208,11 @@
       "externalWrite": false,
       "defaultTimeoutSeconds": 150,
       "defaultMaxAttempts": 2,
-      "entitlementKey": null
+      "entitlementKey": null,
+      "outputKeys": {
+        "out": "suggestions",
+        "next": null
+      }
     },
     {
       "key": "consultation.synthesize",
@@ -159,7 +222,11 @@
       "externalWrite": false,
       "defaultTimeoutSeconds": 150,
       "defaultMaxAttempts": 2,
-      "entitlementKey": null
+      "entitlementKey": null,
+      "outputKeys": {
+        "out": "text",
+        "next": null
+      }
     },
     {
       "key": "core.end",
@@ -169,7 +236,8 @@
       "externalWrite": false,
       "defaultTimeoutSeconds": 30,
       "defaultMaxAttempts": 1,
-      "entitlementKey": null
+      "entitlementKey": null,
+      "outputKeys": {}
     },
     {
       "key": "core.start",
@@ -179,7 +247,10 @@
       "externalWrite": false,
       "defaultTimeoutSeconds": 30,
       "defaultMaxAttempts": 1,
-      "entitlementKey": null
+      "entitlementKey": null,
+      "outputKeys": {
+        "next": null
+      }
     },
     {
       "key": "generate.text",
@@ -189,7 +260,11 @@
       "externalWrite": false,
       "defaultTimeoutSeconds": 300,
       "defaultMaxAttempts": 2,
-      "entitlementKey": null
+      "entitlementKey": null,
+      "outputKeys": {
+        "out": "text",
+        "next": null
+      }
     },
     {
       "key": "guardrail.check",
@@ -199,7 +274,11 @@
       "externalWrite": false,
       "defaultTimeoutSeconds": 60,
       "defaultMaxAttempts": 3,
-      "entitlementKey": null
+      "entitlementKey": null,
+      "outputKeys": {
+        "out": "verdict",
+        "next": null
+      }
     },
     {
       "key": "input.context_binding",
@@ -209,7 +288,11 @@
       "externalWrite": false,
       "defaultTimeoutSeconds": 60,
       "defaultMaxAttempts": 3,
-      "entitlementKey": null
+      "entitlementKey": null,
+      "outputKeys": {
+        "out": "context",
+        "next": null
+      }
     },
     {
       "key": "noop",
@@ -219,7 +302,10 @@
       "externalWrite": false,
       "defaultTimeoutSeconds": 60,
       "defaultMaxAttempts": 1,
-      "entitlementKey": null
+      "entitlementKey": null,
+      "outputKeys": {
+        "next": null
+      }
     },
     {
       "key": "output.deliver",
@@ -229,7 +315,10 @@
       "externalWrite": true,
       "defaultTimeoutSeconds": 60,
       "defaultMaxAttempts": 3,
-      "entitlementKey": null
+      "entitlementKey": null,
+      "outputKeys": {
+        "next": null
+      }
     },
     {
       "key": "passthrough",
@@ -239,7 +328,10 @@
       "externalWrite": false,
       "defaultTimeoutSeconds": 60,
       "defaultMaxAttempts": 1,
-      "entitlementKey": null
+      "entitlementKey": null,
+      "outputKeys": {
+        "next": null
+      }
     },
     {
       "key": "prompt.template_ref",
@@ -249,7 +341,11 @@
       "externalWrite": false,
       "defaultTimeoutSeconds": 30,
       "defaultMaxAttempts": 3,
-      "entitlementKey": null
+      "entitlementKey": null,
+      "outputKeys": {
+        "out": "content",
+        "next": null
+      }
     },
     {
       "key": "stt.asrEngine",
@@ -259,7 +355,12 @@
       "externalWrite": false,
       "defaultTimeoutSeconds": 600,
       "defaultMaxAttempts": 2,
-      "entitlementKey": null
+      "entitlementKey": null,
+      "outputKeys": {
+        "out": "transcript",
+        "loop": null,
+        "next": null
+      }
     },
     {
       "key": "stt.audioInput",
@@ -269,7 +370,12 @@
       "externalWrite": false,
       "defaultTimeoutSeconds": 60,
       "defaultMaxAttempts": 3,
-      "entitlementKey": null
+      "entitlementKey": null,
+      "outputKeys": {
+        "out": "audio",
+        "bypass": "audio",
+        "next": null
+      }
     },
     {
       "key": "stt.diarization",
@@ -279,7 +385,11 @@
       "externalWrite": false,
       "defaultTimeoutSeconds": 120,
       "defaultMaxAttempts": 3,
-      "entitlementKey": null
+      "entitlementKey": null,
+      "outputKeys": {
+        "out": "audio",
+        "next": null
+      }
     },
     {
       "key": "stt.languageDetection",
@@ -289,7 +399,11 @@
       "externalWrite": false,
       "defaultTimeoutSeconds": 30,
       "defaultMaxAttempts": 3,
-      "entitlementKey": null
+      "entitlementKey": null,
+      "outputKeys": {
+        "out": "audio",
+        "next": null
+      }
     },
     {
       "key": "stt.noiseFilter",
@@ -299,7 +413,11 @@
       "externalWrite": false,
       "defaultTimeoutSeconds": 60,
       "defaultMaxAttempts": 3,
-      "entitlementKey": null
+      "entitlementKey": null,
+      "outputKeys": {
+        "out": "audio",
+        "next": null
+      }
     },
     {
       "key": "stt.phiHop",
@@ -309,7 +427,11 @@
       "externalWrite": false,
       "defaultTimeoutSeconds": 60,
       "defaultMaxAttempts": 1,
-      "entitlementKey": null
+      "entitlementKey": null,
+      "outputKeys": {
+        "out": "transcript",
+        "next": null
+      }
     },
     {
       "key": "stt.transcriptOutput",
@@ -319,7 +441,11 @@
       "externalWrite": true,
       "defaultTimeoutSeconds": 60,
       "defaultMaxAttempts": 3,
-      "entitlementKey": null
+      "entitlementKey": null,
+      "outputKeys": {
+        "loop": null,
+        "next": null
+      }
     },
     {
       "key": "stt.vad",
@@ -329,7 +455,11 @@
       "externalWrite": false,
       "defaultTimeoutSeconds": 60,
       "defaultMaxAttempts": 3,
-      "entitlementKey": null
+      "entitlementKey": null,
+      "outputKeys": {
+        "out": "audio",
+        "next": null
+      }
     }
   ]
 }

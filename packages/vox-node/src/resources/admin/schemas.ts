@@ -6105,6 +6105,8 @@ export interface WorkflowNodePortResponse {
   multiple: boolean;
   /** Stable, node-type-local port name — what a graph edge’s fromPort/toPort names. */
   name: string;
+  /** The key of the producing activity’s output object that this socket carries (TASK-809 OD-15). A port NAME is an authoring handle — what the canvas draws and what a graph edge’s fromPort/toPort names — while the interpreter threads values by reading a KEY out of the activity’s own output, and no activity emits a key called “out”. Absent on a control port, which carries no payload at all, and on every input port, which is bound by its own toPort. */
+  outputKey?: string;
   /** The port’s type in the closed workflow port vocabulary. Compatibility is a subtype relation with exactly two widenings (transcript ⊑ text, document ⊑ text); transcript and document are siblings, which is what makes document → ner a type error. */
   primitive: 'control' | 'stream<audio>' | 'transcript' | 'text' | 'entities' | 'document' | 'edits' | 'verdict' | 'context<schemaRef>';
   /** An input the node cannot run without / an output the node always produces. */

@@ -87,6 +87,13 @@ function main(): void {
     ruleSetVersion: RULE_SET_VERSION,
     caps: DEFAULT_CAPS,
     policyBindings: DEFAULT_POLICY_BINDINGS,
+    // PINNED (TASK-809 OD-15). `compile()` defaults `compiledAt` to the wall clock AND hashes it
+    // into `checksum`, so omitting it made this script print a config whose `compiledAt` was then
+    // overridden to the seed constant below while its `checksum` still covered a wall-clock value
+    // — a config that could never be reproduced, and a `compiledConfig.checksum` drift line that
+    // could never be cleared however faithfully the output was pasted. Its sibling
+    // `regen-arcaai-consultation-workflow-seed.ts` has always passed it.
+    compiledAt: COMPILED_AT,
     nodeInfo,
   });
 
@@ -104,7 +111,7 @@ function main(): void {
   console.log('\n=== GRAPH_CHECKSUM ===');
   console.log(graphChecksum);
   console.log('\n=== COMPILED_CONFIG (compiledAt pinned to the seed constant for determinism) ===');
-  console.log(JSON.stringify({ ...result.config, compiledAt: COMPILED_AT }, null, 2));
+  console.log(JSON.stringify(result.config, null, 2));
   console.log('\n=== VALIDATION_REPORT ===');
   console.log(JSON.stringify({ ...report, evaluatedAt: COMPILED_AT }, null, 2));
 

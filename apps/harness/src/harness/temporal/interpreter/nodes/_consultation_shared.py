@@ -15,7 +15,9 @@ same three-part mapping:
 * **Tenant** is ``payload.tenant_id``, which the interpreter's own input model makes required.
 * **Data** flows in through ``payload.bound_inputs``, keyed by ``toPort`` — read generically
   (never off a fixed port name), the same rule ``nodes/text_generate.py`` and
-  ``nodes/guardrail_check.py`` already apply, because port names are graph-author-chosen.
+  ``nodes/guardrail_check.py`` already apply, because port names are graph-author-chosen. Since
+  TASK-809 OD-15 each bound value is the SINGLE output key the producing socket declares, never
+  the whole predecessor output dict; ``bound_value`` reads the top level first for that reason.
 
 Failure posture, uniformly: a wrapped activity that raises DEGRADES the node with a named
 ``error_code`` — it never propagates. CR-14 (``contracts/node-types.md``) makes only
@@ -66,13 +68,35 @@ def run_identity(run_payload: dict[str, Any]) -> RunIdentity:
 
 
 def bound_value(bound_inputs: dict[str, Any], key: str) -> Any:
-    """First occurrence of ``key`` across the bound upstream outputs, or ``None``.
+    """``key`` as a TOP-LEVEL bound input, else the first occurrence of it inside a dict-valued
+    one, else ``None``.
 
-    Generic over port names for the reason stated in the module docstring: the workflow threads
-    either the single value named by the edge's ``fromPort`` or the WHOLE predecessor output
-    dict (see ``NodeActivityInput.bound_inputs``' docstring), so a node cannot assume which it
-    received and must look inside.
+    ## Why both, and why the top level comes first (TASK-809 OD-15)
+
+    This function used to search the nested level ONLY, and its own docstring said why: the
+    interpreter threaded "either the single value named by the edge's ``fromPort`` or the WHOLE
+    predecessor output dict", so a node could not assume which it had received. The whole-object
+    fallback is gone — every socket now declares the key it carries — and under strict per-key
+    binding the value a graph binds is frequently the datum ITSELF, not a dict to rummage through:
+    ``persistDraft.contextItemId -> finalizeAssurance.contextItemId`` binds a bare id string,
+    ``extractEntities.out -> …entities`` binds a bare list. A nested-only search returns ``None``
+    for both.
+
+    That ``None`` is the dangerous part. ``PersistDraftInput``/``FinalizeAssuranceInput`` read
+    ``scores``, ``citationsMap``, ``guardrailDecisions``, ``ragTriadScore`` and
+    ``reducedAssurance`` through here, and treat ``None`` as "no verifier ran" — so a lookup that
+    silently stops finding its key does not raise, it persists a clinical draft with its assurance
+    record missing and reports success. Checking the top level first is what keeps that from
+    happening; the nested search is kept because an assurance record legitimately arrives as ONE
+    object on a single ``verdict`` socket (``nodes/consultation_verify.py``), which is what stops
+    a socket carrying one field and dropping the other four.
+
+    A top-level ``None`` never shadows a real nested value — absent and "present but null" are the
+    same "nothing was bound for this" here, exactly as before.
     """
+    direct = bound_inputs.get(key)
+    if direct is not None:
+        return direct
     for value in bound_inputs.values():
         if isinstance(value, dict) and value.get(key) is not None:
             return value[key]

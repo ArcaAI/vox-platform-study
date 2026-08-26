@@ -67,10 +67,16 @@ async def interpreter_consultation_retrieve_evidence(
         )
         return NodeActivityResult(status="DEGRADED", reason=f"evidence retrieval failed: {exc}")
 
+    # TASK-809 OD-15 — published UNDER `context`, the key this node's `context<schemaRef>` output
+    # socket declares (`node-ports.ts`). Same reasoning as `nodes/context_binding.py`: a data
+    # socket names one output key, and a flat `{text, chunkIds, chunkCount}` offered none that is
+    # a context object. A consumer bound to the socket still sees `text` — one level in.
     output: dict[str, Any] = {
-        "text": retrieved.prompt_block,
-        "chunkIds": [chunk.chunk_id for chunk in retrieved.chunks if chunk.chunk_id],
-        "chunkCount": len(retrieved.chunks),
+        "context": {
+            "text": retrieved.prompt_block,
+            "chunkIds": [chunk.chunk_id for chunk in retrieved.chunks if chunk.chunk_id],
+            "chunkCount": len(retrieved.chunks),
+        }
     }
     if retrieved.degraded:
         await record_and_flush(

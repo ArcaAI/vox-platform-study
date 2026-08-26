@@ -31,10 +31,11 @@
  * edits the shared root `pnpm-lock.yaml`, a collision surface while sibling agents share this
  * repo. The script and the test both reach the engine by relative path instead.
  *
- * `registryChecksum` is the CURRENT value. The SYSTEM platform-default row
- * (`21-workflow-definition.ts`) still carries one computed over a SEVEN-entry registry; the
- * registry has since grown well past that. That row is not corrected here — it is SYSTEM-owned and
- * outside this ticket — but these rows must not copy its staleness.
+ * `registryChecksum` is the CURRENT value. It used to be the ONLY current one — the SYSTEM
+ * platform-default row (`21-workflow-definition.ts`) carried a checksum computed over a
+ * SEVEN-entry registry long after the registry had outgrown it. TASK-809 OD-15 regenerated that
+ * row too (its edges had to migrate to named sockets), so both are now current and both are
+ * reproducible by re-running their scripts. Neither may be hand-typed.
  *
  * ## Why these graphs, and why two
  *
@@ -105,15 +106,40 @@ export const ARCAAI_RHEUM_CONSULTATION_SOAP_SLUG = 'arcaai-rheum-consultation-so
 // The authored graphs (regeneration INPUT — everything below them is derived)
 // =============================================================================
 
-/** A single chain: every node on the path, so no rule can be satisfied by an unreachable branch. */
-const chain = (ids: readonly string[]) =>
-  ids.slice(0, -1).map((from, index) => ({
-    id: `e${index + 1}`,
-    from,
-    fromPort: 'out',
-    to: ids[index + 1] as string,
-    toPort: 'in',
-  }));
+/**
+ * TASK-809 OD-15 — the edge builder, replacing the old `chain()` helper.
+ *
+ * `chain()` wired every consecutive pair as `fromPort: 'out'` -> `toPort: 'in'`, which is the
+ * untyped convention the node contract abolished: one port cannot simultaneously mean "the
+ * transcript" and "run me after the consent gate", and no interpreter activity has ever emitted
+ * an output key called `"out"`. Every edge below therefore names a REAL socket from
+ * `packages/workflow-contract/src/node-ports.ts`, and each is one of two kinds:
+ *
+ *   - **ordering** (`control`): `next` -> `after`, or `out` -> `after` off a gate, whose `out` IS
+ *     a control signal. Carries no payload; the interpreter binds nothing for it.
+ *   - **data**: a typed socket pair the type lattice accepts. These are what actually reach the
+ *     activity as `bound_inputs`, keyed by `toPort`.
+ *
+ * An ordering edge is omitted wherever a data edge between the same pair already implies the
+ * order — the two would be redundant, and a redundant control edge reads as a second, weaker
+ * claim about the same dependency.
+ *
+ * ## Why the data edges are exactly these, and not the obvious larger set
+ *
+ * The palette's own structural rules are `allPathsPassThrough` checks, not "a path exists"
+ * checks: WF-CONS-008/009/010/011 require EVERY route from `consentGate` to `hitlGate` to pass
+ * through `captureBinding`, `phiHop`, `synthesize` and `sensors`, and WF-CONS-012 requires every
+ * route from `captureBinding` to `synthesize` to pass through `extractEntities`. So a data edge
+ * that skips a mandatory node does not merely look untidy — it makes the graph fail validation.
+ * `captureBinding -> realtimeSummary` is the clearest casualty: it jumps `extractEntities`, and
+ * WF-CONS-012 refuses it. The transcript-typed inputs of `realtimeSummary`, `phiHop` and
+ * `suggestions` are therefore left UNWIRED, which is honest: their activities resolve what they
+ * need server-side from `consultationId`, exactly as `assemblePrompt` already does.
+ */
+type SeedEdge = { id: string; from: string; fromPort: string; to: string; toPort: string };
+
+const edges = (specs: readonly (readonly [string, string, string, string])[]): SeedEdge[] =>
+  specs.map(([from, fromPort, to, toPort], index) => ({ id: `e${index + 1}`, from, fromPort, to, toPort }));
 
 /** Shared spine. `dnaStyleId` is the one per-department difference in the compose stage. */
 const consultationNodes = (options: { dnaStyleId: string | null; inferentialSensors: boolean }) => [
@@ -131,7 +157,11 @@ const consultationNodes = (options: { dnaStyleId: string | null; inferentialSens
   },
   // The realtime short-summary pass the requirement names. `externalWrite`, because it publishes
   // each interim summary to the live consultation feed.
-  { id: 'n_realtime', type: 'consultation.realtimeSummary', config: { publishTo: 'live-summary', onError: 'degrade' } },
+  // `publishTo` was DROPPED here (TASK-809 OD-15): nothing reads it, and the strict
+  // `consultation.realtimeSummary` config schema does not declare it — the node publishes to the
+  // live consultation feed unconditionally (`nodes/consultation_realtime.py`), so the key was a
+  // configuration promise the platform never kept.
+  { id: 'n_realtime', type: 'consultation.realtimeSummary', config: { onError: 'degrade' } },
   // `purposeScope` is WF-CONS-013 (a tool-calling node declares its purpose); `unmappedOutputKey`
   // is WF-CONS-019's sibling CR-19 — unmapped terms are SURFACED, never silently dropped.
   {
@@ -175,7 +205,67 @@ const consultationNodes = (options: { dnaStyleId: string | null; inferentialSens
 
 const buildGraph = (options: { dnaStyleId: string | null; inferentialSensors: boolean }) => {
   const nodes = consultationNodes(options);
-  return { version: 1, nodes, edges: chain(nodes.map((node) => node.id)) };
+  // The verifier stage: `sensors` alone, or `sensors -> inferentialSensors`. Whichever runs LAST
+  // is the one that hands the note on, because both verifiers pass the note through unchanged on
+  // their `document` socket while their `out` socket carries the verdict object.
+  const lastVerifier = options.inferentialSensors ? 'n_infer' : 'n_sensors';
+  return {
+    version: 1,
+    nodes,
+    edges: edges([
+      // ---- ordering ------------------------------------------------------------------------
+      ['n_start', 'next', 'n_consent', 'after'],
+      // The consent gate's `out` IS the authorization signal — a `control` port, not data.
+      ['n_consent', 'out', 'n_capture', 'after'],
+      ['n_realtime', 'next', 'n_terms', 'after'],
+      ['n_terms', 'next', 'n_phi', 'after'],
+      ['n_phi', 'next', 'n_evidence', 'after'],
+      ['n_synth', 'next', 'n_suggest', 'after'],
+      ['n_suggest', 'next', 'n_correct', 'after'],
+      ['n_correct', 'next', 'n_sensors', 'after'],
+      // The gate is `gate`-classed: the compiler lifts it out of `stages` into `gates`, and
+      // `CompiledGate` has no `inputs`, so NO edge into it is ever compiled to a binding. It is
+      // wired as pure ordering for that reason — a data edge here would promise a thread the
+      // runtime cannot honour.
+      ['n_assure', 'next', 'n_gate', 'after'],
+      ['n_gate', 'next', 'n_end', 'after'],
+
+      // ---- data ----------------------------------------------------------------------------
+      // ⚠ `captureBinding.out` is DESIGN INTENT (see `node-ports.ts`): the activity starts the
+      // live-documentation session and emits `{action, consultationId}`, no transcript yet. The
+      // edge is authored because it is the palette's declared transcript path and WF-CONS-012's
+      // mandatory hop; until the activity publishes one, the interpreter contributes nothing for
+      // it and `extractEntities` degrades on `no_bound_text` — exactly as it does today.
+      ['n_capture', 'out', 'n_entities', 'in'],
+      ['n_entities', 'out', 'n_realtime', 'entities'],
+      ['n_entities', 'out', 'n_terms', 'in'],
+      ['n_phi', 'out', 'n_prompt', 'transcript'],
+      ['n_evidence', 'out', 'n_prompt', 'in'],
+      ['n_prompt', 'out', 'n_synth', 'in'],
+      // `document ⊑ text`: the correction pass proposes over any clinical text, including a
+      // generated note — safe because its product is `edits`, which no extraction node consumes.
+      ['n_synth', 'out', 'n_correct', 'in'],
+      ['n_synth', 'out', 'n_sensors', 'in'],
+      ...(options.inferentialSensors
+        ? ([
+            ['n_sensors', 'document', 'n_infer', 'in'],
+            ['n_sensors', 'out', 'n_infer', 'verdict'],
+            // The inferential verdict rides its OWN socket all the way to persistence. Sharing
+            // `verdict` with the computational sensors would lose one of them: the interpreter
+            // binds by `toPort`, last write wins.
+            ['n_infer', 'out', 'n_persist', 'assurance'],
+            ['n_infer', 'out', 'n_assure', 'assurance'],
+          ] as const)
+        : []),
+      [lastVerifier, 'document', 'n_persist', 'in'],
+      ['n_sensors', 'out', 'n_persist', 'verdict'],
+      ['n_persist', 'out', 'n_assure', 'in'],
+      // The edge that had no legal expression before OD-15: `persistDraft` emits the
+      // `contextItemId` `finalizeAssurance` must target, yet both declared `[next]` only.
+      ['n_persist', 'contextItemId', 'n_assure', 'contextItemId'],
+      ['n_sensors', 'out', 'n_assure', 'verdict'],
+    ]),
+  };
 };
 
 /** General Medicine — the baseline chain. */

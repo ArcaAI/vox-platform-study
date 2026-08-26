@@ -87,11 +87,23 @@ async def interpreter_consultation_sensors(payload: NodeActivityInput) -> NodeAc
     await record_and_flush(payload, status=STATUS_OK, started=started)
     return NodeActivityResult(
         status="SUCCEEDED",
+        # TASK-809 OD-15 — the assurance record travels as ONE object on the `verdict` socket.
+        #
+        # Not cosmetic. Under strict per-key binding a socket carries exactly one output key, so a
+        # flat `{scores, citationsMap, verdicts}` would have handed `persistDraft` whichever single
+        # key the socket named and dropped the rest — SILENTLY, because `bound_value` returns
+        # `None` for a missing key and `PersistDraftInput` treats `None` as "no verifier ran".
+        # That is clinical assurance data disappearing from a persisted draft with no error
+        # anywhere. `text` stays at the top level: it is the `document` PASSTHROUGH socket, which
+        # is how the note itself reaches persistence without routing around this verifier (which
+        # WF-CONS-011 forbids).
         output={
             "text": note_text,
-            "scores": result.scores,
-            "citationsMap": result.citations_map,
-            "verdicts": [r.model_dump(mode="json") for r in result.results],
+            "verdict": {
+                "scores": result.scores,
+                "citationsMap": result.citations_map,
+                "verdicts": [r.model_dump(mode="json") for r in result.results],
+            },
         },
     )
 
@@ -155,11 +167,15 @@ async def interpreter_consultation_inferential_sensors(
         )
         return NodeActivityResult(status="DEGRADED", reason=f"inferential pass failed: {exc}")
 
+    # TASK-809 OD-15 — one `verdict` object on the socket, `text` passing through at the top
+    # level. See `interpreter_consultation_sensors` above for why a flat shape loses data.
     output: dict[str, Any] = {
         "text": note_text,
-        "guardrailDecisions": result.guardrail_decisions,
-        "ragTriadScore": result.rag_triad_score,
-        "verdicts": [r.model_dump(mode="json") for r in result.results],
+        "verdict": {
+            "guardrailDecisions": result.guardrail_decisions,
+            "ragTriadScore": result.rag_triad_score,
+            "verdicts": [r.model_dump(mode="json") for r in result.results],
+        },
     }
     if result.degraded:
         await record_and_flush(
@@ -168,8 +184,15 @@ async def interpreter_consultation_inferential_sensors(
         return NodeActivityResult(
             status="DEGRADED",
             reason="the inferential pass completed with reduced assurance",
-            output={**output, "reducedAssurance": True},
+            output=_with_reduced_assurance(output, True),
         )
 
     await record_and_flush(payload, status=STATUS_OK, started=started)
-    return NodeActivityResult(status="SUCCEEDED", output={**output, "reducedAssurance": False})
+    return NodeActivityResult(status="SUCCEEDED", output=_with_reduced_assurance(output, False))
+
+
+def _with_reduced_assurance(output: dict[str, Any], reduced: bool) -> dict[str, Any]:
+    """`reducedAssurance` belongs INSIDE the verdict object, alongside the rest of the assurance
+    record — it is read by `persistDraft`/`finalizeAssurance` through the same bound socket, so a
+    top-level copy would be the one field that survives when the others do not."""
+    return {**output, "verdict": {**output["verdict"], "reducedAssurance": reduced}}
