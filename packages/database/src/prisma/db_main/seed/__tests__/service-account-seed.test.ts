@@ -54,6 +54,7 @@ const SVC_SCOPE_IMPLICATIONS: Readonly<Record<string, ReadonlyArray<readonly [ac
   'svc:admin:agent-promotion:manage': [['manage', 'DepartmentAgent']],
   'svc:admin:prompt-template:manage': [['manage', 'PromptTemplate']],
   'svc:admin:consultation-context-schema:manage': [['manage', 'ConsultationContextSchema']],
+  'svc:admin:document-template:manage': [['manage', 'DocumentTemplate']],
   'svc:admin:dna-writing-style:manage': [['manage', 'DnaWritingStyleReport']],
   'svc:admin:knowledge:manage': [['manage', 'KnowledgeDocument']],
   'svc:admin:consultation-admin:manage': [['manage', 'Consultation']],

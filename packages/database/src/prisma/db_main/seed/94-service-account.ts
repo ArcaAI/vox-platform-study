@@ -169,6 +169,7 @@ export const ARCAAI_TENANT_ADMIN_SVC_SCOPES = [
   'svc:admin:agent-promotion:manage', // → manage:DepartmentAgent
   'svc:admin:prompt-template:manage', // → manage:PromptTemplate
   'svc:admin:consultation-context-schema:manage', // → manage:ConsultationContextSchema
+  'svc:admin:document-template:manage', // → manage:DocumentTemplate
   'svc:admin:dna-writing-style:manage', // → manage:DnaWritingStyleReport
   'svc:admin:knowledge:manage', // → manage:KnowledgeDocument
   // Summarization / documentation plane  [TASK-767]

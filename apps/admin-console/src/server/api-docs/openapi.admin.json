@@ -4031,6 +4031,40 @@
         },
         "type": "object"
       },
+      "CreateDocumentTemplateRequest": {
+        "properties": {
+          "description": {
+            "description": "Free-text description.",
+            "type": "string"
+          },
+          "isDefault": {
+            "description": "Make this the template a generation node resolves when its config names none.",
+            "type": "boolean"
+          },
+          "name": {
+            "description": "Human-readable name.",
+            "type": "string"
+          },
+          "slug": {
+            "description": "Stable tenant-invented identifier, unique per tenant.",
+            "example": "discharge_summary",
+            "type": "string"
+          },
+          "sourceTemplateSlug": {
+            "description": "Golden-library provenance: the SYSTEM template slug this was cloned from.",
+            "type": "string"
+          },
+          "templateLocked": {
+            "description": "Whether a golden-library resync may overwrite this template.",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "slug",
+          "name"
+        ],
+        "type": "object"
+      },
       "CreateGlobalSettingRequest": {
         "properties": {
           "dataType": {
@@ -6446,6 +6480,181 @@
         "required": [
           "id",
           "username"
+        ],
+        "type": "object"
+      },
+      "DocumentTemplateBundleResponse": {
+        "properties": {
+          "checksum": {
+            "nullable": true,
+            "type": "string"
+          },
+          "compiled": {
+            "additionalProperties": true,
+            "nullable": true,
+            "type": "object"
+          },
+          "documentTemplateVersionId": {
+            "description": "Stamp this on anything generated against the template.",
+            "nullable": true,
+            "type": "string"
+          },
+          "etag": {
+            "description": "Strong RFC 7232 validator over the SERVED representation (template identity + pinned version + shape bytes). Unconfigured tenants get `\"none\"`.",
+            "type": "string"
+          },
+          "name": {
+            "nullable": true,
+            "type": "string"
+          },
+          "shape": {
+            "additionalProperties": true,
+            "nullable": true,
+            "type": "object"
+          },
+          "slug": {
+            "nullable": true,
+            "type": "string"
+          },
+          "templateId": {
+            "nullable": true,
+            "type": "string"
+          },
+          "versionNumber": {
+            "description": "The PINNED version number — never simply the latest published one.",
+            "nullable": true,
+            "type": "number"
+          }
+        },
+        "required": [
+          "etag"
+        ],
+        "type": "object"
+      },
+      "DocumentTemplateResponse": {
+        "properties": {
+          "createdAt": {
+            "type": "string"
+          },
+          "description": {
+            "nullable": true,
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "isDefault": {
+            "type": "boolean"
+          },
+          "name": {
+            "type": "string"
+          },
+          "pinnedVersionNumber": {
+            "description": "The version generation serves. Null until the first publish.",
+            "nullable": true,
+            "type": "number"
+          },
+          "slug": {
+            "type": "string"
+          },
+          "sourceTemplateSlug": {
+            "nullable": true,
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "DRAFT",
+              "PUBLISHED",
+              "APPROVED"
+            ],
+            "type": "string"
+          },
+          "templateLocked": {
+            "type": "boolean"
+          },
+          "tenantId": {
+            "type": "string"
+          },
+          "updatedAt": {
+            "type": "string"
+          },
+          "version": {
+            "description": "Optimistic-concurrency counter; rendered as the strong `ETag` by the global interceptor.",
+            "type": "number"
+          }
+        },
+        "required": [
+          "id",
+          "tenantId",
+          "slug",
+          "name",
+          "status",
+          "isDefault",
+          "templateLocked",
+          "version",
+          "createdAt",
+          "updatedAt"
+        ],
+        "type": "object"
+      },
+      "DocumentTemplateVersionResponse": {
+        "properties": {
+          "changeReason": {
+            "nullable": true,
+            "type": "string"
+          },
+          "checksum": {
+            "description": "sha256 over the canonical JSON of `shape`.",
+            "type": "string"
+          },
+          "compiled": {
+            "additionalProperties": true,
+            "description": "The DERIVED artifacts frozen with the shape: `responseFormat` (the strict json_schema a provider is decoded against), `checklist`, `sectionStates`, and `promptInstruction` for providers that ignore `response_format`.",
+            "type": "object"
+          },
+          "compilerVersion": {
+            "description": "Which compiler produced `compiled`.",
+            "type": "string"
+          },
+          "createdAt": {
+            "type": "string"
+          },
+          "createdBy": {
+            "nullable": true,
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "shape": {
+            "additionalProperties": true,
+            "description": "The AUTHORED shape.",
+            "type": "object"
+          },
+          "templateId": {
+            "type": "string"
+          },
+          "versionNumber": {
+            "type": "number"
+          },
+          "versionSkew": {
+            "enum": [
+              "IDENTICAL",
+              "ADDITIVE",
+              "BREAKING"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "templateId",
+          "versionNumber",
+          "shape",
+          "compiled",
+          "compilerVersion",
+          "checksum",
+          "createdAt"
         ],
         "type": "object"
       },
@@ -9729,6 +9938,44 @@
         ],
         "type": "object"
       },
+      "NodePromptBindingResponse": {
+        "properties": {
+          "hasNewVersion": {
+            "description": "True when the template has a version newer than this node’s pin. This is the \"new version available\" affordance: an out-of-band edit on the Prompt management screen deliberately moves NO node’s pin, so each referencing node is re-pinned separately and visibly.",
+            "type": "boolean"
+          },
+          "latestVersionNumber": {
+            "description": "The highest version number the template currently has.",
+            "nullable": true,
+            "type": "number"
+          },
+          "nodeId": {
+            "type": "string"
+          },
+          "nodeType": {
+            "type": "string"
+          },
+          "pinnedVersionNumber": {
+            "description": "The node’s own pin. Null = never pinned.",
+            "nullable": true,
+            "type": "number"
+          },
+          "promptTemplateId": {
+            "type": "string"
+          },
+          "promptTemplateName": {
+            "nullable": true,
+            "type": "string"
+          }
+        },
+        "required": [
+          "nodeId",
+          "nodeType",
+          "promptTemplateId",
+          "hasNewVersion"
+        ],
+        "type": "object"
+      },
       "NoiseCancellationConfigDto": {
         "properties": {
           "level": {
@@ -10996,6 +11243,18 @@
             "description": "PromptVersion number to pin to, or null to track the latest APPROVED version.",
             "example": 3,
             "nullable": true,
+            "type": "number"
+          }
+        },
+        "required": [
+          "versionNumber"
+        ],
+        "type": "object"
+      },
+      "PinDocumentTemplateVersionRequest": {
+        "properties": {
+          "versionNumber": {
+            "description": "The immutable version number to serve. Must already exist.",
             "type": "number"
           }
         },
@@ -12579,6 +12838,27 @@
         },
         "required": [
           "definition"
+        ],
+        "type": "object"
+      },
+      "PublishDocumentTemplateRequest": {
+        "properties": {
+          "allowBreakingChange": {
+            "description": "Acknowledges that this publish BREAKS readers built against the previous version (a removed or renamed section, a changed `form`, a changed STRUCTURED `fields` contract, or a section newly made `required`). Without it a breaking publish is refused with 400 listing each break.",
+            "type": "boolean"
+          },
+          "changeReason": {
+            "description": "Why this version was published — recorded immutably on the version row.",
+            "type": "string"
+          },
+          "shape": {
+            "additionalProperties": true,
+            "description": "The document SHAPE: `{ schemaVersion: \"1.0\", title, globalInstruction?, sections[] }`. Each section declares `key`, `title`, `form` (PROSE | BULLETS | STRUCTURED), an optional per-section `instruction`, and `required` (default FALSE — an optional section compiles to a NULLABLE property so the model can record that it was not discussed instead of inventing content). A STRUCTURED section must carry `fields`, a constrained JSON Schema draft 2020-12 subset. Rejected as 400 with every problem listed.",
+            "type": "object"
+          }
+        },
+        "required": [
+          "shape"
         ],
         "type": "object"
       },
@@ -17931,6 +18211,37 @@
         ],
         "type": "object"
       },
+      "UpdateDocumentTemplateRequest": {
+        "properties": {
+          "description": {
+            "type": "string"
+          },
+          "expectedVersion": {
+            "description": "Optimistic-concurrency version; the `If-Match` header overrides it when both are present.",
+            "type": "number"
+          },
+          "isDefault": {
+            "description": "Make (or unmake) this the tenant default.",
+            "type": "boolean"
+          },
+          "name": {
+            "type": "string"
+          },
+          "status": {
+            "description": "Governance status. Moving to APPROVED records a clinical sign-off; moving back to DRAFT makes the template unservable without discarding its published versions.",
+            "enum": [
+              "DRAFT",
+              "PUBLISHED",
+              "APPROVED"
+            ],
+            "type": "string"
+          },
+          "templateLocked": {
+            "type": "boolean"
+          }
+        },
+        "type": "object"
+      },
       "UpdateGlobalSettingRequest": {
         "properties": {
           "dataType": {
@@ -18398,6 +18709,30 @@
         },
         "required": [
           "expectedVersion"
+        ],
+        "type": "object"
+      },
+      "UpdateNodePromptRequest": {
+        "properties": {
+          "changeReason": {
+            "description": "Recorded immutably on the new version row.",
+            "type": "string"
+          },
+          "content": {
+            "description": "The new prompt body. Minted as a new immutable PromptVersion.",
+            "type": "string"
+          },
+          "expectedVersion": {
+            "description": "Optimistic-concurrency version of the WORKFLOW DEFINITION; the `If-Match` header overrides it.",
+            "type": "number"
+          },
+          "variables": {
+            "description": "Template variables to store alongside the new version.",
+            "type": "object"
+          }
+        },
+        "required": [
+          "content"
         ],
         "type": "object"
       },
@@ -26511,7 +26846,8 @@
                 "ServiceAccount",
                 "WorkflowAssignment",
                 "WorkflowInvariantRule",
-                "RateLimitRule"
+                "RateLimitRule",
+                "DocumentTemplate"
               ],
               "type": "string"
             }
@@ -26757,7 +27093,8 @@
                 "ServiceAccount",
                 "WorkflowAssignment",
                 "WorkflowInvariantRule",
-                "RateLimitRule"
+                "RateLimitRule",
+                "DocumentTemplate"
               ],
               "type": "string"
             }
@@ -27004,7 +27341,8 @@
                 "ServiceAccount",
                 "WorkflowAssignment",
                 "WorkflowInvariantRule",
-                "RateLimitRule"
+                "RateLimitRule",
+                "DocumentTemplate"
               ],
               "type": "string"
             }
@@ -31363,6 +31701,502 @@
         "x-hope-requires-if-match": false,
         "x-hope-service-account-scopes": [
           "svc:admin:dna-writing-style:manage"
+        ]
+      }
+    },
+    "/api/v1/admin/document-templates": {
+      "get": {
+        "description": "Head rows only — each carries its lifecycle status and `pinnedVersionNumber`, never a shape. The shape and its compiled artifacts live on the immutable version rows (`GET :id/versions`).\n\n**Credentials** — user JWT accepted; API key **rejected (403)**; service-account token accepted (scopes: `svc:admin:document-template:manage`).\n\n**Abilities** — `manage:DocumentTemplate`.\n\nScopes bind the credential, abilities bind the user it acts for; they compose as AND.",
+        "operationId": "DocumentTemplateAdminController_list",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/DocumentTemplateResponse"
+                  },
+                  "type": "array"
+                }
+              }
+            },
+            "description": ""
+          },
+          "400": {
+            "description": "No tenant context on the request."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "List the caller tenant's document templates",
+        "tags": [
+          "admin-document-templates"
+        ],
+        "x-hope-abilities": [
+          "manage:DocumentTemplate"
+        ],
+        "x-hope-api-key-scopes": [],
+        "x-hope-credentials": [
+          "user-jwt",
+          "service-account"
+        ],
+        "x-hope-permission-mode": "AND",
+        "x-hope-plane": "admin",
+        "x-hope-requires-if-match": false,
+        "x-hope-service-account-scopes": [
+          "svc:admin:document-template:manage"
+        ]
+      },
+      "post": {
+        "description": "A template is always born DRAFT with no pinned version — `POST :id/publish` is the only way to get one.\n\n**Credentials** — user JWT accepted; API key **rejected (403)**; service-account token accepted (scopes: `svc:admin:document-template:manage`).\n\n**Abilities** — `manage:DocumentTemplate`.\n\nScopes bind the credential, abilities bind the user it acts for; they compose as AND.",
+        "operationId": "DocumentTemplateAdminController_create",
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateDocumentTemplateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DocumentTemplateResponse"
+                }
+              }
+            },
+            "description": ""
+          },
+          "409": {
+            "description": "The slug is already taken for this tenant."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Create a DRAFT document template",
+        "tags": [
+          "admin-document-templates"
+        ],
+        "x-hope-abilities": [
+          "manage:DocumentTemplate"
+        ],
+        "x-hope-api-key-scopes": [],
+        "x-hope-credentials": [
+          "user-jwt",
+          "service-account"
+        ],
+        "x-hope-permission-mode": "AND",
+        "x-hope-plane": "admin",
+        "x-hope-requires-if-match": false,
+        "x-hope-service-account-scopes": [
+          "svc:admin:document-template:manage"
+        ]
+      }
+    },
+    "/api/v1/admin/document-templates/{id}": {
+      "delete": {
+        "description": "Published versions are NOT removed — a document generated against one must resolve it forever.\n\n**Credentials** — user JWT accepted; API key **rejected (403)**; service-account token accepted (scopes: `svc:admin:document-template:manage`).\n\n**Abilities** — `manage:DocumentTemplate`.\n\nScopes bind the credential, abilities bind the user it acts for; they compose as AND.",
+        "operationId": "DocumentTemplateAdminController_deleteById",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DocumentTemplateResponse"
+                }
+              }
+            },
+            "description": ""
+          },
+          "404": {
+            "description": "Not found (or owned by another tenant)."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Soft-delete a document template",
+        "tags": [
+          "admin-document-templates"
+        ],
+        "x-hope-abilities": [
+          "manage:DocumentTemplate"
+        ],
+        "x-hope-api-key-scopes": [],
+        "x-hope-credentials": [
+          "user-jwt",
+          "service-account"
+        ],
+        "x-hope-permission-mode": "AND",
+        "x-hope-plane": "admin",
+        "x-hope-requires-if-match": false,
+        "x-hope-service-account-scopes": [
+          "svc:admin:document-template:manage"
+        ]
+      },
+      "get": {
+        "description": "The mutable head row. Cross-tenant ids answer 404, never 403, so existence is not disclosed.\n\n**Credentials** — user JWT accepted; API key **rejected (403)**; service-account token accepted (scopes: `svc:admin:document-template:manage`).\n\n**Abilities** — `manage:DocumentTemplate`.\n\nScopes bind the credential, abilities bind the user it acts for; they compose as AND.",
+        "operationId": "DocumentTemplateAdminController_getById",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DocumentTemplateResponse"
+                }
+              }
+            },
+            "description": ""
+          },
+          "404": {
+            "description": "Not found (or owned by another tenant)."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Get one document template by id",
+        "tags": [
+          "admin-document-templates"
+        ],
+        "x-hope-abilities": [
+          "manage:DocumentTemplate"
+        ],
+        "x-hope-api-key-scopes": [],
+        "x-hope-credentials": [
+          "user-jwt",
+          "service-account"
+        ],
+        "x-hope-permission-mode": "AND",
+        "x-hope-plane": "admin",
+        "x-hope-requires-if-match": false,
+        "x-hope-service-account-scopes": [
+          "svc:admin:document-template:manage"
+        ]
+      },
+      "patch": {
+        "description": "Metadata only — the SHAPE is never edited in place (`POST :id/publish` writes a new immutable version). `If-Match` (RFC 7232) is REQUIRED; when present it overrides the body-field `expectedVersion`. Version drift answers 412, a missing header 428.\n\n**Credentials** — user JWT accepted; API key **rejected (403)**; service-account token accepted (scopes: `svc:admin:document-template:manage`).\n\n**Abilities** — `manage:DocumentTemplate`.\n\n**Concurrency** — requires `If-Match`. Omitting it is a `428`; a stale value is a `412`.\n\nScopes bind the credential, abilities bind the user it acts for; they compose as AND.",
+        "operationId": "DocumentTemplateAdminController_update",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Strong validator carrying the version the client read (e.g. `\"1\"`).",
+            "in": "header",
+            "name": "If-Match",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateDocumentTemplateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DocumentTemplateResponse"
+                }
+              }
+            },
+            "description": ""
+          },
+          "404": {
+            "description": "Not found (or owned by another tenant)."
+          },
+          "412": {
+            "description": "Optimistic concurrency conflict."
+          },
+          "428": {
+            "description": "If-Match header is required."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Update template metadata under optimistic concurrency",
+        "tags": [
+          "admin-document-templates"
+        ],
+        "x-hope-abilities": [
+          "manage:DocumentTemplate"
+        ],
+        "x-hope-api-key-scopes": [],
+        "x-hope-credentials": [
+          "user-jwt",
+          "service-account"
+        ],
+        "x-hope-permission-mode": "AND",
+        "x-hope-plane": "admin",
+        "x-hope-requires-if-match": true,
+        "x-hope-service-account-scopes": [
+          "svc:admin:document-template:manage"
+        ]
+      }
+    },
+    "/api/v1/admin/document-templates/{id}/pin": {
+      "post": {
+        "description": "The rollback path: generation immediately resolves the named version instead.\n\n**Credentials** — user JWT accepted; API key **rejected (403)**; service-account token accepted (scopes: `svc:admin:document-template:manage`).\n\n**Abilities** — `manage:DocumentTemplate`.\n\nScopes bind the credential, abilities bind the user it acts for; they compose as AND.",
+        "operationId": "DocumentTemplateAdminController_pin",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PinDocumentTemplateVersionRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DocumentTemplateResponse"
+                }
+              }
+            },
+            "description": ""
+          },
+          "404": {
+            "description": "Template not found (or owned by another tenant), or it has no such version."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Move the pin to an already-published version",
+        "tags": [
+          "admin-document-templates"
+        ],
+        "x-hope-abilities": [
+          "manage:DocumentTemplate"
+        ],
+        "x-hope-api-key-scopes": [],
+        "x-hope-credentials": [
+          "user-jwt",
+          "service-account"
+        ],
+        "x-hope-permission-mode": "AND",
+        "x-hope-plane": "admin",
+        "x-hope-requires-if-match": false,
+        "x-hope-service-account-scopes": [
+          "svc:admin:document-template:manage"
+        ]
+      }
+    },
+    "/api/v1/admin/document-templates/{id}/publish": {
+      "post": {
+        "description": "The shape is validated (every problem returned at once), then COMPILED into the artifacts frozen onto the version row: a strict `response_format` json_schema, a section checklist, and a per-section state machine. An OPTIONAL section compiles to a NULLABLE property, so a model can record that a section was not discussed instead of inventing content to fill the heading.\n\nRe-publishing an IDENTICAL shape with the SAME compiler is a no-op: no version row, no pin move. A BREAKING change (a removed or renamed section, a changed `form`, a changed STRUCTURED `fields` contract, or a section newly made `required`) is refused with 400 listing every break unless `allowBreakingChange` is set.\n\n**Credentials** — user JWT accepted; API key **rejected (403)**; service-account token accepted (scopes: `svc:admin:document-template:manage`).\n\n**Abilities** — `manage:DocumentTemplate`.\n\nScopes bind the credential, abilities bind the user it acts for; they compose as AND.",
+        "operationId": "DocumentTemplateAdminController_publish",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PublishDocumentTemplateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DocumentTemplateResponse"
+                }
+              }
+            },
+            "description": ""
+          },
+          "400": {
+            "description": "The shape is not publishable, or the change is breaking and unacknowledged."
+          },
+          "404": {
+            "description": "Not found (or owned by another tenant)."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Validate a shape, compile it, publish both as a new immutable version, and pin it",
+        "tags": [
+          "admin-document-templates"
+        ],
+        "x-hope-abilities": [
+          "manage:DocumentTemplate"
+        ],
+        "x-hope-api-key-scopes": [],
+        "x-hope-credentials": [
+          "user-jwt",
+          "service-account"
+        ],
+        "x-hope-permission-mode": "AND",
+        "x-hope-plane": "admin",
+        "x-hope-requires-if-match": false,
+        "x-hope-service-account-scopes": [
+          "svc:admin:document-template:manage"
+        ]
+      }
+    },
+    "/api/v1/admin/document-templates/{id}/versions": {
+      "get": {
+        "description": "Versions are never edited or deleted — a correction is a new version, and a database trigger refuses any UPDATE or DELETE on the version table (OD-13). Each entry carries the shape, the artifacts compiled from it, and `versionSkew`: whether a reader still pinned to that version would keep working against the template’s CURRENT pin.\n\n**Credentials** — user JWT accepted; API key **rejected (403)**; service-account token accepted (scopes: `svc:admin:document-template:manage`).\n\n**Abilities** — `manage:DocumentTemplate`.\n\nScopes bind the credential, abilities bind the user it acts for; they compose as AND.",
+        "operationId": "DocumentTemplateAdminController_listVersions",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/DocumentTemplateVersionResponse"
+                  },
+                  "type": "array"
+                }
+              }
+            },
+            "description": ""
+          },
+          "404": {
+            "description": "Not found (or owned by another tenant)."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "List the immutable published versions of a template, newest first",
+        "tags": [
+          "admin-document-templates"
+        ],
+        "x-hope-abilities": [
+          "manage:DocumentTemplate"
+        ],
+        "x-hope-api-key-scopes": [],
+        "x-hope-credentials": [
+          "user-jwt",
+          "service-account"
+        ],
+        "x-hope-permission-mode": "AND",
+        "x-hope-plane": "admin",
+        "x-hope-requires-if-match": false,
+        "x-hope-service-account-scopes": [
+          "svc:admin:document-template:manage"
         ]
       }
     },
@@ -50780,6 +51614,159 @@
         ]
       }
     },
+    "/api/v1/admin/workflow-definitions/{id}/nodes/{nodeId}/prompt": {
+      "put": {
+        "description": "One of DD-11’s TWO update paths, and the only one that moves a pin. Both writes happen in a single transaction: a new immutable `PromptVersion` is minted and THIS node’s `promptVersionNumber` is moved to it. Splitting them would leave either a version nothing points at, or a pin naming a version that was never created. Other nodes bound to the same template are untouched.\n\nOnly a DRAFT/VALIDATED definition may be edited — a PUBLISHED graph is immutable, so re-pointing a published workflow’s prompt means branching a new draft. `If-Match` (RFC 7232) is REQUIRED.\n\n**Credentials** — user JWT accepted; API key **rejected (403)**; service-account token accepted (scopes: `svc:admin:workflow-definition:manage`).\n\n**Abilities** — `manage:WorkflowDefinition`.\n\n**Concurrency** — requires `If-Match`. Omitting it is a `428`; a stale value is a `412`.\n\nScopes bind the credential, abilities bind the user it acts for; they compose as AND.",
+        "operationId": "WorkflowDefinitionController_updateNodePrompt",
+        "parameters": [
+          {
+            "description": "WorkflowDefinition id",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Graph node id. Must carry `promptTemplateId`.",
+            "in": "path",
+            "name": "nodeId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Strong validator carrying the workflow definition version the client read.",
+            "in": "header",
+            "name": "If-Match",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateNodePromptRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkflowDefinitionResponse"
+                }
+              }
+            },
+            "description": ""
+          },
+          "400": {
+            "description": "Row is PUBLISHED/DEPRECATED, or the node references no prompt template."
+          },
+          "404": {
+            "description": "Definition or template not found (or cross-tenant)."
+          },
+          "428": {
+            "description": "If-Match header is required."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Edit a node’s prompt from within the node: mint a new version AND move this node’s pin",
+        "tags": [
+          "admin-workflow-definitions"
+        ],
+        "x-hope-abilities": [
+          "manage:WorkflowDefinition"
+        ],
+        "x-hope-api-key-scopes": [],
+        "x-hope-credentials": [
+          "user-jwt",
+          "service-account"
+        ],
+        "x-hope-permission-mode": "AND",
+        "x-hope-plane": "admin",
+        "x-hope-requires-if-match": true,
+        "x-hope-service-account-scopes": [
+          "svc:admin:workflow-definition:manage"
+        ]
+      }
+    },
+    "/api/v1/admin/workflow-definitions/{id}/prompt-bindings": {
+      "get": {
+        "description": "The \"new version available\" affordance. Editing a prompt template from the Prompt management screen creates a new version and deliberately moves NO node’s pin — that is what stops a shared template from silently changing every workflow that references it. This read is the other half of that guarantee: it makes \"this node is behind\" visible so it can be re-pinned deliberately, per node. An UNPINNED node is not reported as behind — following the template is a legitimate choice.\n\n**Credentials** — user JWT accepted; API key **rejected (403)**; service-account token accepted (scopes: `svc:admin:workflow-definition:manage`).\n\n**Abilities** — `manage:WorkflowDefinition`.\n\nScopes bind the credential, abilities bind the user it acts for; they compose as AND.",
+        "operationId": "WorkflowDefinitionController_listPromptBindings",
+        "parameters": [
+          {
+            "description": "WorkflowDefinition id",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/NodePromptBindingResponse"
+                  },
+                  "type": "array"
+                }
+              }
+            },
+            "description": ""
+          },
+          "404": {
+            "description": "Not found (or cross-tenant)."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Which prompt version each node is pinned to, and whether a newer one exists",
+        "tags": [
+          "admin-workflow-definitions"
+        ],
+        "x-hope-abilities": [
+          "manage:WorkflowDefinition"
+        ],
+        "x-hope-api-key-scopes": [],
+        "x-hope-credentials": [
+          "user-jwt",
+          "service-account"
+        ],
+        "x-hope-permission-mode": "AND",
+        "x-hope-plane": "admin",
+        "x-hope-requires-if-match": false,
+        "x-hope-service-account-scopes": [
+          "svc:admin:workflow-definition:manage"
+        ]
+      }
+    },
     "/api/v1/admin/workflow-definitions/{id}/publish": {
       "post": {
         "description": "Rejected 400 if the engine gate is not clean (a cycle, an unregistered node type, or malformed shape) — the sole publish-blocking predicate; DRAFT rule-catalogue findings never block publish. `activate` (default true) makes this the version the dispatcher resolves for new runs, demoting the slug’s previous active version. Once published (and WORKFLOW_EXPOSURE_ENABLED), this version becomes invokable through the public exposure plane (`POST /workflows/:slug/invoke`) — if its resolved AI task default (e.g. `smr.finalize`, set under AI Task Defaults) selects a cloud provider, public invocations send this tenant's data to that vendor. Public exposure does NOT restrict provider choice (TASK-720 R-4 owner ruling, 2026-08-20): the tenant carries that risk.\n\n**Credentials** — user JWT accepted; API key **rejected (403)**; service-account token accepted (scopes: `svc:admin:workflow-definition:manage`).\n\n**Abilities** — `manage:WorkflowDefinition`.\n\nScopes bind the credential, abilities bind the user it acts for; they compose as AND.",
@@ -53305,13 +54292,6 @@
         ],
         "responses": {
           "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object"
-                }
-              }
-            },
             "description": ""
           }
         },
@@ -54500,13 +55480,6 @@
         ],
         "responses": {
           "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object"
-                }
-              }
-            },
             "description": ""
           }
         },
@@ -55743,13 +56716,6 @@
         ],
         "responses": {
           "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object"
-                }
-              }
-            },
             "description": ""
           }
         },
@@ -55796,13 +56762,6 @@
         ],
         "responses": {
           "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object"
-                }
-              }
-            },
             "description": ""
           }
         },
@@ -56043,16 +57002,6 @@
           }
         ],
         "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object"
-                }
-              }
-            },
-            "description": ""
-          },
           "404": {
             "description": "Consultation not found — also the answer for a cross-tenant id (404-over-403), resolved BEFORE the stream opens"
           }
@@ -56100,13 +57049,6 @@
         ],
         "responses": {
           "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object"
-                }
-              }
-            },
             "description": ""
           }
         },
@@ -56153,13 +57095,6 @@
         ],
         "responses": {
           "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object"
-                }
-              }
-            },
             "description": ""
           }
         },
@@ -57984,13 +58919,6 @@
         ],
         "responses": {
           "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object"
-                }
-              }
-            },
             "description": ""
           }
         },
@@ -60102,6 +61030,67 @@
         "x-hope-abilities": [],
         "x-hope-api-key-scopes": [
           "tenant:context-schema:read"
+        ],
+        "x-hope-credentials": [
+          "user-jwt",
+          "api-key"
+        ],
+        "x-hope-permission-mode": "AND",
+        "x-hope-plane": "business",
+        "x-hope-requires-if-match": false,
+        "x-hope-service-account-scopes": []
+      }
+    },
+    "/api/v1/tenants/me/document-template": {
+      "get": {
+        "description": "Returns the RESOLVED, PINNED shape and its compiled artifacts, never simply the latest published version. A tenant with no configured template gets a 200 whose fields are null and whose ETag is `\"none\"` — deliberately NOT a 404, which a client cannot tell apart from a routing mistake.\n\nUnder API-key authentication this resolves to the key's **tenant**.\n\n**Credentials** — user JWT accepted; API key **accepted**; service-account token rejected.\n\n**API key scopes** — `tenant:document-template:read`.\n\nScopes bind the credential, abilities bind the user it acts for; they compose as AND.",
+        "operationId": "MyTenantDocumentTemplateController_getEffective",
+        "parameters": [
+          {
+            "description": "Resolve this template by slug instead of the tenant default.",
+            "in": "query",
+            "name": "slug",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Strong validator over the served representation.",
+            "in": "header",
+            "name": "ETag",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DocumentTemplateBundleResponse"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Discover the caller tenant's pinned document template",
+        "tags": [
+          "tenant"
+        ],
+        "x-hope-abilities": [],
+        "x-hope-api-key-scopes": [
+          "tenant:document-template:read"
         ],
         "x-hope-credentials": [
           "user-jwt",
@@ -62312,6 +63301,10 @@
     {
       "description": "The tenant department tree.",
       "name": "admin-departments"
+    },
+    {
+      "description": "The clinical-document shapes generation is constrained to.",
+      "name": "admin-document-templates"
     },
     {
       "description": "Administer per-clinician writing-style profiles, including erasure.",

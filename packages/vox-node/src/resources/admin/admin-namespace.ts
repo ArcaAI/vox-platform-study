@@ -28,6 +28,7 @@ import { AdminConsultationContextSchemaResource } from './consultation-context-s
 import { AdminDepartmentResource } from './department';
 import { AdminDepartmentAgentResource } from './department-agent';
 import { AdminDnaWritingStyleResource } from './dna-writing-style';
+import { AdminDocumentTemplateResource } from './document-template';
 import { AdminEntitlementResource } from './entitlement';
 import { AdminHarnessResource } from './harness';
 import { AdminKnowledgeResource } from './knowledge';
@@ -64,7 +65,7 @@ import { AdminWorkflowTestFixtureResource } from './workflow-test-fixture';
 
 /**
  * `hope.admin` — every machine-reachable `/api/v1/admin/**` area, one property
- * per `svc:*` scope (52 areas, 404 routes).
+ * per `svc:*` scope (53 areas, 414 routes).
  *
  * Reaching any of it requires a SERVICE ACCOUNT: the admin plane refuses a
  * tenant API key by policy, not by omission. Construct the client with
@@ -123,6 +124,8 @@ export class AdminNamespace {
   readonly departmentAgent: AdminDepartmentAgentResource;
   /** `svc:admin:dna-writing-style:manage` — 9 routes. */
   readonly dnaWritingStyle: AdminDnaWritingStyleResource;
+  /** `svc:admin:document-template:manage` — 8 routes. */
+  readonly documentTemplate: AdminDocumentTemplateResource;
   /** `svc:admin:entitlement:manage` — 11 routes. */
   readonly entitlement: AdminEntitlementResource;
   /** `svc:admin:harness:manage` — 28 routes. */
@@ -181,7 +184,7 @@ export class AdminNamespace {
   readonly user: AdminUserResource;
   /** `svc:webhook:event:write` — 7 routes. */
   readonly webhookEvent: AdminWebhookEventResource;
-  /** `svc:admin:workflow-definition:manage` — 17 routes. */
+  /** `svc:admin:workflow-definition:manage` — 19 routes. */
   readonly workflowDefinition: AdminWorkflowDefinitionResource;
   /** `svc:admin:workflow-node:read` — 1 route. */
   readonly workflowNode: AdminWorkflowNodeResource;
@@ -210,6 +213,7 @@ export class AdminNamespace {
     this.department = new AdminDepartmentResource(transport);
     this.departmentAgent = new AdminDepartmentAgentResource(transport);
     this.dnaWritingStyle = new AdminDnaWritingStyleResource(transport);
+    this.documentTemplate = new AdminDocumentTemplateResource(transport);
     this.entitlement = new AdminEntitlementResource(transport);
     this.harness = new AdminHarnessResource(transport);
     this.knowledge = new AdminKnowledgeResource(transport);

@@ -20,6 +20,10 @@ export * from './webhook';
 export * from './apiKey';
 export * from './consultation';
 export * from './consultation-context-schema';
+// Clinical-document SHAPE catalog (TASK-810) — head/version/pin over the
+// shapes a generation node produces, plus the compiler that turns a shape into
+// a strict decoding constraint. SOAP is a row here, not a privilege.
+export * from './document-template';
 export * from './department';
 export * from './departmentAgent';
 // Agent promotion between tenants.

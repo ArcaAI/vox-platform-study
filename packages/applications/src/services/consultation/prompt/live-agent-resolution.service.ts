@@ -32,7 +32,7 @@ import {
   type ILiveAgentResolver,
   type PersistedLiveAgentLineage,
 } from '../live-documentation/live-agent.port';
-import { LIVE_SOAP_STABLE_SYSTEM_PREFIX, LIVE_SOAP_SYSTEM_PROMPT } from '../live-documentation/live-documentation.service';
+import { LIVE_DOCUMENT_STABLE_SYSTEM_PREFIX, LIVE_DOCUMENT_SYSTEM_PROMPT } from '../live-documentation/live-documentation.service';
 import { PromptResolutionService } from './prompt-resolution.service';
 
 @Injectable()
@@ -146,8 +146,8 @@ export class LiveAgentResolutionService implements ILiveAgentResolver {
       agentName: null,
       promptTemplateId: null,
       promptVersionNumber: null,
-      stableUserPrefix: LIVE_SOAP_STABLE_SYSTEM_PREFIX,
-      systemPrompt: LIVE_SOAP_SYSTEM_PROMPT,
+      stableUserPrefix: LIVE_DOCUMENT_STABLE_SYSTEM_PREFIX,
+      systemPrompt: LIVE_DOCUMENT_SYSTEM_PROMPT,
       toolPlan: DEFAULT_LIVE_TOOL_PLAN,
       liveLlm: null,
       frozenAt: new Date().toISOString(),
@@ -190,7 +190,7 @@ export class LiveAgentResolutionService implements ILiveAgentResolver {
    * the `DepartmentAgentEntity` / `AiModelEntity` precedent: `IBaseEntity.metaData`
    * is declared but not wired on the abstract base, so each entity that needs it
    * wires its own `setProperty`-routed getter/setter) — and falls back to the
-   * in-code `LIVE_SOAP_SYSTEM_PROMPT` constant when a custom prompt is absent.
+   * in-code `LIVE_DOCUMENT_SYSTEM_PROMPT` constant when a custom prompt is absent.
    *
    * `metaData` is untrusted JSON (admin-writable, no schema enforced at the DB
    * layer): defensively reject anything that isn't `{ promptConfig: { systemPrompt: <non-empty string> } }`
@@ -201,14 +201,14 @@ export class LiveAgentResolutionService implements ILiveAgentResolver {
   private async systemPromptFor(promptTemplateId: string): Promise<string> {
     try {
       const template = await this.promptTemplateRepository.findById(promptTemplateId);
-      return this.extractCustomSystemPrompt(template?.metaData) ?? LIVE_SOAP_SYSTEM_PROMPT;
+      return this.extractCustomSystemPrompt(template?.metaData) ?? LIVE_DOCUMENT_SYSTEM_PROMPT;
     } catch (error) {
       this.logger.warn({
         message: 'Failed to resolve a custom system prompt for the live template — falling back to the code-default system prompt',
         promptTemplateId,
         error: error instanceof Error ? error.message : String(error),
       });
-      return LIVE_SOAP_SYSTEM_PROMPT;
+      return LIVE_DOCUMENT_SYSTEM_PROMPT;
     }
   }
 

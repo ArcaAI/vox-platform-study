@@ -6,7 +6,7 @@
  * hand-authored accessor on `PromptTemplateEntity`, mirroring the
  * `DepartmentAgentEntity` / `AiModelEntity` precedent — `IBaseEntity.metaData`
  * is declared but not wired on the abstract base) and falls back to the
- * in-code `LIVE_SOAP_SYSTEM_PROMPT` constant when the value is absent or
+ * in-code `LIVE_DOCUMENT_SYSTEM_PROMPT` constant when the value is absent or
  * malformed. `metaData` is untrusted JSON: these tests lock the defensive
  * parsing AND the resolver's totality contract (never throws — step 4).
  */
@@ -14,7 +14,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 import { LiveAgentResolutionService } from '../live-agent-resolution.service';
-import { LIVE_SOAP_STABLE_SYSTEM_PREFIX, LIVE_SOAP_SYSTEM_PROMPT } from '../../live-documentation/live-documentation.service';
+import { LIVE_DOCUMENT_STABLE_SYSTEM_PREFIX, LIVE_DOCUMENT_SYSTEM_PROMPT } from '../../live-documentation/live-documentation.service';
 
 const TENANT = 'tenant-1';
 const CONSULTATION = 'consultation-1';
@@ -24,7 +24,7 @@ function baseResolved(overrides: Record<string, unknown> = {}) {
   return {
     resolvedFrom: 'default',
     promptId: TEMPLATE,
-    content: LIVE_SOAP_STABLE_SYSTEM_PREFIX,
+    content: LIVE_DOCUMENT_STABLE_SYSTEM_PREFIX,
     resolvedVersionNumber: 1,
     resolvedAgentId: undefined,
     ...overrides,
@@ -78,7 +78,7 @@ describe('LiveAgentResolutionService — custom per-agent system prompt', () => 
 
     const snapshot = await service.resolveForSession({ consultationId: CONSULTATION, tenantId: TENANT });
 
-    expect(snapshot.systemPrompt).toBe(LIVE_SOAP_SYSTEM_PROMPT);
+    expect(snapshot.systemPrompt).toBe(LIVE_DOCUMENT_SYSTEM_PROMPT);
   });
 
   it.each([
@@ -91,7 +91,7 @@ describe('LiveAgentResolutionService — custom per-agent system prompt', () => 
     promptTemplateRepository.findById.mockResolvedValue(template);
 
     await expect(service.resolveForSession({ consultationId: CONSULTATION, tenantId: TENANT })).resolves.toMatchObject({
-      systemPrompt: LIVE_SOAP_SYSTEM_PROMPT,
+      systemPrompt: LIVE_DOCUMENT_SYSTEM_PROMPT,
     });
   });
 
@@ -99,7 +99,7 @@ describe('LiveAgentResolutionService — custom per-agent system prompt', () => 
     promptTemplateRepository.findById.mockRejectedValue(new Error('db down'));
 
     await expect(service.resolveForSession({ consultationId: CONSULTATION, tenantId: TENANT })).resolves.toMatchObject({
-      systemPrompt: LIVE_SOAP_SYSTEM_PROMPT,
+      systemPrompt: LIVE_DOCUMENT_SYSTEM_PROMPT,
     });
   });
 

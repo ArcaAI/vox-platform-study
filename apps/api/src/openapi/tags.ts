@@ -250,6 +250,12 @@ export const API_TAGS: readonly ApiTagDefinition[] = [
   },
   { name: 'admin-departments', displayName: 'Departments', plane: 'admin', description: 'The tenant department tree.' },
   {
+    name: 'admin-document-templates',
+    displayName: 'Document Templates',
+    plane: 'admin',
+    description: 'The clinical-document shapes generation is constrained to.',
+  },
+  {
     name: 'admin-dna-writing-styles',
     displayName: 'DNA Writing Styles',
     plane: 'admin',

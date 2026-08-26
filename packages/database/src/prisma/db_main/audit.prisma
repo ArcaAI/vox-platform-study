@@ -344,5 +344,16 @@ enum ResourceType {
   // mutation.
   RateLimitRule
 
+  // Clinical-document shape catalog (TASK-810). The MUTABLE head row is the
+  // audited resource — create / update / publish / pin / delete all broadcast
+  // against it, so a reviewer sees one lifecycle per template rather than one
+  // per snapshot. `DocumentTemplateVersion` is DELIBERATELY ABSENT: an
+  // immutable version row is written as part of the publish of its parent
+  // aggregate and has no lifecycle of its own — precisely the
+  // `ConsultationContextSchemaVersion` / `PromptVersion` precedent recorded
+  // above. Adding one later means adding it to BOTH enums plus an
+  // `ALTER TYPE ... ADD VALUE` migration (resourceType.enum-parity.test.ts).
+  DocumentTemplate
+
   @@schema("core")
 }

@@ -97,3 +97,5 @@ export * from './WorkflowAssignmentChangeFactory';
 export * from './WorkflowAssignmentFactory';
 export * from './WorkflowInvariantRuleFactory';
 export * from './RateLimitRuleFactory';
+export * from './DocumentTemplateFactory';
+export * from './DocumentTemplateVersionFactory';

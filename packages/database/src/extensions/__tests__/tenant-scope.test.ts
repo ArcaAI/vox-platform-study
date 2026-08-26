@@ -138,7 +138,9 @@ describe('TENANT_SCOPED_MODELS allow-list', () => {
     // are a tenant admin's own custom roles, now protected by this extension
     // instead of a handler-level guard. `Policy`/`RolePolicy` stay global.
     // +1 (86): RateLimitRule (TASK-785).
-    expect(TENANT_SCOPED_MODELS.size).toBe(86);
+    // +2 (88): DocumentTemplate + DocumentTemplateVersion (TASK-810) — the
+    // clinical-document shape catalog, head + immutable version.
+    expect(TENANT_SCOPED_MODELS.size).toBe(88);
   });
 
   // The usage ledger, its outbox, the rollups and the whole billing

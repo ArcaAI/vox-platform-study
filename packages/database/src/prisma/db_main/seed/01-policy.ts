@@ -271,6 +271,11 @@ export const DEFAULT_POLICIES: DefaultPolicy[] = [
       // the whole boundary. Without this grant the feature would be
       // unreachable by the audience names.
       { action: 'manage', subject: 'ConsultationContextSchema', conditions: { tenantId: '${context.tenantId}' } },
+      // TASK-810 — the clinical-document SHAPE catalog, same posture and for the
+      // same reason: `@CanManage('DocumentTemplate')` is the whole boundary
+      // (no narrower imperative gate), and without this grant a tenant admin
+      // could not author the document shapes their own clinicians produce.
+      { action: 'manage', subject: 'DocumentTemplate', conditions: { tenantId: '${context.tenantId}' } },
       // Agentic workflow substrate (TASK-734 authoring controllers,
       // TASK-722 exposure plane) — tenant admins manage their own tenant's
       // workflow definitions (author/validate/publish, `admin/workflow-
@@ -465,6 +470,13 @@ export const DEFAULT_POLICIES: DefaultPolicy[] = [
       // `@CanManage('ConsultationContextSchema')`), which `read` does not imply.
       { action: 'read', subject: 'ChangelogEntry' },
       { action: 'read', subject: 'ConsultationContextSchema', conditions: { tenantId: '${context.tenantId}' } },
+      // TASK-810 — the sibling DISCOVERY read (`GET /tenants/me/document-template`).
+      // Same reasoning as the context-schema read above: a clinician's client
+      // must resolve the document shape at session open, so requiring an admin
+      // ability would make the feature unreachable by its actual consumer. It
+      // widens nothing — the only routes declaring `manage:DocumentTemplate`
+      // are the admin controllers, which `read` does not imply.
+      { action: 'read', subject: 'DocumentTemplate', conditions: { tenantId: '${context.tenantId}' } },
     ],
   },
   {
