@@ -3,9 +3,18 @@
  * verbatim against `@arcaai/workflow-contract`'s `port-model.ts` (the console hand-mirrors it —
  * see `port-compatibility.ts`'s module comment); `checkPortCompatibility` is the predicate the
  * Studio canvas wires into both drag-time (`isValidConnection`) and commit-time (`connect`).
+ *
+ * The "drift guard" describe block below is what makes "verbatim" true rather than aspirational:
+ * it imports the CANONICAL lattice from `@arcaai/workflow-contract` (a `devDependency` of
+ * `@arcaai/admin-console` added FOR THIS TEST ONLY — see `port-compatibility.ts`'s module
+ * comment and `package.json`) and asserts the console's hand-mirrored copy against it. Without
+ * this, the mirror could drift from the real contract silently: the invariant it protects is
+ * `document -> ner` staying a type error, and a stale copy could start passing wires the
+ * canonical lattice no longer allows (or refusing ones it does).
  */
 import { describe, expect, it } from 'vitest';
-import { checkPortCompatibility, portPrimitiveSatisfies } from '../port-compatibility';
+import { WORKFLOW_PORT_PRIMITIVES, WORKFLOW_PORT_SUPERTYPE } from '@arcaai/workflow-contract';
+import { MIRRORED_PORT_PRIMITIVES, PORT_SUPERTYPE, checkPortCompatibility, portPrimitiveSatisfies } from '../port-compatibility';
 import type { WorkflowNodeDescriptor } from '../../api/types';
 
 function descriptor(type: string, inputs: WorkflowNodeDescriptor['inputs'], outputs: WorkflowNodeDescriptor['outputs']): WorkflowNodeDescriptor {
@@ -148,5 +157,23 @@ describe('checkPortCompatibility', () => {
     );
     expect(result.ok).toBe(false);
     if (!result.ok) expect(result.reason).toMatch(/missing/);
+  });
+});
+
+describe('drift guard against @arcaai/workflow-contract (the canonical lattice)', () => {
+  const DRIFT_MESSAGE =
+    'The console-side port lattice mirror (lib/port-compatibility.ts) has drifted from the ' +
+    'canonical @arcaai/workflow-contract lattice (packages/workflow-contract/src/port-model.ts). ' +
+    'Update PORT_SUPERTYPE (and MIRRORED_PORT_PRIMITIVES, which is derived from it) in ' +
+    'port-compatibility.ts to match WORKFLOW_PORT_SUPERTYPE / WORKFLOW_PORT_PRIMITIVES exactly. ' +
+    'This mirror backs the document -> ner anti-laundering rule, so a silent drift here means ' +
+    'the canvas can start permitting or refusing wires on stale rules.';
+
+  it('mirrors the closed primitive vocabulary exactly (order-independent \u2014 content is what matters)', () => {
+    expect([...MIRRORED_PORT_PRIMITIVES].sort(), DRIFT_MESSAGE).toEqual([...WORKFLOW_PORT_PRIMITIVES].sort());
+  });
+
+  it('mirrors the supertype lattice \u2014 including both widenings \u2014 exactly', () => {
+    expect(PORT_SUPERTYPE, DRIFT_MESSAGE).toEqual(WORKFLOW_PORT_SUPERTYPE);
   });
 });

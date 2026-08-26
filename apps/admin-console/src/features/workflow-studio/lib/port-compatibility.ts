@@ -12,9 +12,18 @@
  * `port-model.ts` — the same posture `api/types.ts` already takes for the rest of the wire
  * contract (see that file's module comment): the console never bundles that package at
  * runtime, because it is the server validator's engine, not a browser artifact.
- * `port-model.test.ts` in that package is the source of truth for the lattice; this file's own
- * tests pin the two widenings verbatim so a drift is a failing test on EITHER side, never a
- * silent divergence.
+ *
+ * That posture would normally leave nothing tying the two copies together but a comment — fine
+ * for a mirrored SHAPE (drift there is a type error or a wrong render), not fine for a mirrored
+ * SAFETY PREDICATE, where drift means the canvas starts permitting or refusing wires on stale
+ * rules while the real anti-laundering invariant (`document -> ner` must stay a type error)
+ * moves on without it. So `@arcaai/workflow-contract` IS a `devDependency` of
+ * `@arcaai/admin-console` (workspace protocol, `package.json`) — deliberately, ONLY for this —
+ * and `__tests__/port-compatibility.test.ts` imports `WORKFLOW_PORT_SUPERTYPE` /
+ * `WORKFLOW_PORT_PRIMITIVES` from it and asserts this file's mirror against them verbatim. A
+ * `devDependency` does not bundle into the Next.js runtime, so `api/types.ts`'s "the console
+ * never imports `@arcaai/workflow-contract` at runtime" still holds — do NOT remove this
+ * dependency as unused; it exists solely to back that test.
  *
  * Compatibility is a subtype relation with exactly two widenings: `transcript ⊑ text` and
  * `document ⊑ text`. `transcript` and `document` are SIBLINGS — neither satisfies the other —
@@ -27,8 +36,9 @@ import type { WorkflowNodeDescriptor, WorkflowNodePort, WorkflowPortPrimitive } 
 
 /** Each primitive's direct supertype, or `null` at a lattice root. Verbatim mirror of
  *  `WORKFLOW_PORT_SUPERTYPE` (`port-model.ts`) — see the module comment for why this is a
- *  mirror, not an import. */
-const PORT_SUPERTYPE: Readonly<Record<WorkflowPortPrimitive, WorkflowPortPrimitive | null>> = Object.freeze({
+ *  mirror, not an import. Exported ONLY so the drift-guard test can assert it against the
+ *  canonical constant; no application code outside this module should need it directly. */
+export const PORT_SUPERTYPE: Readonly<Record<WorkflowPortPrimitive, WorkflowPortPrimitive | null>> = Object.freeze({
   control: null,
   'stream<audio>': null,
   transcript: 'text',
@@ -39,6 +49,13 @@ const PORT_SUPERTYPE: Readonly<Record<WorkflowPortPrimitive, WorkflowPortPrimiti
   verdict: null,
   'context<schemaRef>': null,
 });
+
+/** Derived from `PORT_SUPERTYPE`'s own keys rather than hand-listed again, so there is exactly
+ *  ONE place that enumerates the vocabulary in this file, not two that could disagree with each
+ *  other. Compared against the canonical `WORKFLOW_PORT_PRIMITIVES` by the drift-guard test —
+ *  this is what catches a primitive being ADDED to the contract (a changed widening alone would
+ *  not add or remove a key). */
+export const MIRRORED_PORT_PRIMITIVES: readonly WorkflowPortPrimitive[] = Object.keys(PORT_SUPERTYPE) as WorkflowPortPrimitive[];
 
 /**
  * Does a value produced on a `produced`-typed output satisfy a `consumed`-typed input? True
