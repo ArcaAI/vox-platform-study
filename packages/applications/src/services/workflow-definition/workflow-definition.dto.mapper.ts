@@ -1,8 +1,8 @@
 import { WorkflowDefinitionEntity } from '@arcaai/domains';
 import { registryChecksum } from '@arcaai/workflow-contract';
-import type { WorkflowNodeDescriptor } from '@arcaai/workflow-contract';
+import type { WorkflowNodeDescriptor, WorkflowPortDescriptor } from '@arcaai/workflow-contract';
 import { FetchResponse } from '../../common';
-import { PaginatedWorkflowDefinitionResponse, WorkflowDefinitionResponse, WorkflowNodeResponse } from './dto';
+import { PaginatedWorkflowDefinitionResponse, WorkflowDefinitionResponse, WorkflowNodePortResponse, WorkflowNodeResponse } from './dto';
 
 /**
  * The running node registry's checksum, computed once.
@@ -84,6 +84,33 @@ export class WorkflowDefinitionDtoMapper {
     dto.defaultMaxAttempts = descriptor.defaultMaxAttempts;
     dto.entitlementKey = descriptor.entitlementKey;
     dto.configSchema = descriptor.configSchema ?? null;
+
+    // TASK-809 task 11. The contract package grew eight fields describing what a node may be
+    // WIRED TO, when it runs, and what must hold before a graph containing it publishes — and
+    // this field-by-field projection dropped every one of them silently. `inputs`/`outputs` are
+    // the ones with teeth: without them the canvas cannot implement `isValidConnection` at all,
+    // so a nonsensical wiring (`document -> ner`, the anti-laundering case) looks legal until
+    // publish rejects it.
+    //
+    // Copied rather than referenced: these are frozen registry literals, and handing a caller a
+    // live reference to the registry invites a mutation that would outlive the request.
+    dto.inputs = descriptor.inputs.map(toPortResponse);
+    dto.outputs = descriptor.outputs.map(toPortResponse);
+    dto.trigger = descriptor.trigger;
+    dto.lane = descriptor.lane;
+    dto.requires = [...descriptor.requires];
+    dto.idempotent = descriptor.idempotent;
+    dto.schemaVersion = descriptor.schemaVersion;
+    dto.evalGate = descriptor.evalGate ? { goldenSetId: descriptor.evalGate.goldenSetId, enabled: descriptor.evalGate.enabled } : null;
     return dto;
   }
+}
+
+function toPortResponse(port: WorkflowPortDescriptor): WorkflowNodePortResponse {
+  const dto = new WorkflowNodePortResponse();
+  dto.name = port.name;
+  dto.primitive = port.primitive;
+  dto.required = port.required;
+  dto.multiple = port.multiple;
+  return dto;
 }

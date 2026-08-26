@@ -21226,6 +21226,59 @@
         ],
         "type": "object"
       },
+      "WorkflowNodeEvalGateResponse": {
+        "properties": {
+          "enabled": {
+            "type": "boolean"
+          },
+          "goldenSetId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "goldenSetId",
+          "enabled"
+        ],
+        "type": "object"
+      },
+      "WorkflowNodePortResponse": {
+        "properties": {
+          "multiple": {
+            "description": "Whether the port accepts (inputs) or feeds (outputs) more than one edge.",
+            "type": "boolean"
+          },
+          "name": {
+            "description": "Stable, node-type-local port name — what a graph edge’s fromPort/toPort names.",
+            "type": "string"
+          },
+          "primitive": {
+            "description": "The port’s type in the closed workflow port vocabulary. Compatibility is a subtype relation with exactly two widenings (transcript ⊑ text, document ⊑ text); transcript and document are siblings, which is what makes document → ner a type error.",
+            "enum": [
+              "control",
+              "stream<audio>",
+              "transcript",
+              "text",
+              "entities",
+              "document",
+              "edits",
+              "verdict",
+              "context<schemaRef>"
+            ],
+            "type": "string"
+          },
+          "required": {
+            "description": "An input the node cannot run without / an output the node always produces.",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "name",
+          "primitive",
+          "required",
+          "multiple"
+        ],
+        "type": "object"
+      },
       "WorkflowNodeRegistryResponse": {
         "properties": {
           "nodes": {
@@ -21278,17 +21331,73 @@
             "nullable": true,
             "type": "string"
           },
+          "evalGate": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/WorkflowNodeEvalGateResponse"
+              }
+            ],
+            "description": "The golden-set eval gate bound to this node type, or null when none is bound.",
+            "nullable": true,
+            "type": "object"
+          },
           "externalWrite": {
             "description": "Code-owned safety property — never tenant-configurable.",
+            "type": "boolean"
+          },
+          "idempotent": {
+            "description": "Always true for a durable node: Temporal retries activities, and a non-idempotent retry double-writes invisibly.",
             "type": "boolean"
           },
           "implemented": {
             "description": "False = an OBSERVABLE, non-executable placeholder — never silently dropped from the list.",
             "type": "boolean"
           },
+          "inputs": {
+            "description": "Declared input ports.",
+            "items": {
+              "$ref": "#/components/schemas/WorkflowNodePortResponse"
+            },
+            "type": "array"
+          },
+          "lane": {
+            "description": "WHICH RUNTIME executes it. realtime carries a latency budget; durable must survive a restart.",
+            "enum": [
+              "realtime",
+              "durable"
+            ],
+            "type": "string"
+          },
+          "outputs": {
+            "description": "Declared output ports.",
+            "items": {
+              "$ref": "#/components/schemas/WorkflowNodePortResponse"
+            },
+            "type": "array"
+          },
           "paletteKey": {
             "description": "The palette this node type belongs to, or null for a palette-agnostic utility node.",
             "nullable": true,
+            "type": "string"
+          },
+          "requires": {
+            "description": "Guard attachment keys — node types that must be wired to EVERY INSTANCE of this node before a graph containing it publishes.",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "schemaVersion": {
+            "description": "The node TYPE’s version. A published node’s ports are never reshaped in place — a breaking change becomes a new key with an @N suffix, and this field agrees with that suffix.",
+            "type": "number"
+          },
+          "trigger": {
+            "description": "WHEN the node runs — orthogonal to lane. on-start once at the opening, per-turn as new material arrives, on-end once at the close.",
+            "enum": [
+              "on-start",
+              "per-turn",
+              "on-end"
+            ],
             "type": "string"
           },
           "type": {
@@ -21304,7 +21413,14 @@
           "critical",
           "externalWrite",
           "defaultTimeoutSeconds",
-          "defaultMaxAttempts"
+          "defaultMaxAttempts",
+          "inputs",
+          "outputs",
+          "trigger",
+          "lane",
+          "requires",
+          "idempotent",
+          "schemaVersion"
         ],
         "type": "object"
       },

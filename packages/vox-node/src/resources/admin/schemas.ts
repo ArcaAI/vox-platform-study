@@ -12,7 +12,7 @@
  * Request and response types for the `/api/v1/admin/**` surface, derived from
  * the gateway's own DTOs via `openapi.json`.
  *
- * Only the 368 component schemas the generated surface transitively
+ * Only the 370 component schemas the generated surface transitively
  * reaches are emitted — the document declares more, and importing shapes no
  * method can produce would be noise.
  *
@@ -6095,6 +6095,22 @@ export interface WorkflowDefinitionResponse {
   versionNumber: number;
 }
 
+export interface WorkflowNodeEvalGateResponse {
+  enabled: boolean;
+  goldenSetId: string;
+}
+
+export interface WorkflowNodePortResponse {
+  /** Whether the port accepts (inputs) or feeds (outputs) more than one edge. */
+  multiple: boolean;
+  /** Stable, node-type-local port name — what a graph edge’s fromPort/toPort names. */
+  name: string;
+  /** The port’s type in the closed workflow port vocabulary. Compatibility is a subtype relation with exactly two widenings (transcript ⊑ text, document ⊑ text); transcript and document are siblings, which is what makes document → ner a type error. */
+  primitive: 'control' | 'stream<audio>' | 'transcript' | 'text' | 'entities' | 'document' | 'edits' | 'verdict' | 'context<schemaRef>';
+  /** An input the node cannot run without / an output the node always produces. */
+  required: boolean;
+}
+
 export interface WorkflowNodeRegistryResponse {
   nodes: WorkflowNodeResponse[];
   /** sha256 of the registry — compared against a published definition’s stamped registryChecksum to detect drift. */
@@ -6113,12 +6129,28 @@ export interface WorkflowNodeResponse {
   defaultTimeoutSeconds: number;
   /** The EntitlementFeatureKey that gates this node type, if any. */
   entitlementKey?: string | null;
+  /** The golden-set eval gate bound to this node type, or null when none is bound. */
+  evalGate?: WorkflowNodeEvalGateResponse;
   /** Code-owned safety property — never tenant-configurable. */
   externalWrite: boolean;
+  /** Always true for a durable node: Temporal retries activities, and a non-idempotent retry double-writes invisibly. */
+  idempotent: boolean;
   /** False = an OBSERVABLE, non-executable placeholder — never silently dropped from the list. */
   implemented: boolean;
+  /** Declared input ports. */
+  inputs: WorkflowNodePortResponse[];
+  /** WHICH RUNTIME executes it. realtime carries a latency budget; durable must survive a restart. */
+  lane: 'realtime' | 'durable';
+  /** Declared output ports. */
+  outputs: WorkflowNodePortResponse[];
   /** The palette this node type belongs to, or null for a palette-agnostic utility node. */
   paletteKey?: string | null;
+  /** Guard attachment keys — node types that must be wired to EVERY INSTANCE of this node before a graph containing it publishes. */
+  requires: string[];
+  /** The node TYPE’s version. A published node’s ports are never reshaped in place — a breaking change becomes a new key with an @N suffix, and this field agrees with that suffix. */
+  schemaVersion: number;
+  /** WHEN the node runs — orthogonal to lane. on-start once at the opening, per-turn as new material arrives, on-end once at the close. */
+  trigger: 'on-start' | 'per-turn' | 'on-end';
   /** The node type string authored on a graph node. */
   type: string;
 }
