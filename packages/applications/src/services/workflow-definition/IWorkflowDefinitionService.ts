@@ -1,9 +1,11 @@
 import { PaginatedQuery } from '../../common';
 import {
   CreateWorkflowDefinitionRequest,
+  NodePromptBindingResponse,
   PaginatedWorkflowDefinitionResponse,
   PublishWorkflowDefinitionRequest,
   SandboxCompileResult,
+  UpdateNodePromptRequest,
   UpdateWorkflowDefinitionRequest,
   WorkflowDefinitionResponse,
   WorkflowNodeRegistryResponse,
@@ -81,6 +83,29 @@ export interface IWorkflowDefinitionService {
    * `NotFoundException` (404-over-403).
    */
   getCompiledConfigForSandboxRun(id: string): Promise<SandboxCompileResult>;
+
+  /**
+   * DD-11 PATH 1 — edit a node's prompt FROM WITHIN THE NODE: mint a new
+   * `PromptVersion` and move THAT node's pin to it, atomically.
+   *
+   * The sibling path — editing the same template from the Prompt management
+   * screen (`IPromptManagementService.updatePromptTemplate`) — creates a
+   * version and moves NO node's pin. That asymmetry is the feature: it is what
+   * stops a shared template from silently changing every workflow that
+   * references it.
+   *
+   * @throws NotFoundException — unknown/cross-tenant definition or template
+   * @throws BadRequestException — PUBLISHED/DEPRECATED row, or a node with no
+   *   `promptTemplateId`
+   */
+  updateNodePrompt(id: string, nodeId: string, dto: UpdateNodePromptRequest): Promise<WorkflowDefinitionResponse>;
+
+  /**
+   * DD-11 — every node's prompt binding plus whether its template has a newer
+   * version. The "new version available" affordance; the necessary complement
+   * to a pin that out-of-band edits deliberately never move.
+   */
+  listPromptBindings(id: string): Promise<NodePromptBindingResponse[]>;
 }
 
 export const IWorkflowDefinitionService = Symbol('IWorkflowDefinitionService');

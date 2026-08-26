@@ -52,29 +52,38 @@ import { SYSTEM_LIVE_SOAP_TEMPLATE_ID, SYSTEM_LIVE_SOAP_VERSION_ID, SYSTEM_TENAN
  * (live-documentation.service.ts). Split out exactly as the source does so the
  * two are diffable line-by-line.
  */
-const SOAP_OUTPUT_INSTRUCTION =
-  'Output EXACTLY these four sections, each header on its own line, in this order, and nothing else:\n\n' +
-  'Subjective: <patient-reported history and symptoms>\n' +
-  'Objective: <exam findings, vitals, labs>\n' +
-  'Assessment: <clinical impressions / diagnoses>\n' +
-  'Plan: <next steps, medications, follow-up>\n\n' +
-  'Leave a section blank after its header if there is nothing yet. Do not invent details or add other sections.';
-
 /**
- * Byte-for-byte copy of `LIVE_SOAP_STABLE_SYSTEM_PREFIX`. This is the stable,
- * prefix-cache-friendly lead-in the live loop emits FIRST on every flush of a
- * session; freezing it per session is what keeps a vLLM / llama.cpp KV cache
- * warm across flushes.
+ * Byte-for-byte copy of `LIVE_DOCUMENT_STABLE_SYSTEM_PREFIX`. This is the
+ * stable, prefix-cache-friendly lead-in the live loop emits FIRST on every
+ * flush of a session; freezing it per session is what keeps a vLLM /
+ * llama.cpp KV cache warm across flushes.
+ *
+ * TASK-810 CHANGED THESE BYTES, deliberately. Two things moved:
+ *
+ *  1. The four SOAP headings are no longer written out here. The live loop now
+ *     COMPILES its instruction from the document-shape catalog
+ *     (`SOAP_NOTE_SHAPE` -> `compileDocumentTemplate`), so the prose a
+ *     prose-only provider reads and the strict `json_schema` a structured
+ *     provider is decoded against are provably the same document. The literal
+ *     they replaced is one of the five places that made a tenant-authored shape
+ *     structurally impossible.
+ *  2. **D-21.** The old text said "Leave a section blank after its header if
+ *     there is nothing yet", paired with a `strict: true` schema in which all
+ *     four sections were `required` -- i.e. the decoder was forbidden from
+ *     emitting anything but a string, so a section nobody discussed got filled
+ *     with invention. The compiled instruction names `null` as the sentinel and
+ *     explicitly refuses the near-misses, and the compiled schema makes the
+ *     property nullable so the model can actually comply.
+ *
+ * Keep this literal byte-identical to the in-code constant: the paired sha256
+ * guards (`system-live-soap-default-checksum.test.ts` here and
+ * `live-soap-prompt-checksum.test.ts` in `@arcaai/applications`) are a
+ * byte-equality proof across a package boundary that cannot be an import.
  */
-export const SYSTEM_LIVE_SOAP_PROMPT_CONTENT =
-  'You are assisting a clinician during a live consultation, maintaining a concise, factual ' +
-  'running clinical note structured as SOAP. ' +
-  SOAP_OUTPUT_INSTRUCTION;
+export const SYSTEM_LIVE_SOAP_PROMPT_CONTENT = "You are assisting a clinician during a live consultation, maintaining a concise, factual running clinical note structured as \"SOAP Note\". Output a single JSON object with EXACTLY these keys, in this order, and nothing else:\n\n  \"subjective\" — Subjective (prose): Patient-reported history and symptoms.\n  \"objective\" — Objective (prose): Exam findings, vitals, labs.\n  \"assessment\" — Assessment (prose): Clinical impressions and diagnoses.\n  \"plan\" — Plan (prose): Next steps, medications, follow-up.\n\nEvery key must be present.\nIf a section was not discussed, set its value to null — do NOT write \"none\", \"N/A\", \"not discussed\", or invent content to fill the heading. Nullable sections: \"subjective\", \"objective\", \"assessment\", \"plan\".\nDo not add sections that are not listed above.\n\nBe concise and faithful to the transcript; never fabricate findings.";
 
 /** Byte-for-byte copy of the `system_prompt` literal in `callText`. */
-export const SYSTEM_LIVE_SOAP_SYSTEM_PROMPT =
-  'You are a clinical documentation assistant generating an in-progress, structured SOAP running note. ' +
-  'Be concise and faithful to the transcript; never fabricate findings.';
+export const SYSTEM_LIVE_SOAP_SYSTEM_PROMPT = "You are a clinical documentation assistant generating an in-progress, structured clinical running note. Be concise and faithful to the transcript; never fabricate findings.";
 
 export const SYSTEM_LIVE_SOAP_TEMPLATE = {
   id: SYSTEM_LIVE_SOAP_TEMPLATE_ID,
@@ -82,7 +91,7 @@ export const SYSTEM_LIVE_SOAP_TEMPLATE = {
   name: 'Live SOAP Running Note — System Default',
   description:
     'Platform default prompt for the live-summarization loop. Byte-identical to the in-code ' +
-    "LIVE_SOAP_STABLE_SYSTEM_PREFIX constant, so the live chain's code-default fail-open tier " +
+    "LIVE_DOCUMENT_STABLE_SYSTEM_PREFIX constant, so the live chain's code-default fail-open tier " +
     'degrades to identical behavior (TASK-635 C1 §4.4).',
   content: SYSTEM_LIVE_SOAP_PROMPT_CONTENT,
   category: 'SYSTEM' as PromptTemplateCategory,

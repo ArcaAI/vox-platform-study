@@ -265,6 +265,15 @@ export const TENANT_SCOPED_MODELS: ReadonlySet<string> = new Set([
   // them, exactly as `DepartmentAgent` does.
   'ConsultationContextSchema',
   'ConsultationContextSchemaVersion',
+  // document-template.prisma — the tenant's clinical-document SHAPE catalog
+  // (TASK-810). BOTH the mutable head and its immutable version snapshots are
+  // ordinary tenant-owned rows, deliberately NOT added to
+  // SYSTEM_SHARED_READ_MODELS: a tenant reads only its own templates, and the
+  // platform's SOAP/discharge shapes reach a tenant by the golden-library CLONE
+  // path, never by a shared read — exactly the posture
+  // `ConsultationContextSchema` records above.
+  'DocumentTemplate',
+  'DocumentTemplateVersion',
   // workflow-definition.prisma — the workflow substrate's persistence floor
   // (TASK-715). Rows ARE versions (no separate head/version split).
   // Deliberately NOT added to SYSTEM_SHARED_READ_MODELS: a tenant reads

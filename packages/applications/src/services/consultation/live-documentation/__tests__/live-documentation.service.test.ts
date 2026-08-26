@@ -186,7 +186,9 @@ function buildDeps(httpMock = buildHttpMock(), opts: BuildDepsOpts = {}) {
   // `in` rather than `??` so an explicit `undefined` still means "absent" —
   // that is how the fail-closed refusal cases are set up.
   const aiTaskDefaultService =
-    'aiTaskDefaultService' in opts ? opts.aiTaskDefaultService : { getEffective: vi.fn().mockResolvedValue({ model: { sourceUri: 'blaze999/Medical-NER' } }) };
+    'aiTaskDefaultService' in opts
+      ? opts.aiTaskDefaultService
+      : { getEffective: vi.fn().mockResolvedValue({ model: { sourceUri: 'blaze999/Medical-NER' } }) };
   const cls = 'cls' in opts ? opts.cls : { run: vi.fn((callback: () => unknown) => callback()), set: vi.fn(), get: vi.fn() };
 
   const service = new LiveDocumentationService(

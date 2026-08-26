@@ -13,11 +13,13 @@ import { AdminResource } from './admin-resource';
 import type { AdminListOptions, AdminListQuery, AdminRequestOptions, IfMatchPrecondition, PaginatedPage } from './admin-resource';
 import type {
   CreateWorkflowDefinitionRequest,
+  NodePromptBindingResponse,
   PublishWorkflowDefinitionRequest,
   SandboxRunCancelResponse,
   SandboxRunResponse,
   SandboxRunStatusResponse,
   StartSandboxRunRequest,
+  UpdateNodePromptRequest,
   UpdateWorkflowDefinitionRequest,
   UpsertWorkflowAssignmentRequest,
   WorkflowAssignmentResponse,
@@ -32,7 +34,7 @@ import type {
  * names the scope in that error's message.
  *
  * Backed by controllers WorkflowAssignmentController, WorkflowDefinitionController, WorkflowSandboxRunController
- * (17 routes). Several controllers sharing one scope share one
+ * (19 routes). Several controllers sharing one scope share one
  * resource on purpose: the scope is the permission surface, so the SDK groups
  * by it rather than by URL.
  */
@@ -276,6 +278,47 @@ export class AdminWorkflowDefinitionResource extends AdminResource {
       path: `admin/workflow-definitions/${encodePathSegment(String(id))}`,
       body,
       ifMatch: options.ifMatch,
+      signal: options.signal,
+      timeoutMs: options.timeoutMs,
+    });
+  }
+
+  /**
+   * Edit a node’s prompt from within the node: mint a new version AND move this node’s pin
+   *
+   * One of DD-11’s TWO update paths, and the only one that moves a pin. Both writes happen in a single transaction: a new immutable `PromptVersion` is minted and THIS node’s `promptVersionNumber` is moved to it. Splitting them would leave either a version nothing points at, or a pin naming a version that was never created. Other nodes bound to the same template are untouched. Only a DRAFT/VALIDATED definition may be edited — a PUBLISHED graph is immutable, so re-pointing a published workflow’s prompt means branching a new draft. `If-Match` (RFC 7232) is REQUIRED.
+   *
+   * `PUT /api/v1/admin/workflow-definitions/{id}/nodes/{nodeId}/prompt` — `WorkflowDefinitionController.updateNodePrompt`.
+   *
+   * Carries `@RequiresIfMatch()`: `options.ifMatch` is required by the type, so the 428 branch is unreachable. On drift the gateway answers 412 (`VersionConflictError.currentVersion`).
+   */
+  updateNodePrompt(
+    id: string,
+    nodeId: string,
+    body: UpdateNodePromptRequest,
+    options: AdminRequestOptions & { ifMatch: IfMatchPrecondition },
+  ): Promise<WorkflowDefinitionResponse> {
+    return this.requestWithPrecondition<WorkflowDefinitionResponse>({
+      method: 'PUT',
+      path: `admin/workflow-definitions/${encodePathSegment(String(id))}/nodes/${encodePathSegment(String(nodeId))}/prompt`,
+      body,
+      ifMatch: options.ifMatch,
+      signal: options.signal,
+      timeoutMs: options.timeoutMs,
+    });
+  }
+
+  /**
+   * Which prompt version each node is pinned to, and whether a newer one exists
+   *
+   * The "new version available" affordance. Editing a prompt template from the Prompt management screen creates a new version and deliberately moves NO node’s pin — that is what stops a shared template from silently changing every workflow that references it. This read is the other half of that guarantee: it makes "this node is behind" visible so it can be re-pinned deliberately, per node. An UNPINNED node is not reported as behind — following the template is a legitimate choice.
+   *
+   * `GET /api/v1/admin/workflow-definitions/{id}/prompt-bindings` — `WorkflowDefinitionController.listPromptBindings`.
+   */
+  listPromptBindings(id: string, options: AdminRequestOptions = {}): Promise<NodePromptBindingResponse[]> {
+    return this.request<NodePromptBindingResponse[]>({
+      method: 'GET',
+      path: `admin/workflow-definitions/${encodePathSegment(String(id))}/prompt-bindings`,
       signal: options.signal,
       timeoutMs: options.timeoutMs,
     });

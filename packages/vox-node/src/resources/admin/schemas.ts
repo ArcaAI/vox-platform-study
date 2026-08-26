@@ -12,7 +12,7 @@
  * Request and response types for the `/api/v1/admin/**` surface, derived from
  * the gateway's own DTOs via `openapi.json`.
  *
- * Only the 370 component schemas the generated surface transitively
+ * Only the 378 component schemas the generated surface transitively
  * reaches are emitted — the document declares more, and importing shapes no
  * method can produce would be noise.
  *
@@ -972,6 +972,21 @@ export interface CreateDepartmentRequest {
   parentDepartmentId?: string;
 }
 
+export interface CreateDocumentTemplateRequest {
+  /** Free-text description. */
+  description?: string;
+  /** Make this the template a generation node resolves when its config names none. */
+  isDefault?: boolean;
+  /** Human-readable name. */
+  name: string;
+  /** Stable tenant-invented identifier, unique per tenant. */
+  slug: string;
+  /** Golden-library provenance: the SYSTEM template slug this was cloned from. */
+  sourceTemplateSlug?: string;
+  /** Whether a golden-library resync may overwrite this template. */
+  templateLocked?: boolean;
+}
+
 export interface CreateGlobalSettingRequest {
   /** Data type of the global setting */
   dataType:
@@ -1730,6 +1745,42 @@ export interface DoctorInfo {
   lastName?: string;
   /** Doctor username */
   username: string;
+}
+
+export interface DocumentTemplateResponse {
+  createdAt: string;
+  description?: string | null;
+  id: string;
+  isDefault: boolean;
+  name: string;
+  /** The version generation serves. Null until the first publish. */
+  pinnedVersionNumber?: number | null;
+  slug: string;
+  sourceTemplateSlug?: string | null;
+  status: 'DRAFT' | 'PUBLISHED' | 'APPROVED';
+  templateLocked: boolean;
+  tenantId: string;
+  updatedAt: string;
+  /** Optimistic-concurrency counter; rendered as the strong `ETag` by the global interceptor. */
+  version: number;
+}
+
+export interface DocumentTemplateVersionResponse {
+  changeReason?: string | null;
+  /** sha256 over the canonical JSON of `shape`. */
+  checksum: string;
+  /** The DERIVED artifacts frozen with the shape: `responseFormat` (the strict json_schema a provider is decoded against), `checklist`, `sectionStates`, and `promptInstruction` for providers that ignore `response_format`. */
+  compiled: Record<string, unknown>;
+  /** Which compiler produced `compiled`. */
+  compilerVersion: string;
+  createdAt: string;
+  createdBy?: string | null;
+  id: string;
+  /** The AUTHORED shape. */
+  shape: Record<string, unknown>;
+  templateId: string;
+  versionNumber: number;
+  versionSkew?: 'IDENTICAL' | 'ADDITIVE' | 'BREAKING';
 }
 
 export interface EditBurdenResponse {
@@ -2650,6 +2701,19 @@ export interface NamedEntityResponse {
   text: string;
 }
 
+export interface NodePromptBindingResponse {
+  /** True when the template has a version newer than this node’s pin. This is the "new version available" affordance: an out-of-band edit on the Prompt management screen deliberately moves NO node’s pin, so each referencing node is re-pinned separately and visibly. */
+  hasNewVersion: boolean;
+  /** The highest version number the template currently has. */
+  latestVersionNumber?: number | null;
+  nodeId: string;
+  nodeType: string;
+  /** The node’s own pin. Null = never pinned. */
+  pinnedVersionNumber?: number | null;
+  promptTemplateId: string;
+  promptTemplateName?: string | null;
+}
+
 export interface NotificationResponse {
   createdAt: string;
   createdBy?: string;
@@ -2981,6 +3045,11 @@ export interface PinConsultationContextSchemaVersionRequest {
 export interface PinDepartmentAgentRequest {
   /** PromptVersion number to pin to, or null to track the latest APPROVED version. */
   versionNumber: number | null;
+}
+
+export interface PinDocumentTemplateVersionRequest {
+  /** The immutable version number to serve. Must already exist. */
+  versionNumber: number;
 }
 
 export interface PipelinePolicyEffectiveResponse {
@@ -3516,6 +3585,15 @@ export interface PublishConsultationContextSchemaRequest {
   changeReason?: string;
   /** The declaration. Each `kinds[].primitive` must be one of STREAM_AUDIO | TEXT | DOCUMENT | IMAGE | STRUCTURED; `fields` is a constrained JSON Schema draft 2020-12 subset (no if/then/else; `oneOf` only with an explicit discriminator). Rejected as 400 with every problem listed. */
   definition: Record<string, unknown>;
+}
+
+export interface PublishDocumentTemplateRequest {
+  /** Acknowledges that this publish BREAKS readers built against the previous version (a removed or renamed section, a changed `form`, a changed STRUCTURED `fields` contract, or a section newly made `required`). Without it a breaking publish is refused with 400 listing each break. */
+  allowBreakingChange?: boolean;
+  /** Why this version was published — recorded immutably on the version row. */
+  changeReason?: string;
+  /** The document SHAPE: `{ schemaVersion: "1.0", title, globalInstruction?, sections[] }`. Each section declares `key`, `title`, `form` (PROSE | BULLETS | STRUCTURED), an optional per-section `instruction`, and `required` (default FALSE — an optional section compiles to a NULLABLE property so the model can record that it was not discussed instead of inventing content). A STRUCTURED section must carry `fields`, a constrained JSON Schema draft 2020-12 subset. Rejected as 400 with every problem listed. */
+  shape: Record<string, unknown>;
 }
 
 export interface PublishWorkflowDefinitionRequest {
@@ -4976,6 +5054,18 @@ export interface UpdateDnaReportRequest {
   styleText?: string;
 }
 
+export interface UpdateDocumentTemplateRequest {
+  description?: string;
+  /** Optimistic-concurrency version; the `If-Match` header overrides it when both are present. */
+  expectedVersion?: number;
+  /** Make (or unmake) this the tenant default. */
+  isDefault?: boolean;
+  name?: string;
+  /** Governance status. Moving to APPROVED records a clinical sign-off; moving back to DRAFT makes the template unservable without discarding its published versions. */
+  status?: 'DRAFT' | 'PUBLISHED' | 'APPROVED';
+  templateLocked?: boolean;
+}
+
 export interface UpdateGlobalSettingRequest {
   /** Data type of the global setting */
   dataType?:
@@ -5196,6 +5286,17 @@ export interface UpdateModelRequest {
     | 'TABULAR_REGRESSION'
     | 'TIME_SERIES_FORECASTING'
     | 'UNKNOWN';
+}
+
+export interface UpdateNodePromptRequest {
+  /** Recorded immutably on the new version row. */
+  changeReason?: string;
+  /** The new prompt body. Minted as a new immutable PromptVersion. */
+  content: string;
+  /** Optimistic-concurrency version of the WORKFLOW DEFINITION; the `If-Match` header overrides it. */
+  expectedVersion?: number;
+  /** Template variables to store alongside the new version. */
+  variables?: Record<string, unknown>;
 }
 
 export interface UpdateNotificationRequest {

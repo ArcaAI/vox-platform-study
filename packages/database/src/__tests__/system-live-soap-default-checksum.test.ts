@@ -36,12 +36,31 @@ import {
 } from '../prisma/db_main/seed/07c-live-agent-defaults';
 
 /**
- * Pinned sha256 of the live-loop prompt constants as of.
+ * Pinned sha256 of the live-loop prompt constants.
  * THE SAME TWO LITERALS appear in the applications-side test — change both or
  * neither.
+ *
+ * RE-PINNED BY TASK-810, deliberately (ticket §4 Task 13). BOTH digests moved
+ * because both prompts moved, and the guard doing its job is exactly why the
+ * change had to be made consciously rather than noticed later:
+ *
+ *  - `SYSTEM_LIVE_SOAP_PROMPT_CONTENT` no longer spells out four SOAP headings.
+ *    The live loop COMPILES its instruction from the document-shape catalog, so
+ *    the prose instruction and the strict `json_schema` provably describe the
+ *    same document. Those four literals were one of the five places that made
+ *    a tenant-authored shape structurally impossible.
+ *  - Both prompts stop asserting that the note IS a SOAP note (DD-1: SOAP is a
+ *    row in the catalog, not a privileged type), and the instruction now names
+ *    `null` as the "not discussed" sentinel instead of telling the model to
+ *    "leave a section blank" while a `strict`, all-`required` schema forbade it
+ *    from doing so (D-21).
+ *
+ * Previous digests, for the record:
+ *   prompt  efec476696dea4490e9041b3560458746b745c0f9c03b17db568811c2ae7132f
+ *   system  25769ec9be08696e4e9fb8576de59e9b12fbef58f0159277eb08f3a2cf921cf3
  */
-const PINNED_PROMPT_SHA256 = 'efec476696dea4490e9041b3560458746b745c0f9c03b17db568811c2ae7132f';
-const PINNED_SYSTEM_PROMPT_SHA256 = '25769ec9be08696e4e9fb8576de59e9b12fbef58f0159277eb08f3a2cf921cf3';
+const PINNED_PROMPT_SHA256 = '8a0703713748220d7e005d9ca52f71957c57df04acdbb0e6333ad3b391382d32';
+const PINNED_SYSTEM_PROMPT_SHA256 = 'd3ce3a7c63fd5d4e6aecc32921759759ab79c8800194a7d6c42ecc2d81a3174c';
 
 const sha256Hex = (content: string): string => createHash('sha256').update(content, 'utf8').digest('hex');
 

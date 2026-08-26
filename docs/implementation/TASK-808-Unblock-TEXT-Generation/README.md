@@ -123,12 +123,15 @@ Then a live consultation on `hope-v2-dev` producing a non-empty `summaryChars` i
 `Live summary flush` log line, and `GET /consultations/:id/summary/latest` returning 200.
 
 ## 5. Definition of Done
-- [ ] All six callers enrich; regression gate green
-- [ ] Live flush shows `textFailed:false` and non-zero `summaryChars`
-- [ ] NLP `/classify/tokens` returns 200 (model loads)
-- [ ] `hope-api` readiness stable over 30 min
-- [ ] Rule 05 DoD updated to five artifacts
-- [ ] No compat file modified outside the OD-9 exemption
+- [x] All six callers enrich; regression gate green — three layers: a **source scan** so a new caller fails on its first commit, a behavioural test, and a **DI-wiring guard** (the injection is `@Optional()`, so a module missing the import silently no-ops and every positional fixture still passes)
+- [ ] **Live flush shows `textFailed:false` and non-zero `summaryChars`** — needs deploy
+- [ ] **NLP `/classify/tokens` returns 200** — needs an **image rebuild**; restarting the pod will not help
+- [ ] **`hope-api` readiness stable over 30 min** — needs deploy
+- [x] Rule 05 DoD updated to five artifacts
+- [x] No compat file modified outside the OD-9 exemption
+
+**Remaining work is entirely deployment**, not code. Durability of the NLP cache is
+[TASK-817](../TASK-817-NLP-Persistent-Model-Cache/README.md).
 
 ## Best Practices — apply to every task here
 
@@ -169,6 +172,44 @@ pnpm api:build && pnpm api:route-manifest && pnpm api:openapi && pnpm api:portal
 Verify with `pnpm api:openapi:check`, `pnpm api:portal:check`, `pnpm --filter @arcaai/vox-node gen:admin:check`.
 **`packages/vox-node/src/resources/admin/**` is GENERATED — never hand-edit.** Only
 `admin-resource.ts` is hand-authored.
+
+## Close-out protocol — MANDATORY (owner directive 2026-08-26, amended by measurement)
+
+**Which path applies depends on where you work. Read the right one.**
+
+### If you work in a WORKTREE
+
+You **cannot** merge into `dev-2.2` yourself, and you must not try. `dev-2.2` is checked out in the
+primary checkout, so git refuses every route into it — `git push . HEAD:dev-2.2` returns
+*"refusing to update checked out branch"*, and it is right to: the primary's index and work tree
+would desync from HEAD. This was measured, not assumed.
+
+1. **Verify your base FIRST — before any other work.** Worktrees have been created off **`dev`**,
+   where `packages/workflow-contract` does not exist at all; two of two agents hit this.
+   Run `git merge-base --is-ancestor $(git rev-parse dev-2.2) HEAD`. Non-zero ⇒ confirm your tree
+   is clean, then `git reset --hard dev-2.2`. Report which you found.
+2. Gates green on your branch, with output pasted.
+3. Commit everything. Leave the worktree and branch **intact**.
+4. Report your branch name, commit SHA, and that the merge is pending. The orchestrator merges from
+   the primary checkout, re-runs the gates there, and only then destroys the worktree and branch.
+
+### If you work in the MAIN CHECKOUT
+
+1. Gates green on your branch, output pasted.
+2. **Merge into `dev-2.2`.** Never `dev`.
+3. **Re-run the affected gates AFTER the merge** — a clean merge is not a passing build; a sibling
+   lane may have moved the base underneath you.
+4. **Delete your branch**, only after confirming the merge is on `dev-2.2`
+   (`git log dev-2.2 --oneline | grep <your-sha>`).
+
+### Stop conditions — never force past these
+
+- A merge that conflicts in a way you cannot resolve with confidence ⇒ **STOP and report**, leaving
+  the branch intact. An abandoned branch is recoverable; a bad merge or a deleted branch is not.
+- Gates failing after a merge ⇒ **STOP and report**. Delete nothing.
+- Never `git worktree remove --force`, never `git worktree prune`, never delete a branch holding
+  commits absent from `dev-2.2`.
+- Never `git stash` — the stash stack is shared repo-wide across every worktree.
 
 ## Agent Brief (self-contained — copy verbatim when dispatching)
 

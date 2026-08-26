@@ -1,13 +1,15 @@
 import {
   CreateWorkflowDefinitionRequest,
   IWorkflowDefinitionService,
+  NodePromptBindingResponse,
   PaginatedQuery,
   PaginatedWorkflowDefinitionResponse,
   PublishWorkflowDefinitionRequest,
+  UpdateNodePromptRequest,
   UpdateWorkflowDefinitionRequest,
   WorkflowDefinitionResponse,
 } from '@arcaai/applications';
-import { Body, Controller, Delete, Get, HttpCode, HttpStatus, Inject, Param, Patch, Post, Query } from '@nestjs/common';
+import { Body, Controller, Delete, Get, HttpCode, HttpStatus, Inject, Param, Patch, Post, Put, Query } from '@nestjs/common';
 import { ApiBearerAuth, ApiHeader, ApiOperation, ApiParam, ApiQuery, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { CanManage, ExpectedVersion, RequiresIfMatch, ForbidApiKey, RequiredSvcScopes } from '../../decorators';
 
@@ -149,5 +151,57 @@ export class WorkflowDefinitionController {
   @ApiResponse({ status: 404, description: 'Not found (or cross-tenant).' })
   async publish(@Param('id') id: string, @Body() request: PublishWorkflowDefinitionRequest): Promise<WorkflowDefinitionResponse> {
     return this.workflowDefinitionService.publish(id, request ?? {});
+  }
+
+  // ============================================================
+  // DD-11 (TASK-810) — prompt binding
+  // ============================================================
+
+  @Get(':id/prompt-bindings')
+  @ApiOperation({
+    summary: 'Which prompt version each node is pinned to, and whether a newer one exists',
+    description:
+      'The "new version available" affordance. Editing a prompt template from the Prompt management screen ' +
+      'creates a new version and deliberately moves NO node’s pin — that is what stops a shared template from ' +
+      'silently changing every workflow that references it. This read is the other half of that guarantee: it ' +
+      'makes "this node is behind" visible so it can be re-pinned deliberately, per node. An UNPINNED node is ' +
+      'not reported as behind — following the template is a legitimate choice.',
+  })
+  @ApiParam({ name: 'id', description: 'WorkflowDefinition id' })
+  @ApiResponse({ status: 200, type: NodePromptBindingResponse, isArray: true })
+  @ApiResponse({ status: 404, description: 'Not found (or cross-tenant).' })
+  async listPromptBindings(@Param('id') id: string): Promise<NodePromptBindingResponse[]> {
+    return this.workflowDefinitionService.listPromptBindings(id);
+  }
+
+  @Put(':id/nodes/:nodeId/prompt')
+  @RequiresIfMatch()
+  @ApiOperation({
+    summary: 'Edit a node’s prompt from within the node: mint a new version AND move this node’s pin',
+    description:
+      'One of DD-11’s TWO update paths, and the only one that moves a pin. Both writes happen in a single ' +
+      'transaction: a new immutable `PromptVersion` is minted and THIS node’s `promptVersionNumber` is moved to ' +
+      'it. Splitting them would leave either a version nothing points at, or a pin naming a version that was ' +
+      'never created. Other nodes bound to the same template are untouched.\n\n' +
+      'Only a DRAFT/VALIDATED definition may be edited — a PUBLISHED graph is immutable, so re-pointing a ' +
+      'published workflow’s prompt means branching a new draft. `If-Match` (RFC 7232) is REQUIRED.',
+  })
+  @ApiHeader({ name: 'If-Match', description: 'Strong validator carrying the workflow definition version the client read.', required: true })
+  @ApiParam({ name: 'id', description: 'WorkflowDefinition id' })
+  @ApiParam({ name: 'nodeId', description: 'Graph node id. Must carry `promptTemplateId`.' })
+  @ApiResponse({ status: 200, type: WorkflowDefinitionResponse })
+  @ApiResponse({ status: 400, description: 'Row is PUBLISHED/DEPRECATED, or the node references no prompt template.' })
+  @ApiResponse({ status: 404, description: 'Definition or template not found (or cross-tenant).' })
+  @ApiResponse({ status: 428, description: 'If-Match header is required.' })
+  async updateNodePrompt(
+    @Param('id') id: string,
+    @Param('nodeId') nodeId: string,
+    @Body() request: UpdateNodePromptRequest,
+    @ExpectedVersion() expectedFromHeader: number | undefined,
+  ): Promise<WorkflowDefinitionResponse> {
+    // Header takes precedence over the body when both are present — the house
+    // precedence (`department.controller.ts#update`).
+    const effective = expectedFromHeader !== undefined ? { ...request, expectedVersion: expectedFromHeader } : request;
+    return this.workflowDefinitionService.updateNodePrompt(id, nodeId, effective);
   }
 }
