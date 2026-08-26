@@ -19,7 +19,7 @@ from typing import Any, Literal
 
 from temporalio import workflow
 from temporalio.common import RetryPolicy
-from temporalio.exceptions import ActivityError
+from temporalio.exceptions import ActivityError, ApplicationError
 
 with workflow.unsafe.imports_passed_through():
     from harness.temporal.interpreter import caps
@@ -103,6 +103,12 @@ class WorkflowInterpreter:
         # stage partitioning already guarantees this), so same-stage fan-out nodes never race
         # each other reading/writing this cache.
         self._node_outputs: dict[str, dict[str, Any]] = {}
+        # `node_id -> node type`, built from the compiled config before the walk starts.
+        # `_resolve_bound_inputs` needs the PRODUCER's type to look its declared output sockets up
+        # in `NODE_REGISTRY` (TASK-809 OD-15); `_node_outputs` alone is keyed by id and says
+        # nothing about which node type produced the dict. Pure derived state, so it is replay-safe
+        # for the same reason `_stages` is.
+        self._node_types: dict[str, str] = {}
 
     def _next_seq(self) -> int:
         """Allocate the next monotonic trajectory-seq BASE (strided; deterministic)."""
@@ -120,6 +126,15 @@ class WorkflowInterpreter:
             start_to_close_timeout=_CONFIG_LOAD_TIMEOUT,
             retry_policy=_CONFIG_LOAD_RETRY,
         )
+
+        # Index every node's TYPE before the walk. Gates are included: the compiler lifts them out
+        # of `stages` into `gates`, so a graph that names one as an edge source would otherwise
+        # look like an unregistered producer.
+        for indexed_stage in config.stages:
+            for indexed_node in indexed_stage.nodes:
+                self._node_types[indexed_node.node_id] = indexed_node.type
+        for indexed_gate in config.gates:
+            self._node_types.setdefault(indexed_gate.node_id, "consultation.hitlGate")
 
         run_failed = False
         run_degraded = False
@@ -166,9 +181,15 @@ class WorkflowInterpreter:
         return InterpreterResult(run_id=inp.run_id, status=status, stages=self._stages)
 
     async def _run_stage(self, stage: CompiledStage, inp: InterpreterInput) -> list[NodeResult]:
-        """All-settled join: every node's own coroutine already catches its own exceptions
-        (§4/§5), so plain ``asyncio.gather`` (no ``return_exceptions``) is sufficient — nothing
-        here can raise past a single node's own dispatch wrapper."""
+        """All-settled join: every node's own coroutine catches its own ACTIVITY exceptions
+        (§4/§5), so plain ``asyncio.gather`` (no ``return_exceptions``) is sufficient for the
+        outcomes §4 defines.
+
+        ONE thing does deliberately escape (TASK-809 OD-15): ``_resolve_bound_inputs`` raises a
+        non-retryable ``ApplicationError`` when a graph binds a socket the producing node type does
+        not declare. That is a CONTRACT violation rather than a node outcome — there is no honest
+        value to thread and no retry that would change it — so it fails the run loudly instead of
+        being flattened into a per-node ``DEGRADED``."""
         return list(
             await asyncio.gather(
                 *(self._dispatch_node(node, inp, stage.stage_index) for node in stage.nodes)
@@ -180,25 +201,51 @@ class WorkflowInterpreter:
         (the compiler-derived edge bindings) — see `NodeActivityInput.bound_inputs`'s docstring
         for the full design rationale. Keyed by `toPort`; a later binding with the same `toPort`
         overwrites an earlier one (last-write-wins — v1 does not detect/reject the collision, the
-        same "no dynamic sub-graph, wire it and see" posture as everything else here). A
-        predecessor that produced no output (DEGRADED, or a SUCCEEDED activity that legitimately
-        returned `output=None`) contributes nothing for that binding — never a `KeyError`, and
-        never a fabricated value.
+        same "no dynamic sub-graph, wire it and see" posture as everything else here).
+
+        ## The socket -> output-key resolution (TASK-809 OD-15, option A)
+
+        An edge's ``fromPort`` is an AUTHORING handle — ``out``, ``entities``, ``contextItemId`` —
+        and NOT a key in the producing activity's output dict. No activity in this platform emits
+        a key called ``"out"``, so until OD-15 the real code path here was the whole-object
+        fallback: hand the downstream node the ENTIRE predecessor output. That is the untyped
+        bundle the port vocabulary exists to abolish, and it is why a node had to grope around
+        inside its bound inputs looking for the key it wanted.
+
+        Each socket now declares the key it carries (``NodeSpec.output_keys``, mirrored from the
+        TypeScript port table through the committed parity fixture), which gives three outcomes,
+        deliberately distinct:
+
+        * **``None`` — a `control` socket.** Ordering, no payload. Binds nothing.
+        * **a key that is absent from THIS run's output.** A runtime data condition (a DEGRADED
+          predecessor stores no output at all; ``consultation.captureBinding`` declares a
+          transcript socket its activity does not populate yet). Contributes nothing — never a
+          ``KeyError``, and never a fabricated value, exactly as before.
+        * **a port the producer does not declare at all.** A CONTRACT violation: the graph names
+          a socket that does not exist, and no honest value can be threaded for it. Raises,
+          naming the node and the port, instead of quietly substituting something.
         """
         bound: dict[str, Any] = {}
         for binding in node.inputs:
-            upstream_output = self._node_outputs.get(binding.from_node_id)
-            if upstream_output is None:
+            upstream_type = self._node_types.get(binding.from_node_id)
+            spec = NODE_REGISTRY.get(upstream_type) if upstream_type is not None else None
+            if spec is None or binding.from_port not in spec.output_keys:
+                raise ApplicationError(
+                    f"unresolved input binding: node {node.node_id!r} ({node.type}) binds "
+                    f"{binding.to_port!r} from {binding.from_node_id!r} "
+                    f"({upstream_type or 'unknown node type'}) port {binding.from_port!r}, "
+                    "which is not a declared output socket of that node type",
+                    type="unresolved_input_binding",
+                    non_retryable=True,
+                )
+            output_key = spec.output_keys[binding.from_port]
+            if output_key is None:
+                # An ORDERING edge. The stage partitioning already carries the dependency.
                 continue
-            if binding.from_port in upstream_output:
-                bound[binding.to_port] = upstream_output[binding.from_port]
-            else:
-                # This palette's authored graphs use the trivial single-port convention
-                # (`fromPort: 'out'` / `toPort: 'in'` on every edge — see
-                # `packages/database/.../seed/21-workflow-definition.ts`), under which no
-                # predecessor output dict has a literal `'out'` key. Falling back to the WHOLE
-                # predecessor output dict is what makes that convention actually work.
-                bound[binding.to_port] = upstream_output
+            upstream_output = self._node_outputs.get(binding.from_node_id)
+            if upstream_output is None or output_key not in upstream_output:
+                continue
+            bound[binding.to_port] = upstream_output[output_key]
         return bound
 
     async def _dispatch_node(

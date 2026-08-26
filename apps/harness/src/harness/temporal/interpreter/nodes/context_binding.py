@@ -93,4 +93,10 @@ async def interpreter_context_binding(payload: NodeActivityInput) -> NodeActivit
         return NodeActivityResult(status="DEGRADED", reason="; ".join(problems))
 
     await record_and_flush(payload, status=STATUS_OK, started=started)
-    return NodeActivityResult(status="SUCCEEDED", output=bound)
+    # TASK-809 OD-15 — the bound kinds are published UNDER `context`, not as the whole output
+    # dict. This node's `out` socket is typed `context<schemaRef>`, and every data socket must
+    # name the output key it carries so `_resolve_bound_inputs` can thread it: `{kindKey: value}`
+    # at the top level offered no such key, which left only the whole-object fallback — the
+    # untyped bundle the port vocabulary exists to abolish. Downstream is unaffected in
+    # substance: `generate.text` receives exactly the same dict, now on a typed socket.
+    return NodeActivityResult(status="SUCCEEDED", output={"context": bound})

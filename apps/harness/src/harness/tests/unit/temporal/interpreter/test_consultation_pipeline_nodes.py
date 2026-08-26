@@ -295,8 +295,11 @@ class TestRetrieveEvidence:
             _payload("consultation.retrieveEvidence")
         )
         assert result.status == "SUCCEEDED"
-        assert result.output["chunkIds"] == ["k1", "k2"]
-        assert result.output["text"] == "[[chunk:1]] evidence"
+        # TASK-809 OD-15: published under the `context` key this node's `context<schemaRef>`
+        # output socket declares, so a bound consumer receives a context OBJECT rather than a
+        # flat dict with no key for the socket to name.
+        assert result.output["context"]["chunkIds"] == ["k1", "k2"]
+        assert result.output["context"]["text"] == "[[chunk:1]] evidence"
 
     @pytest.mark.asyncio
     async def test_degraded_backend_degrades_with_partial_output(self, monkeypatch):
@@ -309,7 +312,7 @@ class TestRetrieveEvidence:
             _payload("consultation.retrieveEvidence")
         )
         assert result.status == "DEGRADED"
-        assert result.output is not None and result.output["chunkCount"] == 0
+        assert result.output is not None and result.output["context"]["chunkCount"] == 0
 
     @pytest.mark.asyncio
     async def test_unreachable_retrieval_degrades_never_raises(self, monkeypatch):
@@ -417,7 +420,12 @@ class TestSensors:
             _payload("consultation.sensors", bound_inputs={"in": {"text": "the draft note"}})
         )
         assert result.status == "SUCCEEDED"
-        assert result.output["scores"] == {"coverage": 0.9}
+        # TASK-809 OD-15: the assurance record is ONE object on the `verdict` socket — a flat
+        # shape would have let a single-key binding carry `scores` and drop `citationsMap`.
+        assert result.output["verdict"]["scores"] == {"coverage": 0.9}
+        assert result.output["verdict"]["citationsMap"] == {"c1": ["k1"]}
+        # `text` stays at the top level: it is the `document` PASSTHROUGH socket, which is how
+        # the note reaches persistence without routing around this verifier (WF-CONS-011).
         assert result.output["text"] == "the draft note"
 
     @pytest.mark.asyncio
@@ -479,7 +487,7 @@ class TestInferentialSensors:
             _payload("consultation.inferentialSensors", bound_inputs={"in": {"text": "note"}})
         )
         assert result.status == "DEGRADED"
-        assert result.output["reducedAssurance"] is True
+        assert result.output["verdict"]["reducedAssurance"] is True
 
     @pytest.mark.asyncio
     async def test_clean_pass_succeeds_without_reduced_assurance(self, monkeypatch):
@@ -497,7 +505,7 @@ class TestInferentialSensors:
             _payload("consultation.inferentialSensors", bound_inputs={"in": {"text": "note"}})
         )
         assert result.status == "SUCCEEDED"
-        assert result.output["reducedAssurance"] is False
+        assert result.output["verdict"]["reducedAssurance"] is False
 
     @pytest.mark.asyncio
     async def test_no_bound_note_degrades(self):
