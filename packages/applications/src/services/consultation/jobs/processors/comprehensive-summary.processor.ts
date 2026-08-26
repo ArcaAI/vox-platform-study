@@ -26,6 +26,7 @@ import { encryptPhiFields } from '../../../../common';
 import { buildTextGeneratePayload, mapTextGenerateResponse } from '../../summary/text-generate';
 import { buildGuardrailUsageInput, buildLlmUsageInput, parseTextUsageDetail, type TextUsageDetail } from '../../summary/text-usage';
 import { HarnessPolicyService } from '../../../harness-policy/harness-policy.service';
+import { TextRequestEnrichmentService } from '../../../text-request/text-request-enrichment.service';
 import { ConfigResolver } from '../../../config-resolver';
 import { IActiveUserContext } from '../../../../interfaces';
 import { TENANTLESS, assertEqualTenants, createWorkerSession, internalServiceHeaders, resolveInternalAccessToken } from '../../../../common';
@@ -113,6 +114,12 @@ export class ComprehensiveSummaryProcessor extends WorkerHost {
     // this processor's generation body always runs regardless. Optional +
     // trailing so existing positional fixtures keep compiling.
     @Optional() @Inject(INoteGenerationService) private readonly noteGenerationService?: INoteGenerationService,
+    // TASK-808 — the SHARED TEXT enrichment path. Since TASK-799 lane B
+    // (`70eec34d5`) removed TEXT's per-provider env plane, a `/api/v1/generate`
+    // body with no `provider_overrides` entry fails closed with 503
+    // PROVIDER_CREDENTIALS_MISSING. Optional + trailing so existing positional
+    // fixtures keep their arity.
+    @Optional() @Inject(TextRequestEnrichmentService) private readonly textRequestEnrichment?: TextRequestEnrichmentService,
   ) {
     super();
     this.textServiceUrl = this.configService.get<string>('TEXT_URL') ?? 'http://localhost:8862';
@@ -423,6 +430,12 @@ export class ComprehensiveSummaryProcessor extends WorkerHost {
         promptResolvedFrom: assembledPrompt.resolvedFrom,
         promptHyperparameters: assembledPrompt.hyperparameters,
       });
+      // TASK-808 — inject the tenant's resolved provider credential through the
+      // ONE shared implementation. Without it TEXT fails closed with 503
+      // PROVIDER_CREDENTIALS_MISSING (TASK-799 lane B removed its env plane).
+      // `process()` rebinds `tenantId` into a fresh CLS scope, which is where
+      // the resolver reads it from.
+      await this.textRequestEnrichment?.applyTenantProviderOverrides(textPayload as { provider?: string });
       // D-D: the ONE shared `INTERNAL_ACCESS_TOKEN` (`TEXT_SERVICE_TOKEN` is only the
       // migration fallback). TASK-737: `X-Tenant-Id` is MANDATORY — `tenantId` is in
       // scope and was used for `resolveTextSelection` one line above, then dropped.

@@ -128,10 +128,27 @@ ENV PYTHONPATH="/app/src" \
     OTEL_TRACES_ENABLED=true \
     OTEL_METRICS_ENABLED=true \
     LOG_LEVEL=info \
-    LOG_CONSOLE_JSON_FORMAT=true
+    LOG_CONSOLE_JSON_FORMAT=true \
+    HF_HOME=/app/.cache/huggingface
 
 COPY --from=builder --chown=hope:hope /app/.venv /app/.venv
 COPY --chown=hope:hope apps/nlp/src ./src
+
+# TASK-808 — HF_HOME must point somewhere the non-root `hope` user can write.
+# `hope-python-base` creates that user with `--no-create-home`, so $HOME
+# (/home/hope) does NOT EXIST, and huggingface_hub's default
+# `~/.cache/huggingface` therefore resolved to an uncreatable path: every token
+# classification model load failed on `hope-v2-dev` with
+# `PermissionError at /home/hope when downloading blaze999/Medical-NER`, and
+# `/classify/tokens` never came up. `nlp/core/config.py` reads HF_HOME with an
+# EMPTY default and only re-exports it when non-empty, so nothing in the service
+# supplies this — it has to be the image, exactly as it already is for
+# `apps/guardrail` (/app/.hf-cache) and `apps/tts` (/app/.cache/huggingface).
+#
+# Weights are fetched on first use and live in the container's writable layer,
+# so they are re-downloaded on every pod restart. Mount a persistent volume at
+# this path to make the pull survive restarts — same note as the two siblings.
+RUN mkdir -p /app/.cache/huggingface && chown -R hope:hope /app/.cache
 
 # ── bake build identity, LAST layer ───────────────────────────
 # These args change on every commit; kept below every COPY/RUN so they never

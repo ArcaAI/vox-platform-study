@@ -24,6 +24,7 @@ import { IActiveUserContext } from '../../../interfaces';
 import { PromptAssemblyService } from '../prompt/prompt-assembly.service';
 import { SecretsService } from '../../baseServices/_meta/secrets';
 import { HarnessPolicyService } from '../../harness-policy/harness-policy.service';
+import { TextRequestEnrichmentService } from '../../text-request/text-request-enrichment.service';
 import { ConfigResolver } from '../../config-resolver';
 import type { PromptResolutionTier } from '../prompt/prompt-resolution.service';
 import { INoteGenerationService, GenerationTrigger } from '../note-generation';
@@ -86,6 +87,12 @@ export class ChainSummaryService extends BaseService {
     // the single seam and get the decision logged. Optional + trailing so
     // existing positional fixtures keep compiling.
     @Optional() @Inject(INoteGenerationService) private readonly noteGenerationService?: INoteGenerationService,
+    // TASK-808 — the SHARED TEXT enrichment path. Since TASK-799 lane B
+    // (`70eec34d5`) removed TEXT's per-provider env plane, a `/api/v1/generate`
+    // body with no `provider_overrides` entry fails closed with 503
+    // PROVIDER_CREDENTIALS_MISSING. Optional + trailing so existing positional
+    // fixtures keep their arity.
+    @Optional() @Inject(TextRequestEnrichmentService) private readonly textRequestEnrichment?: TextRequestEnrichmentService,
   ) {
     super(eventEmitter, clsService, ResourceType.ContextItem);
     this.textServiceUrl = this.configService.get<string>('TEXT_URL') ?? 'http://localhost:8862';
@@ -638,6 +645,12 @@ export class ChainSummaryService extends BaseService {
         options = { textProvider: provider, textModel: model, ...payload.options };
       }
       const textPayload = buildTextGeneratePayload(payload.assembledPrompt, options, payload.context);
+      // TASK-808 — inject the tenant's resolved provider credential through the
+      // ONE shared implementation (tenant → SYSTEM cascade, `funding` label
+      // carried so metering is derived from the supplying row rather than
+      // stamped here). Without it TEXT fails closed with 503
+      // PROVIDER_CREDENTIALS_MISSING — TASK-799 lane B removed its env plane.
+      await this.textRequestEnrichment?.applyTenantProviderOverrides(textPayload as { provider?: string });
       // D-D: the ONE shared `INTERNAL_ACCESS_TOKEN` (`TEXT_SERVICE_TOKEN` is only
       // the migration fallback). TASK-737: `X-Tenant-Id` is MANDATORY — the tenant
       // was null-checked at the top of this method and then DROPPED, so Text

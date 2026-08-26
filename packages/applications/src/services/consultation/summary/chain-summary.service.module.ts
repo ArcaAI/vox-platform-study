@@ -11,6 +11,7 @@ import { ConfigResolverModule } from '../../config-resolver';
 import { UsageLedgerServiceModule } from '../../usageLedger/usage-ledger.service.module';
 import { NoteGenerationServiceModule } from '../note-generation/note-generation.service.module';
 import { GateEditMiningServiceModule } from '../../gate-edit-mining/gate-edit-mining.service.module';
+import { TextRequestServiceModule } from '../../text-request/text-request.service.module';
 
 @Module({
   // HarnessPolicyServiceModule supplies the TEXT-selection resolver.
@@ -24,6 +25,10 @@ import { GateEditMiningServiceModule } from '../../gate-edit-mining/gate-edit-mi
     HttpModule,
     PromptResolutionServiceModule,
     HarnessPolicyServiceModule,
+    // TASK-808 — the shared TEXT credential/profile enrichment. TEXT holds no
+    // endpoint or credential of its own; without a `provider_overrides` entry it
+    // fails closed with 503 PROVIDER_CREDENTIALS_MISSING.
+    TextRequestServiceModule,
     ConfigResolverModule,
     UsageLedgerServiceModule,
     // TASK-704 seam — always resolves to 'legacy' for this trigger (no

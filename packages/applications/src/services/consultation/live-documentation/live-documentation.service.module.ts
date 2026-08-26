@@ -16,6 +16,7 @@ import { AgentTrajectoryServiceModule } from '../../agent-trajectory/agent-traje
 import { EffectiveSettingsModule } from '../../settings-registry/effective-settings.module';
 import { AiTaskDefaultServiceModule } from '../../ai-task-default/ai-task-default.service.module';
 import { LiveAgentResolutionServiceModule } from '../prompt/live-agent-resolution.service.module';
+import { TextRequestServiceModule } from '../../text-request/text-request.service.module';
 
 /**
  * Live Documentation Service Module (Clinical Workflow Playground — WS1).
@@ -57,6 +58,10 @@ import { LiveAgentResolutionServiceModule } from '../prompt/live-agent-resolutio
     RedisCacheModule.register(),
     StreamingSessionServiceModule,
     HarnessPolicyServiceModule,
+    // TASK-808 — the shared TEXT credential/profile enrichment. TEXT holds no
+    // endpoint or credential of its own; without a `provider_overrides` entry it
+    // fails closed with 503 PROVIDER_CREDENTIALS_MISSING.
+    TextRequestServiceModule,
     AgentTrajectoryServiceModule,
     // EffectiveSettingsModule resolves the @Optional
     // EffectiveSettingsService so `agentic.context.*` is governed by the control

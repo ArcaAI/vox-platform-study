@@ -60,6 +60,7 @@ import { IEntitlementsService } from '../../entitlements/IEntitlementsService';
 import { IBillingService } from '../../billing/IBillingService';
 import { HarnessGatewayService } from '../harness/harness-gateway.service';
 import { HarnessPolicyService } from '../../harness-policy/harness-policy.service';
+import { TextRequestEnrichmentService } from '../../text-request/text-request-enrichment.service';
 import type { PromptResolutionTier } from '../prompt/prompt-resolution.service';
 import type { PersistedLiveAgentLineage } from '../live-documentation/live-agent.port';
 import { resolveAgentFinalizeSelection } from '../prompt/agent-finalize-llm';
@@ -285,6 +286,12 @@ export class SummaryService extends BaseService implements ISummaryService {
     // ticket. Trailing also keeps every existing positional
     // `new SummaryService(...)` fixture compiling untouched.
     @Optional() @Inject(IGateEditMiningQueue) private readonly gateEditMiningQueue?: IGateEditMiningQueue,
+    // TASK-808 — the SHARED TEXT enrichment path. Since TASK-799 lane B
+    // (`70eec34d5`) removed TEXT's per-provider env plane, a `/api/v1/generate`
+    // body with no `provider_overrides` entry fails closed with 503
+    // PROVIDER_CREDENTIALS_MISSING. Optional + trailing so existing positional
+    // fixtures keep their arity.
+    @Optional() @Inject(TextRequestEnrichmentService) private readonly textRequestEnrichment?: TextRequestEnrichmentService,
   ) {
     super(eventEmitter, clsService, ResourceType.ContextItem);
     this.textServiceUrl = this.configService.get<string>('TEXT_URL') ?? 'http://localhost:8862';
@@ -1625,6 +1632,15 @@ export class SummaryService extends BaseService implements ISummaryService {
    */
   private async executeTextGenerate(payload: TextCallPayload, options: Record<string, unknown> | undefined): Promise<TextCallResult> {
     const textPayload = buildTextGeneratePayload(payload.assembledPrompt, options, payload.context);
+    // TASK-808 (OD-9 exemption: credential injection ONLY) — this is the
+    // FINALIZE path, whose output is the note a clinician signs, and it reached
+    // TEXT with no `provider_overrides` entry at all, so every finalize 503'd
+    // with PROVIDER_CREDENTIALS_MISSING once TASK-799 lane B (`70eec34d5`)
+    // removed TEXT's per-provider env plane. Injected through the ONE shared
+    // implementation so the tenant → SYSTEM cascade and the `funding` label
+    // that derives metering both apply. Awaited BEFORE the repair loop below so
+    // the original and the corrective retry post byte-identical credentials.
+    await this.textRequestEnrichment?.applyTenantProviderOverrides(textPayload as { provider?: string });
     // D-D: the ONE shared `INTERNAL_ACCESS_TOKEN` (`TEXT_SERVICE_TOKEN` is only the
     // migration fallback). TASK-737: `X-Tenant-Id` is MANDATORY on this hop — this
     // is the FINALIZE path, whose output is the note a clinician signs, and it
