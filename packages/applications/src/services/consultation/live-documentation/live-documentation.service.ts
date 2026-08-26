@@ -46,7 +46,16 @@ import {
 // TASK-795 RC-1 — the harness inbound contract for interpreter summary text. Type-only: this
 // service consumes the shape, never the harness module's runtime code.
 import type { HarnessLiveSummaryRequest, HarnessRealtimeDeliveryAck } from '../harness/dto/realtime-delivery.dto';
-import { LIVE_SOAP_RESPONSE_FORMAT, buildRunningSummary, parseSoapJson, parseSoapSections } from './soap-parser';
+import { buildRunningSummary, parseDocumentJson, parseDocumentSections } from './document-shape-parser';
+// TASK-810 — the clinical-document SHAPE catalog. The live loop no longer knows
+// what a SOAP note is: it resolves a COMPILED template once per session and
+// reads its strict `responseFormat`, its section list and its prose instruction
+// off that. Type-only for the artifacts, value import for the platform default
+// (the fail-open tier) and the resolver port.
+import type { CompiledDocumentTemplate } from '../../document-template/document-template-compiler';
+import { compileDocumentTemplate } from '../../document-template/document-template-compiler';
+import { SOAP_NOTE_SHAPE, SOAP_NOTE_SLUG } from '../../document-template/platform-document-shapes';
+import { IDocumentTemplateService, type IDocumentTemplateService as IDocumentTemplateServicePort, type ResolvedDocumentTemplate } from '../../document-template/IDocumentTemplateService';
 import {
   DEFAULT_LIVE_TOOL_PLAN,
   ILiveAgentResolver,
@@ -85,14 +94,40 @@ const TRANSCRIPT_PARTS_HARD_CAP = 50_000;
  */
 const LIVE_DOC_CONTEXT_TYPES = new Set<string>([ContextItemType.WORKNOTE, ContextItemType.CASE_NOTE, ContextItemType.ATTACHMENT]);
 
-/** Shared SOAP output instruction — describes the four sections for prose-only providers. */
-const SOAP_OUTPUT_INSTRUCTION =
-  'Output EXACTLY these four sections, each header on its own line, in this order, and nothing else:\n\n' +
-  'Subjective: <patient-reported history and symptoms>\n' +
-  'Objective: <exam findings, vitals, labs>\n' +
-  'Assessment: <clinical impressions / diagnoses>\n' +
-  'Plan: <next steps, medications, follow-up>\n\n' +
-  'Leave a section blank after its header if there is nothing yet. Do not invent details or add other sections.';
+/**
+ * TASK-810 — the PLATFORM template, compiled once at module load.
+ *
+ * This is the FAIL-OPEN tier: what a session serves when no tenant template can
+ * be resolved. It replaces the former `SOAP_OUTPUT_INSTRUCTION` constant, which
+ * hardcoded four headings as a string literal and was therefore the reason a
+ * tenant could not author a discharge summary at all. The four SOAP sections
+ * still exist — as a ROW in the catalog (`SOAP_NOTE_SHAPE`), compiled by the
+ * same compiler as anyone else's shape (DD-1).
+ */
+const PLATFORM_TEMPLATE: ResolvedDocumentTemplate = Object.freeze({
+  templateId: null,
+  slug: SOAP_NOTE_SLUG,
+  versionNumber: null,
+  documentTemplateVersionId: null,
+  compiled: compileDocumentTemplate(SOAP_NOTE_SHAPE),
+});
+
+/**
+ * The stable, prefix-cache-friendly lead-in for ONE template.
+ *
+ * Derived rather than written out, so the prose instruction a prose-only
+ * provider receives and the strict `json_schema` a structured provider is
+ * decoded against are provably the same document. The hand-maintained pair they
+ * replace could drift, and a drift there is silent: the model is told one thing
+ * and constrained to another.
+ */
+function buildStableUserPrefix(compiled: CompiledDocumentTemplate): string {
+  return (
+    'You are assisting a clinician during a live consultation, maintaining a concise, factual ' +
+    `running clinical note structured as "${compiled.title}". ` +
+    compiled.promptInstruction
+  );
+}
 
 /**
  * stable, prefix-cache-friendly lead-in for the live TEXT
@@ -103,10 +138,7 @@ const SOAP_OUTPUT_INSTRUCTION =
  * in the order `[stable system] + [transcript-so-far] + [current note] +
  * [delta instruction]`, keeping the variable, mode-specific directive LAST.
  */
-export const LIVE_SOAP_STABLE_SYSTEM_PREFIX =
-  'You are assisting a clinician during a live consultation, maintaining a concise, factual ' +
-  'running clinical note structured as SOAP. ' +
-  SOAP_OUTPUT_INSTRUCTION;
+export const LIVE_DOCUMENT_STABLE_SYSTEM_PREFIX = buildStableUserPrefix(PLATFORM_TEMPLATE.compiled);
 
 /**
  * The TEXT `system_prompt` for the live running-note call.
@@ -118,8 +150,8 @@ export const LIVE_SOAP_STABLE_SYSTEM_PREFIX =
  * Exported because it is now tier 3 of the live chain: the fail-open source a
  * session freezes when no governed template can be resolved.
  */
-export const LIVE_SOAP_SYSTEM_PROMPT =
-  'You are a clinical documentation assistant generating an in-progress, structured SOAP running note. ' +
+export const LIVE_DOCUMENT_SYSTEM_PROMPT =
+  'You are a clinical documentation assistant generating an in-progress, structured clinical running note. ' +
   'Be concise and faithful to the transcript; never fabricate findings.';
 
 /**
@@ -263,6 +295,17 @@ interface LiveSession {
    */
   agentPromise?: Promise<FrozenLiveAgentSnapshot>;
   agentSnapshot?: FrozenLiveAgentSnapshot;
+  /**
+   * The session's FROZEN document template (TASK-810).
+   *
+   * Resolved once at `start()` and cached exactly like `agentSnapshot`, and for
+   * the same reason: a tenant publishing a new template version mid-consultation
+   * must not change the shape of the note already being produced. The pinned
+   * `documentTemplateVersionId` travels with it so anything generated can be
+   * stamped with the version it was constrained by.
+   */
+  templatePromise?: Promise<ResolvedDocumentTemplate>;
+  templateSnapshot?: ResolvedDocumentTemplate;
 }
 
 /**
@@ -449,6 +492,11 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
     // highest-volume TEXT hop in the platform, was doing on every flush.
     // Optional + trailing so existing positional fixtures keep their arity.
     @Optional() @Inject(TextRequestEnrichmentService) private readonly textRequestEnrichment?: TextRequestEnrichmentService,
+    // TASK-810 — the clinical-document SHAPE catalog. Optional + trailing so
+    // existing positional fixtures keep their arity; ABSENT ⇒ every session
+    // serves the compiled PLATFORM shape, i.e. behavior equivalent to the
+    // hardcoded four-section format this ticket replaced.
+    @Optional() @Inject(IDocumentTemplateService) private readonly documentTemplateService?: IDocumentTemplateServicePort,
   ) {
     this.nlpServiceUrl = this.configService.get<string>('NLP_URL') ?? 'http://localhost:8864';
     this.textServiceUrl = this.configService.get<string>('TEXT_URL') ?? 'http://localhost:8862';
@@ -614,6 +662,10 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
     // `start()` stays synchronous for the recording controller; `flush()` awaits
     // the memoized promise, which is already settled by the second flush.
     session.agentPromise = this.ensureAgentResolved(session);
+    // Same fire-and-forget shape, same reason (TASK-810): freeze the document
+    // shape at session start so a mid-consultation publish cannot change the
+    // note being produced. `flush()` awaits the memoized promise.
+    session.templatePromise = this.ensureTemplateResolved(session);
 
     this.logger.log({ message: 'Live documentation session started', consultationId: params.consultationId, sessionId: params.sessionId });
   }
@@ -639,8 +691,8 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
       agentName: null,
       promptTemplateId: null,
       promptVersionNumber: null,
-      stableUserPrefix: LIVE_SOAP_STABLE_SYSTEM_PREFIX,
-      systemPrompt: LIVE_SOAP_SYSTEM_PROMPT,
+      stableUserPrefix: LIVE_DOCUMENT_STABLE_SYSTEM_PREFIX,
+      systemPrompt: LIVE_DOCUMENT_SYSTEM_PROMPT,
       toolPlan: DEFAULT_LIVE_TOOL_PLAN,
       liveLlm: null,
       frozenAt: new Date().toISOString(),
@@ -723,6 +775,46 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
       const snapshot = this.codeDefaultAgentSnapshot();
       session.agentSnapshot = snapshot;
       return snapshot;
+    }
+  }
+
+  /**
+   * Resolve and FREEZE the session's document template (TASK-810).
+   *
+   * Deliberately simpler than `ensureAgentResolved`: there is no Redis mirror
+   * and no durable lineage re-pin, because a template is not an identity that a
+   * second instance must reconstruct byte-identically — it is a pinned row that
+   * any instance resolves to the same answer by asking the catalog. Adding a
+   * mirror would buy nothing and add a second thing that can go stale.
+   *
+   * NEVER throws. `resolveForGeneration` already fails open to the platform
+   * shape; this catch is the belt-and-braces half for a broken injection.
+   */
+  private async ensureTemplateResolved(session: LiveSession): Promise<ResolvedDocumentTemplate> {
+    if (!this.documentTemplateService) {
+      session.templateSnapshot = PLATFORM_TEMPLATE;
+      return PLATFORM_TEMPLATE;
+    }
+
+    try {
+      const resolved = await this.documentTemplateService.resolveForGeneration(session.tenantId);
+      session.templateSnapshot = resolved;
+      this.logger.log({
+        message: 'Froze the live document template for this session',
+        consultationId: session.consultationId,
+        templateId: resolved.templateId,
+        slug: resolved.slug,
+        versionNumber: resolved.versionNumber,
+      });
+      return resolved;
+    } catch (error) {
+      this.logger.error({
+        message: 'Document template resolution failed — falling open to the platform shape',
+        consultationId: session.consultationId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      session.templateSnapshot = PLATFORM_TEMPLATE;
+      return PLATFORM_TEMPLATE;
     }
   }
 
@@ -1004,6 +1096,13 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
     // `ensureAgentResolved` never rejects, so this can never fail a flush.
     const agent = session.agentSnapshot ?? (session.agentSnapshot = await (session.agentPromise ?? this.ensureAgentResolved(session)));
 
+    // TASK-810 — the session's FROZEN document template, resolved and cached
+    // with exactly the same discipline as the agent above. `ensureTemplateResolved`
+    // never rejects (the service's own `resolveForGeneration` fails open to the
+    // platform shape), so this can never fail a flush.
+    const template =
+      session.templateSnapshot ?? (session.templateSnapshot = await (session.templatePromise ?? this.ensureTemplateResolved(session)));
+
     // Resolve the effective agentic.context.* knobs for THIS flush.
     // Refreshing here (rather than at construction) is what makes the control plane
     // real: a super admin's registry write governs the very next flush, with no
@@ -1019,7 +1118,7 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
     const signal = abortController.signal;
     const isStale = (): boolean => this.sessions.get(consultationId) !== session || session.generation !== myGeneration;
 
-    // Incremental prompt (P0-B): refine the prior SOAP note with only the new
+    // Incremental prompt (P0-B): refine the prior note with only the new
     // transcript delta since the last successful flush, keeping prompt size bounded.
     //
     // C5-04 — carry-forward truncation: when the un-flushed backlog exceeds
@@ -1041,7 +1140,7 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
     if (windowed) {
       // Windowed mode: take the most RECENT segments that fit.
       //
-      // The prior SOAP note already carries everything older, so on overflow the
+      // The prior note already carries everything older, so on overflow the
       // oldest backlog largely re-describes what the note has while the NEWEST
       // content is precisely what it lacks. Walk backwards from the tail, then
       // restore chronological order for the prompt.
@@ -1100,7 +1199,14 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
     // module constant. Prefix-cache friendliness is preserved BY CONSTRUCTION:
     // the prefix is frozen per session, so it stays byte-identical across every
     // flush — exactly the property the constant used to provide.
-    const promptText = this.buildTextUserPrompt(priorNote, delta || transcript, notes, elidedParts > 0, agent.stableUserPrefix);
+    const promptText = this.buildTextUserPrompt(
+      priorNote,
+      delta || transcript,
+      notes,
+      elidedParts > 0,
+      this.stablePrefixFor(agent, template),
+      template.compiled.title,
+    );
 
     // TEXT first (a structured S/O/A/P running note), then NER over the resulting
     // `runningSummary` (the canonical text the entity highlight offsets index — so it
@@ -1120,8 +1226,8 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
     let repairLatencyMs = 0;
     let repairStats: LiveSummaryStatsDto | null = null;
     try {
-      // Bounded JSON auto-repair: the strict parser is `parseSoapJson` (null on a
-      // JSON/shape failure); the tolerant `parseSoapSections` regex parser is the
+      // Bounded JSON auto-repair: the strict parser is `parseDocumentJson` (null on
+      // a JSON/shape failure); the tolerant `parseDocumentSections` prose parser is the
       // final fallback. A retry only runs when `response_format` was actually
       // sent (structured) — an engine that ignores it returns prose by design, so
       // a retry could never yield JSON and is skipped. The corrective instruction
@@ -1129,14 +1235,14 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
       const outcome = await generateJsonWithRepair<LiveSummarySectionDto[], LiveSoapCall>({
         generate: async (corrective) => {
           const startedAt = Date.now();
-          const { text, stats, structured } = await this.callText(promptText, session.tenantId, signal, corrective, agent);
+          const { text, stats, structured } = await this.callText(promptText, session.tenantId, signal, corrective, agent, template.compiled);
           return { text, stats, structured, latencyMs: Date.now() - startedAt };
         },
         parseStrict: (text) => {
-          const parsed = parseSoapJson(text);
+          const parsed = parseDocumentJson(text, template.compiled);
           return parsed && parsed.length > 0 ? parsed : null;
         },
-        parseTolerant: (text) => parseSoapSections(text),
+        parseTolerant: (text) => parseDocumentSections(text, template.compiled),
         // Retry only a genuine malformed-JSON attempt: structured output was
         // requested AND the text opens a JSON object. Clean prose (no leading
         // `{`) is served by the tolerant regex parser with no wasted regen.
@@ -1866,17 +1972,51 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
   }
 
   /**
-   * Assemble the live TEXT user prompt. Once a SOAP note exists we
+   * Assemble the live TEXT user prompt. Once a note exists we
    * send it plus only the new transcript delta ("update the note") instead of the
    * whole transcript, keeping prompt size bounded; the first flush sends the delta
    * as the initial transcript.
    */
+  /**
+   * The stable lead-in for one flush: WHO the model is (governed, tenant-owned)
+   * plus WHAT it must emit (compiled, platform-owned).
+   *
+   * These two are separable and only one of them is negotiable. A tenant's
+   * governed prompt legitimately owns role, tone and clinical emphasis. It must
+   * NOT be able to describe a different document than the strict schema the
+   * response is decoded against — a model told in prose to write a SOAP note
+   * while being constrained to a discharge summary has been given two
+   * incompatible jobs, and which one wins depends on the provider. So the
+   * structural instruction is always the SESSION TEMPLATE's, appended when the
+   * governed prompt does not already carry it verbatim (the seeded SYSTEM
+   * default does, which is why the common path appends nothing and the prompt
+   * bytes are unchanged).
+   *
+   * On the `code-default` tier there is no governed prompt at all, so the whole
+   * prefix is derived from the session's template — that tier previously served
+   * the four SOAP headings unconditionally, which is precisely what made a
+   * tenant's own shape unreachable.
+   */
+  private stablePrefixFor(agent: FrozenLiveAgentSnapshot, template: ResolvedDocumentTemplate): string {
+    if (agent.resolvedFrom === 'code-default') {
+      return buildStableUserPrefix(template.compiled);
+    }
+    return agent.stableUserPrefix.includes(template.compiled.promptInstruction)
+      ? agent.stableUserPrefix
+      : `${agent.stableUserPrefix}\n\n${template.compiled.promptInstruction}`;
+  }
+
   private buildTextUserPrompt(
     priorNote: string,
     delta: string,
     notes: string,
     elided = false,
-    stablePrefix: string = LIVE_SOAP_STABLE_SYSTEM_PREFIX,
+    stablePrefix: string = LIVE_DOCUMENT_STABLE_SYSTEM_PREFIX,
+    // TASK-810 — the resolved template's own title. The three blocks below used
+    // to say "SOAP note" in prose while the response schema described whatever
+    // the tenant actually published; a model told to update a SOAP note and
+    // decoded against a discharge summary is being given two different jobs.
+    documentTitle: string = PLATFORM_TEMPLATE.compiled.title,
   ): string {
     const notesBlock = notes ? `\n\nClinician notes / labs:\n${notes}` : '';
     const hasPriorNote = priorNote.trim().length > 0;
@@ -1886,21 +2026,21 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
     // stable prefix, and only when something was actually elided, so both the
     // prefix-cache-stable lead-in and the `whole`-mode prompt stay untouched.
     const elisionBlock = elided
-      ? '\n\nNOTE: earlier transcript from this update was elided to fit the context window; the SOAP note above already reflects it. Do not treat its absence as new information.'
+      ? `\n\nNOTE: earlier transcript from this update was elided to fit the context window; the ${documentTitle} above already reflects it. Do not treat its absence as new information.`
       : '';
 
     // prefix-cache-friendly ordering:
     //   [stable system] + [transcript-so-far] + [current note] + [delta instruction]
     // The leading stable-system block is identical across the first flush and
-    // every update flush (see LIVE_SOAP_STABLE_SYSTEM_PREFIX), so the engine
+    // every update flush (see LIVE_DOCUMENT_STABLE_SYSTEM_PREFIX), so the engine
     // reuses the cached KV of that prefix. The mode-specific directive that
     // used to LEAD the prompt (breaking the shared prefix between first/update
     // flushes) is now the trailing block.
     const transcriptBlock = hasPriorNote ? `\n\nNew transcript since last update:\n${delta}` : `\n\nTranscript so far:\n${delta}`;
-    const currentNoteBlock = hasPriorNote ? `\n\nCurrent SOAP note so far:\n${priorNote}` : '';
+    const currentNoteBlock = hasPriorNote ? `\n\nCurrent ${documentTitle} so far:\n${priorNote}` : '';
     const deltaInstruction = hasPriorNote
-      ? '\n\nUpdate the existing SOAP note above using ONLY the new transcript since the last update; keep prior content unless it is contradicted.'
-      : '\n\nFrom the transcript and any clinician notes/labs above, produce the running SOAP note now.';
+      ? `\n\nUpdate the existing ${documentTitle} above using ONLY the new transcript since the last update; keep prior content unless it is contradicted.`
+      : `\n\nFrom the transcript and any clinician notes/labs above, produce the running ${documentTitle} now.`;
 
     return stablePrefix + transcriptBlock + currentNoteBlock + elisionBlock + deltaInstruction + notesBlock;
   }
@@ -1980,6 +2120,9 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
     signal?: AbortSignal,
     corrective?: string,
     agent?: FrozenLiveAgentSnapshot,
+    // TASK-810 — the session's FROZEN compiled template. Defaulted to the
+    // platform shape so non-DI/positional test fixtures keep their arity.
+    compiled: CompiledDocumentTemplate = PLATFORM_TEMPLATE.compiled,
   ): Promise<{ text: string; stats: LiveSummaryStatsDto | null; structured: boolean }> {
     // TEXT is a stateless gateway with no model default. Resolve the
     // tenant's effective {provider, model} via the HarnessPolicy cascade (NOT the
@@ -2006,7 +2149,7 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
       ({ provider, model } = await this.harnessPolicyService.resolveTextSelection(tenantId, 'live'));
     }
     // `response_format: json_schema` makes json-schema-capable providers return a
-    // deterministic SOAP object (parsed by parseSoapJson); ollama ignores it so we
+    // deterministic sectioned object (parsed by parseDocumentJson); ollama ignores it so we
     // omit it there and fall back to the prose regex parse (P0-C).
     const includeResponseFormat = (provider ?? '').toLowerCase() !== 'ollama';
     // the bounded auto-repair retry appends the corrective
@@ -2017,12 +2160,17 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
       // The frozen snapshot's system prompt; identical to the exported constant
       // whenever no agent binding customized it (the paired sha256 guards prove
       // the constant and the seeded SYSTEM default carry the same bytes).
-      system_prompt: agent?.systemPrompt ?? LIVE_SOAP_SYSTEM_PROMPT,
+      system_prompt: agent?.systemPrompt ?? LIVE_DOCUMENT_SYSTEM_PROMPT,
       provider,
       model,
       max_tokens: this.textMaxTokens,
       stream: false as const,
-      response_format: includeResponseFormat ? LIVE_SOAP_RESPONSE_FORMAT : undefined,
+      // TASK-810 — the strict schema COMPILED from the session's pinned template
+      // shape, not a frozen literal. This is the whole of "the template IS the
+      // schema": an optional section arrives here as a nullable property, so a
+      // model that was never told about an examination can say so (D-21) instead
+      // of being forbidden to emit anything but a string.
+      response_format: includeResponseFormat ? compiled.responseFormat : undefined,
     };
     // TASK-808 — fold in the caller tenant's resolved provider credential
     // (`provider_overrides`) through the ONE shared implementation. Not

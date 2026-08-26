@@ -17,6 +17,7 @@ import { EffectiveSettingsModule } from '../../settings-registry/effective-setti
 import { AiTaskDefaultServiceModule } from '../../ai-task-default/ai-task-default.service.module';
 import { LiveAgentResolutionServiceModule } from '../prompt/live-agent-resolution.service.module';
 import { TextRequestServiceModule } from '../../text-request/text-request.service.module';
+import { DocumentTemplateServiceModule } from '../../document-template/document-template.service.module';
 
 /**
  * Live Documentation Service Module (Clinical Workflow Playground — WS1).
@@ -81,6 +82,11 @@ import { TextRequestServiceModule } from '../../text-request/text-request.servic
     // plan before every signal. Absent ⇒ the gate fails CLOSED, which is why
     // this import is not optional in practice even though the dep is.
     EntitlementsServiceModule,
+    // TASK-810 — resolves the @Optional IDocumentTemplateService so a session
+    // FREEZES the tenant's pinned document shape at start(). Absent ⇒ every
+    // session serves the compiled platform shape, which is behaviour equivalent
+    // to the hardcoded four-section format this ticket replaced.
+    DocumentTemplateServiceModule,
   ],
   providers: [LiveDocumentationService, RedisSubscriberService, OcrEnrichmentProcessor, LoopContextSignalService],
   exports: [LiveDocumentationService, LoopContextSignalService],
