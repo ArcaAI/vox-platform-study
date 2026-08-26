@@ -20,6 +20,8 @@ const NOOP: WorkflowNodeDescriptor = {
   defaultMaxAttempts: 1,
   entitlementKey: null,
   configSchema: null,
+  inputs: [],
+  outputs: [],
 };
 
 const MANDATORY: WorkflowNodeDescriptor = { ...NOOP, type: 'guardrail_gate', classes: ['mandatory'], paletteKey: 'summarization' };

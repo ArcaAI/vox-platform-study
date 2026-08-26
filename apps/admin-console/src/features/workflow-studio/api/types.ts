@@ -120,13 +120,44 @@ export interface PublishWorkflowDefinitionRequest {
   activate?: boolean;
 }
 
+/**
+ * The closed workflow port type vocabulary (TASK-809 §2b) — mirrored, not imported, for the
+ * same reason the rest of this file mirrors `@arcaai/workflow-contract` (see the module
+ * comment above): the console never bundles that package at runtime. Source of truth:
+ * `packages/workflow-contract/src/port-model.ts`'s `WORKFLOW_PORT_PRIMITIVES`.
+ */
+export type WorkflowPortPrimitive =
+  | 'control'
+  | 'stream<audio>'
+  | 'transcript'
+  | 'text'
+  | 'entities'
+  | 'document'
+  | 'edits'
+  | 'verdict'
+  | 'context<schemaRef>';
+
+/** One declared port on a node type (`WorkflowNodePortResponse`) — what
+ *  `lib/port-compatibility.ts`'s connection predicate checks. */
+export interface WorkflowNodePort {
+  name: string;
+  primitive: WorkflowPortPrimitive;
+  required: boolean;
+  multiple: boolean;
+}
+
 /** `WorkflowNodeDescriptor`'s wire projection (`WorkflowNodeResponse`). No `label` field yet
  *  (registry.contract.md) — the Studio still derives a display label from `type`
  *  (`humanizeKey`). `configSchema` IS now on the delivered DTO (registry.contract.md's
  *  resolution path #1: "TASK-720 adds a `configSchema` field… when it adds real palette node
  *  types") — `null` for a node type with no authored schema yet, a real, structural state the
  *  inspector's raw-JSON fallback already handles as `undefined` (see
- *  `components/workflow-studio-editor.tsx`). */
+ *  `components/workflow-studio-editor.tsx`).
+ *
+ *  `inputs`/`outputs` (TASK-809 Task 12) are the only other newly-delivered fields mirrored
+ *  here — `trigger`/`lane`/`requires`/`idempotent`/`schemaVersion`/`evalGate` also landed on
+ *  the wire DTO but have no Studio consumer yet, so they are left unmirrored rather than added
+ *  speculatively; add them, hand-mirrored the same way, when a task actually reads them. */
 export interface WorkflowNodeDescriptor {
   type: string;
   implemented: boolean;
@@ -139,6 +170,10 @@ export interface WorkflowNodeDescriptor {
   defaultMaxAttempts: number;
   entitlementKey: string | null;
   configSchema: Record<string, unknown> | null;
+  /** Declared input ports. */
+  inputs: readonly WorkflowNodePort[];
+  /** Declared output ports. */
+  outputs: readonly WorkflowNodePort[];
 }
 
 export interface WorkflowNodeRegistry {

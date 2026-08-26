@@ -12,6 +12,14 @@
  */
 import { createStore, type StoreApi } from 'zustand/vanilla';
 import type { ActionResult, AutosaveState, ConnectRequest, GraphStoreEdge, GraphStoreNode, WorkflowStudioViewMode } from './types';
+import { checkPortCompatibility } from '../lib/port-compatibility';
+import type { WorkflowNodeDescriptor } from '../api/types';
+
+/** Node-type -> descriptor lookup for the port-compatibility check (TASK-809 Task 12). Passed
+ *  in at call time, never stored as state — the registry stays in TanStack Query per this
+ *  file's own header comment ("Server data ... is NOT mirrored into this store"). Optional so
+ *  the topology-only tests below keep working unchanged; the Studio always supplies it. */
+type PortLookup = ReadonlyMap<string, WorkflowNodeDescriptor>;
 
 interface GraphSnapshot {
   nodes: GraphStoreNode[];
@@ -48,9 +56,11 @@ export interface GraphActions {
   moveNode: (nodeId: string, position: { x: number; y: number }) => void;
   /** Pure predicate behind `connect` — the SAME rules, evaluated without mutating, so the
    *  canvas can refuse an invalid connection while the pointer is still dragging (React Flow
-   *  `isValidConnection`) instead of only after the drop. */
-  canConnect: (request: ConnectRequest) => ActionResult;
-  connect: (request: ConnectRequest) => ActionResult;
+   *  `isValidConnection`) instead of only after the drop. `portLookup`, when supplied, adds the
+   *  TASK-809 port-type check (topology rules alone otherwise) — `connect` forwards it to this
+   *  SAME function, which is what keeps drag-time and commit-time from ever disagreeing. */
+  canConnect: (request: ConnectRequest, portLookup?: PortLookup) => ActionResult;
+  connect: (request: ConnectRequest, portLookup?: PortLookup) => ActionResult;
   disconnectEdge: (edgeId: string) => void;
   /** List-editor-only reorder ("move up/down" buttons, never drag — README Task 13: "satisfying
    *  2.5.7 by construction rather than by adding a keyboard shim to a drag interaction"). Swaps
@@ -176,10 +186,12 @@ export function createGraphStore(): GraphStoreApi {
         set((state) => ({ nodes: state.nodes.map((node) => (node.id === nodeId ? { ...node, position } : node)) }));
       },
 
-      canConnect: (request) => {
+      canConnect: (request, portLookup) => {
         if (request.source === request.target) return { ok: false, reason: 'A node cannot connect to itself.' };
         const { edges, nodes } = get();
-        if (!nodes.some((node) => node.id === request.source) || !nodes.some((node) => node.id === request.target)) {
+        const sourceNode = nodes.find((node) => node.id === request.source);
+        const targetNode = nodes.find((node) => node.id === request.target);
+        if (!sourceNode || !targetNode) {
           return { ok: false, reason: 'Both endpoints must exist on the graph.' };
         }
         const duplicate = edges.some(
@@ -190,11 +202,19 @@ export function createGraphStore(): GraphStoreApi {
             edge.targetHandle === request.targetHandle,
         );
         if (duplicate) return { ok: false, reason: 'This connection already exists (duplicate edge).' };
+        if (portLookup) {
+          const compatible = checkPortCompatibility(
+            portLookup,
+            { type: sourceNode.type, handle: request.sourceHandle },
+            { type: targetNode.type, handle: request.targetHandle },
+          );
+          if (!compatible.ok) return compatible;
+        }
         return { ok: true };
       },
 
-      connect: (request) => {
-        const allowed = get().canConnect(request);
+      connect: (request, portLookup) => {
+        const allowed = get().canConnect(request, portLookup);
         if (!allowed.ok) return allowed;
         snapshotForUndo();
         const edge: GraphStoreEdge = { id: generateEdgeId(), ...request };
