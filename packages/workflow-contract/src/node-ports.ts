@@ -35,8 +35,13 @@
  * This is why `workflowEdgePortProblems` is invoked EXPLICITLY at publish time
  * (`port-validation.ts`) and is deliberately NOT folded into `validate()`'s default rule loop —
  * doing so would retroactively invalidate every saved definition on the day this package
- * shipped. Wiring the gate into the publish path and migrating the seeded graphs is TASK-812's
- * lane, not this one's.
+ * shipped. Migrating the seeded graphs is a FOLLOW-ON LANE OF TASK-809 ITSELF — not TASK-812,
+ * which is the endpoint stage. Scale of that migration, as audited: every edge in every
+ * committed seed uses `fromPort: 'out'` / `toPort: 'in'`, and no activity ever emits a key named
+ * `"out"`; 14 of 15 edges in `ARCAAI_CONSULTATION_GRAPH` and all 3 in the SYSTEM platform-default
+ * need rewriting, plus regeneration of the derived blobs via the script named in that seed's
+ * docstring. That lane also drops the dead `publishTo` key (see the §SEED NOTE on
+ * `CONSULTATION_REALTIME_SUMMARY_SCHEMA` in `node-config-schemas.ts`).
  *
  * ## The STT tables are DESIGN INTENT, not observed runtime behaviour
  *
@@ -146,6 +151,16 @@ export const NODE_PORTS: Readonly<Record<string, WorkflowNodePorts>> = Object.fr
   'consultation.bindTerminology': ports([port('in', 'entities', true, false), AFTER], [port('out', 'entities', true, true), NEXT]),
   'consultation.phiHop': ports([port('in', 'transcript', true, false), AFTER], [port('out', 'transcript', true, true), NEXT]),
   'consultation.retrieveEvidence': ports([port('in', 'entities', false, true), AFTER], [port('out', 'context<schemaRef>', true, true), NEXT]),
+  // ⚠ DOC-vs-CODE DIVERGENCE, recorded rather than resolved. `node-types.md:117` documents this
+  // node's input as `TEXT + STRUCTURED`, but the ACTIVITY reads no `bound_inputs` at all — it
+  // resolves everything server-side from `consultationId` (`consultation_compose.py:90-118`,
+  // which reads only `config.template` / `dnaStyleId` / `conversationLanguage`).
+  //
+  // Both data inputs are therefore declared OPTIONAL (`required: false`): that is consistent with
+  // the code (nothing must be wired for the node to run) while still permitting the wiring the
+  // doc describes and the golden fixtures author. Typing them `required: true` off the doc alone
+  // would make the activity's own behaviour unpublishable.
+  // OWNER CALL NEEDED on which of the two is authoritative — do not silently "fix" either side.
   'consultation.assemblePrompt': ports(
     [port('in', 'context<schemaRef>', false, true), port('transcript', 'transcript', false, false), AFTER],
     [port('out', 'text', true, true), NEXT],

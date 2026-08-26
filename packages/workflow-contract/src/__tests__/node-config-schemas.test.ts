@@ -159,10 +159,46 @@ describe('consultation.* config schemas (D-9)', () => {
     }
   });
 
-  it('the two gate nodes accept no config at all', () => {
-    for (const key of ['consultation.consentGate', 'consultation.hitlGate']) {
-      expect(NODE_CONFIG_SCHEMAS[key].properties).toEqual({});
-    }
+  it('consultation.consentGate accepts no config at all', () => {
+    expect(NODE_CONFIG_SCHEMAS['consultation.consentGate'].properties).toEqual({});
+  });
+
+  /**
+   * The `mode` enum is the one place the two PHI-redaction nodes DIVERGE, and getting it wrong is
+   * a patient-safety defect rather than a cosmetic one: `configSchema` drives the Studio
+   * inspector, so a wrong enum offers an admin a value that DEGRADEs at runtime while hiding the
+   * value that actually redacts — a redaction node that silently does not redact.
+   */
+  it('consultation.phiHop mode matches its ACTIVITY guard (`pseudonymize` | `full`), not stt.phiHop', () => {
+    // `nodes/consultation.py:102` -> `if mode not in ("pseudonymize", "full"):`
+    const consultation = NODE_CONFIG_SCHEMAS['consultation.phiHop'].properties as Record<string, { enum?: string[] }>;
+    expect(consultation.mode.enum).toEqual(['pseudonymize', 'full']);
+    expect(consultation.mode.enum).not.toContain('full-redact');
+  });
+
+  it('stt.phiHop keeps its OWN vocabulary — the two enums are deliberately different', () => {
+    const stt = NODE_CONFIG_SCHEMAS['stt.phiHop'].properties as Record<string, { enum?: string[] }>;
+    expect(stt.mode.enum).toEqual(['pseudonymize', 'full-redact']);
+    const consultation = NODE_CONFIG_SCHEMAS['consultation.phiHop'].properties as Record<string, { enum?: string[] }>;
+    expect(stt.mode.enum).not.toEqual(consultation.mode.enum);
+  });
+
+  /**
+   * `consultation.hitlGate` is the only `gate`-classed node, so its config is consumed by the
+   * TypeScript COMPILER (`compileGate`, `compiler.ts:153-166`) rather than by its activity, which
+   * reads nothing. Declaring `{}` would tell the Studio the platform's only durable human wait
+   * takes no configuration.
+   */
+  it('consultation.hitlGate declares the four fields compileGate actually reads', () => {
+    const properties = NODE_CONFIG_SCHEMAS['consultation.hitlGate'].properties as Record<string, unknown>;
+    expect(Object.keys(properties).sort()).toEqual(['blocking', 'gateType', 'onTimeout', 'timeoutSeconds']);
+  });
+
+  it('consultation.hitlGate is the only gate-classed node, which is why it alone carries gate config', () => {
+    const gateClassed = Object.values(WORKFLOW_NODE_REGISTRY)
+      .filter((descriptor) => descriptor.classes.includes('gate'))
+      .map((descriptor) => descriptor.key);
+    expect(gateClassed).toEqual(['consultation.hitlGate']);
   });
 });
 

@@ -17,8 +17,9 @@
  *   - `isValidConnection(...)` — the canvas predicate, one candidate edge at a time.
  *   - `workflowPublishProblems(...)` — the publish gate, whole graph.
  *
- * Wiring the gate into the gateway's publish path and migrating the seeded graphs is TASK-812's
- * lane. Everything here is pure and total: it returns `problems: string[]` (the house idiom) and
+ * Migrating the seeded graphs to typed ports is a FOLLOW-ON LANE OF TASK-809 ITSELF (TASK-812 is
+ * the endpoint stage, not the migration); wiring this gate into the gateway's publish path
+ * belongs to whichever lane owns that path. Everything here is pure and total: it returns `problems: string[]` (the house idiom) and
  * never throws, whatever it is handed.
  */
 import type { WorkflowGraph } from './graph-model';

@@ -361,13 +361,51 @@ const CONSULTATION_ON_ERROR = Object.freeze({
   description: 'Node error policy (WF-CONS-019). `abort` is deliberately not offered — the v1 interpreter cannot enforce it.',
 });
 
-/** Both consultation gates: a consent decision and the one durable human wait. Neither activity
- *  reads `payload.config` (`nodes/consultation.py`). */
-const CONSULTATION_GATE_SCHEMA: NodeConfigSchema = Object.freeze({
-  title: 'consultation gate node config (none — the gate reads no config)',
+/** `consultation.consentGate` — its activity reads no `payload.config`
+ *  (`nodes/consultation.py:44`), and unlike `hitlGate` it does NOT carry the `gate` class, so the
+ *  compiler routes it through `compileNode` rather than `compileGate` and it has no gate config
+ *  either. (`compileNode` does read the palette-agnostic `timeoutSeconds`/`retry`/`onError` off
+ *  every node — see the ADDENDUM at the foot of this module; that gap is uniform across all 33
+ *  node types and is deliberately not patched here one node at a time.) */
+const CONSULTATION_CONSENT_GATE_SCHEMA: NodeConfigSchema = Object.freeze({
+  title: 'consultation.consentGate node config (none — the gate reads no config)',
   type: 'object',
   additionalProperties: false,
   properties: {},
+});
+
+/**
+ * `consultation.hitlGate` — the ONE node in the registry carrying the `gate` class, which is
+ * what makes its config surface unique.
+ *
+ * Its ACTIVITY reads no config. Its real consumer is the TYPESCRIPT COMPILER: `compileGate`
+ * (`compiler.ts:153-166`) lifts a `gate`-classed node out of `stages` into `gates` and reads
+ * four fields straight off `node.config` — `gateType`, `blocking`, `timeoutSeconds`,
+ * `onTimeout`. Declaring `{}` here (as the first pass did) told the Studio inspector this node
+ * takes no configuration, so an admin could not author the blocking/timeout behaviour of the
+ * platform's only durable human wait even though the compiler honours it.
+ *
+ * `onError` is absent on purpose: `compileGate` never reads it, and `hitlGate` is not
+ * `activity`-classed, so WF-CONS-019 does not apply.
+ */
+const CONSULTATION_HITL_GATE_SCHEMA: NodeConfigSchema = Object.freeze({
+  title: 'consultation.hitlGate node config (N-13, the one durable human wait — consumed by compileGate, not by the activity)',
+  type: 'object',
+  additionalProperties: false,
+  properties: {
+    gateType: { type: 'string', minLength: 1, maxLength: 64, description: 'Defaults to the node type when unset (compiler.ts:158).' },
+    blocking: { type: 'boolean', default: true, description: 'Anything other than an explicit `false` blocks (compiler.ts:159).' },
+    timeoutSeconds: { type: 'integer', minimum: 1, description: 'Clamped to the compiled caps; defaults to `caps.maxNodeSeconds`.' },
+    onTimeout: {
+      type: 'string',
+      minLength: 1,
+      maxLength: 64,
+      // compiler.ts:161-164 states the invariant: a timeout ALWAYS resolves to a non-approval
+      // outcome. No enum is declared because the compiler accepts any string and defaults to
+      // 'TIMED_OUT'; pinning a taxonomy here would be a new design decision, not a wiring-up.
+      description: 'Outcome recorded when the wait times out; defaults to TIMED_OUT. Never a value meaning "approved" (INV-001/INV-147/INV-181).',
+    },
+  },
 });
 
 const CONSULTATION_CAPTURE_BINDING_SCHEMA: NodeConfigSchema = Object.freeze({
@@ -404,7 +442,20 @@ const CONSULTATION_BIND_TERMINOLOGY_SCHEMA: NodeConfigSchema = Object.freeze({
   additionalProperties: false,
   required: ['purposeScope', 'unmappedOutputKey', 'onError'],
   properties: {
-    purposeScope: { type: 'string', minLength: 1, maxLength: 64, description: 'WF-CONS-013 — the declared purpose the code binding is scoped to.' },
+    // DELIBERATELY UNCONSTRAINED beyond "a non-empty string". `purposeScope` is required by
+    // WF-CONS-013 (`op: 'present'` — presence only, no value check) and is read NOWHERE in
+    // `consultation_nlp.py`: no activity, no client, no validator consumes its VALUE. The only
+    // sample in the tree is the seed's `'terminology.validate'`
+    // (`seed/23-arcaai-workflow-authoring.ts:139`), which is one data point, not a taxonomy.
+    // An enum, a pattern or even a length ceiling invented here would be a NEW design decision
+    // wearing a schema's clothes, and would silently reject purposes nobody has thought of yet.
+    // ⚠ OPEN OWNER DECISION: what vocabulary `purposeScope` draws from is unresolved.
+    purposeScope: {
+      type: 'string',
+      minLength: 1,
+      description:
+        'WF-CONS-013 — the declared purpose the code binding is scoped to. Taxonomy is an open owner decision; presence is all that is enforced.',
+    },
     unmappedOutputKey: {
       type: 'string',
       pattern: '^[a-z0-9_]{2,48}$',
@@ -421,8 +472,20 @@ const CONSULTATION_PHI_HOP_SCHEMA: NodeConfigSchema = Object.freeze({
   additionalProperties: false,
   required: ['mode', 'onError'],
   properties: {
-    // Same two modes as `stt.phiHop` — one redaction vocabulary across both palettes.
-    mode: { type: 'string', enum: ['pseudonymize', 'full-redact'] },
+    // ⚠ DELIBERATELY DIFFERENT from `stt.phiHop`, which is `['pseudonymize', 'full-redact']`.
+    // DO NOT "harmonise" these two enums — they are not the same vocabulary, and the difference
+    // is load-bearing. The consultation activity guards on its own two values:
+    //
+    //   `nodes/consultation.py:102`  ->  `if mode not in ("pseudonymize", "full"):`
+    //   `nodes/consultation.py:107`  ->  DEGRADEs with "config.mode {mode!r} is not
+    //                                     'pseudonymize' or 'full'"
+    //   `nodes/consultation.py:92`   ->  docstring: "the same two-mode vocabulary
+    //                                     `IPhiRedactor.redact()` uses on the gateway side"
+    //
+    // This schema drives the Studio inspector, so declaring `full-redact` here offered an admin
+    // a value that DEGRADES at runtime while hiding `full`, the only one that actually redacts —
+    // a PHI-redaction node silently not redacting is the worst possible shape for this defect.
+    mode: { type: 'string', enum: ['pseudonymize', 'full'] },
     onError: CONSULTATION_ON_ERROR,
   },
 });
@@ -528,6 +591,27 @@ const CONSULTATION_FINALIZE_ASSURANCE_SCHEMA: NodeConfigSchema = Object.freeze({
 // expressible in the authorable subset, and the SOAP shape is code-owned rather than tenant
 // business, so the enum is the honest authorable surface and the default keeps working.
 // -----------------------------------------------------------------------------------------
+/**
+ * §SEED NOTE — the committed seed carries a DEAD `publishTo` this schema deliberately omits.
+ *
+ * `seed/23-arcaai-workflow-authoring.ts:134` authors
+ * `{ publishTo: 'live-summary', onError: 'degrade' }` on the `n_realtime` node. Nothing reads
+ * `publishTo`: `grep -rn "publishTo" apps/harness packages/workflow-contract` returns nothing.
+ * The activity publishes to a FIXED channel (`consultation:live-summary:{id}`), not a
+ * configurable one, so the key is decorative — it describes a capability the runtime does not
+ * have.
+ *
+ * It is deliberately NOT declared here. `additionalProperties: false` plus an undeclared key is
+ * the honest statement that the field does nothing; adding it to keep the seed "valid" would
+ * document a knob that silently gates nothing, which is the same mistake as
+ * `guardrail.check.onFail: 'abort'`.
+ *
+ * This is LATENT, not live: `configSchema` is never enforced during validation or publish — its
+ * only consumer is `workflow-definition.dto.mapper.ts:86`, which surfaces it to the UI. So the
+ * seed keeps working today. **The seed-migration lane must DROP `publishTo` from that node**
+ * (alongside the port rewrite described in `node-ports.ts` §MIGRATION NOTE), rather than this
+ * schema being loosened to accommodate it.
+ */
 const CONSULTATION_REALTIME_SUMMARY_SCHEMA: NodeConfigSchema = Object.freeze({
   title: 'consultation.realtimeSummary node config (W1, generation, externalWrite — publishes to the live feed)',
   type: 'object',
@@ -603,7 +687,7 @@ export const NODE_CONFIG_SCHEMAS: Readonly<Record<string, NodeConfigSchema>> = O
   'stt.phiHop': STT_PHI_HOP_SCHEMA,
   // Consultation palette (TASK-809 Task 9, closing D-9) — ordered by pipeline position, the
   // same order `node-registry.ts` uses, so the two files read as the same pipeline.
-  'consultation.consentGate': CONSULTATION_GATE_SCHEMA,
+  'consultation.consentGate': CONSULTATION_CONSENT_GATE_SCHEMA,
   'consultation.captureBinding': CONSULTATION_CAPTURE_BINDING_SCHEMA,
   'consultation.extractEntities': CONSULTATION_EXTRACT_ENTITIES_SCHEMA,
   'consultation.bindTerminology': CONSULTATION_BIND_TERMINOLOGY_SCHEMA,
@@ -615,7 +699,7 @@ export const NODE_CONFIG_SCHEMAS: Readonly<Record<string, NodeConfigSchema>> = O
   'consultation.inferentialSensors': CONSULTATION_SENSORS_SCHEMA,
   'consultation.persistDraft': CONSULTATION_PERSIST_DRAFT_SCHEMA,
   'consultation.finalizeAssurance': CONSULTATION_FINALIZE_ASSURANCE_SCHEMA,
-  'consultation.hitlGate': CONSULTATION_GATE_SCHEMA,
+  'consultation.hitlGate': CONSULTATION_HITL_GATE_SCHEMA,
   'consultation.realtimeSummary': CONSULTATION_REALTIME_SUMMARY_SCHEMA,
   'consultation.suggestions': CONSULTATION_SUGGESTIONS_SCHEMA,
   'consultation.proposeCorrections': CONSULTATION_PROPOSE_CORRECTIONS_SCHEMA,
