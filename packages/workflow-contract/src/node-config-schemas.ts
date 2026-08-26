@@ -22,19 +22,23 @@
  *   reads `config["raise_error"]`/`config["sleep_seconds"]` and nothing else; `core_start`/
  *   `core_end` read no config at all.
  *
- * Two node types are DELIBERATELY left with no entry (`configSchema: undefined` on the
- * registry descriptor, same posture the whole registry had for every node until this file):
+ * - Consultation palette (16): authored by TASK-809 Task 9 to close D-9. `node-types.md` named
+ *   `contracts/nodes/*.schema.json` files for these and they were never written, so each schema
+ *   is derived instead from the two sources that DO exist and are already enforced — the
+ *   `DRAFT_CONSULTATION_RULE_SET` fields a published graph must already carry, and the keys each
+ *   interpreter activity actually reads off `payload.config`. See the block comment above those
+ *   schemas for the full derivation, and `__tests__/node-config-schemas.test.ts`, which asserts
+ *   both directions (nothing the validator demands is missing; nothing the runtime honours is
+ *   rejected).
+ *
+ * ONE node type is DELIBERATELY left with no entry (`configSchema: undefined` on the registry
+ * descriptor, the posture the whole registry had for every node until this file):
  *
  * - `passthrough` — "echoes its own config back as output" (`activities.py`'s own docstring);
  *   its whole purpose is accepting an arbitrary payload verbatim, so a fixed schema would be
  *   a false constraint, not a documentation of a real one. The inspector's existing raw-JSON
  *   fallback (`registry.contract.md`'s Task 9 discipline) is the CORRECT rendering for this
  *   node, not a gap.
- * - `consultation.*` (13 node types) — `node-types.md`'s own "Config schemas" section names
- *   the files (`contracts/nodes/*.schema.json`) but they were never authored; inventing
- *   thirteen clinical-workflow config contracts without that validated source would be a new
- *   design decision, not wiring up an existing one. Left as an open item (README §6/§7), same
- *   as this module's own docstring above documents for `passthrough`.
  *
  * Every entry here is asserted against `authorableJsonSchemaProblems` in
  * `__tests__/node-config-schemas.test.ts` — a schema that is not authorable cannot be compiled
@@ -313,6 +317,351 @@ const BOUNDARY_MARKER_SCHEMA: NodeConfigSchema = Object.freeze({
   properties: {},
 });
 
+// -----------------------------------------------------------------------------------------
+// Consultation palette (TASK-731 + TASK-791) — sixteen node types, authored by TASK-809 Task 9
+// to close D-9.
+//
+// D-9 is recorded as "13 of 16 `consultation.*` node types have no config schema". The true
+// count is SIXTEEN of sixteen: the "13" figure predates TASK-791, which added
+// `realtimeSummary`, `suggestions` and `proposeCorrections`. This module's own docstring above
+// still says "`consultation.*` (13 node types)" for the same reason — it was written before
+// those three existed.
+//
+// `node-types.md` §"Config schemas" named `contracts/nodes/*.schema.json` files for this
+// palette and they were never authored, which is why the previous pass declined to invent them.
+// They are NOT invented here either: every field below comes from one of two sources that
+// already exist and are already enforced, and `__tests__/node-config-schemas.test.ts` asserts
+// against both.
+//
+//   1. `DRAFT_CONSULTATION_RULE_SET` (`rule-catalogue.ts`) — the config fields a published
+//      consultation graph is ALREADY required to carry: `occ` (WF-CONS-014), `producesCode`
+//      (WF-CONS-015), `purposeScope` (WF-CONS-013), `unmappedOutputKey` (WF-CONS-016),
+//      `requiresFinalized` (WF-CONS-017/018) and `onError` on every activity-classed node
+//      (WF-CONS-019). A schema omitting any of them would reject graphs the validator demands.
+//   2. The interpreter activities — every key each one actually reads off `payload.config`
+//      (`apps/harness/src/harness/temporal/interpreter/nodes/consultation*.py`). A schema
+//      omitting any of them would reject config the runtime honours.
+//
+// Two conventions carried from the schemas above rather than reinvented:
+//
+//   - `onError` is `['degrade', 'retry', 'fail']` — WF-CONS-019's own permitted set, and
+//     NOTABLY not `abort`. Same posture as `guardrail.check.onFail`: the v1 interpreter cannot
+//     promote a node failure to a run-level abort (`NodeActivityResult.status` has no `FAILED`),
+//     so offering the value would be silent non-enforcement. Reject at authoring time instead.
+//   - The two GATE nodes (`consentGate`, `hitlGate`) accept no config. They are also the two
+//     nodes that are not `activity`-classed, so WF-CONS-019 never fires for them and requiring
+//     an error policy would be a constraint nothing enforces.
+// -----------------------------------------------------------------------------------------
+
+/** WF-CONS-019's permitted error policies, verbatim. Shared so the rule and the schemas cannot
+ *  drift apart silently. */
+const CONSULTATION_ON_ERROR = Object.freeze({
+  type: 'string',
+  enum: Object.freeze(['degrade', 'retry', 'fail']),
+  description: 'Node error policy (WF-CONS-019). `abort` is deliberately not offered — the v1 interpreter cannot enforce it.',
+});
+
+/** `consultation.consentGate` — its activity reads no `payload.config`
+ *  (`nodes/consultation.py:44`), and unlike `hitlGate` it does NOT carry the `gate` class, so the
+ *  compiler routes it through `compileNode` rather than `compileGate` and it has no gate config
+ *  either. (`compileNode` does read the palette-agnostic `timeoutSeconds`/`retry`/`onError` off
+ *  every node — see the ADDENDUM at the foot of this module; that gap is uniform across all 33
+ *  node types and is deliberately not patched here one node at a time.) */
+const CONSULTATION_CONSENT_GATE_SCHEMA: NodeConfigSchema = Object.freeze({
+  title: 'consultation.consentGate node config (none — the gate reads no config)',
+  type: 'object',
+  additionalProperties: false,
+  properties: {},
+});
+
+/**
+ * `consultation.hitlGate` — the ONE node in the registry carrying the `gate` class, which is
+ * what makes its config surface unique.
+ *
+ * Its ACTIVITY reads no config. Its real consumer is the TYPESCRIPT COMPILER: `compileGate`
+ * (`compiler.ts:153-166`) lifts a `gate`-classed node out of `stages` into `gates` and reads
+ * four fields straight off `node.config` — `gateType`, `blocking`, `timeoutSeconds`,
+ * `onTimeout`. Declaring `{}` here (as the first pass did) told the Studio inspector this node
+ * takes no configuration, so an admin could not author the blocking/timeout behaviour of the
+ * platform's only durable human wait even though the compiler honours it.
+ *
+ * `onError` is absent on purpose: `compileGate` never reads it, and `hitlGate` is not
+ * `activity`-classed, so WF-CONS-019 does not apply.
+ */
+const CONSULTATION_HITL_GATE_SCHEMA: NodeConfigSchema = Object.freeze({
+  title: 'consultation.hitlGate node config (N-13, the one durable human wait — consumed by compileGate, not by the activity)',
+  type: 'object',
+  additionalProperties: false,
+  properties: {
+    gateType: { type: 'string', minLength: 1, maxLength: 64, description: 'Defaults to the node type when unset (compiler.ts:158).' },
+    blocking: { type: 'boolean', default: true, description: 'Anything other than an explicit `false` blocks (compiler.ts:159).' },
+    timeoutSeconds: { type: 'integer', minimum: 1, description: 'Clamped to the compiled caps; defaults to `caps.maxNodeSeconds`.' },
+    onTimeout: {
+      type: 'string',
+      minLength: 1,
+      maxLength: 64,
+      // compiler.ts:161-164 states the invariant: a timeout ALWAYS resolves to a non-approval
+      // outcome. No enum is declared because the compiler accepts any string and defaults to
+      // 'TIMED_OUT'; pinning a taxonomy here would be a new design decision, not a wiring-up.
+      description: 'Outcome recorded when the wait times out; defaults to TIMED_OUT. Never a value meaning "approved" (INV-001/INV-147/INV-181).',
+    },
+  },
+});
+
+const CONSULTATION_CAPTURE_BINDING_SCHEMA: NodeConfigSchema = Object.freeze({
+  title: 'consultation.captureBinding node config (N-2, safety class: mandatory)',
+  type: 'object',
+  additionalProperties: false,
+  required: ['onError'],
+  properties: {
+    action: { type: 'string', minLength: 1, maxLength: 64, description: 'Capture action to bind (`payload.config["action"]`).' },
+    persistSnapshot: { type: 'boolean', default: true, description: 'Persist a capture snapshot alongside the binding.' },
+    onError: CONSULTATION_ON_ERROR,
+  },
+});
+
+const CONSULTATION_EXTRACT_ENTITIES_SCHEMA: NodeConfigSchema = Object.freeze({
+  title: 'consultation.extractEntities node config (N-3, the NER node)',
+  type: 'object',
+  additionalProperties: false,
+  // `requiresFinalized` is REQUIRED by WF-CONS-017, which additionally pins it to `true`. The
+  // schema governs SHAPE and the rule governs VALUE — keeping the split is why a golden `fail`
+  // fixture authoring `false` still parses and then fails on the rule it was written to exercise.
+  required: ['requiresFinalized', 'onError'],
+  properties: {
+    requiresFinalized: { type: 'boolean', description: 'WF-CONS-017 — extraction may only read a FINALIZED transcript segment.' },
+    language: { type: 'string', minLength: 2, maxLength: 16, default: 'en' },
+    persist: { type: 'boolean', default: true, description: 'Persist extracted entities (the node`s externalWrite leg).' },
+    onError: CONSULTATION_ON_ERROR,
+  },
+});
+
+const CONSULTATION_BIND_TERMINOLOGY_SCHEMA: NodeConfigSchema = Object.freeze({
+  title: 'consultation.bindTerminology node config (N-4)',
+  type: 'object',
+  additionalProperties: false,
+  required: ['purposeScope', 'unmappedOutputKey', 'onError'],
+  properties: {
+    // DELIBERATELY UNCONSTRAINED beyond "a non-empty string". `purposeScope` is required by
+    // WF-CONS-013 (`op: 'present'` — presence only, no value check) and is read NOWHERE in
+    // `consultation_nlp.py`: no activity, no client, no validator consumes its VALUE. The only
+    // sample in the tree is the seed's `'terminology.validate'`
+    // (`seed/23-arcaai-workflow-authoring.ts:139`), which is one data point, not a taxonomy.
+    // An enum, a pattern or even a length ceiling invented here would be a NEW design decision
+    // wearing a schema's clothes, and would silently reject purposes nobody has thought of yet.
+    // ⚠ OPEN OWNER DECISION: what vocabulary `purposeScope` draws from is unresolved.
+    purposeScope: {
+      type: 'string',
+      minLength: 1,
+      description:
+        'WF-CONS-013 — the declared purpose the code binding is scoped to. Taxonomy is an open owner decision; presence is all that is enforced.',
+    },
+    unmappedOutputKey: {
+      type: 'string',
+      pattern: '^[a-z0-9_]{2,48}$',
+      description:
+        'WF-CONS-016 — where terms that bound to NO code are surfaced. An unmapped term that is silently dropped is an unmapped term nobody reviews.',
+    },
+    onError: CONSULTATION_ON_ERROR,
+  },
+});
+
+const CONSULTATION_PHI_HOP_SCHEMA: NodeConfigSchema = Object.freeze({
+  title: 'consultation.phiHop node config (N-5, safety class: mandatory, redaction)',
+  type: 'object',
+  additionalProperties: false,
+  required: ['mode', 'onError'],
+  properties: {
+    // ⚠ DELIBERATELY DIFFERENT from `stt.phiHop`, which is `['pseudonymize', 'full-redact']`.
+    // DO NOT "harmonise" these two enums — they are not the same vocabulary, and the difference
+    // is load-bearing. The consultation activity guards on its own two values:
+    //
+    //   `nodes/consultation.py:102`  ->  `if mode not in ("pseudonymize", "full"):`
+    //   `nodes/consultation.py:107`  ->  DEGRADEs with "config.mode {mode!r} is not
+    //                                     'pseudonymize' or 'full'"
+    //   `nodes/consultation.py:92`   ->  docstring: "the same two-mode vocabulary
+    //                                     `IPhiRedactor.redact()` uses on the gateway side"
+    //
+    // This schema drives the Studio inspector, so declaring `full-redact` here offered an admin
+    // a value that DEGRADES at runtime while hiding `full`, the only one that actually redacts —
+    // a PHI-redaction node silently not redacting is the worst possible shape for this defect.
+    mode: { type: 'string', enum: ['pseudonymize', 'full'] },
+    onError: CONSULTATION_ON_ERROR,
+  },
+});
+
+const CONSULTATION_RETRIEVE_EVIDENCE_SCHEMA: NodeConfigSchema = Object.freeze({
+  title: 'consultation.retrieveEvidence node config (N-6)',
+  type: 'object',
+  additionalProperties: false,
+  required: ['onError'],
+  properties: {
+    retrievalEnabled: {
+      type: 'boolean',
+      description: 'Whether evidence retrieval runs at all; false makes the node an observable no-op rather than a silent one.',
+    },
+    onError: CONSULTATION_ON_ERROR,
+  },
+});
+
+const CONSULTATION_ASSEMBLE_PROMPT_SCHEMA: NodeConfigSchema = Object.freeze({
+  title: 'consultation.assemblePrompt node config (N-7)',
+  type: 'object',
+  additionalProperties: false,
+  required: ['requiresFinalized', 'onError'],
+  properties: {
+    requiresFinalized: { type: 'boolean', description: 'WF-CONS-018 — the prompt may only be assembled from FINALIZED material.' },
+    template: { type: 'string', maxLength: 50000 },
+    dnaStyleId: { type: 'string', pattern: '^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$' },
+    conversationLanguage: { type: 'string', minLength: 2, maxLength: 16 },
+    onError: CONSULTATION_ON_ERROR,
+  },
+});
+
+/**
+ * `interpreter_consultation_synthesize` is `return await interpreter_text_generate(payload)` —
+ * verbatim delegation to the summarization palette's N-3 (`consultation_compose.py:151-200`,
+ * which states the reason: one generation engine, not a second copy). Its config surface is
+ * therefore `generate.text`'s, plus `producesCode`.
+ */
+const CONSULTATION_SYNTHESIZE_SCHEMA: NodeConfigSchema = Object.freeze({
+  title: 'consultation.synthesize node config (N-8, generation)',
+  type: 'object',
+  additionalProperties: false,
+  required: ['producesCode', 'onError'],
+  properties: {
+    producesCode: {
+      type: 'boolean',
+      description:
+        'WF-CONS-015 pins this to false — the synthesizer drafts prose. Code binding belongs to consultation.bindTerminology, against a terminology server, not to a language model recalling codes.',
+    },
+    taskKey: { type: 'string', enum: ['text.finalize', 'text.live', 'text.test'] },
+    systemPrompt: { type: 'string', maxLength: 50000 },
+    temperature: { type: 'number', minimum: 0, maximum: 2 },
+    maxTokens: { type: 'integer', minimum: 1 },
+    topP: { type: 'number', minimum: 0, maximum: 1 },
+    responseFormat: { type: 'string', enum: ['text', 'json', 'json_schema'] },
+    onError: CONSULTATION_ON_ERROR,
+  },
+});
+
+/** `consultation.sensors` (deterministic) and `consultation.inferentialSensors` (LLM judge).
+ *  Neither activity reads `payload.config` beyond the palette-wide error policy — model and
+ *  provider selection is `AiTaskDefault`'s, resolved tenant → SYSTEM, never a node literal
+ *  (`consultation_verify.py`'s own docstring makes that explicit). */
+const CONSULTATION_SENSORS_SCHEMA: NodeConfigSchema = Object.freeze({
+  title: 'consultation sensor node config (N-9/N-10 — verification, provider/model resolved by AiTaskDefault)',
+  type: 'object',
+  additionalProperties: false,
+  required: ['onError'],
+  properties: { onError: CONSULTATION_ON_ERROR },
+});
+
+const CONSULTATION_PERSIST_DRAFT_SCHEMA: NodeConfigSchema = Object.freeze({
+  title: 'consultation.persistDraft node config (N-11, safety class: mandatory, externalWrite)',
+  type: 'object',
+  additionalProperties: false,
+  required: ['occ', 'onError'],
+  properties: {
+    occ: {
+      type: 'boolean',
+      description:
+        'WF-CONS-014 pins this to true — optimistic concurrency on the draft write is the TASK-709 authorship protection made structural. Without it a background write silently overwrites an in-flight clinician edit.',
+    },
+    onError: CONSULTATION_ON_ERROR,
+  },
+});
+
+const CONSULTATION_FINALIZE_ASSURANCE_SCHEMA: NodeConfigSchema = Object.freeze({
+  title: 'consultation.finalizeAssurance node config (N-12, safety class: mandatory, externalWrite)',
+  type: 'object',
+  additionalProperties: false,
+  required: ['onError'],
+  properties: { onError: CONSULTATION_ON_ERROR },
+});
+
+// -----------------------------------------------------------------------------------------
+// TASK-791 W1-W3 — the three live-assist nodes. All three call a language model through
+// `apps/text`, so all three expose the same generation knobs; provider and model themselves are
+// NEVER node config (tenant → SYSTEM `AiTaskDefault` selection, fail-closed).
+//
+// `responseFormat` is typed as the same string enum the committed `generate.text` schema uses.
+// The activities additionally accept a full json-schema OBJECT and fall back to the code-owned
+// `SOAP_RESPONSE_FORMAT` (`nodes/_soap.py:76`) when unset — an arbitrary object is not
+// expressible in the authorable subset, and the SOAP shape is code-owned rather than tenant
+// business, so the enum is the honest authorable surface and the default keeps working.
+// -----------------------------------------------------------------------------------------
+/**
+ * §SEED NOTE — the committed seed carries a DEAD `publishTo` this schema deliberately omits.
+ *
+ * `seed/23-arcaai-workflow-authoring.ts:134` authors
+ * `{ publishTo: 'live-summary', onError: 'degrade' }` on the `n_realtime` node. Nothing reads
+ * `publishTo`: `grep -rn "publishTo" apps/harness packages/workflow-contract` returns nothing.
+ * The activity publishes to a FIXED channel (`consultation:live-summary:{id}`), not a
+ * configurable one, so the key is decorative — it describes a capability the runtime does not
+ * have.
+ *
+ * It is deliberately NOT declared here. `additionalProperties: false` plus an undeclared key is
+ * the honest statement that the field does nothing; adding it to keep the seed "valid" would
+ * document a knob that silently gates nothing, which is the same mistake as
+ * `guardrail.check.onFail: 'abort'`.
+ *
+ * This is LATENT, not live: `configSchema` is never enforced during validation or publish — its
+ * only consumer is `workflow-definition.dto.mapper.ts:86`, which surfaces it to the UI. So the
+ * seed keeps working today. **The seed-migration lane must DROP `publishTo` from that node**
+ * (alongside the port rewrite described in `node-ports.ts` §MIGRATION NOTE), rather than this
+ * schema being loosened to accommodate it.
+ */
+const CONSULTATION_REALTIME_SUMMARY_SCHEMA: NodeConfigSchema = Object.freeze({
+  title: 'consultation.realtimeSummary node config (W1, generation, externalWrite — publishes to the live feed)',
+  type: 'object',
+  additionalProperties: false,
+  required: ['onError'],
+  properties: {
+    taskKey: { type: 'string', enum: ['text.finalize', 'text.live', 'text.test'], default: 'text.live' },
+    windowChars: { type: 'integer', minimum: 1, description: 'How much of the tail of the running transcript each interim summary reads.' },
+    systemPrompt: { type: 'string', maxLength: 50000 },
+    temperature: { type: 'number', minimum: 0, maximum: 2 },
+    maxTokens: { type: 'integer', minimum: 1 },
+    responseFormat: { type: 'string', enum: ['text', 'json', 'json_schema'] },
+    onError: CONSULTATION_ON_ERROR,
+  },
+});
+
+const CONSULTATION_SUGGESTIONS_SCHEMA: NodeConfigSchema = Object.freeze({
+  title: 'consultation.suggestions node config (W2, generation — a PROPOSAL surface, writes nothing)',
+  type: 'object',
+  additionalProperties: false,
+  required: ['onError'],
+  properties: {
+    taskKey: { type: 'string', enum: ['text.finalize', 'text.live', 'text.test'], default: 'text.live' },
+    maxSuggestions: {
+      type: 'integer',
+      minimum: 0,
+      description: 'Upper bound on suggestions returned per turn; 0 disables the surface without removing the node.',
+    },
+    temperature: { type: 'number', minimum: 0, maximum: 2 },
+    maxTokens: { type: 'integer', minimum: 1 },
+    responseFormat: { type: 'string', enum: ['text', 'json', 'json_schema'] },
+    onError: CONSULTATION_ON_ERROR,
+  },
+});
+
+const CONSULTATION_PROPOSE_CORRECTIONS_SCHEMA: NodeConfigSchema = Object.freeze({
+  title: 'consultation.proposeCorrections node config (W3, generation — PROPOSES corrections, never applies them)',
+  type: 'object',
+  additionalProperties: false,
+  required: ['onError'],
+  properties: {
+    taskKey: { type: 'string', enum: ['text.finalize', 'text.live', 'text.test'], default: 'text.live' },
+    language: { type: 'string', minLength: 2, maxLength: 16, default: 'en' },
+    temperature: { type: 'number', minimum: 0, maximum: 2 },
+    maxTokens: { type: 'integer', minimum: 1 },
+    responseFormat: { type: 'string', enum: ['text', 'json', 'json_schema'] },
+    onError: CONSULTATION_ON_ERROR,
+  },
+});
+
 /**
  * Node-type key -> config JSON Schema. A key ABSENT from this map means no schema has been
  * authored for that node type yet (`WORKFLOW_NODE_REGISTRY[key].configSchema` stays
@@ -336,4 +685,22 @@ export const NODE_CONFIG_SCHEMAS: Readonly<Record<string, NodeConfigSchema>> = O
   'stt.asrEngine': STT_ASR_ENGINE_SCHEMA,
   'stt.transcriptOutput': STT_TRANSCRIPT_OUTPUT_SCHEMA,
   'stt.phiHop': STT_PHI_HOP_SCHEMA,
+  // Consultation palette (TASK-809 Task 9, closing D-9) — ordered by pipeline position, the
+  // same order `node-registry.ts` uses, so the two files read as the same pipeline.
+  'consultation.consentGate': CONSULTATION_CONSENT_GATE_SCHEMA,
+  'consultation.captureBinding': CONSULTATION_CAPTURE_BINDING_SCHEMA,
+  'consultation.extractEntities': CONSULTATION_EXTRACT_ENTITIES_SCHEMA,
+  'consultation.bindTerminology': CONSULTATION_BIND_TERMINOLOGY_SCHEMA,
+  'consultation.phiHop': CONSULTATION_PHI_HOP_SCHEMA,
+  'consultation.retrieveEvidence': CONSULTATION_RETRIEVE_EVIDENCE_SCHEMA,
+  'consultation.assemblePrompt': CONSULTATION_ASSEMBLE_PROMPT_SCHEMA,
+  'consultation.synthesize': CONSULTATION_SYNTHESIZE_SCHEMA,
+  'consultation.sensors': CONSULTATION_SENSORS_SCHEMA,
+  'consultation.inferentialSensors': CONSULTATION_SENSORS_SCHEMA,
+  'consultation.persistDraft': CONSULTATION_PERSIST_DRAFT_SCHEMA,
+  'consultation.finalizeAssurance': CONSULTATION_FINALIZE_ASSURANCE_SCHEMA,
+  'consultation.hitlGate': CONSULTATION_HITL_GATE_SCHEMA,
+  'consultation.realtimeSummary': CONSULTATION_REALTIME_SUMMARY_SCHEMA,
+  'consultation.suggestions': CONSULTATION_SUGGESTIONS_SCHEMA,
+  'consultation.proposeCorrections': CONSULTATION_PROPOSE_CORRECTIONS_SCHEMA,
 });

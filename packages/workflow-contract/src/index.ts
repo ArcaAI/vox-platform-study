@@ -36,10 +36,30 @@ export type {
 export { canonicalJson } from './canonical-json';
 
 export { WORKFLOW_NODE_REGISTRY, classesOf, paletteOf, nodeInfo, workflowNodeClassLookup, registryChecksum } from './node-registry';
-export type { WorkflowNodeDescriptor } from './node-registry';
+export type { WorkflowNodeDescriptor, WorkflowNodeEvalGate, WorkflowNodeLane, WorkflowNodeTrigger } from './node-registry';
 
 export { NODE_CONFIG_SCHEMAS } from './node-config-schemas';
 export type { NodeConfigSchema } from './node-config-schemas';
+
+// TASK-809 — the node CONTRACT: typed ports, their compatibility lattice, and the publish-time
+// checks built on it. `document -> ner` being a TYPE ERROR is a property of
+// `portPrimitiveSatisfies` + the port tables, not of any caller — see
+// `__tests__/anti-laundering.test.ts`.
+export {
+  CONTEXT_PRIMITIVES_MIRROR,
+  PORT_PRIMITIVE_CONTEXT_PRIMITIVE,
+  WORKFLOW_PORT_PRIMITIVES,
+  WORKFLOW_PORT_SUPERTYPE,
+  isWorkflowPortPrimitive,
+  portPrimitiveSatisfies,
+} from './port-model';
+export type { WorkflowPortDescriptor, WorkflowPortPrimitive } from './port-model';
+
+export { NODE_PORTS } from './node-ports';
+export type { WorkflowNodePorts } from './node-ports';
+
+export { isValidConnection, nodeDescriptorContractProblems, workflowEdgePortProblems, workflowPublishProblems } from './port-validation';
+export type { PortValidationOptions } from './port-validation';
 
 export { compile } from './compiler';
 export type {
