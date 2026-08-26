@@ -23,8 +23,16 @@ import { TASK_773_ADMIN_SCOPE_MAP } from '../task-773-admin-scope-map';
 const cwd = process.cwd();
 const repoRoot = cwd.endsWith(join('apps', 'api')) ? join(cwd, '..', '..') : cwd;
 
-/** Determined in TASK-773 by cross-checking 276f96a32 against the live tree — see the fixture's header comment. */
-const EXPECTED_ROW_COUNT = 64;
+/**
+ * Determined in TASK-773 by cross-checking 276f96a32 against the live tree — see the fixture's
+ * header comment.
+ *
+ * 64 -> 65: TASK-810 adds `DocumentTemplateAdminController`
+ * (`admin:document-template:manage`), the clinical-document SHAPE catalog. This count is a
+ * DELIBERATE-CHANGE guard, not a ceiling — a new admin controller is expected to move it, in
+ * the same commit that adds the controller.
+ */
+const EXPECTED_ROW_COUNT = 65;
 
 describe('TASK_773_ADMIN_SCOPE_MAP', () => {
   it('has not silently grown or shrunk', () => {

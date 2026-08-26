@@ -469,7 +469,10 @@ export class DocumentTemplateService extends BaseService implements IDocumentTem
 
 /** A template is servable only when it is published/approved AND carries a pin. */
 function isServable(template: DocumentTemplateEntity): boolean {
-  return template.pinnedVersionNumber != null && (template.status === DocumentTemplateStatus.PUBLISHED || template.status === DocumentTemplateStatus.APPROVED);
+  return (
+    template.pinnedVersionNumber != null &&
+    (template.status === DocumentTemplateStatus.PUBLISHED || template.status === DocumentTemplateStatus.APPROVED)
+  );
 }
 
 /**

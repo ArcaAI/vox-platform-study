@@ -178,9 +178,7 @@ describe('C4-T2 — a configured plan changes what runs, and only that', () => {
   it('groundedness forced OFF by config does not run even when the env default is on', async () => {
     const { http, post } = httpMock();
     const plan = normalizeToolPlan({ version: 1, tools: { groundedness: { enabled: false } } });
-    const payload = await flushOnce(
-      buildService({ http, env: { LIVE_DOC_GROUNDEDNESS_ENABLED: 'true' }, resolver: resolverFor(plan) }),
-    );
+    const payload = await flushOnce(buildService({ http, env: { LIVE_DOC_GROUNDEDNESS_ENABLED: 'true' }, resolver: resolverFor(plan) }));
 
     expect(urls(post).some((u) => u.includes('/guardrail/ground'))).toBe(false);
     expect(payload?.groundedness).toBeUndefined();

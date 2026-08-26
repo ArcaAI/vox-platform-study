@@ -117,9 +117,8 @@ function buildDeps(httpMock = buildHttpMock(), opts: BuildDepsOpts = {}) {
     // `findLiveSnapshotRow` now delegates to this repository helper;
     // mirror it through the SAME `findPreSummaries` mock above.
     findLatestPreSummaryWithDecryptedContent: vi.fn(async (consultationId: string, _secrets: unknown, options?: { subType?: string }) => {
-      const rows: Array<{ metaData?: unknown; createdAt: Date; content?: string | null }> = await contextItemRepository.findPreSummaries(
-        consultationId,
-      );
+      const rows: Array<{ metaData?: unknown; createdAt: Date; content?: string | null }> =
+        await contextItemRepository.findPreSummaries(consultationId);
       const candidates = options?.subType
         ? rows.filter((r) => (r.metaData as Record<string, unknown> | undefined)?.subType === options.subType)
         : rows;

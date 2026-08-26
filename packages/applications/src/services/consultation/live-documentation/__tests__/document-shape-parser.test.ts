@@ -127,7 +127,13 @@ describe('parseDocumentJson (deterministic json_schema parse)', () => {
       schemaVersion: '1.0',
       title: 'Vitals Note',
       sections: [
-        { key: 'vitals', title: 'Vitals', form: 'STRUCTURED', required: true, fields: { type: 'object', properties: { pulse: { type: 'integer' } } } },
+        {
+          key: 'vitals',
+          title: 'Vitals',
+          form: 'STRUCTURED',
+          required: true,
+          fields: { type: 'object', properties: { pulse: { type: 'integer' } } },
+        },
         { key: 'notes', title: 'Notes', form: 'PROSE' },
       ],
     });

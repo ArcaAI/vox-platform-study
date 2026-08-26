@@ -93,7 +93,9 @@ export function withMovedPin(graph: WorkflowGraph, nodeId: string, versionNumber
   return {
     ...graph,
     nodes: nodes.map((node) =>
-      node.id === nodeId ? { ...node, config: { ...(isPlainObject(node.config) ? node.config : {}), [PROMPT_VERSION_NUMBER_KEY]: versionNumber } } : node,
+      node.id === nodeId
+        ? { ...node, config: { ...(isPlainObject(node.config) ? node.config : {}), [PROMPT_VERSION_NUMBER_KEY]: versionNumber } }
+        : node,
     ),
   };
 }
