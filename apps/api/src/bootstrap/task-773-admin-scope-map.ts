@@ -164,6 +164,11 @@ export const TASK_773_ADMIN_SCOPE_MAP: readonly AdminScopeMapRow[] = [
     adminScope: 'admin:consultation-admin:manage',
   },
   {
+    file: 'apps/api/src/modules/document-template/document-template.controller.ts',
+    controllerClass: 'DocumentTemplateAdminController',
+    adminScope: 'admin:document-template:manage',
+  },
+  {
     file: 'apps/api/src/modules/department-agent/department-agent-resync.controller.ts',
     controllerClass: 'DepartmentAgentResyncController',
     adminScope: 'admin:department-agent:manage',

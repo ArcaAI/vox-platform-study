@@ -2998,6 +2998,190 @@
       "apiExcluded": false
     },
     {
+      "controller": "DocumentTemplateAdminController",
+      "handler": "list",
+      "method": "GET",
+      "path": "/api/v1/admin/document-templates",
+      "routePath": "/admin/document-templates",
+      "svcScopes": [
+        "svc:admin:document-template:manage"
+      ],
+      "forbidServiceAccount": false,
+      "apiKeyForbidden": true,
+      "apiKeyScopes": [],
+      "requiredPermissions": [
+        [
+          "manage",
+          "DocumentTemplate"
+        ]
+      ],
+      "isPublic": false,
+      "permissionMode": "AND",
+      "requiresIfMatch": false,
+      "apiExcluded": false
+    },
+    {
+      "controller": "DocumentTemplateAdminController",
+      "handler": "create",
+      "method": "POST",
+      "path": "/api/v1/admin/document-templates",
+      "routePath": "/admin/document-templates",
+      "svcScopes": [
+        "svc:admin:document-template:manage"
+      ],
+      "forbidServiceAccount": false,
+      "apiKeyForbidden": true,
+      "apiKeyScopes": [],
+      "requiredPermissions": [
+        [
+          "manage",
+          "DocumentTemplate"
+        ]
+      ],
+      "isPublic": false,
+      "permissionMode": "AND",
+      "requiresIfMatch": false,
+      "apiExcluded": false
+    },
+    {
+      "controller": "DocumentTemplateAdminController",
+      "handler": "deleteById",
+      "method": "DELETE",
+      "path": "/api/v1/admin/document-templates/{id}",
+      "routePath": "/admin/document-templates/:id",
+      "svcScopes": [
+        "svc:admin:document-template:manage"
+      ],
+      "forbidServiceAccount": false,
+      "apiKeyForbidden": true,
+      "apiKeyScopes": [],
+      "requiredPermissions": [
+        [
+          "manage",
+          "DocumentTemplate"
+        ]
+      ],
+      "isPublic": false,
+      "permissionMode": "AND",
+      "requiresIfMatch": false,
+      "apiExcluded": false
+    },
+    {
+      "controller": "DocumentTemplateAdminController",
+      "handler": "getById",
+      "method": "GET",
+      "path": "/api/v1/admin/document-templates/{id}",
+      "routePath": "/admin/document-templates/:id",
+      "svcScopes": [
+        "svc:admin:document-template:manage"
+      ],
+      "forbidServiceAccount": false,
+      "apiKeyForbidden": true,
+      "apiKeyScopes": [],
+      "requiredPermissions": [
+        [
+          "manage",
+          "DocumentTemplate"
+        ]
+      ],
+      "isPublic": false,
+      "permissionMode": "AND",
+      "requiresIfMatch": false,
+      "apiExcluded": false
+    },
+    {
+      "controller": "DocumentTemplateAdminController",
+      "handler": "update",
+      "method": "PATCH",
+      "path": "/api/v1/admin/document-templates/{id}",
+      "routePath": "/admin/document-templates/:id",
+      "svcScopes": [
+        "svc:admin:document-template:manage"
+      ],
+      "forbidServiceAccount": false,
+      "apiKeyForbidden": true,
+      "apiKeyScopes": [],
+      "requiredPermissions": [
+        [
+          "manage",
+          "DocumentTemplate"
+        ]
+      ],
+      "isPublic": false,
+      "permissionMode": "AND",
+      "requiresIfMatch": true,
+      "apiExcluded": false
+    },
+    {
+      "controller": "DocumentTemplateAdminController",
+      "handler": "pin",
+      "method": "POST",
+      "path": "/api/v1/admin/document-templates/{id}/pin",
+      "routePath": "/admin/document-templates/:id/pin",
+      "svcScopes": [
+        "svc:admin:document-template:manage"
+      ],
+      "forbidServiceAccount": false,
+      "apiKeyForbidden": true,
+      "apiKeyScopes": [],
+      "requiredPermissions": [
+        [
+          "manage",
+          "DocumentTemplate"
+        ]
+      ],
+      "isPublic": false,
+      "permissionMode": "AND",
+      "requiresIfMatch": false,
+      "apiExcluded": false
+    },
+    {
+      "controller": "DocumentTemplateAdminController",
+      "handler": "publish",
+      "method": "POST",
+      "path": "/api/v1/admin/document-templates/{id}/publish",
+      "routePath": "/admin/document-templates/:id/publish",
+      "svcScopes": [
+        "svc:admin:document-template:manage"
+      ],
+      "forbidServiceAccount": false,
+      "apiKeyForbidden": true,
+      "apiKeyScopes": [],
+      "requiredPermissions": [
+        [
+          "manage",
+          "DocumentTemplate"
+        ]
+      ],
+      "isPublic": false,
+      "permissionMode": "AND",
+      "requiresIfMatch": false,
+      "apiExcluded": false
+    },
+    {
+      "controller": "DocumentTemplateAdminController",
+      "handler": "listVersions",
+      "method": "GET",
+      "path": "/api/v1/admin/document-templates/{id}/versions",
+      "routePath": "/admin/document-templates/:id/versions",
+      "svcScopes": [
+        "svc:admin:document-template:manage"
+      ],
+      "forbidServiceAccount": false,
+      "apiKeyForbidden": true,
+      "apiKeyScopes": [],
+      "requiredPermissions": [
+        [
+          "manage",
+          "DocumentTemplate"
+        ]
+      ],
+      "isPublic": false,
+      "permissionMode": "AND",
+      "requiresIfMatch": false,
+      "apiExcluded": false
+    },
+    {
       "controller": "EntitlementsAdminController",
       "handler": "getEnabled",
       "method": "GET",
@@ -9657,6 +9841,52 @@
     },
     {
       "controller": "WorkflowDefinitionController",
+      "handler": "updateNodePrompt",
+      "method": "PUT",
+      "path": "/api/v1/admin/workflow-definitions/{id}/nodes/{nodeId}/prompt",
+      "routePath": "/admin/workflow-definitions/:id/nodes/:nodeId/prompt",
+      "svcScopes": [
+        "svc:admin:workflow-definition:manage"
+      ],
+      "forbidServiceAccount": false,
+      "apiKeyForbidden": true,
+      "apiKeyScopes": [],
+      "requiredPermissions": [
+        [
+          "manage",
+          "WorkflowDefinition"
+        ]
+      ],
+      "isPublic": false,
+      "permissionMode": "AND",
+      "requiresIfMatch": true,
+      "apiExcluded": false
+    },
+    {
+      "controller": "WorkflowDefinitionController",
+      "handler": "listPromptBindings",
+      "method": "GET",
+      "path": "/api/v1/admin/workflow-definitions/{id}/prompt-bindings",
+      "routePath": "/admin/workflow-definitions/:id/prompt-bindings",
+      "svcScopes": [
+        "svc:admin:workflow-definition:manage"
+      ],
+      "forbidServiceAccount": false,
+      "apiKeyForbidden": true,
+      "apiKeyScopes": [],
+      "requiredPermissions": [
+        [
+          "manage",
+          "WorkflowDefinition"
+        ]
+      ],
+      "isPublic": false,
+      "permissionMode": "AND",
+      "requiresIfMatch": false,
+      "apiExcluded": false
+    },
+    {
+      "controller": "WorkflowDefinitionController",
       "handler": "publish",
       "method": "POST",
       "path": "/api/v1/admin/workflow-definitions/{id}/publish",
@@ -13541,6 +13771,24 @@
       "apiKeyForbidden": false,
       "apiKeyScopes": [
         "tenant:context-schema:read"
+      ],
+      "requiredPermissions": [],
+      "isPublic": false,
+      "permissionMode": "AND",
+      "requiresIfMatch": false,
+      "apiExcluded": false
+    },
+    {
+      "controller": "MyTenantDocumentTemplateController",
+      "handler": "getEffective",
+      "method": "GET",
+      "path": "/api/v1/tenants/me/document-template",
+      "routePath": "/tenants/me/document-template",
+      "svcScopes": [],
+      "forbidServiceAccount": false,
+      "apiKeyForbidden": false,
+      "apiKeyScopes": [
+        "tenant:document-template:read"
       ],
       "requiredPermissions": [],
       "isPublic": false,
