@@ -20,6 +20,8 @@ export * from './BillingInvoiceLineEntityMapper';
 export * from './ConsultationEntityMapper';
 export * from './ConsultationContextSchemaEntityMapper';
 export * from './ConsultationContextSchemaVersionEntityMapper';
+export * from './DocumentTemplateEntityMapper';
+export * from './DocumentTemplateVersionEntityMapper';
 export * from './ContextItemEntityMapper';
 export * from './ContextItemVersionEntityMapper';
 export * from './DepartmentAgentEntityMapper';
