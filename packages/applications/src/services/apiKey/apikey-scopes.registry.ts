@@ -201,6 +201,15 @@ export const API_KEY_SCOPE_REGISTRY: Record<string, ScopeDefinition> = {
     category: 'Tenant',
     implies: [{ action: 'read', subject: 'ConsultationContextSchema' }],
   },
+  // TASK-810 — the sibling discovery scope: context-schema answers "what may I
+  // submit", this answers "what document will come back". A client that renders
+  // a generated note needs its section list before the first token arrives, and
+  // hardcoding them client-side is the mistake this ticket removed server-side.
+  'tenant:document-template:read': {
+    description: "Discover the key tenant's pinned clinical-document template",
+    category: 'Tenant',
+    implies: [{ action: 'read', subject: 'DocumentTemplate' }],
+  },
 
   // Media
   'media:file:read': { description: 'Read/download media files', category: 'Media', implies: [{ action: 'read', subject: 'Storage' }] },
@@ -402,6 +411,18 @@ export const API_KEY_SCOPE_REGISTRY: Record<string, ScopeDefinition> = {
     description: 'Manage consultation context schemas',
     category: 'Admin',
     implies: [{ action: 'manage', subject: 'ConsultationContextSchema' }],
+    reserved: true,
+  },
+  // TASK-810 — the clinical-document SHAPE catalog. RESERVED like every other
+  // `admin:*` scope (an API key can never reach an admin route — policy A2),
+  // but the vocabulary still has to exist here: `SERVICE_ACCOUNT_SCOPE_REGISTRY`
+  // DERIVES `svc:admin:document-template:manage` from this row rather than
+  // re-typing it, which is what keeps boot-audit assertion D ("every admin area
+  // is covered by exactly one `svc:*` scope") true by construction.
+  'admin:document-template:manage': {
+    description: 'Manage clinical-document templates',
+    category: 'Admin',
+    implies: [{ action: 'manage', subject: 'DocumentTemplate' }],
     reserved: true,
   },
   'admin:consultation-admin:manage': {

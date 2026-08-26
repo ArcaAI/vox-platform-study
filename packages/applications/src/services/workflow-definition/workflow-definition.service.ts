@@ -1,8 +1,11 @@
-import { BadRequestException, Inject, Injectable, Optional } from '@nestjs/common';
+import { BadRequestException, Inject, Injectable, NotFoundException, Optional } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { ClsService } from 'nestjs-cls';
 import {
   CoreDatabaseService,
+  PromptTemplateRepository,
+  PromptVersionFactory,
+  PromptVersionRepository,
   ResourceType,
   SysEventType,
   WorkflowDefinitionEntity,
@@ -31,13 +34,16 @@ import { WorkflowValidatorService } from '../workflow-validator/workflow-validat
 import { SttPipelineCompilerService } from './compilers/stt-pipeline.compiler';
 import {
   CreateWorkflowDefinitionRequest,
+  NodePromptBindingResponse,
   PaginatedWorkflowDefinitionResponse,
   PublishWorkflowDefinitionRequest,
   SandboxCompileResult,
+  UpdateNodePromptRequest,
   UpdateWorkflowDefinitionRequest,
   WorkflowDefinitionResponse,
   WorkflowNodeRegistryResponse,
 } from './dto';
+import { collectPromptBindings, withMovedPin } from './node-prompt-binding';
 import { IWorkflowDefinitionService } from './IWorkflowDefinitionService';
 import { WorkflowDefinitionDtoMapper } from './workflow-definition.dto.mapper';
 
@@ -118,6 +124,12 @@ export class WorkflowDefinitionService extends BaseService implements IWorkflowD
     // code-owned DRAFT catalogue — the behaviour that was UNIVERSAL before this ticket, so the
     // fallback cannot be less safe than the previous state.
     @Optional() private readonly workflowValidator?: WorkflowValidatorService,
+    // DD-11 — the prompt plane. Optional + trailing so existing positional unit
+    // fixtures keep their arity; production DI (WorkflowDefinitionServiceModule
+    // importing CoreDatabaseModule) always supplies both. Absent ⇒ the two
+    // prompt-binding surfaces below refuse rather than half-work.
+    @Optional() private readonly promptTemplateRepository?: PromptTemplateRepository,
+    @Optional() private readonly promptVersionRepository?: PromptVersionRepository,
   ) {
     super(eventEmitter, clsService, ResourceType.WorkflowDefinition);
   }
@@ -417,6 +429,158 @@ export class WorkflowDefinitionService extends BaseService implements IWorkflowD
   /** PUBLISHED/DEPRECATED rows are hard-immutable by SERVICE convention
    *  (`workflow-definition.prisma`'s file header §3.4) — modelled on
    *  `prompt-management.service.ts`'s `assertCanMutate`. */
+  // ============================================================
+  // DD-11 — prompt binding, and its two update paths
+  // ============================================================
+
+  /**
+   * PATH 1 — edit a node's prompt FROM WITHIN THE NODE.
+   *
+   * Mints a new `PromptVersion` AND moves THIS node's pin to it, in ONE
+   * transaction. The atomicity is the requirement, not a nicety: two separate
+   * writes leave a window in which either a version exists that no node points
+   * at, or a node's pin names a version the second write never created — and
+   * the second failure mode is a workflow that cannot resolve its own prompt.
+   *
+   * Note that the `ConsultationContextSchema` publish flow this ticket's
+   * catalog otherwise copies has NO transaction (its version insert and its pin
+   * move are two independent writes). That is survivable there because a
+   * dangling pin degrades to "fall through to the next tier". It is not
+   * survivable here, so this path deliberately does NOT follow that precedent.
+   *
+   * Only a MUTABLE definition may be edited: a PUBLISHED graph is immutable by
+   * the same rule `update()` enforces, so re-pointing a published workflow's
+   * prompt means branching a new draft.
+   *
+   * @throws NotFoundException — unknown/cross-tenant definition, unknown node,
+   *   or a template owned by another tenant (404-over-403 throughout)
+   * @throws BadRequestException — the definition is PUBLISHED/DEPRECATED, or the
+   *   node carries no `promptTemplateId` to edit
+   */
+  async updateNodePrompt(id: string, nodeId: string, dto: UpdateNodePromptRequest): Promise<WorkflowDefinitionResponse> {
+    if (!this.promptTemplateRepository || !this.promptVersionRepository) {
+      throw new BadRequestException('The prompt plane is not available in this deployment.');
+    }
+
+    const entity = await this.workflowDefinitionRepository.findById(id);
+    assertEqualTenants(entity, { tenantId: this.tenantId });
+    this.assertMutable(entity);
+
+    const graph = entity.graph as unknown as WorkflowGraph;
+    const binding = collectPromptBindings(graph).find((candidate) => candidate.nodeId === nodeId);
+    if (!binding) {
+      throw new BadRequestException(
+        `Node '${nodeId}' does not reference a prompt template. A generation node must carry \`promptTemplateId\` before its prompt can be edited.`,
+      );
+    }
+
+    const template = await this.promptTemplateRepository.findById(binding.promptTemplateId).catch(() => null);
+    if (!template || template.tenantId !== entity.tenantId) {
+      // A node pinned to a template this tenant does not own is a broken graph,
+      // not an authorization decision to explain — 404-over-403.
+      throw new NotFoundException(`Prompt template ${binding.promptTemplateId} not found`);
+    }
+
+    const userId = this.requestUserId ?? null;
+    const previousVersionNumber = binding.pinnedVersionNumber;
+
+    const { updated, versionNumber } = await this.databaseService.baseClient.$transaction(async (tx) => {
+      // `max(existing) + 1` read inside the transaction, NOT
+      // `currentVersionNumber + 1`: a lagging counter or an orphaned history row
+      // would otherwise recompute an existing versionNumber and trip the
+      // `(promptTemplateId, versionNumber)` unique constraint, bricking further
+      // edits of the template. Same reasoning as `updatePromptTemplate`.
+      const nextVersionNumber = (await this.promptVersionRepository!.findMaxVersionNumber(template.id, tx)) + 1;
+
+      await this.promptVersionRepository!.create(
+        PromptVersionFactory.CreatePromptVersion({
+          tenantId: template.tenantId,
+          promptTemplateId: template.id,
+          versionNumber: nextVersionNumber,
+          content: dto.content,
+          variables: (dto.variables ?? template.variables) as never,
+          changeReason: dto.changeReason ?? null,
+          changedBy: userId,
+        }),
+        tx,
+      );
+
+      template.content = dto.content;
+      if (dto.variables !== undefined) template.variables = dto.variables as never;
+      template.updatedBy = userId ?? undefined;
+      await this.promptTemplateRepository!.update(template.id, template, tx);
+
+      const moved = withMovedPin(graph, nodeId, nextVersionNumber);
+      if (!moved) {
+        // Unreachable given the binding lookup above; throwing inside the
+        // callback aborts the transaction rather than persisting a version row
+        // nothing points at.
+        throw new BadRequestException(`Node '${nodeId}' could not be re-pinned.`);
+      }
+      entity.graph = moved as unknown as JsonValue;
+      entity.updatedBy = userId ?? undefined;
+
+      const saved = await this.workflowDefinitionRepository.update(id, entity, tx);
+      return { updated: saved, versionNumber: nextVersionNumber };
+    });
+
+    this.broadcastSysEvent(SysEventType.ResourceUpdated, {
+      resourceId: id,
+      data: {
+        action: 'node-prompt-edit',
+        nodeId,
+        promptTemplateId: template.id,
+        previousVersionNumber,
+        versionNumber,
+      },
+    });
+
+    return WorkflowDefinitionDtoMapper.toResponse(updated);
+  }
+
+  /**
+   * The "new version available" surface (DD-11).
+   *
+   * PATH 2 — an edit made on the Prompt management screen — creates a version
+   * and moves NO node's pin, which is exactly what stops a shared template from
+   * silently changing every workflow that references it. The cost of that
+   * guarantee is that a node can fall behind INVISIBLY, so this read is the
+   * other half of the design rather than a convenience: it is what makes
+   * "behind" a thing an admin can see and act on, per node.
+   */
+  async listPromptBindings(id: string): Promise<NodePromptBindingResponse[]> {
+    if (!this.promptTemplateRepository || !this.promptVersionRepository) {
+      throw new BadRequestException('The prompt plane is not available in this deployment.');
+    }
+
+    const entity = await this.workflowDefinitionRepository.findById(id);
+    assertEqualTenants(entity, { tenantId: this.tenantId });
+
+    const bindings = collectPromptBindings(entity.graph as unknown as WorkflowGraph);
+
+    return Promise.all(
+      bindings.map(async (binding) => {
+        const template = await this.promptTemplateRepository!.findById(binding.promptTemplateId).catch(() => null);
+        const owned = template && template.tenantId === entity.tenantId ? template : null;
+        const latestVersionNumber = owned ? await this.promptVersionRepository!.findMaxVersionNumber(owned.id) : null;
+
+        return {
+          nodeId: binding.nodeId,
+          nodeType: binding.nodeType,
+          promptTemplateId: binding.promptTemplateId,
+          promptTemplateName: owned?.name ?? null,
+          pinnedVersionNumber: binding.pinnedVersionNumber,
+          latestVersionNumber,
+          // An UNPINNED node is not "behind": it deliberately follows the
+          // template, which is the pre-DD-11 behaviour and a legitimate choice.
+          // Reporting it as stale would train admins to ignore the signal.
+          hasNewVersion:
+            binding.pinnedVersionNumber !== null && latestVersionNumber !== null && latestVersionNumber > binding.pinnedVersionNumber,
+        };
+      }),
+    );
+  }
+
   private assertMutable(entity: WorkflowDefinitionEntity): void {
     if (entity.status === WorkflowDefinitionStatus.PUBLISHED || entity.status === WorkflowDefinitionStatus.DEPRECATED) {
       throw new BadRequestException(`WorkflowDefinition ${entity.id} is ${entity.status} and can no longer be edited. Branch a new draft instead.`);

@@ -4031,6 +4031,40 @@
         },
         "type": "object"
       },
+      "CreateDocumentTemplateRequest": {
+        "properties": {
+          "description": {
+            "description": "Free-text description.",
+            "type": "string"
+          },
+          "isDefault": {
+            "description": "Make this the template a generation node resolves when its config names none.",
+            "type": "boolean"
+          },
+          "name": {
+            "description": "Human-readable name.",
+            "type": "string"
+          },
+          "slug": {
+            "description": "Stable tenant-invented identifier, unique per tenant.",
+            "example": "discharge_summary",
+            "type": "string"
+          },
+          "sourceTemplateSlug": {
+            "description": "Golden-library provenance: the SYSTEM template slug this was cloned from.",
+            "type": "string"
+          },
+          "templateLocked": {
+            "description": "Whether a golden-library resync may overwrite this template.",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "slug",
+          "name"
+        ],
+        "type": "object"
+      },
       "CreateGlobalSettingRequest": {
         "properties": {
           "dataType": {
@@ -6446,6 +6480,181 @@
         "required": [
           "id",
           "username"
+        ],
+        "type": "object"
+      },
+      "DocumentTemplateBundleResponse": {
+        "properties": {
+          "checksum": {
+            "nullable": true,
+            "type": "string"
+          },
+          "compiled": {
+            "additionalProperties": true,
+            "nullable": true,
+            "type": "object"
+          },
+          "documentTemplateVersionId": {
+            "description": "Stamp this on anything generated against the template.",
+            "nullable": true,
+            "type": "string"
+          },
+          "etag": {
+            "description": "Strong RFC 7232 validator over the SERVED representation (template identity + pinned version + shape bytes). Unconfigured tenants get `\"none\"`.",
+            "type": "string"
+          },
+          "name": {
+            "nullable": true,
+            "type": "string"
+          },
+          "shape": {
+            "additionalProperties": true,
+            "nullable": true,
+            "type": "object"
+          },
+          "slug": {
+            "nullable": true,
+            "type": "string"
+          },
+          "templateId": {
+            "nullable": true,
+            "type": "string"
+          },
+          "versionNumber": {
+            "description": "The PINNED version number — never simply the latest published one.",
+            "nullable": true,
+            "type": "number"
+          }
+        },
+        "required": [
+          "etag"
+        ],
+        "type": "object"
+      },
+      "DocumentTemplateResponse": {
+        "properties": {
+          "createdAt": {
+            "type": "string"
+          },
+          "description": {
+            "nullable": true,
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "isDefault": {
+            "type": "boolean"
+          },
+          "name": {
+            "type": "string"
+          },
+          "pinnedVersionNumber": {
+            "description": "The version generation serves. Null until the first publish.",
+            "nullable": true,
+            "type": "number"
+          },
+          "slug": {
+            "type": "string"
+          },
+          "sourceTemplateSlug": {
+            "nullable": true,
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "DRAFT",
+              "PUBLISHED",
+              "APPROVED"
+            ],
+            "type": "string"
+          },
+          "templateLocked": {
+            "type": "boolean"
+          },
+          "tenantId": {
+            "type": "string"
+          },
+          "updatedAt": {
+            "type": "string"
+          },
+          "version": {
+            "description": "Optimistic-concurrency counter; rendered as the strong `ETag` by the global interceptor.",
+            "type": "number"
+          }
+        },
+        "required": [
+          "id",
+          "tenantId",
+          "slug",
+          "name",
+          "status",
+          "isDefault",
+          "templateLocked",
+          "version",
+          "createdAt",
+          "updatedAt"
+        ],
+        "type": "object"
+      },
+      "DocumentTemplateVersionResponse": {
+        "properties": {
+          "changeReason": {
+            "nullable": true,
+            "type": "string"
+          },
+          "checksum": {
+            "description": "sha256 over the canonical JSON of `shape`.",
+            "type": "string"
+          },
+          "compiled": {
+            "additionalProperties": true,
+            "description": "The DERIVED artifacts frozen with the shape: `responseFormat` (the strict json_schema a provider is decoded against), `checklist`, `sectionStates`, and `promptInstruction` for providers that ignore `response_format`.",
+            "type": "object"
+          },
+          "compilerVersion": {
+            "description": "Which compiler produced `compiled`.",
+            "type": "string"
+          },
+          "createdAt": {
+            "type": "string"
+          },
+          "createdBy": {
+            "nullable": true,
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "shape": {
+            "additionalProperties": true,
+            "description": "The AUTHORED shape.",
+            "type": "object"
+          },
+          "templateId": {
+            "type": "string"
+          },
+          "versionNumber": {
+            "type": "number"
+          },
+          "versionSkew": {
+            "enum": [
+              "IDENTICAL",
+              "ADDITIVE",
+              "BREAKING"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "templateId",
+          "versionNumber",
+          "shape",
+          "compiled",
+          "compilerVersion",
+          "checksum",
+          "createdAt"
         ],
         "type": "object"
       },
@@ -9729,6 +9938,44 @@
         ],
         "type": "object"
       },
+      "NodePromptBindingResponse": {
+        "properties": {
+          "hasNewVersion": {
+            "description": "True when the template has a version newer than this node’s pin. This is the \"new version available\" affordance: an out-of-band edit on the Prompt management screen deliberately moves NO node’s pin, so each referencing node is re-pinned separately and visibly.",
+            "type": "boolean"
+          },
+          "latestVersionNumber": {
+            "description": "The highest version number the template currently has.",
+            "nullable": true,
+            "type": "number"
+          },
+          "nodeId": {
+            "type": "string"
+          },
+          "nodeType": {
+            "type": "string"
+          },
+          "pinnedVersionNumber": {
+            "description": "The node’s own pin. Null = never pinned.",
+            "nullable": true,
+            "type": "number"
+          },
+          "promptTemplateId": {
+            "type": "string"
+          },
+          "promptTemplateName": {
+            "nullable": true,
+            "type": "string"
+          }
+        },
+        "required": [
+          "nodeId",
+          "nodeType",
+          "promptTemplateId",
+          "hasNewVersion"
+        ],
+        "type": "object"
+      },
       "NoiseCancellationConfigDto": {
         "properties": {
           "level": {
@@ -10996,6 +11243,18 @@
             "description": "PromptVersion number to pin to, or null to track the latest APPROVED version.",
             "example": 3,
             "nullable": true,
+            "type": "number"
+          }
+        },
+        "required": [
+          "versionNumber"
+        ],
+        "type": "object"
+      },
+      "PinDocumentTemplateVersionRequest": {
+        "properties": {
+          "versionNumber": {
+            "description": "The immutable version number to serve. Must already exist.",
             "type": "number"
           }
         },
@@ -12579,6 +12838,27 @@
         },
         "required": [
           "definition"
+        ],
+        "type": "object"
+      },
+      "PublishDocumentTemplateRequest": {
+        "properties": {
+          "allowBreakingChange": {
+            "description": "Acknowledges that this publish BREAKS readers built against the previous version (a removed or renamed section, a changed `form`, a changed STRUCTURED `fields` contract, or a section newly made `required`). Without it a breaking publish is refused with 400 listing each break.",
+            "type": "boolean"
+          },
+          "changeReason": {
+            "description": "Why this version was published — recorded immutably on the version row.",
+            "type": "string"
+          },
+          "shape": {
+            "additionalProperties": true,
+            "description": "The document SHAPE: `{ schemaVersion: \"1.0\", title, globalInstruction?, sections[] }`. Each section declares `key`, `title`, `form` (PROSE | BULLETS | STRUCTURED), an optional per-section `instruction`, and `required` (default FALSE — an optional section compiles to a NULLABLE property so the model can record that it was not discussed instead of inventing content). A STRUCTURED section must carry `fields`, a constrained JSON Schema draft 2020-12 subset. Rejected as 400 with every problem listed.",
+            "type": "object"
+          }
+        },
+        "required": [
+          "shape"
         ],
         "type": "object"
       },
@@ -17931,6 +18211,37 @@
         ],
         "type": "object"
       },
+      "UpdateDocumentTemplateRequest": {
+        "properties": {
+          "description": {
+            "type": "string"
+          },
+          "expectedVersion": {
+            "description": "Optimistic-concurrency version; the `If-Match` header overrides it when both are present.",
+            "type": "number"
+          },
+          "isDefault": {
+            "description": "Make (or unmake) this the tenant default.",
+            "type": "boolean"
+          },
+          "name": {
+            "type": "string"
+          },
+          "status": {
+            "description": "Governance status. Moving to APPROVED records a clinical sign-off; moving back to DRAFT makes the template unservable without discarding its published versions.",
+            "enum": [
+              "DRAFT",
+              "PUBLISHED",
+              "APPROVED"
+            ],
+            "type": "string"
+          },
+          "templateLocked": {
+            "type": "boolean"
+          }
+        },
+        "type": "object"
+      },
       "UpdateGlobalSettingRequest": {
         "properties": {
           "dataType": {
@@ -18398,6 +18709,30 @@
         },
         "required": [
           "expectedVersion"
+        ],
+        "type": "object"
+      },
+      "UpdateNodePromptRequest": {
+        "properties": {
+          "changeReason": {
+            "description": "Recorded immutably on the new version row.",
+            "type": "string"
+          },
+          "content": {
+            "description": "The new prompt body. Minted as a new immutable PromptVersion.",
+            "type": "string"
+          },
+          "expectedVersion": {
+            "description": "Optimistic-concurrency version of the WORKFLOW DEFINITION; the `If-Match` header overrides it.",
+            "type": "number"
+          },
+          "variables": {
+            "description": "Template variables to store alongside the new version.",
+            "type": "object"
+          }
+        },
+        "required": [
+          "content"
         ],
         "type": "object"
       },
@@ -24427,13 +24762,6 @@
         ],
         "responses": {
           "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object"
-                }
-              }
-            },
             "description": ""
           }
         },
@@ -25670,13 +25998,6 @@
         ],
         "responses": {
           "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object"
-                }
-              }
-            },
             "description": ""
           }
         },
@@ -25723,13 +26044,6 @@
         ],
         "responses": {
           "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object"
-                }
-              }
-            },
             "description": ""
           }
         },
@@ -25970,16 +26284,6 @@
           }
         ],
         "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object"
-                }
-              }
-            },
-            "description": ""
-          },
           "404": {
             "description": "Consultation not found — also the answer for a cross-tenant id (404-over-403), resolved BEFORE the stream opens"
           }
@@ -26027,13 +26331,6 @@
         ],
         "responses": {
           "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object"
-                }
-              }
-            },
             "description": ""
           }
         },
@@ -26080,13 +26377,6 @@
         ],
         "responses": {
           "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object"
-                }
-              }
-            },
             "description": ""
           }
         },
@@ -27911,13 +28201,6 @@
         ],
         "responses": {
           "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object"
-                }
-              }
-            },
             "description": ""
           }
         },
@@ -30029,6 +30312,67 @@
         "x-hope-abilities": [],
         "x-hope-api-key-scopes": [
           "tenant:context-schema:read"
+        ],
+        "x-hope-credentials": [
+          "user-jwt",
+          "api-key"
+        ],
+        "x-hope-permission-mode": "AND",
+        "x-hope-plane": "business",
+        "x-hope-requires-if-match": false,
+        "x-hope-service-account-scopes": []
+      }
+    },
+    "/api/v1/tenants/me/document-template": {
+      "get": {
+        "description": "Returns the RESOLVED, PINNED shape and its compiled artifacts, never simply the latest published version. A tenant with no configured template gets a 200 whose fields are null and whose ETag is `\"none\"` — deliberately NOT a 404, which a client cannot tell apart from a routing mistake.\n\nUnder API-key authentication this resolves to the key's **tenant**.\n\n**Credentials** — user JWT accepted; API key **accepted**; service-account token rejected.\n\n**API key scopes** — `tenant:document-template:read`.\n\nScopes bind the credential, abilities bind the user it acts for; they compose as AND.",
+        "operationId": "MyTenantDocumentTemplateController_getEffective",
+        "parameters": [
+          {
+            "description": "Resolve this template by slug instead of the tenant default.",
+            "in": "query",
+            "name": "slug",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Strong validator over the served representation.",
+            "in": "header",
+            "name": "ETag",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DocumentTemplateBundleResponse"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Discover the caller tenant's pinned document template",
+        "tags": [
+          "tenant"
+        ],
+        "x-hope-abilities": [],
+        "x-hope-api-key-scopes": [
+          "tenant:document-template:read"
         ],
         "x-hope-credentials": [
           "user-jwt",
