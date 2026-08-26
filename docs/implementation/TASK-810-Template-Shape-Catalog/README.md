@@ -2,7 +2,7 @@
 
 | Field | Value |
 |---|---|
-| **Status** | `Pending` |
+| **Status** | `Review` — tasks 1–13 + 15 complete; task 14 (authoring UI) is a separate lane |
 | **Type** | `feature` |
 | **Branch** | `dev-2.2` |
 | **Architecture** | <https://claude.ai/code/artifact/b6b68b73-3cb9-4cec-89f3-8afd1553c13b> |
@@ -301,9 +301,51 @@ paths, tests pasted), `ARTIFACTS`.
 **Rules to read before starting:** `.claude/rules/` files 00, 01, 02, 03, 04, 05, 13. A subagent inherits NONE of the orchestrator's context — read them.
 
 ## 7. Implementation Summary
-_Not started._
+
+Tasks 1–13 and 15 are implemented on `dev-2.2`. Task 14 (the authoring UI) is a
+separate lane and was deliberately not started.
+
+### What landed
+
+| Area | Files |
+|---|---|
+| Schema | `packages/database/src/prisma/db_main/document-template.prisma`, `enums.prisma` (`DocumentTemplateStatus`) |
+| Migration | `migrations/20260826113600_task_810_document_template_catalog/migration.sql` — tables, indexes, `ALTER TYPE ResourceType ADD VALUE`, and the OD-13 trigger |
+| Allow-lists | `TENANT_SCOPED_MODELS` (+2 → 88), `MODELS_WITHOUT_SOFT_DELETE` (+`DocumentTemplateVersion`) |
+| Enum parity | `audit.prisma` + `ResourceType.ts` — `DocumentTemplate` only; the version table is deliberately absent (the `ConsultationContextSchemaVersion` precedent) |
+| Domain | Two hand-authored trios under `packages/domains/src/{entities,factories,mappers,repositories}/generated/core/`, registered in `CoreDatabaseModule` |
+| Shape + compiler | `services/document-template/{document-template-shape,document-template-compiler,platform-document-shapes,document-shape-diff}.ts` |
+| Service + API | `document-template.service.ts`, `apps/api/src/modules/document-template/` |
+| SOAP rewiring | `soap-parser.ts` **deleted**, replaced by `document-shape-parser.ts`; `live-documentation.service.ts` resolves and freezes a compiled template per session |
+| DD-11 | `services/workflow-definition/node-prompt-binding.ts` + `updateNodePrompt` / `listPromptBindings`, routes on `WorkflowDefinitionController` |
+
+### The design decisions worth re-reading before changing anything here
+
+**D-21 is closed by NULLABILITY, not by dropping keys from `required`.** Under
+`strict: true`, removing a key from `required` does not make a section optional
+— it makes the schema invalid and silently disables strict decoding. So every
+section key stays in `required` and an OPTIONAL section compiles to a nullable
+property, with `null` as the explicit "not discussed" sentinel. The parser keeps
+`null` and `""` distinguishable all the way to the section list, because
+"never came up" and "looked, found nothing" are different clinical facts.
+
+**`compilerVersion` is half the idempotent-republish predicate.** On checksum
+alone, an unchanged shape republished after a compiler upgrade is a no-op that
+leaves the pin serving artifacts the current compiler would no longer produce,
+with nothing in the row to say so.
+
+**`updateNodePrompt` uses a real `$transaction`; the `ConsultationContextSchema`
+publish precedent does not.** That precedent's version insert and pin move are
+two independent writes, which is survivable there (a dangling pin falls through
+to the next tier) and is not survivable for DD-11 (a workflow that cannot
+resolve its own prompt).
+
+**A governed prompt owns role and tone; the template owns structure.** The live
+loop composes them (`stablePrefixFor`) rather than letting a tenant prompt
+describe a different document than the schema the model is decoded against.
 
 ## 8. Change History
 | Date | Change |
 |---|---|
 | 2026-08-25 | Opened from TASK-806 §7. Carries OD-13 and DD-11. |
+| 2026-08-26 | Tasks 1–13 + 15 implemented and merged to `dev-2.2`. Prompt checksum guards re-pinned deliberately (task 13). Task 14 left to the UI lane. |
