@@ -1,0 +1,154 @@
+// ============================================================================
+// Document Template / Shape Catalog (TASK-810)
+//
+// A DOCUMENT TEMPLATE is the SHAPE of a clinical document a generation node
+// produces: which sections exist, in which order, what form each takes, what
+// each is for, and — critically — which of them a model may leave EMPTY.
+//
+// DD-1: templates are SHAPES, and SOAP is a row like any other. Before this
+// ticket the four SOAP headings were a hardcoded `as const` in
+// `soap-parser.ts` and the response `json_schema` was a frozen literal, so a
+// tenant could not author a discharge summary at all — custom shapes were not
+// merely unwired, they were structurally excluded. Every one of those literals
+// is now COMPILED from a row in this catalog.
+//
+// Shape is the house governance triple — a MUTABLE head row, an IMMUTABLE
+// per-publish version snapshot, and a MOVABLE pin naming which snapshot is
+// served — copied from `ConsultationContextSchema` (NOT from
+// `WorkflowDefinition`, whose rows ARE versions). The head is what an admin
+// edits and what carries the lifecycle; the version row is what a generation
+// node pins to and what a produced document is stamped with. A consultation in
+// flight therefore keeps generating against the version it started with even
+// after the tenant publishes a newer one.
+//
+// The template IS the schema, not the prompt. Each version carries BOTH the
+// authored `shape` and the `compiled` artifacts derived from it at publish —
+// a strict `response_format` json_schema the model cannot violate, a frozen
+// section checklist, and a per-section state machine. "Please follow this
+// template" is a request a model can ignore; a decoding constraint is not.
+// ============================================================================
+
+model DocumentTemplate {
+  // meta fields
+  metaData Json?  @map("_metadata") @db.JsonB
+  version  Int    @default(1) @map("_version")
+  id       String @id @default(uuid(7))
+
+  // multi tenant fields
+  tenantId String
+
+  // core (business) fields
+  // Stable, tenant-invented identifier used by generation-node config and by
+  // golden-library promotion to correlate the "same" template across tenants.
+  // Unique per tenant, never reused.
+  slug        String
+  name        String
+  description String?
+
+  status DocumentTemplateStatus @default(DRAFT)
+
+  // The MOVABLE pin: the `versionNumber` of the DocumentTemplateVersion that
+  // generation resolves and that a produced document is stamped with. NULL
+  // until the first publish — a template with no pin is never served.
+  pinnedVersionNumber Int?
+
+  // At most one default per tenant — the template a generation node resolves
+  // when its config names none. Enforced in the application service, mirroring
+  // `ConsultationContextSchema.isDefault` and `DepartmentAgent.isDefault`.
+  isDefault Boolean @default(false)
+
+  // Golden-library provenance, identical in meaning to
+  // `ConsultationContextSchema`'s pair: `sourceTemplateSlug` names the SYSTEM
+  // template this one was cloned from; `templateLocked` means a resync may
+  // overwrite it because the tenant has not diverged.
+  sourceTemplateSlug String?
+  templateLocked     Boolean @default(false)
+
+  // resource status fields
+  resourceStatus          ResourceStatusType @default(ENABLED)
+  resourceStatusUpdatedAt DateTime?
+  resourceStatusUpdatedBy String?
+
+  // audit fields
+  createdBy String?  @default("60000000-0000-0000-0000-000000000000")
+  updatedBy String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // relations
+  Versions DocumentTemplateVersion[]
+
+  // constraints + indexes
+  @@unique([tenantId, slug], name: "DocumentTemplate_tenant_slug_unique")
+  @@index([tenantId], name: "DocumentTemplate_tenantId_idx")
+  @@index([tenantId, isDefault], name: "DocumentTemplate_tenant_isDefault_idx")
+  @@schema("core")
+}
+
+// IMMUTABLE snapshot of one published `shape` and the artifacts compiled from
+// it. Never updated after insert — a correction is a new version, exactly like
+// `ConsultationContextSchemaVersion` / `PromptVersion`. It therefore carries no
+// `resourceStatus` (listed in MODELS_WITHOUT_SOFT_DELETE) and no
+// `updatedAt`/`updatedBy`.
+//
+// OD-13: unlike the `ConsultationContextSchemaVersion` precedent, this table
+// ALSO carries a DB-level immutability trigger
+// (`document_template_version_immutability_guard`, migration
+// `…_task_810_document_template_catalog`), copied from
+// `workflow_definition_immutability_guard`. Immutability by convention alone is
+// one careless `update()` away from rewriting a PUBLISHED clinical template
+// under every consultation already pinned to it.
+model DocumentTemplateVersion {
+  // meta fields
+  metaData Json?  @map("_metadata") @db.JsonB
+  version  Int    @default(1) @map("_version")
+  id       String @id @default(uuid(7))
+
+  // multi tenant fields
+  tenantId String
+
+  // parent template
+  templateId String
+  Template   DocumentTemplate @relation(fields: [templateId], references: [id])
+
+  // core (business) fields
+  versionNumber Int
+
+  // The AUTHORED shape: `{ schemaVersion, title, globalInstruction?,
+  // sections[] }`. Each section declares `key`, `title`, `form`
+  // (PROSE | BULLETS | STRUCTURED), an optional per-section `instruction`, and
+  // `required`. Validated in `@arcaai/applications` —
+  // `document-template-shape.ts`.
+  shape Json @db.JsonB
+
+  // The DERIVED artifacts, compiled from `shape` at publish and frozen with it:
+  // `responseFormat` (the strict json_schema a json-schema-capable provider is
+  // decoded against), `checklist` (the frozen per-section checklist), and
+  // `sectionStates` (the per-section state machine, including which sections
+  // may legitimately reach NOT_DISCUSSED — D-21). Stored rather than recomputed
+  // so a pinned consultation reads exactly the bytes it was published with.
+  compiled Json @db.JsonB
+
+  // Which compiler produced `compiled`. Part of the idempotent-republish
+  // predicate alongside `checksum`: an identical shape compiled by a NEWER
+  // compiler is a genuinely different artifact and must mint a new version,
+  // or the pin would keep serving a stale compile forever.
+  compilerVersion String
+
+  // sha256 over the canonical (key-sorted) JSON of `shape`. Drives idempotent
+  // republish (identical checksum AND identical compilerVersion ⇒ no new
+  // version, pin unmoved) and the served ETag.
+  checksum String
+
+  changeReason String?
+
+  // audit fields (immutable row: no updatedAt/updatedBy by design)
+  createdBy String?  @default("60000000-0000-0000-0000-000000000000")
+  createdAt DateTime @default(now())
+
+  // constraints + indexes
+  @@unique([templateId, versionNumber], name: "DocumentTemplateVersion_template_versionNumber_unique")
+  @@index([tenantId], name: "DocumentTemplateVersion_tenantId_idx")
+  @@index([templateId], name: "DocumentTemplateVersion_templateId_idx")
+  @@schema("core")
+}

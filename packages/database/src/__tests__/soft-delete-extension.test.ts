@@ -219,6 +219,14 @@ describe('modelHasSoftDelete', () => {
       // TASK-733 — append-only WORM change log for workflow assignments (no
       // `resourceStatus` column; rows are immutable).
       'WorkflowAssignmentChange',
+      // DocumentTemplateVersion (TASK-810) — an immutable published snapshot of
+      // a clinical-document SHAPE plus the artifacts compiled from it. The same
+      // PromptVersion / ConsultationContextSchemaVersion posture: a document
+      // generated against version N must resolve version N forever, so there is
+      // no `resourceStatus` column and no retraction. The MUTABLE head
+      // `DocumentTemplate` is deliberately NOT here — it keeps the standard
+      // lifecycle. A DB trigger enforces the same thing one layer down (OD-13).
+      'DocumentTemplateVersion',
     ];
 
     expected.forEach((model) => {

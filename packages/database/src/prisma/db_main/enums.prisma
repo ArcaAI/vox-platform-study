@@ -740,3 +740,17 @@ enum RateLimitMatchKind {
 
   @@schema("core")
 }
+
+// Governance lifecycle of a `DocumentTemplate` (TASK-810). Deliberately the
+// same three members as `ConsultationContextSchemaStatus` above, because it is
+// the same governance triple (head → immutable version → movable pin): DRAFT is
+// editable and never served, PUBLISHED is served to generation nodes, APPROVED
+// additionally records a clinical sign-off. A template with no pin is never
+// served whatever its status.
+enum DocumentTemplateStatus {
+  DRAFT
+  PUBLISHED
+  APPROVED
+
+  @@schema("core")
+}
